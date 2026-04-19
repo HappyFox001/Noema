@@ -25,6 +25,7 @@ impl Default for AudioConfig {
 
 /// Audio processor state
 pub struct AudioProcessor {
+    #[allow(dead_code)]
     config: AudioConfig,
     vad: Arc<Mutex<vad::VAD>>,
     stt: Arc<Mutex<Option<stt::STTService>>>,

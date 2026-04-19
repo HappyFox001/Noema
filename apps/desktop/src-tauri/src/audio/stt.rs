@@ -12,6 +12,7 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 const QWEN_STT_URL: &str = "wss://dashscope-intl.aliyuncs.com/api-ws/v1/inference";
 const MODEL: &str = "qwen3-asr-flash-realtime";
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct STTRequest {
     model: String,
@@ -19,11 +20,13 @@ struct STTRequest {
     parameters: STTParameters,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct STTInput {
     audio: String,  // base64 encoded PCM16
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct STTParameters {
     sample_rate: u32,
@@ -52,6 +55,7 @@ struct STTSentence {
 }
 
 pub struct STTService {
+    #[allow(dead_code)]
     api_key: String,
     ws_tx: mpsc::UnboundedSender<Vec<i16>>,
     result_rx: std::sync::Arc<tokio::sync::Mutex<mpsc::UnboundedReceiver<String>>>,

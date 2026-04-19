@@ -75,7 +75,9 @@ struct TTSResponse {
 }
 
 pub struct TTSService {
+    #[allow(dead_code)]
     api_key: String,
+    #[allow(dead_code)]
     settings: TTSSettings,
     text_tx: mpsc::UnboundedSender<String>,
     audio_rx: std::sync::Arc<tokio::sync::Mutex<mpsc::UnboundedReceiver<Vec<u8>>>>,
@@ -127,8 +129,8 @@ impl TTSService {
                     let msg_bytes = rmp_serde::to_vec(&start_msg)
                         .expect("Failed to serialize start message");
 
-                    // Add authorization header
-                    let auth_header = format!("Bearer {}", api_key_clone);
+                    // Authorization is handled via query parameter, not header
+                    let _auth_header = format!("Bearer {}", api_key_clone);
 
                     // Send as binary message
                     if let Err(e) = write.send(Message::Binary(msg_bytes)).await {

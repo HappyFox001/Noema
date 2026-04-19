@@ -136,6 +136,7 @@ pub fn get_recent_conversations(conn: &Connection, limit: usize) -> Result<Vec<C
     Ok(turns)
 }
 
+#[allow(dead_code)]
 pub fn clear_conversations(conn: &Connection) -> Result<()> {
     conn.execute("DELETE FROM conversation_turns", [])?;
     Ok(())
@@ -194,6 +195,7 @@ pub fn get_important_memories(conn: &Connection) -> Result<Vec<ImportantMemory>>
     Ok(memories)
 }
 
+#[allow(dead_code)]
 pub fn clear_important_memories(conn: &Connection) -> Result<()> {
     conn.execute("DELETE FROM important_memories", [])?;
     Ok(())
@@ -246,6 +248,7 @@ pub fn get_conversation_summaries(conn: &Connection, limit: usize) -> Result<Vec
     Ok(summaries)
 }
 
+#[allow(dead_code)]
 pub fn clear_summaries(conn: &Connection) -> Result<()> {
     conn.execute("DELETE FROM conversation_summaries", [])?;
     Ok(())

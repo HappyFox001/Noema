@@ -118,12 +118,14 @@ impl VAD {
     }
 
     /// Reset VAD state
+    #[allow(dead_code)]
     pub fn reset(&mut self) {
         self.state = VADState::Silence;
         self.grace_start = None;
     }
 
     /// Get current VAD state
+    #[allow(dead_code)]
     pub fn get_state(&self) -> &str {
         match self.state {
             VADState::Silence => "silence",
