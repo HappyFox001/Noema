@@ -25,9 +25,24 @@ fn greet(name: &str) -> String {
 
 /// Initialize STT service with API key
 #[tauri::command]
-async fn init_stt(state: State<'_, AudioState>, api_key: String) -> Result<(), String> {
+async fn init_stt(
+    state: State<'_, AudioState>,
+    api_key: String,
+    stt_url: Option<String>,
+) -> Result<(), String> {
     let processor = state.processor.lock().await;
-    processor.init_stt(api_key).await.map_err(|e| e.to_string())
+    processor
+        .init_stt(api_key, stt_url)
+        .await
+        .map_err(format_error_chain)
+}
+
+fn format_error_chain(error: anyhow::Error) -> String {
+    error
+        .chain()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(": ")
 }
 
 /// Process audio chunk and detect voice activity

@@ -43,9 +43,9 @@ impl AudioProcessor {
     }
 
     /// Initialize STT service with API key
-    pub async fn init_stt(&self, api_key: String) -> anyhow::Result<()> {
+    pub async fn init_stt(&self, api_key: String, stt_url: Option<String>) -> anyhow::Result<()> {
         let mut stt = self.stt.lock().await;
-        *stt = Some(stt::STTService::new(api_key).await?);
+        *stt = Some(stt::STTService::new(api_key, stt_url).await?);
         Ok(())
     }
 

@@ -17,6 +17,7 @@ export interface ConversationConfig {
 
   // STT 配置 (Qwen)
   sttApiKey: string
+  sttUrl?: string
 
   // TTS 配置 (Fish Audio)
   ttsApiKey: string
@@ -90,7 +91,7 @@ export class ConversationManager {
       console.log('[ConversationManager] SDK initialized')
 
       // 2. 初始化语音输入。对话循环依赖麦克风，所以这里失败时必须阻止启动。
-      await this.voiceInput.initialize(config.sttApiKey)
+      await this.voiceInput.initialize(config.sttApiKey, config.sttUrl)
       console.log('[ConversationManager] Voice input initialized')
 
       // 3. 尝试初始化语音输出（可选）

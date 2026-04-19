@@ -184,6 +184,7 @@ startBtn.addEventListener('click', async () => {
       const llmModel = import.meta.env.VITE_LLM_MODEL || 'gpt-4o-mini'
       const llmBaseURL = import.meta.env.VITE_LLM_BASE_URL || undefined
       const qwenApiKey = import.meta.env.VITE_QWEN_API_KEY || ''
+      const qwenSttUrl = import.meta.env.VITE_QWEN_STT_URL || undefined
       const fishApiKey = import.meta.env.VITE_FISH_API_KEY || ''
       const fishVoiceId = import.meta.env.VITE_FISH_VOICE_ID
 
@@ -210,6 +211,7 @@ startBtn.addEventListener('click', async () => {
         llmModel,
         llmBaseURL,
         sttApiKey: qwenApiKey || '',  // 空字符串表示不使用音频输入
+        sttUrl: qwenSttUrl,
         ttsApiKey: fishApiKey || '',  // 空字符串表示不使用音频输出
         ttsVoiceId: fishVoiceId,
       })

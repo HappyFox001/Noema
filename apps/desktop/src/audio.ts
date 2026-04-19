@@ -170,13 +170,13 @@ export class VoiceInputManager {
   /**
    * Initialize with STT API key
    */
-  async initialize(apiKey: string): Promise<void> {
+  async initialize(apiKey: string, sttUrl?: string): Promise<void> {
     try {
       // Initialize audio capture
       await this.audioCapture.initialize()
 
       // Initialize STT service
-      await invoke('init_stt', { apiKey })
+      await invoke('init_stt', { apiKey, sttUrl })
 
       this.isInitialized = true
       console.log('Voice input manager initialized')

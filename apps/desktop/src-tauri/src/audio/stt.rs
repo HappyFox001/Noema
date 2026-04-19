@@ -6,10 +6,14 @@ use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::sync::mpsc;
-use tokio_tungstenite::{connect_async, tungstenite::Message};
+use tokio_tungstenite::{
+    connect_async,
+    tungstenite::{client::IntoClientRequest, http::HeaderValue, Message},
+};
 
-const QWEN_STT_URL: &str = "wss://dashscope-intl.aliyuncs.com/api-ws/v1/inference";
+const DEFAULT_QWEN_STT_URL: &str = "wss://dashscope.aliyuncs.com/api-ws/v1/realtime";
 const MODEL: &str = "qwen3-asr-flash-realtime";
+const AUDIO_CHUNK_BYTES: usize = 3200;
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,7 +38,14 @@ struct STTParameters {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct STTResponse {
+    #[serde(rename = "type")]
+    event_type: Option<String>,
+    transcript: Option<String>,
+    text: Option<String>,
+    stash: Option<String>,
     output: Option<STTOutput>,
+    error: Option<serde_json::Value>,
+    error_message: Option<String>,
     usage: Option<serde_json::Value>,
 }
 
@@ -62,15 +73,56 @@ pub struct STTService {
 
 impl STTService {
     /// Create new STT service and establish connection
-    pub async fn new(api_key: String) -> Result<Self> {
-        let url = format!("{}?api-key={}", QWEN_STT_URL, api_key);
+    pub async fn new(api_key: String, stt_url: Option<String>) -> Result<Self> {
+        let api_key = api_key.trim().to_string();
+        if api_key.is_empty() {
+            return Err(anyhow::anyhow!("Qwen STT API key is not configured"));
+        }
+
+        let base_url = stt_url
+            .as_deref()
+            .map(str::trim)
+            .filter(|url| !url.is_empty())
+            .unwrap_or(DEFAULT_QWEN_STT_URL);
+        let url = format!("{}?model={}", base_url.trim_end_matches('/'), MODEL);
+        let mut request = url
+            .into_client_request()
+            .context("Failed to create Qwen STT WebSocket request")?;
+        let bearer = format!("Bearer {}", api_key);
+        request.headers_mut().insert(
+            "Authorization",
+            HeaderValue::from_str(&bearer).context("Invalid Qwen STT API key header value")?,
+        );
+        request
+            .headers_mut()
+            .insert("OpenAI-Beta", HeaderValue::from_static("realtime=v1"));
 
         tracing::info!("Connecting to Qwen STT service...");
-        let (ws_stream, _) = connect_async(&url)
+        let (ws_stream, response) = connect_async(request)
             .await
-            .context("Failed to connect to Qwen STT WebSocket")?;
+            .with_context(|| format!("Failed to connect to Qwen STT WebSocket at {}", base_url))?;
+        tracing::debug!("Qwen STT WebSocket handshake status: {}", response.status());
 
         let (mut write, mut read) = ws_stream.split();
+
+        let session_update = json!({
+            "event_id": event_id(),
+            "type": "session.update",
+            "session": {
+                "modalities": ["text"],
+                "input_audio_format": "pcm",
+                "sample_rate": 16000,
+                "input_audio_transcription": {
+                    "language": "zh"
+                },
+                "turn_detection": null
+            }
+        });
+
+        write
+            .send(Message::Text(session_update.to_string()))
+            .await
+            .context("Failed to configure Qwen STT session")?;
 
         // Channel for sending audio data
         let (audio_tx, mut audio_rx) = mpsc::unbounded_channel::<Vec<i16>>();
@@ -87,23 +139,27 @@ impl STTService {
                     .flat_map(|&sample| sample.to_le_bytes())
                     .collect();
 
-                let audio_b64 = general_purpose::STANDARD.encode(&pcm_bytes);
-
-                let request = json!({
-                    "model": MODEL,
-                    "input": {
+                for chunk in pcm_bytes.chunks(AUDIO_CHUNK_BYTES) {
+                    let audio_b64 = general_purpose::STANDARD.encode(chunk);
+                    let append_audio = json!({
+                        "event_id": event_id(),
+                        "type": "input_audio_buffer.append",
                         "audio": audio_b64
-                    },
-                    "parameters": {
-                        "sample_rate": 16000,
-                        "format": "pcm"
-                    }
-                });
+                    });
 
-                let msg = Message::Text(request.to_string());
-                if let Err(e) = write.send(msg).await {
-                    tracing::error!("Failed to send audio to STT: {}", e);
-                    break;
+                    if let Err(e) = write.send(Message::Text(append_audio.to_string())).await {
+                        tracing::error!("Failed to send audio to STT: {}", e);
+                        return;
+                    }
+                }
+
+                let commit_audio = json!({
+                    "event_id": event_id(),
+                    "type": "input_audio_buffer.commit"
+                });
+                if let Err(e) = write.send(Message::Text(commit_audio.to_string())).await {
+                    tracing::error!("Failed to commit audio to STT: {}", e);
+                    return;
                 }
             }
         });
@@ -116,6 +172,38 @@ impl STTService {
                     Ok(Message::Text(text)) => {
                         match serde_json::from_str::<STTResponse>(&text) {
                             Ok(response) => {
+                                match response.event_type.as_deref() {
+                                    Some(
+                                        "conversation.item.input_audio_transcription.completed",
+                                    ) => {
+                                        if let Some(transcript) = response.transcript {
+                                            if !transcript.is_empty() {
+                                                tracing::debug!("STT final: {}", transcript);
+                                                let _ = result_tx_clone.send(transcript);
+                                            }
+                                        }
+                                    }
+                                    Some("conversation.item.input_audio_transcription.text") => {
+                                        if let Some(text) = response.text.or(response.stash) {
+                                            if !text.is_empty() {
+                                                tracing::debug!("STT interim: {}", text);
+                                            }
+                                        }
+                                    }
+                                    Some("error") => {
+                                        tracing::error!(
+                                            "Qwen STT error: {}",
+                                            response
+                                                .error_message
+                                                .unwrap_or_else(|| format!("{:?}", response.error))
+                                        );
+                                    }
+                                    Some(event_type) => {
+                                        tracing::debug!("Qwen STT event: {}", event_type);
+                                    }
+                                    None => {}
+                                }
+
                                 if let Some(output) = response.output {
                                     // Prefer sentence output (final) over interim text
                                     if let Some(sentence) = output.sentence {
@@ -131,7 +219,11 @@ impl STTService {
                                 }
                             }
                             Err(e) => {
-                                tracing::warn!("Failed to parse STT response: {}", e);
+                                tracing::warn!(
+                                    "Failed to parse STT response: {}. Raw: {}",
+                                    e,
+                                    text
+                                );
                             }
                         }
                     }
@@ -179,4 +271,12 @@ impl STTService {
         tracing::info!("Disconnected from STT service");
         Ok(())
     }
+}
+
+fn event_id() -> String {
+    let millis = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or_default();
+    format!("event_{}", millis)
 }
