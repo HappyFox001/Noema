@@ -37,6 +37,12 @@ export class AudioCapture {
    */
   async initialize(): Promise<void> {
     try {
+      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+        throw new Error(
+          'Microphone capture is not available in this WebView context. On macOS, make sure the app has NSMicrophoneUsageDescription and the audio-input entitlement, then restart the Tauri app.'
+        )
+      }
+
       // Request microphone access
       this.mediaStream = await navigator.mediaDevices.getUserMedia({
         audio: {

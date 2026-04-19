@@ -89,13 +89,9 @@ export class ConversationManager {
       this.sdk = await HerTextSDK.initialize(sdkConfig)
       console.log('[ConversationManager] SDK initialized')
 
-      // 2. 尝试初始化语音输入（可选）
-      try {
-        await this.voiceInput.initialize(config.sttApiKey)
-        console.log('[ConversationManager] Voice input initialized')
-      } catch (error) {
-        console.warn('[ConversationManager] Voice input initialization failed (audio not available):', error)
-      }
+      // 2. 初始化语音输入。对话循环依赖麦克风，所以这里失败时必须阻止启动。
+      await this.voiceInput.initialize(config.sttApiKey)
+      console.log('[ConversationManager] Voice input initialized')
 
       // 3. 尝试初始化语音输出（可选）
       try {
