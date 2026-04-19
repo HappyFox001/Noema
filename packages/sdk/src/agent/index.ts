@@ -147,8 +147,9 @@ export class AgentCore {
     call: ToolCall,
     timeout: number
   ): Promise<any> {
+    const args = JSON.parse(call.function.arguments)
     return Promise.race([
-      tool.execute(call.arguments),
+      tool.execute(args),
       new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Tool execution timeout')), timeout)
       )
