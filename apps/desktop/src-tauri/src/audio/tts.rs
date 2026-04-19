@@ -4,9 +4,13 @@ use anyhow::{Context, Result};
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
-use tokio_tungstenite::{connect_async, tungstenite::Message};
+use tokio_tungstenite::{
+    connect_async,
+    tungstenite::{client::IntoClientRequest, http::HeaderValue, Message},
+};
 
 const FISH_TTS_URL: &str = "wss://api.fish.audio/v1/tts/live";
+const TTS_CONNECT_TIMEOUT_SECS: u64 = 8;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TTSSettings {
@@ -85,12 +89,28 @@ pub struct TTSService {
 impl TTSService {
     /// Create new TTS service and establish connection
     pub async fn new(api_key: String, settings: TTSSettings) -> Result<Self> {
-        let url = FISH_TTS_URL;
+        let api_key = api_key.trim().to_string();
+        if api_key.is_empty() {
+            return Err(anyhow::anyhow!("Fish Audio API key is not configured"));
+        }
+
+        let mut request = FISH_TTS_URL
+            .into_client_request()
+            .context("Failed to create Fish Audio TTS WebSocket request")?;
+        let bearer = format!("Bearer {}", api_key);
+        request.headers_mut().insert(
+            "Authorization",
+            HeaderValue::from_str(&bearer).context("Invalid Fish Audio API key header value")?,
+        );
 
         tracing::info!("Connecting to Fish Audio TTS service...");
-        let (ws_stream, _) = connect_async(url)
-            .await
-            .context("Failed to connect to Fish Audio TTS WebSocket")?;
+        let (ws_stream, _) = tokio::time::timeout(
+            std::time::Duration::from_secs(TTS_CONNECT_TIMEOUT_SECS),
+            connect_async(request),
+        )
+        .await
+        .context("Timed out connecting to Fish Audio TTS WebSocket")?
+        .context("Failed to connect to Fish Audio TTS WebSocket")?;
 
         let (mut write, mut read) = ws_stream.split();
 

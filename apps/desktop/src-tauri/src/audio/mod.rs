@@ -67,6 +67,10 @@ impl AudioProcessor {
 
     /// Initialize TTS service with API key
     pub async fn init_tts(&self, api_key: String, voice_id: Option<String>) -> anyhow::Result<()> {
+        if api_key.trim().is_empty() {
+            return Err(anyhow::anyhow!("Fish Audio API key is not configured"));
+        }
+
         let mut settings = tts::TTSSettings::default();
         settings.voice = voice_id;
 

@@ -80,7 +80,7 @@ async fn init_tts(
     processor
         .init_tts(api_key, voice_id)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(format_error_chain)
 }
 
 /// Synthesize text to speech

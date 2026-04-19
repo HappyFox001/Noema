@@ -189,6 +189,10 @@ export class TTSManager {
    */
   async initialize(apiKey: string, voiceId?: string): Promise<void> {
     try {
+      if (!apiKey.trim()) {
+        throw new Error('Fish Audio API key is not configured')
+      }
+
       // Initialize audio player
       await this.audioPlayer.initialize()
 
