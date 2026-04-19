@@ -14,16 +14,14 @@
     "windows": [
       {
         "title": "Her-Text",
-        "width": 300,
-        "height": 300,
+        "width": 500,
+        "height": 600,
         "resizable": false,
         "fullscreen": false,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,
-        "center": false,
-        "x": 100,
-        "y": 100
+        "center": true
       }
     ],
     "security": {
