@@ -1,4 +1,5 @@
 import './styles.css'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { ConversationManager, type ConversationState } from './conversation-manager'
 
 const app = document.querySelector<HTMLDivElement>('#app')!
@@ -96,6 +97,27 @@ function drawOrb() {
 }
 
 drawOrb()
+
+// 小球拖拽功能
+const appWindow = getCurrentWindow()
+
+canvas.style.cursor = 'grab'
+
+canvas.addEventListener('mousedown', (e) => {
+  if (e.button !== 0) return
+
+  e.preventDefault()
+  canvas.style.cursor = 'grabbing'
+
+  void appWindow.startDragging().catch((err) => {
+    canvas.style.cursor = 'grab'
+    console.error('Failed to start window dragging:', err)
+  })
+})
+
+document.addEventListener('mouseup', () => {
+  canvas.style.cursor = 'grab'
+})
 
 // Conversation Manager
 const conversationManager = new ConversationManager()
