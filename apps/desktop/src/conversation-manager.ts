@@ -89,13 +89,21 @@ export class ConversationManager {
       this.sdk = await HerTextSDK.initialize(sdkConfig)
       console.log('[ConversationManager] SDK initialized')
 
-      // 2. 初始化语音输入
-      await this.voiceInput.initialize(config.sttApiKey)
-      console.log('[ConversationManager] Voice input initialized')
+      // 2. 尝试初始化语音输入（可选）
+      try {
+        await this.voiceInput.initialize(config.sttApiKey)
+        console.log('[ConversationManager] Voice input initialized')
+      } catch (error) {
+        console.warn('[ConversationManager] Voice input initialization failed (audio not available):', error)
+      }
 
-      // 3. 初始化语音输出
-      await this.tts.initialize(config.ttsApiKey, config.ttsVoiceId)
-      console.log('[ConversationManager] TTS initialized')
+      // 3. 尝试初始化语音输出（可选）
+      try {
+        await this.tts.initialize(config.ttsApiKey, config.ttsVoiceId)
+        console.log('[ConversationManager] TTS initialized')
+      } catch (error) {
+        console.warn('[ConversationManager] TTS initialization failed (audio not available):', error)
+      }
 
       this.isInitialized = true
       this.emitStateChange('idle')
@@ -202,6 +210,55 @@ export class ConversationManager {
     })
 
     return response.text
+  }
+
+  /**
+   * 发送文本消息（支持流式输出和可选 TTS）
+   */
+  async sendTextMessage(text: string, enableTTS = false): Promise<void> {
+    if (!this.sdk) {
+      throw new Error('SDK not initialized')
+    }
+
+    console.log('[ConversationManager] User text:', text)
+    this.emitTranscript(text)
+    this.emitStateChange('thinking')
+
+    try {
+      // 调用 SDK 处理用户输入（流式）
+      let fullResponse = ''
+
+      for await (const chunk of this.sdk.chatStream({
+        text,
+        timestamp: Date.now(),
+      })) {
+        fullResponse += chunk
+        // 实时更新响应
+        this.emitResponse(fullResponse)
+      }
+
+      console.log('[ConversationManager] SDK response:', fullResponse)
+
+      // 如果启用 TTS，进行语音合成
+      if (enableTTS) {
+        this.emitStateChange('speaking')
+
+        this.tts.onPlaybackEnd(() => {
+          this.emitStateChange('idle')
+          this.emitResponse('')
+        })
+
+        await this.tts.speak(fullResponse)
+      } else {
+        this.emitStateChange('idle')
+      }
+
+    } catch (error) {
+      console.error('[ConversationManager] Error handling text:', error)
+      this.emitError(error as Error)
+      this.emitStateChange('idle')
+      throw error
+    }
   }
 
   /**

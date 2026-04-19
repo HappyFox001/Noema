@@ -11,6 +11,10 @@ app.innerHTML = `
     <div class="controls">
       <button id="start-btn" class="start-button">Start Conversation</button>
       <div id="status" class="status">Ready</div>
+      <div style="width: 100%; display: flex; gap: 8px; align-items: center;">
+        <input type="text" id="text-input" class="text-input" placeholder="Type your message..." />
+        <button id="send-btn" class="tts-button" style="flex-shrink: 0; padding: 10px 20px;">Send</button>
+      </div>
     </div>
   </div>
 `
@@ -191,18 +195,13 @@ startBtn.addEventListener('click', async () => {
         return
       }
 
+      // 音频 API Keys 是可选的
       if (!qwenApiKey) {
-        setStatus('Error: Qwen API key not configured')
-        setTextDisplay('Please set VITE_QWEN_API_KEY in .env')
-        startBtn.disabled = false
-        return
+        console.warn('Qwen API key not configured - voice input disabled')
       }
 
       if (!fishApiKey) {
-        setStatus('Error: Fish API key not configured')
-        setTextDisplay('Please set VITE_FISH_API_KEY in .env')
-        startBtn.disabled = false
-        return
+        console.warn('Fish API key not configured - TTS disabled')
       }
 
       // Initialize conversation manager
@@ -210,8 +209,8 @@ startBtn.addEventListener('click', async () => {
         llmApiKey,
         llmModel,
         llmBaseURL,
-        sttApiKey: qwenApiKey,
-        ttsApiKey: fishApiKey,
+        sttApiKey: qwenApiKey || '',  // 空字符串表示不使用音频输入
+        ttsApiKey: fishApiKey || '',  // 空字符串表示不使用音频输出
         ttsVoiceId: fishVoiceId,
       })
 
@@ -289,6 +288,51 @@ startBtn.addEventListener('click', async () => {
     setOrbMode('idle')
     startBtn.disabled = false
     startBtn.textContent = 'Start Conversation'
+  }
+})
+
+// Text input handler
+const textInput = document.getElementById('text-input') as HTMLInputElement
+const sendBtn = document.getElementById('send-btn') as HTMLButtonElement
+
+async function sendTextMessage() {
+  const text = textInput.value.trim()
+  if (!text) return
+
+  if (!isInitialized) {
+    setStatus('Please initialize first')
+    return
+  }
+
+  try {
+    // 禁用输入
+    textInput.disabled = true
+    sendBtn.disabled = true
+
+    // 清空输入框
+    textInput.value = ''
+
+    // 发送消息（不启用 TTS，因为音频有问题）
+    await conversationManager.sendTextMessage(text, false)
+
+  } catch (error) {
+    console.error('Text message error:', error)
+    setStatus(`Error: ${error}`)
+  } finally {
+    // 恢复输入
+    textInput.disabled = false
+    sendBtn.disabled = false
+    textInput.focus()
+  }
+}
+
+// Send button click
+sendBtn.addEventListener('click', sendTextMessage)
+
+// Enter key to send
+textInput.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') {
+    sendTextMessage()
   }
 })
 
