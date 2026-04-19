@@ -55,15 +55,19 @@ export class AgentCore {
         // 前置钩子
         await hooks?.preToolUse?.(call)
 
-        const tool = this.tools.get(call.name)
+        const toolName = call.function.name
+        const tool = this.tools.get(toolName)
         if (!tool) {
-          throw new Error(`Tool not found: ${call.name}`)
+          throw new Error(`Tool not found: ${toolName}`)
         }
+
+        // 解析参数
+        const args = JSON.parse(call.function.arguments)
 
         // 执行工具（带超时）
         const result = options?.timeout
           ? await this.executeWithTimeout(tool, call, options.timeout)
-          : await tool.execute(call.arguments)
+          : await tool.execute(args)
 
         // 后置钩子
         await hooks?.postToolUse?.(call, result)
@@ -71,7 +75,7 @@ export class AgentCore {
         results.push({
           success: true,
           callId: call.id,
-          name: call.name,
+          name: call.function.name,
           result
         })
       } catch (error) {
@@ -81,7 +85,7 @@ export class AgentCore {
         results.push({
           success: false,
           callId: call.id,
-          name: call.name,
+          name: call.function.name,
           error: (error as Error).message
         })
       }
@@ -103,21 +107,24 @@ export class AgentCore {
       try {
         await hooks?.preToolUse?.(call)
 
-        const tool = this.tools.get(call.name)
+        const toolName = call.function.name
+        const tool = this.tools.get(toolName)
         if (!tool) {
-          throw new Error(`Tool not found: ${call.name}`)
+          throw new Error(`Tool not found: ${toolName}`)
         }
+
+        const args = JSON.parse(call.function.arguments)
 
         const result = options?.timeout
           ? await this.executeWithTimeout(tool, call, options.timeout)
-          : await tool.execute(call.arguments)
+          : await tool.execute(args)
 
         await hooks?.postToolUse?.(call, result)
 
         return {
           success: true,
           callId: call.id,
-          name: call.name,
+          name: call.function.name,
           result
         }
       } catch (error) {
@@ -126,7 +133,7 @@ export class AgentCore {
         return {
           success: false,
           callId: call.id,
-          name: call.name,
+          name: call.function.name,
           error: (error as Error).message
         }
       }

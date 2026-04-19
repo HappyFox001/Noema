@@ -20,11 +20,10 @@
   "dependencies": {
     "@her-text/types": "workspace:*",
     "@her-text/core": "workspace:*",
-    "better-sqlite3": "^11.0.0"
+    "@tauri-apps/api": "^2.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
-    "@types/better-sqlite3": "^7.6.0",
     "typescript": "^5.4.0",
     "jest": "^29.7.0",
     "@types/jest": "^29.5.0"

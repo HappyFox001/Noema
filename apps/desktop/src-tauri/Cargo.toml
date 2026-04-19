@@ -31,4 +31,7 @@ tracing = "0.1"
 tracing-subscriber = "0.3"
 rmp-serde = "1.1"  # msgpack for Fish Audio API
 rusqlite = { version = "0.32", features = ["bundled"] }  # SQLite for memory persistence
+glob = "0.3"  # File pattern matching
+regex = "1.10"  # Regular expressions for grep
+walkdir = "2"  # Directory traversal
 

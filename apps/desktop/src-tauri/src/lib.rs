@@ -1,5 +1,6 @@
 mod audio;
 mod memory;
+mod tools;
 
 use std::sync::Arc;
 use tauri::utils::config::Color;
@@ -255,7 +256,15 @@ pub fn run() {
             save_conversation_summary,
             get_conversation_summaries,
             get_memory_stats,
-            clear_all_memory
+            clear_all_memory,
+            // Tools
+            tools::read_file,
+            tools::write_file,
+            tools::edit_file,
+            tools::glob_files,
+            tools::grep_files,
+            tools::run_command,
+            tools::run_command_background
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -43,7 +43,7 @@ export interface AgentResponse {
   toolCalls?: ToolCall[]
 }
 
-// Agent 工具系统
+// Agent 工具系统（兼容 OpenAI/Anthropic Function Calling）
 export interface Tool {
   name: string
   description: string
@@ -57,8 +57,11 @@ export interface Tool {
 
 export interface ToolCall {
   id: string
-  name: string
-  arguments: Record<string, any>
+  type: 'function'
+  function: {
+    name: string
+    arguments: string  // JSON 字符串
+  }
 }
 
 // SDK 配置
