@@ -24,7 +24,8 @@
         "backgroundColor": "#00000000",
         "shadow": false,
         "alwaysOnTop": true,
-        "center": true
+        "center": true,
+        "devtools": true
       }
     ],
     "security": {
