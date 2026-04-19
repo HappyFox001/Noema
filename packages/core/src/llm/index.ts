@@ -1,8 +1,16 @@
 import OpenAI from 'openai'
 import type { SDKConfig } from '@her-text/types'
 
+/**
+ * LLM 响应类型
+ */
+export interface LLMResponse {
+  content: string
+  toolCalls?: any[]  // OpenAI tool_calls 格式
+}
+
 export interface LLMProvider {
-  chat(messages: any[], options?: any): Promise<string>
+  chat(messages: any[], options?: any): Promise<LLMResponse>
   streamChat(messages: any[], options?: any): AsyncGenerator<string>
 }
 
@@ -20,14 +28,19 @@ export class OpenAIProvider implements LLMProvider {
     })
   }
 
-  async chat(messages: any[], options?: any): Promise<string> {
+  async chat(messages: any[], options?: any): Promise<LLMResponse> {
     const response = await this.client.chat.completions.create({
       model: this.model,
       messages,
       ...options
     })
 
-    return response.choices[0]?.message?.content || ''
+    const message = response.choices[0]?.message
+
+    return {
+      content: message?.content || '',
+      toolCalls: message?.tool_calls as any[]
+    }
   }
 
   async *streamChat(messages: any[], options?: any): AsyncGenerator<string> {

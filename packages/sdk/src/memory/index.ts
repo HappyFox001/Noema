@@ -346,7 +346,7 @@ ${conversationText}
         { role: 'user', content: prompt }
       ])
 
-      const parsed = this.parseJSONResponse(response)
+      const parsed = this.parseJSONResponse(response.content)
 
       const summary: ConversationSummary = {
         id: generateId(),
@@ -409,7 +409,7 @@ ${conversationText}
         { role: 'user', content: prompt }
       ])
 
-      const parsed = this.parseJSONResponse(response)
+      const parsed = this.parseJSONResponse(response.content)
 
       // 更新基本画像
       if (parsed.basicProfile) {

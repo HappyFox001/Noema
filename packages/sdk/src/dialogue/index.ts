@@ -91,19 +91,19 @@ export class DialogueOrchestrator {
           ...messages
         ]
 
-        const rawResponse = await this.llm.chat(fullMessages, llmOptions)
+        const llmResponse = await this.llm.chat(fullMessages, llmOptions)
 
-        // 解析 XML 格式的响应
-        const parsed = this.parseXMLResponse(rawResponse)
+        // 提取工具调用（原生 API 返回）
+        toolCalls = llmResponse.toolCalls
+
+        // 解析 XML 格式的响应内容
+        const parsed = this.parseXMLResponse(llmResponse.content)
         responseText = parsed.reply
 
         // 记录思考过程（用于调试）
         if (parsed.thinking) {
           console.log('[Thinking]:', parsed.thinking)
         }
-
-        // TODO: 解析工具调用（如果 LLM 返回了工具调用）
-        // toolCalls = this.parseToolCalls(parsed.toolUse)
       } catch (error) {
         console.error('LLM call failed:', error)
         responseText = '抱歉，我现在有点不在状态...'
@@ -113,31 +113,55 @@ export class DialogueOrchestrator {
 
       if (toolCalls && toolCalls.length > 0) {
         try {
+          console.log('[Tool Calls]:', toolCalls.map(tc => tc.function.name))
+
           const toolResults = await this.agent.execute(toolCalls, {
             parallel: false,
             timeout: 30000
           })
 
-          // 记录工具调用和结果
+          console.log('[Tool Results]:', toolResults)
+
+          // 记录助手的工具调用
           this.context.recordItems([
             {
               role: 'assistant',
-              content: '',
+              content: responseText || '',
               timestamp: Date.now(),
               toolCalls
-            },
-            {
-              role: 'user',
-              content: '',
-              timestamp: Date.now(),
-              toolResults
             }
           ])
 
+          // 构建工具结果消息（OpenAI 格式）
+          const toolResultMessages = toolCalls.map((call, index) => ({
+            role: 'tool',
+            tool_call_id: call.id,
+            name: call.function.name,
+            content: JSON.stringify(toolResults[index])
+          }))
+
           // 再次调用 LLM 处理工具结果
-          // TODO: 实现工具结果处理循环
+          const followUpMessages = [
+            { role: 'system', content: system },
+            ...messages,
+            { role: 'assistant', content: responseText || '', tool_calls: toolCalls },
+            ...toolResultMessages
+          ]
+
+          const followUpResponse = await this.llm.chat(followUpMessages, {
+            maxTokens: 2048
+          })
+
+          // 解析最终回复
+          const finalParsed = this.parseXMLResponse(followUpResponse.content)
+          responseText = finalParsed.reply
+
+          if (finalParsed.thinking) {
+            console.log('[Thinking (after tools)]:', finalParsed.thinking)
+          }
         } catch (error) {
           console.error('Tool execution failed:', error)
+          responseText = '抱歉，工具执行出现了问题...'
         }
       }
 
@@ -348,12 +372,10 @@ export class DialogueOrchestrator {
    */
   private parseXMLResponse(response: string): {
     thinking?: string
-    toolUse?: string
     reply: string
   } {
     const result: {
       thinking?: string
-      toolUse?: string
       reply: string
     } = {
       reply: response  // 默认返回原文
@@ -364,12 +386,6 @@ export class DialogueOrchestrator {
       const thinkingMatch = response.match(/<thinking>([\s\S]*?)<\/thinking>/)
       if (thinkingMatch) {
         result.thinking = thinkingMatch[1].trim()
-      }
-
-      // 提取 <tool_use>
-      const toolUseMatch = response.match(/<tool_use>([\s\S]*?)<\/tool_use>/)
-      if (toolUseMatch) {
-        result.toolUse = toolUseMatch[1].trim()
       }
 
       // 提取 <reply>
@@ -411,11 +427,6 @@ export class DialogueOrchestrator {
         yield partialMatch[1]
       }
     }
-  }
-
-  private parseToolCalls(response: any): any[] | undefined {
-    // TODO: 从 XML 或 JSON 解析工具调用
-    return undefined
   }
 }
 

@@ -270,15 +270,19 @@ export class PromptBuilder {
 
     if (hasTools) {
       xml += '  <thinking>你的思考过程（可选，用于复杂问题）</thinking>\n'
-      xml += '  <tool_use>如果需要使用工具，在此说明（可选）</tool_use>\n'
     }
 
     xml += '  <reply>你的最终回复内容</reply>\n'
     xml += '</response>\n\n'
 
     xml += '注意：\n'
-    xml += '- 只输出 <reply> 标签内的内容会被展示给用户\n'
-    xml += '- <thinking> 和 <tool_use> 是可选的，用于内部处理\n'
+    xml += '- 只有 <reply> 标签内的内容会被展示给用户\n'
+
+    if (hasTools) {
+      xml += '- 如果需要使用工具，直接调用即可（通过 function calling 机制）\n'
+    }
+
+    xml += '- <thinking> 是可选的，用于内部处理\n'
     xml += '- 保持回复自然简洁，避免冗长'
 
     return xml
