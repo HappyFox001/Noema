@@ -123,7 +123,7 @@ pub async fn grep_files(
     glob: Option<String>,
     case_insensitive: Option<bool>,
     output_mode: Option<String>,
-    context_lines: Option<usize>,
+    _context_lines: Option<usize>,
     limit: Option<usize>,
 ) -> Result<Vec<GrepMatch>, String> {
     use regex::RegexBuilder;
