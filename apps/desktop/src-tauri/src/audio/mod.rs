@@ -1,6 +1,6 @@
-pub mod vad;
 pub mod stt;
 pub mod tts;
+pub mod vad;
 
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

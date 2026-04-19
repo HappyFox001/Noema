@@ -1,6 +1,6 @@
-use rusqlite::{Connection, params};
-use serde::{Deserialize, Serialize};
 use anyhow::Result;
+use rusqlite::{params, Connection};
+use serde::{Deserialize, Serialize};
 
 /// Initialize database schema
 pub fn init_schema(conn: &Connection) -> Result<()> {
@@ -59,7 +59,7 @@ pub fn init_schema(conn: &Connection) -> Result<()> {
         INSERT OR IGNORE INTO metadata (key, value) VALUES ('db_version', '1.0.0');
         INSERT OR IGNORE INTO metadata (key, value)
             VALUES ('created_at', strftime('%s', 'now'));
-        "#
+        "#,
     )?;
 
     Ok(())
@@ -117,18 +117,19 @@ pub fn save_conversation_turn(conn: &Connection, turn: &ConversationTurn) -> Res
 pub fn get_recent_conversations(conn: &Connection, limit: usize) -> Result<Vec<ConversationTurn>> {
     let mut stmt = conn.prepare(
         "SELECT id, role, content, timestamp FROM conversation_turns
-         ORDER BY timestamp DESC LIMIT ?1"
+         ORDER BY timestamp DESC LIMIT ?1",
     )?;
 
-    let turns = stmt.query_map([limit], |row| {
-        Ok(ConversationTurn {
-            id: row.get(0)?,
-            role: row.get(1)?,
-            content: row.get(2)?,
-            timestamp: row.get(3)?,
-        })
-    })?
-    .collect::<Result<Vec<_>, _>>()?;
+    let turns = stmt
+        .query_map([limit], |row| {
+            Ok(ConversationTurn {
+                id: row.get(0)?,
+                role: row.get(1)?,
+                content: row.get(2)?,
+                timestamp: row.get(3)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
 
     // 按时间正序返回
     let mut turns = turns;
@@ -156,13 +157,14 @@ pub fn save_user_profile_entry(conn: &Connection, key: &str, value: &str) -> Res
 pub fn get_user_profile(conn: &Connection) -> Result<Vec<UserProfileEntry>> {
     let mut stmt = conn.prepare("SELECT key, value FROM user_profile")?;
 
-    let entries = stmt.query_map([], |row| {
-        Ok(UserProfileEntry {
-            key: row.get(0)?,
-            value: row.get(1)?,
-        })
-    })?
-    .collect::<Result<Vec<_>, _>>()?;
+    let entries = stmt
+        .query_map([], |row| {
+            Ok(UserProfileEntry {
+                key: row.get(0)?,
+                value: row.get(1)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
 
     Ok(entries)
 }
@@ -181,16 +183,17 @@ pub fn save_important_memory(conn: &Connection, key: &str, value: &str) -> Resul
 pub fn get_important_memories(conn: &Connection) -> Result<Vec<ImportantMemory>> {
     let mut stmt = conn.prepare(
         "SELECT key, value FROM important_memories
-         ORDER BY created_at DESC LIMIT 20"
+         ORDER BY created_at DESC LIMIT 20",
     )?;
 
-    let memories = stmt.query_map([], |row| {
-        Ok(ImportantMemory {
-            key: row.get(0)?,
-            value: row.get(1)?,
-        })
-    })?
-    .collect::<Result<Vec<_>, _>>()?;
+    let memories = stmt
+        .query_map([], |row| {
+            Ok(ImportantMemory {
+                key: row.get(0)?,
+                value: row.get(1)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
 
     Ok(memories)
 }
@@ -222,28 +225,32 @@ pub fn save_conversation_summary(conn: &Connection, summary: &ConversationSummar
     Ok(())
 }
 
-pub fn get_conversation_summaries(conn: &Connection, limit: usize) -> Result<Vec<ConversationSummary>> {
+pub fn get_conversation_summaries(
+    conn: &Connection,
+    limit: usize,
+) -> Result<Vec<ConversationSummary>> {
     let mut stmt = conn.prepare(
         "SELECT id, start_turn, end_turn, summary, key_topics, timestamp
          FROM conversation_summaries
-         ORDER BY timestamp DESC LIMIT ?1"
+         ORDER BY timestamp DESC LIMIT ?1",
     )?;
 
-    let summaries = stmt.query_map([limit], |row| {
-        let key_topics_json: String = row.get(4)?;
-        let key_topics: Vec<String> = serde_json::from_str(&key_topics_json)
-            .unwrap_or_default();
+    let summaries = stmt
+        .query_map([limit], |row| {
+            let key_topics_json: String = row.get(4)?;
+            let key_topics: Vec<String> =
+                serde_json::from_str(&key_topics_json).unwrap_or_default();
 
-        Ok(ConversationSummary {
-            id: row.get(0)?,
-            start_turn: row.get(1)?,
-            end_turn: row.get(2)?,
-            summary: row.get(3)?,
-            key_topics,
-            timestamp: row.get(5)?,
-        })
-    })?
-    .collect::<Result<Vec<_>, _>>()?;
+            Ok(ConversationSummary {
+                id: row.get(0)?,
+                start_turn: row.get(1)?,
+                end_turn: row.get(2)?,
+                summary: row.get(3)?,
+                key_topics,
+                timestamp: row.get(5)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
 
     Ok(summaries)
 }
@@ -257,23 +264,20 @@ pub fn clear_summaries(conn: &Connection) -> Result<()> {
 // ========== 统计信息 ==========
 
 pub fn get_stats(conn: &Connection) -> Result<MemoryStats> {
-    let conversation_count: i32 = conn.query_row(
-        "SELECT COUNT(*) FROM conversation_turns",
-        [],
-        |row| row.get(0)
-    )?;
+    let conversation_count: i32 =
+        conn.query_row("SELECT COUNT(*) FROM conversation_turns", [], |row| {
+            row.get(0)
+        })?;
 
-    let summary_count: i32 = conn.query_row(
-        "SELECT COUNT(*) FROM conversation_summaries",
-        [],
-        |row| row.get(0)
-    )?;
+    let summary_count: i32 =
+        conn.query_row("SELECT COUNT(*) FROM conversation_summaries", [], |row| {
+            row.get(0)
+        })?;
 
-    let memory_count: i32 = conn.query_row(
-        "SELECT COUNT(*) FROM important_memories",
-        [],
-        |row| row.get(0)
-    )?;
+    let memory_count: i32 =
+        conn.query_row("SELECT COUNT(*) FROM important_memories", [], |row| {
+            row.get(0)
+        })?;
 
     Ok(MemoryStats {
         conversation_count,

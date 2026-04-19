@@ -2,8 +2,8 @@ mod audio;
 mod memory;
 
 use std::sync::Arc;
-use tauri::{Manager, State};
 use tauri::utils::config::Color;
+use tauri::{Manager, State};
 use tokio::sync::Mutex;
 
 // Audio processor state
@@ -26,19 +26,13 @@ fn greet(name: &str) -> String {
 #[tauri::command]
 async fn init_stt(state: State<'_, AudioState>, api_key: String) -> Result<(), String> {
     let processor = state.processor.lock().await;
-    processor
-        .init_stt(api_key)
-        .await
-        .map_err(|e| e.to_string())
+    processor.init_stt(api_key).await.map_err(|e| e.to_string())
 }
 
 /// Process audio chunk and detect voice activity
 /// Returns true if speech is detected
 #[tauri::command]
-async fn process_audio(
-    state: State<'_, AudioState>,
-    audio_data: Vec<i16>,
-) -> Result<bool, String> {
+async fn process_audio(state: State<'_, AudioState>, audio_data: Vec<i16>) -> Result<bool, String> {
     let processor = state.processor.lock().await;
     processor
         .process_audio(audio_data)
@@ -77,10 +71,7 @@ async fn init_tts(
 #[tauri::command]
 async fn synthesize_text(state: State<'_, AudioState>, text: String) -> Result<(), String> {
     let processor = state.processor.lock().await;
-    processor
-        .synthesize(&text)
-        .await
-        .map_err(|e| e.to_string())
+    processor.synthesize(&text).await.map_err(|e| e.to_string())
 }
 
 /// Receive next TTS audio chunk
@@ -110,8 +101,7 @@ async fn save_conversation_turn(
 ) -> Result<(), String> {
     let conn = state.db.conn();
     let guard = conn.lock().await;
-    memory::database::save_conversation_turn(&*guard, &turn)
-        .map_err(|e| e.to_string())
+    memory::database::save_conversation_turn(&*guard, &turn).map_err(|e| e.to_string())
 }
 
 /// Get recent conversations
@@ -122,8 +112,7 @@ async fn get_recent_conversations(
 ) -> Result<Vec<memory::database::ConversationTurn>, String> {
     let conn = state.db.conn();
     let guard = conn.lock().await;
-    memory::database::get_recent_conversations(&*guard, limit)
-        .map_err(|e| e.to_string())
+    memory::database::get_recent_conversations(&*guard, limit).map_err(|e| e.to_string())
 }
 
 /// Save user profile entry
@@ -135,8 +124,7 @@ async fn save_user_profile_entry(
 ) -> Result<(), String> {
     let conn = state.db.conn();
     let guard = conn.lock().await;
-    memory::database::save_user_profile_entry(&*guard, &key, &value)
-        .map_err(|e| e.to_string())
+    memory::database::save_user_profile_entry(&*guard, &key, &value).map_err(|e| e.to_string())
 }
 
 /// Get user profile
@@ -146,8 +134,7 @@ async fn get_user_profile(
 ) -> Result<Vec<memory::database::UserProfileEntry>, String> {
     let conn = state.db.conn();
     let guard = conn.lock().await;
-    memory::database::get_user_profile(&*guard)
-        .map_err(|e| e.to_string())
+    memory::database::get_user_profile(&*guard).map_err(|e| e.to_string())
 }
 
 /// Save important memory
@@ -159,8 +146,7 @@ async fn save_important_memory(
 ) -> Result<(), String> {
     let conn = state.db.conn();
     let guard = conn.lock().await;
-    memory::database::save_important_memory(&*guard, &key, &value)
-        .map_err(|e| e.to_string())
+    memory::database::save_important_memory(&*guard, &key, &value).map_err(|e| e.to_string())
 }
 
 /// Get important memories
@@ -170,8 +156,7 @@ async fn get_important_memories(
 ) -> Result<Vec<memory::database::ImportantMemory>, String> {
     let conn = state.db.conn();
     let guard = conn.lock().await;
-    memory::database::get_important_memories(&*guard)
-        .map_err(|e| e.to_string())
+    memory::database::get_important_memories(&*guard).map_err(|e| e.to_string())
 }
 
 /// Save conversation summary
@@ -182,8 +167,7 @@ async fn save_conversation_summary(
 ) -> Result<(), String> {
     let conn = state.db.conn();
     let guard = conn.lock().await;
-    memory::database::save_conversation_summary(&*guard, &summary)
-        .map_err(|e| e.to_string())
+    memory::database::save_conversation_summary(&*guard, &summary).map_err(|e| e.to_string())
 }
 
 /// Get conversation summaries
@@ -194,8 +178,7 @@ async fn get_conversation_summaries(
 ) -> Result<Vec<memory::database::ConversationSummary>, String> {
     let conn = state.db.conn();
     let guard = conn.lock().await;
-    memory::database::get_conversation_summaries(&*guard, limit)
-        .map_err(|e| e.to_string())
+    memory::database::get_conversation_summaries(&*guard, limit).map_err(|e| e.to_string())
 }
 
 /// Get memory statistics
@@ -205,19 +188,15 @@ async fn get_memory_stats(
 ) -> Result<memory::database::MemoryStats, String> {
     let conn = state.db.conn();
     let guard = conn.lock().await;
-    memory::database::get_stats(&*guard)
-        .map_err(|e| e.to_string())
+    memory::database::get_stats(&*guard).map_err(|e| e.to_string())
 }
 
 /// Clear all memory data
 #[tauri::command]
-async fn clear_all_memory(
-    state: State<'_, MemoryState>,
-) -> Result<(), String> {
+async fn clear_all_memory(state: State<'_, MemoryState>) -> Result<(), String> {
     let conn = state.db.conn();
     let guard = conn.lock().await;
-    memory::database::clear_all(&*guard)
-        .map_err(|e| e.to_string())
+    memory::database::clear_all(&*guard).map_err(|e| e.to_string())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -238,8 +217,7 @@ pub fn run() {
         std::fs::create_dir_all(parent).ok();
     }
 
-    let memory_db = memory::MemoryDB::new(&db_path)
-        .expect("Failed to initialize memory database");
+    let memory_db = memory::MemoryDB::new(&db_path).expect("Failed to initialize memory database");
 
     tracing::info!("Memory database initialized at: {}", db_path);
 

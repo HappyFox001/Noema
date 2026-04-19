@@ -1,6 +1,5 @@
 /// Text-to-Speech service using Fish Audio API
 /// Based on sensory-server's FishAudioTTSWithReference
-
 use anyhow::{Context, Result};
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -12,7 +11,7 @@ const FISH_TTS_URL: &str = "wss://api.fish.audio/v1/tts/live";
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TTSSettings {
     pub model: String,
-    pub voice: Option<String>,  // reference_id for voice preset
+    pub voice: Option<String>, // reference_id for voice preset
     pub sample_rate: u32,
     pub latency: String,
     pub format: String,
@@ -126,8 +125,8 @@ impl TTSService {
                     };
 
                     // Serialize with msgpack
-                    let msg_bytes = rmp_serde::to_vec(&start_msg)
-                        .expect("Failed to serialize start message");
+                    let msg_bytes =
+                        rmp_serde::to_vec(&start_msg).expect("Failed to serialize start message");
 
                     // Authorization is handled via query parameter, not header
                     let _auth_header = format!("Bearer {}", api_key_clone);
@@ -147,8 +146,8 @@ impl TTSService {
                     text,
                 };
 
-                let msg_bytes = rmp_serde::to_vec(&text_msg)
-                    .expect("Failed to serialize text message");
+                let msg_bytes =
+                    rmp_serde::to_vec(&text_msg).expect("Failed to serialize text message");
 
                 if let Err(e) = write.send(Message::Binary(msg_bytes)).await {
                     tracing::error!("Failed to send text to TTS: {}", e);
@@ -160,8 +159,8 @@ impl TTSService {
             let finish_msg = serde_json::json!({
                 "event": "finish"
             });
-            let msg_bytes = rmp_serde::to_vec(&finish_msg)
-                .expect("Failed to serialize finish message");
+            let msg_bytes =
+                rmp_serde::to_vec(&finish_msg).expect("Failed to serialize finish message");
             let _ = write.send(Message::Binary(msg_bytes)).await;
         });
 
@@ -174,7 +173,10 @@ impl TTSService {
                         match rmp_serde::from_slice::<TTSResponse>(&data) {
                             Ok(response) => {
                                 if response.event == "audio" && !response.audio.is_empty() {
-                                    tracing::debug!("Received TTS audio chunk: {} bytes", response.audio.len());
+                                    tracing::debug!(
+                                        "Received TTS audio chunk: {} bytes",
+                                        response.audio.len()
+                                    );
                                     let _ = audio_tx.send(response.audio);
                                 }
                             }

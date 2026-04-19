@@ -1,6 +1,5 @@
 /// Speech-to-Text service using Qwen Omni STT
 /// Based on sensory-server's QwenOmniSTTService
-
 use anyhow::{Context, Result};
 use base64::{engine::general_purpose, Engine as _};
 use futures_util::{SinkExt, StreamExt};
@@ -23,7 +22,7 @@ struct STTRequest {
 #[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct STTInput {
-    audio: String,  // base64 encoded PCM16
+    audio: String, // base64 encoded PCM16
 }
 
 #[allow(dead_code)]

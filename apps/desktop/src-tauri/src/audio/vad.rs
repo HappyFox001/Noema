@@ -58,7 +58,8 @@ impl VAD {
 
         // Calculate average noise level
         if !self.noise_samples.is_empty() {
-            self.noise_level = self.noise_samples.iter().sum::<f32>() / self.noise_samples.len() as f32;
+            self.noise_level =
+                self.noise_samples.iter().sum::<f32>() / self.noise_samples.len() as f32;
             self.threshold = self.noise_level * RMS_THRESHOLD_MULTIPLIER;
         }
     }
@@ -73,7 +74,11 @@ impl VAD {
                 self.update_noise_level(rms);
 
                 if rms > self.threshold {
-                    tracing::debug!("VAD: Silence -> Speaking (RMS: {:.4}, Threshold: {:.4})", rms, self.threshold);
+                    tracing::debug!(
+                        "VAD: Silence -> Speaking (RMS: {:.4}, Threshold: {:.4})",
+                        rms,
+                        self.threshold
+                    );
                     self.state = VADState::Speaking;
                     true
                 } else {
