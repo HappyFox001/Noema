@@ -20,6 +20,8 @@
         "fullscreen": false,
         "decorations": false,
         "transparent": true,
+        "backgroundColor": "#00000000",
+        "shadow": false,
         "alwaysOnTop": true,
         "center": true
       }

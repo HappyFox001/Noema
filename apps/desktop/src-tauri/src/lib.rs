@@ -2,7 +2,8 @@ mod audio;
 mod memory;
 
 use std::sync::Arc;
-use tauri::State;
+use tauri::{Manager, State};
+use tauri::utils::config::Color;
 use tokio::sync::Mutex;
 
 // Audio processor state
@@ -244,6 +245,14 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            if let Some(window) = app.get_webview_window("main") {
+                window.set_shadow(false)?;
+                window.set_background_color(Some(Color(0, 0, 0, 0)))?;
+            }
+
+            Ok(())
+        })
         .manage(AudioState {
             processor: Arc::new(Mutex::new(audio::AudioProcessor::new())),
         })

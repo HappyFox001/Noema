@@ -5,7 +5,7 @@ const app = document.querySelector<HTMLDivElement>('#app')!
 
 app.innerHTML = `
   <div class="container">
-    <canvas id="orb-canvas" width="400" height="400"></canvas>
+    <canvas id="orb-canvas" width="180" height="180"></canvas>
     <div id="text-display" class="text-display"></div>
     <div class="controls">
       <button id="start-btn" class="start-button">Start Conversation</button>
@@ -20,99 +20,71 @@ const ctx = canvas.getContext('2d', { alpha: true })!
 
 interface OrbState {
   mode: ConversationState
-  color: string
   glow: number
+  breatheRate: number
 }
 
 let orbState: OrbState = {
   mode: 'idle',
-  color: '#60A5FA',  // 更亮的蓝色
-  glow: 0
-}
-
-function hexToRgb(hex: string): { r: number; g: number; b: number } {
-  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
-  return result ? {
-    r: parseInt(result[1], 16),
-    g: parseInt(result[2], 16),
-    b: parseInt(result[3], 16)
-  } : { r: 96, g: 165, b: 250 }
+  glow: 4,
+  breatheRate: 1.2
 }
 
 function drawOrb() {
-  // 完全清除画布（透明背景）
   ctx.clearRect(0, 0, canvas.width, canvas.height)
 
   const centerX = canvas.width / 2
   const centerY = canvas.height / 2
-  const baseRadius = 80
-
-  // 呼吸效果 - 更大更平滑的动画
   const time = Date.now() / 1000
-  const breathe = Math.sin(time * 1.5) * 12
-  const pulseGlow = Math.sin(time * 2) * 15
+  const breathe = Math.sin(time * orbState.breatheRate) * 1.8
+  const glowPulse = (Math.sin(time * orbState.breatheRate) + 1) * 0.5
+  const currentRadius = 22 + breathe
+  const glowRadius = currentRadius + 10 + orbState.glow * glowPulse
 
-  const currentRadius = baseRadius + breathe
-  const rgb = hexToRgb(orbState.color)
+  const ambientGlow = ctx.createRadialGradient(centerX, centerY, currentRadius * 0.5, centerX, centerY, glowRadius)
+  ambientGlow.addColorStop(0, 'rgba(255, 255, 255, 0.10)')
+  ambientGlow.addColorStop(0.45, 'rgba(20, 20, 20, 0.18)')
+  ambientGlow.addColorStop(1, 'rgba(0, 0, 0, 0)')
 
-  // 外层大光晕（最外层，最淡）
-  const outerGlow = ctx.createRadialGradient(
-    centerX, centerY, 0,
-    centerX, centerY, currentRadius + 80 + orbState.glow + pulseGlow
-  )
-  outerGlow.addColorStop(0, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.3)`)
-  outerGlow.addColorStop(0.3, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.15)`)
-  outerGlow.addColorStop(0.6, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.05)`)
-  outerGlow.addColorStop(1, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0)`)
-
-  ctx.fillStyle = outerGlow
+  ctx.fillStyle = ambientGlow
   ctx.beginPath()
-  ctx.arc(centerX, centerY, currentRadius + 80 + orbState.glow + pulseGlow, 0, Math.PI * 2)
+  ctx.arc(centerX, centerY, glowRadius, 0, Math.PI * 2)
   ctx.fill()
 
-  // 中层光晕
-  const midGlow = ctx.createRadialGradient(
-    centerX, centerY, 0,
-    centerX, centerY, currentRadius + 40 + orbState.glow
-  )
-  midGlow.addColorStop(0, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.6)`)
-  midGlow.addColorStop(0.5, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.3)`)
-  midGlow.addColorStop(1, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0)`)
+  ctx.save()
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.55)'
+  ctx.shadowBlur = 14 + orbState.glow * 0.7
+  ctx.shadowOffsetY = 3
 
-  ctx.fillStyle = midGlow
-  ctx.beginPath()
-  ctx.arc(centerX, centerY, currentRadius + 40 + orbState.glow, 0, Math.PI * 2)
-  ctx.fill()
-
-  // 核心球体 - 渐变效果（3D感）
   const coreGradient = ctx.createRadialGradient(
-    centerX - currentRadius * 0.3,
-    centerY - currentRadius * 0.3,
+    centerX - currentRadius * 0.38,
+    centerY - currentRadius * 0.45,
     0,
-    centerX,
-    centerY,
-    currentRadius
+    centerX + currentRadius * 0.18,
+    centerY + currentRadius * 0.25,
+    currentRadius * 1.15
   )
-  coreGradient.addColorStop(0, `rgba(${Math.min(rgb.r + 60, 255)}, ${Math.min(rgb.g + 60, 255)}, ${Math.min(rgb.b + 60, 255)}, 1)`)
-  coreGradient.addColorStop(0.5, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 1)`)
-  coreGradient.addColorStop(1, `rgba(${Math.max(rgb.r - 30, 0)}, ${Math.max(rgb.g - 30, 0)}, ${Math.max(rgb.b - 30, 0)}, 1)`)
+  coreGradient.addColorStop(0, 'rgba(88, 88, 88, 1)')
+  coreGradient.addColorStop(0.32, 'rgba(25, 25, 25, 1)')
+  coreGradient.addColorStop(0.72, 'rgba(6, 6, 6, 1)')
+  coreGradient.addColorStop(1, 'rgba(0, 0, 0, 1)')
 
   ctx.fillStyle = coreGradient
   ctx.beginPath()
   ctx.arc(centerX, centerY, currentRadius, 0, Math.PI * 2)
   ctx.fill()
+  ctx.restore()
 
-  // 高光效果
   const highlight = ctx.createRadialGradient(
-    centerX - currentRadius * 0.4,
-    centerY - currentRadius * 0.4,
+    centerX - currentRadius * 0.34,
+    centerY - currentRadius * 0.46,
     0,
-    centerX - currentRadius * 0.4,
-    centerY - currentRadius * 0.4,
-    currentRadius * 0.5
+    centerX - currentRadius * 0.34,
+    centerY - currentRadius * 0.46,
+    currentRadius * 0.42
   )
-  highlight.addColorStop(0, 'rgba(255, 255, 255, 0.6)')
-  highlight.addColorStop(0.5, 'rgba(255, 255, 255, 0.2)')
+  highlight.addColorStop(0, 'rgba(255, 255, 255, 0.58)')
+  highlight.addColorStop(0.42, 'rgba(255, 255, 255, 0.18)')
   highlight.addColorStop(1, 'rgba(255, 255, 255, 0)')
 
   ctx.fillStyle = highlight
@@ -136,20 +108,20 @@ function setOrbMode(mode: ConversationState) {
 
   switch (mode) {
     case 'listening':
-      orbState.color = '#34D399'  // 鲜艳的绿色 - 监听
-      orbState.glow = 30
+      orbState.glow = 8
+      orbState.breatheRate = 1.7
       break
     case 'thinking':
-      orbState.color = '#FBBF24'  // 明亮的黄色 - 思考
-      orbState.glow = 20
+      orbState.glow = 11
+      orbState.breatheRate = 2.1
       break
     case 'speaking':
-      orbState.color = '#F472B6'  // 亮粉色 - 说话
-      orbState.glow = 25
+      orbState.glow = 9
+      orbState.breatheRate = 1.45
       break
     default:
-      orbState.color = '#60A5FA'  // 亮蓝色 - 闲置
-      orbState.glow = 0
+      orbState.glow = 4
+      orbState.breatheRate = 1.2
   }
 }
 
