@@ -1,0 +1,174 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background: transparent;
+  overflow: hidden;
+}
+
+#app {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.container {
+  position: relative;
+  width: 100%;
+  max-width: 600px;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 40px 20px;
+  gap: 20px;
+}
+
+#orb-canvas {
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.text-display {
+  width: 100%;
+  max-width: 500px;
+  padding: 16px 24px;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(10px);
+  border-radius: 20px;
+  color: white;
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.6;
+  opacity: 0;
+  transition: opacity 0.4s ease, transform 0.4s ease;
+  text-align: center;
+  min-height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translateY(10px);
+}
+
+.text-display:not(:empty) {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  flex-shrink: 0;
+}
+
+.start-button {
+  padding: 12px 32px;
+  background: rgba(74, 144, 226, 0.8);
+  backdrop-filter: blur(10px);
+  border: none;
+  border-radius: 24px;
+  color: white;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(74, 144, 226, 0.3);
+  min-width: 180px;
+}
+
+.start-button:hover:not(:disabled) {
+  background: rgba(74, 144, 226, 1);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(74, 144, 226, 0.4);
+}
+
+.start-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.start-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.status {
+  padding: 6px 16px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(10px);
+  border-radius: 12px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 11px;
+  font-weight: 500;
+  text-align: center;
+}
+
+.text-input {
+  width: 100%;
+  padding: 10px 16px;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 20px;
+  color: white;
+  font-size: 13px;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.text-input::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.text-input:focus {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(74, 144, 226, 0.5);
+}
+
+.tts-button {
+  padding: 10px 24px;
+  background: rgba(226, 74, 144, 0.8);
+  backdrop-filter: blur(10px);
+  border: none;
+  border-radius: 20px;
+  color: white;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(226, 74, 144, 0.3);
+}
+
+.tts-button:hover:not(:disabled) {
+  background: rgba(226, 74, 144, 1);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(226, 74, 144, 0.4);
+}
+
+.tts-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.tts-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 简化版：只保留核心元素 */
