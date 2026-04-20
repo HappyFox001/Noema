@@ -2,6 +2,14 @@ import './styles.css'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { ConversationManager, type ConversationState } from './conversation-manager'
 
+// 🔥 DEBUG: 测试日志是否输出
+console.log('🔥 DEBUG: main.ts loaded at', new Date().toISOString())
+console.log('🔥 DEBUG: Environment check:', {
+  hasFishKey: !!import.meta.env.VITE_FISH_API_KEY,
+  fishKeyLength: import.meta.env.VITE_FISH_API_KEY?.length,
+  fishModel: import.meta.env.VITE_FISH_MODEL
+})
+
 const app = document.querySelector<HTMLDivElement>('#app')!
 
 app.innerHTML = `
@@ -275,6 +283,13 @@ startTextBtn.addEventListener('click', async () => {
     startTextBtn.disabled = true
 
     const config = getConversationConfig()
+    console.log('[Main] TTS Config:', {
+      hasApiKey: !!config.ttsApiKey,
+      apiKeyLength: config.ttsApiKey?.length,
+      voiceId: config.ttsVoiceId,
+      model: config.ttsModel
+    })
+
     if (!validateBaseConfig(config)) {
       startTextBtn.disabled = false
       return

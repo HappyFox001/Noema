@@ -77,14 +77,21 @@ export class QwenRealtimeASR {
     const deadline = Date.now() + (this.config.receiveTimeoutMs || 5000)
     while (Date.now() < deadline) {
       const remaining = Math.max(100, deadline - Date.now())
-      const data = await this.transport.receiveWithTimeout?.(remaining)
-        ?? await this.transport.receive()
+      const result = await this.transport.receive(remaining)
 
-      if (!data) {
+      if (result.timeout) {
         continue
       }
 
-      const message = new TextDecoder().decode(data)
+      if (result.closed) {
+        throw new Error('Qwen STT WebSocket closed')
+      }
+
+      if (!result.data) {
+        continue
+      }
+
+      const message = new TextDecoder().decode(result.data)
       const parsed = JSON.parse(message)
       const finalText = extractFinalTranscript(parsed)
       if (finalText) {
@@ -98,12 +105,6 @@ export class QwenRealtimeASR {
   async close(): Promise<void> {
     this.connected = false
     await this.transport.close()
-  }
-}
-
-declare module './fish-realtime-tts' {
-  interface RealtimeWebSocketTransport {
-    receiveWithTimeout?(timeoutMs: number): Promise<Uint8Array | null>
   }
 }
 

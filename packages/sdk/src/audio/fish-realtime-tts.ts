@@ -5,8 +5,14 @@ export interface RealtimeWebSocketTransport {
   }): Promise<void>
   sendBinary(data: Uint8Array): Promise<void>
   sendText(data: string): Promise<void>
-  receive(): Promise<Uint8Array | null>
+  receive(timeoutMs?: number): Promise<RealtimeWebSocketReceiveResult>
   close(): Promise<void>
+}
+
+export interface RealtimeWebSocketReceiveResult {
+  data?: Uint8Array
+  timeout?: boolean
+  closed?: boolean
 }
 
 export interface FishRealtimeTTSConfig {
@@ -50,8 +56,12 @@ export class FishRealtimeTTS {
       throw new Error('Fish Audio API key is not configured')
     }
 
+    const wsUrl = this.config.url || 'wss://api.fish.audio/v1/tts/live'
+    console.log('[FishRealtimeTTS] Connecting to:', wsUrl)
+    console.log('[FishRealtimeTTS] Using model:', this.config.model || 's2-pro')
+
     await this.transport.connect({
-      url: this.config.url || 'wss://api.fish.audio/v1/tts/live',
+      url: wsUrl,
       headers: {
         Authorization: `Bearer ${this.config.apiKey}`,
         model: this.config.model || 's2-pro',
@@ -59,9 +69,12 @@ export class FishRealtimeTTS {
     })
 
     this.isConnected = true
+    const startRequest = this.buildStartRequest()
+    console.log('[FishRealtimeTTS] Sending start request:', JSON.stringify(startRequest, null, 2))
+
     await this.send({
       event: 'start',
-      request: this.buildStartRequest(),
+      request: startRequest,
     })
 
     this.startReceiveLoop()
@@ -137,14 +150,24 @@ export class FishRealtimeTTS {
       try {
         while (this.isConnected) {
           const data = await this.transport.receive()
-          if (!data) break
+          if (data.timeout) {
+            continue
+          }
 
-          const payload = decodeMsgpack(data)
+          if (data.closed || !data.data) {
+            console.log('[FishRealtimeTTS] Connection closed by server')
+            break
+          }
+
+          const payload = decodeMsgpack(data.data)
+          console.log('[FishRealtimeTTS] Received payload:', payload)
           this.handlePayload(payload)
         }
       } catch (error) {
+        console.error('[FishRealtimeTTS] Receive loop error:', error)
         this.onEvent?.({ type: 'error', error: error as Error })
       } finally {
+        console.log('[FishRealtimeTTS] Receive loop ended, cleaning up')
         this.isConnected = false
         this.isReceiving = false
         this.onEvent?.({ type: 'close' })

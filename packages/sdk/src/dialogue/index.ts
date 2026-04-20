@@ -257,43 +257,37 @@ export class DialogueOrchestrator {
     ]
 
     let fullResponse = ''
-    let inReplyTag = false
-    let replyBuffer = ''
+    let emittedReplyLength = 0
 
     try {
       for await (const chunk of this.llm.streamChat(fullMessages)) {
         fullResponse += chunk
 
-        // 检测是否进入 <reply> 标签
-        if (!inReplyTag && fullResponse.includes('<reply>')) {
-          inReplyTag = true
-          // 提取 <reply> 后的内容
-          const startIndex = fullResponse.indexOf('<reply>') + 7
-          replyBuffer = fullResponse.substring(startIndex)
+        const replyStart = fullResponse.indexOf('<reply>')
+        if (replyStart === -1) {
+          continue
         }
 
-        // 如果在 <reply> 标签内，输出内容
-        if (inReplyTag) {
-          // 检查是否遇到 </reply>
-          if (chunk.includes('</reply>')) {
-            // 输出剩余内容（去掉 </reply>）
-            const endIndex = replyBuffer.indexOf('</reply>')
-            if (endIndex !== -1) {
-              yield replyBuffer.substring(0, endIndex)
-              replyBuffer = replyBuffer.substring(0, endIndex)
-            }
-            break
-          } else {
-            // 继续输出
-            replyBuffer += chunk
-            yield chunk
-          }
+        const contentStart = replyStart + '<reply>'.length
+        const replyEnd = fullResponse.indexOf('</reply>', contentStart)
+        const visibleReply = replyEnd === -1
+          ? fullResponse.slice(contentStart)
+          : fullResponse.slice(contentStart, replyEnd)
+        const delta = visibleReply.slice(emittedReplyLength)
+
+        if (delta) {
+          emittedReplyLength = visibleReply.length
+          yield delta
+        }
+
+        if (replyEnd !== -1) {
+          break
         }
       }
 
       // 4. 解析完整响应
       const parsed = this.parseXMLResponse(fullResponse)
-      const finalReply = inReplyTag ? replyBuffer : parsed.reply
+      const finalReply = parsed.reply
 
       // 5. 记录响应
       const assistantMessage: ResponseItem = {

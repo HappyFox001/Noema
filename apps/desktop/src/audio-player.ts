@@ -189,6 +189,7 @@ export class TTSManager {
   private voiceId?: string
   private model?: string
   private tts: FishRealtimeTTS | null = null
+  private isTTSStarted = false
 
   constructor() {
     this.audioPlayer = new AudioPlayer()
@@ -232,9 +233,17 @@ export class TTSManager {
       throw new Error('TTS manager not initialized')
     }
 
+    console.log('[TTSManager] Starting streaming with config:', {
+      hasApiKey: !!this.apiKey,
+      apiKeyLength: this.apiKey.length,
+      voiceId: this.voiceId,
+      model: this.model
+    })
+
     this.didFinishCurrentPlayback = false
 
     this.isSynthesizing = true
+    this.isTTSStarted = false
 
     this.audioPlayer.onPlaybackEnd(() => {
       this.isSynthesizing = false
@@ -255,6 +264,7 @@ export class TTSManager {
 
     this.tts.setEventHandler((event) => {
       if (event.type === 'audio') {
+        console.log('[FishRealtimeTTS] Received audio chunk:', event.audio.length, 'bytes')
         void this.audioPlayer.addAudioChunk(event.audio)
       } else if (event.type === 'finish') {
         console.log('[FishRealtimeTTS] finish:', event)
@@ -263,19 +273,13 @@ export class TTSManager {
       } else if (event.type === 'error') {
         console.error('[FishRealtimeTTS] error:', event.error)
       } else if (event.type === 'close') {
+        console.log('[FishRealtimeTTS] WebSocket closed')
         this.isSynthesizing = false
         if (!this.audioPlayer.isActive()) {
           this.finishPlayback()
         }
       }
     })
-
-    try {
-      await this.tts.start()
-    } catch (error) {
-      this.isSynthesizing = false
-      throw error
-    }
   }
 
   async pushText(text: string): Promise<void> {
@@ -288,6 +292,7 @@ export class TTSManager {
     }
 
     try {
+      await this.ensureTTSStarted()
       await this.tts?.sendText(text)
     } catch (error) {
       this.isSynthesizing = false
@@ -314,6 +319,7 @@ export class TTSManager {
     }
 
     try {
+      await this.ensureTTSStarted()
       await this.tts?.sendTextAndFlush(text)
     } catch (error) {
       this.isSynthesizing = false
@@ -327,7 +333,12 @@ export class TTSManager {
       return
     }
 
-    await this.tts?.stop()
+    if (this.isTTSStarted) {
+      await this.tts?.stop()
+    } else {
+      this.isSynthesizing = false
+      this.finishPlayback()
+    }
   }
 
   /**
@@ -338,6 +349,7 @@ export class TTSManager {
     this.audioPlayer.stop()
     void this.tts?.close()
     this.tts = null
+    this.isTTSStarted = false
     this.didFinishCurrentPlayback = true
   }
 
@@ -375,6 +387,27 @@ export class TTSManager {
     this.didFinishCurrentPlayback = true
     if (this.onPlaybackEndCallback) {
       this.onPlaybackEndCallback()
+    }
+  }
+
+  private async ensureTTSStarted(): Promise<void> {
+    if (this.isTTSStarted) {
+      return
+    }
+
+    if (!this.tts) {
+      throw new Error('TTS stream is not initialized')
+    }
+
+    try {
+      console.log('[TTSManager] Connecting to Fish Audio WebSocket...')
+      await this.tts.start()
+      this.isTTSStarted = true
+      console.log('[TTSManager] WebSocket connected successfully')
+    } catch (error) {
+      this.isSynthesizing = false
+      console.error('[TTSManager] Failed to start TTS streaming:', error)
+      throw error
     }
   }
 }

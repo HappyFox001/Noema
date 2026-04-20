@@ -28,6 +28,13 @@ struct RealtimeWebSocketState {
     sessions: Arc<Mutex<HashMap<String, RealtimeWebSocketSession>>>,
 }
 
+#[derive(serde::Serialize)]
+struct RealtimeWebSocketReceiveResult {
+    data: Option<Vec<u8>>,
+    timeout: bool,
+    closed: bool,
+}
+
 // Memory database state
 struct MemoryState {
     db: Arc<memory::MemoryDB>,
@@ -103,12 +110,21 @@ async fn realtime_ws_connect(
         while let Some(message) = read.next().await {
             match message {
                 Ok(Message::Binary(data)) => {
+                    tracing::debug!("Received binary message: {} bytes", data.len());
                     let _ = incoming_tx.send(data);
                 }
                 Ok(Message::Text(text)) => {
+                    tracing::debug!("Received text message: {}", text);
                     let _ = incoming_tx.send(text.into_bytes());
                 }
-                Ok(Message::Close(_)) => break,
+                Ok(Message::Close(frame)) => {
+                    if let Some(cf) = frame {
+                        tracing::warn!("WebSocket closed by server: code={}, reason={}", cf.code, cf.reason);
+                    } else {
+                        tracing::warn!("WebSocket closed by server (no close frame)");
+                    }
+                    break;
+                }
                 Err(error) => {
                     tracing::error!("Realtime WebSocket receive failed: {}", error);
                     break;
@@ -116,6 +132,7 @@ async fn realtime_ws_connect(
                 _ => {}
             }
         }
+        tracing::info!("WebSocket receive loop ended");
     });
 
     let mut sessions = state.sessions.lock().await;
@@ -169,7 +186,7 @@ async fn realtime_ws_receive(
     state: State<'_, RealtimeWebSocketState>,
     id: String,
     timeout_ms: Option<u64>,
-) -> Result<Option<Vec<u8>>, String> {
+) -> Result<RealtimeWebSocketReceiveResult, String> {
     let rx = {
         let sessions = state.sessions.lock().await;
         sessions
@@ -181,8 +198,21 @@ async fn realtime_ws_receive(
     let timeout = Duration::from_millis(timeout_ms.unwrap_or(10000));
     let mut guard = rx.lock().await;
     match tokio::time::timeout(timeout, guard.recv()).await {
-        Ok(message) => Ok(message),
-        Err(_) => Ok(None),
+        Ok(Some(data)) => Ok(RealtimeWebSocketReceiveResult {
+            data: Some(data),
+            timeout: false,
+            closed: false,
+        }),
+        Ok(None) => Ok(RealtimeWebSocketReceiveResult {
+            data: None,
+            timeout: false,
+            closed: true,
+        }),
+        Err(_) => Ok(RealtimeWebSocketReceiveResult {
+            data: None,
+            timeout: true,
+            closed: false,
+        }),
     }
 }
 

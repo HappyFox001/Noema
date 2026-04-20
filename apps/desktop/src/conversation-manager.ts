@@ -110,12 +110,21 @@ export class ConversationManager {
 
       // 3. 尝试初始化语音输出（可选）
       if (!this.tts.isReady()) {
+        console.log('[ConversationManager] Initializing TTS with config:', {
+          hasApiKey: !!config.ttsApiKey,
+          apiKeyLength: config.ttsApiKey?.length,
+          voiceId: config.ttsVoiceId,
+          model: config.ttsModel
+        })
         try {
           await this.tts.initialize(config.ttsApiKey, config.ttsVoiceId, config.ttsModel)
-          console.log('[ConversationManager] TTS initialized')
+          console.log('[ConversationManager] TTS initialized successfully')
         } catch (error) {
-          console.warn('[ConversationManager] TTS initialization failed (audio not available):', error)
+          console.error('[ConversationManager] TTS initialization failed:', error)
+          console.error('[ConversationManager] TTS will not be available')
         }
+      } else {
+        console.log('[ConversationManager] TTS already initialized')
       }
 
       this.isInitialized = true
@@ -256,6 +265,8 @@ export class ConversationManager {
     }
 
     console.log('[ConversationManager] User text:', text)
+    console.log('[ConversationManager] enableTTS:', enableTTS)
+    console.log('[ConversationManager] TTS isReady:', this.tts.isReady())
     this.emitTranscript(text)
     this.emitStateChange('thinking')
 
@@ -264,6 +275,7 @@ export class ConversationManager {
       let fullResponse = ''
       let ttsBuffer = ''
       let shouldUseTTS = enableTTS && this.tts.isReady()
+      console.log('[ConversationManager] shouldUseTTS:', shouldUseTTS)
 
       if (shouldUseTTS) {
         this.emitStateChange('speaking')

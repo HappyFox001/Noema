@@ -1,5 +1,14 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { RealtimeWebSocketTransport } from '@her-text/sdk'
+import type {
+  RealtimeWebSocketReceiveResult,
+  RealtimeWebSocketTransport,
+} from '@her-text/sdk'
+
+interface TauriRealtimeWebSocketReceiveResult {
+  data?: number[] | null
+  timeout: boolean
+  closed: boolean
+}
 
 export class TauriRealtimeWebSocketTransport implements RealtimeWebSocketTransport {
   private readonly id = `realtime_${Date.now()}_${Math.random().toString(36).slice(2)}`
@@ -29,16 +38,16 @@ export class TauriRealtimeWebSocketTransport implements RealtimeWebSocketTranspo
     })
   }
 
-  async receive(): Promise<Uint8Array | null> {
-    return this.receiveWithTimeout(10000)
-  }
-
-  async receiveWithTimeout(timeoutMs: number): Promise<Uint8Array | null> {
-    const data = await invoke<number[] | null>('realtime_ws_receive', {
+  async receive(timeoutMs = 10000): Promise<RealtimeWebSocketReceiveResult> {
+    const result = await invoke<TauriRealtimeWebSocketReceiveResult>('realtime_ws_receive', {
       id: this.id,
       timeoutMs,
     })
-    return data ? new Uint8Array(data) : null
+    return {
+      data: result.data ? new Uint8Array(result.data) : undefined,
+      timeout: result.timeout,
+      closed: result.closed,
+    }
   }
 
   async close(): Promise<void> {
