@@ -2,19 +2,40 @@ mod audio;
 mod memory;
 mod tools;
 
+use futures_util::{SinkExt, StreamExt};
+use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 use tauri::utils::config::Color;
 use tauri::{Manager, State};
-use tokio::sync::Mutex;
+use tokio::sync::{mpsc, Mutex};
+use tokio_tungstenite::{
+    connect_async,
+    tungstenite::{client::IntoClientRequest, http::HeaderValue, Message},
+};
 
 // Audio processor state
 struct AudioState {
-    processor: Arc<Mutex<audio::AudioProcessor>>,
+    processor: Arc<audio::AudioProcessor>,
+}
+
+struct RealtimeWebSocketSession {
+    tx: mpsc::UnboundedSender<RealtimeWebSocketOutgoing>,
+    rx: Arc<Mutex<mpsc::UnboundedReceiver<Vec<u8>>>>,
+}
+
+struct RealtimeWebSocketState {
+    sessions: Arc<Mutex<HashMap<String, RealtimeWebSocketSession>>>,
 }
 
 // Memory database state
 struct MemoryState {
     db: Arc<memory::MemoryDB>,
+}
+
+enum RealtimeWebSocketOutgoing {
+    Binary(Vec<u8>),
+    Text(String),
 }
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -23,88 +44,156 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
-/// Initialize STT service with API key
-#[tauri::command]
-async fn init_stt(
-    state: State<'_, AudioState>,
-    api_key: String,
-    stt_url: Option<String>,
-) -> Result<(), String> {
-    let processor = state.processor.lock().await;
-    processor
-        .init_stt(api_key, stt_url)
-        .await
-        .map_err(format_error_chain)
-}
-
-fn format_error_chain(error: anyhow::Error) -> String {
-    error
-        .chain()
-        .map(ToString::to_string)
-        .collect::<Vec<_>>()
-        .join(": ")
-}
-
 /// Process audio chunk and detect voice activity
 /// Returns true if speech is detected
 #[tauri::command]
 async fn process_audio(state: State<'_, AudioState>, audio_data: Vec<i16>) -> Result<bool, String> {
-    let processor = state.processor.lock().await;
-    processor
+    state
+        .processor
         .process_audio(audio_data)
         .await
         .map_err(|e| e.to_string())
 }
 
-/// Transcribe audio to text
-#[tauri::command]
-async fn transcribe_audio(
-    state: State<'_, AudioState>,
-    audio_data: Vec<i16>,
-) -> Result<String, String> {
-    let processor = state.processor.lock().await;
-    processor
-        .transcribe(audio_data)
-        .await
-        .map_err(|e| e.to_string())
-}
+// ========== Generic realtime WebSocket bridge ==========
 
-/// Initialize TTS service with API key
 #[tauri::command]
-async fn init_tts(
-    state: State<'_, AudioState>,
-    api_key: String,
-    voice_id: Option<String>,
+async fn realtime_ws_connect(
+    state: State<'_, RealtimeWebSocketState>,
+    id: String,
+    url: String,
+    headers: HashMap<String, String>,
 ) -> Result<(), String> {
-    let processor = state.processor.lock().await;
-    processor
-        .init_tts(api_key, voice_id)
+    let mut request = url
+        .into_client_request()
+        .map_err(|e| format!("Failed to create WebSocket request: {}", e))?;
+
+    for (key, value) in headers {
+        let header_name = key
+            .parse::<tokio_tungstenite::tungstenite::http::header::HeaderName>()
+            .map_err(|e| format!("Invalid WebSocket header name {}: {}", key, e))?;
+        let header_value = HeaderValue::from_str(&value)
+            .map_err(|e| format!("Invalid WebSocket header value for {}: {}", key, e))?;
+        request.headers_mut().insert(header_name, header_value);
+    }
+
+    let (ws_stream, _) = connect_async(request)
         .await
-        .map_err(format_error_chain)
+        .map_err(|e| format!("WebSocket connection failed: {}", e))?;
+    let (mut write, mut read) = ws_stream.split();
+    let (tx, mut outgoing_rx) = mpsc::unbounded_channel::<RealtimeWebSocketOutgoing>();
+    let (incoming_tx, incoming_rx) = mpsc::unbounded_channel::<Vec<u8>>();
+
+    tokio::spawn(async move {
+        while let Some(outgoing) = outgoing_rx.recv().await {
+            let message = match outgoing {
+                RealtimeWebSocketOutgoing::Binary(data) => Message::Binary(data),
+                RealtimeWebSocketOutgoing::Text(data) => Message::Text(data),
+            };
+
+            if let Err(error) = write.send(message).await {
+                tracing::error!("Realtime WebSocket send failed: {}", error);
+                break;
+            }
+        }
+        let _ = write.close().await;
+    });
+
+    tokio::spawn(async move {
+        while let Some(message) = read.next().await {
+            match message {
+                Ok(Message::Binary(data)) => {
+                    let _ = incoming_tx.send(data);
+                }
+                Ok(Message::Text(text)) => {
+                    let _ = incoming_tx.send(text.into_bytes());
+                }
+                Ok(Message::Close(_)) => break,
+                Err(error) => {
+                    tracing::error!("Realtime WebSocket receive failed: {}", error);
+                    break;
+                }
+                _ => {}
+            }
+        }
+    });
+
+    let mut sessions = state.sessions.lock().await;
+    sessions.insert(
+        id,
+        RealtimeWebSocketSession {
+            tx,
+            rx: Arc::new(Mutex::new(incoming_rx)),
+        },
+    );
+
+    Ok(())
 }
 
-/// Synthesize text to speech
 #[tauri::command]
-async fn synthesize_text(state: State<'_, AudioState>, text: String) -> Result<(), String> {
-    let processor = state.processor.lock().await;
-    processor.synthesize(&text).await.map_err(|e| e.to_string())
+async fn realtime_ws_send_binary(
+    state: State<'_, RealtimeWebSocketState>,
+    id: String,
+    data: Vec<u8>,
+) -> Result<(), String> {
+    let sessions = state.sessions.lock().await;
+    let session = sessions
+        .get(&id)
+        .ok_or_else(|| format!("Realtime WebSocket session not found: {}", id))?;
+
+    session
+        .tx
+        .send(RealtimeWebSocketOutgoing::Binary(data))
+        .map_err(|e| format!("Failed to queue WebSocket message: {}", e))
 }
 
-/// Receive next TTS audio chunk
 #[tauri::command]
-async fn receive_tts_audio(state: State<'_, AudioState>) -> Result<Option<Vec<u8>>, String> {
-    let processor = state.processor.lock().await;
-    processor
-        .receive_tts_audio()
-        .await
-        .map_err(|e| e.to_string())
+async fn realtime_ws_send_text(
+    state: State<'_, RealtimeWebSocketState>,
+    id: String,
+    data: String,
+) -> Result<(), String> {
+    let sessions = state.sessions.lock().await;
+    let session = sessions
+        .get(&id)
+        .ok_or_else(|| format!("Realtime WebSocket session not found: {}", id))?;
+
+    session
+        .tx
+        .send(RealtimeWebSocketOutgoing::Text(data))
+        .map_err(|e| format!("Failed to queue WebSocket message: {}", e))
 }
 
-/// Shutdown audio processor
 #[tauri::command]
-async fn shutdown_audio(state: State<'_, AudioState>) -> Result<(), String> {
-    let processor = state.processor.lock().await;
-    processor.shutdown().await.map_err(|e| e.to_string())
+async fn realtime_ws_receive(
+    state: State<'_, RealtimeWebSocketState>,
+    id: String,
+    timeout_ms: Option<u64>,
+) -> Result<Option<Vec<u8>>, String> {
+    let rx = {
+        let sessions = state.sessions.lock().await;
+        sessions
+            .get(&id)
+            .map(|session| Arc::clone(&session.rx))
+            .ok_or_else(|| format!("Realtime WebSocket session not found: {}", id))?
+    };
+
+    let timeout = Duration::from_millis(timeout_ms.unwrap_or(10000));
+    let mut guard = rx.lock().await;
+    match tokio::time::timeout(timeout, guard.recv()).await {
+        Ok(message) => Ok(message),
+        Err(_) => Ok(None),
+    }
+}
+
+#[tauri::command]
+async fn realtime_ws_close(
+    state: State<'_, RealtimeWebSocketState>,
+    id: String,
+) -> Result<(), String> {
+    let mut sessions = state.sessions.lock().await;
+    sessions.remove(&id);
+    Ok(())
 }
 
 // ========== Memory Commands ==========
@@ -248,20 +337,22 @@ pub fn run() {
             Ok(())
         })
         .manage(AudioState {
-            processor: Arc::new(Mutex::new(audio::AudioProcessor::new())),
+            processor: Arc::new(audio::AudioProcessor::new()),
+        })
+        .manage(RealtimeWebSocketState {
+            sessions: Arc::new(Mutex::new(HashMap::new())),
         })
         .manage(MemoryState {
             db: Arc::new(memory_db),
         })
         .invoke_handler(tauri::generate_handler![
             greet,
-            init_stt,
             process_audio,
-            transcribe_audio,
-            init_tts,
-            synthesize_text,
-            receive_tts_audio,
-            shutdown_audio,
+            realtime_ws_connect,
+            realtime_ws_send_binary,
+            realtime_ws_send_text,
+            realtime_ws_receive,
+            realtime_ws_close,
             save_conversation_turn,
             get_recent_conversations,
             save_user_profile_entry,

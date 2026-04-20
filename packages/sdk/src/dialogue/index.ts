@@ -6,6 +6,21 @@ import type { AgentCore } from '../agent'
 import { ContextManager, type ResponseItem, type TruncationPolicy } from '../context'
 import { PromptBuilder } from '../prompt'
 
+function scheduleAsyncTask(task: () => Promise<void>): void {
+  const run = () => {
+    void task().catch((error) => {
+      console.error('Scheduled async task failed:', error)
+    })
+  }
+
+  if (typeof globalThis.queueMicrotask === 'function') {
+    globalThis.queueMicrotask(run)
+    return
+  }
+
+  globalThis.setTimeout(run, 0)
+}
+
 /**
  * Dialogue Orchestrator - 对话编排器
  * 整合 Context、Prompt、Memory、Personality、Agent
@@ -177,17 +192,12 @@ export class DialogueOrchestrator {
 
       // === Phase 6: 记忆更新（异步，不阻塞） ===
 
-      // 使用 setImmediate 确保不阻塞主流程
-      setImmediate(async () => {
-        try {
-          await this.memory.store({
-            user: input.text,
-            assistant: responseText,
-            timestamp: input.timestamp
-          })
-        } catch (error) {
-          console.error('Memory store failed:', error)
-        }
+      scheduleAsyncTask(async () => {
+        await this.memory.store({
+          user: input.text,
+          assistant: responseText,
+          timestamp: input.timestamp
+        })
       })
 
       // === Phase 7: 返回响应 ===
@@ -294,16 +304,12 @@ export class DialogueOrchestrator {
       this.context.recordItems([assistantMessage])
 
       // 6. 异步更新记忆
-      setImmediate(async () => {
-        try {
-          await this.memory.store({
-            user: input.text,
-            assistant: finalReply,
-            timestamp: input.timestamp
-          })
-        } catch (error) {
-          console.error('Memory store failed:', error)
-        }
+      scheduleAsyncTask(async () => {
+        await this.memory.store({
+          user: input.text,
+          assistant: finalReply,
+          timestamp: input.timestamp
+        })
       })
     } catch (error) {
       console.error('Streaming failed:', error)

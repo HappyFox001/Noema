@@ -1,4 +1,5 @@
-import { invoke } from '@tauri-apps/api/core'
+import { FishRealtimeTTS } from '@her-text/sdk'
+import { TauriRealtimeWebSocketTransport } from './realtime-transport'
 
 /**
  * Audio player for TTS output
@@ -114,8 +115,12 @@ export class AudioPlayer {
   /**
    * Add audio chunk to playback queue
    */
-  addAudioChunk(pcm16Bytes: Uint8Array): void {
+  async addAudioChunk(pcm16Bytes: Uint8Array): Promise<void> {
     try {
+      if (this.audioContext?.state === 'suspended') {
+        await this.audioContext.resume()
+      }
+
       const audioBuffer = this.pcm16ToAudioBuffer(pcm16Bytes)
 
       if (this.isPlaying) {
@@ -179,6 +184,11 @@ export class TTSManager {
   private isInitialized = false
   private isSynthesizing = false
   private onPlaybackEndCallback: (() => void) | null = null
+  private didFinishCurrentPlayback = false
+  private apiKey = ''
+  private voiceId?: string
+  private model?: string
+  private tts: FishRealtimeTTS | null = null
 
   constructor() {
     this.audioPlayer = new AudioPlayer()
@@ -187,7 +197,7 @@ export class TTSManager {
   /**
    * Initialize with Fish Audio API key
    */
-  async initialize(apiKey: string, voiceId?: string): Promise<void> {
+  async initialize(apiKey: string, voiceId?: string, model?: string): Promise<void> {
     try {
       if (!apiKey.trim()) {
         throw new Error('Fish Audio API key is not configured')
@@ -196,9 +206,9 @@ export class TTSManager {
       // Initialize audio player
       await this.audioPlayer.initialize()
 
-      // Initialize TTS service
-      await invoke('init_tts', { apiKey, voiceId: voiceId || null })
-
+      this.apiKey = apiKey
+      this.voiceId = voiceId
+      this.model = model
       this.isInitialized = true
       console.log('TTS manager initialized')
     } catch (error) {
@@ -211,52 +221,113 @@ export class TTSManager {
    * Synthesize text and play audio
    */
   async speak(text: string): Promise<void> {
+    await this.startStreaming()
+    await this.pushText(text)
+    await this.flush()
+    await this.finishStreaming()
+  }
+
+  async startStreaming(): Promise<void> {
     if (!this.isInitialized) {
       throw new Error('TTS manager not initialized')
     }
 
+    this.didFinishCurrentPlayback = false
+
     this.isSynthesizing = true
 
-    try {
-      // Start synthesis
-      await invoke('synthesize_text', { text })
+    this.audioPlayer.onPlaybackEnd(() => {
+      this.isSynthesizing = false
+      this.finishPlayback()
+    })
 
-      // Receive and play audio chunks
-      const receiveLoop = async () => {
-        while (this.isSynthesizing) {
-          try {
-            const audioData = await invoke<number[] | null>('receive_tts_audio')
+    this.tts = new FishRealtimeTTS(
+      {
+        apiKey: this.apiKey,
+        voiceId: this.voiceId,
+        model: this.model || 's2-pro',
+        format: 'pcm',
+        sampleRate: 16000,
+        latency: 'balanced',
+      },
+      new TauriRealtimeWebSocketTransport()
+    )
 
-            if (audioData) {
-              // Convert to Uint8Array
-              const pcm16Bytes = new Uint8Array(audioData)
-              this.audioPlayer.addAudioChunk(pcm16Bytes)
-            } else {
-              // No more audio chunks
-              break
-            }
-          } catch (error) {
-            console.error('Failed to receive TTS audio:', error)
-            break
-          }
+    this.tts.setEventHandler((event) => {
+      if (event.type === 'audio') {
+        void this.audioPlayer.addAudioChunk(event.audio)
+      } else if (event.type === 'finish') {
+        console.log('[FishRealtimeTTS] finish:', event)
+      } else if (event.type === 'event') {
+        console.log('[FishRealtimeTTS] event:', event.event, event.payload)
+      } else if (event.type === 'error') {
+        console.error('[FishRealtimeTTS] error:', event.error)
+      } else if (event.type === 'close') {
+        this.isSynthesizing = false
+        if (!this.audioPlayer.isActive()) {
+          this.finishPlayback()
         }
       }
+    })
 
-      // Start receiving audio chunks
-      receiveLoop()
-
-      // Set up playback end callback
-      this.audioPlayer.onPlaybackEnd(() => {
-        this.isSynthesizing = false
-        if (this.onPlaybackEndCallback) {
-          this.onPlaybackEndCallback()
-        }
-      })
+    try {
+      await this.tts.start()
     } catch (error) {
       this.isSynthesizing = false
-      console.error('TTS synthesis failed:', error)
       throw error
     }
+  }
+
+  async pushText(text: string): Promise<void> {
+    if (!this.isInitialized || !this.isSynthesizing) {
+      return
+    }
+
+    if (!text.trim()) {
+      return
+    }
+
+    try {
+      await this.tts?.sendText(text)
+    } catch (error) {
+      this.isSynthesizing = false
+      console.error('TTS text streaming failed:', error)
+      throw error
+    }
+  }
+
+  async flush(): Promise<void> {
+    if (!this.isInitialized || !this.isSynthesizing) {
+      return
+    }
+
+    await this.tts?.flush()
+  }
+
+  async pushTextAndFlush(text: string): Promise<void> {
+    if (!this.isInitialized || !this.isSynthesizing) {
+      return
+    }
+
+    if (!text.trim()) {
+      return
+    }
+
+    try {
+      await this.tts?.sendTextAndFlush(text)
+    } catch (error) {
+      this.isSynthesizing = false
+      console.error('TTS text streaming failed:', error)
+      throw error
+    }
+  }
+
+  async finishStreaming(): Promise<void> {
+    if (!this.isInitialized || !this.isSynthesizing) {
+      return
+    }
+
+    await this.tts?.stop()
   }
 
   /**
@@ -265,6 +336,9 @@ export class TTSManager {
   stop(): void {
     this.isSynthesizing = false
     this.audioPlayer.stop()
+    void this.tts?.close()
+    this.tts = null
+    this.didFinishCurrentPlayback = true
   }
 
   /**
@@ -281,17 +355,26 @@ export class TTSManager {
     this.stop()
     await this.audioPlayer.cleanup()
 
-    try {
-      await invoke('shutdown_audio')
-    } catch (error) {
-      console.error('Failed to shutdown audio:', error)
-    }
-
     this.isInitialized = false
     console.log('TTS manager cleaned up')
   }
 
   isActive(): boolean {
     return this.isSynthesizing || this.audioPlayer.isActive()
+  }
+
+  isReady(): boolean {
+    return this.isInitialized
+  }
+
+  private finishPlayback(): void {
+    if (this.didFinishCurrentPlayback) {
+      return
+    }
+
+    this.didFinishCurrentPlayback = true
+    if (this.onPlaybackEndCallback) {
+      this.onPlaybackEndCallback()
+    }
   }
 }

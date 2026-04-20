@@ -1,4 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
+import { QwenRealtimeASR } from '@her-text/sdk'
+import { TauriRealtimeWebSocketTransport } from './realtime-transport'
 
 /**
  * Audio capture and processing utilities
@@ -158,6 +160,7 @@ export class AudioCapture {
  */
 export class VoiceInputManager {
   private audioCapture: AudioCapture
+  private asr: QwenRealtimeASR | null = null
   private audioBuffer: number[] = []
   private isInitialized = false
   private isListening = false
@@ -175,8 +178,16 @@ export class VoiceInputManager {
       // Initialize audio capture
       await this.audioCapture.initialize()
 
-      // Initialize STT service
-      await invoke('init_stt', { apiKey, sttUrl })
+      this.asr = new QwenRealtimeASR(
+        {
+          apiKey,
+          url: sttUrl,
+          sampleRate: 16000,
+          language: 'zh',
+        },
+        new TauriRealtimeWebSocketTransport()
+      )
+      await this.asr.connect()
 
       this.isInitialized = true
       console.log('Voice input manager initialized')
@@ -222,9 +233,7 @@ export class VoiceInputManager {
           console.log('Speech ended, transcribing...')
 
           try {
-            const text = await invoke<string>('transcribe_audio', {
-              audioData: this.audioBuffer,
-            })
+            const text = await this.asr!.transcribe(this.audioBuffer)
 
             if (text && this.onTranscriptCallback) {
               this.onTranscriptCallback(text)
@@ -261,11 +270,8 @@ export class VoiceInputManager {
     this.stopListening()
     await this.audioCapture.cleanup()
 
-    try {
-      await invoke('shutdown_audio')
-    } catch (error) {
-      console.error('Failed to shutdown audio:', error)
-    }
+    await this.asr?.close()
+    this.asr = null
 
     this.isInitialized = false
     console.log('Voice input manager cleaned up')

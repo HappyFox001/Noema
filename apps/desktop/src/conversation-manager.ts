@@ -22,6 +22,7 @@ export interface ConversationConfig {
   // TTS 配置 (Fish Audio)
   ttsApiKey: string
   ttsVoiceId?: string
+  ttsModel?: string
 
   // 人格配置
   personality?: {
@@ -32,11 +33,16 @@ export interface ConversationConfig {
   }
 }
 
+export interface ConversationInitializeOptions {
+  enableVoiceInput?: boolean
+}
+
 export class ConversationManager {
   private sdk: HerTextSDK | null = null
   private voiceInput: VoiceInputManager
   private tts: TTSManager
   private isInitialized = false
+  private isVoiceInputInitialized = false
   private isConversing = false
 
   // 回调函数
@@ -53,53 +59,63 @@ export class ConversationManager {
   /**
    * 初始化对话系统
    */
-  async initialize(config: ConversationConfig): Promise<void> {
+  async initialize(
+    config: ConversationConfig,
+    options: ConversationInitializeOptions = { enableVoiceInput: true }
+  ): Promise<void> {
     try {
       // 1. 初始化 SDK
-      const sdkConfig: SDKConfig = {
-        llm: {
-          apiKey: config.llmApiKey,
-          model: config.llmModel,
-          baseURL: config.llmBaseURL,
-        },
-        memory: {
-          storageDir: './memory',
-        },
-        personality: {
-          character: config.personality || {
-            name: 'Luna',
-            background: '一个温柔、善解人意的 AI 伴侣',
-            values: ['真诚', '同理心', '好奇心'],
-            speakingStyle: '简洁自然，避免冗长',
+      if (!this.sdk) {
+        const sdkConfig: SDKConfig = {
+          llm: {
+            apiKey: config.llmApiKey,
+            model: config.llmModel,
+            baseURL: config.llmBaseURL,
           },
-          traits: {
-            openness: 0.8,
-            conscientiousness: 0.7,
-            extraversion: 0.6,
-            agreeableness: 0.9,
-            neuroticism: 0.3,
+          memory: {
+            storageDir: './memory',
           },
-          relationship: {
-            type: 'companion',
-            intimacy: 0.5,
-            trust: 0.7,
+          personality: {
+            character: config.personality || {
+              name: 'Luna',
+              background: '一个温柔、善解人意的 AI 伴侣',
+              values: ['真诚', '同理心', '好奇心'],
+              speakingStyle: '简洁自然，避免冗长',
+            },
+            traits: {
+              openness: 0.8,
+              conscientiousness: 0.7,
+              extraversion: 0.6,
+              agreeableness: 0.9,
+              neuroticism: 0.3,
+            },
+            relationship: {
+              type: 'companion',
+              intimacy: 0.5,
+              trust: 0.7,
+            },
           },
-        },
+        }
+
+        this.sdk = await HerTextSDK.initialize(sdkConfig)
+        console.log('[ConversationManager] SDK initialized')
       }
 
-      this.sdk = await HerTextSDK.initialize(sdkConfig)
-      console.log('[ConversationManager] SDK initialized')
-
-      // 2. 初始化语音输入。对话循环依赖麦克风，所以这里失败时必须阻止启动。
-      await this.voiceInput.initialize(config.sttApiKey, config.sttUrl)
-      console.log('[ConversationManager] Voice input initialized')
+      // 2. 语音输入只在语音模式初始化。文本模式不连接麦克风或 STT。
+      if (options.enableVoiceInput && !this.isVoiceInputInitialized) {
+        await this.voiceInput.initialize(config.sttApiKey, config.sttUrl)
+        this.isVoiceInputInitialized = true
+        console.log('[ConversationManager] Voice input initialized')
+      }
 
       // 3. 尝试初始化语音输出（可选）
-      try {
-        await this.tts.initialize(config.ttsApiKey, config.ttsVoiceId)
-        console.log('[ConversationManager] TTS initialized')
-      } catch (error) {
-        console.warn('[ConversationManager] TTS initialization failed (audio not available):', error)
+      if (!this.tts.isReady()) {
+        try {
+          await this.tts.initialize(config.ttsApiKey, config.ttsVoiceId, config.ttsModel)
+          console.log('[ConversationManager] TTS initialized')
+        } catch (error) {
+          console.warn('[ConversationManager] TTS initialization failed (audio not available):', error)
+        }
       }
 
       this.isInitialized = true
@@ -117,6 +133,10 @@ export class ConversationManager {
   startConversation(): void {
     if (!this.isInitialized || !this.sdk) {
       throw new Error('Conversation manager not initialized')
+    }
+
+    if (!this.isVoiceInputInitialized) {
+      throw new Error('Voice input is not initialized')
     }
 
     if (this.isConversing) {
@@ -159,33 +179,51 @@ export class ConversationManager {
     try {
       // 调用 SDK 处理用户输入（流式）
       let fullResponse = ''
+      let ttsBuffer = ''
+      let shouldUseTTS = this.tts.isReady()
+
+      if (shouldUseTTS) {
+        this.emitStateChange('speaking')
+        this.tts.onPlaybackEnd(() => {
+          if (this.isConversing) {
+            this.emitStateChange('listening')
+            this.emitResponse('')
+          }
+        })
+        await this.tts.startStreaming()
+      }
 
       for await (const chunk of this.sdk.chatStream({
         text: transcript,
         timestamp: Date.now(),
       })) {
         fullResponse += chunk
+        ttsBuffer += chunk
 
         // 实时更新响应（可选：显示在 UI）
         this.emitResponse(fullResponse)
+
+        if (shouldUseTTS && this.shouldSendTTSChunk(ttsBuffer)) {
+          try {
+            await this.tts.pushTextAndFlush(ttsBuffer)
+            ttsBuffer = ''
+          } catch (error) {
+            console.error('[ConversationManager] Streaming TTS failed:', error)
+            shouldUseTTS = false
+          }
+        }
       }
 
       console.log('[ConversationManager] SDK response:', fullResponse)
 
-      // 开始语音合成和播放
-      this.emitStateChange('speaking')
-
-      this.tts.onPlaybackEnd(() => {
-        // 播放完成，返回监听状态
-        if (this.isConversing) {
-          this.emitStateChange('listening')
-          // 清空响应文本（通过发送空响应）
-          this.emitResponse('')
+      if (shouldUseTTS) {
+        if (ttsBuffer.trim()) {
+          await this.tts.pushTextAndFlush(ttsBuffer)
         }
-      })
-
-      await this.tts.speak(fullResponse)
-
+        await this.tts.finishStreaming()
+      } else {
+        this.emitStateChange('listening')
+      }
     } catch (error) {
       console.error('[ConversationManager] Error handling input:', error)
       this.emitError(error as Error)
@@ -224,29 +262,50 @@ export class ConversationManager {
     try {
       // 调用 SDK 处理用户输入（流式）
       let fullResponse = ''
+      let ttsBuffer = ''
+      let shouldUseTTS = enableTTS && this.tts.isReady()
+
+      if (shouldUseTTS) {
+        this.emitStateChange('speaking')
+        this.tts.onPlaybackEnd(() => {
+          this.emitStateChange('idle')
+          this.emitResponse('')
+        })
+        await this.tts.startStreaming()
+      }
 
       for await (const chunk of this.sdk.chatStream({
         text,
         timestamp: Date.now(),
       })) {
         fullResponse += chunk
+        ttsBuffer += chunk
         // 实时更新响应
         this.emitResponse(fullResponse)
+
+        if (shouldUseTTS && this.shouldSendTTSChunk(ttsBuffer)) {
+          try {
+            await this.tts.pushTextAndFlush(ttsBuffer)
+            ttsBuffer = ''
+          } catch (error) {
+            console.error('[ConversationManager] Streaming TTS failed:', error)
+            shouldUseTTS = false
+          }
+        }
       }
 
       console.log('[ConversationManager] SDK response:', fullResponse)
 
       // 如果启用 TTS，进行语音合成
-      if (enableTTS) {
-        this.emitStateChange('speaking')
-
-        this.tts.onPlaybackEnd(() => {
-          this.emitStateChange('idle')
-          this.emitResponse('')
-        })
-
-        await this.tts.speak(fullResponse)
+      if (shouldUseTTS) {
+        if (ttsBuffer.trim()) {
+          await this.tts.pushTextAndFlush(ttsBuffer)
+        }
+        await this.tts.finishStreaming()
       } else {
+        if (enableTTS) {
+          console.warn('[ConversationManager] TTS requested but not initialized')
+        }
         this.emitStateChange('idle')
       }
 
@@ -281,7 +340,9 @@ export class ConversationManager {
   async shutdown(): Promise<void> {
     this.stopConversation()
 
-    await this.voiceInput.cleanup()
+    if (this.isVoiceInputInitialized) {
+      await this.voiceInput.cleanup()
+    }
     await this.tts.cleanup()
 
     if (this.sdk) {
@@ -289,6 +350,7 @@ export class ConversationManager {
     }
 
     this.isInitialized = false
+    this.isVoiceInputInitialized = false
     console.log('[ConversationManager] Shutdown complete')
   }
 
@@ -332,6 +394,11 @@ export class ConversationManager {
     if (this.onError) {
       this.onError(error)
     }
+  }
+
+  private shouldSendTTSChunk(buffer: string): boolean {
+    const trimmed = buffer.trim()
+    return trimmed.length >= 18 || /[。！？.!?]\s*$/.test(trimmed)
   }
 }
 

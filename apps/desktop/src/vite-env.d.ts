@@ -8,6 +8,7 @@ interface ImportMetaEnv {
   readonly VITE_QWEN_STT_URL?: string
   readonly VITE_FISH_API_KEY: string
   readonly VITE_FISH_VOICE_ID?: string
+  readonly VITE_FISH_MODEL?: string
 }
 
 interface ImportMeta {

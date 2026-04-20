@@ -9,7 +9,10 @@ app.innerHTML = `
     <canvas id="orb-canvas" width="180" height="180"></canvas>
     <div id="text-display" class="text-display"></div>
     <div class="controls">
-      <button id="start-btn" class="start-button">Start Conversation</button>
+      <div style="width: 100%; display: flex; gap: 8px; align-items: center;">
+        <button id="start-voice-btn" class="start-button" style="flex: 1;">Start Voice</button>
+        <button id="start-text-btn" class="tts-button" style="flex: 1;">Start Text</button>
+      </div>
       <div id="status" class="status">Ready</div>
       <div style="width: 100%; display: flex; gap: 8px; align-items: center;">
         <input type="text" id="text-input" class="text-input" placeholder="Type your message..." />
@@ -125,8 +128,10 @@ document.addEventListener('mouseup', () => {
 
 // Conversation Manager
 const conversationManager = new ConversationManager()
-let isInitialized = false
+let isTextInitialized = false
+let isVoiceInitialized = false
 let isConversing = false
+let areConversationEventsRegistered = false
 
 // Helper function to update orb state
 function setOrbMode(mode: ConversationState) {
@@ -170,126 +175,171 @@ function clearTextDisplay() {
 }
 
 // Start/Stop button handler
-const startBtn = document.getElementById('start-btn') as HTMLButtonElement
+const startVoiceBtn = document.getElementById('start-voice-btn') as HTMLButtonElement
+const startTextBtn = document.getElementById('start-text-btn') as HTMLButtonElement
 
-startBtn.addEventListener('click', async () => {
+function getConversationConfig() {
+  const llmApiKey = import.meta.env.VITE_LLM_API_KEY || ''
+  const llmModel = import.meta.env.VITE_LLM_MODEL || 'gpt-4o-mini'
+  const llmBaseURL = import.meta.env.VITE_LLM_BASE_URL || undefined
+  const qwenApiKey = import.meta.env.VITE_QWEN_API_KEY || ''
+  const qwenSttUrl = import.meta.env.VITE_QWEN_STT_URL || undefined
+  const fishApiKey = import.meta.env.VITE_FISH_API_KEY || ''
+  const fishVoiceId = import.meta.env.VITE_FISH_VOICE_ID
+  const fishModel = import.meta.env.VITE_FISH_MODEL || 's1'
+
+  return {
+    llmApiKey,
+    llmModel,
+    llmBaseURL,
+    sttApiKey: qwenApiKey,
+    sttUrl: qwenSttUrl,
+    ttsApiKey: fishApiKey,
+    ttsVoiceId: fishVoiceId,
+    ttsModel: fishModel,
+  }
+}
+
+function validateBaseConfig(config: ReturnType<typeof getConversationConfig>): boolean {
+  if (!config.llmApiKey) {
+    setStatus('Error: LLM API key not configured')
+    setTextDisplay('Please set VITE_LLM_API_KEY in .env')
+    return false
+  }
+
+  if (!config.ttsApiKey) {
+    console.warn('Fish API key not configured - TTS disabled')
+  }
+
+  return true
+}
+
+function registerConversationEvents() {
+  if (areConversationEventsRegistered) return
+
+  conversationManager.onStateChanged((state) => {
+    setOrbMode(state)
+
+    switch (state) {
+      case 'idle':
+        setStatus('Ready')
+        clearTextDisplay()
+        break
+      case 'listening':
+        setStatus('Listening...')
+        clearTextDisplay()
+        break
+      case 'thinking':
+        setStatus('Thinking...')
+        break
+      case 'speaking':
+        setStatus('Speaking...')
+        break
+    }
+  })
+
+  conversationManager.onTranscriptReceived((text) => {
+    console.log('Transcript:', text)
+  })
+
+  conversationManager.onResponseReceived((text) => {
+    console.log('Response:', text)
+    setTextDisplay(text)
+  })
+
+  conversationManager.onErrorOccurred((error) => {
+    console.error('Error:', error)
+    setStatus(`Error: ${error.message}`)
+    setOrbMode('idle')
+
+    if (isConversing) {
+      conversationManager.stopConversation()
+      isConversing = false
+      startVoiceBtn.textContent = 'Start Voice'
+      startVoiceBtn.disabled = false
+    }
+  })
+
+  areConversationEventsRegistered = true
+}
+
+startTextBtn.addEventListener('click', async () => {
   try {
-    // Initialize on first click
-    if (!isInitialized) {
-      setStatus('Initializing...')
-      startBtn.disabled = true
-
-      // Get API keys from environment
-      const llmApiKey = import.meta.env.VITE_LLM_API_KEY || ''
-      const llmModel = import.meta.env.VITE_LLM_MODEL || 'gpt-4o-mini'
-      const llmBaseURL = import.meta.env.VITE_LLM_BASE_URL || undefined
-      const qwenApiKey = import.meta.env.VITE_QWEN_API_KEY || ''
-      const qwenSttUrl = import.meta.env.VITE_QWEN_STT_URL || undefined
-      const fishApiKey = import.meta.env.VITE_FISH_API_KEY || ''
-      const fishVoiceId = import.meta.env.VITE_FISH_VOICE_ID
-
-      // Validate API keys
-      if (!llmApiKey) {
-        setStatus('Error: LLM API key not configured')
-        setTextDisplay('Please set VITE_LLM_API_KEY in .env')
-        startBtn.disabled = false
-        return
-      }
-
-      // 音频 API Keys 是可选的
-      if (!qwenApiKey) {
-        console.warn('Qwen API key not configured - voice input disabled')
-      }
-
-      if (!fishApiKey) {
-        console.warn('Fish API key not configured - TTS disabled')
-      }
-
-      // Initialize conversation manager
-      await conversationManager.initialize({
-        llmApiKey,
-        llmModel,
-        llmBaseURL,
-        sttApiKey: qwenApiKey || '',  // 空字符串表示不使用音频输入
-        sttUrl: qwenSttUrl,
-        ttsApiKey: fishApiKey || '',  // 空字符串表示不使用音频输出
-        ttsVoiceId: fishVoiceId,
-      })
-
-      // Set up event listeners
-      conversationManager.onStateChanged((state) => {
-        setOrbMode(state)
-
-        switch (state) {
-          case 'idle':
-            setStatus('Ready')
-            clearTextDisplay()  // 返回闲置状态时清空文本
-            break
-          case 'listening':
-            setStatus('Listening...')
-            clearTextDisplay()  // 开始监听时清空文本
-            break
-          case 'thinking':
-            setStatus('Thinking...')
-            break
-          case 'speaking':
-            setStatus('Speaking...')
-            // 文本在 onResponseReceived 中显示
-            break
-        }
-      })
-
-      conversationManager.onTranscriptReceived((text) => {
-        console.log('Transcript:', text)
-        // 不显示用户输入，保持简洁
-      })
-
-      conversationManager.onResponseReceived((text) => {
-        console.log('Response:', text)
-        // 流式显示 LLM 响应
-        setTextDisplay(text)
-      })
-
-      conversationManager.onErrorOccurred((error) => {
-        console.error('Error:', error)
-        setStatus(`Error: ${error.message}`)
-        setOrbMode('idle')
-
-        if (isConversing) {
-          conversationManager.stopConversation()
-          isConversing = false
-          startBtn.textContent = 'Start Conversation'
-          startBtn.disabled = false
-        }
-      })
-
-      isInitialized = true
-      setStatus('Ready')
-      startBtn.disabled = false
+    if (isTextInitialized) {
+      setStatus('Text Ready')
+      textInput.focus()
+      return
     }
 
-    // Toggle conversation
+    setStatus('Initializing text...')
+    startTextBtn.disabled = true
+
+    const config = getConversationConfig()
+    if (!validateBaseConfig(config)) {
+      startTextBtn.disabled = false
+      return
+    }
+
+    await conversationManager.initialize(config, { enableVoiceInput: false })
+    registerConversationEvents()
+
+    isTextInitialized = true
+    setStatus('Text Ready')
+    startTextBtn.textContent = 'Text Ready'
+    textInput.focus()
+  } catch (error) {
+    console.error('Text initialization error:', error)
+    setStatus(`Error: ${error}`)
+    setOrbMode('idle')
+    startTextBtn.disabled = false
+    startTextBtn.textContent = 'Start Text'
+  }
+})
+
+startVoiceBtn.addEventListener('click', async () => {
+  try {
+    const config = getConversationConfig()
+    if (!validateBaseConfig(config)) return
+
+    if (!config.sttApiKey) {
+      setStatus('Error: Qwen API key not configured')
+      setTextDisplay('Please set VITE_QWEN_API_KEY in .env for voice mode')
+      return
+    }
+
+    if (!isVoiceInitialized) {
+      setStatus('Initializing voice...')
+      startVoiceBtn.disabled = true
+
+      await conversationManager.initialize(config, { enableVoiceInput: true })
+      registerConversationEvents()
+
+      isTextInitialized = true
+      isVoiceInitialized = true
+      startTextBtn.textContent = 'Text Ready'
+      setStatus('Ready')
+      startVoiceBtn.disabled = false
+    }
+
     if (isConversing) {
-      // Stop conversation
       conversationManager.stopConversation()
       isConversing = false
       setOrbMode('idle')
       setStatus('Ready')
-      startBtn.textContent = 'Start Conversation'
+      startVoiceBtn.textContent = 'Start Voice'
     } else {
-      // Start conversation
       conversationManager.startConversation()
       isConversing = true
       setOrbMode('listening')
       setStatus('Listening...')
-      startBtn.textContent = 'Stop Conversation'
+      startVoiceBtn.textContent = 'Stop Voice'
     }
   } catch (error) {
-    console.error('Conversation error:', error)
+    console.error('Voice conversation error:', error)
     setStatus(`Error: ${error}`)
     setOrbMode('idle')
-    startBtn.disabled = false
-    startBtn.textContent = 'Start Conversation'
+    startVoiceBtn.disabled = false
+    startVoiceBtn.textContent = 'Start Voice'
   }
 })
 
@@ -301,8 +351,8 @@ async function sendTextMessage() {
   const text = textInput.value.trim()
   if (!text) return
 
-  if (!isInitialized) {
-    setStatus('Please initialize first')
+  if (!isTextInitialized) {
+    setStatus('Please start text first')
     return
   }
 
@@ -314,8 +364,7 @@ async function sendTextMessage() {
     // 清空输入框
     textInput.value = ''
 
-    // 发送消息（不启用 TTS，因为音频有问题）
-    await conversationManager.sendTextMessage(text, false)
+    await conversationManager.sendTextMessage(text, true)
 
   } catch (error) {
     console.error('Text message error:', error)
