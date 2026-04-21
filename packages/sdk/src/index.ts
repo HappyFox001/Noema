@@ -1,10 +1,11 @@
 import type { SDKConfig, UserInput, AgentResponse } from '@her-text/types'
-import { MemoryEngine } from './memory'
-import { PersonalityEngine } from './personality'
-import { AgentCore, AgentRegistry } from './agent'
-import { DialogueOrchestrator } from './dialogue'
-import { ContextManager } from './context'
+import { MemoryEngine } from './memory/index.js'
+import { PersonalityEngine } from './personality/index.js'
+import { AgentCore, AgentRegistry } from './agent/index.js'
+import { DialogueOrchestrator } from './dialogue/index.js'
+import { ContextManager } from './context/index.js'
 import { createLLMProvider, type LLMProvider } from '@her-text/core'
+import { createDefaultTools } from './tools/index.js'
 
 /**
  * Her-Text SDK - 核心 API
@@ -31,6 +32,7 @@ export class HerTextSDK {
     this.personality = new PersonalityEngine(config.personality)
     this.agent = new AgentCore()
     this.registry = new AgentRegistry()
+    createDefaultTools().forEach(tool => this.agent.registerTool(tool))
 
     this.dialogue = new DialogueOrchestrator(
       this.llm,
@@ -96,12 +98,12 @@ export class HerTextSDK {
   }
 }
 
-// 导出所有子模块
-export * from './memory'
-export * from './personality'
-export * from './agent'
-export * from './dialogue'
-export * from './context'
-export * from './prompt'
-export * from './tools'
-export * from './audio'
+// 导出所有子模块（明确指定文件以兼容 Node.js ES modules）
+export * from './memory/index.js'
+export * from './personality/index.js'
+export * from './agent/index.js'
+export * from './dialogue/index.js'
+export * from './context/index.js'
+export * from './prompt/index.js'
+export * from './tools/index.js'
+export * from './audio/index.js'

@@ -1,5 +1,5 @@
 import type { ToolSpec, ToolExecutor, ToolResult } from '../types.js'
-import { invoke } from '@tauri-apps/api/core'
+import { resolveToolPath, writeTextFile } from '../node-runtime.js'
 
 /**
  * Write 工具规范
@@ -36,16 +36,14 @@ export class WriteTool implements ToolExecutor {
     try {
       const { file_path, content } = args
 
-      await invoke('write_file', {
-        path: file_path,
-        content
-      })
+      const absolutePath = resolveToolPath(file_path)
+      const bytesWritten = await writeTextFile(absolutePath, content)
 
       return {
         success: true,
         result: {
-          file_path,
-          bytes_written: new Blob([content]).size
+          file_path: absolutePath,
+          bytes_written: bytesWritten
         }
       }
     } catch (error) {

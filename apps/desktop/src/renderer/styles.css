@@ -58,6 +58,19 @@ body {
   height: 180px;
   display: block;
   background: transparent !important;
+  cursor: grab;
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.controls,
+.text-display,
+.status,
+.text-input,
+.start-button,
+.tts-button {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .text-display {

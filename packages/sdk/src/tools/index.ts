@@ -1,9 +1,11 @@
+import type { Tool } from '@her-text/types'
+
 /**
  * Her-Text 工具系统
  *
  * 架构：
- * - TypeScript: 工具规范（ToolSpec）+ 薄执行层（调用 Tauri）
- * - Rust: 实际工具逻辑实现
+ * - TypeScript: 工具规范（ToolSpec）+ Node 执行层
+ * - Node.js: 直接执行文件系统和 Shell 操作
  * - LLM: 自动选择和调用工具
  */
 
@@ -58,6 +60,27 @@ export function createDefaultToolRegistry(): ToolRegistry {
 export function getAllToolSpecs(): ToolSpec[] {
   const registry = createDefaultToolRegistry()
   return registry.getAllSpecs()
+}
+
+/**
+ * 创建默认工具列表（给 AgentCore 注册）
+ */
+export function createDefaultTools(): Tool[] {
+  const executors = [
+    new ReadTool(),
+    new WriteTool(),
+    new EditTool(),
+    new GlobTool(),
+    new GrepTool(),
+    new BashTool()
+  ]
+
+  return executors.map(executor => ({
+    name: executor.spec.function.name,
+    description: executor.spec.function.description,
+    parameters: executor.spec.function.parameters,
+    execute: async (params: any) => executor.execute(params)
+  }))
 }
 
 /**

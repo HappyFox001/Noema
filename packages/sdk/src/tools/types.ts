@@ -65,7 +65,7 @@ export interface ToolExecutor {
   spec: ToolSpec
 
   /**
-   * 执行工具（调用 Tauri 后端）
+   * 执行工具（直接调用 Node.js 运行时）
    */
   execute(args: Record<string, any>): Promise<ToolResult>
 }

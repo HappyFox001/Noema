@@ -1,10 +1,10 @@
 import type { UserInput, AgentResponse, Tool } from '@her-text/types'
 import type { LLMProvider } from '@her-text/core'
-import type { MemoryEngine } from '../memory'
-import type { PersonalityEngine } from '../personality'
-import type { AgentCore } from '../agent'
-import { ContextManager, type ResponseItem, type TruncationPolicy } from '../context'
-import { PromptBuilder } from '../prompt'
+import type { MemoryEngine } from '../memory/index.js'
+import type { PersonalityEngine } from '../personality/index.js'
+import type { AgentCore } from '../agent/index.js'
+import { ContextManager, type ResponseItem, type TruncationPolicy } from '../context/index.js'
+import { PromptBuilder } from '../prompt/index.js'
 
 function scheduleAsyncTask(task: () => Promise<void>): void {
   const run = () => {
@@ -430,5 +430,5 @@ export class DialogueOrchestrator {
   }
 }
 
-export * from '../context'
-export * from '../prompt'
+export * from '../context/index.js'
+export * from '../prompt/index.js'

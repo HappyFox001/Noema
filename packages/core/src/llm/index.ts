@@ -25,7 +25,7 @@ export class OpenAIProvider implements LLMProvider {
     this.client = new OpenAI({
       apiKey,
       baseURL,  // 自定义 API 端点
-      dangerouslyAllowBrowser: true,  // Tauri 桌面应用，安全
+      dangerouslyAllowBrowser: true,
     })
   }
 

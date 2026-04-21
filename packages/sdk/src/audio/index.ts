@@ -1,3 +1,3 @@
-export * from './fish-realtime-tts'
-export * from './fish-tts-official'
-export * from './qwen-realtime-asr'
+export * from './fish-realtime-tts.js'
+export * from './fish-tts-official.js'
+export * from './qwen-realtime-asr.js'

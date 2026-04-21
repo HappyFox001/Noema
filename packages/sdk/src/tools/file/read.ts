@@ -1,5 +1,5 @@
 import type { ToolSpec, ToolExecutor, ToolResult } from '../types.js'
-import { invoke } from '@tauri-apps/api/core'
+import { readTextFile, resolveToolPath } from '../node-runtime.js'
 
 /**
  * Read 工具规范
@@ -40,19 +40,15 @@ export class ReadTool implements ToolExecutor {
     try {
       const { file_path, offset, limit } = args
 
-      // 调用 Tauri 后端
-      const content = await invoke<string>('read_file', {
-        path: file_path,
-        offset: offset ? offset - 1 : undefined, // 转换为 0-indexed
-        limit
-      })
+      const absolutePath = resolveToolPath(file_path)
+      const { content, lines } = await readTextFile(absolutePath, offset, limit)
 
       return {
         success: true,
         result: {
-          file_path,
+          file_path: absolutePath,
           content,
-          lines: content.split('\n').length
+          lines
         }
       }
     } catch (error) {

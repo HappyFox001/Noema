@@ -1,9 +1,5 @@
 import type { ToolSpec, ToolExecutor, ToolResult } from '../types.js'
-import { invoke } from '@tauri-apps/api/core'
-
-/**
- * Bash 工具规范
- */
+import { runCommand, runCommandInBackground, resolveToolPath } from '../node-runtime.js'
 export const bashToolSpec: ToolSpec = {
   type: 'function',
   function: {
@@ -40,12 +36,6 @@ export const bashToolSpec: ToolSpec = {
   }
 }
 
-interface CommandOutput {
-  stdout: string
-  stderr: string
-  exit_code: number
-}
-
 /**
  * Bash 工具执行器
  */
@@ -63,37 +53,32 @@ export class BashTool implements ToolExecutor {
       } = args
 
       if (run_in_background) {
-        // 后台执行
-        const taskId = await invoke<string>('run_command_background', {
-          command,
-          cwd
-        })
+        const pid = runCommandInBackground(command, cwd)
 
         return {
           success: true,
           result: {
             background: true,
-            task_id: taskId,
+            pid,
             message: 'Command started in background'
           }
         }
       }
 
-      // 前台执行
-      const output = await invoke<CommandOutput>('run_command', {
-        command,
+      const output = await runCommand(command, {
         cwd,
         timeout
       })
 
       return {
-        success: output.exit_code === 0,
+        success: output.exitCode === 0,
         result: {
           command,
           description,
+          cwd: resolveToolPath(cwd),
           stdout: output.stdout,
           stderr: output.stderr,
-          exit_code: output.exit_code
+          exit_code: output.exitCode
         }
       }
     } catch (error) {

@@ -1,5 +1,7 @@
 import type { ToolSpec, ToolExecutor, ToolResult } from '../types.js'
-import { invoke } from '@tauri-apps/api/core'
+import { readFile } from 'node:fs/promises'
+import { resolveToolPath } from '../node-runtime.js'
+import { matchesGlobPattern, walkFiles } from './search-utils.js'
 
 /**
  * Grep 工具规范
@@ -73,21 +75,17 @@ export class GrepTool implements ToolExecutor {
         context_lines,
         head_limit
       } = args
-
-      const matches = await invoke<GrepMatch[]>('grep_files', {
-        pattern,
-        path,
-        glob,
-        caseInsensitive: case_insensitive,
-        outputMode: output_mode,
-        contextLines: context_lines,
-        limit: head_limit
-      })
+      const searchRoot = resolveToolPath(path)
+      const regex = new RegExp(pattern, case_insensitive ? 'gi' : 'g')
+      const files = (await walkFiles(searchRoot))
+        .filter(file => matchesGlobPattern(file, searchRoot, glob))
+      const matches = await grepFiles(files, regex, output_mode, context_lines, head_limit)
 
       return {
         success: true,
         result: {
           pattern,
+          path: searchRoot,
           output_mode,
           matches,
           total: matches.length
@@ -100,4 +98,71 @@ export class GrepTool implements ToolExecutor {
       }
     }
   }
+}
+
+async function grepFiles(
+  files: string[],
+  regex: RegExp,
+  outputMode: string,
+  contextLines = 0,
+  headLimit?: number
+): Promise<GrepMatch[]> {
+  const matches: GrepMatch[] = []
+
+  for (const file of files) {
+    if (typeof headLimit === 'number' && headLimit > 0 && matches.length >= headLimit) {
+      break
+    }
+
+    const content = await readFile(file, 'utf8')
+    const lines = content.split('\n')
+
+    if (outputMode === 'files_with_matches') {
+      if (lines.some(line => testLine(line, regex))) {
+        matches.push({ file })
+      }
+      continue
+    }
+
+    if (outputMode === 'count') {
+      const count = lines.reduce((total, line) => total + countLineMatches(line, regex), 0)
+      if (count > 0) {
+        matches.push({ file, count })
+      }
+      continue
+    }
+
+    for (let index = 0; index < lines.length; index++) {
+      if (!testLine(lines[index], regex)) {
+        continue
+      }
+
+      const start = Math.max(0, index - contextLines)
+      const end = Math.min(lines.length, index + contextLines + 1)
+      for (let contextIndex = start; contextIndex < end; contextIndex++) {
+        matches.push({
+          file,
+          line_number: contextIndex + 1,
+          line: lines[contextIndex]
+        })
+
+        if (typeof headLimit === 'number' && headLimit > 0 && matches.length >= headLimit) {
+          return matches
+        }
+      }
+    }
+  }
+
+  return matches
+}
+
+function testLine(line: string, regex: RegExp): boolean {
+  regex.lastIndex = 0
+  return regex.test(line)
+}
+
+function countLineMatches(line: string, regex: RegExp): number {
+  regex.lastIndex = 0
+  const matched = line.match(regex)
+  return matched ? matched.length : 0
 }

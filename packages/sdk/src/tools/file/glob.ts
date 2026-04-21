@@ -1,5 +1,6 @@
 import type { ToolSpec, ToolExecutor, ToolResult } from '../types.js'
-import { invoke } from '@tauri-apps/api/core'
+import { resolveToolPath } from '../node-runtime.js'
+import { matchesAnyGlobPattern, matchesGlobPattern, walkFiles } from './search-utils.js'
 
 /**
  * Glob 工具规范
@@ -43,17 +44,16 @@ export class GlobTool implements ToolExecutor {
   async execute(args: Record<string, any>): Promise<ToolResult> {
     try {
       const { pattern, path, ignore = [] } = args
-
-      const files = await invoke<string[]>('glob_files', {
-        pattern,
-        path,
-        ignore
-      })
+      const searchRoot = resolveToolPath(path)
+      const files = (await walkFiles(searchRoot))
+        .filter(file => matchesGlobPattern(file, searchRoot, pattern))
+        .filter(file => !matchesAnyGlobPattern(file, searchRoot, ignore))
 
       return {
         success: true,
         result: {
           pattern,
+          path: searchRoot,
           matches: files,
           count: files.length
         }

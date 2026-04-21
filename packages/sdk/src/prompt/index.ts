@@ -1,6 +1,6 @@
 import type { Tool, Personality } from '@her-text/types'
-import type { ResponseItem } from '../context'
-import type { UserProfile, ConversationSummary } from '../memory'
+import type { ResponseItem } from '../context/index.js'
+import type { UserProfile, ConversationSummary } from '../memory/index.js'
 
 export interface BaseInstructions {
   system: string

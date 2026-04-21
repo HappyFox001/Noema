@@ -1,5 +1,5 @@
 import type { ToolSpec, ToolExecutor, ToolResult } from '../types.js'
-import { invoke } from '@tauri-apps/api/core'
+import { editTextFile, resolveToolPath } from '../node-runtime.js'
 
 /**
  * Edit 工具规范
@@ -45,18 +45,20 @@ export class EditTool implements ToolExecutor {
     try {
       const { file_path, old_string, new_string, replace_all = false } = args
 
-      await invoke('edit_file', {
-        path: file_path,
-        oldString: old_string,
-        newString: new_string,
-        replaceAll: replace_all
-      })
+      const absolutePath = resolveToolPath(file_path)
+      const replacedCount = await editTextFile(
+        absolutePath,
+        old_string,
+        new_string,
+        replace_all
+      )
 
       return {
         success: true,
         result: {
-          file_path,
-          replaced: true
+          file_path: absolutePath,
+          replaced: true,
+          replaced_count: replacedCount
         }
       }
     } catch (error) {

@@ -4,18 +4,15 @@ import type {
 } from '@her-text/types'
 import { generateId } from '@her-text/core'
 import type { LLMProvider } from '@her-text/core'
-
-// Tauri commands (只在 Tauri 环境下可用)
-declare const window: any
-
-const isTauri = typeof window !== 'undefined' && window.__TAURI__
-
-async function invokeCommand(cmd: string, args?: any): Promise<any> {
-  if (!isTauri) {
-    throw new Error('Tauri commands not available in browser mode')
-  }
-  return window.__TAURI__.core.invoke(cmd, args)
-}
+import { mkdir } from 'node:fs/promises'
+import { dirname, isAbsolute, resolve } from 'node:path'
+import {
+  parseJsonArray,
+  parseJsonValue,
+  runSqlite,
+  runSqliteJson,
+  sqlText,
+} from './sqlite-runtime.js'
 
 /**
  * 短期 KV 条目（外部数据引入）
@@ -54,6 +51,47 @@ export interface ConversationSummary {
   timestamp: number
 }
 
+const MEMORY_SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS conversation_turns (
+  id TEXT PRIMARY KEY,
+  role TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'system')),
+  content TEXT NOT NULL,
+  timestamp INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS user_profile (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS important_memories (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS conversation_summaries (
+  id TEXT PRIMARY KEY,
+  start_turn INTEGER NOT NULL,
+  end_turn INTEGER NOT NULL,
+  summary TEXT NOT NULL,
+  key_topics TEXT NOT NULL,
+  timestamp INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS short_term_kv (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  last_mentioned INTEGER NOT NULL,
+  mention_count INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS metadata (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+`
+
+
 /**
  * Memory Engine - 三层记忆系统
  *
@@ -87,29 +125,30 @@ export class MemoryEngine {
   // 异步更新队列（防止阻塞主流程）
   private updateQueue: Promise<void> = Promise.resolve()
 
-  // 数据库持久化状态
+  // SQLite 持久化状态
   private persistenceEnabled: boolean = false
+  private persistenceDbPath: string
 
   constructor(
     private config: SDKConfig['memory'],
     llm?: LLMProvider
   ) {
     this.llm = llm
+    const storageDir = isAbsolute(config.storageDir)
+      ? config.storageDir
+      : resolve(process.cwd(), config.storageDir)
+    this.persistenceDbPath = resolve(storageDir, 'memory.sqlite3')
   }
 
   async initialize(): Promise<void> {
-    if (!isTauri) {
-      console.log('[MemoryEngine] Initialized (browser mode, no persistence)')
-      return
-    }
-
     try {
-      // 从数据库加载记忆
+      await mkdir(dirname(this.persistenceDbPath), { recursive: true })
+      await this.ensureDatabase()
       await this.loadFromDatabase()
       this.persistenceEnabled = true
       console.log('[MemoryEngine] Initialized with SQLite persistence')
     } catch (error) {
-      console.error('[MemoryEngine] Failed to initialize database:', error)
+      console.error('[MemoryEngine] Failed to initialize persistence:', error)
       console.log('[MemoryEngine] Continuing in memory-only mode')
     }
   }
@@ -398,6 +437,7 @@ ${conversationText}
   }
 }
 
+
 注意：
 - 只提取明确提到的信息，不要猜测
 - 如果某项信息没有提及，不要返回该字段
@@ -476,51 +516,114 @@ ${conversationText}
   }
 
   /**
+   * 初始化 SQLite 表结构
+   */
+  private async ensureDatabase(): Promise<void> {
+    await runSqlite(this.persistenceDbPath, MEMORY_SCHEMA_SQL)
+  }
+
+  /**
    * 从数据库加载记忆
    */
   private async loadFromDatabase(): Promise<void> {
     try {
-      // 加载工作记忆
-      const turns = await invokeCommand('get_recent_conversations', { limit: 100 })
-      this.workingMemory = turns as ConversationTurn[]
+      this.workingMemory = await runSqliteJson<ConversationTurn>(
+        this.persistenceDbPath,
+        `
+        SELECT id, role, content, timestamp
+        FROM (
+          SELECT id, role, content, timestamp
+          FROM conversation_turns
+          ORDER BY timestamp DESC
+          LIMIT 100
+        )
+        ORDER BY timestamp ASC;
+        `
+      )
 
-      // 加载用户画像
-      const profileEntries = await invokeCommand('get_user_profile')
+      const profileRows = await runSqliteJson<{ key: string, value: string }>(
+        this.persistenceDbPath,
+        'SELECT key, value FROM user_profile ORDER BY key ASC;'
+      )
       this.userProfile.basic = {}
-      for (const entry of profileEntries) {
+      for (const row of profileRows) {
         try {
-          this.userProfile.basic[entry.key] = JSON.parse(entry.value)
+          this.userProfile.basic[row.key] = JSON.parse(row.value)
         } catch {
-          this.userProfile.basic[entry.key] = entry.value
+          this.userProfile.basic[row.key] = row.value
         }
       }
 
-      // 加载重要记忆
-      const memories = await invokeCommand('get_important_memories')
-      this.userProfile.importantMemories = new Map()
-      for (const mem of memories) {
-        this.userProfile.importantMemories.set(mem.key, mem.value)
-      }
+      const memoryRows = await runSqliteJson<{ key: string, value: string }>(
+        this.persistenceDbPath,
+        'SELECT key, value FROM important_memories ORDER BY key ASC;'
+      )
+      this.userProfile.importantMemories = new Map(memoryRows.map(row => [row.key, row.value]))
 
-      // 加载对话摘要
-      const summaries = await invokeCommand('get_conversation_summaries', { limit: 50 })
-      this.conversationSummaries = summaries.map((s: any) => ({
-        id: s.id,
-        startTurn: s.start_turn,
-        endTurn: s.end_turn,
-        summary: s.summary,
-        keyTopics: s.key_topics,
-        timestamp: s.timestamp
+      const summaryRows = await runSqliteJson<{
+        id: string
+        start_turn: number
+        end_turn: number
+        summary: string
+        key_topics: string
+        timestamp: number
+      }>(
+        this.persistenceDbPath,
+        `
+        SELECT id, start_turn, end_turn, summary, key_topics, timestamp
+        FROM conversation_summaries
+        ORDER BY timestamp ASC;
+        `
+      )
+      this.conversationSummaries = summaryRows.map(row => ({
+        id: row.id,
+        startTurn: row.start_turn,
+        endTurn: row.end_turn,
+        summary: row.summary,
+        keyTopics: parseJsonArray(row.key_topics),
+        timestamp: row.timestamp
       }))
 
-      // 计算轮次计数器
-      this.turnCounter = Math.floor(this.workingMemory.length / 2)
+      const kvRows = await runSqliteJson<{
+        key: string
+        value: string
+        last_mentioned: number
+        mention_count: number
+      }>(
+        this.persistenceDbPath,
+        `
+        SELECT key, value, last_mentioned, mention_count
+        FROM short_term_kv
+        ORDER BY last_mentioned DESC;
+        `
+      )
+      this.shortTermKV = new Map(kvRows.map(row => [
+        row.key,
+        {
+          key: row.key,
+          value: parseJsonValue(row.value),
+          lastMentioned: row.last_mentioned,
+          mentionCount: row.mention_count
+        }
+      ]))
 
-      // 获取统计信息
-      const stats = await invokeCommand('get_memory_stats')
-      console.log('[MemoryEngine] Loaded from database:', stats)
+      const metadataRows = await runSqliteJson<{ value: string }>(
+        this.persistenceDbPath,
+        "SELECT value FROM metadata WHERE key = 'turn_counter' LIMIT 1;"
+      )
+      this.turnCounter = metadataRows[0]
+        ? Number(metadataRows[0].value)
+        : Math.floor(this.workingMemory.length / 2)
+
+      console.log('[MemoryEngine] Loaded from SQLite:', {
+        turns: this.workingMemory.length,
+        profileKeys: Object.keys(this.userProfile.basic).length,
+        importantMemories: this.userProfile.importantMemories.size,
+        summaries: this.conversationSummaries.length,
+        shortTermKV: this.shortTermKV.size
+      })
     } catch (error) {
-      console.error('[MemoryEngine] Failed to load from database:', error)
+      console.error('[MemoryEngine] Failed to load from SQLite:', error)
       throw error
     }
   }
@@ -530,42 +633,53 @@ ${conversationText}
    */
   private async saveToDatabase(): Promise<void> {
     try {
-      // 保存工作记忆（最近 100 条）
-      const recentTurns = this.workingMemory.slice(-100)
-      for (const turn of recentTurns) {
-        await invokeCommand('save_conversation_turn', { turn })
+      const statements: string[] = ['BEGIN;']
+
+      statements.push('DELETE FROM conversation_turns;')
+      for (const turn of this.workingMemory.slice(-100)) {
+        statements.push(
+          `INSERT INTO conversation_turns (id, role, content, timestamp) VALUES (${sqlText(turn.id)}, ${sqlText(turn.role)}, ${sqlText(turn.content)}, ${turn.timestamp});`
+        )
       }
 
-      // 保存用户画像
+      statements.push('DELETE FROM user_profile;')
       for (const [key, value] of Object.entries(this.userProfile.basic)) {
-        await invokeCommand('save_user_profile_entry', {
-          key,
-          value: JSON.stringify(value)
-        })
+        statements.push(
+          `INSERT INTO user_profile (key, value) VALUES (${sqlText(key)}, ${sqlText(JSON.stringify(value))});`
+        )
       }
 
-      // 保存重要记忆
+      statements.push('DELETE FROM important_memories;')
       for (const [key, value] of this.userProfile.importantMemories.entries()) {
-        await invokeCommand('save_important_memory', { key, value })
+        statements.push(
+          `INSERT INTO important_memories (key, value) VALUES (${sqlText(key)}, ${sqlText(value)});`
+        )
       }
 
-      // 保存对话摘要
-      for (const summary of this.conversationSummaries) {
-        await invokeCommand('save_conversation_summary', {
-          summary: {
-            id: summary.id,
-            start_turn: summary.startTurn,
-            end_turn: summary.endTurn,
-            summary: summary.summary,
-            key_topics: summary.keyTopics,
-            timestamp: summary.timestamp
-          }
-        })
+      statements.push('DELETE FROM conversation_summaries;')
+      for (const summary of this.conversationSummaries.slice(-50)) {
+        statements.push(
+          `INSERT INTO conversation_summaries (id, start_turn, end_turn, summary, key_topics, timestamp) VALUES (${sqlText(summary.id)}, ${summary.startTurn}, ${summary.endTurn}, ${sqlText(summary.summary)}, ${sqlText(JSON.stringify(summary.keyTopics))}, ${summary.timestamp});`
+        )
       }
 
-      console.log('[MemoryEngine] Saved to database')
+      statements.push('DELETE FROM short_term_kv;')
+      for (const entry of this.shortTermKV.values()) {
+        statements.push(
+          `INSERT INTO short_term_kv (key, value, last_mentioned, mention_count) VALUES (${sqlText(entry.key)}, ${sqlText(JSON.stringify(entry.value))}, ${entry.lastMentioned}, ${entry.mentionCount});`
+        )
+      }
+
+      statements.push(
+        `INSERT INTO metadata (key, value) VALUES ('turn_counter', ${sqlText(String(this.turnCounter))})
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value;`
+      )
+
+      statements.push('COMMIT;')
+      await runSqlite(this.persistenceDbPath, statements.join('\n'))
+      console.log('[MemoryEngine] Saved to SQLite')
     } catch (error) {
-      console.error('[MemoryEngine] Failed to save to database:', error)
+      console.error('[MemoryEngine] Failed to save to SQLite:', error)
     }
   }
 }

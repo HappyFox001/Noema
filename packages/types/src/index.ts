@@ -105,7 +105,6 @@ export interface ProactiveTrigger {
   context?: any
 }
 
-// Tauri 相关类型
 export interface OrbState {
   mode: 'idle' | 'listening' | 'thinking' | 'speaking'
   size: number

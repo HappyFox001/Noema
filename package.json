@@ -8,12 +8,12 @@
   ],
   "scripts": {
     "dev": "turbo run dev",
+    "desktop:dev": "cd apps/desktop && pnpm run dev",
     "build": "turbo run build",
     "test": "turbo run test",
     "lint": "turbo run lint",
     "clean": "turbo run clean && rm -rf node_modules",
-    "start": "cd apps/desktop && pnpm run tauri dev",
-    "tauri": "cd apps/desktop && pnpm run tauri"
+    "start": "cd apps/desktop && pnpm run start"
   },
   "devDependencies": {
     "turbo": "^2.0.0",
