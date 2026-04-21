@@ -85,6 +85,18 @@ export class DialogueOrchestrator {
         }
       )
 
+      // 🔍 DEBUG: 输出完整的 Prompt
+      console.log('\n========== 🔍 DEBUG: LLM Request ==========')
+      console.log('📋 System Prompt:')
+      console.log(system)
+      console.log('\n💬 Messages:', JSON.stringify(messages, null, 2))
+      console.log('\n🛠️  Tools Count:', toolSpecs?.length || 0)
+      if (toolSpecs && toolSpecs.length > 0) {
+        console.log('🛠️  Available Tools:', toolSpecs.map(t => t.function.name).join(', '))
+        console.log('\n🛠️  Tool Specs (full):', JSON.stringify(toolSpecs, null, 2))
+      }
+      console.log('==========================================\n')
+
       // === Phase 3: LLM 调用 ===
 
       let responseText = ''
@@ -108,6 +120,13 @@ export class DialogueOrchestrator {
 
         const llmResponse = await this.llm.chat(fullMessages, llmOptions)
 
+        // 🔍 DEBUG: 输出原始 LLM 响应
+        console.log('\n========== 🔍 DEBUG: LLM Response ==========')
+        console.log('📝 Raw Response Content:')
+        console.log(llmResponse.content)
+        console.log('\n🔧 Tool Calls:', llmResponse.toolCalls ? JSON.stringify(llmResponse.toolCalls, null, 2) : 'None')
+        console.log('==========================================\n')
+
         // 提取工具调用（原生 API 返回）
         toolCalls = llmResponse.toolCalls
 
@@ -128,14 +147,16 @@ export class DialogueOrchestrator {
 
       if (toolCalls && toolCalls.length > 0) {
         try {
-          console.log('[Tool Calls]:', toolCalls.map(tc => tc.function.name))
+          console.log('\n========== 🔍 DEBUG: Tool Execution ==========')
+          console.log('🛠️  Tool Calls:', JSON.stringify(toolCalls, null, 2))
 
           const toolResults = await this.agent.execute(toolCalls, {
             parallel: false,
             timeout: 30000
           })
 
-          console.log('[Tool Results]:', toolResults)
+          console.log('\n✅ Tool Results:', JSON.stringify(toolResults, null, 2))
+          console.log('==========================================\n')
 
           // 记录助手的工具调用
           this.context.recordItems([
@@ -236,7 +257,7 @@ export class DialogueOrchestrator {
     const personality = this.personality.getPersonality()
     const tools = this.agent.getTools()
 
-    const { system, messages } = PromptBuilder.build(
+    const { system, messages, tools: toolSpecs } = PromptBuilder.build(
       this.context.forPrompt(),
       {
         tools,
@@ -249,6 +270,17 @@ export class DialogueOrchestrator {
         shortTermKV: memoryContext.shortTermKV
       }
     )
+
+    // 🔍 DEBUG: 输出完整的 Prompt (Stream)
+    console.log('\n========== 🔍 DEBUG: LLM Stream Request ==========')
+    console.log('📋 System Prompt:')
+    console.log(system)
+    console.log('\n💬 Messages:', JSON.stringify(messages, null, 2))
+    console.log('\n🛠️  Tools Count:', toolSpecs?.length || 0)
+    if (toolSpecs && toolSpecs.length > 0) {
+      console.log('🛠️  Available Tools:', toolSpecs.map(t => t.function.name).join(', '))
+    }
+    console.log('==========================================\n')
 
     // 3. 流式 LLM 调用
     const fullMessages = [
@@ -284,6 +316,12 @@ export class DialogueOrchestrator {
           break
         }
       }
+
+      // 🔍 DEBUG: 输出完整流式响应
+      console.log('\n========== 🔍 DEBUG: LLM Stream Response ==========')
+      console.log('📝 Full Streamed Response:')
+      console.log(fullResponse)
+      console.log('==========================================\n')
 
       // 4. 解析完整响应
       const parsed = this.parseXMLResponse(fullResponse)

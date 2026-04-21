@@ -1,6 +1,19 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+// 加载环境变量（必须在最开始）
+import { config as dotenvConfig } from 'dotenv'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
+
+// 加载 .env 文件
+dotenvConfig({ path: join(__dirname, '../../.env') })
+
+console.log('[Env] LLM_API_KEY loaded:', process.env.LLM_API_KEY ? '✓' : '✗')
+console.log('[Env] LLM_MODEL:', process.env.LLM_MODEL || 'not set')
+console.log('[Env] LLM_BASE_URL:', process.env.LLM_BASE_URL || 'not set')
+
+import { app, BrowserWindow, ipcMain } from 'electron'
 import { TTSService } from './tts.js'
 import { HerTextSDK } from '@her-text/sdk'
 import {
@@ -8,9 +21,6 @@ import {
   getPersonalityManager,
   buildSDKConfig
 } from './sdk-config.js'
-
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
 const DEV_SERVER_URL = 'http://127.0.0.1:5173'
 
 let mainWindow: BrowserWindow | null = null
