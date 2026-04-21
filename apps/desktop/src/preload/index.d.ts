@@ -3,15 +3,50 @@ export {}
 declare global {
   interface Window {
     electronAPI: {
-      initializeConversation: (config: any) => Promise<{ success: boolean; error?: string; ttsEnabled?: boolean }>
-      sendText: (text: string, enableTTS: boolean) => Promise<{ success: boolean; error?: string; response?: string; ttsEnabled?: boolean }>
+      // 初始化（不再接收 config 参数）
+      initializeConversation: () => Promise<{
+        success: boolean
+        error?: string
+        ttsEnabled?: boolean
+        stats?: {
+          turns: number
+          tokens: number
+          historyVersion: number
+        }
+      }>
+
+      // 发送消息
+      sendText: (
+        text: string,
+        enableTTS: boolean
+      ) => Promise<{
+        success: boolean
+        error?: string
+        response?: string
+        ttsEnabled?: boolean
+      }>
+
+      // TTS 控制
       stopTTS: () => Promise<{ success: boolean; error?: string }>
+
+      // 对话历史
       clearHistory: () => Promise<{ success: boolean; error?: string }>
+
+      // 新增 SDK 功能
+      getMemory: () => Promise<any>
+      getPersonality: () => Promise<any>
+      getStats: () => Promise<any>
+
+      // 事件监听器
       onTTSAudio: (callback: (audioData: Uint8Array) => void) => void
       onTTSConnected: (callback: () => void) => void
       onTTSClosed: (callback: () => void) => void
       onTTSError: (callback: (error: string) => void) => void
       onConversationResponse: (callback: (text: string) => void) => void
+
+      // 窗口控制
+      moveWindow: (deltaX: number, deltaY: number) => void
+      getWindowPosition: () => Promise<[number, number]>
     }
   }
 }

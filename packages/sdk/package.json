@@ -9,6 +9,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./config/personality-loader": {
+      "types": "./dist/config/personality-loader.d.ts",
+      "import": "./dist/config/personality-loader.js",
+      "default": "./dist/config/personality-loader.js"
     }
   },
   "scripts": {
@@ -20,7 +25,8 @@
   "dependencies": {
     "@her-text/core": "workspace:*",
     "@her-text/types": "workspace:*",
-    "fish-audio": "^0.1.0"
+    "fish-audio": "^0.1.0",
+    "yaml": "^2.3.4"
   },
   "devDependencies": {
     "@types/jest": "^29.5.0",

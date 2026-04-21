@@ -1,8 +1,9 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  initializeConversation: (config) =>
-    ipcRenderer.invoke('conversation:initialize', config),
+  // 对话相关
+  initializeConversation: () =>
+    ipcRenderer.invoke('conversation:initialize'),
 
   sendText: (text, enableTTS) =>
     ipcRenderer.invoke('conversation:sendText', text, enableTTS),
@@ -13,6 +14,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   clearHistory: () =>
     ipcRenderer.invoke('conversation:clearHistory'),
 
+  // 新增 SDK 功能
+  getMemory: () =>
+    ipcRenderer.invoke('sdk:getMemory'),
+
+  getPersonality: () =>
+    ipcRenderer.invoke('sdk:getPersonality'),
+
+  getStats: () =>
+    ipcRenderer.invoke('sdk:getStats'),
+
+  // 事件监听
   onTTSAudio: (callback) => {
     ipcRenderer.on('tts:audio', (_, data) => callback(new Uint8Array(data)))
   },
@@ -33,6 +45,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('conversation:response', (_, text) => callback(text))
   },
 
+  // 窗口控制
   moveWindow: (deltaX, deltaY) => {
     ipcRenderer.send('window:move', deltaX, deltaY)
   },

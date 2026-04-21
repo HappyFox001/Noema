@@ -281,18 +281,6 @@ const startTextBtn = document.getElementById('start-text-btn') as HTMLButtonElem
 const textInput = document.getElementById('text-input') as HTMLInputElement
 const sendBtn = document.getElementById('send-btn') as HTMLButtonElement
 
-// 获取配置（从环境变量，Electron 中可以用）
-function getConfig() {
-  return {
-    llmApiKey: import.meta.env.VITE_LLM_API_KEY || '',
-    llmModel: import.meta.env.VITE_LLM_MODEL || 'deepseek-chat',
-    llmBaseURL: import.meta.env.VITE_LLM_BASE_URL || 'https://api.deepseek.com',
-    ttsApiKey: import.meta.env.VITE_FISH_API_KEY || '',
-    ttsVoiceId: import.meta.env.VITE_FISH_VOICE_ID,
-    ttsModel: import.meta.env.VITE_FISH_MODEL || 's2-pro',
-  }
-}
-
 async function initialize(mode: 'conversation' | 'text') {
   if (isInitialized) {
     activeMode = mode
@@ -301,23 +289,29 @@ async function initialize(mode: 'conversation' | 'text') {
     return
   }
 
-  setStatus(mode === 'conversation' ? 'Initializing conversation...' : 'Initializing text...')
+  setStatus(mode === 'conversation' ? 'Initializing...' : 'Initializing...')
   startConversationBtn.disabled = true
   startTextBtn.disabled = true
 
   try {
     await audioPlayer.initialize()
 
-    const config = getConfig()
-    const result = await window.electronAPI.initializeConversation(config)
+    // 调用初始化（不传 config）
+    const result = await window.electronAPI.initializeConversation()
 
     if (!result.success) {
-      throw new Error(result.error)
+      throw new Error(result.error || 'Initialization failed')
     }
 
     isInitialized = true
     activeMode = mode
     ttsEnabled = Boolean(result.ttsEnabled)
+
+    // 可选：输出 SDK 状态
+    if (result.stats) {
+      console.log('[SDK] Stats:', result.stats)
+    }
+
     setStatus(mode === 'conversation' ? 'Conversation Ready' : 'Text Ready')
     startConversationBtn.textContent = 'Conversation Ready'
     startTextBtn.textContent = 'Text Ready'

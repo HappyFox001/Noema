@@ -18,8 +18,10 @@
     "@her-text/core": "workspace:*",
     "@her-text/sdk": "workspace:*",
     "@her-text/types": "workspace:*",
+    "chokidar": "^3.5.3",
     "fish-audio": "^0.1.0",
-    "openai": "^4.28.0"
+    "openai": "^4.28.0",
+    "yaml": "^2.3.4"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
