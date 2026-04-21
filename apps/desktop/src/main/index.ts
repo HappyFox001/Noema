@@ -37,8 +37,7 @@ console.log('[Env] LLM_MODEL:', process.env.LLM_MODEL || '✗ (not set)')
 console.log('[Env] LLM_BASE_URL:', process.env.LLM_BASE_URL || '✗ (not set)')
 
 import { app, BrowserWindow, ipcMain } from 'electron'
-import { TTSService } from './tts.js'
-import { HerTextSDK } from '@her-text/sdk'
+import { HerTextSDK, FishTTSOfficial } from '@her-text/sdk'
 import {
   initializePersonalityManager,
   getPersonalityManager,
@@ -47,7 +46,7 @@ import {
 const DEV_SERVER_URL = 'http://127.0.0.1:5173'
 
 let mainWindow: BrowserWindow | null = null
-let ttsService: TTSService | null = null
+let ttsService: FishTTSOfficial | null = null
 let sdkInstance: HerTextSDK | null = null
 
 function isDevMode(): boolean {
@@ -174,32 +173,36 @@ ipcMain.handle('conversation:initialize', async () => {
     sdkInstance = await HerTextSDK.initialize(sdkConfig)
     console.log('[SDK] Initialized successfully')
 
-    // 初始化 TTS（独立于 SDK）
+    // 初始化 TTS（使用 SDK）
     if (process.env.FISH_API_KEY?.trim()) {
-      ttsService = new TTSService(
-        process.env.FISH_API_KEY,
-        process.env.FISH_VOICE_ID || '',
-        process.env.FISH_MODEL || 's2-pro'
-      )
+      ttsService = new FishTTSOfficial({
+        apiKey: process.env.FISH_API_KEY,
+        voiceId: process.env.FISH_VOICE_ID,
+        model: process.env.FISH_MODEL || 's2-pro',
+        format: 'pcm',
+        sampleRate: 16000,
+        latency: 'balanced'
+      })
 
       // 设置 TTS 事件处理
-      ttsService.on('audio', (audioData) => {
-        mainWindow?.webContents.send('tts:audio', audioData)
+      ttsService.setEventHandler((event) => {
+        switch (event.type) {
+          case 'connected':
+            mainWindow?.webContents.send('tts:connected')
+            break
+          case 'audio':
+            mainWindow?.webContents.send('tts:audio', event.audio)
+            break
+          case 'closed':
+            mainWindow?.webContents.send('tts:closed')
+            break
+          case 'error':
+            mainWindow?.webContents.send('tts:error', event.error.message)
+            break
+        }
       })
 
-      ttsService.on('connected', () => {
-        mainWindow?.webContents.send('tts:connected')
-      })
-
-      ttsService.on('closed', () => {
-        mainWindow?.webContents.send('tts:closed')
-      })
-
-      ttsService.on('error', (error) => {
-        mainWindow?.webContents.send('tts:error', error.message)
-      })
-
-      console.log('[TTS] Initialized successfully')
+      console.log('[TTS] Initialized successfully (using SDK)')
     } else {
       ttsService = null
       console.log('[TTS] Disabled: missing Fish Audio API key')
@@ -230,39 +233,32 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
       await ttsService.startStreaming()
     }
 
-    // 使用 SDK 的 chatStream（参数改为对象）
-    const responseStream = sdkInstance.chatStream({
-      text,
-      timestamp: Date.now()
-    })
-    let fullResponse = ''
-    let buffer = ''
+    // 使用 SDK 的 chatStream，TTS 分句逻辑由 SDK 处理
+    const responseStream = sdkInstance.chatStream(
+      {
+        text,
+        timestamp: Date.now()
+      },
+      shouldUseTTS && ttsService
+        ? {
+            onTTSChunk: async (chunk) => {
+              await ttsService!.pushText(chunk)
+            }
+          }
+        : undefined
+    )
 
+    let fullResponse = ''
     for await (const chunk of responseStream) {
       fullResponse += chunk
-      buffer += chunk
-
       // 发送到渲染进程显示
       mainWindow?.webContents.send('conversation:response', fullResponse)
-
-      // 推送到 TTS（每句话或达到一定长度）
-      if (shouldUseTTS && ttsService && shouldFlushTTS(buffer)) {
-        await ttsService.pushText(buffer)
-        buffer = ''
-      }
-    }
-
-    // 推送剩余文本到 TTS
-    if (shouldUseTTS && ttsService && buffer.trim()) {
-      await ttsService.pushText(buffer)
     }
 
     // 完成 TTS
     if (shouldUseTTS && ttsService) {
       await ttsService.finishStreaming()
     }
-
-    // 记忆会自动由 SDK 保存
 
     return { success: true, response: fullResponse, ttsEnabled: shouldUseTTS }
   } catch (error: any) {
@@ -274,7 +270,7 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
 // 停止 TTS
 ipcMain.handle('tts:stop', async () => {
   try {
-    await ttsService?.stop()
+    await ttsService?.close()
     return { success: true }
   } catch (error: any) {
     return { success: false, error: error.message }
@@ -334,12 +330,5 @@ ipcMain.handle('sdk:getStats', async () => {
     return null
   }
 })
-
-// ========== Helper Functions ==========
-
-function shouldFlushTTS(buffer: string): boolean {
-  const trimmed = buffer.trim()
-  return trimmed.length >= 18 || /[。！？.!?]\s*$/.test(trimmed)
-}
 
 console.log('Her-Text Electron app started')

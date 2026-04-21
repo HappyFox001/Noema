@@ -58,8 +58,11 @@ export class HerTextSDK {
   /**
    * 发送消息（流式）
    */
-  async *chatStream(input: UserInput): AsyncGenerator<string> {
-    yield* this.dialogue.processUserInputStream(input)
+  async *chatStream(
+    input: UserInput,
+    options?: import('./dialogue/index.js').StreamOptions
+  ): AsyncGenerator<string> {
+    yield* this.dialogue.processUserInputStream(input, options)
   }
 
   /**

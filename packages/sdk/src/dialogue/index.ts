@@ -6,6 +6,14 @@ import type { AgentCore } from '../agent/index.js'
 import { ContextManager, type ResponseItem, type TruncationPolicy } from '../context/index.js'
 import { PromptBuilder } from '../prompt/index.js'
 
+/**
+ * 流式输出选项
+ */
+export interface StreamOptions {
+  /** TTS 文本块回调（SDK 自动处理分句） */
+  onTTSChunk?: (text: string) => Promise<void>
+}
+
 function scheduleAsyncTask(task: () => Promise<void>): void {
   const run = () => {
     void task().catch((error) => {
@@ -243,7 +251,10 @@ export class DialogueOrchestrator {
   /**
    * 流式处理用户输入
    */
-  async *processUserInputStream(input: UserInput): AsyncGenerator<string> {
+  async *processUserInputStream(
+    input: UserInput,
+    options?: StreamOptions
+  ): AsyncGenerator<string> {
     // 1. 准备阶段
     const memoryContext = await this.memory.retrieve(input.text)
 
@@ -291,6 +302,7 @@ export class DialogueOrchestrator {
 
     let fullResponse = ''
     let emittedReplyLength = 0
+    let ttsBuffer = '' // TTS 文本缓冲
 
     try {
       for await (const chunk of this.llm.streamChat(fullMessages)) {
@@ -311,11 +323,25 @@ export class DialogueOrchestrator {
         if (delta) {
           emittedReplyLength = visibleReply.length
           yield delta
+
+          // TTS 处理：累积文本并按句子推送
+          if (options?.onTTSChunk) {
+            ttsBuffer += delta
+            if (this.shouldFlushTTS(ttsBuffer)) {
+              await options.onTTSChunk(ttsBuffer)
+              ttsBuffer = ''
+            }
+          }
         }
 
         if (replyEnd !== -1) {
           break
         }
+      }
+
+      // 推送剩余的 TTS 文本
+      if (options?.onTTSChunk && ttsBuffer.trim()) {
+        await options.onTTSChunk(ttsBuffer)
       }
 
       // 🔍 DEBUG: 输出完整流式响应
@@ -404,6 +430,16 @@ export class DialogueOrchestrator {
 - 简洁自然，避免冗长
 - 适当使用口语化表达
 - 避免生硬的 AI 腔调`
+  }
+
+  /**
+   * 判断是否应该推送 TTS 文本
+   * 策略：达到一定长度或遇到句子结束符
+   */
+  private shouldFlushTTS(buffer: string): boolean {
+    const trimmed = buffer.trim()
+    // 至少 18 个字符，或者遇到句子结束符
+    return trimmed.length >= 18 || /[。！？.!?]\s*$/.test(trimmed)
   }
 
   /**

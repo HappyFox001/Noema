@@ -1,4 +1,4 @@
-import type { RealtimeWebSocketTransport } from './fish-realtime-tts.js'
+import type { RealtimeWebSocketTransport } from './websocket-transport.js'
 
 export interface QwenRealtimeASRConfig {
   apiKey: string
