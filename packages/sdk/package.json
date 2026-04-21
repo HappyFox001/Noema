@@ -18,14 +18,15 @@
     "test": "jest"
   },
   "dependencies": {
-    "@her-text/types": "workspace:*",
     "@her-text/core": "workspace:*",
-    "@tauri-apps/api": "^2.0.0"
+    "@her-text/types": "workspace:*",
+    "@tauri-apps/api": "^2.0.0",
+    "fish-audio": "^0.1.0"
   },
   "devDependencies": {
+    "@types/jest": "^29.5.0",
     "@types/node": "^20.11.0",
-    "typescript": "^5.4.0",
     "jest": "^29.7.0",
-    "@types/jest": "^29.5.0"
+    "typescript": "^5.4.0"
   }
 }

@@ -64,7 +64,6 @@ export class FishRealtimeTTS {
       url: wsUrl,
       headers: {
         Authorization: `Bearer ${this.config.apiKey}`,
-        model: this.config.model || 's2-pro',
       },
     })
 
@@ -129,6 +128,10 @@ export class FishRealtimeTTS {
 
     if (this.config.voiceId) {
       request.reference_id = this.config.voiceId
+    }
+
+    if (this.config.model) {
+      request.model = this.config.model
     }
 
     return request
