@@ -58,9 +58,9 @@ body {
   height: 180px;
   display: block;
   background: transparent !important;
-  cursor: grab;
-  -webkit-app-region: drag;
-  app-region: drag;
+  cursor: default;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .controls,

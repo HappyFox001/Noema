@@ -107,6 +107,9 @@ let orbState: OrbState = {
   breatheRate: 1.2
 }
 
+// Store current radius for mouse detection
+let currentOrbRadius = 22
+
 function drawOrb() {
   ctx.clearRect(0, 0, canvas.width, canvas.height)
 
@@ -114,19 +117,8 @@ function drawOrb() {
   const centerY = canvas.height / 2
   const time = Date.now() / 1000
   const breathe = Math.sin(time * orbState.breatheRate) * 1.8
-  const glowPulse = (Math.sin(time * orbState.breatheRate) + 1) * 0.5
   const currentRadius = 22 + breathe
-  const glowRadius = currentRadius + 10 + orbState.glow * glowPulse
-
-  const ambientGlow = ctx.createRadialGradient(centerX, centerY, currentRadius * 0.5, centerX, centerY, glowRadius)
-  ambientGlow.addColorStop(0, 'rgba(255, 255, 255, 0.10)')
-  ambientGlow.addColorStop(0.45, 'rgba(20, 20, 20, 0.18)')
-  ambientGlow.addColorStop(1, 'rgba(0, 0, 0, 0)')
-
-  ctx.fillStyle = ambientGlow
-  ctx.beginPath()
-  ctx.arc(centerX, centerY, glowRadius, 0, Math.PI * 2)
-  ctx.fill()
+  currentOrbRadius = currentRadius // Update for mouse detection
 
   ctx.save()
   ctx.shadowColor = 'rgba(0, 0, 0, 0.55)'
@@ -173,6 +165,83 @@ function drawOrb() {
 }
 
 drawOrb()
+
+// Helper function to check if point is inside orb
+function isPointInOrb(clientX: number, clientY: number): boolean {
+  const rect = canvas.getBoundingClientRect()
+  const x = clientX - rect.left
+  const y = clientY - rect.top
+  const centerX = canvas.width / 2
+  const centerY = canvas.height / 2
+
+  const dx = x - centerX
+  const dy = y - centerY
+  const distance = Math.sqrt(dx * dx + dy * dy)
+
+  return distance <= currentOrbRadius
+}
+
+// Track drag state
+let isDragging = false
+let lastMouseX = 0
+let lastMouseY = 0
+
+// Mouse interaction for orb dragging
+canvas.addEventListener('mousemove', (e) => {
+  if (isDragging) {
+    // Calculate movement delta
+    const deltaX = e.screenX - lastMouseX
+    const deltaY = e.screenY - lastMouseY
+
+    // Update last position
+    lastMouseX = e.screenX
+    lastMouseY = e.screenY
+
+    // Move window
+    window.electronAPI.moveWindow(deltaX, deltaY)
+  } else if (isPointInOrb(e.clientX, e.clientY)) {
+    canvas.style.cursor = 'grab'
+  } else {
+    canvas.style.cursor = 'default'
+  }
+})
+
+// Reset cursor when mouse leaves canvas
+canvas.addEventListener('mouseleave', () => {
+  if (!isDragging) {
+    canvas.style.cursor = 'default'
+  }
+})
+
+// Start dragging when mouse down on orb
+canvas.addEventListener('mousedown', (e) => {
+  if (isPointInOrb(e.clientX, e.clientY)) {
+    isDragging = true
+    lastMouseX = e.screenX
+    lastMouseY = e.screenY
+    canvas.style.cursor = 'grabbing'
+  }
+})
+
+// Stop dragging on mouse up
+canvas.addEventListener('mouseup', (e) => {
+  if (isDragging) {
+    isDragging = false
+    if (isPointInOrb(e.clientX, e.clientY)) {
+      canvas.style.cursor = 'grab'
+    } else {
+      canvas.style.cursor = 'default'
+    }
+  }
+})
+
+// Handle global mouse up to stop dragging even if released outside canvas
+document.addEventListener('mouseup', () => {
+  if (isDragging) {
+    isDragging = false
+    canvas.style.cursor = 'default'
+  }
+})
 
 function setOrbMode(mode: 'idle' | 'thinking' | 'speaking') {
   orbState.mode = mode

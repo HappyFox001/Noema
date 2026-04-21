@@ -84,6 +84,23 @@ app.on('window-all-closed', () => {
 
 // ========== IPC Handlers ==========
 
+// 窗口拖拽
+ipcMain.on('window:move', (event, deltaX, deltaY) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (win) {
+    const [x, y] = win.getPosition()
+    win.setPosition(x + deltaX, y + deltaY)
+  }
+})
+
+ipcMain.handle('window:get-position', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (win) {
+    return win.getPosition()
+  }
+  return [0, 0]
+})
+
 // 初始化对话服务
 ipcMain.handle('conversation:initialize', async (_, config) => {
   try {

@@ -32,4 +32,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onConversationResponse: (callback) => {
     ipcRenderer.on('conversation:response', (_, text) => callback(text))
   },
+
+  moveWindow: (deltaX, deltaY) => {
+    ipcRenderer.send('window:move', deltaX, deltaY)
+  },
+
+  getWindowPosition: () => {
+    return ipcRenderer.invoke('window:get-position')
+  },
 })
