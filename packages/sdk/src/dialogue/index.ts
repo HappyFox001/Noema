@@ -110,6 +110,7 @@ export class DialogueOrchestrator {
         // 如果有工具，添加到选项
         if (toolSpecs && toolSpecs.length > 0) {
           llmOptions.tools = toolSpecs
+          llmOptions.tool_choice = 'auto'  // 明确告诉模型可以自动选择使用工具
         }
 
         // 构建完整的消息列表

@@ -279,7 +279,9 @@ export class PromptBuilder {
     xml += '- 只有 <reply> 标签内的内容会被展示给用户\n'
 
     if (hasTools) {
-      xml += '- 如果需要使用工具，直接调用即可（通过 function calling 机制）\n'
+      xml += '- **重要：当用户请求执行操作时（如创建文件、搜索、运行命令等），你必须使用工具（function calling）来完成，而不是仅仅解释如何操作**\n'
+      xml += '- 工具调用是自动执行的，你只需通过 function calling 机制调用相应的工具即可\n'
+      xml += '- 不要在回复中写命令或代码块来"示范"如何操作，而是直接调用工具\n'
     }
 
     xml += '- <thinking> 是可选的，用于内部处理\n'

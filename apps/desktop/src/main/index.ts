@@ -2,16 +2,39 @@
 import { config as dotenvConfig } from 'dotenv'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
+import { existsSync } from 'fs'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
-// 加载 .env 文件
-dotenvConfig({ path: join(__dirname, '../../.env') })
+// 尝试多个可能的 .env 文件位置
+const possibleEnvPaths = [
+  join(__dirname, '../.env'),           // apps/desktop/.env (from dist/)
+  join(__dirname, '../../.env'),        // project root .env
+  join(process.cwd(), '.env'),          // current working directory
+  join(process.cwd(), 'apps/desktop/.env')  // from project root
+]
 
-console.log('[Env] LLM_API_KEY loaded:', process.env.LLM_API_KEY ? '✓' : '✗')
-console.log('[Env] LLM_MODEL:', process.env.LLM_MODEL || 'not set')
-console.log('[Env] LLM_BASE_URL:', process.env.LLM_BASE_URL || 'not set')
+let envLoaded = false
+for (const envPath of possibleEnvPaths) {
+  if (existsSync(envPath)) {
+    const result = dotenvConfig({ path: envPath })
+    if (!result.error && result.parsed) {
+      console.log('[Env] ✓ Loaded from:', envPath)
+      console.log('[Env] Variables loaded:', Object.keys(result.parsed).length)
+      envLoaded = true
+      break
+    }
+  }
+}
+
+if (!envLoaded) {
+  console.warn('[Env] ⚠️  No .env file found in:', possibleEnvPaths)
+}
+
+console.log('[Env] LLM_API_KEY:', process.env.LLM_API_KEY ? '✓ (set)' : '✗ (not set)')
+console.log('[Env] LLM_MODEL:', process.env.LLM_MODEL || '✗ (not set)')
+console.log('[Env] LLM_BASE_URL:', process.env.LLM_BASE_URL || '✗ (not set)')
 
 import { app, BrowserWindow, ipcMain } from 'electron'
 import { TTSService } from './tts.js'
