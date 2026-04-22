@@ -431,6 +431,8 @@ function handleConversationFrame(frame: ConversationFrame) {
       if (frame.phase === 'reply') {
         setStatus('Replying...')
       } else if (frame.phase === 'task_result') {
+        // 任务结果阶段开始前，清空之前的文字
+        textRevealer.reset()
         setStatus('Sharing result...')
       }
       setOrbMode('speaking')

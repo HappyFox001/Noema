@@ -257,21 +257,22 @@ export class DialogueOrchestrator {
       let ttsChunkCount = 0
       const flushedTTSChunks: string[] = []
       const flushTTSChunk = async (text: string, kind: 'normal' | 'remaining') => {
-        const nextText = text.trim()
-        if (!nextText) {
+        // 过滤掉 emoji 和异常符号，只保留正常文字和标点
+        const sanitizedText = self.sanitizeForTTS(text)
+        if (!sanitizedText) {
           return
         }
 
         ttsChunkCount += 1
-        flushedTTSChunks.push(nextText)
+        flushedTTSChunks.push(sanitizedText)
 
         if (kind === 'remaining') {
-          console.log(`[SDK] Flushing remaining TTS chunk #${ttsChunkCount}:`, JSON.stringify(nextText))
+          console.log(`[SDK] Flushing remaining TTS chunk #${ttsChunkCount}:`, JSON.stringify(sanitizedText))
         } else {
-          console.log(`[SDK] Flushing TTS chunk #${ttsChunkCount}:`, JSON.stringify(nextText))
+          console.log(`[SDK] Flushing TTS chunk #${ttsChunkCount}:`, JSON.stringify(sanitizedText))
         }
 
-        await streamOptions?.onTTSChunk?.(nextText)
+        await streamOptions?.onTTSChunk?.(sanitizedText)
       }
 
       for await (const chunk of self.llm.streamChat(fullMessages, { max_tokens: 2048 })) {
@@ -567,6 +568,32 @@ export class DialogueOrchestrator {
 
   private stripTrailingXmlFragment(text: string): string {
     return text.replace(/<[^>]*$/, '')
+  }
+
+  /**
+   * 过滤 TTS 文字，去除 emoji 和异常符号
+   * 保留：中文、英文、数字、常用标点
+   */
+  private sanitizeForTTS(text: string): string {
+    // 移除 emoji 和特殊符号
+    // 保留：中文字符、英文字母、数字、常用中英文标点、空格
+    const sanitized = text
+      .replace(/[\u{1F300}-\u{1F9FF}]/gu, '')  // Emoji
+      .replace(/[\u{2600}-\u{26FF}]/gu, '')    // 杂项符号
+      .replace(/[\u{2700}-\u{27BF}]/gu, '')    // 装饰符号
+      .replace(/[\u{FE00}-\u{FE0F}]/gu, '')    // 变体选择符
+      .replace(/[\u{1F000}-\u{1F02F}]/gu, '')  // 麻将牌
+      .replace(/[\u{1F0A0}-\u{1F0FF}]/gu, '')  // 扑克牌
+      .replace(/[\u{200D}]/gu, '')              // 零宽连接符
+      .replace(/[\u{20E3}]/gu, '')              // 组合用封闭键帽
+      .replace(/[\u{E0020}-\u{E007F}]/gu, '')  // 标签字符
+      .replace(/[★☆●○◆◇■□▲△▼▽◎※]/g, '')      // 常见特殊符号
+      .replace(/[♪♫♬♩♭♮♯]/g, '')              // 音乐符号
+      .replace(/[←→↑↓↔↕↖↗↘↙]/g, '')          // 箭头符号
+      .replace(/\s+/g, ' ')                     // 合并多余空格
+      .trim()
+
+    return sanitized
   }
 
 }
