@@ -1,7 +1,7 @@
 import type { SDKConfig, UserInput, AgentResponse } from '@her-text/types'
 import { MemoryEngine } from './memory/index.js'
 import { PersonalityEngine } from './personality/index.js'
-import { AgentCore, AgentRegistry } from './agent/index.js'
+import { AgentCore } from './agent/index.js'
 import { DialogueOrchestrator } from './dialogue/index.js'
 import { ContextManager } from './context/index.js'
 import { createLLMProvider, type LLMProvider } from '@her-text/core'
@@ -21,7 +21,6 @@ export class HerTextSDK {
   public memory: MemoryEngine
   public personality: PersonalityEngine
   public agent: AgentCore
-  public registry: AgentRegistry
   private dialogue: DialogueOrchestrator
   private llm: LLMProvider
 
@@ -31,7 +30,6 @@ export class HerTextSDK {
     this.memory = new MemoryEngine(config.memory, this.llm)
     this.personality = new PersonalityEngine(config.personality)
     this.agent = new AgentCore()
-    this.registry = new AgentRegistry()
     createDefaultTools().forEach(tool => this.agent.registerTool(tool))
 
     this.dialogue = new DialogueOrchestrator(
@@ -52,7 +50,15 @@ export class HerTextSDK {
    * 发送消息（阻塞式）
    */
   async chat(input: UserInput): Promise<AgentResponse> {
-    return this.dialogue.processUserInput(input)
+    const chunks: string[] = []
+    for await (const chunk of this.dialogue.processUserInputStream(input)) {
+      chunks.push(chunk)
+    }
+
+    return {
+      text: chunks.join(''),
+      shouldSpeak: true
+    }
   }
 
   /**
@@ -110,3 +116,4 @@ export * from './context/index.js'
 export * from './prompt/index.js'
 export * from './tools/index.js'
 export * from './audio/index.js'
+export * from './session/session.js'
