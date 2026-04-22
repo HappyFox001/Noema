@@ -36,13 +36,15 @@ export class HerTextSDK {
       this.llm,
       this.memory,
       this.personality,
-      this.agent
+      this.agent,
+      config.memory.storageDir
     )
   }
 
   static async initialize(config: SDKConfig): Promise<HerTextSDK> {
     const sdk = new HerTextSDK(config)
     await sdk.memory.initialize()
+    await sdk.dialogue.initialize()
     return sdk
   }
 
@@ -103,6 +105,7 @@ export class HerTextSDK {
    * 关闭 SDK
    */
   async shutdown(): Promise<void> {
+    await this.dialogue.shutdown()
     await this.memory.shutdown()
   }
 }

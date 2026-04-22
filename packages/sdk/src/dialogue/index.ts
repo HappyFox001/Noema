@@ -53,12 +53,21 @@ export class DialogueOrchestrator {
     private llm: LLMProvider,
     private memory: MemoryEngine,
     private personality: PersonalityEngine,
-    private agent: AgentCore
+    private agent: AgentCore,
+    storageDir: string
   ) {
     this.context = new ContextManager()
-    this.taskSession = new TaskSession(llm, memory, personality, agent, this.context)
+    this.taskSession = new TaskSession(llm, memory, personality, agent, this.context, storageDir)
 
     this.memory.setLLM(llm)
+  }
+
+  async initialize(): Promise<void> {
+    await this.taskSession.initialize()
+  }
+
+  async shutdown(): Promise<void> {
+    await this.taskSession.shutdown()
   }
 
   async *processUserInputStream(
