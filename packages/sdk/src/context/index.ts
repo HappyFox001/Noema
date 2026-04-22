@@ -1,7 +1,7 @@
 import type { ConversationTurn } from '@her-text/types'
 
 export interface ResponseItem {
-  role: 'user' | 'assistant' | 'system'
+  role: 'user' | 'assistant' | 'system' | 'tool'
   content: string
   timestamp: number
   toolCalls?: any[]
@@ -186,7 +186,7 @@ export class ContextManager {
     let lastRole: string | null = null
 
     for (const item of items) {
-      if (item.role === 'system') {
+      if (item.role === 'system' || item.role === 'tool') {
         result.push(item)
         continue
       }

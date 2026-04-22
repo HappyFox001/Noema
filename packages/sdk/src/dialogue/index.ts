@@ -103,11 +103,12 @@ export class DialogueOrchestrator {
 
         const taskResult = await this.taskSession.runTask(firstResult.taskDescription, input.text)
 
-        // 将任务执行结果记录到上下文（作为系统消息）
-        const taskResultContext = this.formatTaskResultForContext(taskResult)
+        // 将任务执行结果记录到上下文（作为精简的 tool result）
+        const taskResultContext = this.formatTaskResultForContext(firstResult.taskDescription, taskResult)
         this.context.recordItems([{
-          role: 'system',
-          content: taskResultContext,
+          role: 'tool',
+          content: 'task_runtime_result',
+          toolResults: [taskResultContext],
           timestamp: Date.now()
         }])
 
@@ -277,20 +278,21 @@ export class DialogueOrchestrator {
   /**
    * 格式化任务结果为上下文
    */
-  private formatTaskResultForContext(taskResult: Awaited<ReturnType<TaskSession['runTask']>>): string {
-    const lines = [
-      `[任务执行完成]`,
-      `状态: ${taskResult.success ? '成功' : '失败'}`,
-      `执行轮次: ${taskResult.iterations}`,
-      `工具调用次数: ${taskResult.toolCalls}`,
-      `结果: ${taskResult.finalMessage}`
-    ]
-
-    if (taskResult.error) {
-      lines.push(`错误: ${taskResult.error}`)
+  private formatTaskResultForContext(
+    task: string,
+    taskResult: Awaited<ReturnType<TaskSession['runTask']>>
+  ): {
+    task: string
+    success: boolean
+    summary: string
+    error?: string
+  } {
+    return {
+      task,
+      success: taskResult.success,
+      summary: taskResult.finalMessage,
+      ...(taskResult.error ? { error: taskResult.error } : {})
     }
-
-    return lines.join('\n')
   }
 
   /**
