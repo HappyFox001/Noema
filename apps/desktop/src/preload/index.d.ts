@@ -56,6 +56,9 @@ declare global {
         success: boolean
         summary: string
         error?: string
+      } | {
+        type: 'data.tts_text'
+        text: string
       }) => void) => void
 
       // 窗口控制

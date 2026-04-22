@@ -7,10 +7,21 @@ class AudioPlayer {
   private isPlaying = false
   private audioQueue: AudioBuffer[] = []
   private nextStartTime = 0
+  private onChunkScheduled?: (payload: { startTime: number; duration: number }) => void
 
   async initialize(): Promise<void> {
     this.audioContext = new AudioContext({ sampleRate: 16000 })
     console.log('[AudioPlayer] Initialized')
+  }
+
+  setChunkScheduledHandler(
+    handler: (payload: { startTime: number; duration: number }) => void
+  ): void {
+    this.onChunkScheduled = handler
+  }
+
+  getCurrentTime(): number {
+    return this.audioContext?.currentTime ?? 0
   }
 
   private pcm16ToAudioBuffer(pcm16Bytes: Uint8Array): AudioBuffer {
@@ -46,6 +57,7 @@ class AudioPlayer {
 
     source.start(startTime)
     this.nextStartTime = startTime + buffer.duration
+    this.onChunkScheduled?.({ startTime, duration: buffer.duration })
 
     source.onended = () => {
       if (this.audioQueue.length > 0) {
@@ -84,9 +96,135 @@ class AudioPlayer {
   }
 }
 
+type RevealUnit = {
+  text: string
+  weight: number
+}
+
+class AudioSyncedTextRevealer {
+  private pendingChunks: RevealUnit[][] = []
+  private visibleText = ''
+  private generation = 0
+
+  constructor(
+    private getAudioTime: () => number,
+    private onReveal: (text: string) => void
+  ) {}
+
+  reset(): void {
+    this.pendingChunks = []
+    this.visibleText = ''
+    this.generation += 1
+    this.onReveal('')
+  }
+
+  enqueueText(text: string): void {
+    const chunk: RevealUnit[] = []
+    for (const char of Array.from(text)) {
+      chunk.push({
+        text: char,
+        weight: revealWeight(char)
+      })
+    }
+
+    if (chunk.length > 0) {
+      this.pendingChunks.push(chunk)
+    }
+  }
+
+  scheduleAudioWindow(startTime: number, duration: number): void {
+    if (duration <= 0 || this.pendingChunks.length === 0) {
+      return
+    }
+
+    const budget = duration / 0.085
+    const units = this.consumeUnitsForBudget(budget)
+    if (units.length === 0) {
+      return
+    }
+
+    const totalWeight = units.reduce((sum, unit) => sum + unit.weight, 0)
+    const generation = this.generation
+    let elapsed = 0
+
+    for (const unit of units) {
+      const revealAt = startTime + elapsed
+      const unitDuration = duration * (unit.weight / totalWeight)
+      this.scheduleReveal(unit.text, revealAt, generation)
+      elapsed += unitDuration
+    }
+  }
+
+  private consumeUnitsForBudget(budget: number): RevealUnit[] {
+    const currentChunk = this.pendingChunks[0]
+    if (!currentChunk || currentChunk.length === 0) {
+      if (currentChunk && currentChunk.length === 0) {
+        this.pendingChunks.shift()
+      }
+      return []
+    }
+
+    let remaining = budget
+    const consumed: RevealUnit[] = []
+
+    while (currentChunk.length > 0) {
+      const next = currentChunk[0]
+
+      if (consumed.length > 0 && remaining < next.weight) {
+        break
+      }
+
+      consumed.push(currentChunk.shift()!)
+      remaining -= next.weight
+
+      if (remaining <= 0) {
+        break
+      }
+    }
+
+    if (currentChunk.length === 0) {
+      this.pendingChunks.shift()
+    }
+
+    return consumed
+  }
+
+  private scheduleReveal(text: string, revealAt: number, generation: number): void {
+    const delayMs = Math.max(0, (revealAt - this.getAudioTime()) * 1000)
+    window.setTimeout(() => {
+      if (generation !== this.generation) {
+        return
+      }
+
+      this.visibleText += text
+      this.onReveal(this.visibleText)
+    }, delayMs)
+  }
+}
+
+function revealWeight(char: string): number {
+  if (!char.trim()) {
+    return 0.18
+  }
+
+  if (/[，。！？、；：,.!?]/.test(char)) {
+    return 1.8
+  }
+
+  if (/[A-Za-z0-9]/.test(char)) {
+    return 0.55
+  }
+
+  return 1
+}
+
 // ========== UI ==========
 
 const audioPlayer = new AudioPlayer()
+const textRevealer = new AudioSyncedTextRevealer(
+  () => audioPlayer.getCurrentTime(),
+  (text) => setTextDisplay(text)
+)
 let isInitialized = false
 let activeMode: 'conversation' | 'text' | null = null
 let ttsEnabled = false
@@ -97,6 +235,7 @@ type ConversationFrame =
   | { type: 'control.phase_end'; phase: 'reply' | 'task' | 'task_result' }
   | { type: 'control.task_start'; taskDescription: string }
   | { type: 'control.task_end'; success: boolean; summary: string; error?: string }
+  | { type: 'data.tts_text'; text: string }
 
 // Canvas rendering
 const canvas = document.getElementById('orb-canvas') as HTMLCanvasElement
@@ -284,7 +423,7 @@ function clearTextDisplay() {
 function handleConversationFrame(frame: ConversationFrame) {
   switch (frame.type) {
     case 'system.reset':
-      clearTextDisplay()
+      textRevealer.reset()
       setStatus('Thinking...')
       setOrbMode('thinking')
       break
@@ -311,6 +450,9 @@ function handleConversationFrame(frame: ConversationFrame) {
         setStatus(frame.error ? `Task Error: ${frame.error}` : 'Task failed')
       }
       break
+    case 'data.tts_text':
+      textRevealer.enqueueText(frame.text)
+      break
   }
 }
 
@@ -335,6 +477,9 @@ async function initialize(mode: 'conversation' | 'text') {
 
   try {
     await audioPlayer.initialize()
+    audioPlayer.setChunkScheduledHandler(({ startTime, duration }) => {
+      textRevealer.scheduleAudioWindow(startTime, duration)
+    })
 
     // 调用初始化（不传 config）
     const result = await window.electronAPI.initializeConversation()
@@ -364,7 +509,9 @@ async function initialize(mode: 'conversation' | 'text') {
 
     // 监听对话响应
     window.electronAPI.onConversationResponse((text) => {
-      setTextDisplay(text)
+      if (!ttsEnabled) {
+        setTextDisplay(text)
+      }
     })
 
     window.electronAPI.onConversationFrame((frame) => {
@@ -411,6 +558,7 @@ async function sendMessage() {
   textInput.value = ''
 
   audioPlayer.stop()
+  textRevealer.reset()
   setOrbMode('thinking')
   clearTextDisplay()
 

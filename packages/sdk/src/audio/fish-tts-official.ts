@@ -25,6 +25,8 @@ export class FishTTSOfficial {
   private onEvent?: (event: FishTTSOfficialEvent) => void
   private currentConnection: any = null
   private textQueue: string[] = []
+  private pushedTextCount = 0
+  private yieldedTextCount = 0
   private isStreaming = false
   private closePromise: Promise<void> | null = null
   private closeResolver: (() => void) | null = null
@@ -49,6 +51,8 @@ export class FishTTSOfficial {
 
     this.isStreaming = true
     this.textQueue = []
+    this.pushedTextCount = 0
+    this.yieldedTextCount = 0
     this.closePromise = new Promise((resolve) => {
       this.closeResolver = resolve
     })
@@ -131,7 +135,8 @@ export class FishTTSOfficial {
       return
     }
 
-    console.log('[FishTTSOfficial] Pushing text:', text)
+    this.pushedTextCount += 1
+    console.log(`[FishTTSOfficial] Queued text #${this.pushedTextCount}:`, JSON.stringify(text))
     this.textQueue.push(text)
   }
 
@@ -179,6 +184,8 @@ export class FishTTSOfficial {
     while (this.isStreaming || this.textQueue.length > 0) {
       if (this.textQueue.length > 0) {
         const text = this.textQueue.shift()!
+        this.yieldedTextCount += 1
+        console.log(`[FishTTSOfficial] Yielding text #${this.yieldedTextCount} to websocket:`, JSON.stringify(text))
         yield text
       } else {
         await new Promise((resolve) => setTimeout(resolve, 50))
@@ -199,5 +206,7 @@ export class FishTTSOfficial {
   private resetStreamingState(): void {
     this.isStreaming = false
     this.textQueue = []
+    this.pushedTextCount = 0
+    this.yieldedTextCount = 0
   }
 }

@@ -252,6 +252,25 @@ export class DialogueOrchestrator {
     async function* streamGenerator(): AsyncGenerator<string> {
       let ttsBuffer = ''
       let emittedReplyLength = 0
+      let ttsChunkCount = 0
+      const flushedTTSChunks: string[] = []
+      const flushTTSChunk = async (text: string, kind: 'normal' | 'remaining') => {
+        const nextText = text.trim()
+        if (!nextText) {
+          return
+        }
+
+        ttsChunkCount += 1
+        flushedTTSChunks.push(nextText)
+
+        if (kind === 'remaining') {
+          console.log(`[SDK] Flushing remaining TTS chunk #${ttsChunkCount}:`, JSON.stringify(nextText))
+        } else {
+          console.log(`[SDK] Flushing TTS chunk #${ttsChunkCount}:`, JSON.stringify(nextText))
+        }
+
+        await streamOptions?.onTTSChunk?.(nextText)
+      }
 
       for await (const chunk of self.llm.streamChat(fullMessages, { max_tokens: 2048 })) {
         fullResponse += chunk
@@ -277,11 +296,12 @@ export class DialogueOrchestrator {
             // TTS 处理
             if (streamOptions?.onTTSChunk) {
               ttsBuffer += delta
-              if (self.shouldFlushTTS(ttsBuffer)) {
-                console.log('[SDK] Flushing TTS chunk:', ttsBuffer)
-                await streamOptions.onTTSChunk(ttsBuffer)
-                ttsBuffer = ''
+
+              const extractedChunks = self.extractFlushableTTSChunks(ttsBuffer)
+              for (const nextChunk of extractedChunks.chunks) {
+                await flushTTSChunk(nextChunk, 'normal')
               }
+              ttsBuffer = extractedChunks.remaining
             }
           }
         }
@@ -289,8 +309,7 @@ export class DialogueOrchestrator {
 
       // 推送剩余的 TTS
       if (streamOptions?.onTTSChunk && ttsBuffer.trim()) {
-        console.log('[SDK] Flushing remaining TTS chunk:', ttsBuffer)
-        await streamOptions.onTTSChunk(ttsBuffer)
+        await flushTTSChunk(ttsBuffer, 'remaining')
       }
 
       // 解析完整响应
@@ -303,6 +322,12 @@ export class DialogueOrchestrator {
       console.log('  Reply:', parsed.reply.substring(0, 50) + (parsed.reply.length > 50 ? '...' : ''))
       console.log('  Has Task:', parsed.hasTask)
       console.log('  Task Description:', parsed.taskDescription || '(无)')
+      if (flushedTTSChunks.length > 0) {
+        console.log('  TTS Chunks:')
+        flushedTTSChunks.forEach((chunkText, index) => {
+          console.log(`    [${index + 1}] ${JSON.stringify(chunkText)}`)
+        })
+      }
       console.log('==========================================\n')
     }
 
@@ -441,9 +466,65 @@ export class DialogueOrchestrator {
 - 避免生硬的 AI 腔调`
   }
 
-  private shouldFlushTTS(buffer: string): boolean {
-    const trimmed = buffer.trim()
-    return trimmed.length >= 18 || /[。！？.!?]\s*$/.test(trimmed)
+  private extractFlushableTTSChunks(buffer: string): {
+    chunks: string[]
+    remaining: string
+  } {
+    const chunks: string[] = []
+    let working = buffer
+
+    while (true) {
+      const boundaryIndex = this.findTTSBoundaryIndex(working)
+      if (boundaryIndex === -1) {
+        break
+      }
+
+      const candidate = working.slice(0, boundaryIndex).trim()
+      if (candidate) {
+        chunks.push(candidate)
+      }
+      working = working.slice(boundaryIndex)
+    }
+
+    const trimmedRemaining = working.trim()
+    if (trimmedRemaining.length >= 30) {
+      chunks.push(trimmedRemaining)
+      working = ''
+    }
+
+    return {
+      chunks,
+      remaining: working
+    }
+  }
+
+  private findTTSBoundaryIndex(text: string): number {
+    const trimmed = text.trimStart()
+    const leadingOffset = text.length - trimmed.length
+    if (!trimmed) {
+      return -1
+    }
+
+    const sentenceBoundary = trimmed.search(/[。！？.!?]["'”’）)\]]*\s*/)
+    if (sentenceBoundary !== -1) {
+      const matched = trimmed.slice(sentenceBoundary).match(/^[。！？.!?]["'”’）)\]]*\s*/)
+      if (matched) {
+        return leadingOffset + sentenceBoundary + matched[0].length
+      }
+    }
+
+    const clauseBoundary = trimmed.search(/[，、,；：;:]["'”’）)\]]*\s*/)
+    if (clauseBoundary !== -1) {
+      const prefix = trimmed.slice(0, clauseBoundary)
+      if (prefix.trim().length >= 8) {
+        const matched = trimmed.slice(clauseBoundary).match(/^[，、,；：;:]["'”’）)\]]*\s*/)
+        if (matched) {
+          return leadingOffset + clauseBoundary + matched[0].length
+        }
+      }
+    }
+
+    return -1
   }
 
   private stripTrailingXmlFragment(text: string): string {

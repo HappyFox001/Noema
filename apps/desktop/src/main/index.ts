@@ -57,6 +57,7 @@ type ConversationFrame =
   | { type: 'control.phase_end'; phase: ConversationPhase }
   | { type: 'control.task_start'; taskDescription: string }
   | { type: 'control.task_end'; success: boolean; summary: string; error?: string }
+  | { type: 'data.tts_text'; text: string }
 
 class ConversationDisplayController {
   private visibleText = ''
@@ -96,6 +97,14 @@ class ConversationDisplayController {
     })
   }
 
+  pushTTSChunkText(text: string): void {
+    if (!text) {
+      return
+    }
+
+    this.sendFrame({ type: 'data.tts_text', text })
+  }
+
   pushTextDelta(delta: string): void {
     if (!delta) {
       return
@@ -115,6 +124,8 @@ class ConversationDisplayController {
     return this.queue
   }
 }
+
+let currentTTSChunkSequence = 0
 
 function splitDisplayUnits(text: string): string[] {
   const units: string[] = []
@@ -421,6 +432,7 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
       (frame) => mainWindow?.webContents.send('conversation:frame', frame)
     )
     displayController.reset()
+    currentTTSChunkSequence = 0
 
     let shouldUseTTS = enableTTS && Boolean(ttsService) && ttsAvailable
 
@@ -449,7 +461,9 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
           }
         },
         onDisplayChunk: async (_, delta) => {
-          displayController.pushTextDelta(delta)
+          if (!shouldUseTTS) {
+            displayController.pushTextDelta(delta)
+          }
         },
         onTTSChunk: async (chunk) => {
           if (!shouldUseTTS || !ttsAvailable || !ttsService) {
@@ -457,7 +471,9 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
           }
 
           try {
-            console.log('[Main] onTTSChunk called, pushing:', chunk)
+            currentTTSChunkSequence += 1
+            console.log(`[Main] onTTSChunk #${currentTTSChunkSequence}, pushing:`, JSON.stringify(chunk))
+            displayController.pushTTSChunkText(chunk)
             await ttsService.pushText(chunk)
           } catch (error: any) {
             ttsAvailable = false
