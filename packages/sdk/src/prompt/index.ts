@@ -28,7 +28,6 @@ export interface PromptBuildOptions {
  */
 export class PromptBuilder {
   private static RECENT_CONVERSATION_LIMIT = 20   // 近期对话：最近 20 条
-  private static DISTANT_CONVERSATION_START = 20  // 远期对话：从第 20 条开始
   private static DISTANT_CONVERSATION_END = 50    // 远期对话：到第 50 条
 
   /**

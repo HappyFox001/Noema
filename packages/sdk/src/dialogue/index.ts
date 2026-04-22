@@ -24,16 +24,6 @@ export interface StreamOptions {
   onTTSChunk?: (text: string) => Promise<void>
 }
 
-/**
- * 情感层调用选项
- */
-interface EmotionalLayerOptions {
-  /** 是否检测任务（默认 true，结果反馈时设为 false） */
-  detectTask?: boolean
-  /** 额外的上下文消息（如任务执行结果） */
-  additionalContext?: string
-}
-
 function scheduleAsyncTask(task: () => Promise<void>): void {
   const run = () => {
     void task().catch((error) => {
@@ -348,20 +338,6 @@ export class DialogueOrchestrator {
     }
 
     return result
-  }
-
-  private buildResultWrapperPrompt(personality: any): string {
-    const name = personality?.character?.name || 'Luna'
-    return `你是 ${name}，一个温暖的 AI 伴侣。
-
-用户刚刚请求你帮忙完成一个任务，任务已经执行完毕。
-请用简洁、温暖的语气告诉用户结果。
-
-规则：
-- 直接输出回复，不需要任何 XML 标签
-- 保持简洁，1-2 句话即可
-- 语气要自然亲切
-- 如果任务成功，表达开心；如果失败，表达歉意并说明原因`
   }
 
   /**

@@ -94,54 +94,6 @@ export class AgentCore {
     return results
   }
 
-  /**
-   * 并行执行工具调用
-   */
-  async executeParallel(
-    toolCalls: ToolCall[],
-    options?: ToolExecutionOptions
-  ): Promise<any[]> {
-    const hooks = options?.hooks || this.globalHooks
-
-    const promises = toolCalls.map(async (call) => {
-      try {
-        await hooks?.preToolUse?.(call)
-
-        const toolName = call.function.name
-        const tool = this.tools.get(toolName)
-        if (!tool) {
-          throw new Error(`Tool not found: ${toolName}`)
-        }
-
-        const args = JSON.parse(call.function.arguments)
-
-        const result = options?.timeout
-          ? await this.executeWithTimeout(tool, call, options.timeout)
-          : await tool.execute(args)
-
-        await hooks?.postToolUse?.(call, result)
-
-        return {
-          success: true,
-          callId: call.id,
-          name: call.function.name,
-          result
-        }
-      } catch (error) {
-        await hooks?.onError?.(call, error as Error)
-
-        return {
-          success: false,
-          callId: call.id,
-          name: call.function.name,
-          error: (error as Error).message
-        }
-      }
-    })
-
-    return Promise.all(promises)
-  }
-
   private async executeWithTimeout(
     tool: Tool,
     call: ToolCall,
