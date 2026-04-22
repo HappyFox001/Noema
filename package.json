@@ -13,7 +13,8 @@
     "test": "turbo run test",
     "lint": "turbo run lint",
     "clean": "turbo run clean && rm -rf node_modules",
-    "start": "cd apps/desktop && pnpm run start"
+    "start": "cd apps/desktop && pnpm run start",
+    "history:clear": "bash ./scripts/clear-history.sh"
   },
   "devDependencies": {
     "turbo": "^2.0.0",

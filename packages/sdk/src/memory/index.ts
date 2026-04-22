@@ -120,6 +120,8 @@ export class MemoryEngine {
   async initialize(): Promise<void> {
     try {
       await mkdir(dirname(this.persistenceDbPath), { recursive: true })
+      console.log('[MemoryEngine] Storage directory:', dirname(this.persistenceDbPath))
+      console.log('[MemoryEngine] Database path:', this.persistenceDbPath)
       await this.ensureDatabase()
       await this.loadFromDatabase()
       this.persistenceEnabled = true

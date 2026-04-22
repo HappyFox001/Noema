@@ -56,6 +56,8 @@ function scheduleAsyncTask(task: () => Promise<void>): void {
 export class DialogueOrchestrator {
   private context: ContextManager
   private taskSession: TaskSession
+  private readonly minTTSChunkChars = 10
+  private readonly maxTTSChunkChars = 20
   private truncationPolicy: TruncationPolicy = {
     maxTokens: 8000,
     maxTurns: 50,
@@ -487,9 +489,13 @@ export class DialogueOrchestrator {
     }
 
     const trimmedRemaining = working.trim()
-    if (trimmedRemaining.length >= 30) {
-      chunks.push(trimmedRemaining)
-      working = ''
+    if (trimmedRemaining.length >= this.maxTTSChunkChars) {
+      const splitIndex = this.findForcedTTSBoundaryIndex(working)
+      const candidate = working.slice(0, splitIndex).trim()
+      if (candidate) {
+        chunks.push(candidate)
+      }
+      working = working.slice(splitIndex)
     }
 
     return {
@@ -507,24 +513,56 @@ export class DialogueOrchestrator {
 
     const sentenceBoundary = trimmed.search(/[。！？.!?]["'”’）)\]]*\s*/)
     if (sentenceBoundary !== -1) {
+      const prefix = trimmed.slice(0, sentenceBoundary)
+      if (prefix.trim().length < this.minTTSChunkChars) {
+        return -1
+      }
       const matched = trimmed.slice(sentenceBoundary).match(/^[。！？.!?]["'”’）)\]]*\s*/)
       if (matched) {
-        return leadingOffset + sentenceBoundary + matched[0].length
+        const boundaryIndex = leadingOffset + sentenceBoundary + matched[0].length
+        return this.clampTTSBoundaryIndex(text, boundaryIndex)
       }
     }
 
     const clauseBoundary = trimmed.search(/[，、,；：;:]["'”’）)\]]*\s*/)
     if (clauseBoundary !== -1) {
       const prefix = trimmed.slice(0, clauseBoundary)
-      if (prefix.trim().length >= 8) {
+      if (prefix.trim().length >= this.minTTSChunkChars) {
         const matched = trimmed.slice(clauseBoundary).match(/^[，、,；：;:]["'”’）)\]]*\s*/)
         if (matched) {
-          return leadingOffset + clauseBoundary + matched[0].length
+          const boundaryIndex = leadingOffset + clauseBoundary + matched[0].length
+          return this.clampTTSBoundaryIndex(text, boundaryIndex)
         }
       }
     }
 
     return -1
+  }
+
+  private clampTTSBoundaryIndex(text: string, boundaryIndex: number): number {
+    const candidate = text.slice(0, boundaryIndex).trim()
+    if (candidate.length > this.maxTTSChunkChars) {
+      return this.findForcedTTSBoundaryIndex(text)
+    }
+    return boundaryIndex
+  }
+
+  private findForcedTTSBoundaryIndex(text: string): number {
+    const trimmed = text.trimStart()
+    const leadingOffset = text.length - trimmed.length
+    if (!trimmed) {
+      return text.length
+    }
+
+    const limited = Array.from(trimmed).slice(0, this.maxTTSChunkChars).join('')
+    const punctuationMatches = [...limited.matchAll(/[，、。！？,.!?；：;:]/g)]
+    if (punctuationMatches.length > 0) {
+      const lastMatch = punctuationMatches[punctuationMatches.length - 1]
+      const matchIndex = lastMatch.index ?? limited.length - 1
+      return leadingOffset + matchIndex + lastMatch[0].length
+    }
+
+    return leadingOffset + limited.length
   }
 
   private stripTrailingXmlFragment(text: string): string {

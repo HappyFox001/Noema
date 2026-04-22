@@ -112,6 +112,8 @@ export class TaskSession {
   async initialize(): Promise<void> {
     try {
       await mkdir(dirname(this.persistenceDbPath), { recursive: true })
+      console.log('[TaskSession] Storage directory:', dirname(this.persistenceDbPath))
+      console.log('[TaskSession] Database path:', this.persistenceDbPath)
       await runSqlite(this.persistenceDbPath, TASK_SCHEMA_SQL)
       this.persistenceEnabled = true
       await this.recoverLatestSnapshot()
