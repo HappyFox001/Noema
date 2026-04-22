@@ -261,33 +261,35 @@ export class PromptBuilder {
   }
 
   /**
-   * 构建输出格式规范（XML）
+   * 构建输出格式规范（情感层）
    */
   private static buildOutputFormatXML(hasTools: boolean): string {
-    let xml = '请按以下 XML 结构输出你的回复：\n\n'
+    let instructions = '请按以下 XML 结构输出你的回复：\n\n'
 
-    xml += '<response>\n'
-
-    if (hasTools) {
-      xml += '  <thinking>你的思考过程（可选，用于复杂问题）</thinking>\n'
-    }
-
-    xml += '  <reply>你的最终回复内容</reply>\n'
-    xml += '</response>\n\n'
-
-    xml += '注意：\n'
-    xml += '- 只有 <reply> 标签内的内容会被展示给用户\n'
+    instructions += '<response>\n'
+    instructions += '  <reply>你的情感回复内容</reply>\n'
 
     if (hasTools) {
-      xml += '- **重要：当用户请求执行操作时（如创建文件、搜索、运行命令等），你必须使用工具（function calling）来完成，而不是仅仅解释如何操作**\n'
-      xml += '- 工具调用是自动执行的，你只需通过 function calling 机制调用相应的工具即可\n'
-      xml += '- 不要在回复中写命令或代码块来"示范"如何操作，而是直接调用工具\n'
+      instructions += '  <task>\n'
+      instructions += '    <has_task>true 或 false</has_task>\n'
+      instructions += '    <description>如果有任务，描述具体要做什么</description>\n'
+      instructions += '  </task>\n'
     }
 
-    xml += '- <thinking> 是可选的，用于内部处理\n'
-    xml += '- 保持回复自然简洁，避免冗长'
+    instructions += '</response>\n\n'
 
-    return xml
+    instructions += '规则：\n'
+    instructions += '- <reply> 是你作为 AI 伴侣的自然回复，要有情感、温暖\n'
+    instructions += '- 保持回复简洁自然，使用口语化表达\n'
+
+    if (hasTools) {
+      instructions += '- 当用户请求执行操作（创建文件、搜索、运行命令等）时，<has_task> 设为 true\n'
+      instructions += '- <description> 用简洁的语言描述任务目标，如"在桌面创建名为 test.md 的空文件"\n'
+      instructions += '- 纯聊天对话时 <has_task> 设为 false，无需 <description>\n'
+      instructions += '- 不要在 reply 中写代码或命令，任务会自动执行\n'
+    }
+
+    return instructions
   }
 
   /**
@@ -383,16 +385,15 @@ export class PromptBuilder {
   }
 
   /**
-   * 构建工具规范
+   * 构建工具规范（OpenAI 格式）
    */
-  private static buildToolSpecs(tools: Tool[], parallelCalls: boolean): any[] {
+  private static buildToolSpecs(tools: Tool[], _parallelCalls: boolean): any[] {
     return tools.map(tool => ({
       type: 'function',
       function: {
         name: tool.name,
         description: tool.description,
-        parameters: tool.parameters,
-        parallel: parallelCalls
+        parameters: tool.parameters
       }
     }))
   }

@@ -1,10 +1,20 @@
 import type { UserInput, AgentResponse, Tool } from '@her-text/types'
-import type { LLMProvider } from '@her-text/core'
+import type { LLMProvider, StreamChunk } from '@her-text/core'
 import type { MemoryEngine } from '../memory/index.js'
 import type { PersonalityEngine } from '../personality/index.js'
 import type { AgentCore } from '../agent/index.js'
+import { AgentLoop } from '../agent/loop.js'
 import { ContextManager, type ResponseItem, type TruncationPolicy } from '../context/index.js'
 import { PromptBuilder } from '../prompt/index.js'
+
+/**
+ * 解析后的 LLM 响应（情感层）
+ */
+interface ParsedEmotionalResponse {
+  reply: string
+  hasTask: boolean
+  taskDescription?: string
+}
 
 /**
  * 流式输出选项
@@ -112,7 +122,7 @@ export class DialogueOrchestrator {
 
       try {
         const llmOptions: any = {
-          maxTokens: 2048
+          max_tokens: 2048
         }
 
         // 如果有工具，添加到选项
@@ -194,7 +204,7 @@ export class DialogueOrchestrator {
           ]
 
           const followUpResponse = await this.llm.chat(followUpMessages, {
-            maxTokens: 2048
+            max_tokens: 2048
           })
 
           // 解析最终回复
@@ -249,13 +259,19 @@ export class DialogueOrchestrator {
   }
 
   /**
-   * 流式处理用户输入
+   * 流式处理用户输入（双层架构：情感层 + 执行层）
+   *
+   * 流程：
+   * 1. 情感层 LLM 调用 → 返回 <reply> + <task>
+   * 2. 流式输出 <reply> 给用户
+   * 3. 如果 has_task = true，进入 Agent Loop 执行任务
+   * 4. 任务完成后，情感层 LLM 包装结果
    */
   async *processUserInputStream(
     input: UserInput,
     options?: StreamOptions
   ): AsyncGenerator<string> {
-    // 1. 准备阶段
+    // === Phase 1: 准备阶段 ===
     const memoryContext = await this.memory.retrieve(input.text)
 
     const userMessage: ResponseItem = {
@@ -265,14 +281,15 @@ export class DialogueOrchestrator {
     }
     this.context.recordItems([userMessage], this.truncationPolicy)
 
-    // 2. Prompt 构建
+    // === Phase 2: Prompt 构建（情感层） ===
     const personality = this.personality.getPersonality()
     const tools = this.agent.getTools()
+    const hasTools = tools.length > 0
 
-    const { system, messages, tools: toolSpecs } = PromptBuilder.build(
+    const { system, messages } = PromptBuilder.build(
       this.context.forPrompt(),
       {
-        tools,
+        tools,  // 传递工具信息，让 LLM 知道可以做什么
         personality,
         baseInstructions: {
           system: this.buildBaseInstructions()
@@ -283,62 +300,54 @@ export class DialogueOrchestrator {
       }
     )
 
-    // 🔍 DEBUG: 输出完整的 Prompt (Stream)
-    console.log('\n========== 🔍 DEBUG: LLM Stream Request ==========')
-    console.log('📋 System Prompt:')
-    console.log(system)
-    console.log('\n💬 Messages:', JSON.stringify(messages, null, 2))
-    console.log('\n🛠️  Tools Count:', toolSpecs?.length || 0)
-    if (toolSpecs && toolSpecs.length > 0) {
-      console.log('🛠️  Available Tools:', toolSpecs.map(t => t.function.name).join(', '))
-    }
+    console.log('\n========== 🎭 情感层 LLM 调用 ==========')
+    console.log('📋 System Prompt:', system.substring(0, 500) + '...')
+    console.log('🛠️  Has Tools:', hasTools)
     console.log('==========================================\n')
 
-    // 3. 流式 LLM 调用
+    // === Phase 3: 情感层 LLM 流式调用 ===
     const fullMessages = [
       { role: 'system', content: system },
       ...messages
     ]
 
     let fullResponse = ''
+    let ttsBuffer = ''
     let emittedReplyLength = 0
-    let ttsBuffer = '' // TTS 文本缓冲
 
     try {
-      for await (const chunk of this.llm.streamChat(fullMessages)) {
+      // 流式接收响应
+      for await (const chunk of this.llm.streamChat(fullMessages, { max_tokens: 2048 })) {
         fullResponse += chunk
 
+        // 实时解析并输出 <reply> 内容
         const replyStart = fullResponse.indexOf('<reply>')
-        if (replyStart === -1) {
-          continue
-        }
+        if (replyStart !== -1) {
+          const contentStart = replyStart + '<reply>'.length
+          const replyEnd = fullResponse.indexOf('</reply>', contentStart)
 
-        const contentStart = replyStart + '<reply>'.length
-        const replyEnd = fullResponse.indexOf('</reply>', contentStart)
-        const rawVisibleReply = replyEnd === -1
-          ? fullResponse.slice(contentStart)
-          : fullResponse.slice(contentStart, replyEnd)
-        const visibleReply = this.stripTrailingXmlFragment(rawVisibleReply)
-        const delta = visibleReply.slice(emittedReplyLength)
+          const rawVisibleReply = replyEnd === -1
+            ? fullResponse.slice(contentStart)
+            : fullResponse.slice(contentStart, replyEnd)
 
-        if (delta) {
-          emittedReplyLength = visibleReply.length
-          yield delta
+          // 移除可能的未完成 XML 标签
+          const visibleReply = this.stripTrailingXmlFragment(rawVisibleReply)
+          const delta = visibleReply.slice(emittedReplyLength)
 
-          // TTS 处理：累积文本并按句子推送
-          if (options?.onTTSChunk) {
-            ttsBuffer += delta
-            console.log('[SDK] TTS buffer:', ttsBuffer.length, 'chars')
-            if (this.shouldFlushTTS(ttsBuffer)) {
-              console.log('[SDK] Flushing TTS chunk:', ttsBuffer)
-              await options.onTTSChunk(ttsBuffer)
-              ttsBuffer = ''
+          if (delta) {
+            emittedReplyLength = visibleReply.length
+            yield delta
+
+            // TTS 处理
+            if (options?.onTTSChunk) {
+              ttsBuffer += delta
+              if (this.shouldFlushTTS(ttsBuffer)) {
+                console.log('[SDK] Flushing TTS chunk:', ttsBuffer)
+                await options.onTTSChunk(ttsBuffer)
+                ttsBuffer = ''
+              }
             }
           }
-        }
-
-        if (replyEnd !== -1) {
-          break
         }
       }
 
@@ -348,36 +357,158 @@ export class DialogueOrchestrator {
         await options.onTTSChunk(ttsBuffer)
       }
 
-      // 🔍 DEBUG: 输出完整流式响应
-      console.log('\n========== 🔍 DEBUG: LLM Stream Response ==========')
-      console.log('📝 Full Streamed Response:')
-      console.log(fullResponse)
+      // === Phase 4: 解析完整响应 ===
+      const parsed = this.parseEmotionalResponse(fullResponse)
+
+      console.log('\n========== 🎭 情感层响应解析 ==========')
+      console.log('📝 Reply:', parsed.reply.substring(0, 100) + '...')
+      console.log('📋 Has Task:', parsed.hasTask)
+      if (parsed.hasTask) {
+        console.log('📋 Task Description:', parsed.taskDescription)
+      }
       console.log('==========================================\n')
 
-      // 4. 解析完整响应
-      const parsed = this.parseXMLResponse(fullResponse)
-      const finalReply = parsed.reply
+      // === Phase 5: 如果有任务，进入 Agent Loop ===
+      let taskResult: string | null = null
 
-      // 5. 记录响应
+      if (parsed.hasTask && parsed.taskDescription && hasTools) {
+        console.log('\n========== 🔧 进入 Agent Loop ==========')
+
+        const agentLoop = new AgentLoop(this.llm, this.agent, tools, {
+          maxIterations: 10,
+          timeout: 30000,
+          parallelToolCalls: false
+        })
+
+        const loopResult = await agentLoop.execute(parsed.taskDescription)
+
+        console.log('Agent Loop 结果:', loopResult)
+        console.log('==========================================\n')
+
+        if (loopResult.success) {
+          taskResult = loopResult.finalResult
+        } else {
+          taskResult = `任务执行失败: ${loopResult.error || '未知错误'}`
+        }
+
+        // === Phase 6: 情感层包装任务结果 ===
+        console.log('\n========== 🎭 情感层包装结果 ==========')
+
+        const wrapMessages = [
+          { role: 'system', content: this.buildResultWrapperPrompt(personality) },
+          {
+            role: 'user',
+            content: `用户的原始请求: ${input.text}\n\n任务执行结果: ${taskResult}\n\n请用简洁温暖的语气告诉用户任务完成情况。`
+          }
+        ]
+
+        let wrapResponse = ''
+        let wrapTTSBuffer = ''
+
+        for await (const chunk of this.llm.streamChat(wrapMessages, { max_tokens: 512 })) {
+          wrapResponse += chunk
+          yield chunk
+
+          // TTS 处理
+          if (options?.onTTSChunk) {
+            wrapTTSBuffer += chunk
+            if (this.shouldFlushTTS(wrapTTSBuffer)) {
+              await options.onTTSChunk(wrapTTSBuffer)
+              wrapTTSBuffer = ''
+            }
+          }
+        }
+
+        if (options?.onTTSChunk && wrapTTSBuffer.trim()) {
+          await options.onTTSChunk(wrapTTSBuffer)
+        }
+
+        console.log('包装后回复:', wrapResponse)
+        console.log('==========================================\n')
+
+        // 合并回复
+        parsed.reply = parsed.reply + '\n\n' + wrapResponse
+      }
+
+      // === Phase 7: 记录响应和更新记忆 ===
       const assistantMessage: ResponseItem = {
         role: 'assistant',
-        content: finalReply,
+        content: parsed.reply,
         timestamp: Date.now()
       }
       this.context.recordItems([assistantMessage])
 
-      // 6. 异步更新记忆
       scheduleAsyncTask(async () => {
         await this.memory.store({
           user: input.text,
-          assistant: finalReply,
+          assistant: parsed.reply,
           timestamp: input.timestamp
         })
       })
+
     } catch (error) {
       console.error('Streaming failed:', error)
       yield '抱歉，出现了问题...'
     }
+  }
+
+  /**
+   * 解析情感层 LLM 响应
+   */
+  private parseEmotionalResponse(response: string): ParsedEmotionalResponse {
+    const result: ParsedEmotionalResponse = {
+      reply: response,  // 默认返回原文
+      hasTask: false
+    }
+
+    try {
+      // 提取 <reply>
+      const replyMatch = response.match(/<reply>([\s\S]*?)<\/reply>/)
+      if (replyMatch) {
+        result.reply = replyMatch[1].trim()
+      }
+
+      // 提取 <task>
+      const taskMatch = response.match(/<task>([\s\S]*?)<\/task>/)
+      if (taskMatch) {
+        const taskContent = taskMatch[1]
+
+        // 提取 has_task
+        const hasTaskMatch = taskContent.match(/<has_task>(true|false)<\/has_task>/)
+        if (hasTaskMatch) {
+          result.hasTask = hasTaskMatch[1] === 'true'
+        }
+
+        // 提取 description
+        if (result.hasTask) {
+          const descMatch = taskContent.match(/<description>([\s\S]*?)<\/description>/)
+          if (descMatch) {
+            result.taskDescription = descMatch[1].trim()
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to parse emotional response:', error)
+    }
+
+    return result
+  }
+
+  /**
+   * 构建结果包装 prompt
+   */
+  private buildResultWrapperPrompt(personality: any): string {
+    const name = personality?.character?.name || 'Luna'
+    return `你是 ${name}，一个温暖的 AI 伴侣。
+
+用户刚刚请求你帮忙完成一个任务，任务已经执行完毕。
+请用简洁、温暖的语气告诉用户结果。
+
+规则：
+- 直接输出回复，不需要任何 XML 标签
+- 保持简洁，1-2 句话即可
+- 语气要自然亲切
+- 如果任务成功，表达开心；如果失败，表达歉意并说明原因`
   }
 
   /**

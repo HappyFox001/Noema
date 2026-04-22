@@ -167,3 +167,4 @@ export class AgentCore {
 }
 
 export * from './lifecycle.js'
+export * from './loop.js'
