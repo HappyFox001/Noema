@@ -315,9 +315,10 @@ export class DialogueOrchestrator {
 
         const contentStart = replyStart + '<reply>'.length
         const replyEnd = fullResponse.indexOf('</reply>', contentStart)
-        const visibleReply = replyEnd === -1
+        const rawVisibleReply = replyEnd === -1
           ? fullResponse.slice(contentStart)
           : fullResponse.slice(contentStart, replyEnd)
+        const visibleReply = this.stripTrailingXmlFragment(rawVisibleReply)
         const delta = visibleReply.slice(emittedReplyLength)
 
         if (delta) {
@@ -327,7 +328,9 @@ export class DialogueOrchestrator {
           // TTS 处理：累积文本并按句子推送
           if (options?.onTTSChunk) {
             ttsBuffer += delta
+            console.log('[SDK] TTS buffer:', ttsBuffer.length, 'chars')
             if (this.shouldFlushTTS(ttsBuffer)) {
+              console.log('[SDK] Flushing TTS chunk:', ttsBuffer)
               await options.onTTSChunk(ttsBuffer)
               ttsBuffer = ''
             }
@@ -341,6 +344,7 @@ export class DialogueOrchestrator {
 
       // 推送剩余的 TTS 文本
       if (options?.onTTSChunk && ttsBuffer.trim()) {
+        console.log('[SDK] Flushing remaining TTS chunk:', ttsBuffer)
         await options.onTTSChunk(ttsBuffer)
       }
 
@@ -440,6 +444,10 @@ export class DialogueOrchestrator {
     const trimmed = buffer.trim()
     // 至少 18 个字符，或者遇到句子结束符
     return trimmed.length >= 18 || /[。！？.!?]\s*$/.test(trimmed)
+  }
+
+  private stripTrailingXmlFragment(text: string): string {
+    return text.replace(/<[^>]*$/, '')
   }
 
   /**

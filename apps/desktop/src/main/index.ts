@@ -2,10 +2,12 @@
 import { config as dotenvConfig } from 'dotenv'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
+import { createRequire } from 'module'
 import { existsSync } from 'fs'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
+const require = createRequire(import.meta.url)
 
 // 尝试多个可能的 .env 文件位置
 const possibleEnvPaths = [
@@ -32,6 +34,8 @@ if (!envLoaded) {
   console.warn('[Env] ⚠️  No .env file found in:', possibleEnvPaths)
 }
 
+configureProxyFromEnv()
+
 console.log('[Env] LLM_API_KEY:', process.env.LLM_API_KEY ? '✓ (set)' : '✗ (not set)')
 console.log('[Env] LLM_MODEL:', process.env.LLM_MODEL || '✗ (not set)')
 console.log('[Env] LLM_BASE_URL:', process.env.LLM_BASE_URL || '✗ (not set)')
@@ -45,9 +49,47 @@ import {
 } from './sdk-config.js'
 const DEV_SERVER_URL = 'http://127.0.0.1:5173'
 
+// This app uses a transparent frameless window and simple canvas effects.
+// Disabling GPU avoids macOS/Electron ANGLE initialization failures.
+app.disableHardwareAcceleration()
+app.commandLine.appendSwitch('disable-gpu')
+app.commandLine.appendSwitch('disable-gpu-compositing')
+
 let mainWindow: BrowserWindow | null = null
 let ttsService: FishTTSOfficial | null = null
 let sdkInstance: HerTextSDK | null = null
+let ttsAvailable = true
+
+function configureProxyFromEnv(): void {
+  const proxyUrl =
+    process.env.HTTPS_PROXY ||
+    process.env.HTTP_PROXY ||
+    process.env.ALL_PROXY ||
+    process.env.https_proxy ||
+    process.env.http_proxy ||
+    process.env.all_proxy
+
+  if (!proxyUrl?.trim()) {
+    return
+  }
+
+  process.env.GLOBAL_AGENT_HTTP_PROXY = proxyUrl
+  process.env.GLOBAL_AGENT_FORCE_GLOBAL_AGENT = 'true'
+  process.env.GLOBAL_AGENT_NO_PROXY =
+    process.env.NO_PROXY ||
+    process.env.no_proxy ||
+    ''
+
+  app.commandLine.appendSwitch('proxy-server', proxyUrl)
+
+  try {
+    const { bootstrap } = require('global-agent')
+    bootstrap()
+    console.log('[Proxy] Enabled global proxy for Node/Electron:', proxyUrl)
+  } catch (error) {
+    console.warn('[Proxy] Failed to enable global proxy:', error)
+  }
+}
 
 function isDevMode(): boolean {
   return process.env.NODE_ENV === 'development'
@@ -184,19 +226,26 @@ ipcMain.handle('conversation:initialize', async () => {
         latency: 'balanced'
       })
 
+      ttsAvailable = true
+
       // 设置 TTS 事件处理
       ttsService.setEventHandler((event) => {
         switch (event.type) {
           case 'connected':
+            console.log('[TTS] Connected event')
             mainWindow?.webContents.send('tts:connected')
             break
           case 'audio':
+            console.log('[TTS] Audio chunk received:', event.audio.length, 'bytes')
             mainWindow?.webContents.send('tts:audio', event.audio)
             break
           case 'closed':
+            console.log('[TTS] Closed event')
             mainWindow?.webContents.send('tts:closed')
             break
           case 'error':
+            console.log('[TTS] Error event:', event.error.message)
+            ttsAvailable = false
             mainWindow?.webContents.send('tts:error', event.error.message)
             break
         }
@@ -205,6 +254,7 @@ ipcMain.handle('conversation:initialize', async () => {
       console.log('[TTS] Initialized successfully (using SDK)')
     } else {
       ttsService = null
+      ttsAvailable = false
       console.log('[TTS] Disabled: missing Fish Audio API key')
     }
 
@@ -226,11 +276,19 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
       throw new Error('SDK not initialized')
     }
 
-    const shouldUseTTS = enableTTS && Boolean(ttsService)
+    let shouldUseTTS = enableTTS && Boolean(ttsService) && ttsAvailable
 
-    // 开始 TTS 流
+    // 开始 TTS 流（捕获连接错误）
     if (shouldUseTTS && ttsService) {
-      await ttsService.startStreaming()
+      try {
+        await ttsService.startStreaming()
+      } catch (error: any) {
+        console.warn('[TTS] Failed to start streaming:', error.message)
+        console.warn('[TTS] Continuing without TTS...')
+        ttsAvailable = false
+        shouldUseTTS = false // 禁用 TTS 但继续执行
+        await ttsService.close().catch(() => undefined)
+      }
     }
 
     // 使用 SDK 的 chatStream，TTS 分句逻辑由 SDK 处理
@@ -242,7 +300,17 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
       shouldUseTTS && ttsService
         ? {
             onTTSChunk: async (chunk) => {
-              await ttsService!.pushText(chunk)
+              if (!ttsAvailable) {
+                return
+              }
+
+              try {
+                console.log('[Main] onTTSChunk called, pushing:', chunk)
+                await ttsService!.pushText(chunk)
+              } catch (error: any) {
+                ttsAvailable = false
+                console.warn('[TTS] Failed to push chunk:', error.message)
+              }
             }
           }
         : undefined
@@ -255,9 +323,14 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
       mainWindow?.webContents.send('conversation:response', fullResponse)
     }
 
-    // 完成 TTS
+    // 完成 TTS（SDK 已经正确处理关闭）
     if (shouldUseTTS && ttsService) {
-      await ttsService.finishStreaming()
+      try {
+        await ttsService.finishStreaming()
+      } catch (error: any) {
+        ttsAvailable = false
+        console.warn('[TTS] Failed to finish streaming:', error.message)
+      }
     }
 
     return { success: true, response: fullResponse, ttsEnabled: shouldUseTTS }
@@ -273,6 +346,7 @@ ipcMain.handle('tts:stop', async () => {
     await ttsService?.close()
     return { success: true }
   } catch (error: any) {
+    console.error('[TTS] Failed to stop:', error)
     return { success: false, error: error.message }
   }
 })
