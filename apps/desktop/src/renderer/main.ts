@@ -589,4 +589,131 @@ textInput.addEventListener('keypress', (e) => {
   }
 })
 
+// ========== Context Menu & Settings Panel ==========
+
+const contextMenu = document.getElementById('context-menu')!
+const settingsPanel = document.getElementById('settings-panel')!
+const settingsClose = document.getElementById('settings-close')!
+const settingsNav = document.querySelector('.settings-nav')!
+const volumeSlider = document.getElementById('volume-slider') as HTMLInputElement
+const volumeValue = document.getElementById('volume-value')!
+
+// Hide context menu when clicking elsewhere
+document.addEventListener('click', () => {
+  contextMenu.classList.remove('visible')
+})
+
+// Right-click on canvas to show context menu
+canvas.addEventListener('contextmenu', (e) => {
+  e.preventDefault()
+
+  // Position the menu at click location
+  const x = Math.min(e.clientX, window.innerWidth - 180)
+  const y = Math.min(e.clientY, window.innerHeight - 150)
+
+  contextMenu.style.left = `${x}px`
+  contextMenu.style.top = `${y}px`
+  contextMenu.classList.add('visible')
+})
+
+// Context menu actions
+contextMenu.addEventListener('click', (e) => {
+  const target = e.target as HTMLElement
+  const item = target.closest('.context-menu-item') as HTMLElement
+  if (!item) return
+
+  const action = item.dataset.action
+
+  switch (action) {
+    case 'settings':
+      openSettings()
+      break
+    case 'clear-history':
+      clearHistory()
+      break
+    case 'about':
+      // Could show about dialog
+      console.log('About Her-Text v0.1.0')
+      break
+  }
+
+  contextMenu.classList.remove('visible')
+})
+
+// Open settings panel
+function openSettings() {
+  settingsPanel.classList.add('visible')
+}
+
+// Close settings panel
+function closeSettings() {
+  settingsPanel.classList.remove('visible')
+}
+
+settingsClose.addEventListener('click', closeSettings)
+
+// Close settings with Escape key
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (settingsPanel.classList.contains('visible')) {
+      closeSettings()
+    }
+  }
+})
+
+// Settings navigation
+settingsNav.addEventListener('click', (e) => {
+  const target = e.target as HTMLElement
+  const navItem = target.closest('.nav-item') as HTMLElement
+  if (!navItem) return
+
+  const section = navItem.dataset.section
+  if (!section) return
+
+  // Update nav active state
+  document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'))
+  navItem.classList.add('active')
+
+  // Show corresponding section
+  document.querySelectorAll('.settings-section').forEach(sec => sec.classList.remove('active'))
+  document.getElementById(`section-${section}`)?.classList.add('active')
+})
+
+// Volume slider
+volumeSlider.addEventListener('input', () => {
+  const value = volumeSlider.value
+  volumeValue.textContent = `${value}%`
+  // TODO: Apply volume to audio player
+})
+
+// Clear history button
+const clearHistoryBtn = document.getElementById('clear-history-btn')
+clearHistoryBtn?.addEventListener('click', () => {
+  clearHistory()
+})
+
+async function clearHistory() {
+  if (confirm('确定要清除所有对话历史吗？')) {
+    try {
+      await window.electronAPI.clearHistory()
+      setStatus('对话历史已清除')
+    } catch (error: any) {
+      console.error('Clear history error:', error)
+    }
+  }
+}
+
+// Clear profile button
+const clearProfileBtn = document.getElementById('clear-profile-btn')
+clearProfileBtn?.addEventListener('click', async () => {
+  if (confirm('确定要重置用户画像吗？')) {
+    try {
+      // TODO: Implement clear profile API
+      setStatus('用户画像已重置')
+    } catch (error: any) {
+      console.error('Clear profile error:', error)
+    }
+  }
+})
+
 console.log('Her-Text Renderer initialized')

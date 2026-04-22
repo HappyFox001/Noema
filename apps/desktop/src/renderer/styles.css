@@ -34,6 +34,8 @@ body {
   justify-content: center;
   background: transparent !important;
   background-color: rgba(0, 0, 0, 0) !important;
+  -webkit-app-region: drag;
+  app-region: drag;
 }
 
 .container {
@@ -63,12 +65,26 @@ body {
   app-region: no-drag;
 }
 
+/* 所有交互元素需要 no-drag */
 .controls,
 .text-display,
 .status,
 .text-input,
 .start-button,
-.tts-button {
+.tts-button,
+.context-menu,
+.settings-close,
+.settings-nav,
+.settings-content,
+.settings-toggle,
+.settings-slider,
+.settings-select,
+.settings-btn,
+.nav-item,
+button,
+input,
+select,
+a {
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
@@ -202,4 +218,387 @@ body {
   cursor: not-allowed;
 }
 
-/* 简化版：只保留核心元素 */
+/* ========== 右键菜单 ========== */
+.context-menu {
+  position: fixed;
+  background: rgba(28, 28, 30, 0.95);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 6px;
+  min-width: 160px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+  z-index: 1000;
+  opacity: 0;
+  visibility: hidden;
+  transform: scale(0.95);
+  transition: all 0.15s ease;
+}
+
+.context-menu.visible {
+  opacity: 1;
+  visibility: visible;
+  transform: scale(1);
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  padding: 10px 16px;
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.context-menu-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.context-menu-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 6px 0;
+}
+
+/* ========== 设置面板 ========== */
+.settings-panel {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(18, 18, 20, 0.98);
+  backdrop-filter: blur(30px);
+  z-index: 900;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.3s ease;
+}
+
+.settings-panel.visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+.settings-close {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+  width: 36px;
+  height: 36px;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  border-radius: 50%;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 20px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.settings-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.settings-layout {
+  display: flex;
+  height: 100%;
+}
+
+/* ========== 左侧导航 ========== */
+.settings-nav {
+  width: 200px;
+  min-width: 200px;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.3);
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 60px 12px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.nav-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.nav-item.active {
+  background: rgba(74, 144, 226, 0.25);
+  color: white;
+}
+
+.nav-icon {
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+  opacity: 0.8;
+}
+
+.nav-label {
+  font-weight: 500;
+}
+
+/* ========== 右侧内容区域 ========== */
+.settings-content {
+  flex: 1;
+  padding: 60px 40px 40px;
+  overflow-y: auto;
+}
+
+.settings-section {
+  display: none;
+}
+
+.settings-section.active {
+  display: block;
+}
+
+.section-title {
+  font-size: 22px;
+  font-weight: 600;
+  color: white;
+  margin-bottom: 24px;
+}
+
+/* 设置卡片 */
+.settings-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.settings-row:last-child {
+  border-bottom: none;
+}
+
+.row-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.row-label {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.row-desc {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* ========== 关于页面 ========== */
+.about-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 40px;
+  text-align: center;
+  max-width: 400px;
+}
+
+.about-orb {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%,
+    rgba(255, 255, 255, 0.2) 0%,
+    rgba(226, 74, 144, 0.6) 40%,
+    rgba(74, 144, 226, 0.4) 100%
+  );
+  box-shadow:
+    0 0 40px rgba(226, 74, 144, 0.4),
+    0 0 60px rgba(74, 144, 226, 0.2);
+  margin: 0 auto 20px;
+  animation: about-orb-glow 4s ease-in-out infinite;
+}
+
+@keyframes about-orb-glow {
+  0%, 100% {
+    box-shadow:
+      0 0 40px rgba(226, 74, 144, 0.4),
+      0 0 60px rgba(74, 144, 226, 0.2);
+  }
+  50% {
+    box-shadow:
+      0 0 50px rgba(226, 74, 144, 0.5),
+      0 0 80px rgba(74, 144, 226, 0.3);
+  }
+}
+
+.about-name {
+  font-size: 24px;
+  font-weight: 600;
+  color: white;
+  margin-bottom: 4px;
+}
+
+.about-version {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.4);
+  margin-bottom: 12px;
+}
+
+.about-desc {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.6);
+  margin-bottom: 20px;
+}
+
+.about-quote {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.4);
+  line-height: 1.8;
+  font-style: italic;
+}
+
+/* Toggle 开关 */
+.settings-toggle {
+  position: relative;
+  width: 44px;
+  height: 24px;
+}
+
+.settings-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 24px;
+  transition: 0.3s;
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background: white;
+  border-radius: 50%;
+  transition: 0.3s;
+}
+
+.settings-toggle input:checked + .toggle-slider {
+  background: rgba(226, 74, 144, 0.8);
+}
+
+.settings-toggle input:checked + .toggle-slider:before {
+  transform: translateX(20px);
+}
+
+/* Slider 容器 */
+.settings-slider-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Slider */
+.settings-slider {
+  -webkit-appearance: none;
+  width: 140px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+  outline: none;
+  flex-shrink: 0;
+}
+
+.settings-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  background: white;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.settings-value {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  min-width: 40px;
+  text-align: right;
+}
+
+/* Select */
+.settings-select {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: white;
+  font-size: 13px;
+  outline: none;
+  cursor: pointer;
+  min-width: 160px;
+}
+
+.settings-select option {
+  background: #1c1c1e;
+  color: white;
+}
+
+/* Button */
+.settings-btn {
+  padding: 8px 16px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.settings-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.settings-btn.danger {
+  background: rgba(255, 69, 58, 0.2);
+  border-color: rgba(255, 69, 58, 0.3);
+  color: #ff453a;
+}
+
+.settings-btn.danger:hover {
+  background: rgba(255, 69, 58, 0.3);
+}
