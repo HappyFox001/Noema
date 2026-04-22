@@ -185,8 +185,7 @@ export class DialogueOrchestrator {
           system: this.buildBaseInstructions()
         },
         userProfile: memoryContext.userProfile,
-        summaries: memoryContext.summaries,
-        shortTermKV: memoryContext.shortTermKV
+        summaries: memoryContext.summaries
       }
     )
 

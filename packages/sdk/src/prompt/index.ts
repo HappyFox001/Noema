@@ -12,7 +12,6 @@ export interface PromptBuildOptions {
   baseInstructions?: BaseInstructions
   userProfile?: UserProfile
   summaries?: ConversationSummary[]
-  shortTermKV?: Record<string, any>
   outputSchema?: any
   parallelToolCalls?: boolean
 }
@@ -47,7 +46,6 @@ export class PromptBuilder {
       baseInstructions,
       userProfile,
       summaries = [],
-      shortTermKV = {},
       parallelToolCalls = true
     } = options
 
@@ -57,7 +55,6 @@ export class PromptBuilder {
       personality,
       userProfile,
       summaries,
-      shortTermKV,
       hasTools: tools.length > 0
     })
 
@@ -84,7 +81,6 @@ export class PromptBuilder {
     personality?: Personality
     userProfile?: UserProfile
     summaries?: ConversationSummary[]
-    shortTermKV?: Record<string, any>
     hasTools?: boolean
   }): string {
     const sections: string[] = []
@@ -106,11 +102,6 @@ export class PromptBuilder {
     // 用户画像
     if (options.userProfile) {
       sections.push(this.formatUserProfileXML(options.userProfile))
-    }
-
-    // 短期上下文（外部数据）
-    if (options.shortTermKV && Object.keys(options.shortTermKV).length > 0) {
-      sections.push(this.formatShortTermKVXML(options.shortTermKV))
     }
 
     // 对话摘要
@@ -216,21 +207,6 @@ export class PromptBuilder {
     }
 
     xml += '</user_profile>'
-    return xml
-  }
-
-  /**
-   * 格式化短期 KV（XML）
-   */
-  private static formatShortTermKVXML(kv: Record<string, any>): string {
-    let xml = '<short_term_context>\n'
-
-    Object.entries(kv).forEach(([key, value]) => {
-      const jsonValue = typeof value === 'string' ? value : JSON.stringify(value)
-      xml += `  <context key="${this.escapeXML(key)}">${this.escapeXML(jsonValue)}</context>\n`
-    })
-
-    xml += '</short_term_context>'
     return xml
   }
 

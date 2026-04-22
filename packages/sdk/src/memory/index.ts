@@ -8,21 +8,10 @@ import { mkdir } from 'node:fs/promises'
 import { dirname, isAbsolute, resolve } from 'node:path'
 import {
   parseJsonArray,
-  parseJsonValue,
   runSqlite,
   runSqliteJson,
   sqlText,
 } from './sqlite-runtime.js'
-
-/**
- * 短期 KV 条目（外部数据引入）
- */
-export interface ShortTermKVEntry {
-  key: string
-  value: any
-  lastMentioned: number  // 最后提及时间
-  mentionCount: number   // 提及次数
-}
 
 /**
  * 用户画像
@@ -78,13 +67,6 @@ CREATE TABLE IF NOT EXISTS conversation_summaries (
   timestamp INTEGER NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS short_term_kv (
-  key TEXT PRIMARY KEY,
-  value TEXT NOT NULL,
-  last_mentioned INTEGER NOT NULL,
-  mention_count INTEGER NOT NULL
-);
-
 CREATE TABLE IF NOT EXISTS metadata (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
@@ -93,18 +75,13 @@ CREATE TABLE IF NOT EXISTS metadata (
 
 
 /**
- * Memory Engine - 三层记忆系统
+ * Memory Engine - 记忆系统
  *
- * Part 1: 短期 KV - 最近几轮提到的外部数据
- * Part 2: 用户画像 - Profile + 重要记忆 (自动总结)
- * Part 3: 对话摘要 - 每 10 轮总结
+ * Part 1: 用户画像 - Profile + 重要记忆 (自动总结)
+ * Part 2: 对话摘要 - 每 10 轮总结
  */
 export class MemoryEngine {
-  // Part 1: 短期 KV 存储
-  private shortTermKV: Map<string, ShortTermKVEntry> = new Map()
-  private shortTermWindowSize: number = 5  // 保留最近 5 轮提到的
-
-  // Part 2: 用户画像
+  // Part 1: 用户画像
   private userProfile: UserProfile = {
     basic: {},
     importantMemories: new Map()
@@ -194,54 +171,7 @@ export class MemoryEngine {
   }
 
   /**
-   * Part 1: 添加短期 KV（外部数据）
-   */
-  addShortTermKV(key: string, value: any): void {
-    const existing = this.shortTermKV.get(key)
-
-    if (existing) {
-      existing.value = value
-      existing.lastMentioned = Date.now()
-      existing.mentionCount++
-    } else {
-      this.shortTermKV.set(key, {
-        key,
-        value,
-        lastMentioned: Date.now(),
-        mentionCount: 1
-      })
-    }
-
-    // 清理过期的 KV（超过窗口大小）
-    this.cleanupShortTermKV()
-  }
-
-  /**
-   * 清理短期 KV（只保留最近提到的）
-   */
-  private cleanupShortTermKV(): void {
-    const entries = Array.from(this.shortTermKV.values())
-      .sort((a, b) => b.lastMentioned - a.lastMentioned)
-
-    if (entries.length > this.shortTermWindowSize) {
-      const toRemove = entries.slice(this.shortTermWindowSize)
-      toRemove.forEach(entry => this.shortTermKV.delete(entry.key))
-    }
-  }
-
-  /**
-   * 获取短期 KV（用于上下文注入）
-   */
-  getShortTermKV(): Record<string, any> {
-    const result: Record<string, any> = {}
-    this.shortTermKV.forEach((entry, key) => {
-      result[key] = entry.value
-    })
-    return result
-  }
-
-  /**
-   * Part 2: 更新用户画像的基本信息
+   * 更新用户画像的基本信息
    */
   updateUserBasicProfile(updates: Partial<UserProfile['basic']>): void {
     this.userProfile.basic = {
@@ -295,12 +225,10 @@ export class MemoryEngine {
    * 检索相关记忆（用于上下文）
    */
   async retrieve(query: string): Promise<{
-    shortTermKV: Record<string, any>
     userProfile: UserProfile
     summaries: ConversationSummary[]
   }> {
     return {
-      shortTermKV: this.getShortTermKV(),
       userProfile: this.getUserProfile(),
       summaries: this.getConversationSummaries(3)
     }
@@ -584,29 +512,6 @@ ${conversationText}
         timestamp: row.timestamp
       }))
 
-      const kvRows = await runSqliteJson<{
-        key: string
-        value: string
-        last_mentioned: number
-        mention_count: number
-      }>(
-        this.persistenceDbPath,
-        `
-        SELECT key, value, last_mentioned, mention_count
-        FROM short_term_kv
-        ORDER BY last_mentioned DESC;
-        `
-      )
-      this.shortTermKV = new Map(kvRows.map(row => [
-        row.key,
-        {
-          key: row.key,
-          value: parseJsonValue(row.value),
-          lastMentioned: row.last_mentioned,
-          mentionCount: row.mention_count
-        }
-      ]))
-
       const metadataRows = await runSqliteJson<{ value: string }>(
         this.persistenceDbPath,
         "SELECT value FROM metadata WHERE key = 'turn_counter' LIMIT 1;"
@@ -619,8 +524,7 @@ ${conversationText}
         turns: this.workingMemory.length,
         profileKeys: Object.keys(this.userProfile.basic).length,
         importantMemories: this.userProfile.importantMemories.size,
-        summaries: this.conversationSummaries.length,
-        shortTermKV: this.shortTermKV.size
+        summaries: this.conversationSummaries.length
       })
     } catch (error) {
       console.error('[MemoryEngine] Failed to load from SQLite:', error)
@@ -660,13 +564,6 @@ ${conversationText}
       for (const summary of this.conversationSummaries.slice(-50)) {
         statements.push(
           `INSERT INTO conversation_summaries (id, start_turn, end_turn, summary, key_topics, timestamp) VALUES (${sqlText(summary.id)}, ${summary.startTurn}, ${summary.endTurn}, ${sqlText(summary.summary)}, ${sqlText(JSON.stringify(summary.keyTopics))}, ${summary.timestamp});`
-        )
-      }
-
-      statements.push('DELETE FROM short_term_kv;')
-      for (const entry of this.shortTermKV.values()) {
-        statements.push(
-          `INSERT INTO short_term_kv (key, value, last_mentioned, mention_count) VALUES (${sqlText(entry.key)}, ${sqlText(JSON.stringify(entry.value))}, ${entry.lastMentioned}, ${entry.mentionCount});`
         )
       }
 

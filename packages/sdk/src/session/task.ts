@@ -48,7 +48,6 @@ export class TaskRuntime {
     private taskDescription: string,
     private originalUserInput: string,
     private memoryContext: {
-      shortTermKV: Record<string, any>
       userProfile: UserProfile
       summaries: ConversationSummary[]
     },
@@ -322,14 +321,6 @@ export class TaskRuntime {
       sections.push(
         `历史摘要：\n${this.memoryContext.summaries
           .map(summary => `- ${summary.summary}`)
-          .join('\n')}`
-      )
-    }
-
-    if (Object.keys(this.memoryContext.shortTermKV).length > 0) {
-      sections.push(
-        `短期上下文：\n${Object.entries(this.memoryContext.shortTermKV)
-          .map(([key, value]) => `${key}: ${typeof value === 'string' ? value : JSON.stringify(value)}`)
           .join('\n')}`
       )
     }
