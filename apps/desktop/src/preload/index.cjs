@@ -45,6 +45,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('conversation:response', (_, text) => callback(text))
   },
 
+  onConversationFrame: (callback) => {
+    ipcRenderer.on('conversation:frame', (_, frame) => callback(frame))
+  },
+
   // 窗口控制
   moveWindow: (deltaX, deltaY) => {
     ipcRenderer.send('window:move', deltaX, deltaY)

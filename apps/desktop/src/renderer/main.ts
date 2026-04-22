@@ -91,6 +91,13 @@ let isInitialized = false
 let activeMode: 'conversation' | 'text' | null = null
 let ttsEnabled = false
 
+type ConversationFrame =
+  | { type: 'system.reset' }
+  | { type: 'control.phase_start'; phase: 'reply' | 'task' | 'task_result' }
+  | { type: 'control.phase_end'; phase: 'reply' | 'task' | 'task_result' }
+  | { type: 'control.task_start'; taskDescription: string }
+  | { type: 'control.task_end'; success: boolean; summary: string; error?: string }
+
 // Canvas rendering
 const canvas = document.getElementById('orb-canvas') as HTMLCanvasElement
 const ctx = canvas.getContext('2d', { alpha: true })!
@@ -274,6 +281,39 @@ function clearTextDisplay() {
   setTextDisplay('')
 }
 
+function handleConversationFrame(frame: ConversationFrame) {
+  switch (frame.type) {
+    case 'system.reset':
+      clearTextDisplay()
+      setStatus('Thinking...')
+      setOrbMode('thinking')
+      break
+    case 'control.phase_start':
+      if (frame.phase === 'reply') {
+        setStatus('Replying...')
+      } else if (frame.phase === 'task_result') {
+        setStatus('Sharing result...')
+      }
+      setOrbMode('speaking')
+      break
+    case 'control.phase_end':
+      if (frame.phase === 'task_result') {
+        setStatus(activeMode === 'conversation' ? 'Conversation Ready' : 'Text Ready')
+        setOrbMode('idle')
+      }
+      break
+    case 'control.task_start':
+      setStatus('Working...')
+      setOrbMode('thinking')
+      break
+    case 'control.task_end':
+      if (!frame.success) {
+        setStatus(frame.error ? `Task Error: ${frame.error}` : 'Task failed')
+      }
+      break
+  }
+}
+
 // ========== Event Handlers ==========
 
 const startConversationBtn = document.getElementById('start-conversation-btn') as HTMLButtonElement
@@ -327,6 +367,10 @@ async function initialize(mode: 'conversation' | 'text') {
       setTextDisplay(text)
     })
 
+    window.electronAPI.onConversationFrame((frame) => {
+      handleConversationFrame(frame as ConversationFrame)
+    })
+
     // 监听 TTS 事件
     window.electronAPI.onTTSConnected(() => {
       console.log('[UI] TTS connected')
@@ -366,6 +410,7 @@ async function sendMessage() {
   sendBtn.disabled = true
   textInput.value = ''
 
+  audioPlayer.stop()
   setOrbMode('thinking')
   clearTextDisplay()
 

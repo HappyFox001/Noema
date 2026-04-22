@@ -43,6 +43,20 @@ declare global {
       onTTSClosed: (callback: () => void) => void
       onTTSError: (callback: (error: string) => void) => void
       onConversationResponse: (callback: (text: string) => void) => void
+      onConversationFrame: (callback: (frame: {
+        type: 'system.reset'
+      } | {
+        type: 'control.phase_start' | 'control.phase_end'
+        phase: 'reply' | 'task' | 'task_result'
+      } | {
+        type: 'control.task_start'
+        taskDescription: string
+      } | {
+        type: 'control.task_end'
+        success: boolean
+        summary: string
+        error?: string
+      }) => void) => void
 
       // 窗口控制
       moveWindow: (deltaX: number, deltaY: number) => void

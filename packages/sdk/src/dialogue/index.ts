@@ -22,6 +22,20 @@ interface ParsedEmotionalResponse {
 export interface StreamOptions {
   /** TTS 文本块回调（SDK 自动处理分句） */
   onTTSChunk?: (text: string) => Promise<void>
+  /** 回复阶段开始 */
+  onPhaseStart?: (phase: 'reply' | 'task_result') => Promise<void> | void
+  /** 回复阶段结束，可用于等待播放/显示完成 */
+  onPhaseEnd?: (phase: 'reply' | 'task_result', fullText: string) => Promise<void> | void
+  /** 文本显示块回调 */
+  onDisplayChunk?: (
+    phase: 'reply' | 'task_result',
+    delta: string,
+    fullText: string
+  ) => Promise<void> | void
+  /** 任务执行开始 */
+  onTaskStart?: (taskDescription: string) => Promise<void> | void
+  /** 任务执行结束 */
+  onTaskEnd?: (result: { success: boolean; summary: string; error?: string }) => Promise<void> | void
 }
 
 function scheduleAsyncTask(task: () => Promise<void>): void {
@@ -95,22 +109,33 @@ export class DialogueOrchestrator {
         personality,
         tools,
         streamOptions: options,
+        phase: 'reply',
         detectTask: true,
         yieldChunks: (chunk) => chunk  // 直接返回，外层 yield
       })
+
+      await options?.onPhaseStart?.('reply')
 
       // 流式输出第一次回复
       for await (const chunk of firstResult.stream) {
         yield chunk
       }
 
+      await options?.onPhaseEnd?.('reply', firstResult.reply)
+
       let combinedReply = firstResult.reply
 
       // === 如果有任务，执行任务 ===
       if (firstResult.hasTask && firstResult.taskDescription && hasTools) {
+        await options?.onTaskStart?.(firstResult.taskDescription)
         console.log('🚀 Reply 已流式输出完毕，开始执行任务...\n')
 
         const taskResult = await this.taskSession.runTask(firstResult.taskDescription, input.text)
+        await options?.onTaskEnd?.({
+          success: taskResult.success,
+          summary: taskResult.finalMessage,
+          ...(taskResult.error ? { error: taskResult.error } : {})
+        })
 
         // 将任务执行结果记录到上下文（作为精简的 tool result）
         const taskResultContext = this.formatTaskResultForContext(firstResult.taskDescription, taskResult)
@@ -131,14 +156,19 @@ export class DialogueOrchestrator {
           personality,
           tools,
           streamOptions: options,
+          phase: 'task_result',
           detectTask: false,  // 不检测任务
           additionalUserMessage: '请根据刚才的任务执行结果，用简洁亲切的口吻告诉我结果。'
         })
+
+        await options?.onPhaseStart?.('task_result')
 
         // 流式输出第二次回复
         for await (const chunk of secondResult.stream) {
           yield chunk
         }
+
+        await options?.onPhaseEnd?.('task_result', secondResult.reply)
 
         combinedReply = firstResult.reply + '\n\n' + secondResult.reply
       }
@@ -174,6 +204,7 @@ export class DialogueOrchestrator {
     personality: ReturnType<PersonalityEngine['getPersonality']>
     tools: ReturnType<AgentCore['getTools']>
     streamOptions?: StreamOptions
+    phase: 'reply' | 'task_result'
     detectTask: boolean
     additionalUserMessage?: string
     yieldChunks?: (chunk: string) => string
@@ -183,7 +214,7 @@ export class DialogueOrchestrator {
     hasTask: boolean
     taskDescription?: string
   }> {
-    const { memoryContext, personality, tools, streamOptions, detectTask, additionalUserMessage } = params
+    const { memoryContext, personality, tools, streamOptions, phase, detectTask, additionalUserMessage } = params
 
     // 构建 Prompt
     const { system, messages } = PromptBuilder.build(
@@ -239,6 +270,8 @@ export class DialogueOrchestrator {
 
           if (delta) {
             emittedReplyLength = visibleReply.length
+            finalReply = visibleReply
+            await streamOptions?.onDisplayChunk?.(phase, delta, visibleReply)
             yield delta
 
             // TTS 处理

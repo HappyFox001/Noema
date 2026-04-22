@@ -49,6 +49,146 @@ import {
 } from './sdk-config.js'
 const DEV_SERVER_URL = 'http://127.0.0.1:5173'
 
+type ConversationPhase = 'reply' | 'task' | 'task_result'
+
+type ConversationFrame =
+  | { type: 'system.reset' }
+  | { type: 'control.phase_start'; phase: ConversationPhase }
+  | { type: 'control.phase_end'; phase: ConversationPhase }
+  | { type: 'control.task_start'; taskDescription: string }
+  | { type: 'control.task_end'; success: boolean; summary: string; error?: string }
+
+class ConversationDisplayController {
+  private visibleText = ''
+  private queue: Promise<void> = Promise.resolve()
+
+  constructor(
+    private sendText: (text: string) => void,
+    private sendFrame: (frame: ConversationFrame) => void
+  ) {}
+
+  reset(): void {
+    this.visibleText = ''
+    this.queue = Promise.resolve()
+    this.sendFrame({ type: 'system.reset' })
+    this.sendText('')
+  }
+
+  startPhase(phase: ConversationPhase): void {
+    this.sendFrame({ type: 'control.phase_start', phase })
+  }
+
+  async endPhase(phase: ConversationPhase): Promise<void> {
+    await this.waitForIdle()
+    this.sendFrame({ type: 'control.phase_end', phase })
+  }
+
+  startTask(taskDescription: string): void {
+    this.sendFrame({ type: 'control.task_start', taskDescription })
+  }
+
+  endTask(result: { success: boolean; summary: string; error?: string }): void {
+    this.sendFrame({
+      type: 'control.task_end',
+      success: result.success,
+      summary: result.summary,
+      ...(result.error ? { error: result.error } : {})
+    })
+  }
+
+  pushTextDelta(delta: string): void {
+    if (!delta) {
+      return
+    }
+
+    for (const unit of splitDisplayUnits(delta)) {
+      const delay = estimateDisplayDelay(unit)
+      this.queue = this.queue.then(async () => {
+        await delayMs(delay)
+        this.visibleText += unit
+        this.sendText(this.visibleText)
+      })
+    }
+  }
+
+  waitForIdle(): Promise<void> {
+    return this.queue
+  }
+}
+
+function splitDisplayUnits(text: string): string[] {
+  const units: string[] = []
+  let asciiBuffer = ''
+  let cjkBuffer = ''
+
+  const flushAscii = () => {
+    if (asciiBuffer) {
+      units.push(asciiBuffer)
+      asciiBuffer = ''
+    }
+  }
+
+  const flushCjk = () => {
+    if (cjkBuffer) {
+      units.push(cjkBuffer)
+      cjkBuffer = ''
+    }
+  }
+
+  for (const char of text) {
+    if (/\s/.test(char)) {
+      flushAscii()
+      flushCjk()
+      units.push(char)
+      continue
+    }
+
+    if (/[，。！？、；：,.!?]/.test(char)) {
+      flushAscii()
+      flushCjk()
+      units.push(char)
+      continue
+    }
+
+    if (/[A-Za-z0-9]/.test(char)) {
+      flushCjk()
+      asciiBuffer += char
+      continue
+    }
+
+    flushAscii()
+    cjkBuffer += char
+    if (cjkBuffer.length >= 2) {
+      flushCjk()
+    }
+  }
+
+  flushAscii()
+  flushCjk()
+
+  return units
+}
+
+function estimateDisplayDelay(unit: string): number {
+  if (!unit.trim()) {
+    return 20
+  }
+
+  if (/^[，。！？、；：,.!?]$/.test(unit)) {
+    return 180
+  }
+
+  if (/^[A-Za-z0-9]+$/.test(unit)) {
+    return Math.min(160, Math.max(50, unit.length * 35))
+  }
+
+  return Math.min(220, Math.max(70, unit.length * 95))
+}
+
+function delayMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 // This app uses a transparent frameless window and simple canvas effects.
 // Disabling GPU avoids macOS/Electron ANGLE initialization failures.
 app.disableHardwareAcceleration()
@@ -276,20 +416,13 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
       throw new Error('SDK not initialized')
     }
 
-    let shouldUseTTS = enableTTS && Boolean(ttsService) && ttsAvailable
+    const displayController = new ConversationDisplayController(
+      (nextText) => mainWindow?.webContents.send('conversation:response', nextText),
+      (frame) => mainWindow?.webContents.send('conversation:frame', frame)
+    )
+    displayController.reset()
 
-    // 开始 TTS 流（捕获连接错误）
-    if (shouldUseTTS && ttsService) {
-      try {
-        await ttsService.startStreaming()
-      } catch (error: any) {
-        console.warn('[TTS] Failed to start streaming:', error.message)
-        console.warn('[TTS] Continuing without TTS...')
-        ttsAvailable = false
-        shouldUseTTS = false // 禁用 TTS 但继续执行
-        await ttsService.close().catch(() => undefined)
-      }
-    }
+    let shouldUseTTS = enableTTS && Boolean(ttsService) && ttsAvailable
 
     // 使用 SDK 的 chatStream，TTS 分句逻辑由 SDK 处理
     const responseStream = sdkInstance.chatStream(
@@ -297,40 +430,66 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
         text,
         timestamp: Date.now()
       },
-      shouldUseTTS && ttsService
-        ? {
-            onTTSChunk: async (chunk) => {
-              if (!ttsAvailable) {
-                return
-              }
+      {
+        onPhaseStart: async (phase) => {
+          displayController.startPhase(phase)
 
-              try {
-                console.log('[Main] onTTSChunk called, pushing:', chunk)
-                await ttsService!.pushText(chunk)
-              } catch (error: any) {
-                ttsAvailable = false
-                console.warn('[TTS] Failed to push chunk:', error.message)
-              }
+          if (!shouldUseTTS || !ttsService) {
+            return
+          }
+
+          try {
+            await ttsService.startStreaming()
+          } catch (error: any) {
+            console.warn('[TTS] Failed to start streaming:', error.message)
+            console.warn('[TTS] Continuing without TTS...')
+            ttsAvailable = false
+            shouldUseTTS = false
+            await ttsService.close().catch(() => undefined)
+          }
+        },
+        onDisplayChunk: async (_, delta) => {
+          displayController.pushTextDelta(delta)
+        },
+        onTTSChunk: async (chunk) => {
+          if (!shouldUseTTS || !ttsAvailable || !ttsService) {
+            return
+          }
+
+          try {
+            console.log('[Main] onTTSChunk called, pushing:', chunk)
+            await ttsService.pushText(chunk)
+          } catch (error: any) {
+            ttsAvailable = false
+            shouldUseTTS = false
+            console.warn('[TTS] Failed to push chunk:', error.message)
+          }
+        },
+        onPhaseEnd: async (phase) => {
+          if (shouldUseTTS && ttsService) {
+            try {
+              await ttsService.finishStreaming()
+            } catch (error: any) {
+              ttsAvailable = false
+              shouldUseTTS = false
+              console.warn('[TTS] Failed to finish streaming:', error.message)
             }
           }
-        : undefined
+
+          await displayController.endPhase(phase)
+        },
+        onTaskStart: async (taskDescription) => {
+          displayController.startTask(taskDescription)
+        },
+        onTaskEnd: async (result) => {
+          displayController.endTask(result)
+        }
+      }
     )
 
     let fullResponse = ''
     for await (const chunk of responseStream) {
       fullResponse += chunk
-      // 发送到渲染进程显示
-      mainWindow?.webContents.send('conversation:response', fullResponse)
-    }
-
-    // 完成 TTS（SDK 已经正确处理关闭）
-    if (shouldUseTTS && ttsService) {
-      try {
-        await ttsService.finishStreaming()
-      } catch (error: any) {
-        ttsAvailable = false
-        console.warn('[TTS] Failed to finish streaming:', error.message)
-      }
     }
 
     return { success: true, response: fullResponse, ttsEnabled: shouldUseTTS }
