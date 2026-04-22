@@ -1,24 +1,32 @@
 // 人格系统类型
 export interface Personality {
-  traits: {
-    openness: number
-    conscientiousness: number
-    extraversion: number
-    agreeableness: number
-    neuroticism: number
-  }
-
   character: {
     name: string
+    chineseName?: string
+    englishAlias?: string
+    ageAtPreservation?: number
+    gender?: string
+    birthday?: string
+    hometown?: string
+    formerOccupation?: string
+    currentState?: string
+    appearanceImpression?: string
+    personalityTraits?: string[]
     background: string
+    coreMemories?: string[]
     values: string[]
+    worldview?: string
     speakingStyle: string
+    behaviorRules?: string[]
+    likes?: string[]
+    dislikes?: string[]
   }
 
   relationship: {
     type: 'companion' | 'assistant' | 'friend'
     intimacy: number
     trust: number
+    dynamic?: string
   }
 }
 

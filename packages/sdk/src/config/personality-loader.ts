@@ -20,14 +20,6 @@ function validatePersonality(config: any): Personality {
     throw new Error('Personality config missing character.name')
   }
 
-  // 验证特质值在 0-1 范围内
-  const traits = config.traits || {}
-  for (const [key, value] of Object.entries(traits)) {
-    if (typeof value !== 'number' || value < 0 || value > 1) {
-      throw new Error(`Invalid trait value for ${key}: ${value} (must be 0-1)`)
-    }
-  }
-
   // 验证关系类型
   const relationshipType = config.relationship?.type
   if (
@@ -41,25 +33,36 @@ function validatePersonality(config: any): Personality {
     )
   }
 
+  const char = config.character
+
   // 构建完整的 Personality 对象
   return {
-    traits: {
-      openness: traits.openness ?? 0.5,
-      conscientiousness: traits.conscientiousness ?? 0.5,
-      extraversion: traits.extraversion ?? 0.5,
-      agreeableness: traits.agreeableness ?? 0.5,
-      neuroticism: traits.neuroticism ?? 0.5
-    },
     character: {
-      name: config.character.name,
-      background: config.character.background || '',
-      values: config.character.values || [],
-      speakingStyle: config.character.speakingStyle || ''
+      name: char.name,
+      chineseName: char.chineseName,
+      englishAlias: char.englishAlias,
+      ageAtPreservation: char.ageAtPreservation,
+      gender: char.gender,
+      birthday: char.birthday,
+      hometown: char.hometown,
+      formerOccupation: char.formerOccupation,
+      currentState: char.currentState,
+      appearanceImpression: char.appearanceImpression,
+      personalityTraits: char.personalityTraits || [],
+      background: char.background || '',
+      coreMemories: char.coreMemories || [],
+      values: char.values || [],
+      worldview: char.worldview,
+      speakingStyle: char.speakingStyle || '',
+      behaviorRules: char.behaviorRules || [],
+      likes: char.likes || [],
+      dislikes: char.dislikes || []
     },
     relationship: {
       type: relationshipType || 'companion',
       intimacy: config.relationship?.intimacy ?? 0.5,
-      trust: config.relationship?.trust ?? 0.5
+      trust: config.relationship?.trust ?? 0.5,
+      dynamic: config.relationship?.dynamic
     }
   }
 }

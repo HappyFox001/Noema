@@ -123,60 +123,127 @@ export class PromptBuilder {
    * 格式化人格信息（XML）
    */
   private static formatPersonalityXML(personality: Personality): string {
-    const { character, traits, relationship } = personality
+    const { character, relationship } = personality
+    const sections: string[] = []
 
-    let xml = '<role>\n'
-    xml += `你是 ${character.name}。\n\n`
-    xml += `${character.background}\n`
-    xml += '</role>\n\n'
+    // ========== 角色身份 ==========
+    sections.push('<identity>')
+    const displayName = character.chineseName || character.name
+    sections.push(`  <name>${displayName}</name>`)
+    if (character.englishAlias) {
+      sections.push(`  <alias>${character.englishAlias}</alias>`)
+    }
+    if (character.gender) {
+      sections.push(`  <gender>${character.gender}</gender>`)
+    }
+    if (character.ageAtPreservation) {
+      sections.push(`  <age>${character.ageAtPreservation}</age>`)
+    }
+    if (character.birthday) {
+      sections.push(`  <birthday>${character.birthday}</birthday>`)
+    }
+    if (character.hometown) {
+      sections.push(`  <hometown>${character.hometown}</hometown>`)
+    }
+    if (character.formerOccupation) {
+      sections.push(`  <former_occupation>${character.formerOccupation}</former_occupation>`)
+    }
+    if (character.currentState) {
+      sections.push(`  <current_state>${character.currentState}</current_state>`)
+    }
+    sections.push('</identity>\n')
 
-    xml += '<personality>\n'
+    // ========== 外貌印象 ==========
+    if (character.appearanceImpression) {
+      sections.push('<appearance>')
+      sections.push(this.escapeXML(character.appearanceImpression.trim()))
+      sections.push('</appearance>\n')
+    }
 
-    // 价值观
-    if (character.values && character.values.length > 0) {
-      xml += '<values>\n'
-      character.values.forEach(v => {
-        xml += `  <value>${v}</value>\n`
+    // ========== 背景故事 ==========
+    sections.push('<background>')
+    sections.push(this.escapeXML(character.background.trim()))
+    sections.push('</background>\n')
+
+    // ========== 核心记忆 ==========
+    if (character.coreMemories && character.coreMemories.length > 0) {
+      sections.push('<core_memories>')
+      character.coreMemories.forEach(memory => {
+        sections.push(`  <memory>${this.escapeXML(memory)}</memory>`)
       })
-      xml += '</values>\n\n'
+      sections.push('</core_memories>\n')
     }
 
-    // 说话风格
+    // ========== 性格特质 ==========
+    if (character.personalityTraits && character.personalityTraits.length > 0) {
+      sections.push('<personality_traits>')
+      character.personalityTraits.forEach(trait => {
+        sections.push(`  <trait>${this.escapeXML(trait)}</trait>`)
+      })
+      sections.push('</personality_traits>\n')
+    }
+
+    // ========== 价值观 ==========
+    if (character.values && character.values.length > 0) {
+      sections.push('<values>')
+      character.values.forEach(v => {
+        sections.push(`  <value>${this.escapeXML(v)}</value>`)
+      })
+      sections.push('</values>\n')
+    }
+
+    // ========== 世界观 ==========
+    if (character.worldview) {
+      sections.push('<worldview>')
+      sections.push(this.escapeXML(character.worldview.trim()))
+      sections.push('</worldview>\n')
+    }
+
+    // ========== 说话风格 ==========
     if (character.speakingStyle) {
-      xml += `<speaking_style>${character.speakingStyle}</speaking_style>\n\n`
+      sections.push('<speaking_style>')
+      sections.push(this.escapeXML(character.speakingStyle.trim()))
+      sections.push('</speaking_style>\n')
     }
 
-    // 人格特质
-    xml += '<traits>\n'
-    if (traits.openness > 0.6) {
-      xml += '  <trait>对新事物充满好奇，富有想象力</trait>\n'
+    // ========== 行为准则 ==========
+    if (character.behaviorRules && character.behaviorRules.length > 0) {
+      sections.push('<behavior_rules>')
+      character.behaviorRules.forEach(rule => {
+        sections.push(`  <rule>${this.escapeXML(rule)}</rule>`)
+      })
+      sections.push('</behavior_rules>\n')
     }
-    if (traits.conscientiousness > 0.6) {
-      xml += '  <trait>做事认真负责，注重细节</trait>\n'
-    }
-    if (traits.extraversion > 0.6) {
-      xml += '  <trait>性格外向，善于表达</trait>\n'
-    }
-    if (traits.agreeableness > 0.6) {
-      xml += '  <trait>温和友善，富有同理心</trait>\n'
-    }
-    if (traits.neuroticism > 0.6) {
-      xml += '  <trait>情感细腻，对情绪变化敏感</trait>\n'
-    } else if (traits.neuroticism < 0.4) {
-      xml += '  <trait>情绪稳定，冷静从容</trait>\n'
-    }
-    xml += '</traits>\n\n'
 
-    // 关系信息
-    xml += '<relationship>\n'
-    xml += `  <type>${relationship.type}</type>\n`
-    xml += `  <intimacy>${relationship.intimacy.toFixed(2)}</intimacy>\n`
-    xml += `  <trust>${relationship.trust.toFixed(2)}</trust>\n`
-    xml += '</relationship>\n'
+    // ========== 喜好 ==========
+    if (character.likes && character.likes.length > 0) {
+      sections.push('<likes>')
+      character.likes.forEach(like => {
+        sections.push(`  <item>${this.escapeXML(like)}</item>`)
+      })
+      sections.push('</likes>\n')
+    }
 
-    xml += '</personality>'
+    // ========== 厌恶 ==========
+    if (character.dislikes && character.dislikes.length > 0) {
+      sections.push('<dislikes>')
+      character.dislikes.forEach(dislike => {
+        sections.push(`  <item>${this.escapeXML(dislike)}</item>`)
+      })
+      sections.push('</dislikes>\n')
+    }
 
-    return xml
+    // ========== 关系设定 ==========
+    sections.push('<relationship>')
+    sections.push(`  <type>${relationship.type}</type>`)
+    sections.push(`  <intimacy>${relationship.intimacy.toFixed(2)}</intimacy>`)
+    sections.push(`  <trust>${relationship.trust.toFixed(2)}</trust>`)
+    if (relationship.dynamic) {
+      sections.push(`  <dynamic>${this.escapeXML(relationship.dynamic.trim())}</dynamic>`)
+    }
+    sections.push('</relationship>')
+
+    return sections.join('\n')
   }
 
   /**

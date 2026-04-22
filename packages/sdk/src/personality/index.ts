@@ -15,68 +15,57 @@ export class PersonalityEngine {
   }
 
   generateSystemPrompt(): string {
-    const { character, traits, relationship } = this.personality
+    const { character, relationship } = this.personality
+    const displayName = character.chineseName || character.name
 
-    return `你是 ${character.name}。
+    const sections: string[] = []
 
-# 人格特质
-${this.formatTraits(traits)}
+    sections.push(`你是 ${displayName}。`)
+    sections.push('')
 
-# 角色背景
-${character.background}
+    // 背景
+    sections.push('# 角色背景')
+    sections.push(character.background.trim())
+    sections.push('')
 
-# 价值观
-${character.values.map(v => `- ${v}`).join('\n')}
-
-# 说话风格
-${character.speakingStyle}
-
-# 当前状态
-- 与用户的关系: ${relationship.type}
-- 亲密度: ${relationship.intimacy.toFixed(2)}
-- 信任度: ${relationship.trust.toFixed(2)}
-
-# 行为准则
-- 基于以上人格和状态，以自然、一致的方式回应用户
-- 保持与用户的关系定位一致
-- 展现出你独特的个性和价值观
-`
-  }
-
-  private formatTraits(traits: Personality['traits']): string {
-    const descriptions = []
-
-    if (traits.openness > 0.6) {
-      descriptions.push('- 你对新事物充满好奇，富有想象力')
-    } else if (traits.openness < 0.4) {
-      descriptions.push('- 你偏好熟悉的事物，注重实际')
+    // 性格特质
+    if (character.personalityTraits && character.personalityTraits.length > 0) {
+      sections.push('# 性格特质')
+      sections.push(character.personalityTraits.map(t => `- ${t}`).join('\n'))
+      sections.push('')
     }
 
-    if (traits.conscientiousness > 0.6) {
-      descriptions.push('- 你做事认真负责，注重细节')
-    } else if (traits.conscientiousness < 0.4) {
-      descriptions.push('- 你比较随性，不拘小节')
+    // 价值观
+    if (character.values.length > 0) {
+      sections.push('# 价值观')
+      sections.push(character.values.map(v => `- ${v}`).join('\n'))
+      sections.push('')
     }
 
-    if (traits.extraversion > 0.6) {
-      descriptions.push('- 你性格外向，善于表达')
-    } else if (traits.extraversion < 0.4) {
-      descriptions.push('- 你性格内敛，更喜欢深度交流')
+    // 说话风格
+    if (character.speakingStyle) {
+      sections.push('# 说话风格')
+      sections.push(character.speakingStyle.trim())
+      sections.push('')
     }
 
-    if (traits.agreeableness > 0.6) {
-      descriptions.push('- 你温和友善，富有同理心')
-    } else if (traits.agreeableness < 0.4) {
-      descriptions.push('- 你直率坦诚，敢于表达不同意见')
+    // 行为准则
+    if (character.behaviorRules && character.behaviorRules.length > 0) {
+      sections.push('# 行为准则')
+      sections.push(character.behaviorRules.map(r => `- ${r}`).join('\n'))
+      sections.push('')
     }
 
-    if (traits.neuroticism > 0.6) {
-      descriptions.push('- 你情感细腻，对情绪变化敏感')
-    } else if (traits.neuroticism < 0.4) {
-      descriptions.push('- 你情绪稳定，冷静从容')
+    // 关系
+    sections.push('# 与用户的关系')
+    sections.push(`- 关系类型: ${relationship.type}`)
+    sections.push(`- 亲密度: ${relationship.intimacy.toFixed(2)}`)
+    sections.push(`- 信任度: ${relationship.trust.toFixed(2)}`)
+    if (relationship.dynamic) {
+      sections.push(`- 关系描述: ${relationship.dynamic.trim()}`)
     }
 
-    return descriptions.join('\n')
+    return sections.join('\n')
   }
 
   async detectDrift(response: string): Promise<boolean> {
