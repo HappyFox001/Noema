@@ -353,6 +353,7 @@ input[type="password"] {
   position: absolute;
   top: 20px;
   right: 24px;
+  z-index: 2;
   width: 36px;
   height: 36px;
   background: rgba(255, 255, 255, 0.1);
@@ -365,6 +366,9 @@ input[type="password"] {
   display: flex;
   align-items: center;
   justify-content: center;
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .settings-close:hover {
@@ -709,6 +713,12 @@ body.settings-open #main-view {
   opacity: 0.18;
   transform: scale(0.985);
   pointer-events: none;
+}
+
+body:not(.settings-open) #main-view {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
 }
 
 @media (max-width: 560px) {

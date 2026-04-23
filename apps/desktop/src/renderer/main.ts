@@ -922,6 +922,7 @@ textInput.addEventListener('keypress', (e) => {
 const contextMenu = document.getElementById('context-menu')!
 const settingsPanel = document.getElementById('settings-panel')!
 const settingsClose = document.getElementById('settings-close')!
+const mainView = document.getElementById('main-view')!
 const settingsNav = document.querySelector('.settings-nav')!
 const volumeSlider = document.getElementById('volume-slider') as HTMLInputElement
 const volumeValue = document.getElementById('volume-value')!
@@ -1026,6 +1027,7 @@ function openSettings() {
   stopOrbAnimation()
   document.body.classList.add('settings-open')
   settingsPanel.classList.add('visible')
+  mainView.setAttribute('aria-hidden', 'true')
 }
 
 // Close settings panel
@@ -1033,10 +1035,15 @@ function closeSettings() {
   orbAnimationPaused = false
   document.body.classList.remove('settings-open')
   settingsPanel.classList.remove('visible')
+  mainView.removeAttribute('aria-hidden')
   startOrbAnimation()
 }
 
-settingsClose.addEventListener('click', closeSettings)
+settingsClose.addEventListener('click', (event) => {
+  event.preventDefault()
+  event.stopPropagation()
+  closeSettings()
+})
 
 // Close settings with Escape key
 document.addEventListener('keydown', (e) => {
