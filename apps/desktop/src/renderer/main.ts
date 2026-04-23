@@ -1039,11 +1039,14 @@ function closeSettings() {
   startOrbAnimation()
 }
 
-settingsClose.addEventListener('click', (event) => {
+function handleSettingsClose(event: Event) {
   event.preventDefault()
   event.stopPropagation()
   closeSettings()
-})
+}
+
+settingsClose.addEventListener('pointerdown', handleSettingsClose)
+settingsClose.addEventListener('click', handleSettingsClose)
 
 // Close settings with Escape key
 document.addEventListener('keydown', (e) => {

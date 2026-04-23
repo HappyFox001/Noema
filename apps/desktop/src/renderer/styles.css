@@ -338,8 +338,8 @@ input[type="password"] {
   transform: translateX(14px);
   transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s ease;
   contain: layout paint style;
-  -webkit-app-region: drag;
-  app-region: drag;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .settings-panel.visible {
@@ -381,8 +381,8 @@ input[type="password"] {
   height: 100%;
   width: 100%;
   min-width: 0;
-  -webkit-app-region: drag;
-  app-region: drag;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 /* ========== 左侧导航 ========== */
@@ -396,8 +396,8 @@ input[type="password"] {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  -webkit-app-region: drag;
-  app-region: drag;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .nav-item {
@@ -443,8 +443,8 @@ input[type="password"] {
   padding: 64px clamp(16px, 4vw, 32px) 24px;
   overflow-y: auto;
   contain: layout paint;
-  -webkit-app-region: drag;
-  app-region: drag;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .settings-section {
