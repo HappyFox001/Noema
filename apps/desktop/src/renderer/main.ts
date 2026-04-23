@@ -232,10 +232,10 @@ class VoiceRecorder {
   private source: MediaStreamAudioSourceNode | null = null
   private processor: ScriptProcessorNode | null = null
   private sink: GainNode | null = null
-  private recordedChunks: Int16Array[] = []
   private recording = false
+  private chunkHandler: ((chunk: Int16Array, level: number) => void) | null = null
 
-  async start(): Promise<void> {
+  async start(onChunk?: (chunk: Int16Array, level: number) => void): Promise<void> {
     if (this.recording) {
       return
     }
@@ -255,7 +255,7 @@ class VoiceRecorder {
     this.sink = this.context.createGain()
     this.sink.gain.value = 0
 
-    this.recordedChunks = []
+    this.chunkHandler = onChunk || null
     this.recording = true
 
     this.processor.onaudioprocess = (event) => {
@@ -266,7 +266,7 @@ class VoiceRecorder {
       const input = event.inputBuffer.getChannelData(0)
       const downsampled = downsampleToInt16(input, this.context.sampleRate, 16000)
       if (downsampled.length > 0) {
-        this.recordedChunks.push(downsampled)
+        this.chunkHandler?.(downsampled, calculateRms(input))
       }
     }
 
@@ -275,7 +275,7 @@ class VoiceRecorder {
     this.sink.connect(this.context.destination)
   }
 
-  async stop(): Promise<Int16Array> {
+  async stop(): Promise<void> {
     this.recording = false
 
     this.processor?.disconnect()
@@ -289,17 +289,7 @@ class VoiceRecorder {
     this.sink = null
     this.stream = null
     this.context = null
-
-    const totalLength = this.recordedChunks.reduce((sum, chunk) => sum + chunk.length, 0)
-    const merged = new Int16Array(totalLength)
-    let offset = 0
-    for (const chunk of this.recordedChunks) {
-      merged.set(chunk, offset)
-      offset += chunk.length
-    }
-    this.recordedChunks = []
-
-    return merged
+    this.chunkHandler = null
   }
 
   isRecording(): boolean {
@@ -351,6 +341,14 @@ function toInt16Sample(value: number): number {
   return clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff
 }
 
+function calculateRms(input: Float32Array): number {
+  let sum = 0
+  for (let i = 0; i < input.length; i++) {
+    sum += input[i] * input[i]
+  }
+  return Math.sqrt(sum / input.length)
+}
+
 // ========== UI ==========
 
 const audioPlayer = new AudioPlayer()
@@ -364,6 +362,16 @@ let ttsEnabled = false
 let voiceInputEnabled = true
 let isSendingMessage = false
 let isVoiceListening = false
+let conversationStreamActive = false
+let conversationStreamSuspended = false
+let conversationSpeechStarted = false
+let conversationSpeechStartAt = 0
+let conversationLastSpeechAt = 0
+let conversationCommitInFlight = false
+
+const STREAM_SPEECH_THRESHOLD = 0.015
+const STREAM_MIN_SPEECH_MS = 250
+const STREAM_SILENCE_MS = 900
 
 type UISettings = {
   voiceInputEnabled: boolean
@@ -715,53 +723,154 @@ async function initialize(mode: 'conversation' | 'text') {
   }
 }
 
-startConversationBtn.addEventListener('click', async () => {
-  if (!voiceInputEnabled) {
-    setStatus('Voice input is disabled')
-    return
-  }
-  await initialize('conversation')
-
+async function stopConversationStreaming(): Promise<void> {
   try {
+    conversationStreamActive = false
+    conversationStreamSuspended = false
+    conversationSpeechStarted = false
+    conversationCommitInFlight = false
+    isVoiceListening = false
+
     if (voiceRecorder.isRecording()) {
-      setStatus('Transcribing...')
-      startConversationBtn.textContent = 'Transcribing...'
-      const samples = await voiceRecorder.stop()
-      isVoiceListening = false
-
-      const result = await window.electronAPI.transcribeAudio(Array.from(samples))
-      if (!result.success || !result.text?.trim()) {
-        throw new Error(result.error || 'No speech recognized')
-      }
-
-      textInput.value = result.text
-      await sendMessage(result.text)
-      startConversationBtn.textContent = voiceInputEnabled ? 'Conversation Ready' : 'Voice Disabled'
-      return
+      await voiceRecorder.stop()
     }
 
-    await voiceRecorder.start()
-    isVoiceListening = true
-    setStatus('Listening...')
-    setOrbMode('thinking')
-    startConversationBtn.textContent = 'Stop Recording'
+    await window.electronAPI.stopSpeechStream()
   } catch (error: any) {
-    isVoiceListening = false
-    startConversationBtn.textContent = voiceInputEnabled ? 'Conversation Ready' : 'Voice Disabled'
     setStatus(`Voice Error: ${error.message}`)
     if (!isSendingMessage) {
       setOrbMode('idle')
     }
   }
+}
+
+async function commitConversationUtterance(): Promise<void> {
+  if (!conversationSpeechStarted || conversationCommitInFlight) {
+    return
+  }
+
+  conversationCommitInFlight = true
+  conversationSpeechStarted = false
+  conversationStreamSuspended = true
+  isVoiceListening = false
+  setStatus('Understanding...')
+
+  try {
+    const result = await window.electronAPI.commitSpeechStream()
+    const transcript = result.text?.trim()
+
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to transcribe speech')
+    }
+
+    if (transcript) {
+      textInput.value = transcript
+      await sendMessage(transcript)
+    }
+  } catch (error: any) {
+    setStatus(`Voice Error: ${error.message}`)
+    setOrbMode('idle')
+  } finally {
+    conversationCommitInFlight = false
+    if (conversationStreamActive && activeMode === 'conversation' && voiceInputEnabled) {
+      conversationStreamSuspended = false
+      isVoiceListening = true
+      setStatus('Listening...')
+      if (!isSendingMessage) {
+        setOrbMode('thinking')
+      }
+    }
+  }
+}
+
+async function handleConversationAudioChunk(chunk: Int16Array, level: number): Promise<void> {
+  if (!conversationStreamActive || conversationStreamSuspended || activeMode !== 'conversation') {
+    return
+  }
+
+  const appendResult = await window.electronAPI.appendSpeechStream(Array.from(chunk))
+  if (!appendResult.success) {
+    throw new Error(appendResult.error || 'Failed to stream speech audio')
+  }
+
+  const now = Date.now()
+  const isSpeech = level >= STREAM_SPEECH_THRESHOLD
+
+  if (isSpeech) {
+    if (!conversationSpeechStarted) {
+      conversationSpeechStarted = true
+      conversationSpeechStartAt = now
+    }
+    conversationLastSpeechAt = now
+    isVoiceListening = true
+    setStatus('Listening...')
+    return
+  }
+
+  if (
+    conversationSpeechStarted &&
+    !conversationCommitInFlight &&
+    now - conversationSpeechStartAt >= STREAM_MIN_SPEECH_MS &&
+    now - conversationLastSpeechAt >= STREAM_SILENCE_MS
+  ) {
+    void commitConversationUtterance()
+  }
+}
+
+async function startConversationStreaming(): Promise<void> {
+  if (conversationStreamActive && voiceRecorder.isRecording()) {
+    isVoiceListening = true
+    setStatus('Listening...')
+    return
+  }
+
+  const streamResult = await window.electronAPI.startSpeechStream()
+  if (!streamResult.success) {
+    throw new Error(streamResult.error || 'Failed to start speech stream')
+  }
+
+  await voiceRecorder.start((chunk, level) => {
+    void handleConversationAudioChunk(chunk, level).catch((error: any) => {
+      setStatus(`Voice Error: ${error.message}`)
+      setOrbMode('idle')
+      void stopConversationStreaming()
+    })
+  })
+
+  conversationStreamActive = true
+  conversationStreamSuspended = false
+  conversationSpeechStarted = false
+  conversationCommitInFlight = false
+  isVoiceListening = true
+  setStatus('Listening...')
+  setOrbMode('thinking')
+}
+
+startConversationBtn.addEventListener('click', async () => {
+  if (!voiceInputEnabled) {
+    setStatus('Voice input is disabled')
+    return
+  }
+
+  await initialize('conversation')
+  await startConversationStreaming()
 })
 
 startTextBtn.addEventListener('click', async () => {
+  await stopConversationStreaming()
   await initialize('text')
 })
 
 async function sendMessage(overrideText?: string) {
   const text = (overrideText ?? textInput.value).trim()
   if (!text || !isInitialized) return
+
+  const shouldSuspendConversationStream = activeMode === 'conversation' && conversationStreamActive
+
+  if (shouldSuspendConversationStream) {
+    conversationStreamSuspended = true
+    isVoiceListening = false
+  }
 
   isSendingMessage = true
   textInput.disabled = true
@@ -787,7 +896,16 @@ async function sendMessage(overrideText?: string) {
     isSendingMessage = false
     textInput.disabled = false
     sendBtn.disabled = false
-    setStatus(activeMode === 'conversation' ? 'Conversation Ready' : 'Text Ready')
+    if (shouldSuspendConversationStream && conversationStreamActive && voiceInputEnabled) {
+      conversationStreamSuspended = false
+      isVoiceListening = true
+    }
+
+    if (activeMode === 'conversation' && conversationStreamActive && voiceInputEnabled) {
+      setStatus('Listening...')
+    } else {
+      setStatus(activeMode === 'conversation' ? 'Conversation Ready' : 'Text Ready')
+    }
     textInput.focus()
   }
 }
@@ -973,6 +1091,11 @@ voiceInputToggle.addEventListener('change', async () => {
   if (!settings.voiceInputEnabled && voiceRecorder.isRecording()) {
     await voiceRecorder.stop()
     isVoiceListening = false
+    conversationStreamActive = false
+    conversationStreamSuspended = false
+    conversationSpeechStarted = false
+    conversationCommitInFlight = false
+    await window.electronAPI.stopSpeechStream()
   }
   applySettingsToUI(settings)
   setStatus(settings.voiceInputEnabled ? '语音输入已开启' : '语音输入已关闭')

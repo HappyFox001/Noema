@@ -32,9 +32,21 @@ declare global {
       // 对话历史
       clearHistory: () => Promise<{ success: boolean; error?: string }>
       clearProfile: () => Promise<{ success: boolean; error?: string }>
-      transcribeAudio: (samples: number[]) => Promise<{
+      startSpeechStream: () => Promise<{
+        success: boolean
+        error?: string
+      }>
+      appendSpeechStream: (samples: number[]) => Promise<{
+        success: boolean
+        error?: string
+      }>
+      commitSpeechStream: () => Promise<{
         success: boolean
         text?: string
+        error?: string
+      }>
+      stopSpeechStream: () => Promise<{
+        success: boolean
         error?: string
       }>
       getMicrophonePermissionStatus: () => Promise<{

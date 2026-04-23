@@ -127,6 +127,56 @@ class ConversationDisplayController {
   }
 }
 
+class StreamingASRSession {
+  private asr: QwenRealtimeASR | null = null
+
+  async start(): Promise<void> {
+    await this.stop()
+
+    const apiKey = process.env.QWEN_API_KEY?.trim()
+    if (!apiKey) {
+      throw new Error('QWEN_API_KEY is not configured')
+    }
+
+    this.asr = new QwenRealtimeASR(
+      {
+        apiKey,
+        sampleRate: 16000,
+        language: 'zh',
+      },
+      new NodeRealtimeWebSocketTransport()
+    )
+
+    await this.asr.connect()
+  }
+
+  async append(samples: number[]): Promise<void> {
+    if (!this.asr) {
+      throw new Error('ASR stream is not started')
+    }
+
+    await this.asr.appendAudio(Int16Array.from(samples))
+  }
+
+  async commit(): Promise<string> {
+    if (!this.asr) {
+      throw new Error('ASR stream is not started')
+    }
+
+    return await this.asr.commit()
+  }
+
+  async stop(): Promise<void> {
+    if (!this.asr) {
+      return
+    }
+
+    const current = this.asr
+    this.asr = null
+    await current.close().catch(() => undefined)
+  }
+}
+
 let currentTTSChunkSequence = 0
 
 function splitDisplayUnits(text: string): string[] {
@@ -213,6 +263,7 @@ let ttsService: FishTTSOfficial | null = null
 let sdkInstance: HerTextSDK | null = null
 let ttsAvailable = true
 let settingsStore: SettingsStore | null = null
+let streamingASRSession: StreamingASRSession | null = null
 let appSettings: AppSettings = {
   voiceInputEnabled: true,
   voiceOutputEnabled: true,
@@ -616,6 +667,58 @@ ipcMain.handle('speech:transcribe', async (_, samples: number[]) => {
     }
   } catch (error: any) {
     console.error('[Speech] Transcription failed:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('speech:stream:start', async () => {
+  try {
+    if (!streamingASRSession) {
+      streamingASRSession = new StreamingASRSession()
+    }
+
+    await streamingASRSession.start()
+    return { success: true }
+  } catch (error: any) {
+    console.error('[Speech] Failed to start streaming:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('speech:stream:append', async (_, samples: number[]) => {
+  try {
+    if (!streamingASRSession) {
+      throw new Error('ASR stream is not started')
+    }
+
+    await streamingASRSession.append(samples)
+    return { success: true }
+  } catch (error: any) {
+    console.error('[Speech] Failed to append streaming audio:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('speech:stream:commit', async () => {
+  try {
+    if (!streamingASRSession) {
+      throw new Error('ASR stream is not started')
+    }
+
+    const text = await streamingASRSession.commit()
+    return { success: true, text }
+  } catch (error: any) {
+    console.error('[Speech] Failed to commit streaming audio:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('speech:stream:stop', async () => {
+  try {
+    await streamingASRSession?.stop()
+    return { success: true }
+  } catch (error: any) {
+    console.error('[Speech] Failed to stop streaming:', error)
     return { success: false, error: error.message }
   }
 })

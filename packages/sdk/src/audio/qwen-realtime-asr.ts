@@ -9,8 +9,17 @@ export interface QwenRealtimeASRConfig {
   receiveTimeoutMs?: number
 }
 
+type PendingCommit = {
+  resolve: (text: string) => void
+  reject: (error: Error) => void
+  timeoutId: ReturnType<typeof setTimeout>
+  fallbackText: string | null
+}
+
 export class QwenRealtimeASR {
   private connected = false
+  private receiveLoop: Promise<void> | null = null
+  private pendingCommits: PendingCommit[] = []
 
   constructor(
     private config: QwenRealtimeASRConfig,
@@ -48,9 +57,20 @@ export class QwenRealtimeASR {
         turn_detection: null,
       },
     }))
+
+    this.receiveLoop = this.runReceiveLoop()
   }
 
   async transcribe(audioData: Int16Array | number[]): Promise<string> {
+    if (!this.connected) {
+      await this.connect()
+    }
+
+    await this.appendAudio(audioData)
+    return await this.commit()
+  }
+
+  async appendAudio(audioData: Int16Array | number[]): Promise<void> {
     if (!this.connected) {
       await this.connect()
     }
@@ -68,43 +88,101 @@ export class QwenRealtimeASR {
         audio: base64Encode(chunk),
       }))
     }
+  }
+
+  async commit(): Promise<string> {
+    if (!this.connected) {
+      await this.connect()
+    }
+
+    const timeoutMs = this.config.receiveTimeoutMs || 5000
+    const transcriptPromise = new Promise<string>((resolve, reject) => {
+      const pendingCommit: PendingCommit = {
+        resolve,
+        reject,
+        fallbackText: null,
+        timeoutId: setTimeout(() => {
+          this.pendingCommits = this.pendingCommits.filter((entry) => entry !== pendingCommit)
+          if (pendingCommit.fallbackText?.trim()) {
+            resolve(pendingCommit.fallbackText.trim())
+            return
+          }
+          reject(new Error('Qwen STT transcription timeout'))
+        }, timeoutMs)
+      }
+
+      this.pendingCommits.push(pendingCommit)
+    })
 
     await this.transport.sendText(JSON.stringify({
       event_id: eventId(),
       type: 'input_audio_buffer.commit',
     }))
 
-    const deadline = Date.now() + (this.config.receiveTimeoutMs || 5000)
-    while (Date.now() < deadline) {
-      const remaining = Math.max(100, deadline - Date.now())
-      const result = await this.transport.receive(remaining)
+    return await transcriptPromise
+  }
+
+  async close(): Promise<void> {
+    const error = new Error('Qwen STT WebSocket closed')
+    for (const pending of this.pendingCommits) {
+      clearTimeout(pending.timeoutId)
+      pending.reject(error)
+    }
+    this.pendingCommits = []
+    this.connected = false
+    await this.transport.close()
+    await this.receiveLoop?.catch(() => undefined)
+    this.receiveLoop = null
+  }
+
+  private async runReceiveLoop(): Promise<void> {
+    while (this.connected) {
+      const result = await this.transport.receive(1000)
 
       if (result.timeout) {
         continue
       }
 
       if (result.closed) {
-        throw new Error('Qwen STT WebSocket closed')
+        this.connected = false
+        const error = new Error('Qwen STT WebSocket closed')
+        for (const pending of this.pendingCommits) {
+          clearTimeout(pending.timeoutId)
+          pending.reject(error)
+        }
+        this.pendingCommits = []
+        return
       }
 
       if (!result.data) {
         continue
       }
 
-      const message = new TextDecoder().decode(result.data)
-      const parsed = JSON.parse(message)
+      let parsed: any
+      try {
+        parsed = JSON.parse(new TextDecoder().decode(result.data))
+      } catch {
+        continue
+      }
+
       const finalText = extractFinalTranscript(parsed)
       if (finalText) {
-        return finalText
+        const pending = this.pendingCommits.shift()
+        if (pending) {
+          clearTimeout(pending.timeoutId)
+          pending.resolve(finalText.trim())
+        }
+        continue
+      }
+
+      const fallbackText = extractFallbackTranscript(parsed)
+      if (fallbackText) {
+        const pending = this.pendingCommits[0]
+        if (pending) {
+          pending.fallbackText = fallbackText
+        }
       }
     }
-
-    throw new Error('Qwen STT transcription timeout')
-  }
-
-  async close(): Promise<void> {
-    this.connected = false
-    await this.transport.close()
   }
 }
 
@@ -113,6 +191,10 @@ function extractFinalTranscript(response: any): string | null {
     return response.transcript || null
   }
 
+  return null
+}
+
+function extractFallbackTranscript(response: any): string | null {
   if (response?.output?.sentence?.text) {
     return response.output.sentence.text
   }

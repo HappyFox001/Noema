@@ -17,8 +17,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   clearProfile: () =>
     ipcRenderer.invoke('profile:clear'),
 
-  transcribeAudio: (samples) =>
-    ipcRenderer.invoke('speech:transcribe', samples),
+  startSpeechStream: () =>
+    ipcRenderer.invoke('speech:stream:start'),
+
+  appendSpeechStream: (samples) =>
+    ipcRenderer.invoke('speech:stream:append', samples),
+
+  commitSpeechStream: () =>
+    ipcRenderer.invoke('speech:stream:commit'),
+
+  stopSpeechStream: () =>
+    ipcRenderer.invoke('speech:stream:stop'),
 
   getMicrophonePermissionStatus: () =>
     ipcRenderer.invoke('permissions:getMicrophoneStatus'),
