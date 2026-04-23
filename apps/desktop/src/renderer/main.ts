@@ -4,6 +4,7 @@ import './styles.css'
 
 class AudioPlayer {
   private audioContext: AudioContext | null = null
+  private gainNode: GainNode | null = null
   private isPlaying = false
   private audioQueue: AudioBuffer[] = []
   private nextStartTime = 0
@@ -11,6 +12,8 @@ class AudioPlayer {
 
   async initialize(): Promise<void> {
     this.audioContext = new AudioContext({ sampleRate: 16000 })
+    this.gainNode = this.audioContext.createGain()
+    this.gainNode.connect(this.audioContext.destination)
     console.log('[AudioPlayer] Initialized')
   }
 
@@ -50,7 +53,7 @@ class AudioPlayer {
 
     const source = this.audioContext.createBufferSource()
     source.buffer = buffer
-    source.connect(this.audioContext.destination)
+    source.connect(this.gainNode ?? this.audioContext.destination)
 
     const currentTime = this.audioContext.currentTime
     const startTime = Math.max(currentTime, this.nextStartTime)
@@ -93,6 +96,11 @@ class AudioPlayer {
     this.audioQueue = []
     this.isPlaying = false
     this.nextStartTime = 0
+  }
+
+  setVolume(percent: number): void {
+    if (!this.gainNode) return
+    this.gainNode.gain.value = Math.max(0, Math.min(1, percent / 100))
   }
 }
 
@@ -218,6 +226,131 @@ function revealWeight(char: string): number {
   return 1
 }
 
+class VoiceRecorder {
+  private context: AudioContext | null = null
+  private stream: MediaStream | null = null
+  private source: MediaStreamAudioSourceNode | null = null
+  private processor: ScriptProcessorNode | null = null
+  private sink: GainNode | null = null
+  private recordedChunks: Int16Array[] = []
+  private recording = false
+
+  async start(): Promise<void> {
+    if (this.recording) {
+      return
+    }
+
+    this.stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        channelCount: 1,
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      }
+    })
+
+    this.context = new AudioContext()
+    this.source = this.context.createMediaStreamSource(this.stream)
+    this.processor = this.context.createScriptProcessor(4096, 1, 1)
+    this.sink = this.context.createGain()
+    this.sink.gain.value = 0
+
+    this.recordedChunks = []
+    this.recording = true
+
+    this.processor.onaudioprocess = (event) => {
+      if (!this.recording || !this.context) {
+        return
+      }
+
+      const input = event.inputBuffer.getChannelData(0)
+      const downsampled = downsampleToInt16(input, this.context.sampleRate, 16000)
+      if (downsampled.length > 0) {
+        this.recordedChunks.push(downsampled)
+      }
+    }
+
+    this.source.connect(this.processor)
+    this.processor.connect(this.sink)
+    this.sink.connect(this.context.destination)
+  }
+
+  async stop(): Promise<Int16Array> {
+    this.recording = false
+
+    this.processor?.disconnect()
+    this.source?.disconnect()
+    this.sink?.disconnect()
+    this.stream?.getTracks().forEach((track) => track.stop())
+    await this.context?.close()
+
+    this.processor = null
+    this.source = null
+    this.sink = null
+    this.stream = null
+    this.context = null
+
+    const totalLength = this.recordedChunks.reduce((sum, chunk) => sum + chunk.length, 0)
+    const merged = new Int16Array(totalLength)
+    let offset = 0
+    for (const chunk of this.recordedChunks) {
+      merged.set(chunk, offset)
+      offset += chunk.length
+    }
+    this.recordedChunks = []
+
+    return merged
+  }
+
+  isRecording(): boolean {
+    return this.recording
+  }
+}
+
+function downsampleToInt16(input: Float32Array, sourceRate: number, targetRate: number): Int16Array {
+  if (sourceRate === targetRate) {
+    return float32ToInt16(input)
+  }
+
+  const ratio = sourceRate / targetRate
+  const length = Math.floor(input.length / ratio)
+  const output = new Int16Array(length)
+
+  let offsetResult = 0
+  let offsetInput = 0
+
+  while (offsetResult < output.length) {
+    const nextOffsetInput = Math.round((offsetResult + 1) * ratio)
+    let accumulator = 0
+    let count = 0
+
+    for (let i = offsetInput; i < nextOffsetInput && i < input.length; i++) {
+      accumulator += input[i]
+      count += 1
+    }
+
+    const sample = count > 0 ? accumulator / count : 0
+    output[offsetResult] = toInt16Sample(sample)
+    offsetResult += 1
+    offsetInput = nextOffsetInput
+  }
+
+  return output
+}
+
+function float32ToInt16(input: Float32Array): Int16Array {
+  const output = new Int16Array(input.length)
+  for (let i = 0; i < input.length; i++) {
+    output[i] = toInt16Sample(input[i])
+  }
+  return output
+}
+
+function toInt16Sample(value: number): number {
+  const clamped = Math.max(-1, Math.min(1, value))
+  return clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff
+}
+
 // ========== UI ==========
 
 const audioPlayer = new AudioPlayer()
@@ -228,6 +361,16 @@ const textRevealer = new AudioSyncedTextRevealer(
 let isInitialized = false
 let activeMode: 'conversation' | 'text' | null = null
 let ttsEnabled = false
+let voiceInputEnabled = true
+let isSendingMessage = false
+let isVoiceListening = false
+
+type UISettings = {
+  voiceInputEnabled: boolean
+  voiceOutputEnabled: boolean
+  volume: number
+  selectedPersonality: string
+}
 
 type ConversationFrame =
   | { type: 'system.reset' }
@@ -236,6 +379,8 @@ type ConversationFrame =
   | { type: 'control.task_start'; taskDescription: string }
   | { type: 'control.task_end'; success: boolean; summary: string; error?: string }
   | { type: 'data.tts_text'; text: string }
+
+const voiceRecorder = new VoiceRecorder()
 
 // Canvas rendering
 const canvas = document.getElementById('orb-canvas') as HTMLCanvasElement
@@ -252,11 +397,18 @@ let orbState: OrbState = {
   glow: 4,
   breatheRate: 1.2
 }
+let orbAnimationFrameId: number | null = null
+let orbAnimationPaused = false
 
 // Store current radius for mouse detection
 let currentOrbRadius = 22
 
 function drawOrb() {
+  if (orbAnimationPaused) {
+    orbAnimationFrameId = null
+    return
+  }
+
   ctx.clearRect(0, 0, canvas.width, canvas.height)
 
   const centerX = canvas.width / 2
@@ -307,10 +459,25 @@ function drawOrb() {
   ctx.arc(centerX, centerY, currentRadius, 0, Math.PI * 2)
   ctx.fill()
 
-  requestAnimationFrame(drawOrb)
+  orbAnimationFrameId = requestAnimationFrame(drawOrb)
 }
 
-drawOrb()
+function startOrbAnimation(): void {
+  if (orbAnimationFrameId !== null || orbAnimationPaused) {
+    return
+  }
+
+  drawOrb()
+}
+
+function stopOrbAnimation(): void {
+  if (orbAnimationFrameId !== null) {
+    cancelAnimationFrame(orbAnimationFrameId)
+    orbAnimationFrameId = null
+  }
+}
+
+startOrbAnimation()
 
 // Helper function to check if point is inside orb
 function isPointInOrb(clientX: number, clientY: number): boolean {
@@ -499,8 +666,13 @@ async function initialize(mode: 'conversation' | 'text') {
       console.log('[SDK] Stats:', result.stats)
     }
 
+    await loadSettings()
+    await loadPersonalities()
+
     setStatus(mode === 'conversation' ? 'Conversation Ready' : 'Text Ready')
-    startConversationBtn.textContent = 'Conversation Ready'
+    if (voiceInputEnabled) {
+      startConversationBtn.textContent = 'Conversation Ready'
+    }
     startTextBtn.textContent = 'Text Ready'
     textInput.focus()
 
@@ -544,17 +716,54 @@ async function initialize(mode: 'conversation' | 'text') {
 }
 
 startConversationBtn.addEventListener('click', async () => {
+  if (!voiceInputEnabled) {
+    setStatus('Voice input is disabled')
+    return
+  }
   await initialize('conversation')
+
+  try {
+    if (voiceRecorder.isRecording()) {
+      setStatus('Transcribing...')
+      startConversationBtn.textContent = 'Transcribing...'
+      const samples = await voiceRecorder.stop()
+      isVoiceListening = false
+
+      const result = await window.electronAPI.transcribeAudio(Array.from(samples))
+      if (!result.success || !result.text?.trim()) {
+        throw new Error(result.error || 'No speech recognized')
+      }
+
+      textInput.value = result.text
+      await sendMessage(result.text)
+      startConversationBtn.textContent = voiceInputEnabled ? 'Conversation Ready' : 'Voice Disabled'
+      return
+    }
+
+    await voiceRecorder.start()
+    isVoiceListening = true
+    setStatus('Listening...')
+    setOrbMode('thinking')
+    startConversationBtn.textContent = 'Stop Recording'
+  } catch (error: any) {
+    isVoiceListening = false
+    startConversationBtn.textContent = voiceInputEnabled ? 'Conversation Ready' : 'Voice Disabled'
+    setStatus(`Voice Error: ${error.message}`)
+    if (!isSendingMessage) {
+      setOrbMode('idle')
+    }
+  }
 })
 
 startTextBtn.addEventListener('click', async () => {
   await initialize('text')
 })
 
-async function sendMessage() {
-  const text = textInput.value.trim()
+async function sendMessage(overrideText?: string) {
+  const text = (overrideText ?? textInput.value).trim()
   if (!text || !isInitialized) return
 
+  isSendingMessage = true
   textInput.disabled = true
   sendBtn.disabled = true
   textInput.value = ''
@@ -575,6 +784,7 @@ async function sendMessage() {
     setStatus(`Error: ${error.message}`)
     setOrbMode('idle')
   } finally {
+    isSendingMessage = false
     textInput.disabled = false
     sendBtn.disabled = false
     setStatus(activeMode === 'conversation' ? 'Conversation Ready' : 'Text Ready')
@@ -597,6 +807,58 @@ const settingsClose = document.getElementById('settings-close')!
 const settingsNav = document.querySelector('.settings-nav')!
 const volumeSlider = document.getElementById('volume-slider') as HTMLInputElement
 const volumeValue = document.getElementById('volume-value')!
+const voiceInputToggle = document.getElementById('voice-input-toggle') as HTMLInputElement
+const voiceOutputToggle = document.getElementById('voice-output-toggle') as HTMLInputElement
+const personalitySelect = document.getElementById('personality-select') as HTMLSelectElement
+
+function applySettingsToUI(settings: UISettings) {
+  voiceInputEnabled = settings.voiceInputEnabled
+  ttsEnabled = settings.voiceOutputEnabled
+  voiceInputToggle.checked = settings.voiceInputEnabled
+  voiceOutputToggle.checked = settings.voiceOutputEnabled
+  volumeSlider.value = String(settings.volume)
+  volumeValue.textContent = `${settings.volume}%`
+  audioPlayer.setVolume(settings.volume)
+
+  startConversationBtn.disabled = !settings.voiceInputEnabled
+  startConversationBtn.textContent = settings.voiceInputEnabled
+    ? (isInitialized ? 'Conversation Ready' : 'Start Conversation')
+    : 'Voice Disabled'
+}
+
+async function loadSettings(): Promise<void> {
+  const settings = await window.electronAPI.getSettings()
+  const permission = await window.electronAPI.getMicrophonePermissionStatus()
+
+  if (
+    settings.voiceInputEnabled &&
+    permission.success &&
+    permission.status &&
+    permission.status !== 'granted' &&
+    permission.status !== 'not-determined'
+  ) {
+    settings.voiceInputEnabled = false
+    await window.electronAPI.updateSettings({ voiceInputEnabled: false })
+  }
+
+  applySettingsToUI(settings)
+}
+
+async function loadPersonalities(): Promise<void> {
+  const result = await window.electronAPI.listPersonalities()
+  if (!result.success) {
+    return
+  }
+
+  personalitySelect.innerHTML = ''
+  result.items.forEach((name) => {
+    const option = document.createElement('option')
+    option.value = name
+    option.textContent = name
+    option.selected = name === result.current
+    personalitySelect.appendChild(option)
+  })
+}
 
 // Hide context menu when clicking elsewhere
 document.addEventListener('click', () => {
@@ -642,12 +904,18 @@ contextMenu.addEventListener('click', (e) => {
 
 // Open settings panel
 function openSettings() {
+  orbAnimationPaused = true
+  stopOrbAnimation()
+  document.body.classList.add('settings-open')
   settingsPanel.classList.add('visible')
 }
 
 // Close settings panel
 function closeSettings() {
+  orbAnimationPaused = false
+  document.body.classList.remove('settings-open')
   settingsPanel.classList.remove('visible')
+  startOrbAnimation()
 }
 
 settingsClose.addEventListener('click', closeSettings)
@@ -681,9 +949,57 @@ settingsNav.addEventListener('click', (e) => {
 
 // Volume slider
 volumeSlider.addEventListener('input', () => {
-  const value = volumeSlider.value
+  const value = Number(volumeSlider.value)
   volumeValue.textContent = `${value}%`
-  // TODO: Apply volume to audio player
+  audioPlayer.setVolume(value)
+  void window.electronAPI.updateSettings({ volume: value })
+})
+
+voiceInputToggle.addEventListener('change', async () => {
+  if (voiceInputToggle.checked) {
+    const permission = await window.electronAPI.requestMicrophonePermission()
+    if (!permission.success || !permission.granted) {
+      voiceInputToggle.checked = false
+      setStatus(permission.openedSettings
+        ? '请在系统设置中开启麦克风权限'
+        : (permission.error || '麦克风权限未授予'))
+      return
+    }
+  }
+
+  const settings = await window.electronAPI.updateSettings({
+    voiceInputEnabled: voiceInputToggle.checked
+  })
+  if (!settings.voiceInputEnabled && voiceRecorder.isRecording()) {
+    await voiceRecorder.stop()
+    isVoiceListening = false
+  }
+  applySettingsToUI(settings)
+  setStatus(settings.voiceInputEnabled ? '语音输入已开启' : '语音输入已关闭')
+})
+
+voiceOutputToggle.addEventListener('change', async () => {
+  const settings = await window.electronAPI.updateSettings({
+    voiceOutputEnabled: voiceOutputToggle.checked
+  })
+  applySettingsToUI(settings)
+  if (!settings.voiceOutputEnabled) {
+    await window.electronAPI.stopTTS()
+    audioPlayer.stop()
+  }
+  setStatus(settings.voiceOutputEnabled ? '语音输出已开启' : '语音输出已关闭')
+})
+
+personalitySelect.addEventListener('change', async () => {
+  const selected = personalitySelect.value
+  const result = await window.electronAPI.setPersonality(selected)
+  if (!result.success) {
+    setStatus(`人格切换失败: ${result.error}`)
+    return
+  }
+
+  await loadSettings()
+  setStatus(`人格已切换为 ${selected}`)
 })
 
 // Clear history button
@@ -695,7 +1011,11 @@ clearHistoryBtn?.addEventListener('click', () => {
 async function clearHistory() {
   if (confirm('确定要清除所有对话历史吗？')) {
     try {
-      await window.electronAPI.clearHistory()
+      const result = await window.electronAPI.clearHistory()
+      if (!result.success) {
+        throw new Error(result.error)
+      }
+      clearTextDisplay()
       setStatus('对话历史已清除')
     } catch (error: any) {
       console.error('Clear history error:', error)
@@ -708,7 +1028,10 @@ const clearProfileBtn = document.getElementById('clear-profile-btn')
 clearProfileBtn?.addEventListener('click', async () => {
   if (confirm('确定要重置用户画像吗？')) {
     try {
-      // TODO: Implement clear profile API
+      const result = await window.electronAPI.clearProfile()
+      if (!result.success) {
+        throw new Error(result.error)
+      }
       setStatus('用户画像已重置')
     } catch (error: any) {
       console.error('Clear profile error:', error)

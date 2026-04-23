@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=LXGW+WenKai+TC:wght@400;700&family=MPLUS+Rounded+1c:wght@500;700&family=Zen+Maru+Gothic:wght@500;700&display=swap');
+
 * {
   margin: 0;
   padding: 0;
@@ -5,7 +7,11 @@
 }
 
 :root {
-  font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-ui: 'JetBrains Mono', 'SF Mono', 'PingFang SC', sans-serif;
+  --font-soft: 'LXGW WenKai TC', 'Hiragino Sans GB', 'PingFang SC', serif;
+  --font-mixed: 'JetBrains Mono', 'LXGW WenKai TC', 'PingFang SC', sans-serif;
+  --font-nav: 'Zen Maru Gothic', 'M PLUS Rounded 1c', 'LXGW WenKai TC', 'PingFang SC', sans-serif;
+  font-family: var(--font-mixed);
   font-size: 14px;
   line-height: 1.5;
   font-weight: 400;
@@ -24,6 +30,8 @@ body {
   overflow: hidden;
   margin: 0;
   padding: 0;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 #app {
@@ -55,6 +63,7 @@ body {
 
 #orb-canvas {
   user-select: none;
+  -webkit-user-select: none;
   flex-shrink: 0;
   width: 180px;
   height: 180px;
@@ -69,27 +78,70 @@ body {
 .controls,
 .text-display,
 .status,
+.context-menu,
+.settings-close,
+button,
+a,
+.context-menu-item,
+.nav-item,
+.settings-btn,
+.settings-select,
+.settings-slider,
+.settings-toggle,
+.settings-toggle *,
+.row-info,
+.settings-row,
 .text-input,
 .start-button,
 .tts-button,
-.context-menu,
-.settings-close,
-.settings-nav,
-.settings-content,
-.settings-toggle,
-.settings-slider,
-.settings-select,
-.settings-btn,
-.nav-item,
-button,
 input,
-select,
-a {
+textarea,
+select {
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
 
+button,
+.text-display,
+.status,
+.context-menu,
+.context-menu-item,
+.nav-item,
+.settings-panel,
+.settings-layout,
+.settings-nav,
+.settings-content,
+.settings-row,
+.row-info,
+.section-title,
+.settings-card,
+.about-card,
+.about-orb,
+.about-name,
+.about-version,
+.about-desc,
+.about-quote,
+.settings-btn,
+.settings-select,
+.settings-value,
+.nav-label,
+.nav-icon {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.text-input,
+textarea,
+input[type="text"],
+input[type="search"],
+input[type="password"] {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 .text-display {
+  font-family: var(--font-soft);
+  letter-spacing: 0.01em;
   width: 100%;
   max-width: 320px;
   padding: 12px 16px;
@@ -126,6 +178,8 @@ a {
 }
 
 .start-button {
+  font-family: var(--font-ui);
+  letter-spacing: 0.02em;
   padding: 9px 22px;
   background: rgba(8, 8, 8, 0.72);
   backdrop-filter: blur(14px);
@@ -156,6 +210,8 @@ a {
 }
 
 .status {
+  font-family: var(--font-ui);
+  letter-spacing: 0.03em;
   padding: 5px 12px;
   background: rgba(0, 0, 0, 0.36);
   backdrop-filter: blur(14px);
@@ -168,6 +224,7 @@ a {
 }
 
 .text-input {
+  font-family: var(--font-mixed);
   width: 100%;
   padding: 10px 16px;
   background: rgba(255, 255, 255, 0.1);
@@ -190,6 +247,8 @@ a {
 }
 
 .tts-button {
+  font-family: var(--font-ui);
+  letter-spacing: 0.02em;
   padding: 10px 24px;
   background: rgba(226, 74, 144, 0.8);
   backdrop-filter: blur(10px);
@@ -242,6 +301,7 @@ a {
 }
 
 .context-menu-item {
+  font-family: var(--font-soft);
   display: flex;
   align-items: center;
   padding: 10px 16px;
@@ -269,20 +329,27 @@ a {
   left: 0;
   width: 100vw;
   height: 100vh;
-  background: rgba(18, 18, 20, 0.98);
-  backdrop-filter: blur(30px);
+  background:
+    linear-gradient(180deg, rgba(16, 16, 18, 0.96), rgba(10, 10, 12, 0.98)),
+    radial-gradient(circle at top right, rgba(226, 74, 144, 0.08), transparent 38%);
   z-index: 900;
   opacity: 0;
   visibility: hidden;
-  transition: all 0.3s ease;
+  transform: translateX(14px);
+  transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s ease;
+  contain: layout paint style;
+  -webkit-app-region: drag;
+  app-region: drag;
 }
 
 .settings-panel.visible {
   opacity: 1;
   visibility: visible;
+  transform: translateX(0);
 }
 
 .settings-close {
+  font-family: var(--font-ui);
   position: absolute;
   top: 20px;
   right: 24px;
@@ -308,29 +375,37 @@ a {
 .settings-layout {
   display: flex;
   height: 100%;
+  width: 100%;
+  min-width: 0;
+  -webkit-app-region: drag;
+  app-region: drag;
 }
 
 /* ========== 左侧导航 ========== */
 .settings-nav {
-  width: 200px;
-  min-width: 200px;
+  width: clamp(92px, 24vw, 180px);
+  min-width: clamp(92px, 24vw, 180px);
   height: 100%;
   background: rgba(0, 0, 0, 0.3);
   border-right: 1px solid rgba(255, 255, 255, 0.06);
-  padding: 60px 12px 24px;
+  padding: 64px 10px 20px;
   display: flex;
   flex-direction: column;
   gap: 4px;
+  -webkit-app-region: drag;
+  app-region: drag;
 }
 
 .nav-item {
+  font-family: var(--font-nav);
+  letter-spacing: 0.01em;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
+  gap: 10px;
+  padding: 11px 12px;
   border-radius: 10px;
   color: rgba(255, 255, 255, 0.6);
-  font-size: 14px;
+  font-size: 13px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -353,14 +428,19 @@ a {
 }
 
 .nav-label {
+  font-family: var(--font-nav);
   font-weight: 500;
 }
 
 /* ========== 右侧内容区域 ========== */
 .settings-content {
   flex: 1;
-  padding: 60px 40px 40px;
+  min-width: 0;
+  padding: 64px clamp(16px, 4vw, 32px) 24px;
   overflow-y: auto;
+  contain: layout paint;
+  -webkit-app-region: drag;
+  app-region: drag;
 }
 
 .settings-section {
@@ -372,10 +452,12 @@ a {
 }
 
 .section-title {
-  font-size: 22px;
+  font-family: var(--font-soft);
+  letter-spacing: 0.01em;
+  font-size: clamp(18px, 4vw, 22px);
   font-weight: 600;
   color: white;
-  margin-bottom: 24px;
+  margin-bottom: 18px;
 }
 
 /* 设置卡片 */
@@ -384,13 +466,15 @@ a {
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 12px;
   overflow: hidden;
+  width: min(100%, 560px);
 }
 
 .settings-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 20px;
+  gap: 14px;
+  padding: 16px 18px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
@@ -402,16 +486,21 @@ a {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
+  flex: 1;
 }
 
 .row-label {
+  font-family: var(--font-soft);
   font-size: 14px;
   color: rgba(255, 255, 255, 0.9);
 }
 
 .row-desc {
+  font-family: var(--font-soft);
   font-size: 12px;
   color: rgba(255, 255, 255, 0.4);
+  line-height: 1.55;
 }
 
 /* ========== 关于页面 ========== */
@@ -419,9 +508,9 @@ a {
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 12px;
-  padding: 40px;
+  padding: clamp(22px, 4vw, 40px);
   text-align: center;
-  max-width: 400px;
+  width: min(100%, 400px);
 }
 
 .about-orb {
@@ -437,7 +526,7 @@ a {
     0 0 40px rgba(226, 74, 144, 0.4),
     0 0 60px rgba(74, 144, 226, 0.2);
   margin: 0 auto 20px;
-  animation: about-orb-glow 4s ease-in-out infinite;
+  animation: about-orb-glow 6s ease-in-out infinite;
 }
 
 @keyframes about-orb-glow {
@@ -454,6 +543,8 @@ a {
 }
 
 .about-name {
+  font-family: var(--font-ui);
+  letter-spacing: 0.04em;
   font-size: 24px;
   font-weight: 600;
   color: white;
@@ -461,18 +552,21 @@ a {
 }
 
 .about-version {
+  font-family: var(--font-ui);
   font-size: 13px;
   color: rgba(255, 255, 255, 0.4);
   margin-bottom: 12px;
 }
 
 .about-desc {
+  font-family: var(--font-soft);
   font-size: 14px;
   color: rgba(255, 255, 255, 0.6);
   margin-bottom: 20px;
 }
 
 .about-quote {
+  font-family: var(--font-soft);
   font-size: 13px;
   color: rgba(255, 255, 255, 0.4);
   line-height: 1.8;
@@ -529,17 +623,20 @@ a {
   display: flex;
   align-items: center;
   gap: 12px;
+  width: min(100%, 240px);
+  min-width: 0;
+  flex-shrink: 1;
 }
 
 /* Slider */
 .settings-slider {
   -webkit-appearance: none;
-  width: 140px;
+  width: 100%;
   height: 4px;
   background: rgba(255, 255, 255, 0.15);
   border-radius: 2px;
   outline: none;
-  flex-shrink: 0;
+  min-width: 0;
 }
 
 .settings-slider::-webkit-slider-thumb {
@@ -553,6 +650,7 @@ a {
 }
 
 .settings-value {
+  font-family: var(--font-ui);
   font-size: 12px;
   color: rgba(255, 255, 255, 0.5);
   min-width: 40px;
@@ -561,6 +659,7 @@ a {
 
 /* Select */
 .settings-select {
+  font-family: var(--font-mixed);
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 8px;
@@ -569,7 +668,8 @@ a {
   font-size: 13px;
   outline: none;
   cursor: pointer;
-  min-width: 160px;
+  width: min(100%, 220px);
+  min-width: 0;
 }
 
 .settings-select option {
@@ -579,6 +679,8 @@ a {
 
 /* Button */
 .settings-btn {
+  font-family: var(--font-ui);
+  letter-spacing: 0.02em;
   padding: 8px 16px;
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.15);
@@ -601,4 +703,62 @@ a {
 
 .settings-btn.danger:hover {
   background: rgba(255, 69, 58, 0.3);
+}
+
+body.settings-open #main-view {
+  opacity: 0.18;
+  transform: scale(0.985);
+  pointer-events: none;
+}
+
+@media (max-width: 560px) {
+  .settings-close {
+    top: 16px;
+    right: 16px;
+    width: 34px;
+    height: 34px;
+  }
+
+  .settings-nav {
+    width: 110px;
+    min-width: 110px;
+    padding: 58px 8px 16px;
+  }
+
+  .nav-item {
+    gap: 8px;
+    justify-content: flex-start;
+    padding: 12px 10px;
+    font-size: 12px;
+  }
+
+  .nav-icon {
+    width: 16px;
+    min-width: 16px;
+    font-size: 16px;
+  }
+
+  .settings-content {
+    padding: 58px 12px 18px;
+  }
+
+  .settings-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .settings-toggle,
+  .settings-slider-group,
+  .settings-select,
+  .settings-btn {
+    margin-left: auto;
+  }
+
+  .settings-slider-group {
+    width: 100%;
+  }
+
+  .about-card {
+    width: 100%;
+  }
 }

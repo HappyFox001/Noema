@@ -40,13 +40,15 @@ console.log('[Env] LLM_API_KEY:', process.env.LLM_API_KEY ? '✓ (set)' : '✗ (
 console.log('[Env] LLM_MODEL:', process.env.LLM_MODEL || '✗ (not set)')
 console.log('[Env] LLM_BASE_URL:', process.env.LLM_BASE_URL || '✗ (not set)')
 
-import { app, BrowserWindow, ipcMain } from 'electron'
-import { HerTextSDK, FishTTSOfficial } from '@her-text/sdk'
+import { app, BrowserWindow, ipcMain, systemPreferences, shell } from 'electron'
+import { HerTextSDK, FishTTSOfficial, QwenRealtimeASR } from '@her-text/sdk'
 import {
   initializePersonalityManager,
   getPersonalityManager,
   buildSDKConfig
 } from './sdk-config.js'
+import { SettingsStore, type AppSettings } from './settings-store.js'
+import { NodeRealtimeWebSocketTransport } from './qwen-websocket-transport.js'
 const DEV_SERVER_URL = 'http://127.0.0.1:5173'
 
 type ConversationPhase = 'reply' | 'task' | 'task_result'
@@ -210,6 +212,13 @@ let mainWindow: BrowserWindow | null = null
 let ttsService: FishTTSOfficial | null = null
 let sdkInstance: HerTextSDK | null = null
 let ttsAvailable = true
+let settingsStore: SettingsStore | null = null
+let appSettings: AppSettings = {
+  voiceInputEnabled: true,
+  voiceOutputEnabled: true,
+  volume: 70,
+  selectedPersonality: 'eva'
+}
 
 function configureProxyFromEnv(): void {
   const proxyUrl =
@@ -296,10 +305,42 @@ async function createWindow() {
   })
 }
 
+async function initializeSDK(): Promise<void> {
+  const sdkConfig = await buildSDKConfig()
+  sdkInstance = await HerTextSDK.initialize(sdkConfig)
+  console.log('[SDK] Initialized successfully')
+}
+
+async function rebuildSDK(): Promise<void> {
+  if (sdkInstance) {
+    await sdkInstance.shutdown()
+  }
+  await initializeSDK()
+}
+
+function getSettingsStore(): SettingsStore {
+  if (!settingsStore) {
+    throw new Error('Settings store not initialized')
+  }
+  return settingsStore
+}
+
 app.whenReady().then(async () => {
+  settingsStore = new SettingsStore()
+  await settingsStore.initialize()
+  appSettings = settingsStore.getSettings()
+
   // 初始化人格管理器
   await initializePersonalityManager()
   console.log('[App] Personality manager initialized')
+
+  if (appSettings.selectedPersonality && appSettings.selectedPersonality !== 'eva') {
+    try {
+      await getPersonalityManager().setCurrentPersonality(appSettings.selectedPersonality)
+    } catch (error) {
+      console.warn('[App] Failed to restore selected personality:', error)
+    }
+  }
 
   void createWindow()
 
@@ -359,12 +400,9 @@ ipcMain.handle('window:get-position', (event) => {
 // 初始化 SDK 和对话服务
 ipcMain.handle('conversation:initialize', async () => {
   try {
-    // 构建 SDK 配置（不从 renderer 接收）
-    const sdkConfig = await buildSDKConfig()
-
-    // 初始化完整的 HerTextSDK
-    sdkInstance = await HerTextSDK.initialize(sdkConfig)
-    console.log('[SDK] Initialized successfully')
+    if (!sdkInstance) {
+      await initializeSDK()
+    }
 
     // 初始化 TTS（使用 SDK）
     if (process.env.FISH_API_KEY?.trim()) {
@@ -411,8 +449,9 @@ ipcMain.handle('conversation:initialize', async () => {
 
     return {
       success: true,
-      ttsEnabled: Boolean(ttsService),
-      stats: sdkInstance.getStats()
+      ttsEnabled: Boolean(ttsService) && appSettings.voiceOutputEnabled,
+      settings: appSettings,
+      stats: sdkInstance?.getStats()
     }
   } catch (error: any) {
     console.error('[Initialization] Failed:', error)
@@ -434,7 +473,7 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
     displayController.reset()
     currentTTSChunkSequence = 0
 
-    let shouldUseTTS = enableTTS && Boolean(ttsService) && ttsAvailable
+    let shouldUseTTS = enableTTS && appSettings.voiceOutputEnabled && Boolean(ttsService) && ttsAvailable
 
     // 使用 SDK 的 chatStream，TTS 分句逻辑由 SDK 处理
     const responseStream = sdkInstance.chatStream(
@@ -529,10 +568,95 @@ ipcMain.handle('tts:stop', async () => {
 // 清空历史
 ipcMain.handle('conversation:clearHistory', async () => {
   try {
-    // SDK 暂时没有 clearHistory 方法，可以通过重新初始化实现
-    // 或者等待 SDK 添加此功能
-    console.log('[Conversation] Clear history requested (not implemented in SDK)')
+    if (sdkInstance) {
+      await sdkInstance.memory.clearAll()
+      sdkInstance.clearHistory()
+    }
     return { success: true }
+  } catch (error: any) {
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('profile:clear', async () => {
+  try {
+    if (!sdkInstance) {
+      throw new Error('SDK not initialized')
+    }
+
+    await sdkInstance.memory.clearUserProfile()
+    return { success: true }
+  } catch (error: any) {
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('speech:transcribe', async (_, samples: number[]) => {
+  try {
+    const apiKey = process.env.QWEN_API_KEY?.trim()
+    if (!apiKey) {
+      throw new Error('QWEN_API_KEY is not configured')
+    }
+
+    const transport = new NodeRealtimeWebSocketTransport()
+    const asr = new QwenRealtimeASR(
+      {
+        apiKey,
+        sampleRate: 16000,
+        language: 'zh',
+      },
+      transport
+    )
+
+    try {
+      const text = await asr.transcribe(Int16Array.from(samples))
+      return { success: true, text }
+    } finally {
+      await asr.close().catch(() => undefined)
+    }
+  } catch (error: any) {
+    console.error('[Speech] Transcription failed:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('permissions:getMicrophoneStatus', async () => {
+  if (process.platform !== 'darwin') {
+    return { success: true, status: 'granted' }
+  }
+
+  try {
+    return {
+      success: true,
+      status: systemPreferences.getMediaAccessStatus('microphone')
+    }
+  } catch (error: any) {
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('permissions:requestMicrophone', async () => {
+  if (process.platform !== 'darwin') {
+    return { success: true, granted: true }
+  }
+
+  try {
+    const currentStatus = systemPreferences.getMediaAccessStatus('microphone')
+    if (currentStatus === 'granted') {
+      return { success: true, granted: true, status: currentStatus }
+    }
+
+    if (currentStatus === 'denied' || currentStatus === 'restricted') {
+      await shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone')
+      return { success: true, granted: false, status: currentStatus, openedSettings: true }
+    }
+
+    const granted = await systemPreferences.askForMediaAccess('microphone')
+    return {
+      success: true,
+      granted,
+      status: systemPreferences.getMediaAccessStatus('microphone')
+    }
   } catch (error: any) {
     return { success: false, error: error.message }
   }
@@ -565,6 +689,40 @@ ipcMain.handle('sdk:getPersonality', async () => {
   } catch (error: any) {
     console.error('[SDK] Failed to get personality:', error)
     return null
+  }
+})
+
+ipcMain.handle('settings:get', async () => {
+  return appSettings
+})
+
+ipcMain.handle('settings:update', async (_, partial: Partial<AppSettings>) => {
+  appSettings = await getSettingsStore().update(partial)
+  return appSettings
+})
+
+ipcMain.handle('personality:list', async () => {
+  try {
+    const personalityManager = getPersonalityManager()
+    return {
+      success: true,
+      current: appSettings.selectedPersonality,
+      items: await personalityManager.listPersonalities()
+    }
+  } catch (error: any) {
+    return { success: false, error: error.message, items: [] }
+  }
+})
+
+ipcMain.handle('personality:set', async (_, name: string) => {
+  try {
+    const personalityManager = getPersonalityManager()
+    await personalityManager.setCurrentPersonality(name)
+    appSettings = await getSettingsStore().update({ selectedPersonality: name })
+    await rebuildSDK()
+    return { success: true, current: name }
+  } catch (error: any) {
+    return { success: false, error: error.message }
   }
 })
 

@@ -57,6 +57,11 @@ export class PersonalityManager {
     return this.currentPersonality
   }
 
+  async setCurrentPersonality(name: string): Promise<Personality> {
+    this.currentPersonality = await this.loadPersonality(name)
+    return this.currentPersonality
+  }
+
   getPersonalitiesDir(): string {
     return this.personalitiesDir
   }

@@ -14,6 +14,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   clearHistory: () =>
     ipcRenderer.invoke('conversation:clearHistory'),
 
+  clearProfile: () =>
+    ipcRenderer.invoke('profile:clear'),
+
+  transcribeAudio: (samples) =>
+    ipcRenderer.invoke('speech:transcribe', samples),
+
+  getMicrophonePermissionStatus: () =>
+    ipcRenderer.invoke('permissions:getMicrophoneStatus'),
+
+  requestMicrophonePermission: () =>
+    ipcRenderer.invoke('permissions:requestMicrophone'),
+
   // 新增 SDK 功能
   getMemory: () =>
     ipcRenderer.invoke('sdk:getMemory'),
@@ -23,6 +35,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   getStats: () =>
     ipcRenderer.invoke('sdk:getStats'),
+
+  getSettings: () =>
+    ipcRenderer.invoke('settings:get'),
+
+  updateSettings: (partial) =>
+    ipcRenderer.invoke('settings:update', partial),
+
+  listPersonalities: () =>
+    ipcRenderer.invoke('personality:list'),
+
+  setPersonality: (name) =>
+    ipcRenderer.invoke('personality:set', name),
 
   // 事件监听
   onTTSAudio: (callback) => {

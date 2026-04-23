@@ -31,11 +31,57 @@ declare global {
 
       // 对话历史
       clearHistory: () => Promise<{ success: boolean; error?: string }>
+      clearProfile: () => Promise<{ success: boolean; error?: string }>
+      transcribeAudio: (samples: number[]) => Promise<{
+        success: boolean
+        text?: string
+        error?: string
+      }>
+      getMicrophonePermissionStatus: () => Promise<{
+        success: boolean
+        status?: string
+        error?: string
+      }>
+      requestMicrophonePermission: () => Promise<{
+        success: boolean
+        granted?: boolean
+        status?: string
+        openedSettings?: boolean
+        error?: string
+      }>
 
       // 新增 SDK 功能
       getMemory: () => Promise<any>
       getPersonality: () => Promise<any>
       getStats: () => Promise<any>
+      getSettings: () => Promise<{
+        voiceInputEnabled: boolean
+        voiceOutputEnabled: boolean
+        volume: number
+        selectedPersonality: string
+      }>
+      updateSettings: (partial: Partial<{
+        voiceInputEnabled: boolean
+        voiceOutputEnabled: boolean
+        volume: number
+        selectedPersonality: string
+      }>) => Promise<{
+        voiceInputEnabled: boolean
+        voiceOutputEnabled: boolean
+        volume: number
+        selectedPersonality: string
+      }>
+      listPersonalities: () => Promise<{
+        success: boolean
+        current?: string
+        items: string[]
+        error?: string
+      }>
+      setPersonality: (name: string) => Promise<{
+        success: boolean
+        current?: string
+        error?: string
+      }>
 
       // 事件监听器
       onTTSAudio: (callback: (audioData: Uint8Array) => void) => void

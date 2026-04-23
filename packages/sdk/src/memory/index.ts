@@ -445,6 +445,44 @@ ${conversationText}
     }
   }
 
+  async clearAll(): Promise<void> {
+    this.workingMemory = []
+    this.turnCounter = 0
+    this.userProfile = {
+      basic: {},
+      importantMemories: new Map()
+    }
+    this.conversationSummaries = []
+
+    if (!this.persistenceEnabled) {
+      return
+    }
+
+    await runSqlite(this.persistenceDbPath, `
+      DELETE FROM conversation_turns;
+      DELETE FROM user_profile;
+      DELETE FROM important_memories;
+      DELETE FROM conversation_summaries;
+      DELETE FROM metadata;
+    `)
+  }
+
+  async clearUserProfile(): Promise<void> {
+    this.userProfile = {
+      basic: {},
+      importantMemories: new Map()
+    }
+
+    if (!this.persistenceEnabled) {
+      return
+    }
+
+    await runSqlite(this.persistenceDbPath, `
+      DELETE FROM user_profile;
+      DELETE FROM important_memories;
+    `)
+  }
+
   /**
    * 初始化 SQLite 表结构
    */
