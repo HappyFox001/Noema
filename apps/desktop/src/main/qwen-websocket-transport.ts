@@ -15,6 +15,7 @@ export class NodeRealtimeWebSocketTransport implements RealtimeWebSocketTranspor
   private queue: Uint8Array[] = []
   private closed = false
   private pendingReceivers: PendingReceiver[] = []
+  private pendingConnectReject: ((error: Error) => void) | null = null
 
   async connect(options: {
     url: string
@@ -25,13 +26,20 @@ export class NodeRealtimeWebSocketTransport implements RealtimeWebSocketTranspor
     this.queue = []
 
     await new Promise<void>((resolve, reject) => {
+      this.pendingConnectReject = reject
       const socket = new WebSocket(options.url, {
         headers: options.headers
       })
       this.socket = socket
 
-      socket.once('open', () => resolve())
-      socket.once('error', (error: Error) => reject(error))
+      socket.once('open', () => {
+        this.pendingConnectReject = null
+        resolve()
+      })
+      socket.once('error', (error: Error) => {
+        this.pendingConnectReject = null
+        reject(error)
+      })
 
       socket.on('message', (data: RawData) => {
         const normalized = normalizeMessage(data)
@@ -50,6 +58,11 @@ export class NodeRealtimeWebSocketTransport implements RealtimeWebSocketTranspor
 
       socket.on('close', () => {
         this.closed = true
+        if (this.pendingConnectReject) {
+          const rejectPendingConnect = this.pendingConnectReject
+          this.pendingConnectReject = null
+          rejectPendingConnect(new Error('WebSocket was closed before the connection was established'))
+        }
         while (this.pendingReceivers.length > 0) {
           const receiver = this.pendingReceivers.shift()!
           clearTimeout(receiver.timeoutId)
@@ -111,9 +124,37 @@ export class NodeRealtimeWebSocketTransport implements RealtimeWebSocketTranspor
 
     const socket = this.socket
     this.socket = null
+    this.closed = true
 
     if (socket.readyState === WebSocket.CLOSED) {
-      this.closed = true
+      return
+    }
+
+    if (socket.readyState === WebSocket.CONNECTING) {
+      socket.removeAllListeners('message')
+      socket.on('error', () => undefined)
+
+      try {
+        socket.close()
+      } catch {
+        try {
+          socket.terminate()
+        } catch {
+          // ws 在 CONNECTING 阶段关闭可能直接抛同步异常，这里吞掉即可。
+        }
+      }
+
+      if (this.pendingConnectReject) {
+        const rejectPendingConnect = this.pendingConnectReject
+        this.pendingConnectReject = null
+        rejectPendingConnect(new Error('WebSocket connection aborted'))
+      }
+
+      while (this.pendingReceivers.length > 0) {
+        const receiver = this.pendingReceivers.shift()!
+        clearTimeout(receiver.timeoutId)
+        receiver.resolve({ closed: true })
+      }
       return
     }
 

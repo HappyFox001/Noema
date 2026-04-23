@@ -614,7 +614,7 @@ function handleConversationFrame(frame: ConversationFrame) {
       break
     case 'control.phase_end':
       if (frame.phase === 'task_result') {
-        setStatus(activeMode === 'conversation' ? 'Conversation Ready' : 'Text Ready')
+        setStatus(getReadyStatus())
         setOrbMode('idle')
       }
       break
@@ -640,10 +640,30 @@ const startTextBtn = document.getElementById('start-text-btn') as HTMLButtonElem
 const textInput = document.getElementById('text-input') as HTMLInputElement
 const sendBtn = document.getElementById('send-btn') as HTMLButtonElement
 
+function updateModeButtons(): void {
+  startConversationBtn.textContent = voiceInputEnabled
+    ? (activeMode === 'conversation' ? 'Stop Conversation' : 'Start Conversation')
+    : 'Voice Disabled'
+  startTextBtn.textContent = activeMode === 'text' ? 'Stop Text' : 'Start Text'
+}
+
+function getReadyStatus(): string {
+  if (activeMode === 'conversation') {
+    return 'Conversation Ready'
+  }
+
+  if (activeMode === 'text') {
+    return 'Text Ready'
+  }
+
+  return 'Ready'
+}
+
 async function initialize(mode: 'conversation' | 'text') {
   if (isInitialized) {
     activeMode = mode
-    setStatus(mode === 'conversation' ? 'Conversation Ready' : 'Text Ready')
+    updateModeButtons()
+    setStatus(getReadyStatus())
     textInput.focus()
     return
   }
@@ -677,11 +697,10 @@ async function initialize(mode: 'conversation' | 'text') {
     await loadSettings()
     await loadPersonalities()
 
-    setStatus(mode === 'conversation' ? 'Conversation Ready' : 'Text Ready')
-    if (voiceInputEnabled) {
-      startConversationBtn.textContent = 'Conversation Ready'
-    }
-    startTextBtn.textContent = 'Text Ready'
+    startConversationBtn.disabled = !voiceInputEnabled
+    startTextBtn.disabled = false
+    updateModeButtons()
+    setStatus(getReadyStatus())
     textInput.focus()
 
     // 监听 TTS 音频
@@ -742,6 +761,13 @@ async function stopConversationStreaming(): Promise<void> {
       setOrbMode('idle')
     }
   }
+}
+
+async function stopTextMode(): Promise<void> {
+  activeMode = null
+  updateModeButtons()
+  setStatus('Ready')
+  setOrbMode('idle')
 }
 
 async function commitConversationUtterance(): Promise<void> {
@@ -847,18 +873,38 @@ async function startConversationStreaming(): Promise<void> {
 }
 
 startConversationBtn.addEventListener('click', async () => {
+  if (activeMode === 'conversation') {
+    await stopConversationStreaming()
+    activeMode = null
+    updateModeButtons()
+    setStatus('Ready')
+    setOrbMode('idle')
+    return
+  }
+
   if (!voiceInputEnabled) {
     setStatus('Voice input is disabled')
     return
   }
 
+  if (activeMode === 'text') {
+    activeMode = null
+  }
+
   await initialize('conversation')
   await startConversationStreaming()
+  updateModeButtons()
 })
 
 startTextBtn.addEventListener('click', async () => {
+  if (activeMode === 'text') {
+    await stopTextMode()
+    return
+  }
+
   await stopConversationStreaming()
   await initialize('text')
+  updateModeButtons()
 })
 
 async function sendMessage(overrideText?: string) {
@@ -904,7 +950,7 @@ async function sendMessage(overrideText?: string) {
     if (activeMode === 'conversation' && conversationStreamActive && voiceInputEnabled) {
       setStatus('Listening...')
     } else {
-      setStatus(activeMode === 'conversation' ? 'Conversation Ready' : 'Text Ready')
+      setStatus(getReadyStatus())
     }
     textInput.focus()
   }
@@ -941,9 +987,7 @@ function applySettingsToUI(settings: UISettings) {
   audioPlayer.setVolume(settings.volume)
 
   startConversationBtn.disabled = !settings.voiceInputEnabled
-  startConversationBtn.textContent = settings.voiceInputEnabled
-    ? (isInitialized ? 'Conversation Ready' : 'Start Conversation')
-    : 'Voice Disabled'
+  updateModeButtons()
 }
 
 async function loadSettings(): Promise<void> {
