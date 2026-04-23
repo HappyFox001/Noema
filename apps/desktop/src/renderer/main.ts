@@ -926,14 +926,15 @@ const mainView = document.getElementById('main-view')!
 const settingsNav = document.querySelector('.settings-nav')!
 const volumeSlider = document.getElementById('volume-slider') as HTMLInputElement
 const volumeValue = document.getElementById('volume-value')!
-const voiceInputToggle = document.getElementById('voice-input-toggle') as HTMLInputElement
+const voiceInputBtn = document.getElementById('voice-input-btn') as HTMLButtonElement
 const voiceOutputToggle = document.getElementById('voice-output-toggle') as HTMLInputElement
 const personalitySelect = document.getElementById('personality-select') as HTMLSelectElement
 
 function applySettingsToUI(settings: UISettings) {
   voiceInputEnabled = settings.voiceInputEnabled
   ttsEnabled = settings.voiceOutputEnabled
-  voiceInputToggle.checked = settings.voiceInputEnabled
+  voiceInputBtn.textContent = settings.voiceInputEnabled ? '已开启' : '开启'
+  voiceInputBtn.classList.toggle('active', settings.voiceInputEnabled)
   voiceOutputToggle.checked = settings.voiceOutputEnabled
   volumeSlider.value = String(settings.volume)
   volumeValue.textContent = `${settings.volume}%`
@@ -961,6 +962,46 @@ async function loadSettings(): Promise<void> {
   }
 
   applySettingsToUI(settings)
+}
+
+async function disableVoiceInput(): Promise<void> {
+  const settings = await window.electronAPI.updateSettings({
+    voiceInputEnabled: false
+  })
+
+  if (voiceRecorder.isRecording()) {
+    await voiceRecorder.stop()
+    isVoiceListening = false
+    conversationStreamActive = false
+    conversationStreamSuspended = false
+    conversationSpeechStarted = false
+    conversationCommitInFlight = false
+    await window.electronAPI.stopSpeechStream()
+  }
+
+  applySettingsToUI(settings)
+  setStatus('语音输入已关闭')
+}
+
+async function enableVoiceInput(): Promise<void> {
+  const permissionStatus = await window.electronAPI.getMicrophonePermissionStatus()
+  const currentStatus = permissionStatus.success ? permissionStatus.status : undefined
+
+  if (currentStatus !== 'granted') {
+    const permission = await window.electronAPI.requestMicrophonePermission()
+    if (!permission.success || !permission.granted) {
+      setStatus(permission.openedSettings
+        ? '请在系统设置中开启麦克风权限'
+        : (permission.error || '麦克风权限未授予'))
+      return
+    }
+  }
+
+  const settings = await window.electronAPI.updateSettings({
+    voiceInputEnabled: true
+  })
+  applySettingsToUI(settings)
+  setStatus('语音输入已开启')
 }
 
 async function loadPersonalities(): Promise<void> {
@@ -1083,32 +1124,18 @@ volumeSlider.addEventListener('input', () => {
   void window.electronAPI.updateSettings({ volume: value })
 })
 
-voiceInputToggle.addEventListener('change', async () => {
-  if (voiceInputToggle.checked) {
-    const permission = await window.electronAPI.requestMicrophonePermission()
-    if (!permission.success || !permission.granted) {
-      voiceInputToggle.checked = false
-      setStatus(permission.openedSettings
-        ? '请在系统设置中开启麦克风权限'
-        : (permission.error || '麦克风权限未授予'))
-      return
-    }
-  }
+voiceInputBtn.addEventListener('click', async () => {
+  voiceInputBtn.disabled = true
 
-  const settings = await window.electronAPI.updateSettings({
-    voiceInputEnabled: voiceInputToggle.checked
-  })
-  if (!settings.voiceInputEnabled && voiceRecorder.isRecording()) {
-    await voiceRecorder.stop()
-    isVoiceListening = false
-    conversationStreamActive = false
-    conversationStreamSuspended = false
-    conversationSpeechStarted = false
-    conversationCommitInFlight = false
-    await window.electronAPI.stopSpeechStream()
+  try {
+    if (voiceInputEnabled) {
+      await disableVoiceInput()
+    } else {
+      await enableVoiceInput()
+    }
+  } finally {
+    voiceInputBtn.disabled = false
   }
-  applySettingsToUI(settings)
-  setStatus(settings.voiceInputEnabled ? '语音输入已开启' : '语音输入已关闭')
 })
 
 voiceOutputToggle.addEventListener('change', async () => {

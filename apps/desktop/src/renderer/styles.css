@@ -705,6 +705,16 @@ input[type="password"] {
   background: rgba(255, 255, 255, 0.15);
 }
 
+.settings-btn.active {
+  background: rgba(226, 74, 144, 0.8);
+  border-color: rgba(226, 74, 144, 0.85);
+  color: white;
+}
+
+.settings-btn.active:hover {
+  background: rgba(226, 74, 144, 1);
+}
+
 .settings-btn.danger {
   background: rgba(255, 69, 58, 0.2);
   border-color: rgba(255, 69, 58, 0.3);
