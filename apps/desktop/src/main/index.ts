@@ -129,6 +129,7 @@ class ConversationDisplayController {
 
 class StreamingASRSession {
   private asr: QwenRealtimeASR | null = null
+  private appendChain: Promise<void> = Promise.resolve()
 
   async start(): Promise<void> {
     await this.stop()
@@ -148,14 +149,23 @@ class StreamingASRSession {
     )
 
     await this.asr.connect()
+    this.appendChain = Promise.resolve()
   }
 
-  async append(samples: number[]): Promise<void> {
-    if (!this.asr) {
-      throw new Error('ASR stream is not started')
-    }
+  append(samples: number[] | Int16Array): Promise<void> {
+    const normalized = samples instanceof Int16Array
+      ? samples
+      : Int16Array.from(samples)
 
-    await this.asr.appendAudio(Int16Array.from(samples))
+    this.appendChain = this.appendChain.then(async () => {
+      if (!this.asr) {
+        throw new Error('ASR stream is not started')
+      }
+
+      await this.asr.appendAudio(normalized)
+    })
+
+    return this.appendChain
   }
 
   async commit(): Promise<string> {
@@ -168,12 +178,24 @@ class StreamingASRSession {
 
   async stop(): Promise<void> {
     if (!this.asr) {
+      this.appendChain = Promise.resolve()
       return
     }
 
     const current = this.asr
     this.asr = null
-    await current.close().catch(() => undefined)
+    this.appendChain = Promise.resolve()
+    await current.close().catch((error: Error) => {
+      if (error.message === 'Qwen STT WebSocket closed') {
+        return
+      }
+
+      if (error.message === 'WebSocket connection aborted') {
+        return
+      }
+
+      throw error
+    })
   }
 }
 
@@ -685,18 +707,15 @@ ipcMain.handle('speech:stream:start', async () => {
   }
 })
 
-ipcMain.handle('speech:stream:append', async (_, samples: number[]) => {
-  try {
-    if (!streamingASRSession) {
-      throw new Error('ASR stream is not started')
-    }
-
-    await streamingASRSession.append(samples)
-    return { success: true }
-  } catch (error: any) {
-    console.error('[Speech] Failed to append streaming audio:', error)
-    return { success: false, error: error.message }
+ipcMain.on('speech:stream:append', (_, samples: number[] | Int16Array) => {
+  if (!streamingASRSession) {
+    console.error('[Speech] Failed to append streaming audio: ASR stream is not started')
+    return
   }
+
+  void streamingASRSession.append(samples).catch((error: any) => {
+    console.error('[Speech] Failed to append streaming audio:', error)
+  })
 })
 
 ipcMain.handle('speech:stream:commit', async () => {

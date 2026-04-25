@@ -36,10 +36,7 @@ declare global {
         success: boolean
         error?: string
       }>
-      appendSpeechStream: (samples: number[]) => Promise<{
-        success: boolean
-        error?: string
-      }>
+      appendSpeechStream: (samples: number[] | Int16Array) => void
       commitSpeechStream: () => Promise<{
         success: boolean
         text?: string

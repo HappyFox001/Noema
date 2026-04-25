@@ -368,6 +368,8 @@ let conversationSpeechStarted = false
 let conversationSpeechStartAt = 0
 let conversationLastSpeechAt = 0
 let conversationCommitInFlight = false
+let conversationAudioQueue: Int16Array[] = []
+let conversationAudioFlushInFlight = false
 
 const STREAM_SPEECH_THRESHOLD = 0.015
 const STREAM_MIN_SPEECH_MS = 250
@@ -748,6 +750,8 @@ async function stopConversationStreaming(): Promise<void> {
     conversationStreamSuspended = false
     conversationSpeechStarted = false
     conversationCommitInFlight = false
+    conversationAudioQueue = []
+    conversationAudioFlushInFlight = false
     isVoiceListening = false
 
     if (voiceRecorder.isRecording()) {
@@ -759,6 +763,58 @@ async function stopConversationStreaming(): Promise<void> {
     setStatus(`Voice Error: ${error.message}`)
     if (!isSendingMessage) {
       setOrbMode('idle')
+    }
+  }
+}
+
+function enqueueConversationAudioChunk(chunk: Int16Array): void {
+  if (!conversationStreamActive || conversationStreamSuspended || activeMode !== 'conversation') {
+    return
+  }
+
+  conversationAudioQueue.push(chunk)
+
+  if (!conversationAudioFlushInFlight) {
+    void flushConversationAudioQueue()
+  }
+}
+
+async function flushConversationAudioQueue(): Promise<void> {
+  if (conversationAudioFlushInFlight) {
+    return
+  }
+
+  conversationAudioFlushInFlight = true
+
+  try {
+    while (
+      conversationAudioQueue.length > 0 &&
+      conversationStreamActive &&
+      !conversationStreamSuspended &&
+      activeMode === 'conversation'
+    ) {
+      const chunks = conversationAudioQueue.splice(0, conversationAudioQueue.length)
+      const totalLength = chunks.reduce((sum, item) => sum + item.length, 0)
+      const merged = new Int16Array(totalLength)
+
+      let offset = 0
+      for (const item of chunks) {
+        merged.set(item, offset)
+        offset += item.length
+      }
+
+      window.electronAPI.appendSpeechStream(merged)
+    }
+  } finally {
+    conversationAudioFlushInFlight = false
+
+    if (
+      conversationAudioQueue.length > 0 &&
+      conversationStreamActive &&
+      !conversationStreamSuspended &&
+      activeMode === 'conversation'
+    ) {
+      void flushConversationAudioQueue()
     }
   }
 }
@@ -814,10 +870,7 @@ async function handleConversationAudioChunk(chunk: Int16Array, level: number): P
     return
   }
 
-  const appendResult = await window.electronAPI.appendSpeechStream(Array.from(chunk))
-  if (!appendResult.success) {
-    throw new Error(appendResult.error || 'Failed to stream speech audio')
-  }
+  enqueueConversationAudioChunk(chunk)
 
   const now = Date.now()
   const isSpeech = level >= STREAM_SPEECH_THRESHOLD
@@ -867,6 +920,8 @@ async function startConversationStreaming(): Promise<void> {
   conversationStreamSuspended = false
   conversationSpeechStarted = false
   conversationCommitInFlight = false
+  conversationAudioQueue = []
+  conversationAudioFlushInFlight = false
   isVoiceListening = true
   setStatus('Listening...')
   setOrbMode('thinking')
