@@ -230,8 +230,7 @@ class VoiceRecorder {
   private context: AudioContext | null = null
   private stream: MediaStream | null = null
   private source: MediaStreamAudioSourceNode | null = null
-  private processor: ScriptProcessorNode | null = null
-  private sink: GainNode | null = null
+  private workletNode: AudioWorkletNode | null = null
   private recording = false
   private chunkHandler: ((chunk: Int16Array, level: number) => void) | null = null
 
@@ -240,6 +239,7 @@ class VoiceRecorder {
       return
     }
 
+    console.log('[VoiceRecorder] Starting with AudioWorklet...')
     this.stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         channelCount: 1,
@@ -250,43 +250,43 @@ class VoiceRecorder {
     })
 
     this.context = new AudioContext()
-    this.source = this.context.createMediaStreamSource(this.stream)
-    this.processor = this.context.createScriptProcessor(4096, 1, 1)
-    this.sink = this.context.createGain()
-    this.sink.gain.value = 0
-
     this.chunkHandler = onChunk || null
-    this.recording = true
 
-    this.processor.onaudioprocess = (event) => {
-      if (!this.recording || !this.context) {
-        return
-      }
+    // 加载 AudioWorklet 模块 (从 public 目录)
+    await this.context.audioWorklet.addModule('./audio-worklet-processor.js')
 
-      const input = event.inputBuffer.getChannelData(0)
-      const downsampled = downsampleToInt16(input, this.context.sampleRate, 16000)
-      if (downsampled.length > 0) {
-        this.chunkHandler?.(downsampled, calculateRms(input))
+    this.source = this.context.createMediaStreamSource(this.stream)
+    this.workletNode = new AudioWorkletNode(this.context, 'audio-chunk-processor')
+
+    // 接收来自 worklet 的音频数据（在独立线程处理，不阻塞 UI）
+    this.workletNode.port.onmessage = (event) => {
+      if (!this.recording) return
+
+      const { samples, rms } = event.data
+      if (samples && this.context) {
+        const downsampled = downsampleToInt16(samples, this.context.sampleRate, 16000)
+        if (downsampled.length > 0) {
+          this.chunkHandler?.(downsampled, rms)
+        }
       }
     }
 
-    this.source.connect(this.processor)
-    this.processor.connect(this.sink)
-    this.sink.connect(this.context.destination)
+    this.source.connect(this.workletNode)
+    this.workletNode.connect(this.context.destination)
+    this.recording = true
+    console.log('[VoiceRecorder] Started successfully with AudioWorklet')
   }
 
   async stop(): Promise<void> {
     this.recording = false
 
-    this.processor?.disconnect()
+    this.workletNode?.disconnect()
     this.source?.disconnect()
-    this.sink?.disconnect()
     this.stream?.getTracks().forEach((track) => track.stop())
     await this.context?.close()
 
-    this.processor = null
+    this.workletNode = null
     this.source = null
-    this.sink = null
     this.stream = null
     this.context = null
     this.chunkHandler = null
@@ -583,7 +583,10 @@ function setOrbMode(mode: 'idle' | 'thinking' | 'speaking') {
   }
 }
 
+let lastStatusText = ''
 function setStatus(text: string) {
+  if (text === lastStatusText) return
+  lastStatusText = text
   const statusEl = document.getElementById('status')!
   statusEl.textContent = text
 }

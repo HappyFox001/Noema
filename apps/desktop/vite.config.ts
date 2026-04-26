@@ -5,6 +5,7 @@ export default defineConfig({
   root: resolve(__dirname, 'src/renderer'),
   envDir: __dirname,
   base: './',
+  publicDir: resolve(__dirname, 'src/renderer/public'),
   build: {
     outDir: resolve(__dirname, 'dist/renderer'),
     emptyOutDir: true,
