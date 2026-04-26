@@ -191,59 +191,65 @@ export class TaskRuntime {
     console.log(`│ 📦 Auto Compact: 压缩 ${recordsToCompact.length} 轮历史                          │`)
     console.log('└─────────────────────────────────────────────────────────────┘')
 
-    const compactInput = recordsToCompact.map(record => {
-      const toolLines = record.toolCalls.length > 0
-        ? record.toolCalls.map(call => `${call.name}(${call.arguments})`).join(', ')
-        : 'none'
+    try {
+      const compactInput = recordsToCompact.map(record => {
+        const toolLines = record.toolCalls.length > 0
+          ? record.toolCalls.map(call => `${call.name}(${call.arguments})`).join(', ')
+          : 'none'
 
-      return [
-        `Turn ${record.turnIndex}`,
-        `Assistant: ${record.assistantMessage || '(empty)'}`,
-        `Tools: ${toolLines}`,
-        `Results: ${JSON.stringify(record.toolResults)}`
-      ].join('\n')
-    }).join('\n\n')
-
-    const summaryResponse = await this.llm.chat([
-      {
-        role: 'system',
-        content: [
-          '请把下面这些任务执行轮次压缩成可继续执行的工作摘要。',
-          '保留已经完成的步骤、失败点、关键文件/命令、仍未完成事项。',
-          '输出纯文本，不要 XML。'
+        return [
+          `Turn ${record.turnIndex}`,
+          `Assistant: ${record.assistantMessage || '(empty)'}`,
+          `Tools: ${toolLines}`,
+          `Results: ${JSON.stringify(record.toolResults)}`
         ].join('\n')
-      },
-      { role: 'user', content: compactInput }
-    ], {
-      max_tokens: 512
-    })
+      }).join('\n\n')
 
-    this.compactSummary = summaryResponse.content.trim()
-    this.hooks.onCompact?.(this.compactSummary)
+      const summaryResponse = await this.llm.chat([
+        {
+          role: 'system',
+          content: [
+            '请把下面这些任务执行轮次压缩成可继续执行的工作摘要。',
+            '保留已经完成的步骤、失败点、关键文件/命令、仍未完成事项。',
+            '输出纯文本，不要 XML。'
+          ].join('\n')
+        },
+        { role: 'user', content: compactInput }
+      ], {
+        max_tokens: 512
+      })
 
-    const recentMessageCount = this.keepRecentTurns * 2 + 1
-    const recentMessages = messages.slice(-recentMessageCount)
-    messages.splice(
-      0,
-      messages.length,
-      {
-        role: 'system',
-        content: this.buildTaskSystemPrompt()
-      },
-      {
-        role: 'user',
-        content: [
-          `用户原始请求：${this.originalUserInput}`,
-          `当前要执行的任务：${this.taskDescription}`,
-          this.formatMemoryContext(),
-          `已压缩的任务进展摘要：\n${this.compactSummary}`,
-          '基于这些信息继续完成任务。'
-        ].filter(Boolean).join('\n\n')
-      },
-      ...recentMessages
-    )
+      this.compactSummary = summaryResponse.content.trim()
+      this.hooks.onCompact?.(this.compactSummary)
 
-    this.turnRecords = this.turnRecords.slice(compactBoundary)
+      const recentMessageCount = this.keepRecentTurns * 2 + 1
+      const recentMessages = messages.slice(-recentMessageCount)
+      messages.splice(
+        0,
+        messages.length,
+        {
+          role: 'system',
+          content: this.buildTaskSystemPrompt()
+        },
+        {
+          role: 'user',
+          content: [
+            `用户原始请求：${this.originalUserInput}`,
+            `当前要执行的任务：${this.taskDescription}`,
+            this.formatMemoryContext(),
+            `已压缩的任务进展摘要：\n${this.compactSummary}`,
+            '基于这些信息继续完成任务。'
+          ].filter(Boolean).join('\n\n')
+        },
+        ...recentMessages
+      )
+
+      this.turnRecords = this.turnRecords.slice(compactBoundary)
+    } catch (error) {
+      // Compact 是优化操作，失败不应影响任务执行
+      // 跳过压缩，继续使用完整历史
+      console.warn(`[TaskRuntime] Compact failed, continuing with full history: ${(error as Error).message}`)
+    }
   }
 
   private buildInitialMessages(): any[] {
