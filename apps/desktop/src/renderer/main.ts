@@ -74,17 +74,23 @@ class AudioPlayer {
 
   async addAudioChunk(pcm16Bytes: Uint8Array): Promise<void> {
     try {
+      console.log('[AudioPlayer] Adding chunk:', pcm16Bytes.byteLength, 'bytes, context state:', this.audioContext?.state)
+
       if (this.audioContext?.state === 'suspended') {
+        console.log('[AudioPlayer] Resuming suspended context')
         await this.audioContext.resume()
       }
 
       const audioBuffer = this.pcm16ToAudioBuffer(pcm16Bytes)
+      console.log('[AudioPlayer] Created buffer:', audioBuffer.duration.toFixed(2), 'seconds')
 
       if (this.isPlaying) {
         this.audioQueue.push(audioBuffer)
+        console.log('[AudioPlayer] Queued, queue size:', this.audioQueue.length)
       } else {
         this.isPlaying = true
         this.nextStartTime = this.audioContext!.currentTime
+        console.log('[AudioPlayer] Starting playback')
         this.playBuffer(audioBuffer)
       }
     } catch (error) {
@@ -638,6 +644,7 @@ async function initialize(mode: 'conversation' | 'text') {
 
     // 监听 TTS 音频
     window.electronAPI.onTTSAudio((audioData) => {
+      console.log('[UI] Received TTS audio:', audioData.byteLength, 'bytes')
       audioPlayer.addAudioChunk(audioData)
     })
 
@@ -693,6 +700,15 @@ async function initialize(mode: 'conversation' | 'text') {
       console.error('[UI] Speech error:', error)
       setStatus(`Speech Error: ${error}`)
       setOrbMode('idle')
+    })
+
+    // 用户开始说话时停止当前播放
+    window.electronAPI.onUserSpeaking(() => {
+      console.log('[UI] User started speaking, stopping playback')
+      audioPlayer.stop()
+      textRevealer.reset()
+      clearTextDisplay()
+      setOrbMode('listening')
     })
   } catch (error: any) {
     console.error('Initialization error:', error)

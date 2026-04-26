@@ -120,6 +120,7 @@ declare global {
       onSpeechTranscript: (callback: (text: string) => void) => void
       onSpeechState: (callback: (state: 'listening' | 'processing' | 'idle') => void) => void
       onSpeechError: (callback: (error: string) => void) => void
+      onUserSpeaking: (callback: () => void) => void
 
       // 窗口控制
       moveWindow: (deltaX: number, deltaY: number) => void

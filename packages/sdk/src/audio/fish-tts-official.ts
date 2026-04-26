@@ -1,8 +1,13 @@
 /**
  * Fish Audio TTS using the official Fish Audio WebSocket example shape.
+ *
+ * 支持打断处理 (移植自 Pipecat):
+ * - 当检测到用户打断时，立即停止播放并清空队列
+ * - 实现 InterruptionHandler 接口
  */
 
 import { FishAudioClient, RealtimeEvents } from 'fish-audio'
+import type { InterruptionHandler } from '../turn/types.js'
 
 export interface FishTTSOfficialConfig {
   apiKey: string
@@ -19,7 +24,7 @@ export type FishTTSOfficialEvent =
   | { type: 'error'; error: Error }
   | { type: 'closed' }
 
-export class FishTTSOfficial {
+export class FishTTSOfficial implements InterruptionHandler {
   private client: FishAudioClient
   private config: FishTTSOfficialConfig
   private onEvent?: (event: FishTTSOfficialEvent) => void
@@ -31,12 +36,45 @@ export class FishTTSOfficial {
   private closePromise: Promise<void> | null = null
   private closeResolver: (() => void) | null = null
 
+  // 打断状态 (移植自 Pipecat)
+  private _isInterrupted = false
+
   constructor(config: FishTTSOfficialConfig) {
     this.config = config
     this.client = new FishAudioClient({
       apiKey: config.apiKey,
       baseUrl: 'https://api.fish.audio',
     })
+  }
+
+  /**
+   * 是否被打断
+   */
+  get isInterrupted(): boolean {
+    return this._isInterrupted
+  }
+
+  /**
+   * 重置打断状态
+   * 在新的轮次开始时调用
+   */
+  resetInterruption(): void {
+    this._isInterrupted = false
+  }
+
+  /**
+   * 处理打断 (实现 InterruptionHandler 接口)
+   *
+   * 移植自 Pipecat:
+   * 1. 标记为已打断
+   * 2. 清空待处理的文本队列
+   * 3. 关闭当前连接
+   */
+  async onInterruption(): Promise<void> {
+    console.log('[FishTTSOfficial] Handling interruption')
+    this._isInterrupted = true
+    this.textQueue = [] // 清空待处理文本
+    await this.close() // 关闭连接
   }
 
   setEventHandler(handler: (event: FishTTSOfficialEvent) => void): void {
@@ -50,6 +88,7 @@ export class FishTTSOfficial {
     }
 
     this.isStreaming = true
+    this._isInterrupted = false // 重置打断状态
     this.textQueue = []
     this.pushedTextCount = 0
     this.yieldedTextCount = 0
@@ -126,6 +165,12 @@ export class FishTTSOfficial {
   }
 
   async pushText(text: string): Promise<void> {
+    // 被打断后不接受新文本 (移植自 Pipecat)
+    if (this._isInterrupted) {
+      console.log('[FishTTSOfficial] Interrupted, ignoring text')
+      return
+    }
+
     if (!this.isStreaming) {
       console.warn('[FishTTSOfficial] Not streaming, ignoring text')
       return

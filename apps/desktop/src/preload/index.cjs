@@ -95,6 +95,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('speech:error', (_, error) => callback(error))
   },
 
+  onUserSpeaking: (callback) => {
+    ipcRenderer.on('speech:user-speaking', callback)
+  },
+
   // 窗口控制
   moveWindow: (deltaX, deltaY) => {
     ipcRenderer.send('window:move', deltaX, deltaY)

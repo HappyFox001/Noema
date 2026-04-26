@@ -41,7 +41,18 @@ console.log('[Env] LLM_MODEL:', process.env.LLM_MODEL || '✗ (not set)')
 console.log('[Env] LLM_BASE_URL:', process.env.LLM_BASE_URL || '✗ (not set)')
 
 import { app, BrowserWindow, ipcMain, systemPreferences, shell } from 'electron'
-import { HerTextSDK, FishTTSOfficial, QwenRealtimeASR } from '@her-text/sdk'
+import {
+  HerTextSDK,
+  FishTTSOfficial,
+  QwenRealtimeASR,
+  createVADAnalyzer,
+  TurnController,
+  VADState,
+  InterruptionHandler,
+  type VADParams,
+  type EndpointingConfig,
+  type TurnControllerEvents,
+} from '@her-text/sdk'
 import {
   initializePersonalityManager,
   getPersonalityManager,
@@ -127,35 +138,71 @@ class ConversationDisplayController {
   }
 }
 
-// VAD 配置
-const VAD_SPEECH_THRESHOLD = 800 // Int16 RMS 阈值
-const VAD_MIN_SPEECH_MS = 250
-const VAD_SILENCE_MS = 900
+/**
+ * VAD 配置 (移植自 Pipecat)
+ * 使用新的 4 状态机 VAD 分析器
+ */
+const DEFAULT_VAD_CONFIG: Partial<VADParams> = {
+  confidence: 0.7,      // 语音置信度阈值
+  startSecs: 0.2,       // 200ms 确认开始说话
+  stopSecs: 0.2,        // 200ms 确认停止说话
+  minVolume: 0.02,      // 最小音量阈值 (针对 RMS VAD 调整)
+  sampleRate: 16000,
+}
 
+/**
+ * Endpointing 配置 (移植自 Pipecat)
+ * 双计时器策略
+ */
+const DEFAULT_ENDPOINTING_CONFIG: Partial<EndpointingConfig> = {
+  userSpeechTimeout: 600,   // 600ms 给用户继续说话的窗口
+  sttTimeoutMs: 800,        // STT P99 延迟
+  userTurnStopTimeout: 5000, // 5s 总超时
+}
+
+/**
+ * 流式 ASR 会话
+ *
+ * 集成了 Pipecat 风格的：
+ * - 4 状态机 VAD (QUIET → STARTING → SPEAKING → STOPPING)
+ * - 双计时器 Endpointing
+ * - 轮次管理 (TurnController)
+ * - 打断处理 (InterruptionManager)
+ */
 class StreamingASRSession {
   private asr: QwenRealtimeASR | null = null
+  private turnController: TurnController | null = null
   private appendChain: Promise<void> = Promise.resolve()
-  private speechStarted = false
-  private speechStartAt = 0
-  private lastSpeechAt = 0
   private commitInFlight = false
+
+  // 回调
   private onTranscript: ((text: string) => void) | null = null
   private onStateChange: ((state: 'listening' | 'processing' | 'idle') => void) | null = null
+  private onSpeechStart: (() => void) | null = null
+  private onInterruption: (() => void) | null = null
+
+  // 调试模式
+  private debug = true
 
   async start(callbacks?: {
     onTranscript?: (text: string) => void
     onStateChange?: (state: 'listening' | 'processing' | 'idle') => void
+    onSpeechStart?: () => void
+    onInterruption?: () => void
   }): Promise<void> {
     await this.stop()
 
     this.onTranscript = callbacks?.onTranscript || null
     this.onStateChange = callbacks?.onStateChange || null
+    this.onSpeechStart = callbacks?.onSpeechStart || null
+    this.onInterruption = callbacks?.onInterruption || null
 
     const apiKey = process.env.QWEN_API_KEY?.trim()
     if (!apiKey) {
       throw new Error('QWEN_API_KEY is not configured')
     }
 
+    // 初始化 ASR
     this.asr = new QwenRealtimeASR(
       {
         apiKey,
@@ -164,48 +211,120 @@ class StreamingASRSession {
       },
       new NodeRealtimeWebSocketTransport()
     )
-
     await this.asr.connect()
+
+    // 初始化 VAD 分析器 (Pipecat 风格 4 状态机)
+    const vadAnalyzer = createVADAnalyzer(DEFAULT_VAD_CONFIG)
+
+    // 初始化轮次控制器
+    this.turnController = new TurnController(vadAnalyzer, {
+      endpointing: DEFAULT_ENDPOINTING_CONFIG,
+      enableInterruption: true,
+      debug: this.debug,
+    })
+
+    // 设置轮次控制器事件
+    const events: TurnControllerEvents = {
+      onUserTurnStart: () => {
+        this.log('User turn started')
+        this.onSpeechStart?.()
+      },
+
+      onUserTurnEnd: async (params) => {
+        this.log(`User turn ended, text: ${params.text?.slice(0, 50)}...`)
+
+        if (!this.asr || this.commitInFlight) return
+
+        this.commitInFlight = true
+        this.onStateChange?.('processing')
+
+        try {
+          // 提交 ASR 获取最终转录
+          const text = await this.asr.commit()
+          const finalText = text?.trim() || params.text?.trim()
+
+          if (finalText) {
+            this.log(`Transcript: ${finalText}`)
+            this.onTranscript?.(finalText)
+          }
+        } catch (error) {
+          this.log(`Commit error: ${error}`)
+          // 如果 ASR 提交失败，使用 endpointing 累积的文本
+          if (params.text?.trim()) {
+            this.onTranscript?.(params.text.trim())
+          }
+        } finally {
+          this.commitInFlight = false
+          if (this.asr) {
+            this.onStateChange?.('listening')
+          }
+        }
+      },
+
+      onInterruption: () => {
+        this.log('Interruption detected!')
+        this.onInterruption?.()
+      },
+
+      onUserTurnTimeout: () => {
+        this.log('User turn timeout')
+      },
+    }
+
+    this.turnController.setEvents(events)
+
     this.appendChain = Promise.resolve()
-    this.speechStarted = false
     this.commitInFlight = false
     this.onStateChange?.('listening')
+
+    this.log('StreamingASRSession started with Pipecat-style VAD')
   }
 
-  // 计算 Int16 数组的 RMS
-  private calculateRms(samples: Int16Array): number {
-    let sum = 0
-    for (let i = 0; i < samples.length; i++) {
-      sum += samples[i] * samples[i]
-    }
-    return Math.sqrt(sum / samples.length)
+  /**
+   * 注册打断处理器
+   * 允许外部组件（如 TTS）响应打断事件
+   */
+  registerInterruptionHandler(handler: InterruptionHandler): void {
+    this.turnController?.getInterruptionManager().register(handler)
   }
 
+  /**
+   * 注销打断处理器
+   */
+  unregisterInterruptionHandler(handler: InterruptionHandler): void {
+    this.turnController?.getInterruptionManager().unregister(handler)
+  }
+
+  /**
+   * 开始机器人轮次
+   * 在开始生成回复时调用
+   */
+  async startBotTurn(): Promise<void> {
+    await this.turnController?.startBotTurn()
+  }
+
+  /**
+   * 结束机器人轮次
+   * 在回复完成后调用
+   */
+  async endBotTurn(): Promise<void> {
+    await this.turnController?.endBotTurn()
+  }
+
+  /**
+   * 追加音频数据
+   */
   append(samples: number[] | Int16Array): Promise<void> {
     const normalized = samples instanceof Int16Array
       ? samples
       : Int16Array.from(samples)
 
-    // VAD 检测
-    const rms = this.calculateRms(normalized)
-    const now = Date.now()
-    const isSpeech = rms >= VAD_SPEECH_THRESHOLD
-
-    if (isSpeech) {
-      if (!this.speechStarted) {
-        this.speechStarted = true
-        this.speechStartAt = now
-        console.log('[VAD] Speech started')
-      }
-      this.lastSpeechAt = now
-    } else if (
-      this.speechStarted &&
-      !this.commitInFlight &&
-      now - this.speechStartAt >= VAD_MIN_SPEECH_MS &&
-      now - this.lastSpeechAt >= VAD_SILENCE_MS
-    ) {
-      // 检测到沉默，自动提交
-      void this.autoCommit()
+    // 使用轮次控制器处理音频（包含 VAD 分析）
+    if (this.turnController) {
+      // 异步处理 VAD，不阻塞音频流
+      this.turnController.processAudio(normalized).catch((error) => {
+        this.log(`VAD error: ${error}`)
+      })
     }
 
     // 发送音频到 ASR
@@ -213,7 +332,7 @@ class StreamingASRSession {
       if (!this.asr) return
       await this.asr.appendAudio(normalized)
     }).catch((error: Error) => {
-      // 忽略停止时的错误
+      // 忽略停止时的预期错误
       if (error.message === 'WebSocket connection aborted' ||
           error.message === 'Qwen STT WebSocket closed') {
         return
@@ -224,41 +343,38 @@ class StreamingASRSession {
     return this.appendChain
   }
 
-  private async autoCommit(): Promise<void> {
-    if (!this.asr || this.commitInFlight) return
+  /**
+   * 处理转录结果
+   * 当收到 ASR 的中间或最终结果时调用
+   */
+  processTranscription(text: string, finalized: boolean): void {
+    if (!this.turnController) return
 
-    this.commitInFlight = true
-    this.speechStarted = false
-    this.onStateChange?.('processing')
-    console.log('[VAD] Auto-committing speech')
-
-    try {
-      const text = await this.asr.commit()
-      if (text?.trim()) {
-        console.log('[VAD] Transcript:', text)
-        this.onTranscript?.(text.trim())
-      }
-    } catch (error) {
-      console.error('[VAD] Commit error:', error)
-    } finally {
-      this.commitInFlight = false
-      if (this.asr) {
-        this.onStateChange?.('listening')
-      }
-    }
+    this.turnController.processTranscription({
+      text,
+      finalized,
+      timestamp: Date.now(),
+    })
   }
 
+  /**
+   * 手动提交（用于按钮触发等场景）
+   */
   async commit(): Promise<string> {
     if (!this.asr) {
       throw new Error('ASR stream is not started')
     }
 
     this.commitInFlight = true
-    this.speechStarted = false
     this.onStateChange?.('processing')
 
     try {
-      return await this.asr.commit()
+      const text = await this.asr.commit()
+
+      // 强制结束用户轮次
+      await this.turnController?.forceEndUserTurn()
+
+      return text
     } finally {
       this.commitInFlight = false
       if (this.asr) {
@@ -267,10 +383,21 @@ class StreamingASRSession {
     }
   }
 
+  /**
+   * 停止会话
+   */
   async stop(): Promise<void> {
     this.onStateChange?.('idle')
     this.onTranscript = null
     this.onStateChange = null
+    this.onSpeechStart = null
+    this.onInterruption = null
+
+    // 清理轮次控制器
+    if (this.turnController) {
+      this.turnController.cleanup()
+      this.turnController = null
+    }
 
     if (!this.asr) {
       this.appendChain = Promise.resolve()
@@ -280,17 +407,20 @@ class StreamingASRSession {
     const current = this.asr
     this.asr = null
     this.appendChain = Promise.resolve()
+
     await current.close().catch((error: Error) => {
-      if (error.message === 'Qwen STT WebSocket closed') {
+      if (error.message === 'Qwen STT WebSocket closed' ||
+          error.message === 'WebSocket connection aborted') {
         return
       }
-
-      if (error.message === 'WebSocket connection aborted') {
-        return
-      }
-
       throw error
     })
+  }
+
+  private log(message: string): void {
+    if (this.debug) {
+      console.log(`[StreamingASR] ${message}`)
+    }
   }
 }
 
@@ -796,14 +926,39 @@ ipcMain.handle('speech:stream:start', async () => {
 
     await streamingASRSession.start({
       onTranscript: (text) => {
-        // VAD 检测到语音结束，发送转录文本到 Renderer
+        // VAD + Endpointing 检测到语音结束，发送转录文本到 Renderer
         // Renderer 会通过 sendText IPC 发送消息
         mainWindow?.webContents.send('speech:transcript', text)
       },
       onStateChange: (state) => {
         mainWindow?.webContents.send('speech:state', state)
+      },
+      onSpeechStart: () => {
+        // 用户开始说话，通知 Renderer
+        mainWindow?.webContents.send('speech:user-speaking')
+      },
+      onInterruption: () => {
+        // 打断发生（用户在机器人说话时说话）
+        console.log('[Speech] Interruption detected, stopping TTS')
+        mainWindow?.webContents.send('speech:interruption')
+
+        // 停止 TTS 流
+        if (ttsService) {
+          ttsService.close().catch(() => undefined)
+        }
       }
     })
+
+    // 注册 TTS 作为打断处理器
+    if (ttsService) {
+      streamingASRSession.registerInterruptionHandler({
+        async onInterruption() {
+          console.log('[TTS] Handling interruption, closing stream')
+          await ttsService?.close().catch(() => undefined)
+        }
+      })
+    }
+
     return { success: true }
   } catch (error: any) {
     console.error('[Speech] Failed to start streaming:', error)
