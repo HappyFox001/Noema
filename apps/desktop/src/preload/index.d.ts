@@ -116,6 +116,11 @@ declare global {
         text: string
       }) => void) => void
 
+      // 语音识别事件 (VAD 在 Main Process 处理)
+      onSpeechTranscript: (callback: (text: string) => void) => void
+      onSpeechState: (callback: (state: 'listening' | 'processing' | 'idle') => void) => void
+      onSpeechError: (callback: (error: string) => void) => void
+
       // 窗口控制
       moveWindow: (deltaX: number, deltaY: number) => void
       getWindowPosition: () => Promise<[number, number]>

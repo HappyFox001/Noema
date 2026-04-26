@@ -82,6 +82,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('conversation:frame', (_, frame) => callback(frame))
   },
 
+  // 语音识别事件 (VAD 在 Main Process 处理)
+  onSpeechTranscript: (callback) => {
+    ipcRenderer.on('speech:transcript', (_, text) => callback(text))
+  },
+
+  onSpeechState: (callback) => {
+    ipcRenderer.on('speech:state', (_, state) => callback(state))
+  },
+
+  onSpeechError: (callback) => {
+    ipcRenderer.on('speech:error', (_, error) => callback(error))
+  },
+
   // 窗口控制
   moveWindow: (deltaX, deltaY) => {
     ipcRenderer.send('window:move', deltaX, deltaY)

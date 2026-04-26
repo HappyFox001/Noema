@@ -127,12 +127,29 @@ class ConversationDisplayController {
   }
 }
 
+// VAD 配置
+const VAD_SPEECH_THRESHOLD = 800 // Int16 RMS 阈值
+const VAD_MIN_SPEECH_MS = 250
+const VAD_SILENCE_MS = 900
+
 class StreamingASRSession {
   private asr: QwenRealtimeASR | null = null
   private appendChain: Promise<void> = Promise.resolve()
+  private speechStarted = false
+  private speechStartAt = 0
+  private lastSpeechAt = 0
+  private commitInFlight = false
+  private onTranscript: ((text: string) => void) | null = null
+  private onStateChange: ((state: 'listening' | 'processing' | 'idle') => void) | null = null
 
-  async start(): Promise<void> {
+  async start(callbacks?: {
+    onTranscript?: (text: string) => void
+    onStateChange?: (state: 'listening' | 'processing' | 'idle') => void
+  }): Promise<void> {
     await this.stop()
+
+    this.onTranscript = callbacks?.onTranscript || null
+    this.onStateChange = callbacks?.onStateChange || null
 
     const apiKey = process.env.QWEN_API_KEY?.trim()
     if (!apiKey) {
@@ -150,6 +167,18 @@ class StreamingASRSession {
 
     await this.asr.connect()
     this.appendChain = Promise.resolve()
+    this.speechStarted = false
+    this.commitInFlight = false
+    this.onStateChange?.('listening')
+  }
+
+  // 计算 Int16 数组的 RMS
+  private calculateRms(samples: Int16Array): number {
+    let sum = 0
+    for (let i = 0; i < samples.length; i++) {
+      sum += samples[i] * samples[i]
+    }
+    return Math.sqrt(sum / samples.length)
   }
 
   append(samples: number[] | Int16Array): Promise<void> {
@@ -157,15 +186,66 @@ class StreamingASRSession {
       ? samples
       : Int16Array.from(samples)
 
-    this.appendChain = this.appendChain.then(async () => {
-      if (!this.asr) {
-        throw new Error('ASR stream is not started')
-      }
+    // VAD 检测
+    const rms = this.calculateRms(normalized)
+    const now = Date.now()
+    const isSpeech = rms >= VAD_SPEECH_THRESHOLD
 
+    if (isSpeech) {
+      if (!this.speechStarted) {
+        this.speechStarted = true
+        this.speechStartAt = now
+        console.log('[VAD] Speech started')
+      }
+      this.lastSpeechAt = now
+    } else if (
+      this.speechStarted &&
+      !this.commitInFlight &&
+      now - this.speechStartAt >= VAD_MIN_SPEECH_MS &&
+      now - this.lastSpeechAt >= VAD_SILENCE_MS
+    ) {
+      // 检测到沉默，自动提交
+      void this.autoCommit()
+    }
+
+    // 发送音频到 ASR
+    this.appendChain = this.appendChain.then(async () => {
+      if (!this.asr) return
       await this.asr.appendAudio(normalized)
+    }).catch((error: Error) => {
+      // 忽略停止时的错误
+      if (error.message === 'WebSocket connection aborted' ||
+          error.message === 'Qwen STT WebSocket closed') {
+        return
+      }
+      throw error
     })
 
     return this.appendChain
+  }
+
+  private async autoCommit(): Promise<void> {
+    if (!this.asr || this.commitInFlight) return
+
+    this.commitInFlight = true
+    this.speechStarted = false
+    this.onStateChange?.('processing')
+    console.log('[VAD] Auto-committing speech')
+
+    try {
+      const text = await this.asr.commit()
+      if (text?.trim()) {
+        console.log('[VAD] Transcript:', text)
+        this.onTranscript?.(text.trim())
+      }
+    } catch (error) {
+      console.error('[VAD] Commit error:', error)
+    } finally {
+      this.commitInFlight = false
+      if (this.asr) {
+        this.onStateChange?.('listening')
+      }
+    }
   }
 
   async commit(): Promise<string> {
@@ -173,10 +253,25 @@ class StreamingASRSession {
       throw new Error('ASR stream is not started')
     }
 
-    return await this.asr.commit()
+    this.commitInFlight = true
+    this.speechStarted = false
+    this.onStateChange?.('processing')
+
+    try {
+      return await this.asr.commit()
+    } finally {
+      this.commitInFlight = false
+      if (this.asr) {
+        this.onStateChange?.('listening')
+      }
+    }
   }
 
   async stop(): Promise<void> {
+    this.onStateChange?.('idle')
+    this.onTranscript = null
+    this.onStateChange = null
+
     if (!this.asr) {
       this.appendChain = Promise.resolve()
       return
@@ -699,7 +794,16 @@ ipcMain.handle('speech:stream:start', async () => {
       streamingASRSession = new StreamingASRSession()
     }
 
-    await streamingASRSession.start()
+    await streamingASRSession.start({
+      onTranscript: (text) => {
+        // VAD 检测到语音结束，发送转录文本到 Renderer
+        // Renderer 会通过 sendText IPC 发送消息
+        mainWindow?.webContents.send('speech:transcript', text)
+      },
+      onStateChange: (state) => {
+        mainWindow?.webContents.send('speech:state', state)
+      }
+    })
     return { success: true }
   } catch (error: any) {
     console.error('[Speech] Failed to start streaming:', error)
@@ -714,6 +818,11 @@ ipcMain.on('speech:stream:append', (_, samples: number[] | Int16Array) => {
   }
 
   void streamingASRSession.append(samples).catch((error: any) => {
+    // 忽略停止时的预期错误
+    if (error?.message === 'WebSocket connection aborted' ||
+        error?.message === 'Qwen STT WebSocket closed') {
+      return
+    }
     console.error('[Speech] Failed to append streaming audio:', error)
   })
 })
