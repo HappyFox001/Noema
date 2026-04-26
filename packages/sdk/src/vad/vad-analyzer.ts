@@ -1,6 +1,10 @@
 /**
  * VAD 状态机分析器
  * 完整移植自 Pipecat: src/pipecat/audio/vad/vad_analyzer.py
+ *
+ * 增强功能（移植自 Pipecat vad_controller.py）:
+ * - Audio Idle Timeout: 检测麦克风静音/断开
+ * - Speech Activity 周期限制: 避免事件过于频繁
  */
 
 import {
@@ -23,6 +27,30 @@ function expSmoothing(value: number, prevValue: number, factor: number): number 
 }
 
 /**
+ * VAD 控制器配置
+ */
+export interface VADControllerConfig {
+  /**
+   * Speech Activity 事件周期（毫秒）
+   * 控制 speech_activity 事件的触发频率
+   * @default 200
+   */
+  speechActivityPeriod: number
+
+  /**
+   * 音频空闲超时（毫秒）
+   * 如果在 SPEAKING 状态下超过此时间没有收到音频，强制触发 speech_stop
+   * @default 1000
+   */
+  audioIdleTimeout: number
+}
+
+export const DEFAULT_VAD_CONTROLLER_CONFIG: VADControllerConfig = {
+  speechActivityPeriod: 200,
+  audioIdleTimeout: 1000,
+}
+
+/**
  * VAD 状态机分析器
  *
  * 实现 Pipecat 风格的 4 状态机：
@@ -36,6 +64,7 @@ function expSmoothing(value: number, prevValue: number, factor: number): number 
  */
 export class VADAnalyzer implements VADAnalyzerInterface {
   private params: VADParams
+  private controllerConfig: VADControllerConfig
   private confidenceProvider: VoiceConfidenceProvider
 
   // 内部状态
@@ -61,12 +90,21 @@ export class VADAnalyzer implements VADAnalyzerInterface {
   // 上一次的状态，用于检测状态变化
   private prevState: VADState = VADState.QUIET
 
+  // Speech Activity 周期控制 (移植自 Pipecat vad_controller.py)
+  private lastSpeechActivityTime = 0
+
+  // Audio Idle Timeout (移植自 Pipecat vad_controller.py)
+  private lastAudioTime = 0
+  private audioIdleTimer: ReturnType<typeof setTimeout> | null = null
+
   constructor(
     confidenceProvider: VoiceConfidenceProvider,
-    params?: Partial<VADParams>
+    params?: Partial<VADParams>,
+    controllerConfig?: Partial<VADControllerConfig>
   ) {
     this.confidenceProvider = confidenceProvider
     this.params = { ...DEFAULT_VAD_PARAMS, ...params }
+    this.controllerConfig = { ...DEFAULT_VAD_CONTROLLER_CONFIG, ...controllerConfig }
     this.calculateFrameThresholds()
   }
 
@@ -132,7 +170,53 @@ export class VADAnalyzer implements VADAnalyzerInterface {
     this.vadStartingCount = 0
     this.vadStoppingCount = 0
     this.prevVolume = 0
+    this.lastSpeechActivityTime = 0
+    this.lastAudioTime = 0
+    this.stopAudioIdleTimer()
     this.confidenceProvider.reset()
+  }
+
+  /**
+   * 清理资源
+   */
+  cleanup(): void {
+    this.stopAudioIdleTimer()
+  }
+
+  /**
+   * 停止音频空闲计时器
+   */
+  private stopAudioIdleTimer(): void {
+    if (this.audioIdleTimer) {
+      clearTimeout(this.audioIdleTimer)
+      this.audioIdleTimer = null
+    }
+  }
+
+  /**
+   * 重启音频空闲计时器
+   * 移植自 Pipecat vad_controller.py 的 _audio_idle_handler
+   */
+  private restartAudioIdleTimer(): void {
+    this.stopAudioIdleTimer()
+
+    // 只在 SPEAKING 状态下启动计时器
+    if (this.vadState !== VADState.SPEAKING) {
+      return
+    }
+
+    this.audioIdleTimer = setTimeout(() => {
+      this.audioIdleTimer = null
+
+      // 如果仍在 SPEAKING 状态且超时，强制触发 speech_stop
+      if (this.vadState === VADState.SPEAKING) {
+        console.warn('[VAD] Audio idle timeout, forcing speech stop')
+        this.vadState = VADState.QUIET
+        this.vadStoppingCount = 0
+        this.emitEvent('speech_stop', this.params.stopSecs)
+        this.prevState = VADState.QUIET
+      }
+    }, this.controllerConfig.audioIdleTimeout)
   }
 
   /**
@@ -163,14 +247,19 @@ export class VADAnalyzer implements VADAnalyzerInterface {
 
   /**
    * 检测状态变化并触发事件
+   * 移植自 Pipecat vad_controller.py
    */
   private checkStateChange(): void {
+    const now = Date.now()
+
     // 检测 QUIET/STARTING → SPEAKING 转换（开始说话）
     if (
       this.vadState === VADState.SPEAKING &&
       (this.prevState === VADState.QUIET || this.prevState === VADState.STARTING)
     ) {
       this.emitEvent('speech_start')
+      // 启动音频空闲计时器
+      this.restartAudioIdleTimer()
     }
 
     // 检测 SPEAKING/STOPPING → QUIET 转换（停止说话）
@@ -179,11 +268,17 @@ export class VADAnalyzer implements VADAnalyzerInterface {
       (this.prevState === VADState.SPEAKING || this.prevState === VADState.STOPPING)
     ) {
       this.emitEvent('speech_stop', this.params.stopSecs)
+      // 停止音频空闲计时器
+      this.stopAudioIdleTimer()
     }
 
-    // 持续说话时触发活动事件
+    // 持续说话时触发活动事件（有周期限制）
+    // 移植自 Pipecat vad_controller.py 的 _maybe_speech_activity
     if (this.vadState === VADState.SPEAKING && this.prevState === VADState.SPEAKING) {
-      this.emitEvent('speech_activity')
+      if (now - this.lastSpeechActivityTime >= this.controllerConfig.speechActivityPeriod) {
+        this.lastSpeechActivityTime = now
+        this.emitEvent('speech_activity')
+      }
     }
 
     this.prevState = this.vadState
@@ -194,6 +289,14 @@ export class VADAnalyzer implements VADAnalyzerInterface {
    * 这是核心的状态机逻辑
    */
   async analyze(audio: Int16Array | Float32Array): Promise<VADState> {
+    // 记录最后收到音频的时间（用于空闲检测）
+    this.lastAudioTime = Date.now()
+
+    // 如果在 SPEAKING 状态，重启空闲计时器
+    if (this.vadState === VADState.SPEAKING) {
+      this.restartAudioIdleTimer()
+    }
+
     // 转换为 Float32
     const float32Audio =
       audio instanceof Int16Array ? int16ToFloat32(audio) : audio

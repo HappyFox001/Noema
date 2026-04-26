@@ -45,6 +45,13 @@ export interface TurnControllerConfig {
   enableInterruption?: boolean
 
   /**
+   * 机器人说话事件周期（毫秒）
+   * 移植自 Pipecat base_output.py 的 _bot_speaking_frame_period
+   * @default 200
+   */
+  botSpeakingPeriod?: number
+
+  /**
    * 调试模式
    * @default false
    */
@@ -73,6 +80,9 @@ export class TurnController {
   private userTurnActive = false
   private userTurnStopTimeoutTask: ReturnType<typeof setTimeout> | null = null
 
+  // Bot Speaking 周期计时器 (移植自 Pipecat base_output.py)
+  private botSpeakingTimerTask: ReturnType<typeof setInterval> | null = null
+
   // 事件回调
   private events: TurnControllerEvents = {}
 
@@ -84,6 +94,7 @@ export class TurnController {
     this.config = {
       endpointing: config?.endpointing ?? {},
       enableInterruption: config?.enableInterruption ?? true,
+      botSpeakingPeriod: config?.botSpeakingPeriod ?? 200,
       debug: config?.debug ?? false,
     }
 
@@ -183,6 +194,9 @@ export class TurnController {
     // 重置打断状态
     this.interruptionManager.reset()
 
+    // 启动 Bot Speaking 周期计时器 (移植自 Pipecat base_output.py)
+    this.startBotSpeakingTimer()
+
     // 触发事件
     await this.callEventHandler('onBotTurnStart')
   }
@@ -196,6 +210,9 @@ export class TurnController {
       this.log(`endBotTurn called in invalid state: ${this.state}`)
       return
     }
+
+    // 停止 Bot Speaking 计时器
+    this.stopBotSpeakingTimer()
 
     this.state = TurnState.BOT_DONE
     this.log(`State: BOT_DONE`)
@@ -235,6 +252,7 @@ export class TurnController {
     this.endpointing.reset()
     this.interruptionManager.reset()
     this.cancelUserTurnStopTimeout()
+    this.stopBotSpeakingTimer()
     this.log(`Reset to IDLE`)
   }
 
@@ -243,6 +261,8 @@ export class TurnController {
    */
   cleanup(): void {
     this.cancelUserTurnStopTimeout()
+    this.stopBotSpeakingTimer()
+    this.vadAnalyzer.cleanup()
     this.endpointing.cleanup()
     this.interruptionManager.clear()
   }
@@ -259,7 +279,9 @@ export class TurnController {
         this.handleVADSpeechStop(event.stopSecs ?? 0.2, event.timestamp)
         break
       case 'speech_activity':
-        // 可选：用于 UI 更新
+        // 用户正在说话 - 触发 UI 更新事件
+        // 移植自 Pipecat: speech_activity 事件用于 UI 显示用户说话状态
+        this.callEventHandler('onUserSpeaking')
         break
     }
   }
@@ -305,6 +327,7 @@ export class TurnController {
 
   /**
    * 触发用户轮次开始
+   * 移植自 Pipecat: 同时重置所有策略（start + stop）
    */
   private async triggerUserTurnStart(params: UserTurnStartedParams): Promise<void> {
     if (this.userTurnActive) {
@@ -315,7 +338,8 @@ export class TurnController {
     this.state = TurnState.USER_TURN
     this.log(`State: USER_TURN`)
 
-    // 重置 Endpointing
+    // 重置所有策略 (移植自 Pipecat user_turn_controller.py:268-273)
+    // VAD 分析器不需要完全重置（会丢失状态），只重置计数器
     this.endpointing.reset()
 
     // 启动用户轮次超时
@@ -357,8 +381,12 @@ export class TurnController {
 
   /**
    * 触发打断
+   * 移植自 Pipecat: 打断时重置所有策略
    */
   private async triggerInterruption(): Promise<void> {
+    // 停止 Bot Speaking 计时器
+    this.stopBotSpeakingTimer()
+
     // 触发打断事件
     await this.callEventHandler('onInterruption')
 
@@ -369,8 +397,9 @@ export class TurnController {
     this.state = TurnState.USER_TURN
     this.userTurnActive = true
 
-    // 重置 Endpointing
+    // 重置所有策略 (移植自 Pipecat)
     this.endpointing.reset()
+    // VAD 分析器的状态会在下一次 processAudio 时自然更新
   }
 
   /**
@@ -427,6 +456,31 @@ export class TurnController {
       } catch (error) {
         console.error(`Event handler ${event} failed:`, error)
       }
+    }
+  }
+
+  /**
+   * 启动 Bot Speaking 周期计时器
+   * 移植自 Pipecat base_output.py 的 _bot_speaking_frame_period
+   * 用于周期性触发 onBotSpeaking 事件，供 UI 显示机器人说话状态
+   */
+  private startBotSpeakingTimer(): void {
+    this.stopBotSpeakingTimer()
+
+    this.botSpeakingTimerTask = setInterval(() => {
+      if (this.state === TurnState.BOT_TURN) {
+        this.callEventHandler('onBotSpeaking')
+      }
+    }, this.config.botSpeakingPeriod)
+  }
+
+  /**
+   * 停止 Bot Speaking 周期计时器
+   */
+  private stopBotSpeakingTimer(): void {
+    if (this.botSpeakingTimerTask) {
+      clearInterval(this.botSpeakingTimerTask)
+      this.botSpeakingTimerTask = null
     }
   }
 

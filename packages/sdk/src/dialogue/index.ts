@@ -38,6 +38,35 @@ export interface StreamOptions {
   onTaskEnd?: (result: { success: boolean; summary: string; error?: string }) => Promise<void> | void
 }
 
+/**
+ * TTS 分块配置
+ */
+export interface TTSChunkConfig {
+  /**
+   * 最小 TTS 块字符数
+   * 太短的句子不单独发送，等待更多内容
+   * @default 8
+   */
+  minChunkChars?: number
+
+  /**
+   * 最大 TTS 块字符数
+   * 超过此长度强制分割（在句子边界或标点处）
+   * @default 60
+   */
+  maxChunkChars?: number
+}
+
+/**
+ * DialogueOrchestrator 配置
+ */
+export interface DialogueOrchestratorConfig {
+  /**
+   * TTS 分块配置
+   */
+  ttsChunk?: TTSChunkConfig
+}
+
 function scheduleAsyncTask(task: () => Promise<void>): void {
   const run = () => {
     void task().catch((error) => {
@@ -56,8 +85,22 @@ function scheduleAsyncTask(task: () => Promise<void>): void {
 export class DialogueOrchestrator {
   private context: ContextManager
   private taskSession: TaskSession
-  private readonly minTTSChunkChars = 10
-  private readonly maxTTSChunkChars = 20
+
+  // TTS 分块参数：只按句子边界分割，不按逗号分割
+  // minTTSChunkChars: 太短的句子不单独发送，等待更多内容
+  // maxTTSChunkChars: 超过此长度强制分割（在句子边界或标点处）
+  private readonly minTTSChunkChars: number
+  private readonly maxTTSChunkChars: number
+
+  // 句子边界正则：中文、日文、韩文、英文句号/感叹号/问号
+  // 包括：。！？.!? 以及日文的 〜（波浪号可表示语气结束）
+  private readonly sentenceBoundaryRegex = /[。！？.!?〜]["'"'」』）)\]】〕]*\s*/
+  private readonly sentenceEndingChars = /[。！？.!?〜]/g
+
+  // 从句边界（用于强制分割时的降级）
+  // 包括：中文逗号、顿号、分号、冒号；日文中点、长音符；韩文也类似
+  private readonly clauseBoundaryChars = /[，、,；：;:・ー]/g
+
   private truncationPolicy: TruncationPolicy = {
     maxTokens: 8000,
     maxTurns: 50,
@@ -70,8 +113,11 @@ export class DialogueOrchestrator {
     private memory: MemoryEngine,
     private personality: PersonalityEngine,
     private agent: AgentCore,
-    storageDir: string
+    storageDir: string,
+    config?: DialogueOrchestratorConfig
   ) {
+    this.minTTSChunkChars = config?.ttsChunk?.minChunkChars ?? 8
+    this.maxTTSChunkChars = config?.ttsChunk?.maxChunkChars ?? 60
     this.context = new ContextManager()
     this.taskSession = new TaskSession(llm, memory, personality, agent, this.context, storageDir)
 
@@ -505,6 +551,16 @@ export class DialogueOrchestrator {
     }
   }
 
+  /**
+   * 查找 TTS 边界索引
+   * 只使用句子边界（句号、感叹号、问号），不使用逗号等从句边界
+   * 因为逗号会导致语义断开，影响 TTS 的自然度
+   *
+   * 支持的句子边界符号：
+   * - 中文/日文：。！？〜
+   * - 英文：.!?
+   * - 配对引号/括号：」』）】〕"'
+   */
   private findTTSBoundaryIndex(text: string): number {
     const trimmed = text.trimStart()
     const leadingOffset = text.length - trimmed.length
@@ -512,28 +568,18 @@ export class DialogueOrchestrator {
       return -1
     }
 
-    const sentenceBoundary = trimmed.search(/[。！？.!?]["'”’）)\]]*\s*/)
+    // 使用 sentenceBoundaryRegex 查找句子边界
+    const sentenceBoundary = trimmed.search(this.sentenceBoundaryRegex)
     if (sentenceBoundary !== -1) {
       const prefix = trimmed.slice(0, sentenceBoundary)
       if (prefix.trim().length < this.minTTSChunkChars) {
         return -1
       }
-      const matched = trimmed.slice(sentenceBoundary).match(/^[。！？.!?]["'”’）)\]]*\s*/)
+      const matchRegex = new RegExp('^' + this.sentenceBoundaryRegex.source)
+      const matched = trimmed.slice(sentenceBoundary).match(matchRegex)
       if (matched) {
         const boundaryIndex = leadingOffset + sentenceBoundary + matched[0].length
         return this.clampTTSBoundaryIndex(text, boundaryIndex)
-      }
-    }
-
-    const clauseBoundary = trimmed.search(/[，、,；：;:]["'”’）)\]]*\s*/)
-    if (clauseBoundary !== -1) {
-      const prefix = trimmed.slice(0, clauseBoundary)
-      if (prefix.trim().length >= this.minTTSChunkChars) {
-        const matched = trimmed.slice(clauseBoundary).match(/^[，、,；：;:]["'”’）)\]]*\s*/)
-        if (matched) {
-          const boundaryIndex = leadingOffset + clauseBoundary + matched[0].length
-          return this.clampTTSBoundaryIndex(text, boundaryIndex)
-        }
       }
     }
 
@@ -548,6 +594,14 @@ export class DialogueOrchestrator {
     return boundaryIndex
   }
 
+  /**
+   * 强制分割时查找边界索引
+   * 优先使用句子边界，其次使用逗号等从句边界作为降级
+   *
+   * 支持的标点符号：
+   * - 句子边界：。！？.!?〜
+   * - 从句边界（降级）：，、,；：;:・ー
+   */
   private findForcedTTSBoundaryIndex(text: string): number {
     const trimmed = text.trimStart()
     const leadingOffset = text.length - trimmed.length
@@ -556,13 +610,24 @@ export class DialogueOrchestrator {
     }
 
     const limited = Array.from(trimmed).slice(0, this.maxTTSChunkChars).join('')
-    const punctuationMatches = [...limited.matchAll(/[，、。！？,.!?；：;:]/g)]
-    if (punctuationMatches.length > 0) {
-      const lastMatch = punctuationMatches[punctuationMatches.length - 1]
+
+    // 优先在句子边界分割（使用预定义的正则）
+    const sentenceMatches = [...limited.matchAll(this.sentenceEndingChars)]
+    if (sentenceMatches.length > 0) {
+      const lastMatch = sentenceMatches[sentenceMatches.length - 1]
       const matchIndex = lastMatch.index ?? limited.length - 1
       return leadingOffset + matchIndex + lastMatch[0].length
     }
 
+    // 降级：在从句边界分割（使用预定义的正则）
+    const clauseMatches = [...limited.matchAll(this.clauseBoundaryChars)]
+    if (clauseMatches.length > 0) {
+      const lastMatch = clauseMatches[clauseMatches.length - 1]
+      const matchIndex = lastMatch.index ?? limited.length - 1
+      return leadingOffset + matchIndex + lastMatch[0].length
+    }
+
+    // 最后降级：直接在最大长度处分割
     return leadingOffset + limited.length
   }
 

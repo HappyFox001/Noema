@@ -20,7 +20,11 @@ export {
 } from './types.js'
 
 // VAD 分析器
-export { VADAnalyzer } from './vad-analyzer.js'
+export {
+  VADAnalyzer,
+  VADControllerConfig,
+  DEFAULT_VAD_CONTROLLER_CONFIG,
+} from './vad-analyzer.js'
 
 // RMS VAD
 export { RmsVAD, RmsVADConfig, createRmsVAD } from './rms-vad.js'

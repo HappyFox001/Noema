@@ -130,6 +130,19 @@ export interface TurnControllerEvents {
    * 用户轮次超时（无活动）
    */
   onUserTurnTimeout?: () => void | Promise<void>
+
+  /**
+   * 机器人正在说话（周期性事件）
+   * 移植自 Pipecat base_output.py 的 BotSpeakingFrame
+   * 用于 UI 显示机器人说话状态
+   */
+  onBotSpeaking?: () => void | Promise<void>
+
+  /**
+   * 用户正在说话（周期性事件）
+   * 移植自 Pipecat 的 speech_activity
+   */
+  onUserSpeaking?: () => void | Promise<void>
 }
 
 /**
