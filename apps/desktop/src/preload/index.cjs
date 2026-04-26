@@ -99,6 +99,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('speech:user-speaking', callback)
   },
 
+  // 播放完成同步（用于 Phase 之间的音频同步）
+  onPlaybackWaitRequest: (callback) => {
+    ipcRenderer.on('playback:waitRequest', (_, requestId) => callback(requestId))
+  },
+
+  notifyPlaybackComplete: (requestId) => {
+    ipcRenderer.send('playback:complete', requestId)
+  },
+
   // 窗口控制
   moveWindow: (deltaX, deltaY) => {
     ipcRenderer.send('window:move', deltaX, deltaY)

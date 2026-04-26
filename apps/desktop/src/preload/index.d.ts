@@ -122,6 +122,10 @@ declare global {
       onSpeechError: (callback: (error: string) => void) => void
       onUserSpeaking: (callback: () => void) => void
 
+      // 播放完成同步（用于 Phase 之间的音频同步）
+      onPlaybackWaitRequest: (callback: (requestId: number) => void) => void
+      notifyPlaybackComplete: (requestId: number) => void
+
       // 窗口控制
       moveWindow: (deltaX: number, deltaY: number) => void
       getWindowPosition: () => Promise<[number, number]>

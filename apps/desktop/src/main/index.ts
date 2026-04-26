@@ -426,6 +426,47 @@ class StreamingASRSession {
 
 let currentTTSChunkSequence = 0
 
+// ========== 播放完成同步机制 ==========
+let playbackRequestIdCounter = 0
+const playbackResolvers = new Map<number, () => void>()
+
+/**
+ * 等待 Renderer 端的音频播放完成
+ * 用于 Phase 之间的同步，确保前一阶段的音频播放完毕再开始下一阶段
+ */
+async function waitForRendererPlayback(timeoutMs = 30000): Promise<void> {
+  if (!mainWindow) {
+    return
+  }
+
+  const requestId = ++playbackRequestIdCounter
+  console.log('[Playback] Requesting playback complete wait, requestId:', requestId)
+
+  return new Promise((resolve) => {
+    playbackResolvers.set(requestId, resolve)
+    mainWindow?.webContents.send('playback:waitRequest', requestId)
+
+    // 超时保护
+    setTimeout(() => {
+      if (playbackResolvers.has(requestId)) {
+        console.log('[Playback] Wait timeout, requestId:', requestId)
+        playbackResolvers.delete(requestId)
+        resolve()
+      }
+    }, timeoutMs)
+  })
+}
+
+// 接收 Renderer 的播放完成通知
+ipcMain.on('playback:complete', (_, requestId: number) => {
+  console.log('[Playback] Received complete notification, requestId:', requestId)
+  const resolver = playbackResolvers.get(requestId)
+  if (resolver) {
+    playbackResolvers.delete(requestId)
+    resolver()
+  }
+})
+
 function splitDisplayUnits(text: string): string[] {
   const units: string[] = []
   let asciiBuffer = ''
@@ -819,6 +860,8 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
           }
         },
         onPhaseEnd: async (phase) => {
+          console.log(`[Conversation] Phase "${phase}" ending...`)
+
           if (shouldUseTTS && ttsService) {
             try {
               await ttsService.finishStreaming()
@@ -827,6 +870,12 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
               shouldUseTTS = false
               console.warn('[TTS] Failed to finish streaming:', error.message)
             }
+
+            // 等待 Renderer 端的音频播放完成
+            // 这是关键的同步点，确保 Phase 1 的音频播放完毕再开始 Phase 2
+            console.log(`[Conversation] Waiting for playback to complete before ending phase "${phase}"...`)
+            await waitForRendererPlayback()
+            console.log(`[Conversation] Playback complete for phase "${phase}"`)
           }
 
           await displayController.endPhase(phase)

@@ -10,6 +10,10 @@ class AudioPlayer {
   private nextStartTime = 0
   private onChunkScheduled?: (payload: { startTime: number; duration: number }) => void
 
+  // 播放完成同步机制
+  private playbackCompleteResolvers: (() => void)[] = []
+  private currentSource: AudioBufferSourceNode | null = null
+
   async initialize(): Promise<void> {
     this.audioContext = new AudioContext({ sampleRate: 16000 })
     this.gainNode = this.audioContext.createGain()
@@ -25,6 +29,42 @@ class AudioPlayer {
 
   getCurrentTime(): number {
     return this.audioContext?.currentTime ?? 0
+  }
+
+  /**
+   * 等待所有排队的音频播放完成
+   * 用于 Phase 之间的同步
+   */
+  waitForPlaybackComplete(): Promise<void> {
+    // 如果没有正在播放的音频，立即返回
+    if (!this.isPlaying && this.audioQueue.length === 0) {
+      console.log('[AudioPlayer] waitForPlaybackComplete: already idle')
+      return Promise.resolve()
+    }
+
+    console.log('[AudioPlayer] waitForPlaybackComplete: waiting...')
+    return new Promise((resolve) => {
+      this.playbackCompleteResolvers.push(resolve)
+    })
+  }
+
+  /**
+   * 检查是否正在播放
+   */
+  getIsPlaying(): boolean {
+    return this.isPlaying
+  }
+
+  /**
+   * 通知所有等待者播放已完成
+   */
+  private notifyPlaybackComplete(): void {
+    if (!this.isPlaying && this.audioQueue.length === 0) {
+      console.log('[AudioPlayer] Playback complete, notifying', this.playbackCompleteResolvers.length, 'waiters')
+      const resolvers = this.playbackCompleteResolvers
+      this.playbackCompleteResolvers = []
+      resolvers.forEach(r => r())
+    }
   }
 
   private pcm16ToAudioBuffer(pcm16Bytes: Uint8Array): AudioBuffer {
@@ -54,6 +94,7 @@ class AudioPlayer {
     const source = this.audioContext.createBufferSource()
     source.buffer = buffer
     source.connect(this.gainNode ?? this.audioContext.destination)
+    this.currentSource = source
 
     const currentTime = this.audioContext.currentTime
     const startTime = Math.max(currentTime, this.nextStartTime)
@@ -63,11 +104,13 @@ class AudioPlayer {
     this.onChunkScheduled?.({ startTime, duration: buffer.duration })
 
     source.onended = () => {
+      this.currentSource = null
       if (this.audioQueue.length > 0) {
         const nextBuffer = this.audioQueue.shift()!
         this.playBuffer(nextBuffer)
       } else {
         this.isPlaying = false
+        this.notifyPlaybackComplete()
       }
     }
   }
@@ -99,9 +142,24 @@ class AudioPlayer {
   }
 
   stop(): void {
+    console.log('[AudioPlayer] Stopping playback')
+
+    // 停止当前播放的音频
+    if (this.currentSource) {
+      try {
+        this.currentSource.stop()
+      } catch (e) {
+        // 忽略已停止的错误
+      }
+      this.currentSource = null
+    }
+
     this.audioQueue = []
     this.isPlaying = false
     this.nextStartTime = 0
+
+    // 通知等待者（被中断也算完成）
+    this.notifyPlaybackComplete()
   }
 
   setVolume(percent: number): void {
@@ -545,14 +603,20 @@ function handleConversationFrame(frame: ConversationFrame) {
       if (frame.phase === 'reply') {
         setStatus('Replying...')
       } else if (frame.phase === 'task_result') {
-        // 任务结果阶段开始前，清空之前的文字
+        // 任务结果阶段开始前，停止之前的音频并清空文字
+        // 注意：Main Process 的同步机制已确保 Phase 1 音频播放完毕
+        // 这里的 stop() 是防御性措施，处理边缘情况
+        audioPlayer.stop()
         textRevealer.reset()
         setStatus('Sharing result...')
       }
       setOrbMode('speaking')
       break
     case 'control.phase_end':
-      if (frame.phase === 'task_result') {
+      // reply 阶段结束后，如果紧接着有任务，会收到 task_start
+      // 如果没有任务，这就是最终状态，应该变成 idle
+      // task_result 阶段结束后，一定是最终状态
+      if (frame.phase === 'reply' || frame.phase === 'task_result') {
         setStatus(getReadyStatus())
         setOrbMode('idle')
       }
@@ -709,6 +773,14 @@ async function initialize(mode: 'conversation' | 'text') {
       textRevealer.reset()
       clearTextDisplay()
       setOrbMode('listening')
+    })
+
+    // 响应 Main Process 的播放完成等待请求
+    window.electronAPI.onPlaybackWaitRequest(async (requestId) => {
+      console.log('[UI] Playback wait request received:', requestId)
+      await audioPlayer.waitForPlaybackComplete()
+      console.log('[UI] Playback complete, notifying main process:', requestId)
+      window.electronAPI.notifyPlaybackComplete(requestId)
     })
   } catch (error: any) {
     console.error('Initialization error:', error)
