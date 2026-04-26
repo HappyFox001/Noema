@@ -569,6 +569,7 @@ function configureProxyFromEnv(): void {
     process.env.all_proxy
 
   if (!proxyUrl?.trim()) {
+    console.log('[Proxy] No proxy configured (HTTPS_PROXY/HTTP_PROXY not set or empty)')
     return
   }
 
@@ -584,9 +585,9 @@ function configureProxyFromEnv(): void {
   try {
     const { bootstrap } = require('global-agent')
     bootstrap()
-    console.log('[Proxy] Enabled global proxy for Node/Electron:', proxyUrl)
+    console.log('[Proxy] ✓ Enabled global proxy:', proxyUrl)
   } catch (error) {
-    console.warn('[Proxy] Failed to enable global proxy:', error)
+    console.warn('[Proxy] ⚠️ Failed to enable global proxy:', error)
   }
 }
 
