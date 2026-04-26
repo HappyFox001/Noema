@@ -12,6 +12,7 @@ import {
   runSqliteJson,
   sqlText,
 } from './sqlite-runtime.js'
+import { PROMPTS } from '../prompts.js'
 
 /**
  * 用户画像
@@ -298,17 +299,10 @@ export class MemoryEngine {
       .map(t => `${t.role === 'user' ? '用户' : 'AI'}: ${t.content}`)
       .join('\n')
 
-    const prompt = `请总结以下对话，提取关键信息和主题。
+    const prompt = `${PROMPTS.memory.summarizeConversation}
 
 对话内容：
-${conversationText}
-
-请以 JSON 格式返回：
-{
-  "summary": "对话的简洁总结（1-2 句话）",
-  "keyTopics": ["主题1", "主题2", ...]
-}
-`
+${conversationText}`
 
     try {
       const response = await this.llm!.chat([
@@ -347,32 +341,10 @@ ${conversationText}
       .map(t => `${t.role === 'user' ? '用户' : 'AI'}: ${t.content}`)
       .join('\n')
 
-    const prompt = `请从以下对话中提取用户的信息和重要记忆。
+    const prompt = `${PROMPTS.memory.extractUserProfile}
 
 对话内容：
-${conversationText}
-
-请以 JSON 格式返回：
-{
-  "basicProfile": {
-    "name": "提取到的姓名（如果有）",
-    "location": "提取到的地点（如果有）",
-    "occupation": "提取到的职业（如果有）",
-    ...其他基本信息
-  },
-  "importantMemories": {
-    "偏好": "提取到的偏好信息",
-    "习惯": "提取到的习惯信息",
-    ...其他重要记忆（键值对形式）
-  }
-}
-
-
-注意：
-- 只提取明确提到的信息，不要猜测
-- 如果某项信息没有提及，不要返回该字段
-- 重要记忆用简洁的键值对表示
-`
+${conversationText}`
 
     try {
       const response = await this.llm!.chat([

@@ -6,6 +6,7 @@ import type { AgentCore } from '../agent/index.js'
 import { ContextManager, type ResponseItem, type TruncationPolicy } from '../context/index.js'
 import { PromptBuilder } from '../prompt/index.js'
 import { TaskSession } from '../session/session.js'
+import { PROMPTS } from '../prompts.js'
 
 /**
  * 解析后的 LLM 响应（情感层）
@@ -116,8 +117,9 @@ export class DialogueOrchestrator {
     storageDir: string,
     config?: DialogueOrchestratorConfig
   ) {
-    this.minTTSChunkChars = config?.ttsChunk?.minChunkChars ?? 8
-    this.maxTTSChunkChars = config?.ttsChunk?.maxChunkChars ?? 60
+    // TTS 分句参数：10-30 字，保持自然口语节奏
+    this.minTTSChunkChars = config?.ttsChunk?.minChunkChars ?? 10
+    this.maxTTSChunkChars = config?.ttsChunk?.maxChunkChars ?? 30
     this.context = new ContextManager()
     this.taskSession = new TaskSession(llm, memory, personality, agent, this.context, storageDir)
 
@@ -206,7 +208,7 @@ export class DialogueOrchestrator {
           streamOptions: options,
           phase: 'task_result',
           detectTask: false,  // 不检测任务
-          additionalUserMessage: '请根据刚才的任务执行结果，用简洁亲切的口吻告诉我结果。'
+          additionalUserMessage: PROMPTS.dialogue.taskResultFeedback
         })
 
         await options?.onPhaseStart?.('task_result')
@@ -501,18 +503,7 @@ export class DialogueOrchestrator {
   // === 私有方法 ===
 
   private buildBaseInstructions(): string {
-    return `你是一个独立人格的 AI 伴侣。
-
-核心原则：
-- 以自然、真实的方式回应用户
-- 展现你独特的个性和价值观
-- 记住之前的对话内容和用户的偏好
-- 在合适的时候主动关心用户
-
-回复风格：
-- 简洁自然，避免冗长
-- 适当使用口语化表达
-- 避免生硬的 AI 腔调`
+    return PROMPTS.dialogue.basePersonality
   }
 
   private extractFlushableTTSChunks(buffer: string): {

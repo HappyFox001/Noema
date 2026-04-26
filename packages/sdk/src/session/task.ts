@@ -5,6 +5,7 @@ import type { ContextManager } from '../context/index.js'
 import type { UserProfile, ConversationSummary } from '../memory/index.js'
 import type { PersonalityEngine } from '../personality/index.js'
 import { TurnRuntime } from './turn.js'
+import { PROMPTS } from '../prompts.js'
 
 export interface TaskRunResult {
   success: boolean
@@ -208,11 +209,7 @@ export class TaskRuntime {
       const summaryResponse = await this.llm.chat([
         {
           role: 'system',
-          content: [
-            '请把下面这些任务执行轮次压缩成可继续执行的工作摘要。',
-            '保留已经完成的步骤、失败点、关键文件/命令、仍未完成事项。',
-            '输出纯文本，不要 XML。'
-          ].join('\n')
+          content: PROMPTS.task.compactSystem
         },
         { role: 'user', content: compactInput }
       ], {
@@ -234,11 +231,11 @@ export class TaskRuntime {
         {
           role: 'user',
           content: [
-            `用户原始请求：${this.originalUserInput}`,
-            `当前要执行的任务：${this.taskDescription}`,
+            `${PROMPTS.context.userRequestTitle}${this.originalUserInput}`,
+            `${PROMPTS.context.currentTaskTitle}${this.taskDescription}`,
             this.formatMemoryContext(),
-            `已压缩的任务进展摘要：\n${this.compactSummary}`,
-            '基于这些信息继续完成任务。'
+            `${PROMPTS.context.compactSummaryTitle}\n${this.compactSummary}`,
+            PROMPTS.task.continueAfterCompact
           ].filter(Boolean).join('\n\n')
         },
         ...recentMessages
@@ -267,11 +264,11 @@ export class TaskRuntime {
       {
         role: 'user',
         content: [
-          `用户原始请求：${this.originalUserInput}`,
-          `当前要执行的任务：${this.taskDescription}`,
-          historyText ? `最近对话上下文：\n${historyText}` : '',
+          `${PROMPTS.context.userRequestTitle}${this.originalUserInput}`,
+          `${PROMPTS.context.currentTaskTitle}${this.taskDescription}`,
+          historyText ? `${PROMPTS.context.recentConversationTitle}\n${historyText}` : '',
           this.formatMemoryContext(),
-          '直接执行任务。能用工具就用工具，不要空谈。'
+          PROMPTS.task.initialInstruction
         ].join('\n\n')
       }
     ]
@@ -290,26 +287,10 @@ export class TaskRuntime {
 
   private buildTaskSystemPrompt(): string {
     const personality = this.personality.getPersonality()
-
-    return `你现在处于任务执行模式。
-
-当前角色信息：
-- 名称：${personality.character.name}
-- 关系定位：${personality.relationship.type}
-
-目标：
-- 持续执行，直到任务真正完成
-- 优先使用工具获取事实、修改内容、验证结果
-- 每轮根据工具结果继续下一轮，不要过早停止
-
-规则：
-- 不要扮演陪伴角色，不要抒情
-- 不要描述“你将要做什么”，直接做
-- 如果需要多步操作，分多轮持续完成
-- 只有在任务已经完成，或者确实无法继续时，才给出最终答复
-- 最终答复必须简洁明确，说明完成了什么、还有什么未完成
-- 当你看到任务进展摘要时，要把它当作之前轮次的真实执行结果继续推进
-`
+    return PROMPTS.task.systemPrompt(
+      personality.character.name,
+      personality.relationship.type
+    )
   }
 
   private formatMemoryContext(): string {
@@ -320,12 +301,12 @@ export class TaskRuntime {
       .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : value}`)
 
     if (basicProfile.length > 0) {
-      sections.push(`用户画像：\n${basicProfile.join('\n')}`)
+      sections.push(`${PROMPTS.context.userProfileTitle}\n${basicProfile.join('\n')}`)
     }
 
     if (this.memoryContext.summaries.length > 0) {
       sections.push(
-        `历史摘要：\n${this.memoryContext.summaries
+        `${PROMPTS.context.historySummaryTitle}\n${this.memoryContext.summaries
           .map(summary => `- ${summary.summary}`)
           .join('\n')}`
       )
