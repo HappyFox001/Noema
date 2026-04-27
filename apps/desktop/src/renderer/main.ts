@@ -360,10 +360,9 @@ const textRevealer = new AudioSyncedTextRevealer(
   (text) => setTextDisplay(text)
 )
 let isInitialized = false
-let activeMode: 'conversation' | 'text' | null = null
+let activeMode: 'conversation' | null = null
 let ttsEnabled = false
 let voiceInputEnabled = true
-let isSendingMessage = false
 let isVoiceListening = false
 let conversationStreamActive = false
 
@@ -624,41 +623,24 @@ function handleConversationFrame(frame: ConversationFrame) {
 // ========== Event Handlers ==========
 
 const startConversationBtn = document.getElementById('start-conversation-btn') as HTMLButtonElement
-const startTextBtn = document.getElementById('start-text-btn') as HTMLButtonElement
-const textInput = document.getElementById('text-input') as HTMLInputElement
-const sendBtn = document.getElementById('send-btn') as HTMLButtonElement
 
-function updateModeButtons(): void {
+function updateConversationButton(): void {
   startConversationBtn.textContent = voiceInputEnabled
-    ? (activeMode === 'conversation' ? 'Stop Conversation' : 'Start Conversation')
+    ? (activeMode === 'conversation' ? 'Stop' : 'Start Conversation')
     : 'Voice Disabled'
-  startTextBtn.textContent = activeMode === 'text' ? 'Stop Text' : 'Start Text'
 }
 
 function getReadyStatus(): string {
-  if (activeMode === 'conversation') {
-    return 'Conversation Ready'
-  }
-
-  if (activeMode === 'text') {
-    return 'Text Ready'
-  }
-
-  return 'Ready'
+  return activeMode === 'conversation' ? 'Listening...' : 'Ready'
 }
 
-async function initialize(mode: 'conversation' | 'text') {
+async function initialize() {
   if (isInitialized) {
-    activeMode = mode
-    updateModeButtons()
-    setStatus(getReadyStatus())
-    textInput.focus()
     return
   }
 
-  setStatus(mode === 'conversation' ? 'Initializing...' : 'Initializing...')
+  setStatus('Initializing...')
   startConversationBtn.disabled = true
-  startTextBtn.disabled = true
 
   try {
     await audioPlayer.initialize()
@@ -674,7 +656,6 @@ async function initialize(mode: 'conversation' | 'text') {
     }
 
     isInitialized = true
-    activeMode = mode
     ttsEnabled = Boolean(result.ttsEnabled)
 
     // 可选：输出 SDK 状态
@@ -686,10 +667,8 @@ async function initialize(mode: 'conversation' | 'text') {
     await loadPersonalities()
 
     startConversationBtn.disabled = !voiceInputEnabled
-    startTextBtn.disabled = false
-    updateModeButtons()
-    setStatus(getReadyStatus())
-    textInput.focus()
+    updateConversationButton()
+    setStatus('Ready')
 
     // 监听 TTS 音频
     window.electronAPI.onTTSAudio((audioData) => {
@@ -738,7 +717,6 @@ async function initialize(mode: 'conversation' | 'text') {
 
     window.electronAPI.onSpeechTranscript((text) => {
       console.log('[UI] Transcript:', text)
-      textInput.value = text
       // 自动发送转录的文本
       if (text.trim()) {
         void sendMessage(text)
@@ -771,7 +749,6 @@ async function initialize(mode: 'conversation' | 'text') {
     console.error('Initialization error:', error)
     setStatus(`Error: ${error.message}`)
     startConversationBtn.disabled = false
-    startTextBtn.disabled = false
   }
 }
 
@@ -789,13 +766,6 @@ async function stopConversationStreaming(): Promise<void> {
     setStatus(`Voice Error: ${error.message}`)
     setOrbMode('idle')
   }
-}
-
-async function stopTextMode(): Promise<void> {
-  activeMode = null
-  updateModeButtons()
-  setStatus('Ready')
-  setOrbMode('idle')
 }
 
 // 简化的对话流 - VAD 和 ASR 全在 Main Process 处理
@@ -822,7 +792,7 @@ startConversationBtn.addEventListener('click', async () => {
   if (activeMode === 'conversation') {
     await stopConversationStreaming()
     activeMode = null
-    updateModeButtons()
+    updateConversationButton()
     setStatus('Ready')
     setOrbMode('idle')
     return
@@ -833,34 +803,14 @@ startConversationBtn.addEventListener('click', async () => {
     return
   }
 
-  if (activeMode === 'text') {
-    activeMode = null
-  }
-
-  await initialize('conversation')
+  await initialize()
+  activeMode = 'conversation'
   await startConversationStreaming()
-  updateModeButtons()
+  updateConversationButton()
 })
 
-startTextBtn.addEventListener('click', async () => {
-  if (activeMode === 'text') {
-    await stopTextMode()
-    return
-  }
-
-  await stopConversationStreaming()
-  await initialize('text')
-  updateModeButtons()
-})
-
-async function sendMessage(overrideText?: string) {
-  const text = (overrideText ?? textInput.value).trim()
-  if (!text || !isInitialized) return
-
-  isSendingMessage = true
-  textInput.disabled = true
-  sendBtn.disabled = true
-  textInput.value = ''
+async function sendMessage(text: string) {
+  if (!text.trim() || !isInitialized) return
 
   audioPlayer.stop()
   textRevealer.reset()
@@ -878,25 +828,13 @@ async function sendMessage(overrideText?: string) {
     setStatus(`Error: ${error.message}`)
     setOrbMode('idle')
   } finally {
-    isSendingMessage = false
-    textInput.disabled = false
-    sendBtn.disabled = false
-
     if (activeMode === 'conversation' && conversationStreamActive && voiceInputEnabled) {
       setStatus('Listening...')
     } else {
       setStatus(getReadyStatus())
     }
-    textInput.focus()
   }
 }
-
-sendBtn.addEventListener('click', sendMessage)
-textInput.addEventListener('keypress', (e) => {
-  if (e.key === 'Enter') {
-    sendMessage()
-  }
-})
 
 // ========== Context Menu & Settings Panel ==========
 
@@ -922,7 +860,7 @@ function applySettingsToUI(settings: UISettings) {
   audioPlayer.setVolume(settings.volume)
 
   startConversationBtn.disabled = !settings.voiceInputEnabled
-  updateModeButtons()
+  updateConversationButton()
 }
 
 async function loadSettings(): Promise<void> {
