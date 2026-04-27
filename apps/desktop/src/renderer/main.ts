@@ -663,9 +663,6 @@ async function initialize() {
       console.log('[SDK] Stats:', result.stats)
     }
 
-    await loadSettings()
-    await loadPersonalities()
-
     startConversationBtn.disabled = !voiceInputEnabled
     updateConversationButton()
     setStatus('Ready')
@@ -1603,5 +1600,17 @@ function escapeHtml(str: string): string {
   return div.innerHTML
 }
 
+// 应用启动时加载设置
+async function initializeApp(): Promise<void> {
+  try {
+    await loadSettings()
+    await loadPersonalities()
+    updateConversationButton()
+    console.log('Her-Text Renderer initialized')
+  } catch (error) {
+    console.error('Failed to initialize app:', error)
+  }
+}
 
-console.log('Her-Text Renderer initialized')
+// 立即执行初始化
+void initializeApp()
