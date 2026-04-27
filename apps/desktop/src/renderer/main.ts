@@ -22,6 +22,9 @@ class AudioPlayer {
   private validContextId: number = 0
   private rejectedContextIds: Set<number> = new Set()
 
+  // 停止计数器：用于检测在 async 操作期间是否调用了 stop()
+  private stopGeneration: number = 0
+
   // EBU R128 音量标准化配置
   // 目标响度: -16 LUFS (适合流媒体)
   // 简化实现：使用 RMS 归一化 + 动态压缩
@@ -252,7 +255,17 @@ class AudioPlayer {
     this.nextStartTime = startTime + buffer.duration
     this.onChunkScheduled?.({ startTime, duration: buffer.duration })
 
+    // 记录当前 stopGeneration，用于检测 onended 回调时是否已经被 stop()
+    const generationAtStart = this.stopGeneration
+
     source.onended = () => {
+      // 如果 stop() 在这个 source 播放期间被调用，忽略这个回调
+      // 这防止了旧 source 的 onended 污染新的播放状态
+      if (this.stopGeneration !== generationAtStart) {
+        console.log('[AudioPlayer] Ignoring onended from stopped source')
+        return
+      }
+
       this.currentSource = null
       if (this.audioQueue.length > 0) {
         const nextBuffer = this.audioQueue.shift()!
@@ -266,6 +279,9 @@ class AudioPlayer {
 
   async addAudioChunk(pcm16Bytes: Uint8Array, contextId?: number): Promise<void> {
     try {
+      // 记录当前的 stopGeneration，用于检测 async 期间是否调用了 stop()
+      const generationAtStart = this.stopGeneration
+
       // 验证上下文 ID（如果提供）
       if (contextId !== undefined) {
         if (!this.isContextValid(contextId)) {
@@ -281,6 +297,19 @@ class AudioPlayer {
         await this.audioContext.resume()
         // 恢复后重新预热以减少延迟
         await this.warmup()
+      }
+
+      // 关键检查：在 await 之后重新验证
+      // 1. 检查是否在 await 期间调用了 stop()
+      if (this.stopGeneration !== generationAtStart) {
+        console.log(`[AudioPlayer] Dropping chunk - stop() was called during await (gen ${generationAtStart} -> ${this.stopGeneration})`)
+        return
+      }
+
+      // 2. 重新验证上下文（可能在 await 期间被 invalidate）
+      if (contextId !== undefined && !this.isContextValid(contextId)) {
+        console.log(`[AudioPlayer] Dropping chunk - context #${contextId} invalidated during await`)
+        return
       }
 
       const audioBuffer = this.pcm16ToAudioBuffer(pcm16Bytes)
@@ -310,6 +339,9 @@ class AudioPlayer {
 
   stop(): void {
     console.log('[AudioPlayer] Stopping playback')
+
+    // 递增 stopGeneration，使所有正在进行的 async addAudioChunk 失效
+    this.stopGeneration++
 
     // 停止当前播放的音频
     if (this.currentSource) {

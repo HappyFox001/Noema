@@ -93,6 +93,13 @@ export class TurnController {
   // Bot Speaking 周期计时器 (移植自 Pipecat base_output.py)
   private botSpeakingTimerTask: ReturnType<typeof setInterval> | null = null
 
+  // 聚合窗口 (移植自 Pipecat: 防止用户短暂停顿触发多次 LLM)
+  // 当 endpointing 完成时，不立即触发 onUserTurnEnd，而是等待聚合窗口
+  // 如果窗口内用户恢复说话，取消触发并继续当前轮次
+  private aggregationWindowMs = 500  // 聚合窗口时间
+  private aggregationTimeoutTask: ReturnType<typeof setTimeout> | null = null
+  private pendingUserTurnStopParams: UserTurnStoppedParams | null = null
+
   // 事件回调
   private events: TurnControllerEvents = {}
 
@@ -302,9 +309,21 @@ export class TurnController {
   cleanup(): void {
     this.cancelUserTurnStopTimeout()
     this.stopBotSpeakingTimer()
+    this.cancelAggregationWindow()
     this.vadAnalyzer.cleanup()
     this.endpointing.cleanup()
     this.interruptionManager.clear()
+  }
+
+  /**
+   * 取消聚合窗口计时器
+   */
+  private cancelAggregationWindow(): void {
+    if (this.aggregationTimeoutTask) {
+      clearTimeout(this.aggregationTimeoutTask)
+      this.aggregationTimeoutTask = null
+    }
+    this.pendingUserTurnStopParams = null
   }
 
   /**
@@ -334,6 +353,21 @@ export class TurnController {
     this.resetUserTurnStopTimeout()
 
     this.log(`VAD: speech_start, state: ${this.state}`)
+
+    // 关键：取消聚合窗口计时器 (移植自 Pipecat)
+    // 如果用户在聚合窗口内恢复说话，取消触发 onUserTurnEnd
+    if (this.aggregationTimeoutTask || this.state === TurnState.USER_DONE) {
+      this.log('User resumed speaking, cancelling aggregation window and continuing turn')
+      this.cancelAggregationWindow()
+      // 状态从 USER_DONE 变回 USER_TURN
+      this.state = TurnState.USER_TURN
+      this.log(`State: USER_TURN (resumed)`)
+      // 重置 endpointing 计时器（但保留累积的文本）
+      this.endpointing.handleVADUserStartedSpeaking()
+      // 不需要开始新轮次，继续当前轮次
+      // userTurnActive 仍然是 true
+      return
+    }
 
     // 检查是否需要打断
     if (this.state === TurnState.BOT_TURN && this.config.enableInterruption) {
@@ -416,10 +450,39 @@ export class TurnController {
 
   /**
    * 处理 Endpointing 完成
+   *
+   * 移植自 Pipecat: 使用聚合窗口而非立即触发
+   * 这允许用户在短暂停顿后继续说话，而不会触发多次 LLM 调用
    */
   private handleEndpointingComplete(params: UserTurnStoppedParams): void {
     this.log(`Endpointing complete, text: ${params.text?.slice(0, 50)}...`)
-    this.triggerUserTurnStop(params)
+
+    // 如果已经在聚合窗口中，更新参数但不重启计时器
+    if (this.aggregationTimeoutTask) {
+      this.log('Already in aggregation window, updating params')
+      this.pendingUserTurnStopParams = params
+      return
+    }
+
+    // 保存参数，启动聚合窗口
+    this.pendingUserTurnStopParams = params
+
+    // 进入 USER_DONE 状态，但不设置 userTurnActive = false
+    // 这样用户恢复说话时可以继续当前轮次
+    this.state = TurnState.USER_DONE
+    this.log(`State: USER_DONE (aggregation window started, ${this.aggregationWindowMs}ms)`)
+
+    // 启动聚合窗口计时器
+    this.aggregationTimeoutTask = setTimeout(() => {
+      this.aggregationTimeoutTask = null
+      this.log('Aggregation window expired, triggering user turn stop')
+
+      // 窗口过期，真正触发用户轮次结束
+      if (this.pendingUserTurnStopParams) {
+        this.triggerUserTurnStop(this.pendingUserTurnStopParams)
+        this.pendingUserTurnStopParams = null
+      }
+    }, this.aggregationWindowMs)
   }
 
   /**
@@ -429,6 +492,9 @@ export class TurnController {
   private async triggerInterruption(): Promise<void> {
     // 停止 Bot Speaking 计时器
     this.stopBotSpeakingTimer()
+
+    // 取消聚合窗口
+    this.cancelAggregationWindow()
 
     // 触发打断事件
     await this.callEventHandler('onInterruption')

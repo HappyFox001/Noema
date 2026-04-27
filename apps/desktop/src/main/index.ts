@@ -1118,19 +1118,21 @@ ipcMain.handle('conversation:initialize', async () => {
 
       // 用于追踪首个音频块
       let isFirstAudioChunk = true
-      // 当前 TTS 流的上下文 ID（在 connected 时设置）
-      let activeStreamContextId = 0
 
       // 设置 TTS 事件处理
+      // 使用 FishTTSOfficial 内部的 context ID，避免重复管理
       ttsService.setEventHandler((event) => {
+        // 获取 TTS 服务的活跃 context ID
+        const ttsContextId = ttsService?.getActiveContextId() ?? 0
+
         switch (event.type) {
           case 'connected':
-            console.log('[TTS] Connected event')
+            console.log(`[TTS] Connected event (context #${ttsContextId})`)
             isFirstAudioChunk = true  // 重置首个音频块标志
-            // 记录当前 TTS 流对应的上下文 ID
-            activeStreamContextId = currentTTSContextId
-            console.log(`[TTS] Stream connected with context #${activeStreamContextId}`)
-            mainWindow?.webContents.send('tts:connected', activeStreamContextId)
+            // 同步主进程的 context ID
+            currentTTSContextId = ttsContextId
+            mainWindow?.webContents.send('tts:connected', ttsContextId)
+            mainWindow?.webContents.send('tts:contextStart', ttsContextId)
             break
           case 'audio':
             // 延迟追踪：首个 TTS 音频块
@@ -1138,10 +1140,15 @@ ipcMain.handle('conversation:initialize', async () => {
               isFirstAudioChunk = false
               latencyTracker.mark('first_tts_audio')
             }
-            console.log(`[TTS] Audio chunk received (context #${activeStreamContextId}):`, event.audio.length, 'bytes')
+            // 检查 context 是否仍然有效（打断后 _activeContextId 会变成 -1）
+            if (ttsContextId < 0) {
+              console.log(`[TTS] Dropping audio chunk - context invalidated`)
+              return
+            }
+            console.log(`[TTS] Audio chunk received (context #${ttsContextId}):`, event.audio.length, 'bytes')
             // 发送音频数据时附带上下文 ID，Renderer 用此验证
             mainWindow?.webContents.send('tts:audio', {
-              contextId: activeStreamContextId,
+              contextId: ttsContextId,
               data: event.audio
             })
             break
@@ -1234,10 +1241,9 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
           }
 
           try {
-            // 开始新的 TTS 上下文
-            const contextId = startNewTTSContext()
-            // 通知 Renderer 新的有效上下文 ID
-            mainWindow?.webContents.send('tts:contextStart', contextId)
+            // 开始新的 TTS 流
+            // FishTTSOfficial 会在内部管理 context ID
+            // 并在 'connected' 事件中通知 Renderer
             await ttsService.startStreaming()
           } catch (error: any) {
             console.warn('[TTS] Failed to start streaming:', error.message)
@@ -1437,27 +1443,25 @@ ipcMain.handle('speech:stream:start', async () => {
       },
       onInterruption: () => {
         // 打断发生（用户在机器人说话时说话）
-        console.log('[Speech] Interruption detected, cancelling turn and stopping TTS')
+        console.log('[Speech] Interruption detected, cancelling turn')
 
-        // 取消当前轮次（这会 abort LLM 请求）
+        // 取消当前轮次（这会 abort LLM 请求 + 使 TTS 上下文失效）
         cancelCurrentTurn()
 
         // 通知 Renderer 打断发生，清空队列
         mainWindow?.webContents.send('speech:interruption', currentTurnId)
 
-        // 停止 TTS 流
-        if (ttsService) {
-          ttsService.close().catch(() => undefined)
-        }
+        // 注意：TTS 关闭由 InterruptionManager 通过注册的处理器处理
+        // 不要在这里重复调用 ttsService.close()，否则会导致竞态条件
       }
     })
 
-    // 注册 TTS 作为打断处理器
+    // 注册 TTS 作为打断处理器 (通过 InterruptionManager 正确 await)
     if (ttsService) {
       streamingASRSession.registerInterruptionHandler({
         async onInterruption() {
-          console.log('[TTS] Handling interruption, closing stream')
-          await ttsService?.close().catch(() => undefined)
+          console.log('[TTS] InterruptionHandler: closing stream')
+          await ttsService?.onInterruption()  // 使用 onInterruption 而非直接 close
         }
       })
     }

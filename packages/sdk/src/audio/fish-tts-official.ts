@@ -39,6 +39,14 @@ export class FishTTSOfficial implements InterruptionHandler {
   // 打断状态 (移植自 Pipecat)
   private _isInterrupted = false
 
+  // Context ID 系统 (移植自 Pipecat)
+  // 每个 TTS 流有唯一的 context ID，用于防止旧音频混入
+  private _contextId: number = 0
+  private _activeContextId: number = 0
+
+  // 关闭操作的 Promise，用于确保 startStreaming 等待上一次关闭完成
+  private _closingPromise: Promise<void> | null = null
+
   constructor(config: FishTTSOfficialConfig) {
     this.config = config
     this.client = new FishAudioClient({
@@ -67,12 +75,17 @@ export class FishTTSOfficial implements InterruptionHandler {
    *
    * 移植自 Pipecat:
    * 1. 标记为已打断
-   * 2. 清空待处理的文本队列
-   * 3. 关闭当前连接
+   * 2. 使当前 context 失效
+   * 3. 清空待处理的文本队列
+   * 4. 关闭当前连接
    */
   async onInterruption(): Promise<void> {
-    console.log('[FishTTSOfficial] Handling interruption')
+    const interruptedContextId = this._activeContextId
+    console.log(`[FishTTSOfficial] Handling interruption (context #${interruptedContextId})`)
+
     this._isInterrupted = true
+    // 使 context 失效，后续音频会被丢弃
+    this._activeContextId = -1
     this.textQueue = [] // 清空待处理文本
     await this.close() // 关闭连接
   }
@@ -81,11 +94,32 @@ export class FishTTSOfficial implements InterruptionHandler {
     this.onEvent = handler
   }
 
+  /**
+   * 获取当前活跃的 context ID
+   * Renderer 用此 ID 验证音频是否属于当前上下文
+   */
+  getActiveContextId(): number {
+    return this._activeContextId
+  }
+
   async startStreaming(): Promise<void> {
+    // 关键：等待上一次 close 操作完成
+    // 这防止了 "B 不说话" 的问题
+    if (this._closingPromise) {
+      console.log('[FishTTSOfficial] Waiting for previous close to complete...')
+      await this._closingPromise
+      console.log('[FishTTSOfficial] Previous close completed')
+    }
+
     if (this.isStreaming) {
       console.warn('[FishTTSOfficial] Already streaming')
       return
     }
+
+    // 生成新的 context ID (移植自 Pipecat)
+    this._contextId++
+    this._activeContextId = this._contextId
+    console.log(`[FishTTSOfficial] Starting new context #${this._activeContextId}`)
 
     this.isStreaming = true
     this._isInterrupted = false // 重置打断状态
@@ -206,7 +240,16 @@ export class FishTTSOfficial implements InterruptionHandler {
       return
     }
 
-    console.log('[FishTTSOfficial] Closing connection')
+    // 记录正在关闭的 context ID
+    const closingContextId = this._activeContextId
+    console.log(`[FishTTSOfficial] Closing connection (context #${closingContextId})`)
+
+    // 创建 closing promise 供 startStreaming 等待
+    let closingResolve: () => void
+    this._closingPromise = new Promise((resolve) => {
+      closingResolve = resolve
+    })
+
     this.resetStreamingState()
 
     try {
@@ -223,6 +266,11 @@ export class FishTTSOfficial implements InterruptionHandler {
     }
 
     this.currentConnection = null
+
+    // 标记关闭完成
+    closingResolve!()
+    this._closingPromise = null
+    console.log(`[FishTTSOfficial] Close completed (context #${closingContextId})`)
   }
 
   private async *createTextStream(): AsyncGenerator<string, void, unknown> {
