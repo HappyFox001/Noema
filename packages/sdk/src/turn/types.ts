@@ -3,6 +3,8 @@
  * 移植自 Pipecat: src/pipecat/turns/
  */
 
+import type { SmartTurnAnalyzer } from './smart-turn.js'
+
 /**
  * 用户轮次状态
  */
@@ -95,6 +97,45 @@ export interface InterruptionHandler {
    * 应该尽快完成，不应该阻塞
    */
   onInterruption(): Promise<void>
+}
+
+/**
+ * Endpointing 策略接口
+ * 支持固定超时策略和 Smart Turn ML 策略
+ */
+export interface IEndpointingStrategy {
+  /** 用户轮次结束回调 */
+  onUserTurnStopped: ((params: UserTurnStoppedParams) => void | Promise<void>) | null
+  /** 处理 VAD 用户开始说话 */
+  handleVADUserStartedSpeaking(): void
+  /** 处理 VAD 用户停止说话 */
+  handleVADUserStoppedSpeaking(stopSecs: number, timestamp?: number): void
+  /** 处理转录 */
+  handleTranscription(frame: TranscriptionFrame): void
+  /** 获取累积文本 */
+  getText(): string
+  /** 是否有文本 */
+  hasText(): boolean
+  /** 重置状态 */
+  reset(): void
+  /** 清理资源 */
+  cleanup(): void
+  /** 添加音频数据 (Smart Turn 需要) */
+  appendAudio?(audio: Float32Array, isSpeech: boolean): void
+}
+
+/**
+ * Smart Turn 配置
+ */
+export interface SmartTurnOptions {
+  /** Smart Turn 分析器实例 */
+  analyzer: SmartTurnAnalyzer
+  /** 分析间隔 (毫秒) */
+  analyzeIntervalMs?: number
+  /** 最大分析次数 */
+  maxAnalyzeAttempts?: number
+  /** 备用超时 (毫秒) */
+  fallbackTimeoutMs?: number
 }
 
 /**

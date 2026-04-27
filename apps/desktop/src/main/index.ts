@@ -50,12 +50,15 @@ import {
   TurnController,
   VADState,
   InterruptionHandler,
+  SmartTurnAnalyzer,
   type VADParams,
   type EndpointingConfig,
   type TurnControllerEvents,
   type VoiceConfidenceProvider,
+  type SmartTurnOptions,
 } from '@her-text/sdk'
 import { initializeSileroVAD, isSileroVADAvailable } from './silero-vad-helper.js'
+import { initializeSmartTurn, isSmartTurnAvailable } from './smart-turn-helper.js'
 import {
   initializePersonalityManager,
   getPersonalityManager,
@@ -306,14 +309,51 @@ async function getSileroVADProvider(): Promise<VoiceConfidenceProvider | null> {
   return sileroVADInitPromise
 }
 
+// Smart Turn 实例（全局缓存）
+let smartTurnAnalyzer: SmartTurnAnalyzer | null = null
+let smartTurnInitPromise: Promise<SmartTurnAnalyzer | null> | null = null
+
 /**
- * Endpointing 配置 (移植自 Pipecat)
+ * 初始化 Smart Turn（异步，带缓存）
+ */
+async function getSmartTurnAnalyzer(): Promise<SmartTurnAnalyzer | null> {
+  if (smartTurnAnalyzer) {
+    return smartTurnAnalyzer
+  }
+
+  if (smartTurnInitPromise) {
+    return smartTurnInitPromise
+  }
+
+  smartTurnInitPromise = (async () => {
+    try {
+      if (!isSmartTurnAvailable()) {
+        console.log('[SmartTurn] Smart Turn not available, falling back to fixed timeout')
+        return null
+      }
+
+      console.log('[SmartTurn] Initializing Smart Turn...')
+      smartTurnAnalyzer = await initializeSmartTurn(16000)
+      console.log('[SmartTurn] Smart Turn initialized successfully')
+      return smartTurnAnalyzer
+    } catch (error) {
+      console.error('[SmartTurn] Failed to initialize Smart Turn:', error)
+      console.log('[SmartTurn] Falling back to fixed timeout')
+      return null
+    }
+  })()
+
+  return smartTurnInitPromise
+}
+
+/**
+ * Endpointing 配置 (备用 - 当 Smart Turn 不可用时使用)
  *
  * 由于 Qwen ASR 不支持流式中间结果，我们简化策略：
  * - 只依赖 VAD 检测 + 短暂等待窗口
  * - 不需要等待 ASR 中间结果
  */
-const DEFAULT_ENDPOINTING_CONFIG: Partial<EndpointingConfig> = {
+const FALLBACK_ENDPOINTING_CONFIG: Partial<EndpointingConfig> = {
   userSpeechTimeout: 400,   // 400ms 给用户继续说话的窗口（降低延迟）
   sttTimeoutMs: 0,          // 不等待 STT 中间结果
   userTurnStopTimeout: 800, // 800ms 总超时
@@ -416,12 +456,31 @@ class StreamingASRSession {
       vadAnalyzer = createVADAnalyzer(DEFAULT_VAD_CONFIG)
     }
 
+    // 初始化 Smart Turn (ML 智能话音结束检测)
+    const smartTurn = await getSmartTurnAnalyzer()
+
     // 初始化轮次控制器
-    this.turnController = new TurnController(vadAnalyzer, {
-      endpointing: DEFAULT_ENDPOINTING_CONFIG,
-      enableInterruption: true,
-      debug: this.debug,
-    })
+    // 优先使用 Smart Turn (~100ms)，否则回退到固定超时 (400ms)
+    if (smartTurn) {
+      this.log('Using Smart Turn ML endpointing (~100ms)')
+      this.turnController = new TurnController(vadAnalyzer, {
+        smartTurn: {
+          analyzer: smartTurn,
+          analyzeIntervalMs: 200,      // 200ms 静音后开始分析
+          maxAnalyzeAttempts: 10,      // 最多分析 10 次
+          fallbackTimeoutMs: 2000,     // 2 秒备用超时
+        },
+        enableInterruption: true,
+        debug: this.debug,
+      })
+    } else {
+      this.log('Using fixed timeout endpointing (400ms)')
+      this.turnController = new TurnController(vadAnalyzer, {
+        endpointing: FALLBACK_ENDPOINTING_CONFIG,
+        enableInterruption: true,
+        debug: this.debug,
+      })
+    }
 
     // 设置轮次控制器事件
     const events: TurnControllerEvents = {

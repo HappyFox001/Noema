@@ -25,6 +25,7 @@
   "dependencies": {
     "@her-text/core": "workspace:*",
     "@her-text/types": "workspace:*",
+    "fft.js": "^4.0.4",
     "fish-audio": "^0.1.0",
     "yaml": "^2.3.4"
   },

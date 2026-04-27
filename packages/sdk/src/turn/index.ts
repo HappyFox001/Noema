@@ -16,6 +16,8 @@ export {
   UserTurnStartedParams,
   UserTurnStoppedParams,
   InterruptionHandler,
+  IEndpointingStrategy,
+  SmartTurnOptions,
   TurnControllerEvents,
   TranscriptionFrame,
   DEFAULT_ENDPOINTING_CONFIG,
@@ -33,3 +35,21 @@ export {
   makeInterruptible,
   createInterruptionController,
 } from './interruption.js'
+
+// Smart Turn (ML 智能话音结束检测)
+export {
+  SmartTurnAnalyzer,
+  SmartTurnConfig,
+  SmartTurnResult,
+  SimpleWhisperFeatureExtractor,
+  WhisperFeatureExtractor,
+  OnnxInferenceSession as SmartTurnOnnxSession,
+  OnnxTensor as SmartTurnOnnxTensor,
+  OnnxTensorFactory as SmartTurnOnnxTensorFactory,
+} from './smart-turn.js'
+
+// Smart Turn Endpointing 策略
+export {
+  SmartTurnEndpointingStrategy,
+  SmartTurnEndpointingConfig,
+} from './smart-turn-endpointing.js'

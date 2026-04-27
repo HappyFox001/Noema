@@ -24,9 +24,12 @@ import {
   TranscriptionFrame,
   UserTurnStartedParams,
   UserTurnStoppedParams,
+  IEndpointingStrategy,
+  SmartTurnOptions,
   DEFAULT_ENDPOINTING_CONFIG,
 } from './types.js'
 import { EndpointingStrategy } from './endpointing.js'
+import { SmartTurnEndpointingStrategy } from './smart-turn-endpointing.js'
 import { InterruptionManager } from './interruption.js'
 
 /**
@@ -34,9 +37,15 @@ import { InterruptionManager } from './interruption.js'
  */
 export interface TurnControllerConfig {
   /**
-   * Endpointing 配置
+   * Endpointing 配置 (固定超时策略)
    */
   endpointing?: Partial<EndpointingConfig>
+
+  /**
+   * Smart Turn 配置 (ML 智能检测策略)
+   * 如果提供，将使用 Smart Turn 替代固定超时
+   */
+  smartTurn?: SmartTurnOptions
 
   /**
    * 是否启用打断检测
@@ -69,11 +78,12 @@ export interface TurnControllerConfig {
  * 5. 触发相关事件回调
  */
 export class TurnController {
-  private config: Required<TurnControllerConfig>
+  private config: Required<Omit<TurnControllerConfig, 'smartTurn'>> & { smartTurn?: SmartTurnOptions }
   private state: TurnState = TurnState.IDLE
   private vadAnalyzer: VADAnalyzer
-  private endpointing: EndpointingStrategy
+  private endpointing: IEndpointingStrategy
   private interruptionManager: InterruptionManager
+  private useSmartTurn: boolean = false
 
   // 状态追踪
   private userSpeaking = false
@@ -93,16 +103,35 @@ export class TurnController {
     this.vadAnalyzer = vadAnalyzer
     this.config = {
       endpointing: config?.endpointing ?? {},
+      smartTurn: config?.smartTurn,
       enableInterruption: config?.enableInterruption ?? true,
       botSpeakingPeriod: config?.botSpeakingPeriod ?? 200,
       debug: config?.debug ?? false,
     }
 
     // 初始化 Endpointing 策略
-    this.endpointing = new EndpointingStrategy({
-      ...DEFAULT_ENDPOINTING_CONFIG,
-      ...this.config.endpointing,
-    })
+    // 如果提供了 Smart Turn，使用 ML 策略；否则使用固定超时策略
+    if (this.config.smartTurn?.analyzer) {
+      this.useSmartTurn = true
+      const smartTurnStrategy = new SmartTurnEndpointingStrategy({
+        userSpeechTimeout: this.config.smartTurn.fallbackTimeoutMs ?? 2000,
+        sttTimeoutMs: 0,
+        userTurnStopTimeout: 5000,
+        analyzeIntervalMs: this.config.smartTurn.analyzeIntervalMs ?? 200,
+        maxAnalyzeAttempts: this.config.smartTurn.maxAnalyzeAttempts ?? 10,
+        analyzeTimeoutMs: 500,
+      })
+      smartTurnStrategy.setSmartTurnAnalyzer(this.config.smartTurn.analyzer)
+      this.endpointing = smartTurnStrategy
+      this.log('Using Smart Turn ML endpointing')
+    } else {
+      this.useSmartTurn = false
+      this.endpointing = new EndpointingStrategy({
+        ...DEFAULT_ENDPOINTING_CONFIG,
+        ...this.config.endpointing,
+      })
+      this.log('Using fixed timeout endpointing')
+    }
 
     // 设置 Endpointing 回调
     this.endpointing.onUserTurnStopped = (params) => {
@@ -161,6 +190,17 @@ export class TurnController {
   async processAudio(samples: Int16Array): Promise<VADState> {
     // VAD 分析
     const vadState = await this.vadAnalyzer.analyze(samples)
+
+    // 如果使用 Smart Turn，将音频数据喂给 ML 模型
+    if (this.useSmartTurn && this.endpointing.appendAudio) {
+      // 转换 Int16 到 Float32
+      const float32Audio = new Float32Array(samples.length)
+      for (let i = 0; i < samples.length; i++) {
+        float32Audio[i] = samples[i] / 32768.0
+      }
+      const isSpeech = vadState === VADState.SPEAKING || vadState === VADState.STARTING
+      this.endpointing.appendAudio(float32Audio, isSpeech)
+    }
 
     // VAD 事件会通过 handleVADEvent 回调处理
     return vadState

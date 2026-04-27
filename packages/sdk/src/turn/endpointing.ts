@@ -13,6 +13,7 @@ import {
   EndpointingConfig,
   TranscriptionFrame,
   UserTurnStoppedParams,
+  IEndpointingStrategy,
   DEFAULT_ENDPOINTING_CONFIG,
 } from './types.js'
 
@@ -29,7 +30,7 @@ import {
  * 当收到转录但没有 VAD 停止事件时，只运行 user_speech_timeout
  * 每次收到新转录都重启计时器
  */
-export class EndpointingStrategy {
+export class EndpointingStrategy implements IEndpointingStrategy {
   private config: EndpointingConfig
 
   // 状态
