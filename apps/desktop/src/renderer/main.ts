@@ -1494,8 +1494,7 @@ function renderSummaries(summaries: Array<{
   id: string
   timestamp: number
   summary: string
-  topics: string[]
-  emotionalTone: string
+  keyTopics: string[]
 }>): void {
   if (summaries.length === 0) {
     summariesContent.innerHTML = '<div class="profile-empty">暂无对话摘要</div>'
@@ -1514,12 +1513,11 @@ function renderSummaries(summaries: Array<{
       <div class="summary-item">
         <div class="summary-header">
           <span class="summary-date">${date}</span>
-          <span class="summary-tone">${escapeHtml(s.emotionalTone)}</span>
         </div>
         <div class="summary-text">${escapeHtml(s.summary)}</div>
-        ${s.topics.length > 0 ? `
+        ${s.keyTopics && s.keyTopics.length > 0 ? `
           <div class="summary-topics">
-            ${s.topics.map(t => `<span class="topic-tag">${escapeHtml(t)}</span>`).join('')}
+            ${s.keyTopics.map(t => `<span class="topic-tag">${escapeHtml(t)}</span>`).join('')}
           </div>
         ` : ''}
       </div>

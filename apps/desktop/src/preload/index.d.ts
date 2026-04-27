@@ -105,11 +105,11 @@ declare global {
         success: boolean
         summaries?: Array<{
           id: string
+          startTurn: number
+          endTurn: number
           timestamp: number
           summary: string
-          topics: string[]
-          emotionalTone: string
-          keyPoints: string[]
+          keyTopics: string[]
         }>
         error?: string
       }>

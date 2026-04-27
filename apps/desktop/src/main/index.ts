@@ -1184,8 +1184,8 @@ ipcMain.handle('memory:getWorkingMemory', async () => {
   if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
 
   try {
-    const conversations = sdkInstance.memory.getWorkingMemory()
-    return { success: true, conversations }
+    const recentTurns = sdkInstance.memory.getWorkingMemory()
+    return { success: true, memory: { recentTurns } }
   } catch (error: any) {
     console.error('[Memory] Failed to get working memory:', error)
     return { success: false, error: error.message }
