@@ -264,12 +264,15 @@ const DEFAULT_VAD_CONFIG: Partial<VADParams> = {
 
 /**
  * Endpointing 配置 (移植自 Pipecat)
- * 双计时器策略
+ *
+ * 由于 Qwen ASR 不支持流式中间结果，我们简化策略：
+ * - 只依赖 VAD 检测 + 短暂等待窗口
+ * - 不需要等待 ASR 中间结果
  */
 const DEFAULT_ENDPOINTING_CONFIG: Partial<EndpointingConfig> = {
-  userSpeechTimeout: 600,   // 600ms 给用户继续说话的窗口
-  sttTimeoutMs: 800,        // STT P99 延迟
-  userTurnStopTimeout: 1500, // 1.5s 总超时（降低延迟）
+  userSpeechTimeout: 400,   // 400ms 给用户继续说话的窗口（降低延迟）
+  sttTimeoutMs: 0,          // 不等待 STT 中间结果
+  userTurnStopTimeout: 800, // 800ms 总超时
 }
 
 /**

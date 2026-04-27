@@ -212,10 +212,16 @@ export class EndpointingStrategy {
   private maybeTriggerUserTurnStopped(): void {
     // 检查条件：
     // 1. 用户不在说话
-    // 2. 有文本
+    // 2. 有文本（或 sttTimeoutMs = 0 时跳过此检查，因为 ASR 无中间结果）
     // 3. user_speech 等待完成
     // 4. stt 等待完成
-    if (this.vadUserSpeaking || !this.text) {
+    if (this.vadUserSpeaking) {
+      return
+    }
+
+    // 如果 sttTimeoutMs > 0，需要有文本才能触发
+    // 如果 sttTimeoutMs = 0，说明 ASR 不支持中间结果，直接触发
+    if (this.config.sttTimeoutMs > 0 && !this.text) {
       return
     }
 
