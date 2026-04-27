@@ -501,56 +501,41 @@ let isDragging = false
 let lastMouseX = 0
 let lastMouseY = 0
 
-// Mouse interaction for orb dragging
+// Mouse interaction - canvas 区域任意位置都可拖动
 canvas.addEventListener('mousemove', (e) => {
   if (isDragging) {
-    // Calculate movement delta
     const deltaX = e.screenX - lastMouseX
     const deltaY = e.screenY - lastMouseY
-
-    // Update last position
     lastMouseX = e.screenX
     lastMouseY = e.screenY
-
-    // Move window
     window.electronAPI.moveWindow(deltaX, deltaY)
-  } else if (isPointInOrb(e.clientX, e.clientY)) {
-    canvas.style.cursor = 'grab'
   } else {
-    canvas.style.cursor = 'default'
+    // 在小球上显示 grab 光标，其他区域显示 move
+    canvas.style.cursor = isPointInOrb(e.clientX, e.clientY) ? 'grab' : 'move'
   }
 })
 
-// Reset cursor when mouse leaves canvas
 canvas.addEventListener('mouseleave', () => {
   if (!isDragging) {
     canvas.style.cursor = 'default'
   }
 })
 
-// Start dragging when mouse down on orb
+// Canvas 任意位置都可以开始拖动
 canvas.addEventListener('mousedown', (e) => {
-  if (isPointInOrb(e.clientX, e.clientY)) {
-    isDragging = true
-    lastMouseX = e.screenX
-    lastMouseY = e.screenY
-    canvas.style.cursor = 'grabbing'
-  }
+  isDragging = true
+  lastMouseX = e.screenX
+  lastMouseY = e.screenY
+  canvas.style.cursor = 'grabbing'
 })
 
-// Stop dragging on mouse up
 canvas.addEventListener('mouseup', (e) => {
   if (isDragging) {
     isDragging = false
-    if (isPointInOrb(e.clientX, e.clientY)) {
-      canvas.style.cursor = 'grab'
-    } else {
-      canvas.style.cursor = 'default'
-    }
+    canvas.style.cursor = isPointInOrb(e.clientX, e.clientY) ? 'grab' : 'move'
   }
 })
 
-// Handle global mouse up to stop dragging even if released outside canvas
 document.addEventListener('mouseup', () => {
   if (isDragging) {
     isDragging = false
@@ -919,7 +904,7 @@ const contextMenu = document.getElementById('context-menu')!
 const settingsPanel = document.getElementById('settings-panel')!
 const settingsClose = document.getElementById('settings-close')!
 const mainView = document.getElementById('main-view')!
-const settingsNav = document.querySelector('.settings-nav')!
+const settingsNav = document.querySelector('.settings-nav') as HTMLElement
 const volumeSlider = document.getElementById('volume-slider') as HTMLInputElement
 const volumeValue = document.getElementById('volume-value')!
 const voiceInputBtn = document.getElementById('voice-input-btn') as HTMLButtonElement
@@ -1089,22 +1074,76 @@ document.addEventListener('keydown', (e) => {
   }
 })
 
-// Settings navigation
-settingsNav.addEventListener('click', (e) => {
-  const target = e.target as HTMLElement
-  const navItem = target.closest('.nav-item') as HTMLElement
-  if (!navItem) return
+// Settings nav - 支持拖动和点击切换
+let isNavDragging = false
+let navDragStartX = 0
+let navDragStartY = 0
+let navMouseDownTarget: HTMLElement | null = null
+let navTotalMovement = 0
 
-  const section = navItem.dataset.section
-  if (!section) return
+settingsNav.addEventListener('mousedown', (e) => {
+  isNavDragging = true
+  navDragStartX = e.screenX
+  navDragStartY = e.screenY
+  navMouseDownTarget = e.target as HTMLElement
+  navTotalMovement = 0
+  settingsNav.style.cursor = 'grabbing'
+})
 
-  // Update nav active state
-  document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'))
-  navItem.classList.add('active')
+settingsNav.addEventListener('mousemove', (e) => {
+  if (isNavDragging) {
+    const deltaX = e.screenX - navDragStartX
+    const deltaY = e.screenY - navDragStartY
+    navDragStartX = e.screenX
+    navDragStartY = e.screenY
+    navTotalMovement += Math.abs(deltaX) + Math.abs(deltaY)
+    window.electronAPI.moveWindow(deltaX, deltaY)
+  }
+})
 
-  // Show corresponding section
-  document.querySelectorAll('.settings-section').forEach(sec => sec.classList.remove('active'))
-  document.getElementById(`section-${section}`)?.classList.add('active')
+settingsNav.addEventListener('mouseup', (e) => {
+  if (isNavDragging) {
+    isNavDragging = false
+    settingsNav.style.cursor = ''
+
+    // 如果移动距离很小，视为点击，触发导航切换
+    if (navTotalMovement < 5 && navMouseDownTarget) {
+      const navItem = navMouseDownTarget.closest('.nav-item') as HTMLElement
+      if (navItem) {
+        const section = navItem.dataset.section
+        if (section) {
+          document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'))
+          navItem.classList.add('active')
+          document.querySelectorAll('.settings-section').forEach(sec => sec.classList.remove('active'))
+          document.getElementById(`section-${section}`)?.classList.add('active')
+        }
+      }
+    }
+    navMouseDownTarget = null
+  }
+})
+
+settingsNav.addEventListener('mouseleave', () => {
+  // 鼠标离开时继续支持拖动（通过 document 事件）
+})
+
+document.addEventListener('mouseup', () => {
+  if (isNavDragging) {
+    isNavDragging = false
+    settingsNav.style.cursor = ''
+    navMouseDownTarget = null
+  }
+})
+
+document.addEventListener('mousemove', (e) => {
+  if (isNavDragging) {
+    const deltaX = e.screenX - navDragStartX
+    const deltaY = e.screenY - navDragStartY
+    navDragStartX = e.screenX
+    navDragStartY = e.screenY
+    navTotalMovement += Math.abs(deltaX) + Math.abs(deltaY)
+    window.electronAPI.moveWindow(deltaX, deltaY)
+  }
 })
 
 // Volume slider
