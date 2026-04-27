@@ -31,8 +31,11 @@ class AudioChunkProcessor extends AudioWorkletProcessor {
     const output = new Int16Array(outputLength)
 
     for (let i = 0; i < outputLength; i++) {
-      const srcIndex = Math.floor(i * ratio)
-      const sample = input[srcIndex]
+      const srcIndex = i * ratio
+      const leftIndex = Math.floor(srcIndex)
+      const rightIndex = Math.min(leftIndex + 1, input.length - 1)
+      const fraction = srcIndex - leftIndex
+      const sample = input[leftIndex] * (1 - fraction) + input[rightIndex] * fraction
       const clamped = Math.max(-1, Math.min(1, sample))
       output[i] = clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff
     }

@@ -25,6 +25,8 @@ export class QwenRealtimeASR {
   private connected = false
   private receiveLoop: Promise<void> | null = null
   private pendingCommits: PendingCommit[] = []
+  private latestFinalTranscript: string | null = null
+  private latestFallbackTranscript: string | null = null
 
   constructor(
     private config: QwenRealtimeASRConfig,
@@ -100,15 +102,23 @@ export class QwenRealtimeASR {
       await this.connect()
     }
 
+    if (this.latestFinalTranscript?.trim()) {
+      const text = this.latestFinalTranscript.trim()
+      this.latestFinalTranscript = null
+      this.latestFallbackTranscript = null
+      return text
+    }
+
     const timeoutMs = this.config.receiveTimeoutMs || 5000
     const transcriptPromise = new Promise<string>((resolve, reject) => {
       const pendingCommit: PendingCommit = {
         resolve,
         reject,
-        fallbackText: null,
+        fallbackText: this.latestFallbackTranscript,
         timeoutId: setTimeout(() => {
           this.pendingCommits = this.pendingCommits.filter((entry) => entry !== pendingCommit)
           if (pendingCommit.fallbackText?.trim()) {
+            this.latestFallbackTranscript = null
             resolve(pendingCommit.fallbackText.trim())
             return
           }
@@ -134,10 +144,17 @@ export class QwenRealtimeASR {
       pending.reject(error)
     }
     this.pendingCommits = []
+    this.latestFinalTranscript = null
+    this.latestFallbackTranscript = null
     this.connected = false
     await this.transport.close()
     await this.receiveLoop?.catch(() => undefined)
     this.receiveLoop = null
+  }
+
+  clearBufferedTranscripts(): void {
+    this.latestFinalTranscript = null
+    this.latestFallbackTranscript = null
   }
 
   private async runReceiveLoop(): Promise<void> {
@@ -172,19 +189,24 @@ export class QwenRealtimeASR {
 
       const finalText = extractFinalTranscript(parsed)
       if (finalText) {
+        const normalizedFinalText = finalText.trim()
         // 通知最终转录结果
-        this.config.onInterimTranscript?.(finalText.trim(), true)
+        this.config.onInterimTranscript?.(normalizedFinalText, true)
 
         const pending = this.pendingCommits.shift()
         if (pending) {
           clearTimeout(pending.timeoutId)
-          pending.resolve(finalText.trim())
+          this.latestFallbackTranscript = null
+          pending.resolve(normalizedFinalText)
+        } else {
+          this.latestFinalTranscript = normalizedFinalText
         }
         continue
       }
 
       const fallbackText = extractFallbackTranscript(parsed)
       if (fallbackText) {
+        this.latestFallbackTranscript = fallbackText
         // 通知中间转录结果（用于 endpointing）
         this.config.onInterimTranscript?.(fallbackText, false)
 

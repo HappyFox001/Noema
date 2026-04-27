@@ -52,12 +52,16 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
   private vadUserSpeaking = false
   private transcriptFinalized = false
   private vadStoppedTime: number | null = null
+  private turnComplete = false
+  private sttWaitDone = false
 
   // 分析状态
   private analyzeAttempts = 0
   private isAnalyzing = false
   private analyzeTimer: ReturnType<typeof setTimeout> | null = null
   private fallbackTimer: ReturnType<typeof setTimeout> | null = null
+  private sttTimeoutTimer: ReturnType<typeof setTimeout> | null = null
+  private turnStopTriggered = false
 
   // 回调
   onUserTurnStopped: ((params: UserTurnStoppedParams) => void | Promise<void>) | null = null
@@ -96,8 +100,11 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
     this.vadUserSpeaking = false
     this.transcriptFinalized = false
     this.vadStoppedTime = null
+    this.turnComplete = false
+    this.sttWaitDone = false
     this.analyzeAttempts = 0
     this.isAnalyzing = false
+    this.turnStopTriggered = false
     this.cancelAllTimers()
     this.smartTurn?.reset()
   }
@@ -118,6 +125,8 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
     this.vadUserSpeaking = true
     this.transcriptFinalized = false
     this.vadStoppedTime = null
+    this.turnComplete = false
+    this.sttWaitDone = false
     this.analyzeAttempts = 0
     this.isAnalyzing = false
     this.cancelAllTimers()
@@ -129,6 +138,8 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
   handleVADUserStoppedSpeaking(stopSecs: number, timestamp?: number): void {
     this.vadUserSpeaking = false
     this.vadStoppedTime = timestamp ?? Date.now()
+
+    this.startSttWaitTimer(stopSecs)
 
     // 启动分析计时器
     this.scheduleAnalysis()
@@ -146,8 +157,9 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
     const state = this.smartTurn.appendAudio(audio, isSpeech)
 
     if (state === 'complete_timeout') {
-      // 静音超时，直接触发
-      this.triggerUserTurnStopped('timeout')
+      // SmartTurn 内部静音超时，按 completed turn 处理，仍等待 STT final/timeout
+      this.turnComplete = true
+      this.maybeTriggerUserTurnStopped('timeout')
     } else if (state === 'ready_for_analysis' && !this.isAnalyzing) {
       // 有足够静音，安排分析
       this.scheduleAnalysis()
@@ -158,10 +170,16 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
    * 处理转录
    */
   handleTranscription(frame: TranscriptionFrame): void {
-    this.text += frame.text
+    this.mergeTranscriptionText(frame)
 
     if (frame.finalized) {
       this.transcriptFinalized = true
+      this.sttWaitDone = true
+      if (this.sttTimeoutTimer) {
+        clearTimeout(this.sttTimeoutTimer)
+        this.sttTimeoutTimer = null
+      }
+      this.maybeTriggerUserTurnStopped('smart_turn')
     }
   }
 
@@ -196,6 +214,33 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
   }
 
   /**
+   * 实时 ASR 的 interim/final 文本经常是“当前完整假设”，不是 delta。
+   * 对齐 Pipecat TurnAnalyzer 路径的语义，避免把连续 interim 重复累加。
+   */
+  private mergeTranscriptionText(frame: TranscriptionFrame): void {
+    const next = frame.text.trim()
+    if (!next) {
+      return
+    }
+
+    if (!this.text) {
+      this.text = next
+      return
+    }
+
+    if (next === this.text || this.text.includes(next)) {
+      return
+    }
+
+    if (next.startsWith(this.text)) {
+      this.text = next
+      return
+    }
+
+    this.text += next
+  }
+
+  /**
    * 运行 ML 分析
    */
   private async runAnalysis(): Promise<void> {
@@ -224,7 +269,8 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
 
       if (result.isComplete) {
         // ML 判断用户说完了
-        this.triggerUserTurnStopped('smart_turn')
+        this.turnComplete = true
+        this.maybeTriggerUserTurnStopped('smart_turn')
         return
       }
 
@@ -256,14 +302,50 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
     this.fallbackTimer = setTimeout(() => {
       this.fallbackTimer = null
       console.log('[SmartTurn] Fallback timeout triggered')
-      this.triggerUserTurnStopped('fallback_timeout')
+      this.turnComplete = true
+      this.maybeTriggerUserTurnStopped('fallback_timeout')
     }, this.config.userSpeechTimeout)
   }
 
   /**
-   * 触发用户轮次结束
+   * 启动 STT 等待计时器。
+   *
+   * 对齐 Pipecat TurnAnalyzerUserTurnStopStrategy：
+   * SmartTurn 判定完成后，还需要等待 STT final，或等待 STT P99 timeout 兜底。
    */
-  private triggerUserTurnStopped(reason: 'smart_turn' | 'timeout' | 'fallback_timeout'): void {
+  private startSttWaitTimer(stopSecs: number): void {
+    if (this.sttTimeoutTimer) {
+      clearTimeout(this.sttTimeoutTimer)
+      this.sttTimeoutTimer = null
+    }
+
+    const effectiveSttWait = Math.max(0, this.config.sttTimeoutMs - stopSecs * 1000)
+    if (this.transcriptFinalized || effectiveSttWait <= 0) {
+      this.sttWaitDone = true
+      return
+    }
+
+    this.sttWaitDone = false
+    this.sttTimeoutTimer = setTimeout(() => {
+      this.sttTimeoutTimer = null
+      this.sttWaitDone = true
+      this.maybeTriggerUserTurnStopped('smart_turn')
+    }, effectiveSttWait)
+  }
+
+  /**
+   * 条件满足时触发用户轮次结束
+   */
+  private maybeTriggerUserTurnStopped(reason: 'smart_turn' | 'timeout' | 'fallback_timeout'): void {
+    if (this.turnStopTriggered) {
+      return
+    }
+
+    if (this.vadUserSpeaking || !this.turnComplete || !this.sttWaitDone) {
+      return
+    }
+
+    this.turnStopTriggered = true
     this.cancelAllTimers()
 
     if (this.onUserTurnStopped) {
@@ -291,6 +373,10 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
     if (this.fallbackTimer) {
       clearTimeout(this.fallbackTimer)
       this.fallbackTimer = null
+    }
+    if (this.sttTimeoutTimer) {
+      clearTimeout(this.sttTimeoutTimer)
+      this.sttTimeoutTimer = null
     }
   }
 }

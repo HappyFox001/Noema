@@ -181,25 +181,9 @@ export class ContextManager {
   }
 
   private ensureAlternating(items: ResponseItem[]): ResponseItem[] {
-    // 确保用户和助手消息交替
-    const result: ResponseItem[] = []
-    let lastRole: string | null = null
-
-    for (const item of items) {
-      if (item.role === 'system' || item.role === 'tool') {
-        result.push(item)
-        continue
-      }
-
-      // 跳过连续的相同角色
-      if (item.role === lastRole) {
-        continue
-      }
-
-      result.push(item)
-      lastRole = item.role
-    }
-
-    return result
+    // OpenAI-compatible chat APIs allow consecutive messages with the same role.
+    // Dropping them is unsafe for voice: rapid user turns or interruption turns
+    // can legitimately create consecutive user messages.
+    return items
   }
 }

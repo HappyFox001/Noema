@@ -19,10 +19,10 @@ export interface FishTTSOfficialConfig {
 }
 
 export type FishTTSOfficialEvent =
-  | { type: 'connected' }
-  | { type: 'audio'; audio: Uint8Array }
+  | { type: 'connected'; contextId: number }
+  | { type: 'audio'; audio: Uint8Array; contextId: number }
   | { type: 'error'; error: Error }
-  | { type: 'closed' }
+  | { type: 'closed'; contextId: number }
 
 export class FishTTSOfficial implements InterruptionHandler {
   private client: FishAudioClient
@@ -119,7 +119,8 @@ export class FishTTSOfficial implements InterruptionHandler {
     // 生成新的 context ID (移植自 Pipecat)
     this._contextId++
     this._activeContextId = this._contextId
-    console.log(`[FishTTSOfficial] Starting new context #${this._activeContextId}`)
+    const streamContextId = this._activeContextId
+    console.log(`[FishTTSOfficial] Starting new context #${streamContextId}`)
 
     this.isStreaming = true
     this._isInterrupted = false // 重置打断状态
@@ -153,21 +154,28 @@ export class FishTTSOfficial implements InterruptionHandler {
     try {
       const connection = await this.client.textToSpeech.convertRealtime(
         request as any,
-        this.createTextStream()
+        this.createTextStream(streamContextId)
       )
 
       this.currentConnection = connection
 
       connection.on(RealtimeEvents.OPEN, () => {
+        if (this.currentConnection !== connection || this._activeContextId !== streamContextId) {
+          return
+        }
         console.log('[FishTTSOfficial] WebSocket opened')
-        this.onEvent?.({ type: 'connected' })
+        this.onEvent?.({ type: 'connected', contextId: streamContextId })
       })
 
       connection.on(RealtimeEvents.AUDIO_CHUNK, (audio: unknown) => {
+        if (this.currentConnection !== connection || this._activeContextId !== streamContextId) {
+          console.log(`[FishTTSOfficial] Dropping stale audio chunk from context #${streamContextId}`)
+          return
+        }
         if (audio instanceof Uint8Array || Buffer.isBuffer(audio)) {
           const audioData = audio instanceof Uint8Array ? audio : new Uint8Array(audio)
           console.log('[FishTTSOfficial] Received audio chunk:', audioData.length, 'bytes')
-          this.onEvent?.({ type: 'audio', audio: audioData })
+          this.onEvent?.({ type: 'audio', audio: audioData, contextId: streamContextId })
         }
       })
 
@@ -178,10 +186,12 @@ export class FishTTSOfficial implements InterruptionHandler {
       })
 
       connection.on(RealtimeEvents.CLOSE, () => {
-        console.log('[FishTTSOfficial] WebSocket closed')
-        this.resetStreamingState()
-        this.currentConnection = null
-        this.onEvent?.({ type: 'closed' })
+        console.log(`[FishTTSOfficial] WebSocket closed (context #${streamContextId})`)
+        if (this.currentConnection === connection) {
+          this.resetStreamingState()
+          this.currentConnection = null
+        }
+        this.onEvent?.({ type: 'closed', contextId: streamContextId })
 
         if (this.closeResolver) {
           this.closeResolver()
@@ -273,12 +283,12 @@ export class FishTTSOfficial implements InterruptionHandler {
     console.log(`[FishTTSOfficial] Close completed (context #${closingContextId})`)
   }
 
-  private async *createTextStream(): AsyncGenerator<string, void, unknown> {
-    while (this.isStreaming || this.textQueue.length > 0) {
+  private async *createTextStream(contextId: number): AsyncGenerator<string, void, unknown> {
+    while (this._activeContextId === contextId && (this.isStreaming || this.textQueue.length > 0)) {
       if (this.textQueue.length > 0) {
         const text = this.textQueue.shift()!
         this.yieldedTextCount += 1
-        console.log(`[FishTTSOfficial] Yielding text #${this.yieldedTextCount} to websocket:`, JSON.stringify(text))
+        console.log(`[FishTTSOfficial] Yielding text #${this.yieldedTextCount} to context #${contextId}:`, JSON.stringify(text))
         yield text
       } else {
         await new Promise((resolve) => setTimeout(resolve, 50))

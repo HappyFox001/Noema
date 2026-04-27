@@ -136,6 +136,8 @@ export interface SmartTurnOptions {
   maxAnalyzeAttempts?: number
   /** 备用超时 (毫秒) */
   fallbackTimeoutMs?: number
+  /** STT 最终转录 P99 等待时间 (毫秒) */
+  sttTimeoutMs?: number
 }
 
 /**

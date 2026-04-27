@@ -30,11 +30,12 @@ export class OpenAIProvider implements LLMProvider {
   }
 
   async chat(messages: any[], options?: any): Promise<LLMResponse> {
+    const { signal, ...requestOptions } = options ?? {}
     const response = await this.client.chat.completions.create({
       model: this.model,
       messages,
-      ...options
-    })
+      ...requestOptions
+    }, signal ? { signal } : undefined)
 
     const message = response.choices[0]?.message
 
@@ -45,14 +46,18 @@ export class OpenAIProvider implements LLMProvider {
   }
 
   async *streamChat(messages: any[], options?: any): AsyncGenerator<string> {
+    const { signal, ...requestOptions } = options ?? {}
     const stream = await this.client.chat.completions.create({
       model: this.model,
       messages,
       stream: true,
-      ...options
-    }) as any
+      ...requestOptions
+    }, signal ? { signal } : undefined) as any
 
     for await (const chunk of stream) {
+      if (signal?.aborted) {
+        return
+      }
       const content = chunk.choices[0]?.delta?.content
       if (content) {
         yield content

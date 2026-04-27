@@ -93,10 +93,10 @@ export class TurnController {
   // Bot Speaking 周期计时器 (移植自 Pipecat base_output.py)
   private botSpeakingTimerTask: ReturnType<typeof setInterval> | null = null
 
-  // 聚合窗口 (移植自 Pipecat: 防止用户短暂停顿触发多次 LLM)
-  // 当 endpointing 完成时，不立即触发 onUserTurnEnd，而是等待聚合窗口
-  // 如果窗口内用户恢复说话，取消触发并继续当前轮次
-  private aggregationWindowMs = 500  // 聚合窗口时间
+  // 聚合窗口：Pipecat 的 stop strategy 自身负责等待/兜底。
+  // TurnController 不在 strategy 已经确认 stop 后再额外固定等待，否则会把
+  // SmartTurn 的快速 endpointing 变成“每次都多等 1 秒”。
+  private aggregationWindowMs = 0
   private aggregationTimeoutTask: ReturnType<typeof setTimeout> | null = null
   private pendingUserTurnStopParams: UserTurnStoppedParams | null = null
 
@@ -121,8 +121,8 @@ export class TurnController {
     if (this.config.smartTurn?.analyzer) {
       this.useSmartTurn = true
       const smartTurnStrategy = new SmartTurnEndpointingStrategy({
-        userSpeechTimeout: this.config.smartTurn.fallbackTimeoutMs ?? 2000,
-        sttTimeoutMs: 0,
+        userSpeechTimeout: this.config.smartTurn.fallbackTimeoutMs ?? 1000,
+        sttTimeoutMs: this.config.smartTurn.sttTimeoutMs ?? DEFAULT_ENDPOINTING_CONFIG.sttTimeoutMs,
         userTurnStopTimeout: 5000,
         analyzeIntervalMs: this.config.smartTurn.analyzeIntervalMs ?? 200,
         maxAnalyzeAttempts: this.config.smartTurn.maxAnalyzeAttempts ?? 10,
@@ -451,13 +451,23 @@ export class TurnController {
   /**
    * 处理 Endpointing 完成
    *
-   * 移植自 Pipecat: 使用聚合窗口而非立即触发
-   * 这允许用户在短暂停顿后继续说话，而不会触发多次 LLM 调用
+   * 移植自 Pipecat: stop strategy 决定何时结束用户轮次。
+   * SmartTurn 完成时直接结束；speech timeout 作为兜底策略等待用户续说。
    */
   private handleEndpointingComplete(params: UserTurnStoppedParams): void {
     this.log(`Endpointing complete, text: ${params.text?.slice(0, 50)}...`)
 
-    // 如果已经在聚合窗口中，更新参数但不重启计时器
+    if (!this.userTurnActive) {
+      this.log('Endpointing complete ignored: no active user turn')
+      return
+    }
+
+    if (this.aggregationWindowMs <= 0) {
+      this.triggerUserTurnStop(params)
+      return
+    }
+
+    // 如果启用了额外聚合窗口且已经在窗口中，更新参数但不重启计时器
     if (this.aggregationTimeoutTask) {
       this.log('Already in aggregation window, updating params')
       this.pendingUserTurnStopParams = params

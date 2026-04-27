@@ -21,6 +21,8 @@ interface ParsedEmotionalResponse {
  * 流式输出选项
  */
 export interface StreamOptions {
+  /** 取消当前流式回复，用于语音打断 */
+  signal?: AbortSignal
   /** TTS 文本块回调（SDK 自动处理分句） */
   onTTSChunk?: (text: string) => Promise<void>
   /** 回复阶段开始 */
@@ -138,7 +140,15 @@ export class DialogueOrchestrator {
     input: UserInput,
     options?: StreamOptions
   ): AsyncGenerator<string> {
+    const throwIfAborted = () => {
+      if (options?.signal?.aborted) {
+        throw new DOMException('Interrupted', 'AbortError')
+      }
+    }
+
+    throwIfAborted()
     const memoryContext = await this.memory.retrieve(input.text)
+    throwIfAborted()
 
     // 记录用户消息
     const userMessage: ResponseItem = {
@@ -154,6 +164,7 @@ export class DialogueOrchestrator {
 
     try {
       // === 第一次情感层调用（检测任务） ===
+      throwIfAborted()
       const firstResult = await this.runEmotionalLayer({
         memoryContext,
         personality,
@@ -164,23 +175,28 @@ export class DialogueOrchestrator {
         yieldChunks: (chunk) => chunk  // 直接返回，外层 yield
       })
 
+      throwIfAborted()
       await options?.onPhaseStart?.('reply')
 
       // 流式输出第一次回复
       for await (const chunk of firstResult.stream) {
+        throwIfAborted()
         yield chunk
       }
 
+      throwIfAborted()
       await options?.onPhaseEnd?.('reply', firstResult.reply)
 
       let combinedReply = firstResult.reply
 
       // === 如果有任务，执行任务 ===
       if (firstResult.hasTask && firstResult.taskDescription && hasTools) {
+        throwIfAborted()
         await options?.onTaskStart?.(firstResult.taskDescription)
         console.log('🚀 Reply 已流式输出完毕，开始执行任务...\n')
 
         const taskResult = await this.taskSession.runTask(firstResult.taskDescription, input.text)
+        throwIfAborted()
         await options?.onTaskEnd?.({
           success: taskResult.success,
           summary: taskResult.finalMessage,
@@ -211,13 +227,16 @@ export class DialogueOrchestrator {
           additionalUserMessage: PROMPTS.dialogue.taskResultFeedback
         })
 
+        throwIfAborted()
         await options?.onPhaseStart?.('task_result')
 
         // 流式输出第二次回复
         for await (const chunk of secondResult.stream) {
+          throwIfAborted()
           yield chunk
         }
 
+        throwIfAborted()
         await options?.onPhaseEnd?.('task_result', secondResult.reply)
 
         combinedReply = firstResult.reply + '\n\n' + secondResult.reply
@@ -241,6 +260,9 @@ export class DialogueOrchestrator {
       })
 
     } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        return
+      }
       console.error('Streaming failed:', error)
       yield '抱歉，出现了问题...'
     }
@@ -300,6 +322,12 @@ export class DialogueOrchestrator {
     let taskDescription: string | undefined
 
     async function* streamGenerator(): AsyncGenerator<string> {
+      const throwIfAborted = () => {
+        if (streamOptions?.signal?.aborted) {
+          throw new DOMException('Interrupted', 'AbortError')
+        }
+      }
+
       let ttsBuffer = ''
       let emittedReplyLength = 0
       let ttsChunkCount = 0
@@ -323,7 +351,11 @@ export class DialogueOrchestrator {
         await streamOptions?.onTTSChunk?.(sanitizedText)
       }
 
-      for await (const chunk of self.llm.streamChat(fullMessages, { max_tokens: 2048 })) {
+      for await (const chunk of self.llm.streamChat(fullMessages, {
+        max_tokens: 2048,
+        signal: streamOptions?.signal,
+      })) {
+        throwIfAborted()
         fullResponse += chunk
 
         const replyStart = fullResponse.indexOf('<reply>')
@@ -342,6 +374,7 @@ export class DialogueOrchestrator {
             emittedReplyLength = visibleReply.length
             finalReply = visibleReply
             await streamOptions?.onDisplayChunk?.(phase, delta, visibleReply)
+            throwIfAborted()
             yield delta
 
             // TTS 处理
@@ -350,6 +383,7 @@ export class DialogueOrchestrator {
 
               const extractedChunks = self.extractFlushableTTSChunks(ttsBuffer)
               for (const nextChunk of extractedChunks.chunks) {
+                throwIfAborted()
                 await flushTTSChunk(nextChunk, 'normal')
               }
               ttsBuffer = extractedChunks.remaining
@@ -360,6 +394,7 @@ export class DialogueOrchestrator {
 
       // 推送剩余的 TTS
       if (streamOptions?.onTTSChunk && ttsBuffer.trim()) {
+        throwIfAborted()
         await flushTTSChunk(ttsBuffer, 'remaining')
       }
 

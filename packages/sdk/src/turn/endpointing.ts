@@ -45,6 +45,7 @@ export class EndpointingStrategy implements IEndpointingStrategy {
   private sttTimeoutTask: ReturnType<typeof setTimeout> | null = null
   private userSpeechWaitDone = false
   private sttWaitDone = false
+  private turnStopTriggered = false
 
   // 回调
   onUserTurnStopped: ((params: UserTurnStoppedParams) => void | Promise<void>) | null = null
@@ -77,6 +78,7 @@ export class EndpointingStrategy implements IEndpointingStrategy {
     this.vadStoppedTime = null
     this.userSpeechWaitDone = false
     this.sttWaitDone = false
+    this.turnStopTriggered = false
     this.cancelAllTasks()
   }
 
@@ -141,7 +143,7 @@ export class EndpointingStrategy implements IEndpointingStrategy {
    * @param frame - 转录帧
    */
   handleTranscription(frame: TranscriptionFrame): void {
-    this.text += frame.text
+    this.mergeTranscriptionText(frame)
 
     if (frame.finalized) {
       this.transcriptFinalized = true
@@ -207,6 +209,33 @@ export class EndpointingStrategy implements IEndpointingStrategy {
   }
 
   /**
+   * 实时 ASR 的 interim/final 文本经常是“当前完整假设”，不是 delta。
+   * 这里做保守合并，避免 "今天天气" + "今天天气很好" 被累成重复文本。
+   */
+  private mergeTranscriptionText(frame: TranscriptionFrame): void {
+    const next = frame.text.trim()
+    if (!next) {
+      return
+    }
+
+    if (!this.text) {
+      this.text = next
+      return
+    }
+
+    if (next === this.text || this.text.includes(next)) {
+      return
+    }
+
+    if (next.startsWith(this.text)) {
+      this.text = next
+      return
+    }
+
+    this.text += next
+  }
+
+  /**
    * 尝试触发用户轮次结束
    * 只有当所有条件都满足时才触发
    */
@@ -217,6 +246,10 @@ export class EndpointingStrategy implements IEndpointingStrategy {
     // 3. user_speech 等待完成
     // 4. stt 等待完成
     if (this.vadUserSpeaking) {
+      return
+    }
+
+    if (this.turnStopTriggered) {
       return
     }
 
@@ -232,6 +265,7 @@ export class EndpointingStrategy implements IEndpointingStrategy {
 
     // 触发回调
     if (this.onUserTurnStopped) {
+      this.turnStopTriggered = true
       const params: UserTurnStoppedParams = {
         text: this.text,
         enableUserSpeakingFrames: true,
