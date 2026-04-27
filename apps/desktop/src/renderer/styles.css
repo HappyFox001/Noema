@@ -59,6 +59,8 @@ body {
   gap: 18px;
   background: transparent !important;
   background-color: rgba(0, 0, 0, 0) !important;
+  -webkit-app-region: drag;
+  app-region: drag;
 }
 
 #orb-canvas {
@@ -442,9 +444,34 @@ input[type="password"] {
   min-width: 0;
   padding: 64px clamp(16px, 4vw, 32px) 24px;
   overflow-y: auto;
+  overflow-y: overlay;
   contain: layout paint;
   -webkit-app-region: no-drag;
   app-region: no-drag;
+}
+
+/* 隐藏式滚动条 - 默认隐藏，悬停显示 */
+.settings-content::-webkit-scrollbar {
+  width: 6px;
+  background: transparent;
+}
+
+.settings-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.settings-content::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 3px;
+  transition: background 0.2s ease;
+}
+
+.settings-content:hover::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.settings-content:hover::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
 }
 
 .settings-section {
@@ -850,10 +877,12 @@ body:not(.settings-open) #main-view {
 .memory-card-content.scrollable {
   max-height: 200px;
   overflow-y: auto;
+  overflow-y: overlay;
 }
 
 .memory-card-content.scrollable::-webkit-scrollbar {
   width: 4px;
+  background: transparent;
 }
 
 .memory-card-content.scrollable::-webkit-scrollbar-track {
@@ -861,11 +890,16 @@ body:not(.settings-open) #main-view {
 }
 
 .memory-card-content.scrollable::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: transparent;
   border-radius: 2px;
+  transition: background 0.2s ease;
 }
 
-.memory-card-content.scrollable::-webkit-scrollbar-thumb:hover {
+.memory-card-content.scrollable:hover::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.memory-card-content.scrollable:hover::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.2);
 }
 
