@@ -132,6 +132,12 @@ export interface TurnControllerEvents {
   onUserTurnTimeout?: () => void | Promise<void>
 
   /**
+   * VAD 检测到用户停止说话
+   * 这是静音检测的即时事件，早于 endpointing 确认
+   */
+  onVADSpeechStop?: () => void | Promise<void>
+
+  /**
    * 机器人正在说话（周期性事件）
    * 移植自 Pipecat base_output.py 的 BotSpeakingFrame
    * 用于 UI 显示机器人说话状态

@@ -142,6 +142,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.send('playback:complete', requestId)
   },
 
+  // 延迟追踪
+  notifyFirstAudioPlay: () => {
+    ipcRenderer.send('latency:firstAudioPlay')
+  },
+
+  onLatencyData: (callback) => {
+    ipcRenderer.on('latency:data', (_, data) => callback(data))
+  },
+
   // 窗口控制
   moveWindow: (deltaX, deltaY) => {
     ipcRenderer.send('window:move', deltaX, deltaY)

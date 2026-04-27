@@ -139,6 +139,118 @@ class ConversationDisplayController {
 }
 
 /**
+ * 延迟追踪器 - 测量语音对话各阶段延迟
+ */
+class LatencyTracker {
+  private timestamps: Map<string, number> = new Map()
+  private sessionId: number = 0
+  private sendToRenderer?: (data: LatencyData) => void
+
+  constructor() {
+    this.reset()
+  }
+
+  setSendToRenderer(fn: (data: LatencyData) => void): void {
+    this.sendToRenderer = fn
+  }
+
+  reset(): void {
+    this.sessionId = Date.now()
+    this.timestamps.clear()
+  }
+
+  mark(point: LatencyPoint): void {
+    const now = performance.now()
+    this.timestamps.set(point, now)
+    console.log(`[Latency] ${point}: ${now.toFixed(1)}ms`)
+  }
+
+  calculate(): LatencyData | null {
+    const get = (p: LatencyPoint) => this.timestamps.get(p)
+
+    const vadSpeechStop = get('vad_speech_stop')
+    const speechEnd = get('speech_end')
+    const asrComplete = get('asr_complete')
+    const llmStart = get('llm_start')
+    const firstLLMToken = get('first_llm_token')
+    const firstTTSText = get('first_tts_text')
+    const firstTTSAudio = get('first_tts_audio')
+    const firstAudioPlay = get('first_audio_play')
+
+    // 使用 VAD 静音检测作为起点（如果有的话）
+    const startPoint = vadSpeechStop ?? speechEnd
+    if (!startPoint) {
+      return null
+    }
+
+    const intervals: LatencyIntervals = {
+      vadToEndpointing: (vadSpeechStop && speechEnd) ? speechEnd - vadSpeechStop : undefined,
+      endpointingToASR: (speechEnd && asrComplete) ? asrComplete - speechEnd : undefined,
+      asrToLLM: (asrComplete && llmStart) ? llmStart - asrComplete : undefined,
+      llmToFirstToken: (llmStart && firstLLMToken) ? firstLLMToken - llmStart : undefined,
+      firstTokenToTTSText: (firstLLMToken && firstTTSText) ? firstTTSText - firstLLMToken : undefined,
+      ttsTextToAudio: (firstTTSText && firstTTSAudio) ? firstTTSAudio - firstTTSText : undefined,
+      audioToPlayback: (firstTTSAudio && firstAudioPlay) ? firstAudioPlay - firstTTSAudio : undefined,
+    }
+
+    const total = firstAudioPlay ? firstAudioPlay - startPoint : undefined
+
+    const data: LatencyData = {
+      sessionId: this.sessionId,
+      total,
+      intervals,
+      timestamps: Object.fromEntries(this.timestamps) as Record<LatencyPoint, number>
+    }
+
+    console.log('[Latency] ========== Summary ==========')
+    console.log(`[Latency] Total (VAD静音 → 播放): ${total?.toFixed(0) ?? '?'}ms`)
+    console.log(`[Latency]   ├─ VAD → Endpointing: ${intervals.vadToEndpointing?.toFixed(0) ?? '?'}ms`)
+    console.log(`[Latency]   ├─ Endpointing → ASR: ${intervals.endpointingToASR?.toFixed(0) ?? '?'}ms`)
+    console.log(`[Latency]   ├─ ASR → LLM:         ${intervals.asrToLLM?.toFixed(0) ?? '?'}ms`)
+    console.log(`[Latency]   ├─ LLM → First Token: ${intervals.llmToFirstToken?.toFixed(0) ?? '?'}ms`)
+    console.log(`[Latency]   ├─ Token → TTS Text:  ${intervals.firstTokenToTTSText?.toFixed(0) ?? '?'}ms`)
+    console.log(`[Latency]   ├─ TTS Text → Audio:  ${intervals.ttsTextToAudio?.toFixed(0) ?? '?'}ms`)
+    console.log(`[Latency]   └─ Audio → Playback:  ${intervals.audioToPlayback?.toFixed(0) ?? '?'}ms`)
+    console.log('[Latency] ================================')
+
+    // 发送到 Renderer
+    this.sendToRenderer?.(data)
+
+    return data
+  }
+}
+
+type LatencyPoint =
+  | 'vad_speech_stop'   // VAD 检测到静音（最早时间点）
+  | 'speech_end'        // Endpointing 确认说话结束
+  | 'asr_complete'      // ASR 转录完成
+  | 'llm_start'         // LLM 调用开始
+  | 'first_llm_token'   // 首个 LLM token
+  | 'first_tts_text'    // 首个 TTS 文本块发送
+  | 'first_tts_audio'   // 首个 TTS 音频块接收
+  | 'first_audio_play'  // 首个音频开始播放
+
+interface LatencyIntervals {
+  vadToEndpointing?: number
+  endpointingToASR?: number
+  asrToLLM?: number
+  llmToFirstToken?: number
+  firstTokenToTTSText?: number
+  ttsTextToAudio?: number
+  audioToPlayback?: number
+}
+
+interface LatencyData {
+  sessionId: number
+  total?: number
+  intervals: LatencyIntervals
+  timestamps: Record<LatencyPoint, number>
+}
+
+// 全局延迟追踪器实例
+const latencyTracker = new LatencyTracker()
+
+/**
  * VAD 配置 (移植自 Pipecat)
  * 使用新的 4 状态机 VAD 分析器
  */
@@ -230,8 +342,17 @@ class StreamingASRSession {
         this.onSpeechStart?.()
       },
 
+      onVADSpeechStop: () => {
+        // 延迟追踪：VAD 检测到静音（最早时间点）
+        latencyTracker.reset()
+        latencyTracker.mark('vad_speech_stop')
+      },
+
       onUserTurnEnd: async (params) => {
         this.log(`User turn ended, text: ${params.text?.slice(0, 50)}...`)
+
+        // 延迟追踪：Endpointing 确认说话结束
+        latencyTracker.mark('speech_end')
 
         if (!this.asr || this.commitInFlight) return
 
@@ -241,6 +362,10 @@ class StreamingASRSession {
         try {
           // 提交 ASR 获取最终转录
           const text = await this.asr.commit()
+
+          // 延迟追踪：ASR 转录完成
+          latencyTracker.mark('asr_complete')
+
           const finalText = text?.trim() || params.text?.trim()
 
           if (finalText) {
@@ -251,6 +376,7 @@ class StreamingASRSession {
           this.log(`Commit error: ${error}`)
           // 如果 ASR 提交失败，使用 endpointing 累积的文本
           if (params.text?.trim()) {
+            latencyTracker.mark('asr_complete')
             this.onTranscript?.(params.text.trim())
           }
         } finally {
@@ -465,6 +591,18 @@ ipcMain.on('playback:complete', (_, requestId: number) => {
     playbackResolvers.delete(requestId)
     resolver()
   }
+})
+
+// 接收 Renderer 的首个音频播放通知
+ipcMain.on('latency:firstAudioPlay', () => {
+  latencyTracker.mark('first_audio_play')
+  // 计算并输出完整延迟数据
+  latencyTracker.calculate()
+})
+
+// 设置延迟数据发送到 Renderer
+latencyTracker.setSendToRenderer((data) => {
+  mainWindow?.webContents.send('latency:data', data)
 })
 
 function splitDisplayUnits(text: string): string[] {
@@ -765,14 +903,23 @@ ipcMain.handle('conversation:initialize', async () => {
 
       ttsAvailable = true
 
+      // 用于追踪首个音频块
+      let isFirstAudioChunk = true
+
       // 设置 TTS 事件处理
       ttsService.setEventHandler((event) => {
         switch (event.type) {
           case 'connected':
             console.log('[TTS] Connected event')
+            isFirstAudioChunk = true  // 重置首个音频块标志
             mainWindow?.webContents.send('tts:connected')
             break
           case 'audio':
+            // 延迟追踪：首个 TTS 音频块
+            if (isFirstAudioChunk) {
+              isFirstAudioChunk = false
+              latencyTracker.mark('first_tts_audio')
+            }
             console.log('[TTS] Audio chunk received:', event.audio.length, 'bytes')
             mainWindow?.webContents.send('tts:audio', event.audio)
             break
@@ -821,7 +968,14 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
     displayController.reset()
     currentTTSChunkSequence = 0
 
+    // 用于追踪是否是首个 token
+    let isFirstToken = true
+    let isFirstTTSChunk = true
+
     let shouldUseTTS = enableTTS && appSettings.voiceOutputEnabled && Boolean(ttsService) && ttsAvailable
+
+    // 延迟追踪：LLM 调用开始
+    latencyTracker.mark('llm_start')
 
     // 使用 SDK 的 chatStream，TTS 分句逻辑由 SDK 处理
     const responseStream = sdkInstance.chatStream(
@@ -848,13 +1002,31 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
           }
         },
         onDisplayChunk: async (_, delta) => {
+          // 延迟追踪：首个 LLM token
+          if (isFirstToken) {
+            isFirstToken = false
+            latencyTracker.mark('first_llm_token')
+          }
+
           if (!shouldUseTTS) {
             displayController.pushTextDelta(delta)
           }
         },
         onTTSChunk: async (chunk) => {
+          // 延迟追踪：首个 LLM token (如果 onDisplayChunk 没触发)
+          if (isFirstToken) {
+            isFirstToken = false
+            latencyTracker.mark('first_llm_token')
+          }
+
           if (!shouldUseTTS || !ttsAvailable || !ttsService) {
             return
+          }
+
+          // 延迟追踪：首个 TTS 文本块
+          if (isFirstTTSChunk) {
+            isFirstTTSChunk = false
+            latencyTracker.mark('first_tts_text')
           }
 
           try {

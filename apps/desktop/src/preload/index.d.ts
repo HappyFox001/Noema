@@ -223,6 +223,21 @@ declare global {
       onPlaybackWaitRequest: (callback: (requestId: number) => void) => void
       notifyPlaybackComplete: (requestId: number) => void
 
+      // 延迟追踪
+      notifyFirstAudioPlay: () => void
+      onLatencyData: (callback: (data: {
+        sessionId: number
+        total?: number
+        intervals: {
+          speechToASR?: number
+          asrToLLM?: number
+          llmToFirstToken?: number
+          firstTokenToTTSText?: number
+          ttsTextToAudio?: number
+          audioToPlayback?: number
+        }
+      }) => void) => void
+
       // 窗口控制
       moveWindow: (deltaX: number, deltaY: number) => void
       getWindowPosition: () => Promise<[number, number]>

@@ -321,6 +321,9 @@ export class TurnController {
 
     this.log(`VAD: speech_stop, stopSecs: ${stopSecs}`)
 
+    // 触发 VAD 静音检测事件（用于延迟追踪）
+    this.callEventHandler('onVADSpeechStop')
+
     // 通知 Endpointing
     this.endpointing.handleVADUserStoppedSpeaking(stopSecs, timestamp)
   }
