@@ -14,6 +14,7 @@ class AudioPlayer {
   // 播放完成同步机制
   private playbackCompleteResolvers: (() => void)[] = []
   private currentSource: AudioBufferSourceNode | null = null
+  private pendingAudioAdds = 0
 
   // 延迟追踪：首个音频标志
   private isFirstAudioOfSession = true
@@ -164,7 +165,7 @@ class AudioPlayer {
    */
   waitForPlaybackComplete(): Promise<void> {
     // 如果没有正在播放的音频，立即返回
-    if (!this.isPlaying && this.audioQueue.length === 0) {
+    if (!this.isPlaying && this.audioQueue.length === 0 && this.pendingAudioAdds === 0) {
       console.log('[AudioPlayer] waitForPlaybackComplete: already idle')
       return Promise.resolve()
     }
@@ -186,7 +187,7 @@ class AudioPlayer {
    * 通知所有等待者播放已完成
    */
   private notifyPlaybackComplete(): void {
-    if (!this.isPlaying && this.audioQueue.length === 0) {
+    if (!this.isPlaying && this.audioQueue.length === 0 && this.pendingAudioAdds === 0) {
       console.log('[AudioPlayer] Playback complete, notifying', this.playbackCompleteResolvers.length, 'waiters')
       const resolvers = this.playbackCompleteResolvers
       this.playbackCompleteResolvers = []
@@ -278,6 +279,7 @@ class AudioPlayer {
   }
 
   async addAudioChunk(pcm16Bytes: Uint8Array, contextId?: number): Promise<void> {
+    this.pendingAudioAdds++
     try {
       // 记录当前的 stopGeneration，用于检测 async 期间是否调用了 stop()
       const generationAtStart = this.stopGeneration
@@ -334,6 +336,9 @@ class AudioPlayer {
       }
     } catch (error) {
       console.error('[AudioPlayer] Failed to add audio chunk:', error)
+    } finally {
+      this.pendingAudioAdds--
+      this.notifyPlaybackComplete()
     }
   }
 

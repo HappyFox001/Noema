@@ -111,9 +111,12 @@ export class FishTTSOfficial implements InterruptionHandler {
       console.log('[FishTTSOfficial] Previous close completed')
     }
 
-    if (this.isStreaming) {
-      console.warn('[FishTTSOfficial] Already streaming')
-      return
+    if (this.isStreaming || this.currentConnection) {
+      console.warn('[FishTTSOfficial] Previous stream still active, closing before starting a new context')
+      this._isInterrupted = true
+      this._activeContextId = -1
+      this.textQueue = []
+      await this.close()
     }
 
     // 生成新的 context ID (移植自 Pipecat)
@@ -180,6 +183,9 @@ export class FishTTSOfficial implements InterruptionHandler {
       })
 
       connection.on(RealtimeEvents.ERROR, (err: any) => {
+        if (this.currentConnection !== connection || this._activeContextId !== streamContextId) {
+          return
+        }
         const normalizedError = err instanceof Error ? err : new Error(String(err))
         console.error('[FishTTSOfficial] WebSocket error:', normalizedError)
         this.onEvent?.({ type: 'error', error: normalizedError })
@@ -187,11 +193,14 @@ export class FishTTSOfficial implements InterruptionHandler {
 
       connection.on(RealtimeEvents.CLOSE, () => {
         console.log(`[FishTTSOfficial] WebSocket closed (context #${streamContextId})`)
+        const isCurrentContext = this.currentConnection === connection && this._activeContextId === streamContextId
         if (this.currentConnection === connection) {
           this.resetStreamingState()
           this.currentConnection = null
         }
-        this.onEvent?.({ type: 'closed', contextId: streamContextId })
+        if (isCurrentContext) {
+          this.onEvent?.({ type: 'closed', contextId: streamContextId })
+        }
 
         if (this.closeResolver) {
           this.closeResolver()
@@ -238,10 +247,15 @@ export class FishTTSOfficial implements InterruptionHandler {
     this.isStreaming = false
 
     if (this.closePromise) {
-      await Promise.race([
+      const timedOut = Symbol('tts-finish-timeout')
+      const result = await Promise.race([
         this.closePromise,
-        new Promise((resolve) => setTimeout(resolve, 5000))
+        new Promise((resolve) => setTimeout(() => resolve(timedOut), 60000))
       ])
+
+      if (result === timedOut) {
+        console.warn('[FishTTSOfficial] Timed out waiting for TTS stream to close')
+      }
     }
   }
 

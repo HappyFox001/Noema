@@ -260,7 +260,11 @@ export class DialogueOrchestrator {
       })
 
     } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') {
+      if (
+        options?.signal?.aborted ||
+        (error instanceof DOMException && error.name === 'AbortError') ||
+        (error instanceof Error && error.name === 'APIUserAbortError')
+      ) {
         return
       }
       console.error('Streaming failed:', error)

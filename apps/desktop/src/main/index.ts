@@ -753,16 +753,22 @@ let currentTTSChunkSequence = 0
 
 // ========== 输出 Frame Pipeline ==========
 const outputFramePipeline = new OutputFramePipeline()
+const invalidatedTTSContexts = new Set<number>()
 
 const electronOutputProcessor: OutputFrameProcessor = {
   processFrame(frame) {
     switch (frame.type) {
       case 'tts_started':
+        invalidatedTTSContexts.delete(frame.contextId)
         currentTTSContextId = frame.contextId
         mainWindow?.webContents.send('tts:connected', frame.contextId)
         mainWindow?.webContents.send('tts:contextStart', frame.contextId)
         break
       case 'tts_audio':
+        if (frame.contextId !== currentTTSContextId || invalidatedTTSContexts.has(frame.contextId)) {
+          console.log(`[TTS] Dropping stale output frame for context #${frame.contextId}`)
+          return
+        }
         mainWindow?.webContents.send('tts:audio', {
           contextId: frame.contextId,
           data: frame.audio
@@ -775,6 +781,7 @@ const electronOutputProcessor: OutputFrameProcessor = {
         mainWindow?.webContents.send('tts:error', frame.error)
         break
       case 'interruption':
+        invalidatedTTSContexts.add(frame.ttsContextId)
         mainWindow?.webContents.send('tts:contextInvalidated', frame.ttsContextId)
         mainWindow?.webContents.send('speech:interruption', frame.turnId)
         break
@@ -787,6 +794,7 @@ outputFramePipeline.setProcessors([electronOutputProcessor])
 // ========== 轮次管理（打断控制）==========
 let currentTurnId = 0
 let currentTurnAbortController: AbortController | null = null
+const cancelledTurnIds = new Set<number>()
 
 // ========== TTS 音频上下文管理 ==========
 /**
@@ -798,16 +806,6 @@ let currentTTSContextId = 0
 
 /**
  * 生成新的 TTS 上下文 ID
- */
-function startNewTTSContext(): number {
-  currentTTSContextId++
-  console.log(`[TTS Context] Started new context #${currentTTSContextId}`)
-  return currentTTSContextId
-}
-
-/**
- * 使当前 TTS 上下文失效
- * 打断时调用，通知 Renderer 拒绝旧上下文的音频
  */
 function invalidateTTSContext(): void {
   console.log(`[TTS Context] Invalidating context #${currentTTSContextId}`)
@@ -823,11 +821,12 @@ function invalidateTTSContext(): void {
  * 生成新的轮次 ID
  * 每次用户开始新的对话时调用
  */
-function startNewTurn(): number {
+async function startNewTurn(): Promise<number> {
   // 先取消上一个轮次
-  cancelCurrentTurn()
+  await cancelCurrentTurn({ closeTTS: true })
 
   currentTurnId++
+  cancelledTurnIds.delete(currentTurnId)
   currentTurnAbortController = new AbortController()
   console.log(`[Turn] Started new turn #${currentTurnId}`)
   return currentTurnId
@@ -837,21 +836,38 @@ function startNewTurn(): number {
  * 取消当前轮次
  * 打断时调用，取消所有正在进行的 LLM/TTS 请求
  */
-function cancelCurrentTurn(): void {
+async function cancelCurrentTurn(options: { closeTTS?: boolean } = {}): Promise<void> {
+  let cancelledExistingTurn = false
+
   if (currentTurnAbortController) {
     console.log(`[Turn] Cancelling turn #${currentTurnId}`)
+    cancelledTurnIds.add(currentTurnId)
     currentTurnAbortController.abort()
     currentTurnAbortController = null
+    cancelledExistingTurn = true
   }
-  // 同时使 TTS 上下文失效
-  invalidateTTSContext()
+
+  if (cancelledExistingTurn || currentTTSContextId > 0) {
+    // 同时使 TTS 上下文失效
+    invalidateTTSContext()
+  }
+
+  if (options.closeTTS && (cancelledExistingTurn || currentTTSContextId > 0)) {
+    await ttsService?.onInterruption().catch((error: Error) => {
+      console.warn('[TTS] Failed to close during turn cancellation:', error.message)
+    })
+  }
 }
 
 /**
  * 检查轮次是否已被取消
  */
 function isTurnCancelled(turnId: number): boolean {
-  return turnId !== currentTurnId || currentTurnAbortController?.signal.aborted === true
+  return (
+    cancelledTurnIds.has(turnId) ||
+    turnId !== currentTurnId ||
+    currentTurnAbortController?.signal.aborted === true
+  )
 }
 
 // ========== 播放完成同步机制 ==========
@@ -1291,7 +1307,7 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
     }
 
     // 开始新轮次（会取消上一个轮次）
-    const turnId = startNewTurn()
+    const turnId = await startNewTurn()
     const turnAbortSignal = currentTurnAbortController!.signal
 
     // 通知 Renderer 新轮次开始
@@ -1427,6 +1443,10 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
             // 这是关键的同步点，确保 Phase 1 的音频播放完毕再开始 Phase 2
             console.log(`[Conversation] Waiting for playback to complete before ending phase "${phase}"...`)
             await waitForRendererPlayback()
+            if (isTurnCancelled(turnId)) {
+              console.log(`[Turn] Phase end aborted after playback wait - turn #${turnId} cancelled`)
+              return
+            }
             console.log(`[Conversation] Playback complete for phase "${phase}"`)
           }
 
@@ -1555,7 +1575,7 @@ ipcMain.handle('speech:stream:start', async () => {
         console.log('[Speech] Interruption detected, cancelling turn')
 
         // 取消当前轮次（这会 abort LLM 请求 + 使 TTS 上下文失效）
-        cancelCurrentTurn()
+        void cancelCurrentTurn({ closeTTS: false })
 
         // 注意：TTS 关闭由 InterruptionManager 通过注册的处理器处理
         // 不要在这里重复调用 ttsService.close()，否则会导致竞态条件

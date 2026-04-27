@@ -61,6 +61,19 @@ export interface TurnControllerConfig {
   botSpeakingPeriod?: number
 
   /**
+   * Bot 播放中检测到用户语音后，必须持续这么久才触发打断。
+   * 这避免 TTS 回声或短促噪声立刻打断当前回复。
+   * @default 400
+   */
+  interruptionMinSpeechMs?: number
+
+  /**
+   * Bot turn 刚开始后的短暂保护窗口。
+   * @default 250
+   */
+  interruptionInitialGraceMs?: number
+
+  /**
    * 调试模式
    * @default false
    */
@@ -92,6 +105,11 @@ export class TurnController {
 
   // Bot Speaking 周期计时器 (移植自 Pipecat base_output.py)
   private botSpeakingTimerTask: ReturnType<typeof setInterval> | null = null
+  private botTurnStartedAt = 0
+
+  // Bot 播放期间的打断 gate。Pipecat 允许 barge-in，但不能让单个
+  // speech_start 噪声直接变成 InterruptionFrame。
+  private pendingInterruptionTask: ReturnType<typeof setTimeout> | null = null
 
   // 聚合窗口：Pipecat 的 stop strategy 自身负责等待/兜底。
   // TurnController 不在 strategy 已经确认 stop 后再额外固定等待，否则会把
@@ -113,6 +131,8 @@ export class TurnController {
       smartTurn: config?.smartTurn,
       enableInterruption: config?.enableInterruption ?? true,
       botSpeakingPeriod: config?.botSpeakingPeriod ?? 200,
+      interruptionMinSpeechMs: config?.interruptionMinSpeechMs ?? 400,
+      interruptionInitialGraceMs: config?.interruptionInitialGraceMs ?? 250,
       debug: config?.debug ?? false,
     }
 
@@ -236,6 +256,7 @@ export class TurnController {
     }
 
     this.state = TurnState.BOT_TURN
+    this.botTurnStartedAt = Date.now()
     this.log(`State: BOT_TURN`)
 
     // 重置打断状态
@@ -254,12 +275,15 @@ export class TurnController {
    */
   async endBotTurn(): Promise<void> {
     if (this.state !== TurnState.BOT_TURN) {
-      this.log(`endBotTurn called in invalid state: ${this.state}`)
+      if (this.state !== TurnState.USER_TURN) {
+        this.log(`endBotTurn ignored in state: ${this.state}`)
+      }
       return
     }
 
     // 停止 Bot Speaking 计时器
     this.stopBotSpeakingTimer()
+    this.cancelPendingInterruption()
 
     this.state = TurnState.BOT_DONE
     this.log(`State: BOT_DONE`)
@@ -300,6 +324,7 @@ export class TurnController {
     this.interruptionManager.reset()
     this.cancelUserTurnStopTimeout()
     this.stopBotSpeakingTimer()
+    this.cancelPendingInterruption()
     this.log(`Reset to IDLE`)
   }
 
@@ -309,6 +334,7 @@ export class TurnController {
   cleanup(): void {
     this.cancelUserTurnStopTimeout()
     this.stopBotSpeakingTimer()
+    this.cancelPendingInterruption()
     this.cancelAggregationWindow()
     this.vadAnalyzer.cleanup()
     this.endpointing.cleanup()
@@ -324,6 +350,13 @@ export class TurnController {
       this.aggregationTimeoutTask = null
     }
     this.pendingUserTurnStopParams = null
+  }
+
+  private cancelPendingInterruption(): void {
+    if (this.pendingInterruptionTask) {
+      clearTimeout(this.pendingInterruptionTask)
+      this.pendingInterruptionTask = null
+    }
   }
 
   /**
@@ -371,8 +404,8 @@ export class TurnController {
 
     // 检查是否需要打断
     if (this.state === TurnState.BOT_TURN && this.config.enableInterruption) {
-      this.log(`Interruption detected!`)
-      this.triggerInterruption()
+      this.scheduleInterruptionIfSpeechContinues()
+      return
     }
 
     // 如果不在用户轮次中，开始用户轮次
@@ -391,6 +424,7 @@ export class TurnController {
    */
   private handleVADSpeechStop(stopSecs: number, timestamp: number): void {
     this.userSpeaking = false
+    this.cancelPendingInterruption()
     this.resetUserTurnStopTimeout()
 
     this.log(`VAD: speech_stop, stopSecs: ${stopSecs}`)
@@ -500,6 +534,8 @@ export class TurnController {
    * 移植自 Pipecat: 打断时重置所有策略
    */
   private async triggerInterruption(): Promise<void> {
+    this.cancelPendingInterruption()
+
     // 停止 Bot Speaking 计时器
     this.stopBotSpeakingTimer()
 
@@ -519,6 +555,34 @@ export class TurnController {
     // 重置所有策略 (移植自 Pipecat)
     this.endpointing.reset()
     // VAD 分析器的状态会在下一次 processAudio 时自然更新
+  }
+
+  private scheduleInterruptionIfSpeechContinues(): void {
+    if (this.pendingInterruptionTask) {
+      return
+    }
+
+    const elapsedSinceBotTurnStart = Date.now() - this.botTurnStartedAt
+    const graceDelay = Math.max(0, this.config.interruptionInitialGraceMs - elapsedSinceBotTurnStart)
+    const delay = Math.max(this.config.interruptionMinSpeechMs, graceDelay)
+
+    this.log(`Interruption candidate, waiting ${delay}ms for sustained speech`)
+
+    this.pendingInterruptionTask = setTimeout(() => {
+      this.pendingInterruptionTask = null
+
+      if (
+        this.state !== TurnState.BOT_TURN ||
+        !this.config.enableInterruption ||
+        !this.userSpeaking
+      ) {
+        this.log('Interruption candidate cancelled')
+        return
+      }
+
+      this.log('Interruption confirmed after sustained speech')
+      void this.triggerInterruption()
+    }, delay)
   }
 
   /**
