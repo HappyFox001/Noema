@@ -170,5 +170,5 @@ export interface TranscriptionFrame {
 export const DEFAULT_ENDPOINTING_CONFIG: EndpointingConfig = {
   userSpeechTimeout: 600, // 600ms
   sttTimeoutMs: 800, // 800ms (STT P99 延迟)
-  userTurnStopTimeout: 5000, // 5s
+  userTurnStopTimeout: 1500, // 1.5s (降低延迟，双计时器应该在 ~800ms 内触发)
 }

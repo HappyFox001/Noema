@@ -7,6 +7,11 @@ export interface QwenRealtimeASRConfig {
   sampleRate?: number
   language?: string
   receiveTimeoutMs?: number
+  /**
+   * 中间转录结果回调
+   * 用于 endpointing 策略的文本累积
+   */
+  onInterimTranscript?: (text: string, isFinal: boolean) => void
 }
 
 type PendingCommit = {
@@ -167,6 +172,9 @@ export class QwenRealtimeASR {
 
       const finalText = extractFinalTranscript(parsed)
       if (finalText) {
+        // 通知最终转录结果
+        this.config.onInterimTranscript?.(finalText.trim(), true)
+
         const pending = this.pendingCommits.shift()
         if (pending) {
           clearTimeout(pending.timeoutId)
@@ -177,6 +185,9 @@ export class QwenRealtimeASR {
 
       const fallbackText = extractFallbackTranscript(parsed)
       if (fallbackText) {
+        // 通知中间转录结果（用于 endpointing）
+        this.config.onInterimTranscript?.(fallbackText, false)
+
         const pending = this.pendingCommits[0]
         if (pending) {
           pending.fallbackText = fallbackText

@@ -269,7 +269,7 @@ const DEFAULT_VAD_CONFIG: Partial<VADParams> = {
 const DEFAULT_ENDPOINTING_CONFIG: Partial<EndpointingConfig> = {
   userSpeechTimeout: 600,   // 600ms 给用户继续说话的窗口
   sttTimeoutMs: 800,        // STT P99 延迟
-  userTurnStopTimeout: 5000, // 5s 总超时
+  userTurnStopTimeout: 1500, // 1.5s 总超时（降低延迟）
 }
 
 /**
@@ -314,12 +314,22 @@ class StreamingASRSession {
       throw new Error('QWEN_API_KEY is not configured')
     }
 
-    // 初始化 ASR
+    // 初始化 ASR（带中间转录回调，用于 endpointing）
     this.asr = new QwenRealtimeASR(
       {
         apiKey,
         sampleRate: 16000,
         language: 'zh',
+        onInterimTranscript: (text, isFinal) => {
+          // 将中间转录结果传递给 endpointing 策略
+          // 这是 endpointing 双计时器能够正常工作的关键
+          this.log(`Interim transcript: "${text.slice(0, 30)}..." (final: ${isFinal})`)
+          this.turnController?.processTranscription({
+            text,
+            finalized: isFinal,
+            timestamp: Date.now(),
+          })
+        }
       },
       new NodeRealtimeWebSocketTransport()
     )
