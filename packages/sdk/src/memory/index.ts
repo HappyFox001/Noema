@@ -184,21 +184,6 @@ export class MemoryEngine {
   }
 
   /**
-   * Part 2: 添加/更新重要记忆
-   */
-  addImportantMemory(key: string, value: string): void {
-    this.userProfile.importantMemories.set(key, value)
-
-    // 限制数量（FIFO，最多 20 条）
-    if (this.userProfile.importantMemories.size > this.maxImportantMemories) {
-      const firstKey = this.userProfile.importantMemories.keys().next().value
-      if (firstKey !== undefined) {
-        this.userProfile.importantMemories.delete(firstKey)
-      }
-    }
-  }
-
-  /**
    * 获取用户画像
    */
   getUserProfile(): UserProfile {
@@ -453,6 +438,68 @@ ${conversationText}`
       DELETE FROM user_profile;
       DELETE FROM important_memories;
     `)
+  }
+
+  /**
+   * 更新用户基本画像
+   */
+  async updateUserProfileBasic(updates: Partial<UserProfile['basic']>): Promise<void> {
+    // 合并更新
+    this.userProfile.basic = {
+      ...this.userProfile.basic,
+      ...updates
+    }
+
+    // 移除空值
+    for (const key of Object.keys(this.userProfile.basic)) {
+      if (this.userProfile.basic[key as keyof typeof this.userProfile.basic] === '') {
+        delete this.userProfile.basic[key as keyof typeof this.userProfile.basic]
+      }
+    }
+
+    // 持久化
+    if (this.persistenceEnabled) {
+      await this.saveToDatabase()
+    }
+  }
+
+  /**
+   * 添加重要记忆
+   */
+  async addImportantMemory(key: string, value: string): Promise<void> {
+    this.userProfile.importantMemories.set(key, value)
+
+    // 限制数量
+    if (this.userProfile.importantMemories.size > 20) {
+      const firstKey = this.userProfile.importantMemories.keys().next().value
+      if (firstKey) {
+        this.userProfile.importantMemories.delete(firstKey)
+      }
+    }
+
+    if (this.persistenceEnabled) {
+      await this.saveToDatabase()
+    }
+  }
+
+  /**
+   * 删除重要记忆
+   */
+  async deleteImportantMemory(key: string): Promise<void> {
+    this.userProfile.importantMemories.delete(key)
+
+    if (this.persistenceEnabled) {
+      await runSqlite(this.persistenceDbPath, `
+        DELETE FROM important_memories WHERE key = ${sqlText(key)};
+      `)
+    }
+  }
+
+  /**
+   * 获取所有对话摘要
+   */
+  getAllConversationSummaries(): ConversationSummary[] {
+    return this.conversationSummaries.map(s => ({ ...s }))
   }
 
   /**

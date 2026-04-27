@@ -1100,19 +1100,95 @@ ipcMain.handle('permissions:requestMicrophone', async () => {
 
 // ========== SDK 相关 IPC Handlers ==========
 
-// 获取记忆信息
-ipcMain.handle('sdk:getMemory', async () => {
-  if (!sdkInstance) return null
+// ========== 记忆管理 API ==========
+
+// 获取用户画像
+ipcMain.handle('memory:getUserProfile', async () => {
+  if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
 
   try {
-    // MemoryEngine 目前没有公开的 getter 方法
-    // 可以在未来添加或者通过其他方式访问
+    const profile = sdkInstance.memory.getUserProfile()
+    // 将 Map 转换为普通对象
+    const importantMemories: Record<string, string> = {}
+    profile.importantMemories.forEach((value, key) => {
+      importantMemories[key] = value
+    })
+
     return {
-      message: 'Memory API not yet implemented'
+      success: true,
+      profile: {
+        basic: profile.basic,
+        importantMemories
+      }
     }
   } catch (error: any) {
-    console.error('[SDK] Failed to get memory:', error)
-    return null
+    console.error('[Memory] Failed to get user profile:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+// 更新用户基本画像
+ipcMain.handle('memory:updateUserProfile', async (_, updates: Record<string, string>) => {
+  if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
+
+  try {
+    await sdkInstance.memory.updateUserProfileBasic(updates)
+    return { success: true }
+  } catch (error: any) {
+    console.error('[Memory] Failed to update user profile:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+// 添加重要记忆
+ipcMain.handle('memory:addImportantMemory', async (_, key: string, value: string) => {
+  if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
+
+  try {
+    await sdkInstance.memory.addImportantMemory(key, value)
+    return { success: true }
+  } catch (error: any) {
+    console.error('[Memory] Failed to add important memory:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+// 删除重要记忆
+ipcMain.handle('memory:deleteImportantMemory', async (_, key: string) => {
+  if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
+
+  try {
+    await sdkInstance.memory.deleteImportantMemory(key)
+    return { success: true }
+  } catch (error: any) {
+    console.error('[Memory] Failed to delete important memory:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+// 获取对话摘要
+ipcMain.handle('memory:getConversationSummaries', async () => {
+  if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
+
+  try {
+    const summaries = sdkInstance.memory.getAllConversationSummaries()
+    return { success: true, summaries }
+  } catch (error: any) {
+    console.error('[Memory] Failed to get conversation summaries:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+// 获取最近对话
+ipcMain.handle('memory:getWorkingMemory', async () => {
+  if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
+
+  try {
+    const conversations = sdkInstance.memory.getWorkingMemory()
+    return { success: true, conversations }
+  } catch (error: any) {
+    console.error('[Memory] Failed to get working memory:', error)
+    return { success: false, error: error.message }
   }
 })
 

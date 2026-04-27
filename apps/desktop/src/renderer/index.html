@@ -106,21 +106,70 @@
             <section id="section-memory" class="settings-section">
               <h2 class="section-title">记忆管理</h2>
 
-              <div class="settings-card">
-                <div class="settings-row">
-                  <div class="row-info">
-                    <span class="row-label">对话历史</span>
-                    <span class="row-desc">清除所有对话记录</span>
-                  </div>
-                  <button id="clear-history-btn" class="settings-btn danger">清除</button>
+              <!-- 用户画像卡片 -->
+              <div class="memory-card">
+                <div class="memory-card-header">
+                  <span class="memory-card-title">用户画像</span>
+                  <button id="edit-profile-btn" class="memory-edit-btn">编辑</button>
                 </div>
+                <div id="profile-content" class="memory-card-content">
+                  <div class="profile-loading">加载中...</div>
+                </div>
+              </div>
 
-                <div class="settings-row">
-                  <div class="row-info">
-                    <span class="row-label">用户画像</span>
-                    <span class="row-desc">重置 EVA 对你的了解</span>
+              <!-- 重要记忆卡片 -->
+              <div class="memory-card">
+                <div class="memory-card-header">
+                  <span class="memory-card-title">重要记忆</span>
+                  <button id="add-memory-btn" class="memory-add-btn">+ 添加</button>
+                </div>
+                <div id="important-memories-content" class="memory-card-content">
+                  <div class="profile-loading">加载中...</div>
+                </div>
+              </div>
+
+              <!-- 对话摘要卡片 -->
+              <div class="memory-card">
+                <div class="memory-card-header">
+                  <span class="memory-card-title">对话摘要</span>
+                  <span id="summaries-count" class="memory-count">0 条</span>
+                </div>
+                <div id="summaries-content" class="memory-card-content scrollable">
+                  <div class="profile-loading">加载中...</div>
+                </div>
+              </div>
+
+              <!-- 最近对话卡片 -->
+              <div class="memory-card">
+                <div class="memory-card-header">
+                  <span class="memory-card-title">最近对话</span>
+                  <span id="conversations-count" class="memory-count">0 条</span>
+                </div>
+                <div id="conversations-content" class="memory-card-content scrollable">
+                  <div class="profile-loading">加载中...</div>
+                </div>
+              </div>
+
+              <!-- 危险操作 -->
+              <div class="memory-card danger-zone">
+                <div class="memory-card-header">
+                  <span class="memory-card-title">危险操作</span>
+                </div>
+                <div class="memory-card-content">
+                  <div class="danger-row">
+                    <div class="danger-info">
+                      <span class="danger-label">清除对话历史</span>
+                      <span class="danger-desc">删除所有对话记录，不可恢复</span>
+                    </div>
+                    <button id="clear-history-btn" class="settings-btn danger">清除</button>
                   </div>
-                  <button id="clear-profile-btn" class="settings-btn">重置</button>
+                  <div class="danger-row">
+                    <div class="danger-info">
+                      <span class="danger-label">重置用户画像</span>
+                      <span class="danger-desc">清除 EVA 对你的所有了解</span>
+                    </div>
+                    <button id="clear-profile-btn" class="settings-btn danger">重置</button>
+                  </div>
                 </div>
               </div>
             </section>

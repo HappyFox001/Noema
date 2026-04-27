@@ -1184,9 +1184,439 @@ clearProfileBtn?.addEventListener('click', async () => {
         throw new Error(result.error)
       }
       setStatus('用户画像已重置')
+      await loadUserProfile()
     } catch (error: any) {
       console.error('Clear profile error:', error)
     }
+  }
+})
+
+// ========== Memory Management ==========
+
+const profileContent = document.getElementById('profile-content')!
+const importantMemoriesContent = document.getElementById('important-memories-content')!
+const summariesContent = document.getElementById('summaries-content')!
+const conversationsContent = document.getElementById('conversations-content')!
+const summariesCount = document.getElementById('summaries-count')!
+const conversationsCount = document.getElementById('conversations-count')!
+const editProfileBtn = document.getElementById('edit-profile-btn')!
+const addMemoryBtn = document.getElementById('add-memory-btn')!
+
+type UserProfile = {
+  basic: {
+    name?: string
+    nickname?: string
+    age?: number
+    gender?: string
+    location?: string
+    occupation?: string
+  }
+  personality?: string[]
+  interests?: string[]
+  importantMemories?: Record<string, string>
+  lastUpdated?: number
+}
+
+let currentProfile: UserProfile | null = null
+let isEditingProfile = false
+
+async function loadUserProfile(): Promise<void> {
+  try {
+    const result = await window.electronAPI.getUserProfile()
+    if (!result.success || !result.profile) {
+      profileContent.innerHTML = '<div class="profile-empty">暂无用户画像</div>'
+      return
+    }
+
+    currentProfile = result.profile
+    renderProfile(result.profile)
+  } catch (error) {
+    console.error('Failed to load profile:', error)
+    profileContent.innerHTML = '<div class="profile-error">加载失败</div>'
+  }
+}
+
+function renderProfile(profile: UserProfile): void {
+  const { basic, personality, interests } = profile
+
+  const fields = [
+    { label: '称呼', value: basic.nickname || basic.name },
+    { label: '年龄', value: basic.age ? `${basic.age}岁` : undefined },
+    { label: '性别', value: basic.gender },
+    { label: '所在地', value: basic.location },
+    { label: '职业', value: basic.occupation },
+  ].filter(f => f.value)
+
+  const tags = [
+    ...(personality || []).map(p => ({ text: p, type: 'personality' })),
+    ...(interests || []).map(i => ({ text: i, type: 'interest' })),
+  ]
+
+  if (fields.length === 0 && tags.length === 0) {
+    profileContent.innerHTML = '<div class="profile-empty">EVA 还不太了解你，多聊聊吧</div>'
+    return
+  }
+
+  let html = '<div class="profile-fields">'
+  fields.forEach(f => {
+    html += `<div class="profile-field"><span class="field-label">${f.label}</span><span class="field-value">${f.value}</span></div>`
+  })
+  html += '</div>'
+
+  if (tags.length > 0) {
+    html += '<div class="profile-tags">'
+    tags.forEach(t => {
+      html += `<span class="profile-tag ${t.type}">${t.text}</span>`
+    })
+    html += '</div>'
+  }
+
+  profileContent.innerHTML = html
+}
+
+function renderProfileEditForm(profile: UserProfile): void {
+  const { basic } = profile
+
+  profileContent.innerHTML = `
+    <div class="profile-edit-form">
+      <div class="edit-field">
+        <label>称呼</label>
+        <input type="text" id="edit-nickname" value="${basic.nickname || ''}" placeholder="EVA怎么称呼你">
+      </div>
+      <div class="edit-field">
+        <label>年龄</label>
+        <input type="number" id="edit-age" value="${basic.age || ''}" placeholder="你的年龄">
+      </div>
+      <div class="edit-field">
+        <label>性别</label>
+        <select id="edit-gender">
+          <option value="">不设置</option>
+          <option value="男" ${basic.gender === '男' ? 'selected' : ''}>男</option>
+          <option value="女" ${basic.gender === '女' ? 'selected' : ''}>女</option>
+          <option value="其他" ${basic.gender === '其他' ? 'selected' : ''}>其他</option>
+        </select>
+      </div>
+      <div class="edit-field">
+        <label>所在地</label>
+        <input type="text" id="edit-location" value="${basic.location || ''}" placeholder="你所在的城市">
+      </div>
+      <div class="edit-field">
+        <label>职业</label>
+        <input type="text" id="edit-occupation" value="${basic.occupation || ''}" placeholder="你的职业">
+      </div>
+      <div class="edit-actions">
+        <button id="save-profile-btn" class="edit-save-btn">保存</button>
+        <button id="cancel-profile-btn" class="edit-cancel-btn">取消</button>
+      </div>
+    </div>
+  `
+
+  document.getElementById('save-profile-btn')?.addEventListener('click', saveProfile)
+  document.getElementById('cancel-profile-btn')?.addEventListener('click', cancelProfileEdit)
+}
+
+async function saveProfile(): Promise<void> {
+  const nickname = (document.getElementById('edit-nickname') as HTMLInputElement).value.trim()
+  const ageStr = (document.getElementById('edit-age') as HTMLInputElement).value
+  const gender = (document.getElementById('edit-gender') as HTMLSelectElement).value
+  const location = (document.getElementById('edit-location') as HTMLInputElement).value.trim()
+  const occupation = (document.getElementById('edit-occupation') as HTMLInputElement).value.trim()
+
+  const updates: Record<string, any> = {}
+  if (nickname) updates.nickname = nickname
+  if (ageStr) updates.age = parseInt(ageStr, 10)
+  if (gender) updates.gender = gender
+  if (location) updates.location = location
+  if (occupation) updates.occupation = occupation
+
+  try {
+    const result = await window.electronAPI.updateUserProfile(updates)
+    if (!result.success) {
+      throw new Error(result.error)
+    }
+
+    isEditingProfile = false
+    editProfileBtn.textContent = '编辑'
+    await loadUserProfile()
+    setStatus('用户画像已更新')
+  } catch (error: any) {
+    console.error('Failed to save profile:', error)
+    setStatus('保存失败')
+  }
+}
+
+function cancelProfileEdit(): void {
+  isEditingProfile = false
+  editProfileBtn.textContent = '编辑'
+  if (currentProfile) {
+    renderProfile(currentProfile)
+  } else {
+    profileContent.innerHTML = '<div class="profile-empty">暂无用户画像</div>'
+  }
+}
+
+editProfileBtn.addEventListener('click', () => {
+  if (isEditingProfile) {
+    cancelProfileEdit()
+  } else {
+    isEditingProfile = true
+    editProfileBtn.textContent = '取消'
+    renderProfileEditForm(currentProfile || { basic: {} })
+  }
+})
+
+async function loadImportantMemories(): Promise<void> {
+  try {
+    const result = await window.electronAPI.getUserProfile()
+    if (!result.success || !result.profile) {
+      importantMemoriesContent.innerHTML = '<div class="profile-empty">暂无重要记忆</div>'
+      return
+    }
+
+    const memories = result.profile.importantMemories || {}
+    renderImportantMemories(memories)
+  } catch (error) {
+    console.error('Failed to load memories:', error)
+    importantMemoriesContent.innerHTML = '<div class="profile-error">加载失败</div>'
+  }
+}
+
+function renderImportantMemories(memories: Record<string, string>): void {
+  const entries = Object.entries(memories)
+
+  if (entries.length === 0) {
+    importantMemoriesContent.innerHTML = '<div class="profile-empty">暂无重要记忆</div>'
+    return
+  }
+
+  let html = '<div class="memories-list">'
+  entries.forEach(([key, value]) => {
+    html += `
+      <div class="memory-item">
+        <div class="memory-content">
+          <span class="memory-key">${escapeHtml(key)}</span>
+          <span class="memory-value">${escapeHtml(value)}</span>
+        </div>
+        <button class="memory-delete-btn" data-key="${escapeHtml(key)}">删除</button>
+      </div>
+    `
+  })
+  html += '</div>'
+
+  importantMemoriesContent.innerHTML = html
+
+  // Attach delete handlers
+  importantMemoriesContent.querySelectorAll('.memory-delete-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const key = (e.target as HTMLButtonElement).dataset.key
+      if (key && confirm(`确定要删除"${key}"吗？`)) {
+        await deleteImportantMemory(key)
+      }
+    })
+  })
+}
+
+async function deleteImportantMemory(key: string): Promise<void> {
+  try {
+    const result = await window.electronAPI.deleteImportantMemory(key)
+    if (!result.success) {
+      throw new Error(result.error)
+    }
+    await loadImportantMemories()
+    setStatus('记忆已删除')
+  } catch (error: any) {
+    console.error('Failed to delete memory:', error)
+    setStatus('删除失败')
+  }
+}
+
+addMemoryBtn.addEventListener('click', () => {
+  showAddMemoryDialog()
+})
+
+function showAddMemoryDialog(): void {
+  const dialog = document.createElement('div')
+  dialog.className = 'memory-dialog-overlay'
+  dialog.innerHTML = `
+    <div class="memory-dialog">
+      <h3>添加重要记忆</h3>
+      <div class="dialog-field">
+        <label>标签</label>
+        <input type="text" id="new-memory-key" placeholder="例如：生日、喜欢的食物">
+      </div>
+      <div class="dialog-field">
+        <label>内容</label>
+        <input type="text" id="new-memory-value" placeholder="具体内容">
+      </div>
+      <div class="dialog-actions">
+        <button id="dialog-save" class="dialog-save-btn">保存</button>
+        <button id="dialog-cancel" class="dialog-cancel-btn">取消</button>
+      </div>
+    </div>
+  `
+
+  document.body.appendChild(dialog)
+
+  const keyInput = document.getElementById('new-memory-key') as HTMLInputElement
+  const valueInput = document.getElementById('new-memory-value') as HTMLInputElement
+
+  document.getElementById('dialog-save')?.addEventListener('click', async () => {
+    const key = keyInput.value.trim()
+    const value = valueInput.value.trim()
+
+    if (!key || !value) {
+      setStatus('请填写完整信息')
+      return
+    }
+
+    try {
+      const result = await window.electronAPI.addImportantMemory(key, value)
+      if (!result.success) {
+        throw new Error(result.error)
+      }
+      dialog.remove()
+      await loadImportantMemories()
+      setStatus('记忆已添加')
+    } catch (error: any) {
+      console.error('Failed to add memory:', error)
+      setStatus('添加失败')
+    }
+  })
+
+  document.getElementById('dialog-cancel')?.addEventListener('click', () => {
+    dialog.remove()
+  })
+
+  dialog.addEventListener('click', (e) => {
+    if (e.target === dialog) {
+      dialog.remove()
+    }
+  })
+
+  keyInput.focus()
+}
+
+async function loadConversationSummaries(): Promise<void> {
+  try {
+    const result = await window.electronAPI.getConversationSummaries()
+    if (!result.success || !result.summaries) {
+      summariesContent.innerHTML = '<div class="profile-empty">暂无对话摘要</div>'
+      summariesCount.textContent = '0 条'
+      return
+    }
+
+    summariesCount.textContent = `${result.summaries.length} 条`
+    renderSummaries(result.summaries)
+  } catch (error) {
+    console.error('Failed to load summaries:', error)
+    summariesContent.innerHTML = '<div class="profile-error">加载失败</div>'
+  }
+}
+
+function renderSummaries(summaries: Array<{
+  id: string
+  timestamp: number
+  summary: string
+  topics: string[]
+  emotionalTone: string
+}>): void {
+  if (summaries.length === 0) {
+    summariesContent.innerHTML = '<div class="profile-empty">暂无对话摘要</div>'
+    return
+  }
+
+  let html = '<div class="summaries-list">'
+  summaries.slice(0, 10).forEach(s => {
+    const date = new Date(s.timestamp).toLocaleDateString('zh-CN', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+    html += `
+      <div class="summary-item">
+        <div class="summary-header">
+          <span class="summary-date">${date}</span>
+          <span class="summary-tone">${escapeHtml(s.emotionalTone)}</span>
+        </div>
+        <div class="summary-text">${escapeHtml(s.summary)}</div>
+        ${s.topics.length > 0 ? `
+          <div class="summary-topics">
+            ${s.topics.map(t => `<span class="topic-tag">${escapeHtml(t)}</span>`).join('')}
+          </div>
+        ` : ''}
+      </div>
+    `
+  })
+  html += '</div>'
+
+  summariesContent.innerHTML = html
+}
+
+async function loadWorkingMemory(): Promise<void> {
+  try {
+    const result = await window.electronAPI.getWorkingMemory()
+    if (!result.success || !result.memory) {
+      conversationsContent.innerHTML = '<div class="profile-empty">暂无对话记录</div>'
+      conversationsCount.textContent = '0 条'
+      return
+    }
+
+    const turns = result.memory.recentTurns || []
+    conversationsCount.textContent = `${turns.length} 条`
+    renderConversations(turns)
+  } catch (error) {
+    console.error('Failed to load working memory:', error)
+    conversationsContent.innerHTML = '<div class="profile-error">加载失败</div>'
+  }
+}
+
+function renderConversations(turns: Array<{
+  role: 'user' | 'assistant'
+  content: string
+  timestamp?: number
+}>): void {
+  if (turns.length === 0) {
+    conversationsContent.innerHTML = '<div class="profile-empty">暂无对话记录</div>'
+    return
+  }
+
+  let html = '<div class="conversations-list">'
+  turns.slice(-20).forEach(turn => {
+    const roleLabel = turn.role === 'user' ? '你' : 'EVA'
+    const roleClass = turn.role === 'user' ? 'user' : 'assistant'
+    html += `
+      <div class="conversation-item ${roleClass}">
+        <span class="conversation-role">${roleLabel}</span>
+        <span class="conversation-content">${escapeHtml(turn.content)}</span>
+      </div>
+    `
+  })
+  html += '</div>'
+
+  conversationsContent.innerHTML = html
+}
+
+function escapeHtml(str: string): string {
+  const div = document.createElement('div')
+  div.textContent = str
+  return div.innerHTML
+}
+
+// Load memory data when memory section becomes active
+settingsNav.addEventListener('click', async (e) => {
+  const target = e.target as HTMLElement
+  const navItem = target.closest('.nav-item') as HTMLElement
+  if (!navItem) return
+
+  const section = navItem.dataset.section
+  if (section === 'memory') {
+    await Promise.all([
+      loadUserProfile(),
+      loadImportantMemories(),
+      loadConversationSummaries(),
+      loadWorkingMemory()
+    ])
   }
 })
 

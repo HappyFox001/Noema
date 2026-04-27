@@ -788,3 +788,783 @@ body:not(.settings-open) #main-view {
     width: 100%;
   }
 }
+
+/* ========================================
+   记忆管理界面
+   ======================================== */
+
+.memory-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.memory-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.memory-card-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.85);
+  letter-spacing: 0.3px;
+}
+
+.memory-count {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  font-family: var(--font-ui);
+}
+
+.memory-edit-btn,
+.memory-add-btn {
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: var(--font-ui);
+}
+
+.memory-edit-btn:hover,
+.memory-add-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.85);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.memory-card-content {
+  padding: 14px 16px;
+}
+
+.memory-card-content.scrollable {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.memory-card-content.scrollable::-webkit-scrollbar {
+  width: 4px;
+}
+
+.memory-card-content.scrollable::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.memory-card-content.scrollable::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}
+
+.memory-card-content.scrollable::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* 用户画像 */
+.profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.profile-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.profile-label {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-family: var(--font-ui);
+}
+
+.profile-value {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
+  font-family: var(--font-soft);
+}
+
+.profile-value.empty {
+  color: rgba(255, 255, 255, 0.25);
+  font-style: italic;
+}
+
+.profile-loading {
+  text-align: center;
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 12px;
+  padding: 20px 0;
+}
+
+.profile-empty {
+  text-align: center;
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 12px;
+  padding: 16px 0;
+}
+
+/* 重要记忆列表 */
+.memory-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.memory-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.memory-item-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.memory-item-key {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  margin-bottom: 2px;
+  font-family: var(--font-ui);
+}
+
+.memory-item-value {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
+  font-family: var(--font-soft);
+  word-break: break-word;
+}
+
+.memory-item-delete {
+  opacity: 0;
+  padding: 4px 8px;
+  font-size: 10px;
+  color: rgba(255, 100, 100, 0.7);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.2s;
+  flex-shrink: 0;
+}
+
+.memory-item:hover .memory-item-delete {
+  opacity: 1;
+}
+
+.memory-item-delete:hover {
+  color: rgba(255, 100, 100, 1);
+}
+
+/* 对话摘要 */
+.summary-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.summary-item {
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.summary-text {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.8);
+  line-height: 1.5;
+  font-family: var(--font-soft);
+  margin-bottom: 6px;
+}
+
+.summary-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.35);
+  font-family: var(--font-ui);
+}
+
+.summary-topics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.summary-topic {
+  font-size: 10px;
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* 对话历史 */
+.conversation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.conversation-item {
+  padding: 10px 12px;
+  border-radius: 8px;
+  max-width: 85%;
+}
+
+.conversation-item.user {
+  background: rgba(100, 150, 255, 0.1);
+  border: 1px solid rgba(100, 150, 255, 0.15);
+  margin-left: auto;
+}
+
+.conversation-item.assistant {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  margin-right: auto;
+}
+
+.conversation-role {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+  margin-bottom: 4px;
+  font-family: var(--font-ui);
+}
+
+.conversation-text {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
+  line-height: 1.5;
+  font-family: var(--font-soft);
+  word-break: break-word;
+}
+
+/* 危险区域 */
+.memory-card.danger-zone {
+  border-color: rgba(255, 100, 100, 0.15);
+  background: rgba(255, 100, 100, 0.03);
+}
+
+.memory-card.danger-zone .memory-card-header {
+  border-bottom-color: rgba(255, 100, 100, 0.1);
+}
+
+.memory-card.danger-zone .memory-card-title {
+  color: rgba(255, 150, 150, 0.85);
+}
+
+.danger-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+}
+
+.danger-row:not(:last-child) {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.danger-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.danger-label {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.danger-desc {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* 编辑模式 */
+.profile-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.profile-edit-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.profile-edit-label {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  font-family: var(--font-ui);
+}
+
+.profile-edit-input {
+  padding: 8px 10px;
+  font-size: 13px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.9);
+  font-family: var(--font-soft);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.profile-edit-input:focus {
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.profile-edit-input::placeholder {
+  color: rgba(255, 255, 255, 0.25);
+}
+
+.profile-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.profile-edit-actions button {
+  padding: 6px 14px;
+  font-size: 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: var(--font-ui);
+}
+
+.profile-cancel-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.profile-cancel-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.profile-save-btn {
+  background: rgba(100, 180, 100, 0.2);
+  border: 1px solid rgba(100, 180, 100, 0.3);
+  color: rgba(150, 220, 150, 0.9);
+}
+
+.profile-save-btn:hover {
+  background: rgba(100, 180, 100, 0.3);
+}
+
+/* 添加记忆弹窗 */
+.memory-add-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  margin-bottom: 10px;
+}
+
+.memory-add-form input {
+  padding: 8px 10px;
+  font-size: 13px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.9);
+  font-family: var(--font-soft);
+  outline: none;
+}
+
+.memory-add-form input:focus {
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.memory-add-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ========== Profile Display ========== */
+.profile-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  margin-bottom: 12px;
+}
+
+.profile-field {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.field-label {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  font-family: var(--font-ui);
+}
+
+.field-value {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
+  font-family: var(--font-soft);
+}
+
+.profile-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.profile-tag {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 10px;
+  font-family: var(--font-ui);
+}
+
+.profile-tag.personality {
+  background: rgba(226, 74, 144, 0.15);
+  color: rgba(226, 144, 180, 0.9);
+  border: 1px solid rgba(226, 74, 144, 0.2);
+}
+
+.profile-tag.interest {
+  background: rgba(74, 144, 226, 0.15);
+  color: rgba(144, 180, 226, 0.9);
+  border: 1px solid rgba(74, 144, 226, 0.2);
+}
+
+/* ========== Profile Edit Form ========== */
+.edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.edit-field label {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  font-family: var(--font-ui);
+}
+
+.edit-field input,
+.edit-field select {
+  padding: 8px 10px;
+  font-size: 13px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.9);
+  font-family: var(--font-soft);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.edit-field input:focus,
+.edit-field select:focus {
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.edit-field input::placeholder {
+  color: rgba(255, 255, 255, 0.25);
+}
+
+.edit-field select option {
+  background: #1c1c1e;
+  color: white;
+}
+
+.edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.edit-save-btn,
+.edit-cancel-btn {
+  padding: 6px 14px;
+  font-size: 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: var(--font-ui);
+}
+
+.edit-save-btn {
+  background: rgba(100, 180, 100, 0.2);
+  border: 1px solid rgba(100, 180, 100, 0.3);
+  color: rgba(150, 220, 150, 0.9);
+}
+
+.edit-save-btn:hover {
+  background: rgba(100, 180, 100, 0.3);
+}
+
+.edit-cancel-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.edit-cancel-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* ========== Important Memories ========== */
+.memories-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.memory-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.memory-key {
+  display: block;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  margin-bottom: 2px;
+  font-family: var(--font-ui);
+}
+
+.memory-value {
+  display: block;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
+  font-family: var(--font-soft);
+  word-break: break-word;
+}
+
+.memory-delete-btn {
+  opacity: 0;
+  padding: 4px 8px;
+  font-size: 10px;
+  color: rgba(255, 100, 100, 0.7);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.2s, color 0.2s;
+  flex-shrink: 0;
+  font-family: var(--font-ui);
+}
+
+.memory-item:hover .memory-delete-btn {
+  opacity: 1;
+}
+
+.memory-delete-btn:hover {
+  color: rgba(255, 100, 100, 1);
+}
+
+/* ========== Memory Dialog ========== */
+.memory-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.memory-dialog {
+  background: #1c1c1e;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 20px;
+  width: min(90%, 320px);
+  animation: slideUp 0.2s ease;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.memory-dialog h3 {
+  font-size: 16px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  margin-bottom: 16px;
+  font-family: var(--font-soft);
+}
+
+.dialog-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.dialog-field label {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  font-family: var(--font-ui);
+}
+
+.dialog-field input {
+  padding: 10px 12px;
+  font-size: 13px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.9);
+  font-family: var(--font-soft);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.dialog-field input:focus {
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.dialog-field input::placeholder {
+  color: rgba(255, 255, 255, 0.25);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.dialog-save-btn,
+.dialog-cancel-btn {
+  padding: 8px 16px;
+  font-size: 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: var(--font-ui);
+}
+
+.dialog-save-btn {
+  background: rgba(100, 180, 100, 0.2);
+  border: 1px solid rgba(100, 180, 100, 0.3);
+  color: rgba(150, 220, 150, 0.9);
+}
+
+.dialog-save-btn:hover {
+  background: rgba(100, 180, 100, 0.3);
+}
+
+.dialog-cancel-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.dialog-cancel-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* ========== Summaries List ========== */
+.summaries-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.summary-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.summary-date {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+  font-family: var(--font-ui);
+}
+
+.summary-tone {
+  font-size: 10px;
+  padding: 2px 6px;
+  background: rgba(226, 74, 144, 0.15);
+  color: rgba(226, 144, 180, 0.85);
+  border-radius: 4px;
+  font-family: var(--font-ui);
+}
+
+.topic-tag {
+  font-size: 10px;
+  padding: 2px 6px;
+  background: rgba(74, 144, 226, 0.1);
+  border-radius: 4px;
+  color: rgba(144, 180, 226, 0.8);
+}
+
+/* ========== Conversations List ========== */
+.conversations-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.conversation-role {
+  display: block;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+  margin-bottom: 3px;
+  font-family: var(--font-ui);
+}
+
+.conversation-content {
+  display: block;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
+  line-height: 1.5;
+  font-family: var(--font-soft);
+  word-break: break-word;
+}
+
+.profile-error {
+  text-align: center;
+  color: rgba(255, 100, 100, 0.6);
+  font-size: 12px;
+  padding: 16px 0;
+}

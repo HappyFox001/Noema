@@ -35,10 +35,26 @@ contextBridge.exposeInMainWorld('electronAPI', {
   requestMicrophonePermission: () =>
     ipcRenderer.invoke('permissions:requestMicrophone'),
 
-  // 新增 SDK 功能
-  getMemory: () =>
-    ipcRenderer.invoke('sdk:getMemory'),
+  // ========== 记忆管理 API ==========
+  getUserProfile: () =>
+    ipcRenderer.invoke('memory:getUserProfile'),
 
+  updateUserProfile: (updates) =>
+    ipcRenderer.invoke('memory:updateUserProfile', updates),
+
+  addImportantMemory: (key, value) =>
+    ipcRenderer.invoke('memory:addImportantMemory', key, value),
+
+  deleteImportantMemory: (key) =>
+    ipcRenderer.invoke('memory:deleteImportantMemory', key),
+
+  getConversationSummaries: () =>
+    ipcRenderer.invoke('memory:getConversationSummaries'),
+
+  getWorkingMemory: () =>
+    ipcRenderer.invoke('memory:getWorkingMemory'),
+
+  // SDK 功能
   getPersonality: () =>
     ipcRenderer.invoke('sdk:getPersonality'),
 

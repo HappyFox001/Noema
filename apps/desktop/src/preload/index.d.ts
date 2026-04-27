@@ -59,8 +59,74 @@ declare global {
         error?: string
       }>
 
-      // 新增 SDK 功能
-      getMemory: () => Promise<any>
+      // ========== 记忆管理 API ==========
+      getUserProfile: () => Promise<{
+        success: boolean
+        profile?: {
+          basic: {
+            name?: string
+            nickname?: string
+            age?: number
+            gender?: string
+            location?: string
+            occupation?: string
+          }
+          personality?: string[]
+          interests?: string[]
+          importantMemories?: Record<string, string>
+          lastUpdated?: number
+        }
+        error?: string
+      }>
+
+      updateUserProfile: (updates: Partial<{
+        name?: string
+        nickname?: string
+        age?: number
+        gender?: string
+        location?: string
+        occupation?: string
+      }>) => Promise<{
+        success: boolean
+        error?: string
+      }>
+
+      addImportantMemory: (key: string, value: string) => Promise<{
+        success: boolean
+        error?: string
+      }>
+
+      deleteImportantMemory: (key: string) => Promise<{
+        success: boolean
+        error?: string
+      }>
+
+      getConversationSummaries: () => Promise<{
+        success: boolean
+        summaries?: Array<{
+          id: string
+          timestamp: number
+          summary: string
+          topics: string[]
+          emotionalTone: string
+          keyPoints: string[]
+        }>
+        error?: string
+      }>
+
+      getWorkingMemory: () => Promise<{
+        success: boolean
+        memory?: {
+          recentTurns: Array<{
+            role: 'user' | 'assistant'
+            content: string
+            timestamp?: number
+          }>
+        }
+        error?: string
+      }>
+
+      // SDK 功能
       getPersonality: () => Promise<any>
       getStats: () => Promise<any>
       getSettings: () => Promise<{
