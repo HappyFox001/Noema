@@ -682,6 +682,14 @@ app.whenReady().then(async () => {
     }
   }
 
+  // 初始化 SDK（加载记忆数据）
+  try {
+    await initializeSDK()
+    console.log('[App] SDK initialized at startup')
+  } catch (error) {
+    console.error('[App] Failed to initialize SDK at startup:', error)
+  }
+
   void createWindow()
 
   app.on('activate', () => {

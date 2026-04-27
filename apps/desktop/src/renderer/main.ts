@@ -1054,6 +1054,16 @@ settingsNav.addEventListener('mouseup', (e) => {
           navItem.classList.add('active')
           document.querySelectorAll('.settings-section').forEach(sec => sec.classList.remove('active'))
           document.getElementById(`section-${section}`)?.classList.add('active')
+
+          // 如果切换到记忆管理，加载数据
+          if (section === 'memory') {
+            void Promise.all([
+              loadUserProfile(),
+              loadImportantMemories(),
+              loadConversationSummaries(),
+              loadWorkingMemory()
+            ])
+          }
         }
       }
     }
@@ -1216,13 +1226,28 @@ async function loadUserProfile(): Promise<void> {
 function renderProfile(profile: UserProfile): void {
   const { basic, personality, interests } = profile
 
-  const fields = [
-    { label: '称呼', value: basic.nickname || basic.name },
-    { label: '年龄', value: basic.age ? `${basic.age}岁` : undefined },
-    { label: '性别', value: basic.gender },
-    { label: '所在地', value: basic.location },
-    { label: '职业', value: basic.occupation },
-  ].filter(f => f.value)
+  // 预定义字段的中文标签映射
+  const labelMap: Record<string, string> = {
+    nickname: '称呼',
+    name: '姓名',
+    age: '年龄',
+    gender: '性别',
+    location: '所在地',
+    occupation: '职业',
+    currentMood: '当前心情',
+  }
+
+  // 收集所有 basic 中的字段
+  const fields: { label: string; value: string }[] = []
+  if (basic) {
+    for (const [key, value] of Object.entries(basic)) {
+      if (value !== undefined && value !== null && value !== '') {
+        const label = labelMap[key] || key
+        const displayValue = typeof value === 'object' ? JSON.stringify(value) : String(value)
+        fields.push({ label, value: displayValue })
+      }
+    }
+  }
 
   const tags = [
     ...(personality || []).map(p => ({ text: p, type: 'personality' })),
@@ -1236,14 +1261,14 @@ function renderProfile(profile: UserProfile): void {
 
   let html = '<div class="profile-fields">'
   fields.forEach(f => {
-    html += `<div class="profile-field"><span class="field-label">${f.label}</span><span class="field-value">${f.value}</span></div>`
+    html += `<div class="profile-field"><span class="field-label">${escapeHtml(f.label)}</span><span class="field-value">${escapeHtml(f.value)}</span></div>`
   })
   html += '</div>'
 
   if (tags.length > 0) {
     html += '<div class="profile-tags">'
     tags.forEach(t => {
-      html += `<span class="profile-tag ${t.type}">${t.text}</span>`
+      html += `<span class="profile-tag ${t.type}">${escapeHtml(t.text)}</span>`
     })
     html += '</div>'
   }
@@ -1578,21 +1603,5 @@ function escapeHtml(str: string): string {
   return div.innerHTML
 }
 
-// Load memory data when memory section becomes active
-settingsNav.addEventListener('click', async (e) => {
-  const target = e.target as HTMLElement
-  const navItem = target.closest('.nav-item') as HTMLElement
-  if (!navItem) return
-
-  const section = navItem.dataset.section
-  if (section === 'memory') {
-    await Promise.all([
-      loadUserProfile(),
-      loadImportantMemories(),
-      loadConversationSummaries(),
-      loadWorkingMemory()
-    ])
-  }
-})
 
 console.log('Her-Text Renderer initialized')
