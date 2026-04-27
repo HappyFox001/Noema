@@ -1,0 +1,10 @@
+# 模型文件不提交到 git
+# 使用 scripts/download-models.sh 下载
+*.onnx
+*.bin
+*.pt
+*.pth
+*.safetensors
+
+# 保留目录结构
+!.gitignore

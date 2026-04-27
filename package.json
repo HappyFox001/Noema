@@ -6,6 +6,11 @@
     "packages/*",
     "apps/*"
   ],
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "onnxruntime-node"
+    ]
+  },
   "scripts": {
     "dev": "turbo run dev",
     "desktop:dev": "cd apps/desktop && pnpm run dev",
@@ -14,7 +19,9 @@
     "lint": "turbo run lint",
     "clean": "turbo run clean && rm -rf node_modules",
     "start": "cd apps/desktop && pnpm run start",
-    "history:clear": "bash ./scripts/clear-history.sh"
+    "history:clear": "bash ./scripts/clear-history.sh",
+    "download:models": "bash ./scripts/download-models.sh",
+    "postinstall": "bash ./scripts/download-models.sh || true"
   },
   "devDependencies": {
     "turbo": "^2.0.0",

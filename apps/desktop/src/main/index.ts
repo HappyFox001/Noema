@@ -46,13 +46,16 @@ import {
   FishTTSOfficial,
   QwenRealtimeASR,
   createVADAnalyzer,
+  VADAnalyzer,
   TurnController,
   VADState,
   InterruptionHandler,
   type VADParams,
   type EndpointingConfig,
   type TurnControllerEvents,
+  type VoiceConfidenceProvider,
 } from '@her-text/sdk'
+import { initializeSileroVAD, isSileroVADAvailable } from './silero-vad-helper.js'
 import {
   initializePersonalityManager,
   getPersonalityManager,
@@ -60,6 +63,10 @@ import {
 } from './sdk-config.js'
 import { SettingsStore, type AppSettings } from './settings-store.js'
 import { NodeRealtimeWebSocketTransport } from './qwen-websocket-transport.js'
+import {
+  ReconnectingWebSocketTransport,
+  type ConnectionState,
+} from './reconnecting-websocket-transport.js'
 const DEV_SERVER_URL = 'http://127.0.0.1:5173'
 
 type ConversationPhase = 'reply' | 'task' | 'task_result'
@@ -258,8 +265,45 @@ const DEFAULT_VAD_CONFIG: Partial<VADParams> = {
   confidence: 0.7,      // 语音置信度阈值
   startSecs: 0.2,       // 200ms 确认开始说话
   stopSecs: 0.2,        // 200ms 确认停止说话
-  minVolume: 0.02,      // 最小音量阈值 (针对 RMS VAD 调整)
+  minVolume: 0.02,      // 最小音量阈值 (Silero VAD 不需要此参数，但保留兼容性)
   sampleRate: 16000,
+}
+
+// Silero VAD 实例（全局缓存）
+let sileroVADProvider: VoiceConfidenceProvider | null = null
+let sileroVADInitPromise: Promise<VoiceConfidenceProvider | null> | null = null
+
+/**
+ * 初始化 Silero VAD（异步，带缓存）
+ */
+async function getSileroVADProvider(): Promise<VoiceConfidenceProvider | null> {
+  if (sileroVADProvider) {
+    return sileroVADProvider
+  }
+
+  if (sileroVADInitPromise) {
+    return sileroVADInitPromise
+  }
+
+  sileroVADInitPromise = (async () => {
+    try {
+      if (!isSileroVADAvailable()) {
+        console.log('[VAD] Silero VAD not available, falling back to RMS VAD')
+        return null
+      }
+
+      console.log('[VAD] Initializing Silero VAD...')
+      sileroVADProvider = await initializeSileroVAD(16000)
+      console.log('[VAD] Silero VAD initialized successfully')
+      return sileroVADProvider
+    } catch (error) {
+      console.error('[VAD] Failed to initialize Silero VAD:', error)
+      console.log('[VAD] Falling back to RMS VAD')
+      return null
+    }
+  })()
+
+  return sileroVADInitPromise
 }
 
 /**
@@ -317,6 +361,28 @@ class StreamingASRSession {
       throw new Error('QWEN_API_KEY is not configured')
     }
 
+    // 创建支持重连的 WebSocket 传输层
+    const baseTransport = new NodeRealtimeWebSocketTransport()
+    const reconnectingTransport = new ReconnectingWebSocketTransport(baseTransport, {
+      maxRetries: 5,
+      initialRetryDelayMs: 1000,
+      maxRetryDelayMs: 16000,
+      onConnectionStateChange: (state: ConnectionState) => {
+        this.log(`ASR WebSocket state: ${state}`)
+        // 通知 Renderer 连接状态变化
+        if (state === 'reconnecting') {
+          mainWindow?.webContents.send('speech:reconnecting')
+        } else if (state === 'connected') {
+          mainWindow?.webContents.send('speech:reconnected')
+        } else if (state === 'failed') {
+          mainWindow?.webContents.send('speech:connectionFailed')
+        }
+      },
+      onReconnectAttempt: (attempt, maxRetries) => {
+        this.log(`ASR reconnect attempt ${attempt}/${maxRetries}`)
+      },
+    })
+
     // 初始化 ASR（带中间转录回调，用于 endpointing）
     this.asr = new QwenRealtimeASR(
       {
@@ -334,12 +400,21 @@ class StreamingASRSession {
           })
         }
       },
-      new NodeRealtimeWebSocketTransport()
+      reconnectingTransport
     )
     await this.asr.connect()
 
     // 初始化 VAD 分析器 (Pipecat 风格 4 状态机)
-    const vadAnalyzer = createVADAnalyzer(DEFAULT_VAD_CONFIG)
+    // 优先使用 Silero VAD（神经网络），否则回退到 RMS VAD
+    const sileroProvider = await getSileroVADProvider()
+    let vadAnalyzer: VADAnalyzer
+    if (sileroProvider) {
+      this.log('Using Silero VAD (neural network)')
+      vadAnalyzer = new VADAnalyzer(sileroProvider, DEFAULT_VAD_CONFIG)
+    } else {
+      this.log('Using RMS VAD (fallback)')
+      vadAnalyzer = createVADAnalyzer(DEFAULT_VAD_CONFIG)
+    }
 
     // 初始化轮次控制器
     this.turnController = new TurnController(vadAnalyzer, {
@@ -564,6 +639,72 @@ class StreamingASRSession {
 }
 
 let currentTTSChunkSequence = 0
+
+// ========== 轮次管理（打断控制）==========
+let currentTurnId = 0
+let currentTurnAbortController: AbortController | null = null
+
+// ========== TTS 音频上下文管理 ==========
+/**
+ * TTS 音频上下文 ID
+ * 每次开始新的 TTS 流时递增
+ * Renderer 用此 ID 验证音频是否属于当前上下文
+ */
+let currentTTSContextId = 0
+
+/**
+ * 生成新的 TTS 上下文 ID
+ */
+function startNewTTSContext(): number {
+  currentTTSContextId++
+  console.log(`[TTS Context] Started new context #${currentTTSContextId}`)
+  return currentTTSContextId
+}
+
+/**
+ * 使当前 TTS 上下文失效
+ * 打断时调用，通知 Renderer 拒绝旧上下文的音频
+ */
+function invalidateTTSContext(): void {
+  console.log(`[TTS Context] Invalidating context #${currentTTSContextId}`)
+  // 通知 Renderer 当前上下文已失效
+  mainWindow?.webContents.send('tts:contextInvalidated', currentTTSContextId)
+}
+
+/**
+ * 生成新的轮次 ID
+ * 每次用户开始新的对话时调用
+ */
+function startNewTurn(): number {
+  // 先取消上一个轮次
+  cancelCurrentTurn()
+
+  currentTurnId++
+  currentTurnAbortController = new AbortController()
+  console.log(`[Turn] Started new turn #${currentTurnId}`)
+  return currentTurnId
+}
+
+/**
+ * 取消当前轮次
+ * 打断时调用，取消所有正在进行的 LLM/TTS 请求
+ */
+function cancelCurrentTurn(): void {
+  if (currentTurnAbortController) {
+    console.log(`[Turn] Cancelling turn #${currentTurnId}`)
+    currentTurnAbortController.abort()
+    currentTurnAbortController = null
+  }
+  // 同时使 TTS 上下文失效
+  invalidateTTSContext()
+}
+
+/**
+ * 检查轮次是否已被取消
+ */
+function isTurnCancelled(turnId: number): boolean {
+  return turnId !== currentTurnId || currentTurnAbortController?.signal.aborted === true
+}
 
 // ========== 播放完成同步机制 ==========
 let playbackRequestIdCounter = 0
@@ -918,6 +1059,8 @@ ipcMain.handle('conversation:initialize', async () => {
 
       // 用于追踪首个音频块
       let isFirstAudioChunk = true
+      // 当前 TTS 流的上下文 ID（在 connected 时设置）
+      let activeStreamContextId = 0
 
       // 设置 TTS 事件处理
       ttsService.setEventHandler((event) => {
@@ -925,7 +1068,10 @@ ipcMain.handle('conversation:initialize', async () => {
           case 'connected':
             console.log('[TTS] Connected event')
             isFirstAudioChunk = true  // 重置首个音频块标志
-            mainWindow?.webContents.send('tts:connected')
+            // 记录当前 TTS 流对应的上下文 ID
+            activeStreamContextId = currentTTSContextId
+            console.log(`[TTS] Stream connected with context #${activeStreamContextId}`)
+            mainWindow?.webContents.send('tts:connected', activeStreamContextId)
             break
           case 'audio':
             // 延迟追踪：首个 TTS 音频块
@@ -933,8 +1079,12 @@ ipcMain.handle('conversation:initialize', async () => {
               isFirstAudioChunk = false
               latencyTracker.mark('first_tts_audio')
             }
-            console.log('[TTS] Audio chunk received:', event.audio.length, 'bytes')
-            mainWindow?.webContents.send('tts:audio', event.audio)
+            console.log(`[TTS] Audio chunk received (context #${activeStreamContextId}):`, event.audio.length, 'bytes')
+            // 发送音频数据时附带上下文 ID，Renderer 用此验证
+            mainWindow?.webContents.send('tts:audio', {
+              contextId: activeStreamContextId,
+              data: event.audio
+            })
             break
           case 'closed':
             console.log('[TTS] Closed event')
@@ -974,9 +1124,22 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
       throw new Error('SDK not initialized')
     }
 
+    // 开始新轮次（会取消上一个轮次）
+    const turnId = startNewTurn()
+
+    // 通知 Renderer 新轮次开始
+    mainWindow?.webContents.send('turn:start', turnId)
+
     const displayController = new ConversationDisplayController(
-      (nextText) => mainWindow?.webContents.send('conversation:response', nextText),
-      (frame) => mainWindow?.webContents.send('conversation:frame', frame)
+      (nextText) => {
+        // 检查轮次是否已取消
+        if (isTurnCancelled(turnId)) return
+        mainWindow?.webContents.send('conversation:response', nextText)
+      },
+      (frame) => {
+        if (isTurnCancelled(turnId)) return
+        mainWindow?.webContents.send('conversation:frame', frame)
+      }
     )
     displayController.reset()
     currentTTSChunkSequence = 0
@@ -991,6 +1154,7 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
     latencyTracker.mark('llm_start')
 
     // 使用 SDK 的 chatStream，TTS 分句逻辑由 SDK 处理
+    // 注意：SDK 目前不支持 AbortSignal，打断通过 isTurnCancelled() 检查实现
     const responseStream = sdkInstance.chatStream(
       {
         text,
@@ -998,6 +1162,12 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
       },
       {
         onPhaseStart: async (phase) => {
+          // 检查是否已被打断
+          if (isTurnCancelled(turnId)) {
+            console.log(`[Turn] Phase start skipped - turn #${turnId} cancelled`)
+            return
+          }
+
           displayController.startPhase(phase)
 
           if (!shouldUseTTS || !ttsService) {
@@ -1005,6 +1175,10 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
           }
 
           try {
+            // 开始新的 TTS 上下文
+            const contextId = startNewTTSContext()
+            // 通知 Renderer 新的有效上下文 ID
+            mainWindow?.webContents.send('tts:contextStart', contextId)
             await ttsService.startStreaming()
           } catch (error: any) {
             console.warn('[TTS] Failed to start streaming:', error.message)
@@ -1015,6 +1189,9 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
           }
         },
         onDisplayChunk: async (_, delta) => {
+          // 检查是否已被打断
+          if (isTurnCancelled(turnId)) return
+
           // 延迟追踪：首个 LLM token
           if (isFirstToken) {
             isFirstToken = false
@@ -1026,6 +1203,12 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
           }
         },
         onTTSChunk: async (chunk) => {
+          // 检查是否已被打断
+          if (isTurnCancelled(turnId)) {
+            console.log(`[Turn] TTS chunk skipped - turn #${turnId} cancelled`)
+            return
+          }
+
           // 延迟追踪：首个 LLM token (如果 onDisplayChunk 没触发)
           if (isFirstToken) {
             isFirstToken = false
@@ -1044,7 +1227,7 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
 
           try {
             currentTTSChunkSequence += 1
-            console.log(`[Main] onTTSChunk #${currentTTSChunkSequence}, pushing:`, JSON.stringify(chunk))
+            console.log(`[Main] onTTSChunk #${currentTurnId}:${currentTTSChunkSequence}, pushing:`, JSON.stringify(chunk))
             displayController.pushTTSChunkText(chunk)
             await ttsService.pushText(chunk)
           } catch (error: any) {
@@ -1054,6 +1237,12 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
           }
         },
         onPhaseEnd: async (phase) => {
+          // 检查是否已被打断
+          if (isTurnCancelled(turnId)) {
+            console.log(`[Turn] Phase end skipped - turn #${turnId} cancelled`)
+            return
+          }
+
           console.log(`[Conversation] Phase "${phase}" ending...`)
 
           if (shouldUseTTS && ttsService) {
@@ -1075,9 +1264,11 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
           await displayController.endPhase(phase)
         },
         onTaskStart: async (taskDescription) => {
+          if (isTurnCancelled(turnId)) return
           displayController.startTask(taskDescription)
         },
         onTaskEnd: async (result) => {
+          if (isTurnCancelled(turnId)) return
           displayController.endTask(result)
         }
       }
@@ -1139,7 +1330,12 @@ ipcMain.handle('speech:transcribe', async (_, samples: number[]) => {
       throw new Error('QWEN_API_KEY is not configured')
     }
 
-    const transport = new NodeRealtimeWebSocketTransport()
+    // 单次转录也使用重连传输层，提高可靠性
+    const baseTransport = new NodeRealtimeWebSocketTransport()
+    const transport = new ReconnectingWebSocketTransport(baseTransport, {
+      maxRetries: 3,
+      initialRetryDelayMs: 500,
+    })
     const asr = new QwenRealtimeASR(
       {
         apiKey,
@@ -1182,8 +1378,13 @@ ipcMain.handle('speech:stream:start', async () => {
       },
       onInterruption: () => {
         // 打断发生（用户在机器人说话时说话）
-        console.log('[Speech] Interruption detected, stopping TTS')
-        mainWindow?.webContents.send('speech:interruption')
+        console.log('[Speech] Interruption detected, cancelling turn and stopping TTS')
+
+        // 取消当前轮次（这会 abort LLM 请求）
+        cancelCurrentTurn()
+
+        // 通知 Renderer 打断发生，清空队列
+        mainWindow?.webContents.send('speech:interruption', currentTurnId)
 
         // 停止 TTS 流
         if (ttsService) {

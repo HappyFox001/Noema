@@ -190,10 +190,15 @@ declare global {
       }>
 
       // 事件监听器
-      onTTSAudio: (callback: (audioData: Uint8Array) => void) => void
-      onTTSConnected: (callback: () => void) => void
+      // TTS 音频事件（带上下文 ID）
+      onTTSAudio: (callback: (audioData: Uint8Array, contextId: number) => void) => void
+      onTTSConnected: (callback: (contextId: number) => void) => void
       onTTSClosed: (callback: () => void) => void
       onTTSError: (callback: (error: string) => void) => void
+
+      // TTS 上下文管理
+      onTTSContextStart: (callback: (contextId: number) => void) => void
+      onTTSContextInvalidated: (callback: (contextId: number) => void) => void
       onConversationResponse: (callback: (text: string) => void) => void
       onConversationFrame: (callback: (frame: {
         type: 'system.reset'
@@ -218,6 +223,16 @@ declare global {
       onSpeechState: (callback: (state: 'listening' | 'processing' | 'idle') => void) => void
       onSpeechError: (callback: (error: string) => void) => void
       onUserSpeaking: (callback: () => void) => void
+
+      // WebSocket 重连事件
+      onSpeechReconnecting: (callback: () => void) => void
+      onSpeechReconnected: (callback: () => void) => void
+      onSpeechConnectionFailed: (callback: () => void) => void
+
+      // 打断事件
+      onInterruption: (callback: (turnId: number) => void) => void
+      // 新轮次开始
+      onTurnStart: (callback: (turnId: number) => void) => void
 
       // 播放完成同步（用于 Phase 之间的音频同步）
       onPlaybackWaitRequest: (callback: (requestId: number) => void) => void

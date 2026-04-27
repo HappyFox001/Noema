@@ -29,6 +29,17 @@ export {
 // RMS VAD
 export { RmsVAD, RmsVADConfig, createRmsVAD } from './rms-vad.js'
 
+// Silero VAD (需要 ONNX runtime)
+export {
+  SileroVAD,
+  SileroVADConfig,
+  SileroOnnxModel,
+  createSileroVAD,
+  type OnnxInferenceSession,
+  type OnnxTensor,
+  type OnnxTensorFactory,
+} from './silero-vad.js'
+
 /**
  * 创建默认的 VAD 分析器
  * 使用 RMS VAD 作为置信度提供者

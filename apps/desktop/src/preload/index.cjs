@@ -92,12 +92,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('personality:set', name),
 
   // 事件监听
+  // TTS 音频事件（带上下文 ID）
   onTTSAudio: (callback) => {
-    ipcRenderer.on('tts:audio', (_, data) => callback(new Uint8Array(data)))
+    ipcRenderer.on('tts:audio', (_, { contextId, data }) => {
+      callback(new Uint8Array(data), contextId)
+    })
   },
 
   onTTSConnected: (callback) => {
-    ipcRenderer.on('tts:connected', callback)
+    ipcRenderer.on('tts:connected', (_, contextId) => callback(contextId))
+  },
+
+  // TTS 上下文管理
+  onTTSContextStart: (callback) => {
+    ipcRenderer.on('tts:contextStart', (_, contextId) => callback(contextId))
+  },
+
+  onTTSContextInvalidated: (callback) => {
+    ipcRenderer.on('tts:contextInvalidated', (_, contextId) => callback(contextId))
   },
 
   onTTSClosed: (callback) => {
@@ -131,6 +143,29 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   onUserSpeaking: (callback) => {
     ipcRenderer.on('speech:user-speaking', callback)
+  },
+
+  // WebSocket 重连事件
+  onSpeechReconnecting: (callback) => {
+    ipcRenderer.on('speech:reconnecting', callback)
+  },
+
+  onSpeechReconnected: (callback) => {
+    ipcRenderer.on('speech:reconnected', callback)
+  },
+
+  onSpeechConnectionFailed: (callback) => {
+    ipcRenderer.on('speech:connectionFailed', callback)
+  },
+
+  // 打断事件（用户在机器人说话时开始说话）
+  onInterruption: (callback) => {
+    ipcRenderer.on('speech:interruption', (_, turnId) => callback(turnId))
+  },
+
+  // 新轮次开始
+  onTurnStart: (callback) => {
+    ipcRenderer.on('turn:start', (_, turnId) => callback(turnId))
   },
 
   // 播放完成同步（用于 Phase 之间的音频同步）

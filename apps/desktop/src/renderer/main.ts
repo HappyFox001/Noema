@@ -5,6 +5,7 @@ import './styles.css'
 class AudioPlayer {
   private audioContext: AudioContext | null = null
   private gainNode: GainNode | null = null
+  private compressor: DynamicsCompressorNode | null = null // EBU R128: 动态压缩器
   private isPlaying = false
   private audioQueue: AudioBuffer[] = []
   private nextStartTime = 0
@@ -17,15 +18,131 @@ class AudioPlayer {
   // 延迟追踪：首个音频标志
   private isFirstAudioOfSession = true
 
+  // TTS 上下文管理：防止旧音频混入
+  private validContextId: number = 0
+  private rejectedContextIds: Set<number> = new Set()
+
+  // EBU R128 音量标准化配置
+  // 目标响度: -16 LUFS (适合流媒体)
+  // 简化实现：使用 RMS 归一化 + 动态压缩
+  private readonly TARGET_RMS = 0.2 // 目标 RMS 值（约 -14 dBFS）
+  private readonly MAX_GAIN = 3.0    // 最大增益限制
+  private readonly MIN_GAIN = 0.5    // 最小增益限制
+
   resetLatencyTracking(): void {
     this.isFirstAudioOfSession = true
   }
 
+  /**
+   * 设置当前有效的 TTS 上下文 ID
+   * 只有匹配此 ID 的音频才会被播放
+   */
+  setValidContextId(contextId: number): void {
+    console.log(`[AudioPlayer] Setting valid context ID: ${contextId}`)
+    this.validContextId = contextId
+    // 清除已被拒绝的上下文 ID 列表（保留最近的几个）
+    if (this.rejectedContextIds.size > 10) {
+      const idsArray = Array.from(this.rejectedContextIds)
+      this.rejectedContextIds = new Set(idsArray.slice(-5))
+    }
+  }
+
+  /**
+   * 使指定的上下文 ID 失效
+   * 之后收到的该上下文的音频将被丢弃
+   */
+  invalidateContext(contextId: number): void {
+    console.log(`[AudioPlayer] Invalidating context ID: ${contextId}`)
+    this.rejectedContextIds.add(contextId)
+    // 如果失效的是当前上下文，停止播放
+    if (contextId === this.validContextId) {
+      console.log(`[AudioPlayer] Current context invalidated, stopping playback`)
+      this.stop()
+    }
+  }
+
+  /**
+   * 验证音频上下文是否有效
+   */
+  isContextValid(contextId: number): boolean {
+    // 如果上下文 ID 已被显式拒绝，返回 false
+    if (this.rejectedContextIds.has(contextId)) {
+      return false
+    }
+    // 如果上下文 ID 小于当前有效 ID，说明是旧数据
+    if (contextId < this.validContextId) {
+      return false
+    }
+    return true
+  }
+
   async initialize(): Promise<void> {
     this.audioContext = new AudioContext({ sampleRate: 16000 })
+
+    // 创建动态压缩器 (EBU R128 风格)
+    // 防止响度峰值过高，确保一致的听感
+    this.compressor = this.audioContext.createDynamicsCompressor()
+    this.compressor.threshold.value = -24  // 开始压缩的阈值 (dB)
+    this.compressor.knee.value = 12        // 柔和的压缩过渡
+    this.compressor.ratio.value = 4        // 4:1 压缩比
+    this.compressor.attack.value = 0.003   // 3ms 启动时间
+    this.compressor.release.value = 0.25   // 250ms 释放时间
+
+    // 创建增益节点
     this.gainNode = this.audioContext.createGain()
+
+    // 连接音频链: source -> compressor -> gain -> destination
+    this.compressor.connect(this.gainNode)
     this.gainNode.connect(this.audioContext.destination)
-    console.log('[AudioPlayer] Initialized')
+
+    console.log('[AudioPlayer] Initialized with EBU R128 style loudness control')
+
+    // 音频预热：播放静音音频激活音频系统
+    await this.warmup()
+  }
+
+  /**
+   * 音频预热机制
+   * 通过播放一个短暂的静音音频来激活音频系统，减少首次播放延迟
+   */
+  private async warmup(): Promise<void> {
+    if (!this.audioContext) return
+
+    console.log('[AudioPlayer] Starting warmup...')
+    const startTime = performance.now()
+
+    try {
+      // 确保 AudioContext 处于运行状态
+      if (this.audioContext.state === 'suspended') {
+        await this.audioContext.resume()
+      }
+
+      // 创建一个非常短的静音缓冲区（约 1ms）
+      const silentBuffer = this.audioContext.createBuffer(1, 16, 16000)
+      const source = this.audioContext.createBufferSource()
+      source.buffer = silentBuffer
+
+      // 连接到一个静音的增益节点，避免任何可能的噪音
+      const silentGain = this.audioContext.createGain()
+      silentGain.gain.value = 0
+      silentGain.connect(this.audioContext.destination)
+      source.connect(silentGain)
+
+      // 播放静音音频
+      source.start()
+
+      // 等待音频系统准备就绪
+      await new Promise<void>((resolve) => {
+        source.onended = () => resolve()
+        // 超时保护（以防 onended 不触发）
+        setTimeout(resolve, 50)
+      })
+
+      const elapsed = performance.now() - startTime
+      console.log(`[AudioPlayer] Warmup complete in ${elapsed.toFixed(1)}ms`)
+    } catch (error) {
+      console.warn('[AudioPlayer] Warmup failed:', error)
+    }
   }
 
   setChunkScheduledHandler(
@@ -88,8 +205,30 @@ class AudioPlayer {
     const audioBuffer = this.audioContext.createBuffer(1, pcm16.length, 16000)
     const channelData = audioBuffer.getChannelData(0)
 
+    // 转换为 Float32 并计算 RMS
+    let sumSquares = 0
     for (let i = 0; i < pcm16.length; i++) {
-      channelData[i] = pcm16[i] / (pcm16[i] < 0 ? 0x8000 : 0x7fff)
+      const sample = pcm16[i] / (pcm16[i] < 0 ? 0x8000 : 0x7fff)
+      channelData[i] = sample
+      sumSquares += sample * sample
+    }
+
+    // EBU R128 风格的响度归一化
+    const rms = Math.sqrt(sumSquares / pcm16.length)
+    if (rms > 0.001) { // 避免除以接近零的值（静音）
+      let gain = this.TARGET_RMS / rms
+      // 限制增益范围，避免过度放大噪声或过度衰减
+      gain = Math.max(this.MIN_GAIN, Math.min(this.MAX_GAIN, gain))
+
+      // 应用增益并进行软限幅
+      for (let i = 0; i < channelData.length; i++) {
+        let sample = channelData[i] * gain
+        // 软限幅 (tanh 软削波)
+        if (Math.abs(sample) > 0.9) {
+          sample = Math.tanh(sample)
+        }
+        channelData[i] = sample
+      }
     }
 
     return audioBuffer
@@ -100,7 +239,10 @@ class AudioPlayer {
 
     const source = this.audioContext.createBufferSource()
     source.buffer = buffer
-    source.connect(this.gainNode ?? this.audioContext.destination)
+
+    // 连接到压缩器（EBU R128 动态处理链的第一环）
+    // source -> compressor -> gain -> destination
+    source.connect(this.compressor ?? this.gainNode ?? this.audioContext.destination)
     this.currentSource = source
 
     const currentTime = this.audioContext.currentTime
@@ -122,13 +264,23 @@ class AudioPlayer {
     }
   }
 
-  async addAudioChunk(pcm16Bytes: Uint8Array): Promise<void> {
+  async addAudioChunk(pcm16Bytes: Uint8Array, contextId?: number): Promise<void> {
     try {
-      console.log('[AudioPlayer] Adding chunk:', pcm16Bytes.byteLength, 'bytes, context state:', this.audioContext?.state)
+      // 验证上下文 ID（如果提供）
+      if (contextId !== undefined) {
+        if (!this.isContextValid(contextId)) {
+          console.log(`[AudioPlayer] Rejecting audio chunk from invalid context #${contextId} (valid: #${this.validContextId})`)
+          return
+        }
+      }
+
+      console.log(`[AudioPlayer] Adding chunk (context #${contextId ?? 'N/A'}):`, pcm16Bytes.byteLength, 'bytes, context state:', this.audioContext?.state)
 
       if (this.audioContext?.state === 'suspended') {
         console.log('[AudioPlayer] Resuming suspended context')
         await this.audioContext.resume()
+        // 恢复后重新预热以减少延迟
+        await this.warmup()
       }
 
       const audioBuffer = this.pcm16ToAudioBuffer(pcm16Bytes)
@@ -305,7 +457,11 @@ function revealWeight(char: string): number {
   return 1
 }
 
-// VoiceRecorder: 只负责采集和转发，不做任何处理
+// VoiceRecorder: 只负责采集和转发
+// 集成噪声过滤：
+// - 高通滤波器 (80Hz) - 去除低频噪声（风扇、空调等）
+// - 低通滤波器 (8kHz) - 去除高频噪声
+// - 浏览器原生: echoCancellation, noiseSuppression, autoGainControl
 // 所有处理（降采样）在 AudioWorklet 线程完成
 // VAD 和 ASR 在 Main Process 完成
 class VoiceRecorder {
@@ -313,26 +469,106 @@ class VoiceRecorder {
   private stream: MediaStream | null = null
   private source: MediaStreamAudioSourceNode | null = null
   private workletNode: AudioWorkletNode | null = null
+  private highPassFilter: BiquadFilterNode | null = null
+  private lowPassFilter: BiquadFilterNode | null = null
   private recording = false
+  private warmedUp = false
+
+  /**
+   * 预热麦克风输入
+   * 提前获取麦克风权限并初始化 AudioContext，减少首次录音延迟
+   */
+  async warmup(): Promise<void> {
+    if (this.warmedUp) return
+
+    console.log('[VoiceRecorder] Starting warmup...')
+    const startTime = performance.now()
+
+    try {
+      // 获取麦克风权限（这是最耗时的部分）
+      this.stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
+      })
+
+      // 初始化 AudioContext 和 Worklet
+      this.context = new AudioContext()
+      await this.context.audioWorklet.addModule('./audio-worklet-processor.js')
+
+      // 创建噪声过滤器
+      this.createNoiseFilters()
+
+      // 创建但不连接，让系统准备好
+      this.source = this.context.createMediaStreamSource(this.stream)
+      this.workletNode = new AudioWorkletNode(this.context, 'audio-chunk-processor')
+
+      // 暂时不连接，等待正式开始录音
+
+      this.warmedUp = true
+      const elapsed = performance.now() - startTime
+      console.log(`[VoiceRecorder] Warmup complete in ${elapsed.toFixed(1)}ms`)
+    } catch (error) {
+      console.warn('[VoiceRecorder] Warmup failed:', error)
+    }
+  }
+
+  /**
+   * 创建噪声过滤器
+   * - 高通滤波器 (80Hz): 去除低频噪声（风扇、空调、脚步声等）
+   * - 低通滤波器 (8kHz): 去除高频噪声（电子设备干扰等）
+   */
+  private createNoiseFilters(): void {
+    if (!this.context) return
+
+    // 高通滤波器 - 去除 80Hz 以下的低频噪声
+    this.highPassFilter = this.context.createBiquadFilter()
+    this.highPassFilter.type = 'highpass'
+    this.highPassFilter.frequency.value = 80
+    this.highPassFilter.Q.value = 0.7 // 平滑的滚降曲线
+
+    // 低通滤波器 - 去除 8kHz 以上的高频噪声
+    // 对于语音来说，大部分能量在 300Hz-3400Hz，8kHz 已经足够宽松
+    this.lowPassFilter = this.context.createBiquadFilter()
+    this.lowPassFilter.type = 'lowpass'
+    this.lowPassFilter.frequency.value = 8000
+    this.lowPassFilter.Q.value = 0.7
+
+    console.log('[VoiceRecorder] Noise filters created (80Hz highpass, 8kHz lowpass)')
+  }
 
   async start(): Promise<void> {
     if (this.recording) return
 
     console.log('[VoiceRecorder] Starting...')
-    this.stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        channelCount: 1,
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true
-      }
-    })
 
-    this.context = new AudioContext()
-    await this.context.audioWorklet.addModule('./audio-worklet-processor.js')
+    // 如果没有预热，现在初始化
+    if (!this.warmedUp) {
+      this.stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
+      })
 
-    this.source = this.context.createMediaStreamSource(this.stream)
-    this.workletNode = new AudioWorkletNode(this.context, 'audio-chunk-processor')
+      this.context = new AudioContext()
+      await this.context.audioWorklet.addModule('./audio-worklet-processor.js')
+
+      // 创建噪声过滤器
+      this.createNoiseFilters()
+
+      this.source = this.context.createMediaStreamSource(this.stream)
+      this.workletNode = new AudioWorkletNode(this.context, 'audio-chunk-processor')
+    }
+
+    if (!this.source || !this.workletNode || !this.context) {
+      throw new Error('VoiceRecorder not properly initialized')
+    }
 
     // 直接转发 Int16 音频到 Main Process，不在主线程做任何处理
     this.workletNode.port.onmessage = (event) => {
@@ -344,7 +580,19 @@ class VoiceRecorder {
       }
     }
 
-    this.source.connect(this.workletNode)
+    // 通过噪声过滤器连接音频链
+    // source -> highpass -> lowpass -> worklet -> destination
+    if (this.highPassFilter && this.lowPassFilter) {
+      this.source.connect(this.highPassFilter)
+      this.highPassFilter.connect(this.lowPassFilter)
+      this.lowPassFilter.connect(this.workletNode)
+      console.log('[VoiceRecorder] Connected with noise filters')
+    } else {
+      // 降级：直接连接
+      this.source.connect(this.workletNode)
+      console.log('[VoiceRecorder] Connected without noise filters')
+    }
+
     this.workletNode.connect(this.context.destination)
     this.recording = true
     console.log('[VoiceRecorder] Started')
@@ -352,14 +600,27 @@ class VoiceRecorder {
 
   async stop(): Promise<void> {
     this.recording = false
+
+    // 断开所有节点连接
     this.workletNode?.disconnect()
+    this.lowPassFilter?.disconnect()
+    this.highPassFilter?.disconnect()
     this.source?.disconnect()
+
+    // 停止麦克风
     this.stream?.getTracks().forEach((track) => track.stop())
+
+    // 关闭 AudioContext
     await this.context?.close()
+
+    // 清理所有引用
     this.workletNode = null
+    this.lowPassFilter = null
+    this.highPassFilter = null
     this.source = null
     this.stream = null
     this.context = null
+    this.warmedUp = false // 重置预热状态
   }
 
   isRecording(): boolean {
@@ -682,10 +943,22 @@ async function initialize() {
     updateConversationButton()
     setStatus('Ready')
 
-    // 监听 TTS 音频
-    window.electronAPI.onTTSAudio((audioData) => {
-      console.log('[UI] Received TTS audio:', audioData.byteLength, 'bytes')
-      audioPlayer.addAudioChunk(audioData)
+    // 监听 TTS 音频（带上下文 ID）
+    window.electronAPI.onTTSAudio((audioData, contextId) => {
+      console.log(`[UI] Received TTS audio (context #${contextId}):`, audioData.byteLength, 'bytes')
+      audioPlayer.addAudioChunk(audioData, contextId)
+    })
+
+    // 监听 TTS 上下文开始
+    window.electronAPI.onTTSContextStart((contextId) => {
+      console.log(`[UI] TTS context started: #${contextId}`)
+      audioPlayer.setValidContextId(contextId)
+    })
+
+    // 监听 TTS 上下文失效（打断时触发）
+    window.electronAPI.onTTSContextInvalidated((contextId) => {
+      console.log(`[UI] TTS context invalidated: #${contextId}`)
+      audioPlayer.invalidateContext(contextId)
     })
 
     // 监听对话响应
@@ -700,8 +973,8 @@ async function initialize() {
     })
 
     // 监听 TTS 事件
-    window.electronAPI.onTTSConnected(() => {
-      console.log('[UI] TTS connected')
+    window.electronAPI.onTTSConnected((contextId) => {
+      console.log(`[UI] TTS connected (context #${contextId})`)
       setOrbMode('speaking')
       // 重置延迟追踪
       audioPlayer.resetLatencyTracking()
@@ -755,6 +1028,23 @@ async function initialize() {
       setOrbMode('idle')
     })
 
+    // WebSocket 重连事件
+    window.electronAPI.onSpeechReconnecting(() => {
+      console.log('[UI] Speech WebSocket reconnecting...')
+      setStatus('Reconnecting...')
+    })
+
+    window.electronAPI.onSpeechReconnected(() => {
+      console.log('[UI] Speech WebSocket reconnected')
+      setStatus('Listening...')
+    })
+
+    window.electronAPI.onSpeechConnectionFailed(() => {
+      console.error('[UI] Speech WebSocket connection failed')
+      setStatus('Connection failed')
+      setOrbMode('idle')
+    })
+
     // 用户开始说话时停止当前播放
     window.electronAPI.onUserSpeaking(() => {
       console.log('[UI] User started speaking, stopping playback')
@@ -762,6 +1052,28 @@ async function initialize() {
       textRevealer.reset()
       clearTextDisplay()
       setOrbMode('listening')
+    })
+
+    // 打断事件处理（用户在机器人说话时开始说话）
+    window.electronAPI.onInterruption((turnId) => {
+      console.log(`[UI] Interruption detected for turn #${turnId}, clearing all queues`)
+      // 停止所有音频播放
+      audioPlayer.stop()
+      // 清空文字显示队列
+      textRevealer.reset()
+      // 清空当前显示的文字
+      clearTextDisplay()
+      // 切换到监听状态
+      setOrbMode('listening')
+    })
+
+    // 新轮次开始
+    window.electronAPI.onTurnStart((turnId) => {
+      console.log(`[UI] New turn started: #${turnId}`)
+      // 新轮次开始时，清空之前的状态
+      audioPlayer.stop()
+      textRevealer.reset()
+      clearTextDisplay()
     })
 
     // 响应 Main Process 的播放完成等待请求
@@ -830,6 +1142,10 @@ startConversationBtn.addEventListener('click', async () => {
   }
 
   await initialize()
+
+  // 预热麦克风（用户已交互，可以安全初始化）
+  voiceRecorder.warmup().catch(console.warn)
+
   activeMode = 'conversation'
   await startConversationStreaming()
   updateConversationButton()
