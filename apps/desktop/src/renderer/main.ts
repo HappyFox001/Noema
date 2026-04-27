@@ -1137,40 +1137,96 @@ personalitySelect.addEventListener('change', async () => {
   setStatus(`人格已切换为 ${selected}`)
 })
 
-// Clear history button
-const clearHistoryBtn = document.getElementById('clear-history-btn')
-clearHistoryBtn?.addEventListener('click', () => {
-  clearHistory()
+// ========== Section Clear Buttons ==========
+
+// Clear profile button
+const clearProfileBtn = document.getElementById('clear-profile-btn')
+clearProfileBtn?.addEventListener('click', async () => {
+  if (confirm('确定要清空用户画像吗？')) {
+    try {
+      const result = await window.electronAPI.clearProfile()
+      if (!result.success) {
+        throw new Error(result.error)
+      }
+      setStatus('用户画像已清空')
+      await loadUserProfile()
+    } catch (error: any) {
+      console.error('Clear profile error:', error)
+    }
+  }
 })
 
-async function clearHistory() {
-  if (confirm('确定要清除所有对话历史吗？')) {
+// Clear memories button
+const clearMemoriesBtn = document.getElementById('clear-memories-btn')
+clearMemoriesBtn?.addEventListener('click', async () => {
+  if (confirm('确定要清空所有重要记忆吗？')) {
+    try {
+      const result = await window.electronAPI.clearImportantMemories()
+      if (!result.success) {
+        throw new Error(result.error)
+      }
+      setStatus('重要记忆已清空')
+      await loadImportantMemories()
+    } catch (error: any) {
+      console.error('Clear memories error:', error)
+    }
+  }
+})
+
+// Clear summaries button
+const clearSummariesBtn = document.getElementById('clear-summaries-btn')
+clearSummariesBtn?.addEventListener('click', async () => {
+  if (confirm('确定要清空所有对话摘要吗？')) {
+    try {
+      const result = await window.electronAPI.clearConversationSummaries()
+      if (!result.success) {
+        throw new Error(result.error)
+      }
+      setStatus('对话摘要已清空')
+      await loadConversationSummaries()
+    } catch (error: any) {
+      console.error('Clear summaries error:', error)
+    }
+  }
+})
+
+// Clear conversations button
+const clearConversationsBtn = document.getElementById('clear-conversations-btn')
+clearConversationsBtn?.addEventListener('click', async () => {
+  if (confirm('确定要清空所有最近对话吗？')) {
+    try {
+      const result = await window.electronAPI.clearWorkingMemory()
+      if (!result.success) {
+        throw new Error(result.error)
+      }
+      clearTextDisplay()
+      setStatus('最近对话已清空')
+      await loadWorkingMemory()
+    } catch (error: any) {
+      console.error('Clear conversations error:', error)
+    }
+  }
+})
+
+// Reset all button
+const resetAllBtn = document.getElementById('reset-all-btn')
+resetAllBtn?.addEventListener('click', async () => {
+  if (confirm('确定要清除所有记忆数据吗？此操作不可恢复！')) {
     try {
       const result = await window.electronAPI.clearHistory()
       if (!result.success) {
         throw new Error(result.error)
       }
       clearTextDisplay()
-      setStatus('对话历史已清除')
+      setStatus('所有数据已重置')
+      await Promise.all([
+        loadUserProfile(),
+        loadImportantMemories(),
+        loadConversationSummaries(),
+        loadWorkingMemory()
+      ])
     } catch (error: any) {
-      console.error('Clear history error:', error)
-    }
-  }
-}
-
-// Clear profile button
-const clearProfileBtn = document.getElementById('clear-profile-btn')
-clearProfileBtn?.addEventListener('click', async () => {
-  if (confirm('确定要重置用户画像吗？')) {
-    try {
-      const result = await window.electronAPI.clearProfile()
-      if (!result.success) {
-        throw new Error(result.error)
-      }
-      setStatus('用户画像已重置')
-      await loadUserProfile()
-    } catch (error: any) {
-      console.error('Clear profile error:', error)
+      console.error('Reset all error:', error)
     }
   }
 })
@@ -1234,14 +1290,14 @@ function renderProfile(profile: UserProfile): void {
     currentMood: '当前心情',
   }
 
-  // 收集所有 basic 中的字段
-  const fields: { label: string; value: string }[] = []
+  // 收集所有 basic 中的字段（保留 key）
+  const fields: { key: string; label: string; value: string }[] = []
   if (basic) {
     for (const [key, value] of Object.entries(basic)) {
       if (value !== undefined && value !== null && value !== '') {
         const label = labelMap[key] || key
         const displayValue = typeof value === 'object' ? JSON.stringify(value) : String(value)
-        fields.push({ label, value: displayValue })
+        fields.push({ key, label, value: displayValue })
       }
     }
   }
@@ -1258,7 +1314,13 @@ function renderProfile(profile: UserProfile): void {
 
   let html = '<div class="profile-fields">'
   fields.forEach(f => {
-    html += `<div class="profile-field"><span class="field-label">${escapeHtml(f.label)}</span><span class="field-value">${escapeHtml(f.value)}</span></div>`
+    html += `
+      <div class="profile-field">
+        <span class="field-label">${escapeHtml(f.label)}</span>
+        <span class="field-value">${escapeHtml(f.value)}</span>
+        <button class="delete-icon-btn" data-field="${escapeHtml(f.key)}" title="删除"></button>
+      </div>
+    `
   })
   html += '</div>'
 
@@ -1271,6 +1333,31 @@ function renderProfile(profile: UserProfile): void {
   }
 
   profileContent.innerHTML = html
+
+  // Attach delete handlers
+  profileContent.querySelectorAll('.delete-icon-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation()
+      const field = (e.target as HTMLButtonElement).dataset.field
+      if (field && confirm(`确定要删除"${labelMap[field] || field}"吗？`)) {
+        await deleteProfileField(field)
+      }
+    })
+  })
+}
+
+async function deleteProfileField(field: string): Promise<void> {
+  try {
+    const result = await window.electronAPI.deleteProfileField(field)
+    if (!result.success) {
+      throw new Error(result.error)
+    }
+    await loadUserProfile()
+    setStatus('已删除')
+  } catch (error: any) {
+    console.error('Failed to delete profile field:', error)
+    setStatus('删除失败')
+  }
 }
 
 function renderProfileEditForm(profile: UserProfile): void {
@@ -1396,7 +1483,7 @@ function renderImportantMemories(memories: Record<string, string>): void {
           <span class="memory-key">${escapeHtml(key)}</span>
           <span class="memory-value">${escapeHtml(value)}</span>
         </div>
-        <button class="memory-delete-btn" data-key="${escapeHtml(key)}">删除</button>
+        <button class="delete-icon-btn" data-key="${escapeHtml(key)}" title="删除"></button>
       </div>
     `
   })
@@ -1405,8 +1492,9 @@ function renderImportantMemories(memories: Record<string, string>): void {
   importantMemoriesContent.innerHTML = html
 
   // Attach delete handlers
-  importantMemoriesContent.querySelectorAll('.memory-delete-btn').forEach(btn => {
+  importantMemoriesContent.querySelectorAll('.delete-icon-btn').forEach(btn => {
     btn.addEventListener('click', async (e) => {
+      e.stopPropagation()
       const key = (e.target as HTMLButtonElement).dataset.key
       if (key && confirm(`确定要删除"${key}"吗？`)) {
         await deleteImportantMemory(key)
@@ -1535,6 +1623,7 @@ function renderSummaries(summaries: Array<{
       <div class="summary-item">
         <div class="summary-header">
           <span class="summary-date">${date}</span>
+          <button class="delete-icon-btn" data-id="${escapeHtml(s.id)}" title="删除"></button>
         </div>
         <div class="summary-text">${escapeHtml(s.summary)}</div>
         ${s.keyTopics && s.keyTopics.length > 0 ? `
@@ -1548,6 +1637,31 @@ function renderSummaries(summaries: Array<{
   html += '</div>'
 
   summariesContent.innerHTML = html
+
+  // Attach delete handlers
+  summariesContent.querySelectorAll('.delete-icon-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation()
+      const id = (e.target as HTMLButtonElement).dataset.id
+      if (id && confirm('确定要删除这条摘要吗？')) {
+        await deleteConversationSummary(id)
+      }
+    })
+  })
+}
+
+async function deleteConversationSummary(id: string): Promise<void> {
+  try {
+    const result = await window.electronAPI.deleteConversationSummary(id)
+    if (!result.success) {
+      throw new Error(result.error)
+    }
+    await loadConversationSummaries()
+    setStatus('已删除')
+  } catch (error: any) {
+    console.error('Failed to delete summary:', error)
+    setStatus('删除失败')
+  }
 }
 
 async function loadWorkingMemory(): Promise<void> {
@@ -1569,6 +1683,7 @@ async function loadWorkingMemory(): Promise<void> {
 }
 
 function renderConversations(turns: Array<{
+  id: string
   role: 'user' | 'assistant'
   content: string
   timestamp?: number
@@ -1586,12 +1701,38 @@ function renderConversations(turns: Array<{
       <div class="conversation-item ${roleClass}">
         <span class="conversation-role">${roleLabel}</span>
         <span class="conversation-content">${escapeHtml(turn.content)}</span>
+        <button class="delete-icon-btn" data-id="${escapeHtml(turn.id)}" title="删除"></button>
       </div>
     `
   })
   html += '</div>'
 
   conversationsContent.innerHTML = html
+
+  // Attach delete handlers
+  conversationsContent.querySelectorAll('.delete-icon-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation()
+      const id = (e.target as HTMLButtonElement).dataset.id
+      if (id && confirm('确定要删除这条对话吗？')) {
+        await deleteConversationTurn(id)
+      }
+    })
+  })
+}
+
+async function deleteConversationTurn(id: string): Promise<void> {
+  try {
+    const result = await window.electronAPI.deleteConversationTurn(id)
+    if (!result.success) {
+      throw new Error(result.error)
+    }
+    await loadWorkingMemory()
+    setStatus('已删除')
+  } catch (error: any) {
+    console.error('Failed to delete conversation turn:', error)
+    setStatus('删除失败')
+  }
 }
 
 function escapeHtml(str: string): string {

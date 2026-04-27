@@ -114,15 +114,46 @@ declare global {
         error?: string
       }>
 
+      deleteConversationSummary: (id: string) => Promise<{
+        success: boolean
+        error?: string
+      }>
+
       getWorkingMemory: () => Promise<{
         success: boolean
         memory?: {
           recentTurns: Array<{
+            id: string
             role: 'user' | 'assistant'
             content: string
             timestamp?: number
           }>
         }
+        error?: string
+      }>
+
+      deleteConversationTurn: (id: string) => Promise<{
+        success: boolean
+        error?: string
+      }>
+
+      deleteProfileField: (field: string) => Promise<{
+        success: boolean
+        error?: string
+      }>
+
+      clearImportantMemories: () => Promise<{
+        success: boolean
+        error?: string
+      }>
+
+      clearConversationSummaries: () => Promise<{
+        success: boolean
+        error?: string
+      }>
+
+      clearWorkingMemory: () => Promise<{
+        success: boolean
         error?: string
       }>
 

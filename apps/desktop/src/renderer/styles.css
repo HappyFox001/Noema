@@ -1063,6 +1063,19 @@ body:not(.settings-open) #main-view {
   padding: 10px 12px;
   border-radius: 8px;
   max-width: 85%;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  position: relative;
+}
+
+.conversation-item .conversation-content {
+  flex: 1;
+}
+
+.conversation-item .delete-icon-btn {
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 .conversation-item.user {
@@ -1252,7 +1265,12 @@ body:not(.settings-open) #main-view {
 .profile-field {
   display: flex;
   gap: 8px;
-  align-items: baseline;
+  align-items: center;
+  position: relative;
+}
+
+.profile-field .delete-icon-btn {
+  margin-left: 4px;
 }
 
 .field-label {
@@ -1397,12 +1415,15 @@ body:not(.settings-open) #main-view {
   word-break: break-word;
 }
 
-.memory-delete-btn {
+/* ========== Delete Icon Button (统一样式) ========== */
+.delete-icon-btn {
   opacity: 0;
-  padding: 4px 8px;
-  font-size: 10px;
-  color: rgba(255, 100, 100, 0.7);
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  font-size: 0;
   background: transparent;
+  position: relative;
   border: none;
   cursor: pointer;
   transition: opacity 0.2s, color 0.2s;
@@ -1410,12 +1431,98 @@ body:not(.settings-open) #main-view {
   font-family: var(--font-ui);
 }
 
-.memory-item:hover .memory-delete-btn {
+/* SVG trash icon */
+.delete-icon-btn::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 14px;
+  height: 14px;
+  background-color: rgba(255, 80, 80, 0.7);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'%3E%3Cpath d='M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14zM10 11v6M14 11v6'/%3E%3C/svg%3E") center/contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'%3E%3Cpath d='M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14zM10 11v6M14 11v6'/%3E%3C/svg%3E") center/contain no-repeat;
+  transition: background-color 0.2s;
+}
+
+/* Show delete icon on hover for various containers */
+.memory-item:hover .delete-icon-btn,
+.profile-field:hover .delete-icon-btn,
+.summary-item:hover .delete-icon-btn,
+.conversation-item:hover .delete-icon-btn {
   opacity: 1;
 }
 
-.memory-delete-btn:hover {
+.delete-icon-btn:hover::before {
+  background-color: rgba(255, 80, 80, 1);
+}
+
+.delete-icon-btn:hover {
+  transform: scale(1.1);
+}
+
+/* ========== Header Actions ========== */
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.clear-section-btn {
+  font-size: 10px;
+  color: rgba(255, 100, 100, 0.6);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all 0.2s;
+  font-family: var(--font-ui);
+  opacity: 0;
+}
+
+.memory-card:hover .clear-section-btn {
+  opacity: 1;
+}
+
+.clear-section-btn:hover {
   color: rgba(255, 100, 100, 1);
+  background: rgba(255, 100, 100, 0.1);
+}
+
+/* ========== Reset All Section ========== */
+.reset-all-section {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px 0;
+  margin-top: 8px;
+}
+
+.reset-all-btn {
+  font-size: 11px;
+  color: rgba(255, 100, 100, 0.7);
+  background: transparent;
+  border: 1px solid rgba(255, 100, 100, 0.3);
+  border-radius: 6px;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: var(--font-ui);
+}
+
+.reset-all-btn:hover {
+  color: rgba(255, 100, 100, 1);
+  background: rgba(255, 100, 100, 0.1);
+  border-color: rgba(255, 100, 100, 0.5);
+}
+
+.reset-all-hint {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.3);
+  font-family: var(--font-ui);
 }
 
 /* ========== Memory Dialog ========== */

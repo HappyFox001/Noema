@@ -51,8 +51,26 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getConversationSummaries: () =>
     ipcRenderer.invoke('memory:getConversationSummaries'),
 
+  deleteConversationSummary: (id) =>
+    ipcRenderer.invoke('memory:deleteConversationSummary', id),
+
   getWorkingMemory: () =>
     ipcRenderer.invoke('memory:getWorkingMemory'),
+
+  deleteConversationTurn: (id) =>
+    ipcRenderer.invoke('memory:deleteConversationTurn', id),
+
+  deleteProfileField: (field) =>
+    ipcRenderer.invoke('memory:deleteProfileField', field),
+
+  clearImportantMemories: () =>
+    ipcRenderer.invoke('memory:clearImportantMemories'),
+
+  clearConversationSummaries: () =>
+    ipcRenderer.invoke('memory:clearConversationSummaries'),
+
+  clearWorkingMemory: () =>
+    ipcRenderer.invoke('memory:clearWorkingMemory'),
 
   // SDK 功能
   getPersonality: () =>

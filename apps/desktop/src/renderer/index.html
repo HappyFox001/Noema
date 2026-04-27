@@ -103,7 +103,10 @@
               <div class="memory-card">
                 <div class="memory-card-header">
                   <span class="memory-card-title">用户画像</span>
-                  <button id="edit-profile-btn" class="memory-edit-btn">编辑</button>
+                  <div class="header-actions">
+                    <button id="clear-profile-btn" class="clear-section-btn" title="清空">清空</button>
+                    <button id="edit-profile-btn" class="memory-edit-btn">编辑</button>
+                  </div>
                 </div>
                 <div id="profile-content" class="memory-card-content">
                   <div class="profile-loading">加载中...</div>
@@ -114,7 +117,10 @@
               <div class="memory-card">
                 <div class="memory-card-header">
                   <span class="memory-card-title">重要记忆</span>
-                  <button id="add-memory-btn" class="memory-add-btn">+ 添加</button>
+                  <div class="header-actions">
+                    <button id="clear-memories-btn" class="clear-section-btn" title="清空">清空</button>
+                    <button id="add-memory-btn" class="memory-add-btn">+ 添加</button>
+                  </div>
                 </div>
                 <div id="important-memories-content" class="memory-card-content">
                   <div class="profile-loading">加载中...</div>
@@ -125,7 +131,10 @@
               <div class="memory-card">
                 <div class="memory-card-header">
                   <span class="memory-card-title">对话摘要</span>
-                  <span id="summaries-count" class="memory-count">0 条</span>
+                  <div class="header-actions">
+                    <button id="clear-summaries-btn" class="clear-section-btn" title="清空">清空</button>
+                    <span id="summaries-count" class="memory-count">0 条</span>
+                  </div>
                 </div>
                 <div id="summaries-content" class="memory-card-content scrollable">
                   <div class="profile-loading">加载中...</div>
@@ -136,34 +145,20 @@
               <div class="memory-card">
                 <div class="memory-card-header">
                   <span class="memory-card-title">最近对话</span>
-                  <span id="conversations-count" class="memory-count">0 条</span>
+                  <div class="header-actions">
+                    <button id="clear-conversations-btn" class="clear-section-btn" title="清空">清空</button>
+                    <span id="conversations-count" class="memory-count">0 条</span>
+                  </div>
                 </div>
                 <div id="conversations-content" class="memory-card-content scrollable">
                   <div class="profile-loading">加载中...</div>
                 </div>
               </div>
 
-              <!-- 危险操作 -->
-              <div class="memory-card danger-zone">
-                <div class="memory-card-header">
-                  <span class="memory-card-title">危险操作</span>
-                </div>
-                <div class="memory-card-content">
-                  <div class="danger-row">
-                    <div class="danger-info">
-                      <span class="danger-label">清除对话历史</span>
-                      <span class="danger-desc">删除所有对话记录，不可恢复</span>
-                    </div>
-                    <button id="clear-history-btn" class="settings-btn danger">清除</button>
-                  </div>
-                  <div class="danger-row">
-                    <div class="danger-info">
-                      <span class="danger-label">重置用户画像</span>
-                      <span class="danger-desc">清除 EVA 对你的所有了解</span>
-                    </div>
-                    <button id="clear-profile-btn" class="settings-btn danger">重置</button>
-                  </div>
-                </div>
+              <!-- 全部重置 -->
+              <div class="reset-all-section">
+                <button id="reset-all-btn" class="reset-all-btn">全部重置</button>
+                <span class="reset-all-hint">清除所有记忆数据，不可恢复</span>
               </div>
             </section>
 

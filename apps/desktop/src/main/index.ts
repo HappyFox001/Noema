@@ -1200,6 +1200,84 @@ ipcMain.handle('memory:getWorkingMemory', async () => {
   }
 })
 
+// 删除对话摘要
+ipcMain.handle('memory:deleteConversationSummary', async (_, id: string) => {
+  if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
+
+  try {
+    await sdkInstance.memory.deleteConversationSummary(id)
+    return { success: true }
+  } catch (error: any) {
+    console.error('[Memory] Failed to delete conversation summary:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+// 删除对话轮次
+ipcMain.handle('memory:deleteConversationTurn', async (_, id: string) => {
+  if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
+
+  try {
+    await sdkInstance.memory.deleteConversationTurn(id)
+    return { success: true }
+  } catch (error: any) {
+    console.error('[Memory] Failed to delete conversation turn:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+// 删除用户画像字段
+ipcMain.handle('memory:deleteProfileField', async (_, field: string) => {
+  if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
+
+  try {
+    await sdkInstance.memory.deleteProfileField(field)
+    return { success: true }
+  } catch (error: any) {
+    console.error('[Memory] Failed to delete profile field:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+// 清空重要记忆
+ipcMain.handle('memory:clearImportantMemories', async () => {
+  if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
+
+  try {
+    await sdkInstance.memory.clearImportantMemories()
+    return { success: true }
+  } catch (error: any) {
+    console.error('[Memory] Failed to clear important memories:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+// 清空对话摘要
+ipcMain.handle('memory:clearConversationSummaries', async () => {
+  if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
+
+  try {
+    await sdkInstance.memory.clearConversationSummaries()
+    return { success: true }
+  } catch (error: any) {
+    console.error('[Memory] Failed to clear conversation summaries:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+// 清空最近对话
+ipcMain.handle('memory:clearWorkingMemory', async () => {
+  if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
+
+  try {
+    await sdkInstance.memory.clearWorkingMemory()
+    return { success: true }
+  } catch (error: any) {
+    console.error('[Memory] Failed to clear working memory:', error)
+    return { success: false, error: error.message }
+  }
+})
+
 // 获取人格信息
 ipcMain.handle('sdk:getPersonality', async () => {
   if (!sdkInstance) return null

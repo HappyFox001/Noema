@@ -572,6 +572,86 @@ ${conversationText}`
   }
 
   /**
+   * 删除对话摘要
+   */
+  async deleteConversationSummary(id: string): Promise<void> {
+    this.conversationSummaries = this.conversationSummaries.filter(s => s.id !== id)
+
+    if (this.persistenceEnabled) {
+      await runSqlite(this.persistenceDbPath, `
+        DELETE FROM conversation_summaries WHERE id = ${sqlText(id)};
+      `)
+    }
+  }
+
+  /**
+   * 删除对话轮次
+   */
+  async deleteConversationTurn(id: string): Promise<void> {
+    this.workingMemory = this.workingMemory.filter(t => t.id !== id)
+
+    if (this.persistenceEnabled) {
+      await runSqlite(this.persistenceDbPath, `
+        DELETE FROM conversation_turns WHERE id = ${sqlText(id)};
+      `)
+    }
+  }
+
+  /**
+   * 删除用户画像字段
+   */
+  async deleteProfileField(field: string): Promise<void> {
+    delete (this.userProfile.basic as any)[field]
+
+    if (this.persistenceEnabled) {
+      await runSqlite(this.persistenceDbPath, `
+        DELETE FROM user_profile WHERE key = ${sqlText(field)};
+      `)
+    }
+  }
+
+  /**
+   * 清空重要记忆
+   */
+  async clearImportantMemories(): Promise<void> {
+    this.userProfile.importantMemories.clear()
+
+    if (this.persistenceEnabled) {
+      await runSqlite(this.persistenceDbPath, `
+        DELETE FROM important_memories;
+      `)
+    }
+  }
+
+  /**
+   * 清空对话摘要
+   */
+  async clearConversationSummaries(): Promise<void> {
+    this.conversationSummaries = []
+
+    if (this.persistenceEnabled) {
+      await runSqlite(this.persistenceDbPath, `
+        DELETE FROM conversation_summaries;
+      `)
+    }
+  }
+
+  /**
+   * 清空最近对话
+   */
+  async clearWorkingMemory(): Promise<void> {
+    this.workingMemory = []
+    this.turnCounter = 0
+
+    if (this.persistenceEnabled) {
+      await runSqlite(this.persistenceDbPath, `
+        DELETE FROM conversation_turns;
+        DELETE FROM metadata WHERE key = 'turn_counter';
+      `)
+    }
+  }
+
+  /**
    * 初始化 SQLite 表结构
    */
   private async ensureDatabase(): Promise<void> {
