@@ -99,34 +99,80 @@ export const PROMPTS = {
    */
   memory: {
     /** 对话摘要生成提示 */
-    summarizeConversation: `请总结以下对话，提取关键信息和主题。
+    summarizeConversation: `请为以下对话生成事实性摘要。
+
+要求：
+1. summary 必须是具体的事件描述，格式为："[人物]和用户[在什么场景/时间][做了什么事]"
+   - 正确示例："知遥和用户聊了用户今天加班到很晚的事，用户抱怨工作压力大"
+   - 正确示例："知遥帮用户发了一条微信消息给朋友，之后两人聊了周末计划"
+   - 错误示例："进行了深入的情感交流"（太抽象）
+   - 错误示例："AI与用户之间的深层情感连接"（太抽象）
+
+2. keyTopics 必须是具体事件或关键记忆点，不要抽象概念
+   - 正确示例：["用户加班到10点", "用户想请假", "讨论了周末去哪玩"]
+   - 正确示例：["帮用户发微信", "用户很想念朋友", "用户提到下周要出差"]
+   - 错误示例：["情感慰藉", "思念之情的抒发"]（太抽象）
 
 请以 JSON 格式返回：
 {
-  "summary": "对话的简洁总结（1-2 句话）",
-  "keyTopics": ["主题1", "主题2", ...]
+  "summary": "具体事件描述（1-2句话，说明发生了什么）",
+  "keyTopics": ["具体事件1", "具体事件2", ...]
 }`,
 
-    /** 用户画像提取提示 */
-    extractUserProfile: `请从以下对话中提取用户的信息和重要记忆。
+    /** 用户画像更新提示（状态机模式） */
+    updateUserProfile: (currentProfile: {
+      name?: string
+      nickname?: string
+      age?: number
+      gender?: string
+      location?: string
+      occupation?: string
+    }, currentMemories: Record<string, string>) => `你是记忆管理系统。根据对话内容，更新用户画像和重要记忆。
 
-请以 JSON 格式返回：
+## 当前用户画像
+${Object.keys(currentProfile).length > 0 ? JSON.stringify(currentProfile, null, 2) : '（空）'}
+
+## 当前重要记忆
+${Object.keys(currentMemories).length > 0 ? JSON.stringify(currentMemories, null, 2) : '（空）'}
+
+## 用户画像字段（固定，只能更新这些）
+- name: 用户真实姓名
+- nickname: 用户希望被称呼的方式
+- age: 年龄
+- gender: 性别
+- location: 所在城市/地区
+- occupation: 职业
+
+## 重要记忆说明
+重要记忆是你和用户之间的关系性记忆，例如：
+- first_meeting: 第一次见面的情景
+- shared_promise: 你们之间的约定
+- user_dream: 用户告诉你的梦想
+- important_date: 重要的日期（生日、纪念日等）
+- emotional_moment: 一起经历的重要时刻
+- user_secret: 用户只告诉你的秘密
+- recurring_topic: 经常聊的话题
+
+## 输出格式
+请输出 JSON 操作指令：
 {
-  "basicProfile": {
-    "name": "提取到的姓名（如果有）",
-    "location": "提取到的地点（如果有）",
-    "occupation": "提取到的职业（如果有）"
+  "profile": {
+    "update": { "字段名": "新值" },
+    "delete": ["要清除的字段名"]
   },
-  "importantMemories": {
-    "偏好": "提取到的偏好信息",
-    "习惯": "提取到的习惯信息"
+  "memories": {
+    "add": { "key": "新记忆内容" },
+    "update": { "已有key": "更新后的内容" },
+    "delete": ["要删除的key"]
   }
 }
 
-注意：
-- 只提取明确提到的信息，不要猜测
-- 如果某项信息没有提及，不要返回该字段
-- 重要记忆用简洁的键值对表示`,
+## 规则
+- 只处理对话中明确提到的信息，不要猜测
+- 如果没有任何变化，返回空操作：{"profile": {}, "memories": {}}
+- profile.delete 用于用户明确说之前的信息错了
+- memories.delete 用于记忆已过时或用户要求忘记
+- memories 的 key 使用英文下划线格式`,
   },
 
   /**

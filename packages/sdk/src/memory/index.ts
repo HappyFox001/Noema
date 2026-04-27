@@ -317,7 +317,7 @@ ${conversationText}`
   }
 
   /**
-   * 从对话更新用户画像（Part 2）
+   * 从对话更新用户画像（状态机模式）
    */
   private async updateUserProfileFromConversation(turns: ConversationTurn[]): Promise<void> {
     if (turns.length === 0) return
@@ -326,9 +326,25 @@ ${conversationText}`
       .map(t => `${t.role === 'user' ? '用户' : 'AI'}: ${t.content}`)
       .join('\n')
 
-    const prompt = `${PROMPTS.memory.extractUserProfile}
+    // 准备当前状态
+    const currentProfile = {
+      name: this.userProfile.basic.name,
+      nickname: this.userProfile.basic.nickname,
+      age: this.userProfile.basic.age,
+      gender: this.userProfile.basic.gender,
+      location: this.userProfile.basic.location,
+      occupation: this.userProfile.basic.occupation,
+    }
+    // 过滤掉 undefined
+    const filteredProfile = Object.fromEntries(
+      Object.entries(currentProfile).filter(([_, v]) => v !== undefined)
+    ) as typeof currentProfile
 
-对话内容：
+    const currentMemories = Object.fromEntries(this.userProfile.importantMemories)
+
+    const prompt = `${PROMPTS.memory.updateUserProfile(filteredProfile, currentMemories)}
+
+## 最近对话
 ${conversationText}`
 
     try {
@@ -337,22 +353,75 @@ ${conversationText}`
       ])
 
       const parsed = this.parseJSONResponse(response.content)
+      let profileChanges = 0
+      let memoryChanges = 0
 
-      // 更新基本画像
-      if (parsed.basicProfile) {
-        this.updateUserBasicProfile(parsed.basicProfile)
+      // 处理 profile 操作
+      if (parsed.profile) {
+        // 更新字段
+        if (parsed.profile.update) {
+          const allowedFields = ['name', 'nickname', 'age', 'gender', 'location', 'occupation']
+          for (const [key, value] of Object.entries(parsed.profile.update)) {
+            if (allowedFields.includes(key) && value !== undefined && value !== null) {
+              (this.userProfile.basic as any)[key] = value
+              profileChanges++
+            }
+          }
+        }
+        // 删除字段
+        if (Array.isArray(parsed.profile.delete)) {
+          for (const key of parsed.profile.delete) {
+            if (key in this.userProfile.basic) {
+              delete (this.userProfile.basic as any)[key]
+              profileChanges++
+            }
+          }
+        }
       }
 
-      // 更新重要记忆
-      if (parsed.importantMemories) {
-        Object.entries(parsed.importantMemories).forEach(([key, value]) => {
-          this.addImportantMemory(key, String(value))
-        })
+      // 处理 memories 操作
+      if (parsed.memories) {
+        // 添加新记忆
+        if (parsed.memories.add) {
+          for (const [key, value] of Object.entries(parsed.memories.add)) {
+            if (!this.userProfile.importantMemories.has(key)) {
+              this.userProfile.importantMemories.set(key, String(value))
+              memoryChanges++
+            }
+          }
+        }
+        // 更新已有记忆
+        if (parsed.memories.update) {
+          for (const [key, value] of Object.entries(parsed.memories.update)) {
+            if (this.userProfile.importantMemories.has(key)) {
+              this.userProfile.importantMemories.set(key, String(value))
+              memoryChanges++
+            }
+          }
+        }
+        // 删除记忆
+        if (Array.isArray(parsed.memories.delete)) {
+          for (const key of parsed.memories.delete) {
+            if (this.userProfile.importantMemories.delete(key)) {
+              memoryChanges++
+            }
+          }
+        }
+
+        // 限制记忆数量（保留最新的 20 条）
+        if (this.userProfile.importantMemories.size > this.maxImportantMemories) {
+          const entries = Array.from(this.userProfile.importantMemories.entries())
+          const toRemove = entries.slice(0, entries.length - this.maxImportantMemories)
+          for (const [key] of toRemove) {
+            this.userProfile.importantMemories.delete(key)
+          }
+        }
       }
 
-      console.log('[Memory] User profile updated:', {
-        basic: Object.keys(parsed.basicProfile || {}),
-        memories: Object.keys(parsed.importantMemories || {})
+      console.log('[Memory] Profile update:', {
+        profileChanges,
+        memoryChanges,
+        operations: parsed
       })
     } catch (error) {
       console.error('Failed to update user profile:', error)
