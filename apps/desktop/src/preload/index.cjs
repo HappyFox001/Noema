@@ -185,6 +185,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.send('latency:firstAudioPlay')
   },
 
+  notifyAudioScheduled: (metrics) => {
+    ipcRenderer.send('latency:audioScheduled', metrics)
+  },
+
   onLatencyData: (callback) => {
     ipcRenderer.on('latency:data', (_, data) => callback(data))
   },

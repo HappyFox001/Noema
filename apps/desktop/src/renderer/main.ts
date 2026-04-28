@@ -250,10 +250,21 @@ class AudioPlayer {
 
     const currentTime = this.audioContext.currentTime
     const startTime = Math.max(currentTime + 0.01, this.nextStartTime)
+    const previousEndTime = this.nextStartTime
+    const underrunMs = previousEndTime > 0
+      ? Math.max(0, (currentTime - previousEndTime) * 1000)
+      : 0
+    const scheduleDelayMs = Math.max(0, (startTime - currentTime) * 1000)
 
     source.start(startTime)
     this.nextStartTime = startTime + buffer.duration
     this.onChunkScheduled?.({ startTime, duration: buffer.duration })
+    window.electronAPI.notifyAudioScheduled({
+      durationMs: buffer.duration * 1000,
+      scheduleDelayMs,
+      bufferAheadMs: Math.max(0, (this.nextStartTime - currentTime) * 1000),
+      underrunMs,
+    })
 
     // 记录当前 stopGeneration，用于检测 onended 回调时是否已经被 stop()
     const generationAtStart = this.stopGeneration
@@ -317,17 +328,15 @@ class AudioPlayer {
         this.isPlaying = true
         this.nextStartTime = this.audioContext!.currentTime + 0.01
 
-        // 延迟追踪：首个音频开始播放
-        if (this.isFirstAudioOfSession) {
-          this.isFirstAudioOfSession = false
-          console.log('[AudioPlayer] First audio of session - notifying latency tracker')
-          window.electronAPI.notifyFirstAudioPlay()
-        }
-
         console.log('[AudioPlayer] Starting playback')
       }
 
       this.playBuffer(audioBuffer)
+      if (this.isFirstAudioOfSession) {
+        this.isFirstAudioOfSession = false
+        console.log('[AudioPlayer] First audio of session - notifying latency tracker')
+        window.electronAPI.notifyFirstAudioPlay()
+      }
     } catch (error) {
       console.error('[AudioPlayer] Failed to add audio chunk:', error)
     } finally {

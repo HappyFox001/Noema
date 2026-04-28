@@ -285,6 +285,12 @@ declare global {
 
       // 延迟追踪
       notifyFirstAudioPlay: () => void
+      notifyAudioScheduled: (metrics: {
+        durationMs: number
+        scheduleDelayMs: number
+        bufferAheadMs: number
+        underrunMs: number
+      }) => void
       onLatencyData: (callback: (data: {
         sessionId: number
         total?: number
@@ -295,6 +301,15 @@ declare global {
           firstTokenToTTSText?: number
           ttsTextToAudio?: number
           audioToPlayback?: number
+        }
+        ttsPlayback?: {
+          chunks: number
+          totalAudioMs: number
+          avgArrivalGapMs?: number
+          maxArrivalGapMs?: number
+          maxScheduleDelayMs?: number
+          minBufferAheadMs?: number
+          maxUnderrunMs?: number
         }
       }) => void) => void
 

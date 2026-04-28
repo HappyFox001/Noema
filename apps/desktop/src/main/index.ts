@@ -176,6 +176,11 @@ class LatencyTracker {
   private timestamps: Map<string, number> = new Map()
   private sessionId: number = 0
   private sendToRenderer?: (data: LatencyData) => void
+  private ttsChunkArrivalTimes: number[] = []
+  private playbackStats: TTSPlaybackMetrics = {
+    chunks: 0,
+    totalAudioMs: 0,
+  }
 
   constructor() {
     this.reset()
@@ -188,12 +193,43 @@ class LatencyTracker {
   reset(): void {
     this.sessionId = Date.now()
     this.timestamps.clear()
+    this.ttsChunkArrivalTimes = []
+    this.playbackStats = {
+      chunks: 0,
+      totalAudioMs: 0,
+    }
   }
 
   mark(point: LatencyPoint): void {
     const now = performance.now()
     this.timestamps.set(point, now)
     console.log(`[Latency] ${point}: ${now.toFixed(1)}ms`)
+  }
+
+  recordTTSAudioChunk(): void {
+    this.ttsChunkArrivalTimes.push(performance.now())
+  }
+
+  recordPlaybackSchedule(metrics: {
+    durationMs: number
+    scheduleDelayMs: number
+    bufferAheadMs: number
+    underrunMs: number
+  }): void {
+    this.playbackStats.chunks += 1
+    this.playbackStats.totalAudioMs += metrics.durationMs
+    this.playbackStats.maxScheduleDelayMs = Math.max(
+      this.playbackStats.maxScheduleDelayMs ?? 0,
+      metrics.scheduleDelayMs
+    )
+    this.playbackStats.minBufferAheadMs = Math.min(
+      this.playbackStats.minBufferAheadMs ?? metrics.bufferAheadMs,
+      metrics.bufferAheadMs
+    )
+    this.playbackStats.maxUnderrunMs = Math.max(
+      this.playbackStats.maxUnderrunMs ?? 0,
+      metrics.underrunMs
+    )
   }
 
   calculate(): LatencyData | null {
@@ -237,11 +273,14 @@ class LatencyTracker {
 
     const total = firstAudioPlay ? firstAudioPlay - startPoint : undefined
 
+    const ttsPlayback = this.calculateTTSPlaybackMetrics()
+
     const data: LatencyData = {
       sessionId: this.sessionId,
       total,
       intervals,
-      timestamps: Object.fromEntries(this.timestamps) as Record<LatencyPoint, number>
+      timestamps: Object.fromEntries(this.timestamps) as Record<LatencyPoint, number>,
+      ttsPlayback,
     }
 
     console.log('[Latency] ========== Summary ==========')
@@ -257,12 +296,43 @@ class LatencyTracker {
     console.log(`[Latency]   ├─ Token → TTS Text:  ${intervals.firstTokenToTTSText?.toFixed(0) ?? '?'}ms`)
     console.log(`[Latency]   ├─ TTS Text → Audio:  ${intervals.ttsTextToAudio?.toFixed(0) ?? '?'}ms`)
     console.log(`[Latency]   └─ Audio → Playback:  ${intervals.audioToPlayback?.toFixed(0) ?? '?'}ms`)
+    if (ttsPlayback) {
+      console.log(
+        `[Latency]   └─ Playback Health: chunks=${ttsPlayback.chunks}, audio=${ttsPlayback.totalAudioMs.toFixed(0)}ms, ` +
+        `arrivalGap(avg/max)=${ttsPlayback.avgArrivalGapMs?.toFixed(0) ?? '?'} / ${ttsPlayback.maxArrivalGapMs?.toFixed(0) ?? '?'}ms, ` +
+        `bufferAhead(min)=${ttsPlayback.minBufferAheadMs?.toFixed(0) ?? '?'}ms, underrun(max)=${ttsPlayback.maxUnderrunMs?.toFixed(0) ?? '?'}ms`
+      )
+    }
     console.log('[Latency] ================================')
 
     // 发送到 Renderer
     this.sendToRenderer?.(data)
 
     return data
+  }
+
+  private calculateTTSPlaybackMetrics(): TTSPlaybackMetrics | undefined {
+    if (this.playbackStats.chunks === 0 && this.ttsChunkArrivalTimes.length === 0) {
+      return undefined
+    }
+
+    const arrivalGaps: number[] = []
+    for (let i = 1; i < this.ttsChunkArrivalTimes.length; i++) {
+      arrivalGaps.push(this.ttsChunkArrivalTimes[i] - this.ttsChunkArrivalTimes[i - 1])
+    }
+
+    const avgArrivalGapMs = arrivalGaps.length > 0
+      ? arrivalGaps.reduce((sum, value) => sum + value, 0) / arrivalGaps.length
+      : undefined
+    const maxArrivalGapMs = arrivalGaps.length > 0
+      ? Math.max(...arrivalGaps)
+      : undefined
+
+    return {
+      ...this.playbackStats,
+      avgArrivalGapMs,
+      maxArrivalGapMs,
+    }
   }
 }
 
@@ -289,11 +359,22 @@ interface LatencyIntervals {
   audioToPlayback?: number
 }
 
+interface TTSPlaybackMetrics {
+  chunks: number
+  totalAudioMs: number
+  avgArrivalGapMs?: number
+  maxArrivalGapMs?: number
+  maxScheduleDelayMs?: number
+  minBufferAheadMs?: number
+  maxUnderrunMs?: number
+}
+
 interface LatencyData {
   sessionId: number
   total?: number
   intervals: LatencyIntervals
   timestamps: Record<LatencyPoint, number>
+  ttsPlayback?: TTSPlaybackMetrics
 }
 
 // 全局延迟追踪器实例
@@ -339,6 +420,7 @@ class LatencyObserver implements FrameObserver<Frame> {
         }
         return
       case 'tts_audio':
+        this.tracker.recordTTSAudioChunk()
         if (!this.firstTTSAudioSeen) {
           this.firstTTSAudioSeen = true
           this.tracker.mark('first_tts_audio')
@@ -348,7 +430,6 @@ class LatencyObserver implements FrameObserver<Frame> {
         if (!this.firstAudioPlaySeen) {
           this.firstAudioPlaySeen = true
           this.tracker.mark('first_audio_play')
-          this.tracker.calculate()
         }
         return
     }
@@ -363,6 +444,10 @@ class LatencyObserver implements FrameObserver<Frame> {
       this.firstTTSTextSeen = true
       this.tracker.mark('first_tts_text')
     }
+  }
+
+  calculate(): LatencyData | null {
+    return this.tracker.calculate()
   }
 
   private resetFirstMarkers(): void {
@@ -1357,6 +1442,7 @@ ipcMain.on('playback:complete', (_, requestId: number) => {
     playbackResolvers.delete(requestId)
     resolver()
   }
+  latencyObserver.calculate()
 })
 
 // 接收 Renderer 的首个音频播放通知
@@ -1366,6 +1452,15 @@ ipcMain.on('latency:firstAudioPlay', () => {
     kind: 'data',
     timestamp: Date.now(),
   })
+})
+
+ipcMain.on('latency:audioScheduled', (_, metrics: {
+  durationMs: number
+  scheduleDelayMs: number
+  bufferAheadMs: number
+  underrunMs: number
+}) => {
+  latencyTracker.recordPlaybackSchedule(metrics)
 })
 
 // 设置延迟数据发送到 Renderer
