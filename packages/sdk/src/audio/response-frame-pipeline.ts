@@ -153,3 +153,239 @@ export class SentenceAggregatorProcessor implements ResponseFrameProcessor {
     return leadingOffset + limited.length
   }
 }
+
+export interface ResponseTTSService {
+  startStreaming(): Promise<void>
+  pushText(text: string): Promise<void>
+  finishStreaming(): Promise<void>
+  close(): Promise<void>
+}
+
+export interface ResponseTTSProcessorOptions {
+  isCancelled: () => boolean
+  isEnabled: () => boolean
+  getService: () => ResponseTTSService | null
+  sanitizeText?: (text: string) => string
+  onFirstText?: () => void
+  onText?: (text: string) => void
+  onError?: (error: Error) => void
+  waitForPlayback?: (phase: 'reply' | 'task_result') => Promise<void>
+  log?: (message: string) => void
+}
+
+export class ResponseTTSProcessor implements ResponseFrameProcessor {
+  private firstText = true
+
+  constructor(private readonly options: ResponseTTSProcessorOptions) {}
+
+  async processFrame(frame: ResponseFrame, context: { signal: AbortSignal }): Promise<void> {
+    if (frame.type === 'response_interruption') {
+      this.firstText = true
+      return
+    }
+
+    if (this.options.isCancelled() || context.signal.aborted) {
+      return
+    }
+
+    if (frame.type === 'phase_start') {
+      await this.startStreaming(context.signal)
+      return
+    }
+
+    if (frame.type === 'tts_text') {
+      await this.pushText(frame.text, context.signal)
+      return
+    }
+
+    if (frame.type === 'phase_end') {
+      await this.finishStreaming(frame.phase, context.signal)
+    }
+  }
+
+  private async startStreaming(signal: AbortSignal): Promise<void> {
+    const service = this.options.getService()
+    if (!this.options.isEnabled() || !service || signal.aborted) {
+      return
+    }
+
+    try {
+      await service.startStreaming()
+    } catch (error: any) {
+      this.options.log?.(`[TTS] Failed to start streaming: ${error.message}`)
+      this.options.onError?.(error)
+      await service.close().catch(() => undefined)
+    }
+  }
+
+  private async pushText(text: string, signal: AbortSignal): Promise<void> {
+    const service = this.options.getService()
+    if (!this.options.isEnabled() || !service || signal.aborted) {
+      return
+    }
+
+    const sanitizedText = this.options.sanitizeText?.(text) ?? text.trim()
+    if (!sanitizedText) {
+      return
+    }
+
+    try {
+      if (this.firstText) {
+        this.firstText = false
+        this.options.onFirstText?.()
+      }
+
+      this.options.onText?.(sanitizedText)
+      await service.pushText(sanitizedText)
+    } catch (error: any) {
+      this.options.log?.(`[TTS] Failed to push text frame: ${error.message}`)
+      this.options.onError?.(error)
+    }
+  }
+
+  private async finishStreaming(
+    phase: 'reply' | 'task_result',
+    signal: AbortSignal
+  ): Promise<void> {
+    const service = this.options.getService()
+    if (!this.options.isEnabled() || !service || signal.aborted) {
+      return
+    }
+
+    try {
+      await service.finishStreaming()
+    } catch (error: any) {
+      this.options.log?.(`[TTS] Failed to finish streaming: ${error.message}`)
+      this.options.onError?.(error)
+      return
+    }
+
+    if (signal.aborted || this.options.isCancelled()) {
+      return
+    }
+
+    await this.options.waitForPlayback?.(phase)
+  }
+}
+
+export interface ResponseDisplayProcessorOptions {
+  isCancelled: () => boolean
+  startPhase: (phase: 'reply' | 'task_result') => void
+  endPhase: (phase: 'reply' | 'task_result') => Promise<void> | void
+  pushTextDelta: (text: string) => void
+  startTask: (taskDescription: string) => void
+  endTask: (result: { success: boolean; summary: string; error?: string }) => void
+}
+
+export class ResponseDisplayProcessor implements ResponseFrameProcessor {
+  constructor(private readonly options: ResponseDisplayProcessorOptions) {}
+
+  async processFrame(frame: ResponseFrame, context: { signal: AbortSignal }): Promise<void> {
+    if (this.options.isCancelled() || context.signal.aborted) {
+      return
+    }
+
+    switch (frame.type) {
+      case 'phase_start':
+        this.options.startPhase(frame.phase)
+        return
+      case 'phase_end':
+        await this.options.endPhase(frame.phase)
+        return
+      case 'display_text_delta':
+        this.options.pushTextDelta(frame.text)
+        return
+      case 'task_start':
+        this.options.startTask(frame.taskDescription)
+        return
+      case 'task_end':
+        this.options.endTask(frame.result)
+        return
+    }
+  }
+}
+
+export interface LLMStreamBridgeOptions {
+  queueFrame: (frame: ResponseFrame) => Promise<void> | void
+  isCancelled: () => boolean
+  shouldUseTTS: () => boolean
+  onFirstToken?: () => void
+  log?: (message: string) => void
+}
+
+export class LLMStreamBridgeProcessor {
+  private firstToken = true
+
+  constructor(private readonly options: LLMStreamBridgeOptions) {}
+
+  async onPhaseStart(phase: 'reply' | 'task_result'): Promise<void> {
+    if (this.options.isCancelled()) {
+      this.options.log?.(`[Turn] Phase start skipped - turn cancelled`)
+      return
+    }
+
+    await this.options.queueFrame({
+      type: 'phase_start',
+      phase,
+      timestamp: Date.now(),
+    })
+  }
+
+  async onTextDelta(delta: string): Promise<void> {
+    if (!delta || this.options.isCancelled()) {
+      return
+    }
+
+    if (this.firstToken) {
+      this.firstToken = false
+      this.options.onFirstToken?.()
+    }
+
+    await this.options.queueFrame({
+      type: this.options.shouldUseTTS() ? 'llm_text_delta' : 'display_text_delta',
+      text: delta,
+      timestamp: Date.now(),
+    })
+  }
+
+  async onPhaseEnd(phase: 'reply' | 'task_result'): Promise<void> {
+    if (this.options.isCancelled()) {
+      this.options.log?.(`[Turn] Phase end skipped - turn cancelled`)
+      return
+    }
+
+    await this.options.queueFrame({
+      type: 'llm_text_end',
+      timestamp: Date.now(),
+    })
+    await this.options.queueFrame({
+      type: 'phase_end',
+      phase,
+      timestamp: Date.now(),
+    })
+  }
+
+  async onTaskStart(taskDescription: string): Promise<void> {
+    if (this.options.isCancelled()) {
+      return
+    }
+
+    await this.options.queueFrame({
+      type: 'task_start',
+      taskDescription,
+      timestamp: Date.now(),
+    })
+  }
+
+  async onTaskEnd(result: { success: boolean; summary: string; error?: string }): Promise<void> {
+    if (this.options.isCancelled()) {
+      return
+    }
+
+    await this.options.queueFrame({
+      type: 'task_end',
+      result,
+      timestamp: Date.now(),
+    })
+  }
+}

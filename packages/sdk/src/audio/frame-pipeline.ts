@@ -12,17 +12,22 @@ export interface Frame {
 }
 
 export interface FrameProcessor<TFrame extends Frame = Frame> {
-  processFrame(frame: TFrame): Promise<void> | void
+  processFrame(frame: TFrame, context: FrameProcessContext): Promise<void> | void
 }
 
 export interface FramePipelineOptions {
   interruptFrameTypes?: string[]
 }
 
+export interface FrameProcessContext {
+  signal: AbortSignal
+}
+
 export class FramePipeline<TFrame extends Frame = Frame> {
   private queue: Promise<void> = Promise.resolve()
   private processors: FrameProcessor<TFrame>[] = []
   private stopped = false
+  private currentTaskAbortController: AbortController | null = null
   private readonly interruptFrameTypes: Set<string>
 
   constructor(
@@ -46,6 +51,8 @@ export class FramePipeline<TFrame extends Frame = Frame> {
     }
 
     if (this.interruptFrameTypes.has(frame.type)) {
+      this.currentTaskAbortController?.abort()
+      this.currentTaskAbortController = null
       this.queue = Promise.resolve()
     }
 
@@ -54,11 +61,26 @@ export class FramePipeline<TFrame extends Frame = Frame> {
         return
       }
 
+      const taskAbortController = new AbortController()
+      this.currentTaskAbortController = taskAbortController
+      const context: FrameProcessContext = {
+        signal: taskAbortController.signal,
+      }
+
       for (const processor of this.processors) {
-        await processor.processFrame(frame)
-        if (this.stopped) {
+        if (context.signal.aborted) {
           return
         }
+
+        await processor.processFrame(frame, context)
+
+        if (this.stopped || context.signal.aborted) {
+          return
+        }
+      }
+
+      if (this.currentTaskAbortController === taskAbortController) {
+        this.currentTaskAbortController = null
       }
     })
 
@@ -71,11 +93,15 @@ export class FramePipeline<TFrame extends Frame = Frame> {
   }
 
   reset(): void {
+    this.currentTaskAbortController?.abort()
+    this.currentTaskAbortController = null
     this.queue = Promise.resolve()
     this.stopped = false
   }
 
   stop(): void {
+    this.currentTaskAbortController?.abort()
+    this.currentTaskAbortController = null
     this.stopped = true
     this.queue = Promise.resolve()
   }
