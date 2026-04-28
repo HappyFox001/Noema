@@ -406,11 +406,13 @@ class StreamingASRSession {
   private voiceFramePipeline = voiceGraphPipeline.createInputLane('input')
   private audioFrameSequence = 0
   private commitInFlight = false
-  private pendingUserTurnEnd: UserTurnStoppedParams | null = null
+  private pendingUserTurnEnd: { voiceTurnId: number; params: UserTurnStoppedParams } | null = null
   private vadStopCommitPromise: Promise<string> | null = null
   private vadStopCommitText: string | null = null
   private vadStopCommitRunning = false
   private pendingVadStopCommitCount = 0
+  private voiceTurnSequence = 0
+  private activeVoiceTurnId = 0
 
   // 回调
   private onTranscript: ((text: string) => void) | null = null
@@ -491,6 +493,7 @@ class StreamingASRSession {
       // 不打印、不进入最终用户文本。
       void this.voiceFramePipeline.queueFrame({
         type: 'transcription',
+        voiceTurnId: this.activeVoiceTurnId,
         text: event.text,
         finalized: event.final,
         timestamp: Date.now(),
@@ -547,8 +550,10 @@ class StreamingASRSession {
     // 设置轮次控制器事件
     const events: TurnControllerEvents = {
       onUserTurnStart: () => {
+        const voiceTurnId = this.beginVoiceTurn()
         void this.voiceFramePipeline.queueFrame({
           type: 'user_turn_start',
+          voiceTurnId,
           timestamp: Date.now(),
         })
       },
@@ -560,13 +565,16 @@ class StreamingASRSession {
         latencyTracker.mark('vad_speech_stop')
         void this.voiceFramePipeline.queueFrame({
           type: 'vad_speech_stop',
+          voiceTurnId: this.activeVoiceTurnId,
           timestamp: Date.now(),
         })
       },
 
       onUserTurnEnd: async (params) => {
+        const voiceTurnId = this.activeVoiceTurnId
         void this.voiceFramePipeline.queueFrame({
           type: 'user_turn_end',
+          voiceTurnId,
           params,
           timestamp: Date.now(),
         })
@@ -575,6 +583,7 @@ class StreamingASRSession {
       onInterruption: () => {
         void this.voiceFramePipeline.queueFrame({
           type: 'interruption',
+          voiceTurnId: this.activeVoiceTurnId,
           timestamp: Date.now(),
         })
       },
@@ -582,6 +591,7 @@ class StreamingASRSession {
       onUserTurnTimeout: () => {
         void this.voiceFramePipeline.queueFrame({
           type: 'user_turn_timeout',
+          voiceTurnId: this.activeVoiceTurnId,
           timestamp: Date.now(),
         })
       },
@@ -614,6 +624,11 @@ class StreamingASRSession {
             return
           }
 
+          if (!this.isCurrentVoiceTurn(frame.voiceTurnId)) {
+            this.log(`Dropping stale transcription for voice turn #${frame.voiceTurnId}`)
+            return
+          }
+
           if (!frame.finalized) {
             return
           }
@@ -629,6 +644,10 @@ class StreamingASRSession {
         processFrame: (frame) => {
           switch (frame.type) {
             case 'user_turn_start':
+              if (!this.isCurrentVoiceTurn(frame.voiceTurnId)) {
+                this.log(`Dropping stale user_turn_start for voice turn #${frame.voiceTurnId}`)
+                return
+              }
               this.log('User turn started')
               this.asr?.clearBufferedTranscripts()
               this.vadStopCommitPromise = null
@@ -638,12 +657,21 @@ class StreamingASRSession {
               this.onSpeechStart?.()
               break
             case 'vad_speech_stop':
+              if (!this.isCurrentVoiceTurn(frame.voiceTurnId)) {
+                this.log(`Dropping stale vad_speech_stop for voice turn #${frame.voiceTurnId}`)
+                return
+              }
               this.startVADStopCommit()
               break
             case 'user_turn_end':
+              if (!this.isCurrentVoiceTurn(frame.voiceTurnId)) {
+                this.log(`Dropping stale user_turn_end for voice turn #${frame.voiceTurnId}`)
+                return
+              }
               this.log(`User turn ended, text: ${frame.params.text?.slice(0, 50)}...`)
+              this.endVoiceTurn(frame.voiceTurnId)
               latencyTracker.mark('speech_end')
-              void this.finalizeUserTurn(frame.params)
+              void this.finalizeUserTurn(frame.voiceTurnId, frame.params)
               break
             case 'interruption':
               this.log('Interruption detected!')
@@ -660,6 +688,8 @@ class StreamingASRSession {
     this.voiceFramePipeline.setProcessors(processors)
     this.voiceFramePipeline.reset()
     this.audioFrameSequence = 0
+    this.voiceTurnSequence = 0
+    this.activeVoiceTurnId = 0
     this.commitInFlight = false
     this.onStateChange?.('listening')
 
@@ -701,14 +731,36 @@ class StreamingASRSession {
     return this.turnController?.getState() ?? null
   }
 
-  private async finalizeUserTurn(params: UserTurnStoppedParams): Promise<void> {
+  private beginVoiceTurn(): number {
+    if (this.activeVoiceTurnId > 0) {
+      return this.activeVoiceTurnId
+    }
+
+    this.activeVoiceTurnId = ++this.voiceTurnSequence
+    return this.activeVoiceTurnId
+  }
+
+  private endVoiceTurn(voiceTurnId: number): void {
+    if (this.activeVoiceTurnId === voiceTurnId) {
+      this.activeVoiceTurnId = 0
+    }
+  }
+
+  private isCurrentVoiceTurn(voiceTurnId: number): boolean {
+    return voiceTurnId > 0 && voiceTurnId === this.activeVoiceTurnId
+  }
+
+  private async finalizeUserTurn(
+    voiceTurnId: number,
+    params: UserTurnStoppedParams
+  ): Promise<void> {
     if (!this.asr) {
       return
     }
 
     if (this.commitInFlight) {
-      this.pendingUserTurnEnd = params
-      this.log(`User turn end queued while ASR commit is in flight`)
+      this.pendingUserTurnEnd = { voiceTurnId, params }
+      this.log(`User turn #${voiceTurnId} end queued while ASR commit is in flight`)
       return
     }
 
@@ -767,7 +819,7 @@ class StreamingASRSession {
       const pending = this.pendingUserTurnEnd
       this.pendingUserTurnEnd = null
       if (pending) {
-        void this.finalizeUserTurn(pending)
+        void this.finalizeUserTurn(pending.voiceTurnId, pending.params)
       }
     }
   }
@@ -873,6 +925,7 @@ class StreamingASRSession {
   processTranscription(text: string, finalized: boolean): void {
     void this.voiceFramePipeline.queueFrame({
       type: 'transcription',
+      voiceTurnId: this.activeVoiceTurnId,
       text,
       finalized,
       timestamp: Date.now(),
@@ -927,6 +980,7 @@ class StreamingASRSession {
     this.commitInFlight = false
     this.vadStopCommitPromise = null
     this.vadStopCommitText = null
+    this.activeVoiceTurnId = 0
 
     if (!this.asr) {
       return
@@ -1077,16 +1131,29 @@ async function cancelCurrentTurn(options: { closeTTS?: boolean } = {}): Promise<
     cancelledExistingTurn = true
   }
 
-  if (cancelledExistingTurn || currentTTSContextId > 0) {
+  if (cancelledExistingTurn) {
     // 同时使 TTS 上下文失效
     invalidateTTSContext()
   }
 
-  if (options.closeTTS && (cancelledExistingTurn || currentTTSContextId > 0)) {
+  if (options.closeTTS && cancelledExistingTurn) {
     await ttsService?.interrupt().catch((error: Error) => {
       console.warn('[TTS] Failed to close during turn cancellation:', error.message)
     })
   }
+}
+
+function completeCurrentTurn(turnId: number, pipeline: ResponseFramePipeline | null): void {
+  if (turnId !== currentTurnId) {
+    return
+  }
+
+  if (currentResponseFramePipeline === pipeline) {
+    currentResponseFramePipeline = null
+  }
+
+  currentTurnAbortController = null
+  currentTurnUserText = null
 }
 
 /**
@@ -1752,9 +1819,7 @@ async function runConversationTurn(
       await streamingASRSession?.endBotTurn()
     }
 
-    if (currentResponseFramePipeline === responseFramePipeline) {
-      currentResponseFramePipeline = null
-    }
+    completeCurrentTurn(turnId, responseFramePipeline)
     voiceGraphPipeline.removeLane(responseLaneName)
 
     return { success: true, response: fullResponse, ttsEnabled: shouldUseTTS }

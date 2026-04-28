@@ -17,24 +17,30 @@ export type VoiceFrame = Frame & (
     }
   | {
       type: 'transcription'
+      voiceTurnId: number
       text: string
       finalized: boolean
     }
   | {
       type: 'vad_speech_stop'
+      voiceTurnId: number
     }
   | {
       type: 'user_turn_start'
+      voiceTurnId: number
     }
   | {
       type: 'user_turn_end'
+      voiceTurnId: number
       params: UserTurnStoppedParams
     }
   | {
       type: 'interruption'
+      voiceTurnId: number
     }
   | {
       type: 'user_turn_timeout'
+      voiceTurnId: number
     }
 )
 
