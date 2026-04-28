@@ -407,10 +407,6 @@ class StreamingASRSession {
   private audioFrameSequence = 0
   private commitInFlight = false
   private pendingUserTurnEnd: { voiceTurnId: number; params: UserTurnStoppedParams } | null = null
-  private vadStopCommitPromise: Promise<string> | null = null
-  private vadStopCommitText: string | null = null
-  private vadStopCommitRunning = false
-  private pendingVadStopCommitCount = 0
   private voiceTurnSequence = 0
   private activeVoiceTurnId = 0
 
@@ -654,10 +650,6 @@ class StreamingASRSession {
               }
               this.log('User turn started')
               this.asr?.clearBufferedTranscripts()
-              this.vadStopCommitPromise = null
-              this.vadStopCommitText = null
-              this.vadStopCommitRunning = false
-              this.pendingVadStopCommitCount = 0
               this.onSpeechStart?.()
               break
             case 'vad_speech_stop':
@@ -708,13 +700,6 @@ class StreamingASRSession {
     this.turnController?.getInterruptionManager().register(handler)
   }
 
-  /**
-   * 注销打断处理器
-   */
-  unregisterInterruptionHandler(handler: InterruptionHandler): void {
-    this.turnController?.getInterruptionManager().unregister(handler)
-  }
-
   async startBotThinking(): Promise<void> {
     await this.turnController?.startBotThinking()
   }
@@ -729,10 +714,6 @@ class StreamingASRSession {
    */
   async endBotTurn(): Promise<void> {
     await this.turnController?.endBotTurn()
-  }
-
-  getTurnState(): string | null {
-    return this.turnController?.getState() ?? null
   }
 
   private beginVoiceTurn(): number {
@@ -791,27 +772,14 @@ class StreamingASRSession {
     this.onStateChange?.('processing')
 
     try {
-      // Pipecat 中 TranscriptionFrame 是持续进入 pipeline 的；如果
-      // endpointing 已经聚合到文本，就不要在用户轮次结束后再串行等待
-      // Qwen final commit。后台 VAD-stop commit 仍会继续完成，用于清空
-      // provider buffer；只有没有任何可用文本时才同步等待它。
-      let text = params.text?.trim() || this.vadStopCommitText
-      if (!text?.trim() && this.vadStopCommitPromise) {
-        const committedText = await this.vadStopCommitPromise
-        text = this.mergeTranscriptText(text, committedText)
-      }
-
-      if (!text?.trim() && !params.text?.trim()) {
-        const waitForFinalTranscript = getWaitForFinalTranscript(this.asr)
-        text = waitForFinalTranscript
-          ? await waitForFinalTranscript()
-          : await this.asr.commit()
-      }
+      // Pipecat 中 TranscriptionFrame 是持续进入 pipeline 的；endpointing
+      // 完成时已经持有最终文本。Qwen realtime 在 VAD stop 时只需要 flush。
+      const text = params.text?.trim() ?? ''
 
       // 延迟追踪：ASR 转录完成
       latencyTracker.mark('asr_complete')
 
-      const finalText = this.mergeTranscriptText(text ?? null, params.text ?? '').trim()
+      const finalText = text.trim()
 
       if (finalText) {
         this.log(`Transcript: ${finalText}`)
@@ -833,8 +801,6 @@ class StreamingASRSession {
       }
     } finally {
       this.commitInFlight = false
-      this.vadStopCommitPromise = null
-      this.vadStopCommitText = null
       if (this.asr) {
         this.onStateChange?.('listening')
       }
@@ -852,70 +818,12 @@ class StreamingASRSession {
       return
     }
 
-    if (hasStreamingTranscripts(this.asr)) {
-      const flushAudio = getFlushAudio(this.asr)
-      if (flushAudio) {
-        void flushAudio().catch((error: any) => {
-          this.log(`ASR flush error: ${error.message ?? String(error)}`)
-        })
-      }
-      return
+    const flushAudio = getFlushAudio(this.asr)
+    if (flushAudio) {
+      void flushAudio().catch((error: any) => {
+        this.log(`ASR flush error: ${error.message ?? String(error)}`)
+      })
     }
-
-    if (this.vadStopCommitRunning) {
-      this.pendingVadStopCommitCount += 1
-      this.log(`ASR commit already running; queued VAD stop commit #${this.pendingVadStopCommitCount}`)
-      return
-    }
-
-    this.vadStopCommitPromise = this.runVADStopCommitLoop()
-  }
-
-  private async runVADStopCommitLoop(): Promise<string> {
-    this.vadStopCommitRunning = true
-
-    try {
-      do {
-        this.pendingVadStopCommitCount = 0
-        this.log('Committing ASR buffer on VAD stop')
-
-        try {
-          const waitForFinalTranscript = getWaitForFinalTranscript(this.asr!)
-          const text = waitForFinalTranscript
-            ? await waitForFinalTranscript()
-            : await this.asr!.commit()
-          this.vadStopCommitText = this.mergeTranscriptText(this.vadStopCommitText, text)
-        } catch (error: any) {
-          this.log(`VAD stop commit error: ${error.message ?? String(error)}`)
-        }
-      } while (this.asr && this.pendingVadStopCommitCount > 0)
-
-      return this.vadStopCommitText ?? ''
-    } finally {
-      this.vadStopCommitRunning = false
-      this.vadStopCommitPromise = null
-    }
-  }
-
-  private mergeTranscriptText(existing: string | null, nextText: string): string {
-    const next = nextText.trim()
-    if (!next) {
-      return existing ?? ''
-    }
-
-    if (!existing) {
-      return next
-    }
-
-    if (next === existing || existing.includes(next)) {
-      return existing
-    }
-
-    if (next.startsWith(existing)) {
-      return next
-    }
-
-    return existing + next
   }
 
   /**
@@ -942,46 +850,6 @@ class StreamingASRSession {
   }
 
   /**
-   * 处理转录结果
-   * 当收到 ASR 的中间或最终结果时调用
-   */
-  processTranscription(text: string, finalized: boolean): void {
-    void this.voiceFramePipeline.queueFrame({
-      type: 'transcription',
-      voiceTurnId: this.activeVoiceTurnId,
-      text,
-      finalized,
-      timestamp: Date.now(),
-    })
-  }
-
-  /**
-   * 手动提交（用于按钮触发等场景）
-   */
-  async commit(): Promise<string> {
-    if (!this.asr) {
-      throw new Error('ASR stream is not started')
-    }
-
-    this.commitInFlight = true
-    this.onStateChange?.('processing')
-
-    try {
-      const text = await this.asr.commit()
-
-      // 强制结束用户轮次
-      await this.turnController?.forceEndUserTurn()
-
-      return text
-    } finally {
-      this.commitInFlight = false
-      if (this.asr) {
-        this.onStateChange?.('listening')
-      }
-    }
-  }
-
-  /**
    * 停止会话
    */
   async stop(): Promise<void> {
@@ -1001,8 +869,6 @@ class StreamingASRSession {
     this.voiceFramePipeline.stop()
     this.pendingUserTurnEnd = null
     this.commitInFlight = false
-    this.vadStopCommitPromise = null
-    this.vadStopCommitText = null
     this.activeVoiceTurnId = 0
 
     if (!this.asr) {
@@ -1028,22 +894,11 @@ class StreamingASRSession {
   }
 }
 
-function getWaitForFinalTranscript(asr: STTProvider): (() => Promise<string>) | null {
-  const maybe = asr as STTProvider & { waitForFinalTranscript?: () => Promise<string> }
-  return typeof maybe.waitForFinalTranscript === 'function'
-    ? maybe.waitForFinalTranscript.bind(asr)
-    : null
-}
-
 function getFlushAudio(asr: STTProvider): (() => Promise<void>) | null {
   const maybe = asr as STTProvider & { flushAudio?: () => Promise<void> }
   return typeof maybe.flushAudio === 'function'
     ? maybe.flushAudio.bind(asr)
     : null
-}
-
-function hasStreamingTranscripts(asr: STTProvider): boolean {
-  return (asr as STTProvider & { streamingTranscripts?: boolean }).streamingTranscripts === true
 }
 
 let currentTTSChunkSequence = 0
@@ -1188,28 +1043,6 @@ function isTurnCancelled(turnId: number): boolean {
     turnId !== currentTurnId ||
     currentTurnAbortController?.signal.aborted === true
   )
-}
-
-function mergeTranscriptText(existing: string | null, nextText: string): string {
-  const next = nextText.trim()
-  if (!next) {
-    return existing ?? ''
-  }
-
-  if (!existing?.trim()) {
-    return next
-  }
-
-  const base = existing.trim()
-  if (next === base || base.includes(next)) {
-    return base
-  }
-
-  if (next.includes(base) || next.startsWith(base)) {
-    return next
-  }
-
-  return `${base}${next}`
 }
 
 function sanitizeTextForSpeech(text: string): string {
@@ -2003,20 +1836,6 @@ ipcMain.on('speech:stream:append', (_, samples: number[] | Int16Array) => {
     }
     console.error('[Speech] Failed to append streaming audio:', error)
   })
-})
-
-ipcMain.handle('speech:stream:commit', async () => {
-  try {
-    if (!streamingASRSession) {
-      throw new Error('ASR stream is not started')
-    }
-
-    const text = await streamingASRSession.commit()
-    return { success: true, text }
-  } catch (error: any) {
-    console.error('[Speech] Failed to commit streaming audio:', error)
-    return { success: false, error: error.message }
-  }
 })
 
 ipcMain.handle('speech:stream:stop', async () => {

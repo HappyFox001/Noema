@@ -23,9 +23,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   appendSpeechStream: (samples) =>
     ipcRenderer.send('speech:stream:append', samples),
 
-  commitSpeechStream: () =>
-    ipcRenderer.invoke('speech:stream:commit'),
-
   stopSpeechStream: () =>
     ipcRenderer.invoke('speech:stream:stop'),
 
