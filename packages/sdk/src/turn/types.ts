@@ -15,7 +15,9 @@ export enum TurnState {
   USER_TURN = 'user_turn',
   /** 用户说完了，准备处理 */
   USER_DONE = 'user_done',
-  /** 机器人正在回应 */
+  /** 机器人正在生成回复，但还没有真实输出音频 */
+  BOT_THINKING = 'bot_thinking',
+  /** 机器人正在真实输出音频 */
   BOT_TURN = 'bot_turn',
   /** 机器人回应完成 */
   BOT_DONE = 'bot_done',

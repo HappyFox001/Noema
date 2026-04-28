@@ -8,10 +8,12 @@
  * ```
  * IDLE ─[VAD speech_start]─→ USER_TURN
  * USER_TURN ─[endpointing 完成]─→ USER_DONE
- * USER_DONE ─[开始 LLM]─→ BOT_TURN
+ * USER_DONE ─[开始 LLM]─→ BOT_THINKING
+ * BOT_THINKING ─[真实音频输出]─→ BOT_TURN
  * BOT_TURN ─[TTS 完成]─→ BOT_DONE ─→ IDLE
  *
  * 打断路径：
+ * BOT_THINKING ─[VAD speech_start]─→ 取消当前生成 → USER_TURN
  * BOT_TURN ─[VAD speech_start]─→ 触发 Interruption → USER_TURN
  * ```
  */
@@ -207,7 +209,7 @@ export class TurnController {
    * 是否在机器人轮次中
    */
   isBotTurn(): boolean {
-    return this.state === TurnState.BOT_TURN
+    return this.state === TurnState.BOT_THINKING || this.state === TurnState.BOT_TURN
   }
 
   /**
@@ -245,12 +247,26 @@ export class TurnController {
     this.endpointing.handleTranscription(frame)
   }
 
+  async startBotThinking(): Promise<void> {
+    if (this.state !== TurnState.USER_DONE) {
+      this.log(`startBotThinking called in invalid state: ${this.state}`)
+      return
+    }
+
+    this.state = TurnState.BOT_THINKING
+    this.log(`State: BOT_THINKING`)
+  }
+
   /**
-   * 开始机器人轮次
-   * 调用此方法表示开始处理用户输入并生成回复
+   * 开始机器人说话阶段。
+   * 对齐 Pipecat：只有真实 TTS audio 开始输出后才算 BotStartedSpeaking。
    */
   async startBotTurn(): Promise<void> {
-    if (this.state !== TurnState.USER_DONE) {
+    if (this.state === TurnState.BOT_TURN) {
+      return
+    }
+
+    if (this.state !== TurnState.BOT_THINKING && this.state !== TurnState.USER_DONE) {
       this.log(`startBotTurn called in invalid state: ${this.state}`)
       return
     }
@@ -274,6 +290,12 @@ export class TurnController {
    * 调用此方法表示机器人完成回复
    */
   async endBotTurn(): Promise<void> {
+    if (this.state === TurnState.BOT_THINKING) {
+      this.state = TurnState.IDLE
+      this.log(`State: IDLE`)
+      return
+    }
+
     if (this.state !== TurnState.BOT_TURN) {
       if (this.state !== TurnState.USER_TURN) {
         this.log(`endBotTurn ignored in state: ${this.state}`)
@@ -399,6 +421,14 @@ export class TurnController {
       this.endpointing.handleVADUserStartedSpeaking()
       // 不需要开始新轮次，继续当前轮次
       // userTurnActive 仍然是 true
+      return
+    }
+
+    // LLM/TTS 还在准备时，用户继续说话不算 bot speaking barge-in。
+    // 取消当前生成并回到用户轮次，避免把短停顿后的续说切成新 bot 打断。
+    if (this.state === TurnState.BOT_THINKING && this.config.enableInterruption) {
+      this.log('User continued speaking while bot was thinking')
+      void this.triggerInterruption()
       return
     }
 

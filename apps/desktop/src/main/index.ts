@@ -589,10 +589,10 @@ class StreamingASRSession {
     this.turnController?.getInterruptionManager().unregister(handler)
   }
 
-  /**
-   * 开始机器人轮次
-   * 在开始生成回复时调用
-   */
+  async startBotThinking(): Promise<void> {
+    await this.turnController?.startBotThinking()
+  }
+
   async startBotTurn(): Promise<void> {
     await this.turnController?.startBotTurn()
   }
@@ -1327,6 +1327,7 @@ ipcMain.handle('conversation:initialize', async () => {
             if (isFirstAudioChunk) {
               isFirstAudioChunk = false
               latencyTracker.mark('first_tts_audio')
+              void streamingASRSession?.startBotTurn()
             }
             // 检查 context 是否仍然有效（打断后 _activeContextId 会变成 -1）
             if (ttsContextId < 0) {
@@ -1418,7 +1419,7 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
     // 延迟追踪：LLM 调用开始
     latencyTracker.mark('llm_start')
 
-    await streamingASRSession?.startBotTurn()
+    await streamingASRSession?.startBotThinking()
 
     // 使用 SDK 的 chatStream，TTS 分句逻辑由 SDK 处理
     // AbortSignal 与 turnId 双重保护，确保打断后旧 LLM/TTS 不再输出
