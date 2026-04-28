@@ -174,16 +174,6 @@ export class MemoryEngine {
   }
 
   /**
-   * 更新用户画像的基本信息
-   */
-  updateUserBasicProfile(updates: Partial<UserProfile['basic']>): void {
-    this.userProfile.basic = {
-      ...this.userProfile.basic,
-      ...updates
-    }
-  }
-
-  /**
    * 获取用户画像
    */
   getUserProfile(): UserProfile {
@@ -443,13 +433,6 @@ ${conversationText}`
       console.warn('Failed to parse JSON response:', response)
       return {}
     }
-  }
-
-  /**
-   * 手动触发巩固（用于测试）
-   */
-  async consolidate(): Promise<void> {
-    await this.performAsyncUpdate()
   }
 
   /**

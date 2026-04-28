@@ -18,7 +18,6 @@ export interface ToolExecutionOptions {
  */
 export class AgentCore {
   private tools: Map<string, Tool> = new Map()
-  private globalHooks?: ToolExecutionHooks
 
   registerTool(tool: Tool): void {
     this.tools.set(tool.name, tool)
@@ -36,10 +35,6 @@ export class AgentCore {
     return Array.from(this.tools.values())
   }
 
-  setGlobalHooks(hooks: ToolExecutionHooks): void {
-    this.globalHooks = hooks
-  }
-
   /**
    * 顺序执行工具调用
    */
@@ -48,7 +43,7 @@ export class AgentCore {
     options?: ToolExecutionOptions
   ): Promise<any[]> {
     const results = []
-    const hooks = options?.hooks || this.globalHooks
+    const hooks = options?.hooks
 
     for (const call of toolCalls) {
       try {
@@ -106,14 +101,5 @@ export class AgentCore {
         setTimeout(() => reject(new Error('Tool execution timeout')), timeout)
       )
     ])
-  }
-
-  /**
-   * 检查工具是否可变更状态
-   */
-  isMutating(toolName: string): boolean {
-    const tool = this.tools.get(toolName)
-    // TODO: 实现工具元数据系统
-    return false
   }
 }

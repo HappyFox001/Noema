@@ -24,16 +24,6 @@ export enum TurnState {
 }
 
 /**
- * 处理帧的结果
- */
-export enum ProcessFrameResult {
-  /** 继续处理后续策略 */
-  CONTINUE = 'continue',
-  /** 停止处理后续策略 */
-  STOP = 'stop',
-}
-
-/**
  * Endpointing 配置
  *
  * 双计时器策略：

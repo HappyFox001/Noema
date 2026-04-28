@@ -11,7 +11,6 @@
 // 类型导出
 export {
   TurnState,
-  ProcessFrameResult,
   EndpointingConfig,
   UserTurnStartedParams,
   UserTurnStoppedParams,
@@ -30,11 +29,7 @@ export { TurnController, TurnControllerConfig } from './turn-controller.js'
 export { EndpointingStrategy } from './endpointing.js'
 
 // 打断管理
-export {
-  InterruptionManager,
-  makeInterruptible,
-  createInterruptionController,
-} from './interruption.js'
+export { InterruptionManager } from './interruption.js'
 
 // Smart Turn (ML 智能话音结束检测)
 export {

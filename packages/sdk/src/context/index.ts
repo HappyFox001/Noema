@@ -8,12 +8,6 @@ export interface ResponseItem {
   toolResults?: any[]
 }
 
-export interface TokenUsageInfo {
-  inputTokens: number
-  outputTokens: number
-  totalTokens: number
-}
-
 export interface TruncationPolicy {
   maxTokens?: number
   maxTurns?: number
@@ -32,11 +26,6 @@ export interface InputModality {
 export class ContextManager {
   private items: ResponseItem[] = []
   private historyVersion: number = 0
-  private tokenInfo: TokenUsageInfo = {
-    inputTokens: 0,
-    outputTokens: 0,
-    totalTokens: 0
-  }
 
   /**
    * 记录新项目（应用截断策略）
@@ -93,18 +82,6 @@ export class ContextManager {
   }
 
   /**
-   * 移除末项（错误恢复）
-   */
-  removeLastItem(): boolean {
-    if (this.items.length > 0) {
-      this.items.pop()
-      this.historyVersion++
-      return true
-    }
-    return false
-  }
-
-  /**
    * 获取所有项目
    */
   getItems(): ResponseItem[] {
@@ -116,23 +93,6 @@ export class ContextManager {
    */
   getHistoryVersion(): number {
     return this.historyVersion
-  }
-
-  /**
-   * 更新 token 使用信息
-   */
-  updateTokenInfo(info: Partial<TokenUsageInfo>): void {
-    this.tokenInfo = {
-      ...this.tokenInfo,
-      ...info
-    }
-  }
-
-  /**
-   * 获取 token 使用信息
-   */
-  getTokenInfo(): TokenUsageInfo {
-    return { ...this.tokenInfo }
   }
 
   /**

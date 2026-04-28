@@ -43,7 +43,6 @@ import { InterruptionHandler } from './types.js'
 export class InterruptionManager {
   private handlers: Set<InterruptionHandler> = new Set()
   private _isInterrupted = false
-  private _interruptionCount = 0
 
   /**
    * 注册打断处理器
@@ -79,7 +78,6 @@ export class InterruptionManager {
     }
 
     this._isInterrupted = true
-    this._interruptionCount++
 
     const handlers = Array.from(this.handlers)
 
@@ -124,67 +122,4 @@ export class InterruptionManager {
     return this._isInterrupted
   }
 
-  /**
-   * 打断次数统计
-   */
-  get interruptionCount(): number {
-    return this._interruptionCount
-  }
-}
-
-/**
- * 创建一个可中断的 Promise
- * 当打断发生时，Promise 会被拒绝
- *
- * @param promise - 原始 Promise
- * @param interruptionManager - 打断管理器
- * @param signal - 可选的 AbortSignal
- * @returns 可中断的 Promise
- */
-export function makeInterruptible<T>(
-  promise: Promise<T>,
-  signal?: AbortSignal
-): Promise<T> {
-  if (!signal) {
-    return promise
-  }
-
-  return new Promise<T>((resolve, reject) => {
-    const abortHandler = () => {
-      reject(new DOMException('Interrupted', 'AbortError'))
-    }
-
-    if (signal.aborted) {
-      abortHandler()
-      return
-    }
-
-    signal.addEventListener('abort', abortHandler, { once: true })
-
-    promise
-      .then(resolve)
-      .catch(reject)
-      .finally(() => {
-        signal.removeEventListener('abort', abortHandler)
-      })
-  })
-}
-
-/**
- * 创建一个用于打断控制的 AbortController
- * 方便与 InterruptionManager 配合使用
- */
-export function createInterruptionController(): {
-  controller: AbortController
-  handler: InterruptionHandler
-} {
-  const controller = new AbortController()
-
-  const handler: InterruptionHandler = {
-    async onInterruption() {
-      controller.abort()
-    },
-  }
-
-  return { controller, handler }
 }
