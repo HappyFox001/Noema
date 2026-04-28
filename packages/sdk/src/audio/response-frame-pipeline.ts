@@ -6,6 +6,7 @@
  */
 
 import { FramePipeline, type Frame, type FrameProcessor } from './frame-pipeline.js'
+import type { TTSProvider } from './providers.js'
 
 export type ResponseFrame = Frame & (
   | { type: 'phase_start'; phase: 'reply' | 'task_result' }
@@ -154,12 +155,7 @@ export class SentenceAggregatorProcessor implements ResponseFrameProcessor {
   }
 }
 
-export interface ResponseTTSService {
-  startStreaming(): Promise<void>
-  pushText(text: string): Promise<void>
-  finishStreaming(): Promise<void>
-  close(): Promise<void>
-}
+export type ResponseTTSService = Pick<TTSProvider, 'startStreaming' | 'pushText' | 'finishStreaming' | 'close'>
 
 export interface ResponseTTSProcessorOptions {
   isCancelled: () => boolean

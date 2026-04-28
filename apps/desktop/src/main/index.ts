@@ -43,8 +43,10 @@ console.log('[Env] LLM_BASE_URL:', process.env.LLM_BASE_URL || '✗ (not set)')
 import { app, BrowserWindow, ipcMain, systemPreferences, shell, dialog, type OpenDialogOptions } from 'electron'
 import {
   HerTextSDK,
-  FishTTSOfficial,
-  QwenRealtimeASR,
+  createSTTProvider,
+  createTTSProvider,
+  type STTProvider,
+  type TTSProvider,
   createVADAnalyzer,
   VADAnalyzer,
   TurnController,
@@ -385,7 +387,7 @@ const voiceGraphPipeline = new VoiceGraphPipeline()
  * - 打断处理 (InterruptionManager)
  */
 class StreamingASRSession {
-  private asr: QwenRealtimeASR | null = null
+  private asr: STTProvider | null = null
   private turnController: TurnController | null = null
   private voiceFramePipeline = voiceGraphPipeline.createInputLane('input')
   private audioFrameSequence = 0
@@ -446,25 +448,30 @@ class StreamingASRSession {
     })
 
     // 初始化 ASR（带中间转录回调，用于 endpointing）
-    this.asr = new QwenRealtimeASR(
-      {
+    this.asr = createSTTProvider({
+      kind: 'qwen-realtime',
+      config: {
         apiKey,
         sampleRate: 16000,
         language: 'zh',
-        onInterimTranscript: (text, isFinal) => {
-          // 将转录结果也作为 frame 放入同一条输入 pipeline，避免
-          // VAD/ASR 分散 callback 造成状态乱序。
-          this.log(`Interim transcript: "${text.slice(0, 30)}..." (final: ${isFinal})`)
-          void this.voiceFramePipeline.queueFrame({
-            type: 'transcription',
-            text,
-            finalized: isFinal,
-            timestamp: Date.now(),
-          })
-        }
       },
-      reconnectingTransport
-    )
+      transport: reconnectingTransport,
+    })
+    this.asr.setEventHandler((event) => {
+      if (event.type !== 'transcript') {
+        return
+      }
+
+      // 将转录结果也作为 frame 放入同一条输入 pipeline，避免
+      // VAD/ASR 分散 callback 造成状态乱序。
+      this.log(`Interim transcript: "${event.text.slice(0, 30)}..." (final: ${event.final})`)
+      void this.voiceFramePipeline.queueFrame({
+        type: 'transcription',
+        text: event.text,
+        finalized: event.final,
+        timestamp: Date.now(),
+      })
+    })
     await this.asr.connect()
 
     // 初始化 VAD 分析器 (Pipecat 风格 4 状态机)
@@ -1005,7 +1012,7 @@ async function cancelCurrentTurn(options: { closeTTS?: boolean } = {}): Promise<
   }
 
   if (options.closeTTS && (cancelledExistingTurn || currentTTSContextId > 0)) {
-    await ttsService?.onInterruption().catch((error: Error) => {
+    await ttsService?.interrupt().catch((error: Error) => {
       console.warn('[TTS] Failed to close during turn cancellation:', error.message)
     })
   }
@@ -1201,7 +1208,7 @@ app.commandLine.appendSwitch('disable-gpu')
 app.commandLine.appendSwitch('disable-gpu-compositing')
 
 let mainWindow: BrowserWindow | null = null
-let ttsService: FishTTSOfficial | null = null
+let ttsService: TTSProvider | null = null
 let sdkInstance: HerTextSDK | null = null
 let ttsAvailable = true
 let settingsStore: SettingsStore | null = null
@@ -1410,13 +1417,16 @@ ipcMain.handle('conversation:initialize', async () => {
 
     // 初始化 TTS（使用 SDK）
     if (process.env.FISH_API_KEY?.trim()) {
-      ttsService = new FishTTSOfficial({
-        apiKey: process.env.FISH_API_KEY,
-        voiceId: process.env.FISH_VOICE_ID,
-        model: process.env.FISH_MODEL || 's2-pro',
-        format: 'pcm',
-        sampleRate: 16000,
-        latency: 'balanced'
+      ttsService = createTTSProvider({
+        kind: 'fish-realtime',
+        config: {
+          apiKey: process.env.FISH_API_KEY,
+          voiceId: process.env.FISH_VOICE_ID,
+          model: process.env.FISH_MODEL || 's2-pro',
+          format: 'pcm',
+          sampleRate: 16000,
+          latency: 'balanced'
+        }
       })
 
       ttsAvailable = true
@@ -1425,7 +1435,7 @@ ipcMain.handle('conversation:initialize', async () => {
       let isFirstAudioChunk = true
 
       // 设置 TTS 事件处理
-      // 使用 FishTTSOfficial 内部的 context ID，避免重复管理
+      // 使用 TTS provider 内部的 context ID，避免重复管理
       ttsService.setEventHandler((event) => {
         switch (event.type) {
           case 'connected': {
@@ -1689,14 +1699,15 @@ ipcMain.handle('speech:transcribe', async (_, samples: number[]) => {
       maxRetries: 3,
       initialRetryDelayMs: 500,
     })
-    const asr = new QwenRealtimeASR(
-      {
+    const asr = createSTTProvider({
+      kind: 'qwen-realtime',
+      config: {
         apiKey,
         sampleRate: 16000,
         language: 'zh',
       },
-      transport
-    )
+      transport,
+    })
 
     try {
       const text = await asr.transcribe(Int16Array.from(samples))
@@ -1746,7 +1757,7 @@ ipcMain.handle('speech:stream:start', async () => {
       streamingASRSession.registerInterruptionHandler({
         async onInterruption() {
           console.log('[TTS] InterruptionHandler: closing stream')
-          await ttsService?.onInterruption()  // 使用 onInterruption 而非直接 close
+          await ttsService?.interrupt()
         }
       })
     }

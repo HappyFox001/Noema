@@ -1,4 +1,6 @@
 export * from './websocket-transport.js'
+export * from './providers.js'
+export * from './provider-factory.js'
 export * from './fish-tts-official.js'
 export * from './qwen-realtime-asr.js'
 export * from './frame-pipeline.js'

@@ -8,6 +8,7 @@
 
 import { FishAudioClient, RealtimeEvents } from 'fish-audio'
 import type { InterruptionHandler } from '../turn/types.js'
+import type { TTSProvider, TTSProviderEvent } from './providers.js'
 
 export interface FishTTSOfficialConfig {
   apiKey: string
@@ -18,13 +19,9 @@ export interface FishTTSOfficialConfig {
   latency?: 'normal' | 'balanced' | 'low'
 }
 
-export type FishTTSOfficialEvent =
-  | { type: 'connected'; contextId: number }
-  | { type: 'audio'; audio: Uint8Array; contextId: number }
-  | { type: 'error'; error: Error }
-  | { type: 'closed'; contextId: number }
+export type FishTTSOfficialEvent = TTSProviderEvent
 
-export class FishTTSOfficial implements InterruptionHandler {
+export class FishTTSOfficial implements TTSProvider, InterruptionHandler {
   private client: FishAudioClient
   private config: FishTTSOfficialConfig
   private onEvent?: (event: FishTTSOfficialEvent) => void
@@ -80,6 +77,10 @@ export class FishTTSOfficial implements InterruptionHandler {
    * 4. 关闭当前连接
    */
   async onInterruption(): Promise<void> {
+    await this.interrupt()
+  }
+
+  async interrupt(): Promise<void> {
     const interruptedContextId = this._activeContextId
     console.log(`[FishTTSOfficial] Handling interruption (context #${interruptedContextId})`)
 

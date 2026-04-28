@@ -1,4 +1,5 @@
 import type { RealtimeWebSocketTransport } from './websocket-transport.js'
+import type { STTProvider, STTProviderEvent } from './providers.js'
 
 export interface QwenRealtimeASRConfig {
   apiKey: string
@@ -21,17 +22,22 @@ type PendingCommit = {
   fallbackText: string | null
 }
 
-export class QwenRealtimeASR {
+export class QwenRealtimeASR implements STTProvider {
   private connected = false
   private receiveLoop: Promise<void> | null = null
   private pendingCommits: PendingCommit[] = []
   private latestFinalTranscript: string | null = null
   private latestFallbackTranscript: string | null = null
+  private onEvent?: (event: STTProviderEvent) => void
 
   constructor(
     private config: QwenRealtimeASRConfig,
     private transport: RealtimeWebSocketTransport
   ) {}
+
+  setEventHandler(handler: (event: STTProviderEvent) => void): void {
+    this.onEvent = handler
+  }
 
   async connect(): Promise<void> {
     if (!this.config.apiKey.trim()) {
@@ -192,6 +198,11 @@ export class QwenRealtimeASR {
         const normalizedFinalText = finalText.trim()
         // 通知最终转录结果
         this.config.onInterimTranscript?.(normalizedFinalText, true)
+        this.onEvent?.({
+          type: 'transcript',
+          text: normalizedFinalText,
+          final: true,
+        })
 
         const pending = this.pendingCommits.shift()
         if (pending) {
@@ -209,6 +220,11 @@ export class QwenRealtimeASR {
         this.latestFallbackTranscript = fallbackText
         // 通知中间转录结果（用于 endpointing）
         this.config.onInterimTranscript?.(fallbackText, false)
+        this.onEvent?.({
+          type: 'transcript',
+          text: fallbackText,
+          final: false,
+        })
 
         const pending = this.pendingCommits[0]
         if (pending) {
