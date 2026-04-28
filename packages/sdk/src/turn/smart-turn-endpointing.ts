@@ -138,6 +138,9 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
   handleVADUserStoppedSpeaking(stopSecs: number, timestamp?: number): void {
     this.vadUserSpeaking = false
     this.vadStoppedTime = timestamp ?? Date.now()
+    // 每次新的 VAD stop 都需要等待“本次停顿之后”的 STT final。
+    // 不能复用前一次短停顿已经到达的 final，否则连续说话时会过早 endpoint。
+    this.transcriptFinalized = false
 
     this.startSttWaitTimer(stopSecs)
 

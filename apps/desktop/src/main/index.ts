@@ -382,6 +382,8 @@ class StreamingASRSession {
   private pendingUserTurnEnd: UserTurnStoppedParams | null = null
   private vadStopCommitPromise: Promise<string> | null = null
   private vadStopCommitText: string | null = null
+  private vadStopCommitRunning = false
+  private pendingVadStopCommitCount = 0
 
   // 回调
   private onTranscript: ((text: string) => void) | null = null
@@ -500,6 +502,8 @@ class StreamingASRSession {
         this.asr?.clearBufferedTranscripts()
         this.vadStopCommitPromise = null
         this.vadStopCommitText = null
+        this.vadStopCommitRunning = false
+        this.pendingVadStopCommitCount = 0
         this.onSpeechStart?.()
       },
 
@@ -661,27 +665,40 @@ class StreamingASRSession {
   }
 
   private startVADStopCommit(): void {
-    if (!this.asr || this.vadStopCommitPromise) {
+    if (!this.asr) {
       return
     }
 
-    this.log('Committing ASR buffer on VAD stop')
-    const commitPromise = this.asr.commit()
-      .then((text) => {
-        this.vadStopCommitText = this.mergeTranscriptText(this.vadStopCommitText, text)
-        return text
-      })
-      .catch((error: Error) => {
-        this.log(`VAD stop commit error: ${error.message}`)
-        return ''
-      })
-      .finally(() => {
-        if (this.vadStopCommitPromise === commitPromise) {
-          this.vadStopCommitPromise = null
-        }
-      })
+    if (this.vadStopCommitRunning) {
+      this.pendingVadStopCommitCount += 1
+      this.log(`ASR commit already running; queued VAD stop commit #${this.pendingVadStopCommitCount}`)
+      return
+    }
 
-    this.vadStopCommitPromise = commitPromise
+    this.vadStopCommitPromise = this.runVADStopCommitLoop()
+  }
+
+  private async runVADStopCommitLoop(): Promise<string> {
+    this.vadStopCommitRunning = true
+
+    try {
+      do {
+        this.pendingVadStopCommitCount = 0
+        this.log('Committing ASR buffer on VAD stop')
+
+        try {
+          const text = await this.asr!.commit()
+          this.vadStopCommitText = this.mergeTranscriptText(this.vadStopCommitText, text)
+        } catch (error: any) {
+          this.log(`VAD stop commit error: ${error.message ?? String(error)}`)
+        }
+      } while (this.asr && this.pendingVadStopCommitCount > 0)
+
+      return this.vadStopCommitText ?? ''
+    } finally {
+      this.vadStopCommitRunning = false
+      this.vadStopCommitPromise = null
+    }
   }
 
   private mergeTranscriptText(existing: string | null, nextText: string): string {
