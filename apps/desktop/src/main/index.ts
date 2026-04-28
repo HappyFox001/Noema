@@ -61,6 +61,7 @@ import {
   type VoiceFrameProcessor,
   OutputFramePipeline,
   type OutputFrameProcessor,
+  LLMResponseProcessor,
   LLMStreamBridgeProcessor,
   ResponseFramePipeline,
   ResponseDisplayProcessor,
@@ -1596,39 +1597,16 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
 
     await streamingASRSession?.startBotThinking()
 
-    // LLM delta 进入 response frame pipeline，由 processor 做句子聚合和 TTS 输入。
-    // AbortSignal 与 turnId 双重保护，确保打断后旧 LLM/TTS 不再输出。
-    const responseStream = sdkInstance.chatStream(
-      {
-        text,
-        timestamp: Date.now()
-      },
-      {
-        signal: turnAbortSignal,
-        onPhaseStart: async (phase) => {
-          await llmStreamBridge.onPhaseStart(phase)
-        },
-        onDisplayChunk: async (_, delta) => {
-          await llmStreamBridge.onTextDelta(delta)
-        },
-        onPhaseEnd: async (phase) => {
-          console.log(`[Conversation] Phase "${phase}" ending...`)
-          await llmStreamBridge.onPhaseEnd(phase)
-          await responseFramePipeline?.waitForIdle()
-        },
-        onTaskStart: async (taskDescription) => {
-          await llmStreamBridge.onTaskStart(taskDescription)
-        },
-        onTaskEnd: async (result) => {
-          await llmStreamBridge.onTaskEnd(result)
-        }
-      }
-    )
+    const llmResponseProcessor = new LLMResponseProcessor({
+      service: sdkInstance,
+      bridge: llmStreamBridge,
+      signal: turnAbortSignal,
+      queueFrame: (frame) => responseFramePipeline?.queueFrame(frame),
+      waitForIdle: () => responseFramePipeline?.waitForIdle() ?? Promise.resolve(),
+      log: (message) => console.log(message),
+    })
 
-    let fullResponse = ''
-    for await (const chunk of responseStream) {
-      fullResponse += chunk
-    }
+    const fullResponse = await llmResponseProcessor.processUserText(text)
 
     if (!isTurnCancelled(turnId)) {
       await streamingASRSession?.endBotTurn()

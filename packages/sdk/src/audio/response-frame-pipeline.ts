@@ -389,3 +389,96 @@ export class LLMStreamBridgeProcessor {
     })
   }
 }
+
+export interface LLMChatStreamService {
+  chatStream(
+    input: { text: string; timestamp: number },
+    options: {
+      signal?: AbortSignal
+      onPhaseStart?: (phase: 'reply' | 'task_result') => Promise<void> | void
+      onDisplayChunk?: (
+        phase: 'reply' | 'task_result',
+        delta: string,
+        fullText: string
+      ) => Promise<void> | void
+      onPhaseEnd?: (phase: 'reply' | 'task_result', fullText: string) => Promise<void> | void
+      onTaskStart?: (taskDescription: string) => Promise<void> | void
+      onTaskEnd?: (result: { success: boolean; summary: string; error?: string }) => Promise<void> | void
+    }
+  ): AsyncGenerator<string>
+}
+
+export interface LLMResponseProcessorOptions {
+  service: LLMChatStreamService
+  bridge: LLMStreamBridgeProcessor
+  signal?: AbortSignal
+  queueFrame?: (frame: ResponseFrame) => Promise<void> | void
+  waitForIdle?: () => Promise<void>
+  log?: (message: string) => void
+}
+
+export class LLMResponseProcessor {
+  constructor(private readonly options: LLMResponseProcessorOptions) {}
+
+  async processUserText(text: string): Promise<string> {
+    if (this.options.signal?.aborted) {
+      await this.emitInterruption()
+      return ''
+    }
+
+    let signalAbortHandler: (() => void) | null = null
+    if (this.options.signal) {
+      signalAbortHandler = () => {
+        void this.emitInterruption()
+      }
+      this.options.signal.addEventListener('abort', signalAbortHandler, { once: true })
+    }
+
+    const responseStream = this.options.service.chatStream(
+      {
+        text,
+        timestamp: Date.now(),
+      },
+      {
+        signal: this.options.signal,
+        onPhaseStart: async (phase) => {
+          await this.options.bridge.onPhaseStart(phase)
+        },
+        onDisplayChunk: async (_, delta) => {
+          await this.options.bridge.onTextDelta(delta)
+        },
+        onPhaseEnd: async (phase) => {
+          this.options.log?.(`[Conversation] Phase "${phase}" ending...`)
+          await this.options.bridge.onPhaseEnd(phase)
+          await this.options.waitForIdle?.()
+        },
+        onTaskStart: async (taskDescription) => {
+          await this.options.bridge.onTaskStart(taskDescription)
+        },
+        onTaskEnd: async (result) => {
+          await this.options.bridge.onTaskEnd(result)
+        },
+      }
+    )
+
+    let fullResponse = ''
+    try {
+      for await (const chunk of responseStream) {
+        fullResponse += chunk
+      }
+    } finally {
+      if (this.options.signal && signalAbortHandler) {
+        this.options.signal.removeEventListener('abort', signalAbortHandler)
+      }
+    }
+
+    return fullResponse
+  }
+
+  private async emitInterruption(): Promise<void> {
+    await this.options.queueFrame?.({
+      type: 'response_interruption',
+      timestamp: Date.now(),
+    })
+  }
+}

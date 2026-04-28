@@ -67,20 +67,22 @@ export class FramePipeline<TFrame extends Frame = Frame> {
         signal: taskAbortController.signal,
       }
 
-      for (const processor of this.processors) {
-        if (context.signal.aborted) {
-          return
+      try {
+        for (const processor of this.processors) {
+          if (context.signal.aborted) {
+            return
+          }
+
+          await processor.processFrame(frame, context)
+
+          if (this.stopped || context.signal.aborted) {
+            return
+          }
         }
-
-        await processor.processFrame(frame, context)
-
-        if (this.stopped || context.signal.aborted) {
-          return
+      } finally {
+        if (this.currentTaskAbortController === taskAbortController) {
+          this.currentTaskAbortController = null
         }
-      }
-
-      if (this.currentTaskAbortController === taskAbortController) {
-        this.currentTaskAbortController = null
       }
     })
 
