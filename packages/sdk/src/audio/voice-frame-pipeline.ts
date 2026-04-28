@@ -6,71 +6,38 @@
  * independent async chains with undefined ordering.
  */
 
-export type VoiceFrame =
+import type { UserTurnStoppedParams } from '../turn/types.js'
+import { FramePipeline, type Frame, type FrameProcessor } from './frame-pipeline.js'
+
+export type VoiceFrame = Frame & (
   | {
       type: 'input_audio'
       sequence: number
-      timestamp: number
       samples: Int16Array
     }
   | {
       type: 'transcription'
-      timestamp: number
       text: string
       finalized: boolean
     }
-
-export interface VoiceFrameProcessor {
-  processFrame(frame: VoiceFrame): Promise<void> | void
-}
-
-export class VoiceFramePipeline {
-  private queue: Promise<void> = Promise.resolve()
-  private processors: VoiceFrameProcessor[] = []
-  private stopped = false
-
-  constructor(processors: VoiceFrameProcessor[] = []) {
-    this.processors = processors
-  }
-
-  setProcessors(processors: VoiceFrameProcessor[]): void {
-    this.processors = processors
-  }
-
-  queueFrame(frame: VoiceFrame): Promise<void> {
-    if (this.stopped) {
-      return Promise.resolve()
+  | {
+      type: 'vad_speech_stop'
     }
+  | {
+      type: 'user_turn_start'
+    }
+  | {
+      type: 'user_turn_end'
+      params: UserTurnStoppedParams
+    }
+  | {
+      type: 'interruption'
+    }
+  | {
+      type: 'user_turn_timeout'
+    }
+)
 
-    const run = this.queue
-      .then(async () => {
-        if (this.stopped) {
-          return
-        }
+export type VoiceFrameProcessor = FrameProcessor<VoiceFrame>
 
-        for (const processor of this.processors) {
-          await processor.processFrame(frame)
-          if (this.stopped) {
-            return
-          }
-        }
-      })
-
-    this.queue = run.catch(() => undefined)
-    return run
-  }
-
-  waitForIdle(): Promise<void> {
-    return this.queue
-  }
-
-  reset(): void {
-    this.queue = Promise.resolve()
-    this.stopped = false
-  }
-
-  stop(): void {
-    this.stopped = true
-    this.queue = Promise.resolve()
-  }
-}
+export class VoiceFramePipeline extends FramePipeline<VoiceFrame> {}

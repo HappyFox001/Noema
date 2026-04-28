@@ -61,6 +61,9 @@ import {
   type VoiceFrameProcessor,
   OutputFramePipeline,
   type OutputFrameProcessor,
+  ResponseFramePipeline,
+  SentenceAggregatorProcessor,
+  type ResponseFrameProcessor,
 } from '@her-text/sdk'
 import { initializeSileroVAD, isSileroVADAvailable } from './silero-vad-helper.js'
 import { initializeSmartTurn, isSmartTurnAvailable } from './smart-turn-helper.js'
@@ -498,38 +501,39 @@ class StreamingASRSession {
     // 设置轮次控制器事件
     const events: TurnControllerEvents = {
       onUserTurnStart: () => {
-        this.log('User turn started')
-        this.asr?.clearBufferedTranscripts()
-        this.vadStopCommitPromise = null
-        this.vadStopCommitText = null
-        this.vadStopCommitRunning = false
-        this.pendingVadStopCommitCount = 0
-        this.onSpeechStart?.()
+        void this.voiceFramePipeline.queueFrame({
+          type: 'user_turn_start',
+          timestamp: Date.now(),
+        })
       },
 
       onVADSpeechStop: () => {
-        // 延迟追踪：VAD 检测到静音（最早时间点）
-        latencyTracker.reset()
-        latencyTracker.mark('vad_speech_stop')
-        this.startVADStopCommit()
+        void this.voiceFramePipeline.queueFrame({
+          type: 'vad_speech_stop',
+          timestamp: Date.now(),
+        })
       },
 
       onUserTurnEnd: async (params) => {
-        this.log(`User turn ended, text: ${params.text?.slice(0, 50)}...`)
-
-        // 延迟追踪：Endpointing 确认说话结束
-        latencyTracker.mark('speech_end')
-
-        void this.finalizeUserTurn(params)
+        void this.voiceFramePipeline.queueFrame({
+          type: 'user_turn_end',
+          params,
+          timestamp: Date.now(),
+        })
       },
 
       onInterruption: () => {
-        this.log('Interruption detected!')
-        this.onInterruption?.()
+        void this.voiceFramePipeline.queueFrame({
+          type: 'interruption',
+          timestamp: Date.now(),
+        })
       },
 
       onUserTurnTimeout: () => {
-        this.log('User turn timeout')
+        void this.voiceFramePipeline.queueFrame({
+          type: 'user_turn_timeout',
+          timestamp: Date.now(),
+        })
       },
     }
 
@@ -556,11 +560,48 @@ class StreamingASRSession {
             return
           }
 
+          if (frame.type !== 'transcription') {
+            return
+          }
+
           this.turnController.processTranscription({
             text: frame.text,
             finalized: frame.finalized,
             timestamp: frame.timestamp,
           })
+        }
+      },
+      {
+        processFrame: (frame) => {
+          switch (frame.type) {
+            case 'user_turn_start':
+              this.log('User turn started')
+              this.asr?.clearBufferedTranscripts()
+              this.vadStopCommitPromise = null
+              this.vadStopCommitText = null
+              this.vadStopCommitRunning = false
+              this.pendingVadStopCommitCount = 0
+              this.onSpeechStart?.()
+              break
+            case 'vad_speech_stop':
+              // 延迟追踪：VAD 检测到静音（最早时间点）
+              latencyTracker.reset()
+              latencyTracker.mark('vad_speech_stop')
+              this.startVADStopCommit()
+              break
+            case 'user_turn_end':
+              this.log(`User turn ended, text: ${frame.params.text?.slice(0, 50)}...`)
+              latencyTracker.mark('speech_end')
+              void this.finalizeUserTurn(frame.params)
+              break
+            case 'interruption':
+              this.log('Interruption detected!')
+              this.onInterruption?.()
+              break
+            case 'user_turn_timeout':
+              this.log('User turn timeout')
+              break
+          }
         }
       },
     ]
@@ -879,6 +920,7 @@ outputFramePipeline.setProcessors([electronOutputProcessor])
 // ========== 轮次管理（打断控制）==========
 let currentTurnId = 0
 let currentTurnAbortController: AbortController | null = null
+let currentResponseFramePipeline: ResponseFramePipeline | null = null
 const cancelledTurnIds = new Set<number>()
 let currentTurnUserText: string | null = null
 let pendingThinkingContinuationText: string | null = null
@@ -939,6 +981,12 @@ async function cancelCurrentTurn(options: { closeTTS?: boolean } = {}): Promise<
     cancelledTurnIds.add(currentTurnId)
     currentTurnAbortController.abort()
     currentTurnAbortController = null
+    void currentResponseFramePipeline?.queueFrame({
+      type: 'response_interruption',
+      timestamp: Date.now(),
+    })
+    currentResponseFramePipeline?.stop()
+    currentResponseFramePipeline = null
     cancelledExistingTurn = true
   }
 
@@ -991,6 +1039,24 @@ function mergeTranscriptText(existing: string | null, nextText: string): string 
   }
 
   return `${base}${next}`
+}
+
+function sanitizeTextForSpeech(text: string): string {
+  return text
+    .replace(/[\u{1F300}-\u{1F9FF}]/gu, '')
+    .replace(/[\u{2600}-\u{26FF}]/gu, '')
+    .replace(/[\u{2700}-\u{27BF}]/gu, '')
+    .replace(/[\u{FE00}-\u{FE0F}]/gu, '')
+    .replace(/[\u{1F000}-\u{1F02F}]/gu, '')
+    .replace(/[\u{1F0A0}-\u{1F0FF}]/gu, '')
+    .replace(/[\u{200D}]/gu, '')
+    .replace(/[\u{20E3}]/gu, '')
+    .replace(/[\u{E0020}-\u{E007F}]/gu, '')
+    .replace(/[★☆●○◆◇■□▲△▼▽◎※]/g, '')
+    .replace(/[♪♫♬♩♭♮♯]/g, '')
+    .replace(/[←→↑↓↔↕↖↗↘↙]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 // ========== 播放完成同步机制 ==========
@@ -1427,13 +1493,16 @@ ipcMain.handle('conversation:initialize', async () => {
 
 // 发送文本消息
 ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
+  let turnId = 0
+  let responseFramePipeline: ResponseFramePipeline | null = null
+
   try {
     if (!sdkInstance) {
       throw new Error('SDK not initialized')
     }
 
     // 开始新轮次（会取消上一个轮次）
-    const turnId = await startNewTurn()
+    turnId = await startNewTurn()
     const turnAbortSignal = currentTurnAbortController!.signal
     currentTurnUserText = text
 
@@ -1454,19 +1523,136 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
     displayController.reset()
     currentTTSChunkSequence = 0
 
+    responseFramePipeline = new ResponseFramePipeline()
+    currentResponseFramePipeline = responseFramePipeline
+
     // 用于追踪是否是首个 token
     let isFirstToken = true
     let isFirstTTSChunk = true
 
     let shouldUseTTS = enableTTS && appSettings.voiceOutputEnabled && Boolean(ttsService) && ttsAvailable
 
+    const ttsTextProcessor: ResponseFrameProcessor = {
+      async processFrame(frame) {
+        if (frame.type === 'response_interruption') {
+          return
+        }
+
+        if (frame.type !== 'tts_text') {
+          return
+        }
+
+        if (isTurnCancelled(turnId)) {
+          console.log(`[Turn] TTS text frame skipped - turn #${turnId} cancelled`)
+          return
+        }
+
+        const sanitizedText = sanitizeTextForSpeech(frame.text)
+        if (!sanitizedText || !shouldUseTTS || !ttsAvailable || !ttsService) {
+          return
+        }
+
+        if (isFirstTTSChunk) {
+          isFirstTTSChunk = false
+          latencyTracker.mark('first_tts_text')
+        }
+
+        try {
+          currentTTSChunkSequence += 1
+          console.log(`[Main] TTS text frame #${turnId}:${currentTTSChunkSequence}, pushing:`, JSON.stringify(sanitizedText))
+          displayController.pushTTSChunkText(sanitizedText)
+          await ttsService.pushText(sanitizedText)
+        } catch (error: any) {
+          ttsAvailable = false
+          shouldUseTTS = false
+          console.warn('[TTS] Failed to push text frame:', error.message)
+        }
+      }
+    }
+
+    const responseControlProcessor: ResponseFrameProcessor = {
+      async processFrame(frame) {
+        if (isTurnCancelled(turnId)) {
+          return
+        }
+
+        switch (frame.type) {
+          case 'phase_start':
+            displayController.startPhase(frame.phase)
+
+            if (!shouldUseTTS || !ttsService) {
+              return
+            }
+
+            try {
+              await ttsService.startStreaming()
+            } catch (error: any) {
+              console.warn('[TTS] Failed to start streaming:', error.message)
+              console.warn('[TTS] Continuing without TTS...')
+              ttsAvailable = false
+              shouldUseTTS = false
+              await ttsService.close().catch(() => undefined)
+            }
+            return
+
+          case 'phase_end':
+            if (shouldUseTTS && ttsService) {
+              try {
+                await ttsService.finishStreaming()
+              } catch (error: any) {
+                ttsAvailable = false
+                shouldUseTTS = false
+                console.warn('[TTS] Failed to finish streaming:', error.message)
+              }
+
+              console.log(`[Conversation] Waiting for playback to complete before ending phase "${frame.phase}"...`)
+              await waitForRendererPlayback()
+              if (isTurnCancelled(turnId)) {
+                console.log(`[Turn] Phase end aborted after playback wait - turn #${turnId} cancelled`)
+                return
+              }
+              console.log(`[Conversation] Playback complete for phase "${frame.phase}"`)
+            }
+
+            await displayController.endPhase(frame.phase)
+            return
+
+          case 'display_text_delta':
+            displayController.pushTextDelta(frame.text)
+            return
+
+          case 'task_start':
+            displayController.startTask(frame.taskDescription)
+            return
+
+          case 'task_end':
+            displayController.endTask(frame.result)
+            return
+        }
+      }
+    }
+
+    responseFramePipeline.setProcessors([
+      new SentenceAggregatorProcessor({
+        emit: (chunk) => {
+          void responseFramePipeline?.queueFrame({
+            type: 'tts_text',
+            text: chunk,
+            timestamp: Date.now(),
+          })
+        },
+      }),
+      ttsTextProcessor,
+      responseControlProcessor,
+    ])
+
     // 延迟追踪：LLM 调用开始
     latencyTracker.mark('llm_start')
 
     await streamingASRSession?.startBotThinking()
 
-    // 使用 SDK 的 chatStream，TTS 分句逻辑由 SDK 处理
-    // AbortSignal 与 turnId 双重保护，确保打断后旧 LLM/TTS 不再输出
+    // LLM delta 进入 response frame pipeline，由 processor 做句子聚合和 TTS 输入。
+    // AbortSignal 与 turnId 双重保护，确保打断后旧 LLM/TTS 不再输出。
     const responseStream = sdkInstance.chatStream(
       {
         text,
@@ -1475,30 +1661,16 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
       {
         signal: turnAbortSignal,
         onPhaseStart: async (phase) => {
-          // 检查是否已被打断
           if (isTurnCancelled(turnId)) {
             console.log(`[Turn] Phase start skipped - turn #${turnId} cancelled`)
             return
           }
 
-          displayController.startPhase(phase)
-
-          if (!shouldUseTTS || !ttsService) {
-            return
-          }
-
-          try {
-            // 开始新的 TTS 流
-            // FishTTSOfficial 会在内部管理 context ID
-            // 并在 'connected' 事件中通知 Renderer
-            await ttsService.startStreaming()
-          } catch (error: any) {
-            console.warn('[TTS] Failed to start streaming:', error.message)
-            console.warn('[TTS] Continuing without TTS...')
-            ttsAvailable = false
-            shouldUseTTS = false
-            await ttsService.close().catch(() => undefined)
-          }
+          await responseFramePipeline?.queueFrame({
+            type: 'phase_start',
+            phase,
+            timestamp: Date.now(),
+          })
         },
         onDisplayChunk: async (_, delta) => {
           // 检查是否已被打断
@@ -1511,41 +1683,17 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
           }
 
           if (!shouldUseTTS) {
-            displayController.pushTextDelta(delta)
-          }
-        },
-        onTTSChunk: async (chunk) => {
-          // 检查是否已被打断
-          if (isTurnCancelled(turnId)) {
-            console.log(`[Turn] TTS chunk skipped - turn #${turnId} cancelled`)
-            return
-          }
-
-          // 延迟追踪：首个 LLM token (如果 onDisplayChunk 没触发)
-          if (isFirstToken) {
-            isFirstToken = false
-            latencyTracker.mark('first_llm_token')
-          }
-
-          if (!shouldUseTTS || !ttsAvailable || !ttsService) {
-            return
-          }
-
-          // 延迟追踪：首个 TTS 文本块
-          if (isFirstTTSChunk) {
-            isFirstTTSChunk = false
-            latencyTracker.mark('first_tts_text')
-          }
-
-          try {
-            currentTTSChunkSequence += 1
-            console.log(`[Main] onTTSChunk #${currentTurnId}:${currentTTSChunkSequence}, pushing:`, JSON.stringify(chunk))
-            displayController.pushTTSChunkText(chunk)
-            await ttsService.pushText(chunk)
-          } catch (error: any) {
-            ttsAvailable = false
-            shouldUseTTS = false
-            console.warn('[TTS] Failed to push chunk:', error.message)
+            await responseFramePipeline?.queueFrame({
+              type: 'display_text_delta',
+              text: delta,
+              timestamp: Date.now(),
+            })
+          } else {
+            await responseFramePipeline?.queueFrame({
+              type: 'llm_text_delta',
+              text: delta,
+              timestamp: Date.now(),
+            })
           }
         },
         onPhaseEnd: async (phase) => {
@@ -1557,35 +1705,32 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
 
           console.log(`[Conversation] Phase "${phase}" ending...`)
 
-          if (shouldUseTTS && ttsService) {
-            try {
-              await ttsService.finishStreaming()
-            } catch (error: any) {
-              ttsAvailable = false
-              shouldUseTTS = false
-              console.warn('[TTS] Failed to finish streaming:', error.message)
-            }
-
-            // 等待 Renderer 端的音频播放完成
-            // 这是关键的同步点，确保 Phase 1 的音频播放完毕再开始 Phase 2
-            console.log(`[Conversation] Waiting for playback to complete before ending phase "${phase}"...`)
-            await waitForRendererPlayback()
-            if (isTurnCancelled(turnId)) {
-              console.log(`[Turn] Phase end aborted after playback wait - turn #${turnId} cancelled`)
-              return
-            }
-            console.log(`[Conversation] Playback complete for phase "${phase}"`)
-          }
-
-          await displayController.endPhase(phase)
+          await responseFramePipeline?.queueFrame({
+            type: 'llm_text_end',
+            timestamp: Date.now(),
+          })
+          await responseFramePipeline?.queueFrame({
+            type: 'phase_end',
+            phase,
+            timestamp: Date.now(),
+          })
+          await responseFramePipeline?.waitForIdle()
         },
         onTaskStart: async (taskDescription) => {
           if (isTurnCancelled(turnId)) return
-          displayController.startTask(taskDescription)
+          await responseFramePipeline?.queueFrame({
+            type: 'task_start',
+            taskDescription,
+            timestamp: Date.now(),
+          })
         },
         onTaskEnd: async (result) => {
           if (isTurnCancelled(turnId)) return
-          displayController.endTask(result)
+          await responseFramePipeline?.queueFrame({
+            type: 'task_end',
+            result,
+            timestamp: Date.now(),
+          })
         }
       }
     )
@@ -1599,8 +1744,16 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
       await streamingASRSession?.endBotTurn()
     }
 
+    if (currentResponseFramePipeline === responseFramePipeline) {
+      currentResponseFramePipeline = null
+    }
+
     return { success: true, response: fullResponse, ttsEnabled: shouldUseTTS }
   } catch (error: any) {
+    if (currentResponseFramePipeline === responseFramePipeline) {
+      currentResponseFramePipeline?.stop()
+      currentResponseFramePipeline = null
+    }
     await streamingASRSession?.endBotTurn().catch(() => undefined)
     console.error('[Chat] Failed to send text:', error)
     return { success: false, error: error.message }
