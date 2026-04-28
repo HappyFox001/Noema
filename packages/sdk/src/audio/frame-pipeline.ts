@@ -94,16 +94,20 @@ export class FramePipeline<TFrame extends Frame = Frame> {
     return this.queue
   }
 
-  reset(): void {
+  interrupt(): void {
     this.currentTaskAbortController?.abort()
     this.currentTaskAbortController = null
+    this.queue = Promise.resolve()
+  }
+
+  reset(): void {
+    this.interrupt()
     this.queue = Promise.resolve()
     this.stopped = false
   }
 
   stop(): void {
-    this.currentTaskAbortController?.abort()
-    this.currentTaskAbortController = null
+    this.interrupt()
     this.stopped = true
     this.queue = Promise.resolve()
   }

@@ -57,13 +57,15 @@ import {
   type UserTurnStoppedParams,
   type VoiceConfidenceProvider,
   type SmartTurnOptions,
-  VoiceFramePipeline,
+  VoiceGraphPipeline,
+  type VoiceFrame,
   type VoiceFrameProcessor,
   OutputFramePipeline,
   type OutputFrameProcessor,
   LLMResponseProcessor,
   LLMStreamBridgeProcessor,
   ResponseFramePipeline,
+  type ResponseFrame,
   ResponseDisplayProcessor,
   ResponseTTSProcessor,
   SentenceAggregatorProcessor,
@@ -370,6 +372,9 @@ const FALLBACK_ENDPOINTING_CONFIG: Partial<EndpointingConfig> = {
   userTurnStopTimeout: 5000,
 }
 
+// ========== 全局 Frame Graph ==========
+const voiceGraphPipeline = new VoiceGraphPipeline()
+
 /**
  * 流式 ASR 会话
  *
@@ -382,7 +387,7 @@ const FALLBACK_ENDPOINTING_CONFIG: Partial<EndpointingConfig> = {
 class StreamingASRSession {
   private asr: QwenRealtimeASR | null = null
   private turnController: TurnController | null = null
-  private voiceFramePipeline: VoiceFramePipeline = new VoiceFramePipeline()
+  private voiceFramePipeline = voiceGraphPipeline.createInputLane('input')
   private audioFrameSequence = 0
   private commitInFlight = false
   private pendingUserTurnEnd: UserTurnStoppedParams | null = null
@@ -881,7 +886,7 @@ class StreamingASRSession {
 let currentTTSChunkSequence = 0
 
 // ========== 输出 Frame Pipeline ==========
-const outputFramePipeline = new OutputFramePipeline()
+const outputFramePipeline: OutputFramePipeline = voiceGraphPipeline.createOutputLane('output')
 const invalidatedTTSContexts = new Set<number>()
 
 const electronOutputProcessor: OutputFrameProcessor = {
@@ -984,6 +989,7 @@ async function cancelCurrentTurn(options: { closeTTS?: boolean } = {}): Promise<
     cancelledTurnIds.add(currentTurnId)
     currentTurnAbortController.abort()
     currentTurnAbortController = null
+    voiceGraphPipeline.broadcastInterruption()
     void currentResponseFramePipeline?.queueFrame({
       type: 'response_interruption',
       timestamp: Date.now(),
@@ -1526,7 +1532,8 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
     displayController.reset()
     currentTTSChunkSequence = 0
 
-    responseFramePipeline = new ResponseFramePipeline()
+    const responseLaneName = `response:${turnId}`
+    responseFramePipeline = voiceGraphPipeline.createResponseLane(responseLaneName)
     currentResponseFramePipeline = responseFramePipeline
 
     let isFirstTTSChunk = true
@@ -1615,12 +1622,16 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
     if (currentResponseFramePipeline === responseFramePipeline) {
       currentResponseFramePipeline = null
     }
+    voiceGraphPipeline.removeLane(responseLaneName)
 
     return { success: true, response: fullResponse, ttsEnabled: shouldUseTTS }
   } catch (error: any) {
     if (currentResponseFramePipeline === responseFramePipeline) {
       currentResponseFramePipeline?.stop()
       currentResponseFramePipeline = null
+    }
+    if (turnId > 0) {
+      voiceGraphPipeline.removeLane(`response:${turnId}`)
     }
     await streamingASRSession?.endBotTurn().catch(() => undefined)
     console.error('[Chat] Failed to send text:', error)
