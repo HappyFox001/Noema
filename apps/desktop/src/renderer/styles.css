@@ -938,10 +938,28 @@ body:not(.settings-open) #main-view {
 }
 
 .profile-loading {
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   color: rgba(255, 255, 255, 0.3);
   font-size: 12px;
   padding: 20px 0;
+}
+
+.loading-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.16);
+  border-top-color: rgba(255, 255, 255, 0.55);
+  border-radius: 999px;
+  animation: memory-spin 0.8s linear infinite;
+}
+
+@keyframes memory-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .profile-empty {

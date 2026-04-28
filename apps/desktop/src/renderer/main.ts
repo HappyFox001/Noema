@@ -1228,6 +1228,7 @@ const voiceInputBtn = document.getElementById('voice-input-btn') as HTMLButtonEl
 const voiceOutputToggle = document.getElementById('voice-output-toggle') as HTMLInputElement
 const personalitySelect = document.getElementById('personality-select') as HTMLSelectElement
 const addPersonalityFileBtn = document.getElementById('add-personality-file-btn') as HTMLButtonElement
+let memoryRefreshPromise: Promise<void> | null = null
 
 function applySettingsToUI(settings: UISettings) {
   voiceInputEnabled = settings.voiceInputEnabled
@@ -1367,6 +1368,10 @@ function openSettings() {
   document.body.classList.add('settings-open')
   settingsPanel.classList.add('visible')
   mainView.setAttribute('aria-hidden', 'true')
+
+  if (isMemorySectionActive()) {
+    void refreshMemorySection()
+  }
 }
 
 // Close settings panel
@@ -1441,12 +1446,7 @@ settingsNav.addEventListener('mouseup', (e) => {
 
           // 如果切换到记忆管理，加载数据
           if (section === 'memory') {
-            void Promise.all([
-              loadUserProfile(),
-              loadImportantMemories(),
-              loadConversationSummaries(),
-              loadWorkingMemory()
-            ])
+            void refreshMemorySection()
           }
         }
       }
@@ -1628,12 +1628,7 @@ resetAllBtn?.addEventListener('click', async () => {
       }
       clearTextDisplay()
       setStatus('所有数据已重置')
-      await Promise.all([
-        loadUserProfile(),
-        loadImportantMemories(),
-        loadConversationSummaries(),
-        loadWorkingMemory()
-      ])
+      await refreshMemorySection()
     } catch (error: any) {
       console.error('Reset all error:', error)
     }
@@ -1668,13 +1663,44 @@ type UserProfile = {
 
 let currentProfile: UserProfile | null = null
 
+function isMemorySectionActive(): boolean {
+  return document.getElementById('section-memory')?.classList.contains('active') === true
+}
+
+async function refreshMemorySection(): Promise<void> {
+  if (memoryRefreshPromise) {
+    return memoryRefreshPromise
+  }
+
+  setMemoryLoadingState()
+  memoryRefreshPromise = Promise.all([
+    loadUserProfile(),
+    loadImportantMemories(),
+    loadConversationSummaries(),
+    loadWorkingMemory()
+  ]).then(() => undefined).finally(() => {
+    memoryRefreshPromise = null
+  })
+
+  return memoryRefreshPromise
+}
+
+function setMemoryLoadingState(): void {
+  profileCount.textContent = '加载中'
+  importantMemoriesCount.textContent = '加载中'
+  summariesCount.textContent = '加载中'
+  conversationsCount.textContent = '加载中'
+  profileContent.innerHTML = '<div class="profile-loading"><span class="loading-spinner"></span>加载中...</div>'
+  importantMemoriesContent.innerHTML = '<div class="profile-loading"><span class="loading-spinner"></span>加载中...</div>'
+  summariesContent.innerHTML = '<div class="profile-loading"><span class="loading-spinner"></span>加载中...</div>'
+  conversationsContent.innerHTML = '<div class="profile-loading"><span class="loading-spinner"></span>加载中...</div>'
+}
+
 async function loadUserProfile(): Promise<void> {
   try {
     const result = await window.electronAPI.getUserProfile()
     if (!result.success || !result.profile) {
-      profileCount.textContent = '0 条'
-      profileContent.innerHTML = '<div class="profile-empty">暂无用户画像</div>'
-      return
+      throw new Error(result.error || '用户画像返回为空')
     }
 
     currentProfile = result.profile
@@ -1777,9 +1803,7 @@ async function loadImportantMemories(): Promise<void> {
   try {
     const result = await window.electronAPI.getUserProfile()
     if (!result.success || !result.profile) {
-      importantMemoriesCount.textContent = '0 条'
-      importantMemoriesContent.innerHTML = '<div class="profile-empty">暂无重要记忆</div>'
-      return
+      throw new Error(result.error || '重要记忆返回为空')
     }
 
     const memories = result.profile.importantMemories || {}
@@ -1846,9 +1870,7 @@ async function loadConversationSummaries(): Promise<void> {
   try {
     const result = await window.electronAPI.getConversationSummaries()
     if (!result.success || !result.summaries) {
-      summariesContent.innerHTML = '<div class="profile-empty">暂无对话摘要</div>'
-      summariesCount.textContent = '0 条'
-      return
+      throw new Error(result.error || '对话摘要返回为空')
     }
 
     summariesCount.textContent = `${result.summaries.length} 条`
@@ -1927,9 +1949,7 @@ async function loadWorkingMemory(): Promise<void> {
   try {
     const result = await window.electronAPI.getWorkingMemory()
     if (!result.success || !result.memory) {
-      conversationsContent.innerHTML = '<div class="profile-empty">暂无对话记录</div>'
-      conversationsCount.textContent = '0 条'
-      return
+      throw new Error(result.error || '最近对话返回为空')
     }
 
     const turns = result.memory.recentTurns || []
