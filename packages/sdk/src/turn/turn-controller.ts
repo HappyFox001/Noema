@@ -239,9 +239,9 @@ export class TurnController {
    * 处理转录
    * @param frame - 转录帧
    */
-  processTranscription(frame: TranscriptionFrame): void {
+  async processTranscription(frame: TranscriptionFrame): Promise<void> {
     if (!this.userTurnActive) {
-      return
+      await this.startUserTurnFromTranscription()
     }
 
     // 重置用户轮次超时
@@ -249,6 +249,25 @@ export class TurnController {
 
     // 传递给 Endpointing 策略
     this.endpointing.handleTranscription(frame)
+  }
+
+  /**
+   * Pipecat TranscriptionUserTurnStartStrategy 等价路径。
+   *
+   * 当 VAD 没有触发 start、但 STT 产出了 transcript 时，也要开启用户
+   * turn；如果 bot 正在 thinking/speaking，则同时广播 interruption。
+   */
+  private async startUserTurnFromTranscription(): Promise<void> {
+    this.log(`Transcription started user turn, state: ${this.state}`)
+
+    if (this.isBotTurn() && this.config.enableInterruption) {
+      await this.triggerInterruption({ markVADStarted: false })
+      return
+    }
+
+    await this.triggerUserTurnStart({
+      enableUserSpeakingFrames: true,
+    })
   }
 
   async startBotThinking(): Promise<void> {
@@ -567,7 +586,8 @@ export class TurnController {
    * 触发打断
    * 移植自 Pipecat: 打断时重置所有策略
    */
-  private async triggerInterruption(): Promise<void> {
+  private async triggerInterruption(options: { markVADStarted?: boolean } = {}): Promise<void> {
+    const markVADStarted = options.markVADStarted ?? true
     this.cancelPendingInterruption()
 
     // 停止 Bot Speaking 计时器
@@ -582,11 +602,13 @@ export class TurnController {
     this.userTurnActive = true
 
     this.endpointing.reset()
-    this.endpointing.handleVADUserStartedSpeaking()
     this.startUserTurnStopTimeout()
     await this.callEventHandler('onUserTurnStart', {
       enableUserSpeakingFrames: true,
     })
+    if (markVADStarted) {
+      this.endpointing.handleVADUserStartedSpeaking()
+    }
 
     // 触发打断事件
     await this.callEventHandler('onInterruption')

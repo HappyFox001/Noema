@@ -188,6 +188,15 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
       clearTimeout(this.sttTimeoutTimer)
       this.sttTimeoutTimer = null
     }
+
+    // Pipecat TurnAnalyzerUserTurnStopStrategy fallback: a transcript can
+    // arrive without a VAD stop when VAD missed soft speech. In that case the
+    // transcript itself proves a user turn exists; treat it as complete and
+    // let the finalized transcript short-circuit the wait.
+    if (!this.vadUserSpeaking && this.vadStoppedTime === null) {
+      this.turnComplete = true
+    }
+
     this.maybeTriggerUserTurnStopped('smart_turn')
   }
 

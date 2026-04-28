@@ -625,15 +625,19 @@ class StreamingASRSession {
           }
 
           if (!this.isCurrentVoiceTurn(frame.voiceTurnId)) {
-            this.log(`Dropping stale transcription for voice turn #${frame.voiceTurnId}`)
-            return
+            if (!this.shouldStartVoiceTurnFromTranscription(frame)) {
+              this.log(`Dropping stale transcription for voice turn #${frame.voiceTurnId}`)
+              return
+            }
+            frame.voiceTurnId = this.beginVoiceTurn()
+            this.log(`Transcription started fallback voice turn #${frame.voiceTurnId}`)
           }
 
           if (!frame.finalized) {
             return
           }
 
-          this.turnController.processTranscription({
+          await this.turnController.processTranscription({
             text: frame.text,
             finalized: frame.finalized,
             timestamp: frame.timestamp,
@@ -748,6 +752,25 @@ class StreamingASRSession {
 
   private isCurrentVoiceTurn(voiceTurnId: number): boolean {
     return voiceTurnId > 0 && voiceTurnId === this.activeVoiceTurnId
+  }
+
+  private shouldStartVoiceTurnFromTranscription(frame: Extract<VoiceFrame, { type: 'transcription' }>): boolean {
+    if (frame.type !== 'transcription') {
+      return false
+    }
+
+    if (!frame.text.trim()) {
+      return false
+    }
+
+    if (this.activeVoiceTurnId > 0) {
+      return false
+    }
+
+    // Pipecat defaults to TranscriptionUserTurnStartStrategy(use_interim=True).
+    // We only use finalized Qwen transcripts as authoritative user text, so
+    // interim transcripts can still be observed but do not create turns.
+    return frame.finalized
   }
 
   private async finalizeUserTurn(
