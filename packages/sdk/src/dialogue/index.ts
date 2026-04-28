@@ -126,6 +126,7 @@ export class DialogueOrchestrator {
     options?: StreamOptions
   ): AsyncGenerator<string> {
     throwIfAborted(options?.signal)
+    const contextCheckpoint = this.context.createCheckpoint()
     const turnContext = await this.contextAggregator.prepareUserTurn(input, options?.signal)
 
     try {
@@ -229,6 +230,7 @@ export class DialogueOrchestrator {
         (error instanceof DOMException && error.name === 'AbortError') ||
         (error instanceof Error && error.name === 'APIUserAbortError')
       ) {
+        this.context.restoreCheckpoint(contextCheckpoint)
         return
       }
       console.error('Streaming failed:', error)

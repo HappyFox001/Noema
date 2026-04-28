@@ -143,7 +143,6 @@ export class TurnController {
     if (this.config.smartTurn?.analyzer) {
       this.useSmartTurn = true
       const smartTurnStrategy = new SmartTurnEndpointingStrategy({
-        userSpeechTimeout: this.config.smartTurn.fallbackTimeoutMs ?? 1000,
         sttTimeoutMs: this.config.smartTurn.sttTimeoutMs ?? DEFAULT_ENDPOINTING_CONFIG.sttTimeoutMs,
         userTurnStopTimeout: 5000,
         analyzeIntervalMs: this.config.smartTurn.analyzeIntervalMs ?? 200,
@@ -151,6 +150,7 @@ export class TurnController {
         analyzeTimeoutMs: 500,
       })
       smartTurnStrategy.setSmartTurnAnalyzer(this.config.smartTurn.analyzer)
+      smartTurnStrategy.onSmartTurnResult = this.config.smartTurn.onResult ?? null
       this.endpointing = smartTurnStrategy
       this.log('Using Smart Turn ML endpointing')
     } else {
@@ -240,6 +240,10 @@ export class TurnController {
    * @param frame - 转录帧
    */
   processTranscription(frame: TranscriptionFrame): void {
+    if (!this.userTurnActive) {
+      return
+    }
+
     // 重置用户轮次超时
     this.resetUserTurnStopTimeout()
 
@@ -411,7 +415,7 @@ export class TurnController {
 
     // 关键：取消聚合窗口计时器 (移植自 Pipecat)
     // 如果用户在聚合窗口内恢复说话，取消触发 onUserTurnEnd
-    if (this.aggregationTimeoutTask || this.state === TurnState.USER_DONE) {
+    if (this.aggregationTimeoutTask) {
       this.log('User resumed speaking, cancelling aggregation window and continuing turn')
       this.cancelAggregationWindow()
       // 状态从 USER_DONE 变回 USER_TURN
@@ -572,19 +576,23 @@ export class TurnController {
     // 取消聚合窗口
     this.cancelAggregationWindow()
 
+    // Pipecat 语义：speech started 先开启新的 user turn 并重置 stop
+    // strategies，随后广播 InterruptionFrame 取消当前 bot 流。
+    this.state = TurnState.USER_TURN
+    this.userTurnActive = true
+
+    this.endpointing.reset()
+    this.endpointing.handleVADUserStartedSpeaking()
+    this.startUserTurnStopTimeout()
+    await this.callEventHandler('onUserTurnStart', {
+      enableUserSpeakingFrames: true,
+    })
+
     // 触发打断事件
     await this.callEventHandler('onInterruption')
 
     // 通知所有打断处理器
     await this.interruptionManager.triggerInterruption()
-
-    // 切换到用户轮次
-    this.state = TurnState.USER_TURN
-    this.userTurnActive = true
-
-    // 重置所有策略 (移植自 Pipecat)
-    this.endpointing.reset()
-    // VAD 分析器的状态会在下一次 processAudio 时自然更新
   }
 
   private scheduleInterruptionIfSpeechContinues(): void {
@@ -621,8 +629,9 @@ export class TurnController {
   private startUserTurnStopTimeout(): void {
     this.cancelUserTurnStopTimeout()
 
-    const timeout = this.config.endpointing?.userTurnStopTimeout ??
-      DEFAULT_ENDPOINTING_CONFIG.userTurnStopTimeout
+    const timeout = this.useSmartTurn
+      ? 5000
+      : this.config.endpointing?.userTurnStopTimeout ?? DEFAULT_ENDPOINTING_CONFIG.userTurnStopTimeout
 
     this.userTurnStopTimeoutTask = setTimeout(async () => {
       this.userTurnStopTimeoutTask = null

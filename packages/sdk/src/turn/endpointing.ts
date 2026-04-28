@@ -143,9 +143,8 @@ export class EndpointingStrategy implements IEndpointingStrategy {
    * @param frame - 转录帧
    */
   handleTranscription(frame: TranscriptionFrame): void {
-    this.mergeTranscriptionText(frame)
-
     if (frame.finalized) {
+      this.mergeTranscriptionText(frame)
       this.transcriptFinalized = true
 
       // 短路 STT 超时计时器：STT 已经告诉我们没有更多内容了
@@ -209,8 +208,9 @@ export class EndpointingStrategy implements IEndpointingStrategy {
   }
 
   /**
-   * 实时 ASR 的 interim/final 文本经常是“当前完整假设”，不是 delta。
-   * 这里做保守合并，避免 "今天天气" + "今天天气很好" 被累成重复文本。
+   * DashScope streaming 的 interim 是当前完整假设，不应作为最终
+   * 用户消息聚合。这里只接收 finalized transcript，并用最新 final
+   * 覆盖当前文本。
    */
   private mergeTranscriptionText(frame: TranscriptionFrame): void {
     const next = frame.text.trim()
@@ -218,21 +218,7 @@ export class EndpointingStrategy implements IEndpointingStrategy {
       return
     }
 
-    if (!this.text) {
-      this.text = next
-      return
-    }
-
-    if (next === this.text || this.text.includes(next)) {
-      return
-    }
-
-    if (next.startsWith(this.text)) {
-      this.text = next
-      return
-    }
-
-    this.text += next
+    this.text = next
   }
 
   /**

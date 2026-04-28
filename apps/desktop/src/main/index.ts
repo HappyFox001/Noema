@@ -198,6 +198,7 @@ class LatencyTracker {
     const get = (p: LatencyPoint) => this.timestamps.get(p)
 
     const vadSpeechStop = get('vad_speech_stop')
+    const turnComplete = get('turn_complete')
     const speechEnd = get('speech_end')
     const asrComplete = get('asr_complete')
     const llmStart = get('llm_start')
@@ -214,6 +215,8 @@ class LatencyTracker {
 
     const intervals: LatencyIntervals = {
       vadToEndpointing: (vadSpeechStop && speechEnd) ? speechEnd - vadSpeechStop : undefined,
+      vadToTurnComplete: (vadSpeechStop && turnComplete) ? turnComplete - vadSpeechStop : undefined,
+      turnCompleteToEndpointing: (turnComplete && speechEnd) ? speechEnd - turnComplete : undefined,
       endpointingToASR: (speechEnd && asrComplete) ? asrComplete - speechEnd : undefined,
       asrToLLM: (asrComplete && llmStart) ? llmStart - asrComplete : undefined,
       llmToFirstToken: (llmStart && firstLLMToken) ? firstLLMToken - llmStart : undefined,
@@ -234,6 +237,10 @@ class LatencyTracker {
     console.log('[Latency] ========== Summary ==========')
     console.log(`[Latency] Total (VAD静音 → 播放): ${total?.toFixed(0) ?? '?'}ms`)
     console.log(`[Latency]   ├─ VAD → Endpointing: ${intervals.vadToEndpointing?.toFixed(0) ?? '?'}ms`)
+    if (intervals.vadToTurnComplete !== undefined || intervals.turnCompleteToEndpointing !== undefined) {
+      console.log(`[Latency]   │  ├─ VAD → SmartTurn: ${intervals.vadToTurnComplete?.toFixed(0) ?? '?'}ms`)
+      console.log(`[Latency]   │  └─ SmartTurn → Final/Timeout: ${intervals.turnCompleteToEndpointing?.toFixed(0) ?? '?'}ms`)
+    }
     console.log(`[Latency]   ├─ Endpointing → ASR: ${intervals.endpointingToASR?.toFixed(0) ?? '?'}ms`)
     console.log(`[Latency]   ├─ ASR → LLM:         ${intervals.asrToLLM?.toFixed(0) ?? '?'}ms`)
     console.log(`[Latency]   ├─ LLM → First Token: ${intervals.llmToFirstToken?.toFixed(0) ?? '?'}ms`)
@@ -251,6 +258,7 @@ class LatencyTracker {
 
 type LatencyPoint =
   | 'vad_speech_stop'   // VAD 检测到静音（最早时间点）
+  | 'turn_complete'     // SmartTurn 判定用户说完
   | 'speech_end'        // Endpointing 确认说话结束
   | 'asr_complete'      // ASR 转录完成
   | 'llm_start'         // LLM 调用开始
@@ -261,6 +269,8 @@ type LatencyPoint =
 
 interface LatencyIntervals {
   vadToEndpointing?: number
+  vadToTurnComplete?: number
+  turnCompleteToEndpointing?: number
   endpointingToASR?: number
   asrToLLM?: number
   llmToFirstToken?: number
@@ -404,6 +414,7 @@ class StreamingASRSession {
 
   // 回调
   private onTranscript: ((text: string) => void) | null = null
+  private onUserText: ((text: string) => void | Promise<void>) | null = null
   private onStateChange: ((state: 'listening' | 'processing' | 'idle') => void) | null = null
   private onSpeechStart: (() => void) | null = null
   private onInterruption: (() => void) | null = null
@@ -413,6 +424,7 @@ class StreamingASRSession {
 
   async start(callbacks?: {
     onTranscript?: (text: string) => void
+    onUserText?: (text: string) => void | Promise<void>
     onStateChange?: (state: 'listening' | 'processing' | 'idle') => void
     onSpeechStart?: () => void
     onInterruption?: () => void
@@ -420,6 +432,7 @@ class StreamingASRSession {
     await this.stop()
 
     this.onTranscript = callbacks?.onTranscript || null
+    this.onUserText = callbacks?.onUserText || null
     this.onStateChange = callbacks?.onStateChange || null
     this.onSpeechStart = callbacks?.onSpeechStart || null
     this.onInterruption = callbacks?.onInterruption || null
@@ -457,8 +470,10 @@ class StreamingASRSession {
       kind: 'qwen-realtime',
       config: {
         apiKey,
+        model: normalizeASRModelName(asrConfig?.modelName),
         sampleRate: 16000,
         language: 'zh',
+        receiveTimeoutMs: 1000,
       },
       transport: reconnectingTransport,
     })
@@ -467,9 +482,13 @@ class StreamingASRSession {
         return
       }
 
+      if (event.final) {
+        this.log(`Final transcript frame: "${event.text.slice(0, 30)}..."`)
+      }
+
       // 将转录结果也作为 frame 放入同一条输入 pipeline，避免
-      // VAD/ASR 分散 callback 造成状态乱序。
-      this.log(`Interim transcript: "${event.text.slice(0, 30)}..." (final: ${event.final})`)
+      // VAD/ASR 分散 callback 造成状态乱序。interim 只保留为 frame，
+      // 不打印、不进入最终用户文本。
       void this.voiceFramePipeline.queueFrame({
         type: 'transcription',
         text: event.text,
@@ -497,14 +516,21 @@ class StreamingASRSession {
     // 初始化轮次控制器
     // 优先使用 Smart Turn (~100ms)，否则回退到固定超时 (400ms)
     if (smartTurn) {
-      this.log('Using Pipecat-style Smart Turn endpointing with 1s speech-timeout fallback')
+      this.log('Using Pipecat TurnAnalyzer Smart Turn endpointing')
       this.turnController = new TurnController(vadAnalyzer, {
         smartTurn: {
           analyzer: smartTurn,
           analyzeIntervalMs: 200,      // 200ms 静音后开始分析
           maxAnalyzeAttempts: 10,      // 最多分析 10 次
-          fallbackTimeoutMs: 1000,     // 对齐 sensory-server SpeechTimeoutUserTurnStopStrategy(timeout=1.0)
-          sttTimeoutMs: 1000,          // 对齐 sensory-server Qwen STT ttfs_p99_latency=1.0
+          // 对齐 Pipecat TurnAnalyzerUserTurnStopStrategy：
+          // SmartTurn 判定 complete 后仍等待 finalized TranscriptionFrame。
+          // Qwen Omni 的 interim 只用于观察，不能作为最终用户输入。
+          sttTimeoutMs: 1000,
+          onResult: (result) => {
+            if (result.isComplete) {
+              latencyTracker.mark('turn_complete')
+            }
+          },
         },
         enableInterruption: true,
         debug: this.debug,
@@ -528,6 +554,10 @@ class StreamingASRSession {
       },
 
       onVADSpeechStop: () => {
+        // 这里是 VAD 事件的同步边界；不要等 frame 队列，否则 SmartTurn
+        // 可能先完成，随后被 vad_speech_stop processor reset 掉打点。
+        latencyTracker.reset()
+        latencyTracker.mark('vad_speech_stop')
         void this.voiceFramePipeline.queueFrame({
           type: 'vad_speech_stop',
           timestamp: Date.now(),
@@ -584,6 +614,10 @@ class StreamingASRSession {
             return
           }
 
+          if (!frame.finalized) {
+            return
+          }
+
           this.turnController.processTranscription({
             text: frame.text,
             finalized: frame.finalized,
@@ -604,9 +638,6 @@ class StreamingASRSession {
               this.onSpeechStart?.()
               break
             case 'vad_speech_stop':
-              // 延迟追踪：VAD 检测到静音（最早时间点）
-              latencyTracker.reset()
-              latencyTracker.mark('vad_speech_stop')
               this.startVADStopCommit()
               break
             case 'user_turn_end':
@@ -685,17 +716,21 @@ class StreamingASRSession {
     this.onStateChange?.('processing')
 
     try {
-      // Pipecat/OpenAI STT 会在 VADUserStoppedSpeakingFrame 到达时 commit
-      // audio buffer，让 final transcription 在 endpointing 的 STT wait
-      // 窗口内返回。这里优先使用 VAD stop 时提前 commit 的结果。
-      let text = this.vadStopCommitText
-      if (this.vadStopCommitPromise) {
+      // Pipecat 中 TranscriptionFrame 是持续进入 pipeline 的；如果
+      // endpointing 已经聚合到文本，就不要在用户轮次结束后再串行等待
+      // Qwen final commit。后台 VAD-stop commit 仍会继续完成，用于清空
+      // provider buffer；只有没有任何可用文本时才同步等待它。
+      let text = params.text?.trim() || this.vadStopCommitText
+      if (!text?.trim() && this.vadStopCommitPromise) {
         const committedText = await this.vadStopCommitPromise
         text = this.mergeTranscriptText(text, committedText)
       }
 
       if (!text?.trim() && !params.text?.trim()) {
-        text = await this.asr.commit()
+        const waitForFinalTranscript = getWaitForFinalTranscript(this.asr)
+        text = waitForFinalTranscript
+          ? await waitForFinalTranscript()
+          : await this.asr.commit()
       }
 
       // 延迟追踪：ASR 转录完成
@@ -706,13 +741,20 @@ class StreamingASRSession {
       if (finalText) {
         this.log(`Transcript: ${finalText}`)
         this.onTranscript?.(finalText)
+        void Promise.resolve(this.onUserText?.(finalText)).catch((error) => {
+          this.log(`Failed to process user text frame: ${error.message ?? String(error)}`)
+        })
       }
     } catch (error) {
       this.log(`Commit error: ${error}`)
       // 如果 ASR 提交失败，使用 endpointing 累积的文本
       if (params.text?.trim()) {
         latencyTracker.mark('asr_complete')
-        this.onTranscript?.(params.text.trim())
+        const fallbackText = params.text.trim()
+        this.onTranscript?.(fallbackText)
+        void Promise.resolve(this.onUserText?.(fallbackText)).catch((processError) => {
+          this.log(`Failed to process fallback user text frame: ${processError.message ?? String(processError)}`)
+        })
       }
     } finally {
       this.commitInFlight = false
@@ -735,6 +777,16 @@ class StreamingASRSession {
       return
     }
 
+    if (hasStreamingTranscripts(this.asr)) {
+      const flushAudio = getFlushAudio(this.asr)
+      if (flushAudio) {
+        void flushAudio().catch((error: any) => {
+          this.log(`ASR flush error: ${error.message ?? String(error)}`)
+        })
+      }
+      return
+    }
+
     if (this.vadStopCommitRunning) {
       this.pendingVadStopCommitCount += 1
       this.log(`ASR commit already running; queued VAD stop commit #${this.pendingVadStopCommitCount}`)
@@ -753,7 +805,10 @@ class StreamingASRSession {
         this.log('Committing ASR buffer on VAD stop')
 
         try {
-          const text = await this.asr!.commit()
+          const waitForFinalTranscript = getWaitForFinalTranscript(this.asr!)
+          const text = waitForFinalTranscript
+            ? await waitForFinalTranscript()
+            : await this.asr!.commit()
           this.vadStopCommitText = this.mergeTranscriptText(this.vadStopCommitText, text)
         } catch (error: any) {
           this.log(`VAD stop commit error: ${error.message ?? String(error)}`)
@@ -857,6 +912,7 @@ class StreamingASRSession {
     this.onStateChange?.('idle')
     this.onTranscript = null
     this.onStateChange = null
+    this.onUserText = null
     this.onSpeechStart = null
     this.onInterruption = null
 
@@ -893,6 +949,24 @@ class StreamingASRSession {
       console.log(`[StreamingASR] ${message}`)
     }
   }
+}
+
+function getWaitForFinalTranscript(asr: STTProvider): (() => Promise<string>) | null {
+  const maybe = asr as STTProvider & { waitForFinalTranscript?: () => Promise<string> }
+  return typeof maybe.waitForFinalTranscript === 'function'
+    ? maybe.waitForFinalTranscript.bind(asr)
+    : null
+}
+
+function getFlushAudio(asr: STTProvider): (() => Promise<void>) | null {
+  const maybe = asr as STTProvider & { flushAudio?: () => Promise<void> }
+  return typeof maybe.flushAudio === 'function'
+    ? maybe.flushAudio.bind(asr)
+    : null
+}
+
+function hasStreamingTranscripts(asr: STTProvider): boolean {
+  return (asr as STTProvider & { streamingTranscripts?: boolean }).streamingTranscripts === true
 }
 
 let currentTTSChunkSequence = 0
@@ -943,7 +1017,6 @@ let currentTurnAbortController: AbortController | null = null
 let currentResponseFramePipeline: ResponseFramePipeline | null = null
 const cancelledTurnIds = new Set<number>()
 let currentTurnUserText: string | null = null
-let pendingThinkingContinuationText: string | null = null
 
 // ========== TTS 音频上下文管理 ==========
 /**
@@ -991,13 +1064,6 @@ async function cancelCurrentTurn(options: { closeTTS?: boolean } = {}): Promise<
 
   if (currentTurnAbortController) {
     console.log(`[Turn] Cancelling turn #${currentTurnId}`)
-    if (streamingASRSession?.getTurnState() === 'bot_thinking' && currentTurnUserText?.trim()) {
-      pendingThinkingContinuationText = mergeTranscriptText(
-        pendingThinkingContinuationText,
-        currentTurnUserText
-      )
-      console.log('[Turn] Preserving thinking-stage user text for continuation:', pendingThinkingContinuationText)
-    }
     cancelledTurnIds.add(currentTurnId)
     currentTurnAbortController.abort()
     currentTurnAbortController = null
@@ -1032,12 +1098,6 @@ function isTurnCancelled(turnId: number): boolean {
     turnId !== currentTurnId ||
     currentTurnAbortController?.signal.aborted === true
   )
-}
-
-function consumeThinkingContinuation(text: string): string {
-  const merged = mergeTranscriptText(pendingThinkingContinuationText, text)
-  pendingThinkingContinuationText = null
-  return merged
 }
 
 function mergeTranscriptText(existing: string | null, nextText: string): string {
@@ -1230,7 +1290,7 @@ let appSettings: AppSettings = {
     activeLLMId: 'default-llm',
     ttsModels: [{ id: 'default-tts', provider: 'fish', modelName: 's2-pro', apiKey: '', voiceId: '' }],
     activeTTSId: 'default-tts',
-    asrModels: [{ id: 'default-asr', provider: 'qwen', modelName: 'realtime', apiKey: '' }],
+    asrModels: [{ id: 'default-asr', provider: 'qwen', modelName: 'qwen3-asr-flash-realtime', apiKey: '' }],
     activeASRId: 'default-asr'
   }
 }
@@ -1257,6 +1317,14 @@ function getActiveTTSConfig(): TTSModelConfig | null {
 function getActiveASRConfig(): ASRModelConfig | null {
   const { asrModels, activeASRId } = appSettings.system
   return asrModels.find(m => m.id === activeASRId) || asrModels[0] || null
+}
+
+function normalizeASRModelName(modelName?: string): string {
+  const normalized = modelName?.trim()
+  if (!normalized || normalized === 'realtime' || normalized === 'qwen-realtime') {
+    return 'qwen3-asr-flash-realtime'
+  }
+  return normalized
 }
 
 function configureProxyFromEnv(): void {
@@ -1551,14 +1619,28 @@ ipcMain.handle('conversation:initialize', async () => {
   }
 })
 
-// 发送文本消息
-ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
+interface ConversationTurnResult {
+  success: boolean
+  response?: string
+  ttsEnabled?: boolean
+  error?: string
+}
+
+async function runConversationTurn(
+  text: string,
+  enableTTS: boolean,
+  source: 'text' | 'voice' = 'text'
+): Promise<ConversationTurnResult> {
   let turnId = 0
   let responseFramePipeline: ResponseFramePipeline | null = null
 
   try {
     if (!sdkInstance) {
       throw new Error('SDK not initialized')
+    }
+
+    if (!text.trim()) {
+      return { success: true, response: '', ttsEnabled: false }
     }
 
     // 开始新轮次（会取消上一个轮次）
@@ -1685,9 +1767,14 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
       voiceGraphPipeline.removeLane(`response:${turnId}`)
     }
     await streamingASRSession?.endBotTurn().catch(() => undefined)
-    console.error('[Chat] Failed to send text:', error)
+    console.error(`[Chat] Failed to process ${source} turn:`, error)
     return { success: false, error: error.message }
   }
+}
+
+// 发送文本消息
+ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
+  return runConversationTurn(text, enableTTS, 'text')
 })
 
 // 停止 TTS
@@ -1745,6 +1832,7 @@ ipcMain.handle('speech:transcribe', async (_, samples: number[]) => {
       kind: 'qwen-realtime',
       config: {
         apiKey,
+        model: normalizeASRModelName(asrConfig?.modelName),
         sampleRate: 16000,
         language: 'zh',
       },
@@ -1771,9 +1859,11 @@ ipcMain.handle('speech:stream:start', async () => {
 
     await streamingASRSession.start({
       onTranscript: (text) => {
-        // VAD + Endpointing 检测到语音结束，发送转录文本到 Renderer
-        // Renderer 会通过 sendText IPC 发送消息
-        mainWindow?.webContents.send('speech:transcript', consumeThinkingContinuation(text))
+        // VAD + Endpointing 检测到语音结束，通知 Renderer 展示用户文本。
+        mainWindow?.webContents.send('speech:transcript', text)
+      },
+      onUserText: async (text) => {
+        await runConversationTurn(text, appSettings.voiceOutputEnabled, 'voice')
       },
       onStateChange: (state) => {
         mainWindow?.webContents.send('speech:state', state)

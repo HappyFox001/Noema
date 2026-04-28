@@ -3,7 +3,7 @@
  * 移植自 Pipecat: src/pipecat/turns/
  */
 
-import type { SmartTurnAnalyzer } from './smart-turn.js'
+import type { SmartTurnAnalyzer, SmartTurnResult } from './smart-turn.js'
 
 /**
  * 用户轮次状态
@@ -126,10 +126,10 @@ export interface SmartTurnOptions {
   analyzeIntervalMs?: number
   /** 最大分析次数 */
   maxAnalyzeAttempts?: number
-  /** 备用超时 (毫秒) */
-  fallbackTimeoutMs?: number
-  /** STT 最终转录 P99 等待时间 (毫秒) */
+  /** STT 最终转录等待时间 (毫秒)，用于等待 finalized TranscriptionFrame。 */
   sttTimeoutMs?: number
+  /** SmartTurn 单次分析结果回调，用于观测和延迟打点。 */
+  onResult?: (result: SmartTurnResult) => void
 }
 
 /**

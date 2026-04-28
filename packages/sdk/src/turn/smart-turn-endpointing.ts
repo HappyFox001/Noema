@@ -20,7 +20,7 @@ import { SmartTurnAnalyzer, SmartTurnResult } from './smart-turn.js'
 export interface SmartTurnEndpointingConfig extends EndpointingConfig {
   /** 分析间隔 (毫秒) - 静音后多久开始分析 */
   analyzeIntervalMs: number
-  /** 最大分析次数 - 超过后回退到超时 */
+  /** 最大分析次数 */
   maxAnalyzeAttempts: number
   /** 分析超时 (毫秒) - 单次分析最长时间 */
   analyzeTimeoutMs: number
@@ -28,7 +28,8 @@ export interface SmartTurnEndpointingConfig extends EndpointingConfig {
 
 const DEFAULT_SMART_TURN_CONFIG: SmartTurnEndpointingConfig = {
   ...DEFAULT_ENDPOINTING_CONFIG,
-  userSpeechTimeout: 2000,      // 2秒超时备用
+  userSpeechTimeout: 0,
+  sttTimeoutMs: DEFAULT_ENDPOINTING_CONFIG.sttTimeoutMs,
   analyzeIntervalMs: 200,       // 200ms 静音后开始分析
   maxAnalyzeAttempts: 10,       // 最多分析 10 次
   analyzeTimeoutMs: 500,        // 单次分析最多 500ms
@@ -38,10 +39,10 @@ const DEFAULT_SMART_TURN_CONFIG: SmartTurnEndpointingConfig = {
  * Smart Turn Endpointing 策略
  *
  * 工作原理：
- * 1. VAD 检测到静音后，等待 200ms 开始 ML 分析
- * 2. 如果 ML 判断用户说完 (概率 > 0.5)，立即触发
- * 3. 如果连续分析都是 "未完成"，继续等待
- * 4. 超过 2 秒静音后，强制触发 (备用策略)
+ * 1. VAD 检测到静音后，立即调用 turn analyzer
+ * 2. analyzer 判断 COMPLETE 后，等待 final TranscriptionFrame 或 STT P99 timeout
+ * 3. finalized transcript 可短路 STT timeout 并结束用户轮次
+ * 4. 如果 timeout 已过但 final transcript 仍未到，则继续等待 transcript text
  */
 export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
   private config: SmartTurnEndpointingConfig
@@ -54,12 +55,12 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
   private vadStoppedTime: number | null = null
   private turnComplete = false
   private sttWaitDone = false
+  private sttTimeoutExpired = false
 
   // 分析状态
   private analyzeAttempts = 0
   private isAnalyzing = false
   private analyzeTimer: ReturnType<typeof setTimeout> | null = null
-  private fallbackTimer: ReturnType<typeof setTimeout> | null = null
   private sttTimeoutTimer: ReturnType<typeof setTimeout> | null = null
   private turnStopTriggered = false
 
@@ -102,6 +103,7 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
     this.vadStoppedTime = null
     this.turnComplete = false
     this.sttWaitDone = false
+    this.sttTimeoutExpired = false
     this.analyzeAttempts = 0
     this.isAnalyzing = false
     this.turnStopTriggered = false
@@ -127,6 +129,7 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
     this.vadStoppedTime = null
     this.turnComplete = false
     this.sttWaitDone = false
+    this.sttTimeoutExpired = false
     this.analyzeAttempts = 0
     this.isAnalyzing = false
     this.cancelAllTimers()
@@ -141,14 +144,15 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
     // 每次新的 VAD stop 都需要等待“本次停顿之后”的 STT final。
     // 不能复用前一次短停顿已经到达的 final，否则连续说话时会过早 endpoint。
     this.transcriptFinalized = false
+    this.sttTimeoutExpired = false
 
     this.startSttWaitTimer(stopSecs)
 
-    // 启动分析计时器
-    this.scheduleAnalysis()
+    // Pipecat 的 TurnAnalyzerUserTurnStopStrategy 在收到
+    // VADUserStoppedSpeakingFrame 时会立刻 analyze_end_of_turn()。
+    // analyzeIntervalMs 只用于还没正式 VAD stop、但已有足够静音的提前分析。
+    this.scheduleAnalysis(0)
 
-    // 启动备用超时计时器
-    this.startFallbackTimer()
   }
 
   /**
@@ -173,17 +177,18 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
    * 处理转录
    */
   handleTranscription(frame: TranscriptionFrame): void {
-    this.mergeTranscriptionText(frame)
-
-    if (frame.finalized) {
-      this.transcriptFinalized = true
-      this.sttWaitDone = true
-      if (this.sttTimeoutTimer) {
-        clearTimeout(this.sttTimeoutTimer)
-        this.sttTimeoutTimer = null
-      }
-      this.maybeTriggerUserTurnStopped('smart_turn')
+    if (!frame.finalized) {
+      return
     }
+
+    this.mergeTranscriptionText(frame)
+    this.transcriptFinalized = true
+    this.sttWaitDone = true
+    if (this.sttTimeoutTimer) {
+      clearTimeout(this.sttTimeoutTimer)
+      this.sttTimeoutTimer = null
+    }
+    this.maybeTriggerUserTurnStopped('smart_turn')
   }
 
   /**
@@ -203,7 +208,7 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
   /**
    * 安排 ML 分析
    */
-  private scheduleAnalysis(): void {
+  private scheduleAnalysis(delayMs = this.config.analyzeIntervalMs): void {
     if (this.isAnalyzing || this.analyzeTimer) return
     if (!this.smartTurn) {
       // 没有 Smart Turn，使用备用超时
@@ -213,12 +218,12 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
     this.analyzeTimer = setTimeout(async () => {
       this.analyzeTimer = null
       await this.runAnalysis()
-    }, this.config.analyzeIntervalMs)
+    }, delayMs)
   }
 
   /**
-   * 实时 ASR 的 interim/final 文本经常是“当前完整假设”，不是 delta。
-   * 对齐 Pipecat TurnAnalyzer 路径的语义，避免把连续 interim 重复累加。
+   * 对齐 Pipecat TurnAnalyzerUserTurnStopStrategy：只保存最终
+   * TranscriptionFrame 的文本，不把滑动 interim 当成用户最终输入。
    */
   private mergeTranscriptionText(frame: TranscriptionFrame): void {
     const next = frame.text.trim()
@@ -226,21 +231,7 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
       return
     }
 
-    if (!this.text) {
-      this.text = next
-      return
-    }
-
-    if (next === this.text || this.text.includes(next)) {
-      return
-    }
-
-    if (next.startsWith(this.text)) {
-      this.text = next
-      return
-    }
-
-    this.text += next
+    this.text = next
   }
 
   /**
@@ -282,7 +273,7 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
         this.isAnalyzing = false
         this.scheduleAnalysis()
       } else {
-        console.log('[SmartTurn] Max attempts reached, waiting for fallback timeout')
+        console.log('[SmartTurn] Max attempts reached, waiting for analyzer completion or transcription')
         this.isAnalyzing = false
       }
     } catch (error) {
@@ -294,20 +285,6 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
         this.scheduleAnalysis()
       }
     }
-  }
-
-  /**
-   * 启动备用超时计时器
-   */
-  private startFallbackTimer(): void {
-    if (this.fallbackTimer) return
-
-    this.fallbackTimer = setTimeout(() => {
-      this.fallbackTimer = null
-      console.log('[SmartTurn] Fallback timeout triggered')
-      this.turnComplete = true
-      this.maybeTriggerUserTurnStopped('fallback_timeout')
-    }, this.config.userSpeechTimeout)
   }
 
   /**
@@ -323,6 +300,7 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
     }
 
     const effectiveSttWait = Math.max(0, this.config.sttTimeoutMs - stopSecs * 1000)
+    console.log(`[SmartTurn] STT wait timer: ${effectiveSttWait.toFixed(0)}ms (sttTimeout=${this.config.sttTimeoutMs}ms, stopSecs=${stopSecs})`)
     if (this.transcriptFinalized || effectiveSttWait <= 0) {
       this.sttWaitDone = true
       return
@@ -331,7 +309,9 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
     this.sttWaitDone = false
     this.sttTimeoutTimer = setTimeout(() => {
       this.sttTimeoutTimer = null
+      this.sttTimeoutExpired = true
       this.sttWaitDone = true
+      console.log('[SmartTurn] STT wait timeout expired')
       this.maybeTriggerUserTurnStopped('smart_turn')
     }, effectiveSttWait)
   }
@@ -339,12 +319,15 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
   /**
    * 条件满足时触发用户轮次结束
    */
-  private maybeTriggerUserTurnStopped(reason: 'smart_turn' | 'timeout' | 'fallback_timeout'): void {
+  private maybeTriggerUserTurnStopped(reason: 'smart_turn' | 'timeout'): void {
     if (this.turnStopTriggered) {
       return
     }
 
-    if (this.vadUserSpeaking || !this.turnComplete || !this.sttWaitDone) {
+    if (this.vadUserSpeaking || !this.turnComplete || !this.sttWaitDone || !this.text.trim()) {
+      if (this.turnComplete && this.sttWaitDone && !this.text.trim()) {
+        console.log('[SmartTurn] Waiting for transcription text before stopping user turn')
+      }
       return
     }
 
@@ -372,10 +355,6 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
     if (this.analyzeTimer) {
       clearTimeout(this.analyzeTimer)
       this.analyzeTimer = null
-    }
-    if (this.fallbackTimer) {
-      clearTimeout(this.fallbackTimer)
-      this.fallbackTimer = null
     }
     if (this.sttTimeoutTimer) {
       clearTimeout(this.sttTimeoutTimer)

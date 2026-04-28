@@ -7,9 +7,12 @@ export type STTTranscriptEvent = {
 export type STTProviderEvent = STTTranscriptEvent
 
 export interface STTProvider {
+  readonly streamingTranscripts?: boolean
   connect(): Promise<void>
   appendAudio(audioData: Int16Array | number[]): Promise<void>
+  flushAudio?(): Promise<void>
   commit(): Promise<string>
+  waitForFinalTranscript?(): Promise<string>
   transcribe(audioData: Int16Array | number[]): Promise<string>
   close(): Promise<void>
   clearBufferedTranscripts(): void

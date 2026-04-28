@@ -1090,10 +1090,8 @@ async function initialize() {
 
     window.electronAPI.onSpeechTranscript((text) => {
       console.log('[UI] Transcript:', text)
-      // 自动发送转录的文本
-      if (text.trim()) {
-        void sendMessage(text)
-      }
+      // 语音 turn 已在 Main Process 的 frame graph 内部送入 LLM。
+      // Renderer 只负责展示/状态更新，避免 transcript -> sendText 回环。
     })
 
     window.electronAPI.onSpeechError((error) => {

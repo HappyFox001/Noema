@@ -19,6 +19,11 @@ export interface InputModality {
   type: 'text' | 'image' | 'audio'
 }
 
+export interface ContextCheckpoint {
+  items: ResponseItem[]
+  historyVersion: number
+}
+
 /**
  * Context Manager - 管理对话历史和上下文截断
  * 参考 codex /core/src/context_manager/history.rs
@@ -93,6 +98,24 @@ export class ContextManager {
    */
   getHistoryVersion(): number {
     return this.historyVersion
+  }
+
+  /**
+   * 创建上下文检查点，用于被打断的 turn 回滚。
+   */
+  createCheckpoint(): ContextCheckpoint {
+    return {
+      items: this.items.map(item => ({ ...item })),
+      historyVersion: this.historyVersion,
+    }
+  }
+
+  /**
+   * 恢复到检查点。用于 interruption/abort，避免未完成 turn 污染历史。
+   */
+  restoreCheckpoint(checkpoint: ContextCheckpoint): void {
+    this.items = checkpoint.items.map(item => ({ ...item }))
+    this.historyVersion = checkpoint.historyVersion + 1
   }
 
   /**

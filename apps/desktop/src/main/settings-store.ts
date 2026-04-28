@@ -18,7 +18,7 @@ import { mkdir, readFile, writeFile } from 'fs/promises'
  * TTS_1_API_KEY=xxx
  * TTS_ACTIVE=1
  *
- * ASR_1_NAME=Qwen ASR
+ * ASR_1_MODEL=qwen3-asr-flash-realtime
  * ASR_1_API_KEY=xxx
  * ASR_ACTIVE=1
  */
@@ -87,7 +87,7 @@ function loadSystemConfigFromEnv(): SystemConfig | null {
       asrModels.push({
         id: `env-asr-${i}`,
         provider: provider || 'qwen',
-        modelName: modelName || 'realtime',
+        modelName: modelName || 'qwen3-asr-flash-realtime',
         apiKey: apiKey || ''
       })
     }
@@ -136,7 +136,7 @@ export type ASRProviderType = 'qwen'
 export interface ASRModelConfig {
   id: string
   provider: ASRProviderType  // Provider 类型
-  modelName: string          // 模型名称，如 realtime
+  modelName: string          // 模型名称，如 qwen3-asr-flash-realtime
   apiKey: string
 }
 
@@ -180,7 +180,7 @@ const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
   asrModels: [{
     id: 'default-asr',
     provider: 'qwen',
-    modelName: 'realtime',
+    modelName: 'qwen3-asr-flash-realtime',
     apiKey: ''
   }],
   activeASRId: 'default-asr'

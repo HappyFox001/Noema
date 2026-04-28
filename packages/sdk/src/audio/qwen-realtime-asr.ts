@@ -19,10 +19,11 @@ type PendingCommit = {
   resolve: (text: string) => void
   reject: (error: Error) => void
   timeoutId: ReturnType<typeof setTimeout>
-  fallbackText: string | null
 }
 
 export class QwenRealtimeASR implements STTProvider {
+  readonly streamingTranscripts = true
+
   private connected = false
   private receiveLoop: Promise<void> | null = null
   private pendingCommits: PendingCommit[] = []
@@ -64,8 +65,11 @@ export class QwenRealtimeASR implements STTProvider {
         modalities: ['text'],
         input_audio_format: 'pcm',
         sample_rate: this.config.sampleRate || 16000,
-        input_audio_transcription: {
+        enable_input_audio_transcription: true,
+        transcription: {
           language: this.config.language || 'zh',
+          sample_rate: this.config.sampleRate || 16000,
+          input_audio_format: 'pcm',
         },
         turn_detection: null,
       },
@@ -116,16 +120,16 @@ export class QwenRealtimeASR implements STTProvider {
     }
 
     const timeoutMs = this.config.receiveTimeoutMs || 5000
-    const transcriptPromise = new Promise<string>((resolve, reject) => {
+    return await new Promise<string>((resolve, reject) => {
       const pendingCommit: PendingCommit = {
         resolve,
         reject,
-        fallbackText: this.latestFallbackTranscript,
         timeoutId: setTimeout(() => {
           this.pendingCommits = this.pendingCommits.filter((entry) => entry !== pendingCommit)
-          if (pendingCommit.fallbackText?.trim()) {
+          if (this.latestFallbackTranscript?.trim()) {
+            const text = this.latestFallbackTranscript.trim()
             this.latestFallbackTranscript = null
-            resolve(pendingCommit.fallbackText.trim())
+            resolve(text)
             return
           }
           reject(new Error('Qwen STT transcription timeout'))
@@ -134,13 +138,17 @@ export class QwenRealtimeASR implements STTProvider {
 
       this.pendingCommits.push(pendingCommit)
     })
+  }
+
+  async flushAudio(): Promise<void> {
+    if (!this.connected) {
+      await this.connect()
+    }
 
     await this.transport.sendText(JSON.stringify({
       event_id: eventId(),
       type: 'input_audio_buffer.commit',
     }))
-
-    return await transcriptPromise
   }
 
   async close(): Promise<void> {
@@ -225,11 +233,12 @@ export class QwenRealtimeASR implements STTProvider {
           text: fallbackText,
           final: false,
         })
+        continue
+      }
 
-        const pending = this.pendingCommits[0]
-        if (pending) {
-          pending.fallbackText = fallbackText
-        }
+      const eventType = typeof parsed?.type === 'string' ? parsed.type : ''
+      if (eventType.includes('input_audio_transcription')) {
+        console.log(`[QwenRealtimeASR] Unhandled transcription event: ${eventType}`, parsed)
       }
     }
   }
@@ -244,6 +253,10 @@ function extractFinalTranscript(response: any): string | null {
 }
 
 function extractFallbackTranscript(response: any): string | null {
+  if (response?.type === 'conversation.item.input_audio_transcription.text') {
+    return response.stash || null
+  }
+
   if (response?.output?.sentence?.text) {
     return response.output.sentence.text
   }
