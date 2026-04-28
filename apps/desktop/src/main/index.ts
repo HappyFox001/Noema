@@ -36,9 +36,12 @@ if (!envLoaded) {
 
 configureProxyFromEnv()
 
-console.log('[Env] LLM_API_KEY:', process.env.LLM_API_KEY ? '✓ (set)' : '✗ (not set)')
-console.log('[Env] LLM_MODEL:', process.env.LLM_MODEL || '✗ (not set)')
-console.log('[Env] LLM_BASE_URL:', process.env.LLM_BASE_URL || '✗ (not set)')
+// 检查新格式的环境变量
+console.log('[Env] LLM_1_API_KEY:', process.env.LLM_1_API_KEY ? '✓ (set)' : '✗ (not set)')
+console.log('[Env] LLM_1_MODEL:', process.env.LLM_1_MODEL || '✗ (not set)')
+console.log('[Env] LLM_1_BASE_URL:', process.env.LLM_1_BASE_URL || '✗ (not set)')
+console.log('[Env] TTS_1_API_KEY:', process.env.TTS_1_API_KEY ? '✓ (set)' : '✗ (not set)')
+console.log('[Env] ASR_1_API_KEY:', process.env.ASR_1_API_KEY ? '✓ (set)' : '✗ (not set)')
 
 import { app, BrowserWindow, ipcMain, systemPreferences, shell, dialog, type OpenDialogOptions } from 'electron'
 import {
@@ -77,9 +80,10 @@ import { initializeSmartTurn, isSmartTurnAvailable } from './smart-turn-helper.j
 import {
   initializePersonalityManager,
   getPersonalityManager,
-  buildSDKConfig
+  buildSDKConfig,
+  setActiveLLMConfig
 } from './sdk-config.js'
-import { SettingsStore, type AppSettings } from './settings-store.js'
+import { SettingsStore, type AppSettings, type LLMModelConfig, type TTSModelConfig, type ASRModelConfig } from './settings-store.js'
 import { NodeRealtimeWebSocketTransport } from './qwen-websocket-transport.js'
 import {
   ReconnectingWebSocketTransport,
@@ -420,9 +424,10 @@ class StreamingASRSession {
     this.onSpeechStart = callbacks?.onSpeechStart || null
     this.onInterruption = callbacks?.onInterruption || null
 
-    const apiKey = process.env.QWEN_API_KEY?.trim()
+    const asrConfig = getActiveASRConfig()
+    const apiKey = asrConfig?.apiKey?.trim()
     if (!apiKey) {
-      throw new Error('QWEN_API_KEY is not configured')
+      throw new Error('QWEN_API_KEY is not configured. Please set it in Settings > System > ASR.')
     }
 
     // 创建支持重连的 WebSocket 传输层
@@ -1230,6 +1235,30 @@ let appSettings: AppSettings = {
   }
 }
 
+/**
+ * 获取当前激活的 LLM 模型配置
+ */
+function getActiveLLMConfig(): LLMModelConfig | null {
+  const { llmModels, activeLLMId } = appSettings.system
+  return llmModels.find(m => m.id === activeLLMId) || llmModels[0] || null
+}
+
+/**
+ * 获取当前激活的 TTS 模型配置
+ */
+function getActiveTTSConfig(): TTSModelConfig | null {
+  const { ttsModels, activeTTSId } = appSettings.system
+  return ttsModels.find(m => m.id === activeTTSId) || ttsModels[0] || null
+}
+
+/**
+ * 获取当前激活的 ASR 模型配置
+ */
+function getActiveASRConfig(): ASRModelConfig | null {
+  const { asrModels, activeASRId } = appSettings.system
+  return asrModels.find(m => m.id === activeASRId) || asrModels[0] || null
+}
+
 function configureProxyFromEnv(): void {
   const proxyUrl =
     process.env.HTTPS_PROXY ||
@@ -1317,6 +1346,8 @@ async function createWindow() {
 }
 
 async function initializeSDK(): Promise<void> {
+  // 设置激活的 LLM 配置
+  setActiveLLMConfig(getActiveLLMConfig())
   const sdkConfig = await buildSDKConfig()
   sdkInstance = await HerTextSDK.initialize(sdkConfig)
   console.log('[SDK] Initialized successfully')
@@ -1425,13 +1456,14 @@ ipcMain.handle('conversation:initialize', async () => {
     }
 
     // 初始化 TTS（使用 SDK）
-    if (process.env.FISH_API_KEY?.trim()) {
+    const ttsConfig = getActiveTTSConfig()
+    if (ttsConfig?.apiKey?.trim()) {
       ttsService = createTTSProvider({
         kind: 'fish-realtime',
         config: {
-          apiKey: process.env.FISH_API_KEY,
-          voiceId: process.env.FISH_VOICE_ID,
-          model: process.env.FISH_MODEL || 's2-pro',
+          apiKey: ttsConfig.apiKey,
+          voiceId: ttsConfig.voiceId,
+          model: ttsConfig.modelName || 's2-pro',
           format: 'pcm',
           sampleRate: 16000,
           latency: 'balanced'
@@ -1697,9 +1729,10 @@ ipcMain.handle('profile:clear', async () => {
 
 ipcMain.handle('speech:transcribe', async (_, samples: number[]) => {
   try {
-    const apiKey = process.env.QWEN_API_KEY?.trim()
+    const asrConfig = getActiveASRConfig()
+    const apiKey = asrConfig?.apiKey?.trim()
     if (!apiKey) {
-      throw new Error('QWEN_API_KEY is not configured')
+      throw new Error('QWEN_API_KEY is not configured. Please set it in Settings > System > ASR.')
     }
 
     // 单次转录也使用重连传输层，提高可靠性
