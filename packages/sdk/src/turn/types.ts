@@ -91,6 +91,8 @@ export interface InterruptionHandler {
   onInterruption(): Promise<void>
 }
 
+export type InterruptionReason = 'vad_start' | 'transcript_start' | 'manual' | 'provider_switch'
+
 /**
  * Endpointing 策略接口
  * 支持固定超时策略和 Smart Turn ML 策略
@@ -98,6 +100,8 @@ export interface InterruptionHandler {
 export interface IEndpointingStrategy {
   /** 用户轮次结束回调 */
   onUserTurnStopped: ((params: UserTurnStoppedParams) => void | Promise<void>) | null
+  /** 更新策略配置 */
+  setConfig?(config: Partial<EndpointingConfig>): void
   /** 处理 VAD 用户开始说话 */
   handleVADUserStartedSpeaking(): void
   /** 处理 VAD 用户停止说话 */
@@ -159,7 +163,7 @@ export interface TurnControllerEvents {
   /**
    * 打断发生（用户在机器人说话时开始说话）
    */
-  onInterruption?: () => void | Promise<void>
+  onInterruption?: (reason: InterruptionReason) => void | Promise<void>
 
   /**
    * 用户轮次超时（无活动）

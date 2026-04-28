@@ -19,6 +19,7 @@
  */
 
 import { VADState, VADEvent, VADAnalyzer } from '../vad/index.js'
+import type { STTProviderCapabilities } from '../audio/providers.js'
 import {
   TurnState,
   TurnControllerEvents,
@@ -29,10 +30,15 @@ import {
   IEndpointingStrategy,
   SmartTurnOptions,
   DEFAULT_ENDPOINTING_CONFIG,
+  type InterruptionReason,
 } from './types.js'
 import { EndpointingStrategy } from './endpointing.js'
 import { SmartTurnEndpointingStrategy } from './smart-turn-endpointing.js'
-import { InterruptionManager } from './interruption.js'
+import {
+  VADUserTurnStartStrategy,
+  TranscriptionUserTurnStartStrategy,
+  type UserTurnStrategyContext,
+} from './user-turn-strategies.js'
 
 /**
  * 轮次控制器配置
@@ -97,7 +103,8 @@ export class TurnController {
   private state: TurnState = TurnState.IDLE
   private vadAnalyzer: VADAnalyzer
   private endpointing: IEndpointingStrategy
-  private interruptionManager: InterruptionManager
+  private vadStartStrategy = new VADUserTurnStartStrategy()
+  private transcriptionStartStrategy = new TranscriptionUserTurnStartStrategy({ useInterim: false })
   private useSmartTurn: boolean = false
 
   // 状态追踪
@@ -167,9 +174,6 @@ export class TurnController {
       this.handleEndpointingComplete(params)
     }
 
-    // 初始化打断管理器
-    this.interruptionManager = new InterruptionManager()
-
     // 设置 VAD 事件处理
     this.vadAnalyzer.setEventHandler((event) => {
       this.handleVADEvent(event)
@@ -184,18 +188,25 @@ export class TurnController {
   }
 
   /**
-   * 获取打断管理器
-   * 允许外部注册打断处理器
-   */
-  getInterruptionManager(): InterruptionManager {
-    return this.interruptionManager
-  }
-
-  /**
    * 获取当前状态
    */
   getState(): TurnState {
     return this.state
+  }
+
+  /**
+   * 根据 STT provider 能力更新 endpointing。
+   *
+   * Pipecat 的 user-turn stop strategy 会拿到 STT 服务特性，例如等待
+   * finalized transcript 的超时。这里用 metadata frame 做同样的同步。
+   */
+  updateSTTProviderCapabilities(capabilities: STTProviderCapabilities): void {
+    this.endpointing.setConfig?.({
+      sttTimeoutMs: capabilities.sttTimeoutMs,
+    })
+    this.log(
+      `STT capabilities: provider=${capabilities.provider}, streaming=${capabilities.streamingTranscripts}, sttTimeoutMs=${capabilities.sttTimeoutMs}`
+    )
   }
 
   /**
@@ -241,7 +252,7 @@ export class TurnController {
    */
   async processTranscription(frame: TranscriptionFrame): Promise<void> {
     if (!this.userTurnActive) {
-      await this.startUserTurnFromTranscription()
+      await this.startUserTurnFromTranscription(frame)
     }
 
     // 重置用户轮次超时
@@ -257,17 +268,27 @@ export class TurnController {
    * 当 VAD 没有触发 start、但 STT 产出了 transcript 时，也要开启用户
    * turn；如果 bot 正在 thinking/speaking，则同时广播 interruption。
    */
-  private async startUserTurnFromTranscription(): Promise<void> {
+  private async startUserTurnFromTranscription(frame: TranscriptionFrame): Promise<void> {
     this.log(`Transcription started user turn, state: ${this.state}`)
 
-    if (this.isBotTurn() && this.config.enableInterruption) {
-      await this.triggerInterruption({ markVADStarted: false })
+    const decision = this.transcriptionStartStrategy.process(
+      frame,
+      this.getStrategyContext()
+    )
+
+    if (decision.action === 'interrupt') {
+      await this.triggerInterruption({
+        markVADStarted: decision.markVADStarted,
+        reason: decision.reason,
+      })
       return
     }
 
-    await this.triggerUserTurnStart({
-      enableUserSpeakingFrames: true,
-    })
+    if (decision.action === 'start') {
+      await this.triggerUserTurnStart({
+        enableUserSpeakingFrames: true,
+      })
+    }
   }
 
   async startBotThinking(): Promise<void> {
@@ -298,14 +319,19 @@ export class TurnController {
     this.botTurnStartedAt = Date.now()
     this.log(`State: BOT_TURN`)
 
-    // 重置打断状态
-    this.interruptionManager.reset()
-
     // 启动 Bot Speaking 周期计时器 (移植自 Pipecat base_output.py)
     this.startBotSpeakingTimer()
 
     // 触发事件
     await this.callEventHandler('onBotTurnStart')
+  }
+
+  async endBotThinking(): Promise<void> {
+    if (this.state !== TurnState.BOT_THINKING) {
+      return
+    }
+
+    this.log('State: BOT_THINKING_END')
   }
 
   /**
@@ -366,7 +392,8 @@ export class TurnController {
     this.userTurnActive = false
     this.vadAnalyzer.reset()
     this.endpointing.reset()
-    this.interruptionManager.reset()
+    this.vadStartStrategy.reset()
+    this.transcriptionStartStrategy.reset()
     this.cancelUserTurnStopTimeout()
     this.stopBotSpeakingTimer()
     this.cancelPendingInterruption()
@@ -383,7 +410,6 @@ export class TurnController {
     this.cancelAggregationWindow()
     this.vadAnalyzer.cleanup()
     this.endpointing.cleanup()
-    this.interruptionManager.clear()
   }
 
   /**
@@ -447,11 +473,19 @@ export class TurnController {
       return
     }
 
+    const vadStartDecision = this.vadStartStrategy.process(
+      { type: 'vad_speech_start' },
+      this.getStrategyContext()
+    )
+
     // LLM/TTS 还在准备时，用户继续说话不算 bot speaking barge-in。
     // 取消当前生成并回到用户轮次，避免把短停顿后的续说切成新 bot 打断。
-    if (this.state === TurnState.BOT_THINKING && this.config.enableInterruption) {
+    if (vadStartDecision.action === 'interrupt') {
       this.log('User continued speaking while bot was thinking')
-      void this.triggerInterruption()
+      void this.triggerInterruption({
+        reason: vadStartDecision.reason,
+        markVADStarted: vadStartDecision.markVADStarted,
+      })
       return
     }
 
@@ -462,7 +496,7 @@ export class TurnController {
     }
 
     // 如果不在用户轮次中，开始用户轮次
-    if (!this.userTurnActive) {
+    if (vadStartDecision.action === 'start') {
       this.triggerUserTurnStart({
         enableUserSpeakingFrames: true,
       })
@@ -586,8 +620,11 @@ export class TurnController {
    * 触发打断
    * 移植自 Pipecat: 打断时重置所有策略
    */
-  private async triggerInterruption(options: { markVADStarted?: boolean } = {}): Promise<void> {
+  private async triggerInterruption(
+    options: { markVADStarted?: boolean; reason?: InterruptionReason } = {}
+  ): Promise<void> {
     const markVADStarted = options.markVADStarted ?? true
+    const reason = options.reason ?? 'vad_start'
     this.cancelPendingInterruption()
 
     // 停止 Bot Speaking 计时器
@@ -611,10 +648,8 @@ export class TurnController {
     }
 
     // 触发打断事件
-    await this.callEventHandler('onInterruption')
+    await this.callEventHandler('onInterruption', reason)
 
-    // 通知所有打断处理器
-    await this.interruptionManager.triggerInterruption()
   }
 
   private scheduleInterruptionIfSpeechContinues(): void {
@@ -641,7 +676,7 @@ export class TurnController {
       }
 
       this.log('Interruption confirmed after sustained speech')
-      void this.triggerInterruption()
+      void this.triggerInterruption({ reason: 'vad_start' })
     }, delay)
   }
 
@@ -682,6 +717,15 @@ export class TurnController {
     if (this.userTurnStopTimeoutTask) {
       clearTimeout(this.userTurnStopTimeoutTask)
       this.userTurnStopTimeoutTask = null
+    }
+  }
+
+  private getStrategyContext(): UserTurnStrategyContext {
+    return {
+      state: this.state,
+      userTurnActive: this.userTurnActive,
+      enableInterruption: this.config.enableInterruption,
+      hasAggregationWindow: Boolean(this.aggregationTimeoutTask),
     }
   }
 

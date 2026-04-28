@@ -15,6 +15,7 @@ export {
   UserTurnStartedParams,
   UserTurnStoppedParams,
   InterruptionHandler,
+  InterruptionReason,
   IEndpointingStrategy,
   SmartTurnOptions,
   TurnControllerEvents,
@@ -48,3 +49,15 @@ export {
   SmartTurnEndpointingStrategy,
   SmartTurnEndpointingConfig,
 } from './smart-turn-endpointing.js'
+
+export {
+  VADUserTurnStartStrategy,
+  TranscriptionUserTurnStartStrategy,
+} from './user-turn-strategies.js'
+
+export type {
+  UserTurnStartDecision,
+  UserTurnStrategyContext,
+  UserTurnStartStrategy,
+  VADSpeechStartFrame,
+} from './user-turn-strategies.js'

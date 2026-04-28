@@ -7,13 +7,12 @@ class AudioPlayer {
   private gainNode: GainNode | null = null
   private compressor: DynamicsCompressorNode | null = null // EBU R128: 动态压缩器
   private isPlaying = false
-  private audioQueue: AudioBuffer[] = []
   private nextStartTime = 0
   private onChunkScheduled?: (payload: { startTime: number; duration: number }) => void
 
   // 播放完成同步机制
   private playbackCompleteResolvers: (() => void)[] = []
-  private currentSource: AudioBufferSourceNode | null = null
+  private activeSources = new Set<AudioBufferSourceNode>()
   private pendingAudioAdds = 0
 
   // 延迟追踪：首个音频标志
@@ -165,7 +164,7 @@ class AudioPlayer {
    */
   waitForPlaybackComplete(): Promise<void> {
     // 如果没有正在播放的音频，立即返回
-    if (!this.isPlaying && this.audioQueue.length === 0 && this.pendingAudioAdds === 0) {
+    if (!this.isPlaying && this.activeSources.size === 0 && this.pendingAudioAdds === 0) {
       console.log('[AudioPlayer] waitForPlaybackComplete: already idle')
       return Promise.resolve()
     }
@@ -187,7 +186,7 @@ class AudioPlayer {
    * 通知所有等待者播放已完成
    */
   private notifyPlaybackComplete(): void {
-    if (!this.isPlaying && this.audioQueue.length === 0 && this.pendingAudioAdds === 0) {
+    if (!this.isPlaying && this.activeSources.size === 0 && this.pendingAudioAdds === 0) {
       console.log('[AudioPlayer] Playback complete, notifying', this.playbackCompleteResolvers.length, 'waiters')
       const resolvers = this.playbackCompleteResolvers
       this.playbackCompleteResolvers = []
@@ -247,10 +246,10 @@ class AudioPlayer {
     // 连接到压缩器（EBU R128 动态处理链的第一环）
     // source -> compressor -> gain -> destination
     source.connect(this.compressor ?? this.gainNode ?? this.audioContext.destination)
-    this.currentSource = source
+    this.activeSources.add(source)
 
     const currentTime = this.audioContext.currentTime
-    const startTime = Math.max(currentTime, this.nextStartTime)
+    const startTime = Math.max(currentTime + 0.01, this.nextStartTime)
 
     source.start(startTime)
     this.nextStartTime = startTime + buffer.duration
@@ -267,11 +266,8 @@ class AudioPlayer {
         return
       }
 
-      this.currentSource = null
-      if (this.audioQueue.length > 0) {
-        const nextBuffer = this.audioQueue.shift()!
-        this.playBuffer(nextBuffer)
-      } else {
+      this.activeSources.delete(source)
+      if (this.activeSources.size === 0) {
         this.isPlaying = false
         this.notifyPlaybackComplete()
       }
@@ -317,12 +313,9 @@ class AudioPlayer {
       const audioBuffer = this.pcm16ToAudioBuffer(pcm16Bytes)
       console.log('[AudioPlayer] Created buffer:', audioBuffer.duration.toFixed(2), 'seconds')
 
-      if (this.isPlaying) {
-        this.audioQueue.push(audioBuffer)
-        console.log('[AudioPlayer] Queued, queue size:', this.audioQueue.length)
-      } else {
+      if (!this.isPlaying) {
         this.isPlaying = true
-        this.nextStartTime = this.audioContext!.currentTime
+        this.nextStartTime = this.audioContext!.currentTime + 0.01
 
         // 延迟追踪：首个音频开始播放
         if (this.isFirstAudioOfSession) {
@@ -332,8 +325,9 @@ class AudioPlayer {
         }
 
         console.log('[AudioPlayer] Starting playback')
-        this.playBuffer(audioBuffer)
       }
+
+      this.playBuffer(audioBuffer)
     } catch (error) {
       console.error('[AudioPlayer] Failed to add audio chunk:', error)
     } finally {
@@ -348,17 +342,16 @@ class AudioPlayer {
     // 递增 stopGeneration，使所有正在进行的 async addAudioChunk 失效
     this.stopGeneration++
 
-    // 停止当前播放的音频
-    if (this.currentSource) {
+    // 停止当前和已预排的音频
+    for (const source of this.activeSources) {
       try {
-        this.currentSource.stop()
+        source.stop()
       } catch (e) {
         // 忽略已停止的错误
       }
-      this.currentSource = null
     }
+    this.activeSources.clear()
 
-    this.audioQueue = []
     this.isPlaying = false
     this.nextStartTime = 0
 

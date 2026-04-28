@@ -6,13 +6,29 @@
  * files define frame unions; this class provides the common processor/task lane.
  */
 
+export type FrameKind = 'system' | 'control' | 'data'
+
 export interface Frame {
   type: string
+  kind: FrameKind
   timestamp: number
+}
+
+export function createFrame<TFrame extends Frame>(
+  frame: Omit<TFrame, 'timestamp'> & { timestamp?: number }
+): TFrame {
+  return {
+    ...frame,
+    timestamp: frame.timestamp ?? Date.now(),
+  } as TFrame
 }
 
 export interface FrameProcessor<TFrame extends Frame = Frame> {
   processFrame(frame: TFrame, context: FrameProcessContext): Promise<void> | void
+}
+
+export interface FrameObserver<TFrame extends Frame = Frame> {
+  onFrame(frame: TFrame): void
 }
 
 export interface FramePipelineOptions {
@@ -26,6 +42,7 @@ export interface FrameProcessContext {
 export class FramePipeline<TFrame extends Frame = Frame> {
   private queue: Promise<void> = Promise.resolve()
   private processors: FrameProcessor<TFrame>[] = []
+  private observers: FrameObserver<TFrame>[] = []
   private stopped = false
   private currentTaskAbortController: AbortController | null = null
   private readonly interruptFrameTypes: Set<string>
@@ -45,12 +62,19 @@ export class FramePipeline<TFrame extends Frame = Frame> {
     this.processors = processors
   }
 
+  addObserver(observer: FrameObserver<TFrame>): () => void {
+    this.observers.push(observer)
+    return () => {
+      this.observers = this.observers.filter((entry) => entry !== observer)
+    }
+  }
+
   queueFrame(frame: TFrame): Promise<void> {
     if (this.stopped) {
       return Promise.resolve()
     }
 
-    if (this.interruptFrameTypes.has(frame.type)) {
+    if (frame.kind === 'system' || this.interruptFrameTypes.has(frame.type)) {
       this.currentTaskAbortController?.abort()
       this.currentTaskAbortController = null
       this.queue = Promise.resolve()
@@ -68,6 +92,10 @@ export class FramePipeline<TFrame extends Frame = Frame> {
       }
 
       try {
+        for (const observer of this.observers) {
+          observer.onFrame(frame)
+        }
+
         for (const processor of this.processors) {
           if (context.signal.aborted) {
             return

@@ -7,6 +7,7 @@
 
 import { FramePipeline, type Frame, type FrameProcessor } from './frame-pipeline.js'
 import type { TTSProvider } from './providers.js'
+import type { InterruptionReason } from '../turn/types.js'
 
 export type ResponseFrame = Frame & (
   | { type: 'phase_start'; phase: 'reply' | 'task_result' }
@@ -20,7 +21,8 @@ export type ResponseFrame = Frame & (
   | { type: 'llm_text_delta'; text: string }
   | { type: 'llm_text_end' }
   | { type: 'tts_text'; text: string }
-  | { type: 'response_interruption' }
+  | { type: 'response_interruption'; reason: InterruptionReason }
+  | { type: 'user_text'; text: string; turnId: number }
 )
 
 export type ResponseFrameProcessor = FrameProcessor<ResponseFrame>
@@ -171,12 +173,19 @@ export interface ResponseTTSProcessorOptions {
 
 export class ResponseTTSProcessor implements ResponseFrameProcessor {
   private firstText = true
+  private buffer = ''
+  private readonly minChunkChars = 10
+  private readonly maxChunkChars = 30
+  private readonly sentenceBoundaryRegex = /[。！？.!?〜]["'"'」』）)\]】〕]*\s*/
+  private readonly sentenceEndingChars = /[。！？.!?〜]/g
+  private readonly clauseBoundaryChars = /[，、,；：;:・ー]/g
 
   constructor(private readonly options: ResponseTTSProcessorOptions) {}
 
   async processFrame(frame: ResponseFrame, context: { signal: AbortSignal }): Promise<void> {
     if (frame.type === 'response_interruption') {
       this.firstText = true
+      this.buffer = ''
       return
     }
 
@@ -191,6 +200,17 @@ export class ResponseTTSProcessor implements ResponseFrameProcessor {
 
     if (frame.type === 'tts_text') {
       await this.pushText(frame.text, context.signal)
+      return
+    }
+
+    if (frame.type === 'llm_text_delta') {
+      this.buffer += frame.text
+      await this.flushAvailableChunks(context.signal)
+      return
+    }
+
+    if (frame.type === 'llm_text_end') {
+      await this.flushRemaining(context.signal)
       return
     }
 
@@ -262,6 +282,95 @@ export class ResponseTTSProcessor implements ResponseFrameProcessor {
 
     await this.options.waitForPlayback?.(phase)
   }
+
+  private async flushAvailableChunks(signal: AbortSignal): Promise<void> {
+    while (true) {
+      const boundaryIndex = this.findBoundaryIndex(this.buffer)
+      if (boundaryIndex === -1) {
+        break
+      }
+
+      const candidate = this.buffer.slice(0, boundaryIndex).trim()
+      this.buffer = this.buffer.slice(boundaryIndex)
+      if (candidate) {
+        await this.pushText(candidate, signal)
+      }
+    }
+
+    if (this.buffer.trim().length >= this.maxChunkChars) {
+      const splitIndex = this.findForcedBoundaryIndex(this.buffer)
+      const candidate = this.buffer.slice(0, splitIndex).trim()
+      this.buffer = this.buffer.slice(splitIndex)
+      if (candidate) {
+        await this.pushText(candidate, signal)
+      }
+    }
+  }
+
+  private async flushRemaining(signal: AbortSignal): Promise<void> {
+    const candidate = this.buffer.trim()
+    this.buffer = ''
+    if (candidate) {
+      await this.pushText(candidate, signal)
+    }
+  }
+
+  private findBoundaryIndex(text: string): number {
+    const trimmed = text.trimStart()
+    const leadingOffset = text.length - trimmed.length
+    if (!trimmed) {
+      return -1
+    }
+
+    const sentenceBoundary = trimmed.search(this.sentenceBoundaryRegex)
+    if (sentenceBoundary === -1) {
+      return -1
+    }
+
+    const prefix = trimmed.slice(0, sentenceBoundary)
+    if (prefix.trim().length < this.minChunkChars) {
+      return -1
+    }
+
+    const matchRegex = new RegExp('^' + this.sentenceBoundaryRegex.source)
+    const matched = trimmed.slice(sentenceBoundary).match(matchRegex)
+    if (!matched) {
+      return -1
+    }
+
+    const boundaryIndex = leadingOffset + sentenceBoundary + matched[0].length
+    const candidate = text.slice(0, boundaryIndex).trim()
+    if (candidate.length > this.maxChunkChars) {
+      return this.findForcedBoundaryIndex(text)
+    }
+
+    return boundaryIndex
+  }
+
+  private findForcedBoundaryIndex(text: string): number {
+    const trimmed = text.trimStart()
+    const leadingOffset = text.length - trimmed.length
+    if (!trimmed) {
+      return text.length
+    }
+
+    const limited = Array.from(trimmed).slice(0, this.maxChunkChars).join('')
+    const sentenceMatches = [...limited.matchAll(this.sentenceEndingChars)]
+    if (sentenceMatches.length > 0) {
+      const lastMatch = sentenceMatches[sentenceMatches.length - 1]
+      const matchIndex = lastMatch.index ?? limited.length - 1
+      return leadingOffset + matchIndex + lastMatch[0].length
+    }
+
+    const clauseMatches = [...limited.matchAll(this.clauseBoundaryChars)]
+    if (clauseMatches.length > 0) {
+      const lastMatch = clauseMatches[clauseMatches.length - 1]
+      const matchIndex = lastMatch.index ?? limited.length - 1
+      return leadingOffset + matchIndex + lastMatch[0].length
+    }
+
+    return leadingOffset + limited.length
+  }
 }
 
 export interface ResponseDisplayProcessorOptions {
@@ -322,6 +431,7 @@ export class LLMStreamBridgeProcessor {
 
     await this.options.queueFrame({
       type: 'phase_start',
+      kind: 'control',
       phase,
       timestamp: Date.now(),
     })
@@ -339,6 +449,7 @@ export class LLMStreamBridgeProcessor {
 
     await this.options.queueFrame({
       type: this.options.shouldUseTTS() ? 'llm_text_delta' : 'display_text_delta',
+      kind: 'data',
       text: delta,
       timestamp: Date.now(),
     })
@@ -352,10 +463,12 @@ export class LLMStreamBridgeProcessor {
 
     await this.options.queueFrame({
       type: 'llm_text_end',
+      kind: 'control',
       timestamp: Date.now(),
     })
     await this.options.queueFrame({
       type: 'phase_end',
+      kind: 'control',
       phase,
       timestamp: Date.now(),
     })
@@ -368,6 +481,7 @@ export class LLMStreamBridgeProcessor {
 
     await this.options.queueFrame({
       type: 'task_start',
+      kind: 'control',
       taskDescription,
       timestamp: Date.now(),
     })
@@ -380,6 +494,7 @@ export class LLMStreamBridgeProcessor {
 
     await this.options.queueFrame({
       type: 'task_end',
+      kind: 'control',
       result,
       timestamp: Date.now(),
     })
@@ -410,22 +525,43 @@ export interface LLMResponseProcessorOptions {
   signal?: AbortSignal
   queueFrame?: (frame: ResponseFrame) => Promise<void> | void
   waitForIdle?: () => Promise<void>
+  onComplete?: (result: { text: string; error?: Error }) => void
   log?: (message: string) => void
 }
 
-export class LLMResponseProcessor {
+export class LLMResponseProcessor implements ResponseFrameProcessor {
   constructor(private readonly options: LLMResponseProcessorOptions) {}
+
+  async processFrame(frame: ResponseFrame, context: { signal: AbortSignal }): Promise<void> {
+    if (frame.type === 'response_interruption') {
+      await this.emitInterruption(frame.reason)
+      return
+    }
+
+    if (frame.type !== 'user_text' || context.signal.aborted) {
+      return
+    }
+
+    try {
+      const text = await this.processUserText(frame.text)
+      this.options.onComplete?.({ text })
+    } catch (error: any) {
+      const normalizedError = error instanceof Error ? error : new Error(String(error))
+      this.options.onComplete?.({ text: '', error: normalizedError })
+      throw normalizedError
+    }
+  }
 
   async processUserText(text: string): Promise<string> {
     if (this.options.signal?.aborted) {
-      await this.emitInterruption()
+      await this.emitInterruption('manual')
       return ''
     }
 
     let signalAbortHandler: (() => void) | null = null
     if (this.options.signal) {
       signalAbortHandler = () => {
-        void this.emitInterruption()
+        void this.emitInterruption('manual')
       }
       this.options.signal.addEventListener('abort', signalAbortHandler, { once: true })
     }
@@ -471,9 +607,11 @@ export class LLMResponseProcessor {
     return fullResponse
   }
 
-  private async emitInterruption(): Promise<void> {
+  private async emitInterruption(reason: InterruptionReason): Promise<void> {
     await this.options.queueFrame?.({
       type: 'response_interruption',
+      kind: 'system',
+      reason,
       timestamp: Date.now(),
     })
   }

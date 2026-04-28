@@ -54,7 +54,6 @@ import {
   VADAnalyzer,
   TurnController,
   VADState,
-  InterruptionHandler,
   SmartTurnAnalyzer,
   type VADParams,
   type EndpointingConfig,
@@ -63,6 +62,8 @@ import {
   type VoiceConfidenceProvider,
   type SmartTurnOptions,
   VoiceGraphPipeline,
+  type Frame,
+  type FrameObserver,
   type VoiceFrame,
   type VoiceFrameProcessor,
   OutputFramePipeline,
@@ -73,7 +74,6 @@ import {
   type ResponseFrame,
   ResponseDisplayProcessor,
   ResponseTTSProcessor,
-  SentenceAggregatorProcessor,
 } from '@her-text/sdk'
 import { initializeSileroVAD, isSileroVADAvailable } from './silero-vad-helper.js'
 import { initializeSmartTurn, isSmartTurnAvailable } from './smart-turn-helper.js'
@@ -90,6 +90,8 @@ import {
   type ConnectionState,
 } from './reconnecting-websocket-transport.js'
 const DEV_SERVER_URL = 'http://127.0.0.1:5173'
+
+type InterruptionReason = 'vad_start' | 'transcript_start' | 'manual' | 'provider_switch'
 
 type ConversationPhase = 'reply' | 'task' | 'task_result'
 
@@ -196,6 +198,11 @@ class LatencyTracker {
 
   calculate(): LatencyData | null {
     const get = (p: LatencyPoint) => this.timestamps.get(p)
+    const interval = (start?: number, end?: number) => (
+      start !== undefined && end !== undefined
+        ? Math.max(0, end - start)
+        : undefined
+    )
 
     const vadSpeechStop = get('vad_speech_stop')
     const turnComplete = get('turn_complete')
@@ -206,6 +213,9 @@ class LatencyTracker {
     const firstTTSText = get('first_tts_text')
     const firstTTSAudio = get('first_tts_audio')
     const firstAudioPlay = get('first_audio_play')
+    const asrReady = asrComplete !== undefined && speechEnd !== undefined
+      ? Math.max(asrComplete, speechEnd)
+      : asrComplete ?? speechEnd
 
     // 使用 VAD 静音检测作为起点（如果有的话）
     const startPoint = vadSpeechStop ?? speechEnd
@@ -214,15 +224,15 @@ class LatencyTracker {
     }
 
     const intervals: LatencyIntervals = {
-      vadToEndpointing: (vadSpeechStop && speechEnd) ? speechEnd - vadSpeechStop : undefined,
-      vadToTurnComplete: (vadSpeechStop && turnComplete) ? turnComplete - vadSpeechStop : undefined,
-      turnCompleteToEndpointing: (turnComplete && speechEnd) ? speechEnd - turnComplete : undefined,
-      endpointingToASR: (speechEnd && asrComplete) ? asrComplete - speechEnd : undefined,
-      asrToLLM: (asrComplete && llmStart) ? llmStart - asrComplete : undefined,
-      llmToFirstToken: (llmStart && firstLLMToken) ? firstLLMToken - llmStart : undefined,
-      firstTokenToTTSText: (firstLLMToken && firstTTSText) ? firstTTSText - firstLLMToken : undefined,
-      ttsTextToAudio: (firstTTSText && firstTTSAudio) ? firstTTSAudio - firstTTSText : undefined,
-      audioToPlayback: (firstTTSAudio && firstAudioPlay) ? firstAudioPlay - firstTTSAudio : undefined,
+      vadToEndpointing: interval(vadSpeechStop, speechEnd),
+      vadToTurnComplete: interval(vadSpeechStop, turnComplete),
+      turnCompleteToEndpointing: interval(turnComplete, speechEnd),
+      endpointingToASR: interval(speechEnd, asrComplete),
+      asrToLLM: interval(asrReady, llmStart),
+      llmToFirstToken: interval(llmStart, firstLLMToken),
+      firstTokenToTTSText: interval(firstLLMToken, firstTTSText),
+      ttsTextToAudio: interval(firstTTSText, firstTTSAudio),
+      audioToPlayback: interval(firstTTSAudio, firstAudioPlay),
     }
 
     const total = firstAudioPlay ? firstAudioPlay - startPoint : undefined
@@ -288,6 +298,115 @@ interface LatencyData {
 
 // 全局延迟追踪器实例
 const latencyTracker = new LatencyTracker()
+
+class LatencyObserver implements FrameObserver<Frame> {
+  private firstLLMTokenSeen = false
+  private firstTTSTextSeen = false
+  private firstTTSAudioSeen = false
+  private firstAudioPlaySeen = false
+
+  constructor(private readonly tracker: LatencyTracker) {}
+
+  onFrame(frame: Frame): void {
+    switch (frame.type) {
+      case 'vad_speech_stop':
+        this.tracker.reset()
+        this.resetFirstMarkers()
+        this.tracker.mark('vad_speech_stop')
+        return
+      case 'user_turn_end':
+        this.tracker.mark('speech_end')
+        return
+      case 'transcription':
+        if ((frame as VoiceFrame).type === 'transcription' && (frame as VoiceFrame & { finalized: boolean }).finalized) {
+          this.tracker.mark('asr_complete')
+        }
+        return
+      case 'bot_thinking_start':
+        this.tracker.mark('llm_start')
+        return
+      case 'llm_text_delta':
+      case 'display_text_delta':
+        if (!this.firstLLMTokenSeen) {
+          this.firstLLMTokenSeen = true
+          this.tracker.mark('first_llm_token')
+        }
+        return
+      case 'tts_text':
+        if (!this.firstTTSTextSeen) {
+          this.firstTTSTextSeen = true
+          this.tracker.mark('first_tts_text')
+        }
+        return
+      case 'tts_audio':
+        if (!this.firstTTSAudioSeen) {
+          this.firstTTSAudioSeen = true
+          this.tracker.mark('first_tts_audio')
+        }
+        return
+      case 'audio_playback_started':
+        if (!this.firstAudioPlaySeen) {
+          this.firstAudioPlaySeen = true
+          this.tracker.mark('first_audio_play')
+          this.tracker.calculate()
+        }
+        return
+    }
+  }
+
+  markTurnComplete(): void {
+    this.tracker.mark('turn_complete')
+  }
+
+  markFirstTTSText(): void {
+    if (!this.firstTTSTextSeen) {
+      this.firstTTSTextSeen = true
+      this.tracker.mark('first_tts_text')
+    }
+  }
+
+  private resetFirstMarkers(): void {
+    this.firstLLMTokenSeen = false
+    this.firstTTSTextSeen = false
+    this.firstTTSAudioSeen = false
+    this.firstAudioPlaySeen = false
+  }
+}
+
+const latencyObserver = new LatencyObserver(latencyTracker)
+
+type FrameTraceEntry = {
+  time: number
+  type: string
+  kind: Frame['kind']
+}
+
+class FrameTraceObserver implements FrameObserver<Frame> {
+  private readonly entries: FrameTraceEntry[] = []
+  private readonly maxEntries = 500
+
+  onFrame(frame: Frame): void {
+    this.entries.push({
+      time: Date.now(),
+      type: frame.type,
+      kind: frame.kind,
+    })
+
+    if (this.entries.length > this.maxEntries) {
+      this.entries.shift()
+    }
+  }
+
+  getTrace(): FrameTraceEntry[] {
+    return [...this.entries]
+  }
+
+  clear(): void {
+    this.entries.length = 0
+  }
+}
+
+const frameTraceObserver = new FrameTraceObserver()
 
 /**
  * VAD 配置 (移植自 Pipecat)
@@ -398,7 +517,7 @@ const voiceGraphPipeline = new VoiceGraphPipeline()
  * - 4 状态机 VAD (QUIET → STARTING → SPEAKING → STOPPING)
  * - 双计时器 Endpointing
  * - 轮次管理 (TurnController)
- * - 打断处理 (InterruptionManager)
+ * - 打断处理 (system interruption frame)
  */
 class StreamingASRSession {
   private asr: STTProvider | null = null
@@ -409,13 +528,23 @@ class StreamingASRSession {
   private pendingUserTurnEnd: { voiceTurnId: number; params: UserTurnStoppedParams } | null = null
   private voiceTurnSequence = 0
   private activeVoiceTurnId = 0
+  private providerGeneration = 0
+  private removeLatencyObserver: (() => void) | null = null
+  private removeTraceObserver: (() => void) | null = null
 
   // 回调
   private onTranscript: ((text: string) => void) | null = null
   private onUserText: ((text: string) => void | Promise<void>) | null = null
   private onStateChange: ((state: 'listening' | 'processing' | 'idle') => void) | null = null
   private onSpeechStart: (() => void) | null = null
-  private onInterruption: (() => void) | null = null
+  private onInterruption: ((reason: InterruptionReason) => void) | null = null
+  private callbacks: {
+    onTranscript?: (text: string) => void
+    onUserText?: (text: string) => void | Promise<void>
+    onStateChange?: (state: 'listening' | 'processing' | 'idle') => void
+    onSpeechStart?: () => void
+    onInterruption?: (reason: InterruptionReason) => void
+  } | null = null
 
   // 调试模式
   private debug = true
@@ -425,9 +554,10 @@ class StreamingASRSession {
     onUserText?: (text: string) => void | Promise<void>
     onStateChange?: (state: 'listening' | 'processing' | 'idle') => void
     onSpeechStart?: () => void
-    onInterruption?: () => void
+    onInterruption?: (reason: InterruptionReason) => void
   }): Promise<void> {
     await this.stop()
+    this.callbacks = callbacks ?? null
 
     this.onTranscript = callbacks?.onTranscript || null
     this.onUserText = callbacks?.onUserText || null
@@ -436,6 +566,7 @@ class StreamingASRSession {
     this.onInterruption = callbacks?.onInterruption || null
 
     const asrConfig = getActiveASRConfig()
+    activeASRSignature = getASRConfigSignature(asrConfig)
     const apiKey = asrConfig?.apiKey?.trim()
     if (!apiKey) {
       throw new Error('QWEN_API_KEY is not configured. Please set it in Settings > System > ASR.')
@@ -464,6 +595,8 @@ class StreamingASRSession {
     })
 
     // 初始化 ASR（带中间转录回调，用于 endpointing）
+    const providerGeneration = ++this.providerGeneration
+
     this.asr = createSTTProvider({
       kind: 'qwen-realtime',
       config: {
@@ -489,6 +622,8 @@ class StreamingASRSession {
       // 不打印、不进入最终用户文本。
       void this.voiceFramePipeline.queueFrame({
         type: 'transcription',
+        kind: 'data',
+        providerGeneration,
         voiceTurnId: this.activeVoiceTurnId,
         text: event.text,
         finalized: event.final,
@@ -527,7 +662,7 @@ class StreamingASRSession {
           sttTimeoutMs: 1000,
           onResult: (result) => {
             if (result.isComplete) {
-              latencyTracker.mark('turn_complete')
+              latencyObserver.markTurnComplete()
             }
           },
         },
@@ -549,18 +684,16 @@ class StreamingASRSession {
         const voiceTurnId = this.beginVoiceTurn()
         void this.voiceFramePipeline.queueFrame({
           type: 'user_turn_start',
+          kind: 'control',
           voiceTurnId,
           timestamp: Date.now(),
         })
       },
 
       onVADSpeechStop: () => {
-        // 这里是 VAD 事件的同步边界；不要等 frame 队列，否则 SmartTurn
-        // 可能先完成，随后被 vad_speech_stop processor reset 掉打点。
-        latencyTracker.reset()
-        latencyTracker.mark('vad_speech_stop')
         void this.voiceFramePipeline.queueFrame({
           type: 'vad_speech_stop',
+          kind: 'control',
           voiceTurnId: this.activeVoiceTurnId,
           timestamp: Date.now(),
         })
@@ -570,16 +703,19 @@ class StreamingASRSession {
         const voiceTurnId = this.activeVoiceTurnId
         void this.voiceFramePipeline.queueFrame({
           type: 'user_turn_end',
+          kind: 'control',
           voiceTurnId,
           params,
           timestamp: Date.now(),
         })
       },
 
-      onInterruption: () => {
+      onInterruption: (reason) => {
         void this.voiceFramePipeline.queueFrame({
           type: 'interruption',
+          kind: 'system',
           voiceTurnId: this.activeVoiceTurnId,
+          reason,
           timestamp: Date.now(),
         })
       },
@@ -587,6 +723,7 @@ class StreamingASRSession {
       onUserTurnTimeout: () => {
         void this.voiceFramePipeline.queueFrame({
           type: 'user_turn_timeout',
+          kind: 'control',
           voiceTurnId: this.activeVoiceTurnId,
           timestamp: Date.now(),
         })
@@ -611,12 +748,46 @@ class StreamingASRSession {
             return
           }
 
+          if (frame.type === 'stt_metadata') {
+            if (!this.isCurrentProviderGeneration(frame.providerGeneration)) {
+              this.log(`Dropping stale STT metadata for provider generation #${frame.providerGeneration}`)
+              return
+            }
+            this.turnController.updateSTTProviderCapabilities(frame.capabilities)
+            return
+          }
+
           if (frame.type === 'input_audio') {
             await this.turnController.processAudio(frame.samples)
             return
           }
 
+          if (frame.type === 'bot_thinking_start') {
+            await this.turnController.startBotThinking()
+            return
+          }
+
+          if (frame.type === 'bot_thinking_end') {
+            await this.turnController.endBotThinking()
+            return
+          }
+
+          if (frame.type === 'bot_started_speaking') {
+            await this.turnController.startBotTurn()
+            return
+          }
+
+          if (frame.type === 'bot_stopped_speaking') {
+            await this.turnController.endBotTurn()
+            return
+          }
+
           if (frame.type !== 'transcription') {
+            return
+          }
+
+          if (!this.isCurrentProviderGeneration(frame.providerGeneration)) {
+            this.log(`Dropping stale transcription for provider generation #${frame.providerGeneration}`)
             return
           }
 
@@ -666,15 +837,36 @@ class StreamingASRSession {
               }
               this.log(`User turn ended, text: ${frame.params.text?.slice(0, 50)}...`)
               this.endVoiceTurn(frame.voiceTurnId)
-              latencyTracker.mark('speech_end')
               void this.finalizeUserTurn(frame.voiceTurnId, frame.params)
               break
             case 'interruption':
-              this.log('Interruption detected!')
-              this.onInterruption?.()
+              this.log(`Interruption detected! reason=${frame.reason}`)
+              this.asr?.clearBufferedTranscripts()
+              this.onInterruption?.(frame.reason)
               break
             case 'user_turn_timeout':
               this.log('User turn timeout')
+              break
+            case 'stt_metadata':
+              if (!this.isCurrentProviderGeneration(frame.providerGeneration)) {
+                this.log(`Dropping stale STT metadata log for provider generation #${frame.providerGeneration}`)
+                return
+              }
+              this.log(
+                `STT metadata: provider=${frame.capabilities.provider}, model=${frame.capabilities.model ?? 'default'}, streaming=${frame.capabilities.streamingTranscripts}`
+              )
+              break
+            case 'bot_thinking_start':
+              this.log('Bot thinking started')
+              break
+            case 'bot_thinking_end':
+              this.log('Bot thinking ended')
+              break
+            case 'bot_started_speaking':
+              this.log('Bot started speaking')
+              break
+            case 'bot_stopped_speaking':
+              this.log('Bot stopped speaking')
               break
           }
         }
@@ -683,29 +875,59 @@ class StreamingASRSession {
 
     this.voiceFramePipeline.setProcessors(processors)
     this.voiceFramePipeline.reset()
+    this.removeLatencyObserver?.()
+    this.removeLatencyObserver = this.voiceFramePipeline.addObserver(latencyObserver)
+    this.removeTraceObserver?.()
+    this.removeTraceObserver = this.voiceFramePipeline.addObserver(frameTraceObserver)
     this.audioFrameSequence = 0
     this.voiceTurnSequence = 0
     this.activeVoiceTurnId = 0
     this.commitInFlight = false
+    void this.voiceFramePipeline.queueFrame({
+      type: 'stt_metadata',
+      kind: 'control',
+      providerGeneration: this.providerGeneration,
+      capabilities: this.asr.getCapabilities(),
+      timestamp: Date.now(),
+    })
     this.onStateChange?.('listening')
 
     this.log('StreamingASRSession started with Pipecat-style VAD')
   }
 
-  /**
-   * 注册打断处理器
-   * 允许外部组件（如 TTS）响应打断事件
-   */
-  registerInterruptionHandler(handler: InterruptionHandler): void {
-    this.turnController?.getInterruptionManager().register(handler)
+  async switchProvider(reason: InterruptionReason = 'provider_switch'): Promise<void> {
+    const callbacks = this.callbacks
+    this.log(`Switching ASR provider, reason=${reason}`)
+    mainWindow?.webContents.send('speech:reconnecting')
+    await this.stop()
+    if (callbacks) {
+      await this.start(callbacks)
+    }
+    mainWindow?.webContents.send('speech:reconnected')
   }
 
   async startBotThinking(): Promise<void> {
-    await this.turnController?.startBotThinking()
+    await this.voiceFramePipeline.queueFrame({
+      type: 'bot_thinking_start',
+      kind: 'control',
+      timestamp: Date.now(),
+    })
   }
 
   async startBotTurn(): Promise<void> {
-    await this.turnController?.startBotTurn()
+    await this.voiceFramePipeline.queueFrame({
+      type: 'bot_started_speaking',
+      kind: 'control',
+      timestamp: Date.now(),
+    })
+  }
+
+  async endBotThinking(): Promise<void> {
+    await this.voiceFramePipeline.queueFrame({
+      type: 'bot_thinking_end',
+      kind: 'control',
+      timestamp: Date.now(),
+    })
   }
 
   /**
@@ -713,7 +935,11 @@ class StreamingASRSession {
    * 在回复完成后调用
    */
   async endBotTurn(): Promise<void> {
-    await this.turnController?.endBotTurn()
+    await this.voiceFramePipeline.queueFrame({
+      type: 'bot_stopped_speaking',
+      kind: 'control',
+      timestamp: Date.now(),
+    })
   }
 
   private beginVoiceTurn(): number {
@@ -733,6 +959,10 @@ class StreamingASRSession {
 
   private isCurrentVoiceTurn(voiceTurnId: number): boolean {
     return voiceTurnId > 0 && voiceTurnId === this.activeVoiceTurnId
+  }
+
+  private isCurrentProviderGeneration(providerGeneration: number): boolean {
+    return providerGeneration === this.providerGeneration
   }
 
   private shouldStartVoiceTurnFromTranscription(frame: Extract<VoiceFrame, { type: 'transcription' }>): boolean {
@@ -776,9 +1006,6 @@ class StreamingASRSession {
       // 完成时已经持有最终文本。Qwen realtime 在 VAD stop 时只需要 flush。
       const text = params.text?.trim() ?? ''
 
-      // 延迟追踪：ASR 转录完成
-      latencyTracker.mark('asr_complete')
-
       const finalText = text.trim()
 
       if (finalText) {
@@ -792,7 +1019,6 @@ class StreamingASRSession {
       this.log(`Commit error: ${error}`)
       // 如果 ASR 提交失败，使用 endpointing 累积的文本
       if (params.text?.trim()) {
-        latencyTracker.mark('asr_complete')
         const fallbackText = params.text.trim()
         this.onTranscript?.(fallbackText)
         void Promise.resolve(this.onUserText?.(fallbackText)).catch((processError) => {
@@ -836,6 +1062,7 @@ class StreamingASRSession {
 
     return this.voiceFramePipeline.queueFrame({
       type: 'input_audio',
+      kind: 'data',
       sequence: ++this.audioFrameSequence,
       timestamp: Date.now(),
       samples: normalized,
@@ -867,9 +1094,14 @@ class StreamingASRSession {
     }
 
     this.voiceFramePipeline.stop()
+    this.removeLatencyObserver?.()
+    this.removeLatencyObserver = null
+    this.removeTraceObserver?.()
+    this.removeTraceObserver = null
     this.pendingUserTurnEnd = null
     this.commitInFlight = false
     this.activeVoiceTurnId = 0
+    this.providerGeneration += 1
 
     if (!this.asr) {
       return
@@ -878,7 +1110,7 @@ class StreamingASRSession {
     const current = this.asr
     this.asr = null
 
-    await current.close().catch((error: Error) => {
+    await (current.cleanup?.() ?? current.close()).catch((error: Error) => {
       if (error.message === 'Qwen STT WebSocket closed' ||
           error.message === 'WebSocket connection aborted') {
         return
@@ -911,12 +1143,20 @@ const electronOutputProcessor: OutputFrameProcessor = {
   processFrame(frame) {
     switch (frame.type) {
       case 'tts_started':
+        if (frame.providerGeneration !== ttsProviderGeneration) {
+          console.log(`[TTS] Dropping stale started frame for provider generation #${frame.providerGeneration}`)
+          return
+        }
         invalidatedTTSContexts.delete(frame.contextId)
         currentTTSContextId = frame.contextId
         mainWindow?.webContents.send('tts:connected', frame.contextId)
         mainWindow?.webContents.send('tts:contextStart', frame.contextId)
         break
       case 'tts_audio':
+        if (frame.providerGeneration !== ttsProviderGeneration) {
+          console.log(`[TTS] Dropping stale audio frame for provider generation #${frame.providerGeneration}`)
+          return
+        }
         if (frame.contextId !== currentTTSContextId || invalidatedTTSContexts.has(frame.contextId)) {
           console.log(`[TTS] Dropping stale output frame for context #${frame.contextId}`)
           return
@@ -927,10 +1167,15 @@ const electronOutputProcessor: OutputFrameProcessor = {
         })
         break
       case 'tts_stopped':
+        if (frame.providerGeneration !== ttsProviderGeneration) {
+          return
+        }
         mainWindow?.webContents.send('tts:closed')
         break
       case 'tts_error':
         mainWindow?.webContents.send('tts:error', frame.error)
+        break
+      case 'audio_playback_started':
         break
       case 'interruption':
         invalidatedTTSContexts.add(frame.ttsContextId)
@@ -942,6 +1187,8 @@ const electronOutputProcessor: OutputFrameProcessor = {
 }
 
 outputFramePipeline.setProcessors([electronOutputProcessor])
+outputFramePipeline.addObserver(latencyObserver)
+outputFramePipeline.addObserver(frameTraceObserver)
 
 // ========== 轮次管理（打断控制）==========
 let currentTurnId = 0
@@ -957,16 +1204,19 @@ let currentTurnUserText: string | null = null
  * Renderer 用此 ID 验证音频是否属于当前上下文
  */
 let currentTTSContextId = 0
+let ttsProviderGeneration = 0
 
 /**
  * 生成新的 TTS 上下文 ID
  */
-function invalidateTTSContext(): void {
+function invalidateTTSContext(reason: InterruptionReason = 'manual'): void {
   console.log(`[TTS Context] Invalidating context #${currentTTSContextId}`)
   void outputFramePipeline.queueFrame({
     type: 'interruption',
+    kind: 'system',
     turnId: currentTurnId,
     ttsContextId: currentTTSContextId,
+    reason,
     timestamp: Date.now(),
   })
 }
@@ -977,7 +1227,7 @@ function invalidateTTSContext(): void {
  */
 async function startNewTurn(): Promise<number> {
   // 先取消上一个轮次
-  await cancelCurrentTurn({ closeTTS: true })
+  await cancelCurrentTurn({ closeTTS: true, reason: 'manual' })
 
   currentTurnId++
   cancelledTurnIds.delete(currentTurnId)
@@ -991,7 +1241,10 @@ async function startNewTurn(): Promise<number> {
  * 取消当前轮次
  * 打断时调用，取消所有正在进行的 LLM/TTS 请求
  */
-async function cancelCurrentTurn(options: { closeTTS?: boolean } = {}): Promise<void> {
+async function cancelCurrentTurn(
+  options: { closeTTS?: boolean; reason?: InterruptionReason } = {}
+): Promise<void> {
+  const reason = options.reason ?? 'manual'
   let cancelledExistingTurn = false
 
   if (currentTurnAbortController) {
@@ -1002,6 +1255,8 @@ async function cancelCurrentTurn(options: { closeTTS?: boolean } = {}): Promise<
     voiceGraphPipeline.broadcastInterruption()
     void currentResponseFramePipeline?.queueFrame({
       type: 'response_interruption',
+      kind: 'system',
+      reason,
       timestamp: Date.now(),
     })
     currentResponseFramePipeline?.stop()
@@ -1011,7 +1266,7 @@ async function cancelCurrentTurn(options: { closeTTS?: boolean } = {}): Promise<
 
   if (cancelledExistingTurn) {
     // 同时使 TTS 上下文失效
-    invalidateTTSContext()
+    invalidateTTSContext(reason)
   }
 
   if (options.closeTTS && cancelledExistingTurn) {
@@ -1106,14 +1361,25 @@ ipcMain.on('playback:complete', (_, requestId: number) => {
 
 // 接收 Renderer 的首个音频播放通知
 ipcMain.on('latency:firstAudioPlay', () => {
-  latencyTracker.mark('first_audio_play')
-  // 计算并输出完整延迟数据
-  latencyTracker.calculate()
+  void outputFramePipeline.queueFrame({
+    type: 'audio_playback_started',
+    kind: 'data',
+    timestamp: Date.now(),
+  })
 })
 
 // 设置延迟数据发送到 Renderer
 latencyTracker.setSendToRenderer((data) => {
   mainWindow?.webContents.send('latency:data', data)
+})
+
+ipcMain.handle('debug:frameTrace', async () => {
+  return frameTraceObserver.getTrace()
+})
+
+ipcMain.handle('debug:clearFrameTrace', async () => {
+  frameTraceObserver.clear()
+  return { success: true }
 })
 
 function splitDisplayUnits(text: string): string[] {
@@ -1248,6 +1514,177 @@ function normalizeASRModelName(modelName?: string): string {
     return 'qwen3-asr-flash-realtime'
   }
   return normalized
+}
+
+function getTTSConfigSignature(config: TTSModelConfig | null): string {
+  if (!config) {
+    return 'none'
+  }
+  return JSON.stringify({
+    id: config.id,
+    provider: config.provider,
+    modelName: config.modelName,
+    voiceId: config.voiceId,
+    apiKey: config.apiKey ? 'set' : '',
+  })
+}
+
+function getASRConfigSignature(config: ASRModelConfig | null): string {
+  if (!config) {
+    return 'none'
+  }
+  return JSON.stringify({
+    id: config.id,
+    provider: config.provider,
+    modelName: config.modelName,
+    apiKey: config.apiKey ? 'set' : '',
+  })
+}
+
+let activeTTSSignature = ''
+let activeASRSignature = ''
+
+function attachTTSProviderEvents(provider: TTSProvider, providerGeneration: number): void {
+  let isFirstAudioChunk = true
+
+  provider.setEventHandler((event) => {
+    if (providerGeneration !== ttsProviderGeneration) {
+      console.log(`[TTS] Dropping event from stale provider generation #${providerGeneration}`)
+      return
+    }
+
+    switch (event.type) {
+      case 'connected': {
+        const ttsContextId = event.contextId
+        console.log(`[TTS] Connected event (context #${ttsContextId})`)
+        isFirstAudioChunk = true
+        void outputFramePipeline.queueFrame({
+          type: 'tts_started',
+          kind: 'control',
+          contextId: ttsContextId,
+          providerGeneration,
+          timestamp: Date.now(),
+        })
+        break
+      }
+      case 'audio': {
+        const ttsContextId = event.contextId
+        if (isFirstAudioChunk) {
+          isFirstAudioChunk = false
+          void streamingASRSession?.startBotTurn()
+        }
+        if (ttsContextId < 0) {
+          console.log('[TTS] Dropping audio chunk - context invalidated')
+          return
+        }
+        console.log(`[TTS] Audio chunk received (context #${ttsContextId}):`, event.audio.length, 'bytes')
+        void outputFramePipeline.queueFrame({
+          type: 'tts_audio',
+          kind: 'data',
+          contextId: ttsContextId,
+          providerGeneration,
+          audio: event.audio,
+          timestamp: Date.now(),
+        })
+        break
+      }
+      case 'closed':
+        console.log(`[TTS] Closed event (context #${event.contextId})`)
+        void outputFramePipeline.queueFrame({
+          type: 'tts_stopped',
+          kind: 'control',
+          contextId: event.contextId,
+          providerGeneration,
+          timestamp: Date.now(),
+        })
+        break
+      case 'error':
+        console.log('[TTS] Error event:', event.error.message)
+        ttsAvailable = false
+        void outputFramePipeline.queueFrame({
+          type: 'tts_error',
+          kind: 'control',
+          providerGeneration,
+          error: event.error.message,
+          timestamp: Date.now(),
+        })
+        break
+    }
+  })
+}
+
+async function initializeTTSProvider(): Promise<void> {
+  const ttsConfig = getActiveTTSConfig()
+  const nextSignature = getTTSConfigSignature(ttsConfig)
+  if (ttsService && activeTTSSignature === nextSignature) {
+    return
+  }
+
+  if (ttsService) {
+    await switchTTSProvider('provider_switch')
+    return
+  }
+
+  if (!ttsConfig?.apiKey?.trim()) {
+    ttsService = null
+    ttsAvailable = false
+    activeTTSSignature = nextSignature
+    console.log('[TTS] Disabled: missing Fish Audio API key')
+    return
+  }
+
+  const provider = createTTSProvider({
+    kind: 'fish-realtime',
+    config: {
+      apiKey: ttsConfig.apiKey,
+      voiceId: ttsConfig.voiceId,
+      model: ttsConfig.modelName || 's2-pro',
+      format: 'pcm',
+      sampleRate: 16000,
+      latency: 'balanced',
+    },
+  })
+
+  const providerGeneration = ++ttsProviderGeneration
+  attachTTSProviderEvents(provider, providerGeneration)
+  await provider.setup?.()
+
+  ttsService = provider
+  ttsAvailable = true
+  activeTTSSignature = nextSignature
+
+  const capabilities = provider.getCapabilities()
+  console.log(
+    `[TTS] Initialized provider=${capabilities.provider}, model=${capabilities.model ?? 'default'}, streaming=${capabilities.streaming}`
+  )
+}
+
+async function switchTTSProvider(reason: InterruptionReason = 'provider_switch'): Promise<void> {
+  const previous = ttsService
+  const nextSignature = getTTSConfigSignature(getActiveTTSConfig())
+
+  await cancelCurrentTurn({ closeTTS: false, reason })
+  invalidateTTSContext(reason)
+  ttsProviderGeneration += 1
+  ttsService = null
+  ttsAvailable = false
+
+  await previous?.interrupt?.().catch((error: Error) => {
+    console.warn('[TTS] Failed to interrupt previous provider:', error.message)
+  })
+  await previous?.cleanup?.().catch((error: Error) => {
+    console.warn('[TTS] Failed to cleanup previous provider:', error.message)
+  })
+
+  activeTTSSignature = ''
+  const ttsConfig = getActiveTTSConfig()
+  if (!ttsConfig?.apiKey?.trim()) {
+    activeTTSSignature = nextSignature
+    console.log('[TTS] Disabled after provider switch: missing API key')
+    return
+  }
+
+  await initializeTTSProvider()
 }
 
 function configureProxyFromEnv(): void {
@@ -1446,89 +1883,7 @@ ipcMain.handle('conversation:initialize', async () => {
       await initializeSDK()
     }
 
-    // 初始化 TTS（使用 SDK）
-    const ttsConfig = getActiveTTSConfig()
-    if (ttsConfig?.apiKey?.trim()) {
-      ttsService = createTTSProvider({
-        kind: 'fish-realtime',
-        config: {
-          apiKey: ttsConfig.apiKey,
-          voiceId: ttsConfig.voiceId,
-          model: ttsConfig.modelName || 's2-pro',
-          format: 'pcm',
-          sampleRate: 16000,
-          latency: 'balanced'
-        }
-      })
-
-      ttsAvailable = true
-
-      // 用于追踪首个音频块
-      let isFirstAudioChunk = true
-
-      // 设置 TTS 事件处理
-      // 使用 TTS provider 内部的 context ID，避免重复管理
-      ttsService.setEventHandler((event) => {
-        switch (event.type) {
-          case 'connected': {
-            const ttsContextId = event.contextId
-            console.log(`[TTS] Connected event (context #${ttsContextId})`)
-            isFirstAudioChunk = true  // 重置首个音频块标志
-            void outputFramePipeline.queueFrame({
-              type: 'tts_started',
-              contextId: ttsContextId,
-              timestamp: Date.now(),
-            })
-            break
-          }
-          case 'audio': {
-            const ttsContextId = event.contextId
-            // 延迟追踪：首个 TTS 音频块
-            if (isFirstAudioChunk) {
-              isFirstAudioChunk = false
-              latencyTracker.mark('first_tts_audio')
-              void streamingASRSession?.startBotTurn()
-            }
-            // 检查 context 是否仍然有效（打断后 _activeContextId 会变成 -1）
-            if (ttsContextId < 0) {
-              console.log(`[TTS] Dropping audio chunk - context invalidated`)
-              return
-            }
-            console.log(`[TTS] Audio chunk received (context #${ttsContextId}):`, event.audio.length, 'bytes')
-            void outputFramePipeline.queueFrame({
-              type: 'tts_audio',
-              contextId: ttsContextId,
-              audio: event.audio,
-              timestamp: Date.now(),
-            })
-            break
-          }
-          case 'closed':
-            console.log(`[TTS] Closed event (context #${event.contextId})`)
-            void outputFramePipeline.queueFrame({
-              type: 'tts_stopped',
-              contextId: event.contextId,
-              timestamp: Date.now(),
-            })
-            break
-          case 'error':
-            console.log('[TTS] Error event:', event.error.message)
-            ttsAvailable = false
-            void outputFramePipeline.queueFrame({
-              type: 'tts_error',
-              error: event.error.message,
-              timestamp: Date.now(),
-            })
-            break
-        }
-      })
-
-      console.log('[TTS] Initialized successfully (using SDK)')
-    } else {
-      ttsService = null
-      ttsAvailable = false
-      console.log('[TTS] Disabled: missing Fish Audio API key')
-    }
+    await initializeTTSProvider()
 
     return {
       success: true,
@@ -1590,22 +1945,53 @@ async function runConversationTurn(
 
     const responseLaneName = `response:${turnId}`
     responseFramePipeline = voiceGraphPipeline.createResponseLane(responseLaneName)
+    responseFramePipeline.addObserver(latencyObserver)
+    responseFramePipeline.addObserver(frameTraceObserver)
     currentResponseFramePipeline = responseFramePipeline
 
     let isFirstTTSChunk = true
 
     let shouldUseTTS = enableTTS && appSettings.voiceOutputEnabled && Boolean(ttsService) && ttsAvailable
 
+    let resolveLLMCompletion: (value: string) => void = () => undefined
+    let rejectLLMCompletion: (error: Error) => void = () => undefined
+    const llmCompletion = new Promise<string>((resolve, reject) => {
+      resolveLLMCompletion = resolve
+      rejectLLMCompletion = reject
+    })
+
+    const llmStreamBridge = new LLMStreamBridgeProcessor({
+      queueFrame: (frame) => {
+        void responseFramePipeline?.queueFrame(frame)
+      },
+      isCancelled: () => isTurnCancelled(turnId),
+      shouldUseTTS: () => shouldUseTTS,
+      onFirstToken: () => {
+        void streamingASRSession?.endBotThinking()
+      },
+      log: (message) => console.log(message.replace('turn cancelled', `turn #${turnId} cancelled`)),
+    })
+
+    const llmResponseProcessor = new LLMResponseProcessor({
+      service: sdkInstance,
+      bridge: llmStreamBridge,
+      signal: turnAbortSignal,
+      queueFrame: (frame) => {
+        void responseFramePipeline?.queueFrame(frame)
+      },
+      waitForIdle: () => Promise.resolve(),
+      onComplete: (result) => {
+        if (result.error) {
+          rejectLLMCompletion(result.error)
+          return
+        }
+        resolveLLMCompletion(result.text)
+      },
+      log: (message) => console.log(message),
+    })
+
     responseFramePipeline.setProcessors([
-      new SentenceAggregatorProcessor({
-        emit: (chunk) => {
-          void responseFramePipeline?.queueFrame({
-            type: 'tts_text',
-            text: chunk,
-            timestamp: Date.now(),
-          })
-        },
-      }),
+      llmResponseProcessor,
       new ResponseTTSProcessor({
         isCancelled: () => isTurnCancelled(turnId),
         isEnabled: () => shouldUseTTS && ttsAvailable,
@@ -1614,7 +2000,7 @@ async function runConversationTurn(
         onFirstText: () => {
           if (isFirstTTSChunk) {
             isFirstTTSChunk = false
-            latencyTracker.mark('first_tts_text')
+            latencyObserver.markFirstTTSText()
           }
         },
         onText: (textFrame) => {
@@ -1647,29 +2033,17 @@ async function runConversationTurn(
       }),
     ])
 
-    const llmStreamBridge = new LLMStreamBridgeProcessor({
-      queueFrame: (frame) => responseFramePipeline?.queueFrame(frame),
-      isCancelled: () => isTurnCancelled(turnId),
-      shouldUseTTS: () => shouldUseTTS,
-      onFirstToken: () => latencyTracker.mark('first_llm_token'),
-      log: (message) => console.log(message.replace('turn cancelled', `turn #${turnId} cancelled`)),
-    })
-
-    // 延迟追踪：LLM 调用开始
-    latencyTracker.mark('llm_start')
-
     await streamingASRSession?.startBotThinking()
 
-    const llmResponseProcessor = new LLMResponseProcessor({
-      service: sdkInstance,
-      bridge: llmStreamBridge,
-      signal: turnAbortSignal,
-      queueFrame: (frame) => responseFramePipeline?.queueFrame(frame),
-      waitForIdle: () => responseFramePipeline?.waitForIdle() ?? Promise.resolve(),
-      log: (message) => console.log(message),
+    await responseFramePipeline.queueFrame({
+      type: 'user_text',
+      kind: 'data',
+      turnId,
+      text,
+      timestamp: Date.now(),
     })
-
-    const fullResponse = await llmResponseProcessor.processUserText(text)
+    const fullResponse = await llmCompletion
+    await responseFramePipeline.waitForIdle()
 
     if (!isTurnCancelled(turnId)) {
       await streamingASRSession?.endBotTurn()
@@ -1701,7 +2075,8 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
 // 停止 TTS
 ipcMain.handle('tts:stop', async () => {
   try {
-    await ttsService?.close()
+    await cancelCurrentTurn({ closeTTS: true, reason: 'manual' })
+    invalidateTTSContext('manual')
     return { success: true }
   } catch (error: any) {
     console.error('[TTS] Failed to stop:', error)
@@ -1793,27 +2168,14 @@ ipcMain.handle('speech:stream:start', async () => {
         // 用户开始说话，通知 Renderer
         mainWindow?.webContents.send('speech:user-speaking')
       },
-      onInterruption: () => {
+      onInterruption: (reason) => {
         // 打断发生（用户在机器人说话时说话）
-        console.log('[Speech] Interruption detected, cancelling turn')
+        console.log(`[Speech] Interruption detected, cancelling turn, reason=${reason}`)
 
         // 取消当前轮次（这会 abort LLM 请求 + 使 TTS 上下文失效）
-        void cancelCurrentTurn({ closeTTS: false })
-
-        // 注意：TTS 关闭由 InterruptionManager 通过注册的处理器处理
-        // 不要在这里重复调用 ttsService.close()，否则会导致竞态条件
+        void cancelCurrentTurn({ closeTTS: true, reason })
       }
     })
-
-    // 注册 TTS 作为打断处理器 (通过 InterruptionManager 正确 await)
-    if (ttsService) {
-      streamingASRSession.registerInterruptionHandler({
-        async onInterruption() {
-          console.log('[TTS] InterruptionHandler: closing stream')
-          await ttsService?.interrupt()
-        }
-      })
-    }
 
     return { success: true }
   } catch (error: any) {
@@ -2085,7 +2447,27 @@ ipcMain.handle('settings:get', async () => {
 })
 
 ipcMain.handle('settings:update', async (_, partial: Partial<AppSettings>) => {
+  const previousTTSSignature = getTTSConfigSignature(getActiveTTSConfig())
+  const previousASRSignature = getASRConfigSignature(getActiveASRConfig())
   appSettings = await getSettingsStore().update(partial)
+  const nextTTSSignature = getTTSConfigSignature(getActiveTTSConfig())
+  const nextASRSignature = getASRConfigSignature(getActiveASRConfig())
+
+  if (
+    previousTTSSignature !== nextTTSSignature ||
+    (ttsService && activeTTSSignature !== nextTTSSignature)
+  ) {
+    await switchTTSProvider('provider_switch')
+  }
+
+  if (
+    streamingASRSession &&
+    (previousASRSignature !== nextASRSignature || activeASRSignature !== nextASRSignature)
+  ) {
+    await cancelCurrentTurn({ closeTTS: true, reason: 'provider_switch' })
+    await streamingASRSession.switchProvider('provider_switch')
+  }
+
   return appSettings
 })
 

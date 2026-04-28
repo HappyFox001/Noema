@@ -1,5 +1,5 @@
 import type { RealtimeWebSocketTransport } from './websocket-transport.js'
-import type { STTProvider, STTProviderEvent } from './providers.js'
+import type { STTProvider, STTProviderCapabilities, STTProviderEvent } from './providers.js'
 
 export interface QwenRealtimeASRConfig {
   apiKey: string
@@ -38,6 +38,47 @@ export class QwenRealtimeASR implements STTProvider {
 
   setEventHandler(handler: (event: STTProviderEvent) => void): void {
     this.onEvent = handler
+  }
+
+  getCapabilities(): STTProviderCapabilities {
+    return {
+      provider: 'qwen-realtime',
+      model: this.config.model || 'qwen3-asr-flash-realtime',
+      sampleRate: this.config.sampleRate || 16000,
+      streamingTranscripts: true,
+      supportsInterimTranscripts: true,
+      supportsFinalTranscripts: true,
+      supportsFlushAudio: true,
+      supportsServerVAD: false,
+      sttTimeoutMs: this.config.receiveTimeoutMs || 5000,
+    }
+  }
+
+  async setup(): Promise<void> {
+    // No-op: this provider opens the websocket in start/connect.
+  }
+
+  async start(): Promise<void> {
+    await this.connect()
+  }
+
+  async interrupt(_reason?: string): Promise<void> {
+    this.clearBufferedTranscripts()
+  }
+
+  async updateSettings(settings: unknown): Promise<void> {
+    this.config = {
+      ...this.config,
+      ...(settings as Partial<QwenRealtimeASRConfig>),
+    }
+  }
+
+  async stop(): Promise<void> {
+    await this.close()
+  }
+
+  async cleanup(): Promise<void> {
+    await this.close()
   }
 
   async connect(): Promise<void> {

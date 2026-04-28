@@ -8,7 +8,7 @@
 
 import { FishAudioClient, RealtimeEvents } from 'fish-audio'
 import type { InterruptionHandler } from '../turn/types.js'
-import type { TTSProvider, TTSProviderEvent } from './providers.js'
+import type { TTSProvider, TTSProviderCapabilities, TTSProviderEvent } from './providers.js'
 
 export interface FishTTSOfficialConfig {
   apiKey: string
@@ -50,6 +50,40 @@ export class FishTTSOfficial implements TTSProvider, InterruptionHandler {
       apiKey: config.apiKey,
       baseUrl: 'https://api.fish.audio',
     })
+  }
+
+  getCapabilities(): TTSProviderCapabilities {
+    return {
+      provider: 'fish-audio',
+      model: this.config.model,
+      sampleRate: this.config.sampleRate || 16000,
+      audioFormat: this.config.format || 'pcm',
+      streaming: true,
+      supportsInterrupt: true,
+    }
+  }
+
+  async setup(): Promise<void> {
+    // No-op: Fish realtime connections are created per stream.
+  }
+
+  async start(): Promise<void> {
+    await this.startStreaming()
+  }
+
+  async updateSettings(settings: unknown): Promise<void> {
+    this.config = {
+      ...this.config,
+      ...(settings as Partial<FishTTSOfficialConfig>),
+    }
+  }
+
+  async stop(): Promise<void> {
+    await this.close()
+  }
+
+  async cleanup(): Promise<void> {
+    await this.close()
   }
 
   /**

@@ -7,9 +7,15 @@
  */
 
 import type { UserTurnStoppedParams } from '../turn/types.js'
+import type { STTProviderCapabilities } from './providers.js'
 import { FramePipeline, type Frame, type FrameProcessor } from './frame-pipeline.js'
 
 export type VoiceFrame = Frame & (
+  | {
+      type: 'stt_metadata'
+      providerGeneration: number
+      capabilities: STTProviderCapabilities
+    }
   | {
       type: 'input_audio'
       sequence: number
@@ -17,6 +23,7 @@ export type VoiceFrame = Frame & (
     }
   | {
       type: 'transcription'
+      providerGeneration: number
       voiceTurnId: number
       text: string
       finalized: boolean
@@ -37,10 +44,23 @@ export type VoiceFrame = Frame & (
   | {
       type: 'interruption'
       voiceTurnId: number
+      reason: 'vad_start' | 'transcript_start' | 'manual' | 'provider_switch'
     }
   | {
       type: 'user_turn_timeout'
       voiceTurnId: number
+    }
+  | {
+      type: 'bot_thinking_start'
+    }
+  | {
+      type: 'bot_thinking_end'
+    }
+  | {
+      type: 'bot_started_speaking'
+    }
+  | {
+      type: 'bot_stopped_speaking'
     }
 )
 
