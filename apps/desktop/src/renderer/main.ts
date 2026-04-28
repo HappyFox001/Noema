@@ -679,11 +679,48 @@ let voiceInputEnabled = true
 let isVoiceListening = false
 let conversationStreamActive = false
 
+type LLMModelConfig = {
+  id: string
+  modelName: string
+  apiKey: string
+  baseUrl: string
+}
+
+type TTSProviderType = 'fish'
+
+type TTSModelConfig = {
+  id: string
+  provider: TTSProviderType
+  modelName: string
+  apiKey: string
+  voiceId?: string
+}
+
+type ASRProviderType = 'qwen'
+
+type ASRModelConfig = {
+  id: string
+  provider: ASRProviderType
+  modelName: string
+  apiKey: string
+}
+
+type SystemConfig = {
+  proxy: string
+  llmModels: LLMModelConfig[]
+  activeLLMId: string
+  ttsModels: TTSModelConfig[]
+  activeTTSId: string
+  asrModels: ASRModelConfig[]
+  activeASRId: string
+}
+
 type UISettings = {
   voiceInputEnabled: boolean
   voiceOutputEnabled: boolean
   volume: number
   selectedPersonality: string
+  system: SystemConfig
 }
 
 type ConversationFrame =
@@ -1448,6 +1485,10 @@ settingsNav.addEventListener('mouseup', (e) => {
           if (section === 'memory') {
             void refreshMemorySection()
           }
+          // 如果切换到系统配置，加载数据
+          if (section === 'system') {
+            void loadSystemConfig()
+          }
         }
       }
     }
@@ -2020,11 +2061,421 @@ function escapeHtml(str: string): string {
   return div.innerHTML
 }
 
+// ========== System Config Section ==========
+
+const proxyInput = document.getElementById('proxy-input') as HTMLInputElement
+const llmModelsList = document.getElementById('llm-models-list')!
+const ttsModelsList = document.getElementById('tts-models-list')!
+const asrModelsList = document.getElementById('asr-models-list')!
+const addLLMBtn = document.getElementById('add-llm-btn') as HTMLButtonElement
+const addTTSBtn = document.getElementById('add-tts-btn') as HTMLButtonElement
+const addASRBtn = document.getElementById('add-asr-btn') as HTMLButtonElement
+const resetSystemBtn = document.getElementById('reset-system-btn') as HTMLButtonElement
+
+let currentSystemConfig: SystemConfig | null = null
+
+function generateId(): string {
+  return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
+}
+
+async function loadSystemConfig(): Promise<void> {
+  const settings = await window.electronAPI.getSettings()
+  currentSystemConfig = settings.system
+  renderSystemConfig()
+}
+
+function renderSystemConfig(): void {
+  if (!currentSystemConfig) return
+
+  proxyInput.value = currentSystemConfig.proxy
+
+  renderLLMModels()
+  renderTTSModels()
+  renderASRModels()
+}
+
+function renderLLMModels(): void {
+  if (!currentSystemConfig) return
+
+  const models = currentSystemConfig.llmModels
+  if (models.length === 0) {
+    llmModelsList.innerHTML = '<div class="config-empty">暂无 LLM 配置</div>'
+    return
+  }
+
+  llmModelsList.innerHTML = models.map(model => `
+    <div class="config-model-card ${model.id === currentSystemConfig!.activeLLMId ? 'active' : ''}" data-id="${escapeHtml(model.id)}">
+      <div class="config-model-header">
+        <div class="config-model-name">
+          <input type="text" value="${escapeHtml(model.modelName)}" data-field="modelName" placeholder="deepseek-chat" />
+          ${model.id === currentSystemConfig!.activeLLMId ? '<span class="config-model-active-badge">使用中</span>' : ''}
+        </div>
+        <div class="config-model-actions">
+          ${model.id !== currentSystemConfig!.activeLLMId ? '<button class="config-model-btn config-activate-btn" data-action="activate">启用</button>' : ''}
+          ${models.length > 1 ? '<button class="config-model-btn config-delete-btn" data-action="delete">删除</button>' : ''}
+        </div>
+      </div>
+      <div class="config-model-fields">
+        <div class="config-field">
+          <span class="config-field-label">API Key</span>
+          <input type="text" class="config-field-input masked" value="${escapeHtml(model.apiKey)}" data-field="apiKey" placeholder="sk-..." />
+        </div>
+        <div class="config-field">
+          <span class="config-field-label">Base URL</span>
+          <input type="text" class="config-field-input" value="${escapeHtml(model.baseUrl)}" data-field="baseUrl" placeholder="https://api.openai.com/v1" />
+        </div>
+      </div>
+    </div>
+  `).join('')
+
+  attachLLMEventListeners()
+}
+
+const TTS_PROVIDERS: { value: TTSProviderType; label: string }[] = [
+  { value: 'fish', label: 'Fish Audio' }
+]
+
+function getTTSProviderLabel(provider: TTSProviderType): string {
+  return TTS_PROVIDERS.find(p => p.value === provider)?.label || provider
+}
+
+function renderTTSModels(): void {
+  if (!currentSystemConfig) return
+
+  const models = currentSystemConfig.ttsModels
+  if (models.length === 0) {
+    ttsModelsList.innerHTML = '<div class="config-empty">暂无 TTS 配置</div>'
+    return
+  }
+
+  ttsModelsList.innerHTML = models.map(model => `
+    <div class="config-model-card ${model.id === currentSystemConfig!.activeTTSId ? 'active' : ''}" data-id="${escapeHtml(model.id)}">
+      <div class="config-model-header">
+        <div class="config-model-name">
+          <span class="config-provider-label">${getTTSProviderLabel(model.provider)}</span>
+          <input type="text" value="${escapeHtml(model.modelName)}" data-field="modelName" placeholder="s2-pro" />
+          ${model.id === currentSystemConfig!.activeTTSId ? '<span class="config-model-active-badge">使用中</span>' : ''}
+        </div>
+        <div class="config-model-actions">
+          ${model.id !== currentSystemConfig!.activeTTSId ? '<button class="config-model-btn config-activate-btn" data-action="activate">启用</button>' : ''}
+          ${models.length > 1 ? '<button class="config-model-btn config-delete-btn" data-action="delete">删除</button>' : ''}
+        </div>
+      </div>
+      <div class="config-model-fields">
+        <div class="config-field">
+          <span class="config-field-label">Provider</span>
+          <select class="config-field-input" data-field="provider">
+            ${TTS_PROVIDERS.map(p => `<option value="${p.value}" ${p.value === model.provider ? 'selected' : ''}>${p.label}</option>`).join('')}
+          </select>
+        </div>
+        <div class="config-field">
+          <span class="config-field-label">API Key</span>
+          <input type="text" class="config-field-input masked" value="${escapeHtml(model.apiKey)}" data-field="apiKey" placeholder="API Key" />
+        </div>
+        <div class="config-field">
+          <span class="config-field-label">Voice ID</span>
+          <input type="text" class="config-field-input" value="${escapeHtml(model.voiceId || '')}" data-field="voiceId" placeholder="音色 ID（可选）" />
+        </div>
+      </div>
+    </div>
+  `).join('')
+
+  attachTTSEventListeners()
+}
+
+const ASR_PROVIDERS: { value: ASRProviderType; label: string }[] = [
+  { value: 'qwen', label: 'Qwen' }
+]
+
+function getASRProviderLabel(provider: ASRProviderType): string {
+  return ASR_PROVIDERS.find(p => p.value === provider)?.label || provider
+}
+
+function renderASRModels(): void {
+  if (!currentSystemConfig) return
+
+  const models = currentSystemConfig.asrModels
+  if (models.length === 0) {
+    asrModelsList.innerHTML = '<div class="config-empty">暂无 ASR 配置</div>'
+    return
+  }
+
+  asrModelsList.innerHTML = models.map(model => `
+    <div class="config-model-card ${model.id === currentSystemConfig!.activeASRId ? 'active' : ''}" data-id="${escapeHtml(model.id)}">
+      <div class="config-model-header">
+        <div class="config-model-name">
+          <span class="config-provider-label">${getASRProviderLabel(model.provider)}</span>
+          <input type="text" value="${escapeHtml(model.modelName)}" data-field="modelName" placeholder="realtime" />
+          ${model.id === currentSystemConfig!.activeASRId ? '<span class="config-model-active-badge">使用中</span>' : ''}
+        </div>
+        <div class="config-model-actions">
+          ${model.id !== currentSystemConfig!.activeASRId ? '<button class="config-model-btn config-activate-btn" data-action="activate">启用</button>' : ''}
+          ${models.length > 1 ? '<button class="config-model-btn config-delete-btn" data-action="delete">删除</button>' : ''}
+        </div>
+      </div>
+      <div class="config-model-fields">
+        <div class="config-field">
+          <span class="config-field-label">Provider</span>
+          <select class="config-field-input" data-field="provider">
+            ${ASR_PROVIDERS.map(p => `<option value="${p.value}" ${p.value === model.provider ? 'selected' : ''}>${p.label}</option>`).join('')}
+          </select>
+        </div>
+        <div class="config-field">
+          <span class="config-field-label">API Key</span>
+          <input type="text" class="config-field-input masked" value="${escapeHtml(model.apiKey)}" data-field="apiKey" placeholder="API Key" />
+        </div>
+      </div>
+    </div>
+  `).join('')
+
+  attachASREventListeners()
+}
+
+function attachLLMEventListeners(): void {
+  llmModelsList.querySelectorAll('.config-model-card').forEach(card => {
+    const id = (card as HTMLElement).dataset.id!
+
+    // Field changes
+    card.querySelectorAll('input[data-field]').forEach(input => {
+      input.addEventListener('change', async () => {
+        const field = (input as HTMLInputElement).dataset.field!
+        const value = (input as HTMLInputElement).value
+        await updateLLMModel(id, { [field]: value })
+      })
+    })
+
+    // Action buttons
+    card.querySelectorAll('button[data-action]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const action = (btn as HTMLButtonElement).dataset.action
+        if (action === 'activate') {
+          await activateLLMModel(id)
+        } else if (action === 'delete') {
+          await deleteLLMModel(id)
+        }
+      })
+    })
+  })
+}
+
+function attachTTSEventListeners(): void {
+  ttsModelsList.querySelectorAll('.config-model-card').forEach(card => {
+    const id = (card as HTMLElement).dataset.id!
+
+    card.querySelectorAll('input[data-field]').forEach(input => {
+      input.addEventListener('change', async () => {
+        const field = (input as HTMLInputElement).dataset.field!
+        const value = (input as HTMLInputElement).value
+        await updateTTSModel(id, { [field]: value })
+      })
+    })
+
+    card.querySelectorAll('button[data-action]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const action = (btn as HTMLButtonElement).dataset.action
+        if (action === 'activate') {
+          await activateTTSModel(id)
+        } else if (action === 'delete') {
+          await deleteTTSModel(id)
+        }
+      })
+    })
+  })
+}
+
+function attachASREventListeners(): void {
+  asrModelsList.querySelectorAll('.config-model-card').forEach(card => {
+    const id = (card as HTMLElement).dataset.id!
+
+    card.querySelectorAll('input[data-field]').forEach(input => {
+      input.addEventListener('change', async () => {
+        const field = (input as HTMLInputElement).dataset.field!
+        const value = (input as HTMLInputElement).value
+        await updateASRModel(id, { [field]: value })
+      })
+    })
+
+    card.querySelectorAll('button[data-action]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const action = (btn as HTMLButtonElement).dataset.action
+        if (action === 'activate') {
+          await activateASRModel(id)
+        } else if (action === 'delete') {
+          await deleteASRModel(id)
+        }
+      })
+    })
+  })
+}
+
+async function saveSystemConfig(): Promise<void> {
+  if (!currentSystemConfig) return
+  await window.electronAPI.updateSettings({ system: currentSystemConfig })
+}
+
+async function updateLLMModel(id: string, updates: Partial<LLMModelConfig>): Promise<void> {
+  if (!currentSystemConfig) return
+  const model = currentSystemConfig.llmModels.find(m => m.id === id)
+  if (model) {
+    Object.assign(model, updates)
+    await saveSystemConfig()
+  }
+}
+
+async function activateLLMModel(id: string): Promise<void> {
+  if (!currentSystemConfig) return
+  currentSystemConfig.activeLLMId = id
+  await saveSystemConfig()
+  renderLLMModels()
+}
+
+async function deleteLLMModel(id: string): Promise<void> {
+  if (!currentSystemConfig || currentSystemConfig.llmModels.length <= 1) return
+  currentSystemConfig.llmModels = currentSystemConfig.llmModels.filter(m => m.id !== id)
+  if (currentSystemConfig.activeLLMId === id && currentSystemConfig.llmModels.length > 0) {
+    currentSystemConfig.activeLLMId = currentSystemConfig.llmModels[0].id
+  }
+  await saveSystemConfig()
+  renderLLMModels()
+}
+
+async function addLLMModel(): Promise<void> {
+  if (!currentSystemConfig) return
+  const newModel: LLMModelConfig = {
+    id: generateId(),
+    modelName: '',
+    apiKey: '',
+    baseUrl: ''
+  }
+  currentSystemConfig.llmModels.push(newModel)
+  await saveSystemConfig()
+  renderLLMModels()
+}
+
+async function updateTTSModel(id: string, updates: Partial<TTSModelConfig>): Promise<void> {
+  if (!currentSystemConfig) return
+  const model = currentSystemConfig.ttsModels.find(m => m.id === id)
+  if (model) {
+    Object.assign(model, updates)
+    await saveSystemConfig()
+  }
+}
+
+async function activateTTSModel(id: string): Promise<void> {
+  if (!currentSystemConfig) return
+  currentSystemConfig.activeTTSId = id
+  await saveSystemConfig()
+  renderTTSModels()
+}
+
+async function deleteTTSModel(id: string): Promise<void> {
+  if (!currentSystemConfig || currentSystemConfig.ttsModels.length <= 1) return
+  currentSystemConfig.ttsModels = currentSystemConfig.ttsModels.filter(m => m.id !== id)
+  if (currentSystemConfig.activeTTSId === id && currentSystemConfig.ttsModels.length > 0) {
+    currentSystemConfig.activeTTSId = currentSystemConfig.ttsModels[0].id
+  }
+  await saveSystemConfig()
+  renderTTSModels()
+}
+
+async function addTTSModel(): Promise<void> {
+  if (!currentSystemConfig) return
+  const newModel: TTSModelConfig = {
+    id: generateId(),
+    provider: 'fish',
+    modelName: 's2-pro',
+    apiKey: '',
+    voiceId: ''
+  }
+  currentSystemConfig.ttsModels.push(newModel)
+  await saveSystemConfig()
+  renderTTSModels()
+}
+
+async function updateASRModel(id: string, updates: Partial<ASRModelConfig>): Promise<void> {
+  if (!currentSystemConfig) return
+  const model = currentSystemConfig.asrModels.find(m => m.id === id)
+  if (model) {
+    Object.assign(model, updates)
+    await saveSystemConfig()
+  }
+}
+
+async function activateASRModel(id: string): Promise<void> {
+  if (!currentSystemConfig) return
+  currentSystemConfig.activeASRId = id
+  await saveSystemConfig()
+  renderASRModels()
+}
+
+async function deleteASRModel(id: string): Promise<void> {
+  if (!currentSystemConfig || currentSystemConfig.asrModels.length <= 1) return
+  currentSystemConfig.asrModels = currentSystemConfig.asrModels.filter(m => m.id !== id)
+  if (currentSystemConfig.activeASRId === id && currentSystemConfig.asrModels.length > 0) {
+    currentSystemConfig.activeASRId = currentSystemConfig.asrModels[0].id
+  }
+  await saveSystemConfig()
+  renderASRModels()
+}
+
+async function addASRModel(): Promise<void> {
+  if (!currentSystemConfig) return
+  const newModel: ASRModelConfig = {
+    id: generateId(),
+    provider: 'qwen',
+    modelName: 'realtime',
+    apiKey: ''
+  }
+  currentSystemConfig.asrModels.push(newModel)
+  await saveSystemConfig()
+  renderASRModels()
+}
+
+// Proxy input handler
+proxyInput.addEventListener('change', async () => {
+  if (!currentSystemConfig) return
+  currentSystemConfig.proxy = proxyInput.value.trim()
+  await saveSystemConfig()
+})
+
+// Add button handlers
+addLLMBtn.addEventListener('click', () => void addLLMModel())
+addTTSBtn.addEventListener('click', () => void addTTSModel())
+addASRBtn.addEventListener('click', () => void addASRModel())
+
+// Reset system config from .env
+async function resetSystemConfigFromEnv(): Promise<void> {
+  resetSystemBtn.disabled = true
+  resetSystemBtn.textContent = '加载中...'
+
+  try {
+    const result = await window.electronAPI.resetSystemConfigFromEnv()
+    if (result.success) {
+      await loadSystemConfig()
+      console.log('[Settings] System config reloaded from .env')
+    } else {
+      console.error('[Settings] Failed to reset:', result.error)
+    }
+  } catch (error) {
+    console.error('[Settings] Reset error:', error)
+  } finally {
+    resetSystemBtn.disabled = false
+    resetSystemBtn.innerHTML = '<span class="reset-icon">↻</span>从 .env 重新加载配置'
+  }
+}
+
+resetSystemBtn.addEventListener('click', () => void resetSystemConfigFromEnv())
+
+function isSystemSectionActive(): boolean {
+  return document.getElementById('section-system')?.classList.contains('active') === true
+}
+
 // 应用启动时加载设置
 async function initializeApp(): Promise<void> {
   try {
     await loadSettings()
     await loadPersonalities()
+    await loadSystemConfig()
     updateConversationButton()
     console.log('Her-Text Renderer initialized')
   } catch (error) {

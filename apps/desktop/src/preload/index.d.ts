@@ -166,6 +166,15 @@ declare global {
         volume: number
         selectedPersonality: string
         externalRolePaths: string[]
+        system: {
+          proxy: string
+          llmModels: Array<{ id: string; modelName: string; apiKey: string; baseUrl: string }>
+          activeLLMId: string
+          ttsModels: Array<{ id: string; provider: 'fish'; modelName: string; apiKey: string; voiceId?: string }>
+          activeTTSId: string
+          asrModels: Array<{ id: string; provider: 'qwen'; modelName: string; apiKey: string }>
+          activeASRId: string
+        }
       }>
       updateSettings: (partial: Partial<{
         voiceInputEnabled: boolean
@@ -173,12 +182,34 @@ declare global {
         volume: number
         selectedPersonality: string
         externalRolePaths: string[]
+        system: {
+          proxy: string
+          llmModels: Array<{ id: string; modelName: string; apiKey: string; baseUrl: string }>
+          activeLLMId: string
+          ttsModels: Array<{ id: string; provider: 'fish'; modelName: string; apiKey: string; voiceId?: string }>
+          activeTTSId: string
+          asrModels: Array<{ id: string; provider: 'qwen'; modelName: string; apiKey: string }>
+          activeASRId: string
+        }
       }>) => Promise<{
         voiceInputEnabled: boolean
         voiceOutputEnabled: boolean
         volume: number
         selectedPersonality: string
         externalRolePaths: string[]
+        system: {
+          proxy: string
+          llmModels: Array<{ id: string; modelName: string; apiKey: string; baseUrl: string }>
+          activeLLMId: string
+          ttsModels: Array<{ id: string; provider: 'fish'; modelName: string; apiKey: string; voiceId?: string }>
+          activeTTSId: string
+          asrModels: Array<{ id: string; provider: 'qwen'; modelName: string; apiKey: string }>
+          activeASRId: string
+        }
+      }>
+      resetSystemConfigFromEnv: () => Promise<{
+        success: boolean
+        error?: string
       }>
       listPersonalities: () => Promise<{
         success: boolean

@@ -1729,3 +1729,335 @@ body:not(.settings-open) #main-view {
   font-size: 12px;
   padding: 16px 0;
 }
+
+/* ========== System Config Section ========== */
+.settings-input {
+  min-width: 200px;
+  max-width: 280px;
+  padding: 8px 12px;
+  font-size: 13px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.9);
+  font-family: var(--font-ui);
+  outline: none;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.settings-input:focus {
+  border-color: rgba(226, 74, 144, 0.5);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.settings-input::placeholder {
+  color: rgba(255, 255, 255, 0.25);
+}
+
+/* Config Section */
+.config-section {
+  margin-top: 20px;
+  width: min(100%, 560px);
+}
+
+.config-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.config-section-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.85);
+  font-family: var(--font-soft);
+}
+
+.config-add-btn {
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  background: rgba(74, 144, 226, 0.15);
+  border: 1px solid rgba(74, 144, 226, 0.3);
+  color: rgba(144, 180, 226, 0.9);
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: var(--font-ui);
+}
+
+.config-add-btn:hover {
+  background: rgba(74, 144, 226, 0.25);
+  border-color: rgba(74, 144, 226, 0.5);
+}
+
+.config-models-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Model Card */
+.config-model-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 14px 16px;
+  position: relative;
+  transition: border-color 0.2s;
+}
+
+.config-model-card:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.config-model-card.active {
+  border-color: rgba(226, 74, 144, 0.4);
+  background: rgba(226, 74, 144, 0.05);
+}
+
+.config-model-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.config-model-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.config-model-name input {
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid transparent;
+  padding: 2px 0;
+  font-family: var(--font-soft);
+  outline: none;
+  width: 140px;
+  transition: border-color 0.2s;
+}
+
+.config-model-name input:focus {
+  border-bottom-color: rgba(255, 255, 255, 0.3);
+}
+
+.config-model-active-badge {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(226, 74, 144, 0.2);
+  color: rgba(226, 144, 180, 0.9);
+  font-family: var(--font-ui);
+}
+
+.config-model-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.config-model-btn {
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: var(--font-ui);
+}
+
+.config-activate-btn {
+  background: rgba(100, 180, 100, 0.15);
+  border: 1px solid rgba(100, 180, 100, 0.3);
+  color: rgba(150, 220, 150, 0.85);
+}
+
+.config-activate-btn:hover {
+  background: rgba(100, 180, 100, 0.25);
+}
+
+.config-delete-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 100, 100, 0.2);
+  color: rgba(255, 100, 100, 0.6);
+}
+
+.config-delete-btn:hover {
+  background: rgba(255, 100, 100, 0.1);
+  border-color: rgba(255, 100, 100, 0.4);
+  color: rgba(255, 100, 100, 0.9);
+}
+
+.config-model-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.config-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.config-field-label {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+  font-family: var(--font-ui);
+  min-width: 65px;
+  flex-shrink: 0;
+}
+
+.config-field-input {
+  flex: 1;
+  padding: 7px 10px;
+  font-size: 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.85);
+  font-family: var(--font-ui);
+  outline: none;
+  transition: all 0.2s;
+}
+
+.config-field-input:focus {
+  border-color: rgba(226, 74, 144, 0.4);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.config-field-input::placeholder {
+  color: rgba(255, 255, 255, 0.2);
+}
+
+.config-field-input.masked {
+  -webkit-text-security: disc;
+  text-security: disc;
+}
+
+/* Provider label (for TTS/ASR model cards) */
+.config-provider-label {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(100, 140, 200, 0.15);
+  color: rgba(140, 180, 220, 0.9);
+  font-family: var(--font-ui);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Provider select dropdown */
+.config-provider-select {
+  padding: 7px 10px;
+  font-size: 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.85);
+  font-family: var(--font-ui);
+  outline: none;
+  transition: all 0.2s;
+  cursor: pointer;
+  min-width: 100px;
+}
+
+.config-provider-select:focus {
+  border-color: rgba(226, 74, 144, 0.4);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.config-provider-select option {
+  background: #1a1a2e;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* Reset section */
+.config-reset-section {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  text-align: center;
+}
+
+.config-reset-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  font-size: 13px;
+  font-family: var(--font-soft);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 180, 100, 0.25);
+  background: rgba(255, 180, 100, 0.08);
+  color: rgba(255, 200, 140, 0.9);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.config-reset-btn:hover {
+  background: rgba(255, 180, 100, 0.15);
+  border-color: rgba(255, 180, 100, 0.4);
+}
+
+.config-reset-btn:active {
+  transform: scale(0.98);
+}
+
+.config-reset-btn .reset-icon {
+  font-size: 16px;
+  transition: transform 0.3s;
+}
+
+.config-reset-btn:hover .reset-icon {
+  transform: rotate(180deg);
+}
+
+.config-reset-hint {
+  margin-top: 10px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.35);
+  font-family: var(--font-ui);
+}
+
+/* Empty state */
+.config-empty {
+  text-align: center;
+  padding: 24px;
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 12px;
+  font-family: var(--font-ui);
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+  .config-field {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .config-field-label {
+    min-width: auto;
+  }
+
+  .config-field-input {
+    width: 100%;
+  }
+
+  .config-model-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .settings-input {
+    min-width: 100%;
+    max-width: 100%;
+  }
+}

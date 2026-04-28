@@ -51,6 +51,10 @@
               <span class="nav-icon">◇</span>
               <span class="nav-label">人格</span>
             </div>
+            <div class="nav-item" data-section="system">
+              <span class="nav-icon">⚙</span>
+              <span class="nav-label">系统</span>
+            </div>
             <div class="nav-item" data-section="about">
               <span class="nav-icon">○</span>
               <span class="nav-label">关于</span>
@@ -183,6 +187,64 @@
                   </div>
                   <button id="add-personality-file-btn" class="settings-btn" type="button">选择文件</button>
                 </div>
+              </div>
+            </section>
+
+            <!-- 系统配置 -->
+            <section id="section-system" class="settings-section">
+              <h2 class="section-title">系统配置</h2>
+
+              <!-- 代理设置 -->
+              <div class="settings-card">
+                <div class="settings-row">
+                  <div class="row-info">
+                    <span class="row-label">网络代理</span>
+                    <span class="row-desc">HTTP/HTTPS 代理地址，如 http://127.0.0.1:7890</span>
+                  </div>
+                  <input type="text" id="proxy-input" class="settings-input" placeholder="留空则不使用代理" />
+                </div>
+              </div>
+
+              <!-- LLM 配置 -->
+              <div class="config-section">
+                <div class="config-section-header">
+                  <span class="config-section-title">LLM 模型</span>
+                  <button id="add-llm-btn" class="config-add-btn">+ 添加</button>
+                </div>
+                <div id="llm-models-list" class="config-models-list">
+                  <!-- 动态生成 -->
+                </div>
+              </div>
+
+              <!-- TTS 配置 -->
+              <div class="config-section">
+                <div class="config-section-header">
+                  <span class="config-section-title">TTS 语音合成</span>
+                  <button id="add-tts-btn" class="config-add-btn">+ 添加</button>
+                </div>
+                <div id="tts-models-list" class="config-models-list">
+                  <!-- 动态生成 -->
+                </div>
+              </div>
+
+              <!-- ASR 配置 -->
+              <div class="config-section">
+                <div class="config-section-header">
+                  <span class="config-section-title">ASR 语音识别</span>
+                  <button id="add-asr-btn" class="config-add-btn">+ 添加</button>
+                </div>
+                <div id="asr-models-list" class="config-models-list">
+                  <!-- 动态生成 -->
+                </div>
+              </div>
+
+              <!-- 重置按钮 -->
+              <div class="config-reset-section">
+                <button id="reset-system-btn" class="config-reset-btn">
+                  <span class="reset-icon">↻</span>
+                  从 .env 重新加载配置
+                </button>
+                <p class="config-reset-hint">将使用 .env 文件中的配置覆盖当前设置</p>
               </div>
             </section>
 

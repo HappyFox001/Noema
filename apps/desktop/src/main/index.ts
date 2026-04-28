@@ -1218,7 +1218,16 @@ let appSettings: AppSettings = {
   voiceOutputEnabled: true,
   volume: 70,
   selectedPersonality: 'role:eva',
-  externalRolePaths: []
+  externalRolePaths: [],
+  system: {
+    proxy: '',
+    llmModels: [{ id: 'default-llm', modelName: '', apiKey: '', baseUrl: '' }],
+    activeLLMId: 'default-llm',
+    ttsModels: [{ id: 'default-tts', provider: 'fish', modelName: 's2-pro', apiKey: '', voiceId: '' }],
+    activeTTSId: 'default-tts',
+    asrModels: [{ id: 'default-asr', provider: 'qwen', modelName: 'realtime', apiKey: '' }],
+    activeASRId: 'default-asr'
+  }
 }
 
 function configureProxyFromEnv(): void {
@@ -2048,6 +2057,15 @@ ipcMain.handle('settings:get', async () => {
 ipcMain.handle('settings:update', async (_, partial: Partial<AppSettings>) => {
   appSettings = await getSettingsStore().update(partial)
   return appSettings
+})
+
+ipcMain.handle('settings:resetSystemFromEnv', async () => {
+  try {
+    appSettings = await getSettingsStore().reloadSystemConfigFromEnv()
+    return { success: true, settings: appSettings }
+  } catch (error: any) {
+    return { success: false, error: error.message }
+  }
 })
 
 ipcMain.handle('personality:list', async () => {
