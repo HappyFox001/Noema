@@ -605,6 +605,10 @@ class StreamingASRSession {
     await this.turnController?.endBotTurn()
   }
 
+  getTurnState(): string | null {
+    return this.turnController?.getState() ?? null
+  }
+
   private async finalizeUserTurn(params: UserTurnStoppedParams): Promise<void> {
     if (!this.asr) {
       return
@@ -624,8 +628,9 @@ class StreamingASRSession {
       // audio buffer，让 final transcription 在 endpointing 的 STT wait
       // 窗口内返回。这里优先使用 VAD stop 时提前 commit 的结果。
       let text = this.vadStopCommitText
-      if (!text?.trim() && this.vadStopCommitPromise) {
-        text = await this.vadStopCommitPromise
+      if (this.vadStopCommitPromise) {
+        const committedText = await this.vadStopCommitPromise
+        text = this.mergeTranscriptText(text, committedText)
       }
 
       if (!text?.trim() && !params.text?.trim()) {
@@ -635,7 +640,7 @@ class StreamingASRSession {
       // 延迟追踪：ASR 转录完成
       latencyTracker.mark('asr_complete')
 
-      const finalText = text?.trim() || params.text?.trim()
+      const finalText = this.mergeTranscriptText(text ?? null, params.text ?? '').trim()
 
       if (finalText) {
         this.log(`Transcript: ${finalText}`)
@@ -875,6 +880,8 @@ outputFramePipeline.setProcessors([electronOutputProcessor])
 let currentTurnId = 0
 let currentTurnAbortController: AbortController | null = null
 const cancelledTurnIds = new Set<number>()
+let currentTurnUserText: string | null = null
+let pendingThinkingContinuationText: string | null = null
 
 // ========== TTS 音频上下文管理 ==========
 /**
@@ -908,6 +915,7 @@ async function startNewTurn(): Promise<number> {
   currentTurnId++
   cancelledTurnIds.delete(currentTurnId)
   currentTurnAbortController = new AbortController()
+  currentTurnUserText = null
   console.log(`[Turn] Started new turn #${currentTurnId}`)
   return currentTurnId
 }
@@ -921,6 +929,13 @@ async function cancelCurrentTurn(options: { closeTTS?: boolean } = {}): Promise<
 
   if (currentTurnAbortController) {
     console.log(`[Turn] Cancelling turn #${currentTurnId}`)
+    if (streamingASRSession?.getTurnState() === 'bot_thinking' && currentTurnUserText?.trim()) {
+      pendingThinkingContinuationText = mergeTranscriptText(
+        pendingThinkingContinuationText,
+        currentTurnUserText
+      )
+      console.log('[Turn] Preserving thinking-stage user text for continuation:', pendingThinkingContinuationText)
+    }
     cancelledTurnIds.add(currentTurnId)
     currentTurnAbortController.abort()
     currentTurnAbortController = null
@@ -948,6 +963,34 @@ function isTurnCancelled(turnId: number): boolean {
     turnId !== currentTurnId ||
     currentTurnAbortController?.signal.aborted === true
   )
+}
+
+function consumeThinkingContinuation(text: string): string {
+  const merged = mergeTranscriptText(pendingThinkingContinuationText, text)
+  pendingThinkingContinuationText = null
+  return merged
+}
+
+function mergeTranscriptText(existing: string | null, nextText: string): string {
+  const next = nextText.trim()
+  if (!next) {
+    return existing ?? ''
+  }
+
+  if (!existing?.trim()) {
+    return next
+  }
+
+  const base = existing.trim()
+  if (next === base || base.includes(next)) {
+    return base
+  }
+
+  if (next.includes(base) || next.startsWith(base)) {
+    return next
+  }
+
+  return `${base}${next}`
 }
 
 // ========== 播放完成同步机制 ==========
@@ -1392,6 +1435,7 @@ ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
     // 开始新轮次（会取消上一个轮次）
     const turnId = await startNewTurn()
     const turnAbortSignal = currentTurnAbortController!.signal
+    currentTurnUserText = text
 
     // 通知 Renderer 新轮次开始
     mainWindow?.webContents.send('turn:start', turnId)
@@ -1644,7 +1688,7 @@ ipcMain.handle('speech:stream:start', async () => {
       onTranscript: (text) => {
         // VAD + Endpointing 检测到语音结束，发送转录文本到 Renderer
         // Renderer 会通过 sendText IPC 发送消息
-        mainWindow?.webContents.send('speech:transcript', text)
+        mainWindow?.webContents.send('speech:transcript', consumeThinkingContinuation(text))
       },
       onStateChange: (state) => {
         mainWindow?.webContents.send('speech:state', state)
