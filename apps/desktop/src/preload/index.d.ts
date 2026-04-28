@@ -165,27 +165,46 @@ declare global {
         voiceOutputEnabled: boolean
         volume: number
         selectedPersonality: string
+        externalRolePaths: string[]
       }>
       updateSettings: (partial: Partial<{
         voiceInputEnabled: boolean
         voiceOutputEnabled: boolean
         volume: number
         selectedPersonality: string
+        externalRolePaths: string[]
       }>) => Promise<{
         voiceInputEnabled: boolean
         voiceOutputEnabled: boolean
         volume: number
         selectedPersonality: string
+        externalRolePaths: string[]
       }>
       listPersonalities: () => Promise<{
         success: boolean
         current?: string
-        items: string[]
+        items: Array<{
+          id: string
+          name: string
+          path: string
+          source: 'role' | 'file'
+        }>
         error?: string
       }>
       setPersonality: (name: string) => Promise<{
         success: boolean
         current?: string
+        error?: string
+      }>
+      addPersonalityFile: () => Promise<{
+        success: boolean
+        canceled?: boolean
+        item?: {
+          id: string
+          name: string
+          path: string
+          source: 'file'
+        }
         error?: string
       }>
 

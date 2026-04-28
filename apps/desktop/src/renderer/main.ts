@@ -1227,6 +1227,7 @@ const volumeValue = document.getElementById('volume-value')!
 const voiceInputBtn = document.getElementById('voice-input-btn') as HTMLButtonElement
 const voiceOutputToggle = document.getElementById('voice-output-toggle') as HTMLInputElement
 const personalitySelect = document.getElementById('personality-select') as HTMLSelectElement
+const addPersonalityFileBtn = document.getElementById('add-personality-file-btn') as HTMLButtonElement
 
 function applySettingsToUI(settings: UISettings) {
   voiceInputEnabled = settings.voiceInputEnabled
@@ -1300,15 +1301,19 @@ async function enableVoiceInput(): Promise<void> {
 async function loadPersonalities(): Promise<void> {
   const result = await window.electronAPI.listPersonalities()
   if (!result.success) {
+    setStatus(`人格列表加载失败: ${result.error ?? 'unknown error'}`)
     return
   }
 
   personalitySelect.innerHTML = ''
-  result.items.forEach((name) => {
+  result.items.forEach((item) => {
     const option = document.createElement('option')
-    option.value = name
-    option.textContent = name
-    option.selected = name === result.current
+    option.value = item.id
+    option.textContent = item.source === 'file'
+      ? `${item.name} · 外部文件`
+      : item.name
+    option.title = item.path
+    option.selected = item.id === result.current
     personalitySelect.appendChild(option)
   })
 }
@@ -1516,7 +1521,29 @@ personalitySelect.addEventListener('change', async () => {
   }
 
   await loadSettings()
-  setStatus(`人格已切换为 ${selected}`)
+  setStatus(`人格已切换为 ${personalitySelect.selectedOptions[0]?.textContent ?? selected}`)
+})
+
+addPersonalityFileBtn.addEventListener('click', async () => {
+  const result = await window.electronAPI.addPersonalityFile()
+  if (result.canceled) {
+    return
+  }
+
+  if (!result.success || !result.item) {
+    setStatus(`添加角色失败: ${result.error ?? 'unknown error'}`)
+    return
+  }
+
+  await loadPersonalities()
+  personalitySelect.value = result.item.id
+  const setResult = await window.electronAPI.setPersonality(result.item.id)
+  if (!setResult.success) {
+    setStatus(`人格切换失败: ${setResult.error}`)
+    return
+  }
+
+  setStatus(`已添加并切换为 ${result.item.name}`)
 })
 
 // ========== Section Clear Buttons ==========

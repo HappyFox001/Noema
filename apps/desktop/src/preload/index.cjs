@@ -91,6 +91,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setPersonality: (name) =>
     ipcRenderer.invoke('personality:set', name),
 
+  addPersonalityFile: () =>
+    ipcRenderer.invoke('personality:addFile'),
+
   // 事件监听
   // TTS 音频事件（带上下文 ID）
   onTTSAudio: (callback) => {

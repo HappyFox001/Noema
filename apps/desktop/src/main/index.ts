@@ -40,7 +40,7 @@ console.log('[Env] LLM_API_KEY:', process.env.LLM_API_KEY ? '✓ (set)' : '✗ (
 console.log('[Env] LLM_MODEL:', process.env.LLM_MODEL || '✗ (not set)')
 console.log('[Env] LLM_BASE_URL:', process.env.LLM_BASE_URL || '✗ (not set)')
 
-import { app, BrowserWindow, ipcMain, systemPreferences, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, systemPreferences, shell, dialog, type OpenDialogOptions } from 'electron'
 import {
   HerTextSDK,
   FishTTSOfficial,
@@ -1075,7 +1075,8 @@ let appSettings: AppSettings = {
   voiceInputEnabled: true,
   voiceOutputEnabled: true,
   volume: 70,
-  selectedPersonality: 'eva'
+  selectedPersonality: 'role:eva',
+  externalRolePaths: []
 }
 
 function configureProxyFromEnv(): void {
@@ -1193,11 +1194,12 @@ app.whenReady().then(async () => {
   await initializePersonalityManager()
   console.log('[App] Personality manager initialized')
 
-  if (appSettings.selectedPersonality && appSettings.selectedPersonality !== 'eva') {
+  if (appSettings.selectedPersonality && appSettings.selectedPersonality !== 'role:eva') {
     try {
       await getPersonalityManager().setCurrentPersonality(appSettings.selectedPersonality)
     } catch (error) {
       console.warn('[App] Failed to restore selected personality:', error)
+      appSettings = await getSettingsStore().update({ selectedPersonality: 'role:eva' })
     }
   }
 
@@ -1949,20 +1951,62 @@ ipcMain.handle('personality:list', async () => {
     return {
       success: true,
       current: appSettings.selectedPersonality,
-      items: await personalityManager.listPersonalities()
+      items: await personalityManager.listRoleItems(appSettings.externalRolePaths)
     }
   } catch (error: any) {
     return { success: false, error: error.message, items: [] }
   }
 })
 
-ipcMain.handle('personality:set', async (_, name: string) => {
+ipcMain.handle('personality:set', async (_, ref: string) => {
   try {
     const personalityManager = getPersonalityManager()
-    await personalityManager.setCurrentPersonality(name)
-    appSettings = await getSettingsStore().update({ selectedPersonality: name })
+    await personalityManager.setCurrentPersonality(ref)
+    appSettings = await getSettingsStore().update({ selectedPersonality: ref })
     await rebuildSDK()
-    return { success: true, current: name }
+    return { success: true, current: ref }
+  } catch (error: any) {
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('personality:addFile', async () => {
+  try {
+    const dialogOptions: OpenDialogOptions = {
+      title: '选择角色 YAML 文件',
+      properties: ['openFile'],
+      filters: [
+        { name: 'YAML Role', extensions: ['yaml', 'yml'] },
+      ],
+    }
+    const result = mainWindow
+      ? await dialog.showOpenDialog(mainWindow, dialogOptions)
+      : await dialog.showOpenDialog(dialogOptions)
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return { success: false, canceled: true }
+    }
+
+    const filePath = result.filePaths[0]
+    const personalityManager = getPersonalityManager()
+    await personalityManager.validateRoleFile(filePath)
+
+    const externalRolePaths = Array.from(new Set([
+      ...appSettings.externalRolePaths,
+      filePath,
+    ]))
+    appSettings = await getSettingsStore().update({ externalRolePaths })
+
+    const ref = `file:${filePath}`
+    return {
+      success: true,
+      item: {
+        id: ref,
+        name: filePath.split(/[\\/]/).pop()?.replace(/\.ya?ml$/i, '') ?? filePath,
+        path: filePath,
+        source: 'file',
+      }
+    }
   } catch (error: any) {
     return { success: false, error: error.message }
   }

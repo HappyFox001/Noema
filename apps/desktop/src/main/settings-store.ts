@@ -8,13 +8,15 @@ export interface AppSettings {
   voiceOutputEnabled: boolean
   volume: number
   selectedPersonality: string
+  externalRolePaths: string[]
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
   voiceInputEnabled: true,
   voiceOutputEnabled: true,
   volume: 70,
-  selectedPersonality: 'eva'
+  selectedPersonality: 'role:eva',
+  externalRolePaths: []
 }
 
 export class SettingsStore {
@@ -39,6 +41,7 @@ export class SettingsStore {
       this.settings = {
         ...DEFAULT_SETTINGS,
         ...parsed,
+        externalRolePaths: Array.isArray(parsed.externalRolePaths) ? parsed.externalRolePaths : [],
         volume: clampVolume(parsed.volume ?? DEFAULT_SETTINGS.volume)
       }
     } catch (error) {
