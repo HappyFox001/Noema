@@ -380,6 +380,8 @@ class StreamingASRSession {
   private audioFrameSequence = 0
   private commitInFlight = false
   private pendingUserTurnEnd: UserTurnStoppedParams | null = null
+  private vadStopCommitPromise: Promise<string> | null = null
+  private vadStopCommitText: string | null = null
 
   // 回调
   private onTranscript: ((text: string) => void) | null = null
@@ -496,6 +498,8 @@ class StreamingASRSession {
       onUserTurnStart: () => {
         this.log('User turn started')
         this.asr?.clearBufferedTranscripts()
+        this.vadStopCommitPromise = null
+        this.vadStopCommitText = null
         this.onSpeechStart?.()
       },
 
@@ -503,6 +507,7 @@ class StreamingASRSession {
         // 延迟追踪：VAD 检测到静音（最早时间点）
         latencyTracker.reset()
         latencyTracker.mark('vad_speech_stop')
+        this.startVADStopCommit()
       },
 
       onUserTurnEnd: async (params) => {
@@ -611,8 +616,17 @@ class StreamingASRSession {
     this.onStateChange?.('processing')
 
     try {
-      // 提交 ASR 获取最终转录
-      const text = await this.asr.commit()
+      // Pipecat/OpenAI STT 会在 VADUserStoppedSpeakingFrame 到达时 commit
+      // audio buffer，让 final transcription 在 endpointing 的 STT wait
+      // 窗口内返回。这里优先使用 VAD stop 时提前 commit 的结果。
+      let text = this.vadStopCommitText
+      if (!text?.trim() && this.vadStopCommitPromise) {
+        text = await this.vadStopCommitPromise
+      }
+
+      if (!text?.trim() && !params.text?.trim()) {
+        text = await this.asr.commit()
+      }
 
       // 延迟追踪：ASR 转录完成
       latencyTracker.mark('asr_complete')
@@ -632,6 +646,8 @@ class StreamingASRSession {
       }
     } finally {
       this.commitInFlight = false
+      this.vadStopCommitPromise = null
+      this.vadStopCommitText = null
       if (this.asr) {
         this.onStateChange?.('listening')
       }
@@ -642,6 +658,51 @@ class StreamingASRSession {
         void this.finalizeUserTurn(pending)
       }
     }
+  }
+
+  private startVADStopCommit(): void {
+    if (!this.asr || this.vadStopCommitPromise) {
+      return
+    }
+
+    this.log('Committing ASR buffer on VAD stop')
+    const commitPromise = this.asr.commit()
+      .then((text) => {
+        this.vadStopCommitText = this.mergeTranscriptText(this.vadStopCommitText, text)
+        return text
+      })
+      .catch((error: Error) => {
+        this.log(`VAD stop commit error: ${error.message}`)
+        return ''
+      })
+      .finally(() => {
+        if (this.vadStopCommitPromise === commitPromise) {
+          this.vadStopCommitPromise = null
+        }
+      })
+
+    this.vadStopCommitPromise = commitPromise
+  }
+
+  private mergeTranscriptText(existing: string | null, nextText: string): string {
+    const next = nextText.trim()
+    if (!next) {
+      return existing ?? ''
+    }
+
+    if (!existing) {
+      return next
+    }
+
+    if (next === existing || existing.includes(next)) {
+      return existing
+    }
+
+    if (next.startsWith(existing)) {
+      return next
+    }
+
+    return existing + next
   }
 
   /**
@@ -725,6 +786,8 @@ class StreamingASRSession {
     this.voiceFramePipeline.stop()
     this.pendingUserTurnEnd = null
     this.commitInFlight = false
+    this.vadStopCommitPromise = null
+    this.vadStopCommitText = null
 
     if (!this.asr) {
       return
@@ -1693,9 +1756,15 @@ ipcMain.handle('memory:getUserProfile', async () => {
     const profile = sdkInstance.memory.getUserProfile()
     // 将 Map 转换为普通对象
     const importantMemories: Record<string, string> = {}
-    profile.importantMemories.forEach((value, key) => {
-      importantMemories[key] = value
-    })
+    if (profile.importantMemories instanceof Map) {
+      profile.importantMemories.forEach((value, key) => {
+        importantMemories[key] = value
+      })
+    } else if (profile.importantMemories && typeof profile.importantMemories === 'object') {
+      Object.entries(profile.importantMemories as Record<string, unknown>).forEach(([key, value]) => {
+        importantMemories[key] = String(value)
+      })
+    }
 
     return {
       success: true,

@@ -1799,8 +1799,6 @@ function renderImportantMemories(memories: Record<string, string>): void {
       }
     })
   })
-
-  valueInput.focus()
 }
 
 async function deleteImportantMemory(key: string): Promise<void> {
