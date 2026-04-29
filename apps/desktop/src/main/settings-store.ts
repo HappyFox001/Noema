@@ -158,6 +158,7 @@ export interface AppSettings {
   selectedPersonality: string
   externalRolePaths: string[]
   plugins: Record<string, boolean>
+  pluginConfigs: Record<string, Record<string, unknown>>
   system: SystemConfig
 }
 
@@ -194,6 +195,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   selectedPersonality: 'role:eva',
   externalRolePaths: [],
   plugins: {},
+  pluginConfigs: {},
   system: DEFAULT_SYSTEM_CONFIG
 }
 
@@ -252,6 +254,7 @@ export class SettingsStore {
         ...parsed,
         externalRolePaths: Array.isArray(parsed.externalRolePaths) ? parsed.externalRolePaths : [],
         plugins: parsed.plugins && typeof parsed.plugins === 'object' ? parsed.plugins : {},
+        pluginConfigs: parsed.pluginConfigs && typeof parsed.pluginConfigs === 'object' ? parsed.pluginConfigs : {},
         volume: clampVolume(parsed.volume ?? DEFAULT_SETTINGS.volume),
         system: systemConfig
       }

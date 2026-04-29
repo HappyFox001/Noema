@@ -9,5 +9,27 @@
   "config": {
     "triggerProbability": 1,
     "durationMs": 4000
-  }
+  },
+  "configSchema": [
+    {
+      "key": "triggerProbability",
+      "label": "触发概率",
+      "description": "每次回复召回表情包的概率，0 表示关闭随机召回，1 表示必定召回。",
+      "type": "number",
+      "default": 1,
+      "min": 0,
+      "max": 1,
+      "step": 0.05
+    },
+    {
+      "key": "durationMs",
+      "label": "最短显示时间",
+      "description": "表情包至少显示多久，单位毫秒。",
+      "type": "number",
+      "default": 4000,
+      "min": 500,
+      "max": 10000,
+      "step": 500
+    }
+  ]
 }

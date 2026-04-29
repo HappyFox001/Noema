@@ -680,8 +680,44 @@ type UISettings = {
   volume: number
   selectedPersonality: string
   plugins: Record<string, boolean>
+  pluginConfigs: Record<string, Record<string, unknown>>
   system: SystemConfig
 }
+
+type PluginConfigField =
+  | {
+      key: string
+      label?: string
+      description?: string
+      type: 'string'
+      default?: string
+      placeholder?: string
+    }
+  | {
+      key: string
+      label?: string
+      description?: string
+      type: 'number'
+      default?: number
+      min?: number
+      max?: number
+      step?: number
+    }
+  | {
+      key: string
+      label?: string
+      description?: string
+      type: 'boolean'
+      default?: boolean
+    }
+  | {
+      key: string
+      label?: string
+      description?: string
+      type: 'select'
+      default?: string
+      options: Array<{ label: string; value: string }>
+    }
 
 type PluginInfo = {
   id: string
@@ -689,6 +725,8 @@ type PluginInfo = {
   version?: string
   enabled: boolean
   pluginDir: string
+  config: Record<string, unknown>
+  configSchema: PluginConfigField[]
 }
 
 type ConversationFrame =
@@ -1309,6 +1347,7 @@ const personalitySelect = document.getElementById('personality-select') as HTMLS
 const addPersonalityFileBtn = document.getElementById('add-personality-file-btn') as HTMLButtonElement
 const pluginsList = document.getElementById('plugins-list') as HTMLElement
 let memoryRefreshPromise: Promise<void> | null = null
+let cachedPlugins: PluginInfo[] = []
 
 function applySettingsToUI(settings: UISettings) {
   voiceInputEnabled = settings.voiceInputEnabled
@@ -1624,29 +1663,53 @@ async function loadPluginsSection(): Promise<void> {
 }
 
 function renderPluginsSection(plugins: PluginInfo[]): void {
+  cachedPlugins = plugins
   if (plugins.length === 0) {
     pluginsList.innerHTML = '<div class="profile-loading">未发现插件</div>'
     return
   }
 
   pluginsList.innerHTML = plugins.map(plugin => `
-    <div class="plugin-card" data-plugin-id="${escapeHtml(plugin.id)}">
-      <div class="plugin-info">
-        <div class="plugin-title-row">
-          <span class="plugin-name">${escapeHtml(plugin.name)}</span>
-          ${plugin.version ? `<span class="plugin-version">v${escapeHtml(plugin.version)}</span>` : ''}
+    <div class="plugin-card plugin-card-list" data-plugin-id="${escapeHtml(plugin.id)}">
+      <div class="plugin-card-main">
+        <div class="plugin-info">
+          <div class="plugin-title-row">
+            <span class="plugin-name">${escapeHtml(plugin.name)}</span>
+            ${plugin.version ? `<span class="plugin-version">v${escapeHtml(plugin.version)}</span>` : ''}
+          </div>
+          <div class="plugin-id">${escapeHtml(plugin.id)}</div>
         </div>
-        <div class="plugin-id">${escapeHtml(plugin.id)}</div>
+        <label class="settings-toggle plugin-toggle">
+          <input type="checkbox" ${plugin.enabled ? 'checked' : ''} data-plugin-toggle="${escapeHtml(plugin.id)}" />
+          <span class="toggle-slider"></span>
+        </label>
       </div>
-      <label class="settings-toggle plugin-toggle">
-        <input type="checkbox" ${plugin.enabled ? 'checked' : ''} data-plugin-toggle="${escapeHtml(plugin.id)}" />
-        <span class="toggle-slider"></span>
-      </label>
+      <div class="plugin-card-footer">
+        <span>${plugin.configSchema.length ? `${plugin.configSchema.length} 个参数` : '无可配置参数'}</span>
+        <span class="plugin-enter">管理</span>
+      </div>
     </div>
   `).join('')
 
+  pluginsList.querySelectorAll<HTMLElement>('.plugin-card-list').forEach(card => {
+    card.addEventListener('click', (event) => {
+      if ((event.target as HTMLElement).closest('.plugin-toggle')) {
+        return
+      }
+      const pluginId = card.dataset.pluginId
+      const plugin = cachedPlugins.find(item => item.id === pluginId)
+      if (plugin) {
+        renderPluginDetail(plugin)
+      }
+    })
+  })
+
   pluginsList.querySelectorAll<HTMLInputElement>('input[data-plugin-toggle]').forEach(input => {
-    input.addEventListener('change', async () => {
+    input.addEventListener('click', (event) => {
+      event.stopPropagation()
+    })
+    input.addEventListener('change', async (event) => {
+      event.stopPropagation()
       const pluginId = input.dataset.pluginToggle
       if (!pluginId) return
 
@@ -1667,6 +1730,164 @@ function renderPluginsSection(plugins: PluginInfo[]): void {
       }
     })
   })
+
+  bindPluginConfigInputs()
+}
+
+function renderPluginDetail(plugin: PluginInfo): void {
+  pluginsList.innerHTML = `
+    <div class="plugin-detail-header">
+      <button class="plugin-back-btn" type="button">返回</button>
+      <div class="plugin-detail-title">
+        <span class="plugin-name">${escapeHtml(plugin.name)}</span>
+        ${plugin.version ? `<span class="plugin-version">v${escapeHtml(plugin.version)}</span>` : ''}
+      </div>
+    </div>
+    <div class="plugin-card plugin-detail-card" data-plugin-id="${escapeHtml(plugin.id)}">
+      <div class="plugin-card-main">
+        <div class="plugin-info">
+          <div class="plugin-id">${escapeHtml(plugin.id)}</div>
+        </div>
+        <label class="settings-toggle plugin-toggle">
+          <input type="checkbox" ${plugin.enabled ? 'checked' : ''} data-plugin-toggle="${escapeHtml(plugin.id)}" />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      ${renderPluginConfigFields(plugin)}
+    </div>
+  `
+
+  pluginsList.querySelector<HTMLButtonElement>('.plugin-back-btn')?.addEventListener('click', () => {
+    renderPluginsSection(cachedPlugins)
+  })
+
+  pluginsList.querySelector<HTMLInputElement>('input[data-plugin-toggle]')?.addEventListener('change', async (event) => {
+    const input = event.currentTarget as HTMLInputElement
+    const pluginId = input.dataset.pluginToggle
+    if (!pluginId) return
+
+    input.disabled = true
+    try {
+      const settings = await window.electronAPI.getSettings()
+      const nextPlugins = {
+        ...(settings.plugins ?? {}),
+        [pluginId]: input.checked,
+      }
+      await window.electronAPI.updateSettings({ plugins: nextPlugins })
+      const target = cachedPlugins.find(item => item.id === pluginId)
+      if (target) {
+        target.enabled = input.checked
+      }
+      setStatus(input.checked ? '插件已启用' : '插件已禁用')
+    } catch (error: any) {
+      input.checked = !input.checked
+      setStatus(`插件设置失败: ${error.message}`)
+    } finally {
+      input.disabled = false
+    }
+  })
+
+  bindPluginConfigInputs()
+}
+
+function bindPluginConfigInputs(): void {
+  pluginsList.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input[data-plugin-config], select[data-plugin-config]').forEach(input => {
+    input.addEventListener('change', async () => {
+      const pluginId = input.dataset.pluginId
+      const key = input.dataset.pluginConfig
+      const type = input.dataset.pluginType
+      if (!pluginId || !key || !type) return
+
+      input.disabled = true
+      try {
+        const settings = await window.electronAPI.getSettings()
+        const currentPluginConfig = settings.pluginConfigs?.[pluginId] ?? {}
+        const nextPluginConfigs = {
+          ...(settings.pluginConfigs ?? {}),
+          [pluginId]: {
+            ...currentPluginConfig,
+            [key]: readPluginConfigValue(input, type),
+          },
+        }
+        await window.electronAPI.updateSettings({ pluginConfigs: nextPluginConfigs })
+        const target = cachedPlugins.find(item => item.id === pluginId)
+        if (target) {
+          target.config = nextPluginConfigs[pluginId]
+        }
+        setStatus('插件参数已更新')
+      } catch (error: any) {
+        setStatus(`插件参数保存失败: ${error.message}`)
+      } finally {
+        input.disabled = false
+      }
+    })
+  })
+}
+
+function renderPluginConfigFields(plugin: PluginInfo): string {
+  if (!plugin.configSchema.length) {
+    return ''
+  }
+
+  return `
+    <div class="plugin-config-fields">
+      ${plugin.configSchema.map(field => renderPluginConfigField(plugin, field)).join('')}
+    </div>
+  `
+}
+
+function renderPluginConfigField(plugin: PluginInfo, field: PluginConfigField): string {
+  const rawValue = plugin.config[field.key] ?? field.default
+  const label = escapeHtml(field.label ?? field.key)
+  const desc = field.description
+    ? `<div class="plugin-config-desc">${escapeHtml(field.description)}</div>`
+    : ''
+  const commonAttrs = `data-plugin-id="${escapeHtml(plugin.id)}" data-plugin-config="${escapeHtml(field.key)}" data-plugin-type="${field.type}"`
+
+  let control = ''
+  if (field.type === 'boolean') {
+    control = `
+      <label class="settings-toggle plugin-config-toggle">
+        <input type="checkbox" ${rawValue === true ? 'checked' : ''} ${commonAttrs} />
+        <span class="toggle-slider"></span>
+      </label>
+    `
+  } else if (field.type === 'number') {
+    control = `<input class="plugin-config-input" type="number" value="${escapeHtml(String(rawValue ?? ''))}" ${field.min !== undefined ? `min="${field.min}"` : ''} ${field.max !== undefined ? `max="${field.max}"` : ''} ${field.step !== undefined ? `step="${field.step}"` : ''} ${commonAttrs} />`
+  } else if (field.type === 'select') {
+    control = `
+      <select class="plugin-config-input" ${commonAttrs}>
+        ${field.options.map(option => `
+          <option value="${escapeHtml(option.value)}" ${option.value === rawValue ? 'selected' : ''}>${escapeHtml(option.label)}</option>
+        `).join('')}
+      </select>
+    `
+  } else {
+    control = `<input class="plugin-config-input" type="text" value="${escapeHtml(String(rawValue ?? ''))}" placeholder="${escapeHtml(field.placeholder ?? '')}" ${commonAttrs} />`
+  }
+
+  return `
+    <div class="plugin-config-row">
+      <div class="plugin-config-meta">
+        <div class="plugin-config-label">${label}</div>
+        ${desc}
+      </div>
+      ${control}
+    </div>
+  `
+}
+
+function readPluginConfigValue(
+  input: HTMLInputElement | HTMLSelectElement,
+  type: string
+): unknown {
+  if (type === 'boolean') {
+    return (input as HTMLInputElement).checked
+  }
+  if (type === 'number') {
+    return Number(input.value)
+  }
+  return input.value
 }
 
 addPersonalityFileBtn.addEventListener('click', async () => {

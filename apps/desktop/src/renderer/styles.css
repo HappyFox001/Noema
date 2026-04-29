@@ -570,8 +570,7 @@ input[type="password"] {
 
 .plugin-card {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
   gap: 16px;
   padding: 14px 16px;
   background: rgba(255, 255, 255, 0.04);
@@ -579,8 +578,64 @@ input[type="password"] {
   border-radius: 10px;
 }
 
+.plugin-card-main {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
 .plugin-card:hover {
   border-color: rgba(255, 255, 255, 0.12);
+}
+
+.plugin-card-list {
+  cursor: pointer;
+}
+
+.plugin-card-footer {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  font-family: var(--font-soft);
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.38);
+}
+
+.plugin-enter {
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.plugin-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.plugin-back-btn {
+  width: 52px;
+  height: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.82);
+  font-family: var(--font-soft);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.plugin-back-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.plugin-detail-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .plugin-info {
@@ -616,6 +671,61 @@ input[type="password"] {
 
 .plugin-toggle {
   flex-shrink: 0;
+}
+
+.plugin-config-fields {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.plugin-config-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 120px;
+  gap: 14px;
+  align-items: center;
+}
+
+.plugin-config-meta {
+  min-width: 0;
+}
+
+.plugin-config-label {
+  font-family: var(--font-soft);
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.plugin-config-desc {
+  margin-top: 2px;
+  font-family: var(--font-soft);
+  font-size: 11px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.38);
+}
+
+.plugin-config-input {
+  width: 120px;
+  height: 30px;
+  padding: 0 9px;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.9);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  outline: none;
+}
+
+.plugin-config-input:focus {
+  border-color: rgba(226, 74, 144, 0.45);
+}
+
+.plugin-config-toggle {
+  justify-self: end;
 }
 
 .settings-row {

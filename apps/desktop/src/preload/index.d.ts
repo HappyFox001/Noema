@@ -215,6 +215,42 @@ declare global {
           version?: string
           enabled: boolean
           pluginDir: string
+          config: Record<string, unknown>
+          configSchema: Array<
+            | {
+                key: string
+                label?: string
+                description?: string
+                type: 'string'
+                default?: string
+                placeholder?: string
+              }
+            | {
+                key: string
+                label?: string
+                description?: string
+                type: 'number'
+                default?: number
+                min?: number
+                max?: number
+                step?: number
+              }
+            | {
+                key: string
+                label?: string
+                description?: string
+                type: 'boolean'
+                default?: boolean
+              }
+            | {
+                key: string
+                label?: string
+                description?: string
+                type: 'select'
+                default?: string
+                options: Array<{ label: string; value: string }>
+              }
+          >
         }>
       }>
       listPersonalities: () => Promise<{

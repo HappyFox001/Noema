@@ -13,7 +13,43 @@ export interface RuntimePluginManifest {
   assets?: string
   enabled?: boolean
   config?: Record<string, unknown>
+  configSchema?: RuntimePluginConfigField[]
 }
+
+export type RuntimePluginConfigField =
+  | {
+      key: string
+      label?: string
+      description?: string
+      type: 'string'
+      default?: string
+      placeholder?: string
+    }
+  | {
+      key: string
+      label?: string
+      description?: string
+      type: 'number'
+      default?: number
+      min?: number
+      max?: number
+      step?: number
+    }
+  | {
+      key: string
+      label?: string
+      description?: string
+      type: 'boolean'
+      default?: boolean
+    }
+  | {
+      key: string
+      label?: string
+      description?: string
+      type: 'select'
+      default?: string
+      options: Array<{ label: string; value: string }>
+    }
 
 type RuntimePluginFactory = (context: SDKPluginContext) => SDKPlugin | Promise<SDKPlugin>
 
@@ -23,11 +59,14 @@ export interface RuntimePluginInfo {
   version?: string
   enabled: boolean
   pluginDir: string
+  config: Record<string, unknown>
+  configSchema: RuntimePluginConfigField[]
 }
 
 export async function discoverRuntimePlugins(
   pluginsDir: string,
   enabledOverrides: Record<string, boolean> = {}
+  , configOverrides: Record<string, Record<string, unknown>> = {}
 ): Promise<RuntimePluginInfo[]> {
   const manifests = await readRuntimePluginManifests(pluginsDir)
   return manifests.map(({ manifest, pluginDir }) => ({
@@ -36,12 +75,15 @@ export async function discoverRuntimePlugins(
     version: manifest.version,
     enabled: enabledOverrides[manifest.id] ?? manifest.enabled !== false,
     pluginDir,
+    config: mergePluginConfig(manifest, configOverrides[manifest.id]),
+    configSchema: manifest.configSchema ?? [],
   }))
 }
 
 export async function loadRuntimePlugins(
   pluginsDir: string,
-  enabledOverrides: Record<string, boolean> = {}
+  enabledOverrides: Record<string, boolean> = {},
+  configOverrides: Record<string, Record<string, unknown>> = {}
 ): Promise<SDKPlugin[]> {
   const manifests = await readRuntimePluginManifests(pluginsDir)
   const plugins: SDKPlugin[] = []
@@ -53,7 +95,7 @@ export async function loadRuntimePlugins(
       continue
     }
 
-    const plugin = await loadRuntimePlugin(pluginDir, manifest)
+    const plugin = await loadRuntimePlugin(pluginDir, manifest, configOverrides[manifest.id])
     if (plugin) {
       plugins.push(plugin)
     }
@@ -101,7 +143,8 @@ async function readRuntimePluginManifests(
 
 async function loadRuntimePlugin(
   pluginDir: string,
-  manifest: RuntimePluginManifest
+  manifest: RuntimePluginManifest,
+  configOverride?: Record<string, unknown>
 ): Promise<SDKPlugin | null> {
   try {
     const mainFile = manifest.main || 'index.mjs'
@@ -122,7 +165,7 @@ async function loadRuntimePlugin(
     const plugin = await (factory as RuntimePluginFactory)({
       pluginDir,
       assetsDir,
-      config: manifest.config ?? {},
+      config: mergePluginConfig(manifest, configOverride),
       resolveAsset: (assetPath: string) => resolve(assetsDir, assetPath),
     } as SDKPluginContext)
 
@@ -131,5 +174,15 @@ async function loadRuntimePlugin(
   } catch (error) {
     console.error(`[PluginLoader] Failed to load plugin from ${pluginDir}:`, error)
     return null
+  }
+}
+
+function mergePluginConfig(
+  manifest: RuntimePluginManifest,
+  override?: Record<string, unknown>
+): Record<string, unknown> {
+  return {
+    ...(manifest.config ?? {}),
+    ...(override ?? {}),
   }
 }

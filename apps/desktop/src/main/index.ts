@@ -1627,6 +1627,7 @@ let appSettings: AppSettings = {
   selectedPersonality: 'role:eva',
   externalRolePaths: [],
   plugins: {},
+  pluginConfigs: {},
   system: {
     proxy: '',
     llmModels: [{ id: 'default-llm', modelName: '', apiKey: '', baseUrl: '' }],
@@ -1938,7 +1939,7 @@ async function initializeSDK(): Promise<void> {
   const sdkConfig = await buildSDKConfig()
   const pluginsDir = resolveRuntimePluginsDir()
   console.log('[PluginLoader] Runtime plugins directory:', pluginsDir)
-  const plugins = await loadRuntimePlugins(pluginsDir, appSettings.plugins)
+  const plugins = await loadRuntimePlugins(pluginsDir, appSettings.plugins, appSettings.pluginConfigs)
   sdkInstance = await HerTextSDK.initialize(sdkConfig, {
     plugins,
   })
@@ -2643,10 +2644,13 @@ ipcMain.handle('settings:update', async (_, partial: Partial<AppSettings>) => {
   const previousTTSSignature = getTTSConfigSignature(getActiveTTSConfig())
   const previousASRSignature = getASRConfigSignature(getActiveASRConfig())
   const previousPlugins = appSettings.plugins
+  const previousPluginConfigs = appSettings.pluginConfigs
   appSettings = await getSettingsStore().update(partial)
   const nextTTSSignature = getTTSConfigSignature(getActiveTTSConfig())
   const nextASRSignature = getASRConfigSignature(getActiveASRConfig())
-  const pluginsChanged = partial.plugins !== undefined && previousPlugins !== appSettings.plugins
+  const pluginsChanged =
+    (partial.plugins !== undefined && previousPlugins !== appSettings.plugins) ||
+    (partial.pluginConfigs !== undefined && previousPluginConfigs !== appSettings.pluginConfigs)
 
   if (
     previousTTSSignature !== nextTTSSignature ||
@@ -2674,7 +2678,11 @@ ipcMain.handle('plugins:list', async () => {
   try {
     return {
       success: true,
-      plugins: await discoverRuntimePlugins(resolveRuntimePluginsDir(), appSettings.plugins),
+      plugins: await discoverRuntimePlugins(
+        resolveRuntimePluginsDir(),
+        appSettings.plugins,
+        appSettings.pluginConfigs
+      ),
     }
   } catch (error: any) {
     return { success: false, error: error.message, plugins: [] }
