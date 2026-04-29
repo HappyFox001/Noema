@@ -8,7 +8,7 @@
 import { FramePipeline, type Frame, type FrameProcessor } from './frame-pipeline.js'
 import type { TTSProvider } from './providers.js'
 import type { InterruptionReason } from '../turn/types.js'
-import type { PluginRuntimeContext } from '../plugins/index.js'
+import type { ExpressionFrame, PluginRuntimeContext } from '../plugins/index.js'
 
 export type ResponseFrame = Frame & (
   | { type: 'phase_start'; phase: 'reply' | 'task_result' }
@@ -541,6 +541,7 @@ export interface LLMChatStreamService {
       onPhaseEnd?: (phase: 'reply' | 'task_result', fullText: string) => Promise<void> | void
       onTaskStart?: (taskDescription: string) => Promise<void> | void
       onTaskEnd?: (result: { success: boolean; summary: string; error?: string }) => Promise<void> | void
+      onExpression?: (frame: ExpressionFrame) => Promise<void> | void
     }
   ): AsyncGenerator<string>
 }
@@ -555,6 +556,7 @@ export interface LLMResponseProcessorOptions {
   queueFrame?: (frame: ResponseFrame) => Promise<void> | void
   waitForIdle?: () => Promise<void>
   onComplete?: (result: { text: string; error?: Error }) => void
+  onExpression?: (frame: ExpressionFrame) => Promise<void> | void
   log?: (message: string) => void
 }
 
@@ -621,6 +623,9 @@ export class LLMResponseProcessor implements ResponseFrameProcessor {
         },
         onTaskEnd: async (result) => {
           await this.options.bridge.onTaskEnd(result)
+        },
+        onExpression: async (frame) => {
+          await this.options.onExpression?.(frame)
         },
       }
     )

@@ -689,6 +689,14 @@ type ConversationFrame =
   | { type: 'control.task_start'; taskDescription: string }
   | { type: 'control.task_end'; success: boolean; summary: string; error?: string }
   | { type: 'data.tts_text'; text: string }
+  | {
+      type: 'expression.show'
+      id: string
+      emotion: string
+      src: string
+      durationMs: number
+      priority?: number
+    }
 
 const voiceRecorder = new VoiceRecorder()
 
@@ -885,10 +893,50 @@ function clearTextDisplay() {
   setTextDisplay('')
 }
 
+let currentExpressionPriority = 0
+let expressionClearTimer: number | undefined
+
+function clearExpression(): void {
+  const layer = document.getElementById('expression-layer')!
+  const image = document.getElementById('expression-image') as HTMLImageElement
+  layer.classList.remove('visible')
+  currentExpressionPriority = 0
+
+  if (expressionClearTimer !== undefined) {
+    window.clearTimeout(expressionClearTimer)
+  }
+
+  expressionClearTimer = window.setTimeout(() => {
+    if (!layer.classList.contains('visible')) {
+      image.removeAttribute('src')
+    }
+    expressionClearTimer = undefined
+  }, 220)
+}
+
+function showExpression(frame: Extract<ConversationFrame, { type: 'expression.show' }>): void {
+  const priority = frame.priority ?? 0
+  if (currentExpressionPriority > priority) {
+    return
+  }
+
+  const layer = document.getElementById('expression-layer')!
+  const image = document.getElementById('expression-image') as HTMLImageElement
+  if (expressionClearTimer !== undefined) {
+    window.clearTimeout(expressionClearTimer)
+    expressionClearTimer = undefined
+  }
+
+  currentExpressionPriority = priority
+  image.src = frame.src
+  layer.classList.add('visible')
+}
+
 function handleConversationFrame(frame: ConversationFrame) {
   switch (frame.type) {
     case 'system.reset':
       textRevealer.reset()
+      clearExpression()
       setStatus('Thinking...')
       setOrbMode('thinking')
       break
@@ -912,6 +960,7 @@ function handleConversationFrame(frame: ConversationFrame) {
       if (frame.phase === 'reply' || frame.phase === 'task_result') {
         setStatus(getReadyStatus())
         setOrbMode('idle')
+        clearExpression()
       }
       break
     case 'control.task_start':
@@ -925,6 +974,9 @@ function handleConversationFrame(frame: ConversationFrame) {
       break
     case 'data.tts_text':
       textRevealer.enqueueText(frame.text)
+      break
+    case 'expression.show':
+      showExpression(frame)
       break
   }
 }

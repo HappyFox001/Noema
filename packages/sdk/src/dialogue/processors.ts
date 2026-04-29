@@ -13,6 +13,7 @@ export interface ParsedEmotionalResponse {
   reply: string
   hasTask: boolean
   taskDescription?: string
+  emotionTag?: string
 }
 
 export interface DialogueTurnContext {
@@ -71,6 +72,7 @@ export interface LLMProcessorRunResult {
   readonly reply: string
   readonly hasTask: boolean
   readonly taskDescription?: string
+  readonly emotionTag?: string
 }
 
 export class LLMProcessor {
@@ -117,6 +119,7 @@ export class LLMProcessor {
     let finalReply = ''
     let hasTask = false
     let taskDescription: string | undefined
+    let emotionTag: string | undefined
 
     const streamGenerator = async function* (self: LLMProcessor): AsyncGenerator<string> {
       for await (const chunk of self.llm.streamChat(fullMessages, {
@@ -153,9 +156,11 @@ export class LLMProcessor {
       finalReply = parsed.reply
       hasTask = parsed.hasTask
       taskDescription = parsed.taskDescription
+      emotionTag = parsed.emotionTag
 
       console.log('解析结果:')
       console.log('  Reply:', parsed.reply.substring(0, 50) + (parsed.reply.length > 50 ? '...' : ''))
+      console.log('  Emotion:', parsed.emotionTag || '(无)')
       console.log('  Has Task:', parsed.hasTask)
       console.log('  Task Description:', parsed.taskDescription || '(无)')
       console.log('==========================================\n')
@@ -167,6 +172,7 @@ export class LLMProcessor {
       get reply() { return finalReply },
       get hasTask() { return hasTask },
       get taskDescription() { return taskDescription },
+      get emotionTag() { return emotionTag },
     }
   }
 }
@@ -242,6 +248,11 @@ function parseEmotionalResponse(response: string, detectTask: boolean = true): P
           }
         }
       }
+    }
+
+    const emotionMatch = response.match(/<emotion>([\s\S]*?)<\/emotion>/)
+    if (emotionMatch) {
+      result.emotionTag = emotionMatch[1].trim().toLowerCase()
     }
   } catch (error) {
     console.warn('Failed to parse emotional response:', error)

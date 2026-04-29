@@ -13,7 +13,13 @@ import {
   buildBaseInstructions,
   throwIfAborted,
 } from './processors.js'
-import { PluginManager, type PluginRuntimeContext, type SDKPlugin, type TextTransformTarget } from '../plugins/index.js'
+import {
+  PluginManager,
+  type ExpressionFrame,
+  type PluginRuntimeContext,
+  type SDKPlugin,
+  type TextTransformTarget,
+} from '../plugins/index.js'
 
 /**
  * 流式输出选项
@@ -43,6 +49,8 @@ export interface StreamOptions {
   onTaskStart?: (taskDescription: string) => Promise<void> | void
   /** 任务执行结束 */
   onTaskEnd?: (result: { success: boolean; summary: string; error?: string }) => Promise<void> | void
+  /** 插件驱动的表达帧，例如表情包显示。 */
+  onExpression?: (frame: ExpressionFrame) => Promise<void> | void
 }
 
 /**
@@ -170,6 +178,10 @@ export class DialogueOrchestrator {
         yield chunk
       }
 
+      await this.emitExpression(options, pluginRuntime, 'reply', {
+        replyText: firstResult.reply,
+        emotionTag: firstResult.emotionTag,
+      })
       throwIfAborted(options?.signal)
       await options?.onPhaseEnd?.('reply', firstResult.reply)
       throwIfAborted(options?.signal)
@@ -231,6 +243,10 @@ export class DialogueOrchestrator {
           yield chunk
         }
 
+        await this.emitExpression(options, pluginRuntime, 'task_result', {
+          replyText: secondResult.reply,
+          emotionTag: secondResult.emotionTag,
+        })
         throwIfAborted(options?.signal)
         await options?.onPhaseEnd?.('task_result', secondResult.reply)
         throwIfAborted(options?.signal)
@@ -284,6 +300,24 @@ export class DialogueOrchestrator {
       runtime,
       target,
     })
+  }
+
+  private async emitExpression(
+    options: StreamOptions | undefined,
+    runtime: PluginRuntimeContext,
+    phase: 'reply' | 'task_result',
+    result: { replyText: string; emotionTag?: string }
+  ): Promise<void> {
+    const frame = this.pluginManager.selectExpression({
+      runtime,
+      phase,
+      replyText: result.replyText,
+      emotionTag: result.emotionTag,
+    })
+
+    if (frame) {
+      await options?.onExpression?.(frame)
+    }
   }
 
   private recordInterruptedTurn(

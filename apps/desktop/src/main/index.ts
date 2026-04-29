@@ -1,6 +1,6 @@
 // 加载环境变量（必须在最开始）
 import { config as dotenvConfig } from 'dotenv'
-import { fileURLToPath } from 'url'
+import { fileURLToPath, pathToFileURL } from 'url'
 import { dirname, join } from 'path'
 import { createRequire } from 'module'
 import { existsSync } from 'fs'
@@ -74,9 +74,11 @@ import {
   type ResponseFrame,
   ResponseDisplayProcessor,
   ResponseTTSProcessor,
+  type ExpressionFrame,
   type PluginRuntimeContext,
 } from '@her-text/sdk'
 import { createFishS2EmotionPlugin } from '@her-text/plugin-fish-s2-emotion'
+import { createStickerExpressionPlugin } from '@her-text/plugin-sticker-expression'
 import { initializeSileroVAD, isSileroVADAvailable } from './silero-vad-helper.js'
 import { initializeSmartTurn, isSmartTurnAvailable } from './smart-turn-helper.js'
 import {
@@ -104,6 +106,14 @@ type ConversationFrame =
   | { type: 'control.task_start'; taskDescription: string }
   | { type: 'control.task_end'; success: boolean; summary: string; error?: string }
   | { type: 'data.tts_text'; text: string }
+  | {
+      type: 'expression.show'
+      id: string
+      emotion: string
+      src: string
+      durationMs: number
+      priority?: number
+    }
 
 class ConversationDisplayController {
   private visibleText = ''
@@ -149,6 +159,23 @@ class ConversationDisplayController {
     }
 
     this.sendFrame({ type: 'data.tts_text', text })
+  }
+
+  showExpression(frame: {
+    id: string
+    emotion: string
+    assetPath: string
+    durationMs: number
+    priority?: number
+  }): void {
+    this.sendFrame({
+      type: 'expression.show',
+      id: frame.id,
+      emotion: frame.emotion,
+      src: pathToFileURL(frame.assetPath).toString(),
+      durationMs: frame.durationMs,
+      ...(frame.priority !== undefined ? { priority: frame.priority } : {}),
+    })
   }
 
   pushTextDelta(delta: string): void {
@@ -1419,6 +1446,22 @@ function getPluginRuntimeContext(enabled: boolean): PluginRuntimeContext {
   }
 }
 
+function resolveStickerAssetsDir(): string {
+  const candidates = [
+    join(process.cwd(), 'plugins/sticker-expression/assets'),
+    join(app.getAppPath(), '../../plugins/sticker-expression/assets'),
+    join(__dirname, '../../../plugins/sticker-expression/assets'),
+  ]
+
+  const found = candidates.find(candidate => existsSync(candidate))
+  if (found) {
+    return found
+  }
+
+  console.warn('[StickerExpression] Assets directory not found. Tried:', candidates)
+  return candidates[0]
+}
+
 // ========== 播放完成同步机制 ==========
 let playbackRequestIdCounter = 0
 const playbackResolvers = new Map<number, () => void>()
@@ -1893,9 +1936,16 @@ async function initializeSDK(): Promise<void> {
   // 设置激活的 LLM 配置
   setActiveLLMConfig(getActiveLLMConfig())
   const sdkConfig = await buildSDKConfig()
+  const stickerAssetsDir = resolveStickerAssetsDir()
+  console.log('[StickerExpression] Assets directory:', stickerAssetsDir)
   sdkInstance = await HerTextSDK.initialize(sdkConfig, {
     plugins: [
       createFishS2EmotionPlugin(),
+      createStickerExpressionPlugin({
+        assetsDir: stickerAssetsDir,
+        triggerProbability: 1,
+        durationMs: 2200,
+      }),
     ],
   })
   console.log('[SDK] Initialized successfully')
@@ -2072,6 +2122,18 @@ async function runConversationTurn(
     currentResponseFramePipeline = responseFramePipeline
 
     let isFirstTTSChunk = true
+    let pendingExpressionFrame: ExpressionFrame | null = null
+    let expressionShown = false
+
+    const showPendingExpression = () => {
+      if (expressionShown || !pendingExpressionFrame || isTurnCancelled(turnId)) {
+        return
+      }
+
+      expressionShown = true
+      console.log('[Expression] Showing sticker:', pendingExpressionFrame)
+      displayController.showExpression(pendingExpressionFrame)
+    }
 
     let shouldUseTTS = enableTTS && appSettings.voiceOutputEnabled && Boolean(ttsService) && ttsAvailable
     const pluginContext = getPluginRuntimeContext(shouldUseTTS)
@@ -2113,6 +2175,13 @@ async function runConversationTurn(
         }
         resolveLLMCompletion(sdk.transformText('display', result.text, pluginContext))
       },
+      onExpression: async (frame) => {
+        if (isTurnCancelled(turnId)) return
+        pendingExpressionFrame = frame
+        if (!shouldUseTTS) {
+          showPendingExpression()
+        }
+      },
       log: (message) => console.log(message),
     })
 
@@ -2129,6 +2198,7 @@ async function runConversationTurn(
           if (isFirstTTSChunk) {
             isFirstTTSChunk = false
             latencyObserver.markFirstTTSText()
+            showPendingExpression()
           }
         },
         onText: (textFrame, displayText) => {

@@ -261,6 +261,13 @@ declare global {
       } | {
         type: 'data.tts_text'
         text: string
+      } | {
+        type: 'expression.show'
+        id: string
+        emotion: string
+        src: string
+        durationMs: number
+        priority?: number
       }) => void) => void
 
       // 语音识别事件 (VAD 在 Main Process 处理)

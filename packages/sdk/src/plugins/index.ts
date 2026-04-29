@@ -24,12 +24,29 @@ export interface TextTransformContext {
   target: TextTransformTarget
 }
 
+export interface ExpressionFrame {
+  type: 'expression_show'
+  id: string
+  emotion: string
+  assetPath: string
+  durationMs: number
+  priority?: number
+}
+
+export interface ExpressionHookContext {
+  runtime: PluginRuntimeContext
+  phase: 'reply' | 'task_result'
+  replyText: string
+  emotionTag?: string
+}
+
 export interface SDKPlugin {
   id: string
   name?: string
   setup?(context: SDKPluginContext): void | Promise<void>
   extendPrompt?(context: PromptHookContext): string | undefined
   transformText?(text: string, context: TextTransformContext): string
+  selectExpression?(context: ExpressionHookContext): ExpressionFrame | undefined
 }
 
 export interface SDKPluginContext {
@@ -73,5 +90,16 @@ export class PluginManager {
     return this.plugins.reduce((current, plugin) => {
       return plugin.transformText?.(current, context) ?? current
     }, text)
+  }
+
+  selectExpression(context: ExpressionHookContext): ExpressionFrame | undefined {
+    for (const plugin of this.plugins) {
+      const frame = plugin.selectExpression?.(context)
+      if (frame) {
+        return frame
+      }
+    }
+
+    return undefined
   }
 }

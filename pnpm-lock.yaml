@@ -23,6 +23,9 @@ importers:
       '@her-text/plugin-fish-s2-emotion':
         specifier: workspace:*
         version: link:../../plugins/fish-s2-emotion
+      '@her-text/plugin-sticker-expression':
+        specifier: workspace:*
+        version: link:../../plugins/sticker-expression
       '@her-text/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
@@ -141,6 +144,19 @@ importers:
         specifier: workspace:*
         version: link:../../packages/sdk
     devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+
+  plugins/sticker-expression:
+    dependencies:
+      '@her-text/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+    devDependencies:
+      '@types/node':
+        specifier: ^20.11.0
+        version: 20.19.39
       typescript:
         specifier: ^5.4.0
         version: 5.9.3
