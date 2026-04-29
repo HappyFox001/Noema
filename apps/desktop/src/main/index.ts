@@ -1737,6 +1737,11 @@ async function initializeTTSProvider(): Promise<void> {
       format: 'pcm',
       sampleRate: 16000,
       latency: 'balanced',
+      normalize: true,
+      prosody: {
+        speed: 1.0,
+        volume: 0,
+      },
     },
   })
 

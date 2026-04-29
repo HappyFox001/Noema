@@ -5,7 +5,6 @@ import './styles.css'
 class AudioPlayer {
   private audioContext: AudioContext | null = null
   private gainNode: GainNode | null = null
-  private compressor: DynamicsCompressorNode | null = null // EBU R128: 动态压缩器
   private isPlaying = false
   private nextStartTime = 0
   private onChunkScheduled?: (payload: { startTime: number; duration: number }) => void
@@ -24,13 +23,6 @@ class AudioPlayer {
 
   // 停止计数器：用于检测在 async 操作期间是否调用了 stop()
   private stopGeneration: number = 0
-
-  // EBU R128 音量标准化配置
-  // 目标响度: -16 LUFS (适合流媒体)
-  // 简化实现：使用 RMS 归一化 + 动态压缩
-  private readonly TARGET_RMS = 0.2 // 目标 RMS 值（约 -14 dBFS）
-  private readonly MAX_GAIN = 3.0    // 最大增益限制
-  private readonly MIN_GAIN = 0.5    // 最小增益限制
 
   resetLatencyTracking(): void {
     this.isFirstAudioOfSession = true
@@ -82,23 +74,11 @@ class AudioPlayer {
   async initialize(): Promise<void> {
     this.audioContext = new AudioContext({ sampleRate: 16000 })
 
-    // 创建动态压缩器 (EBU R128 风格)
-    // 防止响度峰值过高，确保一致的听感
-    this.compressor = this.audioContext.createDynamicsCompressor()
-    this.compressor.threshold.value = -24  // 开始压缩的阈值 (dB)
-    this.compressor.knee.value = 12        // 柔和的压缩过渡
-    this.compressor.ratio.value = 4        // 4:1 压缩比
-    this.compressor.attack.value = 0.003   // 3ms 启动时间
-    this.compressor.release.value = 0.25   // 250ms 释放时间
-
     // 创建增益节点
     this.gainNode = this.audioContext.createGain()
-
-    // 连接音频链: source -> compressor -> gain -> destination
-    this.compressor.connect(this.gainNode)
     this.gainNode.connect(this.audioContext.destination)
 
-    console.log('[AudioPlayer] Initialized with EBU R128 style loudness control')
+    console.log('[AudioPlayer] Initialized with raw PCM output')
 
     // 音频预热：播放静音音频激活音频系统
     await this.warmup()
@@ -208,30 +188,9 @@ class AudioPlayer {
     const audioBuffer = this.audioContext.createBuffer(1, pcm16.length, 16000)
     const channelData = audioBuffer.getChannelData(0)
 
-    // 转换为 Float32 并计算 RMS
-    let sumSquares = 0
     for (let i = 0; i < pcm16.length; i++) {
       const sample = pcm16[i] / (pcm16[i] < 0 ? 0x8000 : 0x7fff)
       channelData[i] = sample
-      sumSquares += sample * sample
-    }
-
-    // EBU R128 风格的响度归一化
-    const rms = Math.sqrt(sumSquares / pcm16.length)
-    if (rms > 0.001) { // 避免除以接近零的值（静音）
-      let gain = this.TARGET_RMS / rms
-      // 限制增益范围，避免过度放大噪声或过度衰减
-      gain = Math.max(this.MIN_GAIN, Math.min(this.MAX_GAIN, gain))
-
-      // 应用增益并进行软限幅
-      for (let i = 0; i < channelData.length; i++) {
-        let sample = channelData[i] * gain
-        // 软限幅 (tanh 软削波)
-        if (Math.abs(sample) > 0.9) {
-          sample = Math.tanh(sample)
-        }
-        channelData[i] = sample
-      }
     }
 
     return audioBuffer
@@ -243,9 +202,7 @@ class AudioPlayer {
     const source = this.audioContext.createBufferSource()
     source.buffer = buffer
 
-    // 连接到压缩器（EBU R128 动态处理链的第一环）
-    // source -> compressor -> gain -> destination
-    source.connect(this.compressor ?? this.gainNode ?? this.audioContext.destination)
+    source.connect(this.gainNode ?? this.audioContext.destination)
     this.activeSources.add(source)
 
     const currentTime = this.audioContext.currentTime

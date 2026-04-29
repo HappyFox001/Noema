@@ -17,6 +17,11 @@ export interface FishTTSOfficialConfig {
   format?: 'mp3' | 'pcm' | 'opus'
   sampleRate?: number
   latency?: 'normal' | 'balanced' | 'low'
+  normalize?: boolean
+  prosody?: {
+    speed?: number
+    volume?: number
+  }
 }
 
 export type FishTTSOfficialEvent = TTSProviderEvent
@@ -172,6 +177,11 @@ export class FishTTSOfficial implements TTSProvider, InterruptionHandler {
     const request: Record<string, unknown> = {
       text: '',
       format: this.config.format || 'pcm',
+      normalize: this.config.normalize ?? true,
+      prosody: {
+        speed: this.config.prosody?.speed ?? 1.0,
+        volume: this.config.prosody?.volume ?? 0,
+      },
     }
 
     if (this.config.voiceId) {
