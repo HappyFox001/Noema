@@ -1,6 +1,4 @@
-import type { SDKPlugin } from '@her-text/sdk'
-
-export const FISH_S2_EMOTION_CUES = [
+const FISH_S2_EMOTION_CUES = [
   'whisper',
   'laugh',
   'emphasis',
@@ -13,9 +11,9 @@ export const FISH_S2_EMOTION_CUES = [
   'surprised',
   'inhale',
   'exhale',
-] as const
+]
 
-export function createFishS2EmotionPlugin(): SDKPlugin {
+export default function createPlugin() {
   return {
     id: 'fish-s2-emotion',
     name: 'Fish Audio S2 Emotion Enhancer',
@@ -48,7 +46,7 @@ export function createFishS2EmotionPlugin(): SDKPlugin {
   }
 }
 
-export function stripFishS2EmotionCues(text: string): string {
+function stripFishS2EmotionCues(text) {
   return text
     .replace(/\[[a-zA-Z][a-zA-Z\s-]{0,40}\]\s*/g, '')
     .replace(/\s+([。！？!?，、；：,.])/g, '$1')
@@ -56,7 +54,7 @@ export function stripFishS2EmotionCues(text: string): string {
     .trim()
 }
 
-function isFishS2Runtime(runtime: { tts?: { provider: string; model?: string } }): boolean {
+function isFishS2Runtime(runtime) {
   if (runtime.tts?.provider !== 'fish-audio') {
     return false
   }

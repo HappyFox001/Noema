@@ -1,0 +1,8 @@
+{
+  "id": "fish-s2-emotion",
+  "name": "Fish Audio S2 Emotion Enhancer",
+  "version": "0.1.0",
+  "type": "sdk-plugin",
+  "main": "index.mjs",
+  "enabled": true
+}

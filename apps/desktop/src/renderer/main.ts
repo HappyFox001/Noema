@@ -679,7 +679,16 @@ type UISettings = {
   voiceOutputEnabled: boolean
   volume: number
   selectedPersonality: string
+  plugins: Record<string, boolean>
   system: SystemConfig
+}
+
+type PluginInfo = {
+  id: string
+  name: string
+  version?: string
+  enabled: boolean
+  pluginDir: string
 }
 
 type ConversationFrame =
@@ -1298,6 +1307,7 @@ const voiceInputBtn = document.getElementById('voice-input-btn') as HTMLButtonEl
 const voiceOutputToggle = document.getElementById('voice-output-toggle') as HTMLInputElement
 const personalitySelect = document.getElementById('personality-select') as HTMLSelectElement
 const addPersonalityFileBtn = document.getElementById('add-personality-file-btn') as HTMLButtonElement
+const pluginsList = document.getElementById('plugins-list') as HTMLElement
 let memoryRefreshPromise: Promise<void> | null = null
 
 function applySettingsToUI(settings: UISettings) {
@@ -1522,6 +1532,9 @@ settingsNav.addEventListener('mouseup', (e) => {
           if (section === 'system') {
             void loadSystemConfig()
           }
+          if (section === 'plugins') {
+            void loadPluginsSection()
+          }
         }
       }
     }
@@ -1597,6 +1610,64 @@ personalitySelect.addEventListener('change', async () => {
   await loadSettings()
   setStatus(`人格已切换为 ${personalitySelect.selectedOptions[0]?.textContent ?? selected}`)
 })
+
+async function loadPluginsSection(): Promise<void> {
+  pluginsList.innerHTML = '<div class="profile-loading">加载中...</div>'
+
+  const result = await window.electronAPI.listPlugins()
+  if (!result.success) {
+    pluginsList.innerHTML = `<div class="profile-loading">插件加载失败: ${escapeHtml(result.error ?? 'unknown error')}</div>`
+    return
+  }
+
+  renderPluginsSection(result.plugins)
+}
+
+function renderPluginsSection(plugins: PluginInfo[]): void {
+  if (plugins.length === 0) {
+    pluginsList.innerHTML = '<div class="profile-loading">未发现插件</div>'
+    return
+  }
+
+  pluginsList.innerHTML = plugins.map(plugin => `
+    <div class="plugin-card" data-plugin-id="${escapeHtml(plugin.id)}">
+      <div class="plugin-info">
+        <div class="plugin-title-row">
+          <span class="plugin-name">${escapeHtml(plugin.name)}</span>
+          ${plugin.version ? `<span class="plugin-version">v${escapeHtml(plugin.version)}</span>` : ''}
+        </div>
+        <div class="plugin-id">${escapeHtml(plugin.id)}</div>
+      </div>
+      <label class="settings-toggle plugin-toggle">
+        <input type="checkbox" ${plugin.enabled ? 'checked' : ''} data-plugin-toggle="${escapeHtml(plugin.id)}" />
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+  `).join('')
+
+  pluginsList.querySelectorAll<HTMLInputElement>('input[data-plugin-toggle]').forEach(input => {
+    input.addEventListener('change', async () => {
+      const pluginId = input.dataset.pluginToggle
+      if (!pluginId) return
+
+      input.disabled = true
+      try {
+        const settings = await window.electronAPI.getSettings()
+        const nextPlugins = {
+          ...(settings.plugins ?? {}),
+          [pluginId]: input.checked,
+        }
+        await window.electronAPI.updateSettings({ plugins: nextPlugins })
+        setStatus(input.checked ? '插件已启用' : '插件已禁用')
+      } catch (error: any) {
+        input.checked = !input.checked
+        setStatus(`插件设置失败: ${error.message}`)
+      } finally {
+        input.disabled = false
+      }
+    })
+  })
+}
 
 addPersonalityFileBtn.addEventListener('click', async () => {
   const result = await window.electronAPI.addPersonalityFile()

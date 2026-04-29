@@ -206,6 +206,17 @@ declare global {
         success: boolean
         error?: string
       }>
+      listPlugins: () => Promise<{
+        success: boolean
+        error?: string
+        plugins: Array<{
+          id: string
+          name: string
+          version?: string
+          enabled: boolean
+          pluginDir: string
+        }>
+      }>
       listPersonalities: () => Promise<{
         success: boolean
         current?: string

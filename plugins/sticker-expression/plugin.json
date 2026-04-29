@@ -1,0 +1,13 @@
+{
+  "id": "sticker-expression",
+  "name": "Sticker Expression",
+  "version": "0.1.0",
+  "type": "sdk-plugin",
+  "main": "index.mjs",
+  "assets": "assets",
+  "enabled": true,
+  "config": {
+    "triggerProbability": 1,
+    "durationMs": 4000
+  }
+}

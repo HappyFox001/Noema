@@ -85,6 +85,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   resetSystemConfigFromEnv: () =>
     ipcRenderer.invoke('settings:resetSystemFromEnv'),
 
+  listPlugins: () =>
+    ipcRenderer.invoke('plugins:list'),
+
   listPersonalities: () =>
     ipcRenderer.invoke('personality:list'),
 

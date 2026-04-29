@@ -77,8 +77,7 @@ import {
   type ExpressionFrame,
   type PluginRuntimeContext,
 } from '@her-text/sdk'
-import { createFishS2EmotionPlugin } from '@her-text/plugin-fish-s2-emotion'
-import { createStickerExpressionPlugin } from '@her-text/plugin-sticker-expression'
+import { discoverRuntimePlugins, loadRuntimePlugins } from './plugin-loader.js'
 import { initializeSileroVAD, isSileroVADAvailable } from './silero-vad-helper.js'
 import { initializeSmartTurn, isSmartTurnAvailable } from './smart-turn-helper.js'
 import {
@@ -1446,11 +1445,11 @@ function getPluginRuntimeContext(enabled: boolean): PluginRuntimeContext {
   }
 }
 
-function resolveStickerAssetsDir(): string {
+function resolveRuntimePluginsDir(): string {
   const candidates = [
-    join(process.cwd(), 'plugins/sticker-expression/assets'),
-    join(app.getAppPath(), '../../plugins/sticker-expression/assets'),
-    join(__dirname, '../../../plugins/sticker-expression/assets'),
+    join(process.cwd(), 'plugins'),
+    join(app.getAppPath(), '../../plugins'),
+    join(__dirname, '../../../plugins'),
   ]
 
   const found = candidates.find(candidate => existsSync(candidate))
@@ -1458,7 +1457,7 @@ function resolveStickerAssetsDir(): string {
     return found
   }
 
-  console.warn('[StickerExpression] Assets directory not found. Tried:', candidates)
+  console.warn('[PluginLoader] Runtime plugins directory not found. Tried:', candidates)
   return candidates[0]
 }
 
@@ -1627,6 +1626,7 @@ let appSettings: AppSettings = {
   volume: 70,
   selectedPersonality: 'role:eva',
   externalRolePaths: [],
+  plugins: {},
   system: {
     proxy: '',
     llmModels: [{ id: 'default-llm', modelName: '', apiKey: '', baseUrl: '' }],
@@ -1936,17 +1936,11 @@ async function initializeSDK(): Promise<void> {
   // 设置激活的 LLM 配置
   setActiveLLMConfig(getActiveLLMConfig())
   const sdkConfig = await buildSDKConfig()
-  const stickerAssetsDir = resolveStickerAssetsDir()
-  console.log('[StickerExpression] Assets directory:', stickerAssetsDir)
+  const pluginsDir = resolveRuntimePluginsDir()
+  console.log('[PluginLoader] Runtime plugins directory:', pluginsDir)
+  const plugins = await loadRuntimePlugins(pluginsDir, appSettings.plugins)
   sdkInstance = await HerTextSDK.initialize(sdkConfig, {
-    plugins: [
-      createFishS2EmotionPlugin(),
-      createStickerExpressionPlugin({
-        assetsDir: stickerAssetsDir,
-        triggerProbability: 1,
-        durationMs: 2200,
-      }),
-    ],
+    plugins,
   })
   console.log('[SDK] Initialized successfully')
 }
@@ -2648,9 +2642,11 @@ ipcMain.handle('settings:get', async () => {
 ipcMain.handle('settings:update', async (_, partial: Partial<AppSettings>) => {
   const previousTTSSignature = getTTSConfigSignature(getActiveTTSConfig())
   const previousASRSignature = getASRConfigSignature(getActiveASRConfig())
+  const previousPlugins = appSettings.plugins
   appSettings = await getSettingsStore().update(partial)
   const nextTTSSignature = getTTSConfigSignature(getActiveTTSConfig())
   const nextASRSignature = getASRConfigSignature(getActiveASRConfig())
+  const pluginsChanged = partial.plugins !== undefined && previousPlugins !== appSettings.plugins
 
   if (
     previousTTSSignature !== nextTTSSignature ||
@@ -2667,7 +2663,22 @@ ipcMain.handle('settings:update', async (_, partial: Partial<AppSettings>) => {
     await streamingASRSession.switchProvider('provider_switch')
   }
 
+  if (pluginsChanged) {
+    await rebuildSDK()
+  }
+
   return appSettings
+})
+
+ipcMain.handle('plugins:list', async () => {
+  try {
+    return {
+      success: true,
+      plugins: await discoverRuntimePlugins(resolveRuntimePluginsDir(), appSettings.plugins),
+    }
+  } catch (error: any) {
+    return { success: false, error: error.message, plugins: [] }
+  }
 })
 
 ipcMain.handle('settings:resetSystemFromEnv', async () => {

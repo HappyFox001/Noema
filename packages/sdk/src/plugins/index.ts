@@ -51,6 +51,10 @@ export interface SDKPlugin {
 
 export interface SDKPluginContext {
   plugins: PluginManager
+  pluginDir?: string
+  assetsDir?: string
+  config?: Record<string, unknown>
+  resolveAsset?: (assetPath: string) => string
 }
 
 export class PluginManager {

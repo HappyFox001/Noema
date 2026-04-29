@@ -1,8 +1,6 @@
 import { existsSync } from 'fs'
-import { join } from 'path'
-import type { ExpressionFrame, SDKPlugin } from '@her-text/sdk'
 
-export const BASIC_EMOTION_TAGS = [
+const BASIC_EMOTION_TAGS = [
   'neutral',
   'happy',
   'laugh',
@@ -16,23 +14,9 @@ export const BASIC_EMOTION_TAGS = [
   'thinking',
   'curious',
   'bye',
-] as const
+]
 
-export type BasicEmotionTag = typeof BASIC_EMOTION_TAGS[number]
-
-export interface StickerExpressionPluginOptions {
-  assetsDir: string
-  triggerProbability?: number
-  durationMs?: number
-}
-
-interface StickerDefinition {
-  id: string
-  emotion: BasicEmotionTag
-  filename: string
-}
-
-const STICKERS: StickerDefinition[] = [
+const STICKERS = [
   { id: 'mygo_love', emotion: 'love', filename: 'Mygo表情包_Love.png' },
   { id: 'mygo_shy', emotion: 'shy', filename: 'Mygo表情包_害羞.png' },
   { id: 'mygo_interesting_woman', emotion: 'happy', filename: 'Mygo表情包_有趣的女人.png' },
@@ -55,12 +39,10 @@ const STICKERS: StickerDefinition[] = [
   { id: 'mygo_bye', emotion: 'bye', filename: 'Mygo表情包_溜了溜了.png' },
 ]
 
-export function createStickerExpressionPlugin(
-  options: StickerExpressionPluginOptions
-): SDKPlugin {
-  const triggerProbability = clamp01(options.triggerProbability ?? 0.45)
-  const durationMs = options.durationMs ?? 2200
-  let lastStickerId: string | undefined
+export default function createPlugin(ctx) {
+  const triggerProbability = clamp01(Number(ctx.config?.triggerProbability ?? 0.45))
+  const durationMs = Number(ctx.config?.durationMs ?? 4000)
+  let lastStickerId
 
   return {
     id: 'sticker-expression',
@@ -76,7 +58,7 @@ export function createStickerExpressionPlugin(
         '- <emotion> 不是给用户看的文字，不要写进 <reply>',
       ].join('\n')
     },
-    selectExpression(context): ExpressionFrame | undefined {
+    selectExpression(context) {
       const emotion = normalizeEmotion(context.emotionTag)
       if (!emotion || Math.random() > triggerProbability) {
         return undefined
@@ -84,7 +66,11 @@ export function createStickerExpressionPlugin(
 
       const candidates = STICKERS
         .filter(sticker => sticker.emotion === emotion)
-        .filter(sticker => existsSync(join(options.assetsDir, sticker.filename)))
+        .map(sticker => ({
+          ...sticker,
+          assetPath: ctx.resolveAsset(sticker.filename),
+        }))
+        .filter(sticker => existsSync(sticker.assetPath))
 
       if (candidates.length === 0) {
         return undefined
@@ -100,7 +86,7 @@ export function createStickerExpressionPlugin(
         type: 'expression_show',
         id: sticker.id,
         emotion,
-        assetPath: join(options.assetsDir, sticker.filename),
+        assetPath: sticker.assetPath,
         durationMs,
         priority: 40,
       }
@@ -108,17 +94,15 @@ export function createStickerExpressionPlugin(
   }
 }
 
-function normalizeEmotion(value: string | undefined): BasicEmotionTag | undefined {
+function normalizeEmotion(value) {
   if (!value) {
     return undefined
   }
 
   const normalized = value.trim().toLowerCase()
-  return BASIC_EMOTION_TAGS.includes(normalized as BasicEmotionTag)
-    ? normalized as BasicEmotionTag
-    : undefined
+  return BASIC_EMOTION_TAGS.includes(normalized) ? normalized : undefined
 }
 
-function clamp01(value: number): number {
+function clamp01(value) {
   return Math.max(0, Math.min(1, value))
 }

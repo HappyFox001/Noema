@@ -1,6 +1,5 @@
 packages:
   - 'packages/*'
-  - 'plugins/*'
   - 'apps/*'
 allowBuilds:
   electron: true

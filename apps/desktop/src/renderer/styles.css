@@ -561,6 +561,63 @@ input[type="password"] {
   width: min(100%, 560px);
 }
 
+.plugin-list {
+  width: min(100%, 560px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.plugin-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+}
+
+.plugin-card:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.plugin-info {
+  min-width: 0;
+}
+
+.plugin-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.plugin-name {
+  font-family: var(--font-soft);
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.plugin-version {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.42);
+}
+
+.plugin-id {
+  margin-top: 3px;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.36);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.plugin-toggle {
+  flex-shrink: 0;
+}
+
 .settings-row {
   display: flex;
   align-items: center;
