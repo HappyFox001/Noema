@@ -878,7 +878,9 @@ class StreamingASRSession {
 
           if (!this.isCurrentVoiceTurn(frame.voiceTurnId)) {
             if (!this.shouldStartVoiceTurnFromTranscription(frame)) {
-              this.log(`Dropping stale transcription for voice turn #${frame.voiceTurnId}`)
+              if (frame.finalized) {
+                this.log(`Dropping stale finalized transcription for voice turn #${frame.voiceTurnId}`)
+              }
               return
             }
             frame.voiceTurnId = this.beginVoiceTurn()
