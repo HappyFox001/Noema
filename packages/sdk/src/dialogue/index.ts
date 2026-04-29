@@ -13,6 +13,10 @@ import {
   buildBaseInstructions,
   throwIfAborted,
 } from './processors.js'
+import {
+  stripTTSEmotionCues,
+  type TTSEmotionProfile,
+} from './tts-emotion.js'
 
 /**
  * 流式输出选项
@@ -24,6 +28,8 @@ export interface StreamOptions {
   preserveUserInputOnAbort?: boolean
   /** Abort 时写入已经对用户输出的 assistant 片段 */
   getInterruptedAssistantText?: () => string | undefined
+  /** TTS 情绪标记配置。开启后 LLM 可在 reply 中输出 provider 专用语音 cue。 */
+  ttsEmotionProfile?: TTSEmotionProfile
   /** TTS 文本块回调（SDK 自动处理分句） */
   onTTSChunk?: (text: string) => Promise<void>
   /** 回复阶段开始 */
@@ -143,6 +149,7 @@ export class DialogueOrchestrator {
         detectTask: true,
         currentContext: this.context.forPrompt(),
         baseInstructions: buildBaseInstructions(),
+        ttsEmotionProfile: options?.ttsEmotionProfile,
       })
 
       throwIfAborted(options?.signal)
@@ -158,7 +165,7 @@ export class DialogueOrchestrator {
       await options?.onPhaseEnd?.('reply', firstResult.reply)
       throwIfAborted(options?.signal)
 
-      let combinedReply = firstResult.reply
+      let combinedReply = stripTTSEmotionCues(firstResult.reply, options?.ttsEmotionProfile)
 
       // === 如果有任务，执行任务 ===
       if (firstResult.hasTask && firstResult.taskDescription && turnContext.hasTools) {
@@ -196,6 +203,7 @@ export class DialogueOrchestrator {
           additionalUserMessage: PROMPTS.dialogue.taskResultFeedback,
           currentContext: this.context.forPrompt(),
           baseInstructions: buildBaseInstructions(),
+          ttsEmotionProfile: options?.ttsEmotionProfile,
         })
 
         throwIfAborted(options?.signal)
@@ -211,7 +219,10 @@ export class DialogueOrchestrator {
         await options?.onPhaseEnd?.('task_result', secondResult.reply)
         throwIfAborted(options?.signal)
 
-        combinedReply = firstResult.reply + '\n\n' + secondResult.reply
+        combinedReply = [
+          stripTTSEmotionCues(firstResult.reply, options?.ttsEmotionProfile),
+          stripTTSEmotionCues(secondResult.reply, options?.ttsEmotionProfile),
+        ].filter(Boolean).join('\n\n')
       }
 
       // 记录最终响应
@@ -255,7 +266,10 @@ export class DialogueOrchestrator {
       timestamp: input.timestamp,
     }]
 
-    const assistantText = options.getInterruptedAssistantText?.()?.trim()
+    const assistantText = stripTTSEmotionCues(
+      options.getInterruptedAssistantText?.()?.trim() ?? '',
+      options.ttsEmotionProfile
+    )
     if (assistantText) {
       items.push({
         role: 'assistant',
@@ -319,5 +333,6 @@ export class DialogueOrchestrator {
 }
 
 export * from '../context/index.js'
+export * from './tts-emotion.js'
 export * from '../prompt/index.js'
 export * from './processors.js'

@@ -74,6 +74,8 @@ import {
   type ResponseFrame,
   ResponseDisplayProcessor,
   ResponseTTSProcessor,
+  stripTTSEmotionCues,
+  type TTSEmotionProfile,
 } from '@her-text/sdk'
 import { initializeSileroVAD, isSileroVADAvailable } from './silero-vad-helper.js'
 import { initializeSmartTurn, isSmartTurnAvailable } from './smart-turn-helper.js'
@@ -1398,6 +1400,20 @@ function sanitizeTextForSpeech(text: string): string {
     .trim()
 }
 
+function getTTSEmotionProfile(enabled: boolean): TTSEmotionProfile | undefined {
+  if (!enabled) {
+    return undefined
+  }
+
+  const ttsConfig = getActiveTTSConfig()
+  if (ttsConfig?.provider !== 'fish') {
+    return undefined
+  }
+
+  const modelName = (ttsConfig.modelName || 's2-pro').toLowerCase()
+  return modelName.startsWith('s2') ? 'fish-s2' : undefined
+}
+
 // ========== 播放完成同步机制 ==========
 let playbackRequestIdCounter = 0
 const playbackResolvers = new Map<number, () => void>()
@@ -2048,6 +2064,7 @@ async function runConversationTurn(
     let isFirstTTSChunk = true
 
     let shouldUseTTS = enableTTS && appSettings.voiceOutputEnabled && Boolean(ttsService) && ttsAvailable
+    const ttsEmotionProfile = getTTSEmotionProfile(shouldUseTTS)
 
     let resolveLLMCompletion: (value: string) => void = () => undefined
     let rejectLLMCompletion: (error: Error) => void = () => undefined
@@ -2074,6 +2091,7 @@ async function runConversationTurn(
       signal: turnAbortSignal,
       preserveUserInputOnAbort: source === 'voice',
       getInterruptedAssistantText: () => interruptedTTSTextChunks.join(''),
+      ttsEmotionProfile,
       queueFrame: (frame) => {
         void responseFramePipeline?.queueFrame(frame)
       },
@@ -2083,7 +2101,7 @@ async function runConversationTurn(
           rejectLLMCompletion(result.error)
           return
         }
-        resolveLLMCompletion(result.text)
+        resolveLLMCompletion(stripTTSEmotionCues(result.text, ttsEmotionProfile))
       },
       log: (message) => console.log(message),
     })
@@ -2095,17 +2113,18 @@ async function runConversationTurn(
         isEnabled: () => shouldUseTTS && ttsAvailable,
         getService: () => ttsService,
         sanitizeText: sanitizeTextForSpeech,
+        toDisplayText: (text) => stripTTSEmotionCues(text, ttsEmotionProfile),
         onFirstText: () => {
           if (isFirstTTSChunk) {
             isFirstTTSChunk = false
             latencyObserver.markFirstTTSText()
           }
         },
-        onText: (textFrame) => {
+        onText: (textFrame, displayText) => {
           currentTTSChunkSequence += 1
-          interruptedTTSTextChunks.push(textFrame)
+          interruptedTTSTextChunks.push(displayText)
           console.log(`[Main] TTS text frame #${turnId}:${currentTTSChunkSequence}, pushing:`, JSON.stringify(textFrame))
-          displayController.pushTTSChunkText(textFrame)
+          displayController.pushTTSChunkText(displayText)
         },
         onError: () => {
           ttsAvailable = false

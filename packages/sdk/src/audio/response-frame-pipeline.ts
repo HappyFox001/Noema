@@ -8,6 +8,7 @@
 import { FramePipeline, type Frame, type FrameProcessor } from './frame-pipeline.js'
 import type { TTSProvider } from './providers.js'
 import type { InterruptionReason } from '../turn/types.js'
+import type { TTSEmotionProfile } from '../dialogue/tts-emotion.js'
 
 export type ResponseFrame = Frame & (
   | { type: 'phase_start'; phase: 'reply' | 'task_result' }
@@ -164,8 +165,9 @@ export interface ResponseTTSProcessorOptions {
   isEnabled: () => boolean
   getService: () => ResponseTTSService | null
   sanitizeText?: (text: string) => string
+  toDisplayText?: (ttsText: string) => string
   onFirstText?: () => void
-  onText?: (text: string) => void
+  onText?: (ttsText: string, displayText: string) => void
   onError?: (error: Error) => void
   waitForPlayback?: (phase: 'reply' | 'task_result') => Promise<void>
   log?: (message: string) => void
@@ -251,7 +253,8 @@ export class ResponseTTSProcessor implements ResponseFrameProcessor {
         this.options.onFirstText?.()
       }
 
-      this.options.onText?.(sanitizedText)
+      const displayText = this.options.toDisplayText?.(sanitizedText) ?? sanitizedText
+      this.options.onText?.(sanitizedText, displayText)
       await service.pushText(sanitizedText)
     } catch (error: any) {
       this.options.log?.(`[TTS] Failed to push text frame: ${error.message}`)
@@ -291,6 +294,10 @@ export class ResponseTTSProcessor implements ResponseFrameProcessor {
       }
 
       const candidate = this.buffer.slice(0, boundaryIndex).trim()
+      if (this.hasUnclosedTTSCue(candidate)) {
+        break
+      }
+
       this.buffer = this.buffer.slice(boundaryIndex)
       if (candidate) {
         await this.pushText(candidate, signal)
@@ -300,6 +307,10 @@ export class ResponseTTSProcessor implements ResponseFrameProcessor {
     if (this.buffer.trim().length >= this.maxChunkChars) {
       const splitIndex = this.findForcedBoundaryIndex(this.buffer)
       const candidate = this.buffer.slice(0, splitIndex).trim()
+      if (this.hasUnclosedTTSCue(candidate)) {
+        return
+      }
+
       this.buffer = this.buffer.slice(splitIndex)
       if (candidate) {
         await this.pushText(candidate, signal)
@@ -370,6 +381,16 @@ export class ResponseTTSProcessor implements ResponseFrameProcessor {
     }
 
     return leadingOffset + limited.length
+  }
+
+  private hasUnclosedTTSCue(text: string): boolean {
+    const lastOpen = text.lastIndexOf('[')
+    if (lastOpen === -1) {
+      return false
+    }
+
+    const lastClose = text.lastIndexOf(']')
+    return lastClose < lastOpen
   }
 }
 
@@ -508,6 +529,7 @@ export interface LLMChatStreamService {
       signal?: AbortSignal
       preserveUserInputOnAbort?: boolean
       getInterruptedAssistantText?: () => string | undefined
+      ttsEmotionProfile?: TTSEmotionProfile
       onPhaseStart?: (phase: 'reply' | 'task_result') => Promise<void> | void
       onDisplayChunk?: (
         phase: 'reply' | 'task_result',
@@ -527,6 +549,7 @@ export interface LLMResponseProcessorOptions {
   signal?: AbortSignal
   preserveUserInputOnAbort?: boolean
   getInterruptedAssistantText?: () => string | undefined
+  ttsEmotionProfile?: TTSEmotionProfile
   queueFrame?: (frame: ResponseFrame) => Promise<void> | void
   waitForIdle?: () => Promise<void>
   onComplete?: (result: { text: string; error?: Error }) => void
@@ -579,6 +602,7 @@ export class LLMResponseProcessor implements ResponseFrameProcessor {
         signal: this.options.signal,
         preserveUserInputOnAbort: this.options.preserveUserInputOnAbort,
         getInterruptedAssistantText: this.options.getInterruptedAssistantText,
+        ttsEmotionProfile: this.options.ttsEmotionProfile,
         onPhaseStart: async (phase) => {
           await this.options.bridge.onPhaseStart(phase)
         },
