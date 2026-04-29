@@ -6,6 +6,11 @@ import { DialogueOrchestrator } from './dialogue/index.js'
 import { ContextManager } from './context/index.js'
 import { createLLMProvider, type LLMProvider } from '@her-text/core'
 import { createDefaultTools } from './tools/index.js'
+import type { PluginRuntimeContext, SDKPlugin, TextTransformTarget } from './plugins/index.js'
+
+export interface HerTextSDKInitializeOptions {
+  plugins?: SDKPlugin[]
+}
 
 /**
  * Her-Text SDK - 核心 API
@@ -24,7 +29,7 @@ export class HerTextSDK {
   private dialogue: DialogueOrchestrator
   private llm: LLMProvider
 
-  private constructor(config: SDKConfig) {
+  private constructor(config: SDKConfig, options: HerTextSDKInitializeOptions = {}) {
     this.llm = createLLMProvider(config.llm)
 
     this.memory = new MemoryEngine(config.memory, this.llm)
@@ -37,12 +42,17 @@ export class HerTextSDK {
       this.memory,
       this.personality,
       this.agent,
-      config.memory.storageDir
+      config.memory.storageDir,
+      undefined,
+      options.plugins ?? []
     )
   }
 
-  static async initialize(config: SDKConfig): Promise<HerTextSDK> {
-    const sdk = new HerTextSDK(config)
+  static async initialize(
+    config: SDKConfig,
+    options: HerTextSDKInitializeOptions = {}
+  ): Promise<HerTextSDK> {
+    const sdk = new HerTextSDK(config, options)
     await sdk.memory.initialize()
     await sdk.dialogue.initialize()
     return sdk
@@ -87,6 +97,14 @@ export class HerTextSDK {
     return this.dialogue.getStats()
   }
 
+  transformText(
+    target: TextTransformTarget,
+    text: string,
+    runtime?: PluginRuntimeContext
+  ): string {
+    return this.dialogue.transformText(target, text, runtime)
+  }
+
   /**
    * 清空对话历史
    */
@@ -122,3 +140,4 @@ export * from './audio/index.js'
 export * from './session/session.js'
 export * from './vad/index.js'
 export * from './turn/index.js'
+export * from './plugins/index.js'

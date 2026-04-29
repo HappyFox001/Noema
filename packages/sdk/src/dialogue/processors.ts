@@ -8,7 +8,6 @@ import { PromptBuilder } from '../prompt/index.js'
 import { PROMPTS } from '../prompts.js'
 import type { TaskSession } from '../session/session.js'
 import type { StreamOptions } from './index.js'
-import type { TTSEmotionProfile } from './tts-emotion.js'
 
 export interface ParsedEmotionalResponse {
   reply: string
@@ -64,7 +63,7 @@ export interface LLMProcessorRunOptions {
   additionalUserMessage?: string
   currentContext: ResponseItem[]
   baseInstructions: string
-  ttsEmotionProfile?: TTSEmotionProfile
+  pluginPromptAdditions?: string[]
 }
 
 export interface LLMProcessorRunResult {
@@ -86,7 +85,7 @@ export class LLMProcessor {
       additionalUserMessage,
       currentContext,
       baseInstructions,
-      ttsEmotionProfile,
+      pluginPromptAdditions,
     } = options
 
     const { system, messages } = PromptBuilder.build(
@@ -99,7 +98,7 @@ export class LLMProcessor {
         },
         userProfile: turnContext.memoryContext.userProfile,
         summaries: turnContext.memoryContext.summaries,
-        ttsEmotionProfile,
+        pluginPromptAdditions,
       }
     )
 

@@ -8,7 +8,7 @@
 import { FramePipeline, type Frame, type FrameProcessor } from './frame-pipeline.js'
 import type { TTSProvider } from './providers.js'
 import type { InterruptionReason } from '../turn/types.js'
-import type { TTSEmotionProfile } from '../dialogue/tts-emotion.js'
+import type { PluginRuntimeContext } from '../plugins/index.js'
 
 export type ResponseFrame = Frame & (
   | { type: 'phase_start'; phase: 'reply' | 'task_result' }
@@ -165,6 +165,7 @@ export interface ResponseTTSProcessorOptions {
   isEnabled: () => boolean
   getService: () => ResponseTTSService | null
   sanitizeText?: (text: string) => string
+  transformTTSInput?: (text: string) => string
   toDisplayText?: (ttsText: string) => string
   onFirstText?: () => void
   onText?: (ttsText: string, displayText: string) => void
@@ -243,7 +244,8 @@ export class ResponseTTSProcessor implements ResponseFrameProcessor {
     }
 
     const sanitizedText = this.options.sanitizeText?.(text) ?? text.trim()
-    if (!sanitizedText) {
+    const ttsText = this.options.transformTTSInput?.(sanitizedText) ?? sanitizedText
+    if (!ttsText) {
       return
     }
 
@@ -253,9 +255,9 @@ export class ResponseTTSProcessor implements ResponseFrameProcessor {
         this.options.onFirstText?.()
       }
 
-      const displayText = this.options.toDisplayText?.(sanitizedText) ?? sanitizedText
-      this.options.onText?.(sanitizedText, displayText)
-      await service.pushText(sanitizedText)
+      const displayText = this.options.toDisplayText?.(ttsText) ?? ttsText
+      this.options.onText?.(ttsText, displayText)
+      await service.pushText(ttsText)
     } catch (error: any) {
       this.options.log?.(`[TTS] Failed to push text frame: ${error.message}`)
       this.options.onError?.(error)
@@ -529,7 +531,7 @@ export interface LLMChatStreamService {
       signal?: AbortSignal
       preserveUserInputOnAbort?: boolean
       getInterruptedAssistantText?: () => string | undefined
-      ttsEmotionProfile?: TTSEmotionProfile
+      pluginContext?: PluginRuntimeContext
       onPhaseStart?: (phase: 'reply' | 'task_result') => Promise<void> | void
       onDisplayChunk?: (
         phase: 'reply' | 'task_result',
@@ -549,7 +551,7 @@ export interface LLMResponseProcessorOptions {
   signal?: AbortSignal
   preserveUserInputOnAbort?: boolean
   getInterruptedAssistantText?: () => string | undefined
-  ttsEmotionProfile?: TTSEmotionProfile
+  pluginContext?: PluginRuntimeContext
   queueFrame?: (frame: ResponseFrame) => Promise<void> | void
   waitForIdle?: () => Promise<void>
   onComplete?: (result: { text: string; error?: Error }) => void
@@ -602,7 +604,7 @@ export class LLMResponseProcessor implements ResponseFrameProcessor {
         signal: this.options.signal,
         preserveUserInputOnAbort: this.options.preserveUserInputOnAbort,
         getInterruptedAssistantText: this.options.getInterruptedAssistantText,
-        ttsEmotionProfile: this.options.ttsEmotionProfile,
+        pluginContext: this.options.pluginContext,
         onPhaseStart: async (phase) => {
           await this.options.bridge.onPhaseStart(phase)
         },

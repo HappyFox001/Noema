@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@her-text/core": "workspace:*",
+    "@her-text/plugin-fish-s2-emotion": "workspace:*",
     "@her-text/sdk": "workspace:*",
     "@her-text/types": "workspace:*",
     "chokidar": "^3.5.3",

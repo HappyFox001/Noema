@@ -1,7 +1,6 @@
 import type { Tool, Personality } from '@her-text/types'
 import type { ResponseItem } from '../context/index.js'
 import type { UserProfile, ConversationSummary } from '../memory/index.js'
-import { FISH_S2_EMOTION_CUES, type TTSEmotionProfile } from '../dialogue/tts-emotion.js'
 
 export interface BaseInstructions {
   system: string
@@ -15,7 +14,7 @@ export interface PromptBuildOptions {
   summaries?: ConversationSummary[]
   outputSchema?: any
   parallelToolCalls?: boolean
-  ttsEmotionProfile?: TTSEmotionProfile
+  pluginPromptAdditions?: string[]
 }
 
 /**
@@ -49,7 +48,7 @@ export class PromptBuilder {
       userProfile,
       summaries = [],
       parallelToolCalls = true,
-      ttsEmotionProfile
+      pluginPromptAdditions = []
     } = options
 
     // 1. 构建 XML 结构的系统提示词
@@ -59,7 +58,7 @@ export class PromptBuilder {
       userProfile,
       summaries,
       hasTools: tools.length > 0,
-      ttsEmotionProfile,
+      pluginPromptAdditions,
     })
 
     // 2. 构建消息历史（只包含对话，不包括系统提示）
@@ -86,7 +85,7 @@ export class PromptBuilder {
     userProfile?: UserProfile
     summaries?: ConversationSummary[]
     hasTools?: boolean
-    ttsEmotionProfile?: TTSEmotionProfile
+    pluginPromptAdditions?: string[]
   }): string {
     const sections: string[] = []
 
@@ -118,7 +117,7 @@ export class PromptBuilder {
 
     // ========== Part 3: Output Format ==========
     sections.push('\n<output_format>')
-    sections.push(this.buildOutputFormatXML(options.hasTools || false, options.ttsEmotionProfile))
+    sections.push(this.buildOutputFormatXML(options.hasTools || false, options.pluginPromptAdditions || []))
     sections.push('</output_format>')
 
     return sections.join('\n')
@@ -312,7 +311,7 @@ export class PromptBuilder {
    */
   private static buildOutputFormatXML(
     hasTools: boolean,
-    ttsEmotionProfile?: TTSEmotionProfile
+    pluginPromptAdditions: string[]
   ): string {
     let instructions = '请按以下 XML 结构输出你的回复：\n\n'
 
@@ -332,14 +331,11 @@ export class PromptBuilder {
     instructions += '- <reply> 是你作为 AI 伴侣的自然回复，要有情感、温暖\n'
     instructions += '- 保持回复简洁自然，使用口语化表达\n'
 
-    if (ttsEmotionProfile === 'fish-s2') {
-      instructions += '\nFish Audio S2 语音情绪规则：\n'
-      instructions += `- 当前回复会直接送入 Fish Audio S2-Pro TTS，允许在 <reply> 文本中使用这些方括号语音标记：${FISH_S2_EMOTION_CUES.map(cue => `[${cue}]`).join(' ')}\n`
-      instructions += '- 这些标记只用于控制语音情绪、语气、停顿或拟声，不是给用户看的内容\n'
-      instructions += '- 每次回复最多使用 1-2 个语音标记；非常短的回复可以不用\n'
-      instructions += '- 标记要自然地放在句首或需要变化的位置，例如：[sigh] 没事，我听着呢。[pause] 你慢慢说。\n'
-      instructions += '- 不要创造白名单以外的新标记，不要连续堆叠多个标记\n'
-      instructions += '- 不要为了情绪标记而改变原本该说的话，先保证回复自然\n'
+    if (pluginPromptAdditions.length > 0) {
+      instructions += '\n插件扩展规则：\n'
+      pluginPromptAdditions.forEach((addition, index) => {
+        instructions += `<plugin_rule id="${index + 1}">\n${addition}\n</plugin_rule>\n`
+      })
     }
 
     if (hasTools) {

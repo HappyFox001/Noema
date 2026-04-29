@@ -13,10 +13,7 @@ import {
   buildBaseInstructions,
   throwIfAborted,
 } from './processors.js'
-import {
-  stripTTSEmotionCues,
-  type TTSEmotionProfile,
-} from './tts-emotion.js'
+import { PluginManager, type PluginRuntimeContext, type SDKPlugin, type TextTransformTarget } from '../plugins/index.js'
 
 /**
  * 流式输出选项
@@ -28,8 +25,8 @@ export interface StreamOptions {
   preserveUserInputOnAbort?: boolean
   /** Abort 时写入已经对用户输出的 assistant 片段 */
   getInterruptedAssistantText?: () => string | undefined
-  /** TTS 情绪标记配置。开启后 LLM 可在 reply 中输出 provider 专用语音 cue。 */
-  ttsEmotionProfile?: TTSEmotionProfile
+  /** 当前 turn 的插件运行时上下文，例如当前 TTS provider/model。 */
+  pluginContext?: PluginRuntimeContext
   /** TTS 文本块回调（SDK 自动处理分句） */
   onTTSChunk?: (text: string) => Promise<void>
   /** 回复阶段开始 */
@@ -98,6 +95,7 @@ export class DialogueOrchestrator {
   private contextAggregator: LLMContextAggregator
   private llmProcessor: LLMProcessor
   private toolProcessor: ToolProcessor
+  private pluginManager: PluginManager
 
   private truncationPolicy: TruncationPolicy = {
     maxTokens: 8000,
@@ -112,18 +110,21 @@ export class DialogueOrchestrator {
     private personality: PersonalityEngine,
     private agent: AgentCore,
     storageDir: string,
-    _config?: DialogueOrchestratorConfig
+    _config?: DialogueOrchestratorConfig,
+    plugins: SDKPlugin[] = []
   ) {
     this.context = new ContextManager()
     this.taskSession = new TaskSession(llm, memory, personality, agent, this.context, storageDir)
     this.contextAggregator = new LLMContextAggregator(memory, personality, agent, this.context, this.truncationPolicy)
     this.llmProcessor = new LLMProcessor(llm)
     this.toolProcessor = new ToolProcessor(this.taskSession)
+    this.pluginManager = new PluginManager(plugins)
 
     this.memory.setLLM(llm)
   }
 
   async initialize(): Promise<void> {
+    await this.pluginManager.setup()
     await this.taskSession.initialize()
   }
 
@@ -138,8 +139,16 @@ export class DialogueOrchestrator {
     throwIfAborted(options?.signal)
     const contextCheckpoint = this.context.createCheckpoint()
     const turnContext = await this.contextAggregator.prepareUserTurn(input, options?.signal)
+    const pluginRuntime = options?.pluginContext ?? {}
 
     try {
+      const firstPromptAdditions = this.pluginManager.getPromptAdditions({
+        runtime: pluginRuntime,
+        phase: 'reply',
+        detectTask: true,
+        hasTools: turnContext.hasTools,
+      })
+
       // === 第一次情感层调用（检测任务） ===
       throwIfAborted(options?.signal)
       const firstResult = await this.llmProcessor.runEmotionalLayer({
@@ -149,7 +158,7 @@ export class DialogueOrchestrator {
         detectTask: true,
         currentContext: this.context.forPrompt(),
         baseInstructions: buildBaseInstructions(),
-        ttsEmotionProfile: options?.ttsEmotionProfile,
+        pluginPromptAdditions: firstPromptAdditions,
       })
 
       throwIfAborted(options?.signal)
@@ -165,7 +174,7 @@ export class DialogueOrchestrator {
       await options?.onPhaseEnd?.('reply', firstResult.reply)
       throwIfAborted(options?.signal)
 
-      let combinedReply = stripTTSEmotionCues(firstResult.reply, options?.ttsEmotionProfile)
+      let combinedReply = this.transformText('memory', firstResult.reply, pluginRuntime)
 
       // === 如果有任务，执行任务 ===
       if (firstResult.hasTask && firstResult.taskDescription && turnContext.hasTools) {
@@ -194,6 +203,13 @@ export class DialogueOrchestrator {
         console.log(taskResult.contextResult)
         console.log('==========================================\n')
 
+        const secondPromptAdditions = this.pluginManager.getPromptAdditions({
+          runtime: pluginRuntime,
+          phase: 'task_result',
+          detectTask: false,
+          hasTools: turnContext.hasTools,
+        })
+
         // === 第二次情感层调用（不检测任务，反馈结果） ===
         const secondResult = await this.llmProcessor.runEmotionalLayer({
           turnContext,
@@ -203,7 +219,7 @@ export class DialogueOrchestrator {
           additionalUserMessage: PROMPTS.dialogue.taskResultFeedback,
           currentContext: this.context.forPrompt(),
           baseInstructions: buildBaseInstructions(),
-          ttsEmotionProfile: options?.ttsEmotionProfile,
+          pluginPromptAdditions: secondPromptAdditions,
         })
 
         throwIfAborted(options?.signal)
@@ -220,8 +236,8 @@ export class DialogueOrchestrator {
         throwIfAborted(options?.signal)
 
         combinedReply = [
-          stripTTSEmotionCues(firstResult.reply, options?.ttsEmotionProfile),
-          stripTTSEmotionCues(secondResult.reply, options?.ttsEmotionProfile),
+          this.transformText('memory', firstResult.reply, pluginRuntime),
+          this.transformText('memory', secondResult.reply, pluginRuntime),
         ].filter(Boolean).join('\n\n')
       }
 
@@ -250,7 +266,7 @@ export class DialogueOrchestrator {
       ) {
         this.context.restoreCheckpoint(contextCheckpoint)
         if (options?.preserveUserInputOnAbort) {
-          this.recordInterruptedTurn(input, options)
+          this.recordInterruptedTurn(input, options, pluginRuntime)
         }
         return
       }
@@ -259,16 +275,32 @@ export class DialogueOrchestrator {
     }
   }
 
-  private recordInterruptedTurn(input: UserInput, options: StreamOptions): void {
+  transformText(
+    target: TextTransformTarget,
+    text: string,
+    runtime: PluginRuntimeContext = {}
+  ): string {
+    return this.pluginManager.transformText(text, {
+      runtime,
+      target,
+    })
+  }
+
+  private recordInterruptedTurn(
+    input: UserInput,
+    options: StreamOptions,
+    pluginRuntime: PluginRuntimeContext
+  ): void {
     const items: ResponseItem[] = [{
       role: 'user',
       content: input.text,
       timestamp: input.timestamp,
     }]
 
-    const assistantText = stripTTSEmotionCues(
+    const assistantText = this.transformText(
+      'interrupted_assistant',
       options.getInterruptedAssistantText?.()?.trim() ?? '',
-      options.ttsEmotionProfile
+      pluginRuntime
     )
     if (assistantText) {
       items.push({
@@ -333,6 +365,5 @@ export class DialogueOrchestrator {
 }
 
 export * from '../context/index.js'
-export * from './tts-emotion.js'
 export * from '../prompt/index.js'
 export * from './processors.js'

@@ -74,9 +74,9 @@ import {
   type ResponseFrame,
   ResponseDisplayProcessor,
   ResponseTTSProcessor,
-  stripTTSEmotionCues,
-  type TTSEmotionProfile,
+  type PluginRuntimeContext,
 } from '@her-text/sdk'
+import { createFishS2EmotionPlugin } from '@her-text/plugin-fish-s2-emotion'
 import { initializeSileroVAD, isSileroVADAvailable } from './silero-vad-helper.js'
 import { initializeSmartTurn, isSmartTurnAvailable } from './smart-turn-helper.js'
 import {
@@ -1400,18 +1400,23 @@ function sanitizeTextForSpeech(text: string): string {
     .trim()
 }
 
-function getTTSEmotionProfile(enabled: boolean): TTSEmotionProfile | undefined {
+function getPluginRuntimeContext(enabled: boolean): PluginRuntimeContext {
   if (!enabled) {
-    return undefined
+    return {}
   }
 
   const ttsConfig = getActiveTTSConfig()
   if (ttsConfig?.provider !== 'fish') {
-    return undefined
+    return {}
   }
 
-  const modelName = (ttsConfig.modelName || 's2-pro').toLowerCase()
-  return modelName.startsWith('s2') ? 'fish-s2' : undefined
+  return {
+    voiceOutputEnabled: true,
+    tts: {
+      provider: 'fish-audio',
+      model: ttsConfig.modelName || 's2-pro',
+    },
+  }
 }
 
 // ========== 播放完成同步机制 ==========
@@ -1888,7 +1893,11 @@ async function initializeSDK(): Promise<void> {
   // 设置激活的 LLM 配置
   setActiveLLMConfig(getActiveLLMConfig())
   const sdkConfig = await buildSDKConfig()
-  sdkInstance = await HerTextSDK.initialize(sdkConfig)
+  sdkInstance = await HerTextSDK.initialize(sdkConfig, {
+    plugins: [
+      createFishS2EmotionPlugin(),
+    ],
+  })
   console.log('[SDK] Initialized successfully')
 }
 
@@ -2027,6 +2036,7 @@ async function runConversationTurn(
     if (!sdkInstance) {
       throw new Error('SDK not initialized')
     }
+    const sdk = sdkInstance
 
     if (!text.trim()) {
       return { success: true, response: '', ttsEnabled: false }
@@ -2064,7 +2074,7 @@ async function runConversationTurn(
     let isFirstTTSChunk = true
 
     let shouldUseTTS = enableTTS && appSettings.voiceOutputEnabled && Boolean(ttsService) && ttsAvailable
-    const ttsEmotionProfile = getTTSEmotionProfile(shouldUseTTS)
+    const pluginContext = getPluginRuntimeContext(shouldUseTTS)
 
     let resolveLLMCompletion: (value: string) => void = () => undefined
     let rejectLLMCompletion: (error: Error) => void = () => undefined
@@ -2091,7 +2101,7 @@ async function runConversationTurn(
       signal: turnAbortSignal,
       preserveUserInputOnAbort: source === 'voice',
       getInterruptedAssistantText: () => interruptedTTSTextChunks.join(''),
-      ttsEmotionProfile,
+      pluginContext,
       queueFrame: (frame) => {
         void responseFramePipeline?.queueFrame(frame)
       },
@@ -2101,7 +2111,7 @@ async function runConversationTurn(
           rejectLLMCompletion(result.error)
           return
         }
-        resolveLLMCompletion(stripTTSEmotionCues(result.text, ttsEmotionProfile))
+        resolveLLMCompletion(sdk.transformText('display', result.text, pluginContext))
       },
       log: (message) => console.log(message),
     })
@@ -2113,7 +2123,8 @@ async function runConversationTurn(
         isEnabled: () => shouldUseTTS && ttsAvailable,
         getService: () => ttsService,
         sanitizeText: sanitizeTextForSpeech,
-        toDisplayText: (text) => stripTTSEmotionCues(text, ttsEmotionProfile),
+        transformTTSInput: (text) => sdk.transformText('tts_input', text, pluginContext),
+        toDisplayText: (text) => sdk.transformText('display', text, pluginContext),
         onFirstText: () => {
           if (isFirstTTSChunk) {
             isFirstTTSChunk = false

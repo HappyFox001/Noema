@@ -20,6 +20,9 @@ importers:
       '@her-text/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@her-text/plugin-fish-s2-emotion':
+        specifier: workspace:*
+        version: link:../../plugins/fish-s2-emotion
       '@her-text/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
@@ -127,6 +130,16 @@ importers:
         version: 5.9.3
 
   packages/types:
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+
+  plugins/fish-s2-emotion:
+    dependencies:
+      '@her-text/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
     devDependencies:
       typescript:
         specifier: ^5.4.0
