@@ -895,15 +895,21 @@ function clearTextDisplay() {
 
 let currentExpressionPriority = 0
 let expressionClearTimer: number | undefined
+let expressionRevealTimer: number | undefined
+let expressionShownAt = 0
 
 function clearExpression(): void {
   const layer = document.getElementById('expression-layer')!
   const image = document.getElementById('expression-image') as HTMLImageElement
-  layer.classList.remove('visible')
+  layer.classList.remove('visible', 'bubbles-visible')
   currentExpressionPriority = 0
 
   if (expressionClearTimer !== undefined) {
     window.clearTimeout(expressionClearTimer)
+  }
+  if (expressionRevealTimer !== undefined) {
+    window.clearTimeout(expressionRevealTimer)
+    expressionRevealTimer = undefined
   }
 
   expressionClearTimer = window.setTimeout(() => {
@@ -929,7 +935,25 @@ function showExpression(frame: Extract<ConversationFrame, { type: 'expression.sh
 
   currentExpressionPriority = priority
   image.src = frame.src
-  layer.classList.add('visible')
+  expressionShownAt = performance.now()
+  layer.classList.remove('visible', 'bubbles-visible')
+  layer.classList.add('bubbles-visible')
+  expressionRevealTimer = window.setTimeout(() => {
+    layer.classList.add('visible')
+    expressionRevealTimer = undefined
+  }, 180)
+}
+
+function clearExpressionAfterMinimum(): void {
+  const elapsed = performance.now() - expressionShownAt
+  const remaining = Math.max(0, 4000 - elapsed)
+  if (expressionClearTimer !== undefined) {
+    window.clearTimeout(expressionClearTimer)
+  }
+
+  expressionClearTimer = window.setTimeout(() => {
+    clearExpression()
+  }, remaining)
 }
 
 function handleConversationFrame(frame: ConversationFrame) {
@@ -960,7 +984,7 @@ function handleConversationFrame(frame: ConversationFrame) {
       if (frame.phase === 'reply' || frame.phase === 'task_result') {
         setStatus(getReadyStatus())
         setOrbMode('idle')
-        clearExpression()
+        clearExpressionAfterMinimum()
       }
       break
     case 'control.task_start':
