@@ -20,6 +20,10 @@ import {
 export interface StreamOptions {
   /** 取消当前流式回复，用于语音打断 */
   signal?: AbortSignal
+  /** Abort 时是否保留本轮用户输入到上下文 */
+  preserveUserInputOnAbort?: boolean
+  /** Abort 时写入已经对用户输出的 assistant 片段 */
+  getInterruptedAssistantText?: () => string | undefined
   /** TTS 文本块回调（SDK 自动处理分句） */
   onTTSChunk?: (text: string) => Promise<void>
   /** 回复阶段开始 */
@@ -152,6 +156,7 @@ export class DialogueOrchestrator {
 
       throwIfAborted(options?.signal)
       await options?.onPhaseEnd?.('reply', firstResult.reply)
+      throwIfAborted(options?.signal)
 
       let combinedReply = firstResult.reply
 
@@ -168,6 +173,7 @@ export class DialogueOrchestrator {
           summary: taskResult.summary,
           ...(taskResult.error ? { error: taskResult.error } : {})
         })
+        throwIfAborted(options?.signal)
 
         // 将任务执行结果记录到上下文（作为精简的 tool result）
         this.context.recordItems([{
@@ -203,6 +209,7 @@ export class DialogueOrchestrator {
 
         throwIfAborted(options?.signal)
         await options?.onPhaseEnd?.('task_result', secondResult.reply)
+        throwIfAborted(options?.signal)
 
         combinedReply = firstResult.reply + '\n\n' + secondResult.reply
       }
@@ -231,11 +238,33 @@ export class DialogueOrchestrator {
         (error instanceof Error && error.name === 'APIUserAbortError')
       ) {
         this.context.restoreCheckpoint(contextCheckpoint)
+        if (options?.preserveUserInputOnAbort) {
+          this.recordInterruptedTurn(input, options)
+        }
         return
       }
       console.error('Streaming failed:', error)
       yield '抱歉，出现了问题...'
     }
+  }
+
+  private recordInterruptedTurn(input: UserInput, options: StreamOptions): void {
+    const items: ResponseItem[] = [{
+      role: 'user',
+      content: input.text,
+      timestamp: input.timestamp,
+    }]
+
+    const assistantText = options.getInterruptedAssistantText?.()?.trim()
+    if (assistantText) {
+      items.push({
+        role: 'assistant',
+        content: assistantText,
+        timestamp: Date.now(),
+      })
+    }
+
+    this.context.recordItems(items, this.truncationPolicy)
   }
 
 

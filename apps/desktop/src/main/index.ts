@@ -1340,14 +1340,7 @@ async function cancelCurrentTurn(
     currentTurnAbortController.abort()
     currentTurnAbortController = null
     voiceGraphPipeline.broadcastInterruption()
-    void currentResponseFramePipeline?.queueFrame({
-      type: 'response_interruption',
-      kind: 'system',
-      reason,
-      timestamp: Date.now(),
-    })
-    currentResponseFramePipeline?.stop()
-    currentResponseFramePipeline = null
+    currentResponseFramePipeline?.interrupt()
     cancelledExistingTurn = true
   }
 
@@ -2044,6 +2037,7 @@ async function runConversationTurn(
     )
     displayController.reset()
     currentTTSChunkSequence = 0
+    const interruptedTTSTextChunks: string[] = []
 
     const responseLaneName = `response:${turnId}`
     responseFramePipeline = voiceGraphPipeline.createResponseLane(responseLaneName)
@@ -2078,6 +2072,8 @@ async function runConversationTurn(
       service: sdkInstance,
       bridge: llmStreamBridge,
       signal: turnAbortSignal,
+      preserveUserInputOnAbort: source === 'voice',
+      getInterruptedAssistantText: () => interruptedTTSTextChunks.join(''),
       queueFrame: (frame) => {
         void responseFramePipeline?.queueFrame(frame)
       },
@@ -2107,6 +2103,7 @@ async function runConversationTurn(
         },
         onText: (textFrame) => {
           currentTTSChunkSequence += 1
+          interruptedTTSTextChunks.push(textFrame)
           console.log(`[Main] TTS text frame #${turnId}:${currentTTSChunkSequence}, pushing:`, JSON.stringify(textFrame))
           displayController.pushTTSChunkText(textFrame)
         },

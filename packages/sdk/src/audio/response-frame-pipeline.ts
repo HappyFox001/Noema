@@ -506,6 +506,8 @@ export interface LLMChatStreamService {
     input: { text: string; timestamp: number },
     options: {
       signal?: AbortSignal
+      preserveUserInputOnAbort?: boolean
+      getInterruptedAssistantText?: () => string | undefined
       onPhaseStart?: (phase: 'reply' | 'task_result') => Promise<void> | void
       onDisplayChunk?: (
         phase: 'reply' | 'task_result',
@@ -523,6 +525,8 @@ export interface LLMResponseProcessorOptions {
   service: LLMChatStreamService
   bridge: LLMStreamBridgeProcessor
   signal?: AbortSignal
+  preserveUserInputOnAbort?: boolean
+  getInterruptedAssistantText?: () => string | undefined
   queueFrame?: (frame: ResponseFrame) => Promise<void> | void
   waitForIdle?: () => Promise<void>
   onComplete?: (result: { text: string; error?: Error }) => void
@@ -573,6 +577,8 @@ export class LLMResponseProcessor implements ResponseFrameProcessor {
       },
       {
         signal: this.options.signal,
+        preserveUserInputOnAbort: this.options.preserveUserInputOnAbort,
+        getInterruptedAssistantText: this.options.getInterruptedAssistantText,
         onPhaseStart: async (phase) => {
           await this.options.bridge.onPhaseStart(phase)
         },
