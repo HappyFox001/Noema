@@ -4,10 +4,14 @@ import { fileURLToPath, pathToFileURL } from 'url'
 import { dirname, join } from 'path'
 import { createRequire } from 'module'
 import { existsSync } from 'fs'
+import { stat } from 'fs/promises'
+import { execFile } from 'child_process'
+import { promisify } from 'util'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 const require = createRequire(import.meta.url)
+const execFileAsync = promisify(execFile)
 
 // 尝试多个可能的 .env 文件位置
 const possibleEnvPaths = [
@@ -97,6 +101,31 @@ const DEV_SERVER_URL = 'http://127.0.0.1:5173'
 type InterruptionReason = 'vad_start' | 'transcript_start' | 'manual' | 'provider_switch'
 
 type ConversationPhase = 'reply' | 'task' | 'task_result'
+
+type LocalModelStatus = {
+  id: 'silero-vad' | 'smart-turn'
+  name: string
+  filename: string
+  purpose: string
+  exists: boolean
+  sizeBytes?: number
+  path: string
+}
+
+const LOCAL_MODEL_DEFINITIONS: Array<Omit<LocalModelStatus, 'exists' | 'sizeBytes' | 'path'>> = [
+  {
+    id: 'silero-vad',
+    name: 'Silero VAD',
+    filename: 'silero_vad.onnx',
+    purpose: '本地语音活动检测',
+  },
+  {
+    id: 'smart-turn',
+    name: 'Smart Turn v3.2',
+    filename: 'smart-turn-v3.2-cpu.onnx',
+    purpose: '本地智能话音结束判断',
+  },
+]
 
 type ConversationFrame =
   | { type: 'system.reset' }
@@ -1461,6 +1490,73 @@ function resolveRuntimePluginsDir(): string {
   return candidates[0]
 }
 
+function resolveProjectModelsDir(): string {
+  return join(__dirname, '../../../models')
+}
+
+function resolveDownloadModelsScript(): string {
+  const candidates = [
+    join(__dirname, '../../../scripts/download-models.sh'),
+    join(__dirname, '../../../../scripts/download-models.sh'),
+    join(process.cwd(), 'scripts/download-models.sh'),
+    join(process.cwd(), '../../scripts/download-models.sh'),
+  ]
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      return candidate
+    }
+  }
+
+  throw new Error(`download-models.sh not found. Searched paths:\n${candidates.join('\n')}`)
+}
+
+async function getLocalModelStatuses(): Promise<LocalModelStatus[]> {
+  const modelsDir = resolveProjectModelsDir()
+
+  return Promise.all(LOCAL_MODEL_DEFINITIONS.map(async (model) => {
+    const modelPath = join(modelsDir, model.filename)
+    try {
+      const file = await stat(modelPath)
+      return {
+        ...model,
+        exists: file.isFile(),
+        sizeBytes: file.size,
+        path: modelPath,
+      }
+    } catch {
+      return {
+        ...model,
+        exists: false,
+        path: modelPath,
+      }
+    }
+  }))
+}
+
+async function downloadMissingLocalModels(): Promise<LocalModelStatus[]> {
+  const before = await getLocalModelStatuses()
+  if (before.every((model) => model.exists)) {
+    return before
+  }
+
+  const scriptPath = resolveDownloadModelsScript()
+  console.log('[Models] Downloading missing local models with:', scriptPath)
+  await execFileAsync('/bin/bash', [scriptPath], {
+    cwd: join(dirname(scriptPath), '..'),
+    env: { ...process.env },
+    timeout: 10 * 60 * 1000,
+    maxBuffer: 1024 * 1024,
+  })
+
+  sileroVADProvider = null
+  sileroVADInitPromise = null
+  smartTurnAnalyzer = null
+  smartTurnInitPromise = null
+
+  return getLocalModelStatuses()
+}
+
 // ========== 播放完成同步机制 ==========
 let playbackRequestIdCounter = 0
 const playbackResolvers = new Map<number, () => void>()
@@ -2679,6 +2775,28 @@ ipcMain.handle('settings:resetSystemFromEnv', async () => {
     return { success: true, settings: appSettings }
   } catch (error: any) {
     return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('models:localStatus', async () => {
+  try {
+    return {
+      success: true,
+      models: await getLocalModelStatuses(),
+    }
+  } catch (error: any) {
+    return { success: false, error: error.message, models: [] }
+  }
+})
+
+ipcMain.handle('models:downloadMissing', async () => {
+  try {
+    return {
+      success: true,
+      models: await downloadMissingLocalModels(),
+    }
+  } catch (error: any) {
+    return { success: false, error: error.message, models: [] }
   }
 })
 

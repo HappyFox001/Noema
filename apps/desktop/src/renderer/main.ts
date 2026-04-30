@@ -682,6 +682,16 @@ type SystemConfig = {
   activeASRId: string
 }
 
+type LocalModelStatus = {
+  id: 'silero-vad' | 'smart-turn'
+  name: string
+  filename: string
+  purpose: string
+  exists: boolean
+  sizeBytes?: number
+  path: string
+}
+
 type UISettings = {
   voiceInputEnabled: boolean
   voiceOutputEnabled: boolean
@@ -2830,9 +2840,11 @@ const proxyInput = document.getElementById('proxy-input') as HTMLInputElement
 const llmModelsList = document.getElementById('llm-models-list')!
 const ttsModelsList = document.getElementById('tts-models-list')!
 const asrModelsList = document.getElementById('asr-models-list')!
+const localModelsList = document.getElementById('local-models-list')!
 const addLLMBtn = document.getElementById('add-llm-btn') as HTMLButtonElement
 const addTTSBtn = document.getElementById('add-tts-btn') as HTMLButtonElement
 const addASRBtn = document.getElementById('add-asr-btn') as HTMLButtonElement
+const downloadLocalModelsBtn = document.getElementById('download-local-models-btn') as HTMLButtonElement
 const resetSystemBtn = document.getElementById('reset-system-btn') as HTMLButtonElement
 
 let currentSystemConfig: SystemConfig | null = null
@@ -2845,6 +2857,7 @@ async function loadSystemConfig(): Promise<void> {
   const settings = await window.electronAPI.getSettings()
   currentSystemConfig = settings.system
   renderSystemConfig()
+  void loadLocalModelStatus()
 }
 
 function renderSystemConfig(): void {
@@ -2855,6 +2868,71 @@ function renderSystemConfig(): void {
   renderLLMModels()
   renderTTSModels()
   renderASRModels()
+}
+
+async function loadLocalModelStatus(): Promise<void> {
+  localModelsList.innerHTML = '<div class="profile-loading"><span class="loading-spinner"></span>检查中...</div>'
+  downloadLocalModelsBtn.disabled = true
+
+  try {
+    const result = await window.electronAPI.getLocalModelStatus()
+    if (!result.success) {
+      throw new Error(result.error || '本地模型状态返回失败')
+    }
+    renderLocalModels(result.models)
+  } catch (error: any) {
+    localModelsList.innerHTML = `<div class="profile-error">检查失败: ${escapeHtml(error.message ?? String(error))}</div>`
+    downloadLocalModelsBtn.disabled = false
+  }
+}
+
+function renderLocalModels(models: LocalModelStatus[]): void {
+  const missingCount = models.filter(model => !model.exists).length
+  downloadLocalModelsBtn.disabled = missingCount === 0
+  downloadLocalModelsBtn.textContent = missingCount > 0 ? `下载缺失模型 (${missingCount})` : '模型已就绪'
+
+  localModelsList.innerHTML = models.map(model => `
+    <div class="config-model-card local-model-card ${model.exists ? 'active' : 'missing'}">
+      <div class="config-model-header">
+        <div class="config-model-name local-model-name">
+          <span>${escapeHtml(model.name)}</span>
+          <span class="config-model-active-badge ${model.exists ? '' : 'missing'}">
+            ${model.exists ? '已安装' : '缺失'}
+          </span>
+        </div>
+      </div>
+      <div class="config-model-fields">
+        <div class="config-field">
+          <span class="config-field-label">用途</span>
+          <span class="config-field-static">${escapeHtml(model.purpose)}</span>
+        </div>
+        <div class="config-field">
+          <span class="config-field-label">文件</span>
+          <span class="config-field-static">${escapeHtml(model.filename)}</span>
+        </div>
+        <div class="config-field">
+          <span class="config-field-label">大小</span>
+          <span class="config-field-static">${model.exists ? formatFileSize(model.sizeBytes ?? 0) : '-'}</span>
+        </div>
+      </div>
+    </div>
+  `).join('')
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes <= 0) {
+    return '0 B'
+  }
+
+  const units = ['B', 'KB', 'MB', 'GB']
+  let value = bytes
+  let unitIndex = 0
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024
+    unitIndex++
+  }
+
+  return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`
 }
 
 function renderLLMModels(): void {
@@ -3205,6 +3283,26 @@ proxyInput.addEventListener('change', async () => {
 addLLMBtn.addEventListener('click', () => void addLLMModel())
 addTTSBtn.addEventListener('click', () => void addTTSModel())
 addASRBtn.addEventListener('click', () => void addASRModel())
+
+downloadLocalModelsBtn.addEventListener('click', async () => {
+  downloadLocalModelsBtn.disabled = true
+  downloadLocalModelsBtn.textContent = '下载中...'
+  localModelsList.querySelectorAll('.local-model-card.missing').forEach(card => {
+    card.classList.add('downloading')
+  })
+
+  try {
+    const result = await window.electronAPI.downloadMissingLocalModels()
+    if (!result.success) {
+      throw new Error(result.error || '模型下载失败')
+    }
+    renderLocalModels(result.models)
+    setStatus('本地模型已就绪')
+  } catch (error: any) {
+    setStatus(`模型下载失败: ${error.message ?? String(error)}`)
+    await loadLocalModelStatus()
+  }
+})
 
 // Reset system config from .env
 async function resetSystemConfigFromEnv(): Promise<void> {

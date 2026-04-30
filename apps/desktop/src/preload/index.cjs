@@ -85,6 +85,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   resetSystemConfigFromEnv: () =>
     ipcRenderer.invoke('settings:resetSystemFromEnv'),
 
+  getLocalModelStatus: () =>
+    ipcRenderer.invoke('models:localStatus'),
+
+  downloadMissingLocalModels: () =>
+    ipcRenderer.invoke('models:downloadMissing'),
+
   listPlugins: () =>
     ipcRenderer.invoke('plugins:list'),
 

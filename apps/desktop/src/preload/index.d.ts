@@ -206,6 +206,32 @@ declare global {
         success: boolean
         error?: string
       }>
+      getLocalModelStatus: () => Promise<{
+        success: boolean
+        error?: string
+        models: Array<{
+          id: 'silero-vad' | 'smart-turn'
+          name: string
+          filename: string
+          purpose: string
+          exists: boolean
+          sizeBytes?: number
+          path: string
+        }>
+      }>
+      downloadMissingLocalModels: () => Promise<{
+        success: boolean
+        error?: string
+        models: Array<{
+          id: 'silero-vad' | 'smart-turn'
+          name: string
+          filename: string
+          purpose: string
+          exists: boolean
+          sizeBytes?: number
+          path: string
+        }>
+      }>
       listPlugins: () => Promise<{
         success: boolean
         error?: string

@@ -2126,6 +2126,15 @@ body:not(.settings-open) #main-view {
   background: rgba(226, 74, 144, 0.05);
 }
 
+.config-model-card.missing {
+  border-color: rgba(255, 190, 112, 0.28);
+  background: rgba(255, 190, 112, 0.045);
+}
+
+.config-model-card.downloading {
+  opacity: 0.68;
+}
+
 .config-model-header {
   display: flex;
   justify-content: space-between;
@@ -2157,6 +2166,12 @@ body:not(.settings-open) #main-view {
   border-bottom-color: rgba(255, 255, 255, 0.3);
 }
 
+.local-model-name span:first-child {
+  font-family: var(--font-soft);
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.9);
+}
+
 .config-model-active-badge {
   font-size: 10px;
   padding: 2px 8px;
@@ -2164,6 +2179,11 @@ body:not(.settings-open) #main-view {
   background: rgba(226, 74, 144, 0.2);
   color: rgba(226, 144, 180, 0.9);
   font-family: var(--font-ui);
+}
+
+.config-model-active-badge.missing {
+  background: rgba(255, 190, 112, 0.16);
+  color: rgba(255, 214, 160, 0.92);
 }
 
 .config-model-actions {
@@ -2239,6 +2259,18 @@ body:not(.settings-open) #main-view {
 .config-field-input:focus {
   border-color: rgba(226, 74, 144, 0.4);
   background: rgba(255, 255, 255, 0.05);
+}
+
+.config-field-static {
+  min-width: 0;
+  flex: 1;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.62);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .config-field-input::placeholder {
