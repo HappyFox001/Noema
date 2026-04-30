@@ -40,3 +40,5 @@ other/
 other/**
 
 *.md
+tmp/
+scripts/
