@@ -8,6 +8,7 @@ class AudioPlayer {
   private isPlaying = false
   private nextStartTime = 0
   private onChunkScheduled?: (payload: { startTime: number; duration: number }) => void
+  private onPlaybackStart?: () => void
 
   // 播放完成同步机制
   private playbackCompleteResolvers: (() => void)[] = []
@@ -132,6 +133,10 @@ class AudioPlayer {
     handler: (payload: { startTime: number; duration: number }) => void
   ): void {
     this.onChunkScheduled = handler
+  }
+
+  setPlaybackStartHandler(handler: () => void): void {
+    this.onPlaybackStart = handler
   }
 
   getCurrentTime(): number {
@@ -286,6 +291,7 @@ class AudioPlayer {
         this.nextStartTime = this.audioContext!.currentTime + 0.01
 
         console.log('[AudioPlayer] Starting playback')
+        this.onPlaybackStart?.()
       }
 
       this.playBuffer(audioBuffer)
@@ -752,15 +758,17 @@ const canvas = document.getElementById('orb-canvas') as HTMLCanvasElement
 const ctx = canvas.getContext('2d', { alpha: true })!
 
 interface OrbState {
-  mode: 'idle' | 'thinking' | 'speaking'
+  mode: 'idle' | 'listening' | 'thinking' | 'speaking' | 'interrupted'
   glow: number
   breatheRate: number
+  modeChangedAt: number
 }
 
 let orbState: OrbState = {
   mode: 'idle',
   glow: 4,
-  breatheRate: 1.2
+  breatheRate: 1.2,
+  modeChangedAt: performance.now()
 }
 let orbAnimationFrameId: number | null = null
 let orbAnimationPaused = false
@@ -779,26 +787,37 @@ function drawOrb() {
   const centerX = canvas.width / 2
   const centerY = canvas.height / 2
   const time = Date.now() / 1000
-  const breathe = Math.sin(time * orbState.breatheRate) * 1.8
-  const currentRadius = 22 + breathe
+  const elapsed = performance.now() - orbState.modeChangedAt
+  const palette = getOrbPalette(orbState.mode)
+  const breathe = Math.sin(time * orbState.breatheRate) * palette.breathe
+  const interruptedPulse = orbState.mode === 'interrupted'
+    ? Math.max(0, 1 - elapsed / 220)
+    : 0
+  const speakingPulse = orbState.mode === 'speaking'
+    ? Math.sin(time * 8.2) * 1.5 + Math.sin(time * 13.1) * 0.8
+    : 0
+  const currentRadius = 22 + breathe + speakingPulse - interruptedPulse * 3
   currentOrbRadius = currentRadius // Update for mouse detection
 
+  drawOrbAura(centerX, centerY, currentRadius, time, palette, interruptedPulse)
+
   ctx.save()
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.55)'
-  ctx.shadowBlur = 14 + orbState.glow * 0.7
+  ctx.shadowColor = palette.shadow
+  ctx.shadowBlur = 14 + orbState.glow * palette.shadowStrength
   ctx.shadowOffsetY = 3
 
   const coreGradient = ctx.createRadialGradient(
-    centerX - currentRadius * 0.38,
-    centerY - currentRadius * 0.45,
+    centerX - currentRadius * 0.48,
+    centerY - currentRadius * 0.54,
     0,
-    centerX + currentRadius * 0.18,
-    centerY + currentRadius * 0.25,
-    currentRadius * 1.15
+    centerX + currentRadius * 0.22,
+    centerY + currentRadius * 0.34,
+    currentRadius * 1.28
   )
-  coreGradient.addColorStop(0, 'rgba(88, 88, 88, 1)')
-  coreGradient.addColorStop(0.32, 'rgba(25, 25, 25, 1)')
-  coreGradient.addColorStop(0.72, 'rgba(6, 6, 6, 1)')
+  coreGradient.addColorStop(0, palette.coreTop)
+  coreGradient.addColorStop(0.26, palette.coreMid)
+  coreGradient.addColorStop(0.55, palette.coreTint)
+  coreGradient.addColorStop(0.78, palette.coreLow)
   coreGradient.addColorStop(1, 'rgba(0, 0, 0, 1)')
 
   ctx.fillStyle = coreGradient
@@ -806,6 +825,9 @@ function drawOrb() {
   ctx.arc(centerX, centerY, currentRadius, 0, Math.PI * 2)
   ctx.fill()
   ctx.restore()
+
+  drawOrbColorVeil(centerX, centerY, currentRadius, time, palette)
+  drawOrbInnerLight(centerX, centerY, currentRadius, time, palette)
 
   const highlight = ctx.createRadialGradient(
     centerX - currentRadius * 0.34,
@@ -815,8 +837,8 @@ function drawOrb() {
     centerY - currentRadius * 0.46,
     currentRadius * 0.42
   )
-  highlight.addColorStop(0, 'rgba(255, 255, 255, 0.58)')
-  highlight.addColorStop(0.42, 'rgba(255, 255, 255, 0.18)')
+  highlight.addColorStop(0, palette.highlight)
+  highlight.addColorStop(0.42, 'rgba(255, 255, 255, 0.16)')
   highlight.addColorStop(1, 'rgba(255, 255, 255, 0)')
 
   ctx.fillStyle = highlight
@@ -825,6 +847,232 @@ function drawOrb() {
   ctx.fill()
 
   orbAnimationFrameId = requestAnimationFrame(drawOrb)
+}
+
+type OrbPalette = {
+  breathe: number
+  shadow: string
+  shadowStrength: number
+  coreTop: string
+  coreMid: string
+  coreTint: string
+  coreLow: string
+  highlight: string
+  ring: string
+  ringSoft: string
+  inner: string
+  veilA: string
+  veilB: string
+}
+
+function getOrbPalette(mode: OrbState['mode']): OrbPalette {
+  switch (mode) {
+    case 'listening':
+      return {
+        breathe: 1.5,
+        shadow: 'rgba(76, 210, 190, 0.42)',
+        shadowStrength: 1.05,
+        coreTop: 'rgba(136, 186, 176, 1)',
+        coreMid: 'rgba(35, 76, 72, 1)',
+        coreTint: 'rgba(7, 36, 35, 1)',
+        coreLow: 'rgba(1, 9, 10, 1)',
+        highlight: 'rgba(225, 255, 250, 0.58)',
+        ring: 'rgba(105, 225, 205, 0.34)',
+        ringSoft: 'rgba(105, 225, 205, 0.12)',
+        inner: 'rgba(125, 235, 214, 0.24)',
+        veilA: 'rgba(83, 230, 205, 0.16)',
+        veilB: 'rgba(90, 155, 255, 0.10)',
+      }
+    case 'thinking':
+      return {
+        breathe: 1.2,
+        shadow: 'rgba(226, 74, 144, 0.38)',
+        shadowStrength: 1.15,
+        coreTop: 'rgba(156, 114, 150, 1)',
+        coreMid: 'rgba(70, 36, 63, 1)',
+        coreTint: 'rgba(35, 14, 35, 1)',
+        coreLow: 'rgba(9, 3, 12, 1)',
+        highlight: 'rgba(255, 226, 242, 0.56)',
+        ring: 'rgba(226, 74, 144, 0.28)',
+        ringSoft: 'rgba(226, 74, 144, 0.10)',
+        inner: 'rgba(255, 180, 220, 0.26)',
+        veilA: 'rgba(226, 74, 144, 0.16)',
+        veilB: 'rgba(118, 98, 255, 0.12)',
+      }
+    case 'speaking':
+      return {
+        breathe: 1.25,
+        shadow: 'rgba(255, 190, 112, 0.36)',
+        shadowStrength: 1.05,
+        coreTop: 'rgba(180, 126, 80, 1)',
+        coreMid: 'rgba(82, 49, 28, 1)',
+        coreTint: 'rgba(43, 20, 10, 1)',
+        coreLow: 'rgba(11, 5, 2, 1)',
+        highlight: 'rgba(255, 238, 212, 0.56)',
+        ring: 'rgba(255, 197, 120, 0.32)',
+        ringSoft: 'rgba(255, 197, 120, 0.12)',
+        inner: 'rgba(255, 198, 126, 0.28)',
+        veilA: 'rgba(255, 172, 91, 0.18)',
+        veilB: 'rgba(255, 95, 118, 0.10)',
+      }
+    case 'interrupted':
+      return {
+        breathe: 0.7,
+        shadow: 'rgba(255, 255, 255, 0.30)',
+        shadowStrength: 1.2,
+        coreTop: 'rgba(160, 160, 160, 1)',
+        coreMid: 'rgba(58, 58, 58, 1)',
+        coreTint: 'rgba(21, 21, 24, 1)',
+        coreLow: 'rgba(5, 5, 6, 1)',
+        highlight: 'rgba(255, 255, 255, 0.64)',
+        ring: 'rgba(255, 255, 255, 0.36)',
+        ringSoft: 'rgba(255, 255, 255, 0.12)',
+        inner: 'rgba(255, 255, 255, 0.20)',
+        veilA: 'rgba(255, 255, 255, 0.12)',
+        veilB: 'rgba(190, 210, 255, 0.08)',
+      }
+    default:
+      return {
+        breathe: 1.0,
+        shadow: 'rgba(0, 0, 0, 0.55)',
+        shadowStrength: 0.7,
+        coreTop: 'rgba(98, 98, 104, 1)',
+        coreMid: 'rgba(29, 29, 33, 1)',
+        coreTint: 'rgba(11, 12, 15, 1)',
+        coreLow: 'rgba(2, 2, 3, 1)',
+        highlight: 'rgba(255, 255, 255, 0.58)',
+        ring: 'rgba(255, 255, 255, 0.11)',
+        ringSoft: 'rgba(255, 255, 255, 0.045)',
+        inner: 'rgba(255, 255, 255, 0.08)',
+        veilA: 'rgba(130, 150, 170, 0.06)',
+        veilB: 'rgba(255, 255, 255, 0.035)',
+      }
+  }
+}
+
+function drawOrbAura(
+  centerX: number,
+  centerY: number,
+  radius: number,
+  time: number,
+  palette: OrbPalette,
+  interruptedPulse: number
+): void {
+  if (
+    orbState.mode !== 'listening' &&
+    orbState.mode !== 'speaking' &&
+    orbState.mode !== 'thinking' &&
+    orbState.mode !== 'interrupted'
+  ) {
+    return
+  }
+
+  ctx.save()
+  ctx.lineWidth = 1.1
+
+  if (orbState.mode === 'thinking') {
+    const orbit = radius + 8 + Math.sin(time * 1.3) * 1.6
+    ctx.strokeStyle = palette.ringSoft
+    ctx.beginPath()
+    ctx.arc(centerX, centerY, orbit, Math.PI * 0.18 + time * 0.5, Math.PI * 1.28 + time * 0.5)
+    ctx.stroke()
+    ctx.restore()
+    return
+  }
+
+  const pulseA = orbState.mode === 'interrupted' ? interruptedPulse : (Math.sin(time * 3.2) + 1) / 2
+  const pulseB = orbState.mode === 'interrupted' ? interruptedPulse * 0.65 : (Math.sin(time * 3.2 + Math.PI) + 1) / 2
+  const rings = [
+    { amount: pulseA, alpha: 0.55 },
+    { amount: pulseB, alpha: 0.32 },
+  ]
+
+  for (const ring of rings) {
+    const ringRadius = radius + 6 + ring.amount * 13
+    ctx.globalAlpha = ring.alpha * (1 - ring.amount * 0.65)
+    ctx.strokeStyle = palette.ring
+    ctx.beginPath()
+    ctx.arc(centerX, centerY, ringRadius, 0, Math.PI * 2)
+    ctx.stroke()
+  }
+
+  ctx.restore()
+}
+
+function drawOrbColorVeil(
+  centerX: number,
+  centerY: number,
+  radius: number,
+  time: number,
+  palette: OrbPalette
+): void {
+  const angleA = time * 0.55
+  const angleB = -time * 0.38
+  const veilA = ctx.createRadialGradient(
+    centerX + Math.cos(angleA) * radius * 0.34,
+    centerY + Math.sin(angleA * 0.8) * radius * 0.26,
+    0,
+    centerX + Math.cos(angleA) * radius * 0.34,
+    centerY + Math.sin(angleA * 0.8) * radius * 0.26,
+    radius * 1.05
+  )
+  veilA.addColorStop(0, palette.veilA)
+  veilA.addColorStop(1, 'rgba(255, 255, 255, 0)')
+
+  const veilB = ctx.createRadialGradient(
+    centerX + Math.cos(angleB) * radius * 0.28,
+    centerY + Math.sin(angleB * 0.9) * radius * 0.32,
+    0,
+    centerX + Math.cos(angleB) * radius * 0.28,
+    centerY + Math.sin(angleB * 0.9) * radius * 0.32,
+    radius * 0.92
+  )
+  veilB.addColorStop(0, palette.veilB)
+  veilB.addColorStop(1, 'rgba(255, 255, 255, 0)')
+
+  ctx.save()
+  ctx.globalCompositeOperation = 'screen'
+  ctx.beginPath()
+  ctx.arc(centerX, centerY, radius * 0.99, 0, Math.PI * 2)
+  ctx.clip()
+  ctx.fillStyle = veilA
+  ctx.fillRect(centerX - radius, centerY - radius, radius * 2, radius * 2)
+  ctx.fillStyle = veilB
+  ctx.fillRect(centerX - radius, centerY - radius, radius * 2, radius * 2)
+  ctx.restore()
+}
+
+function drawOrbInnerLight(
+  centerX: number,
+  centerY: number,
+  radius: number,
+  time: number,
+  palette: OrbPalette
+): void {
+  if (orbState.mode === 'idle') {
+    return
+  }
+
+  const angle = time * (orbState.mode === 'thinking' ? 0.9 : 1.45)
+  const offsetX = Math.cos(angle) * radius * 0.26
+  const offsetY = Math.sin(angle * 0.85) * radius * 0.18
+  const inner = ctx.createRadialGradient(
+    centerX + offsetX,
+    centerY + offsetY,
+    0,
+    centerX + offsetX,
+    centerY + offsetY,
+    radius * 0.9
+  )
+  inner.addColorStop(0, palette.inner)
+  inner.addColorStop(1, 'rgba(255, 255, 255, 0)')
+
+  ctx.save()
+  ctx.fillStyle = inner
+  ctx.beginPath()
+  ctx.arc(centerX, centerY, radius * 0.98, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.restore()
 }
 
 function startOrbAnimation(): void {
@@ -906,21 +1154,43 @@ document.addEventListener('mouseup', () => {
   }
 })
 
-function setOrbMode(mode: 'idle' | 'thinking' | 'speaking') {
+function setOrbMode(mode: OrbState['mode']) {
+  if (orbState.mode === mode) {
+    return
+  }
+
   orbState.mode = mode
+  orbState.modeChangedAt = performance.now()
   switch (mode) {
+    case 'listening':
+      orbState.glow = 8
+      orbState.breatheRate = 2.8
+      break
     case 'thinking':
       orbState.glow = 11
-      orbState.breatheRate = 2.1
+      orbState.breatheRate = 1.65
       break
     case 'speaking':
-      orbState.glow = 9
-      orbState.breatheRate = 1.45
+      orbState.glow = 10
+      orbState.breatheRate = 2.15
+      break
+    case 'interrupted':
+      orbState.glow = 13
+      orbState.breatheRate = 3.6
       break
     default:
       orbState.glow = 4
       orbState.breatheRate = 1.2
   }
+}
+
+function flashOrbInterrupted(): void {
+  setOrbMode('interrupted')
+  window.setTimeout(() => {
+    if (orbState.mode === 'interrupted') {
+      setOrbMode('listening')
+    }
+  }, 180)
 }
 
 let lastStatusText = ''
@@ -1022,7 +1292,7 @@ function handleConversationFrame(frame: ConversationFrame) {
         textRevealer.reset()
         setStatus('Sharing result...')
       }
-      setOrbMode('speaking')
+      setOrbMode('thinking')
       break
     case 'control.phase_end':
       // reply 阶段结束后，如果紧接着有任务，会收到 task_start
@@ -1079,6 +1349,9 @@ async function initialize() {
     audioPlayer.setChunkScheduledHandler(({ startTime, duration }) => {
       textRevealer.scheduleAudioWindow(startTime, duration)
     })
+    audioPlayer.setPlaybackStartHandler(() => {
+      setOrbMode('speaking')
+    })
 
     // 调用初始化（不传 config）
     const result = await window.electronAPI.initializeConversation()
@@ -1131,14 +1404,13 @@ async function initialize() {
     // 监听 TTS 事件
     window.electronAPI.onTTSConnected((contextId) => {
       console.log(`[UI] TTS connected (context #${contextId})`)
-      setOrbMode('speaking')
+      setOrbMode('thinking')
       // 重置延迟追踪
       audioPlayer.resetLatencyTracking()
     })
 
     window.electronAPI.onTTSClosed(() => {
       console.log('[UI] TTS closed')
-      setOrbMode('idle')
     })
 
     window.electronAPI.onTTSError((error) => {
@@ -1218,7 +1490,7 @@ async function initialize() {
       // 清空当前显示的文字
       clearTextDisplay()
       // 切换到监听状态
-      setOrbMode('listening')
+      flashOrbInterrupted()
     })
 
     // 新轮次开始
