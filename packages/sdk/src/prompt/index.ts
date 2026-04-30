@@ -15,6 +15,7 @@ export interface PromptBuildOptions {
   outputSchema?: any
   parallelToolCalls?: boolean
   pluginPromptAdditions?: string[]
+  separateCurrentUserInput?: boolean
 }
 
 /**
@@ -48,7 +49,8 @@ export class PromptBuilder {
       userProfile,
       summaries = [],
       parallelToolCalls = true,
-      pluginPromptAdditions = []
+      pluginPromptAdditions = [],
+      separateCurrentUserInput = true
     } = options
 
     // 1. 构建 XML 结构的系统提示词
@@ -62,7 +64,16 @@ export class PromptBuilder {
     })
 
     // 2. 构建消息历史（只包含对话，不包括系统提示）
-    const messages = this.buildMessages(history)
+    const { historyMessages, currentUserMessages } = separateCurrentUserInput
+      ? this.splitCurrentUserInput(history)
+      : { historyMessages: history, currentUserMessages: [] }
+    const messages = this.buildMessages(historyMessages)
+    if (currentUserMessages.length > 0) {
+      messages.push({
+        role: 'user',
+        content: this.formatCurrentUserInputXML(currentUserMessages),
+      })
+    }
 
     // 3. 构建工具规范
     const toolSpecs = tools.length > 0
@@ -381,6 +392,61 @@ export class PromptBuilder {
     })
 
     return messages
+  }
+
+  /**
+   * 将当前最新用户输入从历史中切出来。
+   *
+   * 规则：从末尾向前找到最后一个 assistant；其后的连续 user 消息
+   * 都属于当前输入。这样 bot_thinking 阶段被打断后形成的
+   * user/user/... 会作为同一次最新请求，而不是混在 recent history。
+   */
+  private static splitCurrentUserInput(history: ResponseItem[]): {
+    historyMessages: ResponseItem[]
+    currentUserMessages: ResponseItem[]
+  } {
+    let lastAssistantIndex = -1
+
+    for (let index = history.length - 1; index >= 0; index--) {
+      if (history[index].role === 'assistant') {
+        lastAssistantIndex = index
+        break
+      }
+    }
+
+    const currentStart = lastAssistantIndex + 1
+    const currentUserMessages = history
+      .slice(currentStart)
+      .filter((item) => item.role === 'user')
+
+    if (currentUserMessages.length === 0) {
+      return {
+        historyMessages: history,
+        currentUserMessages: [],
+      }
+    }
+
+    return {
+      historyMessages: history.slice(0, currentStart),
+      currentUserMessages,
+    }
+  }
+
+  /**
+   * 格式化当前用户输入。
+   */
+  private static formatCurrentUserInputXML(messages: ResponseItem[]): string {
+    let xml = '<current_user_input>\n'
+    xml += '<!-- 当前需要回复的最新用户输入；可能包含连续多条 user turn。 -->\n'
+
+    messages.forEach((item, index) => {
+      xml += `  <utterance id="${index + 1}">\n`
+      xml += `    <content>${this.escapeXML(item.content)}</content>\n`
+      xml += '  </utterance>\n'
+    })
+
+    xml += '</current_user_input>'
+    return xml
   }
 
   /**
