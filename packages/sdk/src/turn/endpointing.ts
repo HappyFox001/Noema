@@ -16,6 +16,7 @@ import {
   IEndpointingStrategy,
   DEFAULT_ENDPOINTING_CONFIG,
 } from './types.js'
+import { mergeFinalTranscriptText } from './transcription-text.js'
 
 /**
  * Endpointing 策略
@@ -209,16 +210,11 @@ export class EndpointingStrategy implements IEndpointingStrategy {
 
   /**
    * DashScope streaming 的 interim 是当前完整假设，不应作为最终
-   * 用户消息聚合。这里只接收 finalized transcript，并用最新 final
-   * 覆盖当前文本。
+   * 用户消息聚合。finalized transcript 可能是分段 final，也可能是
+   * 累积 final；这里做有去重的本轮文本合并。
    */
   private mergeTranscriptionText(frame: TranscriptionFrame): void {
-    const next = frame.text.trim()
-    if (!next) {
-      return
-    }
-
-    this.text = next
+    this.text = mergeFinalTranscriptText(this.text, frame.text)
   }
 
   /**

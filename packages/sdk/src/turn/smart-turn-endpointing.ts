@@ -13,6 +13,7 @@ import {
   DEFAULT_ENDPOINTING_CONFIG,
 } from './types.js'
 import { SmartTurnAnalyzer, SmartTurnResult } from './smart-turn.js'
+import { mergeFinalTranscriptText } from './transcription-text.js'
 
 /**
  * Smart Turn Endpointing 配置
@@ -232,15 +233,12 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
 
   /**
    * 对齐 Pipecat TurnAnalyzerUserTurnStopStrategy：只保存最终
-   * TranscriptionFrame 的文本，不把滑动 interim 当成用户最终输入。
+   * TranscriptionFrame，不把滑动 interim 当成用户最终输入。
+   * Qwen 这类 provider 可能在同一轮里产出多个分段 final，所以这里
+   * 合并本轮 final 文本，而不是让后一句覆盖前一句。
    */
   private mergeTranscriptionText(frame: TranscriptionFrame): void {
-    const next = frame.text.trim()
-    if (!next) {
-      return
-    }
-
-    this.text = next
+    this.text = mergeFinalTranscriptText(this.text, frame.text)
   }
 
   /**

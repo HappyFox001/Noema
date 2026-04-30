@@ -345,6 +345,19 @@ export class DialogueOrchestrator {
     }
 
     this.context.recordItems(items, this.truncationPolicy)
+
+    scheduleAsyncTask(async () => {
+      const memoryItems = items.filter(
+        (item): item is ResponseItem & { role: 'user' | 'assistant' } =>
+          item.role === 'user' || item.role === 'assistant'
+      )
+
+      await this.memory.storeMessages(memoryItems.map((item) => ({
+        role: item.role,
+        content: item.content,
+        timestamp: item.timestamp,
+      })))
+    })
   }
 
 

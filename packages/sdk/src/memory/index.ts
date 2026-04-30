@@ -102,6 +102,7 @@ export class MemoryEngine {
 
   // 异步更新队列（防止阻塞主流程）
   private updateQueue: Promise<void> = Promise.resolve()
+  private persistenceQueue: Promise<void> = Promise.resolve()
 
   // SQLite 持久化状态
   private persistenceEnabled: boolean = false
@@ -145,32 +146,61 @@ export class MemoryEngine {
     assistant: string
     timestamp: number
   }): Promise<void> {
-    // 存储到工作记忆
-    this.workingMemory.push({
-      id: generateId(),
-      role: 'user',
-      content: turn.user,
-      timestamp: turn.timestamp
-    })
+    await this.storeMessages([
+      {
+        role: 'user',
+        content: turn.user,
+        timestamp: turn.timestamp
+      },
+      {
+        role: 'assistant',
+        content: turn.assistant,
+        timestamp: turn.timestamp
+      }
+    ])
+  }
 
-    this.workingMemory.push({
-      id: generateId(),
-      role: 'assistant',
-      content: turn.assistant,
-      timestamp: turn.timestamp
-    })
+  /**
+   * 存储一组已确认进入上下文的消息。
+   *
+   * 语音打断时可能只有 user 消息，或只有已经输出的 assistant 片段。
+   * 记忆层不能强制要求 user/assistant 成对，否则 bot_thinking 阶段
+   * 被打断的输入会只存在短期上下文里，无法持久化到 SQLite。
+   */
+  async storeMessages(messages: Array<{
+    role: ConversationTurn['role']
+    content: string
+    timestamp: number
+  }>): Promise<void> {
+    const normalized = messages
+      .map((message) => ({
+        ...message,
+        content: message.content.trim()
+      }))
+      .filter((message) => message.content.length > 0)
 
-    this.turnCounter++
-
-    // 限制工作记忆大小（保留最近 50 轮）
-    if (this.workingMemory.length > 100) {  // 50 轮 = 100 条消息
-      this.workingMemory.splice(0, this.workingMemory.length - 100)
+    if (normalized.length === 0) {
+      return
     }
 
-    // 每 10 轮触发异步更新（不阻塞）
-    if (this.turnCounter % this.summaryInterval === 0) {
+    for (const message of normalized) {
+      this.workingMemory.push({
+        id: generateId(),
+        role: message.role,
+        content: message.content,
+        timestamp: message.timestamp
+      })
+    }
+
+    this.turnCounter += normalized.filter((message) => message.role === 'user').length
+    this.trimWorkingMemory()
+
+    // 每 10 个用户 turn 触发异步更新（不阻塞）
+    if (this.turnCounter > 0 && this.turnCounter % this.summaryInterval === 0) {
       this.scheduleAsyncUpdate()
     }
+
+    await this.persistToDatabase()
   }
 
   /**
@@ -248,9 +278,7 @@ export class MemoryEngine {
       console.log(`[Memory] Async update completed`)
 
       // 自动保存到数据库
-      if (this.persistenceEnabled) {
-        await this.saveToDatabase()
-      }
+      await this.persistToDatabase()
     } catch (error) {
       console.error('[Memory] Async update error:', error)
     }
@@ -262,6 +290,13 @@ export class MemoryEngine {
   private getRecentTurns(n: number): ConversationTurn[] {
     const messageCount = n * 2  // 每轮 2 条消息（user + assistant）
     return this.workingMemory.slice(-messageCount)
+  }
+
+  private trimWorkingMemory(): void {
+    // 限制工作记忆大小（保留最近 50 轮）
+    if (this.workingMemory.length > 100) {
+      this.workingMemory.splice(0, this.workingMemory.length - 100)
+    }
   }
 
   /**
@@ -442,11 +477,10 @@ ${conversationText}`
     try {
       // 等待所有异步更新完成
       await this.updateQueue
+      await this.persistenceQueue
 
       // 保存到数据库
-      if (this.persistenceEnabled) {
-        await this.saveToDatabase()
-      }
+      await this.persistToDatabase()
 
       console.log('[MemoryEngine] Shutdown complete')
     } catch (error) {
@@ -769,5 +803,18 @@ ${conversationText}`
     } catch (error) {
       console.error('[MemoryEngine] Failed to save to SQLite:', error)
     }
+  }
+
+  private async persistToDatabase(): Promise<void> {
+    if (!this.persistenceEnabled) {
+      return
+    }
+
+    const saveTask = this.persistenceQueue
+      .catch(() => undefined)
+      .then(() => this.saveToDatabase())
+
+    this.persistenceQueue = saveTask.catch(() => undefined)
+    await saveTask
   }
 }

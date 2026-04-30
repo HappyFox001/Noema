@@ -1,5 +1,6 @@
 import type { RealtimeWebSocketTransport } from './websocket-transport.js'
 import type { STTProvider, STTProviderCapabilities, STTProviderEvent } from './providers.js'
+import { mergeFinalTranscriptText } from '../turn/transcription-text.js'
 
 export interface QwenRealtimeASRConfig {
   apiKey: string
@@ -259,7 +260,10 @@ export class QwenRealtimeASR implements STTProvider {
           this.latestFallbackTranscript = null
           pending.resolve(normalizedFinalText)
         } else {
-          this.latestFinalTranscript = normalizedFinalText
+          this.latestFinalTranscript = mergeFinalTranscriptText(
+            this.latestFinalTranscript ?? '',
+            normalizedFinalText
+          )
         }
         continue
       }
