@@ -2133,13 +2133,6 @@ async function runConversationTurn(
     let shouldUseTTS = enableTTS && appSettings.voiceOutputEnabled && Boolean(ttsService) && ttsAvailable
     const pluginContext = getPluginRuntimeContext(shouldUseTTS)
 
-    let resolveLLMCompletion: (value: string) => void = () => undefined
-    let rejectLLMCompletion: (error: Error) => void = () => undefined
-    const llmCompletion = new Promise<string>((resolve, reject) => {
-      resolveLLMCompletion = resolve
-      rejectLLMCompletion = reject
-    })
-
     const llmStreamBridge = new LLMStreamBridgeProcessor({
       queueFrame: (frame) => {
         void responseFramePipeline?.queueFrame(frame)
@@ -2163,13 +2156,6 @@ async function runConversationTurn(
         void responseFramePipeline?.queueFrame(frame)
       },
       waitForIdle: () => Promise.resolve(),
-      onComplete: (result) => {
-        if (result.error) {
-          rejectLLMCompletion(result.error)
-          return
-        }
-        resolveLLMCompletion(sdk.transformText('display', result.text, pluginContext))
-      },
       onExpression: async (frame) => {
         if (isTurnCancelled(turnId)) return
         pendingExpressionFrame = frame
@@ -2180,8 +2166,9 @@ async function runConversationTurn(
       log: (message) => console.log(message),
     })
 
+    // The LLM/task runner produces response frames outside this lane. Keeping
+    // this lane consumer-only lets reply TTS continue while tools run.
     responseFramePipeline.setProcessors([
-      llmResponseProcessor,
       new ResponseTTSProcessor({
         isCancelled: () => isTurnCancelled(turnId),
         isEnabled: () => shouldUseTTS && ttsAvailable,
@@ -2229,14 +2216,11 @@ async function runConversationTurn(
 
     await streamingASRSession?.startBotThinking()
 
-    await responseFramePipeline.queueFrame({
-      type: 'user_text',
-      kind: 'data',
-      turnId,
-      text,
-      timestamp: Date.now(),
-    })
-    const fullResponse = await llmCompletion
+    const fullResponse = sdk.transformText(
+      'display',
+      await llmResponseProcessor.processUserText(text),
+      pluginContext
+    )
     await responseFramePipeline.waitForIdle()
 
     if (!isTurnCancelled(turnId)) {
