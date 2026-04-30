@@ -283,6 +283,7 @@ class AudioPlayer {
         return
       }
 
+      updateOrbAudioEnergy('output', pcm16Bytes)
       const audioBuffer = this.pcm16ToAudioBuffer(pcm16Bytes)
       console.log('[AudioPlayer] Created buffer:', audioBuffer.duration.toFixed(2), 'seconds')
 
@@ -577,6 +578,7 @@ class VoiceRecorder {
       if (!this.recording) return
       const { samples } = event.data
       if (samples) {
+        updateOrbAudioEnergy('input', samples)
         // 直接发送到 Main Process，VAD 在那边处理
         window.electronAPI.appendSpeechStream(samples)
       }
@@ -772,9 +774,67 @@ let orbState: OrbState = {
 }
 let orbAnimationFrameId: number | null = null
 let orbAnimationPaused = false
+let orbInputEnergy = 0
+let orbOutputEnergy = 0
+let orbEnergyUpdatedAt = performance.now()
 
 // Store current radius for mouse detection
 let currentOrbRadius = 22
+
+function updateOrbAudioEnergy(source: 'input' | 'output', samples: Int16Array | Uint8Array): void {
+  const next = calculatePcmEnergy(samples)
+  if (source === 'input') {
+    orbInputEnergy = Math.max(orbInputEnergy * 0.72, next)
+  } else {
+    orbOutputEnergy = Math.max(orbOutputEnergy * 0.70, next)
+  }
+  orbEnergyUpdatedAt = performance.now()
+}
+
+function calculatePcmEnergy(samples: Int16Array | Uint8Array): number {
+  const pcm = samples instanceof Int16Array
+    ? samples
+    : new Int16Array(samples.buffer, samples.byteOffset, Math.floor(samples.byteLength / 2))
+
+  if (pcm.length === 0) {
+    return 0
+  }
+
+  let sumSquares = 0
+  let peak = 0
+  const stride = Math.max(1, Math.floor(pcm.length / 2400))
+
+  for (let i = 0; i < pcm.length; i += stride) {
+    const normalized = Math.abs(pcm[i]) / 32768
+    sumSquares += normalized * normalized
+    if (normalized > peak) {
+      peak = normalized
+    }
+  }
+
+  const count = Math.ceil(pcm.length / stride)
+  const rms = Math.sqrt(sumSquares / count)
+  const energy = rms * 4.8 + peak * 0.55
+  return Math.max(0, Math.min(1, energy))
+}
+
+function getOrbAudioEnergy(mode: OrbState['mode']): number {
+  const now = performance.now()
+  const decay = Math.exp(-(now - orbEnergyUpdatedAt) / 220)
+  orbInputEnergy *= decay
+  orbOutputEnergy *= decay
+  orbEnergyUpdatedAt = now
+
+  if (mode === 'listening') {
+    return orbInputEnergy
+  }
+
+  if (mode === 'speaking') {
+    return orbOutputEnergy
+  }
+
+  return Math.max(orbInputEnergy, orbOutputEnergy) * 0.35
+}
 
 function drawOrb() {
   if (orbAnimationPaused) {
@@ -789,6 +849,7 @@ function drawOrb() {
   const time = Date.now() / 1000
   const elapsed = performance.now() - orbState.modeChangedAt
   const palette = getOrbPalette(orbState.mode)
+  const audioEnergy = getOrbAudioEnergy(orbState.mode)
   const breathe = Math.sin(time * orbState.breatheRate) * palette.breathe
   const interruptedPulse = orbState.mode === 'interrupted'
     ? Math.max(0, 1 - elapsed / 220)
@@ -796,10 +857,10 @@ function drawOrb() {
   const speakingPulse = orbState.mode === 'speaking'
     ? Math.sin(time * 8.2) * 1.5 + Math.sin(time * 13.1) * 0.8
     : 0
-  const currentRadius = 22 + breathe + speakingPulse - interruptedPulse * 3
+  const currentRadius = 22 + breathe + speakingPulse + audioEnergy * 4.5 - interruptedPulse * 3
   currentOrbRadius = currentRadius // Update for mouse detection
 
-  drawOrbAura(centerX, centerY, currentRadius, time, palette, interruptedPulse)
+  drawOrbAura(centerX, centerY, currentRadius, time, palette, interruptedPulse, audioEnergy)
 
   ctx.save()
   ctx.shadowColor = palette.shadow
@@ -828,6 +889,7 @@ function drawOrb() {
 
   drawOrbColorVeil(centerX, centerY, currentRadius, time, palette)
   drawOrbInnerLight(centerX, centerY, currentRadius, time, palette)
+  drawOrbMembrane(centerX, centerY, currentRadius, time, palette, audioEnergy)
 
   const highlight = ctx.createRadialGradient(
     centerX - currentRadius * 0.34,
@@ -956,7 +1018,8 @@ function drawOrbAura(
   radius: number,
   time: number,
   palette: OrbPalette,
-  interruptedPulse: number
+  interruptedPulse: number,
+  audioEnergy: number
 ): void {
   if (
     orbState.mode !== 'listening' &&
@@ -968,10 +1031,10 @@ function drawOrbAura(
   }
 
   ctx.save()
-  ctx.lineWidth = 1.1
+  ctx.lineWidth = 1.1 + audioEnergy * 1.1
 
   if (orbState.mode === 'thinking') {
-    const orbit = radius + 8 + Math.sin(time * 1.3) * 1.6
+    const orbit = radius + 8 + Math.sin(time * 1.3) * 1.6 + audioEnergy * 5
     ctx.strokeStyle = palette.ringSoft
     ctx.beginPath()
     ctx.arc(centerX, centerY, orbit, Math.PI * 0.18 + time * 0.5, Math.PI * 1.28 + time * 0.5)
@@ -980,16 +1043,17 @@ function drawOrbAura(
     return
   }
 
-  const pulseA = orbState.mode === 'interrupted' ? interruptedPulse : (Math.sin(time * 3.2) + 1) / 2
-  const pulseB = orbState.mode === 'interrupted' ? interruptedPulse * 0.65 : (Math.sin(time * 3.2 + Math.PI) + 1) / 2
+  const pulseSpeed = 3.2 + audioEnergy * 5
+  const pulseA = orbState.mode === 'interrupted' ? interruptedPulse : (Math.sin(time * pulseSpeed) + 1) / 2
+  const pulseB = orbState.mode === 'interrupted' ? interruptedPulse * 0.65 : (Math.sin(time * pulseSpeed + Math.PI) + 1) / 2
   const rings = [
     { amount: pulseA, alpha: 0.55 },
     { amount: pulseB, alpha: 0.32 },
   ]
 
   for (const ring of rings) {
-    const ringRadius = radius + 6 + ring.amount * 13
-    ctx.globalAlpha = ring.alpha * (1 - ring.amount * 0.65)
+    const ringRadius = radius + 6 + ring.amount * (13 + audioEnergy * 16)
+    ctx.globalAlpha = (ring.alpha + audioEnergy * 0.26) * (1 - ring.amount * 0.65)
     ctx.strokeStyle = palette.ring
     ctx.beginPath()
     ctx.arc(centerX, centerY, ringRadius, 0, Math.PI * 2)
@@ -1072,6 +1136,72 @@ function drawOrbInnerLight(
   ctx.beginPath()
   ctx.arc(centerX, centerY, radius * 0.98, 0, Math.PI * 2)
   ctx.fill()
+  ctx.restore()
+}
+
+function drawOrbMembrane(
+  centerX: number,
+  centerY: number,
+  radius: number,
+  time: number,
+  palette: OrbPalette,
+  audioEnergy: number
+): void {
+  if (audioEnergy < 0.015 && orbState.mode !== 'speaking' && orbState.mode !== 'listening') {
+    return
+  }
+
+  const points = 96
+  const baseRipple = orbState.mode === 'speaking' || orbState.mode === 'listening'
+    ? 0.7
+    : 0.25
+  const rippleAmount = baseRipple + audioEnergy * 4.8
+
+  ctx.save()
+  ctx.globalAlpha = Math.min(0.72, 0.22 + audioEnergy * 0.72)
+  ctx.strokeStyle = palette.ring
+  ctx.lineWidth = 0.9 + audioEnergy * 1.5
+  ctx.beginPath()
+
+  for (let i = 0; i <= points; i++) {
+    const angle = (i / points) * Math.PI * 2
+    const ripple =
+      Math.sin(angle * 7 + time * 8.5) * rippleAmount * 0.42 +
+      Math.sin(angle * 11 - time * 5.7) * rippleAmount * 0.32 +
+      Math.sin(angle * 17 + time * 3.6) * rippleAmount * 0.18
+    const nextRadius = radius + 1.5 + ripple
+    const x = centerX + Math.cos(angle) * nextRadius
+    const y = centerY + Math.sin(angle) * nextRadius
+
+    if (i === 0) {
+      ctx.moveTo(x, y)
+    } else {
+      ctx.lineTo(x, y)
+    }
+  }
+
+  ctx.stroke()
+
+  if (audioEnergy > 0.08) {
+    ctx.globalAlpha = Math.min(0.26, audioEnergy * 0.42)
+    ctx.lineWidth = 0.7
+    ctx.beginPath()
+    for (let i = 0; i <= points; i++) {
+      const angle = (i / points) * Math.PI * 2
+      const ripple = Math.sin(angle * 9 - time * 9.2) * audioEnergy * 6
+      const nextRadius = radius + 6 + ripple
+      const x = centerX + Math.cos(angle) * nextRadius
+      const y = centerY + Math.sin(angle) * nextRadius
+
+      if (i === 0) {
+        ctx.moveTo(x, y)
+      } else {
+        ctx.lineTo(x, y)
+      }
+    }
+    ctx.stroke()
+  }
+
   ctx.restore()
 }
 
