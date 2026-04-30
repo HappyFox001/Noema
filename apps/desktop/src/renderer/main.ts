@@ -1822,6 +1822,34 @@ function bindPluginConfigInputs(): void {
       }
     })
   })
+
+  pluginsList.querySelectorAll<HTMLButtonElement>('.plugin-number-step').forEach(button => {
+    button.addEventListener('click', () => {
+      const pluginId = button.dataset.pluginId
+      const key = button.dataset.pluginConfig
+      const direction = button.dataset.stepDir
+      if (!pluginId || !key) return
+
+      const input = pluginsList.querySelector<HTMLInputElement>(
+        `input[data-plugin-id="${cssEscape(pluginId)}"][data-plugin-config="${cssEscape(key)}"]`
+      )
+      if (!input) return
+
+      if (direction === 'up') {
+        input.stepUp()
+      } else {
+        input.stepDown()
+      }
+      input.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+  })
+}
+
+function cssEscape(value: string): string {
+  if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
+    return CSS.escape(value)
+  }
+  return value.replace(/["\\]/g, '\\$&')
 }
 
 function renderPluginConfigFields(plugin: PluginInfo): string {
@@ -1853,7 +1881,15 @@ function renderPluginConfigField(plugin: PluginInfo, field: PluginConfigField): 
       </label>
     `
   } else if (field.type === 'number') {
-    control = `<input class="plugin-config-input" type="number" value="${escapeHtml(String(rawValue ?? ''))}" ${field.min !== undefined ? `min="${field.min}"` : ''} ${field.max !== undefined ? `max="${field.max}"` : ''} ${field.step !== undefined ? `step="${field.step}"` : ''} ${commonAttrs} />`
+    control = `
+      <div class="plugin-number-control">
+        <input class="plugin-config-input plugin-config-number" type="number" value="${escapeHtml(String(rawValue ?? ''))}" ${field.min !== undefined ? `min="${field.min}"` : ''} ${field.max !== undefined ? `max="${field.max}"` : ''} ${field.step !== undefined ? `step="${field.step}"` : ''} ${commonAttrs} />
+        <div class="plugin-number-stepper">
+          <button class="plugin-number-step" type="button" data-step-dir="up" data-plugin-id="${escapeHtml(plugin.id)}" data-plugin-config="${escapeHtml(field.key)}" tabindex="-1" title="增加"></button>
+          <button class="plugin-number-step" type="button" data-step-dir="down" data-plugin-id="${escapeHtml(plugin.id)}" data-plugin-config="${escapeHtml(field.key)}" tabindex="-1" title="减少"></button>
+        </div>
+      </div>
+    `
   } else if (field.type === 'select') {
     control = `
       <select class="plugin-config-input" ${commonAttrs}>
