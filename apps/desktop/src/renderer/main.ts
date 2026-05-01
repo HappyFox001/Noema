@@ -692,6 +692,19 @@ type LocalModelStatus = {
   path: string
 }
 
+type SetupIssueKind = 'llm' | 'tts' | 'asr' | 'models'
+
+type SetupIssue = {
+  kind: SetupIssueKind
+  label: string
+  message: string
+}
+
+type SetupReadiness = {
+  ready: boolean
+  issues: SetupIssue[]
+}
+
 type UISettings = {
   voiceInputEnabled: boolean
   voiceOutputEnabled: boolean
@@ -1707,6 +1720,10 @@ startConversationBtn.addEventListener('click', async () => {
     return
   }
 
+  if (!await ensureSetupReadyForConversation()) {
+    return
+  }
+
   await initialize()
 
   // 预热麦克风（用户已交互，可以安全初始化）
@@ -1751,6 +1768,10 @@ const settingsPanel = document.getElementById('settings-panel')!
 const settingsClose = document.getElementById('settings-close')!
 const mainView = document.getElementById('main-view')!
 const settingsNav = document.querySelector('.settings-nav') as HTMLElement
+const systemNavItem = document.querySelector('.nav-item[data-section="system"]') as HTMLElement | null
+const systemNavLabel = systemNavItem?.querySelector('.nav-label') as HTMLElement | null
+
+let setupReadiness: SetupReadiness = { ready: true, issues: [] }
 const volumeSlider = document.getElementById('volume-slider') as HTMLInputElement
 const volumeValue = document.getElementById('volume-value')!
 const voiceInputBtn = document.getElementById('voice-input-btn') as HTMLButtonElement
@@ -1893,14 +1914,34 @@ contextMenu.addEventListener('click', (e) => {
 })
 
 // Open settings panel
-function openSettings() {
+function switchSettingsSection(section: string): void {
+  document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'))
+  document.querySelector(`.nav-item[data-section="${cssEscape(section)}"]`)?.classList.add('active')
+  document.querySelectorAll('.settings-section').forEach(sec => sec.classList.remove('active'))
+  document.getElementById(`section-${section}`)?.classList.add('active')
+
+  if (section === 'memory') {
+    void refreshMemorySection()
+  }
+  if (section === 'system') {
+    void loadSystemConfig()
+  }
+  if (section === 'plugins') {
+    void loadPluginsSection()
+  }
+}
+
+function openSettings(section?: string) {
   orbAnimationPaused = true
   stopOrbAnimation()
   document.body.classList.add('settings-open')
   settingsPanel.classList.add('visible')
   mainView.setAttribute('aria-hidden', 'true')
+  void refreshSetupReadiness()
 
-  if (isMemorySectionActive()) {
+  if (section) {
+    switchSettingsSection(section)
+  } else if (isMemorySectionActive()) {
     void refreshMemorySection()
   }
 }
@@ -1970,22 +2011,7 @@ settingsNav.addEventListener('mouseup', (e) => {
       if (navItem) {
         const section = navItem.dataset.section
         if (section) {
-          document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'))
-          navItem.classList.add('active')
-          document.querySelectorAll('.settings-section').forEach(sec => sec.classList.remove('active'))
-          document.getElementById(`section-${section}`)?.classList.add('active')
-
-          // 如果切换到记忆管理，加载数据
-          if (section === 'memory') {
-            void refreshMemorySection()
-          }
-          // 如果切换到系统配置，加载数据
-          if (section === 'system') {
-            void loadSystemConfig()
-          }
-          if (section === 'plugins') {
-            void loadPluginsSection()
-          }
+          switchSettingsSection(section)
         }
       }
     }
@@ -2853,6 +2879,155 @@ function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
 }
 
+async function evaluateSetupReadiness(): Promise<SetupReadiness> {
+  const settings = await window.electronAPI.getSettings()
+  const system = settings.system
+  const issues: SetupIssue[] = []
+
+  const activeLLM = system.llmModels.find(model => model.id === system.activeLLMId) || system.llmModels[0]
+  if (!activeLLM?.modelName?.trim() || !activeLLM?.apiKey?.trim() || !activeLLM?.baseUrl?.trim()) {
+    issues.push({
+      kind: 'llm',
+      label: 'LLM',
+      message: '补全 LLM 的模型名、API Key 和 Base URL',
+    })
+  }
+
+  const activeTTS = system.ttsModels.find(model => model.id === system.activeTTSId) || system.ttsModels[0]
+  if (!activeTTS?.modelName?.trim() || !activeTTS?.apiKey?.trim() || !activeTTS?.voiceId?.trim()) {
+    issues.push({
+      kind: 'tts',
+      label: 'TTS',
+      message: '补全 TTS 的模型名、API Key 和 Voice ID',
+    })
+  }
+
+  const activeASR = system.asrModels.find(model => model.id === system.activeASRId) || system.asrModels[0]
+  if (!activeASR?.modelName?.trim() || !activeASR?.apiKey?.trim()) {
+    issues.push({
+      kind: 'asr',
+      label: 'ASR',
+      message: '补全 ASR 的模型名和 API Key',
+    })
+  }
+
+  try {
+    const result = await window.electronAPI.getLocalModelStatus()
+    if (!result.success) {
+      throw new Error(result.error || '本地模型检查失败')
+    }
+    const missingModels = result.models.filter(model => !model.exists)
+    if (missingModels.length > 0) {
+      issues.push({
+        kind: 'models',
+        label: '本地模型',
+        message: `下载缺失的本地模型：${missingModels.map(model => model.name).join('、')}`,
+      })
+    }
+  } catch {
+    issues.push({
+      kind: 'models',
+      label: '本地模型',
+      message: '检查本地 VAD / SmartTurn 模型状态',
+    })
+  }
+
+  return {
+    ready: issues.length === 0,
+    issues,
+  }
+}
+
+function updateSetupNavIndicator(readiness: SetupReadiness): void {
+  if (!systemNavItem || !systemNavLabel) {
+    return
+  }
+
+  systemNavItem.classList.toggle('has-setup-issues', !readiness.ready)
+  systemNavItem.dataset.issueCount = readiness.ready ? '' : String(readiness.issues.length)
+  systemNavItem.title = readiness.ready
+    ? ''
+    : readiness.issues.map(issue => `${issue.label}: ${issue.message}`).join('\n')
+
+  const existingBadge = systemNavItem.querySelector('.nav-issue-badge')
+  if (existingBadge) {
+    existingBadge.remove()
+  }
+
+  if (!readiness.ready) {
+    const badge = document.createElement('span')
+    badge.className = 'nav-issue-badge'
+    badge.textContent = String(readiness.issues.length)
+    systemNavItem.appendChild(badge)
+  }
+}
+
+function renderSetupGuidance(readiness: SetupReadiness): void {
+  const existing = document.getElementById('setup-guidance-card')
+  if (existing) {
+    existing.remove()
+  }
+
+  if (readiness.ready) {
+    return
+  }
+
+  const systemSection = document.getElementById('section-system')
+  if (!systemSection) {
+    return
+  }
+
+  const card = document.createElement('div')
+  card.id = 'setup-guidance-card'
+  card.className = 'setup-guidance-card'
+  card.innerHTML = `
+    <div class="setup-guidance-header">
+      <span class="setup-guidance-title">启动前需要完成配置</span>
+      <span class="setup-guidance-count">${readiness.issues.length} 项</span>
+    </div>
+    <div class="setup-guidance-list">
+      ${readiness.issues.map(issue => `
+        <button class="setup-guidance-item" type="button" data-setup-kind="${issue.kind}">
+          <span class="setup-guidance-dot"></span>
+          <span>
+            <strong>${escapeHtml(issue.label)}</strong>
+            <small>${escapeHtml(issue.message)}</small>
+          </span>
+        </button>
+      `).join('')}
+    </div>
+  `
+
+  const title = systemSection.querySelector('.section-title')
+  title?.insertAdjacentElement('afterend', card)
+
+  card.querySelectorAll<HTMLElement>('.setup-guidance-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const kind = item.dataset.setupKind as SetupIssueKind | undefined
+      const targetId = kind === 'models' ? 'local-models-list' : `${kind}-models-list`
+      document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    })
+  })
+}
+
+async function refreshSetupReadiness(): Promise<SetupReadiness> {
+  setupReadiness = await evaluateSetupReadiness()
+  updateSetupNavIndicator(setupReadiness)
+  renderSetupGuidance(setupReadiness)
+  return setupReadiness
+}
+
+async function ensureSetupReadyForConversation(): Promise<boolean> {
+  const readiness = await refreshSetupReadiness()
+  if (readiness.ready) {
+    return true
+  }
+
+  setStatus(`需要完成 ${readiness.issues.length} 项配置`)
+  openSettings('system')
+  return false
+}
+
 async function loadSystemConfig(): Promise<void> {
   const settings = await window.electronAPI.getSettings()
   currentSystemConfig = settings.system
@@ -3152,6 +3327,7 @@ function attachASREventListeners(): void {
 async function saveSystemConfig(): Promise<void> {
   if (!currentSystemConfig) return
   await window.electronAPI.updateSettings({ system: currentSystemConfig })
+  await refreshSetupReadiness()
 }
 
 async function updateLLMModel(id: string, updates: Partial<LLMModelConfig>): Promise<void> {
@@ -3298,9 +3474,11 @@ downloadLocalModelsBtn.addEventListener('click', async () => {
     }
     renderLocalModels(result.models)
     setStatus('本地模型已就绪')
+    await refreshSetupReadiness()
   } catch (error: any) {
     setStatus(`模型下载失败: ${error.message ?? String(error)}`)
     await loadLocalModelStatus()
+    await refreshSetupReadiness()
   }
 })
 
@@ -3313,6 +3491,7 @@ async function resetSystemConfigFromEnv(): Promise<void> {
     const result = await window.electronAPI.resetSystemConfigFromEnv()
     if (result.success) {
       await loadSystemConfig()
+      await refreshSetupReadiness()
       console.log('[Settings] System config reloaded from .env')
     } else {
       console.error('[Settings] Failed to reset:', result.error)
@@ -3337,6 +3516,7 @@ async function initializeApp(): Promise<void> {
     await loadSettings()
     await loadPersonalities()
     await loadSystemConfig()
+    await refreshSetupReadiness()
     updateConversationButton()
     console.log('Her-Text Renderer initialized')
   } catch (error) {
