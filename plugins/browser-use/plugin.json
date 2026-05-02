@@ -1,0 +1,69 @@
+{
+  "id": "browser-use",
+  "name": "Browser Use",
+  "description": "提供纯 TypeScript/Electron 浏览器自动化工具，支持打开网页、读取页面状态、点击编号元素、填写输入框、滚动、截图和提取页面文本。",
+  "version": "0.1.0",
+  "type": "sdk-plugin",
+  "main": "index.mjs",
+  "enabled": true,
+  "config": {
+    "headed": true,
+    "sessionPartition": "persist:her-text-browser-use",
+    "allowedDomains": "",
+    "actionTimeoutMs": 120000,
+    "maxStateElements": 80,
+    "enableScreenshots": true
+  },
+  "configSchema": [
+    {
+      "key": "headed",
+      "label": "显示浏览器",
+      "description": "打开网页时显示独立浏览器窗口。关闭后仍会在后台执行网页任务。",
+      "type": "boolean",
+      "default": true
+    },
+    {
+      "key": "sessionPartition",
+      "label": "会话分区",
+      "description": "Electron 浏览器会话分区。使用 persist: 前缀可以保留 cookies 和登录状态。",
+      "type": "string",
+      "default": "persist:her-text-browser-use",
+      "placeholder": "persist:her-text-browser-use"
+    },
+    {
+      "key": "allowedDomains",
+      "label": "允许域名",
+      "description": "逗号分隔的允许访问域名。留空表示不限制，例如 github.com,*.example.com。",
+      "type": "string",
+      "default": "",
+      "placeholder": "github.com,*.example.com"
+    },
+    {
+      "key": "actionTimeoutMs",
+      "label": "操作超时",
+      "description": "单个浏览器工具的最大执行时间，单位毫秒。",
+      "type": "number",
+      "default": 120000,
+      "min": 5000,
+      "max": 300000,
+      "step": 5000
+    },
+    {
+      "key": "maxStateElements",
+      "label": "元素上限",
+      "description": "browser_state 返回的可交互元素最大数量。",
+      "type": "number",
+      "default": 80,
+      "min": 20,
+      "max": 200,
+      "step": 10
+    },
+    {
+      "key": "enableScreenshots",
+      "label": "截图工具",
+      "description": "是否向任务模型暴露 browser_screenshot 工具。",
+      "type": "boolean",
+      "default": true
+    }
+  ]
+}

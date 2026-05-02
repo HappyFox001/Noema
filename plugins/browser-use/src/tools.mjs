@@ -1,0 +1,112 @@
+export function createBrowserTools(controller, options) {
+  const timeoutMs = options.timeoutMs
+  const tools = [
+    tool('browser_open', 'Open a URL in the browser session. Use this before browser_state when starting a web task.', 'external', timeoutMs, {
+      url: { type: 'string', description: 'The absolute URL to open, including https:// when possible.' },
+    }, ['url'], ({ url }) => controller.open(url)),
+
+    tool('browser_state', 'Get current page URL, title, visible text preview, and numbered clickable/input elements. Call this before clicking or filling by index.', 'read', timeoutMs, {}, [], () => controller.state()),
+
+    tool('browser_click', 'Click a numbered element from the latest browser_state output.', 'external', timeoutMs, {
+      index: { type: 'number', description: 'Element index from browser_state.' },
+    }, ['index'], ({ index }) => controller.click(index)),
+
+    tool('browser_input', 'Click a numbered input-like element from browser_state, clear it, and type text.', 'external', timeoutMs, {
+      index: { type: 'number', description: 'Input element index from browser_state.' },
+      text: { type: 'string', description: 'Text to enter.' },
+    }, ['index', 'text'], ({ index, text }) => controller.input(index, text)),
+
+    tool('browser_type', 'Type text into the currently focused element.', 'external', timeoutMs, {
+      text: { type: 'string', description: 'Text to type into the focused element.' },
+    }, ['text'], ({ text }) => controller.type(text)),
+
+    tool('browser_keys', 'Send a keyboard shortcut or key sequence to the page, such as Enter, Escape, Tab, Control+A.', 'external', timeoutMs, {
+      keys: { type: 'string', description: 'Key or shortcut, such as Enter, Escape, Tab, Control+A.' },
+    }, ['keys'], ({ keys }) => controller.keys(keys)),
+
+    tool('browser_scroll', 'Scroll the current page up or down.', 'external', timeoutMs, {
+      direction: { type: 'string', description: 'Scroll direction.', enum: ['up', 'down'] },
+      amount: { type: 'number', description: 'Scroll pixels. Defaults to 700.' },
+    }, ['direction'], ({ direction, amount }) => controller.scroll(direction, amount)),
+
+    tool('browser_find_text', 'Scroll to the first visible occurrence of text on the current page.', 'read', timeoutMs, {
+      text: { type: 'string', description: 'Text to find on the page.' },
+    }, ['text'], ({ text }) => controller.findText(text)),
+
+    tool('browser_wait', 'Wait for milliseconds, a CSS selector, or text to appear.', 'safe', timeoutMs, {
+      ms: { type: 'number', description: 'Milliseconds to wait. Used when selector/text is omitted.' },
+      selector: { type: 'string', description: 'Optional CSS selector to wait for.' },
+      text: { type: 'string', description: 'Optional text to wait for.' },
+      timeoutMs: { type: 'number', description: 'Wait timeout when selector/text is provided. Defaults to 10000.' },
+    }, [], ({ ms, selector, text, timeoutMs: waitTimeout }) => {
+      if (selector) return controller.waitFor('selector', selector, waitTimeout)
+      if (text) return controller.waitFor('text', text, waitTimeout)
+      return controller.wait(ms)
+    }),
+
+    tool('browser_extract', 'Extract readable text and links from the current page. Use when browser_state is too short for summarization.', 'read', timeoutMs, {
+      maxChars: { type: 'number', description: 'Maximum number of text characters to return. Defaults to 6000.' },
+    }, [], ({ maxChars }) => controller.extract(maxChars)),
+
+    tool('browser_get', 'Get page title, HTML, text, value, attributes, or bounding box from the page or a numbered element.', 'read', timeoutMs, {
+      kind: { type: 'string', description: 'Information to get.', enum: ['title', 'html', 'text', 'value', 'attributes', 'bbox'] },
+      index: { type: 'number', description: 'Optional element index from browser_state. Omit for page-level title/html/text.' },
+      selector: { type: 'string', description: 'Optional CSS selector. Takes precedence over index.' },
+      maxChars: { type: 'number', description: 'Maximum characters for html/text. Defaults to 6000.' },
+    }, ['kind'], ({ kind, index, selector, maxChars }) => controller.get(kind, index, selector, maxChars)),
+
+    tool('browser_eval', 'Execute JavaScript in the current page and return the result. Use sparingly for extraction or page-specific operations.', 'external', timeoutMs, {
+      code: { type: 'string', description: 'JavaScript function body. Return a JSON-serializable value.' },
+    }, ['code'], ({ code }) => controller.evaluate(code)),
+
+    tool('browser_dropdown_options', 'Get options from a numbered select dropdown element.', 'read', timeoutMs, {
+      index: { type: 'number', description: 'Select element index from browser_state.' },
+    }, ['index'], ({ index }) => controller.dropdownOptions(index)),
+
+    tool('browser_select', 'Select an option in a numbered select dropdown by value or visible text.', 'external', timeoutMs, {
+      index: { type: 'number', description: 'Select element index from browser_state.' },
+      value: { type: 'string', description: 'Option value or visible text.' },
+    }, ['index', 'value'], ({ index, value }) => controller.select(index, value)),
+
+    tool('browser_tab', 'Manage browser tabs: list, new, switch, or close.', 'external', timeoutMs, {
+      action: { type: 'string', description: 'Tab action.', enum: ['list', 'new', 'switch', 'close'] },
+      index: { type: 'number', description: 'Tab index for switch/close.' },
+      url: { type: 'string', description: 'Optional URL for new tab.' },
+    }, ['action'], ({ action, index, url }) => controller.tab(action, index, url)),
+
+    tool('browser_cookies', 'Manage browser cookies: get, set, clear, export, import.', 'external', timeoutMs, {
+      action: { type: 'string', description: 'Cookie action.', enum: ['get', 'set', 'clear', 'export', 'import'] },
+      url: { type: 'string', description: 'Cookie URL for get/set/clear.' },
+      name: { type: 'string', description: 'Cookie name for set.' },
+      value: { type: 'string', description: 'Cookie value for set.' },
+      domain: { type: 'string', description: 'Optional cookie domain for set.' },
+      path: { type: 'string', description: 'Optional cookie path for set, or file path for export/import when action is export/import.' },
+      secure: { type: 'boolean', description: 'Optional secure flag for set.' },
+      httpOnly: { type: 'boolean', description: 'Optional httpOnly flag for set.' },
+    }, ['action'], params => controller.cookies(params.action, params)),
+
+    tool('browser_back', 'Navigate back in the current browser history.', 'external', timeoutMs, {}, [], () => controller.back()),
+    tool('browser_close', 'Close all browser windows and clear the active browser session.', 'external', timeoutMs, {}, [], () => controller.close()),
+  ]
+
+  if (options.enableScreenshots) {
+    tools.push(tool('browser_screenshot', 'Take a PNG screenshot of the current browser viewport and return it as base64.', 'read', timeoutMs, {}, [], () => controller.screenshot()))
+  }
+
+  return tools
+}
+
+function tool(name, description, safety, timeoutMs, properties, required, execute) {
+  return {
+    name,
+    description,
+    safety,
+    timeoutMs,
+    parameters: {
+      type: 'object',
+      properties,
+      required,
+    },
+    execute,
+  }
+}
