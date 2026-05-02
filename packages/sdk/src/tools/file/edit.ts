@@ -1,9 +1,7 @@
 import type { ToolSpec, ToolExecutor, ToolResult } from '../types.js'
 import { editTextFile, resolveToolPath } from '../node-runtime.js'
 
-/**
- * Edit 工具规范
- */
+
 export const editToolSpec: ToolSpec = {
   type: 'function',
   function: {
@@ -35,9 +33,7 @@ export const editToolSpec: ToolSpec = {
   }
 }
 
-/**
- * Edit 工具执行器
- */
+
 export class EditTool implements ToolExecutor {
   spec = editToolSpec
 

@@ -9,10 +9,7 @@ export interface QwenRealtimeASRConfig {
   sampleRate?: number
   language?: string
   receiveTimeoutMs?: number
-  /**
-   * 中间转录结果回调
-   * 用于 endpointing 策略的文本累积
-   */
+  
   onInterimTranscript?: (text: string, isFinal: boolean) => void
 }
 
@@ -246,7 +243,6 @@ export class QwenRealtimeASR implements STTProvider {
       const finalText = extractFinalTranscript(parsed)
       if (finalText) {
         const normalizedFinalText = finalText.trim()
-        // 通知最终转录结果
         this.config.onInterimTranscript?.(normalizedFinalText, true)
         this.onEvent?.({
           type: 'transcript',
@@ -271,7 +267,6 @@ export class QwenRealtimeASR implements STTProvider {
       const fallbackText = extractFallbackTranscript(parsed)
       if (fallbackText) {
         this.latestFallbackTranscript = fallbackText
-        // 通知中间转录结果（用于 endpointing）
         this.config.onInterimTranscript?.(fallbackText, false)
         this.onEvent?.({
           type: 'transcript',

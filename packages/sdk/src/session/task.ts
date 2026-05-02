@@ -1,3 +1,9 @@
+/**
+ * Task runtime loop.
+ *
+ * Builds task prompts, injects task context, runs model/tool iterations,
+ * compacts long task history, and returns the final task result.
+ */
 import type { Tool } from '@her-text/types'
 import type { LLMProvider } from '@her-text/core'
 import type { AgentCore } from '../agent/index.js'
@@ -253,8 +259,6 @@ export class TaskRuntime {
 
       this.turnRecords = this.turnRecords.slice(compactBoundary)
     } catch (error) {
-      // Compact 是优化操作，失败不应影响任务执行
-      // 跳过压缩，继续使用完整历史
       console.warn(`[TaskRuntime] Compact failed, continuing with full history: ${(error as Error).message}`)
     }
   }

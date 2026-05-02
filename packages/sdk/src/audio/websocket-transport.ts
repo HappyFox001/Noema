@@ -1,7 +1,4 @@
-/**
- * WebSocket 传输层接口
- * 用于实时音频通信（TTS、ASR 等）
- */
+
 export interface RealtimeWebSocketTransport {
   connect(options: {
     url: string

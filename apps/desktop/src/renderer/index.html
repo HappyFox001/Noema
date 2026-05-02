@@ -8,7 +8,7 @@
   </head>
   <body>
     <div id="app">
-      <!-- 主界面：小球 -->
+      
       <div id="main-view" class="container">
         <canvas id="orb-canvas" width="180" height="180"></canvas>
         <div id="expression-layer" class="expression-layer" aria-hidden="true">
@@ -21,7 +21,7 @@
         </div>
       </div>
 
-      <!-- 右键菜单 -->
+      
       <div id="context-menu" class="context-menu">
         <div class="context-menu-item" data-action="settings">
           <span>设置</span>
@@ -35,12 +35,12 @@
         </div>
       </div>
 
-      <!-- 设置面板 -->
+      
       <div id="settings-panel" class="settings-panel">
         <button id="settings-close" class="settings-close">×</button>
 
         <div class="settings-layout">
-          <!-- 左侧导航 -->
+          
           <nav class="settings-nav">
             <div class="nav-item active" data-section="voice">
               <span class="nav-icon">◉</span>
@@ -68,9 +68,9 @@
             </div>
           </nav>
 
-          <!-- 右侧内容区域 -->
+          
           <div class="settings-content">
-            <!-- 语音设置 -->
+            
             <section id="section-voice" class="settings-section active">
               <h2 class="section-title">语音设置</h2>
 
@@ -106,11 +106,11 @@
               </div>
             </section>
 
-            <!-- 记忆管理 -->
+            
             <section id="section-memory" class="settings-section">
               <h2 class="section-title">记忆管理</h2>
 
-              <!-- 用户画像卡片 -->
+              
               <div class="memory-card">
                 <div class="memory-card-header">
                   <span class="memory-card-title">用户画像</span>
@@ -124,7 +124,7 @@
                 </div>
               </div>
 
-              <!-- 重要记忆卡片 -->
+              
               <div class="memory-card">
                 <div class="memory-card-header">
                   <span class="memory-card-title">重要记忆</span>
@@ -138,7 +138,7 @@
                 </div>
               </div>
 
-              <!-- 对话摘要卡片 -->
+              
               <div class="memory-card">
                 <div class="memory-card-header">
                   <span class="memory-card-title">对话摘要</span>
@@ -152,7 +152,7 @@
                 </div>
               </div>
 
-              <!-- 最近对话卡片 -->
+              
               <div class="memory-card">
                 <div class="memory-card-header">
                   <span class="memory-card-title">最近对话</span>
@@ -166,14 +166,14 @@
                 </div>
               </div>
 
-              <!-- 全部重置 -->
+              
               <div class="reset-all-section">
                 <button id="reset-all-btn" class="reset-all-btn">全部重置</button>
                 <span class="reset-all-hint">清除所有记忆数据，不可恢复</span>
               </div>
             </section>
 
-            <!-- 人格设置 -->
+            
             <section id="section-personality" class="settings-section">
               <h2 class="section-title">人格</h2>
 
@@ -197,11 +197,11 @@
               </div>
             </section>
 
-            <!-- 系统配置 -->
+            
             <section id="section-system" class="settings-section">
               <h2 class="section-title">系统配置</h2>
 
-              <!-- 代理设置 -->
+              
               <div class="settings-card">
                 <div class="settings-row">
                   <div class="row-info">
@@ -212,51 +212,51 @@
                 </div>
               </div>
 
-              <!-- LLM 配置 -->
+              
               <div class="config-section">
                 <div class="config-section-header">
                   <span class="config-section-title">对话模型</span>
                   <button id="add-llm-btn" class="config-add-btn">+ 添加</button>
                 </div>
                 <div id="llm-models-list" class="config-models-list">
-                  <!-- 动态生成 -->
+                  
                 </div>
               </div>
 
-              <!-- 任务模型配置 -->
+              
               <div class="config-section">
                 <div class="config-section-header">
                   <span class="config-section-title">任务模型</span>
                   <button id="add-task-btn" class="config-add-btn">+ 添加</button>
                 </div>
                 <div id="task-models-list" class="config-models-list">
-                  <!-- 动态生成 -->
+                  
                 </div>
               </div>
 
-              <!-- TTS 配置 -->
+              
               <div class="config-section">
                 <div class="config-section-header">
                   <span class="config-section-title">TTS 语音合成</span>
                   <button id="add-tts-btn" class="config-add-btn">+ 添加</button>
                 </div>
                 <div id="tts-models-list" class="config-models-list">
-                  <!-- 动态生成 -->
+                  
                 </div>
               </div>
 
-              <!-- ASR 配置 -->
+              
               <div class="config-section">
                 <div class="config-section-header">
                   <span class="config-section-title">ASR 语音识别</span>
                   <button id="add-asr-btn" class="config-add-btn">+ 添加</button>
                 </div>
                 <div id="asr-models-list" class="config-models-list">
-                  <!-- 动态生成 -->
+                  
                 </div>
               </div>
 
-              <!-- 本地模型 -->
+              
               <div class="config-section">
                 <div class="config-section-header">
                   <span class="config-section-title">本地推理模型</span>
@@ -267,7 +267,7 @@
                 </div>
               </div>
 
-              <!-- 重置按钮 -->
+              
               <div class="config-reset-section">
                 <button id="reset-system-btn" class="config-reset-btn">
                   <span class="reset-icon">↻</span>
@@ -277,7 +277,7 @@
               </div>
             </section>
 
-            <!-- 插件 -->
+            
             <section id="section-plugins" class="settings-section">
               <h2 class="section-title">插件</h2>
 
@@ -286,7 +286,7 @@
               </div>
             </section>
 
-            <!-- 关于 -->
+            
             <section id="section-about" class="settings-section">
               <h2 class="section-title">关于</h2>
 

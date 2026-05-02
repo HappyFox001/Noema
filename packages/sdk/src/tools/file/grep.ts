@@ -3,9 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { resolveToolPath } from '../node-runtime.js'
 import { matchesGlobPattern, walkFiles } from './search-utils.js'
 
-/**
- * Grep 工具规范
- */
+
 export const grepToolSpec: ToolSpec = {
   type: 'function',
   function: {
@@ -28,22 +26,20 @@ export const grepToolSpec: ToolSpec = {
         },
         case_insensitive: {
           type: 'boolean',
-          description: 'Case insensitive search. Default: false',
-          default: false
+          description: 'Whether to ignore case when matching.'
         },
         output_mode: {
           type: 'string',
-          description: 'Output mode: "content" (matching lines), "files_with_matches" (file paths only), "count" (match counts)',
-          enum: ['content', 'files_with_matches', 'count'],
-          default: 'files_with_matches'
+          enum: ['files_with_matches', 'content'],
+          description: 'Return matching file paths or matching content lines.'
         },
         context_lines: {
           type: 'number',
-          description: 'Number of context lines to show before and after matches (only for content mode)'
+          description: 'Number of surrounding lines to include for content output.'
         },
         head_limit: {
           type: 'number',
-          description: 'Limit output to first N results'
+          description: 'Maximum number of matches to return.'
         }
       },
       required: ['pattern']
@@ -58,9 +54,6 @@ interface GrepMatch {
   count?: number
 }
 
-/**
- * Grep 工具执行器
- */
 export class GrepTool implements ToolExecutor {
   spec = grepToolSpec
 

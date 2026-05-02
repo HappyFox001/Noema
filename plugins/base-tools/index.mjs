@@ -1,3 +1,9 @@
+/**
+ * Base tools runtime plugin.
+ *
+ * Registers the host-provided file and shell tools according to plugin
+ * configuration without importing SDK internals from the plugin module.
+ */
 export default function createPlugin(ctx) {
   const config = ctx.config || {}
   const enableReadTools = config.enableReadTools !== false

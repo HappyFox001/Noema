@@ -2,9 +2,7 @@ import type { ToolSpec, ToolExecutor, ToolResult } from '../types.js'
 import { resolveToolPath } from '../node-runtime.js'
 import { matchesAnyGlobPattern, matchesGlobPattern, walkFiles } from './search-utils.js'
 
-/**
- * Glob 工具规范
- */
+
 export const globToolSpec: ToolSpec = {
   type: 'function',
   function: {
@@ -15,19 +13,16 @@ export const globToolSpec: ToolSpec = {
       properties: {
         pattern: {
           type: 'string',
-          description: 'The glob pattern to match files against (e.g., "**/*.ts" for all TypeScript files)'
+          description: 'The glob pattern to match files against (e.g., "**/*.ts")'
         },
         path: {
           type: 'string',
-          description: 'The directory to search in (defaults to current working directory)'
+          description: 'Directory to search in. Defaults to the current working directory.'
         },
         ignore: {
           type: 'array',
-          description: 'Patterns to ignore (e.g., ["node_modules/**", ".git/**"])',
-          items: {
-            type: 'string',
-            description: 'Pattern to ignore'
-          }
+          items: { type: 'string' },
+          description: 'Glob patterns to exclude from results.'
         }
       },
       required: ['pattern']
@@ -35,9 +30,6 @@ export const globToolSpec: ToolSpec = {
   }
 }
 
-/**
- * Glob 工具执行器
- */
 export class GlobTool implements ToolExecutor {
   spec = globToolSpec
 

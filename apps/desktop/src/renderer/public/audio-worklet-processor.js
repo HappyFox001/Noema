@@ -1,20 +1,11 @@
 // AudioWorklet processor - runs in a separate thread
 // Handles: audio capture, downsampling to 16kHz
 //
-// 移植自 Pipecat: 使用 10ms 分块以更快响应打断
-// - 原来: 100ms (1600 samples @ 16kHz)
-// - 现在: 10ms (160 samples @ 16kHz)
 //
-// 10ms 分块的好处:
-// 1. 更快检测到用户说话开始 (打断响应更快)
-// 2. VAD 状态更新更及时
-// 3. 音频流更平滑
 class AudioChunkProcessor extends AudioWorkletProcessor {
   constructor() {
     super()
     this.targetSampleRate = 16000
-    // 10ms at 16kHz = 160 samples (移植自 Pipecat)
-    // 这样可以更快响应打断，而不是等待 100ms
     this.targetChunkSize = 160
     this.buffer = []
     this.sourceSampleRate = sampleRate // AudioWorklet global

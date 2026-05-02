@@ -1,12 +1,4 @@
-/**
- * 支持自动重连的 WebSocket 传输层
- *
- * 特性：
- * - 指数退避重连（1s, 2s, 4s, 8s, 16s...）
- * - 最大重试次数限制
- * - 连接状态回调
- * - 发送失败自动重连
- */
+
 
 import type {
   RealtimeWebSocketTransport,
@@ -14,15 +6,15 @@ import type {
 } from '@her-text/sdk'
 
 export interface ReconnectingTransportConfig {
-  /** 最大重试次数，默认 5 */
+  
   maxRetries?: number
-  /** 初始重试延迟（毫秒），默认 1000 */
+  
   initialRetryDelayMs?: number
-  /** 最大重试延迟（毫秒），默认 30000 */
+  
   maxRetryDelayMs?: number
-  /** 连接状态回调 */
+  
   onConnectionStateChange?: (state: ConnectionState) => void
-  /** 重连尝试回调 */
+  
   onReconnectAttempt?: (attempt: number, maxRetries: number) => void
 }
 
@@ -87,7 +79,6 @@ export class ReconnectingWebSocketTransport implements RealtimeWebSocketTranspor
     } catch (error) {
       console.warn('[ReconnectingWS] Send binary failed, attempting reconnect:', error)
       await this.reconnect()
-      // 重连后重试一次
       await this.baseTransport.sendBinary(data)
     }
   }
@@ -99,7 +90,6 @@ export class ReconnectingWebSocketTransport implements RealtimeWebSocketTranspor
     } catch (error) {
       console.warn('[ReconnectingWS] Send text failed, attempting reconnect:', error)
       await this.reconnect()
-      // 重连后重试一次
       await this.baseTransport.sendText(data)
     }
   }
@@ -107,15 +97,12 @@ export class ReconnectingWebSocketTransport implements RealtimeWebSocketTranspor
   async receive(timeoutMs?: number): Promise<RealtimeWebSocketReceiveResult> {
     const result = await this.baseTransport.receive(timeoutMs)
 
-    // 如果连接被关闭且不是主动关闭，尝试重连
     if (result.closed && !this.closed) {
       console.log('[ReconnectingWS] Connection closed unexpectedly, attempting reconnect')
       try {
         await this.reconnect()
-        // 重连成功，返回超时结果让调用者重试
         return { timeout: true }
       } catch (error) {
-        // 重连失败，返回关闭状态
         return { closed: true }
       }
     }
@@ -129,16 +116,12 @@ export class ReconnectingWebSocketTransport implements RealtimeWebSocketTranspor
     await this.baseTransport.close()
   }
 
-  /**
-   * 获取当前连接状态
-   */
+  
   getConnectionState(): ConnectionState {
     return this.connectionState
   }
 
-  /**
-   * 手动触发重连
-   */
+  
   async forceReconnect(): Promise<void> {
     this.retryCount = 0
     await this.reconnect()
@@ -156,7 +139,6 @@ export class ReconnectingWebSocketTransport implements RealtimeWebSocketTranspor
 
   private async reconnect(): Promise<void> {
     if (this.reconnecting) {
-      // 等待正在进行的重连
       while (this.reconnecting) {
         await this.delay(100)
       }
@@ -183,7 +165,6 @@ export class ReconnectingWebSocketTransport implements RealtimeWebSocketTranspor
         this.config.onReconnectAttempt?.(this.retryCount, this.config.maxRetries)
         console.log(`[ReconnectingWS] Reconnection attempt ${this.retryCount}/${this.config.maxRetries}`)
 
-        // 计算指数退避延迟
         const delay = Math.min(
           this.config.initialRetryDelayMs * Math.pow(2, this.retryCount - 1),
           this.config.maxRetryDelayMs
@@ -194,19 +175,15 @@ export class ReconnectingWebSocketTransport implements RealtimeWebSocketTranspor
           await this.delay(delay)
         }
 
-        // 如果在等待期间被关闭，停止重连
         if (this.closed) {
           throw new Error('Transport closed during reconnection')
         }
 
         try {
-          // 先关闭旧连接
           await this.baseTransport.close().catch(() => undefined)
 
-          // 尝试重新连接
           await this.baseTransport.connect(this.connectionOptions)
 
-          // 重连成功
           this.setConnectionState('connected')
           this.retryCount = 0
           console.log('[ReconnectingWS] Reconnection successful')
@@ -216,7 +193,6 @@ export class ReconnectingWebSocketTransport implements RealtimeWebSocketTranspor
         }
       }
 
-      // 达到最大重试次数
       console.error(`[ReconnectingWS] Max retries (${this.config.maxRetries}) reached, giving up`)
       this.setConnectionState('failed')
       throw new Error(`WebSocket reconnection failed after ${this.config.maxRetries} attempts`)
@@ -230,9 +206,7 @@ export class ReconnectingWebSocketTransport implements RealtimeWebSocketTranspor
   }
 }
 
-/**
- * 创建支持重连的 WebSocket 传输层
- */
+
 export function createReconnectingTransport(
   baseTransport: RealtimeWebSocketTransport,
   config?: ReconnectingTransportConfig

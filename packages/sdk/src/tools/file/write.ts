@@ -1,9 +1,7 @@
 import type { ToolSpec, ToolExecutor, ToolResult } from '../types.js'
 import { resolveToolPath, writeTextFile } from '../node-runtime.js'
 
-/**
- * Write 工具规范
- */
+
 export const writeToolSpec: ToolSpec = {
   type: 'function',
   function: {
@@ -26,9 +24,7 @@ export const writeToolSpec: ToolSpec = {
   }
 }
 
-/**
- * Write 工具执行器
- */
+
 export class WriteTool implements ToolExecutor {
   spec = writeToolSpec
 

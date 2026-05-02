@@ -1,3 +1,9 @@
+/**
+ * SDK plugin interfaces and manager.
+ *
+ * Defines generic hooks for setup, tools, prompt additions, text transforms,
+ * task-context injection, expression selection, and admin actions.
+ */
 import type { Tool } from '@her-text/types'
 
 export interface PluginRuntimeContext {

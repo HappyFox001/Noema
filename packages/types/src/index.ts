@@ -1,4 +1,3 @@
-// 人格系统类型
 export interface Personality {
   character: {
     name: string
@@ -30,7 +29,6 @@ export interface Personality {
   }
 }
 
-// 对话系统类型
 export interface ConversationTurn {
   id: string
   role: 'user' | 'assistant'
@@ -51,7 +49,6 @@ export interface AgentResponse {
   toolCalls?: ToolCall[]
 }
 
-// Agent 工具系统（兼容 OpenAI/Anthropic Function Calling）
 export interface Tool {
   name: string
   description: string
@@ -72,16 +69,15 @@ export interface ToolCall {
   type: 'function'
   function: {
     name: string
-    arguments: string  // JSON 字符串
+    arguments: string
   }
 }
 
-// SDK 配置
 export interface SDKConfig {
   llm: {
     apiKey: string
     model: string
-    baseURL?: string  // API 端点（OpenAI 兼容格式）
+    baseURL?: string
   }
 
   taskLLM?: {
@@ -110,7 +106,6 @@ export interface SDKConfig {
   }
 }
 
-// 主动性触发类型
 export type TriggerType =
   | 'time_based'
   | 'inactivity'

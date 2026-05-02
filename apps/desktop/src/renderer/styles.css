@@ -135,7 +135,7 @@ body {
   z-index: 1;
 }
 
-/* 只有可交互元素需要 no-drag */
+
 .context-menu,
 .settings-close,
 button,
@@ -370,7 +370,7 @@ input[type="password"] {
   cursor: not-allowed;
 }
 
-/* ========== 右键菜单 ========== */
+
 .context-menu {
   position: fixed;
   background: rgba(28, 28, 30, 0.95);
@@ -415,7 +415,7 @@ input[type="password"] {
   margin: 6px 0;
 }
 
-/* ========== 设置面板 ========== */
+
 .settings-panel {
   position: fixed;
   top: 0;
@@ -478,7 +478,7 @@ input[type="password"] {
   app-region: drag;
 }
 
-/* ========== 左侧导航 ========== */
+
 .settings-nav {
   width: clamp(92px, 24vw, 180px);
   min-width: clamp(92px, 24vw, 180px);
@@ -562,7 +562,7 @@ input[type="password"] {
   min-width: 0;
 }
 
-/* ========== 右侧内容区域 ========== */
+
 .settings-content {
   flex: 1;
   min-width: 0;
@@ -574,7 +574,7 @@ input[type="password"] {
   app-region: no-drag;
 }
 
-/* 隐藏式滚动条 - 默认隐藏，悬停显示 */
+
 .settings-content::-webkit-scrollbar {
   width: 6px;
   background: transparent;
@@ -698,7 +698,7 @@ input[type="password"] {
   color: rgba(255, 255, 255, 0.58);
 }
 
-/* 设置卡片 */
+
 .settings-card {
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.06);
@@ -1240,7 +1240,7 @@ input[type="password"] {
   line-height: 1.55;
 }
 
-/* ========== 关于页面 ========== */
+
 .about-card {
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.06);
@@ -1310,7 +1310,7 @@ input[type="password"] {
   font-style: italic;
 }
 
-/* Toggle 开关 */
+
 .settings-toggle {
   position: relative;
   width: 44px;
@@ -1361,7 +1361,7 @@ input[type="password"] {
   transform: translateX(20px);
 }
 
-/* Slider 容器 */
+
 .settings-slider-group {
   display: flex;
   align-items: center;
@@ -1522,9 +1522,6 @@ body:not(.settings-open) #main-view {
   }
 }
 
-/* ========================================
-   记忆管理界面
-   ======================================== */
 
 .memory-card {
   background: rgba(255, 255, 255, 0.03);
@@ -1609,7 +1606,7 @@ body:not(.settings-open) #main-view {
   background: rgba(255, 255, 255, 0.2);
 }
 
-/* 用户画像 */
+
 .profile-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -1673,7 +1670,7 @@ body:not(.settings-open) #main-view {
   padding: 16px 0;
 }
 
-/* 重要记忆列表 */
+
 .memory-list {
   display: flex;
   flex-direction: column;
@@ -1729,7 +1726,7 @@ body:not(.settings-open) #main-view {
   color: rgba(255, 100, 100, 1);
 }
 
-/* 对话摘要 */
+
 .summary-list {
   display: flex;
   flex-direction: column;
@@ -1774,7 +1771,7 @@ body:not(.settings-open) #main-view {
   color: rgba(255, 255, 255, 0.5);
 }
 
-/* 对话历史 */
+
 .conversation-list {
   display: flex;
   flex-direction: column;
@@ -1827,7 +1824,7 @@ body:not(.settings-open) #main-view {
   word-break: break-word;
 }
 
-/* 危险区域 */
+
 .memory-card.danger-zone {
   border-color: rgba(255, 100, 100, 0.15);
   background: rgba(255, 100, 100, 0.03);
@@ -1868,7 +1865,7 @@ body:not(.settings-open) #main-view {
   color: rgba(255, 255, 255, 0.4);
 }
 
-/* 编辑模式 */
+
 .profile-edit-form {
   display: flex;
   flex-direction: column;
@@ -1943,7 +1940,7 @@ body:not(.settings-open) #main-view {
   background: rgba(100, 180, 100, 0.3);
 }
 
-/* 添加记忆弹窗 */
+
 .memory-add-form {
   display: flex;
   flex-direction: column;
@@ -2137,7 +2134,7 @@ body:not(.settings-open) #main-view {
   word-break: break-word;
 }
 
-/* ========== Delete Icon Button (统一样式) ========== */
+
 .delete-icon-btn {
   opacity: 0;
   width: 20px;

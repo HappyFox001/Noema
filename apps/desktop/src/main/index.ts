@@ -1,4 +1,9 @@
-// 加载环境变量（必须在最开始）
+/**
+ * Electron main process entrypoint.
+ *
+ * Owns application lifecycle, SDK startup, voice pipeline orchestration,
+ * TTS playback coordination, plugin loading, and IPC handlers for the renderer.
+ */
 import { config as dotenvConfig } from 'dotenv'
 import { fileURLToPath, pathToFileURL } from 'url'
 import { dirname, join } from 'path'
@@ -13,7 +18,6 @@ const __dirname = dirname(__filename)
 const require = createRequire(import.meta.url)
 const execFileAsync = promisify(execFile)
 
-// 尝试多个可能的 .env 文件位置
 const possibleEnvPaths = [
   join(__dirname, '../.env'),           // apps/desktop/.env (from dist/)
   join(__dirname, '../../.env'),        // project root .env
@@ -40,7 +44,6 @@ if (!envLoaded) {
 
 configureProxyFromEnv()
 
-// 检查新格式的环境变量
 console.log('[Env] LLM_1_API_KEY:', process.env.LLM_1_API_KEY ? '✓ (set)' : '✗ (not set)')
 console.log('[Env] LLM_1_MODEL:', process.env.LLM_1_MODEL || '✗ (not set)')
 console.log('[Env] LLM_1_BASE_URL:', process.env.LLM_1_BASE_URL || '✗ (not set)')
@@ -227,9 +230,7 @@ class ConversationDisplayController {
   }
 }
 
-/**
- * 延迟追踪器 - 测量语音对话各阶段延迟
- */
+
 class LatencyTracker {
   private timestamps: Map<string, number> = new Map()
   private sessionId: number = 0
@@ -311,7 +312,6 @@ class LatencyTracker {
       ? Math.max(asrComplete, speechEnd)
       : asrComplete ?? speechEnd
 
-    // 使用 VAD 静音检测作为起点（如果有的话）
     const startPoint = vadSpeechStop ?? speechEnd
     if (!startPoint) {
       return null
@@ -363,7 +363,6 @@ class LatencyTracker {
     }
     console.log('[Latency] ================================')
 
-    // 发送到 Renderer
     this.sendToRenderer?.(data)
 
     return data
@@ -395,15 +394,15 @@ class LatencyTracker {
 }
 
 type LatencyPoint =
-  | 'vad_speech_stop'   // VAD 检测到静音（最早时间点）
-  | 'turn_complete'     // SmartTurn 判定用户说完
-  | 'speech_end'        // Endpointing 确认说话结束
-  | 'asr_complete'      // ASR 转录完成
-  | 'llm_start'         // LLM 调用开始
-  | 'first_llm_token'   // 首个 LLM token
-  | 'first_tts_text'    // 首个 TTS 文本块发送
-  | 'first_tts_audio'   // 首个 TTS 音频块接收
-  | 'first_audio_play'  // 首个音频开始播放
+  | 'vad_speech_stop'
+  | 'turn_complete'
+  | 'speech_end'
+  | 'asr_complete'
+  | 'llm_start'
+  | 'first_llm_token'
+  | 'first_tts_text'
+  | 'first_tts_audio'
+  | 'first_audio_play'
 
 interface LatencyIntervals {
   vadToEndpointing?: number
@@ -435,7 +434,6 @@ interface LatencyData {
   ttsPlayback?: TTSPlaybackMetrics
 }
 
-// 全局延迟追踪器实例
 const latencyTracker = new LatencyTracker()
 
 class LatencyObserver implements FrameObserver<Frame> {
@@ -551,25 +549,19 @@ class FrameTraceObserver implements FrameObserver<Frame> {
 
 const frameTraceObserver = new FrameTraceObserver()
 
-/**
- * VAD 配置 (移植自 Pipecat)
- * 使用新的 4 状态机 VAD 分析器
- */
+
 const DEFAULT_VAD_CONFIG: Partial<VADParams> = {
-  confidence: 0.7,      // 语音置信度阈值
-  startSecs: 0.2,       // 200ms 确认开始说话
-  stopSecs: 0.2,        // 200ms 确认停止说话
-  minVolume: 0.02,      // 最小音量阈值 (Silero VAD 不需要此参数，但保留兼容性)
+  confidence: 0.7,
+  startSecs: 0.2,
+  stopSecs: 0.2,
+  minVolume: 0.02,
   sampleRate: 16000,
 }
 
-// Silero VAD 实例（全局缓存）
 let sileroVADProvider: VoiceConfidenceProvider | null = null
 let sileroVADInitPromise: Promise<VoiceConfidenceProvider | null> | null = null
 
-/**
- * 初始化 Silero VAD（异步，带缓存）
- */
+
 async function getSileroVADProvider(): Promise<VoiceConfidenceProvider | null> {
   if (sileroVADProvider) {
     return sileroVADProvider
@@ -600,13 +592,10 @@ async function getSileroVADProvider(): Promise<VoiceConfidenceProvider | null> {
   return sileroVADInitPromise
 }
 
-// Smart Turn 实例（全局缓存）
 let smartTurnAnalyzer: SmartTurnAnalyzer | null = null
 let smartTurnInitPromise: Promise<SmartTurnAnalyzer | null> | null = null
 
-/**
- * 初始化 Smart Turn（异步，带缓存）
- */
+
 async function getSmartTurnAnalyzer(): Promise<SmartTurnAnalyzer | null> {
   if (smartTurnAnalyzer) {
     return smartTurnAnalyzer
@@ -637,31 +626,16 @@ async function getSmartTurnAnalyzer(): Promise<SmartTurnAnalyzer | null> {
   return smartTurnInitPromise
 }
 
-/**
- * Endpointing 配置 (备用 - 当 Smart Turn 不可用时使用)
- *
- * 对齐 Pipecat SpeechTimeoutUserTurnStopStrategy：
- * - userSpeechTimeout 是用户短暂停顿后可能续说的 policy floor
- * - sttTimeoutMs 是 Qwen STT final transcript 的 P99 safety net
- */
+
 const FALLBACK_ENDPOINTING_CONFIG: Partial<EndpointingConfig> = {
   userSpeechTimeout: 600,
   sttTimeoutMs: 1000,
   userTurnStopTimeout: 5000,
 }
 
-// ========== 全局 Frame Graph ==========
 const voiceGraphPipeline = new VoiceGraphPipeline()
 
-/**
- * 流式 ASR 会话
- *
- * 集成了 Pipecat 风格的：
- * - 4 状态机 VAD (QUIET → STARTING → SPEAKING → STOPPING)
- * - 双计时器 Endpointing
- * - 轮次管理 (TurnController)
- * - 打断处理 (system interruption frame)
- */
+
 class StreamingASRSession {
   private asr: STTProvider | null = null
   private turnController: TurnController | null = null
@@ -675,7 +649,6 @@ class StreamingASRSession {
   private removeLatencyObserver: (() => void) | null = null
   private removeTraceObserver: (() => void) | null = null
 
-  // 回调
   private onTranscript: ((text: string) => void) | null = null
   private onUserText: ((text: string) => void | Promise<void>) | null = null
   private onStateChange: ((state: 'listening' | 'processing' | 'idle') => void) | null = null
@@ -689,7 +662,6 @@ class StreamingASRSession {
     onInterruption?: (reason: InterruptionReason) => void
   } | null = null
 
-  // 调试模式
   private debug = true
 
   async start(callbacks?: {
@@ -715,7 +687,6 @@ class StreamingASRSession {
       throw new Error('QWEN_API_KEY is not configured. Please set it in Settings > System > ASR.')
     }
 
-    // 创建支持重连的 WebSocket 传输层
     const baseTransport = new NodeRealtimeWebSocketTransport()
     const reconnectingTransport = new ReconnectingWebSocketTransport(baseTransport, {
       maxRetries: 5,
@@ -723,7 +694,6 @@ class StreamingASRSession {
       maxRetryDelayMs: 16000,
       onConnectionStateChange: (state: ConnectionState) => {
         this.log(`ASR WebSocket state: ${state}`)
-        // 通知 Renderer 连接状态变化
         if (state === 'reconnecting') {
           mainWindow?.webContents.send('speech:reconnecting')
         } else if (state === 'connected') {
@@ -737,7 +707,6 @@ class StreamingASRSession {
       },
     })
 
-    // 初始化 ASR（带中间转录回调，用于 endpointing）
     const providerGeneration = ++this.providerGeneration
 
     this.asr = createSTTProvider({
@@ -760,9 +729,6 @@ class StreamingASRSession {
         this.log(`Final transcript frame: "${event.text.slice(0, 30)}..."`)
       }
 
-      // 将转录结果也作为 frame 放入同一条输入 pipeline，避免
-      // VAD/ASR 分散 callback 造成状态乱序。interim 只保留为 frame，
-      // 不打印、不进入最终用户文本。
       void this.voiceFramePipeline.queueFrame({
         type: 'transcription',
         kind: 'data',
@@ -775,8 +741,6 @@ class StreamingASRSession {
     })
     await this.asr.connect()
 
-    // 初始化 VAD 分析器 (Pipecat 风格 4 状态机)
-    // 优先使用 Silero VAD（神经网络），否则回退到 RMS VAD
     const sileroProvider = await getSileroVADProvider()
     let vadAnalyzer: VADAnalyzer
     if (sileroProvider) {
@@ -787,21 +751,15 @@ class StreamingASRSession {
       vadAnalyzer = createVADAnalyzer(DEFAULT_VAD_CONFIG)
     }
 
-    // 初始化 Smart Turn (ML 智能话音结束检测)
     const smartTurn = await getSmartTurnAnalyzer()
 
-    // 初始化轮次控制器
-    // 优先使用 Smart Turn (~100ms)，否则回退到固定超时 (400ms)
     if (smartTurn) {
       this.log('Using Pipecat TurnAnalyzer Smart Turn endpointing')
       this.turnController = new TurnController(vadAnalyzer, {
         smartTurn: {
           analyzer: smartTurn,
-          analyzeIntervalMs: 200,      // 200ms 静音后开始分析
-          maxAnalyzeAttempts: 10,      // 最多分析 10 次
-          // 对齐 Pipecat TurnAnalyzerUserTurnStopStrategy：
-          // SmartTurn 判定 complete 后仍等待 finalized TranscriptionFrame。
-          // Qwen Omni 的 interim 只用于观察，不能作为最终用户输入。
+          analyzeIntervalMs: 200,
+          maxAnalyzeAttempts: 10,
           sttTimeoutMs: 1000,
           onResult: (result) => {
             if (result.isComplete) {
@@ -821,7 +779,6 @@ class StreamingASRSession {
       })
     }
 
-    // 设置轮次控制器事件
     const events: TurnControllerEvents = {
       onUserTurnStart: () => {
         const voiceTurnId = this.beginVoiceTurn()
@@ -1075,10 +1032,7 @@ class StreamingASRSession {
     })
   }
 
-  /**
-   * 结束机器人轮次
-   * 在回复完成后调用
-   */
+  
   async endBotTurn(): Promise<void> {
     await this.voiceFramePipeline.queueFrame({
       type: 'bot_stopped_speaking',
@@ -1147,8 +1101,6 @@ class StreamingASRSession {
     this.onStateChange?.('processing')
 
     try {
-      // Pipecat 中 TranscriptionFrame 是持续进入 pipeline 的；endpointing
-      // 完成时已经持有最终文本。Qwen realtime 在 VAD stop 时只需要 flush。
       const text = params.text?.trim() ?? ''
 
       const finalText = text.trim()
@@ -1162,7 +1114,6 @@ class StreamingASRSession {
       }
     } catch (error) {
       this.log(`Commit error: ${error}`)
-      // 如果 ASR 提交失败，使用 endpointing 累积的文本
       if (params.text?.trim()) {
         const fallbackText = params.text.trim()
         this.onTranscript?.(fallbackText)
@@ -1197,9 +1148,7 @@ class StreamingASRSession {
     }
   }
 
-  /**
-   * 追加音频数据
-   */
+  
   append(samples: number[] | Int16Array): Promise<void> {
     const normalized = samples instanceof Int16Array
       ? samples
@@ -1212,7 +1161,6 @@ class StreamingASRSession {
       timestamp: Date.now(),
       samples: normalized,
     }).catch((error: Error) => {
-      // 忽略停止时的预期错误
       if (error.message === 'WebSocket connection aborted' ||
           error.message === 'Qwen STT WebSocket closed') {
         return
@@ -1221,9 +1169,7 @@ class StreamingASRSession {
     })
   }
 
-  /**
-   * 停止会话
-   */
+  
   async stop(): Promise<void> {
     this.onStateChange?.('idle')
     this.onTranscript = null
@@ -1232,7 +1178,6 @@ class StreamingASRSession {
     this.onSpeechStart = null
     this.onInterruption = null
 
-    // 清理轮次控制器
     if (this.turnController) {
       this.turnController.cleanup()
       this.turnController = null
@@ -1280,7 +1225,6 @@ function getFlushAudio(asr: STTProvider): (() => Promise<void>) | null {
 
 let currentTTSChunkSequence = 0
 
-// ========== 输出 Frame Pipeline ==========
 const outputFramePipeline: OutputFramePipeline = voiceGraphPipeline.createOutputLane('output')
 const invalidatedTTSContexts = new Set<number>()
 
@@ -1335,25 +1279,17 @@ outputFramePipeline.setProcessors([electronOutputProcessor])
 outputFramePipeline.addObserver(latencyObserver)
 outputFramePipeline.addObserver(frameTraceObserver)
 
-// ========== 轮次管理（打断控制）==========
 let currentTurnId = 0
 let currentTurnAbortController: AbortController | null = null
 let currentResponseFramePipeline: ResponseFramePipeline | null = null
 const cancelledTurnIds = new Set<number>()
 let currentTurnUserText: string | null = null
 
-// ========== TTS 音频上下文管理 ==========
-/**
- * TTS 音频上下文 ID
- * 每次开始新的 TTS 流时递增
- * Renderer 用此 ID 验证音频是否属于当前上下文
- */
+
 let currentTTSContextId = 0
 let ttsProviderGeneration = 0
 
-/**
- * 生成新的 TTS 上下文 ID
- */
+
 function invalidateTTSContext(reason: InterruptionReason = 'manual'): void {
   console.log(`[TTS Context] Invalidating context #${currentTTSContextId}`)
   void outputFramePipeline.queueFrame({
@@ -1366,12 +1302,8 @@ function invalidateTTSContext(reason: InterruptionReason = 'manual'): void {
   })
 }
 
-/**
- * 生成新的轮次 ID
- * 每次用户开始新的对话时调用
- */
+
 async function startNewTurn(): Promise<number> {
-  // 先取消上一个轮次
   await cancelCurrentTurn({ closeTTS: true, reason: 'manual' })
 
   currentTurnId++
@@ -1382,10 +1314,7 @@ async function startNewTurn(): Promise<number> {
   return currentTurnId
 }
 
-/**
- * 取消当前轮次
- * 打断时调用，取消所有正在进行的 LLM/TTS 请求
- */
+
 async function cancelCurrentTurn(
   options: { closeTTS?: boolean; reason?: InterruptionReason } = {}
 ): Promise<void> {
@@ -1403,7 +1332,6 @@ async function cancelCurrentTurn(
   }
 
   if (cancelledExistingTurn) {
-    // 同时使 TTS 上下文失效
     invalidateTTSContext(reason)
   }
 
@@ -1427,9 +1355,7 @@ function completeCurrentTurn(turnId: number, pipeline: ResponseFramePipeline | n
   currentTurnUserText = null
 }
 
-/**
- * 检查轮次是否已被取消
- */
+
 function isTurnCancelled(turnId: number): boolean {
   return (
     cancelledTurnIds.has(turnId) ||
@@ -1558,14 +1484,10 @@ async function downloadMissingLocalModels(): Promise<LocalModelStatus[]> {
   return getLocalModelStatuses()
 }
 
-// ========== 播放完成同步机制 ==========
 let playbackRequestIdCounter = 0
 const playbackResolvers = new Map<number, () => void>()
 
-/**
- * 等待 Renderer 端的音频播放完成
- * 用于 Phase 之间的同步，确保前一阶段的音频播放完毕再开始下一阶段
- */
+
 async function waitForRendererPlayback(timeoutMs = 30000): Promise<void> {
   if (!mainWindow) {
     return
@@ -1578,7 +1500,6 @@ async function waitForRendererPlayback(timeoutMs = 30000): Promise<void> {
     playbackResolvers.set(requestId, resolve)
     mainWindow?.webContents.send('playback:waitRequest', requestId)
 
-    // 超时保护
     setTimeout(() => {
       if (playbackResolvers.has(requestId)) {
         console.log('[Playback] Wait timeout, requestId:', requestId)
@@ -1589,7 +1510,6 @@ async function waitForRendererPlayback(timeoutMs = 30000): Promise<void> {
   })
 }
 
-// 接收 Renderer 的播放完成通知
 ipcMain.on('playback:complete', (_, requestId: number) => {
   console.log('[Playback] Received complete notification, requestId:', requestId)
   const resolver = playbackResolvers.get(requestId)
@@ -1600,7 +1520,6 @@ ipcMain.on('playback:complete', (_, requestId: number) => {
   latencyObserver.calculate()
 })
 
-// 接收 Renderer 的首个音频播放通知
 ipcMain.on('latency:firstAudioPlay', () => {
   void outputFramePipeline.queueFrame({
     type: 'audio_playback_started',
@@ -1618,7 +1537,6 @@ ipcMain.on('latency:audioScheduled', (_, metrics: {
   latencyTracker.recordPlaybackSchedule(metrics)
 })
 
-// 设置延迟数据发送到 Renderer
 latencyTracker.setSendToRenderer((data) => {
   mainWindow?.webContents.send('latency:data', data)
 })
@@ -1738,33 +1656,25 @@ let appSettings: AppSettings = {
   }
 }
 
-/**
- * 获取当前激活的 LLM 模型配置
- */
+
 function getActiveLLMConfig(): LLMModelConfig | null {
   const { llmModels, activeLLMId } = appSettings.system
   return llmModels.find(m => m.id === activeLLMId) || llmModels[0] || null
 }
 
-/**
- * 获取当前激活的任务模型配置
- */
+
 function getActiveTaskConfig(): LLMModelConfig | null {
   const { taskModels, activeTaskId } = appSettings.system
   return taskModels.find(m => m.id === activeTaskId) || taskModels[0] || null
 }
 
-/**
- * 获取当前激活的 TTS 模型配置
- */
+
 function getActiveTTSConfig(): TTSModelConfig | null {
   const { ttsModels, activeTTSId } = appSettings.system
   return ttsModels.find(m => m.id === activeTTSId) || ttsModels[0] || null
 }
 
-/**
- * 获取当前激活的 ASR 模型配置
- */
+
 function getActiveASRConfig(): ASRModelConfig | null {
   const { asrModels, activeASRId } = appSettings.system
   return asrModels.find(m => m.id === activeASRId) || asrModels[0] || null
@@ -2053,7 +1963,6 @@ async function createWindow() {
 }
 
 async function initializeSDK(): Promise<void> {
-  // 设置激活的 LLM 配置
   setActiveLLMConfig(getActiveLLMConfig())
   setActiveTaskLLMConfig(getActiveTaskConfig())
   const sdkConfig = await buildSDKConfig()
@@ -2085,7 +1994,6 @@ app.whenReady().then(async () => {
   await settingsStore.initialize()
   appSettings = settingsStore.getSettings()
 
-  // 初始化人格管理器
   await initializePersonalityManager()
   console.log('[App] Personality manager initialized')
 
@@ -2098,7 +2006,6 @@ app.whenReady().then(async () => {
     }
   }
 
-  // 初始化 SDK（加载记忆数据）
   try {
     await initializeSDK()
     console.log('[App] SDK initialized at startup')
@@ -2138,13 +2045,11 @@ app.on('before-quit', async (event) => {
     console.log('[App] Personality manager shutdown complete')
   }
 
-  // 真正退出
   app.exit(0)
 })
 
 // ========== IPC Handlers ==========
 
-// 窗口拖拽
 ipcMain.on('window:move', (event, deltaX, deltaY) => {
   const win = BrowserWindow.fromWebContents(event.sender)
   if (win) {
@@ -2161,7 +2066,6 @@ ipcMain.handle('window:get-position', (event) => {
   return [0, 0]
 })
 
-// 初始化 SDK 和对话服务
 ipcMain.handle('conversation:initialize', async () => {
   try {
     if (!sdkInstance) {
@@ -2207,17 +2111,14 @@ async function runConversationTurn(
       return { success: true, response: '', ttsEnabled: false }
     }
 
-    // 开始新轮次（会取消上一个轮次）
     turnId = await startNewTurn()
     const turnAbortSignal = currentTurnAbortController!.signal
     currentTurnUserText = text
 
-    // 通知 Renderer 新轮次开始
     mainWindow?.webContents.send('turn:start', turnId)
 
     const displayController = new ConversationDisplayController(
       (nextText) => {
-        // 检查轮次是否已取消
         if (isTurnCancelled(turnId)) return
         mainWindow?.webContents.send('conversation:response', nextText)
       },
@@ -2365,12 +2266,10 @@ async function runConversationTurn(
   }
 }
 
-// 发送文本消息
 ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
   return runConversationTurn(text, enableTTS, 'text')
 })
 
-// 停止 TTS
 ipcMain.handle('tts:stop', async () => {
   try {
     await cancelCurrentTurn({ closeTTS: true, reason: 'manual' })
@@ -2382,7 +2281,6 @@ ipcMain.handle('tts:stop', async () => {
   }
 })
 
-// 清空历史
 ipcMain.handle('conversation:clearHistory', async () => {
   try {
     if (sdkInstance) {
@@ -2416,7 +2314,6 @@ ipcMain.handle('speech:transcribe', async (_, samples: number[]) => {
       throw new Error('QWEN_API_KEY is not configured. Please set it in Settings > System > ASR.')
     }
 
-    // 单次转录也使用重连传输层，提高可靠性
     const baseTransport = new NodeRealtimeWebSocketTransport()
     const transport = new ReconnectingWebSocketTransport(baseTransport, {
       maxRetries: 3,
@@ -2453,7 +2350,6 @@ ipcMain.handle('speech:stream:start', async () => {
 
     await streamingASRSession.start({
       onTranscript: (text) => {
-        // VAD + Endpointing 检测到语音结束，通知 Renderer 展示用户文本。
         mainWindow?.webContents.send('speech:transcript', text)
       },
       onUserText: async (text) => {
@@ -2463,14 +2359,11 @@ ipcMain.handle('speech:stream:start', async () => {
         mainWindow?.webContents.send('speech:state', state)
       },
       onSpeechStart: () => {
-        // 用户开始说话，通知 Renderer
         mainWindow?.webContents.send('speech:user-speaking')
       },
       onInterruption: (reason) => {
-        // 打断发生（用户在机器人说话时说话）
         console.log(`[Speech] Interruption detected, cancelling turn, reason=${reason}`)
 
-        // 取消当前轮次（这会 abort LLM 请求 + 使 TTS 上下文失效）
         void cancelCurrentTurn({ closeTTS: true, reason })
       }
     })
@@ -2489,7 +2382,6 @@ ipcMain.on('speech:stream:append', (_, samples: number[] | Int16Array) => {
   }
 
   void streamingASRSession.append(samples).catch((error: any) => {
-    // 忽略停止时的预期错误
     if (error?.message === 'WebSocket connection aborted' ||
         error?.message === 'Qwen STT WebSocket closed') {
       return
@@ -2550,17 +2442,12 @@ ipcMain.handle('permissions:requestMicrophone', async () => {
   }
 })
 
-// ========== SDK 相关 IPC Handlers ==========
 
-// ========== 记忆管理 API ==========
-
-// 获取用户画像
 ipcMain.handle('memory:getUserProfile', async () => {
   if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
 
   try {
     const profile = sdkInstance.memory.getUserProfile()
-    // 将 Map 转换为普通对象
     const importantMemories: Record<string, string> = {}
     if (profile.importantMemories instanceof Map) {
       profile.importantMemories.forEach((value, key) => {
@@ -2585,7 +2472,6 @@ ipcMain.handle('memory:getUserProfile', async () => {
   }
 })
 
-// 更新用户基本画像
 ipcMain.handle('memory:updateUserProfile', async (_, updates: Record<string, string>) => {
   if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
 
@@ -2598,7 +2484,6 @@ ipcMain.handle('memory:updateUserProfile', async (_, updates: Record<string, str
   }
 })
 
-// 添加重要记忆
 ipcMain.handle('memory:addImportantMemory', async (_, key: string, value: string) => {
   if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
 
@@ -2611,7 +2496,6 @@ ipcMain.handle('memory:addImportantMemory', async (_, key: string, value: string
   }
 })
 
-// 删除重要记忆
 ipcMain.handle('memory:deleteImportantMemory', async (_, key: string) => {
   if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
 
@@ -2624,7 +2508,6 @@ ipcMain.handle('memory:deleteImportantMemory', async (_, key: string) => {
   }
 })
 
-// 获取对话摘要
 ipcMain.handle('memory:getConversationSummaries', async () => {
   if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
 
@@ -2637,7 +2520,6 @@ ipcMain.handle('memory:getConversationSummaries', async () => {
   }
 })
 
-// 获取最近对话
 ipcMain.handle('memory:getWorkingMemory', async () => {
   if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
 
@@ -2650,7 +2532,6 @@ ipcMain.handle('memory:getWorkingMemory', async () => {
   }
 })
 
-// 删除对话摘要
 ipcMain.handle('memory:deleteConversationSummary', async (_, id: string) => {
   if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
 
@@ -2663,7 +2544,6 @@ ipcMain.handle('memory:deleteConversationSummary', async (_, id: string) => {
   }
 })
 
-// 删除对话轮次
 ipcMain.handle('memory:deleteConversationTurn', async (_, id: string) => {
   if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
 
@@ -2676,7 +2556,6 @@ ipcMain.handle('memory:deleteConversationTurn', async (_, id: string) => {
   }
 })
 
-// 删除用户画像字段
 ipcMain.handle('memory:deleteProfileField', async (_, field: string) => {
   if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
 
@@ -2689,7 +2568,6 @@ ipcMain.handle('memory:deleteProfileField', async (_, field: string) => {
   }
 })
 
-// 清空重要记忆
 ipcMain.handle('memory:clearImportantMemories', async () => {
   if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
 
@@ -2702,7 +2580,6 @@ ipcMain.handle('memory:clearImportantMemories', async () => {
   }
 })
 
-// 清空对话摘要
 ipcMain.handle('memory:clearConversationSummaries', async () => {
   if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
 
@@ -2715,7 +2592,6 @@ ipcMain.handle('memory:clearConversationSummaries', async () => {
   }
 })
 
-// 清空最近对话
 ipcMain.handle('memory:clearWorkingMemory', async () => {
   if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
 
@@ -2728,7 +2604,6 @@ ipcMain.handle('memory:clearWorkingMemory', async () => {
   }
 })
 
-// 获取人格信息
 ipcMain.handle('sdk:getPersonality', async () => {
   if (!sdkInstance) return null
 
@@ -2908,7 +2783,6 @@ ipcMain.handle('personality:addFile', async () => {
   }
 })
 
-// 获取统计信息
 ipcMain.handle('sdk:getStats', async () => {
   if (!sdkInstance) return null
 

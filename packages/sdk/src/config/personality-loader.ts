@@ -7,7 +7,6 @@ export async function loadPersonalityFromFile(filePath: string): Promise<Persona
     const yamlContent = await readFile(filePath, 'utf-8')
     const config = parse(yamlContent)
 
-    // 验证和规范化
     return validatePersonality(config)
   } catch (error: any) {
     throw new Error(`Failed to load personality from ${filePath}: ${error.message}`)
@@ -15,12 +14,10 @@ export async function loadPersonalityFromFile(filePath: string): Promise<Persona
 }
 
 function validatePersonality(config: any): Personality {
-  // 验证必需字段
   if (!config.character?.name) {
     throw new Error('Personality config missing character.name')
   }
 
-  // 验证关系类型
   const relationshipType = config.relationship?.type
   if (
     relationshipType &&
@@ -35,7 +32,6 @@ function validatePersonality(config: any): Personality {
 
   const char = config.character
 
-  // 构建完整的 Personality 对象
   return {
     character: {
       name: char.name,

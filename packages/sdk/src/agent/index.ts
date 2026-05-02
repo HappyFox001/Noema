@@ -12,10 +12,7 @@ export interface ToolExecutionOptions {
   timeout?: number
 }
 
-/**
- * AgentCore - 工具注册和执行
- * 参考 codex /core/src/tools/registry.rs
- */
+
 export class AgentCore {
   private tools: Map<string, Tool> = new Map()
 
@@ -39,9 +36,7 @@ export class AgentCore {
     return Array.from(this.tools.values())
   }
 
-  /**
-   * 顺序执行工具调用
-   */
+  
   async execute(
     toolCalls: ToolCall[],
     options?: ToolExecutionOptions
@@ -51,7 +46,6 @@ export class AgentCore {
 
     for (const call of toolCalls) {
       try {
-        // 前置钩子
         await hooks?.preToolUse?.(call)
 
         const toolName = call.function.name
@@ -60,16 +54,13 @@ export class AgentCore {
           throw new Error(`Tool not found: ${toolName}`)
         }
 
-        // 解析参数
         const args = JSON.parse(call.function.arguments)
 
-        // 执行工具（带超时）
         const timeout = tool.timeoutMs ?? options?.timeout
         const result = timeout
           ? await this.executeWithTimeout(tool, call, timeout)
           : await tool.execute(args)
 
-        // 后置钩子
         await hooks?.postToolUse?.(call, result)
 
         results.push({
@@ -79,7 +70,6 @@ export class AgentCore {
           result
         })
       } catch (error) {
-        // 错误钩子
         await hooks?.onError?.(call, error as Error)
 
         results.push({

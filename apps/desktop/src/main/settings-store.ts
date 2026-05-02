@@ -1,36 +1,18 @@
+/**
+ * Persistent desktop settings store.
+ *
+ * Loads user settings, fills missing system model configuration from `.env`,
+ * and writes the merged settings back to Electron user data storage.
+ */
 import { app } from 'electron'
 import { join } from 'path'
 import { existsSync } from 'fs'
 import { mkdir, readFile, writeFile } from 'fs/promises'
 
-/**
- * 从 .env 读取系统配置
- * 支持多模型配置，格式如下：
- *
- * PROXY_URL=http://127.0.0.1:7890
- *
- * LLM_1_NAME=GPT-4
- * LLM_1_API_KEY=sk-xxx
- * LLM_1_BASE_URL=https://api.openai.com/v1
- * LLM_ACTIVE=1
- *
- * TASK_1_MODEL=gemini-3.1-pro-preview
- * TASK_1_API_KEY=sk-xxx
- * TASK_1_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
- * TASK_ACTIVE=1
- *
- * TTS_1_NAME=Fish Audio
- * TTS_1_API_KEY=xxx
- * TTS_ACTIVE=1
- *
- * ASR_1_MODEL=qwen3-asr-flash-realtime
- * ASR_1_API_KEY=xxx
- * ASR_ACTIVE=1
- */
+
 function loadSystemConfigFromEnv(): SystemConfig | null {
   const env = process.env
 
-  // 检查是否有任何相关的环境变量
   const hasEnvConfig = Object.keys(env).some(key =>
     key.startsWith('LLM_') ||
     key.startsWith('TASK_') ||
@@ -43,9 +25,6 @@ function loadSystemConfigFromEnv(): SystemConfig | null {
     return null
   }
 
-  // 解析任务模型
-  // 格式: TASK_1_MODEL, TASK_1_API_KEY, TASK_1_BASE_URL
-  // API Key / Base URL 为空时复用同序号 LLM 配置，便于同一供应商下只切任务模型名。
   const taskModels: LLMModelConfig[] = []
   for (let i = 1; i <= 10; i++) {
     const modelName = env[`TASK_${i}_MODEL`]
@@ -62,8 +41,6 @@ function loadSystemConfigFromEnv(): SystemConfig | null {
     }
   }
 
-  // 解析 LLM 模型
-  // 格式: LLM_1_MODEL, LLM_1_API_KEY, LLM_1_BASE_URL
   const llmModels: LLMModelConfig[] = []
   for (let i = 1; i <= 10; i++) {
     const modelName = env[`LLM_${i}_MODEL`]
@@ -80,8 +57,6 @@ function loadSystemConfigFromEnv(): SystemConfig | null {
     }
   }
 
-  // 解析 TTS 模型
-  // 格式: TTS_1_PROVIDER, TTS_1_MODEL, TTS_1_API_KEY, TTS_1_VOICE_ID
   const ttsModels: TTSModelConfig[] = []
   for (let i = 1; i <= 10; i++) {
     const provider = env[`TTS_${i}_PROVIDER`] as TTSProviderType | undefined
@@ -100,8 +75,6 @@ function loadSystemConfigFromEnv(): SystemConfig | null {
     }
   }
 
-  // 解析 ASR 模型
-  // 格式: ASR_1_PROVIDER, ASR_1_MODEL, ASR_1_API_KEY
   const asrModels: ASRModelConfig[] = []
   for (let i = 1; i <= 10; i++) {
     const provider = env[`ASR_${i}_PROVIDER`] as ASRProviderType | undefined
@@ -118,7 +91,6 @@ function loadSystemConfigFromEnv(): SystemConfig | null {
     }
   }
 
-  // 获取激活的模型索引
   const llmActive = parseInt(env['LLM_ACTIVE'] || '1', 10) - 1
   const taskActive = parseInt(env['TASK_ACTIVE'] || '1', 10) - 1
   const ttsActive = parseInt(env['TTS_ACTIVE'] || '1', 10) - 1
@@ -137,38 +109,38 @@ function loadSystemConfigFromEnv(): SystemConfig | null {
   }
 }
 
-/** LLM 模型配置 */
+
 export interface LLMModelConfig {
   id: string
-  modelName: string   // 模型名称，如 deepseek-chat, gpt-4（也是 API 参数）
+  modelName: string
   apiKey: string
   baseUrl: string
 }
 
-/** TTS Provider 类型 */
+
 export type TTSProviderType = 'fish'
 
-/** TTS 模型配置 */
+
 export interface TTSModelConfig {
   id: string
-  provider: TTSProviderType  // Provider 类型
-  modelName: string          // 模型名称，如 s2-pro
+  provider: TTSProviderType
+  modelName: string
   apiKey: string
-  voiceId?: string           // Fish Audio 的音色 ID
+  voiceId?: string
 }
 
-/** ASR Provider 类型 */
+
 export type ASRProviderType = 'qwen'
 
-/** ASR 模型配置 */
+
 export interface ASRModelConfig {
   id: string
-  provider: ASRProviderType  // Provider 类型
-  modelName: string          // 模型名称，如 qwen3-asr-flash-realtime
+  provider: ASRProviderType
+  modelName: string
   apiKey: string
 }
 
-/** 系统配置 */
+
 export interface SystemConfig {
   proxy: string
   llmModels: LLMModelConfig[]
@@ -250,7 +222,6 @@ export class SettingsStore {
     const isFirstRun = !existsSync(this.filePath)
 
     if (isFirstRun) {
-      // 首次运行，尝试从 .env 读取配置
       const envConfig = loadSystemConfigFromEnv()
       if (envConfig) {
         console.log('[SettingsStore] First run: loading config from .env')
@@ -267,7 +238,6 @@ export class SettingsStore {
       const raw = await readFile(this.filePath, 'utf-8')
       const parsed = JSON.parse(raw) as Partial<AppSettings>
 
-      // 检查是否需要从 .env 填充空的 API Key
       let systemConfig: SystemConfig = {
         ...DEFAULT_SYSTEM_CONFIG,
         ...(parsed.system ?? {}),
@@ -277,7 +247,6 @@ export class SettingsStore {
         asrModels: parsed.system?.asrModels?.length ? parsed.system.asrModels : DEFAULT_SYSTEM_CONFIG.asrModels,
       }
 
-      // 如果配置中的 API Key 为空，尝试从 .env 填充
       const hasEmptyApiKeys = this.hasEmptyApiKeys(systemConfig)
       if (hasEmptyApiKeys) {
         const envConfig = loadSystemConfigFromEnv()
@@ -298,7 +267,6 @@ export class SettingsStore {
       }
     } catch (error) {
       console.warn('[SettingsStore] Failed to load settings, using defaults:', error)
-      // 尝试从 .env 读取
       const envConfig = loadSystemConfigFromEnv()
       if (envConfig) {
         this.settings = {
@@ -312,9 +280,7 @@ export class SettingsStore {
     }
   }
 
-  /**
-   * 检查系统配置中是否有空的 API Key
-   */
+  
   private hasEmptyApiKeys(config: SystemConfig): boolean {
     const llmEmpty = config.llmModels.some(m => !m.apiKey)
     const taskEmpty = config.taskModels.some(m => !m.apiKey)
@@ -323,14 +289,10 @@ export class SettingsStore {
     return llmEmpty || taskEmpty || ttsEmpty || asrEmpty
   }
 
-  /**
-   * 合并系统配置，.env 配置填充空值
-   */
+  
   private mergeSystemConfig(base: SystemConfig, env: SystemConfig): SystemConfig {
-    // Proxy: 如果 base 为空，使用 env
     const proxy = base.proxy || env.proxy
 
-    // LLM: 如果 base 的 API Key 为空，尝试从 env 找到对应的填充
     const llmModels = base.llmModels.map((model, index) => {
       if (!model.apiKey && env.llmModels[index]?.apiKey) {
         return { ...model, apiKey: env.llmModels[index].apiKey }
@@ -341,14 +303,11 @@ export class SettingsStore {
       return model
     })
 
-    // 如果 base 只有空的默认配置，且 env 有配置，使用 env 的
     const useEnvLLM = base.llmModels.length === 1 &&
       !base.llmModels[0].apiKey &&
       base.llmModels[0].id === 'default-llm' &&
       env.llmModels.length > 0
 
-    // Task LLM: 如果 base 的 API Key 为空，尝试从 TASK env 找到对应的填充。
-    // TASK env 未单独提供凭据时，loadSystemConfigFromEnv 已经会复用同序号 LLM 凭据。
     const taskModels = base.taskModels.map((model, index) => {
       if (!model.apiKey && env.taskModels[index]?.apiKey) {
         return {
@@ -372,7 +331,6 @@ export class SettingsStore {
       base.taskModels[0].id === 'default-task' &&
       env.taskModels.length > 0
 
-    // TTS: 同上
     const ttsModels = base.ttsModels.map((model, index) => {
       if (!model.apiKey && env.ttsModels[index]?.apiKey) {
         return { ...model, apiKey: env.ttsModels[index].apiKey }
@@ -388,7 +346,6 @@ export class SettingsStore {
       base.ttsModels[0].id === 'default-tts' &&
       env.ttsModels.length > 0
 
-    // ASR: 同上
     const asrModels = base.asrModels.map((model, index) => {
       if (!model.apiKey && env.asrModels[index]?.apiKey) {
         return { ...model, apiKey: env.asrModels[index].apiKey }
@@ -431,9 +388,7 @@ export class SettingsStore {
     return this.getSettings()
   }
 
-  /**
-   * 从 .env 重新加载系统配置
-   */
+  
   async reloadSystemConfigFromEnv(): Promise<AppSettings> {
     const envConfig = loadSystemConfigFromEnv()
     if (envConfig) {

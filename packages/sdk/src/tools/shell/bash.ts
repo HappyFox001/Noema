@@ -36,9 +36,7 @@ export const bashToolSpec: ToolSpec = {
   }
 }
 
-/**
- * Bash 工具执行器
- */
+
 export class BashTool implements ToolExecutor {
   spec = bashToolSpec
 

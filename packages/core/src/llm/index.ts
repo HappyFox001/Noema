@@ -1,12 +1,10 @@
 import OpenAI from 'openai'
 import type { SDKConfig } from '@her-text/types'
 
-/**
- * LLM 响应类型
- */
+
 export interface LLMResponse {
   content: string
-  toolCalls?: any[]  // OpenAI tool_calls 格式
+  toolCalls?: any[]
 }
 
 export interface LLMProvider {
@@ -24,7 +22,7 @@ export class OpenAIProvider implements LLMProvider {
   ) {
     this.client = new OpenAI({
       apiKey,
-      baseURL,  // 自定义 API 端点
+      baseURL,
       dangerouslyAllowBrowser: true,
     })
   }
@@ -67,7 +65,6 @@ export class OpenAIProvider implements LLMProvider {
 }
 
 export function createLLMProvider(config: SDKConfig['llm']): LLMProvider {
-  // 统一使用 OpenAI 兼容格式
   if (config.baseURL) {
     console.log(`[LLM] Using custom endpoint: ${config.baseURL}`)
   }

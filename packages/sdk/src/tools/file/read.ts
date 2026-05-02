@@ -1,9 +1,7 @@
 import type { ToolSpec, ToolExecutor, ToolResult } from '../types.js'
 import { readTextFile, resolveToolPath } from '../node-runtime.js'
 
-/**
- * Read 工具规范
- */
+
 export const readToolSpec: ToolSpec = {
   type: 'function',
   function: {
@@ -30,9 +28,7 @@ export const readToolSpec: ToolSpec = {
   }
 }
 
-/**
- * Read 工具执行器
- */
+
 export class ReadTool implements ToolExecutor {
   spec = readToolSpec
 

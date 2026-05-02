@@ -1,7 +1,4 @@
-/**
- * Smart Turn 辅助模块
- * 用于在 Electron 主进程中初始化 Smart Turn
- */
+
 
 import { createRequire } from 'module'
 import { join, dirname } from 'path'
@@ -22,9 +19,7 @@ const __dirname = dirname(__filename)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let ort: any = null
 
-/**
- * 加载 ONNX Runtime
- */
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function loadOnnxRuntime(): any {
   if (!ort) {
@@ -33,19 +28,13 @@ function loadOnnxRuntime(): any {
   return ort
 }
 
-/**
- * 查找 Smart Turn 模型文件
- */
+
 function findModelPath(): string {
   const possiblePaths = [
-    // 开发环境：从 apps/desktop/dist/ 到 models/
     join(__dirname, '../../../models/smart-turn-v3.2-cpu.onnx'),
-    // 开发环境：从 apps/desktop/src/main/
     join(__dirname, '../../../../models/smart-turn-v3.2-cpu.onnx'),
-    // 生产环境：打包后
     join(__dirname, './models/smart-turn-v3.2-cpu.onnx'),
     join(__dirname, '../models/smart-turn-v3.2-cpu.onnx'),
-    // 相对于 cwd
     join(process.cwd(), 'models/smart-turn-v3.2-cpu.onnx'),
     join(process.cwd(), '../../models/smart-turn-v3.2-cpu.onnx'),
   ]
@@ -60,9 +49,7 @@ function findModelPath(): string {
   throw new Error(`Smart Turn model not found. Searched paths:\n${possiblePaths.join('\n')}`)
 }
 
-/**
- * 创建 ONNX Tensor 工厂
- */
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function createTensorFactory(onnxRuntime: any): OnnxTensorFactory {
   return {
@@ -102,9 +89,7 @@ function createTensorFactory(onnxRuntime: any): OnnxTensorFactory {
   }
 }
 
-/**
- * 包装 ONNX InferenceSession
- */
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function wrapSession(session: any, onnxRuntime: any): OnnxInferenceSession {
   return {
@@ -145,9 +130,7 @@ function wrapSession(session: any, onnxRuntime: any): OnnxInferenceSession {
   }
 }
 
-/**
- * 初始化 Smart Turn
- */
+
 export async function initializeSmartTurn(sampleRate: number = 16000): Promise<SmartTurnAnalyzer> {
   console.log('[SmartTurn] Initializing...')
 
@@ -171,19 +154,17 @@ export async function initializeSmartTurn(sampleRate: number = 16000): Promise<S
     tensorFactory: createTensorFactory(onnxRuntime),
     featureExtractor: new SimpleWhisperFeatureExtractor(),
     sampleRate,
-    stopSecs: 2.0,        // 2 秒静音超时备用
-    preSpeechMs: 500,     // 语音开始前 500ms
-    maxDurationSecs: 8,   // 最大分析 8 秒
-    threshold: 0.5,       // 完成阈值
+    stopSecs: 2.0,
+    preSpeechMs: 500,
+    maxDurationSecs: 8,
+    threshold: 0.5,
   })
 
   console.log('[SmartTurn] Initialized successfully')
   return smartTurn
 }
 
-/**
- * 检查 Smart Turn 是否可用
- */
+
 export function isSmartTurnAvailable(): boolean {
   try {
     loadOnnxRuntime()

@@ -44,7 +44,6 @@ export class TurnRuntime {
       }
     }
 
-    // 打印工具调用详情
     toolCalls.forEach((call, i) => {
       console.log(`\n[Turn ${turnIndex}] 🛠️  工具调用 #${i + 1}:`)
       console.log(`  Name: ${call.function.name}`)
@@ -56,7 +55,6 @@ export class TurnRuntime {
       timeout: 30000
     })
 
-    // 打印工具执行结果
     toolResults.forEach((result, i) => {
       const status = result.success ? '✅' : '❌'
       console.log(`[Turn ${turnIndex}] ${status} 工具结果 #${i + 1} (${toolCalls[i].function.name}):`)

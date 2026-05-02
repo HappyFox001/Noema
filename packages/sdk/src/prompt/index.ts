@@ -18,22 +18,12 @@ export interface PromptBuildOptions {
   separateCurrentUserInput?: boolean
 }
 
-/**
- * Prompt 构建器 - XML 结构化版本
- *
- * 架构：
- * <system_prompt> - 角色定义
- * <memory> - 记忆系统
- * <conversation_history> - 对话历史（远期 + 近期）
- * <output_format> - 输出规范
- */
-export class PromptBuilder {
-  private static RECENT_CONVERSATION_LIMIT = 20   // 近期对话：最近 20 条
-  private static DISTANT_CONVERSATION_END = 50    // 远期对话：到第 50 条
 
-  /**
-   * 构建完整的 prompt
-   */
+export class PromptBuilder {
+  private static RECENT_CONVERSATION_LIMIT = 20
+  private static DISTANT_CONVERSATION_END = 50
+
+  
   static build(
     history: ResponseItem[],
     options: PromptBuildOptions = {}
@@ -53,7 +43,6 @@ export class PromptBuilder {
       separateCurrentUserInput = true
     } = options
 
-    // 1. 构建 XML 结构的系统提示词
     const systemPrompt = this.buildXMLSystemPrompt({
       baseInstructions,
       personality,
@@ -63,7 +52,6 @@ export class PromptBuilder {
       pluginPromptAdditions,
     })
 
-    // 2. 构建消息历史（只包含对话，不包括系统提示）
     const { historyMessages, currentUserMessages } = separateCurrentUserInput
       ? this.splitCurrentUserInput(history)
       : { historyMessages: history, currentUserMessages: [] }
@@ -75,7 +63,6 @@ export class PromptBuilder {
       })
     }
 
-    // 3. 构建工具规范
     const toolSpecs = tools.length > 0
       ? this.buildToolSpecs(tools, parallelToolCalls)
       : undefined
@@ -87,9 +74,7 @@ export class PromptBuilder {
     }
   }
 
-  /**
-   * 构建 XML 结构的系统提示词
-   */
+  
   private static buildXMLSystemPrompt(options: {
     baseInstructions?: BaseInstructions
     personality?: Personality
@@ -114,12 +99,10 @@ export class PromptBuilder {
     // ========== Part 2: Memory ==========
     sections.push('\n<memory>')
 
-    // 用户画像
     if (options.userProfile) {
       sections.push(this.formatUserProfileXML(options.userProfile))
     }
 
-    // 对话摘要
     if (options.summaries && options.summaries.length > 0) {
       sections.push(this.formatSummariesXML(options.summaries))
     }
@@ -134,14 +117,11 @@ export class PromptBuilder {
     return sections.join('\n')
   }
 
-  /**
-   * 格式化人格信息（XML）
-   */
+  
   private static formatPersonalityXML(personality: Personality): string {
     const { character, relationship } = personality
     const sections: string[] = []
 
-    // ========== 角色身份 ==========
     sections.push('<identity>')
     const displayName = character.chineseName || character.name
     sections.push(`  <name>${displayName}</name>`)
@@ -168,19 +148,16 @@ export class PromptBuilder {
     }
     sections.push('</identity>\n')
 
-    // ========== 外貌印象 ==========
     if (character.appearanceImpression) {
       sections.push('<appearance>')
       sections.push(this.escapeXML(character.appearanceImpression.trim()))
       sections.push('</appearance>\n')
     }
 
-    // ========== 背景故事 ==========
     sections.push('<background>')
     sections.push(this.escapeXML(character.background.trim()))
     sections.push('</background>\n')
 
-    // ========== 核心记忆 ==========
     if (character.coreMemories && character.coreMemories.length > 0) {
       sections.push('<core_memories>')
       character.coreMemories.forEach(memory => {
@@ -189,7 +166,6 @@ export class PromptBuilder {
       sections.push('</core_memories>\n')
     }
 
-    // ========== 性格特质 ==========
     if (character.personalityTraits && character.personalityTraits.length > 0) {
       sections.push('<personality_traits>')
       character.personalityTraits.forEach(trait => {
@@ -198,7 +174,6 @@ export class PromptBuilder {
       sections.push('</personality_traits>\n')
     }
 
-    // ========== 价值观 ==========
     if (character.values && character.values.length > 0) {
       sections.push('<values>')
       character.values.forEach(v => {
@@ -207,21 +182,18 @@ export class PromptBuilder {
       sections.push('</values>\n')
     }
 
-    // ========== 世界观 ==========
     if (character.worldview) {
       sections.push('<worldview>')
       sections.push(this.escapeXML(character.worldview.trim()))
       sections.push('</worldview>\n')
     }
 
-    // ========== 说话风格 ==========
     if (character.speakingStyle) {
       sections.push('<speaking_style>')
       sections.push(this.escapeXML(character.speakingStyle.trim()))
       sections.push('</speaking_style>\n')
     }
 
-    // ========== 行为准则 ==========
     if (character.behaviorRules && character.behaviorRules.length > 0) {
       sections.push('<behavior_rules>')
       character.behaviorRules.forEach(rule => {
@@ -230,7 +202,6 @@ export class PromptBuilder {
       sections.push('</behavior_rules>\n')
     }
 
-    // ========== 喜好 ==========
     if (character.likes && character.likes.length > 0) {
       sections.push('<likes>')
       character.likes.forEach(like => {
@@ -239,7 +210,6 @@ export class PromptBuilder {
       sections.push('</likes>\n')
     }
 
-    // ========== 厌恶 ==========
     if (character.dislikes && character.dislikes.length > 0) {
       sections.push('<dislikes>')
       character.dislikes.forEach(dislike => {
@@ -248,7 +218,6 @@ export class PromptBuilder {
       sections.push('</dislikes>\n')
     }
 
-    // ========== 关系设定 ==========
     sections.push('<relationship>')
     sections.push(`  <type>${relationship.type}</type>`)
     sections.push(`  <intimacy>${relationship.intimacy.toFixed(2)}</intimacy>`)
@@ -261,13 +230,10 @@ export class PromptBuilder {
     return sections.join('\n')
   }
 
-  /**
-   * 格式化用户画像（XML）
-   */
+  
   private static formatUserProfileXML(profile: UserProfile): string {
     let xml = '<user_profile>\n'
 
-    // 基本信息
     if (Object.keys(profile.basic).length > 0) {
       xml += '  <basic_info>\n'
       Object.entries(profile.basic).forEach(([key, value]) => {
@@ -279,7 +245,6 @@ export class PromptBuilder {
       xml += '  </basic_info>\n'
     }
 
-    // 重要记忆
     if (profile.importantMemories.size > 0) {
       xml += '  <important_memories>\n'
       profile.importantMemories.forEach((value, key) => {
@@ -292,9 +257,7 @@ export class PromptBuilder {
     return xml
   }
 
-  /**
-   * 格式化对话摘要（XML）
-   */
+  
   private static formatSummariesXML(summaries: ConversationSummary[]): string {
     let xml = '<conversation_summaries>\n'
 
@@ -317,9 +280,7 @@ export class PromptBuilder {
     return xml
   }
 
-  /**
-   * 构建输出格式规范（情感层）
-   */
+  
   private static buildOutputFormatXML(
     hasTools: boolean,
     pluginPromptAdditions: string[]
@@ -359,13 +320,10 @@ export class PromptBuilder {
     return instructions
   }
 
-  /**
-   * 构建消息列表（分远期和近期）
-   */
+  
   private static buildMessages(history: ResponseItem[]): any[] {
     const messages: any[] = []
 
-    // 分离远期和近期对话
     const totalMessages = history.length
     const recentStart = Math.max(0, totalMessages - this.RECENT_CONVERSATION_LIMIT)
 
@@ -375,7 +333,6 @@ export class PromptBuilder {
     )
     const recentMessages = history.slice(recentStart)
 
-    // 1. 添加远期对话（如果有）
     if (distantMessages.length > 0) {
       const distantXML = this.formatDistantConversationsXML(distantMessages)
       messages.push({
@@ -384,7 +341,6 @@ export class PromptBuilder {
       })
     }
 
-    // 2. 添加近期对话
     const recentXML = this.formatRecentConversationsXML(recentMessages)
     messages.push({
       role: 'user',
@@ -394,13 +350,7 @@ export class PromptBuilder {
     return messages
   }
 
-  /**
-   * 将当前最新用户输入从历史中切出来。
-   *
-   * 规则：从末尾向前找到最后一个 assistant；其后的连续 user 消息
-   * 都属于当前输入。这样 bot_thinking 阶段被打断后形成的
-   * user/user/... 会作为同一次最新请求，而不是混在 recent history。
-   */
+  
   private static splitCurrentUserInput(history: ResponseItem[]): {
     historyMessages: ResponseItem[]
     currentUserMessages: ResponseItem[]
@@ -432,12 +382,10 @@ export class PromptBuilder {
     }
   }
 
-  /**
-   * 格式化当前用户输入。
-   */
+  
   private static formatCurrentUserInputXML(messages: ResponseItem[]): string {
     let xml = '<current_user_input>\n'
-    xml += '<!-- 当前需要回复的最新用户输入；可能包含连续多条 user turn。 -->\n'
+    xml += '\n'
 
     messages.forEach((item, index) => {
       xml += `  <utterance id="${index + 1}">\n`
@@ -449,12 +397,10 @@ export class PromptBuilder {
     return xml
   }
 
-  /**
-   * 格式化远期对话（XML）
-   */
+  
   private static formatDistantConversationsXML(messages: ResponseItem[]): string {
     let xml = '<conversation_history type="distant">\n'
-    xml += '<!-- 较早的对话记录（供参考） -->\n'
+    xml += '\n'
 
     messages.forEach((item, index) => {
       xml += `  <turn id="${index + 1}" role="${item.role}">\n`
@@ -466,17 +412,14 @@ export class PromptBuilder {
     return xml
   }
 
-  /**
-   * 格式化近期对话（XML）
-   */
+  
   private static formatRecentConversationsXML(messages: ResponseItem[]): string {
     let xml = '<conversation_history type="recent">\n'
-    xml += '<!-- 最近的对话记录（重点关注） -->\n'
+    xml += '\n'
 
     messages.forEach((item, index) => {
       xml += `  <turn id="${index + 1}" role="${item.role}">\n`
 
-      // 工具调用
       if (item.toolCalls && item.toolCalls.length > 0) {
         xml += '    <tool_calls>\n'
         item.toolCalls.forEach(call => {
@@ -485,7 +428,6 @@ export class PromptBuilder {
         xml += '    </tool_calls>\n'
       }
 
-      // 工具结果
       if (item.toolResults && item.toolResults.length > 0) {
         xml += '    <tool_results>\n'
         item.toolResults.forEach(result => {
@@ -494,7 +436,6 @@ export class PromptBuilder {
         xml += '    </tool_results>\n'
       }
 
-      // 内容
       if (item.content) {
         xml += `    <content>${this.escapeXML(item.content)}</content>\n`
       }
@@ -506,9 +447,7 @@ export class PromptBuilder {
     return xml
   }
 
-  /**
-   * 构建工具规范（OpenAI 格式）
-   */
+  
   private static buildToolSpecs(tools: Tool[], _parallelCalls: boolean): any[] {
     return tools.map(tool => ({
       type: 'function',
@@ -520,9 +459,7 @@ export class PromptBuilder {
     }))
   }
 
-  /**
-   * XML 转义
-   */
+  
   private static escapeXML(str: string): string {
     return str
       .replace(/&/g, '&amp;')

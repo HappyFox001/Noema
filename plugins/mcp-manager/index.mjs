@@ -1,3 +1,9 @@
+/**
+ * Remote MCP manager plugin.
+ *
+ * Registers task tools for listing and calling remote MCP tools, and exposes
+ * admin actions for managing remote HTTP MCP server entries.
+ */
 import { MCPManager } from './src/mcp-manager.mjs'
 import { clampInteger, parseServersConfig } from './src/utils.mjs'
 

@@ -14,9 +14,7 @@ import {
 } from './sqlite-runtime.js'
 import { PROMPTS } from '../prompts.js'
 
-/**
- * 用户画像
- */
+
 export interface UserProfile {
   basic: {
     name?: string
@@ -26,12 +24,10 @@ export interface UserProfile {
     interests?: string[]
     [key: string]: any
   }
-  importantMemories: Map<string, string>  // 最多 20 条 KV
+  importantMemories: Map<string, string>
 }
 
-/**
- * 对话摘要
- */
+
 export interface ConversationSummary {
   id: string
   startTurn: number
@@ -75,36 +71,24 @@ CREATE TABLE IF NOT EXISTS metadata (
 `
 
 
-/**
- * Memory Engine - 记忆系统
- *
- * Part 1: 用户画像 - Profile + 重要记忆 (自动总结)
- * Part 2: 对话摘要 - 每 10 轮总结
- */
 export class MemoryEngine {
-  // Part 1: 用户画像
   private userProfile: UserProfile = {
     basic: {},
     importantMemories: new Map()
   }
   private maxImportantMemories: number = 20
 
-  // Part 3: 对话摘要
   private conversationSummaries: ConversationSummary[] = []
-  private summaryInterval: number = 10  // 每 10 轮总结
+  private summaryInterval: number = 10
 
-  // 工作记忆（原始对话）
   private workingMemory: ConversationTurn[] = []
   private turnCounter: number = 0
 
-  // LLM（用于异步总结）
   private llm?: LLMProvider
 
-  // 异步更新队列（防止阻塞主流程）
   private updateQueue: Promise<void> = Promise.resolve()
   private persistenceQueue: Promise<void> = Promise.resolve()
 
-  // SQLite 持久化状态
   private persistenceEnabled: boolean = false
   private persistenceDbPath: string
 
@@ -138,9 +122,7 @@ export class MemoryEngine {
     this.llm = llm
   }
 
-  /**
-   * 存储对话轮次
-   */
+  
   async store(turn: {
     user: string
     assistant: string
@@ -160,13 +142,7 @@ export class MemoryEngine {
     ])
   }
 
-  /**
-   * 存储一组已确认进入上下文的消息。
-   *
-   * 语音打断时可能只有 user 消息，或只有已经输出的 assistant 片段。
-   * 记忆层不能强制要求 user/assistant 成对，否则 bot_thinking 阶段
-   * 被打断的输入会只存在短期上下文里，无法持久化到 SQLite。
-   */
+  
   async storeMessages(messages: Array<{
     role: ConversationTurn['role']
     content: string
@@ -195,7 +171,6 @@ export class MemoryEngine {
     this.turnCounter += normalized.filter((message) => message.role === 'user').length
     this.trimWorkingMemory()
 
-    // 每 10 个用户 turn 触发异步更新（不阻塞）
     if (this.turnCounter > 0 && this.turnCounter % this.summaryInterval === 0) {
       this.scheduleAsyncUpdate()
     }
@@ -203,9 +178,7 @@ export class MemoryEngine {
     await this.persistToDatabase()
   }
 
-  /**
-   * 获取用户画像
-   */
+  
   getUserProfile(): UserProfile {
     return {
       basic: { ...this.userProfile.basic },
@@ -213,25 +186,19 @@ export class MemoryEngine {
     }
   }
 
-  /**
-   * Part 3: 获取对话摘要
-   */
+  
   getConversationSummaries(limit: number = 5): ConversationSummary[] {
     return this.conversationSummaries
       .slice(-limit)
       .map(s => ({ ...s }))
   }
 
-  /**
-   * 获取工作记忆（最近对话）
-   */
+  
   getWorkingMemory(): ConversationTurn[] {
     return [...this.workingMemory]
   }
 
-  /**
-   * 检索相关记忆（用于上下文）
-   */
+  
   async retrieve(query: string): Promise<{
     userProfile: UserProfile
     summaries: ConversationSummary[]
@@ -242,11 +209,8 @@ export class MemoryEngine {
     }
   }
 
-  /**
-   * 异步更新调度（不阻塞主流程）
-   */
+  
   private scheduleAsyncUpdate(): void {
-    // 链式 Promise，确保串行执行
     this.updateQueue = this.updateQueue
       .then(() => this.performAsyncUpdate())
       .catch(error => {
@@ -254,9 +218,7 @@ export class MemoryEngine {
       })
   }
 
-  /**
-   * 执行异步更新（每 10 轮触发）
-   */
+  
   private async performAsyncUpdate(): Promise<void> {
     if (!this.llm) {
       console.warn('LLM not available for memory update')
@@ -266,10 +228,8 @@ export class MemoryEngine {
     console.log(`[Memory] Starting async update at turn ${this.turnCounter}`)
 
     try {
-      // 获取最近 10 轮对话
       const recentTurns = this.getRecentTurns(this.summaryInterval)
 
-      // 并行执行两个任务
       await Promise.all([
         this.generateConversationSummary(recentTurns),
         this.updateUserProfileFromConversation(recentTurns)
@@ -277,31 +237,25 @@ export class MemoryEngine {
 
       console.log(`[Memory] Async update completed`)
 
-      // 自动保存到数据库
       await this.persistToDatabase()
     } catch (error) {
       console.error('[Memory] Async update error:', error)
     }
   }
 
-  /**
-   * 获取最近 N 轮对话
-   */
+  
   private getRecentTurns(n: number): ConversationTurn[] {
-    const messageCount = n * 2  // 每轮 2 条消息（user + assistant）
+    const messageCount = n * 2
     return this.workingMemory.slice(-messageCount)
   }
 
   private trimWorkingMemory(): void {
-    // 限制工作记忆大小（保留最近 50 轮）
     if (this.workingMemory.length > 100) {
       this.workingMemory.splice(0, this.workingMemory.length - 100)
     }
   }
 
-  /**
-   * 生成对话摘要（Part 3）
-   */
+  
   private async generateConversationSummary(turns: ConversationTurn[]): Promise<void> {
     if (turns.length === 0) return
 
@@ -332,7 +286,6 @@ ${conversationText}`
 
       this.conversationSummaries.push(summary)
 
-      // 限制摘要数量（保留最近 50 个）
       if (this.conversationSummaries.length > 50) {
         this.conversationSummaries.splice(0, this.conversationSummaries.length - 50)
       }
@@ -341,9 +294,7 @@ ${conversationText}`
     }
   }
 
-  /**
-   * 从对话更新用户画像（状态机模式）
-   */
+  
   private async updateUserProfileFromConversation(turns: ConversationTurn[]): Promise<void> {
     if (turns.length === 0) return
 
@@ -351,7 +302,6 @@ ${conversationText}`
       .map(t => `${t.role === 'user' ? '用户' : 'AI'}: ${t.content}`)
       .join('\n')
 
-    // 准备当前状态
     const currentProfile = {
       name: this.userProfile.basic.name,
       nickname: this.userProfile.basic.nickname,
@@ -360,7 +310,6 @@ ${conversationText}`
       location: this.userProfile.basic.location,
       occupation: this.userProfile.basic.occupation,
     }
-    // 过滤掉 undefined
     const filteredProfile = Object.fromEntries(
       Object.entries(currentProfile).filter(([_, v]) => v !== undefined)
     ) as typeof currentProfile
@@ -381,9 +330,7 @@ ${conversationText}`
       let profileChanges = 0
       let memoryChanges = 0
 
-      // 处理 profile 操作
       if (parsed.profile) {
-        // 更新字段
         if (parsed.profile.update) {
           const allowedFields = ['name', 'nickname', 'age', 'gender', 'location', 'occupation']
           for (const [key, value] of Object.entries(parsed.profile.update)) {
@@ -393,7 +340,6 @@ ${conversationText}`
             }
           }
         }
-        // 删除字段
         if (Array.isArray(parsed.profile.delete)) {
           for (const key of parsed.profile.delete) {
             if (key in this.userProfile.basic) {
@@ -404,9 +350,7 @@ ${conversationText}`
         }
       }
 
-      // 处理 memories 操作
       if (parsed.memories) {
-        // 添加新记忆
         if (parsed.memories.add) {
           for (const [key, value] of Object.entries(parsed.memories.add)) {
             if (!this.userProfile.importantMemories.has(key)) {
@@ -415,7 +359,6 @@ ${conversationText}`
             }
           }
         }
-        // 更新已有记忆
         if (parsed.memories.update) {
           for (const [key, value] of Object.entries(parsed.memories.update)) {
             if (this.userProfile.importantMemories.has(key)) {
@@ -424,7 +367,6 @@ ${conversationText}`
             }
           }
         }
-        // 删除记忆
         if (Array.isArray(parsed.memories.delete)) {
           for (const key of parsed.memories.delete) {
             if (this.userProfile.importantMemories.delete(key)) {
@@ -433,7 +375,6 @@ ${conversationText}`
           }
         }
 
-        // 限制记忆数量（保留最新的 20 条）
         if (this.userProfile.importantMemories.size > this.maxImportantMemories) {
           const entries = Array.from(this.userProfile.importantMemories.entries())
           const toRemove = entries.slice(0, entries.length - this.maxImportantMemories)
@@ -453,12 +394,9 @@ ${conversationText}`
     }
   }
 
-  /**
-   * 解析 JSON 响应（容错）
-   */
+  
   private parseJSONResponse(response: string): any {
     try {
-      // 尝试提取 JSON（可能包含其他文本）
       const jsonMatch = response.match(/\{[\s\S]*\}/)
       if (jsonMatch) {
         return JSON.parse(jsonMatch[0])
@@ -470,16 +408,12 @@ ${conversationText}`
     }
   }
 
-  /**
-   * 关闭引擎
-   */
+  
   async shutdown(): Promise<void> {
     try {
-      // 等待所有异步更新完成
       await this.updateQueue
       await this.persistenceQueue
 
-      // 保存到数据库
       await this.persistToDatabase()
 
       console.log('[MemoryEngine] Shutdown complete')
@@ -526,36 +460,28 @@ ${conversationText}`
     `)
   }
 
-  /**
-   * 更新用户基本画像
-   */
+  
   async updateUserProfileBasic(updates: Partial<UserProfile['basic']>): Promise<void> {
-    // 合并更新
     this.userProfile.basic = {
       ...this.userProfile.basic,
       ...updates
     }
 
-    // 移除空值
     for (const key of Object.keys(this.userProfile.basic)) {
       if (this.userProfile.basic[key as keyof typeof this.userProfile.basic] === '') {
         delete this.userProfile.basic[key as keyof typeof this.userProfile.basic]
       }
     }
 
-    // 持久化
     if (this.persistenceEnabled) {
       await this.saveToDatabase()
     }
   }
 
-  /**
-   * 添加重要记忆
-   */
+  
   async addImportantMemory(key: string, value: string): Promise<void> {
     this.userProfile.importantMemories.set(key, value)
 
-    // 限制数量
     if (this.userProfile.importantMemories.size > 20) {
       const firstKey = this.userProfile.importantMemories.keys().next().value
       if (firstKey) {
@@ -568,9 +494,7 @@ ${conversationText}`
     }
   }
 
-  /**
-   * 删除重要记忆
-   */
+  
   async deleteImportantMemory(key: string): Promise<void> {
     this.userProfile.importantMemories.delete(key)
 
@@ -581,16 +505,12 @@ ${conversationText}`
     }
   }
 
-  /**
-   * 获取所有对话摘要
-   */
+  
   getAllConversationSummaries(): ConversationSummary[] {
     return this.conversationSummaries.map(s => ({ ...s }))
   }
 
-  /**
-   * 删除对话摘要
-   */
+  
   async deleteConversationSummary(id: string): Promise<void> {
     this.conversationSummaries = this.conversationSummaries.filter(s => s.id !== id)
 
@@ -601,9 +521,7 @@ ${conversationText}`
     }
   }
 
-  /**
-   * 删除对话轮次
-   */
+  
   async deleteConversationTurn(id: string): Promise<void> {
     this.workingMemory = this.workingMemory.filter(t => t.id !== id)
 
@@ -614,9 +532,7 @@ ${conversationText}`
     }
   }
 
-  /**
-   * 删除用户画像字段
-   */
+  
   async deleteProfileField(field: string): Promise<void> {
     delete (this.userProfile.basic as any)[field]
 
@@ -627,9 +543,7 @@ ${conversationText}`
     }
   }
 
-  /**
-   * 清空重要记忆
-   */
+  
   async clearImportantMemories(): Promise<void> {
     this.userProfile.importantMemories.clear()
 
@@ -640,9 +554,7 @@ ${conversationText}`
     }
   }
 
-  /**
-   * 清空对话摘要
-   */
+  
   async clearConversationSummaries(): Promise<void> {
     this.conversationSummaries = []
 
@@ -653,9 +565,7 @@ ${conversationText}`
     }
   }
 
-  /**
-   * 清空最近对话
-   */
+  
   async clearWorkingMemory(): Promise<void> {
     this.workingMemory = []
     this.turnCounter = 0
@@ -668,16 +578,12 @@ ${conversationText}`
     }
   }
 
-  /**
-   * 初始化 SQLite 表结构
-   */
+  
   private async ensureDatabase(): Promise<void> {
     await runSqlite(this.persistenceDbPath, MEMORY_SCHEMA_SQL)
   }
 
-  /**
-   * 从数据库加载记忆
-   */
+  
   private async loadFromDatabase(): Promise<void> {
     try {
       this.workingMemory = await runSqliteJson<ConversationTurn>(
@@ -757,9 +663,7 @@ ${conversationText}`
     }
   }
 
-  /**
-   * 保存记忆到数据库
-   */
+  
   private async saveToDatabase(): Promise<void> {
     try {
       const statements: string[] = ['BEGIN;']

@@ -1,3 +1,9 @@
+/**
+ * Runtime plugin loader for desktop.
+ *
+ * Discovers plugin manifests, merges persisted configuration, creates plugin
+ * data directories, and provides host capabilities to external plugin modules.
+ */
 import { app } from 'electron'
 import { existsSync } from 'fs'
 import { mkdir, readdir, readFile } from 'fs/promises'

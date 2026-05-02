@@ -140,7 +140,6 @@ export class NodeRealtimeWebSocketTransport implements RealtimeWebSocketTranspor
         try {
           socket.terminate()
         } catch {
-          // ws 在 CONNECTING 阶段关闭可能直接抛同步异常，这里吞掉即可。
         }
       }
 

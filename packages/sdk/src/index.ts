@@ -11,16 +11,7 @@ export interface HerTextSDKInitializeOptions {
   plugins?: SDKPlugin[]
 }
 
-/**
- * Her-Text SDK - 核心 API
- *
- * 功能模块：
- * - Memory: 三层记忆（短期 KV + 用户画像 + 对话摘要）
- * - Personality: 人格系统（Big Five + 角色设定）
- * - Agent: 工具执行（注册/并行/钩子）
- * - Context: 上下文管理（截断/规范化）
- * - Dialogue: 对话编排（完整 Turn 生命周期）
- */
+
 export class HerTextSDK {
   public memory: MemoryEngine
   public personality: PersonalityEngine
@@ -59,9 +50,7 @@ export class HerTextSDK {
     return sdk
   }
 
-  /**
-   * 发送消息（阻塞式）
-   */
+  
   async chat(input: UserInput): Promise<AgentResponse> {
     const chunks: string[] = []
     for await (const chunk of this.dialogue.processUserInputStream(input)) {
@@ -74,9 +63,7 @@ export class HerTextSDK {
     }
   }
 
-  /**
-   * 发送消息（流式）
-   */
+  
   async *chatStream(
     input: UserInput,
     options?: import('./dialogue/index.js').StreamOptions
@@ -84,16 +71,12 @@ export class HerTextSDK {
     yield* this.dialogue.processUserInputStream(input, options)
   }
 
-  /**
-   * 获取对话上下文
-   */
+  
   getContext(): ContextManager {
     return this.dialogue.getContext()
   }
 
-  /**
-   * 获取对话统计
-   */
+  
   getStats() {
     return this.dialogue.getStats()
   }
@@ -106,30 +89,23 @@ export class HerTextSDK {
     return this.dialogue.transformText(target, text, runtime)
   }
 
-  /**
-   * 清空对话历史
-   */
+  
   clearHistory(): void {
     this.dialogue.clearHistory()
   }
 
-  /**
-   * 获取 LLM Provider（高级用法）
-   */
+  
   getLLM(): LLMProvider {
     return this.llm
   }
 
-  /**
-   * 关闭 SDK
-   */
+  
   async shutdown(): Promise<void> {
     await this.dialogue.shutdown()
     await this.memory.shutdown()
   }
 }
 
-// 导出所有子模块（明确指定文件以兼容 Node.js ES modules）
 export * from './memory/index.js'
 export * from './personality/index.js'
 export * from './agent/index.js'

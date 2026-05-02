@@ -1,16 +1,8 @@
-/**
- * Smart Turn Analyzer
- * 移植自 Pipecat LocalSmartTurnAnalyzerV3
- *
- * 使用 ML 模型智能判断用户是否说完话，而非简单的静音超时
- * 模型: smart-turn-v3.2-cpu.onnx (基于 Whisper 特征)
- */
+
 
 import FFT from 'fft.js'
 
-/**
- * ONNX Runtime 会话接口
- */
+
 export interface OnnxInferenceSession {
   run(
     feeds: Record<string, OnnxTensor>,
@@ -31,60 +23,48 @@ export interface OnnxTensorFactory {
   ): OnnxTensor
 }
 
-/**
- * Whisper 特征提取器接口
- */
+
 export interface WhisperFeatureExtractor {
   extract(audio: Float32Array, sampleRate: number): Promise<Float32Array>
 }
 
-/**
- * Smart Turn 配置
- */
+
 export interface SmartTurnConfig {
-  /** ONNX 推理会话 */
+  
   session: OnnxInferenceSession
-  /** Tensor 工厂 */
+  
   tensorFactory: OnnxTensorFactory
-  /** Whisper 特征提取器 */
+  
   featureExtractor: WhisperFeatureExtractor
-  /** 采样率 */
+  
   sampleRate?: number
-  /** 静音超时 (秒) - 备用策略 */
+  
   stopSecs?: number
-  /** 语音开始前的音频时长 (毫秒) */
+  
   preSpeechMs?: number
-  /** 最大分析时长 (秒) */
+  
   maxDurationSecs?: number
-  /** 完成阈值 (0-1) */
+  
   threshold?: number
 }
 
-/**
- * Smart Turn 分析结果
- */
+
 export interface SmartTurnResult {
-  /** 是否判定为完成 */
+  
   isComplete: boolean
-  /** 完成概率 (0-1) */
+  
   probability: number
-  /** 推理耗时 (毫秒) */
+  
   inferenceTimeMs: number
 }
 
-// 模型期望的采样率
 const MODEL_SAMPLE_RATE = 16000
-// 默认配置
 const DEFAULT_STOP_SECS = 3.0
 const DEFAULT_PRE_SPEECH_MS = 500
 const DEFAULT_MAX_DURATION_SECS = 8
 const DEFAULT_THRESHOLD = 0.5
 
-/**
- * Smart Turn 分析器
- *
- * 使用 ONNX 模型分析音频，智能判断用户是否说完话
- */
+
 export class SmartTurnAnalyzer {
   private session: OnnxInferenceSession
   private tensorFactory: OnnxTensorFactory
@@ -95,7 +75,6 @@ export class SmartTurnAnalyzer {
   private maxDurationSecs: number
   private threshold: number
 
-  // 状态
   private audioBuffer: Array<{ timestamp: number; audio: Float32Array }> = []
   private speechTriggered = false
   private silenceMs = 0
@@ -112,10 +91,7 @@ export class SmartTurnAnalyzer {
     this.threshold = config.threshold ?? DEFAULT_THRESHOLD
   }
 
-  /**
-   * 添加音频数据
-   * @returns 'incomplete' | 'complete_timeout' | 'ready_for_analysis'
-   */
+  
   appendAudio(audio: Float32Array, isSpeech: boolean): 'incomplete' | 'complete_timeout' | 'ready_for_analysis' {
     const now = Date.now()
     this.audioBuffer.push({ timestamp: now, audio })
@@ -130,22 +106,17 @@ export class SmartTurnAnalyzer {
     }
 
     if (this.speechTriggered) {
-      // 计算静音时长
       const chunkDurationMs = (audio.length / this.sampleRate) * 1000
       this.silenceMs += chunkDurationMs
 
-      // 如果静音超过阈值，触发超时
       if (this.silenceMs >= this.stopSecs * 1000) {
         return 'complete_timeout'
       }
 
-      // 有足够静音时，可以进行 ML 分析
       if (this.silenceMs >= 200) {
-        // 200ms 静音后开始分析
         return 'ready_for_analysis'
       }
     } else {
-      // 语音开始前，限制缓冲区大小
       const maxBufferTime = (this.preSpeechMs / 1000) + this.stopSecs + this.maxDurationSecs
       const cutoffTime = now - maxBufferTime * 1000
       while (this.audioBuffer.length > 0 && this.audioBuffer[0].timestamp < cutoffTime) {
@@ -156,9 +127,7 @@ export class SmartTurnAnalyzer {
     return 'incomplete'
   }
 
-  /**
-   * 分析是否说完话
-   */
+  
   async analyze(): Promise<SmartTurnResult> {
     if (this.audioBuffer.length === 0) {
       return {
@@ -170,7 +139,6 @@ export class SmartTurnAnalyzer {
 
     const startTime = performance.now()
 
-    // 提取音频段
     const startIndex = this.findStartIndex()
     const segmentAudio = this.extractSegment(startIndex)
 
@@ -182,21 +150,15 @@ export class SmartTurnAnalyzer {
       }
     }
 
-    // 重采样到 16kHz
     const resampledAudio = this.resampleTo16kHz(segmentAudio)
 
-    // 截取/填充到 8 秒
     const paddedAudio = this.truncateOrPadTo8Seconds(resampledAudio)
 
-    // 提取 Whisper 特征
     const features = await this.featureExtractor.extract(paddedAudio, MODEL_SAMPLE_RATE)
 
-    // 运行 ONNX 推理
-    // Smart Turn v3 模型期望输入: [1, 80, 800] (80 mel bins, 800 time frames for 8 seconds)
     const inputTensor = this.tensorFactory.create('float32', features, [1, 80, 800])
     const outputs = await this.session.run({ input_features: inputTensor })
 
-    // 解析结果
     const output = outputs['output'] || outputs[Object.keys(outputs)[0]]
     const probability = (output.data as Float32Array)[0]
     const isComplete = probability > this.threshold
@@ -210,9 +172,7 @@ export class SmartTurnAnalyzer {
     }
   }
 
-  /**
-   * 重置状态
-   */
+  
   reset(): void {
     this.audioBuffer = []
     this.speechTriggered = false
@@ -220,9 +180,7 @@ export class SmartTurnAnalyzer {
     this.speechStartTime = 0
   }
 
-  /**
-   * 是否已触发语音
-   */
+  
   get isSpeechTriggered(): boolean {
     return this.speechTriggered
   }
@@ -243,7 +201,6 @@ export class SmartTurnAnalyzer {
     const chunks = this.audioBuffer.slice(startIndex).map(b => b.audio)
     if (chunks.length === 0) return new Float32Array(0)
 
-    // 合并所有音频块
     const totalLength = chunks.reduce((sum, c) => sum + c.length, 0)
     const result = new Float32Array(totalLength)
     let offset = 0
@@ -252,7 +209,6 @@ export class SmartTurnAnalyzer {
       offset += chunk.length
     }
 
-    // 限制最大长度
     const maxSamples = Math.floor(this.maxDurationSecs * this.sampleRate)
     if (result.length > maxSamples) {
       return result.slice(-maxSamples)
@@ -266,7 +222,6 @@ export class SmartTurnAnalyzer {
       return audio
     }
 
-    // 简单的线性插值重采样
     const ratio = MODEL_SAMPLE_RATE / this.sampleRate
     const newLength = Math.floor(audio.length * ratio)
     const result = new Float32Array(newLength)
@@ -283,13 +238,11 @@ export class SmartTurnAnalyzer {
   }
 
   private truncateOrPadTo8Seconds(audio: Float32Array): Float32Array {
-    const targetLength = 8 * MODEL_SAMPLE_RATE // 8 秒 @ 16kHz = 128000 样本
+    const targetLength = 8 * MODEL_SAMPLE_RATE
 
     if (audio.length > targetLength) {
-      // 截取最后 8 秒
       return audio.slice(-targetLength)
     } else if (audio.length < targetLength) {
-      // 前面填充零
       const padded = new Float32Array(targetLength)
       const padding = targetLength - audio.length
       padded.set(audio, padding)
@@ -300,23 +253,13 @@ export class SmartTurnAnalyzer {
   }
 }
 
-/**
- * 简易 Whisper 特征提取器
- *
- * 提取 80 维 mel 频谱特征，与 Whisper/Smart Turn 模型兼容
- * Smart Turn v3 期望: [80, 800] for 8 seconds of audio @ 16kHz
- *
- * 计算:
- * - 8 秒 @ 16kHz = 128000 样本
- * - hop_length = 160
- * - 帧数 = 128000 / 160 = 800
- */
+
 export class SimpleWhisperFeatureExtractor implements WhisperFeatureExtractor {
   private readonly nMels = 80
   private readonly nFft = 400
   private readonly fftSize = 512  // Power of 2 >= nFft for FFT
   private readonly hopLength = 160
-  private readonly targetFrames = 800  // Smart Turn v3 期望 800 帧 (8 秒 @ 16kHz)
+  private readonly targetFrames = 800
 
   // FFT instance (reused for performance)
   private fft: InstanceType<typeof FFT>
@@ -334,16 +277,13 @@ export class SimpleWhisperFeatureExtractor implements WhisperFeatureExtractor {
   }
 
   async extract(audio: Float32Array, sampleRate: number): Promise<Float32Array> {
-    // 计算实际帧数
     const nFrames = Math.ceil(audio.length / this.hopLength)
 
-    // 创建输出数组 [80, 800]
     const features = new Float32Array(this.nMels * this.targetFrames)
 
     // Reusable buffer for FFT input
     const fftInput = new Float32Array(this.fftSize)
 
-    // 计算每帧的 mel 频谱
     for (let frame = 0; frame < Math.min(nFrames, this.targetFrames); frame++) {
       const start = frame * this.hopLength
       const end = Math.min(start + this.nFft, audio.length)
@@ -354,19 +294,15 @@ export class SimpleWhisperFeatureExtractor implements WhisperFeatureExtractor {
         fftInput[i] = audio[start + i] * this.hanningWindow[i]
       }
 
-      // 计算功率谱 (使用 FFT)
       const powerSpectrum = this.computePowerSpectrum(fftInput)
 
-      // 转换为 mel 频谱
       const melSpectrum = this.powerToMel(powerSpectrum, sampleRate)
 
-      // 存储到特征数组 (列优先: mel bin, then time frame)
       for (let m = 0; m < this.nMels; m++) {
         features[m * this.targetFrames + frame] = melSpectrum[m]
       }
     }
 
-    // 归一化
     this.normalize(features)
 
     return features
@@ -393,7 +329,6 @@ export class SimpleWhisperFeatureExtractor implements WhisperFeatureExtractor {
     const melSpectrum = new Float32Array(this.nMels)
     const fftBins = powerSpectrum.length
 
-    // Mel 滤波器组
     const melMin = this.hzToMel(0)
     const melMax = this.hzToMel(sampleRate / 2)
     const melPoints = new Float32Array(this.nMels + 2)
@@ -436,7 +371,6 @@ export class SimpleWhisperFeatureExtractor implements WhisperFeatureExtractor {
   }
 
   private normalize(features: Float32Array): void {
-    // 计算均值和标准差
     let sum = 0
     for (let i = 0; i < features.length; i++) {
       sum += features[i]
@@ -449,7 +383,6 @@ export class SimpleWhisperFeatureExtractor implements WhisperFeatureExtractor {
     }
     const std = Math.sqrt(sumSq / features.length) || 1
 
-    // 标准化
     for (let i = 0; i < features.length; i++) {
       features[i] = (features[i] - mean) / std
     }

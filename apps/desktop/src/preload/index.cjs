@@ -1,7 +1,6 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  // 对话相关
   initializeConversation: () =>
     ipcRenderer.invoke('conversation:initialize'),
 
@@ -32,7 +31,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   requestMicrophonePermission: () =>
     ipcRenderer.invoke('permissions:requestMicrophone'),
 
-  // ========== 记忆管理 API ==========
   getUserProfile: () =>
     ipcRenderer.invoke('memory:getUserProfile'),
 
@@ -69,7 +67,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   clearWorkingMemory: () =>
     ipcRenderer.invoke('memory:clearWorkingMemory'),
 
-  // SDK 功能
   getPersonality: () =>
     ipcRenderer.invoke('sdk:getPersonality'),
 
@@ -106,8 +103,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   addPersonalityFile: () =>
     ipcRenderer.invoke('personality:addFile'),
 
-  // 事件监听
-  // TTS 音频事件（带上下文 ID）
   onTTSAudio: (callback) => {
     ipcRenderer.on('tts:audio', (_, { contextId, data }) => {
       callback(new Uint8Array(data), contextId)
@@ -118,7 +113,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('tts:connected', (_, contextId) => callback(contextId))
   },
 
-  // TTS 上下文管理
   onTTSContextStart: (callback) => {
     ipcRenderer.on('tts:contextStart', (_, contextId) => callback(contextId))
   },
@@ -143,7 +137,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('conversation:frame', (_, frame) => callback(frame))
   },
 
-  // 语音识别事件 (VAD 在 Main Process 处理)
   onSpeechTranscript: (callback) => {
     ipcRenderer.on('speech:transcript', (_, text) => callback(text))
   },
@@ -160,7 +153,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('speech:user-speaking', callback)
   },
 
-  // WebSocket 重连事件
   onSpeechReconnecting: (callback) => {
     ipcRenderer.on('speech:reconnecting', callback)
   },
@@ -173,17 +165,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('speech:connectionFailed', callback)
   },
 
-  // 打断事件（用户在机器人说话时开始说话）
   onInterruption: (callback) => {
     ipcRenderer.on('speech:interruption', (_, turnId) => callback(turnId))
   },
 
-  // 新轮次开始
   onTurnStart: (callback) => {
     ipcRenderer.on('turn:start', (_, turnId) => callback(turnId))
   },
 
-  // 播放完成同步（用于 Phase 之间的音频同步）
   onPlaybackWaitRequest: (callback) => {
     ipcRenderer.on('playback:waitRequest', (_, requestId) => callback(requestId))
   },
@@ -192,7 +181,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.send('playback:complete', requestId)
   },
 
-  // 延迟追踪
   notifyFirstAudioPlay: () => {
     ipcRenderer.send('latency:firstAudioPlay')
   },
@@ -205,7 +193,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('latency:data', (_, data) => callback(data))
   },
 
-  // 窗口控制
   moveWindow: (deltaX, deltaY) => {
     ipcRenderer.send('window:move', deltaX, deltaY)
   },

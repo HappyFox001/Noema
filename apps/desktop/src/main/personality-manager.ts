@@ -30,19 +30,15 @@ export class PersonalityManager {
   }
 
   async initialize(): Promise<void> {
-    // 确保目录存在
     await mkdir(this.roleDir, { recursive: true })
 
-    // 检查是否有默认配置文件
     const defaultPath = join(this.roleDir, `${DEFAULT_PERSONALITY_NAME}.yaml`)
     if (!existsSync(defaultPath)) {
       await this.createDefaultPersonality()
     }
 
-    // 加载默认人格
     this.currentPersonality = await this.loadPersonality(DEFAULT_PERSONALITY_NAME)
 
-    // 启动文件监听
     this.startWatching()
   }
 
@@ -141,7 +137,7 @@ export class PersonalityManager {
 
   private startWatching(): void {
     this.watcher = watch(this.roleDir, {
-      ignored: /(^|[\/\\])\../, // 忽略隐藏文件
+      ignored: /(^|[\/\\])\../,
       persistent: true
     })
 
@@ -151,7 +147,6 @@ export class PersonalityManager {
         try {
           this.currentPersonality = await this.loadPersonality(DEFAULT_PERSONALITY_NAME)
           console.log('[PersonalityManager] Personality reloaded successfully')
-          // TODO: 通知渲染进程人格已更新
         } catch (error: any) {
           console.error('[PersonalityManager] Failed to reload personality:', error)
         }
