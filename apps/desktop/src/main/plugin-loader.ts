@@ -7,6 +7,7 @@ import type { SDKPlugin, SDKPluginContext } from '@her-text/sdk'
 export interface RuntimePluginManifest {
   id: string
   name?: string
+  description?: string
   version?: string
   type?: 'sdk-plugin'
   main?: string
@@ -56,6 +57,7 @@ type RuntimePluginFactory = (context: SDKPluginContext) => SDKPlugin | Promise<S
 export interface RuntimePluginInfo {
   id: string
   name: string
+  description?: string
   version?: string
   enabled: boolean
   pluginDir: string
@@ -72,6 +74,7 @@ export async function discoverRuntimePlugins(
   return manifests.map(({ manifest, pluginDir }) => ({
     id: manifest.id,
     name: manifest.name || manifest.id,
+    description: manifest.description,
     version: manifest.version,
     enabled: enabledOverrides[manifest.id] ?? manifest.enabled !== false,
     pluginDir,

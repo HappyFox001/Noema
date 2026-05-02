@@ -20,7 +20,11 @@ export class AgentCore {
   private tools: Map<string, Tool> = new Map()
 
   registerTool(tool: Tool): void {
+    if (this.tools.has(tool.name)) {
+      console.warn(`[AgentCore] Replacing registered tool: ${tool.name}`)
+    }
     this.tools.set(tool.name, tool)
+    console.log(`[AgentCore] Registered tool: ${tool.name}${tool.pluginId ? ` (${tool.pluginId})` : ''}`)
   }
 
   unregisterTool(name: string): boolean {
@@ -60,8 +64,9 @@ export class AgentCore {
         const args = JSON.parse(call.function.arguments)
 
         // 执行工具（带超时）
-        const result = options?.timeout
-          ? await this.executeWithTimeout(tool, call, options.timeout)
+        const timeout = tool.timeoutMs ?? options?.timeout
+        const result = timeout
+          ? await this.executeWithTimeout(tool, call, timeout)
           : await tool.execute(args)
 
         // 后置钩子

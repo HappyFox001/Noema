@@ -5,7 +5,6 @@ import { AgentCore } from './agent/index.js'
 import { DialogueOrchestrator } from './dialogue/index.js'
 import { ContextManager } from './context/index.js'
 import { createLLMProvider, type LLMProvider } from '@her-text/core'
-import { createDefaultTools } from './tools/index.js'
 import type { PluginRuntimeContext, SDKPlugin, TextTransformTarget } from './plugins/index.js'
 
 export interface HerTextSDKInitializeOptions {
@@ -37,7 +36,6 @@ export class HerTextSDK {
     this.memory = new MemoryEngine(config.memory, this.llm)
     this.personality = new PersonalityEngine(config.personality)
     this.agent = new AgentCore()
-    createDefaultTools().forEach(tool => this.agent.registerTool(tool))
 
     this.dialogue = new DialogueOrchestrator(
       this.llm,

@@ -755,6 +755,7 @@ type PluginConfigField =
 type PluginInfo = {
   id: string
   name: string
+  description?: string
   version?: string
   enabled: boolean
   pluginDir: string
@@ -2199,6 +2200,7 @@ function renderPluginsSection(plugins: PluginInfo[]): void {
             ${plugin.version ? `<span class="plugin-version">v${escapeHtml(plugin.version)}</span>` : ''}
           </div>
           <div class="plugin-id">${escapeHtml(plugin.id)}</div>
+          ${plugin.description ? `<div class="plugin-description">${escapeHtml(plugin.description)}</div>` : ''}
         </div>
         <label class="settings-toggle plugin-toggle">
           <input type="checkbox" ${plugin.enabled ? 'checked' : ''} data-plugin-toggle="${escapeHtml(plugin.id)}" />
@@ -2268,6 +2270,7 @@ function renderPluginDetail(plugin: PluginInfo): void {
       <div class="plugin-card-main">
         <div class="plugin-info">
           <div class="plugin-id">${escapeHtml(plugin.id)}</div>
+          ${plugin.description ? `<div class="plugin-description plugin-detail-description">${escapeHtml(plugin.description)}</div>` : ''}
         </div>
         <label class="settings-toggle plugin-toggle">
           <input type="checkbox" ${plugin.enabled ? 'checked' : ''} data-plugin-toggle="${escapeHtml(plugin.id)}" />

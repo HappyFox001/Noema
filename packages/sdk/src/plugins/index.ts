@@ -1,3 +1,5 @@
+import type { Tool } from '@her-text/types'
+
 export interface PluginRuntimeContext {
   tts?: {
     provider: string
@@ -40,10 +42,15 @@ export interface ExpressionHookContext {
   emotionTag?: string
 }
 
+export interface ToolRegistrationContext {
+  runtime: PluginRuntimeContext
+}
+
 export interface SDKPlugin {
   id: string
   name?: string
   setup?(context: SDKPluginContext): void | Promise<void>
+  registerTools?(context: ToolRegistrationContext): Tool[] | Promise<Tool[]>
   extendPrompt?(context: PromptHookContext): string | undefined
   transformText?(text: string, context: TextTransformContext): string
   selectExpression?(context: ExpressionHookContext): ExpressionFrame | undefined
@@ -88,6 +95,26 @@ export class PluginManager {
     }
 
     return additions
+  }
+
+  async getTools(context: ToolRegistrationContext = { runtime: {} }): Promise<Tool[]> {
+    const tools: Tool[] = []
+
+    for (const plugin of this.plugins) {
+      const pluginTools = await plugin.registerTools?.(context)
+      if (!pluginTools?.length) {
+        continue
+      }
+
+      for (const tool of pluginTools) {
+        tools.push({
+          ...tool,
+          pluginId: tool.pluginId || plugin.id,
+        })
+      }
+    }
+
+    return tools
   }
 
   transformText(text: string, context: TextTransformContext): string {

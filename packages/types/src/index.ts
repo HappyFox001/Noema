@@ -60,6 +60,10 @@ export interface Tool {
     properties: Record<string, any>
     required?: string[]
   }
+  pluginId?: string
+  safety?: 'safe' | 'read' | 'write' | 'external' | 'destructive' | 'computer'
+  requiresApproval?: boolean
+  timeoutMs?: number
   execute: (params: any) => Promise<any>
 }
 

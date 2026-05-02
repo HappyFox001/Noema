@@ -782,6 +782,20 @@ input[type="password"] {
   text-overflow: ellipsis;
 }
 
+.plugin-description {
+  margin-top: 7px;
+  max-width: 420px;
+  font-family: var(--font-soft);
+  font-size: 11px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.48);
+}
+
+.plugin-detail-description {
+  max-width: 480px;
+  color: rgba(255, 255, 255, 0.58);
+}
+
 .plugin-toggle {
   flex-shrink: 0;
 }

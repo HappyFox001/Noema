@@ -31,9 +31,9 @@ import { GrepTool } from './file/grep.js'
 import { BashTool } from './shell/bash.js'
 
 /**
- * 创建默认工具列表（给 AgentCore 注册）
+ * 创建基础工具包（由 base-tools 插件注册到 AgentCore）
  */
-export function createDefaultTools(): Tool[] {
+export function createBaseTools(): Tool[] {
   const executors = [
     new ReadTool(),
     new WriteTool(),
@@ -47,6 +47,31 @@ export function createDefaultTools(): Tool[] {
     name: executor.spec.function.name,
     description: executor.spec.function.description,
     parameters: executor.spec.function.parameters,
+    pluginId: 'base-tools',
+    safety: getBaseToolSafety(executor.spec.function.name),
     execute: async (params: any) => executor.execute(params)
   }))
+}
+
+/**
+ * @deprecated Use createBaseTools() from the base-tools plugin.
+ */
+export function createDefaultTools(): Tool[] {
+  return createBaseTools()
+}
+
+function getBaseToolSafety(name: string): Tool['safety'] {
+  if (name === 'read' || name === 'grep' || name === 'glob') {
+    return 'read'
+  }
+
+  if (name === 'write' || name === 'edit') {
+    return 'write'
+  }
+
+  if (name === 'bash') {
+    return 'external'
+  }
+
+  return 'safe'
 }

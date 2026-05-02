@@ -1,6 +1,7 @@
 {
   "id": "fish-s2-emotion",
   "name": "Fish Audio S2 Emotion Enhancer",
+  "description": "在启用 Fish Audio S2 系列语音模型时，为回复提示词加入受控语音标记规则，并在展示和记忆阶段隐藏这些 TTS 控制标签。",
   "version": "0.1.0",
   "type": "sdk-plugin",
   "main": "index.mjs",

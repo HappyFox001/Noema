@@ -1,0 +1,48 @@
+{
+  "id": "base-tools",
+  "name": "Base Tools",
+  "description": "提供任务执行所需的基础本地工具，包括文件读取、文件修改、文件搜索和 Shell 命令执行。关闭某类能力后，任务模型将无法调用对应工具。",
+  "version": "0.1.0",
+  "type": "sdk-plugin",
+  "main": "index.mjs",
+  "enabled": true,
+  "config": {
+    "enableReadTools": true,
+    "enableWriteTools": true,
+    "enableShell": true,
+    "shellTimeoutMs": 30000
+  },
+  "configSchema": [
+    {
+      "key": "enableReadTools",
+      "label": "读取工具",
+      "description": "允许任务读取文件、按路径匹配文件和搜索文件内容。",
+      "type": "boolean",
+      "default": true
+    },
+    {
+      "key": "enableWriteTools",
+      "label": "写入工具",
+      "description": "允许任务写入文件和编辑文件。",
+      "type": "boolean",
+      "default": true
+    },
+    {
+      "key": "enableShell",
+      "label": "Shell 工具",
+      "description": "允许任务执行终端命令。关闭后 bash 工具不会暴露给任务模型。",
+      "type": "boolean",
+      "default": true
+    },
+    {
+      "key": "shellTimeoutMs",
+      "label": "Shell 超时",
+      "description": "Shell 命令的最大执行时间，单位毫秒。",
+      "type": "number",
+      "default": 30000,
+      "min": 1000,
+      "max": 120000,
+      "step": 1000
+    }
+  ]
+}

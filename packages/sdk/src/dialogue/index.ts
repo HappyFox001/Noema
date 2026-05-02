@@ -134,6 +134,10 @@ export class DialogueOrchestrator {
 
   async initialize(): Promise<void> {
     await this.pluginManager.setup()
+    const pluginTools = await this.pluginManager.getTools({ runtime: {} })
+    for (const tool of pluginTools) {
+      this.agent.registerTool(tool)
+    }
     await this.taskSession.initialize()
   }
 

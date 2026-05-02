@@ -1,6 +1,7 @@
 {
   "id": "sticker-expression",
   "name": "Sticker Expression",
+  "description": "根据回复中的情绪标签概率性召回表情包，并在语音播放期间以小气泡形式展示对应图片。",
   "version": "0.1.0",
   "type": "sdk-plugin",
   "main": "index.mjs",
