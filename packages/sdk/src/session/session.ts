@@ -14,6 +14,7 @@ import {
 } from '../memory/sqlite-runtime.js'
 import {
   TaskRuntime,
+  type TaskContextItem,
   type TaskRunResult,
   type TaskTurnRecord,
 } from './task.js'
@@ -124,7 +125,11 @@ export class TaskSession {
     }
   }
 
-  async runTask(taskDescription: string, originalUserInput: string): Promise<TaskRunResult> {
+  async runTask(
+    taskDescription: string,
+    originalUserInput: string,
+    taskContextItems: TaskContextItem[] = []
+  ): Promise<TaskRunResult> {
     this.snapshot = {
       taskId: generateId(),
       status: 'running',
@@ -147,6 +152,7 @@ export class TaskSession {
       taskDescription,
       originalUserInput,
       memoryContext,
+      taskContextItems,
       {
         onTurnCompleted: (turn) => {
           this.snapshot.turnCount = turn.turnIndex

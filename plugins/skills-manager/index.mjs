@@ -35,6 +35,9 @@ export default function createPlugin(ctx) {
       }
       throw new Error(`Unknown Skills admin action: ${action}`)
     },
+    resolveTaskContext(context) {
+      return manager.resolveTaskContext(context)
+    },
     registerTools() {
       return [
         {

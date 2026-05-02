@@ -136,6 +136,37 @@ export class SkillsManager {
     }
   }
 
+  async resolveTaskContext(input) {
+    const maxItems = Math.max(0, Number(input?.maxItems ?? 1))
+    if (maxItems === 0) {
+      return []
+    }
+
+    const query = `${input?.userInput || ''}\n${input?.taskDescription || ''}`
+    const skills = await this.loadSkills()
+    const ranked = skills
+      .map(skill => ({
+        skill,
+        match: scoreSkillForTask(skill, query),
+      }))
+      .filter(item => item.match.score > 0)
+      .sort((a, b) => b.match.score - a.match.score)
+
+    const selected = ranked
+      .filter(item => item.match.explicit || item.match.score >= 8)
+      .slice(0, maxItems)
+
+    return selected.map(({ skill, match }) => ({
+      id: skill.id,
+      type: 'skill',
+      name: skill.name,
+      path: skill.path,
+      content: skill.content.slice(0, this.maxSkillChars),
+      reason: match.reason,
+      score: match.score,
+    }))
+  }
+
   async addSkill(skill) {
     const id = sanitizeSkillId(skill.id)
     const dir = join(this.skillsRoot, id)
@@ -341,4 +372,71 @@ function normalizeSkillContent(skill) {
     content,
     '',
   ].join('\n')
+}
+
+function scoreSkillForTask(skill, query) {
+  const normalizedQuery = normalizeText(query)
+  const name = normalizeText(skill.name || skill.id)
+  const id = normalizeText(skill.id)
+  const description = normalizeText(skill.description)
+  const haystack = `${name} ${id} ${description}`
+
+  const explicitPatterns = [
+    `$${skill.name}`,
+    `$${skill.id}`,
+    `skill:${skill.name}`,
+    `skill:${skill.id}`,
+    `使用 ${skill.name}`,
+    `使用 ${skill.id}`,
+    `用 ${skill.name}`,
+    `用 ${skill.id}`,
+  ].map(normalizeText)
+
+  if (explicitPatterns.some(pattern => pattern && normalizedQuery.includes(pattern))) {
+    return { score: 100, explicit: true, reason: 'explicit mention' }
+  }
+
+  let score = 0
+  const queryTokens = tokenize(normalizedQuery)
+  const skillTokens = tokenize(haystack)
+  const importantTokens = skillTokens.filter(token => token.length >= 4 || /[A-Z]/i.test(token))
+
+  for (const token of unique(importantTokens)) {
+    if (queryTokens.has(token)) {
+      score += token === 'skill' ? 0 : 2
+    } else if (token.length >= 5 && normalizedQuery.includes(token)) {
+      score += 2
+    }
+  }
+
+  for (const phrase of buildSkillPhrases(skill)) {
+    if (phrase && normalizedQuery.includes(phrase)) {
+      score += 5
+    }
+  }
+
+  return {
+    score,
+    explicit: false,
+    reason: score > 0 ? 'task matched skill metadata' : '',
+  }
+}
+
+function buildSkillPhrases(skill) {
+  const values = [skill.name, skill.id]
+  return values
+    .map(value => normalizeText(value).replace(/[-_.]+/g, ' ').trim())
+    .filter(Boolean)
+}
+
+function normalizeText(value) {
+  return String(value || '').toLowerCase().replace(/\s+/g, ' ').trim()
+}
+
+function tokenize(value) {
+  return new Set(String(value || '').toLowerCase().match(/[a-z0-9][a-z0-9._-]{1,}/g) || [])
+}
+
+function unique(values) {
+  return Array.from(new Set(values))
 }

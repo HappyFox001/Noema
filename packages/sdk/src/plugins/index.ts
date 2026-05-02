@@ -46,6 +46,23 @@ export interface ToolRegistrationContext {
   runtime: PluginRuntimeContext
 }
 
+export interface TaskContextResolveContext {
+  runtime: PluginRuntimeContext
+  userInput: string
+  taskDescription: string
+  maxItems: number
+}
+
+export interface TaskContextInjection {
+  id: string
+  type: 'skill' | 'policy' | 'memory' | 'browser' | 'mcp' | 'project' | 'custom'
+  name: string
+  path?: string
+  content: string
+  reason?: string
+  score?: number
+}
+
 export interface SDKPlugin {
   id: string
   name?: string
@@ -53,6 +70,7 @@ export interface SDKPlugin {
   registerTools?(context: ToolRegistrationContext): Tool[] | Promise<Tool[]>
   getAdminState?(): Promise<unknown> | unknown
   handleAdminAction?(action: string, payload?: unknown): Promise<unknown> | unknown
+  resolveTaskContext?(context: TaskContextResolveContext): TaskContextInjection[] | Promise<TaskContextInjection[]>
   extendPrompt?(context: PromptHookContext): string | undefined
   transformText?(text: string, context: TextTransformContext): string
   selectExpression?(context: ExpressionHookContext): ExpressionFrame | undefined
@@ -121,6 +139,35 @@ export class PluginManager {
     }
 
     return tools
+  }
+
+  async resolveTaskContextInjections(context: TaskContextResolveContext): Promise<TaskContextInjection[]> {
+    const selected: TaskContextInjection[] = []
+    const seen = new Set<string>()
+
+    for (const plugin of this.plugins) {
+      const pluginItems = await plugin.resolveTaskContext?.({
+        ...context,
+        maxItems: Math.max(0, context.maxItems - selected.length),
+      })
+      if (!pluginItems?.length) {
+        continue
+      }
+
+      for (const item of pluginItems) {
+        const key = `${item.type}:${item.path || item.id || item.name}`
+        if (!key || seen.has(key)) {
+          continue
+        }
+        seen.add(key)
+        selected.push(item)
+        if (selected.length >= context.maxItems) {
+          return selected
+        }
+      }
+    }
+
+    return selected
   }
 
   transformText(text: string, context: TextTransformContext): string {

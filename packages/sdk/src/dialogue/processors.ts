@@ -7,6 +7,7 @@ import type { ContextManager, ResponseItem, TruncationPolicy } from '../context/
 import { PromptBuilder } from '../prompt/index.js'
 import { PROMPTS } from '../prompts.js'
 import type { TaskSession } from '../session/session.js'
+import type { TaskContextItem } from '../session/task.js'
 import type { StreamOptions } from './index.js'
 
 export interface ParsedEmotionalResponse {
@@ -192,8 +193,12 @@ export interface ToolProcessorResult {
 export class ToolProcessor {
   constructor(private readonly taskSession: TaskSession) {}
 
-  async processTask(taskDescription: string, originalUserInput: string): Promise<ToolProcessorResult> {
-    const taskResult = await this.taskSession.runTask(taskDescription, originalUserInput)
+  async processTask(
+    taskDescription: string,
+    originalUserInput: string,
+    taskContextItems: TaskContextItem[] = []
+  ): Promise<ToolProcessorResult> {
+    const taskResult = await this.taskSession.runTask(taskDescription, originalUserInput, taskContextItems)
     const contextResult = {
       task: taskDescription,
       success: taskResult.success,

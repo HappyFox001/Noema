@@ -196,10 +196,20 @@ export class DialogueOrchestrator {
       // === 如果有任务，执行任务 ===
       if (firstResult.hasTask && firstResult.taskDescription && turnContext.hasTools) {
         throwIfAborted(options?.signal)
+        const taskContextItems = await this.resolveTaskContext(
+          input.text,
+          firstResult.taskDescription,
+          pluginRuntime
+        )
+        throwIfAborted(options?.signal)
         await options?.onTaskStart?.(firstResult.taskDescription)
         console.log('🚀 Reply 已流式输出完毕，开始执行任务...\n')
 
-        const taskResult = await this.toolProcessor.processTask(firstResult.taskDescription, input.text)
+        const taskResult = await this.toolProcessor.processTask(
+          firstResult.taskDescription,
+          input.text,
+          taskContextItems
+        )
         throwIfAborted(options?.signal)
         await options?.onTaskEnd?.({
           success: taskResult.success,
@@ -323,6 +333,39 @@ export class DialogueOrchestrator {
     if (frame) {
       await options?.onExpression?.(frame)
     }
+  }
+
+  private async resolveTaskContext(
+    userInput: string,
+    taskDescription: string,
+    runtime: PluginRuntimeContext
+  ) {
+    console.log('\n========== 🧩 Task Context 层调用 ==========')
+    const contextItems = await this.pluginManager.resolveTaskContextInjections({
+      runtime,
+      userInput,
+      taskDescription,
+      maxItems: 1,
+    })
+
+    if (contextItems.length === 0) {
+      console.log('  Selected: (none)')
+      console.log('==========================================\n')
+      return []
+    }
+
+    for (const item of contextItems) {
+      console.log(`  Selected: ${item.type}/${item.name}${item.reason ? ` (${item.reason})` : ''}`)
+    }
+    console.log('==========================================\n')
+
+    return contextItems.map(item => ({
+      id: item.id,
+      type: item.type,
+      name: item.name,
+      path: item.path,
+      content: item.content,
+    }))
   }
 
   private recordInterruptedTurn(

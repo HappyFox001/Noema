@@ -33,6 +33,14 @@ export interface TaskRuntimeHooks {
   onCompact?: (summary: string) => void
 }
 
+export interface TaskContextItem {
+  id: string
+  type: string
+  name: string
+  path?: string
+  content: string
+}
+
 export class TaskRuntime {
   private turnRuntime: TurnRuntime
   private maxTurns = 12
@@ -52,6 +60,7 @@ export class TaskRuntime {
       userProfile: UserProfile
       summaries: ConversationSummary[]
     },
+    private taskContextItems: TaskContextItem[] = [],
     private hooks: TaskRuntimeHooks = {}
   ) {
     this.turnRuntime = new TurnRuntime(llm, agent)
@@ -228,6 +237,7 @@ export class TaskRuntime {
           role: 'system',
           content: this.buildTaskSystemPrompt()
         },
+        ...this.buildTaskContextMessages(),
         {
           role: 'user',
           content: [
@@ -249,6 +259,34 @@ export class TaskRuntime {
     }
   }
 
+  private buildTaskContextMessages(): any[] {
+    return this.taskContextItems.map(item => ({
+      role: 'user',
+      content: this.renderTaskContextItem(item)
+    }))
+  }
+
+  private renderTaskContextItem(item: TaskContextItem): string {
+    if (item.type === 'skill') {
+      return [
+        '<skill>',
+        `<name>${escapeXmlText(item.name)}</name>`,
+        item.path ? `<path>${escapeXmlText(item.path)}</path>` : '',
+        item.content,
+        '</skill>'
+      ].filter(Boolean).join('\n')
+    }
+
+    return [
+      '<task_context>',
+      `<type>${escapeXmlText(item.type)}</type>`,
+      `<name>${escapeXmlText(item.name)}</name>`,
+      item.path ? `<path>${escapeXmlText(item.path)}</path>` : '',
+      item.content,
+      '</task_context>'
+    ].filter(Boolean).join('\n')
+  }
+
   private buildInitialMessages(): any[] {
     const history = this.context.forPrompt()
     const historyText = history
@@ -257,12 +295,13 @@ export class TaskRuntime {
       .join('\n')
 
     return [
-      {
-        role: 'system',
-        content: this.buildTaskSystemPrompt()
-      },
-      {
-        role: 'user',
+        {
+          role: 'system',
+          content: this.buildTaskSystemPrompt()
+        },
+        ...this.buildTaskContextMessages(),
+        {
+          role: 'user',
         content: [
           `${PROMPTS.context.userRequestTitle}${this.originalUserInput}`,
           `${PROMPTS.context.currentTaskTitle}${this.taskDescription}`,
@@ -314,4 +353,11 @@ export class TaskRuntime {
 
     return sections.join('\n\n')
   }
+}
+
+function escapeXmlText(value: string): string {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
 }
