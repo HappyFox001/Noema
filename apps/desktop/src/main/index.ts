@@ -1982,6 +1982,45 @@ async function rebuildSDK(): Promise<void> {
   await initializeSDK()
 }
 
+async function applyRuntimeSystemConfigChanges(
+  previous: {
+    llm: string
+    taskLLM: string
+    tts: string
+    asr: string
+  },
+  options: {
+    pluginsChanged?: boolean
+  } = {}
+): Promise<void> {
+  const nextLLMSignature = getLLMConfigSignature(getActiveLLMConfig())
+  const nextTaskLLMSignature = getLLMConfigSignature(getActiveTaskConfig())
+  const nextTTSSignature = getTTSConfigSignature(getActiveTTSConfig())
+  const nextASRSignature = getASRConfigSignature(getActiveASRConfig())
+  const llmChanged =
+    previous.llm !== nextLLMSignature ||
+    previous.taskLLM !== nextTaskLLMSignature
+
+  if (
+    previous.tts !== nextTTSSignature ||
+    (ttsService && activeTTSSignature !== nextTTSSignature)
+  ) {
+    await switchTTSProvider('provider_switch')
+  }
+
+  if (
+    streamingASRSession &&
+    (previous.asr !== nextASRSignature || activeASRSignature !== nextASRSignature)
+  ) {
+    await cancelCurrentTurn({ closeTTS: true, reason: 'provider_switch' })
+    await streamingASRSession.switchProvider('provider_switch')
+  }
+
+  if (options.pluginsChanged || llmChanged) {
+    await rebuildSDK()
+  }
+}
+
 function getSettingsStore(): SettingsStore {
   if (!settingsStore) {
     throw new Error('Settings store not initialized')
@@ -2620,42 +2659,20 @@ ipcMain.handle('settings:get', async () => {
 })
 
 ipcMain.handle('settings:update', async (_, partial: Partial<AppSettings>) => {
-  const previousLLMSignature = getLLMConfigSignature(getActiveLLMConfig())
-  const previousTaskLLMSignature = getLLMConfigSignature(getActiveTaskConfig())
-  const previousTTSSignature = getTTSConfigSignature(getActiveTTSConfig())
-  const previousASRSignature = getASRConfigSignature(getActiveASRConfig())
+  const previous = {
+    llm: getLLMConfigSignature(getActiveLLMConfig()),
+    taskLLM: getLLMConfigSignature(getActiveTaskConfig()),
+    tts: getTTSConfigSignature(getActiveTTSConfig()),
+    asr: getASRConfigSignature(getActiveASRConfig()),
+  }
   const previousPlugins = appSettings.plugins
   const previousPluginConfigs = appSettings.pluginConfigs
   appSettings = await getSettingsStore().update(partial)
-  const nextLLMSignature = getLLMConfigSignature(getActiveLLMConfig())
-  const nextTaskLLMSignature = getLLMConfigSignature(getActiveTaskConfig())
-  const nextTTSSignature = getTTSConfigSignature(getActiveTTSConfig())
-  const nextASRSignature = getASRConfigSignature(getActiveASRConfig())
   const pluginsChanged =
     (partial.plugins !== undefined && previousPlugins !== appSettings.plugins) ||
     (partial.pluginConfigs !== undefined && previousPluginConfigs !== appSettings.pluginConfigs)
-  const llmChanged =
-    previousLLMSignature !== nextLLMSignature ||
-    previousTaskLLMSignature !== nextTaskLLMSignature
 
-  if (
-    previousTTSSignature !== nextTTSSignature ||
-    (ttsService && activeTTSSignature !== nextTTSSignature)
-  ) {
-    await switchTTSProvider('provider_switch')
-  }
-
-  if (
-    streamingASRSession &&
-    (previousASRSignature !== nextASRSignature || activeASRSignature !== nextASRSignature)
-  ) {
-    await cancelCurrentTurn({ closeTTS: true, reason: 'provider_switch' })
-    await streamingASRSession.switchProvider('provider_switch')
-  }
-
-  if (pluginsChanged || llmChanged) {
-    await rebuildSDK()
-  }
+  await applyRuntimeSystemConfigChanges(previous, { pluginsChanged })
 
   return appSettings
 })
@@ -2687,7 +2704,14 @@ ipcMain.handle('plugins:adminAction', async (_event, pluginId: string, action: s
 
 ipcMain.handle('settings:resetSystemFromEnv', async () => {
   try {
+    const previous = {
+      llm: getLLMConfigSignature(getActiveLLMConfig()),
+      taskLLM: getLLMConfigSignature(getActiveTaskConfig()),
+      tts: getTTSConfigSignature(getActiveTTSConfig()),
+      asr: getASRConfigSignature(getActiveASRConfig()),
+    }
     appSettings = await getSettingsStore().reloadSystemConfigFromEnv()
+    await applyRuntimeSystemConfigChanges(previous)
     return { success: true, settings: appSettings }
   } catch (error: any) {
     return { success: false, error: error.message }
