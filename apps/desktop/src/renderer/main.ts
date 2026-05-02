@@ -2446,7 +2446,7 @@ function renderSkillsAdmin(container: HTMLElement, plugin: PluginInfo, state: an
     <div class="plugin-admin-header">
       <div>
         <div class="plugin-admin-title">Skills Sources</div>
-        <div class="plugin-admin-subtitle">从 GitHub 或本地目录导入 SKILL.md，不在 UI 内直接创建 skill。</div>
+        <div class="plugin-admin-subtitle">从 GitHub 或本地目录导入 SKILL.md。</div>
       </div>
     </div>
     <div class="plugin-admin-form">
