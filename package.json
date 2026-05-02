@@ -24,7 +24,7 @@
     "postinstall": "bash ./scripts/download-models.sh || true"
   },
   "devDependencies": {
-    "turbo": "^2.0.0",
+    "turbo": "^2.9.7",
     "typescript": "^5.4.0"
   },
   "engines": {
