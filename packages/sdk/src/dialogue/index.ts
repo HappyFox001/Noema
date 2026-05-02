@@ -114,6 +114,7 @@ export class DialogueOrchestrator {
 
   constructor(
     private llm: LLMProvider,
+    private taskLLM: LLMProvider,
     private memory: MemoryEngine,
     private personality: PersonalityEngine,
     private agent: AgentCore,
@@ -122,7 +123,7 @@ export class DialogueOrchestrator {
     plugins: SDKPlugin[] = []
   ) {
     this.context = new ContextManager()
-    this.taskSession = new TaskSession(llm, memory, personality, agent, this.context, storageDir)
+    this.taskSession = new TaskSession(taskLLM, memory, personality, agent, this.context, storageDir)
     this.contextAggregator = new LLMContextAggregator(memory, personality, agent, this.context, this.truncationPolicy)
     this.llmProcessor = new LLMProcessor(llm)
     this.toolProcessor = new ToolProcessor(this.taskSession)

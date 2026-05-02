@@ -5,6 +5,7 @@ import type { LLMModelConfig } from './settings-store.js'
 
 let personalityManager: any = null
 let activeLLMConfig: LLMModelConfig | null = null
+let activeTaskLLMConfig: LLMModelConfig | null = null
 
 /**
  * 设置当前激活的 LLM 配置
@@ -12,6 +13,10 @@ let activeLLMConfig: LLMModelConfig | null = null
  */
 export function setActiveLLMConfig(config: LLMModelConfig | null): void {
   activeLLMConfig = config
+}
+
+export function setActiveTaskLLMConfig(config: LLMModelConfig | null): void {
+  activeTaskLLMConfig = config
 }
 
 export function getStorageDir(): string {
@@ -43,12 +48,20 @@ export async function buildSDKConfig(): Promise<SDKConfig> {
   const llmApiKey = activeLLMConfig?.apiKey || process.env.LLM_API_KEY || ''
   const llmModel = activeLLMConfig?.modelName || process.env.LLM_MODEL || 'deepseek-chat'
   const llmBaseURL = activeLLMConfig?.baseUrl || process.env.LLM_BASE_URL || 'https://api.deepseek.com'
+  const taskLLMApiKey = activeTaskLLMConfig?.apiKey || llmApiKey
+  const taskLLMModel = activeTaskLLMConfig?.modelName || 'gemini-3.1-pro-preview'
+  const taskLLMBaseURL = activeTaskLLMConfig?.baseUrl || llmBaseURL
 
   return {
     llm: {
       apiKey: llmApiKey,
       model: llmModel,
       baseURL: llmBaseURL
+    },
+    taskLLM: {
+      apiKey: taskLLMApiKey,
+      model: taskLLMModel,
+      baseURL: taskLLMBaseURL
     },
     memory: {
       storageDir: getStorageDir()

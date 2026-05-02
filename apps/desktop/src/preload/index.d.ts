@@ -165,6 +165,8 @@ declare global {
           proxy: string
           llmModels: Array<{ id: string; modelName: string; apiKey: string; baseUrl: string }>
           activeLLMId: string
+          taskModels: Array<{ id: string; modelName: string; apiKey: string; baseUrl: string }>
+          activeTaskId: string
           ttsModels: Array<{ id: string; provider: 'fish'; modelName: string; apiKey: string; voiceId?: string }>
           activeTTSId: string
           asrModels: Array<{ id: string; provider: 'qwen'; modelName: string; apiKey: string }>
@@ -181,6 +183,8 @@ declare global {
           proxy: string
           llmModels: Array<{ id: string; modelName: string; apiKey: string; baseUrl: string }>
           activeLLMId: string
+          taskModels: Array<{ id: string; modelName: string; apiKey: string; baseUrl: string }>
+          activeTaskId: string
           ttsModels: Array<{ id: string; provider: 'fish'; modelName: string; apiKey: string; voiceId?: string }>
           activeTTSId: string
           asrModels: Array<{ id: string; provider: 'qwen'; modelName: string; apiKey: string }>
@@ -196,6 +200,8 @@ declare global {
           proxy: string
           llmModels: Array<{ id: string; modelName: string; apiKey: string; baseUrl: string }>
           activeLLMId: string
+          taskModels: Array<{ id: string; modelName: string; apiKey: string; baseUrl: string }>
+          activeTaskId: string
           ttsModels: Array<{ id: string; provider: 'fish'; modelName: string; apiKey: string; voiceId?: string }>
           activeTTSId: string
           asrModels: Array<{ id: string; provider: 'qwen'; modelName: string; apiKey: string }>

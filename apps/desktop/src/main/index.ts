@@ -88,7 +88,8 @@ import {
   initializePersonalityManager,
   getPersonalityManager,
   buildSDKConfig,
-  setActiveLLMConfig
+  setActiveLLMConfig,
+  setActiveTaskLLMConfig
 } from './sdk-config.js'
 import { SettingsStore, type AppSettings, type LLMModelConfig, type TTSModelConfig, type ASRModelConfig } from './settings-store.js'
 import { NodeRealtimeWebSocketTransport } from './qwen-websocket-transport.js'
@@ -1728,6 +1729,8 @@ let appSettings: AppSettings = {
     proxy: '',
     llmModels: [{ id: 'default-llm', modelName: '', apiKey: '', baseUrl: '' }],
     activeLLMId: 'default-llm',
+    taskModels: [{ id: 'default-task', modelName: 'gemini-3.1-pro-preview', apiKey: '', baseUrl: '' }],
+    activeTaskId: 'default-task',
     ttsModels: [{ id: 'default-tts', provider: 'fish', modelName: 's2-pro', apiKey: '', voiceId: '' }],
     activeTTSId: 'default-tts',
     asrModels: [{ id: 'default-asr', provider: 'qwen', modelName: 'qwen3-asr-flash-realtime', apiKey: '' }],
@@ -1741,6 +1744,14 @@ let appSettings: AppSettings = {
 function getActiveLLMConfig(): LLMModelConfig | null {
   const { llmModels, activeLLMId } = appSettings.system
   return llmModels.find(m => m.id === activeLLMId) || llmModels[0] || null
+}
+
+/**
+ * 获取当前激活的任务模型配置
+ */
+function getActiveTaskConfig(): LLMModelConfig | null {
+  const { taskModels, activeTaskId } = appSettings.system
+  return taskModels.find(m => m.id === activeTaskId) || taskModels[0] || null
 }
 
 /**
@@ -1788,6 +1799,18 @@ function getASRConfigSignature(config: ASRModelConfig | null): string {
     id: config.id,
     provider: config.provider,
     modelName: config.modelName,
+    apiKey: config.apiKey ? 'set' : '',
+  })
+}
+
+function getLLMConfigSignature(config: LLMModelConfig | null): string {
+  if (!config) {
+    return 'none'
+  }
+  return JSON.stringify({
+    id: config.id,
+    modelName: config.modelName,
+    baseUrl: config.baseUrl,
     apiKey: config.apiKey ? 'set' : '',
   })
 }
@@ -2032,6 +2055,7 @@ async function createWindow() {
 async function initializeSDK(): Promise<void> {
   // 设置激活的 LLM 配置
   setActiveLLMConfig(getActiveLLMConfig())
+  setActiveTaskLLMConfig(getActiveTaskConfig())
   const sdkConfig = await buildSDKConfig()
   const pluginsDir = resolveRuntimePluginsDir()
   console.log('[PluginLoader] Runtime plugins directory:', pluginsDir)
@@ -2721,16 +2745,23 @@ ipcMain.handle('settings:get', async () => {
 })
 
 ipcMain.handle('settings:update', async (_, partial: Partial<AppSettings>) => {
+  const previousLLMSignature = getLLMConfigSignature(getActiveLLMConfig())
+  const previousTaskLLMSignature = getLLMConfigSignature(getActiveTaskConfig())
   const previousTTSSignature = getTTSConfigSignature(getActiveTTSConfig())
   const previousASRSignature = getASRConfigSignature(getActiveASRConfig())
   const previousPlugins = appSettings.plugins
   const previousPluginConfigs = appSettings.pluginConfigs
   appSettings = await getSettingsStore().update(partial)
+  const nextLLMSignature = getLLMConfigSignature(getActiveLLMConfig())
+  const nextTaskLLMSignature = getLLMConfigSignature(getActiveTaskConfig())
   const nextTTSSignature = getTTSConfigSignature(getActiveTTSConfig())
   const nextASRSignature = getASRConfigSignature(getActiveASRConfig())
   const pluginsChanged =
     (partial.plugins !== undefined && previousPlugins !== appSettings.plugins) ||
     (partial.pluginConfigs !== undefined && previousPluginConfigs !== appSettings.pluginConfigs)
+  const llmChanged =
+    previousLLMSignature !== nextLLMSignature ||
+    previousTaskLLMSignature !== nextTaskLLMSignature
 
   if (
     previousTTSSignature !== nextTTSSignature ||
@@ -2747,7 +2778,7 @@ ipcMain.handle('settings:update', async (_, partial: Partial<AppSettings>) => {
     await streamingASRSession.switchProvider('provider_switch')
   }
 
-  if (pluginsChanged) {
+  if (pluginsChanged || llmChanged) {
     await rebuildSDK()
   }
 

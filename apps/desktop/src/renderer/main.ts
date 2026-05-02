@@ -676,6 +676,8 @@ type SystemConfig = {
   proxy: string
   llmModels: LLMModelConfig[]
   activeLLMId: string
+  taskModels: LLMModelConfig[]
+  activeTaskId: string
   ttsModels: TTSModelConfig[]
   activeTTSId: string
   asrModels: ASRModelConfig[]
@@ -692,7 +694,7 @@ type LocalModelStatus = {
   path: string
 }
 
-type SetupIssueKind = 'llm' | 'tts' | 'asr' | 'models'
+type SetupIssueKind = 'llm' | 'task' | 'tts' | 'asr' | 'models'
 
 type SetupIssue = {
   kind: SetupIssueKind
@@ -1964,9 +1966,90 @@ function handleSettingsClose(event: Event) {
 settingsClose.addEventListener('pointerdown', handleSettingsClose)
 settingsClose.addEventListener('click', handleSettingsClose)
 
+type ConfirmDialogTone = 'danger' | 'default'
+
+type ConfirmDialogOptions = {
+  title: string
+  message: string
+  detail?: string
+  confirmText?: string
+  cancelText?: string
+  tone?: ConfirmDialogTone
+}
+
+function showConfirmDialog(options: ConfirmDialogOptions): Promise<boolean> {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div')
+    overlay.className = 'confirm-dialog-overlay'
+    overlay.setAttribute('role', 'presentation')
+    let settled = false
+
+    const tone = options.tone ?? 'default'
+    const confirmText = options.confirmText ?? '确认'
+    const cancelText = options.cancelText ?? '取消'
+
+    overlay.innerHTML = `
+      <div class="confirm-dialog ${tone}" role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title">
+        <div class="confirm-dialog-icon" aria-hidden="true"></div>
+        <div class="confirm-dialog-content">
+          <h3 id="confirm-dialog-title">${escapeHtml(options.title)}</h3>
+          <p>${escapeHtml(options.message)}</p>
+          ${options.detail ? `<div class="confirm-dialog-detail">${escapeHtml(options.detail)}</div>` : ''}
+        </div>
+        <div class="confirm-dialog-actions">
+          <button class="confirm-dialog-btn secondary" type="button" data-confirm-action="cancel">${escapeHtml(cancelText)}</button>
+          <button class="confirm-dialog-btn primary" type="button" data-confirm-action="confirm">${escapeHtml(confirmText)}</button>
+        </div>
+      </div>
+    `
+
+    const cleanup = (value: boolean) => {
+      if (settled) return
+      settled = true
+      document.removeEventListener('keydown', handleKeydown, true)
+      overlay.classList.add('closing')
+      window.setTimeout(() => {
+        overlay.remove()
+        resolve(value)
+      }, 120)
+    }
+
+    const handleKeydown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        cleanup(false)
+      }
+      if (event.key === 'Enter') {
+        event.preventDefault()
+        cleanup(true)
+      }
+    }
+
+    overlay.addEventListener('click', (event) => {
+      const target = event.target as HTMLElement
+      const action = target.closest<HTMLButtonElement>('[data-confirm-action]')?.dataset.confirmAction
+      if (action === 'confirm') {
+        cleanup(true)
+      } else if (action === 'cancel' || target === overlay) {
+        cleanup(false)
+      }
+    })
+
+    document.body.appendChild(overlay)
+    document.addEventListener('keydown', handleKeydown, true)
+    requestAnimationFrame(() => {
+      overlay.classList.add('visible')
+      overlay.querySelector<HTMLButtonElement>('[data-confirm-action="cancel"]')?.focus({ preventScroll: true })
+    })
+  })
+}
+
 // Close settings with Escape key
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
+    if (document.querySelector('.confirm-dialog-overlay')) {
+      return
+    }
     if (settingsPanel.classList.contains('visible')) {
       closeSettings()
     }
@@ -2391,89 +2474,128 @@ addPersonalityFileBtn.addEventListener('click', async () => {
 // Clear profile button
 const clearProfileBtn = document.getElementById('clear-profile-btn')
 clearProfileBtn?.addEventListener('click', async () => {
-  if (confirm('确定要清空用户画像吗？')) {
-    try {
-      const result = await window.electronAPI.clearProfile()
-      if (!result.success) {
-        throw new Error(result.error)
-      }
-      setStatus('用户画像已清空')
-      await loadUserProfile()
-    } catch (error: any) {
-      console.error('Clear profile error:', error)
+  const confirmed = await showConfirmDialog({
+    title: '清空用户画像',
+    message: '将移除 EVA 已整理的个人信息、偏好和标签。',
+    detail: '之后可以通过新的对话重新建立画像。',
+    confirmText: '清空',
+    tone: 'danger',
+  })
+  if (!confirmed) return
+
+  try {
+    const result = await window.electronAPI.clearProfile()
+    if (!result.success) {
+      throw new Error(result.error)
     }
+    setStatus('用户画像已清空')
+    await loadUserProfile()
+  } catch (error: any) {
+    console.error('Clear profile error:', error)
   }
 })
 
 // Clear memories button
 const clearMemoriesBtn = document.getElementById('clear-memories-btn')
 clearMemoriesBtn?.addEventListener('click', async () => {
-  if (confirm('确定要清空所有重要记忆吗？')) {
-    try {
-      const result = await window.electronAPI.clearImportantMemories()
-      if (!result.success) {
-        throw new Error(result.error)
-      }
-      setStatus('重要记忆已清空')
-      await loadImportantMemories()
-    } catch (error: any) {
-      console.error('Clear memories error:', error)
+  const confirmed = await showConfirmDialog({
+    title: '清空重要记忆',
+    message: '将删除所有被标记为重要的长期记忆。',
+    detail: '这个操作不会影响用户画像和对话摘要。',
+    confirmText: '清空',
+    tone: 'danger',
+  })
+  if (!confirmed) return
+
+  try {
+    const result = await window.electronAPI.clearImportantMemories()
+    if (!result.success) {
+      throw new Error(result.error)
     }
+    setStatus('重要记忆已清空')
+    await loadImportantMemories()
+  } catch (error: any) {
+    console.error('Clear memories error:', error)
   }
 })
 
 // Clear summaries button
 const clearSummariesBtn = document.getElementById('clear-summaries-btn')
 clearSummariesBtn?.addEventListener('click', async () => {
-  if (confirm('确定要清空所有对话摘要吗？')) {
-    try {
-      const result = await window.electronAPI.clearConversationSummaries()
-      if (!result.success) {
-        throw new Error(result.error)
-      }
-      setStatus('对话摘要已清空')
-      await loadConversationSummaries()
-    } catch (error: any) {
-      console.error('Clear summaries error:', error)
+  const confirmed = await showConfirmDialog({
+    title: '清空对话摘要',
+    message: '将删除已压缩保存的历史对话摘要。',
+    detail: '最近对话和用户画像不会被同时清空。',
+    confirmText: '清空',
+    tone: 'danger',
+  })
+  if (!confirmed) return
+
+  try {
+    const result = await window.electronAPI.clearConversationSummaries()
+    if (!result.success) {
+      throw new Error(result.error)
     }
+    setStatus('对话摘要已清空')
+    await loadConversationSummaries()
+  } catch (error: any) {
+    console.error('Clear summaries error:', error)
   }
 })
 
 // Clear conversations button
 const clearConversationsBtn = document.getElementById('clear-conversations-btn')
 clearConversationsBtn?.addEventListener('click', async () => {
-  if (confirm('确定要清空所有最近对话吗？')) {
-    try {
-      const result = await window.electronAPI.clearWorkingMemory()
-      if (!result.success) {
-        throw new Error(result.error)
-      }
-      clearTextDisplay()
-      setStatus('最近对话已清空')
-      await loadWorkingMemory()
-    } catch (error: any) {
-      console.error('Clear conversations error:', error)
+  const confirmed = await showConfirmDialog({
+    title: '清空最近对话',
+    message: '将清空当前工作记忆里的最近对话记录。',
+    detail: 'EVA 会从新的上下文重新开始对话。',
+    confirmText: '清空',
+    tone: 'danger',
+  })
+  if (!confirmed) return
+
+  try {
+    const result = await window.electronAPI.clearWorkingMemory()
+    if (!result.success) {
+      throw new Error(result.error)
     }
+    clearTextDisplay()
+    setStatus('最近对话已清空')
+    await loadWorkingMemory()
+  } catch (error: any) {
+    console.error('Clear conversations error:', error)
   }
 })
 
 // Reset all button
 const resetAllBtn = document.getElementById('reset-all-btn')
 resetAllBtn?.addEventListener('click', async () => {
-  if (confirm('确定要清除所有记忆数据吗？此操作不可恢复！')) {
-    try {
-      const result = await window.electronAPI.clearHistory()
-      if (!result.success) {
-        throw new Error(result.error)
-      }
-      clearTextDisplay()
-      setStatus('所有数据已重置')
-      await refreshMemorySection()
-    } catch (error: any) {
-      console.error('Reset all error:', error)
-    }
-  }
+  await clearHistory()
 })
+
+async function clearHistory(): Promise<void> {
+  const confirmed = await showConfirmDialog({
+    title: '重置所有记忆',
+    message: '将清除用户画像、重要记忆、对话摘要和最近对话。',
+    detail: '此操作不可恢复。',
+    confirmText: '全部重置',
+    tone: 'danger',
+  })
+  if (!confirmed) return
+
+  try {
+    const result = await window.electronAPI.clearHistory()
+    if (!result.success) {
+      throw new Error(result.error)
+    }
+    clearTextDisplay()
+    setStatus('所有数据已重置')
+    await refreshMemorySection()
+  } catch (error: any) {
+    console.error('Reset all error:', error)
+  }
+}
 
 // ========== Memory Management ==========
 
@@ -2618,7 +2740,16 @@ function renderProfile(profile: UserProfile): void {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation()
       const field = (e.target as HTMLButtonElement).dataset.field
-      if (field && confirm(`确定要删除"${labelMap[field] || field}"吗？`)) {
+      if (!field) return
+
+      const confirmed = await showConfirmDialog({
+        title: '删除画像字段',
+        message: `将删除“${labelMap[field] || field}”。`,
+        detail: '删除后可以在新的对话中重新补充。',
+        confirmText: '删除',
+        tone: 'danger'
+      })
+      if (confirmed) {
         await deleteProfileField(field)
       }
     })
@@ -2685,7 +2816,16 @@ function renderImportantMemories(memories: Record<string, string>): void {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation()
       const key = (e.target as HTMLButtonElement).dataset.key
-      if (key && confirm(`确定要删除"${key}"吗？`)) {
+      if (!key) return
+
+      const confirmed = await showConfirmDialog({
+        title: '删除重要记忆',
+        message: `将删除“${key}”。`,
+        detail: '这条长期记忆不会再参与后续上下文。',
+        confirmText: '删除',
+        tone: 'danger'
+      })
+      if (confirmed) {
         await deleteImportantMemory(key)
       }
     })
@@ -2764,7 +2904,16 @@ function renderSummaries(summaries: Array<{
     btn.addEventListener('click', async (e) => {
       e.stopPropagation()
       const id = (e.target as HTMLButtonElement).dataset.id
-      if (id && confirm('确定要删除这条摘要吗？')) {
+      if (!id) return
+
+      const confirmed = await showConfirmDialog({
+        title: '删除对话摘要',
+        message: '将删除这条已压缩保存的历史对话摘要。',
+        detail: '其他摘要和最近对话不会受到影响。',
+        confirmText: '删除',
+        tone: 'danger'
+      })
+      if (confirmed) {
         await deleteConversationSummary(id)
       }
     })
@@ -2833,7 +2982,16 @@ function renderConversations(turns: Array<{
     btn.addEventListener('click', async (e) => {
       e.stopPropagation()
       const id = (e.target as HTMLButtonElement).dataset.id
-      if (id && confirm('确定要删除这条对话吗？')) {
+      if (!id) return
+
+      const confirmed = await showConfirmDialog({
+        title: '删除最近对话',
+        message: '将从工作记忆中删除这条最近对话。',
+        detail: '这不会删除其他记忆内容。',
+        confirmText: '删除',
+        tone: 'danger'
+      })
+      if (confirmed) {
         await deleteConversationTurn(id)
       }
     })
@@ -2864,10 +3022,12 @@ function escapeHtml(str: string): string {
 
 const proxyInput = document.getElementById('proxy-input') as HTMLInputElement
 const llmModelsList = document.getElementById('llm-models-list')!
+const taskModelsList = document.getElementById('task-models-list')!
 const ttsModelsList = document.getElementById('tts-models-list')!
 const asrModelsList = document.getElementById('asr-models-list')!
 const localModelsList = document.getElementById('local-models-list')!
 const addLLMBtn = document.getElementById('add-llm-btn') as HTMLButtonElement
+const addTaskBtn = document.getElementById('add-task-btn') as HTMLButtonElement
 const addTTSBtn = document.getElementById('add-tts-btn') as HTMLButtonElement
 const addASRBtn = document.getElementById('add-asr-btn') as HTMLButtonElement
 const downloadLocalModelsBtn = document.getElementById('download-local-models-btn') as HTMLButtonElement
@@ -2888,8 +3048,17 @@ async function evaluateSetupReadiness(): Promise<SetupReadiness> {
   if (!activeLLM?.modelName?.trim() || !activeLLM?.apiKey?.trim() || !activeLLM?.baseUrl?.trim()) {
     issues.push({
       kind: 'llm',
-      label: 'LLM',
-      message: '补全 LLM 的模型名、API Key 和 Base URL',
+      label: '对话模型',
+      message: '补全对话模型的模型名、API Key 和 Base URL',
+    })
+  }
+
+  const activeTask = system.taskModels.find(model => model.id === system.activeTaskId) || system.taskModels[0]
+  if (!activeTask?.modelName?.trim() || !activeTask?.apiKey?.trim() || !activeTask?.baseUrl?.trim()) {
+    issues.push({
+      kind: 'task',
+      label: '任务模型',
+      message: '补全任务模型的模型名、API Key 和 Base URL',
     })
   }
 
@@ -3041,6 +3210,7 @@ function renderSystemConfig(): void {
   proxyInput.value = currentSystemConfig.proxy
 
   renderLLMModels()
+  renderTaskModels()
   renderTTSModels()
   renderASRModels()
 }
@@ -3145,6 +3315,43 @@ function renderLLMModels(): void {
   `).join('')
 
   attachLLMEventListeners()
+}
+
+function renderTaskModels(): void {
+  if (!currentSystemConfig) return
+
+  const models = currentSystemConfig.taskModels
+  if (models.length === 0) {
+    taskModelsList.innerHTML = '<div class="config-empty">暂无任务模型配置</div>'
+    return
+  }
+
+  taskModelsList.innerHTML = models.map(model => `
+    <div class="config-model-card ${model.id === currentSystemConfig!.activeTaskId ? 'active' : ''}" data-id="${escapeHtml(model.id)}">
+      <div class="config-model-header">
+        <div class="config-model-name">
+          <input type="text" value="${escapeHtml(model.modelName)}" data-field="modelName" placeholder="gemini-3.1-pro-preview" />
+          ${model.id === currentSystemConfig!.activeTaskId ? '<span class="config-model-active-badge">使用中</span>' : ''}
+        </div>
+        <div class="config-model-actions">
+          ${model.id !== currentSystemConfig!.activeTaskId ? '<button class="config-model-btn config-activate-btn" data-action="activate">启用</button>' : ''}
+          ${models.length > 1 ? '<button class="config-model-btn config-delete-btn" data-action="delete">删除</button>' : ''}
+        </div>
+      </div>
+      <div class="config-model-fields">
+        <div class="config-field">
+          <span class="config-field-label">API Key</span>
+          <input type="text" class="config-field-input masked" value="${escapeHtml(model.apiKey)}" data-field="apiKey" placeholder="sk-..." />
+        </div>
+        <div class="config-field">
+          <span class="config-field-label">Base URL</span>
+          <input type="text" class="config-field-input" value="${escapeHtml(model.baseUrl)}" data-field="baseUrl" placeholder="https://generativelanguage.googleapis.com/v1beta/openai" />
+        </div>
+      </div>
+    </div>
+  `).join('')
+
+  attachTaskEventListeners()
 }
 
 const TTS_PROVIDERS: { value: TTSProviderType; label: string }[] = [
@@ -3274,6 +3481,31 @@ function attachLLMEventListeners(): void {
   })
 }
 
+function attachTaskEventListeners(): void {
+  taskModelsList.querySelectorAll('.config-model-card').forEach(card => {
+    const id = (card as HTMLElement).dataset.id!
+
+    card.querySelectorAll('input[data-field]').forEach(input => {
+      input.addEventListener('change', async () => {
+        const field = (input as HTMLInputElement).dataset.field!
+        const value = (input as HTMLInputElement).value
+        await updateTaskModel(id, { [field]: value })
+      })
+    })
+
+    card.querySelectorAll('button[data-action]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const action = (btn as HTMLButtonElement).dataset.action
+        if (action === 'activate') {
+          await activateTaskModel(id)
+        } else if (action === 'delete') {
+          await deleteTaskModel(id)
+        }
+      })
+    })
+  })
+}
+
 function attachTTSEventListeners(): void {
   ttsModelsList.querySelectorAll('.config-model-card').forEach(card => {
     const id = (card as HTMLElement).dataset.id!
@@ -3369,6 +3601,45 @@ async function addLLMModel(): Promise<void> {
   renderLLMModels()
 }
 
+async function updateTaskModel(id: string, updates: Partial<LLMModelConfig>): Promise<void> {
+  if (!currentSystemConfig) return
+  const model = currentSystemConfig.taskModels.find(m => m.id === id)
+  if (model) {
+    Object.assign(model, updates)
+    await saveSystemConfig()
+  }
+}
+
+async function activateTaskModel(id: string): Promise<void> {
+  if (!currentSystemConfig) return
+  currentSystemConfig.activeTaskId = id
+  await saveSystemConfig()
+  renderTaskModels()
+}
+
+async function deleteTaskModel(id: string): Promise<void> {
+  if (!currentSystemConfig || currentSystemConfig.taskModels.length <= 1) return
+  currentSystemConfig.taskModels = currentSystemConfig.taskModels.filter(m => m.id !== id)
+  if (currentSystemConfig.activeTaskId === id && currentSystemConfig.taskModels.length > 0) {
+    currentSystemConfig.activeTaskId = currentSystemConfig.taskModels[0].id
+  }
+  await saveSystemConfig()
+  renderTaskModels()
+}
+
+async function addTaskModel(): Promise<void> {
+  if (!currentSystemConfig) return
+  const newModel: LLMModelConfig = {
+    id: generateId(),
+    modelName: 'gemini-3.1-pro-preview',
+    apiKey: '',
+    baseUrl: ''
+  }
+  currentSystemConfig.taskModels.push(newModel)
+  await saveSystemConfig()
+  renderTaskModels()
+}
+
 async function updateTTSModel(id: string, updates: Partial<TTSModelConfig>): Promise<void> {
   if (!currentSystemConfig) return
   const model = currentSystemConfig.ttsModels.find(m => m.id === id)
@@ -3457,6 +3728,7 @@ proxyInput.addEventListener('change', async () => {
 
 // Add button handlers
 addLLMBtn.addEventListener('click', () => void addLLMModel())
+addTaskBtn.addEventListener('click', () => void addTaskModel())
 addTTSBtn.addEventListener('click', () => void addTTSModel())
 addASRBtn.addEventListener('click', () => void addASRModel())
 

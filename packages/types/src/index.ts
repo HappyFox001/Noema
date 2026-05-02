@@ -80,6 +80,12 @@ export interface SDKConfig {
     baseURL?: string  // API 端点（OpenAI 兼容格式）
   }
 
+  taskLLM?: {
+    apiKey: string
+    model: string
+    baseURL?: string
+  }
+
   memory: {
     vectorDB?: 'chroma' | 'lancedb'
     storageDir: string

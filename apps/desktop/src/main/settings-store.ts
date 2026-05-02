@@ -14,6 +14,11 @@ import { mkdir, readFile, writeFile } from 'fs/promises'
  * LLM_1_BASE_URL=https://api.openai.com/v1
  * LLM_ACTIVE=1
  *
+ * TASK_1_MODEL=gemini-3.1-pro-preview
+ * TASK_1_API_KEY=sk-xxx
+ * TASK_1_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
+ * TASK_ACTIVE=1
+ *
  * TTS_1_NAME=Fish Audio
  * TTS_1_API_KEY=xxx
  * TTS_ACTIVE=1
@@ -28,6 +33,7 @@ function loadSystemConfigFromEnv(): SystemConfig | null {
   // 检查是否有任何相关的环境变量
   const hasEnvConfig = Object.keys(env).some(key =>
     key.startsWith('LLM_') ||
+    key.startsWith('TASK_') ||
     key.startsWith('TTS_') ||
     key.startsWith('ASR_') ||
     key === 'PROXY_URL'
@@ -35,6 +41,25 @@ function loadSystemConfigFromEnv(): SystemConfig | null {
 
   if (!hasEnvConfig) {
     return null
+  }
+
+  // 解析任务模型
+  // 格式: TASK_1_MODEL, TASK_1_API_KEY, TASK_1_BASE_URL
+  // API Key / Base URL 为空时复用同序号 LLM 配置，便于同一供应商下只切任务模型名。
+  const taskModels: LLMModelConfig[] = []
+  for (let i = 1; i <= 10; i++) {
+    const modelName = env[`TASK_${i}_MODEL`]
+    const apiKey = env[`TASK_${i}_API_KEY`] || env[`LLM_${i}_API_KEY`]
+    const baseUrl = env[`TASK_${i}_BASE_URL`] || env[`LLM_${i}_BASE_URL`]
+
+    if (modelName || apiKey || baseUrl) {
+      taskModels.push({
+        id: `env-task-${i}`,
+        modelName: modelName || 'gemini-3.1-pro-preview',
+        apiKey: apiKey || '',
+        baseUrl: baseUrl || ''
+      })
+    }
   }
 
   // 解析 LLM 模型
@@ -95,6 +120,7 @@ function loadSystemConfigFromEnv(): SystemConfig | null {
 
   // 获取激活的模型索引
   const llmActive = parseInt(env['LLM_ACTIVE'] || '1', 10) - 1
+  const taskActive = parseInt(env['TASK_ACTIVE'] || '1', 10) - 1
   const ttsActive = parseInt(env['TTS_ACTIVE'] || '1', 10) - 1
   const asrActive = parseInt(env['ASR_ACTIVE'] || '1', 10) - 1
 
@@ -102,6 +128,8 @@ function loadSystemConfigFromEnv(): SystemConfig | null {
     proxy: env['PROXY_URL'] || env['HTTPS_PROXY'] || env['HTTP_PROXY'] || '',
     llmModels: llmModels.length > 0 ? llmModels : [],
     activeLLMId: llmModels[llmActive]?.id || llmModels[0]?.id || '',
+    taskModels: taskModels.length > 0 ? taskModels : [],
+    activeTaskId: taskModels[taskActive]?.id || taskModels[0]?.id || '',
     ttsModels: ttsModels.length > 0 ? ttsModels : [],
     activeTTSId: ttsModels[ttsActive]?.id || ttsModels[0]?.id || '',
     asrModels: asrModels.length > 0 ? asrModels : [],
@@ -145,6 +173,8 @@ export interface SystemConfig {
   proxy: string
   llmModels: LLMModelConfig[]
   activeLLMId: string
+  taskModels: LLMModelConfig[]
+  activeTaskId: string
   ttsModels: TTSModelConfig[]
   activeTTSId: string
   asrModels: ASRModelConfig[]
@@ -171,6 +201,13 @@ const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
     baseUrl: ''
   }],
   activeLLMId: 'default-llm',
+  taskModels: [{
+    id: 'default-task',
+    modelName: 'gemini-3.1-pro-preview',
+    apiKey: '',
+    baseUrl: ''
+  }],
+  activeTaskId: 'default-task',
   ttsModels: [{
     id: 'default-tts',
     provider: 'fish',
@@ -235,6 +272,7 @@ export class SettingsStore {
         ...DEFAULT_SYSTEM_CONFIG,
         ...(parsed.system ?? {}),
         llmModels: parsed.system?.llmModels?.length ? parsed.system.llmModels : DEFAULT_SYSTEM_CONFIG.llmModels,
+        taskModels: parsed.system?.taskModels?.length ? parsed.system.taskModels : DEFAULT_SYSTEM_CONFIG.taskModels,
         ttsModels: parsed.system?.ttsModels?.length ? parsed.system.ttsModels : DEFAULT_SYSTEM_CONFIG.ttsModels,
         asrModels: parsed.system?.asrModels?.length ? parsed.system.asrModels : DEFAULT_SYSTEM_CONFIG.asrModels,
       }
@@ -279,9 +317,10 @@ export class SettingsStore {
    */
   private hasEmptyApiKeys(config: SystemConfig): boolean {
     const llmEmpty = config.llmModels.some(m => !m.apiKey)
+    const taskEmpty = config.taskModels.some(m => !m.apiKey)
     const ttsEmpty = config.ttsModels.some(m => !m.apiKey)
     const asrEmpty = config.asrModels.some(m => !m.apiKey)
-    return llmEmpty || ttsEmpty || asrEmpty
+    return llmEmpty || taskEmpty || ttsEmpty || asrEmpty
   }
 
   /**
@@ -307,6 +346,31 @@ export class SettingsStore {
       !base.llmModels[0].apiKey &&
       base.llmModels[0].id === 'default-llm' &&
       env.llmModels.length > 0
+
+    // Task LLM: 如果 base 的 API Key 为空，尝试从 TASK env 找到对应的填充。
+    // TASK env 未单独提供凭据时，loadSystemConfigFromEnv 已经会复用同序号 LLM 凭据。
+    const taskModels = base.taskModels.map((model, index) => {
+      if (!model.apiKey && env.taskModels[index]?.apiKey) {
+        return {
+          ...model,
+          apiKey: env.taskModels[index].apiKey,
+          baseUrl: model.baseUrl || env.taskModels[index].baseUrl,
+        }
+      }
+      if (!model.apiKey && env.taskModels[0]?.apiKey) {
+        return {
+          ...model,
+          apiKey: env.taskModels[0].apiKey,
+          baseUrl: model.baseUrl || env.taskModels[0].baseUrl,
+        }
+      }
+      return model
+    })
+
+    const useEnvTask = base.taskModels.length === 1 &&
+      !base.taskModels[0].apiKey &&
+      base.taskModels[0].id === 'default-task' &&
+      env.taskModels.length > 0
 
     // TTS: 同上
     const ttsModels = base.ttsModels.map((model, index) => {
@@ -344,6 +408,8 @@ export class SettingsStore {
       proxy,
       llmModels: useEnvLLM ? env.llmModels : llmModels,
       activeLLMId: useEnvLLM ? env.activeLLMId : base.activeLLMId,
+      taskModels: useEnvTask ? env.taskModels : taskModels,
+      activeTaskId: useEnvTask ? env.activeTaskId : base.activeTaskId,
       ttsModels: useEnvTTS ? env.ttsModels : ttsModels,
       activeTTSId: useEnvTTS ? env.activeTTSId : base.activeTTSId,
       asrModels: useEnvASR ? env.asrModels : asrModels,

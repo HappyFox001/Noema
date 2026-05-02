@@ -28,9 +28,11 @@ export class HerTextSDK {
   public agent: AgentCore
   private dialogue: DialogueOrchestrator
   private llm: LLMProvider
+  private taskLLm: LLMProvider
 
   private constructor(config: SDKConfig, options: HerTextSDKInitializeOptions = {}) {
     this.llm = createLLMProvider(config.llm)
+    this.taskLLm = createLLMProvider(config.taskLLM ?? config.llm)
 
     this.memory = new MemoryEngine(config.memory, this.llm)
     this.personality = new PersonalityEngine(config.personality)
@@ -39,6 +41,7 @@ export class HerTextSDK {
 
     this.dialogue = new DialogueOrchestrator(
       this.llm,
+      this.taskLLm,
       this.memory,
       this.personality,
       this.agent,
