@@ -1144,6 +1144,21 @@ input[type="password"] {
   background: rgba(255, 116, 116, 0.09);
 }
 
+.plugin-admin-button.success {
+  border-color: rgba(106, 214, 152, 0.28);
+  background: rgba(106, 214, 152, 0.10);
+}
+
+.plugin-admin-button.testing {
+  border-color: rgba(255, 210, 122, 0.30);
+  background: rgba(255, 210, 122, 0.10);
+}
+
+.plugin-admin-button:disabled {
+  cursor: default;
+  opacity: 0.78;
+}
+
 .plugin-admin-button:hover {
   border-color: rgba(226, 74, 144, 0.55);
 }

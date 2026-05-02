@@ -2351,14 +2351,25 @@ async function loadPluginAdminPanel(plugin: PluginInfo): Promise<void> {
   }
 }
 
-async function runPluginAdminAction(plugin: PluginInfo, action: string, payload?: unknown): Promise<any | null> {
+async function runPluginAdminAction(
+  plugin: PluginInfo,
+  action: string,
+  payload?: unknown,
+  options: { refresh?: boolean; silent?: boolean } = {}
+): Promise<any | null> {
   const result = await window.electronAPI.pluginAdminAction(plugin.id, action, payload)
   if (!result.success) {
-    setStatus(`插件操作失败: ${result.error ?? 'unknown error'}`)
+    if (!options.silent) {
+      setStatus(`插件操作失败: ${result.error ?? 'unknown error'}`)
+    }
     return null
   }
-  setStatus('插件操作已完成')
-  await loadPluginAdminPanel(plugin)
+  if (!options.silent) {
+    setStatus('插件操作已完成')
+  }
+  if (options.refresh !== false) {
+    await loadPluginAdminPanel(plugin)
+  }
   return result.result
 }
 
@@ -2427,16 +2438,40 @@ function bindMCPAdminItemActions(container: HTMLElement, plugin: PluginInfo): vo
         enabled: (event.currentTarget as HTMLInputElement).checked,
       })
     })
-    item.querySelector<HTMLButtonElement>('[data-mcp-action="test"]')?.addEventListener('click', async () => {
-      const result = await runPluginAdminAction(plugin, 'testServer', { serverId })
-      if (result?.tools) {
-        setStatus(`MCP 测试成功: ${result.tools.length} 个 tools`)
-      }
+    item.querySelector<HTMLButtonElement>('[data-mcp-action="test"]')?.addEventListener('click', async (event) => {
+      const button = event.currentTarget as HTMLButtonElement
+      await runMCPTestAction(plugin, serverId, button)
     })
     item.querySelector<HTMLButtonElement>('[data-mcp-action="remove"]')?.addEventListener('click', async () => {
       await runPluginAdminAction(plugin, 'removeServer', { serverId })
     })
   })
+}
+
+async function runMCPTestAction(plugin: PluginInfo, serverId: string, button: HTMLButtonElement): Promise<void> {
+  const originalText = button.textContent || '测试'
+  button.disabled = true
+  button.textContent = '测试中...'
+  button.classList.remove('danger')
+  button.classList.add('testing')
+
+  const result = await window.electronAPI.pluginAdminAction(plugin.id, 'testServer', { serverId })
+  button.classList.remove('testing')
+
+  if (!result.success) {
+    button.textContent = '测试失败'
+    button.classList.add('danger')
+  } else {
+    const tools = Array.isArray((result.result as any)?.tools) ? (result.result as any).tools.length : 0
+    button.textContent = `${tools} tools`
+    button.classList.add('success')
+  }
+
+  window.setTimeout(() => {
+    button.disabled = false
+    button.textContent = originalText
+    button.classList.remove('success', 'danger', 'testing')
+  }, 1800)
 }
 
 function renderSkillsAdmin(container: HTMLElement, plugin: PluginInfo, state: any): void {
