@@ -333,7 +333,7 @@ function scoreSkillForTask(skill, query) {
 
   let score = 0
   const queryTokens = tokenize(normalizedQuery)
-  const skillTokens = tokenize(haystack)
+  const skillTokens = Array.from(tokenize(haystack))
   const importantTokens = skillTokens.filter(token => token.length >= 4 || /[A-Z]/i.test(token))
 
   for (const token of unique(importantTokens)) {
