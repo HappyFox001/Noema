@@ -54,6 +54,17 @@ export class ElectronBrowserController {
     return this.webContents.executeJavaScript(buildStateScript(this.options.maxStateElements), true)
   }
 
+  async observe() {
+    try {
+      return await this.state()
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      }
+    }
+  }
+
   async click(index) {
     await this.ensureWindow()
     const result = await this.webContents.executeJavaScript(buildClickScript(Number(index)), true)

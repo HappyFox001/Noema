@@ -13,6 +13,7 @@
     "searchEngine": "duckduckgo",
     "actionTimeoutMs": 120000,
     "maxStateElements": 80,
+    "autoObserve": true,
     "enableScreenshots": true
   },
   "configSchema": [
@@ -70,6 +71,13 @@
       "min": 20,
       "max": 200,
       "step": 10
+    },
+    {
+      "key": "autoObserve",
+      "label": "自动观察",
+      "description": "页面动作完成后自动附带一次轻量 browser_state，减少任务模型手动观察页面的次数。",
+      "type": "boolean",
+      "default": true
     },
     {
       "key": "enableScreenshots",

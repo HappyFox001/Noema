@@ -19,6 +19,7 @@ export default function createPlugin(ctx) {
       return createBrowserTools(controller, {
         timeoutMs: clampInteger(Number(config.actionTimeoutMs ?? 120000), 5000, 300000),
         enableScreenshots: config.enableScreenshots !== false,
+        autoObserve: config.autoObserve !== false,
       })
     },
   }
