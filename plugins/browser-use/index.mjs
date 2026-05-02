@@ -9,6 +9,7 @@ export default function createPlugin(ctx) {
     sessionPartition: String(config.sessionPartition || 'persist:her-text-browser-use'),
     allowedDomains: parseDomains(String(config.allowedDomains || '')),
     maxStateElements: clampInteger(Number(config.maxStateElements ?? 80), 20, 200),
+    searchEngine: String(config.searchEngine || 'duckduckgo'),
   })
 
   return {

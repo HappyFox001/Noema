@@ -5,11 +5,21 @@ export function createBrowserTools(controller, options) {
       url: { type: 'string', description: 'The absolute URL to open, including https:// when possible.' },
     }, ['url'], ({ url }) => controller.open(url)),
 
+    tool('browser_search', 'Search the web using the configured or specified search engine, then open the results page.', 'external', timeoutMs, {
+      query: { type: 'string', description: 'Search query.' },
+      engine: { type: 'string', description: 'Optional search engine.', enum: ['duckduckgo', 'google', 'bing'] },
+    }, ['query'], ({ query, engine }) => controller.search(query, engine)),
+
     tool('browser_state', 'Get current page URL, title, visible text preview, and numbered clickable/input elements. Call this before clicking or filling by index.', 'read', timeoutMs, {}, [], () => controller.state()),
 
     tool('browser_click', 'Click a numbered element from the latest browser_state output.', 'external', timeoutMs, {
       index: { type: 'number', description: 'Element index from browser_state.' },
     }, ['index'], ({ index }) => controller.click(index)),
+
+    tool('browser_mouse', 'Run a mouse action on a numbered element: hover, double click, or right click.', 'external', timeoutMs, {
+      index: { type: 'number', description: 'Element index from browser_state.' },
+      action: { type: 'string', description: 'Mouse action.', enum: ['hover', 'double_click', 'right_click'] },
+    }, ['index', 'action'], ({ index, action }) => controller.mouse(index, action)),
 
     tool('browser_input', 'Click a numbered input-like element from browser_state, clear it, and type text.', 'external', timeoutMs, {
       index: { type: 'number', description: 'Input element index from browser_state.' },
@@ -68,6 +78,15 @@ export function createBrowserTools(controller, options) {
       value: { type: 'string', description: 'Option value or visible text.' },
     }, ['index', 'value'], ({ index, value }) => controller.select(index, value)),
 
+    tool('browser_upload', 'Upload one or more files to a numbered file input element.', 'external', timeoutMs, {
+      index: { type: 'number', description: 'File input element index from browser_state.' },
+      paths: {
+        type: 'array',
+        description: 'Absolute or workspace-relative file paths to upload.',
+        items: { type: 'string' },
+      },
+    }, ['index', 'paths'], ({ index, paths }) => controller.upload(index, paths)),
+
     tool('browser_tab', 'Manage browser tabs: list, new, switch, or close.', 'external', timeoutMs, {
       action: { type: 'string', description: 'Tab action.', enum: ['list', 'new', 'switch', 'close'] },
       index: { type: 'number', description: 'Tab index for switch/close.' },
@@ -86,6 +105,10 @@ export function createBrowserTools(controller, options) {
     }, ['action'], params => controller.cookies(params.action, params)),
 
     tool('browser_back', 'Navigate back in the current browser history.', 'external', timeoutMs, {}, [], () => controller.back()),
+    tool('browser_reload', 'Reload the current page.', 'external', timeoutMs, {}, [], () => controller.reload()),
+    tool('browser_save_pdf', 'Save the current page as a PDF file.', 'write', timeoutMs, {
+      path: { type: 'string', description: 'Output PDF file path.' },
+    }, ['path'], ({ path }) => controller.savePdf(path)),
     tool('browser_close', 'Close all browser windows and clear the active browser session.', 'external', timeoutMs, {}, [], () => controller.close()),
   ]
 

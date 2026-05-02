@@ -1,5 +1,6 @@
 import { BrowserWindow, session } from 'electron'
 import { readFile, writeFile } from 'fs/promises'
+import { resolve } from 'path'
 import {
   buildClickScript,
   buildDropdownOptionsScript,
@@ -8,6 +9,8 @@ import {
   buildFindTextScript,
   buildGetScript,
   buildInputScript,
+  buildMarkFileInputScript,
+  buildMouseActionScript,
   buildSelectScript,
   buildStateScript,
   buildTypeScript,
@@ -30,6 +33,22 @@ export class ElectronBrowserController {
     return this.currentPageSummary()
   }
 
+  async search(query, engine = this.options.searchEngine || 'duckduckgo') {
+    const normalizedEngine = String(engine || 'duckduckgo').toLowerCase()
+    const encoded = encodeURIComponent(String(query || '').trim())
+    if (!encoded) {
+      return { success: false, error: 'query is required' }
+    }
+
+    const searchUrl = {
+      google: `https://www.google.com/search?q=${encoded}`,
+      bing: `https://www.bing.com/search?q=${encoded}`,
+      duckduckgo: `https://duckduckgo.com/?q=${encoded}`,
+    }[normalizedEngine] || `https://duckduckgo.com/?q=${encoded}`
+
+    return this.open(searchUrl)
+  }
+
   async state() {
     await this.ensureWindow()
     return this.webContents.executeJavaScript(buildStateScript(this.options.maxStateElements), true)
@@ -39,6 +58,13 @@ export class ElectronBrowserController {
     await this.ensureWindow()
     const result = await this.webContents.executeJavaScript(buildClickScript(Number(index)), true)
     await this.wait(300)
+    return result
+  }
+
+  async mouse(index, action) {
+    await this.ensureWindow()
+    const result = await this.webContents.executeJavaScript(buildMouseActionScript(Number(index), action), true)
+    await this.wait(150)
     return result
   }
 
@@ -138,6 +164,56 @@ export class ElectronBrowserController {
     return this.webContents.executeJavaScript(buildSelectScript(Number(index), String(value ?? '')), true)
   }
 
+  async upload(index, paths) {
+    await this.ensureWindow()
+    const files = Array.isArray(paths) ? paths : [paths]
+    const resolvedFiles = files.map(file => resolve(String(file))).filter(Boolean)
+    if (resolvedFiles.length === 0) {
+      return { success: false, error: 'At least one file path is required' }
+    }
+
+    const markerId = `upload-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    const marked = await this.webContents.executeJavaScript(buildMarkFileInputScript(Number(index), markerId), true)
+    if (!marked.success) {
+      return marked
+    }
+
+    const debuggerApi = this.webContents.debugger
+    const attachedBefore = debuggerApi.isAttached()
+    if (!attachedBefore) {
+      debuggerApi.attach('1.3')
+    }
+
+    try {
+      const document = await debuggerApi.sendCommand('DOM.getDocument', { depth: -1, pierce: true })
+      const { nodeId } = await debuggerApi.sendCommand('DOM.querySelector', {
+        nodeId: document.root.nodeId,
+        selector: marked.selector,
+      })
+      if (!nodeId) {
+        return { success: false, error: 'Marked file input not found through CDP', index }
+      }
+      await debuggerApi.sendCommand('DOM.setFileInputFiles', {
+        nodeId,
+        files: resolvedFiles,
+      })
+      await this.webContents.executeJavaScript(
+        `(() => {
+          const element = document.querySelector(${JSON.stringify(marked.selector)});
+          element?.dispatchEvent(new Event('input', { bubbles: true }));
+          element?.dispatchEvent(new Event('change', { bubbles: true }));
+          return true;
+        })()`,
+        true
+      )
+      return { success: true, index, files: resolvedFiles }
+    } finally {
+      if (!attachedBefore && debuggerApi.isAttached()) {
+        debuggerApi.detach()
+      }
+    }
+  }
+
   async dropdownOptions(index) {
     await this.ensureWindow()
     return this.webContents.executeJavaScript(buildDropdownOptionsScript(Number(index)), true)
@@ -153,12 +229,30 @@ export class ElectronBrowserController {
     }
   }
 
+  async savePdf(path) {
+    await this.ensureWindow()
+    if (!path) {
+      return { success: false, error: 'path is required' }
+    }
+    const outputPath = resolve(String(path))
+    const data = await this.webContents.printToPDF({ printBackground: true })
+    await writeFile(outputPath, data)
+    return { success: true, path: outputPath, bytes: data.length }
+  }
+
   async back() {
     await this.ensureWindow()
     if (this.webContents.canGoBack()) {
       this.webContents.goBack()
       await this.waitForPageSettled()
     }
+    return this.currentPageSummary()
+  }
+
+  async reload() {
+    await this.ensureWindow()
+    this.webContents.reload()
+    await this.waitForPageSettled()
     return this.currentPageSummary()
   }
 

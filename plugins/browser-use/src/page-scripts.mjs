@@ -48,6 +48,45 @@ export function buildClickScript(index) {
   })()`
 }
 
+export function buildMouseActionScript(index, action) {
+  return `(() => {
+    const element = getInteractiveElement(${index});
+    if (!element) return { success: false, error: 'Element index not found', index: ${index} };
+    element.scrollIntoView({ block: 'center', inline: 'center' });
+    const rect = element.getBoundingClientRect();
+    const eventInit = {
+      bubbles: true,
+      cancelable: true,
+      view: window,
+      clientX: rect.left + rect.width / 2,
+      clientY: rect.top + rect.height / 2
+    };
+    const action = ${JSON.stringify(action)};
+    if (action === 'hover') {
+      element.dispatchEvent(new MouseEvent('mouseover', eventInit));
+      element.dispatchEvent(new MouseEvent('mouseenter', eventInit));
+      element.dispatchEvent(new MouseEvent('mousemove', eventInit));
+    } else if (action === 'double_click') {
+      element.focus?.();
+      element.dispatchEvent(new MouseEvent('mousedown', eventInit));
+      element.dispatchEvent(new MouseEvent('mouseup', eventInit));
+      element.dispatchEvent(new MouseEvent('click', eventInit));
+      element.dispatchEvent(new MouseEvent('mousedown', eventInit));
+      element.dispatchEvent(new MouseEvent('mouseup', eventInit));
+      element.dispatchEvent(new MouseEvent('click', eventInit));
+      element.dispatchEvent(new MouseEvent('dblclick', eventInit));
+    } else if (action === 'right_click') {
+      element.focus?.();
+      element.dispatchEvent(new MouseEvent('contextmenu', { ...eventInit, button: 2, buttons: 2 }));
+    } else {
+      return { success: false, error: 'Unsupported mouse action', action };
+    }
+    return { success: true, action, index: ${index}, element: describeElement(element, ${index}) };
+
+    ${sharedBrowserUseHelpers()}
+  })()`
+}
+
 export function buildInputScript(index, text) {
   return `(() => {
     const element = getInteractiveElement(${index});
@@ -66,6 +105,21 @@ export function buildInputScript(index, text) {
       return { success: false, error: 'Element is not input-like', index: ${index}, tag: element.tagName.toLowerCase() };
     }
     return { success: true, index: ${index}, value };
+
+    ${sharedBrowserUseHelpers()}
+  })()`
+}
+
+export function buildMarkFileInputScript(index, markerId) {
+  return `(() => {
+    const element = getInteractiveElement(${index});
+    if (!element) return { success: false, error: 'Element index not found', index: ${index} };
+    if (element.tagName.toLowerCase() !== 'input' || String(element.type || '').toLowerCase() !== 'file') {
+      return { success: false, error: 'Element is not a file input', index: ${index}, tag: element.tagName.toLowerCase(), type: element.type || '' };
+    }
+    const marker = ${JSON.stringify(markerId)};
+    element.setAttribute('data-her-browser-use-file-id', marker);
+    return { success: true, index: ${index}, selector: '[data-her-browser-use-file-id="' + marker + '"]' };
 
     ${sharedBrowserUseHelpers()}
   })()`
