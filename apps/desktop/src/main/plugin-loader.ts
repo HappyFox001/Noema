@@ -1,7 +1,9 @@
+import { app } from 'electron'
 import { existsSync } from 'fs'
-import { readdir, readFile } from 'fs/promises'
+import { mkdir, readdir, readFile } from 'fs/promises'
 import { join, resolve } from 'path'
 import { pathToFileURL } from 'url'
+import { createBaseTools } from '@her-text/sdk'
 import type { SDKPlugin, SDKPluginContext } from '@her-text/sdk'
 
 export interface RuntimePluginManifest {
@@ -25,6 +27,8 @@ export type RuntimePluginConfigField =
       type: 'string'
       default?: string
       placeholder?: string
+      multiline?: boolean
+      rows?: number
     }
   | {
       key: string
@@ -63,6 +67,13 @@ export interface RuntimePluginInfo {
   pluginDir: string
   config: Record<string, unknown>
   configSchema: RuntimePluginConfigField[]
+}
+
+export interface RuntimePluginAdminResult {
+  success: boolean
+  state?: unknown
+  result?: unknown
+  error?: string
 }
 
 export async function discoverRuntimePlugins(
@@ -158,6 +169,8 @@ async function loadRuntimePlugin(
     }
 
     const assetsDir = manifest.assets ? resolve(pluginDir, manifest.assets) : pluginDir
+    const dataDir = join(app.getPath('userData'), 'plugins', manifest.id)
+    await mkdir(dataDir, { recursive: true })
     const module = await import(pathToFileURL(mainPath).toString())
     const factory = module.default || module.createPlugin
     if (typeof factory !== 'function') {
@@ -168,8 +181,12 @@ async function loadRuntimePlugin(
     const plugin = await (factory as RuntimePluginFactory)({
       pluginDir,
       assetsDir,
+      dataDir,
       config: mergePluginConfig(manifest, configOverride),
       resolveAsset: (assetPath: string) => resolve(assetsDir, assetPath),
+      tools: {
+        createBaseTools,
+      },
     } as SDKPluginContext)
 
     console.log(`[PluginLoader] Loaded plugin: ${plugin.id}${manifest.version ? `@${manifest.version}` : ''}`)
@@ -177,6 +194,51 @@ async function loadRuntimePlugin(
   } catch (error) {
     console.error(`[PluginLoader] Failed to load plugin from ${pluginDir}:`, error)
     return null
+  }
+}
+
+export async function invokeRuntimePluginAdminAction(
+  pluginsDir: string,
+  pluginId: string,
+  action: string,
+  payload: unknown,
+  configOverrides: Record<string, Record<string, unknown>> = {}
+): Promise<RuntimePluginAdminResult> {
+  try {
+    const manifests = await readRuntimePluginManifests(pluginsDir)
+    const entry = manifests.find(item => item.manifest.id === pluginId)
+    if (!entry) {
+      return { success: false, error: `Plugin not found: ${pluginId}` }
+    }
+
+    const plugin = await loadRuntimePlugin(
+      entry.pluginDir,
+      entry.manifest,
+      configOverrides[pluginId]
+    )
+    if (!plugin) {
+      return { success: false, error: `Plugin failed to load: ${pluginId}` }
+    }
+
+    if (action === 'state') {
+      return {
+        success: true,
+        state: await plugin.getAdminState?.(),
+      }
+    }
+
+    if (typeof plugin.handleAdminAction !== 'function') {
+      return { success: false, error: `Plugin has no admin actions: ${pluginId}` }
+    }
+
+    const result = await plugin.handleAdminAction(action, payload)
+    return {
+      success: true,
+      result,
+      state: await plugin.getAdminState?.(),
+    }
+  } catch (error: any) {
+    return { success: false, error: error.message }
   }
 }
 

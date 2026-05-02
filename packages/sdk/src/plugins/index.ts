@@ -51,17 +51,23 @@ export interface SDKPlugin {
   name?: string
   setup?(context: SDKPluginContext): void | Promise<void>
   registerTools?(context: ToolRegistrationContext): Tool[] | Promise<Tool[]>
+  getAdminState?(): Promise<unknown> | unknown
+  handleAdminAction?(action: string, payload?: unknown): Promise<unknown> | unknown
   extendPrompt?(context: PromptHookContext): string | undefined
   transformText?(text: string, context: TextTransformContext): string
   selectExpression?(context: ExpressionHookContext): ExpressionFrame | undefined
 }
 
 export interface SDKPluginContext {
-  plugins: PluginManager
+  plugins?: PluginManager
   pluginDir?: string
   assetsDir?: string
+  dataDir?: string
   config?: Record<string, unknown>
   resolveAsset?: (assetPath: string) => string
+  tools?: {
+    createBaseTools?: () => Tool[]
+  }
 }
 
 export class PluginManager {

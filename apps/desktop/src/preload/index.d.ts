@@ -285,6 +285,12 @@ declare global {
           >
         }>
       }>
+      pluginAdminAction: (pluginId: string, action: string, payload?: unknown) => Promise<{
+        success: boolean
+        state?: unknown
+        result?: unknown
+        error?: string
+      }>
       listPersonalities: () => Promise<{
         success: boolean
         current?: string

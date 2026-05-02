@@ -94,6 +94,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   listPlugins: () =>
     ipcRenderer.invoke('plugins:list'),
 
+  pluginAdminAction: (pluginId, action, payload) =>
+    ipcRenderer.invoke('plugins:adminAction', pluginId, action, payload),
+
   listPersonalities: () =>
     ipcRenderer.invoke('personality:list'),
 

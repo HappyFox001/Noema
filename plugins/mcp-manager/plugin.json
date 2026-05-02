@@ -1,0 +1,24 @@
+{
+  "id": "mcp-manager",
+  "name": "MCP Manager",
+  "description": "在任务运行时连接和调度 MCP stdio servers。可通过插件参数添加 server，并把远端 MCP tools 作为任务工具间接调用。",
+  "version": "0.1.0",
+  "type": "sdk-plugin",
+  "main": "index.mjs",
+  "enabled": false,
+  "config": {
+    "defaultTimeoutMs": 60000
+  },
+  "configSchema": [
+    {
+      "key": "defaultTimeoutMs",
+      "label": "默认超时",
+      "description": "远程 MCP initialize/list/call 的默认超时，单位毫秒。",
+      "type": "number",
+      "default": 60000,
+      "min": 5000,
+      "max": 300000,
+      "step": 5000
+    }
+  ]
+}

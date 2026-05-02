@@ -725,6 +725,8 @@ type PluginConfigField =
       type: 'string'
       default?: string
       placeholder?: string
+      multiline?: boolean
+      rows?: number
     }
   | {
       key: string
@@ -2279,6 +2281,7 @@ function renderPluginDetail(plugin: PluginInfo): void {
       </div>
       ${renderPluginConfigFields(plugin)}
     </div>
+    ${renderPluginAdminContainer(plugin)}
   `
 
   pluginsList.querySelector<HTMLButtonElement>('.plugin-back-btn')?.addEventListener('click', () => {
@@ -2312,10 +2315,220 @@ function renderPluginDetail(plugin: PluginInfo): void {
   })
 
   bindPluginConfigInputs()
+  loadPluginAdminPanel(plugin)
+}
+
+function renderPluginAdminContainer(plugin: PluginInfo): string {
+  if (plugin.id !== 'mcp-manager' && plugin.id !== 'skills-manager') {
+    return ''
+  }
+
+  return `
+    <div class="plugin-card plugin-admin-card" data-plugin-admin="${escapeHtml(plugin.id)}">
+      <div class="plugin-admin-loading">加载管理信息...</div>
+    </div>
+  `
+}
+
+async function loadPluginAdminPanel(plugin: PluginInfo): Promise<void> {
+  if (plugin.id !== 'mcp-manager' && plugin.id !== 'skills-manager') {
+    return
+  }
+
+  const container = pluginsList.querySelector<HTMLElement>(`[data-plugin-admin="${cssEscape(plugin.id)}"]`)
+  if (!container) return
+
+  const result = await window.electronAPI.pluginAdminAction(plugin.id, 'state')
+  if (!result.success) {
+    container.innerHTML = `<div class="plugin-admin-loading">管理信息加载失败: ${escapeHtml(result.error ?? 'unknown error')}</div>`
+    return
+  }
+
+  if (plugin.id === 'mcp-manager') {
+    renderMCPAdmin(container, plugin, result.state as any)
+  } else {
+    renderSkillsAdmin(container, plugin, result.state as any)
+  }
+}
+
+async function runPluginAdminAction(plugin: PluginInfo, action: string, payload?: unknown): Promise<any | null> {
+  const result = await window.electronAPI.pluginAdminAction(plugin.id, action, payload)
+  if (!result.success) {
+    setStatus(`插件操作失败: ${result.error ?? 'unknown error'}`)
+    return null
+  }
+  setStatus('插件操作已完成')
+  await loadPluginAdminPanel(plugin)
+  return result.result
+}
+
+function renderMCPAdmin(container: HTMLElement, plugin: PluginInfo, state: any): void {
+  const servers = Array.isArray(state?.servers) ? state.servers : []
+  container.innerHTML = `
+    <div class="plugin-admin-header">
+      <div>
+        <div class="plugin-admin-title">远程 MCP Servers</div>
+        <div class="plugin-admin-subtitle">只管理远程 MCP HTTP endpoint，不启动本地命令。</div>
+      </div>
+    </div>
+    <div class="plugin-admin-form">
+      <input class="plugin-config-input" data-mcp-field="id" placeholder="id，例如 github" />
+      <input class="plugin-config-input" data-mcp-field="name" placeholder="名称，可选" />
+      <input class="plugin-config-input plugin-admin-wide-input" data-mcp-field="url" placeholder="https://example.com/mcp" />
+      <textarea class="plugin-config-input plugin-config-textarea" data-mcp-field="headers" rows="3" placeholder='Headers JSON，可选，例如 {"authorization":"Bearer ..."}'></textarea>
+      <button class="plugin-admin-button" type="button" data-mcp-action="add">添加远程 MCP</button>
+    </div>
+    <div class="plugin-admin-list">
+      ${servers.length ? servers.map((server: any) => `
+        <div class="plugin-admin-item" data-server-id="${escapeHtml(server.id)}">
+          <div class="plugin-admin-item-main">
+            <div class="plugin-admin-item-title">${escapeHtml(server.name || server.id)}</div>
+            <div class="plugin-admin-item-meta">${escapeHtml(server.id)} · ${escapeHtml(server.url || '')}</div>
+          </div>
+          <label class="settings-toggle plugin-config-toggle">
+            <input type="checkbox" ${server.enabled ? 'checked' : ''} data-mcp-action="toggle" />
+            <span class="toggle-slider"></span>
+          </label>
+          <button class="plugin-admin-button secondary" type="button" data-mcp-action="test">测试</button>
+          <button class="plugin-admin-button danger" type="button" data-mcp-action="remove">删除</button>
+        </div>
+      `).join('') : '<div class="plugin-admin-empty">暂无远程 MCP server。</div>'}
+    </div>
+  `
+
+  container.querySelector<HTMLButtonElement>('[data-mcp-action="add"]')?.addEventListener('click', async () => {
+    const id = readAdminField(container, 'mcp', 'id')
+    const url = readAdminField(container, 'mcp', 'url')
+    const name = readAdminField(container, 'mcp', 'name')
+    const headersText = readAdminField(container, 'mcp', 'headers')
+    let headers = {}
+    if (headersText.trim()) {
+      try {
+        headers = JSON.parse(headersText)
+      } catch {
+        setStatus('Headers 必须是合法 JSON')
+        return
+      }
+    }
+    await runPluginAdminAction(plugin, 'upsertServer', { id, name, url, headers, enabled: true })
+  })
+
+  bindMCPAdminItemActions(container, plugin)
+}
+
+function bindMCPAdminItemActions(container: HTMLElement, plugin: PluginInfo): void {
+  container.querySelectorAll<HTMLElement>('.plugin-admin-item').forEach(item => {
+    const serverId = item.dataset.serverId
+    if (!serverId) return
+
+    item.querySelector<HTMLInputElement>('[data-mcp-action="toggle"]')?.addEventListener('change', async (event) => {
+      await runPluginAdminAction(plugin, 'setServerEnabled', {
+        serverId,
+        enabled: (event.currentTarget as HTMLInputElement).checked,
+      })
+    })
+    item.querySelector<HTMLButtonElement>('[data-mcp-action="test"]')?.addEventListener('click', async () => {
+      const result = await runPluginAdminAction(plugin, 'testServer', { serverId })
+      if (result?.tools) {
+        setStatus(`MCP 测试成功: ${result.tools.length} 个 tools`)
+      }
+    })
+    item.querySelector<HTMLButtonElement>('[data-mcp-action="remove"]')?.addEventListener('click', async () => {
+      await runPluginAdminAction(plugin, 'removeServer', { serverId })
+    })
+  })
+}
+
+function renderSkillsAdmin(container: HTMLElement, plugin: PluginInfo, state: any): void {
+  const sources = Array.isArray(state?.sources) ? state.sources : []
+  const skills = Array.isArray(state?.skills) ? state.skills : []
+  container.innerHTML = `
+    <div class="plugin-admin-header">
+      <div>
+        <div class="plugin-admin-title">Skills Sources</div>
+        <div class="plugin-admin-subtitle">从 GitHub 或本地目录导入 SKILL.md，不在 UI 内直接创建 skill。</div>
+      </div>
+    </div>
+    <div class="plugin-admin-form">
+      <input class="plugin-config-input plugin-admin-wide-input" data-skill-field="githubUrl" placeholder="GitHub URL，例如 https://github.com/user/repo" />
+      <button class="plugin-admin-button" type="button" data-skill-action="add-github">添加 GitHub Source</button>
+      <input class="plugin-config-input plugin-admin-wide-input" data-skill-field="localPath" placeholder="本地 skills 目录路径" />
+      <button class="plugin-admin-button secondary" type="button" data-skill-action="add-local">添加本地目录</button>
+    </div>
+    <div class="plugin-admin-section-title">Sources</div>
+    <div class="plugin-admin-list">
+      ${sources.length ? sources.map((source: any) => `
+        <div class="plugin-admin-item" data-source-id="${escapeHtml(source.id)}" data-source-type="${escapeHtml(source.type)}">
+          <div class="plugin-admin-item-main">
+            <div class="plugin-admin-item-title">${escapeHtml(source.id)}</div>
+            <div class="plugin-admin-item-meta">${escapeHtml(source.type)} · ${escapeHtml(source.url || source.path || '')}</div>
+          </div>
+          <label class="settings-toggle plugin-config-toggle">
+            <input type="checkbox" ${source.enabled ? 'checked' : ''} data-skill-action="toggle" />
+            <span class="toggle-slider"></span>
+          </label>
+          ${source.type === 'github' ? '<button class="plugin-admin-button secondary" type="button" data-skill-action="rescan">更新</button>' : ''}
+          <button class="plugin-admin-button danger" type="button" data-skill-action="remove">删除</button>
+        </div>
+      `).join('') : '<div class="plugin-admin-empty">暂无 skill source。</div>'}
+    </div>
+    <div class="plugin-admin-section-title">Detected Skills (${skills.length})</div>
+    <div class="plugin-admin-skill-list">
+      ${skills.slice(0, 40).map((skill: any) => `
+        <div class="plugin-admin-skill">
+          <div class="plugin-admin-item-title">${escapeHtml(skill.name || skill.id)}</div>
+          <div class="plugin-admin-item-meta">${escapeHtml(skill.id)} · ${escapeHtml(skill.source || '')}</div>
+          ${skill.description ? `<div class="plugin-admin-desc">${escapeHtml(skill.description)}</div>` : ''}
+        </div>
+      `).join('')}
+    </div>
+  `
+
+  container.querySelector<HTMLButtonElement>('[data-skill-action="add-github"]')?.addEventListener('click', async () => {
+    await runPluginAdminAction(plugin, 'addGithubSource', {
+      url: readAdminField(container, 'skill', 'githubUrl'),
+      enabled: true,
+    })
+  })
+  container.querySelector<HTMLButtonElement>('[data-skill-action="add-local"]')?.addEventListener('click', async () => {
+    await runPluginAdminAction(plugin, 'addLocalSource', {
+      path: readAdminField(container, 'skill', 'localPath'),
+      enabled: true,
+    })
+  })
+
+  bindSkillsAdminItemActions(container, plugin)
+}
+
+function bindSkillsAdminItemActions(container: HTMLElement, plugin: PluginInfo): void {
+  container.querySelectorAll<HTMLElement>('.plugin-admin-item').forEach(item => {
+    const sourceId = item.dataset.sourceId
+    if (!sourceId) return
+    item.querySelector<HTMLInputElement>('[data-skill-action="toggle"]')?.addEventListener('change', async (event) => {
+      await runPluginAdminAction(plugin, 'setSourceEnabled', {
+        sourceId,
+        enabled: (event.currentTarget as HTMLInputElement).checked,
+      })
+    })
+    item.querySelector<HTMLButtonElement>('[data-skill-action="rescan"]')?.addEventListener('click', async () => {
+      await runPluginAdminAction(plugin, 'rescanGithubSource', { sourceId })
+    })
+    item.querySelector<HTMLButtonElement>('[data-skill-action="remove"]')?.addEventListener('click', async () => {
+      await runPluginAdminAction(plugin, 'removeSource', { sourceId })
+    })
+  })
+}
+
+function readAdminField(container: HTMLElement, scope: string, field: string): string {
+  return container.querySelector<HTMLInputElement | HTMLTextAreaElement>(
+    `[data-${scope}-field="${cssEscape(field)}"]`
+  )?.value.trim() ?? ''
 }
 
 function bindPluginConfigInputs(): void {
-  pluginsList.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input[data-plugin-config], select[data-plugin-config]').forEach(input => {
+  pluginsList.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
+    'input[data-plugin-config], select[data-plugin-config], textarea[data-plugin-config]'
+  ).forEach(input => {
     input.addEventListener('change', async () => {
       const pluginId = input.dataset.pluginId
       const key = input.dataset.pluginConfig
@@ -2422,12 +2635,14 @@ function renderPluginConfigField(plugin: PluginInfo, field: PluginConfigField): 
         `).join('')}
       </select>
     `
+  } else if (field.type === 'string' && field.multiline) {
+    control = `<textarea class="plugin-config-input plugin-config-textarea" rows="${field.rows ?? 5}" placeholder="${escapeHtml(field.placeholder ?? '')}" ${commonAttrs}>${escapeHtml(String(rawValue ?? ''))}</textarea>`
   } else {
     control = `<input class="plugin-config-input" type="text" value="${escapeHtml(String(rawValue ?? ''))}" placeholder="${escapeHtml(field.placeholder ?? '')}" ${commonAttrs} />`
   }
 
   return `
-    <div class="plugin-config-row">
+    <div class="plugin-config-row ${field.type === 'string' && field.multiline ? 'plugin-config-row-multiline' : ''}">
       <div class="plugin-config-meta">
         <div class="plugin-config-label">${label}</div>
         ${desc}
@@ -2438,7 +2653,7 @@ function renderPluginConfigField(plugin: PluginInfo, field: PluginConfigField): 
 }
 
 function readPluginConfigValue(
-  input: HTMLInputElement | HTMLSelectElement,
+  input: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement,
   type: string
 ): unknown {
   if (type === 'boolean') {

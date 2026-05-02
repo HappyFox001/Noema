@@ -81,7 +81,7 @@ import {
   type ExpressionFrame,
   type PluginRuntimeContext,
 } from '@her-text/sdk'
-import { discoverRuntimePlugins, loadRuntimePlugins } from './plugin-loader.js'
+import { discoverRuntimePlugins, invokeRuntimePluginAdminAction, loadRuntimePlugins } from './plugin-loader.js'
 import { initializeSileroVAD, isSileroVADAvailable } from './silero-vad-helper.js'
 import { initializeSmartTurn, isSmartTurnAvailable } from './smart-turn-helper.js'
 import {
@@ -2798,6 +2798,16 @@ ipcMain.handle('plugins:list', async () => {
   } catch (error: any) {
     return { success: false, error: error.message, plugins: [] }
   }
+})
+
+ipcMain.handle('plugins:adminAction', async (_event, pluginId: string, action: string, payload: unknown) => {
+  return invokeRuntimePluginAdminAction(
+    resolveRuntimePluginsDir(),
+    pluginId,
+    action,
+    payload,
+    appSettings.pluginConfigs
+  )
 })
 
 ipcMain.handle('settings:resetSystemFromEnv', async () => {

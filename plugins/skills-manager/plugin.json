@@ -1,0 +1,33 @@
+{
+  "id": "skills-manager",
+  "name": "Skills Manager",
+  "description": "在任务运行时管理和检索本地 Skills。任务模型可以列出、搜索、读取或添加技能说明，再按技能内容执行任务。",
+  "version": "0.1.0",
+  "type": "sdk-plugin",
+  "main": "index.mjs",
+  "enabled": true,
+  "config": {
+    "skillsRoot": "",
+    "maxSkillChars": 12000
+  },
+  "configSchema": [
+    {
+      "key": "skillsRoot",
+      "label": "Skills 目录",
+      "description": "本地 skills 根目录。留空时使用插件目录下的 skills 文件夹。每个 skill 应包含 SKILL.md。",
+      "type": "string",
+      "default": "",
+      "placeholder": "/path/to/skills"
+    },
+    {
+      "key": "maxSkillChars",
+      "label": "读取上限",
+      "description": "skills_read 返回的最大字符数。",
+      "type": "number",
+      "default": 12000,
+      "min": 1000,
+      "max": 50000,
+      "step": 1000
+    }
+  ]
+}

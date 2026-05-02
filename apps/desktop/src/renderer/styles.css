@@ -676,12 +676,14 @@ input[type="password"] {
 
 .plugin-list {
   width: min(100%, 560px);
+  max-width: 100%;
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
 .plugin-card {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -814,6 +816,12 @@ input[type="password"] {
   grid-template-columns: minmax(0, 1fr) 120px;
   gap: 14px;
   align-items: center;
+  min-width: 0;
+}
+
+.plugin-config-row-multiline {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
 }
 
 .plugin-config-meta {
@@ -836,6 +844,7 @@ input[type="password"] {
 
 .plugin-config-input {
   width: 120px;
+  max-width: 100%;
   height: 30px;
   padding: 0 9px;
   background: rgba(0, 0, 0, 0.22);
@@ -845,6 +854,17 @@ input[type="password"] {
   font-family: var(--font-ui);
   font-size: 11px;
   outline: none;
+}
+
+.plugin-config-textarea {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  min-height: 92px;
+  height: auto;
+  padding: 8px 9px;
+  resize: vertical;
+  line-height: 1.45;
 }
 
 .plugin-number-control {
@@ -937,6 +957,144 @@ input[type="password"] {
 
 .plugin-config-toggle {
   justify-self: end;
+}
+
+.plugin-admin-card {
+  gap: 14px;
+}
+
+.plugin-admin-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.plugin-admin-title,
+.plugin-admin-section-title {
+  font-family: var(--font-soft);
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.plugin-admin-section-title {
+  padding-top: 4px;
+  font-size: 12px;
+}
+
+.plugin-admin-subtitle,
+.plugin-admin-loading,
+.plugin-admin-empty,
+.plugin-admin-desc {
+  font-family: var(--font-soft);
+  font-size: 11px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.42);
+}
+
+.plugin-admin-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.plugin-admin-form .plugin-config-input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.plugin-admin-form .plugin-config-textarea,
+.plugin-admin-wide-input {
+  grid-column: 1 / -1;
+}
+
+.plugin-admin-list,
+.plugin-admin-skill-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.plugin-admin-item {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.plugin-admin-skill {
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.plugin-admin-item-main {
+  min-width: 0;
+}
+
+.plugin-admin-item-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-soft);
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.plugin-admin-item-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 3px;
+  font-family: var(--font-ui);
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.38);
+}
+
+.plugin-admin-button {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid rgba(226, 74, 144, 0.34);
+  border-radius: 8px;
+  background: rgba(226, 74, 144, 0.13);
+  color: rgba(255, 255, 255, 0.86);
+  font-family: var(--font-soft);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.plugin-admin-button.secondary {
+  border-color: rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.plugin-admin-button.danger {
+  border-color: rgba(255, 116, 116, 0.26);
+  background: rgba(255, 116, 116, 0.09);
+}
+
+.plugin-admin-button:hover {
+  border-color: rgba(226, 74, 144, 0.55);
+}
+
+@media (max-width: 560px) {
+  .plugin-admin-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .plugin-admin-item {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
 }
 
 .settings-row {
