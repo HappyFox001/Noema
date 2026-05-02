@@ -10,13 +10,29 @@ export interface TurnRunResult {
   completed: boolean
 }
 
+export interface TurnRuntimeHooks {
+  onToolCalling?: (toolCalls: ToolCall[]) => void
+  onObserving?: (toolCalls: ToolCall[], toolResults: any[]) => void
+}
+
+export type InternalToolHandler = (args: any, call: ToolCall) => Promise<any> | any
+
+export interface TurnRuntimeOptions extends TurnRuntimeHooks {
+  internalTools?: Record<string, InternalToolHandler>
+}
+
 export class TurnRuntime {
   constructor(
     private llm: LLMProvider,
     private agent: AgentCore
   ) {}
 
-  async run(turnIndex: number, messages: any[], toolSpecs: any[]): Promise<TurnRunResult> {
+  async run(
+    turnIndex: number,
+    messages: any[],
+    toolSpecs: any[],
+    options: TurnRuntimeOptions = {}
+  ): Promise<TurnRunResult> {
     console.log(`\n========== 🔄 Turn ${turnIndex} 开始 ==========`)
 
     const response = await this.llm.chat(messages, {
@@ -51,9 +67,9 @@ export class TurnRuntime {
     })
 
     console.log(`\n[Turn ${turnIndex}] ⏳ 执行工具...`)
-    const toolResults = await this.agent.execute(toolCalls, {
-      timeout: 30000
-    })
+    options.onToolCalling?.(toolCalls)
+    const toolResults = await this.executeToolCalls(toolCalls, options)
+    options.onObserving?.(toolCalls, toolResults)
 
     toolResults.forEach((result, i) => {
       const status = result.success ? '✅' : '❌'
@@ -71,5 +87,44 @@ export class TurnRuntime {
       toolResults,
       completed: false
     }
+  }
+
+  private async executeToolCalls(
+    toolCalls: ToolCall[],
+    options: TurnRuntimeOptions
+  ): Promise<any[]> {
+    const internalTools = options.internalTools ?? {}
+    const results = []
+
+    for (const call of toolCalls) {
+      const handler = internalTools[call.function.name]
+      if (!handler) {
+        const [result] = await this.agent.execute([call], {
+          timeout: 30000
+        })
+        results.push(result)
+        continue
+      }
+
+      try {
+        const args = JSON.parse(call.function.arguments || '{}')
+        const result = await handler(args, call)
+        results.push({
+          success: true,
+          callId: call.id,
+          name: call.function.name,
+          result
+        })
+      } catch (error) {
+        results.push({
+          success: false,
+          callId: call.id,
+          name: call.function.name,
+          error: (error as Error).message
+        })
+      }
+    }
+
+    return results
   }
 }

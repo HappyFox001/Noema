@@ -12,12 +12,14 @@ import type { UserProfile, ConversationSummary } from '../memory/index.js'
 import type { PersonalityEngine } from '../personality/index.js'
 import { TurnRuntime } from './turn.js'
 import { PROMPTS } from '../prompts.js'
+import type { TaskPlan, TaskPlanDraft, TaskRunState, TaskStep, TaskStepStatus } from './task-plan.js'
 
 export interface TaskRunResult {
   success: boolean
   iterations: number
   toolCalls: number
   finalMessage: string
+  plan?: TaskPlan
   error?: string
 }
 
@@ -31,11 +33,16 @@ export interface TaskTurnRecord {
   }>
   toolResults: any[]
   completed: boolean
+  stepId?: string
+  stepTitle?: string
 }
 
 export interface TaskRuntimeHooks {
   onTurnCompleted?: (turn: TaskTurnRecord) => void
   onStatusChanged?: (status: 'running' | 'completed' | 'errored') => void
+  onRunStateChanged?: (state: TaskRunState) => void
+  onPlanUpdated?: (plan: TaskPlan) => void
+  onStepUpdated?: (step: TaskStep, plan: TaskPlan) => void
   onCompact?: (summary: string) => void
 }
 
@@ -47,6 +54,20 @@ export interface TaskContextItem {
   content: string
 }
 
+interface TaskPlanUpdateArgs {
+  explanation?: string
+  title?: string
+  summary?: string
+  steps?: Array<{
+    id?: string
+    title?: string
+    description?: string
+    status?: TaskStepStatus
+    result?: string
+    error?: string
+  }>
+}
+
 export class TaskRuntime {
   private turnRuntime: TurnRuntime
   private maxTurns = 12
@@ -54,6 +75,9 @@ export class TaskRuntime {
   private keepRecentTurns = 2
   private compactSummary = ''
   private turnRecords: TaskTurnRecord[] = []
+  private taskPlan: TaskPlan | null = null
+  private runState: TaskRunState = 'planning'
+  private currentStep: TaskStep | null = null
 
   constructor(
     private llm: LLMProvider,
@@ -75,7 +99,7 @@ export class TaskRuntime {
   async run(): Promise<TaskRunResult> {
     const tools = this.agent.getTools()
     const toolSpecs = this.buildToolSpecs(tools)
-    const messages = this.buildInitialMessages()
+    let messages: any[] = []
 
     let iterations = 0
     let toolCallsCount = 0
@@ -91,19 +115,72 @@ export class TaskRuntime {
 
     try {
       this.hooks.onStatusChanged?.('running')
+      this.setRunState('planning')
+      this.taskPlan = await this.createInitialPlan(tools)
+      this.emitPlanUpdated()
+      this.setRunState('plan_ready')
+      messages = this.buildInitialMessages()
 
       while (iterations < this.maxTurns) {
+        const step = this.nextRunnableStep()
+        if (!step) {
+          finalMessage = finalMessage || this.buildPlanCompletionMessage()
+          this.setRunState('completed')
+          this.hooks.onStatusChanged?.('completed')
+          this.emitPlanUpdated()
+          return {
+            success: true,
+            iterations,
+            toolCalls: toolCallsCount,
+            finalMessage,
+            plan: this.taskPlan
+          }
+        }
+
+        this.startStep(step)
         iterations++
         console.log(`\n┌─────────────────────────────────────────────────────────────┐`)
-        console.log(`│ 📍 TaskRuntime 迭代 ${iterations}/${this.maxTurns}                              │`)
+        console.log(`│ 📍 TaskRuntime 迭代 ${iterations}/${this.maxTurns} · ${step.title.substring(0, 24)}                    │`)
         console.log(`└─────────────────────────────────────────────────────────────┘`)
 
-        const turn = await this.turnRuntime.run(iterations, messages, toolSpecs)
+        messages.push({
+          role: 'user',
+          content: this.renderCurrentStepInstruction(step)
+        })
+
+        this.setRunState('step_running')
+        const turn = await this.turnRuntime.run(iterations, messages, toolSpecs, {
+          internalTools: {
+            update_task_plan: (args) => this.updateTaskPlan(args)
+          },
+          onToolCalling: (toolCalls) => {
+            step.toolCalls.push(...toolCalls.map(call => call.function.name))
+            this.setRunState('tool_calling')
+            this.emitStepUpdated(step)
+          },
+          onObserving: () => {
+            this.setRunState('observing')
+            this.emitStepUpdated(step)
+          }
+        })
         toolCallsCount += turn.toolCalls.length
         this.recordTurn(turn)
 
         if (turn.completed) {
-          finalMessage = turn.assistantMessage.trim() || '任务已完成。'
+          this.completeStep(step, turn.assistantMessage.trim() || '步骤已完成。')
+          finalMessage = turn.assistantMessage.trim() || finalMessage
+
+          if (this.hasPendingSteps()) {
+            console.log(`[TaskRuntime] 当前步骤完成，继续下一步...`)
+            messages.push({
+              role: 'assistant',
+              content: turn.assistantMessage || `步骤完成：${step.title}`
+            })
+            continue
+          }
+
+          finalMessage = finalMessage || '任务已完成。'
+          this.setRunState('completed')
           this.hooks.onStatusChanged?.('completed')
 
           console.log('\n╔══════════════════════════════════════════════════════════════╗')
@@ -118,7 +195,8 @@ export class TaskRuntime {
             success: true,
             iterations,
             toolCalls: toolCallsCount,
-            finalMessage
+            finalMessage,
+            plan: this.taskPlan
           }
         }
 
@@ -146,12 +224,15 @@ export class TaskRuntime {
       console.log('║               ⚠️ TaskRuntime 达到最大轮次                       ║')
       console.log('╚══════════════════════════════════════════════════════════════╝\n')
 
+      this.failCurrentStep(`Reached max turns (${this.maxTurns})`)
+      this.setRunState('failed')
       this.hooks.onStatusChanged?.('errored')
       return {
         success: false,
         iterations,
         toolCalls: toolCallsCount,
         finalMessage: '任务执行超过最大轮次，已停止。',
+        plan: this.taskPlan ?? undefined,
         error: `Reached max turns (${this.maxTurns})`
       }
     } catch (error) {
@@ -160,12 +241,15 @@ export class TaskRuntime {
       console.log(`║ Error: ${(error as Error).message}`)
       console.log('╚══════════════════════════════════════════════════════════════╝\n')
 
+      this.failCurrentStep((error as Error).message)
+      this.setRunState('failed')
       this.hooks.onStatusChanged?.('errored')
       return {
         success: false,
         iterations,
         toolCalls: toolCallsCount,
         finalMessage: '任务执行失败。',
+        plan: this.taskPlan ?? undefined,
         error: (error as Error).message
       }
     }
@@ -181,7 +265,9 @@ export class TaskRuntime {
         arguments: call.function.arguments
       })),
       toolResults: turn.toolResults,
-      completed: turn.completed
+      completed: turn.completed,
+      stepId: this.currentStep?.id,
+      stepTitle: this.currentStep?.title
     }
 
     this.turnRecords.push(record)
@@ -239,22 +325,28 @@ export class TaskRuntime {
       messages.splice(
         0,
         messages.length,
-        {
-          role: 'system',
-          content: this.buildTaskSystemPrompt()
-        },
-        ...this.buildTaskContextMessages(),
-        {
-          role: 'user',
-          content: [
-            `${PROMPTS.context.userRequestTitle}${this.originalUserInput}`,
-            `${PROMPTS.context.currentTaskTitle}${this.taskDescription}`,
-            this.formatMemoryContext(),
-            `${PROMPTS.context.compactSummaryTitle}\n${this.compactSummary}`,
-            PROMPTS.task.continueAfterCompact
-          ].filter(Boolean).join('\n\n')
-        },
-        ...recentMessages
+        ...[
+          {
+            role: 'system',
+            content: this.buildTaskSystemPrompt()
+          },
+          ...this.buildTaskContextMessages(),
+          this.taskPlan ? {
+            role: 'user',
+            content: this.renderPlanContext(this.taskPlan)
+          } : null,
+          {
+            role: 'user',
+            content: [
+              `${PROMPTS.context.userRequestTitle}${this.originalUserInput}`,
+              `${PROMPTS.context.currentTaskTitle}${this.taskDescription}`,
+              this.formatMemoryContext(),
+              `${PROMPTS.context.compactSummaryTitle}\n${this.compactSummary}`,
+              PROMPTS.task.continueAfterCompact
+            ].filter(Boolean).join('\n\n')
+          },
+          ...recentMessages
+        ].filter(Boolean)
       )
 
       this.turnRecords = this.turnRecords.slice(compactBoundary)
@@ -304,6 +396,10 @@ export class TaskRuntime {
           content: this.buildTaskSystemPrompt()
         },
         ...this.buildTaskContextMessages(),
+        this.taskPlan ? {
+          role: 'user',
+          content: this.renderPlanContext(this.taskPlan)
+        } : null,
         {
           role: 'user',
         content: [
@@ -314,18 +410,21 @@ export class TaskRuntime {
           PROMPTS.task.initialInstruction
         ].join('\n\n')
       }
-    ]
+    ].filter(Boolean)
   }
 
   private buildToolSpecs(tools: Tool[]): any[] {
-    return tools.map(tool => ({
-      type: 'function',
-      function: {
-        name: tool.name,
-        description: tool.description,
-        parameters: tool.parameters
-      }
-    }))
+    return [
+      this.buildTaskPlanUpdateToolSpec(),
+      ...tools.map(tool => ({
+        type: 'function',
+        function: {
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.parameters
+        }
+      }))
+    ]
   }
 
   private buildTaskSystemPrompt(): string {
@@ -334,6 +433,330 @@ export class TaskRuntime {
       personality.character.name,
       personality.relationship.type
     )
+  }
+
+  private buildTaskPlanUpdateToolSpec(): any {
+    return {
+      type: 'function',
+      function: {
+        name: 'update_task_plan',
+        description: 'Update the task execution plan after completing a step, learning new facts, or needing to replan.',
+        parameters: {
+          type: 'object',
+          properties: {
+            explanation: {
+              type: 'string',
+              description: 'Brief reason for the plan update.'
+            },
+            title: {
+              type: 'string',
+              description: 'Optional revised plan title.'
+            },
+            summary: {
+              type: 'string',
+              description: 'Optional revised plan summary.'
+            },
+            steps: {
+              type: 'array',
+              description: 'Steps to update or append. Existing steps are matched by id.',
+              items: {
+                type: 'object',
+                properties: {
+                  id: {
+                    type: 'string',
+                    description: 'Existing step id, such as step-1. Omit to append a new step.'
+                  },
+                  title: {
+                    type: 'string',
+                    description: 'Step title.'
+                  },
+                  description: {
+                    type: 'string',
+                    description: 'Step goal or revised goal.'
+                  },
+                  status: {
+                    type: 'string',
+                    enum: ['pending', 'running', 'completed', 'failed', 'skipped'],
+                    description: 'Step status.'
+                  },
+                  result: {
+                    type: 'string',
+                    description: 'Completion evidence or observed result.'
+                  },
+                  error: {
+                    type: 'string',
+                    description: 'Failure reason if the step failed.'
+                  }
+                },
+                additionalProperties: false
+              }
+            }
+          },
+          required: ['steps'],
+          additionalProperties: false
+        }
+      }
+    }
+  }
+
+  private async createInitialPlan(tools: Tool[]): Promise<TaskPlan> {
+    try {
+      const response = await this.llm.chat([
+        {
+          role: 'system',
+          content: PROMPTS.task.planningSystem
+        },
+        {
+          role: 'user',
+          content: [
+            `${PROMPTS.context.userRequestTitle}${this.originalUserInput}`,
+            `${PROMPTS.context.currentTaskTitle}${this.taskDescription}`,
+            `可用工具：${tools.map(tool => tool.name).join(', ') || '无'}`,
+            this.formatMemoryContext()
+          ].filter(Boolean).join('\n\n')
+        }
+      ], {
+        max_tokens: 800
+      })
+
+      const draft = parsePlanDraft(response.content)
+      return this.normalizePlan(draft)
+    } catch (error) {
+      console.warn(`[TaskRuntime] Plan generation failed, using fallback plan: ${(error as Error).message}`)
+      return this.normalizePlan({
+        title: '执行用户任务',
+        summary: this.taskDescription,
+        steps: [
+          {
+            title: '完成任务',
+            description: this.taskDescription
+          }
+        ]
+      })
+    }
+  }
+
+  private normalizePlan(draft: TaskPlanDraft): TaskPlan {
+    const now = Date.now()
+    const rawSteps = Array.isArray(draft.steps) && draft.steps.length > 0
+      ? draft.steps.slice(0, 8)
+      : [{ title: '完成任务', description: this.taskDescription }]
+
+    const steps: TaskStep[] = rawSteps.map((step, index) => ({
+      id: `step-${index + 1}`,
+      title: cleanPlanText(step.title) || `步骤 ${index + 1}`,
+      description: cleanPlanText(step.description) || cleanPlanText(step.title) || this.taskDescription,
+      status: 'pending',
+      toolCalls: []
+    }))
+
+    return {
+      id: `plan-${now}`,
+      title: cleanPlanText(draft.title) || '任务执行计划',
+      summary: cleanPlanText(draft.summary) || this.taskDescription,
+      steps,
+      createdAt: now,
+      updatedAt: now
+    }
+  }
+
+  private updateTaskPlan(args: TaskPlanUpdateArgs): any {
+    if (!this.taskPlan) {
+      throw new Error('Task plan is not initialized')
+    }
+
+    this.setRunState('replanning')
+
+    if (typeof args.title === 'string' && args.title.trim()) {
+      this.taskPlan.title = cleanPlanText(args.title)
+    }
+    if (typeof args.summary === 'string' && args.summary.trim()) {
+      this.taskPlan.summary = cleanPlanText(args.summary)
+    }
+
+    const changedSteps: TaskStep[] = []
+    for (const update of args.steps ?? []) {
+      const step = update.id
+        ? this.taskPlan.steps.find(item => item.id === update.id)
+        : null
+      const target = step ?? this.appendPlanStep(update)
+
+      if (typeof update.title === 'string' && update.title.trim()) {
+        target.title = cleanPlanText(update.title)
+      }
+      if (typeof update.description === 'string' && update.description.trim()) {
+        target.description = cleanPlanText(update.description)
+      }
+      if (update.status && isTaskStepStatus(update.status)) {
+        this.applyStepStatus(target, update.status)
+      }
+      if (typeof update.result === 'string' && update.result.trim()) {
+        target.result = cleanPlanText(update.result)
+      }
+      if (typeof update.error === 'string' && update.error.trim()) {
+        target.error = cleanPlanText(update.error)
+      }
+      changedSteps.push(target)
+    }
+
+    this.touchPlan()
+    this.emitPlanUpdated()
+    for (const step of changedSteps) {
+      this.hooks.onStepUpdated?.(step, this.taskPlan)
+    }
+
+    return {
+      updated: true,
+      explanation: args.explanation || '',
+      plan: this.renderPlanSnapshotForTool()
+    }
+  }
+
+  private appendPlanStep(update: NonNullable<TaskPlanUpdateArgs['steps']>[number]): TaskStep {
+    const nextId = `step-${this.taskPlan!.steps.length + 1}`
+    const step: TaskStep = {
+      id: nextId,
+      title: cleanPlanText(update.title) || nextId,
+      description: cleanPlanText(update.description) || cleanPlanText(update.title) || this.taskDescription,
+      status: 'pending',
+      toolCalls: []
+    }
+    this.taskPlan!.steps.push(step)
+    return step
+  }
+
+  private applyStepStatus(step: TaskStep, status: TaskStepStatus): void {
+    const now = Date.now()
+    if (status === 'running') {
+      for (const item of this.taskPlan?.steps ?? []) {
+        if (item.id !== step.id && item.status === 'running') {
+          item.status = 'pending'
+        }
+      }
+    }
+    step.status = status
+    if (status === 'running' && !step.startedAt) {
+      step.startedAt = now
+    }
+    if (status === 'completed' || status === 'failed' || status === 'skipped') {
+      step.completedAt = now
+    }
+  }
+
+  private renderPlanSnapshotForTool(): Array<{
+    id: string
+    title: string
+    status: TaskStepStatus
+  }> {
+    return this.taskPlan?.steps.map(step => ({
+      id: step.id,
+      title: step.title,
+      status: step.status
+    })) ?? []
+  }
+
+  private nextRunnableStep(): TaskStep | null {
+    return this.taskPlan?.steps.find(step => step.status === 'running')
+      ?? this.taskPlan?.steps.find(step => step.status === 'pending')
+      ?? null
+  }
+
+  private hasPendingSteps(): boolean {
+    return Boolean(this.taskPlan?.steps.some(step => step.status === 'pending'))
+  }
+
+  private startStep(step: TaskStep): void {
+    this.currentStep = step
+    if (step.status !== 'running') {
+      step.status = 'running'
+      step.startedAt = Date.now()
+      this.touchPlan()
+      this.emitStepUpdated(step)
+    }
+  }
+
+  private completeStep(step: TaskStep, result: string): void {
+    step.status = 'completed'
+    step.result = result
+    step.completedAt = Date.now()
+    this.touchPlan()
+    this.emitStepUpdated(step)
+  }
+
+  private failCurrentStep(error: string): void {
+    if (!this.currentStep || this.currentStep.status === 'completed') {
+      return
+    }
+    this.currentStep.status = 'failed'
+    this.currentStep.error = error
+    this.currentStep.completedAt = Date.now()
+    this.touchPlan()
+    this.emitStepUpdated(this.currentStep)
+  }
+
+  private setRunState(state: TaskRunState): void {
+    if (this.runState === state) {
+      return
+    }
+    this.runState = state
+    this.hooks.onRunStateChanged?.(state)
+  }
+
+  private touchPlan(): void {
+    if (this.taskPlan) {
+      this.taskPlan.updatedAt = Date.now()
+    }
+  }
+
+  private emitPlanUpdated(): void {
+    if (this.taskPlan) {
+      this.hooks.onPlanUpdated?.(this.taskPlan)
+    }
+  }
+
+  private emitStepUpdated(step: TaskStep): void {
+    if (this.taskPlan) {
+      this.hooks.onStepUpdated?.(step, this.taskPlan)
+      this.hooks.onPlanUpdated?.(this.taskPlan)
+    }
+  }
+
+  private renderPlanContext(plan: TaskPlan): string {
+    return [
+      '<task_plan>',
+      `<title>${escapeXmlText(plan.title)}</title>`,
+      `<summary>${escapeXmlText(plan.summary)}</summary>`,
+      '<steps>',
+      ...plan.steps.map(step =>
+        `<step id="${escapeXmlText(step.id)}" status="${step.status}">${escapeXmlText(step.title)}：${escapeXmlText(step.description)}</step>`
+      ),
+      '</steps>',
+      '</task_plan>'
+    ].join('\n')
+  }
+
+  private renderCurrentStepInstruction(step: TaskStep): string {
+    return [
+      '<current_step>',
+      `<id>${escapeXmlText(step.id)}</id>`,
+      `<title>${escapeXmlText(step.title)}</title>`,
+      `<description>${escapeXmlText(step.description)}</description>`,
+      '</current_step>',
+      PROMPTS.task.stepInstruction
+    ].join('\n')
+  }
+
+  private buildPlanCompletionMessage(): string {
+    if (!this.taskPlan) {
+      return '任务已完成。'
+    }
+
+    const completed = this.taskPlan.steps
+      .filter(step => step.status === 'completed')
+      .map(step => `- ${step.title}`)
+      .join('\n')
+
+    return completed ? `任务已完成：\n${completed}` : '任务已完成。'
   }
 
   private formatMemoryContext(): string {
@@ -357,6 +780,30 @@ export class TaskRuntime {
 
     return sections.join('\n\n')
   }
+}
+
+function parsePlanDraft(content: string): TaskPlanDraft {
+  try {
+    return JSON.parse(content) as TaskPlanDraft
+  } catch {
+    const match = content.match(/\{[\s\S]*\}/)
+    if (!match) {
+      throw new Error('Plan response did not contain JSON')
+    }
+    return JSON.parse(match[0]) as TaskPlanDraft
+  }
+}
+
+function cleanPlanText(value: unknown): string {
+  return String(value ?? '').trim().replace(/\s+/g, ' ')
+}
+
+function isTaskStepStatus(value: unknown): value is TaskStepStatus {
+  return value === 'pending'
+    || value === 'running'
+    || value === 'completed'
+    || value === 'failed'
+    || value === 'skipped'
 }
 
 function escapeXmlText(value: string): string {
