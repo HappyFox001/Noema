@@ -2460,8 +2460,13 @@ function renderSkillsAdmin(container: HTMLElement, plugin: PluginInfo, state: an
       ${sources.length ? sources.map((source: any) => `
         <div class="plugin-admin-item" data-source-id="${escapeHtml(source.id)}" data-source-type="${escapeHtml(source.type)}">
           <div class="plugin-admin-item-main">
-            <div class="plugin-admin-item-title">${escapeHtml(source.id)}</div>
-            <div class="plugin-admin-item-meta">${escapeHtml(source.type)} · ${escapeHtml(source.url || source.path || '')}</div>
+            <button class="plugin-admin-expand" type="button" data-skill-action="expand" aria-expanded="false"></button>
+            <div class="plugin-admin-source-text">
+              <div class="plugin-admin-item-title">${escapeHtml(source.id)}</div>
+              <div class="plugin-admin-item-meta">
+                ${escapeHtml(source.type)} · ${skillsForSource(skills, source).length} skills · ${escapeHtml(source.url || source.path || '')}
+              </div>
+            </div>
           </div>
           <label class="settings-toggle plugin-config-toggle">
             <input type="checkbox" ${source.enabled ? 'checked' : ''} data-skill-action="toggle" />
@@ -2469,18 +2474,11 @@ function renderSkillsAdmin(container: HTMLElement, plugin: PluginInfo, state: an
           </label>
           ${source.type === 'github' ? '<button class="plugin-admin-button secondary" type="button" data-skill-action="rescan">更新</button>' : ''}
           <button class="plugin-admin-button danger" type="button" data-skill-action="remove">删除</button>
+          <div class="plugin-admin-source-skills" hidden>
+            ${renderSourceSkills(skillsForSource(skills, source))}
+          </div>
         </div>
       `).join('') : '<div class="plugin-admin-empty">暂无 skill source。</div>'}
-    </div>
-    <div class="plugin-admin-section-title">Detected Skills (${skills.length})</div>
-    <div class="plugin-admin-skill-list">
-      ${skills.slice(0, 40).map((skill: any) => `
-        <div class="plugin-admin-skill">
-          <div class="plugin-admin-item-title">${escapeHtml(skill.name || skill.id)}</div>
-          <div class="plugin-admin-item-meta">${escapeHtml(skill.id)} · ${escapeHtml(skill.source || '')}</div>
-          ${skill.description ? `<div class="plugin-admin-desc">${escapeHtml(skill.description)}</div>` : ''}
-        </div>
-      `).join('')}
     </div>
   `
 
@@ -2516,7 +2514,40 @@ function bindSkillsAdminItemActions(container: HTMLElement, plugin: PluginInfo):
     item.querySelector<HTMLButtonElement>('[data-skill-action="remove"]')?.addEventListener('click', async () => {
       await runPluginAdminAction(plugin, 'removeSource', { sourceId })
     })
+    item.querySelector<HTMLButtonElement>('[data-skill-action="expand"]')?.addEventListener('click', (event) => {
+      const button = event.currentTarget as HTMLButtonElement
+      const skillsPanel = item.querySelector<HTMLElement>('.plugin-admin-source-skills')
+      const expanded = button.getAttribute('aria-expanded') === 'true'
+      button.setAttribute('aria-expanded', String(!expanded))
+      item.classList.toggle('plugin-admin-item-expanded', !expanded)
+      if (skillsPanel) {
+        skillsPanel.hidden = expanded
+      }
+    })
   })
+}
+
+function skillsForSource(skills: any[], source: any): any[] {
+  return skills.filter(skill => {
+    if (skill.sourceId) {
+      return skill.sourceId === source.id
+    }
+    return skill.source === source.type && String(skill.path || '').startsWith(String(source.path || ''))
+  })
+}
+
+function renderSourceSkills(skills: any[]): string {
+  if (!skills.length) {
+    return '<div class="plugin-admin-empty">这个 source 下没有扫描到 SKILL.md。</div>'
+  }
+
+  return skills.map((skill: any) => `
+    <div class="plugin-admin-skill">
+      <div class="plugin-admin-item-title">${escapeHtml(skill.name || skill.id)}</div>
+      <div class="plugin-admin-item-meta">${escapeHtml(skill.id)}${skill.path ? ` · ${escapeHtml(skill.path)}` : ''}</div>
+      ${skill.description ? `<div class="plugin-admin-desc">${escapeHtml(skill.description)}</div>` : ''}
+    </div>
+  `).join('')
 }
 
 function readAdminField(container: HTMLElement, scope: string, field: string): string {

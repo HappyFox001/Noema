@@ -1031,6 +1031,10 @@ input[type="password"] {
   background: rgba(255, 255, 255, 0.025);
 }
 
+.plugin-admin-item-expanded {
+  align-items: start;
+}
+
 .plugin-admin-skill {
   padding: 10px;
   border: 1px solid rgba(255, 255, 255, 0.05);
@@ -1040,6 +1044,63 @@ input[type="password"] {
 
 .plugin-admin-item-main {
   min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.plugin-admin-source-text {
+  min-width: 0;
+}
+
+.plugin-admin-expand {
+  position: relative;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.045);
+  cursor: pointer;
+}
+
+.plugin-admin-expand::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  transform: translate(-38%, -50%);
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid rgba(255, 255, 255, 0.68);
+}
+
+.plugin-admin-expand[aria-expanded="true"]::before {
+  transform: translate(-50%, -35%);
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid rgba(255, 255, 255, 0.68);
+  border-bottom: 0;
+}
+
+.plugin-admin-expand:hover {
+  border-color: rgba(226, 74, 144, 0.3);
+  background: rgba(226, 74, 144, 0.09);
+}
+
+.plugin-admin-source-skills {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 8px 0 0 33px;
+}
+
+.plugin-admin-source-skills[hidden] {
+  display: none;
 }
 
 .plugin-admin-item-title {
