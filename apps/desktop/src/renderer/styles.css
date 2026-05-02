@@ -283,6 +283,38 @@ input[type="password"] {
   cursor: move;
 }
 
+.panel-notice {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 1100;
+  max-width: min(320px, calc(100vw - 36px));
+  padding: 9px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(18, 18, 22, 0.88);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(18px);
+  color: rgba(255, 255, 255, 0.86);
+  font-family: var(--font-soft);
+  font-size: 12px;
+  line-height: 1.4;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(8px);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.panel-notice.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.panel-notice.error {
+  border-color: rgba(255, 116, 116, 0.22);
+  background: rgba(38, 18, 22, 0.9);
+}
+
 .text-input {
   font-family: var(--font-mixed);
   width: 100%;

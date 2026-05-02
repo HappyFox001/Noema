@@ -1359,6 +1359,19 @@ function setStatus(text: string) {
   statusEl.textContent = text
 }
 
+let panelNoticeTimer: number | undefined
+function showPanelNotice(text: string, tone: 'info' | 'error' = 'info') {
+  const notice = document.getElementById('panel-notice')
+  if (!notice) return
+
+  notice.textContent = text
+  notice.className = `panel-notice visible ${tone === 'error' ? 'error' : ''}`
+  window.clearTimeout(panelNoticeTimer)
+  panelNoticeTimer = window.setTimeout(() => {
+    notice.classList.remove('visible')
+  }, 2200)
+}
+
 function setTextDisplay(text: string) {
   const textDisplay = document.getElementById('text-display')!
   textDisplay.textContent = text
@@ -1832,7 +1845,7 @@ async function disableVoiceInput(): Promise<void> {
   }
 
   applySettingsToUI(settings)
-  setStatus('语音输入已关闭')
+  showPanelNotice('语音输入已关闭')
 }
 
 async function enableVoiceInput(): Promise<void> {
@@ -1853,13 +1866,13 @@ async function enableVoiceInput(): Promise<void> {
     voiceInputEnabled: true
   })
   applySettingsToUI(settings)
-  setStatus('语音输入已开启')
+  showPanelNotice('语音输入已开启')
 }
 
 async function loadPersonalities(): Promise<void> {
   const result = await window.electronAPI.listPersonalities()
   if (!result.success) {
-    setStatus(`人格列表加载失败: ${result.error ?? 'unknown error'}`)
+    showPanelNotice(`人格列表加载失败: ${result.error ?? 'unknown error'}`, 'error')
     return
   }
 
@@ -2159,19 +2172,19 @@ voiceOutputToggle.addEventListener('change', async () => {
     await window.electronAPI.stopTTS()
     audioPlayer.stop()
   }
-  setStatus(settings.voiceOutputEnabled ? '语音输出已开启' : '语音输出已关闭')
+  showPanelNotice(settings.voiceOutputEnabled ? '语音输出已开启' : '语音输出已关闭')
 })
 
 personalitySelect.addEventListener('change', async () => {
   const selected = personalitySelect.value
   const result = await window.electronAPI.setPersonality(selected)
   if (!result.success) {
-    setStatus(`人格切换失败: ${result.error}`)
+    showPanelNotice(`人格切换失败: ${result.error}`, 'error')
     return
   }
 
   await loadSettings()
-  setStatus(`人格已切换为 ${personalitySelect.selectedOptions[0]?.textContent ?? selected}`)
+  showPanelNotice(`人格已切换为 ${personalitySelect.selectedOptions[0]?.textContent ?? selected}`)
 })
 
 async function loadPluginsSection(): Promise<void> {
@@ -2246,10 +2259,10 @@ function renderPluginsSection(plugins: PluginInfo[]): void {
           [pluginId]: input.checked,
         }
         await window.electronAPI.updateSettings({ plugins: nextPlugins })
-        setStatus(input.checked ? '插件已启用' : '插件已禁用')
+        showPanelNotice(input.checked ? '插件已启用' : '插件已禁用')
       } catch (error: any) {
         input.checked = !input.checked
-        setStatus(`插件设置失败: ${error.message}`)
+        showPanelNotice(`插件设置失败: ${error.message}`, 'error')
       } finally {
         input.disabled = false
       }
@@ -2305,10 +2318,10 @@ function renderPluginDetail(plugin: PluginInfo): void {
       if (target) {
         target.enabled = input.checked
       }
-      setStatus(input.checked ? '插件已启用' : '插件已禁用')
+      showPanelNotice(input.checked ? '插件已启用' : '插件已禁用')
     } catch (error: any) {
       input.checked = !input.checked
-      setStatus(`插件设置失败: ${error.message}`)
+      showPanelNotice(`插件设置失败: ${error.message}`, 'error')
     } finally {
       input.disabled = false
     }
@@ -2360,12 +2373,12 @@ async function runPluginAdminAction(
   const result = await window.electronAPI.pluginAdminAction(plugin.id, action, payload)
   if (!result.success) {
     if (!options.silent) {
-      setStatus(`插件操作失败: ${result.error ?? 'unknown error'}`)
+      showPanelNotice(`插件操作失败: ${result.error ?? 'unknown error'}`, 'error')
     }
     return null
   }
   if (!options.silent) {
-    setStatus('插件操作已完成')
+    showPanelNotice('插件操作已完成')
   }
   if (options.refresh !== false) {
     await loadPluginAdminPanel(plugin)
@@ -2417,7 +2430,7 @@ function renderMCPAdmin(container: HTMLElement, plugin: PluginInfo, state: any):
       try {
         headers = JSON.parse(headersText)
       } catch {
-        setStatus('Headers 必须是合法 JSON')
+        showPanelNotice('Headers 必须是合法 JSON', 'error')
         return
       }
     }
@@ -2617,9 +2630,9 @@ function bindPluginConfigInputs(): void {
         if (target) {
           target.config = nextPluginConfigs[pluginId]
         }
-        setStatus('插件参数已更新')
+        showPanelNotice('插件参数已更新')
       } catch (error: any) {
-        setStatus(`插件参数保存失败: ${error.message}`)
+        showPanelNotice(`插件参数保存失败: ${error.message}`, 'error')
       } finally {
         input.disabled = false
       }
@@ -2738,7 +2751,7 @@ addPersonalityFileBtn.addEventListener('click', async () => {
   }
 
   if (!result.success || !result.item) {
-    setStatus(`添加角色失败: ${result.error ?? 'unknown error'}`)
+    showPanelNotice(`添加角色失败: ${result.error ?? 'unknown error'}`, 'error')
     return
   }
 
@@ -2746,11 +2759,11 @@ addPersonalityFileBtn.addEventListener('click', async () => {
   personalitySelect.value = result.item.id
   const setResult = await window.electronAPI.setPersonality(result.item.id)
   if (!setResult.success) {
-    setStatus(`人格切换失败: ${setResult.error}`)
+    showPanelNotice(`人格切换失败: ${setResult.error}`, 'error')
     return
   }
 
-  setStatus(`已添加并切换为 ${result.item.name}`)
+  showPanelNotice(`已添加并切换为 ${result.item.name}`)
 })
 
 // ========== Section Clear Buttons ==========
@@ -2772,7 +2785,7 @@ clearProfileBtn?.addEventListener('click', async () => {
     if (!result.success) {
       throw new Error(result.error)
     }
-    setStatus('用户画像已清空')
+    showPanelNotice('用户画像已清空')
     await loadUserProfile()
   } catch (error: any) {
     console.error('Clear profile error:', error)
@@ -2796,7 +2809,7 @@ clearMemoriesBtn?.addEventListener('click', async () => {
     if (!result.success) {
       throw new Error(result.error)
     }
-    setStatus('重要记忆已清空')
+    showPanelNotice('重要记忆已清空')
     await loadImportantMemories()
   } catch (error: any) {
     console.error('Clear memories error:', error)
@@ -2820,7 +2833,7 @@ clearSummariesBtn?.addEventListener('click', async () => {
     if (!result.success) {
       throw new Error(result.error)
     }
-    setStatus('对话摘要已清空')
+    showPanelNotice('对话摘要已清空')
     await loadConversationSummaries()
   } catch (error: any) {
     console.error('Clear summaries error:', error)
@@ -2845,7 +2858,7 @@ clearConversationsBtn?.addEventListener('click', async () => {
       throw new Error(result.error)
     }
     clearTextDisplay()
-    setStatus('最近对话已清空')
+    showPanelNotice('最近对话已清空')
     await loadWorkingMemory()
   } catch (error: any) {
     console.error('Clear conversations error:', error)
@@ -2874,7 +2887,7 @@ async function clearHistory(): Promise<void> {
       throw new Error(result.error)
     }
     clearTextDisplay()
-    setStatus('所有数据已重置')
+    showPanelNotice('所有数据已重置')
     await refreshMemorySection()
   } catch (error: any) {
     console.error('Reset all error:', error)
@@ -3047,10 +3060,10 @@ async function deleteProfileField(field: string): Promise<void> {
       throw new Error(result.error)
     }
     await loadUserProfile()
-    setStatus('已删除')
+    showPanelNotice('已删除')
   } catch (error: any) {
     console.error('Failed to delete profile field:', error)
-    setStatus('删除失败')
+    showPanelNotice('删除失败', 'error')
   }
 }
 
@@ -3123,10 +3136,10 @@ async function deleteImportantMemory(key: string): Promise<void> {
       throw new Error(result.error)
     }
     await loadImportantMemories()
-    setStatus('记忆已删除')
+    showPanelNotice('记忆已删除')
   } catch (error: any) {
     console.error('Failed to delete memory:', error)
-    setStatus('删除失败')
+    showPanelNotice('删除失败', 'error')
   }
 }
 
@@ -3211,10 +3224,10 @@ async function deleteConversationSummary(id: string): Promise<void> {
       throw new Error(result.error)
     }
     await loadConversationSummaries()
-    setStatus('已删除')
+    showPanelNotice('已删除')
   } catch (error: any) {
     console.error('Failed to delete summary:', error)
-    setStatus('删除失败')
+    showPanelNotice('删除失败', 'error')
   }
 }
 
@@ -3289,10 +3302,10 @@ async function deleteConversationTurn(id: string): Promise<void> {
       throw new Error(result.error)
     }
     await loadWorkingMemory()
-    setStatus('已删除')
+    showPanelNotice('已删除')
   } catch (error: any) {
     console.error('Failed to delete conversation turn:', error)
-    setStatus('删除失败')
+    showPanelNotice('删除失败', 'error')
   }
 }
 
@@ -3476,7 +3489,7 @@ async function ensureSetupReadyForConversation(): Promise<boolean> {
     return true
   }
 
-  setStatus(`需要完成 ${readiness.issues.length} 项配置`)
+  showPanelNotice(`需要完成 ${readiness.issues.length} 项配置`, 'error')
   openSettings('system')
   return false
 }
@@ -4029,10 +4042,10 @@ downloadLocalModelsBtn.addEventListener('click', async () => {
       throw new Error(result.error || '模型下载失败')
     }
     renderLocalModels(result.models)
-    setStatus('本地模型已就绪')
+    showPanelNotice('本地模型已就绪')
     await refreshSetupReadiness()
   } catch (error: any) {
-    setStatus(`模型下载失败: ${error.message ?? String(error)}`)
+    showPanelNotice(`模型下载失败: ${error.message ?? String(error)}`, 'error')
     await loadLocalModelStatus()
     await refreshSetupReadiness()
   }
