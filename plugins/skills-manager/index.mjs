@@ -1,4 +1,4 @@
-import { join, resolve } from 'path'
+import { resolve } from 'path'
 import { SkillsManager } from './src/skills-manager.mjs'
 import { clampInteger, parseInlineSkills } from './src/utils.mjs'
 
@@ -6,7 +6,6 @@ export default function createPlugin(ctx) {
   const config = ctx.config || {}
   const manager = new SkillsManager({
     dataDir: ctx.dataDir || ctx.pluginDir,
-    skillsRoot: config.skillsRoot ? resolve(String(config.skillsRoot)) : join(ctx.pluginDir, 'skills'),
     inlineSkills: parseInlineSkills(config.extraSkillsJson),
     maxSkillChars: clampInteger(Number(config.maxSkillChars ?? 12000), 1000, 50000),
   })

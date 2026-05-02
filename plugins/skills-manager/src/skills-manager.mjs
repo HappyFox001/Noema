@@ -9,7 +9,6 @@ export class SkillsManager {
     this.dataDir = options.dataDir
     this.sourcesPath = join(this.dataDir, 'sources.json')
     this.installsDir = join(this.dataDir, 'installs')
-    this.skillsRoot = options.skillsRoot
     this.inlineSkills = options.inlineSkills
     this.maxSkillChars = options.maxSkillChars
   }
@@ -167,56 +166,9 @@ export class SkillsManager {
     }))
   }
 
-  async addSkill(skill) {
-    const id = sanitizeSkillId(skill.id)
-    const dir = join(this.skillsRoot, id)
-    await mkdir(dir, { recursive: true })
-
-    const content = normalizeSkillContent({
-      id,
-      name: skill.name,
-      description: skill.description,
-      content: String(skill.content || ''),
-    })
-    const path = join(dir, 'SKILL.md')
-    await writeFile(path, content, 'utf8')
-    return { success: true, id, path }
-  }
-
   async loadSkills() {
-    const fileSkills = await this.loadFileSkills()
     const sourceSkills = await this.loadSourceSkills()
-    return [...fileSkills, ...sourceSkills, ...this.inlineSkills]
-  }
-
-  async loadFileSkills() {
-    if (!existsSync(this.skillsRoot)) {
-      return []
-    }
-
-    const entries = await readdir(this.skillsRoot, { withFileTypes: true })
-    const skills = []
-    for (const entry of entries) {
-      if (!entry.isDirectory()) {
-        continue
-      }
-      const id = sanitizeSkillId(entry.name)
-      const path = join(this.skillsRoot, entry.name, 'SKILL.md')
-      if (!existsSync(path)) {
-        continue
-      }
-      const content = await readFile(path, 'utf8')
-      const frontMatter = extractFrontMatter(content)
-      skills.push({
-        id,
-        name: frontMatter.name || id,
-        description: frontMatter.description || firstParagraph(content),
-        content,
-        source: 'file',
-        path,
-      })
-    }
-    return skills
+    return [...sourceSkills, ...this.inlineSkills]
   }
 
   async loadSourceSkills() {
@@ -355,23 +307,6 @@ function firstParagraph(content) {
     .map(part => part.replace(/^#+\s*/gm, '').trim())
     .find(Boolean)
     ?.slice(0, 220) || ''
-}
-
-function normalizeSkillContent(skill) {
-  const content = String(skill.content || '').trim()
-  if (content.startsWith('---')) {
-    return `${content}\n`
-  }
-
-  return [
-    '---',
-    `name: ${skill.name || skill.id}`,
-    `description: ${skill.description || ''}`,
-    '---',
-    '',
-    content,
-    '',
-  ].join('\n')
 }
 
 function scoreSkillForTask(skill, query) {
