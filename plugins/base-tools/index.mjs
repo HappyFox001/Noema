@@ -1,20 +1,16 @@
 /**
  * Base tools runtime plugin.
  *
- * Registers the host-provided file and shell tools according to plugin
- * configuration without importing SDK internals from the plugin module.
+ * Registers file and shell tools implemented inside this plugin.
  */
+import { createBaseTools } from './src/tools.mjs'
+
 export default function createPlugin(ctx) {
   const config = ctx.config || {}
   const enableReadTools = config.enableReadTools !== false
   const enableWriteTools = config.enableWriteTools !== false
   const enableShell = config.enableShell !== false
   const shellTimeoutMs = clampNumber(Number(config.shellTimeoutMs ?? 30000), 1000, 120000)
-  const createBaseTools = ctx.tools?.createBaseTools
-
-  if (typeof createBaseTools !== 'function') {
-    throw new Error('Base tools plugin requires host-provided tools.createBaseTools()')
-  }
 
   return {
     id: 'base-tools',

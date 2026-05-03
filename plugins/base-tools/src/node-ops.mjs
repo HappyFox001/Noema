@@ -1,8 +1,11 @@
+/**
+ * Node filesystem and shell operations for base tools.
+ */
 import { execFile, spawn } from 'node:child_process'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, resolve } from 'node:path'
 
-export function resolveToolPath(inputPath?: string): string {
+export function resolveToolPath(inputPath) {
   if (!inputPath) {
     return process.cwd()
   }
@@ -10,11 +13,7 @@ export function resolveToolPath(inputPath?: string): string {
   return isAbsolute(inputPath) ? inputPath : resolve(process.cwd(), inputPath)
 }
 
-export async function readTextFile(
-  filePath: string,
-  offset?: number,
-  limit?: number
-): Promise<{ content: string, lines: number }> {
+export async function readTextFile(filePath, offset, limit) {
   const absolutePath = resolveToolPath(filePath)
   const content = await readFile(absolutePath, 'utf8')
   const lines = content.split('\n')
@@ -24,23 +23,18 @@ export async function readTextFile(
 
   return {
     content: selected,
-    lines: selected ? selected.split('\n').length : 0
+    lines: selected ? selected.split('\n').length : 0,
   }
 }
 
-export async function writeTextFile(filePath: string, content: string): Promise<number> {
+export async function writeTextFile(filePath, content) {
   const absolutePath = resolveToolPath(filePath)
   await mkdir(dirname(absolutePath), { recursive: true })
   await writeFile(absolutePath, content, 'utf8')
   return Buffer.byteLength(content, 'utf8')
 }
 
-export async function editTextFile(
-  filePath: string,
-  oldString: string,
-  newString: string,
-  replaceAll: boolean
-): Promise<number> {
+export async function editTextFile(filePath, oldString, newString, replaceAll) {
   const absolutePath = resolveToolPath(filePath)
   const original = await readFile(absolutePath, 'utf8')
 
@@ -64,16 +58,7 @@ export async function editTextFile(
   return replaceAll ? occurrences : 1
 }
 
-export interface CommandResult {
-  stdout: string
-  stderr: string
-  exitCode: number
-}
-
-export async function runCommand(
-  command: string,
-  options: { cwd?: string, timeout?: number } = {}
-): Promise<CommandResult> {
+export async function runCommand(command, options = {}) {
   const cwd = resolveToolPath(options.cwd)
 
   return new Promise((resolvePromise, reject) => {
@@ -87,10 +72,10 @@ export async function runCommand(
         return
       }
 
-      const errorCode = (error as NodeJS.ErrnoException & { code?: number | string }).code
+      const errorCode = error?.code
       const exitCode = typeof errorCode === 'number' ? errorCode : 1
 
-      if ((error as NodeJS.ErrnoException).message.includes('spawn bash ENOENT')) {
+      if (String(error?.message || '').includes('spawn bash ENOENT')) {
         reject(error)
         return
       }
@@ -100,7 +85,7 @@ export async function runCommand(
   })
 }
 
-export function runCommandInBackground(command: string, cwd?: string): number {
+export function runCommandInBackground(command, cwd) {
   const child = spawn('bash', ['-lc', command], {
     cwd: resolveToolPath(cwd),
     detached: true,

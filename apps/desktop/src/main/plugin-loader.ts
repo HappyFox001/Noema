@@ -9,7 +9,6 @@ import { existsSync } from 'fs'
 import { mkdir, readdir, readFile } from 'fs/promises'
 import { join, resolve } from 'path'
 import { pathToFileURL } from 'url'
-import { createBaseTools } from '@her-text/sdk'
 import type { SDKPlugin, SDKPluginContext } from '@her-text/sdk'
 
 export interface RuntimePluginManifest {
@@ -190,9 +189,6 @@ async function loadRuntimePlugin(
       dataDir,
       config: mergePluginConfig(manifest, configOverride),
       resolveAsset: (assetPath: string) => resolve(assetsDir, assetPath),
-      tools: {
-        createBaseTools,
-      },
     } as SDKPluginContext)
 
     console.log(`[PluginLoader] Loaded plugin: ${plugin.id}${manifest.version ? `@${manifest.version}` : ''}`)

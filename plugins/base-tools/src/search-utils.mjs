@@ -1,12 +1,15 @@
+/**
+ * File walking and glob matching helpers for base search tools.
+ */
 import { readdir } from 'node:fs/promises'
 import { join, relative } from 'node:path'
-import { resolveToolPath } from '../node-runtime.js'
+import { resolveToolPath } from './node-ops.mjs'
 
-export async function walkFiles(rootPath: string): Promise<string[]> {
+export async function walkFiles(rootPath) {
   const root = resolveToolPath(rootPath)
-  const results: string[] = []
+  const results = []
 
-  async function visit(currentPath: string): Promise<void> {
+  async function visit(currentPath) {
     const entries = await readdir(currentPath, { withFileTypes: true })
 
     for (const entry of entries) {
@@ -29,7 +32,7 @@ export async function walkFiles(rootPath: string): Promise<string[]> {
   return results
 }
 
-export function matchesGlobPattern(filePath: string, rootPath: string, pattern?: string): boolean {
+export function matchesGlobPattern(filePath, rootPath, pattern) {
   if (!pattern) {
     return true
   }
@@ -39,35 +42,35 @@ export function matchesGlobPattern(filePath: string, rootPath: string, pattern?:
   return regex.test(relativePath)
 }
 
-export function matchesAnyGlobPattern(filePath: string, rootPath: string, patterns: string[]): boolean {
+export function matchesAnyGlobPattern(filePath, rootPath, patterns) {
   return patterns.some(pattern => matchesGlobPattern(filePath, rootPath, pattern))
 }
 
-function shouldSkipDirectory(name: string): boolean {
+function shouldSkipDirectory(name) {
   return name === '.git' || name === 'node_modules' || name === 'dist' || name === 'release'
 }
 
-function normalizePath(path: string): string {
+function normalizePath(path) {
   return path.replace(/\\/g, '/')
 }
 
-function globToRegExp(pattern: string): RegExp {
+function globToRegExp(pattern) {
   const normalized = normalizePath(pattern)
   let regex = '^'
 
-  for (let i = 0; i < normalized.length; i++) {
-    const char = normalized[i]
-    const next = normalized[i + 1]
+  for (let index = 0; index < normalized.length; index++) {
+    const char = normalized[index]
+    const next = normalized[index + 1]
 
     if (char === '*') {
       if (next === '*') {
-        const afterDoubleStar = normalized[i + 2]
+        const afterDoubleStar = normalized[index + 2]
         if (afterDoubleStar === '/') {
           regex += '(?:.*/)?'
-          i += 2
+          index += 2
         } else {
           regex += '.*'
-          i += 1
+          index += 1
         }
       } else {
         regex += '[^/]*'

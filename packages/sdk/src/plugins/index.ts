@@ -89,9 +89,6 @@ export interface SDKPluginContext {
   dataDir?: string
   config?: Record<string, unknown>
   resolveAsset?: (assetPath: string) => string
-  tools?: {
-    createBaseTools?: () => Tool[]
-  }
 }
 
 export class PluginManager {
