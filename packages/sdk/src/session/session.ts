@@ -171,6 +171,17 @@ export class TaskSession {
     originalUserInput: string,
     taskContextItems: TaskContextItem[] = []
   ): Promise<TaskRunResult> {
+    if (this.isSameTaskIntent(this.activeTaskRun?.taskIntent, taskIntent) || this.findSameQueuedTask(taskIntent)) {
+      console.log('[TaskSession] Keeping existing task by local duplicate check')
+      return {
+        success: true,
+        iterations: 0,
+        toolCalls: 0,
+        finalMessage: '相同任务已经在执行或队列中，我会继续原来的任务。',
+        plan: this.snapshot.plan ?? undefined
+      }
+    }
+
     if (this.activeTaskRun) {
       const decision = await this.decideTaskAdmission(taskIntent, originalUserInput)
       if (decision.action === 'keep_active') {
@@ -179,7 +190,7 @@ export class TaskSession {
           success: true,
           iterations: 0,
           toolCalls: 0,
-          finalMessage: '相同任务已经在执行中，我会继续原来的任务。',
+          finalMessage: '相同任务已经在执行或队列中，我会继续原来的任务。',
           plan: this.snapshot.plan ?? undefined
         }
       }
@@ -208,6 +219,19 @@ export class TaskSession {
     }
 
     return await this.startTaskRun(taskIntent, originalUserInput, taskContextItems)
+  }
+
+  private isSameTaskIntent(existing: TaskIntent | undefined, incoming: TaskIntent): boolean {
+    if (!existing) {
+      return false
+    }
+    const existingText = normalizeTaskIntentText(existing.description)
+    const incomingText = normalizeTaskIntentText(incoming.description)
+    return Boolean(existingText && incomingText && existingText === incomingText)
+  }
+
+  private findSameQueuedTask(taskIntent: TaskIntent): QueuedTaskRun | null {
+    return this.taskQueue.find(item => this.isSameTaskIntent(item.taskIntent, taskIntent)) ?? null
   }
 
   private enqueueTask(
@@ -407,8 +431,8 @@ export class TaskSession {
             '你是任务调度器。根据正在执行的任务和新任务，决定任务管理动作。',
             '只输出 JSON object，不要 Markdown。',
             '格式：{"action":"keep_active|queue_new|stop_active_start_new","reason":"一句话原因"}',
-            'keep_active：新任务是同一目标的重复、催促、补充状态询问或轻微改写。',
-            'queue_new：新任务不同但不紧急，可以等待当前任务完成后执行。',
+            'keep_active：新任务和正在执行或已排队任务是同一目标的重复、催促、补充状态询问或轻微改写。',
+            'queue_new：新任务和正在执行、已排队任务都不同，且不紧急，可以等待当前任务完成后执行。',
             'stop_active_start_new：新任务不同且更紧急、替代原目标、或用户明确要求切换。'
           ].join('\n')
         },
@@ -433,6 +457,13 @@ export class TaskSession {
                 assistantMessage: turn.assistantMessage.slice(0, 300)
               }))
             }, null, 2),
+            '',
+            '已排队任务：',
+            JSON.stringify(this.taskQueue.map(item => ({
+              taskId: item.taskId,
+              description: item.taskIntent.description,
+              originalUserInput: item.originalUserInput
+            })), null, 2),
             '',
             '新任务：',
             newTaskIntent.description,
@@ -683,4 +714,12 @@ function normalizeAdmissionDecision(value: unknown): TaskAdmissionDecision {
     action,
     reason: typeof record.reason === 'string' ? record.reason : 'admission decision'
   }
+}
+
+function normalizeTaskIntentText(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '')
+    .replace(/[，。！？、,.!?;；:"“”'‘’()（）[\]【】]/g, '')
 }

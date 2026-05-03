@@ -107,6 +107,7 @@ export class LLMProcessor {
         userProfile: turnContext.memoryContext.userProfile,
         summaries: turnContext.memoryContext.summaries,
         pluginPromptAdditions,
+        separateCurrentUserInput: phase === 'reply',
       }
     )
 

@@ -69,6 +69,12 @@ interface TaskPlanUpdateArgs {
   }>
 }
 
+interface RejectedPlanUpdate {
+  stepId: string
+  title: string
+  reason: string
+}
+
 export type TaskUserInputPersistence = 'temporary' | 'persistent'
 export type TaskUserInputKind = 'text' | 'password' | 'textarea' | 'code'
 export type TaskUserInputSensitivity = 'normal' | 'secret' | 'verification'
@@ -740,7 +746,7 @@ export class TaskRuntime {
     }
   }
 
-  private updateTaskPlan(args: TaskPlanUpdateArgs): any {
+  private async updateTaskPlan(args: TaskPlanUpdateArgs): Promise<any> {
     if (!this.taskPlan) {
       throw new Error('Task plan is not initialized')
     }
@@ -755,10 +761,9 @@ export class TaskRuntime {
     }
 
     const changedSteps: TaskStep[] = []
+    const rejectedUpdates: RejectedPlanUpdate[] = []
     for (const update of args.steps ?? []) {
-      const step = update.id
-        ? this.taskPlan.steps.find(item => item.id === update.id)
-        : null
+      const step = await this.resolvePlanUpdateTarget(update)
       const target = step ?? this.appendPlanStep(update)
 
       if (typeof update.title === 'string' && update.title.trim()) {
@@ -768,7 +773,20 @@ export class TaskRuntime {
         target.description = cleanPlanText(update.description)
       }
       if (update.status && isTaskStepStatus(update.status)) {
-        this.applyStepStatus(target, update.status)
+        if (update.status === 'completed' && !this.hasStepCompletionEvidence(target)) {
+          target.status = 'running'
+          target.error = 'Completion rejected: no observed tool result for this step yet'
+          rejectedUpdates.push({
+            stepId: target.id,
+            title: target.title,
+            reason: '没有观察到该步骤的实际工具执行结果，不能标记为 completed。请先调用工具完成操作，再更新计划。'
+          })
+        } else {
+          this.applyStepStatus(target, update.status)
+          if (update.status !== 'failed') {
+            target.error = undefined
+          }
+        }
       }
       if (typeof update.result === 'string' && update.result.trim()) {
         target.result = cleanPlanText(update.result)
@@ -786,8 +804,9 @@ export class TaskRuntime {
     }
 
     return {
-      updated: true,
+      updated: rejectedUpdates.length === 0,
       explanation: args.explanation || '',
+      rejected: rejectedUpdates,
       plan: this.renderPlanSnapshotForTool()
     }
   }
@@ -842,6 +861,135 @@ export class TaskRuntime {
     }
     this.taskPlan!.steps.push(step)
     return step
+  }
+
+  private async resolvePlanUpdateTarget(
+    update: NonNullable<TaskPlanUpdateArgs['steps']>[number]
+  ): Promise<TaskStep | null> {
+    if (!this.taskPlan) {
+      return null
+    }
+
+    if (update.id) {
+      const byId = this.taskPlan.steps.find(item => item.id === update.id)
+      if (byId) {
+        return byId
+      }
+    }
+
+    const localMatch = this.findLocalSimilarStep(update)
+    if (localMatch) {
+      return localMatch
+    }
+
+    return await this.findSemanticSimilarStep(update)
+  }
+
+  private findLocalSimilarStep(
+    update: NonNullable<TaskPlanUpdateArgs['steps']>[number]
+  ): TaskStep | null {
+    const updateText = normalizeStepText(update.title, update.description)
+    if (!updateText) {
+      return null
+    }
+
+    for (const step of this.taskPlan?.steps ?? []) {
+      const stepText = normalizeStepText(step.title, step.description)
+      if (!stepText) {
+        continue
+      }
+
+      if (stepText === updateText || stepText.includes(updateText) || updateText.includes(stepText)) {
+        return step
+      }
+
+      const score = jaccardSimilarity(tokenizeStepText(stepText), tokenizeStepText(updateText))
+      if (score >= 0.72) {
+        return step
+      }
+    }
+
+    return null
+  }
+
+  private async findSemanticSimilarStep(
+    update: NonNullable<TaskPlanUpdateArgs['steps']>[number]
+  ): Promise<TaskStep | null> {
+    if (!this.taskPlan || this.taskPlan.steps.length === 0) {
+      return null
+    }
+
+    const title = cleanPlanText(update.title)
+    const description = cleanPlanText(update.description)
+    if (!title && !description) {
+      return null
+    }
+
+    try {
+      const response = await this.llm.chat([
+        {
+          role: 'system',
+          content: [
+            '你是任务计划 step 去重器。判断新 step 是否和已有 step 表达同一个可执行目标。',
+            '必须基于语义判断，不要只比较标题文字。',
+            '如果只是同一目标的改写、补充或更具体表述，应匹配已有 step。',
+            '如果目标不同或顺序上确实是新的动作，应不匹配。',
+            '只输出 JSON object，不要 Markdown。',
+            '格式：{"matched":true,"id":"step-id","reason":"一句话原因"} 或 {"matched":false,"id":null,"reason":"一句话原因"}'
+          ].join('\n')
+        },
+        {
+          role: 'user',
+          content: JSON.stringify({
+            newStep: {
+              title,
+              description,
+              status: update.status
+            },
+            existingSteps: this.taskPlan.steps.map(step => ({
+              id: step.id,
+              title: step.title,
+              description: step.description,
+              status: step.status,
+              result: step.result
+            }))
+          }, null, 2)
+        }
+      ], {
+        max_tokens: 180,
+        signal: this.signal
+      })
+
+      const decision = parseStepMatchDecision(response.content)
+      if (!decision.matched || !decision.id) {
+        return null
+      }
+
+      const matched = this.taskPlan.steps.find(step => step.id === decision.id)
+      if (matched) {
+        console.log(`[TaskRuntime] 合并重复步骤: ${title || description} -> ${matched.id} (${decision.reason})`)
+      }
+      return matched ?? null
+    } catch (error) {
+      console.warn(`[TaskRuntime] Step semantic merge failed: ${(error as Error).message}`)
+      return null
+    }
+  }
+
+  private hasStepCompletionEvidence(step: TaskStep): boolean {
+    if (this.agent.getTools().length === 0) {
+      return true
+    }
+
+    if (step.toolCalls.some(name => name !== 'update_task_plan')) {
+      return true
+    }
+
+    return this.turnRecords.some(record =>
+      record.stepId === step.id &&
+      record.toolCalls.some(call => call.name !== 'update_task_plan') &&
+      record.toolResults.some(result => result && result.success !== false)
+    )
   }
 
   private applyStepStatus(step: TaskStep, status: TaskStepStatus): void {
@@ -1022,6 +1170,65 @@ function parsePlanDraft(content: string): TaskPlanDraft {
 
 function cleanPlanText(value: unknown): string {
   return String(value ?? '').trim().replace(/\s+/g, ' ')
+}
+
+function normalizeStepText(title: unknown, description: unknown): string {
+  return `${cleanPlanText(title)} ${cleanPlanText(description)}`
+    .toLowerCase()
+    .replace(/[，。！？、,.!?;；:"“”'‘’()（）[\]【】]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function tokenizeStepText(value: string): string[] {
+  const compact = value.replace(/\s+/g, '')
+  const tokens = new Set<string>()
+  for (const word of value.split(/\s+/).filter(Boolean)) {
+    tokens.add(word)
+  }
+  for (let index = 0; index < compact.length - 1; index++) {
+    tokens.add(compact.slice(index, index + 2))
+  }
+  return Array.from(tokens)
+}
+
+function jaccardSimilarity(left: string[], right: string[]): number {
+  if (left.length === 0 || right.length === 0) {
+    return 0
+  }
+  const leftSet = new Set(left)
+  const rightSet = new Set(right)
+  let intersection = 0
+  for (const item of leftSet) {
+    if (rightSet.has(item)) {
+      intersection++
+    }
+  }
+  const union = new Set([...leftSet, ...rightSet]).size
+  return union > 0 ? intersection / union : 0
+}
+
+function parseStepMatchDecision(content: string): {
+  matched: boolean
+  id: string | null
+  reason: string
+} {
+  let parsed: any
+  try {
+    parsed = JSON.parse(content)
+  } catch {
+    const match = content.match(/\{[\s\S]*\}/)
+    if (!match) {
+      return { matched: false, id: null, reason: 'no JSON returned' }
+    }
+    parsed = JSON.parse(match[0])
+  }
+
+  return {
+    matched: parsed?.matched === true,
+    id: typeof parsed?.id === 'string' && parsed.id.trim() ? parsed.id.trim() : null,
+    reason: typeof parsed?.reason === 'string' ? parsed.reason : 'semantic step match decision'
+  }
 }
 
 function isTaskStepStatus(value: unknown): value is TaskStepStatus {
