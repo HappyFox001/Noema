@@ -82,6 +82,10 @@ export type TaskUserInputSensitivity = 'normal' | 'secret' | 'verification'
 export interface TaskUserInputRequest {
   id: string
   key?: string
+  groupKey?: string
+  groupLabel?: string
+  itemKey?: string
+  itemLabel?: string
   label: string
   description?: string
   placeholder?: string
@@ -99,6 +103,10 @@ export interface TaskUserInputResponse {
 
 interface TaskUserInputArgs {
   key?: string
+  groupKey?: string
+  groupLabel?: string
+  itemKey?: string
+  itemLabel?: string
   label?: string
   description?: string
   placeholder?: string
@@ -645,7 +653,23 @@ export class TaskRuntime {
           properties: {
             key: {
               type: 'string',
-              description: 'Stable storage key decided by the AI for reusable information, such as openai.api_key or github.personal_access_token. Required for persistent values.'
+              description: 'Optional derived storage key for display. Persistent values must provide groupKey and itemKey.'
+            },
+            groupKey: {
+              type: 'string',
+              description: 'Stable category key for related reusable information, such as google, github, openai, or aws.'
+            },
+            groupLabel: {
+              type: 'string',
+              description: 'Human-readable category label, such as Google Account or GitHub.'
+            },
+            itemKey: {
+              type: 'string',
+              description: 'Stable item key inside the category, such as email, password, api_key, token, or client_secret.'
+            },
+            itemLabel: {
+              type: 'string',
+              description: 'Human-readable item label inside the category, such as Email, Password, or API Key.'
             },
             label: {
               type: 'string',
@@ -821,6 +845,10 @@ export class TaskRuntime {
     const request: TaskUserInputRequest = {
       id: `input-${Date.now()}-${Math.random().toString(16).slice(2)}`,
       key: cleanInputKey(args.key),
+      groupKey: cleanInputKey(args.groupKey),
+      groupLabel: cleanPlanText(args.groupLabel),
+      itemKey: cleanInputKey(args.itemKey),
+      itemLabel: cleanPlanText(args.itemLabel),
       label: cleanPlanText(args.label) || '需要你补充信息',
       description: cleanPlanText(args.description),
       placeholder: cleanPlanText(args.placeholder),
@@ -828,8 +856,8 @@ export class TaskRuntime {
       persistence: sensitivity === 'verification' ? 'temporary' : normalizePersistence(args.persistence),
       sensitivity
     }
-    if (request.persistence === 'persistent' && !request.key) {
-      throw new Error('Persistent user input requires a stable key')
+    if (request.persistence === 'persistent' && (!request.groupKey || !request.itemKey)) {
+      throw new Error('Persistent user input requires groupKey plus itemKey')
     }
 
     const response = await this.hooks.onUserInputRequest(request)
@@ -846,6 +874,8 @@ export class TaskRuntime {
       remembered: Boolean(response.remembered),
       fromCache: Boolean(response.fromCache),
       key: request.key,
+      groupKey: request.groupKey,
+      itemKey: request.itemKey,
       sensitivity: request.sensitivity
     }
   }

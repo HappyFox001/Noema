@@ -1958,6 +1958,10 @@ function showConfirmDialog(options: ConfirmDialogOptions): Promise<boolean> {
 type InteractiveInputRequest = {
   id: string
   key?: string
+  groupKey?: string
+  groupLabel?: string
+  itemKey?: string
+  itemLabel?: string
   label: string
   description?: string
   placeholder?: string
@@ -2903,6 +2907,10 @@ type UserProfile = {
 
 type AccountInput = {
   key: string
+  groupKey?: string
+  groupLabel?: string
+  itemKey?: string
+  itemLabel?: string
   label: string
   value: string
   sensitivity: string
@@ -3336,30 +3344,41 @@ function renderAccountInputs(inputs: AccountInput[]): void {
   }
 
   let html = '<div class="account-input-list">'
-  inputs.forEach(input => {
-    const updatedAt = new Date(input.updatedAt).toLocaleString('zh-CN', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
+  const groups = groupAccountInputs(inputs)
+  groups.forEach(group => {
     html += `
-      <div class="account-input-item">
-        <div class="account-input-main">
-          <div class="account-input-title">
-            <span>${escapeHtml(input.label || input.key)}</span>
-            <span class="account-input-sensitivity">${escapeHtml(formatInputSensitivity(input.sensitivity))}</span>
-          </div>
-          <div class="account-input-key">${escapeHtml(input.key)}</div>
-          <div class="account-input-value" data-key="${escapeHtml(input.key)}">${escapeHtml(maskAccountValue(input.value))}</div>
-          <div class="account-input-meta">更新于 ${escapeHtml(updatedAt)} · ${escapeHtml(input.scope || 'global')}</div>
+      <div class="account-input-group">
+        <div class="account-input-group-title">
+          <span>${escapeHtml(group.label)}</span>
+          <span>${group.items.length} 项</span>
         </div>
-        <div class="account-input-actions">
-          <button class="memory-add-btn account-input-toggle" data-key="${escapeHtml(input.key)}" type="button">显示</button>
-          <button class="delete-icon-btn visible" data-key="${escapeHtml(input.key)}" title="删除"></button>
-        </div>
-      </div>
     `
+    group.items.forEach(input => {
+      const updatedAt = new Date(input.updatedAt).toLocaleString('zh-CN', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+      html += `
+        <div class="account-input-item">
+          <div class="account-input-main">
+            <div class="account-input-title">
+              <span>${escapeHtml(input.itemLabel || input.label || input.key)}</span>
+              <span class="account-input-sensitivity">${escapeHtml(formatInputSensitivity(input.sensitivity))}</span>
+            </div>
+            <div class="account-input-key">${escapeHtml(input.key)}</div>
+            <div class="account-input-value" data-key="${escapeHtml(input.key)}">${escapeHtml(maskAccountValue(input.value))}</div>
+            <div class="account-input-meta">更新于 ${escapeHtml(updatedAt)} · ${escapeHtml(input.scope || 'global')}</div>
+          </div>
+          <div class="account-input-actions">
+            <button class="memory-add-btn account-input-toggle" data-key="${escapeHtml(input.key)}" type="button">显示</button>
+            <button class="delete-icon-btn visible" data-key="${escapeHtml(input.key)}" title="删除"></button>
+          </div>
+        </div>
+      `
+    })
+    html += '</div>'
   })
   html += '</div>'
 
@@ -3399,6 +3418,28 @@ function renderAccountInputs(inputs: AccountInput[]): void {
       }
     })
   })
+}
+
+function groupAccountInputs(inputs: AccountInput[]): Array<{ key: string; label: string; items: AccountInput[]; updatedAt: number }> {
+  const groups = new Map<string, { key: string; label: string; items: AccountInput[]; updatedAt: number }>()
+
+  inputs.forEach(input => {
+    const key = input.groupKey || 'global'
+    const existing = groups.get(key)
+    if (existing) {
+      existing.items.push(input)
+      existing.updatedAt = Math.max(existing.updatedAt, input.updatedAt)
+      return
+    }
+    groups.set(key, {
+      key,
+      label: input.groupLabel || key,
+      items: [input],
+      updatedAt: input.updatedAt,
+    })
+  })
+
+  return Array.from(groups.values()).sort((left, right) => right.updatedAt - left.updatedAt)
 }
 
 function maskAccountValue(value: string): string {

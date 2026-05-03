@@ -98,7 +98,7 @@ import {
   setActiveTaskLLMConfig
 } from './sdk-config.js'
 import { SettingsStore, type AppSettings, type LLMModelConfig, type TTSModelConfig, type ASRModelConfig } from './settings-store.js'
-import { InteractiveInputStore, type StoredInteractiveInput } from './interactive-input-store.js'
+import { InteractiveInputStore, type StoredInteractiveInput, type StoredInteractiveInputGroup } from './interactive-input-store.js'
 import { NodeRealtimeWebSocketTransport } from './qwen-websocket-transport.js'
 import {
   ReconnectingWebSocketTransport,
@@ -1968,13 +1968,16 @@ async function createWindow() {
 }
 
 async function requestTaskUserInput(request: TaskUserInputRequest): Promise<TaskUserInputResponse> {
+  const identity = request.persistence === 'persistent' && request.sensitivity !== 'verification'
+    ? normalizeTaskInputRequestIdentity(request)
+    : null
   if (
     request.persistence === 'persistent' &&
-    request.key &&
+    identity &&
     request.sensitivity !== 'verification' &&
     interactiveInputStore
   ) {
-    const stored = await interactiveInputStore.get(request.key)
+    const stored = await interactiveInputStore.get(identity.key)
     if (stored?.value) {
       return {
         value: stored.value,
@@ -2016,12 +2019,16 @@ async function requestTaskUserInput(request: TaskUserInputRequest): Promise<Task
   if (
     response.value &&
     request.persistence === 'persistent' &&
-    request.key &&
+    identity &&
     request.sensitivity !== 'verification' &&
     interactiveInputStore
   ) {
+    const group = await resolveStoredTaskInputGroup(request)
     await interactiveInputStore.set({
-      key: request.key,
+      groupKey: group?.groupKey ?? identity.groupKey,
+      groupLabel: group?.groupLabel ?? identity.groupLabel,
+      itemKey: identity.itemKey,
+      itemLabel: identity.itemLabel,
       label: request.label,
       value: response.value,
       sensitivity: request.sensitivity,
@@ -2052,9 +2059,10 @@ async function resolveStoredTaskInput(request: TaskUserInputRequest): Promise<St
         role: 'system',
         content: [
           '你是账户信息匹配器。判断本次请求需要的信息，是否已经存在于候选账户信息中。',
-          '候选信息不包含真实值，只有 key、label、sensitivity、scope。不要要求看到真实值。',
+          '候选信息不包含真实值，只有 group、item、key、label、sensitivity、scope。不要要求看到真实值。',
           '必须基于语义判断，不要只做字符串相等。',
-          '只有高度确定是同一类长期信息时才匹配，例如同一个服务的 API key、登录邮箱、token、密码。',
+          '只有高度确定是同一个服务下的同一个具体字段时才匹配，例如 Google 密码匹配 Google password。',
+          '同一个服务但字段不同不能匹配，例如 Google 密码不能匹配 Google 邮箱；这只能说明属于同一 group，不能复用 value。',
           '验证码、一次性 MFA、临时确认不要匹配。',
           '只输出 JSON object，不要 Markdown。',
           '格式：{"matched":true,"key":"候选key","reason":"一句话原因"} 或 {"matched":false,"key":null,"reason":"一句话原因"}'
@@ -2069,10 +2077,18 @@ async function resolveStoredTaskInput(request: TaskUserInputRequest): Promise<St
             description: request.description,
             placeholder: request.placeholder,
             sensitivity: request.sensitivity,
-            persistence: request.persistence
+            persistence: request.persistence,
+            groupKey: request.groupKey,
+            groupLabel: request.groupLabel,
+            itemKey: request.itemKey,
+            itemLabel: request.itemLabel
           },
           candidates: candidates.slice(0, 40).map(item => ({
             key: item.key,
+            groupKey: item.groupKey,
+            groupLabel: item.groupLabel,
+            itemKey: item.itemKey,
+            itemLabel: item.itemLabel,
             label: item.label,
             sensitivity: item.sensitivity,
             scope: item.scope,
@@ -2102,6 +2118,92 @@ async function resolveStoredTaskInput(request: TaskUserInputRequest): Promise<St
   }
 }
 
+async function resolveStoredTaskInputGroup(request: TaskUserInputRequest): Promise<StoredInteractiveInputGroup | null> {
+  if (
+    request.persistence !== 'persistent' ||
+    request.sensitivity === 'verification' ||
+    !interactiveInputStore ||
+    !sdkInstance
+  ) {
+    return null
+  }
+
+  const groups = await interactiveInputStore.listGroups()
+  if (groups.length === 0) {
+    return null
+  }
+
+  const identity = normalizeTaskInputRequestIdentity(request)
+  const exact = groups.find(group => group.groupKey === identity.groupKey)
+  if (exact) {
+    return exact
+  }
+
+  try {
+    const response = await sdkInstance.getTaskLLM().chat([
+      {
+        role: 'system',
+        content: [
+          '你是账户信息分组器。判断本次请求的新信息应该归入哪个已有信息大类。',
+          '候选信息不包含真实值，只有 group 和已有 item 元数据。不要要求看到真实值。',
+          '如果是同一服务、同一账号、同一平台或同一 API 提供商的信息，应匹配已有 group。',
+          '字段不同也可以匹配 group，例如已有 Google 邮箱，请求 Google 密码，应匹配 Google group。',
+          '如果服务或账号明显不同，应不匹配。',
+          '只输出 JSON object，不要 Markdown。',
+          '格式：{"matched":true,"groupKey":"候选groupKey","reason":"一句话原因"} 或 {"matched":false,"groupKey":null,"reason":"一句话原因"}'
+        ].join('\n')
+      },
+      {
+        role: 'user',
+        content: JSON.stringify({
+          request: {
+            key: request.key,
+            label: request.label,
+            description: request.description,
+            placeholder: request.placeholder,
+            sensitivity: request.sensitivity,
+            persistence: request.persistence,
+            groupKey: request.groupKey,
+            groupLabel: request.groupLabel,
+            itemKey: request.itemKey,
+            itemLabel: request.itemLabel,
+          },
+          groups: groups.slice(0, 30).map(group => ({
+            groupKey: group.groupKey,
+            groupLabel: group.groupLabel,
+            items: group.items.map(item => ({
+              key: item.key,
+              itemKey: item.itemKey,
+              itemLabel: item.itemLabel,
+              label: item.label,
+              sensitivity: item.sensitivity,
+            })),
+            updatedAt: group.updatedAt,
+          }))
+        }, null, 2)
+      }
+    ], {
+      max_tokens: 200
+    })
+
+    const decision = parseSemanticInputGroupMatch(response.content)
+    if (!decision.matched || !decision.groupKey) {
+      return null
+    }
+
+    const matched = groups.find(group => group.groupKey === decision.groupKey)
+    if (!matched) {
+      return null
+    }
+
+    console.log(`[InteractiveInput] Storing input under existing group: ${matched.groupKey} (${decision.reason})`)
+    return matched
+  } catch (error) {
+    console.warn(`[InteractiveInput] Semantic input group match failed: ${(error as Error).message}`)
+    return null
+  }
+}
+
 function parseSemanticInputMatch(content: string): {
   matched: boolean
   key: string | null
@@ -2123,6 +2225,74 @@ function parseSemanticInputMatch(content: string): {
     key: typeof parsed?.key === 'string' && parsed.key.trim() ? parsed.key.trim() : null,
     reason: typeof parsed?.reason === 'string' ? parsed.reason : 'semantic match decision'
   }
+}
+
+function parseSemanticInputGroupMatch(content: string): {
+  matched: boolean
+  groupKey: string | null
+  reason: string
+} {
+  let parsed: any
+  try {
+    parsed = JSON.parse(content)
+  } catch {
+    const match = content.match(/\{[\s\S]*\}/)
+    if (!match) {
+      return { matched: false, groupKey: null, reason: 'no JSON returned' }
+    }
+    parsed = JSON.parse(match[0])
+  }
+
+  return {
+    matched: parsed?.matched === true,
+    groupKey: typeof parsed?.groupKey === 'string' && parsed.groupKey.trim()
+      ? cleanTaskInputKey(parsed.groupKey) ?? null
+      : null,
+    reason: typeof parsed?.reason === 'string' ? parsed.reason : 'semantic group match decision'
+  }
+}
+
+function normalizeTaskInputRequestIdentity(request: TaskUserInputRequest): {
+  key: string
+  groupKey: string
+  groupLabel: string
+  itemKey: string
+  itemLabel: string
+} {
+  const groupKey = cleanTaskInputKey(request.groupKey)
+  const itemKey = cleanTaskInputKey(request.itemKey)
+  if (!groupKey || !itemKey) {
+    throw new Error('Persistent user input requires groupKey and itemKey')
+  }
+  return {
+    key: `${groupKey}.${itemKey}`,
+    groupKey,
+    groupLabel: cleanTaskInputLabel(request.groupLabel) || formatTaskInputLabel(groupKey),
+    itemKey,
+    itemLabel: cleanTaskInputLabel(request.itemLabel) || formatTaskInputLabel(itemKey),
+  }
+}
+
+function cleanTaskInputKey(value: unknown): string | undefined {
+  const key = String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_.:-]+/g, '_')
+    .replace(/^[_:.-]+|[_:.-]+$/g, '')
+  return key || undefined
+}
+
+function cleanTaskInputLabel(value: unknown): string | undefined {
+  const label = String(value ?? '').trim().replace(/\s+/g, ' ')
+  return label || undefined
+}
+
+function formatTaskInputLabel(key: string): string {
+  return key
+    .split(/[_.:-]+/)
+    .filter(Boolean)
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ') || 'Global'
 }
 
 async function initializeSDK(): Promise<void> {

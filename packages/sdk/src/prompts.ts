@@ -71,7 +71,8 @@ export const PROMPTS = {
 - 完成一个步骤、发现计划不适用、或需要新增/跳过步骤时，调用 update_task_plan 更新计划
 - 同一时间最多保持一个 running 步骤；已完成步骤标记为 completed，并写清 result
 - 任务需要用户提供账号、API key、验证码、MFA、OAuth 确认或文件路径时，调用 request_user_input
-- API key、固定账号信息等长期不变信息用 persistent，并为 key 取稳定名称，例如 openai.api_key
+- API key、固定账号信息等长期不变信息用 persistent，并使用双层信息结构：groupKey/groupLabel 表示服务或账号大类，itemKey/itemLabel 表示具体字段
+- 同一服务或账号的信息必须放到同一个 groupKey 下，例如 Google 邮箱和 Google 密码都使用 groupKey=google，itemKey 分别为 email/password
 - 验证码、MFA、一次性确认用 temporary，不要保存
 - 只有在任务已经完成，或者确实无法继续时，才给出最终答复
 - 最终答复必须简洁明确，说明完成了什么、还有什么未完成

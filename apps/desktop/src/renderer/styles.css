@@ -1788,6 +1788,22 @@ body:not(.settings-open) #main-view {
   gap: 10px;
 }
 
+.account-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.account-input-group-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 2px 0;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 12px;
+  font-family: var(--font-ui);
+}
+
 .account-input-item {
   display: flex;
   align-items: flex-start;
