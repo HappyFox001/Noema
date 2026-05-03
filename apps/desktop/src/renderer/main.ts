@@ -1215,8 +1215,8 @@ function isPointInOrb(clientX: number, clientY: number): boolean {
   const rect = canvas.getBoundingClientRect()
   const x = clientX - rect.left
   const y = clientY - rect.top
-  const centerX = canvas.width / 2
-  const centerY = canvas.height / 2
+  const centerX = rect.width / 2
+  const centerY = rect.height / 2
 
   const dx = x - centerX
   const dy = y - centerY
@@ -1886,6 +1886,7 @@ function switchSettingsSection(section: string): void {
 }
 
 function openSettings(section?: string) {
+  window.electronAPI.setCompactWindowMode(false)
   orbAnimationPaused = true
   stopOrbAnimation()
   document.body.classList.add('settings-open')
@@ -1902,6 +1903,7 @@ function openSettings(section?: string) {
 
 // Close settings panel
 function closeSettings() {
+  window.electronAPI.setCompactWindowMode(true)
   orbAnimationPaused = false
   document.body.classList.remove('settings-open')
   settingsPanel.classList.remove('visible')

@@ -1634,6 +1634,15 @@ app.commandLine.appendSwitch('disable-gpu')
 app.commandLine.appendSwitch('disable-gpu-compositing')
 
 let mainWindow: BrowserWindow | null = null
+const COMPACT_WINDOW_SIZE = { width: 380, height: 380 }
+const SETTINGS_WINDOW_SIZE = { width: 500, height: 600 }
+
+function resizeWindowAroundCenter(window: BrowserWindow, width: number, height: number): void {
+  const bounds = window.getBounds()
+  const nextX = Math.round(bounds.x + (bounds.width - width) / 2)
+  const nextY = Math.round(bounds.y + (bounds.height - height) / 2)
+  window.setBounds({ x: nextX, y: nextY, width, height }, false)
+}
 let ttsService: TTSProvider | null = null
 let sdkInstance: HerTextSDK | null = null
 let ttsAvailable = true
@@ -1943,8 +1952,8 @@ async function loadRenderer(window: BrowserWindow): Promise<void> {
 
 async function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 500,
-    height: 600,
+    width: COMPACT_WINDOW_SIZE.width,
+    height: COMPACT_WINDOW_SIZE.height,
     frame: false,
     transparent: true,
     backgroundColor: '#00000000',
@@ -2435,6 +2444,16 @@ ipcMain.on('window:move', (event, deltaX, deltaY) => {
     const [x, y] = win.getPosition()
     win.setPosition(x + deltaX, y + deltaY)
   }
+})
+
+ipcMain.on('window:set-compact-mode', (event, compact) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (!win) {
+    return
+  }
+
+  const size = compact ? COMPACT_WINDOW_SIZE : SETTINGS_WINDOW_SIZE
+  resizeWindowAroundCenter(win, size.width, size.height)
 })
 
 ipcMain.handle('window:get-position', (event) => {

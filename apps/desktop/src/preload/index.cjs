@@ -213,6 +213,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.send('window:move', deltaX, deltaY)
   },
 
+  setCompactWindowMode: (compact) => {
+    ipcRenderer.send('window:set-compact-mode', compact)
+  },
+
   getWindowPosition: () => {
     return ipcRenderer.invoke('window:get-position')
   },

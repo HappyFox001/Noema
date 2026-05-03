@@ -429,6 +429,7 @@ declare global {
       }) => void) => void
 
       moveWindow: (deltaX: number, deltaY: number) => void
+      setCompactWindowMode: (compact: boolean) => void
       getWindowPosition: () => Promise<[number, number]>
     }
   }
