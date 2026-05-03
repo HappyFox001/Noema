@@ -404,14 +404,42 @@ export class TaskRuntime {
       ...(turn.toolCalls.length > 0 ? { tool_calls: turn.toolCalls } : {})
     })
 
+    const imageMessages: any[] = []
     turn.toolCalls.forEach((call, index) => {
+      const toolResult = turn.toolResults[index]
+      const imageInputs = extractToolResultImages(toolResult, call.function.name)
       messages.push({
         role: 'tool',
         tool_call_id: call.id,
         name: call.function.name,
-        content: JSON.stringify(turn.toolResults[index])
+        content: JSON.stringify(sanitizeToolResultForPrompt(toolResult))
       })
+
+      for (const image of imageInputs) {
+        imageMessages.push({
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: [
+                `工具 ${call.function.name} 返回了一张图片观察结果。`,
+                image.note ? `说明：${image.note}` : '',
+                image.path ? `本地路径：${image.path}` : '',
+                image.width && image.height ? `尺寸：${image.width}x${image.height}` : ''
+              ].filter(Boolean).join('\n')
+            },
+            {
+              type: 'image_url',
+              image_url: {
+                url: `data:${image.mimeType};base64,${image.base64}`
+              }
+            }
+          ]
+        })
+      }
     })
+
+    messages.push(...imageMessages)
   }
 
   private async maybeCompact(messages: any[]): Promise<void> {
@@ -444,7 +472,7 @@ export class TaskRuntime {
           `Turn ${record.turnIndex}`,
           `Assistant: ${record.assistantMessage || '(empty)'}`,
           `Tools: ${toolLines}`,
-          `Results: ${JSON.stringify(record.toolResults)}`
+          `Results: ${JSON.stringify(sanitizeToolResultForPrompt(record.toolResults))}`
         ].join('\n')
       }).join('\n\n')
 
@@ -1020,6 +1048,7 @@ export class TaskRuntime {
       record.toolCalls.some(call => call.name !== 'update_task_plan') &&
       record.toolResults.some(result => result && result.success !== false)
     )
+
   }
 
   private applyStepStatus(step: TaskStep, status: TaskStepStatus): void {
@@ -1259,6 +1288,125 @@ function parseStepMatchDecision(content: string): {
     id: typeof parsed?.id === 'string' && parsed.id.trim() ? parsed.id.trim() : null,
     reason: typeof parsed?.reason === 'string' ? parsed.reason : 'semantic step match decision'
   }
+}
+
+interface PromptImageInput {
+  base64: string
+  mimeType: string
+  note?: string
+  path?: string
+  width?: number
+  height?: number
+}
+
+function extractToolResultImages(value: unknown, toolName: string): PromptImageInput[] {
+  const images: PromptImageInput[] = []
+  const seenObjects = new WeakSet<object>()
+  const seenImages = new Set<string>()
+
+  const visit = (item: unknown): void => {
+    if (!item || typeof item !== 'object') {
+      return
+    }
+    if (seenObjects.has(item)) {
+      return
+    }
+    seenObjects.add(item)
+
+    if (Array.isArray(item)) {
+      for (const child of item) {
+        visit(child)
+      }
+      return
+    }
+
+    const record = item as Record<string, any>
+    const base64 = firstString(record.image_base64, record.screenshot_base64, record.annotated_image_base64)
+    if (base64 && looksLikeImageBase64(base64)) {
+      const signature = base64.slice(0, 96)
+      if (!seenImages.has(signature)) {
+        seenImages.add(signature)
+        images.push({
+          base64,
+          mimeType: firstString(record.mime_type, record.mimeType) || 'image/png',
+          note: firstString(record.note, record.description) || `Image observation from ${toolName}`,
+          path: firstString(record.path, record.file_path),
+          width: finiteNumber(record.width),
+          height: finiteNumber(record.height)
+        })
+      }
+    }
+
+    for (const child of Object.values(record)) {
+      visit(child)
+    }
+  }
+
+  visit(value)
+  return images
+}
+
+function sanitizeToolResultForPrompt(value: unknown): unknown {
+  const seenObjects = new WeakSet<object>()
+
+  const sanitize = (item: unknown): unknown => {
+    if (!item || typeof item !== 'object') {
+      return item
+    }
+    if (seenObjects.has(item)) {
+      return '[Circular]'
+    }
+    seenObjects.add(item)
+
+    if (Array.isArray(item)) {
+      return item.map(child => sanitize(child))
+    }
+
+    const output: Record<string, unknown> = {}
+    for (const [key, child] of Object.entries(item as Record<string, unknown>)) {
+      if (isInlineImageKey(key) && typeof child === 'string') {
+        output[key] = `[omitted ${child.length} base64 chars; image attached separately]`
+        continue
+      }
+
+      if (key === 'image_url' && typeof child === 'string' && child.startsWith('data:image/')) {
+        output[key] = '[omitted data image URL; image attached separately]'
+        continue
+      }
+
+      output[key] = sanitize(child)
+    }
+    return output
+  }
+
+  return sanitize(value)
+}
+
+function isInlineImageKey(key: string): boolean {
+  return key === 'image_base64'
+    || key === 'screenshot_base64'
+    || key === 'annotated_image_base64'
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) {
+      return value
+    }
+  }
+  return undefined
+}
+
+function finiteNumber(value: unknown): number | undefined {
+  const number = Number(value)
+  return Number.isFinite(number) ? number : undefined
+}
+
+function looksLikeImageBase64(value: string): boolean {
+  if (value.length < 80) {
+    return false
+  }
+  return /^[A-Za-z0-9+/=\r\n]+$/.test(value)
 }
 
 function isTaskStepStatus(value: unknown): value is TaskStepStatus {

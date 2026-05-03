@@ -1,0 +1,44 @@
+{
+  "id": "computer-use",
+  "name": "Computer Use",
+  "description": "提供本机桌面控制工具，包括截图、鼠标点击、键盘输入、快捷键、滚动和等待。当前实现面向 macOS 本机控制，需要系统授予屏幕录制和辅助功能权限。",
+  "version": "0.1.0",
+  "type": "sdk-plugin",
+  "main": "index.mjs",
+  "enabled": true,
+  "config": {
+    "actionTimeoutMs": 30000,
+    "autoObserve": true,
+    "screenshotFormat": "base64"
+  },
+  "configSchema": [
+    {
+      "key": "actionTimeoutMs",
+      "label": "操作超时",
+      "description": "单个桌面控制工具的最大执行时间，单位毫秒。",
+      "type": "number",
+      "default": 30000,
+      "min": 1000,
+      "max": 120000,
+      "step": 1000
+    },
+    {
+      "key": "autoObserve",
+      "label": "自动观察",
+      "description": "鼠标键盘动作完成后自动附带一次截图，减少任务模型手动观察屏幕的次数。",
+      "type": "boolean",
+      "default": true
+    },
+    {
+      "key": "screenshotFormat",
+      "label": "截图格式",
+      "description": "computer_observe 返回截图的格式。base64 适合传给视觉模型，path 适合人工调试。",
+      "type": "select",
+      "default": "base64",
+      "options": [
+        { "label": "Base64", "value": "base64" },
+        { "label": "文件路径", "value": "path" }
+      ]
+    }
+  ]
+}
