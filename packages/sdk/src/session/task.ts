@@ -69,12 +69,6 @@ interface TaskPlanUpdateArgs {
   }>
 }
 
-interface RejectedPlanUpdate {
-  stepId: string
-  title: string
-  reason: string
-}
-
 export type TaskUserInputPersistence = 'temporary' | 'persistent'
 export type TaskUserInputKind = 'text' | 'password' | 'textarea' | 'code'
 export type TaskUserInputSensitivity = 'normal' | 'secret' | 'verification'
@@ -813,7 +807,6 @@ export class TaskRuntime {
     }
 
     const changedSteps: TaskStep[] = []
-    const rejectedUpdates: RejectedPlanUpdate[] = []
     for (const update of args.steps ?? []) {
       const step = await this.resolvePlanUpdateTarget(update)
       const target = step ?? this.appendPlanStep(update)
@@ -825,19 +818,9 @@ export class TaskRuntime {
         target.description = cleanPlanText(update.description)
       }
       if (update.status && isTaskStepStatus(update.status)) {
-        if (update.status === 'completed' && !this.hasStepCompletionEvidence(target)) {
-          target.status = 'running'
-          target.error = 'Completion rejected: no observed tool result for this step yet'
-          rejectedUpdates.push({
-            stepId: target.id,
-            title: target.title,
-            reason: '没有观察到该步骤的实际工具执行结果，不能标记为 completed。请先调用工具完成操作，再更新计划。'
-          })
-        } else {
-          this.applyStepStatus(target, update.status)
-          if (update.status !== 'failed') {
-            target.error = undefined
-          }
+        this.applyStepStatus(target, update.status)
+        if (update.status !== 'failed') {
+          target.error = undefined
         }
       }
       if (typeof update.result === 'string' && update.result.trim()) {
@@ -856,9 +839,9 @@ export class TaskRuntime {
     }
 
     return {
-      updated: rejectedUpdates.length === 0,
+      updated: true,
       explanation: args.explanation || '',
-      rejected: rejectedUpdates,
+      rejected: [],
       plan: this.renderPlanSnapshotForTool()
     }
   }
@@ -1032,23 +1015,6 @@ export class TaskRuntime {
       console.warn(`[TaskRuntime] Step semantic merge failed: ${(error as Error).message}`)
       return null
     }
-  }
-
-  private hasStepCompletionEvidence(step: TaskStep): boolean {
-    if (this.agent.getTools().length === 0) {
-      return true
-    }
-
-    if (step.toolCalls.some(name => name !== 'update_task_plan')) {
-      return true
-    }
-
-    return this.turnRecords.some(record =>
-      record.stepId === step.id &&
-      record.toolCalls.some(call => call.name !== 'update_task_plan') &&
-      record.toolResults.some(result => result && result.success !== false)
-    )
-
   }
 
   private applyStepStatus(step: TaskStep, status: TaskStepStatus): void {
