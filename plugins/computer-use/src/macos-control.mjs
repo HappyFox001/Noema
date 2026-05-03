@@ -49,7 +49,7 @@ const KEY_CODES = {
 
 const MODIFIERS = new Set(['command', 'cmd', 'shift', 'option', 'alt', 'control', 'ctrl', 'fn'])
 
-export class LocalComputerController {
+export class MacOSComputerController {
   constructor(options) {
     this.dataDir = options.dataDir
     this.screenshotFormat = options.screenshotFormat === 'path' ? 'path' : 'base64'
@@ -159,6 +159,8 @@ export class LocalComputerController {
     return path
   }
 }
+
+export const LocalComputerController = MacOSComputerController
 
 function assertMacOS() {
   if (process.platform !== 'darwin') {

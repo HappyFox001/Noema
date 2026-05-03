@@ -4,11 +4,11 @@
  * Registers native desktop observation and input tools for the current machine.
  */
 import { createComputerUseTools } from './src/tools.mjs'
-import { LocalComputerController } from './src/macos-control.mjs'
+import { createLocalComputerController } from './src/controller.mjs'
 
 export default function createPlugin(ctx) {
   const config = ctx.config || {}
-  const controller = new LocalComputerController({
+  const controller = createLocalComputerController({
     dataDir: ctx.dataDir,
     screenshotFormat: String(config.screenshotFormat || 'base64'),
   })

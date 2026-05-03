@@ -1,7 +1,7 @@
 {
   "id": "computer-use",
   "name": "Computer Use",
-  "description": "提供本机桌面控制工具，包括截图、鼠标点击、键盘输入、快捷键、滚动和等待。当前实现面向 macOS 本机控制，需要系统授予屏幕录制和辅助功能权限。",
+  "description": "提供本机桌面控制工具，包括截图、鼠标点击、键盘输入、快捷键、滚动和等待。插件会按当前系统自动选择 macOS、Windows 或 Linux 本机控制实现。",
   "version": "0.1.0",
   "type": "sdk-plugin",
   "main": "index.mjs",
