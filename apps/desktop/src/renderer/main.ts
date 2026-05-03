@@ -712,6 +712,9 @@ const voiceRecorder = new VoiceRecorder()
 // Canvas rendering
 const canvas = document.getElementById('orb-canvas') as HTMLCanvasElement
 const ctx = canvas.getContext('2d', { alpha: true })!
+let orbCanvasWidth = 180
+let orbCanvasHeight = 180
+let orbCanvasDpr = 1
 
 interface OrbState {
   mode: 'idle' | 'listening' | 'thinking' | 'speaking' | 'interrupted'
@@ -734,6 +737,31 @@ let orbEnergyUpdatedAt = performance.now()
 
 // Store current radius for mouse detection
 let currentOrbRadius = 22
+
+function resizeOrbCanvas(): void {
+  const rect = canvas.getBoundingClientRect()
+  const width = Math.max(1, Math.round(rect.width || 180))
+  const height = Math.max(1, Math.round(rect.height || 180))
+  const dpr = Math.max(1, window.devicePixelRatio || 1)
+  const pixelWidth = Math.round(width * dpr)
+  const pixelHeight = Math.round(height * dpr)
+
+  if (
+    canvas.width !== pixelWidth ||
+    canvas.height !== pixelHeight ||
+    orbCanvasWidth !== width ||
+    orbCanvasHeight !== height ||
+    orbCanvasDpr !== dpr
+  ) {
+    canvas.width = pixelWidth
+    canvas.height = pixelHeight
+    orbCanvasWidth = width
+    orbCanvasHeight = height
+    orbCanvasDpr = dpr
+  }
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+}
 
 function updateOrbAudioEnergy(source: 'input' | 'output', samples: Int16Array | Uint8Array): void {
   const next = calculatePcmEnergy(samples)
@@ -796,10 +824,15 @@ function drawOrb() {
     return
   }
 
-  ctx.clearRect(0, 0, canvas.width, canvas.height)
+  resizeOrbCanvas()
+  ctx.globalCompositeOperation = 'source-over'
+  ctx.globalAlpha = 1
+  ctx.clearRect(0, 0, orbCanvasWidth, orbCanvasHeight)
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.001)'
+  ctx.fillRect(0, 0, orbCanvasWidth, orbCanvasHeight)
 
-  const centerX = canvas.width / 2
-  const centerY = canvas.height / 2
+  const centerX = orbCanvasWidth / 2
+  const centerY = orbCanvasHeight / 2
   const time = Date.now() / 1000
   const elapsed = performance.now() - orbState.modeChangedAt
   const palette = getOrbPalette(orbState.mode)
@@ -1175,6 +1208,7 @@ function stopOrbAnimation(): void {
 }
 
 startOrbAnimation()
+window.addEventListener('resize', resizeOrbCanvas)
 
 // Helper function to check if point is inside orb
 function isPointInOrb(clientX: number, clientY: number): boolean {
@@ -1279,7 +1313,14 @@ function setStatus(text: string) {
   if (text === lastStatusText) return
   lastStatusText = text
   const statusEl = document.getElementById('status')!
-  statusEl.textContent = text
+  replaceControlText(statusEl, text)
+}
+
+function replaceControlText(element: HTMLElement, text: string): void {
+  element.replaceChildren(document.createTextNode(text))
+  element.dataset.text = text
+  element.style.transform = 'translateZ(0)'
+  void element.offsetWidth
 }
 
 let panelNoticeTimer: number | undefined
@@ -1297,7 +1338,7 @@ function showPanelNotice(text: string, tone: 'info' | 'error' = 'info') {
 
 function setTextDisplay(text: string) {
   const textDisplay = document.getElementById('text-display')!
-  textDisplay.textContent = text
+  replaceControlText(textDisplay, text)
 }
 
 function clearTextDisplay() {
@@ -1415,9 +1456,9 @@ function handleConversationFrame(frame: ConversationFrame) {
 const startConversationBtn = document.getElementById('start-conversation-btn') as HTMLButtonElement
 
 function updateConversationButton(): void {
-  startConversationBtn.textContent = voiceInputEnabled
+  replaceControlText(startConversationBtn, voiceInputEnabled
     ? (activeMode === 'conversation' ? 'Stop' : 'Start Conversation')
-    : 'Voice Disabled'
+    : 'Voice Disabled')
 }
 
 function getReadyStatus(): string {
