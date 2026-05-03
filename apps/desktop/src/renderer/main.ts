@@ -1981,6 +1981,7 @@ function showInteractiveInputDialog(request: InteractiveInputRequest): void {
 
   overlay.innerHTML = `
     <div class="confirm-dialog interactive-input-dialog" role="dialog" aria-modal="true" aria-labelledby="interactive-input-title">
+      <button class="interactive-input-close" type="button" data-input-action="cancel" aria-label="关闭">×</button>
       <div class="confirm-dialog-content">
         <h3 id="interactive-input-title">${escapeHtml(request.label)}</h3>
         ${request.description ? `<p>${escapeHtml(request.description)}</p>` : ''}
@@ -1990,7 +1991,6 @@ function showInteractiveInputDialog(request: InteractiveInputRequest): void {
         ${inputTag}
       </div>
       <div class="confirm-dialog-actions">
-        <button class="confirm-dialog-btn secondary" type="button" data-input-action="cancel">取消</button>
         <button class="confirm-dialog-btn primary" type="button" data-input-action="submit">继续</button>
       </div>
     </div>
@@ -2012,7 +2012,7 @@ function showInteractiveInputDialog(request: InteractiveInputRequest): void {
     const action = target.closest<HTMLButtonElement>('[data-input-action]')?.dataset.inputAction
     if (action === 'submit') {
       void submitResponse(false)
-    } else if (action === 'cancel' || target === overlay) {
+    } else if (action === 'cancel') {
       void submitResponse(true)
     }
   })
@@ -2021,10 +2021,6 @@ function showInteractiveInputDialog(request: InteractiveInputRequest): void {
     if (!document.body.contains(overlay)) {
       document.removeEventListener('keydown', handleKeydown, true)
       return
-    }
-    if (event.key === 'Escape') {
-      event.preventDefault()
-      void submitResponse(true)
     }
     if (event.key === 'Enter' && request.inputKind !== 'textarea') {
       event.preventDefault()
