@@ -1577,6 +1577,62 @@ body:not(.settings-open) #main-view {
   padding: 14px 16px;
 }
 
+.memory-page {
+  display: none;
+}
+
+.memory-page.active {
+  display: block;
+}
+
+.memory-subpage-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.memory-subpage-header .section-title {
+  margin-bottom: 4px;
+}
+
+.section-subtitle {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.42);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.memory-back-btn {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.045);
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+  font-family: var(--font-ui);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.memory-back-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.92);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.account-entry-card {
+  border-color: rgba(204, 138, 72, 0.20);
+  background: linear-gradient(135deg, rgba(204, 138, 72, 0.08), rgba(255, 255, 255, 0.025));
+}
+
+.account-entry-desc {
+  color: rgba(255, 255, 255, 0.50);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 .memory-card-content.scrollable {
   max-height: 200px;
   overflow-y: auto;
@@ -1724,6 +1780,77 @@ body:not(.settings-open) #main-view {
 
 .memory-item-delete:hover {
   color: rgba(255, 100, 100, 1);
+}
+
+.account-input-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.account-input-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.055);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.account-input-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.account-input-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  color: rgba(255, 255, 255, 0.84);
+  font-size: 13px;
+  font-family: var(--font-soft);
+}
+
+.account-input-sensitivity {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(204, 138, 72, 0.12);
+  color: rgba(244, 188, 126, 0.82);
+  font-size: 10px;
+  font-family: var(--font-ui);
+}
+
+.account-input-key,
+.account-input-meta {
+  color: rgba(255, 255, 255, 0.36);
+  font-size: 11px;
+  font-family: var(--font-ui);
+  word-break: break-all;
+}
+
+.account-input-value {
+  margin: 8px 0 6px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.22);
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 12px;
+  font-family: var(--font-ui);
+  word-break: break-all;
+}
+
+.account-input-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.delete-icon-btn.visible {
+  opacity: 1;
 }
 
 
@@ -2527,6 +2654,39 @@ body:not(.settings-open) #main-view {
 .confirm-dialog.danger .confirm-dialog-btn.primary:hover {
   background: rgba(255, 100, 100, 0.26);
   border-color: rgba(255, 100, 100, 0.48);
+}
+
+.interactive-input-dialog {
+  width: min(88vw, 380px);
+  grid-template-columns: 1fr;
+}
+
+.interactive-input-meta {
+  margin: 8px 0 10px;
+  color: rgba(255, 255, 255, 0.42);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.interactive-input-control {
+  width: 100%;
+  min-height: 38px;
+  padding: 9px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.055);
+  color: rgba(255, 255, 255, 0.9);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.45;
+  outline: none;
+  resize: vertical;
+}
+
+.interactive-input-control:focus {
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 /* ========== Summaries List ========== */

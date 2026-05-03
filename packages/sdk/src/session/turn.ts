@@ -18,6 +18,7 @@ export interface TurnRuntimeHooks {
 export type InternalToolHandler = (args: any, call: ToolCall) => Promise<any> | any
 
 export interface TurnRuntimeOptions extends TurnRuntimeHooks {
+  signal?: AbortSignal
   internalTools?: Record<string, InternalToolHandler>
 }
 
@@ -34,12 +35,15 @@ export class TurnRuntime {
     options: TurnRuntimeOptions = {}
   ): Promise<TurnRunResult> {
     console.log(`\n========== 🔄 Turn ${turnIndex} 开始 ==========`)
+    throwIfAborted(options.signal)
 
     const response = await this.llm.chat(messages, {
       max_tokens: 2048,
       tools: toolSpecs,
-      tool_choice: toolSpecs.length > 0 ? 'auto' : undefined
+      tool_choice: toolSpecs.length > 0 ? 'auto' : undefined,
+      signal: options.signal
     })
+    throwIfAborted(options.signal)
 
     const assistantMessage = response.content || ''
     const toolCalls = (response.toolCalls || []) as ToolCall[]
@@ -69,6 +73,7 @@ export class TurnRuntime {
     console.log(`\n[Turn ${turnIndex}] ⏳ 执行工具...`)
     options.onToolCalling?.(toolCalls)
     const toolResults = await this.executeToolCalls(toolCalls, options)
+    throwIfAborted(options.signal)
     options.onObserving?.(toolCalls, toolResults)
 
     toolResults.forEach((result, i) => {
@@ -97,6 +102,7 @@ export class TurnRuntime {
     const results = []
 
     for (const call of toolCalls) {
+      throwIfAborted(options.signal)
       const handler = internalTools[call.function.name]
       if (!handler) {
         const [result] = await this.agent.execute([call], {
@@ -127,4 +133,11 @@ export class TurnRuntime {
 
     return results
   }
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (!signal?.aborted) {
+    return
+  }
+  throw new DOMException('Task turn aborted', 'AbortError')
 }

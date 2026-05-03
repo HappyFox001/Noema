@@ -147,6 +147,29 @@ declare global {
         error?: string
       }>
 
+      listAccountInputs: () => Promise<{
+        success: boolean
+        inputs?: Array<{
+          key: string
+          label: string
+          value: string
+          sensitivity: string
+          scope: string
+          updatedAt: number
+        }>
+        error?: string
+      }>
+
+      deleteAccountInput: (key: string) => Promise<{
+        success: boolean
+        error?: string
+      }>
+
+      clearAccountInputs: () => Promise<{
+        success: boolean
+        error?: string
+      }>
+
       getPersonality: () => Promise<any>
       getStats: () => Promise<any>
       getSettings: () => Promise<{
@@ -312,6 +335,11 @@ declare global {
         }
         error?: string
       }>
+      submitInteractiveInput: (requestId: string, response: {
+        value: string
+        remembered?: boolean
+        cancelled?: boolean
+      }) => Promise<void>
 
       onTTSAudio: (callback: (audioData: Uint8Array, contextId: number) => void) => void
       onTTSConnected: (callback: (contextId: number) => void) => void
@@ -357,6 +385,16 @@ declare global {
 
       onInterruption: (callback: (turnId: number) => void) => void
       onTurnStart: (callback: (turnId: number) => void) => void
+      onInteractiveInputRequest: (callback: (request: {
+        id: string
+        key?: string
+        label: string
+        description?: string
+        placeholder?: string
+        inputKind: 'text' | 'password' | 'textarea' | 'code'
+        persistence: 'temporary' | 'persistent'
+        sensitivity: 'normal' | 'secret' | 'verification'
+      }) => void) => void
 
       onPlaybackWaitRequest: (callback: (requestId: number) => void) => void
       notifyPlaybackComplete: (requestId: number) => void

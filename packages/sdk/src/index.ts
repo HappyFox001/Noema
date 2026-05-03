@@ -6,9 +6,11 @@ import { DialogueOrchestrator } from './dialogue/index.js'
 import { ContextManager } from './context/index.js'
 import { createLLMProvider, type LLMProvider } from '@her-text/core'
 import type { PluginRuntimeContext, SDKPlugin, TextTransformTarget } from './plugins/index.js'
+import type { TaskRuntimeHooks } from './session/task.js'
 
 export interface HerTextSDKInitializeOptions {
   plugins?: SDKPlugin[]
+  onTaskUserInputRequest?: TaskRuntimeHooks['onUserInputRequest']
 }
 
 
@@ -35,7 +37,9 @@ export class HerTextSDK {
       this.personality,
       this.agent,
       config.memory.storageDir,
-      undefined,
+      {
+        onTaskUserInputRequest: options.onTaskUserInputRequest
+      },
       options.plugins ?? []
     )
   }
@@ -99,6 +103,10 @@ export class HerTextSDK {
     return this.llm
   }
 
+  getTaskLLM(): LLMProvider {
+    return this.taskLLm
+  }
+
   
   async shutdown(): Promise<void> {
     await this.dialogue.shutdown()
@@ -115,6 +123,7 @@ export * from './prompt/index.js'
 export * from './tools/index.js'
 export * from './audio/index.js'
 export * from './session/session.js'
+export * from './session/task.js'
 export * from './session/task-plan.js'
 export * from './vad/index.js'
 export * from './turn/index.js'

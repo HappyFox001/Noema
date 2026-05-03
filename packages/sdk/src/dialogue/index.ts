@@ -11,6 +11,7 @@ import type { PersonalityEngine } from '../personality/index.js'
 import type { AgentCore } from '../agent/index.js'
 import { ContextManager, type ResponseItem, type TruncationPolicy } from '../context/index.js'
 import { TaskSession } from '../session/session.js'
+import type { TaskRuntimeHooks } from '../session/task.js'
 import { PROMPTS } from '../prompts.js'
 import {
   LLMContextAggregator,
@@ -70,6 +71,7 @@ export interface TTSChunkConfig {
 export interface DialogueOrchestratorConfig {
   
   ttsChunk?: TTSChunkConfig
+  onTaskUserInputRequest?: TaskRuntimeHooks['onUserInputRequest']
 }
 
 function scheduleAsyncTask(task: () => Promise<void>): void {
@@ -109,11 +111,13 @@ export class DialogueOrchestrator {
     private personality: PersonalityEngine,
     private agent: AgentCore,
     storageDir: string,
-    _config?: DialogueOrchestratorConfig,
+    config?: DialogueOrchestratorConfig,
     plugins: SDKPlugin[] = []
   ) {
     this.context = new ContextManager()
-    this.taskSession = new TaskSession(taskLLM, memory, personality, agent, this.context, storageDir)
+    this.taskSession = new TaskSession(taskLLM, memory, personality, agent, this.context, storageDir, {
+      onUserInputRequest: config?.onTaskUserInputRequest
+    })
     this.contextAggregator = new LLMContextAggregator(memory, personality, agent, this.context, this.truncationPolicy)
     this.llmProcessor = new LLMProcessor(llm)
     this.toolProcessor = new ToolProcessor(this.taskSession)
@@ -181,7 +185,7 @@ export class DialogueOrchestrator {
 
       let combinedReply = this.transformText('memory', firstResult.reply, pluginRuntime)
 
-      if (firstResult.hasTask && firstResult.taskDescription && turnContext.hasTools) {
+      if (firstResult.hasTask && firstResult.taskDescription && firstResult.taskIntent && turnContext.hasTools) {
         throwIfAborted(options?.signal)
         const taskContextItems = await this.resolveTaskContext(
           input.text,
@@ -193,7 +197,7 @@ export class DialogueOrchestrator {
         console.log('🚀 Reply 已流式输出完毕，开始执行任务...\n')
 
         const taskResult = await this.toolProcessor.processTask(
-          firstResult.taskDescription,
+          firstResult.taskIntent,
           input.text,
           taskContextItems
         )

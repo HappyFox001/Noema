@@ -108,10 +108,25 @@
 
             
             <section id="section-memory" class="settings-section">
-              <h2 class="section-title">记忆管理</h2>
+              <div id="memory-overview-page" class="memory-page active">
+                <h2 class="section-title">记忆管理</h2>
 
               
-              <div class="memory-card">
+                <div class="memory-card account-entry-card">
+                  <div class="memory-card-header">
+                    <span class="memory-card-title">账户信息</span>
+                    <div class="header-actions">
+                      <button id="open-account-inputs-btn" class="memory-add-btn" type="button">管理</button>
+                      <span id="account-inputs-count" class="memory-count">0 条</span>
+                    </div>
+                  </div>
+                  <div class="memory-card-content">
+                    <div class="account-entry-desc">任务执行时请求并长期保存的账号、密钥、密码和固定配置。</div>
+                  </div>
+                </div>
+
+              
+                <div class="memory-card">
                 <div class="memory-card-header">
                   <span class="memory-card-title">用户画像</span>
                   <div class="header-actions">
@@ -170,6 +185,30 @@
               <div class="reset-all-section">
                 <button id="reset-all-btn" class="reset-all-btn">全部重置</button>
                 <span class="reset-all-hint">清除所有记忆数据，不可恢复</span>
+              </div>
+              </div>
+
+              <div id="memory-account-page" class="memory-page">
+                <div class="memory-subpage-header">
+                  <button id="back-memory-overview-btn" class="memory-back-btn" type="button">返回</button>
+                  <div>
+                    <h2 class="section-title">账户信息管理</h2>
+                    <p class="section-subtitle">管理任务运行时主动请求并保存的长期信息。</p>
+                  </div>
+                </div>
+
+                <div class="memory-card">
+                  <div class="memory-card-header">
+                    <span class="memory-card-title">已保存信息</span>
+                    <div class="header-actions">
+                      <button id="clear-account-inputs-btn" class="clear-section-btn" title="清空">清空</button>
+                      <span id="account-inputs-page-count" class="memory-count">0 条</span>
+                    </div>
+                  </div>
+                  <div id="account-inputs-content" class="memory-card-content scrollable">
+                    <div class="profile-loading">加载中...</div>
+                  </div>
+                </div>
               </div>
             </section>
 

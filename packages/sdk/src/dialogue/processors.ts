@@ -17,6 +17,10 @@ export interface ParsedEmotionalResponse {
   emotionTag?: string
 }
 
+export interface TaskIntent {
+  description: string
+}
+
 export interface DialogueTurnContext {
   memoryContext: Awaited<ReturnType<MemoryEngine['retrieve']>>
   personality: ReturnType<PersonalityEngine['getPersonality']>
@@ -73,6 +77,7 @@ export interface LLMProcessorRunResult {
   readonly reply: string
   readonly hasTask: boolean
   readonly taskDescription?: string
+  readonly taskIntent?: TaskIntent
   readonly emotionTag?: string
 }
 
@@ -173,6 +178,9 @@ export class LLMProcessor {
       get reply() { return finalReply },
       get hasTask() { return hasTask },
       get taskDescription() { return taskDescription },
+      get taskIntent() {
+        return hasTask && taskDescription ? { description: taskDescription } : undefined
+      },
       get emotionTag() { return emotionTag },
     }
   }
@@ -194,13 +202,13 @@ export class ToolProcessor {
   constructor(private readonly taskSession: TaskSession) {}
 
   async processTask(
-    taskDescription: string,
+    taskIntent: TaskIntent,
     originalUserInput: string,
     taskContextItems: TaskContextItem[] = []
   ): Promise<ToolProcessorResult> {
-    const taskResult = await this.taskSession.runTask(taskDescription, originalUserInput, taskContextItems)
+    const taskResult = await this.taskSession.runTask(taskIntent, originalUserInput, taskContextItems)
     const contextResult = {
-      task: taskDescription,
+      task: taskIntent.description,
       success: taskResult.success,
       summary: taskResult.finalMessage,
       ...(taskResult.error ? { error: taskResult.error } : {}),
@@ -251,6 +259,7 @@ function parseEmotionalResponse(response: string, detectTask: boolean = true): P
           if (descMatch) {
             result.taskDescription = descMatch[1].trim()
           }
+
         }
       }
     }

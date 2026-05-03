@@ -83,6 +83,8 @@ import {
   ResponseTTSProcessor,
   type ExpressionFrame,
   type PluginRuntimeContext,
+  type TaskUserInputRequest,
+  type TaskUserInputResponse,
 } from '@her-text/sdk'
 import { discoverRuntimePlugins, invokeRuntimePluginAdminAction, loadRuntimePlugins } from './plugin-loader.js'
 import { initializeSileroVAD, isSileroVADAvailable } from './silero-vad-helper.js'
@@ -91,10 +93,12 @@ import {
   initializePersonalityManager,
   getPersonalityManager,
   buildSDKConfig,
+  getStorageDir,
   setActiveLLMConfig,
   setActiveTaskLLMConfig
 } from './sdk-config.js'
 import { SettingsStore, type AppSettings, type LLMModelConfig, type TTSModelConfig, type ASRModelConfig } from './settings-store.js'
+import { InteractiveInputStore, type StoredInteractiveInput } from './interactive-input-store.js'
 import { NodeRealtimeWebSocketTransport } from './qwen-websocket-transport.js'
 import {
   ReconnectingWebSocketTransport,
@@ -1634,6 +1638,7 @@ let ttsService: TTSProvider | null = null
 let sdkInstance: HerTextSDK | null = null
 let ttsAvailable = true
 let settingsStore: SettingsStore | null = null
+let interactiveInputStore: InteractiveInputStore | null = null
 let streamingASRSession: StreamingASRSession | null = null
 let appSettings: AppSettings = {
   voiceInputEnabled: true,
@@ -1962,6 +1967,164 @@ async function createWindow() {
   })
 }
 
+async function requestTaskUserInput(request: TaskUserInputRequest): Promise<TaskUserInputResponse> {
+  if (
+    request.persistence === 'persistent' &&
+    request.key &&
+    request.sensitivity !== 'verification' &&
+    interactiveInputStore
+  ) {
+    const stored = await interactiveInputStore.get(request.key)
+    if (stored?.value) {
+      return {
+        value: stored.value,
+        remembered: true,
+        fromCache: true,
+      }
+    }
+  }
+
+  const semanticMatch = await resolveStoredTaskInput(request)
+  if (semanticMatch?.value) {
+    return {
+      value: semanticMatch.value,
+      remembered: true,
+      fromCache: true,
+    }
+  }
+
+  if (!mainWindow) {
+    throw new Error('No renderer window available for user input request')
+  }
+
+  const response = await new Promise<TaskUserInputResponse>((resolve) => {
+    const channel = `interactive-input:response:${request.id}`
+    const timeout = setTimeout(() => {
+      ipcMain.removeHandler(channel)
+      resolve({ value: '', cancelled: true })
+    }, 10 * 60 * 1000)
+
+    ipcMain.handle(channel, async (_event, payload: TaskUserInputResponse) => {
+      clearTimeout(timeout)
+      ipcMain.removeHandler(channel)
+      return resolve(payload)
+    })
+
+    mainWindow?.webContents.send('interactive-input:request', request)
+  })
+
+  if (
+    response.value &&
+    request.persistence === 'persistent' &&
+    request.key &&
+    request.sensitivity !== 'verification' &&
+    interactiveInputStore
+  ) {
+    await interactiveInputStore.set({
+      key: request.key,
+      label: request.label,
+      value: response.value,
+      sensitivity: request.sensitivity,
+    })
+  }
+
+  return response
+}
+
+async function resolveStoredTaskInput(request: TaskUserInputRequest): Promise<StoredInteractiveInput | null> {
+  if (
+    request.persistence !== 'persistent' ||
+    request.sensitivity === 'verification' ||
+    !interactiveInputStore ||
+    !sdkInstance
+  ) {
+    return null
+  }
+
+  const candidates = await interactiveInputStore.list()
+  if (candidates.length === 0) {
+    return null
+  }
+
+  try {
+    const response = await sdkInstance.getTaskLLM().chat([
+      {
+        role: 'system',
+        content: [
+          '你是账户信息匹配器。判断本次请求需要的信息，是否已经存在于候选账户信息中。',
+          '候选信息不包含真实值，只有 key、label、sensitivity、scope。不要要求看到真实值。',
+          '必须基于语义判断，不要只做字符串相等。',
+          '只有高度确定是同一类长期信息时才匹配，例如同一个服务的 API key、登录邮箱、token、密码。',
+          '验证码、一次性 MFA、临时确认不要匹配。',
+          '只输出 JSON object，不要 Markdown。',
+          '格式：{"matched":true,"key":"候选key","reason":"一句话原因"} 或 {"matched":false,"key":null,"reason":"一句话原因"}'
+        ].join('\n')
+      },
+      {
+        role: 'user',
+        content: JSON.stringify({
+          request: {
+            key: request.key,
+            label: request.label,
+            description: request.description,
+            placeholder: request.placeholder,
+            sensitivity: request.sensitivity,
+            persistence: request.persistence
+          },
+          candidates: candidates.slice(0, 40).map(item => ({
+            key: item.key,
+            label: item.label,
+            sensitivity: item.sensitivity,
+            scope: item.scope,
+            updatedAt: item.updatedAt
+          }))
+        }, null, 2)
+      }
+    ], {
+      max_tokens: 200
+    })
+
+    const decision = parseSemanticInputMatch(response.content)
+    if (!decision.matched || !decision.key) {
+      return null
+    }
+
+    const matched = candidates.find(item => item.key === decision.key)
+    if (!matched) {
+      return null
+    }
+
+    console.log(`[InteractiveInput] Reusing stored input by semantic match: ${matched.key} (${decision.reason})`)
+    return matched
+  } catch (error) {
+    console.warn(`[InteractiveInput] Semantic input match failed: ${(error as Error).message}`)
+    return null
+  }
+}
+
+function parseSemanticInputMatch(content: string): {
+  matched: boolean
+  key: string | null
+  reason: string
+} {
+  let parsed: any
+  try {
+    parsed = JSON.parse(content)
+  } catch {
+    const match = content.match(/\{[\s\S]*\}/)
+    if (!match) {
+      return { matched: false, key: null, reason: 'no JSON returned' }
+    }
+    parsed = JSON.parse(match[0])
+  }
+
+  return {
+    matched: parsed?.matched === true,
+    key: typeof parsed?.key === 'string' && parsed.key.trim() ? parsed.key.trim() : null,
+    reason: typeof parsed?.reason === 'string' ? parsed.reason : 'semantic match decision'
+  }
+}
+
 async function initializeSDK(): Promise<void> {
   setActiveLLMConfig(getActiveLLMConfig())
   setActiveTaskLLMConfig(getActiveTaskConfig())
@@ -1971,6 +2134,7 @@ async function initializeSDK(): Promise<void> {
   const plugins = await loadRuntimePlugins(pluginsDir, appSettings.plugins, appSettings.pluginConfigs)
   sdkInstance = await HerTextSDK.initialize(sdkConfig, {
     plugins,
+    onTaskUserInputRequest: requestTaskUserInput,
   })
   console.log('[SDK] Initialized successfully')
 }
@@ -2035,6 +2199,10 @@ app.whenReady().then(async () => {
 
   await initializePersonalityManager()
   console.log('[App] Personality manager initialized')
+
+  interactiveInputStore = new InteractiveInputStore(getStorageDir())
+  await interactiveInputStore.initialize()
+  console.log('[InteractiveInput] Store initialized')
 
   if (appSettings.selectedPersonality && appSettings.selectedPersonality !== 'role:eva') {
     try {
@@ -2326,6 +2494,7 @@ ipcMain.handle('conversation:clearHistory', async () => {
       await sdkInstance.memory.clearAll()
       sdkInstance.clearHistory()
     }
+    await interactiveInputStore?.clear()
     return { success: true }
   } catch (error: any) {
     return { success: false, error: error.message }
@@ -2639,6 +2808,42 @@ ipcMain.handle('memory:clearWorkingMemory', async () => {
     return { success: true }
   } catch (error: any) {
     console.error('[Memory] Failed to clear working memory:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('memory:listAccountInputs', async () => {
+  if (!interactiveInputStore) return { success: false, error: 'Interactive input store not initialized' }
+
+  try {
+    const inputs = await interactiveInputStore.list()
+    return { success: true, inputs }
+  } catch (error: any) {
+    console.error('[Memory] Failed to list account inputs:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('memory:deleteAccountInput', async (_, key: string) => {
+  if (!interactiveInputStore) return { success: false, error: 'Interactive input store not initialized' }
+
+  try {
+    await interactiveInputStore.delete(key)
+    return { success: true }
+  } catch (error: any) {
+    console.error('[Memory] Failed to delete account input:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('memory:clearAccountInputs', async () => {
+  if (!interactiveInputStore) return { success: false, error: 'Interactive input store not initialized' }
+
+  try {
+    await interactiveInputStore.clear()
+    return { success: true }
+  } catch (error: any) {
+    console.error('[Memory] Failed to clear account inputs:', error)
     return { success: false, error: error.message }
   }
 })

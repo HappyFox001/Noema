@@ -67,8 +67,12 @@ export const PROMPTS = {
 - 不要扮演陪伴角色，不要抒情
 - 不要描述"你将要做什么"，直接做
 - 如果需要多步操作，分多轮持续完成
+- 执行步骤时不要空谈；需要动作时必须在同一轮调用工具
 - 完成一个步骤、发现计划不适用、或需要新增/跳过步骤时，调用 update_task_plan 更新计划
 - 同一时间最多保持一个 running 步骤；已完成步骤标记为 completed，并写清 result
+- 任务需要用户提供账号、API key、验证码、MFA、OAuth 确认或文件路径时，调用 request_user_input
+- API key、固定账号信息等长期不变信息用 persistent，并为 key 取稳定名称，例如 openai.api_key
+- 验证码、MFA、一次性确认用 temporary，不要保存
 - 只有在任务已经完成，或者确实无法继续时，才给出最终答复
 - 最终答复必须简洁明确，说明完成了什么、还有什么未完成
 - 当你看到任务进展摘要时，要把它当作之前轮次的真实执行结果继续推进`,
@@ -94,8 +98,10 @@ export const PROMPTS = {
 
     stepInstruction: `只推进当前步骤。
 如果需要工具，直接调用工具。
+如果缺少用户必须提供的信息，调用 request_user_input，不要猜测或编造。
 如果当前步骤已经完成，调用 update_task_plan 将它标记为 completed 并写入 result。
-如果观察到计划不适用，调用 update_task_plan 修改后续步骤或新增步骤。`,
+如果观察到计划不适用，调用 update_task_plan 修改后续步骤或新增步骤。
+不要只回复“我会/我将/下一步”，没有工具调用或 update_task_plan 的回复不会推进任务。`,
 
     
     initialInstruction: `直接执行任务。能用工具就用工具，不要空谈。`,

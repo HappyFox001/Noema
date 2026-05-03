@@ -43,6 +43,7 @@ export interface TaskRuntimeHooks {
   onRunStateChanged?: (state: TaskRunState) => void
   onPlanUpdated?: (plan: TaskPlan) => void
   onStepUpdated?: (step: TaskStep, plan: TaskPlan) => void
+  onUserInputRequest?: (request: TaskUserInputRequest) => Promise<TaskUserInputResponse>
   onCompact?: (summary: string) => void
 }
 
@@ -68,11 +69,43 @@ interface TaskPlanUpdateArgs {
   }>
 }
 
+export type TaskUserInputPersistence = 'temporary' | 'persistent'
+export type TaskUserInputKind = 'text' | 'password' | 'textarea' | 'code'
+export type TaskUserInputSensitivity = 'normal' | 'secret' | 'verification'
+
+export interface TaskUserInputRequest {
+  id: string
+  key?: string
+  label: string
+  description?: string
+  placeholder?: string
+  inputKind: TaskUserInputKind
+  persistence: TaskUserInputPersistence
+  sensitivity: TaskUserInputSensitivity
+}
+
+export interface TaskUserInputResponse {
+  value: string
+  remembered?: boolean
+  fromCache?: boolean
+  cancelled?: boolean
+}
+
+interface TaskUserInputArgs {
+  key?: string
+  label?: string
+  description?: string
+  placeholder?: string
+  inputKind?: TaskUserInputKind
+  persistence?: TaskUserInputPersistence
+  sensitivity?: TaskUserInputSensitivity
+}
+
 export class TaskRuntime {
   private turnRuntime: TurnRuntime
-  private maxTurns = 12
-  private compactAfterTurns = 4
-  private keepRecentTurns = 2
+  private maxTurns = 24
+  private compactAfterTurns = 8
+  private keepRecentTurns = 4
   private compactSummary = ''
   private turnRecords: TaskTurnRecord[] = []
   private taskPlan: TaskPlan | null = null
@@ -91,7 +124,8 @@ export class TaskRuntime {
       summaries: ConversationSummary[]
     },
     private taskContextItems: TaskContextItem[] = [],
-    private hooks: TaskRuntimeHooks = {}
+    private hooks: TaskRuntimeHooks = {},
+    private signal?: AbortSignal
   ) {
     this.turnRuntime = new TurnRuntime(llm, agent)
   }
@@ -104,6 +138,7 @@ export class TaskRuntime {
     let iterations = 0
     let toolCallsCount = 0
     let finalMessage = ''
+    let noOpTurns = 0
 
     console.log('\n╔══════════════════════════════════════════════════════════════╗')
     console.log('║               🚀 TaskRuntime 开始执行                          ║')
@@ -115,13 +150,16 @@ export class TaskRuntime {
 
     try {
       this.hooks.onStatusChanged?.('running')
+      this.throwIfAborted()
       this.setRunState('planning')
       this.taskPlan = await this.createInitialPlan(tools)
+      this.throwIfAborted()
       this.emitPlanUpdated()
       this.setRunState('plan_ready')
       messages = this.buildInitialMessages()
 
       while (iterations < this.maxTurns) {
+        this.throwIfAborted()
         const step = this.nextRunnableStep()
         if (!step) {
           finalMessage = finalMessage || this.buildPlanCompletionMessage()
@@ -150,8 +188,10 @@ export class TaskRuntime {
 
         this.setRunState('step_running')
         const turn = await this.turnRuntime.run(iterations, messages, toolSpecs, {
+          signal: this.signal,
           internalTools: {
-            update_task_plan: (args) => this.updateTaskPlan(args)
+            update_task_plan: (args) => this.updateTaskPlan(args),
+            request_user_input: (args) => this.requestUserInput(args)
           },
           onToolCalling: (toolCalls) => {
             step.toolCalls.push(...toolCalls.map(call => call.function.name))
@@ -163,14 +203,77 @@ export class TaskRuntime {
             this.emitStepUpdated(step)
           }
         })
+        this.throwIfAborted()
         toolCallsCount += turn.toolCalls.length
         this.recordTurn(turn)
+
+        if (step.status === 'completed') {
+          finalMessage = step.result || turn.assistantMessage.trim() || finalMessage
+
+          if (this.hasRunnableSteps()) {
+            console.log(`[TaskRuntime] 当前步骤已由计划更新标记完成，继续下一步...`)
+            this.appendTurnMessages(messages, turn)
+            noOpTurns = 0
+            await this.maybeCompact(messages)
+            this.throwIfAborted()
+            continue
+          }
+
+          finalMessage = finalMessage || '任务已完成。'
+          this.setRunState('completed')
+          this.hooks.onStatusChanged?.('completed')
+          this.emitPlanUpdated()
+
+          console.log('\n╔══════════════════════════════════════════════════════════════╗')
+          console.log('║               ✅ TaskRuntime 执行完成                          ║')
+          console.log('╠══════════════════════════════════════════════════════════════╣')
+          console.log(`║ 总迭代次数: ${iterations}`)
+          console.log(`║ 总工具调用: ${toolCallsCount}`)
+          console.log(`║ 最终消息: ${finalMessage.substring(0, 50)}...`)
+          console.log('╚══════════════════════════════════════════════════════════════╝\n')
+
+          return {
+            success: true,
+            iterations,
+            toolCalls: toolCallsCount,
+            finalMessage,
+            plan: this.taskPlan
+          }
+        }
+
+        if (turn.toolCalls.length === 0 && step.status === 'running') {
+          noOpTurns++
+          console.warn(`[TaskRuntime] 迭代 ${iterations} 没有工具调用且步骤未完成，要求模型继续执行 (${noOpTurns}/2)`)
+          messages.push({
+            role: 'assistant',
+            content: turn.assistantMessage || ''
+          })
+          messages.push({
+            role: 'user',
+            content: [
+              '当前步骤还没有完成。',
+              '不要只描述计划或说明你将要做什么。',
+              '请立刻调用可用工具推进当前步骤；如果步骤已经完成，必须调用 update_task_plan 标记 completed 并写入 result。'
+            ].join('\n')
+          })
+
+          if (noOpTurns >= 2) {
+            this.failCurrentStep('The model produced repeated no-op turns without completing the step')
+            noOpTurns = 0
+          }
+
+          await this.maybeCompact(messages)
+          this.throwIfAborted()
+          continue
+        }
+
+        noOpTurns = 0
 
         if (turn.completed) {
           this.completeStep(step, turn.assistantMessage.trim() || '步骤已完成。')
           finalMessage = turn.assistantMessage.trim() || finalMessage
 
-          if (this.hasPendingSteps()) {
+          if (this.hasRunnableSteps()) {
             console.log(`[TaskRuntime] 当前步骤完成，继续下一步...`)
             messages.push({
               role: 'assistant',
@@ -202,22 +305,10 @@ export class TaskRuntime {
 
         console.log(`[TaskRuntime] 迭代 ${iterations} 未完成，继续执行...`)
 
-        messages.push({
-          role: 'assistant',
-          content: turn.assistantMessage || '',
-          tool_calls: turn.toolCalls
-        })
-
-        turn.toolCalls.forEach((call, index) => {
-          messages.push({
-            role: 'tool',
-            tool_call_id: call.id,
-            name: call.function.name,
-            content: JSON.stringify(turn.toolResults[index])
-          })
-        })
+        this.appendTurnMessages(messages, turn)
 
         await this.maybeCompact(messages)
+        this.throwIfAborted()
       }
 
       console.log('\n╔══════════════════════════════════════════════════════════════╗')
@@ -236,6 +327,24 @@ export class TaskRuntime {
         error: `Reached max turns (${this.maxTurns})`
       }
     } catch (error) {
+      if (isAbortError(error) || this.signal?.aborted) {
+        console.log('\n╔══════════════════════════════════════════════════════════════╗')
+        console.log('║               ⏹️ TaskRuntime 已取消                          ║')
+        console.log('╚══════════════════════════════════════════════════════════════╝\n')
+
+        this.failCurrentStep('Task was interrupted by a newer turn')
+        this.setRunState('cancelled')
+        this.hooks.onStatusChanged?.('errored')
+        return {
+          success: false,
+          iterations,
+          toolCalls: toolCallsCount,
+          finalMessage: '任务已被新的输入打断。',
+          plan: this.taskPlan ?? undefined,
+          error: 'Task aborted'
+        }
+      }
+
       console.log('\n╔══════════════════════════════════════════════════════════════╗')
       console.log('║               ❌ TaskRuntime 执行出错                          ║')
       console.log(`║ Error: ${(error as Error).message}`)
@@ -274,7 +383,25 @@ export class TaskRuntime {
     this.hooks.onTurnCompleted?.(record)
   }
 
+  private appendTurnMessages(messages: any[], turn: import('./turn.js').TurnRunResult): void {
+    messages.push({
+      role: 'assistant',
+      content: turn.assistantMessage || '',
+      ...(turn.toolCalls.length > 0 ? { tool_calls: turn.toolCalls } : {})
+    })
+
+    turn.toolCalls.forEach((call, index) => {
+      messages.push({
+        role: 'tool',
+        tool_call_id: call.id,
+        name: call.function.name,
+        content: JSON.stringify(turn.toolResults[index])
+      })
+    })
+  }
+
   private async maybeCompact(messages: any[]): Promise<void> {
+    this.throwIfAborted()
     if (this.turnRecords.length < this.compactAfterTurns) {
       return
     }
@@ -314,7 +441,8 @@ export class TaskRuntime {
         },
         { role: 'user', content: compactInput }
       ], {
-        max_tokens: 512
+        max_tokens: 512,
+        signal: this.signal
       })
 
       this.compactSummary = summaryResponse.content.trim()
@@ -416,6 +544,7 @@ export class TaskRuntime {
   private buildToolSpecs(tools: Tool[]): any[] {
     return [
       this.buildTaskPlanUpdateToolSpec(),
+      this.buildUserInputRequestToolSpec(),
       ...tools.map(tool => ({
         type: 'function',
         function: {
@@ -499,8 +628,57 @@ export class TaskRuntime {
     }
   }
 
+  private buildUserInputRequestToolSpec(): any {
+    return {
+      type: 'function',
+      function: {
+        name: 'request_user_input',
+        description: 'Ask the user for required information during a task, such as login details, API keys, verification codes, OAuth confirmation, or file paths.',
+        parameters: {
+          type: 'object',
+          properties: {
+            key: {
+              type: 'string',
+              description: 'Stable storage key decided by the AI for reusable information, such as openai.api_key or github.personal_access_token. Required for persistent values.'
+            },
+            label: {
+              type: 'string',
+              description: 'Short input label shown to the user.'
+            },
+            description: {
+              type: 'string',
+              description: 'Why this information is needed.'
+            },
+            placeholder: {
+              type: 'string',
+              description: 'Input placeholder.'
+            },
+            inputKind: {
+              type: 'string',
+              enum: ['text', 'password', 'textarea', 'code'],
+              description: 'Input control type.'
+            },
+            persistence: {
+              type: 'string',
+              enum: ['temporary', 'persistent'],
+              description: 'Use persistent for long-lived values like API keys or reusable account metadata. Use temporary for verification codes and MFA.'
+            },
+            sensitivity: {
+              type: 'string',
+              enum: ['normal', 'secret', 'verification'],
+              description: 'Secret values may be saved only if the user chooses to remember them. Verification values are never saved.'
+            }
+          },
+          required: ['label', 'persistence', 'sensitivity'],
+          additionalProperties: false
+        }
+      }
+    }
+  }
+
   private async createInitialPlan(tools: Tool[]): Promise<TaskPlan> {
     try {
+      this.throwIfAborted()
       const response = await this.llm.chat([
         {
           role: 'system',
@@ -516,9 +694,11 @@ export class TaskRuntime {
           ].filter(Boolean).join('\n\n')
         }
       ], {
-        max_tokens: 800
+        max_tokens: 800,
+        signal: this.signal
       })
 
+      this.throwIfAborted()
       const draft = parsePlanDraft(response.content)
       return this.normalizePlan(draft)
     } catch (error) {
@@ -612,6 +792,45 @@ export class TaskRuntime {
     }
   }
 
+  private async requestUserInput(args: TaskUserInputArgs): Promise<any> {
+    this.throwIfAborted()
+    if (!this.hooks.onUserInputRequest) {
+      throw new Error('User input requests are not supported by this runtime')
+    }
+
+    const sensitivity = normalizeSensitivity(args.sensitivity)
+    const request: TaskUserInputRequest = {
+      id: `input-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      key: cleanInputKey(args.key),
+      label: cleanPlanText(args.label) || '需要你补充信息',
+      description: cleanPlanText(args.description),
+      placeholder: cleanPlanText(args.placeholder),
+      inputKind: normalizeInputKind(args.inputKind),
+      persistence: sensitivity === 'verification' ? 'temporary' : normalizePersistence(args.persistence),
+      sensitivity
+    }
+    if (request.persistence === 'persistent' && !request.key) {
+      throw new Error('Persistent user input requires a stable key')
+    }
+
+    const response = await this.hooks.onUserInputRequest(request)
+    this.throwIfAborted()
+    if (response.cancelled) {
+      throw new Error('User cancelled input request')
+    }
+    if (!response.value) {
+      throw new Error('User input request returned an empty value')
+    }
+
+    return {
+      value: response.value,
+      remembered: Boolean(response.remembered),
+      fromCache: Boolean(response.fromCache),
+      key: request.key,
+      sensitivity: request.sensitivity
+    }
+  }
+
   private appendPlanStep(update: NonNullable<TaskPlanUpdateArgs['steps']>[number]): TaskStep {
     const nextId = `step-${this.taskPlan!.steps.length + 1}`
     const step: TaskStep = {
@@ -661,8 +880,8 @@ export class TaskRuntime {
       ?? null
   }
 
-  private hasPendingSteps(): boolean {
-    return Boolean(this.taskPlan?.steps.some(step => step.status === 'pending'))
+  private hasRunnableSteps(): boolean {
+    return Boolean(this.taskPlan?.steps.some(step => step.status === 'pending' || step.status === 'running'))
   }
 
   private startStep(step: TaskStep): void {
@@ -780,6 +999,13 @@ export class TaskRuntime {
 
     return sections.join('\n\n')
   }
+
+  private throwIfAborted(): void {
+    if (!this.signal?.aborted) {
+      return
+    }
+    throw new DOMException('Task aborted', 'AbortError')
+  }
 }
 
 function parsePlanDraft(content: string): TaskPlanDraft {
@@ -804,6 +1030,37 @@ function isTaskStepStatus(value: unknown): value is TaskStepStatus {
     || value === 'completed'
     || value === 'failed'
     || value === 'skipped'
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError'
+    || error instanceof Error && (error.name === 'AbortError' || error.name === 'APIUserAbortError')
+}
+
+function normalizeInputKind(value: unknown): TaskUserInputKind {
+  return value === 'password' || value === 'textarea' || value === 'code'
+    ? value
+    : 'text'
+}
+
+function normalizePersistence(value: unknown): TaskUserInputPersistence {
+  return value === 'persistent' ? 'persistent' : 'temporary'
+}
+
+function normalizeSensitivity(value: unknown): TaskUserInputSensitivity {
+  if (value === 'secret' || value === 'verification') {
+    return value
+  }
+  return 'normal'
+}
+
+function cleanInputKey(value: unknown): string | undefined {
+  const key = String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_.:-]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+  return key || undefined
 }
 
 function escapeXmlText(value: string): string {

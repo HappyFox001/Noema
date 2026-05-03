@@ -67,6 +67,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   clearWorkingMemory: () =>
     ipcRenderer.invoke('memory:clearWorkingMemory'),
 
+  listAccountInputs: () =>
+    ipcRenderer.invoke('memory:listAccountInputs'),
+
+  deleteAccountInput: (key) =>
+    ipcRenderer.invoke('memory:deleteAccountInput', key),
+
+  clearAccountInputs: () =>
+    ipcRenderer.invoke('memory:clearAccountInputs'),
+
   getPersonality: () =>
     ipcRenderer.invoke('sdk:getPersonality'),
 
@@ -102,6 +111,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   addPersonalityFile: () =>
     ipcRenderer.invoke('personality:addFile'),
+
+  submitInteractiveInput: (requestId, response) =>
+    ipcRenderer.invoke(`interactive-input:response:${requestId}`, response),
 
   onTTSAudio: (callback) => {
     ipcRenderer.on('tts:audio', (_, { contextId, data }) => {
@@ -171,6 +183,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   onTurnStart: (callback) => {
     ipcRenderer.on('turn:start', (_, turnId) => callback(turnId))
+  },
+
+  onInteractiveInputRequest: (callback) => {
+    ipcRenderer.on('interactive-input:request', (_, request) => callback(request))
   },
 
   onPlaybackWaitRequest: (callback) => {

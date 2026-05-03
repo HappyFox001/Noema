@@ -1568,6 +1568,10 @@ async function initialize() {
       clearTextDisplay()
     })
 
+    window.electronAPI.onInteractiveInputRequest((request) => {
+      showInteractiveInputDialog(request)
+    })
+
     window.electronAPI.onPlaybackWaitRequest(async (requestId) => {
       console.log('[UI] Playback wait request received:', requestId)
       await audioPlayer.waitForPlaybackComplete()
@@ -1948,6 +1952,87 @@ function showConfirmDialog(options: ConfirmDialogOptions): Promise<boolean> {
       overlay.classList.add('visible')
       overlay.querySelector<HTMLButtonElement>('[data-confirm-action="cancel"]')?.focus({ preventScroll: true })
     })
+  })
+}
+
+type InteractiveInputRequest = {
+  id: string
+  key?: string
+  label: string
+  description?: string
+  placeholder?: string
+  inputKind: 'text' | 'password' | 'textarea' | 'code'
+  persistence: 'temporary' | 'persistent'
+  sensitivity: 'normal' | 'secret' | 'verification'
+}
+
+function showInteractiveInputDialog(request: InteractiveInputRequest): void {
+  const overlay = document.createElement('div')
+  overlay.className = 'confirm-dialog-overlay interactive-input-overlay'
+  overlay.setAttribute('role', 'presentation')
+
+  const inputTag = request.inputKind === 'textarea'
+    ? `<textarea class="interactive-input-control" rows="4" placeholder="${escapeHtml(request.placeholder ?? '')}"></textarea>`
+    : `<input class="interactive-input-control" type="${request.inputKind === 'password' ? 'password' : 'text'}" placeholder="${escapeHtml(request.placeholder ?? '')}" autocomplete="off" />`
+
+  overlay.innerHTML = `
+    <div class="confirm-dialog interactive-input-dialog" role="dialog" aria-modal="true" aria-labelledby="interactive-input-title">
+      <div class="confirm-dialog-content">
+        <h3 id="interactive-input-title">${escapeHtml(request.label)}</h3>
+        ${request.description ? `<p>${escapeHtml(request.description)}</p>` : ''}
+        <div class="interactive-input-meta">
+          ${request.sensitivity === 'verification' ? '一次性验证码，不会保存' : request.persistence === 'persistent' ? '可选择保存，后续任务自动复用' : '仅用于当前任务'}
+        </div>
+        ${inputTag}
+      </div>
+      <div class="confirm-dialog-actions">
+        <button class="confirm-dialog-btn secondary" type="button" data-input-action="cancel">取消</button>
+        <button class="confirm-dialog-btn primary" type="button" data-input-action="submit">继续</button>
+      </div>
+    </div>
+  `
+
+  const submitResponse = async (cancelled: boolean) => {
+    const input = overlay.querySelector<HTMLInputElement | HTMLTextAreaElement>('.interactive-input-control')
+    await window.electronAPI.submitInteractiveInput(request.id, {
+      value: cancelled ? '' : input?.value.trim() ?? '',
+      remembered: request.persistence === 'persistent' && request.sensitivity !== 'verification',
+      cancelled
+    })
+    overlay.classList.add('closing')
+    window.setTimeout(() => overlay.remove(), 120)
+  }
+
+  overlay.addEventListener('click', (event) => {
+    const target = event.target as HTMLElement
+    const action = target.closest<HTMLButtonElement>('[data-input-action]')?.dataset.inputAction
+    if (action === 'submit') {
+      void submitResponse(false)
+    } else if (action === 'cancel' || target === overlay) {
+      void submitResponse(true)
+    }
+  })
+
+  const handleKeydown = (event: KeyboardEvent) => {
+    if (!document.body.contains(overlay)) {
+      document.removeEventListener('keydown', handleKeydown, true)
+      return
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      void submitResponse(true)
+    }
+    if (event.key === 'Enter' && request.inputKind !== 'textarea') {
+      event.preventDefault()
+      void submitResponse(false)
+    }
+  }
+
+  document.body.appendChild(overlay)
+  document.addEventListener('keydown', handleKeydown, true)
+  requestAnimationFrame(() => {
+    overlay.classList.add('visible')
+    overlay.querySelector<HTMLInputElement | HTMLTextAreaElement>('.interactive-input-control')?.focus({ preventScroll: true })
   })
 }
 
@@ -2762,7 +2847,7 @@ resetAllBtn?.addEventListener('click', async () => {
 async function clearHistory(): Promise<void> {
   const confirmed = await showConfirmDialog({
     title: '重置所有记忆',
-    message: '将清除用户画像、重要记忆、对话摘要和最近对话。',
+    message: '将清除用户画像、重要记忆、账户信息、对话摘要和最近对话。',
     detail: '此操作不可恢复。',
     confirmText: '全部重置',
     tone: 'danger',
@@ -2788,10 +2873,18 @@ const profileContent = document.getElementById('profile-content')!
 const importantMemoriesContent = document.getElementById('important-memories-content')!
 const summariesContent = document.getElementById('summaries-content')!
 const conversationsContent = document.getElementById('conversations-content')!
+const accountInputsContent = document.getElementById('account-inputs-content')!
 const profileCount = document.getElementById('profile-count')!
 const importantMemoriesCount = document.getElementById('important-memories-count')!
 const summariesCount = document.getElementById('summaries-count')!
 const conversationsCount = document.getElementById('conversations-count')!
+const accountInputsCount = document.getElementById('account-inputs-count')!
+const accountInputsPageCount = document.getElementById('account-inputs-page-count')!
+const memoryOverviewPage = document.getElementById('memory-overview-page')!
+const memoryAccountPage = document.getElementById('memory-account-page')!
+const openAccountInputsBtn = document.getElementById('open-account-inputs-btn') as HTMLButtonElement
+const backMemoryOverviewBtn = document.getElementById('back-memory-overview-btn') as HTMLButtonElement
+const clearAccountInputsBtn = document.getElementById('clear-account-inputs-btn') as HTMLButtonElement
 
 type UserProfile = {
   basic: {
@@ -2808,10 +2901,28 @@ type UserProfile = {
   lastUpdated?: number
 }
 
+type AccountInput = {
+  key: string
+  label: string
+  value: string
+  sensitivity: string
+  scope: string
+  updatedAt: number
+}
+
 let currentProfile: UserProfile | null = null
+let currentAccountInputs: AccountInput[] = []
 
 function isMemorySectionActive(): boolean {
   return document.getElementById('section-memory')?.classList.contains('active') === true
+}
+
+function switchMemoryPage(page: 'overview' | 'accounts'): void {
+  memoryOverviewPage.classList.toggle('active', page === 'overview')
+  memoryAccountPage.classList.toggle('active', page === 'accounts')
+  if (page === 'accounts') {
+    void loadAccountInputs()
+  }
 }
 
 async function refreshMemorySection(): Promise<void> {
@@ -2824,7 +2935,8 @@ async function refreshMemorySection(): Promise<void> {
     loadUserProfile(),
     loadImportantMemories(),
     loadConversationSummaries(),
-    loadWorkingMemory()
+    loadWorkingMemory(),
+    loadAccountInputs()
   ]).then(() => undefined).finally(() => {
     memoryRefreshPromise = null
   })
@@ -2837,10 +2949,13 @@ function setMemoryLoadingState(): void {
   importantMemoriesCount.textContent = '加载中'
   summariesCount.textContent = '加载中'
   conversationsCount.textContent = '加载中'
+  accountInputsCount.textContent = '加载中'
+  accountInputsPageCount.textContent = '加载中'
   profileContent.innerHTML = '<div class="profile-loading"><span class="loading-spinner"></span>加载中...</div>'
   importantMemoriesContent.innerHTML = '<div class="profile-loading"><span class="loading-spinner"></span>加载中...</div>'
   summariesContent.innerHTML = '<div class="profile-loading"><span class="loading-spinner"></span>加载中...</div>'
   conversationsContent.innerHTML = '<div class="profile-loading"><span class="loading-spinner"></span>加载中...</div>'
+  accountInputsContent.innerHTML = '<div class="profile-loading"><span class="loading-spinner"></span>加载中...</div>'
 }
 
 async function loadUserProfile(): Promise<void> {
@@ -3194,6 +3309,165 @@ async function deleteConversationTurn(id: string): Promise<void> {
     showPanelNotice('删除失败', 'error')
   }
 }
+
+async function loadAccountInputs(): Promise<void> {
+  try {
+    const result = await window.electronAPI.listAccountInputs()
+    if (!result.success || !result.inputs) {
+      throw new Error(result.error || '账户信息返回为空')
+    }
+
+    currentAccountInputs = result.inputs
+    accountInputsCount.textContent = `${result.inputs.length} 条`
+    accountInputsPageCount.textContent = `${result.inputs.length} 条`
+    renderAccountInputs(result.inputs)
+  } catch (error) {
+    console.error('Failed to load account inputs:', error)
+    accountInputsCount.textContent = '0 条'
+    accountInputsPageCount.textContent = '0 条'
+    accountInputsContent.innerHTML = '<div class="profile-error">加载失败</div>'
+  }
+}
+
+function renderAccountInputs(inputs: AccountInput[]): void {
+  if (inputs.length === 0) {
+    accountInputsContent.innerHTML = '<div class="profile-empty">暂无账户信息</div>'
+    return
+  }
+
+  let html = '<div class="account-input-list">'
+  inputs.forEach(input => {
+    const updatedAt = new Date(input.updatedAt).toLocaleString('zh-CN', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+    html += `
+      <div class="account-input-item">
+        <div class="account-input-main">
+          <div class="account-input-title">
+            <span>${escapeHtml(input.label || input.key)}</span>
+            <span class="account-input-sensitivity">${escapeHtml(formatInputSensitivity(input.sensitivity))}</span>
+          </div>
+          <div class="account-input-key">${escapeHtml(input.key)}</div>
+          <div class="account-input-value" data-key="${escapeHtml(input.key)}">${escapeHtml(maskAccountValue(input.value))}</div>
+          <div class="account-input-meta">更新于 ${escapeHtml(updatedAt)} · ${escapeHtml(input.scope || 'global')}</div>
+        </div>
+        <div class="account-input-actions">
+          <button class="memory-add-btn account-input-toggle" data-key="${escapeHtml(input.key)}" type="button">显示</button>
+          <button class="delete-icon-btn visible" data-key="${escapeHtml(input.key)}" title="删除"></button>
+        </div>
+      </div>
+    `
+  })
+  html += '</div>'
+
+  accountInputsContent.innerHTML = html
+
+  accountInputsContent.querySelectorAll<HTMLButtonElement>('.account-input-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.key
+      const input = currentAccountInputs.find(item => item.key === key)
+      if (!input) {
+        return
+      }
+      const valueEl = accountInputsContent.querySelector<HTMLElement>(`.account-input-value[data-key="${cssEscape(input.key)}"]`)
+      const revealing = btn.textContent === '显示'
+      if (valueEl) {
+        valueEl.textContent = revealing ? input.value : maskAccountValue(input.value)
+      }
+      btn.textContent = revealing ? '隐藏' : '显示'
+    })
+  })
+
+  accountInputsContent.querySelectorAll<HTMLButtonElement>('.delete-icon-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const key = btn.dataset.key
+      if (!key) {
+        return
+      }
+      const confirmed = await showConfirmDialog({
+        title: '删除账户信息',
+        message: `将删除“${key}”。`,
+        detail: '之后如果任务仍需要这项信息，会重新向你请求。',
+        confirmText: '删除',
+        tone: 'danger'
+      })
+      if (confirmed) {
+        await deleteAccountInput(key)
+      }
+    })
+  })
+}
+
+function maskAccountValue(value: string): string {
+  if (!value) {
+    return '(空)'
+  }
+  if (value.length <= 4) {
+    return '••••'
+  }
+  return `${value.slice(0, 2)}${'•'.repeat(Math.min(12, Math.max(4, value.length - 4)))}${value.slice(-2)}`
+}
+
+function formatInputSensitivity(sensitivity: string): string {
+  switch (sensitivity) {
+    case 'secret':
+      return '敏感'
+    case 'verification':
+      return '验证'
+    default:
+      return '普通'
+  }
+}
+
+async function deleteAccountInput(key: string): Promise<void> {
+  try {
+    const result = await window.electronAPI.deleteAccountInput(key)
+    if (!result.success) {
+      throw new Error(result.error)
+    }
+    await loadAccountInputs()
+    showPanelNotice('账户信息已删除')
+  } catch (error: any) {
+    console.error('Failed to delete account input:', error)
+    showPanelNotice('删除失败', 'error')
+  }
+}
+
+openAccountInputsBtn.addEventListener('click', () => {
+  switchMemoryPage('accounts')
+})
+
+backMemoryOverviewBtn.addEventListener('click', () => {
+  switchMemoryPage('overview')
+})
+
+clearAccountInputsBtn.addEventListener('click', async () => {
+  const confirmed = await showConfirmDialog({
+    title: '清空账户信息',
+    message: '将删除所有由任务执行保存的账号、密钥、密码和固定配置。',
+    detail: '普通记忆和对话历史不会被同时清除。',
+    confirmText: '清空',
+    tone: 'danger'
+  })
+  if (!confirmed) {
+    return
+  }
+
+  try {
+    const result = await window.electronAPI.clearAccountInputs()
+    if (!result.success) {
+      throw new Error(result.error)
+    }
+    await loadAccountInputs()
+    showPanelNotice('账户信息已清空')
+  } catch (error: any) {
+    console.error('Failed to clear account inputs:', error)
+    showPanelNotice('清空失败', 'error')
+  }
+})
 
 function escapeHtml(str: string): string {
   const div = document.createElement('div')
