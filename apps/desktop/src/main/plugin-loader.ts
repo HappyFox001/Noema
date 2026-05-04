@@ -183,13 +183,21 @@ async function loadRuntimePlugin(
       return null
     }
 
-    const plugin = await (factory as RuntimePluginFactory)({
+    const pluginContext: SDKPluginContext = {
       pluginDir,
       assetsDir,
       dataDir,
       config: mergePluginConfig(manifest, configOverride),
       resolveAsset: (assetPath: string) => resolve(assetsDir, assetPath),
-    } as SDKPluginContext)
+    }
+    const plugin = await (factory as RuntimePluginFactory)(pluginContext)
+    const setup = plugin.setup?.bind(plugin)
+    if (setup) {
+      plugin.setup = (context) => setup({
+        ...pluginContext,
+        ...context,
+      })
+    }
 
     console.log(`[PluginLoader] Loaded plugin: ${plugin.id}${manifest.version ? `@${manifest.version}` : ''}`)
     return plugin
