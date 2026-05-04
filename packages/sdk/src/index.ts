@@ -11,6 +11,7 @@ import type { TaskRuntimeHooks } from './session/task.js'
 export interface HerTextSDKInitializeOptions {
   plugins?: SDKPlugin[]
   onTaskUserInputRequest?: TaskRuntimeHooks['onUserInputRequest']
+  onTaskRunStateChanged?: TaskRuntimeHooks['onRunStateChanged']
   onTaskPlanUpdated?: TaskRuntimeHooks['onPlanUpdated']
   onTaskStepUpdated?: TaskRuntimeHooks['onStepUpdated']
 }
@@ -42,6 +43,7 @@ export class HerTextSDK {
       {
         taskRuntime: config.taskRuntime,
         onTaskUserInputRequest: options.onTaskUserInputRequest,
+        onTaskRunStateChanged: options.onTaskRunStateChanged,
         onTaskPlanUpdated: options.onTaskPlanUpdated,
         onTaskStepUpdated: options.onTaskStepUpdated
       },

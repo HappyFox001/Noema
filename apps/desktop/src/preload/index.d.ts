@@ -264,6 +264,7 @@ declare global {
           version?: string
           enabled: boolean
           pluginDir: string
+          permissions: string[]
           config: Record<string, unknown>
           configSchema: Array<
             | {
@@ -300,6 +301,16 @@ declare global {
                 options: Array<{ label: string; value: string }>
               }
           >
+          adminSchema?: {
+            title?: string
+            description?: string
+            actions?: Array<{
+              id: string
+              label: string
+              description?: string
+              variant?: 'primary' | 'secondary' | 'danger'
+            }>
+          }
         }>
       }>
       pluginAdminAction: (pluginId: string, action: string, payload?: unknown) => Promise<{

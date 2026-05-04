@@ -3,10 +3,11 @@
  *
  * Registers native desktop observation and input tools for the current machine.
  */
+import { definePlugin } from '@her-text/sdk'
 import { createComputerUseTools } from './src/tools.mjs'
 import { createLocalComputerController } from './src/controller.mjs'
 
-export default function createPlugin(ctx) {
+export default definePlugin((ctx) => {
   const config = ctx.config || {}
   const controller = createLocalComputerController({
     dataDir: ctx.dataDir,
@@ -23,7 +24,7 @@ export default function createPlugin(ctx) {
       })
     },
   }
-}
+})
 
 function clampInteger(value, min, max) {
   if (!Number.isFinite(value)) {

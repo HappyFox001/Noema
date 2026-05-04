@@ -3,9 +3,10 @@
  *
  * Registers file and shell tools implemented inside this plugin.
  */
+import { definePlugin } from '@her-text/sdk'
 import { createBaseTools } from './src/tools.mjs'
 
-export default function createPlugin(ctx) {
+export default definePlugin((ctx) => {
   const config = ctx.config || {}
   const enableReadTools = config.enableReadTools !== false
   const enableWriteTools = config.enableWriteTools !== false
@@ -40,7 +41,7 @@ export default function createPlugin(ctx) {
         })
     },
   }
-}
+})
 
 const READ_TOOL_NAMES = new Set(['read', 'glob', 'grep'])
 const WRITE_TOOL_NAMES = new Set(['write', 'edit'])

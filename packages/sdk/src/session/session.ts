@@ -143,7 +143,7 @@ export class TaskSession {
     private agent: AgentCore,
     private context: ContextManager,
     storageDir: string,
-    private runtimeHooks: Pick<TaskRuntimeHooks, 'onUserInputRequest' | 'onPlanUpdated' | 'onStepUpdated'> = {},
+    private runtimeHooks: Pick<TaskRuntimeHooks, 'onUserInputRequest' | 'onRunStateChanged' | 'onPlanUpdated' | 'onStepUpdated'> = {},
     private taskRuntimeConfig: TaskRuntimeConfig = {}
   ) {
     const resolvedStorageDir = isAbsolute(storageDir)
@@ -366,19 +366,20 @@ export class TaskSession {
           this.snapshot.status = status
           this.persistSnapshot()
         },
-        onRunStateChanged: (state) => {
+        onRunStateChanged: (state, task) => {
           this.snapshot.runState = state
           this.persistSnapshot()
+          this.runtimeHooks.onRunStateChanged?.(state, task)
         },
-        onPlanUpdated: (plan) => {
+        onPlanUpdated: (plan, task) => {
           this.snapshot.plan = cloneTaskPlan(plan)
           this.persistSnapshot()
-          this.runtimeHooks.onPlanUpdated?.(cloneTaskPlan(plan))
+          this.runtimeHooks.onPlanUpdated?.(cloneTaskPlan(plan), task)
         },
-        onStepUpdated: (step, plan) => {
+        onStepUpdated: (step, plan, task) => {
           this.snapshot.plan = cloneTaskPlan(plan)
           this.persistSnapshot()
-          this.runtimeHooks.onStepUpdated?.(JSON.parse(JSON.stringify(step)) as typeof step, cloneTaskPlan(plan))
+          this.runtimeHooks.onStepUpdated?.(JSON.parse(JSON.stringify(step)) as typeof step, cloneTaskPlan(plan), task)
         },
         onCompact: (summary) => {
           this.snapshot.compactSummary = summary

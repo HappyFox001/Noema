@@ -1024,6 +1024,24 @@ body.task-active:not(.settings-open) .task-panel {
   color: rgba(255, 255, 255, 0.58);
 }
 
+.plugin-permissions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.plugin-permissions span {
+  padding: 3px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.035);
+  color: rgba(255, 255, 255, 0.42);
+  font-family: var(--font-ui);
+  font-size: 9px;
+  line-height: 1;
+}
+
 .plugin-toggle {
   flex-shrink: 0;
 }
@@ -1239,10 +1257,25 @@ body.task-active:not(.settings-open) .task-panel {
 }
 
 .plugin-admin-list,
+.plugin-admin-actions,
 .plugin-admin-skill-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.plugin-admin-state {
+  max-height: 160px;
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.025);
+  color: rgba(255, 255, 255, 0.56);
+  font-family: var(--font-ui);
+  font-size: 10px;
+  line-height: 1.45;
+  white-space: pre-wrap;
 }
 
 .plugin-admin-item {

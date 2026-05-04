@@ -6,6 +6,10 @@
   "type": "sdk-plugin",
   "main": "index.mjs",
   "enabled": true,
+  "permissions": [
+    "tools.register",
+    "desktop.control"
+  ],
   "config": {
     "actionTimeoutMs": 30000,
     "autoObserve": true,

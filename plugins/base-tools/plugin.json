@@ -6,6 +6,12 @@
   "type": "sdk-plugin",
   "main": "index.mjs",
   "enabled": true,
+  "permissions": [
+    "tools.register",
+    "filesystem.read",
+    "filesystem.write",
+    "shell.execute"
+  ],
   "config": {
     "enableReadTools": true,
     "enableWriteTools": true,

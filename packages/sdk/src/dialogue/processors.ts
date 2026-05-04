@@ -196,6 +196,9 @@ export interface ToolProcessorResult {
     success: boolean
     summary: string
     error?: string
+    plan?: import('../session/task-plan.js').TaskPlan
+    iterations?: number
+    toolCalls?: number
   }
 }
 
@@ -213,6 +216,9 @@ export class ToolProcessor {
       success: taskResult.success,
       summary: taskResult.finalMessage,
       ...(taskResult.error ? { error: taskResult.error } : {}),
+      ...(taskResult.plan ? { plan: taskResult.plan } : {}),
+      iterations: taskResult.iterations,
+      toolCalls: taskResult.toolCalls,
     }
 
     return {

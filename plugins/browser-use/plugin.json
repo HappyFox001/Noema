@@ -6,6 +6,11 @@
   "type": "sdk-plugin",
   "main": "index.mjs",
   "enabled": true,
+  "permissions": [
+    "tools.register",
+    "network",
+    "browser.control"
+  ],
   "config": {
     "headed": true,
     "sessionPartition": "persist:her-text-browser-use",

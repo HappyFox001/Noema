@@ -73,6 +73,7 @@ export interface DialogueOrchestratorConfig {
   ttsChunk?: TTSChunkConfig
   taskRuntime?: TaskRuntimeConfig
   onTaskUserInputRequest?: TaskRuntimeHooks['onUserInputRequest']
+  onTaskRunStateChanged?: TaskRuntimeHooks['onRunStateChanged']
   onTaskPlanUpdated?: TaskRuntimeHooks['onPlanUpdated']
   onTaskStepUpdated?: TaskRuntimeHooks['onStepUpdated']
 }
@@ -118,15 +119,41 @@ export class DialogueOrchestrator {
     plugins: SDKPlugin[] = []
   ) {
     this.context = new ContextManager()
+    this.pluginManager = new PluginManager(plugins)
     this.taskSession = new TaskSession(taskLLM, memory, personality, agent, this.context, storageDir, {
       onUserInputRequest: config?.onTaskUserInputRequest,
-      onPlanUpdated: config?.onTaskPlanUpdated,
-      onStepUpdated: config?.onTaskStepUpdated,
+      onRunStateChanged: (state, task) => {
+        config?.onTaskRunStateChanged?.(state, task)
+        void this.pluginManager.notifyTaskRunStateChanged({
+          runtime: {},
+          taskDescription: task.taskDescription,
+          originalUserInput: task.originalUserInput,
+          state,
+        })
+      },
+      onPlanUpdated: (plan, task) => {
+        config?.onTaskPlanUpdated?.(plan, task)
+        void this.pluginManager.notifyTaskPlanUpdated({
+          runtime: {},
+          taskDescription: task.taskDescription,
+          originalUserInput: task.originalUserInput,
+          plan,
+        })
+      },
+      onStepUpdated: (step, plan, task) => {
+        config?.onTaskStepUpdated?.(step, plan, task)
+        void this.pluginManager.notifyTaskStepUpdated({
+          runtime: {},
+          taskDescription: task.taskDescription,
+          originalUserInput: task.originalUserInput,
+          plan,
+          step,
+        })
+      },
     }, config?.taskRuntime)
     this.contextAggregator = new LLMContextAggregator(memory, personality, agent, this.context, this.truncationPolicy)
     this.llmProcessor = new LLMProcessor(llm)
     this.toolProcessor = new ToolProcessor(this.taskSession)
-    this.pluginManager = new PluginManager(plugins)
 
     this.memory.setLLM(llm)
   }
@@ -142,6 +169,7 @@ export class DialogueOrchestrator {
 
   async shutdown(): Promise<void> {
     await this.taskSession.shutdown()
+    await this.pluginManager.shutdown()
   }
 
   async *processUserInputStream(
@@ -152,6 +180,11 @@ export class DialogueOrchestrator {
     const contextCheckpoint = this.context.createCheckpoint()
     const turnContext = await this.contextAggregator.prepareUserTurn(input, options?.signal)
     const pluginRuntime = options?.pluginContext ?? {}
+    await this.pluginManager.notifyConversationTurnStart({
+      runtime: pluginRuntime,
+      userInput: input.text,
+      timestamp: input.timestamp,
+    })
 
     try {
       const firstPromptAdditions = this.pluginManager.getPromptAdditions({
@@ -198,6 +231,11 @@ export class DialogueOrchestrator {
           pluginRuntime
         )
         throwIfAborted(options?.signal)
+        await this.pluginManager.notifyTaskStart({
+          runtime: pluginRuntime,
+          taskDescription: firstResult.taskDescription,
+          originalUserInput: input.text,
+        })
         await options?.onTaskStart?.(firstResult.taskDescription)
         console.log('🚀 Reply 已流式输出完毕，开始执行任务...\n')
 
@@ -207,6 +245,17 @@ export class DialogueOrchestrator {
           taskContextItems
         )
         throwIfAborted(options?.signal)
+        await this.pluginManager.notifyTaskEnd({
+          runtime: pluginRuntime,
+          taskDescription: firstResult.taskDescription,
+          originalUserInput: input.text,
+          success: taskResult.success,
+          summary: taskResult.summary,
+          ...(taskResult.error ? { error: taskResult.error } : {}),
+          plan: taskResult.contextResult.plan,
+          iterations: taskResult.contextResult.iterations,
+          toolCalls: taskResult.contextResult.toolCalls,
+        })
         await options?.onTaskEnd?.({
           success: taskResult.success,
           summary: taskResult.summary,
@@ -270,6 +319,12 @@ export class DialogueOrchestrator {
         content: combinedReply,
         timestamp: Date.now()
       }
+      await this.pluginManager.notifyConversationTurnEnd({
+        runtime: pluginRuntime,
+        userInput: input.text,
+        timestamp: input.timestamp,
+        assistantText: combinedReply,
+      })
       this.context.recordItems([assistantMessage])
 
       scheduleAsyncTask(async () => {

@@ -7,6 +7,7 @@
   "main": "index.mjs",
   "assets": "assets",
   "enabled": true,
+  "permissions": [],
   "config": {
     "triggerProbability": 1,
     "durationMs": 4000

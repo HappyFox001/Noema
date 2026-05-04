@@ -695,8 +695,19 @@ type PluginInfo = {
   version?: string
   enabled: boolean
   pluginDir: string
+  permissions: string[]
   config: Record<string, unknown>
   configSchema: PluginConfigField[]
+  adminSchema?: {
+    title?: string
+    description?: string
+    actions?: Array<{
+      id: string
+      label: string
+      description?: string
+      variant?: 'primary' | 'secondary' | 'danger'
+    }>
+  }
 }
 
 type ConversationFrame =
@@ -2413,6 +2424,7 @@ function renderPluginDetail(plugin: PluginInfo): void {
         <div class="plugin-info">
           <div class="plugin-id">${escapeHtml(plugin.id)}</div>
           ${plugin.description ? `<div class="plugin-description plugin-detail-description">${escapeHtml(plugin.description)}</div>` : ''}
+          ${plugin.permissions.length ? `<div class="plugin-permissions">${plugin.permissions.map(permission => `<span>${escapeHtml(permission)}</span>`).join('')}</div>` : ''}
         </div>
         <label class="settings-toggle plugin-toggle">
           <input type="checkbox" ${plugin.enabled ? 'checked' : ''} data-plugin-toggle="${escapeHtml(plugin.id)}" />
@@ -2459,7 +2471,7 @@ function renderPluginDetail(plugin: PluginInfo): void {
 }
 
 function renderPluginAdminContainer(plugin: PluginInfo): string {
-  if (plugin.id !== 'mcp-manager' && plugin.id !== 'skills-manager') {
+  if (plugin.id !== 'mcp-manager' && plugin.id !== 'skills-manager' && !plugin.adminSchema) {
     return ''
   }
 
@@ -2471,7 +2483,7 @@ function renderPluginAdminContainer(plugin: PluginInfo): string {
 }
 
 async function loadPluginAdminPanel(plugin: PluginInfo): Promise<void> {
-  if (plugin.id !== 'mcp-manager' && plugin.id !== 'skills-manager') {
+  if (plugin.id !== 'mcp-manager' && plugin.id !== 'skills-manager' && !plugin.adminSchema) {
     return
   }
 
@@ -2486,9 +2498,53 @@ async function loadPluginAdminPanel(plugin: PluginInfo): Promise<void> {
 
   if (plugin.id === 'mcp-manager') {
     renderMCPAdmin(container, plugin, result.state as any)
-  } else {
+  } else if (plugin.id === 'skills-manager') {
     renderSkillsAdmin(container, plugin, result.state as any)
+  } else {
+    renderGenericPluginAdmin(container, plugin, result.state)
   }
+}
+
+function renderGenericPluginAdmin(container: HTMLElement, plugin: PluginInfo, state: unknown): void {
+  const schema = plugin.adminSchema
+  if (!schema) {
+    container.innerHTML = '<div class="plugin-admin-empty">这个插件没有声明管理面板。</div>'
+    return
+  }
+
+  const actions = schema.actions ?? []
+  container.innerHTML = `
+    <div class="plugin-admin-header">
+      <div>
+        <div class="plugin-admin-title">${escapeHtml(schema.title || '插件管理')}</div>
+        ${schema.description ? `<div class="plugin-admin-subtitle">${escapeHtml(schema.description)}</div>` : ''}
+      </div>
+    </div>
+    ${actions.length ? `
+      <div class="plugin-admin-actions">
+        ${actions.map(action => `
+          <button class="plugin-admin-button ${escapeHtml(action.variant || 'secondary')}" type="button" data-generic-admin-action="${escapeHtml(action.id)}">
+            ${escapeHtml(action.label)}
+          </button>
+          ${action.description ? `<div class="plugin-admin-desc">${escapeHtml(action.description)}</div>` : ''}
+        `).join('')}
+      </div>
+    ` : '<div class="plugin-admin-empty">暂无管理动作。</div>'}
+    <pre class="plugin-admin-state">${escapeHtml(JSON.stringify(state ?? {}, null, 2))}</pre>
+  `
+
+  container.querySelectorAll<HTMLButtonElement>('[data-generic-admin-action]').forEach(button => {
+    button.addEventListener('click', async () => {
+      const action = button.dataset.genericAdminAction
+      if (!action) return
+      button.disabled = true
+      try {
+        await runPluginAdminAction(plugin, action)
+      } finally {
+        button.disabled = false
+      }
+    })
+  })
 }
 
 async function runPluginAdminAction(

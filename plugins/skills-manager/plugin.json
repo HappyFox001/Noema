@@ -6,6 +6,12 @@
   "type": "sdk-plugin",
   "main": "index.mjs",
   "enabled": true,
+  "permissions": [
+    "tools.register",
+    "filesystem.read",
+    "network",
+    "admin.custom"
+  ],
   "config": {
     "maxSkillChars": 12000
   },

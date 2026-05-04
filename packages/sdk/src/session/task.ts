@@ -38,12 +38,17 @@ export interface TaskTurnRecord {
   stepTitle?: string
 }
 
+export interface TaskRuntimeHookMeta {
+  taskDescription: string
+  originalUserInput: string
+}
+
 export interface TaskRuntimeHooks {
   onTurnCompleted?: (turn: TaskTurnRecord) => void
   onStatusChanged?: (status: 'running' | 'completed' | 'errored') => void
-  onRunStateChanged?: (state: TaskRunState) => void
-  onPlanUpdated?: (plan: TaskPlan) => void
-  onStepUpdated?: (step: TaskStep, plan: TaskPlan) => void
+  onRunStateChanged?: (state: TaskRunState, task: TaskRuntimeHookMeta) => void
+  onPlanUpdated?: (plan: TaskPlan, task: TaskRuntimeHookMeta) => void
+  onStepUpdated?: (step: TaskStep, plan: TaskPlan, task: TaskRuntimeHookMeta) => void
   onUserInputRequest?: (request: TaskUserInputRequest) => Promise<TaskUserInputResponse>
   onCompact?: (summary: string) => void
 }
@@ -867,7 +872,7 @@ export class TaskRuntime {
     this.touchPlan()
     this.emitPlanUpdated()
     for (const step of changedSteps) {
-      this.hooks.onStepUpdated?.(step, this.taskPlan)
+      this.hooks.onStepUpdated?.(step, this.taskPlan, this.getHookMeta())
     }
 
     return {
@@ -1123,7 +1128,7 @@ export class TaskRuntime {
       return
     }
     this.runState = state
-    this.hooks.onRunStateChanged?.(state)
+    this.hooks.onRunStateChanged?.(state, this.getHookMeta())
   }
 
   private touchPlan(): void {
@@ -1134,14 +1139,22 @@ export class TaskRuntime {
 
   private emitPlanUpdated(): void {
     if (this.taskPlan) {
-      this.hooks.onPlanUpdated?.(this.taskPlan)
+      this.hooks.onPlanUpdated?.(this.taskPlan, this.getHookMeta())
     }
   }
 
   private emitStepUpdated(step: TaskStep): void {
     if (this.taskPlan) {
-      this.hooks.onStepUpdated?.(step, this.taskPlan)
-      this.hooks.onPlanUpdated?.(this.taskPlan)
+      const meta = this.getHookMeta()
+      this.hooks.onStepUpdated?.(step, this.taskPlan, meta)
+      this.hooks.onPlanUpdated?.(this.taskPlan, meta)
+    }
+  }
+
+  private getHookMeta(): TaskRuntimeHookMeta {
+    return {
+      taskDescription: this.taskDescription,
+      originalUserInput: this.originalUserInput,
     }
   }
 

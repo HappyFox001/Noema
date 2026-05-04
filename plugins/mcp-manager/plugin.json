@@ -6,6 +6,11 @@
   "type": "sdk-plugin",
   "main": "index.mjs",
   "enabled": false,
+  "permissions": [
+    "tools.register",
+    "network",
+    "admin.custom"
+  ],
   "config": {
     "defaultTimeoutMs": 60000
   },

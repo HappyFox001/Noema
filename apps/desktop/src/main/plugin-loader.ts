@@ -9,57 +9,14 @@ import { existsSync } from 'fs'
 import { mkdir, readdir, readFile } from 'fs/promises'
 import { join, resolve } from 'path'
 import { pathToFileURL } from 'url'
-import type { SDKPlugin, SDKPluginContext } from '@her-text/sdk'
-
-export interface RuntimePluginManifest {
-  id: string
-  name?: string
-  description?: string
-  version?: string
-  type?: 'sdk-plugin'
-  main?: string
-  assets?: string
-  enabled?: boolean
-  config?: Record<string, unknown>
-  configSchema?: RuntimePluginConfigField[]
-}
-
-export type RuntimePluginConfigField =
-  | {
-      key: string
-      label?: string
-      description?: string
-      type: 'string'
-      default?: string
-      placeholder?: string
-      multiline?: boolean
-      rows?: number
-    }
-  | {
-      key: string
-      label?: string
-      description?: string
-      type: 'number'
-      default?: number
-      min?: number
-      max?: number
-      step?: number
-    }
-  | {
-      key: string
-      label?: string
-      description?: string
-      type: 'boolean'
-      default?: boolean
-    }
-  | {
-      key: string
-      label?: string
-      description?: string
-      type: 'select'
-      default?: string
-      options: Array<{ label: string; value: string }>
-    }
+import type {
+  PluginAdminSchema,
+  PluginConfigField,
+  PluginPermission,
+  RuntimePluginManifest,
+  SDKPlugin,
+  SDKPluginContext,
+} from '@her-text/sdk'
 
 type RuntimePluginFactory = (context: SDKPluginContext) => SDKPlugin | Promise<SDKPlugin>
 
@@ -70,8 +27,10 @@ export interface RuntimePluginInfo {
   version?: string
   enabled: boolean
   pluginDir: string
+  permissions: PluginPermission[]
   config: Record<string, unknown>
-  configSchema: RuntimePluginConfigField[]
+  configSchema: PluginConfigField[]
+  adminSchema?: PluginAdminSchema
 }
 
 export interface RuntimePluginAdminResult {
@@ -94,8 +53,10 @@ export async function discoverRuntimePlugins(
     version: manifest.version,
     enabled: enabledOverrides[manifest.id] ?? manifest.enabled !== false,
     pluginDir,
+    permissions: manifest.permissions ?? [],
     config: mergePluginConfig(manifest, configOverrides[manifest.id]),
     configSchema: manifest.configSchema ?? [],
+    adminSchema: manifest.adminSchema,
   }))
 }
 
@@ -177,9 +138,9 @@ async function loadRuntimePlugin(
     const dataDir = join(app.getPath('userData'), 'plugins', manifest.id)
     await mkdir(dataDir, { recursive: true })
     const module = await import(pathToFileURL(mainPath).toString())
-    const factory = module.default || module.createPlugin
+    const factory = module.default
     if (typeof factory !== 'function') {
-      console.warn(`[PluginLoader] Plugin "${manifest.id}" does not export a plugin factory`)
+      console.warn(`[PluginLoader] Plugin "${manifest.id}" must default-export a definePlugin factory`)
       return null
     }
 
@@ -188,16 +149,12 @@ async function loadRuntimePlugin(
       assetsDir,
       dataDir,
       config: mergePluginConfig(manifest, configOverride),
+      manifest,
       resolveAsset: (assetPath: string) => resolve(assetsDir, assetPath),
     }
     const plugin = await (factory as RuntimePluginFactory)(pluginContext)
-    const setup = plugin.setup?.bind(plugin)
-    if (setup) {
-      plugin.setup = (context) => setup({
-        ...pluginContext,
-        ...context,
-      })
-    }
+    plugin.manifest = manifest
+    plugin.permissions = manifest.permissions ?? []
 
     console.log(`[PluginLoader] Loaded plugin: ${plugin.id}${manifest.version ? `@${manifest.version}` : ''}`)
     return plugin

@@ -1,8 +1,9 @@
+import { definePlugin } from '@her-text/sdk'
 import { ElectronBrowserController } from './src/controller.mjs'
 import { createBrowserTools } from './src/tools.mjs'
 import { clampInteger, parseDomains } from './src/utils.mjs'
 
-export default function createPlugin(ctx) {
+export default definePlugin((ctx) => {
   const config = ctx.config || {}
   const controller = new ElectronBrowserController({
     headed: config.headed !== false,
@@ -23,4 +24,4 @@ export default function createPlugin(ctx) {
       })
     },
   }
-}
+})
