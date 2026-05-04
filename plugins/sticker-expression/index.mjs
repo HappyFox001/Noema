@@ -1,4 +1,3 @@
-import { definePlugin } from '@her-text/sdk'
 import { existsSync } from 'fs'
 
 const BASIC_EMOTION_TAGS = [
@@ -40,7 +39,7 @@ const STICKERS = [
   { id: 'mygo_bye', emotion: 'bye', filename: 'Mygo表情包_溜了溜了.png' },
 ]
 
-export default definePlugin((ctx) => {
+export default function plugin(ctx) {
   const triggerProbability = clamp01(Number(ctx.config?.triggerProbability ?? 0.45))
   const durationMs = Number(ctx.config?.durationMs ?? 4000)
   let lastStickerId
@@ -93,7 +92,7 @@ export default definePlugin((ctx) => {
       }
     },
   }
-})
+}
 
 function normalizeEmotion(value) {
   if (!value) {

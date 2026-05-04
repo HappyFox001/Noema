@@ -4,11 +4,10 @@
  * Registers task tools for listing and calling remote MCP tools, and exposes
  * admin actions for managing remote HTTP MCP server entries.
  */
-import { definePlugin } from '@her-text/sdk'
 import { MCPManager } from './src/mcp-manager.mjs'
 import { clampInteger, parseServersConfig } from './src/utils.mjs'
 
-export default definePlugin((ctx) => {
+export default function plugin(ctx) {
   const config = ctx.config || {}
   const manager = new MCPManager({
     dataDir: ctx.dataDir || ctx.pluginDir,
@@ -97,4 +96,4 @@ export default definePlugin((ctx) => {
       ]
     },
   }
-})
+}

@@ -140,7 +140,7 @@ async function loadRuntimePlugin(
     const module = await import(pathToFileURL(mainPath).toString())
     const factory = module.default
     if (typeof factory !== 'function') {
-      console.warn(`[PluginLoader] Plugin "${manifest.id}" must default-export a definePlugin factory`)
+      console.warn(`[PluginLoader] Plugin "${manifest.id}" must default-export a plugin factory`)
       return null
     }
 

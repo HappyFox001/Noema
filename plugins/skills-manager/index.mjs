@@ -4,12 +4,11 @@
  * Manages external skill sources and contributes selected SKILL.md content
  * through the generic task-context injection hook.
  */
-import { definePlugin } from '@her-text/sdk'
 import { resolve } from 'path'
 import { SkillsManager } from './src/skills-manager.mjs'
 import { clampInteger, parseInlineSkills } from './src/utils.mjs'
 
-export default definePlugin((ctx) => {
+export default function plugin(ctx) {
   const config = ctx.config || {}
   const manager = new SkillsManager({
     dataDir: ctx.dataDir || ctx.pluginDir,
@@ -85,4 +84,4 @@ export default definePlugin((ctx) => {
       ]
     },
   }
-})
+}

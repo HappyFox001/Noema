@@ -1,5 +1,3 @@
-import { definePlugin } from '@her-text/sdk'
-
 const FISH_S2_EMOTION_CUES = [
   'whisper',
   'whispering',
@@ -35,7 +33,7 @@ const FISH_S2_EMOTION_CUES = [
   'rustling sound',
 ]
 
-export default definePlugin(() => {
+export default function plugin() {
   return {
     id: 'fish-s2-emotion',
     name: 'Fish Audio S2 Emotion Enhancer',
@@ -66,7 +64,7 @@ export default definePlugin(() => {
       return stripFishS2EmotionCues(text)
     },
   }
-})
+}
 
 function stripFishS2EmotionCues(text) {
   return text
