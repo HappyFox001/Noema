@@ -60,14 +60,12 @@ import {
   createVADAnalyzer,
   VADAnalyzer,
   TurnController,
-  VADState,
   SmartTurnAnalyzer,
   type VADParams,
   type EndpointingConfig,
   type TurnControllerEvents,
   type UserTurnStoppedParams,
   type VoiceConfidenceProvider,
-  type SmartTurnOptions,
   VoiceGraphPipeline,
   type Frame,
   type FrameObserver,
@@ -78,7 +76,6 @@ import {
   LLMResponseProcessor,
   LLMStreamBridgeProcessor,
   ResponseFramePipeline,
-  type ResponseFrame,
   ResponseDisplayProcessor,
   ResponseTTSProcessor,
   type ExpressionFrame,
@@ -95,7 +92,8 @@ import {
   buildSDKConfig,
   getStorageDir,
   setActiveLLMConfig,
-  setActiveTaskLLMConfig
+  setActiveTaskLLMConfig,
+  setActiveTaskRuntimeConfig
 } from './sdk-config.js'
 import { SettingsStore, type AppSettings, type LLMModelConfig, type TTSModelConfig, type ASRModelConfig } from './settings-store.js'
 import { InteractiveInputStore, type StoredInteractiveInput, type StoredInteractiveInputGroup } from './interactive-input-store.js'
@@ -1287,7 +1285,6 @@ let currentTurnId = 0
 let currentTurnAbortController: AbortController | null = null
 let currentResponseFramePipeline: ResponseFramePipeline | null = null
 const cancelledTurnIds = new Set<number>()
-let currentTurnUserText: string | null = null
 
 
 let currentTTSContextId = 0
@@ -1313,7 +1310,6 @@ async function startNewTurn(): Promise<number> {
   currentTurnId++
   cancelledTurnIds.delete(currentTurnId)
   currentTurnAbortController = new AbortController()
-  currentTurnUserText = null
   console.log(`[Turn] Started new turn #${currentTurnId}`)
   return currentTurnId
 }
@@ -1356,7 +1352,6 @@ function completeCurrentTurn(turnId: number, pipeline: ResponseFramePipeline | n
   }
 
   currentTurnAbortController = null
-  currentTurnUserText = null
 }
 
 
@@ -1663,6 +1658,12 @@ let appSettings: AppSettings = {
     activeLLMId: 'default-llm',
     taskModels: [{ id: 'default-task', modelName: 'gemini-3.1-pro-preview', apiKey: '', baseUrl: '' }],
     activeTaskId: 'default-task',
+    taskRuntime: {
+      maxTurns: 24,
+      compactAfterTurns: 8,
+      keepRecentTurns: 4,
+      noOpLimit: 2
+    },
     ttsModels: [{ id: 'default-tts', provider: 'fish', modelName: 's2-pro', apiKey: '', voiceId: '' }],
     activeTTSId: 'default-tts',
     asrModels: [{ id: 'default-asr', provider: 'qwen', modelName: 'qwen3-asr-flash-realtime', apiKey: '' }],
@@ -2309,6 +2310,7 @@ function formatTaskInputLabel(key: string): string {
 async function initializeSDK(): Promise<void> {
   setActiveLLMConfig(getActiveLLMConfig())
   setActiveTaskLLMConfig(getActiveTaskConfig())
+  setActiveTaskRuntimeConfig(appSettings.system.taskRuntime)
   const sdkConfig = await buildSDKConfig()
   const pluginsDir = resolveRuntimePluginsDir()
   console.log('[PluginLoader] Runtime plugins directory:', pluginsDir)
@@ -2331,6 +2333,7 @@ async function applyRuntimeSystemConfigChanges(
   previous: {
     llm: string
     taskLLM: string
+    taskRuntime: string
     tts: string
     asr: string
   },
@@ -2340,11 +2343,13 @@ async function applyRuntimeSystemConfigChanges(
 ): Promise<void> {
   const nextLLMSignature = getLLMConfigSignature(getActiveLLMConfig())
   const nextTaskLLMSignature = getLLMConfigSignature(getActiveTaskConfig())
+  const nextTaskRuntimeSignature = JSON.stringify(appSettings.system.taskRuntime)
   const nextTTSSignature = getTTSConfigSignature(getActiveTTSConfig())
   const nextASRSignature = getASRConfigSignature(getActiveASRConfig())
   const llmChanged =
     previous.llm !== nextLLMSignature ||
-    previous.taskLLM !== nextTaskLLMSignature
+    previous.taskLLM !== nextTaskLLMSignature ||
+    previous.taskRuntime !== nextTaskRuntimeSignature
 
   if (
     previous.tts !== nextTTSSignature ||
@@ -2456,14 +2461,6 @@ ipcMain.on('window:set-compact-mode', (event, compact) => {
   resizeWindowAroundCenter(win, size.width, size.height)
 })
 
-ipcMain.handle('window:get-position', (event) => {
-  const win = BrowserWindow.fromWebContents(event.sender)
-  if (win) {
-    return win.getPosition()
-  }
-  return [0, 0]
-})
-
 ipcMain.handle('conversation:initialize', async () => {
   try {
     if (!sdkInstance) {
@@ -2511,7 +2508,6 @@ async function runConversationTurn(
 
     turnId = await startNewTurn()
     const turnAbortSignal = currentTurnAbortController!.signal
-    currentTurnUserText = text
 
     mainWindow?.webContents.send('turn:start', turnId)
 
@@ -3058,6 +3054,7 @@ ipcMain.handle('settings:update', async (_, partial: Partial<AppSettings>) => {
   const previous = {
     llm: getLLMConfigSignature(getActiveLLMConfig()),
     taskLLM: getLLMConfigSignature(getActiveTaskConfig()),
+    taskRuntime: JSON.stringify(appSettings.system.taskRuntime),
     tts: getTTSConfigSignature(getActiveTTSConfig()),
     asr: getASRConfigSignature(getActiveASRConfig()),
   }
@@ -3103,6 +3100,7 @@ ipcMain.handle('settings:resetSystemFromEnv', async () => {
     const previous = {
       llm: getLLMConfigSignature(getActiveLLMConfig()),
       taskLLM: getLLMConfigSignature(getActiveTaskConfig()),
+      taskRuntime: JSON.stringify(appSettings.system.taskRuntime),
       tts: getTTSConfigSignature(getActiveTTSConfig()),
       asr: getASRConfigSignature(getActiveASRConfig()),
     }

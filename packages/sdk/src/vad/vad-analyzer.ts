@@ -55,7 +55,6 @@ export class VADAnalyzer implements VADAnalyzerInterface {
 
   private lastSpeechActivityTime = 0
 
-  private lastAudioTime = 0
   private audioIdleTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(
@@ -113,7 +112,6 @@ export class VADAnalyzer implements VADAnalyzerInterface {
     this.vadStoppingCount = 0
     this.prevVolume = 0
     this.lastSpeechActivityTime = 0
-    this.lastAudioTime = 0
     this.stopAudioIdleTimer()
     this.confidenceProvider.reset()
   }
@@ -206,8 +204,6 @@ export class VADAnalyzer implements VADAnalyzerInterface {
 
   
   async analyze(audio: Int16Array | Float32Array): Promise<VADState> {
-    this.lastAudioTime = Date.now()
-
     if (this.vadState === VADState.SPEAKING) {
       this.restartAudioIdleTimer()
     }

@@ -598,12 +598,20 @@ type ASRModelConfig = {
   apiKey: string
 }
 
+type TaskRuntimeSettings = {
+  maxTurns: number
+  compactAfterTurns: number
+  keepRecentTurns: number
+  noOpLimit: number
+}
+
 type SystemConfig = {
   proxy: string
   llmModels: LLMModelConfig[]
   activeLLMId: string
   taskModels: LLMModelConfig[]
   activeTaskId: string
+  taskRuntime: TaskRuntimeSettings
   ttsModels: TTSModelConfig[]
   activeTTSId: string
   asrModels: ASRModelConfig[]
@@ -1858,10 +1866,6 @@ contextMenu.addEventListener('click', (e) => {
     case 'clear-history':
       clearHistory()
       break
-    case 'about':
-      // Could show about dialog
-      console.log('About Her-Text v0.1.0')
-      break
   }
 
   contextMenu.classList.remove('visible')
@@ -1878,6 +1882,7 @@ function switchSettingsSection(section: string): void {
     void refreshMemorySection()
   }
   if (section === 'system') {
+    switchSystemPage('main')
     void loadSystemConfig()
   }
   if (section === 'plugins') {
@@ -3558,6 +3563,8 @@ function escapeHtml(str: string): string {
 // ========== System Config Section ==========
 
 const proxyInput = document.getElementById('proxy-input') as HTMLInputElement
+const systemMainPage = document.getElementById('system-main-page')!
+const systemTaskRuntimePage = document.getElementById('system-task-runtime-page')!
 const llmModelsList = document.getElementById('llm-models-list')!
 const taskModelsList = document.getElementById('task-models-list')!
 const ttsModelsList = document.getElementById('tts-models-list')!
@@ -3565,6 +3572,12 @@ const asrModelsList = document.getElementById('asr-models-list')!
 const localModelsList = document.getElementById('local-models-list')!
 const addLLMBtn = document.getElementById('add-llm-btn') as HTMLButtonElement
 const addTaskBtn = document.getElementById('add-task-btn') as HTMLButtonElement
+const openTaskRuntimeBtn = document.getElementById('open-task-runtime-btn') as HTMLButtonElement
+const backSystemMainBtn = document.getElementById('back-system-main-btn') as HTMLButtonElement
+const taskMaxTurnsInput = document.getElementById('task-max-turns-input') as HTMLInputElement
+const taskCompactAfterInput = document.getElementById('task-compact-after-input') as HTMLInputElement
+const taskKeepRecentInput = document.getElementById('task-keep-recent-input') as HTMLInputElement
+const taskNoOpLimitInput = document.getElementById('task-no-op-limit-input') as HTMLInputElement
 const addTTSBtn = document.getElementById('add-tts-btn') as HTMLButtonElement
 const addASRBtn = document.getElementById('add-asr-btn') as HTMLButtonElement
 const downloadLocalModelsBtn = document.getElementById('download-local-models-btn') as HTMLButtonElement
@@ -3748,8 +3761,14 @@ function renderSystemConfig(): void {
 
   renderLLMModels()
   renderTaskModels()
+  renderTaskRuntimeSettings()
   renderTTSModels()
   renderASRModels()
+}
+
+function switchSystemPage(page: 'main' | 'task-runtime'): void {
+  systemMainPage.classList.toggle('active', page === 'main')
+  systemTaskRuntimePage.classList.toggle('active', page === 'task-runtime')
 }
 
 async function loadLocalModelStatus(): Promise<void> {
@@ -3889,6 +3908,15 @@ function renderTaskModels(): void {
   `).join('')
 
   attachTaskEventListeners()
+}
+
+function renderTaskRuntimeSettings(): void {
+  if (!currentSystemConfig) return
+  const config = currentSystemConfig.taskRuntime
+  taskMaxTurnsInput.value = String(config.maxTurns)
+  taskCompactAfterInput.value = String(config.compactAfterTurns)
+  taskKeepRecentInput.value = String(config.keepRecentTurns)
+  taskNoOpLimitInput.value = String(config.noOpLimit)
 }
 
 const TTS_PROVIDERS: { value: TTSProviderType; label: string }[] = [
@@ -4099,6 +4127,40 @@ async function saveSystemConfig(): Promise<void> {
   await refreshSetupReadiness()
 }
 
+function clampInteger(value: unknown, fallback: number, min: number, max: number): number {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) {
+    return fallback
+  }
+  return Math.max(min, Math.min(max, Math.round(numeric)))
+}
+
+async function updateTaskRuntimeSettings(): Promise<void> {
+  if (!currentSystemConfig) return
+  const maxTurns = clampInteger(taskMaxTurnsInput.value, currentSystemConfig.taskRuntime.maxTurns, 4, 100)
+  const compactAfterTurns = clampInteger(
+    taskCompactAfterInput.value,
+    currentSystemConfig.taskRuntime.compactAfterTurns,
+    2,
+    maxTurns
+  )
+  const keepRecentTurns = clampInteger(
+    taskKeepRecentInput.value,
+    currentSystemConfig.taskRuntime.keepRecentTurns,
+    1,
+    compactAfterTurns
+  )
+
+  currentSystemConfig.taskRuntime = {
+    maxTurns,
+    compactAfterTurns,
+    keepRecentTurns,
+    noOpLimit: clampInteger(taskNoOpLimitInput.value, currentSystemConfig.taskRuntime.noOpLimit, 1, 10)
+  }
+  renderTaskRuntimeSettings()
+  await saveSystemConfig()
+}
+
 async function updateLLMModel(id: string, updates: Partial<LLMModelConfig>): Promise<void> {
   if (!currentSystemConfig) return
   const model = currentSystemConfig.llmModels.find(m => m.id === id)
@@ -4266,6 +4328,20 @@ proxyInput.addEventListener('change', async () => {
 // Add button handlers
 addLLMBtn.addEventListener('click', () => void addLLMModel())
 addTaskBtn.addEventListener('click', () => void addTaskModel())
+openTaskRuntimeBtn.addEventListener('click', () => {
+  switchSystemPage('task-runtime')
+})
+backSystemMainBtn.addEventListener('click', () => {
+  switchSystemPage('main')
+})
+;[
+  taskMaxTurnsInput,
+  taskCompactAfterInput,
+  taskKeepRecentInput,
+  taskNoOpLimitInput
+].forEach(input => {
+  input.addEventListener('change', () => void updateTaskRuntimeSettings())
+})
 addTTSBtn.addEventListener('click', () => void addTTSModel())
 addASRBtn.addEventListener('click', () => void addASRModel())
 

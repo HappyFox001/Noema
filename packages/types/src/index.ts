@@ -86,6 +86,13 @@ export interface SDKConfig {
     baseURL?: string
   }
 
+  taskRuntime?: {
+    maxTurns?: number
+    compactAfterTurns?: number
+    keepRecentTurns?: number
+    noOpLimit?: number
+  }
+
   memory: {
     vectorDB?: 'chroma' | 'lancedb'
     storageDir: string

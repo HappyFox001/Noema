@@ -2910,6 +2910,7 @@ body:not(.settings-open) #main-view {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 12px;
+  gap: 10px;
 }
 
 .config-section-title {
@@ -2917,6 +2918,13 @@ body:not(.settings-open) #main-view {
   font-weight: 500;
   color: rgba(255, 255, 255, 0.85);
   font-family: var(--font-soft);
+}
+
+.config-section-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .config-add-btn {
@@ -2934,6 +2942,47 @@ body:not(.settings-open) #main-view {
 .config-add-btn:hover {
   background: rgba(74, 144, 226, 0.25);
   border-color: rgba(74, 144, 226, 0.5);
+}
+
+.config-add-btn.secondary {
+  background: rgba(255, 255, 255, 0.055);
+  border-color: rgba(255, 255, 255, 0.10);
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.config-add-btn.secondary:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.system-page {
+  display: none;
+}
+
+.system-page.active {
+  display: block;
+}
+
+.task-runtime-card {
+  width: min(100%, 560px);
+}
+
+.settings-number-input {
+  width: 92px;
+  min-width: 92px;
+  padding: 7px 10px;
+  font-size: 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.85);
+  font-family: var(--font-ui);
+  outline: none;
+}
+
+.settings-number-input:focus {
+  border-color: rgba(226, 74, 144, 0.4);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .config-models-list {

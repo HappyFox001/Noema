@@ -30,9 +30,6 @@
           <span>清除对话</span>
         </div>
         <div class="context-menu-divider"></div>
-        <div class="context-menu-item" data-action="about">
-          <span>关于</span>
-        </div>
       </div>
 
       
@@ -238,10 +235,11 @@
 
             
             <section id="section-system" class="settings-section">
-              <h2 class="section-title">系统配置</h2>
+              <div id="system-main-page" class="system-page active">
+                <h2 class="section-title">系统配置</h2>
 
               
-              <div class="settings-card">
+                <div class="settings-card">
                 <div class="settings-row">
                   <div class="row-info">
                     <span class="row-label">网络代理</span>
@@ -266,7 +264,10 @@
               <div class="config-section">
                 <div class="config-section-header">
                   <span class="config-section-title">任务模型</span>
-                  <button id="add-task-btn" class="config-add-btn">+ 添加</button>
+                  <div class="config-section-actions">
+                    <button id="open-task-runtime-btn" class="config-add-btn secondary">执行参数</button>
+                    <button id="add-task-btn" class="config-add-btn">+ 添加</button>
+                  </div>
                 </div>
                 <div id="task-models-list" class="config-models-list">
                   
@@ -313,6 +314,48 @@
                   从 .env 重新加载配置
                 </button>
                 <p class="config-reset-hint">将使用 .env 文件中的配置覆盖当前设置</p>
+              </div>
+              </div>
+
+              <div id="system-task-runtime-page" class="system-page">
+                <div class="memory-subpage-header">
+                  <button id="back-system-main-btn" class="memory-back-btn" type="button">返回</button>
+                  <div>
+                    <h2 class="section-title">任务执行参数</h2>
+                    <p class="section-subtitle">调整任务模型的执行循环、历史压缩和卡住判定。</p>
+                  </div>
+                </div>
+
+                <div class="settings-card task-runtime-card">
+                  <div class="settings-row">
+                    <div class="row-info">
+                      <span class="row-label">最大执行轮次</span>
+                      <span class="row-desc">任务运行超过该轮数后停止。</span>
+                    </div>
+                    <input type="number" id="task-max-turns-input" class="settings-number-input" min="4" max="100" step="1" />
+                  </div>
+                  <div class="settings-row">
+                    <div class="row-info">
+                      <span class="row-label">压缩起始轮次</span>
+                      <span class="row-desc">累计到该轮数后开始压缩较早任务历史。</span>
+                    </div>
+                    <input type="number" id="task-compact-after-input" class="settings-number-input" min="2" max="100" step="1" />
+                  </div>
+                  <div class="settings-row">
+                    <div class="row-info">
+                      <span class="row-label">保留最近轮次</span>
+                      <span class="row-desc">压缩时保留最近多少轮原始上下文。</span>
+                    </div>
+                    <input type="number" id="task-keep-recent-input" class="settings-number-input" min="1" max="100" step="1" />
+                  </div>
+                  <div class="settings-row">
+                    <div class="row-info">
+                      <span class="row-label">空转容忍次数</span>
+                      <span class="row-desc">连续无工具调用且未完成时，多少轮后判定当前步骤卡住。</span>
+                    </div>
+                    <input type="number" id="task-no-op-limit-input" class="settings-number-input" min="1" max="10" step="1" />
+                  </div>
+                </div>
               </div>
             </section>
 

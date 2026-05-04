@@ -93,7 +93,7 @@ export class MemoryEngine {
   private persistenceDbPath: string
 
   constructor(
-    private config: SDKConfig['memory'],
+    config: SDKConfig['memory'],
     llm?: LLMProvider
   ) {
     this.llm = llm
@@ -199,7 +199,7 @@ export class MemoryEngine {
   }
 
   
-  async retrieve(query: string): Promise<{
+  async retrieve(_query: string): Promise<{
     userProfile: UserProfile
     summaries: ConversationSummary[]
   }> {

@@ -102,6 +102,7 @@ function loadSystemConfigFromEnv(): SystemConfig | null {
     activeLLMId: llmModels[llmActive]?.id || llmModels[0]?.id || '',
     taskModels: taskModels.length > 0 ? taskModels : [],
     activeTaskId: taskModels[taskActive]?.id || taskModels[0]?.id || '',
+    taskRuntime: DEFAULT_TASK_RUNTIME_SETTINGS,
     ttsModels: ttsModels.length > 0 ? ttsModels : [],
     activeTTSId: ttsModels[ttsActive]?.id || ttsModels[0]?.id || '',
     asrModels: asrModels.length > 0 ? asrModels : [],
@@ -147,10 +148,25 @@ export interface SystemConfig {
   activeLLMId: string
   taskModels: LLMModelConfig[]
   activeTaskId: string
+  taskRuntime: TaskRuntimeSettings
   ttsModels: TTSModelConfig[]
   activeTTSId: string
   asrModels: ASRModelConfig[]
   activeASRId: string
+}
+
+export interface TaskRuntimeSettings {
+  maxTurns: number
+  compactAfterTurns: number
+  keepRecentTurns: number
+  noOpLimit: number
+}
+
+const DEFAULT_TASK_RUNTIME_SETTINGS: TaskRuntimeSettings = {
+  maxTurns: 24,
+  compactAfterTurns: 8,
+  keepRecentTurns: 4,
+  noOpLimit: 2
 }
 
 export interface AppSettings {
@@ -180,6 +196,7 @@ const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
     baseUrl: ''
   }],
   activeTaskId: 'default-task',
+  taskRuntime: DEFAULT_TASK_RUNTIME_SETTINGS,
   ttsModels: [{
     id: 'default-tts',
     provider: 'fish',
@@ -243,6 +260,7 @@ export class SettingsStore {
         ...(parsed.system ?? {}),
         llmModels: parsed.system?.llmModels?.length ? parsed.system.llmModels : DEFAULT_SYSTEM_CONFIG.llmModels,
         taskModels: parsed.system?.taskModels?.length ? parsed.system.taskModels : DEFAULT_SYSTEM_CONFIG.taskModels,
+        taskRuntime: normalizeTaskRuntimeSettings(parsed.system?.taskRuntime),
         ttsModels: parsed.system?.ttsModels?.length ? parsed.system.ttsModels : DEFAULT_SYSTEM_CONFIG.ttsModels,
         asrModels: parsed.system?.asrModels?.length ? parsed.system.asrModels : DEFAULT_SYSTEM_CONFIG.asrModels,
       }
@@ -367,6 +385,7 @@ export class SettingsStore {
       activeLLMId: useEnvLLM ? env.activeLLMId : base.activeLLMId,
       taskModels: useEnvTask ? env.taskModels : taskModels,
       activeTaskId: useEnvTask ? env.activeTaskId : base.activeTaskId,
+      taskRuntime: normalizeTaskRuntimeSettings(base.taskRuntime),
       ttsModels: useEnvTTS ? env.ttsModels : ttsModels,
       activeTTSId: useEnvTTS ? env.activeTTSId : base.activeTTSId,
       asrModels: useEnvASR ? env.asrModels : asrModels,
@@ -395,14 +414,20 @@ export class SettingsStore {
       console.log('[SettingsStore] Reloading system config from .env')
       this.settings = {
         ...this.settings,
-        system: envConfig
+        system: {
+          ...envConfig,
+          taskRuntime: normalizeTaskRuntimeSettings(this.settings.system.taskRuntime)
+        }
       }
       await this.persist()
     } else {
       console.log('[SettingsStore] No .env config found, using defaults')
       this.settings = {
         ...this.settings,
-        system: DEFAULT_SYSTEM_CONFIG
+        system: {
+          ...DEFAULT_SYSTEM_CONFIG,
+          taskRuntime: normalizeTaskRuntimeSettings(this.settings.system.taskRuntime)
+        }
       }
       await this.persist()
     }
@@ -416,4 +441,38 @@ export class SettingsStore {
 
 function clampVolume(value: number): number {
   return Math.max(0, Math.min(100, Math.round(value)))
+}
+
+function clampInteger(value: unknown, fallback: number, min: number, max: number): number {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) {
+    return fallback
+  }
+  return Math.max(min, Math.min(max, Math.round(numeric)))
+}
+
+function normalizeTaskRuntimeSettings(value: unknown): TaskRuntimeSettings {
+  const source = value && typeof value === 'object'
+    ? value as Partial<TaskRuntimeSettings>
+    : {}
+  const maxTurns = clampInteger(source.maxTurns, DEFAULT_TASK_RUNTIME_SETTINGS.maxTurns, 4, 100)
+  const compactAfterTurns = clampInteger(
+    source.compactAfterTurns,
+    DEFAULT_TASK_RUNTIME_SETTINGS.compactAfterTurns,
+    2,
+    maxTurns
+  )
+  const keepRecentTurns = clampInteger(
+    source.keepRecentTurns,
+    DEFAULT_TASK_RUNTIME_SETTINGS.keepRecentTurns,
+    1,
+    compactAfterTurns
+  )
+
+  return {
+    maxTurns,
+    compactAfterTurns,
+    keepRecentTurns,
+    noOpLimit: clampInteger(source.noOpLimit, DEFAULT_TASK_RUNTIME_SETTINGS.noOpLimit, 1, 10)
+  }
 }

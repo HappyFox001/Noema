@@ -11,7 +11,7 @@ import type { PersonalityEngine } from '../personality/index.js'
 import type { AgentCore } from '../agent/index.js'
 import { ContextManager, type ResponseItem, type TruncationPolicy } from '../context/index.js'
 import { TaskSession } from '../session/session.js'
-import type { TaskRuntimeHooks } from '../session/task.js'
+import type { TaskRuntimeConfig, TaskRuntimeHooks } from '../session/task.js'
 import { PROMPTS } from '../prompts.js'
 import {
   LLMContextAggregator,
@@ -71,6 +71,7 @@ export interface TTSChunkConfig {
 export interface DialogueOrchestratorConfig {
   
   ttsChunk?: TTSChunkConfig
+  taskRuntime?: TaskRuntimeConfig
   onTaskUserInputRequest?: TaskRuntimeHooks['onUserInputRequest']
 }
 
@@ -105,8 +106,8 @@ export class DialogueOrchestrator {
   }
 
   constructor(
-    private llm: LLMProvider,
-    private taskLLM: LLMProvider,
+    llm: LLMProvider,
+    taskLLM: LLMProvider,
     private memory: MemoryEngine,
     private personality: PersonalityEngine,
     private agent: AgentCore,
@@ -117,7 +118,7 @@ export class DialogueOrchestrator {
     this.context = new ContextManager()
     this.taskSession = new TaskSession(taskLLM, memory, personality, agent, this.context, storageDir, {
       onUserInputRequest: config?.onTaskUserInputRequest
-    })
+    }, config?.taskRuntime)
     this.contextAggregator = new LLMContextAggregator(memory, personality, agent, this.context, this.truncationPolicy)
     this.llmProcessor = new LLMProcessor(llm)
     this.toolProcessor = new ToolProcessor(this.taskSession)

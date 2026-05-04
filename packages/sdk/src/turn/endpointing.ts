@@ -17,7 +17,6 @@ export class EndpointingStrategy implements IEndpointingStrategy {
   private vadUserSpeaking = false
   private transcriptFinalized = false
   private vadStoppedTime: number | null = null
-  private vadStopSecs = 0
 
   private userSpeechTimeoutTask: ReturnType<typeof setTimeout> | null = null
   private sttTimeoutTask: ReturnType<typeof setTimeout> | null = null
@@ -72,14 +71,13 @@ export class EndpointingStrategy implements IEndpointingStrategy {
   
   handleVADUserStoppedSpeaking(stopSecs: number, timestamp?: number): void {
     this.vadUserSpeaking = false
-    this.vadStopSecs = stopSecs
     this.vadStoppedTime = timestamp ?? Date.now()
 
     this.restartUserSpeechTimer()
 
     this.sttWaitDone = false
 
-    // = max(0, sttTimeout - vadStopSecs * 1000)
+    // Wait less for STT when VAD already observed enough trailing silence.
     const effectiveSttWait = Math.max(
       0,
       this.config.sttTimeoutMs - stopSecs * 1000

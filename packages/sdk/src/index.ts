@@ -38,6 +38,7 @@ export class HerTextSDK {
       this.agent,
       config.memory.storageDir,
       {
+        taskRuntime: config.taskRuntime,
         onTaskUserInputRequest: options.onTaskUserInputRequest
       },
       options.plugins ?? []

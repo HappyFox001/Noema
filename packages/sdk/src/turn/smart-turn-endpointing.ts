@@ -40,7 +40,6 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
   private vadStoppedTime: number | null = null
   private turnComplete = false
   private sttWaitDone = false
-  private sttTimeoutExpired = false
 
   private analyzeAttempts = 0
   private isAnalyzing = false
@@ -78,7 +77,6 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
     this.vadStoppedTime = null
     this.turnComplete = false
     this.sttWaitDone = false
-    this.sttTimeoutExpired = false
     this.analyzeAttempts = 0
     this.isAnalyzing = false
     this.turnStopTriggered = false
@@ -100,7 +98,6 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
     this.vadStoppedTime = null
     this.turnComplete = false
     this.sttWaitDone = false
-    this.sttTimeoutExpired = false
     this.analyzeAttempts = 0
     this.isAnalyzing = false
     this.cancelAllTimers()
@@ -111,7 +108,6 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
     this.vadUserSpeaking = false
     this.vadStoppedTime = timestamp ?? Date.now()
     this.transcriptFinalized = false
-    this.sttTimeoutExpired = false
 
     this.startSttWaitTimer(stopSecs)
 
@@ -249,7 +245,6 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
     this.sttWaitDone = false
     this.sttTimeoutTimer = setTimeout(() => {
       this.sttTimeoutTimer = null
-      this.sttTimeoutExpired = true
       this.sttWaitDone = true
       console.log('[SmartTurn] STT wait timeout expired')
       this.maybeTriggerUserTurnStopped('smart_turn')

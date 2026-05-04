@@ -16,6 +16,7 @@ import {
   TaskRuntime,
   type TaskContextItem,
   type TaskRunResult,
+  type TaskRuntimeConfig,
   type TaskRuntimeHooks,
   type TaskTurnRecord,
 } from './task.js'
@@ -142,7 +143,8 @@ export class TaskSession {
     private agent: AgentCore,
     private context: ContextManager,
     storageDir: string,
-    private runtimeHooks: Pick<TaskRuntimeHooks, 'onUserInputRequest'> = {}
+    private runtimeHooks: Pick<TaskRuntimeHooks, 'onUserInputRequest'> = {},
+    private taskRuntimeConfig: TaskRuntimeConfig = {}
   ) {
     const resolvedStorageDir = isAbsolute(storageDir)
       ? storageDir
@@ -311,7 +313,6 @@ export class TaskSession {
     await this.persistSnapshot()
 
     const runPromise = this.executeTaskRun(
-      taskId,
       taskDescription,
       originalUserInput,
       taskContextItems,
@@ -338,7 +339,6 @@ export class TaskSession {
   }
 
   private async executeTaskRun(
-    taskId: string,
     taskDescription: string,
     originalUserInput: string,
     taskContextItems: TaskContextItem[],
@@ -384,6 +384,7 @@ export class TaskSession {
         },
         ...this.runtimeHooks
       },
+      this.taskRuntimeConfig,
       signal
     )
 

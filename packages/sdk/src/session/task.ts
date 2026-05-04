@@ -47,6 +47,13 @@ export interface TaskRuntimeHooks {
   onCompact?: (summary: string) => void
 }
 
+export interface TaskRuntimeConfig {
+  maxTurns?: number
+  compactAfterTurns?: number
+  keepRecentTurns?: number
+  noOpLimit?: number
+}
+
 export interface TaskContextItem {
   id: string
   type: string
@@ -111,9 +118,10 @@ interface TaskUserInputArgs {
 
 export class TaskRuntime {
   private turnRuntime: TurnRuntime
-  private maxTurns = 24
-  private compactAfterTurns = 8
-  private keepRecentTurns = 4
+  private maxTurns: number
+  private compactAfterTurns: number
+  private keepRecentTurns: number
+  private noOpLimit: number
   private compactSummary = ''
   private turnRecords: TaskTurnRecord[] = []
   private taskPlan: TaskPlan | null = null
@@ -133,9 +141,14 @@ export class TaskRuntime {
     },
     private taskContextItems: TaskContextItem[] = [],
     private hooks: TaskRuntimeHooks = {},
+    config: TaskRuntimeConfig = {},
     private signal?: AbortSignal
   ) {
     this.turnRuntime = new TurnRuntime(llm, agent)
+    this.maxTurns = clampInteger(config.maxTurns, 24, 4, 100)
+    this.compactAfterTurns = clampInteger(config.compactAfterTurns, 8, 2, this.maxTurns)
+    this.keepRecentTurns = clampInteger(config.keepRecentTurns, 4, 1, this.compactAfterTurns)
+    this.noOpLimit = clampInteger(config.noOpLimit, 2, 1, 10)
   }
 
   async run(): Promise<TaskRunResult> {
@@ -251,7 +264,7 @@ export class TaskRuntime {
 
         if (turn.toolCalls.length === 0 && step.status === 'running') {
           noOpTurns++
-          console.warn(`[TaskRuntime] 迭代 ${iterations} 没有工具调用且步骤未完成，要求模型继续执行 (${noOpTurns}/2)`)
+          console.warn(`[TaskRuntime] 迭代 ${iterations} 没有工具调用且步骤未完成，要求模型继续执行 (${noOpTurns}/${this.noOpLimit})`)
           messages.push({
             role: 'assistant',
             content: turn.assistantMessage || ''
@@ -265,7 +278,7 @@ export class TaskRuntime {
             ].join('\n')
           })
 
-          if (noOpTurns >= 2) {
+          if (noOpTurns >= this.noOpLimit) {
             this.failCurrentStep('The model produced repeated no-op turns without completing the step')
             noOpTurns = 0
           }
@@ -1412,6 +1425,14 @@ function cleanInputKey(value: unknown): string | undefined {
     .replace(/[^a-z0-9_.:-]+/g, '_')
     .replace(/^_+|_+$/g, '')
   return key || undefined
+}
+
+function clampInteger(value: unknown, fallback: number, min: number, max: number): number {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) {
+    return fallback
+  }
+  return Math.max(min, Math.min(max, Math.round(numeric)))
 }
 
 function escapeXmlText(value: string): string {

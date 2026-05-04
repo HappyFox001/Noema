@@ -1,5 +1,3 @@
-import type { ConversationTurn } from '@her-text/types'
-
 export interface ResponseItem {
   role: 'user' | 'assistant' | 'system' | 'tool'
   content: string
@@ -117,7 +115,6 @@ export class ContextManager {
     }
 
     if (policy.maxTurns && this.items.length > policy.maxTurns) {
-      const preserveCount = policy.preserveRecentTurns || 0
       const removeCount = this.items.length - policy.maxTurns
 
       const startIndex = policy.preserveSystemMessages ? 1 : 0
@@ -126,7 +123,7 @@ export class ContextManager {
     }
   }
 
-  private containsImages(item: ResponseItem): boolean {
+  private containsImages(_item: ResponseItem): boolean {
     return false
   }
 

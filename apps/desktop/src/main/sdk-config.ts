@@ -1,11 +1,12 @@
 import { app } from 'electron'
 import { join } from 'path'
 import type { SDKConfig } from '@her-text/types'
-import type { LLMModelConfig } from './settings-store.js'
+import type { LLMModelConfig, TaskRuntimeSettings } from './settings-store.js'
 
 let personalityManager: any = null
 let activeLLMConfig: LLMModelConfig | null = null
 let activeTaskLLMConfig: LLMModelConfig | null = null
+let activeTaskRuntimeConfig: TaskRuntimeSettings | null = null
 
 
 export function setActiveLLMConfig(config: LLMModelConfig | null): void {
@@ -14,6 +15,10 @@ export function setActiveLLMConfig(config: LLMModelConfig | null): void {
 
 export function setActiveTaskLLMConfig(config: LLMModelConfig | null): void {
   activeTaskLLMConfig = config
+}
+
+export function setActiveTaskRuntimeConfig(config: TaskRuntimeSettings | null): void {
+  activeTaskRuntimeConfig = config
 }
 
 export function getStorageDir(): string {
@@ -59,6 +64,7 @@ export async function buildSDKConfig(): Promise<SDKConfig> {
       model: taskLLMModel,
       baseURL: taskLLMBaseURL
     },
+    taskRuntime: activeTaskRuntimeConfig ?? undefined,
     memory: {
       storageDir: getStorageDir()
     },
