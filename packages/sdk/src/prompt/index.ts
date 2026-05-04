@@ -1,4 +1,11 @@
 import type { Tool, Personality } from '@her-text/types'
+import {
+  createRuntimeAwareness,
+  formatAwarenessBlock,
+  formatConversationLinePrefix,
+  formatMessageTime,
+  type RuntimeAwarenessSnapshot,
+} from '../awareness/index.js'
 import type { ResponseItem } from '../context/index.js'
 import type { UserProfile, ConversationSummary } from '../memory/index.js'
 
@@ -16,6 +23,7 @@ export interface PromptBuildOptions {
   parallelToolCalls?: boolean
   pluginPromptAdditions?: string[]
   separateCurrentUserInput?: boolean
+  awareness?: RuntimeAwarenessSnapshot
 }
 
 
@@ -40,7 +48,8 @@ export class PromptBuilder {
       summaries = [],
       parallelToolCalls = true,
       pluginPromptAdditions = [],
-      separateCurrentUserInput = true
+      separateCurrentUserInput = true,
+      awareness = createRuntimeAwareness()
     } = options
 
     const systemPrompt = this.buildXMLSystemPrompt({
@@ -50,16 +59,17 @@ export class PromptBuilder {
       summaries,
       hasTools: tools.length > 0,
       pluginPromptAdditions,
+      awareness,
     })
 
     const { historyMessages, currentUserMessages } = separateCurrentUserInput
       ? this.splitCurrentUserInput(history)
       : { historyMessages: history, currentUserMessages: [] }
-    const messages = this.buildMessages(historyMessages)
+    const messages = this.buildMessages(historyMessages, awareness)
     if (currentUserMessages.length > 0) {
       messages.push({
         role: 'user',
-        content: this.formatCurrentUserInputXML(currentUserMessages),
+        content: this.formatCurrentUserInputXML(currentUserMessages, awareness),
       })
     }
 
@@ -82,6 +92,7 @@ export class PromptBuilder {
     summaries?: ConversationSummary[]
     hasTools?: boolean
     pluginPromptAdditions?: string[]
+    awareness: RuntimeAwarenessSnapshot
   }): string {
     const sections: string[] = []
 
@@ -104,12 +115,16 @@ export class PromptBuilder {
     }
 
     if (options.summaries && options.summaries.length > 0) {
-      sections.push(this.formatSummariesXML(options.summaries))
+      sections.push(this.formatSummariesXML(options.summaries, options.awareness))
     }
 
     sections.push('</memory>')
 
-    // ========== Part 3: Output Format ==========
+    sections.push('\n<runtime_context>')
+    sections.push(formatAwarenessBlock(options.awareness))
+    sections.push('</runtime_context>')
+
+    // ========== Part 4: Output Format ==========
     sections.push('\n<output_format>')
     sections.push(this.buildOutputFormatXML(options.hasTools || false, options.pluginPromptAdditions || []))
     sections.push('</output_format>')
@@ -232,52 +247,45 @@ export class PromptBuilder {
 
   
   private static formatUserProfileXML(profile: UserProfile): string {
-    let xml = '<user_profile>\n'
+    const lines: string[] = ['<user_profile>']
 
     if (Object.keys(profile.basic).length > 0) {
-      xml += '  <basic_info>\n'
+      lines.push('基本信息:')
       Object.entries(profile.basic).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
           const formattedValue = Array.isArray(value) ? value.join(', ') : value
-          xml += `    <${key}>${this.escapeXML(String(formattedValue))}</${key}>\n`
+          lines.push(`- ${key}: ${this.escapeXML(String(formattedValue))}`)
         }
       })
-      xml += '  </basic_info>\n'
     }
 
     if (profile.importantMemories.size > 0) {
-      xml += '  <important_memories>\n'
+      lines.push('重要记忆:')
       profile.importantMemories.forEach((value, key) => {
-        xml += `    <memory key="${this.escapeXML(key)}">${this.escapeXML(value)}</memory>\n`
+        lines.push(`- ${key}: ${this.escapeXML(value)}`)
       })
-      xml += '  </important_memories>\n'
     }
 
-    xml += '</user_profile>'
-    return xml
+    lines.push('</user_profile>')
+    return lines.join('\n')
   }
 
   
-  private static formatSummariesXML(summaries: ConversationSummary[]): string {
-    let xml = '<conversation_summaries>\n'
+  private static formatSummariesXML(
+    summaries: ConversationSummary[],
+    awareness?: RuntimeAwarenessSnapshot
+  ): string {
+    const lines: string[] = ['<conversation_summaries>']
 
-    summaries.forEach((summary, index) => {
-      xml += `  <summary id="${index + 1}" turns="${summary.startTurn}-${summary.endTurn}">\n`
-      xml += `    <content>${this.escapeXML(summary.summary)}</content>\n`
-
-      if (summary.keyTopics.length > 0) {
-        xml += '    <topics>\n'
-        summary.keyTopics.forEach(topic => {
-          xml += `      <topic>${this.escapeXML(topic)}</topic>\n`
-        })
-        xml += '    </topics>\n'
-      }
-
-      xml += '  </summary>\n'
+    summaries.forEach((summary) => {
+      const time = awareness ? formatMessageTime(summary.timestamp, awareness) : ''
+      const prefix = time ? `[${time}] ` : ''
+      const topics = summary.keyTopics.length > 0 ? ` 主题: ${summary.keyTopics.join(', ')}` : ''
+      lines.push(`- ${this.escapeXML(`${prefix}${summary.summary}${topics}`)}`)
     })
 
-    xml += '</conversation_summaries>'
-    return xml
+    lines.push('</conversation_summaries>')
+    return lines.join('\n')
   }
 
   
@@ -321,7 +329,7 @@ export class PromptBuilder {
   }
 
   
-  private static buildMessages(history: ResponseItem[]): any[] {
+  private static buildMessages(history: ResponseItem[], awareness: RuntimeAwarenessSnapshot): any[] {
     const messages: any[] = []
 
     const totalMessages = history.length
@@ -334,14 +342,14 @@ export class PromptBuilder {
     const recentMessages = history.slice(recentStart)
 
     if (distantMessages.length > 0) {
-      const distantXML = this.formatDistantConversationsXML(distantMessages)
+      const distantXML = this.formatDistantConversationsXML(distantMessages, awareness)
       messages.push({
         role: 'user',
         content: distantXML
       })
     }
 
-    const recentXML = this.formatRecentConversationsXML(recentMessages)
+    const recentXML = this.formatRecentConversationsXML(recentMessages, awareness)
     messages.push({
       role: 'user',
       content: recentXML
@@ -383,68 +391,49 @@ export class PromptBuilder {
   }
 
   
-  private static formatCurrentUserInputXML(messages: ResponseItem[]): string {
-    let xml = '<current_user_input>\n'
-    xml += '\n'
-
-    messages.forEach((item, index) => {
-      xml += `  <utterance id="${index + 1}">\n`
-      xml += `    <content>${this.escapeXML(item.content)}</content>\n`
-      xml += '  </utterance>\n'
-    })
-
-    xml += '</current_user_input>'
-    return xml
+  private static formatCurrentUserInputXML(
+    messages: ResponseItem[],
+    awareness: RuntimeAwarenessSnapshot
+  ): string {
+    return [
+      '<current_user_input>',
+      ...messages.map(item => `${formatConversationLinePrefix(item, awareness)} ${this.escapeXML(item.content)}`),
+      '</current_user_input>'
+    ].join('\n')
   }
 
   
-  private static formatDistantConversationsXML(messages: ResponseItem[]): string {
-    let xml = '<conversation_history type="distant">\n'
-    xml += '\n'
-
-    messages.forEach((item, index) => {
-      xml += `  <turn id="${index + 1}" role="${item.role}">\n`
-      xml += `    ${this.escapeXML(item.content)}\n`
-      xml += '  </turn>\n'
-    })
-
-    xml += '</conversation_history>'
-    return xml
+  private static formatDistantConversationsXML(
+    messages: ResponseItem[],
+    awareness: RuntimeAwarenessSnapshot
+  ): string {
+    return [
+      '<conversation_history type="distant">',
+      ...messages.map(item => `${formatConversationLinePrefix(item, awareness)} ${this.escapeXML(item.content)}`),
+      '</conversation_history>'
+    ].join('\n')
   }
 
   
-  private static formatRecentConversationsXML(messages: ResponseItem[]): string {
-    let xml = '<conversation_history type="recent">\n'
-    xml += '\n'
+  private static formatRecentConversationsXML(
+    messages: ResponseItem[],
+    awareness: RuntimeAwarenessSnapshot
+  ): string {
+    const lines: string[] = ['<conversation_history type="recent">']
 
-    messages.forEach((item, index) => {
-      xml += `  <turn id="${index + 1}" role="${item.role}">\n`
-
+    messages.forEach(item => {
+      const parts = [`${formatConversationLinePrefix(item, awareness)} ${this.escapeXML(item.content)}`]
       if (item.toolCalls && item.toolCalls.length > 0) {
-        xml += '    <tool_calls>\n'
-        item.toolCalls.forEach(call => {
-          xml += `      <call name="${call.name}">${JSON.stringify(call.arguments)}</call>\n`
-        })
-        xml += '    </tool_calls>\n'
+        parts.push(`工具调用: ${item.toolCalls.map(call => `${call.name}(${JSON.stringify(call.arguments)})`).join(', ')}`)
       }
-
       if (item.toolResults && item.toolResults.length > 0) {
-        xml += '    <tool_results>\n'
-        item.toolResults.forEach(result => {
-          xml += `      <result>${this.escapeXML(JSON.stringify(result))}</result>\n`
-        })
-        xml += '    </tool_results>\n'
+        parts.push(`工具结果: ${JSON.stringify(item.toolResults)}`)
       }
-
-      if (item.content) {
-        xml += `    <content>${this.escapeXML(item.content)}</content>\n`
-      }
-
-      xml += '  </turn>\n'
+      lines.push(parts.join('\n  '))
     })
 
-    xml += '</conversation_history>'
-    return xml
+    lines.push('</conversation_history>')
+    return lines.join('\n')
   }
 
   

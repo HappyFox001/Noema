@@ -10,6 +10,7 @@ import type { AgentCore } from '../agent/index.js'
 import type { ContextManager } from '../context/index.js'
 import type { UserProfile, ConversationSummary } from '../memory/index.js'
 import type { PersonalityEngine } from '../personality/index.js'
+import { createRuntimeAwareness, formatAwarenessBlock, formatMessageTime } from '../awareness/index.js'
 import { TurnRuntime } from './turn.js'
 import { PROMPTS } from '../prompts.js'
 import type { TaskPlan, TaskPlanDraft, TaskRunState, TaskStep, TaskStepStatus } from './task-plan.js'
@@ -122,6 +123,7 @@ export class TaskRuntime {
   private compactAfterTurns: number
   private keepRecentTurns: number
   private noOpLimit: number
+  private awareness = createRuntimeAwareness()
   private compactSummary = ''
   private turnRecords: TaskTurnRecord[] = []
   private taskPlan: TaskPlan | null = null
@@ -564,7 +566,10 @@ export class TaskRuntime {
     const history = this.context.forPrompt()
     const historyText = history
       .slice(-12)
-      .map(item => `${item.role}: ${item.content}`)
+      .map(item => {
+        const time = formatMessageTime(item.timestamp, this.awareness)
+        return `${time ? `[${time}] ` : ''}${item.role}: ${item.content}`
+      })
       .join('\n')
 
     return [
@@ -607,10 +612,21 @@ export class TaskRuntime {
 
   private buildTaskSystemPrompt(): string {
     const personality = this.personality.getPersonality()
-    return PROMPTS.task.systemPrompt(
-      personality.character.name,
-      personality.relationship.type
-    )
+    return [
+      PROMPTS.task.systemPrompt(
+        personality.character.name,
+        personality.relationship.type
+      ),
+      this.formatRuntimeAwareness()
+    ].join('\n\n')
+  }
+
+  private formatRuntimeAwareness(): string {
+    return [
+      '<runtime_context>',
+      formatAwarenessBlock(this.awareness),
+      '</runtime_context>'
+    ].join('\n')
   }
 
   private buildTaskPlanUpdateToolSpec(): any {
@@ -747,7 +763,10 @@ export class TaskRuntime {
       const response = await this.llm.chat([
         {
           role: 'system',
-          content: PROMPTS.task.planningSystem
+          content: [
+            PROMPTS.task.planningSystem,
+            this.formatRuntimeAwareness()
+          ].join('\n\n')
         },
         {
           role: 'user',
@@ -1178,7 +1197,10 @@ export class TaskRuntime {
     if (this.memoryContext.summaries.length > 0) {
       sections.push(
         `${PROMPTS.context.historySummaryTitle}\n${this.memoryContext.summaries
-          .map(summary => `- ${summary.summary}`)
+          .map(summary => {
+            const time = formatMessageTime(summary.timestamp, this.awareness)
+            return `- ${time ? `[${time}] ` : ''}${summary.summary}`
+          })
           .join('\n')}`
       )
     }
