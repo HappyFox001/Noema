@@ -274,6 +274,18 @@ input[type="password"] {
   flex-shrink: 0;
   contain: layout paint;
   isolation: isolate;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(8px);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+body:not(.settings-open) #main-view:hover .controls,
+body:not(.settings-open) #main-view:focus-within .controls,
+body:not(.settings-open) #main-view.conversation-active .controls {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
 }
 
 .start-button {
@@ -283,7 +295,7 @@ input[type="password"] {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 186px;
+  width: 132px;
   height: 34px;
   padding: 0 20px;
   overflow: hidden;

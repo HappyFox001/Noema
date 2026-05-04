@@ -1464,8 +1464,9 @@ function handleConversationFrame(frame: ConversationFrame) {
 const startConversationBtn = document.getElementById('start-conversation-btn') as HTMLButtonElement
 
 function updateConversationButton(): void {
+  document.getElementById('main-view')?.classList.toggle('conversation-active', activeMode === 'conversation')
   replaceControlText(startConversationBtn, voiceInputEnabled
-    ? (activeMode === 'conversation' ? 'Stop' : 'Start Conversation')
+    ? (activeMode === 'conversation' ? 'Stop' : 'Start')
     : 'Voice Disabled')
 }
 
