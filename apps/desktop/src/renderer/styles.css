@@ -68,12 +68,12 @@ body {
   max-width: 360px;
   min-height: 100vh;
   display: grid;
-  grid-template-rows: auto auto auto;
+  grid-template-rows: auto auto auto auto;
   align-items: center;
   align-content: center;
   justify-items: center;
   padding: 16px;
-  gap: 12px;
+  gap: 6px;
   background: transparent !important;
   background-color: rgba(0, 0, 0, 0) !important;
   -webkit-app-region: drag;
@@ -264,7 +264,7 @@ input[type="password"] {
 }
 
 .controls {
-  grid-row: 3;
+  grid-row: 4;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -323,24 +323,31 @@ input[type="password"] {
 .status {
   font-family: var(--font-ui);
   letter-spacing: 0;
-  position: relative;
+  grid-row: 3;
+  margin-top: -52px;
+  margin-bottom: 32px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 122px;
-  height: 28px;
-  padding: 0 14px;
+  min-width: 0;
+  max-width: min(240px, calc(100vw - 64px));
+  min-height: 18px;
+  padding: 0 4px;
   overflow: hidden;
   white-space: nowrap;
-  line-height: 1;
-  background: rgba(0, 0, 0, 0.52);
+  line-height: 1.2;
+  background: transparent;
   backdrop-filter: none;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 999px;
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 11px;
-  font-weight: 500;
+  border: none;
+  border-radius: 0;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 12px;
+  font-weight: 600;
   text-align: center;
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.95),
+    0 0 7px rgba(0, 0, 0, 0.88),
+    0 0 1px rgba(255, 255, 255, 0.75);
   contain: paint;
   isolation: isolate;
   transform: translateZ(0);
