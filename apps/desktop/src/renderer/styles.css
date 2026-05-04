@@ -81,6 +81,7 @@ body {
   overflow: hidden;
   contain: layout paint;
   isolation: isolate;
+  transition: opacity 180ms ease, transform 220ms ease;
 }
 
 #orb-canvas {
@@ -174,6 +175,7 @@ a,
 .settings-toggle *,
 .text-input,
 .start-button,
+.task-panel,
 .tts-button,
 input,
 textarea,
@@ -330,6 +332,113 @@ body:not(.settings-open) #main-view.conversation-active .controls {
 .start-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.task-panel {
+  position: absolute;
+  left: calc(50% + 78px);
+  top: 50%;
+  z-index: 7;
+  width: 188px;
+  max-height: 238px;
+  padding: 12px 12px 10px;
+  overflow: hidden;
+  background: rgba(8, 8, 8, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.24);
+  color: white;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%) translateX(10px) scale(0.97);
+  transition: opacity 180ms ease, transform 220ms ease;
+  contain: paint;
+  isolation: isolate;
+  backdrop-filter: none;
+}
+
+body.task-active:not(.settings-open) .task-panel {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(-50%) translateX(0) scale(1);
+}
+
+.task-panel-title {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.72);
+  margin-bottom: 9px;
+}
+
+.task-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  list-style: none;
+  max-height: 196px;
+  overflow: hidden;
+}
+
+.task-step {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 7px;
+  align-items: start;
+  min-height: 18px;
+  color: rgba(255, 255, 255, 0.74);
+}
+
+.task-step-mark {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: rgba(255, 255, 255, 0.70);
+  font-family: var(--font-ui);
+  font-size: 10px;
+  line-height: 1;
+}
+
+.task-step-title {
+  min-width: 0;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-family: var(--font-mixed);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.35;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
+}
+
+.task-step.running {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.task-step.running .task-step-mark {
+  border-color: rgba(255, 191, 0, 0.56);
+  color: rgba(255, 214, 92, 0.95);
+}
+
+.task-step.completed {
+  color: rgba(255, 255, 255, 0.48);
+}
+
+.task-step.completed .task-step-mark {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.20);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.task-step.failed .task-step-mark {
+  border-color: rgba(255, 69, 58, 0.55);
+  color: rgba(255, 114, 104, 0.95);
 }
 
 .status {
@@ -1551,8 +1660,12 @@ body.settings-open #main-view {
 
 body:not(.settings-open) #main-view {
   opacity: 1;
-  transform: none;
+  transform: translateX(0);
   pointer-events: auto;
+}
+
+body.task-active:not(.settings-open) #main-view {
+  transform: translateX(-96px);
 }
 
 @media (max-width: 560px) {

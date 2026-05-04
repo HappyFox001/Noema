@@ -704,6 +704,7 @@ type ConversationFrame =
   | { type: 'control.phase_start'; phase: 'reply' | 'task' | 'task_result' }
   | { type: 'control.phase_end'; phase: 'reply' | 'task' | 'task_result' }
   | { type: 'control.task_start'; taskDescription: string }
+  | { type: 'control.task_plan'; plan: TaskPanelPlan }
   | { type: 'control.task_end'; success: boolean; summary: string; error?: string }
   | { type: 'data.tts_text'; text: string }
   | {
@@ -714,6 +715,22 @@ type ConversationFrame =
       durationMs: number
       priority?: number
     }
+
+type TaskPanelStepStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped'
+
+type TaskPanelPlan = {
+  id: string
+  title: string
+  summary: string
+  steps: Array<{
+    id: string
+    title: string
+    description: string
+    status: TaskPanelStepStatus
+    result?: string
+    error?: string
+  }>
+}
 
 const voiceRecorder = new VoiceRecorder()
 
@@ -1416,11 +1433,80 @@ function clearExpressionAfterMinimum(): void {
   }, remaining)
 }
 
+let taskPanelHideTimer: number | undefined
+
+function setTaskPanelVisible(visible: boolean): void {
+  if (taskPanelHideTimer !== undefined) {
+    window.clearTimeout(taskPanelHideTimer)
+    taskPanelHideTimer = undefined
+  }
+
+  document.body.classList.toggle('task-active', visible)
+  document.getElementById('task-panel')?.setAttribute('aria-hidden', String(!visible))
+  if (!document.body.classList.contains('settings-open')) {
+    window.electronAPI.setTaskWindowMode(visible)
+  }
+}
+
+function hideTaskPanelSoon(): void {
+  if (taskPanelHideTimer !== undefined) {
+    window.clearTimeout(taskPanelHideTimer)
+  }
+  taskPanelHideTimer = window.setTimeout(() => {
+    setTaskPanelVisible(false)
+  }, 1800)
+}
+
+function renderTaskPanel(plan: TaskPanelPlan): void {
+  const title = document.querySelector('.task-panel-title')
+  const list = document.getElementById('task-steps')
+  if (!title || !list) {
+    return
+  }
+
+  title.textContent = plan.title || 'Task'
+  list.textContent = ''
+
+  for (const step of plan.steps.slice(0, 6)) {
+    const item = document.createElement('li')
+    item.className = `task-step ${step.status}`
+
+    const mark = document.createElement('span')
+    mark.className = 'task-step-mark'
+    mark.textContent = getTaskStepMark(step.status)
+
+    const text = document.createElement('span')
+    text.className = 'task-step-title'
+    text.textContent = step.title || step.description || 'Step'
+
+    item.append(mark, text)
+    list.appendChild(item)
+  }
+
+  setTaskPanelVisible(true)
+}
+
+function getTaskStepMark(status: TaskPanelStepStatus): string {
+  switch (status) {
+    case 'completed':
+      return '✓'
+    case 'running':
+      return '•'
+    case 'failed':
+      return '!'
+    case 'skipped':
+      return '-'
+    default:
+      return ''
+  }
+}
+
 function handleConversationFrame(frame: ConversationFrame) {
   switch (frame.type) {
     case 'system.reset':
       textRevealer.reset()
       clearExpression()
+      setTaskPanelVisible(false)
       setStatus('Thinking...')
       setOrbMode('thinking')
       break
@@ -1442,13 +1528,28 @@ function handleConversationFrame(frame: ConversationFrame) {
       }
       break
     case 'control.task_start':
+      renderTaskPanel({
+        id: 'pending',
+        title: 'Task',
+        summary: frame.taskDescription,
+        steps: [{
+          id: 'pending-step',
+          title: frame.taskDescription,
+          description: frame.taskDescription,
+          status: 'running',
+        }],
+      })
       setStatus('Working...')
       setOrbMode('thinking')
+      break
+    case 'control.task_plan':
+      renderTaskPanel(frame.plan)
       break
     case 'control.task_end':
       if (!frame.success) {
         setStatus(frame.error ? `Task Error: ${frame.error}` : 'Task failed')
       }
+      hideTaskPanelSoon()
       break
     case 'data.tts_text':
       textRevealer.enqueueText(frame.text)
@@ -1909,7 +2010,11 @@ function openSettings(section?: string) {
 
 // Close settings panel
 function closeSettings() {
-  window.electronAPI.setCompactWindowMode(true)
+  if (document.body.classList.contains('task-active')) {
+    window.electronAPI.setTaskWindowMode(true)
+  } else {
+    window.electronAPI.setCompactWindowMode(true)
+  }
   orbAnimationPaused = false
   document.body.classList.remove('settings-open')
   settingsPanel.classList.remove('visible')

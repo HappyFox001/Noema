@@ -216,4 +216,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setCompactWindowMode: (compact) => {
     ipcRenderer.send('window:set-compact-mode', compact)
   },
+
+  setTaskWindowMode: (active) => {
+    ipcRenderer.send('window:set-task-mode', active)
+  },
 })

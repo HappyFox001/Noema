@@ -143,7 +143,7 @@ export class TaskSession {
     private agent: AgentCore,
     private context: ContextManager,
     storageDir: string,
-    private runtimeHooks: Pick<TaskRuntimeHooks, 'onUserInputRequest'> = {},
+    private runtimeHooks: Pick<TaskRuntimeHooks, 'onUserInputRequest' | 'onPlanUpdated' | 'onStepUpdated'> = {},
     private taskRuntimeConfig: TaskRuntimeConfig = {}
   ) {
     const resolvedStorageDir = isAbsolute(storageDir)
@@ -373,16 +373,18 @@ export class TaskSession {
         onPlanUpdated: (plan) => {
           this.snapshot.plan = cloneTaskPlan(plan)
           this.persistSnapshot()
+          this.runtimeHooks.onPlanUpdated?.(cloneTaskPlan(plan))
         },
-        onStepUpdated: (_step, plan) => {
+        onStepUpdated: (step, plan) => {
           this.snapshot.plan = cloneTaskPlan(plan)
           this.persistSnapshot()
+          this.runtimeHooks.onStepUpdated?.(JSON.parse(JSON.stringify(step)) as typeof step, cloneTaskPlan(plan))
         },
         onCompact: (summary) => {
           this.snapshot.compactSummary = summary
           this.persistSnapshot()
         },
-        ...this.runtimeHooks
+        onUserInputRequest: this.runtimeHooks.onUserInputRequest
       },
       this.taskRuntimeConfig,
       signal

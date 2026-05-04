@@ -82,6 +82,7 @@ import {
   type PluginRuntimeContext,
   type TaskUserInputRequest,
   type TaskUserInputResponse,
+  type TaskPlan,
 } from '@her-text/sdk'
 import { discoverRuntimePlugins, invokeRuntimePluginAdminAction, loadRuntimePlugins } from './plugin-loader.js'
 import { initializeSileroVAD, isSileroVADAvailable } from './silero-vad-helper.js'
@@ -138,6 +139,7 @@ type ConversationFrame =
   | { type: 'control.phase_start'; phase: ConversationPhase }
   | { type: 'control.phase_end'; phase: ConversationPhase }
   | { type: 'control.task_start'; taskDescription: string }
+  | { type: 'control.task_plan'; plan: TaskPlan }
   | { type: 'control.task_end'; success: boolean; summary: string; error?: string }
   | { type: 'data.tts_text'; text: string }
   | {
@@ -1284,6 +1286,7 @@ outputFramePipeline.addObserver(frameTraceObserver)
 let currentTurnId = 0
 let currentTurnAbortController: AbortController | null = null
 let currentResponseFramePipeline: ResponseFramePipeline | null = null
+let currentTaskPlanFrameSender: ((plan: TaskPlan) => void) | null = null
 const cancelledTurnIds = new Set<number>()
 
 
@@ -1630,6 +1633,7 @@ app.commandLine.appendSwitch('disable-gpu-compositing')
 
 let mainWindow: BrowserWindow | null = null
 const COMPACT_WINDOW_SIZE = { width: 380, height: 380 }
+const TASK_WINDOW_SIZE = { width: 600, height: 380 }
 const SETTINGS_WINDOW_SIZE = { width: 500, height: 600 }
 
 function resizeWindowAroundCenter(window: BrowserWindow, width: number, height: number): void {
@@ -2318,6 +2322,9 @@ async function initializeSDK(): Promise<void> {
   sdkInstance = await HerTextSDK.initialize(sdkConfig, {
     plugins,
     onTaskUserInputRequest: requestTaskUserInput,
+    onTaskPlanUpdated: (plan) => {
+      currentTaskPlanFrameSender?.(plan)
+    },
   })
   console.log('[SDK] Initialized successfully')
 }
@@ -2461,6 +2468,16 @@ ipcMain.on('window:set-compact-mode', (event, compact) => {
   resizeWindowAroundCenter(win, size.width, size.height)
 })
 
+ipcMain.on('window:set-task-mode', (event, active) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (!win) {
+    return
+  }
+
+  const size = active ? TASK_WINDOW_SIZE : COMPACT_WINDOW_SIZE
+  resizeWindowAroundCenter(win, size.width, size.height)
+})
+
 ipcMain.handle('conversation:initialize', async () => {
   try {
     if (!sdkInstance) {
@@ -2521,6 +2538,14 @@ async function runConversationTurn(
         mainWindow?.webContents.send('conversation:frame', frame)
       }
     )
+    const taskPlanFrameSender = (plan: TaskPlan) => {
+      if (isTurnCancelled(turnId)) return
+      mainWindow?.webContents.send('conversation:frame', {
+        type: 'control.task_plan',
+        plan,
+      } satisfies ConversationFrame)
+    }
+    currentTaskPlanFrameSender = taskPlanFrameSender
     displayController.reset()
     currentTTSChunkSequence = 0
     const interruptedTTSTextChunks: string[] = []
@@ -2643,6 +2668,9 @@ async function runConversationTurn(
     }
 
     completeCurrentTurn(turnId, responseFramePipeline)
+    if (currentTaskPlanFrameSender === taskPlanFrameSender) {
+      currentTaskPlanFrameSender = null
+    }
     voiceGraphPipeline.removeLane(responseLaneName)
 
     return { success: true, response: fullResponse, ttsEnabled: shouldUseTTS }
@@ -2651,6 +2679,7 @@ async function runConversationTurn(
       currentResponseFramePipeline?.stop()
       currentResponseFramePipeline = null
     }
+    currentTaskPlanFrameSender = null
     if (turnId > 0) {
       voiceGraphPipeline.removeLane(`response:${turnId}`)
     }

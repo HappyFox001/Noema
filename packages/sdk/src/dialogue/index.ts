@@ -73,6 +73,8 @@ export interface DialogueOrchestratorConfig {
   ttsChunk?: TTSChunkConfig
   taskRuntime?: TaskRuntimeConfig
   onTaskUserInputRequest?: TaskRuntimeHooks['onUserInputRequest']
+  onTaskPlanUpdated?: TaskRuntimeHooks['onPlanUpdated']
+  onTaskStepUpdated?: TaskRuntimeHooks['onStepUpdated']
 }
 
 function scheduleAsyncTask(task: () => Promise<void>): void {
@@ -117,7 +119,9 @@ export class DialogueOrchestrator {
   ) {
     this.context = new ContextManager()
     this.taskSession = new TaskSession(taskLLM, memory, personality, agent, this.context, storageDir, {
-      onUserInputRequest: config?.onTaskUserInputRequest
+      onUserInputRequest: config?.onTaskUserInputRequest,
+      onPlanUpdated: config?.onTaskPlanUpdated,
+      onStepUpdated: config?.onTaskStepUpdated,
     }, config?.taskRuntime)
     this.contextAggregator = new LLMContextAggregator(memory, personality, agent, this.context, this.truncationPolicy)
     this.llmProcessor = new LLMProcessor(llm)

@@ -358,6 +358,21 @@ declare global {
         type: 'control.task_start'
         taskDescription: string
       } | {
+        type: 'control.task_plan'
+        plan: {
+          id: string
+          title: string
+          summary: string
+          steps: Array<{
+            id: string
+            title: string
+            description: string
+            status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped'
+            result?: string
+            error?: string
+          }>
+        }
+      } | {
         type: 'control.task_end'
         success: boolean
         summary: string
@@ -430,6 +445,7 @@ declare global {
 
       moveWindow: (deltaX: number, deltaY: number) => void
       setCompactWindowMode: (compact: boolean) => void
+      setTaskWindowMode: (active: boolean) => void
     }
   }
 }
