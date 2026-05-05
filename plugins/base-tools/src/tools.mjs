@@ -3,7 +3,9 @@
  */
 import { readFile } from 'node:fs/promises'
 import {
+  deleteFile,
   editTextFile,
+  readImageFile,
   readTextFile,
   resolveToolPath,
   runCommand,
@@ -20,6 +22,9 @@ export function createBaseTools() {
     createGlobTool(),
     createGrepTool(),
     createBashTool(),
+    createExecCommandTool(),
+    createApplyPatchTool(),
+    createViewImageTool(),
   ]
 }
 
@@ -317,6 +322,135 @@ function createBashTool() {
   })
 }
 
+function createExecCommandTool() {
+  return createTool({
+    name: 'exec_command',
+    description: 'Run a shell command with Codex-style arguments. Prefer this for terminal operations when you need cwd, timeout, output truncation, or background execution.',
+    safety: 'external',
+    parameters: {
+      type: 'object',
+      properties: {
+        cmd: {
+          type: 'string',
+          description: 'Shell command to execute.',
+        },
+        workdir: {
+          type: 'string',
+          description: 'Working directory. Defaults to the current process working directory.',
+        },
+        timeout_ms: {
+          type: 'number',
+          description: 'Timeout in milliseconds. Defaults to 120000.',
+          default: 120000,
+        },
+        max_output_chars: {
+          type: 'number',
+          description: 'Maximum stdout/stderr characters to return. Defaults to 12000.',
+          default: 12000,
+        },
+        background: {
+          type: 'boolean',
+          description: 'Run command in background and return immediately.',
+          default: false,
+        },
+      },
+      required: ['cmd'],
+    },
+    execute: async ({
+      cmd,
+      workdir,
+      timeout_ms = 120000,
+      max_output_chars = 12000,
+      background = false,
+    }) => {
+      if (background) {
+        const pid = runCommandInBackground(cmd, workdir)
+        return {
+          success: true,
+          result: {
+            command: cmd,
+            cwd: resolveToolPath(workdir),
+            background: true,
+            pid,
+          },
+        }
+      }
+
+      const output = await runCommand(cmd, { cwd: workdir, timeout: timeout_ms })
+      return {
+        success: output.exitCode === 0,
+        result: {
+          command: cmd,
+          cwd: resolveToolPath(workdir),
+          stdout: truncateText(output.stdout, max_output_chars),
+          stderr: truncateText(output.stderr, max_output_chars),
+          stdout_truncated: output.stdout.length > max_output_chars,
+          stderr_truncated: output.stderr.length > max_output_chars,
+          exit_code: output.exitCode,
+        },
+      }
+    },
+  })
+}
+
+function createApplyPatchTool() {
+  return createTool({
+    name: 'apply_patch',
+    description: 'Apply a Codex-style patch to local files. The patch must use *** Begin Patch / *** End Patch with Add File, Delete File, or Update File sections.',
+    safety: 'write',
+    parameters: {
+      type: 'object',
+      properties: {
+        patch: {
+          type: 'string',
+          description: 'The complete patch text.',
+        },
+      },
+      required: ['patch'],
+    },
+    execute: async ({ patch }) => applyPatch(String(patch || '')),
+  })
+}
+
+function createViewImageTool() {
+  return createTool({
+    name: 'view_image',
+    description: 'Attach a local image file to the next model turn for visual inspection. Use this for screenshots, UI captures, diagrams, and image assets.',
+    safety: 'read',
+    parameters: {
+      type: 'object',
+      properties: {
+        path: {
+          type: 'string',
+          description: 'Local image file path.',
+        },
+        detail: {
+          type: 'string',
+          enum: ['auto', 'original'],
+          description: 'Optional detail preference. original requests full-resolution interpretation when supported.',
+        },
+      },
+      required: ['path'],
+    },
+    execute: async ({ path, detail = 'auto' }) => {
+      const image = await readImageFile(path)
+      return {
+        success: true,
+        result: {
+          type: 'image',
+          path: image.path,
+          mime_type: image.mimeType,
+          image_base64: image.base64,
+          width: image.width,
+          height: image.height,
+          bytes: image.bytes,
+          note: detail === 'original' ? 'Original-detail local image attachment.' : 'Local image attachment.',
+        },
+      }
+    },
+  })
+}
+
 function createTool({ name, description, parameters, safety, execute }) {
   return {
     name,
@@ -396,4 +530,149 @@ function countLineMatches(line, regex) {
   regex.lastIndex = 0
   const matched = line.match(regex)
   return matched ? matched.length : 0
+}
+
+async function applyPatch(patch) {
+  const sections = parsePatch(patch)
+  const changes = []
+
+  for (const section of sections) {
+    if (section.type === 'add') {
+      const filePath = resolveToolPath(section.file)
+      await writeTextFile(filePath, section.content)
+      changes.push({ type: 'add', file_path: filePath })
+      continue
+    }
+
+    if (section.type === 'delete') {
+      const filePath = resolveToolPath(section.file)
+      await deleteFile(filePath)
+      changes.push({ type: 'delete', file_path: filePath })
+      continue
+    }
+
+    const filePath = resolveToolPath(section.file)
+    let content = (await readTextFile(filePath)).content
+    for (const hunk of section.hunks) {
+      if (!hunk.oldText) {
+        throw new Error(`Update hunk for ${section.file} has no removable/context text`)
+      }
+      const count = content.split(hunk.oldText).length - 1
+      if (count === 0) {
+        throw new Error(`Patch hunk did not match ${section.file}`)
+      }
+      if (count > 1) {
+        throw new Error(`Patch hunk matched multiple locations in ${section.file}`)
+      }
+      content = content.replace(hunk.oldText, hunk.newText)
+    }
+    await writeTextFile(filePath, content)
+    changes.push({ type: 'update', file_path: filePath, hunks: section.hunks.length })
+  }
+
+  return {
+    success: true,
+    result: {
+      changes,
+    },
+  }
+}
+
+function parsePatch(patch) {
+  const lines = patch.replace(/\r\n/g, '\n').split('\n')
+  if (lines[0] !== '*** Begin Patch') {
+    throw new Error('Patch must start with "*** Begin Patch"')
+  }
+  if (lines[lines.length - 1] === '') {
+    lines.pop()
+  }
+  if (lines[lines.length - 1] !== '*** End Patch') {
+    throw new Error('Patch must end with "*** End Patch"')
+  }
+
+  const sections = []
+  let index = 1
+  while (index < lines.length - 1) {
+    const line = lines[index]
+    if (line.startsWith('*** Add File: ')) {
+      const file = line.slice('*** Add File: '.length).trim()
+      index += 1
+      const contentLines = []
+      while (index < lines.length - 1 && !lines[index].startsWith('*** ')) {
+        if (!lines[index].startsWith('+')) {
+          throw new Error(`Add File lines must start with + for ${file}`)
+        }
+        contentLines.push(lines[index].slice(1))
+        index += 1
+      }
+      sections.push({ type: 'add', file, content: contentLines.join('\n') + '\n' })
+      continue
+    }
+
+    if (line.startsWith('*** Delete File: ')) {
+      sections.push({ type: 'delete', file: line.slice('*** Delete File: '.length).trim() })
+      index += 1
+      continue
+    }
+
+    if (line.startsWith('*** Update File: ')) {
+      const file = line.slice('*** Update File: '.length).trim()
+      index += 1
+      const hunks = []
+      while (index < lines.length - 1 && !lines[index].startsWith('*** ')) {
+        if (lines[index].startsWith('@@')) {
+          index += 1
+          const hunkLines = []
+          while (index < lines.length - 1 && !lines[index].startsWith('@@') && !lines[index].startsWith('*** ')) {
+            hunkLines.push(lines[index])
+            index += 1
+          }
+          hunks.push(parseHunk(hunkLines))
+          continue
+        }
+        index += 1
+      }
+      if (hunks.length === 0) {
+        throw new Error(`Update File requires at least one @@ hunk for ${file}`)
+      }
+      sections.push({ type: 'update', file, hunks })
+      continue
+    }
+
+    throw new Error(`Unknown patch directive: ${line}`)
+  }
+
+  return sections
+}
+
+function parseHunk(lines) {
+  const oldLines = []
+  const newLines = []
+  for (const line of lines) {
+    if (line.startsWith(' ')) {
+      oldLines.push(line.slice(1))
+      newLines.push(line.slice(1))
+    } else if (line.startsWith('-')) {
+      oldLines.push(line.slice(1))
+    } else if (line.startsWith('+')) {
+      newLines.push(line.slice(1))
+    } else if (line === '') {
+      oldLines.push('')
+      newLines.push('')
+    } else {
+      throw new Error(`Invalid hunk line: ${line}`)
+    }
+  }
+  return {
+    oldText: oldLines.join('\n') + '\n',
+    newText: newLines.join('\n') + '\n',
+  }
+}
+
+function truncateText(text, maxChars) {
+  const limit = Number.isFinite(Number(maxChars)) ? Math.max(1000, Number(maxChars)) : 12000
+  if (typeof text !== 'string' || text.length <= limit) {
+    return text
+  }
+  return `${text.slice(0, limit)}\n[truncated ${text.length - limit} chars]`
 }

@@ -1,7 +1,7 @@
 {
   "id": "base-tools",
   "name": "Base Tools",
-  "description": "提供任务执行所需的基础本地工具，包括文件读取、文件修改、文件搜索和 Shell 命令执行。关闭某类能力后，任务模型将无法调用对应工具。",
+  "description": "提供任务执行所需的基础本地工具，包括文件读取、文件修改、补丁应用、图片查看、文件搜索和 Shell 命令执行。",
   "version": "0.1.0",
   "type": "sdk-plugin",
   "main": "index.mjs",

@@ -2,7 +2,7 @@
  * Node filesystem and shell operations for base tools.
  */
 import { execFile, spawn } from 'node:child_process'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, resolve } from 'node:path'
 
 export function resolveToolPath(inputPath) {
@@ -58,6 +58,25 @@ export async function editTextFile(filePath, oldString, newString, replaceAll) {
   return replaceAll ? occurrences : 1
 }
 
+export async function deleteFile(filePath) {
+  const absolutePath = resolveToolPath(filePath)
+  await rm(absolutePath, { force: false })
+}
+
+export async function readImageFile(filePath) {
+  const absolutePath = resolveToolPath(filePath)
+  const buffer = await readFile(absolutePath)
+  const metadata = detectImageMetadata(buffer, absolutePath)
+  return {
+    path: absolutePath,
+    base64: buffer.toString('base64'),
+    mimeType: metadata.mimeType,
+    width: metadata.width,
+    height: metadata.height,
+    bytes: buffer.byteLength,
+  }
+}
+
 export async function runCommand(command, options = {}) {
   const cwd = resolveToolPath(options.cwd)
 
@@ -94,4 +113,76 @@ export function runCommandInBackground(command, cwd) {
 
   child.unref()
   return child.pid ?? -1
+}
+
+function detectImageMetadata(buffer, filePath) {
+  const png = detectPng(buffer)
+  if (png) {
+    return png
+  }
+
+  const jpeg = detectJpeg(buffer)
+  if (jpeg) {
+    return jpeg
+  }
+
+  const extension = filePath.toLowerCase().split('.').pop()
+  if (extension === 'webp') {
+    return { mimeType: 'image/webp' }
+  }
+  if (extension === 'gif') {
+    return { mimeType: 'image/gif' }
+  }
+
+  return { mimeType: 'application/octet-stream' }
+}
+
+function detectPng(buffer) {
+  if (
+    buffer.length < 24 ||
+    buffer[0] !== 0x89 ||
+    buffer[1] !== 0x50 ||
+    buffer[2] !== 0x4e ||
+    buffer[3] !== 0x47
+  ) {
+    return null
+  }
+
+  return {
+    mimeType: 'image/png',
+    width: buffer.readUInt32BE(16),
+    height: buffer.readUInt32BE(20),
+  }
+}
+
+function detectJpeg(buffer) {
+  if (buffer.length < 4 || buffer[0] !== 0xff || buffer[1] !== 0xd8) {
+    return null
+  }
+
+  let offset = 2
+  while (offset < buffer.length - 9) {
+    if (buffer[offset] !== 0xff) {
+      offset += 1
+      continue
+    }
+
+    const marker = buffer[offset + 1]
+    const length = buffer.readUInt16BE(offset + 2)
+    if (length < 2) {
+      break
+    }
+
+    if (marker >= 0xc0 && marker <= 0xc3) {
+      return {
+        mimeType: 'image/jpeg',
+        height: buffer.readUInt16BE(offset + 5),
+        width: buffer.readUInt16BE(offset + 7),
+      }
+    }
+
+    offset += 2 + length
+  }
+
+  return { mimeType: 'image/jpeg' }
 }

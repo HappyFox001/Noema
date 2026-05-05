@@ -24,13 +24,16 @@ export default function plugin(ctx) {
           if (WRITE_TOOL_NAMES.has(tool.name)) {
             return enableWriteTools
           }
-          if (tool.name === 'bash') {
+          if (IMAGE_TOOL_NAMES.has(tool.name)) {
+            return enableReadTools
+          }
+          if (SHELL_TOOL_NAMES.has(tool.name)) {
             return enableShell
           }
           return true
         })
         .map(tool => {
-          if (tool.name !== 'bash') {
+          if (!SHELL_TOOL_NAMES.has(tool.name)) {
             return tool
           }
           return {
@@ -43,7 +46,9 @@ export default function plugin(ctx) {
 }
 
 const READ_TOOL_NAMES = new Set(['read', 'glob', 'grep'])
-const WRITE_TOOL_NAMES = new Set(['write', 'edit'])
+const WRITE_TOOL_NAMES = new Set(['write', 'edit', 'apply_patch'])
+const IMAGE_TOOL_NAMES = new Set(['view_image'])
+const SHELL_TOOL_NAMES = new Set(['bash', 'exec_command'])
 
 function clampNumber(value, min, max) {
   if (!Number.isFinite(value)) {
