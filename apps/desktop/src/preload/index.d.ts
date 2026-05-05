@@ -173,6 +173,7 @@ declare global {
       getPersonality: () => Promise<any>
       getStats: () => Promise<any>
       getSettings: () => Promise<{
+        language: 'zh-CN' | 'en-US'
         voiceInputEnabled: boolean
         voiceOutputEnabled: boolean
         volume: number
@@ -191,6 +192,7 @@ declare global {
         }
       }>
       updateSettings: (partial: Partial<{
+        language: 'zh-CN' | 'en-US'
         voiceInputEnabled: boolean
         voiceOutputEnabled: boolean
         volume: number
@@ -208,6 +210,7 @@ declare global {
           activeASRId: string
         }
       }>) => Promise<{
+        language: 'zh-CN' | 'en-US'
         voiceInputEnabled: boolean
         voiceOutputEnabled: boolean
         volume: number

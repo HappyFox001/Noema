@@ -1649,6 +1649,7 @@ let settingsStore: SettingsStore | null = null
 let interactiveInputStore: InteractiveInputStore | null = null
 let streamingASRSession: StreamingASRSession | null = null
 let appSettings: AppSettings = {
+  language: 'zh-CN',
   voiceInputEnabled: true,
   voiceOutputEnabled: true,
   volume: 70,

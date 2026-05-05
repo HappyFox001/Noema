@@ -15,23 +15,23 @@
           <img id="expression-image" class="expression-image" alt="" />
         </div>
         <div id="text-display" class="text-display"></div>
-        <div id="status" class="status">Ready</div>
+        <div id="status" class="status" data-i18n="status.ready">就绪</div>
         <div class="controls">
-          <button id="start-conversation-btn" class="start-button">Start</button>
+          <button id="start-conversation-btn" class="start-button">开始</button>
         </div>
       </div>
       <aside id="task-panel" class="task-panel" aria-hidden="true">
-        <div class="task-panel-title">Task</div>
+        <div class="task-panel-title" data-i18n="taskPanel.title">任务</div>
         <ol id="task-steps" class="task-steps"></ol>
       </aside>
 
       
       <div id="context-menu" class="context-menu">
         <div class="context-menu-item" data-action="settings">
-          <span>设置</span>
+          <span data-i18n="context.settings">设置</span>
         </div>
         <div class="context-menu-item" data-action="clear-history">
-          <span>清除对话</span>
+          <span data-i18n="context.clearHistory">清除对话</span>
         </div>
         <div class="context-menu-divider"></div>
       </div>
@@ -45,27 +45,27 @@
           <nav class="settings-nav">
             <div class="nav-item active" data-section="voice">
               <span class="nav-icon">◉</span>
-              <span class="nav-label">语音</span>
+              <span class="nav-label" data-i18n="nav.voice">语音</span>
             </div>
             <div class="nav-item" data-section="memory">
               <span class="nav-icon">◎</span>
-              <span class="nav-label">记忆</span>
+              <span class="nav-label" data-i18n="nav.memory">记忆</span>
             </div>
             <div class="nav-item" data-section="personality">
               <span class="nav-icon">◇</span>
-              <span class="nav-label">人格</span>
+              <span class="nav-label" data-i18n="nav.personality">人格</span>
             </div>
             <div class="nav-item" data-section="system">
               <span class="nav-icon">⚙</span>
-              <span class="nav-label">系统</span>
+              <span class="nav-label" data-i18n="nav.system">系统</span>
             </div>
             <div class="nav-item" data-section="plugins">
               <span class="nav-icon">✦</span>
-              <span class="nav-label">插件</span>
+              <span class="nav-label" data-i18n="nav.plugins">插件</span>
             </div>
             <div class="nav-item" data-section="about">
               <span class="nav-icon">○</span>
-              <span class="nav-label">关于</span>
+              <span class="nav-label" data-i18n="nav.about">关于</span>
             </div>
           </nav>
 
@@ -73,21 +73,21 @@
           <div class="settings-content">
             
             <section id="section-voice" class="settings-section active">
-              <h2 class="section-title">语音设置</h2>
+              <h2 class="section-title" data-i18n="voice.title">语音设置</h2>
 
               <div class="settings-card">
                 <div class="settings-row">
                   <div class="row-info">
-                    <span class="row-label">语音输入</span>
-                    <span class="row-desc">使用麦克风进行语音对话</span>
+                    <span class="row-label" data-i18n="voice.input">语音输入</span>
+                    <span class="row-desc" data-i18n="voice.inputDesc">使用麦克风进行语音对话</span>
                   </div>
-                  <button id="voice-input-btn" class="settings-btn" type="button">开启</button>
+                  <button id="voice-input-btn" class="settings-btn" type="button" data-i18n="common.enable">开启</button>
                 </div>
 
                 <div class="settings-row">
                   <div class="row-info">
-                    <span class="row-label">语音输出</span>
-                    <span class="row-desc">EVA 以语音方式回复</span>
+                    <span class="row-label" data-i18n="voice.output">语音输出</span>
+                    <span class="row-desc" data-i18n="voice.outputDesc">EVA 以语音方式回复</span>
                   </div>
                   <div class="settings-toggle">
                     <input type="checkbox" id="voice-output-toggle" checked />
@@ -97,7 +97,7 @@
 
                 <div class="settings-row">
                   <div class="row-info">
-                    <span class="row-label">音量</span>
+                    <span class="row-label" data-i18n="voice.volume">音量</span>
                   </div>
                   <div class="settings-slider-group">
                     <input type="range" id="volume-slider" class="settings-slider" min="0" max="100" value="70" />
@@ -110,28 +110,28 @@
             
             <section id="section-memory" class="settings-section">
               <div id="memory-overview-page" class="memory-page active">
-                <h2 class="section-title">记忆管理</h2>
+                <h2 class="section-title" data-i18n="memory.title">记忆管理</h2>
 
               
                 <div class="memory-card account-entry-card">
                   <div class="memory-card-header">
-                    <span class="memory-card-title">账户信息</span>
+                    <span class="memory-card-title" data-i18n="memory.accountInfo">账户信息</span>
                     <div class="header-actions">
-                      <button id="open-account-inputs-btn" class="memory-add-btn" type="button">管理</button>
+                      <button id="open-account-inputs-btn" class="memory-add-btn" type="button" data-i18n="common.manage">管理</button>
                       <span id="account-inputs-count" class="memory-count">0 条</span>
                     </div>
                   </div>
                   <div class="memory-card-content">
-                    <div class="account-entry-desc">任务执行时请求并长期保存的账号、密钥、密码和固定配置。</div>
+                    <div class="account-entry-desc" data-i18n="memory.accountDesc">任务执行时请求并长期保存的账号、密钥、密码和固定配置。</div>
                   </div>
                 </div>
 
               
                 <div class="memory-card">
                 <div class="memory-card-header">
-                  <span class="memory-card-title">用户画像</span>
+                  <span class="memory-card-title" data-i18n="memory.profile">用户画像</span>
                   <div class="header-actions">
-                    <button id="clear-profile-btn" class="clear-section-btn" title="清空">清空</button>
+                    <button id="clear-profile-btn" class="clear-section-btn" title="清空" data-i18n="common.clear" data-i18n-title="common.clear">清空</button>
                     <span id="profile-count" class="memory-count">0 条</span>
                   </div>
                 </div>
@@ -143,9 +143,9 @@
               
               <div class="memory-card">
                 <div class="memory-card-header">
-                  <span class="memory-card-title">重要记忆</span>
+                  <span class="memory-card-title" data-i18n="memory.important">重要记忆</span>
                   <div class="header-actions">
-                    <button id="clear-memories-btn" class="clear-section-btn" title="清空">清空</button>
+                    <button id="clear-memories-btn" class="clear-section-btn" title="清空" data-i18n="common.clear" data-i18n-title="common.clear">清空</button>
                     <span id="important-memories-count" class="memory-count">0 条</span>
                   </div>
                 </div>
@@ -157,9 +157,9 @@
               
               <div class="memory-card">
                 <div class="memory-card-header">
-                  <span class="memory-card-title">对话摘要</span>
+                  <span class="memory-card-title" data-i18n="memory.summaries">对话摘要</span>
                   <div class="header-actions">
-                    <button id="clear-summaries-btn" class="clear-section-btn" title="清空">清空</button>
+                    <button id="clear-summaries-btn" class="clear-section-btn" title="清空" data-i18n="common.clear" data-i18n-title="common.clear">清空</button>
                     <span id="summaries-count" class="memory-count">0 条</span>
                   </div>
                 </div>
@@ -171,9 +171,9 @@
               
               <div class="memory-card">
                 <div class="memory-card-header">
-                  <span class="memory-card-title">最近对话</span>
+                  <span class="memory-card-title" data-i18n="memory.recent">最近对话</span>
                   <div class="header-actions">
-                    <button id="clear-conversations-btn" class="clear-section-btn" title="清空">清空</button>
+                    <button id="clear-conversations-btn" class="clear-section-btn" title="清空" data-i18n="common.clear" data-i18n-title="common.clear">清空</button>
                     <span id="conversations-count" class="memory-count">0 条</span>
                   </div>
                 </div>
@@ -184,25 +184,25 @@
 
               
               <div class="reset-all-section">
-                <button id="reset-all-btn" class="reset-all-btn">全部重置</button>
-                <span class="reset-all-hint">清除所有记忆数据，不可恢复</span>
+                <button id="reset-all-btn" class="reset-all-btn" data-i18n="memory.resetAll">全部重置</button>
+                <span class="reset-all-hint" data-i18n="memory.resetHint">清除所有记忆数据，不可恢复</span>
               </div>
               </div>
 
               <div id="memory-account-page" class="memory-page">
                 <div class="memory-subpage-header">
-                  <button id="back-memory-overview-btn" class="memory-back-btn" type="button">返回</button>
+                  <button id="back-memory-overview-btn" class="memory-back-btn" type="button" data-i18n="common.back">返回</button>
                   <div>
-                    <h2 class="section-title">账户信息管理</h2>
-                    <p class="section-subtitle">管理任务运行时主动请求并保存的长期信息。</p>
+                    <h2 class="section-title" data-i18n="memory.accountManage">账户信息管理</h2>
+                    <p class="section-subtitle" data-i18n="memory.accountManageDesc">管理任务运行时主动请求并保存的长期信息。</p>
                   </div>
                 </div>
 
                 <div class="memory-card">
                   <div class="memory-card-header">
-                    <span class="memory-card-title">已保存信息</span>
+                    <span class="memory-card-title" data-i18n="memory.savedInfo">已保存信息</span>
                     <div class="header-actions">
-                      <button id="clear-account-inputs-btn" class="clear-section-btn" title="清空">清空</button>
+                      <button id="clear-account-inputs-btn" class="clear-section-btn" title="清空" data-i18n="common.clear" data-i18n-title="common.clear">清空</button>
                       <span id="account-inputs-page-count" class="memory-count">0 条</span>
                     </div>
                   </div>
@@ -215,13 +215,13 @@
 
             
             <section id="section-personality" class="settings-section">
-              <h2 class="section-title">人格</h2>
+              <h2 class="section-title" data-i18n="personality.title">人格</h2>
 
               <div class="settings-card">
                 <div class="settings-row">
                   <div class="row-info">
-                    <span class="row-label">当前人格</span>
-                    <span class="row-desc">选择 AI 伴侣的人格配置</span>
+                    <span class="row-label" data-i18n="personality.current">当前人格</span>
+                    <span class="row-desc" data-i18n="personality.currentDesc">选择 AI 伴侣的人格配置</span>
                   </div>
                   <select id="personality-select" class="settings-select">
                     <option value="eva" selected>EVA - 陈知遥</option>
@@ -229,10 +229,10 @@
                 </div>
                 <div class="settings-row">
                   <div class="row-info">
-                    <span class="row-label">添加角色文件</span>
-                    <span class="row-desc">选择外部 .yml/.yaml 文件，校验通过后加入人格列表</span>
+                    <span class="row-label" data-i18n="personality.addFile">添加角色文件</span>
+                    <span class="row-desc" data-i18n="personality.addFileDesc">选择外部 .yml/.yaml 文件，校验通过后加入人格列表</span>
                   </div>
-                  <button id="add-personality-file-btn" class="settings-btn" type="button">选择文件</button>
+                  <button id="add-personality-file-btn" class="settings-btn" type="button" data-i18n="common.chooseFile">选择文件</button>
                 </div>
               </div>
             </section>
@@ -240,24 +240,34 @@
             
             <section id="section-system" class="settings-section">
               <div id="system-main-page" class="system-page active">
-                <h2 class="section-title">系统配置</h2>
+                <h2 class="section-title" data-i18n="system.title">系统配置</h2>
 
               
                 <div class="settings-card">
                 <div class="settings-row">
                   <div class="row-info">
-                    <span class="row-label">网络代理</span>
-                    <span class="row-desc">HTTP/HTTPS 代理地址，如 http://127.0.0.1:7890</span>
+                    <span class="row-label" data-i18n="system.language">界面语言</span>
+                    <span class="row-desc" data-i18n="system.languageDesc">切换控制面板和桌面界面的显示语言</span>
                   </div>
-                  <input type="text" id="proxy-input" class="settings-input" placeholder="留空则不使用代理" />
+                  <select id="language-select" class="settings-select">
+                    <option value="zh-CN">中文</option>
+                    <option value="en-US">English</option>
+                  </select>
+                </div>
+                <div class="settings-row">
+                  <div class="row-info">
+                    <span class="row-label" data-i18n="system.proxy">网络代理</span>
+                    <span class="row-desc" data-i18n="system.proxyDesc">HTTP/HTTPS 代理地址，如 http://127.0.0.1:7890</span>
+                  </div>
+                  <input type="text" id="proxy-input" class="settings-input" placeholder="留空则不使用代理" data-i18n-placeholder="system.proxyPlaceholder" />
                 </div>
               </div>
 
               
               <div class="config-section">
                 <div class="config-section-header">
-                  <span class="config-section-title">对话模型</span>
-                  <button id="add-llm-btn" class="config-add-btn">+ 添加</button>
+                  <span class="config-section-title" data-i18n="system.dialogueModel">对话模型</span>
+                  <button id="add-llm-btn" class="config-add-btn" data-i18n="common.add">+ 添加</button>
                 </div>
                 <div id="llm-models-list" class="config-models-list">
                   
@@ -267,10 +277,10 @@
               
               <div class="config-section">
                 <div class="config-section-header">
-                  <span class="config-section-title">任务模型</span>
+                  <span class="config-section-title" data-i18n="system.taskModel">任务模型</span>
                   <div class="config-section-actions">
-                    <button id="open-task-runtime-btn" class="config-add-btn secondary">执行参数</button>
-                    <button id="add-task-btn" class="config-add-btn">+ 添加</button>
+                    <button id="open-task-runtime-btn" class="config-add-btn secondary" data-i18n="system.runtimeParams">执行参数</button>
+                    <button id="add-task-btn" class="config-add-btn" data-i18n="common.add">+ 添加</button>
                   </div>
                 </div>
                 <div id="task-models-list" class="config-models-list">
@@ -281,8 +291,8 @@
               
               <div class="config-section">
                 <div class="config-section-header">
-                  <span class="config-section-title">TTS 语音合成</span>
-                  <button id="add-tts-btn" class="config-add-btn">+ 添加</button>
+                  <span class="config-section-title" data-i18n="system.tts">TTS 语音合成</span>
+                  <button id="add-tts-btn" class="config-add-btn" data-i18n="common.add">+ 添加</button>
                 </div>
                 <div id="tts-models-list" class="config-models-list">
                   
@@ -292,8 +302,8 @@
               
               <div class="config-section">
                 <div class="config-section-header">
-                  <span class="config-section-title">ASR 语音识别</span>
-                  <button id="add-asr-btn" class="config-add-btn">+ 添加</button>
+                  <span class="config-section-title" data-i18n="system.asr">ASR 语音识别</span>
+                  <button id="add-asr-btn" class="config-add-btn" data-i18n="common.add">+ 添加</button>
                 </div>
                 <div id="asr-models-list" class="config-models-list">
                   
@@ -303,8 +313,8 @@
               
               <div class="config-section">
                 <div class="config-section-header">
-                  <span class="config-section-title">本地推理模型</span>
-                  <button id="download-local-models-btn" class="config-add-btn">下载缺失模型</button>
+                  <span class="config-section-title" data-i18n="system.localModels">本地推理模型</span>
+                  <button id="download-local-models-btn" class="config-add-btn" data-i18n="system.downloadMissing">下载缺失模型</button>
                 </div>
                 <div id="local-models-list" class="config-models-list">
                   <div class="profile-loading">检查中...</div>
@@ -315,47 +325,47 @@
               <div class="config-reset-section">
                 <button id="reset-system-btn" class="config-reset-btn">
                   <span class="reset-icon">↻</span>
-                  从 .env 重新加载配置
+                  <span data-i18n="system.reloadEnv">从 .env 重新加载配置</span>
                 </button>
-                <p class="config-reset-hint">将使用 .env 文件中的配置覆盖当前设置</p>
+                <p class="config-reset-hint" data-i18n="system.reloadEnvHint">将使用 .env 文件中的配置覆盖当前设置</p>
               </div>
               </div>
 
               <div id="system-task-runtime-page" class="system-page">
                 <div class="memory-subpage-header">
-                  <button id="back-system-main-btn" class="memory-back-btn" type="button">返回</button>
+                  <button id="back-system-main-btn" class="memory-back-btn" type="button" data-i18n="common.back">返回</button>
                   <div>
-                    <h2 class="section-title">任务执行参数</h2>
-                    <p class="section-subtitle">调整任务模型的执行循环、历史压缩和卡住判定。</p>
+                    <h2 class="section-title" data-i18n="taskRuntime.title">任务执行参数</h2>
+                    <p class="section-subtitle" data-i18n="taskRuntime.desc">调整任务模型的执行循环、历史压缩和卡住判定。</p>
                   </div>
                 </div>
 
                 <div class="settings-card task-runtime-card">
                   <div class="settings-row">
                     <div class="row-info">
-                      <span class="row-label">最大执行轮次</span>
-                      <span class="row-desc">任务运行超过该轮数后停止。</span>
+                      <span class="row-label" data-i18n="taskRuntime.maxTurns">最大执行轮次</span>
+                      <span class="row-desc" data-i18n="taskRuntime.maxTurnsDesc">任务运行超过该轮数后停止。</span>
                     </div>
                     <input type="number" id="task-max-turns-input" class="settings-number-input" min="4" max="100" step="1" />
                   </div>
                   <div class="settings-row">
                     <div class="row-info">
-                      <span class="row-label">模型上下文窗口</span>
-                      <span class="row-desc">用于估算任务历史压缩阈值。</span>
+                      <span class="row-label" data-i18n="taskRuntime.contextWindow">模型上下文窗口</span>
+                      <span class="row-desc" data-i18n="taskRuntime.contextWindowDesc">用于估算任务历史压缩阈值。</span>
                     </div>
                     <input type="number" id="task-context-window-input" class="settings-number-input" min="4096" max="1000000" step="1000" />
                   </div>
                   <div class="settings-row">
                     <div class="row-info">
-                      <span class="row-label">自动压缩阈值</span>
-                      <span class="row-desc">上下文 token 达到该值时自动压缩，最高为窗口的 90%。</span>
+                      <span class="row-label" data-i18n="taskRuntime.compactLimit">自动压缩阈值</span>
+                      <span class="row-desc" data-i18n="taskRuntime.compactLimitDesc">上下文 token 达到该值时自动压缩，最高为窗口的 90%。</span>
                     </div>
                     <input type="number" id="task-compact-after-input" class="settings-number-input" min="1000" max="1000000" step="1000" />
                   </div>
                   <div class="settings-row">
                     <div class="row-info">
-                      <span class="row-label">保留最近轮次</span>
-                      <span class="row-desc">压缩时保留最近多少轮原始上下文。</span>
+                      <span class="row-label" data-i18n="taskRuntime.keepRecent">保留最近轮次</span>
+                      <span class="row-desc" data-i18n="taskRuntime.keepRecentDesc">压缩时保留最近多少轮原始上下文。</span>
                     </div>
                     <input type="number" id="task-keep-recent-input" class="settings-number-input" min="1" max="100" step="1" />
                   </div>
@@ -365,7 +375,7 @@
 
             
             <section id="section-plugins" class="settings-section">
-              <h2 class="section-title">插件</h2>
+              <h2 class="section-title" data-i18n="plugins.title">插件</h2>
 
               <div id="plugins-list" class="plugin-list">
                 <div class="profile-loading">加载中...</div>
@@ -374,13 +384,13 @@
 
             
             <section id="section-about" class="settings-section">
-              <h2 class="section-title">关于</h2>
+              <h2 class="section-title" data-i18n="about.title">关于</h2>
 
               <div class="about-card">
                 <div class="about-orb"></div>
                 <h3 class="about-name">Her-Text</h3>
                 <p class="about-version">v0.1.0</p>
-                <p class="about-desc">一个有温度的 AI 伴侣</p>
+                <p class="about-desc" data-i18n="about.desc">一个有温度的 AI 伴侣</p>
                 <div class="about-quote">
                   "能够被听见、被记得、被回应，<br/>本身就是很珍贵的事情。"
                 </div>

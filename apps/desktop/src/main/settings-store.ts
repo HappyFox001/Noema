@@ -170,6 +170,7 @@ const DEFAULT_TASK_RUNTIME_SETTINGS: TaskRuntimeSettings = {
 }
 
 export interface AppSettings {
+  language: 'zh-CN' | 'en-US'
   voiceInputEnabled: boolean
   voiceOutputEnabled: boolean
   volume: number
@@ -215,6 +216,7 @@ const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
+  language: 'zh-CN',
   voiceInputEnabled: true,
   voiceOutputEnabled: true,
   volume: 70,
@@ -277,6 +279,7 @@ export class SettingsStore {
       this.settings = {
         ...DEFAULT_SETTINGS,
         ...parsed,
+        language: normalizeLanguage(parsed.language),
         externalRolePaths: Array.isArray(parsed.externalRolePaths) ? parsed.externalRolePaths : [],
         plugins: parsed.plugins && typeof parsed.plugins === 'object' ? parsed.plugins : {},
         pluginConfigs: parsed.pluginConfigs && typeof parsed.pluginConfigs === 'object' ? parsed.pluginConfigs : {},
@@ -437,6 +440,10 @@ export class SettingsStore {
   private async persist(): Promise<void> {
     await writeFile(this.filePath, JSON.stringify(this.settings, null, 2), 'utf-8')
   }
+}
+
+function normalizeLanguage(value: unknown): AppSettings['language'] {
+  return value === 'en-US' ? 'en-US' : 'zh-CN'
 }
 
 function clampVolume(value: number): number {

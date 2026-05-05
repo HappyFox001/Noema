@@ -572,6 +572,269 @@ let voiceInputEnabled = true
 let isVoiceListening = false
 let conversationStreamActive = false
 
+type LanguageCode = 'zh-CN' | 'en-US'
+
+const I18N: Record<LanguageCode, Record<string, string>> = {
+  'zh-CN': {
+    'common.add': '+ 添加',
+    'common.back': '返回',
+    'common.cancel': '取消',
+    'common.chooseFile': '选择文件',
+    'common.clear': '清空',
+    'common.confirm': '确认',
+    'common.enable': '开启',
+    'common.enabled': '已开启',
+    'common.manage': '管理',
+    'common.continue': '继续',
+    'common.activate': '启用',
+    'common.active': '使用中',
+    'common.delete': '删除',
+    'common.loading': '加载中...',
+    'context.clearHistory': '清除对话',
+    'context.settings': '设置',
+    'status.connectionFailed': '连接失败',
+    'status.initializing': '初始化中...',
+    'status.listening': '聆听中...',
+    'status.processing': '处理中...',
+    'status.ready': '就绪',
+    'status.reconnecting': '重连中...',
+    'status.replying': '回复中...',
+    'status.sharingResult': '正在反馈结果...',
+    'status.thinking': '思考中...',
+    'status.voiceDisabled': '语音已关闭',
+    'status.voiceInputDisabled': '语音输入已关闭',
+    'status.working': '执行中...',
+    'button.start': '开始',
+    'button.stop': '停止',
+    'taskPanel.failed': '任务失败',
+    'taskPanel.step': '步骤',
+    'taskPanel.title': '任务',
+    'nav.about': '关于',
+    'nav.memory': '记忆',
+    'nav.personality': '人格',
+    'nav.plugins': '插件',
+    'nav.system': '系统',
+    'nav.voice': '语音',
+    'voice.input': '语音输入',
+    'voice.inputDesc': '使用麦克风进行语音对话',
+    'voice.output': '语音输出',
+    'voice.outputDesc': 'EVA 以语音方式回复',
+    'voice.title': '语音设置',
+    'voice.volume': '音量',
+    'memory.accountDesc': '任务执行时请求并长期保存的账号、密钥、密码和固定配置。',
+    'memory.accountInfo': '账户信息',
+    'memory.accountManage': '账户信息管理',
+    'memory.accountManageDesc': '管理任务运行时主动请求并保存的长期信息。',
+    'memory.important': '重要记忆',
+    'memory.profile': '用户画像',
+    'memory.recent': '最近对话',
+    'memory.resetAll': '全部重置',
+    'memory.resetHint': '清除所有记忆数据，不可恢复',
+    'memory.savedInfo': '已保存信息',
+    'memory.summaries': '对话摘要',
+    'memory.title': '记忆管理',
+    'personality.addFile': '添加角色文件',
+    'personality.addFileDesc': '选择外部 .yml/.yaml 文件，校验通过后加入人格列表',
+    'personality.current': '当前人格',
+    'personality.currentDesc': '选择 AI 伴侣的人格配置',
+    'personality.title': '人格',
+    'system.asr': 'ASR 语音识别',
+    'system.dialogueModel': '对话模型',
+    'system.downloadMissing': '下载缺失模型',
+    'system.language': '界面语言',
+    'system.languageDesc': '切换控制面板和桌面界面的显示语言',
+    'system.localModels': '本地推理模型',
+    'system.proxy': '网络代理',
+    'system.proxyDesc': 'HTTP/HTTPS 代理地址，如 http://127.0.0.1:7890',
+    'system.proxyPlaceholder': '留空则不使用代理',
+    'system.reloadEnv': '从 .env 重新加载配置',
+    'system.reloadEnvHint': '将使用 .env 文件中的配置覆盖当前设置',
+    'system.runtimeParams': '执行参数',
+    'system.taskModel': '任务模型',
+    'system.title': '系统配置',
+    'system.tts': 'TTS 语音合成',
+    'system.downloading': '下载中...',
+    'system.modelReady': '模型已就绪',
+    'system.installed': '已安装',
+    'system.missing': '缺失',
+    'system.purpose': '用途',
+    'system.file': '文件',
+    'system.size': '大小',
+    'system.noLlm': '暂无 LLM 配置',
+    'system.noTask': '暂无任务模型配置',
+    'system.noTts': '暂无 TTS 配置',
+    'system.noAsr': '暂无 ASR 配置',
+    'system.checking': '检查中...',
+    'system.checkFailed': '检查失败',
+    'taskRuntime.compactLimit': '自动压缩阈值',
+    'taskRuntime.compactLimitDesc': '上下文 token 达到该值时自动压缩，最高为窗口的 90%。',
+    'taskRuntime.contextWindow': '模型上下文窗口',
+    'taskRuntime.contextWindowDesc': '用于估算任务历史压缩阈值。',
+    'taskRuntime.desc': '调整任务模型的执行循环、历史压缩和卡住判定。',
+    'taskRuntime.keepRecent': '保留最近轮次',
+    'taskRuntime.keepRecentDesc': '压缩时保留最近多少轮原始上下文。',
+    'taskRuntime.maxTurns': '最大执行轮次',
+    'taskRuntime.maxTurnsDesc': '任务运行超过该轮数后停止。',
+    'taskRuntime.title': '任务执行参数',
+    'plugins.title': '插件',
+    'about.desc': '一个有温度的 AI 伴侣',
+    'about.title': '关于',
+    'notice.voiceInputDisabled': '语音输入已关闭',
+    'notice.voiceInputEnabled': '语音输入已开启',
+    'inputMeta.currentOnly': '仅用于当前任务',
+    'inputMeta.persistent': '可选择保存，后续任务自动复用',
+    'inputMeta.verification': '一次性验证码，不会保存',
+  },
+  'en-US': {
+    'common.add': '+ Add',
+    'common.back': 'Back',
+    'common.cancel': 'Cancel',
+    'common.chooseFile': 'Choose File',
+    'common.clear': 'Clear',
+    'common.confirm': 'Confirm',
+    'common.enable': 'Enable',
+    'common.enabled': 'Enabled',
+    'common.manage': 'Manage',
+    'common.continue': 'Continue',
+    'common.activate': 'Activate',
+    'common.active': 'Active',
+    'common.delete': 'Delete',
+    'common.loading': 'Loading...',
+    'context.clearHistory': 'Clear Conversation',
+    'context.settings': 'Settings',
+    'status.connectionFailed': 'Connection failed',
+    'status.initializing': 'Initializing...',
+    'status.listening': 'Listening...',
+    'status.processing': 'Processing...',
+    'status.ready': 'Ready',
+    'status.reconnecting': 'Reconnecting...',
+    'status.replying': 'Replying...',
+    'status.sharingResult': 'Sharing result...',
+    'status.thinking': 'Thinking...',
+    'status.voiceDisabled': 'Voice Disabled',
+    'status.voiceInputDisabled': 'Voice input is disabled',
+    'status.working': 'Working...',
+    'button.start': 'Start',
+    'button.stop': 'Stop',
+    'taskPanel.failed': 'Task failed',
+    'taskPanel.step': 'Step',
+    'taskPanel.title': 'Task',
+    'nav.about': 'About',
+    'nav.memory': 'Memory',
+    'nav.personality': 'Personality',
+    'nav.plugins': 'Plugins',
+    'nav.system': 'System',
+    'nav.voice': 'Voice',
+    'voice.input': 'Voice Input',
+    'voice.inputDesc': 'Use the microphone for voice conversation',
+    'voice.output': 'Voice Output',
+    'voice.outputDesc': 'Let EVA reply with speech',
+    'voice.title': 'Voice Settings',
+    'voice.volume': 'Volume',
+    'memory.accountDesc': 'Accounts, keys, passwords, and fixed configuration saved during task execution.',
+    'memory.accountInfo': 'Account Info',
+    'memory.accountManage': 'Account Info Management',
+    'memory.accountManageDesc': 'Manage long-lived information requested and saved during task runtime.',
+    'memory.important': 'Important Memories',
+    'memory.profile': 'User Profile',
+    'memory.recent': 'Recent Conversations',
+    'memory.resetAll': 'Reset All',
+    'memory.resetHint': 'Clear all memory data. This cannot be undone.',
+    'memory.savedInfo': 'Saved Info',
+    'memory.summaries': 'Conversation Summaries',
+    'memory.title': 'Memory',
+    'personality.addFile': 'Add Role File',
+    'personality.addFileDesc': 'Choose an external .yml/.yaml file and add it after validation',
+    'personality.current': 'Current Personality',
+    'personality.currentDesc': 'Choose the AI companion personality profile',
+    'personality.title': 'Personality',
+    'system.asr': 'ASR Speech Recognition',
+    'system.dialogueModel': 'Dialogue Model',
+    'system.downloadMissing': 'Download Missing Models',
+    'system.language': 'Language',
+    'system.languageDesc': 'Switch the control panel and desktop UI language',
+    'system.localModels': 'Local Inference Models',
+    'system.proxy': 'Network Proxy',
+    'system.proxyDesc': 'HTTP/HTTPS proxy URL, such as http://127.0.0.1:7890',
+    'system.proxyPlaceholder': 'Leave empty to disable proxy',
+    'system.reloadEnv': 'Reload Config from .env',
+    'system.reloadEnvHint': 'Use values from the .env file to overwrite current settings',
+    'system.runtimeParams': 'Runtime Params',
+    'system.taskModel': 'Task Model',
+    'system.title': 'System Config',
+    'system.tts': 'TTS Speech Synthesis',
+    'system.downloading': 'Downloading...',
+    'system.modelReady': 'Models Ready',
+    'system.installed': 'Installed',
+    'system.missing': 'Missing',
+    'system.purpose': 'Purpose',
+    'system.file': 'File',
+    'system.size': 'Size',
+    'system.noLlm': 'No LLM config',
+    'system.noTask': 'No task model config',
+    'system.noTts': 'No TTS config',
+    'system.noAsr': 'No ASR config',
+    'system.checking': 'Checking...',
+    'system.checkFailed': 'Check failed',
+    'taskRuntime.compactLimit': 'Auto Compact Limit',
+    'taskRuntime.compactLimitDesc': 'Compact task history when context tokens reach this value, capped at 90% of the window.',
+    'taskRuntime.contextWindow': 'Model Context Window',
+    'taskRuntime.contextWindowDesc': 'Used to estimate the task history compact threshold.',
+    'taskRuntime.desc': 'Tune task model execution loops, history compaction, and stuck handling.',
+    'taskRuntime.keepRecent': 'Keep Recent Turns',
+    'taskRuntime.keepRecentDesc': 'How many raw recent turns to keep during compaction.',
+    'taskRuntime.maxTurns': 'Max Turns',
+    'taskRuntime.maxTurnsDesc': 'Stop a task after this many runtime turns.',
+    'taskRuntime.title': 'Task Runtime Params',
+    'plugins.title': 'Plugins',
+    'about.desc': 'A warm AI companion',
+    'about.title': 'About',
+    'notice.voiceInputDisabled': 'Voice input disabled',
+    'notice.voiceInputEnabled': 'Voice input enabled',
+    'inputMeta.currentOnly': 'Only used for the current task',
+    'inputMeta.persistent': 'Can be saved and reused in later tasks',
+    'inputMeta.verification': 'One-time verification code, not saved',
+  }
+}
+
+let currentLanguage: LanguageCode = 'zh-CN'
+
+function t(key: string): string {
+  return I18N[currentLanguage][key] ?? I18N['zh-CN'][key] ?? key
+}
+
+function setLanguage(language: LanguageCode): void {
+  currentLanguage = language
+  document.documentElement.lang = language
+  applyI18n()
+  updateConversationButton()
+  setStatus(getReadyStatus())
+  renderSystemConfigIfReady()
+}
+
+function applyI18n(): void {
+  document.querySelectorAll<HTMLElement>('[data-i18n]').forEach((element) => {
+    element.textContent = t(element.dataset.i18n || '')
+  })
+  document.querySelectorAll<HTMLElement>('[data-i18n-title]').forEach((element) => {
+    element.setAttribute('title', t(element.dataset.i18nTitle || ''))
+  })
+  document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[data-i18n-placeholder]').forEach((element) => {
+    element.placeholder = t(element.dataset.i18nPlaceholder || '')
+  })
+}
+
+function renderSystemConfigIfReady(): void {
+  if (typeof currentSystemConfig === 'undefined' || !currentSystemConfig) {
+    return
+  }
+  renderLLMModels()
+  renderTaskModels()
+  renderTTSModels()
+  renderASRModels()
+  renderLocalModels(lastLocalModels)
+}
+
 type LLMModelConfig = {
   id: string
   modelName: string
@@ -642,6 +905,7 @@ type SetupReadiness = {
 }
 
 type UISettings = {
+  language: LanguageCode
   voiceInputEnabled: boolean
   voiceOutputEnabled: boolean
   volume: number
@@ -1475,7 +1739,7 @@ function renderTaskPanel(plan: TaskPanelPlan): void {
     return
   }
 
-  title.textContent = plan.title || 'Task'
+  title.textContent = plan.title || t('taskPanel.title')
   list.textContent = ''
 
   for (const step of plan.steps.slice(0, 6)) {
@@ -1488,7 +1752,7 @@ function renderTaskPanel(plan: TaskPanelPlan): void {
 
     const text = document.createElement('span')
     text.className = 'task-step-title'
-    text.textContent = step.title || step.description || 'Step'
+    text.textContent = step.title || step.description || t('taskPanel.step')
 
     item.append(mark, text)
     list.appendChild(item)
@@ -1518,16 +1782,16 @@ function handleConversationFrame(frame: ConversationFrame) {
       textRevealer.reset()
       clearExpression()
       setTaskPanelVisible(false)
-      setStatus('Thinking...')
+      setStatus(t('status.thinking'))
       setOrbMode('thinking')
       break
     case 'control.phase_start':
       if (frame.phase === 'reply') {
-        setStatus('Replying...')
+        setStatus(t('status.replying'))
       } else if (frame.phase === 'task_result') {
         audioPlayer.stop()
         textRevealer.reset()
-        setStatus('Sharing result...')
+        setStatus(t('status.sharingResult'))
       }
       setOrbMode('thinking')
       break
@@ -1545,7 +1809,7 @@ function handleConversationFrame(frame: ConversationFrame) {
     case 'control.task_start':
       renderTaskPanel({
         id: 'pending',
-        title: 'Task',
+        title: t('taskPanel.title'),
         summary: frame.taskDescription,
         steps: [{
           id: 'pending-step',
@@ -1554,7 +1818,7 @@ function handleConversationFrame(frame: ConversationFrame) {
           status: 'running',
         }],
       })
-      setStatus('Working...')
+      setStatus(t('status.working'))
       setOrbMode('thinking')
       break
     case 'control.task_plan':
@@ -1562,7 +1826,7 @@ function handleConversationFrame(frame: ConversationFrame) {
       break
     case 'control.task_end':
       if (!frame.success) {
-        setStatus(frame.error ? `Task Error: ${frame.error}` : 'Task failed')
+        setStatus(frame.error ? `${t('taskPanel.failed')}: ${frame.error}` : t('taskPanel.failed'))
       }
       hideTaskPanelSoon()
       break
@@ -1582,12 +1846,12 @@ const startConversationBtn = document.getElementById('start-conversation-btn') a
 function updateConversationButton(): void {
   document.getElementById('main-view')?.classList.toggle('conversation-active', activeMode === 'conversation')
   replaceControlText(startConversationBtn, voiceInputEnabled
-    ? (activeMode === 'conversation' ? 'Stop' : 'Start')
-    : 'Voice Disabled')
+    ? (activeMode === 'conversation' ? t('button.stop') : t('button.start'))
+    : t('status.voiceDisabled'))
 }
 
 function getReadyStatus(): string {
-  return activeMode === 'conversation' ? 'Listening...' : 'Ready'
+  return activeMode === 'conversation' ? t('status.listening') : t('status.ready')
 }
 
 async function initialize() {
@@ -1595,7 +1859,7 @@ async function initialize() {
     return
   }
 
-  setStatus('Initializing...')
+  setStatus(t('status.initializing'))
   startConversationBtn.disabled = true
 
   try {
@@ -1622,7 +1886,7 @@ async function initialize() {
 
     startConversationBtn.disabled = !voiceInputEnabled
     updateConversationButton()
-    setStatus('Ready')
+    setStatus(t('status.ready'))
 
     window.electronAPI.onTTSAudio((audioData, contextId) => {
       console.log(`[UI] Received TTS audio (context #${contextId}):`, audioData.byteLength, 'bytes')
@@ -1670,17 +1934,17 @@ async function initialize() {
         const msg = `延迟: ${data.total.toFixed(0)}ms`
         console.log(`[Latency] ${msg}`)
         setStatus(msg)
-        setTimeout(() => setStatus('Ready'), 3000)
+        setTimeout(() => setStatus(getReadyStatus()), 3000)
       }
     })
 
     window.electronAPI.onSpeechState((state) => {
       console.log('[UI] Speech state:', state)
       if (state === 'listening') {
-        setStatus('Listening...')
+        setStatus(t('status.listening'))
         setOrbMode('listening')
       } else if (state === 'processing') {
-        setStatus('Processing...')
+        setStatus(t('status.processing'))
         setOrbMode('thinking')
       }
     })
@@ -1697,17 +1961,17 @@ async function initialize() {
 
     window.electronAPI.onSpeechReconnecting(() => {
       console.log('[UI] Speech WebSocket reconnecting...')
-      setStatus('Reconnecting...')
+      setStatus(t('status.reconnecting'))
     })
 
     window.electronAPI.onSpeechReconnected(() => {
       console.log('[UI] Speech WebSocket reconnected')
-      setStatus('Listening...')
+      setStatus(t('status.listening'))
     })
 
     window.electronAPI.onSpeechConnectionFailed(() => {
       console.error('[UI] Speech WebSocket connection failed')
-      setStatus('Connection failed')
+      setStatus(t('status.connectionFailed'))
       setOrbMode('idle')
     })
 
@@ -1781,7 +2045,7 @@ async function startConversationStreaming(): Promise<void> {
 
   conversationStreamActive = true
   isVoiceListening = true
-  setStatus('Listening...')
+  setStatus(t('status.listening'))
   setOrbMode('listening')
 }
 
@@ -1790,13 +2054,13 @@ startConversationBtn.addEventListener('click', async () => {
     await stopConversationStreaming()
     activeMode = null
     updateConversationButton()
-    setStatus('Ready')
+    setStatus(t('status.ready'))
     setOrbMode('idle')
     return
   }
 
   if (!voiceInputEnabled) {
-    setStatus('Voice input is disabled')
+    setStatus(t('status.voiceInputDisabled'))
     return
   }
 
@@ -1833,7 +2097,7 @@ async function sendMessage(text: string) {
     setOrbMode('idle')
   } finally {
     if (activeMode === 'conversation' && conversationStreamActive && voiceInputEnabled) {
-      setStatus('Listening...')
+      setStatus(t('status.listening'))
     } else {
       setStatus(getReadyStatus())
     }
@@ -1855,6 +2119,7 @@ const volumeSlider = document.getElementById('volume-slider') as HTMLInputElemen
 const volumeValue = document.getElementById('volume-value')!
 const voiceInputBtn = document.getElementById('voice-input-btn') as HTMLButtonElement
 const voiceOutputToggle = document.getElementById('voice-output-toggle') as HTMLInputElement
+const languageSelect = document.getElementById('language-select') as HTMLSelectElement
 const personalitySelect = document.getElementById('personality-select') as HTMLSelectElement
 const addPersonalityFileBtn = document.getElementById('add-personality-file-btn') as HTMLButtonElement
 const pluginsList = document.getElementById('plugins-list') as HTMLElement
@@ -1862,9 +2127,11 @@ let memoryRefreshPromise: Promise<void> | null = null
 let cachedPlugins: PluginInfo[] = []
 
 function applySettingsToUI(settings: UISettings) {
+  setLanguage(settings.language || 'zh-CN')
+  languageSelect.value = currentLanguage
   voiceInputEnabled = settings.voiceInputEnabled
   ttsEnabled = settings.voiceOutputEnabled
-  voiceInputBtn.textContent = settings.voiceInputEnabled ? '已开启' : '开启'
+  voiceInputBtn.textContent = settings.voiceInputEnabled ? t('common.enabled') : t('common.enable')
   voiceInputBtn.classList.toggle('active', settings.voiceInputEnabled)
   voiceOutputToggle.checked = settings.voiceOutputEnabled
   volumeSlider.value = String(settings.volume)
@@ -1906,7 +2173,7 @@ async function disableVoiceInput(): Promise<void> {
   }
 
   applySettingsToUI(settings)
-  showPanelNotice('语音输入已关闭')
+  showPanelNotice(t('notice.voiceInputDisabled'))
 }
 
 async function enableVoiceInput(): Promise<void> {
@@ -1927,7 +2194,7 @@ async function enableVoiceInput(): Promise<void> {
     voiceInputEnabled: true
   })
   applySettingsToUI(settings)
-  showPanelNotice('语音输入已开启')
+  showPanelNotice(t('notice.voiceInputEnabled'))
 }
 
 async function loadPersonalities(): Promise<void> {
@@ -2046,6 +2313,12 @@ function handleSettingsClose(event: Event) {
 settingsClose.addEventListener('pointerdown', handleSettingsClose)
 settingsClose.addEventListener('click', handleSettingsClose)
 
+languageSelect.addEventListener('change', async () => {
+  const language = languageSelect.value === 'en-US' ? 'en-US' : 'zh-CN'
+  setLanguage(language)
+  await window.electronAPI.updateSettings({ language })
+})
+
 type ConfirmDialogTone = 'danger' | 'default'
 
 type ConfirmDialogOptions = {
@@ -2065,8 +2338,8 @@ function showConfirmDialog(options: ConfirmDialogOptions): Promise<boolean> {
     let settled = false
 
     const tone = options.tone ?? 'default'
-    const confirmText = options.confirmText ?? '确认'
-    const cancelText = options.cancelText ?? '取消'
+    const confirmText = options.confirmText ?? t('common.confirm')
+    const cancelText = options.cancelText ?? t('common.cancel')
 
     overlay.innerHTML = `
       <div class="confirm-dialog ${tone}" role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title">
@@ -2150,17 +2423,17 @@ function showInteractiveInputDialog(request: InteractiveInputRequest): void {
 
   overlay.innerHTML = `
     <div class="confirm-dialog interactive-input-dialog" role="dialog" aria-modal="true" aria-labelledby="interactive-input-title">
-      <button class="interactive-input-close" type="button" data-input-action="cancel" aria-label="关闭">×</button>
+      <button class="interactive-input-close" type="button" data-input-action="cancel" aria-label="${escapeHtml(t('common.cancel'))}">×</button>
       <div class="confirm-dialog-content">
         <h3 id="interactive-input-title">${escapeHtml(request.label)}</h3>
         ${request.description ? `<p>${escapeHtml(request.description)}</p>` : ''}
         <div class="interactive-input-meta">
-          ${request.sensitivity === 'verification' ? '一次性验证码，不会保存' : request.persistence === 'persistent' ? '可选择保存，后续任务自动复用' : '仅用于当前任务'}
+          ${request.sensitivity === 'verification' ? t('inputMeta.verification') : request.persistence === 'persistent' ? t('inputMeta.persistent') : t('inputMeta.currentOnly')}
         </div>
         ${inputTag}
       </div>
       <div class="confirm-dialog-actions">
-        <button class="confirm-dialog-btn primary" type="button" data-input-action="submit">继续</button>
+        <button class="confirm-dialog-btn primary" type="button" data-input-action="submit">${escapeHtml(t('common.continue'))}</button>
       </div>
     </div>
   `
@@ -3750,6 +4023,7 @@ const downloadLocalModelsBtn = document.getElementById('download-local-models-bt
 const resetSystemBtn = document.getElementById('reset-system-btn') as HTMLButtonElement
 
 let currentSystemConfig: SystemConfig | null = null
+let lastLocalModels: LocalModelStatus[] = []
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
@@ -3938,7 +4212,7 @@ function switchSystemPage(page: 'main' | 'task-runtime'): void {
 }
 
 async function loadLocalModelStatus(): Promise<void> {
-  localModelsList.innerHTML = '<div class="profile-loading"><span class="loading-spinner"></span>检查中...</div>'
+  localModelsList.innerHTML = `<div class="profile-loading"><span class="loading-spinner"></span>${escapeHtml(t('system.checking'))}</div>`
   downloadLocalModelsBtn.disabled = true
 
   try {
@@ -3948,15 +4222,16 @@ async function loadLocalModelStatus(): Promise<void> {
     }
     renderLocalModels(result.models)
   } catch (error: any) {
-    localModelsList.innerHTML = `<div class="profile-error">检查失败: ${escapeHtml(error.message ?? String(error))}</div>`
+    localModelsList.innerHTML = `<div class="profile-error">${escapeHtml(t('system.checkFailed'))}: ${escapeHtml(error.message ?? String(error))}</div>`
     downloadLocalModelsBtn.disabled = false
   }
 }
 
 function renderLocalModels(models: LocalModelStatus[]): void {
+  lastLocalModels = models
   const missingCount = models.filter(model => !model.exists).length
   downloadLocalModelsBtn.disabled = missingCount === 0
-  downloadLocalModelsBtn.textContent = missingCount > 0 ? `下载缺失模型 (${missingCount})` : '模型已就绪'
+  downloadLocalModelsBtn.textContent = missingCount > 0 ? `${t('system.downloadMissing')} (${missingCount})` : t('system.modelReady')
 
   localModelsList.innerHTML = models.map(model => `
     <div class="config-model-card local-model-card ${model.exists ? 'active' : 'missing'}">
@@ -3964,21 +4239,21 @@ function renderLocalModels(models: LocalModelStatus[]): void {
         <div class="config-model-name local-model-name">
           <span>${escapeHtml(model.name)}</span>
           <span class="config-model-active-badge ${model.exists ? '' : 'missing'}">
-            ${model.exists ? '已安装' : '缺失'}
+            ${model.exists ? t('system.installed') : t('system.missing')}
           </span>
         </div>
       </div>
       <div class="config-model-fields">
         <div class="config-field">
-          <span class="config-field-label">用途</span>
+          <span class="config-field-label">${escapeHtml(t('system.purpose'))}</span>
           <span class="config-field-static">${escapeHtml(model.purpose)}</span>
         </div>
         <div class="config-field">
-          <span class="config-field-label">文件</span>
+          <span class="config-field-label">${escapeHtml(t('system.file'))}</span>
           <span class="config-field-static">${escapeHtml(model.filename)}</span>
         </div>
         <div class="config-field">
-          <span class="config-field-label">大小</span>
+          <span class="config-field-label">${escapeHtml(t('system.size'))}</span>
           <span class="config-field-static">${model.exists ? formatFileSize(model.sizeBytes ?? 0) : '-'}</span>
         </div>
       </div>
@@ -4007,7 +4282,7 @@ function renderLLMModels(): void {
 
   const models = currentSystemConfig.llmModels
   if (models.length === 0) {
-    llmModelsList.innerHTML = '<div class="config-empty">暂无 LLM 配置</div>'
+    llmModelsList.innerHTML = `<div class="config-empty">${escapeHtml(t('system.noLlm'))}</div>`
     return
   }
 
@@ -4016,11 +4291,11 @@ function renderLLMModels(): void {
       <div class="config-model-header">
         <div class="config-model-name">
           <input type="text" value="${escapeHtml(model.modelName)}" data-field="modelName" placeholder="deepseek-chat" />
-          ${model.id === currentSystemConfig!.activeLLMId ? '<span class="config-model-active-badge">使用中</span>' : ''}
+          ${model.id === currentSystemConfig!.activeLLMId ? `<span class="config-model-active-badge">${escapeHtml(t('common.active'))}</span>` : ''}
         </div>
         <div class="config-model-actions">
-          ${model.id !== currentSystemConfig!.activeLLMId ? '<button class="config-model-btn config-activate-btn" data-action="activate">启用</button>' : ''}
-          ${models.length > 1 ? '<button class="config-model-btn config-delete-btn" data-action="delete">删除</button>' : ''}
+          ${model.id !== currentSystemConfig!.activeLLMId ? `<button class="config-model-btn config-activate-btn" data-action="activate">${escapeHtml(t('common.activate'))}</button>` : ''}
+          ${models.length > 1 ? `<button class="config-model-btn config-delete-btn" data-action="delete">${escapeHtml(t('common.delete'))}</button>` : ''}
         </div>
       </div>
       <div class="config-model-fields">
@@ -4044,7 +4319,7 @@ function renderTaskModels(): void {
 
   const models = currentSystemConfig.taskModels
   if (models.length === 0) {
-    taskModelsList.innerHTML = '<div class="config-empty">暂无任务模型配置</div>'
+    taskModelsList.innerHTML = `<div class="config-empty">${escapeHtml(t('system.noTask'))}</div>`
     return
   }
 
@@ -4053,11 +4328,11 @@ function renderTaskModels(): void {
       <div class="config-model-header">
         <div class="config-model-name">
           <input type="text" value="${escapeHtml(model.modelName)}" data-field="modelName" placeholder="gemini-3.1-pro-preview" />
-          ${model.id === currentSystemConfig!.activeTaskId ? '<span class="config-model-active-badge">使用中</span>' : ''}
+          ${model.id === currentSystemConfig!.activeTaskId ? `<span class="config-model-active-badge">${escapeHtml(t('common.active'))}</span>` : ''}
         </div>
         <div class="config-model-actions">
-          ${model.id !== currentSystemConfig!.activeTaskId ? '<button class="config-model-btn config-activate-btn" data-action="activate">启用</button>' : ''}
-          ${models.length > 1 ? '<button class="config-model-btn config-delete-btn" data-action="delete">删除</button>' : ''}
+          ${model.id !== currentSystemConfig!.activeTaskId ? `<button class="config-model-btn config-activate-btn" data-action="activate">${escapeHtml(t('common.activate'))}</button>` : ''}
+          ${models.length > 1 ? `<button class="config-model-btn config-delete-btn" data-action="delete">${escapeHtml(t('common.delete'))}</button>` : ''}
         </div>
       </div>
       <div class="config-model-fields">
@@ -4098,7 +4373,7 @@ function renderTTSModels(): void {
 
   const models = currentSystemConfig.ttsModels
   if (models.length === 0) {
-    ttsModelsList.innerHTML = '<div class="config-empty">暂无 TTS 配置</div>'
+    ttsModelsList.innerHTML = `<div class="config-empty">${escapeHtml(t('system.noTts'))}</div>`
     return
   }
 
@@ -4108,11 +4383,11 @@ function renderTTSModels(): void {
         <div class="config-model-name">
           <span class="config-provider-label">${getTTSProviderLabel(model.provider)}</span>
           <input type="text" value="${escapeHtml(model.modelName)}" data-field="modelName" placeholder="s2-pro" />
-          ${model.id === currentSystemConfig!.activeTTSId ? '<span class="config-model-active-badge">使用中</span>' : ''}
+          ${model.id === currentSystemConfig!.activeTTSId ? `<span class="config-model-active-badge">${escapeHtml(t('common.active'))}</span>` : ''}
         </div>
         <div class="config-model-actions">
-          ${model.id !== currentSystemConfig!.activeTTSId ? '<button class="config-model-btn config-activate-btn" data-action="activate">启用</button>' : ''}
-          ${models.length > 1 ? '<button class="config-model-btn config-delete-btn" data-action="delete">删除</button>' : ''}
+          ${model.id !== currentSystemConfig!.activeTTSId ? `<button class="config-model-btn config-activate-btn" data-action="activate">${escapeHtml(t('common.activate'))}</button>` : ''}
+          ${models.length > 1 ? `<button class="config-model-btn config-delete-btn" data-action="delete">${escapeHtml(t('common.delete'))}</button>` : ''}
         </div>
       </div>
       <div class="config-model-fields">
@@ -4150,7 +4425,7 @@ function renderASRModels(): void {
 
   const models = currentSystemConfig.asrModels
   if (models.length === 0) {
-    asrModelsList.innerHTML = '<div class="config-empty">暂无 ASR 配置</div>'
+    asrModelsList.innerHTML = `<div class="config-empty">${escapeHtml(t('system.noAsr'))}</div>`
     return
   }
 
@@ -4160,11 +4435,11 @@ function renderASRModels(): void {
         <div class="config-model-name">
           <span class="config-provider-label">${getASRProviderLabel(model.provider)}</span>
           <input type="text" value="${escapeHtml(model.modelName)}" data-field="modelName" placeholder="realtime" />
-          ${model.id === currentSystemConfig!.activeASRId ? '<span class="config-model-active-badge">使用中</span>' : ''}
+          ${model.id === currentSystemConfig!.activeASRId ? `<span class="config-model-active-badge">${escapeHtml(t('common.active'))}</span>` : ''}
         </div>
         <div class="config-model-actions">
-          ${model.id !== currentSystemConfig!.activeASRId ? '<button class="config-model-btn config-activate-btn" data-action="activate">启用</button>' : ''}
-          ${models.length > 1 ? '<button class="config-model-btn config-delete-btn" data-action="delete">删除</button>' : ''}
+          ${model.id !== currentSystemConfig!.activeASRId ? `<button class="config-model-btn config-activate-btn" data-action="activate">${escapeHtml(t('common.activate'))}</button>` : ''}
+          ${models.length > 1 ? `<button class="config-model-btn config-delete-btn" data-action="delete">${escapeHtml(t('common.delete'))}</button>` : ''}
         </div>
       </div>
       <div class="config-model-fields">
@@ -4522,7 +4797,7 @@ addASRBtn.addEventListener('click', () => void addASRModel())
 
 downloadLocalModelsBtn.addEventListener('click', async () => {
   downloadLocalModelsBtn.disabled = true
-  downloadLocalModelsBtn.textContent = '下载中...'
+  downloadLocalModelsBtn.textContent = t('system.downloading')
   localModelsList.querySelectorAll('.local-model-card.missing').forEach(card => {
     card.classList.add('downloading')
   })
@@ -4545,7 +4820,7 @@ downloadLocalModelsBtn.addEventListener('click', async () => {
 // Reset system config from .env
 async function resetSystemConfigFromEnv(): Promise<void> {
   resetSystemBtn.disabled = true
-  resetSystemBtn.textContent = '加载中...'
+  resetSystemBtn.textContent = t('common.loading')
 
   try {
     const result = await window.electronAPI.resetSystemConfigFromEnv()
@@ -4560,7 +4835,7 @@ async function resetSystemConfigFromEnv(): Promise<void> {
     console.error('[Settings] Reset error:', error)
   } finally {
     resetSystemBtn.disabled = false
-    resetSystemBtn.innerHTML = '<span class="reset-icon">↻</span>从 .env 重新加载配置'
+    resetSystemBtn.innerHTML = `<span class="reset-icon">↻</span><span>${escapeHtml(t('system.reloadEnv'))}</span>`
   }
 }
 
