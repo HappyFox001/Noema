@@ -17,7 +17,7 @@
         <div id="text-display" class="text-display"></div>
         <div id="status" class="status" data-i18n="status.ready">Ready</div>
         <div class="controls">
-          <button id="start-conversation-btn" class="start-button">开始</button>
+          <button id="start-conversation-btn" class="start-button">Start</button>
         </div>
       </div>
       <aside id="task-panel" class="task-panel" aria-hidden="true">
@@ -43,9 +43,9 @@
         <div class="settings-layout">
           
           <nav class="settings-nav">
-            <div class="nav-item active" data-section="voice">
-              <span class="nav-icon">◉</span>
-              <span class="nav-label" data-i18n="nav.voice">语音</span>
+            <div class="nav-item active" data-section="system">
+              <span class="nav-icon">⚙</span>
+              <span class="nav-label" data-i18n="nav.system">系统</span>
             </div>
             <div class="nav-item" data-section="memory">
               <span class="nav-icon">◎</span>
@@ -55,9 +55,9 @@
               <span class="nav-icon">◇</span>
               <span class="nav-label" data-i18n="nav.personality">人格</span>
             </div>
-            <div class="nav-item" data-section="system">
-              <span class="nav-icon">⚙</span>
-              <span class="nav-label" data-i18n="nav.system">系统</span>
+            <div class="nav-item" data-section="models">
+              <span class="nav-icon">◉</span>
+              <span class="nav-label" data-i18n="nav.models">模型</span>
             </div>
             <div class="nav-item" data-section="plugins">
               <span class="nav-icon">✦</span>
@@ -72,8 +72,34 @@
           
           <div class="settings-content">
             
-            <section id="section-voice" class="settings-section active">
-              <h2 class="section-title" data-i18n="voice.title">语音设置</h2>
+            <section id="section-system" class="settings-section active">
+              <h2 class="section-title" data-i18n="system.title">系统设置</h2>
+
+              <div class="settings-card">
+                <div class="settings-row">
+                  <div class="row-info">
+                    <span class="row-label" data-i18n="system.language">界面语言</span>
+                    <span class="row-desc" data-i18n="system.languageDesc">切换控制面板和桌面界面的显示语言</span>
+                  </div>
+                  <select id="language-select" class="settings-select">
+                    <option value="zh-CN">中文</option>
+                    <option value="en-US">English</option>
+                  </select>
+                </div>
+                <div class="settings-row">
+                  <div class="row-info">
+                    <span class="row-label" data-i18n="system.proxy">网络代理</span>
+                    <span class="row-desc" data-i18n="system.proxyDesc">HTTP/HTTPS 代理地址，如 http://127.0.0.1:7890</span>
+                  </div>
+                  <input type="text" id="proxy-input" class="settings-input" placeholder="留空则不使用代理" data-i18n-placeholder="system.proxyPlaceholder" />
+                </div>
+              </div>
+
+              <div class="config-section">
+                <div class="config-section-header">
+                  <span class="config-section-title" data-i18n="voice.title">语音设置</span>
+                </div>
+              </div>
 
               <div class="settings-card">
                 <div class="settings-row">
@@ -104,6 +130,52 @@
                     <span id="volume-value" class="settings-value">70%</span>
                   </div>
                 </div>
+              </div>
+
+              <div class="config-section">
+                <div class="config-section-header">
+                  <span class="config-section-title" data-i18n="taskRuntime.title">任务执行参数</span>
+                </div>
+                <p class="section-subtitle" data-i18n="taskRuntime.desc">调整任务模型的执行循环、历史压缩和卡住判定。</p>
+              </div>
+
+              <div class="settings-card task-runtime-card">
+                <div class="settings-row">
+                  <div class="row-info">
+                    <span class="row-label" data-i18n="taskRuntime.maxTurns">最大执行轮次</span>
+                    <span class="row-desc" data-i18n="taskRuntime.maxTurnsDesc">任务运行超过该轮数后停止。</span>
+                  </div>
+                  <input type="number" id="task-max-turns-input" class="settings-number-input" min="4" max="100" step="1" />
+                </div>
+                <div class="settings-row">
+                  <div class="row-info">
+                    <span class="row-label" data-i18n="taskRuntime.contextWindow">模型上下文窗口</span>
+                    <span class="row-desc" data-i18n="taskRuntime.contextWindowDesc">用于估算任务历史压缩阈值。</span>
+                  </div>
+                  <input type="number" id="task-context-window-input" class="settings-number-input" min="4096" max="1000000" step="1000" />
+                </div>
+                <div class="settings-row">
+                  <div class="row-info">
+                    <span class="row-label" data-i18n="taskRuntime.compactLimit">自动压缩阈值</span>
+                    <span class="row-desc" data-i18n="taskRuntime.compactLimitDesc">上下文 token 达到该值时自动压缩，最高为窗口的 90%。</span>
+                  </div>
+                  <input type="number" id="task-compact-after-input" class="settings-number-input" min="1000" max="1000000" step="1000" />
+                </div>
+                <div class="settings-row">
+                  <div class="row-info">
+                    <span class="row-label" data-i18n="taskRuntime.keepRecent">保留最近轮次</span>
+                    <span class="row-desc" data-i18n="taskRuntime.keepRecentDesc">压缩时保留最近多少轮原始上下文。</span>
+                  </div>
+                  <input type="number" id="task-keep-recent-input" class="settings-number-input" min="1" max="100" step="1" />
+                </div>
+              </div>
+
+              <div class="config-reset-section">
+                <button id="reset-system-btn" class="config-reset-btn">
+                  <span class="reset-icon">↻</span>
+                  <span data-i18n="system.reloadEnv">从 .env 重新加载配置</span>
+                </button>
+                <p class="config-reset-hint" data-i18n="system.reloadEnvHint">将使用 .env 文件中的配置覆盖当前设置</p>
               </div>
             </section>
 
@@ -238,30 +310,8 @@
             </section>
 
             
-            <section id="section-system" class="settings-section">
-              <div id="system-main-page" class="system-page active">
-                <h2 class="section-title" data-i18n="system.title">系统配置</h2>
-
-              
-                <div class="settings-card">
-                <div class="settings-row">
-                  <div class="row-info">
-                    <span class="row-label" data-i18n="system.language">界面语言</span>
-                    <span class="row-desc" data-i18n="system.languageDesc">切换控制面板和桌面界面的显示语言</span>
-                  </div>
-                  <select id="language-select" class="settings-select">
-                    <option value="zh-CN">中文</option>
-                    <option value="en-US">English</option>
-                  </select>
-                </div>
-                <div class="settings-row">
-                  <div class="row-info">
-                    <span class="row-label" data-i18n="system.proxy">网络代理</span>
-                    <span class="row-desc" data-i18n="system.proxyDesc">HTTP/HTTPS 代理地址，如 http://127.0.0.1:7890</span>
-                  </div>
-                  <input type="text" id="proxy-input" class="settings-input" placeholder="留空则不使用代理" data-i18n-placeholder="system.proxyPlaceholder" />
-                </div>
-              </div>
+            <section id="section-models" class="settings-section">
+              <h2 class="section-title" data-i18n="models.title">模型设置</h2>
 
               
               <div class="config-section">
@@ -279,7 +329,6 @@
                 <div class="config-section-header">
                   <span class="config-section-title" data-i18n="system.taskModel">任务模型</span>
                   <div class="config-section-actions">
-                    <button id="open-task-runtime-btn" class="config-add-btn secondary" data-i18n="system.runtimeParams">执行参数</button>
                     <button id="add-task-btn" class="config-add-btn" data-i18n="common.add">+ 添加</button>
                   </div>
                 </div>
@@ -321,56 +370,6 @@
                 </div>
               </div>
 
-              
-              <div class="config-reset-section">
-                <button id="reset-system-btn" class="config-reset-btn">
-                  <span class="reset-icon">↻</span>
-                  <span data-i18n="system.reloadEnv">从 .env 重新加载配置</span>
-                </button>
-                <p class="config-reset-hint" data-i18n="system.reloadEnvHint">将使用 .env 文件中的配置覆盖当前设置</p>
-              </div>
-              </div>
-
-              <div id="system-task-runtime-page" class="system-page">
-                <div class="memory-subpage-header">
-                  <button id="back-system-main-btn" class="memory-back-btn" type="button" data-i18n="common.back">返回</button>
-                  <div>
-                    <h2 class="section-title" data-i18n="taskRuntime.title">任务执行参数</h2>
-                    <p class="section-subtitle" data-i18n="taskRuntime.desc">调整任务模型的执行循环、历史压缩和卡住判定。</p>
-                  </div>
-                </div>
-
-                <div class="settings-card task-runtime-card">
-                  <div class="settings-row">
-                    <div class="row-info">
-                      <span class="row-label" data-i18n="taskRuntime.maxTurns">最大执行轮次</span>
-                      <span class="row-desc" data-i18n="taskRuntime.maxTurnsDesc">任务运行超过该轮数后停止。</span>
-                    </div>
-                    <input type="number" id="task-max-turns-input" class="settings-number-input" min="4" max="100" step="1" />
-                  </div>
-                  <div class="settings-row">
-                    <div class="row-info">
-                      <span class="row-label" data-i18n="taskRuntime.contextWindow">模型上下文窗口</span>
-                      <span class="row-desc" data-i18n="taskRuntime.contextWindowDesc">用于估算任务历史压缩阈值。</span>
-                    </div>
-                    <input type="number" id="task-context-window-input" class="settings-number-input" min="4096" max="1000000" step="1000" />
-                  </div>
-                  <div class="settings-row">
-                    <div class="row-info">
-                      <span class="row-label" data-i18n="taskRuntime.compactLimit">自动压缩阈值</span>
-                      <span class="row-desc" data-i18n="taskRuntime.compactLimitDesc">上下文 token 达到该值时自动压缩，最高为窗口的 90%。</span>
-                    </div>
-                    <input type="number" id="task-compact-after-input" class="settings-number-input" min="1000" max="1000000" step="1000" />
-                  </div>
-                  <div class="settings-row">
-                    <div class="row-info">
-                      <span class="row-label" data-i18n="taskRuntime.keepRecent">保留最近轮次</span>
-                      <span class="row-desc" data-i18n="taskRuntime.keepRecentDesc">压缩时保留最近多少轮原始上下文。</span>
-                    </div>
-                    <input type="number" id="task-keep-recent-input" class="settings-number-input" min="1" max="100" step="1" />
-                  </div>
-                </div>
-              </div>
             </section>
 
             

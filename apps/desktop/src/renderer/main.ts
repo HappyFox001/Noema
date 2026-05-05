@@ -604,8 +604,8 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'status.voiceDisabled': 'Voice Disabled',
     'status.voiceInputDisabled': 'Voice input is disabled',
     'status.working': 'Working...',
-    'button.start': '开始',
-    'button.stop': '停止',
+    'button.start': 'Start',
+    'button.stop': 'Stop',
     'taskPanel.failed': '任务失败',
     'taskPanel.step': '步骤',
     'taskPanel.title': '任务',
@@ -615,6 +615,8 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'nav.plugins': '插件',
     'nav.system': '系统',
     'nav.voice': '语音',
+    'nav.models': '模型',
+    'models.title': '模型设置',
     'voice.input': '语音输入',
     'voice.inputDesc': '使用麦克风进行语音对话',
     'voice.output': '语音输出',
@@ -651,7 +653,7 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'system.reloadEnvHint': '将使用 .env 文件中的配置覆盖当前设置',
     'system.runtimeParams': '执行参数',
     'system.taskModel': '任务模型',
-    'system.title': '系统配置',
+    'system.title': '系统设置',
     'system.tts': 'TTS 语音合成',
     'system.downloading': '下载中...',
     'system.modelReady': '模型已就绪',
@@ -725,6 +727,8 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'nav.plugins': 'Plugins',
     'nav.system': 'System',
     'nav.voice': 'Voice',
+    'nav.models': 'Models',
+    'models.title': 'Model Settings',
     'voice.input': 'Voice Input',
     'voice.inputDesc': 'Use the microphone for voice conversation',
     'voice.output': 'Voice Output',
@@ -761,7 +765,7 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'system.reloadEnvHint': 'Use values from the .env file to overwrite current settings',
     'system.runtimeParams': 'Runtime Params',
     'system.taskModel': 'Task Model',
-    'system.title': 'System Config',
+    'system.title': 'System Settings',
     'system.tts': 'TTS Speech Synthesis',
     'system.downloading': 'Downloading...',
     'system.modelReady': 'Models Ready',
@@ -2111,8 +2115,8 @@ const settingsPanel = document.getElementById('settings-panel')!
 const settingsClose = document.getElementById('settings-close')!
 const mainView = document.getElementById('main-view')!
 const settingsNav = document.querySelector('.settings-nav') as HTMLElement
-const systemNavItem = document.querySelector('.nav-item[data-section="system"]') as HTMLElement | null
-const systemNavLabel = systemNavItem?.querySelector('.nav-label') as HTMLElement | null
+const modelNavItem = document.querySelector('.nav-item[data-section="models"]') as HTMLElement | null
+const modelNavLabel = modelNavItem?.querySelector('.nav-label') as HTMLElement | null
 
 let setupReadiness: SetupReadiness = { ready: true, issues: [] }
 const volumeSlider = document.getElementById('volume-slider') as HTMLInputElement
@@ -2265,8 +2269,7 @@ function switchSettingsSection(section: string): void {
   if (section === 'memory') {
     void refreshMemorySection()
   }
-  if (section === 'system') {
-    switchSystemPage('main')
+  if (section === 'system' || section === 'models') {
     void loadSystemConfig()
   }
   if (section === 'plugins') {
@@ -4002,8 +4005,6 @@ function escapeHtml(str: string): string {
 // ========== System Config Section ==========
 
 const proxyInput = document.getElementById('proxy-input') as HTMLInputElement
-const systemMainPage = document.getElementById('system-main-page')!
-const systemTaskRuntimePage = document.getElementById('system-task-runtime-page')!
 const llmModelsList = document.getElementById('llm-models-list')!
 const taskModelsList = document.getElementById('task-models-list')!
 const ttsModelsList = document.getElementById('tts-models-list')!
@@ -4011,8 +4012,6 @@ const asrModelsList = document.getElementById('asr-models-list')!
 const localModelsList = document.getElementById('local-models-list')!
 const addLLMBtn = document.getElementById('add-llm-btn') as HTMLButtonElement
 const addTaskBtn = document.getElementById('add-task-btn') as HTMLButtonElement
-const openTaskRuntimeBtn = document.getElementById('open-task-runtime-btn') as HTMLButtonElement
-const backSystemMainBtn = document.getElementById('back-system-main-btn') as HTMLButtonElement
 const taskMaxTurnsInput = document.getElementById('task-max-turns-input') as HTMLInputElement
 const taskContextWindowInput = document.getElementById('task-context-window-input') as HTMLInputElement
 const taskCompactAfterInput = document.getElementById('task-compact-after-input') as HTMLInputElement
@@ -4098,17 +4097,17 @@ async function evaluateSetupReadiness(): Promise<SetupReadiness> {
 }
 
 function updateSetupNavIndicator(readiness: SetupReadiness): void {
-  if (!systemNavItem || !systemNavLabel) {
+  if (!modelNavItem || !modelNavLabel) {
     return
   }
 
-  systemNavItem.classList.toggle('has-setup-issues', !readiness.ready)
-  systemNavItem.dataset.issueCount = readiness.ready ? '' : String(readiness.issues.length)
-  systemNavItem.title = readiness.ready
+  modelNavItem.classList.toggle('has-setup-issues', !readiness.ready)
+  modelNavItem.dataset.issueCount = readiness.ready ? '' : String(readiness.issues.length)
+  modelNavItem.title = readiness.ready
     ? ''
     : readiness.issues.map(issue => `${issue.label}: ${issue.message}`).join('\n')
 
-  const existingBadge = systemNavItem.querySelector('.nav-issue-badge')
+  const existingBadge = modelNavItem.querySelector('.nav-issue-badge')
   if (existingBadge) {
     existingBadge.remove()
   }
@@ -4117,7 +4116,7 @@ function updateSetupNavIndicator(readiness: SetupReadiness): void {
     const badge = document.createElement('span')
     badge.className = 'nav-issue-badge'
     badge.textContent = String(readiness.issues.length)
-    systemNavItem.appendChild(badge)
+    modelNavItem.appendChild(badge)
   }
 }
 
@@ -4131,8 +4130,8 @@ function renderSetupGuidance(readiness: SetupReadiness): void {
     return
   }
 
-  const systemSection = document.getElementById('section-system')
-  if (!systemSection) {
+  const modelsSection = document.getElementById('section-models')
+  if (!modelsSection) {
     return
   }
 
@@ -4157,7 +4156,7 @@ function renderSetupGuidance(readiness: SetupReadiness): void {
     </div>
   `
 
-  const title = systemSection.querySelector('.section-title')
+  const title = modelsSection.querySelector('.section-title')
   title?.insertAdjacentElement('afterend', card)
 
   card.querySelectorAll<HTMLElement>('.setup-guidance-item').forEach(item => {
@@ -4183,7 +4182,7 @@ async function ensureSetupReadyForConversation(): Promise<boolean> {
   }
 
   showPanelNotice(`需要完成 ${readiness.issues.length} 项配置`, 'error')
-  openSettings('system')
+  openSettings('models')
   return false
 }
 
@@ -4204,11 +4203,6 @@ function renderSystemConfig(): void {
   renderTaskRuntimeSettings()
   renderTTSModels()
   renderASRModels()
-}
-
-function switchSystemPage(page: 'main' | 'task-runtime'): void {
-  systemMainPage.classList.toggle('active', page === 'main')
-  systemTaskRuntimePage.classList.toggle('active', page === 'task-runtime')
 }
 
 async function loadLocalModelStatus(): Promise<void> {
@@ -4778,12 +4772,6 @@ proxyInput.addEventListener('change', async () => {
 // Add button handlers
 addLLMBtn.addEventListener('click', () => void addLLMModel())
 addTaskBtn.addEventListener('click', () => void addTaskModel())
-openTaskRuntimeBtn.addEventListener('click', () => {
-  switchSystemPage('task-runtime')
-})
-backSystemMainBtn.addEventListener('click', () => {
-  switchSystemPage('main')
-})
 ;[
   taskMaxTurnsInput,
   taskContextWindowInput,
@@ -4840,10 +4828,6 @@ async function resetSystemConfigFromEnv(): Promise<void> {
 }
 
 resetSystemBtn.addEventListener('click', () => void resetSystemConfigFromEnv())
-
-function isSystemSectionActive(): boolean {
-  return document.getElementById('section-system')?.classList.contains('active') === true
-}
 
 async function initializeApp(): Promise<void> {
   try {
