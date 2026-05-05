@@ -198,7 +198,7 @@ export class TaskRuntime {
         this.throwIfAborted()
         const step = this.nextRunnableStep()
         if (!step) {
-          finalMessage = finalMessage || this.buildPlanCompletionMessage()
+          finalMessage = this.buildPlanCompletionMessage(finalMessage)
           this.setRunState('completed')
           this.hooks.onStatusChanged?.('completed')
           this.emitPlanUpdated()
@@ -256,7 +256,7 @@ export class TaskRuntime {
             continue
           }
 
-          finalMessage = finalMessage || '任务已完成。'
+          finalMessage = this.buildPlanCompletionMessage(finalMessage)
           this.setRunState('completed')
           this.hooks.onStatusChanged?.('completed')
           this.emitPlanUpdated()
@@ -292,7 +292,7 @@ export class TaskRuntime {
             continue
           }
 
-          finalMessage = finalMessage || '任务已完成。'
+          finalMessage = this.buildPlanCompletionMessage(finalMessage)
           this.setRunState('completed')
           this.hooks.onStatusChanged?.('completed')
 
@@ -1310,17 +1310,27 @@ export class TaskRuntime {
     return lines.join('\n')
   }
 
-  private buildPlanCompletionMessage(): string {
+  private buildPlanCompletionMessage(fallback = ''): string {
     if (!this.taskPlan) {
-      return '任务已完成。'
+      return cleanFinalMessage(fallback) || '任务已完成。'
     }
 
     const completed = this.taskPlan.steps
       .filter(step => step.status === 'completed')
-      .map(step => `- ${step.title}`)
-      .join('\n')
+      .map(step => {
+        const result = cleanFinalMessage(step.result || '')
+        return result ? `${step.title}：${result}` : step.title
+      })
 
-    return completed ? `任务已完成：\n${completed}` : '任务已完成。'
+    if (completed.length === 0) {
+      return cleanFinalMessage(fallback) || '任务已完成。'
+    }
+
+    if (completed.length === 1) {
+      return `任务已完成：${completed[0]}`
+    }
+
+    return `任务已完成：\n${completed.map(item => `- ${item}`).join('\n')}`
   }
 
   private formatMemoryContext(): string {
@@ -1354,6 +1364,12 @@ export class TaskRuntime {
     }
     throw new DOMException('Task aborted', 'AbortError')
   }
+}
+
+function cleanFinalMessage(value: string): string {
+  return value
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 function parsePlanDraft(content: string, onParseFailure?: (error: Error) => void): TaskPlanDraft {
