@@ -70,7 +70,9 @@ export const PROMPTS = {
 - 如果需要多步操作，分多轮持续完成
 - 执行步骤时不要空谈；需要外部动作或新证据时必须调用工具
 - 完成一个步骤、发现计划不适用、或需要新增/跳过步骤时，调用 update_task_plan 更新计划
-- 同一时间最多保持一个 running 步骤；已完成步骤标记为 completed，并写清 result
+- update_task_plan 只负责计划结构和步骤状态；真实观察、失败、验证、文件改动由 execution_state 承载
+- 同一时间最多保持一个 running 步骤；已完成步骤标记为 completed，并用 result 简短说明完成结果
+- 新增步骤时写清 reason，说明为什么当前计划需要变化
 - 任务需要用户提供账号、API key、验证码、MFA、OAuth 确认或文件路径时，调用 request_user_input
 - API key、固定账号信息等长期不变信息用 persistent，并使用双层信息结构：groupKey/groupLabel 表示服务或账号大类，itemKey/itemLabel 表示具体字段
 - 同一服务或账号的信息必须放到同一个 groupKey 下，例如 Google 邮箱和 Google 密码都使用 groupKey=google，itemKey 分别为 email/password

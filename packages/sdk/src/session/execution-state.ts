@@ -39,6 +39,22 @@ export interface ActiveExecSession {
   updatedAt: number
 }
 
+export type StepVerificationStatus = 'not_required' | 'pending' | 'passed' | 'failed' | 'unable'
+
+export interface StepExecutionState {
+  id: string
+  title: string
+  status: TaskStepStatus
+  toolCalls: string[]
+  failureCount: number
+  verificationStatus: StepVerificationStatus
+  result?: string
+  error?: string
+  blockedReason?: string
+  addReason?: string
+  updatedAt: number
+}
+
 export interface ExecutionState {
   goal: string
   currentStep?: {
@@ -47,6 +63,7 @@ export interface ExecutionState {
     description: string
     status: TaskStepStatus
   }
+  steps: Record<string, StepExecutionState>
   confirmedFacts: string[]
   recentObservations: TaskObservation[]
   recentFailures: string[]
@@ -60,6 +77,7 @@ export interface ExecutionState {
 export function createExecutionState(goal: string): ExecutionState {
   return {
     goal,
+    steps: {},
     confirmedFacts: [],
     recentObservations: [],
     recentFailures: [],
@@ -68,6 +86,106 @@ export function createExecutionState(goal: string): ExecutionState {
     activeSessions: [],
     updatedAt: Date.now()
   }
+}
+
+export function ensureStepExecutionState(
+  state: ExecutionState,
+  step: {
+    id: string
+    title: string
+    status: TaskStepStatus
+  },
+  addReason?: string
+): StepExecutionState {
+  const existing = state.steps[step.id]
+  if (existing) {
+    existing.title = step.title
+    existing.status = step.status
+    if (addReason && !existing.addReason) {
+      existing.addReason = cleanStateText(addReason)
+    }
+    existing.updatedAt = Date.now()
+    state.updatedAt = existing.updatedAt
+    return existing
+  }
+
+  const next: StepExecutionState = {
+    id: step.id,
+    title: step.title,
+    status: step.status,
+    toolCalls: [],
+    failureCount: 0,
+    verificationStatus: 'not_required',
+    ...(addReason ? { addReason: cleanStateText(addReason) } : {}),
+    updatedAt: Date.now()
+  }
+  state.steps[step.id] = next
+  state.updatedAt = next.updatedAt
+  return next
+}
+
+export function recordStepToolCalls(
+  state: ExecutionState,
+  step: { id: string; title: string; status: TaskStepStatus },
+  toolCalls: string[]
+): void {
+  const runtime = ensureStepExecutionState(state, step)
+  for (const toolCall of toolCalls) {
+    appendUniqueLimited(runtime.toolCalls, toolCall, 20)
+  }
+  runtime.updatedAt = Date.now()
+  state.updatedAt = runtime.updatedAt
+}
+
+export function completeStepExecution(
+  state: ExecutionState,
+  step: { id: string; title: string; status: TaskStepStatus },
+  result: string
+): void {
+  const runtime = ensureStepExecutionState(state, step)
+  runtime.status = 'completed'
+  runtime.result = cleanStateText(result)
+  runtime.error = undefined
+  runtime.blockedReason = undefined
+  runtime.updatedAt = Date.now()
+  appendUniqueLimited(state.confirmedFacts, `步骤完成：${step.title}。${runtime.result || '已完成'}`, 10)
+  state.updatedAt = runtime.updatedAt
+}
+
+export function recordStepResult(
+  state: ExecutionState,
+  step: { id: string; title: string; status: TaskStepStatus },
+  result: string
+): void {
+  const runtime = ensureStepExecutionState(state, step)
+  runtime.result = cleanStateText(result)
+  runtime.updatedAt = Date.now()
+  state.updatedAt = runtime.updatedAt
+}
+
+export function failStepExecution(
+  state: ExecutionState,
+  step: { id: string; title: string; status: TaskStepStatus },
+  error: string
+): void {
+  const runtime = ensureStepExecutionState(state, step)
+  runtime.status = 'failed'
+  runtime.error = cleanStateText(error)
+  runtime.failureCount += 1
+  runtime.updatedAt = Date.now()
+  appendUniqueLimited(state.recentFailures, `步骤失败：${step.title}。${runtime.error || '未知错误'}`, 8)
+  state.updatedAt = runtime.updatedAt
+}
+
+export function blockStepExecution(
+  state: ExecutionState,
+  step: { id: string; title: string; status: TaskStepStatus },
+  reason: string
+): void {
+  const runtime = ensureStepExecutionState(state, step)
+  runtime.blockedReason = cleanStateText(reason)
+  runtime.updatedAt = Date.now()
+  state.updatedAt = runtime.updatedAt
 }
 
 export function createTaskObservation(options: {

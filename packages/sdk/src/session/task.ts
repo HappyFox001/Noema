@@ -15,10 +15,15 @@ import { TurnRuntime } from './turn.js'
 import { PROMPTS } from '../prompts.js'
 import type { TaskPlan, TaskPlanDraft, TaskRunState, TaskStep, TaskStepStatus } from './task-plan.js'
 import {
-  appendUniqueLimited,
   applyExecutionObservations,
+  blockStepExecution,
+  completeStepExecution,
   createExecutionState,
   createTaskObservation,
+  ensureStepExecutionState,
+  failStepExecution,
+  recordStepResult,
+  recordStepToolCalls,
   type ExecutionState,
   type TaskObservation
 } from './execution-state.js'
@@ -90,6 +95,7 @@ interface TaskPlanUpdateArgs {
     status?: TaskStepStatus
     result?: string
     error?: string
+    reason?: string
   }>
 }
 
@@ -239,7 +245,7 @@ export class TaskRuntime {
             request_user_input: (args) => this.requestUserInput(args)
           },
           onToolCalling: (toolCalls) => {
-            step.toolCalls.push(...toolCalls.map(call => call.function.name))
+            recordStepToolCalls(this.executionState, step, toolCalls.map(call => call.function.name))
             this.setRunState('tool_calling')
             this.emitStepUpdated(step)
           },
@@ -254,7 +260,7 @@ export class TaskRuntime {
         this.recordTurn(turn, observations)
 
         if (step.status === 'completed') {
-          finalMessage = step.result || turn.assistantMessage.trim() || finalMessage
+          finalMessage = this.getStepRuntime(step.id)?.result || turn.assistantMessage.trim() || finalMessage
 
           if (this.hasRunnableSteps()) {
             console.log(`[TaskRuntime] 当前步骤已由计划更新标记完成，继续下一步...`)
@@ -640,7 +646,10 @@ export class TaskRuntime {
   private buildDeterministicCompactSummary(records: TaskTurnRecord[]): string {
     const lines = [
       `Task: ${this.taskDescription}`,
-      this.taskPlan ? `Plan: ${this.taskPlan.steps.map(step => `${step.id} ${step.title} (${step.status})${step.result ? `: ${step.result}` : ''}`).join('; ')}` : '',
+      this.taskPlan ? `Plan: ${this.taskPlan.steps.map(step => {
+        const runtime = this.getStepRuntime(step.id)
+        return `${step.id} ${step.title} (${step.status})${runtime?.result ? `: ${runtime.result}` : ''}`
+      }).join('; ')}` : '',
       this.compactSummary ? `Previous summary: ${this.compactSummary}` : '',
       'Compacted observations:',
       ...records.flatMap(record => {
@@ -801,6 +810,10 @@ export class TaskRuntime {
                   error: {
                     type: 'string',
                     description: 'Failure reason if the step failed.'
+                  },
+                  reason: {
+                    type: 'string',
+                    description: 'Reason for appending a new step or changing the plan.'
                   }
                 },
                 additionalProperties: false
@@ -970,8 +983,7 @@ export class TaskRuntime {
       id: `step-${index + 1}`,
       title: cleanPlanText(step.title) || `步骤 ${index + 1}`,
       description: cleanPlanText(step.description) || cleanPlanText(step.title) || this.taskDescription,
-      status: 'pending',
-      toolCalls: []
+      status: 'pending'
     }))
 
     return {
@@ -1011,24 +1023,30 @@ export class TaskRuntime {
       }
       if (update.status && isTaskStepStatus(update.status)) {
         this.applyStepStatus(target, update.status)
-        if (update.status !== 'failed') {
-          target.error = undefined
-        }
       }
-      if (typeof update.result === 'string' && update.result.trim()) {
-        target.result = cleanPlanText(update.result)
-      }
+      ensureStepExecutionState(this.executionState, target, update.reason)
+      const result = typeof update.result === 'string' && update.result.trim()
+        ? cleanPlanText(update.result)
+        : ''
+      const error = typeof update.error === 'string' && update.error.trim()
+        ? cleanPlanText(update.error)
+        : ''
       if (typeof update.error === 'string' && update.error.trim()) {
-        target.error = cleanPlanText(update.error)
+        failStepExecution(this.executionState, target, error)
       }
       if (target.id === this.currentStep?.id) {
         this.updateExecutionCurrentStep(target)
       }
-      if (target.status === 'completed' && target.result) {
-        appendUniqueLimited(this.executionState.confirmedFacts, `步骤完成：${target.title}。${target.result}`, 10)
+      if (target.status === 'completed') {
+        completeStepExecution(this.executionState, target, result || '步骤已完成。')
+      } else if (result) {
+        recordStepResult(this.executionState, target, result)
       }
-      if (target.status === 'failed' && target.error) {
-        appendUniqueLimited(this.executionState.recentFailures, `步骤失败：${target.title}。${target.error}`, 8)
+      if (target.status === 'failed' && !error) {
+        failStepExecution(this.executionState, target, '步骤执行失败。')
+      }
+      if (target.status === 'skipped' && update.reason) {
+        blockStepExecution(this.executionState, target, update.reason)
       }
       changedSteps.push(target)
     }
@@ -1098,10 +1116,10 @@ export class TaskRuntime {
       id: nextId,
       title: cleanPlanText(update.title) || nextId,
       description: cleanPlanText(update.description) || cleanPlanText(update.title) || this.taskDescription,
-      status: 'pending',
-      toolCalls: []
+      status: 'pending'
     }
     this.taskPlan!.steps.push(step)
+    ensureStepExecutionState(this.executionState, step, update.reason || '模型根据当前执行状态新增计划步骤。')
     return step
   }
 
@@ -1192,8 +1210,7 @@ export class TaskRuntime {
               id: step.id,
               title: step.title,
               description: step.description,
-              status: step.status,
-              result: step.result
+              status: step.status
             }))
           }, null, 2)
         }
@@ -1272,10 +1289,9 @@ export class TaskRuntime {
 
   private completeStep(step: TaskStep, result: string): void {
     step.status = 'completed'
-    step.result = result
     step.completedAt = Date.now()
     this.updateExecutionCurrentStep(step)
-    appendUniqueLimited(this.executionState.confirmedFacts, `步骤完成：${step.title}。${result}`, 10)
+    completeStepExecution(this.executionState, step, result)
     this.touchPlan()
     this.emitStepUpdated(step)
   }
@@ -1285,15 +1301,15 @@ export class TaskRuntime {
       return
     }
     this.currentStep.status = 'failed'
-    this.currentStep.error = error
     this.currentStep.completedAt = Date.now()
     this.updateExecutionCurrentStep(this.currentStep)
-    appendUniqueLimited(this.executionState.recentFailures, `步骤失败：${this.currentStep.title}。${error}`, 8)
+    failStepExecution(this.executionState, this.currentStep, error)
     this.touchPlan()
     this.emitStepUpdated(this.currentStep)
   }
 
   private updateExecutionCurrentStep(step: TaskStep): void {
+    ensureStepExecutionState(this.executionState, step)
     this.executionState.currentStep = {
       id: step.id,
       title: step.title,
@@ -1301,6 +1317,10 @@ export class TaskRuntime {
       status: step.status
     }
     this.executionState.updatedAt = Date.now()
+  }
+
+  private getStepRuntime(stepId: string) {
+    return this.executionState.steps[stepId]
   }
 
   private setRunState(state: TaskRunState): void {
@@ -1372,6 +1392,18 @@ export class TaskRuntime {
       state.currentStep
         ? `Current step: ${escapeXmlText(state.currentStep.id)} ${escapeXmlText(state.currentStep.title)} (${state.currentStep.status})`
         : '',
+      Object.keys(state.steps).length > 0
+        ? `Step runtime state:\n${Object.values(state.steps).slice(-8).map(step => [
+            `- ${escapeXmlText(step.id)} ${escapeXmlText(step.title)} (${step.status})`,
+            step.result ? `result=${escapeXmlText(step.result)}` : '',
+            step.error ? `error=${escapeXmlText(step.error)}` : '',
+            step.failureCount > 0 ? `failures=${step.failureCount}` : '',
+            step.blockedReason ? `blocked=${escapeXmlText(step.blockedReason)}` : '',
+            step.addReason ? `added=${escapeXmlText(step.addReason)}` : '',
+            step.toolCalls.length > 0 ? `tools=${escapeXmlText(step.toolCalls.slice(-6).join(', '))}` : '',
+            step.verificationStatus !== 'not_required' ? `verification=${step.verificationStatus}` : ''
+          ].filter(Boolean).join(' ')).join('\n')}`
+        : '',
       state.confirmedFacts.length > 0
         ? `Confirmed facts:\n${state.confirmedFacts.slice(-6).map(item => `- ${escapeXmlText(item)}`).join('\n')}`
         : '',
@@ -1413,7 +1445,7 @@ export class TaskRuntime {
     const completed = this.taskPlan.steps
       .filter(step => step.status === 'completed')
       .map(step => {
-        const result = cleanFinalMessage(step.result || '')
+        const result = cleanFinalMessage(this.getStepRuntime(step.id)?.result || '')
         return result ? `${step.title}：${result}` : step.title
       })
 
