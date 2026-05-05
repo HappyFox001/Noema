@@ -809,28 +809,67 @@ export class TaskRuntime {
       })
 
       this.throwIfAborted()
-      const draft = parsePlanDraft(response.content)
+      const draft = parsePlanDraft(response.content, (error) => {
+        this.logPlanParseFailure(response.content, error)
+      })
       return this.normalizePlan(draft)
     } catch (error) {
       console.warn(`[TaskRuntime] Plan generation failed, using fallback plan: ${(error as Error).message}`)
-      return this.normalizePlan({
-        title: '执行用户任务',
-        summary: this.taskDescription,
-        steps: [
-          {
-            title: '完成任务',
-            description: this.taskDescription
-          }
-        ]
+      return this.normalizePlan(this.createFallbackPlanDraft(tools))
+    }
+  }
+
+  private createFallbackPlanDraft(tools: Tool[]): TaskPlanDraft {
+    const toolNames = new Set(tools.map(tool => tool.name))
+    const steps: NonNullable<TaskPlanDraft['steps']> = []
+
+    if (toolNames.has('computer_observe') || toolNames.has('browser_observe') || toolNames.has('view_image')) {
+      steps.push({
+        title: '观察当前状态',
+        description: '获取当前界面或相关视觉状态，确认任务起点。'
       })
     }
+
+    if (toolNames.has('read') || toolNames.has('grep') || toolNames.has('glob')) {
+      steps.push({
+        title: '定位相关上下文',
+        description: '查找并读取和任务相关的文件、页面或已有信息。'
+      })
+    }
+
+    steps.push({
+      title: '执行核心操作',
+      description: this.taskDescription
+    })
+
+    if (toolNames.has('exec_command') || toolNames.has('bash') || toolNames.has('computer_observe') || toolNames.has('browser_observe')) {
+      steps.push({
+        title: '验证执行结果',
+        description: '通过命令、观察或状态检查确认任务结果符合用户要求。'
+      })
+    }
+
+    return {
+      title: '执行用户任务',
+      summary: this.taskDescription,
+      steps: dedupeDraftSteps(steps).slice(0, 4)
+    }
+  }
+
+  private logPlanParseFailure(content: string, error: Error): void {
+    const raw = String(content ?? '')
+    const previewLimit = 4000
+    console.warn('[TaskRuntime] Plan response parse failed:', error.message)
+    console.warn(`[TaskRuntime] Raw plan response length: ${raw.length}`)
+    console.warn('[TaskRuntime] Raw plan response:')
+    console.warn(raw.length > previewLimit ? `${raw.slice(0, previewLimit)}\n...[truncated ${raw.length - previewLimit} chars]` : raw || '(empty)')
   }
 
   private normalizePlan(draft: TaskPlanDraft): TaskPlan {
     const now = Date.now()
     const rawSteps = Array.isArray(draft.steps) && draft.steps.length > 0
       ? draft.steps.slice(0, 8)
-      : [{ title: '完成任务', description: this.taskDescription }]
+      : this.createFallbackPlanDraft([]).steps ?? [{ title: '执行核心操作', description: this.taskDescription }]
 
     const steps: TaskStep[] = rawSteps.map((step, index) => ({
       id: `step-${index + 1}`,
@@ -1317,16 +1356,36 @@ export class TaskRuntime {
   }
 }
 
-function parsePlanDraft(content: string): TaskPlanDraft {
+function parsePlanDraft(content: string, onParseFailure?: (error: Error) => void): TaskPlanDraft {
   try {
     return JSON.parse(content) as TaskPlanDraft
-  } catch {
+  } catch (error) {
     const match = content.match(/\{[\s\S]*\}/)
     if (!match) {
+      onParseFailure?.(error instanceof Error ? error : new Error('Plan response did not contain JSON'))
       throw new Error('Plan response did not contain JSON')
     }
-    return JSON.parse(match[0]) as TaskPlanDraft
+    try {
+      return JSON.parse(match[0]) as TaskPlanDraft
+    } catch (nestedError) {
+      onParseFailure?.(nestedError instanceof Error ? nestedError : new Error('Plan JSON parse failed'))
+      throw nestedError
+    }
   }
+}
+
+function dedupeDraftSteps(steps: NonNullable<TaskPlanDraft['steps']>): NonNullable<TaskPlanDraft['steps']> {
+  const seen = new Set<string>()
+  const output: NonNullable<TaskPlanDraft['steps']> = []
+  for (const step of steps) {
+    const key = normalizeStepText(step.title, step.description)
+    if (!key || seen.has(key)) {
+      continue
+    }
+    seen.add(key)
+    output.push(step)
+  }
+  return output
 }
 
 function cleanPlanText(value: unknown): string {
