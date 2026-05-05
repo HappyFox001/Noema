@@ -5,6 +5,12 @@ import { mkdir, readFile } from 'node:fs/promises'
 import { execFile } from 'node:child_process'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
+import {
+  coordinateMetadata,
+  createCoordinateMapper,
+  detectPngSize,
+  mapPoint,
+} from './coordinates.mjs'
 
 const execFileAsync = promisify(execFile)
 
@@ -61,64 +67,73 @@ export class WindowsComputerController {
   constructor(options) {
     this.dataDir = options.dataDir
     this.screenshotFormat = options.screenshotFormat === 'path' ? 'path' : 'base64'
+    this.lastCoordinateMapper = null
   }
 
   async observe(options = {}) {
     assertWindows()
     const includeImage = options.includeImage !== false
     const path = await this.captureScreenshot()
+    const buffer = await readFile(path)
+    const mapper = this.createMapper(buffer)
+    this.lastCoordinateMapper = mapper
     const result = {
       success: true,
       type: 'screenshot',
       format: this.screenshotFormat,
       path,
-      note: 'Coordinates use the Windows virtual desktop coordinate system with origin at the top-left of the primary display.',
+      note: 'Coordinates returned by this screenshot use screenshot pixels. Mouse tools default to coordinateSpace=screenshot and map them to Windows screen coordinates.',
+      ...coordinateMetadata(mapper),
     }
 
     if (includeImage && this.screenshotFormat === 'base64') {
-      result.image_base64 = (await readFile(path)).toString('base64')
+      result.image_base64 = buffer.toString('base64')
       result.mime_type = 'image/png'
     }
 
     return result
   }
 
-  async click(x, y, button = 'left', clickCount = 1) {
+  async click(x, y, button = 'left', clickCount = 1, coordinateSpace = 'screenshot') {
     const safeButton = normalizeButton(button)
     const safeClickCount = clampInteger(clickCount, 1, 3)
+    const point = await this.mapInputPoint(x, y, coordinateSpace)
     await runPowerShell(WINDOWS_INPUT_SCRIPT, [
       JSON.stringify({
         action: 'click',
-        x: integerCoord(x, 'x'),
-        y: integerCoord(y, 'y'),
+        x: point.x,
+        y: point.y,
         button: safeButton,
         clickCount: safeClickCount,
       }),
     ])
-    return { success: true, action: 'click', x, y, button: safeButton, clickCount: safeClickCount }
+    return { success: true, action: 'click', x, y, screenX: point.x, screenY: point.y, coordinateSpace: point.coordinateSpace, button: safeButton, clickCount: safeClickCount }
   }
 
-  async move(x, y) {
+  async move(x, y, coordinateSpace = 'screenshot') {
+    const point = await this.mapInputPoint(x, y, coordinateSpace)
     await runPowerShell(WINDOWS_INPUT_SCRIPT, [
-      JSON.stringify({ action: 'move', x: integerCoord(x, 'x'), y: integerCoord(y, 'y') }),
+      JSON.stringify({ action: 'move', x: point.x, y: point.y }),
     ])
-    return { success: true, action: 'move', x, y }
+    return { success: true, action: 'move', x, y, screenX: point.x, screenY: point.y, coordinateSpace: point.coordinateSpace }
   }
 
-  async drag(startX, startY, endX, endY, durationMs = 500, button = 'left') {
+  async drag(startX, startY, endX, endY, durationMs = 500, button = 'left', coordinateSpace = 'screenshot') {
     const safeButton = normalizeButton(button)
+    const start = await this.mapInputPoint(startX, startY, coordinateSpace)
+    const end = await this.mapInputPoint(endX, endY, coordinateSpace)
     await runPowerShell(WINDOWS_INPUT_SCRIPT, [
       JSON.stringify({
         action: 'drag',
-        startX: integerCoord(startX, 'startX'),
-        startY: integerCoord(startY, 'startY'),
-        endX: integerCoord(endX, 'endX'),
-        endY: integerCoord(endY, 'endY'),
+        startX: start.x,
+        startY: start.y,
+        endX: end.x,
+        endY: end.y,
         durationMs: clampInteger(durationMs, 50, 10000),
         button: safeButton,
       }),
     ])
-    return { success: true, action: 'drag', startX, startY, endX, endY, button: safeButton }
+    return { success: true, action: 'drag', startX, startY, endX, endY, screenStartX: start.x, screenStartY: start.y, screenEndX: end.x, screenEndY: end.y, coordinateSpace: start.coordinateSpace, button: safeButton }
   }
 
   async typeText(text) {
@@ -140,18 +155,21 @@ export class WindowsComputerController {
     return { success: true, action: 'key', keys: parsed.normalized }
   }
 
-  async scroll(direction, amount = 5, x, y) {
+  async scroll(direction, amount = 5, x, y, coordinateSpace = 'screenshot') {
     const delta = directionToDelta(direction, amount)
+    const point = x === undefined || y === undefined
+      ? null
+      : await this.mapInputPoint(x, y, coordinateSpace)
     await runPowerShell(WINDOWS_INPUT_SCRIPT, [
       JSON.stringify({
         action: 'scroll',
-        x: x === undefined ? null : integerCoord(x, 'x'),
-        y: y === undefined ? null : integerCoord(y, 'y'),
+        x: point ? point.x : null,
+        y: point ? point.y : null,
         deltaX: delta.x,
         deltaY: delta.y,
       }),
     ])
-    return { success: true, action: 'scroll', direction, amount: Math.abs(delta.x || delta.y), x, y }
+    return { success: true, action: 'scroll', direction, amount: Math.abs(delta.x || delta.y), x, y, screenX: point?.x, screenY: point?.y, coordinateSpace: point?.coordinateSpace }
   }
 
   async wait(ms = 1000) {
@@ -166,6 +184,29 @@ export class WindowsComputerController {
     const path = join(this.dataDir, `screenshot-${Date.now()}.png`)
     await runPowerShell(WINDOWS_SCREENSHOT_SCRIPT, [path])
     return path
+  }
+
+  createMapper(buffer) {
+    const screenshotSize = detectPngSize(buffer)
+    if (!screenshotSize) {
+      throw new Error('Unable to detect screenshot dimensions')
+    }
+    return createCoordinateMapper({}, screenshotSize)
+  }
+
+  async getCoordinateMapper() {
+    if (this.lastCoordinateMapper) {
+      return this.lastCoordinateMapper
+    }
+    const path = await this.captureScreenshot()
+    const buffer = await readFile(path)
+    this.lastCoordinateMapper = this.createMapper(buffer)
+    return this.lastCoordinateMapper
+  }
+
+  async mapInputPoint(x, y, coordinateSpace) {
+    const mapper = await this.getCoordinateMapper()
+    return mapPoint({ x, y }, mapper, coordinateSpace)
   }
 }
 
@@ -287,14 +328,6 @@ function normalizeButton(button) {
     throw new Error(`Unsupported mouse button: ${button}`)
   }
   return normalized
-}
-
-function integerCoord(value, name) {
-  const number = Number(value)
-  if (!Number.isFinite(number)) {
-    throw new Error(`${name} must be a finite number`)
-  }
-  return Math.round(number)
 }
 
 function clampInteger(value, min, max) {

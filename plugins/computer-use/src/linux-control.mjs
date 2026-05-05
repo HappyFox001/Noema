@@ -7,6 +7,12 @@ import { mkdir, readFile } from 'node:fs/promises'
 import { execFile } from 'node:child_process'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
+import {
+  coordinateMetadata,
+  createCoordinateMapper,
+  detectPngSize,
+  mapPoint,
+} from './coordinates.mjs'
 
 const execFileAsync = promisify(execFile)
 
@@ -20,64 +26,73 @@ export class LinuxComputerController {
   constructor(options) {
     this.dataDir = options.dataDir
     this.screenshotFormat = options.screenshotFormat === 'path' ? 'path' : 'base64'
+    this.lastCoordinateMapper = null
   }
 
   async observe(options = {}) {
     assertLinux()
     const includeImage = options.includeImage !== false
     const path = await this.captureScreenshot()
+    const buffer = await readFile(path)
+    const mapper = this.createMapper(buffer)
+    this.lastCoordinateMapper = mapper
     const result = {
       success: true,
       type: 'screenshot',
       format: this.screenshotFormat,
       path,
-      note: 'Coordinates use the local Linux desktop coordinate system. On Wayland, install/use a compatible automation backend; the default implementation expects X11 tools.',
+      note: 'Coordinates returned by this screenshot use screenshot pixels. Mouse tools default to coordinateSpace=screenshot and map them to Linux desktop coordinates. The default backend expects X11-compatible tools.',
+      ...coordinateMetadata(mapper),
     }
 
     if (includeImage && this.screenshotFormat === 'base64') {
-      result.image_base64 = (await readFile(path)).toString('base64')
+      result.image_base64 = buffer.toString('base64')
       result.mime_type = 'image/png'
     }
 
     return result
   }
 
-  async click(x, y, button = 'left', clickCount = 1) {
+  async click(x, y, button = 'left', clickCount = 1, coordinateSpace = 'screenshot') {
     const safeButton = normalizeButton(button)
     const safeClickCount = clampInteger(clickCount, 1, 3)
+    const point = await this.mapInputPoint(x, y, coordinateSpace)
     await ensureCommand('xdotool', 'Install xdotool to enable Linux mouse and keyboard control.')
-    await execFileAsync('xdotool', ['mousemove', String(integerCoord(x, 'x')), String(integerCoord(y, 'y'))], commandOptions())
+    await execFileAsync('xdotool', ['mousemove', String(point.x), String(point.y)], commandOptions())
     for (let index = 0; index < safeClickCount; index += 1) {
       await execFileAsync('xdotool', ['click', XDOTOOL_BUTTONS[safeButton]], commandOptions())
     }
-    return { success: true, action: 'click', x, y, button: safeButton, clickCount: safeClickCount }
+    return { success: true, action: 'click', x, y, screenX: point.x, screenY: point.y, coordinateSpace: point.coordinateSpace, button: safeButton, clickCount: safeClickCount }
   }
 
-  async move(x, y) {
+  async move(x, y, coordinateSpace = 'screenshot') {
+    const point = await this.mapInputPoint(x, y, coordinateSpace)
     await ensureCommand('xdotool', 'Install xdotool to enable Linux mouse and keyboard control.')
-    await execFileAsync('xdotool', ['mousemove', String(integerCoord(x, 'x')), String(integerCoord(y, 'y'))], commandOptions())
-    return { success: true, action: 'move', x, y }
+    await execFileAsync('xdotool', ['mousemove', String(point.x), String(point.y)], commandOptions())
+    return { success: true, action: 'move', x, y, screenX: point.x, screenY: point.y, coordinateSpace: point.coordinateSpace }
   }
 
-  async drag(startX, startY, endX, endY, durationMs = 500, button = 'left') {
+  async drag(startX, startY, endX, endY, durationMs = 500, button = 'left', coordinateSpace = 'screenshot') {
     const safeButton = normalizeButton(button)
+    const start = await this.mapInputPoint(startX, startY, coordinateSpace)
+    const end = await this.mapInputPoint(endX, endY, coordinateSpace)
     await ensureCommand('xdotool', 'Install xdotool to enable Linux mouse and keyboard control.')
     await execFileAsync('xdotool', [
       'mousemove',
-      String(integerCoord(startX, 'startX')),
-      String(integerCoord(startY, 'startY')),
+      String(start.x),
+      String(start.y),
       'mousedown',
       XDOTOOL_BUTTONS[safeButton],
       'mousemove',
       '--sync',
       '--duration',
       String(clampInteger(durationMs, 50, 10000)),
-      String(integerCoord(endX, 'endX')),
-      String(integerCoord(endY, 'endY')),
+      String(end.x),
+      String(end.y),
       'mouseup',
       XDOTOOL_BUTTONS[safeButton],
     ], commandOptions())
-    return { success: true, action: 'drag', startX, startY, endX, endY, button: safeButton }
+    return { success: true, action: 'drag', startX, startY, endX, endY, screenStartX: start.x, screenStartY: start.y, screenEndX: end.x, screenEndY: end.y, coordinateSpace: start.coordinateSpace, button: safeButton }
   }
 
   async typeText(text) {
@@ -97,17 +112,20 @@ export class LinuxComputerController {
     return { success: true, action: 'key', keys: normalized }
   }
 
-  async scroll(direction, amount = 5, x, y) {
+  async scroll(direction, amount = 5, x, y, coordinateSpace = 'screenshot') {
     const safeAmount = clampInteger(amount, 1, 100)
     const button = scrollButton(direction)
     await ensureCommand('xdotool', 'Install xdotool to enable Linux mouse and keyboard control.')
+    const point = x === undefined || y === undefined
+      ? null
+      : await this.mapInputPoint(x, y, coordinateSpace)
     if (x !== undefined && y !== undefined) {
-      await execFileAsync('xdotool', ['mousemove', String(integerCoord(x, 'x')), String(integerCoord(y, 'y'))], commandOptions())
+      await execFileAsync('xdotool', ['mousemove', String(point.x), String(point.y)], commandOptions())
     }
     for (let index = 0; index < safeAmount; index += 1) {
       await execFileAsync('xdotool', ['click', button], commandOptions())
     }
-    return { success: true, action: 'scroll', direction, amount: safeAmount, x, y }
+    return { success: true, action: 'scroll', direction, amount: safeAmount, x, y, screenX: point?.x, screenY: point?.y, coordinateSpace: point?.coordinateSpace }
   }
 
   async wait(ms = 1000) {
@@ -133,6 +151,29 @@ export class LinuxComputerController {
       throw new Error(`Unsupported screenshot command: ${command.name}`)
     }
     return path
+  }
+
+  createMapper(buffer) {
+    const screenshotSize = detectPngSize(buffer)
+    if (!screenshotSize) {
+      throw new Error('Unable to detect screenshot dimensions')
+    }
+    return createCoordinateMapper({}, screenshotSize)
+  }
+
+  async getCoordinateMapper() {
+    if (this.lastCoordinateMapper) {
+      return this.lastCoordinateMapper
+    }
+    const path = await this.captureScreenshot()
+    const buffer = await readFile(path)
+    this.lastCoordinateMapper = this.createMapper(buffer)
+    return this.lastCoordinateMapper
+  }
+
+  async mapInputPoint(x, y, coordinateSpace) {
+    const mapper = await this.getCoordinateMapper()
+    return mapPoint({ x, y }, mapper, coordinateSpace)
   }
 }
 
@@ -181,14 +222,6 @@ function normalizeButton(button) {
     throw new Error(`Unsupported mouse button: ${button}`)
   }
   return normalized
-}
-
-function integerCoord(value, name) {
-  const number = Number(value)
-  if (!Number.isFinite(number)) {
-    throw new Error(`${name} must be a finite number`)
-  }
-  return Math.round(number)
 }
 
 function clampInteger(value, min, max) {
