@@ -1533,6 +1533,10 @@ function handleConversationFrame(frame: ConversationFrame) {
       break
     case 'control.phase_end':
       if (frame.phase === 'reply' || frame.phase === 'task_result') {
+        if (ttsEnabled) {
+          textRevealer.reset()
+          clearTextDisplay()
+        }
         setStatus(getReadyStatus())
         setOrbMode('idle')
         clearExpressionAfterMinimum()
