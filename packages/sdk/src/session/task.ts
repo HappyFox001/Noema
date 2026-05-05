@@ -14,6 +14,14 @@ import { createRuntimeAwareness, formatAwarenessBlock, formatMessageTime } from 
 import { TurnRuntime } from './turn.js'
 import { PROMPTS } from '../prompts.js'
 import type { TaskPlan, TaskPlanDraft, TaskRunState, TaskStep, TaskStepStatus } from './task-plan.js'
+import {
+  appendUniqueLimited,
+  applyExecutionObservations,
+  createExecutionState,
+  createTaskObservation,
+  type ExecutionState,
+  type TaskObservation
+} from './execution-state.js'
 
 export interface TaskRunResult {
   success: boolean
@@ -21,6 +29,7 @@ export interface TaskRunResult {
   toolCalls: number
   finalMessage: string
   plan?: TaskPlan
+  executionState?: ExecutionState
   error?: string
 }
 
@@ -33,6 +42,7 @@ export interface TaskTurnRecord {
     arguments: string
   }>
   toolResults: any[]
+  observations?: TaskObservation[]
   completed: boolean
   stepId?: string
   stepTitle?: string
@@ -134,6 +144,7 @@ export class TaskRuntime {
   private taskPlan: TaskPlan | null = null
   private runState: TaskRunState = 'planning'
   private currentStep: TaskStep | null = null
+  private executionState: ExecutionState
 
   constructor(
     private llm: LLMProvider,
@@ -156,6 +167,7 @@ export class TaskRuntime {
     this.compactAfterTurns = clampInteger(config.compactAfterTurns, 8, 2, this.maxTurns)
     this.keepRecentTurns = clampInteger(config.keepRecentTurns, 4, 1, this.compactAfterTurns)
     this.noOpLimit = clampInteger(config.noOpLimit, 2, 1, 10)
+    this.executionState = createExecutionState(this.taskDescription)
   }
 
   async run(): Promise<TaskRunResult> {
@@ -199,7 +211,8 @@ export class TaskRuntime {
             iterations,
             toolCalls: toolCallsCount,
             finalMessage,
-            plan: this.taskPlan
+            plan: this.taskPlan,
+            executionState: this.snapshotExecutionState()
           }
         }
 
@@ -233,7 +246,8 @@ export class TaskRuntime {
         })
         this.throwIfAborted()
         toolCallsCount += turn.toolCalls.length
-        this.recordTurn(turn)
+        const observations = this.observeTurn(turn)
+        this.recordTurn(turn, observations)
 
         if (step.status === 'completed') {
           finalMessage = step.result || turn.assistantMessage.trim() || finalMessage
@@ -265,7 +279,8 @@ export class TaskRuntime {
             iterations,
             toolCalls: toolCallsCount,
             finalMessage,
-            plan: this.taskPlan
+            plan: this.taskPlan,
+            executionState: this.snapshotExecutionState()
           }
         }
 
@@ -327,7 +342,8 @@ export class TaskRuntime {
             iterations,
             toolCalls: toolCallsCount,
             finalMessage,
-            plan: this.taskPlan
+            plan: this.taskPlan,
+            executionState: this.snapshotExecutionState()
           }
         }
 
@@ -352,6 +368,7 @@ export class TaskRuntime {
         toolCalls: toolCallsCount,
         finalMessage: '任务执行超过最大轮次，已停止。',
         plan: this.taskPlan ?? undefined,
+        executionState: this.snapshotExecutionState(),
         error: `Reached max turns (${this.maxTurns})`
       }
     } catch (error) {
@@ -369,6 +386,7 @@ export class TaskRuntime {
           toolCalls: toolCallsCount,
           finalMessage: '任务已被新的输入打断。',
           plan: this.taskPlan ?? undefined,
+          executionState: this.snapshotExecutionState(),
           error: 'Task aborted'
         }
       }
@@ -387,12 +405,13 @@ export class TaskRuntime {
         toolCalls: toolCallsCount,
         finalMessage: '任务执行失败。',
         plan: this.taskPlan ?? undefined,
+        executionState: this.snapshotExecutionState(),
         error: (error as Error).message
       }
     }
   }
 
-  private recordTurn(turn: import('./turn.js').TurnRunResult): void {
+  private recordTurn(turn: import('./turn.js').TurnRunResult, observations: TaskObservation[] = []): void {
     const record: TaskTurnRecord = {
       turnIndex: turn.turnIndex,
       assistantMessage: turn.assistantMessage,
@@ -402,6 +421,7 @@ export class TaskRuntime {
         arguments: call.function.arguments
       })),
       toolResults: turn.toolResults,
+      observations,
       completed: turn.completed,
       stepId: this.currentStep?.id,
       stepTitle: this.currentStep?.title
@@ -409,6 +429,35 @@ export class TaskRuntime {
 
     this.turnRecords.push(record)
     this.hooks.onTurnCompleted?.(record)
+  }
+
+  private observeTurn(turn: import('./turn.js').TurnRunResult): TaskObservation[] {
+    const observations = turn.toolCalls.map((call, index) =>
+      this.createObservation(turn.turnIndex, index, call.function.name, turn.toolResults[index])
+    )
+    if (observations.length > 0) {
+      this.applyObservations(observations)
+    }
+    return observations
+  }
+
+  private createObservation(turnIndex: number, callIndex: number, toolName: string, toolResult: any): TaskObservation {
+    return createTaskObservation({
+      turnIndex,
+      callIndex,
+      toolName,
+      toolResult,
+      stepId: this.currentStep?.id,
+      stepTitle: this.currentStep?.title
+    })
+  }
+
+  private applyObservations(observations: TaskObservation[]): void {
+    applyExecutionObservations(this.executionState, observations)
+  }
+
+  private snapshotExecutionState(): ExecutionState {
+    return JSON.parse(JSON.stringify(this.executionState)) as ExecutionState
   }
 
   private appendTurnMessages(messages: any[], turn: import('./turn.js').TurnRunResult): void {
@@ -477,18 +526,21 @@ export class TaskRuntime {
     console.log('└─────────────────────────────────────────────────────────────┘')
 
     try {
-      const compactInput = recordsToCompact.map(record => {
-        const toolLines = record.toolCalls.length > 0
-          ? record.toolCalls.map(call => `${call.name}(${call.arguments})`).join(', ')
-          : 'none'
+      const compactInput = [
+        this.renderExecutionStateContext(),
+        recordsToCompact.map(record => {
+          const toolLines = record.toolCalls.length > 0
+            ? record.toolCalls.map(call => `${call.name}(${call.arguments})`).join(', ')
+            : 'none'
 
-        return [
-          `Turn ${record.turnIndex}`,
-          `Assistant: ${record.assistantMessage || '(empty)'}`,
-          `Tools: ${toolLines}`,
-          `Results: ${JSON.stringify(sanitizeToolResultForPrompt(record.toolResults))}`
-        ].join('\n')
-      }).join('\n\n')
+          return [
+            `Turn ${record.turnIndex}`,
+            `Assistant: ${record.assistantMessage || '(empty)'}`,
+            `Tools: ${toolLines}`,
+            `Results: ${JSON.stringify(sanitizeToolResultForPrompt(record.toolResults))}`
+          ].join('\n')
+        }).join('\n\n')
+      ].join('\n\n')
 
       const summaryResponse = await this.llm.chat([
         {
@@ -526,6 +578,7 @@ export class TaskRuntime {
               `${PROMPTS.context.currentTaskTitle}${this.taskDescription}`,
               this.formatMemoryContext(),
               `${PROMPTS.context.compactSummaryTitle}\n${this.compactSummary}`,
+              this.renderExecutionStateContext(),
               PROMPTS.task.continueAfterCompact
             ].filter(Boolean).join('\n\n')
           },
@@ -594,6 +647,7 @@ export class TaskRuntime {
           `${PROMPTS.context.currentTaskTitle}${this.taskDescription}`,
           historyText ? `${PROMPTS.context.recentConversationTitle}\n${historyText}` : '',
           this.formatMemoryContext(),
+          this.renderExecutionStateContext(),
           PROMPTS.task.initialInstruction
         ].join('\n\n')
       }
@@ -866,6 +920,15 @@ export class TaskRuntime {
       if (typeof update.error === 'string' && update.error.trim()) {
         target.error = cleanPlanText(update.error)
       }
+      if (target.id === this.currentStep?.id) {
+        this.updateExecutionCurrentStep(target)
+      }
+      if (target.status === 'completed' && target.result) {
+        appendUniqueLimited(this.executionState.confirmedFacts, `步骤完成：${target.title}。${target.result}`, 10)
+      }
+      if (target.status === 'failed' && target.error) {
+        appendUniqueLimited(this.executionState.recentFailures, `步骤失败：${target.title}。${target.error}`, 8)
+      }
       changedSteps.push(target)
     }
 
@@ -1096,9 +1159,11 @@ export class TaskRuntime {
 
   private startStep(step: TaskStep): void {
     this.currentStep = step
+    this.updateExecutionCurrentStep(step)
     if (step.status !== 'running') {
       step.status = 'running'
       step.startedAt = Date.now()
+      this.updateExecutionCurrentStep(step)
       this.touchPlan()
       this.emitStepUpdated(step)
     }
@@ -1108,6 +1173,8 @@ export class TaskRuntime {
     step.status = 'completed'
     step.result = result
     step.completedAt = Date.now()
+    this.updateExecutionCurrentStep(step)
+    appendUniqueLimited(this.executionState.confirmedFacts, `步骤完成：${step.title}。${result}`, 10)
     this.touchPlan()
     this.emitStepUpdated(step)
   }
@@ -1119,8 +1186,20 @@ export class TaskRuntime {
     this.currentStep.status = 'failed'
     this.currentStep.error = error
     this.currentStep.completedAt = Date.now()
+    this.updateExecutionCurrentStep(this.currentStep)
+    appendUniqueLimited(this.executionState.recentFailures, `步骤失败：${this.currentStep.title}。${error}`, 8)
     this.touchPlan()
     this.emitStepUpdated(this.currentStep)
+  }
+
+  private updateExecutionCurrentStep(step: TaskStep): void {
+    this.executionState.currentStep = {
+      id: step.id,
+      title: step.title,
+      description: step.description,
+      status: step.status
+    }
+    this.executionState.updatedAt = Date.now()
   }
 
   private setRunState(state: TaskRunState): void {
@@ -1179,8 +1258,38 @@ export class TaskRuntime {
       `<title>${escapeXmlText(step.title)}</title>`,
       `<description>${escapeXmlText(step.description)}</description>`,
       '</current_step>',
+      this.renderExecutionStateContext(),
       PROMPTS.task.stepInstruction
     ].join('\n')
+  }
+
+  private renderExecutionStateContext(): string {
+    const state = this.executionState
+    const lines = [
+      '<execution_state>',
+      `Goal: ${escapeXmlText(state.goal)}`,
+      state.currentStep
+        ? `Current step: ${escapeXmlText(state.currentStep.id)} ${escapeXmlText(state.currentStep.title)} (${state.currentStep.status})`
+        : '',
+      state.confirmedFacts.length > 0
+        ? `Confirmed facts:\n${state.confirmedFacts.slice(-6).map(item => `- ${escapeXmlText(item)}`).join('\n')}`
+        : '',
+      state.recentObservations.length > 0
+        ? `Recent observations:\n${state.recentObservations.slice(-6).map(item => `- [${item.status}] ${escapeXmlText(item.toolName)}: ${escapeXmlText(item.summary)}`).join('\n')}`
+        : '',
+      state.recentFailures.length > 0
+        ? `Recent failures:\n${state.recentFailures.slice(-4).map(item => `- ${escapeXmlText(item)}`).join('\n')}`
+        : '',
+      state.changedFiles.length > 0
+        ? `Changed files:\n${state.changedFiles.slice(-8).map(item => `- ${escapeXmlText(item)}`).join('\n')}`
+        : '',
+      state.pendingVerification.length > 0
+        ? `Pending verification:\n${state.pendingVerification.slice(-4).map(item => `- ${escapeXmlText(item)}`).join('\n')}`
+        : '',
+      '</execution_state>'
+    ].filter(Boolean)
+
+    return lines.join('\n')
   }
 
   private buildPlanCompletionMessage(): string {
