@@ -10,6 +10,7 @@ import type { AgentCore } from '../agent/index.js'
 import type { ContextManager } from '../context/index.js'
 import type { UserProfile, ConversationSummary } from '../memory/index.js'
 import type { PersonalityEngine } from '../personality/index.js'
+import type { ToolStrategyHint } from '../plugins/index.js'
 import { createRuntimeAwareness, formatAwarenessBlock, formatMessageTime } from '../awareness/index.js'
 import { TurnRuntime } from './turn.js'
 import { PROMPTS } from '../prompts.js'
@@ -27,6 +28,7 @@ import {
   type ExecutionState,
   type TaskObservation
 } from './execution-state.js'
+import { isDeferredTool, renderDeferredToolSummary, searchDeferredTools } from './tool-discovery.js'
 
 export interface TaskRunResult {
   success: boolean
@@ -67,6 +69,15 @@ export interface TaskRuntimeHooks {
   onStepUpdated?: (step: TaskStep, plan: TaskPlan, task: TaskRuntimeHookMeta) => void
   onUserInputRequest?: (request: TaskUserInputRequest) => Promise<TaskUserInputResponse>
   onCompact?: (summary: string) => void
+  resolveToolStrategyHints?: (context: {
+    taskDescription: string
+    availableTools: Array<{
+      name: string
+      description: string
+      pluginId?: string
+      deferLoading?: boolean
+    }>
+  }) => Promise<ToolStrategyHint[]> | ToolStrategyHint[]
 }
 
 export interface TaskRuntimeConfig {
@@ -152,6 +163,9 @@ export class TaskRuntime {
   private runState: TaskRunState = 'planning'
   private currentStep: TaskStep | null = null
   private executionState: ExecutionState
+  private discoveredDeferredToolNames = new Set<string>()
+  private toolStrategyHints: ToolStrategyHint[] = []
+  private deferredToolSummary = ''
 
   constructor(
     private llm: LLMProvider,
@@ -179,7 +193,8 @@ export class TaskRuntime {
 
   async run(): Promise<TaskRunResult> {
     const tools = this.agent.getTools()
-    const toolSpecs = this.buildToolSpecs(tools)
+    this.deferredToolSummary = renderDeferredToolSummary(tools)
+    this.toolStrategyHints = await this.resolveToolStrategyHints(tools)
     let messages: any[] = []
 
     let iterations = 0
@@ -190,7 +205,10 @@ export class TaskRuntime {
     console.log('║               🚀 TaskRuntime 开始执行                          ║')
     console.log('╠══════════════════════════════════════════════════════════════╣')
     console.log(`║ 任务描述: ${this.taskDescription.substring(0, 50)}`)
-    console.log(`║ 可用工具: ${tools.map(t => t.name).join(', ')}`)
+    console.log(`║ 可见工具: ${tools.filter(tool => !isDeferredTool(tool)).map(tool => tool.name).join(', ')}`)
+    if (this.deferredToolSummary) {
+      console.log(`║ 延迟工具: 可通过 tool_search 发现`)
+    }
     console.log(`║ 最大轮次: ${this.maxTurns}`)
     console.log(`║ 自动压缩阈值: ${this.autoCompactTokenLimit}/${this.modelContextWindow} tokens`)
     console.log('╚══════════════════════════════════════════════════════════════╝\n')
@@ -238,11 +256,12 @@ export class TaskRuntime {
         this.throwIfAborted()
 
         this.setRunState('step_running')
-        const turn = await this.turnRuntime.run(iterations, messages, toolSpecs, {
+        const turn = await this.turnRuntime.run(iterations, messages, this.buildToolSpecs(tools), {
           signal: this.signal,
           internalTools: {
             update_task_plan: (args) => this.updateTaskPlan(args),
-            request_user_input: (args) => this.requestUserInput(args)
+            request_user_input: (args) => this.requestUserInput(args),
+            tool_search: (args) => this.searchTools(args, tools)
           },
           onToolCalling: (toolCalls) => {
             recordStepToolCalls(this.executionState, step, toolCalls.map(call => call.function.name))
@@ -726,10 +745,13 @@ export class TaskRuntime {
   }
 
   private buildToolSpecs(tools: Tool[]): any[] {
+    const visibleTools = tools.filter(tool => !isDeferredTool(tool) || this.discoveredDeferredToolNames.has(tool.name))
+    const hasDeferredTools = tools.some(isDeferredTool)
     return [
       this.buildTaskPlanUpdateToolSpec(),
       this.buildUserInputRequestToolSpec(),
-      ...tools.map(tool => ({
+      hasDeferredTools ? this.buildToolSearchSpec() : null,
+      ...visibleTools.map(tool => ({
         type: 'function',
         function: {
           name: tool.name,
@@ -737,7 +759,7 @@ export class TaskRuntime {
           parameters: tool.parameters
         }
       }))
-    ]
+    ].filter(Boolean)
   }
 
   private buildTaskSystemPrompt(): string {
@@ -747,8 +769,47 @@ export class TaskRuntime {
         personality.character.name,
         personality.relationship.type
       ),
+      this.renderToolStrategyContext(),
       this.formatRuntimeAwareness()
     ].join('\n\n')
+  }
+
+  private async resolveToolStrategyHints(tools: Tool[]): Promise<ToolStrategyHint[]> {
+    const availableTools = tools.map(tool => ({
+      name: tool.name,
+      description: tool.description,
+      pluginId: tool.pluginId,
+      deferLoading: tool.deferLoading,
+    }))
+    const hints = await this.hooks.resolveToolStrategyHints?.({
+      taskDescription: this.taskDescription,
+      availableTools,
+    })
+    return [...(hints ?? [])]
+      .filter(hint => hint.content.trim())
+      .sort((left, right) => (right.priority ?? 0) - (left.priority ?? 0))
+      .slice(0, 8)
+  }
+
+  private renderToolStrategyContext(): string {
+    const sections = [
+      '<tool_strategy>',
+      'Core workflow:',
+      '- Prefer search/list tools before reading unknown files or resources.',
+      '- Read relevant context before modifying files; prefer apply_patch or exact edits for targeted changes.',
+      '- If a patch/edit fails, read the nearby file context and retry with a smaller, precise change.',
+      '- For shell tasks, inspect project scripts or documented commands before guessing commands.',
+      '- After file changes, run the narrowest useful verification command when practical.',
+      '- For image tasks, inspect the image with a visual/observe tool before making visual claims.',
+      '- For browser or desktop actions, observe state before acting and after actions that may change UI.',
+      this.deferredToolSummary ? `Deferred tools are available through tool_search:\n${this.deferredToolSummary}` : '',
+      ...this.toolStrategyHints.map(hint => [
+        hint.title ? `${hint.title}:` : '',
+        hint.content
+      ].filter(Boolean).join('\n')),
+      '</tool_strategy>'
+    ]
+    return sections.filter(Boolean).join('\n')
   }
 
   private formatRuntimeAwareness(): string {
@@ -891,6 +952,58 @@ export class TaskRuntime {
     }
   }
 
+  private buildToolSearchSpec(): any {
+    return {
+      type: 'function',
+      function: {
+        name: 'tool_search',
+        description: [
+          'Search deferred plugin tool metadata and expose matching tools for the next model turn.',
+          'Use this when the current visible tools do not include the browser, desktop, MCP, skill, or plugin action needed for the task.',
+          'Do not use this for ordinary file search; use grep/glob/read when those tools are visible.'
+        ].join(' '),
+        parameters: {
+          type: 'object',
+          properties: {
+            query: {
+              type: 'string',
+              description: 'Search query describing the missing capability or action.'
+            },
+            limit: {
+              type: 'number',
+              description: 'Maximum number of tools to return. Defaults to 8.'
+            }
+          },
+          required: ['query'],
+          additionalProperties: false
+        }
+      }
+    }
+  }
+
+  private searchTools(args: { query?: string; limit?: number }, tools: Tool[]): any {
+    const query = cleanPlanText(args.query || '')
+    const limit = clampInteger(args.limit, 8, 1, 12)
+    const matches = searchDeferredTools(tools, query, limit)
+    for (const match of matches) {
+      this.discoveredDeferredToolNames.add(match.name)
+    }
+
+    return {
+      success: true,
+      query,
+      tools: matches.map(match => ({
+        name: match.name,
+        pluginId: match.pluginId,
+        description: match.description,
+        safety: match.safety,
+      })),
+      note: matches.length > 0
+        ? 'These tools are available in the next model turn.'
+        : 'No deferred tools matched. Continue with visible tools or ask the user for more context.'
+    }
+  }
+
   private async createInitialPlan(tools: Tool[]): Promise<TaskPlan> {
     try {
       this.throwIfAborted()
@@ -907,7 +1020,8 @@ export class TaskRuntime {
           content: [
             `${PROMPTS.context.userRequestTitle}${this.originalUserInput}`,
             `${PROMPTS.context.currentTaskTitle}${this.taskDescription}`,
-            `可用工具：${tools.map(tool => tool.name).join(', ') || '无'}`,
+            `可见工具：${tools.filter(tool => !isDeferredTool(tool)).map(tool => tool.name).join(', ') || '无'}`,
+            this.deferredToolSummary ? `可搜索的延迟工具：\n${this.deferredToolSummary}` : '',
             this.formatMemoryContext()
           ].filter(Boolean).join('\n\n')
         }

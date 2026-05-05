@@ -58,6 +58,8 @@ export interface Tool {
     required?: string[]
   }
   pluginId?: string
+  deferLoading?: boolean
+  searchKeywords?: string[]
   safety?: 'safe' | 'read' | 'write' | 'external' | 'destructive' | 'computer'
   requiresApproval?: boolean
   timeoutMs?: number

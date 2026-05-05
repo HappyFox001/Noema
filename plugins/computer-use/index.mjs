@@ -22,6 +22,20 @@ export default function plugin(ctx) {
         autoObserve: config.autoObserve !== false,
       })
     },
+    getToolStrategyHints() {
+      return [
+        {
+          id: 'computer-loop',
+          title: 'Computer workflow',
+          priority: 90,
+          content: [
+            '- Use computer_observe before coordinate-based desktop actions and use screenshot coordinates by default.',
+            '- Use tool_search when a mouse, keyboard, drag, scroll, or typing tool is needed but not currently visible.',
+            '- After UI-changing desktop actions, use the returned observation or call computer_observe before deciding the next action.',
+          ].join('\n'),
+        },
+      ]
+    },
   }
 }
 

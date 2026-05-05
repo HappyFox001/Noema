@@ -35,7 +35,7 @@ export function createBaseTools() {
 function createReadTool() {
   return createTool({
     name: 'read',
-    description: 'Read the contents of a file from the filesystem. Use this to examine existing files.',
+    description: 'Read file contents. Use after glob/grep identifies a relevant path, before editing existing files, and after failed patches to inspect nearby context.',
     safety: 'read',
     parameters: {
       type: 'object',
@@ -73,7 +73,7 @@ function createReadTool() {
 function createWriteTool() {
   return createTool({
     name: 'write',
-    description: 'Write content to a file, creating it if it does not exist or overwriting if it does. Use this to create new files or completely replace file contents.',
+    description: 'Write a complete file, creating or replacing it. Prefer apply_patch/edit for targeted modifications to existing files.',
     safety: 'write',
     parameters: {
       type: 'object',
@@ -106,7 +106,7 @@ function createWriteTool() {
 function createEditTool() {
   return createTool({
     name: 'edit',
-    description: 'Perform exact string replacement in a file. The old_string must match exactly (including whitespace and indentation). Use this to modify specific parts of existing files.',
+    description: 'Perform exact string replacement in a file. Read the target context first; if matching fails, read nearby lines and retry with a smaller exact replacement.',
     safety: 'write',
     parameters: {
       type: 'object',
@@ -149,7 +149,7 @@ function createEditTool() {
 function createGlobTool() {
   return createTool({
     name: 'glob',
-    description: 'Find files matching a glob pattern (e.g., "**/*.ts", "src/**/*.js"). Fast file pattern matching tool.',
+    description: 'Find files by path pattern. Use before read when locating files by name, extension, or directory.',
     safety: 'read',
     parameters: {
       type: 'object',
@@ -192,7 +192,7 @@ function createGlobTool() {
 function createGrepTool() {
   return createTool({
     name: 'grep',
-    description: 'Search for a pattern in file contents using regex. Powerful content search tool with multiple output modes.',
+    description: 'Search file contents with regex. Prefer this before read when locating symbols, strings, TODOs, settings, or code paths.',
     safety: 'read',
     parameters: {
       type: 'object',
@@ -261,7 +261,7 @@ function createGrepTool() {
 function createBashTool() {
   return createTool({
     name: 'bash',
-    description: 'Execute a shell command and return its output. Use for terminal operations like git, npm, docker, etc. DO NOT use for file operations - use dedicated Read/Write/Edit tools instead.',
+    description: 'Execute a shell command. Use for git/build/test/package commands; inspect scripts or docs before guessing. Do not use for ordinary file read/write/edit when dedicated tools fit.',
     safety: 'external',
     parameters: {
       type: 'object',
@@ -515,7 +515,7 @@ function createListExecSessionsTool() {
 function createApplyPatchTool() {
   return createTool({
     name: 'apply_patch',
-    description: 'Apply a Codex-style patch to local files. The patch must use *** Begin Patch / *** End Patch with Add File, Delete File, or Update File sections.',
+    description: 'Apply a Codex-style patch to local files after reading relevant context. If the patch fails, read the target area and retry with a smaller precise patch.',
     safety: 'write',
     parameters: {
       type: 'object',
@@ -534,7 +534,7 @@ function createApplyPatchTool() {
 function createViewImageTool() {
   return createTool({
     name: 'view_image',
-    description: 'Attach a local image file to the next model turn for visual inspection. Use this for screenshots, UI captures, diagrams, and image assets.',
+    description: 'Attach a local image file to the next model turn for visual inspection. Use before making visual claims or editing UI/image assets from a screenshot.',
     safety: 'read',
     parameters: {
       type: 'object',

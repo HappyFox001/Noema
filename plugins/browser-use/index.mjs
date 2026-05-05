@@ -22,5 +22,19 @@ export default function plugin(ctx) {
         autoObserve: config.autoObserve !== false,
       })
     },
+    getToolStrategyHints() {
+      return [
+        {
+          id: 'browser-loop',
+          title: 'Browser workflow',
+          priority: 80,
+          content: [
+            '- Use browser_open or browser_search to enter a page, then browser_state to inspect URL, title, text, and numbered elements.',
+            '- Use tool_search when a browser action is needed but the specific browser tool is not currently visible.',
+            '- Prefer browser_state element indexes over coordinate clicks; observe state after navigation, click, form input, scroll, and wait.',
+          ].join('\n'),
+        },
+      ]
+    },
   }
 }

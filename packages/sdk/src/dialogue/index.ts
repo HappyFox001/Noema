@@ -140,17 +140,22 @@ export class DialogueOrchestrator {
           plan,
         })
       },
-      onStepUpdated: (step, plan, task) => {
-        config?.onTaskStepUpdated?.(step, plan, task)
-        void this.pluginManager.notifyTaskStepUpdated({
-          runtime: {},
-          taskDescription: task.taskDescription,
+        onStepUpdated: (step, plan, task) => {
+          config?.onTaskStepUpdated?.(step, plan, task)
+          void this.pluginManager.notifyTaskStepUpdated({
+            runtime: {},
+            taskDescription: task.taskDescription,
           originalUserInput: task.originalUserInput,
           plan,
-          step,
-        })
-      },
-    }, config?.taskRuntime)
+            step,
+          })
+        },
+        resolveToolStrategyHints: (context) => this.pluginManager.getToolStrategyHints({
+          runtime: {},
+          taskDescription: context.taskDescription,
+          availableTools: context.availableTools,
+        }),
+      }, config?.taskRuntime)
     this.contextAggregator = new LLMContextAggregator(memory, personality, agent, this.context, this.truncationPolicy)
     this.llmProcessor = new LLMProcessor(llm)
     this.toolProcessor = new ToolProcessor(this.taskSession)

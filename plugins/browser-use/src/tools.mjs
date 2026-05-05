@@ -31,29 +31,29 @@ export function createBrowserTools(controller, options) {
 
     tool('browser_state', 'Get current page URL, title, visible text preview, and numbered clickable/input elements. Call this before clicking or filling by index.', 'read', timeoutMs, {}, [], () => controller.state()),
 
-    tool('browser_click', 'Click a numbered element from the latest browser_state output.', 'external', timeoutMs, {
+    tool('browser_click', 'Click a numbered element from the latest browser_state output. Observe page state after the click before deciding the next action.', 'external', timeoutMs, {
       index: { type: 'number', description: 'Element index from browser_state.' },
     }, ['index'], observe(({ index }) => controller.click(index))),
 
-    tool('browser_mouse', 'Run a mouse action on a numbered element: hover, double click, or right click.', 'external', timeoutMs, {
+    tool('browser_mouse', 'Run a mouse action on a numbered element: hover, double click, or right click. Use browser_state first.', 'external', timeoutMs, {
       index: { type: 'number', description: 'Element index from browser_state.' },
       action: { type: 'string', description: 'Mouse action.', enum: ['hover', 'double_click', 'right_click'] },
     }, ['index', 'action'], observe(({ index, action }) => controller.mouse(index, action))),
 
-    tool('browser_input', 'Click a numbered input-like element from browser_state, clear it, and type text.', 'external', timeoutMs, {
+    tool('browser_input', 'Click a numbered input-like element from browser_state, clear it, and type text. Observe after form input.', 'external', timeoutMs, {
       index: { type: 'number', description: 'Input element index from browser_state.' },
       text: { type: 'string', description: 'Text to enter.' },
     }, ['index', 'text'], observe(({ index, text }) => controller.input(index, text))),
 
-    tool('browser_type', 'Type text into the currently focused element.', 'external', timeoutMs, {
+    tool('browser_type', 'Type text into the currently focused element. Prefer browser_input when an indexed input is available.', 'external', timeoutMs, {
       text: { type: 'string', description: 'Text to type into the focused element.' },
     }, ['text'], observe(({ text }) => controller.type(text))),
 
-    tool('browser_keys', 'Send a keyboard shortcut or key sequence to the page, such as Enter, Escape, Tab, Control+A.', 'external', timeoutMs, {
+    tool('browser_keys', 'Send a keyboard shortcut or key sequence to the page, such as Enter, Escape, Tab, Control+A. Observe after state-changing keys.', 'external', timeoutMs, {
       keys: { type: 'string', description: 'Key or shortcut, such as Enter, Escape, Tab, Control+A.' },
     }, ['keys'], observe(({ keys }) => controller.keys(keys))),
 
-    tool('browser_scroll', 'Scroll the current page up or down.', 'external', timeoutMs, {
+    tool('browser_scroll', 'Scroll the current page up or down, then observe the new page state.', 'external', timeoutMs, {
       direction: { type: 'string', description: 'Scroll direction.', enum: ['up', 'down'] },
       amount: { type: 'number', description: 'Scroll pixels. Defaults to 700.' },
     }, ['direction'], observe(({ direction, amount }) => controller.scroll(direction, amount))),
@@ -84,7 +84,7 @@ export function createBrowserTools(controller, options) {
       maxChars: { type: 'number', description: 'Maximum characters for html/text. Defaults to 6000.' },
     }, ['kind'], ({ kind, index, selector, maxChars }) => controller.get(kind, index, selector, maxChars)),
 
-    tool('browser_eval', 'Execute JavaScript in the current page and return the result. Use sparingly for extraction or page-specific operations.', 'external', timeoutMs, {
+    tool('browser_eval', 'Execute JavaScript in the current page and return the result. Use sparingly when browser_state/browser_get cannot express the operation.', 'external', timeoutMs, {
       code: { type: 'string', description: 'JavaScript function body. Return a JSON-serializable value.' },
     }, ['code'], observe(({ code }) => controller.evaluate(code))),
 
@@ -137,7 +137,11 @@ export function createBrowserTools(controller, options) {
     tools.push(tool('browser_screenshot', 'Take a PNG screenshot of the current browser viewport and return it as base64.', 'read', timeoutMs, {}, [], () => controller.screenshot()))
   }
 
-  return tools
+  return tools.map(item => ({
+    ...item,
+    deferLoading: shouldDeferBrowserTool(item.name),
+    searchKeywords: browserToolKeywords(item.name),
+  }))
 }
 
 function tool(name, description, safety, timeoutMs, properties, required, execute) {
@@ -153,4 +157,25 @@ function tool(name, description, safety, timeoutMs, properties, required, execut
     },
     execute,
   }
+}
+
+function shouldDeferBrowserTool(name) {
+  return !['browser_open', 'browser_search', 'browser_state', 'browser_wait'].includes(name)
+}
+
+function browserToolKeywords(name) {
+  return {
+    browser_click: ['click', 'press', 'button', 'link', 'element'],
+    browser_mouse: ['hover', 'double click', 'right click', 'mouse'],
+    browser_input: ['fill', 'form', 'input', 'type', 'text'],
+    browser_type: ['type', 'focused element', 'keyboard'],
+    browser_keys: ['enter', 'escape', 'tab', 'shortcut', 'keyboard'],
+    browser_scroll: ['scroll', 'page down', 'page up'],
+    browser_extract: ['extract', 'summarize', 'read page', 'links'],
+    browser_get: ['html', 'text', 'attributes', 'bbox', 'selector'],
+    browser_eval: ['javascript', 'evaluate', 'dom'],
+    browser_select: ['select', 'dropdown', 'option'],
+    browser_upload: ['upload', 'file input'],
+    browser_screenshot: ['screenshot', 'image', 'viewport'],
+  }[name] || []
 }

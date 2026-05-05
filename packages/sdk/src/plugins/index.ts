@@ -150,6 +150,24 @@ export interface TaskContextInjection {
   score?: number
 }
 
+export interface ToolStrategyHintContext {
+  runtime: PluginRuntimeContext
+  taskDescription: string
+  availableTools: Array<{
+    name: string
+    description: string
+    pluginId?: string
+    deferLoading?: boolean
+  }>
+}
+
+export interface ToolStrategyHint {
+  id: string
+  title?: string
+  priority?: number
+  content: string
+}
+
 export interface ConversationTurnHookContext {
   runtime: PluginRuntimeContext
   userInput: string
@@ -195,6 +213,7 @@ export interface SDKPlugin {
   getAdminState?(): Promise<unknown> | unknown
   handleAdminAction?(action: string, payload?: unknown): Promise<unknown> | unknown
   resolveTaskContext?(context: TaskContextResolveContext): TaskContextInjection[] | Promise<TaskContextInjection[]>
+  getToolStrategyHints?(context: ToolStrategyHintContext): ToolStrategyHint[] | Promise<ToolStrategyHint[]>
   extendPrompt?(context: PromptHookContext): string | undefined
   transformText?(text: string, context: TextTransformContext): string
   selectExpression?(context: ExpressionHookContext): ExpressionFrame | undefined
@@ -329,6 +348,32 @@ export class PluginManager {
     }
 
     return selected
+  }
+
+  async getToolStrategyHints(context: ToolStrategyHintContext): Promise<ToolStrategyHint[]> {
+    const hints: ToolStrategyHint[] = []
+    const seen = new Set<string>()
+
+    for (const plugin of this.plugins) {
+      const pluginHints = await plugin.getToolStrategyHints?.(context)
+      if (!pluginHints?.length) {
+        continue
+      }
+
+      for (const hint of pluginHints) {
+        const id = `${plugin.id}:${hint.id}`
+        if (seen.has(id)) {
+          continue
+        }
+        seen.add(id)
+        hints.push({
+          ...hint,
+          id,
+        })
+      }
+    }
+
+    return hints.sort((left, right) => (right.priority ?? 0) - (left.priority ?? 0))
   }
 
   transformText(text: string, context: TextTransformContext): string {

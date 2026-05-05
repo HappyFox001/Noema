@@ -143,7 +143,7 @@ export class TaskSession {
     private agent: AgentCore,
     private context: ContextManager,
     storageDir: string,
-    private runtimeHooks: Pick<TaskRuntimeHooks, 'onUserInputRequest' | 'onRunStateChanged' | 'onPlanUpdated' | 'onStepUpdated'> = {},
+    private runtimeHooks: Pick<TaskRuntimeHooks, 'onUserInputRequest' | 'onRunStateChanged' | 'onPlanUpdated' | 'onStepUpdated' | 'resolveToolStrategyHints'> = {},
     private taskRuntimeConfig: TaskRuntimeConfig = {}
   ) {
     const resolvedStorageDir = isAbsolute(storageDir)
@@ -385,7 +385,8 @@ export class TaskSession {
           this.snapshot.compactSummary = summary
           this.persistSnapshot()
         },
-        onUserInputRequest: this.runtimeHooks.onUserInputRequest
+        onUserInputRequest: this.runtimeHooks.onUserInputRequest,
+        resolveToolStrategyHints: this.runtimeHooks.resolveToolStrategyHints,
       },
       this.taskRuntimeConfig,
       signal

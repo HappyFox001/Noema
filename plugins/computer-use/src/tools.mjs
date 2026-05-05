@@ -35,7 +35,7 @@ export function createComputerUseTools(controller, options) {
       },
     }, [], ({ includeImage = true }) => controller.observe({ includeImage })),
 
-    tool('computer_click', 'Click a point on the local desktop. By default, x/y are screenshot pixel coordinates from the latest computer_observe result.', 'computer', timeoutMs, {
+    tool('computer_click', 'Click a point on the local desktop. Use computer_observe first; by default x/y are screenshot pixel coordinates from the latest observation.', 'computer', timeoutMs, {
       x: { type: 'number', description: 'X coordinate.' },
       y: { type: 'number', description: 'Y coordinate.' },
       coordinateSpace: coordinateSpaceProperty,
@@ -43,13 +43,13 @@ export function createComputerUseTools(controller, options) {
       clickCount: { type: 'number', description: 'Number of clicks. Defaults to 1.' },
     }, ['x', 'y'], observeAfter(({ x, y, coordinateSpace = 'screenshot', button = 'left', clickCount = 1 }) => controller.click(x, y, button, clickCount, coordinateSpace))),
 
-    tool('computer_move', 'Move the local mouse cursor to a point on the desktop. By default, x/y are screenshot pixel coordinates from the latest computer_observe result.', 'computer', timeoutMs, {
+    tool('computer_move', 'Move the local mouse cursor to a point on the desktop. Use latest computer_observe screenshot coordinates.', 'computer', timeoutMs, {
       x: { type: 'number', description: 'X coordinate.' },
       y: { type: 'number', description: 'Y coordinate.' },
       coordinateSpace: coordinateSpaceProperty,
     }, ['x', 'y'], observeAfter(({ x, y, coordinateSpace = 'screenshot' }) => controller.move(x, y, coordinateSpace), { when: () => false })),
 
-    tool('computer_drag', 'Drag from one desktop point to another. By default, coordinates are screenshot pixels from the latest computer_observe result.', 'computer', timeoutMs, {
+    tool('computer_drag', 'Drag from one desktop point to another. Observe first and use screenshot pixel coordinates unless another coordinate space is required.', 'computer', timeoutMs, {
       startX: { type: 'number', description: 'Starting X coordinate.' },
       startY: { type: 'number', description: 'Starting Y coordinate.' },
       endX: { type: 'number', description: 'Ending X coordinate.' },
@@ -61,15 +61,15 @@ export function createComputerUseTools(controller, options) {
       controller.drag(startX, startY, endX, endY, durationMs, button, coordinateSpace)
     ))),
 
-    tool('computer_type', 'Type text into the currently focused local desktop control.', 'computer', timeoutMs, {
+    tool('computer_type', 'Type text into the currently focused local desktop control. Observe after typing to verify the UI state.', 'computer', timeoutMs, {
       text: { type: 'string', description: 'Text to type.' },
     }, ['text'], observeAfter(({ text }) => controller.typeText(text))),
 
-    tool('computer_key', 'Press a key or keyboard shortcut on the local desktop, such as Enter, Escape, Tab, Command+L, Command+Space, or Shift+Command+4.', 'computer', timeoutMs, {
+    tool('computer_key', 'Press a key or keyboard shortcut on the local desktop, such as Enter, Escape, Tab, Command+L, Command+Space, or Shift+Command+4. Observe after state-changing keys.', 'computer', timeoutMs, {
       keys: { type: 'string', description: 'Key or shortcut. Join modifiers with +, for example Command+L.' },
     }, ['keys'], observeAfter(({ keys }) => controller.pressKeys(keys))),
 
-    tool('computer_scroll', 'Scroll at the current cursor location or a specific coordinate.', 'computer', timeoutMs, {
+    tool('computer_scroll', 'Scroll at the current cursor location or a specific coordinate, then observe the new screen state.', 'computer', timeoutMs, {
       direction: { type: 'string', description: 'Scroll direction.', enum: ['up', 'down', 'left', 'right'] },
       amount: { type: 'number', description: 'Scroll amount in wheel units. Defaults to 5.' },
       x: { type: 'number', description: 'Optional X coordinate to move to before scrolling.' },
@@ -90,7 +90,11 @@ export function createComputerUseTools(controller, options) {
         observation: await controller.observe(),
       }
     }),
-  ]
+  ].map(item => ({
+    ...item,
+    deferLoading: shouldDeferComputerTool(item.name),
+    searchKeywords: computerToolKeywords(item.name),
+  }))
 }
 
 function tool(name, description, safety, timeoutMs, properties, required, execute) {
@@ -106,4 +110,19 @@ function tool(name, description, safety, timeoutMs, properties, required, execut
     },
     execute,
   }
+}
+
+function shouldDeferComputerTool(name) {
+  return !['computer_observe', 'computer_wait'].includes(name)
+}
+
+function computerToolKeywords(name) {
+  return {
+    computer_click: ['click', 'double click', 'mouse', 'coordinate', 'open'],
+    computer_move: ['move mouse', 'cursor', 'coordinate'],
+    computer_drag: ['drag', 'drop', 'mouse'],
+    computer_type: ['type', 'text', 'input', 'keyboard'],
+    computer_key: ['hotkey', 'shortcut', 'enter', 'escape', 'tab', 'keyboard'],
+    computer_scroll: ['scroll', 'wheel'],
+  }[name] || []
 }

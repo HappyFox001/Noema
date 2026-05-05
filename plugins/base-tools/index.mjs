@@ -42,6 +42,21 @@ export default function plugin(ctx) {
           }
         })
     },
+    getToolStrategyHints() {
+      return [
+        {
+          id: 'file-shell-loop',
+          title: 'File and shell workflow',
+          priority: 100,
+          content: [
+            '- Use glob/grep to locate unknown files or symbols, then read the relevant files before editing.',
+            '- Prefer apply_patch for precise multi-file changes; if it fails, read nearby context and retry with a smaller patch.',
+            '- For shell commands, inspect package scripts, docs, or existing commands before guessing; use exec_command background sessions for long-running processes.',
+            '- After code changes, run the narrowest relevant build, test, or typecheck command when practical.',
+          ].join('\n'),
+        },
+      ]
+    },
   }
 }
 
