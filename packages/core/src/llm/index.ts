@@ -5,6 +5,11 @@ import type { SDKConfig } from '@her-text/types'
 export interface LLMResponse {
   content: string
   toolCalls?: any[]
+  usage?: {
+    inputTokens?: number
+    outputTokens?: number
+    totalTokens?: number
+  }
 }
 
 export interface LLMProvider {
@@ -39,7 +44,14 @@ export class OpenAIProvider implements LLMProvider {
 
     return {
       content: message?.content || '',
-      toolCalls: message?.tool_calls as any[]
+      toolCalls: message?.tool_calls as any[],
+      usage: response.usage
+        ? {
+            inputTokens: response.usage.prompt_tokens,
+            outputTokens: response.usage.completion_tokens,
+            totalTokens: response.usage.total_tokens,
+          }
+        : undefined,
     }
   }
 

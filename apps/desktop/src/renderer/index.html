@@ -340,10 +340,17 @@
                   </div>
                   <div class="settings-row">
                     <div class="row-info">
-                      <span class="row-label">压缩起始轮次</span>
-                      <span class="row-desc">累计到该轮数后开始压缩较早任务历史。</span>
+                      <span class="row-label">模型上下文窗口</span>
+                      <span class="row-desc">用于估算任务历史压缩阈值。</span>
                     </div>
-                    <input type="number" id="task-compact-after-input" class="settings-number-input" min="2" max="100" step="1" />
+                    <input type="number" id="task-context-window-input" class="settings-number-input" min="4096" max="1000000" step="1000" />
+                  </div>
+                  <div class="settings-row">
+                    <div class="row-info">
+                      <span class="row-label">自动压缩阈值</span>
+                      <span class="row-desc">上下文 token 达到该值时自动压缩，最高为窗口的 90%。</span>
+                    </div>
+                    <input type="number" id="task-compact-after-input" class="settings-number-input" min="1000" max="1000000" step="1000" />
                   </div>
                   <div class="settings-row">
                     <div class="row-info">

@@ -88,7 +88,8 @@ export interface SDKConfig {
 
   taskRuntime?: {
     maxTurns?: number
-    compactAfterTurns?: number
+    modelContextWindow?: number
+    autoCompactTokenLimit?: number
     keepRecentTurns?: number
   }
 

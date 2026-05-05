@@ -46,6 +46,7 @@ export interface TaskTurnRecord {
   completed: boolean
   stepId?: string
   stepTitle?: string
+  promptMessageCount?: number
 }
 
 export interface TaskRuntimeHookMeta {
@@ -65,7 +66,8 @@ export interface TaskRuntimeHooks {
 
 export interface TaskRuntimeConfig {
   maxTurns?: number
-  compactAfterTurns?: number
+  modelContextWindow?: number
+  autoCompactTokenLimit?: number
   keepRecentTurns?: number
 }
 
@@ -134,7 +136,8 @@ interface TaskUserInputArgs {
 export class TaskRuntime {
   private turnRuntime: TurnRuntime
   private maxTurns: number
-  private compactAfterTurns: number
+  private modelContextWindow: number
+  private autoCompactTokenLimit: number
   private keepRecentTurns: number
   private awareness = createRuntimeAwareness()
   private compactSummary = ''
@@ -162,8 +165,9 @@ export class TaskRuntime {
   ) {
     this.turnRuntime = new TurnRuntime(llm, agent)
     this.maxTurns = clampInteger(config.maxTurns, 24, 4, 100)
-    this.compactAfterTurns = clampInteger(config.compactAfterTurns, 8, 2, this.maxTurns)
-    this.keepRecentTurns = clampInteger(config.keepRecentTurns, 4, 1, this.compactAfterTurns)
+    this.modelContextWindow = clampInteger(config.modelContextWindow, 128000, 4096, 1000000)
+    this.autoCompactTokenLimit = resolveAutoCompactTokenLimit(config.autoCompactTokenLimit, this.modelContextWindow)
+    this.keepRecentTurns = clampInteger(config.keepRecentTurns, 4, 1, this.maxTurns)
     this.executionState = createExecutionState(this.taskDescription)
   }
 
@@ -182,6 +186,7 @@ export class TaskRuntime {
     console.log(`║ 任务描述: ${this.taskDescription.substring(0, 50)}`)
     console.log(`║ 可用工具: ${tools.map(t => t.name).join(', ')}`)
     console.log(`║ 最大轮次: ${this.maxTurns}`)
+    console.log(`║ 自动压缩阈值: ${this.autoCompactTokenLimit}/${this.modelContextWindow} tokens`)
     console.log('╚══════════════════════════════════════════════════════════════╝\n')
 
     try {
@@ -223,6 +228,9 @@ export class TaskRuntime {
           content: this.renderCurrentStepInstruction(step)
         })
 
+        await this.maybeRunPreTurnCompact(messages)
+        this.throwIfAborted()
+
         this.setRunState('step_running')
         const turn = await this.turnRuntime.run(iterations, messages, toolSpecs, {
           signal: this.signal,
@@ -251,7 +259,7 @@ export class TaskRuntime {
           if (this.hasRunnableSteps()) {
             console.log(`[TaskRuntime] 当前步骤已由计划更新标记完成，继续下一步...`)
             this.appendTurnMessages(messages, turn)
-            await this.maybeCompact(messages)
+            await this.maybeRunMidTurnCompact(messages, turn, true)
             this.throwIfAborted()
             continue
           }
@@ -289,6 +297,8 @@ export class TaskRuntime {
               role: 'assistant',
               content: turn.assistantMessage || `步骤完成：${step.title}`
             })
+            await this.maybeRunMidTurnCompact(messages, turn, true)
+            this.throwIfAborted()
             continue
           }
 
@@ -318,7 +328,7 @@ export class TaskRuntime {
 
         this.appendTurnMessages(messages, turn)
 
-        await this.maybeCompact(messages)
+        await this.maybeRunMidTurnCompact(messages, turn, true)
         this.throwIfAborted()
       }
 
@@ -391,7 +401,8 @@ export class TaskRuntime {
       observations,
       completed: turn.completed,
       stepId: this.currentStep?.id,
-      stepTitle: this.currentStep?.title
+      stepTitle: this.currentStep?.title,
+      promptMessageCount: countPromptMessagesForTurn(turn)
     }
 
     this.turnRecords.push(record)
@@ -472,42 +483,62 @@ export class TaskRuntime {
     messages.push(...imageMessages)
   }
 
-  private async maybeCompact(messages: any[]): Promise<void> {
+  private async maybeRunPreTurnCompact(messages: any[]): Promise<void> {
     this.throwIfAborted()
-    if (this.turnRecords.length < this.compactAfterTurns) {
+    const estimatedTokens = estimateMessagesTokenCount(messages)
+    if (estimatedTokens < this.autoCompactTokenLimit) {
       return
     }
 
-    const compactBoundary = this.turnRecords.length - this.keepRecentTurns
+    await this.runAutoCompact(messages, 'pre_turn', 'context_limit', estimatedTokens)
+  }
+
+  private async maybeRunMidTurnCompact(
+    messages: any[],
+    turn: import('./turn.js').TurnRunResult,
+    needsFollowUp: boolean
+  ): Promise<void> {
+    this.throwIfAborted()
+    if (!needsFollowUp) {
+      return
+    }
+
+    const turnTokens = finiteNumber(turn.tokenUsage?.totalTokens)
+    const estimatedTokens = Math.max(turnTokens ?? 0, estimateMessagesTokenCount(messages))
+    if (estimatedTokens < this.autoCompactTokenLimit) {
+      return
+    }
+
+    await this.runAutoCompact(messages, 'mid_turn', 'context_limit', estimatedTokens)
+  }
+
+  private async runAutoCompact(
+    messages: any[],
+    phase: 'pre_turn' | 'mid_turn',
+    reason: 'context_limit',
+    tokenCount: number
+  ): Promise<void> {
+    const compactBoundary = this.turnRecords.length > this.keepRecentTurns
+      ? this.turnRecords.length - this.keepRecentTurns
+      : this.turnRecords.length - 1
     if (compactBoundary <= 0) {
       return
     }
 
     const recordsToCompact = this.turnRecords.slice(0, compactBoundary)
+    const recordsToKeep = this.turnRecords.slice(compactBoundary)
     if (recordsToCompact.length === 0) {
       return
     }
 
     console.log('\n┌─────────────────────────────────────────────────────────────┐')
-    console.log(`│ 📦 Auto Compact: 压缩 ${recordsToCompact.length} 轮历史                          │`)
+    console.log(`│ 📦 Auto Compact: ${phase} · ${reason} · ${Math.round(tokenCount)}/${this.autoCompactTokenLimit} tokens`)
+    console.log(`│ 压缩 ${recordsToCompact.length} 轮历史，保留最近 ${recordsToKeep.length} 轮`)
     console.log('└─────────────────────────────────────────────────────────────┘')
 
     try {
-      const compactInput = [
-        this.renderExecutionStateContext(),
-        recordsToCompact.map(record => {
-          const toolLines = record.toolCalls.length > 0
-            ? record.toolCalls.map(call => `${call.name}(${call.arguments})`).join(', ')
-            : 'none'
-
-          return [
-            `Turn ${record.turnIndex}`,
-            `Assistant: ${record.assistantMessage || '(empty)'}`,
-            `Tools: ${toolLines}`,
-            `Results: ${JSON.stringify(sanitizeToolResultForPrompt(record.toolResults))}`
-          ].join('\n')
-        }).join('\n\n')
-      ].join('\n\n')
+      const compactInput = this.renderCompactInput(recordsToCompact, phase, reason, tokenCount)
+      const deterministicSummary = this.buildDeterministicCompactSummary(recordsToCompact)
 
       const summaryResponse = await this.llm.chat([
         {
@@ -520,43 +551,107 @@ export class TaskRuntime {
         signal: this.signal
       })
 
-      this.compactSummary = summaryResponse.content.trim()
+      this.compactSummary = appendCompactSummary(this.compactSummary, summaryResponse.content.trim() || deterministicSummary)
       this.hooks.onCompact?.(this.compactSummary)
 
-      const recentMessageCount = this.keepRecentTurns * 2 + 1
-      const recentMessages = messages.slice(-recentMessageCount)
-      messages.splice(
-        0,
-        messages.length,
-        ...[
-          {
-            role: 'system',
-            content: this.buildTaskSystemPrompt()
-          },
-          ...this.buildTaskContextMessages(),
-          this.taskPlan ? {
-            role: 'user',
-            content: this.renderPlanContext(this.taskPlan)
-          } : null,
-          {
-            role: 'user',
-            content: [
-              `${PROMPTS.context.userRequestTitle}${this.originalUserInput}`,
-              `${PROMPTS.context.currentTaskTitle}${this.taskDescription}`,
-              this.formatMemoryContext(),
-              `${PROMPTS.context.compactSummaryTitle}\n${this.compactSummary}`,
-              this.renderExecutionStateContext(),
-              PROMPTS.task.continueAfterCompact
-            ].filter(Boolean).join('\n\n')
-          },
-          ...recentMessages
-        ].filter(Boolean)
-      )
-
-      this.turnRecords = this.turnRecords.slice(compactBoundary)
+      this.rebuildMessagesAfterCompact(messages, recordsToKeep)
+      this.turnRecords = recordsToKeep
     } catch (error) {
-      console.warn(`[TaskRuntime] Compact failed, continuing with full history: ${(error as Error).message}`)
+      console.warn(`[TaskRuntime] Compact model failed, using deterministic compact summary: ${(error as Error).message}`)
+      this.compactSummary = appendCompactSummary(this.compactSummary, this.buildDeterministicCompactSummary(recordsToCompact))
+      this.hooks.onCompact?.(this.compactSummary)
+      this.rebuildMessagesAfterCompact(messages, recordsToKeep)
+      this.turnRecords = recordsToKeep
     }
+  }
+
+  private rebuildMessagesAfterCompact(messages: any[], recordsToKeep: TaskTurnRecord[]): void {
+    const recentMessageCount = countPromptMessagesForRecords(recordsToKeep)
+    const recentMessages = messages.slice(-recentMessageCount)
+    messages.splice(
+      0,
+      messages.length,
+      ...this.buildCompactedMessages(recentMessages)
+    )
+  }
+
+  private buildCompactedMessages(recentMessages: any[]): any[] {
+    return [
+      {
+        role: 'system',
+        content: this.buildTaskSystemPrompt()
+      },
+      ...this.buildTaskContextMessages(),
+      this.taskPlan ? {
+        role: 'user',
+        content: this.renderPlanContext(this.taskPlan)
+      } : null,
+      {
+        role: 'user',
+        content: [
+          `${PROMPTS.context.userRequestTitle}${this.originalUserInput}`,
+          `${PROMPTS.context.currentTaskTitle}${this.taskDescription}`,
+          this.formatMemoryContext(),
+          `${PROMPTS.context.compactSummaryTitle}\n${this.compactSummary}`,
+          this.renderExecutionStateContext(),
+          PROMPTS.task.continueAfterCompact
+        ].filter(Boolean).join('\n\n')
+      },
+      ...recentMessages
+    ].filter(Boolean)
+  }
+
+  private renderCompactInput(
+    records: TaskTurnRecord[],
+    phase: 'pre_turn' | 'mid_turn',
+    reason: 'context_limit',
+    tokenCount: number
+  ): string {
+    return [
+      `Compaction phase: ${phase}`,
+      `Compaction reason: ${reason}`,
+      `Token usage estimate: ${Math.round(tokenCount)}/${this.autoCompactTokenLimit} tokens`,
+      this.compactSummary ? `Previous compact summary:\n${this.compactSummary}` : '',
+      this.taskPlan ? this.renderPlanContext(this.taskPlan) : '',
+      this.renderExecutionStateContext(),
+      'Turns to compact:',
+      records.map(record => this.renderCompactTurnRecord(record)).join('\n\n')
+    ].filter(Boolean).join('\n\n')
+  }
+
+  private renderCompactTurnRecord(record: TaskTurnRecord): string {
+    const tools = record.toolCalls.length > 0
+      ? record.toolCalls.map(call => `${call.name}(${call.arguments})`).join(', ')
+      : 'none'
+    const observations = record.observations && record.observations.length > 0
+      ? record.observations.map(item => `- [${item.status}] ${item.toolName}: ${item.summary}`).join('\n')
+      : 'none'
+
+    return [
+      `Turn ${record.turnIndex}`,
+      record.stepTitle ? `Step: ${record.stepTitle}` : '',
+      `Assistant: ${record.assistantMessage || '(empty)'}`,
+      `Tools: ${tools}`,
+      `Observations:\n${observations}`,
+      `Completed: ${record.completed ? 'yes' : 'no'}`
+    ].filter(Boolean).join('\n')
+  }
+
+  private buildDeterministicCompactSummary(records: TaskTurnRecord[]): string {
+    const lines = [
+      `Task: ${this.taskDescription}`,
+      this.taskPlan ? `Plan: ${this.taskPlan.steps.map(step => `${step.id} ${step.title} (${step.status})${step.result ? `: ${step.result}` : ''}`).join('; ')}` : '',
+      this.compactSummary ? `Previous summary: ${this.compactSummary}` : '',
+      'Compacted observations:',
+      ...records.flatMap(record => {
+        if (!record.observations || record.observations.length === 0) {
+          return [`- Turn ${record.turnIndex}: no tool observation`]
+        }
+        return record.observations.map(item => `- Turn ${record.turnIndex} [${item.status}] ${item.toolName}: ${item.summary}`)
+      })
+    ].filter(Boolean)
+
+    return lines.join('\n')
   }
 
   private buildTaskContextMessages(): any[] {
@@ -1370,6 +1465,64 @@ function cleanFinalMessage(value: string): string {
   return value
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+function resolveAutoCompactTokenLimit(value: unknown, modelContextWindow: number): number {
+  const contextLimit = Math.floor(modelContextWindow * 0.9)
+  const configured = Number(value)
+  if (!Number.isFinite(configured) || configured <= 0) {
+    return contextLimit
+  }
+  return Math.min(Math.round(configured), contextLimit)
+}
+
+function estimateMessagesTokenCount(messages: any[]): number {
+  const text = messages.map(message => messageToTokenText(message)).join('\n')
+  return estimateTextTokens(text)
+}
+
+function messageToTokenText(message: any): string {
+  if (!message || typeof message !== 'object') {
+    return String(message ?? '')
+  }
+  if (typeof message.content === 'string') {
+    return `${message.role ?? ''}: ${message.content}`
+  }
+  return JSON.stringify(sanitizeToolResultForPrompt(message))
+}
+
+function estimateTextTokens(text: string): number {
+  if (!text) {
+    return 0
+  }
+  const asciiChars = text.replace(/[^\x00-\x7F]/g, '').length
+  const nonAsciiChars = text.length - asciiChars
+  return Math.ceil(asciiChars / 4 + nonAsciiChars * 0.8)
+}
+
+function countPromptMessagesForTurn(turn: import('./turn.js').TurnRunResult): number {
+  const toolMessages = turn.toolCalls.length
+  const imageMessages = turn.toolCalls.reduce((count, call, index) => (
+    count + extractToolResultImages(turn.toolResults[index], call.function.name).length
+  ), 0)
+
+  return 1 + toolMessages + imageMessages
+}
+
+function countPromptMessagesForRecords(records: TaskTurnRecord[]): number {
+  return records.reduce((sum, record) => (
+    sum + (record.promptMessageCount ?? 1 + record.toolCalls.length)
+  ), 0)
+}
+
+function appendCompactSummary(previous: string, next: string): string {
+  const sections = [previous.trim(), next.trim()].filter(Boolean)
+  const combined = sections.join('\n\n')
+  const maxLength = 8000
+  if (combined.length <= maxLength) {
+    return combined
+  }
+  return combined.slice(combined.length - maxLength).trim()
 }
 
 function parsePlanDraft(content: string, onParseFailure?: (error: Error) => void): TaskPlanDraft {

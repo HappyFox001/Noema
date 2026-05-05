@@ -157,13 +157,15 @@ export interface SystemConfig {
 
 export interface TaskRuntimeSettings {
   maxTurns: number
-  compactAfterTurns: number
+  modelContextWindow: number
+  autoCompactTokenLimit: number
   keepRecentTurns: number
 }
 
 const DEFAULT_TASK_RUNTIME_SETTINGS: TaskRuntimeSettings = {
   maxTurns: 24,
-  compactAfterTurns: 8,
+  modelContextWindow: 128000,
+  autoCompactTokenLimit: 115200,
   keepRecentTurns: 4
 }
 
@@ -454,22 +456,32 @@ function normalizeTaskRuntimeSettings(value: unknown): TaskRuntimeSettings {
     ? value as Partial<TaskRuntimeSettings>
     : {}
   const maxTurns = clampInteger(source.maxTurns, DEFAULT_TASK_RUNTIME_SETTINGS.maxTurns, 4, 100)
-  const compactAfterTurns = clampInteger(
-    source.compactAfterTurns,
-    DEFAULT_TASK_RUNTIME_SETTINGS.compactAfterTurns,
-    2,
-    maxTurns
+  const modelContextWindow = clampInteger(
+    source.modelContextWindow,
+    DEFAULT_TASK_RUNTIME_SETTINGS.modelContextWindow,
+    4096,
+    1000000
+  )
+  const autoCompactTokenLimit = Math.min(
+    clampInteger(
+      source.autoCompactTokenLimit,
+      Math.floor(modelContextWindow * 0.9),
+      1000,
+      modelContextWindow
+    ),
+    Math.floor(modelContextWindow * 0.9)
   )
   const keepRecentTurns = clampInteger(
     source.keepRecentTurns,
     DEFAULT_TASK_RUNTIME_SETTINGS.keepRecentTurns,
     1,
-    compactAfterTurns
+    maxTurns
   )
 
   return {
     maxTurns,
-    compactAfterTurns,
+    modelContextWindow,
+    autoCompactTokenLimit,
     keepRecentTurns
   }
 }

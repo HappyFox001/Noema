@@ -8,6 +8,11 @@ export interface TurnRunResult {
   toolCalls: ToolCall[]
   toolResults: any[]
   completed: boolean
+  tokenUsage?: {
+    inputTokens?: number
+    outputTokens?: number
+    totalTokens?: number
+  }
 }
 
 export interface TurnRuntimeHooks {
@@ -60,7 +65,8 @@ export class TurnRuntime {
         assistantMessage,
         toolCalls: [],
         toolResults: [],
-        completed: true
+        completed: true,
+        tokenUsage: response.usage,
       }
     }
 
@@ -90,7 +96,8 @@ export class TurnRuntime {
       assistantMessage,
       toolCalls,
       toolResults,
-      completed: false
+      completed: false,
+      tokenUsage: response.usage,
     }
   }
 

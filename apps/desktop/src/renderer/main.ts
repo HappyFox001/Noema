@@ -600,7 +600,8 @@ type ASRModelConfig = {
 
 type TaskRuntimeSettings = {
   maxTurns: number
-  compactAfterTurns: number
+  modelContextWindow: number
+  autoCompactTokenLimit: number
   keepRecentTurns: number
 }
 
@@ -3736,6 +3737,7 @@ const addTaskBtn = document.getElementById('add-task-btn') as HTMLButtonElement
 const openTaskRuntimeBtn = document.getElementById('open-task-runtime-btn') as HTMLButtonElement
 const backSystemMainBtn = document.getElementById('back-system-main-btn') as HTMLButtonElement
 const taskMaxTurnsInput = document.getElementById('task-max-turns-input') as HTMLInputElement
+const taskContextWindowInput = document.getElementById('task-context-window-input') as HTMLInputElement
 const taskCompactAfterInput = document.getElementById('task-compact-after-input') as HTMLInputElement
 const taskKeepRecentInput = document.getElementById('task-keep-recent-input') as HTMLInputElement
 const addTTSBtn = document.getElementById('add-tts-btn') as HTMLButtonElement
@@ -4074,7 +4076,8 @@ function renderTaskRuntimeSettings(): void {
   if (!currentSystemConfig) return
   const config = currentSystemConfig.taskRuntime
   taskMaxTurnsInput.value = String(config.maxTurns)
-  taskCompactAfterInput.value = String(config.compactAfterTurns)
+  taskContextWindowInput.value = String(config.modelContextWindow)
+  taskCompactAfterInput.value = String(config.autoCompactTokenLimit)
   taskKeepRecentInput.value = String(config.keepRecentTurns)
 }
 
@@ -4297,22 +4300,32 @@ function clampInteger(value: unknown, fallback: number, min: number, max: number
 async function updateTaskRuntimeSettings(): Promise<void> {
   if (!currentSystemConfig) return
   const maxTurns = clampInteger(taskMaxTurnsInput.value, currentSystemConfig.taskRuntime.maxTurns, 4, 100)
-  const compactAfterTurns = clampInteger(
-    taskCompactAfterInput.value,
-    currentSystemConfig.taskRuntime.compactAfterTurns,
-    2,
-    maxTurns
+  const modelContextWindow = clampInteger(
+    taskContextWindowInput.value,
+    currentSystemConfig.taskRuntime.modelContextWindow,
+    4096,
+    1000000
+  )
+  const autoCompactTokenLimit = Math.min(
+    clampInteger(
+      taskCompactAfterInput.value,
+      currentSystemConfig.taskRuntime.autoCompactTokenLimit,
+      1000,
+      modelContextWindow
+    ),
+    Math.floor(modelContextWindow * 0.9)
   )
   const keepRecentTurns = clampInteger(
     taskKeepRecentInput.value,
     currentSystemConfig.taskRuntime.keepRecentTurns,
     1,
-    compactAfterTurns
+    maxTurns
   )
 
   currentSystemConfig.taskRuntime = {
     maxTurns,
-    compactAfterTurns,
+    modelContextWindow,
+    autoCompactTokenLimit,
     keepRecentTurns
   }
   renderTaskRuntimeSettings()
@@ -4494,9 +4507,9 @@ backSystemMainBtn.addEventListener('click', () => {
 })
 ;[
   taskMaxTurnsInput,
+  taskContextWindowInput,
   taskCompactAfterInput,
-  taskKeepRecentInput,
-  taskNoOpLimitInput
+  taskKeepRecentInput
 ].forEach(input => {
   input.addEventListener('change', () => void updateTaskRuntimeSettings())
 })
