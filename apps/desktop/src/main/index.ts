@@ -2599,7 +2599,7 @@ async function runConversationTurn(
       onExpression: async (frame) => {
         if (isTurnCancelled(turnId)) return
         pendingExpressionFrame = frame
-        if (!shouldUseTTS) {
+        if (!shouldUseTTS || !isFirstTTSChunk) {
           showPendingExpression()
         }
       },

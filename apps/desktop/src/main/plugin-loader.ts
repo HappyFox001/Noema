@@ -155,6 +155,7 @@ async function loadRuntimePlugin(
     const plugin = await (factory as RuntimePluginFactory)(pluginContext)
     plugin.manifest = manifest
     plugin.permissions = manifest.permissions ?? []
+    plugin.context = pluginContext
 
     console.log(`[PluginLoader] Loaded plugin: ${plugin.id}${manifest.version ? `@${manifest.version}` : ''}`)
     return plugin

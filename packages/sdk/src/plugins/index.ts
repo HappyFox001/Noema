@@ -188,6 +188,7 @@ export interface SDKPlugin {
   name?: string
   manifest?: RuntimePluginManifest
   permissions?: PluginPermission[]
+  context?: SDKPluginContext
   setup?(context: SDKPluginContext): void | Promise<void>
   shutdown?(context: SDKPluginContext): void | Promise<void>
   registerTools?(context: ToolRegistrationContext): Tool[] | Promise<Tool[]>
@@ -232,7 +233,7 @@ export class PluginManager {
   constructor(plugins: SDKPlugin[] = []) {
     this.plugins = [...plugins]
     for (const plugin of this.plugins) {
-      this.contexts.set(plugin.id, {
+      this.contexts.set(plugin.id, plugin.context ?? {
         manifest: plugin.manifest,
         config: plugin.manifest?.config,
       })
