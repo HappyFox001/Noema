@@ -90,7 +90,6 @@ export interface SDKConfig {
     maxTurns?: number
     compactAfterTurns?: number
     keepRecentTurns?: number
-    noOpLimit?: number
   }
 
   memory: {

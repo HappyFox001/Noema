@@ -67,7 +67,6 @@ export interface TaskRuntimeConfig {
   maxTurns?: number
   compactAfterTurns?: number
   keepRecentTurns?: number
-  noOpLimit?: number
 }
 
 export interface TaskContextItem {
@@ -137,7 +136,6 @@ export class TaskRuntime {
   private maxTurns: number
   private compactAfterTurns: number
   private keepRecentTurns: number
-  private noOpLimit: number
   private awareness = createRuntimeAwareness()
   private compactSummary = ''
   private turnRecords: TaskTurnRecord[] = []
@@ -166,7 +164,6 @@ export class TaskRuntime {
     this.maxTurns = clampInteger(config.maxTurns, 24, 4, 100)
     this.compactAfterTurns = clampInteger(config.compactAfterTurns, 8, 2, this.maxTurns)
     this.keepRecentTurns = clampInteger(config.keepRecentTurns, 4, 1, this.compactAfterTurns)
-    this.noOpLimit = clampInteger(config.noOpLimit, 2, 1, 10)
     this.executionState = createExecutionState(this.taskDescription)
   }
 
@@ -178,7 +175,6 @@ export class TaskRuntime {
     let iterations = 0
     let toolCallsCount = 0
     let finalMessage = ''
-    let noOpTurns = 0
 
     console.log('\n╔══════════════════════════════════════════════════════════════╗')
     console.log('║               🚀 TaskRuntime 开始执行                          ║')
@@ -255,7 +251,6 @@ export class TaskRuntime {
           if (this.hasRunnableSteps()) {
             console.log(`[TaskRuntime] 当前步骤已由计划更新标记完成，继续下一步...`)
             this.appendTurnMessages(messages, turn)
-            noOpTurns = 0
             await this.maybeCompact(messages)
             this.throwIfAborted()
             continue
@@ -283,34 +278,6 @@ export class TaskRuntime {
             executionState: this.snapshotExecutionState()
           }
         }
-
-        if (turn.toolCalls.length === 0 && step.status === 'running') {
-          noOpTurns++
-          console.warn(`[TaskRuntime] 迭代 ${iterations} 没有工具调用且步骤未完成，要求模型继续执行 (${noOpTurns}/${this.noOpLimit})`)
-          messages.push({
-            role: 'assistant',
-            content: turn.assistantMessage || ''
-          })
-          messages.push({
-            role: 'user',
-            content: [
-              '当前步骤还没有完成。',
-              '不要只描述计划或说明你将要做什么。',
-              '请立刻调用可用工具推进当前步骤；如果步骤已经完成，必须调用 update_task_plan 标记 completed 并写入 result。'
-            ].join('\n')
-          })
-
-          if (noOpTurns >= this.noOpLimit) {
-            this.failCurrentStep('The model produced repeated no-op turns without completing the step')
-            noOpTurns = 0
-          }
-
-          await this.maybeCompact(messages)
-          this.throwIfAborted()
-          continue
-        }
-
-        noOpTurns = 0
 
         if (turn.completed) {
           this.completeStep(step, turn.assistantMessage.trim() || '步骤已完成。')

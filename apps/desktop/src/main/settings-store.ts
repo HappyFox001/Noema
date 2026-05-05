@@ -159,14 +159,12 @@ export interface TaskRuntimeSettings {
   maxTurns: number
   compactAfterTurns: number
   keepRecentTurns: number
-  noOpLimit: number
 }
 
 const DEFAULT_TASK_RUNTIME_SETTINGS: TaskRuntimeSettings = {
   maxTurns: 24,
   compactAfterTurns: 8,
-  keepRecentTurns: 4,
-  noOpLimit: 2
+  keepRecentTurns: 4
 }
 
 export interface AppSettings {
@@ -472,7 +470,6 @@ function normalizeTaskRuntimeSettings(value: unknown): TaskRuntimeSettings {
   return {
     maxTurns,
     compactAfterTurns,
-    keepRecentTurns,
-    noOpLimit: clampInteger(source.noOpLimit, DEFAULT_TASK_RUNTIME_SETTINGS.noOpLimit, 1, 10)
+    keepRecentTurns
   }
 }

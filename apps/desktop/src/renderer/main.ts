@@ -602,7 +602,6 @@ type TaskRuntimeSettings = {
   maxTurns: number
   compactAfterTurns: number
   keepRecentTurns: number
-  noOpLimit: number
 }
 
 type SystemConfig = {
@@ -3739,7 +3738,6 @@ const backSystemMainBtn = document.getElementById('back-system-main-btn') as HTM
 const taskMaxTurnsInput = document.getElementById('task-max-turns-input') as HTMLInputElement
 const taskCompactAfterInput = document.getElementById('task-compact-after-input') as HTMLInputElement
 const taskKeepRecentInput = document.getElementById('task-keep-recent-input') as HTMLInputElement
-const taskNoOpLimitInput = document.getElementById('task-no-op-limit-input') as HTMLInputElement
 const addTTSBtn = document.getElementById('add-tts-btn') as HTMLButtonElement
 const addASRBtn = document.getElementById('add-asr-btn') as HTMLButtonElement
 const downloadLocalModelsBtn = document.getElementById('download-local-models-btn') as HTMLButtonElement
@@ -4078,7 +4076,6 @@ function renderTaskRuntimeSettings(): void {
   taskMaxTurnsInput.value = String(config.maxTurns)
   taskCompactAfterInput.value = String(config.compactAfterTurns)
   taskKeepRecentInput.value = String(config.keepRecentTurns)
-  taskNoOpLimitInput.value = String(config.noOpLimit)
 }
 
 const TTS_PROVIDERS: { value: TTSProviderType; label: string }[] = [
@@ -4316,8 +4313,7 @@ async function updateTaskRuntimeSettings(): Promise<void> {
   currentSystemConfig.taskRuntime = {
     maxTurns,
     compactAfterTurns,
-    keepRecentTurns,
-    noOpLimit: clampInteger(taskNoOpLimitInput.value, currentSystemConfig.taskRuntime.noOpLimit, 1, 10)
+    keepRecentTurns
   }
   renderTaskRuntimeSettings()
   await saveSystemConfig()

@@ -1665,8 +1665,7 @@ let appSettings: AppSettings = {
     taskRuntime: {
       maxTurns: 24,
       compactAfterTurns: 8,
-      keepRecentTurns: 4,
-      noOpLimit: 2
+      keepRecentTurns: 4
     },
     ttsModels: [{ id: 'default-tts', provider: 'fish', modelName: 's2-pro', apiKey: '', voiceId: '' }],
     activeTTSId: 'default-tts',
