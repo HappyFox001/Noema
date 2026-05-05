@@ -257,9 +257,9 @@ function run(argv) {
     postMove(payload.x, payload.y)
     for (let i = 0; i < payload.clickCount; i += 1) {
       postMouse(button.down, payload.x, payload.y, button.button)
-      $.usleep(50000)
+      delay(0.05)
       postMouse(button.up, payload.x, payload.y, button.button)
-      $.usleep(80000)
+      delay(0.08)
     }
     return JSON.stringify({ ok: true })
   }
@@ -273,7 +273,7 @@ function run(argv) {
       const x = Math.round(payload.startX + ((payload.endX - payload.startX) * i / steps))
       const y = Math.round(payload.startY + ((payload.endY - payload.startY) * i / steps))
       postMouse(button.drag, x, y, button.button)
-      $.usleep(Math.round(payload.durationMs * 1000 / steps))
+      delay(payload.durationMs / 1000 / steps)
     }
     postMouse(button.up, payload.endX, payload.endY, button.button)
     return JSON.stringify({ ok: true })
