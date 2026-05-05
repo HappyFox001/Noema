@@ -1,7 +1,7 @@
 {
   "id": "base-tools",
   "name": "Base Tools",
-  "description": "提供任务执行所需的基础本地工具，包括文件读取、文件修改、补丁应用、图片查看、文件搜索和 Shell 命令执行。",
+  "description": "提供任务执行所需的基础本地工具，包括文件读取、文件修改、补丁应用、图片查看、文件搜索、Shell 命令执行和可交互命令会话。",
   "version": "0.1.0",
   "type": "sdk-plugin",
   "main": "index.mjs",
@@ -36,7 +36,7 @@
     {
       "key": "enableShell",
       "label": "Shell 工具",
-      "description": "允许任务执行终端命令。关闭后 bash 工具不会暴露给任务模型。",
+      "description": "允许任务执行终端命令和可交互命令会话。关闭后 bash、exec_command、write_stdin、list_exec_sessions 不会暴露给任务模型。",
       "type": "boolean",
       "default": true
     },

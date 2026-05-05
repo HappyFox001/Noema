@@ -28,6 +28,17 @@ export interface TaskObservation {
   createdAt: number
 }
 
+export interface ActiveExecSession {
+  id: string
+  command: string
+  cwd?: string
+  pid?: number
+  status: string
+  lastOutput?: string
+  startedAt?: number
+  updatedAt: number
+}
+
 export interface ExecutionState {
   goal: string
   currentStep?: {
@@ -41,6 +52,7 @@ export interface ExecutionState {
   recentFailures: string[]
   changedFiles: string[]
   pendingVerification: string[]
+  activeSessions: ActiveExecSession[]
   lastObservation?: TaskObservation
   updatedAt: number
 }
@@ -53,6 +65,7 @@ export function createExecutionState(goal: string): ExecutionState {
     recentFailures: [],
     changedFiles: [],
     pendingVerification: [],
+    activeSessions: [],
     updatedAt: Date.now()
   }
 }
@@ -107,9 +120,11 @@ export function applyExecutionObservations(state: ExecutionState, observations: 
       removeMatchingVerification(state.pendingVerification, observation.summary)
     }
 
+    updateActiveSessionState(state, observation)
     appendUniqueLimited(state.confirmedFacts, observation.summary, 10)
   }
 
+  state.activeSessions = state.activeSessions.slice(-8)
   state.recentObservations = state.recentObservations.slice(-12)
   state.updatedAt = Date.now()
 }
@@ -139,7 +154,7 @@ function inferObservationKind(toolName: string, result: unknown): TaskObservatio
   if (toolName === 'apply_patch' || toolName.includes('patch')) {
     return 'patch'
   }
-  if (toolName === 'bash' || toolName === 'exec_command' || hasAnyKey(result, ['stdout', 'stderr', 'exitCode', 'exit_code', 'command'])) {
+  if (toolName === 'bash' || toolName === 'exec_command' || toolName === 'write_stdin' || toolName === 'list_exec_sessions' || hasAnyKey(result, ['stdout', 'stderr', 'exitCode', 'exit_code', 'command', 'sessions'])) {
     return 'command'
   }
   if (
@@ -170,6 +185,20 @@ function summarizeObservation(
 
   if (status === 'failure') {
     return truncateText(firstString(error, readNestedString(result, ['error']), readNestedString(result, ['message'])) || `${toolName} 执行失败`, 360)
+  }
+
+  const sessionId = readNestedString(result, ['session_id'])
+  if (sessionId) {
+    const command = readNestedString(result, ['command'])
+    const sessionStatus = readNestedString(result, ['status']) || (readNestedValue(result, ['running']) === true ? 'running' : 'unknown')
+    const stdout = readNestedString(result, ['stdout'])
+    const stderr = readNestedString(result, ['stderr'])
+    const output = firstString(stdout, stderr)
+    return truncateText([
+      `命令会话 ${sessionId} ${sessionStatus}`,
+      command ? `命令：${command}` : '',
+      output ? `输出：${output}` : ''
+    ].filter(Boolean).join('；'), 420)
   }
 
   const summary = firstString(
@@ -217,13 +246,94 @@ function extractObservationMetadata(result: unknown): Record<string, unknown> | 
     return undefined
   }
   const metadata: Record<string, unknown> = {}
-  for (const key of ['exitCode', 'exit_code', 'timedOut', 'timed_out', 'durationMs', 'duration_ms', 'cwd', 'bytes', 'width', 'height', 'files', 'changedFiles', 'changed_files']) {
+  for (const key of ['session_id', 'command', 'status', 'running', 'pid', 'signal', 'sessions', 'exitCode', 'exit_code', 'timedOut', 'timed_out', 'durationMs', 'duration_ms', 'cwd', 'stdout', 'stderr', 'bytes', 'width', 'height', 'files', 'changedFiles', 'changed_files']) {
     const value = readNestedValue(result, [key]) ?? readNestedValue(result, ['result', key])
     if (value !== undefined) {
       metadata[key] = value
     }
   }
   return Object.keys(metadata).length > 0 ? metadata : undefined
+}
+
+function updateActiveSessionState(state: ExecutionState, observation: TaskObservation): void {
+  if (observation.kind !== 'command') {
+    return
+  }
+
+  const sessions = observation.metadata?.sessions
+  if (Array.isArray(sessions)) {
+    const listedIds = new Set<string>()
+    for (const item of sessions) {
+      if (!item || typeof item !== 'object') {
+        continue
+      }
+      const metadata = item as Record<string, unknown>
+      const sessionId = readMetadataString(metadata, 'session_id')
+      if (!sessionId) {
+        continue
+      }
+      listedIds.add(sessionId)
+      upsertActiveSession(state, metadata, sessionId)
+    }
+    state.activeSessions = state.activeSessions.filter(session => listedIds.has(session.id))
+    return
+  }
+
+  const sessionId = readMetadataString(observation.metadata, 'session_id')
+  if (!sessionId) {
+    return
+  }
+  upsertActiveSession(state, observation.metadata, sessionId, observation.toolName)
+}
+
+function upsertActiveSession(
+  state: ExecutionState,
+  metadata: Record<string, unknown> | undefined,
+  sessionId: string,
+  fallbackCommand = 'exec session'
+): void {
+  const running = metadata?.running === true
+  const existingIndex = state.activeSessions.findIndex(session => session.id === sessionId)
+  if (!running) {
+    if (existingIndex >= 0) {
+      state.activeSessions.splice(existingIndex, 1)
+    }
+    return
+  }
+
+  const stdout = readMetadataString(metadata, 'stdout')
+  const stderr = readMetadataString(metadata, 'stderr')
+  const nextSession: ActiveExecSession = {
+    id: sessionId,
+    command: readMetadataString(metadata, 'command') || fallbackCommand,
+    cwd: readMetadataString(metadata, 'cwd'),
+    pid: readMetadataNumber(metadata, 'pid'),
+    status: readMetadataString(metadata, 'status') || 'running',
+    lastOutput: firstString(stdout, stderr),
+    updatedAt: Date.now()
+  }
+
+  if (existingIndex >= 0) {
+    state.activeSessions[existingIndex] = {
+      ...state.activeSessions[existingIndex],
+      ...nextSession,
+      lastOutput: nextSession.lastOutput || state.activeSessions[existingIndex].lastOutput
+    }
+    return
+  }
+
+  nextSession.startedAt = Date.now()
+  state.activeSessions.push(nextSession)
+}
+
+function readMetadataString(metadata: Record<string, unknown> | undefined, key: string): string | undefined {
+  const value = metadata?.[key]
+  return typeof value === 'string' && value.trim() ? value : undefined
+}
+
+function readMetadataNumber(metadata: Record<string, unknown> | undefined, key: string): number | undefined {
+  const value = metadata?.[key]
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
 function extractChangedFiles(observation: TaskObservation): string[] {

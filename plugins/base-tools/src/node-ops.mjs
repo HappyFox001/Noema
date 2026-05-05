@@ -5,6 +5,9 @@ import { execFile, spawn } from 'node:child_process'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, resolve } from 'node:path'
 
+const commandSessions = new Map()
+let nextCommandSessionId = 1
+
 export function resolveToolPath(inputPath) {
   if (!inputPath) {
     return process.cwd()
@@ -79,6 +82,7 @@ export async function readImageFile(filePath) {
 
 export async function runCommand(command, options = {}) {
   const cwd = resolveToolPath(options.cwd)
+  const startedAt = Date.now()
 
   return new Promise((resolvePromise, reject) => {
     execFile('bash', ['-lc', command], {
@@ -87,21 +91,174 @@ export async function runCommand(command, options = {}) {
       maxBuffer: 10 * 1024 * 1024,
     }, (error, stdout, stderr) => {
       if (!error) {
-        resolvePromise({ stdout, stderr, exitCode: 0 })
+        resolvePromise({ stdout, stderr, exitCode: 0, durationMs: Date.now() - startedAt, timedOut: false })
         return
       }
 
       const errorCode = error?.code
       const exitCode = typeof errorCode === 'number' ? errorCode : 1
+      const timedOut = Boolean(error?.killed && String(error?.signal || '').trim())
 
       if (String(error?.message || '').includes('spawn bash ENOENT')) {
         reject(error)
         return
       }
 
-      resolvePromise({ stdout, stderr, exitCode })
+      resolvePromise({ stdout, stderr, exitCode, durationMs: Date.now() - startedAt, timedOut })
     })
   })
+}
+
+export async function startCommandSession(command, options = {}) {
+  const cwd = resolveToolPath(options.cwd)
+  const sessionId = `exec-${nextCommandSessionId++}`
+  const maxBufferChars = clampNumber(Number(options.maxBufferChars ?? 200000), 10000, 2000000)
+  const child = spawn('bash', ['-c', command], {
+    cwd,
+    stdio: ['pipe', 'pipe', 'pipe'],
+  })
+
+  const session = {
+    id: sessionId,
+    command,
+    cwd,
+    child,
+    pid: child.pid ?? -1,
+    status: 'running',
+    stdout: '',
+    stderr: '',
+    stdoutReadOffset: 0,
+    stderrReadOffset: 0,
+    exitCode: null,
+    signal: null,
+    startedAt: Date.now(),
+    endedAt: null,
+    maxBufferChars,
+  }
+
+  child.stdout?.setEncoding('utf8')
+  child.stderr?.setEncoding('utf8')
+  child.stdout?.on('data', chunk => appendSessionOutput(session, 'stdout', chunk))
+  child.stderr?.on('data', chunk => appendSessionOutput(session, 'stderr', chunk))
+  child.on('error', error => {
+    session.status = 'error'
+    session.endedAt = Date.now()
+    appendSessionOutput(session, 'stderr', error.message)
+  })
+  child.on('close', (code, signal) => {
+    session.status = 'exited'
+    session.exitCode = typeof code === 'number' ? code : null
+    session.signal = signal || null
+    session.endedAt = Date.now()
+  })
+
+  commandSessions.set(sessionId, session)
+  await delay(clampNumber(Number(options.yieldTimeMs ?? 1000), 0, 30000))
+  return readCommandSession(sessionId, {
+    maxOutputChars: options.maxOutputChars,
+  })
+}
+
+export async function interactCommandSession(sessionId, options = {}) {
+  const session = commandSessions.get(sessionId)
+  if (!session) {
+    throw new Error(`Unknown exec session: ${sessionId}`)
+  }
+
+  if (typeof options.chars === 'string' && options.chars.length > 0) {
+    if (session.status !== 'running') {
+      throw new Error(`Exec session ${sessionId} is not running`)
+    }
+    session.child.stdin?.write(options.chars)
+  }
+
+  if (options.terminate === true || options.close === true) {
+    terminateCommandSession(session, options.signal)
+  }
+
+  await delay(clampNumber(Number(options.yieldTimeMs ?? 1000), 0, 30000))
+  return readCommandSession(sessionId, {
+    maxOutputChars: options.maxOutputChars,
+  })
+}
+
+export function listCommandSessions(options = {}) {
+  const includeExited = options.includeExited === true
+  const maxOutputChars = clampNumber(Number(options.maxOutputChars ?? 2000), 200, 50000)
+  const sessions = []
+
+  for (const session of commandSessions.values()) {
+    if (!includeExited && session.status !== 'running') {
+      continue
+    }
+    sessions.push(formatCommandSession(session, {
+      maxOutputChars,
+      consumeOutput: false,
+    }))
+  }
+
+  return sessions
+}
+
+export function readCommandSession(sessionId, options = {}) {
+  const session = commandSessions.get(sessionId)
+  if (!session) {
+    throw new Error(`Unknown exec session: ${sessionId}`)
+  }
+
+  const output = formatCommandSession(session, {
+    maxOutputChars: clampNumber(Number(options.maxOutputChars ?? 12000), 1000, 200000),
+    consumeOutput: true,
+  })
+
+  cleanupEndedSessions()
+  return output
+}
+
+export function terminateAllCommandSessions(signal = 'SIGTERM') {
+  const stopped = []
+  for (const session of commandSessions.values()) {
+    if (session.status !== 'running') {
+      continue
+    }
+    terminateCommandSession(session, signal)
+    stopped.push(session.id)
+  }
+  return stopped
+}
+
+function formatCommandSession(session, options = {}) {
+  const maxOutputChars = clampNumber(Number(options.maxOutputChars ?? 12000), 1000, 200000)
+  const stdout = session.stdout.slice(session.stdoutReadOffset)
+  const stderr = session.stderr.slice(session.stderrReadOffset)
+  if (options.consumeOutput !== false) {
+    session.stdoutReadOffset = session.stdout.length
+    session.stderrReadOffset = session.stderr.length
+  }
+
+  return {
+    session_id: session.id,
+    command: session.command,
+    cwd: session.cwd,
+    pid: session.pid,
+    status: session.status,
+    running: session.status === 'running',
+    stdout: truncateHead(stdout, maxOutputChars),
+    stderr: truncateHead(stderr, maxOutputChars),
+    stdout_truncated: stdout.length > maxOutputChars,
+    stderr_truncated: stderr.length > maxOutputChars,
+    exit_code: session.exitCode,
+    signal: session.signal,
+    duration_ms: (session.endedAt ?? Date.now()) - session.startedAt,
+  }
+}
+
+function cleanupEndedSessions() {
+  for (const [sessionId, session] of commandSessions) {
+    if (session.status !== 'running' && session.endedAt && Date.now() - session.endedAt > 60000) {
+      commandSessions.delete(sessionId)
+    }
+  }
 }
 
 export function runCommandInBackground(command, cwd) {
@@ -113,6 +270,48 @@ export function runCommandInBackground(command, cwd) {
 
   child.unref()
   return child.pid ?? -1
+}
+
+function appendSessionOutput(session, key, chunk) {
+  session[key] += String(chunk)
+  if (session[key].length <= session.maxBufferChars) {
+    return
+  }
+  const trimmed = session[key].length - session.maxBufferChars
+  session[key] = session[key].slice(trimmed)
+  if (key === 'stdout') {
+    session.stdoutReadOffset = Math.max(0, session.stdoutReadOffset - trimmed)
+  } else {
+    session.stderrReadOffset = Math.max(0, session.stderrReadOffset - trimmed)
+  }
+}
+
+function terminateCommandSession(session, signal = 'SIGTERM') {
+  if (session.status !== 'running') {
+    return
+  }
+  session.child.kill(typeof signal === 'string' && signal ? signal : 'SIGTERM')
+}
+
+function delay(ms) {
+  if (!ms) {
+    return Promise.resolve()
+  }
+  return new Promise(resolvePromise => setTimeout(resolvePromise, ms))
+}
+
+function truncateHead(value, maxLength) {
+  if (value.length <= maxLength) {
+    return value
+  }
+  return value.slice(value.length - maxLength)
+}
+
+function clampNumber(value, min, max) {
+  if (!Number.isFinite(value)) {
+    return min
+  }
+  return Math.max(min, Math.min(max, value))
 }
 
 function detectImageMetadata(buffer, filePath) {

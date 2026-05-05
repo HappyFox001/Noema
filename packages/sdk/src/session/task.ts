@@ -1286,6 +1286,18 @@ export class TaskRuntime {
       state.pendingVerification.length > 0
         ? `Pending verification:\n${state.pendingVerification.slice(-4).map(item => `- ${escapeXmlText(item)}`).join('\n')}`
         : '',
+      state.activeSessions.length > 0
+        ? [
+            'Active command sessions:',
+            ...state.activeSessions.map(session => [
+              `- ${escapeXmlText(session.id)} (${escapeXmlText(session.status)})`,
+              session.command ? `cmd=${escapeXmlText(session.command)}` : '',
+              session.cwd ? `cwd=${escapeXmlText(session.cwd)}` : '',
+              session.lastOutput ? `last_output=${escapeXmlText(session.lastOutput)}` : '',
+              'use write_stdin to poll, send input, or terminate when finished'
+            ].filter(Boolean).join(' '))
+          ].join('\n')
+        : '',
       '</execution_state>'
     ].filter(Boolean)
 

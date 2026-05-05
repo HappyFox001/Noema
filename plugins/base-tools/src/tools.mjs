@@ -5,11 +5,13 @@ import { readFile } from 'node:fs/promises'
 import {
   deleteFile,
   editTextFile,
+  interactCommandSession,
+  listCommandSessions,
   readImageFile,
   readTextFile,
   resolveToolPath,
   runCommand,
-  runCommandInBackground,
+  startCommandSession,
   writeTextFile,
 } from './node-ops.mjs'
 import { matchesAnyGlobPattern, matchesGlobPattern, walkFiles } from './search-utils.mjs'
@@ -23,6 +25,8 @@ export function createBaseTools() {
     createGrepTool(),
     createBashTool(),
     createExecCommandTool(),
+    createWriteStdinTool(),
+    createListExecSessionsTool(),
     createApplyPatchTool(),
     createViewImageTool(),
   ]
@@ -295,12 +299,16 @@ function createBashTool() {
       run_in_background = false,
     }) => {
       if (run_in_background) {
-        const pid = runCommandInBackground(command, cwd)
+        const session = await startCommandSession(command, {
+          cwd,
+          yieldTimeMs: 1000,
+          maxOutputChars: 12000,
+        })
         return {
           success: true,
           result: {
             background: true,
-            pid,
+            ...session,
             message: 'Command started in background',
           },
         }
@@ -325,7 +333,7 @@ function createBashTool() {
 function createExecCommandTool() {
   return createTool({
     name: 'exec_command',
-    description: 'Run a shell command with Codex-style arguments. Prefer this for terminal operations when you need cwd, timeout, output truncation, or background execution.',
+    description: 'Run a shell command with Codex-style arguments. Use background=true for long-running or interactive commands; it returns a session_id that write_stdin can continue, poll, or terminate.',
     safety: 'external',
     parameters: {
       type: 'object',
@@ -350,8 +358,13 @@ function createExecCommandTool() {
         },
         background: {
           type: 'boolean',
-          description: 'Run command in background and return immediately.',
+          description: 'Start a managed command session and return immediately. Use this for dev servers, watch tasks, REPLs, and interactive commands.',
           default: false,
+        },
+        yield_time_ms: {
+          type: 'number',
+          description: 'When background=true, wait this long before returning initial output. Defaults to 1000.',
+          default: 1000,
         },
       },
       required: ['cmd'],
@@ -362,16 +375,19 @@ function createExecCommandTool() {
       timeout_ms = 120000,
       max_output_chars = 12000,
       background = false,
+      yield_time_ms = 1000,
     }) => {
       if (background) {
-        const pid = runCommandInBackground(cmd, workdir)
+        const session = await startCommandSession(cmd, {
+          cwd: workdir,
+          yieldTimeMs: yield_time_ms,
+          maxOutputChars: max_output_chars,
+        })
         return {
           success: true,
           result: {
-            command: cmd,
-            cwd: resolveToolPath(workdir),
             background: true,
-            pid,
+            ...session,
           },
         }
       }
@@ -387,6 +403,109 @@ function createExecCommandTool() {
           stdout_truncated: output.stdout.length > max_output_chars,
           stderr_truncated: output.stderr.length > max_output_chars,
           exit_code: output.exitCode,
+          timed_out: Boolean(output.timedOut),
+          duration_ms: output.durationMs,
+        },
+      }
+    },
+  })
+}
+
+function createWriteStdinTool() {
+  return createTool({
+    name: 'write_stdin',
+    description: 'Continue a managed exec_command session: write stdin, poll recent output, or terminate it. Use this after exec_command returned a session_id.',
+    safety: 'external',
+    parameters: {
+      type: 'object',
+      properties: {
+        session_id: {
+          type: 'string',
+          description: 'The session_id returned by exec_command(background=true).',
+        },
+        chars: {
+          type: 'string',
+          description: 'Optional text to write to stdin. Omit or use an empty string to only poll output.',
+        },
+        yield_time_ms: {
+          type: 'number',
+          description: 'Wait this long before reading recent output. Defaults to 1000.',
+          default: 1000,
+        },
+        max_output_chars: {
+          type: 'number',
+          description: 'Maximum stdout/stderr characters to return. Defaults to 12000.',
+          default: 12000,
+        },
+        terminate: {
+          type: 'boolean',
+          description: 'Terminate the session after any stdin write.',
+          default: false,
+        },
+        signal: {
+          type: 'string',
+          description: 'Signal to use when terminate=true. Defaults to SIGTERM.',
+          default: 'SIGTERM',
+        },
+      },
+      required: ['session_id'],
+    },
+    execute: async ({
+      session_id,
+      chars = '',
+      yield_time_ms = 1000,
+      max_output_chars = 12000,
+      terminate = false,
+      signal = 'SIGTERM',
+    }) => {
+      const result = await interactCommandSession(session_id, {
+        chars,
+        yieldTimeMs: yield_time_ms,
+        maxOutputChars: max_output_chars,
+        terminate,
+        signal,
+      })
+      return {
+        success: result.exit_code === 0 || result.running,
+        result,
+      }
+    },
+  })
+}
+
+function createListExecSessionsTool() {
+  return createTool({
+    name: 'list_exec_sessions',
+    description: 'List managed exec_command sessions. Use this if you need to recover active session ids or inspect running command sessions.',
+    safety: 'external',
+    parameters: {
+      type: 'object',
+      properties: {
+        include_exited: {
+          type: 'boolean',
+          description: 'Include recently exited sessions. Defaults to false.',
+          default: false,
+        },
+        max_output_chars: {
+          type: 'number',
+          description: 'Maximum stdout/stderr characters per session. Defaults to 2000.',
+          default: 2000,
+        },
+      },
+    },
+    execute: async ({
+      include_exited = false,
+      max_output_chars = 2000,
+    } = {}) => {
+      const sessions = listCommandSessions({
+        includeExited: include_exited,
+        maxOutputChars: max_output_chars,
+      })
+      return {
+        success: true,
+        result: {
+          sessions,
+          count: sessions.length,
         },
       }
     },
