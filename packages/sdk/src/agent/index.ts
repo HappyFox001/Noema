@@ -21,7 +21,6 @@ export class AgentCore {
       console.warn(`[AgentCore] Replacing registered tool: ${tool.name}`)
     }
     this.tools.set(tool.name, tool)
-    console.log(`[AgentCore] Registered tool: ${tool.name}${tool.pluginId ? ` (${tool.pluginId})` : ''}`)
   }
 
   unregisterTool(name: string): boolean {
