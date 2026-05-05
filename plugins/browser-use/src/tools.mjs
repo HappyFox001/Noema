@@ -31,25 +31,45 @@ export function createBrowserTools(controller, options) {
 
     tool('browser_state', 'Get current page URL, title, visible text preview, and numbered clickable/input elements. Call this before clicking or filling by index.', 'read', timeoutMs, {}, [], () => controller.state()),
 
-    tool('browser_click', 'Click a numbered element from the latest browser_state output. Observe page state after the click before deciding the next action.', 'external', timeoutMs, {
+    tool('browser_observe', 'Browser-task observation entry point. Use state for normal steps, snapshot for DOM/AX ambiguity, visual for screenshot verification, and full for difficult pages.', 'read', timeoutMs, {
+      mode: { type: 'string', description: 'Observation mode.', enum: ['state', 'snapshot', 'visual', 'full'] },
+      maxAxNodes: { type: 'number', description: 'Maximum accessibility nodes when mode includes snapshot.' },
+      maxDomNodes: { type: 'number', description: 'Maximum DOM snapshot nodes per document when mode includes snapshot.' },
+    }, [], params => controller.observeDetailed(params)),
+
+    tool('browser_snapshot', 'Capture a Chrome DevTools Protocol DOM/Accessibility snapshot. Use this when browser_state is not enough for complex pages, iframe-like UI, hidden controls, or visual/semantic ambiguity.', 'read', timeoutMs, {
+      includeAccessibility: { type: 'boolean', description: 'Include Accessibility.getFullAXTree summary. Defaults to true.' },
+      includeDomSnapshot: { type: 'boolean', description: 'Include DOMSnapshot.captureSnapshot summary. Defaults to true.' },
+      maxAxNodes: { type: 'number', description: 'Maximum accessibility nodes to return. Defaults to plugin config.' },
+      maxDomNodes: { type: 'number', description: 'Maximum DOM snapshot nodes per document to return. Defaults to plugin config.' },
+    }, [], params => controller.snapshot(params)),
+
+    tool('browser_click', 'Click a numbered element from browser_state using real Electron mouse input. You may also click viewport coordinates from a screenshot/snapshot. Observe page state after the click.', 'external', timeoutMs, {
       index: { type: 'number', description: 'Element index from browser_state.' },
-    }, ['index'], observe(({ index }) => controller.click(index))),
+      x: { type: 'number', description: 'Viewport CSS pixel x coordinate. Use only when an element index is unavailable.' },
+      y: { type: 'number', description: 'Viewport CSS pixel y coordinate. Use only when an element index is unavailable.' },
+      clickCount: { type: 'number', description: 'Click count. Defaults to 1.' },
+    }, [], observe(({ index, x, y, clickCount }) => {
+      if (index !== undefined && index !== null) return controller.click(index)
+      return controller.clickCoordinate(x, y, clickCount)
+    })),
 
     tool('browser_mouse', 'Run a mouse action on a numbered element: hover, double click, or right click. Use browser_state first.', 'external', timeoutMs, {
       index: { type: 'number', description: 'Element index from browser_state.' },
       action: { type: 'string', description: 'Mouse action.', enum: ['hover', 'double_click', 'right_click'] },
     }, ['index', 'action'], observe(({ index, action }) => controller.mouse(index, action))),
 
-    tool('browser_input', 'Click a numbered input-like element from browser_state, clear it, and type text. Observe after form input.', 'external', timeoutMs, {
+    tool('browser_input', 'Click a numbered input-like element from browser_state using real mouse input, optionally clear it with keyboard select-all, then insert text. Observe after form input.', 'external', timeoutMs, {
       index: { type: 'number', description: 'Input element index from browser_state.' },
       text: { type: 'string', description: 'Text to enter.' },
-    }, ['index', 'text'], observe(({ index, text }) => controller.input(index, text))),
+      clear: { type: 'boolean', description: 'Clear existing text before typing. Defaults to true.' },
+    }, ['index', 'text'], observe(({ index, text, clear }) => controller.input(index, text, clear))),
 
-    tool('browser_type', 'Type text into the currently focused element. Prefer browser_input when an indexed input is available.', 'external', timeoutMs, {
+    tool('browser_type', 'Insert text into the currently focused element using the browser input pipeline. Prefer browser_input when an indexed input is available.', 'external', timeoutMs, {
       text: { type: 'string', description: 'Text to type into the focused element.' },
     }, ['text'], observe(({ text }) => controller.type(text))),
 
-    tool('browser_keys', 'Send a keyboard shortcut or key sequence to the page, such as Enter, Escape, Tab, Control+A. Observe after state-changing keys.', 'external', timeoutMs, {
+    tool('browser_keys', 'Send a real keyboard shortcut or key sequence to the page, such as Enter, Escape, Tab, Control+A, Meta+L. Observe after state-changing keys.', 'external', timeoutMs, {
       keys: { type: 'string', description: 'Key or shortcut, such as Enter, Escape, Tab, Control+A.' },
     }, ['keys'], observe(({ keys }) => controller.keys(keys))),
 
@@ -160,12 +180,14 @@ function tool(name, description, safety, timeoutMs, properties, required, execut
 }
 
 function shouldDeferBrowserTool(name) {
-  return !['browser_open', 'browser_search', 'browser_state', 'browser_wait'].includes(name)
+  return !['browser_open', 'browser_search', 'browser_state', 'browser_observe', 'browser_snapshot', 'browser_wait'].includes(name)
 }
 
 function browserToolKeywords(name) {
   return {
-    browser_click: ['click', 'press', 'button', 'link', 'element'],
+    browser_observe: ['observe', 'browser state', 'screenshot', 'snapshot', 'visual'],
+    browser_snapshot: ['snapshot', 'accessibility', 'ax tree', 'dom snapshot', 'cdp', 'iframe', 'hidden elements'],
+    browser_click: ['click', 'press', 'button', 'link', 'element', 'coordinate'],
     browser_mouse: ['hover', 'double click', 'right click', 'mouse'],
     browser_input: ['fill', 'form', 'input', 'type', 'text'],
     browser_type: ['type', 'focused element', 'keyboard'],

@@ -51,6 +51,10 @@ export function normalizeKey(value) {
   return aliases[lower] || String(value || '')
 }
 
+export function getPlatformSelectModifier() {
+  return process.platform === 'darwin' ? 'Meta' : 'Control'
+}
+
 export function clampInteger(value, min, max) {
   if (!Number.isFinite(value)) {
     return min

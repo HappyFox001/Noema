@@ -2,21 +2,17 @@ import { BrowserWindow, session } from 'electron'
 import { readFile, writeFile } from 'fs/promises'
 import { resolve } from 'path'
 import {
-  buildClickScript,
   buildDropdownOptionsScript,
   buildEvalScript,
   buildExtractScript,
   buildFindTextScript,
   buildGetScript,
-  buildInputScript,
   buildMarkFileInputScript,
-  buildMouseActionScript,
   buildSelectScript,
   buildStateScript,
-  buildTypeScript,
   buildWaitConditionScript,
 } from './page-scripts.mjs'
-import { clampInteger, domainMatches, normalizeKey, normalizeModifier, normalizeUrl, truncate } from './utils.mjs'
+import { clampInteger, domainMatches, getPlatformSelectModifier, normalizeKey, normalizeModifier, normalizeUrl, truncate } from './utils.mjs'
 
 export class ElectronBrowserController {
   constructor(options) {
@@ -54,6 +50,27 @@ export class ElectronBrowserController {
     return this.webContents.executeJavaScript(buildStateScript(this.options.maxStateElements), true)
   }
 
+  async snapshot(args = {}) {
+    await this.ensureWindow()
+    const maxAxNodes = clampInteger(Number(args.maxAxNodes ?? this.options.maxAxNodes ?? 120), 20, 500)
+    const maxDomNodes = clampInteger(Number(args.maxDomNodes ?? this.options.maxDomNodes ?? 200), 20, 1000)
+    const includeDomSnapshot = args.includeDomSnapshot !== false
+    const includeAccessibility = args.includeAccessibility !== false
+    const page = await this.currentPageSummary()
+    const layout = await this.captureLayoutMetrics()
+    const accessibility = includeAccessibility ? await this.captureAccessibilityTree(maxAxNodes) : undefined
+    const domSnapshot = includeDomSnapshot ? await this.captureDomSnapshot(maxDomNodes) : undefined
+
+    return {
+      success: true,
+      page,
+      layout,
+      accessibility,
+      domSnapshot,
+      note: 'Snapshot is captured through Chrome DevTools Protocol. Coordinates are viewport CSS pixels.',
+    }
+  }
+
   async observe() {
     try {
       return await this.state()
@@ -65,59 +82,122 @@ export class ElectronBrowserController {
     }
   }
 
+  async observeDetailed(args = {}) {
+    await this.ensureWindow()
+    const mode = String(args.mode || 'state')
+    const includeState = mode === 'state' || mode === 'snapshot' || mode === 'visual' || mode === 'full'
+    const includeSnapshot = mode === 'snapshot' || mode === 'full'
+    const includeScreenshot = mode === 'visual' || mode === 'full'
+    const observation = {
+      success: true,
+      mode,
+      page: await this.currentPageSummary(),
+    }
+
+    if (includeState) {
+      observation.state = await this.state()
+    }
+    if (includeSnapshot) {
+      observation.snapshot = await this.snapshot(args)
+    }
+    if (includeScreenshot) {
+      observation.screenshot = await this.screenshot()
+    }
+
+    return observation
+  }
+
   async click(index) {
     await this.ensureWindow()
-    const result = await this.webContents.executeJavaScript(buildClickScript(Number(index)), true)
+    const target = await this.getElementTarget(Number(index))
+    if (!target.success) {
+      return target
+    }
+
+    const result = await this.clickAt(target.center.x, target.center.y, { clickCount: 1 })
     await this.wait(300)
-    return result
+    return { success: true, index: Number(index), element: target.element, coordinate: target.center, action: result }
+  }
+
+  async clickCoordinate(x, y, clickCount = 1) {
+    await this.ensureWindow()
+    if (!Number.isFinite(Number(x)) || !Number.isFinite(Number(y))) {
+      return { success: false, error: 'x and y coordinates are required when index is omitted' }
+    }
+    const coordinate = this.normalizeViewportCoordinate(x, y)
+    const result = await this.clickAt(coordinate.x, coordinate.y, { clickCount })
+    await this.wait(300)
+    return { success: true, coordinate, action: result }
   }
 
   async mouse(index, action) {
     await this.ensureWindow()
-    const result = await this.webContents.executeJavaScript(buildMouseActionScript(Number(index), action), true)
+    const target = await this.getElementTarget(Number(index))
+    if (!target.success) {
+      return target
+    }
+
+    const point = target.center
+    let result
+    if (action === 'hover') {
+      result = this.sendMouseMove(point.x, point.y)
+    } else if (action === 'double_click') {
+      result = await this.clickAt(point.x, point.y, { clickCount: 2 })
+    } else if (action === 'right_click') {
+      result = await this.clickAt(point.x, point.y, { button: 'right', clickCount: 1 })
+    } else {
+      return { success: false, error: 'Unsupported mouse action', action }
+    }
     await this.wait(150)
-    return result
+    return { success: true, action, index: Number(index), element: target.element, coordinate: point, result }
   }
 
-  async input(index, text) {
+  async input(index, text, clear = true) {
     await this.ensureWindow()
-    const result = await this.webContents.executeJavaScript(buildInputScript(Number(index), String(text ?? '')), true)
+    const target = await this.getElementTarget(Number(index))
+    if (!target.success) {
+      return target
+    }
+
+    await this.clickAt(target.center.x, target.center.y, { clickCount: 1 })
+    if (clear !== false) {
+      await this.sendShortcut(`${getPlatformSelectModifier()}+A`)
+      this.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Backspace' })
+      this.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Backspace' })
+    }
+    const value = String(text ?? '')
+    if (value) {
+      await this.webContents.insertText(value)
+    }
     await this.wait(200)
-    return result
+    return { success: true, index: Number(index), value, clear: clear !== false, element: target.element }
   }
 
   async type(text) {
     await this.ensureWindow()
-    const result = await this.webContents.executeJavaScript(buildTypeScript(String(text ?? '')), true)
+    const value = String(text ?? '')
+    if (value) {
+      await this.webContents.insertText(value)
+    }
     await this.wait(100)
-    return result
+    return { success: true, typed: value }
   }
 
   async keys(keys) {
     await this.ensureWindow()
-    const parts = String(keys || '').split('+').map(part => part.trim()).filter(Boolean)
-    if (parts.length === 0) {
-      return { success: false, error: 'No keys provided' }
-    }
-
-    const key = normalizeKey(parts[parts.length - 1])
-    const modifiers = parts.slice(0, -1).map(normalizeModifier).filter(Boolean)
-    this.webContents.sendInputEvent({ type: 'keyDown', keyCode: key, modifiers })
-    this.webContents.sendInputEvent({ type: 'keyUp', keyCode: key, modifiers })
+    const result = await this.sendShortcut(keys)
     await this.wait(100)
-    return { success: true, keys: String(keys) }
+    return result
   }
 
   async scroll(direction, amount) {
     await this.ensureWindow()
     const pixels = clampInteger(Number(amount ?? 700), 1, 5000)
-    const delta = direction === 'up' ? -pixels : pixels
-    const result = await this.webContents.executeJavaScript(
-      `window.scrollBy({ top: ${delta}, behavior: 'smooth' }); ({ success: true, scrollY: window.scrollY, delta: ${delta} })`,
-      true
-    )
+    const deltaY = direction === 'up' ? -pixels : pixels
+    this.webContents.sendInputEvent({ type: 'mouseWheel', x: 10, y: 10, deltaY, canScroll: true })
     await this.wait(250)
-    return result
+    const scroll = await this.webContents.executeJavaScript('({ x: window.scrollX, y: window.scrollY })', true)
+    return { success: true, scroll, deltaY }
   }
 
   async findText(text) {
@@ -249,6 +329,214 @@ export class ElectronBrowserController {
     const data = await this.webContents.printToPDF({ printBackground: true })
     await writeFile(outputPath, data)
     return { success: true, path: outputPath, bytes: data.length }
+  }
+
+  async captureLayoutMetrics() {
+    return this.withDebugger(async debuggerApi => {
+      const metrics = await debuggerApi.sendCommand('Page.getLayoutMetrics')
+      const viewport = metrics.visualViewport || {}
+      const layoutViewport = metrics.layoutViewport || {}
+      return {
+        visualViewport: {
+          x: Math.round(viewport.pageX ?? 0),
+          y: Math.round(viewport.pageY ?? 0),
+          width: Math.round(viewport.clientWidth ?? layoutViewport.clientWidth ?? 0),
+          height: Math.round(viewport.clientHeight ?? layoutViewport.clientHeight ?? 0),
+          scale: viewport.scale ?? 1,
+        },
+        layoutViewport: {
+          x: Math.round(layoutViewport.pageX ?? 0),
+          y: Math.round(layoutViewport.pageY ?? 0),
+          width: Math.round(layoutViewport.clientWidth ?? 0),
+          height: Math.round(layoutViewport.clientHeight ?? 0),
+        },
+      }
+    })
+  }
+
+  async captureAccessibilityTree(maxNodes) {
+    return this.withDebugger(async debuggerApi => {
+      const result = await debuggerApi.sendCommand('Accessibility.getFullAXTree')
+      const nodes = Array.isArray(result.nodes) ? result.nodes : []
+      const interactiveRoles = new Set([
+        'button',
+        'link',
+        'textbox',
+        'searchbox',
+        'checkbox',
+        'radio',
+        'combobox',
+        'listbox',
+        'menuitem',
+        'tab',
+        'switch',
+        'slider',
+        'spinbutton',
+      ])
+      const visibleNodes = nodes
+        .filter(node => !node.ignored)
+        .filter(node => interactiveRoles.has(readAxValue(node.role)) || readAxValue(node.name))
+        .slice(0, maxNodes)
+        .map(node => ({
+          nodeId: node.nodeId,
+          backendDOMNodeId: node.backendDOMNodeId,
+          role: readAxValue(node.role),
+          name: truncate(readAxValue(node.name), 180),
+          value: truncate(readAxValue(node.value), 180),
+          description: truncate(readAxValue(node.description), 180),
+          childIds: Array.isArray(node.childIds) ? node.childIds.slice(0, 12) : [],
+        }))
+
+      return {
+        nodeCount: nodes.length,
+        returned: visibleNodes.length,
+        nodes: visibleNodes,
+      }
+    })
+  }
+
+  async captureDomSnapshot(maxNodes) {
+    return this.withDebugger(async debuggerApi => {
+      const result = await debuggerApi.sendCommand('DOMSnapshot.captureSnapshot', {
+        computedStyles: ['display', 'visibility', 'opacity', 'pointer-events'],
+        includeDOMRects: true,
+        includePaintOrder: true,
+      })
+      const strings = result.strings || []
+      const documents = Array.isArray(result.documents) ? result.documents : []
+      const summaries = documents.map((document, documentIndex) => {
+        const nodes = document.nodes || {}
+        const layout = document.layout || {}
+        const nodeNames = nodes.nodeName || []
+        const nodeValues = nodes.nodeValue || []
+        const attributes = nodes.attributes || []
+        const textValueIndexes = nodes.textValue || {}
+        const layoutNodeIndexes = layout.nodeIndex || []
+        const bounds = layout.bounds || []
+        const paintOrders = layout.paintOrders || []
+        const returnedNodes = []
+        const layoutByNode = new Map()
+
+        for (let i = 0; i < layoutNodeIndexes.length; i += 1) {
+          layoutByNode.set(layoutNodeIndexes[i], {
+            bounds: Array.isArray(bounds[i])
+              ? {
+                  x: Math.round(bounds[i][0] ?? 0),
+                  y: Math.round(bounds[i][1] ?? 0),
+                  width: Math.round(bounds[i][2] ?? 0),
+                  height: Math.round(bounds[i][3] ?? 0),
+                }
+              : undefined,
+            paintOrder: paintOrders[i],
+          })
+        }
+
+        for (let nodeIndex = 0; nodeIndex < Math.min(nodeNames.length, maxNodes); nodeIndex += 1) {
+          const tag = readSnapshotString(strings, nodeNames[nodeIndex])
+          const textIndex = Array.isArray(textValueIndexes.index) ? textValueIndexes.index.indexOf(nodeIndex) : -1
+          const text = textIndex >= 0 && Array.isArray(textValueIndexes.value)
+            ? readSnapshotString(strings, textValueIndexes.value[textIndex])
+            : readSnapshotString(strings, nodeValues[nodeIndex])
+          returnedNodes.push({
+            nodeIndex,
+            tag,
+            text: truncate(text, 120),
+            attributes: readSnapshotAttributes(strings, attributes[nodeIndex]).slice(0, 12),
+            layout: layoutByNode.get(nodeIndex),
+          })
+        }
+
+        return {
+          documentIndex,
+          url: readSnapshotString(strings, document.documentURL),
+          title: readSnapshotString(strings, document.title),
+          nodeCount: nodeNames.length,
+          layoutCount: layoutNodeIndexes.length,
+          returned: returnedNodes.length,
+          nodes: returnedNodes,
+        }
+      })
+
+      return {
+        documents: summaries,
+      }
+    })
+  }
+
+  async getElementTarget(index) {
+    if (!Number.isInteger(index) || index < 0) {
+      return { success: false, error: 'Element index must be a non-negative integer', index }
+    }
+    const state = await this.state()
+    const element = Array.isArray(state.elements) ? state.elements[index] : undefined
+    if (!element?.bbox) {
+      return { success: false, error: 'Element index not found', index }
+    }
+
+    const bbox = element.bbox
+    const coordinate = this.normalizeViewportCoordinate(
+      Number(bbox.x) + Number(bbox.width) / 2,
+      Number(bbox.y) + Number(bbox.height) / 2
+    )
+    return {
+      success: true,
+      index,
+      element,
+      center: coordinate,
+    }
+  }
+
+  normalizeViewportCoordinate(x, y) {
+    return {
+      x: Math.max(0, Math.round(Number(x) || 0)),
+      y: Math.max(0, Math.round(Number(y) || 0)),
+    }
+  }
+
+  sendMouseMove(x, y) {
+    const coordinate = this.normalizeViewportCoordinate(x, y)
+    this.webContents.sendInputEvent({ type: 'mouseMove', x: coordinate.x, y: coordinate.y, button: 'none' })
+    return { success: true, coordinate }
+  }
+
+  async clickAt(x, y, options = {}) {
+    const coordinate = this.normalizeViewportCoordinate(x, y)
+    const button = options.button || 'left'
+    const clickCount = clampInteger(Number(options.clickCount ?? 1), 1, 3)
+    this.webContents.sendInputEvent({ type: 'mouseMove', x: coordinate.x, y: coordinate.y, button: 'none' })
+    for (let count = 1; count <= clickCount; count += 1) {
+      this.webContents.sendInputEvent({ type: 'mouseDown', x: coordinate.x, y: coordinate.y, button, clickCount: count })
+      this.webContents.sendInputEvent({ type: 'mouseUp', x: coordinate.x, y: coordinate.y, button, clickCount: count })
+    }
+    return { success: true, coordinate, button, clickCount }
+  }
+
+  async sendShortcut(keys) {
+    const parts = String(keys || '').split('+').map(part => part.trim()).filter(Boolean)
+    if (parts.length === 0) {
+      return { success: false, error: 'No keys provided' }
+    }
+
+    const key = normalizeKey(parts[parts.length - 1])
+    const modifiers = parts.slice(0, -1).map(normalizeModifier).filter(Boolean)
+    this.webContents.sendInputEvent({ type: 'keyDown', keyCode: key, modifiers })
+    this.webContents.sendInputEvent({ type: 'keyUp', keyCode: key, modifiers })
+    return { success: true, keys: String(keys), key, modifiers }
+  }
+
+  async withDebugger(callback) {
+    const debuggerApi = this.webContents.debugger
+    const attachedBefore = debuggerApi.isAttached()
+    if (!attachedBefore) {
+      debuggerApi.attach('1.3')
+    }
+    try {
+      return await callback(debuggerApi)
+    } finally {
+      if (!attachedBefore && debuggerApi.isAttached()) {
+        debuggerApi.detach()
+      }
+    }
   }
 
   async back() {
@@ -469,4 +757,29 @@ export class ElectronBrowserController {
       throw new Error(`Navigation blocked by allowedDomains: ${hostname}`)
     }
   }
+}
+
+function readAxValue(value) {
+  if (!value) return ''
+  if (typeof value === 'string') return value
+  if (value.value === undefined || value.value === null) return ''
+  return String(value.value)
+}
+
+function readSnapshotString(strings, index) {
+  if (!Number.isInteger(index)) return ''
+  return String(strings[index] ?? '')
+}
+
+function readSnapshotAttributes(strings, rawAttributes) {
+  if (!Array.isArray(rawAttributes)) return []
+  const result = []
+  for (let i = 0; i < rawAttributes.length; i += 2) {
+    const name = readSnapshotString(strings, rawAttributes[i])
+    const value = readSnapshotString(strings, rawAttributes[i + 1])
+    if (name) {
+      result.push({ name, value: truncate(value, 160) })
+    }
+  }
+  return result
 }

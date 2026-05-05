@@ -1,7 +1,7 @@
 {
   "id": "browser-use",
   "name": "Browser Use",
-  "description": "提供纯 TypeScript/Electron 浏览器自动化工具，支持打开网页、读取页面状态、点击编号元素、填写输入框、滚动、截图和提取页面文本。",
+  "description": "提供 Electron 浏览器自动化工具，支持 CDP DOM/AX snapshot、真实鼠标键盘输入、页面状态读取、文件上传、截图和文本提取。",
   "version": "0.1.0",
   "type": "sdk-plugin",
   "main": "index.mjs",
@@ -18,6 +18,8 @@
     "searchEngine": "duckduckgo",
     "actionTimeoutMs": 120000,
     "maxStateElements": 80,
+    "maxAxNodes": 120,
+    "maxDomNodes": 200,
     "autoObserve": true,
     "enableScreenshots": true
   },
@@ -76,6 +78,26 @@
       "min": 20,
       "max": 200,
       "step": 10
+    },
+    {
+      "key": "maxAxNodes",
+      "label": "AX 节点上限",
+      "description": "browser_snapshot 返回的 Accessibility 节点最大数量。",
+      "type": "number",
+      "default": 120,
+      "min": 20,
+      "max": 500,
+      "step": 20
+    },
+    {
+      "key": "maxDomNodes",
+      "label": "DOM Snapshot 节点上限",
+      "description": "browser_snapshot 每个文档返回的 DOMSnapshot 节点最大数量。",
+      "type": "number",
+      "default": 200,
+      "min": 20,
+      "max": 1000,
+      "step": 50
     },
     {
       "key": "autoObserve",

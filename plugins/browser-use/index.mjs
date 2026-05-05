@@ -9,6 +9,8 @@ export default function plugin(ctx) {
     sessionPartition: String(config.sessionPartition || 'persist:her-text-browser-use'),
     allowedDomains: parseDomains(String(config.allowedDomains || '')),
     maxStateElements: clampInteger(Number(config.maxStateElements ?? 80), 20, 200),
+    maxAxNodes: clampInteger(Number(config.maxAxNodes ?? 120), 20, 500),
+    maxDomNodes: clampInteger(Number(config.maxDomNodes ?? 200), 20, 1000),
     searchEngine: String(config.searchEngine || 'duckduckgo'),
   })
 
@@ -29,9 +31,12 @@ export default function plugin(ctx) {
           title: 'Browser workflow',
           priority: 80,
           content: [
-            '- Use browser_open or browser_search to enter a page, then browser_state to inspect URL, title, text, and numbered elements.',
+            '- Use browser_open or browser_search to enter a page, then browser_observe/browser_state to inspect URL, title, text, and numbered elements.',
+            '- Use browser_observe mode=snapshot/full when browser_state is ambiguous; use mode=visual/full when screenshot verification matters.',
+            '- Use browser_snapshot when browser_state is ambiguous; it returns CDP DOMSnapshot and Accessibility tree summaries with viewport coordinates.',
             '- Use tool_search when a browser action is needed but the specific browser tool is not currently visible.',
-            '- Prefer browser_state element indexes over coordinate clicks; observe state after navigation, click, form input, scroll, and wait.',
+            '- Prefer browser_state element indexes first. Use coordinate clicks only when snapshots/screenshots expose a target that has no stable element index.',
+            '- Browser click/input/keys use real Electron input events. Observe state after navigation, click, form input, scroll, and wait.',
           ].join('\n'),
         },
       ]
