@@ -958,6 +958,16 @@ type PluginConfigField =
       options: Array<{ label: string; value: string }>
     }
 
+type PluginUISurface = {
+  id: string
+  pluginId: string
+  slot: 'main-view' | 'task-panel'
+  mode: 'replace' | 'overlay'
+  title?: string
+  src: string
+  transparent: boolean
+}
+
 type PluginInfo = {
   id: string
   name: string
@@ -968,6 +978,7 @@ type PluginInfo = {
   permissions: string[]
   config: Record<string, unknown>
   configSchema: PluginConfigField[]
+  uiSurfaces: PluginUISurface[]
   adminSchema?: {
     title?: string
     description?: string
@@ -1017,8 +1028,14 @@ type TaskPanelPlan = {
 const voiceRecorder = new VoiceRecorder()
 
 // Canvas rendering
+const pluginUIMainView = document.getElementById('main-view') as HTMLElement
+const pluginUITaskPanel = document.getElementById('task-panel') as HTMLElement
 const canvas = document.getElementById('orb-canvas') as HTMLCanvasElement
 const ctx = canvas.getContext('2d', { alpha: true })!
+let activePluginMainSurface: PluginUISurface | null = null
+let activePluginTaskSurface: PluginUISurface | null = null
+let lastTaskPanelPlan: TaskPanelPlan | null = null
+let pluginUIStateTimer: number | undefined
 let orbCanvasWidth = 180
 let orbCanvasHeight = 180
 let orbCanvasDpr = 1
@@ -1078,6 +1095,7 @@ function updateOrbAudioEnergy(source: 'input' | 'output', samples: Int16Array | 
     orbOutputEnergy = Math.max(orbOutputEnergy * 0.70, next)
   }
   orbEnergyUpdatedAt = performance.now()
+  syncPluginUIStateSoon()
 }
 
 function calculatePcmEnergy(samples: Int16Array | Uint8Array): number {
@@ -1583,6 +1601,7 @@ function setOrbMode(mode: OrbState['mode']) {
 
   orbState.mode = mode
   orbState.modeChangedAt = performance.now()
+  syncPluginUIStateSoon()
   switch (mode) {
     case 'listening':
       orbState.glow = 8
@@ -1621,6 +1640,7 @@ function setStatus(text: string) {
   lastStatusText = text
   const statusEl = document.getElementById('status')!
   replaceControlText(statusEl, text)
+  syncPluginUIStateSoon()
 }
 
 function replaceControlText(element: HTMLElement, text: string): void {
@@ -1646,11 +1666,113 @@ function showPanelNotice(text: string, tone: 'info' | 'error' = 'info') {
 function setTextDisplay(text: string) {
   const textDisplay = document.getElementById('text-display')!
   replaceControlText(textDisplay, text)
+  syncPluginUIStateSoon()
 }
 
 function clearTextDisplay() {
   setTextDisplay('')
 }
+
+function getPluginUIState() {
+  return {
+    status: lastStatusText,
+    activeMode,
+    voiceInputEnabled,
+    ttsEnabled,
+    text: document.getElementById('text-display')?.textContent ?? '',
+    orb: {
+      mode: orbState.mode,
+      glow: orbState.glow,
+      inputEnergy: orbInputEnergy,
+      outputEnergy: orbOutputEnergy,
+    },
+    task: {
+      visible: document.body.classList.contains('task-active'),
+      plan: lastTaskPanelPlan,
+    },
+  }
+}
+
+function syncPluginUIStateSoon(): void {
+  window.clearTimeout(pluginUIStateTimer)
+  pluginUIStateTimer = window.setTimeout(syncPluginUIState, 16)
+}
+
+function syncPluginUIState(): void {
+  const message = {
+    type: 'her-text:ui-state',
+    state: getPluginUIState(),
+  }
+
+  document.querySelectorAll<HTMLIFrameElement>('.plugin-ui-surface-frame').forEach(frame => {
+    frame.contentWindow?.postMessage(message, '*')
+  })
+}
+
+function renderPluginUISurface(container: HTMLElement, surface: PluginUISurface | null): void {
+  container.querySelector('.plugin-ui-surface')?.remove()
+  if (!surface) {
+    return
+  }
+
+  const host = document.createElement('div')
+  host.className = `plugin-ui-surface ${surface.slot === 'main-view' ? 'plugin-ui-main-surface' : 'plugin-ui-task-surface'} ${surface.mode}`
+  host.dataset.pluginId = surface.pluginId
+  host.dataset.surfaceId = surface.id
+
+  const frame = document.createElement('iframe')
+  frame.className = 'plugin-ui-surface-frame'
+  frame.src = surface.src
+  frame.title = surface.title || surface.id
+  frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms')
+  frame.setAttribute('aria-label', surface.title || surface.id)
+  frame.addEventListener('load', () => syncPluginUIState())
+
+  host.appendChild(frame)
+  container.appendChild(host)
+}
+
+function applyPluginUISurfaces(surfaces: PluginUISurface[]): void {
+  activePluginMainSurface = surfaces.find(surface => surface.slot === 'main-view') ?? null
+  activePluginTaskSurface = surfaces.find(surface => surface.slot === 'task-panel') ?? null
+
+  document.body.classList.toggle(
+    'plugin-main-surface-replace',
+    activePluginMainSurface?.mode === 'replace'
+  )
+  document.body.classList.toggle(
+    'plugin-task-surface-replace',
+    activePluginTaskSurface?.mode === 'replace'
+  )
+
+  renderPluginUISurface(pluginUIMainView, activePluginMainSurface)
+  renderPluginUISurface(pluginUITaskPanel, activePluginTaskSurface)
+  syncPluginUIStateSoon()
+}
+
+async function loadPluginUISurfaces(): Promise<void> {
+  try {
+    const result = await window.electronAPI.listPlugins()
+    if (!result.success) {
+      throw new Error(result.error || '插件 UI 加载失败')
+    }
+
+    applyPluginUISurfaces(result.plugins.flatMap(plugin => plugin.enabled ? plugin.uiSurfaces : []))
+  } catch (error: any) {
+    console.warn('[PluginUI] Failed to load surfaces:', error)
+    applyPluginUISurfaces([])
+  }
+}
+
+window.addEventListener('message', (event) => {
+  const data = event.data
+  if (!data || typeof data !== 'object') {
+    return
+  }
+  if (data.type === 'her-text:ui-ready') {
+    syncPluginUIState()
+  }
+})
 
 let currentExpressionPriority = 0
 let expressionClearTimer: number | undefined
@@ -1724,10 +1846,11 @@ function setTaskPanelVisible(visible: boolean): void {
   }
 
   document.body.classList.toggle('task-active', visible)
-  document.getElementById('task-panel')?.setAttribute('aria-hidden', String(!visible))
+  pluginUITaskPanel.setAttribute('aria-hidden', String(!visible))
   if (!document.body.classList.contains('settings-open')) {
     window.electronAPI.setTaskWindowMode(visible)
   }
+  syncPluginUIStateSoon()
 }
 
 function hideTaskPanelSoon(): void {
@@ -1740,6 +1863,7 @@ function hideTaskPanelSoon(): void {
 }
 
 function renderTaskPanel(plan: TaskPanelPlan): void {
+  lastTaskPanelPlan = plan
   const title = document.querySelector('.task-panel-title')
   const list = document.getElementById('task-steps')
   if (!title || !list) {
@@ -1766,6 +1890,7 @@ function renderTaskPanel(plan: TaskPanelPlan): void {
   }
 
   setTaskPanelVisible(true)
+  syncPluginUIStateSoon()
 }
 
 function getTaskStepMark(status: TaskPanelStepStatus): string {
@@ -1788,6 +1913,7 @@ function handleConversationFrame(frame: ConversationFrame) {
     case 'system.reset':
       textRevealer.reset()
       clearExpression()
+      lastTaskPanelPlan = null
       setTaskPanelVisible(false)
       setStatus(t('status.thinking'))
       setOrbMode('thinking')
@@ -2650,6 +2776,7 @@ function renderPluginsSection(plugins: PluginInfo[]): void {
       </div>
       <div class="plugin-card-footer">
         <span>${plugin.configSchema.length ? `${plugin.configSchema.length} 个参数` : '无可配置参数'}</span>
+        ${plugin.uiSurfaces.length ? `<span>${plugin.uiSurfaces.length} 个界面 hook</span>` : ''}
         <span class="plugin-enter">管理</span>
       </div>
     </div>
@@ -2685,6 +2812,7 @@ function renderPluginsSection(plugins: PluginInfo[]): void {
           [pluginId]: input.checked,
         }
         await window.electronAPI.updateSettings({ plugins: nextPlugins })
+        await loadPluginUISurfaces()
         showPanelNotice(input.checked ? '插件已启用' : '插件已禁用')
       } catch (error: any) {
         input.checked = !input.checked
@@ -2712,6 +2840,7 @@ function renderPluginDetail(plugin: PluginInfo): void {
         <div class="plugin-info">
           <div class="plugin-id">${escapeHtml(plugin.id)}</div>
           ${plugin.description ? `<div class="plugin-description plugin-detail-description">${escapeHtml(plugin.description)}</div>` : ''}
+          ${plugin.uiSurfaces.length ? `<div class="plugin-permissions">${plugin.uiSurfaces.map(surface => `<span>UI: ${escapeHtml(surface.slot)} / ${escapeHtml(surface.mode)}</span>`).join('')}</div>` : ''}
           ${plugin.permissions.length ? `<div class="plugin-permissions">${plugin.permissions.map(permission => `<span>${escapeHtml(permission)}</span>`).join('')}</div>` : ''}
         </div>
         <label class="settings-toggle plugin-toggle">
@@ -2745,6 +2874,7 @@ function renderPluginDetail(plugin: PluginInfo): void {
       if (target) {
         target.enabled = input.checked
       }
+      await loadPluginUISurfaces()
       showPanelNotice(input.checked ? '插件已启用' : '插件已禁用')
     } catch (error: any) {
       input.checked = !input.checked
@@ -3101,6 +3231,7 @@ function bindPluginConfigInputs(): void {
         if (target) {
           target.config = nextPluginConfigs[pluginId]
         }
+        await loadPluginUISurfaces()
         showPanelNotice('插件参数已更新')
       } catch (error: any) {
         showPanelNotice(`插件参数保存失败: ${error.message}`, 'error')
@@ -4914,6 +5045,7 @@ async function initializeApp(): Promise<void> {
     await loadSettings()
     await loadPersonalities()
     await loadSystemConfig()
+    await loadPluginUISurfaces()
     await refreshSetupReadiness()
     updateConversationButton()
     console.log('Her-Text Renderer initialized')

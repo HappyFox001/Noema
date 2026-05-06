@@ -72,6 +72,15 @@ export interface PluginAdminSchema {
   actions?: PluginAdminActionSchema[]
 }
 
+export interface PluginUISurfaceManifest {
+  id?: string
+  slot: 'main-view' | 'task-panel'
+  mode?: 'replace' | 'overlay'
+  entry: string
+  title?: string
+  transparent?: boolean
+}
+
 export interface RuntimePluginManifest {
   id: string
   name?: string
@@ -85,6 +94,7 @@ export interface RuntimePluginManifest {
   config?: Record<string, unknown>
   configSchema?: PluginConfigField[]
   adminSchema?: PluginAdminSchema
+  uiSurfaces?: PluginUISurfaceManifest[]
 }
 
 export interface PluginRuntimeContext {

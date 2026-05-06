@@ -280,6 +280,15 @@ declare global {
           pluginDir: string
           permissions: string[]
           config: Record<string, unknown>
+          uiSurfaces: Array<{
+            id: string
+            pluginId: string
+            slot: 'main-view' | 'task-panel'
+            mode: 'replace' | 'overlay'
+            title?: string
+            src: string
+            transparent: boolean
+          }>
           configSchema: Array<
             | {
                 key: string
@@ -288,6 +297,8 @@ declare global {
                 type: 'string'
                 default?: string
                 placeholder?: string
+                multiline?: boolean
+                rows?: number
               }
             | {
                 key: string

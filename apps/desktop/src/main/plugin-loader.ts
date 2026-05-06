@@ -7,12 +7,13 @@
 import { app } from 'electron'
 import { existsSync } from 'fs'
 import { mkdir, readdir, readFile } from 'fs/promises'
-import { join, resolve } from 'path'
+import { isAbsolute, join, relative, resolve } from 'path'
 import { pathToFileURL } from 'url'
 import type {
   PluginAdminSchema,
   PluginConfigField,
   PluginPermission,
+  PluginUISurfaceManifest,
   RuntimePluginManifest,
   SDKPlugin,
   SDKPluginContext,
@@ -31,6 +32,17 @@ export interface RuntimePluginInfo {
   config: Record<string, unknown>
   configSchema: PluginConfigField[]
   adminSchema?: PluginAdminSchema
+  uiSurfaces: RuntimePluginUISurface[]
+}
+
+export interface RuntimePluginUISurface {
+  id: string
+  pluginId: string
+  slot: PluginUISurfaceManifest['slot']
+  mode: NonNullable<PluginUISurfaceManifest['mode']>
+  title?: string
+  src: string
+  transparent: boolean
 }
 
 export interface RuntimePluginAdminResult {
@@ -46,18 +58,22 @@ export async function discoverRuntimePlugins(
   , configOverrides: Record<string, Record<string, unknown>> = {}
 ): Promise<RuntimePluginInfo[]> {
   const manifests = await readRuntimePluginManifests(pluginsDir)
-  return manifests.map(({ manifest, pluginDir }) => ({
-    id: manifest.id,
-    name: manifest.name || manifest.id,
-    description: manifest.description,
-    version: manifest.version,
-    enabled: enabledOverrides[manifest.id] ?? manifest.enabled !== false,
-    pluginDir,
-    permissions: manifest.permissions ?? [],
-    config: mergePluginConfig(manifest, configOverrides[manifest.id]),
-    configSchema: manifest.configSchema ?? [],
-    adminSchema: manifest.adminSchema,
-  }))
+  return manifests.map(({ manifest, pluginDir }) => {
+    const enabled = enabledOverrides[manifest.id] ?? manifest.enabled !== false
+    return {
+      id: manifest.id,
+      name: manifest.name || manifest.id,
+      description: manifest.description,
+      version: manifest.version,
+      enabled,
+      pluginDir,
+      permissions: manifest.permissions ?? [],
+      config: mergePluginConfig(manifest, configOverrides[manifest.id]),
+      configSchema: manifest.configSchema ?? [],
+      adminSchema: manifest.adminSchema,
+      uiSurfaces: enabled ? resolveRuntimePluginUISurfaces(manifest, pluginDir) : [],
+    }
+  })
 }
 
 export async function loadRuntimePlugins(
@@ -218,4 +234,29 @@ function mergePluginConfig(
     ...(manifest.config ?? {}),
     ...(override ?? {}),
   }
+}
+
+function resolveRuntimePluginUISurfaces(
+  manifest: RuntimePluginManifest,
+  pluginDir: string
+): RuntimePluginUISurface[] {
+  const assetsDir = manifest.assets ? resolve(pluginDir, manifest.assets) : pluginDir
+  return (manifest.uiSurfaces ?? []).flatMap((surface) => {
+    const entryPath = resolve(assetsDir, surface.entry)
+    const entryRelative = relative(assetsDir, entryPath)
+    if (isAbsolute(entryRelative) || entryRelative.startsWith('..')) {
+      console.warn(`[PluginLoader] Skipped UI surface outside assets for plugin "${manifest.id}":`, surface.entry)
+      return []
+    }
+
+    return [{
+      id: surface.id || `${manifest.id}:${surface.slot}`,
+      pluginId: manifest.id,
+      slot: surface.slot,
+      mode: surface.mode ?? 'replace',
+      title: surface.title,
+      src: pathToFileURL(entryPath).toString(),
+      transparent: surface.transparent !== false,
+    }]
+  })
 }
