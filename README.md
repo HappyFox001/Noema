@@ -3,8 +3,14 @@
 </p>
 
 <p align="center">
-  <strong>A desktop agent companion with voice, memory, personality, and runtime tools.</strong>
+  <strong>Putting a living soul into the desktop.</strong>
 </p>
+
+<p align="center">
+  Voice, memory, emotion, personality, and tools —
+  an experiment toward AI that can talk, accompany, and act beside us.
+</p>
+
 
 <p align="center">
   <a href="#features">Features</a>
@@ -20,10 +26,9 @@
 
 ---
 
-Her-Text is an experimental desktop AI companion. It combines a conversational
-emotional layer with a task runtime, voice input/output, persistent memory,
-personality profiles, and pluggable tools for browser, desktop, shell, file, MCP,
-and skill-based workflows.
+Her-Text is a small experiment toward something like JARVIS: a desktop companion
+that can speak with personality, remember context, understand tasks, and act
+through tools.
 
 The project is built around a simple split:
 
@@ -32,9 +37,6 @@ The project is built around a simple split:
 - **Voice pipeline**: streams ASR, VAD, turn detection, TTS, interruption, and playback frames.
 - **Plugin system**: adds tools, prompt extensions, task context, text transforms, expressions, and admin actions.
 
-> Her-Text is under active development. APIs, runtime behavior, and plugin
-> contracts may still change.
-
 ## Features
 
 - **Voice-first desktop conversation** with streaming ASR, VAD, smart turn detection, and Fish Audio TTS.
@@ -42,9 +44,7 @@ The project is built around a simple split:
 - **Task execution runtime** with planning, tool calls, execution state, compaction, and task admission.
 - **Interruption-aware audio path** that can stop speech output without necessarily cancelling active tasks.
 - **Persistent memory** backed by SQLite for conversation turns, summaries, user profile, and task runs.
-- **Runtime plugin system** for tools, context injection, prompt additions, expression selection, and admin actions.
-- **Browser and computer-use tools** for web automation, screenshots, keyboard/mouse control, and UI observation.
-- **Skills and MCP support** through dedicated runtime plugins.
+- **Extensible plugin system** for adding new runtime capabilities without changing the core.
 
 ## Architecture
 
@@ -75,16 +75,6 @@ Final task result
       ▼
 task_result emotional layer ─────────► TTS / display
 ```
-
-### Packages
-
-| Path | Role |
-| --- | --- |
-| `apps/desktop` | Electron desktop app, renderer UI, main-process orchestration, IPC, voice lifecycle |
-| `packages/sdk` | Dialogue, task runtime, memory, personality, audio, VAD, tools, plugins |
-| `packages/core` | OpenAI-compatible LLM provider and shared core utilities |
-| `packages/types` | Shared TypeScript contracts |
-| `plugins` | Runtime plugins for tools, browser control, computer use, MCP, skills, expressions, and TTS cues |
 
 ## Quick Start
 
@@ -220,29 +210,6 @@ The voice path is frame-based and interruption-aware:
 Application-level echo suppression is still evolving. Browser-level AEC is
 enabled, but robust filtering of TTS audio leaking back into ASR is an area for
 future improvement.
-
-## Project Structure
-
-```text
-her-text/
-├── apps/
-│   └── desktop/          # Electron desktop app
-├── packages/
-│   ├── core/             # LLM provider and core utilities
-│   ├── sdk/              # Dialogue, task, audio, memory, plugins
-│   └── types/            # Shared TypeScript types
-├── plugins/              # Runtime SDK plugins
-├── role/                 # Personality profiles
-├── models/               # Local ONNX model files
-├── scripts/              # Maintenance and model download scripts
-└── assets/               # README and project visual assets
-```
-
-## Status
-
-Her-Text is currently a private, fast-moving desktop agent experiment. The core
-runtime is usable, but the project still prioritizes iteration over API
-stability.
 
 ## License
 
