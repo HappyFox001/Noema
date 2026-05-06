@@ -681,22 +681,52 @@ body.plugin-task-surface-replace .task-steps {
   width: 100vw;
   height: 100vh;
   background:
-    linear-gradient(180deg, rgba(16, 16, 18, 0.96), rgba(10, 10, 12, 0.98)),
-    radial-gradient(circle at top right, rgba(226, 74, 144, 0.08), transparent 38%);
+    linear-gradient(135deg, rgba(18, 19, 22, 0.97), rgba(8, 9, 11, 0.985) 52%, rgba(9, 14, 16, 0.98)),
+    radial-gradient(circle at 82% 12%, rgba(76, 210, 190, 0.10), transparent 32%),
+    radial-gradient(circle at 18% 92%, rgba(226, 74, 144, 0.08), transparent 36%);
   z-index: 900;
   opacity: 0;
   visibility: hidden;
-  transform: translateX(14px);
-  transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s ease;
+  transform: translateX(18px) scale(0.992);
+  transition: opacity 0.24s ease, transform 0.28s cubic-bezier(0.2, 0.9, 0.18, 1), visibility 0.24s ease;
   contain: layout paint style;
   -webkit-app-region: drag;
   app-region: drag;
 }
 
+.settings-panel::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, transparent 0%, rgba(125, 235, 214, 0.045) 50%, transparent 100%);
+  background-size: 28px 28px, 28px 28px, 100% 1px;
+  mask-image: linear-gradient(90deg, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.16));
+  opacity: 0.34;
+}
+
+.settings-panel::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), transparent 1px),
+    linear-gradient(90deg, rgba(125, 235, 214, 0.08), transparent 22%, transparent 78%, rgba(226, 74, 144, 0.055));
+  background-size: 100% 7px, 100% 100%;
+  opacity: 0.18;
+  mix-blend-mode: screen;
+}
+
 .settings-panel.visible {
   opacity: 1;
   visibility: visible;
-  transform: translateX(0);
+  transform: translateX(0) scale(1);
 }
 
 .settings-close {
@@ -707,13 +737,14 @@ body.plugin-task-surface-replace .task-steps {
   z-index: 2;
   width: 36px;
   height: 36px;
-  background: rgba(255, 255, 255, 0.1);
-  border: none;
+  background: rgba(255, 255, 255, 0.075);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 50%;
   color: rgba(255, 255, 255, 0.7);
   font-size: 20px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -723,11 +754,15 @@ body.plugin-task-surface-replace .task-steps {
 }
 
 .settings-close:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.16);
   color: white;
+  transform: translateY(-1px);
 }
 
 .settings-layout {
+  position: relative;
+  z-index: 1;
   display: flex;
   height: 100%;
   width: 100%;
@@ -741,8 +776,11 @@ body.plugin-task-surface-replace .task-steps {
   width: clamp(92px, 24vw, 180px);
   min-width: clamp(92px, 24vw, 180px);
   height: 100%;
-  background: rgba(0, 0, 0, 0.3);
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.34), rgba(0, 0, 0, 0.18)),
+    rgba(255, 255, 255, 0.015);
+  border-right: 1px solid rgba(255, 255, 255, 0.075);
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.035);
   padding: 10px 8px 20px;
   display: flex;
   flex-direction: column;
@@ -752,6 +790,15 @@ body.plugin-task-surface-replace .task-steps {
   cursor: grab;
   -webkit-app-region: no-drag;
   app-region: no-drag;
+}
+
+.settings-nav::after {
+  content: '';
+  width: calc(100% - 20px);
+  height: 1px;
+  margin: auto 10px 0;
+  background: linear-gradient(90deg, transparent, rgba(125, 235, 214, 0.34), transparent);
+  opacity: 0.78;
 }
 
 .settings-brand {
@@ -774,32 +821,82 @@ body.plugin-task-surface-replace .task-steps {
   margin-top: 0;
   transform: translateY(-24px);
   object-fit: contain;
-  filter: drop-shadow(0 0 14px rgba(87, 211, 238, 0.18));
+  filter: drop-shadow(0 0 18px rgba(87, 211, 238, 0.22));
 }
 
 .nav-item {
   font-family: var(--font-nav);
   letter-spacing: 0.01em;
+  position: relative;
+  isolation: isolate;
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 11px 12px;
-  border-radius: 10px;
+  border-radius: 8px;
   color: rgba(255, 255, 255, 0.6);
   font-size: 13px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  overflow: hidden;
+  border: 1px solid transparent;
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+  transition: transform 0.18s ease, color 0.18s ease, background 0.18s ease, border-color 0.18s ease;
   min-width: 0;
 }
 
+.nav-item::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  opacity: 0;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.035)),
+    radial-gradient(circle at 20% 20%, rgba(125, 235, 214, 0.16), transparent 46%);
+  transition: opacity 0.2s ease;
+}
+
+.nav-item::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 12px;
+  bottom: 12px;
+  width: 2px;
+  opacity: 0;
+  background: rgba(125, 235, 214, 0.9);
+  box-shadow: 0 0 14px rgba(125, 235, 214, 0.42);
+  transition: opacity 0.2s ease;
+}
+
 .nav-item:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.045);
   color: rgba(255, 255, 255, 0.85);
+  transform: translateX(2px);
+}
+
+.nav-item:hover::before {
+  opacity: 0.55;
 }
 
 .nav-item.active {
-  background: rgba(74, 144, 226, 0.25);
+  background:
+    linear-gradient(135deg, rgba(42, 98, 160, 0.78), rgba(22, 46, 78, 0.86)),
+    rgba(74, 144, 226, 0.24);
+  border-color: rgba(158, 216, 255, 0.18);
   color: white;
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  transform: translateX(0);
+}
+
+.nav-item.active::before {
+  opacity: 1;
+}
+
+.nav-item.active::after {
+  opacity: 1;
 }
 
 .nav-item.has-setup-issues {
@@ -834,6 +931,13 @@ body.plugin-task-surface-replace .task-steps {
   width: 20px;
   text-align: center;
   opacity: 0.8;
+  transition: transform 0.18s ease, opacity 0.18s ease;
+}
+
+.nav-item:hover .nav-icon,
+.nav-item.active .nav-icon {
+  opacity: 1;
+  transform: scale(1.08);
 }
 
 .nav-label {
@@ -885,6 +989,18 @@ body.plugin-task-surface-replace .task-steps {
 
 .settings-section.active {
   display: block;
+  animation: settings-section-enter 240ms cubic-bezier(0.2, 0.9, 0.18, 1);
+}
+
+@keyframes settings-section-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .section-title {
@@ -894,6 +1010,17 @@ body.plugin-task-surface-replace .task-steps {
   font-weight: 600;
   color: white;
   margin-bottom: 18px;
+  text-shadow: 0 12px 36px rgba(0, 0, 0, 0.32);
+}
+
+.section-title::before {
+  content: '◇';
+  display: inline-block;
+  margin-right: 9px;
+  color: rgba(125, 235, 214, 0.82);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  transform: translateY(-1px);
 }
 
 .setup-guidance-card {
@@ -981,11 +1108,26 @@ body.plugin-task-surface-replace .task-steps {
 
 
 .settings-card {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.028)),
+    rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 8px;
   overflow: hidden;
   width: min(100%, 560px);
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.055);
+  transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease;
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px));
+}
+
+.settings-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.11);
+  box-shadow:
+    0 22px 54px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.075);
 }
 
 .plugin-list {
@@ -1002,9 +1144,14 @@ body.plugin-task-surface-replace .task-steps {
   flex-direction: column;
   gap: 16px;
   padding: 14px 16px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 10px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.052), rgba(255, 255, 255, 0.027)),
+    rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.16);
+  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
 }
 
 .plugin-card-main {
@@ -1017,6 +1164,8 @@ body.plugin-task-surface-replace .task-steps {
 
 .plugin-card:hover {
   border-color: rgba(255, 255, 255, 0.12);
+  transform: translateY(-1px);
+  box-shadow: 0 20px 46px rgba(0, 0, 0, 0.20);
 }
 
 .plugin-card-list {
@@ -1527,6 +1676,11 @@ body.plugin-task-surface-replace .task-steps {
   gap: 14px;
   padding: 16px 18px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  transition: background 0.18s ease;
+}
+
+.settings-row:hover {
+  background: rgba(255, 255, 255, 0.026);
 }
 
 .settings-row:last-child {
@@ -1556,15 +1710,48 @@ body.plugin-task-surface-replace .task-steps {
 
 
 .about-card {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 12px;
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.062), rgba(255, 255, 255, 0.028)),
+    rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
   padding: clamp(22px, 4vw, 40px);
   text-align: center;
   width: min(100%, 400px);
+  box-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.075);
+  clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 18px 100%, 0 calc(100% - 18px));
+}
+
+.about-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(120deg, transparent 0%, rgba(255, 255, 255, 0.045) 42%, transparent 64%);
+  opacity: 0.7;
+}
+
+.about-card::after {
+  content: 'VOICE / MEMORY / EMOTION / TOOLS';
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: 12px;
+  pointer-events: none;
+  color: rgba(125, 235, 214, 0.28);
+  font-family: var(--font-ui);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  line-height: 1;
 }
 
 .about-orb {
+  position: relative;
   width: 80px;
   height: 80px;
   border-radius: 50%;
@@ -1578,7 +1765,24 @@ body.plugin-task-surface-replace .task-steps {
     0 0 54px rgba(105, 225, 205, 0.16),
     inset 0 0 18px rgba(125, 235, 214, 0.12);
   margin: 0 auto 20px;
-  animation: about-orb-glow 6s ease-in-out infinite;
+  animation: about-orb-glow 6s ease-in-out infinite, about-orb-float 5.5s ease-in-out infinite;
+}
+
+.about-orb::before,
+.about-orb::after {
+  content: '';
+  position: absolute;
+  inset: -7px;
+  border: 1px solid rgba(125, 235, 214, 0.18);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.about-orb::after {
+  inset: -15px;
+  border-color: rgba(90, 155, 255, 0.10);
+  clip-path: polygon(0 0, 48% 0, 48% 100%, 0 100%);
+  animation: about-orb-ring 8s linear infinite;
 }
 
 @keyframes about-orb-glow {
@@ -1593,6 +1797,21 @@ body.plugin-task-surface-replace .task-steps {
       0 0 36px rgba(76, 210, 190, 0.44),
       0 0 68px rgba(105, 225, 205, 0.22),
       inset 0 0 22px rgba(125, 235, 214, 0.16);
+  }
+}
+
+@keyframes about-orb-float {
+  0%, 100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-3px) scale(1.02);
+  }
+}
+
+@keyframes about-orb-ring {
+  to {
+    transform: rotate(360deg);
   }
 }
 
@@ -1615,16 +1834,17 @@ body.plugin-task-surface-replace .task-steps {
 .about-desc {
   font-family: var(--font-soft);
   font-size: 14px;
-  color: rgba(255, 255, 255, 0.6);
+  color: rgba(232, 255, 250, 0.72);
   margin-bottom: 20px;
 }
 
 .about-quote {
   font-family: var(--font-soft);
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.4);
+  max-width: 300px;
+  margin: 0 auto 18px;
+  color: rgba(255, 255, 255, 0.48);
   line-height: 1.8;
-  font-style: italic;
 }
 
 
@@ -1720,9 +1940,11 @@ body.plugin-task-surface-replace .task-steps {
 /* Select */
 .settings-select {
   font-family: var(--font-mixed);
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.035)),
+    rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
   padding: 8px 12px;
   color: white;
   font-size: 13px;
@@ -1730,6 +1952,11 @@ body.plugin-task-surface-replace .task-steps {
   cursor: pointer;
   width: min(100%, 220px);
   min-width: 0;
+}
+
+.settings-select:focus {
+  border-color: rgba(125, 235, 214, 0.34);
+  box-shadow: 0 0 0 3px rgba(125, 235, 214, 0.055);
 }
 
 .settings-select option {
@@ -1742,27 +1969,38 @@ body.plugin-task-surface-replace .task-steps {
   font-family: var(--font-ui);
   letter-spacing: 0.02em;
   padding: 8px 16px;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.035)),
+    rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
   color: rgba(255, 255, 255, 0.85);
   font-size: 12px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
 }
 
 .settings-btn:hover {
-  background: rgba(255, 255, 255, 0.15);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.105), rgba(255, 255, 255, 0.045)),
+    rgba(0, 0, 0, 0.18);
+  border-color: rgba(125, 235, 214, 0.22);
+  transform: translateY(-1px);
 }
 
 .settings-btn.active {
-  background: rgba(226, 74, 144, 0.8);
-  border-color: rgba(226, 74, 144, 0.85);
+  background:
+    linear-gradient(135deg, rgba(42, 98, 160, 0.86), rgba(22, 46, 78, 0.92)),
+    rgba(74, 144, 226, 0.24);
+  border-color: rgba(158, 216, 255, 0.24);
   color: white;
 }
 
 .settings-btn.active:hover {
-  background: rgba(226, 74, 144, 1);
+  background:
+    linear-gradient(135deg, rgba(50, 112, 180, 0.92), rgba(22, 52, 88, 0.96)),
+    rgba(74, 144, 226, 0.3);
 }
 
 .settings-btn.danger {
