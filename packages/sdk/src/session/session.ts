@@ -20,6 +20,12 @@ import {
   type TaskRuntimeHooks,
   type TaskTurnRecord,
 } from './task.js'
+import {
+  BUILTIN_TASK_RUNTIME_ADAPTER_ID,
+  type TaskRuntimeAdapter,
+  type TaskRuntimeAdapterHooks,
+  type TaskRuntimeRequest,
+} from './runtime-adapter.js'
 import type { TaskIntent } from '../dialogue/processors.js'
 import type { TaskPlan, TaskRunState } from './task-plan.js'
 
@@ -135,6 +141,7 @@ export class TaskSession {
   private taskQueue: QueuedTaskRun[] = []
   private queueDrainPromise: Promise<void> | null = null
   private queueDrainSuspended = false
+  private runtimeAdapters: TaskRuntimeAdapter[] = [createBuiltinTaskRuntimeAdapter()]
 
   constructor(
     private llm: LLMProvider,
@@ -166,6 +173,13 @@ export class TaskSession {
       console.error('[TaskSession] Failed to initialize persistence:', error)
       console.log('[TaskSession] Continuing in memory-only mode')
     }
+  }
+
+  setRuntimeAdapters(adapters: TaskRuntimeAdapter[]): void {
+    this.runtimeAdapters = [
+      createBuiltinTaskRuntimeAdapter(),
+      ...adapters.filter(adapter => adapter.id !== BUILTIN_TASK_RUNTIME_ADAPTER_ID),
+    ]
   }
 
   async runTask(
@@ -345,54 +359,60 @@ export class TaskSession {
     signal: AbortSignal
   ): Promise<TaskRunResult> {
     const memoryContext = await this.memory.retrieve(originalUserInput)
-    const runtime = new TaskRuntime(
-      this.llm,
-      this.agent,
-      this.personality,
-      this.context,
+    const taskMeta = { taskDescription, originalUserInput }
+    const hooks: TaskRuntimeAdapterHooks = {
+      onTurnCompleted: (turn) => {
+        this.snapshot.turnCount = turn.turnIndex
+        this.snapshot.toolCalls += turn.toolCalls.length
+        this.snapshot.recentTurns = [...this.snapshot.recentTurns, turn].slice(-6)
+        this.persistTurn(turn)
+        this.persistSnapshot()
+      },
+      onStatusChanged: (status) => {
+        this.snapshot.status = status
+        this.persistSnapshot()
+      },
+      onRunStateChanged: (state) => {
+        this.snapshot.runState = state
+        this.persistSnapshot()
+        this.runtimeHooks.onRunStateChanged?.(state, taskMeta)
+      },
+      onPlanUpdated: (plan) => {
+        this.snapshot.plan = cloneTaskPlan(plan)
+        this.persistSnapshot()
+        this.runtimeHooks.onPlanUpdated?.(cloneTaskPlan(plan), taskMeta)
+      },
+      onStepUpdated: (step, plan) => {
+        this.snapshot.plan = cloneTaskPlan(plan)
+        this.persistSnapshot()
+        this.runtimeHooks.onStepUpdated?.(JSON.parse(JSON.stringify(step)) as typeof step, cloneTaskPlan(plan), taskMeta)
+      },
+      onCompact: (summary) => {
+        this.snapshot.compactSummary = summary
+        this.persistSnapshot()
+      },
+      onUserInputRequest: this.runtimeHooks.onUserInputRequest,
+      resolveToolStrategyHints: this.runtimeHooks.resolveToolStrategyHints,
+    }
+    const request: TaskRuntimeRequest = {
+      taskId: this.snapshot.taskId ?? generateId(),
       taskDescription,
       originalUserInput,
       memoryContext,
       taskContextItems,
-      {
-        onTurnCompleted: (turn) => {
-          this.snapshot.turnCount = turn.turnIndex
-          this.snapshot.toolCalls += turn.toolCalls.length
-          this.snapshot.recentTurns = [...this.snapshot.recentTurns, turn].slice(-6)
-          this.persistTurn(turn)
-          this.persistSnapshot()
-        },
-        onStatusChanged: (status) => {
-          this.snapshot.status = status
-          this.persistSnapshot()
-        },
-        onRunStateChanged: (state, task) => {
-          this.snapshot.runState = state
-          this.persistSnapshot()
-          this.runtimeHooks.onRunStateChanged?.(state, task)
-        },
-        onPlanUpdated: (plan, task) => {
-          this.snapshot.plan = cloneTaskPlan(plan)
-          this.persistSnapshot()
-          this.runtimeHooks.onPlanUpdated?.(cloneTaskPlan(plan), task)
-        },
-        onStepUpdated: (step, plan, task) => {
-          this.snapshot.plan = cloneTaskPlan(plan)
-          this.persistSnapshot()
-          this.runtimeHooks.onStepUpdated?.(JSON.parse(JSON.stringify(step)) as typeof step, cloneTaskPlan(plan), task)
-        },
-        onCompact: (summary) => {
-          this.snapshot.compactSummary = summary
-          this.persistSnapshot()
-        },
-        onUserInputRequest: this.runtimeHooks.onUserInputRequest,
-        resolveToolStrategyHints: this.runtimeHooks.resolveToolStrategyHints,
+      config: this.taskRuntimeConfig,
+      signal,
+      dependencies: {
+        llm: this.llm,
+        agent: this.agent,
+        personality: this.personality,
+        context: this.context,
       },
-      this.taskRuntimeConfig,
-      signal
-    )
+    }
 
-    const result = await runtime.run()
+    const adapter = await this.selectRuntimeAdapter(request)
+    console.log(`[TaskSession] Using task runtime adapter: ${adapter.id}`)
+    const result = await adapter.run(request, hooks)
     if (!result.success) {
       this.snapshot.lastError = result.error
     }
@@ -402,6 +422,25 @@ export class TaskSession {
     this.snapshot.finalSummary = result.finalMessage
     this.persistSnapshot()
     return result
+  }
+
+  private async selectRuntimeAdapter(request: TaskRuntimeRequest): Promise<TaskRuntimeAdapter> {
+    const configuredId = request.config.adapterId?.trim()
+    const candidates = configuredId
+      ? this.runtimeAdapters.filter(adapter => adapter.id === configuredId)
+      : this.runtimeAdapters.filter(adapter => adapter.id === BUILTIN_TASK_RUNTIME_ADAPTER_ID)
+
+    for (const adapter of candidates) {
+      if (!adapter.canHandle || await adapter.canHandle(request)) {
+        return adapter
+      }
+    }
+
+    if (configuredId) {
+      console.warn(`[TaskSession] Task runtime adapter "${configuredId}" is unavailable; falling back to builtin`)
+    }
+    return this.runtimeAdapters.find(adapter => adapter.id === BUILTIN_TASK_RUNTIME_ADAPTER_ID)
+      ?? createBuiltinTaskRuntimeAdapter()
   }
 
   getSnapshot(): SessionTaskSnapshot {
@@ -694,6 +733,38 @@ export class TaskSession {
 
 function cloneTaskPlan(plan: TaskPlan): TaskPlan {
   return JSON.parse(JSON.stringify(plan)) as TaskPlan
+}
+
+function createBuiltinTaskRuntimeAdapter(): TaskRuntimeAdapter {
+  return {
+    id: BUILTIN_TASK_RUNTIME_ADAPTER_ID,
+    label: 'Built-in tool loop',
+    async run(request, hooks) {
+      const runtime = new TaskRuntime(
+        request.dependencies.llm,
+        request.dependencies.agent,
+        request.dependencies.personality,
+        request.dependencies.context,
+        request.taskDescription,
+        request.originalUserInput,
+        request.memoryContext,
+        request.taskContextItems,
+        {
+          onTurnCompleted: hooks.onTurnCompleted,
+          onStatusChanged: hooks.onStatusChanged,
+          onRunStateChanged: (state) => hooks.onRunStateChanged?.(state),
+          onPlanUpdated: (plan) => hooks.onPlanUpdated?.(plan),
+          onStepUpdated: (step, plan) => hooks.onStepUpdated?.(step, plan),
+          onCompact: hooks.onCompact,
+          onUserInputRequest: hooks.onUserInputRequest,
+          resolveToolStrategyHints: hooks.resolveToolStrategyHints,
+        },
+        request.config,
+        request.signal
+      )
+      return runtime.run()
+    },
+  }
 }
 
 function parseTaskAdmission(content: string): Partial<TaskAdmissionDecision> {

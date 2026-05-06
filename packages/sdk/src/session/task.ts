@@ -81,10 +81,17 @@ export interface TaskRuntimeHooks {
 }
 
 export interface TaskRuntimeConfig {
+  adapterId?: string
   maxTurns?: number
   modelContextWindow?: number
   autoCompactTokenLimit?: number
   keepRecentTurns?: number
+  cwd?: string
+  timeoutMs?: number
+  command?: string
+  model?: string
+  extraArgs?: string[]
+  env?: Record<string, string>
 }
 
 export interface TaskContextItem {

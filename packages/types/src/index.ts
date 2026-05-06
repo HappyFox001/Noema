@@ -89,10 +89,17 @@ export interface SDKConfig {
   }
 
   taskRuntime?: {
+    adapterId?: string
     maxTurns?: number
     modelContextWindow?: number
     autoCompactTokenLimit?: number
     keepRecentTurns?: number
+    cwd?: string
+    timeoutMs?: number
+    command?: string
+    model?: string
+    extraArgs?: string[]
+    env?: Record<string, string>
   }
 
   memory: {

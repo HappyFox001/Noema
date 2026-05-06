@@ -156,17 +156,29 @@ export interface SystemConfig {
 }
 
 export interface TaskRuntimeSettings {
+  adapterId: string
   maxTurns: number
   modelContextWindow: number
   autoCompactTokenLimit: number
   keepRecentTurns: number
+  cwd: string
+  timeoutMs: number
+  command: string
+  model: string
+  extraArgs: string[]
 }
 
 const DEFAULT_TASK_RUNTIME_SETTINGS: TaskRuntimeSettings = {
+  adapterId: 'builtin_tool_loop',
   maxTurns: 24,
   modelContextWindow: 128000,
   autoCompactTokenLimit: 115200,
-  keepRecentTurns: 4
+  keepRecentTurns: 4,
+  cwd: '',
+  timeoutMs: 1800000,
+  command: '',
+  model: '',
+  extraArgs: []
 }
 
 export interface AppSettings {
@@ -486,9 +498,19 @@ function normalizeTaskRuntimeSettings(value: unknown): TaskRuntimeSettings {
   )
 
   return {
+    adapterId: typeof source.adapterId === 'string' && source.adapterId.trim()
+      ? source.adapterId.trim()
+      : DEFAULT_TASK_RUNTIME_SETTINGS.adapterId,
     maxTurns,
     modelContextWindow,
     autoCompactTokenLimit,
-    keepRecentTurns
+    keepRecentTurns,
+    cwd: typeof source.cwd === 'string' ? source.cwd : '',
+    timeoutMs: clampInteger(source.timeoutMs, DEFAULT_TASK_RUNTIME_SETTINGS.timeoutMs, 1000, 24 * 60 * 60 * 1000),
+    command: typeof source.command === 'string' ? source.command : '',
+    model: typeof source.model === 'string' ? source.model : '',
+    extraArgs: Array.isArray(source.extraArgs)
+      ? source.extraArgs.filter((value): value is string => typeof value === 'string')
+      : []
   }
 }

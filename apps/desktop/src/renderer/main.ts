@@ -5,6 +5,8 @@
  * settings panel interactions, and renderer-side IPC event handling.
  */
 import './styles.css'
+import claudeCodeLogoUrl from '../../../../assets/claude_code_logo.png'
+import codexLogoUrl from '../../../../assets/codex_logo.png'
 
 // ========== Audio Player ==========
 
@@ -870,10 +872,16 @@ type ASRModelConfig = {
 type ApiModelTestKind = 'llm' | 'task' | 'tts' | 'asr'
 
 type TaskRuntimeSettings = {
+  adapterId: string
   maxTurns: number
   modelContextWindow: number
   autoCompactTokenLimit: number
   keepRecentTurns: number
+  cwd: string
+  timeoutMs: number
+  command: string
+  model: string
+  extraArgs: string[]
 }
 
 type SystemConfig = {
@@ -2857,6 +2865,7 @@ function renderPluginsSection(plugins: PluginInfo[]): void {
         </label>
       </div>
       <div class="plugin-card-footer">
+        ${renderPluginRuntimeStatus(plugin)}
         <span>${plugin.configSchema.length ? `${plugin.configSchema.length} 个参数` : '无可配置参数'}</span>
         ${plugin.uiSurfaces.length ? `<span>${plugin.uiSurfaces.length} 个界面 hook</span>` : ''}
         <span class="plugin-enter">管理</span>
@@ -2922,6 +2931,7 @@ function renderPluginDetail(plugin: PluginInfo): void {
         <div class="plugin-info">
           <div class="plugin-id">${escapeHtml(plugin.id)}</div>
           ${plugin.description ? `<div class="plugin-description plugin-detail-description">${escapeHtml(plugin.description)}</div>` : ''}
+          ${renderPluginRuntimeStatus(plugin)}
           ${plugin.uiSurfaces.length ? `<div class="plugin-permissions">${plugin.uiSurfaces.map(surface => `<span>UI: ${escapeHtml(surface.slot)} / ${escapeHtml(surface.mode)}</span>`).join('')}</div>` : ''}
           ${plugin.permissions.length ? `<div class="plugin-permissions">${plugin.permissions.map(permission => `<span>${escapeHtml(permission)}</span>`).join('')}</div>` : ''}
         </div>
@@ -3296,6 +3306,17 @@ function bindPluginConfigInputs(): void {
       const key = input.dataset.pluginConfig
       const type = input.dataset.pluginType
       if (!pluginId || !key || !type) return
+      const optimisticValue = readPluginConfigValue(input, type)
+      const target = cachedPlugins.find(item => item.id === pluginId)
+      const previousConfig = target ? { ...target.config } : null
+
+      if (target) {
+        target.config = {
+          ...target.config,
+          [key]: optimisticValue,
+        }
+      }
+      updatePluginConfigOptimisticUI(pluginId, key, optimisticValue)
 
       input.disabled = true
       try {
@@ -3305,17 +3326,20 @@ function bindPluginConfigInputs(): void {
           ...(settings.pluginConfigs ?? {}),
           [pluginId]: {
             ...currentPluginConfig,
-            [key]: readPluginConfigValue(input, type),
+            [key]: optimisticValue,
           },
         }
         await window.electronAPI.updateSettings({ pluginConfigs: nextPluginConfigs })
-        const target = cachedPlugins.find(item => item.id === pluginId)
         if (target) {
           target.config = nextPluginConfigs[pluginId]
         }
         await loadPluginUISurfaces()
         showPanelNotice('插件参数已更新')
       } catch (error: any) {
+        if (target && previousConfig) {
+          target.config = previousConfig
+          updatePluginConfigOptimisticUI(pluginId, key, previousConfig[key])
+        }
         showPanelNotice(`插件参数保存失败: ${error.message}`, 'error')
       } finally {
         input.disabled = false
@@ -3364,7 +3388,95 @@ function renderPluginConfigFields(plugin: PluginInfo): string {
   `
 }
 
+const TASK_RUNTIME_CHOICES = {
+  codex_local: { label: 'Codex', icon: codexLogoUrl, className: 'codex' },
+  claude_code_local: { label: 'Claude Code', icon: claudeCodeLogoUrl, className: 'claude' },
+} as const
+
+function taskRuntimeChoiceMeta(value: unknown) {
+  const key = typeof value === 'string' ? value : 'codex_local'
+  return TASK_RUNTIME_CHOICES[key as keyof typeof TASK_RUNTIME_CHOICES] ?? TASK_RUNTIME_CHOICES.codex_local
+}
+
+function renderPluginRuntimeStatus(plugin: PluginInfo): string {
+  if (plugin.id !== 'task-runtime-cli') return ''
+  const meta = taskRuntimeChoiceMeta(plugin.config.activeRuntime)
+  return `<span class="plugin-runtime-status ${escapeHtml(meta.className)}"><img class="plugin-runtime-icon" src="${escapeHtml(meta.icon)}" alt="" />${escapeHtml(meta.label)}</span>`
+}
+
+function updatePluginConfigOptimisticUI(pluginId: string, key: string, value: unknown): void {
+  if (pluginId !== 'task-runtime-cli' || key !== 'activeRuntime') {
+    return
+  }
+
+  const selectedValue = typeof value === 'string' ? value : 'codex_local'
+  const meta = taskRuntimeChoiceMeta(selectedValue)
+
+  pluginsList.querySelectorAll<HTMLElement>('.task-runtime-choice').forEach(choice => {
+    const input = choice.querySelector<HTMLInputElement>(
+      'input[data-plugin-config="activeRuntime"]'
+    )
+    const active = input?.value === selectedValue
+    choice.classList.toggle('active', active)
+    if (input) {
+      input.checked = active
+    }
+  })
+
+  pluginsList.querySelectorAll<HTMLElement>(
+    `.plugin-card[data-plugin-id="${cssEscape(pluginId)}"] .plugin-runtime-status`
+  ).forEach(status => {
+    status.className = `plugin-runtime-status ${meta.className}`
+    status.innerHTML = `<img class="plugin-runtime-icon" src="${escapeHtml(meta.icon)}" alt="" />${escapeHtml(meta.label)}`
+  })
+}
+
+function renderTaskRuntimeChoiceField(plugin: PluginInfo, field: Extract<PluginConfigField, { type: 'select' }>): string {
+  const configuredValue = String(plugin.config[field.key] ?? field.default ?? 'codex_local')
+  const rawValue = field.options.some(option => option.value === configuredValue)
+    ? configuredValue
+    : String(field.default ?? field.options[0]?.value ?? 'codex_local')
+  const desc = field.description
+    ? `<div class="plugin-config-desc">${escapeHtml(field.description)}</div>`
+    : ''
+  return `
+    <div class="plugin-config-row plugin-config-row-multiline">
+      <div class="plugin-config-meta">
+        <div class="plugin-config-label">${escapeHtml(field.label ?? field.key)}</div>
+        ${desc}
+      </div>
+      <div class="task-runtime-choice-grid">
+        ${field.options.map(option => {
+          const meta = taskRuntimeChoiceMeta(option.value)
+          return `
+            <label class="task-runtime-choice ${option.value === rawValue ? 'active' : ''}">
+              <input
+                type="radio"
+                name="task-runtime-cli-active-runtime"
+                value="${escapeHtml(option.value)}"
+                ${option.value === rawValue ? 'checked' : ''}
+                data-plugin-id="${escapeHtml(plugin.id)}"
+                data-plugin-config="${escapeHtml(field.key)}"
+                data-plugin-type="${escapeHtml(field.type)}"
+              />
+              <img class="task-runtime-choice-icon ${escapeHtml(meta.className)}" src="${escapeHtml(meta.icon)}" alt="" />
+              <span class="task-runtime-choice-label">${escapeHtml(option.label)}</span>
+            </label>
+          `
+        }).join('')}
+      </div>
+    </div>
+  `
+}
+
 function renderPluginConfigField(plugin: PluginInfo, field: PluginConfigField): string {
+  if (plugin.id === 'task-runtime-cli' && field.key === 'activeRuntime' && field.type === 'select') {
+    return renderTaskRuntimeChoiceField(plugin, field)
+  }
+  if (plugin.id === 'task-runtime-cli') {
+    return renderTaskRuntimeCliConfigField(plugin, field)
+  }
+
   const rawValue = plugin.config[field.key] ?? field.default
   const label = escapeHtml(field.label ?? field.key)
   const desc = field.description
@@ -3406,6 +3518,28 @@ function renderPluginConfigField(plugin: PluginInfo, field: PluginConfigField): 
 
   return `
     <div class="plugin-config-row ${field.type === 'string' && field.multiline ? 'plugin-config-row-multiline' : ''}">
+      <div class="plugin-config-meta">
+        <div class="plugin-config-label">${label}</div>
+        ${desc}
+      </div>
+      ${control}
+    </div>
+  `
+}
+
+function renderTaskRuntimeCliConfigField(plugin: PluginInfo, field: PluginConfigField): string {
+  const rawValue = plugin.config[field.key] ?? field.default
+  const label = escapeHtml(field.label ?? field.key)
+  const desc = field.description
+    ? `<div class="plugin-config-desc">${escapeHtml(field.description)}</div>`
+    : ''
+  const commonAttrs = `data-plugin-id="${escapeHtml(plugin.id)}" data-plugin-config="${escapeHtml(field.key)}" data-plugin-type="${field.type}"`
+  const control = field.type === 'number'
+    ? `<input class="plugin-config-input task-runtime-plugin-input" type="number" value="${escapeHtml(String(rawValue ?? ''))}" ${field.min !== undefined ? `min="${field.min}"` : ''} ${field.max !== undefined ? `max="${field.max}"` : ''} ${field.step !== undefined ? `step="${field.step}"` : ''} ${commonAttrs} />`
+    : `<input class="plugin-config-input task-runtime-plugin-input" type="text" value="${escapeHtml(String(rawValue ?? ''))}" placeholder="${field.type === 'string' ? escapeHtml(field.placeholder ?? '') : ''}" ${commonAttrs} />`
+
+  return `
+    <div class="plugin-config-row plugin-config-row-multiline task-runtime-plugin-field">
       <div class="plugin-config-meta">
         <div class="plugin-config-label">${label}</div>
         ${desc}
@@ -4889,10 +5023,16 @@ async function updateTaskRuntimeSettings(): Promise<void> {
   )
 
   currentSystemConfig.taskRuntime = {
+    adapterId: currentSystemConfig.taskRuntime.adapterId || 'builtin_tool_loop',
     maxTurns,
     modelContextWindow,
     autoCompactTokenLimit,
-    keepRecentTurns
+    keepRecentTurns,
+    cwd: currentSystemConfig.taskRuntime.cwd || '',
+    timeoutMs: currentSystemConfig.taskRuntime.timeoutMs || 1800000,
+    command: currentSystemConfig.taskRuntime.command || '',
+    model: currentSystemConfig.taskRuntime.model || '',
+    extraArgs: currentSystemConfig.taskRuntime.extraArgs || []
   }
   renderTaskRuntimeSettings()
   await saveSystemConfig()

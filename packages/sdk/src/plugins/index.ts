@@ -5,6 +5,7 @@
  * task-context injection, expression selection, and admin actions.
  */
 import type { Tool } from '@her-text/types'
+import type { TaskRuntimeAdapter } from '../session/runtime-adapter.js'
 import type { TaskPlan, TaskRunState, TaskStep } from '../session/task-plan.js'
 
 export type PluginPermission =
@@ -220,6 +221,7 @@ export interface SDKPlugin {
   setup?(context: SDKPluginContext): void | Promise<void>
   shutdown?(context: SDKPluginContext): void | Promise<void>
   registerTools?(context: ToolRegistrationContext): Tool[] | Promise<Tool[]>
+  registerTaskRuntimes?(context: ToolRegistrationContext): TaskRuntimeAdapter[] | Promise<TaskRuntimeAdapter[]>
   getAdminState?(): Promise<unknown> | unknown
   handleAdminAction?(action: string, payload?: unknown): Promise<unknown> | unknown
   resolveTaskContext?(context: TaskContextResolveContext): TaskContextInjection[] | Promise<TaskContextInjection[]>
@@ -329,6 +331,29 @@ export class PluginManager {
     }
 
     return tools
+  }
+
+  async getTaskRuntimes(context: ToolRegistrationContext = { runtime: {} }): Promise<TaskRuntimeAdapter[]> {
+    const adapters: TaskRuntimeAdapter[] = []
+    const seen = new Set<string>()
+
+    for (const plugin of this.plugins) {
+      const pluginAdapters = await plugin.registerTaskRuntimes?.(context)
+      if (!pluginAdapters?.length) {
+        continue
+      }
+
+      for (const adapter of pluginAdapters) {
+        if (seen.has(adapter.id)) {
+          console.warn(`[PluginManager] Skipping duplicate task runtime adapter: ${adapter.id}`)
+          continue
+        }
+        seen.add(adapter.id)
+        adapters.push(adapter)
+      }
+    }
+
+    return adapters
   }
 
   async resolveTaskContextInjections(context: TaskContextResolveContext): Promise<TaskContextInjection[]> {

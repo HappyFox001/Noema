@@ -1,0 +1,73 @@
+{
+  "id": "task-runtime-cli",
+  "name": "CLI Task Runtimes",
+  "description": "Use local Codex or Claude Code CLIs as task runtime backends.",
+  "version": "0.1.0",
+  "type": "sdk-plugin",
+  "main": "index.mjs",
+  "enabled": true,
+  "permissions": [
+    "shell.execute",
+    "filesystem.read",
+    "filesystem.write"
+  ],
+  "config": {
+    "activeRuntime": "codex_local",
+    "cwd": "",
+    "command": "",
+    "model": "",
+    "timeoutMs": 1800000,
+    "extraArgs": ""
+  },
+  "configSchema": [
+    {
+      "key": "activeRuntime",
+      "label": "Task Runtime",
+      "description": "Choose which backend owns normal task execution.",
+      "type": "select",
+      "default": "codex_local",
+      "options": [
+        { "label": "Codex", "value": "codex_local" },
+        { "label": "Claude Code", "value": "claude_code_local" }
+      ]
+    },
+    {
+      "key": "cwd",
+      "label": "Working Directory",
+      "description": "Project directory for Codex/Claude Code. Empty uses the current process directory.",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "key": "command",
+      "label": "Command",
+      "description": "Override the selected CLI command. Empty uses codex or claude.",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "key": "model",
+      "label": "Model",
+      "description": "Model argument passed to the external CLI. Empty uses the CLI default.",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "key": "timeoutMs",
+      "label": "Timeout Ms",
+      "description": "Maximum duration for one external CLI task run.",
+      "type": "number",
+      "default": 1800000,
+      "min": 1000,
+      "max": 86400000,
+      "step": 1000
+    },
+    {
+      "key": "extraArgs",
+      "label": "Extra Args",
+      "description": "Additional external CLI args separated by spaces.",
+      "type": "string",
+      "default": ""
+    }
+  ]
+}

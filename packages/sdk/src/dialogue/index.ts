@@ -187,6 +187,7 @@ export class DialogueOrchestrator {
     for (const tool of pluginTools) {
       this.agent.registerTool(tool)
     }
+    this.taskSession.setRuntimeAdapters(await this.pluginManager.getTaskRuntimes({ runtime: {} }))
     await this.taskSession.initialize()
   }
 

@@ -94,7 +94,8 @@ import {
   getStorageDir,
   setActiveLLMConfig,
   setActiveTaskLLMConfig,
-  setActiveTaskRuntimeConfig
+  setActiveTaskRuntimeConfig,
+  setActivePluginConfigs
 } from './sdk-config.js'
 import { SettingsStore, type AppSettings, type LLMModelConfig, type TTSModelConfig, type ASRModelConfig } from './settings-store.js'
 import { InteractiveInputStore, type StoredInteractiveInput, type StoredInteractiveInputGroup } from './interactive-input-store.js'
@@ -1783,10 +1784,16 @@ let appSettings: AppSettings = {
     taskModels: [{ id: 'default-task', modelName: 'gemini-3.1-pro-preview', apiKey: '', baseUrl: '' }],
     activeTaskId: 'default-task',
     taskRuntime: {
+      adapterId: 'builtin_tool_loop',
       maxTurns: 24,
       modelContextWindow: 128000,
       autoCompactTokenLimit: 115200,
-      keepRecentTurns: 4
+      keepRecentTurns: 4,
+      cwd: '',
+      timeoutMs: 1800000,
+      command: '',
+      model: '',
+      extraArgs: []
     },
     ttsModels: [{ id: 'default-tts', provider: 'fish', modelName: 's2-pro', apiKey: '', voiceId: '' }],
     activeTTSId: 'default-tts',
@@ -2437,6 +2444,8 @@ async function initializeSDK(): Promise<void> {
   setActiveLLMConfig(getActiveLLMConfig())
   setActiveTaskLLMConfig(getActiveTaskConfig())
   setActiveTaskRuntimeConfig(appSettings.system.taskRuntime)
+  process.env.HER_TEXT_TASK_RUNTIME_CLI_ENABLED = appSettings.plugins['task-runtime-cli'] === false ? 'false' : 'true'
+  setActivePluginConfigs(appSettings.pluginConfigs)
   const sdkConfig = await buildSDKConfig()
   const pluginsDir = resolveRuntimePluginsDir()
   console.log('[PluginLoader] Runtime plugins directory:', pluginsDir)

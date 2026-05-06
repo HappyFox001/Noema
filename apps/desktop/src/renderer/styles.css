@@ -1312,6 +1312,27 @@ body.plugin-task-surface-replace .task-steps {
   color: rgba(255, 255, 255, 0.62);
 }
 
+.plugin-runtime-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.plugin-runtime-icon,
+.task-runtime-choice-icon {
+  width: 22px;
+  height: 22px;
+  display: block;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.plugin-runtime-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+}
+
 .plugin-detail-header {
   display: flex;
   align-items: center;
@@ -1447,6 +1468,45 @@ body.plugin-task-surface-replace .task-steps {
   color: rgba(255, 255, 255, 0.38);
 }
 
+.task-runtime-choice-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  width: min(100%, 520px);
+}
+
+.task-runtime-choice {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.78);
+  cursor: pointer;
+}
+
+.task-runtime-choice.active {
+  border-color: rgba(226, 74, 144, 0.42);
+  background: rgba(226, 74, 144, 0.08);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.task-runtime-choice input {
+  display: none;
+}
+
+.task-runtime-choice-label {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.task-runtime-plugin-field {
+  gap: 8px;
+}
+
 .plugin-config-input {
   width: 120px;
   max-width: 100%;
@@ -1459,6 +1519,11 @@ body.plugin-task-surface-replace .task-steps {
   font-family: var(--font-ui);
   font-size: 11px;
   outline: none;
+}
+
+.plugin-config-input.task-runtime-plugin-input {
+  width: 100%;
+  height: 34px;
 }
 
 .plugin-config-textarea {
@@ -3619,7 +3684,23 @@ body.task-active:not(.settings-open) #main-view {
   outline: none;
 }
 
-.settings-number-input:focus {
+.task-runtime-card .settings-select,
+.settings-text-input {
+  width: 220px;
+  min-width: 220px;
+  padding: 7px 10px;
+  font-size: 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.85);
+  font-family: var(--font-ui);
+  outline: none;
+}
+
+.settings-number-input:focus,
+.task-runtime-card .settings-select:focus,
+.settings-text-input:focus {
   border-color: rgba(226, 74, 144, 0.4);
   background: rgba(255, 255, 255, 0.05);
 }
