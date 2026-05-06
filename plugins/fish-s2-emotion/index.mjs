@@ -58,7 +58,7 @@ export default function plugin() {
       }
 
       if (context.target === 'tts_input') {
-        return text
+        return stripUnsupportedBracketCues(text)
       }
 
       return stripFishS2EmotionCues(text)
@@ -69,6 +69,18 @@ export default function plugin() {
 function stripFishS2EmotionCues(text) {
   return text
     .replace(/\[[a-zA-Z][a-zA-Z\s-]{0,40}\]\s*/g, '')
+    .replace(/\s+([。！？!?，、；：,.])/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function stripUnsupportedBracketCues(text) {
+  return text
+    .replace(/\[([a-zA-Z][a-zA-Z\s-]{0,40})\]\s*/g, (match, cue) => {
+      return FISH_S2_EMOTION_CUES.includes(String(cue).trim().toLowerCase())
+        ? match
+        : ''
+    })
     .replace(/\s+([。！？!?，、；：,.])/g, '$1')
     .replace(/\s+/g, ' ')
     .trim()
