@@ -1313,14 +1313,38 @@ function invalidateTTSContext(reason: InterruptionReason = 'manual'): void {
 }
 
 
-async function startNewTurn(): Promise<number> {
-  await cancelCurrentTurn({ closeTTS: true, reason: 'manual' })
+async function startNewTurn(options: { preserveActiveTask?: boolean } = {}): Promise<number> {
+  if (options.preserveActiveTask && isTaskRunActive()) {
+    await interruptCurrentOutputOnly({ closeTTS: true, reason: 'transcript_start' })
+  } else {
+    await cancelCurrentTurn({ closeTTS: true, reason: 'manual' })
+  }
 
   currentTurnId++
   cancelledTurnIds.delete(currentTurnId)
   currentTurnAbortController = new AbortController()
   console.log(`[Turn] Started new turn #${currentTurnId}`)
   return currentTurnId
+}
+
+async function interruptCurrentOutputOnly(
+  options: { closeTTS?: boolean; reason?: InterruptionReason } = {}
+): Promise<void> {
+  const reason = options.reason ?? 'manual'
+  if (!currentResponseFramePipeline && !currentTurnAbortController) {
+    return
+  }
+
+  console.log(`[Turn] Interrupting output only for turn #${currentTurnId}`)
+  cancelledTurnIds.add(currentTurnId)
+  currentResponseFramePipeline?.interrupt()
+  invalidateTTSContext(reason)
+
+  if (options.closeTTS) {
+    await ttsService?.interrupt().catch((error: Error) => {
+      console.warn('[TTS] Failed to close during output interruption:', error.message)
+    })
+  }
 }
 
 
@@ -1370,6 +1394,10 @@ function isTurnCancelled(turnId: number): boolean {
     turnId !== currentTurnId ||
     currentTurnAbortController?.signal.aborted === true
   )
+}
+
+function isTaskRunActive(): boolean {
+  return sdkInstance?.getStats().task.status === 'running'
 }
 
 function sanitizeTextForSpeech(text: string): string {
@@ -2618,7 +2646,9 @@ async function runConversationTurn(
       return { success: true, response: '', ttsEnabled: false }
     }
 
-    turnId = await startNewTurn()
+    turnId = await startNewTurn({
+      preserveActiveTask: source === 'voice'
+    })
     const turnAbortSignal = currentTurnAbortController!.signal
 
     mainWindow?.webContents.send('turn:start', turnId)
@@ -2910,9 +2940,12 @@ ipcMain.handle('speech:stream:start', async () => {
         mainWindow?.webContents.send('speech:user-speaking')
       },
       onInterruption: (reason) => {
-        console.log(`[Speech] Interruption detected, cancelling turn, reason=${reason}`)
+        const hasActiveTask = isTaskRunActive()
+        console.log(`[Speech] Interruption detected, ${hasActiveTask ? 'stopping output only' : 'cancelling turn'}, reason=${reason}`)
 
-        void cancelCurrentTurn({ closeTTS: true, reason })
+        void (hasActiveTask
+          ? interruptCurrentOutputOnly({ closeTTS: true, reason })
+          : cancelCurrentTurn({ closeTTS: true, reason }))
       }
     })
 
