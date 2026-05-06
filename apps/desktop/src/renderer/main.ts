@@ -724,7 +724,7 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'taskPanel.title': 'Task',
     'nav.about': 'About',
     'nav.memory': 'Memory',
-    'nav.personality': 'Personality',
+    'nav.personality': 'Persona',
     'nav.plugins': 'Plugins',
     'nav.system': 'System',
     'nav.voice': 'Voice',
