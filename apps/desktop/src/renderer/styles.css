@@ -1568,14 +1568,15 @@ body.plugin-task-surface-replace .task-steps {
   width: 80px;
   height: 80px;
   border-radius: 50%;
-  background: radial-gradient(circle at 30% 30%,
-    rgba(255, 255, 255, 0.2) 0%,
-    rgba(226, 74, 144, 0.6) 40%,
-    rgba(74, 144, 226, 0.4) 100%
-  );
+  background:
+    radial-gradient(circle at 32% 28%, rgba(225, 255, 250, 0.62) 0%, rgba(136, 186, 176, 0.78) 16%, transparent 32%),
+    radial-gradient(circle at 58% 42%, rgba(83, 230, 205, 0.20) 0%, transparent 48%),
+    radial-gradient(circle at 68% 72%, rgba(90, 155, 255, 0.16) 0%, transparent 52%),
+    radial-gradient(circle at 42% 36%, rgba(136, 186, 176, 1) 0%, rgba(35, 76, 72, 1) 34%, rgba(7, 36, 35, 1) 62%, rgba(1, 9, 10, 1) 100%);
   box-shadow:
-    0 0 40px rgba(226, 74, 144, 0.4),
-    0 0 60px rgba(74, 144, 226, 0.2);
+    0 0 28px rgba(76, 210, 190, 0.34),
+    0 0 54px rgba(105, 225, 205, 0.16),
+    inset 0 0 18px rgba(125, 235, 214, 0.12);
   margin: 0 auto 20px;
   animation: about-orb-glow 6s ease-in-out infinite;
 }
@@ -1583,13 +1584,15 @@ body.plugin-task-surface-replace .task-steps {
 @keyframes about-orb-glow {
   0%, 100% {
     box-shadow:
-      0 0 40px rgba(226, 74, 144, 0.4),
-      0 0 60px rgba(74, 144, 226, 0.2);
+      0 0 28px rgba(76, 210, 190, 0.34),
+      0 0 54px rgba(105, 225, 205, 0.16),
+      inset 0 0 18px rgba(125, 235, 214, 0.12);
   }
   50% {
     box-shadow:
-      0 0 50px rgba(226, 74, 144, 0.5),
-      0 0 80px rgba(74, 144, 226, 0.3);
+      0 0 36px rgba(76, 210, 190, 0.44),
+      0 0 68px rgba(105, 225, 205, 0.22),
+      inset 0 0 22px rgba(125, 235, 214, 0.16);
   }
 }
 
