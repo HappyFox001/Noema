@@ -103,11 +103,16 @@ import {
   ReconnectingWebSocketTransport,
   type ConnectionState,
 } from './reconnecting-websocket-transport.js'
+import {
+  TaskCommunicationManager,
+  type TaskCommunicationFrame,
+  type TaskCommunicationTurn,
+} from './task-communication-manager.js'
 const DEV_SERVER_URL = 'http://127.0.0.1:5173'
 
 type InterruptionReason = 'vad_start' | 'transcript_start' | 'manual' | 'provider_switch'
 
-type ConversationPhase = 'reply' | 'task' | 'task_result'
+type ConversationPhase = 'reply' | 'task' | 'task_progress' | 'task_result'
 
 type LocalModelStatus = {
   id: 'silero-vad' | 'smart-turn'
@@ -139,6 +144,7 @@ type ConversationFrame =
   | { type: 'control.phase_start'; phase: ConversationPhase }
   | { type: 'control.phase_end'; phase: ConversationPhase }
   | { type: 'control.task_start'; taskDescription: string }
+  | TaskCommunicationFrame
   | { type: 'control.task_plan'; plan: TaskPlan }
   | { type: 'control.task_end'; success: boolean; summary: string; error?: string }
   | { type: 'data.tts_text'; text: string }
@@ -1286,7 +1292,7 @@ outputFramePipeline.addObserver(frameTraceObserver)
 let currentTurnId = 0
 let currentTurnAbortController: AbortController | null = null
 let currentResponseFramePipeline: ResponseFramePipeline | null = null
-let currentTaskPlanFrameSender: ((plan: TaskPlan) => void) | null = null
+const taskCommunicationManager = new TaskCommunicationManager()
 const cancelledTurnIds = new Set<number>()
 
 
@@ -1521,6 +1527,45 @@ ipcMain.on('playback:complete', (_, requestId: number) => {
   }
   latencyObserver.calculate()
 })
+
+let taskCommunicationSpeechQueue: Promise<void> = Promise.resolve()
+
+function scheduleTaskCommunicationSpeech(text: string, turnId: number): void {
+  const content = sanitizeTextForSpeech(text)
+  if (!content || !appSettings.voiceOutputEnabled || !ttsAvailable) {
+    return
+  }
+
+  taskCommunicationSpeechQueue = taskCommunicationSpeechQueue
+    .catch(() => undefined)
+    .then(async () => {
+      if (isTurnCancelled(turnId) || !currentResponseFramePipeline || !ttsAvailable || !appSettings.voiceOutputEnabled) {
+        return
+      }
+      await currentResponseFramePipeline.queueFrame({
+        type: 'phase_start',
+        kind: 'control',
+        phase: 'task_progress',
+        timestamp: Date.now(),
+      })
+      await currentResponseFramePipeline.queueFrame({
+        type: 'tts_text',
+        kind: 'data',
+        text: content,
+        timestamp: Date.now(),
+      })
+      await currentResponseFramePipeline.queueFrame({
+        type: 'phase_end',
+        kind: 'control',
+        phase: 'task_progress',
+        timestamp: Date.now(),
+      })
+      taskCommunicationManager.markProgressSpeechScheduled()
+    })
+    .catch((error) => {
+      console.warn('[TaskCommunication] Failed to schedule task update speech:', (error as Error).message)
+    })
+}
 
 ipcMain.on('latency:firstAudioPlay', () => {
   void outputFramePipeline.queueFrame({
@@ -2017,6 +2062,8 @@ async function requestTaskUserInput(request: TaskUserInputRequest): Promise<Task
     throw new Error('No renderer window available for user input request')
   }
 
+  taskCommunicationManager.onWaitingUser(request)
+
   const response = await new Promise<TaskUserInputResponse>((resolve) => {
     const channel = `interactive-input:response:${request.id}`
     const timeout = setTimeout(() => {
@@ -2323,9 +2370,9 @@ async function initializeSDK(): Promise<void> {
   sdkInstance = await HerTextSDK.initialize(sdkConfig, {
     plugins,
     onTaskUserInputRequest: requestTaskUserInput,
-    onTaskPlanUpdated: (plan) => {
-      currentTaskPlanFrameSender?.(plan)
-    },
+    onTaskRunStateChanged: (state, task) => taskCommunicationManager.onRunStateChanged(state, task),
+    onTaskPlanUpdated: (plan) => taskCommunicationManager.onPlanUpdated(plan),
+    onTaskStepUpdated: (step, plan) => taskCommunicationManager.onStepUpdated(step, plan),
   })
   console.log('[SDK] Initialized successfully')
 }
@@ -2513,6 +2560,7 @@ async function runConversationTurn(
 ): Promise<ConversationTurnResult> {
   let turnId = 0
   let responseFramePipeline: ResponseFramePipeline | null = null
+  let taskCommunicationTurn: TaskCommunicationTurn | null = null
 
   try {
     if (!sdkInstance) {
@@ -2539,14 +2587,29 @@ async function runConversationTurn(
         mainWindow?.webContents.send('conversation:frame', frame)
       }
     )
-    const taskPlanFrameSender = (plan: TaskPlan) => {
-      if (isTurnCancelled(turnId)) return
-      mainWindow?.webContents.send('conversation:frame', {
-        type: 'control.task_plan',
-        plan,
-      } satisfies ConversationFrame)
+    taskCommunicationTurn = {
+      isCancelled: () => isTurnCancelled(turnId),
+      sendPlan: (plan) => {
+        if (isTurnCancelled(turnId)) return
+        mainWindow?.webContents.send('conversation:frame', {
+          type: 'control.task_plan',
+          plan,
+        } satisfies ConversationFrame)
+      },
+      sendStatus: (frame) => {
+        if (isTurnCancelled(turnId)) return
+        mainWindow?.webContents.send('conversation:frame', frame)
+      },
+      displayText: (message) => {
+        if (isTurnCancelled(turnId)) return
+        displayController.pushTTSChunkText(message)
+      },
+      speak: (message) => {
+        if (isTurnCancelled(turnId)) return
+        scheduleTaskCommunicationSpeech(message, turnId)
+      },
     }
-    currentTaskPlanFrameSender = taskPlanFrameSender
+    taskCommunicationManager.bindTurn(taskCommunicationTurn)
     displayController.reset()
     currentTTSChunkSequence = 0
     const interruptedTTSTextChunks: string[] = []
@@ -2597,6 +2660,12 @@ async function runConversationTurn(
         void responseFramePipeline?.queueFrame(frame)
       },
       waitForIdle: () => Promise.resolve(),
+      onTaskStart: (taskDescription) => {
+        taskCommunicationManager.onTaskStart(taskDescription)
+      },
+      onTaskEnd: (result) => {
+        taskCommunicationManager.onTaskEnd(result)
+      },
       onExpression: async (frame) => {
         if (isTurnCancelled(turnId)) return
         pendingExpressionFrame = frame
@@ -2641,6 +2710,9 @@ async function runConversationTurn(
             console.log(`[Turn] Phase end aborted after playback wait - turn #${turnId} cancelled`)
             return
           }
+          if (phase === 'reply') {
+            taskCommunicationManager.markSpeechBaseline()
+          }
           console.log(`[Conversation] Playback complete for phase "${phase}"`)
         },
         log: (message) => console.warn(message),
@@ -2669,8 +2741,8 @@ async function runConversationTurn(
     }
 
     completeCurrentTurn(turnId, responseFramePipeline)
-    if (currentTaskPlanFrameSender === taskPlanFrameSender) {
-      currentTaskPlanFrameSender = null
+    if (taskCommunicationTurn) {
+      taskCommunicationManager.clearTurn(taskCommunicationTurn)
     }
     voiceGraphPipeline.removeLane(responseLaneName)
 
@@ -2680,7 +2752,9 @@ async function runConversationTurn(
       currentResponseFramePipeline?.stop()
       currentResponseFramePipeline = null
     }
-    currentTaskPlanFrameSender = null
+    if (taskCommunicationTurn) {
+      taskCommunicationManager.clearTurn(taskCommunicationTurn)
+    }
     if (turnId > 0) {
       voiceGraphPipeline.removeLane(`response:${turnId}`)
     }

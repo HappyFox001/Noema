@@ -29,6 +29,9 @@ export interface TaskStep {
   title: string
   description: string
   status: TaskStepStatus
+  result?: string
+  error?: string
+  reason?: string
   startedAt?: number
   completedAt?: number
 }

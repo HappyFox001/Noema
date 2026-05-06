@@ -97,7 +97,7 @@ export interface PluginRuntimeContext {
 
 export interface PromptHookContext {
   runtime: PluginRuntimeContext
-  phase: 'reply' | 'task_result'
+  phase: 'reply' | 'task_progress' | 'task_result'
   detectTask: boolean
   hasTools: boolean
 }
@@ -124,7 +124,7 @@ export interface ExpressionFrame {
 
 export interface ExpressionHookContext {
   runtime: PluginRuntimeContext
-  phase: 'reply' | 'task_result'
+  phase: 'reply' | 'task_progress' | 'task_result'
   replyText: string
   emotionTag?: string
 }

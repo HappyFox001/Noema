@@ -64,7 +64,7 @@ export class LLMContextAggregator {
 export interface LLMProcessorRunOptions {
   turnContext: DialogueTurnContext
   streamOptions?: StreamOptions
-  phase: 'reply' | 'task_result'
+  phase: 'reply' | 'task_progress' | 'task_result'
   detectTask: boolean
   additionalUserMessage?: string
   currentContext: ResponseItem[]

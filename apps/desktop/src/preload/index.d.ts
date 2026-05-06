@@ -367,10 +367,15 @@ declare global {
         type: 'system.reset'
       } | {
         type: 'control.phase_start' | 'control.phase_end'
-        phase: 'reply' | 'task' | 'task_result'
+        phase: 'reply' | 'task' | 'task_progress' | 'task_result'
       } | {
         type: 'control.task_start'
         taskDescription: string
+      } | {
+        type: 'control.task_status'
+        status: string
+        message?: string
+        severity: 'silent' | 'info' | 'important' | 'blocking' | 'final'
       } | {
         type: 'control.task_plan'
         plan: {

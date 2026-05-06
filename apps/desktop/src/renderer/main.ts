@@ -980,9 +980,10 @@ type PluginInfo = {
 
 type ConversationFrame =
   | { type: 'system.reset' }
-  | { type: 'control.phase_start'; phase: 'reply' | 'task' | 'task_result' }
-  | { type: 'control.phase_end'; phase: 'reply' | 'task' | 'task_result' }
+  | { type: 'control.phase_start'; phase: 'reply' | 'task' | 'task_progress' | 'task_result' }
+  | { type: 'control.phase_end'; phase: 'reply' | 'task' | 'task_progress' | 'task_result' }
   | { type: 'control.task_start'; taskDescription: string }
+  | { type: 'control.task_status'; status: string; message?: string; severity: 'silent' | 'info' | 'important' | 'blocking' | 'final' }
   | { type: 'control.task_plan'; plan: TaskPanelPlan }
   | { type: 'control.task_end'; success: boolean; summary: string; error?: string }
   | { type: 'data.tts_text'; text: string }
@@ -1792,6 +1793,8 @@ function handleConversationFrame(frame: ConversationFrame) {
     case 'control.phase_start':
       if (frame.phase === 'reply') {
         setStatus(t('status.replying'))
+      } else if (frame.phase === 'task_progress') {
+        setStatus(t('status.working'))
       } else if (frame.phase === 'task_result') {
         audioPlayer.stop()
         textRevealer.reset()
@@ -1809,6 +1812,9 @@ function handleConversationFrame(frame: ConversationFrame) {
         setOrbMode('idle')
         clearExpressionAfterMinimum()
       }
+      break
+    case 'control.task_status':
+      setStatus(frame.status)
       break
     case 'control.task_start':
       renderTaskPanel({

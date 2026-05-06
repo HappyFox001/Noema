@@ -11,8 +11,8 @@ import type { InterruptionReason } from '../turn/types.js'
 import type { ExpressionFrame, PluginRuntimeContext } from '../plugins/index.js'
 
 export type ResponseFrame = Frame & (
-  | { type: 'phase_start'; phase: 'reply' | 'task_result' }
-  | { type: 'phase_end'; phase: 'reply' | 'task_result' }
+  | { type: 'phase_start'; phase: 'reply' | 'task_progress' | 'task_result' }
+  | { type: 'phase_end'; phase: 'reply' | 'task_progress' | 'task_result' }
   | { type: 'display_text_delta'; text: string }
   | { type: 'task_start'; taskDescription: string }
   | {
@@ -170,7 +170,7 @@ export interface ResponseTTSProcessorOptions {
   onFirstText?: () => void
   onText?: (ttsText: string, displayText: string) => void
   onError?: (error: Error) => void
-  waitForPlayback?: (phase: 'reply' | 'task_result') => Promise<void>
+  waitForPlayback?: (phase: 'reply' | 'task_progress' | 'task_result') => Promise<void>
   log?: (message: string) => void
 }
 
@@ -265,7 +265,7 @@ export class ResponseTTSProcessor implements ResponseFrameProcessor {
   }
 
   private async finishStreaming(
-    phase: 'reply' | 'task_result',
+    phase: 'reply' | 'task_progress' | 'task_result',
     signal: AbortSignal
   ): Promise<void> {
     const service = this.options.getService()
@@ -398,8 +398,8 @@ export class ResponseTTSProcessor implements ResponseFrameProcessor {
 
 export interface ResponseDisplayProcessorOptions {
   isCancelled: () => boolean
-  startPhase: (phase: 'reply' | 'task_result') => void
-  endPhase: (phase: 'reply' | 'task_result') => Promise<void> | void
+  startPhase: (phase: 'reply' | 'task_progress' | 'task_result') => void
+  endPhase: (phase: 'reply' | 'task_progress' | 'task_result') => Promise<void> | void
   pushTextDelta: (text: string) => void
   startTask: (taskDescription: string) => void
   endTask: (result: { success: boolean; summary: string; error?: string }) => void
@@ -446,7 +446,7 @@ export class LLMStreamBridgeProcessor {
 
   constructor(private readonly options: LLMStreamBridgeOptions) {}
 
-  async onPhaseStart(phase: 'reply' | 'task_result'): Promise<void> {
+  async onPhaseStart(phase: 'reply' | 'task_progress' | 'task_result'): Promise<void> {
     if (this.options.isCancelled()) {
       this.options.log?.(`[Turn] Phase start skipped - turn cancelled`)
       return
@@ -478,7 +478,7 @@ export class LLMStreamBridgeProcessor {
     })
   }
 
-  async onPhaseEnd(phase: 'reply' | 'task_result'): Promise<void> {
+  async onPhaseEnd(phase: 'reply' | 'task_progress' | 'task_result'): Promise<void> {
     if (this.options.isCancelled()) {
       this.options.log?.(`[Turn] Phase end skipped - turn cancelled`)
       return
@@ -532,13 +532,16 @@ export interface LLMChatStreamService {
       preserveUserInputOnAbort?: boolean
       getInterruptedAssistantText?: () => string | undefined
       pluginContext?: PluginRuntimeContext
-      onPhaseStart?: (phase: 'reply' | 'task_result') => Promise<void> | void
+      onPhaseStart?: (phase: 'reply' | 'task_progress' | 'task_result') => Promise<void> | void
       onDisplayChunk?: (
-        phase: 'reply' | 'task_result',
+        phase: 'reply' | 'task_progress' | 'task_result',
         delta: string,
         fullText: string
       ) => Promise<void> | void
-      onPhaseEnd?: (phase: 'reply' | 'task_result', fullText: string) => Promise<void> | void
+      onPhaseEnd?: (
+        phase: 'reply' | 'task_progress' | 'task_result',
+        fullText: string
+      ) => Promise<void> | void
       onTaskStart?: (taskDescription: string) => Promise<void> | void
       onTaskEnd?: (result: { success: boolean; summary: string; error?: string }) => Promise<void> | void
       onExpression?: (frame: ExpressionFrame) => Promise<void> | void
@@ -556,6 +559,8 @@ export interface LLMResponseProcessorOptions {
   queueFrame?: (frame: ResponseFrame) => Promise<void> | void
   waitForIdle?: () => Promise<void>
   onComplete?: (result: { text: string; error?: Error }) => void
+  onTaskStart?: (taskDescription: string) => Promise<void> | void
+  onTaskEnd?: (result: { success: boolean; summary: string; error?: string }) => Promise<void> | void
   onExpression?: (frame: ExpressionFrame) => Promise<void> | void
   log?: (message: string) => void
 }
@@ -619,9 +624,11 @@ export class LLMResponseProcessor implements ResponseFrameProcessor {
           await this.options.waitForIdle?.()
         },
         onTaskStart: async (taskDescription) => {
+          await this.options.onTaskStart?.(taskDescription)
           await this.options.bridge.onTaskStart(taskDescription)
         },
         onTaskEnd: async (result) => {
+          await this.options.onTaskEnd?.(result)
           await this.options.bridge.onTaskEnd(result)
         },
         onExpression: async (frame) => {

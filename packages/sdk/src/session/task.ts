@@ -1145,6 +1145,18 @@ export class TaskRuntime {
       const error = typeof update.error === 'string' && update.error.trim()
         ? cleanPlanText(update.error)
         : ''
+      const reason = typeof update.reason === 'string' && update.reason.trim()
+        ? cleanPlanText(update.reason)
+        : ''
+      if (result) {
+        target.result = result
+      }
+      if (error) {
+        target.error = error
+      }
+      if (reason) {
+        target.reason = reason
+      }
       if (typeof update.error === 'string' && update.error.trim()) {
         failStepExecution(this.executionState, target, error)
       }
@@ -1159,8 +1171,8 @@ export class TaskRuntime {
       if (target.status === 'failed' && !error) {
         failStepExecution(this.executionState, target, '步骤执行失败。')
       }
-      if (target.status === 'skipped' && update.reason) {
-        blockStepExecution(this.executionState, target, update.reason)
+      if (target.status === 'skipped' && reason) {
+        blockStepExecution(this.executionState, target, reason)
       }
       changedSteps.push(target)
     }
@@ -1230,7 +1242,10 @@ export class TaskRuntime {
       id: nextId,
       title: cleanPlanText(update.title) || nextId,
       description: cleanPlanText(update.description) || cleanPlanText(update.title) || this.taskDescription,
-      status: 'pending'
+      status: 'pending',
+      ...(typeof update.reason === 'string' && update.reason.trim()
+        ? { reason: cleanPlanText(update.reason) }
+        : {})
     }
     this.taskPlan!.steps.push(step)
     ensureStepExecutionState(this.executionState, step, update.reason || '模型根据当前执行状态新增计划步骤。')
@@ -1403,6 +1418,7 @@ export class TaskRuntime {
 
   private completeStep(step: TaskStep, result: string): void {
     step.status = 'completed'
+    step.result = result
     step.completedAt = Date.now()
     this.updateExecutionCurrentStep(step)
     completeStepExecution(this.executionState, step, result)
@@ -1553,7 +1569,7 @@ export class TaskRuntime {
 
   private buildPlanCompletionMessage(fallback = ''): string {
     if (!this.taskPlan) {
-      return cleanFinalMessage(fallback) || '任务已完成。'
+      return cleanFinalMessage(fallback) || '任务结束，未记录到具体结果。'
     }
 
     const completed = this.taskPlan.steps
@@ -1564,14 +1580,14 @@ export class TaskRuntime {
       })
 
     if (completed.length === 0) {
-      return cleanFinalMessage(fallback) || '任务已完成。'
+      return cleanFinalMessage(fallback) || '任务结束，未记录到具体结果。'
     }
 
     if (completed.length === 1) {
-      return `任务已完成：${completed[0]}`
+      return `任务结果：${completed[0]}`
     }
 
-    return `任务已完成：\n${completed.map(item => `- ${item}`).join('\n')}`
+    return `任务结果：\n${completed.map(item => `- ${item}`).join('\n')}`
   }
 
   private formatMemoryContext(): string {

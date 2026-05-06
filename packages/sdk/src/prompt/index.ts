@@ -323,6 +323,8 @@ export class PromptBuilder {
       instructions += '- <description> 用简洁的语言描述任务目标，如"在桌面创建名为 test.md 的空文件"\n'
       instructions += '- 纯聊天对话时 <has_task> 设为 false，无需 <description>\n'
       instructions += '- 不要在 reply 中写代码或命令，任务会自动执行\n'
+      instructions += '- 当 <has_task> 为 true 时，reply 只能自然承接任务，例如"我来弄，等我一下"，不能声称已经完成\n'
+      instructions += '- 任务执行前禁止说"打开好了"、"创建好了"、"发好了"、"已经完成"、"搞定了"等结果性表达\n'
     }
 
     return instructions

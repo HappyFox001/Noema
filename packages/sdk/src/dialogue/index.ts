@@ -11,7 +11,8 @@ import type { PersonalityEngine } from '../personality/index.js'
 import type { AgentCore } from '../agent/index.js'
 import { ContextManager, type ResponseItem, type TruncationPolicy } from '../context/index.js'
 import { TaskSession } from '../session/session.js'
-import type { TaskRuntimeConfig, TaskRuntimeHooks } from '../session/task.js'
+import type { TaskRuntimeConfig, TaskRuntimeHookMeta, TaskRuntimeHooks } from '../session/task.js'
+import type { TaskPlan, TaskStep } from '../session/task-plan.js'
 import { PROMPTS } from '../prompts.js'
 import {
   LLMContextAggregator,
@@ -19,6 +20,7 @@ import {
   ToolProcessor,
   buildBaseInstructions,
   throwIfAborted,
+  type ToolProcessorResult,
 } from './processors.js'
 import {
   PluginManager,
@@ -41,12 +43,15 @@ export interface StreamOptions {
   
   onTTSChunk?: (text: string) => Promise<void>
   
-  onPhaseStart?: (phase: 'reply' | 'task_result') => Promise<void> | void
+  onPhaseStart?: (phase: 'reply' | 'task_progress' | 'task_result') => Promise<void> | void
   
-  onPhaseEnd?: (phase: 'reply' | 'task_result', fullText: string) => Promise<void> | void
+  onPhaseEnd?: (
+    phase: 'reply' | 'task_progress' | 'task_result',
+    fullText: string
+  ) => Promise<void> | void
   
   onDisplayChunk?: (
-    phase: 'reply' | 'task_result',
+    phase: 'reply' | 'task_progress' | 'task_result',
     delta: string,
     fullText: string
   ) => Promise<void> | void
@@ -93,6 +98,17 @@ function scheduleAsyncTask(task: () => Promise<void>): void {
   globalThis.setTimeout(run, 0)
 }
 
+interface ActiveTaskProgressContext {
+  turnContext: Awaited<ReturnType<LLMContextAggregator['prepareUserTurn']>>
+  streamOptions?: StreamOptions
+  pluginRuntime: PluginRuntimeContext
+  queue: Promise<void>
+  lastEmittedAt: number
+  emittedStepIds: Set<string>
+}
+
+const TASK_PROGRESS_MIN_INTERVAL_MS = 12000
+
 export class DialogueOrchestrator {
   private context: ContextManager
   private taskSession: TaskSession
@@ -100,6 +116,7 @@ export class DialogueOrchestrator {
   private llmProcessor: LLMProcessor
   private toolProcessor: ToolProcessor
   private pluginManager: PluginManager
+  private activeTaskProgressContext: ActiveTaskProgressContext | null = null
 
   private truncationPolicy: TruncationPolicy = {
     maxTokens: 8000,
@@ -140,16 +157,17 @@ export class DialogueOrchestrator {
           plan,
         })
       },
-        onStepUpdated: (step, plan, task) => {
-          config?.onTaskStepUpdated?.(step, plan, task)
-          void this.pluginManager.notifyTaskStepUpdated({
-            runtime: {},
-            taskDescription: task.taskDescription,
+      onStepUpdated: (step, plan, task) => {
+        config?.onTaskStepUpdated?.(step, plan, task)
+        void this.pluginManager.notifyTaskStepUpdated({
+          runtime: {},
+          taskDescription: task.taskDescription,
           originalUserInput: task.originalUserInput,
           plan,
-            step,
-          })
-        },
+          step,
+        })
+        this.scheduleTaskProgressFeedback(step, plan, task)
+      },
         resolveToolStrategyHints: (context) => this.pluginManager.getToolStrategyHints({
           runtime: {},
           taskDescription: context.taskDescription,
@@ -244,11 +262,26 @@ export class DialogueOrchestrator {
         await options?.onTaskStart?.(firstResult.taskDescription)
         console.log('🚀 Reply 已流式输出完毕，开始执行任务...\n')
 
-        const taskResult = await this.toolProcessor.processTask(
-          firstResult.taskIntent,
-          input.text,
-          taskContextItems
-        )
+        this.activeTaskProgressContext = {
+          turnContext,
+          streamOptions: options,
+          pluginRuntime,
+          queue: Promise.resolve(),
+          lastEmittedAt: Date.now(),
+          emittedStepIds: new Set(),
+        }
+
+        let taskResult: ToolProcessorResult
+        try {
+          taskResult = await this.toolProcessor.processTask(
+            firstResult.taskIntent,
+            input.text,
+            taskContextItems
+          )
+          await this.waitForTaskProgressIdle(options?.signal)
+        } finally {
+          this.activeTaskProgressContext = null
+        }
         throwIfAborted(options?.signal)
         await this.pluginManager.notifyTaskEnd({
           runtime: pluginRuntime,
@@ -368,10 +401,94 @@ export class DialogueOrchestrator {
     })
   }
 
+  private scheduleTaskProgressFeedback(
+    step: TaskStep,
+    plan: TaskPlan,
+    task: TaskRuntimeHookMeta
+  ): void {
+    const context = this.activeTaskProgressContext
+    if (!context || step.status !== 'completed' || context.emittedStepIds.has(step.id)) {
+      return
+    }
+
+    const hasRemainingSteps = plan.steps.some(item =>
+      item.id !== step.id && (item.status === 'pending' || item.status === 'running')
+    )
+    if (!hasRemainingSteps) {
+      return
+    }
+
+    const now = Date.now()
+    if (now - context.lastEmittedAt < TASK_PROGRESS_MIN_INTERVAL_MS) {
+      return
+    }
+
+    context.emittedStepIds.add(step.id)
+    context.lastEmittedAt = now
+    context.queue = context.queue
+      .then(() => this.emitTaskProgressFeedback(step, plan, task, context))
+      .catch((error) => {
+        console.warn('[Dialogue] Task progress emotional feedback failed:', (error as Error).message)
+      })
+  }
+
+  private async waitForTaskProgressIdle(signal?: AbortSignal): Promise<void> {
+    const context = this.activeTaskProgressContext
+    if (!context) {
+      return
+    }
+
+    await context.queue
+    throwIfAborted(signal)
+  }
+
+  private async emitTaskProgressFeedback(
+    step: TaskStep,
+    plan: TaskPlan,
+    task: TaskRuntimeHookMeta,
+    context: ActiveTaskProgressContext
+  ): Promise<void> {
+    throwIfAborted(context.streamOptions?.signal)
+
+    const remainingSteps = plan.steps
+      .filter(item => item.id !== step.id && (item.status === 'pending' || item.status === 'running'))
+      .map(item => item.title)
+      .slice(0, 3)
+
+    const promptAdditions = this.pluginManager.getPromptAdditions({
+      runtime: context.pluginRuntime,
+      phase: 'task_progress',
+      detectTask: false,
+      hasTools: context.turnContext.hasTools,
+    })
+
+    const result = await this.llmProcessor.runEmotionalLayer({
+      turnContext: context.turnContext,
+      streamOptions: context.streamOptions,
+      phase: 'task_progress',
+      detectTask: false,
+      additionalUserMessage: PROMPTS.dialogue.taskProgressFeedback({
+        taskDescription: task.taskDescription,
+        stepTitle: step.title,
+        stepResult: step.result,
+        remainingSteps,
+      }),
+      currentContext: this.context.forPrompt(),
+      baseInstructions: buildBaseInstructions(),
+      pluginPromptAdditions: promptAdditions,
+    })
+
+    await context.streamOptions?.onPhaseStart?.('task_progress')
+    for await (const _chunk of result.stream) {
+      throwIfAborted(context.streamOptions?.signal)
+    }
+    await context.streamOptions?.onPhaseEnd?.('task_progress', result.reply)
+  }
+
   private async emitExpression(
     options: StreamOptions | undefined,
     runtime: PluginRuntimeContext,
-    phase: 'reply' | 'task_result',
+    phase: 'reply' | 'task_progress' | 'task_result',
     result: { replyText: string; emotionTag?: string }
   ): Promise<void> {
     const frame = this.pluginManager.selectExpression({
