@@ -1026,13 +1026,13 @@ export class TaskRuntime {
           ].filter(Boolean).join('\n\n')
         }
       ], {
-        max_tokens: 800,
+        response_format: { type: 'json_object' },
         signal: this.signal
       })
 
       this.throwIfAborted()
       const draft = parsePlanDraft(response.content, (error) => {
-        this.logPlanParseFailure(response.content, error)
+        this.logPlanParseFailure(response.content, error, response.finishReason)
       })
       return this.normalizePlan(draft)
     } catch (error) {
@@ -1078,10 +1078,13 @@ export class TaskRuntime {
     }
   }
 
-  private logPlanParseFailure(content: string, error: Error): void {
+  private logPlanParseFailure(content: string, error: Error, finishReason?: string | null): void {
     const raw = String(content ?? '')
     const previewLimit = 4000
-    console.warn('[TaskRuntime] Plan response parse failed:', error.message)
+    console.warn('[TaskRuntime] Plan response parse failed, using fallback plan:', error.message)
+    if (finishReason) {
+      console.warn(`[TaskRuntime] Plan response finish_reason: ${finishReason}`)
+    }
     console.warn(`[TaskRuntime] Raw plan response length: ${raw.length}`)
     console.warn('[TaskRuntime] Raw plan response:')
     console.warn(raw.length > previewLimit ? `${raw.slice(0, previewLimit)}\n...[truncated ${raw.length - previewLimit} chars]` : raw || '(empty)')

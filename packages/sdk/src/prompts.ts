@@ -104,6 +104,7 @@ export const PROMPTS = {
     planningSystem: `你是任务规划器。请把用户任务拆成可执行计划。
 
 输出必须是 JSON object，不要 Markdown，不要 XML。
+必须从 { 开始，到 } 结束，不要输出任何解释或前后缀。
 格式：
 {
   "title": "简短任务标题",

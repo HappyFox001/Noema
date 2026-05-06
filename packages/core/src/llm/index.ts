@@ -5,6 +5,7 @@ import type { SDKConfig } from '@her-text/types'
 export interface LLMResponse {
   content: string
   toolCalls?: any[]
+  finishReason?: string | null
   usage?: {
     inputTokens?: number
     outputTokens?: number
@@ -45,6 +46,7 @@ export class OpenAIProvider implements LLMProvider {
     return {
       content: message?.content || '',
       toolCalls: message?.tool_calls as any[],
+      finishReason: response.choices[0]?.finish_reason,
       usage: response.usage
         ? {
             inputTokens: response.usage.prompt_tokens,
