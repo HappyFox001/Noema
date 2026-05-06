@@ -678,7 +678,7 @@ body.task-active:not(.settings-open) .task-panel {
   height: 100%;
   background: rgba(0, 0, 0, 0.3);
   border-right: 1px solid rgba(255, 255, 255, 0.06);
-  padding: 64px 10px 20px;
+  padding: 10px 8px 20px;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -687,6 +687,29 @@ body.task-active:not(.settings-open) .task-panel {
   cursor: grab;
   -webkit-app-region: no-drag;
   app-region: no-drag;
+}
+
+.settings-brand {
+  width: 100%;
+  height: 48px;
+  margin-bottom: 2px;
+  padding: 0 0 2px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.settings-brand-logo {
+  display: block;
+  width: min(186px, calc(100% + 20px));
+  max-width: none;
+  height: auto;
+  margin-top: 0;
+  transform: translateY(-24px);
+  object-fit: contain;
+  filter: drop-shadow(0 0 14px rgba(87, 211, 238, 0.18));
 }
 
 .nav-item {
@@ -3238,15 +3261,54 @@ body.task-active:not(.settings-open) #main-view {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .config-model-btn {
+  min-width: 46px;
+  height: 25px;
   font-size: 11px;
-  padding: 4px 10px;
+  padding: 0 10px;
   border-radius: 5px;
   cursor: pointer;
   transition: all 0.2s;
   font-family: var(--font-ui);
+}
+
+.config-test-btn {
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.config-test-btn:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.config-test-btn.testing {
+  border-color: rgba(255, 210, 122, 0.3);
+  background: rgba(255, 210, 122, 0.1);
+  color: rgba(255, 224, 164, 0.9);
+}
+
+.config-test-btn.success {
+  border-color: rgba(106, 214, 152, 0.28);
+  background: rgba(106, 214, 152, 0.1);
+  color: rgba(156, 232, 188, 0.9);
+}
+
+.config-test-btn.danger {
+  border-color: rgba(255, 116, 116, 0.28);
+  background: rgba(255, 116, 116, 0.1);
+  color: rgba(255, 162, 162, 0.92);
+}
+
+.config-model-btn:disabled {
+  cursor: default;
+  opacity: 0.82;
 }
 
 .config-activate-btn {

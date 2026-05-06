@@ -258,6 +258,17 @@ declare global {
           path: string
         }>
       }>
+      testApiModel: (
+        kind: 'llm' | 'task' | 'tts' | 'asr',
+        model:
+          | { id: string; modelName: string; apiKey: string; baseUrl: string }
+          | { id: string; provider: 'fish'; modelName: string; apiKey: string; voiceId?: string }
+          | { id: string; provider: 'qwen'; modelName: string; apiKey: string }
+      ) => Promise<{
+        success: boolean
+        message?: string
+        error?: string
+      }>
       listPlugins: () => Promise<{
         success: boolean
         error?: string

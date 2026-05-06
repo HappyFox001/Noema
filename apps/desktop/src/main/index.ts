@@ -3320,6 +3320,211 @@ ipcMain.handle('models:downloadMissing', async () => {
   }
 })
 
+type ApiModelTestKind = 'llm' | 'task' | 'tts' | 'asr'
+
+async function testApiModel(kind: ApiModelTestKind, model: unknown): Promise<void> {
+  switch (kind) {
+    case 'llm':
+    case 'task':
+      await testOpenAICompatibleModel(readLLMTestConfig(model))
+      return
+    case 'tts':
+      await testFishTTSModel(readTTSTestConfig(model))
+      return
+    case 'asr':
+      await testQwenASRModel(readASRTestConfig(model))
+      return
+  }
+}
+
+function readLLMTestConfig(model: unknown): LLMModelConfig {
+  const value = model as Partial<LLMModelConfig>
+  const modelName = String(value.modelName ?? '').trim()
+  const apiKey = String(value.apiKey ?? '').trim()
+  const baseUrl = String(value.baseUrl ?? '').trim().replace(/\/+$/, '')
+
+  if (!modelName) {
+    throw new Error('Model name is required')
+  }
+  if (!apiKey) {
+    throw new Error('API Key is required')
+  }
+  if (!baseUrl) {
+    throw new Error('Base URL is required')
+  }
+
+  return {
+    id: String(value.id ?? 'test'),
+    modelName,
+    apiKey,
+    baseUrl,
+  }
+}
+
+function readTTSTestConfig(model: unknown): TTSModelConfig {
+  const value = model as Partial<TTSModelConfig>
+  const modelName = String(value.modelName ?? '').trim()
+  const apiKey = String(value.apiKey ?? '').trim()
+  const voiceId = String(value.voiceId ?? '').trim()
+
+  if (!modelName) {
+    throw new Error('TTS model name is required')
+  }
+  if (!apiKey) {
+    throw new Error('TTS API Key is required')
+  }
+
+  return {
+    id: String(value.id ?? 'test'),
+    provider: 'fish',
+    modelName,
+    apiKey,
+    voiceId,
+  }
+}
+
+function readASRTestConfig(model: unknown): ASRModelConfig {
+  const value = model as Partial<ASRModelConfig>
+  const modelName = String(value.modelName ?? '').trim()
+  const apiKey = String(value.apiKey ?? '').trim()
+
+  if (!modelName) {
+    throw new Error('ASR model name is required')
+  }
+  if (!apiKey) {
+    throw new Error('ASR API Key is required')
+  }
+
+  return {
+    id: String(value.id ?? 'test'),
+    provider: 'qwen',
+    modelName,
+    apiKey,
+  }
+}
+
+async function testOpenAICompatibleModel(model: LLMModelConfig): Promise<void> {
+  const response = await runWithTimeout(
+    fetch(`${model.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${model.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: model.modelName,
+        max_tokens: 8,
+        messages: [
+          { role: 'user', content: 'Reply with exactly: OK' },
+        ],
+      }),
+    }),
+    20000,
+    'LLM connection test timed out'
+  )
+
+  const bodyText = await response.text()
+  let body: any = null
+  try {
+    body = JSON.parse(bodyText)
+  } catch {
+    body = null
+  }
+
+  if (!response.ok) {
+    throw new Error(body?.error?.message || bodyText.slice(0, 300) || `HTTP ${response.status}`)
+  }
+
+  const content = body?.choices?.[0]?.message?.content
+  if (typeof content !== 'string') {
+    throw new Error('Model response did not contain a chat completion message')
+  }
+}
+
+async function testFishTTSModel(model: TTSModelConfig): Promise<void> {
+  const provider = createTTSProvider({
+    kind: 'fish-realtime',
+    config: {
+      apiKey: model.apiKey,
+      model: model.modelName,
+      voiceId: model.voiceId,
+      format: 'pcm',
+      sampleRate: 16000,
+    },
+  })
+
+  try {
+    await runWithTimeout(
+      (async () => {
+        await provider.startStreaming()
+        await provider.pushText('测试。')
+        await provider.finishStreaming()
+      })(),
+      20000,
+      'TTS connection test timed out'
+    )
+  } finally {
+    await provider.close().catch(() => undefined)
+  }
+}
+
+async function testQwenASRModel(model: ASRModelConfig): Promise<void> {
+  const baseTransport = new NodeRealtimeWebSocketTransport()
+  const transport = new ReconnectingWebSocketTransport(baseTransport, {
+    maxRetries: 0,
+    initialRetryDelayMs: 500,
+  })
+  const provider = createSTTProvider({
+    kind: 'qwen-realtime',
+    config: {
+      apiKey: model.apiKey,
+      model: model.modelName,
+      sampleRate: 16000,
+      language: 'zh',
+    },
+    transport,
+  })
+
+  try {
+    await runWithTimeout(
+      provider.connect(),
+      15000,
+      'ASR connection test timed out'
+    )
+  } finally {
+    await provider.close().catch(() => undefined)
+  }
+}
+
+async function runWithTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string
+): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | null = null
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error(message)), timeoutMs)
+      }),
+    ])
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout)
+    }
+  }
+}
+
+ipcMain.handle('models:testApi', async (_event, kind: ApiModelTestKind, model: unknown) => {
+  try {
+    await testApiModel(kind, model)
+    return { success: true, message: '连接正常' }
+  } catch (error: any) {
+    return { success: false, error: error.message }
+  }
+})
+
 ipcMain.handle('personality:list', async () => {
   try {
     const personalityManager = getPersonalityManager()

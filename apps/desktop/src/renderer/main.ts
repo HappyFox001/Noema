@@ -865,6 +865,8 @@ type ASRModelConfig = {
   apiKey: string
 }
 
+type ApiModelTestKind = 'llm' | 'task' | 'tts' | 'asr'
+
 type TaskRuntimeSettings = {
   maxTurns: number
   modelContextWindow: number
@@ -4294,6 +4296,7 @@ function renderLLMModels(): void {
           ${model.id === currentSystemConfig!.activeLLMId ? `<span class="config-model-active-badge">${escapeHtml(t('common.active'))}</span>` : ''}
         </div>
         <div class="config-model-actions">
+          ${renderApiTestButton()}
           ${model.id !== currentSystemConfig!.activeLLMId ? `<button class="config-model-btn config-activate-btn" data-action="activate">${escapeHtml(t('common.activate'))}</button>` : ''}
           ${models.length > 1 ? `<button class="config-model-btn config-delete-btn" data-action="delete">${escapeHtml(t('common.delete'))}</button>` : ''}
         </div>
@@ -4331,6 +4334,7 @@ function renderTaskModels(): void {
           ${model.id === currentSystemConfig!.activeTaskId ? `<span class="config-model-active-badge">${escapeHtml(t('common.active'))}</span>` : ''}
         </div>
         <div class="config-model-actions">
+          ${renderApiTestButton()}
           ${model.id !== currentSystemConfig!.activeTaskId ? `<button class="config-model-btn config-activate-btn" data-action="activate">${escapeHtml(t('common.activate'))}</button>` : ''}
           ${models.length > 1 ? `<button class="config-model-btn config-delete-btn" data-action="delete">${escapeHtml(t('common.delete'))}</button>` : ''}
         </div>
@@ -4386,6 +4390,7 @@ function renderTTSModels(): void {
           ${model.id === currentSystemConfig!.activeTTSId ? `<span class="config-model-active-badge">${escapeHtml(t('common.active'))}</span>` : ''}
         </div>
         <div class="config-model-actions">
+          ${renderApiTestButton()}
           ${model.id !== currentSystemConfig!.activeTTSId ? `<button class="config-model-btn config-activate-btn" data-action="activate">${escapeHtml(t('common.activate'))}</button>` : ''}
           ${models.length > 1 ? `<button class="config-model-btn config-delete-btn" data-action="delete">${escapeHtml(t('common.delete'))}</button>` : ''}
         </div>
@@ -4438,6 +4443,7 @@ function renderASRModels(): void {
           ${model.id === currentSystemConfig!.activeASRId ? `<span class="config-model-active-badge">${escapeHtml(t('common.active'))}</span>` : ''}
         </div>
         <div class="config-model-actions">
+          ${renderApiTestButton()}
           ${model.id !== currentSystemConfig!.activeASRId ? `<button class="config-model-btn config-activate-btn" data-action="activate">${escapeHtml(t('common.activate'))}</button>` : ''}
           ${models.length > 1 ? `<button class="config-model-btn config-delete-btn" data-action="delete">${escapeHtml(t('common.delete'))}</button>` : ''}
         </div>
@@ -4458,6 +4464,66 @@ function renderASRModels(): void {
   `).join('')
 
   attachASREventListeners()
+}
+
+function renderApiTestButton(): string {
+  return '<button class="config-model-btn config-test-btn" data-action="test" title="测试 API 连接">测试</button>'
+}
+
+function readCardModel<T extends Record<string, any>>(card: Element, model: T): T {
+  const draft = { ...model }
+  card.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-field]').forEach(input => {
+    draft[input.dataset.field as keyof T] = input.value as T[keyof T]
+  })
+  return draft
+}
+
+async function testApiModel(
+  kind: ApiModelTestKind,
+  id: string,
+  card: Element,
+  button: HTMLButtonElement
+): Promise<void> {
+  if (!currentSystemConfig || button.disabled) return
+
+  const model =
+    kind === 'llm' ? currentSystemConfig.llmModels.find(m => m.id === id) :
+    kind === 'task' ? currentSystemConfig.taskModels.find(m => m.id === id) :
+    kind === 'tts' ? currentSystemConfig.ttsModels.find(m => m.id === id) :
+    currentSystemConfig.asrModels.find(m => m.id === id)
+
+  if (!model) {
+    showPanelNotice('模型配置不存在', 'error')
+    return
+  }
+
+  const originalText = button.textContent || '测试'
+  button.disabled = true
+  button.textContent = '测试中'
+  button.classList.remove('success', 'danger')
+  button.classList.add('testing')
+
+  try {
+    const result = await window.electronAPI.testApiModel(kind, readCardModel(card, model))
+    if (!result.success) {
+      throw new Error(result.error || '连接失败')
+    }
+    button.textContent = '正常'
+    button.classList.remove('testing')
+    button.classList.add('success')
+    showPanelNotice(result.message || 'API 连接正常')
+  } catch (error: any) {
+    button.textContent = '失败'
+    button.classList.remove('testing')
+    button.classList.add('danger')
+    showPanelNotice(`API 测试失败: ${error.message ?? String(error)}`, 'error')
+  } finally {
+    window.setTimeout(() => {
+      button.disabled = false
+      button.textContent = originalText
+      button.classList.remove('success', 'danger', 'testing')
+    }, 1600)
+  }
 }
 
 function attachLLMEventListeners(): void {
@@ -4481,6 +4547,8 @@ function attachLLMEventListeners(): void {
           await activateLLMModel(id)
         } else if (action === 'delete') {
           await deleteLLMModel(id)
+        } else if (action === 'test') {
+          await testApiModel('llm', id, card, btn as HTMLButtonElement)
         }
       })
     })
@@ -4506,6 +4574,8 @@ function attachTaskEventListeners(): void {
           await activateTaskModel(id)
         } else if (action === 'delete') {
           await deleteTaskModel(id)
+        } else if (action === 'test') {
+          await testApiModel('task', id, card, btn as HTMLButtonElement)
         }
       })
     })
@@ -4531,6 +4601,8 @@ function attachTTSEventListeners(): void {
           await activateTTSModel(id)
         } else if (action === 'delete') {
           await deleteTTSModel(id)
+        } else if (action === 'test') {
+          await testApiModel('tts', id, card, btn as HTMLButtonElement)
         }
       })
     })
@@ -4556,6 +4628,8 @@ function attachASREventListeners(): void {
           await activateASRModel(id)
         } else if (action === 'delete') {
           await deleteASRModel(id)
+        } else if (action === 'test') {
+          await testApiModel('asr', id, card, btn as HTMLButtonElement)
         }
       })
     })

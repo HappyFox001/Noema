@@ -97,6 +97,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   downloadMissingLocalModels: () =>
     ipcRenderer.invoke('models:downloadMissing'),
 
+  testApiModel: (kind, model) =>
+    ipcRenderer.invoke('models:testApi', kind, model),
+
   listPlugins: () =>
     ipcRenderer.invoke('plugins:list'),
 
