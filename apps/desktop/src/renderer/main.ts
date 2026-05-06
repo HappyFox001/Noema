@@ -1038,6 +1038,7 @@ let activePluginMainSurface: PluginUISurface | null = null
 let activePluginTaskSurface: PluginUISurface | null = null
 let lastTaskPanelPlan: TaskPanelPlan | null = null
 let pluginUIStateTimer: number | undefined
+let pluginControlsPeekTimer: number | undefined
 let orbCanvasWidth = 180
 let orbCanvasHeight = 180
 let orbCanvasDpr = 1
@@ -1756,6 +1757,10 @@ function applyPluginUISurfaces(surfaces: PluginUISurface[]): void {
     activePluginTaskSurface?.mode === 'replace'
   )
 
+  if (activePluginMainSurface?.mode !== 'replace') {
+    pluginUIMainView.classList.remove('controls-peek')
+  }
+
   renderPluginUISurface(pluginUIMainView, activePluginMainSurface)
   renderPluginUISurface(pluginUITaskPanel, activePluginTaskSurface)
   syncPluginUIStateSoon()
@@ -1782,6 +1787,10 @@ window.addEventListener('message', (event) => {
   }
   if (data.type === 'her-text:ui-ready') {
     syncPluginUIState()
+  } else if (data.type === 'her-text:context-menu') {
+    const x = Number.isFinite(data.x) ? Number(data.x) : window.innerWidth / 2
+    const y = Number.isFinite(data.y) ? Number(data.y) : window.innerHeight / 2
+    showContextMenuAt(x, y)
   }
 })
 
@@ -2373,17 +2382,57 @@ document.addEventListener('click', () => {
   contextMenu.classList.remove('visible')
 })
 
-// Right-click on canvas to show context menu
-canvas.addEventListener('contextmenu', (e) => {
-  e.preventDefault()
-
-  // Position the menu at click location
-  const x = Math.min(e.clientX, window.innerWidth - 180)
-  const y = Math.min(e.clientY, window.innerHeight - 150)
+function showContextMenuAt(clientX: number, clientY: number): void {
+  const x = Math.max(0, Math.min(clientX, window.innerWidth - 180))
+  const y = Math.max(0, Math.min(clientY, window.innerHeight - 150))
 
   contextMenu.style.left = `${x}px`
   contextMenu.style.top = `${y}px`
   contextMenu.classList.add('visible')
+}
+
+mainView.addEventListener('contextmenu', (e) => {
+  e.preventDefault()
+  showContextMenuAt(e.clientX, e.clientY)
+})
+
+function setPluginControlsPeek(visible: boolean): void {
+  if (activePluginMainSurface?.mode !== 'replace') {
+    mainView.classList.remove('controls-peek')
+    return
+  }
+
+  mainView.classList.toggle('controls-peek', visible)
+  if (pluginControlsPeekTimer !== undefined) {
+    window.clearTimeout(pluginControlsPeekTimer)
+    pluginControlsPeekTimer = undefined
+  }
+
+  if (visible) {
+    pluginControlsPeekTimer = window.setTimeout(() => {
+      mainView.classList.remove('controls-peek')
+      pluginControlsPeekTimer = undefined
+    }, 1200)
+  }
+}
+
+window.addEventListener('pointermove', (event) => {
+  if (activePluginMainSurface?.mode !== 'replace' || document.body.classList.contains('settings-open')) {
+    setPluginControlsPeek(false)
+    return
+  }
+
+  const rect = mainView.getBoundingClientRect()
+  const insideMainView = event.clientX >= rect.left &&
+    event.clientX <= rect.right &&
+    event.clientY >= rect.top &&
+    event.clientY <= rect.bottom
+
+  setPluginControlsPeek(insideMainView)
+})
+
+window.addEventListener('pointerleave', () => {
+  setPluginControlsPeek(false)
 })
 
 // Context menu actions

@@ -1,0 +1,20 @@
+{
+  "id": "pixel-soul",
+  "name": "Pixel Spark Pet",
+  "description": "用受控粒子点云生成一个黄色电气小鼠风格的情绪宠物，并替代默认小球主界面。",
+  "version": "0.1.0",
+  "type": "sdk-plugin",
+  "main": "index.mjs",
+  "assets": "assets",
+  "enabled": true,
+  "permissions": [],
+  "uiSurfaces": [
+    {
+      "id": "pixel-soul-main",
+      "slot": "main-view",
+      "mode": "replace",
+      "entry": "ui/index.html",
+      "title": "Pixel Spark Pet"
+    }
+  ]
+}

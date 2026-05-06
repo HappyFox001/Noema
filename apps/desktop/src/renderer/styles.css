@@ -130,6 +130,21 @@ body {
   z-index: 2;
 }
 
+body.plugin-main-surface-replace .plugin-ui-main-surface.replace,
+body.plugin-main-surface-replace .plugin-ui-main-surface.replace .plugin-ui-surface-frame {
+  pointer-events: none;
+}
+
+body.plugin-main-surface-replace .plugin-ui-main-surface.replace {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+body.plugin-main-surface-replace .plugin-ui-main-surface.replace .plugin-ui-surface-frame {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
 body.plugin-main-surface-replace #orb-canvas,
 body.plugin-main-surface-replace .expression-layer,
 body.plugin-main-surface-replace .text-display,
@@ -140,6 +155,17 @@ body.plugin-main-surface-replace .status {
 
 body.plugin-main-surface-replace #main-view {
   max-width: 420px;
+}
+
+body.plugin-main-surface-replace .controls {
+  position: relative;
+  z-index: 7;
+}
+
+body.plugin-main-surface-replace:not(.settings-open) #main-view.controls-peek .controls {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
 }
 
 .expression-layer {
