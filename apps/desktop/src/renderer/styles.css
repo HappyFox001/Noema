@@ -928,9 +928,17 @@ body.plugin-task-surface-replace .task-steps {
 
 .nav-icon {
   font-size: 16px;
-  width: 20px;
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   text-align: center;
   opacity: 0.8;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  background: rgba(0, 0, 0, 0.18);
+  clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 6px 100%, 0 calc(100% - 6px));
   transition: transform 0.18s ease, opacity 0.18s ease;
 }
 
@@ -938,6 +946,8 @@ body.plugin-task-surface-replace .task-steps {
 .nav-item.active .nav-icon {
   opacity: 1;
   transform: scale(1.08);
+  border-color: rgba(125, 235, 214, 0.22);
+  background: rgba(125, 235, 214, 0.07);
 }
 
 .nav-label {
@@ -3374,9 +3384,11 @@ body.task-active:not(.settings-open) #main-view {
   max-width: 280px;
   padding: 8px 12px;
   font-size: 13px;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.105);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.052), rgba(255, 255, 255, 0.028)),
+    rgba(0, 0, 0, 0.16);
   color: rgba(255, 255, 255, 0.9);
   font-family: var(--font-ui);
   outline: none;
@@ -3384,8 +3396,11 @@ body.task-active:not(.settings-open) #main-view {
 }
 
 .settings-input:focus {
-  border-color: rgba(226, 74, 144, 0.5);
-  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(125, 235, 214, 0.34);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.065), rgba(255, 255, 255, 0.032)),
+    rgba(0, 0, 0, 0.14);
+  box-shadow: 0 0 0 3px rgba(125, 235, 214, 0.055);
 }
 
 .settings-input::placeholder {
@@ -3407,10 +3422,22 @@ body.task-active:not(.settings-open) #main-view {
 }
 
 .config-section-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   font-size: 14px;
   font-weight: 500;
   color: rgba(255, 255, 255, 0.85);
   font-family: var(--font-soft);
+}
+
+.config-section-title::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border: 1px solid rgba(125, 235, 214, 0.58);
+  transform: rotate(45deg);
+  box-shadow: 0 0 12px rgba(125, 235, 214, 0.18);
 }
 
 .config-section-actions {
@@ -3423,18 +3450,23 @@ body.task-active:not(.settings-open) #main-view {
 .config-add-btn {
   font-size: 12px;
   padding: 5px 12px;
-  border-radius: 6px;
-  background: rgba(74, 144, 226, 0.15);
-  border: 1px solid rgba(74, 144, 226, 0.3);
-  color: rgba(144, 180, 226, 0.9);
+  border-radius: 5px;
+  background:
+    linear-gradient(135deg, rgba(42, 98, 160, 0.68), rgba(22, 46, 78, 0.74)),
+    rgba(74, 144, 226, 0.18);
+  border: 1px solid rgba(158, 216, 255, 0.18);
+  color: rgba(226, 244, 255, 0.92);
   cursor: pointer;
   transition: all 0.2s;
   font-family: var(--font-ui);
 }
 
 .config-add-btn:hover {
-  background: rgba(74, 144, 226, 0.25);
-  border-color: rgba(74, 144, 226, 0.5);
+  background:
+    linear-gradient(135deg, rgba(50, 112, 180, 0.76), rgba(22, 52, 88, 0.82)),
+    rgba(74, 144, 226, 0.24);
+  border-color: rgba(158, 216, 255, 0.30);
+  transform: translateY(-1px);
 }
 
 .config-add-btn.secondary {
@@ -3486,21 +3518,51 @@ body.task-active:not(.settings-open) #main-view {
 
 /* Model Card */
 .config-model-card {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 10px;
-  padding: 14px 16px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.052), rgba(255, 255, 255, 0.026)),
+    rgba(255, 255, 255, 0.018);
+  border: 1px solid rgba(255, 255, 255, 0.072);
+  border-radius: 8px;
+  padding: 13px 14px 14px;
   position: relative;
-  transition: border-color 0.2s;
+  overflow: hidden;
+  box-shadow:
+    0 16px 38px rgba(0, 0, 0, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.config-model-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 12px;
+  bottom: 12px;
+  width: 2px;
+  opacity: 0.28;
+  background: rgba(255, 255, 255, 0.22);
 }
 
 .config-model-card:hover {
   border-color: rgba(255, 255, 255, 0.12);
+  transform: translateY(-1px);
+  box-shadow:
+    0 20px 46px rgba(0, 0, 0, 0.20),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .config-model-card.active {
-  border-color: rgba(226, 74, 144, 0.4);
-  background: rgba(226, 74, 144, 0.05);
+  border-color: rgba(125, 235, 214, 0.22);
+  background:
+    linear-gradient(180deg, rgba(125, 235, 214, 0.055), rgba(255, 255, 255, 0.026)),
+    rgba(255, 255, 255, 0.018);
+}
+
+.config-model-card.active::before {
+  opacity: 1;
+  background: rgba(125, 235, 214, 0.88);
+  box-shadow: 0 0 16px rgba(125, 235, 214, 0.34);
 }
 
 .config-model-card.missing {
@@ -3516,13 +3578,15 @@ body.task-active:not(.settings-open) #main-view {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: 11px;
+  min-width: 0;
 }
 
 .config-model-name {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .config-model-name input {
@@ -3530,17 +3594,19 @@ body.task-active:not(.settings-open) #main-view {
   font-weight: 500;
   color: rgba(255, 255, 255, 0.9);
   background: transparent;
-  border: none;
-  border-bottom: 1px solid transparent;
-  padding: 2px 0;
+  border: 1px solid transparent;
+  border-bottom-color: rgba(255, 255, 255, 0.075);
+  padding: 3px 4px;
   font-family: var(--font-soft);
   outline: none;
-  width: 140px;
+  width: 150px;
+  min-width: 0;
   transition: border-color 0.2s;
 }
 
 .config-model-name input:focus {
-  border-bottom-color: rgba(255, 255, 255, 0.3);
+  border-color: rgba(125, 235, 214, 0.26);
+  background: rgba(125, 235, 214, 0.035);
 }
 
 .local-model-name span:first-child {
@@ -3551,10 +3617,11 @@ body.task-active:not(.settings-open) #main-view {
 
 .config-model-active-badge {
   font-size: 10px;
-  padding: 2px 8px;
+  padding: 2px 7px;
   border-radius: 4px;
-  background: rgba(226, 74, 144, 0.2);
-  color: rgba(226, 144, 180, 0.9);
+  background: rgba(125, 235, 214, 0.11);
+  border: 1px solid rgba(125, 235, 214, 0.18);
+  color: rgba(190, 255, 244, 0.9);
   font-family: var(--font-ui);
 }
 
@@ -3576,10 +3643,14 @@ body.task-active:not(.settings-open) #main-view {
   height: 25px;
   font-size: 11px;
   padding: 0 10px;
-  border-radius: 5px;
+  border-radius: 4px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: transform 0.16s ease, background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
   font-family: var(--font-ui);
+}
+
+.config-model-btn:hover {
+  transform: translateY(-1px);
 }
 
 .config-test-btn {
@@ -3640,20 +3711,25 @@ body.task-active:not(.settings-open) #main-view {
 }
 
 .config-model-fields {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
 }
 
 .config-field {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.045);
+  background: rgba(0, 0, 0, 0.13);
+  border-radius: 6px;
 }
 
 .config-field-label {
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.45);
+  color: rgba(125, 235, 214, 0.48);
   font-family: var(--font-ui);
   min-width: 65px;
   flex-shrink: 0;
@@ -3661,11 +3737,12 @@ body.task-active:not(.settings-open) #main-view {
 
 .config-field-input {
   flex: 1;
-  padding: 7px 10px;
+  min-width: 0;
+  padding: 5px 7px;
   font-size: 12px;
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.025);
   color: rgba(255, 255, 255, 0.85);
   font-family: var(--font-ui);
   outline: none;
@@ -3673,8 +3750,8 @@ body.task-active:not(.settings-open) #main-view {
 }
 
 .config-field-input:focus {
-  border-color: rgba(226, 74, 144, 0.4);
-  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(125, 235, 214, 0.26);
+  background: rgba(125, 235, 214, 0.035);
 }
 
 .config-field-static {
@@ -3786,10 +3863,16 @@ body.task-active:not(.settings-open) #main-view {
 /* Empty state */
 .config-empty {
   text-align: center;
-  padding: 24px;
-  color: rgba(255, 255, 255, 0.3);
+  padding: 22px 18px;
+  color: rgba(255, 255, 255, 0.42);
   font-size: 12px;
   font-family: var(--font-ui);
+  border: 1px dashed rgba(125, 235, 214, 0.16);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(125, 235, 214, 0.035), rgba(255, 255, 255, 0.018)),
+    rgba(0, 0, 0, 0.10);
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
 }
 
 /* Responsive */
