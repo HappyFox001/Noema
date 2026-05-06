@@ -1653,6 +1653,15 @@ function replaceControlText(element: HTMLElement, text: string): void {
 }
 
 let panelNoticeTimer: number | undefined
+function hidePanelNotice(): void {
+  const notice = document.getElementById('panel-notice')
+  if (!notice) return
+
+  window.clearTimeout(panelNoticeTimer)
+  panelNoticeTimer = undefined
+  notice.classList.remove('visible')
+}
+
 function showPanelNotice(text: string, tone: 'info' | 'error' = 'info') {
   const notice = document.getElementById('panel-notice')
   if (!notice) return
@@ -2431,6 +2440,7 @@ function openSettings(section?: string) {
 
 // Close settings panel
 function closeSettings() {
+  hidePanelNotice()
   if (document.body.classList.contains('task-active')) {
     window.electronAPI.setTaskWindowMode(true)
   } else {
