@@ -1518,6 +1518,52 @@ async function waitForRendererPlayback(timeoutMs = 30000): Promise<void> {
   })
 }
 
+async function waitForRendererPlaybackOrAbort(signal: AbortSignal, timeoutMs = 30000): Promise<void> {
+  if (!mainWindow || signal.aborted) {
+    return
+  }
+
+  const requestId = ++playbackRequestIdCounter
+  console.log('[Playback] Requesting abortable playback complete wait, requestId:', requestId)
+
+  return new Promise((resolve) => {
+    let settled = false
+    let timeout: ReturnType<typeof setTimeout> | null = null
+
+    const cleanup = () => {
+      if (timeout) {
+        clearTimeout(timeout)
+        timeout = null
+      }
+      signal.removeEventListener('abort', onAbort)
+      playbackResolvers.delete(requestId)
+    }
+    const settle = () => {
+      if (settled) {
+        return
+      }
+      settled = true
+      cleanup()
+      resolve()
+    }
+    const onAbort = () => {
+      console.log('[Playback] Wait aborted, requestId:', requestId)
+      settle()
+    }
+
+    playbackResolvers.set(requestId, settle)
+    signal.addEventListener('abort', onAbort, { once: true })
+    mainWindow?.webContents.send('playback:waitRequest', requestId)
+
+    timeout = setTimeout(() => {
+      if (!settled) {
+        console.log('[Playback] Wait timeout, requestId:', requestId)
+        settle()
+      }
+    }, timeoutMs)
+  })
+}
+
 ipcMain.on('playback:complete', (_, requestId: number) => {
   console.log('[Playback] Received complete notification, requestId:', requestId)
   const resolver = playbackResolvers.get(requestId)
@@ -2639,7 +2685,7 @@ async function runConversationTurn(
 
     const llmStreamBridge = new LLMStreamBridgeProcessor({
       queueFrame: (frame) => {
-        void responseFramePipeline?.queueFrame(frame)
+        return responseFramePipeline?.queueFrame(frame) ?? Promise.resolve()
       },
       isCancelled: () => isTurnCancelled(turnId),
       shouldUseTTS: () => shouldUseTTS,
@@ -2657,9 +2703,9 @@ async function runConversationTurn(
       getInterruptedAssistantText: () => interruptedTTSTextChunks.join(''),
       pluginContext,
       queueFrame: (frame) => {
-        void responseFramePipeline?.queueFrame(frame)
+        return responseFramePipeline?.queueFrame(frame) ?? Promise.resolve()
       },
-      waitForIdle: () => Promise.resolve(),
+      waitForIdle: () => responseFramePipeline?.waitForIdle() ?? Promise.resolve(),
       onTaskStart: (taskDescription) => {
         taskCommunicationManager.onTaskStart(taskDescription)
       },
@@ -2704,8 +2750,11 @@ async function runConversationTurn(
           shouldUseTTS = false
         },
         waitForPlayback: async (phase) => {
+          if (isTurnCancelled(turnId) || turnAbortSignal.aborted) {
+            return
+          }
           console.log(`[Conversation] Waiting for playback to complete before ending phase "${phase}"...`)
-          await waitForRendererPlayback()
+          await waitForRendererPlaybackOrAbort(turnAbortSignal)
           if (isTurnCancelled(turnId)) {
             console.log(`[Turn] Phase end aborted after playback wait - turn #${turnId} cancelled`)
             return
