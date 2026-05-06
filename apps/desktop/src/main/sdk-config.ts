@@ -93,11 +93,11 @@ function resolveTaskRuntimeConfig(config: TaskRuntimeSettings): TaskRuntimeSetti
   return {
     ...config,
     adapterId: configured,
-    cwd: normalizeString(pluginConfig.cwd),
-    command: normalizeString(pluginConfig.command),
+    cwd: '',
+    command: '',
     model: normalizeString(pluginConfig.model),
     timeoutMs: normalizePositiveNumber(pluginConfig.timeoutMs, config.timeoutMs || 1800000),
-    extraArgs: parseRuntimeExtraArgs(pluginConfig.extraArgs),
+    extraArgs: [],
   }
 }
 
@@ -112,17 +112,4 @@ function normalizeString(value: unknown): string {
 function normalizePositiveNumber(value: unknown, fallback: number): number {
   const numeric = Number(value)
   return Number.isFinite(numeric) && numeric > 0 ? Math.round(numeric) : fallback
-}
-
-function parseRuntimeExtraArgs(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value.map(item => String(item).trim()).filter(Boolean)
-  }
-  if (typeof value !== 'string') {
-    return []
-  }
-  return value
-    .split(/\s+/)
-    .map(item => item.trim())
-    .filter(Boolean)
 }

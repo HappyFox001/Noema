@@ -787,7 +787,7 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'taskRuntime.compactLimitDesc': 'Compact task history when context tokens reach this value, capped at 90% of the window.',
     'taskRuntime.contextWindow': 'Model Context Window',
     'taskRuntime.contextWindowDesc': 'Used to estimate the task history compact threshold.',
-    'taskRuntime.desc': 'Tune task model execution loops, history compaction, and stuck handling.',
+    'taskRuntime.desc': 'Runtime loop and memory limits.',
     'taskRuntime.keepRecent': 'Keep Recent Turns',
     'taskRuntime.keepRecentDesc': 'How many raw recent turns to keep during compaction.',
     'taskRuntime.maxTurns': 'Max Turns',
@@ -3307,13 +3307,14 @@ function bindPluginConfigInputs(): void {
       const type = input.dataset.pluginType
       if (!pluginId || !key || !type) return
       const optimisticValue = readPluginConfigValue(input, type)
+      const configPatch = getPluginConfigPatch(pluginId, key, optimisticValue)
       const target = cachedPlugins.find(item => item.id === pluginId)
       const previousConfig = target ? { ...target.config } : null
 
       if (target) {
         target.config = {
           ...target.config,
-          [key]: optimisticValue,
+          ...configPatch,
         }
       }
       updatePluginConfigOptimisticUI(pluginId, key, optimisticValue)
@@ -3326,7 +3327,7 @@ function bindPluginConfigInputs(): void {
           ...(settings.pluginConfigs ?? {}),
           [pluginId]: {
             ...currentPluginConfig,
-            [key]: optimisticValue,
+            ...configPatch,
           },
         }
         await window.electronAPI.updateSettings({ pluginConfigs: nextPluginConfigs })
@@ -3369,6 +3370,16 @@ function bindPluginConfigInputs(): void {
   })
 }
 
+function getPluginConfigPatch(pluginId: string, key: string, value: unknown): Record<string, unknown> {
+  if (pluginId === 'task-runtime-cli' && key === 'activeRuntime') {
+    return {
+      activeRuntime: value,
+      model: '',
+    }
+  }
+  return { [key]: value }
+}
+
 function cssEscape(value: string): string {
   if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
     return CSS.escape(value)
@@ -3393,9 +3404,43 @@ const TASK_RUNTIME_CHOICES = {
   claude_code_local: { label: 'Claude Code', icon: claudeCodeLogoUrl, className: 'claude' },
 } as const
 
+const TASK_RUNTIME_MODEL_CHOICES: Record<keyof typeof TASK_RUNTIME_CHOICES, Array<{ id: string; label: string }>> = {
+  codex_local: [
+    { id: 'gpt-5.5', label: 'gpt-5.5' },
+    { id: 'gpt-5.4', label: 'gpt-5.4' },
+    { id: 'gpt-5.3-codex-spark', label: 'gpt-5.3-codex-spark' },
+    { id: 'gpt-5', label: 'gpt-5' },
+    { id: 'o3', label: 'o3' },
+    { id: 'o4-mini', label: 'o4-mini' },
+    { id: 'gpt-5-mini', label: 'gpt-5-mini' },
+    { id: 'gpt-5-nano', label: 'gpt-5-nano' },
+    { id: 'o3-mini', label: 'o3-mini' },
+    { id: 'codex-mini-latest', label: 'Codex Mini' },
+  ],
+  claude_code_local: [
+    { id: 'claude-opus-4-6', label: 'Claude Opus 4.6' },
+    { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
+    { id: 'claude-haiku-4-6', label: 'Claude Haiku 4.6' },
+    { id: 'claude-sonnet-4-5-20250929', label: 'Claude Sonnet 4.5' },
+    { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
+  ],
+}
+
 function taskRuntimeChoiceMeta(value: unknown) {
   const key = typeof value === 'string' ? value : 'codex_local'
   return TASK_RUNTIME_CHOICES[key as keyof typeof TASK_RUNTIME_CHOICES] ?? TASK_RUNTIME_CHOICES.codex_local
+}
+
+function taskRuntimeChoiceKey(value: unknown): keyof typeof TASK_RUNTIME_CHOICES {
+  const key = typeof value === 'string' ? value : 'codex_local'
+  return key in TASK_RUNTIME_CHOICES ? key as keyof typeof TASK_RUNTIME_CHOICES : 'codex_local'
+}
+
+function taskRuntimeModelOptions(runtime: unknown): Array<{ id: string; label: string }> {
+  return [
+    { id: '', label: 'CLI default' },
+    ...TASK_RUNTIME_MODEL_CHOICES[taskRuntimeChoiceKey(runtime)],
+  ]
 }
 
 function renderPluginRuntimeStatus(plugin: PluginInfo): string {
@@ -3429,6 +3474,14 @@ function updatePluginConfigOptimisticUI(pluginId: string, key: string, value: un
     status.className = `plugin-runtime-status ${meta.className}`
     status.innerHTML = `<img class="plugin-runtime-icon" src="${escapeHtml(meta.icon)}" alt="" />${escapeHtml(meta.label)}`
   })
+
+  const modelSelect = pluginsList.querySelector<HTMLSelectElement>(
+    `select[data-plugin-id="${cssEscape(pluginId)}"][data-plugin-config="model"]`
+  )
+  if (modelSelect) {
+    modelSelect.innerHTML = renderTaskRuntimeModelOptions(selectedValue, '')
+    modelSelect.value = ''
+  }
 }
 
 function renderTaskRuntimeChoiceField(plugin: PluginInfo, field: Extract<PluginConfigField, { type: 'select' }>): string {
@@ -3472,6 +3525,9 @@ function renderTaskRuntimeChoiceField(plugin: PluginInfo, field: Extract<PluginC
 function renderPluginConfigField(plugin: PluginInfo, field: PluginConfigField): string {
   if (plugin.id === 'task-runtime-cli' && field.key === 'activeRuntime' && field.type === 'select') {
     return renderTaskRuntimeChoiceField(plugin, field)
+  }
+  if (plugin.id === 'task-runtime-cli' && field.key === 'model') {
+    return renderTaskRuntimeModelField(plugin, field)
   }
   if (plugin.id === 'task-runtime-cli') {
     return renderTaskRuntimeCliConfigField(plugin, field)
@@ -3523,6 +3579,33 @@ function renderPluginConfigField(plugin: PluginInfo, field: PluginConfigField): 
         ${desc}
       </div>
       ${control}
+    </div>
+  `
+}
+
+function renderTaskRuntimeModelOptions(runtime: unknown, selected: unknown): string {
+  const selectedValue = typeof selected === 'string' ? selected : ''
+  return taskRuntimeModelOptions(runtime).map(option => `
+    <option value="${escapeHtml(option.id)}" ${option.id === selectedValue ? 'selected' : ''}>${escapeHtml(option.label)}</option>
+  `).join('')
+}
+
+function renderTaskRuntimeModelField(plugin: PluginInfo, field: PluginConfigField): string {
+  const rawValue = plugin.config[field.key] ?? field.default
+  const label = escapeHtml(field.label ?? field.key)
+  const desc = field.description
+    ? `<div class="plugin-config-desc">${escapeHtml(field.description)}</div>`
+    : ''
+  const commonAttrs = `data-plugin-id="${escapeHtml(plugin.id)}" data-plugin-config="${escapeHtml(field.key)}" data-plugin-type="${field.type}"`
+  return `
+    <div class="plugin-config-row plugin-config-row-multiline task-runtime-plugin-field">
+      <div class="plugin-config-meta">
+        <div class="plugin-config-label">${label}</div>
+        ${desc}
+      </div>
+      <select class="plugin-config-input task-runtime-plugin-input" ${commonAttrs}>
+        ${renderTaskRuntimeModelOptions(plugin.config.activeRuntime, rawValue)}
+      </select>
     </div>
   `
 }

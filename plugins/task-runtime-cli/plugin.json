@@ -13,11 +13,8 @@
   ],
   "config": {
     "activeRuntime": "codex_local",
-    "cwd": "",
-    "command": "",
     "model": "",
-    "timeoutMs": 1800000,
-    "extraArgs": ""
+    "timeoutMs": 1800000
   },
   "configSchema": [
     {
@@ -32,23 +29,9 @@
       ]
     },
     {
-      "key": "cwd",
-      "label": "Working Directory",
-      "description": "Project directory for Codex/Claude Code. Empty uses the current process directory.",
-      "type": "string",
-      "default": ""
-    },
-    {
-      "key": "command",
-      "label": "Command",
-      "description": "Override the selected CLI command. Empty uses codex or claude.",
-      "type": "string",
-      "default": ""
-    },
-    {
       "key": "model",
       "label": "Model",
-      "description": "Model argument passed to the external CLI. Empty uses the CLI default.",
+      "description": "Choose a model supported by the selected local runtime. Empty uses the CLI default.",
       "type": "string",
       "default": ""
     },
@@ -61,13 +44,6 @@
       "min": 1000,
       "max": 86400000,
       "step": 1000
-    },
-    {
-      "key": "extraArgs",
-      "label": "Extra Args",
-      "description": "Additional external CLI args separated by spaces.",
-      "type": "string",
-      "default": ""
     }
   ]
 }
