@@ -2263,6 +2263,8 @@ const settingsNav = document.querySelector('.settings-nav') as HTMLElement
 const modelNavItem = document.querySelector('.nav-item[data-section="models"]') as HTMLElement | null
 const modelNavLabel = modelNavItem?.querySelector('.nav-label') as HTMLElement | null
 
+let settingsCloseAnimationTimer: number | undefined
+
 let setupReadiness: SetupReadiness = { ready: true, issues: [] }
 const volumeSlider = document.getElementById('volume-slider') as HTMLInputElement
 const volumeValue = document.getElementById('volume-value')!
@@ -2423,11 +2425,20 @@ function switchSettingsSection(section: string): void {
 }
 
 function openSettings(section?: string) {
+  if (settingsCloseAnimationTimer !== undefined) {
+    window.clearTimeout(settingsCloseAnimationTimer)
+    settingsCloseAnimationTimer = undefined
+  }
+
   window.electronAPI.setCompactWindowMode(false)
   orbAnimationPaused = true
   stopOrbAnimation()
   document.body.classList.add('settings-open')
-  settingsPanel.classList.add('visible')
+  settingsPanel.classList.remove('warping-out')
+  settingsPanel.classList.add('visible', 'warping-in')
+  window.setTimeout(() => {
+    settingsPanel.classList.remove('warping-in')
+  }, 380)
   mainView.setAttribute('aria-hidden', 'true')
   void refreshSetupReadiness()
 
@@ -2441,16 +2452,26 @@ function openSettings(section?: string) {
 // Close settings panel
 function closeSettings() {
   hidePanelNotice()
-  if (document.body.classList.contains('task-active')) {
-    window.electronAPI.setTaskWindowMode(true)
-  } else {
-    window.electronAPI.setCompactWindowMode(true)
+  settingsPanel.classList.remove('warping-in')
+  settingsPanel.classList.add('warping-out')
+
+  if (settingsCloseAnimationTimer !== undefined) {
+    window.clearTimeout(settingsCloseAnimationTimer)
   }
-  orbAnimationPaused = false
-  document.body.classList.remove('settings-open')
-  settingsPanel.classList.remove('visible')
-  mainView.removeAttribute('aria-hidden')
-  startOrbAnimation()
+
+  settingsCloseAnimationTimer = window.setTimeout(() => {
+    if (document.body.classList.contains('task-active')) {
+      window.electronAPI.setTaskWindowMode(true)
+    } else {
+      window.electronAPI.setCompactWindowMode(true)
+    }
+    orbAnimationPaused = false
+    document.body.classList.remove('settings-open')
+    settingsPanel.classList.remove('visible', 'warping-out')
+    mainView.removeAttribute('aria-hidden')
+    startOrbAnimation()
+    settingsCloseAnimationTimer = undefined
+  }, 260)
 }
 
 function handleSettingsClose(event: Event) {
