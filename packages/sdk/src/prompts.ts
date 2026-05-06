@@ -110,7 +110,9 @@ export const PROMPTS = {
   "title": "简短任务标题",
   "summary": "任务目标摘要",
   "steps": [
-    {"title": "步骤标题", "description": "这一步要完成的可验证目标"}
+    {"title": "步骤一标题", "description": "第一步要完成的可验证目标"},
+    {"title": "步骤二标题", "description": "第二步要完成的可验证目标"},
+    {"title": "步骤三标题", "description": "第三步要完成的可验证目标"}
   ]
 }
 
