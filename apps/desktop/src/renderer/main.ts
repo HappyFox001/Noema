@@ -4457,10 +4457,19 @@ const taskKeepRecentInput = document.getElementById('task-keep-recent-input') as
 const addTTSBtn = document.getElementById('add-tts-btn') as HTMLButtonElement
 const addASRBtn = document.getElementById('add-asr-btn') as HTMLButtonElement
 const downloadLocalModelsBtn = document.getElementById('download-local-models-btn') as HTMLButtonElement
+const configResetSection = document.getElementById('config-reset-section') as HTMLElement
 const resetSystemBtn = document.getElementById('reset-system-btn') as HTMLButtonElement
 
 let currentSystemConfig: SystemConfig | null = null
 let lastLocalModels: LocalModelStatus[] = []
+
+async function revealDevOnlyControls(): Promise<void> {
+  try {
+    configResetSection.hidden = !await window.electronAPI.isDevMode()
+  } catch {
+    configResetSection.hidden = true
+  }
+}
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
@@ -5347,6 +5356,7 @@ resetSystemBtn.addEventListener('click', () => void resetSystemConfigFromEnv())
 
 async function initializeApp(): Promise<void> {
   try {
+    await revealDevOnlyControls()
     await loadSettings()
     await loadPersonalities()
     await loadSystemConfig()

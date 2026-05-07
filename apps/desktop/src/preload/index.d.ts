@@ -232,6 +232,7 @@ declare global {
         success: boolean
         error?: string
       }>
+      isDevMode: () => Promise<boolean>
       getLocalModelStatus: () => Promise<{
         success: boolean
         error?: string

@@ -88,6 +88,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateSettings: (partial) =>
     ipcRenderer.invoke('settings:update', partial),
 
+  isDevMode: () =>
+    ipcRenderer.invoke('app:isDevMode'),
+
   resetSystemConfigFromEnv: () =>
     ipcRenderer.invoke('settings:resetSystemFromEnv'),
 

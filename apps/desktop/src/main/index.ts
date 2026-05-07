@@ -3287,7 +3287,12 @@ ipcMain.handle('plugins:adminAction', async (_event, pluginId: string, action: s
   )
 })
 
+ipcMain.handle('app:isDevMode', () => isDevMode())
+
 ipcMain.handle('settings:resetSystemFromEnv', async () => {
+  if (!isDevMode()) {
+    return { success: false, error: 'Reloading .env is only available in development mode.' }
+  }
   try {
     const previous = {
       llm: getLLMConfigSignature(getActiveLLMConfig()),
