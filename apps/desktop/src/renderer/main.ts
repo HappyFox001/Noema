@@ -5042,9 +5042,7 @@ function renderTTSModels(): void {
       <div class="config-model-fields">
         <div class="config-field">
           <span class="config-field-label">Provider</span>
-          <select class="config-field-input" data-field="provider">
-            ${TTS_PROVIDERS.map(p => `<option value="${p.value}" ${p.value === model.provider ? 'selected' : ''}>${p.label}</option>`).join('')}
-          </select>
+          <span class="config-field-static">${escapeHtml(getTTSProviderLabel(model.provider))}</span>
         </div>
         <div class="config-field">
           <span class="config-field-label">API Key</span>
@@ -5101,9 +5099,7 @@ function renderASRModels(): void {
       <div class="config-model-fields">
         <div class="config-field">
           <span class="config-field-label">Provider</span>
-          <select class="config-field-input" data-field="provider">
-            ${ASR_PROVIDERS.map(p => `<option value="${p.value}" ${p.value === model.provider ? 'selected' : ''}>${p.label}</option>`).join('')}
-          </select>
+          <span class="config-field-static">${escapeHtml(getASRProviderLabel(model.provider))}</span>
         </div>
         <div class="config-field">
           <span class="config-field-label">API Key</span>
@@ -5248,10 +5244,10 @@ function attachTTSEventListeners(): void {
       input.addEventListener('change', async () => {
         const field = input.dataset.field!
         const value = input.value
-        await updateTTSModel(id, { [field]: value })
         if (field === 'provider') {
-          renderTTSModels()
+          return
         }
+        await updateTTSModel(id, { [field]: value })
       })
     })
 
@@ -5278,10 +5274,10 @@ function attachASREventListeners(): void {
       input.addEventListener('change', async () => {
         const field = input.dataset.field!
         const value = input.value
-        await updateASRModel(id, { [field]: value })
         if (field === 'provider') {
-          renderASRModels()
+          return
         }
+        await updateASRModel(id, { [field]: value })
       })
     })
 
@@ -5440,15 +5436,6 @@ async function updateTTSModel(id: string, updates: Partial<TTSModelConfig>): Pro
   const model = currentSystemConfig.ttsModels.find(m => m.id === id)
   if (model) {
     Object.assign(model, updates)
-    if (updates.provider) {
-      const provider = getTTSProviderCatalogEntry(updates.provider)
-      model.modelName = provider.defaultModel
-      model.baseUrl = provider.defaultBaseUrl
-      model.language = provider.defaultLanguage
-      model.voiceId = provider.defaultVoiceId || ''
-      model.sampleRate = provider.sampleRate
-      model.format = 'pcm'
-    }
     await saveSystemConfig()
   }
 }
@@ -5493,13 +5480,6 @@ async function updateASRModel(id: string, updates: Partial<ASRModelConfig>): Pro
   const model = currentSystemConfig.asrModels.find(m => m.id === id)
   if (model) {
     Object.assign(model, updates)
-    if (updates.provider) {
-      const provider = getASRProviderCatalogEntry(updates.provider)
-      model.modelName = provider.defaultModel
-      model.baseUrl = provider.defaultBaseUrl
-      model.language = provider.defaultLanguage
-      model.sampleRate = provider.sampleRate
-    }
     await saveSystemConfig()
   }
 }
