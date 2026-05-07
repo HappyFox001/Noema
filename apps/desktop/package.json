@@ -18,6 +18,7 @@
     "@her-text/core": "workspace:*",
     "@her-text/sdk": "workspace:*",
     "@her-text/types": "workspace:*",
+    "@lobehub/icons-static-svg": "^1.90.0",
     "chokidar": "^3.5.3",
     "dotenv": "^17.4.2",
     "global-agent": "^3.0.0",

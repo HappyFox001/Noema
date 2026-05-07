@@ -4021,10 +4021,42 @@ body.task-active:not(.settings-open) #main-view {
 
 .config-model-name {
   display: grid;
-  grid-template-columns: minmax(92px, auto) minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   min-width: 0;
+}
+
+.config-model-logo {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  flex-shrink: 0;
+  border-radius: 5px;
+}
+
+.config-model-logo.color {
+  filter: brightness(1.12) saturate(1.08);
+}
+
+.config-model-logo.light {
+  filter: invert(1) brightness(1.22) drop-shadow(0 0 6px rgba(190, 255, 244, 0.18));
+  opacity: 0.92;
+}
+
+.config-model-logo.overview {
+  width: 18px;
+  height: 18px;
+}
+
+.config-model-logo.provider {
+  width: 16px;
+  height: 16px;
+}
+
+.config-model-logo.provider-option {
+  width: 20px;
+  height: 20px;
 }
 
 .config-model-name input {
@@ -4252,7 +4284,6 @@ body.task-active:not(.settings-open) #main-view {
   min-width: 0;
   min-height: 28px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 14px;
   align-items: center;
   gap: 6px;
   padding: 4px 8px;
@@ -4272,6 +4303,14 @@ body.task-active:not(.settings-open) #main-view {
     inset 0 1px 0 rgba(255, 255, 255, 0.045),
     0 8px 18px rgba(0, 0, 0, 0.12);
   transition: border-color 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease;
+}
+
+.config-provider-trigger.has-logo {
+  grid-template-columns: 16px minmax(0, 1fr) 14px;
+}
+
+.config-provider-trigger.no-logo {
+  grid-template-columns: minmax(0, 1fr) 14px;
 }
 
 .config-provider-trigger-label {
@@ -4323,7 +4362,7 @@ body.task-active:not(.settings-open) #main-view {
 .config-provider-option {
   min-height: 34px;
   display: grid;
-  grid-template-columns: 22px minmax(0, 1fr);
+  grid-template-columns: 22px 20px minmax(0, 1fr);
   align-items: center;
   gap: 4px;
   padding: 0 11px 0 7px;

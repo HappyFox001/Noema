@@ -7,6 +7,14 @@
 import './styles.css'
 import claudeCodeLogoUrl from '../../../../plugins/task-runtime-cli/assets/claude_code_logo.png'
 import codexLogoUrl from '../../../../plugins/task-runtime-cli/assets/codex_logo.png'
+import claudeIconUrl from '@lobehub/icons-static-svg/icons/claude-color.svg?url'
+import deepseekIconUrl from '@lobehub/icons-static-svg/icons/deepseek-color.svg?url'
+import elevenLabsIconUrl from '@lobehub/icons-static-svg/icons/elevenlabs.svg?url'
+import fishAudioIconUrl from '@lobehub/icons-static-svg/icons/fishaudio.svg?url'
+import geminiIconUrl from '@lobehub/icons-static-svg/icons/gemini-color.svg?url'
+import groqIconUrl from '@lobehub/icons-static-svg/icons/groq.svg?url'
+import openAIIconUrl from '@lobehub/icons-static-svg/icons/openai.svg?url'
+import qwenIconUrl from '@lobehub/icons-static-svg/icons/qwen-color.svg?url'
 import {
   ASR_PROVIDER_CATALOG,
   TTS_PROVIDER_CATALOG,
@@ -883,6 +891,12 @@ type ASRModelConfig = {
 }
 
 type ApiModelTestKind = 'llm' | 'task' | 'tts' | 'asr'
+
+type ModelLogo = {
+  src: string
+  alt: string
+  tone?: 'color' | 'light'
+}
 
 type TaskRuntimeSettings = {
   adapterId: string
@@ -4692,6 +4706,7 @@ function getActiveModelSummary(kind: ModelManagerKind): {
   count: number
   ready: boolean
   missing: string[]
+  logo?: ModelLogo
 } {
   if (kind === 'models') {
     const missingModels = lastLocalModels.filter(model => !model.exists)
@@ -4744,6 +4759,7 @@ function getActiveModelSummary(kind: ModelManagerKind): {
       count: currentSystemConfig.llmModels.length,
       ready: missing.length === 0,
       missing,
+      logo: model ? getLLMModelLogo(model) : undefined,
     }
   }
 
@@ -4764,6 +4780,7 @@ function getActiveModelSummary(kind: ModelManagerKind): {
       count: currentSystemConfig.taskModels.length,
       ready: missing.length === 0,
       missing,
+      logo: model ? getLLMModelLogo(model) : undefined,
     }
   }
 
@@ -4787,6 +4804,7 @@ function getActiveModelSummary(kind: ModelManagerKind): {
       count: currentSystemConfig.ttsModels.length,
       ready: missing.length === 0,
       missing,
+      logo: model ? getTTSProviderLogo(model.provider) : undefined,
     }
   }
 
@@ -4807,6 +4825,7 @@ function getActiveModelSummary(kind: ModelManagerKind): {
     count: currentSystemConfig.asrModels.length,
     ready: missing.length === 0,
     missing,
+    logo: model ? getASRProviderLogo(model.provider) : undefined,
   }
 }
 
@@ -4818,7 +4837,7 @@ function renderModelOverview(): void {
   const summaries = (['llm', 'task', 'tts', 'asr', 'models'] as ModelManagerKind[]).map(getActiveModelSummary)
   modelOverviewList.innerHTML = summaries.map(summary => `
     <button class="model-overview-card ${summary.ready ? 'ready' : 'missing'}" type="button" data-model-kind="${summary.kind}">
-      <span class="model-overview-mark"></span>
+      ${summary.logo ? renderModelLogo(summary.logo, 'overview') : '<span class="model-overview-mark"></span>'}
       <span class="model-overview-main">
         <span class="model-overview-topline">
           <span class="model-overview-title">${escapeHtml(summary.title)}</span>
@@ -4960,6 +4979,7 @@ function renderLLMModels(): void {
     <div class="config-model-card ${model.id === currentSystemConfig!.activeLLMId ? 'active' : ''}" data-id="${escapeHtml(model.id)}">
       <div class="config-model-header">
         <div class="config-model-name">
+          ${renderModelLogo(getLLMModelLogo(model))}
           <input type="text" value="${escapeHtml(model.modelName)}" data-field="modelName" placeholder="deepseek-chat" />
           ${model.id === currentSystemConfig!.activeLLMId ? `<span class="config-model-active-badge">${escapeHtml(t('common.active'))}</span>` : ''}
         </div>
@@ -4998,6 +5018,7 @@ function renderTaskModels(): void {
     <div class="config-model-card ${model.id === currentSystemConfig!.activeTaskId ? 'active' : ''}" data-id="${escapeHtml(model.id)}">
       <div class="config-model-header">
         <div class="config-model-name">
+          ${renderModelLogo(getLLMModelLogo(model))}
           <input type="text" value="${escapeHtml(model.modelName)}" data-field="modelName" placeholder="gemini-3.1-pro-preview" />
           ${model.id === currentSystemConfig!.activeTaskId ? `<span class="config-model-active-badge">${escapeHtml(t('common.active'))}</span>` : ''}
         </div>
@@ -5032,17 +5053,63 @@ function renderTaskRuntimeSettings(): void {
   taskKeepRecentInput.value = String(config.keepRecentTurns)
 }
 
+function renderModelLogo(logo: ModelLogo, className = ''): string {
+  return `<img class="config-model-logo ${logo.tone === 'light' ? 'light' : 'color'} ${className}" src="${escapeHtml(logo.src)}" alt="${escapeHtml(logo.alt)}" />`
+}
+
+function getLLMModelLogo(model: Pick<LLMModelConfig, 'modelName' | 'baseUrl'>): ModelLogo {
+  const text = `${model.modelName || ''} ${model.baseUrl || ''}`.toLowerCase()
+  if (text.includes('gemini') || text.includes('generativelanguage.googleapis.com') || text.includes('google')) {
+    return { src: geminiIconUrl, alt: 'Gemini' }
+  }
+  if (text.includes('claude') || text.includes('anthropic')) {
+    return { src: claudeIconUrl, alt: 'Claude' }
+  }
+  if (text.includes('deepseek')) {
+    return { src: deepseekIconUrl, alt: 'DeepSeek' }
+  }
+  if (text.includes('qwen') || text.includes('dashscope') || text.includes('alibaba')) {
+    return { src: qwenIconUrl, alt: 'Qwen' }
+  }
+  return { src: openAIIconUrl, alt: 'OpenAI', tone: 'light' }
+}
+
+function getTTSProviderLogo(provider: TTSProviderType): ModelLogo {
+  switch (provider) {
+    case 'fish':
+      return { src: fishAudioIconUrl, alt: 'Fish Audio', tone: 'light' }
+    case 'elevenlabs':
+      return { src: elevenLabsIconUrl, alt: 'ElevenLabs', tone: 'light' }
+    case 'openai':
+    default:
+      return { src: openAIIconUrl, alt: 'OpenAI', tone: 'light' }
+  }
+}
+
+function getASRProviderLogo(provider: ASRProviderType): ModelLogo {
+  switch (provider) {
+    case 'qwen':
+      return { src: qwenIconUrl, alt: 'Qwen' }
+    case 'groq':
+      return { src: groqIconUrl, alt: 'Groq', tone: 'light' }
+    case 'openai':
+    default:
+      return { src: openAIIconUrl, alt: 'OpenAI', tone: 'light' }
+  }
+}
+
 const TTS_PROVIDERS = TTS_PROVIDER_CATALOG.filter(provider => provider.implemented)
 
 function getTTSProviderLabel(provider: TTSProviderType): string {
   return TTS_PROVIDERS.find(p => p.value === provider)?.label || provider
 }
 
-function renderProviderControl(kind: 'tts' | 'asr', value: string, label: string): string {
+function renderProviderControl(kind: 'tts' | 'asr', value: string, label: string, logo?: ModelLogo): string {
   return `
     <span class="config-provider-control">
       <input type="hidden" data-field="provider" value="${escapeHtml(value)}" />
-      <button class="config-provider-trigger" type="button" data-provider-kind="${kind}" data-provider-value="${escapeHtml(value)}" aria-haspopup="listbox" aria-expanded="false">
+      <button class="config-provider-trigger ${logo ? 'has-logo' : 'no-logo'}" type="button" data-provider-kind="${kind}" data-provider-value="${escapeHtml(value)}" aria-haspopup="listbox" aria-expanded="false">
+        ${logo ? renderModelLogo(logo, 'provider') : ''}
         <span class="config-provider-trigger-label">${escapeHtml(label)}</span>
         <span class="config-provider-trigger-arrow"></span>
       </button>
@@ -5051,7 +5118,7 @@ function renderProviderControl(kind: 'tts' | 'asr', value: string, label: string
 }
 
 function renderTTSProviderControl(provider: TTSProviderType): string {
-  return renderProviderControl('tts', provider, getTTSProviderLabel(provider))
+  return renderProviderControl('tts', provider, getTTSProviderLabel(provider), getTTSProviderLogo(provider))
 }
 
 function renderTTSModels(): void {
@@ -5112,7 +5179,7 @@ function getASRProviderLabel(provider: ASRProviderType): string {
 }
 
 function renderASRProviderControl(provider: ASRProviderType): string {
-  return renderProviderControl('asr', provider, getASRProviderLabel(provider))
+  return renderProviderControl('asr', provider, getASRProviderLabel(provider), getASRProviderLogo(provider))
 }
 
 function renderASRModels(): void {
@@ -5198,12 +5265,18 @@ function openProviderMenu(button: HTMLButtonElement, id: string): void {
   menu.style.minWidth = `${Math.max(220, rect.width)}px`
   menu.style.left = `${Math.min(rect.left, window.innerWidth - Math.max(220, rect.width) - 12)}px`
   menu.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - providers.length * 42 - 14)}px`
-  menu.innerHTML = providers.map(provider => `
+  menu.innerHTML = providers.map(provider => {
+    const logo = kind === 'tts'
+      ? getTTSProviderLogo(provider.value as TTSProviderType)
+      : getASRProviderLogo(provider.value as ASRProviderType)
+    return `
     <button class="config-provider-option ${provider.value === currentValue ? 'selected' : ''}" type="button" role="option" aria-selected="${provider.value === currentValue ? 'true' : 'false'}" data-provider-value="${escapeHtml(provider.value)}">
       <span class="config-provider-option-check">${provider.value === currentValue ? '✓' : ''}</span>
+      ${logo ? renderModelLogo(logo, 'provider-option') : ''}
       <span class="config-provider-option-label">${escapeHtml(provider.label)}</span>
     </button>
-  `).join('')
+  `
+  }).join('')
 
   menu.querySelectorAll<HTMLButtonElement>('.config-provider-option').forEach(option => {
     option.addEventListener('click', async () => {
