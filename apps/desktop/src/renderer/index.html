@@ -318,16 +318,6 @@
 
               <div id="models-overview-page" class="model-page active">
                 <div id="model-overview-list" class="model-overview-list"></div>
-
-                <div class="config-section">
-                  <div class="config-section-header">
-                    <span class="config-section-title" data-i18n="system.localModels">本地推理模型</span>
-                    <button id="download-local-models-btn" class="config-add-btn" data-i18n="system.downloadMissing">下载缺失模型</button>
-                  </div>
-                  <div id="local-models-list" class="config-models-list">
-                    <div class="profile-loading">检查中...</div>
-                  </div>
-                </div>
               </div>
 
               <div id="models-manager-page" class="model-page">
@@ -381,6 +371,17 @@
                 </div>
                 <div id="asr-models-list" class="config-models-list">
                   
+                </div>
+              </div>
+
+              
+              <div class="config-section model-manager-section" data-model-manager="models">
+                <div class="config-section-header">
+                  <span class="config-section-title" data-i18n="system.localModels">本地推理模型</span>
+                  <button id="download-local-models-btn" class="config-add-btn" data-i18n="system.downloadMissing">下载缺失模型</button>
+                </div>
+                <div id="local-models-list" class="config-models-list">
+                  <div class="profile-loading">检查中...</div>
                 </div>
               </div>
               </div>

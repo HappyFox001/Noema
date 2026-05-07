@@ -18,13 +18,18 @@ export interface LLMProvider {
   streamChat(messages: any[], options?: any): AsyncGenerator<string>
 }
 
+export interface LLMProviderOptions {
+  geminiThinkingMode?: 'minimal-or-none'
+}
+
 export class OpenAIProvider implements LLMProvider {
   private client: OpenAI
 
   constructor(
     apiKey: string,
     private model: string = 'gpt-4-turbo-preview',
-    baseURL?: string
+    private baseURL?: string,
+    private providerOptions: LLMProviderOptions = {}
   ) {
     this.client = new OpenAI({
       apiKey,
@@ -38,8 +43,8 @@ export class OpenAIProvider implements LLMProvider {
     const response = await this.client.chat.completions.create({
       model: this.model,
       messages,
-      ...requestOptions
-    }, signal ? { signal } : undefined)
+      ...this.withDefaultGeminiThinking(requestOptions)
+    } as any, signal ? { signal } : undefined)
 
     const message = response.choices[0]?.message
 
@@ -63,8 +68,8 @@ export class OpenAIProvider implements LLMProvider {
       model: this.model,
       messages,
       stream: true,
-      ...requestOptions
-    }, signal ? { signal } : undefined) as any
+      ...this.withDefaultGeminiThinking(requestOptions)
+    } as any, signal ? { signal } : undefined) as any
 
     for await (const chunk of stream) {
       if (signal?.aborted) {
@@ -76,12 +81,57 @@ export class OpenAIProvider implements LLMProvider {
       }
     }
   }
+
+  private withDefaultGeminiThinking(requestOptions: any): any {
+    if (
+      this.providerOptions.geminiThinkingMode !== 'minimal-or-none' ||
+      !isOfficialGeminiOpenAIEndpoint(this.baseURL) ||
+      !isGeminiModel(this.model) ||
+      requestOptions?.reasoning_effort !== undefined ||
+      hasGeminiThinkingConfig(requestOptions?.extra_body)
+    ) {
+      return requestOptions
+    }
+
+    return {
+      ...requestOptions,
+      reasoning_effort: getMinimalGeminiReasoningEffort(this.model),
+    }
+  }
 }
 
-export function createLLMProvider(config: SDKConfig['llm']): LLMProvider {
+export function createLLMProvider(config: SDKConfig['llm'], options: LLMProviderOptions = {}): LLMProvider {
   if (config.baseURL) {
     console.log(`[LLM] Using custom endpoint: ${config.baseURL}`)
   }
 
-  return new OpenAIProvider(config.apiKey, config.model, config.baseURL)
+  return new OpenAIProvider(config.apiKey, config.model, config.baseURL, options)
+}
+
+function isOfficialGeminiOpenAIEndpoint(baseURL?: string): boolean {
+  if (!baseURL) {
+    return false
+  }
+  try {
+    const url = new URL(baseURL)
+    return url.hostname === 'generativelanguage.googleapis.com' && url.pathname.includes('/openai')
+  } catch {
+    return false
+  }
+}
+
+function isGeminiModel(model: string): boolean {
+  return model.toLowerCase().startsWith('gemini-')
+}
+
+function hasGeminiThinkingConfig(extraBody: any): boolean {
+  return Boolean(extraBody?.google?.thinking_config || extraBody?.google?.thinkingConfig)
+}
+
+function getMinimalGeminiReasoningEffort(model: string): 'none' | 'minimal' {
+  const normalized = model.toLowerCase()
+  if (normalized.includes('gemini-2.5') && !normalized.includes('pro')) {
+    return 'none'
+  }
+  return 'minimal'
 }

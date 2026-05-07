@@ -921,7 +921,7 @@ type LocalModelStatus = {
 }
 
 type SetupIssueKind = 'llm' | 'task' | 'tts' | 'asr' | 'models'
-type ModelManagerKind = 'llm' | 'task' | 'tts' | 'asr'
+type ModelManagerKind = 'llm' | 'task' | 'tts' | 'asr' | 'models'
 
 type SetupIssue = {
   kind: SetupIssueKind
@@ -4631,7 +4631,7 @@ function renderSetupGuidance(readiness: SetupReadiness): void {
   card.querySelectorAll<HTMLElement>('.setup-guidance-item').forEach(item => {
     item.addEventListener('click', () => {
       const kind = item.dataset.setupKind as SetupIssueKind | undefined
-      if (kind === 'llm' || kind === 'task' || kind === 'tts' || kind === 'asr') {
+      if (kind === 'llm' || kind === 'task' || kind === 'tts' || kind === 'asr' || kind === 'models') {
         openModelManager(kind)
         return
       }
@@ -4693,6 +4693,26 @@ function getActiveModelSummary(kind: ModelManagerKind): {
   ready: boolean
   missing: string[]
 } {
+  if (kind === 'models') {
+    const missingModels = lastLocalModels.filter(model => !model.exists)
+    const installedCount = lastLocalModels.filter(model => model.exists).length
+    const modelNames = lastLocalModels.length > 0
+      ? lastLocalModels.map(model => model.name).join(' / ')
+      : 'Silero VAD / Smart Turn v3.2'
+    return {
+      kind,
+      title: '本地推理模型',
+      modelName: modelNames,
+      provider: 'Local ONNX',
+      baseUrl: '',
+      apiKey: '',
+      count: lastLocalModels.length || 2,
+      ready: lastLocalModels.length > 0 && missingModels.length === 0,
+      missing: lastLocalModels.length > 0 ? missingModels.map(model => model.name) : ['状态检查'],
+      language: lastLocalModels.length > 0 ? `${installedCount}/${lastLocalModels.length} 已安装` : '检查中',
+    }
+  }
+
   if (!currentSystemConfig) {
     return {
       kind,
@@ -4795,7 +4815,7 @@ function renderModelOverview(): void {
     return
   }
 
-  const summaries = (['llm', 'task', 'tts', 'asr'] as ModelManagerKind[]).map(getActiveModelSummary)
+  const summaries = (['llm', 'task', 'tts', 'asr', 'models'] as ModelManagerKind[]).map(getActiveModelSummary)
   modelOverviewList.innerHTML = summaries.map(summary => `
     <button class="model-overview-card ${summary.ready ? 'ready' : 'missing'}" type="button" data-model-kind="${summary.kind}">
       <span class="model-overview-mark"></span>
@@ -4880,6 +4900,8 @@ function renderLocalModels(models: LocalModelStatus[]): void {
   const missingCount = models.filter(model => !model.exists).length
   downloadLocalModelsBtn.disabled = missingCount === 0
   downloadLocalModelsBtn.textContent = missingCount > 0 ? `${t('system.downloadMissing')} (${missingCount})` : t('system.modelReady')
+  renderModelOverview()
+  renderModelManagerPage()
 
   localModelsList.innerHTML = models.map(model => `
     <div class="config-model-card local-model-card ${model.exists ? 'active' : 'missing'}">

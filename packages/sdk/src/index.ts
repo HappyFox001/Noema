@@ -26,7 +26,7 @@ export class HerTextSDK {
   private taskLLm: LLMProvider
 
   private constructor(config: SDKConfig, options: HerTextSDKInitializeOptions = {}) {
-    this.llm = createLLMProvider(config.llm)
+    this.llm = createLLMProvider(config.llm, { geminiThinkingMode: 'minimal-or-none' })
     this.taskLLm = createLLMProvider(config.taskLLM ?? config.llm)
 
     this.memory = new MemoryEngine(config.memory, this.llm)
