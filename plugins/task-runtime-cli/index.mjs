@@ -1,190 +1,125 @@
 /**
- * Local CLI task runtime adapters.
+ * Local CLI task LLM transports.
  *
- * Runs Codex or Claude Code as fresh one-shot task backends.
+ * Wraps the task model provider so her-text keeps its own task lifecycle,
+ * planning, tool loop, and approvals while Codex or Claude Code provide
+ * one-shot model responses.
  */
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { existsSync } from 'node:fs'
 
 export default function plugin(ctx) {
+  const config = ctx.config || {}
+
   return {
     id: 'task-runtime-cli',
-    name: 'CLI Task Runtimes',
-    registerTaskRuntimes() {
-      return [
-        createCliRuntimeAdapter({
-          id: 'codex_local',
-          label: 'Codex CLI',
-          defaultCommand: 'codex',
-          buildArgs: ({ model, extraArgs }) => {
-            const args = ['exec', '--json', '--disable', 'plugins']
-            if (model) args.push('--model', model)
-            args.push(...extraArgs, '-')
-            return args
-          },
-          parseOutput: parseCodexOutput,
-        }),
-        createCliRuntimeAdapter({
-          id: 'claude_code_local',
-          label: 'Claude Code CLI',
-          defaultCommand: 'claude',
-          buildArgs: ({ model, extraArgs }) => {
-            const args = ['--print', '-', '--output-format', 'stream-json', '--verbose']
-            if (model) args.push('--model', model)
-            args.push(...extraArgs)
-            return args
-          },
-          parseOutput: parseClaudeOutput,
-        }),
-      ]
+    name: 'CLI Task Models',
+    wrapTaskLLM(baseLLM) {
+      const runtime = normalizeRuntime(config.activeRuntime)
+      if (!runtime) {
+        return baseLLM
+      }
+      return createCliTaskLLM({
+        baseLLM,
+        runtime,
+        model: stringValue(config.model),
+        timeoutMs: positiveNumber(config.timeoutMs, 30 * 60 * 1000),
+      })
     },
   }
 }
 
-function createCliRuntimeAdapter(options) {
+function createCliTaskLLM(options) {
   return {
-    id: options.id,
-    label: options.label,
-    async canHandle(request) {
-      return request.config.adapterId === options.id
+    async chat(messages, requestOptions = {}) {
+      const prompt = buildApiPrompt(messages, requestOptions)
+      const run = await runCliModel({
+        runtime: options.runtime,
+        model: options.model,
+        prompt,
+        timeoutMs: options.timeoutMs,
+        signal: requestOptions.signal,
+      })
+      const rawText = parseCliText(options.runtime, run.stdout) || run.stdout.trim()
+      if (run.exitCode !== 0 || run.timedOut || run.aborted) {
+        const detail = run.timedOut ? `timed out after ${options.timeoutMs}ms` : run.stderr.trim() || rawText
+        throw new Error(`${runtimeLabel(options.runtime)} model call failed: ${detail}`)
+      }
+      return parseModelEnvelope(rawText, requestOptions)
     },
-    async run(request, hooks) {
-      const startedAt = Date.now()
-      const step = {
-        id: 'external-cli-run',
-        title: `Run ${options.label}`,
-        description: `Execute the task through ${options.label} in a fresh local CLI session.`,
-        status: 'running',
-        startedAt,
-      }
-      const plan = {
-        id: randomUUID(),
-        title: request.taskDescription.slice(0, 80) || options.label,
-        summary: `Delegated to ${options.label}.`,
-        steps: [step],
-        createdAt: startedAt,
-        updatedAt: startedAt,
-      }
-
-      hooks.onStatusChanged?.('running')
-      hooks.onRunStateChanged?.('planning')
-      hooks.onPlanUpdated?.(plan)
-      hooks.onRunStateChanged?.('step_running')
-      hooks.onStepUpdated?.(step, plan)
-
-      const command = String(request.config.command || options.defaultCommand)
-      const cwd = String(request.config.cwd || process.cwd())
-      const model = String(request.config.model || '')
-      const extraArgs = Array.isArray(request.config.extraArgs) ? request.config.extraArgs : []
-      const timeoutMs = Number.isFinite(Number(request.config.timeoutMs))
-        ? Number(request.config.timeoutMs)
-        : 30 * 60 * 1000
-      const env = normalizeEnv(request.config.env)
-      const prompt = buildPrompt(request)
-
-      if (!existsSync(cwd)) {
-        const error = `Working directory does not exist: ${cwd}`
-        const failed = finishStep(step, plan, 'failed', error)
-        hooks.onStepUpdated?.(failed.step, failed.plan)
-        hooks.onRunStateChanged?.('failed')
-        hooks.onStatusChanged?.('errored')
-        return {
-          success: false,
-          iterations: 1,
-          toolCalls: 0,
-          finalMessage: error,
-          plan: failed.plan,
-          error,
-        }
-      }
-
-      hooks.onLog?.({ stream: 'system', text: `Starting ${command} ${options.buildArgs({ model, extraArgs }).join(' ')}\n` })
-      const run = await runProcess({
-        command,
-        args: options.buildArgs({ model, extraArgs }),
-        cwd,
-        env: { ...process.env, ...env },
-        stdin: prompt,
-        timeoutMs,
-        signal: request.signal,
-        onLog: hooks.onLog,
-      })
-      const parsed = options.parseOutput(run.stdout)
-      const summary = extractStructuredSummary(parsed.summary) || parsed.summary || extractStructuredSummary(run.stdout) || run.stdout.trim().slice(-4000)
-      const success = run.exitCode === 0 && !run.timedOut && !run.aborted
-      const finalText = summary || (success ? `${options.label} completed.` : `${options.label} failed.`)
-      const completed = finishStep(
-        step,
-        plan,
-        success ? 'completed' : 'failed',
-        finalText,
-      )
-      hooks.onStepUpdated?.(completed.step, completed.plan)
-      hooks.onRunStateChanged?.(success ? 'completed' : 'failed')
-      hooks.onStatusChanged?.(success ? 'completed' : 'errored')
-      hooks.onTurnCompleted?.({
-        turnIndex: 1,
-        assistantMessage: finalText,
-        toolCalls: [],
-        toolResults: [{
-          adapterId: options.id,
-          command,
-          cwd,
-          exitCode: run.exitCode,
-          signal: run.signal,
-          timedOut: run.timedOut,
-          aborted: run.aborted,
-          stderr: run.stderr.trim().slice(-4000),
-        }],
-        completed: success,
-        stepId: step.id,
-        stepTitle: step.title,
-        promptMessageCount: 1,
-      })
-
-      return {
-        success,
-        iterations: 1,
-        toolCalls: 0,
-        finalMessage: finalText,
-        plan: completed.plan,
-        ...(success ? {} : { error: run.timedOut ? `Timed out after ${timeoutMs}ms` : run.stderr.trim() || finalText }),
+    async *streamChat(messages, requestOptions = {}) {
+      const response = await this.chat(messages, requestOptions)
+      if (response.content) {
+        yield response.content
       }
     },
   }
 }
 
-function buildPrompt(request) {
-  const contextItems = request.taskContextItems
-    .map(item => [
-      `## Context: ${item.name}`,
-      item.path ? `Path: ${item.path}` : '',
-      item.content,
-    ].filter(Boolean).join('\n'))
-    .join('\n\n')
-  const summaries = request.memoryContext.summaries
-    .slice(-5)
-    .map(item => `- ${item.summary || item.content || JSON.stringify(item)}`)
-    .join('\n')
-
+function buildApiPrompt(messages, options) {
+  const tools = Array.isArray(options.tools) ? options.tools : []
+  const wantsJson = options.response_format?.type === 'json_object'
   return [
-    'You are the task runtime for her-text. Execute exactly one local development task.',
-    'This is a fresh one-shot session. Do not assume prior CLI session context.',
-    'Use the current working directory as the project root unless the task says otherwise.',
-    'Read relevant files before editing. Keep changes scoped. Run relevant verification when practical.',
+    'You are acting only as a chat-completions model transport for her-text.',
+    'Do not execute shell commands, do not read files, do not edit files, and do not use any CLI-native tools.',
+    'The host runtime owns planning, tool execution, approvals, memory, and lifecycle state.',
+    'Your job is only to return the next assistant message or function tool calls from the provided messages.',
     '',
-    'At the end, include a final JSON object fenced as ```json with this shape:',
-    '{"success":true,"summary":"...","changedFiles":[],"commandsRun":[],"notes":"","error":null}',
+    'Return exactly one JSON object and no markdown.',
+    'Schema:',
+    '{"content":"assistant text","tool_calls":[{"id":"call_unique_id","type":"function","function":{"name":"tool_name","arguments":"{\\\"key\\\":\\\"value\\\"}"}}]}',
+    'Use an empty string for content when only calling tools. Use an empty array when no tool call is needed.',
+    wantsJson ? 'The caller requested JSON content. Put the requested JSON object as a string in the content field.' : '',
+    tools.length ? 'Only call tools listed in Available tools.' : 'No tools are available; return final assistant content only.',
     '',
-    '# Task',
-    request.taskDescription,
-    '',
-    '# Original User Input',
-    request.originalUserInput,
-    summaries ? `\n# Recent Memory Summaries\n${summaries}` : '',
-    contextItems ? `\n# Injected Task Context\n${contextItems}` : '',
+    '# Messages',
+    JSON.stringify(messages, null, 2),
+    tools.length ? `\n# Available tools\n${JSON.stringify(tools, null, 2)}` : '',
   ].filter(Boolean).join('\n')
+}
+
+function runCliModel(input) {
+  const command = input.runtime === 'claude_code_local' ? 'claude' : 'codex'
+  const args = input.runtime === 'claude_code_local'
+    ? buildClaudeArgs(input.model)
+    : buildCodexArgs(input.model)
+  return runProcess({
+    command,
+    args,
+    stdin: input.prompt,
+    timeoutMs: input.timeoutMs,
+    signal: input.signal,
+  })
+}
+
+function buildCodexArgs(model) {
+  const args = [
+    'exec',
+    '--json',
+    '--disable',
+    'plugins',
+    '--sandbox',
+    'read-only',
+    '--skip-git-repo-check',
+  ]
+  if (model) args.push('--model', model)
+  args.push('-')
+  return args
+}
+
+function buildClaudeArgs(model) {
+  const args = [
+    '--print',
+    '-',
+    '--output-format',
+    'stream-json',
+    '--verbose',
+    '--no-session-persistence',
+    '--tools',
+    '',
+  ]
+  if (model) args.push('--model', model)
+  return args
 }
 
 function runProcess(input) {
@@ -193,8 +128,6 @@ function runProcess(input) {
     let stderr = ''
     let settled = false
     const child = spawn(input.command, input.args, {
-      cwd: input.cwd,
-      env: input.env,
       stdio: ['pipe', 'pipe', 'pipe'],
       shell: false,
     })
@@ -216,14 +149,10 @@ function runProcess(input) {
 
     input.signal?.addEventListener('abort', abort, { once: true })
     child.stdout.on('data', chunk => {
-      const text = String(chunk)
-      stdout += text
-      input.onLog?.({ stream: 'stdout', text })
+      stdout += String(chunk)
     })
     child.stderr.on('data', chunk => {
-      const text = String(chunk)
-      stderr += text
-      input.onLog?.({ stream: 'stderr', text })
+      stderr += String(chunk)
     })
     child.on('error', error => {
       stderr += error.message
@@ -236,19 +165,10 @@ function runProcess(input) {
   })
 }
 
-function finishStep(step, plan, status, result) {
-  const nextStep = {
-    ...step,
-    status,
-    ...(status === 'failed' ? { error: result } : { result }),
-    completedAt: Date.now(),
-  }
-  const nextPlan = {
-    ...plan,
-    steps: [nextStep],
-    updatedAt: Date.now(),
-  }
-  return { step: nextStep, plan: nextPlan }
+function parseCliText(runtime, stdout) {
+  return runtime === 'claude_code_local'
+    ? parseClaudeOutput(stdout)
+    : parseCodexOutput(stdout)
 }
 
 function parseCodexOutput(stdout) {
@@ -265,7 +185,7 @@ function parseCodexOutput(stdout) {
       // Codex JSONL can include non-JSON diagnostics from older builds.
     }
   }
-  return { summary }
+  return summary
 }
 
 function parseClaudeOutput(stdout) {
@@ -283,23 +203,83 @@ function parseClaudeOutput(stdout) {
       // Claude stream-json should be JSONL, but keep robust fallback.
     }
   }
-  return { summary }
+  return summary
 }
 
-function extractStructuredSummary(text) {
-  const match = text.match(/```json\s*([\s\S]*?)```/i)
-  if (!match) return ''
-  try {
-    const parsed = JSON.parse(match[1])
-    return typeof parsed.summary === 'string' ? parsed.summary : ''
-  } catch {
-    return ''
+function parseModelEnvelope(rawText, options) {
+  const text = stripCodeFence(rawText.trim())
+  const parsed = parseJsonObject(text)
+  if (!parsed) {
+    return { content: rawText, toolCalls: [], finishReason: null }
+  }
+
+  if (!('content' in parsed) && !('tool_calls' in parsed) && !('toolCalls' in parsed)) {
+    return {
+      content: options.response_format?.type === 'json_object' ? JSON.stringify(parsed) : rawText,
+      toolCalls: [],
+      finishReason: null,
+    }
+  }
+
+  return {
+    content: typeof parsed.content === 'string' ? parsed.content : '',
+    toolCalls: normalizeToolCalls(parsed.tool_calls ?? parsed.toolCalls),
+    finishReason: null,
   }
 }
 
-function normalizeEnv(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
-  return Object.fromEntries(
-    Object.entries(value).filter((entry) => typeof entry[1] === 'string')
-  )
+function normalizeToolCalls(value) {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((call) => {
+    if (!call || typeof call !== 'object') return []
+    const fn = call.function && typeof call.function === 'object' ? call.function : call
+    const name = typeof fn.name === 'string' ? fn.name : ''
+    if (!name) return []
+    const args = typeof fn.arguments === 'string'
+      ? fn.arguments
+      : JSON.stringify(fn.arguments ?? {})
+    return [{
+      id: typeof call.id === 'string' && call.id ? call.id : `call_${randomUUID().replace(/-/g, '').slice(0, 16)}`,
+      type: 'function',
+      function: { name, arguments: args },
+    }]
+  })
+}
+
+function stripCodeFence(value) {
+  const match = value.match(/^```(?:json)?\s*([\s\S]*?)```$/i)
+  return match ? match[1].trim() : value
+}
+
+function parseJsonObject(value) {
+  try {
+    const parsed = JSON.parse(value)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null
+  } catch {
+    const match = value.match(/\{[\s\S]*\}/)
+    if (!match) return null
+    try {
+      const parsed = JSON.parse(match[0])
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null
+    } catch {
+      return null
+    }
+  }
+}
+
+function normalizeRuntime(value) {
+  return value === 'codex_local' || value === 'claude_code_local' ? value : null
+}
+
+function stringValue(value) {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function positiveNumber(value, fallback) {
+  const numeric = Number(value)
+  return Number.isFinite(numeric) && numeric > 0 ? Math.round(numeric) : fallback
+}
+
+function runtimeLabel(runtime) {
+  return runtime === 'claude_code_local' ? 'Claude Code' : 'Codex'
 }

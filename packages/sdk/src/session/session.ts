@@ -182,6 +182,10 @@ export class TaskSession {
     ]
   }
 
+  setLLM(llm: LLMProvider): void {
+    this.llm = llm
+  }
+
   async runTask(
     taskIntent: TaskIntent,
     originalUserInput: string,

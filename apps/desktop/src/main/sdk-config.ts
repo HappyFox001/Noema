@@ -7,7 +7,6 @@ let personalityManager: any = null
 let activeLLMConfig: LLMModelConfig | null = null
 let activeTaskLLMConfig: LLMModelConfig | null = null
 let activeTaskRuntimeConfig: TaskRuntimeSettings | null = null
-let activePluginConfigs: Record<string, Record<string, unknown>> = {}
 
 
 export function setActiveLLMConfig(config: LLMModelConfig | null): void {
@@ -20,10 +19,6 @@ export function setActiveTaskLLMConfig(config: LLMModelConfig | null): void {
 
 export function setActiveTaskRuntimeConfig(config: TaskRuntimeSettings | null): void {
   activeTaskRuntimeConfig = config
-}
-
-export function setActivePluginConfigs(configs: Record<string, Record<string, unknown>>): void {
-  activePluginConfigs = configs
 }
 
 export function getStorageDir(): string {
@@ -58,10 +53,6 @@ export async function buildSDKConfig(): Promise<SDKConfig> {
   const taskLLMModel = activeTaskLLMConfig?.modelName || 'gemini-3.1-pro-preview'
   const taskLLMBaseURL = activeTaskLLMConfig?.baseUrl || llmBaseURL
 
-  const taskRuntime = activeTaskRuntimeConfig
-    ? resolveTaskRuntimeConfig(activeTaskRuntimeConfig)
-    : undefined
-
   return {
     llm: {
       apiKey: llmApiKey,
@@ -73,43 +64,10 @@ export async function buildSDKConfig(): Promise<SDKConfig> {
       model: taskLLMModel,
       baseURL: taskLLMBaseURL
     },
-    taskRuntime,
+    taskRuntime: activeTaskRuntimeConfig ?? undefined,
     memory: {
       storageDir: getStorageDir()
     },
     personality: personalityManager.getCurrentPersonality()
   }
-}
-
-function resolveTaskRuntimeConfig(config: TaskRuntimeSettings): TaskRuntimeSettings {
-  if (process.env.HER_TEXT_TASK_RUNTIME_CLI_ENABLED === 'false') {
-    return config
-  }
-  const pluginConfig = activePluginConfigs['task-runtime-cli'] ?? {}
-  const configured = pluginConfig.activeRuntime
-  if (!isCliTaskRuntime(configured)) {
-    return config
-  }
-  return {
-    ...config,
-    adapterId: configured,
-    cwd: '',
-    command: '',
-    model: normalizeString(pluginConfig.model),
-    timeoutMs: normalizePositiveNumber(pluginConfig.timeoutMs, config.timeoutMs || 1800000),
-    extraArgs: [],
-  }
-}
-
-function isCliTaskRuntime(value: unknown): value is 'codex_local' | 'claude_code_local' {
-  return value === 'codex_local' || value === 'claude_code_local'
-}
-
-function normalizeString(value: unknown): string {
-  return typeof value === 'string' ? value.trim() : ''
-}
-
-function normalizePositiveNumber(value: unknown, fallback: number): number {
-  const numeric = Number(value)
-  return Number.isFinite(numeric) && numeric > 0 ? Math.round(numeric) : fallback
 }

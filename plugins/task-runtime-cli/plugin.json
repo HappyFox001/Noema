@@ -1,7 +1,7 @@
 {
   "id": "task-runtime-cli",
-  "name": "CLI Task Runtimes",
-  "description": "Use local Codex or Claude Code CLIs as task runtime backends.",
+  "name": "CLI Task Models",
+  "description": "Use local Codex or Claude Code CLIs as task model transports.",
   "version": "0.1.0",
   "type": "sdk-plugin",
   "main": "index.mjs",
@@ -19,8 +19,8 @@
   "configSchema": [
     {
       "key": "activeRuntime",
-      "label": "Task Runtime",
-      "description": "Choose which backend owns normal task execution.",
+      "label": "Task Model Transport",
+      "description": "Choose which local CLI provides task model responses.",
       "type": "select",
       "default": "codex_local",
       "options": [
@@ -31,7 +31,7 @@
     {
       "key": "model",
       "label": "Model",
-      "description": "Choose a model supported by the selected local runtime. Empty uses the CLI default.",
+      "description": "Choose a model supported by the selected local CLI. Empty uses the CLI default.",
       "type": "string",
       "default": ""
     },

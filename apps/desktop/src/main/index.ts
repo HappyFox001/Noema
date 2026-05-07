@@ -94,8 +94,7 @@ import {
   getStorageDir,
   setActiveLLMConfig,
   setActiveTaskLLMConfig,
-  setActiveTaskRuntimeConfig,
-  setActivePluginConfigs
+  setActiveTaskRuntimeConfig
 } from './sdk-config.js'
 import { SettingsStore, type AppSettings, type LLMModelConfig, type TTSModelConfig, type ASRModelConfig } from './settings-store.js'
 import { InteractiveInputStore, type StoredInteractiveInput, type StoredInteractiveInputGroup } from './interactive-input-store.js'
@@ -2444,8 +2443,6 @@ async function initializeSDK(): Promise<void> {
   setActiveLLMConfig(getActiveLLMConfig())
   setActiveTaskLLMConfig(getActiveTaskConfig())
   setActiveTaskRuntimeConfig(appSettings.system.taskRuntime)
-  process.env.HER_TEXT_TASK_RUNTIME_CLI_ENABLED = appSettings.plugins['task-runtime-cli'] === false ? 'false' : 'true'
-  setActivePluginConfigs(appSettings.pluginConfigs)
   const sdkConfig = await buildSDKConfig()
   const pluginsDir = resolveRuntimePluginsDir()
   console.log('[PluginLoader] Runtime plugins directory:', pluginsDir)

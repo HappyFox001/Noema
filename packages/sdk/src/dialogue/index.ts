@@ -127,7 +127,7 @@ export class DialogueOrchestrator {
 
   constructor(
     llm: LLMProvider,
-    taskLLM: LLMProvider,
+    private taskLLM: LLMProvider,
     private memory: MemoryEngine,
     private personality: PersonalityEngine,
     private agent: AgentCore,
@@ -137,7 +137,7 @@ export class DialogueOrchestrator {
   ) {
     this.context = new ContextManager()
     this.pluginManager = new PluginManager(plugins)
-    this.taskSession = new TaskSession(taskLLM, memory, personality, agent, this.context, storageDir, {
+    this.taskSession = new TaskSession(this.taskLLM, memory, personality, agent, this.context, storageDir, {
       onUserInputRequest: config?.onTaskUserInputRequest,
       onRunStateChanged: (state, task) => {
         config?.onTaskRunStateChanged?.(state, task)
@@ -183,6 +183,8 @@ export class DialogueOrchestrator {
 
   async initialize(): Promise<void> {
     await this.pluginManager.setup()
+    this.taskLLM = await this.pluginManager.wrapTaskLLM(this.taskLLM, { runtime: {} })
+    this.taskSession.setLLM(this.taskLLM)
     const pluginTools = await this.pluginManager.getTools({ runtime: {} })
     for (const tool of pluginTools) {
       this.agent.registerTool(tool)

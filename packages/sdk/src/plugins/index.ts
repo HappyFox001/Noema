@@ -5,6 +5,7 @@
  * task-context injection, expression selection, and admin actions.
  */
 import type { Tool } from '@her-text/types'
+import type { LLMProvider } from '@her-text/core'
 import type { TaskRuntimeAdapter } from '../session/runtime-adapter.js'
 import type { TaskPlan, TaskRunState, TaskStep } from '../session/task-plan.js'
 
@@ -222,6 +223,7 @@ export interface SDKPlugin {
   shutdown?(context: SDKPluginContext): void | Promise<void>
   registerTools?(context: ToolRegistrationContext): Tool[] | Promise<Tool[]>
   registerTaskRuntimes?(context: ToolRegistrationContext): TaskRuntimeAdapter[] | Promise<TaskRuntimeAdapter[]>
+  wrapTaskLLM?(llm: LLMProvider, context: ToolRegistrationContext): LLMProvider | Promise<LLMProvider>
   getAdminState?(): Promise<unknown> | unknown
   handleAdminAction?(action: string, payload?: unknown): Promise<unknown> | unknown
   resolveTaskContext?(context: TaskContextResolveContext): TaskContextInjection[] | Promise<TaskContextInjection[]>
@@ -354,6 +356,14 @@ export class PluginManager {
     }
 
     return adapters
+  }
+
+  async wrapTaskLLM(llm: LLMProvider, context: ToolRegistrationContext = { runtime: {} }): Promise<LLMProvider> {
+    let current = llm
+    for (const plugin of this.plugins) {
+      current = await plugin.wrapTaskLLM?.(current, context) ?? current
+    }
+    return current
   }
 
   async resolveTaskContextInjections(context: TaskContextResolveContext): Promise<TaskContextInjection[]> {
