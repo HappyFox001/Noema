@@ -5,8 +5,8 @@
  * settings panel interactions, and renderer-side IPC event handling.
  */
 import './styles.css'
-import claudeCodeLogoUrl from '../../../../assets/claude_code_logo.png'
-import codexLogoUrl from '../../../../assets/codex_logo.png'
+import claudeCodeLogoUrl from '../../../../plugins/task-runtime-cli/assets/claude_code_logo.png'
+import codexLogoUrl from '../../../../plugins/task-runtime-cli/assets/codex_logo.png'
 import {
   ASR_PROVIDER_CATALOG,
   TTS_PROVIDER_CATALOG,
