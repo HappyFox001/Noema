@@ -5038,6 +5038,22 @@ function getTTSProviderLabel(provider: TTSProviderType): string {
   return TTS_PROVIDERS.find(p => p.value === provider)?.label || provider
 }
 
+function renderProviderControl(kind: 'tts' | 'asr', value: string, label: string): string {
+  return `
+    <span class="config-provider-control">
+      <input type="hidden" data-field="provider" value="${escapeHtml(value)}" />
+      <button class="config-provider-trigger" type="button" data-provider-kind="${kind}" data-provider-value="${escapeHtml(value)}" aria-haspopup="listbox" aria-expanded="false">
+        <span class="config-provider-trigger-label">${escapeHtml(label)}</span>
+        <span class="config-provider-trigger-arrow"></span>
+      </button>
+    </span>
+  `
+}
+
+function renderTTSProviderControl(provider: TTSProviderType): string {
+  return renderProviderControl('tts', provider, getTTSProviderLabel(provider))
+}
+
 function renderTTSModels(): void {
   if (!currentSystemConfig) return
 
@@ -5051,7 +5067,7 @@ function renderTTSModels(): void {
     <div class="config-model-card ${model.id === currentSystemConfig!.activeTTSId ? 'active' : ''}" data-id="${escapeHtml(model.id)}">
       <div class="config-model-header">
         <div class="config-model-name">
-          <span class="config-provider-label">${getTTSProviderLabel(model.provider)}</span>
+          ${renderTTSProviderControl(model.provider)}
           <input type="text" value="${escapeHtml(model.modelName)}" data-field="modelName" placeholder="s2-pro" />
           ${model.id === currentSystemConfig!.activeTTSId ? `<span class="config-model-active-badge">${escapeHtml(t('common.active'))}</span>` : ''}
         </div>
@@ -5064,7 +5080,7 @@ function renderTTSModels(): void {
       <div class="config-model-fields">
         <div class="config-field">
           <span class="config-field-label">Provider</span>
-          <span class="config-field-static">${escapeHtml(getTTSProviderLabel(model.provider))}</span>
+          ${renderTTSProviderControl(model.provider)}
         </div>
         <div class="config-field">
           <span class="config-field-label">API Key</span>
@@ -5095,6 +5111,10 @@ function getASRProviderLabel(provider: ASRProviderType): string {
   return ASR_PROVIDERS.find(p => p.value === provider)?.label || provider
 }
 
+function renderASRProviderControl(provider: ASRProviderType): string {
+  return renderProviderControl('asr', provider, getASRProviderLabel(provider))
+}
+
 function renderASRModels(): void {
   if (!currentSystemConfig) return
 
@@ -5108,7 +5128,7 @@ function renderASRModels(): void {
     <div class="config-model-card ${model.id === currentSystemConfig!.activeASRId ? 'active' : ''}" data-id="${escapeHtml(model.id)}">
       <div class="config-model-header">
         <div class="config-model-name">
-          <span class="config-provider-label">${getASRProviderLabel(model.provider)}</span>
+          ${renderASRProviderControl(model.provider)}
           <input type="text" value="${escapeHtml(model.modelName)}" data-field="modelName" placeholder="realtime" />
           ${model.id === currentSystemConfig!.activeASRId ? `<span class="config-model-active-badge">${escapeHtml(t('common.active'))}</span>` : ''}
         </div>
@@ -5121,7 +5141,7 @@ function renderASRModels(): void {
       <div class="config-model-fields">
         <div class="config-field">
           <span class="config-field-label">Provider</span>
-          <span class="config-field-static">${escapeHtml(getASRProviderLabel(model.provider))}</span>
+          ${renderASRProviderControl(model.provider)}
         </div>
         <div class="config-field">
           <span class="config-field-label">API Key</span>
@@ -5152,6 +5172,56 @@ function readCardModel<T extends Record<string, any>>(card: Element, model: T): 
     draft[input.dataset.field as keyof T] = input.value as T[keyof T]
   })
   return draft
+}
+
+function closeProviderMenu(): void {
+  document.getElementById('config-provider-floating-menu')?.remove()
+  document.querySelectorAll<HTMLButtonElement>('.config-provider-trigger[aria-expanded="true"]').forEach(button => {
+    button.setAttribute('aria-expanded', 'false')
+  })
+}
+
+function openProviderMenu(button: HTMLButtonElement, id: string): void {
+  const kind = button.dataset.providerKind as 'tts' | 'asr' | undefined
+  if (!kind) return
+
+  const providers = kind === 'tts' ? TTS_PROVIDERS : ASR_PROVIDERS
+  const currentValue = button.dataset.providerValue || ''
+  closeProviderMenu()
+  button.setAttribute('aria-expanded', 'true')
+
+  const rect = button.getBoundingClientRect()
+  const menu = document.createElement('div')
+  menu.id = 'config-provider-floating-menu'
+  menu.className = 'config-provider-floating-menu'
+  menu.setAttribute('role', 'listbox')
+  menu.style.minWidth = `${Math.max(220, rect.width)}px`
+  menu.style.left = `${Math.min(rect.left, window.innerWidth - Math.max(220, rect.width) - 12)}px`
+  menu.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - providers.length * 42 - 14)}px`
+  menu.innerHTML = providers.map(provider => `
+    <button class="config-provider-option ${provider.value === currentValue ? 'selected' : ''}" type="button" role="option" aria-selected="${provider.value === currentValue ? 'true' : 'false'}" data-provider-value="${escapeHtml(provider.value)}">
+      <span class="config-provider-option-check">${provider.value === currentValue ? '✓' : ''}</span>
+      <span class="config-provider-option-label">${escapeHtml(provider.label)}</span>
+    </button>
+  `).join('')
+
+  menu.querySelectorAll<HTMLButtonElement>('.config-provider-option').forEach(option => {
+    option.addEventListener('click', async () => {
+      const provider = option.dataset.providerValue
+      if (!provider || provider === currentValue) {
+        closeProviderMenu()
+        return
+      }
+      closeProviderMenu()
+      if (kind === 'tts') {
+        await updateTTSProvider(id, provider as TTSProviderType)
+      } else {
+        await updateASRProvider(id, provider as ASRProviderType)
+      }
+    })
+  })
+
+  document.body.appendChild(menu)
 }
 
 async function testApiModel(
@@ -5266,10 +5336,15 @@ function attachTTSEventListeners(): void {
       input.addEventListener('change', async () => {
         const field = input.dataset.field!
         const value = input.value
-        if (field === 'provider') {
-          return
-        }
+        if (field === 'provider') return
         await updateTTSModel(id, { [field]: value })
+      })
+    })
+
+    card.querySelectorAll<HTMLButtonElement>('.config-provider-trigger').forEach(button => {
+      button.addEventListener('click', (event) => {
+        event.stopPropagation()
+        openProviderMenu(button, id)
       })
     })
 
@@ -5296,10 +5371,15 @@ function attachASREventListeners(): void {
       input.addEventListener('change', async () => {
         const field = input.dataset.field!
         const value = input.value
-        if (field === 'provider') {
-          return
-        }
+        if (field === 'provider') return
         await updateASRModel(id, { [field]: value })
+      })
+    })
+
+    card.querySelectorAll<HTMLButtonElement>('.config-provider-trigger').forEach(button => {
+      button.addEventListener('click', (event) => {
+        event.stopPropagation()
+        openProviderMenu(button, id)
       })
     })
 
@@ -5462,6 +5542,25 @@ async function updateTTSModel(id: string, updates: Partial<TTSModelConfig>): Pro
   }
 }
 
+async function updateTTSProvider(id: string, provider: TTSProviderType): Promise<void> {
+  if (!currentSystemConfig) return
+  const model = currentSystemConfig.ttsModels.find(m => m.id === id)
+  if (!model) return
+
+  const providerEntry = getTTSProviderCatalogEntry(provider)
+  Object.assign(model, {
+    provider,
+    modelName: providerEntry.defaultModel,
+    baseUrl: providerEntry.defaultBaseUrl,
+    voiceId: providerEntry.defaultVoiceId || '',
+    language: providerEntry.defaultLanguage,
+    sampleRate: providerEntry.sampleRate,
+    format: 'pcm' as const,
+  })
+  await saveSystemConfig()
+  renderTTSModels()
+}
+
 async function activateTTSModel(id: string): Promise<void> {
   if (!currentSystemConfig) return
   currentSystemConfig.activeTTSId = id
@@ -5504,6 +5603,23 @@ async function updateASRModel(id: string, updates: Partial<ASRModelConfig>): Pro
     Object.assign(model, updates)
     await saveSystemConfig()
   }
+}
+
+async function updateASRProvider(id: string, provider: ASRProviderType): Promise<void> {
+  if (!currentSystemConfig) return
+  const model = currentSystemConfig.asrModels.find(m => m.id === id)
+  if (!model) return
+
+  const providerEntry = getASRProviderCatalogEntry(provider)
+  Object.assign(model, {
+    provider,
+    modelName: providerEntry.defaultModel,
+    baseUrl: providerEntry.defaultBaseUrl,
+    language: providerEntry.defaultLanguage,
+    sampleRate: providerEntry.sampleRate,
+  })
+  await saveSystemConfig()
+  renderASRModels()
 }
 
 async function activateASRModel(id: string): Promise<void> {
@@ -5606,6 +5722,16 @@ async function resetSystemConfigFromEnv(): Promise<void> {
 }
 
 resetSystemBtn.addEventListener('click', () => void resetSystemConfigFromEnv())
+
+document.addEventListener('click', (event) => {
+  const target = event.target as Element | null
+  if (!target?.closest('#config-provider-floating-menu') && !target?.closest('.config-provider-trigger')) {
+    closeProviderMenu()
+  }
+})
+
+window.addEventListener('resize', closeProviderMenu)
+window.addEventListener('scroll', closeProviderMenu, true)
 
 async function initializeApp(): Promise<void> {
   try {

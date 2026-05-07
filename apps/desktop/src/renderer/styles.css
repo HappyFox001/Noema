@@ -4240,29 +4240,129 @@ body.task-active:not(.settings-open) #main-view {
   overflow-wrap: anywhere;
 }
 
-/* Provider select dropdown */
-.config-provider-select {
-  padding: 7px 10px;
-  font-size: 12px;
+/* Provider dropdown */
+.config-provider-control {
+  width: min(100%, 136px);
+  min-width: 0;
+  display: inline-flex;
+}
+
+.config-provider-trigger {
+  width: 100%;
+  min-width: 0;
+  min-height: 28px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 14px;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
   border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
-  color: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(125, 235, 214, 0.14);
+  background:
+    linear-gradient(180deg, rgba(125, 235, 214, 0.075), rgba(255, 255, 255, 0.022)),
+    rgba(0, 0, 0, 0.16);
+  color: rgba(215, 255, 248, 0.9);
   font-family: var(--font-ui);
-  outline: none;
-  transition: all 0.2s;
+  font-size: 10px;
+  line-height: 1.15;
+  letter-spacing: 0.35px;
+  text-transform: uppercase;
   cursor: pointer;
-  min-width: 100px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.045),
+    0 8px 18px rgba(0, 0, 0, 0.12);
+  transition: border-color 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease;
 }
 
-.config-provider-select:focus {
-  border-color: rgba(226, 74, 144, 0.4);
-  background: rgba(255, 255, 255, 0.05);
+.config-provider-trigger-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.config-provider-select option {
-  background: #1a1a2e;
-  color: rgba(255, 255, 255, 0.85);
+.config-provider-trigger-arrow {
+  width: 14px;
+  height: 14px;
+  background: center / 14px 14px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='rgba(190,255,244,0.78)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+
+.config-provider-trigger:hover,
+.config-provider-trigger[aria-expanded="true"] {
+  border-color: rgba(125, 235, 214, 0.25);
+  background-color: rgba(125, 235, 214, 0.025);
+  color: rgba(235, 255, 252, 0.95);
+}
+
+.config-provider-trigger:focus-visible,
+.config-provider-trigger[aria-expanded="true"] {
+  outline: none;
+  border-color: rgba(125, 235, 214, 0.42);
+  box-shadow:
+    0 0 0 2px rgba(125, 235, 214, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 10px 22px rgba(0, 0, 0, 0.16);
+}
+
+.config-provider-floating-menu {
+  position: fixed;
+  z-index: 10000;
+  display: grid;
+  gap: 3px;
+  padding: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.028)),
+    rgba(18, 22, 22, 0.98);
+  box-shadow:
+    0 22px 52px rgba(0, 0, 0, 0.44),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.config-provider-option {
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  gap: 4px;
+  padding: 0 11px 0 7px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(235, 238, 238, 0.9);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.1px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.config-provider-option:hover,
+.config-provider-option:focus-visible {
+  outline: none;
+  border-color: rgba(125, 235, 214, 0.12);
+  background: rgba(125, 235, 214, 0.07);
+  color: rgba(245, 255, 253, 0.96);
+}
+
+.config-provider-option.selected {
+  color: rgba(245, 255, 253, 0.98);
+}
+
+.config-provider-option-check {
+  color: rgba(225, 245, 241, 0.95);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.config-provider-option-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Reset section */
