@@ -6,9 +6,9 @@
     "target": "ES2022",
     "lib": ["ES2022", "DOM"],
     "outDir": "dist/renderer",
-    "rootDir": "src/renderer",
+    "rootDir": "src",
     "strict": true,
     "skipLibCheck": true
   },
-  "include": ["src/renderer/**/*", "src/preload/index.d.ts"]
+  "include": ["src/renderer/**/*", "src/main/model-provider-catalog.ts", "src/preload/index.d.ts"]
 }

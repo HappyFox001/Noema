@@ -97,6 +97,10 @@ import {
   setActiveTaskRuntimeConfig
 } from './sdk-config.js'
 import { SettingsStore, type AppSettings, type LLMModelConfig, type TTSModelConfig, type ASRModelConfig } from './settings-store.js'
+import {
+  getASRProviderCatalogEntry,
+  getTTSProviderCatalogEntry,
+} from './model-provider-catalog.js'
 import { InteractiveInputStore, type StoredInteractiveInput, type StoredInteractiveInputGroup } from './interactive-input-store.js'
 import { NodeRealtimeWebSocketTransport } from './qwen-websocket-transport.js'
 import {
@@ -694,15 +698,13 @@ class StreamingASRSession {
     activeASRSignature = getASRConfigSignature(asrConfig)
     const apiKey = asrConfig?.apiKey?.trim()
     if (!apiKey) {
-      throw new Error('QWEN_API_KEY is not configured. Please set it in Settings > System > ASR.')
+      throw new Error('ASR API key is not configured. Please set it in Settings > System > ASR.')
     }
 
-    const baseTransport = new NodeRealtimeWebSocketTransport()
-    const reconnectingTransport = new ReconnectingWebSocketTransport(baseTransport, {
-      maxRetries: 5,
-      initialRetryDelayMs: 1000,
-      maxRetryDelayMs: 16000,
-      onConnectionStateChange: (state: ConnectionState) => {
+    const providerGeneration = ++this.providerGeneration
+
+    this.asr = createASRProviderForConfig(asrConfig, {
+      onConnectionStateChange: (state) => {
         this.log(`ASR WebSocket state: ${state}`)
         if (state === 'reconnecting') {
           mainWindow?.webContents.send('speech:reconnecting')
@@ -715,20 +717,6 @@ class StreamingASRSession {
       onReconnectAttempt: (attempt, maxRetries) => {
         this.log(`ASR reconnect attempt ${attempt}/${maxRetries}`)
       },
-    })
-
-    const providerGeneration = ++this.providerGeneration
-
-    this.asr = createSTTProvider({
-      kind: 'qwen-realtime',
-      config: {
-        apiKey,
-        model: normalizeASRModelName(asrConfig?.modelName),
-        sampleRate: 16000,
-        language: 'zh',
-        receiveTimeoutMs: 1000,
-      },
-      transport: reconnectingTransport,
     })
     this.asr.setEventHandler((event) => {
       if (event.type !== 'transcript') {
@@ -1111,7 +1099,10 @@ class StreamingASRSession {
     this.onStateChange?.('processing')
 
     try {
-      const text = params.text?.trim() ?? ''
+      const text = params.text?.trim() || await this.asr.commit().catch((error: Error) => {
+        this.log(`ASR commit error: ${error.message ?? String(error)}`)
+        return ''
+      })
 
       const finalText = text.trim()
 
@@ -1424,15 +1415,15 @@ function getPluginRuntimeContext(enabled: boolean): PluginRuntimeContext {
   }
 
   const ttsConfig = getActiveTTSConfig()
-  if (ttsConfig?.provider !== 'fish') {
+  if (!ttsConfig) {
     return {}
   }
 
   return {
     voiceOutputEnabled: true,
     tts: {
-      provider: 'fish-audio',
-      model: ttsConfig.modelName || 's2-pro',
+      provider: ttsConfig.provider === 'fish' ? 'fish-audio' : ttsConfig.provider,
+      model: normalizeTTSModelName(ttsConfig),
     },
   }
 }
@@ -1794,9 +1785,9 @@ let appSettings: AppSettings = {
       model: '',
       extraArgs: []
     },
-    ttsModels: [{ id: 'default-tts', provider: 'fish', modelName: 's2-pro', apiKey: '', voiceId: '' }],
+    ttsModels: [{ id: 'default-tts', provider: 'fish', modelName: 's2-pro', apiKey: '', voiceId: '', baseUrl: '', language: '', format: 'pcm', sampleRate: 16000 }],
     activeTTSId: 'default-tts',
-    asrModels: [{ id: 'default-asr', provider: 'qwen', modelName: 'qwen3-asr-flash-realtime', apiKey: '' }],
+    asrModels: [{ id: 'default-asr', provider: 'qwen', modelName: 'qwen3-asr-flash-realtime', apiKey: '', baseUrl: '', language: 'zh', sampleRate: 16000 }],
     activeASRId: 'default-asr'
   }
 }
@@ -1833,6 +1824,119 @@ function normalizeASRModelName(modelName?: string): string {
   return normalized
 }
 
+function normalizeTTSModelName(config: TTSModelConfig | null): string {
+  const modelName = config?.modelName?.trim()
+  if (modelName) {
+    return modelName
+  }
+  return getTTSProviderCatalogEntry(config?.provider).defaultModel
+}
+
+function normalizeASRLanguage(config: ASRModelConfig | null): string {
+  return config?.language?.trim() || getASRProviderCatalogEntry(config?.provider).defaultLanguage
+}
+
+function createASRProviderForConfig(
+  config: ASRModelConfig | null,
+  callbacks?: {
+    onConnectionStateChange?: (state: ConnectionState) => void
+    onReconnectAttempt?: (attempt: number, maxRetries: number) => void
+  }
+): STTProvider {
+  if (!config?.apiKey?.trim()) {
+    throw new Error('ASR API key is not configured')
+  }
+
+  const providerEntry = getASRProviderCatalogEntry(config.provider)
+  if (providerEntry.protocol === 'openai-transcription') {
+    return createSTTProvider({
+      kind: 'openai-transcription',
+      config: {
+        apiKey: config.apiKey,
+        baseUrl: config.baseUrl || providerEntry.defaultBaseUrl,
+        model: config.modelName || providerEntry.defaultModel,
+        sampleRate: config.sampleRate || providerEntry.sampleRate,
+        language: config.language?.trim() || undefined,
+        receiveTimeoutMs: 20000,
+      },
+    })
+  }
+
+  const baseTransport = new NodeRealtimeWebSocketTransport()
+  const reconnectingTransport = new ReconnectingWebSocketTransport(baseTransport, {
+    maxRetries: callbacks ? 5 : 0,
+    initialRetryDelayMs: callbacks ? 1000 : 500,
+    maxRetryDelayMs: 16000,
+    onConnectionStateChange: callbacks?.onConnectionStateChange,
+    onReconnectAttempt: callbacks?.onReconnectAttempt,
+  })
+
+  return createSTTProvider({
+    kind: 'qwen-realtime',
+    config: {
+      apiKey: config.apiKey,
+      url: config.baseUrl,
+      model: normalizeASRModelName(config.modelName),
+      sampleRate: config.sampleRate || providerEntry.sampleRate,
+      language: normalizeASRLanguage(config),
+      receiveTimeoutMs: callbacks ? 1000 : 5000,
+    },
+    transport: reconnectingTransport,
+  })
+}
+
+function createTTSProviderForConfig(config: TTSModelConfig | null): TTSProvider {
+  if (!config?.apiKey?.trim()) {
+    throw new Error('TTS API key is not configured')
+  }
+
+  const providerEntry = getTTSProviderCatalogEntry(config.provider)
+  if (providerEntry.protocol === 'openai-speech') {
+    return createTTSProvider({
+      kind: 'openai-speech',
+      config: {
+        apiKey: config.apiKey,
+        baseUrl: config.baseUrl || providerEntry.defaultBaseUrl,
+        model: normalizeTTSModelName(config),
+        voiceId: config.voiceId || providerEntry.defaultVoiceId,
+        sampleRate: config.sampleRate || providerEntry.sampleRate,
+      },
+    })
+  }
+
+  if (providerEntry.protocol === 'elevenlabs-http') {
+    return createTTSProvider({
+      kind: 'elevenlabs-http',
+      config: {
+        apiKey: config.apiKey,
+        baseUrl: config.baseUrl || providerEntry.defaultBaseUrl,
+        model: normalizeTTSModelName(config),
+        voiceId: config.voiceId,
+        sampleRate: config.sampleRate || providerEntry.sampleRate,
+        language: config.language || providerEntry.defaultLanguage,
+        extra: config.extra as any,
+      },
+    })
+  }
+
+  return createTTSProvider({
+    kind: 'fish-realtime',
+    config: {
+      apiKey: config.apiKey,
+      voiceId: config.voiceId,
+      model: normalizeTTSModelName(config),
+      format: config.format || 'pcm',
+      sampleRate: config.sampleRate || providerEntry.sampleRate,
+      latency: 'balanced',
+      normalize: true,
+      prosody: {
+        speed: 1.0,
+        volume: 0,
+      },
+    },
+  })
+}
+
 function getTTSConfigSignature(config: TTSModelConfig | null): string {
   if (!config) {
     return 'none'
@@ -1842,6 +1946,10 @@ function getTTSConfigSignature(config: TTSModelConfig | null): string {
     provider: config.provider,
     modelName: config.modelName,
     voiceId: config.voiceId,
+    baseUrl: config.baseUrl,
+    language: config.language,
+    format: config.format,
+    sampleRate: config.sampleRate,
     apiKey: config.apiKey ? 'set' : '',
   })
 }
@@ -1854,6 +1962,9 @@ function getASRConfigSignature(config: ASRModelConfig | null): string {
     id: config.id,
     provider: config.provider,
     modelName: config.modelName,
+    baseUrl: config.baseUrl,
+    language: config.language,
+    sampleRate: config.sampleRate,
     apiKey: config.apiKey ? 'set' : '',
   })
 }
@@ -1958,26 +2069,11 @@ async function initializeTTSProvider(): Promise<void> {
     ttsService = null
     ttsAvailable = false
     activeTTSSignature = nextSignature
-    console.log('[TTS] Disabled: missing Fish Audio API key')
+    console.log('[TTS] Disabled: missing TTS API key')
     return
   }
 
-  const provider = createTTSProvider({
-    kind: 'fish-realtime',
-    config: {
-      apiKey: ttsConfig.apiKey,
-      voiceId: ttsConfig.voiceId,
-      model: ttsConfig.modelName || 's2-pro',
-      format: 'pcm',
-      sampleRate: 16000,
-      latency: 'balanced',
-      normalize: true,
-      prosody: {
-        speed: 1.0,
-        volume: 0,
-      },
-    },
-  })
+  const provider = createTTSProviderForConfig(ttsConfig)
 
   const providerGeneration = ++ttsProviderGeneration
   attachTTSProviderEvents(provider, providerGeneration)
@@ -3374,9 +3470,12 @@ function readLLMTestConfig(model: unknown): LLMModelConfig {
 
 function readTTSTestConfig(model: unknown): TTSModelConfig {
   const value = model as Partial<TTSModelConfig>
+  const provider = getTTSProviderCatalogEntry(String(value.provider ?? 'fish')).value
   const modelName = String(value.modelName ?? '').trim()
   const apiKey = String(value.apiKey ?? '').trim()
   const voiceId = String(value.voiceId ?? '').trim()
+  const baseUrl = String(value.baseUrl ?? '').trim().replace(/\/+$/, '')
+  const language = String(value.language ?? '').trim()
 
   if (!modelName) {
     throw new Error('TTS model name is required')
@@ -3387,17 +3486,23 @@ function readTTSTestConfig(model: unknown): TTSModelConfig {
 
   return {
     id: String(value.id ?? 'test'),
-    provider: 'fish',
+    provider,
     modelName,
     apiKey,
     voiceId,
+    baseUrl,
+    language,
+    sampleRate: Number(value.sampleRate) || 16000,
   }
 }
 
 function readASRTestConfig(model: unknown): ASRModelConfig {
   const value = model as Partial<ASRModelConfig>
+  const provider = getASRProviderCatalogEntry(String(value.provider ?? 'qwen')).value
   const modelName = String(value.modelName ?? '').trim()
   const apiKey = String(value.apiKey ?? '').trim()
+  const baseUrl = String(value.baseUrl ?? '').trim().replace(/\/+$/, '')
+  const language = String(value.language ?? '').trim()
 
   if (!modelName) {
     throw new Error('ASR model name is required')
@@ -3408,9 +3513,12 @@ function readASRTestConfig(model: unknown): ASRModelConfig {
 
   return {
     id: String(value.id ?? 'test'),
-    provider: 'qwen',
+    provider,
     modelName,
     apiKey,
+    baseUrl,
+    language,
+    sampleRate: Number(value.sampleRate) || 16000,
   }
 }
 
@@ -3453,16 +3561,7 @@ async function testOpenAICompatibleModel(model: LLMModelConfig): Promise<void> {
 }
 
 async function testFishTTSModel(model: TTSModelConfig): Promise<void> {
-  const provider = createTTSProvider({
-    kind: 'fish-realtime',
-    config: {
-      apiKey: model.apiKey,
-      model: model.modelName,
-      voiceId: model.voiceId,
-      format: 'pcm',
-      sampleRate: 16000,
-    },
-  })
+  const provider = createTTSProviderForConfig(model)
 
   try {
     await runWithTimeout(
@@ -3480,28 +3579,22 @@ async function testFishTTSModel(model: TTSModelConfig): Promise<void> {
 }
 
 async function testQwenASRModel(model: ASRModelConfig): Promise<void> {
-  const baseTransport = new NodeRealtimeWebSocketTransport()
-  const transport = new ReconnectingWebSocketTransport(baseTransport, {
-    maxRetries: 0,
-    initialRetryDelayMs: 500,
-  })
-  const provider = createSTTProvider({
-    kind: 'qwen-realtime',
-    config: {
-      apiKey: model.apiKey,
-      model: model.modelName,
-      sampleRate: 16000,
-      language: 'zh',
-    },
-    transport,
-  })
+  const provider = createASRProviderForConfig(model)
 
   try {
-    await runWithTimeout(
-      provider.connect(),
-      15000,
-      'ASR connection test timed out'
-    )
+    if (getASRProviderCatalogEntry(model.provider).protocol === 'openai-transcription') {
+      await runWithTimeout(
+        provider.transcribe(new Int16Array(1600)),
+        20000,
+        'ASR transcription test timed out'
+      )
+    } else {
+      await runWithTimeout(
+        provider.connect(),
+        15000,
+        'ASR connection test timed out'
+      )
+    }
   } finally {
     await provider.close().catch(() => undefined)
   }

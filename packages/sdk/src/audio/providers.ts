@@ -10,11 +10,14 @@ export type STTProviderCapabilities = {
   provider: string
   model?: string
   sampleRate: number
+  inputAudioFormat?: 'pcm_s16le' | 'wav' | 'webm' | 'mp3' | 'opus'
   streamingTranscripts: boolean
   supportsInterimTranscripts: boolean
   supportsFinalTranscripts: boolean
   supportsFlushAudio: boolean
   supportsServerVAD: boolean
+  supportsFileTranscription?: boolean
+  supportedLanguages?: string[]
   sttTimeoutMs: number
 }
 
@@ -23,8 +26,11 @@ export type TTSProviderCapabilities = {
   model?: string
   sampleRate: number
   audioFormat: 'pcm' | 'mp3' | 'opus'
+  supportedAudioFormats?: Array<'pcm' | 'mp3' | 'opus'>
   streaming: boolean
   supportsInterrupt: boolean
+  supportsVoiceSelection?: boolean
+  supportedLanguages?: string[]
 }
 
 export interface VoiceProviderLifecycle {

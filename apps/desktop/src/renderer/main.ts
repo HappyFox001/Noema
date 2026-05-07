@@ -7,6 +7,14 @@
 import './styles.css'
 import claudeCodeLogoUrl from '../../../../assets/claude_code_logo.png'
 import codexLogoUrl from '../../../../assets/codex_logo.png'
+import {
+  ASR_PROVIDER_CATALOG,
+  TTS_PROVIDER_CATALOG,
+  getASRProviderCatalogEntry,
+  getTTSProviderCatalogEntry,
+  type ASRProviderType,
+  type TTSProviderType,
+} from '../main/model-provider-catalog'
 
 // ========== Audio Player ==========
 
@@ -850,23 +858,28 @@ type LLMModelConfig = {
   baseUrl: string
 }
 
-type TTSProviderType = 'fish'
-
 type TTSModelConfig = {
   id: string
   provider: TTSProviderType
   modelName: string
   apiKey: string
   voiceId?: string
+  baseUrl?: string
+  language?: string
+  format?: 'pcm' | 'mp3' | 'opus'
+  sampleRate?: number
+  extra?: Record<string, unknown>
 }
-
-type ASRProviderType = 'qwen'
 
 type ASRModelConfig = {
   id: string
   provider: ASRProviderType
   modelName: string
   apiKey: string
+  baseUrl?: string
+  language?: string
+  sampleRate?: number
+  extra?: Record<string, unknown>
 }
 
 type ApiModelTestKind = 'llm' | 'task' | 'tts' | 'asr'
@@ -908,6 +921,7 @@ type LocalModelStatus = {
 }
 
 type SetupIssueKind = 'llm' | 'task' | 'tts' | 'asr' | 'models'
+type ModelManagerKind = 'llm' | 'task' | 'tts' | 'asr'
 
 type SetupIssue = {
   kind: SetupIssueKind
@@ -4443,6 +4457,12 @@ function escapeHtml(str: string): string {
 // ========== System Config Section ==========
 
 const proxyInput = document.getElementById('proxy-input') as HTMLInputElement
+const modelsOverviewPage = document.getElementById('models-overview-page') as HTMLElement
+const modelsManagerPage = document.getElementById('models-manager-page') as HTMLElement
+const modelOverviewList = document.getElementById('model-overview-list')!
+const modelManagerTitle = document.getElementById('model-manager-title')!
+const modelManagerSubtitle = document.getElementById('model-manager-subtitle')!
+const backModelOverviewBtn = document.getElementById('back-model-overview-btn') as HTMLButtonElement
 const llmModelsList = document.getElementById('llm-models-list')!
 const taskModelsList = document.getElementById('task-models-list')!
 const ttsModelsList = document.getElementById('tts-models-list')!
@@ -4462,6 +4482,7 @@ const resetSystemBtn = document.getElementById('reset-system-btn') as HTMLButton
 
 let currentSystemConfig: SystemConfig | null = null
 let lastLocalModels: LocalModelStatus[] = []
+let activeModelManagerKind: ModelManagerKind | null = null
 
 async function revealDevOnlyControls(): Promise<void> {
   try {
@@ -4499,11 +4520,12 @@ async function evaluateSetupReadiness(): Promise<SetupReadiness> {
   }
 
   const activeTTS = system.ttsModels.find(model => model.id === system.activeTTSId) || system.ttsModels[0]
-  if (!activeTTS?.modelName?.trim() || !activeTTS?.apiKey?.trim() || !activeTTS?.voiceId?.trim()) {
+  const needsTTSVoice = getTTSProviderCatalogEntry(activeTTS?.provider).requiresVoiceId
+  if (!activeTTS?.modelName?.trim() || !activeTTS?.apiKey?.trim() || (needsTTSVoice && !activeTTS?.voiceId?.trim())) {
     issues.push({
       kind: 'tts',
       label: 'TTS',
-      message: '补全 TTS 的模型名、API Key 和 Voice ID',
+      message: needsTTSVoice ? '补全 TTS 的模型名、API Key 和 Voice ID' : '补全 TTS 的模型名和 API Key',
     })
   }
 
@@ -4609,6 +4631,10 @@ function renderSetupGuidance(readiness: SetupReadiness): void {
   card.querySelectorAll<HTMLElement>('.setup-guidance-item').forEach(item => {
     item.addEventListener('click', () => {
       const kind = item.dataset.setupKind as SetupIssueKind | undefined
+      if (kind === 'llm' || kind === 'task' || kind === 'tts' || kind === 'asr') {
+        openModelManager(kind)
+        return
+      }
       const targetId = kind === 'models' ? 'local-models-list' : `${kind}-models-list`
       document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     })
@@ -4645,11 +4671,192 @@ function renderSystemConfig(): void {
 
   proxyInput.value = currentSystemConfig.proxy
 
+  renderModelOverview()
   renderLLMModels()
   renderTaskModels()
   renderTaskRuntimeSettings()
   renderTTSModels()
   renderASRModels()
+  renderModelManagerPage()
+}
+
+function getActiveModelSummary(kind: ModelManagerKind): {
+  kind: ModelManagerKind
+  title: string
+  modelName: string
+  provider: string
+  baseUrl: string
+  apiKey: string
+  voiceId?: string
+  language?: string
+  count: number
+  ready: boolean
+  missing: string[]
+} {
+  if (!currentSystemConfig) {
+    return {
+      kind,
+      title: '',
+      modelName: '',
+      provider: '',
+      baseUrl: '',
+      apiKey: '',
+      count: 0,
+      ready: false,
+      missing: ['配置'],
+    }
+  }
+
+  if (kind === 'llm') {
+    const model = currentSystemConfig.llmModels.find(item => item.id === currentSystemConfig!.activeLLMId) || currentSystemConfig.llmModels[0]
+    const missing = [
+      !model?.modelName?.trim() ? '模型名' : '',
+      !model?.apiKey?.trim() ? 'API Key' : '',
+      !model?.baseUrl?.trim() ? 'Base URL' : '',
+    ].filter(Boolean)
+    return {
+      kind,
+      title: '对话模型',
+      modelName: model?.modelName || '未配置',
+      provider: 'OpenAI-compatible',
+      baseUrl: model?.baseUrl || '',
+      apiKey: model?.apiKey || '',
+      count: currentSystemConfig.llmModels.length,
+      ready: missing.length === 0,
+      missing,
+    }
+  }
+
+  if (kind === 'task') {
+    const model = currentSystemConfig.taskModels.find(item => item.id === currentSystemConfig!.activeTaskId) || currentSystemConfig.taskModels[0]
+    const missing = [
+      !model?.modelName?.trim() ? '模型名' : '',
+      !model?.apiKey?.trim() ? 'API Key' : '',
+      !model?.baseUrl?.trim() ? 'Base URL' : '',
+    ].filter(Boolean)
+    return {
+      kind,
+      title: '任务模型',
+      modelName: model?.modelName || '未配置',
+      provider: 'OpenAI-compatible',
+      baseUrl: model?.baseUrl || '',
+      apiKey: model?.apiKey || '',
+      count: currentSystemConfig.taskModels.length,
+      ready: missing.length === 0,
+      missing,
+    }
+  }
+
+  if (kind === 'tts') {
+    const model = currentSystemConfig.ttsModels.find(item => item.id === currentSystemConfig!.activeTTSId) || currentSystemConfig.ttsModels[0]
+    const provider = getTTSProviderCatalogEntry(model?.provider)
+    const missing = [
+      !model?.modelName?.trim() ? '模型名' : '',
+      !model?.apiKey?.trim() ? 'API Key' : '',
+      provider.requiresVoiceId && !model?.voiceId?.trim() ? 'Voice ID' : '',
+    ].filter(Boolean)
+    return {
+      kind,
+      title: 'TTS 语音合成',
+      modelName: model?.modelName || '未配置',
+      provider: provider.label,
+      baseUrl: model?.baseUrl || provider.defaultBaseUrl,
+      apiKey: model?.apiKey || '',
+      voiceId: model?.voiceId || '',
+      language: model?.language || provider.defaultLanguage,
+      count: currentSystemConfig.ttsModels.length,
+      ready: missing.length === 0,
+      missing,
+    }
+  }
+
+  const model = currentSystemConfig.asrModels.find(item => item.id === currentSystemConfig!.activeASRId) || currentSystemConfig.asrModels[0]
+  const provider = getASRProviderCatalogEntry(model?.provider)
+  const missing = [
+    !model?.modelName?.trim() ? '模型名' : '',
+    !model?.apiKey?.trim() ? 'API Key' : '',
+  ].filter(Boolean)
+  return {
+    kind,
+    title: 'ASR 语音识别',
+    modelName: model?.modelName || '未配置',
+    provider: provider.label,
+    baseUrl: model?.baseUrl || provider.defaultBaseUrl,
+    apiKey: model?.apiKey || '',
+    language: model?.language || provider.defaultLanguage,
+    count: currentSystemConfig.asrModels.length,
+    ready: missing.length === 0,
+    missing,
+  }
+}
+
+function renderModelOverview(): void {
+  if (!currentSystemConfig) {
+    return
+  }
+
+  const summaries = (['llm', 'task', 'tts', 'asr'] as ModelManagerKind[]).map(getActiveModelSummary)
+  modelOverviewList.innerHTML = summaries.map(summary => `
+    <button class="model-overview-card ${summary.ready ? 'ready' : 'missing'}" type="button" data-model-kind="${summary.kind}">
+      <span class="model-overview-mark"></span>
+      <span class="model-overview-main">
+        <span class="model-overview-topline">
+          <span class="model-overview-title">${escapeHtml(summary.title)}</span>
+          <span class="model-overview-count">${summary.count} 个配置</span>
+        </span>
+        <span class="model-overview-model">${escapeHtml(summary.modelName)}</span>
+        <span class="model-overview-meta">
+          <span>${escapeHtml(summary.provider)}</span>
+          ${summary.baseUrl ? `<span>${escapeHtml(summary.baseUrl)}</span>` : ''}
+          ${summary.language ? `<span>${escapeHtml(summary.language)}</span>` : ''}
+        </span>
+        <span class="model-overview-status">${summary.ready ? '已就绪' : `缺少 ${escapeHtml(summary.missing.join(' / '))}`}</span>
+      </span>
+      <span class="model-overview-action">管理</span>
+    </button>
+  `).join('')
+
+  modelOverviewList.querySelectorAll<HTMLButtonElement>('.model-overview-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const kind = card.dataset.modelKind as ModelManagerKind | undefined
+      if (kind) {
+        openModelManager(kind)
+      }
+    })
+  })
+}
+
+function openModelManager(kind: ModelManagerKind): void {
+  activeModelManagerKind = kind
+  renderModelManagerPage()
+  modelsOverviewPage.classList.remove('active')
+  modelsManagerPage.classList.add('active')
+}
+
+function closeModelManager(): void {
+  activeModelManagerKind = null
+  modelsManagerPage.classList.remove('active')
+  modelsOverviewPage.classList.add('active')
+  renderModelOverview()
+}
+
+function renderModelManagerPage(): void {
+  const kind = activeModelManagerKind
+  document.querySelectorAll<HTMLElement>('.model-manager-section').forEach(section => {
+    section.classList.toggle('active', Boolean(kind && section.dataset.modelManager === kind))
+  })
+
+  if (!kind) {
+    modelManagerTitle.textContent = '模型管理'
+    modelManagerSubtitle.textContent = '新增、测试、激活或删除模型配置'
+    return
+  }
+
+  const summary = getActiveModelSummary(kind)
+  modelManagerTitle.textContent = summary.title
+  modelManagerSubtitle.textContent = summary.ready
+    ? `当前使用 ${summary.modelName}`
+    : `需要补全 ${summary.missing.join(' / ')}`
 }
 
 async function loadLocalModelStatus(): Promise<void> {
@@ -4803,9 +5010,7 @@ function renderTaskRuntimeSettings(): void {
   taskKeepRecentInput.value = String(config.keepRecentTurns)
 }
 
-const TTS_PROVIDERS: { value: TTSProviderType; label: string }[] = [
-  { value: 'fish', label: 'Fish Audio' }
-]
+const TTS_PROVIDERS = TTS_PROVIDER_CATALOG.filter(provider => provider.implemented)
 
 function getTTSProviderLabel(provider: TTSProviderType): string {
   return TTS_PROVIDERS.find(p => p.value === provider)?.label || provider
@@ -4846,8 +5051,16 @@ function renderTTSModels(): void {
           <input type="text" class="config-field-input masked" value="${escapeHtml(model.apiKey)}" data-field="apiKey" placeholder="API Key" />
         </div>
         <div class="config-field">
+          <span class="config-field-label">Base URL</span>
+          <input type="text" class="config-field-input" value="${escapeHtml(model.baseUrl || '')}" data-field="baseUrl" placeholder="https://api.openai.com/v1" />
+        </div>
+        <div class="config-field">
           <span class="config-field-label">Voice ID</span>
-          <input type="text" class="config-field-input" value="${escapeHtml(model.voiceId || '')}" data-field="voiceId" placeholder="音色 ID（可选）" />
+          <input type="text" class="config-field-input" value="${escapeHtml(model.voiceId || '')}" data-field="voiceId" placeholder="${escapeHtml(getTTSProviderCatalogEntry(model.provider).defaultVoiceId || '音色 ID')}" />
+        </div>
+        <div class="config-field">
+          <span class="config-field-label">Language</span>
+          <input type="text" class="config-field-input" value="${escapeHtml(model.language || '')}" data-field="language" placeholder="zh / en（可选）" />
         </div>
       </div>
     </div>
@@ -4856,9 +5069,7 @@ function renderTTSModels(): void {
   attachTTSEventListeners()
 }
 
-const ASR_PROVIDERS: { value: ASRProviderType; label: string }[] = [
-  { value: 'qwen', label: 'Qwen' }
-]
+const ASR_PROVIDERS = ASR_PROVIDER_CATALOG.filter(provider => provider.implemented)
 
 function getASRProviderLabel(provider: ASRProviderType): string {
   return ASR_PROVIDERS.find(p => p.value === provider)?.label || provider
@@ -4897,6 +5108,14 @@ function renderASRModels(): void {
         <div class="config-field">
           <span class="config-field-label">API Key</span>
           <input type="text" class="config-field-input masked" value="${escapeHtml(model.apiKey)}" data-field="apiKey" placeholder="API Key" />
+        </div>
+        <div class="config-field">
+          <span class="config-field-label">Base URL</span>
+          <input type="text" class="config-field-input" value="${escapeHtml(model.baseUrl || '')}" data-field="baseUrl" placeholder="https://api.openai.com/v1" />
+        </div>
+        <div class="config-field">
+          <span class="config-field-label">Language</span>
+          <input type="text" class="config-field-input" value="${escapeHtml(model.language || '')}" data-field="language" placeholder="zh / en" />
         </div>
       </div>
     </div>
@@ -5025,11 +5244,14 @@ function attachTTSEventListeners(): void {
   ttsModelsList.querySelectorAll('.config-model-card').forEach(card => {
     const id = (card as HTMLElement).dataset.id!
 
-    card.querySelectorAll('input[data-field]').forEach(input => {
+    card.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input[data-field], select[data-field]').forEach(input => {
       input.addEventListener('change', async () => {
-        const field = (input as HTMLInputElement).dataset.field!
-        const value = (input as HTMLInputElement).value
+        const field = input.dataset.field!
+        const value = input.value
         await updateTTSModel(id, { [field]: value })
+        if (field === 'provider') {
+          renderTTSModels()
+        }
       })
     })
 
@@ -5052,11 +5274,14 @@ function attachASREventListeners(): void {
   asrModelsList.querySelectorAll('.config-model-card').forEach(card => {
     const id = (card as HTMLElement).dataset.id!
 
-    card.querySelectorAll('input[data-field]').forEach(input => {
+    card.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input[data-field], select[data-field]').forEach(input => {
       input.addEventListener('change', async () => {
-        const field = (input as HTMLInputElement).dataset.field!
-        const value = (input as HTMLInputElement).value
+        const field = input.dataset.field!
+        const value = input.value
         await updateASRModel(id, { [field]: value })
+        if (field === 'provider') {
+          renderASRModels()
+        }
       })
     })
 
@@ -5078,6 +5303,8 @@ function attachASREventListeners(): void {
 async function saveSystemConfig(): Promise<void> {
   if (!currentSystemConfig) return
   await window.electronAPI.updateSettings({ system: currentSystemConfig })
+  renderModelOverview()
+  renderModelManagerPage()
   await refreshSetupReadiness()
 }
 
@@ -5213,6 +5440,15 @@ async function updateTTSModel(id: string, updates: Partial<TTSModelConfig>): Pro
   const model = currentSystemConfig.ttsModels.find(m => m.id === id)
   if (model) {
     Object.assign(model, updates)
+    if (updates.provider) {
+      const provider = getTTSProviderCatalogEntry(updates.provider)
+      model.modelName = provider.defaultModel
+      model.baseUrl = provider.defaultBaseUrl
+      model.language = provider.defaultLanguage
+      model.voiceId = provider.defaultVoiceId || ''
+      model.sampleRate = provider.sampleRate
+      model.format = 'pcm'
+    }
     await saveSystemConfig()
   }
 }
@@ -5239,9 +5475,13 @@ async function addTTSModel(): Promise<void> {
   const newModel: TTSModelConfig = {
     id: generateId(),
     provider: 'fish',
-    modelName: 's2-pro',
+    modelName: getTTSProviderCatalogEntry('fish').defaultModel,
     apiKey: '',
-    voiceId: ''
+    voiceId: getTTSProviderCatalogEntry('fish').defaultVoiceId || '',
+    baseUrl: getTTSProviderCatalogEntry('fish').defaultBaseUrl,
+    language: getTTSProviderCatalogEntry('fish').defaultLanguage,
+    format: 'pcm',
+    sampleRate: getTTSProviderCatalogEntry('fish').sampleRate
   }
   currentSystemConfig.ttsModels.push(newModel)
   await saveSystemConfig()
@@ -5253,6 +5493,13 @@ async function updateASRModel(id: string, updates: Partial<ASRModelConfig>): Pro
   const model = currentSystemConfig.asrModels.find(m => m.id === id)
   if (model) {
     Object.assign(model, updates)
+    if (updates.provider) {
+      const provider = getASRProviderCatalogEntry(updates.provider)
+      model.modelName = provider.defaultModel
+      model.baseUrl = provider.defaultBaseUrl
+      model.language = provider.defaultLanguage
+      model.sampleRate = provider.sampleRate
+    }
     await saveSystemConfig()
   }
 }
@@ -5279,8 +5526,11 @@ async function addASRModel(): Promise<void> {
   const newModel: ASRModelConfig = {
     id: generateId(),
     provider: 'qwen',
-    modelName: 'realtime',
-    apiKey: ''
+    modelName: getASRProviderCatalogEntry('qwen').defaultModel,
+    apiKey: '',
+    baseUrl: getASRProviderCatalogEntry('qwen').defaultBaseUrl,
+    language: getASRProviderCatalogEntry('qwen').defaultLanguage,
+    sampleRate: getASRProviderCatalogEntry('qwen').sampleRate
   }
   currentSystemConfig.asrModels.push(newModel)
   await saveSystemConfig()
@@ -5295,6 +5545,7 @@ proxyInput.addEventListener('change', async () => {
 })
 
 // Add button handlers
+backModelOverviewBtn.addEventListener('click', closeModelManager)
 addLLMBtn.addEventListener('click', () => void addLLMModel())
 addTaskBtn.addEventListener('click', () => void addTaskModel())
 ;[

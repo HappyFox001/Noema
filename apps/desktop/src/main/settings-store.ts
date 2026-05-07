@@ -8,6 +8,12 @@ import { app } from 'electron'
 import { join } from 'path'
 import { existsSync } from 'fs'
 import { mkdir, readFile, writeFile } from 'fs/promises'
+import {
+  getASRProviderCatalogEntry,
+  getTTSProviderCatalogEntry,
+  type ASRProviderType,
+  type TTSProviderType,
+} from './model-provider-catalog.js'
 
 
 function loadSystemConfigFromEnv(): SystemConfig | null {
@@ -63,14 +69,18 @@ function loadSystemConfigFromEnv(): SystemConfig | null {
     const modelName = env[`TTS_${i}_MODEL`]
     const apiKey = env[`TTS_${i}_API_KEY`]
     const voiceId = env[`TTS_${i}_VOICE_ID`]
+    const baseUrl = env[`TTS_${i}_BASE_URL`]
+    const language = env[`TTS_${i}_LANGUAGE`]
 
     if (provider || apiKey) {
       ttsModels.push({
         id: `env-tts-${i}`,
         provider: provider || 'fish',
-        modelName: modelName || 's2-pro',
+        modelName: modelName || getTTSProviderCatalogEntry(provider || 'fish').defaultModel,
         apiKey: apiKey || '',
-        voiceId: voiceId || ''
+        voiceId: voiceId || '',
+        baseUrl: baseUrl || getTTSProviderCatalogEntry(provider || 'fish').defaultBaseUrl,
+        language: language || getTTSProviderCatalogEntry(provider || 'fish').defaultLanguage
       })
     }
   }
@@ -80,13 +90,17 @@ function loadSystemConfigFromEnv(): SystemConfig | null {
     const provider = env[`ASR_${i}_PROVIDER`] as ASRProviderType | undefined
     const modelName = env[`ASR_${i}_MODEL`]
     const apiKey = env[`ASR_${i}_API_KEY`]
+    const baseUrl = env[`ASR_${i}_BASE_URL`]
+    const language = env[`ASR_${i}_LANGUAGE`]
 
     if (provider || apiKey) {
       asrModels.push({
         id: `env-asr-${i}`,
         provider: provider || 'qwen',
-        modelName: modelName || 'qwen3-asr-flash-realtime',
-        apiKey: apiKey || ''
+        modelName: modelName || getASRProviderCatalogEntry(provider || 'qwen').defaultModel,
+        apiKey: apiKey || '',
+        baseUrl: baseUrl || getASRProviderCatalogEntry(provider || 'qwen').defaultBaseUrl,
+        language: language || getASRProviderCatalogEntry(provider || 'qwen').defaultLanguage
       })
     }
   }
@@ -119,19 +133,18 @@ export interface LLMModelConfig {
 }
 
 
-export type TTSProviderType = 'fish'
-
-
 export interface TTSModelConfig {
   id: string
   provider: TTSProviderType
   modelName: string
   apiKey: string
   voiceId?: string
+  baseUrl?: string
+  language?: string
+  format?: 'pcm' | 'mp3' | 'opus'
+  sampleRate?: number
+  extra?: Record<string, unknown>
 }
-
-
-export type ASRProviderType = 'qwen'
 
 
 export interface ASRModelConfig {
@@ -139,6 +152,10 @@ export interface ASRModelConfig {
   provider: ASRProviderType
   modelName: string
   apiKey: string
+  baseUrl?: string
+  language?: string
+  sampleRate?: number
+  extra?: Record<string, unknown>
 }
 
 
@@ -215,14 +232,21 @@ const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
     provider: 'fish',
     modelName: 's2-pro',
     apiKey: '',
-    voiceId: ''
+    voiceId: '',
+    baseUrl: '',
+    language: '',
+    format: 'pcm',
+    sampleRate: 16000
   }],
   activeTTSId: 'default-tts',
   asrModels: [{
     id: 'default-asr',
     provider: 'qwen',
     modelName: 'qwen3-asr-flash-realtime',
-    apiKey: ''
+    apiKey: '',
+    baseUrl: '',
+    language: 'zh',
+    sampleRate: 16000
   }],
   activeASRId: 'default-asr'
 }
@@ -366,10 +390,20 @@ export class SettingsStore {
 
     const ttsModels = base.ttsModels.map((model, index) => {
       if (!model.apiKey && env.ttsModels[index]?.apiKey) {
-        return { ...model, apiKey: env.ttsModels[index].apiKey }
+        return {
+          ...model,
+          apiKey: env.ttsModels[index].apiKey,
+          baseUrl: model.baseUrl || env.ttsModels[index].baseUrl,
+          language: model.language || env.ttsModels[index].language,
+        }
       }
       if (!model.apiKey && env.ttsModels[0]?.apiKey) {
-        return { ...model, apiKey: env.ttsModels[0].apiKey }
+        return {
+          ...model,
+          apiKey: env.ttsModels[0].apiKey,
+          baseUrl: model.baseUrl || env.ttsModels[0].baseUrl,
+          language: model.language || env.ttsModels[0].language,
+        }
       }
       return model
     })
@@ -381,10 +415,20 @@ export class SettingsStore {
 
     const asrModels = base.asrModels.map((model, index) => {
       if (!model.apiKey && env.asrModels[index]?.apiKey) {
-        return { ...model, apiKey: env.asrModels[index].apiKey }
+        return {
+          ...model,
+          apiKey: env.asrModels[index].apiKey,
+          baseUrl: model.baseUrl || env.asrModels[index].baseUrl,
+          language: model.language || env.asrModels[index].language,
+        }
       }
       if (!model.apiKey && env.asrModels[0]?.apiKey) {
-        return { ...model, apiKey: env.asrModels[0].apiKey }
+        return {
+          ...model,
+          apiKey: env.asrModels[0].apiKey,
+          baseUrl: model.baseUrl || env.asrModels[0].baseUrl,
+          language: model.language || env.asrModels[0].language,
+        }
       }
       return model
     })

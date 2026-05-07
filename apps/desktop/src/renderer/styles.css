@@ -3682,6 +3682,205 @@ body.task-active:not(.settings-open) #main-view {
   display: block;
 }
 
+.model-page {
+  display: none;
+}
+
+.model-page.active {
+  display: block;
+}
+
+.model-overview-list {
+  width: min(100%, 560px);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.model-overview-card {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-height: 112px;
+  padding: 13px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.072);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.024)),
+    rgba(0, 0, 0, 0.12);
+  color: rgba(255, 255, 255, 0.86);
+  text-align: left;
+  cursor: pointer;
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.model-overview-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(125, 235, 214, 0.18);
+  background:
+    linear-gradient(180deg, rgba(125, 235, 214, 0.06), rgba(255, 255, 255, 0.024)),
+    rgba(0, 0, 0, 0.13);
+}
+
+.model-overview-mark {
+  width: 8px;
+  height: 8px;
+  border: 1px solid rgba(125, 235, 214, 0.65);
+  transform: rotate(45deg);
+  box-shadow: 0 0 12px rgba(125, 235, 214, 0.22);
+}
+
+.model-overview-card.missing .model-overview-mark {
+  border-color: rgba(255, 190, 112, 0.72);
+  box-shadow: 0 0 12px rgba(255, 190, 112, 0.18);
+}
+
+.model-overview-main {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.model-overview-topline,
+.model-overview-meta {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.model-overview-title {
+  min-width: 0;
+  color: rgba(255, 255, 255, 0.88);
+  font-family: var(--font-soft);
+  font-size: 13px;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-overview-count {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.055);
+  color: rgba(255, 255, 255, 0.48);
+  font-family: var(--font-ui);
+  font-size: 10px;
+}
+
+.model-overview-model {
+  min-width: 0;
+  color: rgba(255, 255, 255, 0.9);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-overview-meta {
+  color: rgba(255, 255, 255, 0.42);
+  font-family: var(--font-ui);
+  font-size: 10px;
+  overflow: hidden;
+}
+
+.model-overview-meta span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-overview-status {
+  color: rgba(150, 230, 196, 0.8);
+  font-family: var(--font-ui);
+  font-size: 10px;
+}
+
+.model-overview-card.missing .model-overview-status {
+  color: rgba(255, 206, 142, 0.86);
+}
+
+.model-overview-action {
+  align-self: end;
+  flex-shrink: 0;
+  padding: 4px 9px;
+  border: 1px solid rgba(125, 235, 214, 0.14);
+  border-radius: 5px;
+  color: rgba(190, 255, 244, 0.82);
+  background: rgba(125, 235, 214, 0.06);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.model-manager-toolbar {
+  width: min(100%, 560px);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  margin: 10px 0 14px;
+}
+
+.model-back-btn {
+  height: 30px;
+  padding: 0 11px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.055);
+  color: rgba(255, 255, 255, 0.72);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.model-back-btn:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.model-manager-heading {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.model-manager-title {
+  color: rgba(255, 255, 255, 0.9);
+  font-family: var(--font-soft);
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+.model-manager-subtitle {
+  min-width: 0;
+  color: rgba(255, 255, 255, 0.42);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-manager-section {
+  display: none;
+}
+
+.model-manager-section.active {
+  display: block;
+}
+
 .task-runtime-card {
   width: min(100%, 560px);
 }
@@ -3812,15 +4011,17 @@ body.task-active:not(.settings-open) #main-view {
 }
 
 .config-model-header {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
+  gap: 10px;
   margin-bottom: 11px;
   min-width: 0;
 }
 
 .config-model-name {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(92px, auto) minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   min-width: 0;
@@ -3836,7 +4037,7 @@ body.task-active:not(.settings-open) #main-view {
   padding: 3px 4px;
   font-family: var(--font-soft);
   outline: none;
-  width: 150px;
+  width: 100%;
   min-width: 0;
   transition: border-color 0.2s;
 }
@@ -3860,6 +4061,7 @@ body.task-active:not(.settings-open) #main-view {
   border: 1px solid rgba(125, 235, 214, 0.18);
   color: rgba(190, 255, 244, 0.9);
   font-family: var(--font-ui);
+  white-space: nowrap;
 }
 
 .config-model-active-badge.missing {
@@ -3871,8 +4073,9 @@ body.task-active:not(.settings-open) #main-view {
   display: flex;
   align-items: center;
   gap: 6px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: flex-end;
+  min-width: max-content;
 }
 
 .config-model-btn {
@@ -3884,6 +4087,7 @@ body.task-active:not(.settings-open) #main-view {
   cursor: pointer;
   transition: transform 0.16s ease, background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
   font-family: var(--font-ui);
+  white-space: nowrap;
 }
 
 .config-model-btn:hover {
@@ -3954,7 +4158,8 @@ body.task-active:not(.settings-open) #main-view {
 }
 
 .config-field {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(90px, 140px) minmax(0, 1fr);
   align-items: center;
   gap: 10px;
   min-width: 0;
@@ -3968,8 +4173,10 @@ body.task-active:not(.settings-open) #main-view {
   font-size: 11px;
   color: rgba(125, 235, 214, 0.48);
   font-family: var(--font-ui);
-  min-width: 65px;
-  flex-shrink: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .config-field-input {
@@ -4014,14 +4221,23 @@ body.task-active:not(.settings-open) #main-view {
 
 /* Provider label (for TTS/ASR model cards) */
 .config-provider-label {
+  width: min(100%, 136px);
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-size: 10px;
-  padding: 2px 6px;
+  line-height: 1.15;
+  padding: 3px 7px;
   border-radius: 4px;
   background: rgba(100, 140, 200, 0.15);
   color: rgba(140, 180, 220, 0.9);
   font-family: var(--font-ui);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  overflow: hidden;
+  text-align: center;
+  overflow-wrap: anywhere;
 }
 
 /* Provider select dropdown */
@@ -4112,10 +4328,40 @@ body.task-active:not(.settings-open) #main-view {
   clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
 }
 
+@media (max-width: 760px) {
+  .model-overview-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .config-model-header {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .config-model-actions {
+    justify-content: flex-start;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 560px) {
+  .config-model-name {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .config-provider-label {
+    width: 100%;
+    min-height: 24px;
+    justify-content: flex-start;
+    text-align: left;
+  }
+}
+
 /* Responsive */
 @media (max-width: 480px) {
   .config-field {
-    flex-direction: column;
+    grid-template-columns: minmax(0, 1fr);
     align-items: flex-start;
     gap: 4px;
   }

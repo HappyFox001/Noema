@@ -316,8 +316,30 @@
             <section id="section-models" class="settings-section">
               <h2 class="section-title" data-i18n="models.title">模型设置</h2>
 
+              <div id="models-overview-page" class="model-page active">
+                <div id="model-overview-list" class="model-overview-list"></div>
+
+                <div class="config-section">
+                  <div class="config-section-header">
+                    <span class="config-section-title" data-i18n="system.localModels">本地推理模型</span>
+                    <button id="download-local-models-btn" class="config-add-btn" data-i18n="system.downloadMissing">下载缺失模型</button>
+                  </div>
+                  <div id="local-models-list" class="config-models-list">
+                    <div class="profile-loading">检查中...</div>
+                  </div>
+                </div>
+              </div>
+
+              <div id="models-manager-page" class="model-page">
+                <div class="model-manager-toolbar">
+                  <button id="back-model-overview-btn" class="model-back-btn" type="button">返回</button>
+                  <div class="model-manager-heading">
+                    <span id="model-manager-title" class="model-manager-title">模型管理</span>
+                    <span id="model-manager-subtitle" class="model-manager-subtitle">新增、测试、激活或删除模型配置</span>
+                  </div>
+                </div>
               
-              <div class="config-section">
+              <div class="config-section model-manager-section" data-model-manager="llm">
                 <div class="config-section-header">
                   <span class="config-section-title" data-i18n="system.dialogueModel">对话模型</span>
                   <button id="add-llm-btn" class="config-add-btn" data-i18n="common.add">+ 添加</button>
@@ -328,7 +350,7 @@
               </div>
 
               
-              <div class="config-section">
+              <div class="config-section model-manager-section" data-model-manager="task">
                 <div class="config-section-header">
                   <span class="config-section-title" data-i18n="system.taskModel">任务模型</span>
                   <div class="config-section-actions">
@@ -341,7 +363,7 @@
               </div>
 
               
-              <div class="config-section">
+              <div class="config-section model-manager-section" data-model-manager="tts">
                 <div class="config-section-header">
                   <span class="config-section-title" data-i18n="system.tts">TTS 语音合成</span>
                   <button id="add-tts-btn" class="config-add-btn" data-i18n="common.add">+ 添加</button>
@@ -352,7 +374,7 @@
               </div>
 
               
-              <div class="config-section">
+              <div class="config-section model-manager-section" data-model-manager="asr">
                 <div class="config-section-header">
                   <span class="config-section-title" data-i18n="system.asr">ASR 语音识别</span>
                   <button id="add-asr-btn" class="config-add-btn" data-i18n="common.add">+ 添加</button>
@@ -361,16 +383,6 @@
                   
                 </div>
               </div>
-
-              
-              <div class="config-section">
-                <div class="config-section-header">
-                  <span class="config-section-title" data-i18n="system.localModels">本地推理模型</span>
-                  <button id="download-local-models-btn" class="config-add-btn" data-i18n="system.downloadMissing">下载缺失模型</button>
-                </div>
-                <div id="local-models-list" class="config-models-list">
-                  <div class="profile-loading">检查中...</div>
-                </div>
               </div>
 
             </section>
