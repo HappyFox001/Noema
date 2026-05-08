@@ -102,6 +102,32 @@ body {
   app-region: no-drag;
 }
 
+#advanced-orb-canvas {
+  user-select: none;
+  -webkit-user-select: none;
+  grid-row: 1;
+  align-self: end;
+  width: 180px;
+  height: 180px;
+  display: none;
+  background: transparent !important;
+  contain: strict;
+  isolation: isolate;
+  transform: translateZ(0);
+  will-change: transform;
+  cursor: default;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+body.advanced-orb-active #orb-canvas {
+  display: none;
+}
+
+body.advanced-orb-active #advanced-orb-canvas {
+  display: block;
+}
+
 .plugin-ui-surface {
   position: absolute;
   inset: 0;
@@ -2203,6 +2229,44 @@ body.plugin-task-surface-replace .task-steps {
   background:
     linear-gradient(135deg, rgba(50, 112, 180, 0.92), rgba(22, 52, 88, 0.96)),
     rgba(74, 144, 226, 0.3);
+}
+
+.segmented-control {
+  display: inline-grid;
+  grid-auto-flow: column;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.20);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+}
+
+.segmented-option {
+  min-width: 84px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.62);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+
+.segmented-option:hover {
+  color: rgba(255, 255, 255, 0.88);
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.segmented-option.active {
+  border-color: rgba(125, 235, 214, 0.25);
+  background:
+    linear-gradient(180deg, rgba(125, 235, 214, 0.13), rgba(125, 235, 214, 0.045)),
+    rgba(0, 0, 0, 0.18);
+  color: rgba(220, 255, 248, 0.94);
 }
 
 .settings-btn.danger {

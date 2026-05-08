@@ -634,6 +634,11 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'nav.system': '系统',
     'nav.voice': '语音',
     'nav.models': '模型',
+    'appearance.title': '页面设置',
+    'appearance.orbStyle': '小球样式',
+    'appearance.orbStyleDesc': '选择主界面小球的视觉表现。',
+    'appearance.defaultOrb': '默认小球',
+    'appearance.advancedOrb': '高级小球',
     'models.title': '模型设置',
     'voice.input': '语音输入',
     'voice.inputDesc': '使用麦克风进行语音对话',
@@ -747,6 +752,11 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'nav.system': 'System',
     'nav.voice': 'Voice',
     'nav.models': 'Models',
+    'appearance.title': 'Page Settings',
+    'appearance.orbStyle': 'Orb Style',
+    'appearance.orbStyleDesc': 'Choose the main screen orb visual.',
+    'appearance.defaultOrb': 'Default Orb',
+    'appearance.advancedOrb': 'Advanced Orb',
     'models.title': 'Model Settings',
     'voice.input': 'Voice Input',
     'voice.inputDesc': 'Use the microphone for voice conversation',
@@ -953,11 +963,16 @@ type UISettings = {
   voiceInputEnabled: boolean
   voiceOutputEnabled: boolean
   volume: number
+  appearance?: {
+    orbStyle?: OrbStyle
+  }
   selectedPersonality: string
   plugins: Record<string, boolean>
   pluginConfigs: Record<string, Record<string, unknown>>
   system: SystemConfig
 }
+
+type OrbStyle = 'default' | 'advanced'
 
 type PluginConfigField =
   | {
@@ -1070,6 +1085,7 @@ const pluginUIMainView = document.getElementById('main-view') as HTMLElement
 const pluginUITaskPanel = document.getElementById('task-panel') as HTMLElement
 const canvas = document.getElementById('orb-canvas') as HTMLCanvasElement
 const ctx = canvas.getContext('2d', { alpha: true })!
+const advancedOrbCanvas = document.getElementById('advanced-orb-canvas') as HTMLCanvasElement
 let activePluginMainSurface: PluginUISurface | null = null
 let activePluginTaskSurface: PluginUISurface | null = null
 let lastTaskPanelPlan: TaskPanelPlan | null = null
@@ -1097,9 +1113,27 @@ let orbAnimationPaused = false
 let orbInputEnergy = 0
 let orbOutputEnergy = 0
 let orbEnergyUpdatedAt = performance.now()
+let currentOrbStyle: OrbStyle = 'default'
+type AdvancedGlassOrbRendererInstance = import('./orbs/advanced-glass-orb').AdvancedGlassOrbRenderer
+let advancedOrbRenderer: AdvancedGlassOrbRendererInstance | null = null
+let advancedOrbRendererPromise: Promise<AdvancedGlassOrbRendererInstance> | null = null
 
 // Store current radius for mouse detection
 let currentOrbRadius = 22
+
+async function getAdvancedOrbRenderer(): Promise<AdvancedGlassOrbRendererInstance> {
+  if (advancedOrbRenderer) {
+    return advancedOrbRenderer
+  }
+  if (!advancedOrbRendererPromise) {
+    advancedOrbRendererPromise = import('./orbs/advanced-glass-orb').then(({ AdvancedGlassOrbRenderer }) => {
+      advancedOrbRenderer = new AdvancedGlassOrbRenderer(advancedOrbCanvas)
+      advancedOrbRenderer.setMode(orbState.mode)
+      return advancedOrbRenderer
+    })
+  }
+  return advancedOrbRendererPromise
+}
 
 function resizeOrbCanvas(): void {
   const rect = canvas.getBoundingClientRect()
@@ -1127,6 +1161,9 @@ function resizeOrbCanvas(): void {
 }
 
 function updateOrbAudioEnergy(source: 'input' | 'output', samples: Int16Array | Uint8Array): void {
+  if (currentOrbStyle === 'advanced') {
+    void getAdvancedOrbRenderer().then(renderer => renderer.updateAudioEnergy(source, samples))
+  }
   const next = calculatePcmEnergy(samples)
   if (source === 'input') {
     orbInputEnergy = Math.max(orbInputEnergy * 0.72, next)
@@ -1557,6 +1594,16 @@ function drawOrbMembrane(
 }
 
 function startOrbAnimation(): void {
+  if (currentOrbStyle === 'advanced') {
+    void getAdvancedOrbRenderer()
+      .then(renderer => renderer.setEnabled(true))
+      .then((ready) => {
+        if (!ready && currentOrbStyle === 'advanced') {
+          setOrbStyle('default')
+        }
+      })
+    return
+  }
   if (orbAnimationFrameId !== null || orbAnimationPaused) {
     return
   }
@@ -1565,6 +1612,7 @@ function startOrbAnimation(): void {
 }
 
 function stopOrbAnimation(): void {
+  void advancedOrbRenderer?.setEnabled(false)
   if (orbAnimationFrameId !== null) {
     cancelAnimationFrame(orbAnimationFrameId)
     orbAnimationFrameId = null
@@ -1572,11 +1620,14 @@ function stopOrbAnimation(): void {
 }
 
 startOrbAnimation()
-window.addEventListener('resize', resizeOrbCanvas)
+window.addEventListener('resize', () => {
+  resizeOrbCanvas()
+  advancedOrbRenderer?.resize()
+})
 
 // Helper function to check if point is inside orb
-function isPointInOrb(clientX: number, clientY: number): boolean {
-  const rect = canvas.getBoundingClientRect()
+function isPointInOrb(surface: HTMLCanvasElement, clientX: number, clientY: number): boolean {
+  const rect = surface.getBoundingClientRect()
   const x = clientX - rect.left
   const y = clientY - rect.top
   const centerX = rect.width / 2
@@ -1593,43 +1644,52 @@ function isPointInOrb(clientX: number, clientY: number): boolean {
 let isDragging = false
 let lastMouseX = 0
 let lastMouseY = 0
+let activeDragSurface: HTMLCanvasElement | null = null
 
-canvas.addEventListener('mousemove', (e) => {
-  if (isDragging) {
-    const deltaX = e.screenX - lastMouseX
-    const deltaY = e.screenY - lastMouseY
+function attachOrbDragHandlers(surface: HTMLCanvasElement): void {
+  surface.addEventListener('mousemove', (e) => {
+    if (isDragging && activeDragSurface === surface) {
+      const deltaX = e.screenX - lastMouseX
+      const deltaY = e.screenY - lastMouseY
+      lastMouseX = e.screenX
+      lastMouseY = e.screenY
+      window.electronAPI.moveWindow(deltaX, deltaY)
+    } else {
+      surface.style.cursor = isPointInOrb(surface, e.clientX, e.clientY) ? 'grab' : 'move'
+    }
+  })
+
+  surface.addEventListener('mouseleave', () => {
+    if (!isDragging || activeDragSurface !== surface) {
+      surface.style.cursor = 'default'
+    }
+  })
+
+  surface.addEventListener('mousedown', (e) => {
+    isDragging = true
+    activeDragSurface = surface
     lastMouseX = e.screenX
     lastMouseY = e.screenY
-    window.electronAPI.moveWindow(deltaX, deltaY)
-  } else {
-    canvas.style.cursor = isPointInOrb(e.clientX, e.clientY) ? 'grab' : 'move'
-  }
-})
+    surface.style.cursor = 'grabbing'
+  })
 
-canvas.addEventListener('mouseleave', () => {
-  if (!isDragging) {
-    canvas.style.cursor = 'default'
-  }
-})
+  surface.addEventListener('mouseup', (e) => {
+    if (isDragging && activeDragSurface === surface) {
+      isDragging = false
+      activeDragSurface = null
+      surface.style.cursor = isPointInOrb(surface, e.clientX, e.clientY) ? 'grab' : 'move'
+    }
+  })
+}
 
-canvas.addEventListener('mousedown', (e) => {
-  isDragging = true
-  lastMouseX = e.screenX
-  lastMouseY = e.screenY
-  canvas.style.cursor = 'grabbing'
-})
-
-canvas.addEventListener('mouseup', (e) => {
-  if (isDragging) {
-    isDragging = false
-    canvas.style.cursor = isPointInOrb(e.clientX, e.clientY) ? 'grab' : 'move'
-  }
-})
+attachOrbDragHandlers(canvas)
+attachOrbDragHandlers(advancedOrbCanvas)
 
 document.addEventListener('mouseup', () => {
   if (isDragging) {
     isDragging = false
-    canvas.style.cursor = 'default'
+    activeDragSurface?.style.setProperty('cursor', 'default')
+    activeDragSurface = null
   }
 })
 
@@ -1640,6 +1700,7 @@ function setOrbMode(mode: OrbState['mode']) {
 
   orbState.mode = mode
   orbState.modeChangedAt = performance.now()
+  advancedOrbRenderer?.setMode(mode)
   syncPluginUIStateSoon()
   switch (mode) {
     case 'listening':
@@ -1687,6 +1748,21 @@ function replaceControlText(element: HTMLElement, text: string): void {
   element.dataset.text = text
   element.style.transform = 'translateZ(0)'
   void element.offsetWidth
+}
+
+function setOrbStyle(style: OrbStyle): void {
+  if (currentOrbStyle === style) {
+    renderOrbStyleControls()
+    return
+  }
+
+  currentOrbStyle = style
+  document.body.classList.toggle('advanced-orb-active', style === 'advanced')
+  renderOrbStyleControls()
+  stopOrbAnimation()
+  if (!orbAnimationPaused) {
+    startOrbAnimation()
+  }
 }
 
 let panelNoticeTimer: number | undefined
@@ -2316,6 +2392,7 @@ const volumeValue = document.getElementById('volume-value')!
 const voiceInputBtn = document.getElementById('voice-input-btn') as HTMLButtonElement
 const voiceOutputToggle = document.getElementById('voice-output-toggle') as HTMLInputElement
 const languageSelect = document.getElementById('language-select') as HTMLSelectElement
+const orbStyleSegmented = document.getElementById('orb-style-segmented') as HTMLElement
 const personalitySelect = document.getElementById('personality-select') as HTMLSelectElement
 const addPersonalityFileBtn = document.getElementById('add-personality-file-btn') as HTMLButtonElement
 const pluginsList = document.getElementById('plugins-list') as HTMLElement
@@ -2333,6 +2410,7 @@ function applySettingsToUI(settings: UISettings) {
   volumeSlider.value = String(settings.volume)
   volumeValue.textContent = `${settings.volume}%`
   audioPlayer.setVolume(settings.volume)
+  setOrbStyle(settings.appearance?.orbStyle === 'advanced' ? 'advanced' : 'default')
 
   startConversationBtn.disabled = !settings.voiceInputEnabled
   updateConversationButton()
@@ -2412,6 +2490,21 @@ async function loadPersonalities(): Promise<void> {
     personalitySelect.appendChild(option)
   })
 }
+
+function renderOrbStyleControls(): void {
+  orbStyleSegmented.querySelectorAll<HTMLButtonElement>('[data-orb-style]').forEach(button => {
+    const style = button.dataset.orbStyle === 'advanced' ? 'advanced' : 'default'
+    button.classList.toggle('active', style === currentOrbStyle)
+  })
+}
+
+orbStyleSegmented.querySelectorAll<HTMLButtonElement>('[data-orb-style]').forEach(button => {
+  button.addEventListener('click', async () => {
+    const orbStyle: OrbStyle = button.dataset.orbStyle === 'advanced' ? 'advanced' : 'default'
+    setOrbStyle(orbStyle)
+    await window.electronAPI.updateSettings({ appearance: { orbStyle } })
+  })
+})
 
 // Hide context menu when clicking elsewhere
 document.addEventListener('click', () => {

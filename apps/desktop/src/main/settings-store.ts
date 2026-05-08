@@ -203,11 +203,20 @@ export interface AppSettings {
   voiceInputEnabled: boolean
   voiceOutputEnabled: boolean
   volume: number
+  appearance: AppearanceSettings
   selectedPersonality: string
   externalRolePaths: string[]
   plugins: Record<string, boolean>
   pluginConfigs: Record<string, Record<string, unknown>>
   system: SystemConfig
+}
+
+export interface AppearanceSettings {
+  orbStyle: 'default' | 'advanced'
+}
+
+const DEFAULT_APPEARANCE_SETTINGS: AppearanceSettings = {
+  orbStyle: 'default'
 }
 
 const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
@@ -256,6 +265,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   voiceInputEnabled: true,
   voiceOutputEnabled: true,
   volume: 70,
+  appearance: DEFAULT_APPEARANCE_SETTINGS,
   selectedPersonality: 'role:eva',
   externalRolePaths: [],
   plugins: {},
@@ -316,6 +326,7 @@ export class SettingsStore {
         ...DEFAULT_SETTINGS,
         ...parsed,
         language: normalizeLanguage(parsed.language),
+        appearance: normalizeAppearanceSettings(parsed.appearance),
         externalRolePaths: Array.isArray(parsed.externalRolePaths) ? parsed.externalRolePaths : [],
         plugins: parsed.plugins && typeof parsed.plugins === 'object' ? parsed.plugins : {},
         pluginConfigs: parsed.pluginConfigs && typeof parsed.pluginConfigs === 'object' ? parsed.pluginConfigs : {},
@@ -460,6 +471,7 @@ export class SettingsStore {
     this.settings = {
       ...this.settings,
       ...partial,
+      appearance: normalizeAppearanceSettings(partial.appearance ?? this.settings.appearance),
       volume: clampVolume(partial.volume ?? this.settings.volume)
     }
     await this.persist()
@@ -500,6 +512,15 @@ export class SettingsStore {
 
 function normalizeLanguage(value: unknown): AppSettings['language'] {
   return value === 'en-US' ? 'en-US' : 'zh-CN'
+}
+
+function normalizeAppearanceSettings(value: unknown): AppearanceSettings {
+  const source = value && typeof value === 'object'
+    ? value as Partial<AppearanceSettings>
+    : {}
+  return {
+    orbStyle: source.orbStyle === 'advanced' ? 'advanced' : 'default'
+  }
 }
 
 function clampVolume(value: number): number {

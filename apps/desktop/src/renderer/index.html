@@ -11,6 +11,7 @@
       
       <div id="main-view" class="container">
         <canvas id="orb-canvas" width="180" height="180"></canvas>
+        <canvas id="advanced-orb-canvas" width="180" height="180" aria-hidden="true"></canvas>
         <div id="expression-layer" class="expression-layer" aria-hidden="true">
           <img id="expression-image" class="expression-image" alt="" />
         </div>
@@ -95,6 +96,25 @@
                     <span class="row-desc" data-i18n="system.proxyDesc">HTTP/HTTPS 代理地址，如 http://127.0.0.1:7890</span>
                   </div>
                   <input type="text" id="proxy-input" class="settings-input" placeholder="留空则不使用代理" data-i18n-placeholder="system.proxyPlaceholder" />
+                </div>
+              </div>
+
+              <div class="config-section">
+                <div class="config-section-header">
+                  <span class="config-section-title" data-i18n="appearance.title">页面设置</span>
+                </div>
+              </div>
+
+              <div class="settings-card">
+                <div class="settings-row">
+                  <div class="row-info">
+                    <span class="row-label" data-i18n="appearance.orbStyle">小球样式</span>
+                    <span class="row-desc" data-i18n="appearance.orbStyleDesc">选择主界面小球的视觉表现。</span>
+                  </div>
+                  <div class="segmented-control" id="orb-style-segmented">
+                    <button class="segmented-option active" type="button" data-orb-style="default" data-i18n="appearance.defaultOrb">默认小球</button>
+                    <button class="segmented-option" type="button" data-orb-style="advanced" data-i18n="appearance.advancedOrb">高级小球</button>
+                  </div>
                 </div>
               </div>
 
@@ -312,7 +332,6 @@
               </div>
             </section>
 
-            
             <section id="section-models" class="settings-section">
               <h2 class="section-title" data-i18n="models.title">模型设置</h2>
 

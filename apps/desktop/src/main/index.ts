@@ -1735,11 +1735,17 @@ function delayMs(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-// This app uses a transparent frameless window and simple canvas effects.
-// Disabling GPU avoids macOS/Electron ANGLE initialization failures.
-app.disableHardwareAcceleration()
-app.commandLine.appendSwitch('disable-gpu')
-app.commandLine.appendSwitch('disable-gpu-compositing')
+// The advanced orb uses WebGL, so GPU acceleration must stay enabled by default.
+// Set HER_TEXT_DISABLE_GPU=1 only as an emergency fallback for machines with
+// broken graphics drivers; that mode disables the advanced orb renderer.
+if (process.env.HER_TEXT_DISABLE_GPU === '1') {
+  app.disableHardwareAcceleration()
+  app.commandLine.appendSwitch('disable-gpu')
+  app.commandLine.appendSwitch('disable-gpu-compositing')
+} else {
+  app.commandLine.appendSwitch('ignore-gpu-blocklist')
+  app.commandLine.appendSwitch('enable-webgl')
+}
 
 let mainWindow: BrowserWindow | null = null
 const COMPACT_WINDOW_SIZE = { width: 380, height: 380 }
@@ -1763,6 +1769,7 @@ let appSettings: AppSettings = {
   voiceInputEnabled: true,
   voiceOutputEnabled: true,
   volume: 70,
+  appearance: { orbStyle: 'default' },
   selectedPersonality: 'role:eva',
   externalRolePaths: [],
   plugins: {},

@@ -177,6 +177,7 @@ declare global {
         voiceInputEnabled: boolean
         voiceOutputEnabled: boolean
         volume: number
+        appearance: { orbStyle: 'default' | 'advanced' }
         selectedPersonality: string
         externalRolePaths: string[]
         system: {
@@ -196,6 +197,7 @@ declare global {
         voiceInputEnabled: boolean
         voiceOutputEnabled: boolean
         volume: number
+        appearance: { orbStyle: 'default' | 'advanced' }
         selectedPersonality: string
         externalRolePaths: string[]
         system: {
@@ -214,6 +216,7 @@ declare global {
         voiceInputEnabled: boolean
         voiceOutputEnabled: boolean
         volume: number
+        appearance: { orbStyle: 'default' | 'advanced' }
         selectedPersonality: string
         externalRolePaths: string[]
         system: {
