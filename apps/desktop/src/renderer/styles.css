@@ -102,7 +102,8 @@ body {
   app-region: no-drag;
 }
 
-#advanced-orb-canvas {
+#advanced-orb-canvas,
+#planet-orb-canvas {
   user-select: none;
   -webkit-user-select: none;
   grid-row: 1;
@@ -120,11 +121,24 @@ body {
   app-region: no-drag;
 }
 
+#planet-orb-canvas {
+  width: 270px;
+  height: 270px;
+}
+
 body.advanced-orb-active #orb-canvas {
   display: none;
 }
 
 body.advanced-orb-active #advanced-orb-canvas {
+  display: block;
+}
+
+body.planet-orb-active #orb-canvas {
+  display: none;
+}
+
+body.planet-orb-active #planet-orb-canvas {
   display: block;
 }
 

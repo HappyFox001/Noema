@@ -212,7 +212,7 @@ export interface AppSettings {
 }
 
 export interface AppearanceSettings {
-  orbStyle: 'default' | 'advanced'
+  orbStyle: 'default' | 'advanced' | 'planet'
 }
 
 const DEFAULT_APPEARANCE_SETTINGS: AppearanceSettings = {
@@ -519,7 +519,7 @@ function normalizeAppearanceSettings(value: unknown): AppearanceSettings {
     ? value as Partial<AppearanceSettings>
     : {}
   return {
-    orbStyle: source.orbStyle === 'advanced' ? 'advanced' : 'default'
+    orbStyle: source.orbStyle === 'advanced' || source.orbStyle === 'planet' ? source.orbStyle : 'default'
   }
 }
 

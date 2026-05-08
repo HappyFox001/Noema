@@ -639,6 +639,7 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'appearance.orbStyleDesc': '选择主界面小球的视觉表现。',
     'appearance.defaultOrb': '默认小球',
     'appearance.advancedOrb': '高级小球',
+    'appearance.planetOrb': '星球',
     'models.title': '模型设置',
     'voice.input': '语音输入',
     'voice.inputDesc': '使用麦克风进行语音对话',
@@ -757,6 +758,7 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'appearance.orbStyleDesc': 'Choose the main screen orb visual.',
     'appearance.defaultOrb': 'Default Orb',
     'appearance.advancedOrb': 'Advanced Orb',
+    'appearance.planetOrb': 'Planet',
     'models.title': 'Model Settings',
     'voice.input': 'Voice Input',
     'voice.inputDesc': 'Use the microphone for voice conversation',
@@ -972,11 +974,12 @@ type UISettings = {
   system: SystemConfig
 }
 
-type OrbStyle = 'default' | 'advanced'
+type OrbStyle = 'default' | 'advanced' | 'planet'
 
 const ORB_STYLE_OPTIONS: Array<{ value: OrbStyle; labelKey: string }> = [
   { value: 'default', labelKey: 'appearance.defaultOrb' },
-  { value: 'advanced', labelKey: 'appearance.advancedOrb' }
+  { value: 'advanced', labelKey: 'appearance.advancedOrb' },
+  { value: 'planet', labelKey: 'appearance.planetOrb' }
 ]
 
 type PluginConfigField =
@@ -1091,6 +1094,7 @@ const pluginUITaskPanel = document.getElementById('task-panel') as HTMLElement
 const canvas = document.getElementById('orb-canvas') as HTMLCanvasElement
 const ctx = canvas.getContext('2d', { alpha: true })!
 const advancedOrbCanvas = document.getElementById('advanced-orb-canvas') as HTMLCanvasElement
+const planetOrbCanvas = document.getElementById('planet-orb-canvas') as HTMLCanvasElement
 let activePluginMainSurface: PluginUISurface | null = null
 let activePluginTaskSurface: PluginUISurface | null = null
 let lastTaskPanelPlan: TaskPanelPlan | null = null
@@ -1120,8 +1124,11 @@ let orbOutputEnergy = 0
 let orbEnergyUpdatedAt = performance.now()
 let currentOrbStyle: OrbStyle = 'default'
 type AdvancedGlassOrbRendererInstance = import('./orbs/advanced-glass-orb').AdvancedGlassOrbRenderer
+type PlanetOrbRendererInstance = import('./orbs/planet-orb').PlanetOrbRenderer
 let advancedOrbRenderer: AdvancedGlassOrbRendererInstance | null = null
 let advancedOrbRendererPromise: Promise<AdvancedGlassOrbRendererInstance> | null = null
+let planetOrbRenderer: PlanetOrbRendererInstance | null = null
+let planetOrbRendererPromise: Promise<PlanetOrbRendererInstance> | null = null
 
 // Store current radius for mouse detection
 let currentOrbRadius = 22
@@ -1138,6 +1145,20 @@ async function getAdvancedOrbRenderer(): Promise<AdvancedGlassOrbRendererInstanc
     })
   }
   return advancedOrbRendererPromise
+}
+
+async function getPlanetOrbRenderer(): Promise<PlanetOrbRendererInstance> {
+  if (planetOrbRenderer) {
+    return planetOrbRenderer
+  }
+  if (!planetOrbRendererPromise) {
+    planetOrbRendererPromise = import('./orbs/planet-orb').then(({ PlanetOrbRenderer }) => {
+      planetOrbRenderer = new PlanetOrbRenderer(planetOrbCanvas)
+      planetOrbRenderer.setMode(orbState.mode)
+      return planetOrbRenderer
+    })
+  }
+  return planetOrbRendererPromise
 }
 
 function resizeOrbCanvas(): void {
@@ -1168,6 +1189,8 @@ function resizeOrbCanvas(): void {
 function updateOrbAudioEnergy(source: 'input' | 'output', samples: Int16Array | Uint8Array): void {
   if (currentOrbStyle === 'advanced') {
     void getAdvancedOrbRenderer().then(renderer => renderer.updateAudioEnergy(source, samples))
+  } else if (currentOrbStyle === 'planet') {
+    void getPlanetOrbRenderer().then(renderer => renderer.updateAudioEnergy(source, samples))
   }
   const next = calculatePcmEnergy(samples)
   if (source === 'input') {
@@ -1609,6 +1632,16 @@ function startOrbAnimation(): void {
       })
     return
   }
+  if (currentOrbStyle === 'planet') {
+    void getPlanetOrbRenderer()
+      .then(renderer => renderer.setEnabled(true))
+      .then((ready) => {
+        if (!ready && currentOrbStyle === 'planet') {
+          setOrbStyle('default')
+        }
+      })
+    return
+  }
   if (orbAnimationFrameId !== null || orbAnimationPaused) {
     return
   }
@@ -1618,6 +1651,7 @@ function startOrbAnimation(): void {
 
 function stopOrbAnimation(): void {
   void advancedOrbRenderer?.setEnabled(false)
+  void planetOrbRenderer?.setEnabled(false)
   if (orbAnimationFrameId !== null) {
     cancelAnimationFrame(orbAnimationFrameId)
     orbAnimationFrameId = null
@@ -1628,6 +1662,7 @@ startOrbAnimation()
 window.addEventListener('resize', () => {
   resizeOrbCanvas()
   advancedOrbRenderer?.resize()
+  planetOrbRenderer?.resize()
 })
 
 // Helper function to check if point is inside orb
@@ -1689,6 +1724,7 @@ function attachOrbDragHandlers(surface: HTMLCanvasElement): void {
 
 attachOrbDragHandlers(canvas)
 attachOrbDragHandlers(advancedOrbCanvas)
+attachOrbDragHandlers(planetOrbCanvas)
 
 document.addEventListener('mouseup', () => {
   if (isDragging) {
@@ -1706,6 +1742,7 @@ function setOrbMode(mode: OrbState['mode']) {
   orbState.mode = mode
   orbState.modeChangedAt = performance.now()
   advancedOrbRenderer?.setMode(mode)
+  planetOrbRenderer?.setMode(mode)
   syncPluginUIStateSoon()
   switch (mode) {
     case 'listening':
@@ -1763,6 +1800,7 @@ function setOrbStyle(style: OrbStyle): void {
 
   currentOrbStyle = style
   document.body.classList.toggle('advanced-orb-active', style === 'advanced')
+  document.body.classList.toggle('planet-orb-active', style === 'planet')
   renderOrbStyleControls()
   stopOrbAnimation()
   if (!orbAnimationPaused) {
@@ -2416,7 +2454,7 @@ function applySettingsToUI(settings: UISettings) {
   volumeSlider.value = String(settings.volume)
   volumeValue.textContent = `${settings.volume}%`
   audioPlayer.setVolume(settings.volume)
-  setOrbStyle(settings.appearance?.orbStyle === 'advanced' ? 'advanced' : 'default')
+  setOrbStyle(parseOrbStyle(settings.appearance?.orbStyle))
 
   startConversationBtn.disabled = !settings.voiceInputEnabled
   updateConversationButton()
@@ -2503,6 +2541,10 @@ function renderOrbStyleControls(): void {
   orbStyleTrigger.dataset.orbStyle = currentOrbStyle
 }
 
+function parseOrbStyle(value: unknown): OrbStyle {
+  return value === 'advanced' || value === 'planet' ? value : 'default'
+}
+
 function closeOrbStyleMenu(): void {
   document.getElementById('orb-style-floating-menu')?.remove()
   orbStyleTrigger.setAttribute('aria-expanded', 'false')
@@ -2531,7 +2573,7 @@ function openOrbStyleMenu(): void {
 
   menu.querySelectorAll<HTMLButtonElement>('.appearance-provider-option').forEach(option => {
     option.addEventListener('click', async () => {
-      const orbStyle: OrbStyle = option.dataset.orbStyle === 'advanced' ? 'advanced' : 'default'
+      const orbStyle = parseOrbStyle(option.dataset.orbStyle)
       closeOrbStyleMenu()
       if (orbStyle === currentOrbStyle) return
       setOrbStyle(orbStyle)
