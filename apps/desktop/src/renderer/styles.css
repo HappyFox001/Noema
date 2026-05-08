@@ -2231,42 +2231,17 @@ body.plugin-task-surface-replace .task-steps {
     rgba(74, 144, 226, 0.3);
 }
 
-.segmented-control {
-  display: inline-grid;
-  grid-auto-flow: column;
-  gap: 3px;
-  padding: 3px;
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.20);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+.appearance-provider-control {
+  width: min(100%, 136px);
 }
 
-.segmented-option {
-  min-width: 84px;
-  height: 30px;
-  padding: 0 12px;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: transparent;
-  color: rgba(255, 255, 255, 0.62);
-  font-family: var(--font-ui);
-  font-size: 12px;
-  cursor: pointer;
-  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.18s ease;
+.appearance-provider-trigger {
+  min-height: 30px;
 }
 
-.segmented-option:hover {
-  color: rgba(255, 255, 255, 0.88);
-  background: rgba(255, 255, 255, 0.055);
-}
-
-.segmented-option.active {
-  border-color: rgba(125, 235, 214, 0.25);
-  background:
-    linear-gradient(180deg, rgba(125, 235, 214, 0.13), rgba(125, 235, 214, 0.045)),
-    rgba(0, 0, 0, 0.18);
-  color: rgba(220, 255, 248, 0.94);
+.appearance-provider-option-spacer {
+  width: 20px;
+  height: 20px;
 }
 
 .settings-btn.danger {

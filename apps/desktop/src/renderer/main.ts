@@ -974,6 +974,11 @@ type UISettings = {
 
 type OrbStyle = 'default' | 'advanced'
 
+const ORB_STYLE_OPTIONS: Array<{ value: OrbStyle; labelKey: string }> = [
+  { value: 'default', labelKey: 'appearance.defaultOrb' },
+  { value: 'advanced', labelKey: 'appearance.advancedOrb' }
+]
+
 type PluginConfigField =
   | {
       key: string
@@ -2392,7 +2397,8 @@ const volumeValue = document.getElementById('volume-value')!
 const voiceInputBtn = document.getElementById('voice-input-btn') as HTMLButtonElement
 const voiceOutputToggle = document.getElementById('voice-output-toggle') as HTMLInputElement
 const languageSelect = document.getElementById('language-select') as HTMLSelectElement
-const orbStyleSegmented = document.getElementById('orb-style-segmented') as HTMLElement
+const orbStyleTrigger = document.getElementById('orb-style-trigger') as HTMLButtonElement
+const orbStyleLabel = document.getElementById('orb-style-label') as HTMLElement
 const personalitySelect = document.getElementById('personality-select') as HTMLSelectElement
 const addPersonalityFileBtn = document.getElementById('add-personality-file-btn') as HTMLButtonElement
 const pluginsList = document.getElementById('plugins-list') as HTMLElement
@@ -2492,18 +2498,57 @@ async function loadPersonalities(): Promise<void> {
 }
 
 function renderOrbStyleControls(): void {
-  orbStyleSegmented.querySelectorAll<HTMLButtonElement>('[data-orb-style]').forEach(button => {
-    const style = button.dataset.orbStyle === 'advanced' ? 'advanced' : 'default'
-    button.classList.toggle('active', style === currentOrbStyle)
-  })
+  const option = ORB_STYLE_OPTIONS.find(item => item.value === currentOrbStyle) ?? ORB_STYLE_OPTIONS[0]
+  orbStyleLabel.textContent = t(option.labelKey)
+  orbStyleTrigger.dataset.orbStyle = currentOrbStyle
 }
 
-orbStyleSegmented.querySelectorAll<HTMLButtonElement>('[data-orb-style]').forEach(button => {
-  button.addEventListener('click', async () => {
-    const orbStyle: OrbStyle = button.dataset.orbStyle === 'advanced' ? 'advanced' : 'default'
-    setOrbStyle(orbStyle)
-    await window.electronAPI.updateSettings({ appearance: { orbStyle } })
+function closeOrbStyleMenu(): void {
+  document.getElementById('orb-style-floating-menu')?.remove()
+  orbStyleTrigger.setAttribute('aria-expanded', 'false')
+}
+
+function openOrbStyleMenu(): void {
+  closeProviderMenu()
+  closeOrbStyleMenu()
+  orbStyleTrigger.setAttribute('aria-expanded', 'true')
+
+  const rect = orbStyleTrigger.getBoundingClientRect()
+  const menu = document.createElement('div')
+  menu.id = 'orb-style-floating-menu'
+  menu.className = 'config-provider-floating-menu appearance-provider-menu'
+  menu.setAttribute('role', 'listbox')
+  menu.style.minWidth = `${Math.max(220, rect.width)}px`
+  menu.style.left = `${Math.min(rect.left, window.innerWidth - Math.max(220, rect.width) - 12)}px`
+  menu.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - ORB_STYLE_OPTIONS.length * 42 - 14)}px`
+  menu.innerHTML = ORB_STYLE_OPTIONS.map(option => `
+    <button class="config-provider-option appearance-provider-option ${option.value === currentOrbStyle ? 'selected' : ''}" type="button" role="option" aria-selected="${option.value === currentOrbStyle ? 'true' : 'false'}" data-orb-style="${option.value}">
+      <span class="config-provider-option-check">${option.value === currentOrbStyle ? '✓' : ''}</span>
+      <span class="appearance-provider-option-spacer" aria-hidden="true"></span>
+      <span class="config-provider-option-label">${escapeHtml(t(option.labelKey))}</span>
+    </button>
+  `).join('')
+
+  menu.querySelectorAll<HTMLButtonElement>('.appearance-provider-option').forEach(option => {
+    option.addEventListener('click', async () => {
+      const orbStyle: OrbStyle = option.dataset.orbStyle === 'advanced' ? 'advanced' : 'default'
+      closeOrbStyleMenu()
+      if (orbStyle === currentOrbStyle) return
+      setOrbStyle(orbStyle)
+      await window.electronAPI.updateSettings({ appearance: { orbStyle } })
+    })
   })
+
+  document.body.appendChild(menu)
+}
+
+orbStyleTrigger.addEventListener('click', (event) => {
+  event.stopPropagation()
+  if (orbStyleTrigger.getAttribute('aria-expanded') === 'true') {
+    closeOrbStyleMenu()
+  } else {
+    openOrbStyleMenu()
+  }
 })
 
 // Hide context menu when clicking elsewhere
@@ -5894,10 +5939,19 @@ document.addEventListener('click', (event) => {
   if (!target?.closest('#config-provider-floating-menu') && !target?.closest('.config-provider-trigger')) {
     closeProviderMenu()
   }
+  if (!target?.closest('#orb-style-floating-menu') && !target?.closest('#orb-style-trigger')) {
+    closeOrbStyleMenu()
+  }
 })
 
-window.addEventListener('resize', closeProviderMenu)
-window.addEventListener('scroll', closeProviderMenu, true)
+window.addEventListener('resize', () => {
+  closeProviderMenu()
+  closeOrbStyleMenu()
+})
+window.addEventListener('scroll', () => {
+  closeProviderMenu()
+  closeOrbStyleMenu()
+}, true)
 
 async function initializeApp(): Promise<void> {
   try {

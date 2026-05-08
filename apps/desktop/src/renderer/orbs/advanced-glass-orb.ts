@@ -20,12 +20,20 @@ type AdvancedOrbPalette = {
   bloom: number
 }
 
+type GlassFragment = {
+  mesh: THREE.Mesh
+  center: THREE.Vector3
+  velocity: THREE.Vector3
+  weight: number
+}
+
 export class AdvancedGlassOrbRenderer {
   private renderer: THREE.WebGLRenderer | null = null
   private scene: THREE.Scene | null = null
   private camera: THREE.PerspectiveCamera | null = null
   private group: THREE.Group | null = null
   private material: THREE.MeshPhysicalMaterial | null = null
+  private fragments: GlassFragment[] = []
   private pointLight: THREE.PointLight | null = null
   private animationFrame: number | null = null
   private mode: AdvancedOrbMode = 'idle'
@@ -34,8 +42,10 @@ export class AdvancedGlassOrbRenderer {
   private energyUpdatedAt = performance.now()
   private enabled = false
   private loading: Promise<void> | null = null
-  private targetRotation = new THREE.Vector2()
-  private currentRotation = new THREE.Vector2()
+  private motionTarget = new THREE.Vector3()
+  private motionCurrent = new THREE.Vector3()
+  private previousPointer = new THREE.Vector2(Number.NaN, Number.NaN)
+  private previousScreen = new THREE.Vector2(Number.NaN, Number.NaN)
   private readonly pointerMoveHandler = (event: PointerEvent) => this.handlePointerMove(event)
 
   constructor(private readonly canvas: HTMLCanvasElement) {}
@@ -129,7 +139,7 @@ export class AdvancedGlassOrbRenderer {
     camera.position.set(0, 0, 4.2)
 
     const group = new THREE.Group()
-    group.scale.setScalar(1.28)
+    group.scale.setScalar(0.46)
     scene.add(group)
 
     const ambient = new THREE.AmbientLight(0xffffff, 1.05)
@@ -164,6 +174,7 @@ export class AdvancedGlassOrbRenderer {
     })
 
     const modelRoot = new THREE.Group()
+    const fragments: GlassFragment[] = []
     try {
       const gltf = await new GLTFLoader().loadAsync(GLASS_MODEL_URL)
       gltf.scene.traverse((object) => {
@@ -174,10 +185,24 @@ export class AdvancedGlassOrbRenderer {
         clone.rotation.copy(mesh.rotation)
         clone.scale.copy(mesh.scale)
         modelRoot.add(clone)
+        fragments.push(createFragment(clone))
       })
     } catch (error) {
       console.warn('[AdvancedOrb] Failed to load glass model; using procedural fallback.', error)
-      modelRoot.add(createFallbackGlassShape(material))
+      const fallback = createFallbackGlassShape(material)
+      for (const child of [...fallback.children]) {
+        const mesh = child as THREE.Mesh
+        modelRoot.add(mesh)
+        fragments.push(createFragment(mesh))
+      }
+    }
+    if (fragments.length === 0) {
+      const fallback = createFallbackGlassShape(material)
+      for (const child of [...fallback.children]) {
+        const mesh = child as THREE.Mesh
+        modelRoot.add(mesh)
+        fragments.push(createFragment(mesh))
+      }
     }
     normalizeModelRoot(modelRoot)
     group.add(modelRoot)
@@ -187,6 +212,7 @@ export class AdvancedGlassOrbRenderer {
     this.camera = camera
     this.group = group
     this.material = material
+    this.fragments = fragments
     this.pointLight = pointLight
     this.resize()
     this.applyPalette()
@@ -215,15 +241,18 @@ export class AdvancedGlassOrbRenderer {
     const time = performance.now() / 1000
     const energy = this.getEnergy()
     const breathe = Math.sin(time * this.getBreatheRate()) * 0.035
-    const pulse = this.mode === 'speaking' ? Math.sin(time * 9) * 0.035 + energy * 0.09 : energy * 0.06
-    const scale = 1.28 + breathe + pulse
+    const pulse = this.mode === 'speaking' ? Math.sin(time * 9) * 0.012 + energy * 0.035 : energy * 0.022
+    const scale = 0.46 + breathe * 0.34 + pulse
 
-    this.currentRotation.lerp(this.targetRotation, 0.045)
-    this.group.rotation.x = this.currentRotation.y * 0.55 + Math.sin(time * 0.42) * 0.06
-    this.group.rotation.y = this.currentRotation.x * 0.55 + time * 0.12
+    this.updateScreenMotion()
+    this.motionTarget.multiplyScalar(0.91)
+    this.motionCurrent.lerp(this.motionTarget, 0.12)
+    this.updateFragments(energy)
+    this.group.rotation.x = this.motionCurrent.y * 0.62 + Math.sin(time * 0.42) * 0.025
+    this.group.rotation.y = this.motionCurrent.x * 0.62
     this.group.rotation.z = Math.sin(time * 0.31) * 0.045
-    this.group.position.x = this.currentRotation.x * 0.12
-    this.group.position.y = -this.currentRotation.y * 0.12
+    this.group.position.x = this.motionCurrent.x * 0.045
+    this.group.position.y = -this.motionCurrent.y * 0.045
     this.group.scale.setScalar(scale)
     this.material.opacity = Math.min(0.86, 0.66 + energy * 0.22)
     this.material.roughness = Math.max(0.035, 0.12 - energy * 0.05)
@@ -289,14 +318,54 @@ export class AdvancedGlassOrbRenderer {
   }
 
   private handlePointerMove(event: PointerEvent): void {
-    const rect = this.canvas.getBoundingClientRect()
-    if (rect.width <= 0 || rect.height <= 0) return
-    const x = ((event.clientX - rect.left) / rect.width - 0.5) * 2
-    const y = ((event.clientY - rect.top) / rect.height - 0.5) * 2
-    this.targetRotation.set(
-      Math.max(-1, Math.min(1, x)),
-      Math.max(-1, Math.min(1, y))
+    const x = ((event.clientX - window.innerWidth / 2) / Math.max(1, window.innerWidth / 2))
+    const y = ((event.clientY - window.innerHeight / 2) / Math.max(1, window.innerHeight / 2))
+    if (Number.isNaN(this.previousPointer.x) || Number.isNaN(this.previousPointer.y)) {
+      this.previousPointer.set(x, y)
+      return
+    }
+
+    this.motionTarget.x += x - this.previousPointer.x
+    this.motionTarget.y += y - this.previousPointer.y
+    this.previousPointer.set(x, y)
+  }
+
+  private updateFragments(energy: number): void {
+    const pointer = new THREE.Vector3(
+      this.motionCurrent.x * 2.1,
+      -this.motionCurrent.y * 2.1,
+      0
     )
+    const pointerRadius = 0.74 + energy * 0.16
+    const spring = 0.018 + energy * 0.01
+    const damping = 0.915 - energy * 0.025
+
+    for (const fragment of this.fragments) {
+      const center = fragment.center.clone().add(fragment.mesh.position)
+      const away = center.sub(pointer)
+      const distance = Math.max(0.001, away.length())
+      if (distance < pointerRadius) {
+        const strength = (1 - distance / pointerRadius) * 0.034 * fragment.weight
+        fragment.velocity.add(away.multiplyScalar(strength / distance))
+      }
+
+      fragment.velocity.add(fragment.mesh.position.clone().multiplyScalar(-spring))
+      fragment.velocity.multiplyScalar(damping)
+      fragment.mesh.position.add(fragment.velocity)
+    }
+  }
+
+  private updateScreenMotion(): void {
+    const x = window.screenX / Math.max(1, window.screen.width / 2)
+    const y = window.screenY / Math.max(1, window.screen.height / 2)
+    if (Number.isNaN(this.previousScreen.x) || Number.isNaN(this.previousScreen.y)) {
+      this.previousScreen.set(x, y)
+      return
+    }
+
+    this.motionTarget.x += (this.previousScreen.x - x) * 5
+    this.motionTarget.y += (this.previousScreen.y - y) * 5
+    this.previousScreen.set(x, y)
   }
 }
 
@@ -332,6 +401,17 @@ function normalizeModelRoot(root: THREE.Group): void {
 
   root.position.sub(center)
   root.scale.setScalar(2.05 / maxAxis)
+}
+
+function createFragment(mesh: THREE.Mesh): GlassFragment {
+  mesh.geometry.computeBoundingSphere()
+  const center = mesh.geometry.boundingSphere?.center.clone() ?? new THREE.Vector3()
+  return {
+    mesh,
+    center,
+    velocity: new THREE.Vector3(),
+    weight: 0.86 + Math.random() * 0.28
+  }
 }
 
 function createFallbackGlassShape(material: THREE.Material): THREE.Group {
