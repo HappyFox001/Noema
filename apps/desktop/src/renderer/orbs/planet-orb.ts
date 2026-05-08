@@ -64,6 +64,18 @@ type SingularityUniforms = {
   emissionColor: ReturnType<typeof uniform>
 }
 
+type PlanetOrbPalette = {
+  rampCol1: [number, number, number]
+  rampCol2: [number, number, number]
+  rampCol3: [number, number, number]
+  emissionColor: [number, number, number]
+  baseEmission: number
+  energyEmission: number
+  energyStep: number
+  energyPower: number
+  noiseFactor: number
+}
+
 export class PlanetOrbRenderer {
   private renderer: any = null
   private scene: THREE.Scene | null = null
@@ -238,21 +250,25 @@ export class PlanetOrbRenderer {
     this.camera.lookAt(0, 0, 0)
 
     const energy = this.getEnergy()
-    this.uniforms.stepSize.value = 0.0071 * (1 + energy * 0.12)
-    this.uniforms.rampEmission.value = 2.0 + energy * 0.45
+    const palette = getPlanetOrbPalette(this.mode)
+    this.uniforms.stepSize.value = 0.0071 * (1 + energy * palette.energyStep)
+    this.uniforms.power.value = 0.3 * (1 + energy * palette.energyPower)
+    this.uniforms.noiseFactor.value = palette.noiseFactor * (1 + energy * 0.28)
+    this.uniforms.rampEmission.value = palette.baseEmission + energy * palette.energyEmission
     this.renderer.renderAsync(this.scene, this.camera)
     this.animationFrame = requestAnimationFrame(this.render)
   }
 
   private applyMode(): void {
     if (!this.uniforms) return
-    this.uniforms.rampCol1.value.setRGB(0.95, 0.71, 0.44)
-    this.uniforms.rampCol2.value.setRGB(0.14, 0.05, 0.03)
-    this.uniforms.rampCol3.value.setRGB(0, 0, 0)
-    this.uniforms.emissionColor.value.setRGB(0.14, 0.129, 0.09)
-    if (this.mode === 'interrupted') {
-      this.uniforms.rampEmission.value = 2.35
-    }
+    const palette = getPlanetOrbPalette(this.mode)
+    this.uniforms.rampCol1.value.setRGB(...palette.rampCol1)
+    this.uniforms.rampCol2.value.setRGB(...palette.rampCol2)
+    this.uniforms.rampCol3.value.setRGB(...palette.rampCol3)
+    this.uniforms.emissionColor.value.setRGB(...palette.emissionColor)
+    this.uniforms.noiseFactor.value = palette.noiseFactor
+    this.uniforms.power.value = 0.3
+    this.uniforms.rampEmission.value = palette.baseEmission
   }
 
   private getEnergy(): number {
@@ -284,6 +300,71 @@ function createSingularityUniforms(): SingularityUniforms {
     rampPos3: uniform(float(1.0)),
     rampEmission: uniform(float(2.0)),
     emissionColor: uniform(color(0.14, 0.129, 0.09)),
+  }
+}
+
+function getPlanetOrbPalette(mode: PlanetOrbMode): PlanetOrbPalette {
+  switch (mode) {
+    case 'listening':
+      return {
+        rampCol1: [0.56, 0.92, 1.0],
+        rampCol2: [0.025, 0.16, 0.26],
+        rampCol3: [0.0, 0.006, 0.018],
+        emissionColor: [0.025, 0.10, 0.16],
+        baseEmission: 2.05,
+        energyEmission: 0.95,
+        energyStep: 0.18,
+        energyPower: 0.22,
+        noiseFactor: 0.012,
+      }
+    case 'thinking':
+      return {
+        rampCol1: [0.98, 0.78, 1.0],
+        rampCol2: [0.16, 0.055, 0.24],
+        rampCol3: [0.012, 0.0, 0.026],
+        emissionColor: [0.11, 0.055, 0.16],
+        baseEmission: 2.18,
+        energyEmission: 0.55,
+        energyStep: 0.12,
+        energyPower: 0.18,
+        noiseFactor: 0.014,
+      }
+    case 'speaking':
+      return {
+        rampCol1: [1.0, 0.66, 0.36],
+        rampCol2: [0.25, 0.055, 0.018],
+        rampCol3: [0.026, 0.0, 0.0],
+        emissionColor: [0.18, 0.07, 0.035],
+        baseEmission: 2.18,
+        energyEmission: 1.15,
+        energyStep: 0.25,
+        energyPower: 0.34,
+        noiseFactor: 0.013,
+      }
+    case 'interrupted':
+      return {
+        rampCol1: [1.0, 0.96, 0.88],
+        rampCol2: [0.30, 0.32, 0.42],
+        rampCol3: [0.0, 0.0, 0.0],
+        emissionColor: [0.20, 0.19, 0.18],
+        baseEmission: 2.55,
+        energyEmission: 0.20,
+        energyStep: 0.08,
+        energyPower: 0.10,
+        noiseFactor: 0.010,
+      }
+    default:
+      return {
+        rampCol1: [0.95, 0.71, 0.44],
+        rampCol2: [0.14, 0.05, 0.03],
+        rampCol3: [0.0, 0.0, 0.0],
+        emissionColor: [0.14, 0.129, 0.09],
+        baseEmission: 2.0,
+        energyEmission: 0.45,
+        energyStep: 0.12,
+        energyPower: 0.12,
+        noiseFactor: 0.010,
+      }
   }
 }
 
