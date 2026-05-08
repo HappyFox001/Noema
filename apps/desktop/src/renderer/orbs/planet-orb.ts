@@ -92,7 +92,9 @@ export class PlanetOrbRenderer {
   private inputEnergy = 0
   private outputEnergy = 0
   private energyUpdatedAt = performance.now()
-  private readonly pointerMoveHandler = () => undefined
+  private pointerTarget = new THREE.Vector2()
+  private pointerCurrent = new THREE.Vector2()
+  private readonly pointerMoveHandler = (event: PointerEvent) => this.handlePointerMove(event)
 
   constructor(private readonly canvas: HTMLCanvasElement) {}
 
@@ -242,10 +244,16 @@ export class PlanetOrbRenderer {
     this.resize()
     const seconds = performance.now() / 1000
     const orbit = 0.34 + seconds * 0.18
+    this.pointerCurrent.lerp(this.pointerTarget, 0.085)
+    const yaw = orbit + this.pointerCurrent.x * 0.48
+    const height = 0.52
+      + Math.sin(orbit * 0.72 + 0.8) * 0.18
+      - this.pointerCurrent.y * 0.62
+    const distance = 3.05 - Math.abs(this.pointerCurrent.x) * 0.16
     this.camera.position.set(
-      Math.sin(orbit) * 3.05,
-      0.52 + Math.sin(orbit * 0.72 + 0.8) * 0.18,
-      Math.cos(orbit) * 3.05
+      Math.sin(yaw) * distance,
+      Math.max(-0.25, Math.min(1.15, height)),
+      Math.cos(yaw) * distance
     )
     this.camera.lookAt(0, 0, 0)
 
@@ -281,6 +289,17 @@ export class PlanetOrbRenderer {
     if (this.mode === 'listening') return this.inputEnergy
     if (this.mode === 'speaking') return this.outputEnergy
     return Math.max(this.inputEnergy, this.outputEnergy) * 0.35
+  }
+
+  private handlePointerMove(event: PointerEvent): void {
+    const width = Math.max(1, window.innerWidth || this.canvas.getBoundingClientRect().width || 1)
+    const height = Math.max(1, window.innerHeight || this.canvas.getBoundingClientRect().height || 1)
+    const localX = event.clientX / width
+    const localY = event.clientY / height
+    this.pointerTarget.set(
+      Math.max(-1, Math.min(1, (localX - 0.5) * 2)),
+      Math.max(-1, Math.min(1, (localY - 0.5) * 2))
+    )
   }
 }
 
