@@ -249,7 +249,7 @@ export class PlanetOrbRenderer {
     const basePitch = 0.17 + Math.sin(orbit * 0.72 + 0.8) * 0.04
     const pitch = Math.max(
       -Math.PI / 2,
-      Math.min(Math.PI / 2, basePitch - this.pointerCurrent.y * (Math.PI / 2))
+      Math.min(Math.PI / 2, basePitch + this.pointerCurrent.y * (Math.PI / 2))
     )
     const distance = 3.05
     const horizontalDistance = Math.cos(pitch) * distance
