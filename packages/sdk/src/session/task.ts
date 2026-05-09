@@ -965,10 +965,15 @@ export class TaskRuntime {
       function: {
         name: 'tool_search',
         description: [
-          'Search deferred plugin tool metadata and expose matching tools for the next model turn.',
+          '# Tool discovery',
+          '',
+          'Searches over deferred tool metadata with BM25 and exposes matching tools for the next model turn.',
+          '',
+          'You have access to tools from the following sources:',
+          this.deferredToolSummary || 'None currently enabled.',
           'Use this when the current visible tools do not include the browser, desktop, MCP, skill, or plugin action needed for the task.',
           'Do not use this for ordinary file search; use grep/glob/read when those tools are visible.'
-        ].join(' '),
+        ].join('\n'),
         parameters: {
           type: 'object',
           properties: {
@@ -990,8 +995,12 @@ export class TaskRuntime {
 
   private searchTools(args: { query?: string; limit?: number }, tools: Tool[]): any {
     const query = cleanPlanText(args.query || '')
-    const limit = clampInteger(args.limit, 8, 1, 12)
-    const matches = searchDeferredTools(tools, query, limit)
+    if (!query) {
+      throw new Error('query must not be empty')
+    }
+    const requestedLimit = typeof args.limit === 'number' ? args.limit : undefined
+    const limit = clampInteger(requestedLimit, 8, 1, 20)
+    const matches = searchDeferredTools(tools, query, limit, requestedLimit === undefined)
     for (const match of matches) {
       this.discoveredDeferredToolNames.add(match.name)
     }
