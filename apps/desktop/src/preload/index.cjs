@@ -219,6 +219,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.send('window:move', deltaX, deltaY)
   },
 
+  getCursorScreenPoint: () =>
+    ipcRenderer.invoke('cursor:get-screen-point'),
+
   setCompactWindowMode: (compact) => {
     ipcRenderer.send('window:set-compact-mode', compact)
   },

@@ -489,6 +489,11 @@ declare global {
       }) => void) => void
 
       moveWindow: (deltaX: number, deltaY: number) => void
+      getCursorScreenPoint: () => Promise<{
+        x: number
+        y: number
+        displayBounds: { x: number; y: number; width: number; height: number }
+      }>
       setCompactWindowMode: (compact: boolean) => void
       setTaskWindowMode: (active: boolean) => void
     }

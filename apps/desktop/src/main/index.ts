@@ -50,7 +50,7 @@ console.log('[Env] LLM_1_BASE_URL:', process.env.LLM_1_BASE_URL || '✗ (not set
 console.log('[Env] TTS_1_API_KEY:', process.env.TTS_1_API_KEY ? '✓ (set)' : '✗ (not set)')
 console.log('[Env] ASR_1_API_KEY:', process.env.ASR_1_API_KEY ? '✓ (set)' : '✗ (not set)')
 
-import { app, BrowserWindow, ipcMain, systemPreferences, shell, dialog, type OpenDialogOptions } from 'electron'
+import { app, BrowserWindow, ipcMain, systemPreferences, shell, dialog, screen, type OpenDialogOptions } from 'electron'
 import {
   HerTextSDK,
   createSTTProvider,
@@ -2686,6 +2686,16 @@ ipcMain.on('window:move', (event, deltaX, deltaY) => {
   if (win) {
     const [x, y] = win.getPosition()
     win.setPosition(x + deltaX, y + deltaY)
+  }
+})
+
+ipcMain.handle('cursor:get-screen-point', () => {
+  const point = screen.getCursorScreenPoint()
+  const display = screen.getDisplayNearestPoint(point)
+  return {
+    x: point.x,
+    y: point.y,
+    displayBounds: display.bounds,
   }
 })
 

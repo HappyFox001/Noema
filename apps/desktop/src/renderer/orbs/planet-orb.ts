@@ -94,7 +94,8 @@ export class PlanetOrbRenderer {
   private energyUpdatedAt = performance.now()
   private pointerTarget = new THREE.Vector2()
   private pointerCurrent = new THREE.Vector2()
-  private readonly pointerMoveHandler = (event: PointerEvent) => this.handlePointerMove(event)
+  private cursorSampledAt = 0
+  private cursorRequestPending = false
 
   constructor(private readonly canvas: HTMLCanvasElement) {}
 
@@ -147,7 +148,6 @@ export class PlanetOrbRenderer {
 
   dispose(): void {
     this.stop()
-    window.removeEventListener('pointermove', this.pointerMoveHandler)
     this.material?.dispose?.()
     this.mesh?.geometry.dispose()
     this.noiseTexture?.dispose()
@@ -220,7 +220,6 @@ export class PlanetOrbRenderer {
     this.applyMode()
     await renderer.init()
     this.initialized = true
-    window.addEventListener('pointermove', this.pointerMoveHandler)
   }
 
   private start(): void {
@@ -243,17 +242,21 @@ export class PlanetOrbRenderer {
 
     this.resize()
     const seconds = performance.now() / 1000
+    this.updatePointerFromGlobalCursor()
     const orbit = 0.34 + seconds * 0.18
     this.pointerCurrent.lerp(this.pointerTarget, 0.085)
-    const yaw = orbit + this.pointerCurrent.x * 0.48
-    const height = 0.52
-      + Math.sin(orbit * 0.72 + 0.8) * 0.18
-      - this.pointerCurrent.y * 0.62
-    const distance = 3.05 - Math.abs(this.pointerCurrent.x) * 0.16
+    const yaw = orbit + this.pointerCurrent.x * (Math.PI / 2)
+    const basePitch = 0.17 + Math.sin(orbit * 0.72 + 0.8) * 0.04
+    const pitch = Math.max(
+      -Math.PI / 2,
+      Math.min(Math.PI / 2, basePitch - this.pointerCurrent.y * (Math.PI / 2))
+    )
+    const distance = 3.05
+    const horizontalDistance = Math.cos(pitch) * distance
     this.camera.position.set(
-      Math.sin(yaw) * distance,
-      Math.max(-0.25, Math.min(1.15, height)),
-      Math.cos(yaw) * distance
+      Math.sin(yaw) * horizontalDistance,
+      Math.sin(pitch) * distance,
+      Math.cos(yaw) * horizontalDistance
     )
     this.camera.lookAt(0, 0, 0)
 
@@ -291,15 +294,26 @@ export class PlanetOrbRenderer {
     return Math.max(this.inputEnergy, this.outputEnergy) * 0.35
   }
 
-  private handlePointerMove(event: PointerEvent): void {
-    const width = Math.max(1, window.innerWidth || this.canvas.getBoundingClientRect().width || 1)
-    const height = Math.max(1, window.innerHeight || this.canvas.getBoundingClientRect().height || 1)
-    const localX = event.clientX / width
-    const localY = event.clientY / height
-    this.pointerTarget.set(
-      Math.max(-1, Math.min(1, (localX - 0.5) * 2)),
-      Math.max(-1, Math.min(1, (localY - 0.5) * 2))
-    )
+  private updatePointerFromGlobalCursor(): void {
+    const now = performance.now()
+    if (this.cursorRequestPending || now - this.cursorSampledAt < 50) return
+    this.cursorSampledAt = now
+    this.cursorRequestPending = true
+    void window.electronAPI.getCursorScreenPoint()
+      .then(({ x, y, displayBounds }) => {
+        const localX = (x - displayBounds.x) / Math.max(1, displayBounds.width)
+        const localY = (y - displayBounds.y) / Math.max(1, displayBounds.height)
+        this.pointerTarget.set(
+          Math.max(-1, Math.min(1, (localX - 0.5) * 2)),
+          Math.max(-1, Math.min(1, (localY - 0.5) * 2))
+        )
+      })
+      .catch(() => {
+        this.pointerTarget.set(0, 0)
+      })
+      .finally(() => {
+        this.cursorRequestPending = false
+      })
   }
 }
 
