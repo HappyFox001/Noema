@@ -1769,7 +1769,7 @@ let appSettings: AppSettings = {
   voiceInputEnabled: true,
   voiceOutputEnabled: true,
   volume: 70,
-  appearance: { orbStyle: 'default' },
+  appearance: { orbStyle: 'default', theme: 'night' },
   selectedPersonality: 'role:eva',
   externalRolePaths: [],
   plugins: {},

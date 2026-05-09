@@ -640,6 +640,10 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'appearance.defaultOrb': '流光',
     'appearance.advancedOrb': '琥珀',
     'appearance.planetOrb': '光晕',
+    'appearance.theme': '界面模式',
+    'appearance.themeDesc': '切换控制区域的明暗显示。',
+    'appearance.themeNight': '夜间',
+    'appearance.themeDay': '白天',
     'models.title': '模型设置',
     'voice.input': '语音输入',
     'voice.inputDesc': '使用麦克风进行语音对话',
@@ -759,6 +763,10 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'appearance.defaultOrb': 'Lumen',
     'appearance.advancedOrb': 'Amber',
     'appearance.planetOrb': 'Halo',
+    'appearance.theme': 'Interface Mode',
+    'appearance.themeDesc': 'Switch the control surface brightness.',
+    'appearance.themeNight': 'Night',
+    'appearance.themeDay': 'Day',
     'models.title': 'Model Settings',
     'voice.input': 'Voice Input',
     'voice.inputDesc': 'Use the microphone for voice conversation',
@@ -845,6 +853,8 @@ function setLanguage(language: LanguageCode): void {
   applyI18n()
   updateConversationButton()
   setStatus(getReadyStatus())
+  renderOrbStyleControls()
+  renderAppearanceThemeControls()
   renderSystemConfigIfReady()
 }
 
@@ -967,6 +977,7 @@ type UISettings = {
   volume: number
   appearance?: {
     orbStyle?: OrbStyle
+    theme?: AppearanceTheme
   }
   selectedPersonality: string
   plugins: Record<string, boolean>
@@ -975,11 +986,17 @@ type UISettings = {
 }
 
 type OrbStyle = 'default' | 'advanced' | 'planet'
+type AppearanceTheme = 'night' | 'day'
 
 const ORB_STYLE_OPTIONS: Array<{ value: OrbStyle; labelKey: string }> = [
   { value: 'default', labelKey: 'appearance.defaultOrb' },
   { value: 'advanced', labelKey: 'appearance.advancedOrb' },
   { value: 'planet', labelKey: 'appearance.planetOrb' }
+]
+
+const APPEARANCE_THEME_OPTIONS: Array<{ value: AppearanceTheme; labelKey: string }> = [
+  { value: 'night', labelKey: 'appearance.themeNight' },
+  { value: 'day', labelKey: 'appearance.themeDay' }
 ]
 
 type PluginConfigField =
@@ -1123,6 +1140,7 @@ let orbInputEnergy = 0
 let orbOutputEnergy = 0
 let orbEnergyUpdatedAt = performance.now()
 let currentOrbStyle: OrbStyle = 'default'
+let currentAppearanceTheme: AppearanceTheme = 'night'
 type AdvancedGlassOrbRendererInstance = import('./orbs/advanced-glass-orb').AdvancedGlassOrbRenderer
 type PlanetOrbRendererInstance = import('./orbs/planet-orb').PlanetOrbRenderer
 let advancedOrbRenderer: AdvancedGlassOrbRendererInstance | null = null
@@ -2437,6 +2455,8 @@ const voiceOutputToggle = document.getElementById('voice-output-toggle') as HTML
 const languageSelect = document.getElementById('language-select') as HTMLSelectElement
 const orbStyleTrigger = document.getElementById('orb-style-trigger') as HTMLButtonElement
 const orbStyleLabel = document.getElementById('orb-style-label') as HTMLElement
+const appearanceThemeTrigger = document.getElementById('appearance-theme-trigger') as HTMLButtonElement
+const appearanceThemeLabel = document.getElementById('appearance-theme-label') as HTMLElement
 const personalitySelect = document.getElementById('personality-select') as HTMLSelectElement
 const addPersonalityFileBtn = document.getElementById('add-personality-file-btn') as HTMLButtonElement
 const pluginsList = document.getElementById('plugins-list') as HTMLElement
@@ -2454,6 +2474,7 @@ function applySettingsToUI(settings: UISettings) {
   volumeSlider.value = String(settings.volume)
   volumeValue.textContent = `${settings.volume}%`
   audioPlayer.setVolume(settings.volume)
+  setAppearanceTheme(parseAppearanceTheme(settings.appearance?.theme))
   setOrbStyle(parseOrbStyle(settings.appearance?.orbStyle))
 
   startConversationBtn.disabled = !settings.voiceInputEnabled
@@ -2545,9 +2566,30 @@ function parseOrbStyle(value: unknown): OrbStyle {
   return value === 'advanced' || value === 'planet' ? value : 'default'
 }
 
+function renderAppearanceThemeControls(): void {
+  const option = APPEARANCE_THEME_OPTIONS.find(item => item.value === currentAppearanceTheme) ?? APPEARANCE_THEME_OPTIONS[0]
+  appearanceThemeLabel.textContent = t(option.labelKey)
+  appearanceThemeTrigger.dataset.appearanceTheme = currentAppearanceTheme
+}
+
+function parseAppearanceTheme(value: unknown): AppearanceTheme {
+  return value === 'day' ? 'day' : 'night'
+}
+
+function setAppearanceTheme(theme: AppearanceTheme): void {
+  currentAppearanceTheme = theme
+  document.body.classList.toggle('theme-day', theme === 'day')
+  renderAppearanceThemeControls()
+}
+
 function closeOrbStyleMenu(): void {
   document.getElementById('orb-style-floating-menu')?.remove()
   orbStyleTrigger.setAttribute('aria-expanded', 'false')
+}
+
+function closeAppearanceThemeMenu(): void {
+  document.getElementById('appearance-theme-floating-menu')?.remove()
+  appearanceThemeTrigger.setAttribute('aria-expanded', 'false')
 }
 
 function openOrbStyleMenu(): void {
@@ -2577,7 +2619,42 @@ function openOrbStyleMenu(): void {
       closeOrbStyleMenu()
       if (orbStyle === currentOrbStyle) return
       setOrbStyle(orbStyle)
-      await window.electronAPI.updateSettings({ appearance: { orbStyle } })
+      await window.electronAPI.updateSettings({ appearance: { orbStyle, theme: currentAppearanceTheme } })
+    })
+  })
+
+  document.body.appendChild(menu)
+}
+
+function openAppearanceThemeMenu(): void {
+  closeProviderMenu()
+  closeOrbStyleMenu()
+  closeAppearanceThemeMenu()
+  appearanceThemeTrigger.setAttribute('aria-expanded', 'true')
+
+  const rect = appearanceThemeTrigger.getBoundingClientRect()
+  const menu = document.createElement('div')
+  menu.id = 'appearance-theme-floating-menu'
+  menu.className = 'config-provider-floating-menu appearance-provider-menu'
+  menu.setAttribute('role', 'listbox')
+  menu.style.minWidth = `${Math.max(220, rect.width)}px`
+  menu.style.left = `${Math.min(rect.left, window.innerWidth - Math.max(220, rect.width) - 12)}px`
+  menu.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - APPEARANCE_THEME_OPTIONS.length * 42 - 14)}px`
+  menu.innerHTML = APPEARANCE_THEME_OPTIONS.map(option => `
+    <button class="config-provider-option appearance-theme-option ${option.value === currentAppearanceTheme ? 'selected' : ''}" type="button" role="option" aria-selected="${option.value === currentAppearanceTheme ? 'true' : 'false'}" data-appearance-theme="${option.value}">
+      <span class="config-provider-option-check">${option.value === currentAppearanceTheme ? '✓' : ''}</span>
+      <span class="appearance-provider-option-spacer" aria-hidden="true"></span>
+      <span class="config-provider-option-label">${escapeHtml(t(option.labelKey))}</span>
+    </button>
+  `).join('')
+
+  menu.querySelectorAll<HTMLButtonElement>('.appearance-theme-option').forEach(option => {
+    option.addEventListener('click', async () => {
+      const theme = parseAppearanceTheme(option.dataset.appearanceTheme)
+      closeAppearanceThemeMenu()
+      if (theme === currentAppearanceTheme) return
+      setAppearanceTheme(theme)
+      await window.electronAPI.updateSettings({ appearance: { orbStyle: currentOrbStyle, theme } })
     })
   })
 
@@ -2590,6 +2667,15 @@ orbStyleTrigger.addEventListener('click', (event) => {
     closeOrbStyleMenu()
   } else {
     openOrbStyleMenu()
+  }
+})
+
+appearanceThemeTrigger.addEventListener('click', (event) => {
+  event.stopPropagation()
+  if (appearanceThemeTrigger.getAttribute('aria-expanded') === 'true') {
+    closeAppearanceThemeMenu()
+  } else {
+    openAppearanceThemeMenu()
   }
 })
 
@@ -5984,15 +6070,20 @@ document.addEventListener('click', (event) => {
   if (!target?.closest('#orb-style-floating-menu') && !target?.closest('#orb-style-trigger')) {
     closeOrbStyleMenu()
   }
+  if (!target?.closest('#appearance-theme-floating-menu') && !target?.closest('#appearance-theme-trigger')) {
+    closeAppearanceThemeMenu()
+  }
 })
 
 window.addEventListener('resize', () => {
   closeProviderMenu()
   closeOrbStyleMenu()
+  closeAppearanceThemeMenu()
 })
 window.addEventListener('scroll', () => {
   closeProviderMenu()
   closeOrbStyleMenu()
+  closeAppearanceThemeMenu()
 }, true)
 
 async function initializeApp(): Promise<void> {

@@ -213,10 +213,12 @@ export interface AppSettings {
 
 export interface AppearanceSettings {
   orbStyle: 'default' | 'advanced' | 'planet'
+  theme: 'night' | 'day'
 }
 
 const DEFAULT_APPEARANCE_SETTINGS: AppearanceSettings = {
-  orbStyle: 'default'
+  orbStyle: 'default',
+  theme: 'night'
 }
 
 const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
@@ -471,7 +473,7 @@ export class SettingsStore {
     this.settings = {
       ...this.settings,
       ...partial,
-      appearance: normalizeAppearanceSettings(partial.appearance ?? this.settings.appearance),
+      appearance: normalizeAppearanceSettings(partial.appearance, this.settings.appearance),
       volume: clampVolume(partial.volume ?? this.settings.volume)
     }
     await this.persist()
@@ -514,12 +516,13 @@ function normalizeLanguage(value: unknown): AppSettings['language'] {
   return value === 'en-US' ? 'en-US' : 'zh-CN'
 }
 
-function normalizeAppearanceSettings(value: unknown): AppearanceSettings {
+function normalizeAppearanceSettings(value: unknown, fallback: AppearanceSettings = DEFAULT_APPEARANCE_SETTINGS): AppearanceSettings {
   const source = value && typeof value === 'object'
     ? value as Partial<AppearanceSettings>
     : {}
   return {
-    orbStyle: source.orbStyle === 'advanced' || source.orbStyle === 'planet' ? source.orbStyle : 'default'
+    orbStyle: source.orbStyle === 'advanced' || source.orbStyle === 'planet' ? source.orbStyle : fallback.orbStyle,
+    theme: source.theme === 'day' || source.theme === 'night' ? source.theme : fallback.theme
   }
 }
 

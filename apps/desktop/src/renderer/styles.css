@@ -2258,6 +2258,209 @@ body.plugin-task-surface-replace .task-steps {
   height: 20px;
 }
 
+body.theme-day .settings-panel {
+  background:
+    linear-gradient(135deg, rgba(238, 244, 242, 0.975), rgba(221, 231, 229, 0.985) 52%, rgba(232, 238, 235, 0.98)),
+    radial-gradient(circle at 82% 12%, rgba(44, 150, 134, 0.13), transparent 32%),
+    radial-gradient(circle at 18% 92%, rgba(200, 104, 64, 0.10), transparent 36%);
+}
+
+body.theme-day .settings-panel::before {
+  background-image:
+    linear-gradient(rgba(30, 70, 66, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(30, 70, 66, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, transparent 0%, rgba(42, 139, 124, 0.10) 50%, transparent 100%);
+  opacity: 0.42;
+}
+
+body.theme-day .settings-panel::after {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.48), transparent 1px),
+    linear-gradient(90deg, rgba(42, 139, 124, 0.10), transparent 22%, transparent 78%, rgba(200, 104, 64, 0.07));
+  opacity: 0.24;
+  mix-blend-mode: multiply;
+}
+
+body.theme-day .settings-nav {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.60), rgba(255, 255, 255, 0.28)),
+    rgba(230, 238, 236, 0.42);
+  border-right-color: rgba(34, 80, 76, 0.12);
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.65);
+}
+
+body.theme-day .settings-nav::after {
+  background: linear-gradient(90deg, transparent, rgba(36, 134, 121, 0.34), transparent);
+}
+
+body.theme-day .settings-brand-logo {
+  filter: drop-shadow(0 0 15px rgba(20, 120, 140, 0.18));
+}
+
+body.theme-day .nav-item {
+  color: rgba(31, 45, 48, 0.62);
+}
+
+body.theme-day .nav-item::before {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.20)),
+    radial-gradient(circle at 20% 20%, rgba(42, 139, 124, 0.13), transparent 46%);
+}
+
+body.theme-day .nav-item::after {
+  background: rgba(36, 134, 121, 0.9);
+  box-shadow: 0 0 12px rgba(36, 134, 121, 0.26);
+}
+
+body.theme-day .nav-item:hover {
+  background: rgba(255, 255, 255, 0.44);
+  color: rgba(20, 36, 39, 0.86);
+}
+
+body.theme-day .nav-item.active {
+  background:
+    linear-gradient(135deg, rgba(210, 235, 232, 0.86), rgba(184, 215, 214, 0.82)),
+    rgba(42, 139, 124, 0.10);
+  border-color: rgba(36, 134, 121, 0.18);
+  color: rgba(16, 44, 45, 0.92);
+}
+
+body.theme-day .settings-card,
+body.theme-day .about-card,
+body.theme-day .memory-card,
+body.theme-day .config-model-card,
+body.theme-day .task-runtime-card {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.66), rgba(255, 255, 255, 0.42)),
+    rgba(236, 244, 242, 0.46);
+  border-color: rgba(34, 80, 76, 0.12);
+  box-shadow:
+    0 18px 38px rgba(50, 72, 70, 0.13),
+    inset 0 1px 0 rgba(255, 255, 255, 0.68);
+}
+
+body.theme-day .settings-card:hover {
+  border-color: rgba(34, 80, 76, 0.18);
+  box-shadow:
+    0 22px 48px rgba(50, 72, 70, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+body.theme-day .settings-row {
+  border-bottom-color: rgba(34, 80, 76, 0.09);
+}
+
+body.theme-day .settings-row:hover {
+  background: rgba(255, 255, 255, 0.34);
+}
+
+body.theme-day .section-title,
+body.theme-day .row-label,
+body.theme-day .memory-card-title,
+body.theme-day .config-section-title,
+body.theme-day .model-overview-title {
+  color: rgba(20, 30, 32, 0.92);
+}
+
+body.theme-day .section-subtitle,
+body.theme-day .row-desc,
+body.theme-day .model-overview-subtitle,
+body.theme-day .config-model-provider,
+body.theme-day .config-model-meta {
+  color: rgba(45, 62, 64, 0.58);
+}
+
+body.theme-day .settings-close {
+  background: rgba(255, 255, 255, 0.58);
+  border-color: rgba(34, 80, 76, 0.12);
+  color: rgba(22, 38, 40, 0.68);
+  box-shadow: 0 8px 22px rgba(50, 72, 70, 0.14);
+}
+
+body.theme-day .settings-close:hover {
+  background: rgba(255, 255, 255, 0.82);
+  border-color: rgba(34, 80, 76, 0.18);
+  color: rgba(12, 26, 28, 0.92);
+}
+
+body.theme-day .context-menu,
+body.theme-day .config-provider-floating-menu {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.74), rgba(245, 249, 248, 0.66)),
+    rgba(238, 244, 242, 0.98);
+  border-color: rgba(34, 80, 76, 0.14);
+  box-shadow:
+    0 22px 52px rgba(50, 72, 70, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+body.theme-day .context-menu-item,
+body.theme-day .config-provider-option {
+  color: rgba(22, 36, 38, 0.84);
+}
+
+body.theme-day .context-menu-item:hover,
+body.theme-day .config-provider-option:hover,
+body.theme-day .config-provider-option:focus-visible {
+  border-color: rgba(36, 134, 121, 0.14);
+  background: rgba(42, 139, 124, 0.08);
+  color: rgba(12, 28, 30, 0.94);
+}
+
+body.theme-day .config-provider-option.selected,
+body.theme-day .config-provider-option-check {
+  color: rgba(16, 80, 75, 0.96);
+}
+
+body.theme-day .config-provider-trigger {
+  border-color: rgba(36, 134, 121, 0.18);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(232, 242, 240, 0.50)),
+    rgba(255, 255, 255, 0.36);
+  color: rgba(20, 62, 60, 0.84);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 8px 18px rgba(50, 72, 70, 0.10);
+}
+
+body.theme-day .config-provider-trigger:hover,
+body.theme-day .config-provider-trigger[aria-expanded="true"] {
+  border-color: rgba(36, 134, 121, 0.30);
+  background-color: rgba(42, 139, 124, 0.04);
+  color: rgba(10, 48, 47, 0.94);
+}
+
+body.theme-day .config-provider-trigger-arrow {
+  filter: invert(54%) sepia(28%) saturate(691%) hue-rotate(125deg) brightness(74%) contrast(88%);
+}
+
+body.theme-day .settings-btn,
+body.theme-day .settings-select,
+body.theme-day .settings-input {
+  background: rgba(255, 255, 255, 0.62);
+  border-color: rgba(34, 80, 76, 0.14);
+  color: rgba(20, 34, 36, 0.86);
+}
+
+body.theme-day .text-display {
+  color: rgba(18, 28, 30, 0.92);
+  text-shadow: 0 1px 8px rgba(255, 255, 255, 0.72);
+}
+
+body.theme-day .status {
+  color: rgba(24, 58, 58, 0.76);
+  text-shadow: 0 1px 8px rgba(255, 255, 255, 0.60);
+}
+
+body.theme-day .start-button {
+  background:
+    linear-gradient(135deg, rgba(42, 139, 124, 0.86), rgba(32, 98, 96, 0.92)),
+    rgba(255, 255, 255, 0.30);
+  border-color: rgba(22, 100, 94, 0.24);
+  color: rgba(248, 255, 253, 0.96);
+  box-shadow: 0 10px 28px rgba(36, 134, 121, 0.22);
+}
+
 .settings-btn.danger {
   background: rgba(255, 69, 58, 0.2);
   border-color: rgba(255, 69, 58, 0.3);
@@ -4576,4 +4779,363 @@ body.task-active:not(.settings-open) #main-view {
     min-width: 100%;
     max-width: 100%;
   }
+}
+
+/* Day theme final pass: keep this after component styles so nested panels remain readable. */
+body.theme-day .settings-panel,
+body.theme-day .settings-content,
+body.theme-day .settings-section,
+body.theme-day .model-page,
+body.theme-day .memory-page {
+  color: rgba(18, 30, 32, 0.9);
+}
+
+body.theme-day .section-title,
+body.theme-day .section-subtitle,
+body.theme-day .row-label,
+body.theme-day .row-desc,
+body.theme-day .settings-value,
+body.theme-day .memory-card-title,
+body.theme-day .memory-count,
+body.theme-day .memory-account-title,
+body.theme-day .memory-account-desc,
+body.theme-day .model-overview-title,
+body.theme-day .model-overview-subtitle,
+body.theme-day .model-manager-title,
+body.theme-day .model-manager-subtitle,
+body.theme-day .config-section-title,
+body.theme-day .config-model-title,
+body.theme-day .config-model-provider,
+body.theme-day .config-model-meta,
+body.theme-day .config-field-label,
+body.theme-day .config-help-text,
+body.theme-day .task-runtime-title,
+body.theme-day .task-runtime-desc,
+body.theme-day .plugin-title,
+body.theme-day .plugin-description,
+body.theme-day .plugin-meta,
+body.theme-day .about-name,
+body.theme-day .about-version,
+body.theme-day .about-desc,
+body.theme-day .about-quote,
+body.theme-day .profile-loading,
+body.theme-day .config-empty,
+body.theme-day .config-reset-hint {
+  color: rgba(18, 30, 32, 0.88);
+}
+
+body.theme-day .section-subtitle,
+body.theme-day .row-desc,
+body.theme-day .model-overview-subtitle,
+body.theme-day .model-manager-subtitle,
+body.theme-day .config-model-provider,
+body.theme-day .config-model-meta,
+body.theme-day .config-help-text,
+body.theme-day .task-runtime-desc,
+body.theme-day .plugin-description,
+body.theme-day .plugin-meta,
+body.theme-day .about-version,
+body.theme-day .about-desc,
+body.theme-day .config-reset-hint {
+  color: rgba(42, 61, 63, 0.62);
+}
+
+body.theme-day .settings-card,
+body.theme-day .memory-card,
+body.theme-day .about-card,
+body.theme-day .plugin-card,
+body.theme-day .task-runtime-card,
+body.theme-day .model-overview-card,
+body.theme-day .config-model-card,
+body.theme-day .config-empty,
+body.theme-day .account-entry,
+body.theme-day .profile-item,
+body.theme-day .memory-item,
+body.theme-day .summary-item,
+body.theme-day .conversation-item,
+body.theme-day .interactive-input-card,
+body.theme-day .task-panel {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.70), rgba(255, 255, 255, 0.44)),
+    rgba(236, 244, 242, 0.52);
+  border-color: rgba(34, 80, 76, 0.13);
+  color: rgba(18, 30, 32, 0.88);
+  box-shadow:
+    0 16px 34px rgba(50, 72, 70, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+body.theme-day .settings-row,
+body.theme-day .memory-card-header,
+body.theme-day .config-model-header,
+body.theme-day .config-field,
+body.theme-day .task-runtime-field,
+body.theme-day .plugin-header,
+body.theme-day .account-entry,
+body.theme-day .model-overview-card {
+  border-color: rgba(34, 80, 76, 0.10);
+}
+
+body.theme-day .settings-row:hover,
+body.theme-day .model-overview-card:hover,
+body.theme-day .config-model-card:hover,
+body.theme-day .plugin-card:hover {
+  background-color: rgba(255, 255, 255, 0.38);
+  border-color: rgba(34, 80, 76, 0.18);
+}
+
+body.theme-day .settings-input,
+body.theme-day .settings-select,
+body.theme-day .config-field-input,
+body.theme-day .task-runtime-input,
+body.theme-day .plugin-config-input,
+body.theme-day .text-input,
+body.theme-day input,
+body.theme-day textarea,
+body.theme-day select {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(246, 250, 249, 0.64)),
+    rgba(255, 255, 255, 0.42);
+  border-color: rgba(34, 80, 76, 0.16);
+  color: rgba(15, 28, 30, 0.92);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+body.theme-day .settings-input::placeholder,
+body.theme-day .config-field-input::placeholder,
+body.theme-day .task-runtime-input::placeholder,
+body.theme-day .plugin-config-input::placeholder,
+body.theme-day input::placeholder,
+body.theme-day textarea::placeholder {
+  color: rgba(45, 62, 64, 0.42);
+}
+
+body.theme-day .settings-btn,
+body.theme-day .config-add-btn,
+body.theme-day .config-action-btn,
+body.theme-day .model-back-btn,
+body.theme-day .memory-back-btn,
+body.theme-day .clear-section-btn,
+body.theme-day .reset-all-btn,
+body.theme-day .config-reset-btn,
+body.theme-day .plugin-action-btn,
+body.theme-day .task-runtime-reset-btn {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.70), rgba(232, 242, 240, 0.52)),
+    rgba(255, 255, 255, 0.34);
+  border-color: rgba(34, 80, 76, 0.16);
+  color: rgba(18, 48, 48, 0.86);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 8px 18px rgba(50, 72, 70, 0.10);
+}
+
+body.theme-day .settings-btn:hover,
+body.theme-day .config-add-btn:hover,
+body.theme-day .config-action-btn:hover,
+body.theme-day .model-back-btn:hover,
+body.theme-day .memory-back-btn:hover,
+body.theme-day .clear-section-btn:hover,
+body.theme-day .config-reset-btn:hover,
+body.theme-day .plugin-action-btn:hover,
+body.theme-day .task-runtime-reset-btn:hover {
+  background-color: rgba(42, 139, 124, 0.08);
+  border-color: rgba(36, 134, 121, 0.26);
+  color: rgba(10, 48, 47, 0.94);
+}
+
+body.theme-day .settings-btn.active,
+body.theme-day .config-action-btn.active,
+body.theme-day .model-overview-card.active {
+  background:
+    linear-gradient(135deg, rgba(190, 226, 222, 0.88), rgba(154, 202, 200, 0.78)),
+    rgba(42, 139, 124, 0.12);
+  border-color: rgba(36, 134, 121, 0.24);
+  color: rgba(10, 42, 43, 0.94);
+}
+
+body.theme-day .config-provider-trigger,
+body.theme-day .config-provider-floating-menu,
+body.theme-day .config-provider-option {
+  color: rgba(18, 34, 36, 0.88);
+}
+
+body.theme-day .config-provider-trigger {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(232, 242, 240, 0.54)),
+    rgba(255, 255, 255, 0.42);
+  border-color: rgba(36, 134, 121, 0.18);
+}
+
+body.theme-day .config-provider-floating-menu {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(245, 249, 248, 0.72)),
+    rgba(238, 244, 242, 0.98);
+  border-color: rgba(34, 80, 76, 0.14);
+}
+
+body.theme-day .config-provider-option:hover,
+body.theme-day .config-provider-option:focus-visible,
+body.theme-day .config-provider-option.selected {
+  color: rgba(8, 38, 38, 0.96);
+}
+
+body.theme-day .config-provider-option-check,
+body.theme-day .model-overview-status,
+body.theme-day .config-status-badge,
+body.theme-day .plugin-status,
+body.theme-day .local-model-status {
+  color: rgba(16, 94, 84, 0.96);
+}
+
+body.theme-day .config-status-badge,
+body.theme-day .model-overview-status,
+body.theme-day .local-model-status,
+body.theme-day .plugin-status,
+body.theme-day .memory-count,
+body.theme-day .task-runtime-badge {
+  background: rgba(42, 139, 124, 0.08);
+  border-color: rgba(36, 134, 121, 0.16);
+}
+
+body.theme-day .danger,
+body.theme-day .error,
+body.theme-day .config-action-btn.danger,
+body.theme-day .settings-btn.danger,
+body.theme-day .clear-section-btn,
+body.theme-day .reset-all-btn {
+  color: rgba(166, 42, 42, 0.92);
+  border-color: rgba(190, 64, 64, 0.22);
+}
+
+body.theme-day .panel-notice,
+body.theme-day .confirm-dialog,
+body.theme-day .interactive-input-modal {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(245, 249, 248, 0.70)),
+    rgba(238, 244, 242, 0.98);
+  border-color: rgba(34, 80, 76, 0.14);
+  color: rgba(18, 30, 32, 0.90);
+}
+
+body.theme-day .memory-card-title,
+body.theme-day .profile-value,
+body.theme-day .memory-item-value,
+body.theme-day .summary-text,
+body.theme-day .conversation-text,
+body.theme-day .conversation-content,
+body.theme-day .account-input-title,
+body.theme-day .account-input-value,
+body.theme-day .model-overview-title,
+body.theme-day .model-overview-model,
+body.theme-day .model-manager-title,
+body.theme-day .config-model-name input,
+body.theme-day .local-model-name span:first-child,
+body.theme-day .config-model-active-badge,
+body.theme-day .plugin-name,
+body.theme-day .plugin-config-label,
+body.theme-day .plugin-admin-title,
+body.theme-day .plugin-admin-section-title,
+body.theme-day .plugin-admin-item-title,
+body.theme-day .task-runtime-card .row-label,
+body.theme-day .about-name {
+  color: rgba(16, 28, 31, 0.94) !important;
+  text-shadow: none !important;
+}
+
+body.theme-day .memory-count,
+body.theme-day .profile-label,
+body.theme-day .profile-value.empty,
+body.theme-day .profile-loading,
+body.theme-day .profile-empty,
+body.theme-day .memory-item-key,
+body.theme-day .summary-meta,
+body.theme-day .summary-date,
+body.theme-day .summary-tone,
+body.theme-day .summary-topic,
+body.theme-day .conversation-role,
+body.theme-day .account-input-group-title,
+body.theme-day .account-input-key,
+body.theme-day .account-input-meta,
+body.theme-day .account-entry-desc,
+body.theme-day .model-overview-count,
+body.theme-day .model-overview-meta,
+body.theme-day .model-overview-meta span,
+body.theme-day .model-manager-subtitle,
+body.theme-day .config-model-provider,
+body.theme-day .config-model-meta,
+body.theme-day .plugin-version,
+body.theme-day .plugin-id,
+body.theme-day .plugin-description,
+body.theme-day .plugin-detail-description,
+body.theme-day .plugin-card-footer,
+body.theme-day .plugin-enter,
+body.theme-day .plugin-config-desc,
+body.theme-day .plugin-config-meta,
+body.theme-day .plugin-admin-subtitle,
+body.theme-day .plugin-admin-loading,
+body.theme-day .plugin-admin-empty,
+body.theme-day .plugin-admin-desc,
+body.theme-day .plugin-admin-item-meta,
+body.theme-day .plugin-admin-source-text,
+body.theme-day .task-runtime-card .row-desc,
+body.theme-day .about-version,
+body.theme-day .about-desc,
+body.theme-day .about-quote {
+  color: rgba(47, 66, 68, 0.66) !important;
+  text-shadow: none !important;
+}
+
+body.theme-day .summary-item,
+body.theme-day .conversation-item.assistant,
+body.theme-day .memory-item,
+body.theme-day .account-input-item,
+body.theme-day .profile-field,
+body.theme-day .plugin-admin-item,
+body.theme-day .plugin-admin-skill,
+body.theme-day .plugin-permissions span {
+  background: rgba(255, 255, 255, 0.42) !important;
+  border-color: rgba(34, 80, 76, 0.12) !important;
+}
+
+body.theme-day .conversation-item.user {
+  background: rgba(80, 150, 210, 0.12) !important;
+  border-color: rgba(58, 126, 180, 0.18) !important;
+}
+
+body.theme-day .summary-topic,
+body.theme-day .profile-tag,
+body.theme-day .account-input-sensitivity,
+body.theme-day .plugin-permissions span {
+  background: rgba(42, 139, 124, 0.08) !important;
+  border-color: rgba(36, 134, 121, 0.14) !important;
+  color: rgba(26, 88, 82, 0.82) !important;
+}
+
+body.theme-day .model-overview-action,
+body.theme-day .config-model-btn,
+body.theme-day .plugin-back-btn,
+body.theme-day .memory-edit-btn,
+body.theme-day .memory-add-btn,
+body.theme-day .plugin-admin-button,
+body.theme-day .plugin-admin-expand {
+  background: rgba(255, 255, 255, 0.54) !important;
+  border-color: rgba(34, 80, 76, 0.16) !important;
+  color: rgba(20, 64, 62, 0.86) !important;
+  text-shadow: none !important;
+}
+
+body.theme-day .model-overview-status,
+body.theme-day .plugin-runtime-status,
+body.theme-day .config-model-active-badge,
+body.theme-day .local-model-status {
+  background: rgba(42, 139, 124, 0.10) !important;
+  border-color: rgba(36, 134, 121, 0.18) !important;
+  color: rgba(18, 96, 84, 0.94) !important;
+  text-shadow: none !important;
+}
+
+body.theme-day .loading-spinner {
+  border-color: rgba(34, 80, 76, 0.18) !important;
+  border-top-color: rgba(36, 134, 121, 0.72) !important;
 }
