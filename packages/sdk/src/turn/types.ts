@@ -87,6 +87,8 @@ export interface SmartTurnOptions {
   maxAnalyzeAttempts?: number
   
   sttTimeoutMs?: number
+
+  userTurnStopTimeout?: number
   
   onResult?: (result: SmartTurnResult) => void
 }

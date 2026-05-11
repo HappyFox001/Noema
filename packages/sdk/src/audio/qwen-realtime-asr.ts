@@ -9,6 +9,7 @@ export interface QwenRealtimeASRConfig {
   sampleRate?: number
   language?: string
   receiveTimeoutMs?: number
+  fallbackTranscriptCommitGraceMs?: number
   
   onInterimTranscript?: (text: string, isFinal: boolean) => void
 }
@@ -16,7 +17,7 @@ export interface QwenRealtimeASRConfig {
 type PendingCommit = {
   resolve: (text: string) => void
   reject: (error: Error) => void
-  timeoutId: ReturnType<typeof setTimeout>
+  timeoutId: ReturnType<typeof setTimeout> | null
 }
 
 export class QwenRealtimeASR implements STTProvider {
@@ -27,6 +28,7 @@ export class QwenRealtimeASR implements STTProvider {
   private pendingCommits: PendingCommit[] = []
   private latestFinalTranscript: string | null = null
   private latestFallbackTranscript: string | null = null
+  private dropLateFinalAfterFallbackCommit = false
   private onEvent?: (event: STTProviderEvent) => void
 
   constructor(
@@ -163,19 +165,16 @@ export class QwenRealtimeASR implements STTProvider {
       const pendingCommit: PendingCommit = {
         resolve,
         reject,
-        timeoutId: setTimeout(() => {
-          this.pendingCommits = this.pendingCommits.filter((entry) => entry !== pendingCommit)
-          if (this.latestFallbackTranscript?.trim()) {
-            const text = this.latestFallbackTranscript.trim()
-            this.latestFallbackTranscript = null
-            resolve(text)
-            return
-          }
-          reject(new Error('Qwen STT transcription timeout'))
-        }, timeoutMs)
+        timeoutId: null,
       }
 
       this.pendingCommits.push(pendingCommit)
+      this.armPendingCommitTimeout(
+        pendingCommit,
+        this.latestFallbackTranscript?.trim()
+          ? this.getFallbackCommitGraceMs()
+          : timeoutMs
+      )
     })
   }
 
@@ -193,12 +192,15 @@ export class QwenRealtimeASR implements STTProvider {
   async close(): Promise<void> {
     const error = new Error('Qwen STT WebSocket closed')
     for (const pending of this.pendingCommits) {
-      clearTimeout(pending.timeoutId)
+      if (pending.timeoutId) {
+        clearTimeout(pending.timeoutId)
+      }
       pending.reject(error)
     }
     this.pendingCommits = []
     this.latestFinalTranscript = null
     this.latestFallbackTranscript = null
+    this.dropLateFinalAfterFallbackCommit = false
     this.connected = false
     await this.transport.close()
     await this.receiveLoop?.catch(() => undefined)
@@ -208,6 +210,7 @@ export class QwenRealtimeASR implements STTProvider {
   clearBufferedTranscripts(): void {
     this.latestFinalTranscript = null
     this.latestFallbackTranscript = null
+    this.dropLateFinalAfterFallbackCommit = false
   }
 
   private async runReceiveLoop(): Promise<void> {
@@ -222,7 +225,9 @@ export class QwenRealtimeASR implements STTProvider {
         this.connected = false
         const error = new Error('Qwen STT WebSocket closed')
         for (const pending of this.pendingCommits) {
-          clearTimeout(pending.timeoutId)
+          if (pending.timeoutId) {
+            clearTimeout(pending.timeoutId)
+          }
           pending.reject(error)
         }
         this.pendingCommits = []
@@ -243,19 +248,23 @@ export class QwenRealtimeASR implements STTProvider {
       const finalText = extractFinalTranscript(parsed)
       if (finalText) {
         const normalizedFinalText = finalText.trim()
-        this.config.onInterimTranscript?.(normalizedFinalText, true)
-        this.onEvent?.({
-          type: 'transcript',
-          text: normalizedFinalText,
-          final: true,
-        })
-
         const pending = this.pendingCommits.shift()
         if (pending) {
-          clearTimeout(pending.timeoutId)
+          if (pending.timeoutId) {
+            clearTimeout(pending.timeoutId)
+          }
           this.latestFallbackTranscript = null
+          this.dropLateFinalAfterFallbackCommit = false
           pending.resolve(normalizedFinalText)
+        } else if (this.dropLateFinalAfterFallbackCommit) {
+          this.dropLateFinalAfterFallbackCommit = false
         } else {
+          this.config.onInterimTranscript?.(normalizedFinalText, true)
+          this.onEvent?.({
+            type: 'transcript',
+            text: normalizedFinalText,
+            final: true,
+          })
           this.latestFinalTranscript = mergeFinalTranscriptText(
             this.latestFinalTranscript ?? '',
             normalizedFinalText
@@ -267,6 +276,7 @@ export class QwenRealtimeASR implements STTProvider {
       const fallbackText = extractFallbackTranscript(parsed)
       if (fallbackText) {
         this.latestFallbackTranscript = fallbackText
+        this.armFirstPendingCommitForFallback()
         this.config.onInterimTranscript?.(fallbackText, false)
         this.onEvent?.({
           type: 'transcript',
@@ -281,6 +291,40 @@ export class QwenRealtimeASR implements STTProvider {
         console.log(`[QwenRealtimeASR] Unhandled transcription event: ${eventType}`, parsed)
       }
     }
+  }
+
+  private getFallbackCommitGraceMs(): number {
+    const configured = this.config.fallbackTranscriptCommitGraceMs
+    return Number.isFinite(configured) && configured !== undefined
+      ? Math.max(0, configured)
+      : 300
+  }
+
+  private armFirstPendingCommitForFallback(): void {
+    const pending = this.pendingCommits[0]
+    if (!pending) {
+      return
+    }
+    this.armPendingCommitTimeout(pending, this.getFallbackCommitGraceMs())
+  }
+
+  private armPendingCommitTimeout(pending: PendingCommit, timeoutMs: number): void {
+    if (pending.timeoutId) {
+      clearTimeout(pending.timeoutId)
+    }
+
+    pending.timeoutId = setTimeout(() => {
+      this.pendingCommits = this.pendingCommits.filter((entry) => entry !== pending)
+      pending.timeoutId = null
+      if (this.latestFallbackTranscript?.trim()) {
+        const text = this.latestFallbackTranscript.trim()
+        this.latestFallbackTranscript = null
+        this.dropLateFinalAfterFallbackCommit = true
+        pending.resolve(text)
+        return
+      }
+      pending.reject(new Error('Qwen STT transcription timeout'))
+    }, timeoutMs)
   }
 }
 

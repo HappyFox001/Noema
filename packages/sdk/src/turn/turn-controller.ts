@@ -90,7 +90,7 @@ export class TurnController {
       this.useSmartTurn = true
       const smartTurnStrategy = new SmartTurnEndpointingStrategy({
         sttTimeoutMs: this.config.smartTurn.sttTimeoutMs ?? DEFAULT_ENDPOINTING_CONFIG.sttTimeoutMs,
-        userTurnStopTimeout: 5000,
+        userTurnStopTimeout: this.config.smartTurn.userTurnStopTimeout ?? 1000,
         analyzeIntervalMs: this.config.smartTurn.analyzeIntervalMs ?? 200,
         maxAnalyzeAttempts: this.config.smartTurn.maxAnalyzeAttempts ?? 10,
         analyzeTimeoutMs: 500,
@@ -520,7 +520,7 @@ export class TurnController {
     this.cancelUserTurnStopTimeout()
 
     const timeout = this.useSmartTurn
-      ? 5000
+      ? this.config.smartTurn?.userTurnStopTimeout ?? 1000
       : this.config.endpointing?.userTurnStopTimeout ?? DEFAULT_ENDPOINTING_CONFIG.userTurnStopTimeout
 
     this.userTurnStopTimeoutTask = setTimeout(async () => {

@@ -759,6 +759,7 @@ class StreamingASRSession {
           analyzeIntervalMs: 200,
           maxAnalyzeAttempts: 10,
           sttTimeoutMs: 1000,
+          userTurnStopTimeout: 1000,
           onResult: (result) => {
             if (result.isComplete) {
               latencyObserver.markTurnComplete()
