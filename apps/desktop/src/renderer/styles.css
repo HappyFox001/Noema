@@ -1289,7 +1289,27 @@ body.plugin-task-surface-replace .task-steps {
   .settings-section.active > .model-overview-list,
   .settings-section.active > .config-models-list,
   .settings-section.active > .config-empty,
-  .settings-section.active > .config-reset-section {
+  .settings-section.active > .config-reset-section,
+  .memory-page.active,
+  .memory-page.active > .memory-subpage-header,
+  .memory-page.active > .memory-card,
+  .memory-page.active > .reset-all-section,
+  .memory-page.active .account-input-item,
+  .memory-page.active .summary-item,
+  .memory-page.active .conversation-item,
+  .memory-page.active .memory-item,
+  .memory-page.active .profile-field,
+  .system-page.active,
+  .model-page.active,
+  .model-page.active > .config-section,
+  .model-page.active > .model-overview-list,
+  .model-page.active > .model-manager-toolbar,
+  .model-page.active > .model-manager-section.active,
+  .model-page.active > .config-empty,
+  .model-manager-section.active,
+  .model-page.active .model-overview-card,
+  .model-manager-section.active .config-model-card,
+  .model-manager-section.active .config-empty {
     animation: none !important;
     filter: none !important;
     clip-path: none !important;
@@ -2727,10 +2747,67 @@ body.task-active:not(.settings-open) #main-view {
 
 .memory-page {
   display: none;
+  position: relative;
 }
 
 .memory-page.active {
   display: block;
+  animation: subview-reveal 360ms cubic-bezier(0.2, 0.9, 0.18, 1) both;
+}
+
+.memory-page.active > .memory-subpage-header,
+.memory-page.active > .memory-card,
+.memory-page.active > .reset-all-section {
+  animation: subview-layer-enter 440ms cubic-bezier(0.18, 0.92, 0.2, 1) both;
+}
+
+.memory-page.active > .memory-subpage-header {
+  animation-delay: 45ms;
+}
+
+.memory-page.active > .memory-card,
+.memory-page.active > .reset-all-section {
+  animation-delay: 95ms;
+}
+
+.memory-page.active .account-input-item,
+.memory-page.active .summary-item,
+.memory-page.active .conversation-item,
+.memory-page.active .memory-item,
+.memory-page.active .profile-field {
+  animation: subview-list-item-enter 460ms cubic-bezier(0.2, 0.9, 0.18, 1) both;
+}
+
+.memory-page.active .account-input-item:nth-child(1),
+.memory-page.active .summary-item:nth-child(1),
+.memory-page.active .conversation-item:nth-child(1),
+.memory-page.active .memory-item:nth-child(1),
+.memory-page.active .profile-field:nth-child(1) {
+  animation-delay: 120ms;
+}
+
+.memory-page.active .account-input-item:nth-child(2),
+.memory-page.active .summary-item:nth-child(2),
+.memory-page.active .conversation-item:nth-child(2),
+.memory-page.active .memory-item:nth-child(2),
+.memory-page.active .profile-field:nth-child(2) {
+  animation-delay: 150ms;
+}
+
+.memory-page.active .account-input-item:nth-child(3),
+.memory-page.active .summary-item:nth-child(3),
+.memory-page.active .conversation-item:nth-child(3),
+.memory-page.active .memory-item:nth-child(3),
+.memory-page.active .profile-field:nth-child(3) {
+  animation-delay: 180ms;
+}
+
+.memory-page.active .account-input-item:nth-child(n+4),
+.memory-page.active .summary-item:nth-child(n+4),
+.memory-page.active .conversation-item:nth-child(n+4),
+.memory-page.active .memory-item:nth-child(n+4),
+.memory-page.active .profile-field:nth-child(n+4) {
+  animation-delay: 210ms;
 }
 
 .memory-subpage-header {
@@ -4067,14 +4144,36 @@ body.task-active:not(.settings-open) #main-view {
 
 .system-page.active {
   display: block;
+  animation: subview-reveal 340ms cubic-bezier(0.2, 0.9, 0.18, 1) both;
 }
 
 .model-page {
   display: none;
+  position: relative;
 }
 
 .model-page.active {
   display: block;
+  animation: subview-reveal 360ms cubic-bezier(0.2, 0.9, 0.18, 1) both;
+}
+
+.model-page.active > .config-section,
+.model-page.active > .model-overview-list,
+.model-page.active > .model-manager-toolbar,
+.model-page.active > .model-manager-section.active,
+.model-page.active > .config-empty {
+  animation: subview-layer-enter 440ms cubic-bezier(0.18, 0.92, 0.2, 1) both;
+}
+
+.model-page.active > .config-section,
+.model-page.active > .model-manager-toolbar {
+  animation-delay: 50ms;
+}
+
+.model-page.active > .model-overview-list,
+.model-page.active > .model-manager-section.active,
+.model-page.active > .config-empty {
+  animation-delay: 105ms;
 }
 
 .model-overview-list {
@@ -4266,6 +4365,77 @@ body.task-active:not(.settings-open) #main-view {
 
 .model-manager-section.active {
   display: block;
+  animation: subview-reveal 320ms cubic-bezier(0.2, 0.9, 0.18, 1) both;
+}
+
+.model-page.active .model-overview-card,
+.model-manager-section.active .config-model-card,
+.model-manager-section.active .config-empty {
+  animation: subview-list-item-enter 480ms cubic-bezier(0.2, 0.9, 0.18, 1) both;
+}
+
+.model-page.active .model-overview-card:nth-child(1),
+.model-manager-section.active .config-model-card:nth-child(1) {
+  animation-delay: 120ms;
+}
+
+.model-page.active .model-overview-card:nth-child(2),
+.model-manager-section.active .config-model-card:nth-child(2) {
+  animation-delay: 155ms;
+}
+
+.model-page.active .model-overview-card:nth-child(3),
+.model-manager-section.active .config-model-card:nth-child(3) {
+  animation-delay: 190ms;
+}
+
+.model-page.active .model-overview-card:nth-child(4),
+.model-manager-section.active .config-model-card:nth-child(4) {
+  animation-delay: 225ms;
+}
+
+.model-page.active .model-overview-card:nth-child(n+5),
+.model-manager-section.active .config-model-card:nth-child(n+5) {
+  animation-delay: 255ms;
+}
+
+@keyframes subview-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.992);
+    clip-path: inset(0 0 100% 0 round 14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    clip-path: inset(0 0 0 0 round 14px);
+  }
+}
+
+@keyframes subview-layer-enter {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+    filter: blur(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes subview-list-item-enter {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.988);
+    filter: blur(7px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
 }
 
 .task-runtime-card {
