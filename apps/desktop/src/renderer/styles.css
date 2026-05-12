@@ -1167,21 +1167,134 @@ body.plugin-task-surface-replace .task-steps {
 
 .settings-section {
   display: none;
+  position: relative;
+  transform-origin: top center;
 }
 
 .settings-section.active {
   display: block;
-  animation: settings-section-enter 240ms cubic-bezier(0.2, 0.9, 0.18, 1);
+  animation: settings-section-reveal 420ms cubic-bezier(0.2, 0.9, 0.18, 1) both;
 }
 
-@keyframes settings-section-enter {
+.settings-section.active > .section-title,
+.settings-section.active > .section-subtitle,
+.settings-section.active > .config-section,
+.settings-section.active > .settings-card,
+.settings-section.active > .setup-guidance-card,
+.settings-section.active > .plugin-list,
+.settings-section.active > .about-card,
+.settings-section.active > .memory-page,
+.settings-section.active > .model-page,
+.settings-section.active > .model-manager-toolbar,
+.settings-section.active > .model-overview-list,
+.settings-section.active > .config-models-list,
+.settings-section.active > .config-empty,
+.settings-section.active > .config-reset-section {
+  animation: settings-section-layer-enter 520ms cubic-bezier(0.18, 0.92, 0.2, 1) both;
+}
+
+.settings-section.active > .section-title {
+  animation-delay: 45ms;
+}
+
+.settings-section.active > .section-subtitle,
+.settings-section.active > .config-section {
+  animation-delay: 75ms;
+}
+
+.settings-section.active > .settings-card,
+.settings-section.active > .setup-guidance-card,
+.settings-section.active > .plugin-list,
+.settings-section.active > .about-card,
+.settings-section.active > .memory-page,
+.settings-section.active > .model-page,
+.settings-section.active > .model-manager-toolbar,
+.settings-section.active > .model-overview-list,
+.settings-section.active > .config-models-list,
+.settings-section.active > .config-empty,
+.settings-section.active > .config-reset-section {
+  animation-delay: 110ms;
+}
+
+.settings-section.active::before {
+  content: '';
+  position: absolute;
+  left: -14px;
+  right: -14px;
+  top: -20px;
+  height: 180px;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.085), rgba(255, 255, 255, 0.025) 42%, transparent 100%);
+  filter: blur(18px);
+  opacity: 0;
+  transform: translateY(-16px) scaleY(0.84);
+  transform-origin: top center;
+  animation: settings-section-sheen 420ms cubic-bezier(0.2, 0.9, 0.18, 1) both;
+}
+
+@keyframes settings-section-reveal {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(12px) scale(0.992);
+    clip-path: inset(0 0 100% 0 round 16px);
   }
   to {
     opacity: 1;
     transform: translateY(0);
+    clip-path: inset(0 0 0 0 round 16px);
+  }
+}
+
+@keyframes settings-section-layer-enter {
+  from {
+    opacity: 0;
+    transform: translateY(22px) scale(0.985);
+    filter: blur(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes settings-section-sheen {
+  from {
+    opacity: 0;
+    transform: translateY(-18px) scaleY(0.82);
+  }
+  45% {
+    opacity: 0.55;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(18px) scaleY(1.1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-section.active,
+  .settings-section.active::before,
+  .settings-section.active > .section-title,
+  .settings-section.active > .section-subtitle,
+  .settings-section.active > .config-section,
+  .settings-section.active > .settings-card,
+  .settings-section.active > .setup-guidance-card,
+  .settings-section.active > .plugin-list,
+  .settings-section.active > .about-card,
+  .settings-section.active > .memory-page,
+  .settings-section.active > .model-page,
+  .settings-section.active > .model-manager-toolbar,
+  .settings-section.active > .model-overview-list,
+  .settings-section.active > .config-models-list,
+  .settings-section.active > .config-empty,
+  .settings-section.active > .config-reset-section {
+    animation: none !important;
+    filter: none !important;
+    clip-path: none !important;
+    transform: none !important;
+    opacity: 1 !important;
   }
 }
 
