@@ -5265,7 +5265,8 @@ body.theme-day .settings-panel,
 body.theme-day .settings-content,
 body.theme-day .settings-section,
 body.theme-day .model-page,
-body.theme-day .memory-page {
+body.theme-day .memory-page,
+body.theme-day .log-page {
   color: rgba(18, 30, 32, 0.9);
 }
 
@@ -5299,7 +5300,11 @@ body.theme-day .about-desc,
 body.theme-day .about-quote,
 body.theme-day .profile-loading,
 body.theme-day .config-empty,
-body.theme-day .config-reset-hint {
+body.theme-day .config-reset-hint,
+body.theme-day .log-message,
+body.theme-day .log-time,
+body.theme-day .log-level,
+body.theme-day .log-type {
   color: rgba(18, 30, 32, 0.88);
 }
 
@@ -5333,6 +5338,8 @@ body.theme-day .memory-item,
 body.theme-day .summary-item,
 body.theme-day .conversation-item,
 body.theme-day .interactive-input-card,
+body.theme-day .log-toolbar,
+body.theme-day .log-entry,
 body.theme-day .task-panel {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.70), rgba(255, 255, 255, 0.44)),
@@ -5346,6 +5353,8 @@ body.theme-day .task-panel {
 
 body.theme-day .settings-row,
 body.theme-day .memory-card-header,
+body.theme-day .log-toolbar,
+body.theme-day .log-entry,
 body.theme-day .config-model-header,
 body.theme-day .config-field,
 body.theme-day .task-runtime-field,
@@ -5390,6 +5399,7 @@ body.theme-day textarea::placeholder {
 }
 
 body.theme-day .settings-btn,
+body.theme-day .log-filter,
 body.theme-day .config-add-btn,
 body.theme-day .config-action-btn,
 body.theme-day .model-back-btn,
@@ -5410,6 +5420,8 @@ body.theme-day .task-runtime-reset-btn {
 }
 
 body.theme-day .settings-btn:hover,
+body.theme-day .log-filter:hover,
+body.theme-day .log-filter.active,
 body.theme-day .config-add-btn:hover,
 body.theme-day .config-action-btn:hover,
 body.theme-day .model-back-btn:hover,
@@ -5421,6 +5433,44 @@ body.theme-day .task-runtime-reset-btn:hover {
   background-color: rgba(92, 104, 104, 0.08);
   border-color: rgba(88, 100, 100, 0.26);
   color: rgba(10, 48, 47, 0.94);
+}
+
+body.theme-day .log-entry.level-error {
+  border-color: rgba(180, 56, 56, 0.30);
+  background:
+    linear-gradient(135deg, rgba(255, 228, 228, 0.82), rgba(255, 255, 255, 0.48)),
+    rgba(255, 245, 245, 0.56);
+}
+
+body.theme-day .log-entry.level-warn {
+  border-color: rgba(170, 112, 34, 0.30);
+  background:
+    linear-gradient(135deg, rgba(255, 241, 210, 0.82), rgba(255, 255, 255, 0.48)),
+    rgba(255, 250, 236, 0.56);
+}
+
+body.theme-day .log-time,
+body.theme-day .log-level,
+body.theme-day .log-type {
+  background: rgba(255, 255, 255, 0.64);
+  border-color: rgba(34, 80, 76, 0.14);
+  color: rgba(24, 44, 46, 0.82);
+}
+
+body.theme-day .log-message {
+  color: rgba(12, 24, 26, 0.88);
+}
+
+body.theme-day .log-type {
+  color: rgba(20, 88, 92, 0.88);
+}
+
+body.theme-day .level-error .log-level {
+  color: rgba(150, 38, 38, 0.96);
+}
+
+body.theme-day .level-warn .log-level {
+  color: rgba(130, 82, 22, 0.96);
 }
 
 body.theme-day .settings-btn.active,
@@ -5500,6 +5550,7 @@ body.theme-day .interactive-input-modal {
 body.theme-day .memory-card-title,
 body.theme-day .profile-value,
 body.theme-day .memory-item-value,
+body.theme-day .memory-value,
 body.theme-day .summary-text,
 body.theme-day .conversation-text,
 body.theme-day .conversation-content,
@@ -5528,6 +5579,7 @@ body.theme-day .profile-value.empty,
 body.theme-day .profile-loading,
 body.theme-day .profile-empty,
 body.theme-day .memory-item-key,
+body.theme-day .memory-key,
 body.theme-day .summary-meta,
 body.theme-day .summary-date,
 body.theme-day .summary-tone,
