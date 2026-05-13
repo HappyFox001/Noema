@@ -79,6 +79,39 @@ body {
   contain: strict;
 }
 
+.liquid-glass-surface {
+  position: fixed;
+  inset: 0;
+  z-index: 9990;
+  width: 100vw;
+  height: 100vh;
+  display: block;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  mix-blend-mode: screen;
+  transition: opacity 180ms ease, visibility 180ms ease;
+  transform: translateZ(0);
+  will-change: contents;
+  contain: strict;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+body.settings-open .liquid-glass-surface {
+  opacity: 0.68;
+  visibility: visible;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.settings-open .liquid-glass-surface {
+    opacity: 0.48;
+  }
+}
+
 .container {
   position: relative;
   z-index: 1;

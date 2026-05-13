@@ -5,6 +5,7 @@
  * settings panel interactions, and renderer-side IPC event handling.
  */
 import './styles.css'
+import { initializeLiquidGlassSurface } from './liquid-glass-surface'
 import claudeCodeLogoUrl from '../../../../plugins/task-runtime-cli/assets/claude_code_logo.png'
 import codexLogoUrl from '../../../../plugins/task-runtime-cli/assets/codex_logo.png'
 import claudeIconUrl from '@lobehub/icons-static-svg/icons/claude-color.svg?url'
@@ -6088,6 +6089,7 @@ window.addEventListener('scroll', () => {
 
 async function initializeApp(): Promise<void> {
   try {
+    initializeLiquidGlassSurface()
     await revealDevOnlyControls()
     await loadSettings()
     await loadPersonalities()
