@@ -567,10 +567,20 @@ const frameTraceObserver = new FrameTraceObserver()
 const DEFAULT_VAD_CONFIG: Partial<VADParams> = {
   confidence: 0.7,
   startSecs: 0.2,
-  stopSecs: 0.2,
+  stopSecs: 0.15,
   minVolume: 0.02,
   sampleRate: 16000,
 }
+
+const LOW_LATENCY_VOICE_CONFIG = {
+  smartTurnAnalyzeIntervalMs: 100,
+  smartTurnSttTimeoutMs: 800,
+  smartTurnStopTimeoutMs: 700,
+  fallbackUserSpeechTimeoutMs: 400,
+  fallbackSttTimeoutMs: 800,
+  fallbackUserTurnStopTimeoutMs: 3000,
+  asrFallbackCommitGraceMs: 120,
+} as const
 
 let sileroVADProvider: VoiceConfidenceProvider | null = null
 let sileroVADInitPromise: Promise<VoiceConfidenceProvider | null> | null = null
@@ -642,9 +652,9 @@ async function getSmartTurnAnalyzer(): Promise<SmartTurnAnalyzer | null> {
 
 
 const FALLBACK_ENDPOINTING_CONFIG: Partial<EndpointingConfig> = {
-  userSpeechTimeout: 600,
-  sttTimeoutMs: 1000,
-  userTurnStopTimeout: 5000,
+  userSpeechTimeout: LOW_LATENCY_VOICE_CONFIG.fallbackUserSpeechTimeoutMs,
+  sttTimeoutMs: LOW_LATENCY_VOICE_CONFIG.fallbackSttTimeoutMs,
+  userTurnStopTimeout: LOW_LATENCY_VOICE_CONFIG.fallbackUserTurnStopTimeoutMs,
 }
 
 const voiceGraphPipeline = new VoiceGraphPipeline()
@@ -756,10 +766,10 @@ class StreamingASRSession {
       this.turnController = new TurnController(vadAnalyzer, {
         smartTurn: {
           analyzer: smartTurn,
-          analyzeIntervalMs: 200,
+          analyzeIntervalMs: LOW_LATENCY_VOICE_CONFIG.smartTurnAnalyzeIntervalMs,
           maxAnalyzeAttempts: 10,
-          sttTimeoutMs: 1000,
-          userTurnStopTimeout: 1000,
+          sttTimeoutMs: LOW_LATENCY_VOICE_CONFIG.smartTurnSttTimeoutMs,
+          userTurnStopTimeout: LOW_LATENCY_VOICE_CONFIG.smartTurnStopTimeoutMs,
           onResult: (result) => {
             if (result.isComplete) {
               latencyObserver.markTurnComplete()
@@ -1142,6 +1152,8 @@ class StreamingASRSession {
       return
     }
 
+    prewarmTTSStreaming('vad_speech_stop')
+
     const flushAudio = getFlushAudio(this.asr)
     if (flushAudio) {
       void flushAudio().catch((error: any) => {
@@ -1290,6 +1302,7 @@ const cancelledTurnIds = new Set<number>()
 
 let currentTTSContextId = 0
 let ttsProviderGeneration = 0
+let ttsPrewarmPromise: Promise<void> | null = null
 
 
 function invalidateTTSContext(reason: InterruptionReason = 'manual'): void {
@@ -1302,6 +1315,33 @@ function invalidateTTSContext(reason: InterruptionReason = 'manual'): void {
     reason,
     timestamp: Date.now(),
   })
+}
+
+function prewarmTTSStreaming(reason: string): void {
+  if (
+    !appSettings.voiceOutputEnabled ||
+    !ttsAvailable ||
+    !ttsService ||
+    !ttsService.getCapabilities().streaming
+  ) {
+    return
+  }
+
+  if (ttsPrewarmPromise) {
+    return
+  }
+
+  console.log(`[TTS] Prewarming streaming connection (${reason})`)
+  ttsPrewarmPromise = ttsService.startStreaming()
+    .then(() => {
+      console.log(`[TTS] Prewarm ready (${reason})`)
+    })
+    .catch((error: Error) => {
+      console.warn(`[TTS] Prewarm failed (${reason}):`, error.message)
+    })
+    .finally(() => {
+      ttsPrewarmPromise = null
+    })
 }
 
 
@@ -1888,6 +1928,7 @@ function createASRProviderForConfig(
       sampleRate: config.sampleRate || providerEntry.sampleRate,
       language: normalizeASRLanguage(config),
       receiveTimeoutMs: callbacks ? 1000 : 5000,
+      fallbackTranscriptCommitGraceMs: LOW_LATENCY_VOICE_CONFIG.asrFallbackCommitGraceMs,
     },
     transport: reconnectingTransport,
   })

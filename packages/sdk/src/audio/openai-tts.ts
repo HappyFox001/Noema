@@ -63,6 +63,10 @@ export class OpenAITTSProvider implements TTSProvider {
   }
 
   async startStreaming(): Promise<void> {
+    if (this.streaming) {
+      return
+    }
+
     await this.close()
     this.contextId += 1
     this.activeContextId = this.contextId

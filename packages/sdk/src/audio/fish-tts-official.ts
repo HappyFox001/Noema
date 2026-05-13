@@ -31,6 +31,7 @@ export class FishTTSOfficial implements TTSProvider, InterruptionHandler {
   private isStreaming = false
   private closePromise: Promise<void> | null = null
   private closeResolver: (() => void) | null = null
+  private startStreamingPromise: Promise<void> | null = null
 
   private _isInterrupted = false
 
@@ -116,10 +117,32 @@ export class FishTTSOfficial implements TTSProvider, InterruptionHandler {
   }
 
   async startStreaming(): Promise<void> {
+    if (this.startStreamingPromise) {
+      await this.startStreamingPromise
+      return
+    }
+
+    if (this.isStreaming && this.currentConnection) {
+      return
+    }
+
+    this.startStreamingPromise = this.openStreamingConnection()
+    try {
+      await this.startStreamingPromise
+    } finally {
+      this.startStreamingPromise = null
+    }
+  }
+
+  private async openStreamingConnection(): Promise<void> {
     if (this._closingPromise) {
       console.log('[FishTTSOfficial] Waiting for previous close to complete...')
       await this._closingPromise
       console.log('[FishTTSOfficial] Previous close completed')
+    }
+
+    if (this.isStreaming && this.currentConnection) {
+      return
     }
 
     if (this.isStreaming || this.currentConnection) {
@@ -274,6 +297,8 @@ export class FishTTSOfficial implements TTSProvider, InterruptionHandler {
   }
 
   async close(): Promise<void> {
+    await this.startStreamingPromise?.catch(() => undefined)
+
     if (!this.isStreaming && !this.currentConnection) {
       return
     }
