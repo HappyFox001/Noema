@@ -23,6 +23,13 @@ export class EndpointingStrategy implements IEndpointingStrategy {
   private userSpeechWaitDone = false
   private sttWaitDone = false
   private turnStopTriggered = false
+  private userSpeechWaitReason: 'user_speech_timeout' | null = null
+  private sttWaitReason:
+    | 'final_transcript'
+    | 'final_transcript_without_vad_stop'
+    | 'stt_wait_timeout'
+    | 'no_stt_wait_needed'
+    | null = null
 
   onUserTurnStopped: ((params: UserTurnStoppedParams) => void | Promise<void>) | null = null
 
@@ -49,6 +56,8 @@ export class EndpointingStrategy implements IEndpointingStrategy {
     this.userSpeechWaitDone = false
     this.sttWaitDone = false
     this.turnStopTriggered = false
+    this.userSpeechWaitReason = null
+    this.sttWaitReason = null
     this.cancelAllTasks()
   }
 
@@ -65,6 +74,8 @@ export class EndpointingStrategy implements IEndpointingStrategy {
     this.vadStoppedTime = null
     this.userSpeechWaitDone = false
     this.sttWaitDone = false
+    this.userSpeechWaitReason = null
+    this.sttWaitReason = null
     this.cancelAllTasks()
   }
 
@@ -85,10 +96,12 @@ export class EndpointingStrategy implements IEndpointingStrategy {
 
     if (this.transcriptFinalized || effectiveSttWait <= 0) {
       this.sttWaitDone = true
+      this.sttWaitReason = this.transcriptFinalized ? 'final_transcript' : 'no_stt_wait_needed'
     } else {
       this.sttTimeoutTask = setTimeout(() => {
         this.sttTimeoutTask = null
         this.sttWaitDone = true
+        this.sttWaitReason = 'stt_wait_timeout'
         this.maybeTriggerUserTurnStopped()
       }, effectiveSttWait)
     }
@@ -102,6 +115,7 @@ export class EndpointingStrategy implements IEndpointingStrategy {
 
       if (!this.sttWaitDone) {
         this.sttWaitDone = true
+        this.sttWaitReason = 'final_transcript'
         if (this.sttTimeoutTask) {
           clearTimeout(this.sttTimeoutTask)
           this.sttTimeoutTask = null
@@ -116,6 +130,7 @@ export class EndpointingStrategy implements IEndpointingStrategy {
 
     if (!this.vadUserSpeaking && this.vadStoppedTime === null) {
       this.sttWaitDone = true
+      this.sttWaitReason = 'final_transcript_without_vad_stop'
       this.restartUserSpeechTimer()
     }
   }
@@ -138,10 +153,12 @@ export class EndpointingStrategy implements IEndpointingStrategy {
     }
 
     this.userSpeechWaitDone = false
+    this.userSpeechWaitReason = null
 
     this.userSpeechTimeoutTask = setTimeout(() => {
       this.userSpeechTimeoutTask = null
       this.userSpeechWaitDone = true
+      this.userSpeechWaitReason = 'user_speech_timeout'
       this.maybeTriggerUserTurnStopped()
     }, this.config.userSpeechTimeout)
   }
@@ -174,12 +191,22 @@ export class EndpointingStrategy implements IEndpointingStrategy {
       const params: UserTurnStoppedParams = {
         text: this.text,
         enableUserSpeakingFrames: true,
+        endpointing: {
+          strategy: 'fixed_timeout',
+          reason: this.describeStopReason(),
+        },
       }
 
       Promise.resolve(this.onUserTurnStopped(params)).catch((error) => {
         console.error('onUserTurnStopped callback failed:', error)
       })
     }
+  }
+
+  private describeStopReason(): string {
+    const userSpeechReason = this.userSpeechWaitReason ?? 'unknown_user_speech_wait'
+    const sttReason = this.sttWaitReason ?? (this.transcriptFinalized ? 'final_transcript' : 'unknown_stt_wait')
+    return `${userSpeechReason}+${sttReason}`
   }
 
   

@@ -273,6 +273,12 @@ export class TurnController {
     await this.triggerUserTurnStop({
       text,
       enableUserSpeakingFrames: true,
+      endpointing: {
+        strategy: 'forced_timeout',
+        reason: this.useSmartTurn
+          ? 'user_turn_stop_timeout_after_smart_turn_wait'
+          : 'user_turn_stop_timeout_after_fixed_endpointing_wait',
+      },
     })
   }
 

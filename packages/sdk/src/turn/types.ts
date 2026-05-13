@@ -43,6 +43,11 @@ export interface UserTurnStoppedParams {
 
   
   text?: string
+
+  endpointing?: {
+    strategy: 'smart_turn' | 'fixed_timeout' | 'forced_timeout'
+    reason: string
+  }
 }
 
 

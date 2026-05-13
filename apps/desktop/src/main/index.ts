@@ -249,6 +249,7 @@ class LatencyTracker {
   private timestamps: Map<string, number> = new Map()
   private sessionId: number = 0
   private sendToRenderer?: (data: LatencyData) => void
+  private endpointingDecision: EndpointingDecision | null = null
   private ttsChunkArrivalTimes: number[] = []
   private playbackStats: TTSPlaybackMetrics = {
     chunks: 0,
@@ -266,6 +267,7 @@ class LatencyTracker {
   reset(): void {
     this.sessionId = Date.now()
     this.timestamps.clear()
+    this.endpointingDecision = null
     this.ttsChunkArrivalTimes = []
     this.playbackStats = {
       chunks: 0,
@@ -303,6 +305,10 @@ class LatencyTracker {
       this.playbackStats.maxUnderrunMs ?? 0,
       metrics.underrunMs
     )
+  }
+
+  recordEndpointingDecision(decision: EndpointingDecision | null | undefined): void {
+    this.endpointingDecision = decision ?? null
   }
 
   calculate(): LatencyData | null {
@@ -352,15 +358,22 @@ class LatencyTracker {
       total,
       intervals,
       timestamps: Object.fromEntries(this.timestamps) as Record<LatencyPoint, number>,
+      endpointing: this.endpointingDecision ?? undefined,
       ttsPlayback,
     }
 
     console.log('[Latency] ========== Summary ==========')
     console.log(`[Latency] Total (VAD静音 → 播放): ${total?.toFixed(0) ?? '?'}ms`)
-    console.log(`[Latency]   ├─ VAD → Endpointing: ${intervals.vadToEndpointing?.toFixed(0) ?? '?'}ms`)
+    console.log(
+      `[Latency]   ├─ VAD → Endpointing: ${intervals.vadToEndpointing?.toFixed(0) ?? '?'}ms` +
+      ` (${formatEndpointingDecision(this.endpointingDecision)})`
+    )
     if (intervals.vadToTurnComplete !== undefined || intervals.turnCompleteToEndpointing !== undefined) {
       console.log(`[Latency]   │  ├─ VAD → SmartTurn: ${intervals.vadToTurnComplete?.toFixed(0) ?? '?'}ms`)
-      console.log(`[Latency]   │  └─ SmartTurn → Final/Timeout: ${intervals.turnCompleteToEndpointing?.toFixed(0) ?? '?'}ms`)
+      console.log(
+        `[Latency]   │  └─ SmartTurn → Final/Timeout: ${intervals.turnCompleteToEndpointing?.toFixed(0) ?? '?'}ms` +
+        ` (${formatEndpointingDecision(this.endpointingDecision)})`
+      )
     }
     console.log(`[Latency]   ├─ Endpointing → ASR: ${intervals.endpointingToASR?.toFixed(0) ?? '?'}ms`)
     console.log(`[Latency]   ├─ ASR → LLM:         ${intervals.asrToLLM?.toFixed(0) ?? '?'}ms`)
@@ -440,12 +453,25 @@ interface TTSPlaybackMetrics {
   maxUnderrunMs?: number
 }
 
+interface EndpointingDecision {
+  strategy: 'smart_turn' | 'fixed_timeout' | 'forced_timeout'
+  reason: string
+}
+
 interface LatencyData {
   sessionId: number
   total?: number
   intervals: LatencyIntervals
   timestamps: Record<LatencyPoint, number>
+  endpointing?: EndpointingDecision
   ttsPlayback?: TTSPlaybackMetrics
+}
+
+function formatEndpointingDecision(decision: EndpointingDecision | null): string {
+  if (!decision) {
+    return 'strategy=unknown reason=unknown'
+  }
+  return `strategy=${decision.strategy} reason=${decision.reason}`
 }
 
 const latencyTracker = new LatencyTracker()
@@ -466,6 +492,9 @@ class LatencyObserver implements FrameObserver<Frame> {
         this.tracker.mark('vad_speech_stop')
         return
       case 'user_turn_end':
+        this.tracker.recordEndpointingDecision((frame as VoiceFrame & {
+          params?: { endpointing?: EndpointingDecision }
+        }).params?.endpointing)
         this.tracker.mark('speech_end')
         return
       case 'transcription':

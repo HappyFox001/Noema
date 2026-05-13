@@ -40,6 +40,8 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
   private vadStoppedTime: number | null = null
   private turnComplete = false
   private sttWaitDone = false
+  private turnCompleteReason: 'smart_turn_result' | 'audio_complete_timeout' | null = null
+  private sttWaitReason: 'final_transcript' | 'stt_wait_timeout' | 'no_stt_wait_needed' | null = null
 
   private analyzeAttempts = 0
   private isAnalyzing = false
@@ -77,6 +79,8 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
     this.vadStoppedTime = null
     this.turnComplete = false
     this.sttWaitDone = false
+    this.turnCompleteReason = null
+    this.sttWaitReason = null
     this.analyzeAttempts = 0
     this.isAnalyzing = false
     this.turnStopTriggered = false
@@ -98,6 +102,8 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
     this.vadStoppedTime = null
     this.turnComplete = false
     this.sttWaitDone = false
+    this.turnCompleteReason = null
+    this.sttWaitReason = null
     this.analyzeAttempts = 0
     this.isAnalyzing = false
     this.cancelAllTimers()
@@ -123,6 +129,7 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
 
     if (state === 'complete_timeout') {
       this.turnComplete = true
+      this.turnCompleteReason = 'audio_complete_timeout'
       this.maybeTriggerUserTurnStopped('timeout')
     } else if (state === 'ready_for_analysis' && !this.isAnalyzing) {
       this.scheduleAnalysis()
@@ -138,6 +145,7 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
     this.mergeTranscriptionText(frame)
     this.transcriptFinalized = true
     this.sttWaitDone = true
+    this.sttWaitReason = 'final_transcript'
     if (this.sttTimeoutTimer) {
       clearTimeout(this.sttTimeoutTimer)
       this.sttTimeoutTimer = null
@@ -149,6 +157,7 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
     // let the finalized transcript short-circuit the wait.
     if (!this.vadUserSpeaking && this.vadStoppedTime === null) {
       this.turnComplete = true
+      this.turnCompleteReason = 'smart_turn_result'
     }
 
     this.maybeTriggerUserTurnStopped('smart_turn')
@@ -207,6 +216,7 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
 
       if (result.isComplete) {
         this.turnComplete = true
+        this.turnCompleteReason = 'smart_turn_result'
         this.maybeTriggerUserTurnStopped('smart_turn')
         return
       }
@@ -239,13 +249,16 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
     console.log(`[SmartTurn] STT wait timer: ${effectiveSttWait.toFixed(0)}ms (sttTimeout=${this.config.sttTimeoutMs}ms, stopSecs=${stopSecs})`)
     if (this.transcriptFinalized || effectiveSttWait <= 0) {
       this.sttWaitDone = true
+      this.sttWaitReason = this.transcriptFinalized ? 'final_transcript' : 'no_stt_wait_needed'
       return
     }
 
     this.sttWaitDone = false
+    this.sttWaitReason = null
     this.sttTimeoutTimer = setTimeout(() => {
       this.sttTimeoutTimer = null
       this.sttWaitDone = true
+      this.sttWaitReason = 'stt_wait_timeout'
       console.log('[SmartTurn] STT wait timeout expired')
       this.maybeTriggerUserTurnStopped('smart_turn')
     }, effectiveSttWait)
@@ -271,6 +284,10 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
       const params: UserTurnStoppedParams = {
         text: this.text,
         enableUserSpeakingFrames: true,
+        endpointing: {
+          strategy: 'smart_turn',
+          reason: this.describeStopReason(reason),
+        },
       }
 
       console.log(`[SmartTurn] User turn stopped (reason: ${reason})`)
@@ -279,6 +296,14 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
         console.error('onUserTurnStopped callback failed:', error)
       })
     }
+  }
+
+  private describeStopReason(reason: 'smart_turn' | 'timeout'): string {
+    const turnReason = this.turnCompleteReason ?? (
+      reason === 'timeout' ? 'audio_complete_timeout' : 'smart_turn_result'
+    )
+    const sttReason = this.sttWaitReason ?? 'unknown_stt_wait'
+    return `${turnReason}+${sttReason}`
   }
 
   
