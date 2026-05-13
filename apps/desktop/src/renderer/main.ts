@@ -2785,6 +2785,7 @@ function openSettings(section?: string) {
   window.electronAPI.setCompactWindowMode(false)
   orbAnimationPaused = true
   stopOrbAnimation()
+  document.body.classList.remove('settings-closing')
   document.body.classList.add('settings-open')
   settingsPanel.classList.remove('warping-out')
   settingsPanel.classList.add('visible', 'warping-in')
@@ -2804,6 +2805,7 @@ function openSettings(section?: string) {
 // Close settings panel
 function closeSettings() {
   hidePanelNotice()
+  document.body.classList.add('settings-closing')
   settingsPanel.classList.remove('warping-in')
   settingsPanel.classList.add('warping-out')
 
@@ -2818,7 +2820,7 @@ function closeSettings() {
       window.electronAPI.setCompactWindowMode(true)
     }
     orbAnimationPaused = false
-    document.body.classList.remove('settings-open')
+    document.body.classList.remove('settings-open', 'settings-closing')
     settingsPanel.classList.remove('visible', 'warping-out')
     mainView.removeAttribute('aria-hidden')
     startOrbAnimation()

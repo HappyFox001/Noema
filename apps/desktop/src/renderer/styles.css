@@ -93,7 +93,7 @@ body {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
   mix-blend-mode: screen;
-  transition: opacity 180ms ease, visibility 180ms ease;
+  transition: opacity 140ms ease, visibility 0s linear 140ms;
   transform: translateZ(0);
   will-change: contents;
   contain: strict;
@@ -101,13 +101,14 @@ body {
   app-region: no-drag;
 }
 
-body.settings-open .liquid-glass-surface {
+body.settings-open:not(.settings-closing) .liquid-glass-surface {
   opacity: 0.95;
   visibility: visible;
+  transition: opacity 180ms ease, visibility 0s linear 0s;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  body.settings-open .liquid-glass-surface {
+  body.settings-open:not(.settings-closing) .liquid-glass-surface {
     opacity: 0.48;
   }
 }
