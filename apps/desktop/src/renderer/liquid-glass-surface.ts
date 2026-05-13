@@ -1,15 +1,21 @@
 /**
- * Global WebGL overlay for the liquid glass film above the desktop controls.
+ * Global GPU liquid simulation overlay for the desktop control surface.
  */
-type Ripple = {
-  x: number
-  y: number
-  startedAt: number
-  strength: number
+type SimulationTarget = {
+  texture: WebGLTexture
+  framebuffer: WebGLFramebuffer
 }
 
-const MAX_RIPPLES = 12
-const RIPPLE_LIFETIME_SECONDS = 2.8
+type PointerImpulse = {
+  x: number
+  y: number
+  vx: number
+  vy: number
+}
+
+const SIMULATION_BASE_SIZE = 320
+const MAX_IMPULSES = 8
+const SIMULATION_STEPS_PER_FRAME = 2
 
 const VERTEX_SHADER = `
 attribute vec2 a_position;
@@ -21,110 +27,148 @@ void main() {
 }
 `
 
-const FRAGMENT_SHADER = `
+const SIMULATION_SHADER = `
 precision highp float;
 
-uniform vec2 u_resolution;
+uniform sampler2D u_state;
+uniform vec2 u_texel;
+uniform float u_dt;
 uniform float u_time;
-uniform vec4 u_ripples[${MAX_RIPPLES}];
+uniform vec4 u_impulses[${MAX_IMPULSES}];
 varying vec2 v_uv;
 
-float hash(vec2 p) {
-  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+vec4 readState(vec2 uv) {
+  vec4 raw = texture2D(u_state, clamp(uv, vec2(0.0), vec2(1.0)));
+  float height = raw.r * 2.0 - 1.0;
+  vec2 velocity = raw.gb * 2.0 - 1.0;
+  float density = raw.a;
+  return vec4(height, velocity, density);
 }
 
-float noise(vec2 p) {
-  vec2 i = floor(p);
-  vec2 f = fract(p);
-  vec2 u = f * f * (3.0 - 2.0 * f);
-  return mix(
-    mix(hash(i + vec2(0.0, 0.0)), hash(i + vec2(1.0, 0.0)), u.x),
-    mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x),
-    u.y
+vec4 packState(float height, vec2 velocity, float density) {
+  return vec4(
+    clamp(height * 0.5 + 0.5, 0.0, 1.0),
+    clamp(velocity * 0.5 + 0.5, 0.0, 1.0),
+    clamp(density, 0.0, 1.0)
   );
 }
 
-float fbm(vec2 p) {
-  float value = 0.0;
-  float amplitude = 0.5;
-  mat2 rotate = mat2(0.8, -0.6, 0.6, 0.8);
+void main() {
+  vec4 center = readState(v_uv);
+  vec2 velocity = center.yz;
 
-  for (int i = 0; i < 5; i++) {
-    value += amplitude * noise(p);
-    p = rotate * p * 2.03 + 17.2;
-    amplitude *= 0.52;
+  vec2 advectUv = v_uv - velocity * u_dt * 0.115;
+  vec4 advected = readState(advectUv);
+
+  vec4 left = readState(v_uv - vec2(u_texel.x, 0.0));
+  vec4 right = readState(v_uv + vec2(u_texel.x, 0.0));
+  vec4 down = readState(v_uv - vec2(0.0, u_texel.y));
+  vec4 up = readState(v_uv + vec2(0.0, u_texel.y));
+
+  float height = advected.x;
+  velocity = advected.yz;
+  float density = advected.w;
+
+  vec2 pressureGradient = vec2(right.x - left.x, up.x - down.x);
+  float divergence = (right.y - left.y) + (up.z - down.z);
+
+  velocity -= pressureGradient * 0.34;
+  height -= divergence * 0.22;
+
+  for (int i = 0; i < ${MAX_IMPULSES}; i++) {
+    vec4 impulse = u_impulses[i];
+    vec2 delta = v_uv - impulse.xy;
+    float impulseSpeed = length(impulse.zw);
+    float radius = mix(0.034, 0.078, clamp(impulseSpeed * 0.08, 0.0, 1.0));
+    float falloff = exp(-dot(delta, delta) / max(radius * radius, 0.0001));
+    velocity += impulse.zw * falloff * 0.022;
+    height += falloff * (0.58 + impulseSpeed * 0.04);
+    density += falloff * (0.78 + impulseSpeed * 0.05);
   }
 
-  return value;
+  float topBand = smoothstep(0.72, 1.0, v_uv.y);
+  float sourceGate = 0.55 + 0.45 * sin(v_uv.x * 17.0 + u_time * 0.9);
+  float source = topBand * smoothstep(0.34, 0.96, sourceGate) * 0.006;
+  velocity += vec2(0.006, -0.012) * topBand;
+  height += source * 0.82;
+  density += source;
+
+  height += (left.x + right.x + down.x + up.x - height * 4.0) * 0.085;
+  velocity *= 0.986;
+  height *= 0.992;
+  density *= 0.991;
+
+  gl_FragColor = packState(height, velocity, density);
 }
+`
 
-float rippleField(vec2 uv) {
-  float field = 0.0;
-  vec2 aspect = vec2(u_resolution.x / max(u_resolution.y, 1.0), 1.0);
+const RENDER_SHADER = `
+precision highp float;
 
-  for (int i = 0; i < ${MAX_RIPPLES}; i++) {
-    vec4 ripple = u_ripples[i];
-    float age = u_time - ripple.z;
-    if (age <= 0.0 || age >= ${RIPPLE_LIFETIME_SECONDS.toFixed(1)}) {
-      continue;
-    }
+uniform sampler2D u_state;
+uniform vec2 u_texel;
+uniform vec2 u_resolution;
+varying vec2 v_uv;
 
-    float fade = pow(1.0 - age / ${RIPPLE_LIFETIME_SECONDS.toFixed(1)}, 1.75);
-    float distanceToCenter = length((uv - ripple.xy) * aspect);
-    float radius = age * 0.34;
-    float ring = sin((distanceToCenter - radius) * 56.0 - age * 8.0);
-    float envelope = exp(-pow((distanceToCenter - radius) * 10.5, 2.0));
-    field += ring * envelope * fade * ripple.w;
-  }
-
-  return field;
+vec4 readState(vec2 uv) {
+  vec4 raw = texture2D(u_state, clamp(uv, vec2(0.0), vec2(1.0)));
+  float height = raw.r * 2.0 - 1.0;
+  vec2 velocity = raw.gb * 2.0 - 1.0;
+  float density = raw.a;
+  return vec4(height, velocity, density);
 }
 
 void main() {
-  vec2 uv = v_uv;
-  vec2 pixel = 1.0 / max(u_resolution, vec2(1.0));
-  float time = u_time;
+  vec4 center = readState(v_uv);
+  vec4 left = readState(v_uv - vec2(u_texel.x, 0.0));
+  vec4 right = readState(v_uv + vec2(u_texel.x, 0.0));
+  vec4 down = readState(v_uv - vec2(0.0, u_texel.y));
+  vec4 up = readState(v_uv + vec2(0.0, u_texel.y));
 
-  vec2 flow = vec2(
-    fbm(uv * vec2(3.6, 5.2) + vec2(time * 0.035, -time * 0.026)),
-    fbm(uv * vec2(5.8, 3.4) + vec2(-time * 0.024, time * 0.032))
-  ) - 0.5;
-  float film = fbm(uv * 9.0 + flow * 0.8 + time * 0.018);
-  float ripple = rippleField(uv);
-  float surface = film + ripple * 0.54;
+  vec2 slope = vec2(right.x - left.x, up.x - down.x);
+  vec3 normal = normalize(vec3(-slope * 7.5, 1.0));
+  vec2 velocity = center.yz;
+  float density = smoothstep(0.006, 0.62, center.w);
+  float height = abs(center.x);
 
-  float right = fbm((uv + vec2(pixel.x * 7.0, 0.0)) * 9.0 + flow * 0.8 + time * 0.018);
-  float up = fbm((uv + vec2(0.0, pixel.y * 7.0)) * 9.0 + flow * 0.8 + time * 0.018);
-  vec2 normal = vec2(surface - right, surface - up) * 3.2 + flow * 0.06;
+  vec3 lightDir = normalize(vec3(-0.32, 0.48, 0.82));
+  float specular = pow(max(dot(reflect(-lightDir, normal), vec3(0.0, 0.0, 1.0)), 0.0), 38.0);
+  float rim = pow(clamp(1.0 - normal.z, 0.0, 1.0), 1.6);
+  float flowEdge = smoothstep(0.035, 0.22, length(velocity));
+  float thickness = smoothstep(0.08, 0.82, density + height * 0.58);
 
-  float diagonalSheen = smoothstep(0.74, 1.0, 1.0 - abs((uv.x + uv.y * 0.72 + normal.x * 0.3) - 0.92));
-  float verticalEdge = smoothstep(0.0, 0.18, uv.x) * smoothstep(1.0, 0.82, uv.x);
-  float topEdge = 1.0 - smoothstep(0.0, 0.22, uv.y);
-  float caustic = smoothstep(0.76, 0.98, film + abs(normal.x) * 1.18 + abs(normal.y) * 0.98);
-  float rippleLight = smoothstep(0.24, 0.86, abs(ripple));
+  vec3 waterTint = vec3(0.74, 0.92, 1.0);
+  vec3 color = waterTint * (thickness * 0.18 + rim * 0.32 + flowEdge * 0.13);
+  color += vec3(1.0) * specular * (0.36 + density * 0.42);
+  color += vec3(0.58, 0.84, 1.0) * height * 0.14;
 
-  vec3 tint = vec3(0.80, 0.94, 1.0);
-  vec3 color = tint * (caustic * 0.14 + diagonalSheen * 0.08 + topEdge * 0.045);
-  color += vec3(1.0) * rippleLight * 0.16;
-  color += vec3(0.56, 0.78, 0.92) * length(normal) * 0.22;
-  color *= verticalEdge;
+  float alpha = density * 0.18 + rim * 0.12 + specular * 0.34 + flowEdge * 0.055;
+  alpha *= smoothstep(0.0, 0.06, v_uv.x) * smoothstep(1.0, 0.94, v_uv.x);
 
-  float alpha = caustic * 0.07 + diagonalSheen * 0.05 + rippleLight * 0.12 + topEdge * 0.018;
-  alpha *= verticalEdge;
-
-  gl_FragColor = vec4(color, clamp(alpha, 0.0, 0.18));
+  gl_FragColor = vec4(color, clamp(alpha, 0.0, 0.34));
 }
 `
 
 export class LiquidGlassSurface {
   private gl: WebGLRenderingContext | null = null
-  private program: WebGLProgram | null = null
+  private simulationProgram: WebGLProgram | null = null
+  private renderProgram: WebGLProgram | null = null
+  private positionBuffer: WebGLBuffer | null = null
+  private targets: [SimulationTarget, SimulationTarget] | null = null
+  private readTargetIndex = 0
+  private simulationWidth = 1
+  private simulationHeight = 1
   private animationFrameId: number | null = null
-  private ripples: Ripple[] = []
   private startedAt = performance.now()
+  private lastFrameAt = this.startedAt
   private reducedMotion = false
+  private pointerActive = false
+  private lastPointer: { x: number; y: number } | null = null
+  private pendingImpulses: PointerImpulse[] = []
   private readonly handleResize = () => this.resize()
-  private readonly handlePointerDown = (event: PointerEvent) => this.addRippleFromPointer(event)
+  private readonly handlePointerDown = (event: PointerEvent) => this.beginPointerImpulse(event)
+  private readonly handlePointerMove = (event: PointerEvent) => this.dragPointerImpulse(event)
+  private readonly handlePointerUp = () => this.endPointerImpulse()
   private readonly handleVisibilityChange = () => this.syncAnimationState()
 
   constructor(private readonly canvas: HTMLCanvasElement) {}
@@ -146,19 +190,26 @@ export class LiquidGlassSurface {
       return
     }
 
-    const program = this.createProgram(gl)
-    if (!program) {
+    const simulationProgram = this.createProgram(gl, SIMULATION_SHADER)
+    const renderProgram = this.createProgram(gl, RENDER_SHADER)
+    const positionBuffer = gl.createBuffer()
+    if (!simulationProgram || !renderProgram || !positionBuffer) {
       this.canvas.hidden = true
       return
     }
 
     this.gl = gl
-    this.program = program
-    this.prepareGeometry(gl, program)
+    this.simulationProgram = simulationProgram
+    this.renderProgram = renderProgram
+    this.positionBuffer = positionBuffer
+    this.prepareGeometry(gl)
     this.resize()
 
     window.addEventListener('resize', this.handleResize)
     document.addEventListener('pointerdown', this.handlePointerDown, { capture: true, passive: true })
+    document.addEventListener('pointermove', this.handlePointerMove, { capture: true, passive: true })
+    document.addEventListener('pointerup', this.handlePointerUp, { capture: true, passive: true })
+    document.addEventListener('pointercancel', this.handlePointerUp, { capture: true, passive: true })
     document.addEventListener('visibilitychange', this.handleVisibilityChange)
     this.syncAnimationState()
   }
@@ -171,12 +222,15 @@ export class LiquidGlassSurface {
 
     window.removeEventListener('resize', this.handleResize)
     document.removeEventListener('pointerdown', this.handlePointerDown, { capture: true })
+    document.removeEventListener('pointermove', this.handlePointerMove, { capture: true })
+    document.removeEventListener('pointerup', this.handlePointerUp, { capture: true })
+    document.removeEventListener('pointercancel', this.handlePointerUp, { capture: true })
     document.removeEventListener('visibilitychange', this.handleVisibilityChange)
   }
 
-  private createProgram(gl: WebGLRenderingContext): WebGLProgram | null {
+  private createProgram(gl: WebGLRenderingContext, fragmentSource: string): WebGLProgram | null {
     const vertexShader = this.compileShader(gl, gl.VERTEX_SHADER, VERTEX_SHADER)
-    const fragmentShader = this.compileShader(gl, gl.FRAGMENT_SHADER, FRAGMENT_SHADER)
+    const fragmentShader = this.compileShader(gl, gl.FRAGMENT_SHADER, fragmentSource)
     if (!vertexShader || !fragmentShader) {
       return null
     }
@@ -216,18 +270,13 @@ export class LiquidGlassSurface {
     return shader
   }
 
-  private prepareGeometry(gl: WebGLRenderingContext, program: WebGLProgram): void {
-    const positionLocation = gl.getAttribLocation(program, 'a_position')
-    const buffer = gl.createBuffer()
-    gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
+  private prepareGeometry(gl: WebGLRenderingContext): void {
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer)
     gl.bufferData(
       gl.ARRAY_BUFFER,
       new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]),
       gl.STATIC_DRAW
     )
-    gl.useProgram(program)
-    gl.enableVertexAttribArray(positionLocation)
-    gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0)
     gl.enable(gl.BLEND)
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
   }
@@ -239,13 +288,65 @@ export class LiquidGlassSurface {
     }
 
     const pixelRatio = Math.min(window.devicePixelRatio || 1, 2)
-    const width = Math.max(1, Math.floor(window.innerWidth * pixelRatio))
-    const height = Math.max(1, Math.floor(window.innerHeight * pixelRatio))
-    if (this.canvas.width !== width || this.canvas.height !== height) {
-      this.canvas.width = width
-      this.canvas.height = height
+    const canvasWidth = Math.max(1, Math.floor(window.innerWidth * pixelRatio))
+    const canvasHeight = Math.max(1, Math.floor(window.innerHeight * pixelRatio))
+    if (this.canvas.width !== canvasWidth || this.canvas.height !== canvasHeight) {
+      this.canvas.width = canvasWidth
+      this.canvas.height = canvasHeight
     }
-    gl.viewport(0, 0, width, height)
+
+    const aspect = canvasWidth / Math.max(canvasHeight, 1)
+    const nextSimulationWidth = Math.max(96, Math.round(SIMULATION_BASE_SIZE * Math.min(aspect, 1.8)))
+    const nextSimulationHeight = Math.max(96, Math.round(SIMULATION_BASE_SIZE / Math.max(aspect, 1)))
+    if (
+      nextSimulationWidth !== this.simulationWidth ||
+      nextSimulationHeight !== this.simulationHeight ||
+      !this.targets
+    ) {
+      this.simulationWidth = nextSimulationWidth
+      this.simulationHeight = nextSimulationHeight
+      this.targets = [
+        this.createSimulationTarget(gl, this.simulationWidth, this.simulationHeight),
+        this.createSimulationTarget(gl, this.simulationWidth, this.simulationHeight),
+      ]
+      this.clearSimulationTargets(gl)
+    }
+  }
+
+  private createSimulationTarget(gl: WebGLRenderingContext, width: number, height: number): SimulationTarget {
+    const texture = gl.createTexture()
+    const framebuffer = gl.createFramebuffer()
+    if (!texture || !framebuffer) {
+      throw new Error('Failed to allocate liquid simulation target.')
+    }
+
+    gl.bindTexture(gl.TEXTURE_2D, texture)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null)
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer)
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0)
+    return { texture, framebuffer }
+  }
+
+  private clearSimulationTargets(gl: WebGLRenderingContext): void {
+    if (!this.targets) {
+      return
+    }
+
+    gl.disable(gl.BLEND)
+    gl.viewport(0, 0, this.simulationWidth, this.simulationHeight)
+    gl.clearColor(0.5, 0.5, 0.5, 0)
+    for (const target of this.targets) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer)
+      gl.clear(gl.COLOR_BUFFER_BIT)
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+    gl.enable(gl.BLEND)
+    this.readTargetIndex = 0
   }
 
   private syncAnimationState(): void {
@@ -265,57 +366,168 @@ export class LiquidGlassSurface {
 
   private render(now: number): void {
     const gl = this.gl
-    const program = this.program
-    if (!gl || !program) {
+    if (!gl || !this.targets || !this.simulationProgram || !this.renderProgram) {
       return
     }
 
+    const dt = Math.min(0.033, Math.max(0.001, (now - this.lastFrameAt) / 1000))
+    this.lastFrameAt = now
     const seconds = (now - this.startedAt) / 1000
-    this.ripples = this.ripples.filter(ripple => seconds - ripple.startedAt < RIPPLE_LIFETIME_SECONDS)
+    const impulses = this.consumeImpulseUniforms()
 
-    gl.clearColor(0, 0, 0, 0)
-    gl.clear(gl.COLOR_BUFFER_BIT)
-    gl.useProgram(program)
+    gl.disable(gl.BLEND)
+    for (let i = 0; i < SIMULATION_STEPS_PER_FRAME; i++) {
+      this.runSimulationPass(gl, dt / SIMULATION_STEPS_PER_FRAME, seconds, i === 0 ? impulses : null)
+    }
 
-    gl.uniform2f(gl.getUniformLocation(program, 'u_resolution'), this.canvas.width, this.canvas.height)
-    gl.uniform1f(gl.getUniformLocation(program, 'u_time'), seconds)
-    gl.uniform4fv(gl.getUniformLocation(program, 'u_ripples'), this.buildRippleUniform(seconds))
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+    gl.enable(gl.BLEND)
+    this.runRenderPass(gl)
 
     this.animationFrameId = document.hidden || this.reducedMotion
       ? null
       : requestAnimationFrame((time) => this.render(time))
   }
 
-  private buildRippleUniform(seconds: number): Float32Array {
-    const values = new Float32Array(MAX_RIPPLES * 4)
-    for (let i = 0; i < MAX_RIPPLES; i++) {
-      const ripple = this.ripples[i]
+  private runSimulationPass(
+    gl: WebGLRenderingContext,
+    dt: number,
+    seconds: number,
+    impulses: { values: Float32Array; count: number } | null
+  ): void {
+    if (!this.targets || !this.simulationProgram) {
+      return
+    }
+
+    const source = this.targets[this.readTargetIndex]
+    const destinationIndex = 1 - this.readTargetIndex
+    const destination = this.targets[destinationIndex]
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, destination.framebuffer)
+    gl.viewport(0, 0, this.simulationWidth, this.simulationHeight)
+    gl.useProgram(this.simulationProgram)
+    this.bindGeometry(gl, this.simulationProgram)
+
+    gl.activeTexture(gl.TEXTURE0)
+    gl.bindTexture(gl.TEXTURE_2D, source.texture)
+    gl.uniform1i(gl.getUniformLocation(this.simulationProgram, 'u_state'), 0)
+    gl.uniform2f(
+      gl.getUniformLocation(this.simulationProgram, 'u_texel'),
+      1 / this.simulationWidth,
+      1 / this.simulationHeight
+    )
+    gl.uniform1f(gl.getUniformLocation(this.simulationProgram, 'u_dt'), dt)
+    gl.uniform1f(gl.getUniformLocation(this.simulationProgram, 'u_time'), seconds)
+    gl.uniform4fv(
+      gl.getUniformLocation(this.simulationProgram, 'u_impulses'),
+      impulses?.values ?? this.createInactiveImpulseUniform()
+    )
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+    this.readTargetIndex = destinationIndex
+  }
+
+  private runRenderPass(gl: WebGLRenderingContext): void {
+    if (!this.targets || !this.renderProgram) {
+      return
+    }
+
+    const source = this.targets[this.readTargetIndex]
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+    gl.viewport(0, 0, this.canvas.width, this.canvas.height)
+    gl.clearColor(0, 0, 0, 0)
+    gl.clear(gl.COLOR_BUFFER_BIT)
+    gl.useProgram(this.renderProgram)
+    this.bindGeometry(gl, this.renderProgram)
+
+    gl.activeTexture(gl.TEXTURE0)
+    gl.bindTexture(gl.TEXTURE_2D, source.texture)
+    gl.uniform1i(gl.getUniformLocation(this.renderProgram, 'u_state'), 0)
+    gl.uniform2f(
+      gl.getUniformLocation(this.renderProgram, 'u_texel'),
+      1 / this.simulationWidth,
+      1 / this.simulationHeight
+    )
+    gl.uniform2f(gl.getUniformLocation(this.renderProgram, 'u_resolution'), this.canvas.width, this.canvas.height)
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+  }
+
+  private bindGeometry(gl: WebGLRenderingContext, program: WebGLProgram): void {
+    const positionLocation = gl.getAttribLocation(program, 'a_position')
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer)
+    gl.enableVertexAttribArray(positionLocation)
+    gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0)
+  }
+
+  private consumeImpulseUniforms(): { values: Float32Array; count: number } {
+    const impulses = this.pendingImpulses.splice(0, MAX_IMPULSES)
+    const values = this.createInactiveImpulseUniform()
+    for (let i = 0; i < impulses.length; i++) {
+      const impulse = impulses[i]
       const offset = i * 4
-      values[offset] = ripple?.x ?? -10
-      values[offset + 1] = ripple?.y ?? -10
-      values[offset + 2] = ripple?.startedAt ?? seconds + 10
-      values[offset + 3] = ripple?.strength ?? 0
+      values[offset] = impulse.x
+      values[offset + 1] = impulse.y
+      values[offset + 2] = impulse.vx
+      values[offset + 3] = impulse.vy
+    }
+    return { values, count: impulses.length }
+  }
+
+  private createInactiveImpulseUniform(): Float32Array {
+    const values = new Float32Array(MAX_IMPULSES * 4)
+    for (let i = 0; i < MAX_IMPULSES; i++) {
+      const offset = i * 4
+      values[offset] = -10
+      values[offset + 1] = -10
     }
     return values
   }
 
-  private addRippleFromPointer(event: PointerEvent): void {
-    const target = event.target as Element | null
-    if (target?.closest('#liquid-glass-surface')) {
+  private beginPointerImpulse(event: PointerEvent): void {
+    if (!document.body.classList.contains('settings-open')) {
       return
     }
 
-    const seconds = (performance.now() - this.startedAt) / 1000
-    this.ripples.unshift({
+    this.pointerActive = true
+    const point = this.pointerToUv(event)
+    this.lastPointer = point
+    this.pendingImpulses.push({
+      ...point,
+      vx: 0.001,
+      vy: 0.001,
+    })
+    this.trimImpulses()
+  }
+
+  private dragPointerImpulse(event: PointerEvent): void {
+    if (!this.pointerActive || !document.body.classList.contains('settings-open')) {
+      return
+    }
+
+    const point = this.pointerToUv(event)
+    const previous = this.lastPointer ?? point
+    this.lastPointer = point
+    this.pendingImpulses.push({
+      ...point,
+      vx: (point.x - previous.x) * 34,
+      vy: (point.y - previous.y) * 34,
+    })
+    this.trimImpulses()
+  }
+
+  private endPointerImpulse(): void {
+    this.pointerActive = false
+    this.lastPointer = null
+  }
+
+  private pointerToUv(event: PointerEvent): { x: number; y: number } {
+    return {
       x: event.clientX / Math.max(window.innerWidth, 1),
       y: 1 - event.clientY / Math.max(window.innerHeight, 1),
-      startedAt: seconds,
-      strength: event.pointerType === 'mouse' ? 0.9 : 1.12,
-    })
+    }
+  }
 
-    if (this.ripples.length > MAX_RIPPLES) {
-      this.ripples.length = MAX_RIPPLES
+  private trimImpulses(): void {
+    if (this.pendingImpulses.length > MAX_IMPULSES * 2) {
+      this.pendingImpulses.splice(0, this.pendingImpulses.length - MAX_IMPULSES * 2)
     }
 
     if (this.reducedMotion) {

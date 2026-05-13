@@ -102,7 +102,7 @@ body {
 }
 
 body.settings-open .liquid-glass-surface {
-  opacity: 0.68;
+  opacity: 0.95;
   visibility: visible;
 }
 
