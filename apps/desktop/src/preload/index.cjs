@@ -82,6 +82,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getStats: () =>
     ipcRenderer.invoke('sdk:getStats'),
 
+  listLogs: (limit) =>
+    ipcRenderer.invoke('logs:list', limit),
+
+  clearLogs: () =>
+    ipcRenderer.invoke('logs:clear'),
+
   getSettings: () =>
     ipcRenderer.invoke('settings:get'),
 
@@ -213,6 +219,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   onLatencyData: (callback) => {
     ipcRenderer.on('latency:data', (_, data) => callback(data))
+  },
+
+  onLogEntry: (callback) => {
+    ipcRenderer.on('logs:new', (_, entry) => callback(entry))
+  },
+
+  onLogsCleared: (callback) => {
+    ipcRenderer.on('logs:cleared', callback)
   },
 
   moveWindow: (deltaX, deltaY) => {

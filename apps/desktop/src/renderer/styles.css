@@ -1228,6 +1228,7 @@ body.plugin-task-surface-replace .task-steps {
 .settings-section.active > .about-card,
 .settings-section.active > .memory-page,
 .settings-section.active > .model-page,
+.settings-section.active > .log-page,
 .settings-section.active > .model-manager-toolbar,
 .settings-section.active > .model-overview-list,
 .settings-section.active > .config-models-list,
@@ -1251,6 +1252,7 @@ body.plugin-task-surface-replace .task-steps {
 .settings-section.active > .about-card,
 .settings-section.active > .memory-page,
 .settings-section.active > .model-page,
+.settings-section.active > .log-page,
 .settings-section.active > .model-manager-toolbar,
 .settings-section.active > .model-overview-list,
 .settings-section.active > .config-models-list,
@@ -1328,6 +1330,7 @@ body.plugin-task-surface-replace .task-steps {
   .settings-section.active > .about-card,
   .settings-section.active > .memory-page,
   .settings-section.active > .model-page,
+  .settings-section.active > .log-page,
   .settings-section.active > .model-manager-toolbar,
   .settings-section.active > .model-overview-list,
   .settings-section.active > .config-models-list,
@@ -1486,6 +1489,138 @@ body.plugin-task-surface-replace .task-steps {
   box-shadow:
     0 22px 54px rgba(0, 0, 0, 0.22),
     inset 0 1px 0 rgba(255, 255, 255, 0.075);
+}
+
+.log-page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+}
+
+.log-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.log-page-header .section-title,
+.log-page-header .section-subtitle {
+  margin-right: 12px;
+}
+
+.log-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.018)),
+    rgba(0, 0, 0, 0.14);
+  border-radius: 8px;
+}
+
+.log-filter {
+  font-family: var(--font-ui);
+  height: 30px;
+  padding: 0 11px;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.18);
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 11px;
+  letter-spacing: 0;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+}
+
+.log-filter:hover,
+.log-filter.active {
+  background: rgba(232, 238, 238, 0.11);
+  border-color: rgba(232, 238, 238, 0.22);
+  color: rgba(255, 255, 255, 0.94);
+}
+
+.logs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 260px;
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.log-entry {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.34fr) minmax(0, 1fr);
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.018)),
+    rgba(0, 0, 0, 0.14);
+}
+
+.log-entry.level-error {
+  border-color: rgba(255, 112, 112, 0.26);
+  background: linear-gradient(135deg, rgba(255, 84, 84, 0.105), rgba(255, 255, 255, 0.018)), rgba(0, 0, 0, 0.15);
+}
+
+.log-entry.level-warn {
+  border-color: rgba(255, 196, 104, 0.24);
+  background: linear-gradient(135deg, rgba(255, 190, 96, 0.09), rgba(255, 255, 255, 0.018)), rgba(0, 0, 0, 0.15);
+}
+
+.log-entry-meta {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.log-time,
+.log-level,
+.log-type {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.3;
+  border-radius: 5px;
+  padding: 3px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  background: rgba(0, 0, 0, 0.18);
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.log-level {
+  color: rgba(236, 245, 246, 0.92);
+}
+
+.level-error .log-level {
+  color: rgba(255, 178, 178, 0.96);
+}
+
+.level-warn .log-level {
+  color: rgba(255, 218, 154, 0.96);
+}
+
+.log-type {
+  color: rgba(177, 225, 233, 0.84);
+}
+
+.log-message {
+  margin: 0;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: rgba(255, 255, 255, 0.78);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.55;
 }
 
 .plugin-list {

@@ -68,6 +68,10 @@
               <span class="nav-icon">✦</span>
               <span class="nav-label" data-i18n="nav.plugins">插件</span>
             </div>
+            <div class="nav-item" data-section="logs">
+              <span class="nav-icon">☷</span>
+              <span class="nav-label" data-i18n="nav.logs">日志</span>
+            </div>
             <div class="nav-item" data-section="about">
               <span class="nav-icon">○</span>
               <span class="nav-label" data-i18n="nav.about">关于</span>
@@ -428,6 +432,31 @@
 
               <div id="plugins-list" class="plugin-list">
                 <div class="profile-loading">加载中...</div>
+              </div>
+            </section>
+
+            
+            <section id="section-logs" class="settings-section">
+              <div class="log-page">
+                <div class="log-page-header">
+                  <div>
+                    <h2 class="section-title" data-i18n="logs.title">运行日志</h2>
+                    <p class="section-subtitle" data-i18n="logs.desc">按时间、等级和类型查看当前会话的运行状态。</p>
+                  </div>
+                  <button id="clear-logs-btn" class="settings-btn danger" type="button" data-i18n="common.clear">清空</button>
+                </div>
+
+                <div class="log-toolbar">
+                  <button class="log-filter active" type="button" data-log-level="all">ALL</button>
+                  <button class="log-filter" type="button" data-log-level="error">ERROR</button>
+                  <button class="log-filter" type="button" data-log-level="warn">WARN</button>
+                  <button class="log-filter" type="button" data-log-level="info">INFO</button>
+                  <button class="log-filter" type="button" data-log-level="debug">DEBUG</button>
+                </div>
+
+                <div id="logs-list" class="logs-list">
+                  <div class="profile-loading">加载中...</div>
+                </div>
               </div>
             </section>
 

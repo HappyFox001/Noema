@@ -172,6 +172,17 @@ declare global {
 
       getPersonality: () => Promise<any>
       getStats: () => Promise<any>
+      listLogs: (limit?: number) => Promise<{
+        success: boolean
+        logs: Array<{
+          id: number
+          time: number
+          level: 'debug' | 'info' | 'warn' | 'error'
+          type: 'app' | 'asr' | 'audio' | 'conversation' | 'latency' | 'llm' | 'memory' | 'plugin' | 'settings' | 'task' | 'tts' | 'turn' | 'vad'
+          message: string
+        }>
+      }>
+      clearLogs: () => Promise<{ success: boolean; error?: string }>
       getSettings: () => Promise<{
         language: 'zh-CN' | 'en-US'
         voiceInputEnabled: boolean
@@ -487,6 +498,14 @@ declare global {
           maxUnderrunMs?: number
         }
       }) => void) => void
+      onLogEntry: (callback: (entry: {
+        id: number
+        time: number
+        level: 'debug' | 'info' | 'warn' | 'error'
+        type: 'app' | 'asr' | 'audio' | 'conversation' | 'latency' | 'llm' | 'memory' | 'plugin' | 'settings' | 'task' | 'tts' | 'turn' | 'vad'
+        message: string
+      }) => void) => void
+      onLogsCleared: (callback: () => void) => void
 
       moveWindow: (deltaX: number, deltaY: number) => void
       getCursorScreenPoint: () => Promise<{

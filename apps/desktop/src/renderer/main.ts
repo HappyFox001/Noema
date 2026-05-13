@@ -635,6 +635,7 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'nav.system': '系统',
     'nav.voice': '语音',
     'nav.models': '模型',
+    'nav.logs': '日志',
     'appearance.title': '页面设置',
     'appearance.orbStyle': '小球样式',
     'appearance.orbStyleDesc': '选择主界面小球的视觉表现。',
@@ -708,6 +709,8 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'taskRuntime.maxTurnsDesc': '任务运行超过该轮数后停止。',
     'taskRuntime.title': '任务执行参数',
     'plugins.title': '插件',
+    'logs.title': '运行日志',
+    'logs.desc': '按时间、等级和类型查看当前会话的运行状态。',
     'about.desc': '把一个鲜活的灵魂放进桌面。',
     'about.quote': '把语音、记忆、情绪、人格和工具连接起来，尝试做一个能聊天、能陪伴，也能和你一起做事的桌面 AI。',
     'about.title': '关于',
@@ -758,6 +761,7 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'nav.system': 'System',
     'nav.voice': 'Voice',
     'nav.models': 'Models',
+    'nav.logs': 'Logs',
     'appearance.title': 'Page Settings',
     'appearance.orbStyle': 'Orb Style',
     'appearance.orbStyleDesc': 'Choose the main screen orb visual.',
@@ -831,6 +835,8 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'taskRuntime.maxTurnsDesc': 'Stop a task after this many runtime turns.',
     'taskRuntime.title': 'Task Runtime Params',
     'plugins.title': 'Plugins',
+    'logs.title': 'Runtime Logs',
+    'logs.desc': 'Inspect the current session by time, level, and subsystem.',
     'about.desc': 'Putting a living soul into the desktop.',
     'about.quote': 'Voice, memory, emotion, personality, and tools — an experiment toward AI that can talk, accompany, and act beside us.',
     'about.title': 'About',
@@ -959,6 +965,16 @@ type LocalModelStatus = {
 
 type SetupIssueKind = 'llm' | 'task' | 'tts' | 'asr' | 'models'
 type ModelManagerKind = 'llm' | 'task' | 'tts' | 'asr' | 'models'
+type AppLogLevel = 'debug' | 'info' | 'warn' | 'error'
+type AppLogType = 'app' | 'asr' | 'audio' | 'conversation' | 'latency' | 'llm' | 'memory' | 'plugin' | 'settings' | 'task' | 'tts' | 'turn' | 'vad'
+
+type AppLogEntry = {
+  id: number
+  time: number
+  level: AppLogLevel
+  type: AppLogType
+  message: string
+}
 
 type SetupIssue = {
   kind: SetupIssueKind
@@ -2461,8 +2477,12 @@ const appearanceThemeLabel = document.getElementById('appearance-theme-label') a
 const personalitySelect = document.getElementById('personality-select') as HTMLSelectElement
 const addPersonalityFileBtn = document.getElementById('add-personality-file-btn') as HTMLButtonElement
 const pluginsList = document.getElementById('plugins-list') as HTMLElement
+const logsList = document.getElementById('logs-list') as HTMLElement
+const clearLogsBtn = document.getElementById('clear-logs-btn') as HTMLButtonElement
 let memoryRefreshPromise: Promise<void> | null = null
 let cachedPlugins: PluginInfo[] = []
+let logEntries: AppLogEntry[] = []
+let activeLogLevel: AppLogLevel | 'all' = 'all'
 
 function applySettingsToUI(settings: UISettings) {
   setLanguage(settings.language || 'zh-CN')
@@ -2738,6 +2758,52 @@ window.addEventListener('pointerleave', () => {
   setPluginControlsPeek(false)
 })
 
+async function loadLogsSection(): Promise<void> {
+  const result = await window.electronAPI.listLogs(1200)
+  if (!result.success) {
+    logsList.innerHTML = `<div class="config-empty">日志加载失败</div>`
+    return
+  }
+  logEntries = result.logs
+  renderLogs()
+}
+
+function renderLogs(): void {
+  const visibleLogs = activeLogLevel === 'all'
+    ? logEntries
+    : logEntries.filter(entry => entry.level === activeLogLevel)
+
+  if (visibleLogs.length === 0) {
+    logsList.innerHTML = `<div class="config-empty">暂无日志</div>`
+    return
+  }
+
+  logsList.innerHTML = visibleLogs.slice(-500).reverse().map(renderLogEntry).join('')
+}
+
+function renderLogEntry(entry: AppLogEntry): string {
+  return `
+    <article class="log-entry level-${entry.level}">
+      <div class="log-entry-meta">
+        <span class="log-time">${escapeHtml(formatLogTime(entry.time))}</span>
+        <span class="log-level">${escapeHtml(entry.level.toUpperCase())}</span>
+        <span class="log-type">${escapeHtml(entry.type)}</span>
+      </div>
+      <pre class="log-message">${escapeHtml(entry.message)}</pre>
+    </article>
+  `
+}
+
+function formatLogTime(time: number): string {
+  const date = new Date(time)
+  const pad = (value: number, length = 2) => String(value).padStart(length, '0')
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.${pad(date.getMilliseconds(), 3)}`
+}
+
+function isLogsSectionActive(): boolean {
+  return document.getElementById('section-logs')?.classList.contains('active') === true
+}
+
 // Context menu actions
 contextMenu.addEventListener('click', (e) => {
   const target = e.target as HTMLElement
@@ -2774,6 +2840,9 @@ function switchSettingsSection(section: string): void {
   if (section === 'plugins') {
     void loadPluginsSection()
   }
+  if (section === 'logs') {
+    void loadLogsSection()
+  }
 }
 
 function openSettings(section?: string) {
@@ -2799,6 +2868,8 @@ function openSettings(section?: string) {
     switchSettingsSection(section)
   } else if (isMemorySectionActive()) {
     void refreshMemorySection()
+  } else if (isLogsSectionActive()) {
+    void loadLogsSection()
   }
 }
 
@@ -3077,6 +3148,38 @@ document.addEventListener('mousemove', (e) => {
     navDragStartY = e.screenY
     navTotalMovement += Math.abs(deltaX) + Math.abs(deltaY)
     window.electronAPI.moveWindow(deltaX, deltaY)
+  }
+})
+
+document.querySelectorAll<HTMLButtonElement>('.log-filter').forEach(button => {
+  button.addEventListener('click', () => {
+    activeLogLevel = (button.dataset.logLevel as AppLogLevel | 'all') || 'all'
+    document.querySelectorAll('.log-filter').forEach(item => item.classList.remove('active'))
+    button.classList.add('active')
+    renderLogs()
+  })
+})
+
+clearLogsBtn.addEventListener('click', async () => {
+  await window.electronAPI.clearLogs()
+  logEntries = []
+  renderLogs()
+})
+
+window.electronAPI.onLogEntry((entry) => {
+  logEntries.push(entry)
+  if (logEntries.length > 1200) {
+    logEntries = logEntries.slice(-1200)
+  }
+  if (isLogsSectionActive()) {
+    renderLogs()
+  }
+})
+
+window.electronAPI.onLogsCleared(() => {
+  logEntries = []
+  if (isLogsSectionActive()) {
+    renderLogs()
   }
 })
 

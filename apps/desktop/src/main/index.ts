@@ -9,7 +9,7 @@ import { fileURLToPath, pathToFileURL } from 'url'
 import { dirname, join } from 'path'
 import { createRequire } from 'module'
 import { existsSync } from 'fs'
-import { stat } from 'fs/promises'
+import { mkdir, readFile, stat, writeFile } from 'fs/promises'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 
@@ -126,6 +126,229 @@ type LocalModelStatus = {
   exists: boolean
   sizeBytes?: number
   path: string
+}
+
+type AppLogLevel = 'debug' | 'info' | 'warn' | 'error'
+type AppLogType =
+  | 'app'
+  | 'asr'
+  | 'audio'
+  | 'conversation'
+  | 'latency'
+  | 'llm'
+  | 'memory'
+  | 'plugin'
+  | 'settings'
+  | 'task'
+  | 'tts'
+  | 'turn'
+  | 'vad'
+
+type AppLogEntry = {
+  id: number
+  time: number
+  level: AppLogLevel
+  type: AppLogType
+  message: string
+}
+
+class AppLogStore {
+  private entries: AppLogEntry[] = []
+  private sequence = 0
+  private readonly maxEntries = 1200
+  private persistencePath: string | null = null
+  private saveTimer: ReturnType<typeof setTimeout> | null = null
+  private writeQueue: Promise<void> = Promise.resolve()
+
+  add(level: AppLogLevel, args: unknown[]): void {
+    const message = args.map(formatLogArg).join(' ')
+    if (!message.trim()) {
+      return
+    }
+
+    const entry: AppLogEntry = {
+      id: ++this.sequence,
+      time: Date.now(),
+      level,
+      type: inferLogType(message),
+      message,
+    }
+
+    this.entries.push(entry)
+    if (this.entries.length > this.maxEntries) {
+      this.entries.splice(0, this.entries.length - this.maxEntries)
+    }
+
+    mainWindow?.webContents.send('logs:new', entry)
+    this.schedulePersist()
+  }
+
+  list(limit = this.maxEntries): AppLogEntry[] {
+    return this.entries.slice(-Math.max(1, Math.min(this.maxEntries, limit)))
+  }
+
+  clear(): void {
+    this.entries = []
+    this.sequence = 0
+    mainWindow?.webContents.send('logs:cleared')
+    this.schedulePersist(0)
+  }
+
+  async initializePersistence(filePath: string): Promise<void> {
+    this.persistencePath = filePath
+    await mkdir(dirname(filePath), { recursive: true })
+
+    const bootEntries = this.entries
+    let storedEntries: AppLogEntry[] = []
+    try {
+      const raw = await readFile(filePath, 'utf-8')
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) {
+        storedEntries = parsed.filter(isAppLogEntry)
+      }
+    } catch (error: any) {
+      if (error?.code !== 'ENOENT') {
+        nativeConsole.warn('[Logs] Failed to load persisted logs:', error.message ?? String(error))
+      }
+    }
+
+    this.entries = [...storedEntries, ...bootEntries]
+      .sort((a, b) => a.time - b.time || a.id - b.id)
+      .slice(-this.maxEntries)
+    this.sequence = this.entries.reduce((max, entry) => Math.max(max, entry.id), 0)
+    await this.persistNow()
+  }
+
+  async flush(): Promise<void> {
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer)
+      this.saveTimer = null
+    }
+    await this.persistNow()
+    await this.writeQueue
+  }
+
+  private schedulePersist(delayMs = 250): void {
+    if (!this.persistencePath) {
+      return
+    }
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer)
+    }
+    this.saveTimer = setTimeout(() => {
+      this.saveTimer = null
+      void this.persistNow()
+    }, delayMs)
+  }
+
+  private persistNow(): Promise<void> {
+    if (!this.persistencePath) {
+      return Promise.resolve()
+    }
+
+    const filePath = this.persistencePath
+    const data = JSON.stringify(this.entries.slice(-this.maxEntries), null, 2)
+    this.writeQueue = this.writeQueue
+      .catch(() => undefined)
+      .then(() => writeFile(filePath, data, 'utf-8'))
+      .catch((error) => {
+        nativeConsole.warn('[Logs] Failed to persist logs:', error instanceof Error ? error.message : String(error))
+      })
+    return this.writeQueue
+  }
+}
+
+function isAppLogEntry(value: unknown): value is AppLogEntry {
+  const item = value as Partial<AppLogEntry>
+  return Boolean(
+    item &&
+    typeof item.id === 'number' &&
+    typeof item.time === 'number' &&
+    isAppLogLevel(item.level) &&
+    isAppLogType(item.type) &&
+    typeof item.message === 'string'
+  )
+}
+
+function isAppLogLevel(value: unknown): value is AppLogLevel {
+  return value === 'debug' || value === 'info' || value === 'warn' || value === 'error'
+}
+
+function isAppLogType(value: unknown): value is AppLogType {
+  return (
+    value === 'app' ||
+    value === 'asr' ||
+    value === 'audio' ||
+    value === 'conversation' ||
+    value === 'latency' ||
+    value === 'llm' ||
+    value === 'memory' ||
+    value === 'plugin' ||
+    value === 'settings' ||
+    value === 'task' ||
+    value === 'tts' ||
+    value === 'turn' ||
+    value === 'vad'
+  )
+}
+
+const appLogStore = new AppLogStore()
+const nativeConsole = {
+  debug: console.debug.bind(console),
+  log: console.log.bind(console),
+  warn: console.warn.bind(console),
+  error: console.error.bind(console),
+}
+
+console.debug = (...args: unknown[]) => {
+  nativeConsole.debug(...args)
+  appLogStore.add('debug', args)
+}
+console.log = (...args: unknown[]) => {
+  nativeConsole.log(...args)
+  appLogStore.add('info', args)
+}
+console.warn = (...args: unknown[]) => {
+  nativeConsole.warn(...args)
+  appLogStore.add('warn', args)
+}
+console.error = (...args: unknown[]) => {
+  nativeConsole.error(...args)
+  appLogStore.add('error', args)
+}
+
+function formatLogArg(arg: unknown): string {
+  if (arg instanceof Error) {
+    return arg.stack || arg.message
+  }
+  if (typeof arg === 'string') {
+    return arg
+  }
+  if (typeof arg === 'number' || typeof arg === 'boolean' || arg === null || arg === undefined) {
+    return String(arg)
+  }
+  try {
+    return JSON.stringify(arg)
+  } catch {
+    return String(arg)
+  }
+}
+
+function inferLogType(message: string): AppLogType {
+  const tag = message.match(/^\[([^\]]+)\]/)?.[1]?.toLowerCase() ?? ''
+  if (tag.includes('latency')) return 'latency'
+  if (tag.includes('tts') || tag.includes('fish')) return 'tts'
+  if (tag.includes('asr') || tag.includes('speech') || tag.includes('qwen')) return 'asr'
+  if (tag.includes('vad') || tag.includes('smartturn') || tag.includes('smart turn')) return 'vad'
+  if (tag.includes('turn')) return 'turn'
+  if (tag.includes('task')) return 'task'
+  if (tag.includes('plugin')) return 'plugin'
+  if (tag.includes('memory')) return 'memory'
+  if (tag.includes('llm')) return 'llm'
+  if (tag.includes('audio') || tag.includes('playback')) return 'audio'
+  if (tag.includes('settings') || tag.includes('env') || tag.includes('models')) return 'settings'
+  if (tag.includes('conversation') || tag.includes('chat')) return 'conversation'
+  return 'app'
 }
 
 const LOCAL_MODEL_DEFINITIONS: Array<Omit<LocalModelStatus, 'exists' | 'sizeBytes' | 'path'>> = [
@@ -1732,6 +1955,18 @@ ipcMain.handle('debug:clearFrameTrace', async () => {
   return { success: true }
 })
 
+ipcMain.handle('logs:list', async (_, limit?: number) => {
+  return {
+    success: true,
+    logs: appLogStore.list(Number(limit) || undefined),
+  }
+})
+
+ipcMain.handle('logs:clear', async () => {
+  appLogStore.clear()
+  return { success: true }
+})
+
 function splitDisplayUnits(text: string): string[] {
   const units: string[] = []
   let asciiBuffer = ''
@@ -2688,6 +2923,9 @@ function getSettingsStore(): SettingsStore {
 }
 
 app.whenReady().then(async () => {
+  await appLogStore.initializePersistence(join(app.getPath('userData'), 'logs.json'))
+  console.log('[Logs] Persistent log store:', join(app.getPath('userData'), 'logs.json'))
+
   settingsStore = new SettingsStore()
   await settingsStore.initialize()
   appSettings = settingsStore.getSettings()
@@ -2746,6 +2984,8 @@ app.on('before-quit', async (event) => {
     await personalityManager.shutdown()
     console.log('[App] Personality manager shutdown complete')
   }
+
+  await appLogStore.flush()
 
   app.exit(0)
 })
