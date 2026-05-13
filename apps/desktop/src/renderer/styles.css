@@ -107,6 +107,14 @@ body.settings-open:not(.settings-closing) .liquid-glass-surface {
   transition: opacity 180ms ease, visibility 0s linear 0s;
 }
 
+body.theme-day .liquid-glass-surface {
+  mix-blend-mode: normal;
+}
+
+body.theme-day.settings-open:not(.settings-closing) .liquid-glass-surface {
+  opacity: 0.88;
+}
+
 @media (prefers-reduced-motion: reduce) {
   body.settings-open:not(.settings-closing) .liquid-glass-surface {
     opacity: 0.48;
@@ -6011,8 +6019,8 @@ body {
 }
 
 body.theme-day {
-  --liquid-panel: rgba(252, 252, 250, 0.86);
-  --liquid-panel-strong: rgba(248, 248, 246, 0.94);
+  --liquid-panel: rgba(235, 239, 237, 0.84);
+  --liquid-panel-strong: rgba(226, 232, 230, 0.92);
   --liquid-line: rgba(32, 38, 40, 0.11);
   --liquid-line-strong: rgba(32, 38, 40, 0.18);
   --liquid-text: rgba(18, 24, 26, 0.94);
@@ -6023,9 +6031,9 @@ body.theme-day {
 
 body.theme-day .settings-panel {
   background:
-    radial-gradient(circle at 16% 14%, rgba(0, 0, 0, 0.038), transparent 28%),
-    radial-gradient(circle at 84% 18%, rgba(0, 0, 0, 0.028), transparent 26%),
-    linear-gradient(180deg, rgba(244, 245, 243, 0.985), rgba(237, 239, 236, 0.982) 46%, rgba(242, 243, 240, 0.99));
+    radial-gradient(circle at 16% 14%, rgba(15, 45, 50, 0.055), transparent 28%),
+    radial-gradient(circle at 84% 18%, rgba(20, 42, 46, 0.04), transparent 26%),
+    linear-gradient(180deg, rgba(229, 234, 232, 0.985), rgba(219, 227, 225, 0.982) 46%, rgba(226, 232, 229, 0.99));
 }
 
 body.theme-day .settings-panel::before {
@@ -6037,8 +6045,8 @@ body.theme-day .settings-panel::before {
 
 body.theme-day .settings-panel::after {
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.5), transparent 1px),
-    radial-gradient(circle at 50% 0%, rgba(0, 0, 0, 0.04), transparent 56%);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.28), transparent 1px),
+    radial-gradient(circle at 50% 0%, rgba(0, 34, 42, 0.055), transparent 56%);
   mix-blend-mode: multiply;
 }
 
@@ -6062,10 +6070,10 @@ body.theme-day .confirm-dialog,
 body.theme-day .interactive-input-dialog,
 body.theme-day .panel-notice {
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.56)),
-    rgba(248, 248, 245, 0.84);
-  border-color: rgba(22, 28, 30, 0.12);
-  box-shadow: 0 20px 54px rgba(48, 52, 54, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.76);
+    linear-gradient(180deg, rgba(246, 249, 248, 0.62), rgba(230, 236, 234, 0.48)),
+    rgba(226, 233, 231, 0.74);
+  border-color: rgba(16, 45, 52, 0.14);
+  box-shadow: 0 20px 54px rgba(38, 56, 60, 0.13), inset 0 1px 0 rgba(255, 255, 255, 0.55);
 }
 
 body.theme-day .nav-item.active,

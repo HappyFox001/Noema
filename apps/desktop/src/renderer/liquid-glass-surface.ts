@@ -239,6 +239,7 @@ uniform sampler2D u_velocity;
 uniform sampler2D u_material;
 uniform sampler2D u_pressure;
 uniform vec2 u_texel;
+uniform float u_themeDay;
 varying vec2 v_uv;
 
 vec2 unpackVelocity(vec4 raw) {
@@ -274,19 +275,24 @@ void main() {
   float flowLine = smoothstep(0.04, 0.42, speed);
   float body = smoothstep(0.018, 0.26, height + center.g * 0.72);
 
-  vec3 shallowTint = vec3(0.66, 0.88, 1.0);
-  vec3 deepTint = vec3(0.36, 0.68, 0.92);
+  vec3 nightShallowTint = vec3(0.66, 0.88, 1.0);
+  vec3 nightDeepTint = vec3(0.36, 0.68, 0.92);
+  vec3 dayShallowTint = vec3(0.18, 0.44, 0.58);
+  vec3 dayDeepTint = vec3(0.08, 0.25, 0.36);
+  vec3 shallowTint = mix(nightShallowTint, dayShallowTint, u_themeDay);
+  vec3 deepTint = mix(nightDeepTint, dayDeepTint, u_themeDay);
   vec3 color = mix(shallowTint, deepTint, thickness * 0.62);
-  color *= 0.08 + body * 0.16 + diffuse * 0.13;
-  color += vec3(1.0) * specular * (0.42 + thickness * 0.38);
-  color += vec3(0.80, 0.95, 1.0) * rim * 0.24;
-  color += vec3(0.92, 0.98, 1.0) * foam * 0.15;
-  color += vec3(0.54, 0.82, 1.0) * pressure * 0.08;
-  color += vec3(0.74, 0.92, 1.0) * flowLine * 0.07;
+  color *= mix(0.08 + body * 0.16 + diffuse * 0.13, 0.22 + body * 0.34 + diffuse * 0.18, u_themeDay);
+  color += mix(vec3(1.0), vec3(0.80, 0.96, 1.0), u_themeDay) * specular * (0.42 + thickness * 0.38);
+  color += mix(vec3(0.80, 0.95, 1.0), vec3(0.14, 0.38, 0.50), u_themeDay) * rim * 0.24;
+  color += mix(vec3(0.92, 0.98, 1.0), vec3(0.28, 0.58, 0.70), u_themeDay) * foam * 0.15;
+  color += mix(vec3(0.54, 0.82, 1.0), vec3(0.10, 0.34, 0.46), u_themeDay) * pressure * 0.08;
+  color += mix(vec3(0.74, 0.92, 1.0), vec3(0.16, 0.48, 0.62), u_themeDay) * flowLine * 0.07;
 
   float alpha = body * 0.16 + thickness * 0.12 + specular * 0.28 + rim * 0.10 + foam * 0.08 + flowLine * 0.04;
+  alpha *= mix(1.0, 1.34, u_themeDay);
   alpha *= smoothstep(0.0, 0.055, v_uv.x) * smoothstep(1.0, 0.945, v_uv.x);
-  gl_FragColor = vec4(color, clamp(alpha, 0.0, 0.42));
+  gl_FragColor = vec4(color, clamp(alpha, 0.0, mix(0.42, 0.48, u_themeDay)));
 }
 `
 
@@ -766,6 +772,7 @@ export class LiquidGlassSurface {
     this.bindTexture(gl, program, 'u_material', this.materialTargets![this.materialReadIndex].texture, 1)
     this.bindTexture(gl, program, 'u_pressure', this.pressureTargets![this.pressureReadIndex].texture, 2)
     this.setTexelUniform(gl, program)
+    gl.uniform1f(gl.getUniformLocation(program, 'u_themeDay'), document.body.classList.contains('theme-day') ? 1 : 0)
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
   }
 
