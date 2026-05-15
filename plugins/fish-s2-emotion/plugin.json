@@ -1,10 +1,51 @@
 {
   "id": "fish-s2-emotion",
   "name": "Fish Audio S2 Emotion Enhancer",
-  "description": "在启用 Fish Audio S2 系列语音模型时，为回复提示词加入受控语音标记规则，并在展示和记忆阶段隐藏这些 TTS 控制标签。",
-  "version": "0.1.0",
+  "description": "在启用 Fish Audio S2 系列语音模型时，为回复提示词加入 normal/sexy 两套语音标记规则；sexy 模式使用日文自然语言场景描述，并在展示和记忆阶段隐藏这些 TTS 控制标签。",
+  "version": "0.2.0",
   "type": "sdk-plugin",
   "main": "index.mjs",
   "enabled": true,
-  "permissions": []
+  "permissions": [],
+  "config": {
+    "mode": "normal",
+    "maxCuesPerReply": 2,
+    "allowDescriptiveTags": true
+  },
+  "configSchema": [
+    {
+      "key": "mode",
+      "label": "语音模式",
+      "description": "normal 使用保守英文基础语音标签；sexy 使用日文自然语言描述亲密声线、气息、距离和颤抖状态。",
+      "type": "select",
+      "default": "normal",
+      "options": [
+        {
+          "label": "正常模式",
+          "value": "normal"
+        },
+        {
+          "label": "性感模式",
+          "value": "sexy"
+        }
+      ]
+    },
+    {
+      "key": "maxCuesPerReply",
+      "label": "单次最多标签数",
+      "description": "限制每次回复进入 TTS 的方括号语音标签数量，避免标签过多影响自然度。",
+      "type": "number",
+      "default": 2,
+      "min": 0,
+      "max": 6,
+      "step": 1
+    },
+    {
+      "key": "allowDescriptiveTags",
+      "label": "允许自然语言标签",
+      "description": "性感模式下允许受控日文自然语言描述，例如 [耳元に息が触れるくらい近く、吐息まじりに小さく囁く]。",
+      "type": "boolean",
+      "default": true
+    }
+  ]
 }

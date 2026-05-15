@@ -42,4 +42,5 @@ other/**
 *.md
 tmp/
 scripts/
+test/
 web/

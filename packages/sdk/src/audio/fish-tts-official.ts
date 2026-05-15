@@ -191,11 +191,13 @@ export class FishTTSOfficial implements TTSProvider, InterruptionHandler {
     }
 
     console.log('[FishTTSOfficial] Starting streaming with request:', request)
+    console.log('[FishTTSOfficial] Realtime backend:', this.config.model || 's2-pro')
 
     try {
       const connection = await this.client.textToSpeech.convertRealtime(
         request as any,
-        this.createTextStream(streamContextId)
+        this.createTextStream(streamContextId),
+        (this.config.model || 's2-pro') as any
       )
 
       this.currentConnection = connection

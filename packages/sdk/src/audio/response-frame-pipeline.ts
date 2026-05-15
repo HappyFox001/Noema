@@ -82,7 +82,7 @@ export class SentenceAggregatorProcessor implements ResponseFrameProcessor {
       }
     }
 
-    if (this.buffer.trim().length >= this.maxChunkChars) {
+    if (countSpokenChars(this.buffer.trim()) >= this.maxChunkChars) {
       const splitIndex = this.findForcedBoundaryIndex(this.buffer)
       const candidate = this.buffer.slice(0, splitIndex).trim()
       this.buffer = this.buffer.slice(splitIndex)
@@ -113,7 +113,7 @@ export class SentenceAggregatorProcessor implements ResponseFrameProcessor {
     }
 
     const prefix = trimmed.slice(0, sentenceBoundary)
-    if (prefix.trim().length < this.minChunkChars) {
+    if (countSpokenChars(prefix.trim()) < this.minChunkChars) {
       return -1
     }
 
@@ -125,7 +125,7 @@ export class SentenceAggregatorProcessor implements ResponseFrameProcessor {
 
     const boundaryIndex = leadingOffset + sentenceBoundary + matched[0].length
     const candidate = text.slice(0, boundaryIndex).trim()
-    if (candidate.length > this.maxChunkChars) {
+    if (countSpokenChars(candidate) > this.maxChunkChars) {
       return this.findForcedBoundaryIndex(text)
     }
 
@@ -139,8 +139,9 @@ export class SentenceAggregatorProcessor implements ResponseFrameProcessor {
       return text.length
     }
 
-    const limited = Array.from(trimmed).slice(0, this.maxChunkChars).join('')
+    const limited = sliceBySpokenChars(trimmed, this.maxChunkChars)
     const sentenceMatches = [...limited.matchAll(this.sentenceEndingChars)]
+      .filter(match => !isInsideSquareTag(trimmed, match.index ?? 0))
     if (sentenceMatches.length > 0) {
       const lastMatch = sentenceMatches[sentenceMatches.length - 1]
       const matchIndex = lastMatch.index ?? limited.length - 1
@@ -148,10 +149,16 @@ export class SentenceAggregatorProcessor implements ResponseFrameProcessor {
     }
 
     const clauseMatches = [...limited.matchAll(this.clauseBoundaryChars)]
+      .filter(match => !isInsideSquareTag(trimmed, match.index ?? 0))
     if (clauseMatches.length > 0) {
       const lastMatch = clauseMatches[clauseMatches.length - 1]
       const matchIndex = lastMatch.index ?? limited.length - 1
       return leadingOffset + matchIndex + lastMatch[0].length
+    }
+
+    const tagCloseIndex = findSquareTagCloseAfter(trimmed, limited.length - 1)
+    if (tagCloseIndex !== -1) {
+      return leadingOffset + tagCloseIndex + 1
     }
 
     return leadingOffset + limited.length
@@ -306,7 +313,7 @@ export class ResponseTTSProcessor implements ResponseFrameProcessor {
       }
     }
 
-    if (this.buffer.trim().length >= this.maxChunkChars) {
+    if (countSpokenChars(this.buffer.trim()) >= this.maxChunkChars) {
       const splitIndex = this.findForcedBoundaryIndex(this.buffer)
       const candidate = this.buffer.slice(0, splitIndex).trim()
       if (this.hasUnclosedTTSCue(candidate)) {
@@ -341,7 +348,7 @@ export class ResponseTTSProcessor implements ResponseFrameProcessor {
     }
 
     const prefix = trimmed.slice(0, sentenceBoundary)
-    if (prefix.trim().length < this.minChunkChars) {
+    if (countSpokenChars(prefix.trim()) < this.minChunkChars) {
       return -1
     }
 
@@ -353,7 +360,7 @@ export class ResponseTTSProcessor implements ResponseFrameProcessor {
 
     const boundaryIndex = leadingOffset + sentenceBoundary + matched[0].length
     const candidate = text.slice(0, boundaryIndex).trim()
-    if (candidate.length > this.maxChunkChars) {
+    if (countSpokenChars(candidate) > this.maxChunkChars) {
       return this.findForcedBoundaryIndex(text)
     }
 
@@ -367,8 +374,9 @@ export class ResponseTTSProcessor implements ResponseFrameProcessor {
       return text.length
     }
 
-    const limited = Array.from(trimmed).slice(0, this.maxChunkChars).join('')
+    const limited = sliceBySpokenChars(trimmed, this.maxChunkChars)
     const sentenceMatches = [...limited.matchAll(this.sentenceEndingChars)]
+      .filter(match => !isInsideSquareTag(trimmed, match.index ?? 0))
     if (sentenceMatches.length > 0) {
       const lastMatch = sentenceMatches[sentenceMatches.length - 1]
       const matchIndex = lastMatch.index ?? limited.length - 1
@@ -376,24 +384,131 @@ export class ResponseTTSProcessor implements ResponseFrameProcessor {
     }
 
     const clauseMatches = [...limited.matchAll(this.clauseBoundaryChars)]
+      .filter(match => !isInsideSquareTag(trimmed, match.index ?? 0))
     if (clauseMatches.length > 0) {
       const lastMatch = clauseMatches[clauseMatches.length - 1]
       const matchIndex = lastMatch.index ?? limited.length - 1
       return leadingOffset + matchIndex + lastMatch[0].length
     }
 
+    const tagCloseIndex = findSquareTagCloseAfter(trimmed, limited.length - 1)
+    if (tagCloseIndex !== -1) {
+      return leadingOffset + tagCloseIndex + 1
+    }
+
     return leadingOffset + limited.length
   }
 
   private hasUnclosedTTSCue(text: string): boolean {
-    const lastOpen = text.lastIndexOf('[')
-    if (lastOpen === -1) {
-      return false
+    return getOpenSquareTagClose(text, text.length - 1) !== null
+  }
+}
+
+function isInsideSquareTag(text: string, index: number): boolean {
+  return getOpenSquareTagClose(text, index) !== null
+}
+
+function countSpokenChars(text: string): number {
+  let count = 0
+  let expectedClose: string | null = null
+
+  for (const char of Array.from(text)) {
+    if (!expectedClose && char === '[') {
+      expectedClose = ']'
+      continue
+    }
+    if (!expectedClose && char === '【') {
+      expectedClose = '】'
+      continue
+    }
+    if (!expectedClose && char === '［') {
+      expectedClose = '］'
+      continue
+    }
+    if (expectedClose) {
+      if (char === expectedClose) {
+        expectedClose = null
+      }
+      continue
     }
 
-    const lastClose = text.lastIndexOf(']')
-    return lastClose < lastOpen
+    if (char.trim()) {
+      count += 1
+    }
   }
+
+  return count
+}
+
+function sliceBySpokenChars(text: string, maxSpokenChars: number): string {
+  let spokenChars = 0
+  let expectedClose: string | null = null
+  let endIndex = 0
+
+  for (const char of Array.from(text)) {
+    endIndex += char.length
+
+    if (!expectedClose && char === '[') {
+      expectedClose = ']'
+      continue
+    }
+    if (!expectedClose && char === '【') {
+      expectedClose = '】'
+      continue
+    }
+    if (!expectedClose && char === '［') {
+      expectedClose = '］'
+      continue
+    }
+    if (expectedClose) {
+      if (char === expectedClose) {
+        expectedClose = null
+      }
+      continue
+    }
+
+    if (char.trim()) {
+      spokenChars += 1
+    }
+    if (spokenChars >= maxSpokenChars) {
+      return text.slice(0, endIndex)
+    }
+  }
+
+  return text.slice(0, Math.max(endIndex, text.length))
+}
+
+function findSquareTagCloseAfter(text: string, index: number): number {
+  const close = getOpenSquareTagClose(text, index)
+  if (!close) {
+    return -1
+  }
+
+  return text.indexOf(close, index + 1)
+}
+
+function getOpenSquareTagClose(text: string, index: number): string | null {
+  let expectedClose: string | null = null
+  for (let i = 0; i <= index && i < text.length; i += 1) {
+    const char = text[i]
+    if (char === '[') {
+      expectedClose = ']'
+      continue
+    }
+    if (char === '【') {
+      expectedClose = '】'
+      continue
+    }
+    if (char === '［') {
+      expectedClose = '］'
+      continue
+    }
+    if (expectedClose && char === expectedClose) {
+      expectedClose = null
+    }
+  }
+
+  return expectedClose
 }
 
 export interface ResponseDisplayProcessorOptions {
