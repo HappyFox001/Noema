@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/banner.png" alt="Her-Text banner" width="900" />
+  <img src="./assets/readme_logo.png" alt="Her-Text banner" width="900" />
 </p>
 
 <p align="center">
