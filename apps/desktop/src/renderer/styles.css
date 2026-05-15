@@ -2623,7 +2623,7 @@ body.theme-day .settings-nav::after {
 }
 
 body.theme-day .settings-brand-logo {
-  filter: drop-shadow(0 0 15px rgba(20, 120, 140, 0.18));
+  filter: invert(1) drop-shadow(0 0 15px rgba(20, 120, 140, 0.18));
 }
 
 body.theme-day .nav-item {
@@ -5741,7 +5741,11 @@ body {
 }
 
 .settings-brand-logo {
-  filter: grayscale(1) brightness(1.06) drop-shadow(0 0 22px rgba(255, 255, 255, 0.08));
+  filter: drop-shadow(0 0 22px rgba(255, 255, 255, 0.08));
+}
+
+body.theme-day .settings-brand-logo {
+  filter: invert(1) drop-shadow(0 0 15px rgba(20, 120, 140, 0.18));
 }
 
 .nav-item {
