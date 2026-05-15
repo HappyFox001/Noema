@@ -227,6 +227,10 @@ export class FishTTSOfficial implements TTSProvider, InterruptionHandler {
           return
         }
         const normalizedError = err instanceof Error ? err : new Error(String(err))
+        if (this.shouldIgnoreWebSocketError(normalizedError)) {
+          console.warn('[FishTTSOfficial] Ignoring WebSocket error during local close:', normalizedError.message)
+          return
+        }
         console.error('[FishTTSOfficial] WebSocket error:', normalizedError)
         this.onEvent?.({ type: 'error', error: normalizedError })
       })
@@ -356,6 +360,14 @@ export class FishTTSOfficial implements TTSProvider, InterruptionHandler {
     }
 
     return undefined
+  }
+
+  private shouldIgnoreWebSocketError(error: Error): boolean {
+    if (!this._closingPromise && !this._isInterrupted) {
+      return false
+    }
+
+    return error.message.includes('closed before the connection was established')
   }
 
   private resetStreamingState(): void {

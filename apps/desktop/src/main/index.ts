@@ -2353,6 +2353,10 @@ function attachTTSProviderEvents(provider: TTSProvider, providerGeneration: numb
         break
       case 'error':
         console.log('[TTS] Error event:', event.error.message)
+        if (isRecoverableTTSError(event.error)) {
+          console.warn('[TTS] Recoverable provider error ignored:', event.error.message)
+          break
+        }
         ttsAvailable = false
         void outputFramePipeline.queueFrame({
           type: 'tts_error',
@@ -2364,6 +2368,10 @@ function attachTTSProviderEvents(provider: TTSProvider, providerGeneration: numb
         break
     }
   })
+}
+
+function isRecoverableTTSError(error: Error): boolean {
+  return error.message.includes('closed before the connection was established')
 }
 
 async function initializeTTSProvider(): Promise<void> {
@@ -3205,7 +3213,11 @@ async function runConversationTurn(
           console.log(`[Main] TTS text frame #${turnId}:${currentTTSChunkSequence}, pushing:`, JSON.stringify(textFrame))
           displayController.pushTTSChunkText(displayText)
         },
-        onError: () => {
+        onError: (error) => {
+          if (isRecoverableTTSError(error)) {
+            console.warn('[TTS] Recoverable frame error ignored:', error.message)
+            return
+          }
           ttsAvailable = false
           shouldUseTTS = false
         },
