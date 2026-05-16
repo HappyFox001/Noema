@@ -630,6 +630,7 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'taskPanel.title': '任务',
     'nav.about': '关于',
     'nav.memory': '记忆',
+    'nav.learning': '学习',
     'nav.personality': '人格',
     'nav.plugins': '插件',
     'nav.system': '系统',
@@ -665,6 +666,15 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'memory.savedInfo': '已保存信息',
     'memory.summaries': '对话摘要',
     'memory.title': '记忆管理',
+    'learning.title': '自学习',
+    'learning.desc': '查看 runtime events、反思记录、候选学习资产和 specialized agents。',
+    'learning.reflect': '反思最近事件',
+    'learning.events': '事件',
+    'learning.reflections': '反思',
+    'learning.candidates': '候选',
+    'learning.assets': '资产',
+    'learning.agents': 'Agents',
+    'learning.empty': '暂无数据',
     'personality.addFile': '添加角色文件',
     'personality.addFileDesc': '选择外部 .yml/.yaml 文件，校验通过后加入人格列表',
     'personality.current': '当前人格',
@@ -756,6 +766,7 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'taskPanel.title': 'Task',
     'nav.about': 'About',
     'nav.memory': 'Memory',
+    'nav.learning': 'Learning',
     'nav.personality': 'Persona',
     'nav.plugins': 'Plugins',
     'nav.system': 'System',
@@ -791,6 +802,15 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'memory.savedInfo': 'Saved Info',
     'memory.summaries': 'Conversation Summaries',
     'memory.title': 'Memory',
+    'learning.title': 'Self-Learning',
+    'learning.desc': 'Inspect runtime events, reflections, learning candidates, and specialized agents.',
+    'learning.reflect': 'Reflect Recent Events',
+    'learning.events': 'Events',
+    'learning.reflections': 'Reflections',
+    'learning.candidates': 'Candidates',
+    'learning.assets': 'Assets',
+    'learning.agents': 'Agents',
+    'learning.empty': 'No data',
     'personality.addFile': 'Add Role File',
     'personality.addFileDesc': 'Choose an external .yml/.yaml file and add it after validation',
     'personality.current': 'Current Personality',
@@ -2479,7 +2499,10 @@ const addPersonalityFileBtn = document.getElementById('add-personality-file-btn'
 const pluginsList = document.getElementById('plugins-list') as HTMLElement
 const logsList = document.getElementById('logs-list') as HTMLElement
 const clearLogsBtn = document.getElementById('clear-logs-btn') as HTMLButtonElement
+const learningOverview = document.getElementById('learning-overview') as HTMLElement
+const learningReflectBtn = document.getElementById('learning-reflect-btn') as HTMLButtonElement
 let memoryRefreshPromise: Promise<void> | null = null
+let learningRefreshPromise: Promise<void> | null = null
 let cachedPlugins: PluginInfo[] = []
 let logEntries: AppLogEntry[] = []
 let activeLogLevel: AppLogLevel | 'all' = 'all'
@@ -2804,6 +2827,181 @@ function isLogsSectionActive(): boolean {
   return document.getElementById('section-logs')?.classList.contains('active') === true
 }
 
+async function refreshLearningSection(): Promise<void> {
+  if (learningRefreshPromise) {
+    return learningRefreshPromise
+  }
+
+  learningOverview.innerHTML = `<div class="profile-loading">${escapeHtml(t('common.loading'))}</div>`
+  learningRefreshPromise = window.electronAPI.getLearningOverview()
+    .then((result) => {
+      if (!result.success) {
+        learningOverview.innerHTML = `<div class="profile-loading">Learning load failed: ${escapeHtml(result.error ?? 'unknown error')}</div>`
+        return
+      }
+      renderLearningOverview(result)
+    })
+    .catch((error) => {
+      learningOverview.innerHTML = `<div class="profile-loading">Learning load failed: ${escapeHtml(error instanceof Error ? error.message : String(error))}</div>`
+    })
+    .finally(() => {
+      learningRefreshPromise = null
+    })
+
+  return learningRefreshPromise
+}
+
+function renderLearningOverview(result: {
+  events?: any[]
+  reflections?: any[]
+  candidates?: any[]
+  assets?: any[]
+  agents?: any[]
+}): void {
+  const events = result.events ?? []
+  const reflections = result.reflections ?? []
+  const candidates = result.candidates ?? []
+  const assets = result.assets ?? []
+  const agents = result.agents ?? []
+
+  learningOverview.innerHTML = [
+    renderLearningGroup(t('learning.events'), events.slice(-12).reverse(), renderLearningEvent),
+    renderLearningGroup(t('learning.reflections'), reflections, renderReflection),
+    renderLearningGroup(t('learning.candidates'), candidates, renderCandidate),
+    renderLearningGroup(t('learning.assets'), assets, renderLearningAsset),
+    renderLearningGroup(t('learning.agents'), agents, renderRuntimeAgent),
+  ].join('')
+
+  learningOverview.querySelectorAll<HTMLButtonElement>('[data-learning-deploy]').forEach(button => {
+    button.addEventListener('click', async () => {
+      const candidateId = button.dataset.learningDeploy
+      const kind = button.dataset.learningKind
+      if (!candidateId) return
+      button.disabled = true
+      const scope = kind === 'agent' ? 'agent' : 'task'
+      const response = await window.electronAPI.deployLearningCandidate({ candidateId, scope, status: 'draft' })
+      if (!response.success) {
+        showNotice(`Deploy failed: ${response.error ?? 'unknown error'}`)
+      }
+      await refreshLearningSection()
+    })
+  })
+
+  learningOverview.querySelectorAll<HTMLButtonElement>('[data-asset-status]').forEach(button => {
+    button.addEventListener('click', async () => {
+      const id = button.dataset.assetStatus
+      const status = button.dataset.status as 'draft' | 'active' | 'disabled' | 'archived' | undefined
+      if (!id || !status) return
+      button.disabled = true
+      const response = await window.electronAPI.setLearningAssetStatus(id, status)
+      if (!response.success) {
+        showNotice(`Update failed: ${response.error ?? 'unknown error'}`)
+      }
+      await refreshLearningSection()
+    })
+  })
+
+  learningOverview.querySelectorAll<HTMLButtonElement>('[data-agent-status]').forEach(button => {
+    button.addEventListener('click', async () => {
+      const id = button.dataset.agentStatus
+      const status = button.dataset.status as 'draft' | 'active' | 'disabled' | undefined
+      if (!id || !status) return
+      button.disabled = true
+      const response = await window.electronAPI.setRuntimeAgentStatus(id, status)
+      if (!response.success) {
+        showNotice(`Update failed: ${response.error ?? 'unknown error'}`)
+      }
+      await refreshLearningSection()
+    })
+  })
+}
+
+function renderLearningGroup(title: string, items: any[], renderItem: (item: any) => string): string {
+  return `
+    <div class="plugin-card">
+      <div class="plugin-card-header">
+        <div>
+          <div class="plugin-name">${escapeHtml(title)}</div>
+          <div class="plugin-description">${items.length} items</div>
+        </div>
+      </div>
+      <div class="plugin-admin-section">
+        ${items.length ? items.map(renderItem).join('') : `<div class="config-empty">${escapeHtml(t('learning.empty'))}</div>`}
+      </div>
+    </div>
+  `
+}
+
+function renderLearningEvent(event: any): string {
+  return renderLearningRow(event.name ?? 'event', [
+    event.taskId ? `task ${event.taskId}` : '',
+    event.turnId ? `turn ${event.turnId}` : '',
+    formatTimestamp(event.timestamp),
+  ].filter(Boolean).join(' · '))
+}
+
+function renderReflection(item: any): string {
+  return renderLearningRow(item.summary ?? item.id ?? 'reflection', [
+    `${(item.sourceEventIds ?? []).length} events`,
+    formatTimestamp(item.createdAt),
+  ].join(' · '))
+}
+
+function renderCandidate(item: any): string {
+  return `
+    <div class="learning-row">
+      <div class="learning-row-main">
+        <div class="learning-row-title">${escapeHtml(item.kind ?? 'candidate')} · ${escapeHtml(item.status ?? '')}</div>
+        <div class="learning-row-desc">${escapeHtml(item.reason ?? item.id ?? '')}</div>
+      </div>
+      <button class="settings-btn" type="button" data-learning-deploy="${escapeHtml(item.id ?? '')}" data-learning-kind="${escapeHtml(item.kind ?? '')}">Draft</button>
+    </div>
+  `
+}
+
+function renderLearningAsset(item: any): string {
+  const nextStatus = item.status === 'active' ? 'disabled' : 'active'
+  return `
+    <div class="learning-row">
+      <div class="learning-row-main">
+        <div class="learning-row-title">${escapeHtml(item.kind ?? 'asset')} · ${escapeHtml(item.status ?? '')}</div>
+        <div class="learning-row-desc">${escapeHtml(item.scope ?? item.id ?? '')}</div>
+      </div>
+      <button class="settings-btn" type="button" data-asset-status="${escapeHtml(item.id ?? '')}" data-status="${nextStatus}">${escapeHtml(nextStatus)}</button>
+    </div>
+  `
+}
+
+function renderRuntimeAgent(item: any): string {
+  const nextStatus = item.status === 'active' ? 'disabled' : 'active'
+  return `
+    <div class="learning-row">
+      <div class="learning-row-main">
+        <div class="learning-row-title">${escapeHtml(item.name ?? item.id ?? 'agent')} · ${escapeHtml(item.mode ?? '')} · ${escapeHtml(item.status ?? '')}</div>
+        <div class="learning-row-desc">${escapeHtml(item.purpose ?? '')}</div>
+      </div>
+      <button class="settings-btn" type="button" data-agent-status="${escapeHtml(item.id ?? '')}" data-status="${nextStatus}">${escapeHtml(nextStatus)}</button>
+    </div>
+  `
+}
+
+function renderLearningRow(title: string, description: string): string {
+  return `
+    <div class="learning-row">
+      <div class="learning-row-main">
+        <div class="learning-row-title">${escapeHtml(title)}</div>
+        <div class="learning-row-desc">${escapeHtml(description)}</div>
+      </div>
+    </div>
+  `
+}
+
+function formatTimestamp(value: unknown): string {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? new Date(value).toLocaleString()
+    : ''
+}
+
 // Context menu actions
 contextMenu.addEventListener('click', (e) => {
   const target = e.target as HTMLElement
@@ -2833,6 +3031,9 @@ function switchSettingsSection(section: string): void {
 
   if (section === 'memory') {
     void refreshMemorySection()
+  }
+  if (section === 'learning') {
+    void refreshLearningSection()
   }
   if (section === 'system' || section === 'models') {
     void loadSystemConfig()
@@ -3164,6 +3365,19 @@ clearLogsBtn.addEventListener('click', async () => {
   await window.electronAPI.clearLogs()
   logEntries = []
   renderLogs()
+})
+
+learningReflectBtn.addEventListener('click', async () => {
+  learningReflectBtn.disabled = true
+  try {
+    const response = await window.electronAPI.reflectRecentLearning()
+    if (!response.success) {
+      showNotice(`Reflect failed: ${response.error ?? 'unknown error'}`)
+    }
+    await refreshLearningSection()
+  } finally {
+    learningReflectBtn.disabled = false
+  }
 })
 
 window.electronAPI.onLogEntry((entry) => {

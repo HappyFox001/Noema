@@ -6289,3 +6289,35 @@ body.theme-day .tts-button {
   color: rgba(248, 248, 245, 0.96);
   box-shadow: 0 14px 34px rgba(60, 66, 70, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
+
+.learning-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--liquid-line);
+}
+
+.learning-row:first-child {
+  border-top: 0;
+}
+
+.learning-row-main {
+  min-width: 0;
+}
+
+.learning-row-title {
+  color: var(--liquid-text);
+  font-size: 13px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.learning-row-desc {
+  margin-top: 3px;
+  color: var(--liquid-muted);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}

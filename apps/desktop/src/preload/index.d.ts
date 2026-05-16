@@ -170,6 +170,40 @@ declare global {
         error?: string
       }>
 
+      getLearningOverview: () => Promise<{
+        success: boolean
+        error?: string
+        events?: any[]
+        reflections?: any[]
+        candidates?: any[]
+        assets?: any[]
+        agents?: any[]
+      }>
+
+      reflectRecentLearning: () => Promise<{
+        success: boolean
+        error?: string
+        result?: any
+      }>
+
+      deployLearningCandidate: (payload: {
+        candidateId: string
+        scope: string
+        status?: 'draft' | 'active'
+      }) => Promise<{ success: boolean; error?: string; asset?: any }>
+
+      setLearningAssetStatus: (
+        id: string,
+        status: 'draft' | 'active' | 'disabled' | 'archived'
+      ) => Promise<{ success: boolean; error?: string }>
+
+      deleteLearningAsset: (id: string) => Promise<{ success: boolean; error?: string }>
+
+      setRuntimeAgentStatus: (
+        id: string,
+        status: 'draft' | 'active' | 'disabled'
+      ) => Promise<{ success: boolean; error?: string }>
+
       getPersonality: () => Promise<any>
       getStats: () => Promise<any>
       listLogs: (limit?: number) => Promise<{

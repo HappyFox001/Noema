@@ -76,6 +76,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
   clearAccountInputs: () =>
     ipcRenderer.invoke('memory:clearAccountInputs'),
 
+  getLearningOverview: () =>
+    ipcRenderer.invoke('learning:overview'),
+
+  reflectRecentLearning: () =>
+    ipcRenderer.invoke('learning:reflectRecent'),
+
+  deployLearningCandidate: (payload) =>
+    ipcRenderer.invoke('learning:deployCandidate', payload),
+
+  setLearningAssetStatus: (id, status) =>
+    ipcRenderer.invoke('learning:setAssetStatus', id, status),
+
+  deleteLearningAsset: (id) =>
+    ipcRenderer.invoke('learning:deleteAsset', id),
+
+  setRuntimeAgentStatus: (id, status) =>
+    ipcRenderer.invoke('learning:setAgentStatus', id, status),
+
   getPersonality: () =>
     ipcRenderer.invoke('sdk:getPersonality'),
 

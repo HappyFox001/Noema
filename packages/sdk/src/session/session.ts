@@ -28,6 +28,7 @@ import {
 } from './runtime-adapter.js'
 import type { TaskIntent } from '../dialogue/processors.js'
 import type { TaskPlan, TaskRunState } from './task-plan.js'
+import type { RuntimeEventBus } from '../runtime/index.js'
 
 export type SessionTaskStatus = 'idle' | 'running' | 'completed' | 'errored'
 
@@ -90,6 +91,13 @@ interface TaskAdmissionDecision {
   reason: string
 }
 
+interface TaskSessionRuntimeHooks extends Pick<
+  TaskRuntimeHooks,
+  'onUserInputRequest' | 'onRunStateChanged' | 'onPlanUpdated' | 'onStepUpdated' | 'resolveToolStrategyHints'
+> {
+  runtimeEvents?: RuntimeEventBus
+}
+
 const TASK_SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS task_runs (
   task_id TEXT PRIMARY KEY,
@@ -150,7 +158,7 @@ export class TaskSession {
     private agent: AgentCore,
     private context: ContextManager,
     storageDir: string,
-    private runtimeHooks: Pick<TaskRuntimeHooks, 'onUserInputRequest' | 'onRunStateChanged' | 'onPlanUpdated' | 'onStepUpdated' | 'resolveToolStrategyHints'> = {},
+    private runtimeHooks: TaskSessionRuntimeHooks = {},
     private taskRuntimeConfig: TaskRuntimeConfig = {}
   ) {
     const resolvedStorageDir = isAbsolute(storageDir)
@@ -328,6 +336,14 @@ export class TaskSession {
       plan: null,
       finalSummary: undefined
     }
+    this.runtimeHooks.runtimeEvents?.emit({
+      name: 'task.started',
+      taskId,
+      payload: {
+        taskDescription,
+        originalUserInput,
+      },
+    })
     await this.persistSnapshot()
 
     const runPromise = this.executeTaskRun(
@@ -379,17 +395,47 @@ export class TaskSession {
       onRunStateChanged: (state) => {
         this.snapshot.runState = state
         this.persistSnapshot()
+        this.runtimeHooks.runtimeEvents?.emit({
+          name: 'task.run_state.changed',
+          taskId: this.snapshot.taskId ?? undefined,
+          payload: {
+            state,
+            taskDescription,
+            originalUserInput,
+          },
+        })
         this.runtimeHooks.onRunStateChanged?.(state, taskMeta)
       },
       onPlanUpdated: (plan) => {
         this.snapshot.plan = cloneTaskPlan(plan)
         this.persistSnapshot()
+        this.runtimeHooks.runtimeEvents?.emit({
+          name: 'task.plan.updated',
+          taskId: this.snapshot.taskId ?? undefined,
+          payload: {
+            plan: cloneTaskPlan(plan),
+            taskDescription,
+            originalUserInput,
+          },
+        })
         this.runtimeHooks.onPlanUpdated?.(cloneTaskPlan(plan), taskMeta)
       },
       onStepUpdated: (step, plan) => {
         this.snapshot.plan = cloneTaskPlan(plan)
         this.persistSnapshot()
-        this.runtimeHooks.onStepUpdated?.(JSON.parse(JSON.stringify(step)) as typeof step, cloneTaskPlan(plan), taskMeta)
+        const stepSnapshot = JSON.parse(JSON.stringify(step)) as typeof step
+        const planSnapshot = cloneTaskPlan(plan)
+        this.runtimeHooks.runtimeEvents?.emit({
+          name: 'task.step.updated',
+          taskId: this.snapshot.taskId ?? undefined,
+          payload: {
+            step: stepSnapshot,
+            plan: planSnapshot,
+            taskDescription,
+            originalUserInput,
+          },
+        })
+        this.runtimeHooks.onStepUpdated?.(stepSnapshot, planSnapshot, taskMeta)
       },
       onCompact: (summary) => {
         this.snapshot.compactSummary = summary
@@ -424,6 +470,32 @@ export class TaskSession {
       this.snapshot.plan = cloneTaskPlan(result.plan)
     }
     this.snapshot.finalSummary = result.finalMessage
+    if (result.success) {
+      this.runtimeHooks.runtimeEvents?.emit({
+        name: 'task.completed',
+        taskId: this.snapshot.taskId ?? undefined,
+        payload: {
+          taskDescription,
+          originalUserInput,
+          finalMessage: result.finalMessage,
+          iterations: result.iterations,
+          toolCalls: result.toolCalls,
+        },
+      })
+    } else {
+      this.runtimeHooks.runtimeEvents?.emit({
+        name: 'task.failed',
+        taskId: this.snapshot.taskId ?? undefined,
+        payload: {
+          taskDescription,
+          originalUserInput,
+          finalMessage: result.finalMessage,
+          ...(result.error ? { error: result.error } : {}),
+          iterations: result.iterations,
+          toolCalls: result.toolCalls,
+        },
+      })
+    }
     this.persistSnapshot()
     return result
   }

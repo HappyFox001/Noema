@@ -3663,6 +3663,105 @@ ipcMain.handle('memory:clearAccountInputs', async () => {
   }
 })
 
+ipcMain.handle('learning:overview', async () => {
+  if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
+
+  try {
+    const [
+      events,
+      reflections,
+      pendingCandidates,
+      assets,
+      agents,
+    ] = await Promise.all([
+      sdkInstance.learning.listEvents(80),
+      sdkInstance.learning.listReflections(20),
+      sdkInstance.learning.listCandidates(undefined, 50),
+      sdkInstance.learning.listAssets(undefined, 80),
+      sdkInstance.agentSociety.listAgents(),
+    ])
+    return {
+      success: true,
+      events,
+      reflections,
+      candidates: pendingCandidates,
+      assets,
+      agents,
+    }
+  } catch (error: any) {
+    console.error('[Learning] Failed to load overview:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('learning:reflectRecent', async () => {
+  if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
+
+  try {
+    const result = await sdkInstance.reflection.reflectRecentEvents()
+    return { success: true, result }
+  } catch (error: any) {
+    console.error('[Learning] Failed to reflect recent events:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('learning:deployCandidate', async (_event, payload: {
+  candidateId: string
+  scope: string
+  status?: 'draft' | 'active'
+}) => {
+  if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
+
+  try {
+    const asset = await sdkInstance.learning.deployCandidate({
+      candidateId: payload.candidateId,
+      scope: payload.scope,
+      status: payload.status ?? 'draft',
+    })
+    return { success: true, asset }
+  } catch (error: any) {
+    console.error('[Learning] Failed to deploy candidate:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('learning:setAssetStatus', async (_event, id: string, status: 'draft' | 'active' | 'disabled' | 'archived') => {
+  if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
+
+  try {
+    await sdkInstance.learning.setAssetStatus(id, status)
+    return { success: true }
+  } catch (error: any) {
+    console.error('[Learning] Failed to set asset status:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('learning:deleteAsset', async (_event, id: string) => {
+  if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
+
+  try {
+    await sdkInstance.learning.deleteAsset(id)
+    return { success: true }
+  } catch (error: any) {
+    console.error('[Learning] Failed to delete asset:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('learning:setAgentStatus', async (_event, id: string, status: 'draft' | 'active' | 'disabled') => {
+  if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
+
+  try {
+    await sdkInstance.agentSociety.setAgentStatus(id, status)
+    return { success: true }
+  } catch (error: any) {
+    console.error('[Learning] Failed to set agent status:', error)
+    return { success: false, error: error.message }
+  }
+})
+
 ipcMain.handle('sdk:getPersonality', async () => {
   if (!sdkInstance) return null
 

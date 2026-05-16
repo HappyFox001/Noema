@@ -6,7 +6,10 @@
  */
 import type { UserInput } from '@her-text/types'
 import type { LLMProvider } from '@her-text/core'
+import { generateId } from '@her-text/core'
 import type { MemoryEngine } from '../memory/index.js'
+import type { LearningAssetStore } from '../learning/store.js'
+import { selectExpressionRoutines } from '../learning/routine-policy.js'
 import type { PersonalityEngine } from '../personality/index.js'
 import type { AgentCore } from '../agent/index.js'
 import { ContextManager, type ResponseItem, type TruncationPolicy } from '../context/index.js'
@@ -29,6 +32,7 @@ import {
   type SDKPlugin,
   type TextTransformTarget,
 } from '../plugins/index.js'
+import type { RuntimeEventBus } from '../runtime/index.js'
 
 
 export interface StreamOptions {
@@ -76,6 +80,8 @@ export interface TTSChunkConfig {
 export interface DialogueOrchestratorConfig {
   
   ttsChunk?: TTSChunkConfig
+  runtimeEvents?: RuntimeEventBus
+  learning?: LearningAssetStore
   taskRuntime?: TaskRuntimeConfig
   onTaskUserInputRequest?: TaskRuntimeHooks['onUserInputRequest']
   onTaskRunStateChanged?: TaskRuntimeHooks['onRunStateChanged']
@@ -116,6 +122,8 @@ export class DialogueOrchestrator {
   private llmProcessor: LLMProcessor
   private toolProcessor: ToolProcessor
   private pluginManager: PluginManager
+  private runtimeEvents?: RuntimeEventBus
+  private learning?: LearningAssetStore
   private activeTaskProgressContext: ActiveTaskProgressContext | null = null
 
   private truncationPolicy: TruncationPolicy = {
@@ -136,8 +144,11 @@ export class DialogueOrchestrator {
     plugins: SDKPlugin[] = []
   ) {
     this.context = new ContextManager()
+    this.runtimeEvents = config?.runtimeEvents
+    this.learning = config?.learning
     this.pluginManager = new PluginManager(plugins)
     this.taskSession = new TaskSession(this.taskLLM, memory, personality, agent, this.context, storageDir, {
+      runtimeEvents: config?.runtimeEvents,
       onUserInputRequest: config?.onTaskUserInputRequest,
       onRunStateChanged: (state, task) => {
         config?.onTaskRunStateChanged?.(state, task)
@@ -203,6 +214,16 @@ export class DialogueOrchestrator {
     options?: StreamOptions
   ): AsyncGenerator<string> {
     throwIfAborted(options?.signal)
+    const turnId = generateId()
+    this.runtimeEvents?.emit({
+      name: 'interaction.turn.started',
+      turnId,
+      correlationId: turnId,
+      payload: {
+        userInput: input.text,
+        inputTimestamp: input.timestamp,
+      },
+    })
     const contextCheckpoint = this.context.createCheckpoint()
     const turnContext = await this.contextAggregator.prepareUserTurn(input, options?.signal)
     const pluginRuntime = options?.pluginContext ?? {}
@@ -213,8 +234,8 @@ export class DialogueOrchestrator {
     })
 
     try {
-      const firstPromptAdditions = this.pluginManager.getPromptAdditions({
-        runtime: pluginRuntime,
+      const firstPromptAdditions = await this.getPromptAdditionsWithRoutines({
+        pluginRuntime,
         phase: 'reply',
         detectTask: true,
         hasTools: turnContext.hasTools,
@@ -232,6 +253,17 @@ export class DialogueOrchestrator {
       })
 
       throwIfAborted(options?.signal)
+      this.runtimeEvents?.emit({
+        name: 'dialogue.intent.detected',
+        turnId,
+        correlationId: turnId,
+        payload: {
+          hasTask: firstResult.hasTask,
+          ...(firstResult.taskDescription ? { taskDescription: firstResult.taskDescription } : {}),
+          hasTools: turnContext.hasTools,
+          ...(firstResult.emotionTag ? { emotionTag: firstResult.emotionTag } : {}),
+        },
+      })
       await options?.onPhaseStart?.('reply')
 
       for await (const chunk of firstResult.stream) {
@@ -245,6 +277,16 @@ export class DialogueOrchestrator {
       })
       throwIfAborted(options?.signal)
       await options?.onPhaseEnd?.('reply', firstResult.reply)
+      this.runtimeEvents?.emit({
+        name: 'dialogue.reply.completed',
+        turnId,
+        correlationId: turnId,
+        payload: {
+          phase: 'reply',
+          text: firstResult.reply,
+          ...(firstResult.emotionTag ? { emotionTag: firstResult.emotionTag } : {}),
+        },
+      })
       throwIfAborted(options?.signal)
 
       let combinedReply = this.transformText('memory', firstResult.reply, pluginRuntime)
@@ -315,8 +357,8 @@ export class DialogueOrchestrator {
         console.log(taskResult.contextResult)
         console.log('==========================================\n')
 
-        const secondPromptAdditions = this.pluginManager.getPromptAdditions({
-          runtime: pluginRuntime,
+        const secondPromptAdditions = await this.getPromptAdditionsWithRoutines({
+          pluginRuntime,
           phase: 'task_result',
           detectTask: false,
           hasTools: turnContext.hasTools,
@@ -347,6 +389,16 @@ export class DialogueOrchestrator {
         })
         throwIfAborted(options?.signal)
         await options?.onPhaseEnd?.('task_result', secondResult.reply)
+        this.runtimeEvents?.emit({
+          name: 'dialogue.reply.completed',
+          turnId,
+          correlationId: turnId,
+          payload: {
+            phase: 'task_result',
+            text: secondResult.reply,
+            ...(secondResult.emotionTag ? { emotionTag: secondResult.emotionTag } : {}),
+          },
+        })
         throwIfAborted(options?.signal)
 
         combinedReply = [
@@ -366,6 +418,15 @@ export class DialogueOrchestrator {
         timestamp: input.timestamp,
         assistantText: combinedReply,
       })
+      this.runtimeEvents?.emit({
+        name: 'interaction.turn.completed',
+        turnId,
+        correlationId: turnId,
+        payload: {
+          userInput: input.text,
+          assistantText: combinedReply,
+        },
+      })
       this.context.recordItems([assistantMessage])
 
       scheduleAsyncTask(async () => {
@@ -383,6 +444,15 @@ export class DialogueOrchestrator {
         (error instanceof Error && error.name === 'APIUserAbortError')
       ) {
         this.context.restoreCheckpoint(contextCheckpoint)
+        this.runtimeEvents?.emit({
+          name: 'interaction.turn.aborted',
+          turnId,
+          correlationId: turnId,
+          payload: {
+            userInput: input.text,
+            preservedUserInput: Boolean(options?.preserveUserInputOnAbort),
+          },
+        })
         if (options?.preserveUserInputOnAbort) {
           this.recordInterruptedTurn(input, options, pluginRuntime)
         }
@@ -458,8 +528,8 @@ export class DialogueOrchestrator {
       .map(item => item.title)
       .slice(0, 3)
 
-    const promptAdditions = this.pluginManager.getPromptAdditions({
-      runtime: context.pluginRuntime,
+    const promptAdditions = await this.getPromptAdditionsWithRoutines({
+      pluginRuntime: context.pluginRuntime,
       phase: 'task_progress',
       detectTask: false,
       hasTools: context.turnContext.hasTools,
@@ -486,6 +556,14 @@ export class DialogueOrchestrator {
       throwIfAborted(context.streamOptions?.signal)
     }
     await context.streamOptions?.onPhaseEnd?.('task_progress', result.reply)
+    this.runtimeEvents?.emit({
+      name: 'dialogue.reply.completed',
+      payload: {
+        phase: 'task_progress',
+        text: result.reply,
+        ...(result.emotionTag ? { emotionTag: result.emotionTag } : {}),
+      },
+    })
   }
 
   private async emitExpression(
@@ -504,6 +582,31 @@ export class DialogueOrchestrator {
     if (frame) {
       await options?.onExpression?.(frame)
     }
+  }
+
+  private async getPromptAdditionsWithRoutines(options: {
+    pluginRuntime: PluginRuntimeContext
+    phase: 'reply' | 'task_progress' | 'task_result'
+    detectTask: boolean
+    hasTools: boolean
+  }): Promise<string[]> {
+    const additions = this.pluginManager.getPromptAdditions({
+      runtime: options.pluginRuntime,
+      phase: options.phase,
+      detectTask: options.detectTask,
+      hasTools: options.hasTools,
+    })
+
+    if (!this.learning) {
+      return additions
+    }
+
+    const scope = options.phase === 'task_progress' || options.phase === 'task_result'
+      ? 'output'
+      : 'dialogue'
+    const routineAssets = await this.learning.listActiveRoutines(scope)
+    const routineAddition = selectExpressionRoutines(routineAssets, scope).promptAddition
+    return routineAddition ? [...additions, routineAddition] : additions
   }
 
   private async resolveTaskContext(
@@ -619,7 +722,6 @@ export class DialogueOrchestrator {
       task: this.taskSession.getSnapshot()
     }
   }
-
 }
 
 export * from '../context/index.js'

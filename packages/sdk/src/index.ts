@@ -4,12 +4,16 @@ import { PersonalityEngine } from './personality/index.js'
 import { AgentCore } from './agent/index.js'
 import { DialogueOrchestrator } from './dialogue/index.js'
 import { ContextManager } from './context/index.js'
+import { AgentSocietyRuntime } from './agent-society/index.js'
+import { LearningAssetStore, PersonaContinuityPolicy, ReflectionEngine } from './learning/index.js'
 import { createLLMProvider, type LLMProvider } from '@her-text/core'
 import type { PluginRuntimeContext, SDKPlugin, TextTransformTarget } from './plugins/index.js'
 import type { TaskRuntimeHooks } from './session/task.js'
+import { RuntimeEventBus, type RuntimeEventHandler } from './runtime/index.js'
 
 export interface HerTextSDKInitializeOptions {
   plugins?: SDKPlugin[]
+  onRuntimeEvent?: RuntimeEventHandler
   onTaskUserInputRequest?: TaskRuntimeHooks['onUserInputRequest']
   onTaskRunStateChanged?: TaskRuntimeHooks['onRunStateChanged']
   onTaskPlanUpdated?: TaskRuntimeHooks['onPlanUpdated']
@@ -21,6 +25,11 @@ export class HerTextSDK {
   public memory: MemoryEngine
   public personality: PersonalityEngine
   public agent: AgentCore
+  public runtimeEvents: RuntimeEventBus
+  public learning: LearningAssetStore
+  public reflection: ReflectionEngine
+  public personaContinuity: PersonaContinuityPolicy
+  public agentSociety: AgentSocietyRuntime
   private dialogue: DialogueOrchestrator
   private llm: LLMProvider
   private taskLLm: LLMProvider
@@ -32,6 +41,22 @@ export class HerTextSDK {
     this.memory = new MemoryEngine(config.memory, this.llm)
     this.personality = new PersonalityEngine(config.personality)
     this.agent = new AgentCore()
+    this.runtimeEvents = new RuntimeEventBus()
+    this.learning = new LearningAssetStore(config.memory.storageDir)
+    this.reflection = new ReflectionEngine(this.learning)
+    this.personaContinuity = new PersonaContinuityPolicy()
+    this.agentSociety = new AgentSocietyRuntime({
+      storageDir: config.memory.storageDir,
+      agentCore: this.agent,
+      memory: this.memory,
+      runtimeEvents: this.runtimeEvents,
+    })
+    if (options.onRuntimeEvent) {
+      this.runtimeEvents.subscribe(options.onRuntimeEvent)
+    }
+    this.runtimeEvents.subscribe((event) => {
+      this.learning.recordRuntimeEvent(event)
+    })
 
     this.dialogue = new DialogueOrchestrator(
       this.llm,
@@ -41,6 +66,8 @@ export class HerTextSDK {
       this.agent,
       config.memory.storageDir,
       {
+        runtimeEvents: this.runtimeEvents,
+        learning: this.learning,
         taskRuntime: config.taskRuntime,
         onTaskUserInputRequest: options.onTaskUserInputRequest,
         onTaskRunStateChanged: options.onTaskRunStateChanged,
@@ -57,6 +84,8 @@ export class HerTextSDK {
   ): Promise<HerTextSDK> {
     const sdk = new HerTextSDK(config, options)
     await sdk.memory.initialize()
+    await sdk.learning.initialize()
+    await sdk.agentSociety.initialize()
     await sdk.dialogue.initialize()
     return sdk
   }
@@ -118,6 +147,8 @@ export class HerTextSDK {
   async shutdown(): Promise<void> {
     await this.dialogue.shutdown()
     await this.memory.shutdown()
+    await this.learning.shutdown()
+    await this.agentSociety.shutdown()
   }
 }
 
@@ -137,3 +168,6 @@ export * from './session/execution-state.js'
 export * from './vad/index.js'
 export * from './turn/index.js'
 export * from './plugins/index.js'
+export * from './runtime/index.js'
+export * from './learning/index.js'
+export * from './agent-society/index.js'
