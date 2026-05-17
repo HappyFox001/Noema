@@ -15,6 +15,7 @@ import {
 import { createLLMProvider, type LLMProvider } from '@her-text/core'
 import type { PluginRuntimeContext, SDKPlugin, TextTransformTarget } from './plugins/index.js'
 import type { TaskRuntimeHooks } from './session/task.js'
+import { wrapTaskLLMWithRuntimeTransport } from './session/cli-task-llm.js'
 import {
   RuntimeEventBus,
   RuntimeJobManager,
@@ -51,7 +52,10 @@ export class HerTextSDK {
 
   private constructor(config: SDKConfig, options: HerTextSDKInitializeOptions = {}) {
     this.llm = createLLMProvider(config.llm, { defaultReasoningMode: 'minimal-or-none' })
-    this.taskLLm = createLLMProvider(config.taskLLM ?? config.llm)
+    this.taskLLm = wrapTaskLLMWithRuntimeTransport(
+      createLLMProvider(config.taskLLM ?? config.llm),
+      config.taskRuntime
+    )
 
     this.memory = new MemoryEngine(config.memory, this.llm)
     this.personality = new PersonalityEngine(config.personality)
@@ -202,6 +206,7 @@ export * from './tools/index.js'
 export * from './audio/index.js'
 export * from './session/session.js'
 export * from './session/task.js'
+export * from './session/cli-task-llm.js'
 export * from './session/runtime-adapter.js'
 export * from './session/task-plan.js'
 export * from './session/execution-state.js'

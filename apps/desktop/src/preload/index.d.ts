@@ -234,8 +234,9 @@ declare global {
           proxy: string
           llmModels: Array<{ id: string; modelName: string; apiKey: string; baseUrl: string }>
           activeLLMId: string
-          taskModels: Array<{ id: string; modelName: string; apiKey: string; baseUrl: string }>
+          taskModels: Array<{ id: string; transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'; modelName: string; apiKey: string; baseUrl: string }>
           activeTaskId: string
+          taskRuntime: any
           ttsModels: Array<{ id: string; provider: 'fish'; modelName: string; apiKey: string; voiceId?: string }>
           activeTTSId: string
           asrModels: Array<{ id: string; provider: 'qwen'; modelName: string; apiKey: string }>
@@ -254,8 +255,9 @@ declare global {
           proxy: string
           llmModels: Array<{ id: string; modelName: string; apiKey: string; baseUrl: string }>
           activeLLMId: string
-          taskModels: Array<{ id: string; modelName: string; apiKey: string; baseUrl: string }>
+          taskModels: Array<{ id: string; transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'; modelName: string; apiKey: string; baseUrl: string }>
           activeTaskId: string
+          taskRuntime: any
           ttsModels: Array<{ id: string; provider: 'fish'; modelName: string; apiKey: string; voiceId?: string }>
           activeTTSId: string
           asrModels: Array<{ id: string; provider: 'qwen'; modelName: string; apiKey: string }>
@@ -273,8 +275,9 @@ declare global {
           proxy: string
           llmModels: Array<{ id: string; modelName: string; apiKey: string; baseUrl: string }>
           activeLLMId: string
-          taskModels: Array<{ id: string; modelName: string; apiKey: string; baseUrl: string }>
+          taskModels: Array<{ id: string; transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'; modelName: string; apiKey: string; baseUrl: string }>
           activeTaskId: string
+          taskRuntime: any
           ttsModels: Array<{ id: string; provider: 'fish'; modelName: string; apiKey: string; voiceId?: string }>
           activeTTSId: string
           asrModels: Array<{ id: string; provider: 'qwen'; modelName: string; apiKey: string }>
@@ -315,7 +318,7 @@ declare global {
       testApiModel: (
         kind: 'llm' | 'task' | 'tts' | 'asr',
         model:
-          | { id: string; modelName: string; apiKey: string; baseUrl: string }
+          | { id: string; transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'; modelName: string; apiKey: string; baseUrl: string }
           | { id: string; provider: 'fish'; modelName: string; apiKey: string; voiceId?: string }
           | { id: string; provider: 'qwen'; modelName: string; apiKey: string }
       ) => Promise<{

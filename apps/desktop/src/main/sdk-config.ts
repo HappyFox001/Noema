@@ -52,6 +52,13 @@ export async function buildSDKConfig(): Promise<SDKConfig> {
   const taskLLMApiKey = activeTaskLLMConfig?.apiKey || llmApiKey
   const taskLLMModel = activeTaskLLMConfig?.modelName || 'gemini-3.1-pro-preview'
   const taskLLMBaseURL = activeTaskLLMConfig?.baseUrl || llmBaseURL
+  const taskRuntime = {
+    ...(activeTaskRuntimeConfig ?? {}),
+    llmTransport: activeTaskLLMConfig?.transport ?? 'openai_compatible',
+    model: activeTaskLLMConfig?.transport === 'openai_compatible'
+      ? activeTaskRuntimeConfig?.model
+      : activeTaskLLMConfig?.modelName,
+  }
 
   return {
     llm: {
@@ -64,7 +71,7 @@ export async function buildSDKConfig(): Promise<SDKConfig> {
       model: taskLLMModel,
       baseURL: taskLLMBaseURL
     },
-    taskRuntime: activeTaskRuntimeConfig ?? undefined,
+    taskRuntime,
     memory: {
       storageDir: getStorageDir()
     },

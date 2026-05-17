@@ -6,8 +6,8 @@
  */
 import './styles.css'
 import { initializeLiquidGlassSurface } from './liquid-glass-surface'
-import claudeCodeLogoUrl from '../../../../plugins/task-runtime-cli/assets/claude_code_logo.png'
-import codexLogoUrl from '../../../../plugins/task-runtime-cli/assets/codex_logo.png'
+import claudeCodeLogoUrl from './assets/claude_code_logo.png'
+import codexLogoUrl from './assets/codex_logo.png'
 import claudeIconUrl from '@lobehub/icons-static-svg/icons/claude-color.svg?url'
 import deepseekIconUrl from '@lobehub/icons-static-svg/icons/deepseek-color.svg?url'
 import elevenLabsIconUrl from '@lobehub/icons-static-svg/icons/elevenlabs.svg?url'
@@ -914,6 +914,7 @@ function renderSystemConfigIfReady(): void {
 
 type LLMModelConfig = {
   id: string
+  transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'
   modelName: string
   apiKey: string
   baseUrl: string
@@ -3521,7 +3522,6 @@ function renderPluginsSection(plugins: PluginInfo[]): void {
         </label>
       </div>
       <div class="plugin-card-footer">
-        ${renderPluginRuntimeStatus(plugin)}
         <span>${plugin.configSchema.length ? `${plugin.configSchema.length} 个参数` : '无可配置参数'}</span>
         ${plugin.uiSurfaces.length ? `<span>${plugin.uiSurfaces.length} 个界面 hook</span>` : ''}
         <span class="plugin-enter">管理</span>
@@ -3587,7 +3587,6 @@ function renderPluginDetail(plugin: PluginInfo): void {
         <div class="plugin-info">
           <div class="plugin-id">${escapeHtml(plugin.id)}</div>
           ${plugin.description ? `<div class="plugin-description plugin-detail-description">${escapeHtml(plugin.description)}</div>` : ''}
-          ${renderPluginRuntimeStatus(plugin)}
           ${plugin.uiSurfaces.length ? `<div class="plugin-permissions">${plugin.uiSurfaces.map(surface => `<span>UI: ${escapeHtml(surface.slot)} / ${escapeHtml(surface.mode)}</span>`).join('')}</div>` : ''}
           ${plugin.permissions.length ? `<div class="plugin-permissions">${plugin.permissions.map(permission => `<span>${escapeHtml(permission)}</span>`).join('')}</div>` : ''}
         </div>
@@ -3973,8 +3972,6 @@ function bindPluginConfigInputs(): void {
           ...configPatch,
         }
       }
-      updatePluginConfigOptimisticUI(pluginId, key, optimisticValue)
-
       input.disabled = true
       try {
         const settings = await window.electronAPI.getSettings()
@@ -3995,7 +3992,6 @@ function bindPluginConfigInputs(): void {
       } catch (error: any) {
         if (target && previousConfig) {
           target.config = previousConfig
-          updatePluginConfigOptimisticUI(pluginId, key, previousConfig[key])
         }
         showPanelNotice(`插件参数保存失败: ${error.message}`, 'error')
       } finally {
@@ -4027,12 +4023,6 @@ function bindPluginConfigInputs(): void {
 }
 
 function getPluginConfigPatch(pluginId: string, key: string, value: unknown): Record<string, unknown> {
-  if (pluginId === 'task-runtime-cli' && key === 'activeRuntime') {
-    return {
-      activeRuntime: value,
-      model: '',
-    }
-  }
   return { [key]: value }
 }
 
@@ -4055,140 +4045,34 @@ function renderPluginConfigFields(plugin: PluginInfo): string {
   `
 }
 
-const TASK_RUNTIME_CHOICES = {
-  codex_local: { label: 'Codex', icon: codexLogoUrl, className: 'codex' },
-  claude_code_local: { label: 'Claude Code', icon: claudeCodeLogoUrl, className: 'claude' },
-} as const
-
-const TASK_RUNTIME_MODEL_CHOICES: Record<keyof typeof TASK_RUNTIME_CHOICES, Array<{ id: string; label: string }>> = {
-  codex_local: [
-    { id: 'gpt-5.5', label: 'gpt-5.5' },
-    { id: 'gpt-5.4', label: 'gpt-5.4' },
-    { id: 'gpt-5.3-codex-spark', label: 'gpt-5.3-codex-spark' },
-    { id: 'gpt-5', label: 'gpt-5' },
-    { id: 'o3', label: 'o3' },
-    { id: 'o4-mini', label: 'o4-mini' },
-    { id: 'gpt-5-mini', label: 'gpt-5-mini' },
-    { id: 'gpt-5-nano', label: 'gpt-5-nano' },
-    { id: 'o3-mini', label: 'o3-mini' },
-    { id: 'codex-mini-latest', label: 'Codex Mini' },
-  ],
-  claude_code_local: [
-    { id: 'claude-opus-4-6', label: 'Claude Opus 4.6' },
-    { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
-    { id: 'claude-haiku-4-6', label: 'Claude Haiku 4.6' },
-    { id: 'claude-sonnet-4-5-20250929', label: 'Claude Sonnet 4.5' },
-    { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
-  ],
+function getTaskModelTransport(model: LLMModelConfig): NonNullable<LLMModelConfig['transport']> {
+  return model.transport === 'codex_local' || model.transport === 'claude_code_local'
+    ? model.transport
+    : 'openai_compatible'
 }
 
-function taskRuntimeChoiceMeta(value: unknown) {
-  const key = typeof value === 'string' ? value : 'codex_local'
-  return TASK_RUNTIME_CHOICES[key as keyof typeof TASK_RUNTIME_CHOICES] ?? TASK_RUNTIME_CHOICES.codex_local
-}
-
-function taskRuntimeChoiceKey(value: unknown): keyof typeof TASK_RUNTIME_CHOICES {
-  const key = typeof value === 'string' ? value : 'codex_local'
-  return key in TASK_RUNTIME_CHOICES ? key as keyof typeof TASK_RUNTIME_CHOICES : 'codex_local'
-}
-
-function taskRuntimeModelOptions(runtime: unknown): Array<{ id: string; label: string }> {
-  return [
-    { id: '', label: 'CLI default' },
-    ...TASK_RUNTIME_MODEL_CHOICES[taskRuntimeChoiceKey(runtime)],
-  ]
-}
-
-function renderPluginRuntimeStatus(plugin: PluginInfo): string {
-  if (plugin.id !== 'task-runtime-cli') return ''
-  const meta = taskRuntimeChoiceMeta(plugin.config.activeRuntime)
-  return `<span class="plugin-runtime-status ${escapeHtml(meta.className)}"><img class="plugin-runtime-icon" src="${escapeHtml(meta.icon)}" alt="" />${escapeHtml(meta.label)}</span>`
-}
-
-function updatePluginConfigOptimisticUI(pluginId: string, key: string, value: unknown): void {
-  if (pluginId !== 'task-runtime-cli' || key !== 'activeRuntime') {
-    return
+function getTaskTransportLogo(transport: NonNullable<LLMModelConfig['transport']>): ModelLogo {
+  if (transport === 'codex_local') {
+    return { src: codexLogoUrl, alt: 'Codex', tone: 'light' }
   }
-
-  const selectedValue = typeof value === 'string' ? value : 'codex_local'
-  const meta = taskRuntimeChoiceMeta(selectedValue)
-
-  pluginsList.querySelectorAll<HTMLElement>('.task-runtime-choice').forEach(choice => {
-    const input = choice.querySelector<HTMLInputElement>(
-      'input[data-plugin-config="activeRuntime"]'
-    )
-    const active = input?.value === selectedValue
-    choice.classList.toggle('active', active)
-    if (input) {
-      input.checked = active
-    }
-  })
-
-  pluginsList.querySelectorAll<HTMLElement>(
-    `.plugin-card[data-plugin-id="${cssEscape(pluginId)}"] .plugin-runtime-status`
-  ).forEach(status => {
-    status.className = `plugin-runtime-status ${meta.className}`
-    status.innerHTML = `<img class="plugin-runtime-icon" src="${escapeHtml(meta.icon)}" alt="" />${escapeHtml(meta.label)}`
-  })
-
-  const modelSelect = pluginsList.querySelector<HTMLSelectElement>(
-    `select[data-plugin-id="${cssEscape(pluginId)}"][data-plugin-config="model"]`
-  )
-  if (modelSelect) {
-    modelSelect.innerHTML = renderTaskRuntimeModelOptions(selectedValue, '')
-    modelSelect.value = ''
+  if (transport === 'claude_code_local') {
+    return { src: claudeCodeLogoUrl, alt: 'Claude Code' }
   }
+  return { src: openAIIconUrl, alt: 'OpenAI', tone: 'light' }
 }
 
-function renderTaskRuntimeChoiceField(plugin: PluginInfo, field: Extract<PluginConfigField, { type: 'select' }>): string {
-  const configuredValue = String(plugin.config[field.key] ?? field.default ?? 'codex_local')
-  const rawValue = field.options.some(option => option.value === configuredValue)
-    ? configuredValue
-    : String(field.default ?? field.options[0]?.value ?? 'codex_local')
-  const desc = field.description
-    ? `<div class="plugin-config-desc">${escapeHtml(field.description)}</div>`
-    : ''
-  return `
-    <div class="plugin-config-row plugin-config-row-multiline">
-      <div class="plugin-config-meta">
-        <div class="plugin-config-label">${escapeHtml(field.label ?? field.key)}</div>
-        ${desc}
-      </div>
-      <div class="task-runtime-choice-grid">
-        ${field.options.map(option => {
-          const meta = taskRuntimeChoiceMeta(option.value)
-          return `
-            <label class="task-runtime-choice ${option.value === rawValue ? 'active' : ''}">
-              <input
-                type="radio"
-                name="task-runtime-cli-active-runtime"
-                value="${escapeHtml(option.value)}"
-                ${option.value === rawValue ? 'checked' : ''}
-                data-plugin-id="${escapeHtml(plugin.id)}"
-                data-plugin-config="${escapeHtml(field.key)}"
-                data-plugin-type="${escapeHtml(field.type)}"
-              />
-              <img class="task-runtime-choice-icon ${escapeHtml(meta.className)}" src="${escapeHtml(meta.icon)}" alt="" />
-              <span class="task-runtime-choice-label">${escapeHtml(option.label)}</span>
-            </label>
-          `
-        }).join('')}
-      </div>
-    </div>
-  `
+function getTaskTransportLabel(transport: NonNullable<LLMModelConfig['transport']>): string {
+  if (transport === 'codex_local') return 'Codex'
+  if (transport === 'claude_code_local') return 'Claude Code'
+  return 'API'
+}
+
+function renderTaskTransportControl(model: LLMModelConfig): string {
+  const transport = getTaskModelTransport(model)
+  return renderProviderControl('task-transport', transport, getTaskTransportLabel(transport), getTaskTransportLogo(transport))
 }
 
 function renderPluginConfigField(plugin: PluginInfo, field: PluginConfigField): string {
-  if (plugin.id === 'task-runtime-cli' && field.key === 'activeRuntime' && field.type === 'select') {
-    return renderTaskRuntimeChoiceField(plugin, field)
-  }
-  if (plugin.id === 'task-runtime-cli' && field.key === 'model') {
-    return renderTaskRuntimeModelField(plugin, field)
-  }
-  if (plugin.id === 'task-runtime-cli') {
-    return renderTaskRuntimeCliConfigField(plugin, field)
-  }
-
   const rawValue = plugin.config[field.key] ?? field.default
   const label = escapeHtml(field.label ?? field.key)
   const desc = field.description
@@ -4230,55 +4114,6 @@ function renderPluginConfigField(plugin: PluginInfo, field: PluginConfigField): 
 
   return `
     <div class="plugin-config-row ${field.type === 'string' && field.multiline ? 'plugin-config-row-multiline' : ''}">
-      <div class="plugin-config-meta">
-        <div class="plugin-config-label">${label}</div>
-        ${desc}
-      </div>
-      ${control}
-    </div>
-  `
-}
-
-function renderTaskRuntimeModelOptions(runtime: unknown, selected: unknown): string {
-  const selectedValue = typeof selected === 'string' ? selected : ''
-  return taskRuntimeModelOptions(runtime).map(option => `
-    <option value="${escapeHtml(option.id)}" ${option.id === selectedValue ? 'selected' : ''}>${escapeHtml(option.label)}</option>
-  `).join('')
-}
-
-function renderTaskRuntimeModelField(plugin: PluginInfo, field: PluginConfigField): string {
-  const rawValue = plugin.config[field.key] ?? field.default
-  const label = escapeHtml(field.label ?? field.key)
-  const desc = field.description
-    ? `<div class="plugin-config-desc">${escapeHtml(field.description)}</div>`
-    : ''
-  const commonAttrs = `data-plugin-id="${escapeHtml(plugin.id)}" data-plugin-config="${escapeHtml(field.key)}" data-plugin-type="${field.type}"`
-  return `
-    <div class="plugin-config-row plugin-config-row-multiline task-runtime-plugin-field">
-      <div class="plugin-config-meta">
-        <div class="plugin-config-label">${label}</div>
-        ${desc}
-      </div>
-      <select class="plugin-config-input task-runtime-plugin-input" ${commonAttrs}>
-        ${renderTaskRuntimeModelOptions(plugin.config.activeRuntime, rawValue)}
-      </select>
-    </div>
-  `
-}
-
-function renderTaskRuntimeCliConfigField(plugin: PluginInfo, field: PluginConfigField): string {
-  const rawValue = plugin.config[field.key] ?? field.default
-  const label = escapeHtml(field.label ?? field.key)
-  const desc = field.description
-    ? `<div class="plugin-config-desc">${escapeHtml(field.description)}</div>`
-    : ''
-  const commonAttrs = `data-plugin-id="${escapeHtml(plugin.id)}" data-plugin-config="${escapeHtml(field.key)}" data-plugin-type="${field.type}"`
-  const control = field.type === 'number'
-    ? `<input class="plugin-config-input task-runtime-plugin-input" type="number" value="${escapeHtml(String(rawValue ?? ''))}" ${field.min !== undefined ? `min="${field.min}"` : ''} ${field.max !== undefined ? `max="${field.max}"` : ''} ${field.step !== undefined ? `step="${field.step}"` : ''} ${commonAttrs} />`
-    : `<input class="plugin-config-input task-runtime-plugin-input" type="text" value="${escapeHtml(String(rawValue ?? ''))}" placeholder="${field.type === 'string' ? escapeHtml(field.placeholder ?? '') : ''}" ${commonAttrs} />`
-
-  return `
-    <div class="plugin-config-row plugin-config-row-multiline task-runtime-plugin-field">
       <div class="plugin-config-meta">
         <div class="plugin-config-label">${label}</div>
         ${desc}
@@ -5153,7 +4988,11 @@ async function evaluateSetupReadiness(): Promise<SetupReadiness> {
   }
 
   const activeTask = system.taskModels.find(model => model.id === system.activeTaskId) || system.taskModels[0]
-  if (!activeTask?.modelName?.trim() || !activeTask?.apiKey?.trim() || !activeTask?.baseUrl?.trim()) {
+  const activeTaskTransport = activeTask ? getTaskModelTransport(activeTask) : 'openai_compatible'
+  const taskReady = activeTaskTransport === 'openai_compatible'
+    ? Boolean(activeTask?.modelName?.trim() && activeTask?.apiKey?.trim() && activeTask?.baseUrl?.trim())
+    : true
+  if (!taskReady) {
     issues.push({
       kind: 'task',
       label: '任务模型',
@@ -5393,22 +5232,25 @@ function getActiveModelSummary(kind: ModelManagerKind): {
 
   if (kind === 'task') {
     const model = currentSystemConfig.taskModels.find(item => item.id === currentSystemConfig!.activeTaskId) || currentSystemConfig.taskModels[0]
-    const missing = [
-      !model?.modelName?.trim() ? '模型名' : '',
-      !model?.apiKey?.trim() ? 'API Key' : '',
-      !model?.baseUrl?.trim() ? 'Base URL' : '',
-    ].filter(Boolean)
+    const transport = model ? getTaskModelTransport(model) : 'openai_compatible'
+    const missing = transport === 'openai_compatible'
+      ? [
+          !model?.modelName?.trim() ? '模型名' : '',
+          !model?.apiKey?.trim() ? 'API Key' : '',
+          !model?.baseUrl?.trim() ? 'Base URL' : '',
+        ].filter(Boolean)
+      : []
     return {
       kind,
       title: '任务模型',
-      modelName: model?.modelName || '未配置',
-      provider: 'OpenAI-compatible',
+      modelName: model?.modelName || (transport === 'openai_compatible' ? '未配置' : 'CLI default'),
+      provider: getTaskTransportLabel(transport),
       baseUrl: model?.baseUrl || '',
       apiKey: model?.apiKey || '',
       count: currentSystemConfig.taskModels.length,
       ready: missing.length === 0,
       missing,
-      logo: model ? getLLMModelLogo(model) : undefined,
+      logo: model ? getTaskTransportLogo(transport) : undefined,
     }
   }
 
@@ -5642,12 +5484,15 @@ function renderTaskModels(): void {
     return
   }
 
-  taskModelsList.innerHTML = models.map(model => `
+  taskModelsList.innerHTML = models.map(model => {
+    const transport = getTaskModelTransport(model)
+    const isCli = transport !== 'openai_compatible'
+    return `
     <div class="config-model-card ${model.id === currentSystemConfig!.activeTaskId ? 'active' : ''}" data-id="${escapeHtml(model.id)}">
       <div class="config-model-header">
         <div class="config-model-name">
-          ${renderModelLogo(getLLMModelLogo(model))}
-          <input type="text" value="${escapeHtml(model.modelName)}" data-field="modelName" placeholder="gemini-3.1-pro-preview" />
+          ${renderTaskTransportControl(model)}
+          <input type="text" value="${escapeHtml(model.modelName)}" data-field="modelName" placeholder="${isCli ? 'CLI default' : 'gemini-3.1-pro-preview'}" />
           ${model.id === currentSystemConfig!.activeTaskId ? `<span class="config-model-active-badge">${escapeHtml(t('common.active'))}</span>` : ''}
         </div>
         <div class="config-model-actions">
@@ -5658,16 +5503,21 @@ function renderTaskModels(): void {
       </div>
       <div class="config-model-fields">
         <div class="config-field">
+          <span class="config-field-label">Transport</span>
+          ${renderTaskTransportControl(model)}
+        </div>
+        <div class="config-field" ${isCli ? 'hidden' : ''}>
           <span class="config-field-label">API Key</span>
           <input type="text" class="config-field-input masked" value="${escapeHtml(model.apiKey)}" data-field="apiKey" placeholder="sk-..." />
         </div>
-        <div class="config-field">
+        <div class="config-field" ${isCli ? 'hidden' : ''}>
           <span class="config-field-label">Base URL</span>
           <input type="text" class="config-field-input" value="${escapeHtml(model.baseUrl)}" data-field="baseUrl" placeholder="https://generativelanguage.googleapis.com/v1beta/openai" />
         </div>
       </div>
     </div>
-  `).join('')
+  `
+  }).join('')
 
   attachTaskEventListeners()
 }
@@ -5727,15 +5577,21 @@ function getASRProviderLogo(provider: ASRProviderType): ModelLogo {
 }
 
 const TTS_PROVIDERS = TTS_PROVIDER_CATALOG.filter(provider => provider.implemented)
+const TASK_MODEL_TRANSPORTS: Array<{ value: NonNullable<LLMModelConfig['transport']>; label: string }> = [
+  { value: 'openai_compatible', label: 'API' },
+  { value: 'codex_local', label: 'Codex' },
+  { value: 'claude_code_local', label: 'Claude Code' },
+]
 
 function getTTSProviderLabel(provider: TTSProviderType): string {
   return TTS_PROVIDERS.find(p => p.value === provider)?.label || provider
 }
 
-function renderProviderControl(kind: 'tts' | 'asr', value: string, label: string, logo?: ModelLogo): string {
+function renderProviderControl(kind: 'tts' | 'asr' | 'task-transport', value: string, label: string, logo?: ModelLogo): string {
+  const field = kind === 'task-transport' ? 'transport' : 'provider'
   return `
     <span class="config-provider-control">
-      <input type="hidden" data-field="provider" value="${escapeHtml(value)}" />
+      <input type="hidden" data-field="${field}" value="${escapeHtml(value)}" />
       <button class="config-provider-trigger ${logo ? 'has-logo' : 'no-logo'}" type="button" data-provider-kind="${kind}" data-provider-value="${escapeHtml(value)}" aria-haspopup="listbox" aria-expanded="false">
         ${logo ? renderModelLogo(logo, 'provider') : ''}
         <span class="config-provider-trigger-label">${escapeHtml(label)}</span>
@@ -5877,10 +5733,14 @@ function closeProviderMenu(): void {
 }
 
 function openProviderMenu(button: HTMLButtonElement, id: string): void {
-  const kind = button.dataset.providerKind as 'tts' | 'asr' | undefined
+  const kind = button.dataset.providerKind as 'tts' | 'asr' | 'task-transport' | undefined
   if (!kind) return
 
-  const providers = kind === 'tts' ? TTS_PROVIDERS : ASR_PROVIDERS
+  const providers = kind === 'tts'
+    ? TTS_PROVIDERS
+    : kind === 'asr'
+      ? ASR_PROVIDERS
+      : TASK_MODEL_TRANSPORTS
   const currentValue = button.dataset.providerValue || ''
   closeProviderMenu()
   button.setAttribute('aria-expanded', 'true')
@@ -5896,7 +5756,9 @@ function openProviderMenu(button: HTMLButtonElement, id: string): void {
   menu.innerHTML = providers.map(provider => {
     const logo = kind === 'tts'
       ? getTTSProviderLogo(provider.value as TTSProviderType)
-      : getASRProviderLogo(provider.value as ASRProviderType)
+      : kind === 'asr'
+        ? getASRProviderLogo(provider.value as ASRProviderType)
+        : getTaskTransportLogo(provider.value as NonNullable<LLMModelConfig['transport']>)
     return `
     <button class="config-provider-option ${provider.value === currentValue ? 'selected' : ''}" type="button" role="option" aria-selected="${provider.value === currentValue ? 'true' : 'false'}" data-provider-value="${escapeHtml(provider.value)}">
       <span class="config-provider-option-check">${provider.value === currentValue ? '✓' : ''}</span>
@@ -5916,8 +5778,10 @@ function openProviderMenu(button: HTMLButtonElement, id: string): void {
       closeProviderMenu()
       if (kind === 'tts') {
         await updateTTSProvider(id, provider as TTSProviderType)
-      } else {
+      } else if (kind === 'asr') {
         await updateASRProvider(id, provider as ASRProviderType)
+      } else {
+        await updateTaskTransport(id, provider as NonNullable<LLMModelConfig['transport']>)
       }
     })
   })
@@ -6010,7 +5874,15 @@ function attachTaskEventListeners(): void {
       input.addEventListener('change', async () => {
         const field = (input as HTMLInputElement).dataset.field!
         const value = (input as HTMLInputElement).value
+        if (field === 'transport') return
         await updateTaskModel(id, { [field]: value })
+      })
+    })
+
+    card.querySelectorAll<HTMLButtonElement>('.config-provider-trigger').forEach(button => {
+      button.addEventListener('click', (event) => {
+        event.stopPropagation()
+        openProviderMenu(button, id)
       })
     })
 
@@ -6204,6 +6076,16 @@ async function updateTaskModel(id: string, updates: Partial<LLMModelConfig>): Pr
   }
 }
 
+async function updateTaskTransport(id: string, transport: NonNullable<LLMModelConfig['transport']>): Promise<void> {
+  if (!currentSystemConfig) return
+  const model = currentSystemConfig.taskModels.find(m => m.id === id)
+  if (!model) return
+
+  model.transport = transport
+  await saveSystemConfig()
+  renderTaskModels()
+}
+
 async function activateTaskModel(id: string): Promise<void> {
   if (!currentSystemConfig) return
   currentSystemConfig.activeTaskId = id
@@ -6225,6 +6107,7 @@ async function addTaskModel(): Promise<void> {
   if (!currentSystemConfig) return
   const newModel: LLMModelConfig = {
     id: generateId(),
+    transport: 'openai_compatible',
     modelName: 'gemini-3.1-pro-preview',
     apiKey: '',
     baseUrl: ''

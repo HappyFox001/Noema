@@ -1,49 +1,46 @@
 /**
- * Local CLI task LLM transports.
- *
- * Wraps the task model provider so her-text keeps its own task lifecycle,
- * planning, tool loop, and approvals while Codex or Claude Code provide
- * one-shot model responses.
+ * Local CLI transports for task model responses.
  */
-import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
+import { spawn } from 'node:child_process'
+import type { LLMProvider } from '@her-text/core'
+import type { TaskRuntimeConfig } from './task.js'
 
-export default function plugin(ctx) {
-  const config = ctx.config || {}
-
-  return {
-    id: 'task-runtime-cli',
-    name: 'CLI Task Models',
-    wrapTaskLLM(baseLLM) {
-      const runtime = normalizeRuntime(config.activeRuntime)
-      if (!runtime) {
-        return baseLLM
-      }
-      return createCliTaskLLM({
-        baseLLM,
-        runtime,
-        model: stringValue(config.model),
-        timeoutMs: positiveNumber(config.timeoutMs, 30 * 60 * 1000),
-      })
-    },
+export function wrapTaskLLMWithRuntimeTransport(
+  baseLLM: LLMProvider,
+  config: TaskRuntimeConfig = {}
+): LLMProvider {
+  const transport = normalizeTransport(config.llmTransport)
+  if (!transport) {
+    return baseLLM
   }
+
+  return createCliTaskLLM({
+    transport,
+    model: stringValue(config.model),
+    timeoutMs: positiveNumber(config.timeoutMs, 30 * 60 * 1000),
+  })
 }
 
-function createCliTaskLLM(options) {
+function createCliTaskLLM(options: {
+  transport: 'codex_local' | 'claude_code_local'
+  model: string
+  timeoutMs: number
+}): LLMProvider {
   return {
     async chat(messages, requestOptions = {}) {
       const prompt = buildApiPrompt(messages, requestOptions)
       const run = await runCliModel({
-        runtime: options.runtime,
+        transport: options.transport,
         model: options.model,
         prompt,
         timeoutMs: options.timeoutMs,
         signal: requestOptions.signal,
       })
-      const rawText = parseCliText(options.runtime, run.stdout) || run.stdout.trim()
+      const rawText = parseCliText(options.transport, run.stdout) || run.stdout.trim()
       if (run.exitCode !== 0 || run.timedOut || run.aborted) {
         const detail = run.timedOut ? `timed out after ${options.timeoutMs}ms` : run.stderr.trim() || rawText
-        throw new Error(`${runtimeLabel(options.runtime)} model call failed: ${detail}`)
+        throw new Error(`${transportLabel(options.transport)} model call failed: ${detail}`)
       }
       return parseModelEnvelope(rawText, requestOptions)
     },
@@ -56,7 +53,7 @@ function createCliTaskLLM(options) {
   }
 }
 
-function buildApiPrompt(messages, options) {
+function buildApiPrompt(messages: unknown, options: Record<string, any>): string {
   const tools = Array.isArray(options.tools) ? options.tools : []
   const wantsJson = options.response_format?.type === 'json_object'
   return [
@@ -67,7 +64,7 @@ function buildApiPrompt(messages, options) {
     '',
     'Return exactly one JSON object and no markdown.',
     'Schema:',
-    '{"content":"assistant text","tool_calls":[{"id":"call_unique_id","type":"function","function":{"name":"tool_name","arguments":"{\\\"key\\\":\\\"value\\\"}"}}]}',
+    '{"content":"assistant text","tool_calls":[{"id":"call_unique_id","type":"function","function":{"name":"tool_name","arguments":"{\\"key\\":\\"value\\"}"}}]}',
     'Use an empty string for content when only calling tools. Use an empty array when no tool call is needed.',
     wantsJson ? 'The caller requested JSON content. Put the requested JSON object as a string in the content field.' : '',
     tools.length ? 'Only call tools listed in Available tools.' : 'No tools are available; return final assistant content only.',
@@ -78,9 +75,15 @@ function buildApiPrompt(messages, options) {
   ].filter(Boolean).join('\n')
 }
 
-function runCliModel(input) {
-  const command = input.runtime === 'claude_code_local' ? 'claude' : 'codex'
-  const args = input.runtime === 'claude_code_local'
+function runCliModel(input: {
+  transport: 'codex_local' | 'claude_code_local'
+  model: string
+  prompt: string
+  timeoutMs: number
+  signal?: AbortSignal
+}) {
+  const command = input.transport === 'claude_code_local' ? 'claude' : 'codex'
+  const args = input.transport === 'claude_code_local'
     ? buildClaudeArgs(input.model)
     : buildCodexArgs(input.model)
   return runProcess({
@@ -92,7 +95,7 @@ function runCliModel(input) {
   })
 }
 
-function buildCodexArgs(model) {
+function buildCodexArgs(model: string): string[] {
   const args = [
     'exec',
     '--json',
@@ -107,7 +110,7 @@ function buildCodexArgs(model) {
   return args
 }
 
-function buildClaudeArgs(model) {
+function buildClaudeArgs(model: string): string[] {
   const args = [
     '--print',
     '-',
@@ -122,7 +125,20 @@ function buildClaudeArgs(model) {
   return args
 }
 
-function runProcess(input) {
+function runProcess(input: {
+  command: string
+  args: string[]
+  stdin: string
+  timeoutMs: number
+  signal?: AbortSignal
+}): Promise<{
+  stdout: string
+  stderr: string
+  exitCode: number | null
+  signal: NodeJS.Signals | null
+  timedOut: boolean
+  aborted: boolean
+}> {
   return new Promise((resolve) => {
     let stdout = ''
     let stderr = ''
@@ -131,7 +147,12 @@ function runProcess(input) {
       stdio: ['pipe', 'pipe', 'pipe'],
       shell: false,
     })
-    const finish = (result) => {
+    const finish = (result: {
+      exitCode: number | null
+      signal: NodeJS.Signals | null
+      timedOut: boolean
+      aborted: boolean
+    }) => {
       if (settled) return
       settled = true
       clearTimeout(timer)
@@ -165,13 +186,13 @@ function runProcess(input) {
   })
 }
 
-function parseCliText(runtime, stdout) {
-  return runtime === 'claude_code_local'
+function parseCliText(transport: 'codex_local' | 'claude_code_local', stdout: string): string {
+  return transport === 'claude_code_local'
     ? parseClaudeOutput(stdout)
     : parseCodexOutput(stdout)
 }
 
-function parseCodexOutput(stdout) {
+function parseCodexOutput(stdout: string): string {
   let summary = ''
   for (const line of stdout.split(/\r?\n/)) {
     if (!line.trim()) continue
@@ -182,13 +203,13 @@ function parseCodexOutput(stdout) {
         summary = item.text
       }
     } catch {
-      // Codex JSONL can include non-JSON diagnostics from older builds.
+      // Keep robust fallback for non-JSON diagnostics.
     }
   }
   return summary
 }
 
-function parseClaudeOutput(stdout) {
+function parseClaudeOutput(stdout: string): string {
   let summary = ''
   for (const line of stdout.split(/\r?\n/)) {
     if (!line.trim()) continue
@@ -206,7 +227,7 @@ function parseClaudeOutput(stdout) {
   return summary
 }
 
-function parseModelEnvelope(rawText, options) {
+function parseModelEnvelope(rawText: string, options: Record<string, any>) {
   const text = stripCodeFence(rawText.trim())
   const parsed = parseJsonObject(text)
   if (!parsed) {
@@ -228,30 +249,31 @@ function parseModelEnvelope(rawText, options) {
   }
 }
 
-function normalizeToolCalls(value) {
+function normalizeToolCalls(value: unknown) {
   if (!Array.isArray(value)) return []
   return value.flatMap((call) => {
     if (!call || typeof call !== 'object') return []
-    const fn = call.function && typeof call.function === 'object' ? call.function : call
+    const record = call as Record<string, any>
+    const fn = record.function && typeof record.function === 'object' ? record.function : record
     const name = typeof fn.name === 'string' ? fn.name : ''
     if (!name) return []
     const args = typeof fn.arguments === 'string'
       ? fn.arguments
       : JSON.stringify(fn.arguments ?? {})
     return [{
-      id: typeof call.id === 'string' && call.id ? call.id : `call_${randomUUID().replace(/-/g, '').slice(0, 16)}`,
+      id: typeof record.id === 'string' && record.id ? record.id : `call_${randomUUID().replace(/-/g, '').slice(0, 16)}`,
       type: 'function',
       function: { name, arguments: args },
     }]
   })
 }
 
-function stripCodeFence(value) {
+function stripCodeFence(value: string): string {
   const match = value.match(/^```(?:json)?\s*([\s\S]*?)```$/i)
   return match ? match[1].trim() : value
 }
 
-function parseJsonObject(value) {
+function parseJsonObject(value: string): Record<string, any> | null {
   try {
     const parsed = JSON.parse(value)
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null
@@ -267,19 +289,19 @@ function parseJsonObject(value) {
   }
 }
 
-function normalizeRuntime(value) {
+function normalizeTransport(value: unknown): 'codex_local' | 'claude_code_local' | null {
   return value === 'codex_local' || value === 'claude_code_local' ? value : null
 }
 
-function stringValue(value) {
+function stringValue(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
 }
 
-function positiveNumber(value, fallback) {
+function positiveNumber(value: unknown, fallback: number): number {
   const numeric = Number(value)
   return Number.isFinite(numeric) && numeric > 0 ? Math.round(numeric) : fallback
 }
 
-function runtimeLabel(runtime) {
-  return runtime === 'claude_code_local' ? 'Claude Code' : 'Codex'
+function transportLabel(transport: 'codex_local' | 'claude_code_local'): string {
+  return transport === 'claude_code_local' ? 'Claude Code' : 'Codex'
 }

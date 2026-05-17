@@ -1681,40 +1681,6 @@ body.plugin-task-surface-replace .task-steps {
   color: rgba(255, 255, 255, 0.62);
 }
 
-.plugin-runtime-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 3px 8px 3px 4px;
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  border-radius: 999px;
-  background: rgba(8, 10, 14, 0.62);
-  color: rgba(255, 255, 255, 0.88);
-  font-family: var(--font-ui);
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1;
-  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(12px);
-}
-
-.plugin-runtime-icon,
-.task-runtime-choice-icon {
-  width: 22px;
-  height: 22px;
-  display: block;
-  border-radius: 6px;
-  object-fit: cover;
-}
-
-.plugin-runtime-icon {
-  width: 18px;
-  height: 18px;
-  border-radius: 5px;
-  background: rgba(255, 255, 255, 0.88);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
-}
-
 .plugin-detail-header {
   display: flex;
   align-items: center;
@@ -1850,45 +1816,6 @@ body.plugin-task-surface-replace .task-steps {
   color: rgba(255, 255, 255, 0.38);
 }
 
-.task-runtime-choice-grid {
-  display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  width: min(100%, 520px);
-}
-
-.task-runtime-choice {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  min-height: 42px;
-  padding: 8px 10px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.03);
-  color: rgba(255, 255, 255, 0.78);
-  cursor: pointer;
-}
-
-.task-runtime-choice.active {
-  border-color: rgba(246, 248, 248, 0.42);
-  background: rgba(246, 248, 248, 0.08);
-  color: rgba(255, 255, 255, 0.92);
-}
-
-.task-runtime-choice input {
-  display: none;
-}
-
-.task-runtime-choice-label {
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.task-runtime-plugin-field {
-  gap: 8px;
-}
-
 .plugin-config-input {
   width: 120px;
   max-width: 100%;
@@ -1901,11 +1828,6 @@ body.plugin-task-surface-replace .task-steps {
   font-family: var(--font-ui);
   font-size: 11px;
   outline: none;
-}
-
-.plugin-config-input.task-runtime-plugin-input {
-  width: 100%;
-  height: 34px;
 }
 
 .plugin-config-textarea {
@@ -5659,7 +5581,6 @@ body.theme-day .plugin-admin-expand {
 }
 
 body.theme-day .model-overview-status,
-body.theme-day .plugin-runtime-status,
 body.theme-day .config-model-active-badge,
 body.theme-day .local-model-status {
   background: rgba(92, 104, 104, 0.10) !important;
@@ -5963,7 +5884,6 @@ body.theme-day .settings-brand-logo {
 }
 
 .task-panel-title,
-.plugin-runtime-status,
 .config-model-active-badge,
 .model-overview-status,
 .local-model-status,
@@ -6091,7 +6011,6 @@ body.theme-day .settings-brand-logo {
 
 .settings-btn.active,
 .config-model-card.active,
-.task-runtime-choice.active,
 .config-provider-option.selected {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.045)),
@@ -6130,7 +6049,6 @@ body.theme-day .settings-brand-logo {
 
 .config-model-active-badge,
 .model-overview-status,
-.plugin-runtime-status,
 .config-provider-label,
 .summary-tone,
 .topic-tag,
@@ -6271,7 +6189,6 @@ body.theme-day .panel-notice {
 
 body.theme-day .nav-item.active,
 body.theme-day .settings-btn.active,
-body.theme-day .task-runtime-choice.active,
 body.theme-day .config-provider-option.selected {
   background:
     linear-gradient(180deg, rgba(24, 30, 32, 0.12), rgba(24, 30, 32, 0.04)),

@@ -90,6 +90,7 @@ export interface SDKConfig {
 
   taskRuntime?: {
     adapterId?: string
+    llmTransport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'
     maxTurns?: number
     modelContextWindow?: number
     autoCompactTokenLimit?: number

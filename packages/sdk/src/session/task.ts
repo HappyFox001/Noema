@@ -85,6 +85,7 @@ export interface TaskRuntimeHooks {
 
 export interface TaskRuntimeConfig {
   adapterId?: string
+  llmTransport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'
   maxTurns?: number
   modelContextWindow?: number
   autoCompactTokenLimit?: number

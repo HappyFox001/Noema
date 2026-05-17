@@ -127,6 +127,7 @@ function loadSystemConfigFromEnv(): SystemConfig | null {
 
 export interface LLMModelConfig {
   id: string
+  transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'
   modelName: string
   apiKey: string
   baseUrl: string
@@ -353,7 +354,7 @@ export class SettingsStore {
   
   private hasEmptyApiKeys(config: SystemConfig): boolean {
     const llmEmpty = config.llmModels.some(m => !m.apiKey)
-    const taskEmpty = config.taskModels.some(m => !m.apiKey)
+    const taskEmpty = config.taskModels.some(m => (m.transport ?? 'openai_compatible') === 'openai_compatible' && !m.apiKey)
     const ttsEmpty = config.ttsModels.some(m => !m.apiKey)
     const asrEmpty = config.asrModels.some(m => !m.apiKey)
     return llmEmpty || taskEmpty || ttsEmpty || asrEmpty

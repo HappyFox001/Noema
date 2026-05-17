@@ -3918,8 +3918,10 @@ type ApiModelTestKind = 'llm' | 'task' | 'tts' | 'asr'
 async function testApiModel(kind: ApiModelTestKind, model: unknown): Promise<void> {
   switch (kind) {
     case 'llm':
-    case 'task':
       await testOpenAICompatibleModel(readLLMTestConfig(model))
+      return
+    case 'task':
+      await testTaskModel(model)
       return
     case 'tts':
       await testFishTTSModel(readTTSTestConfig(model))
@@ -3928,6 +3930,24 @@ async function testApiModel(kind: ApiModelTestKind, model: unknown): Promise<voi
       await testQwenASRModel(readASRTestConfig(model))
       return
   }
+}
+
+async function testTaskModel(model: unknown): Promise<void> {
+  const transport = readTaskTransport(model)
+  if (transport === 'openai_compatible') {
+    await testOpenAICompatibleModel(readLLMTestConfig(model))
+    return
+  }
+
+  const command = transport === 'claude_code_local' ? 'claude' : 'codex'
+  await execFileAsync(command, ['--version'], { timeout: 5000 })
+}
+
+function readTaskTransport(model: unknown): 'openai_compatible' | 'codex_local' | 'claude_code_local' {
+  const value = model as Partial<LLMModelConfig>
+  return value.transport === 'codex_local' || value.transport === 'claude_code_local'
+    ? value.transport
+    : 'openai_compatible'
 }
 
 function readLLMTestConfig(model: unknown): LLMModelConfig {
