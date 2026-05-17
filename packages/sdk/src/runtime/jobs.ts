@@ -31,6 +31,15 @@ export type RuntimeJobHandler<TInput = unknown, TResult = unknown> = (
 
 export type RuntimeJobUnregister = () => void
 
+export interface RuntimeJobOptions {
+  concurrency?: number
+}
+
+interface RuntimeJobRegistration {
+  handler: RuntimeJobHandler
+  concurrency: number
+}
+
 interface RuntimeJobEntry {
   record: RuntimeJobRecord
   controller: AbortController
@@ -38,21 +47,25 @@ interface RuntimeJobEntry {
 }
 
 export class RuntimeJobManager {
-  private handlers = new Map<string, RuntimeJobHandler>()
+  private handlers = new Map<string, RuntimeJobRegistration>()
   private jobs = new Map<string, RuntimeJobEntry>()
   private pending: RuntimeJobEntry[] = []
-  private active: RuntimeJobEntry | null = null
+  private activeByKind = new Map<string, Set<string>>()
   private drainPromise: Promise<void> | null = null
 
   constructor(private readonly runtimeEvents?: RuntimeEventBus) {}
 
   register<TInput = unknown, TResult = unknown>(
     kind: string,
-    handler: RuntimeJobHandler<TInput, TResult>
+    handler: RuntimeJobHandler<TInput, TResult>,
+    options: RuntimeJobOptions = {}
   ): RuntimeJobUnregister {
-    this.handlers.set(kind, handler as RuntimeJobHandler)
+    this.handlers.set(kind, {
+      handler: handler as RuntimeJobHandler,
+      concurrency: Math.max(1, Math.floor(options.concurrency ?? 1)),
+    })
     return () => {
-      if (this.handlers.get(kind) === handler) {
+      if (this.handlers.get(kind)?.handler === handler) {
         this.handlers.delete(kind)
       }
     }
@@ -114,7 +127,9 @@ export class RuntimeJobManager {
   }
 
   async waitForIdle(): Promise<void> {
-    await this.drainPromise
+    while (this.pending.length > 0 || this.activeByKind.size > 0 || this.drainPromise) {
+      await this.drainPromise
+    }
   }
 
   async waitForJob<TResult = unknown>(id: string): Promise<RuntimeJobRecord<unknown, TResult>> {
@@ -140,27 +155,25 @@ export class RuntimeJobManager {
       return
     }
 
-    this.drainPromise = this.runPending()
+    this.drainPromise = this.runReadyJobs()
       .catch((error) => {
         console.warn('[RuntimeJobManager] Drain failed:', formatJobError(error))
       })
       .finally(() => {
         this.drainPromise = null
-        if (this.pending.length > 0) {
+        if (this.hasRunnablePendingJobs()) {
           this.drain()
         }
       })
   }
 
-  private async runPending(): Promise<void> {
-    while (!this.active && this.pending.length > 0) {
-      const entry = this.pending.shift()
-      if (!entry) {
-        return
-      }
-
-      const handler = this.handlers.get(entry.record.kind)
-      if (!handler) {
+  private async runReadyJobs(): Promise<void> {
+    const started: Promise<void>[] = []
+    for (let index = 0; index < this.pending.length;) {
+      const entry = this.pending[index]
+      const registration = this.handlers.get(entry.record.kind)
+      if (!registration) {
+        this.pending.splice(index, 1)
         this.updateRecord(entry, {
           status: 'failed',
           error: `Runtime job handler is no longer registered: ${entry.record.kind}`,
@@ -170,47 +183,90 @@ export class RuntimeJobManager {
         continue
       }
 
-      this.active = entry
-      this.updateRecord(entry, {
-        status: 'running',
-        startedAt: Date.now(),
-      })
-      this.emitJobEvent('runtime.job.running', entry.record)
+      if (!this.canStartKind(entry.record.kind, registration.concurrency)) {
+        index += 1
+        continue
+      }
 
-      try {
-        const result = await handler(entry.record.input, {
-          job: entry.record,
-          signal: entry.controller.signal,
-        })
-        if (entry.controller.signal.aborted) {
-          this.updateRecord(entry, {
-            status: 'cancelled',
-            error: formatAbortReason(entry.controller.signal.reason),
-            completedAt: Date.now(),
-          })
-          this.emitJobEvent('runtime.job.cancelled', entry.record)
-        } else {
-          this.updateRecord(entry, {
-            status: 'completed',
-            result,
-            completedAt: Date.now(),
-          })
-          this.emitJobEvent('runtime.job.completed', entry.record)
-        }
-      } catch (error) {
+      this.pending.splice(index, 1)
+      this.markKindActive(entry)
+      started.push(this.runEntry(entry, registration.handler))
+    }
+
+    await Promise.all(started)
+  }
+
+  private async runEntry(entry: RuntimeJobEntry, handler: RuntimeJobHandler): Promise<void> {
+    this.updateRecord(entry, {
+      status: 'running',
+      startedAt: Date.now(),
+    })
+    this.emitJobEvent('runtime.job.running', entry.record)
+
+    try {
+      const result = await handler(entry.record.input, {
+        job: entry.record,
+        signal: entry.controller.signal,
+      })
+      if (entry.controller.signal.aborted) {
         this.updateRecord(entry, {
-          status: entry.controller.signal.aborted ? 'cancelled' : 'failed',
-          error: formatJobError(error),
+          status: 'cancelled',
+          error: formatAbortReason(entry.controller.signal.reason),
           completedAt: Date.now(),
         })
-        this.emitJobEvent(
-          entry.record.status === 'cancelled' ? 'runtime.job.cancelled' : 'runtime.job.failed',
-          entry.record
-        )
-      } finally {
-        this.active = null
+        this.emitJobEvent('runtime.job.cancelled', entry.record)
+      } else {
+        this.updateRecord(entry, {
+          status: 'completed',
+          result,
+          completedAt: Date.now(),
+        })
+        this.emitJobEvent('runtime.job.completed', entry.record)
       }
+    } catch (error) {
+      this.updateRecord(entry, {
+        status: entry.controller.signal.aborted ? 'cancelled' : 'failed',
+        error: formatJobError(error),
+        completedAt: Date.now(),
+      })
+      this.emitJobEvent(
+        entry.record.status === 'cancelled' ? 'runtime.job.cancelled' : 'runtime.job.failed',
+        entry.record
+      )
+    } finally {
+      this.markKindInactive(entry)
     }
+  }
+
+  private canStartKind(kind: string, concurrency: number): boolean {
+    return (this.activeByKind.get(kind)?.size ?? 0) < concurrency
+  }
+
+  private markKindActive(entry: RuntimeJobEntry): void {
+    const active = this.activeByKind.get(entry.record.kind) ?? new Set<string>()
+    active.add(entry.record.id)
+    this.activeByKind.set(entry.record.kind, active)
+  }
+
+  private markKindInactive(entry: RuntimeJobEntry): void {
+    const active = this.activeByKind.get(entry.record.kind)
+    if (!active) {
+      return
+    }
+    active.delete(entry.record.id)
+    if (active.size === 0) {
+      this.activeByKind.delete(entry.record.kind)
+    }
+    if (this.hasRunnablePendingJobs()) {
+      this.drain()
+    }
+  }
+
+  private hasRunnablePendingJobs(): boolean {
+    return this.pending.some(entry => {
+      const registration = this.handlers.get(entry.record.kind)
+      return Boolean(registration && this.canStartKind(entry.record.kind, registration.concurrency))
+    })
   }
 
   private updateRecord(entry: RuntimeJobEntry, patch: Partial<RuntimeJobRecord>): void {

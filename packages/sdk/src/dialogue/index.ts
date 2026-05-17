@@ -15,7 +15,7 @@ import type { AgentCore } from '../agent/index.js'
 import type { AgentRunResult, AgentSocietyRuntime } from '../agent-society/index.js'
 import { ContextManager, type ResponseItem, type TruncationPolicy } from '../context/index.js'
 import { TaskSession } from '../session/session.js'
-import type { TaskContextItem, TaskRuntimeConfig, TaskRuntimeHookMeta, TaskRuntimeHooks } from '../session/task.js'
+import type { TaskContextItem, TaskExecutorKind, TaskRuntimeConfig, TaskRuntimeHookMeta, TaskRuntimeHooks } from '../session/task.js'
 import type { TaskPlan, TaskStep } from '../session/task-plan.js'
 import { PROMPTS } from '../prompts.js'
 import {
@@ -34,7 +34,7 @@ import {
   type SDKPlugin,
   type TextTransformTarget,
 } from '../plugins/index.js'
-import type { RuntimeEventBus, RuntimeJobManager } from '../runtime/index.js'
+import type { RuntimeEventBus, RuntimeJobManager, RuntimeJobUnregister } from '../runtime/index.js'
 
 
 export interface StreamOptions {
@@ -117,6 +117,12 @@ interface ActiveTaskProgressContext {
   emittedStepIds: Set<string>
 }
 
+interface TaskRunJobInput {
+  taskIntent: TaskIntent
+  originalUserInput: string
+  taskContextItems: TaskContextItem[]
+}
+
 const TASK_PROGRESS_MIN_INTERVAL_MS = 12000
 
 export class DialogueOrchestrator {
@@ -128,6 +134,7 @@ export class DialogueOrchestrator {
   private pluginManager: PluginManager
   private runtimeEvents?: RuntimeEventBus
   private runtimeJobs?: RuntimeJobManager
+  private unregisterTaskRunJob?: RuntimeJobUnregister
   private learning?: LearningAssetStore
   private agentSociety?: AgentSocietyRuntime
   private activeTaskProgressContext: ActiveTaskProgressContext | null = null
@@ -210,9 +217,16 @@ export class DialogueOrchestrator {
     }
     this.taskSession.setRuntimeAdapters(await this.pluginManager.getTaskRuntimes({ runtime: {} }))
     await this.taskSession.initialize()
+    this.unregisterTaskRunJob = this.runtimeJobs?.register<TaskRunJobInput, ToolProcessorResult>(
+      'task.run',
+      async (input, context) => this.executeTaskRunJob(input, context.signal),
+      { concurrency: 1 }
+    )
   }
 
   async shutdown(): Promise<void> {
+    this.unregisterTaskRunJob?.()
+    this.unregisterTaskRunJob = undefined
     await this.taskSession.shutdown()
     await this.pluginManager.shutdown()
   }
@@ -326,10 +340,11 @@ export class DialogueOrchestrator {
 
         let taskResult: ToolProcessorResult
         try {
-          taskResult = await this.processTaskWithOptionalAgentRoute(
+          taskResult = await this.runTaskThroughRuntimeJob(
             firstResult.taskIntent,
             input.text,
-            taskContextItems
+            taskContextItems,
+            options?.signal
           )
           await this.waitForTaskProgressIdle(options?.signal)
         } finally {
@@ -617,14 +632,61 @@ export class DialogueOrchestrator {
     return routineAddition ? [...additions, routineAddition] : additions
   }
 
+  private async runTaskThroughRuntimeJob(
+    taskIntent: TaskIntent,
+    originalUserInput: string,
+    taskContextItems: TaskContextItem[],
+    signal?: AbortSignal
+  ): Promise<ToolProcessorResult> {
+    if (!this.runtimeJobs) {
+      return this.executeTaskRunJob({ taskIntent, originalUserInput, taskContextItems })
+    }
+
+    const job = this.runtimeJobs.submit('task.run', {
+      taskIntent,
+      originalUserInput,
+      taskContextItems,
+    } satisfies TaskRunJobInput)
+    const cancelOnAbort = () => {
+      this.runtimeJobs?.cancel(job.id, 'Task job cancelled by dialogue abort')
+    }
+    signal?.addEventListener('abort', cancelOnAbort, { once: true })
+    const completedJob = await this.runtimeJobs.waitForJob<ToolProcessorResult>(job.id)
+    signal?.removeEventListener('abort', cancelOnAbort)
+    if (completedJob.status === 'completed' && completedJob.result) {
+      return completedJob.result
+    }
+
+    const error = completedJob.error ?? `Task job ${completedJob.status}.`
+    return {
+      success: false,
+      summary: error,
+      error,
+      contextResult: {
+        task: taskIntent.description,
+        success: false,
+        summary: error,
+        error,
+        iterations: 0,
+        toolCalls: 0,
+      },
+    }
+  }
+
+  private async executeTaskRunJob(input: TaskRunJobInput, signal?: AbortSignal): Promise<ToolProcessorResult> {
+    const { taskIntent, originalUserInput, taskContextItems } = input
+    return this.processTaskWithOptionalAgentRoute(taskIntent, originalUserInput, taskContextItems, signal)
+  }
+
   private async processTaskWithOptionalAgentRoute(
     taskIntent: TaskIntent,
     originalUserInput: string,
-    taskContextItems: TaskContextItem[]
+    taskContextItems: TaskContextItem[],
+    signal?: AbortSignal
   ): Promise<ToolProcessorResult> {
     const route = await this.agentSociety?.selectAgentForTask(taskIntent.description)
     if (!route || !this.runtimeJobs) {
-      return this.toolProcessor.processTask(taskIntent, originalUserInput, taskContextItems)
+      return this.toolProcessor.processTask(taskIntent, originalUserInput, taskContextItems, signal)
     }
 
     const taskId = generateId()
@@ -648,7 +710,12 @@ export class DialogueOrchestrator {
         routingScore: route.score,
       },
     })
+    const cancelAgentOnAbort = () => {
+      this.runtimeJobs?.cancel(job.id, 'Agent job cancelled by task abort')
+    }
+    signal?.addEventListener('abort', cancelAgentOnAbort, { once: true })
     const completedJob = await this.runtimeJobs.waitForJob<AgentRunResult>(job.id)
+    signal?.removeEventListener('abort', cancelAgentOnAbort)
     const result = completedJob.status === 'completed' && completedJob.result
       ? completedJob.result
       : {
@@ -661,6 +728,7 @@ export class DialogueOrchestrator {
     const finalMessage = result.success
       ? result.summary
       : result.error ?? result.summary
+    const executor: TaskExecutorKind = route.agent.mode === 'soft' ? 'soft_agent' : 'hard_agent'
 
     this.runtimeEvents?.emit({
       name: result.success ? 'task.completed' : 'task.failed',
@@ -669,6 +737,7 @@ export class DialogueOrchestrator {
         taskDescription: taskIntent.description,
         originalUserInput,
         finalMessage,
+        executor,
         ...(result.error ? { error: result.error } : {}),
         iterations: 1,
         toolCalls: 0,
@@ -680,6 +749,7 @@ export class DialogueOrchestrator {
       success: result.success,
       summary: finalMessage,
       ...(result.error ? { error: result.error } : {}),
+      executor,
       iterations: 1,
       toolCalls: 0,
     }

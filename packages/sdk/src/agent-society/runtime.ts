@@ -41,11 +41,11 @@ export class AgentSocietyRuntime {
     await this.store.initialize()
     this.unregisterAgentRunJob = this.options.runtimeJobs.register<AgentRunInput, AgentRunResult>(
       'agent.run',
-      async (input) => {
+      async (input, context) => {
         if (!input.agentId) {
           throw new Error('agent.run job requires input.agentId')
         }
-        return this.run(input.agentId, input)
+        return this.run(input.agentId, input, context.signal)
       }
     )
   }
@@ -82,7 +82,16 @@ export class AgentSocietyRuntime {
     return scored[0] ?? null
   }
 
-  async run(agentId: string, input: AgentRunInput): Promise<AgentRunResult> {
+  async run(agentId: string, input: AgentRunInput, signal?: AbortSignal): Promise<AgentRunResult> {
+    if (signal?.aborted) {
+      return {
+        agentId,
+        success: false,
+        summary: 'Agent run was cancelled before start.',
+        error: 'Agent run was cancelled before start.',
+      }
+    }
+
     const agent = await this.store.getAgent(agentId)
     if (!agent) {
       throw new Error(`Runtime agent not found: ${agentId}`)
@@ -104,9 +113,9 @@ export class AgentSocietyRuntime {
       ? await this.store.getSoftArtifact(agent.id)
       : null
     const result = agent.mode === 'soft' && artifact
-      ? await this.runSoftAgent(agent, artifact.instructions, input)
+      ? await this.runSoftAgent(agent, artifact.instructions, input, signal)
       : agent.mode === 'hard'
-        ? await this.runHardAgent(agent, input)
+        ? await this.runHardAgent(agent, input, signal)
         : {
             agentId,
             success: false,
@@ -175,9 +184,10 @@ export class AgentSocietyRuntime {
   private async runSoftAgent(
     agent: RuntimeAgentRecord,
     instructions: string,
-    input: AgentRunInput
+    input: AgentRunInput,
+    signal?: AbortSignal
   ): Promise<AgentRunResult> {
-    const context = this.createRunContext(agent, input)
+    const context = this.createRunContext(agent, input, signal)
     return context.done({
       summary: [
         `Soft agent "${agent.name}" prepared a runtime plan.`,
@@ -195,11 +205,11 @@ export class AgentSocietyRuntime {
     })
   }
 
-  private async runHardAgent(agent: RuntimeAgentRecord, input: AgentRunInput): Promise<AgentRunResult> {
+  private async runHardAgent(agent: RuntimeAgentRecord, input: AgentRunInput, signal?: AbortSignal): Promise<AgentRunResult> {
     try {
       const artifact = await this.hardAgentLoader.load(agent.id)
       const module = await this.hardAgentLoader.loadModule(artifact)
-      const context = this.createRunContext(agent, input)
+      const context = this.createRunContext(agent, input, signal)
       const registeredTools = await module.registerTools?.(context) ?? []
       const tools = [
         ...this.capabilityBroker.resolveTools({
@@ -227,10 +237,11 @@ export class AgentSocietyRuntime {
     }
   }
 
-  private createRunContext(agent: RuntimeAgentRecord, input: AgentRunInput): AgentRunContext {
+  private createRunContext(agent: RuntimeAgentRecord, input: AgentRunInput, signal?: AbortSignal): AgentRunContext {
     return {
       agent,
       input,
+      signal,
       tools: this.resolveInheritedTools(agent),
       memory: this.options.memory,
       runtimeEvents: this.options.runtimeEvents,

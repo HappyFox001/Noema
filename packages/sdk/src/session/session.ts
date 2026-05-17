@@ -15,6 +15,7 @@ import {
 import {
   TaskRuntime,
   type TaskContextItem,
+  type TaskExecutorKind,
   type TaskRunResult,
   type TaskRuntimeConfig,
   type TaskRuntimeHooks,
@@ -79,18 +80,6 @@ interface ActiveTaskRun {
   promise: Promise<TaskRunResult>
 }
 
-interface QueuedTaskRun {
-  taskId: string
-  taskIntent: TaskIntent
-  originalUserInput: string
-  taskContextItems: TaskContextItem[]
-}
-
-interface TaskAdmissionDecision {
-  action: 'start_now' | 'keep_active' | 'queue_new' | 'stop_active_start_new'
-  reason: string
-}
-
 interface TaskSessionRuntimeHooks extends Pick<
   TaskRuntimeHooks,
   'onUserInputRequest' | 'onRunStateChanged' | 'onPlanUpdated' | 'onStepUpdated' | 'resolveToolStrategyHints'
@@ -146,9 +135,6 @@ export class TaskSession {
   private persistenceDbPath: string
   private writeQueue: Promise<void> = Promise.resolve()
   private activeTaskRun: ActiveTaskRun | null = null
-  private taskQueue: QueuedTaskRun[] = []
-  private queueDrainPromise: Promise<void> | null = null
-  private queueDrainSuspended = false
   private runtimeAdapters: TaskRuntimeAdapter[] = [createBuiltinTaskRuntimeAdapter()]
 
   constructor(
@@ -197,131 +183,27 @@ export class TaskSession {
   async runTask(
     taskIntent: TaskIntent,
     originalUserInput: string,
-    taskContextItems: TaskContextItem[] = []
+    taskContextItems: TaskContextItem[] = [],
+    signal?: AbortSignal
   ): Promise<TaskRunResult> {
-    if (this.isSameTaskIntent(this.activeTaskRun?.taskIntent, taskIntent) || this.findSameQueuedTask(taskIntent)) {
-      console.log('[TaskSession] Keeping existing task by local duplicate check')
-      return {
-        success: true,
-        iterations: 0,
-        toolCalls: 0,
-        finalMessage: '相同任务已经在执行或队列中，我会继续原来的任务。',
-        plan: this.snapshot.plan ?? undefined
-      }
-    }
-
     if (this.activeTaskRun) {
-      const decision = await this.decideTaskAdmission(taskIntent, originalUserInput)
-      if (decision.action === 'keep_active') {
-        console.log(`[TaskSession] Keeping active task: ${decision.reason}`)
-        return {
-          success: true,
-          iterations: 0,
-          toolCalls: 0,
-          finalMessage: '相同任务已经在执行或队列中，我会继续原来的任务。',
-          plan: this.snapshot.plan ?? undefined
-        }
-      }
-
-      if (decision.action === 'queue_new') {
-        console.log(`[TaskSession] Queueing new task behind active task: ${decision.reason}`)
-        this.enqueueTask(taskIntent, originalUserInput, taskContextItems)
-        return {
-          success: true,
-          iterations: 0,
-          toolCalls: 0,
-          finalMessage: '这个任务我先排队，等当前任务完成后继续。',
-          plan: this.snapshot.plan ?? undefined
-        }
-      } else if (decision.action === 'stop_active_start_new') {
-        console.log(`[TaskSession] Stopping active task before new task: ${decision.reason}`)
-        const active = this.activeTaskRun
-        this.queueDrainSuspended = true
-        active.abortController.abort()
-        await active.promise.catch(() => undefined)
-        if (this.activeTaskRun?.taskId === active.taskId) {
-          this.activeTaskRun = null
-        }
-        this.queueDrainSuspended = false
-      }
+      throw new Error('TaskSession received a task while another task is active; task scheduling must happen in RuntimeJobManager.')
     }
 
-    return await this.startTaskRun(taskIntent, originalUserInput, taskContextItems)
-  }
-
-  private isSameTaskIntent(existing: TaskIntent | undefined, incoming: TaskIntent): boolean {
-    if (!existing) {
-      return false
-    }
-    const existingText = normalizeTaskIntentText(existing.description)
-    const incomingText = normalizeTaskIntentText(incoming.description)
-    return Boolean(existingText && incomingText && existingText === incomingText)
-  }
-
-  private findSameQueuedTask(taskIntent: TaskIntent): QueuedTaskRun | null {
-    return this.taskQueue.find(item => this.isSameTaskIntent(item.taskIntent, taskIntent)) ?? null
-  }
-
-  private enqueueTask(
-    taskIntent: TaskIntent,
-    originalUserInput: string,
-    taskContextItems: TaskContextItem[]
-  ): QueuedTaskRun {
-    const queued: QueuedTaskRun = {
-      taskId: generateId(),
-      taskIntent,
-      originalUserInput,
-      taskContextItems,
-    }
-    this.taskQueue.push(queued)
-    this.drainTaskQueue()
-    return queued
-  }
-
-  private drainTaskQueue(): void {
-    if (this.queueDrainPromise) {
-      return
-    }
-
-    this.queueDrainPromise = this.runQueuedTasks()
-      .catch((error) => {
-        console.error('[TaskSession] Task queue failed:', error)
-      })
-      .finally(() => {
-        this.queueDrainPromise = null
-        if (!this.activeTaskRun && this.taskQueue.length > 0) {
-          this.drainTaskQueue()
-        }
-      })
-  }
-
-  private async runQueuedTasks(): Promise<void> {
-    if (this.activeTaskRun) {
-      await this.activeTaskRun.promise.catch(() => undefined)
-    }
-
-    while (!this.activeTaskRun && this.taskQueue.length > 0) {
-      const next = this.taskQueue.shift()
-      if (!next) {
-        return
-      }
-
-      console.log(`[TaskSession] Starting queued task #${next.taskId}: ${next.taskIntent.description}`)
-      await this.startTaskRun(next.taskIntent, next.originalUserInput, next.taskContextItems, next.taskId)
-        .catch((error) => {
-          console.error(`[TaskSession] Queued task #${next.taskId} failed:`, error)
-        })
-    }
+    return await this.startTaskRun(taskIntent, originalUserInput, taskContextItems, undefined, signal)
   }
 
   private async startTaskRun(
     taskIntent: TaskIntent,
     originalUserInput: string,
     taskContextItems: TaskContextItem[],
-    requestedTaskId?: string
+    requestedTaskId?: string,
+    signal?: AbortSignal
   ): Promise<TaskRunResult> {
     const taskId = requestedTaskId ?? generateId()
     const abortController = new AbortController()
+    const abortFromParent = () => abortController.abort(signal?.reason)
+    signal?.addEventListener('abort', abortFromParent, { once: true })
     const taskDescription = taskIntent.description
     this.snapshot = {
       taskId,
@@ -363,11 +245,9 @@ export class TaskSession {
     try {
       return await runPromise
     } finally {
+      signal?.removeEventListener('abort', abortFromParent)
       if (this.activeTaskRun?.taskId === taskId) {
         this.activeTaskRun = null
-        if (!this.queueDrainSuspended) {
-          this.drainTaskQueue()
-        }
       }
     }
   }
@@ -461,6 +341,7 @@ export class TaskSession {
     }
 
     const adapter = await this.selectRuntimeAdapter(request)
+    const executor = getExecutorKind(adapter)
     console.log(`[TaskSession] Using task runtime adapter: ${adapter.id}`)
     const result = await adapter.run(request, hooks)
     if (!result.success) {
@@ -478,6 +359,7 @@ export class TaskSession {
           taskDescription,
           originalUserInput,
           finalMessage: result.finalMessage,
+          executor,
           iterations: result.iterations,
           toolCalls: result.toolCalls,
         },
@@ -490,6 +372,7 @@ export class TaskSession {
           taskDescription,
           originalUserInput,
           finalMessage: result.finalMessage,
+          executor,
           ...(result.error ? { error: result.error } : {}),
           iterations: result.iterations,
           toolCalls: result.toolCalls,
@@ -497,7 +380,10 @@ export class TaskSession {
       })
     }
     this.persistSnapshot()
-    return result
+    return {
+      ...result,
+      executor,
+    }
   }
 
   private async selectRuntimeAdapter(request: TaskRuntimeRequest): Promise<TaskRuntimeAdapter> {
@@ -528,82 +414,8 @@ export class TaskSession {
   }
 
   async shutdown(): Promise<void> {
-    this.taskQueue = []
     this.activeTaskRun?.abortController.abort()
-    await this.queueDrainPromise?.catch(() => undefined)
     await this.writeQueue
-  }
-
-  private async decideTaskAdmission(
-    newTaskIntent: TaskIntent,
-    newUserInput: string
-  ): Promise<TaskAdmissionDecision> {
-    const active = this.activeTaskRun
-    if (!active) {
-      return { action: 'start_now', reason: 'no active task' }
-    }
-
-    try {
-      const response = await this.llm.chat([
-        {
-          role: 'system',
-          content: [
-            '你是任务调度器。根据正在执行的任务和新任务，决定任务管理动作。',
-            '只输出 JSON object，不要 Markdown。',
-            '格式：{"action":"keep_active|queue_new|stop_active_start_new","reason":"一句话原因"}',
-            'keep_active：新任务和正在执行或已排队任务是同一目标的重复、催促、补充状态询问或轻微改写。',
-            'queue_new：新任务和正在执行、已排队任务都不同，且不紧急，可以等待当前任务完成后执行。',
-            'stop_active_start_new：新任务不同且更紧急、替代原目标、或用户明确要求切换。'
-          ].join('\n')
-        },
-        {
-          role: 'user',
-          content: [
-            '正在执行的任务：',
-            active.taskIntent.description,
-            '',
-            '触发原任务的用户输入：',
-            active.originalUserInput,
-            '',
-            '当前任务状态快照：',
-            JSON.stringify({
-              status: this.snapshot.status,
-              runState: this.snapshot.runState,
-              plan: this.snapshot.plan,
-              recentTurns: this.snapshot.recentTurns.slice(-3).map((turn) => ({
-                turnIndex: turn.turnIndex,
-                stepTitle: turn.stepTitle,
-                completed: turn.completed,
-                assistantMessage: turn.assistantMessage.slice(0, 300)
-              }))
-            }, null, 2),
-            '',
-            '已排队任务：',
-            JSON.stringify(this.taskQueue.map(item => ({
-              taskId: item.taskId,
-              description: item.taskIntent.description,
-              originalUserInput: item.originalUserInput
-            })), null, 2),
-            '',
-            '新任务：',
-            newTaskIntent.description,
-            '',
-            '新用户输入：',
-            newUserInput
-          ].join('\n')
-        }
-      ], {
-        max_tokens: 200
-      })
-
-      return normalizeAdmissionDecision(parseTaskAdmission(response.content))
-    } catch (error) {
-      console.warn(`[TaskSession] Task admission failed, queueing new task: ${(error as Error).message}`)
-      return {
-        action: 'queue_new',
-        reason: 'admission comparison failed'
-      }
-    }
   }
 
   private persistTurn(turn: TaskTurnRecord): void {
@@ -843,35 +655,6 @@ function createBuiltinTaskRuntimeAdapter(): TaskRuntimeAdapter {
   }
 }
 
-function parseTaskAdmission(content: string): Partial<TaskAdmissionDecision> {
-  try {
-    return JSON.parse(content) as Partial<TaskAdmissionDecision>
-  } catch {
-    const match = content.match(/\{[\s\S]*\}/)
-    if (!match) {
-      throw new Error('Task admission response did not contain JSON')
-    }
-    return JSON.parse(match[0]) as Partial<TaskAdmissionDecision>
-  }
-}
-
-function normalizeAdmissionDecision(value: unknown): TaskAdmissionDecision {
-  const record = value && typeof value === 'object' ? value as Record<string, unknown> : {}
-  const action = record.action === 'keep_active' ||
-    record.action === 'queue_new' ||
-    record.action === 'stop_active_start_new'
-    ? record.action
-    : 'queue_new'
-  return {
-    action,
-    reason: typeof record.reason === 'string' ? record.reason : 'admission decision'
-  }
-}
-
-function normalizeTaskIntentText(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, '')
-    .replace(/[，。！？、,.!?;；:"“”'‘’()（）[\]【】]/g, '')
+function getExecutorKind(adapter: TaskRuntimeAdapter): TaskExecutorKind {
+  return adapter.id === BUILTIN_TASK_RUNTIME_ADAPTER_ID ? 'builtin' : 'adapter'
 }

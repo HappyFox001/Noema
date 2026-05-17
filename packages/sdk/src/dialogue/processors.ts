@@ -196,6 +196,7 @@ export interface ToolProcessorResult {
     success: boolean
     summary: string
     error?: string
+    executor?: import('../session/task.js').TaskExecutorKind
     plan?: import('../session/task-plan.js').TaskPlan
     iterations?: number
     toolCalls?: number
@@ -208,14 +209,16 @@ export class ToolProcessor {
   async processTask(
     taskIntent: TaskIntent,
     originalUserInput: string,
-    taskContextItems: TaskContextItem[] = []
+    taskContextItems: TaskContextItem[] = [],
+    signal?: AbortSignal
   ): Promise<ToolProcessorResult> {
-    const taskResult = await this.taskSession.runTask(taskIntent, originalUserInput, taskContextItems)
+    const taskResult = await this.taskSession.runTask(taskIntent, originalUserInput, taskContextItems, signal)
     const contextResult = {
       task: taskIntent.description,
       success: taskResult.success,
       summary: taskResult.finalMessage,
       ...(taskResult.error ? { error: taskResult.error } : {}),
+      ...(taskResult.executor ? { executor: taskResult.executor } : {}),
       ...(taskResult.plan ? { plan: taskResult.plan } : {}),
       iterations: taskResult.iterations,
       toolCalls: taskResult.toolCalls,

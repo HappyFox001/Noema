@@ -2,6 +2,7 @@
  * Runtime event backbone shared by dialogue, task, output, and learning layers.
  */
 import { generateId } from '@her-text/core'
+import type { TaskExecutorKind } from '../session/task.js'
 import type { TaskPlan, TaskRunState, TaskStep } from '../session/task-plan.js'
 
 export type RuntimeEventName =
@@ -83,6 +84,7 @@ export type RuntimeEvent =
       taskDescription: string
       originalUserInput: string
       finalMessage: string
+      executor?: TaskExecutorKind
       iterations: number
       toolCalls: number
     }>
@@ -90,6 +92,7 @@ export type RuntimeEvent =
       taskDescription: string
       originalUserInput: string
       finalMessage: string
+      executor?: TaskExecutorKind
       error?: string
       iterations: number
       toolCalls: number

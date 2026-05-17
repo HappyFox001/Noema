@@ -35,10 +35,13 @@ export interface TaskRunResult {
   iterations: number
   toolCalls: number
   finalMessage: string
+  executor?: TaskExecutorKind
   plan?: TaskPlan
   executionState?: ExecutionState
   error?: string
 }
+
+export type TaskExecutorKind = 'builtin' | 'adapter' | 'soft_agent' | 'hard_agent'
 
 export interface TaskTurnRecord {
   turnIndex: number

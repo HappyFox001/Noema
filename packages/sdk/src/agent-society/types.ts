@@ -80,6 +80,7 @@ export interface SoftAgentArtifact {
 export interface AgentRunContext {
   agent: RuntimeAgentRecord
   input: AgentRunInput
+  signal?: AbortSignal
   tools: Tool[]
   memory: MemoryEngine
   runtimeEvents: RuntimeEventBus
