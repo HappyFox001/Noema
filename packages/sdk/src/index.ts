@@ -15,7 +15,12 @@ import {
 import { createLLMProvider, type LLMProvider } from '@her-text/core'
 import type { PluginRuntimeContext, SDKPlugin, TextTransformTarget } from './plugins/index.js'
 import type { TaskRuntimeHooks } from './session/task.js'
-import { RuntimeEventBus, RuntimeJobManager, type RuntimeEventHandler } from './runtime/index.js'
+import {
+  RuntimeEventBus,
+  RuntimeJobManager,
+  type RuntimeCapabilityContext,
+  type RuntimeEventHandler,
+} from './runtime/index.js'
 
 export interface HerTextSDKInitializeOptions {
   plugins?: SDKPlugin[]
@@ -34,6 +39,7 @@ export class HerTextSDK {
   public agent: AgentCore
   public runtimeEvents: RuntimeEventBus
   public runtimeJobs: RuntimeJobManager
+  public runtime: RuntimeCapabilityContext
   public learning: LearningAssetStore
   public reflection: ReflectionEngine
   public personaContinuity: PersonaContinuityPolicy
@@ -62,13 +68,21 @@ export class HerTextSDK {
       runtimeEvents: this.runtimeEvents,
       runtimeJobs: this.runtimeJobs,
     })
+    this.runtime = {
+      llm: this.llm,
+      taskLLM: this.taskLLm,
+      agentCore: this.agent,
+      memory: this.memory,
+      personality: this.personality,
+      runtimeEvents: this.runtimeEvents,
+      runtimeJobs: this.runtimeJobs,
+      learning: this.learning,
+      reflection: this.reflection,
+      personaContinuity: this.personaContinuity,
+      agentSociety: this.agentSociety,
+    }
     this.learningAutomation = new LearningAutomationRuntime(
-      this.runtimeEvents,
-      this.runtimeJobs,
-      this.learning,
-      this.reflection,
-      this.personaContinuity,
-      this.agentSociety,
+      this.runtime,
       options.learningAutomation
     )
     if (options.onRuntimeEvent) {
@@ -98,6 +112,7 @@ export class HerTextSDK {
       },
       options.plugins ?? []
     )
+    this.runtime.conversationContext = this.dialogue.getContext()
   }
 
   static async initialize(

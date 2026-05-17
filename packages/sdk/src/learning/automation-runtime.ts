@@ -3,17 +3,14 @@
  */
 import type {
   RuntimeEvent,
-  RuntimeEventBus,
+  RuntimeCapabilityContext,
   RuntimeEventUnsubscribe,
-  RuntimeJobManager,
   RuntimeJobUnregister,
 } from '../runtime/index.js'
-import type { AgentSocietyRuntime } from '../agent-society/index.js'
 import { isAllowedExpressionRoutine } from './routine-policy.js'
-import type { LearningAssetStore } from './store.js'
 import type { LearningCandidate, RoutinePolicy } from './types.js'
-import type { PersonaContinuityPolicy, PersonaContinuityRisk } from './persona-continuity.js'
-import type { ReflectionEngine, ReflectionRunResult } from './reflection-engine.js'
+import type { PersonaContinuityRisk } from './persona-continuity.js'
+import type { ReflectionRunResult } from './reflection-engine.js'
 
 export interface LearningAutomationRuntimeOptions {
   enabled?: boolean
@@ -29,12 +26,7 @@ export class LearningAutomationRuntime {
   private stopped = false
 
   constructor(
-    private readonly runtimeEvents: RuntimeEventBus,
-    private readonly runtimeJobs: RuntimeJobManager,
-    private readonly store: LearningAssetStore,
-    private readonly reflection: ReflectionEngine,
-    private readonly personaContinuity: PersonaContinuityPolicy,
-    private readonly agentSociety?: AgentSocietyRuntime,
+    private readonly runtime: RuntimeCapabilityContext,
     private readonly options: LearningAutomationRuntimeOptions = {}
   ) {}
 
@@ -43,7 +35,7 @@ export class LearningAutomationRuntime {
       return
     }
 
-    this.unregisterJob = this.runtimeJobs.register<{ event: RuntimeEvent }, void>(
+    this.unregisterJob = this.runtime.runtimeJobs.register<{ event: RuntimeEvent }, void>(
       'learning.reflect',
       async ({ event }, context) => {
         if (context.signal.aborted) {
@@ -53,11 +45,11 @@ export class LearningAutomationRuntime {
       }
     )
 
-    this.unsubscribe = this.runtimeEvents.subscribe((event) => {
+    this.unsubscribe = this.runtime.runtimeEvents.subscribe((event) => {
       if (!isTerminalLearningEvent(event)) {
         return
       }
-      this.runtimeJobs.submit('learning.reflect', { event })
+      this.runtime.runtimeJobs.submit('learning.reflect', { event })
     })
   }
 
@@ -65,7 +57,7 @@ export class LearningAutomationRuntime {
     this.stopped = true
     this.unsubscribe?.()
     this.unsubscribe = undefined
-    await this.runtimeJobs.waitForIdle()
+    await this.runtime.runtimeJobs.waitForIdle()
     this.unregisterJob?.()
     this.unregisterJob = undefined
   }
@@ -75,13 +67,13 @@ export class LearningAutomationRuntime {
       return
     }
 
-    await this.store.flushWrites()
-    const result = await this.reflection.reflectRecentEvents()
+    await this.runtime.learning.flushWrites()
+    const result = await this.runtime.reflection.reflectRecentEvents()
     if (!result) {
       return
     }
 
-    await this.store.recordAutomationDecision({
+    await this.runtime.learning.recordAutomationDecision({
       action: 'reflected',
       reason: `Automatically reflected after ${event.name}.`,
       risk: 'low',
@@ -94,7 +86,7 @@ export class LearningAutomationRuntime {
   private async handleCandidates(result: ReflectionRunResult): Promise<void> {
     for (const candidate of result.candidates) {
       const decision = this.classifyCandidate(candidate)
-      await this.store.recordAutomationDecision({
+      await this.runtime.learning.recordAutomationDecision({
         action: 'candidate_created',
         candidateId: candidate.id,
         reason: decision.reason,
@@ -105,7 +97,7 @@ export class LearningAutomationRuntime {
         if (candidate.kind === 'agent') {
           await this.suggestSoftAgentWhenRepeated(candidate)
         }
-        await this.store.recordAutomationDecision({
+        await this.runtime.learning.recordAutomationDecision({
           action: 'kept_pending',
           candidateId: candidate.id,
           reason: decision.reason,
@@ -114,12 +106,12 @@ export class LearningAutomationRuntime {
         continue
       }
 
-      const asset = await this.store.deployCandidate({
+      const asset = await this.runtime.learning.deployCandidate({
         candidateId: candidate.id,
         scope: inferScope(candidate),
         status: 'active',
       })
-      await this.store.recordAutomationDecision({
+      await this.runtime.learning.recordAutomationDecision({
         action: 'auto_deployed',
         candidateId: candidate.id,
         assetId: asset.id,
@@ -134,7 +126,7 @@ export class LearningAutomationRuntime {
     risk: 'low' | 'medium' | 'high'
     reason: string
   } {
-    const personaAssessment = this.personaContinuity.assessCandidate(candidate)
+    const personaAssessment = this.runtime.personaContinuity.assessCandidate(candidate)
     if (personaAssessment.requiresConfirmation) {
       return {
         autoDeploy: false,
@@ -180,11 +172,11 @@ export class LearningAutomationRuntime {
   }
 
   private async suggestSoftAgentWhenRepeated(candidate: LearningCandidate): Promise<void> {
-    if (!this.agentSociety) {
+    if (!this.runtime.agentSociety) {
       return
     }
 
-    const candidates = await this.store.listCandidates(undefined, 100)
+    const candidates = await this.runtime.learning.listCandidates(undefined, 100)
     const related = candidates.filter(item =>
       item.kind === 'agent' &&
       item.id !== candidate.id &&
@@ -195,14 +187,14 @@ export class LearningAutomationRuntime {
       return
     }
 
-    const agentId = `suggested-${candidate.id}`
-    const existingAgents = await this.agentSociety.listAgents()
-    if (existingAgents.some(agent => agent.id === agentId)) {
+    const suggestedAgentId = `suggested-${candidate.id}`
+    const existingAgents = await this.runtime.agentSociety.listAgents()
+    if (existingAgents.some(agent => agent.id === suggestedAgentId)) {
       return
     }
 
-    const agent = await this.agentSociety.createSoftAgent({
-      id: agentId,
+    const job = this.runtime.runtimeJobs.submit('agent.createSoft', {
+      id: suggestedAgentId,
       name: buildAgentName(candidate),
       purpose: candidate.reason,
       instructions: [
@@ -217,22 +209,24 @@ export class LearningAutomationRuntime {
       routingPolicy: candidate.reason,
       status: 'draft',
     })
-    await this.store.recordAutomationDecision({
+    const completedJob = await this.runtime.runtimeJobs.waitForJob<{ id: string }>(job.id)
+    const createdAgentId = completedJob.status === 'completed' ? completedJob.result?.id : undefined
+    await this.runtime.learning.recordAutomationDecision({
       action: 'kept_pending',
       candidateId: candidate.id,
-      assetId: agent.id,
+      ...(createdAgentId ? { assetId: createdAgentId } : {}),
       reason: 'Repeated structural need produced a draft soft agent suggestion. Activation remains manual.',
       risk: 'high',
     })
   }
 
   private async suggestHardAgentPromotionWhenStable(): Promise<void> {
-    if (!this.agentSociety) {
+    if (!this.runtime.agentSociety) {
       return
     }
 
-    const decisions = await this.store.listAutomationDecisions(100)
-    const agents = await this.agentSociety.listAgents('active')
+    const decisions = await this.runtime.learning.listAutomationDecisions(100)
+    const agents = await this.runtime.agentSociety.listAgents('active')
     for (const agent of agents) {
       if (agent.mode !== 'soft') {
         continue
@@ -244,7 +238,7 @@ export class LearningAutomationRuntime {
         continue
       }
 
-      const usage = await this.agentSociety.listAgentUsage(agent.id, 8)
+      const usage = await this.runtime.agentSociety.listAgentUsage(agent.id, 8)
       const successes = usage.filter(item => item.outcome === 'success').length
       const failures = usage.filter(item => item.outcome === 'failure').length
       const isStable = usage.length >= 5 && successes >= 4
@@ -255,12 +249,17 @@ export class LearningAutomationRuntime {
         continue
       }
 
-      await this.store.recordAutomationDecision({
+      const reason = isStable
+        ? 'Hard agent promotion suggested because this soft agent is stable across recent routed tasks.'
+        : 'Hard agent promotion suggested because this soft agent appears to need own capabilities.'
+      await this.runtime.runtimeJobs.waitForJob(this.runtime.runtimeJobs.submit('agent.promoteHard', {
+        agentId: agent.id,
+        reason,
+      }).id)
+      await this.runtime.learning.recordAutomationDecision({
         action: 'kept_pending',
         assetId: agent.id,
-        reason: isStable
-          ? 'Hard agent promotion suggested because this soft agent is stable across recent routed tasks.'
-          : 'Hard agent promotion suggested because this soft agent appears to need own capabilities.',
+        reason,
         risk: 'high',
       })
     }

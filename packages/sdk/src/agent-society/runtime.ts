@@ -31,6 +31,10 @@ export class AgentSocietyRuntime {
   private readonly hardAgentLoader: HardAgentArtifactLoader
   private readonly capabilityBroker = new CapabilityBroker()
   private unregisterAgentRunJob?: RuntimeJobUnregister
+  private unregisterCreateSoftJob?: RuntimeJobUnregister
+  private unregisterVerifyHardJob?: RuntimeJobUnregister
+  private unregisterRegisterHardJob?: RuntimeJobUnregister
+  private unregisterPromoteHardJob?: RuntimeJobUnregister
 
   constructor(private options: AgentSocietyRuntimeOptions) {
     this.store = new AgentSocietyStore(options.storageDir)
@@ -46,7 +50,36 @@ export class AgentSocietyRuntime {
           throw new Error('agent.run job requires input.agentId')
         }
         return this.run(input.agentId, input, context.signal)
-      }
+      },
+      { concurrency: 4 }
+    )
+    this.unregisterCreateSoftJob = this.options.runtimeJobs.register<CreateSoftAgentInput, RuntimeAgentRecord>(
+      'agent.createSoft',
+      (input) => this.createSoftAgent(input),
+      { concurrency: 1 }
+    )
+    this.unregisterVerifyHardJob = this.options.runtimeJobs.register<{ agentId: string }, { success: boolean; errors: string[] }>(
+      'agent.verifyHard',
+      (input) => this.verifyHardAgent(input.agentId),
+      { concurrency: 1 }
+    )
+    this.unregisterRegisterHardJob = this.options.runtimeJobs.register<{ agentId: string }, RuntimeAgentRecord>(
+      'agent.registerHard',
+      (input) => this.registerHardAgent(input.agentId),
+      { concurrency: 1 }
+    )
+    this.unregisterPromoteHardJob = this.options.runtimeJobs.register<{ agentId: string; reason: string }, {
+      agentId: string
+      reason: string
+      status: 'suggested'
+    }>(
+      'agent.promoteHard',
+      (input) => ({
+        agentId: input.agentId,
+        reason: input.reason,
+        status: 'suggested',
+      }),
+      { concurrency: 1 }
     )
   }
 
@@ -178,6 +211,14 @@ export class AgentSocietyRuntime {
   async shutdown(): Promise<void> {
     this.unregisterAgentRunJob?.()
     this.unregisterAgentRunJob = undefined
+    this.unregisterCreateSoftJob?.()
+    this.unregisterCreateSoftJob = undefined
+    this.unregisterVerifyHardJob?.()
+    this.unregisterVerifyHardJob = undefined
+    this.unregisterRegisterHardJob?.()
+    this.unregisterRegisterHardJob = undefined
+    this.unregisterPromoteHardJob?.()
+    this.unregisterPromoteHardJob = undefined
     await this.store.shutdown()
   }
 

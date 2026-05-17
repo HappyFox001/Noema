@@ -51,7 +51,7 @@ export class RuntimeJobManager {
   private jobs = new Map<string, RuntimeJobEntry>()
   private pending: RuntimeJobEntry[] = []
   private activeByKind = new Map<string, Set<string>>()
-  private drainPromise: Promise<void> | null = null
+  private idleWaiters: Array<() => void> = []
 
   constructor(private readonly runtimeEvents?: RuntimeEventBus) {}
 
@@ -92,7 +92,7 @@ export class RuntimeJobManager {
     this.jobs.set(entry.record.id, entry)
     this.pending.push(entry)
     this.emitJobEvent('runtime.job.queued', entry.record)
-    this.drain()
+    this.scheduleReadyJobs()
     return entry.record as RuntimeJobRecord<TInput>
   }
 
@@ -127,9 +127,12 @@ export class RuntimeJobManager {
   }
 
   async waitForIdle(): Promise<void> {
-    while (this.pending.length > 0 || this.activeByKind.size > 0 || this.drainPromise) {
-      await this.drainPromise
+    if (this.pending.length === 0 && this.activeByKind.size === 0) {
+      return
     }
+    await new Promise<void>((resolve) => {
+      this.idleWaiters.push(resolve)
+    })
   }
 
   async waitForJob<TResult = unknown>(id: string): Promise<RuntimeJobRecord<unknown, TResult>> {
@@ -150,25 +153,7 @@ export class RuntimeJobManager {
     })
   }
 
-  private drain(): void {
-    if (this.drainPromise) {
-      return
-    }
-
-    this.drainPromise = this.runReadyJobs()
-      .catch((error) => {
-        console.warn('[RuntimeJobManager] Drain failed:', formatJobError(error))
-      })
-      .finally(() => {
-        this.drainPromise = null
-        if (this.hasRunnablePendingJobs()) {
-          this.drain()
-        }
-      })
-  }
-
-  private async runReadyJobs(): Promise<void> {
-    const started: Promise<void>[] = []
+  private scheduleReadyJobs(): void {
     for (let index = 0; index < this.pending.length;) {
       const entry = this.pending[index]
       const registration = this.handlers.get(entry.record.kind)
@@ -190,10 +175,9 @@ export class RuntimeJobManager {
 
       this.pending.splice(index, 1)
       this.markKindActive(entry)
-      started.push(this.runEntry(entry, registration.handler))
+      void this.runEntry(entry, registration.handler)
     }
-
-    await Promise.all(started)
+    this.resolveIdleWaitersIfIdle()
   }
 
   private async runEntry(entry: RuntimeJobEntry, handler: RuntimeJobHandler): Promise<void> {
@@ -258,8 +242,9 @@ export class RuntimeJobManager {
       this.activeByKind.delete(entry.record.kind)
     }
     if (this.hasRunnablePendingJobs()) {
-      this.drain()
+      this.scheduleReadyJobs()
     }
+    this.resolveIdleWaitersIfIdle()
   }
 
   private hasRunnablePendingJobs(): boolean {
@@ -267,6 +252,17 @@ export class RuntimeJobManager {
       const registration = this.handlers.get(entry.record.kind)
       return Boolean(registration && this.canStartKind(entry.record.kind, registration.concurrency))
     })
+  }
+
+  private resolveIdleWaitersIfIdle(): void {
+    if (this.pending.length > 0 || this.activeByKind.size > 0) {
+      return
+    }
+    const waiters = this.idleWaiters
+    this.idleWaiters = []
+    for (const resolve of waiters) {
+      resolve()
+    }
   }
 
   private updateRecord(entry: RuntimeJobEntry, patch: Partial<RuntimeJobRecord>): void {
