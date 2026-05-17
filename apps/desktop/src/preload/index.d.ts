@@ -199,6 +199,11 @@ declare global {
 
       deleteLearningAsset: (id: string) => Promise<{ success: boolean; error?: string }>
 
+      rollbackLearningAsset: (
+        id: string,
+        reason: string
+      ) => Promise<{ success: boolean; error?: string; rollback?: any }>
+
       setRuntimeAgentStatus: (
         id: string,
         status: 'draft' | 'active' | 'disabled'

@@ -3673,12 +3673,16 @@ ipcMain.handle('learning:overview', async () => {
       pendingCandidates,
       assets,
       agents,
+      automationDecisions,
+      rollbacks,
     ] = await Promise.all([
       sdkInstance.learning.listEvents(80),
       sdkInstance.learning.listReflections(20),
       sdkInstance.learning.listCandidates(undefined, 50),
       sdkInstance.learning.listAssets(undefined, 80),
       sdkInstance.agentSociety.listAgents(),
+      sdkInstance.learning.listAutomationDecisions(50),
+      sdkInstance.learning.listAssetRollbacks(undefined, 50),
     ])
     return {
       success: true,
@@ -3687,6 +3691,8 @@ ipcMain.handle('learning:overview', async () => {
       candidates: pendingCandidates,
       assets,
       agents,
+      automationDecisions,
+      rollbacks,
     }
   } catch (error: any) {
     console.error('[Learning] Failed to load overview:', error)
@@ -3746,6 +3752,18 @@ ipcMain.handle('learning:deleteAsset', async (_event, id: string) => {
     return { success: true }
   } catch (error: any) {
     console.error('[Learning] Failed to delete asset:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('learning:rollbackAsset', async (_event, id: string, reason: string) => {
+  if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
+
+  try {
+    const rollback = await sdkInstance.learning.rollbackAsset(id, reason || 'Rolled back from Learning Center')
+    return { success: true, rollback }
+  } catch (error: any) {
+    console.error('[Learning] Failed to rollback asset:', error)
     return { success: false, error: error.message }
   }
 })

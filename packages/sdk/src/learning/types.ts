@@ -6,6 +6,12 @@ import type { RuntimeEvent } from '../runtime/index.js'
 export type LearningCandidateKind = 'skill' | 'routine' | 'agent'
 export type LearningCandidateStatus = 'pending' | 'approved' | 'rejected' | 'deployed'
 export type LearningAssetStatus = 'draft' | 'active' | 'disabled' | 'archived'
+export type LearningAutomationDecisionAction =
+  | 'reflected'
+  | 'candidate_created'
+  | 'auto_deployed'
+  | 'kept_pending'
+  | 'rollback'
 
 export interface LearningEventRecord {
   id: string
@@ -65,6 +71,25 @@ export interface LearningAssetUsage {
   createdAt: number
 }
 
+export interface LearningAutomationDecision {
+  id: string
+  action: LearningAutomationDecisionAction
+  candidateId?: string
+  assetId?: string
+  reason: string
+  risk: 'low' | 'medium' | 'high'
+  createdAt: number
+}
+
+export interface LearningAssetRollback {
+  id: string
+  assetId: string
+  previousStatus: LearningAssetStatus
+  restoredStatus: LearningAssetStatus
+  reason: string
+  createdAt: number
+}
+
 export interface SkillLearningContent {
   trigger: string[]
   workflow: string
@@ -117,6 +142,14 @@ export interface RecordLearningAssetUsageInput {
   taskId?: string
   outcome: LearningAssetUsage['outcome']
   note?: string
+}
+
+export interface RecordLearningAutomationDecisionInput {
+  action: LearningAutomationDecisionAction
+  candidateId?: string
+  assetId?: string
+  reason: string
+  risk: LearningAutomationDecision['risk']
 }
 
 export interface DeployCandidateInput {

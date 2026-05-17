@@ -5,7 +5,13 @@ import { AgentCore } from './agent/index.js'
 import { DialogueOrchestrator } from './dialogue/index.js'
 import { ContextManager } from './context/index.js'
 import { AgentSocietyRuntime } from './agent-society/index.js'
-import { LearningAssetStore, PersonaContinuityPolicy, ReflectionEngine } from './learning/index.js'
+import {
+  LearningAssetStore,
+  LearningAutomationRuntime,
+  PersonaContinuityPolicy,
+  ReflectionEngine,
+  type LearningAutomationRuntimeOptions,
+} from './learning/index.js'
 import { createLLMProvider, type LLMProvider } from '@her-text/core'
 import type { PluginRuntimeContext, SDKPlugin, TextTransformTarget } from './plugins/index.js'
 import type { TaskRuntimeHooks } from './session/task.js'
@@ -18,6 +24,7 @@ export interface HerTextSDKInitializeOptions {
   onTaskRunStateChanged?: TaskRuntimeHooks['onRunStateChanged']
   onTaskPlanUpdated?: TaskRuntimeHooks['onPlanUpdated']
   onTaskStepUpdated?: TaskRuntimeHooks['onStepUpdated']
+  learningAutomation?: LearningAutomationRuntimeOptions
 }
 
 
@@ -29,6 +36,7 @@ export class HerTextSDK {
   public learning: LearningAssetStore
   public reflection: ReflectionEngine
   public personaContinuity: PersonaContinuityPolicy
+  public learningAutomation: LearningAutomationRuntime
   public agentSociety: AgentSocietyRuntime
   private dialogue: DialogueOrchestrator
   private llm: LLMProvider
@@ -45,6 +53,13 @@ export class HerTextSDK {
     this.learning = new LearningAssetStore(config.memory.storageDir)
     this.reflection = new ReflectionEngine(this.learning)
     this.personaContinuity = new PersonaContinuityPolicy()
+    this.learningAutomation = new LearningAutomationRuntime(
+      this.runtimeEvents,
+      this.learning,
+      this.reflection,
+      this.personaContinuity,
+      options.learningAutomation
+    )
     this.agentSociety = new AgentSocietyRuntime({
       storageDir: config.memory.storageDir,
       agentCore: this.agent,
@@ -87,6 +102,7 @@ export class HerTextSDK {
     await sdk.learning.initialize()
     await sdk.agentSociety.initialize()
     await sdk.dialogue.initialize()
+    sdk.learningAutomation.start()
     return sdk
   }
 
@@ -146,6 +162,7 @@ export class HerTextSDK {
   
   async shutdown(): Promise<void> {
     await this.dialogue.shutdown()
+    await this.learningAutomation.shutdown()
     await this.memory.shutdown()
     await this.learning.shutdown()
     await this.agentSociety.shutdown()

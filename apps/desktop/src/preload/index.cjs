@@ -91,6 +91,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteLearningAsset: (id) =>
     ipcRenderer.invoke('learning:deleteAsset', id),
 
+  rollbackLearningAsset: (id, reason) =>
+    ipcRenderer.invoke('learning:rollbackAsset', id, reason),
+
   setRuntimeAgentStatus: (id, status) =>
     ipcRenderer.invoke('learning:setAgentStatus', id, status),
 

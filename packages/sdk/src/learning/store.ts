@@ -17,11 +17,14 @@ import type {
   CreateReflectionInput,
   DeployCandidateInput,
   LearningAsset,
+  LearningAssetRollback,
   LearningAssetStatus,
   LearningAssetUsage,
+  LearningAutomationDecision,
   LearningCandidate,
   LearningCandidateStatus,
   LearningEventRecord,
+  RecordLearningAutomationDecisionInput,
   RecordLearningAssetUsageInput,
   ReflectionRecord,
   RoutinePolicy,
@@ -87,11 +90,32 @@ CREATE TABLE IF NOT EXISTS asset_usage (
   created_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS automation_decisions (
+  id TEXT PRIMARY KEY,
+  action TEXT NOT NULL CHECK(action IN ('reflected', 'candidate_created', 'auto_deployed', 'kept_pending', 'rollback')),
+  candidate_id TEXT,
+  asset_id TEXT,
+  reason TEXT NOT NULL,
+  risk TEXT NOT NULL CHECK(risk IN ('low', 'medium', 'high')),
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS asset_rollbacks (
+  id TEXT PRIMARY KEY,
+  asset_id TEXT NOT NULL,
+  previous_status TEXT NOT NULL,
+  restored_status TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_learning_events_timestamp ON learning_events(timestamp);
 CREATE INDEX IF NOT EXISTS idx_learning_events_correlation ON learning_events(correlation_id);
 CREATE INDEX IF NOT EXISTS idx_learning_events_task ON learning_events(task_id);
 CREATE INDEX IF NOT EXISTS idx_learning_candidates_status ON learning_candidates(status);
 CREATE INDEX IF NOT EXISTS idx_learning_assets_status ON learning_assets(status);
+CREATE INDEX IF NOT EXISTS idx_automation_decisions_created ON automation_decisions(created_at);
+CREATE INDEX IF NOT EXISTS idx_asset_rollbacks_asset ON asset_rollbacks(asset_id);
 `
 
 interface LearningEventRow {
@@ -152,6 +176,25 @@ interface UsageRow {
   created_at: number
 }
 
+interface AutomationDecisionRow {
+  id: string
+  action: LearningAutomationDecision['action']
+  candidate_id: string | null
+  asset_id: string | null
+  reason: string
+  risk: LearningAutomationDecision['risk']
+  created_at: number
+}
+
+interface RollbackRow {
+  id: string
+  asset_id: string
+  previous_status: LearningAssetStatus
+  restored_status: LearningAssetStatus
+  reason: string
+  created_at: number
+}
+
 export class LearningAssetStore {
   private persistenceEnabled = false
   private writeQueue: Promise<void> = Promise.resolve()
@@ -208,6 +251,7 @@ export class LearningAssetStore {
   }
 
   async listEvents(limit = 100): Promise<LearningEventRecord[]> {
+    await this.flushWrites()
     const rows = await runSqliteJson<LearningEventRow>(
       this.dbPath,
       `
@@ -489,6 +533,56 @@ export class LearningAssetStore {
     )
   }
 
+  async rollbackAsset(id: string, reason: string): Promise<LearningAssetRollback> {
+    const asset = await this.getAsset(id)
+    if (!asset) {
+      throw new Error(`Learning asset not found: ${id}`)
+    }
+
+    const rollback: LearningAssetRollback = {
+      id: generateId(),
+      assetId: id,
+      previousStatus: asset.status,
+      restoredStatus: 'disabled',
+      reason,
+      createdAt: Date.now(),
+    }
+
+    await runSqlite(
+      this.dbPath,
+      `
+      UPDATE learning_assets
+      SET status = ${sqlText(rollback.restoredStatus)}, updated_at = ${rollback.createdAt}
+      WHERE id = ${sqlText(id)};
+
+      INSERT INTO asset_rollbacks (
+        id,
+        asset_id,
+        previous_status,
+        restored_status,
+        reason,
+        created_at
+      ) VALUES (
+        ${sqlText(rollback.id)},
+        ${sqlText(rollback.assetId)},
+        ${sqlText(rollback.previousStatus)},
+        ${sqlText(rollback.restoredStatus)},
+        ${sqlText(rollback.reason)},
+        ${rollback.createdAt}
+      );
+      `
+    )
+
+    await this.recordAutomationDecision({
+      action: 'rollback',
+      assetId: id,
+      reason,
+      risk: 'medium',
+    })
+
+    return rollback
+  }
+
   async recordAssetUsage(input: RecordLearningAssetUsageInput): Promise<LearningAssetUsage> {
     const usage: LearningAssetUsage = {
       id: generateId(),
@@ -537,6 +631,75 @@ export class LearningAssetStore {
       `
     )
     return rows.map(mapUsageRow)
+  }
+
+  async recordAutomationDecision(
+    input: RecordLearningAutomationDecisionInput
+  ): Promise<LearningAutomationDecision> {
+    const decision: LearningAutomationDecision = {
+      id: generateId(),
+      action: input.action,
+      candidateId: input.candidateId,
+      assetId: input.assetId,
+      reason: input.reason,
+      risk: input.risk,
+      createdAt: Date.now(),
+    }
+
+    await runSqlite(
+      this.dbPath,
+      `
+      INSERT INTO automation_decisions (
+        id,
+        action,
+        candidate_id,
+        asset_id,
+        reason,
+        risk,
+        created_at
+      ) VALUES (
+        ${sqlText(decision.id)},
+        ${sqlText(decision.action)},
+        ${decision.candidateId ? sqlText(decision.candidateId) : 'NULL'},
+        ${decision.assetId ? sqlText(decision.assetId) : 'NULL'},
+        ${sqlText(decision.reason)},
+        ${sqlText(decision.risk)},
+        ${decision.createdAt}
+      );
+      `
+    )
+
+    return decision
+  }
+
+  async listAutomationDecisions(limit = 50): Promise<LearningAutomationDecision[]> {
+    const rows = await runSqliteJson<AutomationDecisionRow>(
+      this.dbPath,
+      `
+      SELECT * FROM automation_decisions
+      ORDER BY created_at DESC
+      LIMIT ${clampLimit(limit)};
+      `
+    )
+    return rows.map(mapAutomationDecisionRow)
+  }
+
+  async listAssetRollbacks(assetId?: string, limit = 50): Promise<LearningAssetRollback[]> {
+    const where = assetId ? `WHERE asset_id = ${sqlText(assetId)}` : ''
+    const rows = await runSqliteJson<RollbackRow>(
+      this.dbPath,
+      `
+      SELECT * FROM asset_rollbacks
+      ${where}
+      ORDER BY created_at DESC
+      LIMIT ${clampLimit(limit)};
+      `
+    )
+    return rows.map(mapRollbackRow)
+  }
+
+  async flushWrites(): Promise<void> {
+    await this.writeQueue
   }
 
   async shutdown(): Promise<void> {
@@ -616,6 +779,29 @@ function mapUsageRow(row: UsageRow): LearningAssetUsage {
     taskId: row.task_id ?? undefined,
     outcome: row.outcome,
     note: row.note ?? undefined,
+    createdAt: row.created_at,
+  }
+}
+
+function mapAutomationDecisionRow(row: AutomationDecisionRow): LearningAutomationDecision {
+  return {
+    id: row.id,
+    action: row.action,
+    candidateId: row.candidate_id ?? undefined,
+    assetId: row.asset_id ?? undefined,
+    reason: row.reason,
+    risk: row.risk,
+    createdAt: row.created_at,
+  }
+}
+
+function mapRollbackRow(row: RollbackRow): LearningAssetRollback {
+  return {
+    id: row.id,
+    assetId: row.asset_id,
+    previousStatus: row.previous_status,
+    restoredStatus: row.restored_status,
+    reason: row.reason,
     createdAt: row.created_at,
   }
 }

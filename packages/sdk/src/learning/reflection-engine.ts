@@ -32,6 +32,12 @@ export class ReflectionEngine {
       return null
     }
 
+    const sourceEventIds = relevantEvents.map(event => event.id)
+    const existingReflections = await this.store.listReflections(20)
+    if (existingReflections.some(reflection => sameStringSet(reflection.sourceEventIds, sourceEventIds))) {
+      return null
+    }
+
     const reflectionInput = buildReflectionInput(relevantEvents)
     const reflection = await this.store.createReflection(reflectionInput)
     const candidateInputs = buildCandidateInputs(relevantEvents, reflection)
@@ -42,6 +48,14 @@ export class ReflectionEngine {
 
     return { reflection, candidates }
   }
+}
+
+function sameStringSet(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) {
+    return false
+  }
+  const values = new Set(left)
+  return right.every(value => values.has(value))
 }
 
 function selectLatestInteractionOrTaskEvents(events: LearningEventRecord[]): LearningEventRecord[] {

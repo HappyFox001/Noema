@@ -6321,3 +6321,10 @@ body.theme-day .tts-button {
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
+
+.learning-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}

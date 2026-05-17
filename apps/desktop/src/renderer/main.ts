@@ -674,6 +674,8 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'learning.candidates': '候选',
     'learning.assets': '资产',
     'learning.agents': 'Agents',
+    'learning.decisions': '自动化决策',
+    'learning.rollbacks': '回滚',
     'learning.empty': '暂无数据',
     'personality.addFile': '添加角色文件',
     'personality.addFileDesc': '选择外部 .yml/.yaml 文件，校验通过后加入人格列表',
@@ -810,6 +812,8 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'learning.candidates': 'Candidates',
     'learning.assets': 'Assets',
     'learning.agents': 'Agents',
+    'learning.decisions': 'Automation Decisions',
+    'learning.rollbacks': 'Rollbacks',
     'learning.empty': 'No data',
     'personality.addFile': 'Add Role File',
     'personality.addFileDesc': 'Choose an external .yml/.yaml file and add it after validation',
@@ -2857,18 +2861,24 @@ function renderLearningOverview(result: {
   candidates?: any[]
   assets?: any[]
   agents?: any[]
+  automationDecisions?: any[]
+  rollbacks?: any[]
 }): void {
   const events = result.events ?? []
   const reflections = result.reflections ?? []
   const candidates = result.candidates ?? []
   const assets = result.assets ?? []
   const agents = result.agents ?? []
+  const automationDecisions = result.automationDecisions ?? []
+  const rollbacks = result.rollbacks ?? []
 
   learningOverview.innerHTML = [
+    renderLearningGroup(t('learning.decisions'), automationDecisions, renderAutomationDecision),
     renderLearningGroup(t('learning.events'), events.slice(-12).reverse(), renderLearningEvent),
     renderLearningGroup(t('learning.reflections'), reflections, renderReflection),
     renderLearningGroup(t('learning.candidates'), candidates, renderCandidate),
     renderLearningGroup(t('learning.assets'), assets, renderLearningAsset),
+    renderLearningGroup(t('learning.rollbacks'), rollbacks, renderRollback),
     renderLearningGroup(t('learning.agents'), agents, renderRuntimeAgent),
   ].join('')
 
@@ -2896,6 +2906,19 @@ function renderLearningOverview(result: {
       const response = await window.electronAPI.setLearningAssetStatus(id, status)
       if (!response.success) {
         showNotice(`Update failed: ${response.error ?? 'unknown error'}`)
+      }
+      await refreshLearningSection()
+    })
+  })
+
+  learningOverview.querySelectorAll<HTMLButtonElement>('[data-asset-rollback]').forEach(button => {
+    button.addEventListener('click', async () => {
+      const id = button.dataset.assetRollback
+      if (!id) return
+      button.disabled = true
+      const response = await window.electronAPI.rollbackLearningAsset(id, 'Rolled back from Learning Center')
+      if (!response.success) {
+        showNotice(`Rollback failed: ${response.error ?? 'unknown error'}`)
       }
       await refreshLearningSection()
     })
@@ -2947,6 +2970,14 @@ function renderReflection(item: any): string {
   ].join(' · '))
 }
 
+function renderAutomationDecision(item: any): string {
+  return renderLearningRow(item.action ?? 'decision', [
+    item.risk ? `risk ${item.risk}` : '',
+    item.reason ?? '',
+    formatTimestamp(item.createdAt),
+  ].filter(Boolean).join(' · '))
+}
+
 function renderCandidate(item: any): string {
   return `
     <div class="learning-row">
@@ -2967,9 +2998,20 @@ function renderLearningAsset(item: any): string {
         <div class="learning-row-title">${escapeHtml(item.kind ?? 'asset')} · ${escapeHtml(item.status ?? '')}</div>
         <div class="learning-row-desc">${escapeHtml(item.scope ?? item.id ?? '')}</div>
       </div>
-      <button class="settings-btn" type="button" data-asset-status="${escapeHtml(item.id ?? '')}" data-status="${nextStatus}">${escapeHtml(nextStatus)}</button>
+      <div class="learning-row-actions">
+        <button class="settings-btn" type="button" data-asset-status="${escapeHtml(item.id ?? '')}" data-status="${nextStatus}">${escapeHtml(nextStatus)}</button>
+        <button class="settings-btn" type="button" data-asset-rollback="${escapeHtml(item.id ?? '')}">Rollback</button>
+      </div>
     </div>
   `
+}
+
+function renderRollback(item: any): string {
+  return renderLearningRow(item.assetId ?? 'rollback', [
+    `${item.previousStatus ?? ''} → ${item.restoredStatus ?? ''}`,
+    item.reason ?? '',
+    formatTimestamp(item.createdAt),
+  ].filter(Boolean).join(' · '))
 }
 
 function renderRuntimeAgent(item: any): string {
