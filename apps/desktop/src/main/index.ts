@@ -50,7 +50,7 @@ console.log('[Env] LLM_1_BASE_URL:', process.env.LLM_1_BASE_URL || '✗ (not set
 console.log('[Env] TTS_1_API_KEY:', process.env.TTS_1_API_KEY ? '✓ (set)' : '✗ (not set)')
 console.log('[Env] ASR_1_API_KEY:', process.env.ASR_1_API_KEY ? '✓ (set)' : '✗ (not set)')
 
-import { app, BrowserWindow, ipcMain, systemPreferences, shell, dialog, screen, type OpenDialogOptions } from 'electron'
+import { app, BrowserWindow, ipcMain, systemPreferences, shell, dialog, screen, nativeImage, type OpenDialogOptions } from 'electron'
 import {
   HerTextSDK,
   createSTTProvider,
@@ -2057,6 +2057,30 @@ const COMPACT_WINDOW_SIZE = { width: 380, height: 380 }
 const TASK_WINDOW_SIZE = { width: 600, height: 380 }
 const SETTINGS_WINDOW_SIZE = { width: 500, height: 600 }
 
+function getAppIconPath(): string | undefined {
+  const iconPath = app.isPackaged
+    ? join(app.getAppPath(), 'resources/icon.png')
+    : join(__dirname, '../resources/icon.png')
+
+  return existsSync(iconPath) ? iconPath : undefined
+}
+
+function applyAppIcon(): void {
+  if (process.platform !== 'darwin' || !app.dock) {
+    return
+  }
+
+  const iconPath = getAppIconPath()
+  if (!iconPath) {
+    return
+  }
+
+  const icon = nativeImage.createFromPath(iconPath)
+  if (!icon.isEmpty()) {
+    app.dock.setIcon(icon)
+  }
+}
+
 function resizeWindowAroundCenter(window: BrowserWindow, width: number, height: number): void {
   const bounds = window.getBounds()
   const nextX = Math.round(bounds.x + (bounds.width - width) / 2)
@@ -2499,9 +2523,12 @@ async function loadRenderer(window: BrowserWindow): Promise<void> {
 }
 
 async function createWindow() {
+  const appIconPath = getAppIconPath()
+
   mainWindow = new BrowserWindow({
     width: COMPACT_WINDOW_SIZE.width,
     height: COMPACT_WINDOW_SIZE.height,
+    ...(appIconPath ? { icon: appIconPath } : {}),
     frame: false,
     transparent: true,
     backgroundColor: '#00000000',
@@ -2931,6 +2958,8 @@ function getSettingsStore(): SettingsStore {
 }
 
 app.whenReady().then(async () => {
+  applyAppIcon()
+
   await appLogStore.initializePersistence(join(app.getPath('userData'), 'logs.json'))
   console.log('[Logs] Persistent log store:', join(app.getPath('userData'), 'logs.json'))
 

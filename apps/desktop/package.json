@@ -41,11 +41,13 @@
   "build": {
     "appId": "com.xhacker.her-text",
     "productName": "Her-Text",
+    "icon": "resources/icon.png",
     "directories": {
       "output": "release"
     },
     "files": [
       "dist/**/*",
+      "resources/icon.png",
       "package.json"
     ],
     "mac": {
