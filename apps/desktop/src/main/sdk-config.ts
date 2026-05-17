@@ -55,9 +55,7 @@ export async function buildSDKConfig(): Promise<SDKConfig> {
   const taskRuntime = {
     ...(activeTaskRuntimeConfig ?? {}),
     llmTransport: activeTaskLLMConfig?.transport ?? 'openai_compatible',
-    model: activeTaskLLMConfig?.transport === 'openai_compatible'
-      ? activeTaskRuntimeConfig?.model
-      : activeTaskLLMConfig?.modelName,
+    model: activeTaskRuntimeConfig?.model,
   }
 
   return {

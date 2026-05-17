@@ -4387,9 +4387,20 @@ body.task-active:not(.settings-open) #main-view {
 }
 
 .model-overview-status {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  padding: 2px 6px;
+  border-radius: 4px;
   color: rgba(150, 230, 196, 0.8);
   font-family: var(--font-ui);
   font-size: 10px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .model-overview-card.missing .model-overview-status {
@@ -4734,6 +4745,18 @@ body.task-active:not(.settings-open) #main-view {
 .config-model-name input:focus {
   border-color: rgba(232, 238, 238, 0.26);
   background: rgba(232, 238, 238, 0.035);
+}
+
+.config-model-cli-default {
+  min-width: 0;
+  padding: 3px 4px;
+  color: rgba(232, 238, 238, 0.58);
+  font-family: var(--font-soft);
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .local-model-name span:first-child {

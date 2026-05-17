@@ -5243,10 +5243,12 @@ function getActiveModelSummary(kind: ModelManagerKind): {
     return {
       kind,
       title: '任务模型',
-      modelName: model?.modelName || (transport === 'openai_compatible' ? '未配置' : 'CLI default'),
+      modelName: transport === 'openai_compatible'
+        ? model?.modelName || '未配置'
+        : 'CLI default',
       provider: getTaskTransportLabel(transport),
-      baseUrl: model?.baseUrl || '',
-      apiKey: model?.apiKey || '',
+      baseUrl: transport === 'openai_compatible' ? model?.baseUrl || '' : '',
+      apiKey: transport === 'openai_compatible' ? model?.apiKey || '' : '',
       count: currentSystemConfig.taskModels.length,
       ready: missing.length === 0,
       missing,
@@ -5487,12 +5489,27 @@ function renderTaskModels(): void {
   taskModelsList.innerHTML = models.map(model => {
     const transport = getTaskModelTransport(model)
     const isCli = transport !== 'openai_compatible'
+    const taskFields = isCli
+      ? ''
+      : `
+        <div class="config-field">
+          <span class="config-field-label">API Key</span>
+          <input type="text" class="config-field-input masked" value="${escapeHtml(model.apiKey)}" data-field="apiKey" placeholder="sk-..." />
+        </div>
+        <div class="config-field">
+          <span class="config-field-label">Base URL</span>
+          <input type="text" class="config-field-input" value="${escapeHtml(model.baseUrl)}" data-field="baseUrl" placeholder="https://generativelanguage.googleapis.com/v1beta/openai" />
+        </div>
+      `
     return `
     <div class="config-model-card ${model.id === currentSystemConfig!.activeTaskId ? 'active' : ''}" data-id="${escapeHtml(model.id)}">
       <div class="config-model-header">
         <div class="config-model-name">
           ${renderTaskTransportControl(model)}
-          <input type="text" value="${escapeHtml(model.modelName)}" data-field="modelName" placeholder="${isCli ? 'CLI default' : 'gemini-3.1-pro-preview'}" />
+          ${isCli
+            ? '<span class="config-model-cli-default">CLI default</span>'
+            : `<input type="text" value="${escapeHtml(model.modelName)}" data-field="modelName" placeholder="gemini-3.1-pro-preview" />`
+          }
           ${model.id === currentSystemConfig!.activeTaskId ? `<span class="config-model-active-badge">${escapeHtml(t('common.active'))}</span>` : ''}
         </div>
         <div class="config-model-actions">
@@ -5506,14 +5523,7 @@ function renderTaskModels(): void {
           <span class="config-field-label">Transport</span>
           ${renderTaskTransportControl(model)}
         </div>
-        <div class="config-field" ${isCli ? 'hidden' : ''}>
-          <span class="config-field-label">API Key</span>
-          <input type="text" class="config-field-input masked" value="${escapeHtml(model.apiKey)}" data-field="apiKey" placeholder="sk-..." />
-        </div>
-        <div class="config-field" ${isCli ? 'hidden' : ''}>
-          <span class="config-field-label">Base URL</span>
-          <input type="text" class="config-field-input" value="${escapeHtml(model.baseUrl)}" data-field="baseUrl" placeholder="https://generativelanguage.googleapis.com/v1beta/openai" />
-        </div>
+        ${taskFields}
       </div>
     </div>
   `
@@ -5605,6 +5615,31 @@ function renderTTSProviderControl(provider: TTSProviderType): string {
   return renderProviderControl('tts', provider, getTTSProviderLabel(provider), getTTSProviderLogo(provider))
 }
 
+function shouldShowTTSField(provider: TTSProviderType, field: keyof TTSModelConfig): boolean {
+  switch (provider) {
+    case 'fish':
+      return field === 'apiKey' || field === 'voiceId'
+    case 'openai':
+      return field === 'apiKey' || field === 'baseUrl' || field === 'voiceId'
+    case 'elevenlabs':
+      return field === 'apiKey' || field === 'baseUrl' || field === 'voiceId' || field === 'language'
+    default:
+      return true
+  }
+}
+
+function shouldShowASRField(provider: ASRProviderType, field: keyof ASRModelConfig): boolean {
+  switch (provider) {
+    case 'qwen':
+      return field === 'apiKey' || field === 'baseUrl' || field === 'language'
+    case 'openai':
+    case 'groq':
+      return field === 'apiKey' || field === 'baseUrl' || field === 'language'
+    default:
+      return true
+  }
+}
+
 function renderTTSModels(): void {
   if (!currentSystemConfig) return
 
@@ -5614,7 +5649,34 @@ function renderTTSModels(): void {
     return
   }
 
-  ttsModelsList.innerHTML = models.map(model => `
+  ttsModelsList.innerHTML = models.map(model => {
+    const fields = [
+      shouldShowTTSField(model.provider, 'apiKey') ? `
+        <div class="config-field">
+          <span class="config-field-label">API Key</span>
+          <input type="text" class="config-field-input masked" value="${escapeHtml(model.apiKey)}" data-field="apiKey" placeholder="API Key" />
+        </div>
+      ` : '',
+      shouldShowTTSField(model.provider, 'baseUrl') ? `
+        <div class="config-field">
+          <span class="config-field-label">Base URL</span>
+          <input type="text" class="config-field-input" value="${escapeHtml(model.baseUrl || '')}" data-field="baseUrl" placeholder="https://api.openai.com/v1" />
+        </div>
+      ` : '',
+      shouldShowTTSField(model.provider, 'voiceId') ? `
+        <div class="config-field">
+          <span class="config-field-label">Voice ID</span>
+          <input type="text" class="config-field-input" value="${escapeHtml(model.voiceId || '')}" data-field="voiceId" placeholder="${escapeHtml(getTTSProviderCatalogEntry(model.provider).defaultVoiceId || '音色 ID')}" />
+        </div>
+      ` : '',
+      shouldShowTTSField(model.provider, 'language') ? `
+        <div class="config-field">
+          <span class="config-field-label">Language</span>
+          <input type="text" class="config-field-input" value="${escapeHtml(model.language || '')}" data-field="language" placeholder="zh / en（可选）" />
+        </div>
+      ` : '',
+    ].join('')
+    return `
     <div class="config-model-card ${model.id === currentSystemConfig!.activeTTSId ? 'active' : ''}" data-id="${escapeHtml(model.id)}">
       <div class="config-model-header">
         <div class="config-model-name">
@@ -5633,25 +5695,11 @@ function renderTTSModels(): void {
           <span class="config-field-label">Provider</span>
           ${renderTTSProviderControl(model.provider)}
         </div>
-        <div class="config-field">
-          <span class="config-field-label">API Key</span>
-          <input type="text" class="config-field-input masked" value="${escapeHtml(model.apiKey)}" data-field="apiKey" placeholder="API Key" />
-        </div>
-        <div class="config-field">
-          <span class="config-field-label">Base URL</span>
-          <input type="text" class="config-field-input" value="${escapeHtml(model.baseUrl || '')}" data-field="baseUrl" placeholder="https://api.openai.com/v1" />
-        </div>
-        <div class="config-field">
-          <span class="config-field-label">Voice ID</span>
-          <input type="text" class="config-field-input" value="${escapeHtml(model.voiceId || '')}" data-field="voiceId" placeholder="${escapeHtml(getTTSProviderCatalogEntry(model.provider).defaultVoiceId || '音色 ID')}" />
-        </div>
-        <div class="config-field">
-          <span class="config-field-label">Language</span>
-          <input type="text" class="config-field-input" value="${escapeHtml(model.language || '')}" data-field="language" placeholder="zh / en（可选）" />
-        </div>
+        ${fields}
       </div>
     </div>
-  `).join('')
+  `
+  }).join('')
 
   attachTTSEventListeners()
 }
@@ -5675,7 +5723,28 @@ function renderASRModels(): void {
     return
   }
 
-  asrModelsList.innerHTML = models.map(model => `
+  asrModelsList.innerHTML = models.map(model => {
+    const fields = [
+      shouldShowASRField(model.provider, 'apiKey') ? `
+        <div class="config-field">
+          <span class="config-field-label">API Key</span>
+          <input type="text" class="config-field-input masked" value="${escapeHtml(model.apiKey)}" data-field="apiKey" placeholder="API Key" />
+        </div>
+      ` : '',
+      shouldShowASRField(model.provider, 'baseUrl') ? `
+        <div class="config-field">
+          <span class="config-field-label">Base URL</span>
+          <input type="text" class="config-field-input" value="${escapeHtml(model.baseUrl || '')}" data-field="baseUrl" placeholder="https://api.openai.com/v1" />
+        </div>
+      ` : '',
+      shouldShowASRField(model.provider, 'language') ? `
+        <div class="config-field">
+          <span class="config-field-label">Language</span>
+          <input type="text" class="config-field-input" value="${escapeHtml(model.language || '')}" data-field="language" placeholder="zh / en" />
+        </div>
+      ` : '',
+    ].join('')
+    return `
     <div class="config-model-card ${model.id === currentSystemConfig!.activeASRId ? 'active' : ''}" data-id="${escapeHtml(model.id)}">
       <div class="config-model-header">
         <div class="config-model-name">
@@ -5694,21 +5763,11 @@ function renderASRModels(): void {
           <span class="config-field-label">Provider</span>
           ${renderASRProviderControl(model.provider)}
         </div>
-        <div class="config-field">
-          <span class="config-field-label">API Key</span>
-          <input type="text" class="config-field-input masked" value="${escapeHtml(model.apiKey)}" data-field="apiKey" placeholder="API Key" />
-        </div>
-        <div class="config-field">
-          <span class="config-field-label">Base URL</span>
-          <input type="text" class="config-field-input" value="${escapeHtml(model.baseUrl || '')}" data-field="baseUrl" placeholder="https://api.openai.com/v1" />
-        </div>
-        <div class="config-field">
-          <span class="config-field-label">Language</span>
-          <input type="text" class="config-field-input" value="${escapeHtml(model.language || '')}" data-field="language" placeholder="zh / en" />
-        </div>
+        ${fields}
       </div>
     </div>
-  `).join('')
+  `
+  }).join('')
 
   attachASREventListeners()
 }
@@ -6132,15 +6191,13 @@ async function updateTTSProvider(id: string, provider: TTSProviderType): Promise
   if (!model) return
 
   const providerEntry = getTTSProviderCatalogEntry(provider)
-  Object.assign(model, {
-    provider,
-    modelName: providerEntry.defaultModel,
-    baseUrl: providerEntry.defaultBaseUrl,
-    voiceId: providerEntry.defaultVoiceId || '',
-    language: providerEntry.defaultLanguage,
-    sampleRate: providerEntry.sampleRate,
-    format: 'pcm' as const,
-  })
+  model.provider = provider
+  model.modelName ||= providerEntry.defaultModel
+  model.baseUrl ||= providerEntry.defaultBaseUrl
+  model.voiceId ||= providerEntry.defaultVoiceId || ''
+  model.language ||= providerEntry.defaultLanguage
+  model.sampleRate ||= providerEntry.sampleRate
+  model.format ||= 'pcm'
   await saveSystemConfig()
   renderTTSModels()
 }
@@ -6195,13 +6252,11 @@ async function updateASRProvider(id: string, provider: ASRProviderType): Promise
   if (!model) return
 
   const providerEntry = getASRProviderCatalogEntry(provider)
-  Object.assign(model, {
-    provider,
-    modelName: providerEntry.defaultModel,
-    baseUrl: providerEntry.defaultBaseUrl,
-    language: providerEntry.defaultLanguage,
-    sampleRate: providerEntry.sampleRate,
-  })
+  model.provider = provider
+  model.modelName ||= providerEntry.defaultModel
+  model.baseUrl ||= providerEntry.defaultBaseUrl
+  model.language ||= providerEntry.defaultLanguage
+  model.sampleRate ||= providerEntry.sampleRate
   await saveSystemConfig()
   renderASRModels()
 }
