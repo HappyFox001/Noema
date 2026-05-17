@@ -4,7 +4,7 @@
 import type { Tool } from '@her-text/types'
 import type { AgentCore } from '../agent/index.js'
 import type { MemoryEngine } from '../memory/index.js'
-import type { RuntimeEventBus } from '../runtime/index.js'
+import type { RuntimeEventBus, RuntimeJobManager, RuntimeJobUnregister } from '../runtime/index.js'
 import { resolve } from 'node:path'
 import { CapabilityBroker, HardAgentArtifactLoader } from './hard-agent.js'
 import { AgentSocietyStore } from './store.js'
@@ -23,12 +23,14 @@ export interface AgentSocietyRuntimeOptions {
   agentCore: AgentCore
   memory: MemoryEngine
   runtimeEvents: RuntimeEventBus
+  runtimeJobs: RuntimeJobManager
 }
 
 export class AgentSocietyRuntime {
   public readonly store: AgentSocietyStore
   private readonly hardAgentLoader: HardAgentArtifactLoader
   private readonly capabilityBroker = new CapabilityBroker()
+  private unregisterAgentRunJob?: RuntimeJobUnregister
 
   constructor(private options: AgentSocietyRuntimeOptions) {
     this.store = new AgentSocietyStore(options.storageDir)
@@ -37,6 +39,15 @@ export class AgentSocietyRuntime {
 
   async initialize(): Promise<void> {
     await this.store.initialize()
+    this.unregisterAgentRunJob = this.options.runtimeJobs.register<AgentRunInput, AgentRunResult>(
+      'agent.run',
+      async (input) => {
+        if (!input.agentId) {
+          throw new Error('agent.run job requires input.agentId')
+        }
+        return this.run(input.agentId, input)
+      }
+    )
   }
 
   async createSoftAgent(input: CreateSoftAgentInput): Promise<RuntimeAgentRecord> {
@@ -156,6 +167,8 @@ export class AgentSocietyRuntime {
   }
 
   async shutdown(): Promise<void> {
+    this.unregisterAgentRunJob?.()
+    this.unregisterAgentRunJob = undefined
     await this.store.shutdown()
   }
 

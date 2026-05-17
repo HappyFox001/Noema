@@ -60,6 +60,7 @@ export class HerTextSDK {
       agentCore: this.agent,
       memory: this.memory,
       runtimeEvents: this.runtimeEvents,
+      runtimeJobs: this.runtimeJobs,
     })
     this.learningAutomation = new LearningAutomationRuntime(
       this.runtimeEvents,
@@ -86,6 +87,7 @@ export class HerTextSDK {
       config.memory.storageDir,
       {
         runtimeEvents: this.runtimeEvents,
+        runtimeJobs: this.runtimeJobs,
         learning: this.learning,
         agentSociety: this.agentSociety,
         taskRuntime: config.taskRuntime,

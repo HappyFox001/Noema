@@ -34,6 +34,7 @@ export type RuntimeJobUnregister = () => void
 interface RuntimeJobEntry {
   record: RuntimeJobRecord
   controller: AbortController
+  listeners: Array<(record: RuntimeJobRecord) => void>
 }
 
 export class RuntimeJobManager {
@@ -73,6 +74,7 @@ export class RuntimeJobManager {
         updatedAt: now,
       },
       controller: new AbortController(),
+      listeners: [],
     }
     this.jobs.set(entry.record.id, entry)
     this.pending.push(entry)
@@ -113,6 +115,24 @@ export class RuntimeJobManager {
 
   async waitForIdle(): Promise<void> {
     await this.drainPromise
+  }
+
+  async waitForJob<TResult = unknown>(id: string): Promise<RuntimeJobRecord<unknown, TResult>> {
+    const entry = this.jobs.get(id)
+    if (!entry) {
+      throw new Error(`Runtime job not found: ${id}`)
+    }
+    if (isTerminalStatus(entry.record.status)) {
+      return entry.record as RuntimeJobRecord<unknown, TResult>
+    }
+
+    return new Promise((resolve) => {
+      entry.listeners.push((record) => {
+        if (isTerminalStatus(record.status)) {
+          resolve(record as RuntimeJobRecord<unknown, TResult>)
+        }
+      })
+    })
   }
 
   private drain(): void {
@@ -200,6 +220,12 @@ export class RuntimeJobManager {
       updatedAt: Date.now(),
     }
     this.jobs.set(entry.record.id, entry)
+    for (const listener of entry.listeners) {
+      listener(entry.record)
+    }
+    if (isTerminalStatus(entry.record.status)) {
+      entry.listeners = []
+    }
   }
 
   private emitJobEvent(name: RuntimeJobEventName, record: RuntimeJobRecord): void {
@@ -241,4 +267,8 @@ function formatJobError(error: unknown): string {
 
 function formatAbortReason(reason: unknown): string {
   return typeof reason === 'string' ? reason : 'Runtime job cancelled'
+}
+
+function isTerminalStatus(status: RuntimeJobStatus): boolean {
+  return status === 'completed' || status === 'failed' || status === 'cancelled'
 }

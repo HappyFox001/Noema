@@ -12,7 +12,7 @@ import type { LearningAssetStore } from '../learning/store.js'
 import { selectExpressionRoutines } from '../learning/routine-policy.js'
 import type { PersonalityEngine } from '../personality/index.js'
 import type { AgentCore } from '../agent/index.js'
-import type { AgentSocietyRuntime } from '../agent-society/index.js'
+import type { AgentRunResult, AgentSocietyRuntime } from '../agent-society/index.js'
 import { ContextManager, type ResponseItem, type TruncationPolicy } from '../context/index.js'
 import { TaskSession } from '../session/session.js'
 import type { TaskContextItem, TaskRuntimeConfig, TaskRuntimeHookMeta, TaskRuntimeHooks } from '../session/task.js'
@@ -34,7 +34,7 @@ import {
   type SDKPlugin,
   type TextTransformTarget,
 } from '../plugins/index.js'
-import type { RuntimeEventBus } from '../runtime/index.js'
+import type { RuntimeEventBus, RuntimeJobManager } from '../runtime/index.js'
 
 
 export interface StreamOptions {
@@ -83,6 +83,7 @@ export interface DialogueOrchestratorConfig {
   
   ttsChunk?: TTSChunkConfig
   runtimeEvents?: RuntimeEventBus
+  runtimeJobs?: RuntimeJobManager
   learning?: LearningAssetStore
   agentSociety?: AgentSocietyRuntime
   taskRuntime?: TaskRuntimeConfig
@@ -126,6 +127,7 @@ export class DialogueOrchestrator {
   private toolProcessor: ToolProcessor
   private pluginManager: PluginManager
   private runtimeEvents?: RuntimeEventBus
+  private runtimeJobs?: RuntimeJobManager
   private learning?: LearningAssetStore
   private agentSociety?: AgentSocietyRuntime
   private activeTaskProgressContext: ActiveTaskProgressContext | null = null
@@ -149,6 +151,7 @@ export class DialogueOrchestrator {
   ) {
     this.context = new ContextManager()
     this.runtimeEvents = config?.runtimeEvents
+    this.runtimeJobs = config?.runtimeJobs
     this.learning = config?.learning
     this.agentSociety = config?.agentSociety
     this.pluginManager = new PluginManager(plugins)
@@ -620,7 +623,7 @@ export class DialogueOrchestrator {
     taskContextItems: TaskContextItem[]
   ): Promise<ToolProcessorResult> {
     const route = await this.agentSociety?.selectAgentForTask(taskIntent.description)
-    if (!route) {
+    if (!route || !this.runtimeJobs) {
       return this.toolProcessor.processTask(taskIntent, originalUserInput, taskContextItems)
     }
 
@@ -634,7 +637,8 @@ export class DialogueOrchestrator {
       },
     })
 
-    const result = await this.agentSociety!.run(route.agent.id, {
+    const job = this.runtimeJobs.submit('agent.run', {
+      agentId: route.agent.id,
       task: taskIntent.description,
       taskId,
       context: {
@@ -644,6 +648,15 @@ export class DialogueOrchestrator {
         routingScore: route.score,
       },
     })
+    const completedJob = await this.runtimeJobs.waitForJob<AgentRunResult>(job.id)
+    const result = completedJob.status === 'completed' && completedJob.result
+      ? completedJob.result
+      : {
+          agentId: route.agent.id,
+          success: false,
+          summary: completedJob.error ?? `Agent job ${completedJob.status}.`,
+          error: completedJob.error ?? `Agent job ${completedJob.status}.`,
+        }
 
     const finalMessage = result.success
       ? result.summary

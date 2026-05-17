@@ -48,6 +48,7 @@ export interface CreateSoftAgentInput {
 }
 
 export interface AgentRunInput {
+  agentId?: string
   task: string
   taskId?: string
   eventId?: string
