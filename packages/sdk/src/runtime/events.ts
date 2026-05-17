@@ -19,6 +19,11 @@ export type RuntimeEventName =
   | 'agent.created'
   | 'agent.routed'
   | 'agent.completed'
+  | 'runtime.job.queued'
+  | 'runtime.job.running'
+  | 'runtime.job.completed'
+  | 'runtime.job.failed'
+  | 'runtime.job.cancelled'
 
 export interface RuntimeEventBase<TName extends RuntimeEventName, TPayload> {
   id: string
@@ -103,6 +108,33 @@ export type RuntimeEvent =
       agentId: string
       success: boolean
       summary: string
+      error?: string
+    }>
+  | RuntimeEventBase<'runtime.job.queued', {
+      jobId: string
+      kind: string
+      status: 'queued'
+    }>
+  | RuntimeEventBase<'runtime.job.running', {
+      jobId: string
+      kind: string
+      status: 'running'
+    }>
+  | RuntimeEventBase<'runtime.job.completed', {
+      jobId: string
+      kind: string
+      status: 'completed'
+    }>
+  | RuntimeEventBase<'runtime.job.failed', {
+      jobId: string
+      kind: string
+      status: 'failed'
+      error?: string
+    }>
+  | RuntimeEventBase<'runtime.job.cancelled', {
+      jobId: string
+      kind: string
+      status: 'cancelled'
       error?: string
     }>
 

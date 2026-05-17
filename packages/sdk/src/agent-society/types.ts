@@ -63,6 +63,12 @@ export interface AgentRunResult {
   error?: string
 }
 
+export interface AgentRoutingDecision {
+  agent: RuntimeAgentRecord
+  score: number
+  reason: string
+}
+
 export interface SoftAgentArtifact {
   id: string
   instructions: string

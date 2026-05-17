@@ -12,9 +12,10 @@ import type { LearningAssetStore } from '../learning/store.js'
 import { selectExpressionRoutines } from '../learning/routine-policy.js'
 import type { PersonalityEngine } from '../personality/index.js'
 import type { AgentCore } from '../agent/index.js'
+import type { AgentSocietyRuntime } from '../agent-society/index.js'
 import { ContextManager, type ResponseItem, type TruncationPolicy } from '../context/index.js'
 import { TaskSession } from '../session/session.js'
-import type { TaskRuntimeConfig, TaskRuntimeHookMeta, TaskRuntimeHooks } from '../session/task.js'
+import type { TaskContextItem, TaskRuntimeConfig, TaskRuntimeHookMeta, TaskRuntimeHooks } from '../session/task.js'
 import type { TaskPlan, TaskStep } from '../session/task-plan.js'
 import { PROMPTS } from '../prompts.js'
 import {
@@ -23,6 +24,7 @@ import {
   ToolProcessor,
   buildBaseInstructions,
   throwIfAborted,
+  type TaskIntent,
   type ToolProcessorResult,
 } from './processors.js'
 import {
@@ -82,6 +84,7 @@ export interface DialogueOrchestratorConfig {
   ttsChunk?: TTSChunkConfig
   runtimeEvents?: RuntimeEventBus
   learning?: LearningAssetStore
+  agentSociety?: AgentSocietyRuntime
   taskRuntime?: TaskRuntimeConfig
   onTaskUserInputRequest?: TaskRuntimeHooks['onUserInputRequest']
   onTaskRunStateChanged?: TaskRuntimeHooks['onRunStateChanged']
@@ -124,6 +127,7 @@ export class DialogueOrchestrator {
   private pluginManager: PluginManager
   private runtimeEvents?: RuntimeEventBus
   private learning?: LearningAssetStore
+  private agentSociety?: AgentSocietyRuntime
   private activeTaskProgressContext: ActiveTaskProgressContext | null = null
 
   private truncationPolicy: TruncationPolicy = {
@@ -146,6 +150,7 @@ export class DialogueOrchestrator {
     this.context = new ContextManager()
     this.runtimeEvents = config?.runtimeEvents
     this.learning = config?.learning
+    this.agentSociety = config?.agentSociety
     this.pluginManager = new PluginManager(plugins)
     this.taskSession = new TaskSession(this.taskLLM, memory, personality, agent, this.context, storageDir, {
       runtimeEvents: config?.runtimeEvents,
@@ -318,7 +323,7 @@ export class DialogueOrchestrator {
 
         let taskResult: ToolProcessorResult
         try {
-          taskResult = await this.toolProcessor.processTask(
+          taskResult = await this.processTaskWithOptionalAgentRoute(
             firstResult.taskIntent,
             input.text,
             taskContextItems
@@ -607,6 +612,71 @@ export class DialogueOrchestrator {
     const routineAssets = await this.learning.listActiveRoutines(scope)
     const routineAddition = selectExpressionRoutines(routineAssets, scope).promptAddition
     return routineAddition ? [...additions, routineAddition] : additions
+  }
+
+  private async processTaskWithOptionalAgentRoute(
+    taskIntent: TaskIntent,
+    originalUserInput: string,
+    taskContextItems: TaskContextItem[]
+  ): Promise<ToolProcessorResult> {
+    const route = await this.agentSociety?.selectAgentForTask(taskIntent.description)
+    if (!route) {
+      return this.toolProcessor.processTask(taskIntent, originalUserInput, taskContextItems)
+    }
+
+    const taskId = generateId()
+    this.runtimeEvents?.emit({
+      name: 'task.started',
+      taskId,
+      payload: {
+        taskDescription: taskIntent.description,
+        originalUserInput,
+      },
+    })
+
+    const result = await this.agentSociety!.run(route.agent.id, {
+      task: taskIntent.description,
+      taskId,
+      context: {
+        originalUserInput,
+        taskContextItems,
+        routingReason: route.reason,
+        routingScore: route.score,
+      },
+    })
+
+    const finalMessage = result.success
+      ? result.summary
+      : result.error ?? result.summary
+
+    this.runtimeEvents?.emit({
+      name: result.success ? 'task.completed' : 'task.failed',
+      taskId,
+      payload: {
+        taskDescription: taskIntent.description,
+        originalUserInput,
+        finalMessage,
+        ...(result.error ? { error: result.error } : {}),
+        iterations: 1,
+        toolCalls: 0,
+      },
+    })
+
+    const contextResult = {
+      task: taskIntent.description,
+      success: result.success,
+      summary: finalMessage,
+      ...(result.error ? { error: result.error } : {}),
+      iterations: 1,
+      toolCalls: 0,
+    }
+
+    return {
+      success: result.success,
+      summary: finalMessage,
+      ...(result.error ? { error: result.error } : {}),
+      contextResult,
+    }
   }
 
   private async resolveTaskContext(

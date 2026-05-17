@@ -15,7 +15,7 @@ import {
 import { createLLMProvider, type LLMProvider } from '@her-text/core'
 import type { PluginRuntimeContext, SDKPlugin, TextTransformTarget } from './plugins/index.js'
 import type { TaskRuntimeHooks } from './session/task.js'
-import { RuntimeEventBus, type RuntimeEventHandler } from './runtime/index.js'
+import { RuntimeEventBus, RuntimeJobManager, type RuntimeEventHandler } from './runtime/index.js'
 
 export interface HerTextSDKInitializeOptions {
   plugins?: SDKPlugin[]
@@ -33,6 +33,7 @@ export class HerTextSDK {
   public personality: PersonalityEngine
   public agent: AgentCore
   public runtimeEvents: RuntimeEventBus
+  public runtimeJobs: RuntimeJobManager
   public learning: LearningAssetStore
   public reflection: ReflectionEngine
   public personaContinuity: PersonaContinuityPolicy
@@ -50,22 +51,25 @@ export class HerTextSDK {
     this.personality = new PersonalityEngine(config.personality)
     this.agent = new AgentCore()
     this.runtimeEvents = new RuntimeEventBus()
+    this.runtimeJobs = new RuntimeJobManager(this.runtimeEvents)
     this.learning = new LearningAssetStore(config.memory.storageDir)
     this.reflection = new ReflectionEngine(this.learning)
     this.personaContinuity = new PersonaContinuityPolicy()
-    this.learningAutomation = new LearningAutomationRuntime(
-      this.runtimeEvents,
-      this.learning,
-      this.reflection,
-      this.personaContinuity,
-      options.learningAutomation
-    )
     this.agentSociety = new AgentSocietyRuntime({
       storageDir: config.memory.storageDir,
       agentCore: this.agent,
       memory: this.memory,
       runtimeEvents: this.runtimeEvents,
     })
+    this.learningAutomation = new LearningAutomationRuntime(
+      this.runtimeEvents,
+      this.runtimeJobs,
+      this.learning,
+      this.reflection,
+      this.personaContinuity,
+      this.agentSociety,
+      options.learningAutomation
+    )
     if (options.onRuntimeEvent) {
       this.runtimeEvents.subscribe(options.onRuntimeEvent)
     }
@@ -83,6 +87,7 @@ export class HerTextSDK {
       {
         runtimeEvents: this.runtimeEvents,
         learning: this.learning,
+        agentSociety: this.agentSociety,
         taskRuntime: config.taskRuntime,
         onTaskUserInputRequest: options.onTaskUserInputRequest,
         onTaskRunStateChanged: options.onTaskRunStateChanged,
@@ -163,6 +168,7 @@ export class HerTextSDK {
   async shutdown(): Promise<void> {
     await this.dialogue.shutdown()
     await this.learningAutomation.shutdown()
+    await this.runtimeJobs.waitForIdle()
     await this.memory.shutdown()
     await this.learning.shutdown()
     await this.agentSociety.shutdown()

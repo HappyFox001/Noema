@@ -1,7 +1,14 @@
 /**
  * Automatic learning loop driven by terminal runtime events.
  */
-import type { RuntimeEvent, RuntimeEventBus, RuntimeEventUnsubscribe } from '../runtime/index.js'
+import type {
+  RuntimeEvent,
+  RuntimeEventBus,
+  RuntimeEventUnsubscribe,
+  RuntimeJobManager,
+  RuntimeJobUnregister,
+} from '../runtime/index.js'
+import type { AgentSocietyRuntime } from '../agent-society/index.js'
 import { isAllowedExpressionRoutine } from './routine-policy.js'
 import type { LearningAssetStore } from './store.js'
 import type { LearningCandidate, RoutinePolicy } from './types.js'
@@ -18,14 +25,16 @@ export interface LearningAutomationRuntimeOptions {
 
 export class LearningAutomationRuntime {
   private unsubscribe?: RuntimeEventUnsubscribe
-  private queue: Promise<void> = Promise.resolve()
+  private unregisterJob?: RuntimeJobUnregister
   private stopped = false
 
   constructor(
     private readonly runtimeEvents: RuntimeEventBus,
+    private readonly runtimeJobs: RuntimeJobManager,
     private readonly store: LearningAssetStore,
     private readonly reflection: ReflectionEngine,
     private readonly personaContinuity: PersonaContinuityPolicy,
+    private readonly agentSociety?: AgentSocietyRuntime,
     private readonly options: LearningAutomationRuntimeOptions = {}
   ) {}
 
@@ -34,11 +43,21 @@ export class LearningAutomationRuntime {
       return
     }
 
+    this.unregisterJob = this.runtimeJobs.register<{ event: RuntimeEvent }, void>(
+      'learning.reflect',
+      async ({ event }, context) => {
+        if (context.signal.aborted) {
+          return
+        }
+        await this.runForEvent(event)
+      }
+    )
+
     this.unsubscribe = this.runtimeEvents.subscribe((event) => {
       if (!isTerminalLearningEvent(event)) {
         return
       }
-      this.enqueue(event)
+      this.runtimeJobs.submit('learning.reflect', { event })
     })
   }
 
@@ -46,15 +65,9 @@ export class LearningAutomationRuntime {
     this.stopped = true
     this.unsubscribe?.()
     this.unsubscribe = undefined
-    await this.queue
-  }
-
-  private enqueue(event: RuntimeEvent): void {
-    this.queue = this.queue
-      .then(() => this.runForEvent(event))
-      .catch((error) => {
-        console.warn('[LearningAutomationRuntime] Automatic learning failed:', formatError(error))
-      })
+    await this.runtimeJobs.waitForIdle()
+    this.unregisterJob?.()
+    this.unregisterJob = undefined
   }
 
   private async runForEvent(event: RuntimeEvent): Promise<void> {
@@ -75,6 +88,7 @@ export class LearningAutomationRuntime {
     })
 
     await this.handleCandidates(result)
+    await this.suggestHardAgentPromotionWhenStable()
   }
 
   private async handleCandidates(result: ReflectionRunResult): Promise<void> {
@@ -88,6 +102,9 @@ export class LearningAutomationRuntime {
       })
 
       if (!decision.autoDeploy) {
+        if (candidate.kind === 'agent') {
+          await this.suggestSoftAgentWhenRepeated(candidate)
+        }
         await this.store.recordAutomationDecision({
           action: 'kept_pending',
           candidateId: candidate.id,
@@ -161,6 +178,93 @@ export class LearningAutomationRuntime {
         : 'Routine remains pending because confidence is low or it is outside expression-only boundaries.',
     }
   }
+
+  private async suggestSoftAgentWhenRepeated(candidate: LearningCandidate): Promise<void> {
+    if (!this.agentSociety) {
+      return
+    }
+
+    const candidates = await this.store.listCandidates(undefined, 100)
+    const related = candidates.filter(item =>
+      item.kind === 'agent' &&
+      item.id !== candidate.id &&
+      item.status !== 'rejected' &&
+      hasRoutingOverlap(item.reason, candidate.reason)
+    )
+    if (related.length < 1) {
+      return
+    }
+
+    const agentId = `suggested-${candidate.id}`
+    const existingAgents = await this.agentSociety.listAgents()
+    if (existingAgents.some(agent => agent.id === agentId)) {
+      return
+    }
+
+    const agent = await this.agentSociety.createSoftAgent({
+      id: agentId,
+      name: buildAgentName(candidate),
+      purpose: candidate.reason,
+      instructions: [
+        'Handle this repeated task class as a specialized runtime agent.',
+        `Reason: ${candidate.reason}`,
+        `Expected benefit: ${candidate.expectedBenefit}`,
+        `Risk to watch: ${candidate.risk}`,
+        'Return concise facts, a result summary, and any uncertainty that should be routed back to the main agent.',
+      ].join('\n'),
+      capabilities: ['specialized-task-routing'],
+      inheritedCapabilities: ['tools', 'memory'],
+      routingPolicy: candidate.reason,
+      status: 'draft',
+    })
+    await this.store.recordAutomationDecision({
+      action: 'kept_pending',
+      candidateId: candidate.id,
+      assetId: agent.id,
+      reason: 'Repeated structural need produced a draft soft agent suggestion. Activation remains manual.',
+      risk: 'high',
+    })
+  }
+
+  private async suggestHardAgentPromotionWhenStable(): Promise<void> {
+    if (!this.agentSociety) {
+      return
+    }
+
+    const decisions = await this.store.listAutomationDecisions(100)
+    const agents = await this.agentSociety.listAgents('active')
+    for (const agent of agents) {
+      if (agent.mode !== 'soft') {
+        continue
+      }
+      if (decisions.some(decision =>
+        decision.assetId === agent.id &&
+        /hard agent promotion/i.test(decision.reason)
+      )) {
+        continue
+      }
+
+      const usage = await this.agentSociety.listAgentUsage(agent.id, 8)
+      const successes = usage.filter(item => item.outcome === 'success').length
+      const failures = usage.filter(item => item.outcome === 'failure').length
+      const isStable = usage.length >= 5 && successes >= 4
+      const needsOwnCapabilities = failures >= 2 && usage.some(item =>
+        /missing|unsupported|capability|permission|权限|能力/.test(item.summary)
+      )
+      if (!isStable && !needsOwnCapabilities) {
+        continue
+      }
+
+      await this.store.recordAutomationDecision({
+        action: 'kept_pending',
+        assetId: agent.id,
+        reason: isStable
+          ? 'Hard agent promotion suggested because this soft agent is stable across recent routed tasks.'
+          : 'Hard agent promotion suggested because this soft agent appears to need own capabilities.',
+        risk: 'high',
+      })
+    }
+  }
 }
 
 function isTerminalLearningEvent(event: RuntimeEvent): boolean {
@@ -188,6 +292,30 @@ function normalizeRisk(risk: PersonaContinuityRisk): 'low' | 'medium' | 'high' {
   return risk === 'none' ? 'low' : risk
 }
 
-function formatError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
+function hasRoutingOverlap(left: string, right: string): boolean {
+  const leftTokens = tokenize(left)
+  const rightTokens = tokenize(right)
+  let overlap = 0
+  for (const token of leftTokens) {
+    if (rightTokens.has(token)) {
+      overlap += 1
+    }
+  }
+  return overlap >= 2
+}
+
+function tokenize(value: string): Set<string> {
+  return new Set(
+    value
+      .toLowerCase()
+      .split(/[^a-z0-9\u4e00-\u9fff]+/u)
+      .map(token => token.trim())
+      .filter(token => token.length >= 2)
+  )
+}
+
+function buildAgentName(candidate: LearningCandidate): string {
+  const words = Array.from(tokenize(candidate.reason)).slice(0, 4)
+  const label = words.length > 0 ? words.join('-') : candidate.kind
+  return `Suggested ${label} agent`
 }

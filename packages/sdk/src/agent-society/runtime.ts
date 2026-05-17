@@ -12,6 +12,7 @@ import type {
   AgentRunContext,
   AgentRunInput,
   AgentRunResult,
+  AgentRoutingDecision,
   CreateSoftAgentInput,
   RuntimeAgentRecord,
   RuntimeAgentStatus,
@@ -54,6 +55,20 @@ export class AgentSocietyRuntime {
 
   async listAgents(status?: RuntimeAgentStatus): Promise<RuntimeAgentRecord[]> {
     return this.store.listAgents(status)
+  }
+
+  async listAgentUsage(agentId: string, limit = 50) {
+    return this.store.listUsage(agentId, limit)
+  }
+
+  async selectAgentForTask(task: string): Promise<AgentRoutingDecision | null> {
+    const agents = await this.store.listAgents('active')
+    const scored = agents
+      .map(agent => scoreAgentForTask(agent, task))
+      .filter((decision): decision is AgentRoutingDecision => decision !== null)
+      .sort((a, b) => b.score - a.score)
+
+    return scored[0] ?? null
   }
 
   async run(agentId: string, input: AgentRunInput): Promise<AgentRunResult> {
@@ -230,4 +245,64 @@ export class AgentSocietyRuntime {
     }
     return this.options.agentCore.getTools()
   }
+}
+
+function scoreAgentForTask(agent: RuntimeAgentRecord, task: string): AgentRoutingDecision | null {
+  const taskTokens = tokenizeForRouting(task)
+  if (taskTokens.size === 0) {
+    return null
+  }
+
+  const policyTokens = tokenizeForRouting([
+    agent.name,
+    agent.purpose,
+    agent.routingPolicy,
+    ...agent.capabilities,
+    ...agent.ownCapabilities,
+  ].join(' '))
+
+  let overlap = 0
+  for (const token of taskTokens) {
+    if (policyTokens.has(token)) {
+      overlap += 1
+    }
+  }
+
+  const score = overlap / Math.max(3, taskTokens.size)
+  if (score < 0.25 || overlap < 2) {
+    return null
+  }
+
+  return {
+    agent,
+    score,
+    reason: `Matched ${overlap} routing tokens with policy "${agent.routingPolicy || agent.purpose}".`,
+  }
+}
+
+function tokenizeForRouting(value: string): Set<string> {
+  const stopWords = new Set([
+    'the',
+    'and',
+    'for',
+    'with',
+    'this',
+    'that',
+    'please',
+    'task',
+    'agent',
+    'runtime',
+    '一个',
+    '这个',
+    '那个',
+    '请',
+    '任务',
+    '处理',
+  ])
+  const tokens = value
+    .toLowerCase()
+    .split(/[^a-z0-9\u4e00-\u9fff]+/u)
+    .map(token => token.trim())
+    .filter(token => token.length >= 2 && !stopWords.has(token))
+  return new Set(tokens)
 }
