@@ -226,6 +226,15 @@ body.planet-orb-active #planet-orb-canvas {
   z-index: 5;
 }
 
+.plugin-ui-main-surface {
+  grid-row: 1;
+  align-self: end;
+  justify-self: center;
+  width: min(100%, 270px);
+  height: 270px;
+  inset: auto;
+}
+
 .plugin-ui-main-surface.replace {
   z-index: 2;
 }
@@ -246,15 +255,14 @@ body.plugin-main-surface-replace .plugin-ui-main-surface.replace .plugin-ui-surf
 }
 
 body.plugin-main-surface-replace #orb-canvas,
-body.plugin-main-surface-replace .expression-layer,
-body.plugin-main-surface-replace .text-display,
-body.plugin-main-surface-replace .status {
+body.plugin-main-surface-replace #advanced-orb-canvas,
+body.plugin-main-surface-replace #planet-orb-canvas {
   opacity: 0;
   pointer-events: none;
 }
 
 body.plugin-main-surface-replace #main-view {
-  max-width: 420px;
+  max-width: 360px;
 }
 
 body.plugin-main-surface-replace .controls {

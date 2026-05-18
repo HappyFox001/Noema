@@ -40,5 +40,7 @@ grep -q '"type": "file"' plugins/live2d-avatar/plugin.json && score=$((score + 1
 grep -q 'plugin-file-control' apps/desktop/src/renderer/styles.css && score=$((score + 1))
 grep -q 'setApplicationMenu' apps/desktop/src/main/index.ts && score=$((score + 1))
 grep -q 'onAppMenuCommand' apps/desktop/src/renderer/main.ts && score=$((score + 1))
+grep -q 'grid-row: 1' apps/desktop/src/renderer/styles.css && score=$((score + 1))
+! grep -q 'plugin-main-surface-replace .text-display' apps/desktop/src/renderer/styles.css && score=$((score + 1))
 
 echo "$score"
