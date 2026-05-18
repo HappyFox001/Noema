@@ -43,6 +43,7 @@ export interface RuntimePluginUISurface {
   title?: string
   src: string
   transparent: boolean
+  config: Record<string, unknown>
 }
 
 export interface RuntimePluginAdminResult {
@@ -257,6 +258,7 @@ function resolveRuntimePluginUISurfaces(
       title: surface.title,
       src: pathToFileURL(entryPath).toString(),
       transparent: surface.transparent !== false,
+      config: mergePluginConfig(manifest),
     }]
   })
 }

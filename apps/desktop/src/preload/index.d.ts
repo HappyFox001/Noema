@@ -345,6 +345,7 @@ declare global {
             title?: string
             src: string
             transparent: boolean
+            config: Record<string, unknown>
           }>
           configSchema: Array<
             | {

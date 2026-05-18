@@ -1086,6 +1086,7 @@ type PluginUISurface = {
   title?: string
   src: string
   transparent: boolean
+  config: Record<string, unknown>
 }
 
 type PluginInfo = {
@@ -1157,6 +1158,13 @@ const planetOrbCanvas = document.getElementById('planet-orb-canvas') as HTMLCanv
 let activePluginMainSurface: PluginUISurface | null = null
 let activePluginTaskSurface: PluginUISurface | null = null
 let lastTaskPanelPlan: TaskPanelPlan | null = null
+let lastConversationPhase: ConversationFrame['phase'] | null = null
+let lastExpressionState: {
+  id: string
+  emotion: string
+  src: string
+  priority?: number
+} | null = null
 let pluginUIStateTimer: number | undefined
 let pluginControlsPeekTimer: number | undefined
 let orbCanvasWidth = 180
@@ -1904,9 +1912,11 @@ function getPluginUIState() {
   return {
     status: lastStatusText,
     activeMode,
+    phase: lastConversationPhase,
     voiceInputEnabled,
     ttsEnabled,
     text: document.getElementById('text-display')?.textContent ?? '',
+    expression: lastExpressionState,
     orb: {
       mode: orbState.mode,
       glow: orbState.glow,
@@ -1928,6 +1938,7 @@ function syncPluginUIStateSoon(): void {
 function syncPluginUIState(): void {
   const message = {
     type: 'her-text:ui-state',
+    config: activePluginMainSurface?.config ?? activePluginTaskSurface?.config ?? {},
     state: getPluginUIState(),
   }
 
@@ -1949,7 +1960,7 @@ function renderPluginUISurface(container: HTMLElement, surface: PluginUISurface 
 
   const frame = document.createElement('iframe')
   frame.className = 'plugin-ui-surface-frame'
-  frame.src = surface.src
+  frame.src = appendPluginUIConfig(surface.src, surface.config)
   frame.title = surface.title || surface.id
   frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms')
   frame.setAttribute('aria-label', surface.title || surface.id)
@@ -1957,6 +1968,12 @@ function renderPluginUISurface(container: HTMLElement, surface: PluginUISurface 
 
   host.appendChild(frame)
   container.appendChild(host)
+}
+
+function appendPluginUIConfig(src: string, config: Record<string, unknown>): string {
+  const url = new URL(src)
+  url.searchParams.set('pluginConfig', btoa(unescape(encodeURIComponent(JSON.stringify(config)))))
+  return url.toString()
 }
 
 function applyPluginUISurfaces(surfaces: PluginUISurface[]): void {
@@ -2019,6 +2036,8 @@ function clearExpression(): void {
   const image = document.getElementById('expression-image') as HTMLImageElement
   layer.classList.remove('visible', 'bubbles-visible')
   currentExpressionPriority = 0
+  lastExpressionState = null
+  syncPluginUIStateSoon()
 
   if (expressionClearTimer !== undefined) {
     window.clearTimeout(expressionClearTimer)
@@ -2051,6 +2070,13 @@ function showExpression(frame: Extract<ConversationFrame, { type: 'expression.sh
 
   currentExpressionPriority = priority
   image.src = frame.src
+  lastExpressionState = {
+    id: frame.id,
+    emotion: frame.emotion,
+    src: frame.src,
+    priority,
+  }
+  syncPluginUIStateSoon()
   expressionShownAt = performance.now()
   layer.classList.remove('visible', 'bubbles-visible')
   layer.classList.add('bubbles-visible')
@@ -2149,11 +2175,13 @@ function handleConversationFrame(frame: ConversationFrame) {
       textRevealer.reset()
       clearExpression()
       lastTaskPanelPlan = null
+      lastConversationPhase = null
       setTaskPanelVisible(false)
       setStatus(t('status.thinking'))
       setOrbMode('thinking')
       break
     case 'control.phase_start':
+      lastConversationPhase = frame.phase
       if (frame.phase === 'reply') {
         setStatus(t('status.replying'))
       } else if (frame.phase === 'task_progress') {
@@ -2164,8 +2192,12 @@ function handleConversationFrame(frame: ConversationFrame) {
         setStatus(t('status.sharingResult'))
       }
       setOrbMode('thinking')
+      syncPluginUIStateSoon()
       break
     case 'control.phase_end':
+      if (lastConversationPhase === frame.phase) {
+        lastConversationPhase = null
+      }
       if (frame.phase === 'reply' || frame.phase === 'task_result') {
         if (ttsEnabled) {
           textRevealer.reset()
@@ -2175,6 +2207,7 @@ function handleConversationFrame(frame: ConversationFrame) {
         setOrbMode('idle')
         clearExpressionAfterMinimum()
       }
+      syncPluginUIStateSoon()
       break
     case 'control.task_status':
       setStatus(frame.status)

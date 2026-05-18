@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Live2D Avatar</title>
+    <style>
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: transparent;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      #stage {
+        position: absolute;
+        inset: 0;
+      }
+
+      #status {
+        position: absolute;
+        left: 16px;
+        right: 16px;
+        bottom: 16px;
+        padding: 10px 12px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 8px;
+        background: rgba(8, 10, 14, 0.42);
+        color: rgba(255, 255, 255, 0.84);
+        font-size: 12px;
+        line-height: 1.5;
+        backdrop-filter: blur(18px);
+        opacity: 0;
+        transform: translateY(8px);
+        transition: opacity 180ms ease, transform 180ms ease;
+        pointer-events: none;
+      }
+
+      #status.visible {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="stage"></canvas>
+    <div id="status"></div>
+    <script src="./live2d-avatar.js"></script>
+  </body>
+</html>
