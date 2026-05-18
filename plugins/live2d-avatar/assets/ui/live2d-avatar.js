@@ -5,24 +5,35 @@
  * hooks, and drives mouth parameters from renderer output energy.
  */
 const DEFAULT_CONFIG = {
-  modelUrl: '',
+  modelUrl: '../models/Haru/haru_greeter_t03.model3.json',
   pixiUrl: 'https://cdn.jsdelivr.net/npm/pixi.js@6.5.10/dist/browser/pixi.min.js',
-  cubismCoreUrl: 'https://cdn.jsdelivr.net/npm/live2dcubismcore@1.0.2/live2dcubismcore.min.js',
+  cubismCoreUrl: 'https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js',
   live2dDisplayUrl: 'https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/cubism4.min.js',
-  scale: 0.24,
+  scale: 0.92,
+  autoFit: true,
+  fitPadding: 24,
+  maxWidthRatio: 0.88,
+  maxHeightRatio: 0.92,
   offsetX: 0,
   offsetY: 0,
   lipSyncGain: 1.8,
+  lipSyncAttack: 0.42,
+  lipSyncRelease: 0.16,
   idleMotion: 'Idle',
-  listeningMotion: 'TapBody',
-  thinkingMotion: 'Thinking',
-  speakingMotion: 'TapBody',
-  taskMotion: 'FlickHead',
-  errorMotion: 'Shake',
+  listeningMotion: 'Tap',
+  thinkingMotion: 'Tap',
+  speakingMotion: 'Tap',
+  taskMotion: 'Tap',
+  errorMotion: 'Tap',
 }
 
+const OLD_BUNDLED_MODEL_URLS = new Set([
+  '../models/Mao/Mao.model3.json',
+  'models/Mao/Mao.model3.json',
+])
+
 const PARAM_IDS = {
-  mouthOpen: ['ParamMouthOpenY', 'PARAM_MOUTH_OPEN_Y'],
+  mouthOpen: ['ParamMouthOpenY', 'ParamA', 'PARAM_MOUTH_OPEN_Y'],
   mouthForm: ['ParamMouthForm', 'PARAM_MOUTH_FORM'],
   angleX: ['ParamAngleX'],
   angleY: ['ParamAngleY'],
@@ -37,8 +48,11 @@ const state = {
   lastMode: '',
   targetMouth: 0,
   mouth: 0,
+  energyEnvelope: 0,
+  lastExpression: '',
   lastMotionAt: 0,
   statePayload: null,
+  modelBounds: null,
 }
 
 const canvas = document.getElementById('stage')
@@ -52,6 +66,7 @@ window.addEventListener('message', (event) => {
   }
   if (event.data.config && typeof event.data.config === 'object') {
     state.config = normalizeConfig({ ...state.config, ...event.data.config })
+    fitModel()
   }
   applyHerTextState(event.data.state)
 })
@@ -74,6 +89,7 @@ async function boot() {
       return
     }
 
+    state.config.modelUrl = resolveModelUrl(state.config.modelUrl)
     await loadScript(state.config.pixiUrl, 'PIXI')
     window.PIXI = window.PIXI || PIXI
     await loadScript(state.config.cubismCoreUrl, 'Live2DCubismCore')
@@ -84,7 +100,7 @@ async function boot() {
     window.parent.postMessage({ type: 'her-text:ui-ready' }, '*')
   } catch (error) {
     console.error('[Live2DAvatar] Failed to initialize:', error)
-    showStatus(`Live2D 初始化失败：${error instanceof Error ? error.message : String(error)}`)
+    showStatus(`Live2D 初始化失败：${formatError(error)}`)
     window.parent.postMessage({ type: 'her-text:ui-ready' }, '*')
   }
 }
@@ -108,18 +124,39 @@ async function loadModel(modelUrl) {
     throw new Error('PIXI.live2d.Live2DModel is unavailable')
   }
 
-  const model = await Live2DModel.from(modelUrl, { autoInteract: false })
+  const modelSettings = await loadModelSettings(modelUrl)
+  let model
+  try {
+    model = await Live2DModel.from(modelSettings, { autoInteract: false })
+  } catch (error) {
+    throw new Error(`model load failed for ${modelUrl}: ${formatError(error)}`)
+  }
   model.anchor?.set?.(0.5, 0.5)
   state.app.stage.addChild(model)
   state.model = model
+  state.modelBounds = measureModelBounds(model)
   fitModel()
+}
+
+async function loadModelSettings(modelUrl) {
+  const response = await fetch(modelUrl)
+  if (!response.ok) {
+    throw new Error(`model settings request failed: ${response.status} ${modelUrl}`)
+  }
+
+  const settings = await response.json()
+  settings.url = modelUrl
+  return settings
 }
 
 function applyHerTextState(nextState) {
   state.statePayload = nextState || null
   const mode = pickAvatarMode(nextState)
   const outputEnergy = clampNumber(nextState?.orb?.outputEnergy, 0, 1)
-  state.targetMouth = Math.min(1, outputEnergy * state.config.lipSyncGain)
+  const gatedEnergy = mode === 'speaking' || mode === 'task'
+    ? outputEnergy
+    : outputEnergy * 0.35
+  state.targetMouth = Math.min(1, gatedEnergy * state.config.lipSyncGain)
 
   if (mode !== state.lastMode) {
     state.lastMode = mode
@@ -165,8 +202,14 @@ function applyExpressionHook(emotion) {
     return
   }
 
+  const expression = mapEmotionToExpression(emotion)
+  if (!expression || expression === state.lastExpression) {
+    return
+  }
+
   try {
-    expressionManager.setExpression(emotion)
+    expressionManager.setExpression(expression)
+    state.lastExpression = expression
   } catch {
     // Some models do not name expressions after Her-Text emotions.
   }
@@ -189,18 +232,23 @@ function updateAvatar(delta) {
     return
   }
 
-  const ease = Math.min(1, delta * 0.22)
-  state.mouth += (state.targetMouth - state.mouth) * ease
+  const attack = state.config.lipSyncAttack
+  const release = state.config.lipSyncRelease
+  const envelopeEase = state.targetMouth > state.energyEnvelope ? attack : release
+  state.energyEnvelope += (state.targetMouth - state.energyEnvelope) * Math.min(1, delta * envelopeEase)
+  const ease = state.energyEnvelope > state.mouth ? 0.42 : 0.22
+  state.mouth += (state.energyEnvelope - state.mouth) * Math.min(1, delta * ease)
   setModelParam(PARAM_IDS.mouthOpen, state.mouth, 1)
-  setModelParam(PARAM_IDS.mouthForm, state.mouth * 0.3, 0.35)
+  setModelParam(PARAM_IDS.mouthForm, Math.sin(performance.now() / 85) * state.mouth * 0.22, 0.35)
 
   const now = performance.now() / 1000
   const listeningEnergy = clampNumber(state.statePayload?.orb?.inputEnergy, 0, 1)
   const outputEnergy = clampNumber(state.statePayload?.orb?.outputEnergy, 0, 1)
   const attention = Math.max(listeningEnergy, outputEnergy)
-  setModelParam(PARAM_IDS.angleX, Math.sin(now * 0.9) * (4 + attention * 5), 30)
-  setModelParam(PARAM_IDS.angleY, Math.sin(now * 0.7) * (2 + attention * 3), 30)
-  setModelParam(PARAM_IDS.bodyAngleX, Math.sin(now * 0.55) * 3, 10)
+  const modePose = getModePose(state.lastMode)
+  setModelParam(PARAM_IDS.angleX, modePose.angleX + Math.sin(now * 0.9) * (4 + attention * 5), 30)
+  setModelParam(PARAM_IDS.angleY, modePose.angleY + Math.sin(now * 0.7) * (2 + attention * 3), 30)
+  setModelParam(PARAM_IDS.bodyAngleX, modePose.bodyAngleX + Math.sin(now * 0.55) * 3, 10)
   setModelParam(PARAM_IDS.breath, 0.45 + Math.sin(now * 2.1) * 0.18 + attention * 0.16, 1)
 }
 
@@ -225,11 +273,14 @@ function fitModel() {
   if (!state.model || !state.app) {
     return
   }
-  const width = state.app.renderer.width
-  const height = state.app.renderer.height
+  const width = state.app.screen.width
+  const height = state.app.screen.height
+  const scale = state.config.autoFit
+    ? getFittedScale(width, height) * state.config.scale
+    : state.config.scale
+  state.model.scale.set(scale)
   state.model.x = width / 2 + state.config.offsetX
-  state.model.y = height * 0.64 + state.config.offsetY
-  state.model.scale.set(state.config.scale)
+  state.model.y = height / 2 + state.config.offsetY
 }
 
 function resize() {
@@ -256,17 +307,104 @@ function readInitialConfig() {
 }
 
 function normalizeConfig(config) {
+  const modelUrl = normalizeModelUrl(config.modelUrl)
   return {
     ...DEFAULT_CONFIG,
     ...config,
-    modelUrl: String(config.modelUrl || '').trim(),
+    modelUrl,
     pixiUrl: String(config.pixiUrl || DEFAULT_CONFIG.pixiUrl),
     cubismCoreUrl: String(config.cubismCoreUrl || DEFAULT_CONFIG.cubismCoreUrl),
     live2dDisplayUrl: String(config.live2dDisplayUrl || DEFAULT_CONFIG.live2dDisplayUrl),
     scale: clampNumber(config.scale, 0.05, 1.5, DEFAULT_CONFIG.scale),
+    autoFit: config.autoFit !== false,
+    fitPadding: clampNumber(config.fitPadding, 0, 160, DEFAULT_CONFIG.fitPadding),
+    maxWidthRatio: clampNumber(config.maxWidthRatio, 0.35, 1, DEFAULT_CONFIG.maxWidthRatio),
+    maxHeightRatio: clampNumber(config.maxHeightRatio, 0.35, 1, DEFAULT_CONFIG.maxHeightRatio),
     offsetX: clampNumber(config.offsetX, -600, 600, 0),
     offsetY: clampNumber(config.offsetY, -600, 600, 0),
     lipSyncGain: clampNumber(config.lipSyncGain, 0, 8, DEFAULT_CONFIG.lipSyncGain),
+    lipSyncAttack: clampNumber(config.lipSyncAttack, 0.05, 1, DEFAULT_CONFIG.lipSyncAttack),
+    lipSyncRelease: clampNumber(config.lipSyncRelease, 0.02, 1, DEFAULT_CONFIG.lipSyncRelease),
+  }
+}
+
+function measureModelBounds(model) {
+  const bounds = model.getLocalBounds?.()
+  if (bounds?.width > 0 && bounds?.height > 0) {
+    return {
+      width: bounds.width,
+      height: bounds.height,
+    }
+  }
+
+  const width = model.internalModel?.width || model.width || 1
+  const height = model.internalModel?.height || model.height || 1
+  return { width, height }
+}
+
+function getFittedScale(viewWidth, viewHeight) {
+  const bounds = state.modelBounds || measureModelBounds(state.model)
+  const padding = state.config.fitPadding * 2
+  const maxWidth = Math.max(1, viewWidth * state.config.maxWidthRatio - padding)
+  const maxHeight = Math.max(1, viewHeight * state.config.maxHeightRatio - padding)
+  return Math.max(0.01, Math.min(maxWidth / bounds.width, maxHeight / bounds.height))
+}
+
+function getModePose(mode) {
+  switch (mode) {
+    case 'listening':
+      return { angleX: -5, angleY: 2, bodyAngleX: -2 }
+    case 'thinking':
+      return { angleX: 5, angleY: -2, bodyAngleX: 2 }
+    case 'speaking':
+      return { angleX: 0, angleY: 1, bodyAngleX: 0 }
+    case 'task':
+      return { angleX: 4, angleY: 1, bodyAngleX: 3 }
+    default:
+      return { angleX: 0, angleY: 0, bodyAngleX: 0 }
+  }
+}
+
+function mapEmotionToExpression(emotion) {
+  const normalized = String(emotion || '').toLowerCase()
+  if (normalized.includes('happy') || normalized.includes('joy') || normalized.includes('smile')) {
+    return 'f01'
+  }
+  if (normalized.includes('sad') || normalized.includes('cry')) {
+    return 'f03'
+  }
+  if (normalized.includes('angry') || normalized.includes('annoy')) {
+    return 'f04'
+  }
+  if (normalized.includes('surprise') || normalized.includes('shock')) {
+    return 'f05'
+  }
+  if (normalized.includes('shy') || normalized.includes('embarrass')) {
+    return 'f06'
+  }
+  return ''
+}
+
+function resolveModelUrl(modelUrl) {
+  return new URL(modelUrl, window.location.href).toString()
+}
+
+function normalizeModelUrl(value) {
+  const raw = String(value || DEFAULT_CONFIG.modelUrl).trim()
+  return OLD_BUNDLED_MODEL_URLS.has(raw) ? DEFAULT_CONFIG.modelUrl : raw
+}
+
+function formatError(error) {
+  if (error instanceof Error) {
+    return error.message || error.name
+  }
+  if (typeof error === 'string') {
+    return error
+  }
+  try {
+    return JSON.stringify(error)
+  } catch {
+    return String(error)
   }
 }
 

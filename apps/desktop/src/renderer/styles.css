@@ -1848,6 +1848,23 @@ body.plugin-task-surface-replace .task-steps {
   justify-self: end;
 }
 
+.plugin-file-control {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  width: min(420px, 100%);
+  justify-self: end;
+}
+
+.plugin-file-input {
+  width: 100%;
+}
+
+.plugin-file-button {
+  white-space: nowrap;
+}
+
 .plugin-config-number {
   padding-right: 32px;
   appearance: textfield;

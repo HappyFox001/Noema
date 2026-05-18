@@ -38,6 +38,16 @@ export type PluginConfigField =
       key: string
       label?: string
       description?: string
+      type: 'file'
+      default?: string
+      placeholder?: string
+      buttonLabel?: string
+      filters?: Array<{ name: string; extensions: string[] }>
+    }
+  | {
+      key: string
+      label?: string
+      description?: string
       type: 'number'
       default?: number
       min?: number

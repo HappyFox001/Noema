@@ -1056,6 +1056,16 @@ type PluginConfigField =
       key: string
       label?: string
       description?: string
+      type: 'file'
+      default?: string
+      placeholder?: string
+      buttonLabel?: string
+      filters?: Array<{ name: string; extensions: string[] }>
+    }
+  | {
+      key: string
+      label?: string
+      description?: string
       type: 'number'
       default?: number
       min?: number
@@ -3185,6 +3195,12 @@ function handleSettingsClose(event: Event) {
 settingsClose.addEventListener('pointerdown', handleSettingsClose)
 settingsClose.addEventListener('click', handleSettingsClose)
 
+window.electronAPI.onAppMenuCommand((message) => {
+  if (message.command === 'open-settings') {
+    openSettings(message.payload?.section)
+  }
+})
+
 languageSelect.addEventListener('change', async () => {
   const language = languageSelect.value === 'en-US' ? 'en-US' : 'zh-CN'
   setLanguage(language)
@@ -4053,6 +4069,41 @@ function bindPluginConfigInputs(): void {
       input.dispatchEvent(new Event('change', { bubbles: true }))
     })
   })
+
+  pluginsList.querySelectorAll<HTMLButtonElement>('[data-plugin-file-select]').forEach(button => {
+    button.addEventListener('click', async () => {
+      const pluginId = button.dataset.pluginId
+      const key = button.dataset.pluginConfig
+      if (!pluginId || !key) return
+
+      const input = pluginsList.querySelector<HTMLInputElement>(
+        `input[data-plugin-id="${cssEscape(pluginId)}"][data-plugin-config="${cssEscape(key)}"]`
+      )
+      const plugin = cachedPlugins.find(item => item.id === pluginId)
+      const field = plugin?.configSchema.find(item => item.key === key)
+      if (!input || field?.type !== 'file') return
+
+      button.disabled = true
+      try {
+        const result = await window.electronAPI.selectPluginConfigFile({
+          title: field.label ? `选择${field.label}` : '选择文件',
+          filters: field.filters,
+        })
+        if (result.canceled) {
+          return
+        }
+        if (!result.success || !result.fileUrl) {
+          throw new Error(result.error || '文件选择失败')
+        }
+        input.value = result.fileUrl
+        input.dispatchEvent(new Event('change', { bubbles: true }))
+      } catch (error: any) {
+        showPanelNotice(`文件选择失败: ${error.message}`, 'error')
+      } finally {
+        button.disabled = false
+      }
+    })
+  })
 }
 
 function getPluginConfigPatch(pluginId: string, key: string, value: unknown): Record<string, unknown> {
@@ -4138,6 +4189,13 @@ function renderPluginConfigField(plugin: PluginInfo, field: PluginConfigField): 
           <option value="${escapeHtml(option.value)}" ${option.value === rawValue ? 'selected' : ''}>${escapeHtml(option.label)}</option>
         `).join('')}
       </select>
+    `
+  } else if (field.type === 'file') {
+    control = `
+      <div class="plugin-file-control">
+        <input class="plugin-config-input plugin-file-input" type="text" value="${escapeHtml(String(rawValue ?? ''))}" placeholder="${escapeHtml(field.placeholder ?? '')}" ${commonAttrs} />
+        <button class="plugin-admin-button secondary plugin-file-button" type="button" data-plugin-file-select="true" data-plugin-id="${escapeHtml(plugin.id)}" data-plugin-config="${escapeHtml(field.key)}">${escapeHtml(field.buttonLabel ?? '选择')}</button>
+      </div>
     `
   } else if (field.type === 'string' && field.multiline) {
     control = `<textarea class="plugin-config-input plugin-config-textarea" rows="${field.rows ?? 5}" placeholder="${escapeHtml(field.placeholder ?? '')}" ${commonAttrs}>${escapeHtml(String(rawValue ?? ''))}</textarea>`

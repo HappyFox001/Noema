@@ -136,6 +136,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   pluginAdminAction: (pluginId, action, payload) =>
     ipcRenderer.invoke('plugins:adminAction', pluginId, action, payload),
 
+  selectPluginConfigFile: (options) =>
+    ipcRenderer.invoke('plugins:selectConfigFile', options),
+
   listPersonalities: () =>
     ipcRenderer.invoke('personality:list'),
 
@@ -248,6 +251,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   onLogsCleared: (callback) => {
     ipcRenderer.on('logs:cleared', callback)
+  },
+
+  onAppMenuCommand: (callback) => {
+    ipcRenderer.on('app:menu-command', (_, message) => callback(message))
   },
 
   moveWindow: (deltaX, deltaY) => {

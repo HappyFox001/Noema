@@ -362,6 +362,16 @@ declare global {
                 key: string
                 label?: string
                 description?: string
+                type: 'file'
+                default?: string
+                placeholder?: string
+                buttonLabel?: string
+                filters?: Array<{ name: string; extensions: string[] }>
+              }
+            | {
+                key: string
+                label?: string
+                description?: string
                 type: 'number'
                 default?: number
                 min?: number
@@ -400,6 +410,16 @@ declare global {
         success: boolean
         state?: unknown
         result?: unknown
+        error?: string
+      }>
+      selectPluginConfigFile: (options?: {
+        title?: string
+        filters?: Array<{ name: string; extensions: string[] }>
+      }) => Promise<{
+        success: boolean
+        canceled?: boolean
+        filePath?: string
+        fileUrl?: string
         error?: string
       }>
       listPersonalities: () => Promise<{
@@ -549,6 +569,12 @@ declare global {
         message: string
       }) => void) => void
       onLogsCleared: (callback: () => void) => void
+      onAppMenuCommand: (callback: (message: {
+        command: 'open-settings'
+        payload?: {
+          section?: string
+        }
+      }) => void) => void
 
       moveWindow: (deltaX: number, deltaY: number) => void
       getCursorScreenPoint: () => Promise<{

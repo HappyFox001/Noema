@@ -50,7 +50,7 @@ console.log('[Env] LLM_1_BASE_URL:', process.env.LLM_1_BASE_URL || '✗ (not set
 console.log('[Env] TTS_1_API_KEY:', process.env.TTS_1_API_KEY ? '✓ (set)' : '✗ (not set)')
 console.log('[Env] ASR_1_API_KEY:', process.env.ASR_1_API_KEY ? '✓ (set)' : '✗ (not set)')
 
-import { app, BrowserWindow, ipcMain, systemPreferences, shell, dialog, screen, nativeImage, type OpenDialogOptions } from 'electron'
+import { app, BrowserWindow, ipcMain, systemPreferences, shell, dialog, screen, nativeImage, Menu, type MenuItemConstructorOptions, type OpenDialogOptions } from 'electron'
 import {
   HerTextSDK,
   createSTTProvider,
@@ -2087,6 +2087,129 @@ function resizeWindowAroundCenter(window: BrowserWindow, width: number, height: 
   const nextY = Math.round(bounds.y + (bounds.height - height) / 2)
   window.setBounds({ x: nextX, y: nextY, width, height }, false)
 }
+
+function sendAppMenuCommand(command: string, payload?: unknown): void {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    void createWindow().then(() => {
+      mainWindow?.webContents.send('app:menu-command', { command, payload })
+    })
+    return
+  }
+
+  mainWindow.show()
+  mainWindow.focus()
+  mainWindow.webContents.send('app:menu-command', { command, payload })
+}
+
+function buildSettingsMenuItems(): MenuItemConstructorOptions[] {
+  return [
+    {
+      label: 'Settings...',
+      accelerator: 'CmdOrCtrl+,',
+      click: () => sendAppMenuCommand('open-settings'),
+    },
+    {
+      label: 'Plugins',
+      accelerator: 'CmdOrCtrl+Shift+P',
+      click: () => sendAppMenuCommand('open-settings', { section: 'plugins' }),
+    },
+    {
+      label: 'Models',
+      accelerator: 'CmdOrCtrl+Shift+M',
+      click: () => sendAppMenuCommand('open-settings', { section: 'models' }),
+    },
+    {
+      label: 'Logs',
+      accelerator: 'CmdOrCtrl+Shift+L',
+      click: () => sendAppMenuCommand('open-settings', { section: 'logs' }),
+    },
+  ]
+}
+
+function buildApplicationMenu(): Menu {
+  const template: MenuItemConstructorOptions[] = [
+    ...(process.platform === 'darwin'
+      ? [{
+          label: app.name,
+          submenu: [
+            { role: 'about' },
+            { type: 'separator' },
+            ...buildSettingsMenuItems(),
+            { type: 'separator' },
+            { role: 'services' },
+            { type: 'separator' },
+            { role: 'hide' },
+            { role: 'hideOthers' },
+            { role: 'unhide' },
+            { type: 'separator' },
+            { role: 'quit' },
+          ],
+        } satisfies MenuItemConstructorOptions]
+      : []),
+    {
+      label: 'File',
+      submenu: [
+        ...buildSettingsMenuItems(),
+        { type: 'separator' },
+        process.platform === 'darwin' ? { role: 'close' } : { role: 'quit' },
+      ],
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' },
+      ],
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' },
+      ],
+    },
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'zoom' },
+        ...(process.platform === 'darwin'
+          ? [
+              { type: 'separator' } satisfies MenuItemConstructorOptions,
+              { role: 'front' } satisfies MenuItemConstructorOptions,
+            ]
+          : [
+              { role: 'close' } satisfies MenuItemConstructorOptions,
+            ]),
+      ],
+    },
+    {
+      role: 'help',
+      submenu: [
+        {
+          label: 'Open Project Website',
+          click: () => {
+            void shell.openExternal('https://github.com/0xhacker/her-text')
+          },
+        },
+      ],
+    },
+  ]
+
+  return Menu.buildFromTemplate(template)
+}
 let ttsService: TTSProvider | null = null
 let sdkInstance: HerTextSDK | null = null
 let ttsAvailable = true
@@ -2958,6 +3081,7 @@ function getSettingsStore(): SettingsStore {
 }
 
 app.whenReady().then(async () => {
+  Menu.setApplicationMenu(buildApplicationMenu())
   applyAppIcon()
 
   await appLogStore.initializePersistence(join(app.getPath('userData'), 'logs.json'))
@@ -3867,6 +3991,35 @@ ipcMain.handle('plugins:adminAction', async (_event, pluginId: string, action: s
     payload,
     appSettings.pluginConfigs
   )
+})
+
+ipcMain.handle('plugins:selectConfigFile', async (_event, options?: {
+  title?: string
+  filters?: Array<{ name: string; extensions: string[] }>
+}) => {
+  try {
+    const dialogOptions: OpenDialogOptions = {
+      title: options?.title || '选择插件文件',
+      properties: ['openFile'],
+      filters: options?.filters?.length ? options.filters : undefined,
+    }
+    const result = mainWindow
+      ? await dialog.showOpenDialog(mainWindow, dialogOptions)
+      : await dialog.showOpenDialog(dialogOptions)
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return { success: false, canceled: true }
+    }
+
+    const filePath = result.filePaths[0]
+    return {
+      success: true,
+      filePath,
+      fileUrl: pathToFileURL(filePath).toString(),
+    }
+  } catch (error: any) {
+    return { success: false, error: error.message }
+  }
 })
 
 ipcMain.handle('app:isDevMode', () => isDevMode())

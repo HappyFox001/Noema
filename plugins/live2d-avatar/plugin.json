@@ -11,38 +11,92 @@
     "network"
   ],
   "config": {
-    "modelUrl": "",
+    "modelUrl": "../models/Haru/haru_greeter_t03.model3.json",
     "pixiUrl": "https://cdn.jsdelivr.net/npm/pixi.js@6.5.10/dist/browser/pixi.min.js",
-    "cubismCoreUrl": "https://cdn.jsdelivr.net/npm/live2dcubismcore@1.0.2/live2dcubismcore.min.js",
+    "cubismCoreUrl": "https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js",
     "live2dDisplayUrl": "https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/cubism4.min.js",
-    "scale": 0.24,
+    "scale": 0.92,
+    "autoFit": true,
+    "fitPadding": 24,
+    "maxWidthRatio": 0.88,
+    "maxHeightRatio": 0.92,
     "offsetX": 0,
     "offsetY": 0,
     "lipSyncGain": 1.8,
+    "lipSyncAttack": 0.42,
+    "lipSyncRelease": 0.16,
     "idleMotion": "Idle",
-    "listeningMotion": "TapBody",
-    "thinkingMotion": "Thinking",
-    "speakingMotion": "TapBody",
-    "taskMotion": "FlickHead",
-    "errorMotion": "Shake"
+    "listeningMotion": "Tap",
+    "thinkingMotion": "Tap",
+    "speakingMotion": "Tap",
+    "taskMotion": "Tap",
+    "errorMotion": "Tap"
   },
   "configSchema": [
     {
       "key": "modelUrl",
       "label": "Model URL",
-      "description": "Absolute URL or file URL for a Cubism .model3.json file. Leave empty to show the setup placeholder.",
-      "type": "string",
-      "default": "",
-      "placeholder": "file:///.../model.model3.json"
+      "description": "URL for a Cubism .model3.json file. The bundled default is Haru from the pixi-live2d-display test assets.",
+      "type": "file",
+      "default": "../models/Haru/haru_greeter_t03.model3.json",
+      "placeholder": "../models/Haru/haru_greeter_t03.model3.json",
+      "buttonLabel": "选择模型",
+      "filters": [
+        {
+          "name": "Live2D Cubism Model",
+          "extensions": ["model3.json"]
+        },
+        {
+          "name": "JSON",
+          "extensions": ["json"]
+        }
+      ]
     },
     {
       "key": "scale",
       "label": "Scale",
-      "description": "Base model scale.",
+      "description": "Multiplier applied after automatic viewport fitting. Use values below 1 to leave more breathing room.",
       "type": "number",
-      "default": 0.24,
+      "default": 0.92,
       "min": 0.05,
       "max": 1.5,
+      "step": 0.01
+    },
+    {
+      "key": "autoFit",
+      "label": "Auto fit",
+      "description": "Keep the model inside the plugin view when the window or task layout changes.",
+      "type": "boolean",
+      "default": true
+    },
+    {
+      "key": "fitPadding",
+      "label": "Fit padding",
+      "description": "Minimum padding between the model bounds and the plugin viewport.",
+      "type": "number",
+      "default": 24,
+      "min": 0,
+      "max": 160,
+      "step": 4
+    },
+    {
+      "key": "maxWidthRatio",
+      "label": "Max width",
+      "description": "Maximum fraction of the plugin viewport width the model may occupy.",
+      "type": "number",
+      "default": 0.88,
+      "min": 0.35,
+      "max": 1,
+      "step": 0.01
+    },
+    {
+      "key": "maxHeightRatio",
+      "label": "Max height",
+      "description": "Maximum fraction of the plugin viewport height the model may occupy.",
+      "type": "number",
+      "default": 0.92,
+      "min": 0.35,
+      "max": 1,
       "step": 0.01
     },
     {
@@ -74,6 +128,26 @@
       "min": 0,
       "max": 8,
       "step": 0.1
+    },
+    {
+      "key": "lipSyncAttack",
+      "label": "Mouth attack",
+      "description": "How quickly the mouth opens when output energy rises.",
+      "type": "number",
+      "default": 0.42,
+      "min": 0.05,
+      "max": 1,
+      "step": 0.01
+    },
+    {
+      "key": "lipSyncRelease",
+      "label": "Mouth release",
+      "description": "How quickly the mouth closes when output energy falls.",
+      "type": "number",
+      "default": 0.16,
+      "min": 0.02,
+      "max": 1,
+      "step": 0.01
     }
   ],
   "uiSurfaces": [
