@@ -42,5 +42,7 @@ grep -q 'setApplicationMenu' apps/desktop/src/main/index.ts && score=$((score + 
 grep -q 'onAppMenuCommand' apps/desktop/src/renderer/main.ts && score=$((score + 1))
 grep -q 'grid-row: 1' apps/desktop/src/renderer/styles.css && score=$((score + 1))
 ! grep -q 'plugin-main-surface-replace .text-display' apps/desktop/src/renderer/styles.css && score=$((score + 1))
+grep -q 'plugin-ui-main-surface.replace .plugin-ui-surface-frame' apps/desktop/src/renderer/styles.css && score=$((score + 1))
+grep -q 'cursor: move' apps/desktop/src/renderer/styles.css && score=$((score + 1))
 
 echo "$score"

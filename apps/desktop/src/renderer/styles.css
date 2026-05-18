@@ -237,19 +237,21 @@ body.planet-orb-active #planet-orb-canvas {
 
 .plugin-ui-main-surface.replace {
   z-index: 2;
+  -webkit-app-region: drag;
+  app-region: drag;
+  cursor: move;
 }
 
 body.plugin-main-surface-replace .plugin-ui-main-surface.replace,
 body.plugin-main-surface-replace .plugin-ui-main-surface.replace .plugin-ui-surface-frame {
   pointer-events: none;
-}
-
-body.plugin-main-surface-replace .plugin-ui-main-surface.replace {
   -webkit-app-region: drag;
   app-region: drag;
+  cursor: move;
 }
 
-body.plugin-main-surface-replace .plugin-ui-main-surface.replace .plugin-ui-surface-frame {
+body:not(.plugin-main-surface-replace) .plugin-ui-main-surface.overlay .plugin-ui-surface-frame,
+.plugin-ui-task-surface .plugin-ui-surface-frame {
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
