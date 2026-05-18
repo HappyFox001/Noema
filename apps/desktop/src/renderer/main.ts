@@ -2806,7 +2806,7 @@ function setPluginControlsPeek(visible: boolean): void {
     pluginControlsPeekTimer = window.setTimeout(() => {
       mainView.classList.remove('controls-peek')
       pluginControlsPeekTimer = undefined
-    }, 1200)
+    }, 1800)
   }
 }
 
@@ -2822,7 +2822,16 @@ window.addEventListener('pointermove', (event) => {
     event.clientY >= rect.top &&
     event.clientY <= rect.bottom
 
-  setPluginControlsPeek(insideMainView)
+  const controls = startConversationBtn.closest<HTMLElement>('.controls')
+  const controlsRect = controls?.getBoundingClientRect()
+  const insideControls = Boolean(controlsRect &&
+    event.clientX >= controlsRect.left - 24 &&
+    event.clientX <= controlsRect.right + 24 &&
+    event.clientY >= controlsRect.top - 24 &&
+    event.clientY <= controlsRect.bottom + 32)
+  const nearControlBand = insideMainView && event.clientY >= rect.bottom - Math.max(96, rect.height * 0.26)
+
+  setPluginControlsPeek(insideControls || nearControlBand)
 })
 
 window.addEventListener('pointerleave', () => {

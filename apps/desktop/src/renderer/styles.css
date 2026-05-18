@@ -458,7 +458,7 @@ input[type="password"] {
   transition: opacity 180ms ease, transform 180ms ease;
 }
 
-body:not(.settings-open) #main-view:hover .controls,
+body:not(.settings-open):not(.plugin-main-surface-replace) #main-view:hover .controls,
 body:not(.settings-open) #main-view:focus-within .controls {
   opacity: 1;
   pointer-events: auto;
