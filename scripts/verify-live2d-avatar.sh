@@ -12,5 +12,6 @@ grep -q 'ParamMouthOpenY' plugins/live2d-avatar/assets/ui/live2d-avatar.js && sc
 grep -q 'her-text:ui-state' plugins/live2d-avatar/assets/ui/live2d-avatar.js && score=$((score + 1))
 grep -q 'config: Record<string, unknown>' apps/desktop/src/main/plugin-loader.ts && score=$((score + 1))
 grep -q 'pluginConfig' apps/desktop/src/renderer/main.ts && score=$((score + 1))
+grep -Fq 'configOverrides[manifest.id]' apps/desktop/src/main/plugin-loader.ts && score=$((score + 1))
 
 echo "$score"

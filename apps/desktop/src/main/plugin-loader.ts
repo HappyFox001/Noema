@@ -72,7 +72,13 @@ export async function discoverRuntimePlugins(
       config: mergePluginConfig(manifest, configOverrides[manifest.id]),
       configSchema: manifest.configSchema ?? [],
       adminSchema: manifest.adminSchema,
-      uiSurfaces: enabled ? resolveRuntimePluginUISurfaces(manifest, pluginDir) : [],
+      uiSurfaces: enabled
+        ? resolveRuntimePluginUISurfaces(
+            manifest,
+            pluginDir,
+            mergePluginConfig(manifest, configOverrides[manifest.id])
+          )
+        : [],
     }
   })
 }
@@ -239,7 +245,8 @@ function mergePluginConfig(
 
 function resolveRuntimePluginUISurfaces(
   manifest: RuntimePluginManifest,
-  pluginDir: string
+  pluginDir: string,
+  config: Record<string, unknown>
 ): RuntimePluginUISurface[] {
   const assetsDir = manifest.assets ? resolve(pluginDir, manifest.assets) : pluginDir
   return (manifest.uiSurfaces ?? []).flatMap((surface) => {
@@ -258,7 +265,7 @@ function resolveRuntimePluginUISurfaces(
       title: surface.title,
       src: pathToFileURL(entryPath).toString(),
       transparent: surface.transparent !== false,
-      config: mergePluginConfig(manifest),
+      config,
     }]
   })
 }
