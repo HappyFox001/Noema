@@ -128,6 +128,61 @@ including `apps/desktop/.env` and the repository root. Settings in the app are
 the preferred path for day-to-day development because they persist model and
 provider choices.
 
+### API Configuration
+
+Her-Text uses OpenAI-compatible chat endpoints for the dialogue and task models.
+Voice input and output are configured separately through ASR and TTS providers.
+
+The recommended setup is to open the desktop app and fill these fields in
+**Settings > System**:
+
+- **Dialogue model**: API key, model name, and base URL for normal conversation.
+- **Task model**: API key, model name, base URL, and transport for tool/task execution.
+- **ASR model**: provider, API key, model name, base URL, and language.
+- **TTS model**: provider, API key, model name, voice ID, base URL, and language.
+- **Proxy**: optional HTTP(S) proxy used by provider requests.
+
+You can also seed the same settings with a `.env` file:
+
+```bash
+# Dialogue model, OpenAI-compatible
+LLM_1_API_KEY=your_dialogue_api_key
+LLM_1_MODEL=deepseek-chat
+LLM_1_BASE_URL=https://api.deepseek.com
+
+# Task model, OpenAI-compatible
+TASK_1_API_KEY=your_task_api_key
+TASK_1_MODEL=gemini-3.1-pro-preview
+TASK_1_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
+
+# Text-to-speech
+TTS_1_PROVIDER=fish
+TTS_1_API_KEY=your_tts_api_key
+TTS_1_MODEL=s2-pro
+TTS_1_VOICE_ID=your_voice_id
+
+# Speech-to-text
+ASR_1_PROVIDER=qwen
+ASR_1_API_KEY=your_asr_api_key
+ASR_1_MODEL=qwen3-asr-flash-realtime
+ASR_1_LANGUAGE=zh
+
+# Optional
+PROXY_URL=http://127.0.0.1:7890
+```
+
+Provider defaults:
+
+| Area | Supported providers | Default model |
+| --- | --- | --- |
+| Dialogue / task LLM | OpenAI-compatible endpoint | user configured |
+| TTS | `fish`, `openai`, `elevenlabs` | `s2-pro` for Fish Audio |
+| ASR | `qwen`, `openai`, `groq` | `qwen3-asr-flash-realtime` |
+
+The indexed variables support multiple saved profiles from `1` to `10`, for
+example `LLM_2_API_KEY` or `TTS_2_PROVIDER`. Select the active profile with
+`LLM_ACTIVE`, `TASK_ACTIVE`, `TTS_ACTIVE`, and `ASR_ACTIVE`.
+
 ## Development
 
 Build the main packages:
@@ -213,4 +268,4 @@ future improvement.
 
 ## License
 
-MIT
+AGPL-3.0-only. See [LICENSE](./LICENSE).
