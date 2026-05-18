@@ -45,6 +45,8 @@ grep -q 'grid-row: 1' apps/desktop/src/renderer/styles.css && score=$((score + 1
 grep -q 'plugin-ui-main-surface.replace .plugin-ui-surface-frame' apps/desktop/src/renderer/styles.css && score=$((score + 1))
 grep -q 'cursor: move' apps/desktop/src/renderer/styles.css && score=$((score + 1))
 grep -q 'nearControlBand' apps/desktop/src/renderer/main.ts && score=$((score + 1))
-grep -q 'not(.plugin-main-surface-replace)' apps/desktop/src/renderer/styles.css && score=$((score + 1))
+grep -q 'id="orb-slot"' apps/desktop/src/renderer/index.html && score=$((score + 1))
+grep -q "getElementById('orb-slot')" apps/desktop/src/renderer/main.ts && score=$((score + 1))
+grep -q '.orb-slot' apps/desktop/src/renderer/styles.css && score=$((score + 1))
 
 echo "$score"

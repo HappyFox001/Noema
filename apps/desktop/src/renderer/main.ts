@@ -1159,7 +1159,7 @@ type TaskPanelPlan = {
 const voiceRecorder = new VoiceRecorder()
 
 // Canvas rendering
-const pluginUIMainView = document.getElementById('main-view') as HTMLElement
+const pluginUIMainView = document.getElementById('orb-slot') as HTMLElement
 const pluginUITaskPanel = document.getElementById('task-panel') as HTMLElement
 const canvas = document.getElementById('orb-canvas') as HTMLCanvasElement
 const ctx = canvas.getContext('2d', { alpha: true })!

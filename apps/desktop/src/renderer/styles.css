@@ -79,6 +79,22 @@ body {
   contain: strict;
 }
 
+.orb-slot {
+  position: relative;
+  grid-row: 1;
+  align-self: end;
+  justify-self: center;
+  width: 270px;
+  height: 270px;
+  display: grid;
+  place-items: center;
+  overflow: visible;
+  contain: layout paint;
+  isolation: isolate;
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
 .liquid-glass-surface {
   position: fixed;
   inset: 0;
@@ -147,8 +163,7 @@ body.theme-day.settings-open:not(.settings-closing) .liquid-glass-surface {
 #orb-canvas {
   user-select: none;
   -webkit-user-select: none;
-  grid-row: 1;
-  align-self: end;
+  grid-area: 1 / 1;
   width: 180px;
   height: 180px;
   display: block;
@@ -166,8 +181,7 @@ body.theme-day.settings-open:not(.settings-closing) .liquid-glass-surface {
 #planet-orb-canvas {
   user-select: none;
   -webkit-user-select: none;
-  grid-row: 1;
-  align-self: end;
+  grid-area: 1 / 1;
   width: 180px;
   height: 180px;
   display: none;
@@ -227,12 +241,9 @@ body.planet-orb-active #planet-orb-canvas {
 }
 
 .plugin-ui-main-surface {
-  grid-row: 1;
-  align-self: end;
-  justify-self: center;
-  width: min(100%, 270px);
-  height: 270px;
-  inset: auto;
+  inset: 0;
+  width: 100%;
+  height: 100%;
 }
 
 .plugin-ui-main-surface.replace {
@@ -261,10 +272,6 @@ body.plugin-main-surface-replace #advanced-orb-canvas,
 body.plugin-main-surface-replace #planet-orb-canvas {
   opacity: 0;
   pointer-events: none;
-}
-
-body.plugin-main-surface-replace #main-view {
-  max-width: 360px;
 }
 
 body.plugin-main-surface-replace .controls {
@@ -458,7 +465,7 @@ input[type="password"] {
   transition: opacity 180ms ease, transform 180ms ease;
 }
 
-body:not(.settings-open):not(.plugin-main-surface-replace) #main-view:hover .controls,
+body:not(.settings-open) #main-view:hover .controls,
 body:not(.settings-open) #main-view:focus-within .controls {
   opacity: 1;
   pointer-events: auto;
