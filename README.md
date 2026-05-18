@@ -266,6 +266,17 @@ Application-level echo suppression is still evolving. Browser-level AEC is
 enabled, but robust filtering of TTS audio leaking back into ASR is an area for
 future improvement.
 
+## Acknowledgements
+
+The orb UI in Her-Text directly references the visual direction and interaction
+ideas from these excellent Three.js projects. Thanks to their authors and
+communities:
+
+- [r3f-rapier-ball-of-glass](https://github.com/antonbobrov/r3f-rapier-ball-of-glass)
+  by Anton Bobrov.
+- [Singularity](https://github.com/MisterPrada/singularity) by MisterPrada for
+  real-time Three.js scene and orb interaction inspiration.
+
 ## License
 
 AGPL-3.0-only. See [LICENSE](./LICENSE).
