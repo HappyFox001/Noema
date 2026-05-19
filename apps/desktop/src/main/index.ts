@@ -2845,6 +2845,7 @@ function getLLMConfigSignature(config: LLMModelConfig | null): string {
   }
   return JSON.stringify({
     id: config.id,
+    transport: config.transport ?? 'openai_compatible',
     modelName: config.modelName,
     baseUrl: config.baseUrl,
     apiKey: config.apiKey ? 'set' : '',

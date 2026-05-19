@@ -18,13 +18,17 @@ download_model() {
     local MODEL_URL="$2"
     local MODEL_NAME="$3"
 
-    if [ -f "$MODEL_PATH" ]; then
+    if [ -f "$MODEL_PATH" ] && is_valid_onnx "$MODEL_PATH"; then
         SIZE=$(ls -lh "$MODEL_PATH" | awk '{print $5}')
         echo "✓ $MODEL_NAME exists ($SIZE)"
     else
+        if [ -f "$MODEL_PATH" ]; then
+            echo "Existing $MODEL_NAME is not a valid ONNX file; re-downloading..."
+            rm -f "$MODEL_PATH"
+        fi
         echo "Downloading $MODEL_NAME..."
         if command -v curl &> /dev/null; then
-            curl -L -o "$MODEL_PATH" "$MODEL_URL"
+            curl -fL -o "$MODEL_PATH" "$MODEL_URL"
         elif command -v wget &> /dev/null; then
             wget -O "$MODEL_PATH" "$MODEL_URL"
         else
@@ -32,14 +36,27 @@ download_model() {
             exit 1
         fi
 
-        if [ -f "$MODEL_PATH" ]; then
+        if [ -f "$MODEL_PATH" ] && is_valid_onnx "$MODEL_PATH"; then
             SIZE=$(ls -lh "$MODEL_PATH" | awk '{print $5}')
             echo "✓ Downloaded: $MODEL_NAME ($SIZE)"
         else
-            echo "✗ Download failed: $MODEL_NAME"
+            echo "✗ Download failed or produced an invalid ONNX file: $MODEL_NAME"
             exit 1
         fi
     fi
+}
+
+is_valid_onnx() {
+    local MODEL_PATH="$1"
+    local SIZE
+    SIZE=$(wc -c < "$MODEL_PATH" | tr -d ' ')
+    if [ "$SIZE" -lt 1024 ]; then
+        return 1
+    fi
+    if head -c 256 "$MODEL_PATH" | grep -qiE '<!doctype|<html|not found|version https://git-lfs.github.com/spec'; then
+        return 1
+    fi
+    return 0
 }
 
 # ============ Silero VAD ============
@@ -48,7 +65,7 @@ download_model() {
 # 用途: 语音活动检测 (VAD)
 download_model \
     "$MODELS_DIR/silero_vad.onnx" \
-    "https://github.com/snakers4/silero-vad/raw/master/files/silero_vad.onnx" \
+    "https://raw.githubusercontent.com/snakers4/silero-vad/master/src/silero_vad/data/silero_vad.onnx" \
     "Silero VAD"
 
 # ============ Smart Turn v3.2 ============
