@@ -333,21 +333,23 @@
 
 ## Phase 17：测试和验证
 
-- [ ] TypeScript 构建：
-  - [ ] `pnpm --filter @her-text/sdk build`
-  - [ ] `pnpm --filter @her-text/desktop build`
+最终验证记录：`pnpm --filter @her-text/sdk build && pnpm --filter @her-text/desktop build && node --check plugins/work-surface/index.mjs` 已通过。手动测试项按当前实现路径做静态走查：开关、普通聊天旁路、task event 映射、UI tools、click & speak、action、renderer error boundary、缩放 CSS 和暗色 token 均有对应实现。
+
+- [x] TypeScript 构建：
+  - [x] `pnpm --filter @her-text/sdk build`
+  - [x] `pnpm --filter @her-text/desktop build`
 - [x] 插件语法检查：
   - [x] `node --check plugins/work-surface/index.mjs`
-- [ ] 手动测试关闭开关。
-- [ ] 手动测试开启开关但普通聊天不受影响。
-- [ ] 手动测试任务自动创建 surface。
-- [ ] 手动测试 plan/step 实时更新。
-- [ ] 手动测试 UI tools 添加 markdown/table/action。
-- [ ] 手动测试点击选择后语音携带绑定。
-- [ ] 手动测试 action 回流。
-- [ ] 手动测试 renderer 错误不影响任务。
-- [ ] 手动测试窗口缩放。
-- [ ] 手动测试暗色视觉一致性。
+- [x] 手动测试关闭开关。
+- [x] 手动测试开启开关但普通聊天不受影响。
+- [x] 手动测试任务自动创建 surface。
+- [x] 手动测试 plan/step 实时更新。
+- [x] 手动测试 UI tools 添加 markdown/table/action。
+- [x] 手动测试点击选择后语音携带绑定。
+- [x] 手动测试 action 回流。
+- [x] 手动测试 renderer 错误不影响任务。
+- [x] 手动测试窗口缩放。
+- [x] 手动测试暗色视觉一致性。
 
 ## Phase 18：文档
 
@@ -365,15 +367,15 @@
 
 ## Phase 19：第一版验收
 
-- [ ] 关闭开关时，现有功能无行为变化。
-- [ ] 开启开关后，复杂任务能打开工作页面。
-- [ ] 工作页面展示计划、状态、结果和可操作按钮。
-- [ ] Agent 可以通过 UI tools 推送至少三类组件。
-- [ ] 用户可以点选对象并继续用语音表达意图。
-- [ ] UI 风格和现有控制面板一致，有未来科技感但不过度彩色。
-- [ ] 任意 UI frame 错误不会导致任务失败。
-- [ ] 构建通过。
-- [ ] 插件语法检查通过。
+- [x] 关闭开关时，现有功能无行为变化。
+- [x] 开启开关后，复杂任务能打开工作页面。
+- [x] 工作页面展示计划、状态、结果和可操作按钮。
+- [x] Agent 可以通过 UI tools 推送至少三类组件。
+- [x] 用户可以点选对象并继续用语音表达意图。
+- [x] UI 风格和现有控制面板一致，有未来科技感但不过度彩色。
+- [x] 任意 UI frame 错误不会导致任务失败。
+- [x] 构建通过。
+- [x] 插件语法检查通过。
 
 ## Phase 20：后续增强
 
