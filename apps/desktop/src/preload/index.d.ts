@@ -230,6 +230,7 @@ declare global {
         appearance: { orbStyle: 'default' | 'advanced' | 'planet'; theme: 'night' | 'day' }
         selectedPersonality: string
         externalRolePaths: string[]
+        pluginPathHistory: Record<string, { mode: 'file' | 'directory'; lastPath: string; recentPaths: string[] }>
         system: {
           proxy: string
           llmModels: Array<{ id: string; modelName: string; apiKey: string; baseUrl: string }>
@@ -251,6 +252,7 @@ declare global {
         appearance: { orbStyle: 'default' | 'advanced' | 'planet'; theme: 'night' | 'day' }
         selectedPersonality: string
         externalRolePaths: string[]
+        pluginPathHistory: Record<string, { mode: 'file' | 'directory'; lastPath: string; recentPaths: string[] }>
         system: {
           proxy: string
           llmModels: Array<{ id: string; modelName: string; apiKey: string; baseUrl: string }>
@@ -434,6 +436,7 @@ declare global {
       selectPluginConfigPath: (options?: {
         mode?: 'file' | 'directory'
         title?: string
+        defaultPath?: string
         filters?: Array<{ name: string; extensions: string[] }>
         resolveFileExtensions?: string[]
         resolveRecursive?: boolean

@@ -1075,6 +1075,7 @@ type UISettings = {
   selectedPersonality: string
   plugins: Record<string, boolean>
   pluginConfigs: Record<string, Record<string, unknown>>
+  pluginPathHistory?: Record<string, { mode: 'file' | 'directory'; lastPath: string; recentPaths: string[] }>
   system: SystemConfig
 }
 
@@ -4173,6 +4174,7 @@ function bindPluginConfigInputs(): void {
           title: field.label
             ? tf('plugins.chooseField', { label: pluginConfigText(plugin, field, 'label', field.label) })
             : (field.type === 'directory' ? t('plugins.chooseDirectory') : t('plugins.chooseFile')),
+          defaultPath: await getPluginPathDefault(pluginId, key),
           filters: field.type === 'file' ? field.filters : undefined,
           resolveFileExtensions: field.type === 'directory' ? field.resolveFileExtensions : undefined,
           resolveRecursive: field.type === 'directory' ? field.resolveRecursive : undefined,
@@ -4202,6 +4204,7 @@ function bindPluginConfigInputs(): void {
         }
         input.value = selectedValue
         await applyPluginConfigPatch(pluginId, configPatch)
+        await updatePluginPathHistory(pluginId, key, field.type, selectedValue)
         showPanelNotice(t('plugins.pathUpdated'))
       } catch (error: any) {
         showPanelNotice(tf('plugins.pathSelectFailed', { error: error.message }), 'error')
@@ -4214,6 +4217,38 @@ function bindPluginConfigInputs(): void {
 
 function getPluginConfigPatch(pluginId: string, key: string, value: unknown): Record<string, unknown> {
   return { [key]: value }
+}
+
+function getPluginPathHistoryKey(pluginId: string, key: string): string {
+  return `${pluginId}:${key}`
+}
+
+async function getPluginPathDefault(pluginId: string, key: string): Promise<string | undefined> {
+  const settings = await window.electronAPI.getSettings()
+  const history = settings.pluginPathHistory?.[getPluginPathHistoryKey(pluginId, key)]
+  return history?.lastPath || history?.recentPaths?.[0]
+}
+
+async function updatePluginPathHistory(
+  pluginId: string,
+  key: string,
+  mode: 'file' | 'directory',
+  selectedPath: string
+): Promise<void> {
+  const settings = await window.electronAPI.getSettings()
+  const historyKey = getPluginPathHistoryKey(pluginId, key)
+  const existing = settings.pluginPathHistory?.[historyKey]
+  const recentPaths = [selectedPath, ...(existing?.recentPaths ?? []).filter(path => path !== selectedPath)].slice(0, 5)
+  await window.electronAPI.updateSettings({
+    pluginPathHistory: {
+      ...(settings.pluginPathHistory ?? {}),
+      [historyKey]: {
+        mode,
+        lastPath: selectedPath,
+        recentPaths,
+      },
+    },
+  })
 }
 
 function getLive2dCapabilitiesCacheKey(plugin: PluginInfo): string {

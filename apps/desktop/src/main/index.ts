@@ -2226,6 +2226,7 @@ let appSettings: AppSettings = {
   externalRolePaths: [],
   plugins: {},
   pluginConfigs: {},
+  pluginPathHistory: {},
   system: {
     proxy: '',
     llmModels: [{ id: 'default-llm', modelName: '', apiKey: '', baseUrl: '' }],
@@ -3996,6 +3997,7 @@ ipcMain.handle('plugins:adminAction', async (_event, pluginId: string, action: s
 ipcMain.handle('plugins:selectConfigPath', async (_event, options?: {
   mode?: 'file' | 'directory'
   title?: string
+  defaultPath?: string
   filters?: Array<{ name: string; extensions: string[] }>
   resolveFileExtensions?: string[]
   resolveRecursive?: boolean
@@ -4005,6 +4007,7 @@ ipcMain.handle('plugins:selectConfigPath', async (_event, options?: {
     const dialogOptions: OpenDialogOptions = {
       title: options?.title || (mode === 'directory' ? '选择插件目录' : '选择插件文件'),
       properties: [mode === 'directory' ? 'openDirectory' : 'openFile'],
+      defaultPath: options?.defaultPath,
       filters: mode === 'file' && options?.filters?.length ? options.filters : undefined,
     }
     const result = mainWindow

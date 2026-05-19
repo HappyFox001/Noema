@@ -209,6 +209,7 @@ export interface AppSettings {
   externalRolePaths: string[]
   plugins: Record<string, boolean>
   pluginConfigs: Record<string, Record<string, unknown>>
+  pluginPathHistory: Record<string, { mode: 'file' | 'directory'; lastPath: string; recentPaths: string[] }>
   system: SystemConfig
 }
 
@@ -273,6 +274,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   externalRolePaths: [],
   plugins: {},
   pluginConfigs: {},
+  pluginPathHistory: {},
   system: DEFAULT_SYSTEM_CONFIG
 }
 
@@ -333,6 +335,7 @@ export class SettingsStore {
         externalRolePaths: Array.isArray(parsed.externalRolePaths) ? parsed.externalRolePaths : [],
         plugins: parsed.plugins && typeof parsed.plugins === 'object' ? parsed.plugins : {},
         pluginConfigs: parsed.pluginConfigs && typeof parsed.pluginConfigs === 'object' ? parsed.pluginConfigs : {},
+        pluginPathHistory: parsed.pluginPathHistory && typeof parsed.pluginPathHistory === 'object' ? parsed.pluginPathHistory : {},
         volume: clampVolume(parsed.volume ?? DEFAULT_SETTINGS.volume),
         system: systemConfig
       }
