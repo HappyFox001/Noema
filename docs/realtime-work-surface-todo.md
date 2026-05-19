@@ -109,7 +109,7 @@
 
 ## Phase 5：Renderer WorkSurfaceView
 
-- [ ] 新增 `work-surface` renderer 模块。
+- [x] 新增 `work-surface` renderer 模块。
 - [x] 新增 WorkSurfaceView 容器。
 - [x] 实现 surface 创建和销毁。
 - [x] 实现 layout 渲染。
@@ -141,15 +141,15 @@
 - [x] `MarkdownBlock`
   - [x] 支持安全 markdown 渲染。
   - [x] 禁止 raw HTML。
-  - [ ] 支持代码块。
+  - [x] 支持代码块。
 - [x] `DataTable`
   - [x] 渲染列。
   - [x] 渲染行。
   - [x] 支持单选/多选。
-  - [ ] 支持排序。
-  - [ ] 支持简单过滤。
-  - [ ] 支持行级 action。
-  - [ ] 大数据分页或截断。
+  - [x] 支持排序。
+  - [x] 支持简单过滤。
+  - [x] 支持行级 action。
+  - [x] 大数据分页或截断。
 - [x] `ArtifactGrid`
   - [x] 文件卡片。
   - [x] 图片预览。

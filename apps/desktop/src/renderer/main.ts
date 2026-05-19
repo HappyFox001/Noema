@@ -6,6 +6,7 @@
  */
 import './styles.css'
 import { initializeLiquidGlassSurface } from './liquid-glass-surface'
+import { WorkSurfaceView } from './work-surface'
 import claudeCodeLogoUrl from './assets/claude_code_logo.png'
 import codexLogoUrl from './assets/codex_logo.png'
 import claudeIconUrl from '@lobehub/icons-static-svg/icons/claude-color.svg?url'
@@ -1640,14 +1641,13 @@ const voiceRecorder = new VoiceRecorder()
 const pluginUIMainView = document.getElementById('orb-slot') as HTMLElement
 const pluginUITaskPanel = document.getElementById('task-panel') as HTMLElement
 const workSurfaceRoot = document.getElementById('work-surface-root') as HTMLElement
+const workSurfaceView = new WorkSurfaceView(workSurfaceRoot, { setTaskPanelVisible })
 const canvas = document.getElementById('orb-canvas') as HTMLCanvasElement
 const ctx = canvas.getContext('2d', { alpha: true })!
 const advancedOrbCanvas = document.getElementById('advanced-orb-canvas') as HTMLCanvasElement
 const planetOrbCanvas = document.getElementById('planet-orb-canvas') as HTMLCanvasElement
 let activePluginMainSurface: PluginUISurface | null = null
 let activePluginTaskSurface: PluginUISurface | null = null
-let workSurfaceEnabled = false
-let activeWorkSurfaceSnapshot: any | null = null
 let lastTaskPanelPlan: TaskPanelPlan | null = null
 let lastConversationPhase: ConversationFrame['phase'] | null = null
 let lastExpressionState: {
@@ -2754,339 +2754,6 @@ function renderTaskPanel(plan: TaskPanelPlan): void {
   syncPluginUIStateSoon()
 }
 
-function setWorkSurfaceEnabled(enabled: boolean): void {
-  workSurfaceEnabled = enabled
-  document.body.classList.toggle('work-surface-enabled', enabled)
-  workSurfaceRoot.hidden = !enabled || !activeWorkSurfaceSnapshot
-  if (!enabled) {
-    activeWorkSurfaceSnapshot = null
-    workSurfaceRoot.textContent = ''
-  }
-}
-
-function renderWorkSurfaceSnapshot(snapshot: any): void {
-  if (!workSurfaceEnabled || !snapshot) {
-    return
-  }
-  activeWorkSurfaceSnapshot = snapshot
-  workSurfaceRoot.hidden = false
-  workSurfaceRoot.textContent = ''
-
-  const header = document.createElement('div')
-  header.className = 'work-surface-header'
-  const title = document.createElement('div')
-  title.className = 'work-surface-title'
-  title.textContent = snapshot.title || 'Work Surface'
-  const mode = document.createElement('div')
-  mode.className = 'work-surface-mode'
-  mode.textContent = snapshot.mode || 'task'
-  header.append(title, mode)
-
-  const body = document.createElement('div')
-  body.className = 'work-surface-body'
-  const components = Object.values(snapshot.components ?? {}) as any[]
-  if (components.length === 0) {
-    body.appendChild(renderWorkSurfaceEmpty('No work surface components yet.'))
-  }
-  for (const component of components) {
-    try {
-      body.appendChild(renderWorkSurfaceComponent(component))
-    } catch (error: any) {
-      body.appendChild(renderWorkSurfaceError(component?.id, error?.message || String(error)))
-    }
-  }
-
-  workSurfaceRoot.append(header, body)
-  workSurfaceRoot.classList.toggle('readonly', Boolean(snapshot.closedAt))
-  setTaskPanelVisible(true)
-}
-
-function renderWorkSurfaceComponent(component: any): HTMLElement {
-  const node = document.createElement('section')
-  node.className = `work-surface-component ${component.kind || 'unknown'}`
-  node.classList.toggle('focused', activeWorkSurfaceSnapshot?.focusedId === component.id)
-  node.classList.toggle('loading', component.loading === true)
-  node.dataset.componentId = component.id
-  node.tabIndex = 0
-
-  if (component.title) {
-    const title = document.createElement('div')
-    title.className = 'work-surface-component-title'
-    title.textContent = component.title
-    node.appendChild(title)
-  }
-
-  if (component.kind === 'status') {
-    node.appendChild(renderWorkSurfaceText(component.label, component.detail))
-  } else if (component.kind === 'taskPlan') {
-    node.appendChild(renderWorkSurfaceTaskPlan(component))
-  } else if (component.kind === 'table') {
-    node.appendChild(renderWorkSurfaceTable(component))
-  } else if (component.kind === 'artifacts') {
-    node.appendChild(renderWorkSurfaceArtifacts(component))
-  } else if (component.kind === 'actions') {
-    node.appendChild(renderWorkSurfaceActions(component))
-  } else if (component.kind === 'form') {
-    node.appendChild(renderWorkSurfaceForm(component))
-  } else if (component.kind === 'chart') {
-    node.appendChild(renderWorkSurfaceChart(component))
-  } else if (component.kind === 'timeline') {
-    node.appendChild(renderWorkSurfaceTimeline(component))
-  } else if (component.kind === 'inspector') {
-    node.appendChild(renderWorkSurfaceInspector(component))
-  } else {
-    node.appendChild(renderWorkSurfaceText(component.markdown ?? component.prompt ?? JSON.stringify(component, null, 2)))
-  }
-
-  node.addEventListener('click', () => {
-    void window.electronAPI.sendWorkSurfaceEvent({
-      type: 'surface.select',
-      surfaceId: activeWorkSurfaceSnapshot?.surfaceId,
-      targetId: component.id,
-      selectedIds: [component.id],
-      bindings: component.bindings ?? [],
-    })
-  })
-  return node
-}
-
-function renderWorkSurfaceEmpty(message: string): HTMLElement {
-  const node = document.createElement('div')
-  node.className = 'work-surface-empty'
-  node.textContent = message
-  return node
-}
-
-function renderWorkSurfaceError(componentId: string | undefined, message: string): HTMLElement {
-  const node = document.createElement('div')
-  node.className = 'work-surface-component error'
-  node.textContent = componentId
-    ? `Component ${componentId} failed: ${message}`
-    : `Component failed: ${message}`
-  return node
-}
-
-function renderWorkSurfaceText(primary: string, secondary?: string): HTMLElement {
-  const wrapper = document.createElement('div')
-  wrapper.className = 'work-surface-text'
-  const main = document.createElement('div')
-  main.textContent = primary || ''
-  wrapper.appendChild(main)
-  if (secondary) {
-    const detail = document.createElement('div')
-    detail.className = 'work-surface-muted'
-    detail.textContent = secondary
-    wrapper.appendChild(detail)
-  }
-  return wrapper
-}
-
-function renderWorkSurfaceTaskPlan(component: any): HTMLElement {
-  const list = document.createElement('ol')
-  list.className = 'work-surface-plan'
-  for (const step of component.plan?.steps ?? []) {
-    const item = document.createElement('li')
-    item.className = `work-surface-plan-step ${step.status || 'pending'}`
-    item.textContent = step.error
-      ? `${step.title || step.id}: ${step.error}`
-      : step.title || step.description || step.id
-    list.appendChild(item)
-  }
-  return list
-}
-
-function renderWorkSurfaceTable(component: any): HTMLElement {
-  const table = document.createElement('table')
-  table.className = 'work-surface-table'
-  const head = document.createElement('thead')
-  const headRow = document.createElement('tr')
-  for (const column of component.columns ?? []) {
-    const cell = document.createElement('th')
-    cell.textContent = column.label || column.id
-    headRow.appendChild(cell)
-  }
-  head.appendChild(headRow)
-  const body = document.createElement('tbody')
-  for (const row of component.rows ?? []) {
-    const tableRow = document.createElement('tr')
-    tableRow.dataset.componentId = row.id
-    tableRow.addEventListener('click', (event) => {
-      event.stopPropagation()
-      void window.electronAPI.sendWorkSurfaceEvent({
-        type: 'surface.select',
-        surfaceId: activeWorkSurfaceSnapshot?.surfaceId,
-        targetId: row.id,
-        selectedIds: [row.id],
-        bindings: row.bindings ?? component.bindings ?? [],
-      })
-    })
-    for (const column of component.columns ?? []) {
-      const cell = document.createElement('td')
-      cell.textContent = String(row.cells?.[column.id] ?? '')
-      tableRow.appendChild(cell)
-    }
-    body.appendChild(tableRow)
-  }
-  table.append(head, body)
-  return table
-}
-
-function renderWorkSurfaceForm(component: any): HTMLElement {
-  const form = document.createElement('form')
-  form.className = 'work-surface-form'
-  for (const field of component.fields ?? []) {
-    const label = document.createElement('label')
-    label.className = 'work-surface-field'
-    const labelText = document.createElement('span')
-    labelText.textContent = field.label || field.id
-    const input = createWorkSurfaceInput(field)
-    input.name = field.id
-    label.append(labelText, input)
-    form.appendChild(label)
-  }
-  const actions = document.createElement('div')
-  actions.className = 'work-surface-actions'
-  const submit = document.createElement('button')
-  submit.className = 'work-surface-action primary'
-  submit.type = 'submit'
-  submit.textContent = 'Submit'
-  actions.appendChild(submit)
-  form.appendChild(actions)
-  form.addEventListener('submit', (event) => {
-    event.preventDefault()
-    const formData = new FormData(form)
-    const value = Object.fromEntries(formData.entries())
-    void window.electronAPI.sendWorkSurfaceEvent({
-      type: 'surface.input_submitted',
-      surfaceId: activeWorkSurfaceSnapshot?.surfaceId,
-      targetId: component.id,
-      requestId: component.requestId,
-      value,
-      bindings: component.bindings ?? [],
-    })
-  })
-  return form
-}
-
-function createWorkSurfaceInput(field: any): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement {
-  if (field.kind === 'textarea') {
-    const input = document.createElement('textarea')
-    input.placeholder = field.placeholder || ''
-    input.value = field.value ?? ''
-    return input
-  }
-  if (field.kind === 'select') {
-    const input = document.createElement('select')
-    for (const option of field.options ?? []) {
-      const item = document.createElement('option')
-      item.value = option.value
-      item.textContent = option.label
-      input.appendChild(item)
-    }
-    return input
-  }
-  const input = document.createElement('input')
-  input.type = field.kind === 'password' ? 'password' : field.kind === 'number' ? 'number' : field.kind === 'checkbox' ? 'checkbox' : 'text'
-  input.placeholder = field.placeholder || ''
-  if (field.value !== undefined && input.type !== 'checkbox') {
-    input.value = String(field.value)
-  }
-  return input
-}
-
-function renderWorkSurfaceChart(component: any): HTMLElement {
-  const chart = document.createElement('div')
-  chart.className = `work-surface-chart ${component.chart?.type || 'bar'}`
-  const data = Array.isArray(component.chart?.data) ? component.chart.data : []
-  if (data.length === 0) {
-    chart.appendChild(renderWorkSurfaceText('No data'))
-    return chart
-  }
-  const values = data.map((item: any) => Number(item[component.chart?.yKey || 'value'] ?? item.value ?? 0))
-  const max = Math.max(1, ...values.map(Math.abs))
-  values.slice(0, 40).forEach((value, index) => {
-    const bar = document.createElement('div')
-    bar.className = 'work-surface-chart-bar'
-    bar.style.height = `${Math.max(4, Math.round(Math.abs(value) / max * 80))}%`
-    bar.title = `${index}: ${value}`
-    chart.appendChild(bar)
-  })
-  return chart
-}
-
-function renderWorkSurfaceTimeline(component: any): HTMLElement {
-  const list = document.createElement('ol')
-  list.className = 'work-surface-timeline'
-  for (const item of component.items ?? []) {
-    const entry = document.createElement('li')
-    entry.className = `work-surface-timeline-item ${item.status || 'pending'}`
-    entry.textContent = item.description ? `${item.title}: ${item.description}` : item.title
-    list.appendChild(entry)
-  }
-  return list
-}
-
-function renderWorkSurfaceInspector(component: any): HTMLElement {
-  const panel = document.createElement('dl')
-  panel.className = 'work-surface-inspector'
-  for (const property of component.properties ?? []) {
-    const term = document.createElement('dt')
-    term.textContent = property.label || property.id
-    const value = document.createElement('dd')
-    value.textContent = typeof property.value === 'string'
-      ? property.value
-      : JSON.stringify(property.value)
-    panel.append(term, value)
-  }
-  return panel
-}
-
-function renderWorkSurfaceArtifacts(component: any): HTMLElement {
-  const grid = document.createElement('div')
-  grid.className = 'work-surface-artifacts'
-  for (const artifact of component.artifacts ?? []) {
-    const item = document.createElement('button')
-    item.className = 'work-surface-artifact'
-    item.type = 'button'
-    item.textContent = artifact.title || artifact.path || artifact.id
-    item.addEventListener('click', (event) => {
-      event.stopPropagation()
-      void window.electronAPI.sendWorkSurfaceEvent({
-        type: 'surface.select',
-        surfaceId: activeWorkSurfaceSnapshot?.surfaceId,
-        targetId: artifact.id,
-        selectedIds: [artifact.id],
-        bindings: artifact.bindings ?? component.bindings ?? [],
-      })
-    })
-    grid.appendChild(item)
-  }
-  return grid
-}
-
-function renderWorkSurfaceActions(component: any): HTMLElement {
-  const bar = document.createElement('div')
-  bar.className = 'work-surface-actions'
-  for (const action of component.actions ?? []) {
-    const button = document.createElement('button')
-    button.className = `work-surface-action ${action.variant || 'secondary'}`
-    button.type = 'button'
-    button.disabled = Boolean(action.disabled)
-    button.textContent = action.label || action.id
-    button.addEventListener('click', (event) => {
-      event.stopPropagation()
-      void window.electronAPI.sendWorkSurfaceEvent({
-        type: 'surface.action',
-        surfaceId: activeWorkSurfaceSnapshot?.surfaceId,
-        actionId: action.id,
-        targetId: action.targetId,
-      })
-    })
-    bar.appendChild(button)
-  }
-  return bar
-}
-
 function getTaskStepMark(status: TaskPanelStepStatus): string {
   switch (status) {
     case 'completed':
@@ -3254,22 +2921,20 @@ async function initialize() {
 
     window.electronAPI.onWorkSurfaceFrame((frame) => {
       if (frame?.type === 'surface.close') {
-        workSurfaceRoot.hidden = true
+        workSurfaceView.close()
       }
     })
 
     window.electronAPI.onWorkSurfaceCreated((snapshot) => {
-      renderWorkSurfaceSnapshot(snapshot)
+      workSurfaceView.renderSnapshot(snapshot)
     })
 
     window.electronAPI.onWorkSurfaceSnapshot((snapshot) => {
-      renderWorkSurfaceSnapshot(snapshot)
+      workSurfaceView.renderSnapshot(snapshot)
     })
 
     window.electronAPI.onWorkSurfaceClosed(() => {
-      activeWorkSurfaceSnapshot = null
-      workSurfaceRoot.hidden = true
-      workSurfaceRoot.textContent = ''
+      workSurfaceView.close()
     })
 
     window.electronAPI.onWorkSurfaceError((error) => {
@@ -3539,7 +3204,7 @@ function applySettingsToUI(settings: UISettings) {
   setOrbStyle(parseOrbStyle(settings.appearance?.orbStyle))
   setLiquidGlassEnabled(settings.appearance?.liquidGlassEnabled !== false)
   workSurfaceToggle.checked = settings.experimental?.workSurfaceEnabled === true
-  setWorkSurfaceEnabled(settings.experimental?.workSurfaceEnabled === true)
+  workSurfaceView.setEnabled(settings.experimental?.workSurfaceEnabled === true)
 
   startConversationBtn.disabled = !settings.voiceInputEnabled
   updateConversationButton()
