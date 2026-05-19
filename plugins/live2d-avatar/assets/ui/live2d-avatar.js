@@ -22,6 +22,7 @@ const DEFAULT_CONFIG = {
   mouseTracking: true,
   focusStrength: 0.9,
   pointerTrackingStrength: 1,
+  stateMotionsEnabled: false,
   idleMotion: 'Idle',
   listeningMotion: 'Tap',
   thinkingMotion: 'Tap',
@@ -29,11 +30,6 @@ const DEFAULT_CONFIG = {
   taskMotion: 'Tap',
   errorMotion: 'Tap',
 }
-
-const OLD_BUNDLED_MODEL_URLS = new Set([
-  '../models/Mao/Mao.model3.json',
-  'models/Mao/Mao.model3.json',
-])
 
 const PARAM_IDS = {
   mouthOpen: ['ParamMouthOpenY', 'ParamA', 'PARAM_MOUTH_OPEN_Y'],
@@ -43,8 +39,22 @@ const PARAM_IDS = {
   angleX: ['ParamAngleX'],
   angleY: ['ParamAngleY'],
   angleZ: ['ParamAngleZ'],
+  bodyAngleX: ['ParamBodyAngleX'],
+  bodyAngleY: ['ParamBodyAngleY'],
+  bodyAngleZ: ['ParamBodyAngleZ'],
+  bodyUpper: ['ParamBodyUpper'],
   eyeBallX: ['ParamEyeBallX', 'PARAM_EYE_BALL_X'],
   eyeBallY: ['ParamEyeBallY', 'PARAM_EYE_BALL_Y'],
+}
+
+const ZERO_POSE = {
+  angleX: 0,
+  angleY: 0,
+  angleZ: 0,
+  bodyAngleX: 0,
+  bodyAngleY: 0,
+  bodyAngleZ: 0,
+  bodyUpper: 0,
 }
 
 const state = {
@@ -70,7 +80,11 @@ const state = {
     targetY: 0,
     smoothX: 0,
     smoothY: 0,
+    velocityX: 0,
+    velocityY: 0,
   },
+  pose: { ...ZERO_POSE },
+  targetPose: { ...ZERO_POSE },
   availableParameters: null,
   parameterRanges: new Map(),
   avatarTickerRegistered: false,
@@ -224,7 +238,7 @@ function applyHerTextState(nextState) {
     triggerModeHook(mode)
   }
 
-  if (nextState?.expression?.emotion) {
+  if (!state.config.mouseTracking && nextState?.expression?.emotion) {
     applyExpressionHook(nextState.expression.emotion)
   }
 }
@@ -246,6 +260,16 @@ function pickAvatarMode(nextState) {
 }
 
 function triggerModeHook(mode) {
+  if (state.config.mouseTracking) {
+    state.targetPose = { ...ZERO_POSE }
+    return
+  }
+
+  state.targetPose = getModePose(mode)
+  if (!state.config.stateMotionsEnabled) {
+    return
+  }
+
   const motionByMode = {
     idle: state.config.idleMotion,
     listening: state.config.listeningMotion,
@@ -303,6 +327,7 @@ function updateAvatar(delta) {
   const ease = state.energyEnvelope > state.mouth ? 0.42 : 0.22
   state.mouth += (state.energyEnvelope - state.mouth) * Math.min(1, delta * ease)
   updatePointerTracking(delta)
+  updatePoseTracking(delta)
 }
 
 function applyLive2DParameterHooks() {
@@ -316,19 +341,24 @@ function applyPointerParameterHooks() {
     return
   }
 
-  const dragX = clampNumber(state.pointer.smoothX, -1, 1, 0)
-  const dragY = clampNumber(state.pointer.smoothY, -1, 1, 0)
+  const dragX = clampNumber(state.pointer.active ? state.pointer.targetX : state.pointer.smoothX, -1, 1, 0)
+  const dragY = clampNumber(state.pointer.active ? state.pointer.targetY : state.pointer.smoothY, -1, 1, 0)
   const xRatio = (1 - dragX) / 2
   const yRatio = (1 - dragY) / 2
   const strength = state.config.pointerTrackingStrength
+  const pose = state.pose
 
   setRangedModelParam(PARAM_IDS.mouseX, xRatio, strength)
   setRangedModelParam(PARAM_IDS.mouseY, yRatio, strength)
-  addTrackingParam(PARAM_IDS.angleX, dragX * 10 * strength, 30)
-  addTrackingParam(PARAM_IDS.angleY, dragY * 7 * strength, 30)
-  addTrackingParam(PARAM_IDS.angleZ, -dragX * dragY * 4 * strength, 30)
-  addTrackingParam(PARAM_IDS.eyeBallX, dragX * 0.35 * strength, 1)
-  addTrackingParam(PARAM_IDS.eyeBallY, dragY * 0.35 * strength, 1)
+  addTrackingParam(PARAM_IDS.angleX, pose.angleX, 30)
+  addTrackingParam(PARAM_IDS.angleY, pose.angleY, 30)
+  addTrackingParam(PARAM_IDS.angleZ, pose.angleZ, 30)
+  addTrackingParam(PARAM_IDS.bodyAngleX, pose.bodyAngleX, 10)
+  addTrackingParam(PARAM_IDS.bodyAngleY, pose.bodyAngleY, 10)
+  addTrackingParam(PARAM_IDS.bodyAngleZ, pose.bodyAngleZ, 10)
+  addTrackingParam(PARAM_IDS.bodyUpper, pose.bodyUpper, 1)
+  addTrackingParam(PARAM_IDS.eyeBallX, dragX * 0.75 * strength, 1)
+  addTrackingParam(PARAM_IDS.eyeBallY, dragY * 0.75 * strength, 1)
 }
 
 function setRangedModelParam(ids, ratio, strength, normalizedOverride) {
@@ -373,6 +403,9 @@ function getFallbackParameterRange(id) {
   }
   if (id.includes('BodyAngle')) {
     return { min: -10, max: 10, default: 0 }
+  }
+  if (id.includes('BodyUpper')) {
+    return { min: -1, max: 1, default: 0 }
   }
   if (id.includes('Angle')) {
     return { min: -30, max: 30, default: 0 }
@@ -472,6 +505,7 @@ function normalizeConfig(config) {
     mouseTracking: config.mouseTracking !== false,
     focusStrength: normalizeFocusStrength(config.focusStrength),
     pointerTrackingStrength: clampNumber(config.pointerTrackingStrength, 0.1, 2, DEFAULT_CONFIG.pointerTrackingStrength),
+    stateMotionsEnabled: config.stateMotionsEnabled === true,
   }
 }
 
@@ -506,9 +540,15 @@ function updatePointerTarget(clientX, clientY, width = window.innerWidth, height
   state.pointer.clientY = clientY
   state.pointer.width = width
   state.pointer.height = height
-  state.pointer.targetX = clampNumber((clientX - centerX) / rangeX, -1, 1, 0)
-  state.pointer.targetY = clampNumber((centerY - clientY) / rangeY, -1, 1, 0)
-  focusModelAt(clientX, clientY)
+  const nextX = clampNumber((clientX - centerX) / rangeX, -1, 1, 0)
+  const nextY = clampNumber((centerY - clientY) / rangeY, -1, 1, 0)
+  state.pointer.velocityX = nextX - state.pointer.targetX
+  state.pointer.velocityY = nextY - state.pointer.targetY
+  state.pointer.targetX = nextX
+  state.pointer.targetY = nextY
+  if (!state.config.mouseTracking) {
+    focusModelAt(clientX, clientY, true)
+  }
 }
 
 function handlePointerLeave() {
@@ -519,14 +559,54 @@ function handlePointerLeave() {
   state.pointer.height = window.innerHeight
   state.pointer.targetX = 0
   state.pointer.targetY = 0
+  state.pointer.velocityX = 0
+  state.pointer.velocityY = 0
   resetModelFocus()
 }
 
 function updatePointerTracking(delta) {
-  const speed = state.pointer.active ? 0.18 : 0.1
-  const alpha = Math.min(1, Math.max(0.01, delta * speed))
+  const dx = state.pointer.targetX - state.pointer.smoothX
+  const dy = state.pointer.targetY - state.pointer.smoothY
+  const distance = Math.min(1.5, Math.sqrt(dx * dx + dy * dy))
+  const speed = state.pointer.active
+    ? 0.82 + distance * 0.46
+    : 0.22
+  const alpha = state.pointer.active
+    ? Math.min(1, Math.max(0.42, delta * speed))
+    : Math.min(1, Math.max(0.02, delta * speed))
   state.pointer.smoothX += (state.pointer.targetX - state.pointer.smoothX) * alpha
   state.pointer.smoothY += (state.pointer.targetY - state.pointer.smoothY) * alpha
+}
+
+function updatePoseTracking(delta) {
+  const dragX = clampNumber(state.pointer.smoothX, -1, 1, 0)
+  const dragY = clampNumber(state.pointer.smoothY, -1, 1, 0)
+  const strength = state.config.pointerTrackingStrength
+  const basePose = state.config.mouseTracking ? ZERO_POSE : getModePose(state.lastMode)
+  const activeWeight = state.pointer.active ? 1 : 0.38
+  const snapX = state.pointer.active ? state.pointer.targetX : dragX
+  const snapY = state.pointer.active ? state.pointer.targetY : dragY
+  const leadX = clampNumber(dragX + state.pointer.velocityX * 1.6, -1, 1, 0)
+  const leadY = clampNumber(dragY + state.pointer.velocityY * 1.6, -1, 1, 0)
+  const mouseWeight = state.config.mouseTracking ? 1 : 0
+
+  state.targetPose = {
+    angleX: basePose.angleX + leadX * 24 * strength * activeWeight * mouseWeight,
+    angleY: basePose.angleY + leadY * 18 * strength * activeWeight * mouseWeight,
+    angleZ: basePose.angleZ + -snapX * snapY * 12 * strength * activeWeight * mouseWeight,
+    bodyAngleX: basePose.bodyAngleX + snapX * 12 * strength * activeWeight * mouseWeight,
+    bodyAngleY: basePose.bodyAngleY + snapY * 6 * strength * activeWeight * mouseWeight,
+    bodyAngleZ: basePose.bodyAngleZ + -snapX * snapY * 6 * strength * activeWeight * mouseWeight,
+    bodyUpper: basePose.bodyUpper + Math.abs(snapX) * 0.28 * strength * activeWeight * mouseWeight,
+  }
+
+  const speed = state.pointer.active ? 0.72 : 0.18
+  const alpha = state.pointer.active
+    ? Math.min(1, Math.max(0.36, delta * speed))
+    : Math.min(1, Math.max(0.015, delta * speed))
+  for (const key of Object.keys(ZERO_POSE)) {
+    state.pose[key] += (state.targetPose[key] - state.pose[key]) * alpha
+  }
 }
 
 function syncPointerTrackingState() {
@@ -537,15 +617,30 @@ function syncPointerTrackingState() {
 }
 
 function focusModelAt(clientX, clientY, instant = false) {
-  const focusController = state.model?.internalModel?.focusController
-  if (!state.config.mouseTracking || !state.config.focusStrength || !focusController || typeof focusController.focus !== 'function') {
+  if (!state.config.mouseTracking || !state.config.focusStrength || !state.model) {
     return
   }
-  if (!state.model || !state.focusPoint || typeof state.model.toModelPosition !== 'function') {
-    return
-  }
-
   try {
+    if (typeof state.model.focus === 'function') {
+      state.model.focus(clientX, clientY, instant)
+      const focusController = state.model.internalModel?.focusController
+      if (focusController && Number.isFinite(focusController.targetX) && Number.isFinite(focusController.targetY)) {
+        focusController.targetX = clampNumber(focusController.targetX * state.config.focusStrength, -1, 1, 0)
+        focusController.targetY = clampNumber(focusController.targetY * state.config.focusStrength, -1, 1, 0)
+        if (instant || state.pointer.active) {
+          focusController.x += (focusController.targetX - focusController.x) * 0.78
+          focusController.y += (focusController.targetY - focusController.y) * 0.78
+          focusController.vx = 0
+          focusController.vy = 0
+        }
+      }
+      return
+    }
+
+    const focusController = state.model.internalModel?.focusController
+    if (!focusController || typeof focusController.focus !== 'function' || !state.focusPoint || typeof state.model.toModelPosition !== 'function') {
+      return
+    }
     state.focusPoint.x = clientX
     state.focusPoint.y = clientY
     state.model.toModelPosition(state.focusPoint, state.focusPoint, true)
@@ -777,15 +872,15 @@ function getFittedScale(viewWidth, viewHeight) {
 function getModePose(mode) {
   switch (mode) {
     case 'listening':
-      return { angleX: -5, angleY: 2, bodyAngleX: -2 }
+      return { ...ZERO_POSE, angleX: -4, angleY: 3, bodyAngleX: -2.5, bodyAngleY: 0.8 }
     case 'thinking':
-      return { angleX: 5, angleY: -2, bodyAngleX: 2 }
+      return { ...ZERO_POSE, angleX: 5, angleY: -3, angleZ: -1, bodyAngleX: 2.5, bodyAngleY: -0.8 }
     case 'speaking':
-      return { angleX: 0, angleY: 1, bodyAngleX: 0 }
+      return { ...ZERO_POSE, angleY: 1.5, bodyUpper: 0.08 }
     case 'task':
-      return { angleX: 4, angleY: 1, bodyAngleX: 3 }
+      return { ...ZERO_POSE, angleX: 4, angleY: 1.5, bodyAngleX: 3, bodyAngleY: 0.6 }
     default:
-      return { angleX: 0, angleY: 0, bodyAngleX: 0 }
+      return { ...ZERO_POSE }
   }
 }
 
@@ -814,8 +909,7 @@ function resolveModelUrl(modelUrl) {
 }
 
 function normalizeModelUrl(value) {
-  const raw = String(value || DEFAULT_CONFIG.modelUrl).trim()
-  return OLD_BUNDLED_MODEL_URLS.has(raw) ? DEFAULT_CONFIG.modelUrl : raw
+  return String(value || DEFAULT_CONFIG.modelUrl).trim()
 }
 
 function formatError(error) {
