@@ -59,10 +59,6 @@
               <span class="nav-icon">◎</span>
               <span class="nav-label" data-i18n="nav.memory">记忆</span>
             </div>
-            <div class="nav-item" data-section="learning">
-              <span class="nav-icon">△</span>
-              <span class="nav-label" data-i18n="nav.learning">学习</span>
-            </div>
             <div class="nav-item" data-section="personality">
               <span class="nav-icon">◇</span>
               <span class="nav-label" data-i18n="nav.personality">人格</span>
@@ -168,6 +164,17 @@
                   </div>
                   <div class="settings-toggle">
                     <input type="checkbox" id="work-surface-toggle" />
+                    <span class="toggle-slider"></span>
+                  </div>
+                </div>
+                <div class="settings-row">
+                  <div class="row-info">
+                    <span class="row-label" data-i18n="experimental.selfLearning">自动学习</span>
+                    <span class="row-desc" data-i18n="experimental.selfLearningDesc">允许自动记录 runtime 事件、生成学习候选和创建 specialized agents。关闭后相关后台流程全部停用。</span>
+                  </div>
+                  <button id="self-learning-open-btn" class="settings-btn compact-btn" type="button" data-i18n="learning.open" hidden>进入</button>
+                  <div class="settings-toggle">
+                    <input type="checkbox" id="self-learning-toggle" checked />
                     <span class="toggle-slider"></span>
                   </div>
                 </div>

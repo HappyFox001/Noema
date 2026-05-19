@@ -667,6 +667,9 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'experimental.title': '实验功能',
     'experimental.workSurface': '实时工作页面',
     'experimental.workSurfaceDesc': '让复杂任务使用受控工作台界面展示状态、结果和可继续操作对象。默认关闭。',
+    'experimental.selfLearning': '自动学习',
+    'experimental.selfLearningDesc': '允许自动记录 runtime 事件、生成学习候选和创建 specialized agents。关闭后相关后台流程全部停用。',
+    'learning.disabled': '自动学习已关闭。开启实验功能里的“自动学习”后，这里才会记录事件、反思和 agents。',
     'models.title': '模型设置',
     'voice.input': '语音输入',
     'voice.inputDesc': '使用麦克风进行语音对话',
@@ -750,6 +753,7 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'memory.confirm.clearAccount.message': '将删除所有由任务执行保存的账号、密钥、密码和固定配置。',
     'memory.confirm.clearAccount.detail': '普通记忆和对话历史不会被同时清除。',
     'learning.title': '自学习',
+    'learning.open': '进入',
     'learning.desc': '查看 runtime events、反思记录、候选学习资产和 specialized agents。',
     'learning.reflect': '反思最近事件',
     'learning.events': '事件',
@@ -1026,6 +1030,9 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'experimental.title': 'Experimental',
     'experimental.workSurface': 'Realtime Work Surface',
     'experimental.workSurfaceDesc': 'Use a controlled workspace UI for complex tasks. Disabled by default.',
+    'experimental.selfLearning': 'Self-Learning',
+    'experimental.selfLearningDesc': 'Allow runtime event learning, candidate generation, and specialized agents. Disabling it stops the related background flows.',
+    'learning.disabled': 'Self-learning is disabled. Enable Self-Learning in Experimental before events, reflections, and agents are recorded.',
     'models.title': 'Model Settings',
     'voice.input': 'Voice Input',
     'voice.inputDesc': 'Use the microphone for voice conversation',
@@ -1109,6 +1116,7 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'memory.confirm.clearAccount.message': 'Delete all accounts, keys, passwords, and fixed configuration saved during tasks.',
     'memory.confirm.clearAccount.detail': 'Normal memories and conversation history will not be cleared.',
     'learning.title': 'Self-Learning',
+    'learning.open': 'Open',
     'learning.desc': 'Inspect runtime events, reflections, learning candidates, and specialized agents.',
     'learning.reflect': 'Reflect Recent Events',
     'learning.events': 'Events',
@@ -3158,6 +3166,8 @@ const appearanceThemeTrigger = document.getElementById('appearance-theme-trigger
 const appearanceThemeLabel = document.getElementById('appearance-theme-label') as HTMLElement
 const liquidGlassToggle = document.getElementById('liquid-glass-toggle') as HTMLInputElement
 const workSurfaceToggle = document.getElementById('work-surface-toggle') as HTMLInputElement
+const selfLearningToggle = document.getElementById('self-learning-toggle') as HTMLInputElement
+const selfLearningOpenBtn = document.getElementById('self-learning-open-btn') as HTMLButtonElement
 const personalitySelect = document.getElementById('personality-select') as HTMLSelectElement
 const addPersonalityFileBtn = document.getElementById('add-personality-file-btn') as HTMLButtonElement
 const pluginsList = document.getElementById('plugins-list') as HTMLElement
@@ -3170,6 +3180,7 @@ let memoryRefreshPromise: Promise<void> | null = null
 let learningRefreshPromise: Promise<void> | null = null
 type LearningView = 'overview' | 'agents' | 'candidates' | 'assets' | 'activity'
 type LearningOverviewData = {
+  disabled?: boolean
   events?: any[]
   reflections?: any[]
   candidates?: any[]
@@ -3204,6 +3215,8 @@ function applySettingsToUI(settings: UISettings) {
   setOrbStyle(parseOrbStyle(settings.appearance?.orbStyle))
   setLiquidGlassEnabled(settings.appearance?.liquidGlassEnabled !== false)
   workSurfaceToggle.checked = settings.experimental?.workSurfaceEnabled === true
+  selfLearningToggle.checked = settings.experimental?.selfLearningEnabled !== false
+  selfLearningOpenBtn.hidden = settings.experimental?.selfLearningEnabled === false
   workSurfaceView.setEnabled(settings.experimental?.workSurfaceEnabled === true)
 
   startConversationBtn.disabled = !settings.voiceInputEnabled
@@ -3437,10 +3450,28 @@ liquidGlassToggle.addEventListener('change', async () => {
 workSurfaceToggle.addEventListener('change', async () => {
   const settings = await window.electronAPI.updateSettings({
     experimental: {
-      workSurfaceEnabled: workSurfaceToggle.checked
+      workSurfaceEnabled: workSurfaceToggle.checked,
+      selfLearningEnabled: selfLearningToggle.checked
     }
   })
   applySettingsToUI(settings)
+})
+
+selfLearningToggle.addEventListener('change', async () => {
+  const settings = await window.electronAPI.updateSettings({
+    experimental: {
+      workSurfaceEnabled: workSurfaceToggle.checked,
+      selfLearningEnabled: selfLearningToggle.checked
+    }
+  })
+  applySettingsToUI(settings)
+  if (document.getElementById('section-learning')?.classList.contains('active')) {
+    await refreshLearningSection()
+  }
+})
+
+selfLearningOpenBtn.addEventListener('click', () => {
+  switchSettingsSection('learning')
 })
 
 // Hide context menu when clicking elsewhere
@@ -3572,6 +3603,11 @@ async function refreshLearningSection(): Promise<void> {
     .then((result) => {
       if (!result.success) {
         learningOverview.innerHTML = `<div class="profile-loading">${escapeHtml(tf('learning.loadFailed', { error: result.error ?? 'unknown error' }))}</div>`
+        return
+      }
+      if (result.disabled) {
+        lastLearningOverview = result
+        learningOverview.innerHTML = `<div class="profile-loading">${escapeHtml(t('learning.disabled'))}</div>`
         return
       }
       renderLearningOverview(result)

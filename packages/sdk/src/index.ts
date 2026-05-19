@@ -25,6 +25,7 @@ import {
 
 export interface HerTextSDKInitializeOptions {
   plugins?: SDKPlugin[]
+  selfLearningEnabled?: boolean
   onRuntimeEvent?: RuntimeEventHandler
   onTaskUserInputRequest?: TaskRuntimeHooks['onUserInputRequest']
   onTaskRunStateChanged?: TaskRuntimeHooks['onRunStateChanged']
@@ -49,8 +50,10 @@ export class HerTextSDK {
   private dialogue: DialogueOrchestrator
   private llm: LLMProvider
   private taskLLm: LLMProvider
+  private selfLearningEnabled: boolean
 
   private constructor(config: SDKConfig, options: HerTextSDKInitializeOptions = {}) {
+    this.selfLearningEnabled = options.selfLearningEnabled !== false
     this.llm = createLLMProvider(config.llm, { defaultReasoningMode: 'minimal-or-none' })
     this.taskLLm = wrapTaskLLMWithRuntimeTransport(
       createLLMProvider(config.taskLLM ?? config.llm),
@@ -83,7 +86,7 @@ export class HerTextSDK {
       learning: this.learning,
       reflection: this.reflection,
       personaContinuity: this.personaContinuity,
-      agentSociety: this.agentSociety,
+      agentSociety: this.selfLearningEnabled ? this.agentSociety : undefined,
     }
     this.learningAutomation = new LearningAutomationRuntime(
       this.runtime,
@@ -92,9 +95,11 @@ export class HerTextSDK {
     if (options.onRuntimeEvent) {
       this.runtimeEvents.subscribe(options.onRuntimeEvent)
     }
-    this.runtimeEvents.subscribe((event) => {
-      this.learning.recordRuntimeEvent(event)
-    })
+    if (this.selfLearningEnabled) {
+      this.runtimeEvents.subscribe((event) => {
+        this.learning.recordRuntimeEvent(event)
+      })
+    }
 
     this.dialogue = new DialogueOrchestrator(
       this.llm,
@@ -106,8 +111,8 @@ export class HerTextSDK {
       {
         runtimeEvents: this.runtimeEvents,
         runtimeJobs: this.runtimeJobs,
-        learning: this.learning,
-        agentSociety: this.agentSociety,
+        learning: this.selfLearningEnabled ? this.learning : undefined,
+        agentSociety: this.selfLearningEnabled ? this.agentSociety : undefined,
         taskRuntime: config.taskRuntime,
         onTaskUserInputRequest: options.onTaskUserInputRequest,
         onTaskRunStateChanged: options.onTaskRunStateChanged,
@@ -125,10 +130,14 @@ export class HerTextSDK {
   ): Promise<HerTextSDK> {
     const sdk = new HerTextSDK(config, options)
     await sdk.memory.initialize()
-    await sdk.learning.initialize()
-    await sdk.agentSociety.initialize()
+    if (sdk.selfLearningEnabled) {
+      await sdk.learning.initialize()
+      await sdk.agentSociety.initialize()
+    }
     await sdk.dialogue.initialize()
-    sdk.learningAutomation.start()
+    if (sdk.selfLearningEnabled) {
+      sdk.learningAutomation.start()
+    }
     return sdk
   }
 
@@ -191,8 +200,10 @@ export class HerTextSDK {
     await this.learningAutomation.shutdown()
     await this.runtimeJobs.waitForIdle()
     await this.memory.shutdown()
-    await this.learning.shutdown()
-    await this.agentSociety.shutdown()
+    if (this.selfLearningEnabled) {
+      await this.learning.shutdown()
+      await this.agentSociety.shutdown()
+    }
   }
 }
 

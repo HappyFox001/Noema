@@ -2630,7 +2630,7 @@ let appSettings: AppSettings = {
   voiceOutputEnabled: true,
   volume: 70,
   appearance: { orbStyle: 'default', theme: 'night', liquidGlassEnabled: true },
-  experimental: { workSurfaceEnabled: false },
+  experimental: { workSurfaceEnabled: false, selfLearningEnabled: true },
   selectedPersonality: 'role:eva',
   externalRolePaths: [],
   plugins: {},
@@ -3432,6 +3432,7 @@ async function initializeSDK(): Promise<void> {
   const plugins = await loadRuntimePlugins(pluginsDir, appSettings.plugins, appSettings.pluginConfigs)
   sdkInstance = await HerTextSDK.initialize(sdkConfig, {
     plugins,
+    selfLearningEnabled: appSettings.experimental?.selfLearningEnabled !== false,
     onRuntimeEvent: handleWorkSurfaceRuntimeEvent,
     onTaskUserInputRequest: requestTaskUserInput,
     onTaskRunStateChanged: (state, task) => taskCommunicationManager.onRunStateChanged(state, task),
@@ -4273,6 +4274,19 @@ ipcMain.handle('memory:clearAccountInputs', async () => {
 
 ipcMain.handle('learning:overview', async () => {
   if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
+  if (appSettings.experimental?.selfLearningEnabled === false) {
+    return {
+      success: true,
+      disabled: true,
+      events: [],
+      reflections: [],
+      candidates: [],
+      assets: [],
+      agents: [],
+      automationDecisions: [],
+      rollbacks: [],
+    }
+  }
 
   try {
     const [
@@ -4310,6 +4324,9 @@ ipcMain.handle('learning:overview', async () => {
 
 ipcMain.handle('learning:reflectRecent', async () => {
   if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
+  if (appSettings.experimental?.selfLearningEnabled === false) {
+    return { success: false, error: 'Self-learning is disabled.' }
+  }
 
   try {
     const result = await sdkInstance.reflection.reflectRecentEvents()
@@ -4326,6 +4343,9 @@ ipcMain.handle('learning:deployCandidate', async (_event, payload: {
   status?: 'draft' | 'active'
 }) => {
   if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
+  if (appSettings.experimental?.selfLearningEnabled === false) {
+    return { success: false, error: 'Self-learning is disabled.' }
+  }
 
   try {
     const asset = await sdkInstance.learning.deployCandidate({
@@ -4342,6 +4362,9 @@ ipcMain.handle('learning:deployCandidate', async (_event, payload: {
 
 ipcMain.handle('learning:setAssetStatus', async (_event, id: string, status: 'draft' | 'active' | 'disabled' | 'archived') => {
   if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
+  if (appSettings.experimental?.selfLearningEnabled === false) {
+    return { success: false, error: 'Self-learning is disabled.' }
+  }
 
   try {
     await sdkInstance.learning.setAssetStatus(id, status)
@@ -4354,6 +4377,9 @@ ipcMain.handle('learning:setAssetStatus', async (_event, id: string, status: 'dr
 
 ipcMain.handle('learning:deleteAsset', async (_event, id: string) => {
   if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
+  if (appSettings.experimental?.selfLearningEnabled === false) {
+    return { success: false, error: 'Self-learning is disabled.' }
+  }
 
   try {
     await sdkInstance.learning.deleteAsset(id)
@@ -4366,6 +4392,9 @@ ipcMain.handle('learning:deleteAsset', async (_event, id: string) => {
 
 ipcMain.handle('learning:rollbackAsset', async (_event, id: string, reason: string) => {
   if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
+  if (appSettings.experimental?.selfLearningEnabled === false) {
+    return { success: false, error: 'Self-learning is disabled.' }
+  }
 
   try {
     const rollback = await sdkInstance.learning.rollbackAsset(id, reason || 'Rolled back from Learning Center')
@@ -4378,6 +4407,9 @@ ipcMain.handle('learning:rollbackAsset', async (_event, id: string, reason: stri
 
 ipcMain.handle('learning:setAgentStatus', async (_event, id: string, status: 'draft' | 'active' | 'disabled') => {
   if (!sdkInstance) return { success: false, error: 'SDK not initialized' }
+  if (appSettings.experimental?.selfLearningEnabled === false) {
+    return { success: false, error: 'Self-learning is disabled.' }
+  }
 
   try {
     await sdkInstance.agentSociety.setAgentStatus(id, status)
@@ -4426,8 +4458,12 @@ ipcMain.handle('settings:update', async (_, partial: Partial<AppSettings>) => {
     (partial.plugins !== undefined && previousPlugins !== appSettings.plugins) ||
     (partial.pluginConfigs !== undefined && previousPluginConfigs !== appSettings.pluginConfigs) ||
     partial.experimental?.workSurfaceEnabled !== undefined
+  const selfLearningChanged = partial.experimental?.selfLearningEnabled !== undefined
+  if (selfLearningChanged) {
+    console.log('[SelfLearning] Enabled:', appSettings.experimental.selfLearningEnabled)
+  }
 
-  await applyRuntimeSystemConfigChanges(previous, { pluginsChanged })
+  await applyRuntimeSystemConfigChanges(previous, { pluginsChanged: pluginsChanged || selfLearningChanged })
 
   return appSettings
 })

@@ -222,6 +222,7 @@ export interface AppearanceSettings {
 
 export interface ExperimentalSettings {
   workSurfaceEnabled: boolean
+  selfLearningEnabled: boolean
 }
 
 const DEFAULT_APPEARANCE_SETTINGS: AppearanceSettings = {
@@ -231,7 +232,8 @@ const DEFAULT_APPEARANCE_SETTINGS: AppearanceSettings = {
 }
 
 const DEFAULT_EXPERIMENTAL_SETTINGS: ExperimentalSettings = {
-  workSurfaceEnabled: false
+  workSurfaceEnabled: false,
+  selfLearningEnabled: true
 }
 
 const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
@@ -557,7 +559,10 @@ function normalizeExperimentalSettings(
   return {
     workSurfaceEnabled: typeof source.workSurfaceEnabled === 'boolean'
       ? source.workSurfaceEnabled
-      : fallback.workSurfaceEnabled
+      : fallback.workSurfaceEnabled,
+    selfLearningEnabled: typeof source.selfLearningEnabled === 'boolean'
+      ? source.selfLearningEnabled
+      : fallback.selfLearningEnabled
   }
 }
 
