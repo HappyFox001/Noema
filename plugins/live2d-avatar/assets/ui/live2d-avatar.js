@@ -9,11 +9,11 @@ const DEFAULT_CONFIG = {
   pixiUrl: 'https://cdn.jsdelivr.net/npm/pixi.js@6.5.10/dist/browser/pixi.min.js',
   cubismCoreUrl: 'https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js',
   live2dDisplayUrl: 'https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/cubism4.min.js',
-  scale: 0.92,
+  scale: 1,
   autoFit: true,
-  fitPadding: 24,
-  maxWidthRatio: 0.88,
-  maxHeightRatio: 0.92,
+  fitPadding: 12,
+  maxWidthRatio: 0.96,
+  maxHeightRatio: 0.98,
   offsetX: 0,
   offsetY: 0,
   lipSyncGain: 1.8,
@@ -106,10 +106,12 @@ async function boot() {
 }
 
 async function createPixiApp() {
+  const resolution = Math.max(1, Math.min(3, window.devicePixelRatio || 1))
   state.app = new PIXI.Application({
     view: canvas,
     autoStart: true,
     autoDensity: true,
+    resolution,
     resizeTo: window,
     transparent: true,
     antialias: true,
@@ -284,6 +286,10 @@ function fitModel() {
 }
 
 function resize() {
+  const nextResolution = Math.max(1, Math.min(3, window.devicePixelRatio || 1))
+  if (state.app?.renderer && state.app.renderer.resolution !== nextResolution) {
+    state.app.renderer.resolution = nextResolution
+  }
   state.app?.renderer?.resize?.(window.innerWidth, window.innerHeight)
   fitModel()
 }

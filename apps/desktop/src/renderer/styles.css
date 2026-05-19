@@ -84,8 +84,8 @@ body {
   grid-row: 1;
   align-self: end;
   justify-self: center;
-  width: 270px;
-  height: 270px;
+  width: min(100%, 320px);
+  height: 320px;
   display: grid;
   place-items: center;
   overflow: visible;
@@ -196,8 +196,8 @@ body.theme-day.settings-open:not(.settings-closing) .liquid-glass-surface {
 }
 
 #planet-orb-canvas {
-  width: 270px;
-  height: 270px;
+  width: 300px;
+  height: 300px;
 }
 
 body.advanced-orb-active #orb-canvas {
