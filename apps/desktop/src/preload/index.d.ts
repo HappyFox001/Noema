@@ -227,7 +227,7 @@ declare global {
         voiceInputEnabled: boolean
         voiceOutputEnabled: boolean
         volume: number
-        appearance: { orbStyle: 'default' | 'advanced' | 'planet'; theme: 'night' | 'day' }
+        appearance: { orbStyle: 'default' | 'advanced' | 'planet'; theme: 'night' | 'day'; liquidGlassEnabled: boolean }
         selectedPersonality: string
         externalRolePaths: string[]
         pluginPathHistory: Record<string, { mode: 'file' | 'directory'; lastPath: string; recentPaths: string[] }>
@@ -249,7 +249,7 @@ declare global {
         voiceInputEnabled: boolean
         voiceOutputEnabled: boolean
         volume: number
-        appearance: { orbStyle: 'default' | 'advanced' | 'planet'; theme: 'night' | 'day' }
+        appearance: { orbStyle: 'default' | 'advanced' | 'planet'; theme: 'night' | 'day'; liquidGlassEnabled: boolean }
         selectedPersonality: string
         externalRolePaths: string[]
         pluginPathHistory: Record<string, { mode: 'file' | 'directory'; lastPath: string; recentPaths: string[] }>
@@ -270,7 +270,7 @@ declare global {
         voiceInputEnabled: boolean
         voiceOutputEnabled: boolean
         volume: number
-        appearance: { orbStyle: 'default' | 'advanced' | 'planet'; theme: 'night' | 'day' }
+        appearance: { orbStyle: 'default' | 'advanced' | 'planet'; theme: 'night' | 'day'; liquidGlassEnabled: boolean }
         selectedPersonality: string
         externalRolePaths: string[]
         system: {

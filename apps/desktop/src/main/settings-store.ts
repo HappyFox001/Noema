@@ -216,11 +216,13 @@ export interface AppSettings {
 export interface AppearanceSettings {
   orbStyle: 'default' | 'advanced' | 'planet'
   theme: 'night' | 'day'
+  liquidGlassEnabled: boolean
 }
 
 const DEFAULT_APPEARANCE_SETTINGS: AppearanceSettings = {
   orbStyle: 'default',
-  theme: 'night'
+  theme: 'night',
+  liquidGlassEnabled: true
 }
 
 const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
@@ -526,7 +528,10 @@ function normalizeAppearanceSettings(value: unknown, fallback: AppearanceSetting
     : {}
   return {
     orbStyle: source.orbStyle === 'advanced' || source.orbStyle === 'planet' ? source.orbStyle : fallback.orbStyle,
-    theme: source.theme === 'day' || source.theme === 'night' ? source.theme : fallback.theme
+    theme: source.theme === 'day' || source.theme === 'night' ? source.theme : fallback.theme,
+    liquidGlassEnabled: typeof source.liquidGlassEnabled === 'boolean'
+      ? source.liquidGlassEnabled
+      : fallback.liquidGlassEnabled
   }
 }
 

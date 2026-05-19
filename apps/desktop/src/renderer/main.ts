@@ -661,6 +661,8 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'appearance.themeDesc': '切换控制区域的明暗显示。',
     'appearance.themeNight': '夜间',
     'appearance.themeDay': '白天',
+    'appearance.liquidGlass': '液态水效果',
+    'appearance.liquidGlassDesc': '关闭设置面板的液态覆盖层以降低 GPU 占用。',
     'models.title': '模型设置',
     'voice.input': '语音输入',
     'voice.inputDesc': '使用麦克风进行语音对话',
@@ -1015,6 +1017,8 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'appearance.themeDesc': 'Switch the control surface brightness.',
     'appearance.themeNight': 'Night',
     'appearance.themeDay': 'Day',
+    'appearance.liquidGlass': 'Liquid Effect',
+    'appearance.liquidGlassDesc': 'Disable the liquid overlay on the settings panel to reduce GPU usage.',
     'models.title': 'Model Settings',
     'voice.input': 'Voice Input',
     'voice.inputDesc': 'Use the microphone for voice conversation',
@@ -1457,6 +1461,7 @@ type UISettings = {
   appearance?: {
     orbStyle?: OrbStyle
     theme?: AppearanceTheme
+    liquidGlassEnabled?: boolean
   }
   selectedPersonality: string
   plugins: Record<string, boolean>
@@ -2421,6 +2426,23 @@ function syncPluginUIState(): void {
   })
 }
 
+function postPluginMainPointer(event: PointerEvent | null, active: boolean): void {
+  const frame = pluginUIMainView.querySelector<HTMLIFrameElement>('.plugin-ui-main-surface .plugin-ui-surface-frame')
+  if (!frame?.contentWindow) {
+    return
+  }
+
+  const rect = pluginUIMainView.getBoundingClientRect()
+  frame.contentWindow.postMessage({
+    type: 'her-text:pointer',
+    active,
+    x: event ? event.clientX - rect.left : rect.width / 2,
+    y: event ? event.clientY - rect.top : rect.height / 2,
+    width: rect.width,
+    height: rect.height,
+  }, '*')
+}
+
 function renderPluginUISurface(container: HTMLElement, surface: PluginUISurface | null): void {
   container.querySelector('.plugin-ui-surface')?.remove()
   if (!surface) {
@@ -3006,6 +3028,7 @@ const orbStyleTrigger = document.getElementById('orb-style-trigger') as HTMLButt
 const orbStyleLabel = document.getElementById('orb-style-label') as HTMLElement
 const appearanceThemeTrigger = document.getElementById('appearance-theme-trigger') as HTMLButtonElement
 const appearanceThemeLabel = document.getElementById('appearance-theme-label') as HTMLElement
+const liquidGlassToggle = document.getElementById('liquid-glass-toggle') as HTMLInputElement
 const personalitySelect = document.getElementById('personality-select') as HTMLSelectElement
 const addPersonalityFileBtn = document.getElementById('add-personality-file-btn') as HTMLButtonElement
 const pluginsList = document.getElementById('plugins-list') as HTMLElement
@@ -3034,6 +3057,8 @@ let activePluginDetail: { pluginId: string; page: 'main' | 'advanced' } | null =
 const live2dCapabilitiesCache = new Map<string, Live2dModelCapabilities>()
 let logEntries: AppLogEntry[] = []
 let activeLogLevel: AppLogLevel | 'all' = 'all'
+let currentLiquidGlassEnabled = true
+let liquidGlassSurface: ReturnType<typeof initializeLiquidGlassSurface> | null = null
 
 function applySettingsToUI(settings: UISettings) {
   setLanguage(settings.language || 'zh-CN')
@@ -3048,6 +3073,7 @@ function applySettingsToUI(settings: UISettings) {
   audioPlayer.setVolume(settings.volume)
   setAppearanceTheme(parseAppearanceTheme(settings.appearance?.theme))
   setOrbStyle(parseOrbStyle(settings.appearance?.orbStyle))
+  setLiquidGlassEnabled(settings.appearance?.liquidGlassEnabled !== false)
 
   startConversationBtn.disabled = !settings.voiceInputEnabled
   updateConversationButton()
@@ -3154,6 +3180,20 @@ function setAppearanceTheme(theme: AppearanceTheme): void {
   renderAppearanceThemeControls()
 }
 
+function setLiquidGlassEnabled(enabled: boolean): void {
+  currentLiquidGlassEnabled = enabled
+  liquidGlassToggle.checked = enabled
+  document.body.classList.toggle('liquid-glass-disabled', !enabled)
+  if (!enabled) {
+    liquidGlassSurface?.destroy()
+    liquidGlassSurface = null
+    return
+  }
+  if (!liquidGlassSurface) {
+    liquidGlassSurface = initializeLiquidGlassSurface()
+  }
+}
+
 function closeOrbStyleMenu(): void {
   document.getElementById('orb-style-floating-menu')?.remove()
   orbStyleTrigger.setAttribute('aria-expanded', 'false')
@@ -3191,7 +3231,7 @@ function openOrbStyleMenu(): void {
       closeOrbStyleMenu()
       if (orbStyle === currentOrbStyle) return
       setOrbStyle(orbStyle)
-      await window.electronAPI.updateSettings({ appearance: { orbStyle, theme: currentAppearanceTheme } })
+      await window.electronAPI.updateSettings({ appearance: { orbStyle, theme: currentAppearanceTheme, liquidGlassEnabled: currentLiquidGlassEnabled } })
     })
   })
 
@@ -3226,7 +3266,7 @@ function openAppearanceThemeMenu(): void {
       closeAppearanceThemeMenu()
       if (theme === currentAppearanceTheme) return
       setAppearanceTheme(theme)
-      await window.electronAPI.updateSettings({ appearance: { orbStyle: currentOrbStyle, theme } })
+      await window.electronAPI.updateSettings({ appearance: { orbStyle: currentOrbStyle, theme, liquidGlassEnabled: currentLiquidGlassEnabled } })
     })
   })
 
@@ -3249,6 +3289,18 @@ appearanceThemeTrigger.addEventListener('click', (event) => {
   } else {
     openAppearanceThemeMenu()
   }
+})
+
+liquidGlassToggle.addEventListener('change', async () => {
+  const enabled = liquidGlassToggle.checked
+  setLiquidGlassEnabled(enabled)
+  await window.electronAPI.updateSettings({
+    appearance: {
+      orbStyle: currentOrbStyle,
+      theme: currentAppearanceTheme,
+      liquidGlassEnabled: enabled
+    }
+  })
 })
 
 // Hide context menu when clicking elsewhere
@@ -3293,6 +3345,7 @@ function setPluginControlsPeek(visible: boolean): void {
 window.addEventListener('pointermove', (event) => {
   if (activePluginMainSurface?.mode !== 'replace' || document.body.classList.contains('settings-open')) {
     setPluginControlsPeek(false)
+    postPluginMainPointer(null, false)
     return
   }
 
@@ -3311,10 +3364,12 @@ window.addEventListener('pointermove', (event) => {
     event.clientY <= controlsRect.bottom + 32)
   const nearControlBand = insideMainView && event.clientY >= rect.bottom - Math.max(96, rect.height * 0.26)
 
+  postPluginMainPointer(event, insideMainView)
   setPluginControlsPeek(insideControls || nearControlBand)
 })
 
 window.addEventListener('pointerleave', () => {
+  postPluginMainPointer(null, false)
   setPluginControlsPeek(false)
 })
 
@@ -7505,7 +7560,6 @@ window.addEventListener('scroll', () => {
 
 async function initializeApp(): Promise<void> {
   try {
-    initializeLiquidGlassSurface()
     await revealDevOnlyControls()
     await loadSettings()
     await loadPersonalities()

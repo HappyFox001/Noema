@@ -2221,7 +2221,7 @@ let appSettings: AppSettings = {
   voiceInputEnabled: true,
   voiceOutputEnabled: true,
   volume: 70,
-  appearance: { orbStyle: 'default', theme: 'night' },
+  appearance: { orbStyle: 'default', theme: 'night', liquidGlassEnabled: true },
   selectedPersonality: 'role:eva',
   externalRolePaths: [],
   plugins: {},

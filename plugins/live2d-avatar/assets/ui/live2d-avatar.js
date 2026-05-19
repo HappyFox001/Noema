@@ -19,6 +19,12 @@ const DEFAULT_CONFIG = {
   lipSyncGain: 1.8,
   lipSyncAttack: 0.42,
   lipSyncRelease: 0.16,
+  mouseTracking: true,
+  lookAtSmoothing: 0.32,
+  focusStrength: 1,
+  eyeTrackingStrength: 1,
+  headTrackingStrength: 0.85,
+  bodyTrackingStrength: 0.35,
   idleMotion: 'Idle',
   listeningMotion: 'Tap',
   thinkingMotion: 'Tap',
@@ -37,7 +43,12 @@ const PARAM_IDS = {
   mouthForm: ['ParamMouthForm', 'PARAM_MOUTH_FORM'],
   angleX: ['ParamAngleX'],
   angleY: ['ParamAngleY'],
+  angleZ: ['ParamAngleZ'],
+  eyeBallX: ['ParamEyeBallX', 'PARAM_EYE_BALL_X'],
+  eyeBallY: ['ParamEyeBallY', 'PARAM_EYE_BALL_Y'],
   bodyAngleX: ['ParamBodyAngleX'],
+  bodyAngleY: ['ParamBodyAngleY'],
+  bodyAngleZ: ['ParamBodyAngleZ'],
   breath: ['ParamBreath'],
 }
 
@@ -53,6 +64,15 @@ const state = {
   lastMotionAt: 0,
   statePayload: null,
   modelBounds: null,
+  pointer: {
+    active: false,
+    targetX: 0,
+    targetY: 0,
+    x: 0,
+    y: 0,
+  },
+  availableParameters: null,
+  avatarTickerRegistered: false,
   modelCapabilities: {
     motionGroups: new Set(),
     expressions: new Set(),
@@ -66,17 +86,25 @@ const statusEl = document.getElementById('status')
 boot()
 
 window.addEventListener('message', (event) => {
+  if (event.data?.type === 'her-text:pointer') {
+    handlePointerMessage(event.data)
+    return
+  }
   if (event.data?.type !== 'her-text:ui-state') {
     return
   }
   if (event.data.config && typeof event.data.config === 'object') {
     state.config = normalizeConfig({ ...state.config, ...event.data.config })
+    syncPointerTrackingState()
     fitModel()
   }
   applyHerTextState(event.data.state)
 })
 
 window.addEventListener('resize', resize)
+window.addEventListener('pointermove', handlePointerMove, { passive: true })
+window.addEventListener('pointerleave', handlePointerLeave, { passive: true })
+window.addEventListener('blur', handlePointerLeave)
 window.addEventListener('contextmenu', (event) => {
   event.preventDefault()
   window.parent.postMessage({
@@ -122,7 +150,6 @@ async function createPixiApp() {
     antialias: true,
     backgroundAlpha: 0,
   })
-  state.app.ticker.add(updateAvatar)
 }
 
 async function loadModel(modelUrl) {
@@ -143,7 +170,19 @@ async function loadModel(modelUrl) {
   state.app.stage.addChild(model)
   state.model = model
   state.modelBounds = measureModelBounds(model)
+  state.availableParameters = detectAvailableParameters(model)
+  ensureAvatarTicker()
+  syncPointerTrackingState()
   fitModel()
+}
+
+function ensureAvatarTicker() {
+  if (state.avatarTickerRegistered) {
+    return
+  }
+  const priority = PIXI.UPDATE_PRIORITY?.LOW ?? -25
+  state.app.ticker.add(updateAvatar, null, priority)
+  state.avatarTickerRegistered = true
 }
 
 async function loadModelSettings(modelUrl) {
@@ -257,10 +296,40 @@ function updateAvatar(delta) {
   const outputEnergy = clampNumber(state.statePayload?.orb?.outputEnergy, 0, 1)
   const attention = Math.max(listeningEnergy, outputEnergy)
   const modePose = getModePose(state.lastMode)
-  setModelParam(PARAM_IDS.angleX, modePose.angleX + Math.sin(now * 0.9) * (4 + attention * 5), 30)
-  setModelParam(PARAM_IDS.angleY, modePose.angleY + Math.sin(now * 0.7) * (2 + attention * 3), 30)
-  setModelParam(PARAM_IDS.bodyAngleX, modePose.bodyAngleX + Math.sin(now * 0.55) * 3, 10)
+  const look = updateLookAt(delta)
+  setModelParam(PARAM_IDS.eyeBallX, look.eyeX, 1)
+  setModelParam(PARAM_IDS.eyeBallY, look.eyeY, 1)
+  setModelParam(PARAM_IDS.angleX, modePose.angleX + Math.sin(now * 0.9) * (4 + attention * 5) + look.headX, 30)
+  setModelParam(PARAM_IDS.angleY, modePose.angleY + Math.sin(now * 0.7) * (2 + attention * 3) + look.headY, 30)
+  setModelParam(PARAM_IDS.angleZ, look.headZ, 30)
+  setModelParam(PARAM_IDS.bodyAngleX, modePose.bodyAngleX + Math.sin(now * 0.55) * 3 + look.bodyX, 10)
+  setModelParam(PARAM_IDS.bodyAngleY, look.bodyY, 10)
+  setModelParam(PARAM_IDS.bodyAngleZ, look.bodyZ, 10)
   setModelParam(PARAM_IDS.breath, 0.45 + Math.sin(now * 2.1) * 0.18 + attention * 0.16, 1)
+}
+
+function updateLookAt(delta) {
+  if (!state.config.mouseTracking) {
+    state.pointer.x += (0 - state.pointer.x) * Math.min(1, delta * 0.16)
+    state.pointer.y += (0 - state.pointer.y) * Math.min(1, delta * 0.16)
+  } else {
+    const smoothing = state.config.lookAtSmoothing
+    state.pointer.x += (state.pointer.targetX - state.pointer.x) * Math.min(1, delta * smoothing)
+    state.pointer.y += (state.pointer.targetY - state.pointer.y) * Math.min(1, delta * smoothing)
+  }
+
+  const x = clampNumber(state.pointer.x, -1, 1, 0)
+  const y = clampNumber(state.pointer.y, -1, 1, 0)
+  return {
+    eyeX: x * state.config.eyeTrackingStrength,
+    eyeY: -y * state.config.eyeTrackingStrength,
+    headX: x * 24 * state.config.headTrackingStrength,
+    headY: -y * 16 * state.config.headTrackingStrength,
+    headZ: -x * 9 * state.config.headTrackingStrength,
+    bodyX: x * 10 * state.config.bodyTrackingStrength,
+    bodyY: -y * 6 * state.config.bodyTrackingStrength,
+    bodyZ: -x * 6 * state.config.bodyTrackingStrength,
+  }
 }
 
 function setModelParam(ids, value, maxAbs) {
@@ -271,6 +340,9 @@ function setModelParam(ids, value, maxAbs) {
 
   const clamped = Math.max(-maxAbs, Math.min(maxAbs, value))
   for (const id of ids) {
+    if (state.availableParameters && !state.availableParameters.has(id)) {
+      continue
+    }
     try {
       coreModel.setParameterValueById(id, clamped)
       return
@@ -340,6 +412,87 @@ function normalizeConfig(config) {
     lipSyncGain: clampNumber(config.lipSyncGain, 0, 8, DEFAULT_CONFIG.lipSyncGain),
     lipSyncAttack: clampNumber(config.lipSyncAttack, 0.05, 1, DEFAULT_CONFIG.lipSyncAttack),
     lipSyncRelease: clampNumber(config.lipSyncRelease, 0.02, 1, DEFAULT_CONFIG.lipSyncRelease),
+    mouseTracking: config.mouseTracking !== false,
+    lookAtSmoothing: clampNumber(config.lookAtSmoothing, 0.02, 0.65, DEFAULT_CONFIG.lookAtSmoothing),
+    focusStrength: clampNumber(config.focusStrength, 0, 1.5, DEFAULT_CONFIG.focusStrength),
+    eyeTrackingStrength: clampNumber(config.eyeTrackingStrength, 0, 1.5, DEFAULT_CONFIG.eyeTrackingStrength),
+    headTrackingStrength: clampNumber(config.headTrackingStrength, 0, 1.5, DEFAULT_CONFIG.headTrackingStrength),
+    bodyTrackingStrength: clampNumber(config.bodyTrackingStrength, 0, 1.5, DEFAULT_CONFIG.bodyTrackingStrength),
+  }
+}
+
+function handlePointerMove(event) {
+  if (!state.config.mouseTracking || !state.model) {
+    return
+  }
+
+  updatePointerTarget(event.clientX, event.clientY, window.innerWidth, window.innerHeight)
+}
+
+function handlePointerMessage(payload) {
+  const width = Math.max(1, Number(payload.width) || window.innerWidth)
+  const height = Math.max(1, Number(payload.height) || window.innerHeight)
+  if (!state.config.mouseTracking || !state.model || payload.active === false) {
+    handlePointerLeave(width, height)
+    return
+  }
+
+  const x = clampNumber(payload.x, -width, width * 2, width / 2)
+  const y = clampNumber(payload.y, -height, height * 2, height / 2)
+  updatePointerTarget(x, y, width, height)
+}
+
+function updatePointerTarget(clientX, clientY, width, height) {
+  const centerX = width / 2 + state.config.offsetX
+  const centerY = height / 2 + state.config.offsetY
+  const rangeX = Math.max(1, width * 0.5)
+  const rangeY = Math.max(1, height * 0.5)
+  state.pointer.active = true
+  state.pointer.targetX = clampNumber((clientX - centerX) / rangeX, -1, 1, 0)
+  state.pointer.targetY = clampNumber((clientY - centerY) / rangeY, -1, 1, 0)
+  applyBuiltInFocus(clientX, clientY, width, height)
+}
+
+function handlePointerLeave(width = window.innerWidth, height = window.innerHeight) {
+  state.pointer.active = false
+  state.pointer.targetX = 0
+  state.pointer.targetY = 0
+  if (state.config.focusStrength && typeof state.model?.focus === 'function') {
+    try {
+      state.model.focus(width / 2 + state.config.offsetX, height / 2 + state.config.offsetY)
+    } catch {
+      // Explicit parameters ease back to center even if built-in focus is unavailable.
+    }
+  }
+}
+
+function syncPointerTrackingState() {
+  if (state.config.mouseTracking) {
+    return
+  }
+  handlePointerLeave()
+  if (state.model && typeof state.model.focus === 'function') {
+    try {
+      state.model.focus(window.innerWidth / 2 + state.config.offsetX, window.innerHeight / 2 + state.config.offsetY, true)
+    } catch {
+      // The next ticker update will also ease explicit parameters back to center.
+    }
+  }
+}
+
+function applyBuiltInFocus(clientX, clientY, width = window.innerWidth, height = window.innerHeight) {
+  if (!state.config.focusStrength || typeof state.model?.focus !== 'function') {
+    return
+  }
+
+  const centerX = width / 2 + state.config.offsetX
+  const centerY = height / 2 + state.config.offsetY
+  const x = centerX + (clientX - centerX) * state.config.focusStrength
+  const y = centerY + (clientY - centerY) * state.config.focusStrength
+  try {
+    state.model.focus(x, y)
+  } catch {
+    // The explicit parameter layer still provides a conservative fallback.
   }
 }
 
@@ -404,6 +557,49 @@ function getMouthOpenParamIds() {
   return lipSyncParameters.length
     ? [...lipSyncParameters, ...PARAM_IDS.mouthOpen]
     : PARAM_IDS.mouthOpen
+}
+
+function detectAvailableParameters(model) {
+  const coreModel = model?.internalModel?.coreModel
+  if (!coreModel) {
+    return null
+  }
+
+  const ids = readCoreModelParameterIds(coreModel)
+  return ids.length ? new Set(ids) : null
+}
+
+function readCoreModelParameterIds(coreModel) {
+  if (Array.isArray(coreModel.parameterIds)) {
+    return coreModel.parameterIds.filter(id => typeof id === 'string')
+  }
+  if (Array.isArray(coreModel.parameters?.ids)) {
+    return coreModel.parameters.ids.filter(id => typeof id === 'string')
+  }
+  if (typeof coreModel.getParameterIds === 'function') {
+    try {
+      const ids = coreModel.getParameterIds()
+      return Array.from(ids || []).filter(id => typeof id === 'string')
+    } catch {
+      return []
+    }
+  }
+  if (typeof coreModel.getParameterCount === 'function' && typeof coreModel.getParameterId === 'function') {
+    try {
+      const count = coreModel.getParameterCount()
+      const ids = []
+      for (let index = 0; index < count; index++) {
+        const id = coreModel.getParameterId(index)
+        if (typeof id === 'string') {
+          ids.push(id)
+        }
+      }
+      return ids
+    } catch {
+      return []
+    }
+  }
+  return []
 }
 
 function measureModelBounds(model) {
