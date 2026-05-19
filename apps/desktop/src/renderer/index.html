@@ -334,16 +334,35 @@
             </section>
 
             <section id="section-learning" class="settings-section">
-              <div class="log-page">
-                <div class="log-page-header">
+              <div class="learning-app">
+                <div class="learning-app-header">
                   <div>
                     <h2 class="section-title" data-i18n="learning.title">自学习</h2>
                     <p class="section-subtitle" data-i18n="learning.desc">查看 runtime events、反思记录、候选学习资产和 specialized agents。</p>
                   </div>
                   <button id="learning-reflect-btn" class="settings-btn" type="button" data-i18n="learning.reflect">反思最近事件</button>
                 </div>
-                <div id="learning-overview" class="plugin-list">
-                  <div class="profile-loading">加载中...</div>
+                <div class="learning-shell">
+                  <nav id="learning-nav" class="learning-nav" aria-label="Learning">
+                    <button class="learning-nav-item active" type="button" data-learning-view="overview">
+                      <span data-i18n="learning.viewOverview">概览</span>
+                    </button>
+                    <button class="learning-nav-item" type="button" data-learning-view="agents">
+                      <span data-i18n="learning.viewAgents">Agents</span>
+                    </button>
+                    <button class="learning-nav-item" type="button" data-learning-view="candidates">
+                      <span data-i18n="learning.viewCandidates">候选</span>
+                    </button>
+                    <button class="learning-nav-item" type="button" data-learning-view="assets">
+                      <span data-i18n="learning.viewAssets">资产</span>
+                    </button>
+                    <button class="learning-nav-item" type="button" data-learning-view="activity">
+                      <span data-i18n="learning.viewActivity">活动</span>
+                    </button>
+                  </nav>
+                  <div id="learning-overview" class="learning-workspace">
+                    <div class="profile-loading">加载中...</div>
+                  </div>
                 </div>
               </div>
             </section>

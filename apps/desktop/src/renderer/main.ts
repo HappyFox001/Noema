@@ -758,6 +758,44 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'learning.deployFailed': '部署失败: {error}',
     'learning.updateFailed': '更新失败: {error}',
     'learning.rollbackFailed': '回滚失败: {error}',
+    'learning.viewOverview': '概览',
+    'learning.viewAgents': 'Agents',
+    'learning.viewCandidates': '候选',
+    'learning.viewAssets': '资产',
+    'learning.viewActivity': '活动',
+    'learning.health': '学习健康度',
+    'learning.healthReady': '稳定',
+    'learning.healthNeedsReview': '需要审查',
+    'learning.pendingReview': '待审查',
+    'learning.activeAssets': '活跃资产',
+    'learning.activeAgents': '活跃 Agents',
+    'learning.recentSignals': '最近信号',
+    'learning.queue': '审查队列',
+    'learning.operations': '运行面板',
+    'learning.agentControl': 'Agent 控制台',
+    'learning.assetLibrary': '学习资产库',
+    'learning.activityTimeline': '活动时间线',
+    'learning.openDetail': '查看详情',
+    'learning.detail': '详情',
+    'learning.noSelection': '选择左侧条目查看详情。',
+    'learning.activate': '启用',
+    'learning.disable': '停用',
+    'learning.archive': '归档',
+    'learning.rollback': '回滚',
+    'learning.createDraft': '生成草稿',
+    'learning.kind': '类型',
+    'learning.status': '状态',
+    'learning.confidence': '置信度',
+    'learning.risk': '风险',
+    'learning.mode': '模式',
+    'learning.scope': '范围',
+    'learning.routingPolicy': '路由策略',
+    'learning.capabilities': '能力',
+    'learning.evidence': '证据',
+    'learning.expectedBenefit': '预期收益',
+    'learning.createdAt': '创建时间',
+    'learning.updatedAt': '更新时间',
+    'learning.emptyHint': '这里暂时没有可管理对象。',
     'personality.addFile': '添加角色文件',
     'personality.addFileDesc': '选择外部 .yml/.yaml 文件，校验通过后加入人格列表',
     'personality.current': '当前人格',
@@ -1074,6 +1112,44 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'learning.deployFailed': 'Deploy failed: {error}',
     'learning.updateFailed': 'Update failed: {error}',
     'learning.rollbackFailed': 'Rollback failed: {error}',
+    'learning.viewOverview': 'Overview',
+    'learning.viewAgents': 'Agents',
+    'learning.viewCandidates': 'Candidates',
+    'learning.viewAssets': 'Assets',
+    'learning.viewActivity': 'Activity',
+    'learning.health': 'Learning Health',
+    'learning.healthReady': 'Stable',
+    'learning.healthNeedsReview': 'Needs review',
+    'learning.pendingReview': 'Pending Review',
+    'learning.activeAssets': 'Active Assets',
+    'learning.activeAgents': 'Active Agents',
+    'learning.recentSignals': 'Recent Signals',
+    'learning.queue': 'Review Queue',
+    'learning.operations': 'Operations',
+    'learning.agentControl': 'Agent Console',
+    'learning.assetLibrary': 'Learning Asset Library',
+    'learning.activityTimeline': 'Activity Timeline',
+    'learning.openDetail': 'Open detail',
+    'learning.detail': 'Detail',
+    'learning.noSelection': 'Select an item on the left to inspect it.',
+    'learning.activate': 'Activate',
+    'learning.disable': 'Disable',
+    'learning.archive': 'Archive',
+    'learning.rollback': 'Rollback',
+    'learning.createDraft': 'Create draft',
+    'learning.kind': 'Kind',
+    'learning.status': 'Status',
+    'learning.confidence': 'Confidence',
+    'learning.risk': 'Risk',
+    'learning.mode': 'Mode',
+    'learning.scope': 'Scope',
+    'learning.routingPolicy': 'Routing policy',
+    'learning.capabilities': 'Capabilities',
+    'learning.evidence': 'Evidence',
+    'learning.expectedBenefit': 'Expected benefit',
+    'learning.createdAt': 'Created',
+    'learning.updatedAt': 'Updated',
+    'learning.emptyHint': 'No manageable objects yet.',
     'personality.addFile': 'Add Role File',
     'personality.addFileDesc': 'Choose an external .yml/.yaml file and add it after validation',
     'personality.current': 'Current Personality',
@@ -2936,9 +3012,23 @@ const pluginsList = document.getElementById('plugins-list') as HTMLElement
 const logsList = document.getElementById('logs-list') as HTMLElement
 const clearLogsBtn = document.getElementById('clear-logs-btn') as HTMLButtonElement
 const learningOverview = document.getElementById('learning-overview') as HTMLElement
+const learningNav = document.getElementById('learning-nav') as HTMLElement
 const learningReflectBtn = document.getElementById('learning-reflect-btn') as HTMLButtonElement
 let memoryRefreshPromise: Promise<void> | null = null
 let learningRefreshPromise: Promise<void> | null = null
+type LearningView = 'overview' | 'agents' | 'candidates' | 'assets' | 'activity'
+type LearningOverviewData = {
+  events?: any[]
+  reflections?: any[]
+  candidates?: any[]
+  assets?: any[]
+  agents?: any[]
+  automationDecisions?: any[]
+  rollbacks?: any[]
+}
+let activeLearningView: LearningView = 'overview'
+let lastLearningOverview: LearningOverviewData | null = null
+let activeLearningDetail: { type: 'agent' | 'candidate' | 'asset' | 'event' | 'reflection' | 'decision' | 'rollback'; id: string } | null = null
 let cachedPlugins: PluginInfo[] = []
 let activePluginDetail: { pluginId: string; page: 'main' | 'advanced' } | null = null
 const live2dCapabilitiesCache = new Map<string, Live2dModelCapabilities>()
@@ -3298,32 +3388,342 @@ async function refreshLearningSection(): Promise<void> {
   return learningRefreshPromise
 }
 
-function renderLearningOverview(result: {
-  events?: any[]
-  reflections?: any[]
-  candidates?: any[]
-  assets?: any[]
-  agents?: any[]
-  automationDecisions?: any[]
-  rollbacks?: any[]
-}): void {
-  const events = result.events ?? []
-  const reflections = result.reflections ?? []
+function renderLearningOverview(result: LearningOverviewData): void {
+  lastLearningOverview = result
+  learningNav.querySelectorAll<HTMLButtonElement>('.learning-nav-item').forEach(button => {
+    button.classList.toggle('active', button.dataset.learningView === activeLearningView)
+  })
+  learningOverview.innerHTML = renderLearningApp(result)
+  attachLearningAppHandlers()
+}
+
+function renderLearningApp(result: LearningOverviewData): string {
+  switch (activeLearningView) {
+    case 'agents':
+      return renderLearningAgents(result)
+    case 'candidates':
+      return renderLearningCandidates(result)
+    case 'assets':
+      return renderLearningAssets(result)
+    case 'activity':
+      return renderLearningActivity(result)
+    case 'overview':
+    default:
+      return renderLearningDashboard(result)
+  }
+}
+
+function renderLearningDashboard(result: LearningOverviewData): string {
   const candidates = result.candidates ?? []
   const assets = result.assets ?? []
   const agents = result.agents ?? []
-  const automationDecisions = result.automationDecisions ?? []
-  const rollbacks = result.rollbacks ?? []
+  const events = result.events ?? []
+  const pendingCandidates = candidates.filter(item => item.status === 'pending')
+  const activeAssets = assets.filter(item => item.status === 'active')
+  const activeAgents = agents.filter(item => item.status === 'active')
+  const needsReview = pendingCandidates.length + assets.filter(item => item.status === 'draft').length
 
-  learningOverview.innerHTML = [
-    renderLearningGroup(t('learning.decisions'), automationDecisions, renderAutomationDecision),
-    renderLearningGroup(t('learning.events'), events.slice(-12).reverse(), renderLearningEvent),
-    renderLearningGroup(t('learning.reflections'), reflections, renderReflection),
-    renderLearningGroup(t('learning.candidates'), candidates, renderCandidate),
-    renderLearningGroup(t('learning.assets'), assets, renderLearningAsset),
-    renderLearningGroup(t('learning.rollbacks'), rollbacks, renderRollback),
-    renderLearningGroup(t('learning.agents'), agents, renderRuntimeAgent),
-  ].join('')
+  return `
+    <div class="learning-dashboard">
+      <div class="learning-metrics">
+        ${renderLearningMetric(t('learning.health'), needsReview > 0 ? t('learning.healthNeedsReview') : t('learning.healthReady'), needsReview > 0 ? 'warn' : 'ready')}
+        ${renderLearningMetric(t('learning.pendingReview'), String(needsReview), 'neutral')}
+        ${renderLearningMetric(t('learning.activeAssets'), String(activeAssets.length), 'ready')}
+        ${renderLearningMetric(t('learning.activeAgents'), String(activeAgents.length), 'ready')}
+      </div>
+      <div class="learning-two-column">
+        <section class="learning-panel">
+          <div class="learning-panel-header">
+            <span>${escapeHtml(t('learning.queue'))}</span>
+            <button class="learning-panel-link" type="button" data-learning-view-jump="candidates">${escapeHtml(t('learning.viewCandidates'))}</button>
+          </div>
+          <div class="learning-list compact">
+            ${pendingCandidates.length
+              ? pendingCandidates.slice(0, 5).map(item => renderLearningObjectRow('candidate', item)).join('')
+              : renderLearningEmpty()}
+          </div>
+        </section>
+        <section class="learning-panel">
+          <div class="learning-panel-header">
+            <span>${escapeHtml(t('learning.agentControl'))}</span>
+            <button class="learning-panel-link" type="button" data-learning-view-jump="agents">${escapeHtml(t('learning.viewAgents'))}</button>
+          </div>
+          <div class="learning-list compact">
+            ${agents.length
+              ? agents.slice(0, 5).map(item => renderLearningObjectRow('agent', item)).join('')
+              : renderLearningEmpty()}
+          </div>
+        </section>
+      </div>
+      <section class="learning-panel">
+        <div class="learning-panel-header">
+          <span>${escapeHtml(t('learning.recentSignals'))}</span>
+          <button class="learning-panel-link" type="button" data-learning-view-jump="activity">${escapeHtml(t('learning.viewActivity'))}</button>
+        </div>
+        <div class="learning-timeline compact">
+          ${events.length ? events.slice(-8).reverse().map(item => renderLearningActivityItem('event', item)).join('') : renderLearningEmpty()}
+        </div>
+      </section>
+    </div>
+  `
+}
+
+function renderLearningAgents(result: LearningOverviewData): string {
+  const agents = result.agents ?? []
+  return renderLearningSplitPage(
+    t('learning.agentControl'),
+    agents,
+    (item) => renderLearningObjectRow('agent', item),
+    renderLearningDetail('agent', findLearningDetailItem(result, 'agent', activeLearningDetail?.id))
+  )
+}
+
+function renderLearningCandidates(result: LearningOverviewData): string {
+  const candidates = result.candidates ?? []
+  return renderLearningSplitPage(
+    t('learning.queue'),
+    candidates,
+    (item) => renderLearningObjectRow('candidate', item),
+    renderLearningDetail('candidate', findLearningDetailItem(result, 'candidate', activeLearningDetail?.id))
+  )
+}
+
+function renderLearningAssets(result: LearningOverviewData): string {
+  const assets = result.assets ?? []
+  return renderLearningSplitPage(
+    t('learning.assetLibrary'),
+    assets,
+    (item) => renderLearningObjectRow('asset', item),
+    renderLearningDetail('asset', findLearningDetailItem(result, 'asset', activeLearningDetail?.id))
+  )
+}
+
+function renderLearningActivity(result: LearningOverviewData): string {
+  const activity = [
+    ...(result.automationDecisions ?? []).map(item => ({ type: 'decision' as const, item })),
+    ...(result.rollbacks ?? []).map(item => ({ type: 'rollback' as const, item })),
+    ...(result.reflections ?? []).map(item => ({ type: 'reflection' as const, item })),
+    ...(result.events ?? []).map(item => ({ type: 'event' as const, item })),
+  ].sort((left, right) => getLearningTime(right.item) - getLearningTime(left.item))
+
+  return renderLearningSplitPage(
+    t('learning.activityTimeline'),
+    activity,
+    ({ type, item }) => renderLearningActivityItem(type, item),
+    activeLearningDetail ? renderLearningDetail(activeLearningDetail.type, findLearningDetailItem(result, activeLearningDetail.type, activeLearningDetail.id)) : renderLearningNoSelection()
+  )
+}
+
+function renderLearningSplitPage<T>(
+  title: string,
+  items: T[],
+  renderItem: (item: T) => string,
+  detail: string
+): string {
+  return `
+    <div class="learning-split-page">
+      <section class="learning-panel learning-master">
+        <div class="learning-panel-header">
+          <span>${escapeHtml(title)}</span>
+          <span>${escapeHtml(tf('common.items', { count: items.length }))}</span>
+        </div>
+        <div class="learning-list">
+          ${items.length ? items.map(renderItem).join('') : renderLearningEmpty()}
+        </div>
+      </section>
+      <section class="learning-panel learning-detail">
+        ${detail}
+      </section>
+    </div>
+  `
+}
+
+function renderLearningMetric(label: string, value: string, tone: 'ready' | 'warn' | 'neutral'): string {
+  return `
+    <div class="learning-metric ${tone}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+    </div>
+  `
+}
+
+function renderLearningObjectRow(type: 'agent' | 'candidate' | 'asset', item: any): string {
+  const id = String(item.id ?? '')
+  const selected = activeLearningDetail?.type === type && activeLearningDetail.id === id
+  const title = type === 'agent' ? item.name ?? id : type === 'asset' ? item.scope ?? id : item.reason ?? id
+  const subtitle = type === 'agent'
+    ? item.purpose ?? item.routingPolicy ?? ''
+    : type === 'asset'
+      ? `${item.kind ?? ''} · ${item.status ?? ''}`
+      : `${item.kind ?? ''} · ${item.status ?? ''} · ${formatConfidence(item.confidence)}`
+  const actions = type === 'agent'
+    ? renderAgentActions(item)
+    : type === 'asset'
+      ? renderAssetActions(item)
+      : renderCandidateActions(item)
+  return `
+    <article class="learning-object ${selected ? 'selected' : ''}" data-learning-detail-type="${type}" data-learning-detail-id="${escapeHtml(id)}">
+      <div class="learning-object-main">
+        <div class="learning-object-title">${escapeHtml(title)}</div>
+        <div class="learning-object-meta">${escapeHtml(subtitle)}</div>
+      </div>
+      <div class="learning-object-actions">${actions}</div>
+    </article>
+  `
+}
+
+function renderCandidateActions(item: any): string {
+  if (item.status === 'deployed') {
+    return ''
+  }
+  return `<button class="settings-btn compact-btn" type="button" data-learning-deploy="${escapeHtml(item.id ?? '')}" data-learning-kind="${escapeHtml(item.kind ?? '')}">${escapeHtml(t('learning.createDraft'))}</button>`
+}
+
+function renderAssetActions(item: any): string {
+  const nextStatus = item.status === 'active' ? 'disabled' : 'active'
+  const label = nextStatus === 'active' ? t('learning.activate') : t('learning.disable')
+  return `
+    <button class="settings-btn compact-btn" type="button" data-asset-status="${escapeHtml(item.id ?? '')}" data-status="${nextStatus}">${escapeHtml(label)}</button>
+    <button class="settings-btn compact-btn" type="button" data-asset-rollback="${escapeHtml(item.id ?? '')}">${escapeHtml(t('learning.rollback'))}</button>
+  `
+}
+
+function renderAgentActions(item: any): string {
+  const nextStatus = item.status === 'active' ? 'disabled' : 'active'
+  const label = nextStatus === 'active' ? t('learning.activate') : t('learning.disable')
+  return `<button class="settings-btn compact-btn" type="button" data-agent-status="${escapeHtml(item.id ?? '')}" data-status="${nextStatus}">${escapeHtml(label)}</button>`
+}
+
+function renderLearningActivityItem(type: 'event' | 'reflection' | 'decision' | 'rollback', item: any): string {
+  const id = String(item.id ?? `${type}-${getLearningTime(item)}`)
+  const title = type === 'event'
+    ? item.name ?? 'event'
+    : type === 'reflection'
+      ? item.summary ?? 'reflection'
+      : type === 'decision'
+        ? item.action ?? 'decision'
+        : item.assetId ?? 'rollback'
+  const desc = type === 'event'
+    ? [item.taskId ? `task ${item.taskId}` : '', item.turnId ? `turn ${item.turnId}` : '', formatTimestamp(item.timestamp)].filter(Boolean).join(' · ')
+    : type === 'reflection'
+      ? [`${(item.sourceEventIds ?? []).length} events`, formatTimestamp(item.createdAt)].join(' · ')
+      : type === 'decision'
+        ? [item.risk ? `${t('learning.risk')} ${item.risk}` : '', item.reason ?? '', formatTimestamp(item.createdAt)].filter(Boolean).join(' · ')
+        : [`${item.previousStatus ?? ''} -> ${item.restoredStatus ?? ''}`, item.reason ?? '', formatTimestamp(item.createdAt)].filter(Boolean).join(' · ')
+  const selected = activeLearningDetail?.type === type && activeLearningDetail.id === id
+  return `
+    <article class="learning-activity-item ${selected ? 'selected' : ''}" data-learning-detail-type="${type}" data-learning-detail-id="${escapeHtml(id)}">
+      <span class="learning-activity-dot"></span>
+      <div>
+        <div class="learning-object-title">${escapeHtml(title)}</div>
+        <div class="learning-object-meta">${escapeHtml(desc)}</div>
+      </div>
+    </article>
+  `
+}
+
+function renderLearningDetail(type: string, item: any): string {
+  if (!item) {
+    return renderLearningNoSelection()
+  }
+  const rows = buildLearningDetailRows(type, item)
+  return `
+    <div class="learning-detail-header">
+      <span>${escapeHtml(t('learning.detail'))}</span>
+      <strong>${escapeHtml(getLearningDetailTitle(type, item))}</strong>
+    </div>
+    <div class="learning-detail-grid">
+      ${rows.map(([label, value]) => `
+        <div class="learning-detail-row">
+          <span>${escapeHtml(label)}</span>
+          <strong>${escapeHtml(value)}</strong>
+        </div>
+      `).join('')}
+    </div>
+    ${renderLearningJsonBlock(item)}
+  `
+}
+
+function buildLearningDetailRows(type: string, item: any): Array<[string, string]> {
+  if (type === 'agent') {
+    return [
+      [t('learning.status'), item.status ?? ''],
+      [t('learning.mode'), item.mode ?? ''],
+      [t('learning.routingPolicy'), item.routingPolicy ?? ''],
+      [t('learning.capabilities'), [...(item.capabilities ?? []), ...(item.ownCapabilities ?? [])].join(' / ') || t('common.none')],
+      [t('learning.createdAt'), formatTimestamp(item.createdAt)],
+      [t('learning.updatedAt'), formatTimestamp(item.updatedAt)],
+    ]
+  }
+  if (type === 'candidate') {
+    return [
+      [t('learning.kind'), item.kind ?? ''],
+      [t('learning.status'), item.status ?? ''],
+      [t('learning.confidence'), formatConfidence(item.confidence)],
+      [t('learning.risk'), item.risk ?? ''],
+      [t('learning.expectedBenefit'), item.expectedBenefit ?? ''],
+      [t('learning.evidence'), (item.evidence ?? []).join(' / ') || t('common.none')],
+    ]
+  }
+  if (type === 'asset') {
+    return [
+      [t('learning.kind'), item.kind ?? ''],
+      [t('learning.status'), item.status ?? ''],
+      [t('learning.scope'), item.scope ?? ''],
+      [t('learning.confidence'), formatConfidence(item.confidence)],
+      [t('learning.createdAt'), formatTimestamp(item.createdAt)],
+      [t('learning.updatedAt'), formatTimestamp(item.updatedAt)],
+    ]
+  }
+  return [
+    [t('learning.kind'), type],
+    [t('learning.createdAt'), formatTimestamp(getLearningTime(item))],
+  ]
+}
+
+function renderLearningNoSelection(): string {
+  return `
+    <div class="learning-no-selection">
+      <span>${escapeHtml(t('learning.detail'))}</span>
+      <p>${escapeHtml(t('learning.noSelection'))}</p>
+    </div>
+  `
+}
+
+function renderLearningJsonBlock(item: any): string {
+  return `<pre class="learning-json">${escapeHtml(JSON.stringify(item, null, 2))}</pre>`
+}
+
+function renderLearningEmpty(): string {
+  return `<div class="config-empty">${escapeHtml(t('learning.emptyHint'))}</div>`
+}
+
+function attachLearningAppHandlers(): void {
+  learningOverview.querySelectorAll<HTMLButtonElement>('[data-learning-view-jump]').forEach(button => {
+    button.addEventListener('click', () => {
+      const view = button.dataset.learningViewJump as LearningView | undefined
+      if (view) {
+        setLearningView(view)
+      }
+    })
+  })
+
+  learningOverview.querySelectorAll<HTMLElement>('[data-learning-detail-type][data-learning-detail-id]').forEach(item => {
+    item.addEventListener('click', (event) => {
+      if ((event.target as HTMLElement).closest('button')) {
+        return
+      }
+      const type = item.dataset.learningDetailType as typeof activeLearningDetail.type | undefined
+      const id = item.dataset.learningDetailId
+      if (!type || !id) {
+        return
+      }
+      activeLearningDetail = { type, id }
+      if (lastLearningOverview) {
+        renderLearningOverview(lastLearningOverview)
+      }
+    })
+  })
 
   learningOverview.querySelectorAll<HTMLButtonElement>('[data-learning-deploy]').forEach(button => {
     button.addEventListener('click', async () => {
@@ -3382,103 +3782,54 @@ function renderLearningOverview(result: {
   })
 }
 
-function renderLearningGroup(title: string, items: any[], renderItem: (item: any) => string): string {
-  return `
-    <div class="plugin-card">
-      <div class="plugin-card-header">
-        <div>
-          <div class="plugin-name">${escapeHtml(title)}</div>
-          <div class="plugin-description">${escapeHtml(tf('common.items', { count: items.length }))}</div>
-        </div>
-      </div>
-      <div class="plugin-admin-section">
-        ${items.length ? items.map(renderItem).join('') : `<div class="config-empty">${escapeHtml(t('learning.empty'))}</div>`}
-      </div>
-    </div>
-  `
+function setLearningView(view: LearningView): void {
+  activeLearningView = view
+  activeLearningDetail = null
+  if (lastLearningOverview) {
+    renderLearningOverview(lastLearningOverview)
+  } else {
+    void refreshLearningSection()
+  }
 }
 
-function renderLearningEvent(event: any): string {
-  return renderLearningRow(event.name ?? 'event', [
-    event.taskId ? `task ${event.taskId}` : '',
-    event.turnId ? `turn ${event.turnId}` : '',
-    formatTimestamp(event.timestamp),
-  ].filter(Boolean).join(' · '))
+function findLearningDetailItem(result: LearningOverviewData, type: string, id?: string): any {
+  if (!id) {
+    return null
+  }
+  const sources: Record<string, any[]> = {
+    agent: result.agents ?? [],
+    candidate: result.candidates ?? [],
+    asset: result.assets ?? [],
+    event: result.events ?? [],
+    reflection: result.reflections ?? [],
+    decision: result.automationDecisions ?? [],
+    rollback: result.rollbacks ?? [],
+  }
+  return (sources[type] ?? []).find(item => String(item.id ?? `${type}-${getLearningTime(item)}`) === id) ?? null
 }
 
-function renderReflection(item: any): string {
-  return renderLearningRow(item.summary ?? item.id ?? 'reflection', [
-    `${(item.sourceEventIds ?? []).length} events`,
-    formatTimestamp(item.createdAt),
-  ].join(' · '))
+function getLearningDetailTitle(type: string, item: any): string {
+  if (type === 'agent') {
+    return item.name ?? item.id ?? type
+  }
+  if (type === 'candidate') {
+    return item.reason ?? item.id ?? type
+  }
+  if (type === 'asset') {
+    return item.scope ?? item.id ?? type
+  }
+  return item.name ?? item.summary ?? item.action ?? item.id ?? type
 }
 
-function renderAutomationDecision(item: any): string {
-  return renderLearningRow(item.action ?? 'decision', [
-    item.risk ? `risk ${item.risk}` : '',
-    item.reason ?? '',
-    formatTimestamp(item.createdAt),
-  ].filter(Boolean).join(' · '))
+function getLearningTime(item: any): number {
+  const value = item?.createdAt ?? item?.updatedAt ?? item?.timestamp ?? 0
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0
 }
 
-function renderCandidate(item: any): string {
-  return `
-    <div class="learning-row">
-      <div class="learning-row-main">
-        <div class="learning-row-title">${escapeHtml(item.kind ?? 'candidate')} · ${escapeHtml(item.status ?? '')}</div>
-        <div class="learning-row-desc">${escapeHtml(item.reason ?? item.id ?? '')}</div>
-      </div>
-      <button class="settings-btn" type="button" data-learning-deploy="${escapeHtml(item.id ?? '')}" data-learning-kind="${escapeHtml(item.kind ?? '')}">Draft</button>
-    </div>
-  `
-}
-
-function renderLearningAsset(item: any): string {
-  const nextStatus = item.status === 'active' ? 'disabled' : 'active'
-  return `
-    <div class="learning-row">
-      <div class="learning-row-main">
-        <div class="learning-row-title">${escapeHtml(item.kind ?? 'asset')} · ${escapeHtml(item.status ?? '')}</div>
-        <div class="learning-row-desc">${escapeHtml(item.scope ?? item.id ?? '')}</div>
-      </div>
-      <div class="learning-row-actions">
-        <button class="settings-btn" type="button" data-asset-status="${escapeHtml(item.id ?? '')}" data-status="${nextStatus}">${escapeHtml(nextStatus)}</button>
-        <button class="settings-btn" type="button" data-asset-rollback="${escapeHtml(item.id ?? '')}">Rollback</button>
-      </div>
-    </div>
-  `
-}
-
-function renderRollback(item: any): string {
-  return renderLearningRow(item.assetId ?? 'rollback', [
-    `${item.previousStatus ?? ''} → ${item.restoredStatus ?? ''}`,
-    item.reason ?? '',
-    formatTimestamp(item.createdAt),
-  ].filter(Boolean).join(' · '))
-}
-
-function renderRuntimeAgent(item: any): string {
-  const nextStatus = item.status === 'active' ? 'disabled' : 'active'
-  return `
-    <div class="learning-row">
-      <div class="learning-row-main">
-        <div class="learning-row-title">${escapeHtml(item.name ?? item.id ?? 'agent')} · ${escapeHtml(item.mode ?? '')} · ${escapeHtml(item.status ?? '')}</div>
-        <div class="learning-row-desc">${escapeHtml(item.purpose ?? '')}</div>
-      </div>
-      <button class="settings-btn" type="button" data-agent-status="${escapeHtml(item.id ?? '')}" data-status="${nextStatus}">${escapeHtml(nextStatus)}</button>
-    </div>
-  `
-}
-
-function renderLearningRow(title: string, description: string): string {
-  return `
-    <div class="learning-row">
-      <div class="learning-row-main">
-        <div class="learning-row-title">${escapeHtml(title)}</div>
-        <div class="learning-row-desc">${escapeHtml(description)}</div>
-      </div>
-    </div>
-  `
+function formatConfidence(value: unknown): string {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? `${Math.round(value * 100)}%`
+    : t('common.none')
 }
 
 function formatTimestamp(value: unknown): string {
@@ -3856,6 +4207,14 @@ clearLogsBtn.addEventListener('click', async () => {
   await window.electronAPI.clearLogs()
   logEntries = []
   renderLogs()
+})
+
+learningNav.addEventListener('click', (event) => {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-learning-view]')
+  const view = button?.dataset.learningView as LearningView | undefined
+  if (view) {
+    setLearningView(view)
+  }
 })
 
 learningReflectBtn.addEventListener('click', async () => {
