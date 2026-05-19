@@ -257,17 +257,17 @@ body.planet-orb-active #planet-orb-canvas {
 
 .plugin-ui-main-surface.replace {
   z-index: 2;
-  -webkit-app-region: drag;
-  app-region: drag;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
   cursor: move;
 }
 
 body.plugin-main-surface-replace .plugin-ui-main-surface.replace,
 body.plugin-main-surface-replace .plugin-ui-main-surface.replace .plugin-ui-surface-frame {
-  pointer-events: auto;
+  pointer-events: none;
   -webkit-app-region: no-drag;
   app-region: no-drag;
-  cursor: default;
+  cursor: move;
 }
 
 body:not(.plugin-main-surface-replace) .plugin-ui-main-surface.overlay .plugin-ui-surface-frame,
@@ -288,47 +288,12 @@ body.plugin-main-surface-replace .controls {
   z-index: 7;
 }
 
-.plugin-drag-handle {
-  display: none;
-}
-
-body.plugin-main-surface-replace:not(.settings-open) .plugin-drag-handle {
-  position: absolute;
-  left: 50%;
-  bottom: 2px;
-  z-index: 8;
-  display: block;
-  width: min(168px, 62%);
-  height: 22px;
-  transform: translateX(-50%);
-  border-radius: 999px;
-  cursor: grab;
-  pointer-events: auto;
-  -webkit-app-region: drag;
-  app-region: drag;
-}
-
-body.plugin-main-surface-replace:not(.settings-open) .plugin-drag-handle::before {
-  content: '';
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 42px;
-  height: 3px;
-  transform: translate(-50%, -50%);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.24);
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.18);
-  opacity: 0;
-  transition: opacity 140ms ease;
-}
-
-body.plugin-main-surface-replace:not(.settings-open) .plugin-drag-handle:hover::before {
-  opacity: 1;
-}
-
 body.plugin-main-surface-replace .orb-slot {
   margin-bottom: 4px;
+  cursor: move;
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 body.plugin-main-surface-replace .status {

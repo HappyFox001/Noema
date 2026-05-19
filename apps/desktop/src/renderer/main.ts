@@ -2231,7 +2231,7 @@ function isPointInOrb(surface: HTMLCanvasElement, clientX: number, clientY: numb
 let isDragging = false
 let lastMouseX = 0
 let lastMouseY = 0
-let activeDragSurface: HTMLCanvasElement | null = null
+let activeDragSurface: HTMLElement | null = null
 
 function attachOrbDragHandlers(surface: HTMLCanvasElement): void {
   surface.addEventListener('mousemove', (e) => {
@@ -2269,9 +2269,66 @@ function attachOrbDragHandlers(surface: HTMLCanvasElement): void {
   })
 }
 
+function isPluginMainSurfaceActive(): boolean {
+  return activePluginMainSurface?.mode === 'replace' && !document.body.classList.contains('settings-open')
+}
+
+function attachPluginMainSurfaceHandlers(surface: HTMLElement): void {
+  surface.addEventListener('mousemove', (e) => {
+    if (!isPluginMainSurfaceActive()) {
+      return
+    }
+
+    queuePluginMainPointer(e, true)
+    if (isDragging && activeDragSurface === surface) {
+      const deltaX = e.screenX - lastMouseX
+      const deltaY = e.screenY - lastMouseY
+      lastMouseX = e.screenX
+      lastMouseY = e.screenY
+      window.electronAPI.moveWindow(deltaX, deltaY)
+      surface.style.cursor = 'grabbing'
+    } else {
+      surface.style.cursor = 'move'
+    }
+  })
+
+  surface.addEventListener('mouseleave', () => {
+    if (!isPluginMainSurfaceActive()) {
+      return
+    }
+    queuePluginMainPointer(null, false)
+    if (!isDragging || activeDragSurface !== surface) {
+      surface.style.cursor = 'move'
+    }
+  })
+
+  surface.addEventListener('mousedown', (e) => {
+    if (!isPluginMainSurfaceActive()) {
+      return
+    }
+    isDragging = true
+    activeDragSurface = surface
+    lastMouseX = e.screenX
+    lastMouseY = e.screenY
+    queuePluginMainPointer(e, true)
+    surface.style.cursor = 'grabbing'
+    e.preventDefault()
+  })
+
+  surface.addEventListener('mouseup', (e) => {
+    if (isDragging && activeDragSurface === surface) {
+      isDragging = false
+      activeDragSurface = null
+      queuePluginMainPointer(e, true)
+      surface.style.cursor = 'move'
+    }
+  })
+}
+
 attachOrbDragHandlers(canvas)
 attachOrbDragHandlers(advancedOrbCanvas)
 attachOrbDragHandlers(planetOrbCanvas)
+attachPluginMainSurfaceHandlers(pluginUIMainView)
 
 document.addEventListener('mouseup', () => {
   if (isDragging) {
@@ -2439,6 +2496,14 @@ let pluginMainPointerFrame = 0
 let lastPluginMainPointerActive = false
 
 function queuePluginMainPointer(event: PointerEvent | null, active: boolean): void {
+  queuePluginMainPointerClientPoint(
+    event ? event.clientX : null,
+    event ? event.clientY : null,
+    active
+  )
+}
+
+function queuePluginMainPointerClientPoint(clientX: number | null, clientY: number | null, active: boolean): void {
   const rect = pluginUIMainView.getBoundingClientRect()
   if (!active && !lastPluginMainPointerActive && !pendingPluginMainPointer) {
     return
@@ -2446,8 +2511,8 @@ function queuePluginMainPointer(event: PointerEvent | null, active: boolean): vo
 
   pendingPluginMainPointer = {
     active,
-    x: event ? event.clientX - rect.left : rect.width / 2,
-    y: event ? event.clientY - rect.top : rect.height / 2,
+    x: clientX === null ? rect.width / 2 : clientX - rect.left,
+    y: clientY === null ? rect.height / 2 : clientY - rect.top,
     width: rect.width,
     height: rect.height,
   }
@@ -3373,6 +3438,9 @@ window.addEventListener('pointermove', (event) => {
   if (activePluginMainSurface?.mode !== 'replace' || document.body.classList.contains('settings-open')) {
     setPluginControlsPeek(false)
     queuePluginMainPointer(null, false)
+    return
+  }
+  if (event.target instanceof Node && pluginUIMainView.contains(event.target)) {
     return
   }
 
