@@ -80,11 +80,22 @@ const state = {
     targetY: 0,
     smoothX: 0,
     smoothY: 0,
+    eyeX: 0,
+    eyeY: 0,
+    bodyX: 0,
+    bodyY: 0,
+    eyeVX: 0,
+    eyeVY: 0,
+    headVX: 0,
+    headVY: 0,
+    bodyVX: 0,
+    bodyVY: 0,
     velocityX: 0,
     velocityY: 0,
   },
   pose: { ...ZERO_POSE },
   targetPose: { ...ZERO_POSE },
+  poseVelocity: { ...ZERO_POSE },
   availableParameters: null,
   parameterRanges: new Map(),
   avatarTickerRegistered: false,
@@ -341,8 +352,8 @@ function applyPointerParameterHooks() {
     return
   }
 
-  const dragX = clampNumber(state.pointer.active ? state.pointer.targetX : state.pointer.smoothX, -1, 1, 0)
-  const dragY = clampNumber(state.pointer.active ? state.pointer.targetY : state.pointer.smoothY, -1, 1, 0)
+  const dragX = clampNumber(state.pointer.eyeX, -1, 1, 0)
+  const dragY = clampNumber(state.pointer.eyeY, -1, 1, 0)
   const xRatio = (1 - dragX) / 2
   const yRatio = (1 - dragY) / 2
   const strength = state.config.pointerTrackingStrength
@@ -357,8 +368,8 @@ function applyPointerParameterHooks() {
   addTrackingParam(PARAM_IDS.bodyAngleY, pose.bodyAngleY, 10)
   addTrackingParam(PARAM_IDS.bodyAngleZ, pose.bodyAngleZ, 10)
   addTrackingParam(PARAM_IDS.bodyUpper, pose.bodyUpper, 1)
-  addTrackingParam(PARAM_IDS.eyeBallX, dragX * 0.75 * strength, 1)
-  addTrackingParam(PARAM_IDS.eyeBallY, dragY * 0.75 * strength, 1)
+  addTrackingParam(PARAM_IDS.eyeBallX, dragX * 0.68 * strength, 1)
+  addTrackingParam(PARAM_IDS.eyeBallY, dragY * 0.68 * strength, 1)
 }
 
 function setRangedModelParam(ids, ratio, strength, normalizedOverride) {
@@ -565,47 +576,65 @@ function handlePointerLeave() {
 }
 
 function updatePointerTracking(delta) {
-  const dx = state.pointer.targetX - state.pointer.smoothX
-  const dy = state.pointer.targetY - state.pointer.smoothY
-  const distance = Math.min(1.5, Math.sqrt(dx * dx + dy * dy))
-  const speed = state.pointer.active
-    ? 0.82 + distance * 0.46
-    : 0.22
-  const alpha = state.pointer.active
-    ? Math.min(1, Math.max(0.42, delta * speed))
-    : Math.min(1, Math.max(0.02, delta * speed))
-  state.pointer.smoothX += (state.pointer.targetX - state.pointer.smoothX) * alpha
-  state.pointer.smoothY += (state.pointer.targetY - state.pointer.smoothY) * alpha
+  const targetX = state.pointer.active ? shapeLookInput(state.pointer.targetX) : 0
+  const targetY = state.pointer.active ? shapeLookInput(state.pointer.targetY) : 0
+
+  const eyeX = stepSecondOrder(state.pointer.eyeX, state.pointer.eyeVX, targetX, 11.5, 0.78, 16, delta)
+  const eyeY = stepSecondOrder(state.pointer.eyeY, state.pointer.eyeVY, targetY, 11.5, 0.78, 16, delta)
+  state.pointer.eyeX = eyeX.value
+  state.pointer.eyeVX = eyeX.velocity
+  state.pointer.eyeY = eyeY.value
+  state.pointer.eyeVY = eyeY.velocity
+
+  const headX = stepSecondOrder(state.pointer.smoothX, state.pointer.headVX, targetX, 5.8, 0.86, 8, delta)
+  const headY = stepSecondOrder(state.pointer.smoothY, state.pointer.headVY, targetY, 5.8, 0.86, 8, delta)
+  state.pointer.smoothX = headX.value
+  state.pointer.headVX = headX.velocity
+  state.pointer.smoothY = headY.value
+  state.pointer.headVY = headY.velocity
+
+  const bodyTargetX = targetX * 0.86
+  const bodyTargetY = targetY * 0.72
+  const bodyX = stepSecondOrder(state.pointer.bodyX, state.pointer.bodyVX, bodyTargetX, 2.7, 0.95, 3.2, delta)
+  const bodyY = stepSecondOrder(state.pointer.bodyY, state.pointer.bodyVY, bodyTargetY, 2.7, 0.95, 3.2, delta)
+  state.pointer.bodyX = bodyX.value
+  state.pointer.bodyVX = bodyX.velocity
+  state.pointer.bodyY = bodyY.value
+  state.pointer.bodyVY = bodyY.velocity
 }
 
 function updatePoseTracking(delta) {
   const dragX = clampNumber(state.pointer.smoothX, -1, 1, 0)
   const dragY = clampNumber(state.pointer.smoothY, -1, 1, 0)
+  const bodyX = clampNumber(state.pointer.bodyX, -1, 1, 0)
+  const bodyY = clampNumber(state.pointer.bodyY, -1, 1, 0)
   const strength = state.config.pointerTrackingStrength
   const basePose = state.config.mouseTracking ? ZERO_POSE : getModePose(state.lastMode)
   const activeWeight = state.pointer.active ? 1 : 0.38
-  const snapX = state.pointer.active ? state.pointer.targetX : dragX
-  const snapY = state.pointer.active ? state.pointer.targetY : dragY
-  const leadX = clampNumber(dragX + state.pointer.velocityX * 1.6, -1, 1, 0)
-  const leadY = clampNumber(dragY + state.pointer.velocityY * 1.6, -1, 1, 0)
   const mouseWeight = state.config.mouseTracking ? 1 : 0
 
   state.targetPose = {
-    angleX: basePose.angleX + leadX * 24 * strength * activeWeight * mouseWeight,
-    angleY: basePose.angleY + leadY * 18 * strength * activeWeight * mouseWeight,
-    angleZ: basePose.angleZ + -snapX * snapY * 12 * strength * activeWeight * mouseWeight,
-    bodyAngleX: basePose.bodyAngleX + snapX * 12 * strength * activeWeight * mouseWeight,
-    bodyAngleY: basePose.bodyAngleY + snapY * 6 * strength * activeWeight * mouseWeight,
-    bodyAngleZ: basePose.bodyAngleZ + -snapX * snapY * 6 * strength * activeWeight * mouseWeight,
-    bodyUpper: basePose.bodyUpper + Math.abs(snapX) * 0.28 * strength * activeWeight * mouseWeight,
+    angleX: basePose.angleX + dragX * 20 * strength * activeWeight * mouseWeight,
+    angleY: basePose.angleY + dragY * 14 * strength * activeWeight * mouseWeight,
+    angleZ: basePose.angleZ + -dragX * dragY * 8 * strength * activeWeight * mouseWeight,
+    bodyAngleX: basePose.bodyAngleX + bodyX * 8.5 * strength * activeWeight * mouseWeight,
+    bodyAngleY: basePose.bodyAngleY + bodyY * 4 * strength * activeWeight * mouseWeight,
+    bodyAngleZ: basePose.bodyAngleZ + -bodyX * bodyY * 3.5 * strength * activeWeight * mouseWeight,
+    bodyUpper: basePose.bodyUpper + Math.abs(bodyX) * 0.16 * strength * activeWeight * mouseWeight,
   }
 
-  const speed = state.pointer.active ? 0.72 : 0.18
-  const alpha = state.pointer.active
-    ? Math.min(1, Math.max(0.36, delta * speed))
-    : Math.min(1, Math.max(0.015, delta * speed))
   for (const key of Object.keys(ZERO_POSE)) {
-    state.pose[key] += (state.targetPose[key] - state.pose[key]) * alpha
+    const next = stepSecondOrder(
+      state.pose[key],
+      state.poseVelocity[key],
+      state.targetPose[key],
+      getPoseFrequency(key, state.pointer.active),
+      getPoseDamping(key),
+      getPoseMaxSpeed(key),
+      delta
+    )
+    state.pose[key] = next.value
+    state.poseVelocity[key] = next.velocity
   }
 }
 
@@ -932,6 +961,68 @@ function clampNumber(value, min, max, fallback = min) {
     return fallback
   }
   return Math.max(min, Math.min(max, number))
+}
+
+function shapeLookInput(value) {
+  const clamped = clampNumber(value, -1, 1, 0)
+  const sign = Math.sign(clamped)
+  const magnitude = Math.abs(clamped)
+  const deadzone = 0.025
+  if (magnitude <= deadzone) {
+    return 0
+  }
+  const normalized = (magnitude - deadzone) / (1 - deadzone)
+  return sign * Math.pow(normalized, 0.78)
+}
+
+function stepSecondOrder(current, velocity, target, frequency, damping, maxSpeed, delta) {
+  let value = Number.isFinite(current) ? current : 0
+  let nextVelocity = Number.isFinite(velocity) ? velocity : 0
+  const safeTarget = Number.isFinite(target) ? target : 0
+  const totalDt = Math.max(0.001, Math.min(0.05, Number(delta) / 60))
+  const steps = Math.max(1, Math.ceil(totalDt / (1 / 120)))
+  const dt = totalDt / steps
+  const omega = Math.max(0.001, frequency) * Math.PI * 2
+  const zeta = Math.max(0.05, damping)
+
+  for (let i = 0; i < steps; i++) {
+    const acceleration = omega * omega * (safeTarget - value) - 2 * zeta * omega * nextVelocity
+    nextVelocity += acceleration * dt
+    nextVelocity = clampNumber(nextVelocity, -maxSpeed, maxSpeed, 0)
+    value += nextVelocity * dt
+  }
+
+  return { value, velocity: nextVelocity }
+}
+
+function getPoseFrequency(key, active) {
+  if (key.startsWith('body') || key === 'bodyUpper') {
+    return active ? 2.5 : 1.7
+  }
+  if (key === 'angleZ') {
+    return active ? 4.2 : 2.5
+  }
+  return active ? 5.6 : 3
+}
+
+function getPoseDamping(key) {
+  if (key.startsWith('body') || key === 'bodyUpper') {
+    return 0.96
+  }
+  if (key === 'angleZ') {
+    return 0.9
+  }
+  return 0.84
+}
+
+function getPoseMaxSpeed(key) {
+  if (key === 'bodyUpper') {
+    return 1.2
+  }
+  if (key.startsWith('body')) {
+    return 32
+  }
+  return 72
 }
 
 function loadScript(src, globalName) {
