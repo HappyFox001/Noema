@@ -85,9 +85,10 @@ body {
   align-self: end;
   justify-self: center;
   width: min(100%, 320px);
-  height: 320px;
+  height: min(320px, 100%);
+  min-height: 0;
   display: grid;
-  place-items: center;
+  place-items: end center;
   overflow: visible;
   contain: layout paint;
   isolation: isolate;
@@ -142,13 +143,14 @@ body.theme-day.settings-open:not(.settings-closing) .liquid-glass-surface {
   z-index: 1;
   width: 100%;
   max-width: 360px;
-  min-height: 100vh;
+  height: 100vh;
+  max-height: 100vh;
   display: grid;
-  grid-template-rows: auto auto auto auto auto;
+  grid-template-rows: minmax(0, 1fr) 0 auto auto auto;
   align-items: center;
-  align-content: center;
+  align-content: stretch;
   justify-items: center;
-  padding: 16px;
+  padding: 12px 16px;
   gap: 6px;
   background: transparent !important;
   background-color: rgba(0, 0, 0, 0) !important;
@@ -277,6 +279,19 @@ body.plugin-main-surface-replace #planet-orb-canvas {
 body.plugin-main-surface-replace .controls {
   position: relative;
   z-index: 7;
+}
+
+body.plugin-main-surface-replace .orb-slot {
+  margin-bottom: 4px;
+}
+
+body.plugin-main-surface-replace .status {
+  margin-top: 0;
+  margin-bottom: 8px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(8px);
 }
 
 body.plugin-main-surface-replace:not(.settings-open) #main-view.controls-peek .controls {
@@ -652,8 +667,8 @@ body.plugin-task-surface-replace .task-steps {
   font-family: var(--font-ui);
   letter-spacing: 0;
   grid-row: 3;
-  margin-top: -52px;
-  margin-bottom: 32px;
+  margin-top: 0;
+  margin-bottom: 8px;
   display: inline-flex;
   align-items: center;
   justify-content: center;

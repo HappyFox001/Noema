@@ -55,7 +55,8 @@ grep -q 'nearControlBand' apps/desktop/src/renderer/main.ts && score=$((score + 
 grep -q 'id="orb-slot"' apps/desktop/src/renderer/index.html && score=$((score + 1))
 grep -q "getElementById('orb-slot')" apps/desktop/src/renderer/main.ts && score=$((score + 1))
 grep -q '.orb-slot' apps/desktop/src/renderer/styles.css && score=$((score + 1))
-grep -q 'height: 320px' apps/desktop/src/renderer/styles.css && score=$((score + 1))
+grep -q 'height: min(320px, 100%)' apps/desktop/src/renderer/styles.css && score=$((score + 1))
+grep -q 'grid-template-rows: minmax(0, 1fr)' apps/desktop/src/renderer/styles.css && score=$((score + 1))
 grep -q 'window.devicePixelRatio' plugins/live2d-avatar/assets/ui/live2d-avatar.js && score=$((score + 1))
 grep -q 'resolution,' plugins/live2d-avatar/assets/ui/live2d-avatar.js && score=$((score + 1))
 
