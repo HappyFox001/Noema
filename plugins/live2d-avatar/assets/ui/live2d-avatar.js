@@ -53,6 +53,11 @@ const state = {
   lastMotionAt: 0,
   statePayload: null,
   modelBounds: null,
+  modelCapabilities: {
+    motionGroups: new Set(),
+    expressions: new Set(),
+    lipSyncParameters: [],
+  },
 }
 
 const canvas = document.getElementById('stage')
@@ -127,6 +132,7 @@ async function loadModel(modelUrl) {
   }
 
   const modelSettings = await loadModelSettings(modelUrl)
+  state.modelCapabilities = extractModelCapabilities(modelSettings)
   let model
   try {
     model = await Live2DModel.from(modelSettings, { autoInteract: false })
@@ -195,7 +201,7 @@ function triggerModeHook(mode) {
     task: state.config.taskMotion,
     error: state.config.errorMotion,
   }
-  startMotion(motionByMode[mode])
+  startMotion(resolveMotionGroup(mode, motionByMode[mode]))
 }
 
 function applyExpressionHook(emotion) {
@@ -206,6 +212,9 @@ function applyExpressionHook(emotion) {
 
   const expression = mapEmotionToExpression(emotion)
   if (!expression || expression === state.lastExpression) {
+    return
+  }
+  if (state.modelCapabilities.expressions.size && !state.modelCapabilities.expressions.has(expression)) {
     return
   }
 
@@ -240,7 +249,7 @@ function updateAvatar(delta) {
   state.energyEnvelope += (state.targetMouth - state.energyEnvelope) * Math.min(1, delta * envelopeEase)
   const ease = state.energyEnvelope > state.mouth ? 0.42 : 0.22
   state.mouth += (state.energyEnvelope - state.mouth) * Math.min(1, delta * ease)
-  setModelParam(PARAM_IDS.mouthOpen, state.mouth, 1)
+  setModelParam(getMouthOpenParamIds(), state.mouth, 1)
   setModelParam(PARAM_IDS.mouthForm, Math.sin(performance.now() / 85) * state.mouth * 0.22, 0.35)
 
   const now = performance.now() / 1000
@@ -332,6 +341,69 @@ function normalizeConfig(config) {
     lipSyncAttack: clampNumber(config.lipSyncAttack, 0.05, 1, DEFAULT_CONFIG.lipSyncAttack),
     lipSyncRelease: clampNumber(config.lipSyncRelease, 0.02, 1, DEFAULT_CONFIG.lipSyncRelease),
   }
+}
+
+function extractModelCapabilities(settings) {
+  const fileReferences = settings.FileReferences || settings.fileReferences || {}
+  const motions = fileReferences.Motions || fileReferences.motions || {}
+  const expressions = fileReferences.Expressions || fileReferences.expressions || []
+  const groups = settings.Groups || settings.groups || []
+  const lipSyncParameters = []
+
+  for (const group of Array.isArray(groups) ? groups : []) {
+    const target = String(group.Target || group.target || '').toLowerCase()
+    const name = String(group.Name || group.name || '').toLowerCase()
+    if (!target.includes('parameter') || name !== 'lipsync') {
+      continue
+    }
+    const ids = group.Ids || group.ids || []
+    for (const id of Array.isArray(ids) ? ids : []) {
+      if (typeof id === 'string' && !lipSyncParameters.includes(id)) {
+        lipSyncParameters.push(id)
+      }
+    }
+  }
+
+  return {
+    motionGroups: new Set(Object.keys(motions)),
+    expressions: new Set(expressions
+      .map(expression => expression.Name || expression.name)
+      .filter(name => typeof name === 'string' && name.length > 0)),
+    lipSyncParameters,
+  }
+}
+
+function resolveMotionGroup(mode, configuredGroup) {
+  const motionGroups = state.modelCapabilities.motionGroups
+  if (!motionGroups.size) {
+    return configuredGroup
+  }
+  if (configuredGroup && motionGroups.has(configuredGroup)) {
+    return configuredGroup
+  }
+
+  const fallbackByMode = {
+    idle: ['Idle', 'idle'],
+    listening: ['Tap', 'TapBody', 'Touch', 'Idle'],
+    thinking: ['Tap', 'TapBody', 'Touch', 'Idle'],
+    speaking: ['Tap', 'TapBody', 'Touch', 'Idle'],
+    task: ['Tap', 'TapBody', 'Touch', 'Idle'],
+    error: ['Tap', 'TapBody', 'Touch', 'Idle'],
+  }
+  const candidates = fallbackByMode[mode] || ['Idle']
+  for (const candidate of candidates) {
+    if (motionGroups.has(candidate)) {
+      return candidate
+    }
+  }
+  return motionGroups.values().next().value || ''
+}
+
+function getMouthOpenParamIds() {
+  const lipSyncParameters = state.modelCapabilities.lipSyncParameters || []
+  return lipSyncParameters.length
+    ? [...lipSyncParameters, ...PARAM_IDS.mouthOpen]
+    : PARAM_IDS.mouthOpen
 }
 
 function measureModelBounds(model) {

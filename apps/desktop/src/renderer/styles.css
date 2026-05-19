@@ -1815,6 +1815,11 @@ body.plugin-task-surface-replace .task-steps {
   align-items: stretch;
 }
 
+.plugin-config-row-path {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+}
+
 .plugin-config-meta {
   min-width: 0;
 }
@@ -1867,19 +1872,70 @@ body.plugin-task-surface-replace .task-steps {
 
 .plugin-file-control {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
-  width: min(420px, 100%);
-  justify-self: end;
+  width: 100%;
+  min-width: 0;
+  justify-self: stretch;
 }
 
 .plugin-file-input {
   width: 100%;
+  min-width: 0;
 }
 
 .plugin-file-button {
   white-space: nowrap;
+  min-width: 88px;
+}
+
+.plugin-config-page-button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  margin-top: 4px;
+  padding: 11px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+  color: rgba(255, 255, 255, 0.78);
+  cursor: pointer;
+  text-align: left;
+}
+
+.plugin-config-page-button:hover {
+  border-color: rgba(148, 163, 184, 0.32);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.plugin-config-page-button strong,
+.plugin-config-page-button small {
+  display: block;
+  min-width: 0;
+}
+
+.plugin-config-page-button strong {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.plugin-config-page-button small {
+  margin-top: 3px;
+  color: rgba(255, 255, 255, 0.38);
+  font-family: var(--font-soft);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.plugin-config-page-arrow {
+  color: rgba(255, 255, 255, 0.46);
+  font-size: 22px;
+  line-height: 1;
 }
 
 .plugin-config-number {

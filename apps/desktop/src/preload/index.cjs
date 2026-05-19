@@ -136,8 +136,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   pluginAdminAction: (pluginId, action, payload) =>
     ipcRenderer.invoke('plugins:adminAction', pluginId, action, payload),
 
+  selectPluginConfigPath: (options) =>
+    ipcRenderer.invoke('plugins:selectConfigPath', options),
+
   selectPluginConfigFile: (options) =>
-    ipcRenderer.invoke('plugins:selectConfigFile', options),
+    ipcRenderer.invoke('plugins:selectConfigPath', { ...options, mode: 'file' }),
+
+  readLive2dModelCapabilities: (options) =>
+    ipcRenderer.invoke('plugins:readLive2dModelCapabilities', options),
 
   listPersonalities: () =>
     ipcRenderer.invoke('personality:list'),

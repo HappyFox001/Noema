@@ -1046,6 +1046,7 @@ type PluginConfigField =
       key: string
       label?: string
       description?: string
+      advanced?: boolean
       type: 'string'
       default?: string
       placeholder?: string
@@ -1056,6 +1057,7 @@ type PluginConfigField =
       key: string
       label?: string
       description?: string
+      advanced?: boolean
       type: 'file'
       default?: string
       placeholder?: string
@@ -1066,6 +1068,20 @@ type PluginConfigField =
       key: string
       label?: string
       description?: string
+      advanced?: boolean
+      type: 'directory'
+      default?: string
+      placeholder?: string
+      buttonLabel?: string
+      targetKey?: string
+      resolveFileExtensions?: string[]
+      resolveRecursive?: boolean
+    }
+  | {
+      key: string
+      label?: string
+      description?: string
+      advanced?: boolean
       type: 'number'
       default?: number
       min?: number
@@ -1076,6 +1092,7 @@ type PluginConfigField =
       key: string
       label?: string
       description?: string
+      advanced?: boolean
       type: 'boolean'
       default?: boolean
     }
@@ -1083,6 +1100,7 @@ type PluginConfigField =
       key: string
       label?: string
       description?: string
+      advanced?: boolean
       type: 'select'
       default?: string
       options: Array<{ label: string; value: string }>
@@ -1120,6 +1138,12 @@ type PluginInfo = {
       variant?: 'primary' | 'secondary' | 'danger'
     }>
   }
+}
+
+type Live2dModelCapabilities = {
+  motionGroups: string[]
+  expressions: string[]
+  lipSyncParameters: string[]
 }
 
 type ConversationFrame =
@@ -2552,6 +2576,7 @@ const learningReflectBtn = document.getElementById('learning-reflect-btn') as HT
 let memoryRefreshPromise: Promise<void> | null = null
 let learningRefreshPromise: Promise<void> | null = null
 let cachedPlugins: PluginInfo[] = []
+const live2dCapabilitiesCache = new Map<string, Live2dModelCapabilities>()
 let logEntries: AppLogEntry[] = []
 let activeLogLevel: AppLogLevel | 'all' = 'all'
 
@@ -3631,17 +3656,18 @@ function renderPluginsSection(plugins: PluginInfo[]): void {
   bindPluginConfigInputs()
 }
 
-function renderPluginDetail(plugin: PluginInfo): void {
+function renderPluginDetail(plugin: PluginInfo, page: 'main' | 'advanced' = 'main'): void {
+  const isAdvancedPage = page === 'advanced'
   pluginsList.innerHTML = `
     <div class="plugin-detail-header">
       <button class="plugin-back-btn" type="button">返回</button>
       <div class="plugin-detail-title">
-        <span class="plugin-name">${escapeHtml(plugin.name)}</span>
+        <span class="plugin-name">${escapeHtml(isAdvancedPage ? `${plugin.name} / 高级模型参数` : plugin.name)}</span>
         ${plugin.version ? `<span class="plugin-version">v${escapeHtml(plugin.version)}</span>` : ''}
       </div>
     </div>
     <div class="plugin-card plugin-detail-card" data-plugin-id="${escapeHtml(plugin.id)}">
-      <div class="plugin-card-main">
+      ${isAdvancedPage ? '' : `<div class="plugin-card-main">
         <div class="plugin-info">
           <div class="plugin-id">${escapeHtml(plugin.id)}</div>
           ${plugin.description ? `<div class="plugin-description plugin-detail-description">${escapeHtml(plugin.description)}</div>` : ''}
@@ -3652,14 +3678,18 @@ function renderPluginDetail(plugin: PluginInfo): void {
           <input type="checkbox" ${plugin.enabled ? 'checked' : ''} data-plugin-toggle="${escapeHtml(plugin.id)}" />
           <span class="toggle-slider"></span>
         </label>
-      </div>
-      ${renderPluginConfigFields(plugin)}
+      </div>`}
+      ${renderPluginConfigFields(plugin, page)}
     </div>
-    ${renderPluginAdminContainer(plugin)}
+    ${isAdvancedPage ? '' : renderPluginAdminContainer(plugin)}
   `
 
   pluginsList.querySelector<HTMLButtonElement>('.plugin-back-btn')?.addEventListener('click', () => {
-    renderPluginsSection(cachedPlugins)
+    if (isAdvancedPage) {
+      renderPluginDetail(plugin, 'main')
+    } else {
+      renderPluginsSection(cachedPlugins)
+    }
   })
 
   pluginsList.querySelector<HTMLInputElement>('input[data-plugin-toggle]')?.addEventListener('change', async (event) => {
@@ -3689,8 +3719,21 @@ function renderPluginDetail(plugin: PluginInfo): void {
     }
   })
 
+  pluginsList.querySelectorAll<HTMLButtonElement>('[data-plugin-config-page]').forEach(button => {
+    button.addEventListener('click', () => {
+      const targetPage = button.dataset.pluginConfigPage
+      if (targetPage === 'advanced') {
+        renderPluginDetail(plugin, 'advanced')
+      }
+    })
+  })
+
   bindPluginConfigInputs()
-  loadPluginAdminPanel(plugin)
+  if (!isAdvancedPage) {
+    loadPluginAdminPanel(plugin)
+  } else {
+    void hydrateLive2dCapabilities(plugin, page)
+  }
 }
 
 function renderPluginAdminContainer(plugin: PluginInfo): string {
@@ -4020,37 +4063,11 @@ function bindPluginConfigInputs(): void {
       const type = input.dataset.pluginType
       if (!pluginId || !key || !type) return
       const optimisticValue = readPluginConfigValue(input, type)
-      const configPatch = getPluginConfigPatch(pluginId, key, optimisticValue)
-      const target = cachedPlugins.find(item => item.id === pluginId)
-      const previousConfig = target ? { ...target.config } : null
-
-      if (target) {
-        target.config = {
-          ...target.config,
-          ...configPatch,
-        }
-      }
       input.disabled = true
       try {
-        const settings = await window.electronAPI.getSettings()
-        const currentPluginConfig = settings.pluginConfigs?.[pluginId] ?? {}
-        const nextPluginConfigs = {
-          ...(settings.pluginConfigs ?? {}),
-          [pluginId]: {
-            ...currentPluginConfig,
-            ...configPatch,
-          },
-        }
-        await window.electronAPI.updateSettings({ pluginConfigs: nextPluginConfigs })
-        if (target) {
-          target.config = nextPluginConfigs[pluginId]
-        }
-        await loadPluginUISurfaces()
+        await applyPluginConfigPatch(pluginId, getPluginConfigPatch(pluginId, key, optimisticValue))
         showPanelNotice('插件参数已更新')
       } catch (error: any) {
-        if (target && previousConfig) {
-          target.config = previousConfig
-        }
         showPanelNotice(`插件参数保存失败: ${error.message}`, 'error')
       } finally {
         input.disabled = false
@@ -4079,7 +4096,7 @@ function bindPluginConfigInputs(): void {
     })
   })
 
-  pluginsList.querySelectorAll<HTMLButtonElement>('[data-plugin-file-select]').forEach(button => {
+  pluginsList.querySelectorAll<HTMLButtonElement>('[data-plugin-path-select]').forEach(button => {
     button.addEventListener('click', async () => {
       const pluginId = button.dataset.pluginId
       const key = button.dataset.pluginConfig
@@ -4090,24 +4107,45 @@ function bindPluginConfigInputs(): void {
       )
       const plugin = cachedPlugins.find(item => item.id === pluginId)
       const field = plugin?.configSchema.find(item => item.key === key)
-      if (!input || field?.type !== 'file') return
+      if (!input || (field?.type !== 'file' && field?.type !== 'directory')) return
 
       button.disabled = true
       try {
-        const result = await window.electronAPI.selectPluginConfigFile({
-          title: field.label ? `选择${field.label}` : '选择文件',
-          filters: field.filters,
+        const result = await window.electronAPI.selectPluginConfigPath({
+          mode: field.type,
+          title: field.label ? `选择${field.label}` : (field.type === 'directory' ? '选择目录' : '选择文件'),
+          filters: field.type === 'file' ? field.filters : undefined,
+          resolveFileExtensions: field.type === 'directory' ? field.resolveFileExtensions : undefined,
+          resolveRecursive: field.type === 'directory' ? field.resolveRecursive : undefined,
         })
         if (result.canceled) {
           return
         }
-        if (!result.success || !result.fileUrl) {
-          throw new Error(result.error || '文件选择失败')
+        if (!result.success) {
+          throw new Error(result.error || '路径选择失败')
         }
-        input.value = result.fileUrl
-        input.dispatchEvent(new Event('change', { bubbles: true }))
+        const selectedValue = field.type === 'directory' ? result.directoryPath : result.fileUrl
+        if (!selectedValue) {
+          throw new Error(field.type === 'directory' ? '目录选择失败' : '文件选择失败')
+        }
+        const configPatch: Record<string, unknown> = { [key]: selectedValue }
+        if (field.type === 'directory' && field.targetKey && result.resolvedFileUrl) {
+          configPatch[field.targetKey] = result.resolvedFileUrl
+          const targetInput = pluginsList.querySelector<HTMLInputElement>(
+            `input[data-plugin-id="${cssEscape(pluginId)}"][data-plugin-config="${cssEscape(field.targetKey)}"]`
+          )
+          if (targetInput) {
+            targetInput.value = result.resolvedFileUrl
+          }
+        }
+        if (field.type === 'directory' && field.targetKey && field.resolveFileExtensions?.length && !result.resolvedFileUrl) {
+          throw new Error(`目录中没有找到 ${field.resolveFileExtensions.join(', ')} 文件`)
+        }
+        input.value = selectedValue
+        await applyPluginConfigPatch(pluginId, configPatch)
+        showPanelNotice('插件路径已更新')
       } catch (error: any) {
-        showPanelNotice(`文件选择失败: ${error.message}`, 'error')
+        showPanelNotice(`路径选择失败: ${error.message}`, 'error')
       } finally {
         button.disabled = false
       }
@@ -4119,6 +4157,80 @@ function getPluginConfigPatch(pluginId: string, key: string, value: unknown): Re
   return { [key]: value }
 }
 
+function getLive2dCapabilitiesCacheKey(plugin: PluginInfo): string {
+  return `${plugin.id}:${String(plugin.config.modelUrl ?? '')}`
+}
+
+async function hydrateLive2dCapabilities(plugin: PluginInfo, page: 'main' | 'advanced'): Promise<void> {
+  if (plugin.id !== 'live2d-avatar') {
+    return
+  }
+  const cacheKey = getLive2dCapabilitiesCacheKey(plugin)
+  if (live2dCapabilitiesCache.has(cacheKey)) {
+    return
+  }
+
+  const result = await window.electronAPI.readLive2dModelCapabilities({
+    pluginDir: plugin.pluginDir,
+    modelUrl: String(plugin.config.modelUrl ?? ''),
+  })
+  if (!result.success) {
+    return
+  }
+
+  live2dCapabilitiesCache.set(cacheKey, {
+    motionGroups: result.motionGroups ?? [],
+    expressions: result.expressions ?? [],
+    lipSyncParameters: result.lipSyncParameters ?? [],
+  })
+  const currentCard = pluginsList.querySelector<HTMLElement>('.plugin-detail-card')
+  if (currentCard?.dataset.pluginId === plugin.id) {
+    renderPluginDetail(plugin, page)
+  }
+}
+
+async function applyPluginConfigPatch(pluginId: string, configPatch: Record<string, unknown>): Promise<void> {
+  const target = cachedPlugins.find(item => item.id === pluginId)
+  const previousConfig = target ? { ...target.config } : null
+
+  if (pluginId === 'live2d-avatar' && ('modelUrl' in configPatch || 'modelDir' in configPatch)) {
+    for (const key of live2dCapabilitiesCache.keys()) {
+      if (key.startsWith(`${pluginId}:`)) {
+        live2dCapabilitiesCache.delete(key)
+      }
+    }
+  }
+
+  if (target) {
+    target.config = {
+      ...target.config,
+      ...configPatch,
+    }
+  }
+
+  try {
+    const settings = await window.electronAPI.getSettings()
+    const currentPluginConfig = settings.pluginConfigs?.[pluginId] ?? {}
+    const nextPluginConfigs = {
+      ...(settings.pluginConfigs ?? {}),
+      [pluginId]: {
+        ...currentPluginConfig,
+        ...configPatch,
+      },
+    }
+    await window.electronAPI.updateSettings({ pluginConfigs: nextPluginConfigs })
+    if (target) {
+      target.config = nextPluginConfigs[pluginId]
+    }
+    await loadPluginUISurfaces()
+  } catch (error) {
+    if (target && previousConfig) {
+      target.config = previousConfig
+    }
+    throw error
+  }
+}
+
 function cssEscape(value: string): string {
   if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
     return CSS.escape(value)
@@ -4126,14 +4238,26 @@ function cssEscape(value: string): string {
   return value.replace(/["\\]/g, '\\$&')
 }
 
-function renderPluginConfigFields(plugin: PluginInfo): string {
+function renderPluginConfigFields(plugin: PluginInfo, page: 'main' | 'advanced' = 'main'): string {
   if (!plugin.configSchema.length) {
     return ''
   }
+  const primaryFields = plugin.configSchema.filter(field => !field.advanced)
+  const advancedFields = plugin.configSchema.filter(field => field.advanced)
+  const visibleFields = page === 'advanced' ? advancedFields : primaryFields
 
   return `
     <div class="plugin-config-fields">
-      ${plugin.configSchema.map(field => renderPluginConfigField(plugin, field)).join('')}
+      ${visibleFields.map(field => renderPluginConfigField(plugin, field)).join('')}
+      ${page === 'main' && advancedFields.length ? `
+        <button class="plugin-config-page-button" type="button" data-plugin-config-page="advanced">
+          <span>
+            <strong>高级模型参数</strong>
+            <small>模型文件、适配边距、位置、口型平滑、状态 motion 映射</small>
+          </span>
+          <span class="plugin-config-page-arrow">›</span>
+        </button>
+      ` : ''}
     </div>
   `
 }
@@ -4191,6 +4315,20 @@ function renderPluginConfigField(plugin: PluginInfo, field: PluginConfigField): 
         </div>
       </div>
     `
+  } else if (isLive2dMotionField(plugin, field)) {
+    const selectedValue = String(rawValue ?? '')
+    const motionOptions = getLive2dMotionOptions(plugin, selectedValue)
+    if (motionOptions.length > 0) {
+      control = `
+        <select class="plugin-config-input" ${commonAttrs}>
+          ${motionOptions.map(option => `
+            <option value="${escapeHtml(option)}" ${option === selectedValue ? 'selected' : ''}>${escapeHtml(option)}</option>
+          `).join('')}
+        </select>
+      `
+    } else {
+      control = `<input class="plugin-config-input" type="text" value="${escapeHtml(String(rawValue ?? ''))}" placeholder="${escapeHtml(field.placeholder ?? '')}" ${commonAttrs} />`
+    }
   } else if (field.type === 'select') {
     control = `
       <select class="plugin-config-input" ${commonAttrs}>
@@ -4199,11 +4337,11 @@ function renderPluginConfigField(plugin: PluginInfo, field: PluginConfigField): 
         `).join('')}
       </select>
     `
-  } else if (field.type === 'file') {
+  } else if (field.type === 'file' || field.type === 'directory') {
     control = `
       <div class="plugin-file-control">
         <input class="plugin-config-input plugin-file-input" type="text" value="${escapeHtml(String(rawValue ?? ''))}" placeholder="${escapeHtml(field.placeholder ?? '')}" ${commonAttrs} />
-        <button class="plugin-admin-button secondary plugin-file-button" type="button" data-plugin-file-select="true" data-plugin-id="${escapeHtml(plugin.id)}" data-plugin-config="${escapeHtml(field.key)}">${escapeHtml(field.buttonLabel ?? '选择')}</button>
+        <button class="plugin-admin-button secondary plugin-file-button" type="button" data-plugin-path-select="true" data-plugin-id="${escapeHtml(plugin.id)}" data-plugin-config="${escapeHtml(field.key)}">${escapeHtml(field.buttonLabel ?? (field.type === 'directory' ? '选择目录' : '选择'))}</button>
       </div>
     `
   } else if (field.type === 'string' && field.multiline) {
@@ -4213,7 +4351,7 @@ function renderPluginConfigField(plugin: PluginInfo, field: PluginConfigField): 
   }
 
   return `
-    <div class="plugin-config-row ${field.type === 'string' && field.multiline ? 'plugin-config-row-multiline' : ''}">
+    <div class="plugin-config-row ${field.type === 'string' && field.multiline ? 'plugin-config-row-multiline' : ''} ${field.type === 'file' || field.type === 'directory' ? 'plugin-config-row-path' : ''}">
       <div class="plugin-config-meta">
         <div class="plugin-config-label">${label}</div>
         ${desc}
@@ -4221,6 +4359,23 @@ function renderPluginConfigField(plugin: PluginInfo, field: PluginConfigField): 
       ${control}
     </div>
   `
+}
+
+function isLive2dMotionField(plugin: PluginInfo, field: PluginConfigField): boolean {
+  return plugin.id === 'live2d-avatar'
+    && field.type === 'string'
+    && ['idleMotion', 'listeningMotion', 'thinkingMotion', 'speakingMotion', 'taskMotion', 'errorMotion'].includes(field.key)
+}
+
+function getLive2dMotionOptions(plugin: PluginInfo, currentValue: string): string[] {
+  const capabilities = live2dCapabilitiesCache.get(getLive2dCapabilitiesCacheKey(plugin))
+  const groups = capabilities?.motionGroups ?? []
+  if (!groups.length) {
+    return []
+  }
+  return currentValue && !groups.includes(currentValue)
+    ? [currentValue, ...groups]
+    : groups
 }
 
 function readPluginConfigValue(

@@ -11,6 +11,7 @@
     "network"
   ],
   "config": {
+    "modelDir": "../models/Haru",
     "modelUrl": "../models/Haru/haru_greeter_t03.model3.json",
     "pixiUrl": "https://cdn.jsdelivr.net/npm/pixi.js@6.5.10/dist/browser/pixi.min.js",
     "cubismCoreUrl": "https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js",
@@ -34,23 +35,16 @@
   },
   "configSchema": [
     {
-      "key": "modelUrl",
-      "label": "Model URL",
-      "description": "URL for a Cubism .model3.json file. The bundled default is Haru from the pixi-live2d-display test assets.",
-      "type": "file",
-      "default": "../models/Haru/haru_greeter_t03.model3.json",
-      "placeholder": "../models/Haru/haru_greeter_t03.model3.json",
-      "buttonLabel": "选择模型",
-      "filters": [
-        {
-          "name": "Live2D Cubism Model",
-          "extensions": ["model3.json"]
-        },
-        {
-          "name": "JSON",
-          "extensions": ["json"]
-        }
-      ]
+      "key": "modelDir",
+      "label": "Model Folder",
+      "description": "Select a Live2D model folder. The first .model3.json in the folder is used automatically.",
+      "type": "directory",
+      "default": "../models/Haru",
+      "placeholder": "../models/Haru",
+      "buttonLabel": "选择模型目录",
+      "targetKey": "modelUrl",
+      "resolveFileExtensions": ["model3.json"],
+      "resolveRecursive": false
     },
     {
       "key": "scale",
@@ -74,6 +68,7 @@
       "label": "Fit padding",
       "description": "Minimum padding between the model bounds and the plugin viewport.",
       "type": "number",
+      "advanced": true,
       "default": 12,
       "min": 0,
       "max": 160,
@@ -84,6 +79,7 @@
       "label": "Max width",
       "description": "Maximum fraction of the plugin viewport width the model may occupy.",
       "type": "number",
+      "advanced": true,
       "default": 0.96,
       "min": 0.35,
       "max": 1,
@@ -94,6 +90,7 @@
       "label": "Max height",
       "description": "Maximum fraction of the plugin viewport height the model may occupy.",
       "type": "number",
+      "advanced": true,
       "default": 0.98,
       "min": 0.35,
       "max": 1,
@@ -104,6 +101,7 @@
       "label": "Offset X",
       "description": "Horizontal model offset in CSS pixels.",
       "type": "number",
+      "advanced": true,
       "default": 0,
       "min": -600,
       "max": 600,
@@ -114,6 +112,7 @@
       "label": "Offset Y",
       "description": "Vertical model offset in CSS pixels.",
       "type": "number",
+      "advanced": true,
       "default": 0,
       "min": -600,
       "max": 600,
@@ -134,6 +133,7 @@
       "label": "Mouth attack",
       "description": "How quickly the mouth opens when output energy rises.",
       "type": "number",
+      "advanced": true,
       "default": 0.42,
       "min": 0.05,
       "max": 1,
@@ -144,10 +144,79 @@
       "label": "Mouth release",
       "description": "How quickly the mouth closes when output energy falls.",
       "type": "number",
+      "advanced": true,
       "default": 0.16,
       "min": 0.02,
       "max": 1,
       "step": 0.01
+    },
+    {
+      "key": "modelUrl",
+      "label": "Model URL",
+      "description": "Advanced override for a Cubism .model3.json file. Folder selection above updates this automatically.",
+      "type": "file",
+      "advanced": true,
+      "default": "../models/Haru/haru_greeter_t03.model3.json",
+      "placeholder": "../models/Haru/haru_greeter_t03.model3.json",
+      "buttonLabel": "选择模型文件",
+      "filters": [
+        {
+          "name": "Live2D Cubism Model",
+          "extensions": ["model3.json"]
+        },
+        {
+          "name": "JSON",
+          "extensions": ["json"]
+        }
+      ]
+    },
+    {
+      "key": "idleMotion",
+      "label": "Idle motion group",
+      "description": "Motion group used while idle. Leave the default unless the model uses different group names.",
+      "type": "string",
+      "advanced": true,
+      "default": "Idle"
+    },
+    {
+      "key": "listeningMotion",
+      "label": "Listening motion group",
+      "description": "Motion group used while listening.",
+      "type": "string",
+      "advanced": true,
+      "default": "Tap"
+    },
+    {
+      "key": "thinkingMotion",
+      "label": "Thinking motion group",
+      "description": "Motion group used while thinking.",
+      "type": "string",
+      "advanced": true,
+      "default": "Tap"
+    },
+    {
+      "key": "speakingMotion",
+      "label": "Speaking motion group",
+      "description": "Motion group used while speaking.",
+      "type": "string",
+      "advanced": true,
+      "default": "Tap"
+    },
+    {
+      "key": "taskMotion",
+      "label": "Task motion group",
+      "description": "Motion group used while a task is visible.",
+      "type": "string",
+      "advanced": true,
+      "default": "Tap"
+    },
+    {
+      "key": "errorMotion",
+      "label": "Error motion group",
+      "description": "Motion group used for error states when available.",
+      "type": "string",
+      "advanced": true,
+      "default": "Tap"
     }
   ],
   "uiSurfaces": [

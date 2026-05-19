@@ -352,6 +352,7 @@ declare global {
                 key: string
                 label?: string
                 description?: string
+                advanced?: boolean
                 type: 'string'
                 default?: string
                 placeholder?: string
@@ -362,6 +363,7 @@ declare global {
                 key: string
                 label?: string
                 description?: string
+                advanced?: boolean
                 type: 'file'
                 default?: string
                 placeholder?: string
@@ -372,6 +374,20 @@ declare global {
                 key: string
                 label?: string
                 description?: string
+                advanced?: boolean
+                type: 'directory'
+                default?: string
+                placeholder?: string
+                buttonLabel?: string
+                targetKey?: string
+                resolveFileExtensions?: string[]
+                resolveRecursive?: boolean
+              }
+            | {
+                key: string
+                label?: string
+                description?: string
+                advanced?: boolean
                 type: 'number'
                 default?: number
                 min?: number
@@ -382,6 +398,7 @@ declare global {
                 key: string
                 label?: string
                 description?: string
+                advanced?: boolean
                 type: 'boolean'
                 default?: boolean
               }
@@ -389,6 +406,7 @@ declare global {
                 key: string
                 label?: string
                 description?: string
+                advanced?: boolean
                 type: 'select'
                 default?: string
                 options: Array<{ label: string; value: string }>
@@ -412,6 +430,22 @@ declare global {
         result?: unknown
         error?: string
       }>
+      selectPluginConfigPath: (options?: {
+        mode?: 'file' | 'directory'
+        title?: string
+        filters?: Array<{ name: string; extensions: string[] }>
+        resolveFileExtensions?: string[]
+        resolveRecursive?: boolean
+      }) => Promise<{
+        success: boolean
+        canceled?: boolean
+        filePath?: string
+        fileUrl?: string
+        directoryPath?: string
+        resolvedFilePath?: string
+        resolvedFileUrl?: string
+        error?: string
+      }>
       selectPluginConfigFile: (options?: {
         title?: string
         filters?: Array<{ name: string; extensions: string[] }>
@@ -420,6 +454,16 @@ declare global {
         canceled?: boolean
         filePath?: string
         fileUrl?: string
+        error?: string
+      }>
+      readLive2dModelCapabilities: (options?: {
+        pluginDir?: string
+        modelUrl?: string
+      }) => Promise<{
+        success: boolean
+        motionGroups?: string[]
+        expressions?: string[]
+        lipSyncParameters?: string[]
         error?: string
       }>
       listPersonalities: () => Promise<{

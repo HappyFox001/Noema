@@ -28,6 +28,7 @@ export type PluginConfigField =
       key: string
       label?: string
       description?: string
+      advanced?: boolean
       type: 'string'
       default?: string
       placeholder?: string
@@ -38,6 +39,7 @@ export type PluginConfigField =
       key: string
       label?: string
       description?: string
+      advanced?: boolean
       type: 'file'
       default?: string
       placeholder?: string
@@ -48,6 +50,20 @@ export type PluginConfigField =
       key: string
       label?: string
       description?: string
+      advanced?: boolean
+      type: 'directory'
+      default?: string
+      placeholder?: string
+      buttonLabel?: string
+      targetKey?: string
+      resolveFileExtensions?: string[]
+      resolveRecursive?: boolean
+    }
+  | {
+      key: string
+      label?: string
+      description?: string
+      advanced?: boolean
       type: 'number'
       default?: number
       min?: number
@@ -58,6 +74,7 @@ export type PluginConfigField =
       key: string
       label?: string
       description?: string
+      advanced?: boolean
       type: 'boolean'
       default?: boolean
     }
@@ -65,6 +82,7 @@ export type PluginConfigField =
       key: string
       label?: string
       description?: string
+      advanced?: boolean
       type: 'select'
       default?: string
       options: Array<{ label: string; value: string }>
