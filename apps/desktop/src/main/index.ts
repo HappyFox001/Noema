@@ -422,6 +422,10 @@ function publishWorkSurfaceFrame(frame: WorkSurfaceFrame): { success: boolean; e
   return { success: true }
 }
 
+;(globalThis as any).__herTextWorkSurfaceIsEnabled = () =>
+  appSettings.experimental?.workSurfaceEnabled === true
+;(globalThis as any).__herTextPublishWorkSurfaceFrame = publishWorkSurfaceFrame
+
 class ConversationDisplayController {
   private visibleText = ''
   private queue: Promise<void> = Promise.resolve()

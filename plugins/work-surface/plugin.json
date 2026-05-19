@@ -1,0 +1,52 @@
+{
+  "id": "work-surface",
+  "name": "Realtime Work Surface",
+  "description": "Exposes controlled UI tools that let task agents create and update a consistent realtime work surface instead of emitting arbitrary HTML.",
+  "version": "0.1.0",
+  "type": "sdk-plugin",
+  "main": "index.mjs",
+  "enabled": true,
+  "permissions": [
+    "tools.register"
+  ],
+  "config": {
+    "maxTableRows": 80,
+    "maxMarkdownChars": 12000
+  },
+  "configSchema": [
+    {
+      "key": "maxTableRows",
+      "label": "Max table rows",
+      "description": "Maximum rows a UI table tool may send in one update.",
+      "type": "number",
+      "default": 80,
+      "min": 5,
+      "max": 500,
+      "step": 5
+    },
+    {
+      "key": "maxMarkdownChars",
+      "label": "Max markdown chars",
+      "description": "Maximum markdown characters a UI block may send in one update.",
+      "type": "number",
+      "default": 12000,
+      "min": 1000,
+      "max": 50000,
+      "step": 1000
+    }
+  ],
+  "i18n": {
+    "zh-CN": {
+      "name": "实时工作页面",
+      "description": "提供受控 UI 工具，让任务 agent 创建和更新统一风格的实时工作页面，而不是输出任意 HTML。",
+      "config.maxTableRows.label": "表格行数上限",
+      "config.maxMarkdownChars.label": "Markdown 字符上限"
+    },
+    "en-US": {
+      "name": "Realtime Work Surface",
+      "description": "Provides controlled UI tools for consistent realtime work surfaces instead of arbitrary HTML.",
+      "config.maxTableRows.label": "Max table rows",
+      "config.maxMarkdownChars.label": "Max markdown chars"
+    }
+  }
+}

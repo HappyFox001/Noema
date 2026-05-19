@@ -216,44 +216,44 @@
 
 ## Phase 9：Work Surface Plugin
 
-- [ ] 新增 `plugins/work-surface/plugin.json`。
-- [ ] 插件默认启用条件受 settings 控制。
-- [ ] 插件注册 UI tools。
-- [ ] 插件扩展 task prompt，说明 UI 工具使用方式。
-- [ ] 插件提供 tool strategy hint。
-- [ ] 插件不直接修改 task runtime。
-- [ ] 插件 shutdown 时清理 pending state。
-- [ ] 插件 `.mjs` 运行 `node --check`。
+- [x] 新增 `plugins/work-surface/plugin.json`。
+- [x] 插件默认启用条件受 settings 控制。
+- [x] 插件注册 UI tools。
+- [x] 插件扩展 task prompt，说明 UI 工具使用方式。
+- [x] 插件提供 tool strategy hint。
+- [x] 插件不直接修改 task runtime。
+- [x] 插件 shutdown 时清理 pending state。
+- [x] 插件 `.mjs` 运行 `node --check`。
 
 ## Phase 10：Agent UI Tools
 
-- [ ] `ui_create_surface`
-  - [ ] 创建 surface。
-  - [ ] 设置 title/mode/layout。
-  - [ ] 返回 surfaceId。
-- [ ] `ui_show_markdown`
-  - [ ] 添加或更新 markdown block。
-  - [ ] 支持 targetId。
-- [ ] `ui_show_table`
-  - [ ] 添加或更新 DataTable。
-  - [ ] 支持 columns/rows。
-  - [ ] 支持 row bindings。
-- [ ] `ui_show_artifacts`
-  - [ ] 展示文件和图片 artifact。
-  - [ ] 只传引用，不内联大文件。
-- [ ] `ui_request_action`
-  - [ ] 展示操作按钮。
-  - [ ] 支持 payload schema。
-- [ ] `ui_request_input`
-  - [ ] 展示 FormPanel。
-  - [ ] 对接 `TaskUserInputRequest`。
-- [ ] `ui_update_component`
-  - [ ] 更新已有组件 props。
-  - [ ] 校验 targetId。
-- [ ] `ui_focus`
-  - [ ] 聚焦某个组件或对象。
-- [ ] 每个工具返回结构化执行结果。
-- [ ] 工具失败时给出可恢复错误。
+- [x] `ui_create_surface`
+  - [x] 创建 surface。
+  - [x] 设置 title/mode/layout。
+  - [x] 返回 surfaceId。
+- [x] `ui_show_markdown`
+  - [x] 添加或更新 markdown block。
+  - [x] 支持 targetId。
+- [x] `ui_show_table`
+  - [x] 添加或更新 DataTable。
+  - [x] 支持 columns/rows。
+  - [x] 支持 row bindings。
+- [x] `ui_show_artifacts`
+  - [x] 展示文件和图片 artifact。
+  - [x] 只传引用，不内联大文件。
+- [x] `ui_request_action`
+  - [x] 展示操作按钮。
+  - [x] 支持 payload schema。
+- [x] `ui_request_input`
+  - [x] 展示 FormPanel。
+  - [x] 对接 `TaskUserInputRequest`。
+- [x] `ui_update_component`
+  - [x] 更新已有组件 props。
+  - [x] 校验 targetId。
+- [x] `ui_focus`
+  - [x] 聚焦某个组件或对象。
+- [x] 每个工具返回结构化执行结果。
+- [x] 工具失败时给出可恢复错误。
 
 ## Phase 11：Tool Result 自动渲染
 
@@ -336,8 +336,8 @@
 - [ ] TypeScript 构建：
   - [ ] `pnpm --filter @her-text/sdk build`
   - [ ] `pnpm --filter @her-text/desktop build`
-- [ ] 插件语法检查：
-  - [ ] `node --check plugins/work-surface/index.mjs`
+- [x] 插件语法检查：
+  - [x] `node --check plugins/work-surface/index.mjs`
 - [ ] 手动测试关闭开关。
 - [ ] 手动测试开启开关但普通聊天不受影响。
 - [ ] 手动测试任务自动创建 surface。
