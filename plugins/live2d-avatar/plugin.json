@@ -151,26 +151,6 @@
       "step": 0.01
     },
     {
-      "key": "modelUrl",
-      "label": "Model URL",
-      "description": "Advanced override for a Cubism .model3.json file. Folder selection above updates this automatically.",
-      "type": "file",
-      "advanced": true,
-      "default": "../models/Haru/haru_greeter_t03.model3.json",
-      "placeholder": "../models/Haru/haru_greeter_t03.model3.json",
-      "buttonLabel": "选择模型文件",
-      "filters": [
-        {
-          "name": "Live2D Cubism Model",
-          "extensions": ["model3.json"]
-        },
-        {
-          "name": "JSON",
-          "extensions": ["json"]
-        }
-      ]
-    },
-    {
       "key": "idleMotion",
       "label": "Idle motion group",
       "description": "Motion group used while idle. Leave the default unless the model uses different group names.",
