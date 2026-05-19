@@ -155,32 +155,32 @@
   - [x] 图片预览。
   - [x] 网页截图预览。
   - [x] 打开文件 action。
-- [ ] `FormPanel`
-  - [ ] 文本输入。
-  - [ ] textarea。
-  - [ ] select。
-  - [ ] checkbox。
-  - [ ] password/secret。
-  - [ ] submit/cancel。
+- [x] `FormPanel`
+  - [x] 文本输入。
+  - [x] textarea。
+  - [x] select。
+  - [x] checkbox。
+  - [x] password/secret。
+  - [x] submit/cancel。
 - [x] `ActionBar`
   - [x] 主操作。
   - [x] 次级操作。
   - [x] danger 操作。
   - [x] disabled/loading 状态。
-- [ ] `ChartView`
-  - [ ] bar。
-  - [ ] line。
-  - [ ] pie。
-  - [ ] scatter。
-  - [ ] 空数据状态。
-- [ ] `TimelineView`
-  - [ ] 任务事件列表。
-  - [ ] 工具调用摘要。
-  - [ ] 错误/重试标记。
-- [ ] `InspectorPanel`
-  - [ ] 展示当前选中对象属性。
-  - [ ] 展示绑定来源。
-  - [ ] 展示可用操作。
+- [x] `ChartView`
+  - [x] bar。
+  - [x] line。
+  - [x] pie。
+  - [x] scatter。
+  - [x] 空数据状态。
+- [x] `TimelineView`
+  - [x] 任务事件列表。
+  - [x] 工具调用摘要。
+  - [x] 错误/重试标记。
+- [x] `InspectorPanel`
+  - [x] 展示当前选中对象属性。
+  - [x] 展示绑定来源。
+  - [x] 展示可用操作。
 
 ## Phase 7：视觉风格
 
@@ -257,16 +257,16 @@
 
 ## Phase 11：Tool Result 自动渲染
 
-- [ ] 定义 `resultToComponent()`。
-- [ ] 文件列表结果转 DataTable 或 ArtifactGrid。
-- [ ] 搜索结果转 DataTable。
-- [ ] 图片路径转 ArtifactGrid。
-- [ ] JSON 数组转 DataTable。
-- [ ] 数值序列转 ChartView。
-- [ ] markdown/text 转 MarkdownBlock。
-- [ ] 未识别结果转折叠 JSON block。
-- [ ] 大对象截断并提供展开 action。
-- [ ] 转换器不能改变原始 tool result。
+- [x] 定义 `resultToComponent()`。
+- [x] 文件列表结果转 DataTable 或 ArtifactGrid。
+- [x] 搜索结果转 DataTable。
+- [x] 图片路径转 ArtifactGrid。
+- [x] JSON 数组转 DataTable。
+- [x] 数值序列转 ChartView。
+- [x] markdown/text 转 MarkdownBlock。
+- [x] 未识别结果转折叠 JSON block。
+- [x] 大对象截断并提供展开 action。
+- [x] 转换器不能改变原始 tool result。
 
 ## Phase 12：Click & Speak
 
@@ -284,7 +284,7 @@
 ## Phase 13：Action 和 Form 回流
 
 - [x] Action 点击回传 `surface.action`。
-- [ ] Form 提交回传 `surface.input_submitted`。
+- [x] Form 提交回传 `surface.input_submitted`。
 - [ ] Main 校验 actionId 是否来自当前 surface。
 - [ ] Main 校验 payload 是否符合 schema。
 - [x] Action 可触发：
@@ -294,7 +294,7 @@
   - [ ] 打开文件。
   - [ ] 重新运行某一步。
 - [ ] 高风险 action 需要确认。
-- [ ] Secret input 不写入普通日志。
+- [x] Secret input 不写入普通日志。
 
 ## Phase 14：任务继续执行机制
 

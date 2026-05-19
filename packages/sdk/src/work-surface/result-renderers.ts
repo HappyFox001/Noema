@@ -3,6 +3,7 @@
  */
 import type {
   ArtifactGrid,
+  ChartView,
   ComponentNode,
   DataTable,
   MarkdownBlock,
@@ -25,6 +26,9 @@ export function resultToComponent(result: unknown, options: ResultRenderOptions 
   }
 
   if (Array.isArray(result)) {
+    if (result.every(value => typeof value === 'number')) {
+      return createChartComponent(`${idPrefix}-chart`, result as number[], options.title, bindings)
+    }
     if (result.every(isRecord)) {
       return createTableComponent(
         `${idPrefix}-table`,
@@ -48,6 +52,26 @@ export function resultToComponent(result: unknown, options: ResultRenderOptions 
   }
 
   return createMarkdownComponent(`${idPrefix}-value`, String(result ?? ''), options.title, bindings)
+}
+
+function createChartComponent(
+  id: string,
+  values: number[],
+  title?: string,
+  bindings?: RuntimeBinding[]
+): ChartView {
+  return {
+    id,
+    kind: 'chart',
+    title,
+    bindings,
+    chart: {
+      type: 'line',
+      xKey: 'index',
+      yKey: 'value',
+      data: values.slice(0, 200).map((value, index) => ({ index, value })),
+    },
+  }
 }
 
 function createMarkdownComponent(

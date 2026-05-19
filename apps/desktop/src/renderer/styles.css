@@ -676,7 +676,10 @@ body.work-surface-enabled .task-panel {
 
 .work-surface-plan,
 .work-surface-artifacts,
-.work-surface-actions {
+.work-surface-actions,
+.work-surface-form,
+.work-surface-timeline,
+.work-surface-inspector {
   display: grid;
   gap: 7px;
 }
@@ -730,6 +733,62 @@ body.work-surface-enabled .task-panel {
 .work-surface-action.danger {
   border-color: rgba(255, 112, 132, 0.38);
   color: var(--ws-danger);
+}
+
+.work-surface-field {
+  display: grid;
+  gap: 5px;
+  color: var(--ws-muted);
+  font-size: 10px;
+}
+
+.work-surface-field input,
+.work-surface-field textarea,
+.work-surface-field select {
+  width: 100%;
+  min-height: 28px;
+  border: 1px solid var(--ws-border);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.22);
+  color: var(--ws-text);
+  font: inherit;
+}
+
+.work-surface-chart {
+  display: flex;
+  align-items: end;
+  gap: 4px;
+  height: 90px;
+}
+
+.work-surface-chart-bar {
+  flex: 1;
+  min-width: 4px;
+  border-radius: 4px 4px 0 0;
+  background: linear-gradient(180deg, var(--ws-accent), rgba(112, 211, 255, 0.22));
+}
+
+.work-surface-timeline,
+.work-surface-inspector {
+  margin: 0;
+}
+
+.work-surface-timeline-item.failed {
+  color: var(--ws-danger);
+}
+
+.work-surface-inspector {
+  grid-template-columns: minmax(80px, auto) 1fr;
+}
+
+.work-surface-inspector dt {
+  color: var(--ws-muted);
+}
+
+.work-surface-inspector dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .plugin-ui-task-surface {

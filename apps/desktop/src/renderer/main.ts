@@ -2815,6 +2815,14 @@ function renderWorkSurfaceComponent(component: any): HTMLElement {
     node.appendChild(renderWorkSurfaceArtifacts(component))
   } else if (component.kind === 'actions') {
     node.appendChild(renderWorkSurfaceActions(component))
+  } else if (component.kind === 'form') {
+    node.appendChild(renderWorkSurfaceForm(component))
+  } else if (component.kind === 'chart') {
+    node.appendChild(renderWorkSurfaceChart(component))
+  } else if (component.kind === 'timeline') {
+    node.appendChild(renderWorkSurfaceTimeline(component))
+  } else if (component.kind === 'inspector') {
+    node.appendChild(renderWorkSurfaceInspector(component))
   } else {
     node.appendChild(renderWorkSurfaceText(component.markdown ?? component.prompt ?? JSON.stringify(component, null, 2)))
   }
@@ -2892,6 +2900,116 @@ function renderWorkSurfaceTable(component: any): HTMLElement {
   }
   table.append(head, body)
   return table
+}
+
+function renderWorkSurfaceForm(component: any): HTMLElement {
+  const form = document.createElement('form')
+  form.className = 'work-surface-form'
+  for (const field of component.fields ?? []) {
+    const label = document.createElement('label')
+    label.className = 'work-surface-field'
+    const labelText = document.createElement('span')
+    labelText.textContent = field.label || field.id
+    const input = createWorkSurfaceInput(field)
+    input.name = field.id
+    label.append(labelText, input)
+    form.appendChild(label)
+  }
+  const actions = document.createElement('div')
+  actions.className = 'work-surface-actions'
+  const submit = document.createElement('button')
+  submit.className = 'work-surface-action primary'
+  submit.type = 'submit'
+  submit.textContent = 'Submit'
+  actions.appendChild(submit)
+  form.appendChild(actions)
+  form.addEventListener('submit', (event) => {
+    event.preventDefault()
+    const formData = new FormData(form)
+    const value = Object.fromEntries(formData.entries())
+    void window.electronAPI.sendWorkSurfaceEvent({
+      type: 'surface.input_submitted',
+      surfaceId: activeWorkSurfaceSnapshot?.surfaceId,
+      targetId: component.id,
+      requestId: component.requestId,
+      value,
+      bindings: component.bindings ?? [],
+    })
+  })
+  return form
+}
+
+function createWorkSurfaceInput(field: any): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement {
+  if (field.kind === 'textarea') {
+    const input = document.createElement('textarea')
+    input.placeholder = field.placeholder || ''
+    input.value = field.value ?? ''
+    return input
+  }
+  if (field.kind === 'select') {
+    const input = document.createElement('select')
+    for (const option of field.options ?? []) {
+      const item = document.createElement('option')
+      item.value = option.value
+      item.textContent = option.label
+      input.appendChild(item)
+    }
+    return input
+  }
+  const input = document.createElement('input')
+  input.type = field.kind === 'password' ? 'password' : field.kind === 'number' ? 'number' : field.kind === 'checkbox' ? 'checkbox' : 'text'
+  input.placeholder = field.placeholder || ''
+  if (field.value !== undefined && input.type !== 'checkbox') {
+    input.value = String(field.value)
+  }
+  return input
+}
+
+function renderWorkSurfaceChart(component: any): HTMLElement {
+  const chart = document.createElement('div')
+  chart.className = `work-surface-chart ${component.chart?.type || 'bar'}`
+  const data = Array.isArray(component.chart?.data) ? component.chart.data : []
+  if (data.length === 0) {
+    chart.appendChild(renderWorkSurfaceText('No data'))
+    return chart
+  }
+  const values = data.map((item: any) => Number(item[component.chart?.yKey || 'value'] ?? item.value ?? 0))
+  const max = Math.max(1, ...values.map(Math.abs))
+  values.slice(0, 40).forEach((value, index) => {
+    const bar = document.createElement('div')
+    bar.className = 'work-surface-chart-bar'
+    bar.style.height = `${Math.max(4, Math.round(Math.abs(value) / max * 80))}%`
+    bar.title = `${index}: ${value}`
+    chart.appendChild(bar)
+  })
+  return chart
+}
+
+function renderWorkSurfaceTimeline(component: any): HTMLElement {
+  const list = document.createElement('ol')
+  list.className = 'work-surface-timeline'
+  for (const item of component.items ?? []) {
+    const entry = document.createElement('li')
+    entry.className = `work-surface-timeline-item ${item.status || 'pending'}`
+    entry.textContent = item.description ? `${item.title}: ${item.description}` : item.title
+    list.appendChild(entry)
+  }
+  return list
+}
+
+function renderWorkSurfaceInspector(component: any): HTMLElement {
+  const panel = document.createElement('dl')
+  panel.className = 'work-surface-inspector'
+  for (const property of component.properties ?? []) {
+    const term = document.createElement('dt')
+    term.textContent = property.label || property.id
+    const value = document.createElement('dd')
+    value.textContent = typeof property.value === 'string'
+      ? property.value
+      : JSON.stringify(property.value)
+    panel.append(term, value)
+  }
+  return panel
 }
 
 function renderWorkSurfaceArtifacts(component: any): HTMLElement {
