@@ -1,0 +1,389 @@
+# Realtime Work Surface To Do
+
+这份清单用于把 Realtime Work Surface 从设计推进到可落地实现。原则是默认关闭、旁路接入、先验证体验，再逐步下沉到 SDK，不破坏现有 Her-Text 内核。
+
+## Phase 0：设计冻结和范围确认
+
+- [x] 确认实验功能名称：`Realtime Work Surface`、`Work Surface` 或中文名。
+- [x] 确认默认关闭策略：新安装、升级、开发模式下都默认关闭。
+- [x] 确认进入条件：
+  - [x] 用户显式说“打开工作页面/用工作台模式”。
+  - [x] 设置开启后复杂任务自动进入。
+  - [x] 只对 task intent 生效，不接管普通聊天。
+- [x] 确认退出条件：
+  - [x] 用户关闭工作页面。
+  - [x] 任务完成后保留只读结果页。
+  - [x] 任务取消后进入 cancelled 状态。
+- [x] 确认第一版只实现内置组件，不支持模型生成 HTML。
+- [x] 确认第一版不做插件自定义组件市场。
+- [x] 确认第一版不修改 `TaskRuntime` 主循环。
+
+## Phase 1：类型和协议定义
+
+- [x] 定义 `WorkSurfaceFrame` 类型。
+- [x] 定义 `SurfaceCreateFrame`。
+- [x] 定义 `SurfacePatchFrame`。
+- [x] 定义 `SurfaceFocusFrame`。
+- [x] 定义 `SurfaceMessageFrame`。
+- [x] 定义 `SurfaceRequestInputFrame`。
+- [x] 定义 `SurfaceCloseFrame`。
+- [x] 定义 `UIPatch` 操作：
+  - [x] `add`
+  - [x] `replace`
+  - [x] `update`
+  - [x] `remove`
+  - [x] `bind`
+- [x] 定义 `RuntimeBinding`：
+  - [x] `task`
+  - [x] `task_step`
+  - [x] `tool_result`
+  - [x] `file`
+  - [x] `memory`
+  - [x] `custom`
+- [x] 定义 `SurfaceUserEvent`：
+  - [x] `surface.select`
+  - [x] `surface.action`
+  - [x] `surface.voice`
+  - [x] `surface.input_submitted`
+- [x] 定义组件 schema：
+  - [x] `MarkdownBlock`
+  - [x] `TaskPlanView`
+  - [x] `DataTable`
+  - [x] `ChartView`
+  - [x] `ArtifactGrid`
+  - [x] `FormPanel`
+  - [x] `ActionBar`
+  - [x] `TimelineView`
+  - [x] `InspectorPanel`
+  - [x] `StatusStrip`
+- [x] 定义 frame 校验规则。
+- [x] 定义 schema 版本字段，例如 `schemaVersion: 1`。
+- [x] 明确未知 frame、未知 component、未知 patch 的降级行为。
+
+## Phase 2：设置和功能开关
+
+- [ ] 在 settings 类型中增加实验开关：
+  - [ ] `experimental.workSurfaceEnabled`
+- [ ] 在 settings store 增加默认值 `false`。
+- [ ] 在设置 UI 中增加开关。
+- [ ] 开关文案明确说明这是实验能力。
+- [ ] 关闭开关时不注册 UI tools。
+- [ ] 关闭开关时 renderer 不显示 WorkSurfaceView。
+- [ ] 关闭开关时不向 task model 注入 UI 协议提示。
+- [ ] 切换开关后确认是否需要重启 SDK 或刷新插件。
+- [ ] 增加日志，标记 work surface 是否启用。
+
+## Phase 3：Desktop 旁路控制器
+
+- [ ] 新增 `WorkSurfaceController`。
+- [ ] 控制器维护 surface state。
+- [ ] 控制器接收 `WorkSurfaceFrame`。
+- [ ] 控制器校验 frame。
+- [ ] 控制器应用 patch。
+- [ ] 控制器维护 component id 索引。
+- [ ] 控制器维护 runtime binding 索引。
+- [ ] 控制器节流高频 patch。
+- [ ] 控制器向 renderer 发送 surface snapshot。
+- [ ] 控制器向 renderer 发送增量 frame。
+- [ ] 控制器处理 renderer 回传的 `SurfaceUserEvent`。
+- [ ] 控制器失败时只记录错误，不中断任务 runtime。
+- [ ] 控制器提供 reset/close API。
+- [ ] 控制器支持按 taskId 查询 active surface。
+
+## Phase 4：IPC 通道
+
+- [ ] Main -> Renderer：
+  - [ ] `workSurface:created`
+  - [ ] `workSurface:frame`
+  - [ ] `workSurface:snapshot`
+  - [ ] `workSurface:closed`
+  - [ ] `workSurface:error`
+- [ ] Renderer -> Main：
+  - [ ] `workSurface:event`
+  - [ ] `workSurface:ready`
+  - [ ] `workSurface:requestSnapshot`
+- [ ] 在 preload 暴露受控 API。
+- [ ] API 不暴露任意 DOM 或任意 eval 能力。
+- [ ] 增加事件 payload 基本校验。
+- [ ] 确认 IPC 命名与现有 `conversation:*`、`plugins:*` 风格一致。
+
+## Phase 5：Renderer WorkSurfaceView
+
+- [ ] 新增 `work-surface` renderer 模块。
+- [ ] 新增 WorkSurfaceView 容器。
+- [ ] 实现 surface 创建和销毁。
+- [ ] 实现 layout 渲染。
+- [ ] 实现 component registry。
+- [ ] 实现 patch 应用。
+- [ ] 实现 selected state。
+- [ ] 实现 focus state。
+- [ ] 实现 loading state。
+- [ ] 实现 empty state。
+- [ ] 实现 error state。
+- [ ] 实现任务完成后的只读状态。
+- [ ] 接入现有 task panel 显示区域。
+- [ ] 开关关闭时保持当前 UI 不变。
+- [ ] 支持窄窗口布局。
+- [ ] 支持高 DPI 和窗口缩放。
+
+## Phase 6：内置组件实现
+
+- [ ] `StatusStrip`
+  - [ ] 显示任务状态。
+  - [ ] 显示当前 step。
+  - [ ] 显示等待用户/失败/完成状态。
+- [ ] `TaskPlanView`
+  - [ ] 渲染 plan title。
+  - [ ] 渲染 step 列表。
+  - [ ] 展示 step 状态。
+  - [ ] 支持当前 step 高亮。
+  - [ ] 支持 step 错误信息。
+- [ ] `MarkdownBlock`
+  - [ ] 支持安全 markdown 渲染。
+  - [ ] 禁止 raw HTML。
+  - [ ] 支持代码块。
+- [ ] `DataTable`
+  - [ ] 渲染列。
+  - [ ] 渲染行。
+  - [ ] 支持单选/多选。
+  - [ ] 支持排序。
+  - [ ] 支持简单过滤。
+  - [ ] 支持行级 action。
+  - [ ] 大数据分页或截断。
+- [ ] `ArtifactGrid`
+  - [ ] 文件卡片。
+  - [ ] 图片预览。
+  - [ ] 网页截图预览。
+  - [ ] 打开文件 action。
+- [ ] `FormPanel`
+  - [ ] 文本输入。
+  - [ ] textarea。
+  - [ ] select。
+  - [ ] checkbox。
+  - [ ] password/secret。
+  - [ ] submit/cancel。
+- [ ] `ActionBar`
+  - [ ] 主操作。
+  - [ ] 次级操作。
+  - [ ] danger 操作。
+  - [ ] disabled/loading 状态。
+- [ ] `ChartView`
+  - [ ] bar。
+  - [ ] line。
+  - [ ] pie。
+  - [ ] scatter。
+  - [ ] 空数据状态。
+- [ ] `TimelineView`
+  - [ ] 任务事件列表。
+  - [ ] 工具调用摘要。
+  - [ ] 错误/重试标记。
+- [ ] `InspectorPanel`
+  - [ ] 展示当前选中对象属性。
+  - [ ] 展示绑定来源。
+  - [ ] 展示可用操作。
+
+## Phase 7：视觉风格
+
+- [ ] 定义 work surface CSS tokens。
+- [ ] 和现有控制面板颜色变量对齐。
+- [ ] 实现深色玻璃质感面板。
+- [ ] 实现细线边框和低强度微光。
+- [ ] 实现状态条动效。
+- [ ] 实现选中态。
+- [ ] 实现 focus ring。
+- [ ] 实现 loading skeleton。
+- [ ] 控制强调色数量不超过 2 个。
+- [ ] 避免大面积彩色渐变。
+- [ ] 避免营销页式大卡片。
+- [ ] 避免 UI 元素互相遮挡。
+- [ ] 检查小窗口下文本不溢出。
+- [ ] 检查英文、中文混排。
+
+## Phase 8：Task Event 自动映射
+
+- [ ] 任务开始时创建默认 surface。
+- [ ] `task.started` 映射到 StatusStrip。
+- [ ] `task.plan.created` 映射到 TaskPlanView。
+- [ ] `task.plan.updated` 更新 TaskPlanView。
+- [ ] `task.step.started` 高亮当前 step。
+- [ ] `task.step.completed` 标记 step 完成。
+- [ ] `task.step.failed` 标记 step 失败。
+- [ ] `task.waiting_user` 显示 FormPanel 或 request input。
+- [ ] `task.completed` 显示最终状态。
+- [ ] `task.failed` 显示错误状态。
+- [ ] 高频 step 更新合并。
+- [ ] 事件缺字段时降级显示。
+
+## Phase 9：Work Surface Plugin
+
+- [ ] 新增 `plugins/work-surface/plugin.json`。
+- [ ] 插件默认启用条件受 settings 控制。
+- [ ] 插件注册 UI tools。
+- [ ] 插件扩展 task prompt，说明 UI 工具使用方式。
+- [ ] 插件提供 tool strategy hint。
+- [ ] 插件不直接修改 task runtime。
+- [ ] 插件 shutdown 时清理 pending state。
+- [ ] 插件 `.mjs` 运行 `node --check`。
+
+## Phase 10：Agent UI Tools
+
+- [ ] `ui_create_surface`
+  - [ ] 创建 surface。
+  - [ ] 设置 title/mode/layout。
+  - [ ] 返回 surfaceId。
+- [ ] `ui_show_markdown`
+  - [ ] 添加或更新 markdown block。
+  - [ ] 支持 targetId。
+- [ ] `ui_show_table`
+  - [ ] 添加或更新 DataTable。
+  - [ ] 支持 columns/rows。
+  - [ ] 支持 row bindings。
+- [ ] `ui_show_artifacts`
+  - [ ] 展示文件和图片 artifact。
+  - [ ] 只传引用，不内联大文件。
+- [ ] `ui_request_action`
+  - [ ] 展示操作按钮。
+  - [ ] 支持 payload schema。
+- [ ] `ui_request_input`
+  - [ ] 展示 FormPanel。
+  - [ ] 对接 `TaskUserInputRequest`。
+- [ ] `ui_update_component`
+  - [ ] 更新已有组件 props。
+  - [ ] 校验 targetId。
+- [ ] `ui_focus`
+  - [ ] 聚焦某个组件或对象。
+- [ ] 每个工具返回结构化执行结果。
+- [ ] 工具失败时给出可恢复错误。
+
+## Phase 11：Tool Result 自动渲染
+
+- [ ] 定义 `resultToComponent()`。
+- [ ] 文件列表结果转 DataTable 或 ArtifactGrid。
+- [ ] 搜索结果转 DataTable。
+- [ ] 图片路径转 ArtifactGrid。
+- [ ] JSON 数组转 DataTable。
+- [ ] 数值序列转 ChartView。
+- [ ] markdown/text 转 MarkdownBlock。
+- [ ] 未识别结果转折叠 JSON block。
+- [ ] 大对象截断并提供展开 action。
+- [ ] 转换器不能改变原始 tool result。
+
+## Phase 12：Click & Speak
+
+- [ ] Renderer 支持点击选择组件。
+- [ ] Renderer 支持表格行选择。
+- [ ] Renderer 支持 artifact 选择。
+- [ ] Renderer 维护 selected bindings。
+- [ ] 语音输入时附带 selected bindings。
+- [ ] 文本输入时附带 selected bindings。
+- [ ] Main 将 `surface.voice` 转为 task continuation context。
+- [ ] Prompt 中明确告诉 agent 用户当前选择的对象。
+- [ ] 无选择时保持现有语音输入行为。
+- [ ] 多选时提供清晰上下文摘要。
+
+## Phase 13：Action 和 Form 回流
+
+- [ ] Action 点击回传 `surface.action`。
+- [ ] Form 提交回传 `surface.input_submitted`。
+- [ ] Main 校验 actionId 是否来自当前 surface。
+- [ ] Main 校验 payload 是否符合 schema。
+- [ ] Action 可触发：
+  - [ ] 继续任务。
+  - [ ] 修改任务。
+  - [ ] 取消任务。
+  - [ ] 打开文件。
+  - [ ] 重新运行某一步。
+- [ ] 高风险 action 需要确认。
+- [ ] Secret input 不写入普通日志。
+
+## Phase 14：任务继续执行机制
+
+- [ ] 定义 surface event 如何进入现有 task runtime。
+- [ ] 第一版可以作为新的 user input 进入 DialogueOrchestrator。
+- [ ] 后续支持 task continuation，而不是启动全新任务。
+- [ ] 明确 active task 不存在时的行为。
+- [ ] 明确任务已完成时 action 的行为。
+- [ ] 明确任务失败后是否允许 retry。
+- [ ] 避免和 `RuntimeJobManager` concurrency 规则冲突。
+
+## Phase 15：持久化和恢复
+
+- [ ] 定义 `WorkSurfaceSnapshot`。
+- [ ] 第一版只内存保存。
+- [ ] 第二版关联 taskId 保存 snapshot。
+- [ ] 保存 layout。
+- [ ] 保存 components。
+- [ ] 保存 bindings。
+- [ ] 保存 selectedIds。
+- [ ] 不保存 secret input。
+- [ ] 不保存 renderer 私有 DOM 状态。
+- [ ] 任务恢复时恢复只读 surface。
+- [ ] 历史任务可以打开 surface snapshot。
+
+## Phase 16：错误处理
+
+- [ ] Frame schema 校验失败时记录 warning。
+- [ ] 单个 component 渲染失败时显示组件错误卡。
+- [ ] Renderer 崩溃不影响 task runtime。
+- [ ] Plugin tool 失败不影响非 UI 工具。
+- [ ] Surface close 不取消任务，除非用户明确取消。
+- [ ] Task cancel 时关闭或冻结 surface。
+- [ ] IPC payload 异常时丢弃并记录。
+- [ ] Markdown sanitize 失败时显示纯文本。
+
+## Phase 17：测试和验证
+
+- [ ] TypeScript 构建：
+  - [ ] `pnpm --filter @her-text/sdk build`
+  - [ ] `pnpm --filter @her-text/desktop build`
+- [ ] 插件语法检查：
+  - [ ] `node --check plugins/work-surface/index.mjs`
+- [ ] 手动测试关闭开关。
+- [ ] 手动测试开启开关但普通聊天不受影响。
+- [ ] 手动测试任务自动创建 surface。
+- [ ] 手动测试 plan/step 实时更新。
+- [ ] 手动测试 UI tools 添加 markdown/table/action。
+- [ ] 手动测试点击选择后语音携带绑定。
+- [ ] 手动测试 action 回流。
+- [ ] 手动测试 renderer 错误不影响任务。
+- [ ] 手动测试窗口缩放。
+- [ ] 手动测试暗色视觉一致性。
+
+## Phase 18：文档
+
+- [ ] 更新 `docs/realtime-work-surface-design.md`。
+- [ ] 增加用户侧说明：如何开启实验功能。
+- [ ] 增加开发者说明：如何新增内置组件。
+- [ ] 增加 UI tool 使用规范。
+- [ ] 增加安全边界说明。
+- [ ] 增加已知限制。
+- [ ] 增加示例任务：
+  - [ ] 网页调研结果工作页。
+  - [ ] 文件整理工作页。
+  - [ ] 数据分析工作页。
+  - [ ] 多候选方案选择工作页。
+
+## Phase 19：第一版验收
+
+- [ ] 关闭开关时，现有功能无行为变化。
+- [ ] 开启开关后，复杂任务能打开工作页面。
+- [ ] 工作页面展示计划、状态、结果和可操作按钮。
+- [ ] Agent 可以通过 UI tools 推送至少三类组件。
+- [ ] 用户可以点选对象并继续用语音表达意图。
+- [ ] UI 风格和现有控制面板一致，有未来科技感但不过度彩色。
+- [ ] 任意 UI frame 错误不会导致任务失败。
+- [ ] 构建通过。
+- [ ] 插件语法检查通过。
+
+## Phase 20：后续增强
+
+- [ ] 支持多个 surface。
+- [ ] 支持 surface tabs。
+- [ ] 支持拖拽布局。
+- [ ] 支持更强 chart spec。
+- [ ] 支持 artifact diff。
+- [ ] 支持任务 replay。
+- [ ] 支持插件贡献受控组件。
+- [ ] 支持 work surface memory summary。
+- [ ] 支持跨任务搜索 work surface 历史。
+- [ ] 支持导出工作页为报告。
