@@ -259,6 +259,101 @@ Chart 使用安全 chart spec，不接受任意脚本。
 
 用于继续推进任务所需的用户输入。
 
+## 当前实现入口
+
+用户侧开启方式：
+
+1. 打开设置面板。
+2. 进入实验功能区域。
+3. 开启 `Realtime Work Surface`。
+4. 设置保存后 Desktop 会重建 SDK，使 `work-surface` runtime plugin 的 UI tools 和 prompt extension 与开关状态一致。
+
+关闭开关时，Desktop 会清空当前 work surface controller，并向 renderer 发送关闭事件。普通聊天、语音输入、语音输出、任务 runtime 和非 UI 插件工具不依赖该开关。
+
+## 开发者扩展内置组件
+
+第一版组件由 `apps/desktop/src/renderer/work-surface.ts` 统一渲染。新增内置组件时按以下顺序修改：
+
+1. 在 `packages/sdk/src/work-surface/types.ts` 增加受控 schema。
+2. 在 `packages/sdk/src/work-surface/controller.ts` 保持 schema 校验和 patch 行为，不添加 DOM 概念。
+3. 在 `apps/desktop/src/renderer/work-surface.ts` 增加 renderer 分支。
+4. 在 `apps/desktop/src/renderer/styles.css` 增加与控制面板一致的样式。
+5. 如需 agent 主动创建该组件，在 `plugins/work-surface/index.mjs` 增加 UI tool 或扩展现有 tool 参数。
+
+组件必须只接收结构化数据。不要让模型传入 HTML、CSS、JavaScript、DOM selector 或任意 renderer callback。
+
+## UI Tool 使用规范
+
+Agent 使用 UI tools 时遵守这些规则：
+
+- 先用 `ui_create_surface` 创建或复用 surface。
+- 叙事摘要用 `ui_show_markdown`。
+- 结构化列表、搜索结果、对比项和文件清单用 `ui_show_table`。
+- 本地文件、图片、网页截图和报告用 `ui_show_artifacts`，只传路径和引用，不内联大文件。
+- 需要用户推进任务时用 `ui_request_action` 或 `ui_request_input`。
+- 组件局部状态变化用 `ui_update_component`，不要重建整个页面。
+- 需要引导用户注意某个对象时用 `ui_focus`。
+- 不能把 UI tool 的成功当成任务事实完成；任务事实仍以 runtime、tool result 和 task state 为准。
+
+## 安全边界
+
+- Renderer 不执行模型生成的 HTML、CSS 或 JavaScript。
+- IPC 只暴露受控的 work surface API，不暴露任意 DOM 或 eval 能力。
+- Main 校验 renderer event 的基础结构，并且 action 必须来自当前 snapshot。
+- 高风险 action 和 danger action 需要用户确认。
+- `open_file` 只通过系统 shell 打开本地路径，不把文件内容注入 prompt。
+- Secret input 不写入普通日志，snapshot 持久化也不保存 renderer 私有 DOM 状态。
+- Frame 或 component 渲染失败只显示错误卡，不中断任务 runtime。
+
+## 已知限制
+
+- 第一版仍是实验能力，默认关闭。
+- Renderer 当前使用内置组件 registry，不支持第三方插件传入自定义前端代码。
+- Chart renderer 是轻量 DOM 可视化，不替代完整图表库。
+- Snapshot 持久化保留最近一批 surface，作为只读恢复和历史查看基础。
+- Action 回流第一版通过现有对话/任务输入继续推进，不直接插入 TaskRuntime 内部执行栈。
+- Work surface 不改变并发控制规则；没有 active task 时 action 会作为新的用户输入处理。
+
+## 示例任务
+
+网页调研结果工作页：
+
+- `StatusStrip` 展示调研进度。
+- `DataTable` 展示来源、标题、可信度和摘要。
+- `ArtifactGrid` 展示截图或导出的报告。
+- `ActionBar` 提供“继续深挖”“打开来源”“生成报告”。
+
+文件整理工作页：
+
+- `DataTable` 展示文件路径、类型、大小、建议动作。
+- 行级 action 支持打开文件、标记保留、加入整理队列。
+- `InspectorPanel` 展示当前选中文件的绑定和属性。
+
+数据分析工作页：
+
+- `MarkdownBlock` 展示结论和代码块。
+- `DataTable` 展示原始或聚合数据。
+- `ChartView` 展示 bar、line、pie 或 scatter 结果。
+- `FormPanel` 请求用户选择下一步分析维度。
+
+多候选方案选择工作页：
+
+- `DataTable` 展示候选方案、风险、成本、收益。
+- `ActionBar` 提供选择方案、修改约束、继续比较。
+- Click & Speak 会把用户点选的候选方案绑定到下一轮语音或文字输入。
+
+## 后续增强路线
+
+- 多 surface 和 tabs：controller 已支持多 snapshot，renderer 可在此基础上扩展多 surface 切换。
+- 拖拽布局：在受控 layout tree 上增加局部重排事件，仍不暴露 DOM selector。
+- 更强 chart spec：补充轴、legend、series style 和 tooltip 字段。
+- Artifact diff：给 artifact 增加 before/after 引用和 diff summary。
+- Task replay：用 task snapshot、work surface snapshot 和 runtime event history 复盘任务。
+- 插件贡献受控组件：插件只贡献 schema 和 renderer 注册声明，不提供任意脚本。
+- Work surface memory summary：把关键选择、结果和 artifact 摘要写入 memory。
+- 跨任务搜索历史：基于持久化 snapshot metadata 做检索。
+- 导出报告：把当前 surface 转成 markdown/html/pdf 报告。
+
 适合：
 
 - 选择参数。
