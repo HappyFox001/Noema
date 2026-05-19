@@ -2426,21 +2426,48 @@ function syncPluginUIState(): void {
   })
 }
 
-function postPluginMainPointer(event: PointerEvent | null, active: boolean): void {
-  const frame = pluginUIMainView.querySelector<HTMLIFrameElement>('.plugin-ui-main-surface .plugin-ui-surface-frame')
-  if (!frame?.contentWindow) {
+type PluginPointerSnapshot = {
+  active: boolean
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+let pendingPluginMainPointer: PluginPointerSnapshot | null = null
+let pluginMainPointerFrame = 0
+let lastPluginMainPointerActive = false
+
+function queuePluginMainPointer(event: PointerEvent | null, active: boolean): void {
+  const rect = pluginUIMainView.getBoundingClientRect()
+  if (!active && !lastPluginMainPointerActive && !pendingPluginMainPointer) {
     return
   }
 
-  const rect = pluginUIMainView.getBoundingClientRect()
-  frame.contentWindow.postMessage({
-    type: 'her-text:pointer',
+  pendingPluginMainPointer = {
     active,
     x: event ? event.clientX - rect.left : rect.width / 2,
     y: event ? event.clientY - rect.top : rect.height / 2,
     width: rect.width,
     height: rect.height,
-  }, '*')
+  }
+
+  if (pluginMainPointerFrame) {
+    return
+  }
+
+  pluginMainPointerFrame = window.requestAnimationFrame(() => {
+    pluginMainPointerFrame = 0
+    const payload = pendingPluginMainPointer
+    pendingPluginMainPointer = null
+    if (!payload) {
+      return
+    }
+
+    const frame = pluginUIMainView.querySelector<HTMLIFrameElement>('.plugin-ui-main-surface .plugin-ui-surface-frame')
+    frame?.contentWindow?.postMessage({ type: 'her-text:pointer', ...payload }, '*')
+    lastPluginMainPointerActive = payload.active
+  })
 }
 
 function renderPluginUISurface(container: HTMLElement, surface: PluginUISurface | null): void {
@@ -3345,7 +3372,7 @@ function setPluginControlsPeek(visible: boolean): void {
 window.addEventListener('pointermove', (event) => {
   if (activePluginMainSurface?.mode !== 'replace' || document.body.classList.contains('settings-open')) {
     setPluginControlsPeek(false)
-    postPluginMainPointer(null, false)
+    queuePluginMainPointer(null, false)
     return
   }
 
@@ -3364,12 +3391,12 @@ window.addEventListener('pointermove', (event) => {
     event.clientY <= controlsRect.bottom + 32)
   const nearControlBand = insideMainView && event.clientY >= rect.bottom - Math.max(96, rect.height * 0.26)
 
-  postPluginMainPointer(event, insideMainView)
+  queuePluginMainPointer(event, insideMainView)
   setPluginControlsPeek(insideControls || nearControlBand)
 })
 
 window.addEventListener('pointerleave', () => {
-  postPluginMainPointer(null, false)
+  queuePluginMainPointer(null, false)
   setPluginControlsPeek(false)
 })
 

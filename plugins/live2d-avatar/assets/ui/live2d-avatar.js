@@ -20,8 +20,8 @@ const DEFAULT_CONFIG = {
   lipSyncAttack: 0.42,
   lipSyncRelease: 0.16,
   mouseTracking: true,
-  lookAtSmoothing: 0.32,
-  focusStrength: 1,
+  lookAtSmoothing: 0.42,
+  focusStrength: 0.45,
   eyeTrackingStrength: 1,
   headTrackingStrength: 0.85,
   bodyTrackingStrength: 0.35,
@@ -62,6 +62,7 @@ const state = {
   energyEnvelope: 0,
   lastExpression: '',
   lastMotionAt: 0,
+  lastFocusAt: 0,
   statePayload: null,
   modelBounds: null,
   pointer: {
@@ -291,12 +292,14 @@ function updateAvatar(delta) {
   setModelParam(getMouthOpenParamIds(), state.mouth, 1)
   setModelParam(PARAM_IDS.mouthForm, Math.sin(performance.now() / 85) * state.mouth * 0.22, 0.35)
 
-  const now = performance.now() / 1000
+  const nowMs = performance.now()
+  const now = nowMs / 1000
   const listeningEnergy = clampNumber(state.statePayload?.orb?.inputEnergy, 0, 1)
   const outputEnergy = clampNumber(state.statePayload?.orb?.outputEnergy, 0, 1)
   const attention = Math.max(listeningEnergy, outputEnergy)
   const modePose = getModePose(state.lastMode)
   const look = updateLookAt(delta)
+  applyBuiltInFocusFromPointer(nowMs)
   setModelParam(PARAM_IDS.eyeBallX, look.eyeX, 1)
   setModelParam(PARAM_IDS.eyeBallY, look.eyeY, 1)
   setModelParam(PARAM_IDS.angleX, modePose.angleX + Math.sin(now * 0.9) * (4 + attention * 5) + look.headX, 30)
@@ -414,7 +417,7 @@ function normalizeConfig(config) {
     lipSyncRelease: clampNumber(config.lipSyncRelease, 0.02, 1, DEFAULT_CONFIG.lipSyncRelease),
     mouseTracking: config.mouseTracking !== false,
     lookAtSmoothing: clampNumber(config.lookAtSmoothing, 0.02, 0.65, DEFAULT_CONFIG.lookAtSmoothing),
-    focusStrength: clampNumber(config.focusStrength, 0, 1.5, DEFAULT_CONFIG.focusStrength),
+    focusStrength: normalizeFocusStrength(config.focusStrength),
     eyeTrackingStrength: clampNumber(config.eyeTrackingStrength, 0, 1.5, DEFAULT_CONFIG.eyeTrackingStrength),
     headTrackingStrength: clampNumber(config.headTrackingStrength, 0, 1.5, DEFAULT_CONFIG.headTrackingStrength),
     bodyTrackingStrength: clampNumber(config.bodyTrackingStrength, 0, 1.5, DEFAULT_CONFIG.bodyTrackingStrength),
@@ -450,20 +453,12 @@ function updatePointerTarget(clientX, clientY, width, height) {
   state.pointer.active = true
   state.pointer.targetX = clampNumber((clientX - centerX) / rangeX, -1, 1, 0)
   state.pointer.targetY = clampNumber((clientY - centerY) / rangeY, -1, 1, 0)
-  applyBuiltInFocus(clientX, clientY, width, height)
 }
 
-function handlePointerLeave(width = window.innerWidth, height = window.innerHeight) {
+function handlePointerLeave() {
   state.pointer.active = false
   state.pointer.targetX = 0
   state.pointer.targetY = 0
-  if (state.config.focusStrength && typeof state.model?.focus === 'function') {
-    try {
-      state.model.focus(width / 2 + state.config.offsetX, height / 2 + state.config.offsetY)
-    } catch {
-      // Explicit parameters ease back to center even if built-in focus is unavailable.
-    }
-  }
 }
 
 function syncPointerTrackingState() {
@@ -480,20 +475,34 @@ function syncPointerTrackingState() {
   }
 }
 
-function applyBuiltInFocus(clientX, clientY, width = window.innerWidth, height = window.innerHeight) {
+function applyBuiltInFocusFromPointer(nowMs) {
   if (!state.config.focusStrength || typeof state.model?.focus !== 'function') {
     return
   }
+  if (nowMs - state.lastFocusAt < 48) {
+    return
+  }
+  state.lastFocusAt = nowMs
 
+  const width = window.innerWidth
+  const height = window.innerHeight
   const centerX = width / 2 + state.config.offsetX
   const centerY = height / 2 + state.config.offsetY
-  const x = centerX + (clientX - centerX) * state.config.focusStrength
-  const y = centerY + (clientY - centerY) * state.config.focusStrength
+  const x = centerX + state.pointer.x * width * 0.5 * state.config.focusStrength
+  const y = centerY + state.pointer.y * height * 0.5 * state.config.focusStrength
   try {
     state.model.focus(x, y)
   } catch {
     // The explicit parameter layer still provides a conservative fallback.
   }
+}
+
+function normalizeFocusStrength(value) {
+  const number = Number(value)
+  if (!Number.isFinite(number) || number <= 0) {
+    return DEFAULT_CONFIG.focusStrength
+  }
+  return Math.max(0.05, Math.min(1.5, number))
 }
 
 function extractModelCapabilities(settings) {
