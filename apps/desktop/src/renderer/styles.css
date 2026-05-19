@@ -313,10 +313,10 @@ body.plugin-main-surface-replace:not(.settings-open) #main-view.controls-peek .c
 
 .expression-layer {
   position: absolute;
-  top: calc(50% - 166px);
-  left: calc(50% + 62px);
-  width: 74px;
-  height: 62px;
+  top: clamp(4px, calc(50% - 166px), calc(100% - 70px));
+  right: clamp(8px, calc(50% - 136px), 24px);
+  width: clamp(58px, 23%, 74px);
+  height: clamp(50px, 19%, 62px);
   padding: 7px;
   background: rgba(18, 22, 28, 0.52);
   border: 1px solid rgba(255, 255, 255, 0.28);
@@ -326,6 +326,7 @@ body.plugin-main-surface-replace:not(.settings-open) #main-view.controls-peek .c
   transform: translate(-5px, 8px) scale(0.95);
   opacity: 0;
   pointer-events: none;
+  overflow: visible;
   transition: opacity 220ms ease, transform 220ms ease;
   z-index: 6;
   -webkit-app-region: no-drag;
@@ -362,6 +363,9 @@ body.plugin-main-surface-replace:not(.settings-open) #main-view.controls-peek .c
 }
 
 .expression-image {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
   width: 100%;
   height: 100%;
   object-fit: contain;
@@ -2056,6 +2060,7 @@ body.work-surface-enabled .task-panel {
 
 .plugin-card {
   min-width: 0;
+  max-width: 100%;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -2072,6 +2077,7 @@ body.work-surface-enabled .task-panel {
 
 .plugin-card-main {
   width: 100%;
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2090,9 +2096,12 @@ body.work-surface-enabled .task-panel {
 
 .plugin-card-footer {
   width: 100%;
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 10px;
   padding-top: 10px;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
   font-family: var(--font-soft);
@@ -2108,6 +2117,7 @@ body.work-surface-enabled .task-panel {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
 
 .plugin-back-btn {
@@ -2130,6 +2140,7 @@ body.work-surface-enabled .task-panel {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .plugin-info {
@@ -2146,6 +2157,8 @@ body.work-surface-enabled .task-panel {
   font-family: var(--font-soft);
   font-size: 14px;
   color: rgba(255, 255, 255, 0.92);
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .plugin-version {
@@ -2170,6 +2183,7 @@ body.work-surface-enabled .task-panel {
   font-size: 11px;
   line-height: 1.5;
   color: rgba(255, 255, 255, 0.48);
+  overflow-wrap: anywhere;
 }
 
 .plugin-detail-description {
@@ -2201,6 +2215,7 @@ body.work-surface-enabled .task-panel {
 
 .plugin-config-fields {
   width: 100%;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -2234,6 +2249,7 @@ body.work-surface-enabled .task-panel {
   font-family: var(--font-soft);
   font-size: 12px;
   color: rgba(255, 255, 255, 0.82);
+  overflow-wrap: anywhere;
 }
 
 .plugin-config-desc {
@@ -2242,6 +2258,7 @@ body.work-surface-enabled .task-panel {
   font-size: 11px;
   line-height: 1.45;
   color: rgba(255, 255, 255, 0.38);
+  overflow-wrap: anywhere;
 }
 
 .plugin-config-input {
@@ -3055,13 +3072,13 @@ body.theme-day .settings-toggle input:checked + .toggle-slider {
   -webkit-appearance: none;
   font-family: var(--font-ui);
   background:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='rgba(232,238,238,0.72)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") right 9px center / 14px 14px no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='rgba(190,255,244,0.78)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") right 16px center / 14px 14px no-repeat,
     linear-gradient(180deg, rgba(255, 255, 255, 0.062), rgba(255, 255, 255, 0.026)),
     rgba(0, 0, 0, 0.18);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 6px;
   min-height: 30px;
-  padding: 5px 30px 5px 10px;
+  padding: 5px 40px 5px 10px;
   color: rgba(248, 250, 250, 0.9);
   font-size: 12px;
   line-height: 1.25;
@@ -3415,6 +3432,22 @@ body.task-active:not(.settings-open) #main-view {
   }
 
   .settings-slider-group {
+    width: 100%;
+  }
+
+  .plugin-card-main,
+  .plugin-detail-header {
+    align-items: flex-start;
+  }
+
+  .plugin-config-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .plugin-number-control,
+  .plugin-config-input {
+    justify-self: stretch;
     width: 100%;
   }
 
@@ -6612,11 +6645,10 @@ body.theme-day .settings-brand-logo {
 
 .text-input,
 .settings-input,
-.settings-select,
 .settings-number-input,
 .settings-text-input,
 .config-field-input,
-.plugin-config-input,
+.plugin-config-input:not(select),
 .plugin-config-textarea,
 .dialog-field input,
 .interactive-input-control,
@@ -7404,6 +7436,13 @@ select.plugin-config-input:hover,
   min-height: 30px;
 }
 
+.settings-select {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='rgba(190,255,244,0.78)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") right 16px center / 14px 14px no-repeat,
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)),
+    rgba(0, 0, 0, 0.18);
+}
+
 .settings-close {
   display: grid;
   place-items: center;
@@ -7580,6 +7619,13 @@ body.theme-day .settings-select:hover,
 body.theme-day select.plugin-config-input:hover,
 body.theme-day .work-surface-field select:hover {
   border-color: rgba(16, 45, 52, 0.2);
+}
+
+body.theme-day .settings-select {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='rgba(20,62,60,0.72)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") right 16px center / 14px 14px no-repeat,
+    linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(246, 250, 249, 0.64)),
+    rgba(255, 255, 255, 0.42);
 }
 
 body.theme-day .settings-content,
