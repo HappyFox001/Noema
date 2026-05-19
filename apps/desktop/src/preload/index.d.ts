@@ -337,6 +337,7 @@ declare global {
           pluginDir: string
           permissions: string[]
           config: Record<string, unknown>
+          i18n?: Record<string, Record<string, string>>
           uiSurfaces: Array<{
             id: string
             pluginId: string

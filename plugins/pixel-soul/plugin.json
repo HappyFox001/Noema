@@ -8,6 +8,16 @@
   "assets": "assets",
   "enabled": true,
   "permissions": [],
+  "i18n": {
+    "zh-CN": {
+      "name": "像素火花宠物",
+      "description": "用受控粒子点云生成一个黄色电气小鼠风格的情绪宠物，并替代默认小球主界面。"
+    },
+    "en-US": {
+      "name": "Pixel Spark Pet",
+      "description": "Generates an emotion pet from a controlled particle cloud and replaces the default orb in the main view."
+    }
+  },
   "uiSurfaces": [
     {
       "id": "pixel-soul-main",

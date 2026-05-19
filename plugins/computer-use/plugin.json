@@ -44,5 +44,27 @@
         { "label": "文件路径", "value": "path" }
       ]
     }
-  ]
+  ],
+  "i18n": {
+    "zh-CN": {
+      "name": "桌面控制",
+      "description": "提供本机桌面控制工具，包括截图、鼠标点击、键盘输入、快捷键、滚动和等待。",
+      "config.actionTimeoutMs.label": "操作超时",
+      "config.actionTimeoutMs.description": "单个桌面控制工具的最大执行时间，单位毫秒。",
+      "config.autoObserve.label": "自动观察",
+      "config.autoObserve.description": "鼠标键盘动作完成后自动附带一次截图，减少任务模型手动观察屏幕的次数。",
+      "config.screenshotFormat.label": "截图格式",
+      "config.screenshotFormat.description": "computer_observe 返回截图的格式。base64 适合传给视觉模型，path 适合人工调试。"
+    },
+    "en-US": {
+      "name": "Computer Use",
+      "description": "Provides native desktop control tools, including screenshots, mouse clicks, keyboard input, shortcuts, scrolling, and waiting.",
+      "config.actionTimeoutMs.label": "Action Timeout",
+      "config.actionTimeoutMs.description": "Maximum runtime for a single desktop control tool in milliseconds.",
+      "config.autoObserve.label": "Auto Observe",
+      "config.autoObserve.description": "Attach a screenshot after mouse and keyboard actions to reduce manual screen observation calls.",
+      "config.screenshotFormat.label": "Screenshot Format",
+      "config.screenshotFormat.description": "Format returned by computer_observe. base64 is useful for vision models; path is useful for manual debugging."
+    }
+  }
 }

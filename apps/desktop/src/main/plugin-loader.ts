@@ -31,6 +31,7 @@ export interface RuntimePluginInfo {
   permissions: PluginPermission[]
   config: Record<string, unknown>
   configSchema: PluginConfigField[]
+  i18n?: Record<string, Record<string, string>>
   adminSchema?: PluginAdminSchema
   uiSurfaces: RuntimePluginUISurface[]
 }
@@ -71,6 +72,7 @@ export async function discoverRuntimePlugins(
       permissions: manifest.permissions ?? [],
       config: mergePluginConfig(manifest, configOverrides[manifest.id]),
       configSchema: manifest.configSchema ?? [],
+      i18n: manifest.i18n,
       adminSchema: manifest.adminSchema,
       uiSurfaces: enabled
         ? resolveRuntimePluginUISurfaces(

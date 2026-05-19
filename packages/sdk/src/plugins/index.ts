@@ -102,6 +102,8 @@ export interface PluginAdminSchema {
   actions?: PluginAdminActionSchema[]
 }
 
+export type PluginI18nCatalog = Record<string, Record<string, string>>
+
 export interface PluginUISurfaceManifest {
   id?: string
   slot: 'main-view' | 'task-panel'
@@ -123,6 +125,7 @@ export interface RuntimePluginManifest {
   permissions?: PluginPermission[]
   config?: Record<string, unknown>
   configSchema?: PluginConfigField[]
+  i18n?: PluginI18nCatalog
   adminSchema?: PluginAdminSchema
   uiSurfaces?: PluginUISurfaceManifest[]
 }

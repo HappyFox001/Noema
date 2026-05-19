@@ -25,5 +25,19 @@
       "max": 300000,
       "step": 5000
     }
-  ]
+  ],
+  "i18n": {
+    "zh-CN": {
+      "name": "MCP 管理器",
+      "description": "在任务运行时连接和调度 MCP stdio servers。可通过插件参数添加 server，并把远端 MCP tools 作为任务工具间接调用。",
+      "config.defaultTimeoutMs.label": "默认超时",
+      "config.defaultTimeoutMs.description": "远程 MCP initialize/list/call 的默认超时，单位毫秒。"
+    },
+    "en-US": {
+      "name": "MCP Manager",
+      "description": "Connects and schedules MCP stdio servers during task runtime. Remote MCP tools can be exposed indirectly as task tools.",
+      "config.defaultTimeoutMs.label": "Default Timeout",
+      "config.defaultTimeoutMs.description": "Default timeout for remote MCP initialize/list/call operations, in milliseconds."
+    }
+  }
 }

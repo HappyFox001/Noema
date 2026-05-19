@@ -47,5 +47,31 @@
       "type": "boolean",
       "default": true
     }
-  ]
+  ],
+  "i18n": {
+    "zh-CN": {
+      "name": "Fish Audio S2 情绪增强",
+      "description": "在启用 Fish Audio S2 系列语音模型时，为回复提示词加入 normal/sexy 两套语音标记规则，并在展示和记忆阶段隐藏 TTS 控制标签。",
+      "config.mode.label": "语音模式",
+      "config.mode.description": "normal 使用保守英文基础语音标签；sexy 使用日文自然语言描述亲密声线、气息、距离和颤抖状态。",
+      "config.mode.options.normal": "正常模式",
+      "config.mode.options.sexy": "性感模式",
+      "config.maxCuesPerReply.label": "单次最多标签数",
+      "config.maxCuesPerReply.description": "限制每次回复进入 TTS 的方括号语音标签数量，避免标签过多影响自然度。",
+      "config.allowDescriptiveTags.label": "允许自然语言标签",
+      "config.allowDescriptiveTags.description": "性感模式下允许受控日文自然语言描述。"
+    },
+    "en-US": {
+      "name": "Fish Audio S2 Emotion Enhancer",
+      "description": "Adds normal/sexy voice cue rules for Fish Audio S2 models and hides TTS control tags from display and memory.",
+      "config.mode.label": "Voice Mode",
+      "config.mode.description": "normal uses conservative English voice tags; sexy uses Japanese natural-language voice descriptions.",
+      "config.mode.options.normal": "Normal",
+      "config.mode.options.sexy": "Sexy",
+      "config.maxCuesPerReply.label": "Max Cues Per Reply",
+      "config.maxCuesPerReply.description": "Limit the number of bracketed voice tags sent to TTS for each reply.",
+      "config.allowDescriptiveTags.label": "Allow Natural-Language Tags",
+      "config.allowDescriptiveTags.description": "Allow controlled Japanese natural-language descriptions in sexy mode."
+    }
+  }
 }

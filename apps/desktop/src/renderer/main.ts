@@ -609,6 +609,7 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'common.active': '使用中',
     'common.delete': '删除',
     'common.loading': '加载中...',
+    'common.none': '无',
     'context.clearHistory': '清除对话',
     'context.settings': '设置',
     'status.connectionFailed': 'Connection failed',
@@ -721,6 +722,28 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'taskRuntime.maxTurnsDesc': '任务运行超过该轮数后停止。',
     'taskRuntime.title': '任务执行参数',
     'plugins.title': '插件',
+    'plugins.loadFailed': '插件加载失败',
+    'plugins.empty': '未发现插件',
+    'plugins.configCount': '{count} 个参数',
+    'plugins.noConfig': '无可配置参数',
+    'plugins.uiHookCount': '{count} 个界面 hook',
+    'plugins.advancedModelParams': '高级模型参数',
+    'plugins.advancedModelParamsDesc': '模型适配边距、位置、口型平滑、状态 motion 映射',
+    'plugins.enabled': '插件已启用',
+    'plugins.disabled': '插件已禁用',
+    'plugins.updateFailed': '插件设置失败: {error}',
+    'plugins.configUpdated': '插件参数已更新',
+    'plugins.configSaveFailed': '插件参数保存失败: {error}',
+    'plugins.pathUpdated': '插件路径已更新',
+    'plugins.pathSelectFailed': '路径选择失败: {error}',
+    'plugins.pathSelectFailedFallback': '路径选择失败',
+    'plugins.directorySelectFailed': '目录选择失败',
+    'plugins.fileSelectFailed': '文件选择失败',
+    'plugins.missingResolvedFile': '目录中没有找到 {extensions} 文件',
+    'plugins.chooseDirectory': '选择目录',
+    'plugins.chooseFile': '选择文件',
+    'plugins.choose': '选择',
+    'plugins.chooseField': '选择{label}',
     'logs.title': '运行日志',
     'logs.desc': '按时间、等级和类型查看当前会话的运行状态。',
     'about.desc': '把一个鲜活的灵魂放进桌面。',
@@ -747,6 +770,7 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'common.active': 'Active',
     'common.delete': 'Delete',
     'common.loading': 'Loading...',
+    'common.none': 'None',
     'context.clearHistory': 'Clear Conversation',
     'context.settings': 'Settings',
     'status.connectionFailed': 'Connection failed',
@@ -859,6 +883,28 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'taskRuntime.maxTurnsDesc': 'Stop a task after this many runtime turns.',
     'taskRuntime.title': 'Task Runtime Params',
     'plugins.title': 'Plugins',
+    'plugins.loadFailed': 'Failed to load plugins',
+    'plugins.empty': 'No plugins found',
+    'plugins.configCount': '{count} parameters',
+    'plugins.noConfig': 'No configurable parameters',
+    'plugins.uiHookCount': '{count} UI hooks',
+    'plugins.advancedModelParams': 'Advanced Model Parameters',
+    'plugins.advancedModelParamsDesc': 'Model fit, position, lip-sync smoothing, and state motion mapping',
+    'plugins.enabled': 'Plugin enabled',
+    'plugins.disabled': 'Plugin disabled',
+    'plugins.updateFailed': 'Plugin update failed: {error}',
+    'plugins.configUpdated': 'Plugin parameters updated',
+    'plugins.configSaveFailed': 'Failed to save plugin parameters: {error}',
+    'plugins.pathUpdated': 'Plugin path updated',
+    'plugins.pathSelectFailed': 'Path selection failed: {error}',
+    'plugins.pathSelectFailedFallback': 'Path selection failed',
+    'plugins.directorySelectFailed': 'Directory selection failed',
+    'plugins.fileSelectFailed': 'File selection failed',
+    'plugins.missingResolvedFile': 'No {extensions} file found in the selected directory',
+    'plugins.chooseDirectory': 'Choose Directory',
+    'plugins.chooseFile': 'Choose File',
+    'plugins.choose': 'Choose',
+    'plugins.chooseField': 'Choose {label}',
     'logs.title': 'Runtime Logs',
     'logs.desc': 'Inspect the current session by time, level, and subsystem.',
     'about.desc': 'Putting a living soul into the desktop.',
@@ -878,6 +924,10 @@ function t(key: string): string {
   return I18N[currentLanguage][key] ?? I18N['zh-CN'][key] ?? key
 }
 
+function tf(key: string, values: Record<string, string | number>): string {
+  return t(key).replace(/\{(\w+)\}/g, (_match, name) => String(values[name] ?? ''))
+}
+
 function setLanguage(language: LanguageCode): void {
   currentLanguage = language
   document.documentElement.lang = language
@@ -887,6 +937,7 @@ function setLanguage(language: LanguageCode): void {
   renderOrbStyleControls()
   renderAppearanceThemeControls()
   renderSystemConfigIfReady()
+  renderPluginsForCurrentLanguage()
 }
 
 function applyI18n(): void {
@@ -1127,6 +1178,7 @@ type PluginInfo = {
   permissions: string[]
   config: Record<string, unknown>
   configSchema: PluginConfigField[]
+  i18n?: Record<string, Record<string, string>>
   uiSurfaces: PluginUISurface[]
   adminSchema?: {
     title?: string
@@ -2576,6 +2628,7 @@ const learningReflectBtn = document.getElementById('learning-reflect-btn') as HT
 let memoryRefreshPromise: Promise<void> | null = null
 let learningRefreshPromise: Promise<void> | null = null
 let cachedPlugins: PluginInfo[] = []
+let activePluginDetail: { pluginId: string; page: 'main' | 'advanced' } | null = null
 const live2dCapabilitiesCache = new Map<string, Live2dModelCapabilities>()
 let logEntries: AppLogEntry[] = []
 let activeLogLevel: AppLogLevel | 'all' = 'all'
@@ -3570,11 +3623,11 @@ personalitySelect.addEventListener('change', async () => {
 })
 
 async function loadPluginsSection(): Promise<void> {
-  pluginsList.innerHTML = '<div class="profile-loading">加载中...</div>'
+  pluginsList.innerHTML = `<div class="profile-loading">${escapeHtml(t('common.loading'))}</div>`
 
   const result = await window.electronAPI.listPlugins()
   if (!result.success) {
-    pluginsList.innerHTML = `<div class="profile-loading">插件加载失败: ${escapeHtml(result.error ?? 'unknown error')}</div>`
+    pluginsList.innerHTML = `<div class="profile-loading">${escapeHtml(t('plugins.loadFailed'))}: ${escapeHtml(result.error ?? 'unknown error')}</div>`
     return
   }
 
@@ -3583,8 +3636,9 @@ async function loadPluginsSection(): Promise<void> {
 
 function renderPluginsSection(plugins: PluginInfo[]): void {
   cachedPlugins = plugins
+  activePluginDetail = null
   if (plugins.length === 0) {
-    pluginsList.innerHTML = '<div class="profile-loading">未发现插件</div>'
+    pluginsList.innerHTML = `<div class="profile-loading">${escapeHtml(t('plugins.empty'))}</div>`
     return
   }
 
@@ -3593,11 +3647,11 @@ function renderPluginsSection(plugins: PluginInfo[]): void {
       <div class="plugin-card-main">
         <div class="plugin-info">
           <div class="plugin-title-row">
-            <span class="plugin-name">${escapeHtml(plugin.name)}</span>
+            <span class="plugin-name">${escapeHtml(pluginText(plugin, 'name', plugin.name))}</span>
             ${plugin.version ? `<span class="plugin-version">v${escapeHtml(plugin.version)}</span>` : ''}
           </div>
           <div class="plugin-id">${escapeHtml(plugin.id)}</div>
-          ${plugin.description ? `<div class="plugin-description">${escapeHtml(plugin.description)}</div>` : ''}
+          ${plugin.description ? `<div class="plugin-description">${escapeHtml(pluginText(plugin, 'description', plugin.description))}</div>` : ''}
         </div>
         <label class="settings-toggle plugin-toggle">
           <input type="checkbox" ${plugin.enabled ? 'checked' : ''} data-plugin-toggle="${escapeHtml(plugin.id)}" />
@@ -3605,9 +3659,9 @@ function renderPluginsSection(plugins: PluginInfo[]): void {
         </label>
       </div>
       <div class="plugin-card-footer">
-        <span>${plugin.configSchema.length ? `${plugin.configSchema.length} 个参数` : '无可配置参数'}</span>
-        ${plugin.uiSurfaces.length ? `<span>${plugin.uiSurfaces.length} 个界面 hook</span>` : ''}
-        <span class="plugin-enter">管理</span>
+        <span>${plugin.configSchema.length ? escapeHtml(tf('plugins.configCount', { count: plugin.configSchema.length })) : escapeHtml(t('plugins.noConfig'))}</span>
+        ${plugin.uiSurfaces.length ? `<span>${escapeHtml(tf('plugins.uiHookCount', { count: plugin.uiSurfaces.length }))}</span>` : ''}
+        <span class="plugin-enter">${escapeHtml(t('common.manage'))}</span>
       </div>
     </div>
   `).join('')
@@ -3643,10 +3697,10 @@ function renderPluginsSection(plugins: PluginInfo[]): void {
         }
         await window.electronAPI.updateSettings({ plugins: nextPlugins })
         await loadPluginUISurfaces()
-        showPanelNotice(input.checked ? '插件已启用' : '插件已禁用')
+        showPanelNotice(input.checked ? t('plugins.enabled') : t('plugins.disabled'))
       } catch (error: any) {
         input.checked = !input.checked
-        showPanelNotice(`插件设置失败: ${error.message}`, 'error')
+        showPanelNotice(tf('plugins.updateFailed', { error: error.message }), 'error')
       } finally {
         input.disabled = false
       }
@@ -3657,12 +3711,15 @@ function renderPluginsSection(plugins: PluginInfo[]): void {
 }
 
 function renderPluginDetail(plugin: PluginInfo, page: 'main' | 'advanced' = 'main'): void {
+  activePluginDetail = { pluginId: plugin.id, page }
   const isAdvancedPage = page === 'advanced'
+  const pluginName = pluginText(plugin, 'name', plugin.name)
+  const pageTitle = pluginPageTitle(plugin, page)
   pluginsList.innerHTML = `
     <div class="plugin-detail-header">
-      <button class="plugin-back-btn" type="button">返回</button>
+      <button class="plugin-back-btn" type="button">${escapeHtml(t('common.back'))}</button>
       <div class="plugin-detail-title">
-        <span class="plugin-name">${escapeHtml(isAdvancedPage ? `${plugin.name} / 高级模型参数` : plugin.name)}</span>
+        <span class="plugin-name">${escapeHtml(isAdvancedPage ? `${pluginName} / ${pageTitle}` : pluginName)}</span>
         ${plugin.version ? `<span class="plugin-version">v${escapeHtml(plugin.version)}</span>` : ''}
       </div>
     </div>
@@ -3670,7 +3727,7 @@ function renderPluginDetail(plugin: PluginInfo, page: 'main' | 'advanced' = 'mai
       ${isAdvancedPage ? '' : `<div class="plugin-card-main">
         <div class="plugin-info">
           <div class="plugin-id">${escapeHtml(plugin.id)}</div>
-          ${plugin.description ? `<div class="plugin-description plugin-detail-description">${escapeHtml(plugin.description)}</div>` : ''}
+          ${plugin.description ? `<div class="plugin-description plugin-detail-description">${escapeHtml(pluginText(plugin, 'description', plugin.description))}</div>` : ''}
           ${plugin.uiSurfaces.length ? `<div class="plugin-permissions">${plugin.uiSurfaces.map(surface => `<span>UI: ${escapeHtml(surface.slot)} / ${escapeHtml(surface.mode)}</span>`).join('')}</div>` : ''}
           ${plugin.permissions.length ? `<div class="plugin-permissions">${plugin.permissions.map(permission => `<span>${escapeHtml(permission)}</span>`).join('')}</div>` : ''}
         </div>
@@ -3710,10 +3767,10 @@ function renderPluginDetail(plugin: PluginInfo, page: 'main' | 'advanced' = 'mai
         target.enabled = input.checked
       }
       await loadPluginUISurfaces()
-      showPanelNotice(input.checked ? '插件已启用' : '插件已禁用')
+      showPanelNotice(input.checked ? t('plugins.enabled') : t('plugins.disabled'))
     } catch (error: any) {
       input.checked = !input.checked
-      showPanelNotice(`插件设置失败: ${error.message}`, 'error')
+      showPanelNotice(tf('plugins.updateFailed', { error: error.message }), 'error')
     } finally {
       input.disabled = false
     }
@@ -4066,9 +4123,9 @@ function bindPluginConfigInputs(): void {
       input.disabled = true
       try {
         await applyPluginConfigPatch(pluginId, getPluginConfigPatch(pluginId, key, optimisticValue))
-        showPanelNotice('插件参数已更新')
+        showPanelNotice(t('plugins.configUpdated'))
       } catch (error: any) {
-        showPanelNotice(`插件参数保存失败: ${error.message}`, 'error')
+        showPanelNotice(tf('plugins.configSaveFailed', { error: error.message }), 'error')
       } finally {
         input.disabled = false
       }
@@ -4113,7 +4170,9 @@ function bindPluginConfigInputs(): void {
       try {
         const result = await window.electronAPI.selectPluginConfigPath({
           mode: field.type,
-          title: field.label ? `选择${field.label}` : (field.type === 'directory' ? '选择目录' : '选择文件'),
+          title: field.label
+            ? tf('plugins.chooseField', { label: pluginConfigText(plugin, field, 'label', field.label) })
+            : (field.type === 'directory' ? t('plugins.chooseDirectory') : t('plugins.chooseFile')),
           filters: field.type === 'file' ? field.filters : undefined,
           resolveFileExtensions: field.type === 'directory' ? field.resolveFileExtensions : undefined,
           resolveRecursive: field.type === 'directory' ? field.resolveRecursive : undefined,
@@ -4122,11 +4181,11 @@ function bindPluginConfigInputs(): void {
           return
         }
         if (!result.success) {
-          throw new Error(result.error || '路径选择失败')
+          throw new Error(result.error || t('plugins.pathSelectFailedFallback'))
         }
         const selectedValue = field.type === 'directory' ? result.directoryPath : result.fileUrl
         if (!selectedValue) {
-          throw new Error(field.type === 'directory' ? '目录选择失败' : '文件选择失败')
+          throw new Error(field.type === 'directory' ? t('plugins.directorySelectFailed') : t('plugins.fileSelectFailed'))
         }
         const configPatch: Record<string, unknown> = { [key]: selectedValue }
         if (field.type === 'directory' && field.targetKey && result.resolvedFileUrl) {
@@ -4139,13 +4198,13 @@ function bindPluginConfigInputs(): void {
           }
         }
         if (field.type === 'directory' && field.targetKey && field.resolveFileExtensions?.length && !result.resolvedFileUrl) {
-          throw new Error(`目录中没有找到 ${field.resolveFileExtensions.join(', ')} 文件`)
+          throw new Error(tf('plugins.missingResolvedFile', { extensions: field.resolveFileExtensions.join(', ') }))
         }
         input.value = selectedValue
         await applyPluginConfigPatch(pluginId, configPatch)
-        showPanelNotice('插件路径已更新')
+        showPanelNotice(t('plugins.pathUpdated'))
       } catch (error: any) {
-        showPanelNotice(`路径选择失败: ${error.message}`, 'error')
+        showPanelNotice(tf('plugins.pathSelectFailed', { error: error.message }), 'error')
       } finally {
         button.disabled = false
       }
@@ -4238,6 +4297,56 @@ function cssEscape(value: string): string {
   return value.replace(/["\\]/g, '\\$&')
 }
 
+function pluginText(plugin: PluginInfo, key: string, fallback: string): string {
+  return plugin.i18n?.[currentLanguage]?.[key]
+    ?? plugin.i18n?.['zh-CN']?.[key]
+    ?? fallback
+}
+
+function pluginConfigText(
+  plugin: PluginInfo,
+  field: PluginConfigField,
+  part: 'label' | 'description' | 'buttonLabel',
+  fallback: string
+): string {
+  return pluginText(plugin, `config.${field.key}.${part}`, fallback)
+}
+
+function pluginConfigOptionText(
+  plugin: PluginInfo,
+  field: Extract<PluginConfigField, { type: 'select' }>,
+  option: { label: string; value: string }
+): string {
+  return pluginText(plugin, `config.${field.key}.options.${option.value}`, option.label)
+}
+
+function pluginPageTitle(plugin: PluginInfo, page: 'main' | 'advanced'): string {
+  return page === 'advanced'
+    ? pluginText(plugin, 'pages.advanced.title', t('plugins.advancedModelParams'))
+    : pluginText(plugin, 'name', plugin.name)
+}
+
+function pluginPageDescription(plugin: PluginInfo, page: 'main' | 'advanced'): string {
+  return page === 'advanced'
+    ? pluginText(plugin, 'pages.advanced.description', t('plugins.advancedModelParamsDesc'))
+    : pluginText(plugin, 'description', plugin.description ?? '')
+}
+
+function renderPluginsForCurrentLanguage(): void {
+  if (!document.getElementById('section-plugins')?.classList.contains('active') || cachedPlugins.length === 0) {
+    return
+  }
+
+  if (activePluginDetail) {
+    const plugin = cachedPlugins.find(item => item.id === activePluginDetail?.pluginId)
+    if (plugin) {
+      renderPluginDetail(plugin, activePluginDetail.page)
+      return
+    }
+  }
+  renderPluginsSection(cachedPlugins)
+}
+
 function renderPluginConfigFields(plugin: PluginInfo, page: 'main' | 'advanced' = 'main'): string {
   if (!plugin.configSchema.length) {
     return ''
@@ -4252,8 +4361,8 @@ function renderPluginConfigFields(plugin: PluginInfo, page: 'main' | 'advanced' 
       ${page === 'main' && advancedFields.length ? `
         <button class="plugin-config-page-button" type="button" data-plugin-config-page="advanced">
           <span>
-            <strong>高级模型参数</strong>
-            <small>模型文件、适配边距、位置、口型平滑、状态 motion 映射</small>
+            <strong>${escapeHtml(pluginPageTitle(plugin, 'advanced'))}</strong>
+            <small>${escapeHtml(pluginPageDescription(plugin, 'advanced'))}</small>
           </span>
           <span class="plugin-config-page-arrow">›</span>
         </button>
@@ -4291,9 +4400,10 @@ function renderTaskTransportControl(model: LLMModelConfig): string {
 
 function renderPluginConfigField(plugin: PluginInfo, field: PluginConfigField): string {
   const rawValue = plugin.config[field.key] ?? field.default
-  const label = escapeHtml(field.label ?? field.key)
+  const fieldLabel = pluginConfigText(plugin, field, 'label', field.label ?? field.key)
+  const label = escapeHtml(fieldLabel)
   const desc = field.description
-    ? `<div class="plugin-config-desc">${escapeHtml(field.description)}</div>`
+    ? `<div class="plugin-config-desc">${escapeHtml(pluginConfigText(plugin, field, 'description', field.description))}</div>`
     : ''
   const commonAttrs = `data-plugin-id="${escapeHtml(plugin.id)}" data-plugin-config="${escapeHtml(field.key)}" data-plugin-type="${field.type}"`
 
@@ -4333,7 +4443,7 @@ function renderPluginConfigField(plugin: PluginInfo, field: PluginConfigField): 
     control = `
       <select class="plugin-config-input" ${commonAttrs}>
         ${field.options.map(option => `
-          <option value="${escapeHtml(option.value)}" ${option.value === rawValue ? 'selected' : ''}>${escapeHtml(option.label)}</option>
+          <option value="${escapeHtml(option.value)}" ${option.value === rawValue ? 'selected' : ''}>${escapeHtml(pluginConfigOptionText(plugin, field, option))}</option>
         `).join('')}
       </select>
     `
@@ -4341,7 +4451,7 @@ function renderPluginConfigField(plugin: PluginInfo, field: PluginConfigField): 
     control = `
       <div class="plugin-file-control">
         <input class="plugin-config-input plugin-file-input" type="text" value="${escapeHtml(String(rawValue ?? ''))}" placeholder="${escapeHtml(field.placeholder ?? '')}" ${commonAttrs} />
-        <button class="plugin-admin-button secondary plugin-file-button" type="button" data-plugin-path-select="true" data-plugin-id="${escapeHtml(plugin.id)}" data-plugin-config="${escapeHtml(field.key)}">${escapeHtml(field.buttonLabel ?? (field.type === 'directory' ? '选择目录' : '选择'))}</button>
+        <button class="plugin-admin-button secondary plugin-file-button" type="button" data-plugin-path-select="true" data-plugin-id="${escapeHtml(plugin.id)}" data-plugin-config="${escapeHtml(field.key)}">${escapeHtml(pluginConfigText(plugin, field, 'buttonLabel', field.buttonLabel ?? (field.type === 'directory' ? t('plugins.chooseDirectory') : t('plugins.choose'))))}</button>
       </div>
     `
   } else if (field.type === 'string' && field.multiline) {
