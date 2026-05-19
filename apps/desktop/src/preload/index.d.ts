@@ -228,6 +228,7 @@ declare global {
         voiceOutputEnabled: boolean
         volume: number
         appearance: { orbStyle: 'default' | 'advanced' | 'planet'; theme: 'night' | 'day'; liquidGlassEnabled: boolean }
+        experimental?: { workSurfaceEnabled: boolean }
         selectedPersonality: string
         externalRolePaths: string[]
         pluginPathHistory: Record<string, { mode: 'file' | 'directory'; lastPath: string; recentPaths: string[] }>
@@ -250,6 +251,7 @@ declare global {
         voiceOutputEnabled: boolean
         volume: number
         appearance: { orbStyle: 'default' | 'advanced' | 'planet'; theme: 'night' | 'day'; liquidGlassEnabled: boolean }
+        experimental?: { workSurfaceEnabled: boolean }
         selectedPersonality: string
         externalRolePaths: string[]
         pluginPathHistory: Record<string, { mode: 'file' | 'directory'; lastPath: string; recentPaths: string[] }>
@@ -271,6 +273,7 @@ declare global {
         voiceOutputEnabled: boolean
         volume: number
         appearance: { orbStyle: 'default' | 'advanced' | 'planet'; theme: 'night' | 'day'; liquidGlassEnabled: boolean }
+        experimental?: { workSurfaceEnabled: boolean }
         selectedPersonality: string
         externalRolePaths: string[]
         system: {
@@ -555,6 +558,14 @@ declare global {
         durationMs: number
         priority?: number
       }) => void) => void
+      workSurfaceReady: () => Promise<{ success: boolean; error?: string }>
+      requestWorkSurfaceSnapshot: (surfaceId?: string) => Promise<{ success: boolean; snapshot?: any; error?: string }>
+      sendWorkSurfaceEvent: (event: any) => Promise<{ success: boolean; error?: string }>
+      onWorkSurfaceFrame: (callback: (frame: any) => void) => void
+      onWorkSurfaceCreated: (callback: (snapshot: any) => void) => void
+      onWorkSurfaceSnapshot: (callback: (snapshot: any) => void) => void
+      onWorkSurfaceClosed: (callback: (surfaceId: string) => void) => void
+      onWorkSurfaceError: (callback: (error: string) => void) => void
 
       onSpeechTranscript: (callback: (text: string) => void) => void
       onSpeechState: (callback: (state: 'listening' | 'processing' | 'idle') => void) => void

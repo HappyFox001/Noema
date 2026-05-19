@@ -87,6 +87,11 @@ export class WorkSurfaceController {
     return Array.from(this.surfaces.values(), cloneSnapshot)
   }
 
+  getSnapshotByTaskId(taskId: string): WorkSurfaceSnapshot | undefined {
+    const snapshot = Array.from(this.surfaces.values()).find(surface => surface.taskId === taskId)
+    return snapshot ? cloneSnapshot(snapshot) : undefined
+  }
+
   closeSurface(surfaceId: string, reason: SurfaceCloseFrame['reason'] = 'user_closed'): WorkSurfaceApplyResult {
     return this.applyClose({
       schemaVersion: WORK_SURFACE_SCHEMA_VERSION,

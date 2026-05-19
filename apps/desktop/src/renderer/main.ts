@@ -663,6 +663,9 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'appearance.themeDay': '白天',
     'appearance.liquidGlass': '液态水效果',
     'appearance.liquidGlassDesc': '关闭设置面板的液态覆盖层以降低 GPU 占用。',
+    'experimental.title': '实验功能',
+    'experimental.workSurface': '实时工作页面',
+    'experimental.workSurfaceDesc': '让复杂任务使用受控工作台界面展示状态、结果和可继续操作对象。默认关闭。',
     'models.title': '模型设置',
     'voice.input': '语音输入',
     'voice.inputDesc': '使用麦克风进行语音对话',
@@ -1019,6 +1022,9 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'appearance.themeDay': 'Day',
     'appearance.liquidGlass': 'Liquid Effect',
     'appearance.liquidGlassDesc': 'Disable the liquid overlay on the settings panel to reduce GPU usage.',
+    'experimental.title': 'Experimental',
+    'experimental.workSurface': 'Realtime Work Surface',
+    'experimental.workSurfaceDesc': 'Use a controlled workspace UI for complex tasks. Disabled by default.',
     'models.title': 'Model Settings',
     'voice.input': 'Voice Input',
     'voice.inputDesc': 'Use the microphone for voice conversation',
@@ -1463,6 +1469,9 @@ type UISettings = {
     theme?: AppearanceTheme
     liquidGlassEnabled?: boolean
   }
+  experimental?: {
+    workSurfaceEnabled?: boolean
+  }
   selectedPersonality: string
   plugins: Record<string, boolean>
   pluginConfigs: Record<string, Record<string, unknown>>
@@ -1630,12 +1639,15 @@ const voiceRecorder = new VoiceRecorder()
 // Canvas rendering
 const pluginUIMainView = document.getElementById('orb-slot') as HTMLElement
 const pluginUITaskPanel = document.getElementById('task-panel') as HTMLElement
+const workSurfaceRoot = document.getElementById('work-surface-root') as HTMLElement
 const canvas = document.getElementById('orb-canvas') as HTMLCanvasElement
 const ctx = canvas.getContext('2d', { alpha: true })!
 const advancedOrbCanvas = document.getElementById('advanced-orb-canvas') as HTMLCanvasElement
 const planetOrbCanvas = document.getElementById('planet-orb-canvas') as HTMLCanvasElement
 let activePluginMainSurface: PluginUISurface | null = null
 let activePluginTaskSurface: PluginUISurface | null = null
+let workSurfaceEnabled = false
+let activeWorkSurfaceSnapshot: any | null = null
 let lastTaskPanelPlan: TaskPanelPlan | null = null
 let lastConversationPhase: ConversationFrame['phase'] | null = null
 let lastExpressionState: {
@@ -2742,6 +2754,172 @@ function renderTaskPanel(plan: TaskPanelPlan): void {
   syncPluginUIStateSoon()
 }
 
+function setWorkSurfaceEnabled(enabled: boolean): void {
+  workSurfaceEnabled = enabled
+  document.body.classList.toggle('work-surface-enabled', enabled)
+  workSurfaceRoot.hidden = !enabled || !activeWorkSurfaceSnapshot
+  if (!enabled) {
+    activeWorkSurfaceSnapshot = null
+    workSurfaceRoot.textContent = ''
+  }
+}
+
+function renderWorkSurfaceSnapshot(snapshot: any): void {
+  if (!workSurfaceEnabled || !snapshot) {
+    return
+  }
+  activeWorkSurfaceSnapshot = snapshot
+  workSurfaceRoot.hidden = false
+  workSurfaceRoot.textContent = ''
+
+  const header = document.createElement('div')
+  header.className = 'work-surface-header'
+  const title = document.createElement('div')
+  title.className = 'work-surface-title'
+  title.textContent = snapshot.title || 'Work Surface'
+  const mode = document.createElement('div')
+  mode.className = 'work-surface-mode'
+  mode.textContent = snapshot.mode || 'task'
+  header.append(title, mode)
+
+  const body = document.createElement('div')
+  body.className = 'work-surface-body'
+  for (const component of Object.values(snapshot.components ?? {}) as any[]) {
+    body.appendChild(renderWorkSurfaceComponent(component))
+  }
+
+  workSurfaceRoot.append(header, body)
+  setTaskPanelVisible(true)
+}
+
+function renderWorkSurfaceComponent(component: any): HTMLElement {
+  const node = document.createElement('section')
+  node.className = `work-surface-component ${component.kind || 'unknown'}`
+  node.dataset.componentId = component.id
+  node.tabIndex = 0
+
+  if (component.title) {
+    const title = document.createElement('div')
+    title.className = 'work-surface-component-title'
+    title.textContent = component.title
+    node.appendChild(title)
+  }
+
+  if (component.kind === 'status') {
+    node.appendChild(renderWorkSurfaceText(component.label, component.detail))
+  } else if (component.kind === 'taskPlan') {
+    node.appendChild(renderWorkSurfaceTaskPlan(component))
+  } else if (component.kind === 'table') {
+    node.appendChild(renderWorkSurfaceTable(component))
+  } else if (component.kind === 'artifacts') {
+    node.appendChild(renderWorkSurfaceArtifacts(component))
+  } else if (component.kind === 'actions') {
+    node.appendChild(renderWorkSurfaceActions(component))
+  } else {
+    node.appendChild(renderWorkSurfaceText(component.markdown ?? component.prompt ?? JSON.stringify(component, null, 2)))
+  }
+
+  node.addEventListener('click', () => {
+    void window.electronAPI.sendWorkSurfaceEvent({
+      type: 'surface.select',
+      surfaceId: activeWorkSurfaceSnapshot?.surfaceId,
+      targetId: component.id,
+      selectedIds: [component.id],
+      bindings: component.bindings ?? [],
+    })
+  })
+  return node
+}
+
+function renderWorkSurfaceText(primary: string, secondary?: string): HTMLElement {
+  const wrapper = document.createElement('div')
+  wrapper.className = 'work-surface-text'
+  const main = document.createElement('div')
+  main.textContent = primary || ''
+  wrapper.appendChild(main)
+  if (secondary) {
+    const detail = document.createElement('div')
+    detail.className = 'work-surface-muted'
+    detail.textContent = secondary
+    wrapper.appendChild(detail)
+  }
+  return wrapper
+}
+
+function renderWorkSurfaceTaskPlan(component: any): HTMLElement {
+  const list = document.createElement('ol')
+  list.className = 'work-surface-plan'
+  for (const step of component.plan?.steps ?? []) {
+    const item = document.createElement('li')
+    item.className = `work-surface-plan-step ${step.status || 'pending'}`
+    item.textContent = step.title || step.description || step.id
+    list.appendChild(item)
+  }
+  return list
+}
+
+function renderWorkSurfaceTable(component: any): HTMLElement {
+  const table = document.createElement('table')
+  table.className = 'work-surface-table'
+  const head = document.createElement('thead')
+  const headRow = document.createElement('tr')
+  for (const column of component.columns ?? []) {
+    const cell = document.createElement('th')
+    cell.textContent = column.label || column.id
+    headRow.appendChild(cell)
+  }
+  head.appendChild(headRow)
+  const body = document.createElement('tbody')
+  for (const row of component.rows ?? []) {
+    const tableRow = document.createElement('tr')
+    tableRow.dataset.componentId = row.id
+    for (const column of component.columns ?? []) {
+      const cell = document.createElement('td')
+      cell.textContent = String(row.cells?.[column.id] ?? '')
+      tableRow.appendChild(cell)
+    }
+    body.appendChild(tableRow)
+  }
+  table.append(head, body)
+  return table
+}
+
+function renderWorkSurfaceArtifacts(component: any): HTMLElement {
+  const grid = document.createElement('div')
+  grid.className = 'work-surface-artifacts'
+  for (const artifact of component.artifacts ?? []) {
+    const item = document.createElement('button')
+    item.className = 'work-surface-artifact'
+    item.type = 'button'
+    item.textContent = artifact.title || artifact.path || artifact.id
+    grid.appendChild(item)
+  }
+  return grid
+}
+
+function renderWorkSurfaceActions(component: any): HTMLElement {
+  const bar = document.createElement('div')
+  bar.className = 'work-surface-actions'
+  for (const action of component.actions ?? []) {
+    const button = document.createElement('button')
+    button.className = `work-surface-action ${action.variant || 'secondary'}`
+    button.type = 'button'
+    button.disabled = Boolean(action.disabled)
+    button.textContent = action.label || action.id
+    button.addEventListener('click', (event) => {
+      event.stopPropagation()
+      void window.electronAPI.sendWorkSurfaceEvent({
+        type: 'surface.action',
+        surfaceId: activeWorkSurfaceSnapshot?.surfaceId,
+        actionId: action.id,
+        targetId: action.targetId,
+      })
+    })
+    bar.appendChild(button)
+  }
+  return bar
+}
+
 function getTaskStepMark(status: TaskPanelStepStatus): string {
   switch (status) {
     case 'completed':
@@ -2906,6 +3084,32 @@ async function initialize() {
     window.electronAPI.onConversationFrame((frame) => {
       handleConversationFrame(frame as ConversationFrame)
     })
+
+    window.electronAPI.onWorkSurfaceFrame((frame) => {
+      if (frame?.type === 'surface.close') {
+        workSurfaceRoot.hidden = true
+      }
+    })
+
+    window.electronAPI.onWorkSurfaceCreated((snapshot) => {
+      renderWorkSurfaceSnapshot(snapshot)
+    })
+
+    window.electronAPI.onWorkSurfaceSnapshot((snapshot) => {
+      renderWorkSurfaceSnapshot(snapshot)
+    })
+
+    window.electronAPI.onWorkSurfaceClosed(() => {
+      activeWorkSurfaceSnapshot = null
+      workSurfaceRoot.hidden = true
+      workSurfaceRoot.textContent = ''
+    })
+
+    window.electronAPI.onWorkSurfaceError((error) => {
+      console.warn('[WorkSurface] Error:', error)
+    })
+
+    void window.electronAPI.workSurfaceReady()
 
     window.electronAPI.onTTSConnected((contextId) => {
       console.log(`[UI] TTS connected (context #${contextId})`)
@@ -3121,6 +3325,7 @@ const orbStyleLabel = document.getElementById('orb-style-label') as HTMLElement
 const appearanceThemeTrigger = document.getElementById('appearance-theme-trigger') as HTMLButtonElement
 const appearanceThemeLabel = document.getElementById('appearance-theme-label') as HTMLElement
 const liquidGlassToggle = document.getElementById('liquid-glass-toggle') as HTMLInputElement
+const workSurfaceToggle = document.getElementById('work-surface-toggle') as HTMLInputElement
 const personalitySelect = document.getElementById('personality-select') as HTMLSelectElement
 const addPersonalityFileBtn = document.getElementById('add-personality-file-btn') as HTMLButtonElement
 const pluginsList = document.getElementById('plugins-list') as HTMLElement
@@ -3166,6 +3371,8 @@ function applySettingsToUI(settings: UISettings) {
   setAppearanceTheme(parseAppearanceTheme(settings.appearance?.theme))
   setOrbStyle(parseOrbStyle(settings.appearance?.orbStyle))
   setLiquidGlassEnabled(settings.appearance?.liquidGlassEnabled !== false)
+  workSurfaceToggle.checked = settings.experimental?.workSurfaceEnabled === true
+  setWorkSurfaceEnabled(settings.experimental?.workSurfaceEnabled === true)
 
   startConversationBtn.disabled = !settings.voiceInputEnabled
   updateConversationButton()
@@ -3393,6 +3600,15 @@ liquidGlassToggle.addEventListener('change', async () => {
       liquidGlassEnabled: enabled
     }
   })
+})
+
+workSurfaceToggle.addEventListener('change', async () => {
+  const settings = await window.electronAPI.updateSettings({
+    experimental: {
+      workSurfaceEnabled: workSurfaceToggle.checked
+    }
+  })
+  applySettingsToUI(settings)
 })
 
 // Hide context menu when clicking elsewhere

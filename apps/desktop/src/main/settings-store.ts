@@ -205,6 +205,7 @@ export interface AppSettings {
   voiceOutputEnabled: boolean
   volume: number
   appearance: AppearanceSettings
+  experimental: ExperimentalSettings
   selectedPersonality: string
   externalRolePaths: string[]
   plugins: Record<string, boolean>
@@ -219,10 +220,18 @@ export interface AppearanceSettings {
   liquidGlassEnabled: boolean
 }
 
+export interface ExperimentalSettings {
+  workSurfaceEnabled: boolean
+}
+
 const DEFAULT_APPEARANCE_SETTINGS: AppearanceSettings = {
   orbStyle: 'default',
   theme: 'night',
   liquidGlassEnabled: true
+}
+
+const DEFAULT_EXPERIMENTAL_SETTINGS: ExperimentalSettings = {
+  workSurfaceEnabled: false
 }
 
 const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
@@ -272,6 +281,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   voiceOutputEnabled: true,
   volume: 70,
   appearance: DEFAULT_APPEARANCE_SETTINGS,
+  experimental: DEFAULT_EXPERIMENTAL_SETTINGS,
   selectedPersonality: 'role:eva',
   externalRolePaths: [],
   plugins: {},
@@ -334,6 +344,7 @@ export class SettingsStore {
         ...parsed,
         language: normalizeLanguage(parsed.language),
         appearance: normalizeAppearanceSettings(parsed.appearance),
+        experimental: normalizeExperimentalSettings(parsed.experimental),
         externalRolePaths: Array.isArray(parsed.externalRolePaths) ? parsed.externalRolePaths : [],
         plugins: parsed.plugins && typeof parsed.plugins === 'object' ? parsed.plugins : {},
         pluginConfigs: parsed.pluginConfigs && typeof parsed.pluginConfigs === 'object' ? parsed.pluginConfigs : {},
@@ -480,6 +491,7 @@ export class SettingsStore {
       ...this.settings,
       ...partial,
       appearance: normalizeAppearanceSettings(partial.appearance, this.settings.appearance),
+      experimental: normalizeExperimentalSettings(partial.experimental, this.settings.experimental),
       volume: clampVolume(partial.volume ?? this.settings.volume)
     }
     await this.persist()
@@ -532,6 +544,20 @@ function normalizeAppearanceSettings(value: unknown, fallback: AppearanceSetting
     liquidGlassEnabled: typeof source.liquidGlassEnabled === 'boolean'
       ? source.liquidGlassEnabled
       : fallback.liquidGlassEnabled
+  }
+}
+
+function normalizeExperimentalSettings(
+  value: unknown,
+  fallback: ExperimentalSettings = DEFAULT_EXPERIMENTAL_SETTINGS
+): ExperimentalSettings {
+  const source = value && typeof value === 'object'
+    ? value as Partial<ExperimentalSettings>
+    : {}
+  return {
+    workSurfaceEnabled: typeof source.workSurfaceEnabled === 'boolean'
+      ? source.workSurfaceEnabled
+      : fallback.workSurfaceEnabled
   }
 }
 

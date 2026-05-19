@@ -62,99 +62,99 @@
 
 ## Phase 2：设置和功能开关
 
-- [ ] 在 settings 类型中增加实验开关：
-  - [ ] `experimental.workSurfaceEnabled`
-- [ ] 在 settings store 增加默认值 `false`。
-- [ ] 在设置 UI 中增加开关。
-- [ ] 开关文案明确说明这是实验能力。
-- [ ] 关闭开关时不注册 UI tools。
-- [ ] 关闭开关时 renderer 不显示 WorkSurfaceView。
-- [ ] 关闭开关时不向 task model 注入 UI 协议提示。
+- [x] 在 settings 类型中增加实验开关：
+  - [x] `experimental.workSurfaceEnabled`
+- [x] 在 settings store 增加默认值 `false`。
+- [x] 在设置 UI 中增加开关。
+- [x] 开关文案明确说明这是实验能力。
+- [x] 关闭开关时不注册 UI tools。
+- [x] 关闭开关时 renderer 不显示 WorkSurfaceView。
+- [x] 关闭开关时不向 task model 注入 UI 协议提示。
 - [ ] 切换开关后确认是否需要重启 SDK 或刷新插件。
-- [ ] 增加日志，标记 work surface 是否启用。
+- [x] 增加日志，标记 work surface 是否启用。
 
 ## Phase 3：Desktop 旁路控制器
 
-- [ ] 新增 `WorkSurfaceController`。
-- [ ] 控制器维护 surface state。
-- [ ] 控制器接收 `WorkSurfaceFrame`。
-- [ ] 控制器校验 frame。
-- [ ] 控制器应用 patch。
-- [ ] 控制器维护 component id 索引。
-- [ ] 控制器维护 runtime binding 索引。
+- [x] 新增 `WorkSurfaceController`。
+- [x] 控制器维护 surface state。
+- [x] 控制器接收 `WorkSurfaceFrame`。
+- [x] 控制器校验 frame。
+- [x] 控制器应用 patch。
+- [x] 控制器维护 component id 索引。
+- [x] 控制器维护 runtime binding 索引。
 - [ ] 控制器节流高频 patch。
-- [ ] 控制器向 renderer 发送 surface snapshot。
-- [ ] 控制器向 renderer 发送增量 frame。
-- [ ] 控制器处理 renderer 回传的 `SurfaceUserEvent`。
-- [ ] 控制器失败时只记录错误，不中断任务 runtime。
-- [ ] 控制器提供 reset/close API。
-- [ ] 控制器支持按 taskId 查询 active surface。
+- [x] 控制器向 renderer 发送 surface snapshot。
+- [x] 控制器向 renderer 发送增量 frame。
+- [x] 控制器处理 renderer 回传的 `SurfaceUserEvent`。
+- [x] 控制器失败时只记录错误，不中断任务 runtime。
+- [x] 控制器提供 reset/close API。
+- [x] 控制器支持按 taskId 查询 active surface。
 
 ## Phase 4：IPC 通道
 
-- [ ] Main -> Renderer：
-  - [ ] `workSurface:created`
-  - [ ] `workSurface:frame`
-  - [ ] `workSurface:snapshot`
-  - [ ] `workSurface:closed`
-  - [ ] `workSurface:error`
-- [ ] Renderer -> Main：
-  - [ ] `workSurface:event`
-  - [ ] `workSurface:ready`
-  - [ ] `workSurface:requestSnapshot`
-- [ ] 在 preload 暴露受控 API。
-- [ ] API 不暴露任意 DOM 或任意 eval 能力。
-- [ ] 增加事件 payload 基本校验。
-- [ ] 确认 IPC 命名与现有 `conversation:*`、`plugins:*` 风格一致。
+- [x] Main -> Renderer：
+  - [x] `workSurface:created`
+  - [x] `workSurface:frame`
+  - [x] `workSurface:snapshot`
+  - [x] `workSurface:closed`
+  - [x] `workSurface:error`
+- [x] Renderer -> Main：
+  - [x] `workSurface:event`
+  - [x] `workSurface:ready`
+  - [x] `workSurface:requestSnapshot`
+- [x] 在 preload 暴露受控 API。
+- [x] API 不暴露任意 DOM 或任意 eval 能力。
+- [x] 增加事件 payload 基本校验。
+- [x] 确认 IPC 命名与现有 `conversation:*`、`plugins:*` 风格一致。
 
 ## Phase 5：Renderer WorkSurfaceView
 
 - [ ] 新增 `work-surface` renderer 模块。
-- [ ] 新增 WorkSurfaceView 容器。
-- [ ] 实现 surface 创建和销毁。
-- [ ] 实现 layout 渲染。
-- [ ] 实现 component registry。
-- [ ] 实现 patch 应用。
-- [ ] 实现 selected state。
+- [x] 新增 WorkSurfaceView 容器。
+- [x] 实现 surface 创建和销毁。
+- [x] 实现 layout 渲染。
+- [x] 实现 component registry。
+- [x] 实现 patch 应用。
+- [x] 实现 selected state。
 - [ ] 实现 focus state。
 - [ ] 实现 loading state。
 - [ ] 实现 empty state。
 - [ ] 实现 error state。
 - [ ] 实现任务完成后的只读状态。
-- [ ] 接入现有 task panel 显示区域。
-- [ ] 开关关闭时保持当前 UI 不变。
-- [ ] 支持窄窗口布局。
-- [ ] 支持高 DPI 和窗口缩放。
+- [x] 接入现有 task panel 显示区域。
+- [x] 开关关闭时保持当前 UI 不变。
+- [x] 支持窄窗口布局。
+- [x] 支持高 DPI 和窗口缩放。
 
 ## Phase 6：内置组件实现
 
-- [ ] `StatusStrip`
-  - [ ] 显示任务状态。
-  - [ ] 显示当前 step。
-  - [ ] 显示等待用户/失败/完成状态。
-- [ ] `TaskPlanView`
-  - [ ] 渲染 plan title。
-  - [ ] 渲染 step 列表。
-  - [ ] 展示 step 状态。
-  - [ ] 支持当前 step 高亮。
+- [x] `StatusStrip`
+  - [x] 显示任务状态。
+  - [x] 显示当前 step。
+  - [x] 显示等待用户/失败/完成状态。
+- [x] `TaskPlanView`
+  - [x] 渲染 plan title。
+  - [x] 渲染 step 列表。
+  - [x] 展示 step 状态。
+  - [x] 支持当前 step 高亮。
   - [ ] 支持 step 错误信息。
-- [ ] `MarkdownBlock`
-  - [ ] 支持安全 markdown 渲染。
-  - [ ] 禁止 raw HTML。
+- [x] `MarkdownBlock`
+  - [x] 支持安全 markdown 渲染。
+  - [x] 禁止 raw HTML。
   - [ ] 支持代码块。
-- [ ] `DataTable`
-  - [ ] 渲染列。
-  - [ ] 渲染行。
-  - [ ] 支持单选/多选。
+- [x] `DataTable`
+  - [x] 渲染列。
+  - [x] 渲染行。
+  - [x] 支持单选/多选。
   - [ ] 支持排序。
   - [ ] 支持简单过滤。
   - [ ] 支持行级 action。
   - [ ] 大数据分页或截断。
-- [ ] `ArtifactGrid`
-  - [ ] 文件卡片。
-  - [ ] 图片预览。
-  - [ ] 网页截图预览。
-  - [ ] 打开文件 action。
+- [x] `ArtifactGrid`
+  - [x] 文件卡片。
+  - [x] 图片预览。
+  - [x] 网页截图预览。
+  - [x] 打开文件 action。
 - [ ] `FormPanel`
   - [ ] 文本输入。
   - [ ] textarea。
@@ -162,11 +162,11 @@
   - [ ] checkbox。
   - [ ] password/secret。
   - [ ] submit/cancel。
-- [ ] `ActionBar`
-  - [ ] 主操作。
-  - [ ] 次级操作。
-  - [ ] danger 操作。
-  - [ ] disabled/loading 状态。
+- [x] `ActionBar`
+  - [x] 主操作。
+  - [x] 次级操作。
+  - [x] danger 操作。
+  - [x] disabled/loading 状态。
 - [ ] `ChartView`
   - [ ] bar。
   - [ ] line。
@@ -184,20 +184,20 @@
 
 ## Phase 7：视觉风格
 
-- [ ] 定义 work surface CSS tokens。
-- [ ] 和现有控制面板颜色变量对齐。
-- [ ] 实现深色玻璃质感面板。
-- [ ] 实现细线边框和低强度微光。
-- [ ] 实现状态条动效。
-- [ ] 实现选中态。
-- [ ] 实现 focus ring。
+- [x] 定义 work surface CSS tokens。
+- [x] 和现有控制面板颜色变量对齐。
+- [x] 实现深色玻璃质感面板。
+- [x] 实现细线边框和低强度微光。
+- [x] 实现状态条动效。
+- [x] 实现选中态。
+- [x] 实现 focus ring。
 - [ ] 实现 loading skeleton。
-- [ ] 控制强调色数量不超过 2 个。
-- [ ] 避免大面积彩色渐变。
-- [ ] 避免营销页式大卡片。
-- [ ] 避免 UI 元素互相遮挡。
-- [ ] 检查小窗口下文本不溢出。
-- [ ] 检查英文、中文混排。
+- [x] 控制强调色数量不超过 2 个。
+- [x] 避免大面积彩色渐变。
+- [x] 避免营销页式大卡片。
+- [x] 避免 UI 元素互相遮挡。
+- [x] 检查小窗口下文本不溢出。
+- [x] 检查英文、中文混排。
 
 ## Phase 8：Task Event 自动映射
 

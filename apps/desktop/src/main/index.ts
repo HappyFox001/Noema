@@ -83,6 +83,9 @@ import {
   type TaskUserInputRequest,
   type TaskUserInputResponse,
   type TaskPlan,
+  WorkSurfaceController,
+  type SurfaceUserEvent,
+  type WorkSurfaceFrame,
 } from '@her-text/sdk'
 import { discoverRuntimePlugins, invokeRuntimePluginAdminAction, loadRuntimePlugins } from './plugin-loader.js'
 import { initializeSileroVAD, isSileroVADAvailable } from './silero-vad-helper.js'
@@ -383,6 +386,41 @@ type ConversationFrame =
       durationMs: number
       priority?: number
     }
+
+let workSurfaceController: WorkSurfaceController | null = null
+
+function getWorkSurfaceController(): WorkSurfaceController | null {
+  if (!appSettings.experimental?.workSurfaceEnabled) {
+    return null
+  }
+  if (!workSurfaceController) {
+    workSurfaceController = new WorkSurfaceController()
+  }
+  return workSurfaceController
+}
+
+function publishWorkSurfaceFrame(frame: WorkSurfaceFrame): { success: boolean; error?: string } {
+  const controller = getWorkSurfaceController()
+  if (!controller) {
+    return { success: false, error: 'Work surface is disabled' }
+  }
+
+  const result = controller.applyFrame(frame)
+  if (!result.accepted) {
+    const error = result.errors.join('; ')
+    mainWindow?.webContents.send('workSurface:error', error)
+    return { success: false, error }
+  }
+
+  if (frame.type === 'surface.create') {
+    mainWindow?.webContents.send('workSurface:created', result.snapshot)
+  }
+  mainWindow?.webContents.send('workSurface:frame', frame)
+  if (result.snapshot) {
+    mainWindow?.webContents.send('workSurface:snapshot', result.snapshot)
+  }
+  return { success: true }
+}
 
 class ConversationDisplayController {
   private visibleText = ''
@@ -2222,6 +2260,7 @@ let appSettings: AppSettings = {
   voiceOutputEnabled: true,
   volume: 70,
   appearance: { orbStyle: 'default', theme: 'night', liquidGlassEnabled: true },
+  experimental: { workSurfaceEnabled: false },
   selectedPersonality: 'role:eva',
   externalRolePaths: [],
   plugins: {},
@@ -3995,6 +4034,14 @@ ipcMain.handle('settings:update', async (_, partial: Partial<AppSettings>) => {
   const previousPlugins = appSettings.plugins
   const previousPluginConfigs = appSettings.pluginConfigs
   appSettings = await getSettingsStore().update(partial)
+  if (appSettings.experimental?.workSurfaceEnabled === false) {
+    workSurfaceController?.reset()
+    workSurfaceController = null
+    mainWindow?.webContents.send('workSurface:closed', '*')
+  }
+  if (partial.experimental?.workSurfaceEnabled !== undefined) {
+    console.log('[WorkSurface] Enabled:', appSettings.experimental.workSurfaceEnabled)
+  }
   const pluginsChanged =
     (partial.plugins !== undefined && previousPlugins !== appSettings.plugins) ||
     (partial.pluginConfigs !== undefined && previousPluginConfigs !== appSettings.pluginConfigs)
@@ -4002,6 +4049,39 @@ ipcMain.handle('settings:update', async (_, partial: Partial<AppSettings>) => {
   await applyRuntimeSystemConfigChanges(previous, { pluginsChanged })
 
   return appSettings
+})
+
+ipcMain.handle('workSurface:ready', async () => {
+  return { success: true }
+})
+
+ipcMain.handle('workSurface:requestSnapshot', async (_event, surfaceId?: string) => {
+  const controller = getWorkSurfaceController()
+  if (!controller) {
+    return { success: false, error: 'Work surface is disabled' }
+  }
+  const snapshot = surfaceId
+    ? controller.getSnapshot(surfaceId)
+    : controller.listSnapshots()[0]
+  return { success: true, snapshot }
+})
+
+ipcMain.handle('workSurface:event', async (_event, userEvent: SurfaceUserEvent) => {
+  const controller = getWorkSurfaceController()
+  if (!controller) {
+    return { success: false, error: 'Work surface is disabled' }
+  }
+  const result = controller.applyUserEvent({
+    ...userEvent,
+    timestamp: userEvent.timestamp ?? Date.now(),
+  })
+  if (!result.accepted) {
+    return { success: false, error: result.errors.join('; ') }
+  }
+  if (result.snapshot) {
+    mainWindow?.webContents.send('workSurface:snapshot', result.snapshot)
+  }
+  return { success: true }
 })
 
 ipcMain.handle('plugins:list', async () => {
