@@ -200,6 +200,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   listWorkSurfaceSnapshots: () =>
     ipcRenderer.invoke('workSurface:listSnapshots'),
 
+  searchWorkSurfaceSnapshots: (query) =>
+    ipcRenderer.invoke('workSurface:searchSnapshots', query),
+
   sendWorkSurfaceEvent: (event) =>
     ipcRenderer.invoke('workSurface:event', event),
 

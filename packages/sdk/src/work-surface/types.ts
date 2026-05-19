@@ -300,4 +300,5 @@ export interface WorkSurfaceSnapshot {
   selectedIds: string[]
   focusedId?: string
   messages: SurfaceMessageFrame[]
+  memorySummary?: string
 }

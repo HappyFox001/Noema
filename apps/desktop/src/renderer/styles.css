@@ -622,10 +622,38 @@ body.work-surface-enabled .task-panel {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
   padding: 12px 14px;
   border-bottom: 1px solid var(--ws-border);
   background: linear-gradient(90deg, rgba(112, 211, 255, 0.12), transparent 58%);
+}
+
+.work-surface-tabs {
+  display: flex;
+  flex: 1 0 100%;
+  gap: 6px;
+  min-width: 0;
+  overflow: auto;
+}
+
+.work-surface-tab {
+  max-width: 150px;
+  min-height: 24px;
+  border: 1px solid rgba(170, 220, 255, 0.14);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--ws-muted);
+  font: inherit;
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-surface-tab.active {
+  border-color: rgba(112, 211, 255, 0.42);
+  color: var(--ws-accent);
 }
 
 .work-surface-title {
@@ -658,6 +686,10 @@ body.work-surface-enabled .task-panel {
   border-radius: 8px;
   padding: 10px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.work-surface-component[draggable="true"] {
+  cursor: grab;
 }
 
 .work-surface-component:focus-visible,
@@ -864,10 +896,33 @@ body.work-surface-enabled .task-panel {
 }
 
 .work-surface-chart {
+  position: relative;
   display: flex;
   align-items: end;
   gap: 4px;
   height: 90px;
+}
+
+.work-surface-chart.pie-rendered {
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  background: var(--work-surface-pie);
+}
+
+.work-surface-chart.scatter-rendered {
+  display: block;
+  border-left: 1px solid rgba(170, 220, 255, 0.18);
+  border-bottom: 1px solid rgba(170, 220, 255, 0.18);
+}
+
+.work-surface-chart-dot {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ws-accent);
+  box-shadow: 0 0 10px rgba(112, 211, 255, 0.45);
 }
 
 .work-surface-chart-bar {

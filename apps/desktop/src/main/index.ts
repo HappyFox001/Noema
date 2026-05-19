@@ -485,6 +485,7 @@ async function persistWorkSurfaceSnapshots(snapshots: WorkSurfaceSnapshot[]): Pr
     .filter(isPersistableWorkSurfaceSnapshot)
     .map(snapshot => ({
       ...snapshot,
+      memorySummary: buildWorkSurfaceMemorySummary(snapshot),
       selectedIds: [],
       messages: snapshot.messages.filter(message => (message as any).type !== 'surface.request_input'),
     }))
@@ -495,6 +496,21 @@ async function persistWorkSurfaceSnapshots(snapshots: WorkSurfaceSnapshot[]): Pr
   } catch (error) {
     console.warn('[WorkSurface] Failed to persist snapshots:', error instanceof Error ? error.message : String(error))
   }
+}
+
+function buildWorkSurfaceMemorySummary(snapshot: WorkSurfaceSnapshot): string {
+  return Object.values(snapshot.components)
+    .slice(0, 12)
+    .map((component: any) => {
+      if (component.kind === 'status') return component.detail || component.label
+      if (component.kind === 'markdown') return component.markdown
+      if (component.kind === 'table') return `${component.title || 'table'}: ${component.rows?.length ?? 0} rows`
+      if (component.kind === 'artifacts') return `${component.title || 'artifacts'}: ${component.artifacts?.length ?? 0} items`
+      return component.title
+    })
+    .filter(Boolean)
+    .join('\n')
+    .slice(0, 2000)
 }
 
 function isPersistableWorkSurfaceSnapshot(value: unknown): value is WorkSurfaceSnapshot {
@@ -4446,6 +4462,30 @@ ipcMain.handle('workSurface:listSnapshots', async () => {
   }
 })
 
+ipcMain.handle('workSurface:searchSnapshots', async (_event, query: string) => {
+  const normalized = String(query || '').trim().toLowerCase()
+  const controller = getWorkSurfaceController()
+  const snapshots = controller ? controller.listSnapshots() : restoredWorkSurfaceSnapshots
+  return {
+    success: true,
+    snapshots: snapshots
+      .filter(snapshot => !normalized || JSON.stringify({
+        title: snapshot.title,
+        taskId: snapshot.taskId,
+        components: snapshot.components,
+      }).toLowerCase().includes(normalized))
+      .slice(0, 25)
+      .map(snapshot => ({
+        surfaceId: snapshot.surfaceId,
+        taskId: snapshot.taskId,
+        title: snapshot.title,
+        mode: snapshot.mode,
+        updatedAt: snapshot.updatedAt,
+        closedAt: snapshot.closedAt,
+      })),
+  }
+})
+
 ipcMain.handle('workSurface:event', async (_event, userEvent: SurfaceUserEvent) => {
   const controller = getWorkSurfaceController()
   if (!controller) {
@@ -4522,12 +4562,64 @@ async function handleWorkSurfaceAction(event: Extract<SurfaceUserEvent, { type: 
     await runConversationTurn(prompt, appSettings.voiceOutputEnabled, 'text')
     return
   }
+  if (actionId === 'replay_task') {
+    const prompt = [
+      'Replay this completed work surface task from its saved snapshot.',
+      event.targetId ? `Target: ${event.targetId}` : '',
+      event.payload ? `Payload: ${safeJsonStringify(event.payload)}` : '',
+    ].filter(Boolean).join('\n')
+    await runConversationTurn(prompt, appSettings.voiceOutputEnabled, 'text')
+    return
+  }
+  if (actionId === 'export_surface_report') {
+    const snapshot = workSurfaceController?.getSnapshot(event.surfaceId)
+    if (!snapshot) {
+      throw new Error('Cannot export missing work surface snapshot')
+    }
+    const reportPath = await exportWorkSurfaceReport(snapshot)
+    await shell.openPath(reportPath)
+    return
+  }
   const prompt = [
     `Work surface action selected: ${actionId}`,
     event.targetId ? `Target: ${event.targetId}` : '',
     event.payload ? `Payload: ${safeJsonStringify(event.payload)}` : '',
   ].filter(Boolean).join('\n')
   await runConversationTurn(prompt, appSettings.voiceOutputEnabled, 'text')
+}
+
+async function exportWorkSurfaceReport(snapshot: WorkSurfaceSnapshot): Promise<string> {
+  const reportsDir = join(getStorageDir(), 'work-surface-reports')
+  await mkdir(reportsDir, { recursive: true })
+  const filePath = join(reportsDir, `${snapshot.surfaceId.replace(/[^a-zA-Z0-9_-]+/g, '_')}.md`)
+  const lines = [
+    `# ${snapshot.title}`,
+    '',
+    `- Surface: ${snapshot.surfaceId}`,
+    snapshot.taskId ? `- Task: ${snapshot.taskId}` : '',
+    `- Updated: ${new Date(snapshot.updatedAt).toISOString()}`,
+    '',
+    ...Object.values(snapshot.components).flatMap(component => renderWorkSurfaceComponentReport(component)),
+  ].filter(Boolean)
+  await writeFile(filePath, lines.join('\n'), 'utf-8')
+  return filePath
+}
+
+function renderWorkSurfaceComponentReport(component: any): string[] {
+  const title = component.title || component.kind || component.id
+  if (component.kind === 'markdown') {
+    return [`## ${title}`, '', component.markdown || '', '']
+  }
+  if (component.kind === 'table') {
+    const columns = component.columns ?? []
+    const header = `| ${columns.map((column: any) => column.label || column.id).join(' | ')} |`
+    const divider = `| ${columns.map(() => '---').join(' | ')} |`
+    const rows = (component.rows ?? []).slice(0, 200).map((row: any) =>
+      `| ${columns.map((column: any) => String(row.cells?.[column.id] ?? '').replace(/\|/g, '\\|')).join(' | ')} |`
+    )
+    return [`## ${title}`, '', header, divider, ...rows, '']
+  }
+  return [`## ${title}`, '', '```json', JSON.stringify(component, null, 2), '```', '']
 }
 
 function findWorkSurfaceAction(snapshot: WorkSurfaceSnapshot, actionId: string, targetId?: string): any | null {

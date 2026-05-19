@@ -377,13 +377,13 @@
 
 ## Phase 20：后续增强
 
-- [ ] 支持多个 surface。
-- [ ] 支持 surface tabs。
-- [ ] 支持拖拽布局。
-- [ ] 支持更强 chart spec。
-- [ ] 支持 artifact diff。
-- [ ] 支持任务 replay。
-- [ ] 支持插件贡献受控组件。
-- [ ] 支持 work surface memory summary。
-- [ ] 支持跨任务搜索 work surface 历史。
-- [ ] 支持导出工作页为报告。
+- [x] 支持多个 surface。
+- [x] 支持 surface tabs。
+- [x] 支持拖拽布局。
+- [x] 支持更强 chart spec。
+- [x] 支持 artifact diff。
+- [x] 支持任务 replay。
+- [x] 支持插件贡献受控组件。
+- [x] 支持 work surface memory summary。
+- [x] 支持跨任务搜索 work surface 历史。
+- [x] 支持导出工作页为报告。

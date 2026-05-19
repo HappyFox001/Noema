@@ -20,6 +20,10 @@ const MAX_RENDERED_ROWS = 80
 export class WorkSurfaceView {
   private enabled = false
   private snapshot: any | null = null
+  private snapshots = new Map<string, any>()
+  private activeSurfaceId: string | null = null
+  private draggedComponentId: string | null = null
+  private componentOrder = new Map<string, string[]>()
   private tableState = new Map<string, TableState>()
 
   constructor(
@@ -33,6 +37,8 @@ export class WorkSurfaceView {
     this.root.hidden = !enabled || !this.snapshot
     if (!enabled) {
       this.snapshot = null
+      this.snapshots.clear()
+      this.activeSurfaceId = null
       this.root.textContent = ''
       this.tableState.clear()
     }
@@ -40,6 +46,8 @@ export class WorkSurfaceView {
 
   close(): void {
     this.snapshot = null
+    this.snapshots.clear()
+    this.activeSurfaceId = null
     this.root.hidden = true
     this.root.textContent = ''
     this.tableState.clear()
@@ -49,6 +57,11 @@ export class WorkSurfaceView {
     if (!this.enabled || !snapshot) {
       return
     }
+    this.snapshots.set(snapshot.surfaceId, snapshot)
+    this.activeSurfaceId = this.activeSurfaceId && this.snapshots.has(this.activeSurfaceId)
+      ? this.activeSurfaceId
+      : snapshot.surfaceId
+    snapshot = this.snapshots.get(this.activeSurfaceId) ?? snapshot
     this.snapshot = snapshot
     this.root.hidden = false
     this.root.textContent = ''
@@ -62,10 +75,27 @@ export class WorkSurfaceView {
     mode.className = 'work-surface-mode'
     mode.textContent = snapshot.mode || 'task'
     header.append(title, mode)
+    if (this.snapshots.size > 1) {
+      const tabs = document.createElement('div')
+      tabs.className = 'work-surface-tabs'
+      for (const item of this.snapshots.values()) {
+        const tab = document.createElement('button')
+        tab.type = 'button'
+        tab.className = 'work-surface-tab'
+        tab.classList.toggle('active', item.surfaceId === this.activeSurfaceId)
+        tab.textContent = item.title || item.surfaceId
+        tab.addEventListener('click', () => {
+          this.activeSurfaceId = item.surfaceId
+          this.renderSnapshot(item)
+        })
+        tabs.appendChild(tab)
+      }
+      header.appendChild(tabs)
+    }
 
     const body = document.createElement('div')
     body.className = 'work-surface-body'
-    const components = Object.values(snapshot.components ?? {}) as any[]
+    const components = this.orderComponents(snapshot)
     if (components.length === 0) {
       body.appendChild(this.renderEmpty('No work surface components yet.'))
     }
@@ -89,6 +119,18 @@ export class WorkSurfaceView {
     node.classList.toggle('loading', component.loading === true)
     node.dataset.componentId = component.id
     node.tabIndex = 0
+    node.draggable = true
+    node.addEventListener('dragstart', (event) => {
+      this.draggedComponentId = component.id
+      event.dataTransfer?.setData('text/plain', component.id)
+    })
+    node.addEventListener('dragover', (event) => {
+      event.preventDefault()
+    })
+    node.addEventListener('drop', (event) => {
+      event.preventDefault()
+      this.reorderComponent(component.id)
+    })
 
     if (component.title) {
       const title = document.createElement('div')
@@ -131,6 +173,35 @@ export class WorkSurfaceView {
       })
     })
     return node
+  }
+
+  private orderComponents(snapshot: any): any[] {
+    const components = Object.values(snapshot.components ?? {}) as any[]
+    const order = this.componentOrder.get(snapshot.surfaceId)
+    if (!order) {
+      return components
+    }
+    return components.sort((left, right) => {
+      const leftIndex = order.indexOf(left.id)
+      const rightIndex = order.indexOf(right.id)
+      return (leftIndex < 0 ? Number.MAX_SAFE_INTEGER : leftIndex) - (rightIndex < 0 ? Number.MAX_SAFE_INTEGER : rightIndex)
+    })
+  }
+
+  private reorderComponent(targetId: string): void {
+    if (!this.snapshot?.surfaceId || !this.draggedComponentId || this.draggedComponentId === targetId) {
+      return
+    }
+    const current = this.orderComponents(this.snapshot).map(component => component.id)
+    const from = current.indexOf(this.draggedComponentId)
+    const to = current.indexOf(targetId)
+    if (from < 0 || to < 0) {
+      return
+    }
+    current.splice(to, 0, ...current.splice(from, 1))
+    this.componentOrder.set(this.snapshot.surfaceId, current)
+    this.draggedComponentId = null
+    this.renderSnapshot(this.snapshot)
   }
 
   private renderEmpty(message: string): HTMLElement {
@@ -426,14 +497,42 @@ export class WorkSurfaceView {
       chart.appendChild(this.renderText('No data'))
       return chart
     }
+    if (component.chart?.type === 'pie') {
+      chart.style.setProperty('--work-surface-pie', buildPieGradient(data, component.chart?.yKey || 'value'))
+      chart.classList.add('pie-rendered')
+      return chart
+    }
+    if (component.chart?.type === 'scatter') {
+      return this.renderScatterChart(chart, data, component.chart)
+    }
     const values = data.map((item: any) => Number(item[component.chart?.yKey || 'value'] ?? item.value ?? 0))
     const max = Math.max(1, ...values.map(Math.abs))
     values.slice(0, 40).forEach((value, index) => {
       const bar = document.createElement('div')
       bar.className = 'work-surface-chart-bar'
       bar.style.height = `${Math.max(4, Math.round(Math.abs(value) / max * 80))}%`
+      if (component.chart?.type === 'line') {
+        bar.style.width = '2px'
+      }
       bar.title = `${index}: ${value}`
       chart.appendChild(bar)
+    })
+    return chart
+  }
+
+  private renderScatterChart(chart: HTMLElement, data: any[], spec: any): HTMLElement {
+    chart.classList.add('scatter-rendered')
+    const xValues = data.map(item => Number(item[spec?.xKey || 'x'] ?? 0))
+    const yValues = data.map(item => Number(item[spec?.yKey || 'y'] ?? item.value ?? 0))
+    const maxX = Math.max(1, ...xValues.map(Math.abs))
+    const maxY = Math.max(1, ...yValues.map(Math.abs))
+    data.slice(0, 80).forEach((item, index) => {
+      const dot = document.createElement('span')
+      dot.className = 'work-surface-chart-dot'
+      dot.style.left = `${Math.min(96, Math.max(0, Number(item[spec?.xKey || 'x'] ?? 0) / maxX * 96))}%`
+      dot.style.bottom = `${Math.min(86, Math.max(0, Number(item[spec?.yKey || 'y'] ?? item.value ?? 0) / maxY * 86))}%`
+      dot.title = `${index}`
+      chart.appendChild(dot)
     })
     return chart
   }
@@ -472,7 +571,9 @@ export class WorkSurfaceView {
       const item = document.createElement('button')
       item.className = 'work-surface-artifact'
       item.type = 'button'
-      item.textContent = artifact.title || artifact.path || artifact.id
+      item.textContent = artifact.diffSummary
+        ? `${artifact.title || artifact.id}: ${artifact.diffSummary}`
+        : artifact.title || artifact.path || artifact.id
       item.addEventListener('click', (event) => {
         event.stopPropagation()
         void window.electronAPI.sendWorkSurfaceEvent({
@@ -520,4 +621,17 @@ function compareTableCell(left: unknown, right: unknown, direction: 'asc' | 'des
     ? leftNumber - rightNumber
     : String(left ?? '').localeCompare(String(right ?? ''), undefined, { numeric: true, sensitivity: 'base' })
   return direction === 'asc' ? result : -result
+}
+
+function buildPieGradient(data: any[], yKey: string): string {
+  const values = data.map(item => Math.max(0, Number(item[yKey] ?? item.value ?? 0)))
+  const total = values.reduce((sum, value) => sum + value, 0) || 1
+  const colors = ['#70d3ff', '#9ce6c5', '#f2d27a', '#ff7084', '#b6a5ff']
+  let cursor = 0
+  const stops = values.slice(0, 12).map((value, index) => {
+    const start = cursor
+    cursor += value / total * 100
+    return `${colors[index % colors.length]} ${start.toFixed(2)}% ${cursor.toFixed(2)}%`
+  })
+  return `conic-gradient(${stops.join(', ')})`
 }
