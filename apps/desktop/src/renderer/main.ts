@@ -3354,13 +3354,15 @@ function openOrbStyleMenu(): void {
   orbStyleTrigger.setAttribute('aria-expanded', 'true')
 
   const rect = orbStyleTrigger.getBoundingClientRect()
+  const menuWidth = Math.max(168, rect.width)
+  const optionHeight = 32
   const menu = document.createElement('div')
   menu.id = 'orb-style-floating-menu'
   menu.className = 'config-provider-floating-menu appearance-provider-menu'
   menu.setAttribute('role', 'listbox')
-  menu.style.minWidth = `${Math.max(220, rect.width)}px`
-  menu.style.left = `${Math.min(rect.left, window.innerWidth - Math.max(220, rect.width) - 12)}px`
-  menu.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - ORB_STYLE_OPTIONS.length * 42 - 14)}px`
+  menu.style.minWidth = `${menuWidth}px`
+  menu.style.left = `${Math.min(rect.left, window.innerWidth - menuWidth - 12)}px`
+  menu.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - ORB_STYLE_OPTIONS.length * optionHeight - 14)}px`
   menu.innerHTML = ORB_STYLE_OPTIONS.map(option => `
     <button class="config-provider-option appearance-provider-option ${option.value === currentOrbStyle ? 'selected' : ''}" type="button" role="option" aria-selected="${option.value === currentOrbStyle ? 'true' : 'false'}" data-orb-style="${option.value}">
       <span class="config-provider-option-check">${option.value === currentOrbStyle ? '✓' : ''}</span>
@@ -3389,13 +3391,15 @@ function openAppearanceThemeMenu(): void {
   appearanceThemeTrigger.setAttribute('aria-expanded', 'true')
 
   const rect = appearanceThemeTrigger.getBoundingClientRect()
+  const menuWidth = Math.max(168, rect.width)
+  const optionHeight = 32
   const menu = document.createElement('div')
   menu.id = 'appearance-theme-floating-menu'
   menu.className = 'config-provider-floating-menu appearance-provider-menu'
   menu.setAttribute('role', 'listbox')
-  menu.style.minWidth = `${Math.max(220, rect.width)}px`
-  menu.style.left = `${Math.min(rect.left, window.innerWidth - Math.max(220, rect.width) - 12)}px`
-  menu.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - APPEARANCE_THEME_OPTIONS.length * 42 - 14)}px`
+  menu.style.minWidth = `${menuWidth}px`
+  menu.style.left = `${Math.min(rect.left, window.innerWidth - menuWidth - 12)}px`
+  menu.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - APPEARANCE_THEME_OPTIONS.length * optionHeight - 14)}px`
   menu.innerHTML = APPEARANCE_THEME_OPTIONS.map(option => `
     <button class="config-provider-option appearance-theme-option ${option.value === currentAppearanceTheme ? 'selected' : ''}" type="button" role="option" aria-selected="${option.value === currentAppearanceTheme ? 'true' : 'false'}" data-appearance-theme="${option.value}">
       <span class="config-provider-option-check">${option.value === currentAppearanceTheme ? '✓' : ''}</span>
@@ -7156,13 +7160,15 @@ function openProviderMenu(button: HTMLButtonElement, id: string): void {
   button.setAttribute('aria-expanded', 'true')
 
   const rect = button.getBoundingClientRect()
+  const menuWidth = Math.max(168, rect.width)
+  const optionHeight = 32
   const menu = document.createElement('div')
   menu.id = 'config-provider-floating-menu'
   menu.className = 'config-provider-floating-menu'
   menu.setAttribute('role', 'listbox')
-  menu.style.minWidth = `${Math.max(220, rect.width)}px`
-  menu.style.left = `${Math.min(rect.left, window.innerWidth - Math.max(220, rect.width) - 12)}px`
-  menu.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - providers.length * 42 - 14)}px`
+  menu.style.minWidth = `${menuWidth}px`
+  menu.style.left = `${Math.min(rect.left, window.innerWidth - menuWidth - 12)}px`
+  menu.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - providers.length * optionHeight - 14)}px`
   menu.innerHTML = providers.map(provider => {
     const logo = kind === 'tts'
       ? getTTSProviderLogo(provider.value as TTSProviderType)

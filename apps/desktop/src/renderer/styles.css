@@ -895,6 +895,22 @@ body.work-surface-enabled .task-panel {
   font: inherit;
 }
 
+.work-surface-field select {
+  appearance: none;
+  -webkit-appearance: none;
+  min-height: 26px;
+  padding: 0 28px 0 8px;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='rgba(210,232,238,0.72)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") right 8px center / 14px 14px no-repeat,
+    rgba(0, 0, 0, 0.22);
+  font-family: var(--font-ui);
+  font-size: 10px;
+}
+
+.work-surface-field select option {
+  font-family: var(--font-ui);
+}
+
 .work-surface-chart {
   position: relative;
   display: flex;
@@ -2242,6 +2258,26 @@ body.work-surface-enabled .task-panel {
   outline: none;
 }
 
+select.plugin-config-input {
+  appearance: none;
+  -webkit-appearance: none;
+  min-width: 120px;
+  height: 28px;
+  padding: 0 28px 0 9px;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='rgba(232,238,238,0.72)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") right 8px center / 14px 14px no-repeat,
+    rgba(0, 0, 0, 0.22);
+  font-family: var(--font-ui);
+  font-size: 11px;
+}
+
+select.plugin-config-input option {
+  background: #1c1c1e;
+  color: rgba(248, 250, 250, 0.92);
+  font-family: var(--font-ui);
+  font-size: 11px;
+}
+
 .plugin-config-textarea {
   width: 100%;
   max-width: 100%;
@@ -3015,18 +3051,23 @@ body.theme-day .settings-toggle input:checked + .toggle-slider {
 
 /* Select */
 .settings-select {
-  font-family: var(--font-mixed);
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: var(--font-ui);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.035)),
-    rgba(0, 0, 0, 0.22);
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='rgba(232,238,238,0.72)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") right 9px center / 14px 14px no-repeat,
+    linear-gradient(180deg, rgba(255, 255, 255, 0.062), rgba(255, 255, 255, 0.026)),
+    rgba(0, 0, 0, 0.18);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 6px;
-  padding: 8px 12px;
-  color: white;
-  font-size: 13px;
+  min-height: 30px;
+  padding: 5px 30px 5px 10px;
+  color: rgba(248, 250, 250, 0.9);
+  font-size: 12px;
+  line-height: 1.25;
   outline: none;
   cursor: pointer;
-  width: min(100%, 220px);
+  width: min(100%, 176px);
   min-width: 0;
 }
 
@@ -3037,7 +3078,9 @@ body.theme-day .settings-toggle input:checked + .toggle-slider {
 
 .settings-select option {
   background: #1c1c1e;
-  color: white;
+  color: rgba(248, 250, 250, 0.92);
+  font-family: var(--font-ui);
+  font-size: 12px;
 }
 
 /* Button */
@@ -3269,9 +3312,16 @@ body.theme-day .config-provider-trigger-arrow {
 }
 
 body.theme-day .settings-btn,
-body.theme-day .settings-select,
 body.theme-day .settings-input {
   background: rgba(255, 255, 255, 0.62);
+  border-color: rgba(34, 80, 76, 0.14);
+  color: rgba(20, 34, 36, 0.86);
+}
+
+body.theme-day .settings-select {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='rgba(20,62,60,0.72)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") right 9px center / 14px 14px no-repeat,
+    rgba(255, 255, 255, 0.62);
   border-color: rgba(34, 80, 76, 0.14);
   color: rgba(20, 34, 36, 0.86);
 }
@@ -5178,9 +5228,9 @@ body.task-active:not(.settings-open) #main-view {
 
 .task-runtime-card .settings-select,
 .settings-text-input {
-  width: 220px;
-  min-width: 220px;
-  padding: 7px 10px;
+  width: 176px;
+  min-width: 176px;
+  padding: 6px 10px;
   font-size: 12px;
   border-radius: 6px;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -5306,8 +5356,8 @@ body.task-active:not(.settings-open) #main-view {
 }
 
 .config-model-logo.provider-option {
-  width: 20px;
-  height: 20px;
+  width: 17px;
+  height: 17px;
 }
 
 .config-model-name input {
@@ -5537,7 +5587,7 @@ body.task-active:not(.settings-open) #main-view {
 
 /* Provider dropdown */
 .config-provider-control {
-  width: min(100%, 136px);
+  width: min(100%, 126px);
   min-width: 0;
   display: inline-flex;
 }
@@ -5545,11 +5595,11 @@ body.task-active:not(.settings-open) #main-view {
 .config-provider-trigger {
   width: 100%;
   min-width: 0;
-  min-height: 28px;
+  min-height: 26px;
   display: grid;
   align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
+  gap: 5px;
+  padding: 3px 7px;
   border-radius: 6px;
   border: 1px solid rgba(232, 238, 238, 0.14);
   background:
@@ -5610,8 +5660,8 @@ body.task-active:not(.settings-open) #main-view {
   position: fixed;
   z-index: 10000;
   display: grid;
-  gap: 3px;
-  padding: 7px;
+  gap: 2px;
+  padding: 5px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 8px;
   background:
@@ -5623,18 +5673,18 @@ body.task-active:not(.settings-open) #main-view {
 }
 
 .config-provider-option {
-  min-height: 34px;
+  min-height: 28px;
   display: grid;
-  grid-template-columns: 22px 20px minmax(0, 1fr);
+  grid-template-columns: 18px 18px minmax(0, 1fr);
   align-items: center;
-  gap: 4px;
-  padding: 0 11px 0 7px;
+  gap: 5px;
+  padding: 0 9px 0 6px;
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
   color: rgba(235, 238, 238, 0.9);
   font-family: var(--font-ui);
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 600;
   line-height: 1.2;
   letter-spacing: 0.1px;
@@ -5656,7 +5706,7 @@ body.task-active:not(.settings-open) #main-view {
 
 .config-provider-option-check {
   color: rgba(225, 245, 241, 0.95);
-  font-size: 18px;
+  font-size: 14px;
   line-height: 1;
 }
 
@@ -5930,7 +5980,6 @@ body.theme-day .learning-nav-item.active {
 }
 
 body.theme-day .settings-input,
-body.theme-day .settings-select,
 body.theme-day .config-field-input,
 body.theme-day .task-runtime-input,
 body.theme-day .plugin-config-input,
@@ -5945,6 +5994,15 @@ body.theme-day select {
   border-color: rgba(34, 80, 76, 0.16);
   color: rgba(15, 28, 30, 0.92);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+body.theme-day .settings-select,
+body.theme-day select.plugin-config-input,
+body.theme-day .work-surface-field select {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='rgba(20,62,60,0.72)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") right 9px center / 14px 14px no-repeat,
+    linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(246, 250, 249, 0.64)),
+    rgba(255, 255, 255, 0.42);
 }
 
 body.theme-day .settings-input::placeholder,
@@ -7307,11 +7365,10 @@ body.theme-day .tts-button {
 }
 
 .settings-input:hover,
-.settings-select:hover,
 .settings-number-input:hover,
 .settings-text-input:hover,
 .config-field-input:hover,
-.plugin-config-input:hover,
+.plugin-config-input:not(select):hover,
 .plugin-config-textarea:hover,
 .dialog-field input:hover,
 .interactive-input-control:hover,
@@ -7320,6 +7377,12 @@ body.theme-day .tts-button {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.065), rgba(255, 255, 255, 0.026)),
     rgba(0, 0, 0, 0.16);
+}
+
+.settings-select:hover,
+select.plugin-config-input:hover,
+.work-surface-field select:hover {
+  border-color: rgba(255, 255, 255, 0.18);
 }
 
 .settings-input,
@@ -7338,7 +7401,7 @@ body.theme-day .tts-button {
 .config-field-input,
 .plugin-config-input,
 .settings-input {
-  min-height: 34px;
+  min-height: 30px;
 }
 
 .settings-close {
@@ -7499,11 +7562,10 @@ body.theme-day .learning-panel:focus-within {
 }
 
 body.theme-day .settings-input:hover,
-body.theme-day .settings-select:hover,
 body.theme-day .settings-number-input:hover,
 body.theme-day .settings-text-input:hover,
 body.theme-day .config-field-input:hover,
-body.theme-day .plugin-config-input:hover,
+body.theme-day .plugin-config-input:not(select):hover,
 body.theme-day .plugin-config-textarea:hover,
 body.theme-day .dialog-field input:hover,
 body.theme-day .interactive-input-control:hover,
@@ -7512,6 +7574,12 @@ body.theme-day .config-provider-trigger:hover {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(232, 238, 236, 0.50)),
     rgba(255, 255, 255, 0.42);
+}
+
+body.theme-day .settings-select:hover,
+body.theme-day select.plugin-config-input:hover,
+body.theme-day .work-surface-field select:hover {
+  border-color: rgba(16, 45, 52, 0.2);
 }
 
 body.theme-day .settings-content,
