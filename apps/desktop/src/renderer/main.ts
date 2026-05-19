@@ -2873,6 +2873,16 @@ function renderWorkSurfaceTable(component: any): HTMLElement {
   for (const row of component.rows ?? []) {
     const tableRow = document.createElement('tr')
     tableRow.dataset.componentId = row.id
+    tableRow.addEventListener('click', (event) => {
+      event.stopPropagation()
+      void window.electronAPI.sendWorkSurfaceEvent({
+        type: 'surface.select',
+        surfaceId: activeWorkSurfaceSnapshot?.surfaceId,
+        targetId: row.id,
+        selectedIds: [row.id],
+        bindings: row.bindings ?? component.bindings ?? [],
+      })
+    })
     for (const column of component.columns ?? []) {
       const cell = document.createElement('td')
       cell.textContent = String(row.cells?.[column.id] ?? '')
@@ -2892,6 +2902,16 @@ function renderWorkSurfaceArtifacts(component: any): HTMLElement {
     item.className = 'work-surface-artifact'
     item.type = 'button'
     item.textContent = artifact.title || artifact.path || artifact.id
+    item.addEventListener('click', (event) => {
+      event.stopPropagation()
+      void window.electronAPI.sendWorkSurfaceEvent({
+        type: 'surface.select',
+        surfaceId: activeWorkSurfaceSnapshot?.surfaceId,
+        targetId: artifact.id,
+        selectedIds: [artifact.id],
+        bindings: artifact.bindings ?? component.bindings ?? [],
+      })
+    })
     grid.appendChild(item)
   }
   return grid

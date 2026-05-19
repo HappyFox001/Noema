@@ -201,16 +201,16 @@
 
 ## Phase 8：Task Event 自动映射
 
-- [ ] 任务开始时创建默认 surface。
-- [ ] `task.started` 映射到 StatusStrip。
-- [ ] `task.plan.created` 映射到 TaskPlanView。
-- [ ] `task.plan.updated` 更新 TaskPlanView。
-- [ ] `task.step.started` 高亮当前 step。
-- [ ] `task.step.completed` 标记 step 完成。
-- [ ] `task.step.failed` 标记 step 失败。
+- [x] 任务开始时创建默认 surface。
+- [x] `task.started` 映射到 StatusStrip。
+- [x] `task.plan.created` 映射到 TaskPlanView。
+- [x] `task.plan.updated` 更新 TaskPlanView。
+- [x] `task.step.started` 高亮当前 step。
+- [x] `task.step.completed` 标记 step 完成。
+- [x] `task.step.failed` 标记 step 失败。
 - [ ] `task.waiting_user` 显示 FormPanel 或 request input。
-- [ ] `task.completed` 显示最终状态。
-- [ ] `task.failed` 显示错误状态。
+- [x] `task.completed` 显示最终状态。
+- [x] `task.failed` 显示错误状态。
 - [ ] 高频 step 更新合并。
 - [ ] 事件缺字段时降级显示。
 
@@ -270,27 +270,27 @@
 
 ## Phase 12：Click & Speak
 
-- [ ] Renderer 支持点击选择组件。
-- [ ] Renderer 支持表格行选择。
-- [ ] Renderer 支持 artifact 选择。
-- [ ] Renderer 维护 selected bindings。
-- [ ] 语音输入时附带 selected bindings。
-- [ ] 文本输入时附带 selected bindings。
-- [ ] Main 将 `surface.voice` 转为 task continuation context。
-- [ ] Prompt 中明确告诉 agent 用户当前选择的对象。
-- [ ] 无选择时保持现有语音输入行为。
-- [ ] 多选时提供清晰上下文摘要。
+- [x] Renderer 支持点击选择组件。
+- [x] Renderer 支持表格行选择。
+- [x] Renderer 支持 artifact 选择。
+- [x] Renderer 维护 selected bindings。
+- [x] 语音输入时附带 selected bindings。
+- [x] 文本输入时附带 selected bindings。
+- [x] Main 将 `surface.voice` 转为 task continuation context。
+- [x] Prompt 中明确告诉 agent 用户当前选择的对象。
+- [x] 无选择时保持现有语音输入行为。
+- [x] 多选时提供清晰上下文摘要。
 
 ## Phase 13：Action 和 Form 回流
 
-- [ ] Action 点击回传 `surface.action`。
+- [x] Action 点击回传 `surface.action`。
 - [ ] Form 提交回传 `surface.input_submitted`。
 - [ ] Main 校验 actionId 是否来自当前 surface。
 - [ ] Main 校验 payload 是否符合 schema。
-- [ ] Action 可触发：
-  - [ ] 继续任务。
-  - [ ] 修改任务。
-  - [ ] 取消任务。
+- [x] Action 可触发：
+  - [x] 继续任务。
+  - [x] 修改任务。
+  - [x] 取消任务。
   - [ ] 打开文件。
   - [ ] 重新运行某一步。
 - [ ] 高风险 action 需要确认。
@@ -298,13 +298,13 @@
 
 ## Phase 14：任务继续执行机制
 
-- [ ] 定义 surface event 如何进入现有 task runtime。
-- [ ] 第一版可以作为新的 user input 进入 DialogueOrchestrator。
-- [ ] 后续支持 task continuation，而不是启动全新任务。
-- [ ] 明确 active task 不存在时的行为。
-- [ ] 明确任务已完成时 action 的行为。
-- [ ] 明确任务失败后是否允许 retry。
-- [ ] 避免和 `RuntimeJobManager` concurrency 规则冲突。
+- [x] 定义 surface event 如何进入现有 task runtime。
+- [x] 第一版可以作为新的 user input 进入 DialogueOrchestrator。
+- [x] 后续支持 task continuation，而不是启动全新任务。
+- [x] 明确 active task 不存在时的行为。
+- [x] 明确任务已完成时 action 的行为。
+- [x] 明确任务失败后是否允许 retry。
+- [x] 避免和 `RuntimeJobManager` concurrency 规则冲突。
 
 ## Phase 15：持久化和恢复
 

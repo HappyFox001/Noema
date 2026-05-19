@@ -388,6 +388,12 @@ type ConversationFrame =
     }
 
 let workSurfaceController: WorkSurfaceController | null = null
+let activeWorkSurfaceId: string | null = null
+let latestWorkSurfaceSelection: {
+  surfaceId: string
+  selectedIds: string[]
+  bindings: unknown[]
+} | null = null
 
 function getWorkSurfaceController(): WorkSurfaceController | null {
   if (!appSettings.experimental?.workSurfaceEnabled) {
@@ -425,6 +431,154 @@ function publishWorkSurfaceFrame(frame: WorkSurfaceFrame): { success: boolean; e
 ;(globalThis as any).__herTextWorkSurfaceIsEnabled = () =>
   appSettings.experimental?.workSurfaceEnabled === true
 ;(globalThis as any).__herTextPublishWorkSurfaceFrame = publishWorkSurfaceFrame
+
+function decorateInputWithWorkSurfaceContext(text: string, source: 'text' | 'voice'): string {
+  if (!appSettings.experimental?.workSurfaceEnabled || !latestWorkSurfaceSelection?.selectedIds.length) {
+    return text
+  }
+
+  return [
+    text,
+    '',
+    '<work_surface_context>',
+    `input_source: ${source}`,
+    `surface_id: ${latestWorkSurfaceSelection.surfaceId}`,
+    `selected_ids: ${latestWorkSurfaceSelection.selectedIds.join(', ')}`,
+    `bindings: ${safeJsonStringify(latestWorkSurfaceSelection.bindings)}`,
+    '</work_surface_context>',
+  ].join('\n')
+}
+
+function safeJsonStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return '[]'
+  }
+}
+
+function handleWorkSurfaceRuntimeEvent(event: any): void {
+  if (!appSettings.experimental?.workSurfaceEnabled) {
+    return
+  }
+
+  if (event.name === 'task.started') {
+    const taskId = event.taskId || `task-${Date.now()}`
+    activeWorkSurfaceId = `surface-${taskId}`
+    publishWorkSurfaceFrame({
+      schemaVersion: 1,
+      type: 'surface.create',
+      surfaceId: activeWorkSurfaceId,
+      taskId,
+      title: event.payload?.taskDescription || 'Task',
+      mode: 'task',
+      layout: { id: 'root', kind: 'column', children: [] },
+    })
+    publishWorkSurfacePatch({
+      op: 'add',
+      parentId: 'root',
+      component: {
+        id: 'task-status',
+        kind: 'status',
+        taskId,
+        status: 'running',
+        label: 'Working',
+        detail: event.payload?.originalUserInput,
+      },
+    })
+    return
+  }
+
+  if (!activeWorkSurfaceId) {
+    return
+  }
+
+  if (event.name === 'task.plan.updated') {
+    publishWorkSurfacePatch({
+      op: 'replace',
+      targetId: 'task-plan',
+      component: {
+        id: 'task-plan',
+        kind: 'taskPlan',
+        title: 'Plan',
+        taskId: event.taskId,
+        plan: event.payload.plan,
+        runState: 'plan_ready',
+        currentStepId: event.payload.plan?.steps?.find((step: any) => step.status === 'running')?.id,
+      },
+    }, true)
+    return
+  }
+
+  if (event.name === 'task.step.updated') {
+    publishWorkSurfacePatch({
+      op: 'replace',
+      targetId: 'task-plan',
+      component: {
+        id: 'task-plan',
+        kind: 'taskPlan',
+        title: 'Plan',
+        taskId: event.taskId,
+        plan: event.payload.plan,
+        runState: 'step_running',
+        currentStepId: event.payload.step?.id,
+      },
+    }, true)
+    publishWorkSurfacePatch({
+      op: 'replace',
+      targetId: 'task-status',
+      component: {
+        id: 'task-status',
+        kind: 'status',
+        taskId: event.taskId,
+        status: event.payload.step?.status === 'failed' ? 'failed' : 'running',
+        label: event.payload.step?.status === 'failed' ? 'Step failed' : 'Working',
+        detail: event.payload.step?.error || event.payload.step?.title,
+        stepStatus: event.payload.step?.status,
+      },
+    })
+    return
+  }
+
+  if (event.name === 'task.completed' || event.name === 'task.failed') {
+    publishWorkSurfacePatch({
+      op: 'replace',
+      targetId: 'task-status',
+      component: {
+        id: 'task-status',
+        kind: 'status',
+        taskId: event.taskId,
+        status: event.name === 'task.completed' ? 'completed' : 'failed',
+        label: event.name === 'task.completed' ? 'Done' : 'Failed',
+        detail: event.payload?.finalMessage || event.payload?.error,
+      },
+    })
+  }
+}
+
+function publishWorkSurfacePatch(patch: any, allowAddFallback = false): void {
+  if (!activeWorkSurfaceId) {
+    return
+  }
+  const result = publishWorkSurfaceFrame({
+    schemaVersion: 1,
+    type: 'surface.patch',
+    surfaceId: activeWorkSurfaceId,
+    patches: [patch],
+  } as WorkSurfaceFrame)
+  if (!result.success && allowAddFallback && patch.op === 'replace') {
+    publishWorkSurfaceFrame({
+      schemaVersion: 1,
+      type: 'surface.patch',
+      surfaceId: activeWorkSurfaceId,
+      patches: [{
+        op: 'add',
+        parentId: 'root',
+        component: patch.component,
+      }],
+    } as WorkSurfaceFrame)
+  }
+}
 
 class ConversationDisplayController {
   private visibleText = ''
@@ -3060,6 +3214,7 @@ async function initializeSDK(): Promise<void> {
   const plugins = await loadRuntimePlugins(pluginsDir, appSettings.plugins, appSettings.pluginConfigs)
   sdkInstance = await HerTextSDK.initialize(sdkConfig, {
     plugins,
+    onRuntimeEvent: handleWorkSurfaceRuntimeEvent,
     onTaskUserInputRequest: requestTaskUserInput,
     onTaskRunStateChanged: (state, task) => taskCommunicationManager.onRunStateChanged(state, task),
     onTaskPlanUpdated: (plan) => taskCommunicationManager.onPlanUpdated(plan),
@@ -3315,6 +3470,7 @@ async function runConversationTurn(
     if (!text.trim()) {
       return { success: true, response: '', ttsEnabled: false }
     }
+    text = decorateInputWithWorkSurfaceContext(text.trim(), source)
 
     turnId = await startNewTurn({
       preserveActiveTask: source === 'voice'
@@ -4085,8 +4241,38 @@ ipcMain.handle('workSurface:event', async (_event, userEvent: SurfaceUserEvent) 
   if (result.snapshot) {
     mainWindow?.webContents.send('workSurface:snapshot', result.snapshot)
   }
+  if (
+    userEvent.type === 'surface.select' ||
+    userEvent.type === 'surface.action' ||
+    userEvent.type === 'surface.input_submitted'
+  ) {
+    latestWorkSurfaceSelection = {
+      surfaceId: userEvent.surfaceId,
+      selectedIds: userEvent.selectedIds ?? (userEvent.targetId ? [userEvent.targetId] : []),
+      bindings: userEvent.bindings ?? [],
+    }
+  }
+  if (userEvent.type === 'surface.action') {
+    void handleWorkSurfaceAction(userEvent).catch((error) => {
+      console.warn('[WorkSurface] Action failed:', error instanceof Error ? error.message : String(error))
+    })
+  }
   return { success: true }
 })
+
+async function handleWorkSurfaceAction(event: Extract<SurfaceUserEvent, { type: 'surface.action' }>): Promise<void> {
+  const actionId = String(event.actionId || '')
+  if (actionId === 'cancel_task') {
+    await cancelCurrentTurn({ closeTTS: true, reason: 'manual' })
+    return
+  }
+  const prompt = [
+    `Work surface action selected: ${actionId}`,
+    event.targetId ? `Target: ${event.targetId}` : '',
+    event.payload ? `Payload: ${safeJsonStringify(event.payload)}` : '',
+  ].filter(Boolean).join('\n')
+  await runConversationTurn(prompt, appSettings.voiceOutputEnabled, 'text')
+}
 
 ipcMain.handle('plugins:list', async () => {
   try {
