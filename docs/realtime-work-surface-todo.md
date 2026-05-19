@@ -317,8 +317,8 @@
 - [x] 保存 selectedIds。
 - [x] 不保存 secret input。
 - [x] 不保存 renderer 私有 DOM 状态。
-- [ ] 任务恢复时恢复只读 surface。
-- [ ] 历史任务可以打开 surface snapshot。
+- [x] 任务恢复时恢复只读 surface。
+- [x] 历史任务可以打开 surface snapshot。
 
 ## Phase 16：错误处理
 

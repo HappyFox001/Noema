@@ -393,7 +393,11 @@ let activeWorkSurfaceId: string | null = null
 let pendingWorkSurfaceStepEvent: any | null = null
 let pendingWorkSurfaceStepTimer: ReturnType<typeof setTimeout> | null = null
 let pendingWorkSurfaceSnapshots = new Map<string, WorkSurfaceSnapshot>()
+let pendingWorkSurfacePersistSnapshots = new Map<string, WorkSurfaceSnapshot>()
 let pendingWorkSurfaceSnapshotTimer: ReturnType<typeof setTimeout> | null = null
+let pendingWorkSurfacePersistTimer: ReturnType<typeof setTimeout> | null = null
+let restoredWorkSurfaceSnapshots: WorkSurfaceSnapshot[] = []
+let workSurfaceSnapshotPath: string | null = null
 let latestWorkSurfaceSelection: {
   surfaceId: string
   selectedIds: string[]
@@ -406,6 +410,7 @@ function getWorkSurfaceController(): WorkSurfaceController | null {
   }
   if (!workSurfaceController) {
     workSurfaceController = new WorkSurfaceController()
+    workSurfaceController.restoreSnapshots(restoredWorkSurfaceSnapshots, true)
   }
   return workSurfaceController
 }
@@ -428,6 +433,7 @@ function publishWorkSurfaceFrame(frame: WorkSurfaceFrame): { success: boolean; e
   }
   mainWindow?.webContents.send('workSurface:frame', frame)
   if (result.snapshot) {
+    scheduleWorkSurfaceSnapshotPersist(result.snapshot)
     if (frame.type === 'surface.patch') {
       scheduleWorkSurfaceSnapshot(result.snapshot)
     } else {
@@ -435,6 +441,71 @@ function publishWorkSurfaceFrame(frame: WorkSurfaceFrame): { success: boolean; e
     }
   }
   return { success: true }
+}
+
+function scheduleWorkSurfaceSnapshotPersist(snapshot: WorkSurfaceSnapshot): void {
+  if (!workSurfaceSnapshotPath) {
+    return
+  }
+  pendingWorkSurfacePersistSnapshots.set(snapshot.surfaceId, snapshot)
+  if (pendingWorkSurfacePersistTimer) {
+    return
+  }
+  pendingWorkSurfacePersistTimer = setTimeout(() => {
+    pendingWorkSurfacePersistTimer = null
+    const controller = workSurfaceController
+    const snapshots = controller ? controller.listSnapshots() : Array.from(pendingWorkSurfacePersistSnapshots.values())
+    pendingWorkSurfacePersistSnapshots.clear()
+    void persistWorkSurfaceSnapshots(snapshots)
+  }, 400)
+}
+
+async function loadWorkSurfaceSnapshots(): Promise<void> {
+  workSurfaceSnapshotPath = join(getStorageDir(), 'work-surface-snapshots.json')
+  await mkdir(dirname(workSurfaceSnapshotPath), { recursive: true })
+  try {
+    const raw = await readFile(workSurfaceSnapshotPath, 'utf-8')
+    const parsed = JSON.parse(raw)
+    restoredWorkSurfaceSnapshots = Array.isArray(parsed?.snapshots)
+      ? parsed.snapshots.filter(isPersistableWorkSurfaceSnapshot)
+      : []
+  } catch (error: any) {
+    if (error?.code !== 'ENOENT') {
+      console.warn('[WorkSurface] Failed to load snapshots:', error.message ?? String(error))
+    }
+    restoredWorkSurfaceSnapshots = []
+  }
+}
+
+async function persistWorkSurfaceSnapshots(snapshots: WorkSurfaceSnapshot[]): Promise<void> {
+  if (!workSurfaceSnapshotPath) {
+    return
+  }
+  const safeSnapshots = snapshots
+    .filter(isPersistableWorkSurfaceSnapshot)
+    .map(snapshot => ({
+      ...snapshot,
+      selectedIds: [],
+      messages: snapshot.messages.filter(message => (message as any).type !== 'surface.request_input'),
+    }))
+    .slice(-25)
+  restoredWorkSurfaceSnapshots = safeSnapshots
+  try {
+    await writeFile(workSurfaceSnapshotPath, JSON.stringify({ snapshots: safeSnapshots }, null, 2), 'utf-8')
+  } catch (error) {
+    console.warn('[WorkSurface] Failed to persist snapshots:', error instanceof Error ? error.message : String(error))
+  }
+}
+
+function isPersistableWorkSurfaceSnapshot(value: unknown): value is WorkSurfaceSnapshot {
+  return Boolean(
+    value &&
+    typeof value === 'object' &&
+    typeof (value as any).surfaceId === 'string' &&
+    typeof (value as any).title === 'string' &&
+    (value as any).layout &&
+    typeof (value as any).components === 'object'
+  )
 }
 
 function scheduleWorkSurfaceSnapshot(snapshot: WorkSurfaceSnapshot): void {
@@ -3461,6 +3532,8 @@ app.whenReady().then(async () => {
   interactiveInputStore = new InteractiveInputStore(getStorageDir())
   await interactiveInputStore.initialize()
   console.log('[InteractiveInput] Store initialized')
+  await loadWorkSurfaceSnapshots()
+  console.log('[WorkSurface] Snapshot store:', workSurfaceSnapshotPath)
 
   if (appSettings.selectedPersonality && appSettings.selectedPersonality !== 'role:eva') {
     try {
@@ -4355,6 +4428,22 @@ ipcMain.handle('workSurface:requestSnapshot', async (_event, surfaceId?: string)
     ? controller.getSnapshot(surfaceId)
     : controller.listSnapshots()[0]
   return { success: true, snapshot }
+})
+
+ipcMain.handle('workSurface:listSnapshots', async () => {
+  const controller = getWorkSurfaceController()
+  const snapshots = controller ? controller.listSnapshots() : restoredWorkSurfaceSnapshots
+  return {
+    success: true,
+    snapshots: snapshots.map(snapshot => ({
+      surfaceId: snapshot.surfaceId,
+      taskId: snapshot.taskId,
+      title: snapshot.title,
+      mode: snapshot.mode,
+      updatedAt: snapshot.updatedAt,
+      closedAt: snapshot.closedAt,
+    })),
+  }
 })
 
 ipcMain.handle('workSurface:event', async (_event, userEvent: SurfaceUserEvent) => {

@@ -92,6 +92,24 @@ export class WorkSurfaceController {
     return snapshot ? cloneSnapshot(snapshot) : undefined
   }
 
+  restoreSnapshot(snapshot: WorkSurfaceSnapshot, readonly = true): WorkSurfaceApplyResult {
+    const validation = validateWorkSurfaceSnapshot(snapshot)
+    if (!validation.ok) {
+      return { accepted: false, errors: validation.errors }
+    }
+    const restored = cloneSnapshot(snapshot)
+    if (readonly && !restored.closedAt) {
+      restored.closedAt = Date.now()
+      restored.closeReason = restored.closeReason ?? 'completed'
+    }
+    this.surfaces.set(restored.surfaceId, restored)
+    return { accepted: true, errors: [], snapshot: cloneSnapshot(restored) }
+  }
+
+  restoreSnapshots(snapshots: WorkSurfaceSnapshot[], readonly = true): WorkSurfaceApplyResult[] {
+    return snapshots.map(snapshot => this.restoreSnapshot(snapshot, readonly))
+  }
+
   closeSurface(surfaceId: string, reason: SurfaceCloseFrame['reason'] = 'user_closed'): WorkSurfaceApplyResult {
     return this.applyClose({
       schemaVersion: WORK_SURFACE_SCHEMA_VERSION,
@@ -232,6 +250,23 @@ export function validateWorkSurfaceFrame(frame: unknown): WorkSurfaceValidationR
       errors.push(`Unknown frame type: ${String(frame.type)}`)
   }
 
+  return { ok: errors.length === 0, errors }
+}
+
+export function validateWorkSurfaceSnapshot(snapshot: unknown): WorkSurfaceValidationResult {
+  const errors: string[] = []
+  if (!isRecord(snapshot)) {
+    return { ok: false, errors: ['Snapshot must be an object'] }
+  }
+  if (snapshot.schemaVersion !== WORK_SURFACE_SCHEMA_VERSION) {
+    errors.push(`Unsupported schemaVersion: ${String(snapshot.schemaVersion)}`)
+  }
+  if (!isNonEmptyString(snapshot.surfaceId)) errors.push('surfaceId is required')
+  if (!isNonEmptyString(snapshot.title)) errors.push('title is required')
+  if (!isRecord(snapshot.layout)) errors.push('layout is required')
+  if (!isRecord(snapshot.components)) errors.push('components are required')
+  if (!Array.isArray(snapshot.selectedIds)) errors.push('selectedIds must be an array')
+  if (!Array.isArray(snapshot.messages)) errors.push('messages must be an array')
   return { ok: errors.length === 0, errors }
 }
 
