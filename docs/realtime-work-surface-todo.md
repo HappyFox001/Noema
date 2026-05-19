@@ -70,7 +70,7 @@
 - [x] 关闭开关时不注册 UI tools。
 - [x] 关闭开关时 renderer 不显示 WorkSurfaceView。
 - [x] 关闭开关时不向 task model 注入 UI 协议提示。
-- [ ] 切换开关后确认是否需要重启 SDK 或刷新插件。
+- [x] 切换开关后确认是否需要重启 SDK 或刷新插件。
 - [x] 增加日志，标记 work surface 是否启用。
 
 ## Phase 3：Desktop 旁路控制器
@@ -82,7 +82,7 @@
 - [x] 控制器应用 patch。
 - [x] 控制器维护 component id 索引。
 - [x] 控制器维护 runtime binding 索引。
-- [ ] 控制器节流高频 patch。
+- [x] 控制器节流高频 patch。
 - [x] 控制器向 renderer 发送 surface snapshot。
 - [x] 控制器向 renderer 发送增量 frame。
 - [x] 控制器处理 renderer 回传的 `SurfaceUserEvent`。
@@ -208,11 +208,11 @@
 - [x] `task.step.started` 高亮当前 step。
 - [x] `task.step.completed` 标记 step 完成。
 - [x] `task.step.failed` 标记 step 失败。
-- [ ] `task.waiting_user` 显示 FormPanel 或 request input。
+- [x] `task.waiting_user` 显示 FormPanel 或 request input。
 - [x] `task.completed` 显示最终状态。
 - [x] `task.failed` 显示错误状态。
-- [ ] 高频 step 更新合并。
-- [ ] 事件缺字段时降级显示。
+- [x] 高频 step 更新合并。
+- [x] 事件缺字段时降级显示。
 
 ## Phase 9：Work Surface Plugin
 

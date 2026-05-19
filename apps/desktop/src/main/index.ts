@@ -84,6 +84,7 @@ import {
   type TaskUserInputResponse,
   type TaskPlan,
   WorkSurfaceController,
+  type WorkSurfaceSnapshot,
   type SurfaceUserEvent,
   type WorkSurfaceFrame,
 } from '@her-text/sdk'
@@ -389,6 +390,10 @@ type ConversationFrame =
 
 let workSurfaceController: WorkSurfaceController | null = null
 let activeWorkSurfaceId: string | null = null
+let pendingWorkSurfaceStepEvent: any | null = null
+let pendingWorkSurfaceStepTimer: ReturnType<typeof setTimeout> | null = null
+let pendingWorkSurfaceSnapshots = new Map<string, WorkSurfaceSnapshot>()
+let pendingWorkSurfaceSnapshotTimer: ReturnType<typeof setTimeout> | null = null
 let latestWorkSurfaceSelection: {
   surfaceId: string
   selectedIds: string[]
@@ -423,9 +428,28 @@ function publishWorkSurfaceFrame(frame: WorkSurfaceFrame): { success: boolean; e
   }
   mainWindow?.webContents.send('workSurface:frame', frame)
   if (result.snapshot) {
-    mainWindow?.webContents.send('workSurface:snapshot', result.snapshot)
+    if (frame.type === 'surface.patch') {
+      scheduleWorkSurfaceSnapshot(result.snapshot)
+    } else {
+      mainWindow?.webContents.send('workSurface:snapshot', result.snapshot)
+    }
   }
   return { success: true }
+}
+
+function scheduleWorkSurfaceSnapshot(snapshot: WorkSurfaceSnapshot): void {
+  pendingWorkSurfaceSnapshots.set(snapshot.surfaceId, snapshot)
+  if (pendingWorkSurfaceSnapshotTimer) {
+    return
+  }
+  pendingWorkSurfaceSnapshotTimer = setTimeout(() => {
+    pendingWorkSurfaceSnapshotTimer = null
+    const snapshots = Array.from(pendingWorkSurfaceSnapshots.values())
+    pendingWorkSurfaceSnapshots.clear()
+    for (const nextSnapshot of snapshots) {
+      mainWindow?.webContents.send('workSurface:snapshot', nextSnapshot)
+    }
+  }, 80)
 }
 
 ;(globalThis as any).__herTextWorkSurfaceIsEnabled = () =>
@@ -489,11 +513,13 @@ function handleWorkSurfaceRuntimeEvent(event: any): void {
     return
   }
 
-  if (!activeWorkSurfaceId) {
-    return
-  }
+  ensureWorkSurfaceForRuntimeEvent(event)
 
   if (event.name === 'task.plan.updated') {
+    if (!event.payload?.plan) {
+      publishWorkSurfaceRuntimeFallback(event, 'Plan update did not include a plan payload.')
+      return
+    }
     publishWorkSurfacePatch({
       op: 'replace',
       targetId: 'task-plan',
@@ -511,32 +537,21 @@ function handleWorkSurfaceRuntimeEvent(event: any): void {
   }
 
   if (event.name === 'task.step.updated') {
-    publishWorkSurfacePatch({
-      op: 'replace',
-      targetId: 'task-plan',
-      component: {
-        id: 'task-plan',
-        kind: 'taskPlan',
-        title: 'Plan',
-        taskId: event.taskId,
-        plan: event.payload.plan,
-        runState: 'step_running',
-        currentStepId: event.payload.step?.id,
-      },
-    }, true)
-    publishWorkSurfacePatch({
-      op: 'replace',
-      targetId: 'task-status',
-      component: {
-        id: 'task-status',
-        kind: 'status',
-        taskId: event.taskId,
-        status: event.payload.step?.status === 'failed' ? 'failed' : 'running',
-        label: event.payload.step?.status === 'failed' ? 'Step failed' : 'Working',
-        detail: event.payload.step?.error || event.payload.step?.title,
-        stepStatus: event.payload.step?.status,
-      },
-    })
+    pendingWorkSurfaceStepEvent = event
+    if (pendingWorkSurfaceStepTimer) {
+      return
+    }
+    pendingWorkSurfaceStepTimer = setTimeout(() => {
+      const latestEvent = pendingWorkSurfaceStepEvent
+      pendingWorkSurfaceStepEvent = null
+      pendingWorkSurfaceStepTimer = null
+      publishWorkSurfaceStepUpdate(latestEvent)
+    }, 120)
+    return
+  }
+
+  if (event.name === 'task.waiting_user') {
+    publishWorkSurfaceInputRequest(event.payload?.request)
     return
   }
 
@@ -556,6 +571,121 @@ function handleWorkSurfaceRuntimeEvent(event: any): void {
   }
 }
 
+function ensureWorkSurfaceForRuntimeEvent(event: any): void {
+  if (activeWorkSurfaceId) {
+    return
+  }
+  const taskId = event.taskId || `task-${Date.now()}`
+  activeWorkSurfaceId = `surface-${taskId}`
+  publishWorkSurfaceFrame({
+    schemaVersion: 1,
+    type: 'surface.create',
+    surfaceId: activeWorkSurfaceId,
+    taskId,
+    title: event.payload?.taskDescription || 'Task',
+    mode: 'task',
+    layout: { id: 'root', kind: 'column', children: [] },
+  })
+  publishWorkSurfacePatch({
+    op: 'add',
+    parentId: 'root',
+    component: {
+      id: 'task-status',
+      kind: 'status',
+      taskId,
+      status: 'running',
+      label: 'Working',
+      detail: event.payload?.originalUserInput,
+    },
+  })
+}
+
+function publishWorkSurfaceStepUpdate(event: any): void {
+  if (!event?.payload?.plan || !event.payload?.step) {
+    publishWorkSurfaceRuntimeFallback(event, 'Step update did not include a complete plan and step payload.')
+    return
+  }
+  publishWorkSurfacePatch({
+    op: 'replace',
+    targetId: 'task-plan',
+    component: {
+      id: 'task-plan',
+      kind: 'taskPlan',
+      title: 'Plan',
+      taskId: event.taskId,
+      plan: event.payload.plan,
+      runState: 'step_running',
+      currentStepId: event.payload.step?.id,
+    },
+  }, true)
+  publishWorkSurfacePatch({
+    op: 'replace',
+    targetId: 'task-status',
+    component: {
+      id: 'task-status',
+      kind: 'status',
+      taskId: event.taskId,
+      status: event.payload.step?.status === 'failed' ? 'failed' : 'running',
+      label: event.payload.step?.status === 'failed' ? 'Step failed' : 'Working',
+      detail: event.payload.step?.error || event.payload.step?.title,
+      stepStatus: event.payload.step?.status,
+    },
+  })
+}
+
+function publishWorkSurfaceInputRequest(request: TaskUserInputRequest | undefined): void {
+  if (!request) {
+    publishWorkSurfaceRuntimeFallback({ name: 'task.waiting_user' }, 'Task is waiting for user input.')
+    return
+  }
+  publishWorkSurfacePatch({
+    op: 'replace',
+    targetId: 'task-status',
+    component: {
+      id: 'task-status',
+      kind: 'status',
+      taskId: request.id,
+      status: 'waiting_user',
+      label: 'Waiting for input',
+      detail: request.label,
+    },
+  })
+  publishWorkSurfacePatch({
+    op: 'replace',
+    targetId: `input-${request.id}`,
+    component: {
+      id: `input-${request.id}`,
+      kind: 'form',
+      title: request.label,
+      requestId: request.id,
+      prompt: request.description,
+      submitAction: 'submit_input',
+      cancelAction: 'cancel_input',
+      fields: [{
+        id: 'value',
+        label: request.label,
+        kind: request.inputKind === 'code' ? 'textarea' : request.inputKind,
+        placeholder: request.placeholder,
+        sensitivity: request.sensitivity,
+        required: true,
+      }],
+    },
+  }, true)
+}
+
+function publishWorkSurfaceRuntimeFallback(event: any, message: string): void {
+  publishWorkSurfacePatch({
+    op: 'add',
+    parentId: 'root',
+    component: {
+      id: `runtime-warning-${Date.now()}`,
+      kind: 'markdown',
+      title: 'Runtime event warning',
+      markdown: `${message}\n\nEvent: \`${event?.name || 'unknown'}\``,
+    },
+  })
+}
+
 function publishWorkSurfacePatch(patch: any, allowAddFallback = false): void {
   if (!activeWorkSurfaceId) {
     return
@@ -567,16 +697,11 @@ function publishWorkSurfacePatch(patch: any, allowAddFallback = false): void {
     patches: [patch],
   } as WorkSurfaceFrame)
   if (!result.success && allowAddFallback && patch.op === 'replace') {
-    publishWorkSurfaceFrame({
-      schemaVersion: 1,
-      type: 'surface.patch',
-      surfaceId: activeWorkSurfaceId,
-      patches: [{
-        op: 'add',
-        parentId: 'root',
-        component: patch.component,
-      }],
-    } as WorkSurfaceFrame)
+    publishWorkSurfacePatch({
+      op: 'add',
+      parentId: 'root',
+      component: patch.component,
+    })
   }
 }
 
@@ -2907,6 +3032,11 @@ async function requestTaskUserInput(request: TaskUserInputRequest): Promise<Task
     throw new Error('No renderer window available for user input request')
   }
 
+  handleWorkSurfaceRuntimeEvent({
+    name: 'task.waiting_user',
+    taskId: activeWorkSurfaceId?.replace(/^surface-/, ''),
+    payload: { request },
+  })
   taskCommunicationManager.onWaitingUser(request)
 
   const response = await new Promise<TaskUserInputResponse>((resolve) => {
@@ -4204,7 +4334,8 @@ ipcMain.handle('settings:update', async (_, partial: Partial<AppSettings>) => {
   }
   const pluginsChanged =
     (partial.plugins !== undefined && previousPlugins !== appSettings.plugins) ||
-    (partial.pluginConfigs !== undefined && previousPluginConfigs !== appSettings.pluginConfigs)
+    (partial.pluginConfigs !== undefined && previousPluginConfigs !== appSettings.pluginConfigs) ||
+    partial.experimental?.workSurfaceEnabled !== undefined
 
   await applyRuntimeSystemConfigChanges(previous, { pluginsChanged })
 
