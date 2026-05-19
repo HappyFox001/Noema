@@ -2784,17 +2784,28 @@ function renderWorkSurfaceSnapshot(snapshot: any): void {
 
   const body = document.createElement('div')
   body.className = 'work-surface-body'
-  for (const component of Object.values(snapshot.components ?? {}) as any[]) {
-    body.appendChild(renderWorkSurfaceComponent(component))
+  const components = Object.values(snapshot.components ?? {}) as any[]
+  if (components.length === 0) {
+    body.appendChild(renderWorkSurfaceEmpty('No work surface components yet.'))
+  }
+  for (const component of components) {
+    try {
+      body.appendChild(renderWorkSurfaceComponent(component))
+    } catch (error: any) {
+      body.appendChild(renderWorkSurfaceError(component?.id, error?.message || String(error)))
+    }
   }
 
   workSurfaceRoot.append(header, body)
+  workSurfaceRoot.classList.toggle('readonly', Boolean(snapshot.closedAt))
   setTaskPanelVisible(true)
 }
 
 function renderWorkSurfaceComponent(component: any): HTMLElement {
   const node = document.createElement('section')
   node.className = `work-surface-component ${component.kind || 'unknown'}`
+  node.classList.toggle('focused', activeWorkSurfaceSnapshot?.focusedId === component.id)
+  node.classList.toggle('loading', component.loading === true)
   node.dataset.componentId = component.id
   node.tabIndex = 0
 
@@ -2839,6 +2850,22 @@ function renderWorkSurfaceComponent(component: any): HTMLElement {
   return node
 }
 
+function renderWorkSurfaceEmpty(message: string): HTMLElement {
+  const node = document.createElement('div')
+  node.className = 'work-surface-empty'
+  node.textContent = message
+  return node
+}
+
+function renderWorkSurfaceError(componentId: string | undefined, message: string): HTMLElement {
+  const node = document.createElement('div')
+  node.className = 'work-surface-component error'
+  node.textContent = componentId
+    ? `Component ${componentId} failed: ${message}`
+    : `Component failed: ${message}`
+  return node
+}
+
 function renderWorkSurfaceText(primary: string, secondary?: string): HTMLElement {
   const wrapper = document.createElement('div')
   wrapper.className = 'work-surface-text'
@@ -2860,7 +2887,9 @@ function renderWorkSurfaceTaskPlan(component: any): HTMLElement {
   for (const step of component.plan?.steps ?? []) {
     const item = document.createElement('li')
     item.className = `work-surface-plan-step ${step.status || 'pending'}`
-    item.textContent = step.title || step.description || step.id
+    item.textContent = step.error
+      ? `${step.title || step.id}: ${step.error}`
+      : step.title || step.description || step.id
     list.appendChild(item)
   }
   return list

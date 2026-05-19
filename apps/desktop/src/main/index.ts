@@ -4231,6 +4231,10 @@ ipcMain.handle('workSurface:event', async (_event, userEvent: SurfaceUserEvent) 
   if (!controller) {
     return { success: false, error: 'Work surface is disabled' }
   }
+  if (!userEvent || typeof userEvent !== 'object' || typeof userEvent.type !== 'string' || typeof userEvent.surfaceId !== 'string') {
+    console.warn('[WorkSurface] Dropping invalid renderer event')
+    return { success: false, error: 'Invalid work surface event' }
+  }
   const result = controller.applyUserEvent({
     ...userEvent,
     timestamp: userEvent.timestamp ?? Date.now(),
@@ -4262,6 +4266,9 @@ ipcMain.handle('workSurface:event', async (_event, userEvent: SurfaceUserEvent) 
 
 async function handleWorkSurfaceAction(event: Extract<SurfaceUserEvent, { type: 'surface.action' }>): Promise<void> {
   const actionId = String(event.actionId || '')
+  if (!actionId) {
+    throw new Error('Missing action id')
+  }
   if (actionId === 'cancel_task') {
     await cancelCurrentTurn({ closeTTS: true, reason: 'manual' })
     return

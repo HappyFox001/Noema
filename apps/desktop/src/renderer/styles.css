@@ -661,9 +661,44 @@ body.work-surface-enabled .task-panel {
 }
 
 .work-surface-component:focus-visible,
-.work-surface-component:hover {
+.work-surface-component:hover,
+.work-surface-component.focused {
   border-color: var(--ws-border-strong);
   outline: none;
+}
+
+.work-surface-component.loading {
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03), rgba(112, 211, 255, 0.08), rgba(255, 255, 255, 0.03)),
+    var(--ws-panel);
+  background-size: 220% 100%;
+  animation: work-surface-loading 1.35s ease-in-out infinite;
+}
+
+.work-surface-component.error,
+.work-surface-empty {
+  color: var(--ws-muted);
+  border: 1px solid var(--ws-border);
+  border-radius: 8px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.work-surface-component.error {
+  color: var(--ws-danger);
+}
+
+.work-surface-root.readonly .work-surface-action,
+.work-surface-root.readonly .work-surface-field input,
+.work-surface-root.readonly .work-surface-field textarea,
+.work-surface-root.readonly .work-surface-field select {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+@keyframes work-surface-loading {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
 }
 
 .work-surface-component-title {

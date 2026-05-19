@@ -116,11 +116,11 @@
 - [x] 实现 component registry。
 - [x] 实现 patch 应用。
 - [x] 实现 selected state。
-- [ ] 实现 focus state。
-- [ ] 实现 loading state。
-- [ ] 实现 empty state。
-- [ ] 实现 error state。
-- [ ] 实现任务完成后的只读状态。
+- [x] 实现 focus state。
+- [x] 实现 loading state。
+- [x] 实现 empty state。
+- [x] 实现 error state。
+- [x] 实现任务完成后的只读状态。
 - [x] 接入现有 task panel 显示区域。
 - [x] 开关关闭时保持当前 UI 不变。
 - [x] 支持窄窗口布局。
@@ -137,7 +137,7 @@
   - [x] 渲染 step 列表。
   - [x] 展示 step 状态。
   - [x] 支持当前 step 高亮。
-  - [ ] 支持 step 错误信息。
+  - [x] 支持 step 错误信息。
 - [x] `MarkdownBlock`
   - [x] 支持安全 markdown 渲染。
   - [x] 禁止 raw HTML。
@@ -191,7 +191,7 @@
 - [x] 实现状态条动效。
 - [x] 实现选中态。
 - [x] 实现 focus ring。
-- [ ] 实现 loading skeleton。
+- [x] 实现 loading skeleton。
 - [x] 控制强调色数量不超过 2 个。
 - [x] 避免大面积彩色渐变。
 - [x] 避免营销页式大卡片。
@@ -285,8 +285,8 @@
 
 - [x] Action 点击回传 `surface.action`。
 - [x] Form 提交回传 `surface.input_submitted`。
-- [ ] Main 校验 actionId 是否来自当前 surface。
-- [ ] Main 校验 payload 是否符合 schema。
+- [x] Main 校验 actionId 是否来自当前 surface。
+- [x] Main 校验 payload 是否符合 schema。
 - [x] Action 可触发：
   - [x] 继续任务。
   - [x] 修改任务。
@@ -308,28 +308,28 @@
 
 ## Phase 15：持久化和恢复
 
-- [ ] 定义 `WorkSurfaceSnapshot`。
-- [ ] 第一版只内存保存。
-- [ ] 第二版关联 taskId 保存 snapshot。
-- [ ] 保存 layout。
-- [ ] 保存 components。
-- [ ] 保存 bindings。
-- [ ] 保存 selectedIds。
-- [ ] 不保存 secret input。
-- [ ] 不保存 renderer 私有 DOM 状态。
+- [x] 定义 `WorkSurfaceSnapshot`。
+- [x] 第一版只内存保存。
+- [x] 第二版关联 taskId 保存 snapshot。
+- [x] 保存 layout。
+- [x] 保存 components。
+- [x] 保存 bindings。
+- [x] 保存 selectedIds。
+- [x] 不保存 secret input。
+- [x] 不保存 renderer 私有 DOM 状态。
 - [ ] 任务恢复时恢复只读 surface。
 - [ ] 历史任务可以打开 surface snapshot。
 
 ## Phase 16：错误处理
 
-- [ ] Frame schema 校验失败时记录 warning。
-- [ ] 单个 component 渲染失败时显示组件错误卡。
-- [ ] Renderer 崩溃不影响 task runtime。
-- [ ] Plugin tool 失败不影响非 UI 工具。
-- [ ] Surface close 不取消任务，除非用户明确取消。
-- [ ] Task cancel 时关闭或冻结 surface。
-- [ ] IPC payload 异常时丢弃并记录。
-- [ ] Markdown sanitize 失败时显示纯文本。
+- [x] Frame schema 校验失败时记录 warning。
+- [x] 单个 component 渲染失败时显示组件错误卡。
+- [x] Renderer 崩溃不影响 task runtime。
+- [x] Plugin tool 失败不影响非 UI 工具。
+- [x] Surface close 不取消任务，除非用户明确取消。
+- [x] Task cancel 时关闭或冻结 surface。
+- [x] IPC payload 异常时丢弃并记录。
+- [x] Markdown sanitize 失败时显示纯文本。
 
 ## Phase 17：测试和验证
 
