@@ -4400,8 +4400,37 @@ async function handleWorkSurfaceAction(event: Extract<SurfaceUserEvent, { type: 
   if (!actionId) {
     throw new Error('Missing action id')
   }
+  const snapshot = workSurfaceController?.getSnapshot(event.surfaceId)
+  const action = snapshot ? findWorkSurfaceAction(snapshot, actionId, event.targetId) : null
+  if (!action) {
+    throw new Error(`Unknown work surface action: ${actionId}`)
+  }
+  if (isHighRiskWorkSurfaceAction(actionId, action)) {
+    const confirmed = await confirmWorkSurfaceAction(action)
+    if (!confirmed) {
+      return
+    }
+  }
   if (actionId === 'cancel_task') {
     await cancelCurrentTurn({ closeTTS: true, reason: 'manual' })
+    return
+  }
+  if (actionId === 'open_file') {
+    const filePath = resolveWorkSurfaceActionFilePath(event, action)
+    if (!filePath) {
+      throw new Error('Open file action is missing a file path')
+    }
+    await shell.openPath(filePath)
+    return
+  }
+  if (actionId === 'rerun_step') {
+    const stepId = event.targetId || getActionPayloadValue(action, 'stepId')
+    const prompt = [
+      'Work surface requested rerun of a task step.',
+      stepId ? `Step: ${stepId}` : '',
+      event.payload ? `Payload: ${safeJsonStringify(event.payload)}` : '',
+    ].filter(Boolean).join('\n')
+    await runConversationTurn(prompt, appSettings.voiceOutputEnabled, 'text')
     return
   }
   const prompt = [
@@ -4410,6 +4439,85 @@ async function handleWorkSurfaceAction(event: Extract<SurfaceUserEvent, { type: 
     event.payload ? `Payload: ${safeJsonStringify(event.payload)}` : '',
   ].filter(Boolean).join('\n')
   await runConversationTurn(prompt, appSettings.voiceOutputEnabled, 'text')
+}
+
+function findWorkSurfaceAction(snapshot: WorkSurfaceSnapshot, actionId: string, targetId?: string): any | null {
+  for (const component of Object.values(snapshot.components)) {
+    if (component.kind === 'actions') {
+      const action = component.actions.find(item => item.id === actionId && (!targetId || !item.targetId || item.targetId === targetId))
+      if (action) {
+        return action
+      }
+    }
+    if (component.kind === 'table') {
+      for (const row of component.rows) {
+        const action = row.actions?.find(item => item.id === actionId && (!targetId || row.id === targetId || !item.targetId || item.targetId === targetId))
+        if (action) {
+          return action
+        }
+      }
+    }
+    if (component.kind === 'artifacts') {
+      for (const artifact of component.artifacts) {
+        const action = artifact.actions?.find(item => item.id === actionId && (!targetId || artifact.id === targetId || !item.targetId || item.targetId === targetId))
+        if (action) {
+          return action
+        }
+      }
+    }
+  }
+  return null
+}
+
+function resolveWorkSurfaceActionFilePath(
+  event: Extract<SurfaceUserEvent, { type: 'surface.action' }>,
+  action: any
+): string | null {
+  const payloadPath = getPayloadPath(event.payload) || getActionPayloadValue(action, 'path')
+  if (payloadPath) {
+    return payloadPath
+  }
+  for (const binding of event.bindings ?? []) {
+    if (binding.kind === 'file' && binding.path) {
+      return binding.path
+    }
+  }
+  return null
+}
+
+function getPayloadPath(payload: unknown): string | null {
+  if (payload && typeof payload === 'object' && 'path' in payload && typeof (payload as any).path === 'string') {
+    return (payload as any).path
+  }
+  return null
+}
+
+function getActionPayloadValue(action: any, key: string): string | null {
+  const value = action?.payload?.[key] ?? action?.payloadSchema?.default?.[key]
+  return typeof value === 'string' && value.trim() ? value : null
+}
+
+function isHighRiskWorkSurfaceAction(actionId: string, action: any): boolean {
+  if (action?.variant === 'danger') {
+    return true
+  }
+  return /delete|remove|cancel|reset|overwrite|shell|terminal|deploy|publish/i.test(actionId)
+}
+
+async function confirmWorkSurfaceAction(action: any): Promise<boolean> {
+  if (!mainWindow) {
+    return false
+  }
+  const result = await dialog.showMessageBox(mainWindow, {
+    type: 'warning',
+    buttons: ['Cancel', 'Continue'],
+    defaultId: 0,
+    cancelId: 0,
+    title: 'Confirm work surface action',
+    message: action?.label ? `Continue with "${action.label}"?` : 'Continue with this high-risk action?',
+    detail: 'This action came from the work surface and may change task state or local files.',
+  })
+  return result.response === 1
 }
 
 ipcMain.handle('plugins:list', async () => {
