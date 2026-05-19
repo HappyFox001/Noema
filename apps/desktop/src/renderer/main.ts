@@ -603,6 +603,8 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'common.confirm': '确认',
     'common.enable': '开启',
     'common.enabled': '已开启',
+    'common.increase': '增加',
+    'common.decrease': '减少',
     'common.manage': '管理',
     'common.continue': '继续',
     'common.activate': '启用',
@@ -610,11 +612,22 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'common.delete': '删除',
     'common.loading': '加载中...',
     'common.none': '无',
+    'common.items': '{count} 项',
+    'common.records': '{count} 条',
+    'common.failed': '失败',
+    'common.ready': '正常',
+    'common.deleted': '已删除',
+    'common.deleteFailed': '删除失败',
+    'common.empty': '(空)',
+    'common.show': '显示',
+    'common.hide': '隐藏',
+    'common.updatedAt': '更新于 {time}',
     'context.clearHistory': '清除对话',
     'context.settings': '设置',
     'status.connectionFailed': 'Connection failed',
     'status.initializing': 'Initializing...',
     'status.listening': 'Listening...',
+    'status.latency': '延迟: {ms}ms',
     'status.processing': 'Processing...',
     'status.ready': 'Ready',
     'status.reconnecting': 'Reconnecting...',
@@ -655,6 +668,10 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'voice.outputDesc': 'EVA 以语音方式回复',
     'voice.title': '语音设置',
     'voice.volume': '音量',
+    'voice.outputEnabled': '语音输出已开启',
+    'voice.outputDisabled': '语音输出已关闭',
+    'voice.micPermissionSettings': '请在系统设置中开启麦克风权限',
+    'voice.micPermissionDenied': '麦克风权限未授予',
     'memory.accountDesc': '任务执行时请求并长期保存的账号、密钥、密码和固定配置。',
     'memory.accountInfo': '账户信息',
     'memory.accountManage': '账户信息管理',
@@ -667,6 +684,65 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'memory.savedInfo': '已保存信息',
     'memory.summaries': '对话摘要',
     'memory.title': '记忆管理',
+    'memory.loadFailed': '加载失败',
+    'memory.profileEmpty': 'EVA 还不太了解你，多聊聊吧',
+    'memory.importantEmpty': '暂无重要记忆',
+    'memory.summaryEmpty': '暂无对话摘要',
+    'memory.conversationEmpty': '暂无对话记录',
+    'memory.accountEmpty': '暂无账户信息',
+    'memory.userRole': '你',
+    'memory.profileCleared': '用户画像已清空',
+    'memory.importantCleared': '重要记忆已清空',
+    'memory.summariesCleared': '对话摘要已清空',
+    'memory.conversationsCleared': '最近对话已清空',
+    'memory.allReset': '所有数据已重置',
+    'memory.accountDeleted': '账户信息已删除',
+    'memory.accountCleared': '账户信息已清空',
+    'memory.clearFailed': '清空失败',
+    'memory.memoryDeleted': '记忆已删除',
+    'memory.sensitivitySecret': '敏感',
+    'memory.sensitivityVerification': '验证',
+    'memory.sensitivityNormal': '普通',
+    'memory.field.nickname': '称呼',
+    'memory.field.name': '姓名',
+    'memory.field.age': '年龄',
+    'memory.field.gender': '性别',
+    'memory.field.location': '所在地',
+    'memory.field.occupation': '职业',
+    'memory.field.currentMood': '当前心情',
+    'memory.confirm.clearProfile.title': '清空用户画像',
+    'memory.confirm.clearProfile.message': '将移除 EVA 已整理的个人信息、偏好和标签。',
+    'memory.confirm.clearProfile.detail': '之后可以通过新的对话重新建立画像。',
+    'memory.confirm.clearImportant.title': '清空重要记忆',
+    'memory.confirm.clearImportant.message': '将删除所有被标记为重要的长期记忆。',
+    'memory.confirm.clearImportant.detail': '这个操作不会影响用户画像和对话摘要。',
+    'memory.confirm.clearSummaries.title': '清空对话摘要',
+    'memory.confirm.clearSummaries.message': '将删除已压缩保存的历史对话摘要。',
+    'memory.confirm.clearSummaries.detail': '最近对话和用户画像不会被同时清空。',
+    'memory.confirm.clearConversations.title': '清空最近对话',
+    'memory.confirm.clearConversations.message': '将清空当前工作记忆里的最近对话记录。',
+    'memory.confirm.clearConversations.detail': 'EVA 会从新的上下文重新开始对话。',
+    'memory.confirm.resetAll.title': '重置所有记忆',
+    'memory.confirm.resetAll.message': '将清除用户画像、重要记忆、账户信息、对话摘要和最近对话。',
+    'memory.confirm.resetAll.detail': '此操作不可恢复。',
+    'memory.confirm.deleteProfile.title': '删除画像字段',
+    'memory.confirm.deleteProfile.message': '将删除“{name}”。',
+    'memory.confirm.deleteProfile.detail': '删除后可以在新的对话中重新补充。',
+    'memory.confirm.deleteImportant.title': '删除重要记忆',
+    'memory.confirm.deleteImportant.message': '将删除“{name}”。',
+    'memory.confirm.deleteImportant.detail': '这条长期记忆不会再参与后续上下文。',
+    'memory.confirm.deleteSummary.title': '删除对话摘要',
+    'memory.confirm.deleteSummary.message': '将删除这条已压缩保存的历史对话摘要。',
+    'memory.confirm.deleteSummary.detail': '其他摘要和最近对话不会受到影响。',
+    'memory.confirm.deleteConversation.title': '删除最近对话',
+    'memory.confirm.deleteConversation.message': '将从工作记忆中删除这条最近对话。',
+    'memory.confirm.deleteConversation.detail': '这不会删除其他记忆内容。',
+    'memory.confirm.deleteAccount.title': '删除账户信息',
+    'memory.confirm.deleteAccount.message': '将删除“{name}”。',
+    'memory.confirm.deleteAccount.detail': '之后如果任务仍需要这项信息，会重新向你请求。',
+    'memory.confirm.clearAccount.title': '清空账户信息',
+    'memory.confirm.clearAccount.message': '将删除所有由任务执行保存的账号、密钥、密码和固定配置。',
+    'memory.confirm.clearAccount.detail': '普通记忆和对话历史不会被同时清除。',
     'learning.title': '自学习',
     'learning.desc': '查看 runtime events、反思记录、候选学习资产和 specialized agents。',
     'learning.reflect': '反思最近事件',
@@ -678,11 +754,21 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'learning.decisions': '自动化决策',
     'learning.rollbacks': '回滚',
     'learning.empty': '暂无数据',
+    'learning.loadFailed': 'Learning 加载失败: {error}',
+    'learning.deployFailed': '部署失败: {error}',
+    'learning.updateFailed': '更新失败: {error}',
+    'learning.rollbackFailed': '回滚失败: {error}',
     'personality.addFile': '添加角色文件',
     'personality.addFileDesc': '选择外部 .yml/.yaml 文件，校验通过后加入人格列表',
     'personality.current': '当前人格',
     'personality.currentDesc': '选择 AI 伴侣的人格配置',
     'personality.title': '人格',
+    'personality.externalFile': '外部文件',
+    'personality.listLoadFailed': '人格列表加载失败: {error}',
+    'personality.switchFailed': '人格切换失败: {error}',
+    'personality.switched': '人格已切换为 {name}',
+    'personality.addFailed': '添加角色失败: {error}',
+    'personality.addedAndSwitched': '已添加并切换为 {name}',
     'system.asr': 'ASR 语音识别',
     'system.dialogueModel': '对话模型',
     'system.downloadMissing': '下载缺失模型',
@@ -711,6 +797,41 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'system.noAsr': '暂无 ASR 配置',
     'system.checking': '检查中...',
     'system.checkFailed': '检查失败',
+    'system.modelManager': '模型管理',
+    'system.modelManagerDesc': '新增、测试、激活或删除模型配置',
+    'system.configCount': '{count} 个配置',
+    'system.ready': '已就绪',
+    'system.missingPrefix': '缺少 {items}',
+    'system.manage': '管理',
+    'system.currentUsing': '当前使用 {model}',
+    'system.needComplete': '需要补全 {items}',
+    'system.notConfigured': '未配置',
+    'system.config': '配置',
+    'system.modelName': '模型名',
+    'system.statusCheck': '状态检查',
+    'system.installedRatio': '{installed}/{total} 已安装',
+    'system.startupNeedsConfig': '启动前需要完成配置',
+    'system.needConfigCount': '需要完成 {count} 项配置',
+    'system.completeDialogueModel': '补全对话模型的模型名、API Key 和 Base URL',
+    'system.completeTaskModel': '补全任务模型的模型名、API Key 和 Base URL',
+    'system.completeTtsModel': '补全 TTS 的模型名、API Key 和 Voice ID',
+    'system.completeTtsModelNoVoice': '补全 TTS 的模型名和 API Key',
+    'system.completeAsrModel': '补全 ASR 的模型名和 API Key',
+    'system.downloadMissingLocal': '下载缺失的本地模型：{models}',
+    'system.checkLocalModels': '检查本地 VAD / SmartTurn 模型状态',
+    'system.localModelStatusFailed': '本地模型状态返回失败',
+    'system.localModelReady': '本地模型已就绪',
+    'system.localModelDownloadFailed': '模型下载失败: {error}',
+    'system.modelMissing': '模型配置不存在',
+    'system.apiTestTitle': '测试 API 连接',
+    'system.testing': '测试中',
+    'system.connectionFailed': '连接失败',
+    'system.apiOk': 'API 连接正常',
+    'system.apiFailed': 'API 测试失败: {error}',
+    'system.voiceIdPlaceholder': '音色 ID',
+    'system.languagePlaceholderOptional': 'zh / en（可选）',
+    'logs.loadFailed': '日志加载失败',
+    'logs.empty': '暂无日志',
     'taskRuntime.compactLimit': '自动压缩阈值',
     'taskRuntime.compactLimitDesc': '上下文 token 达到该值时自动压缩，最高为窗口的 90%。',
     'taskRuntime.contextWindow': '模型上下文窗口',
@@ -723,6 +844,7 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'taskRuntime.title': '任务执行参数',
     'plugins.title': '插件',
     'plugins.loadFailed': '插件加载失败',
+    'plugins.uiLoadFailed': '插件 UI 加载失败',
     'plugins.empty': '未发现插件',
     'plugins.configCount': '{count} 个参数',
     'plugins.noConfig': '无可配置参数',
@@ -744,6 +866,39 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'plugins.chooseFile': '选择文件',
     'plugins.choose': '选择',
     'plugins.chooseField': '选择{label}',
+    'plugins.adminLoading': '加载管理信息...',
+    'plugins.adminLoadFailed': '管理信息加载失败',
+    'plugins.noAdminPanel': '这个插件没有声明管理面板。',
+    'plugins.adminTitle': '插件管理',
+    'plugins.noAdminActions': '暂无管理动作。',
+    'plugins.actionFailed': '插件操作失败: {error}',
+    'plugins.actionDone': '插件操作已完成',
+    'plugins.mcpTitle': '远程 MCP Servers',
+    'plugins.mcpSubtitle': '只管理远程 MCP HTTP endpoint，不启动本地命令。',
+    'plugins.mcpIdPlaceholder': 'id，例如 github',
+    'plugins.mcpNamePlaceholder': '名称，可选',
+    'plugins.mcpHeadersPlaceholder': "Headers JSON，可选，例如 {\"authorization\":\"Bearer ...\"}",
+    'plugins.mcpAdd': '添加远程 MCP',
+    'plugins.mcpEmpty': '暂无远程 MCP server。',
+    'plugins.mcpHeadersInvalid': 'Headers 必须是合法 JSON',
+    'plugins.test': '测试',
+    'plugins.testing': '测试中...',
+    'plugins.testFailed': '测试失败',
+    'plugins.skillsTitle': 'Skills Sources',
+    'plugins.skillsSubtitle': '从 GitHub 或本地目录导入 SKILL.md。',
+    'plugins.skillsGithubPlaceholder': 'GitHub URL，例如 https://github.com/user/repo',
+    'plugins.skillsLocalPlaceholder': '本地 skills 目录路径',
+    'plugins.skillsAddGithub': '添加 GitHub Source',
+    'plugins.skillsAddLocal': '添加本地目录',
+    'plugins.skillsEmpty': '暂无 skill source。',
+    'plugins.skillsNoneInSource': '这个 source 下没有扫描到 SKILL.md。',
+    'plugins.rescan': '更新',
+    'plugins.live2dCapabilitiesLoading': '正在读取模型能力...',
+    'plugins.live2dCapabilitiesUnavailable': '未读取到模型能力',
+    'plugins.live2dCapabilitiesTitle': '模型能力',
+    'plugins.live2dMotionGroups': 'Motion groups',
+    'plugins.live2dExpressions': 'Expressions',
+    'plugins.live2dLipSyncParams': 'LipSync 参数',
     'logs.title': '运行日志',
     'logs.desc': '按时间、等级和类型查看当前会话的运行状态。',
     'about.desc': '把一个鲜活的灵魂放进桌面。',
@@ -764,6 +919,8 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'common.confirm': 'Confirm',
     'common.enable': 'Enable',
     'common.enabled': 'Enabled',
+    'common.increase': 'Increase',
+    'common.decrease': 'Decrease',
     'common.manage': 'Manage',
     'common.continue': 'Continue',
     'common.activate': 'Activate',
@@ -771,11 +928,22 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'common.delete': 'Delete',
     'common.loading': 'Loading...',
     'common.none': 'None',
+    'common.items': '{count} items',
+    'common.records': '{count} records',
+    'common.failed': 'Failed',
+    'common.ready': 'OK',
+    'common.deleted': 'Deleted',
+    'common.deleteFailed': 'Delete failed',
+    'common.empty': '(empty)',
+    'common.show': 'Show',
+    'common.hide': 'Hide',
+    'common.updatedAt': 'Updated {time}',
     'context.clearHistory': 'Clear Conversation',
     'context.settings': 'Settings',
     'status.connectionFailed': 'Connection failed',
     'status.initializing': 'Initializing...',
     'status.listening': 'Listening...',
+    'status.latency': 'Latency: {ms}ms',
     'status.processing': 'Processing...',
     'status.ready': 'Ready',
     'status.reconnecting': 'Reconnecting...',
@@ -816,6 +984,10 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'voice.outputDesc': 'Let EVA reply with speech',
     'voice.title': 'Voice Settings',
     'voice.volume': 'Volume',
+    'voice.outputEnabled': 'Voice output enabled',
+    'voice.outputDisabled': 'Voice output disabled',
+    'voice.micPermissionSettings': 'Enable microphone permission in System Settings',
+    'voice.micPermissionDenied': 'Microphone permission was not granted',
     'memory.accountDesc': 'Accounts, keys, passwords, and fixed configuration saved during task execution.',
     'memory.accountInfo': 'Account Info',
     'memory.accountManage': 'Account Info Management',
@@ -828,6 +1000,65 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'memory.savedInfo': 'Saved Info',
     'memory.summaries': 'Conversation Summaries',
     'memory.title': 'Memory',
+    'memory.loadFailed': 'Load failed',
+    'memory.profileEmpty': 'EVA does not know much about you yet. Keep chatting.',
+    'memory.importantEmpty': 'No important memories',
+    'memory.summaryEmpty': 'No conversation summaries',
+    'memory.conversationEmpty': 'No recent conversations',
+    'memory.accountEmpty': 'No account info',
+    'memory.userRole': 'You',
+    'memory.profileCleared': 'User profile cleared',
+    'memory.importantCleared': 'Important memories cleared',
+    'memory.summariesCleared': 'Conversation summaries cleared',
+    'memory.conversationsCleared': 'Recent conversations cleared',
+    'memory.allReset': 'All data reset',
+    'memory.accountDeleted': 'Account info deleted',
+    'memory.accountCleared': 'Account info cleared',
+    'memory.clearFailed': 'Clear failed',
+    'memory.memoryDeleted': 'Memory deleted',
+    'memory.sensitivitySecret': 'Secret',
+    'memory.sensitivityVerification': 'Verification',
+    'memory.sensitivityNormal': 'Normal',
+    'memory.field.nickname': 'Nickname',
+    'memory.field.name': 'Name',
+    'memory.field.age': 'Age',
+    'memory.field.gender': 'Gender',
+    'memory.field.location': 'Location',
+    'memory.field.occupation': 'Occupation',
+    'memory.field.currentMood': 'Current Mood',
+    'memory.confirm.clearProfile.title': 'Clear User Profile',
+    'memory.confirm.clearProfile.message': 'Remove EVA’s organized personal information, preferences, and tags.',
+    'memory.confirm.clearProfile.detail': 'A new profile can be rebuilt through future conversations.',
+    'memory.confirm.clearImportant.title': 'Clear Important Memories',
+    'memory.confirm.clearImportant.message': 'Delete all long-term memories marked as important.',
+    'memory.confirm.clearImportant.detail': 'This will not affect the user profile or conversation summaries.',
+    'memory.confirm.clearSummaries.title': 'Clear Conversation Summaries',
+    'memory.confirm.clearSummaries.message': 'Delete compressed historical conversation summaries.',
+    'memory.confirm.clearSummaries.detail': 'Recent conversations and the user profile will not be cleared.',
+    'memory.confirm.clearConversations.title': 'Clear Recent Conversations',
+    'memory.confirm.clearConversations.message': 'Clear recent conversation records from working memory.',
+    'memory.confirm.clearConversations.detail': 'EVA will start from a fresh context.',
+    'memory.confirm.resetAll.title': 'Reset All Memory',
+    'memory.confirm.resetAll.message': 'Clear the user profile, important memories, account info, summaries, and recent conversations.',
+    'memory.confirm.resetAll.detail': 'This cannot be undone.',
+    'memory.confirm.deleteProfile.title': 'Delete Profile Field',
+    'memory.confirm.deleteProfile.message': 'Delete “{name}”.',
+    'memory.confirm.deleteProfile.detail': 'It can be rebuilt in future conversations.',
+    'memory.confirm.deleteImportant.title': 'Delete Important Memory',
+    'memory.confirm.deleteImportant.message': 'Delete “{name}”.',
+    'memory.confirm.deleteImportant.detail': 'This long-term memory will no longer be used in future context.',
+    'memory.confirm.deleteSummary.title': 'Delete Conversation Summary',
+    'memory.confirm.deleteSummary.message': 'Delete this compressed historical conversation summary.',
+    'memory.confirm.deleteSummary.detail': 'Other summaries and recent conversations are unaffected.',
+    'memory.confirm.deleteConversation.title': 'Delete Recent Conversation',
+    'memory.confirm.deleteConversation.message': 'Delete this recent conversation from working memory.',
+    'memory.confirm.deleteConversation.detail': 'This will not delete other memory content.',
+    'memory.confirm.deleteAccount.title': 'Delete Account Info',
+    'memory.confirm.deleteAccount.message': 'Delete “{name}”.',
+    'memory.confirm.deleteAccount.detail': 'If a future task needs it, it will ask again.',
+    'memory.confirm.clearAccount.title': 'Clear Account Info',
+    'memory.confirm.clearAccount.message': 'Delete all accounts, keys, passwords, and fixed configuration saved during tasks.',
+    'memory.confirm.clearAccount.detail': 'Normal memories and conversation history will not be cleared.',
     'learning.title': 'Self-Learning',
     'learning.desc': 'Inspect runtime events, reflections, learning candidates, and specialized agents.',
     'learning.reflect': 'Reflect Recent Events',
@@ -839,11 +1070,21 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'learning.decisions': 'Automation Decisions',
     'learning.rollbacks': 'Rollbacks',
     'learning.empty': 'No data',
+    'learning.loadFailed': 'Learning load failed: {error}',
+    'learning.deployFailed': 'Deploy failed: {error}',
+    'learning.updateFailed': 'Update failed: {error}',
+    'learning.rollbackFailed': 'Rollback failed: {error}',
     'personality.addFile': 'Add Role File',
     'personality.addFileDesc': 'Choose an external .yml/.yaml file and add it after validation',
     'personality.current': 'Current Personality',
     'personality.currentDesc': 'Choose the AI companion personality profile',
     'personality.title': 'Personality',
+    'personality.externalFile': 'External file',
+    'personality.listLoadFailed': 'Failed to load personality list: {error}',
+    'personality.switchFailed': 'Failed to switch personality: {error}',
+    'personality.switched': 'Switched personality to {name}',
+    'personality.addFailed': 'Failed to add role: {error}',
+    'personality.addedAndSwitched': 'Added and switched to {name}',
     'system.asr': 'ASR Speech Recognition',
     'system.dialogueModel': 'Dialogue Model',
     'system.downloadMissing': 'Download Missing Models',
@@ -872,6 +1113,41 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'system.noAsr': 'No ASR config',
     'system.checking': 'Checking...',
     'system.checkFailed': 'Check failed',
+    'system.modelManager': 'Model Manager',
+    'system.modelManagerDesc': 'Add, test, activate, or delete model configs',
+    'system.configCount': '{count} configs',
+    'system.ready': 'Ready',
+    'system.missingPrefix': 'Missing {items}',
+    'system.manage': 'Manage',
+    'system.currentUsing': 'Using {model}',
+    'system.needComplete': 'Complete {items}',
+    'system.notConfigured': 'Not configured',
+    'system.config': 'Config',
+    'system.modelName': 'Model name',
+    'system.statusCheck': 'Status check',
+    'system.installedRatio': '{installed}/{total} installed',
+    'system.startupNeedsConfig': 'Setup required before starting',
+    'system.needConfigCount': '{count} setup items required',
+    'system.completeDialogueModel': 'Complete dialogue model name, API Key, and Base URL',
+    'system.completeTaskModel': 'Complete task model name, API Key, and Base URL',
+    'system.completeTtsModel': 'Complete TTS model name, API Key, and Voice ID',
+    'system.completeTtsModelNoVoice': 'Complete TTS model name and API Key',
+    'system.completeAsrModel': 'Complete ASR model name and API Key',
+    'system.downloadMissingLocal': 'Download missing local models: {models}',
+    'system.checkLocalModels': 'Check local VAD / SmartTurn model status',
+    'system.localModelStatusFailed': 'Local model status failed',
+    'system.localModelReady': 'Local models ready',
+    'system.localModelDownloadFailed': 'Model download failed: {error}',
+    'system.modelMissing': 'Model config does not exist',
+    'system.apiTestTitle': 'Test API connection',
+    'system.testing': 'Testing',
+    'system.connectionFailed': 'Connection failed',
+    'system.apiOk': 'API connection OK',
+    'system.apiFailed': 'API test failed: {error}',
+    'system.voiceIdPlaceholder': 'Voice ID',
+    'system.languagePlaceholderOptional': 'zh / en (optional)',
+    'logs.loadFailed': 'Failed to load logs',
+    'logs.empty': 'No logs',
     'taskRuntime.compactLimit': 'Auto Compact Limit',
     'taskRuntime.compactLimitDesc': 'Compact task history when context tokens reach this value, capped at 90% of the window.',
     'taskRuntime.contextWindow': 'Model Context Window',
@@ -884,6 +1160,7 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'taskRuntime.title': 'Task Runtime Params',
     'plugins.title': 'Plugins',
     'plugins.loadFailed': 'Failed to load plugins',
+    'plugins.uiLoadFailed': 'Plugin UI load failed',
     'plugins.empty': 'No plugins found',
     'plugins.configCount': '{count} parameters',
     'plugins.noConfig': 'No configurable parameters',
@@ -905,6 +1182,39 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'plugins.chooseFile': 'Choose File',
     'plugins.choose': 'Choose',
     'plugins.chooseField': 'Choose {label}',
+    'plugins.adminLoading': 'Loading admin information...',
+    'plugins.adminLoadFailed': 'Failed to load admin information',
+    'plugins.noAdminPanel': 'This plugin does not declare an admin panel.',
+    'plugins.adminTitle': 'Plugin Admin',
+    'plugins.noAdminActions': 'No admin actions.',
+    'plugins.actionFailed': 'Plugin action failed: {error}',
+    'plugins.actionDone': 'Plugin action completed',
+    'plugins.mcpTitle': 'Remote MCP Servers',
+    'plugins.mcpSubtitle': 'Manage remote MCP HTTP endpoints only; no local commands are started.',
+    'plugins.mcpIdPlaceholder': 'id, e.g. github',
+    'plugins.mcpNamePlaceholder': 'Name, optional',
+    'plugins.mcpHeadersPlaceholder': "Headers JSON, optional, e.g. {\"authorization\":\"Bearer ...\"}",
+    'plugins.mcpAdd': 'Add Remote MCP',
+    'plugins.mcpEmpty': 'No remote MCP servers.',
+    'plugins.mcpHeadersInvalid': 'Headers must be valid JSON',
+    'plugins.test': 'Test',
+    'plugins.testing': 'Testing...',
+    'plugins.testFailed': 'Test Failed',
+    'plugins.skillsTitle': 'Skills Sources',
+    'plugins.skillsSubtitle': 'Import SKILL.md from GitHub or local directories.',
+    'plugins.skillsGithubPlaceholder': 'GitHub URL, e.g. https://github.com/user/repo',
+    'plugins.skillsLocalPlaceholder': 'Local skills directory path',
+    'plugins.skillsAddGithub': 'Add GitHub Source',
+    'plugins.skillsAddLocal': 'Add Local Directory',
+    'plugins.skillsEmpty': 'No skill sources.',
+    'plugins.skillsNoneInSource': 'No SKILL.md files found under this source.',
+    'plugins.rescan': 'Rescan',
+    'plugins.live2dCapabilitiesLoading': 'Reading model capabilities...',
+    'plugins.live2dCapabilitiesUnavailable': 'Model capabilities unavailable',
+    'plugins.live2dCapabilitiesTitle': 'Model Capabilities',
+    'plugins.live2dMotionGroups': 'Motion groups',
+    'plugins.live2dExpressions': 'Expressions',
+    'plugins.live2dLipSyncParams': 'LipSync params',
     'logs.title': 'Runtime Logs',
     'logs.desc': 'Inspect the current session by time, level, and subsystem.',
     'about.desc': 'Putting a living soul into the desktop.',
@@ -1197,6 +1507,7 @@ type Live2dModelCapabilities = {
   motionGroups: string[]
   expressions: string[]
   lipSyncParameters: string[]
+  error?: string
 }
 
 type ConversationFrame =
@@ -2089,7 +2400,7 @@ async function loadPluginUISurfaces(): Promise<void> {
   try {
     const result = await window.electronAPI.listPlugins()
     if (!result.success) {
-      throw new Error(result.error || '插件 UI 加载失败')
+      throw new Error(result.error || t('plugins.uiLoadFailed'))
     }
 
     applyPluginUISurfaces(result.plugins.flatMap(plugin => plugin.enabled ? plugin.uiSurfaces : []))
@@ -2424,7 +2735,7 @@ async function initialize() {
     window.electronAPI.onLatencyData((data) => {
       console.log('[Latency] Received data:', data)
       if (data.total) {
-        const msg = `延迟: ${data.total.toFixed(0)}ms`
+        const msg = tf('status.latency', { ms: data.total.toFixed(0) })
         console.log(`[Latency] ${msg}`)
         setStatus(msg)
         setTimeout(() => setStatus(getReadyStatus()), 3000)
@@ -2694,8 +3005,8 @@ async function enableVoiceInput(): Promise<void> {
     const permission = await window.electronAPI.requestMicrophonePermission()
     if (!permission.success || !permission.granted) {
       setStatus(permission.openedSettings
-        ? '请在系统设置中开启麦克风权限'
-        : (permission.error || '麦克风权限未授予'))
+        ? t('voice.micPermissionSettings')
+        : (permission.error || t('voice.micPermissionDenied')))
       return
     }
   }
@@ -2710,7 +3021,7 @@ async function enableVoiceInput(): Promise<void> {
 async function loadPersonalities(): Promise<void> {
   const result = await window.electronAPI.listPersonalities()
   if (!result.success) {
-    showPanelNotice(`人格列表加载失败: ${result.error ?? 'unknown error'}`, 'error')
+    showPanelNotice(tf('personality.listLoadFailed', { error: result.error ?? 'unknown error' }), 'error')
     return
   }
 
@@ -2719,7 +3030,7 @@ async function loadPersonalities(): Promise<void> {
     const option = document.createElement('option')
     option.value = item.id
     option.textContent = item.source === 'file'
-      ? `${item.name} · 外部文件`
+      ? `${item.name} · ${t('personality.externalFile')}`
       : item.name
     option.title = item.path
     option.selected = item.id === result.current
@@ -2920,7 +3231,7 @@ window.addEventListener('pointerleave', () => {
 async function loadLogsSection(): Promise<void> {
   const result = await window.electronAPI.listLogs(1200)
   if (!result.success) {
-    logsList.innerHTML = `<div class="config-empty">日志加载失败</div>`
+    logsList.innerHTML = `<div class="config-empty">${escapeHtml(t('logs.loadFailed'))}</div>`
     return
   }
   logEntries = result.logs
@@ -2933,7 +3244,7 @@ function renderLogs(): void {
     : logEntries.filter(entry => entry.level === activeLogLevel)
 
   if (visibleLogs.length === 0) {
-    logsList.innerHTML = `<div class="config-empty">暂无日志</div>`
+    logsList.innerHTML = `<div class="config-empty">${escapeHtml(t('logs.empty'))}</div>`
     return
   }
 
@@ -2972,13 +3283,13 @@ async function refreshLearningSection(): Promise<void> {
   learningRefreshPromise = window.electronAPI.getLearningOverview()
     .then((result) => {
       if (!result.success) {
-        learningOverview.innerHTML = `<div class="profile-loading">Learning load failed: ${escapeHtml(result.error ?? 'unknown error')}</div>`
+        learningOverview.innerHTML = `<div class="profile-loading">${escapeHtml(tf('learning.loadFailed', { error: result.error ?? 'unknown error' }))}</div>`
         return
       }
       renderLearningOverview(result)
     })
     .catch((error) => {
-      learningOverview.innerHTML = `<div class="profile-loading">Learning load failed: ${escapeHtml(error instanceof Error ? error.message : String(error))}</div>`
+      learningOverview.innerHTML = `<div class="profile-loading">${escapeHtml(tf('learning.loadFailed', { error: error instanceof Error ? error.message : String(error) }))}</div>`
     })
     .finally(() => {
       learningRefreshPromise = null
@@ -3023,7 +3334,7 @@ function renderLearningOverview(result: {
       const scope = kind === 'agent' ? 'agent' : 'task'
       const response = await window.electronAPI.deployLearningCandidate({ candidateId, scope, status: 'draft' })
       if (!response.success) {
-        showNotice(`Deploy failed: ${response.error ?? 'unknown error'}`)
+        showNotice(tf('learning.deployFailed', { error: response.error ?? 'unknown error' }))
       }
       await refreshLearningSection()
     })
@@ -3037,7 +3348,7 @@ function renderLearningOverview(result: {
       button.disabled = true
       const response = await window.electronAPI.setLearningAssetStatus(id, status)
       if (!response.success) {
-        showNotice(`Update failed: ${response.error ?? 'unknown error'}`)
+        showNotice(tf('learning.updateFailed', { error: response.error ?? 'unknown error' }))
       }
       await refreshLearningSection()
     })
@@ -3050,7 +3361,7 @@ function renderLearningOverview(result: {
       button.disabled = true
       const response = await window.electronAPI.rollbackLearningAsset(id, 'Rolled back from Learning Center')
       if (!response.success) {
-        showNotice(`Rollback failed: ${response.error ?? 'unknown error'}`)
+        showNotice(tf('learning.rollbackFailed', { error: response.error ?? 'unknown error' }))
       }
       await refreshLearningSection()
     })
@@ -3064,7 +3375,7 @@ function renderLearningOverview(result: {
       button.disabled = true
       const response = await window.electronAPI.setRuntimeAgentStatus(id, status)
       if (!response.success) {
-        showNotice(`Update failed: ${response.error ?? 'unknown error'}`)
+        showNotice(tf('learning.updateFailed', { error: response.error ?? 'unknown error' }))
       }
       await refreshLearningSection()
     })
@@ -3077,7 +3388,7 @@ function renderLearningGroup(title: string, items: any[], renderItem: (item: any
       <div class="plugin-card-header">
         <div>
           <div class="plugin-name">${escapeHtml(title)}</div>
-          <div class="plugin-description">${items.length} items</div>
+          <div class="plugin-description">${escapeHtml(tf('common.items', { count: items.length }))}</div>
         </div>
       </div>
       <div class="plugin-admin-section">
@@ -3608,19 +3919,19 @@ voiceOutputToggle.addEventListener('change', async () => {
     await window.electronAPI.stopTTS()
     audioPlayer.stop()
   }
-  showPanelNotice(settings.voiceOutputEnabled ? '语音输出已开启' : '语音输出已关闭')
+  showPanelNotice(settings.voiceOutputEnabled ? t('voice.outputEnabled') : t('voice.outputDisabled'))
 })
 
 personalitySelect.addEventListener('change', async () => {
   const selected = personalitySelect.value
   const result = await window.electronAPI.setPersonality(selected)
   if (!result.success) {
-    showPanelNotice(`人格切换失败: ${result.error}`, 'error')
+    showPanelNotice(tf('personality.switchFailed', { error: result.error }), 'error')
     return
   }
 
   await loadSettings()
-  showPanelNotice(`人格已切换为 ${personalitySelect.selectedOptions[0]?.textContent ?? selected}`)
+  showPanelNotice(tf('personality.switched', { name: personalitySelect.selectedOptions[0]?.textContent ?? selected }))
 })
 
 async function loadPluginsSection(): Promise<void> {
@@ -3801,7 +4112,7 @@ function renderPluginAdminContainer(plugin: PluginInfo): string {
 
   return `
     <div class="plugin-card plugin-admin-card" data-plugin-admin="${escapeHtml(plugin.id)}">
-      <div class="plugin-admin-loading">加载管理信息...</div>
+      <div class="plugin-admin-loading">${escapeHtml(t('plugins.adminLoading'))}</div>
     </div>
   `
 }
@@ -3816,7 +4127,7 @@ async function loadPluginAdminPanel(plugin: PluginInfo): Promise<void> {
 
   const result = await window.electronAPI.pluginAdminAction(plugin.id, 'state')
   if (!result.success) {
-    container.innerHTML = `<div class="plugin-admin-loading">管理信息加载失败: ${escapeHtml(result.error ?? 'unknown error')}</div>`
+    container.innerHTML = `<div class="plugin-admin-loading">${escapeHtml(t('plugins.adminLoadFailed'))}: ${escapeHtml(result.error ?? 'unknown error')}</div>`
     return
   }
 
@@ -3832,7 +4143,7 @@ async function loadPluginAdminPanel(plugin: PluginInfo): Promise<void> {
 function renderGenericPluginAdmin(container: HTMLElement, plugin: PluginInfo, state: unknown): void {
   const schema = plugin.adminSchema
   if (!schema) {
-    container.innerHTML = '<div class="plugin-admin-empty">这个插件没有声明管理面板。</div>'
+    container.innerHTML = `<div class="plugin-admin-empty">${escapeHtml(t('plugins.noAdminPanel'))}</div>`
     return
   }
 
@@ -3840,7 +4151,7 @@ function renderGenericPluginAdmin(container: HTMLElement, plugin: PluginInfo, st
   container.innerHTML = `
     <div class="plugin-admin-header">
       <div>
-        <div class="plugin-admin-title">${escapeHtml(schema.title || '插件管理')}</div>
+        <div class="plugin-admin-title">${escapeHtml(schema.title || t('plugins.adminTitle'))}</div>
         ${schema.description ? `<div class="plugin-admin-subtitle">${escapeHtml(schema.description)}</div>` : ''}
       </div>
     </div>
@@ -3853,7 +4164,7 @@ function renderGenericPluginAdmin(container: HTMLElement, plugin: PluginInfo, st
           ${action.description ? `<div class="plugin-admin-desc">${escapeHtml(action.description)}</div>` : ''}
         `).join('')}
       </div>
-    ` : '<div class="plugin-admin-empty">暂无管理动作。</div>'}
+    ` : `<div class="plugin-admin-empty">${escapeHtml(t('plugins.noAdminActions'))}</div>`}
     <pre class="plugin-admin-state">${escapeHtml(JSON.stringify(state ?? {}, null, 2))}</pre>
   `
 
@@ -3880,12 +4191,12 @@ async function runPluginAdminAction(
   const result = await window.electronAPI.pluginAdminAction(plugin.id, action, payload)
   if (!result.success) {
     if (!options.silent) {
-      showPanelNotice(`插件操作失败: ${result.error ?? 'unknown error'}`, 'error')
+      showPanelNotice(tf('plugins.actionFailed', { error: result.error ?? 'unknown error' }), 'error')
     }
     return null
   }
   if (!options.silent) {
-    showPanelNotice('插件操作已完成')
+    showPanelNotice(t('plugins.actionDone'))
   }
   if (options.refresh !== false) {
     await loadPluginAdminPanel(plugin)
@@ -3898,16 +4209,16 @@ function renderMCPAdmin(container: HTMLElement, plugin: PluginInfo, state: any):
   container.innerHTML = `
     <div class="plugin-admin-header">
       <div>
-        <div class="plugin-admin-title">远程 MCP Servers</div>
-        <div class="plugin-admin-subtitle">只管理远程 MCP HTTP endpoint，不启动本地命令。</div>
+        <div class="plugin-admin-title">${escapeHtml(t('plugins.mcpTitle'))}</div>
+        <div class="plugin-admin-subtitle">${escapeHtml(t('plugins.mcpSubtitle'))}</div>
       </div>
     </div>
     <div class="plugin-admin-form">
-      <input class="plugin-config-input" data-mcp-field="id" placeholder="id，例如 github" />
-      <input class="plugin-config-input" data-mcp-field="name" placeholder="名称，可选" />
+      <input class="plugin-config-input" data-mcp-field="id" placeholder="${escapeHtml(t('plugins.mcpIdPlaceholder'))}" />
+      <input class="plugin-config-input" data-mcp-field="name" placeholder="${escapeHtml(t('plugins.mcpNamePlaceholder'))}" />
       <input class="plugin-config-input plugin-admin-wide-input" data-mcp-field="url" placeholder="https://example.com/mcp" />
-      <textarea class="plugin-config-input plugin-config-textarea" data-mcp-field="headers" rows="3" placeholder='Headers JSON，可选，例如 {"authorization":"Bearer ..."}'></textarea>
-      <button class="plugin-admin-button" type="button" data-mcp-action="add">添加远程 MCP</button>
+      <textarea class="plugin-config-input plugin-config-textarea" data-mcp-field="headers" rows="3" placeholder='${escapeHtml(t('plugins.mcpHeadersPlaceholder'))}'></textarea>
+      <button class="plugin-admin-button" type="button" data-mcp-action="add">${escapeHtml(t('plugins.mcpAdd'))}</button>
     </div>
     <div class="plugin-admin-list">
       ${servers.length ? servers.map((server: any) => `
@@ -3920,10 +4231,10 @@ function renderMCPAdmin(container: HTMLElement, plugin: PluginInfo, state: any):
             <input type="checkbox" ${server.enabled ? 'checked' : ''} data-mcp-action="toggle" />
             <span class="toggle-slider"></span>
           </label>
-          <button class="plugin-admin-button secondary" type="button" data-mcp-action="test">测试</button>
-          <button class="plugin-admin-button danger" type="button" data-mcp-action="remove">删除</button>
+          <button class="plugin-admin-button secondary" type="button" data-mcp-action="test">${escapeHtml(t('plugins.test'))}</button>
+          <button class="plugin-admin-button danger" type="button" data-mcp-action="remove">${escapeHtml(t('common.delete'))}</button>
         </div>
-      `).join('') : '<div class="plugin-admin-empty">暂无远程 MCP server。</div>'}
+      `).join('') : `<div class="plugin-admin-empty">${escapeHtml(t('plugins.mcpEmpty'))}</div>`}
     </div>
   `
 
@@ -3937,7 +4248,7 @@ function renderMCPAdmin(container: HTMLElement, plugin: PluginInfo, state: any):
       try {
         headers = JSON.parse(headersText)
       } catch {
-        showPanelNotice('Headers 必须是合法 JSON', 'error')
+        showPanelNotice(t('plugins.mcpHeadersInvalid'), 'error')
         return
       }
     }
@@ -3969,9 +4280,9 @@ function bindMCPAdminItemActions(container: HTMLElement, plugin: PluginInfo): vo
 }
 
 async function runMCPTestAction(plugin: PluginInfo, serverId: string, button: HTMLButtonElement): Promise<void> {
-  const originalText = button.textContent || '测试'
+  const originalText = button.textContent || t('plugins.test')
   button.disabled = true
-  button.textContent = '测试中...'
+  button.textContent = t('plugins.testing')
   button.classList.remove('danger')
   button.classList.add('testing')
 
@@ -3979,7 +4290,7 @@ async function runMCPTestAction(plugin: PluginInfo, serverId: string, button: HT
   button.classList.remove('testing')
 
   if (!result.success) {
-    button.textContent = '测试失败'
+    button.textContent = t('plugins.testFailed')
     button.classList.add('danger')
   } else {
     const tools = Array.isArray((result.result as any)?.tools) ? (result.result as any).tools.length : 0
@@ -4000,15 +4311,15 @@ function renderSkillsAdmin(container: HTMLElement, plugin: PluginInfo, state: an
   container.innerHTML = `
     <div class="plugin-admin-header">
       <div>
-        <div class="plugin-admin-title">Skills Sources</div>
-        <div class="plugin-admin-subtitle">从 GitHub 或本地目录导入 SKILL.md。</div>
+        <div class="plugin-admin-title">${escapeHtml(t('plugins.skillsTitle'))}</div>
+        <div class="plugin-admin-subtitle">${escapeHtml(t('plugins.skillsSubtitle'))}</div>
       </div>
     </div>
     <div class="plugin-admin-form">
-      <input class="plugin-config-input plugin-admin-wide-input" data-skill-field="githubUrl" placeholder="GitHub URL，例如 https://github.com/user/repo" />
-      <button class="plugin-admin-button" type="button" data-skill-action="add-github">添加 GitHub Source</button>
-      <input class="plugin-config-input plugin-admin-wide-input" data-skill-field="localPath" placeholder="本地 skills 目录路径" />
-      <button class="plugin-admin-button secondary" type="button" data-skill-action="add-local">添加本地目录</button>
+      <input class="plugin-config-input plugin-admin-wide-input" data-skill-field="githubUrl" placeholder="${escapeHtml(t('plugins.skillsGithubPlaceholder'))}" />
+      <button class="plugin-admin-button" type="button" data-skill-action="add-github">${escapeHtml(t('plugins.skillsAddGithub'))}</button>
+      <input class="plugin-config-input plugin-admin-wide-input" data-skill-field="localPath" placeholder="${escapeHtml(t('plugins.skillsLocalPlaceholder'))}" />
+      <button class="plugin-admin-button secondary" type="button" data-skill-action="add-local">${escapeHtml(t('plugins.skillsAddLocal'))}</button>
     </div>
     <div class="plugin-admin-section-title">Sources</div>
     <div class="plugin-admin-list">
@@ -4027,13 +4338,13 @@ function renderSkillsAdmin(container: HTMLElement, plugin: PluginInfo, state: an
             <input type="checkbox" ${source.enabled ? 'checked' : ''} data-skill-action="toggle" />
             <span class="toggle-slider"></span>
           </label>
-          ${source.type === 'github' ? '<button class="plugin-admin-button secondary" type="button" data-skill-action="rescan">更新</button>' : ''}
-          <button class="plugin-admin-button danger" type="button" data-skill-action="remove">删除</button>
+          ${source.type === 'github' ? `<button class="plugin-admin-button secondary" type="button" data-skill-action="rescan">${escapeHtml(t('plugins.rescan'))}</button>` : ''}
+          <button class="plugin-admin-button danger" type="button" data-skill-action="remove">${escapeHtml(t('common.delete'))}</button>
           <div class="plugin-admin-source-skills" hidden>
             ${renderSourceSkills(skillsForSource(skills, source))}
           </div>
         </div>
-      `).join('') : '<div class="plugin-admin-empty">暂无 skill source。</div>'}
+      `).join('') : `<div class="plugin-admin-empty">${escapeHtml(t('plugins.skillsEmpty'))}</div>`}
     </div>
   `
 
@@ -4093,7 +4404,7 @@ function skillsForSource(skills: any[], source: any): any[] {
 
 function renderSourceSkills(skills: any[]): string {
   if (!skills.length) {
-    return '<div class="plugin-admin-empty">这个 source 下没有扫描到 SKILL.md。</div>'
+    return `<div class="plugin-admin-empty">${escapeHtml(t('plugins.skillsNoneInSource'))}</div>`
   }
 
   return skills.map((skill: any) => `
@@ -4269,6 +4580,16 @@ async function hydrateLive2dCapabilities(plugin: PluginInfo, page: 'main' | 'adv
     modelUrl: String(plugin.config.modelUrl ?? ''),
   })
   if (!result.success) {
+    live2dCapabilitiesCache.set(cacheKey, {
+      motionGroups: [],
+      expressions: [],
+      lipSyncParameters: [],
+      error: result.error ?? 'unknown error',
+    })
+    const currentCard = pluginsList.querySelector<HTMLElement>('.plugin-detail-card')
+    if (currentCard?.dataset.pluginId === plugin.id) {
+      renderPluginDetail(plugin, page)
+    }
     return
   }
 
@@ -4392,6 +4713,7 @@ function renderPluginConfigFields(plugin: PluginInfo, page: 'main' | 'advanced' 
 
   return `
     <div class="plugin-config-fields">
+      ${renderPluginCapabilitySummary(plugin, page)}
       ${visibleFields.map(field => renderPluginConfigField(plugin, field)).join('')}
       ${page === 'main' && advancedFields.length ? `
         <button class="plugin-config-page-button" type="button" data-plugin-config-page="advanced">
@@ -4402,6 +4724,40 @@ function renderPluginConfigFields(plugin: PluginInfo, page: 'main' | 'advanced' 
           <span class="plugin-config-page-arrow">›</span>
         </button>
       ` : ''}
+    </div>
+  `
+}
+
+function renderPluginCapabilitySummary(plugin: PluginInfo, page: 'main' | 'advanced'): string {
+  if (plugin.id !== 'live2d-avatar' || page !== 'advanced') {
+    return ''
+  }
+  const capabilities = live2dCapabilitiesCache.get(getLive2dCapabilitiesCacheKey(plugin))
+  if (!capabilities) {
+    return `<div class="plugin-capability-summary muted">${escapeHtml(t('plugins.live2dCapabilitiesLoading'))}</div>`
+  }
+  if (capabilities.error) {
+    return `<div class="plugin-capability-summary muted">${escapeHtml(t('plugins.live2dCapabilitiesUnavailable'))}: ${escapeHtml(capabilities.error)}</div>`
+  }
+  return `
+    <div class="plugin-capability-summary">
+      <div class="plugin-capability-title">${escapeHtml(t('plugins.live2dCapabilitiesTitle'))}</div>
+      <div class="plugin-capability-grid">
+        ${renderCapabilityMetric(t('plugins.live2dMotionGroups'), capabilities.motionGroups)}
+        ${renderCapabilityMetric(t('plugins.live2dExpressions'), capabilities.expressions)}
+        ${renderCapabilityMetric(t('plugins.live2dLipSyncParams'), capabilities.lipSyncParameters)}
+      </div>
+    </div>
+  `
+}
+
+function renderCapabilityMetric(label: string, values: string[]): string {
+  const preview = values.slice(0, 4).join(' / ')
+  return `
+    <div class="plugin-capability-metric">
+      <span>${escapeHtml(label)}</span>
+      <strong>${values.length}</strong>
+      ${preview ? `<small>${escapeHtml(preview)}</small>` : ''}
     </div>
   `
 }
@@ -4455,8 +4811,8 @@ function renderPluginConfigField(plugin: PluginInfo, field: PluginConfigField): 
       <div class="plugin-number-control">
         <input class="plugin-config-input plugin-config-number" type="number" value="${escapeHtml(String(rawValue ?? ''))}" ${field.min !== undefined ? `min="${field.min}"` : ''} ${field.max !== undefined ? `max="${field.max}"` : ''} ${field.step !== undefined ? `step="${field.step}"` : ''} ${commonAttrs} />
         <div class="plugin-number-stepper">
-          <button class="plugin-number-step" type="button" data-step-dir="up" data-plugin-id="${escapeHtml(plugin.id)}" data-plugin-config="${escapeHtml(field.key)}" tabindex="-1" title="增加"></button>
-          <button class="plugin-number-step" type="button" data-step-dir="down" data-plugin-id="${escapeHtml(plugin.id)}" data-plugin-config="${escapeHtml(field.key)}" tabindex="-1" title="减少"></button>
+          <button class="plugin-number-step" type="button" data-step-dir="up" data-plugin-id="${escapeHtml(plugin.id)}" data-plugin-config="${escapeHtml(field.key)}" tabindex="-1" title="${escapeHtml(t('common.increase'))}"></button>
+          <button class="plugin-number-step" type="button" data-step-dir="down" data-plugin-id="${escapeHtml(plugin.id)}" data-plugin-config="${escapeHtml(field.key)}" tabindex="-1" title="${escapeHtml(t('common.decrease'))}"></button>
         </div>
       </div>
     `
@@ -4543,7 +4899,7 @@ addPersonalityFileBtn.addEventListener('click', async () => {
   }
 
   if (!result.success || !result.item) {
-    showPanelNotice(`添加角色失败: ${result.error ?? 'unknown error'}`, 'error')
+    showPanelNotice(tf('personality.addFailed', { error: result.error ?? 'unknown error' }), 'error')
     return
   }
 
@@ -4551,11 +4907,11 @@ addPersonalityFileBtn.addEventListener('click', async () => {
   personalitySelect.value = result.item.id
   const setResult = await window.electronAPI.setPersonality(result.item.id)
   if (!setResult.success) {
-    showPanelNotice(`人格切换失败: ${setResult.error}`, 'error')
+    showPanelNotice(tf('personality.switchFailed', { error: setResult.error }), 'error')
     return
   }
 
-  showPanelNotice(`已添加并切换为 ${result.item.name}`)
+  showPanelNotice(tf('personality.addedAndSwitched', { name: result.item.name }))
 })
 
 // ========== Section Clear Buttons ==========
@@ -4564,10 +4920,10 @@ addPersonalityFileBtn.addEventListener('click', async () => {
 const clearProfileBtn = document.getElementById('clear-profile-btn')
 clearProfileBtn?.addEventListener('click', async () => {
   const confirmed = await showConfirmDialog({
-    title: '清空用户画像',
-    message: '将移除 EVA 已整理的个人信息、偏好和标签。',
-    detail: '之后可以通过新的对话重新建立画像。',
-    confirmText: '清空',
+    title: t('memory.confirm.clearProfile.title'),
+    message: t('memory.confirm.clearProfile.message'),
+    detail: t('memory.confirm.clearProfile.detail'),
+    confirmText: t('common.clear'),
     tone: 'danger',
   })
   if (!confirmed) return
@@ -4577,7 +4933,7 @@ clearProfileBtn?.addEventListener('click', async () => {
     if (!result.success) {
       throw new Error(result.error)
     }
-    showPanelNotice('用户画像已清空')
+    showPanelNotice(t('memory.profileCleared'))
     await loadUserProfile()
   } catch (error: any) {
     console.error('Clear profile error:', error)
@@ -4588,10 +4944,10 @@ clearProfileBtn?.addEventListener('click', async () => {
 const clearMemoriesBtn = document.getElementById('clear-memories-btn')
 clearMemoriesBtn?.addEventListener('click', async () => {
   const confirmed = await showConfirmDialog({
-    title: '清空重要记忆',
-    message: '将删除所有被标记为重要的长期记忆。',
-    detail: '这个操作不会影响用户画像和对话摘要。',
-    confirmText: '清空',
+    title: t('memory.confirm.clearImportant.title'),
+    message: t('memory.confirm.clearImportant.message'),
+    detail: t('memory.confirm.clearImportant.detail'),
+    confirmText: t('common.clear'),
     tone: 'danger',
   })
   if (!confirmed) return
@@ -4601,7 +4957,7 @@ clearMemoriesBtn?.addEventListener('click', async () => {
     if (!result.success) {
       throw new Error(result.error)
     }
-    showPanelNotice('重要记忆已清空')
+    showPanelNotice(t('memory.importantCleared'))
     await loadImportantMemories()
   } catch (error: any) {
     console.error('Clear memories error:', error)
@@ -4612,10 +4968,10 @@ clearMemoriesBtn?.addEventListener('click', async () => {
 const clearSummariesBtn = document.getElementById('clear-summaries-btn')
 clearSummariesBtn?.addEventListener('click', async () => {
   const confirmed = await showConfirmDialog({
-    title: '清空对话摘要',
-    message: '将删除已压缩保存的历史对话摘要。',
-    detail: '最近对话和用户画像不会被同时清空。',
-    confirmText: '清空',
+    title: t('memory.confirm.clearSummaries.title'),
+    message: t('memory.confirm.clearSummaries.message'),
+    detail: t('memory.confirm.clearSummaries.detail'),
+    confirmText: t('common.clear'),
     tone: 'danger',
   })
   if (!confirmed) return
@@ -4625,7 +4981,7 @@ clearSummariesBtn?.addEventListener('click', async () => {
     if (!result.success) {
       throw new Error(result.error)
     }
-    showPanelNotice('对话摘要已清空')
+    showPanelNotice(t('memory.summariesCleared'))
     await loadConversationSummaries()
   } catch (error: any) {
     console.error('Clear summaries error:', error)
@@ -4636,10 +4992,10 @@ clearSummariesBtn?.addEventListener('click', async () => {
 const clearConversationsBtn = document.getElementById('clear-conversations-btn')
 clearConversationsBtn?.addEventListener('click', async () => {
   const confirmed = await showConfirmDialog({
-    title: '清空最近对话',
-    message: '将清空当前工作记忆里的最近对话记录。',
-    detail: 'EVA 会从新的上下文重新开始对话。',
-    confirmText: '清空',
+    title: t('memory.confirm.clearConversations.title'),
+    message: t('memory.confirm.clearConversations.message'),
+    detail: t('memory.confirm.clearConversations.detail'),
+    confirmText: t('common.clear'),
     tone: 'danger',
   })
   if (!confirmed) return
@@ -4650,7 +5006,7 @@ clearConversationsBtn?.addEventListener('click', async () => {
       throw new Error(result.error)
     }
     clearTextDisplay()
-    showPanelNotice('最近对话已清空')
+    showPanelNotice(t('memory.conversationsCleared'))
     await loadWorkingMemory()
   } catch (error: any) {
     console.error('Clear conversations error:', error)
@@ -4665,10 +5021,10 @@ resetAllBtn?.addEventListener('click', async () => {
 
 async function clearHistory(): Promise<void> {
   const confirmed = await showConfirmDialog({
-    title: '重置所有记忆',
-    message: '将清除用户画像、重要记忆、账户信息、对话摘要和最近对话。',
-    detail: '此操作不可恢复。',
-    confirmText: '全部重置',
+    title: t('memory.confirm.resetAll.title'),
+    message: t('memory.confirm.resetAll.message'),
+    detail: t('memory.confirm.resetAll.detail'),
+    confirmText: t('memory.resetAll'),
     tone: 'danger',
   })
   if (!confirmed) return
@@ -4679,7 +5035,7 @@ async function clearHistory(): Promise<void> {
       throw new Error(result.error)
     }
     clearTextDisplay()
-    showPanelNotice('所有数据已重置')
+    showPanelNotice(t('memory.allReset'))
     await refreshMemorySection()
   } catch (error: any) {
     console.error('Reset all error:', error)
@@ -4768,32 +5124,34 @@ async function refreshMemorySection(): Promise<void> {
 }
 
 function setMemoryLoadingState(): void {
-  profileCount.textContent = '加载中'
-  importantMemoriesCount.textContent = '加载中'
-  summariesCount.textContent = '加载中'
-  conversationsCount.textContent = '加载中'
-  accountInputsCount.textContent = '加载中'
-  accountInputsPageCount.textContent = '加载中'
-  profileContent.innerHTML = '<div class="profile-loading"><span class="loading-spinner"></span>加载中...</div>'
-  importantMemoriesContent.innerHTML = '<div class="profile-loading"><span class="loading-spinner"></span>加载中...</div>'
-  summariesContent.innerHTML = '<div class="profile-loading"><span class="loading-spinner"></span>加载中...</div>'
-  conversationsContent.innerHTML = '<div class="profile-loading"><span class="loading-spinner"></span>加载中...</div>'
-  accountInputsContent.innerHTML = '<div class="profile-loading"><span class="loading-spinner"></span>加载中...</div>'
+  const loading = t('common.loading')
+  const loadingHtml = `<div class="profile-loading"><span class="loading-spinner"></span>${escapeHtml(loading)}</div>`
+  profileCount.textContent = loading
+  importantMemoriesCount.textContent = loading
+  summariesCount.textContent = loading
+  conversationsCount.textContent = loading
+  accountInputsCount.textContent = loading
+  accountInputsPageCount.textContent = loading
+  profileContent.innerHTML = loadingHtml
+  importantMemoriesContent.innerHTML = loadingHtml
+  summariesContent.innerHTML = loadingHtml
+  conversationsContent.innerHTML = loadingHtml
+  accountInputsContent.innerHTML = loadingHtml
 }
 
 async function loadUserProfile(): Promise<void> {
   try {
     const result = await window.electronAPI.getUserProfile()
     if (!result.success || !result.profile) {
-      throw new Error(result.error || '用户画像返回为空')
+      throw new Error(result.error || t('memory.loadFailed'))
     }
 
     currentProfile = result.profile
     renderProfile(result.profile)
   } catch (error) {
     console.error('Failed to load profile:', error)
-    profileCount.textContent = '0 条'
-    profileContent.innerHTML = '<div class="profile-error">加载失败</div>'
+    profileCount.textContent = tf('common.records', { count: 0 })
+    profileContent.innerHTML = `<div class="profile-error">${escapeHtml(t('memory.loadFailed'))}</div>`
   }
 }
 
@@ -4801,13 +5159,13 @@ function renderProfile(profile: UserProfile): void {
   const { basic, personality, interests } = profile
 
   const labelMap: Record<string, string> = {
-    nickname: '称呼',
-    name: '姓名',
-    age: '年龄',
-    gender: '性别',
-    location: '所在地',
-    occupation: '职业',
-    currentMood: '当前心情',
+    nickname: t('memory.field.nickname'),
+    name: t('memory.field.name'),
+    age: t('memory.field.age'),
+    gender: t('memory.field.gender'),
+    location: t('memory.field.location'),
+    occupation: t('memory.field.occupation'),
+    currentMood: t('memory.field.currentMood'),
   }
 
   const fields: { key: string; label: string; value: string }[] = []
@@ -4827,10 +5185,10 @@ function renderProfile(profile: UserProfile): void {
   ]
 
   const profileItemCount = fields.length + tags.length
-  profileCount.textContent = `${profileItemCount} 条`
+  profileCount.textContent = tf('common.records', { count: profileItemCount })
 
   if (fields.length === 0 && tags.length === 0) {
-    profileContent.innerHTML = '<div class="profile-empty">EVA 还不太了解你，多聊聊吧</div>'
+    profileContent.innerHTML = `<div class="profile-empty">${escapeHtml(t('memory.profileEmpty'))}</div>`
     return
   }
 
@@ -4840,7 +5198,7 @@ function renderProfile(profile: UserProfile): void {
       <div class="profile-field">
         <span class="field-label">${escapeHtml(f.label)}</span>
         <span class="field-value">${escapeHtml(f.value)}</span>
-        <button class="delete-icon-btn" data-field="${escapeHtml(f.key)}" title="删除"></button>
+        <button class="delete-icon-btn" data-field="${escapeHtml(f.key)}" title="${escapeHtml(t('common.delete'))}"></button>
       </div>
     `
   })
@@ -4864,10 +5222,10 @@ function renderProfile(profile: UserProfile): void {
       if (!field) return
 
       const confirmed = await showConfirmDialog({
-        title: '删除画像字段',
-        message: `将删除“${labelMap[field] || field}”。`,
-        detail: '删除后可以在新的对话中重新补充。',
-        confirmText: '删除',
+        title: t('memory.confirm.deleteProfile.title'),
+        message: tf('memory.confirm.deleteProfile.message', { name: labelMap[field] || field }),
+        detail: t('memory.confirm.deleteProfile.detail'),
+        confirmText: t('common.delete'),
         tone: 'danger'
       })
       if (confirmed) {
@@ -4884,10 +5242,10 @@ async function deleteProfileField(field: string): Promise<void> {
       throw new Error(result.error)
     }
     await loadUserProfile()
-    showPanelNotice('已删除')
+    showPanelNotice(t('common.deleted'))
   } catch (error: any) {
     console.error('Failed to delete profile field:', error)
-    showPanelNotice('删除失败', 'error')
+    showPanelNotice(t('common.deleteFailed'), 'error')
   }
 }
 
@@ -4895,24 +5253,24 @@ async function loadImportantMemories(): Promise<void> {
   try {
     const result = await window.electronAPI.getUserProfile()
     if (!result.success || !result.profile) {
-      throw new Error(result.error || '重要记忆返回为空')
+      throw new Error(result.error || t('memory.loadFailed'))
     }
 
     const memories = result.profile.importantMemories || {}
     renderImportantMemories(memories)
   } catch (error) {
     console.error('Failed to load memories:', error)
-    importantMemoriesCount.textContent = '0 条'
-    importantMemoriesContent.innerHTML = '<div class="profile-error">加载失败</div>'
+    importantMemoriesCount.textContent = tf('common.records', { count: 0 })
+    importantMemoriesContent.innerHTML = `<div class="profile-error">${escapeHtml(t('memory.loadFailed'))}</div>`
   }
 }
 
 function renderImportantMemories(memories: Record<string, string>): void {
   const entries = Object.entries(memories)
-  importantMemoriesCount.textContent = `${entries.length} 条`
+  importantMemoriesCount.textContent = tf('common.records', { count: entries.length })
 
   if (entries.length === 0) {
-    importantMemoriesContent.innerHTML = '<div class="profile-empty">暂无重要记忆</div>'
+    importantMemoriesContent.innerHTML = `<div class="profile-empty">${escapeHtml(t('memory.importantEmpty'))}</div>`
     return
   }
 
@@ -4924,7 +5282,7 @@ function renderImportantMemories(memories: Record<string, string>): void {
           <span class="memory-key">${escapeHtml(key)}</span>
           <span class="memory-value">${escapeHtml(value)}</span>
         </div>
-        <button class="delete-icon-btn" data-key="${escapeHtml(key)}" title="删除"></button>
+        <button class="delete-icon-btn" data-key="${escapeHtml(key)}" title="${escapeHtml(t('common.delete'))}"></button>
       </div>
     `
   })
@@ -4940,10 +5298,10 @@ function renderImportantMemories(memories: Record<string, string>): void {
       if (!key) return
 
       const confirmed = await showConfirmDialog({
-        title: '删除重要记忆',
-        message: `将删除“${key}”。`,
-        detail: '这条长期记忆不会再参与后续上下文。',
-        confirmText: '删除',
+        title: t('memory.confirm.deleteImportant.title'),
+        message: tf('memory.confirm.deleteImportant.message', { name: key }),
+        detail: t('memory.confirm.deleteImportant.detail'),
+        confirmText: t('common.delete'),
         tone: 'danger'
       })
       if (confirmed) {
@@ -4960,10 +5318,10 @@ async function deleteImportantMemory(key: string): Promise<void> {
       throw new Error(result.error)
     }
     await loadImportantMemories()
-    showPanelNotice('记忆已删除')
+    showPanelNotice(t('memory.memoryDeleted'))
   } catch (error: any) {
     console.error('Failed to delete memory:', error)
-    showPanelNotice('删除失败', 'error')
+    showPanelNotice(t('common.deleteFailed'), 'error')
   }
 }
 
@@ -4971,14 +5329,14 @@ async function loadConversationSummaries(): Promise<void> {
   try {
     const result = await window.electronAPI.getConversationSummaries()
     if (!result.success || !result.summaries) {
-      throw new Error(result.error || '对话摘要返回为空')
+      throw new Error(result.error || t('memory.loadFailed'))
     }
 
-    summariesCount.textContent = `${result.summaries.length} 条`
+    summariesCount.textContent = tf('common.records', { count: result.summaries.length })
     renderSummaries(result.summaries)
   } catch (error) {
     console.error('Failed to load summaries:', error)
-    summariesContent.innerHTML = '<div class="profile-error">加载失败</div>'
+    summariesContent.innerHTML = `<div class="profile-error">${escapeHtml(t('memory.loadFailed'))}</div>`
   }
 }
 
@@ -4989,7 +5347,7 @@ function renderSummaries(summaries: Array<{
   keyTopics: string[]
 }>): void {
   if (summaries.length === 0) {
-    summariesContent.innerHTML = '<div class="profile-empty">暂无对话摘要</div>'
+    summariesContent.innerHTML = `<div class="profile-empty">${escapeHtml(t('memory.summaryEmpty'))}</div>`
     return
   }
 
@@ -5005,7 +5363,7 @@ function renderSummaries(summaries: Array<{
       <div class="summary-item">
         <div class="summary-header">
           <span class="summary-date">${date}</span>
-          <button class="delete-icon-btn" data-id="${escapeHtml(s.id)}" title="删除"></button>
+          <button class="delete-icon-btn" data-id="${escapeHtml(s.id)}" title="${escapeHtml(t('common.delete'))}"></button>
         </div>
         <div class="summary-text">${escapeHtml(s.summary)}</div>
         ${s.keyTopics && s.keyTopics.length > 0 ? `
@@ -5028,10 +5386,10 @@ function renderSummaries(summaries: Array<{
       if (!id) return
 
       const confirmed = await showConfirmDialog({
-        title: '删除对话摘要',
-        message: '将删除这条已压缩保存的历史对话摘要。',
-        detail: '其他摘要和最近对话不会受到影响。',
-        confirmText: '删除',
+        title: t('memory.confirm.deleteSummary.title'),
+        message: t('memory.confirm.deleteSummary.message'),
+        detail: t('memory.confirm.deleteSummary.detail'),
+        confirmText: t('common.delete'),
         tone: 'danger'
       })
       if (confirmed) {
@@ -5048,10 +5406,10 @@ async function deleteConversationSummary(id: string): Promise<void> {
       throw new Error(result.error)
     }
     await loadConversationSummaries()
-    showPanelNotice('已删除')
+    showPanelNotice(t('common.deleted'))
   } catch (error: any) {
     console.error('Failed to delete summary:', error)
-    showPanelNotice('删除失败', 'error')
+    showPanelNotice(t('common.deleteFailed'), 'error')
   }
 }
 
@@ -5059,15 +5417,15 @@ async function loadWorkingMemory(): Promise<void> {
   try {
     const result = await window.electronAPI.getWorkingMemory()
     if (!result.success || !result.memory) {
-      throw new Error(result.error || '最近对话返回为空')
+      throw new Error(result.error || t('memory.loadFailed'))
     }
 
     const turns = result.memory.recentTurns || []
-    conversationsCount.textContent = `${turns.length} 条`
+    conversationsCount.textContent = tf('common.records', { count: turns.length })
     renderConversations(turns)
   } catch (error) {
     console.error('Failed to load working memory:', error)
-    conversationsContent.innerHTML = '<div class="profile-error">加载失败</div>'
+    conversationsContent.innerHTML = `<div class="profile-error">${escapeHtml(t('memory.loadFailed'))}</div>`
   }
 }
 
@@ -5078,19 +5436,19 @@ function renderConversations(turns: Array<{
   timestamp?: number
 }>): void {
   if (turns.length === 0) {
-    conversationsContent.innerHTML = '<div class="profile-empty">暂无对话记录</div>'
+    conversationsContent.innerHTML = `<div class="profile-empty">${escapeHtml(t('memory.conversationEmpty'))}</div>`
     return
   }
 
   let html = '<div class="conversations-list">'
   turns.slice(-20).forEach(turn => {
-    const roleLabel = turn.role === 'user' ? '你' : 'EVA'
+    const roleLabel = turn.role === 'user' ? t('memory.userRole') : 'EVA'
     const roleClass = turn.role === 'user' ? 'user' : 'assistant'
     html += `
       <div class="conversation-item ${roleClass}">
         <span class="conversation-role">${roleLabel}</span>
         <span class="conversation-content">${escapeHtml(turn.content)}</span>
-        <button class="delete-icon-btn" data-id="${escapeHtml(turn.id)}" title="删除"></button>
+        <button class="delete-icon-btn" data-id="${escapeHtml(turn.id)}" title="${escapeHtml(t('common.delete'))}"></button>
       </div>
     `
   })
@@ -5106,10 +5464,10 @@ function renderConversations(turns: Array<{
       if (!id) return
 
       const confirmed = await showConfirmDialog({
-        title: '删除最近对话',
-        message: '将从工作记忆中删除这条最近对话。',
-        detail: '这不会删除其他记忆内容。',
-        confirmText: '删除',
+        title: t('memory.confirm.deleteConversation.title'),
+        message: t('memory.confirm.deleteConversation.message'),
+        detail: t('memory.confirm.deleteConversation.detail'),
+        confirmText: t('common.delete'),
         tone: 'danger'
       })
       if (confirmed) {
@@ -5126,10 +5484,10 @@ async function deleteConversationTurn(id: string): Promise<void> {
       throw new Error(result.error)
     }
     await loadWorkingMemory()
-    showPanelNotice('已删除')
+    showPanelNotice(t('common.deleted'))
   } catch (error: any) {
     console.error('Failed to delete conversation turn:', error)
-    showPanelNotice('删除失败', 'error')
+    showPanelNotice(t('common.deleteFailed'), 'error')
   }
 }
 
@@ -5137,24 +5495,24 @@ async function loadAccountInputs(): Promise<void> {
   try {
     const result = await window.electronAPI.listAccountInputs()
     if (!result.success || !result.inputs) {
-      throw new Error(result.error || '账户信息返回为空')
+      throw new Error(result.error || t('memory.loadFailed'))
     }
 
     currentAccountInputs = result.inputs
-    accountInputsCount.textContent = `${result.inputs.length} 条`
-    accountInputsPageCount.textContent = `${result.inputs.length} 条`
+    accountInputsCount.textContent = tf('common.records', { count: result.inputs.length })
+    accountInputsPageCount.textContent = tf('common.records', { count: result.inputs.length })
     renderAccountInputs(result.inputs)
   } catch (error) {
     console.error('Failed to load account inputs:', error)
-    accountInputsCount.textContent = '0 条'
-    accountInputsPageCount.textContent = '0 条'
-    accountInputsContent.innerHTML = '<div class="profile-error">加载失败</div>'
+    accountInputsCount.textContent = tf('common.records', { count: 0 })
+    accountInputsPageCount.textContent = tf('common.records', { count: 0 })
+    accountInputsContent.innerHTML = `<div class="profile-error">${escapeHtml(t('memory.loadFailed'))}</div>`
   }
 }
 
 function renderAccountInputs(inputs: AccountInput[]): void {
   if (inputs.length === 0) {
-    accountInputsContent.innerHTML = '<div class="profile-empty">暂无账户信息</div>'
+    accountInputsContent.innerHTML = `<div class="profile-empty">${escapeHtml(t('memory.accountEmpty'))}</div>`
     return
   }
 
@@ -5165,7 +5523,7 @@ function renderAccountInputs(inputs: AccountInput[]): void {
       <div class="account-input-group">
         <div class="account-input-group-title">
           <span>${escapeHtml(group.label)}</span>
-          <span>${group.items.length} 项</span>
+          <span>${escapeHtml(tf('common.items', { count: group.items.length }))}</span>
         </div>
     `
     group.items.forEach(input => {
@@ -5184,11 +5542,11 @@ function renderAccountInputs(inputs: AccountInput[]): void {
             </div>
             <div class="account-input-key">${escapeHtml(input.key)}</div>
             <div class="account-input-value" data-key="${escapeHtml(input.key)}">${escapeHtml(maskAccountValue(input.value))}</div>
-            <div class="account-input-meta">更新于 ${escapeHtml(updatedAt)} · ${escapeHtml(input.scope || 'global')}</div>
+            <div class="account-input-meta">${escapeHtml(tf('common.updatedAt', { time: updatedAt }))} · ${escapeHtml(input.scope || 'global')}</div>
           </div>
           <div class="account-input-actions">
-            <button class="memory-add-btn account-input-toggle" data-key="${escapeHtml(input.key)}" type="button">显示</button>
-            <button class="delete-icon-btn visible" data-key="${escapeHtml(input.key)}" title="删除"></button>
+            <button class="memory-add-btn account-input-toggle" data-key="${escapeHtml(input.key)}" type="button">${escapeHtml(t('common.show'))}</button>
+            <button class="delete-icon-btn visible" data-key="${escapeHtml(input.key)}" title="${escapeHtml(t('common.delete'))}"></button>
           </div>
         </div>
       `
@@ -5207,11 +5565,11 @@ function renderAccountInputs(inputs: AccountInput[]): void {
         return
       }
       const valueEl = accountInputsContent.querySelector<HTMLElement>(`.account-input-value[data-key="${cssEscape(input.key)}"]`)
-      const revealing = btn.textContent === '显示'
+      const revealing = btn.textContent === t('common.show')
       if (valueEl) {
         valueEl.textContent = revealing ? input.value : maskAccountValue(input.value)
       }
-      btn.textContent = revealing ? '隐藏' : '显示'
+      btn.textContent = revealing ? t('common.hide') : t('common.show')
     })
   })
 
@@ -5222,10 +5580,10 @@ function renderAccountInputs(inputs: AccountInput[]): void {
         return
       }
       const confirmed = await showConfirmDialog({
-        title: '删除账户信息',
-        message: `将删除“${key}”。`,
-        detail: '之后如果任务仍需要这项信息，会重新向你请求。',
-        confirmText: '删除',
+        title: t('memory.confirm.deleteAccount.title'),
+        message: tf('memory.confirm.deleteAccount.message', { name: key }),
+        detail: t('memory.confirm.deleteAccount.detail'),
+        confirmText: t('common.delete'),
         tone: 'danger'
       })
       if (confirmed) {
@@ -5259,7 +5617,7 @@ function groupAccountInputs(inputs: AccountInput[]): Array<{ key: string; label:
 
 function maskAccountValue(value: string): string {
   if (!value) {
-    return '(空)'
+    return t('common.empty')
   }
   if (value.length <= 4) {
     return '••••'
@@ -5270,11 +5628,11 @@ function maskAccountValue(value: string): string {
 function formatInputSensitivity(sensitivity: string): string {
   switch (sensitivity) {
     case 'secret':
-      return '敏感'
+      return t('memory.sensitivitySecret')
     case 'verification':
-      return '验证'
+      return t('memory.sensitivityVerification')
     default:
-      return '普通'
+      return t('memory.sensitivityNormal')
   }
 }
 
@@ -5285,10 +5643,10 @@ async function deleteAccountInput(key: string): Promise<void> {
       throw new Error(result.error)
     }
     await loadAccountInputs()
-    showPanelNotice('账户信息已删除')
+    showPanelNotice(t('memory.accountDeleted'))
   } catch (error: any) {
     console.error('Failed to delete account input:', error)
-    showPanelNotice('删除失败', 'error')
+    showPanelNotice(t('common.deleteFailed'), 'error')
   }
 }
 
@@ -5302,10 +5660,10 @@ backMemoryOverviewBtn.addEventListener('click', () => {
 
 clearAccountInputsBtn.addEventListener('click', async () => {
   const confirmed = await showConfirmDialog({
-    title: '清空账户信息',
-    message: '将删除所有由任务执行保存的账号、密钥、密码和固定配置。',
-    detail: '普通记忆和对话历史不会被同时清除。',
-    confirmText: '清空',
+    title: t('memory.confirm.clearAccount.title'),
+    message: t('memory.confirm.clearAccount.message'),
+    detail: t('memory.confirm.clearAccount.detail'),
+    confirmText: t('common.clear'),
     tone: 'danger'
   })
   if (!confirmed) {
@@ -5318,10 +5676,10 @@ clearAccountInputsBtn.addEventListener('click', async () => {
       throw new Error(result.error)
     }
     await loadAccountInputs()
-    showPanelNotice('账户信息已清空')
+    showPanelNotice(t('memory.accountCleared'))
   } catch (error: any) {
     console.error('Failed to clear account inputs:', error)
-    showPanelNotice('清空失败', 'error')
+    showPanelNotice(t('memory.clearFailed'), 'error')
   }
 })
 
@@ -5382,8 +5740,8 @@ async function evaluateSetupReadiness(): Promise<SetupReadiness> {
   if (!activeLLM?.modelName?.trim() || !activeLLM?.apiKey?.trim() || !activeLLM?.baseUrl?.trim()) {
     issues.push({
       kind: 'llm',
-      label: '对话模型',
-      message: '补全对话模型的模型名、API Key 和 Base URL',
+      label: t('system.dialogueModel'),
+      message: t('system.completeDialogueModel'),
     })
   }
 
@@ -5395,8 +5753,8 @@ async function evaluateSetupReadiness(): Promise<SetupReadiness> {
   if (!taskReady) {
     issues.push({
       kind: 'task',
-      label: '任务模型',
-      message: '补全任务模型的模型名、API Key 和 Base URL',
+      label: t('system.taskModel'),
+      message: t('system.completeTaskModel'),
     })
   }
 
@@ -5406,7 +5764,7 @@ async function evaluateSetupReadiness(): Promise<SetupReadiness> {
     issues.push({
       kind: 'tts',
       label: 'TTS',
-      message: needsTTSVoice ? '补全 TTS 的模型名、API Key 和 Voice ID' : '补全 TTS 的模型名和 API Key',
+      message: needsTTSVoice ? t('system.completeTtsModel') : t('system.completeTtsModelNoVoice'),
     })
   }
 
@@ -5415,28 +5773,28 @@ async function evaluateSetupReadiness(): Promise<SetupReadiness> {
     issues.push({
       kind: 'asr',
       label: 'ASR',
-      message: '补全 ASR 的模型名和 API Key',
+      message: t('system.completeAsrModel'),
     })
   }
 
   try {
     const result = await window.electronAPI.getLocalModelStatus()
     if (!result.success) {
-      throw new Error(result.error || '本地模型检查失败')
+      throw new Error(result.error || t('system.checkFailed'))
     }
     const missingModels = result.models.filter(model => !model.exists)
     if (missingModels.length > 0) {
       issues.push({
         kind: 'models',
-        label: '本地模型',
-        message: `下载缺失的本地模型：${missingModels.map(model => model.name).join('、')}`,
+        label: t('system.localModels'),
+        message: tf('system.downloadMissingLocal', { models: missingModels.map(model => model.name).join(' / ') }),
       })
     }
   } catch {
     issues.push({
       kind: 'models',
-      label: '本地模型',
-      message: '检查本地 VAD / SmartTurn 模型状态',
+      label: t('system.localModels'),
+      message: t('system.checkLocalModels'),
     })
   }
 
@@ -5490,8 +5848,8 @@ function renderSetupGuidance(readiness: SetupReadiness): void {
   card.className = 'setup-guidance-card'
   card.innerHTML = `
     <div class="setup-guidance-header">
-      <span class="setup-guidance-title">启动前需要完成配置</span>
-      <span class="setup-guidance-count">${readiness.issues.length} 项</span>
+      <span class="setup-guidance-title">${escapeHtml(t('system.startupNeedsConfig'))}</span>
+      <span class="setup-guidance-count">${escapeHtml(tf('common.items', { count: readiness.issues.length }))}</span>
     </div>
     <div class="setup-guidance-list">
       ${readiness.issues.map(issue => `
@@ -5535,7 +5893,7 @@ async function ensureSetupReadyForConversation(): Promise<boolean> {
     return true
   }
 
-  showPanelNotice(`需要完成 ${readiness.issues.length} 项配置`, 'error')
+  showPanelNotice(tf('system.needConfigCount', { count: readiness.issues.length }), 'error')
   openSettings('models')
   return false
 }
@@ -5583,15 +5941,15 @@ function getActiveModelSummary(kind: ModelManagerKind): {
       : 'Silero VAD / Smart Turn v3.2'
     return {
       kind,
-      title: '本地推理模型',
+      title: t('system.localModels'),
       modelName: modelNames,
       provider: 'Local ONNX',
       baseUrl: '',
       apiKey: '',
       count: lastLocalModels.length || 2,
       ready: lastLocalModels.length > 0 && missingModels.length === 0,
-      missing: lastLocalModels.length > 0 ? missingModels.map(model => model.name) : ['状态检查'],
-      language: lastLocalModels.length > 0 ? `${installedCount}/${lastLocalModels.length} 已安装` : '检查中',
+      missing: lastLocalModels.length > 0 ? missingModels.map(model => model.name) : [t('system.statusCheck')],
+      language: lastLocalModels.length > 0 ? tf('system.installedRatio', { installed: installedCount, total: lastLocalModels.length }) : t('system.checking'),
     }
   }
 
@@ -5605,21 +5963,21 @@ function getActiveModelSummary(kind: ModelManagerKind): {
       apiKey: '',
       count: 0,
       ready: false,
-      missing: ['配置'],
+      missing: [t('system.config')],
     }
   }
 
   if (kind === 'llm') {
     const model = currentSystemConfig.llmModels.find(item => item.id === currentSystemConfig!.activeLLMId) || currentSystemConfig.llmModels[0]
     const missing = [
-      !model?.modelName?.trim() ? '模型名' : '',
+      !model?.modelName?.trim() ? t('system.modelName') : '',
       !model?.apiKey?.trim() ? 'API Key' : '',
       !model?.baseUrl?.trim() ? 'Base URL' : '',
     ].filter(Boolean)
     return {
       kind,
-      title: '对话模型',
-      modelName: model?.modelName || '未配置',
+      title: t('system.dialogueModel'),
+      modelName: model?.modelName || t('system.notConfigured'),
       provider: 'OpenAI-compatible',
       baseUrl: model?.baseUrl || '',
       apiKey: model?.apiKey || '',
@@ -5635,16 +5993,16 @@ function getActiveModelSummary(kind: ModelManagerKind): {
     const transport = model ? getTaskModelTransport(model) : 'openai_compatible'
     const missing = transport === 'openai_compatible'
       ? [
-          !model?.modelName?.trim() ? '模型名' : '',
+          !model?.modelName?.trim() ? t('system.modelName') : '',
           !model?.apiKey?.trim() ? 'API Key' : '',
           !model?.baseUrl?.trim() ? 'Base URL' : '',
         ].filter(Boolean)
       : []
     return {
       kind,
-      title: '任务模型',
+      title: t('system.taskModel'),
       modelName: transport === 'openai_compatible'
-        ? model?.modelName || '未配置'
+        ? model?.modelName || t('system.notConfigured')
         : 'CLI default',
       provider: getTaskTransportLabel(transport),
       baseUrl: transport === 'openai_compatible' ? model?.baseUrl || '' : '',
@@ -5660,14 +6018,14 @@ function getActiveModelSummary(kind: ModelManagerKind): {
     const model = currentSystemConfig.ttsModels.find(item => item.id === currentSystemConfig!.activeTTSId) || currentSystemConfig.ttsModels[0]
     const provider = getTTSProviderCatalogEntry(model?.provider)
     const missing = [
-      !model?.modelName?.trim() ? '模型名' : '',
+      !model?.modelName?.trim() ? t('system.modelName') : '',
       !model?.apiKey?.trim() ? 'API Key' : '',
       provider.requiresVoiceId && !model?.voiceId?.trim() ? 'Voice ID' : '',
     ].filter(Boolean)
     return {
       kind,
-      title: 'TTS 语音合成',
-      modelName: model?.modelName || '未配置',
+      title: t('system.tts'),
+      modelName: model?.modelName || t('system.notConfigured'),
       provider: provider.label,
       baseUrl: model?.baseUrl || provider.defaultBaseUrl,
       apiKey: model?.apiKey || '',
@@ -5683,13 +6041,13 @@ function getActiveModelSummary(kind: ModelManagerKind): {
   const model = currentSystemConfig.asrModels.find(item => item.id === currentSystemConfig!.activeASRId) || currentSystemConfig.asrModels[0]
   const provider = getASRProviderCatalogEntry(model?.provider)
   const missing = [
-    !model?.modelName?.trim() ? '模型名' : '',
+    !model?.modelName?.trim() ? t('system.modelName') : '',
     !model?.apiKey?.trim() ? 'API Key' : '',
   ].filter(Boolean)
   return {
     kind,
-    title: 'ASR 语音识别',
-    modelName: model?.modelName || '未配置',
+    title: t('system.asr'),
+    modelName: model?.modelName || t('system.notConfigured'),
     provider: provider.label,
     baseUrl: model?.baseUrl || provider.defaultBaseUrl,
     apiKey: model?.apiKey || '',
@@ -5713,7 +6071,7 @@ function renderModelOverview(): void {
       <span class="model-overview-main">
         <span class="model-overview-topline">
           <span class="model-overview-title">${escapeHtml(summary.title)}</span>
-          <span class="model-overview-count">${summary.count} 个配置</span>
+          <span class="model-overview-count">${escapeHtml(tf('system.configCount', { count: summary.count }))}</span>
         </span>
         <span class="model-overview-model">${escapeHtml(summary.modelName)}</span>
         <span class="model-overview-meta">
@@ -5721,9 +6079,9 @@ function renderModelOverview(): void {
           ${summary.baseUrl ? `<span>${escapeHtml(summary.baseUrl)}</span>` : ''}
           ${summary.language ? `<span>${escapeHtml(summary.language)}</span>` : ''}
         </span>
-        <span class="model-overview-status">${summary.ready ? '已就绪' : `缺少 ${escapeHtml(summary.missing.join(' / '))}`}</span>
+        <span class="model-overview-status">${escapeHtml(summary.ready ? t('system.ready') : tf('system.missingPrefix', { items: summary.missing.join(' / ') }))}</span>
       </span>
-      <span class="model-overview-action">管理</span>
+      <span class="model-overview-action">${escapeHtml(t('system.manage'))}</span>
     </button>
   `).join('')
 
@@ -5758,16 +6116,16 @@ function renderModelManagerPage(): void {
   })
 
   if (!kind) {
-    modelManagerTitle.textContent = '模型管理'
-    modelManagerSubtitle.textContent = '新增、测试、激活或删除模型配置'
+    modelManagerTitle.textContent = t('system.modelManager')
+    modelManagerSubtitle.textContent = t('system.modelManagerDesc')
     return
   }
 
   const summary = getActiveModelSummary(kind)
   modelManagerTitle.textContent = summary.title
   modelManagerSubtitle.textContent = summary.ready
-    ? `当前使用 ${summary.modelName}`
-    : `需要补全 ${summary.missing.join(' / ')}`
+    ? tf('system.currentUsing', { model: summary.modelName })
+    : tf('system.needComplete', { items: summary.missing.join(' / ') })
 }
 
 async function loadLocalModelStatus(): Promise<void> {
@@ -5777,7 +6135,7 @@ async function loadLocalModelStatus(): Promise<void> {
   try {
     const result = await window.electronAPI.getLocalModelStatus()
     if (!result.success) {
-      throw new Error(result.error || '本地模型状态返回失败')
+      throw new Error(result.error || t('system.localModelStatusFailed'))
     }
     renderLocalModels(result.models)
   } catch (error: any) {
@@ -6066,13 +6424,13 @@ function renderTTSModels(): void {
       shouldShowTTSField(model.provider, 'voiceId') ? `
         <div class="config-field">
           <span class="config-field-label">Voice ID</span>
-          <input type="text" class="config-field-input" value="${escapeHtml(model.voiceId || '')}" data-field="voiceId" placeholder="${escapeHtml(getTTSProviderCatalogEntry(model.provider).defaultVoiceId || '音色 ID')}" />
+          <input type="text" class="config-field-input" value="${escapeHtml(model.voiceId || '')}" data-field="voiceId" placeholder="${escapeHtml(getTTSProviderCatalogEntry(model.provider).defaultVoiceId || t('system.voiceIdPlaceholder'))}" />
         </div>
       ` : '',
       shouldShowTTSField(model.provider, 'language') ? `
         <div class="config-field">
           <span class="config-field-label">Language</span>
-          <input type="text" class="config-field-input" value="${escapeHtml(model.language || '')}" data-field="language" placeholder="zh / en（可选）" />
+          <input type="text" class="config-field-input" value="${escapeHtml(model.language || '')}" data-field="language" placeholder="${escapeHtml(t('system.languagePlaceholderOptional'))}" />
         </div>
       ` : '',
     ].join('')
@@ -6173,7 +6531,7 @@ function renderASRModels(): void {
 }
 
 function renderApiTestButton(): string {
-  return '<button class="config-model-btn config-test-btn" data-action="test" title="测试 API 连接">测试</button>'
+  return `<button class="config-model-btn config-test-btn" data-action="test" title="${escapeHtml(t('system.apiTestTitle'))}">${escapeHtml(t('plugins.test'))}</button>`
 }
 
 function readCardModel<T extends Record<string, any>>(card: Element, model: T): T {
@@ -6263,30 +6621,30 @@ async function testApiModel(
     currentSystemConfig.asrModels.find(m => m.id === id)
 
   if (!model) {
-    showPanelNotice('模型配置不存在', 'error')
+    showPanelNotice(t('system.modelMissing'), 'error')
     return
   }
 
-  const originalText = button.textContent || '测试'
+  const originalText = button.textContent || t('plugins.test')
   button.disabled = true
-  button.textContent = '测试中'
+  button.textContent = t('system.testing')
   button.classList.remove('success', 'danger')
   button.classList.add('testing')
 
   try {
     const result = await window.electronAPI.testApiModel(kind, readCardModel(card, model))
     if (!result.success) {
-      throw new Error(result.error || '连接失败')
+      throw new Error(result.error || t('system.connectionFailed'))
     }
-    button.textContent = '正常'
+    button.textContent = t('common.ready')
     button.classList.remove('testing')
     button.classList.add('success')
-    showPanelNotice(result.message || 'API 连接正常')
+    showPanelNotice(result.message || t('system.apiOk'))
   } catch (error: any) {
-    button.textContent = '失败'
+    button.textContent = t('common.failed')
     button.classList.remove('testing')
     button.classList.add('danger')
-    showPanelNotice(`API 测试失败: ${error.message ?? String(error)}`, 'error')
+    showPanelNotice(tf('system.apiFailed', { error: error.message ?? String(error) }), 'error')
   } finally {
     window.setTimeout(() => {
       button.disabled = false
@@ -6726,13 +7084,13 @@ downloadLocalModelsBtn.addEventListener('click', async () => {
   try {
     const result = await window.electronAPI.downloadMissingLocalModels()
     if (!result.success) {
-      throw new Error(result.error || '模型下载失败')
+      throw new Error(result.error || t('system.checkFailed'))
     }
     renderLocalModels(result.models)
-    showPanelNotice('本地模型已就绪')
+    showPanelNotice(t('system.localModelReady'))
     await refreshSetupReadiness()
   } catch (error: any) {
-    showPanelNotice(`模型下载失败: ${error.message ?? String(error)}`, 'error')
+    showPanelNotice(tf('system.localModelDownloadFailed', { error: error.message ?? String(error) }), 'error')
     await loadLocalModelStatus()
     await refreshSetupReadiness()
   }

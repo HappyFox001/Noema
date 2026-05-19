@@ -3081,6 +3081,40 @@ function getSettingsStore(): SettingsStore {
   return settingsStore
 }
 
+async function cleanupUnknownRuntimePluginSettings(): Promise<void> {
+  try {
+    const plugins = await discoverRuntimePlugins(
+      resolveRuntimePluginsDir(),
+      appSettings.plugins,
+      appSettings.pluginConfigs
+    )
+    const knownPluginIds = new Set(plugins.map(plugin => plugin.id))
+    const nextPlugins = Object.fromEntries(
+      Object.entries(appSettings.plugins ?? {}).filter(([pluginId]) => knownPluginIds.has(pluginId))
+    )
+    const nextPluginConfigs = Object.fromEntries(
+      Object.entries(appSettings.pluginConfigs ?? {}).filter(([pluginId]) => knownPluginIds.has(pluginId))
+    )
+    const nextPluginPathHistory = Object.fromEntries(
+      Object.entries(appSettings.pluginPathHistory ?? {}).filter(([historyKey]) => knownPluginIds.has(historyKey.split(':')[0]))
+    )
+    const changed =
+      Object.keys(nextPlugins).length !== Object.keys(appSettings.plugins ?? {}).length ||
+      Object.keys(nextPluginConfigs).length !== Object.keys(appSettings.pluginConfigs ?? {}).length ||
+      Object.keys(nextPluginPathHistory).length !== Object.keys(appSettings.pluginPathHistory ?? {}).length
+
+    if (changed) {
+      appSettings = await getSettingsStore().update({
+        plugins: nextPlugins,
+        pluginConfigs: nextPluginConfigs,
+        pluginPathHistory: nextPluginPathHistory,
+      })
+    }
+  } catch (error) {
+    console.warn('[PluginSettings] Failed to clean unknown plugin settings:', error)
+  }
+}
+
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(buildApplicationMenu())
   applyAppIcon()
@@ -3091,6 +3125,7 @@ app.whenReady().then(async () => {
   settingsStore = new SettingsStore()
   await settingsStore.initialize()
   appSettings = settingsStore.getSettings()
+  await cleanupUnknownRuntimePluginSettings()
 
   await initializePersonalityManager()
   console.log('[App] Personality manager initialized')
