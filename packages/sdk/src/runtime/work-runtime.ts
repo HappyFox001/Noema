@@ -4,6 +4,7 @@
 import { generateId } from '@her-text/core'
 import type { Tool } from '@her-text/types'
 import type { RuntimeEventBus } from './events.js'
+import { ToolOrchestrator, type ToolExecutionResult } from './tool-orchestrator.js'
 import { ToolRouter, type RoutedToolCall, type WorkToolCall } from './tool-router.js'
 import type { WorkStateStore } from './work-store.js'
 
@@ -31,6 +32,7 @@ export interface WorkTurn {
   startedAt: number
   completedAt?: number
   toolCalls: RoutedToolCall[]
+  toolResults: ToolExecutionResult[]
   needsFollowUp: boolean
 }
 
@@ -43,13 +45,23 @@ export interface WorkSessionOptions {
 export class WorkSession {
   private tasks = new Map<string, WorkTask>()
   private router: ToolRouter
+  private tools: Tool[]
+  private toolOrchestrator: ToolOrchestrator
 
   constructor(private options: WorkSessionOptions) {
-    this.router = new ToolRouter(options.tools ?? [])
+    this.tools = options.tools ?? []
+    this.router = new ToolRouter(this.tools)
+    this.toolOrchestrator = new ToolOrchestrator({
+      events: options.events,
+      tools: this.tools,
+      router: this.router,
+    })
   }
 
   setTools(tools: Tool[]): void {
+    this.tools = tools
     this.router.setTools(tools)
+    this.toolOrchestrator.setTools(tools)
   }
 
   getToolRouter(): ToolRouter {
@@ -93,11 +105,25 @@ export class WorkSession {
       index,
       startedAt: now,
       toolCalls: [],
+      toolResults: [],
       needsFollowUp: false,
     }
   }
 
-  completeTurn(turn: WorkTurn, calls: WorkToolCall[], needsFollowUp: boolean): WorkTurn {
+  async executeTurnTools(turn: WorkTurn, calls: WorkToolCall[], signal?: AbortSignal): Promise<ToolExecutionResult[]> {
+    const task = this.tasks.get(turn.taskId)
+    if (!task) {
+      throw new Error(`Unknown work task: ${turn.taskId}`)
+    }
+    return this.toolOrchestrator.executeCalls(calls, {
+      threadId: task.threadId,
+      taskId: task.id,
+      taskDescription: task.description,
+      signal,
+    })
+  }
+
+  completeTurn(turn: WorkTurn, calls: WorkToolCall[], needsFollowUp: boolean, toolResults: ToolExecutionResult[] = []): WorkTurn {
     const task = this.tasks.get(turn.taskId)
     if (!task) {
       throw new Error(`Unknown work task: ${turn.taskId}`)
@@ -107,6 +133,7 @@ export class WorkSession {
       ...turn,
       completedAt: Date.now(),
       toolCalls: routedCalls,
+      toolResults,
       needsFollowUp,
     }
     this.options.events.emit({

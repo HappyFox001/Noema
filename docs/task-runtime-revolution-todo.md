@@ -213,7 +213,7 @@
 - [x] 新增 `WorkTask`，一个 session 同时最多一个 foreground task，但可有 paused/background threads。
 - [x] 新增 `WorkTurn`：
   - [x] 一次模型采样。
-  - [ ] 执行模型请求的工具。
+  - [x] 执行模型请求的工具。
   - [x] 工具结果进入下一轮。
   - [x] 无 follow-up 时 turn 完成。
 - [x] 新增 `ToolRouter`：
@@ -221,13 +221,13 @@
   - [x] 支持 discoverable/deferred tools。
   - [x] 支持工具能力 metadata。
   - [x] 支持工具是否允许并行。
-- [ ] 新增 `ToolOrchestrator`：
-  - [ ] 审批策略。
-  - [ ] 沙箱策略。
-  - [ ] 网络策略。
-  - [ ] 重试策略。
-  - [ ] 失败归一化。
-  - [ ] 工具取消响应。
+- [x] 新增 `ToolOrchestrator`：
+  - [x] 审批策略。
+  - [x] 沙箱策略。
+  - [x] 网络策略。
+  - [x] 重试策略。
+  - [x] 失败归一化。
+  - [x] 工具取消响应。
 - [ ] 新增 `CommandRuntime`：
   - [ ] PTY / 非 PTY。
   - [ ] 长命令 session。
