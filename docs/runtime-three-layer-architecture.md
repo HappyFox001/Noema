@@ -154,6 +154,43 @@ interaction.input.received
   -> WorkRuntime continues from nextActions/currentStep
 ```
 
+## Her-Text Interaction Differences
+
+The reference CLI model is a strong execution target, but Her-Text has a
+different interruption surface. The copied execution strength must be adapted
+through policy instead of inherited blindly.
+
+- A new CLI-style user turn often replaces or interrupts the current operation.
+- A new Her-Text voice input is first an interaction event and must not cancel
+  work unless it resolves to an explicit work cancellation intent.
+- The reference runtime is primarily repository-oriented.
+- Her-Text must also coordinate desktop, browser, voice, Live2D expression,
+  long-term companionship, and background work.
+
+Default input policy:
+
+- Text input routes to the focused work thread unless the interaction layer
+  identifies a new-task or cancellation intent.
+- Voice input preserves active work by default and may only stop output.
+- Manual TTS stop controls playback only.
+- App close snapshots recoverable work.
+- System sleep pauses active work with a snapshot.
+- System resume prefers recoverable paused or failed work.
+
+Work focus policy:
+
+- Foreground thread receives durable user input first.
+- Paused threads are recoverable and can be resumed from snapshot facts.
+- Background threads may continue commands or long runs without owning speech.
+- Abandoned threads stay queryable as history but do not receive default focus.
+
+Feedback policy:
+
+- The work layer emits facts, risks, blockers, and completion signals.
+- The interaction layer chooses timing and whether the emotional layer should
+  ask the user.
+- The emotional layer owns wording and voice, but not work facts.
+
 ## Naming Rules
 
 Implementation names must be Her-Text native. New file names, directory names,
@@ -196,4 +233,3 @@ Migration order:
 3. Route user interruption semantics through `InteractionRuntime`.
 4. Move task execution into `WorkRuntime`.
 5. Keep emotional output and TTS behavior stable while execution moves.
-

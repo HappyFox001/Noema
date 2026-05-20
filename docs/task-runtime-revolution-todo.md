@@ -270,25 +270,25 @@
 
 Her-Text 不是 CLI，所以不能盲目复制 Codex 的交互语义。
 
-- [ ] 定义 Codex 和 Her-Text 的差异清单：
-  - [ ] Codex 新 user turn 通常替换/中断当前任务。
-  - [ ] Her-Text 新语音输入默认是交互事件，不默认取消任务。
-  - [ ] Codex 主要面向代码仓库。
-  - [ ] Her-Text 同时有桌面、浏览器、语音、Live2D、长期陪伴和后台工作。
-- [ ] 给每类用户输入定义默认策略：
-  - [ ] 文本输入。
-  - [ ] 语音输入。
-  - [ ] 手动停止 TTS。
-  - [ ] App 关闭。
-  - [ ] 系统睡眠/恢复。
-- [ ] 支持多个 work thread：
-  - [ ] foreground thread。
-  - [ ] paused thread。
-  - [ ] background thread。
-  - [ ] abandoned thread。
-- [ ] 定义工作焦点规则：当前用户的话默认指向哪个 thread。
-- [ ] 定义任务层如何请求情感层帮忙问用户。
-- [ ] 定义任务层如何把风险/阻塞/完成交给情感层表达。
+- [x] 定义 Codex 和 Her-Text 的差异清单：
+  - [x] Codex 新 user turn 通常替换/中断当前任务。
+  - [x] Her-Text 新语音输入默认是交互事件，不默认取消任务。
+  - [x] Codex 主要面向代码仓库。
+  - [x] Her-Text 同时有桌面、浏览器、语音、Live2D、长期陪伴和后台工作。
+- [x] 给每类用户输入定义默认策略：
+  - [x] 文本输入。
+  - [x] 语音输入。
+  - [x] 手动停止 TTS。
+  - [x] App 关闭。
+  - [x] 系统睡眠/恢复。
+- [x] 支持多个 work thread：
+  - [x] foreground thread。
+  - [x] paused thread。
+  - [x] background thread。
+  - [x] abandoned thread。
+- [x] 定义工作焦点规则：当前用户的话默认指向哪个 thread。
+- [x] 定义任务层如何请求情感层帮忙问用户。
+- [x] 定义任务层如何把风险/阻塞/完成交给情感层表达。
 
 验收：
 
