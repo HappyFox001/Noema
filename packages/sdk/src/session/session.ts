@@ -32,7 +32,7 @@ import {
 } from './runtime-adapter.js'
 import type { TaskIntent } from '../dialogue/processors.js'
 import type { TaskPlan, TaskRunState } from './task-plan.js'
-import { WorkSession, type RuntimeEventBus } from '../runtime/index.js'
+import { ToolRouter, WorkSession, type RuntimeEventBus } from '../runtime/index.js'
 import type { WorkStateStore } from '../runtime/work-store.js'
 import type { WorkThread } from '../runtime/work-state.js'
 
@@ -143,6 +143,7 @@ export class TaskSession {
   private activeTaskRun: ActiveTaskRun | null = null
   private runtimeAdapters: TaskRuntimeAdapter[] = createDefaultTaskRuntimeAdapters()
   private activeWorkThread: WorkThread | null = null
+  private toolRouter = new ToolRouter()
 
   constructor(
     private llm: LLMProvider,
@@ -186,6 +187,14 @@ export class TaskSession {
 
   setLLM(llm: LLMProvider): void {
     this.llm = llm
+  }
+
+  setTools(tools: ReturnType<AgentCore['getTools']>): void {
+    this.toolRouter.setTools(tools)
+  }
+
+  getToolRouter(): ToolRouter {
+    return this.toolRouter
   }
 
   async runTask(
@@ -359,6 +368,7 @@ export class TaskSession {
         context: this.context,
         runtimeEvents: this.runtimeHooks.runtimeEvents,
         workState: this.runtimeHooks.workState,
+        toolRouter: this.toolRouter,
       },
     }
 
@@ -775,6 +785,7 @@ function createWorkTaskRuntimeAdapter(legacy = createLegacyTaskRuntimeAdapter())
         events,
         workState,
         tools: request.dependencies.agent.getTools(),
+        toolRouter: request.dependencies.toolRouter,
       })
       const task = session.createTask(request.taskId, request.taskDescription)
       const turn = session.startTurn(task.id, 1)

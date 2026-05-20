@@ -40,6 +40,7 @@ export interface WorkSessionOptions {
   events: RuntimeEventBus
   workState: WorkStateStore
   tools?: Tool[]
+  toolRouter?: ToolRouter
 }
 
 export class WorkSession {
@@ -50,7 +51,7 @@ export class WorkSession {
 
   constructor(private options: WorkSessionOptions) {
     this.tools = options.tools ?? []
-    this.router = new ToolRouter(this.tools)
+    this.router = options.toolRouter ?? new ToolRouter(this.tools)
     this.toolOrchestrator = new ToolOrchestrator({
       events: options.events,
       tools: this.tools,
@@ -60,7 +61,9 @@ export class WorkSession {
 
   setTools(tools: Tool[]): void {
     this.tools = tools
-    this.router.setTools(tools)
+    if (!this.options.toolRouter) {
+      this.router.setTools(tools)
+    }
     this.toolOrchestrator.setTools(tools)
   }
 

@@ -377,7 +377,7 @@ Her-Text 不是 CLI，所以不能盲目复制 Codex 的交互语义。
 
 - [x] 保留旧 `TaskRuntime` 作为 legacy adapter，只用于过渡。
 - [x] 新任务默认走 `WorkRuntime`。
-- [ ] 迁移现有工具注册到新 `ToolRouter`。
+- [x] 迁移现有工具注册到新 `ToolRouter`。
 - [ ] 迁移 browser-use。
 - [ ] 迁移 computer-use。
 - [ ] 迁移 MCP manager。

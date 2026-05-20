@@ -9,6 +9,7 @@ import type { ContextManager } from '../context/index.js'
 import type { ConversationSummary, UserProfile } from '../memory/index.js'
 import type { PersonalityEngine } from '../personality/index.js'
 import type { RuntimeEventBus } from '../runtime/events.js'
+import type { ToolRouter } from '../runtime/tool-router.js'
 import type { WorkStateStore } from '../runtime/work-store.js'
 import type {
   TaskContextItem,
@@ -37,6 +38,7 @@ export interface TaskRuntimeRequest {
     context: ContextManager
     runtimeEvents?: RuntimeEventBus
     workState?: WorkStateStore
+    toolRouter?: ToolRouter
   }
 }
 
