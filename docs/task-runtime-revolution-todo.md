@@ -378,10 +378,10 @@ Her-Text 不是 CLI，所以不能盲目复制 Codex 的交互语义。
 - [x] 保留旧 `TaskRuntime` 作为 legacy adapter，只用于过渡。
 - [x] 新任务默认走 `WorkRuntime`。
 - [x] 迁移现有工具注册到新 `ToolRouter`。
-- [ ] 迁移 browser-use。
-- [ ] 迁移 computer-use。
-- [ ] 迁移 MCP manager。
-- [ ] 迁移 skills manager。
+- [x] 迁移 browser-use。
+- [x] 迁移 computer-use。
+- [x] 迁移 MCP manager。
+- [x] 迁移 skills manager。
 - [ ] 移除 `DialogueOrchestrator` 对 task result 的同步等待依赖。
 - [ ] 移除旧 task lifecycle callback 对 Desktop UI 的硬依赖。
 - [ ] 更新 README 和架构图。

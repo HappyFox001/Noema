@@ -31,13 +31,19 @@ describe('tool router', () => {
     const router = new ToolRouter([
       createTool({ name: 'exec_command', description: 'Run shell commands', safety: 'write' }),
       createTool({ name: 'browser_open', description: 'Open browser', pluginId: 'browser', safety: 'read' }),
+      createTool({ name: 'computer_observe', description: 'Observe desktop', pluginId: 'computer-use', safety: 'read' }),
+      createTool({ name: 'mcp_call_tool', description: 'Call remote tool', pluginId: 'mcp-manager', safety: 'external' }),
+      createTool({ name: 'skills_read', description: 'Read skill', pluginId: 'skills-manager', safety: 'read' }),
       createTool({ name: 'tool_search', description: 'Discover tools', deferLoading: true, safety: 'safe' }),
     ])
 
-    expect(router.listModelVisibleTools().map(tool => tool.name)).toEqual(['exec_command', 'browser_open'])
+    expect(router.listModelVisibleTools().map(tool => tool.name)).toEqual(['exec_command', 'browser_open', 'computer_observe', 'mcp_call_tool', 'skills_read'])
     expect(router.listDiscoverableTools().map(tool => tool.name)).toEqual(['tool_search'])
     expect(router.find('exec_command').kind).toBe('shell')
     expect(router.find('browser_open').kind).toBe('browser')
+    expect(router.find('computer_observe').kind).toBe('desktop')
+    expect(router.find('mcp_call_tool').kind).toBe('mcp')
+    expect(router.find('skills_read').kind).toBe('skill')
     expect(router.find('browser_open').supportsParallel).toBe(true)
     expect(router.find('exec_command').supportsParallel).toBe(false)
   })

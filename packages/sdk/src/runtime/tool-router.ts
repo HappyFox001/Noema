@@ -9,6 +9,7 @@ export type RoutedToolKind =
   | 'browser'
   | 'desktop'
   | 'mcp'
+  | 'skill'
   | 'deferred'
   | 'custom'
 
@@ -95,6 +96,9 @@ function inferToolKind(tool: Tool): RoutedToolKind {
   }
   if (pluginId.includes('mcp') || name.includes('mcp')) {
     return 'mcp'
+  }
+  if (pluginId.includes('skill') || name.includes('skill')) {
+    return 'skill'
   }
   return 'function'
 }
