@@ -374,6 +374,14 @@ export type RuntimeEventInput<TEvent extends RuntimeEvent = RuntimeEvent> =
 
 export type RuntimeEventHandler = (event: RuntimeEvent) => void | Promise<void>
 export type RuntimeEventUnsubscribe = () => void
+export interface RuntimeEventReplayQuery {
+  correlationId?: string
+  turnId?: string
+  taskId?: string
+  threadId?: string
+  name?: RuntimeEventName
+  limit?: number
+}
 
 export class RuntimeEventBus {
   private handlers = new Set<RuntimeEventHandler>()
@@ -415,6 +423,18 @@ export class RuntimeEventBus {
 
   getRecentEvents(limit = this.maxRecentEvents): RuntimeEvent[] {
     return this.recentEvents.slice(-Math.max(1, Math.min(this.maxRecentEvents, limit)))
+  }
+
+  replay(query: RuntimeEventReplayQuery = {}): RuntimeEvent[] {
+    const matches = this.recentEvents.filter(event =>
+      (!query.correlationId || event.correlationId === query.correlationId) &&
+      (!query.turnId || event.turnId === query.turnId) &&
+      (!query.taskId || event.taskId === query.taskId) &&
+      (!query.threadId || event.threadId === query.threadId) &&
+      (!query.name || event.name === query.name)
+    )
+    const limit = query.limit ?? matches.length
+    return matches.slice(-Math.max(1, limit))
   }
 
   clearRecentEvents(): void {

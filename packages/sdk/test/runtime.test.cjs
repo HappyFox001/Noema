@@ -238,6 +238,55 @@ describe('emotional runtime', () => {
   })
 })
 
+describe('runtime event replay', () => {
+  test('replays a single correlated input-to-task-completion event chain', async () => {
+    const { RuntimeEventBus } = await import('../dist/runtime/index.js')
+    const events = new RuntimeEventBus()
+    events.emit({
+      name: 'interaction.input.received',
+      correlationId: 'turn-1',
+      turnId: 'turn-1',
+      payload: { userInput: 'run task', inputTimestamp: 1, source: 'text' },
+    })
+    events.emit({
+      name: 'task.started',
+      correlationId: 'turn-1',
+      turnId: 'turn-1',
+      taskId: 'task-1',
+      payload: { taskDescription: 'run task', originalUserInput: 'run task' },
+    })
+    events.emit({
+      name: 'task.completed',
+      correlationId: 'turn-1',
+      turnId: 'turn-1',
+      taskId: 'task-1',
+      payload: {
+        taskDescription: 'run task',
+        originalUserInput: 'run task',
+        finalMessage: 'done',
+        iterations: 1,
+        toolCalls: 0,
+      },
+    })
+    events.emit({
+      name: 'interaction.input.received',
+      correlationId: 'turn-2',
+      turnId: 'turn-2',
+      payload: { userInput: 'other', inputTimestamp: 2, source: 'text' },
+    })
+
+    expect(events.replay({ correlationId: 'turn-1' }).map(event => event.name)).toEqual([
+      'interaction.input.received',
+      'task.started',
+      'task.completed',
+    ])
+    expect(events.replay({ taskId: 'task-1' }).map(event => event.name)).toEqual([
+      'task.started',
+      'task.completed',
+    ])
+  })
+})
+
 describe('work state persistence', () => {
   test('persists recoverable thread facts across store instances', async () => {
     const { WorkStateStore } = await import('../dist/runtime/index.js')
