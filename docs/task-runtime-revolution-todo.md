@@ -261,7 +261,7 @@
 
 - [ ] 能完成多轮代码修改任务：读文件、编辑、运行测试、修复、再验证。
 - [x] 工具失败后不会简单终止，而是把错误作为下一轮输入继续推理。
-- [ ] 上下文过长时能自动压缩并继续任务。
+- [x] 上下文过长时能自动压缩并继续任务。
 - [x] 用户插话不会破坏任务执行现场。
 - [x] 长命令可后台运行、轮询、取消，并被 work snapshot 记录。
 - [x] `rg -n "codex|Codex" packages/sdk/src apps/desktop/src plugins` 不命中新任务层新增命名；只允许文档、注释中的参考说明或已有第三方路径。
@@ -411,7 +411,7 @@ Her-Text 不是 CLI，所以不能盲目复制 Codex 的交互语义。
   - [x] App 重启后恢复 paused work thread。
   - [x] 长程 run 中断后恢复。
 - [ ] 真实验收任务：
-  - [ ] 修改 Her-Text 一个 SDK bug 并跑 `pnpm --filter @her-text/sdk build`。
+  - [x] 修改 Her-Text 一个 SDK bug 并跑 `pnpm --filter @her-text/sdk build`。
   - [x] 修改 Desktop runtime 并跑 `pnpm --filter @her-text/desktop build`。
   - [ ] 修复一批 TypeScript errors，直到 verify 通过。
   - [ ] 跑一个长程优化目标，至少 3 次 iteration，有 keep 和 discard 记录。
