@@ -165,30 +165,30 @@
 
 ## Phase 4: WorkState 和 WorkMemory
 
-- [ ] 新增持久化 `WorkState`。
-- [ ] 新增 `WorkThread` 数据模型：
-  - [ ] `id`
-  - [ ] `goal`
-  - [ ] `status`
-  - [ ] `priority`
-  - [ ] `createdAt`
-  - [ ] `updatedAt`
-  - [ ] `lastFocusedAt`
-  - [ ] `userIntentHistory`
-  - [ ] `emotionalTurnHistory`
-  - [ ] `plan`
-  - [ ] `executionState`
-  - [ ] `observations`
-  - [ ] `artifacts`
-  - [ ] `decisions`
-  - [ ] `failures`
-  - [ ] `nextActions`
-  - [ ] `resumeSummary`
-  - [ ] `abandonReason`
-- [ ] 每次任务状态变化后写入 snapshot。
-- [ ] 每次任务失败后写入 `WorkFailure`，包含原因、证据、尝试过的路线、下一次应避免什么。
-- [ ] 每次关键判断后写入 `WorkDecision`，包含事实依据和替代方案。
-- [ ] 每次产物生成后写入 `WorkArtifact`，包含路径、类型、来源 step、验证状态。
+- [x] 新增持久化 `WorkState`。
+- [x] 新增 `WorkThread` 数据模型：
+  - [x] `id`
+  - [x] `goal`
+  - [x] `status`
+  - [x] `priority`
+  - [x] `createdAt`
+  - [x] `updatedAt`
+  - [x] `lastFocusedAt`
+  - [x] `userIntentHistory`
+  - [x] `emotionalTurnHistory`
+  - [x] `plan`
+  - [x] `executionState`
+  - [x] `observations`
+  - [x] `artifacts`
+  - [x] `decisions`
+  - [x] `failures`
+  - [x] `nextActions`
+  - [x] `resumeSummary`
+  - [x] `abandonReason`
+- [x] 每次任务状态变化后写入 snapshot。
+- [x] 每次任务失败后写入 `WorkFailure`，包含原因、证据、尝试过的路线、下一次应避免什么。
+- [x] 每次关键判断后写入 `WorkDecision`，包含事实依据和替代方案。
+- [x] 每次产物生成后写入 `WorkArtifact`，包含路径、类型、来源 step、验证状态。
 - [ ] 支持 task interruption snapshot：
   - [ ] 当前 step。
   - [ ] 已完成 steps。

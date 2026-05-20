@@ -21,6 +21,7 @@ import {
   RuntimeJobManager,
   type RuntimeCapabilityContext,
   type RuntimeEventHandler,
+  WorkStateStore,
 } from './runtime/index.js'
 
 export interface HerTextSDKInitializeOptions {
@@ -41,6 +42,7 @@ export class HerTextSDK {
   public agent: AgentCore
   public runtimeEvents: RuntimeEventBus
   public runtimeJobs: RuntimeJobManager
+  public workState: WorkStateStore
   public runtime: RuntimeCapabilityContext
   public learning: LearningAssetStore
   public reflection: ReflectionEngine
@@ -65,6 +67,7 @@ export class HerTextSDK {
     this.agent = new AgentCore()
     this.runtimeEvents = new RuntimeEventBus()
     this.runtimeJobs = new RuntimeJobManager(this.runtimeEvents)
+    this.workState = new WorkStateStore(config.memory.storageDir)
     this.learning = new LearningAssetStore(config.memory.storageDir)
     this.reflection = new ReflectionEngine(this.learning)
     this.personaContinuity = new PersonaContinuityPolicy()
@@ -83,6 +86,7 @@ export class HerTextSDK {
       personality: this.personality,
       runtimeEvents: this.runtimeEvents,
       runtimeJobs: this.runtimeJobs,
+      workState: this.workState,
       learning: this.learning,
       reflection: this.reflection,
       personaContinuity: this.personaContinuity,
@@ -130,6 +134,7 @@ export class HerTextSDK {
   ): Promise<HerTextSDK> {
     const sdk = new HerTextSDK(config, options)
     await sdk.memory.initialize()
+    await sdk.workState.initialize()
     if (sdk.selfLearningEnabled) {
       await sdk.learning.initialize()
       await sdk.agentSociety.initialize()
@@ -196,6 +201,7 @@ export class HerTextSDK {
 
   
   async shutdown(): Promise<void> {
+    await this.workState.flush()
     await this.dialogue.shutdown()
     await this.learningAutomation.shutdown()
     await this.runtimeJobs.waitForIdle()

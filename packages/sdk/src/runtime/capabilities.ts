@@ -14,6 +14,7 @@ import type { MemoryEngine } from '../memory/index.js'
 import type { PersonalityEngine } from '../personality/index.js'
 import type { RuntimeEventBus } from './events.js'
 import type { RuntimeJobManager } from './jobs.js'
+import type { WorkStateStore } from './work-store.js'
 
 export interface RuntimeCapabilityContext {
   llm: LLMProvider
@@ -24,6 +25,7 @@ export interface RuntimeCapabilityContext {
   conversationContext?: ContextManager
   runtimeEvents: RuntimeEventBus
   runtimeJobs: RuntimeJobManager
+  workState: WorkStateStore
   learning: LearningAssetStore
   reflection: ReflectionEngine
   personaContinuity: PersonaContinuityPolicy
