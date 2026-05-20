@@ -254,7 +254,7 @@
   - [x] task cancel。
   - [x] tool abort。
   - [x] background command still running 的事实记录。
-- [ ] 新增 `TurnEventStream`，替代隐式 callback。
+- [x] 新增 `TurnEventStream`，替代隐式 callback。
 - [ ] 增加命名检查，确保新增任务层源码路径和导出类型不包含 `codex`。
 
 验收：
