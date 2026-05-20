@@ -11,6 +11,7 @@ import type {
   TaskRuntimeHookMeta,
   TaskStep,
   TaskUserInputRequest,
+  WorkThreadPanelPlan,
 } from '@her-text/sdk'
 
 export type TaskCommunicationSeverity = 'silent' | 'info' | 'important' | 'blocking' | 'final'
@@ -24,7 +25,7 @@ export interface TaskCommunicationFrame {
 
 export interface TaskCommunicationTurn {
   isCancelled: () => boolean
-  sendPlan: (plan: TaskPlan) => void
+  sendPlan: (plan: TaskPlan | WorkThreadPanelPlan) => void
   sendStatus: (frame: TaskCommunicationFrame) => void
   displayText: (text: string) => void
   speak?: (text: string) => void
@@ -47,10 +48,15 @@ const PROGRESS_SPEECH_INTERVAL_MS = 12000
 export class TaskCommunicationManager {
   private turn: TaskCommunicationTurn | null = null
   private state: TaskCommunicationState = this.createState()
+  private planDecorator?: (plan: TaskPlan) => TaskPlan | WorkThreadPanelPlan
 
   bindTurn(turn: TaskCommunicationTurn): void {
     this.turn = turn
     this.state = this.createState()
+  }
+
+  setPlanDecorator(decorator: ((plan: TaskPlan) => TaskPlan | WorkThreadPanelPlan) | undefined): void {
+    this.planDecorator = decorator
   }
 
   clearTurn(turn: TaskCommunicationTurn): void {
@@ -110,7 +116,7 @@ export class TaskCommunicationManager {
     if (this.isUnavailable()) {
       return
     }
-    this.turn?.sendPlan(plan)
+    this.turn?.sendPlan(this.decoratePlan(plan))
   }
 
   onStepUpdated(step: TaskStep, plan: TaskPlan): void {
@@ -118,7 +124,7 @@ export class TaskCommunicationManager {
       return
     }
 
-    this.turn?.sendPlan(plan)
+    this.turn?.sendPlan(this.decoratePlan(plan))
 
     const key = `${step.id}:${step.status}`
     if (step.status === 'running' && this.state.lastStepId !== step.id) {
@@ -219,6 +225,10 @@ export class TaskCommunicationManager {
 
   private isUnavailable(): boolean {
     return !this.turn || this.turn.isCancelled()
+  }
+
+  private decoratePlan(plan: TaskPlan): TaskPlan | WorkThreadPanelPlan {
+    return this.planDecorator?.(plan) ?? plan
   }
 
   private createState(): TaskCommunicationState {

@@ -354,9 +354,9 @@ Her-Text 不是 CLI，所以不能盲目复制 Codex 的交互语义。
 
 ## Phase 8: UI 和输出整合
 
-- [ ] 默认任务面板改为 WorkThread 视角。
-- [ ] 显示 active / paused / waiting / recoverable_failed / completed threads。
-- [ ] 显示当前 thread 的 plan、current step、last observation、next action。
+- [x] 默认任务面板改为 WorkThread 视角。
+- [x] 显示 active / paused / waiting / recoverable_failed / completed threads。
+- [x] 显示当前 thread 的 plan、current step、last observation、next action。
 - [ ] 显示长程 run 的 metric、baseline、best result、iteration count。
 - [ ] 支持用户从 UI 手动：
   - [ ] pause。

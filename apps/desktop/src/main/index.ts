@@ -86,6 +86,8 @@ import {
   type TaskUserInputRequest,
   type TaskUserInputResponse,
   type TaskPlan,
+  buildWorkThreadPanelPlan,
+  type WorkThreadPanelPlan,
   WorkSurfaceController,
   type WorkSurfaceSnapshot,
   type SurfaceUserEvent,
@@ -445,7 +447,7 @@ type ConversationFrame =
   | { type: 'control.phase_end'; phase: ConversationPhase }
   | { type: 'control.task_start'; taskDescription: string }
   | TaskCommunicationFrame
-  | { type: 'control.task_plan'; plan: TaskPlan }
+  | { type: 'control.task_plan'; plan: TaskPlan | WorkThreadPanelPlan }
   | { type: 'control.task_end'; success: boolean; summary: string; error?: string }
   | { type: 'data.tts_text'; text: string }
   | {
@@ -3604,6 +3606,7 @@ async function initializeSDK(): Promise<void> {
     onTaskPlanUpdated: (plan) => taskCommunicationManager.onPlanUpdated(plan),
     onTaskStepUpdated: (step, plan) => taskCommunicationManager.onStepUpdated(step, plan),
   })
+  taskCommunicationManager.setPlanDecorator((plan) => buildWorkThreadPanelPlan(sdkInstance!.workState.getSnapshot(), plan))
   console.log('[SDK] Initialized successfully')
 }
 

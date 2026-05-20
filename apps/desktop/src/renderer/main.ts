@@ -1652,6 +1652,25 @@ type TaskPanelPlan = {
     result?: string
     error?: string
   }>
+  threads?: Array<{
+    id: string
+    goal: string
+    status: string
+    bucket: 'active' | 'paused' | 'waiting' | 'recoverable_failed' | 'completed' | 'abandoned'
+    focused: boolean
+    updatedAt: number
+  }>
+  currentThread?: {
+    id: string
+    goal: string
+    status: string
+    bucket: string
+    focused: boolean
+    updatedAt: number
+  }
+  currentStep?: string
+  lastObservation?: string
+  nextAction?: string
 }
 
 const voiceRecorder = new VoiceRecorder()
@@ -2767,6 +2786,39 @@ function renderTaskPanel(plan: TaskPanelPlan): void {
   title.textContent = plan.title || t('taskPanel.title')
   list.textContent = ''
 
+  for (const thread of (plan.threads ?? []).slice(0, 4)) {
+    const item = document.createElement('li')
+    item.className = `task-step ${mapThreadBucketToStepStatus(thread.bucket)}`
+
+    const mark = document.createElement('span')
+    mark.className = 'task-step-mark'
+    mark.textContent = thread.focused ? '•' : getThreadBucketMark(thread.bucket)
+
+    const text = document.createElement('span')
+    text.className = 'task-step-title'
+    text.textContent = `${thread.goal} · ${thread.status}`
+
+    item.append(mark, text)
+    list.appendChild(item)
+  }
+
+  const details = [plan.currentStep, plan.lastObservation, plan.nextAction].filter(Boolean)
+  for (const detail of details.slice(0, 3)) {
+    const item = document.createElement('li')
+    item.className = 'task-step running'
+
+    const mark = document.createElement('span')
+    mark.className = 'task-step-mark'
+    mark.textContent = '•'
+
+    const text = document.createElement('span')
+    text.className = 'task-step-title'
+    text.textContent = detail
+
+    item.append(mark, text)
+    list.appendChild(item)
+  }
+
   for (const step of plan.steps.slice(0, 6)) {
     const item = document.createElement('li')
     item.className = `task-step ${step.status}`
@@ -2785,6 +2837,28 @@ function renderTaskPanel(plan: TaskPanelPlan): void {
 
   setTaskPanelVisible(true)
   syncPluginUIStateSoon()
+}
+
+function mapThreadBucketToStepStatus(bucket: NonNullable<TaskPanelPlan['threads']>[number]['bucket']): TaskPanelStepStatus {
+  if (bucket === 'completed') return 'completed'
+  if (bucket === 'abandoned' || bucket === 'recoverable_failed') return 'failed'
+  if (bucket === 'paused' || bucket === 'waiting') return 'pending'
+  return 'running'
+}
+
+function getThreadBucketMark(bucket: NonNullable<TaskPanelPlan['threads']>[number]['bucket']): string {
+  switch (bucket) {
+    case 'completed':
+      return '✓'
+    case 'abandoned':
+    case 'recoverable_failed':
+      return '!'
+    case 'paused':
+    case 'waiting':
+      return '-'
+    default:
+      return '•'
+  }
 }
 
 function getTaskStepMark(status: TaskPanelStepStatus): string {
