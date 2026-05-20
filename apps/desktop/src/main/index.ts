@@ -17,6 +17,8 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 const require = createRequire(import.meta.url)
 const execFileAsync = promisify(execFile)
+let activeProxyUrl = ''
+let globalAgentBootstrapped = false
 
 const possibleEnvPaths = [
   join(__dirname, '../.env'),           // apps/desktop/.env (from dist/)
@@ -3065,9 +3067,6 @@ async function switchTTSProvider(reason: InterruptionReason = 'provider_switch')
 
   await initializeTTSProvider()
 }
-
-let activeProxyUrl = ''
-let globalAgentBootstrapped = false
 
 function getProxyFromEnv(): string {
   return (
