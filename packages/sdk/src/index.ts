@@ -25,6 +25,7 @@ import {
   type OutputStateSnapshot,
   type RuntimeCapabilityContext,
   type RuntimeEventHandler,
+  type WorkThread,
   WorkStateStore,
 } from './runtime/index.js'
 
@@ -193,6 +194,10 @@ export class HerTextSDK {
     runtime?: PluginRuntimeContext
   ): string {
     return this.dialogue.transformText(target, text, runtime)
+  }
+
+  async resumeWorkThread(threadId?: string, reason?: string): Promise<WorkThread | null> {
+    return this.dialogue.resumeWorkThread(threadId, reason)
   }
 
   resolveInteraction(

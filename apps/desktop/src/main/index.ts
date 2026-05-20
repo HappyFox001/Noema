@@ -3935,6 +3935,11 @@ async function runConversationTurn(
       return { success: true, response: '', ttsEnabled: false }
     }
 
+    const workControlResult = await handleResolvedWorkControls(sdk, interaction)
+    if (workControlResult) {
+      return workControlResult
+    }
+
     turnId = await startNewTurn({
       preserveActiveTask: source === 'voice'
     })
@@ -4134,6 +4139,67 @@ async function runConversationTurn(
     console.error(`[Chat] Failed to process ${source} turn:`, error)
     return { success: false, error: error.message }
   }
+}
+
+async function handleResolvedWorkControls(
+  sdk: HerTextSDK,
+  interaction: { intents: Array<{ kind: string; targetThreadId?: string; reason: string }> }
+): Promise<ConversationTurnResult | null> {
+  if (interaction.intents.length === 0) {
+    return null
+  }
+  const actionable = interaction.intents.filter(intent =>
+    intent.kind === 'work.resume' ||
+    intent.kind === 'work.pause' ||
+    intent.kind === 'work.cancel' ||
+    intent.kind === 'work.status'
+  )
+  if (actionable.length === 0 || actionable.length !== interaction.intents.length) {
+    return null
+  }
+
+  const intent = actionable[0]
+  const snapshot = sdk.workState.getSnapshot()
+  const targetThreadId = intent.targetThreadId ||
+    snapshot.focusedThreadId ||
+    snapshot.pausedThreads[0]?.id ||
+    snapshot.activeThreads[0]?.id
+
+  if (intent.kind === 'work.resume') {
+    const resumed = await sdk.resumeWorkThread(targetThreadId, intent.reason)
+    const response = resumed
+      ? `我会继续刚才的任务：${resumed.goal}`
+      : '我没有找到可以继续的任务。'
+    return { success: true, response, ttsEnabled: false }
+  }
+
+  if (!targetThreadId) {
+    return { success: true, response: '我没有找到当前任务。', ttsEnabled: false }
+  }
+
+  if (intent.kind === 'work.pause') {
+    const paused = await sdk.workState.pauseThread(targetThreadId, intent.reason)
+    return {
+      success: true,
+      response: paused ? `已暂停任务：${paused.goal}` : '我没有找到可以暂停的任务。',
+      ttsEnabled: false,
+    }
+  }
+
+  if (intent.kind === 'work.cancel') {
+    const abandoned = await sdk.workState.abandonThread(targetThreadId, intent.reason)
+    return {
+      success: true,
+      response: abandoned ? `已放弃任务：${abandoned.goal}` : '我没有找到可以放弃的任务。',
+      ttsEnabled: false,
+    }
+  }
+
+  const thread = sdk.workState.getThread(targetThreadId)
+  const response = thread
+    ? `当前任务：${thread.goal}。状态：${thread.status}。${thread.resumeSummary || ''}`.trim()
+    : '我没有找到当前任务。'
+  return { success: true, response, ttsEnabled: false }
 }
 
 ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {

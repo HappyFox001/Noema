@@ -36,6 +36,7 @@ import {
 } from '../plugins/index.js'
 import { getWorkFeedbackRule, type RuntimeEventBus, type RuntimeJobManager, type RuntimeJobUnregister } from '../runtime/index.js'
 import type { WorkStateStore } from '../runtime/work-store.js'
+import type { WorkThread } from '../runtime/work-state.js'
 
 
 export interface StreamOptions {
@@ -110,6 +111,33 @@ function scheduleAsyncTask(task: () => Promise<void>): void {
   globalThis.setTimeout(run, 0)
 }
 
+function buildResumeTaskDescription(thread: WorkThread): string {
+  const nextAction = thread.nextActions.at(-1)?.title
+  const currentStep = thread.currentStep?.title
+  const focus = nextAction || currentStep || thread.resumeSummary || thread.goal
+  return `Continue the saved work thread "${thread.goal}". Resume from: ${focus}`
+}
+
+function buildResumeTaskContext(thread: WorkThread): TaskContextItem {
+  return {
+    id: `resume-${thread.id}`,
+    type: 'work_thread_resume',
+    name: `Resume context for ${thread.goal}`,
+    content: JSON.stringify({
+      threadId: thread.id,
+      goal: thread.goal,
+      status: thread.status,
+      resumeSummary: thread.resumeSummary,
+      currentStep: thread.currentStep,
+      nextActions: thread.nextActions.slice(-5),
+      failures: thread.failures.slice(-3),
+      decisions: thread.decisions.slice(-5),
+      artifacts: thread.artifacts.slice(-10),
+      executionState: thread.executionState,
+    }, null, 2),
+  }
+}
+
 interface ActiveTaskProgressContext {
   turnContext: Awaited<ReturnType<LLMContextAggregator['prepareUserTurn']>>
   streamOptions?: StreamOptions
@@ -137,6 +165,7 @@ export class DialogueOrchestrator {
   private runtimeEvents?: RuntimeEventBus
   private runtimeJobs?: RuntimeJobManager
   private unregisterTaskRunJob?: RuntimeJobUnregister
+  private workState?: WorkStateStore
   private learning?: LearningAssetStore
   private agentSociety?: AgentSocietyRuntime
   private activeTaskProgressContext: ActiveTaskProgressContext | null = null
@@ -161,6 +190,7 @@ export class DialogueOrchestrator {
     this.context = new ContextManager()
     this.runtimeEvents = config?.runtimeEvents
     this.runtimeJobs = config?.runtimeJobs
+    this.workState = config?.workState
     this.learning = config?.learning
     this.agentSociety = config?.agentSociety
     this.pluginManager = new PluginManager(plugins)
@@ -506,6 +536,55 @@ export class DialogueOrchestrator {
         timestamp: Date.now(),
       }])
     })
+  }
+
+  async resumeWorkThread(threadId?: string, reason = 'User asked to resume prior work.'): Promise<WorkThread | null> {
+    if (!this.workState) {
+      return null
+    }
+
+    const target = this.selectResumableThread(threadId)
+    if (!target) {
+      return null
+    }
+
+    const resumed = await this.workState.resumeThread(target.id, reason)
+    if (!resumed) {
+      return null
+    }
+
+    this.startDetachedTaskRun({
+      taskIntent: { description: buildResumeTaskDescription(resumed) },
+      originalUserInput: `Resume work: ${resumed.goal}`,
+      taskContextItems: [buildResumeTaskContext(resumed)],
+      pluginRuntime: {},
+    })
+    return resumed
+  }
+
+  private selectResumableThread(threadId?: string): WorkThread | null {
+    if (!this.workState) {
+      return null
+    }
+
+    if (threadId) {
+      return this.workState.getThread(threadId) ?? null
+    }
+
+    const snapshot = this.workState.getSnapshot()
+    if (snapshot.focusedThreadId) {
+      const focused = this.workState.getThread(snapshot.focusedThreadId)
+      if (focused && focused.status !== 'completed' && focused.status !== 'abandoned') {
+        return focused
+      }
+    }
+
+    const candidates = [
+      ...snapshot.pausedThreads,
+      ...snapshot.activeThreads.filter(thread => thread.status === 'recoverable_failed' || thread.status === 'waiting_user'),
+    ].sort((a, b) => b.updatedAt - a.updatedAt)
+
+    return candidates[0] ?? null
   }
 
   private async emitTaskProgressFeedback(
