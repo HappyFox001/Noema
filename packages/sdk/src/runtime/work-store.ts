@@ -161,6 +161,65 @@ export class WorkStateStore {
     return this.getSnapshot()
   }
 
+  async pauseThread(threadId: string, reason = 'paused', now = Date.now()): Promise<WorkThread | undefined> {
+    const thread = this.findThread(threadId)
+    if (!thread) {
+      return undefined
+    }
+    const next = {
+      ...thread,
+      status: 'paused' as const,
+      resumeSummary: thread.resumeSummary ?? reason,
+      updatedAt: now,
+    }
+    await this.saveThread(next, reason)
+    return cloneWorkThread(next)
+  }
+
+  async resumeThread(threadId: string, reason = 'resumed', now = Date.now()): Promise<WorkThread | undefined> {
+    const thread = this.findThread(threadId)
+    if (!thread) {
+      return undefined
+    }
+    const next = {
+      ...thread,
+      status: 'active' as const,
+      lastFocusedAt: now,
+      updatedAt: now,
+      nextActions: thread.nextActions.length > 0
+        ? thread.nextActions
+        : [{
+            id: generateId(),
+            title: 'Resume previous work',
+            reason,
+            createdAt: now,
+          }],
+    }
+    await this.saveThread(next, reason)
+    this.state = {
+      ...this.state,
+      focusedThreadId: threadId,
+      updatedAt: now,
+    }
+    await this.persistState(reason)
+    return cloneWorkThread(next)
+  }
+
+  async abandonThread(threadId: string, reason = 'abandoned', now = Date.now()): Promise<WorkThread | undefined> {
+    const thread = this.findThread(threadId)
+    if (!thread) {
+      return undefined
+    }
+    const next = {
+      ...thread,
+      status: 'abandoned' as const,
+      abandonReason: reason,
+      updatedAt: now,
+    }
+    await this.saveThread(next, reason)
+    return cloneWorkThread(next)
+  }
+
   async recordArtifact(threadId: string, artifact: WorkArtifact): Promise<WorkThread | undefined> {
     const thread = this.findThread(threadId)
     if (!thread) {

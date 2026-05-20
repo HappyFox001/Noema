@@ -397,8 +397,8 @@ Her-Text 不是 CLI，所以不能盲目复制 Codex 的交互语义。
 - [ ] 单元测试：
   - [x] intent routing。
   - [x] work state persistence。
-  - [ ] task interruption semantics。
-  - [ ] work thread resume。
+  - [x] task interruption semantics。
+  - [x] work thread resume。
   - [x] tool router。
   - [x] tool orchestrator。
   - [x] context compaction。

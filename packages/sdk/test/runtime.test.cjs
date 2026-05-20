@@ -115,6 +115,57 @@ describe('work state persistence', () => {
       await rm(storageDir, { recursive: true, force: true })
     }
   })
+
+  test('resumes paused work thread from persisted state', async () => {
+    const { WorkStateStore } = await import('../dist/runtime/index.js')
+    const storageDir = await mkdtemp(join(tmpdir(), 'her-text-work-resume-'))
+    try {
+      const firstStore = new WorkStateStore(storageDir)
+      await firstStore.initialize()
+      const thread = await firstStore.createThread('Resume durable task', { id: 'thread-resume', now: 2000 })
+      await firstStore.recordNextAction(thread.id, {
+        id: 'next-1',
+        title: 'Continue from saved step',
+        reason: 'resume test',
+        createdAt: 2100,
+      })
+      await firstStore.pauseThread(thread.id, 'user switched tasks', 2200)
+      await firstStore.flush()
+
+      const secondStore = new WorkStateStore(storageDir)
+      await secondStore.initialize()
+      expect(secondStore.getSnapshot().pausedThreads.map(item => item.id)).toContain(thread.id)
+
+      const resumed = await secondStore.resumeThread(thread.id, 'user returned', 2300)
+      expect(resumed.status).toBe('active')
+      expect(resumed.nextActions.at(-1).title).toBe('Continue from saved step')
+      expect(secondStore.getSnapshot().focusedThreadId).toBe(thread.id)
+      await secondStore.flush()
+    } finally {
+      await rm(storageDir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('task interruption semantics', () => {
+  test('task cancellation aborts task signal and preserves background command facts', async () => {
+    const { CancellationModel, RuntimeEventBus } = await import('../dist/runtime/index.js')
+    const events = new RuntimeEventBus()
+    const seen = []
+    events.subscribe(event => seen.push(event))
+    const model = new CancellationModel({ events })
+    const signal = model.createAbortSignal('task-1')
+    model.recordBackgroundCommand('cmd-1', 'pnpm build')
+
+    const record = model.cancelTask('task-1', 'user cancelled', 'thread-1')
+
+    expect(signal.aborted).toBe(true)
+    expect(record.kind).toBe('task_cancel')
+    expect(record.backgroundCommands).toEqual([
+      expect.objectContaining({ sessionId: 'cmd-1', command: 'pnpm build', status: 'running' }),
+    ])
+    expect(seen.at(-1).name).toBe('task.cancellation.recorded')
+  })
 })
 
 describe('tool orchestrator', () => {
