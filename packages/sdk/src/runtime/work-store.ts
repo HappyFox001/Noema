@@ -21,6 +21,7 @@ import {
   type WorkThread,
   type WorkThreadStatus,
 } from './work-state.js'
+import type { EmotionalTurnRecord } from './boundaries.js'
 
 interface WorkThreadRow {
   thread_id: string
@@ -300,6 +301,20 @@ export class WorkStateStore {
       updatedAt: now,
     }
     await this.saveThread(next, reason)
+    return cloneWorkThread(next)
+  }
+
+  async recordEmotionalTurn(threadId: string, record: EmotionalTurnRecord): Promise<WorkThread | undefined> {
+    const thread = this.findThread(threadId)
+    if (!thread) {
+      return undefined
+    }
+    const next = {
+      ...thread,
+      emotionalTurnHistory: [...thread.emotionalTurnHistory, record],
+      updatedAt: Date.now(),
+    }
+    await this.saveThread(next, 'emotional turn recorded')
     return cloneWorkThread(next)
   }
 

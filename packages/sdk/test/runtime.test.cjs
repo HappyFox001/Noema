@@ -173,6 +173,45 @@ describe('long run runtime', () => {
   })
 })
 
+describe('emotional runtime', () => {
+  test('normalizes reply output into a durable emotional turn record', async () => {
+    const { EmotionalRuntime } = await import('../dist/runtime/index.js')
+    const runtime = new EmotionalRuntime()
+    const output = runtime.createOutput({
+      userInput: '帮我修一下测试',
+      conversationContext: [{ role: 'user', content: '帮我修一下测试', timestamp: 1 }],
+      personality: { name: 'test' },
+      memory: { relevant: [] },
+      workState: {
+        activeThreads: [],
+        pausedThreads: [],
+        abandonedThreads: [],
+        completedThreads: [],
+        updatedAt: 1,
+      },
+      createdAt: 6000,
+    }, {
+      replyText: '我来处理。',
+      emotionTag: 'focused',
+      intentHints: ['修复测试', '修复测试'],
+    })
+
+    expect(output).toEqual(expect.objectContaining({
+      replyText: '我来处理。',
+      emotionTag: 'focused',
+      intentHints: ['修复测试'],
+      createdAt: 6000,
+    }))
+    expect(output.record).toEqual({
+      userInput: '帮我修一下测试',
+      replyText: '我来处理。',
+      emotionTag: 'focused',
+      intentHints: ['修复测试'],
+      createdAt: 6000,
+    })
+  })
+})
+
 describe('work state persistence', () => {
   test('persists recoverable thread facts across store instances', async () => {
     const { WorkStateStore } = await import('../dist/runtime/index.js')
@@ -322,6 +361,38 @@ describe('work state persistence', () => {
         reason: 'user corrected task scope',
       }))
       expect(restored.resumeSummary).toContain('packages/sdk')
+      await secondStore.flush()
+    } finally {
+      await rm(storageDir, { recursive: true, force: true })
+    }
+  })
+
+  test('emotional turn records persist on the focused work thread', async () => {
+    const { WorkStateStore } = await import('../dist/runtime/index.js')
+    const storageDir = await mkdtemp(join(tmpdir(), 'her-text-work-emotional-'))
+    try {
+      const firstStore = new WorkStateStore(storageDir)
+      await firstStore.initialize()
+      const thread = await firstStore.createThread('Persist emotional record', { id: 'thread-emotional', now: 7000 })
+      await firstStore.recordEmotionalTurn(thread.id, {
+        userInput: '帮我继续',
+        replyText: '我会继续处理。',
+        emotionTag: 'focused',
+        intentHints: ['继续任务'],
+        createdAt: 7100,
+      })
+      await firstStore.flush()
+
+      const secondStore = new WorkStateStore(storageDir)
+      await secondStore.initialize()
+      const restored = secondStore.getThread(thread.id)
+      expect(restored.emotionalTurnHistory).toEqual([{
+        userInput: '帮我继续',
+        replyText: '我会继续处理。',
+        emotionTag: 'focused',
+        intentHints: ['继续任务'],
+        createdAt: 7100,
+      }])
       await secondStore.flush()
     } finally {
       await rm(storageDir, { recursive: true, force: true })

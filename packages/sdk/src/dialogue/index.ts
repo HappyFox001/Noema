@@ -35,6 +35,8 @@ import {
   type TextTransformTarget,
 } from '../plugins/index.js'
 import { getWorkFeedbackRule, type RuntimeEventBus, type RuntimeJobManager, type RuntimeJobUnregister } from '../runtime/index.js'
+import { EmotionalRuntime } from '../runtime/emotional-runtime.js'
+import type { EmotionalTurnRecord } from '../runtime/boundaries.js'
 import type { WorkStateStore } from '../runtime/work-store.js'
 import type { WorkThread } from '../runtime/work-state.js'
 
@@ -138,6 +140,15 @@ function buildResumeTaskContext(thread: WorkThread): TaskContextItem {
   }
 }
 
+function buildEmotionalTurnTaskContext(record: EmotionalTurnRecord): TaskContextItem {
+  return {
+    id: `emotional-turn-${record.createdAt}`,
+    type: 'emotional_turn_record',
+    name: 'Emotional turn record',
+    content: JSON.stringify(record, null, 2),
+  }
+}
+
 interface ActiveTaskProgressContext {
   turnContext: Awaited<ReturnType<LLMContextAggregator['prepareUserTurn']>>
   streamOptions?: StreamOptions
@@ -166,6 +177,7 @@ export class DialogueOrchestrator {
   private runtimeJobs?: RuntimeJobManager
   private unregisterTaskRunJob?: RuntimeJobUnregister
   private workState?: WorkStateStore
+  private emotionalRuntime = new EmotionalRuntime()
   private learning?: LearningAssetStore
   private agentSociety?: AgentSocietyRuntime
   private activeTaskProgressContext: ActiveTaskProgressContext | null = null
@@ -333,6 +345,33 @@ export class DialogueOrchestrator {
       })
       throwIfAborted(options?.signal)
       await options?.onPhaseEnd?.('reply', firstResult.reply)
+      const emotionalOutput = this.emotionalRuntime.createOutput({
+        userInput: input.text,
+        conversationContext: this.context.forPrompt(),
+        personality: turnContext.personality,
+        memory: turnContext.memoryContext,
+        workState: this.workState?.getSnapshot() ?? {
+          activeThreads: [],
+          pausedThreads: [],
+          abandonedThreads: [],
+          completedThreads: [],
+          updatedAt: Date.now(),
+        },
+      }, {
+        replyText: firstResult.reply,
+        emotionTag: firstResult.emotionTag,
+        intentHints: firstResult.taskDescription ? [firstResult.taskDescription] : [],
+      })
+      this.runtimeEvents?.emit({
+        name: 'emotional.output.emitted',
+        turnId,
+        correlationId: turnId,
+        payload: {
+          phase: 'reply',
+          output: emotionalOutput,
+        },
+      })
+      void this.recordEmotionalTurn(emotionalOutput.record)
       this.runtimeEvents?.emit({
         name: 'dialogue.reply.completed',
         turnId,
@@ -349,11 +388,12 @@ export class DialogueOrchestrator {
 
       if (firstResult.hasTask && firstResult.taskDescription && firstResult.taskIntent && turnContext.hasTools) {
         throwIfAborted(options?.signal)
-        const taskContextItems = await this.resolveTaskContext(
+        const taskContextItems: TaskContextItem[] = await this.resolveTaskContext(
           input.text,
           firstResult.taskDescription,
           pluginRuntime
         )
+        taskContextItems.push(buildEmotionalTurnTaskContext(emotionalOutput.record))
         throwIfAborted(options?.signal)
         await this.pluginManager.notifyTaskStart({
           runtime: pluginRuntime,
@@ -536,6 +576,18 @@ export class DialogueOrchestrator {
         timestamp: Date.now(),
       }])
     })
+  }
+
+  private async recordEmotionalTurn(record: EmotionalTurnRecord): Promise<void> {
+    if (!this.workState) {
+      return
+    }
+    const snapshot = this.workState.getSnapshot()
+    const targetThreadId = snapshot.focusedThreadId ?? snapshot.activeThreads[0]?.id
+    if (!targetThreadId) {
+      return
+    }
+    await this.workState.recordEmotionalTurn(targetThreadId, record)
   }
 
   async resumeWorkThread(threadId?: string, reason = 'User asked to resume prior work.'): Promise<WorkThread | null> {

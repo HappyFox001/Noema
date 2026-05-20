@@ -4,7 +4,7 @@
 import { generateId } from '@her-text/core'
 import type { TaskExecutorKind } from '../session/task.js'
 import type { TaskPlan, TaskRunState, TaskStep } from '../session/task-plan.js'
-import type { FeedbackDecision } from './boundaries.js'
+import type { EmotionalTurnRecord, FeedbackDecision } from './boundaries.js'
 import type { InteractionIntent, UserInterruptionKind } from './interaction.js'
 import type { WorkArtifact, WorkDecision, WorkFailure, WorkSignal, WorkState, WorkThread } from './work-state.js'
 
@@ -20,6 +20,7 @@ export type RuntimeEventName =
   | 'interaction.work.status_requested'
   | 'interaction.work.resume_requested'
   | 'interaction.work.cancel_requested'
+  | 'emotional.output.emitted'
   | 'dialogue.intent.detected'
   | 'dialogue.reply.completed'
   | 'work.thread.created'
@@ -121,6 +122,16 @@ export type RuntimeEvent =
   | RuntimeEventBase<'interaction.work.cancel_requested', {
       targetThreadId?: string
       reason: string
+    }>
+  | RuntimeEventBase<'emotional.output.emitted', {
+      phase: 'reply' | 'task_progress' | 'task_result'
+      output: {
+        replyText: string
+        emotionTag?: string
+        intentHints: string[]
+        record: EmotionalTurnRecord
+        createdAt: number
+      }
     }>
   | RuntimeEventBase<'dialogue.intent.detected', {
       hasTask: boolean

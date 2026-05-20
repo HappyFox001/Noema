@@ -35,6 +35,7 @@ import type { TaskPlan, TaskRunState, TaskStep } from './task-plan.js'
 import { ToolRouter, WorkSession, type RuntimeEventBus } from '../runtime/index.js'
 import type { WorkStateStore } from '../runtime/work-store.js'
 import type { WorkSignalKind, WorkSignalSeverity, WorkThread } from '../runtime/work-state.js'
+import type { EmotionalTurnRecord } from '../runtime/boundaries.js'
 
 export type SessionTaskStatus = 'idle' | 'running' | 'completed' | 'errored'
 
@@ -243,7 +244,7 @@ export class TaskSession {
         originalUserInput,
       },
     })
-    await this.initializeWorkThread(taskId, taskDescription, originalUserInput)
+    await this.initializeWorkThread(taskId, taskDescription, originalUserInput, taskContextItems)
     await this.persistSnapshot()
 
     const runPromise = this.executeTaskRun(
@@ -464,7 +465,8 @@ export class TaskSession {
   private async initializeWorkThread(
     taskId: string,
     taskDescription: string,
-    originalUserInput: string
+    originalUserInput: string,
+    taskContextItems: TaskContextItem[] = []
   ): Promise<void> {
     const workState = this.runtimeHooks.workState
     if (!workState) {
@@ -485,7 +487,7 @@ export class TaskSession {
         intent: 'task.start',
         createdAt: now,
       }],
-      emotionalTurnHistory: [],
+      emotionalTurnHistory: extractEmotionalTurnRecords(taskContextItems),
       observations: [],
       artifacts: [],
       decisions: [],
@@ -837,6 +839,21 @@ function mapTaskStepToWorkSignal(step: TaskStep): { kind: WorkSignalKind; severi
 
 function buildTaskResumeSummary(taskDescription: string, stepTitle: string): string {
   return `任务「${taskDescription}」最近推进到：${stepTitle}`
+}
+
+function extractEmotionalTurnRecords(items: TaskContextItem[]): EmotionalTurnRecord[] {
+  return items
+    .filter(item => item.type === 'emotional_turn_record')
+    .map(item => {
+      try {
+        return JSON.parse(item.content) as EmotionalTurnRecord
+      } catch {
+        return undefined
+      }
+    })
+    .filter((record): record is EmotionalTurnRecord =>
+      Boolean(record?.userInput && record.replyText && typeof record.createdAt === 'number')
+    )
 }
 
 function createDefaultTaskRuntimeAdapters(): TaskRuntimeAdapter[] {

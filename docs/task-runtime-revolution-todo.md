@@ -96,27 +96,27 @@
 
 ## Phase 2: 情感层保留与收束
 
-- [ ] 把情感层定义为 `EmotionalRuntime`。
-- [ ] 情感层输入包含：
-  - [ ] 用户原始输入。
-  - [ ] 当前对话上下文。
-  - [ ] 人设和记忆。
-  - [ ] 交互层给出的 work facts / work signals。
-- [ ] 情感层输出包含：
-  - [ ] 可见 reply。
-  - [ ] emotion tag。
-  - [ ] intent hints。
-  - [ ] 对任务层可见的 emotional turn record。
+- [x] 把情感层定义为 `EmotionalRuntime`。
+- [x] 情感层输入包含：
+  - [x] 用户原始输入。
+  - [x] 当前对话上下文。
+  - [x] 人设和记忆。
+  - [x] 交互层给出的 work facts / work signals。
+- [x] 情感层输出包含：
+  - [x] 可见 reply。
+  - [x] emotion tag。
+  - [x] intent hints。
+  - [x] 对任务层可见的 emotional turn record。
 - [ ] 保留现有 TTS frame 路径。
 - [ ] 保留 Fish S2 emotion cue 的 text transform 机制。
 - [ ] 保留 sticker / Live2D 这类 expression hook，但输入改为统一 emotional output event。
-- [ ] 移除情感层直接等待任务完成的职责。
+- [x] 移除情感层直接等待任务完成的职责。
 
 验收：
 
 - [ ] 普通聊天、TTS、表情表现不明显退化。
 - [ ] 情感层可以先回复“我来处理”，但任务是否开始由交互层/任务层决定。
-- [ ] 情感层输出会被任务层作为结构化 interaction record 持久化。
+- [x] 情感层输出会被任务层作为结构化 interaction record 持久化。
 
 ## Phase 3: 情感任务交互层
 
