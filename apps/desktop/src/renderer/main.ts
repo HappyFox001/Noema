@@ -1460,6 +1460,13 @@ type AppLogEntry = {
   message: string
 }
 
+type SystemTelemetry = {
+  success: boolean
+  memoryBytes: number
+  activeNetworkInterfaces: number
+  error?: string
+}
+
 type SetupIssue = {
   kind: SetupIssueKind
   label: string
@@ -3168,8 +3175,11 @@ const mainView = document.getElementById('main-view')!
 const settingsNav = document.querySelector('.settings-nav') as HTMLElement
 const modelNavItem = document.querySelector('.nav-item[data-section="models"]') as HTMLElement | null
 const modelNavLabel = modelNavItem?.querySelector('.nav-label') as HTMLElement | null
+const telemetryMemory = document.getElementById('telemetry-memory') as HTMLElement
+const telemetryNetwork = document.getElementById('telemetry-network') as HTMLElement
 
 let settingsCloseAnimationTimer: number | undefined
+let telemetryRefreshTimer: number | undefined
 
 let setupReadiness: SetupReadiness = { ready: true, issues: [] }
 const volumeSlider = document.getElementById('volume-slider') as HTMLInputElement
@@ -3196,6 +3206,7 @@ const learningReflectBtn = document.getElementById('learning-reflect-btn') as HT
 let memoryRefreshPromise: Promise<void> | null = null
 let learningRefreshPromise: Promise<void> | null = null
 type LearningView = 'overview' | 'agents' | 'candidates' | 'assets' | 'activity'
+type LearningDetailType = 'agent' | 'candidate' | 'asset' | 'event' | 'reflection' | 'decision' | 'rollback'
 type LearningOverviewData = {
   disabled?: boolean
   events?: any[]
@@ -3208,7 +3219,7 @@ type LearningOverviewData = {
 }
 let activeLearningView: LearningView = 'overview'
 let lastLearningOverview: LearningOverviewData | null = null
-let activeLearningDetail: { type: 'agent' | 'candidate' | 'asset' | 'event' | 'reflection' | 'decision' | 'rollback'; id: string } | null = null
+let activeLearningDetail: { type: LearningDetailType; id: string } | null = null
 let cachedPlugins: PluginInfo[] = []
 let activePluginDetail: { pluginId: string; page: 'main' | 'advanced' } | null = null
 let pluginsListLoadPromise: Promise<void> | null = null
@@ -3605,9 +3616,35 @@ function renderLogs(): void {
   logsList.innerHTML = visibleLogs.slice(-500).reverse().map(renderLogEntry).join('')
 }
 
+function appendVisibleLogs(entries: AppLogEntry[]): void {
+  const visibleEntries = activeLogLevel === 'all'
+    ? entries
+    : entries.filter(entry => entry.level === activeLogLevel)
+  if (visibleEntries.length === 0) return
+
+  if (logsList.querySelector('.config-empty')) {
+    logsList.innerHTML = ''
+  }
+
+  const fragment = document.createDocumentFragment()
+  visibleEntries.slice(-500).reverse().forEach(entry => {
+    const template = document.createElement('template')
+    template.innerHTML = renderLogEntry(entry).trim()
+    const node = template.content.firstElementChild
+    if (node) {
+      fragment.appendChild(node)
+    }
+  })
+  logsList.insertBefore(fragment, logsList.firstChild)
+
+  while (logsList.children.length > 500) {
+    logsList.lastElementChild?.remove()
+  }
+}
+
 function renderLogEntry(entry: AppLogEntry): string {
   return `
-    <article class="log-entry level-${entry.level}">
+    <article class="log-entry level-${entry.level}" data-log-key="${escapeHtml(`${entry.time}:${entry.type}:${entry.level}`)}">
       <div class="log-entry-meta">
         <span class="log-time">${escapeHtml(formatLogTime(entry.time))}</span>
         <span class="log-level">${escapeHtml(entry.level.toUpperCase())}</span>
@@ -3809,7 +3846,9 @@ function renderLearningSplitPage<T>(
         </div>
       </section>
       <section class="learning-panel learning-detail">
-        ${detail}
+        <div class="learning-detail-content" data-learning-detail-pane>
+          ${detail}
+        </div>
       </section>
     </div>
   `
@@ -3975,6 +4014,25 @@ function renderLearningEmpty(): string {
   return `<div class="config-empty">${escapeHtml(t('learning.emptyHint'))}</div>`
 }
 
+function syncLearningDetailPane(type: LearningDetailType, id: string): void {
+  if (!lastLearningOverview) return
+
+  learningOverview
+    .querySelectorAll<HTMLElement>('[data-learning-detail-type][data-learning-detail-id]')
+    .forEach(item => {
+      item.classList.toggle(
+        'selected',
+        item.dataset.learningDetailType === type && item.dataset.learningDetailId === id
+      )
+    })
+
+  const pane = learningOverview.querySelector<HTMLElement>('[data-learning-detail-pane]')
+  const detailItem = findLearningDetailItem(lastLearningOverview, type, id)
+  if (pane) {
+    pane.innerHTML = renderLearningDetail(type, detailItem)
+  }
+}
+
 function attachLearningAppHandlers(): void {
   learningOverview.querySelectorAll<HTMLButtonElement>('[data-learning-view-jump]').forEach(button => {
     button.addEventListener('click', () => {
@@ -3990,15 +4048,13 @@ function attachLearningAppHandlers(): void {
       if ((event.target as HTMLElement).closest('button')) {
         return
       }
-      const type = item.dataset.learningDetailType as typeof activeLearningDetail.type | undefined
+      const type = item.dataset.learningDetailType as LearningDetailType | undefined
       const id = item.dataset.learningDetailId
       if (!type || !id) {
         return
       }
       activeLearningDetail = { type, id }
-      if (lastLearningOverview) {
-        renderLearningOverview(lastLearningOverview)
-      }
+      syncLearningDetailPane(type, id)
     })
   })
 
@@ -4135,6 +4191,65 @@ contextMenu.addEventListener('click', (e) => {
   contextMenu.classList.remove('visible')
 })
 
+function getNetworkLabel(telemetry: SystemTelemetry): string {
+  if (!navigator.onLine || telemetry.activeNetworkInterfaces === 0) {
+    return 'OFFLINE'
+  }
+
+  const connection = (navigator as any).connection
+  const effectiveType = typeof connection?.effectiveType === 'string'
+    ? connection.effectiveType.toUpperCase()
+    : ''
+  const downlink = typeof connection?.downlink === 'number'
+    ? `${connection.downlink.toFixed(connection.downlink >= 10 ? 0 : 1)} MBPS`
+    : ''
+
+  return [effectiveType || 'ONLINE', downlink].filter(Boolean).join(' / ')
+}
+
+function formatTelemetryBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return '--'
+  }
+  const mib = bytes / 1024 / 1024
+  if (mib >= 1024) {
+    return `${(mib / 1024).toFixed(1)}G`
+  }
+  return `${Math.round(mib)}M`
+}
+
+async function refreshSystemTelemetry(): Promise<void> {
+  try {
+    const telemetry = await window.electronAPI.getSystemTelemetry()
+    if (!telemetry.success) {
+      throw new Error(telemetry.error ?? 'telemetry unavailable')
+    }
+    telemetryMemory.textContent = formatTelemetryBytes(telemetry.memoryBytes)
+    telemetryNetwork.textContent = getNetworkLabel(telemetry)
+  } catch {
+    telemetryMemory.textContent = '--'
+    telemetryNetwork.textContent = 'UNKNOWN'
+  }
+}
+
+function startSystemTelemetry(): void {
+  if (telemetryRefreshTimer !== undefined) {
+    window.clearInterval(telemetryRefreshTimer)
+  }
+  void refreshSystemTelemetry()
+  telemetryRefreshTimer = window.setInterval(() => {
+    void refreshSystemTelemetry()
+  }, 2000)
+}
+
+function stopSystemTelemetry(): void {
+  if (telemetryRefreshTimer === undefined) {
+    return
+  }
+  window.clearInterval(telemetryRefreshTimer)
+  telemetryRefreshTimer = undefined
+}
+
 // Open settings panel
 function switchSettingsSection(section: string): void {
   document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'))
@@ -4172,6 +4287,7 @@ function openSettings(section?: string) {
   document.body.classList.remove('settings-closing')
   document.body.classList.add('settings-open')
   ensureLiquidGlassSurfaceActive(true)
+  startSystemTelemetry()
   settingsPanel.classList.remove('warping-out')
   settingsPanel.classList.add('visible', 'warping-in')
   window.setTimeout(() => {
@@ -4195,6 +4311,7 @@ function openSettings(section?: string) {
 // Close settings panel
 function closeSettings() {
   window.electronAPI.setLogsStreaming(false)
+  stopSystemTelemetry()
   ensureLiquidGlassSurfaceActive(false)
   hidePanelNotice()
   document.body.classList.add('settings-closing')
@@ -4520,7 +4637,7 @@ window.electronAPI.onLogEntry((entry) => {
     logEntries = logEntries.slice(-1200)
   }
   if (isLogsSectionActive()) {
-    renderLogs()
+    appendVisibleLogs([entry])
   }
 })
 
@@ -4530,7 +4647,7 @@ window.electronAPI.onLogBatch((entries) => {
     logEntries = logEntries.slice(-1200)
   }
   if (isLogsSectionActive()) {
-    renderLogs()
+    appendVisibleLogs(entries)
   }
 })
 
@@ -4622,7 +4739,11 @@ function renderPluginsSection(plugins: PluginInfo[]): void {
     return
   }
 
-  pluginsList.innerHTML = plugins.map(plugin => `
+  pluginsList.innerHTML = plugins.map(renderPluginListCard).join('')
+}
+
+function renderPluginListCard(plugin: PluginInfo): string {
+  return `
     <div class="plugin-card plugin-card-list" data-plugin-id="${escapeHtml(plugin.id)}">
       <div class="plugin-card-main">
         <div class="plugin-info">
@@ -4644,135 +4765,78 @@ function renderPluginsSection(plugins: PluginInfo[]): void {
         <span class="plugin-enter">${escapeHtml(t('common.manage'))}</span>
       </div>
     </div>
-  `).join('')
+  `
+}
 
-  pluginsList.querySelectorAll<HTMLElement>('.plugin-card-list').forEach(card => {
-    card.addEventListener('click', (event) => {
-      if ((event.target as HTMLElement).closest('.plugin-toggle')) {
-        return
-      }
-      const pluginId = card.dataset.pluginId
-      const plugin = cachedPlugins.find(item => item.id === pluginId)
-      if (plugin) {
-        renderPluginDetail(plugin)
-      }
-    })
-  })
-
-  pluginsList.querySelectorAll<HTMLInputElement>('input[data-plugin-toggle]').forEach(input => {
-    input.addEventListener('click', (event) => {
-      event.stopPropagation()
-    })
-    input.addEventListener('change', async (event) => {
-      event.stopPropagation()
-      const pluginId = input.dataset.pluginToggle
-      if (!pluginId) return
-
-      input.disabled = true
-      try {
-        const settings = await window.electronAPI.getSettings()
-        const nextPlugins = {
-          ...(settings.plugins ?? {}),
-          [pluginId]: input.checked,
-        }
-        await window.electronAPI.updateSettings({ plugins: nextPlugins })
-        const target = cachedPlugins.find(item => item.id === pluginId)
-        if (target) {
-          target.enabled = input.checked
-        }
-        await loadPluginUISurfaces()
-        showPanelNotice(input.checked ? t('plugins.enabled') : t('plugins.disabled'))
-      } catch (error: any) {
-        input.checked = !input.checked
-        showPanelNotice(tf('plugins.updateFailed', { error: error.message }), 'error')
-      } finally {
-        input.disabled = false
-      }
-    })
-  })
-
+function syncPluginListCard(pluginId: string): void {
+  const plugin = cachedPlugins.find(item => item.id === pluginId)
+  if (!plugin) return
+  replaceKeyedElement(
+    pluginsList,
+    `.plugin-card-list[data-plugin-id="${cssEscape(pluginId)}"]`,
+    renderPluginListCard(plugin),
+    { insertMissing: false }
+  )
 }
 
 function renderPluginDetail(plugin: PluginInfo, page: 'main' | 'advanced' = 'main'): void {
   activePluginDetail = { pluginId: plugin.id, page }
   const isAdvancedPage = page === 'advanced'
-  const pluginName = pluginText(plugin, 'name', plugin.name)
-  const pageTitle = pluginPageTitle(plugin, page)
   pluginsList.innerHTML = `
-    <div class="plugin-detail-header">
-      <button class="plugin-back-btn" type="button">${escapeHtml(t('common.back'))}</button>
-      <div class="plugin-detail-title">
-        <span class="plugin-name">${escapeHtml(isAdvancedPage ? `${pluginName} / ${pageTitle}` : pluginName)}</span>
-        ${plugin.version ? `<span class="plugin-version">v${escapeHtml(plugin.version)}</span>` : ''}
-      </div>
-    </div>
+    ${renderPluginDetailHeader(plugin, page)}
     <div class="plugin-card plugin-detail-card" data-plugin-id="${escapeHtml(plugin.id)}">
-      ${isAdvancedPage ? '' : `<div class="plugin-card-main">
-        <div class="plugin-info">
-          <div class="plugin-id">${escapeHtml(plugin.id)}</div>
-          ${plugin.description ? `<div class="plugin-description plugin-detail-description">${escapeHtml(pluginText(plugin, 'description', plugin.description))}</div>` : ''}
-          ${plugin.uiSurfaces.length ? `<div class="plugin-permissions">${plugin.uiSurfaces.map(surface => `<span>UI: ${escapeHtml(surface.slot)} / ${escapeHtml(surface.mode)}</span>`).join('')}</div>` : ''}
-          ${plugin.permissions.length ? `<div class="plugin-permissions">${plugin.permissions.map(permission => `<span>${escapeHtml(permission)}</span>`).join('')}</div>` : ''}
-        </div>
-        <label class="settings-toggle plugin-toggle">
-          <input type="checkbox" ${plugin.enabled ? 'checked' : ''} data-plugin-toggle="${escapeHtml(plugin.id)}" />
-          <span class="toggle-slider"></span>
-        </label>
-      </div>`}
-      ${renderPluginConfigFields(plugin, page)}
+      ${isAdvancedPage ? '' : renderPluginDetailSummary(plugin)}
+      <div class="plugin-config-panel" data-plugin-config-panel="${escapeHtml(plugin.id)}">
+        ${renderPluginConfigFields(plugin, page)}
+      </div>
     </div>
     ${isAdvancedPage ? '' : renderPluginAdminContainer(plugin)}
   `
 
-  pluginsList.querySelector<HTMLButtonElement>('.plugin-back-btn')?.addEventListener('click', () => {
-    if (isAdvancedPage) {
-      renderPluginDetail(plugin, 'main')
-    } else {
-      renderPluginsSection(cachedPlugins)
-    }
-  })
-
-  pluginsList.querySelector<HTMLInputElement>('input[data-plugin-toggle]')?.addEventListener('change', async (event) => {
-    const input = event.currentTarget as HTMLInputElement
-    const pluginId = input.dataset.pluginToggle
-    if (!pluginId) return
-
-    input.disabled = true
-    try {
-      const settings = await window.electronAPI.getSettings()
-      const nextPlugins = {
-        ...(settings.plugins ?? {}),
-        [pluginId]: input.checked,
-      }
-      await window.electronAPI.updateSettings({ plugins: nextPlugins })
-      const target = cachedPlugins.find(item => item.id === pluginId)
-      if (target) {
-        target.enabled = input.checked
-      }
-      await loadPluginUISurfaces()
-      showPanelNotice(input.checked ? t('plugins.enabled') : t('plugins.disabled'))
-    } catch (error: any) {
-      input.checked = !input.checked
-      showPanelNotice(tf('plugins.updateFailed', { error: error.message }), 'error')
-    } finally {
-      input.disabled = false
-    }
-  })
-
-  pluginsList.querySelectorAll<HTMLButtonElement>('[data-plugin-config-page]').forEach(button => {
-    button.addEventListener('click', () => {
-      const targetPage = button.dataset.pluginConfigPage
-      if (targetPage === 'advanced') {
-        renderPluginDetail(plugin, 'advanced')
-      }
-    })
-  })
-
-  bindPluginConfigInputs()
   if (!isAdvancedPage) {
     loadPluginAdminPanel(plugin)
   } else {
     void hydrateLive2dCapabilities(plugin, page)
+  }
+}
+
+function renderPluginDetailHeader(plugin: PluginInfo, page: 'main' | 'advanced'): string {
+  const pluginName = pluginText(plugin, 'name', plugin.name)
+  const pageTitle = pluginPageTitle(plugin, page)
+  return `
+    <div class="plugin-detail-header">
+      <button class="plugin-back-btn" type="button">${escapeHtml(t('common.back'))}</button>
+      <div class="plugin-detail-title">
+        <span class="plugin-name">${escapeHtml(page === 'advanced' ? `${pluginName} / ${pageTitle}` : pluginName)}</span>
+        ${plugin.version ? `<span class="plugin-version">v${escapeHtml(plugin.version)}</span>` : ''}
+      </div>
+    </div>
+  `
+}
+
+function renderPluginDetailSummary(plugin: PluginInfo): string {
+  return `
+    <div class="plugin-card-main">
+      <div class="plugin-info">
+        <div class="plugin-id">${escapeHtml(plugin.id)}</div>
+        ${plugin.description ? `<div class="plugin-description plugin-detail-description">${escapeHtml(pluginText(plugin, 'description', plugin.description))}</div>` : ''}
+        ${plugin.uiSurfaces.length ? `<div class="plugin-permissions">${plugin.uiSurfaces.map(surface => `<span>UI: ${escapeHtml(surface.slot)} / ${escapeHtml(surface.mode)}</span>`).join('')}</div>` : ''}
+        ${plugin.permissions.length ? `<div class="plugin-permissions">${plugin.permissions.map(permission => `<span>${escapeHtml(permission)}</span>`).join('')}</div>` : ''}
+      </div>
+      <label class="settings-toggle plugin-toggle">
+        <input type="checkbox" ${plugin.enabled ? 'checked' : ''} data-plugin-toggle="${escapeHtml(plugin.id)}" />
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+  `
+}
+
+function syncPluginDetailConfig(plugin: PluginInfo, page: 'main' | 'advanced' = activePluginDetail?.page ?? 'main'): void {
+  const detailCard = pluginsList.querySelector<HTMLElement>('.plugin-detail-card')
+  if (detailCard?.dataset.pluginId !== plugin.id) return
+  const panel = detailCard.querySelector<HTMLElement>('[data-plugin-config-panel]')
+  if (panel) {
+    panel.innerHTML = renderPluginConfigFields(plugin, page)
   }
 }
 
@@ -5093,107 +5157,202 @@ function readAdminField(container: HTMLElement, scope: string, field: string): s
   )?.value.trim() ?? ''
 }
 
-function bindPluginConfigInputs(): void {
-  pluginsList.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
-    'input[data-plugin-config], select[data-plugin-config], textarea[data-plugin-config]'
-  ).forEach(input => {
-    input.addEventListener('change', async () => {
-      const pluginId = input.dataset.pluginId
-      const key = input.dataset.pluginConfig
-      const type = input.dataset.pluginType
-      if (!pluginId || !key || !type) return
-      const optimisticValue = readPluginConfigValue(input, type)
-      input.disabled = true
-      try {
-        await applyPluginConfigPatch(pluginId, getPluginConfigPatch(pluginId, key, optimisticValue))
-        showPanelNotice(t('plugins.configUpdated'))
-      } catch (error: any) {
-        showPanelNotice(tf('plugins.configSaveFailed', { error: error.message }), 'error')
-      } finally {
-        input.disabled = false
-      }
+async function updatePluginEnabled(input: HTMLInputElement): Promise<void> {
+  const pluginId = input.dataset.pluginToggle
+  if (!pluginId) return
+
+  input.disabled = true
+  try {
+    const settings = await window.electronAPI.getSettings()
+    const nextPlugins = {
+      ...(settings.plugins ?? {}),
+      [pluginId]: input.checked,
+    }
+    await window.electronAPI.updateSettings({ plugins: nextPlugins })
+    const target = cachedPlugins.find(item => item.id === pluginId)
+    if (target) {
+      target.enabled = input.checked
+    }
+    syncPluginListCard(pluginId)
+    await loadPluginUISurfaces()
+    showPanelNotice(input.checked ? t('plugins.enabled') : t('plugins.disabled'))
+  } catch (error: any) {
+    input.checked = !input.checked
+    showPanelNotice(tf('plugins.updateFailed', { error: error.message }), 'error')
+  } finally {
+    input.disabled = false
+  }
+}
+
+async function updatePluginConfigInput(
+  input: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+): Promise<void> {
+  const pluginId = input.dataset.pluginId
+  const key = input.dataset.pluginConfig
+  const type = input.dataset.pluginType
+  if (!pluginId || !key || !type) return
+
+  const optimisticValue = readPluginConfigValue(input, type)
+  input.disabled = true
+  try {
+    await applyPluginConfigPatch(pluginId, getPluginConfigPatch(pluginId, key, optimisticValue))
+    const plugin = cachedPlugins.find(item => item.id === pluginId)
+    if (plugin) {
+      syncPluginDetailConfig(plugin)
+    }
+    syncPluginListCard(pluginId)
+    showPanelNotice(t('plugins.configUpdated'))
+  } catch (error: any) {
+    showPanelNotice(tf('plugins.configSaveFailed', { error: error.message }), 'error')
+  } finally {
+    input.disabled = false
+  }
+}
+
+function stepPluginNumberInput(button: HTMLButtonElement): void {
+  const pluginId = button.dataset.pluginId
+  const key = button.dataset.pluginConfig
+  const direction = button.dataset.stepDir
+  if (!pluginId || !key) return
+
+  const input = pluginsList.querySelector<HTMLInputElement>(
+    `input[data-plugin-id="${cssEscape(pluginId)}"][data-plugin-config="${cssEscape(key)}"]`
+  )
+  if (!input) return
+
+  if (direction === 'up') {
+    input.stepUp()
+  } else {
+    input.stepDown()
+  }
+  input.dispatchEvent(new Event('change', { bubbles: true }))
+}
+
+async function selectPluginConfigPath(button: HTMLButtonElement): Promise<void> {
+  const pluginId = button.dataset.pluginId
+  const key = button.dataset.pluginConfig
+  if (!pluginId || !key) return
+
+  const input = pluginsList.querySelector<HTMLInputElement>(
+    `input[data-plugin-id="${cssEscape(pluginId)}"][data-plugin-config="${cssEscape(key)}"]`
+  )
+  const plugin = cachedPlugins.find(item => item.id === pluginId)
+  const field = plugin?.configSchema.find(item => item.key === key)
+  if (!input || !plugin || (field?.type !== 'file' && field?.type !== 'directory')) return
+
+  button.disabled = true
+  try {
+    const result = await window.electronAPI.selectPluginConfigPath({
+      mode: field.type,
+      title: field.label
+        ? tf('plugins.chooseField', { label: pluginConfigText(plugin, field, 'label', field.label) })
+        : (field.type === 'directory' ? t('plugins.chooseDirectory') : t('plugins.chooseFile')),
+      defaultPath: await getPluginPathDefault(pluginId, key),
+      filters: field.type === 'file' ? field.filters : undefined,
+      resolveFileExtensions: field.type === 'directory' ? field.resolveFileExtensions : undefined,
+      resolveRecursive: field.type === 'directory' ? field.resolveRecursive : undefined,
     })
-  })
-
-  pluginsList.querySelectorAll<HTMLButtonElement>('.plugin-number-step').forEach(button => {
-    button.addEventListener('click', () => {
-      const pluginId = button.dataset.pluginId
-      const key = button.dataset.pluginConfig
-      const direction = button.dataset.stepDir
-      if (!pluginId || !key) return
-
-      const input = pluginsList.querySelector<HTMLInputElement>(
-        `input[data-plugin-id="${cssEscape(pluginId)}"][data-plugin-config="${cssEscape(key)}"]`
+    if (result.canceled) {
+      return
+    }
+    if (!result.success) {
+      throw new Error(result.error || t('plugins.pathSelectFailedFallback'))
+    }
+    const selectedValue = field.type === 'directory' ? result.directoryPath : result.fileUrl
+    if (!selectedValue) {
+      throw new Error(field.type === 'directory' ? t('plugins.directorySelectFailed') : t('plugins.fileSelectFailed'))
+    }
+    const configPatch: Record<string, unknown> = { [key]: selectedValue }
+    if (field.type === 'directory' && field.targetKey && result.resolvedFileUrl) {
+      configPatch[field.targetKey] = result.resolvedFileUrl
+      const targetInput = pluginsList.querySelector<HTMLInputElement>(
+        `input[data-plugin-id="${cssEscape(pluginId)}"][data-plugin-config="${cssEscape(field.targetKey)}"]`
       )
-      if (!input) return
+      if (targetInput) {
+        targetInput.value = result.resolvedFileUrl
+      }
+    }
+    if (field.type === 'directory' && field.targetKey && field.resolveFileExtensions?.length && !result.resolvedFileUrl) {
+      throw new Error(tf('plugins.missingResolvedFile', { extensions: field.resolveFileExtensions.join(', ') }))
+    }
+    input.value = selectedValue
+    await applyPluginConfigPatch(pluginId, configPatch)
+    await updatePluginPathHistory(pluginId, key, field.type, selectedValue)
+    syncPluginDetailConfig(plugin)
+    syncPluginListCard(pluginId)
+    showPanelNotice(t('plugins.pathUpdated'))
+  } catch (error: any) {
+    showPanelNotice(tf('plugins.pathSelectFailed', { error: error.message }), 'error')
+  } finally {
+    button.disabled = false
+  }
+}
 
-      if (direction === 'up') {
-        input.stepUp()
+function bindPluginsListEvents(): void {
+  pluginsList.addEventListener('click', (event) => {
+    const target = event.target as HTMLElement | null
+    if (!target) return
+
+    if (target.closest('.plugin-toggle')) {
+      event.stopPropagation()
+      return
+    }
+
+    const backButton = target.closest<HTMLButtonElement>('.plugin-back-btn')
+    if (backButton) {
+      if (activePluginDetail?.page === 'advanced') {
+        const plugin = cachedPlugins.find(item => item.id === activePluginDetail?.pluginId)
+        if (plugin) {
+          renderPluginDetail(plugin, 'main')
+        }
       } else {
-        input.stepDown()
+        renderPluginsSection(cachedPlugins)
       }
-      input.dispatchEvent(new Event('change', { bubbles: true }))
-    })
+      return
+    }
+
+    const pageButton = target.closest<HTMLButtonElement>('[data-plugin-config-page]')
+    if (pageButton?.dataset.pluginConfigPage === 'advanced' && activePluginDetail) {
+      const plugin = cachedPlugins.find(item => item.id === activePluginDetail?.pluginId)
+      if (plugin) {
+        renderPluginDetail(plugin, 'advanced')
+      }
+      return
+    }
+
+    const stepButton = target.closest<HTMLButtonElement>('.plugin-number-step')
+    if (stepButton) {
+      stepPluginNumberInput(stepButton)
+      return
+    }
+
+    const pathButton = target.closest<HTMLButtonElement>('[data-plugin-path-select]')
+    if (pathButton) {
+      void selectPluginConfigPath(pathButton)
+      return
+    }
+
+    const card = target.closest<HTMLElement>('.plugin-card-list')
+    const pluginId = card?.dataset.pluginId
+    const plugin = cachedPlugins.find(item => item.id === pluginId)
+    if (plugin) {
+      renderPluginDetail(plugin)
+    }
   })
 
-  pluginsList.querySelectorAll<HTMLButtonElement>('[data-plugin-path-select]').forEach(button => {
-    button.addEventListener('click', async () => {
-      const pluginId = button.dataset.pluginId
-      const key = button.dataset.pluginConfig
-      if (!pluginId || !key) return
+  pluginsList.addEventListener('change', (event) => {
+    const input = event.target as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null
+    if (!input) return
 
-      const input = pluginsList.querySelector<HTMLInputElement>(
-        `input[data-plugin-id="${cssEscape(pluginId)}"][data-plugin-config="${cssEscape(key)}"]`
-      )
-      const plugin = cachedPlugins.find(item => item.id === pluginId)
-      const field = plugin?.configSchema.find(item => item.key === key)
-      if (!input || (field?.type !== 'file' && field?.type !== 'directory')) return
+    if (input instanceof HTMLInputElement && input.dataset.pluginToggle) {
+      event.stopPropagation()
+      void updatePluginEnabled(input)
+      return
+    }
 
-      button.disabled = true
-      try {
-        const result = await window.electronAPI.selectPluginConfigPath({
-          mode: field.type,
-          title: field.label
-            ? tf('plugins.chooseField', { label: pluginConfigText(plugin, field, 'label', field.label) })
-            : (field.type === 'directory' ? t('plugins.chooseDirectory') : t('plugins.chooseFile')),
-          defaultPath: await getPluginPathDefault(pluginId, key),
-          filters: field.type === 'file' ? field.filters : undefined,
-          resolveFileExtensions: field.type === 'directory' ? field.resolveFileExtensions : undefined,
-          resolveRecursive: field.type === 'directory' ? field.resolveRecursive : undefined,
-        })
-        if (result.canceled) {
-          return
-        }
-        if (!result.success) {
-          throw new Error(result.error || t('plugins.pathSelectFailedFallback'))
-        }
-        const selectedValue = field.type === 'directory' ? result.directoryPath : result.fileUrl
-        if (!selectedValue) {
-          throw new Error(field.type === 'directory' ? t('plugins.directorySelectFailed') : t('plugins.fileSelectFailed'))
-        }
-        const configPatch: Record<string, unknown> = { [key]: selectedValue }
-        if (field.type === 'directory' && field.targetKey && result.resolvedFileUrl) {
-          configPatch[field.targetKey] = result.resolvedFileUrl
-          const targetInput = pluginsList.querySelector<HTMLInputElement>(
-            `input[data-plugin-id="${cssEscape(pluginId)}"][data-plugin-config="${cssEscape(field.targetKey)}"]`
-          )
-          if (targetInput) {
-            targetInput.value = result.resolvedFileUrl
-          }
-        }
-        if (field.type === 'directory' && field.targetKey && field.resolveFileExtensions?.length && !result.resolvedFileUrl) {
-          throw new Error(tf('plugins.missingResolvedFile', { extensions: field.resolveFileExtensions.join(', ') }))
-        }
-        input.value = selectedValue
-        await applyPluginConfigPatch(pluginId, configPatch)
-        await updatePluginPathHistory(pluginId, key, field.type, selectedValue)
-        showPanelNotice(t('plugins.pathUpdated'))
-      } catch (error: any) {
-        showPanelNotice(tf('plugins.pathSelectFailed', { error: error.message }), 'error')
-      } finally {
-        button.disabled = false
-      }
-    })
+    if (input.matches('input[data-plugin-config], select[data-plugin-config], textarea[data-plugin-config]')) {
+      void updatePluginConfigInput(input)
+    }
   })
 }
 
@@ -5259,7 +5418,7 @@ async function hydrateLive2dCapabilities(plugin: PluginInfo, page: 'main' | 'adv
     })
     const currentCard = pluginsList.querySelector<HTMLElement>('.plugin-detail-card')
     if (currentCard?.dataset.pluginId === plugin.id) {
-      renderPluginDetail(plugin, page)
+      syncPluginDetailConfig(plugin, page)
     }
     return
   }
@@ -5271,7 +5430,7 @@ async function hydrateLive2dCapabilities(plugin: PluginInfo, page: 'main' | 'adv
   })
   const currentCard = pluginsList.querySelector<HTMLElement>('.plugin-detail-card')
   if (currentCard?.dataset.pluginId === plugin.id) {
-    renderPluginDetail(plugin, page)
+    syncPluginDetailConfig(plugin, page)
   }
 }
 
@@ -5322,6 +5481,23 @@ function cssEscape(value: string): string {
     return CSS.escape(value)
   }
   return value.replace(/["\\]/g, '\\$&')
+}
+
+function replaceKeyedElement(
+  container: HTMLElement,
+  selector: string,
+  html: string,
+  options: { insertMissing?: boolean } = {}
+): void {
+  const existing = container.querySelector<HTMLElement>(selector)
+  if (existing) {
+    existing.outerHTML = html
+    return
+  }
+  if (options.insertMissing === false) {
+    return
+  }
+  container.insertAdjacentHTML('beforeend', html)
 }
 
 function pluginText(plugin: PluginInfo, key: string, fallback: string): string {
@@ -5866,7 +6042,7 @@ function renderProfile(profile: UserProfile): void {
   let html = '<div class="profile-fields">'
   fields.forEach(f => {
     html += `
-      <div class="profile-field">
+      <div class="profile-field" data-profile-field="${escapeHtml(f.key)}">
         <span class="field-label">${escapeHtml(f.label)}</span>
         <span class="field-value">${escapeHtml(f.value)}</span>
         <button class="delete-icon-btn" data-field="${escapeHtml(f.key)}" title="${escapeHtml(t('common.delete'))}"></button>
@@ -5948,7 +6124,7 @@ function renderImportantMemories(memories: Record<string, string>): void {
   let html = '<div class="memories-list">'
   entries.forEach(([key, value]) => {
     html += `
-      <div class="memory-item">
+      <div class="memory-item" data-memory-key="${escapeHtml(key)}">
         <div class="memory-content">
           <span class="memory-key">${escapeHtml(key)}</span>
           <span class="memory-value">${escapeHtml(value)}</span>
@@ -6031,7 +6207,7 @@ function renderSummaries(summaries: Array<{
       minute: '2-digit'
     })
     html += `
-      <div class="summary-item">
+      <div class="summary-item" data-summary-id="${escapeHtml(s.id)}">
         <div class="summary-header">
           <span class="summary-date">${date}</span>
           <button class="delete-icon-btn" data-id="${escapeHtml(s.id)}" title="${escapeHtml(t('common.delete'))}"></button>
@@ -6116,7 +6292,7 @@ function renderConversations(turns: Array<{
     const roleLabel = turn.role === 'user' ? t('memory.userRole') : 'EVA'
     const roleClass = turn.role === 'user' ? 'user' : 'assistant'
     html += `
-      <div class="conversation-item ${roleClass}">
+      <div class="conversation-item ${roleClass}" data-conversation-id="${escapeHtml(turn.id)}">
         <span class="conversation-role">${roleLabel}</span>
         <span class="conversation-content">${escapeHtml(turn.content)}</span>
         <button class="delete-icon-btn" data-id="${escapeHtml(turn.id)}" title="${escapeHtml(t('common.delete'))}"></button>
@@ -6191,7 +6367,7 @@ function renderAccountInputs(inputs: AccountInput[]): void {
   const groups = groupAccountInputs(inputs)
   groups.forEach(group => {
     html += `
-      <div class="account-input-group">
+      <div class="account-input-group" data-account-group="${escapeHtml(group.key)}">
         <div class="account-input-group-title">
           <span>${escapeHtml(group.label)}</span>
           <span>${escapeHtml(tf('common.items', { count: group.items.length }))}</span>
@@ -6205,7 +6381,7 @@ function renderAccountInputs(inputs: AccountInput[]): void {
         minute: '2-digit'
       })
       html += `
-        <div class="account-input-item">
+        <div class="account-input-item" data-account-key="${escapeHtml(input.key)}">
           <div class="account-input-main">
             <div class="account-input-title">
               <span>${escapeHtml(input.itemLabel || input.label || input.key)}</span>
@@ -6762,7 +6938,11 @@ function renderModelOverview(): void {
   }
 
   const summaries = (['llm', 'task', 'tts', 'asr', 'models'] as ModelManagerKind[]).map(getActiveModelSummary)
-  modelOverviewList.innerHTML = summaries.map(summary => `
+  modelOverviewList.innerHTML = summaries.map(renderModelOverviewCard).join('')
+}
+
+function renderModelOverviewCard(summary: ReturnType<typeof getActiveModelSummary>): string {
+  return `
     <button class="model-overview-card ${summary.ready ? 'ready' : 'missing'}" type="button" data-model-kind="${summary.kind}">
       ${summary.logo ? renderModelLogo(summary.logo, 'overview') : '<span class="model-overview-mark"></span>'}
       <span class="model-overview-main">
@@ -6780,16 +6960,18 @@ function renderModelOverview(): void {
       </span>
       <span class="model-overview-action">${escapeHtml(t('system.manage'))}</span>
     </button>
-  `).join('')
+  `
+}
 
-  modelOverviewList.querySelectorAll<HTMLButtonElement>('.model-overview-card').forEach(card => {
-    card.addEventListener('click', () => {
-      const kind = card.dataset.modelKind as ModelManagerKind | undefined
-      if (kind) {
-        openModelManager(kind)
-      }
-    })
-  })
+function syncModelOverviewCard(kind: ModelManagerKind): void {
+  if (!currentSystemConfig) return
+
+  const summary = getActiveModelSummary(kind)
+  replaceKeyedElement(
+    modelOverviewList,
+    `.model-overview-card[data-model-kind="${cssEscape(kind)}"]`,
+    renderModelOverviewCard(summary)
+  )
 }
 
 function openModelManager(kind: ModelManagerKind): void {
@@ -6850,7 +7032,7 @@ function renderLocalModels(models: LocalModelStatus[]): void {
   renderModelManagerPage()
 
   localModelsList.innerHTML = models.map(model => `
-    <div class="config-model-card local-model-card ${model.exists ? 'active' : 'missing'}">
+    <div class="config-model-card local-model-card ${model.exists ? 'active' : 'missing'}" data-local-model="${escapeHtml(model.filename)}">
       <div class="config-model-header">
         <div class="config-model-name local-model-name">
           <span>${escapeHtml(model.name)}</span>
@@ -6893,98 +7075,255 @@ function formatFileSize(bytes: number): string {
   return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`
 }
 
-function renderLLMModels(): void {
+function getModelListElement(kind: ModelListKind): HTMLElement {
+  if (kind === 'llm') return llmModelsList
+  if (kind === 'task') return taskModelsList
+  if (kind === 'tts') return ttsModelsList
+  return asrModelsList
+}
+
+function getModelListEmptyText(kind: ModelListKind): string {
+  if (kind === 'llm') return t('system.noLlm')
+  if (kind === 'task') return t('system.noTask')
+  if (kind === 'tts') return t('system.noTts')
+  return t('system.noAsr')
+}
+
+function getModelListItems(kind: ModelListKind): Array<LLMModelConfig | TTSModelConfig | ASRModelConfig> {
+  if (!currentSystemConfig) return []
+  if (kind === 'llm') return currentSystemConfig.llmModels
+  if (kind === 'task') return currentSystemConfig.taskModels
+  if (kind === 'tts') return currentSystemConfig.ttsModels
+  return currentSystemConfig.asrModels
+}
+
+function getModelListItem(kind: ModelListKind, id: string): LLMModelConfig | TTSModelConfig | ASRModelConfig | undefined {
+  return getModelListItems(kind).find(model => model.id === id)
+}
+
+function renderModelList(kind: ModelListKind): void {
   if (!currentSystemConfig) return
 
-  const models = currentSystemConfig.llmModels
+  const list = getModelListElement(kind)
+  const models = getModelListItems(kind)
   if (models.length === 0) {
-    llmModelsList.innerHTML = `<div class="config-empty">${escapeHtml(t('system.noLlm'))}</div>`
+    list.innerHTML = `<div class="config-empty">${escapeHtml(getModelListEmptyText(kind))}</div>`
     return
   }
 
-  llmModelsList.innerHTML = models.map(model => `
-    <div class="config-model-card ${model.id === currentSystemConfig!.activeLLMId ? 'active' : ''}" data-id="${escapeHtml(model.id)}">
+  list.innerHTML = models.map(model => renderModelCard(kind, model)).join('')
+}
+
+function syncModelCard(kind: ModelListKind, id: string): void {
+  const list = getModelListElement(kind)
+  const card = list.querySelector<HTMLElement>(`.config-model-card[data-id="${cssEscape(id)}"]`)
+  const model = getModelListItem(kind, id)
+  if (!model) {
+    card?.remove()
+    if (getModelListItems(kind).length === 0) {
+      renderModelList(kind)
+    }
+    return
+  }
+
+  replaceKeyedElement(list, `.config-model-card[data-id="${cssEscape(id)}"]`, renderModelCard(kind, model))
+}
+
+function syncModelCards(kind: ModelListKind, ids: string[] = getModelListItems(kind).map(model => model.id)): void {
+  if (getModelListItems(kind).length === 0) {
+    renderModelList(kind)
+    return
+  }
+
+  Array.from(new Set(ids)).forEach(id => syncModelCard(kind, id))
+}
+
+function renderModelCard(kind: ModelListKind, model: LLMModelConfig | TTSModelConfig | ASRModelConfig): string {
+  if (!currentSystemConfig) return ''
+
+  if (kind === 'llm') {
+    const item = model as LLMModelConfig
+    const models = currentSystemConfig.llmModels
+    return `
+    <div class="config-model-card ${item.id === currentSystemConfig.activeLLMId ? 'active' : ''}" data-id="${escapeHtml(item.id)}">
       <div class="config-model-header">
         <div class="config-model-name">
-          ${renderModelLogo(getLLMModelLogo(model))}
-          <input type="text" value="${escapeHtml(model.modelName)}" data-field="modelName" placeholder="deepseek-chat" />
-          ${model.id === currentSystemConfig!.activeLLMId ? `<span class="config-model-active-badge">${escapeHtml(t('common.active'))}</span>` : ''}
+          ${renderModelLogo(getLLMModelLogo(item))}
+          <input type="text" value="${escapeHtml(item.modelName)}" data-field="modelName" placeholder="deepseek-chat" />
+          ${item.id === currentSystemConfig.activeLLMId ? `<span class="config-model-active-badge">${escapeHtml(t('common.active'))}</span>` : ''}
         </div>
         <div class="config-model-actions">
           ${renderApiTestButton()}
-          ${model.id !== currentSystemConfig!.activeLLMId ? `<button class="config-model-btn config-activate-btn" data-action="activate">${escapeHtml(t('common.activate'))}</button>` : ''}
+          ${item.id !== currentSystemConfig.activeLLMId ? `<button class="config-model-btn config-activate-btn" data-action="activate">${escapeHtml(t('common.activate'))}</button>` : ''}
           ${models.length > 1 ? `<button class="config-model-btn config-delete-btn" data-action="delete">${escapeHtml(t('common.delete'))}</button>` : ''}
         </div>
       </div>
       <div class="config-model-fields">
         <div class="config-field">
           <span class="config-field-label">API Key</span>
-          <input type="text" class="config-field-input masked" value="${escapeHtml(model.apiKey)}" data-field="apiKey" placeholder="sk-..." />
+          <input type="text" class="config-field-input masked" value="${escapeHtml(item.apiKey)}" data-field="apiKey" placeholder="sk-..." />
         </div>
         <div class="config-field">
           <span class="config-field-label">Base URL</span>
-          <input type="text" class="config-field-input" value="${escapeHtml(model.baseUrl)}" data-field="baseUrl" placeholder="https://api.openai.com/v1" />
+          <input type="text" class="config-field-input" value="${escapeHtml(item.baseUrl)}" data-field="baseUrl" placeholder="https://api.openai.com/v1" />
         </div>
       </div>
     </div>
-  `).join('')
-
-  attachLLMEventListeners()
-}
-
-function renderTaskModels(): void {
-  if (!currentSystemConfig) return
-
-  const models = currentSystemConfig.taskModels
-  if (models.length === 0) {
-    taskModelsList.innerHTML = `<div class="config-empty">${escapeHtml(t('system.noTask'))}</div>`
-    return
+  `
   }
 
-  taskModelsList.innerHTML = models.map(model => {
-    const transport = getTaskModelTransport(model)
+  if (kind === 'task') {
+    const item = model as LLMModelConfig
+    const models = currentSystemConfig.taskModels
+    const transport = getTaskModelTransport(item)
     const isCli = transport !== 'openai_compatible'
     const taskFields = isCli
       ? ''
       : `
         <div class="config-field">
           <span class="config-field-label">API Key</span>
-          <input type="text" class="config-field-input masked" value="${escapeHtml(model.apiKey)}" data-field="apiKey" placeholder="sk-..." />
+          <input type="text" class="config-field-input masked" value="${escapeHtml(item.apiKey)}" data-field="apiKey" placeholder="sk-..." />
         </div>
         <div class="config-field">
           <span class="config-field-label">Base URL</span>
-          <input type="text" class="config-field-input" value="${escapeHtml(model.baseUrl)}" data-field="baseUrl" placeholder="https://generativelanguage.googleapis.com/v1beta/openai" />
+          <input type="text" class="config-field-input" value="${escapeHtml(item.baseUrl)}" data-field="baseUrl" placeholder="https://generativelanguage.googleapis.com/v1beta/openai" />
         </div>
       `
     return `
-    <div class="config-model-card ${model.id === currentSystemConfig!.activeTaskId ? 'active' : ''}" data-id="${escapeHtml(model.id)}">
+    <div class="config-model-card ${item.id === currentSystemConfig.activeTaskId ? 'active' : ''}" data-id="${escapeHtml(item.id)}">
       <div class="config-model-header">
         <div class="config-model-name">
-          ${renderTaskTransportControl(model)}
+          ${renderTaskTransportControl(item)}
           ${isCli
             ? '<span class="config-model-cli-default">CLI default</span>'
-            : `<input type="text" value="${escapeHtml(model.modelName)}" data-field="modelName" placeholder="gemini-3.1-pro-preview" />`
+            : `<input type="text" value="${escapeHtml(item.modelName)}" data-field="modelName" placeholder="gemini-3.1-pro-preview" />`
           }
-          ${model.id === currentSystemConfig!.activeTaskId ? `<span class="config-model-active-badge">${escapeHtml(t('common.active'))}</span>` : ''}
+          ${item.id === currentSystemConfig.activeTaskId ? `<span class="config-model-active-badge">${escapeHtml(t('common.active'))}</span>` : ''}
         </div>
         <div class="config-model-actions">
           ${renderApiTestButton()}
-          ${model.id !== currentSystemConfig!.activeTaskId ? `<button class="config-model-btn config-activate-btn" data-action="activate">${escapeHtml(t('common.activate'))}</button>` : ''}
+          ${item.id !== currentSystemConfig.activeTaskId ? `<button class="config-model-btn config-activate-btn" data-action="activate">${escapeHtml(t('common.activate'))}</button>` : ''}
           ${models.length > 1 ? `<button class="config-model-btn config-delete-btn" data-action="delete">${escapeHtml(t('common.delete'))}</button>` : ''}
         </div>
       </div>
       <div class="config-model-fields">
         <div class="config-field">
           <span class="config-field-label">Transport</span>
-          ${renderTaskTransportControl(model)}
+          ${renderTaskTransportControl(item)}
         </div>
         ${taskFields}
       </div>
     </div>
   `
-  }).join('')
+  }
 
-  attachTaskEventListeners()
+  if (kind === 'tts') {
+    const item = model as TTSModelConfig
+    const models = currentSystemConfig.ttsModels
+    const fields = [
+      shouldShowTTSField(item.provider, 'apiKey') ? `
+        <div class="config-field">
+          <span class="config-field-label">API Key</span>
+          <input type="text" class="config-field-input masked" value="${escapeHtml(item.apiKey)}" data-field="apiKey" placeholder="API Key" />
+        </div>
+      ` : '',
+      shouldShowTTSField(item.provider, 'baseUrl') ? `
+        <div class="config-field">
+          <span class="config-field-label">Base URL</span>
+          <input type="text" class="config-field-input" value="${escapeHtml(item.baseUrl || '')}" data-field="baseUrl" placeholder="https://api.openai.com/v1" />
+        </div>
+      ` : '',
+      shouldShowTTSField(item.provider, 'voiceId') ? `
+        <div class="config-field">
+          <span class="config-field-label">Voice ID</span>
+          <input type="text" class="config-field-input" value="${escapeHtml(item.voiceId || '')}" data-field="voiceId" placeholder="${escapeHtml(getTTSProviderCatalogEntry(item.provider).defaultVoiceId || t('system.voiceIdPlaceholder'))}" />
+        </div>
+      ` : '',
+      shouldShowTTSField(item.provider, 'language') ? `
+        <div class="config-field">
+          <span class="config-field-label">Language</span>
+          <input type="text" class="config-field-input" value="${escapeHtml(item.language || '')}" data-field="language" placeholder="${escapeHtml(t('system.languagePlaceholderOptional'))}" />
+        </div>
+      ` : '',
+    ].join('')
+    return `
+    <div class="config-model-card ${item.id === currentSystemConfig.activeTTSId ? 'active' : ''}" data-id="${escapeHtml(item.id)}">
+      <div class="config-model-header">
+        <div class="config-model-name">
+          ${renderTTSProviderControl(item.provider)}
+          <input type="text" value="${escapeHtml(item.modelName)}" data-field="modelName" placeholder="s2-pro" />
+          ${item.id === currentSystemConfig.activeTTSId ? `<span class="config-model-active-badge">${escapeHtml(t('common.active'))}</span>` : ''}
+        </div>
+        <div class="config-model-actions">
+          ${renderApiTestButton()}
+          ${item.id !== currentSystemConfig.activeTTSId ? `<button class="config-model-btn config-activate-btn" data-action="activate">${escapeHtml(t('common.activate'))}</button>` : ''}
+          ${models.length > 1 ? `<button class="config-model-btn config-delete-btn" data-action="delete">${escapeHtml(t('common.delete'))}</button>` : ''}
+        </div>
+      </div>
+      <div class="config-model-fields">
+        <div class="config-field">
+          <span class="config-field-label">Provider</span>
+          ${renderTTSProviderControl(item.provider)}
+        </div>
+        ${fields}
+      </div>
+    </div>
+  `
+  }
+
+  const item = model as ASRModelConfig
+  const models = currentSystemConfig.asrModels
+  const fields = [
+    shouldShowASRField(item.provider, 'apiKey') ? `
+      <div class="config-field">
+        <span class="config-field-label">API Key</span>
+        <input type="text" class="config-field-input masked" value="${escapeHtml(item.apiKey)}" data-field="apiKey" placeholder="API Key" />
+      </div>
+    ` : '',
+    shouldShowASRField(item.provider, 'baseUrl') ? `
+      <div class="config-field">
+        <span class="config-field-label">Base URL</span>
+        <input type="text" class="config-field-input" value="${escapeHtml(item.baseUrl || '')}" data-field="baseUrl" placeholder="https://api.openai.com/v1" />
+      </div>
+    ` : '',
+    shouldShowASRField(item.provider, 'language') ? `
+      <div class="config-field">
+        <span class="config-field-label">Language</span>
+        <input type="text" class="config-field-input" value="${escapeHtml(item.language || '')}" data-field="language" placeholder="zh / en" />
+      </div>
+    ` : '',
+  ].join('')
+  return `
+    <div class="config-model-card ${item.id === currentSystemConfig.activeASRId ? 'active' : ''}" data-id="${escapeHtml(item.id)}">
+      <div class="config-model-header">
+        <div class="config-model-name">
+          ${renderASRProviderControl(item.provider)}
+          <input type="text" value="${escapeHtml(item.modelName)}" data-field="modelName" placeholder="realtime" />
+          ${item.id === currentSystemConfig.activeASRId ? `<span class="config-model-active-badge">${escapeHtml(t('common.active'))}</span>` : ''}
+        </div>
+        <div class="config-model-actions">
+          ${renderApiTestButton()}
+          ${item.id !== currentSystemConfig.activeASRId ? `<button class="config-model-btn config-activate-btn" data-action="activate">${escapeHtml(t('common.activate'))}</button>` : ''}
+          ${models.length > 1 ? `<button class="config-model-btn config-delete-btn" data-action="delete">${escapeHtml(t('common.delete'))}</button>` : ''}
+        </div>
+      </div>
+      <div class="config-model-fields">
+        <div class="config-field">
+          <span class="config-field-label">Provider</span>
+          ${renderASRProviderControl(item.provider)}
+        </div>
+        ${fields}
+      </div>
+    </div>
+  `
+}
+
+function renderLLMModels(): void {
+  renderModelList('llm')
+}
+
+function renderTaskModels(): void {
+  renderModelList('task')
 }
 
 function renderTaskRuntimeSettings(): void {
@@ -7096,67 +7435,7 @@ function shouldShowASRField(provider: ASRProviderType, field: keyof ASRModelConf
 }
 
 function renderTTSModels(): void {
-  if (!currentSystemConfig) return
-
-  const models = currentSystemConfig.ttsModels
-  if (models.length === 0) {
-    ttsModelsList.innerHTML = `<div class="config-empty">${escapeHtml(t('system.noTts'))}</div>`
-    return
-  }
-
-  ttsModelsList.innerHTML = models.map(model => {
-    const fields = [
-      shouldShowTTSField(model.provider, 'apiKey') ? `
-        <div class="config-field">
-          <span class="config-field-label">API Key</span>
-          <input type="text" class="config-field-input masked" value="${escapeHtml(model.apiKey)}" data-field="apiKey" placeholder="API Key" />
-        </div>
-      ` : '',
-      shouldShowTTSField(model.provider, 'baseUrl') ? `
-        <div class="config-field">
-          <span class="config-field-label">Base URL</span>
-          <input type="text" class="config-field-input" value="${escapeHtml(model.baseUrl || '')}" data-field="baseUrl" placeholder="https://api.openai.com/v1" />
-        </div>
-      ` : '',
-      shouldShowTTSField(model.provider, 'voiceId') ? `
-        <div class="config-field">
-          <span class="config-field-label">Voice ID</span>
-          <input type="text" class="config-field-input" value="${escapeHtml(model.voiceId || '')}" data-field="voiceId" placeholder="${escapeHtml(getTTSProviderCatalogEntry(model.provider).defaultVoiceId || t('system.voiceIdPlaceholder'))}" />
-        </div>
-      ` : '',
-      shouldShowTTSField(model.provider, 'language') ? `
-        <div class="config-field">
-          <span class="config-field-label">Language</span>
-          <input type="text" class="config-field-input" value="${escapeHtml(model.language || '')}" data-field="language" placeholder="${escapeHtml(t('system.languagePlaceholderOptional'))}" />
-        </div>
-      ` : '',
-    ].join('')
-    return `
-    <div class="config-model-card ${model.id === currentSystemConfig!.activeTTSId ? 'active' : ''}" data-id="${escapeHtml(model.id)}">
-      <div class="config-model-header">
-        <div class="config-model-name">
-          ${renderTTSProviderControl(model.provider)}
-          <input type="text" value="${escapeHtml(model.modelName)}" data-field="modelName" placeholder="s2-pro" />
-          ${model.id === currentSystemConfig!.activeTTSId ? `<span class="config-model-active-badge">${escapeHtml(t('common.active'))}</span>` : ''}
-        </div>
-        <div class="config-model-actions">
-          ${renderApiTestButton()}
-          ${model.id !== currentSystemConfig!.activeTTSId ? `<button class="config-model-btn config-activate-btn" data-action="activate">${escapeHtml(t('common.activate'))}</button>` : ''}
-          ${models.length > 1 ? `<button class="config-model-btn config-delete-btn" data-action="delete">${escapeHtml(t('common.delete'))}</button>` : ''}
-        </div>
-      </div>
-      <div class="config-model-fields">
-        <div class="config-field">
-          <span class="config-field-label">Provider</span>
-          ${renderTTSProviderControl(model.provider)}
-        </div>
-        ${fields}
-      </div>
-    </div>
-  `
-  }).join('')
-
-  attachTTSEventListeners()
+  renderModelList('tts')
 }
 
 const ASR_PROVIDERS = ASR_PROVIDER_CATALOG.filter(provider => provider.implemented)
@@ -7170,61 +7449,7 @@ function renderASRProviderControl(provider: ASRProviderType): string {
 }
 
 function renderASRModels(): void {
-  if (!currentSystemConfig) return
-
-  const models = currentSystemConfig.asrModels
-  if (models.length === 0) {
-    asrModelsList.innerHTML = `<div class="config-empty">${escapeHtml(t('system.noAsr'))}</div>`
-    return
-  }
-
-  asrModelsList.innerHTML = models.map(model => {
-    const fields = [
-      shouldShowASRField(model.provider, 'apiKey') ? `
-        <div class="config-field">
-          <span class="config-field-label">API Key</span>
-          <input type="text" class="config-field-input masked" value="${escapeHtml(model.apiKey)}" data-field="apiKey" placeholder="API Key" />
-        </div>
-      ` : '',
-      shouldShowASRField(model.provider, 'baseUrl') ? `
-        <div class="config-field">
-          <span class="config-field-label">Base URL</span>
-          <input type="text" class="config-field-input" value="${escapeHtml(model.baseUrl || '')}" data-field="baseUrl" placeholder="https://api.openai.com/v1" />
-        </div>
-      ` : '',
-      shouldShowASRField(model.provider, 'language') ? `
-        <div class="config-field">
-          <span class="config-field-label">Language</span>
-          <input type="text" class="config-field-input" value="${escapeHtml(model.language || '')}" data-field="language" placeholder="zh / en" />
-        </div>
-      ` : '',
-    ].join('')
-    return `
-    <div class="config-model-card ${model.id === currentSystemConfig!.activeASRId ? 'active' : ''}" data-id="${escapeHtml(model.id)}">
-      <div class="config-model-header">
-        <div class="config-model-name">
-          ${renderASRProviderControl(model.provider)}
-          <input type="text" value="${escapeHtml(model.modelName)}" data-field="modelName" placeholder="realtime" />
-          ${model.id === currentSystemConfig!.activeASRId ? `<span class="config-model-active-badge">${escapeHtml(t('common.active'))}</span>` : ''}
-        </div>
-        <div class="config-model-actions">
-          ${renderApiTestButton()}
-          ${model.id !== currentSystemConfig!.activeASRId ? `<button class="config-model-btn config-activate-btn" data-action="activate">${escapeHtml(t('common.activate'))}</button>` : ''}
-          ${models.length > 1 ? `<button class="config-model-btn config-delete-btn" data-action="delete">${escapeHtml(t('common.delete'))}</button>` : ''}
-        </div>
-      </div>
-      <div class="config-model-fields">
-        <div class="config-field">
-          <span class="config-field-label">Provider</span>
-          ${renderASRProviderControl(model.provider)}
-        </div>
-        ${fields}
-      </div>
-    </div>
-  `
-  }).join('')
-
-  attachASREventListeners()
+  renderModelList('asr')
 }
 
 function renderApiTestButton(): string {
@@ -7353,137 +7578,81 @@ async function testApiModel(
   }
 }
 
-function attachLLMEventListeners(): void {
-  llmModelsList.querySelectorAll('.config-model-card').forEach(card => {
-    const id = (card as HTMLElement).dataset.id!
+type ModelListKind = 'llm' | 'task' | 'tts' | 'asr'
 
-    // Field changes
-    card.querySelectorAll('input[data-field]').forEach(input => {
-      input.addEventListener('change', async () => {
-        const field = (input as HTMLInputElement).dataset.field!
-        const value = (input as HTMLInputElement).value
-        await updateLLMModel(id, { [field]: value })
-      })
-    })
-
-    // Action buttons
-    card.querySelectorAll('button[data-action]').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const action = (btn as HTMLButtonElement).dataset.action
-        if (action === 'activate') {
-          await activateLLMModel(id)
-        } else if (action === 'delete') {
-          await deleteLLMModel(id)
-        } else if (action === 'test') {
-          await testApiModel('llm', id, card, btn as HTMLButtonElement)
-        }
-      })
-    })
-  })
+function getModelListKind(list: HTMLElement): ModelListKind | null {
+  if (list === llmModelsList) return 'llm'
+  if (list === taskModelsList) return 'task'
+  if (list === ttsModelsList) return 'tts'
+  if (list === asrModelsList) return 'asr'
+  return null
 }
 
-function attachTaskEventListeners(): void {
-  taskModelsList.querySelectorAll('.config-model-card').forEach(card => {
-    const id = (card as HTMLElement).dataset.id!
+function bindModelListEvents(list: HTMLElement): void {
+  list.addEventListener('change', (event) => {
+    const input = (event.target as HTMLElement | null)?.closest<HTMLInputElement | HTMLSelectElement>(
+      'input[data-field], select[data-field]'
+    )
+    const card = input?.closest<HTMLElement>('.config-model-card')
+    const kind = getModelListKind(list)
+    const id = card?.dataset.id
+    const field = input?.dataset.field
+    if (!input || !card || !kind || !id || !field || field === 'provider' || field === 'transport') {
+      return
+    }
 
-    card.querySelectorAll('input[data-field]').forEach(input => {
-      input.addEventListener('change', async () => {
-        const field = (input as HTMLInputElement).dataset.field!
-        const value = (input as HTMLInputElement).value
-        if (field === 'transport') return
-        await updateTaskModel(id, { [field]: value })
-      })
-    })
-
-    card.querySelectorAll<HTMLButtonElement>('.config-provider-trigger').forEach(button => {
-      button.addEventListener('click', (event) => {
-        event.stopPropagation()
-        openProviderMenu(button, id)
-      })
-    })
-
-    card.querySelectorAll('button[data-action]').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const action = (btn as HTMLButtonElement).dataset.action
-        if (action === 'activate') {
-          await activateTaskModel(id)
-        } else if (action === 'delete') {
-          await deleteTaskModel(id)
-        } else if (action === 'test') {
-          await testApiModel('task', id, card, btn as HTMLButtonElement)
-        }
-      })
-    })
+    const value = input.value
+    if (kind === 'llm') {
+      void updateLLMModel(id, { [field]: value })
+    } else if (kind === 'task') {
+      void updateTaskModel(id, { [field]: value })
+    } else if (kind === 'tts') {
+      void updateTTSModel(id, { [field]: value })
+    } else {
+      void updateASRModel(id, { [field]: value })
+    }
   })
-}
 
-function attachTTSEventListeners(): void {
-  ttsModelsList.querySelectorAll('.config-model-card').forEach(card => {
-    const id = (card as HTMLElement).dataset.id!
+  list.addEventListener('click', (event) => {
+    const target = event.target as HTMLElement | null
+    const card = target?.closest<HTMLElement>('.config-model-card')
+    const kind = getModelListKind(list)
+    const id = card?.dataset.id
+    if (!target || !card || !kind || !id) {
+      return
+    }
 
-    card.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input[data-field], select[data-field]').forEach(input => {
-      input.addEventListener('change', async () => {
-        const field = input.dataset.field!
-        const value = input.value
-        if (field === 'provider') return
-        await updateTTSModel(id, { [field]: value })
-      })
-    })
+    const providerButton = target.closest<HTMLButtonElement>('.config-provider-trigger')
+    if (providerButton) {
+      event.stopPropagation()
+      openProviderMenu(providerButton, id)
+      return
+    }
 
-    card.querySelectorAll<HTMLButtonElement>('.config-provider-trigger').forEach(button => {
-      button.addEventListener('click', (event) => {
-        event.stopPropagation()
-        openProviderMenu(button, id)
-      })
-    })
+    const actionButton = target.closest<HTMLButtonElement>('button[data-action]')
+    const action = actionButton?.dataset.action
+    if (!actionButton || !action) {
+      return
+    }
 
-    card.querySelectorAll('button[data-action]').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const action = (btn as HTMLButtonElement).dataset.action
-        if (action === 'activate') {
-          await activateTTSModel(id)
-        } else if (action === 'delete') {
-          await deleteTTSModel(id)
-        } else if (action === 'test') {
-          await testApiModel('tts', id, card, btn as HTMLButtonElement)
-        }
-      })
-    })
-  })
-}
+    if (action === 'test') {
+      void testApiModel(kind, id, card, actionButton)
+      return
+    }
 
-function attachASREventListeners(): void {
-  asrModelsList.querySelectorAll('.config-model-card').forEach(card => {
-    const id = (card as HTMLElement).dataset.id!
-
-    card.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input[data-field], select[data-field]').forEach(input => {
-      input.addEventListener('change', async () => {
-        const field = input.dataset.field!
-        const value = input.value
-        if (field === 'provider') return
-        await updateASRModel(id, { [field]: value })
-      })
-    })
-
-    card.querySelectorAll<HTMLButtonElement>('.config-provider-trigger').forEach(button => {
-      button.addEventListener('click', (event) => {
-        event.stopPropagation()
-        openProviderMenu(button, id)
-      })
-    })
-
-    card.querySelectorAll('button[data-action]').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const action = (btn as HTMLButtonElement).dataset.action
-        if (action === 'activate') {
-          await activateASRModel(id)
-        } else if (action === 'delete') {
-          await deleteASRModel(id)
-        } else if (action === 'test') {
-          await testApiModel('asr', id, card, btn as HTMLButtonElement)
-        }
-      })
-    })
+    if (kind === 'llm') {
+      if (action === 'activate') void activateLLMModel(id)
+      if (action === 'delete') void deleteLLMModel(id)
+    } else if (kind === 'task') {
+      if (action === 'activate') void activateTaskModel(id)
+      if (action === 'delete') void deleteTaskModel(id)
+    } else if (kind === 'tts') {
+      if (action === 'activate') void activateTTSModel(id)
+      if (action === 'delete') void deleteTTSModel(id)
+    } else {
+      if (action === 'activate') void activateASRModel(id)
+      if (action === 'delete') void deleteASRModel(id)
+    }
   })
 }
 
@@ -7491,6 +7660,14 @@ async function saveSystemConfig(): Promise<void> {
   if (!currentSystemConfig) return
   await window.electronAPI.updateSettings({ system: currentSystemConfig })
   renderModelOverview()
+  renderModelManagerPage()
+  await refreshSetupReadiness()
+}
+
+async function saveSystemConfigForModel(kind: ModelManagerKind): Promise<void> {
+  if (!currentSystemConfig) return
+  await window.electronAPI.updateSettings({ system: currentSystemConfig })
+  syncModelOverviewCard(kind)
   renderModelManagerPage()
   await refreshSetupReadiness()
 }
@@ -7549,25 +7726,29 @@ async function updateLLMModel(id: string, updates: Partial<LLMModelConfig>): Pro
   const model = currentSystemConfig.llmModels.find(m => m.id === id)
   if (model) {
     Object.assign(model, updates)
-    await saveSystemConfig()
+    await saveSystemConfigForModel('llm')
+    syncModelCard('llm', id)
   }
 }
 
 async function activateLLMModel(id: string): Promise<void> {
   if (!currentSystemConfig) return
+  const previousId = currentSystemConfig.activeLLMId
   currentSystemConfig.activeLLMId = id
-  await saveSystemConfig()
-  renderLLMModels()
+  await saveSystemConfigForModel('llm')
+  syncModelCards('llm', [previousId, id])
 }
 
 async function deleteLLMModel(id: string): Promise<void> {
   if (!currentSystemConfig || currentSystemConfig.llmModels.length <= 1) return
+  const previousIds = currentSystemConfig.llmModels.map(model => model.id)
   currentSystemConfig.llmModels = currentSystemConfig.llmModels.filter(m => m.id !== id)
   if (currentSystemConfig.activeLLMId === id && currentSystemConfig.llmModels.length > 0) {
     currentSystemConfig.activeLLMId = currentSystemConfig.llmModels[0].id
   }
-  await saveSystemConfig()
-  renderLLMModels()
+  await saveSystemConfigForModel('llm')
+  syncModelCard('llm', id)
+  syncModelCards('llm', previousIds.filter(item => item !== id))
 }
 
 async function addLLMModel(): Promise<void> {
@@ -7579,8 +7760,8 @@ async function addLLMModel(): Promise<void> {
     baseUrl: ''
   }
   currentSystemConfig.llmModels.push(newModel)
-  await saveSystemConfig()
-  renderLLMModels()
+  await saveSystemConfigForModel('llm')
+  syncModelCards('llm')
 }
 
 async function updateTaskModel(id: string, updates: Partial<LLMModelConfig>): Promise<void> {
@@ -7588,7 +7769,8 @@ async function updateTaskModel(id: string, updates: Partial<LLMModelConfig>): Pr
   const model = currentSystemConfig.taskModels.find(m => m.id === id)
   if (model) {
     Object.assign(model, updates)
-    await saveSystemConfig()
+    await saveSystemConfigForModel('task')
+    syncModelCard('task', id)
   }
 }
 
@@ -7598,25 +7780,28 @@ async function updateTaskTransport(id: string, transport: NonNullable<LLMModelCo
   if (!model) return
 
   model.transport = transport
-  await saveSystemConfig()
-  renderTaskModels()
+  await saveSystemConfigForModel('task')
+  syncModelCard('task', id)
 }
 
 async function activateTaskModel(id: string): Promise<void> {
   if (!currentSystemConfig) return
+  const previousId = currentSystemConfig.activeTaskId
   currentSystemConfig.activeTaskId = id
-  await saveSystemConfig()
-  renderTaskModels()
+  await saveSystemConfigForModel('task')
+  syncModelCards('task', [previousId, id])
 }
 
 async function deleteTaskModel(id: string): Promise<void> {
   if (!currentSystemConfig || currentSystemConfig.taskModels.length <= 1) return
+  const previousIds = currentSystemConfig.taskModels.map(model => model.id)
   currentSystemConfig.taskModels = currentSystemConfig.taskModels.filter(m => m.id !== id)
   if (currentSystemConfig.activeTaskId === id && currentSystemConfig.taskModels.length > 0) {
     currentSystemConfig.activeTaskId = currentSystemConfig.taskModels[0].id
   }
-  await saveSystemConfig()
-  renderTaskModels()
+  await saveSystemConfigForModel('task')
+  syncModelCard('task', id)
+  syncModelCards('task', previousIds.filter(item => item !== id))
 }
 
 async function addTaskModel(): Promise<void> {
@@ -7629,8 +7814,8 @@ async function addTaskModel(): Promise<void> {
     baseUrl: ''
   }
   currentSystemConfig.taskModels.push(newModel)
-  await saveSystemConfig()
-  renderTaskModels()
+  await saveSystemConfigForModel('task')
+  syncModelCards('task')
 }
 
 async function updateTTSModel(id: string, updates: Partial<TTSModelConfig>): Promise<void> {
@@ -7638,7 +7823,8 @@ async function updateTTSModel(id: string, updates: Partial<TTSModelConfig>): Pro
   const model = currentSystemConfig.ttsModels.find(m => m.id === id)
   if (model) {
     Object.assign(model, updates)
-    await saveSystemConfig()
+    await saveSystemConfigForModel('tts')
+    syncModelCard('tts', id)
   }
 }
 
@@ -7655,25 +7841,28 @@ async function updateTTSProvider(id: string, provider: TTSProviderType): Promise
   model.language ||= providerEntry.defaultLanguage
   model.sampleRate ||= providerEntry.sampleRate
   model.format ||= 'pcm'
-  await saveSystemConfig()
-  renderTTSModels()
+  await saveSystemConfigForModel('tts')
+  syncModelCard('tts', id)
 }
 
 async function activateTTSModel(id: string): Promise<void> {
   if (!currentSystemConfig) return
+  const previousId = currentSystemConfig.activeTTSId
   currentSystemConfig.activeTTSId = id
-  await saveSystemConfig()
-  renderTTSModels()
+  await saveSystemConfigForModel('tts')
+  syncModelCards('tts', [previousId, id])
 }
 
 async function deleteTTSModel(id: string): Promise<void> {
   if (!currentSystemConfig || currentSystemConfig.ttsModels.length <= 1) return
+  const previousIds = currentSystemConfig.ttsModels.map(model => model.id)
   currentSystemConfig.ttsModels = currentSystemConfig.ttsModels.filter(m => m.id !== id)
   if (currentSystemConfig.activeTTSId === id && currentSystemConfig.ttsModels.length > 0) {
     currentSystemConfig.activeTTSId = currentSystemConfig.ttsModels[0].id
   }
-  await saveSystemConfig()
-  renderTTSModels()
+  await saveSystemConfigForModel('tts')
+  syncModelCard('tts', id)
+  syncModelCards('tts', previousIds.filter(item => item !== id))
 }
 
 async function addTTSModel(): Promise<void> {
@@ -7690,8 +7879,8 @@ async function addTTSModel(): Promise<void> {
     sampleRate: getTTSProviderCatalogEntry('fish').sampleRate
   }
   currentSystemConfig.ttsModels.push(newModel)
-  await saveSystemConfig()
-  renderTTSModels()
+  await saveSystemConfigForModel('tts')
+  syncModelCards('tts')
 }
 
 async function updateASRModel(id: string, updates: Partial<ASRModelConfig>): Promise<void> {
@@ -7699,7 +7888,8 @@ async function updateASRModel(id: string, updates: Partial<ASRModelConfig>): Pro
   const model = currentSystemConfig.asrModels.find(m => m.id === id)
   if (model) {
     Object.assign(model, updates)
-    await saveSystemConfig()
+    await saveSystemConfigForModel('asr')
+    syncModelCard('asr', id)
   }
 }
 
@@ -7714,25 +7904,28 @@ async function updateASRProvider(id: string, provider: ASRProviderType): Promise
   model.baseUrl ||= providerEntry.defaultBaseUrl
   model.language ||= providerEntry.defaultLanguage
   model.sampleRate ||= providerEntry.sampleRate
-  await saveSystemConfig()
-  renderASRModels()
+  await saveSystemConfigForModel('asr')
+  syncModelCard('asr', id)
 }
 
 async function activateASRModel(id: string): Promise<void> {
   if (!currentSystemConfig) return
+  const previousId = currentSystemConfig.activeASRId
   currentSystemConfig.activeASRId = id
-  await saveSystemConfig()
-  renderASRModels()
+  await saveSystemConfigForModel('asr')
+  syncModelCards('asr', [previousId, id])
 }
 
 async function deleteASRModel(id: string): Promise<void> {
   if (!currentSystemConfig || currentSystemConfig.asrModels.length <= 1) return
+  const previousIds = currentSystemConfig.asrModels.map(model => model.id)
   currentSystemConfig.asrModels = currentSystemConfig.asrModels.filter(m => m.id !== id)
   if (currentSystemConfig.activeASRId === id && currentSystemConfig.asrModels.length > 0) {
     currentSystemConfig.activeASRId = currentSystemConfig.asrModels[0].id
   }
-  await saveSystemConfig()
-  renderASRModels()
+  await saveSystemConfigForModel('asr')
+  syncModelCard('asr', id)
+  syncModelCards('asr', previousIds.filter(item => item !== id))
 }
 
 async function addASRModel(): Promise<void> {
@@ -7747,8 +7940,8 @@ async function addASRModel(): Promise<void> {
     sampleRate: getASRProviderCatalogEntry('qwen').sampleRate
   }
   currentSystemConfig.asrModels.push(newModel)
-  await saveSystemConfig()
-  renderASRModels()
+  await saveSystemConfigForModel('asr')
+  syncModelCards('asr')
 }
 
 // Proxy input handler
@@ -7760,8 +7953,22 @@ proxyInput.addEventListener('change', async () => {
 
 // Add button handlers
 backModelOverviewBtn.addEventListener('click', closeModelManager)
+modelOverviewList.addEventListener('click', (event) => {
+  const card = (event.target as HTMLElement | null)?.closest<HTMLElement>('.model-overview-card')
+  const kind = card?.dataset.modelKind as ModelManagerKind | undefined
+  if (kind) {
+    openModelManager(kind)
+  }
+})
 addLLMBtn.addEventListener('click', () => void addLLMModel())
 addTaskBtn.addEventListener('click', () => void addTaskModel())
+;[
+  llmModelsList,
+  taskModelsList,
+  ttsModelsList,
+  asrModelsList
+].forEach(bindModelListEvents)
+bindPluginsListEvents()
 ;[
   taskMaxTurnsInput,
   taskContextWindowInput,
@@ -7829,6 +8036,18 @@ document.addEventListener('click', (event) => {
   }
   if (!target?.closest('#appearance-theme-floating-menu') && !target?.closest('#appearance-theme-trigger')) {
     closeAppearanceThemeMenu()
+  }
+})
+
+window.addEventListener('online', () => {
+  if (document.body.classList.contains('settings-open')) {
+    void refreshSystemTelemetry()
+  }
+})
+
+window.addEventListener('offline', () => {
+  if (document.body.classList.contains('settings-open')) {
+    void refreshSystemTelemetry()
   }
 })
 

@@ -12,6 +12,7 @@ import { existsSync } from 'fs'
 import { mkdir, readFile, readdir, stat, writeFile } from 'fs/promises'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
+import { networkInterfaces } from 'os'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -3080,6 +3081,15 @@ function getProxyFromEnv(): string {
   ).trim()
 }
 
+function getActiveNetworkInterfaceCount(): number {
+  return Object.values(networkInterfaces()).reduce((count, addresses) => {
+    if (!addresses?.some(address => !address.internal && address.family === 'IPv4')) {
+      return count
+    }
+    return count + 1
+  }, 0)
+}
+
 function configureProxyFromEnv(): void {
   const proxyUrl = getProxyFromEnv()
 
@@ -4597,6 +4607,14 @@ ipcMain.handle('sdk:getPersonality', async () => {
 
 ipcMain.handle('settings:get', async () => {
   return appSettings
+})
+
+ipcMain.handle('system:telemetry', async () => {
+  return {
+    success: true,
+    memoryBytes: process.memoryUsage().rss,
+    activeNetworkInterfaces: getActiveNetworkInterfaceCount(),
+  }
 })
 
 ipcMain.handle('settings:update', async (_, partial: Partial<AppSettings>) => {

@@ -223,6 +223,12 @@ declare global {
       }>
       clearLogs: () => Promise<{ success: boolean; error?: string }>
       setLogsStreaming: (streaming: boolean) => void
+      getSystemTelemetry: () => Promise<{
+        success: boolean
+        memoryBytes: number
+        activeNetworkInterfaces: number
+        error?: string
+      }>
       getSettings: () => Promise<{
         language: 'zh-CN' | 'en-US'
         voiceInputEnabled: boolean

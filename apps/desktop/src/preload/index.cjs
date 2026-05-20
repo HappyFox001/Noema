@@ -116,6 +116,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSettings: () =>
     ipcRenderer.invoke('settings:get'),
 
+  getSystemTelemetry: () =>
+    ipcRenderer.invoke('system:telemetry'),
+
   updateSettings: (partial) =>
     ipcRenderer.invoke('settings:update', partial),
 

@@ -83,6 +83,28 @@
 
           
           <div class="settings-content">
+            <div id="settings-telemetry-bar" class="settings-telemetry-bar" aria-label="System telemetry">
+              <div class="telemetry-item">
+                <span class="telemetry-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24">
+                    <rect x="6" y="6" width="12" height="12" rx="2"></rect>
+                    <path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"></path>
+                  </svg>
+                </span>
+                <strong id="telemetry-memory">--</strong>
+              </div>
+              <div class="telemetry-item">
+                <span class="telemetry-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24">
+                    <path d="M4.5 9.5a11 11 0 0 1 15 0"></path>
+                    <path d="M8 13a6 6 0 0 1 8 0"></path>
+                    <path d="M11.2 16.4a1.2 1.2 0 0 1 1.6 0"></path>
+                    <path d="M12 19h.01"></path>
+                  </svg>
+                </span>
+                <strong id="telemetry-network">--</strong>
+              </div>
+            </div>
             
             <section id="section-system" class="settings-section active">
               <h2 class="section-title" data-i18n="system.title">系统设置</h2>
@@ -520,15 +542,17 @@
                     <h2 class="section-title" data-i18n="logs.title">运行日志</h2>
                     <p class="section-subtitle" data-i18n="logs.desc">按时间、等级和类型查看当前会话的运行状态。</p>
                   </div>
-                  <button id="clear-logs-btn" class="settings-btn danger" type="button" data-i18n="common.clear">清空</button>
                 </div>
 
                 <div class="log-toolbar">
-                  <button class="log-filter active" type="button" data-log-level="all">ALL</button>
-                  <button class="log-filter" type="button" data-log-level="error">ERROR</button>
-                  <button class="log-filter" type="button" data-log-level="warn">WARN</button>
-                  <button class="log-filter" type="button" data-log-level="info">INFO</button>
-                  <button class="log-filter" type="button" data-log-level="debug">DEBUG</button>
+                  <div class="log-filter-group">
+                    <button class="log-filter active" type="button" data-log-level="all">ALL</button>
+                    <button class="log-filter" type="button" data-log-level="error">ERROR</button>
+                    <button class="log-filter" type="button" data-log-level="warn">WARN</button>
+                    <button class="log-filter" type="button" data-log-level="info">INFO</button>
+                    <button class="log-filter" type="button" data-log-level="debug">DEBUG</button>
+                    <button id="clear-logs-btn" class="log-filter log-clear-btn" type="button" data-i18n="common.clear">清空</button>
+                  </div>
                 </div>
 
                 <div id="logs-list" class="logs-list">

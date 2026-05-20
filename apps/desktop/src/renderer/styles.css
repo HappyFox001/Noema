@@ -1614,6 +1614,79 @@ body.work-surface-enabled .task-panel {
   app-region: no-drag;
 }
 
+.settings-telemetry-bar {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  width: fit-content;
+  margin: -40px 0 16px auto;
+  padding: 0;
+  color: rgba(244, 248, 248, 0.92);
+  background: transparent;
+}
+
+.telemetry-item {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  color: inherit;
+}
+
+.telemetry-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  display: inline-grid;
+  place-items: center;
+  color: currentColor;
+}
+
+.telemetry-icon svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.telemetry-item strong {
+  color: currentColor;
+  font-family: var(--control-font);
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+body.theme-day .settings-telemetry-bar {
+  color: rgba(18, 25, 25, 0.84);
+}
+
+@media (max-width: 640px) {
+  .settings-telemetry-bar {
+    gap: 10px;
+    margin-top: -38px;
+  }
+
+  .log-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .log-clear-btn {
+    align-self: flex-end;
+  }
+}
+
 
 .settings-content::-webkit-scrollbar {
   width: 6px;
@@ -1929,10 +2002,7 @@ body.work-surface-enabled .task-panel {
 }
 
 .log-page-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 14px;
+  max-width: min(100%, 620px);
 }
 
 .log-page-header .section-title,
@@ -1942,7 +2012,8 @@ body.work-surface-enabled .task-panel {
 
 .log-toolbar {
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
   gap: 7px;
   padding: 8px;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -1950,6 +2021,22 @@ body.work-surface-enabled .task-panel {
     linear-gradient(135deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.018)),
     rgba(0, 0, 0, 0.14);
   border-radius: 8px;
+}
+
+.log-filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  min-width: 0;
+}
+
+.log-clear-btn {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 6px;
+  color: rgba(255, 110, 100, 0.92);
+  border-color: rgba(255, 110, 100, 0.28);
+  background: rgba(95, 26, 24, 0.24);
 }
 
 .log-filter {
@@ -1971,6 +2058,12 @@ body.work-surface-enabled .task-panel {
   background: rgba(232, 238, 238, 0.11);
   border-color: rgba(232, 238, 238, 0.22);
   color: rgba(255, 255, 255, 0.94);
+}
+
+.log-clear-btn:hover {
+  background: rgba(120, 34, 30, 0.34);
+  border-color: rgba(255, 110, 100, 0.42);
+  color: rgba(255, 130, 120, 0.98);
 }
 
 .logs-list {
