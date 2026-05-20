@@ -98,6 +98,32 @@ describe('runtime interaction routing', () => {
       expect.objectContaining({ kind: 'work.queue_new', workDescription: '先别做这个，帮我看另一个问题' }),
     ])
   })
+
+  test('parallel task requests resolve to start_parallel while preserving active work', async () => {
+    const { InteractionRuntime } = await import('../dist/runtime/index.js')
+    const runtime = new InteractionRuntime()
+    const result = runtime.resolve({
+      userInput: '同时帮我运行另一个检查',
+      timestamp: Date.now(),
+      workState: {
+        activeThreads: [{ id: 'thread-active', goal: 'active task', status: 'active', priority: 1, createdAt: 1, updatedAt: 1, userIntentHistory: [], emotionalTurnHistory: [], observations: [], artifacts: [], decisions: [], failures: [], nextActions: [] }],
+        pausedThreads: [],
+        abandonedThreads: [],
+        completedThreads: [],
+        focusedThreadId: 'thread-active',
+        updatedAt: Date.now(),
+      },
+      outputState: { speaking: false, muted: false },
+    })
+
+    expect(result.interruptionKind).toBe('new_work')
+    expect(result.intents).toEqual([
+      expect.objectContaining({
+        kind: 'work.start_parallel',
+        workDescription: '同时帮我运行另一个检查',
+      }),
+    ])
+  })
 })
 
 describe('tool router', () => {

@@ -139,7 +139,7 @@
   - [x] `work.status`
   - [x] `work.cancel`
   - [x] `work.queue_new`
-  - [ ] `work.start_parallel`
+  - [x] `work.start_parallel`
 - [x] 支持用户语言打断分类：
   - [x] 只停止说话。
   - [x] 插话追问。

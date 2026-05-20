@@ -48,6 +48,10 @@ const WORK_NEW_PATTERNS = [
   /(帮我|给我|去|打开|创建|修改|修复|查一下|看一下|运行|执行|写一个|做一个)/,
 ]
 
+const WORK_PARALLEL_PATTERNS = [
+  /(同时|并行|另开|另外开|parallel|in parallel)/i,
+]
+
 export class InteractionRuntime {
   resolve(input: InteractionResolveInput): InteractionResolveResult {
     const text = input.userInput.trim()
@@ -158,11 +162,14 @@ export class InteractionRuntime {
     }
 
     if (matchesAny(text, WORK_NEW_PATTERNS)) {
+      const startParallel = hasActiveWork && matchesAny(text, WORK_PARALLEL_PATTERNS)
       intents.push({
-        kind: hasActiveWork ? 'work.queue_new' : 'work.start',
+        kind: startParallel ? 'work.start_parallel' : hasActiveWork ? 'work.queue_new' : 'work.start',
         workDescription: input.emotionalTurn?.intentHints?.[0] || text,
         reason: hasActiveWork
-          ? 'User requested new work while another thread is active.'
+          ? startParallel
+            ? 'User requested another work thread to start in parallel.'
+            : 'User requested new work while another thread is active.'
           : 'User requested new work.',
       })
       return {
