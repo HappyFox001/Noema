@@ -394,7 +394,7 @@ Her-Text 不是 CLI，所以不能盲目复制 Codex 的交互语义。
 
 ## Phase 10: 测试与真实验收场景
 
-- [ ] 单元测试：
+- [x] 单元测试：
   - [x] intent routing。
   - [x] work state persistence。
   - [x] task interruption semantics。
@@ -412,7 +412,7 @@ Her-Text 不是 CLI，所以不能盲目复制 Codex 的交互语义。
   - [ ] 长程 run 中断后恢复。
 - [ ] 真实验收任务：
   - [ ] 修改 Her-Text 一个 SDK bug 并跑 `pnpm --filter @her-text/sdk build`。
-  - [ ] 修改 Desktop runtime 并跑 `pnpm --filter @her-text/desktop build`。
+  - [x] 修改 Desktop runtime 并跑 `pnpm --filter @her-text/desktop build`。
   - [ ] 修复一批 TypeScript errors，直到 verify 通过。
   - [ ] 跑一个长程优化目标，至少 3 次 iteration，有 keep 和 discard 记录。
 
@@ -426,15 +426,15 @@ Her-Text 不是 CLI，所以不能盲目复制 Codex 的交互语义。
 
 优先级不是从最酷的功能开始，而是先解决结构性错误。
 
-1. [ ] 写三层 runtime 边界文档。
-2. [ ] 扩展 RuntimeEvent 为统一事件协议。
-3. [ ] 实现 WorkState / WorkThread 持久化。
-4. [ ] 实现 InteractionRuntime 的打断语义分类。
+1. [x] 写三层 runtime 边界文档。
+2. [x] 扩展 RuntimeEvent 为统一事件协议。
+3. [x] 实现 WorkState / WorkThread 持久化。
+4. [x] 实现 InteractionRuntime 的打断语义分类。
 5. [x] 让新用户输入不再默认 abort 任务。
-6. [ ] 让旧 TaskRuntime 每次状态变化写入 WorkThread snapshot。
+6. [x] 让旧 TaskRuntime 每次状态变化写入 WorkThread snapshot。
 7. [ ] 实现 “继续刚才任务” 的真实恢复。
 8. [x] 再开始替换 Codex-style WorkSession / WorkTurn / ToolRouter。
-9. [ ] 最后叠加 LongRunRuntime。
+9. [x] 最后叠加 LongRunRuntime。
 
 ## 完成定义
 
