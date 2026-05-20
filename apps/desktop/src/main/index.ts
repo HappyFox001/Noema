@@ -729,6 +729,13 @@ function handleWorkSurfaceRuntimeEvent(event: any): void {
   }
 }
 
+function handleRuntimeEvent(event: any): void {
+  handleWorkSurfaceRuntimeEvent(event)
+  if (event.name === 'work.signal.emitted' && event.payload?.signal) {
+    taskCommunicationManager.onWorkSignal(event.payload.signal)
+  }
+}
+
 function ensureWorkSurfaceForRuntimeEvent(event: any): void {
   if (activeWorkSurfaceId) {
     return
@@ -3600,7 +3607,7 @@ async function initializeSDK(): Promise<void> {
   sdkInstance = await HerTextSDK.initialize(sdkConfig, {
     plugins,
     selfLearningEnabled: appSettings.experimental?.selfLearningEnabled !== false,
-    onRuntimeEvent: handleWorkSurfaceRuntimeEvent,
+    onRuntimeEvent: handleRuntimeEvent,
     onTaskUserInputRequest: requestTaskUserInput,
     onTaskRunStateChanged: (state, task) => taskCommunicationManager.onRunStateChanged(state, task),
     onTaskPlanUpdated: (plan) => taskCommunicationManager.onPlanUpdated(plan),

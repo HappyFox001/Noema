@@ -31,10 +31,10 @@ import {
   type TaskRuntimeRequest,
 } from './runtime-adapter.js'
 import type { TaskIntent } from '../dialogue/processors.js'
-import type { TaskPlan, TaskRunState } from './task-plan.js'
+import type { TaskPlan, TaskRunState, TaskStep } from './task-plan.js'
 import { ToolRouter, WorkSession, type RuntimeEventBus } from '../runtime/index.js'
 import type { WorkStateStore } from '../runtime/work-store.js'
-import type { WorkThread } from '../runtime/work-state.js'
+import type { WorkSignalKind, WorkSignalSeverity, WorkThread } from '../runtime/work-state.js'
 
 export type SessionTaskStatus = 'idle' | 'running' | 'completed' | 'errored'
 
@@ -305,6 +305,13 @@ export class TaskSession {
         this.updateWorkThread({
           status: mapTaskRunStateToWorkStatus(state),
         })
+        if (state === 'observing' || state === 'tool_calling') {
+          this.emitWorkSignal('progress', 'ambient', {
+            taskDescription,
+            originalUserInput,
+            runState: state,
+          })
+        }
         this.runtimeHooks.onRunStateChanged?.(state, taskMeta)
       },
       onPlanUpdated: (plan) => {
@@ -344,6 +351,18 @@ export class TaskSession {
           currentStep: stepSnapshot,
           resumeSummary: buildTaskResumeSummary(taskDescription, stepSnapshot.title),
         })
+        const signal = mapTaskStepToWorkSignal(stepSnapshot)
+        if (signal) {
+          this.emitWorkSignal(signal.kind, signal.severity, {
+            taskDescription,
+            originalUserInput,
+            stepId: stepSnapshot.id,
+            stepTitle: stepSnapshot.title,
+            stepStatus: stepSnapshot.status,
+            stepError: stepSnapshot.error,
+            stepResult: stepSnapshot.result,
+          })
+        }
         this.runtimeHooks.onStepUpdated?.(stepSnapshot, planSnapshot, taskMeta)
       },
       onCompact: (summary) => {
@@ -403,6 +422,14 @@ export class TaskSession {
           toolCalls: result.toolCalls,
         },
       })
+      this.emitWorkSignal('completed', 'speak', {
+        taskDescription,
+        originalUserInput,
+        finalMessage: result.finalMessage,
+        executor,
+        iterations: result.iterations,
+        toolCalls: result.toolCalls,
+      })
     } else {
       this.runtimeHooks.runtimeEvents?.emit({
         name: 'task.failed',
@@ -416,6 +443,15 @@ export class TaskSession {
           iterations: result.iterations,
           toolCalls: result.toolCalls,
         },
+      })
+      this.emitWorkSignal('failed', 'speak', {
+        taskDescription,
+        originalUserInput,
+        finalMessage: result.finalMessage,
+        executor,
+        error: result.error,
+        iterations: result.iterations,
+        toolCalls: result.toolCalls,
       })
     }
     this.persistSnapshot()
@@ -507,6 +543,33 @@ export class TaskSession {
       createdAt: Date.now(),
     })
     this.voidRecordNextAction('恢复或重新规划失败步骤', '任务失败后保留可恢复现场。')
+  }
+
+  private emitWorkSignal(
+    kind: WorkSignalKind,
+    severity: WorkSignalSeverity,
+    facts: Record<string, unknown>
+  ): void {
+    if (!this.activeWorkThread) {
+      return
+    }
+    const signal = {
+      id: generateId(),
+      threadId: this.activeWorkThread.id,
+      kind,
+      severity,
+      facts,
+      createdAt: Date.now(),
+    }
+    void this.runtimeHooks.workState?.recordSignal(signal)
+    this.runtimeHooks.runtimeEvents?.emit({
+      name: 'work.signal.emitted',
+      threadId: this.activeWorkThread.id,
+      taskId: this.snapshot.taskId ?? undefined,
+      payload: {
+        signal,
+      },
+    })
   }
 
   private async selectRuntimeAdapter(request: TaskRuntimeRequest): Promise<TaskRuntimeAdapter> {
@@ -757,6 +820,19 @@ function mapTaskRunStateToWorkStatus(state: TaskRunState): WorkThread['status'] 
     return 'paused'
   }
   return 'active'
+}
+
+function mapTaskStepToWorkSignal(step: TaskStep): { kind: WorkSignalKind; severity: WorkSignalSeverity } | null {
+  if (step.status === 'running') {
+    return { kind: 'progress', severity: 'ambient' }
+  }
+  if (step.status === 'completed') {
+    return { kind: 'progress', severity: 'silent' }
+  }
+  if (step.status === 'failed') {
+    return { kind: 'blocked', severity: 'speak' }
+  }
+  return null
 }
 
 function buildTaskResumeSummary(taskDescription: string, stepTitle: string): string {

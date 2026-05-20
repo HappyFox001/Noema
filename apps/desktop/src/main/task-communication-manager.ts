@@ -11,6 +11,7 @@ import type {
   TaskRuntimeHookMeta,
   TaskStep,
   TaskUserInputRequest,
+  WorkSignal,
   WorkThreadPanelPlan,
 } from '@her-text/sdk'
 
@@ -150,6 +151,18 @@ export class TaskCommunicationManager {
     this.state.lastStepStatus = step.status
   }
 
+  onWorkSignal(signal: WorkSignal): void {
+    const message = this.buildSignalMessage(signal)
+    const severity = this.mapSignalSeverity(signal)
+    const status = this.mapSignalStatus(signal)
+    this.emitStatus(status, message, severity, {
+      key: `work-signal:${signal.id}`,
+      display: signal.severity !== 'silent',
+      speak: signal.severity === 'speak' || signal.severity === 'interrupt',
+      forceDisplay: signal.severity === 'interrupt',
+    })
+  }
+
   onWaitingUser(request: TaskUserInputRequest): void {
     const label = request.label || '需要补充信息'
     this.emitStatus('Need input', `我需要你补充：${label}`, 'blocking', {
@@ -229,6 +242,72 @@ export class TaskCommunicationManager {
 
   private decoratePlan(plan: TaskPlan): TaskPlan | WorkThreadPanelPlan {
     return this.planDecorator?.(plan) ?? plan
+  }
+
+  private buildSignalMessage(signal: WorkSignal): string | undefined {
+    const facts = signal.facts
+    const stepTitle = this.readFactString(facts, 'stepTitle')
+    const finalMessage = this.readFactString(facts, 'finalMessage')
+    const error = this.readFactString(facts, 'error') || this.readFactString(facts, 'stepError')
+    if (signal.kind === 'progress' && stepTitle) {
+      return `正在处理：${stepTitle}`
+    }
+    if (signal.kind === 'blocked') {
+      return stepTitle ? `这个步骤需要处理：${stepTitle}` : error || '任务遇到了阻塞。'
+    }
+    if (signal.kind === 'needs_user') {
+      return finalMessage || stepTitle || '任务需要你补充信息。'
+    }
+    if (signal.kind === 'risk') {
+      return finalMessage || error || '任务出现风险，需要留意。'
+    }
+    if (signal.kind === 'failed') {
+      return error || finalMessage || '任务执行失败。'
+    }
+    if (signal.kind === 'abandoned') {
+      return finalMessage || '任务已放弃。'
+    }
+    return undefined
+  }
+
+  private mapSignalStatus(signal: WorkSignal): string {
+    if (signal.kind === 'completed') {
+      return 'Done'
+    }
+    if (signal.kind === 'failed') {
+      return 'Failed'
+    }
+    if (signal.kind === 'blocked' || signal.kind === 'needs_user') {
+      return 'Need input'
+    }
+    if (signal.kind === 'abandoned') {
+      return 'Cancelled'
+    }
+    return 'Working'
+  }
+
+  private mapSignalSeverity(signal: WorkSignal): TaskCommunicationSeverity {
+    if (signal.kind === 'completed') {
+      return 'final'
+    }
+    if (signal.kind === 'failed') {
+      return 'final'
+    }
+    if (signal.severity === 'interrupt') {
+      return 'blocking'
+    }
+    if (signal.severity === 'speak') {
+      return signal.kind === 'blocked' || signal.kind === 'needs_user' ? 'blocking' : 'important'
+    }
+    if (signal.severity === 'ambient') {
+      return 'info'
+    }
+    return 'silent'
+  }
+
+  private readFactString(facts: Record<string, unknown>, key: string): string | undefined {
+    const value = facts[key]
+    return typeof value === 'string' && value.trim() ? value.trim() : undefined
   }
 
   private createState(): TaskCommunicationState {
