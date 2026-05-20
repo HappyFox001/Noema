@@ -49,17 +49,16 @@ export class CommandRuntime {
   constructor(private options: CommandRuntimeOptions) {}
 
   run(request: CommandRunRequest): CommandSessionSnapshot {
-    if ((request.mode ?? 'pipe') === 'pty') {
-      throw new Error('PTY command sessions are not available in this runtime yet')
-    }
-
     const id = generateId()
+    const mode = request.mode ?? 'pipe'
     const args = request.args ?? []
-    const child = spawn(request.command, args, {
+    const spawnSpec = buildCommandSpawnSpec(request.command, args, mode)
+    const child = spawn(spawnSpec.command, spawnSpec.args, {
       cwd: request.cwd ?? this.options.defaultCwd,
       env: {
         ...(this.options.defaultEnv ?? process.env),
         ...(request.env ?? {}),
+        ...(mode === 'pty' ? { TERM: request.env?.TERM ?? process.env.TERM ?? 'xterm-256color' } : {}),
       },
       shell: request.shell ?? false,
       stdio: 'pipe',
@@ -71,7 +70,7 @@ export class CommandRuntime {
         command: request.command,
         args,
         cwd: request.cwd ?? this.options.defaultCwd,
-        mode: 'pipe',
+        mode,
         status: 'running',
         startedAt: now,
         stdout: '',
@@ -124,6 +123,17 @@ export class CommandRuntime {
 
   listSessions(): CommandSessionSnapshot[] {
     return [...this.sessions.values()].map(session => ({ ...session.snapshot }))
+  }
+
+  listActiveCommandSessions(): Array<{ sessionId: string; command: string; cwd?: string; status: CommandSessionStatus }> {
+    return this.listSessions()
+      .filter(session => session.status === 'running')
+      .map(session => ({
+        sessionId: session.id,
+        command: [session.command, ...session.args].join(' '),
+        cwd: session.cwd,
+        status: session.status,
+      }))
   }
 
   interrupt(id: string): boolean {
@@ -191,4 +201,30 @@ interface CommandSession {
   child: ChildProcessWithoutNullStreams
   request: CommandRunRequest
   timeout?: ReturnType<typeof setTimeout>
+}
+
+function buildCommandSpawnSpec(command: string, args: string[], mode: CommandRuntimeMode): { command: string; args: string[] } {
+  if (mode === 'pipe') {
+    return { command, args }
+  }
+  if (!process.stdin.isTTY) {
+    return { command, args }
+  }
+  if (process.platform === 'win32') {
+    throw new Error('PTY command sessions are not supported on Windows without a pty provider')
+  }
+  if (process.platform === 'darwin') {
+    return {
+      command: 'script',
+      args: ['-q', '/dev/null', command, ...args],
+    }
+  }
+  return {
+    command: 'script',
+    args: ['-q', '-e', '-c', shellQuote([command, ...args]), '/dev/null'],
+  }
+}
+
+function shellQuote(parts: string[]): string {
+  return parts.map(part => `'${part.replace(/'/g, `'\\''`)}'`).join(' ')
 }

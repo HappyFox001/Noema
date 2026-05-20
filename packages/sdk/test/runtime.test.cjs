@@ -581,6 +581,54 @@ describe('task interruption semantics', () => {
   })
 })
 
+describe('command runtime', () => {
+  test('runs pty command sessions with observable output', async () => {
+    const { CommandRuntime, RuntimeEventBus } = await import('../dist/runtime/index.js')
+    const events = new RuntimeEventBus()
+    const seen = []
+    events.subscribe(event => seen.push(event.name))
+    const runtime = new CommandRuntime({ events })
+
+    const started = runtime.run({
+      command: process.execPath,
+      args: ['-e', "console.log('pty requested')"],
+      mode: 'pty',
+      taskId: 'task-pty',
+      threadId: 'thread-pty',
+    })
+    const completed = await waitForCommand(runtime, started.id)
+
+    expect(started.mode).toBe('pty')
+    expect(completed.status).toBe('completed')
+    expect(completed.stdout).toContain('pty requested')
+    expect(seen).toContain('task.command.started')
+    expect(seen).toContain('task.command.stdout')
+    expect(seen).toContain('task.command.completed')
+  })
+
+  test('tracks long running command sessions for interruption snapshots', async () => {
+    const { CommandRuntime, RuntimeEventBus } = await import('../dist/runtime/index.js')
+    const runtime = new CommandRuntime({ events: new RuntimeEventBus() })
+    const started = runtime.run({
+      command: process.execPath,
+      args: ['-e', 'setTimeout(() => {}, 5000)'],
+      taskId: 'task-long-command',
+      threadId: 'thread-long-command',
+    })
+
+    expect(runtime.listActiveCommandSessions()).toEqual([
+      expect.objectContaining({
+        sessionId: started.id,
+        command: expect.stringContaining(process.execPath),
+        status: 'running',
+      }),
+    ])
+    expect(runtime.interrupt(started.id)).toBe(true)
+    const completed = await waitForCommand(runtime, started.id)
+    expect(completed.status).toBe('cancelled')
+  })
+})
+
 describe('tool orchestrator', () => {
   test('normalizes policy failures and emits tool events', async () => {
     const { RuntimeEventBus, ToolOrchestrator } = await import('../dist/runtime/index.js')
@@ -647,4 +695,16 @@ function createTool(fields) {
     execute: async () => ({}),
     ...fields,
   }
+}
+
+async function waitForCommand(runtime, sessionId, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const session = runtime.getSession(sessionId)
+    if (session && session.status !== 'running') {
+      return session
+    }
+    await new Promise(resolve => setTimeout(resolve, 20))
+  }
+  throw new Error(`Command ${sessionId} did not finish in ${timeoutMs}ms`)
 }

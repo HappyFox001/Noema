@@ -228,8 +228,8 @@
   - [x] 重试策略。
   - [x] 失败归一化。
   - [x] 工具取消响应。
-- [ ] 新增 `CommandRuntime`：
-  - [ ] PTY。
+- [x] 新增 `CommandRuntime`：
+  - [x] PTY。
   - [x] 非 PTY。
   - [x] 长命令 session。
   - [x] stdout/stderr 增量事件。
@@ -263,7 +263,7 @@
 - [ ] 工具失败后不会简单终止，而是把错误作为下一轮输入继续推理。
 - [ ] 上下文过长时能自动压缩并继续任务。
 - [x] 用户插话不会破坏任务执行现场。
-- [ ] 长命令可后台运行、轮询、取消，并被 work snapshot 记录。
+- [x] 长命令可后台运行、轮询、取消，并被 work snapshot 记录。
 - [x] `rg -n "codex|Codex" packages/sdk/src apps/desktop/src plugins` 不命中新任务层新增命名；只允许文档、注释中的参考说明或已有第三方路径。
 
 ## Phase 6: Codex 差异适配
