@@ -383,7 +383,7 @@ Her-Text 不是 CLI，所以不能盲目复制 Codex 的交互语义。
 - [x] 迁移 MCP manager。
 - [x] 迁移 skills manager。
 - [x] 移除 `DialogueOrchestrator` 对 task result 的同步等待依赖。
-- [ ] 移除旧 task lifecycle callback 对 Desktop UI 的硬依赖。
+- [x] 移除旧 task lifecycle callback 对 Desktop UI 的硬依赖。
 - [ ] 更新 README 和架构图。
 
 验收：

@@ -731,6 +731,21 @@ function handleWorkSurfaceRuntimeEvent(event: any): void {
 
 function handleRuntimeEvent(event: any): void {
   handleWorkSurfaceRuntimeEvent(event)
+  if (event.name === 'task.run_state.changed' && event.payload?.state) {
+    taskCommunicationManager.onRunStateChanged(event.payload.state, {
+      taskDescription: event.payload.taskDescription || 'Task',
+      originalUserInput: event.payload.originalUserInput || '',
+    })
+    return
+  }
+  if (event.name === 'task.plan.updated' && event.payload?.plan) {
+    taskCommunicationManager.onPlanUpdated(event.payload.plan)
+    return
+  }
+  if (event.name === 'task.step.updated' && event.payload?.step && event.payload?.plan) {
+    taskCommunicationManager.onStepUpdated(event.payload.step, event.payload.plan)
+    return
+  }
   if (event.name === 'work.signal.emitted' && event.payload?.signal) {
     taskCommunicationManager.onWorkSignal(event.payload.signal)
   }
@@ -3609,9 +3624,6 @@ async function initializeSDK(): Promise<void> {
     selfLearningEnabled: appSettings.experimental?.selfLearningEnabled !== false,
     onRuntimeEvent: handleRuntimeEvent,
     onTaskUserInputRequest: requestTaskUserInput,
-    onTaskRunStateChanged: (state, task) => taskCommunicationManager.onRunStateChanged(state, task),
-    onTaskPlanUpdated: (plan) => taskCommunicationManager.onPlanUpdated(plan),
-    onTaskStepUpdated: (step, plan) => taskCommunicationManager.onStepUpdated(step, plan),
   })
   taskCommunicationManager.setPlanDecorator((plan) => buildCurrentWorkThreadPanelPlan(plan))
   console.log('[SDK] Initialized successfully')
