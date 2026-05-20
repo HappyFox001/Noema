@@ -365,7 +365,7 @@ Her-Text 不是 CLI，所以不能盲目复制 Codex 的交互语义。
   - [x] focus。
   - [x] view details。
 - [ ] OutputRuntime 从 work signals 接收状态，而不是从 task callback 拼状态。
-- [ ] 情感层只在 FeedbackPolicy 允许时说任务进度。
+- [x] 情感层只在 FeedbackPolicy 允许时说任务进度。
 
 验收：
 

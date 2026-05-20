@@ -34,7 +34,7 @@ import {
   type SDKPlugin,
   type TextTransformTarget,
 } from '../plugins/index.js'
-import type { RuntimeEventBus, RuntimeJobManager, RuntimeJobUnregister } from '../runtime/index.js'
+import { getWorkFeedbackRule, type RuntimeEventBus, type RuntimeJobManager, type RuntimeJobUnregister } from '../runtime/index.js'
 import type { WorkStateStore } from '../runtime/work-store.js'
 
 
@@ -519,6 +519,11 @@ export class DialogueOrchestrator {
 
     const now = Date.now()
     if (now - context.lastEmittedAt < TASK_PROGRESS_MIN_INTERVAL_MS) {
+      return
+    }
+
+    const feedbackRule = getWorkFeedbackRule('progress', 'ambient')
+    if (feedbackRule.timing === 'silent' || feedbackRule.timing === 'display_only') {
       return
     }
 
