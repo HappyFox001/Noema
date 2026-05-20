@@ -333,105 +333,26 @@ export class DialogueOrchestrator {
         await options?.onTaskStart?.(firstResult.taskDescription)
         console.log('🚀 Reply 已流式输出完毕，开始执行任务...\n')
 
-        this.activeTaskProgressContext = {
-          turnContext,
-          streamOptions: options,
-          pluginRuntime,
-          queue: Promise.resolve(),
-          lastEmittedAt: Date.now(),
-          emittedStepIds: new Set(),
-        }
-
-        let taskResult: ToolProcessorResult
-        try {
-          taskResult = await this.runTaskThroughRuntimeJob(
-            firstResult.taskIntent,
-            input.text,
-            taskContextItems,
-            options?.signal
-          )
-          await this.waitForTaskProgressIdle(options?.signal)
-        } finally {
-          this.activeTaskProgressContext = null
-        }
-        throwIfAborted(options?.signal)
-        await this.pluginManager.notifyTaskEnd({
-          runtime: pluginRuntime,
-          taskDescription: firstResult.taskDescription,
+        this.startDetachedTaskRun({
+          taskIntent: firstResult.taskIntent,
           originalUserInput: input.text,
-          success: taskResult.success,
-          summary: taskResult.summary,
-          ...(taskResult.error ? { error: taskResult.error } : {}),
-          plan: taskResult.contextResult.plan,
-          iterations: taskResult.contextResult.iterations,
-          toolCalls: taskResult.contextResult.toolCalls,
+          taskContextItems,
+          pluginRuntime,
+          streamOptions: options,
         })
-        await options?.onTaskEnd?.({
-          success: taskResult.success,
-          summary: taskResult.summary,
-          ...(taskResult.error ? { error: taskResult.error } : {})
-        })
-        throwIfAborted(options?.signal)
 
         this.context.recordItems([{
           role: 'tool',
-          content: 'task_runtime_result',
-          toolResults: [taskResult.contextResult],
+          content: 'task_runtime_accepted',
+          toolResults: [{
+            task: firstResult.taskDescription,
+            success: true,
+            summary: 'Task accepted and running in the work runtime.',
+            iterations: 0,
+            toolCalls: 0,
+          }],
           timestamp: Date.now()
         }])
-
-        console.log('\n========== 📝 任务结果已记录到上下文 ==========')
-        console.log(taskResult.contextResult)
-        console.log('==========================================\n')
-
-        const secondPromptAdditions = await this.getPromptAdditionsWithRoutines({
-          pluginRuntime,
-          phase: 'task_result',
-          detectTask: false,
-          hasTools: turnContext.hasTools,
-        })
-
-        const secondResult = await this.llmProcessor.runEmotionalLayer({
-          turnContext,
-          streamOptions: options,
-          phase: 'task_result',
-          detectTask: false,
-          additionalUserMessage: PROMPTS.dialogue.taskResultFeedback,
-          currentContext: this.context.forPrompt(),
-          baseInstructions: buildBaseInstructions(),
-          pluginPromptAdditions: secondPromptAdditions,
-        })
-
-        throwIfAborted(options?.signal)
-        await options?.onPhaseStart?.('task_result')
-
-        for await (const chunk of secondResult.stream) {
-          throwIfAborted(options?.signal)
-          yield chunk
-        }
-
-        await this.emitExpression(options, pluginRuntime, 'task_result', {
-          replyText: secondResult.reply,
-          emotionTag: secondResult.emotionTag,
-        })
-        throwIfAborted(options?.signal)
-        await options?.onPhaseEnd?.('task_result', secondResult.reply)
-        this.runtimeEvents?.emit({
-          name: 'dialogue.reply.completed',
-          turnId,
-          correlationId: turnId,
-          payload: {
-            phase: 'task_result',
-            text: secondResult.reply,
-            ...(secondResult.emotionTag ? { emotionTag: secondResult.emotionTag } : {}),
-          },
-        })
-        throwIfAborted(options?.signal)
-
-        combinedReply = [
-          this.transformText('memory', firstResult.reply, pluginRuntime),
-          this.transformText('memory', secondResult.reply, pluginRuntime),
-        ].filter(Boolean).join('\n\n')
       }
 
       const assistantMessage: ResponseItem = {
@@ -545,6 +466,46 @@ export class DialogueOrchestrator {
 
     await context.queue
     throwIfAborted(signal)
+  }
+
+  private startDetachedTaskRun(options: {
+    taskIntent: TaskIntent
+    originalUserInput: string
+    taskContextItems: TaskContextItem[]
+    pluginRuntime: PluginRuntimeContext
+    streamOptions?: StreamOptions
+  }): void {
+    scheduleAsyncTask(async () => {
+      const result = await this.runTaskThroughRuntimeJob(
+        options.taskIntent,
+        options.originalUserInput,
+        options.taskContextItems
+      )
+      await this.waitForTaskProgressIdle()
+      await this.pluginManager.notifyTaskEnd({
+        runtime: options.pluginRuntime,
+        taskDescription: options.taskIntent.description,
+        originalUserInput: options.originalUserInput,
+        success: result.success,
+        summary: result.summary,
+        ...(result.error ? { error: result.error } : {}),
+        plan: result.contextResult.plan,
+        iterations: result.contextResult.iterations,
+        toolCalls: result.contextResult.toolCalls,
+      })
+      await options.streamOptions?.onTaskEnd?.({
+        success: result.success,
+        summary: result.summary,
+        ...(result.error ? { error: result.error } : {}),
+      })
+
+      this.context.recordItems([{
+        role: 'tool',
+        content: 'task_runtime_result',
+        toolResults: [result.contextResult],
+        timestamp: Date.now(),
+      }])
+    })
   }
 
   private async emitTaskProgressFeedback(

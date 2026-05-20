@@ -382,7 +382,7 @@ Her-Text 不是 CLI，所以不能盲目复制 Codex 的交互语义。
 - [x] 迁移 computer-use。
 - [x] 迁移 MCP manager。
 - [x] 迁移 skills manager。
-- [ ] 移除 `DialogueOrchestrator` 对 task result 的同步等待依赖。
+- [x] 移除 `DialogueOrchestrator` 对 task result 的同步等待依赖。
 - [ ] 移除旧 task lifecycle callback 对 Desktop UI 的硬依赖。
 - [ ] 更新 README 和架构图。
 
@@ -390,7 +390,7 @@ Her-Text 不是 CLI，所以不能盲目复制 Codex 的交互语义。
 
 - [ ] 普通聊天路径不退化。
 - [ ] 旧短任务能通过新任务层完成。
-- [ ] 新长任务能在不阻塞情感层的情况下持续执行。
+- [x] 新长任务能在不阻塞情感层的情况下持续执行。
 
 ## Phase 10: 测试与真实验收场景
 
