@@ -209,18 +209,18 @@
 
 目标：任务层核心执行能力对齐 Codex，而不是继续沿用简单 tool loop。
 
-- [ ] 新增 Codex-style `WorkSession`，但实现文件和类型不出现 `codex` 字样。
-- [ ] 新增 `WorkTask`，一个 session 同时最多一个 foreground task，但可有 paused/background threads。
-- [ ] 新增 `WorkTurn`：
-  - [ ] 一次模型采样。
+- [x] 新增 Codex-style `WorkSession`，但实现文件和类型不出现 `codex` 字样。
+- [x] 新增 `WorkTask`，一个 session 同时最多一个 foreground task，但可有 paused/background threads。
+- [x] 新增 `WorkTurn`：
+  - [x] 一次模型采样。
   - [ ] 执行模型请求的工具。
-  - [ ] 工具结果进入下一轮。
-  - [ ] 无 follow-up 时 turn 完成。
-- [ ] 新增 `ToolRouter`：
-  - [ ] 统一解析 function tool、freeform tool、MCP tool、browser tool、desktop tool、shell tool。
-  - [ ] 支持 discoverable/deferred tools。
-  - [ ] 支持工具能力 metadata。
-  - [ ] 支持工具是否允许并行。
+  - [x] 工具结果进入下一轮。
+  - [x] 无 follow-up 时 turn 完成。
+- [x] 新增 `ToolRouter`：
+  - [x] 统一解析 function tool、freeform tool、MCP tool、browser tool、desktop tool、shell tool。
+  - [x] 支持 discoverable/deferred tools。
+  - [x] 支持工具能力 metadata。
+  - [x] 支持工具是否允许并行。
 - [ ] 新增 `ToolOrchestrator`：
   - [ ] 审批策略。
   - [ ] 沙箱策略。
