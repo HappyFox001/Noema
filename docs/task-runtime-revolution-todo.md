@@ -247,13 +247,13 @@
   - [x] 支持 pre-turn compaction。
   - [x] 支持 mid-turn compaction。
   - [x] 支持 context reinjection。
-- [ ] 新增 `CancellationModel`：
-  - [ ] output cancellation。
-  - [ ] user interruption。
-  - [ ] task pause。
-  - [ ] task cancel。
-  - [ ] tool abort。
-  - [ ] background command still running 的事实记录。
+- [x] 新增 `CancellationModel`：
+  - [x] output cancellation。
+  - [x] user interruption。
+  - [x] task pause。
+  - [x] task cancel。
+  - [x] tool abort。
+  - [x] background command still running 的事实记录。
 - [ ] 新增 `TurnEventStream`，替代隐式 callback。
 - [ ] 增加命名检查，确保新增任务层源码路径和导出类型不包含 `codex`。
 

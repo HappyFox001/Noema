@@ -48,6 +48,7 @@ export type RuntimeEventName =
   | 'task.patch.started'
   | 'task.patch.completed'
   | 'task.patch.failed'
+  | 'task.cancellation.recorded'
   | 'task.context.compacted'
   | 'task.pending_input.added'
   | 'task.completed'
@@ -272,6 +273,19 @@ export type RuntimeEvent =
       patchId: string
       changedFiles: string[]
       error: string
+    }>
+  | RuntimeEventBase<'task.cancellation.recorded', {
+      id: string
+      kind: string
+      reason: string
+      toolCallId?: string
+      commandSessionId?: string
+      backgroundCommands: Array<{
+        sessionId: string
+        command: string
+        status: string
+        recordedAt: number
+      }>
     }>
   | RuntimeEventBase<'task.context.compacted', {
       taskDescription: string
