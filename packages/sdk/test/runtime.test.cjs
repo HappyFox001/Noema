@@ -629,6 +629,60 @@ describe('command runtime', () => {
   })
 })
 
+describe('task session work runtime', () => {
+  test('runs a short task through the default work runtime and records work state', async () => {
+    const { AgentCore } = await import('../dist/agent/index.js')
+    const { ContextManager } = await import('../dist/context/index.js')
+    const { MemoryEngine } = await import('../dist/memory/index.js')
+    const { PersonalityEngine } = await import('../dist/personality/index.js')
+    const { RuntimeEventBus, WorkStateStore } = await import('../dist/runtime/index.js')
+    const { TaskSession } = await import('../dist/session/session.js')
+    const storageDir = await mkdtemp(join(tmpdir(), 'her-text-short-task-'))
+    try {
+      const llm = createQueuedLLM([
+        JSON.stringify({
+          title: 'Short task',
+          summary: 'Complete a short task',
+          steps: [{ title: 'Do it', description: 'Complete the task' }],
+        }),
+        'Short task completed.',
+      ])
+      const events = new RuntimeEventBus()
+      const seen = []
+      events.subscribe(event => seen.push(event.name))
+      const workState = new WorkStateStore(storageDir)
+      await workState.initialize()
+      const session = new TaskSession(
+        llm,
+        new MemoryEngine({ storageDir }),
+        new PersonalityEngine({ name: 'Test', systemPrompt: '', traits: [], voiceStyle: '' }),
+        new AgentCore(),
+        new ContextManager(),
+        storageDir,
+        { runtimeEvents: events, workState },
+        { maxTurns: 4 },
+      )
+      await session.initialize()
+
+      const result = await session.runTask({ description: 'Complete a short task' }, 'please do it')
+
+      expect(result.success).toBe(true)
+      expect(result.executor).toBe('adapter')
+      expect(seen).toEqual(expect.arrayContaining([
+        'task.started',
+        'task.completed',
+        'work.signal.emitted',
+      ]))
+      const snapshot = workState.getSnapshot()
+      expect(snapshot.completedThreads.map(thread => thread.goal)).toContain('Complete a short task')
+      await session.shutdown()
+      await workState.flush()
+    } finally {
+      await rm(storageDir, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('tool orchestrator', () => {
   test('normalizes policy failures and emits tool events', async () => {
     const { RuntimeEventBus, ToolOrchestrator } = await import('../dist/runtime/index.js')
@@ -728,6 +782,24 @@ function createTool(fields) {
     parameters: { type: 'object', properties: {} },
     execute: async () => ({}),
     ...fields,
+  }
+}
+
+function createQueuedLLM(responses) {
+  const queue = [...responses]
+  return {
+    async chat() {
+      if (queue.length === 0) {
+        throw new Error('No queued LLM response')
+      }
+      return { content: queue.shift() }
+    },
+    async *streamChat() {
+      if (queue.length === 0) {
+        throw new Error('No queued LLM response')
+      }
+      yield queue.shift()
+    },
   }
 }
 
