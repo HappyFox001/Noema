@@ -395,14 +395,14 @@ Her-Text 不是 CLI，所以不能盲目复制 Codex 的交互语义。
 ## Phase 10: 测试与真实验收场景
 
 - [ ] 单元测试：
-  - [ ] intent routing。
+  - [x] intent routing。
   - [ ] work state persistence。
   - [ ] task interruption semantics。
   - [ ] work thread resume。
-  - [ ] tool router。
+  - [x] tool router。
   - [ ] tool orchestrator。
   - [ ] context compaction。
-  - [ ] long-run keep/discard。
+  - [x] long-run keep/discard。
 - [ ] 集成测试：
   - [ ] 用户停止 TTS，任务继续。
   - [ ] 用户插话补充约束，任务吸收并继续。
