@@ -403,7 +403,7 @@ Her-Text 不是 CLI，所以不能盲目复制 Codex 的交互语义。
   - [x] tool orchestrator。
   - [x] context compaction。
   - [x] long-run keep/discard。
-- [ ] 集成测试：
+- [x] 集成测试：
   - [x] 用户停止 TTS，任务继续。
   - [x] 用户插话补充约束，任务吸收并继续。
   - [x] 用户切换任务后恢复旧任务。
