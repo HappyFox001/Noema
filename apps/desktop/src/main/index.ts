@@ -162,9 +162,16 @@ class AppLogStore {
   private readonly maxEntries = 1200
   private persistencePath: string | null = null
   private saveTimer: ReturnType<typeof setTimeout> | null = null
+  private broadcastTimer: ReturnType<typeof setTimeout> | null = null
+  private pendingBroadcast: AppLogEntry[] = []
   private writeQueue: Promise<void> = Promise.resolve()
+  private rendererStreaming = false
 
   add(level: AppLogLevel, args: unknown[]): void {
+    if (this.shouldSkip(level, args)) {
+      return
+    }
+
     const message = args.map(formatLogArg).join(' ')
     if (!message.trim()) {
       return
@@ -183,7 +190,7 @@ class AppLogStore {
       this.entries.splice(0, this.entries.length - this.maxEntries)
     }
 
-    mainWindow?.webContents.send('logs:new', entry)
+    this.queueBroadcast(entry)
     this.schedulePersist()
   }
 
@@ -196,6 +203,15 @@ class AppLogStore {
     this.sequence = 0
     mainWindow?.webContents.send('logs:cleared')
     this.schedulePersist(0)
+  }
+
+  setRendererStreaming(streaming: boolean): void {
+    this.rendererStreaming = streaming
+    if (!streaming && this.broadcastTimer) {
+      clearTimeout(this.broadcastTimer)
+      this.broadcastTimer = null
+      this.pendingBroadcast = []
+    }
   }
 
   async initializePersistence(filePath: string): Promise<void> {
@@ -251,7 +267,7 @@ class AppLogStore {
     }
 
     const filePath = this.persistencePath
-    const data = JSON.stringify(this.entries.slice(-this.maxEntries), null, 2)
+    const data = JSON.stringify(this.entries.slice(-this.maxEntries))
     this.writeQueue = this.writeQueue
       .catch(() => undefined)
       .then(() => writeFile(filePath, data, 'utf-8'))
@@ -260,6 +276,56 @@ class AppLogStore {
       })
     return this.writeQueue
   }
+
+  private queueBroadcast(entry: AppLogEntry): void {
+    if (!this.rendererStreaming || !mainWindow || mainWindow.webContents.isDestroyed()) {
+      return
+    }
+
+    this.pendingBroadcast.push(entry)
+    if (this.broadcastTimer) {
+      return
+    }
+
+    this.broadcastTimer = setTimeout(() => {
+      this.broadcastTimer = null
+      const batch = this.pendingBroadcast
+      this.pendingBroadcast = []
+      if (batch.length === 1) {
+        mainWindow?.webContents.send('logs:new', batch[0])
+        return
+      }
+      mainWindow?.webContents.send('logs:batch', batch)
+    }, 100)
+  }
+
+  private shouldSkip(level: AppLogLevel, args: unknown[]): boolean {
+    if (process.env.HER_TEXT_VERBOSE_LOGS === '1') {
+      return false
+    }
+    if (level === 'warn' || level === 'error') {
+      return false
+    }
+
+    const first = typeof args[0] === 'string' ? args[0] : ''
+    return isHighFrequencyLogMessage(first)
+  }
+}
+
+function isHighFrequencyLogMessage(message: string): boolean {
+  return (
+    message.startsWith('[AudioPlayer]') ||
+    message.startsWith('[VoiceRecorder]') ||
+    message.startsWith('[Latency]') ||
+    message.startsWith('[TTS] Audio chunk') ||
+    message.startsWith('[UI] Received TTS audio') ||
+    message.startsWith('[Main] TTS text frame') ||
+    message.startsWith('[TaskRuntime] 迭代') ||
+    message.startsWith('[TaskRuntime] 当前步骤') ||
+    message.startsWith('[Turn] Started new turn') ||
+    message.startsWith('[Playback] Requesting') ||
+    message.startsWith('[Playback] Received complete')
+  )
 }
 
 function isAppLogEntry(value: unknown): value is AppLogEntry {
@@ -2373,6 +2439,10 @@ ipcMain.handle('logs:list', async (_, limit?: number) => {
 ipcMain.handle('logs:clear', async () => {
   appLogStore.clear()
   return { success: true }
+})
+
+ipcMain.on('logs:setStreaming', (_, streaming: boolean) => {
+  appLogStore.setRendererStreaming(streaming === true)
 })
 
 function splitDisplayUnits(text: string): string[] {
@@ -4559,7 +4629,10 @@ ipcMain.handle('settings:update', async (_, partial: Partial<AppSettings>) => {
     console.log('[SelfLearning] Enabled:', appSettings.experimental.selfLearningEnabled)
   }
 
-  await applyRuntimeSystemConfigChanges(previous, { pluginsChanged: pluginsChanged || selfLearningChanged })
+  const runtimeSettingsChanged = partial.system !== undefined || pluginsChanged || selfLearningChanged
+  if (runtimeSettingsChanged) {
+    await applyRuntimeSystemConfigChanges(previous, { pluginsChanged: pluginsChanged || selfLearningChanged })
+  }
 
   return appSettings
 })

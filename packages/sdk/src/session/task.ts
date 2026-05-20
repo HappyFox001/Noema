@@ -30,6 +30,12 @@ import {
 } from './execution-state.js'
 import { isDeferredTool, renderDeferredToolSummary, searchDeferredTools } from './tool-discovery.js'
 
+function verboseLog(message = ''): void {
+  if (process.env.HER_TEXT_VERBOSE_LOGS === '1') {
+    process.stdout.write(`${message}\n`)
+  }
+}
+
 export interface TaskRunResult {
   success: boolean
   iterations: number
@@ -212,17 +218,17 @@ export class TaskRuntime {
     let toolCallsCount = 0
     let finalMessage = ''
 
-    console.log('\n╔══════════════════════════════════════════════════════════════╗')
-    console.log('║               🚀 TaskRuntime 开始执行                          ║')
-    console.log('╠══════════════════════════════════════════════════════════════╣')
-    console.log(`║ 任务描述: ${this.taskDescription.substring(0, 50)}`)
-    console.log(`║ 可见工具: ${tools.filter(tool => !isDeferredTool(tool)).map(tool => tool.name).join(', ')}`)
+    verboseLog('\n╔══════════════════════════════════════════════════════════════╗')
+    verboseLog('║               🚀 TaskRuntime 开始执行                          ║')
+    verboseLog('╠══════════════════════════════════════════════════════════════╣')
+    verboseLog(`║ 任务描述: ${this.taskDescription.substring(0, 50)}`)
+    verboseLog(`║ 可见工具: ${tools.filter(tool => !isDeferredTool(tool)).map(tool => tool.name).join(', ')}`)
     if (this.deferredToolSummary) {
-      console.log(`║ 延迟工具: 可通过 tool_search 发现`)
+      verboseLog(`║ 延迟工具: 可通过 tool_search 发现`)
     }
-    console.log(`║ 最大轮次: ${this.maxTurns}`)
-    console.log(`║ 自动压缩阈值: ${this.autoCompactTokenLimit}/${this.modelContextWindow} tokens`)
-    console.log('╚══════════════════════════════════════════════════════════════╝\n')
+    verboseLog(`║ 最大轮次: ${this.maxTurns}`)
+    verboseLog(`║ 自动压缩阈值: ${this.autoCompactTokenLimit}/${this.modelContextWindow} tokens`)
+    verboseLog('╚══════════════════════════════════════════════════════════════╝\n')
 
     try {
       this.hooks.onStatusChanged?.('running')
@@ -254,9 +260,9 @@ export class TaskRuntime {
 
         this.startStep(step)
         iterations++
-        console.log(`\n┌─────────────────────────────────────────────────────────────┐`)
-        console.log(`│ 📍 TaskRuntime 迭代 ${iterations}/${this.maxTurns} · ${step.title.substring(0, 24)}                    │`)
-        console.log(`└─────────────────────────────────────────────────────────────┘`)
+        verboseLog(`\n┌─────────────────────────────────────────────────────────────┐`)
+        verboseLog(`│ 📍 TaskRuntime 迭代 ${iterations}/${this.maxTurns} · ${step.title.substring(0, 24)}                    │`)
+        verboseLog(`└─────────────────────────────────────────────────────────────┘`)
 
         messages.push({
           role: 'user',
@@ -293,7 +299,7 @@ export class TaskRuntime {
           finalMessage = this.getStepRuntime(step.id)?.result || turn.assistantMessage.trim() || finalMessage
 
           if (this.hasRunnableSteps()) {
-            console.log(`[TaskRuntime] 当前步骤已由计划更新标记完成，继续下一步...`)
+            verboseLog(`[TaskRuntime] 当前步骤已由计划更新标记完成，继续下一步...`)
             this.appendTurnMessages(messages, turn)
             await this.maybeRunMidTurnCompact(messages, turn, true)
             this.throwIfAborted()
@@ -305,13 +311,13 @@ export class TaskRuntime {
           this.hooks.onStatusChanged?.('completed')
           this.emitPlanUpdated()
 
-          console.log('\n╔══════════════════════════════════════════════════════════════╗')
-          console.log('║               ✅ TaskRuntime 执行完成                          ║')
-          console.log('╠══════════════════════════════════════════════════════════════╣')
-          console.log(`║ 总迭代次数: ${iterations}`)
-          console.log(`║ 总工具调用: ${toolCallsCount}`)
-          console.log(`║ 最终消息: ${finalMessage.substring(0, 50)}...`)
-          console.log('╚══════════════════════════════════════════════════════════════╝\n')
+          verboseLog('\n╔══════════════════════════════════════════════════════════════╗')
+          verboseLog('║               ✅ TaskRuntime 执行完成                          ║')
+          verboseLog('╠══════════════════════════════════════════════════════════════╣')
+          verboseLog(`║ 总迭代次数: ${iterations}`)
+          verboseLog(`║ 总工具调用: ${toolCallsCount}`)
+          verboseLog(`║ 最终消息: ${finalMessage.substring(0, 50)}...`)
+          verboseLog('╚══════════════════════════════════════════════════════════════╝\n')
 
           return {
             success: true,
@@ -328,7 +334,7 @@ export class TaskRuntime {
           finalMessage = turn.assistantMessage.trim() || finalMessage
 
           if (this.hasRunnableSteps()) {
-            console.log(`[TaskRuntime] 当前步骤完成，继续下一步...`)
+            verboseLog(`[TaskRuntime] 当前步骤完成，继续下一步...`)
             messages.push({
               role: 'assistant',
               content: turn.assistantMessage || `步骤完成：${step.title}`
@@ -342,13 +348,13 @@ export class TaskRuntime {
           this.setRunState('completed')
           this.hooks.onStatusChanged?.('completed')
 
-          console.log('\n╔══════════════════════════════════════════════════════════════╗')
-          console.log('║               ✅ TaskRuntime 执行完成                          ║')
-          console.log('╠══════════════════════════════════════════════════════════════╣')
-          console.log(`║ 总迭代次数: ${iterations}`)
-          console.log(`║ 总工具调用: ${toolCallsCount}`)
-          console.log(`║ 最终消息: ${finalMessage.substring(0, 50)}...`)
-          console.log('╚══════════════════════════════════════════════════════════════╝\n')
+          verboseLog('\n╔══════════════════════════════════════════════════════════════╗')
+          verboseLog('║               ✅ TaskRuntime 执行完成                          ║')
+          verboseLog('╠══════════════════════════════════════════════════════════════╣')
+          verboseLog(`║ 总迭代次数: ${iterations}`)
+          verboseLog(`║ 总工具调用: ${toolCallsCount}`)
+          verboseLog(`║ 最终消息: ${finalMessage.substring(0, 50)}...`)
+          verboseLog('╚══════════════════════════════════════════════════════════════╝\n')
 
           return {
             success: true,
@@ -360,7 +366,7 @@ export class TaskRuntime {
           }
         }
 
-        console.log(`[TaskRuntime] 迭代 ${iterations} 未完成，继续执行...`)
+        verboseLog(`[TaskRuntime] 迭代 ${iterations} 未完成，继续执行...`)
 
         this.appendTurnMessages(messages, turn)
 
@@ -368,9 +374,9 @@ export class TaskRuntime {
         this.throwIfAborted()
       }
 
-      console.log('\n╔══════════════════════════════════════════════════════════════╗')
-      console.log('║               ⚠️ TaskRuntime 达到最大轮次                       ║')
-      console.log('╚══════════════════════════════════════════════════════════════╝\n')
+      verboseLog('\n╔══════════════════════════════════════════════════════════════╗')
+      verboseLog('║               ⚠️ TaskRuntime 达到最大轮次                       ║')
+      verboseLog('╚══════════════════════════════════════════════════════════════╝\n')
 
       this.failCurrentStep(`Reached max turns (${this.maxTurns})`)
       this.setRunState('failed')
@@ -386,9 +392,9 @@ export class TaskRuntime {
       }
     } catch (error) {
       if (isAbortError(error) || this.signal?.aborted) {
-        console.log('\n╔══════════════════════════════════════════════════════════════╗')
-        console.log('║               ⏹️ TaskRuntime 已取消                          ║')
-        console.log('╚══════════════════════════════════════════════════════════════╝\n')
+        verboseLog('\n╔══════════════════════════════════════════════════════════════╗')
+        verboseLog('║               ⏹️ TaskRuntime 已取消                          ║')
+        verboseLog('╚══════════════════════════════════════════════════════════════╝\n')
 
         this.failCurrentStep('Task was interrupted by a newer turn')
         this.setRunState('cancelled')
@@ -404,10 +410,10 @@ export class TaskRuntime {
         }
       }
 
-      console.log('\n╔══════════════════════════════════════════════════════════════╗')
-      console.log('║               ❌ TaskRuntime 执行出错                          ║')
-      console.log(`║ Error: ${(error as Error).message}`)
-      console.log('╚══════════════════════════════════════════════════════════════╝\n')
+      verboseLog('\n╔══════════════════════════════════════════════════════════════╗')
+      verboseLog('║               ❌ TaskRuntime 执行出错                          ║')
+      verboseLog(`║ Error: ${(error as Error).message}`)
+      verboseLog('╚══════════════════════════════════════════════════════════════╝\n')
 
       this.failCurrentStep((error as Error).message)
       this.setRunState('failed')
@@ -567,10 +573,10 @@ export class TaskRuntime {
       return
     }
 
-    console.log('\n┌─────────────────────────────────────────────────────────────┐')
-    console.log(`│ 📦 Auto Compact: ${phase} · ${reason} · ${Math.round(tokenCount)}/${this.autoCompactTokenLimit} tokens`)
-    console.log(`│ 压缩 ${recordsToCompact.length} 轮历史，保留最近 ${recordsToKeep.length} 轮`)
-    console.log('└─────────────────────────────────────────────────────────────┘')
+    verboseLog('\n┌─────────────────────────────────────────────────────────────┐')
+    verboseLog(`│ 📦 Auto Compact: ${phase} · ${reason} · ${Math.round(tokenCount)}/${this.autoCompactTokenLimit} tokens`)
+    verboseLog(`│ 压缩 ${recordsToCompact.length} 轮历史，保留最近 ${recordsToKeep.length} 轮`)
+    verboseLog('└─────────────────────────────────────────────────────────────┘')
 
     try {
       const compactInput = this.renderCompactInput(recordsToCompact, phase, reason, tokenCount)
@@ -1378,7 +1384,7 @@ export class TaskRuntime {
 
       const matched = this.taskPlan.steps.find(step => step.id === decision.id)
       if (matched) {
-        console.log(`[TaskRuntime] 合并重复步骤: ${title || description} -> ${matched.id} (${decision.reason})`)
+        verboseLog(`[TaskRuntime] 合并重复步骤: ${title || description} -> ${matched.id} (${decision.reason})`)
       }
       return matched ?? null
     } catch (error) {

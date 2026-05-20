@@ -20,6 +20,10 @@ import type {
 } from '@her-text/sdk'
 
 type RuntimePluginFactory = (context: SDKPluginContext) => SDKPlugin | Promise<SDKPlugin>
+type RuntimePluginManifestEntry = { manifest: RuntimePluginManifest; pluginDir: string }
+
+const manifestCache = new Map<string, RuntimePluginManifestEntry[]>()
+const factoryCache = new Map<string, RuntimePluginFactory>()
 
 export interface RuntimePluginInfo {
   id: string
@@ -111,7 +115,13 @@ export async function loadRuntimePlugins(
 
 async function readRuntimePluginManifests(
   pluginsDir: string
-): Promise<Array<{ manifest: RuntimePluginManifest; pluginDir: string }>> {
+): Promise<RuntimePluginManifestEntry[]> {
+  const cacheKey = resolve(pluginsDir)
+  const cached = manifestCache.get(cacheKey)
+  if (cached) {
+    return cached
+  }
+
   if (!existsSync(pluginsDir)) {
     console.warn('[PluginLoader] Plugin directory not found:', pluginsDir)
     return []
@@ -143,6 +153,7 @@ async function readRuntimePluginManifests(
     }
   }
 
+  manifestCache.set(cacheKey, manifests)
   return manifests
 }
 
@@ -162,12 +173,8 @@ async function loadRuntimePlugin(
     const assetsDir = manifest.assets ? resolve(pluginDir, manifest.assets) : pluginDir
     const dataDir = join(app.getPath('userData'), 'plugins', manifest.id)
     await mkdir(dataDir, { recursive: true })
-    const module = await import(pathToFileURL(mainPath).toString())
-    const factory = module.default
-    if (typeof factory !== 'function') {
-      console.warn(`[PluginLoader] Plugin "${manifest.id}" must default-export a plugin factory`)
-      return null
-    }
+    const factory = await loadRuntimePluginFactory(mainPath, manifest.id)
+    if (!factory) return null
 
     const pluginContext: SDKPluginContext = {
       pluginDir,
@@ -188,6 +195,26 @@ async function loadRuntimePlugin(
     console.error(`[PluginLoader] Failed to load plugin from ${pluginDir}:`, error)
     return null
   }
+}
+
+async function loadRuntimePluginFactory(
+  mainPath: string,
+  pluginId: string
+): Promise<RuntimePluginFactory | null> {
+  const cached = factoryCache.get(mainPath)
+  if (cached) {
+    return cached
+  }
+
+  const module = await import(pathToFileURL(mainPath).toString())
+  const factory = module.default
+  if (typeof factory !== 'function') {
+    console.warn(`[PluginLoader] Plugin "${pluginId}" must default-export a plugin factory`)
+    return null
+  }
+
+  factoryCache.set(mainPath, factory as RuntimePluginFactory)
+  return factory as RuntimePluginFactory
 }
 
 export async function invokeRuntimePluginAdminAction(

@@ -100,6 +100,8 @@ export class AdvancedGlassOrbRenderer {
   dispose(): void {
     this.stop()
     window.removeEventListener('pointermove', this.pointerMoveHandler)
+    const environment = this.scene?.environment
+    environment?.dispose?.()
     this.scene?.traverse((object) => {
       const mesh = object as THREE.Mesh
       mesh.geometry?.dispose?.()
@@ -112,6 +114,8 @@ export class AdvancedGlassOrbRenderer {
     this.group = null
     this.material = null
     this.pointLight = null
+    this.fragments = []
+    this.loading = null
   }
 
   private async initialize(): Promise<void> {

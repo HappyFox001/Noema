@@ -1361,6 +1361,9 @@ function renderSystemConfigIfReady(): void {
   if (typeof currentSystemConfig === 'undefined' || !currentSystemConfig) {
     return
   }
+  if (!document.body.classList.contains('settings-open') || !isSettingsSectionActive('models')) {
+    return
+  }
   renderLLMModels()
   renderTaskModels()
   renderTTSModels()
@@ -2225,6 +2228,19 @@ function stopOrbAnimation(): void {
   }
 }
 
+function disposeInactiveOrbRenderers(activeStyle: OrbStyle): void {
+  if (activeStyle !== 'advanced' && advancedOrbRenderer) {
+    advancedOrbRenderer.dispose()
+    advancedOrbRenderer = null
+    advancedOrbRendererPromise = null
+  }
+  if (activeStyle !== 'planet' && planetOrbRenderer) {
+    planetOrbRenderer.dispose()
+    planetOrbRenderer = null
+    planetOrbRendererPromise = null
+  }
+}
+
 startOrbAnimation()
 window.addEventListener('resize', () => {
   resizeOrbCanvas()
@@ -2427,6 +2443,7 @@ function setOrbStyle(style: OrbStyle): void {
   document.body.classList.toggle('planet-orb-active', style === 'planet')
   renderOrbStyleControls()
   stopOrbAnimation()
+  disposeInactiveOrbRenderers(style)
   if (!orbAnimationPaused) {
     startOrbAnimation()
   }
@@ -3194,6 +3211,8 @@ let lastLearningOverview: LearningOverviewData | null = null
 let activeLearningDetail: { type: 'agent' | 'candidate' | 'asset' | 'event' | 'reflection' | 'decision' | 'rollback'; id: string } | null = null
 let cachedPlugins: PluginInfo[] = []
 let activePluginDetail: { pluginId: string; page: 'main' | 'advanced' } | null = null
+let pluginsListLoadPromise: Promise<void> | null = null
+let pluginsListLoaded = false
 const live2dCapabilitiesCache = new Map<string, Live2dModelCapabilities>()
 let logEntries: AppLogEntry[] = []
 let activeLogLevel: AppLogLevel | 'all' = 'all'
@@ -3334,9 +3353,20 @@ function setLiquidGlassEnabled(enabled: boolean): void {
     liquidGlassSurface = null
     return
   }
-  if (!liquidGlassSurface) {
+  if (!document.body.classList.contains('settings-open')) {
+    return
+  }
+  ensureLiquidGlassSurfaceActive(true)
+}
+
+function ensureLiquidGlassSurfaceActive(active: boolean): void {
+  if (!currentLiquidGlassEnabled) {
+    return
+  }
+  if (active && !liquidGlassSurface) {
     liquidGlassSurface = initializeLiquidGlassSurface()
   }
+  liquidGlassSurface?.setActive(active)
 }
 
 function closeOrbStyleMenu(): void {
@@ -3596,6 +3626,14 @@ function formatLogTime(time: number): string {
 
 function isLogsSectionActive(): boolean {
   return document.getElementById('section-logs')?.classList.contains('active') === true
+}
+
+function isSettingsSectionActive(section: string): boolean {
+  return document.getElementById(`section-${section}`)?.classList.contains('active') === true
+}
+
+function updateLogsStreaming(): void {
+  window.electronAPI.setLogsStreaming(document.body.classList.contains('settings-open') && isLogsSectionActive())
 }
 
 async function refreshLearningSection(): Promise<void> {
@@ -4103,6 +4141,7 @@ function switchSettingsSection(section: string): void {
   document.querySelector(`.nav-item[data-section="${cssEscape(section)}"]`)?.classList.add('active')
   document.querySelectorAll('.settings-section').forEach(sec => sec.classList.remove('active'))
   document.getElementById(`section-${section}`)?.classList.add('active')
+  updateLogsStreaming()
 
   if (section === 'memory') {
     void refreshMemorySection()
@@ -4132,6 +4171,7 @@ function openSettings(section?: string) {
   stopOrbAnimation()
   document.body.classList.remove('settings-closing')
   document.body.classList.add('settings-open')
+  ensureLiquidGlassSurfaceActive(true)
   settingsPanel.classList.remove('warping-out')
   settingsPanel.classList.add('visible', 'warping-in')
   window.setTimeout(() => {
@@ -4145,12 +4185,17 @@ function openSettings(section?: string) {
   } else if (isMemorySectionActive()) {
     void refreshMemorySection()
   } else if (isLogsSectionActive()) {
+    updateLogsStreaming()
     void loadLogsSection()
+  } else {
+    updateLogsStreaming()
   }
 }
 
 // Close settings panel
 function closeSettings() {
+  window.electronAPI.setLogsStreaming(false)
+  ensureLiquidGlassSurfaceActive(false)
   hidePanelNotice()
   document.body.classList.add('settings-closing')
   settingsPanel.classList.remove('warping-in')
@@ -4479,6 +4524,16 @@ window.electronAPI.onLogEntry((entry) => {
   }
 })
 
+window.electronAPI.onLogBatch((entries) => {
+  logEntries.push(...entries)
+  if (logEntries.length > 1200) {
+    logEntries = logEntries.slice(-1200)
+  }
+  if (isLogsSectionActive()) {
+    renderLogs()
+  }
+})
+
 window.electronAPI.onLogsCleared(() => {
   logEntries = []
   if (isLogsSectionActive()) {
@@ -4532,16 +4587,31 @@ personalitySelect.addEventListener('change', async () => {
   showPanelNotice(tf('personality.switched', { name: personalitySelect.selectedOptions[0]?.textContent ?? selected }))
 })
 
-async function loadPluginsSection(): Promise<void> {
-  pluginsList.innerHTML = `<div class="profile-loading">${escapeHtml(t('common.loading'))}</div>`
-
-  const result = await window.electronAPI.listPlugins()
-  if (!result.success) {
-    pluginsList.innerHTML = `<div class="profile-loading">${escapeHtml(t('plugins.loadFailed'))}: ${escapeHtml(result.error ?? 'unknown error')}</div>`
+async function loadPluginsSection(force = false): Promise<void> {
+  if (!force && pluginsListLoaded) {
+    renderPluginsSection(cachedPlugins)
     return
   }
+  if (pluginsListLoadPromise) {
+    return pluginsListLoadPromise
+  }
 
-  renderPluginsSection(result.plugins)
+  pluginsList.innerHTML = `<div class="profile-loading">${escapeHtml(t('common.loading'))}</div>`
+
+  pluginsListLoadPromise = window.electronAPI.listPlugins()
+    .then((result) => {
+      if (!result.success) {
+        pluginsList.innerHTML = `<div class="profile-loading">${escapeHtml(t('plugins.loadFailed'))}: ${escapeHtml(result.error ?? 'unknown error')}</div>`
+        return
+      }
+
+      pluginsListLoaded = true
+      renderPluginsSection(result.plugins)
+    })
+    .finally(() => {
+      pluginsListLoadPromise = null
+    })
+  return pluginsListLoadPromise
 }
 
 function renderPluginsSection(plugins: PluginInfo[]): void {
@@ -4606,6 +4676,10 @@ function renderPluginsSection(plugins: PluginInfo[]): void {
           [pluginId]: input.checked,
         }
         await window.electronAPI.updateSettings({ plugins: nextPlugins })
+        const target = cachedPlugins.find(item => item.id === pluginId)
+        if (target) {
+          target.enabled = input.checked
+        }
         await loadPluginUISurfaces()
         showPanelNotice(input.checked ? t('plugins.enabled') : t('plugins.disabled'))
       } catch (error: any) {
@@ -4617,7 +4691,6 @@ function renderPluginsSection(plugins: PluginInfo[]): void {
     })
   })
 
-  bindPluginConfigInputs()
 }
 
 function renderPluginDetail(plugin: PluginInfo, page: 'main' | 'advanced' = 'main'): void {
@@ -6316,6 +6389,8 @@ const resetSystemBtn = document.getElementById('reset-system-btn') as HTMLButton
 let currentSystemConfig: SystemConfig | null = null
 let lastLocalModels: LocalModelStatus[] = []
 let activeModelManagerKind: ModelManagerKind | null = null
+let systemConfigLoadPromise: Promise<void> | null = null
+let systemConfigRendered = false
 
 async function revealDevOnlyControls(): Promise<void> {
   try {
@@ -6496,11 +6571,35 @@ async function ensureSetupReadyForConversation(): Promise<boolean> {
   return false
 }
 
-async function loadSystemConfig(): Promise<void> {
-  const settings = await window.electronAPI.getSettings()
-  currentSystemConfig = settings.system
-  renderSystemConfig()
-  void loadLocalModelStatus()
+async function loadSystemConfig(force = false): Promise<void> {
+  const shouldRender = document.body.classList.contains('settings-open') &&
+    (isSettingsSectionActive('system') || isSettingsSectionActive('models'))
+  if (!force && currentSystemConfig && (!shouldRender || systemConfigRendered)) {
+    return
+  }
+  if (!force && currentSystemConfig && shouldRender && !systemConfigRendered) {
+    renderSystemConfig()
+    systemConfigRendered = true
+    void loadLocalModelStatus()
+    return
+  }
+  if (systemConfigLoadPromise) {
+    return systemConfigLoadPromise
+  }
+
+  systemConfigLoadPromise = window.electronAPI.getSettings()
+    .then((settings) => {
+      currentSystemConfig = settings.system
+      if (shouldRender) {
+        renderSystemConfig()
+        systemConfigRendered = true
+        void loadLocalModelStatus()
+      }
+    })
+    .finally(() => {
+      systemConfigLoadPromise = null
+    })
+  return systemConfigLoadPromise
 }
 
 function renderSystemConfig(): void {
@@ -7704,7 +7803,7 @@ async function resetSystemConfigFromEnv(): Promise<void> {
   try {
     const result = await window.electronAPI.resetSystemConfigFromEnv()
     if (result.success) {
-      await loadSystemConfig()
+      await loadSystemConfig(true)
       await refreshSetupReadiness()
       console.log('[Settings] System config reloaded from .env')
     } else {

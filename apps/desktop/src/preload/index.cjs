@@ -109,6 +109,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   clearLogs: () =>
     ipcRenderer.invoke('logs:clear'),
 
+  setLogsStreaming: (streaming) => {
+    ipcRenderer.send('logs:setStreaming', streaming)
+  },
+
   getSettings: () =>
     ipcRenderer.invoke('settings:get'),
 
@@ -288,6 +292,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   onLogEntry: (callback) => {
     ipcRenderer.on('logs:new', (_, entry) => callback(entry))
+  },
+
+  onLogBatch: (callback) => {
+    ipcRenderer.on('logs:batch', (_, entries) => callback(entries))
   },
 
   onLogsCleared: (callback) => {

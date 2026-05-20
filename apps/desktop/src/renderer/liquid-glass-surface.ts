@@ -318,6 +318,7 @@ export class LiquidGlassSurface {
   private startedAt = performance.now()
   private lastFrameAt = this.startedAt
   private reducedMotion = false
+  private active = false
   private pointerActive = false
   private lastPointer: { x: number; y: number } | null = null
   private pendingImpulses: PointerImpulse[] = []
@@ -381,6 +382,14 @@ export class LiquidGlassSurface {
     document.addEventListener('pointerup', this.handlePointerUp, { capture: true, passive: true })
     document.addEventListener('pointercancel', this.handlePointerUp, { capture: true, passive: true })
     document.addEventListener('visibilitychange', this.handleVisibilityChange)
+    this.syncAnimationState()
+  }
+
+  setActive(active: boolean): void {
+    if (this.active === active) {
+      return
+    }
+    this.active = active
     this.syncAnimationState()
   }
 
@@ -609,12 +618,14 @@ export class LiquidGlassSurface {
   }
 
   private syncAnimationState(): void {
-    if (document.hidden || this.reducedMotion) {
+    if (!this.active || document.hidden || this.reducedMotion) {
       if (this.animationFrameId !== null) {
         cancelAnimationFrame(this.animationFrameId)
         this.animationFrameId = null
       }
-      this.render(performance.now())
+      if (this.active && !document.hidden && this.reducedMotion) {
+        this.render(performance.now())
+      }
       return
     }
 
@@ -648,7 +659,7 @@ export class LiquidGlassSurface {
     gl.enable(gl.BLEND)
     this.renderSurface(gl)
 
-    this.animationFrameId = document.hidden || this.reducedMotion
+    this.animationFrameId = !this.active || document.hidden || this.reducedMotion
       ? null
       : requestAnimationFrame((time) => this.render(time))
   }
@@ -839,7 +850,7 @@ export class LiquidGlassSurface {
   }
 
   private beginPointerImpulse(event: PointerEvent): void {
-    if (!document.body.classList.contains('settings-open')) {
+    if (!this.active) {
       return
     }
 
@@ -851,7 +862,7 @@ export class LiquidGlassSurface {
   }
 
   private dragPointerImpulse(event: PointerEvent): void {
-    if (!this.pointerActive || !document.body.classList.contains('settings-open')) {
+    if (!this.active || !this.pointerActive) {
       return
     }
 
