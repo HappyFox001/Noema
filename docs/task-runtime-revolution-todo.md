@@ -375,8 +375,8 @@ Her-Text 不是 CLI，所以不能盲目复制 Codex 的交互语义。
 
 ## Phase 9: 迁移旧系统
 
-- [ ] 保留旧 `TaskRuntime` 作为 legacy adapter，只用于过渡。
-- [ ] 新任务默认走 `WorkRuntime`。
+- [x] 保留旧 `TaskRuntime` 作为 legacy adapter，只用于过渡。
+- [x] 新任务默认走 `WorkRuntime`。
 - [ ] 迁移现有工具注册到新 `ToolRouter`。
 - [ ] 迁移 browser-use。
 - [ ] 迁移 computer-use。
@@ -433,7 +433,7 @@ Her-Text 不是 CLI，所以不能盲目复制 Codex 的交互语义。
 5. [x] 让新用户输入不再默认 abort 任务。
 6. [ ] 让旧 TaskRuntime 每次状态变化写入 WorkThread snapshot。
 7. [ ] 实现 “继续刚才任务” 的真实恢复。
-8. [ ] 再开始替换 Codex-style WorkSession / WorkTurn / ToolRouter。
+8. [x] 再开始替换 Codex-style WorkSession / WorkTurn / ToolRouter。
 9. [ ] 最后叠加 LongRunRuntime。
 
 ## 完成定义

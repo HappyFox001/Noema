@@ -23,13 +23,16 @@ import {
 } from './task.js'
 import {
   BUILTIN_TASK_RUNTIME_ADAPTER_ID,
+  LEGACY_TASK_RUNTIME_ADAPTER_ALIASES,
+  LEGACY_TASK_RUNTIME_ADAPTER_ID,
+  WORK_TASK_RUNTIME_ADAPTER_ID,
   type TaskRuntimeAdapter,
   type TaskRuntimeAdapterHooks,
   type TaskRuntimeRequest,
 } from './runtime-adapter.js'
 import type { TaskIntent } from '../dialogue/processors.js'
 import type { TaskPlan, TaskRunState } from './task-plan.js'
-import type { RuntimeEventBus } from '../runtime/index.js'
+import { WorkSession, type RuntimeEventBus } from '../runtime/index.js'
 import type { WorkStateStore } from '../runtime/work-store.js'
 import type { WorkThread } from '../runtime/work-state.js'
 
@@ -138,7 +141,7 @@ export class TaskSession {
   private persistenceDbPath: string
   private writeQueue: Promise<void> = Promise.resolve()
   private activeTaskRun: ActiveTaskRun | null = null
-  private runtimeAdapters: TaskRuntimeAdapter[] = [createBuiltinTaskRuntimeAdapter()]
+  private runtimeAdapters: TaskRuntimeAdapter[] = createDefaultTaskRuntimeAdapters()
   private activeWorkThread: WorkThread | null = null
 
   constructor(
@@ -174,9 +177,10 @@ export class TaskSession {
   }
 
   setRuntimeAdapters(adapters: TaskRuntimeAdapter[]): void {
+    const internalIds = new Set([WORK_TASK_RUNTIME_ADAPTER_ID, LEGACY_TASK_RUNTIME_ADAPTER_ID, BUILTIN_TASK_RUNTIME_ADAPTER_ID])
     this.runtimeAdapters = [
-      createBuiltinTaskRuntimeAdapter(),
-      ...adapters.filter(adapter => adapter.id !== BUILTIN_TASK_RUNTIME_ADAPTER_ID),
+      ...createDefaultTaskRuntimeAdapters(),
+      ...adapters.filter(adapter => !internalIds.has(adapter.id)),
     ]
   }
 
@@ -353,6 +357,8 @@ export class TaskSession {
         agent: this.agent,
         personality: this.personality,
         context: this.context,
+        runtimeEvents: this.runtimeHooks.runtimeEvents,
+        workState: this.runtimeHooks.workState,
       },
     }
 
@@ -494,10 +500,10 @@ export class TaskSession {
   }
 
   private async selectRuntimeAdapter(request: TaskRuntimeRequest): Promise<TaskRuntimeAdapter> {
-    const configuredId = request.config.adapterId?.trim()
+    const configuredId = normalizeTaskRuntimeAdapterId(request.config.adapterId)
     const candidates = configuredId
       ? this.runtimeAdapters.filter(adapter => adapter.id === configuredId)
-      : this.runtimeAdapters.filter(adapter => adapter.id === BUILTIN_TASK_RUNTIME_ADAPTER_ID)
+      : this.runtimeAdapters.filter(adapter => adapter.id === WORK_TASK_RUNTIME_ADAPTER_ID)
 
     for (const adapter of candidates) {
       if (!adapter.canHandle || await adapter.canHandle(request)) {
@@ -508,8 +514,8 @@ export class TaskSession {
     if (configuredId) {
       console.warn(`[TaskSession] Task runtime adapter "${configuredId}" is unavailable; falling back to builtin`)
     }
-    return this.runtimeAdapters.find(adapter => adapter.id === BUILTIN_TASK_RUNTIME_ADAPTER_ID)
-      ?? createBuiltinTaskRuntimeAdapter()
+    return this.runtimeAdapters.find(adapter => adapter.id === WORK_TASK_RUNTIME_ADAPTER_ID)
+      ?? createWorkTaskRuntimeAdapter()
   }
 
   getSnapshot(): SessionTaskSnapshot {
@@ -747,10 +753,48 @@ function buildTaskResumeSummary(taskDescription: string, stepTitle: string): str
   return `任务「${taskDescription}」最近推进到：${stepTitle}`
 }
 
-function createBuiltinTaskRuntimeAdapter(): TaskRuntimeAdapter {
+function createDefaultTaskRuntimeAdapters(): TaskRuntimeAdapter[] {
+  const legacy = createLegacyTaskRuntimeAdapter()
+  return [
+    createWorkTaskRuntimeAdapter(legacy),
+    legacy,
+  ]
+}
+
+function createWorkTaskRuntimeAdapter(legacy = createLegacyTaskRuntimeAdapter()): TaskRuntimeAdapter {
   return {
-    id: BUILTIN_TASK_RUNTIME_ADAPTER_ID,
-    label: 'Built-in tool loop',
+    id: WORK_TASK_RUNTIME_ADAPTER_ID,
+    label: 'Work runtime',
+    async run(request, hooks) {
+      const events = request.dependencies.runtimeEvents
+      const workState = request.dependencies.workState
+      if (!events || !workState) {
+        return legacy.run(request, hooks)
+      }
+      const session = new WorkSession({
+        events,
+        workState,
+        tools: request.dependencies.agent.getTools(),
+      })
+      const task = session.createTask(request.taskId, request.taskDescription)
+      const turn = session.startTurn(task.id, 1)
+      try {
+        const result = await legacy.run(request, hooks)
+        session.completeTurn(turn, [], false, [])
+        session.updateTaskStatus(task.id, result.success ? 'completed' : 'failed')
+        return result
+      } catch (error) {
+        session.updateTaskStatus(task.id, 'failed')
+        throw error
+      }
+    },
+  }
+}
+
+function createLegacyTaskRuntimeAdapter(): TaskRuntimeAdapter {
+  return {
+    id: LEGACY_TASK_RUNTIME_ADAPTER_ID,
+    label: 'Legacy tool loop',
     async run(request, hooks) {
       const runtime = new TaskRuntime(
         request.dependencies.llm,
@@ -780,5 +824,16 @@ function createBuiltinTaskRuntimeAdapter(): TaskRuntimeAdapter {
 }
 
 function getExecutorKind(adapter: TaskRuntimeAdapter): TaskExecutorKind {
-  return adapter.id === BUILTIN_TASK_RUNTIME_ADAPTER_ID ? 'builtin' : 'adapter'
+  return adapter.id === LEGACY_TASK_RUNTIME_ADAPTER_ID ? 'builtin' : 'adapter'
+}
+
+function normalizeTaskRuntimeAdapterId(adapterId?: string): string | undefined {
+  const trimmed = adapterId?.trim()
+  if (!trimmed) {
+    return undefined
+  }
+  if (LEGACY_TASK_RUNTIME_ADAPTER_ALIASES.includes(trimmed)) {
+    return LEGACY_TASK_RUNTIME_ADAPTER_ID
+  }
+  return trimmed
 }

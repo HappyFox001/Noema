@@ -8,6 +8,8 @@ import type { AgentCore } from '../agent/index.js'
 import type { ContextManager } from '../context/index.js'
 import type { ConversationSummary, UserProfile } from '../memory/index.js'
 import type { PersonalityEngine } from '../personality/index.js'
+import type { RuntimeEventBus } from '../runtime/events.js'
+import type { WorkStateStore } from '../runtime/work-store.js'
 import type {
   TaskContextItem,
   TaskRunResult,
@@ -33,6 +35,8 @@ export interface TaskRuntimeRequest {
     agent: AgentCore
     personality: PersonalityEngine
     context: ContextManager
+    runtimeEvents?: RuntimeEventBus
+    workState?: WorkStateStore
   }
 }
 
@@ -55,4 +59,7 @@ export interface TaskRuntimeAdapter {
   run(request: TaskRuntimeRequest, hooks: TaskRuntimeAdapterHooks): Promise<TaskRunResult>
 }
 
-export const BUILTIN_TASK_RUNTIME_ADAPTER_ID = 'builtin_tool_loop'
+export const WORK_TASK_RUNTIME_ADAPTER_ID = 'work_runtime'
+export const LEGACY_TASK_RUNTIME_ADAPTER_ID = 'legacy_tool_loop'
+export const BUILTIN_TASK_RUNTIME_ADAPTER_ID = LEGACY_TASK_RUNTIME_ADAPTER_ID
+export const LEGACY_TASK_RUNTIME_ADAPTER_ALIASES = ['builtin_tool_loop']

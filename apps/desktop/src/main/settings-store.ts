@@ -187,7 +187,7 @@ export interface TaskRuntimeSettings {
 }
 
 const DEFAULT_TASK_RUNTIME_SETTINGS: TaskRuntimeSettings = {
-  adapterId: 'builtin_tool_loop',
+  adapterId: 'work_runtime',
   maxTurns: 24,
   modelContextWindow: 128000,
   autoCompactTokenLimit: 115200,

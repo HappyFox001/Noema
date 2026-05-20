@@ -2718,7 +2718,7 @@ let appSettings: AppSettings = {
     taskModels: [{ id: 'default-task', modelName: 'gemini-3.1-pro-preview', apiKey: '', baseUrl: '' }],
     activeTaskId: 'default-task',
     taskRuntime: {
-      adapterId: 'builtin_tool_loop',
+      adapterId: 'work_runtime',
       maxTurns: 24,
       modelContextWindow: 128000,
       autoCompactTokenLimit: 115200,

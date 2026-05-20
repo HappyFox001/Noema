@@ -7849,7 +7849,7 @@ async function updateTaskRuntimeSettings(): Promise<void> {
   )
 
   currentSystemConfig.taskRuntime = {
-    adapterId: currentSystemConfig.taskRuntime.adapterId || 'builtin_tool_loop',
+    adapterId: currentSystemConfig.taskRuntime.adapterId || 'work_runtime',
     maxTurns,
     modelContextWindow,
     autoCompactTokenLimit,
