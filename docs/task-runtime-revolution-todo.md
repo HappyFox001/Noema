@@ -328,10 +328,10 @@ Her-Text 不是 CLI，所以不能盲目复制 Codex 的交互语义。
   - [x] keep/discard。
   - [x] 记录结果。
   - [ ] 继续下一轮。
-- [ ] 实现 rollback：
-  - [ ] dedicated branch/worktree 可 destructive rollback。
-  - [ ] 普通工作区默认非破坏性 revert。
-  - [ ] 永不回滚用户无关改动。
+- [x] 实现 rollback：
+  - [x] dedicated branch/worktree 可 destructive rollback。
+  - [x] 普通工作区默认非破坏性 revert。
+  - [x] 永不回滚用户无关改动。
 - [ ] 实现 stuck escalation：
   - [ ] 3 次连续失败 refine。
   - [ ] 5 次连续失败 pivot。

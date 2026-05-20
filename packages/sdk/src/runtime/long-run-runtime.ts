@@ -61,6 +61,21 @@ export interface GoalRunGuardResult {
   output?: string
 }
 
+export interface GoalRunRollbackRequest {
+  iteration: GoalRunIteration
+  changedFiles: string[]
+  protectedFiles?: string[]
+  destructiveRollback?: () => Promise<void>
+  nonDestructiveRollback?: () => Promise<GoalRunCheckpoint>
+}
+
+export interface GoalRunRollbackResult {
+  applied: boolean
+  destructive: boolean
+  reason: string
+  checkpoint?: GoalRunCheckpoint
+}
+
 export interface CreateGoalRunRequest {
   goal: string
   scope: string[]
@@ -149,6 +164,48 @@ export class LongRunRuntime {
 
   async appendLesson(run: GoalRun, lesson: string): Promise<void> {
     await appendFile(join(run.artifactDir, 'lessons.md'), `\n- ${lesson}\n`, 'utf8')
+  }
+
+  async rollbackIteration(run: GoalRun, request: GoalRunRollbackRequest): Promise<GoalRunRollbackResult> {
+    const protectedFiles = new Set(request.protectedFiles ?? [])
+    const touchesProtectedFiles = request.changedFiles.some(file => protectedFiles.has(file))
+    if (touchesProtectedFiles) {
+      const result = {
+        applied: false,
+        destructive: false,
+        reason: 'Rollback refused because the iteration overlaps protected user changes',
+      }
+      await this.appendRuntimeLog(run, `rollback=refused iteration=${request.iteration.index} reason=protected-files`)
+      return result
+    }
+
+    if (run.rollbackPolicy === 'dedicated_worktree' && request.destructiveRollback) {
+      await request.destructiveRollback()
+      await this.appendRuntimeLog(run, `rollback=destructive iteration=${request.iteration.index}`)
+      return {
+        applied: true,
+        destructive: true,
+        reason: 'Dedicated worktree rollback completed',
+      }
+    }
+
+    if (request.nonDestructiveRollback) {
+      const checkpoint = await request.nonDestructiveRollback()
+      await this.appendRuntimeLog(run, `rollback=non_destructive iteration=${request.iteration.index} checkpoint=${checkpoint.id}`)
+      return {
+        applied: true,
+        destructive: false,
+        checkpoint,
+        reason: 'Non-destructive rollback checkpoint completed',
+      }
+    }
+
+    await this.appendRuntimeLog(run, `rollback=checkpoint_only iteration=${request.iteration.index}`)
+    return {
+      applied: false,
+      destructive: false,
+      reason: 'Rollback policy records the checkpoint without modifying the workspace',
+    }
   }
 
   private async initializeArtifacts(run: GoalRun): Promise<void> {
