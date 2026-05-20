@@ -30,6 +30,8 @@ import {
 import type { TaskIntent } from '../dialogue/processors.js'
 import type { TaskPlan, TaskRunState } from './task-plan.js'
 import type { RuntimeEventBus } from '../runtime/index.js'
+import type { WorkStateStore } from '../runtime/work-store.js'
+import type { WorkThread } from '../runtime/work-state.js'
 
 export type SessionTaskStatus = 'idle' | 'running' | 'completed' | 'errored'
 
@@ -85,6 +87,7 @@ interface TaskSessionRuntimeHooks extends Pick<
   'onUserInputRequest' | 'onRunStateChanged' | 'onPlanUpdated' | 'onStepUpdated' | 'resolveToolStrategyHints'
 > {
   runtimeEvents?: RuntimeEventBus
+  workState?: WorkStateStore
 }
 
 const TASK_SCHEMA_SQL = `
@@ -136,6 +139,7 @@ export class TaskSession {
   private writeQueue: Promise<void> = Promise.resolve()
   private activeTaskRun: ActiveTaskRun | null = null
   private runtimeAdapters: TaskRuntimeAdapter[] = [createBuiltinTaskRuntimeAdapter()]
+  private activeWorkThread: WorkThread | null = null
 
   constructor(
     private llm: LLMProvider,
@@ -226,6 +230,7 @@ export class TaskSession {
         originalUserInput,
       },
     })
+    await this.initializeWorkThread(taskId, taskDescription, originalUserInput)
     await this.persistSnapshot()
 
     const runPromise = this.executeTaskRun(
@@ -284,6 +289,9 @@ export class TaskSession {
             originalUserInput,
           },
         })
+        this.updateWorkThread({
+          status: mapTaskRunStateToWorkStatus(state),
+        })
         this.runtimeHooks.onRunStateChanged?.(state, taskMeta)
       },
       onPlanUpdated: (plan) => {
@@ -297,6 +305,9 @@ export class TaskSession {
             taskDescription,
             originalUserInput,
           },
+        })
+        this.updateWorkThread({
+          plan: cloneTaskPlan(plan),
         })
         this.runtimeHooks.onPlanUpdated?.(cloneTaskPlan(plan), taskMeta)
       },
@@ -314,6 +325,11 @@ export class TaskSession {
             taskDescription,
             originalUserInput,
           },
+        })
+        this.updateWorkThread({
+          plan: planSnapshot,
+          currentStep: stepSnapshot,
+          resumeSummary: buildTaskResumeSummary(taskDescription, stepSnapshot.title),
         })
         this.runtimeHooks.onStepUpdated?.(stepSnapshot, planSnapshot, taskMeta)
       },
@@ -346,11 +362,18 @@ export class TaskSession {
     const result = await adapter.run(request, hooks)
     if (!result.success) {
       this.snapshot.lastError = result.error
+      this.recordWorkFailure(result.error || result.finalMessage || 'Task failed')
     }
     if (result.plan) {
       this.snapshot.plan = cloneTaskPlan(result.plan)
     }
     this.snapshot.finalSummary = result.finalMessage
+    this.updateWorkThread({
+      status: result.success ? 'completed' : 'recoverable_failed',
+      plan: result.plan ? cloneTaskPlan(result.plan) : this.activeWorkThread?.plan,
+      executionState: result.executionState,
+      resumeSummary: result.finalMessage,
+    })
     if (result.success) {
       this.runtimeHooks.runtimeEvents?.emit({
         name: 'task.completed',
@@ -384,6 +407,90 @@ export class TaskSession {
       ...result,
       executor,
     }
+  }
+
+  private async initializeWorkThread(
+    taskId: string,
+    taskDescription: string,
+    originalUserInput: string
+  ): Promise<void> {
+    const workState = this.runtimeHooks.workState
+    if (!workState) {
+      return
+    }
+    const now = Date.now()
+    const existing = workState.getThread(taskId)
+    const thread: WorkThread = existing ?? {
+      id: taskId,
+      goal: taskDescription,
+      status: 'active',
+      priority: 0,
+      createdAt: now,
+      updatedAt: now,
+      lastFocusedAt: now,
+      userIntentHistory: [{
+        input: originalUserInput,
+        intent: 'task.start',
+        createdAt: now,
+      }],
+      emotionalTurnHistory: [],
+      observations: [],
+      artifacts: [],
+      decisions: [],
+      failures: [],
+      nextActions: [],
+      resumeSummary: `准备执行：${taskDescription}`,
+    }
+    this.activeWorkThread = thread
+    await workState.saveThread(thread, 'task started')
+    await workState.focusThread(thread.id, now)
+  }
+
+  private updateWorkThread(updates: Partial<WorkThread>): void {
+    const workState = this.runtimeHooks.workState
+    if (!workState || !this.activeWorkThread) {
+      return
+    }
+    const next: WorkThread = {
+      ...this.activeWorkThread,
+      ...updates,
+      updatedAt: Date.now(),
+    }
+    this.activeWorkThread = next
+    void workState.saveThread(next, 'task snapshot updated')
+  }
+
+  private voidRecordNextAction(title: string, reason: string): void {
+    const workState = this.runtimeHooks.workState
+    if (!workState || !this.activeWorkThread) {
+      return
+    }
+    void workState.recordNextAction(this.activeWorkThread.id, {
+      id: generateId(),
+      title,
+      reason,
+      stepId: this.activeWorkThread.currentStep?.id,
+      createdAt: Date.now(),
+    })
+  }
+
+  private recordWorkFailure(message: string): void {
+    const workState = this.runtimeHooks.workState
+    if (!workState || !this.activeWorkThread) {
+      return
+    }
+    void workState.recordFailure(this.activeWorkThread.id, {
+      id: generateId(),
+      message,
+      evidence: [
+        this.snapshot.lastError || message,
+        this.snapshot.finalSummary || '',
+      ].filter(Boolean),
+      attemptedRoute: this.snapshot.runState,
+      avoidNextTime: 'Resume from the saved work snapshot instead of recreating this task from chat history.',
+      createdAt: Date.now(),
+    })
+    this.voidRecordNextAction('恢复或重新规划失败步骤', '任务失败后保留可恢复现场。')
   }
 
   private async selectRuntimeAdapter(request: TaskRuntimeRequest): Promise<TaskRuntimeAdapter> {
@@ -621,6 +728,23 @@ export class TaskSession {
 
 function cloneTaskPlan(plan: TaskPlan): TaskPlan {
   return JSON.parse(JSON.stringify(plan)) as TaskPlan
+}
+
+function mapTaskRunStateToWorkStatus(state: TaskRunState): WorkThread['status'] {
+  if (state === 'completed') {
+    return 'completed'
+  }
+  if (state === 'failed') {
+    return 'recoverable_failed'
+  }
+  if (state === 'cancelled') {
+    return 'paused'
+  }
+  return 'active'
+}
+
+function buildTaskResumeSummary(taskDescription: string, stepTitle: string): string {
+  return `任务「${taskDescription}」最近推进到：${stepTitle}`
 }
 
 function createBuiltinTaskRuntimeAdapter(): TaskRuntimeAdapter {

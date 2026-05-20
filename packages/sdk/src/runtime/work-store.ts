@@ -100,6 +100,11 @@ export class WorkStateStore {
     return cloneWorkState(this.state)
   }
 
+  getThread(threadId: string): WorkThread | undefined {
+    const thread = this.findThread(threadId)
+    return thread ? cloneWorkThread(thread) : undefined
+  }
+
   async saveThread(thread: WorkThread, reason = 'thread updated'): Promise<WorkState> {
     const nextThread = cloneWorkThread({
       ...thread,
@@ -450,4 +455,3 @@ function cloneWorkState(state: WorkState): WorkState {
 function cloneWorkThread(thread: WorkThread): WorkThread {
   return JSON.parse(JSON.stringify(thread)) as WorkThread
 }
-

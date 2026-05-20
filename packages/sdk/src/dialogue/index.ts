@@ -35,6 +35,7 @@ import {
   type TextTransformTarget,
 } from '../plugins/index.js'
 import type { RuntimeEventBus, RuntimeJobManager, RuntimeJobUnregister } from '../runtime/index.js'
+import type { WorkStateStore } from '../runtime/work-store.js'
 
 
 export interface StreamOptions {
@@ -84,6 +85,7 @@ export interface DialogueOrchestratorConfig {
   ttsChunk?: TTSChunkConfig
   runtimeEvents?: RuntimeEventBus
   runtimeJobs?: RuntimeJobManager
+  workState?: WorkStateStore
   learning?: LearningAssetStore
   agentSociety?: AgentSocietyRuntime
   taskRuntime?: TaskRuntimeConfig
@@ -164,6 +166,7 @@ export class DialogueOrchestrator {
     this.pluginManager = new PluginManager(plugins)
     this.taskSession = new TaskSession(this.taskLLM, memory, personality, agent, this.context, storageDir, {
       runtimeEvents: config?.runtimeEvents,
+      workState: config?.workState,
       onUserInputRequest: config?.onTaskUserInputRequest,
       onRunStateChanged: (state, task) => {
         config?.onTaskRunStateChanged?.(state, task)

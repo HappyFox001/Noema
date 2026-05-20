@@ -115,6 +115,7 @@ export class HerTextSDK {
       {
         runtimeEvents: this.runtimeEvents,
         runtimeJobs: this.runtimeJobs,
+        workState: this.workState,
         learning: this.selfLearningEnabled ? this.learning : undefined,
         agentSociety: this.selfLearningEnabled ? this.agentSociety : undefined,
         taskRuntime: config.taskRuntime,
