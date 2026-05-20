@@ -89,6 +89,12 @@ export interface GoalRunTriggerInput {
   userInput: string
 }
 
+export interface LongRunConversionSuggestion {
+  shouldSuggest: boolean
+  reason: string
+  confirmationPrompt?: string
+}
+
 export interface CreateGoalRunRequest {
   goal: string
   scope: string[]
@@ -271,6 +277,28 @@ export class LongRunRuntime {
 
   shouldTriggerLongRun(input: GoalRunTriggerInput): boolean {
     return /持续优化|跑到通过|自己跑|后台继续|今晚.*跑|一直跑|keep running|run until|continue in background/i.test(input.userInput)
+  }
+
+  shouldContinue(run: GoalRun): boolean {
+    if (run.status === 'completed' || run.status === 'failed' || run.status === 'needs_human') {
+      return false
+    }
+    const escalation = this.evaluateEscalation(run)
+    return escalation.action !== 'search_or_needs_human'
+  }
+
+  suggestLongRunConversion(input: { taskDescription: string, expectedIterations?: number, requiresBackgroundWork?: boolean }): LongRunConversionSuggestion {
+    if (input.requiresBackgroundWork || (input.expectedIterations ?? 0) >= 3) {
+      return {
+        shouldSuggest: true,
+        reason: 'Task appears to need multiple verified iterations or background execution.',
+        confirmationPrompt: `这个任务可能适合转为后台长程执行：${input.taskDescription}`,
+      }
+    }
+    return {
+      shouldSuggest: false,
+      reason: 'Task can stay in the foreground work loop.',
+    }
   }
 
   private async initializeArtifacts(run: GoalRun): Promise<void> {

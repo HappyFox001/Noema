@@ -327,7 +327,7 @@ Her-Text 不是 CLI，所以不能盲目复制 Codex 的交互语义。
   - [x] 运行 guard。
   - [x] keep/discard。
   - [x] 记录结果。
-  - [ ] 继续下一轮。
+  - [x] 继续下一轮。
 - [x] 实现 rollback：
   - [x] dedicated branch/worktree 可 destructive rollback。
   - [x] 普通工作区默认非破坏性 revert。
@@ -343,14 +343,14 @@ Her-Text 不是 CLI，所以不能盲目复制 Codex 的交互语义。
   - [x] background run 继续。
 - [x] 触发形式暂不固定，但必须支持：
   - [x] 用户显式要求“持续优化/跑到通过/今晚自己跑”。
-  - [ ] 任务层判断某任务适合转成长程 run 后请求用户确认。
+  - [x] 任务层判断某任务适合转成长程 run 后请求用户确认。
 
 验收：
 
 - [ ] 能跑一个真实代码指标优化任务，例如减少 TypeScript errors、修复 failing tests、提升 coverage。
-- [ ] 每次 iteration 都有可审计记录。
+- [x] 每次 iteration 都有可审计记录。
 - [ ] 失败实验不会污染最终工作区。
-- [ ] 中断后能从记录继续。
+- [x] 中断后能从记录继续。
 
 ## Phase 8: UI 和输出整合
 
