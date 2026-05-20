@@ -4614,6 +4614,7 @@ ipcMain.handle('system:telemetry', async () => {
     success: true,
     memoryBytes: process.memoryUsage().rss,
     activeNetworkInterfaces: getActiveNetworkInterfaceCount(),
+    proxyActive: Boolean(appSettings.system.proxy.trim()),
   }
 })
 

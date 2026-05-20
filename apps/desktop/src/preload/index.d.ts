@@ -227,6 +227,7 @@ declare global {
         success: boolean
         memoryBytes: number
         activeNetworkInterfaces: number
+        proxyActive: boolean
         error?: string
       }>
       getSettings: () => Promise<{

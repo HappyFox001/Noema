@@ -1657,6 +1657,14 @@ body.work-surface-enabled .task-panel {
   stroke-linejoin: round;
 }
 
+.telemetry-network-icon.proxy-active {
+  color: rgba(103, 232, 249, 0.96);
+}
+
+body.theme-day .telemetry-network-icon.proxy-active {
+  color: rgba(8, 145, 178, 0.96);
+}
+
 .telemetry-item strong {
   color: currentColor;
   font-family: var(--control-font);

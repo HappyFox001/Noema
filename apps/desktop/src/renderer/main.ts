@@ -1464,6 +1464,7 @@ type SystemTelemetry = {
   success: boolean
   memoryBytes: number
   activeNetworkInterfaces: number
+  proxyActive: boolean
   error?: string
 }
 
@@ -3176,6 +3177,7 @@ const settingsNav = document.querySelector('.settings-nav') as HTMLElement
 const modelNavItem = document.querySelector('.nav-item[data-section="models"]') as HTMLElement | null
 const modelNavLabel = modelNavItem?.querySelector('.nav-label') as HTMLElement | null
 const telemetryMemory = document.getElementById('telemetry-memory') as HTMLElement
+const telemetryNetworkIcon = document.getElementById('telemetry-network-icon') as HTMLElement
 const telemetryNetwork = document.getElementById('telemetry-network') as HTMLElement
 
 let settingsCloseAnimationTimer: number | undefined
@@ -4215,7 +4217,7 @@ function formatTelemetryBytes(bytes: number): string {
   if (mib >= 1024) {
     return `${(mib / 1024).toFixed(1)}G`
   }
-  return `${Math.round(mib)}M`
+  return `${mib.toFixed(1)}M`
 }
 
 async function refreshSystemTelemetry(): Promise<void> {
@@ -4226,9 +4228,11 @@ async function refreshSystemTelemetry(): Promise<void> {
     }
     telemetryMemory.textContent = formatTelemetryBytes(telemetry.memoryBytes)
     telemetryNetwork.textContent = getNetworkLabel(telemetry)
+    telemetryNetworkIcon.classList.toggle('proxy-active', telemetry.proxyActive)
   } catch {
     telemetryMemory.textContent = '--'
     telemetryNetwork.textContent = 'UNKNOWN'
+    telemetryNetworkIcon.classList.remove('proxy-active')
   }
 }
 
@@ -4239,7 +4243,7 @@ function startSystemTelemetry(): void {
   void refreshSystemTelemetry()
   telemetryRefreshTimer = window.setInterval(() => {
     void refreshSystemTelemetry()
-  }, 2000)
+  }, 1000)
 }
 
 function stopSystemTelemetry(): void {
