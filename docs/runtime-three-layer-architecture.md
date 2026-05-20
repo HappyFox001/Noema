@@ -112,6 +112,26 @@ Must not:
 
 ## Event Flow
 
+```mermaid
+flowchart TD
+  Input["interaction.input.received"] --> Emotional["EmotionalRuntime"]
+  Emotional -->|"reply + task intent"| Interaction["InteractionRuntime"]
+  Interaction -->|"work.start / work.modify / work.resume"| Work["WorkRuntime"]
+  Work --> State["WorkStateStore<br/>WorkThread snapshots"]
+  Work --> Events["RuntimeEventBus<br/>task.* and work.signal.*"]
+  Events --> Output["OutputRuntime"]
+  Output -->|"display / optional speech"| User["User"]
+  Interaction -->|"speech.stop / speech.mute"| Output
+  Interaction -->|"pause / abandon"| Work
+```
+
+Current implementation note: dialogue turns do not synchronously wait for the
+task result before completing. `DialogueOrchestrator` launches work through the
+runtime job path, records an accepted-work marker in context, and lets
+`WorkRuntime`/`TaskSession` emit durable task events and work signals. Desktop
+status, plans, steps, and completion are driven from those runtime events rather
+than direct task lifecycle callbacks.
+
 ### Normal Task Start
 
 ```text

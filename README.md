@@ -30,10 +30,12 @@ Her-Text is a small experiment toward something like JARVIS: a desktop companion
 that can speak with personality, remember context, understand tasks, and act
 through tools.
 
-The project is built around a simple split:
+The project is built around a three-layer runtime split:
 
-- **Dialogue layer**: speaks naturally, applies personality and memory, detects tasks.
-- **Task runtime**: plans steps, calls tools, tracks execution state, and handles task admission.
+- **Emotional layer**: speaks naturally, applies personality and memory, and detects task intent.
+- **Work layer**: owns durable task state, plans steps, calls tools, tracks execution state, and records recoverable progress.
+- **Interaction layer**: routes user interruptions, task starts, resumes, pauses, and status requests between the emotional and work layers.
+- **Output layer**: speaks or displays selected runtime signals without inventing task facts.
 - **Voice pipeline**: streams ASR, VAD, turn detection, TTS, interruption, and playback frames.
 - **Plugin system**: adds tools, prompt extensions, task context, text transforms, expressions, and admin actions.
 
@@ -48,33 +50,26 @@ The project is built around a simple split:
 
 ## Architecture
 
-```text
-User voice/text
-      │
-      ▼
-Dialogue emotional layer
-  - personality
-  - memory
-  - task detection
-      │
-      ├── normal reply ───────────────► TTS / display
-      │
-      ▼
-TaskSession / TaskRuntime
-  - task admission
-  - planning
-  - tool loop
-  - execution state
-  - task progress hooks
-      │
-      ├── task_progress emotional feedback ─► TTS / display
-      │
-      ▼
-Final task result
-      │
-      ▼
-task_result emotional layer ─────────► TTS / display
+```mermaid
+flowchart TD
+  User["User voice / text"] --> Emotional["Emotional layer<br/>personality, memory, task intent"]
+  Emotional --> Reply["Immediate reply<br/>display / TTS"]
+  Emotional --> Interaction["Interaction layer<br/>interruption and work intent routing"]
+  Interaction --> Work["Work layer<br/>WorkThread, plan, tools, execution state"]
+  Work --> Store["Durable work state<br/>snapshots, failures, next actions"]
+  Work --> Events["Runtime events<br/>task.*, work.signal.*"]
+  Events --> Output["Output layer<br/>panel, status, optional speech"]
+  Output --> User
+  Interaction -->|"speech.stop"| Output
+  Interaction -->|"pause / resume / abandon / modify"| Work
 ```
+
+Task execution is intentionally asynchronous from the dialogue turn. The
+emotional layer can answer immediately, while the work layer continues through
+runtime jobs and emits structured events. Speech interruption stops playback; it
+does not automatically cancel an active task. Desktop task status, plans, and
+step changes are driven by runtime events and work signals, with durable
+`WorkThread` state available for pause, resume, abandon, focus, and recovery.
 
 ## Quick Start
 
