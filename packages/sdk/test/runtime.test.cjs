@@ -344,6 +344,38 @@ describe('task interruption semantics', () => {
     ])
     expect(seen.at(-1).name).toBe('task.cancellation.recorded')
   })
+
+  test('tool failure and task cancellation produce distinct event chains', async () => {
+    const { CancellationModel, RuntimeEventBus, ToolOrchestrator } = await import('../dist/runtime/index.js')
+    const events = new RuntimeEventBus()
+    const seen = []
+    events.subscribe(event => seen.push(event.name))
+    const orchestrator = new ToolOrchestrator({
+      events,
+      tools: [createTool({
+        name: 'failing_tool',
+        description: 'Always fails',
+        execute: async () => {
+          throw new Error('tool failed')
+        },
+      })],
+    })
+
+    await orchestrator.executeCall(
+      { id: 'call-fail', name: 'failing_tool', arguments: '{}' },
+      { threadId: 'thread-fail', taskId: 'task-fail', taskDescription: 'fail through tool' },
+    )
+
+    const cancellation = new CancellationModel({ events })
+    cancellation.createAbortSignal('task-cancel')
+    cancellation.cancelTask('task-cancel', 'user cancelled', 'thread-cancel')
+
+    expect(seen).toEqual([
+      'task.tool.started',
+      'task.tool.failed',
+      'task.cancellation.recorded',
+    ])
+  })
 })
 
 describe('tool orchestrator', () => {
