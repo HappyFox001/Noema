@@ -189,20 +189,20 @@
 - [x] 每次任务失败后写入 `WorkFailure`，包含原因、证据、尝试过的路线、下一次应避免什么。
 - [x] 每次关键判断后写入 `WorkDecision`，包含事实依据和替代方案。
 - [x] 每次产物生成后写入 `WorkArtifact`，包含路径、类型、来源 step、验证状态。
-- [ ] 支持 task interruption snapshot：
+- [x] 支持 task interruption snapshot：
   - [x] 当前 step。
   - [x] 已完成 steps。
   - [x] 未完成 steps。
-  - [ ] 活跃命令/session。
-  - [ ] 文件改动。
-  - [ ] 最近工具输出。
+  - [x] 活跃命令/session。
+  - [x] 文件改动。
+  - [x] 最近工具输出。
   - [x] 可恢复 prompt。
 - [x] 启动时恢复最近的 active/paused/recoverable work threads。
 
 验收：
 
 - [x] App 重启后能看到未完成 work thread。
-- [ ] 被打断任务能从结构化 snapshot 恢复，而不是从聊天摘要重猜。
+- [x] 被打断任务能从结构化 snapshot 恢复，而不是从聊天摘要重猜。
 - [x] 新任务可以检索最近失败，避免重复同一错误路线。
 
 ## Phase 5: Codex 能力克隆任务层

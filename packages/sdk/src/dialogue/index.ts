@@ -136,6 +136,7 @@ function buildResumeTaskContext(thread: WorkThread): TaskContextItem {
       decisions: thread.decisions.slice(-5),
       artifacts: thread.artifacts.slice(-10),
       executionState: thread.executionState,
+      interruptionSnapshot: thread.interruptionSnapshot,
     }, null, 2),
   }
 }

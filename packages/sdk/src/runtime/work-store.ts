@@ -15,6 +15,7 @@ import {
   type WorkArtifact,
   type WorkDecision,
   type WorkFailure,
+  type WorkInterruptionSnapshot,
   type WorkNextAction,
   type WorkSignal,
   type WorkState,
@@ -318,6 +319,21 @@ export class WorkStateStore {
     return cloneWorkThread(next)
   }
 
+  async recordInterruptionSnapshot(threadId: string, snapshot: WorkInterruptionSnapshot): Promise<WorkThread | undefined> {
+    const thread = this.findThread(threadId)
+    if (!thread) {
+      return undefined
+    }
+    const next = {
+      ...thread,
+      interruptionSnapshot: snapshot,
+      resumeSummary: snapshot.resumablePrompt,
+      updatedAt: Date.now(),
+    }
+    await this.saveThread(next, 'interruption snapshot recorded')
+    return cloneWorkThread(next)
+  }
+
   async recordSignal(signal: WorkSignal): Promise<void> {
     if (!this.persistenceEnabled) {
       return
@@ -539,9 +555,35 @@ function normalizeWorkThread(value: unknown): WorkThread | undefined {
     decisions: Array.isArray(thread.decisions) ? thread.decisions : [],
     failures: Array.isArray(thread.failures) ? thread.failures : [],
     nextActions: Array.isArray(thread.nextActions) ? thread.nextActions : [],
+    interruptionSnapshot: normalizeInterruptionSnapshot(thread.interruptionSnapshot),
     resumeSummary: typeof thread.resumeSummary === 'string' ? thread.resumeSummary : undefined,
     abandonReason: typeof thread.abandonReason === 'string' ? thread.abandonReason : undefined,
   }
+}
+
+function normalizeInterruptionSnapshot(value: unknown): WorkInterruptionSnapshot | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined
+  }
+  const snapshot = value as Partial<WorkInterruptionSnapshot>
+  if (!snapshot.id || !snapshot.resumablePrompt) {
+    return undefined
+  }
+  return {
+    id: snapshot.id,
+    currentStepId: typeof snapshot.currentStepId === 'string' ? snapshot.currentStepId : undefined,
+    completedStepIds: Array.isArray(snapshot.completedStepIds) ? snapshot.completedStepIds.filter(isString) : [],
+    pendingStepIds: Array.isArray(snapshot.pendingStepIds) ? snapshot.pendingStepIds.filter(isString) : [],
+    activeCommandSessions: Array.isArray(snapshot.activeCommandSessions) ? snapshot.activeCommandSessions as WorkInterruptionSnapshot['activeCommandSessions'] : [],
+    changedFiles: Array.isArray(snapshot.changedFiles) ? snapshot.changedFiles.filter(isString) : [],
+    recentToolOutputs: Array.isArray(snapshot.recentToolOutputs) ? snapshot.recentToolOutputs as WorkInterruptionSnapshot['recentToolOutputs'] : [],
+    resumablePrompt: snapshot.resumablePrompt,
+    createdAt: finiteTimestamp(snapshot.createdAt),
+  }
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === 'string'
 }
 
 function finiteTimestamp(value: unknown): number {

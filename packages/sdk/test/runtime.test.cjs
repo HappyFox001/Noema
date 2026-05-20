@@ -398,6 +398,59 @@ describe('work state persistence', () => {
       await rm(storageDir, { recursive: true, force: true })
     }
   })
+
+  test('interruption snapshots preserve commands files tool outputs and resume prompt', async () => {
+    const { WorkStateStore } = await import('../dist/runtime/index.js')
+    const storageDir = await mkdtemp(join(tmpdir(), 'her-text-work-snapshot-'))
+    try {
+      const firstStore = new WorkStateStore(storageDir)
+      await firstStore.initialize()
+      const thread = await firstStore.createThread('Resume from structured snapshot', { id: 'thread-snapshot', now: 8000 })
+      await firstStore.recordInterruptionSnapshot(thread.id, {
+        id: 'snapshot-1',
+        currentStepId: 'step-running',
+        completedStepIds: ['step-done'],
+        pendingStepIds: ['step-running', 'step-next'],
+        activeCommandSessions: [{
+          sessionId: 'cmd-1',
+          command: 'pnpm test',
+          cwd: '/repo',
+          status: 'running',
+        }],
+        changedFiles: ['packages/sdk/src/runtime/work-state.ts'],
+        recentToolOutputs: [{
+          toolName: 'exec_command',
+          summary: 'test is still running',
+          createdAt: 8100,
+        }],
+        resumablePrompt: 'Continue from step-running after polling cmd-1.',
+        createdAt: 8200,
+      })
+      await firstStore.flush()
+
+      const secondStore = new WorkStateStore(storageDir)
+      await secondStore.initialize()
+      const restored = secondStore.getThread(thread.id)
+      expect(restored.resumeSummary).toBe('Continue from step-running after polling cmd-1.')
+      expect(restored.interruptionSnapshot).toEqual(expect.objectContaining({
+        currentStepId: 'step-running',
+        completedStepIds: ['step-done'],
+        pendingStepIds: ['step-running', 'step-next'],
+        changedFiles: ['packages/sdk/src/runtime/work-state.ts'],
+      }))
+      expect(restored.interruptionSnapshot.activeCommandSessions[0]).toEqual(expect.objectContaining({
+        sessionId: 'cmd-1',
+        command: 'pnpm test',
+      }))
+      expect(restored.interruptionSnapshot.recentToolOutputs[0]).toEqual(expect.objectContaining({
+        toolName: 'exec_command',
+        summary: 'test is still running',
+      }))
+      await secondStore.flush()
+    } finally {
+      await rm(storageDir, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('task interruption semantics', () => {

@@ -55,6 +55,27 @@ export interface WorkNextAction {
   createdAt: number
 }
 
+export interface WorkInterruptionSnapshot {
+  id: string
+  currentStepId?: string
+  completedStepIds: string[]
+  pendingStepIds: string[]
+  activeCommandSessions: Array<{
+    sessionId: string
+    command: string
+    cwd?: string
+    status: string
+  }>
+  changedFiles: string[]
+  recentToolOutputs: Array<{
+    toolName: string
+    summary: string
+    createdAt: number
+  }>
+  resumablePrompt: string
+  createdAt: number
+}
+
 export interface WorkThread {
   id: string
   goal: string
@@ -73,6 +94,7 @@ export interface WorkThread {
   decisions: WorkDecision[]
   failures: WorkFailure[]
   nextActions: WorkNextAction[]
+  interruptionSnapshot?: WorkInterruptionSnapshot
   resumeSummary?: string
   abandonReason?: string
 }
@@ -120,4 +142,3 @@ export function createEmptyWorkState(timestamp = Date.now()): WorkState {
     updatedAt: timestamp,
   }
 }
-
