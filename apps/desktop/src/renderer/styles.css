@@ -4953,6 +4953,7 @@ body.task-active:not(.settings-open) #main-view {
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  padding-left: 4px;
   font-size: 14px;
   font-weight: 500;
   color: rgba(255, 255, 255, 0.85);
@@ -4964,6 +4965,7 @@ body.task-active:not(.settings-open) #main-view {
   width: 7px;
   height: 7px;
   border: 1px solid rgba(232, 238, 238, 0.58);
+  background: transparent;
   transform: rotate(45deg);
   box-shadow: 0 0 12px rgba(232, 238, 238, 0.18);
 }
@@ -6605,12 +6607,16 @@ body.theme-day .settings-brand-logo {
 }
 
 .section-title::before,
-.config-section-title::before,
 .model-overview-mark,
 .config-model-card.active::before,
 .nav-item::after {
   background-color: rgba(255, 255, 255, 0.78);
   border-color: rgba(255, 255, 255, 0.78);
+}
+
+.config-section-title::before {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.68);
 }
 
 .section-subtitle,
