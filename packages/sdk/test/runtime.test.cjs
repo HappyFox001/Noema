@@ -23,6 +23,30 @@ describe('runtime interaction routing', () => {
     expect(result.interruptionKind).toBe('speech_stop')
     expect(result.intents).toEqual([{ kind: 'speech.stop', reason: 'User requested speech output to stop.' }])
   })
+
+  test('speech stop while output is speaking leaves active work untouched', async () => {
+    const { InteractionRuntime } = await import('../dist/runtime/index.js')
+    const runtime = new InteractionRuntime()
+    const workState = {
+      activeThreads: [{ id: 'thread-active', goal: 'keep running', status: 'active', priority: 1, createdAt: 1, updatedAt: 1, userIntentHistory: [], emotionalTurnHistory: [], observations: [], artifacts: [], decisions: [], failures: [], nextActions: [] }],
+      pausedThreads: [],
+      abandonedThreads: [],
+      completedThreads: [],
+      focusedThreadId: 'thread-active',
+      updatedAt: Date.now(),
+    }
+
+    const result = runtime.resolve({
+      userInput: '停一下',
+      timestamp: Date.now(),
+      workState,
+      outputState: { speaking: true, muted: false },
+    })
+
+    expect(result.intents.map(intent => intent.kind)).toEqual(['speech.stop'])
+    expect(workState.activeThreads).toHaveLength(1)
+    expect(workState.activeThreads[0].status).toBe('active')
+  })
 })
 
 describe('tool router', () => {
@@ -146,6 +170,74 @@ describe('work state persistence', () => {
       expect(resumed.status).toBe('active')
       expect(resumed.nextActions.at(-1).title).toBe('Continue from saved step')
       expect(secondStore.getSnapshot().focusedThreadId).toBe(thread.id)
+      await secondStore.flush()
+    } finally {
+      await rm(storageDir, { recursive: true, force: true })
+    }
+  })
+
+  test('switching work preserves the old thread and can focus it again after restart', async () => {
+    const { WorkStateStore } = await import('../dist/runtime/index.js')
+    const storageDir = await mkdtemp(join(tmpdir(), 'her-text-work-switch-'))
+    try {
+      const firstStore = new WorkStateStore(storageDir)
+      await firstStore.initialize()
+      const oldThread = await firstStore.createThread('Fix SDK task', { id: 'thread-old', now: 3000 })
+      await firstStore.recordNextAction(oldThread.id, {
+        id: 'next-old',
+        title: 'Run SDK build',
+        reason: 'resume original task',
+        createdAt: 3100,
+      })
+      await firstStore.pauseThread(oldThread.id, 'user switched to another task', 3200)
+      const newThread = await firstStore.createThread('Inspect desktop task', { id: 'thread-new', now: 3300 })
+      await firstStore.focusThread(newThread.id, 3400)
+      await firstStore.flush()
+
+      const secondStore = new WorkStateStore(storageDir)
+      await secondStore.initialize()
+      expect(secondStore.getSnapshot().pausedThreads.map(item => item.id)).toContain(oldThread.id)
+      expect(secondStore.getSnapshot().focusedThreadId).toBe(newThread.id)
+
+      const resumed = await secondStore.resumeThread(oldThread.id, 'continue previous task', 3500)
+      expect(resumed.status).toBe('active')
+      expect(resumed.nextActions.at(-1).title).toBe('Run SDK build')
+      expect(secondStore.getSnapshot().focusedThreadId).toBe(oldThread.id)
+      await secondStore.flush()
+    } finally {
+      await rm(storageDir, { recursive: true, force: true })
+    }
+  })
+
+  test('failure records preserve avoid-next-time guidance across restart', async () => {
+    const { WorkStateStore } = await import('../dist/runtime/index.js')
+    const storageDir = await mkdtemp(join(tmpdir(), 'her-text-work-failure-'))
+    try {
+      const firstStore = new WorkStateStore(storageDir)
+      await firstStore.initialize()
+      const thread = await firstStore.createThread('Recover failed task', { id: 'thread-failure', now: 4000 })
+      await firstStore.recordFailure(thread.id, {
+        id: 'failure-avoid',
+        message: 'test command failed',
+        evidence: ['exit code 1', 'stderr: missing file'],
+        attemptedRoute: 'ran stale command',
+        avoidNextTime: 'Check the file exists before rerunning the same command.',
+        createdAt: 4100,
+      })
+      await firstStore.recordNextAction(thread.id, {
+        id: 'next-after-failure',
+        title: 'Validate file path before retry',
+        reason: 'avoid repeating the failed route',
+        createdAt: 4200,
+      })
+      await firstStore.flush()
+
+      const secondStore = new WorkStateStore(storageDir)
+      await secondStore.initialize()
+      const restored = secondStore.getThread(thread.id)
+      expect(restored.status).toBe('recoverable_failed')
+      expect(restored.failures.at(-1).avoidNextTime).toContain('Check the file exists')
+      expect(restored.nextActions.at(-1).title).toBe('Validate file path before retry')
       await secondStore.flush()
     } finally {
       await rm(storageDir, { recursive: true, force: true })
