@@ -255,7 +255,7 @@
   - [x] tool abort。
   - [x] background command still running 的事实记录。
 - [x] 新增 `TurnEventStream`，替代隐式 callback。
-- [ ] 增加命名检查，确保新增任务层源码路径和导出类型不包含 `codex`。
+- [x] 增加命名检查，确保新增任务层源码路径和导出类型不包含 `codex`。
 
 验收：
 
@@ -264,7 +264,7 @@
 - [ ] 上下文过长时能自动压缩并继续任务。
 - [ ] 用户插话不会破坏任务执行现场。
 - [ ] 长命令可后台运行、轮询、取消，并被 work snapshot 记录。
-- [ ] `rg -n "codex|Codex" packages/sdk/src apps/desktop/src plugins` 不命中新任务层新增命名；只允许文档、注释中的参考说明或已有第三方路径。
+- [x] `rg -n "codex|Codex" packages/sdk/src apps/desktop/src plugins` 不命中新任务层新增命名；只允许文档、注释中的参考说明或已有第三方路径。
 
 ## Phase 6: Codex 差异适配
 
