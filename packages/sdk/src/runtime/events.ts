@@ -41,6 +41,10 @@ export type RuntimeEventName =
   | 'task.tool.started'
   | 'task.tool.completed'
   | 'task.tool.failed'
+  | 'task.command.started'
+  | 'task.command.stdout'
+  | 'task.command.stderr'
+  | 'task.command.completed'
   | 'task.context.compacted'
   | 'task.pending_input.added'
   | 'task.completed'
@@ -217,6 +221,39 @@ export type RuntimeEvent =
       callId: string
       taskDescription: string
       error: string
+    }>
+  | RuntimeEventBase<'task.command.started', {
+      sessionId: string
+      command: string
+      args: string[]
+      cwd?: string
+      status: string
+    }>
+  | RuntimeEventBase<'task.command.stdout', {
+      sessionId: string
+      command: string
+      args: string[]
+      cwd?: string
+      status: string
+      chunk: string
+    }>
+  | RuntimeEventBase<'task.command.stderr', {
+      sessionId: string
+      command: string
+      args: string[]
+      cwd?: string
+      status: string
+      chunk: string
+    }>
+  | RuntimeEventBase<'task.command.completed', {
+      sessionId: string
+      command: string
+      args: string[]
+      cwd?: string
+      status: string
+      exitCode?: number | null
+      signal?: NodeJS.Signals | null
+      error?: string
     }>
   | RuntimeEventBase<'task.context.compacted', {
       taskDescription: string

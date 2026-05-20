@@ -229,12 +229,13 @@
   - [x] 失败归一化。
   - [x] 工具取消响应。
 - [ ] 新增 `CommandRuntime`：
-  - [ ] PTY / 非 PTY。
-  - [ ] 长命令 session。
-  - [ ] stdout/stderr 增量事件。
-  - [ ] 超时。
-  - [ ] kill/interrupt。
-  - [ ] cwd/env 管理。
+  - [ ] PTY。
+  - [x] 非 PTY。
+  - [x] 长命令 session。
+  - [x] stdout/stderr 增量事件。
+  - [x] 超时。
+  - [x] kill/interrupt。
+  - [x] cwd/env 管理。
 - [ ] 新增 `PatchRuntime`：
   - [ ] 结构化 apply patch。
   - [ ] patch 失败后可恢复上下文。
