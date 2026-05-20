@@ -91,6 +91,23 @@ export class InteractionRuntime {
       }
     }
 
+    if (matchesAny(text, WORK_PAUSE_PATTERNS) && matchesAny(text, WORK_NEW_PATTERNS) && hasActiveWork) {
+      intents.push({
+        kind: 'work.pause',
+        targetThreadId: focusedThreadId,
+        reason: 'User asked to pause current work before starting another task.',
+      })
+      intents.push({
+        kind: 'work.queue_new',
+        workDescription: input.emotionalTurn?.intentHints?.[0] || text,
+        reason: 'User requested new work while pausing the current thread.',
+      })
+      return {
+        interruptionKind: 'new_work',
+        intents,
+      }
+    }
+
     if (matchesAny(text, WORK_PAUSE_PATTERNS) && hasActiveWork) {
       intents.push({
         kind: 'work.pause',
@@ -206,4 +223,3 @@ export class InteractionRuntime {
 function matchesAny(text: string, patterns: RegExp[]): boolean {
   return patterns.some(pattern => pattern.test(text))
 }
-

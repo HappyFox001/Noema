@@ -4156,6 +4156,9 @@ async function handleResolvedWorkControls(
     intent.kind === 'work.modify'
   )
   if (actionable.length === 0 || actionable.length !== interaction.intents.length) {
+    if (actionable.length > 0) {
+      await applyNonTerminalWorkControls(sdk, actionable)
+    }
     return null
   }
 
@@ -4213,6 +4216,28 @@ async function handleResolvedWorkControls(
     ? `当前任务：${thread.goal}。状态：${thread.status}。${thread.resumeSummary || ''}`.trim()
     : '我没有找到当前任务。'
   return { success: true, response, ttsEnabled: false }
+}
+
+async function applyNonTerminalWorkControls(
+  sdk: HerTextSDK,
+  intents: Array<{ kind: string; targetThreadId?: string; reason: string; modification?: string }>
+): Promise<void> {
+  const snapshot = sdk.workState.getSnapshot()
+  const fallbackThreadId = snapshot.focusedThreadId ||
+    snapshot.pausedThreads[0]?.id ||
+    snapshot.activeThreads[0]?.id
+
+  for (const intent of intents) {
+    const targetThreadId = intent.targetThreadId || fallbackThreadId
+    if (!targetThreadId) {
+      continue
+    }
+    if (intent.kind === 'work.pause') {
+      await sdk.workState.pauseThread(targetThreadId, intent.reason)
+    } else if (intent.kind === 'work.modify') {
+      await sdk.modifyWorkThread(targetThreadId, intent.modification || intent.reason, intent.reason)
+    }
+  }
 }
 
 ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {

@@ -74,6 +74,30 @@ describe('runtime interaction routing', () => {
       }),
     ])
   })
+
+  test('switching tasks pauses current work and preserves the new work request', async () => {
+    const { InteractionRuntime } = await import('../dist/runtime/index.js')
+    const runtime = new InteractionRuntime()
+    const result = runtime.resolve({
+      userInput: '先别做这个，帮我看另一个问题',
+      timestamp: Date.now(),
+      workState: {
+        activeThreads: [{ id: 'thread-current', goal: 'current task', status: 'active', priority: 1, createdAt: 1, updatedAt: 1, userIntentHistory: [], emotionalTurnHistory: [], observations: [], artifacts: [], decisions: [], failures: [], nextActions: [] }],
+        pausedThreads: [],
+        abandonedThreads: [],
+        completedThreads: [],
+        focusedThreadId: 'thread-current',
+        updatedAt: Date.now(),
+      },
+      outputState: { speaking: false, muted: false },
+    })
+
+    expect(result.interruptionKind).toBe('new_work')
+    expect(result.intents).toEqual([
+      expect.objectContaining({ kind: 'work.pause', targetThreadId: 'thread-current' }),
+      expect.objectContaining({ kind: 'work.queue_new', workDescription: '先别做这个，帮我看另一个问题' }),
+    ])
+  })
 })
 
 describe('tool router', () => {
