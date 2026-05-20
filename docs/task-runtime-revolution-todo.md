@@ -107,14 +107,14 @@
   - [x] emotion tag。
   - [x] intent hints。
   - [x] 对任务层可见的 emotional turn record。
-- [ ] 保留现有 TTS frame 路径。
-- [ ] 保留 Fish S2 emotion cue 的 text transform 机制。
-- [ ] 保留 sticker / Live2D 这类 expression hook，但输入改为统一 emotional output event。
+- [x] 保留现有 TTS frame 路径。
+- [x] 保留 Fish S2 emotion cue 的 text transform 机制。
+- [x] 保留 sticker / Live2D 这类 expression hook，但输入改为统一 emotional output event。
 - [x] 移除情感层直接等待任务完成的职责。
 
 验收：
 
-- [ ] 普通聊天、TTS、表情表现不明显退化。
+- [x] 普通聊天、TTS、表情表现不明显退化。
 - [ ] 情感层可以先回复“我来处理”，但任务是否开始由交互层/任务层决定。
 - [x] 情感层输出会被任务层作为结构化 interaction record 持久化。
 
