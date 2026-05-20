@@ -8,6 +8,8 @@ import { generateId } from '@her-text/core'
 export type GoalRunDirection = 'minimize' | 'maximize' | 'target'
 export type GoalRunStatus = 'initialized' | 'running' | 'paused' | 'completed' | 'needs_human' | 'failed'
 export type GoalRunRollbackPolicy = 'checkpoint_only' | 'non_destructive_revert' | 'dedicated_worktree'
+export type GoalRunEscalationAction = 'continue' | 'refine' | 'pivot' | 'search_or_needs_human'
+export type GoalRunResumeReason = 'app_restart' | 'context_compaction' | 'status_request' | 'background_continue'
 
 export interface GoalRun {
   id: string
@@ -76,6 +78,17 @@ export interface GoalRunRollbackResult {
   checkpoint?: GoalRunCheckpoint
 }
 
+export interface GoalRunEscalationDecision {
+  action: GoalRunEscalationAction
+  consecutiveDiscards: number
+  pivotCount: number
+  reason: string
+}
+
+export interface GoalRunTriggerInput {
+  userInput: string
+}
+
 export interface CreateGoalRunRequest {
   goal: string
   scope: string[]
@@ -119,6 +132,12 @@ export class LongRunRuntime {
   async resumeRun(artifactDir: string): Promise<GoalRun> {
     const raw = await readFile(join(artifactDir, 'state.json'), 'utf8')
     return JSON.parse(raw) as GoalRun
+  }
+
+  async resumeRunFor(artifactDir: string, reason: GoalRunResumeReason): Promise<GoalRun> {
+    const run = await this.resumeRun(artifactDir)
+    await this.appendRuntimeLog(run, `resume=${reason}`)
+    return run
   }
 
   async setStatus(run: GoalRun, status: GoalRunStatus): Promise<GoalRun> {
@@ -206,6 +225,52 @@ export class LongRunRuntime {
       destructive: false,
       reason: 'Rollback policy records the checkpoint without modifying the workspace',
     }
+  }
+
+  evaluateEscalation(run: GoalRun): GoalRunEscalationDecision {
+    const recent = [...run.iterations].reverse()
+    let consecutiveDiscards = 0
+    for (const iteration of recent) {
+      if (iteration.decision !== 'discard') {
+        break
+      }
+      consecutiveDiscards += 1
+    }
+    const pivotCount = run.iterations.filter(iteration => iteration.note?.includes('[pivot]')).length
+    if (consecutiveDiscards >= 5 && pivotCount >= 2) {
+      return {
+        action: 'search_or_needs_human',
+        consecutiveDiscards,
+        pivotCount,
+        reason: 'Repeated pivots did not improve the run.',
+      }
+    }
+    if (consecutiveDiscards >= 5) {
+      return {
+        action: 'pivot',
+        consecutiveDiscards,
+        pivotCount,
+        reason: 'Five consecutive discarded iterations require a new approach.',
+      }
+    }
+    if (consecutiveDiscards >= 3) {
+      return {
+        action: 'refine',
+        consecutiveDiscards,
+        pivotCount,
+        reason: 'Three consecutive discarded iterations require hypothesis refinement.',
+      }
+    }
+    return {
+      action: 'continue',
+      consecutiveDiscards,
+      pivotCount,
+      reason: 'No escalation threshold reached.',
+    }
+  }
+
+  shouldTriggerLongRun(input: GoalRunTriggerInput): boolean {
+    return /持续优化|跑到通过|自己跑|后台继续|今晚.*跑|一直跑|keep running|run until|continue in background/i.test(input.userInput)
   }
 
   private async initializeArtifacts(run: GoalRun): Promise<void> {

@@ -332,17 +332,17 @@ Her-Text 不是 CLI，所以不能盲目复制 Codex 的交互语义。
   - [x] dedicated branch/worktree 可 destructive rollback。
   - [x] 普通工作区默认非破坏性 revert。
   - [x] 永不回滚用户无关改动。
-- [ ] 实现 stuck escalation：
-  - [ ] 3 次连续失败 refine。
-  - [ ] 5 次连续失败 pivot。
-  - [ ] 多次 pivot 后可 web search 或停为 needs_human。
-- [ ] 实现 resume：
-  - [ ] App 重启。
-  - [ ] context compaction。
-  - [ ] 用户回来问状态。
-  - [ ] background run 继续。
-- [ ] 触发形式暂不固定，但必须支持：
-  - [ ] 用户显式要求“持续优化/跑到通过/今晚自己跑”。
+- [x] 实现 stuck escalation：
+  - [x] 3 次连续失败 refine。
+  - [x] 5 次连续失败 pivot。
+  - [x] 多次 pivot 后可 web search 或停为 needs_human。
+- [x] 实现 resume：
+  - [x] App 重启。
+  - [x] context compaction。
+  - [x] 用户回来问状态。
+  - [x] background run 继续。
+- [x] 触发形式暂不固定，但必须支持：
+  - [x] 用户显式要求“持续优化/跑到通过/今晚自己跑”。
   - [ ] 任务层判断某任务适合转成长程 run 后请求用户确认。
 
 验收：
