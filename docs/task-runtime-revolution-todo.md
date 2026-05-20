@@ -236,10 +236,10 @@
   - [x] 超时。
   - [x] kill/interrupt。
   - [x] cwd/env 管理。
-- [ ] 新增 `PatchRuntime`：
-  - [ ] 结构化 apply patch。
-  - [ ] patch 失败后可恢复上下文。
-  - [ ] changed files tracking。
+- [x] 新增 `PatchRuntime`：
+  - [x] 结构化 apply patch。
+  - [x] patch 失败后可恢复上下文。
+  - [x] changed files tracking。
 - [ ] 新增 `ContextManager`：
   - [ ] 记录完整 model-visible history。
   - [ ] 支持工具输出截断。

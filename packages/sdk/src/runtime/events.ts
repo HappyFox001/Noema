@@ -45,6 +45,9 @@ export type RuntimeEventName =
   | 'task.command.stdout'
   | 'task.command.stderr'
   | 'task.command.completed'
+  | 'task.patch.started'
+  | 'task.patch.completed'
+  | 'task.patch.failed'
   | 'task.context.compacted'
   | 'task.pending_input.added'
   | 'task.completed'
@@ -254,6 +257,21 @@ export type RuntimeEvent =
       exitCode?: number | null
       signal?: NodeJS.Signals | null
       error?: string
+    }>
+  | RuntimeEventBase<'task.patch.started', {
+      patchId: string
+      changedFiles: string[]
+      checkOnly: boolean
+    }>
+  | RuntimeEventBase<'task.patch.completed', {
+      patchId: string
+      changedFiles: string[]
+      checkOnly: boolean
+    }>
+  | RuntimeEventBase<'task.patch.failed', {
+      patchId: string
+      changedFiles: string[]
+      error: string
     }>
   | RuntimeEventBase<'task.context.compacted', {
       taskDescription: string
