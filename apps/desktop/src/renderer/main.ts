@@ -3207,6 +3207,7 @@ function applySettingsToUI(settings: UISettings) {
   ttsEnabled = settings.voiceOutputEnabled
   voiceInputBtn.textContent = settings.voiceInputEnabled ? t('common.enabled') : t('common.enable')
   voiceInputBtn.classList.toggle('active', settings.voiceInputEnabled)
+  voiceInputBtn.setAttribute('aria-pressed', settings.voiceInputEnabled ? 'true' : 'false')
   voiceOutputToggle.checked = settings.voiceOutputEnabled
   volumeSlider.value = String(settings.volume)
   volumeValue.textContent = `${settings.volume}%`

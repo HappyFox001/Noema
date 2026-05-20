@@ -29,6 +29,9 @@
   --liquid-inner: inset 0 1px 0 rgba(255, 255, 255, 0.08);
   --liquid-radius: 8px;
   --liquid-cut: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px));
+  --control-font: var(--font-ui);
+  --select-chevron-dark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='rgba(190,255,244,0.78)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  --select-chevron-day: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='rgba(20,62,60,0.72)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   font-family: var(--font-mixed);
   font-size: 14px;
   line-height: 1.5;
@@ -902,17 +905,17 @@ body.work-surface-enabled .task-panel {
 .work-surface-field select {
   appearance: none;
   -webkit-appearance: none;
-  min-height: 26px;
-  padding: 0 28px 0 8px;
+  min-height: 30px;
+  padding: 0 34px 0 10px;
   background:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='rgba(210,232,238,0.72)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") right 8px center / 14px 14px no-repeat,
+    var(--select-chevron-dark) right 11px center / 14px 14px no-repeat,
     rgba(0, 0, 0, 0.22);
-  font-family: var(--font-ui);
+  font-family: var(--control-font);
   font-size: 10px;
 }
 
 .work-surface-field select option {
-  font-family: var(--font-ui);
+  font-family: var(--control-font);
 }
 
 .work-surface-chart {
@@ -2279,19 +2282,19 @@ select.plugin-config-input {
   appearance: none;
   -webkit-appearance: none;
   min-width: 120px;
-  height: 28px;
-  padding: 0 28px 0 9px;
+  height: 32px;
+  padding: 0 36px 0 11px;
   background:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='rgba(232,238,238,0.72)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") right 8px center / 14px 14px no-repeat,
+    var(--select-chevron-dark) right 12px center / 14px 14px no-repeat,
     rgba(0, 0, 0, 0.22);
-  font-family: var(--font-ui);
+  font-family: var(--control-font);
   font-size: 11px;
 }
 
 select.plugin-config-input option {
   background: #1c1c1e;
   color: rgba(248, 250, 250, 0.92);
-  font-family: var(--font-ui);
+  font-family: var(--control-font);
   font-size: 11px;
 }
 
@@ -3070,15 +3073,15 @@ body.theme-day .settings-toggle input:checked + .toggle-slider {
 .settings-select {
   appearance: none;
   -webkit-appearance: none;
-  font-family: var(--font-ui);
+  font-family: var(--control-font);
   background:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='rgba(190,255,244,0.78)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") right 16px center / 14px 14px no-repeat,
+    var(--select-chevron-dark) right 12px center / 14px 14px no-repeat,
     linear-gradient(180deg, rgba(255, 255, 255, 0.062), rgba(255, 255, 255, 0.026)),
     rgba(0, 0, 0, 0.18);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 6px;
-  min-height: 30px;
-  padding: 5px 40px 5px 10px;
+  border-radius: 8px;
+  min-height: 32px;
+  padding: 6px 36px 6px 11px;
   color: rgba(248, 250, 250, 0.9);
   font-size: 12px;
   line-height: 1.25;
@@ -3096,7 +3099,7 @@ body.theme-day .settings-toggle input:checked + .toggle-slider {
 .settings-select option {
   background: #1c1c1e;
   color: rgba(248, 250, 250, 0.92);
-  font-family: var(--font-ui);
+  font-family: var(--control-font);
   font-size: 12px;
 }
 
@@ -5669,7 +5672,7 @@ body.task-active:not(.settings-open) #main-view {
 .config-provider-trigger-arrow {
   width: 14px;
   height: 14px;
-  background: center / 14px 14px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='rgba(190,255,244,0.78)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background: center / 14px 14px no-repeat var(--select-chevron-dark);
 }
 
 .config-provider-trigger:hover,
@@ -7636,6 +7639,164 @@ body.theme-day .learning-json,
 body.theme-day .plugin-config-fields,
 body.theme-day .plugin-admin-section {
   scrollbar-color: rgba(24, 30, 32, 0.18) transparent;
+}
+
+/* Control consistency pass: keep interactive typography and native selects aligned. */
+.settings-panel button,
+.settings-panel input,
+.settings-panel select,
+.settings-panel textarea,
+.task-panel button,
+.task-panel input,
+.task-panel select,
+.task-panel textarea,
+.memory-dialog button,
+.memory-dialog input,
+.memory-dialog select,
+.memory-dialog textarea,
+.confirm-dialog button,
+.interactive-input-dialog button,
+.interactive-input-dialog input,
+.interactive-input-dialog textarea {
+  font-family: var(--control-font);
+  letter-spacing: 0;
+}
+
+.settings-select,
+select.plugin-config-input,
+.edit-field select,
+.work-surface-field select {
+  appearance: none;
+  -webkit-appearance: none;
+  min-height: 32px;
+  border-radius: 8px;
+  padding-right: 36px;
+  background:
+    var(--select-chevron-dark) right 12px center / 14px 14px no-repeat,
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.022)),
+    rgba(0, 0, 0, 0.18);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--liquid-text);
+  font-family: var(--control-font);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    box-shadow 160ms ease,
+    color 160ms ease;
+}
+
+.settings-select:hover,
+select.plugin-config-input:hover,
+.edit-field select:hover,
+.work-surface-field select:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+  background:
+    var(--select-chevron-dark) right 12px center / 14px 14px no-repeat,
+    linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.026)),
+    rgba(0, 0, 0, 0.16);
+}
+
+.settings-select:focus,
+.settings-select:focus-visible,
+select.plugin-config-input:focus,
+select.plugin-config-input:focus-visible,
+.edit-field select:focus,
+.edit-field select:focus-visible,
+.work-surface-field select:focus,
+.work-surface-field select:focus-visible {
+  border-color: rgba(255, 255, 255, 0.3);
+  box-shadow:
+    0 0 0 3px rgba(255, 255, 255, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.settings-select option,
+select.plugin-config-input option,
+.edit-field select option,
+.work-surface-field select option {
+  background: #1c1c1e;
+  color: rgba(248, 250, 250, 0.92);
+  font-family: var(--control-font);
+}
+
+body.theme-day .settings-select,
+body.theme-day select.plugin-config-input,
+body.theme-day .edit-field select,
+body.theme-day .work-surface-field select {
+  background:
+    var(--select-chevron-day) right 12px center / 14px 14px no-repeat,
+    linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(246, 250, 249, 0.64)),
+    rgba(255, 255, 255, 0.42);
+  border-color: rgba(34, 80, 76, 0.16);
+  color: rgba(15, 28, 30, 0.92);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+body.theme-day .settings-select:hover,
+body.theme-day select.plugin-config-input:hover,
+body.theme-day .edit-field select:hover,
+body.theme-day .work-surface-field select:hover {
+  border-color: rgba(16, 45, 52, 0.2);
+  background:
+    var(--select-chevron-day) right 12px center / 14px 14px no-repeat,
+    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(232, 238, 236, 0.52)),
+    rgba(255, 255, 255, 0.42);
+}
+
+#voice-input-btn.active {
+  background:
+    linear-gradient(180deg, rgba(190, 255, 244, 0.20), rgba(190, 255, 244, 0.075)),
+    rgba(190, 255, 244, 0.045);
+  border-color: rgba(190, 255, 244, 0.34);
+  color: rgba(226, 255, 250, 0.98);
+  box-shadow:
+    0 0 0 1px rgba(190, 255, 244, 0.08),
+    0 10px 26px rgba(20, 80, 72, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+#voice-input-btn.active:hover {
+  background:
+    linear-gradient(180deg, rgba(190, 255, 244, 0.26), rgba(190, 255, 244, 0.10)),
+    rgba(190, 255, 244, 0.06);
+  border-color: rgba(190, 255, 244, 0.46);
+}
+
+#voice-input-btn.active::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 7px;
+  border-radius: 999px;
+  background: rgba(190, 255, 244, 0.98);
+  box-shadow: 0 0 10px rgba(190, 255, 244, 0.58);
+  vertical-align: 1px;
+}
+
+body.theme-day #voice-input-btn.active {
+  background:
+    linear-gradient(180deg, rgba(26, 126, 112, 0.18), rgba(26, 126, 112, 0.07)),
+    rgba(255, 255, 255, 0.70);
+  border-color: rgba(26, 126, 112, 0.34);
+  color: rgba(8, 70, 62, 0.96);
+  box-shadow:
+    0 0 0 1px rgba(26, 126, 112, 0.08),
+    0 10px 24px rgba(38, 96, 88, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.74);
+}
+
+body.theme-day #voice-input-btn.active:hover {
+  background:
+    linear-gradient(180deg, rgba(26, 126, 112, 0.22), rgba(26, 126, 112, 0.09)),
+    rgba(255, 255, 255, 0.78);
+  border-color: rgba(26, 126, 112, 0.42);
+}
+
+body.theme-day #voice-input-btn.active::before {
+  background: rgba(20, 112, 98, 0.96);
+  box-shadow: 0 0 10px rgba(20, 112, 98, 0.30);
 }
 
 body.theme-day .learning-list::-webkit-scrollbar-thumb,
