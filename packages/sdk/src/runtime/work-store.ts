@@ -277,6 +277,32 @@ export class WorkStateStore {
     return cloneWorkThread(next)
   }
 
+  async recordModification(threadId: string, modification: string, reason = 'user modification', now = Date.now()): Promise<WorkThread | undefined> {
+    const thread = this.findThread(threadId)
+    if (!thread) {
+      return undefined
+    }
+    const next = {
+      ...thread,
+      userIntentHistory: [...thread.userIntentHistory, {
+        input: modification,
+        intent: 'work.modify',
+        createdAt: now,
+      }],
+      nextActions: [...thread.nextActions, {
+        id: generateId(),
+        title: 'Apply latest user correction',
+        reason,
+        stepId: thread.currentStep?.id,
+        createdAt: now,
+      }],
+      resumeSummary: `用户补充约束：${modification}`,
+      updatedAt: now,
+    }
+    await this.saveThread(next, reason)
+    return cloneWorkThread(next)
+  }
+
   async recordSignal(signal: WorkSignal): Promise<void> {
     if (!this.persistenceEnabled) {
       return

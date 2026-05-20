@@ -4143,7 +4143,7 @@ async function runConversationTurn(
 
 async function handleResolvedWorkControls(
   sdk: HerTextSDK,
-  interaction: { intents: Array<{ kind: string; targetThreadId?: string; reason: string }> }
+  interaction: { intents: Array<{ kind: string; targetThreadId?: string; reason: string; modification?: string }> }
 ): Promise<ConversationTurnResult | null> {
   if (interaction.intents.length === 0) {
     return null
@@ -4152,7 +4152,8 @@ async function handleResolvedWorkControls(
     intent.kind === 'work.resume' ||
     intent.kind === 'work.pause' ||
     intent.kind === 'work.cancel' ||
-    intent.kind === 'work.status'
+    intent.kind === 'work.status' ||
+    intent.kind === 'work.modify'
   )
   if (actionable.length === 0 || actionable.length !== interaction.intents.length) {
     return null
@@ -4191,6 +4192,18 @@ async function handleResolvedWorkControls(
     return {
       success: true,
       response: abandoned ? `已放弃任务：${abandoned.goal}` : '我没有找到可以放弃的任务。',
+      ttsEnabled: false,
+    }
+  }
+
+  if (intent.kind === 'work.modify') {
+    const modification = 'modification' in intent && typeof intent.modification === 'string'
+      ? intent.modification
+      : intent.reason
+    const modified = await sdk.modifyWorkThread(targetThreadId, modification, intent.reason)
+    return {
+      success: true,
+      response: modified ? `我会按新的约束继续：${modified.goal}` : '我没有找到可以修改的任务。',
       ttsEnabled: false,
     }
   }

@@ -200,6 +200,10 @@ export class HerTextSDK {
     return this.dialogue.resumeWorkThread(threadId, reason)
   }
 
+  async modifyWorkThread(threadId: string, modification: string, reason?: string): Promise<WorkThread | null> {
+    return await this.workState.recordModification(threadId, modification, reason) ?? null
+  }
+
   resolveInteraction(
     input: UserInput,
     outputState: OutputStateSnapshot

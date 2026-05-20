@@ -47,6 +47,33 @@ describe('runtime interaction routing', () => {
     expect(workState.activeThreads).toHaveLength(1)
     expect(workState.activeThreads[0].status).toBe('active')
   })
+
+  test('user correction is routed as a work modification instead of a new task', async () => {
+    const { InteractionRuntime } = await import('../dist/runtime/index.js')
+    const runtime = new InteractionRuntime()
+    const result = runtime.resolve({
+      userInput: '刚才那个路径错了，改成 packages/sdk',
+      timestamp: Date.now(),
+      workState: {
+        activeThreads: [{ id: 'thread-correction', goal: 'fix task', status: 'active', priority: 1, createdAt: 1, updatedAt: 1, userIntentHistory: [], emotionalTurnHistory: [], observations: [], artifacts: [], decisions: [], failures: [], nextActions: [] }],
+        pausedThreads: [],
+        abandonedThreads: [],
+        completedThreads: [],
+        focusedThreadId: 'thread-correction',
+        updatedAt: Date.now(),
+      },
+      outputState: { speaking: false, muted: false },
+    })
+
+    expect(result.interruptionKind).toBe('correction')
+    expect(result.intents).toEqual([
+      expect.objectContaining({
+        kind: 'work.modify',
+        targetThreadId: 'thread-correction',
+        modification: '刚才那个路径错了，改成 packages/sdk',
+      }),
+    ])
+  })
 })
 
 describe('tool router', () => {
@@ -238,6 +265,35 @@ describe('work state persistence', () => {
       expect(restored.status).toBe('recoverable_failed')
       expect(restored.failures.at(-1).avoidNextTime).toContain('Check the file exists')
       expect(restored.nextActions.at(-1).title).toBe('Validate file path before retry')
+      await secondStore.flush()
+    } finally {
+      await rm(storageDir, { recursive: true, force: true })
+    }
+  })
+
+  test('user modification is persisted as work intent and next action', async () => {
+    const { WorkStateStore } = await import('../dist/runtime/index.js')
+    const storageDir = await mkdtemp(join(tmpdir(), 'her-text-work-modify-'))
+    try {
+      const firstStore = new WorkStateStore(storageDir)
+      await firstStore.initialize()
+      const thread = await firstStore.createThread('Update constrained task', { id: 'thread-modify', now: 5000 })
+      await firstStore.recordModification(thread.id, '刚才那个路径错了，改成 packages/sdk', 'user corrected task scope', 5100)
+      await firstStore.flush()
+
+      const secondStore = new WorkStateStore(storageDir)
+      await secondStore.initialize()
+      const restored = secondStore.getThread(thread.id)
+      expect(restored.userIntentHistory.at(-1)).toEqual({
+        input: '刚才那个路径错了，改成 packages/sdk',
+        intent: 'work.modify',
+        createdAt: 5100,
+      })
+      expect(restored.nextActions.at(-1)).toEqual(expect.objectContaining({
+        title: 'Apply latest user correction',
+        reason: 'user corrected task scope',
+      }))
+      expect(restored.resumeSummary).toContain('packages/sdk')
       await secondStore.flush()
     } finally {
       await rm(storageDir, { recursive: true, force: true })
