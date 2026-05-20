@@ -409,7 +409,7 @@ Her-Text 不是 CLI，所以不能盲目复制 Codex 的交互语义。
   - [x] 用户切换任务后恢复旧任务。
   - [x] 任务失败后下一次避免重复失败路径。
   - [x] App 重启后恢复 paused work thread。
-  - [ ] 长程 run 中断后恢复。
+  - [x] 长程 run 中断后恢复。
 - [ ] 真实验收任务：
   - [ ] 修改 Her-Text 一个 SDK bug 并跑 `pnpm --filter @her-text/sdk build`。
   - [x] 修改 Desktop runtime 并跑 `pnpm --filter @her-text/desktop build`。

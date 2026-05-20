@@ -163,6 +163,10 @@ describe('long run runtime', () => {
       expect(results).toContain('checkpoint-2')
       const resumed = await runtime.resumeRun(run.artifactDir)
       expect(resumed.iterations).toHaveLength(2)
+      const resumedAfterInterrupt = await runtime.resumeRunFor(run.artifactDir, 'manual_resume')
+      expect(resumedAfterInterrupt.iterations).toHaveLength(2)
+      const runtimeLog = await readFile(join(run.artifactDir, 'runtime.log'), 'utf8')
+      expect(runtimeLog).toContain('resume=manual_resume')
     } finally {
       await rm(artifactRoot, { recursive: true, force: true })
     }
