@@ -4,17 +4,45 @@
 import { generateId } from '@her-text/core'
 import type { TaskExecutorKind } from '../session/task.js'
 import type { TaskPlan, TaskRunState, TaskStep } from '../session/task-plan.js'
+import type { FeedbackDecision } from './boundaries.js'
+import type { InteractionIntent, UserInterruptionKind } from './interaction.js'
+import type { WorkArtifact, WorkDecision, WorkFailure, WorkSignal, WorkState, WorkThread } from './work-state.js'
 
 export type RuntimeEventName =
+  | 'interaction.input.received'
   | 'interaction.turn.started'
   | 'interaction.turn.completed'
   | 'interaction.turn.aborted'
+  | 'interaction.intent.resolved'
+  | 'interaction.speech.stop_requested'
+  | 'interaction.speech.mute_requested'
+  | 'interaction.work.modify_requested'
+  | 'interaction.work.status_requested'
+  | 'interaction.work.resume_requested'
+  | 'interaction.work.cancel_requested'
   | 'dialogue.intent.detected'
   | 'dialogue.reply.completed'
+  | 'work.thread.created'
+  | 'work.thread.focused'
+  | 'work.thread.paused'
+  | 'work.thread.resumed'
+  | 'work.thread.abandoned'
+  | 'work.state.snapshot'
+  | 'work.signal.emitted'
+  | 'work.artifact.created'
+  | 'work.decision.recorded'
+  | 'work.failure.recorded'
   | 'task.started'
   | 'task.run_state.changed'
   | 'task.plan.updated'
   | 'task.step.updated'
+  | 'task.turn.started'
+  | 'task.turn.completed'
+  | 'task.tool.started'
+  | 'task.tool.completed'
+  | 'task.tool.failed'
+  | 'task.context.compacted'
+  | 'task.pending_input.added'
   | 'task.completed'
   | 'task.failed'
   | 'agent.created'
@@ -33,10 +61,17 @@ export interface RuntimeEventBase<TName extends RuntimeEventName, TPayload> {
   correlationId?: string
   turnId?: string
   taskId?: string
+  threadId?: string
+  goalId?: string
   payload: TPayload
 }
 
 export type RuntimeEvent =
+  | RuntimeEventBase<'interaction.input.received', {
+      userInput: string
+      inputTimestamp: number
+      source?: 'text' | 'voice' | 'system'
+    }>
   | RuntimeEventBase<'interaction.turn.started', {
       userInput: string
       inputTimestamp: number
@@ -49,6 +84,36 @@ export type RuntimeEvent =
       userInput: string
       preservedUserInput: boolean
     }>
+  | RuntimeEventBase<'interaction.intent.resolved', {
+      userInput: string
+      intents: InteractionIntent[]
+      interruptionKind: UserInterruptionKind
+      feedbackDecision?: FeedbackDecision
+    }>
+  | RuntimeEventBase<'interaction.speech.stop_requested', {
+      reason: string
+    }>
+  | RuntimeEventBase<'interaction.speech.mute_requested', {
+      muted: boolean
+      reason: string
+    }>
+  | RuntimeEventBase<'interaction.work.modify_requested', {
+      targetThreadId?: string
+      modification: string
+      reason: string
+    }>
+  | RuntimeEventBase<'interaction.work.status_requested', {
+      targetThreadId?: string
+      reason: string
+    }>
+  | RuntimeEventBase<'interaction.work.resume_requested', {
+      targetThreadId?: string
+      reason: string
+    }>
+  | RuntimeEventBase<'interaction.work.cancel_requested', {
+      targetThreadId?: string
+      reason: string
+    }>
   | RuntimeEventBase<'dialogue.intent.detected', {
       hasTask: boolean
       taskDescription?: string
@@ -59,6 +124,48 @@ export type RuntimeEvent =
       phase: 'reply' | 'task_progress' | 'task_result'
       text: string
       emotionTag?: string
+    }>
+  | RuntimeEventBase<'work.thread.created', {
+      thread: WorkThread
+    }>
+  | RuntimeEventBase<'work.thread.focused', {
+      threadId: string
+      previousThreadId?: string
+      reason: string
+    }>
+  | RuntimeEventBase<'work.thread.paused', {
+      threadId: string
+      reason: string
+      snapshot: WorkThread
+    }>
+  | RuntimeEventBase<'work.thread.resumed', {
+      threadId: string
+      reason: string
+      snapshot: WorkThread
+    }>
+  | RuntimeEventBase<'work.thread.abandoned', {
+      threadId: string
+      reason: string
+      snapshot: WorkThread
+    }>
+  | RuntimeEventBase<'work.state.snapshot', {
+      state: WorkState
+      reason: string
+    }>
+  | RuntimeEventBase<'work.signal.emitted', {
+      signal: WorkSignal
+    }>
+  | RuntimeEventBase<'work.artifact.created', {
+      threadId: string
+      artifact: WorkArtifact
+    }>
+  | RuntimeEventBase<'work.decision.recorded', {
+      threadId: string
+      decision: WorkDecision
+    }>
+  | RuntimeEventBase<'work.failure.recorded', {
+      threadId: string
+      failure: WorkFailure
     }>
   | RuntimeEventBase<'task.started', {
       taskDescription: string
@@ -79,6 +186,47 @@ export type RuntimeEvent =
       plan: TaskPlan
       taskDescription: string
       originalUserInput: string
+    }>
+  | RuntimeEventBase<'task.turn.started', {
+      turnIndex: number
+      taskDescription: string
+      stepId?: string
+      stepTitle?: string
+    }>
+  | RuntimeEventBase<'task.turn.completed', {
+      turnIndex: number
+      taskDescription: string
+      completed: boolean
+      toolCalls: number
+    }>
+  | RuntimeEventBase<'task.tool.started', {
+      toolName: string
+      callId: string
+      taskDescription: string
+      stepId?: string
+    }>
+  | RuntimeEventBase<'task.tool.completed', {
+      toolName: string
+      callId: string
+      taskDescription: string
+      success: boolean
+      summary?: string
+    }>
+  | RuntimeEventBase<'task.tool.failed', {
+      toolName: string
+      callId: string
+      taskDescription: string
+      error: string
+    }>
+  | RuntimeEventBase<'task.context.compacted', {
+      taskDescription: string
+      summary: string
+      reason: string
+    }>
+  | RuntimeEventBase<'task.pending_input.added', {
+      taskDescription: string
+      inputKind: string
+      label: string
     }>
   | RuntimeEventBase<'task.completed', {
       taskDescription: string
