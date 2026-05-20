@@ -120,41 +120,41 @@
 
 ## Phase 3: 情感任务交互层
 
-- [ ] 新增 `InteractionRuntime`。
-- [ ] 输入：
-  - [ ] 用户原始输入。
-  - [ ] 情感层输入理解。
-  - [ ] 情感层实际输出。
-  - [ ] 当前 WorkState。
-  - [ ] 当前 OutputState。
-- [ ] 输出结构化 intent：
-  - [ ] `chat`
-  - [ ] `speech.stop`
-  - [ ] `speech.mute`
-  - [ ] `speech.repeat`
-  - [ ] `work.start`
-  - [ ] `work.resume`
-  - [ ] `work.pause`
-  - [ ] `work.modify`
-  - [ ] `work.status`
-  - [ ] `work.cancel`
-  - [ ] `work.queue_new`
+- [x] 新增 `InteractionRuntime`。
+- [x] 输入：
+  - [x] 用户原始输入。
+  - [x] 情感层输入理解。
+  - [x] 情感层实际输出。
+  - [x] 当前 WorkState。
+  - [x] 当前 OutputState。
+- [x] 输出结构化 intent：
+  - [x] `chat`
+  - [x] `speech.stop`
+  - [x] `speech.mute`
+  - [x] `speech.repeat`
+  - [x] `work.start`
+  - [x] `work.resume`
+  - [x] `work.pause`
+  - [x] `work.modify`
+  - [x] `work.status`
+  - [x] `work.cancel`
+  - [x] `work.queue_new`
   - [ ] `work.start_parallel`
-- [ ] 支持用户语言打断分类：
-  - [ ] 只停止说话。
-  - [ ] 插话追问。
-  - [ ] 补充约束。
-  - [ ] 修正任务方向。
-  - [ ] 暂停任务。
-  - [ ] 取消任务。
-  - [ ] 开启新任务但保留旧任务现场。
-- [ ] 定义 `FeedbackPolicy`，控制任务层信息何时给到情感层：
-  - [ ] 静默 UI 更新。
-  - [ ] 当前 TTS 结束后说。
+- [x] 支持用户语言打断分类：
+  - [x] 只停止说话。
+  - [x] 插话追问。
+  - [x] 补充约束。
+  - [x] 修正任务方向。
+  - [x] 暂停任务。
+  - [x] 取消任务。
+  - [x] 开启新任务但保留旧任务现场。
+- [x] 定义 `FeedbackPolicy`，控制任务层信息何时给到情感层：
+  - [x] 静默 UI 更新。
+  - [x] 当前 TTS 结束后说。
   - [ ] 用户停顿后说。
-  - [ ] 立即打断输出。
-  - [ ] 只记录不表达。
-- [ ] 交互层负责判断一个 work signal 是否值得打扰用户。
+  - [x] 立即打断输出。
+  - [x] 只记录不表达。
+- [x] 交互层负责判断一个 work signal 是否值得打扰用户。
 
 验收：
 
