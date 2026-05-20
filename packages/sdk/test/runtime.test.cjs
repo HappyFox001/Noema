@@ -88,6 +88,89 @@ describe('long run runtime', () => {
   })
 })
 
+describe('work state persistence', () => {
+  test('persists recoverable thread facts across store instances', async () => {
+    const { WorkStateStore } = await import('../dist/runtime/index.js')
+    const storageDir = await mkdtemp(join(tmpdir(), 'her-text-work-state-'))
+    try {
+      const firstStore = new WorkStateStore(storageDir)
+      await firstStore.initialize()
+      const thread = await firstStore.createThread('Fix persisted task', { id: 'thread-persisted', now: 1000 })
+      await firstStore.recordFailure(thread.id, {
+        id: 'failure-1',
+        message: 'build failed',
+        evidence: ['tsc error'],
+        createdAt: 1100,
+      })
+      await firstStore.flush()
+
+      const secondStore = new WorkStateStore(storageDir)
+      await secondStore.initialize()
+      const restored = secondStore.getThread(thread.id)
+
+      expect(restored.status).toBe('recoverable_failed')
+      expect(restored.failures).toHaveLength(1)
+      expect(secondStore.getSnapshot().activeThreads.map(item => item.id)).toContain(thread.id)
+    } finally {
+      await rm(storageDir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('tool orchestrator', () => {
+  test('normalizes policy failures and emits tool events', async () => {
+    const { RuntimeEventBus, ToolOrchestrator } = await import('../dist/runtime/index.js')
+    const events = new RuntimeEventBus()
+    const seen = []
+    events.subscribe(event => seen.push(event.name))
+    const orchestrator = new ToolOrchestrator({
+      events,
+      tools: [createTool({ name: 'safe_tool', description: 'Safe tool' })],
+      policies: {
+        approve: () => ({ decision: 'deny', reason: 'approval required' }),
+      },
+    })
+
+    const result = await orchestrator.executeCall(
+      { id: 'call-1', name: 'safe_tool', arguments: '{}' },
+      { threadId: 'thread-1', taskId: 'task-1', taskDescription: 'run tool' },
+    )
+
+    expect(result.success).toBe(false)
+    expect(result.error.kind).toBe('policy_denied')
+    expect(result.error.message).toBe('approval required')
+    expect(seen).toEqual(['task.tool.started', 'task.tool.failed'])
+  })
+})
+
+describe('work context manager', () => {
+  test('compacts old context, truncates tool output, and reinjects summaries', async () => {
+    const { WorkContextManager } = await import('../dist/runtime/index.js')
+    const context = new WorkContextManager({ maxToolOutputChars: 80 })
+    context.addItem({ role: 'user', content: 'first instruction' })
+    context.addItem({ role: 'assistant', content: 'first response' })
+    context.addToolResult('view_image', 'call-image', {
+      text: 'abcdefghijklmnopqrstuvwxyz',
+      imageUrl: 'data:image/png;base64,abc',
+      mimeType: 'image/png',
+    })
+
+    const modelItemsWithoutImages = context.forModel()
+    expect(modelItemsWithoutImages.at(-1).images).toBeUndefined()
+    expect(context.forModel({ includeImages: true }).at(-1).images).toHaveLength(1)
+    expect(context.forModel({ includeImages: true }).at(-1).content).toContain('[image url omitted]')
+    expect(context.forModel({ includeImages: true }).at(-1).content).toContain('[truncated')
+
+    const compaction = context.compactPreTurn(1)
+    expect(compaction.phase).toBe('pre_turn')
+    expect(context.forModel()).toHaveLength(1)
+
+    const reinjected = context.reinject(compaction.id)
+    expect(reinjected.role).toBe('system')
+    expect(reinjected.content).toContain('Recovered task context')
+  })
+})
+
 function createTool(fields) {
   return {
     pluginId: undefined,

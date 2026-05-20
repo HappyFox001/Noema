@@ -396,12 +396,12 @@ Her-Text 不是 CLI，所以不能盲目复制 Codex 的交互语义。
 
 - [ ] 单元测试：
   - [x] intent routing。
-  - [ ] work state persistence。
+  - [x] work state persistence。
   - [ ] task interruption semantics。
   - [ ] work thread resume。
   - [x] tool router。
-  - [ ] tool orchestrator。
-  - [ ] context compaction。
+  - [x] tool orchestrator。
+  - [x] context compaction。
   - [x] long-run keep/discard。
 - [ ] 集成测试：
   - [ ] 用户停止 TTS，任务继续。
