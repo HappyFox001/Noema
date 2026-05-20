@@ -731,6 +731,10 @@ function handleWorkSurfaceRuntimeEvent(event: any): void {
 
 function handleRuntimeEvent(event: any): void {
   handleWorkSurfaceRuntimeEvent(event)
+  if (event.name === 'task.started') {
+    taskCommunicationManager.onTaskStart(event.payload?.taskDescription || 'Task')
+    return
+  }
   if (event.name === 'task.run_state.changed' && event.payload?.state) {
     taskCommunicationManager.onRunStateChanged(event.payload.state, {
       taskDescription: event.payload.taskDescription || 'Task',
@@ -4030,12 +4034,6 @@ async function runConversationTurn(
         return responseFramePipeline?.queueFrame(frame) ?? Promise.resolve()
       },
       waitForIdle: () => responseFramePipeline?.waitForIdle() ?? Promise.resolve(),
-      onTaskStart: (taskDescription) => {
-        taskCommunicationManager.onTaskStart(taskDescription)
-      },
-      onTaskEnd: (result) => {
-        taskCommunicationManager.onTaskEnd(result)
-      },
       onExpression: async (frame) => {
         if (isTurnCancelled(turnId)) return
         pendingExpressionFrame = frame

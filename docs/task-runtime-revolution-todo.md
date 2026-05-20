@@ -86,7 +86,7 @@
   - [x] `task.context.compacted`
   - [x] `task.pending_input.added`
 - [x] 保证所有事件都有 `correlationId`、`threadId`、`taskId` 或 `goalId` 的可追踪关系。
-- [ ] Desktop UI 和 work surface 从事件派生状态，不再依赖零散 callback。
+- [x] Desktop UI 和 work surface 从事件派生状态，不再依赖零散 callback。
 
 验收：
 
