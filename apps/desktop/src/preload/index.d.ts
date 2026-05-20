@@ -571,6 +571,10 @@ declare global {
       listWorkSurfaceSnapshots: () => Promise<{ success: boolean; snapshots?: any[]; error?: string }>
       searchWorkSurfaceSnapshots: (query: string) => Promise<{ success: boolean; snapshots?: any[]; error?: string }>
       sendWorkSurfaceEvent: (event: any) => Promise<{ success: boolean; error?: string }>
+      workThreadAction: (
+        action: 'pause' | 'resume' | 'abandon' | 'focus' | 'details',
+        threadId: string
+      ) => Promise<{ success: boolean; error?: string; plan?: any; thread?: any }>
       onWorkSurfaceFrame: (callback: (frame: any) => void) => void
       onWorkSurfaceCreated: (callback: (snapshot: any) => void) => void
       onWorkSurfaceSnapshot: (callback: (snapshot: any) => void) => void

@@ -2808,7 +2808,22 @@ function renderTaskPanel(plan: TaskPanelPlan): void {
     text.className = 'task-step-title'
     text.textContent = `${thread.goal} · ${thread.status}`
 
-    item.append(mark, text)
+    const actions = document.createElement('span')
+    actions.className = 'task-step-actions'
+    for (const action of getThreadActions(thread)) {
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.className = 'task-step-action'
+      button.textContent = action
+      button.title = action
+      button.addEventListener('click', (event) => {
+        event.stopPropagation()
+        void handleWorkThreadAction(thread.id, action)
+      })
+      actions.appendChild(button)
+    }
+
+    item.append(mark, text, actions)
     list.appendChild(item)
   }
 
@@ -2884,6 +2899,30 @@ function getThreadBucketMark(bucket: NonNullable<TaskPanelPlan['threads']>[numbe
       return '-'
     default:
       return '•'
+  }
+}
+
+function getThreadActions(thread: NonNullable<TaskPanelPlan['threads']>[number]): Array<'pause' | 'resume' | 'abandon' | 'focus' | 'details'> {
+  const actions: Array<'pause' | 'resume' | 'abandon' | 'focus' | 'details'> = []
+  if (!thread.focused) actions.push('focus')
+  if (thread.bucket === 'active' || thread.bucket === 'waiting') actions.push('pause')
+  if (thread.bucket === 'paused' || thread.bucket === 'recoverable_failed') actions.push('resume')
+  if (thread.bucket !== 'completed' && thread.bucket !== 'abandoned') actions.push('abandon')
+  actions.push('details')
+  return actions
+}
+
+async function handleWorkThreadAction(threadId: string, action: 'pause' | 'resume' | 'abandon' | 'focus' | 'details'): Promise<void> {
+  const result = await window.electronAPI.workThreadAction(action, threadId)
+  if (!result.success) {
+    setStatus(result.error || t('taskPanel.failed'))
+    return
+  }
+  if (result.plan) {
+    renderTaskPanel(result.plan)
+  }
+  if (action === 'details' && result.thread?.resumeSummary) {
+    setStatus(result.thread.resumeSummary)
   }
 }
 

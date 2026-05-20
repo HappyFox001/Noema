@@ -359,18 +359,18 @@ Her-Text 不是 CLI，所以不能盲目复制 Codex 的交互语义。
 - [x] 显示当前 thread 的 plan、current step、last observation、next action。
 - [x] 显示长程 run 的 metric、baseline、best result、iteration count。
 - [ ] 支持用户从 UI 手动：
-  - [ ] pause。
-  - [ ] resume。
-  - [ ] abandon。
-  - [ ] focus。
-  - [ ] view details。
+  - [x] pause。
+  - [x] resume。
+  - [x] abandon。
+  - [x] focus。
+  - [x] view details。
 - [ ] OutputRuntime 从 work signals 接收状态，而不是从 task callback 拼状态。
 - [ ] 情感层只在 FeedbackPolicy 允许时说任务进度。
 
 验收：
 
 - [ ] 用户不用看日志也能知道任务在做什么。
-- [ ] 用户能看到哪些任务被暂停、可恢复或已放弃。
+- [x] 用户能看到哪些任务被暂停、可恢复或已放弃。
 - [x] 长程任务的进展和验证结果可视化。
 
 ## Phase 9: 迁移旧系统

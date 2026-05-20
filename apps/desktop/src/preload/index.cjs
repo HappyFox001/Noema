@@ -213,6 +213,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   sendWorkSurfaceEvent: (event) =>
     ipcRenderer.invoke('workSurface:event', event),
 
+  workThreadAction: (action, threadId) =>
+    ipcRenderer.invoke('workThread:action', { action, threadId }),
+
   onWorkSurfaceFrame: (callback) => {
     ipcRenderer.on('workSurface:frame', (_, frame) => callback(frame))
   },

@@ -3606,12 +3606,25 @@ async function initializeSDK(): Promise<void> {
     onTaskPlanUpdated: (plan) => taskCommunicationManager.onPlanUpdated(plan),
     onTaskStepUpdated: (step, plan) => taskCommunicationManager.onStepUpdated(step, plan),
   })
-  taskCommunicationManager.setPlanDecorator((plan) => buildWorkThreadPanelPlan(
-    sdkInstance!.workState.getSnapshot(),
-    plan,
-    sdkInstance!.longRuns.getPanelSummaries()
-  ))
+  taskCommunicationManager.setPlanDecorator((plan) => buildCurrentWorkThreadPanelPlan(plan))
   console.log('[SDK] Initialized successfully')
+}
+
+function buildCurrentWorkThreadPanelPlan(plan?: TaskPlan): WorkThreadPanelPlan {
+  if (!sdkInstance) {
+    return buildWorkThreadPanelPlan({
+      activeThreads: [],
+      pausedThreads: [],
+      abandonedThreads: [],
+      completedThreads: [],
+      updatedAt: Date.now(),
+    }, plan)
+  }
+  return buildWorkThreadPanelPlan(
+    sdkInstance.workState.getSnapshot(),
+    plan,
+    sdkInstance.longRuns.getPanelSummaries()
+  )
 }
 
 async function rebuildSDK(): Promise<void> {
@@ -4782,6 +4795,32 @@ ipcMain.handle('workSurface:event', async (_event, userEvent: SurfaceUserEvent) 
     })
   }
   return { success: true }
+})
+
+ipcMain.handle('workThread:action', async (_event, payload: { action: 'pause' | 'resume' | 'abandon' | 'focus' | 'details', threadId: string }) => {
+  try {
+    if (!sdkInstance) {
+      throw new Error('SDK not initialized')
+    }
+    const { action, threadId } = payload
+    if (action === 'pause') {
+      await sdkInstance.workState.pauseThread(threadId, 'Paused from task panel')
+    } else if (action === 'resume') {
+      await sdkInstance.workState.resumeThread(threadId, 'Resumed from task panel')
+    } else if (action === 'abandon') {
+      await sdkInstance.workState.abandonThread(threadId, 'Abandoned from task panel')
+    } else if (action === 'focus') {
+      await sdkInstance.workState.focusThread(threadId)
+    }
+    await sdkInstance.workState.flush()
+    return {
+      success: true,
+      thread: sdkInstance.workState.getThread(threadId),
+      plan: buildCurrentWorkThreadPanelPlan(),
+    }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : String(error) }
+  }
 })
 
 async function handleWorkSurfaceAction(event: Extract<SurfaceUserEvent, { type: 'surface.action' }>): Promise<void> {
