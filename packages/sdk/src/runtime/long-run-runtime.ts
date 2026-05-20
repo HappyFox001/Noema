@@ -44,6 +44,23 @@ export interface GoalRunIteration {
   createdAt: number
 }
 
+export interface GoalRunIterationRequest {
+  hypothesis: string
+  applyFocusedChange: () => Promise<GoalRunCheckpoint>
+  verify: () => Promise<GoalRunMeasurement>
+  guard: () => Promise<GoalRunGuardResult>
+}
+
+export interface GoalRunCheckpoint {
+  id: string
+  description: string
+}
+
+export interface GoalRunGuardResult {
+  passed: boolean
+  output?: string
+}
+
 export interface CreateGoalRunRequest {
   goal: string
   scope: string[]
@@ -113,6 +130,23 @@ export class LongRunRuntime {
     return updated
   }
 
+  async runIteration(run: GoalRun, request: GoalRunIterationRequest): Promise<GoalRun> {
+    await this.appendRuntimeLog(run, `hypothesis=${request.hypothesis}`)
+    const checkpoint = await request.applyFocusedChange()
+    await this.appendRuntimeLog(run, `checkpoint=${checkpoint.id}`)
+    const measurement = await request.verify()
+    const guard = await request.guard()
+    const decision = this.chooseDecision(run, measurement.metricValue, guard.passed)
+    return this.recordIteration(run, {
+      hypothesis: request.hypothesis,
+      metricValue: measurement.metricValue,
+      guardPassed: guard.passed,
+      decision,
+      checkpoint: checkpoint.id,
+      note: checkpoint.description,
+    })
+  }
+
   async appendLesson(run: GoalRun, lesson: string): Promise<void> {
     await appendFile(join(run.artifactDir, 'lessons.md'), `\n- ${lesson}\n`, 'utf8')
   }
@@ -131,6 +165,20 @@ export class LongRunRuntime {
 
   private async appendRuntimeLog(run: GoalRun, line: string): Promise<void> {
     await appendFile(join(run.artifactDir, 'runtime.log'), `${new Date().toISOString()} ${line}\n`, 'utf8')
+  }
+
+  private chooseDecision(run: GoalRun, metricValue: number, guardPassed: boolean): GoalRunIteration['decision'] {
+    if (!guardPassed) {
+      return 'discard'
+    }
+    const previous = run.iterations.at(-1)?.metricValue ?? run.baseline.metricValue
+    if (run.direction === 'maximize') {
+      return metricValue >= previous ? 'keep' : 'discard'
+    }
+    if (run.direction === 'minimize') {
+      return metricValue <= previous ? 'keep' : 'discard'
+    }
+    return metricValue === previous ? 'keep' : 'discard'
   }
 }
 

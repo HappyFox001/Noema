@@ -319,14 +319,14 @@ Her-Text 不是 CLI，所以不能盲目复制 Codex 的交互语义。
 - [x] 实现 baseline：
   - [x] 启动前必须先测量 baseline。
   - [x] baseline 成功后才能初始化 run artifacts。
-- [ ] 实现 iteration loop：
-  - [ ] 选择一个 hypothesis。
-  - [ ] 做一个聚焦变更。
-  - [ ] 生成 trial commit 或等效 checkpoint。
-  - [ ] 运行 verify。
-  - [ ] 运行 guard。
-  - [ ] keep/discard。
-  - [ ] 记录结果。
+- [x] 实现 iteration loop：
+  - [x] 选择一个 hypothesis。
+  - [x] 做一个聚焦变更。
+  - [x] 生成 trial commit 或等效 checkpoint。
+  - [x] 运行 verify。
+  - [x] 运行 guard。
+  - [x] keep/discard。
+  - [x] 记录结果。
   - [ ] 继续下一轮。
 - [ ] 实现 rollback：
   - [ ] dedicated branch/worktree 可 destructive rollback。
