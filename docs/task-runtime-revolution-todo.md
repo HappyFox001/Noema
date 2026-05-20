@@ -240,13 +240,13 @@
   - [x] 结构化 apply patch。
   - [x] patch 失败后可恢复上下文。
   - [x] changed files tracking。
-- [ ] 新增 `ContextManager`：
-  - [ ] 记录完整 model-visible history。
-  - [ ] 支持工具输出截断。
-  - [ ] 支持图片/视觉结果归一化。
-  - [ ] 支持 pre-turn compaction。
-  - [ ] 支持 mid-turn compaction。
-  - [ ] 支持 context reinjection。
+- [x] 新增任务层 `ContextManager`：
+  - [x] 记录完整 model-visible history。
+  - [x] 支持工具输出截断。
+  - [x] 支持图片/视觉结果归一化。
+  - [x] 支持 pre-turn compaction。
+  - [x] 支持 mid-turn compaction。
+  - [x] 支持 context reinjection。
 - [ ] 新增 `CancellationModel`：
   - [ ] output cancellation。
   - [ ] user interruption。
