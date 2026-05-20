@@ -653,6 +653,40 @@ describe('tool orchestrator', () => {
     expect(result.error.message).toBe('approval required')
     expect(seen).toEqual(['task.tool.started', 'task.tool.failed'])
   })
+
+  test('retries configured tool failures before returning success', async () => {
+    const { RuntimeEventBus, ToolOrchestrator } = await import('../dist/runtime/index.js')
+    let attempts = 0
+    const orchestrator = new ToolOrchestrator({
+      events: new RuntimeEventBus(),
+      tools: [createTool({
+        name: 'flaky_tool',
+        description: 'Fails once',
+        execute: async () => {
+          attempts += 1
+          if (attempts === 1) {
+            throw new Error('temporary failure')
+          }
+          return { ok: true }
+        },
+      })],
+      policies: {
+        retry: {
+          attempts: 2,
+          retryableKinds: ['function'],
+        },
+      },
+    })
+
+    const result = await orchestrator.executeCall(
+      { id: 'call-flaky', name: 'flaky_tool', arguments: '{}' },
+      { threadId: 'thread-flaky', taskId: 'task-flaky', taskDescription: 'retry tool' },
+    )
+
+    expect(result.success).toBe(true)
+    expect(result.attempts).toBe(2)
+    expect(attempts).toBe(2)
+  })
 })
 
 describe('work context manager', () => {

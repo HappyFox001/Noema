@@ -152,7 +152,7 @@ export class ToolOrchestrator {
         const result = await tool.execute(parsedArgs.value)
         return finish(true, attempt, result)
       } catch (error) {
-        lastFailure = normalizeExecutionFailure(error, routedCall)
+        lastFailure = normalizeExecutionFailure(error, routedCall, this.options.policies?.retry?.retryableKinds)
         if (attempt >= maxAttempts || !lastFailure.retryable) {
           return finish(false, attempt, undefined, lastFailure)
         }
@@ -201,10 +201,10 @@ function parseToolArguments(raw: string): { ok: true, value: Record<string, unkn
   }
 }
 
-function normalizeExecutionFailure(error: unknown, call: RoutedToolCall): NormalizedToolFailure {
+function normalizeExecutionFailure(error: unknown, call: RoutedToolCall, retryableKinds?: RoutedToolKind[]): NormalizedToolFailure {
   const message = error instanceof Error ? error.message : String(error)
-  const retryableKinds = new Set<RoutedToolKind>(['browser', 'desktop', 'mcp'])
-  return createFailure('execution_failed', message || `Tool failed: ${call.name}`, retryableKinds.has(call.spec?.kind ?? 'custom'), error)
+  const retryable = new Set<RoutedToolKind>(retryableKinds ?? ['browser', 'desktop', 'mcp'])
+  return createFailure('execution_failed', message || `Tool failed: ${call.name}`, retryable.has(call.spec?.kind ?? 'custom'), error)
 }
 
 function createFailure(kind: NormalizedToolFailure['kind'], message: string, retryable: boolean, cause?: unknown): NormalizedToolFailure {
