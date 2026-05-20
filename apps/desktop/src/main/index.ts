@@ -50,7 +50,7 @@ console.log('[Env] LLM_1_BASE_URL:', process.env.LLM_1_BASE_URL || '✗ (not set
 console.log('[Env] TTS_1_API_KEY:', process.env.TTS_1_API_KEY ? '✓ (set)' : '✗ (not set)')
 console.log('[Env] ASR_1_API_KEY:', process.env.ASR_1_API_KEY ? '✓ (set)' : '✗ (not set)')
 
-import { app, BrowserWindow, ipcMain, systemPreferences, shell, dialog, screen, nativeImage, Menu, type MenuItemConstructorOptions, type OpenDialogOptions } from 'electron'
+import { app, BrowserWindow, ipcMain, systemPreferences, shell, dialog, screen, nativeImage, Menu, session, type MenuItemConstructorOptions, type OpenDialogOptions } from 'electron'
 import {
   HerTextSDK,
   createSTTProvider,
@@ -2996,17 +2996,50 @@ async function switchTTSProvider(reason: InterruptionReason = 'provider_switch')
   await initializeTTSProvider()
 }
 
-function configureProxyFromEnv(): void {
-  const proxyUrl =
+let activeProxyUrl = ''
+let globalAgentBootstrapped = false
+
+function getProxyFromEnv(): string {
+  return (
     process.env.HTTPS_PROXY ||
     process.env.HTTP_PROXY ||
     process.env.ALL_PROXY ||
     process.env.https_proxy ||
     process.env.http_proxy ||
-    process.env.all_proxy
+    process.env.all_proxy ||
+    ''
+  ).trim()
+}
 
-  if (!proxyUrl?.trim()) {
+function configureProxyFromEnv(): void {
+  const proxyUrl = getProxyFromEnv()
+
+  if (!proxyUrl) {
     console.log('[Proxy] No proxy configured (HTTPS_PROXY/HTTP_PROXY not set or empty)')
+    return
+  }
+
+  applyProxyEnvironment(proxyUrl)
+  app.commandLine.appendSwitch('proxy-server', proxyUrl)
+  bootstrapGlobalAgent(proxyUrl)
+  activeProxyUrl = proxyUrl
+  console.log('[Proxy] ✓ Enabled startup proxy from environment:', proxyUrl)
+}
+
+function applyProxyEnvironment(proxyUrl: string): void {
+  const normalized = proxyUrl.trim()
+  if (!normalized) {
+    delete process.env.GLOBAL_AGENT_HTTP_PROXY
+    delete process.env.HTTP_PROXY
+    delete process.env.HTTPS_PROXY
+    delete process.env.ALL_PROXY
+    delete process.env.http_proxy
+    delete process.env.https_proxy
+    delete process.env.all_proxy
+    const globalAgent = (globalThis as any).GLOBAL_AGENT
+    if (globalAgent) {
+      globalAgent.HTTP_PROXY = ''
+    }
     return
   }
 
@@ -3016,16 +3049,69 @@ function configureProxyFromEnv(): void {
     process.env.NO_PROXY ||
     process.env.no_proxy ||
     ''
+  process.env.HTTP_PROXY = proxyUrl
+  process.env.HTTPS_PROXY = proxyUrl
+  process.env.ALL_PROXY = proxyUrl
+  process.env.http_proxy = proxyUrl
+  process.env.https_proxy = proxyUrl
+  process.env.all_proxy = proxyUrl
 
-  app.commandLine.appendSwitch('proxy-server', proxyUrl)
+  const globalAgent = (globalThis as any).GLOBAL_AGENT
+  if (globalAgent) {
+    globalAgent.HTTP_PROXY = proxyUrl
+    globalAgent.NO_PROXY = process.env.GLOBAL_AGENT_NO_PROXY
+  }
+}
 
+function bootstrapGlobalAgent(proxyUrl: string): void {
+  if (globalAgentBootstrapped) {
+    const globalAgent = (globalThis as any).GLOBAL_AGENT
+    if (globalAgent) {
+      globalAgent.HTTP_PROXY = proxyUrl
+    }
+    return
+  }
   try {
     const { bootstrap } = require('global-agent')
     bootstrap()
+    globalAgentBootstrapped = true
+    const globalAgent = (globalThis as any).GLOBAL_AGENT
+    if (globalAgent) {
+      globalAgent.HTTP_PROXY = proxyUrl
+    }
     console.log('[Proxy] ✓ Enabled global proxy:', proxyUrl)
   } catch (error) {
     console.warn('[Proxy] ⚠️ Failed to enable global proxy:', error)
   }
+}
+
+async function applyProxyConfig(proxyUrl: string, source: 'settings' | 'env' | 'runtime' = 'runtime'): Promise<boolean> {
+  const normalized = proxyUrl.trim()
+  if (normalized === activeProxyUrl) {
+    return false
+  }
+
+  applyProxyEnvironment(normalized)
+  if (normalized) {
+    bootstrapGlobalAgent(normalized)
+  }
+
+  if (app.isReady()) {
+    try {
+      await session.defaultSession.setProxy({ proxyRules: normalized || '' })
+      await session.defaultSession.closeAllConnections()
+      console.log(normalized
+        ? `[Proxy] ✓ Applied ${source} proxy: ${normalized}`
+        : `[Proxy] ✓ Cleared ${source} proxy`)
+    } catch (error) {
+      console.warn('[Proxy] ⚠️ Failed to apply Electron session proxy:', error)
+    }
+  } else if (normalized) {
+    app.commandLine.appendSwitch('proxy-server', normalized)
+  }
+
+  activeProxyUrl = normalized
+  return true
 }
 
 function isDevMode(): boolean {
@@ -3451,6 +3537,7 @@ async function rebuildSDK(): Promise<void> {
 
 async function applyRuntimeSystemConfigChanges(
   previous: {
+    proxy: string
     llm: string
     taskLLM: string
     taskRuntime: string
@@ -3461,17 +3548,24 @@ async function applyRuntimeSystemConfigChanges(
     pluginsChanged?: boolean
   } = {}
 ): Promise<void> {
+  const proxyChanged = previous.proxy !== appSettings.system.proxy.trim()
+  if (proxyChanged) {
+    await applyProxyConfig(appSettings.system.proxy, 'settings')
+  }
+
   const nextLLMSignature = getLLMConfigSignature(getActiveLLMConfig())
   const nextTaskLLMSignature = getLLMConfigSignature(getActiveTaskConfig())
   const nextTaskRuntimeSignature = JSON.stringify(appSettings.system.taskRuntime)
   const nextTTSSignature = getTTSConfigSignature(getActiveTTSConfig())
   const nextASRSignature = getASRConfigSignature(getActiveASRConfig())
   const llmChanged =
+    proxyChanged ||
     previous.llm !== nextLLMSignature ||
     previous.taskLLM !== nextTaskLLMSignature ||
     previous.taskRuntime !== nextTaskRuntimeSignature
 
   if (
+    proxyChanged ||
     previous.tts !== nextTTSSignature ||
     (ttsService && activeTTSSignature !== nextTTSSignature)
   ) {
@@ -3480,7 +3574,7 @@ async function applyRuntimeSystemConfigChanges(
 
   if (
     streamingASRSession &&
-    (previous.asr !== nextASRSignature || activeASRSignature !== nextASRSignature)
+    (proxyChanged || previous.asr !== nextASRSignature || activeASRSignature !== nextASRSignature)
   ) {
     await cancelCurrentTurn({ closeTTS: true, reason: 'provider_switch' })
     await streamingASRSession.switchProvider('provider_switch')
@@ -3542,6 +3636,7 @@ app.whenReady().then(async () => {
   settingsStore = new SettingsStore()
   await settingsStore.initialize()
   appSettings = settingsStore.getSettings()
+  await applyProxyConfig(appSettings.system.proxy, 'settings')
   await cleanupUnknownRuntimePluginSettings()
 
   await initializePersonalityManager()
@@ -4437,6 +4532,7 @@ ipcMain.handle('settings:get', async () => {
 
 ipcMain.handle('settings:update', async (_, partial: Partial<AppSettings>) => {
   const previous = {
+    proxy: appSettings.system.proxy.trim(),
     llm: getLLMConfigSignature(getActiveLLMConfig()),
     taskLLM: getLLMConfigSignature(getActiveTaskConfig()),
     taskRuntime: JSON.stringify(appSettings.system.taskRuntime),
@@ -4959,6 +5055,7 @@ ipcMain.handle('settings:resetSystemFromEnv', async () => {
   }
   try {
     const previous = {
+      proxy: appSettings.system.proxy.trim(),
       llm: getLLMConfigSignature(getActiveLLMConfig()),
       taskLLM: getLLMConfigSignature(getActiveTaskConfig()),
       taskRuntime: JSON.stringify(appSettings.system.taskRuntime),
