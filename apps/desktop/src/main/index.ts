@@ -3606,7 +3606,11 @@ async function initializeSDK(): Promise<void> {
     onTaskPlanUpdated: (plan) => taskCommunicationManager.onPlanUpdated(plan),
     onTaskStepUpdated: (step, plan) => taskCommunicationManager.onStepUpdated(step, plan),
   })
-  taskCommunicationManager.setPlanDecorator((plan) => buildWorkThreadPanelPlan(sdkInstance!.workState.getSnapshot(), plan))
+  taskCommunicationManager.setPlanDecorator((plan) => buildWorkThreadPanelPlan(
+    sdkInstance!.workState.getSnapshot(),
+    plan,
+    sdkInstance!.longRuns.getPanelSummaries()
+  ))
   console.log('[SDK] Initialized successfully')
 }
 

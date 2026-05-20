@@ -95,6 +95,17 @@ export interface LongRunConversionSuggestion {
   confirmationPrompt?: string
 }
 
+export interface GoalRunPanelSummary {
+  id: string
+  goal: string
+  metric: string
+  baseline: number
+  bestResult: number
+  latestResult: number
+  iterationCount: number
+  status: GoalRunStatus
+}
+
 export interface CreateGoalRunRequest {
   goal: string
   scope: string[]
@@ -109,6 +120,8 @@ export interface CreateGoalRunRequest {
 }
 
 export class LongRunRuntime {
+  private runs = new Map<string, GoalRun>()
+
   async createRun(request: CreateGoalRunRequest): Promise<GoalRun> {
     if (!Number.isFinite(request.baseline.metricValue)) {
       throw new Error('Baseline metric must be measured before initializing a long run')
@@ -132,12 +145,15 @@ export class LongRunRuntime {
       updatedAt: now,
     }
     await this.initializeArtifacts(run)
+    this.runs.set(run.id, run)
     return run
   }
 
   async resumeRun(artifactDir: string): Promise<GoalRun> {
     const raw = await readFile(join(artifactDir, 'state.json'), 'utf8')
-    return JSON.parse(raw) as GoalRun
+    const run = JSON.parse(raw) as GoalRun
+    this.runs.set(run.id, run)
+    return run
   }
 
   async resumeRunFor(artifactDir: string, reason: GoalRunResumeReason): Promise<GoalRun> {
@@ -150,6 +166,7 @@ export class LongRunRuntime {
     const updated = { ...run, status, updatedAt: Date.now() }
     await this.writeState(updated)
     await this.appendRuntimeLog(updated, `status=${status}`)
+    this.runs.set(updated.id, updated)
     return updated
   }
 
@@ -167,7 +184,16 @@ export class LongRunRuntime {
     await appendFile(join(run.artifactDir, 'results.tsv'), formatIterationRow(next), 'utf8')
     await this.writeState(updated)
     await this.appendRuntimeLog(updated, `iteration=${next.index} decision=${next.decision} metric=${next.metricValue}`)
+    this.runs.set(updated.id, updated)
     return updated
+  }
+
+  getRuns(): GoalRun[] {
+    return [...this.runs.values()].map(run => cloneGoalRun(run))
+  }
+
+  getPanelSummaries(): GoalRunPanelSummary[] {
+    return this.getRuns().map(run => summarizeGoalRun(run))
   }
 
   async runIteration(run: GoalRun, request: GoalRunIterationRequest): Promise<GoalRun> {
@@ -329,6 +355,34 @@ export class LongRunRuntime {
       return metricValue <= previous ? 'keep' : 'discard'
     }
     return metricValue === previous ? 'keep' : 'discard'
+  }
+}
+
+export function summarizeGoalRun(run: GoalRun): GoalRunPanelSummary {
+  const values = [run.baseline.metricValue, ...run.iterations.map(iteration => iteration.metricValue)]
+  const bestResult = run.direction === 'maximize'
+    ? Math.max(...values)
+    : run.direction === 'minimize'
+      ? Math.min(...values)
+      : values.at(-1) ?? run.baseline.metricValue
+  return {
+    id: run.id,
+    goal: run.goal,
+    metric: run.metric,
+    baseline: run.baseline.metricValue,
+    bestResult,
+    latestResult: values.at(-1) ?? run.baseline.metricValue,
+    iterationCount: run.iterations.length,
+    status: run.status,
+  }
+}
+
+function cloneGoalRun(run: GoalRun): GoalRun {
+  return {
+    ...run,
+    scope: [...run.scope],
+    baseline: { ...run.baseline },
+    iterations: run.iterations.map(iteration => ({ ...iteration })),
   }
 }
 

@@ -2,6 +2,7 @@
  * Builds a task-panel view model from durable work threads.
  */
 import type { TaskPlan } from '../session/task-plan.js'
+import type { GoalRunPanelSummary } from './long-run-runtime.js'
 import type { WorkState, WorkThread, WorkThreadStatus } from './work-state.js'
 
 export interface WorkThreadPanelPlan {
@@ -21,6 +22,7 @@ export interface WorkThreadPanelPlan {
   currentStep?: string
   lastObservation?: string
   nextAction?: string
+  longRuns: GoalRunPanelSummary[]
 }
 
 export interface WorkThreadPanelItem {
@@ -32,7 +34,7 @@ export interface WorkThreadPanelItem {
   updatedAt: number
 }
 
-export function buildWorkThreadPanelPlan(state: WorkState, fallbackPlan?: TaskPlan): WorkThreadPanelPlan {
+export function buildWorkThreadPanelPlan(state: WorkState, fallbackPlan?: TaskPlan, longRuns: GoalRunPanelSummary[] = []): WorkThreadPanelPlan {
   const threads = collectPanelThreads(state)
   const focused = threads.find(thread => thread.focused) ?? threads[0]
   const sourceThread = findWorkThread(state, focused?.id)
@@ -54,6 +56,7 @@ export function buildWorkThreadPanelPlan(state: WorkState, fallbackPlan?: TaskPl
     currentStep: sourceThread?.currentStep?.title,
     lastObservation: sourceThread?.observations.at(-1)?.summary,
     nextAction: sourceThread?.nextActions.at(-1)?.title,
+    longRuns,
   }
 }
 

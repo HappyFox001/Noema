@@ -1671,6 +1671,16 @@ type TaskPanelPlan = {
   currentStep?: string
   lastObservation?: string
   nextAction?: string
+  longRuns?: Array<{
+    id: string
+    goal: string
+    metric: string
+    baseline: number
+    bestResult: number
+    latestResult: number
+    iterationCount: number
+    status: string
+  }>
 }
 
 const voiceRecorder = new VoiceRecorder()
@@ -2814,6 +2824,22 @@ function renderTaskPanel(plan: TaskPanelPlan): void {
     const text = document.createElement('span')
     text.className = 'task-step-title'
     text.textContent = detail
+
+    item.append(mark, text)
+    list.appendChild(item)
+  }
+
+  for (const run of (plan.longRuns ?? []).slice(0, 3)) {
+    const item = document.createElement('li')
+    item.className = `task-step ${run.status === 'failed' || run.status === 'needs_human' ? 'failed' : run.status === 'completed' ? 'completed' : 'running'}`
+
+    const mark = document.createElement('span')
+    mark.className = 'task-step-mark'
+    mark.textContent = run.status === 'completed' ? '✓' : run.status === 'failed' ? '!' : '•'
+
+    const text = document.createElement('span')
+    text.className = 'task-step-title'
+    text.textContent = `${run.goal} · ${run.metric}: ${run.latestResult} / best ${run.bestResult} / baseline ${run.baseline} · ${run.iterationCount} iterations`
 
     item.append(mark, text)
     list.appendChild(item)

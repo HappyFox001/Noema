@@ -20,6 +20,7 @@ import {
   RuntimeEventBus,
   RuntimeJobManager,
   InteractionRuntime,
+  LongRunRuntime,
   type InteractionResolveResult,
   type OutputStateSnapshot,
   type RuntimeCapabilityContext,
@@ -47,6 +48,7 @@ export class HerTextSDK {
   public runtimeJobs: RuntimeJobManager
   public interaction: InteractionRuntime
   public workState: WorkStateStore
+  public longRuns: LongRunRuntime
   public runtime: RuntimeCapabilityContext
   public learning: LearningAssetStore
   public reflection: ReflectionEngine
@@ -73,6 +75,7 @@ export class HerTextSDK {
     this.runtimeJobs = new RuntimeJobManager(this.runtimeEvents)
     this.interaction = new InteractionRuntime()
     this.workState = new WorkStateStore(config.memory.storageDir)
+    this.longRuns = new LongRunRuntime()
     this.learning = new LearningAssetStore(config.memory.storageDir)
     this.reflection = new ReflectionEngine(this.learning)
     this.personaContinuity = new PersonaContinuityPolicy()
@@ -92,6 +95,7 @@ export class HerTextSDK {
       runtimeEvents: this.runtimeEvents,
       runtimeJobs: this.runtimeJobs,
       workState: this.workState,
+      longRuns: this.longRuns,
       learning: this.learning,
       reflection: this.reflection,
       personaContinuity: this.personaContinuity,

@@ -14,6 +14,7 @@ import type { MemoryEngine } from '../memory/index.js'
 import type { PersonalityEngine } from '../personality/index.js'
 import type { RuntimeEventBus } from './events.js'
 import type { RuntimeJobManager } from './jobs.js'
+import type { LongRunRuntime } from './long-run-runtime.js'
 import type { WorkStateStore } from './work-store.js'
 
 export interface RuntimeCapabilityContext {
@@ -26,6 +27,7 @@ export interface RuntimeCapabilityContext {
   runtimeEvents: RuntimeEventBus
   runtimeJobs: RuntimeJobManager
   workState: WorkStateStore
+  longRuns?: LongRunRuntime
   learning: LearningAssetStore
   reflection: ReflectionEngine
   personaContinuity: PersonaContinuityPolicy
