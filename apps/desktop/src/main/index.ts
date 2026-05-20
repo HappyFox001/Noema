@@ -3867,6 +3867,35 @@ async function runConversationTurn(
     }
     text = decorateInputWithWorkSurfaceContext(text.trim(), source)
 
+    const interaction = sdk.resolveInteraction(
+      { text, timestamp: Date.now() },
+      {
+        speaking: Boolean(currentResponseFramePipeline),
+        muted: !appSettings.voiceOutputEnabled,
+        currentPhase: undefined,
+      }
+    )
+    if (
+      interaction.intents.length > 0 &&
+      interaction.intents.every(intent =>
+        intent.kind === 'speech.stop' ||
+        intent.kind === 'speech.mute' ||
+        intent.kind === 'speech.unmute' ||
+        intent.kind === 'speech.repeat'
+      )
+    ) {
+      if (interaction.intents.some(intent => intent.kind === 'speech.stop')) {
+        await interruptCurrentOutputOnly({ closeTTS: true, reason: 'manual' })
+      }
+      if (interaction.intents.some(intent => intent.kind === 'speech.mute')) {
+        appSettings = await getSettingsStore().update({ voiceOutputEnabled: false })
+      }
+      if (interaction.intents.some(intent => intent.kind === 'speech.unmute')) {
+        appSettings = await getSettingsStore().update({ voiceOutputEnabled: true })
+      }
+      return { success: true, response: '', ttsEnabled: false }
+    }
+
     turnId = await startNewTurn({
       preserveActiveTask: source === 'voice'
     })

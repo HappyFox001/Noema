@@ -158,7 +158,7 @@
 
 验收：
 
-- [ ] “停一下”只停止语音，不取消任务。
+- [x] “停一下”只停止语音，不取消任务。
 - [ ] “先别做这个，帮我看另一个”会暂停/保存旧任务并启动新任务。
 - [ ] “继续刚才那个”会恢复旧 work thread。
 - [ ] “刚才那个路径错了”会修改当前任务现场，而不是新开一个无上下文任务。
@@ -429,7 +429,7 @@ Her-Text 不是 CLI，所以不能盲目复制 Codex 的交互语义。
 2. [ ] 扩展 RuntimeEvent 为统一事件协议。
 3. [ ] 实现 WorkState / WorkThread 持久化。
 4. [ ] 实现 InteractionRuntime 的打断语义分类。
-5. [ ] 让新用户输入不再默认 abort 任务。
+5. [x] 让新用户输入不再默认 abort 任务。
 6. [ ] 让旧 TaskRuntime 每次状态变化写入 WorkThread snapshot。
 7. [ ] 实现 “继续刚才任务” 的真实恢复。
 8. [ ] 再开始替换 Codex-style WorkSession / WorkTurn / ToolRouter。
