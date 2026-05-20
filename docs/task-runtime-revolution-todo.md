@@ -300,25 +300,25 @@ Her-Text 不是 CLI，所以不能盲目复制 Codex 的交互语义。
 
 基于任务层新增 `LongRunRuntime`，参考 `codex-autoresearch`。
 
-- [ ] 新增 `GoalRun` 模型：
-  - [ ] `goal`
-  - [ ] `scope`
-  - [ ] `metric`
-  - [ ] `direction`
-  - [ ] `verify`
-  - [ ] `guard`
-  - [ ] `iterations`
-  - [ ] `stopCondition`
-  - [ ] `rollbackPolicy`
-  - [ ] `status`
-- [ ] 新增长程执行 artifacts：
-  - [ ] `results.tsv` 或 SQLite equivalent。
-  - [ ] `state.json` 或 SQLite equivalent。
-  - [ ] `lessons`.
-  - [ ] `runtime.log`.
-- [ ] 实现 baseline：
-  - [ ] 启动前必须先测量 baseline。
-  - [ ] baseline 成功后才能初始化 run artifacts。
+- [x] 新增 `GoalRun` 模型：
+  - [x] `goal`
+  - [x] `scope`
+  - [x] `metric`
+  - [x] `direction`
+  - [x] `verify`
+  - [x] `guard`
+  - [x] `iterations`
+  - [x] `stopCondition`
+  - [x] `rollbackPolicy`
+  - [x] `status`
+- [x] 新增长程执行 artifacts：
+  - [x] `results.tsv` 或 SQLite equivalent。
+  - [x] `state.json` 或 SQLite equivalent。
+  - [x] `lessons`.
+  - [x] `runtime.log`.
+- [x] 实现 baseline：
+  - [x] 启动前必须先测量 baseline。
+  - [x] baseline 成功后才能初始化 run artifacts。
 - [ ] 实现 iteration loop：
   - [ ] 选择一个 hypothesis。
   - [ ] 做一个聚焦变更。
