@@ -9,7 +9,7 @@
   "permissions": [],
   "config": {
     "mode": "normal",
-    "maxCuesPerReply": 2,
+    "maxCuesPerReply": 6,
     "allowDescriptiveTags": true
   },
   "configSchema": [
@@ -35,9 +35,9 @@
       "label": "单次最多标签数",
       "description": "限制每次回复进入 TTS 的方括号语音标签数量，避免标签过多影响自然度。",
       "type": "number",
-      "default": 2,
+      "default": 6,
       "min": 0,
-      "max": 6,
+      "max": 12,
       "step": 1
     },
     {
