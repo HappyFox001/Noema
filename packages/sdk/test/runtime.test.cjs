@@ -1,4 +1,5 @@
-const { mkdtemp, readFile, rm } = require('node:fs/promises')
+const { mkdtemp, readFile, rm, writeFile } = require('node:fs/promises')
+const { execFile } = require('node:child_process')
 const { join } = require('node:path')
 const { tmpdir } = require('node:os')
 
@@ -194,6 +195,94 @@ describe('long run runtime', () => {
       const runtimeLog = await readFile(join(run.artifactDir, 'runtime.log'), 'utf8')
       expect(runtimeLog).toContain('resume=manual_resume')
     } finally {
+      await rm(artifactRoot, { recursive: true, force: true })
+    }
+  })
+
+  test('optimizes a real TypeScript error metric without keeping discarded workspace changes', async () => {
+    const { LongRunRuntime } = await import('../dist/runtime/index.js')
+    const artifactRoot = await mkdtemp(join(tmpdir(), 'her-text-long-run-real-'))
+    const projectDir = await mkdtemp(join(tmpdir(), 'her-text-ts-metric-'))
+    const sourcePath = join(projectDir, 'index.ts')
+    const tsconfigPath = join(projectDir, 'tsconfig.json')
+    try {
+      const oneErrorSource = 'export const n: number = 1\nexport const s: string = 1\n'
+      await writeFile(tsconfigPath, JSON.stringify({
+        compilerOptions: {
+          strict: true,
+          noEmit: true,
+          target: 'ES2020',
+          module: 'CommonJS',
+          types: [],
+          skipLibCheck: true,
+        },
+        files: ['index.ts'],
+      }, null, 2), 'utf8')
+      await writeFile(sourcePath, 'export const n: number = "bad"\nexport const s: string = 1\n', 'utf8')
+      const runtime = new LongRunRuntime()
+      let run = await runtime.createRun({
+        goal: 'Reduce TypeScript errors',
+        scope: [sourcePath],
+        metric: 'typescript_error_count',
+        direction: 'minimize',
+        verify: 'node_modules/typescript/bin/tsc --noEmit',
+        guard: 'tsc exits cleanly when metric is zero',
+        stopCondition: 'zero TypeScript errors',
+        rollbackPolicy: 'non_destructive_revert',
+        artifactRoot,
+        baseline: await measureTypeScriptErrors(projectDir),
+      })
+
+      run = await runtime.runIteration(run, {
+        hypothesis: 'Fix the number assignment first',
+        applyFocusedChange: async () => {
+          await writeFile(sourcePath, oneErrorSource, 'utf8')
+          return { id: 'fix-number', description: 'fixed the number assignment' }
+        },
+        verify: async () => measureTypeScriptErrors(projectDir),
+        guard: async () => ({ passed: true }),
+      })
+
+      run = await runtime.runIteration(run, {
+        hypothesis: 'Try a bad rewrite that increases errors',
+        applyFocusedChange: async () => {
+          await writeFile(sourcePath, 'export const n: number = "bad"\nexport const s: string = 1\n', 'utf8')
+          return { id: 'bad-rewrite', description: 'introduced a worse rewrite' }
+        },
+        verify: async () => measureTypeScriptErrors(projectDir),
+        guard: async () => ({ passed: true }),
+      })
+      const discarded = run.iterations.at(-1)
+      const rollback = await runtime.rollbackIteration(run, {
+        iteration: discarded,
+        changedFiles: [sourcePath],
+        nonDestructiveRollback: async () => {
+          await writeFile(sourcePath, oneErrorSource, 'utf8')
+          return { id: 'restore-best-source', description: 'restored the best retained source' }
+        },
+      })
+
+      run = await runtime.runIteration(run, {
+        hypothesis: 'Fix the remaining string assignment',
+        applyFocusedChange: async () => {
+          await writeFile(sourcePath, 'export const n: number = 1\nexport const s: string = "ok"\n', 'utf8')
+          return { id: 'fix-string', description: 'fixed the remaining string assignment' }
+        },
+        verify: async () => measureTypeScriptErrors(projectDir),
+        guard: async () => ({ passed: true }),
+      })
+
+      expect(run.baseline.metricValue).toBe(2)
+      expect(run.iterations.map(iteration => iteration.decision)).toEqual(['keep', 'discard', 'keep'])
+      expect(run.iterations.map(iteration => iteration.metricValue)).toEqual([1, 2, 0])
+      expect(rollback).toEqual(expect.objectContaining({ applied: true, destructive: false }))
+      expect(await readFile(sourcePath, 'utf8')).toBe('export const n: number = 1\nexport const s: string = "ok"\n')
+      expect((await measureTypeScriptErrors(projectDir)).metricValue).toBe(0)
+      const results = await readFile(join(run.artifactDir, 'results.tsv'), 'utf8')
+      expect(results).toContain('bad-rewrite')
+      expect(results).toContain('discard')
+    } finally {
+      await rm(projectDir, { recursive: true, force: true })
       await rm(artifactRoot, { recursive: true, force: true })
     }
   })
@@ -1029,6 +1118,32 @@ function emptyWorkState(updatedAt) {
     completedThreads: [],
     updatedAt,
   }
+}
+
+async function measureTypeScriptErrors(projectDir) {
+  const tscPath = require.resolve('typescript/bin/tsc')
+  const output = await execFileText(process.execPath, [tscPath, '-p', join(projectDir, 'tsconfig.json'), '--pretty', 'false'])
+  const diagnosticLines = output
+    .split(/\r?\n/)
+    .filter(line => line.includes('index.ts(') && /error TS2322/.test(line))
+  return {
+    metricValue: diagnosticLines.length,
+    measuredAt: Date.now(),
+    command: 'tsc --noEmit',
+  }
+}
+
+function execFileText(command, args) {
+  return new Promise((resolve) => {
+    execFile(command, args, { encoding: 'utf8' }, (error, stdout, stderr) => {
+      const output = `${stdout || ''}${stderr || ''}`
+      if (error) {
+        resolve(output)
+        return
+      }
+      resolve(output)
+    })
+  })
 }
 
 async function waitForCommand(runtime, sessionId, timeoutMs = 5000) {
