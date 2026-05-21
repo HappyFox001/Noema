@@ -121,10 +121,11 @@ export default function plugin(ctx = {}) {
 function buildNormalPrompt(config) {
   return [
     'Fish Audio S2 语音标记规则：',
-    '- 当前回复会直接送入 Fish Audio S2 系列 TTS，可在 <reply> 中少量使用英文方括号语音标记。',
+    '- 当前回复会直接送入 Fish Audio S2 系列 TTS，必须在 <reply> 中主动使用英文方括号语音标记。',
     `- 可用基础标签：${NORMAL_S2_CUES.join(', ')}`,
-    `- 每次回复最多使用 ${config.maxCuesPerReply} 个标签；日常回复可以不用标签。`,
-    '- 标签放在句首或需要变化的位置，例如：[whispering voice] 我小声告诉你。[short pause] 然后继续。',
+    `- 每次回复最多使用 ${config.maxCuesPerReply} 个标签；每个短句、半句、停顿或语气变化处都可以使用 1 个标签。`,
+    '- 普通承接、任务确认、安抚、疑问、惊讶、强调、停顿、笑意、低声表达都要优先加标签。',
+    '- 标签放在句首、半句前或需要变化的位置，例如：[soft voice] 好呀，[short pause] 我这就去看一下。[emphasis] 等我一下。',
     '- 不要解释标签，不要把标签写在 <emotion>、任务描述、工具参数或给用户看的说明里。',
   ].join('\n')
 }
@@ -244,7 +245,7 @@ function getAllowedCues(config) {
 
 function normalizeConfig(rawConfig = {}) {
   const mode = rawConfig.mode === 'sexy' ? 'sexy' : 'normal'
-  const maxCuesPerReply = clampInteger(rawConfig.maxCuesPerReply, mode === 'sexy' ? 3 : 2, 0, 6)
+  const maxCuesPerReply = clampInteger(rawConfig.maxCuesPerReply, mode === 'sexy' ? 3 : 6, 0, 12)
   const allowDescriptiveTags = mode === 'sexy'
     ? rawConfig.allowDescriptiveTags !== false
     : false
