@@ -286,6 +286,7 @@ export class TaskSession {
         this.snapshot.recentTurns = [...this.snapshot.recentTurns, turn].slice(-6)
         this.persistTurn(turn)
         this.persistSnapshot()
+        this.emitTaskToolEvents(turn)
       },
       onStatusChanged: (status) => {
         this.snapshot.status = status
@@ -574,6 +575,50 @@ export class TaskSession {
     })
   }
 
+  private emitTaskToolEvents(turn: TaskTurnRecord): void {
+    const events = this.runtimeHooks.runtimeEvents
+    if (!events || !this.snapshot.taskId) {
+      return
+    }
+    turn.toolCalls.forEach((call, index) => {
+      const result = turn.toolResults[index]
+      events.emit({
+        name: 'task.tool.started',
+        taskId: this.snapshot.taskId ?? undefined,
+        payload: {
+          toolName: call.name,
+          callId: call.id,
+          taskDescription: this.snapshot.taskDescription ?? '',
+          ...(turn.stepId ? { stepId: turn.stepId } : {}),
+        },
+      })
+      if (result?.success === false) {
+        events.emit({
+          name: 'task.tool.failed',
+          taskId: this.snapshot.taskId ?? undefined,
+          payload: {
+            toolName: call.name,
+            callId: call.id,
+            taskDescription: this.snapshot.taskDescription ?? '',
+            error: result.error || `${call.name} failed`,
+          },
+        })
+        return
+      }
+      events.emit({
+        name: 'task.tool.completed',
+        taskId: this.snapshot.taskId ?? undefined,
+        payload: {
+          toolName: call.name,
+          callId: call.id,
+          taskDescription: this.snapshot.taskDescription ?? '',
+          success: true,
+          summary: summarizeToolResult(result),
+        },
+      })
+    })
+  }
+
   private async selectRuntimeAdapter(request: TaskRuntimeRequest): Promise<TaskRuntimeAdapter> {
     const configuredId = normalizeTaskRuntimeAdapterId(request.config.adapterId)
     const candidates = configuredId
@@ -809,6 +854,32 @@ export class TaskSession {
 
 function cloneTaskPlan(plan: TaskPlan): TaskPlan {
   return JSON.parse(JSON.stringify(plan)) as TaskPlan
+}
+
+function summarizeToolResult(result: unknown): string | undefined {
+  if (!result || typeof result !== 'object') {
+    return undefined
+  }
+  const resultRecord = result as Record<string, unknown>
+  const body = resultRecord.result && typeof resultRecord.result === 'object'
+    ? resultRecord.result as Record<string, unknown>
+    : resultRecord
+  const summary = firstStringValue(body.summary, body.stdout, body.stderr, body.path, body.filePath, body.file_path)
+  return summary ? truncateSummary(summary) : undefined
+}
+
+function firstStringValue(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) {
+      return value
+    }
+  }
+  return undefined
+}
+
+function truncateSummary(value: string): string {
+  const clean = value.replace(/\s+/g, ' ').trim()
+  return clean.length > 240 ? `${clean.slice(0, 237)}...` : clean
 }
 
 function mapTaskRunStateToWorkStatus(state: TaskRunState): WorkThread['status'] {

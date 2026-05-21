@@ -745,6 +745,131 @@ describe('task session work runtime', () => {
       await rm(storageDir, { recursive: true, force: true })
     }
   })
+
+  test('continues a multi-turn code task through read edit failed verify fix and reverify', async () => {
+    const { AgentCore } = await import('../dist/agent/index.js')
+    const { ContextManager } = await import('../dist/context/index.js')
+    const { MemoryEngine } = await import('../dist/memory/index.js')
+    const { PersonalityEngine } = await import('../dist/personality/index.js')
+    const { RuntimeEventBus, WorkStateStore } = await import('../dist/runtime/index.js')
+    const { TaskSession } = await import('../dist/session/session.js')
+    const storageDir = await mkdtemp(join(tmpdir(), 'her-text-code-task-'))
+    try {
+      const files = new Map([['calc.ts', 'export const sum = (a, b) => a - b\\n']])
+      let verifyAttempts = 0
+      const agent = new AgentCore()
+      agent.registerTool(createTool({
+        name: 'read_file',
+        description: 'Read a source file',
+        execute: async ({ path }) => ({ path, content: files.get(path) }),
+      }))
+      agent.registerTool(createTool({
+        name: 'write_file',
+        description: 'Write a source file',
+        execute: async ({ path, content }) => {
+          files.set(path, content)
+          return { path, summary: `wrote ${path}` }
+        },
+      }))
+      agent.registerTool(createTool({
+        name: 'run_tests',
+        description: 'Run verification',
+        execute: async () => {
+          verifyAttempts += 1
+          const content = files.get('calc.ts') || ''
+          if (!content.includes('a + b')) {
+            throw new Error('sum test failed: expected 5, received -1')
+          }
+          return { command: 'pnpm test calc', stdout: 'sum test passed', exitCode: 0 }
+        },
+      }))
+      const llm = createQueuedLLM([
+        JSON.stringify({
+          title: 'Fix calc',
+          summary: 'Repair calc.ts and verify it',
+          steps: [
+            { title: 'Read file', description: 'Inspect calc.ts' },
+            { title: 'Edit file', description: 'Apply the first fix' },
+            { title: 'Verify first fix', description: 'Run tests and observe failure' },
+            { title: 'Repair failed fix', description: 'Use the test failure to correct the code' },
+            { title: 'Reverify', description: 'Run tests again' },
+          ],
+        }),
+        {
+          content: 'Reading the file.',
+          toolCalls: [
+            toolCall('read-1', 'read_file', { path: 'calc.ts' }),
+            toolCall('plan-1', 'update_task_plan', { steps: [{ id: 'step-1', status: 'completed', result: 'Read calc.ts.' }] }),
+          ],
+        },
+        {
+          content: 'Applying an initial fix.',
+          toolCalls: [
+            toolCall('write-1', 'write_file', { path: 'calc.ts', content: 'export const sum = (a, b) => a * b\\n' }),
+            toolCall('plan-2', 'update_task_plan', { steps: [{ id: 'step-2', status: 'completed', result: 'Applied first edit.' }] }),
+          ],
+        },
+        {
+          content: 'Verifying the first fix.',
+          toolCalls: [
+            toolCall('test-1', 'run_tests', {}),
+            toolCall('plan-3', 'update_task_plan', { steps: [{ id: 'step-3', status: 'failed', error: 'sum test failed' }] }),
+          ],
+        },
+        {
+          content: 'Repairing based on the failed verification.',
+          toolCalls: [
+            toolCall('write-2', 'write_file', { path: 'calc.ts', content: 'export const sum = (a, b) => a + b\\n' }),
+            toolCall('plan-4', 'update_task_plan', { steps: [{ id: 'step-4', status: 'completed', result: 'Corrected sum implementation.' }] }),
+          ],
+        },
+        {
+          content: 'Re-running verification.',
+          toolCalls: [
+            toolCall('test-2', 'run_tests', {}),
+            toolCall('plan-5', 'update_task_plan', { steps: [{ id: 'step-5', status: 'completed', result: 'Verification passed.' }] }),
+          ],
+        },
+      ])
+      const events = new RuntimeEventBus()
+      const seen = []
+      events.subscribe(event => seen.push(event.name))
+      const workState = new WorkStateStore(storageDir)
+      await workState.initialize()
+      const session = new TaskSession(
+        llm,
+        new MemoryEngine({ storageDir }),
+        new PersonalityEngine(createTestPersonality()),
+        agent,
+        new ContextManager(),
+        storageDir,
+        { runtimeEvents: events, workState },
+        { maxTurns: 8 },
+      )
+      await session.initialize()
+      try {
+        const result = await session.runTask({ description: 'Fix calc.ts and verify it' }, 'please fix calc.ts')
+
+        expect(result.success).toBe(true)
+        expect(result.executor).toBe('adapter')
+        expect(verifyAttempts).toBe(2)
+        expect(files.get('calc.ts')).toContain('a + b')
+        expect(result.executionState.changedFiles).toContain('calc.ts')
+        expect(result.executionState.recentFailures.join('\\n')).toContain('sum test failed')
+        expect(seen).toEqual(expect.arrayContaining([
+          'task.tool.failed',
+          'task.completed',
+          'work.signal.emitted',
+        ]))
+        expect(workState.getSnapshot().completedThreads.map(thread => thread.goal)).toContain('Fix calc.ts and verify it')
+      } finally {
+        await session.shutdown()
+        await workState.flush()
+      }
+    } finally {
+      await rm(storageDir, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('tool orchestrator', () => {
@@ -856,13 +981,26 @@ function createQueuedLLM(responses) {
       if (queue.length === 0) {
         throw new Error('No queued LLM response')
       }
-      return { content: queue.shift() }
+      const next = queue.shift()
+      return typeof next === 'string' ? { content: next } : next
     },
     async *streamChat() {
       if (queue.length === 0) {
         throw new Error('No queued LLM response')
       }
-      yield queue.shift()
+      const next = queue.shift()
+      yield typeof next === 'string' ? next : next.content || ''
+    },
+  }
+}
+
+function toolCall(id, name, args) {
+  return {
+    id,
+    type: 'function',
+    function: {
+      name,
+      arguments: JSON.stringify(args),
     },
   }
 }
