@@ -655,7 +655,7 @@ describe('task session work runtime', () => {
       const session = new TaskSession(
         llm,
         new MemoryEngine({ storageDir }),
-        new PersonalityEngine({ name: 'Test', systemPrompt: '', traits: [], voiceStyle: '' }),
+        new PersonalityEngine(createTestPersonality()),
         new AgentCore(),
         new ContextManager(),
         storageDir,
@@ -663,20 +663,22 @@ describe('task session work runtime', () => {
         { maxTurns: 4 },
       )
       await session.initialize()
+      try {
+        const result = await session.runTask({ description: 'Complete a short task' }, 'please do it')
 
-      const result = await session.runTask({ description: 'Complete a short task' }, 'please do it')
-
-      expect(result.success).toBe(true)
-      expect(result.executor).toBe('adapter')
-      expect(seen).toEqual(expect.arrayContaining([
-        'task.started',
-        'task.completed',
-        'work.signal.emitted',
-      ]))
-      const snapshot = workState.getSnapshot()
-      expect(snapshot.completedThreads.map(thread => thread.goal)).toContain('Complete a short task')
-      await session.shutdown()
-      await workState.flush()
+        expect(result.success).toBe(true)
+        expect(result.executor).toBe('adapter')
+        expect(seen).toEqual(expect.arrayContaining([
+          'task.started',
+          'task.completed',
+          'work.signal.emitted',
+        ]))
+        const snapshot = workState.getSnapshot()
+        expect(snapshot.completedThreads.map(thread => thread.goal)).toContain('Complete a short task')
+      } finally {
+        await session.shutdown()
+        await workState.flush()
+      }
     } finally {
       await rm(storageDir, { recursive: true, force: true })
     }
@@ -799,6 +801,22 @@ function createQueuedLLM(responses) {
         throw new Error('No queued LLM response')
       }
       yield queue.shift()
+    },
+  }
+}
+
+function createTestPersonality() {
+  return {
+    character: {
+      name: 'Test',
+      background: '',
+      values: [],
+      speakingStyle: '',
+    },
+    relationship: {
+      type: 'assistant',
+      intimacy: 0.5,
+      trust: 0.5,
     },
   }
 }
