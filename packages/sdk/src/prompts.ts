@@ -48,7 +48,24 @@ export const PROMPTS = {
 - 纯聊天时 <has_task> 设为 false`,
 
     
-    taskResultFeedback: `请根据刚才的任务执行结果，用简短口语化的方式告诉我。每句话10-30字，像朋友聊天一样自然。不要照搬“已完成 xxx”的机械模板。`,
+    taskResultFeedback: (context: {
+      taskDescription: string
+      success: boolean
+      summary: string
+      error?: string
+    }) => `刚才的后台任务已经结束，请像普通聊天一样告诉用户一句结果。
+
+任务：${context.taskDescription}
+结果：${context.success ? '成功' : '失败'}
+执行摘要：${context.summary || '没有额外摘要'}
+${context.error ? `错误信息：${context.error}` : ''}
+
+规则：
+- 只输出 XML 里的 <reply>，不要重新判断任务
+- 只说 1 句，10-30 字，像你自己刚看完结果后顺口告诉用户
+- 成功时可以说“弄好了/已经好了/可以了”，但不要照搬执行摘要
+- 失败时说清楚没成，并自然提示还可以继续试
+- 不要说“任务结果”“执行摘要”“步骤”“工具调用”这类系统词`,
 
     taskProgressFeedback: (context: {
       taskDescription: string

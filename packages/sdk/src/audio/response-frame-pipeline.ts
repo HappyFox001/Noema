@@ -660,6 +660,10 @@ export interface LLMChatStreamService {
       ) => Promise<void> | void
       onTaskStart?: (taskDescription: string) => Promise<void> | void
       onTaskEnd?: (result: { success: boolean; summary: string; error?: string }) => Promise<void> | void
+      onTaskFeedback?: (
+        phase: 'task_progress' | 'task_result',
+        text: string
+      ) => Promise<void> | void
       onExpression?: (frame: ExpressionFrame) => Promise<void> | void
     }
   ): AsyncGenerator<string>
@@ -678,6 +682,10 @@ export interface LLMResponseProcessorOptions {
   onComplete?: (result: { text: string; error?: Error }) => void
   onTaskStart?: (taskDescription: string) => Promise<void> | void
   onTaskEnd?: (result: { success: boolean; summary: string; error?: string }) => Promise<void> | void
+  onTaskFeedback?: (
+    phase: 'task_progress' | 'task_result',
+    text: string
+  ) => Promise<void> | void
   onExpression?: (frame: ExpressionFrame) => Promise<void> | void
   log?: (message: string) => void
 }
@@ -748,6 +756,9 @@ export class LLMResponseProcessor implements ResponseFrameProcessor {
         onTaskEnd: async (result) => {
           await this.options.onTaskEnd?.(result)
           await this.options.bridge.onTaskEnd(result)
+        },
+        onTaskFeedback: async (phase, text) => {
+          await this.options.onTaskFeedback?.(phase, text)
         },
         onExpression: async (frame) => {
           await this.options.onExpression?.(frame)

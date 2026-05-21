@@ -72,6 +72,11 @@ export interface StreamOptions {
   
   onTaskEnd?: (result: { success: boolean; summary: string; error?: string }) => Promise<void> | void
   
+  onTaskFeedback?: (
+    phase: 'task_progress' | 'task_result',
+    text: string
+  ) => Promise<void> | void
+
   onExpression?: (frame: ExpressionFrame) => Promise<void> | void
 }
 
@@ -627,6 +632,13 @@ export class DialogueOrchestrator {
         options.taskContextItems
       )
       await this.waitForTaskProgressIdle()
+      if (options.progressContext) {
+        await this.emitTaskResultFeedback(
+          result,
+          options.taskIntent.description,
+          options.progressContext
+        )
+      }
       if (this.activeTaskProgressContext === options.progressContext) {
         this.activeTaskProgressContext = null
       }
@@ -653,6 +665,64 @@ export class DialogueOrchestrator {
         toolResults: [result.contextResult],
         timestamp: Date.now(),
       }])
+    })
+  }
+
+  private async emitTaskResultFeedback(
+    result: {
+      success: boolean
+      summary: string
+      error?: string
+    },
+    taskDescription: string,
+    context: ActiveTaskProgressContext
+  ): Promise<void> {
+    throwIfAborted(context.streamOptions?.signal)
+
+    const promptAdditions = await this.getPromptAdditionsWithRoutines({
+      pluginRuntime: context.pluginRuntime,
+      phase: 'task_result',
+      detectTask: false,
+      hasTools: context.turnContext.hasTools,
+    })
+
+    const feedback = await this.llmProcessor.runEmotionalLayer({
+      turnContext: context.turnContext,
+      streamOptions: {
+        signal: context.streamOptions?.signal,
+        isCancelled: context.streamOptions?.isCancelled,
+        pluginContext: context.streamOptions?.pluginContext,
+      },
+      phase: 'task_result',
+      detectTask: false,
+      additionalUserMessage: PROMPTS.dialogue.taskResultFeedback({
+        taskDescription,
+        success: result.success,
+        summary: result.summary,
+        ...(result.error ? { error: result.error } : {}),
+      }),
+      currentContext: this.context.forPrompt(),
+      baseInstructions: buildBaseInstructions(),
+      pluginPromptAdditions: promptAdditions,
+    })
+
+    for await (const _chunk of feedback.stream) {
+      throwIfAborted(context.streamOptions?.signal)
+    }
+
+    await this.emitExpression(context.streamOptions, context.pluginRuntime, 'task_result', {
+      replyText: feedback.reply,
+      emotionTag: feedback.emotionTag,
+    })
+    await context.streamOptions?.onTaskFeedback?.('task_result', feedback.reply)
+
+    this.runtimeEvents?.emit({
+      name: 'emotional.reply.completed',
+      payload: {
+        phase: 'task_result',
+        text: feedback.reply,
+        ...(feedback.emotionTag ? { emotionTag: feedback.emotionTag } : {}),
+      },
     })
   }
 
@@ -754,7 +824,11 @@ export class DialogueOrchestrator {
 
     const result = await this.llmProcessor.runEmotionalLayer({
       turnContext: context.turnContext,
-      streamOptions: context.streamOptions,
+      streamOptions: {
+        signal: context.streamOptions?.signal,
+        isCancelled: context.streamOptions?.isCancelled,
+        pluginContext: context.streamOptions?.pluginContext,
+      },
       phase: 'task_progress',
       detectTask: false,
       additionalUserMessage: PROMPTS.dialogue.taskProgressFeedback({
@@ -768,11 +842,16 @@ export class DialogueOrchestrator {
       pluginPromptAdditions: promptAdditions,
     })
 
-    await context.streamOptions?.onPhaseStart?.('task_progress')
     for await (const _chunk of result.stream) {
       throwIfAborted(context.streamOptions?.signal)
     }
-    await context.streamOptions?.onPhaseEnd?.('task_progress', result.reply)
+
+    await this.emitExpression(context.streamOptions, context.pluginRuntime, 'task_progress', {
+      replyText: result.reply,
+      emotionTag: result.emotionTag,
+    })
+    await context.streamOptions?.onTaskFeedback?.('task_progress', result.reply)
+
     this.runtimeEvents?.emit({
       name: 'emotional.reply.completed',
       payload: {

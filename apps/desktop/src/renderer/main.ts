@@ -2919,6 +2919,8 @@ function handleConversationFrame(frame: ConversationFrame) {
       if (frame.phase === 'reply') {
         setStatus(t('status.replying'))
       } else if (frame.phase === 'task_progress') {
+        textRevealer.reset()
+        clearTextDisplay()
         setStatus(t('status.working'))
       } else if (frame.phase === 'task_result') {
         audioPlayer.stop()
@@ -2932,7 +2934,7 @@ function handleConversationFrame(frame: ConversationFrame) {
       if (lastConversationPhase === frame.phase) {
         lastConversationPhase = null
       }
-      if (frame.phase === 'reply' || frame.phase === 'task_result') {
+      if (frame.phase === 'reply' || frame.phase === 'task_progress' || frame.phase === 'task_result') {
         if (ttsEnabled) {
           textRevealer.reset()
           clearTextDisplay()

@@ -2527,7 +2527,11 @@ ipcMain.on('playback:complete', (_, requestId: number) => {
 
 let taskCommunicationSpeechQueue: Promise<void> = Promise.resolve()
 
-function scheduleTaskCommunicationSpeech(text: string, turnId: number): void {
+function scheduleTaskCommunicationSpeech(
+  text: string,
+  turnId: number,
+  phase: 'task_progress' | 'task_result' = 'task_progress'
+): void {
   const content = sanitizeTextForSpeech(text)
   if (!content || !appSettings.voiceOutputEnabled || !ttsAvailable) {
     return
@@ -2540,14 +2544,14 @@ function scheduleTaskCommunicationSpeech(text: string, turnId: number): void {
         return
       }
       if (!currentResponseFramePipeline) {
-        await speakTaskCommunicationStandalone(content)
+        await playTaskCommunicationThroughResponsePipeline(content, turnId, phase)
         taskCommunicationManager.markProgressSpeechScheduled()
         return
       }
       await currentResponseFramePipeline.queueFrame({
         type: 'phase_start',
         kind: 'control',
-        phase: 'task_progress',
+        phase,
         timestamp: Date.now(),
       })
       await currentResponseFramePipeline.queueFrame({
@@ -2559,7 +2563,7 @@ function scheduleTaskCommunicationSpeech(text: string, turnId: number): void {
       await currentResponseFramePipeline.queueFrame({
         type: 'phase_end',
         kind: 'control',
-        phase: 'task_progress',
+        phase,
         timestamp: Date.now(),
       })
       taskCommunicationManager.markProgressSpeechScheduled()
@@ -2569,28 +2573,111 @@ function scheduleTaskCommunicationSpeech(text: string, turnId: number): void {
     })
 }
 
-async function speakTaskCommunicationStandalone(content: string): Promise<void> {
-  if (!ttsService || !sdkInstance || !ttsAvailable || !appSettings.voiceOutputEnabled) {
+async function playTaskCommunicationThroughResponsePipeline(
+  content: string,
+  turnId: number,
+  phase: 'task_progress' | 'task_result' = 'task_progress'
+): Promise<void> {
+  if (!sdkInstance || !ttsAvailable || !appSettings.voiceOutputEnabled) {
     return
   }
 
+  const sdk = sdkInstance
+  const laneName = `task-feedback:${turnId}:${Date.now()}`
+  const responseFramePipeline = voiceGraphPipeline.createResponseLane(laneName)
+  responseFramePipeline.addObserver(frameTraceObserver)
+
   const pluginContext = getPluginRuntimeContext(true)
-  const ttsText = sdkInstance.transformText('tts_input', content, pluginContext)
-  if (!ttsText) {
-    return
+  const displayController = new ConversationDisplayController(
+    (nextText) => {
+      if (isTurnCancelled(turnId)) return
+      mainWindow?.webContents.send('conversation:response', nextText)
+    },
+    (frame) => {
+      if (isTurnCancelled(turnId)) return
+      mainWindow?.webContents.send('conversation:frame', frame)
+    }
+  )
+  const previousResponseFramePipeline = currentResponseFramePipeline
+  if (!currentResponseFramePipeline) {
+    currentResponseFramePipeline = responseFramePipeline
   }
 
   try {
-    await ttsService.startStreaming()
-    await ttsService.pushText(ttsText)
-    await ttsService.finishStreaming()
+    responseFramePipeline.setProcessors([
+      new ResponseTTSProcessor({
+        isCancelled: () => isTurnCancelled(turnId),
+        isEnabled: () => appSettings.voiceOutputEnabled && ttsAvailable,
+        getService: () => ttsService,
+        sanitizeText: sanitizeTextForSpeech,
+        transformTTSInput: (text) => sdk.transformText('tts_input', text, pluginContext),
+        toDisplayText: (text) => sdk.transformText('display', text, pluginContext),
+        onText: (textFrame, displayText) => {
+          currentTTSChunkSequence += 1
+          console.log(`[Main] TTS text frame #${turnId}:${currentTTSChunkSequence}, pushing:`, JSON.stringify(textFrame))
+          displayController.pushTTSChunkText(displayText)
+        },
+        onError: (error) => {
+          if (isRecoverableTTSError(error)) {
+            console.warn('[TTS] Recoverable frame error ignored:', error.message)
+            return
+          }
+          ttsAvailable = false
+        },
+        waitForPlayback: async (phase) => {
+          if (isTurnCancelled(turnId)) {
+            return
+          }
+          console.log(`[Conversation] Waiting for playback to complete before ending phase "${phase}"...`)
+          await waitForRendererPlaybackOrAbort(new AbortController().signal)
+          if (isTurnCancelled(turnId)) {
+            return
+          }
+          console.log(`[Conversation] Playback complete for phase "${phase}"`)
+        },
+        log: (message) => console.warn(message),
+      }),
+      new ResponseDisplayProcessor({
+        isCancelled: () => isTurnCancelled(turnId),
+        startPhase: (phase) => displayController.startPhase(phase),
+        endPhase: (phase) => displayController.endPhase(phase),
+        pushTextDelta: (delta) => displayController.pushTextDelta(delta),
+        startTask: (taskDescription) => displayController.startTask(taskDescription),
+        endTask: (result) => displayController.endTask(result),
+      }),
+    ])
+
+    await responseFramePipeline.queueFrame({
+      type: 'phase_start',
+      kind: 'control',
+      phase,
+      timestamp: Date.now(),
+    })
+    await responseFramePipeline.queueFrame({
+      type: 'tts_text',
+      kind: 'data',
+      text: content,
+      timestamp: Date.now(),
+    })
+    await responseFramePipeline.queueFrame({
+      type: 'phase_end',
+      kind: 'control',
+      phase,
+      timestamp: Date.now(),
+    })
+    await responseFramePipeline.waitForIdle()
   } catch (error: any) {
     if (isRecoverableTTSError(error)) {
-      console.warn('[TaskCommunication] Recoverable standalone TTS error ignored:', error.message)
+      console.warn('[TaskCommunication] Recoverable task feedback TTS error ignored:', error.message)
       return
     }
     ttsAvailable = false
-    console.warn('[TaskCommunication] Standalone TTS failed:', error.message)
+    console.warn('[TaskCommunication] Task feedback response pipeline failed:', error.message)
+  } finally {
+    if (currentResponseFramePipeline === responseFramePipeline) {
+      currentResponseFramePipeline = previousResponseFramePipeline
+    }
+    voiceGraphPipeline.removeLane(laneName)
   }
 }
 
@@ -4108,7 +4195,11 @@ async function runConversationTurn(
       },
       displayText: (message) => {
         if (isTurnCancelled(turnId)) return
-        displayController.pushTTSChunkText(message)
+        mainWindow?.webContents.send('conversation:frame', {
+          type: 'control.task_status',
+          status: message,
+          severity: 'info',
+        } satisfies ConversationFrame)
       },
       speak: (message) => {
         if (isTurnCancelled(turnId)) return
@@ -4170,6 +4261,10 @@ async function runConversationTurn(
       waitForIdle: () => responseFramePipeline?.waitForIdle() ?? Promise.resolve(),
       onTaskStart: () => {
         taskStartedInTurn = true
+      },
+      onTaskFeedback: async (phase, message) => {
+        if (isTurnCancelled(turnId)) return
+        scheduleTaskCommunicationSpeech(message, turnId, phase)
       },
       onExpression: async (frame) => {
         if (isTurnCancelled(turnId)) return
