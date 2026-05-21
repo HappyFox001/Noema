@@ -5738,6 +5738,13 @@ function getTaskTransportLogo(transport: NonNullable<LLMModelConfig['transport']
   return { src: openAIIconUrl, alt: 'OpenAI', tone: 'light' }
 }
 
+function getTaskModelLogo(model: LLMModelConfig): ModelLogo {
+  const transport = getTaskModelTransport(model)
+  return transport === 'openai_compatible'
+    ? getLLMModelLogo(model)
+    : getTaskTransportLogo(transport)
+}
+
 function getTaskTransportLabel(transport: NonNullable<LLMModelConfig['transport']>): string {
   if (transport === 'codex_local') return 'Codex'
   if (transport === 'claude_code_local') return 'Claude Code'
@@ -5746,7 +5753,7 @@ function getTaskTransportLabel(transport: NonNullable<LLMModelConfig['transport'
 
 function renderTaskTransportControl(model: LLMModelConfig): string {
   const transport = getTaskModelTransport(model)
-  return renderProviderControl('task-transport', transport, getTaskTransportLabel(transport), getTaskTransportLogo(transport))
+  return renderProviderControl('task-transport', transport, getTaskTransportLabel(transport), getTaskModelLogo(model))
 }
 
 function renderPluginConfigField(plugin: PluginInfo, field: PluginConfigField): string {
@@ -6996,7 +7003,7 @@ function getActiveModelSummary(kind: ModelManagerKind): {
       count: currentSystemConfig.taskModels.length,
       ready: missing.length === 0,
       missing,
-      logo: model ? getTaskTransportLogo(transport) : undefined,
+      logo: model ? getTaskModelLogo(model) : undefined,
     }
   }
 
@@ -7593,6 +7600,9 @@ function openProviderMenu(button: HTMLButtonElement, id: string): void {
     : kind === 'asr'
       ? ASR_PROVIDERS
       : TASK_MODEL_TRANSPORTS
+  const taskModel = kind === 'task-transport'
+    ? currentSystemConfig?.taskModels.find(model => model.id === id)
+    : undefined
   const currentValue = button.dataset.providerValue || ''
   closeProviderMenu()
   button.setAttribute('aria-expanded', 'true')
@@ -7612,7 +7622,9 @@ function openProviderMenu(button: HTMLButtonElement, id: string): void {
       ? getTTSProviderLogo(provider.value as TTSProviderType)
       : kind === 'asr'
         ? getASRProviderLogo(provider.value as ASRProviderType)
-        : getTaskTransportLogo(provider.value as NonNullable<LLMModelConfig['transport']>)
+        : provider.value === 'openai_compatible' && taskModel
+          ? getLLMModelLogo(taskModel)
+          : getTaskTransportLogo(provider.value as NonNullable<LLMModelConfig['transport']>)
     return `
     <button class="config-provider-option ${provider.value === currentValue ? 'selected' : ''}" type="button" role="option" aria-selected="${provider.value === currentValue ? 'true' : 'false'}" data-provider-value="${escapeHtml(provider.value)}">
       <span class="config-provider-option-check">${provider.value === currentValue ? '✓' : ''}</span>
