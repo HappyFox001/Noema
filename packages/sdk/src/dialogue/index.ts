@@ -36,7 +36,9 @@ import {
 } from '../plugins/index.js'
 import { getWorkFeedbackRule, type RuntimeEventBus, type RuntimeJobManager, type RuntimeJobUnregister } from '../runtime/index.js'
 import { EmotionalRuntime } from '../runtime/emotional-runtime.js'
+import { InteractionRuntime } from '../runtime/interaction-runtime.js'
 import type { EmotionalTurnRecord } from '../runtime/boundaries.js'
+import type { InteractionIntent, InteractionResolveResult } from '../runtime/interaction.js'
 import type { WorkStateStore } from '../runtime/work-store.js'
 import type { WorkThread } from '../runtime/work-state.js'
 
@@ -179,6 +181,7 @@ export class DialogueOrchestrator {
   private unregisterTaskRunJob?: RuntimeJobUnregister
   private workState?: WorkStateStore
   private emotionalRuntime = new EmotionalRuntime()
+  private interactionRuntime = new InteractionRuntime()
   private learning?: LearningAssetStore
   private agentSociety?: AgentSocietyRuntime
   private activeTaskProgressContext: ActiveTaskProgressContext | null = null
@@ -293,6 +296,16 @@ export class DialogueOrchestrator {
         inputTimestamp: input.timestamp,
       },
     })
+    this.runtimeEvents?.emit({
+      name: 'interaction.input.received',
+      turnId,
+      correlationId: turnId,
+      payload: {
+        userInput: input.text,
+        inputTimestamp: input.timestamp,
+        source: input.audioData ? 'voice' : 'text',
+      },
+    })
     const contextCheckpoint = this.context.createCheckpoint()
     const turnContext = await this.contextAggregator.prepareUserTurn(input, options?.signal)
     const pluginRuntime = options?.pluginContext ?? {}
@@ -372,6 +385,11 @@ export class DialogueOrchestrator {
           output: emotionalOutput,
         },
       })
+      const interaction = this.resolveInteractionAfterEmotionalOutput(
+        input,
+        emotionalOutput.record,
+        turnId
+      )
       void this.recordEmotionalTurn(emotionalOutput.record)
       this.runtimeEvents?.emit({
         name: 'dialogue.reply.completed',
@@ -387,25 +405,30 @@ export class DialogueOrchestrator {
 
       let combinedReply = this.transformText('memory', firstResult.reply, pluginRuntime)
 
-      if (firstResult.hasTask && firstResult.taskDescription && firstResult.taskIntent && turnContext.hasTools) {
+      const workStartIntent = this.selectWorkStartIntent(interaction)
+      if (firstResult.hasTask && firstResult.taskDescription && firstResult.taskIntent && turnContext.hasTools && workStartIntent) {
         throwIfAborted(options?.signal)
+        await this.applyPreStartWorkIntents(interaction)
         const taskContextItems: TaskContextItem[] = await this.resolveTaskContext(
           input.text,
-          firstResult.taskDescription,
+          workStartIntent.workDescription || firstResult.taskDescription,
           pluginRuntime
         )
         taskContextItems.push(buildEmotionalTurnTaskContext(emotionalOutput.record))
         throwIfAborted(options?.signal)
         await this.pluginManager.notifyTaskStart({
           runtime: pluginRuntime,
-          taskDescription: firstResult.taskDescription,
+          taskDescription: workStartIntent.workDescription || firstResult.taskDescription,
           originalUserInput: input.text,
         })
-        await options?.onTaskStart?.(firstResult.taskDescription)
+        await options?.onTaskStart?.(workStartIntent.workDescription || firstResult.taskDescription)
         console.log('🚀 Reply 已流式输出完毕，开始执行任务...\n')
 
         this.startDetachedTaskRun({
-          taskIntent: firstResult.taskIntent,
+          taskIntent: {
+            ...firstResult.taskIntent,
+            description: workStartIntent.workDescription || firstResult.taskIntent.description,
+          },
           originalUserInput: input.text,
           taskContextItems,
           pluginRuntime,
@@ -416,7 +439,7 @@ export class DialogueOrchestrator {
           role: 'tool',
           content: 'task_runtime_accepted',
           toolResults: [{
-            task: firstResult.taskDescription,
+            task: workStartIntent.workDescription || firstResult.taskDescription,
             success: true,
             summary: 'Task accepted and running in the work runtime.',
             iterations: 0,
@@ -537,6 +560,63 @@ export class DialogueOrchestrator {
 
     await context.queue
     throwIfAborted(signal)
+  }
+
+  private resolveInteractionAfterEmotionalOutput(
+    input: UserInput,
+    emotionalTurn: EmotionalTurnRecord,
+    turnId: string
+  ): InteractionResolveResult {
+    const fallbackWorkState = {
+      activeThreads: [],
+      pausedThreads: [],
+      abandonedThreads: [],
+      completedThreads: [],
+      updatedAt: Date.now(),
+    }
+    const result = this.interactionRuntime.resolve({
+      userInput: input.text,
+      emotionalTurn,
+      workState: this.workState?.getSnapshot() ?? fallbackWorkState,
+      outputState: { speaking: false, muted: false },
+      timestamp: input.timestamp,
+    })
+    this.runtimeEvents?.emit({
+      name: 'interaction.intent.resolved',
+      turnId,
+      correlationId: turnId,
+      payload: {
+        userInput: input.text,
+        intents: result.intents,
+        interruptionKind: result.interruptionKind,
+      },
+    })
+    return result
+  }
+
+  private selectWorkStartIntent(interaction: InteractionResolveResult): InteractionIntent | null {
+    return interaction.intents.find(intent =>
+      intent.kind === 'work.start' ||
+      intent.kind === 'work.queue_new' ||
+      intent.kind === 'work.start_parallel'
+    ) ?? null
+  }
+
+  private async applyPreStartWorkIntents(interaction: InteractionResolveResult): Promise<void> {
+    if (!this.workState) {
+      return
+    }
+    for (const intent of interaction.intents) {
+      if (intent.kind === 'work.pause' && intent.targetThreadId) {
+        await this.workState.pauseThread(intent.targetThreadId, intent.reason)
+      } else if (intent.kind === 'work.modify' && intent.targetThreadId) {
+        await this.workState.recordModification(
+          intent.targetThreadId,
+          intent.modification || intent.reason,
+          intent.reason
+        )
+      }
+    }
   }
 
   private startDetachedTaskRun(options: {

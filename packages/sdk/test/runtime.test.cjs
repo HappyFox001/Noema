@@ -236,6 +236,68 @@ describe('emotional runtime', () => {
       createdAt: 6000,
     })
   })
+
+  test('lets interaction runtime decide whether an emotional task hint starts work', async () => {
+    const { EmotionalRuntime, InteractionRuntime } = await import('../dist/runtime/index.js')
+    const emotional = new EmotionalRuntime()
+    const interaction = new InteractionRuntime()
+    const output = emotional.createOutput({
+      userInput: '帮我修一下测试',
+      conversationContext: [{ role: 'user', content: '帮我修一下测试', timestamp: 1 }],
+      personality: createTestPersonality(),
+      memory: { relevant: [] },
+      workState: emptyWorkState(1),
+      createdAt: 7000,
+    }, {
+      replyText: '我来处理。',
+      intentHints: ['修复测试'],
+    })
+
+    const result = interaction.resolve({
+      userInput: '帮我修一下测试',
+      emotionalTurn: output.record,
+      workState: emptyWorkState(1),
+      outputState: { speaking: false, muted: false },
+      timestamp: 7000,
+    })
+
+    expect(result.intents).toEqual([
+      expect.objectContaining({
+        kind: 'work.start',
+        workDescription: '修复测试',
+      }),
+    ])
+  })
+
+  test('keeps ordinary chat out of work admission after emotional output', async () => {
+    const { EmotionalRuntime, InteractionRuntime } = await import('../dist/runtime/index.js')
+    const emotional = new EmotionalRuntime()
+    const interaction = new InteractionRuntime()
+    const output = emotional.createOutput({
+      userInput: '今天心情不错',
+      conversationContext: [{ role: 'user', content: '今天心情不错', timestamp: 1 }],
+      personality: createTestPersonality(),
+      memory: { relevant: [] },
+      workState: emptyWorkState(1),
+      createdAt: 7100,
+    }, {
+      replyText: '听起来很好。',
+    })
+
+    const result = interaction.resolve({
+      userInput: '今天心情不错',
+      emotionalTurn: output.record,
+      workState: emptyWorkState(1),
+      outputState: { speaking: false, muted: false },
+      timestamp: 7100,
+    })
+
+    expect(result.intents).toEqual([
+      expect.objectContaining({
+        kind: 'chat',
+      }),
+    ])
+  })
 })
 
 describe('runtime event replay', () => {
@@ -818,6 +880,16 @@ function createTestPersonality() {
       intimacy: 0.5,
       trust: 0.5,
     },
+  }
+}
+
+function emptyWorkState(updatedAt) {
+  return {
+    activeThreads: [],
+    pausedThreads: [],
+    abandonedThreads: [],
+    completedThreads: [],
+    updatedAt,
   }
 }
 
