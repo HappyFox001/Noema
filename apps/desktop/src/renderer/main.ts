@@ -1465,6 +1465,7 @@ type SystemTelemetry = {
   memoryBytes: number
   activeNetworkInterfaces: number
   proxyActive: boolean
+  activeProxyUrl?: string
   error?: string
 }
 
@@ -4345,7 +4346,7 @@ function getNetworkLabel(telemetry: SystemTelemetry): string {
     ? `${connection.downlink.toFixed(connection.downlink >= 10 ? 0 : 1)} MBPS`
     : ''
 
-  return [effectiveType || 'ONLINE', downlink].filter(Boolean).join(' / ')
+  return [effectiveType || 'ONLINE', downlink, telemetry.proxyActive ? 'PROXY' : ''].filter(Boolean).join(' / ')
 }
 
 function formatTelemetryBytes(bytes: number): string {
@@ -4367,10 +4368,12 @@ async function refreshSystemTelemetry(): Promise<void> {
     }
     telemetryMemory.textContent = formatTelemetryBytes(telemetry.memoryBytes)
     telemetryNetwork.textContent = getNetworkLabel(telemetry)
+    telemetryNetwork.title = telemetry.activeProxyUrl ? `Proxy: ${telemetry.activeProxyUrl}` : ''
     telemetryNetworkIcon.classList.toggle('proxy-active', telemetry.proxyActive)
   } catch {
     telemetryMemory.textContent = '--'
     telemetryNetwork.textContent = 'UNKNOWN'
+    telemetryNetwork.title = ''
     telemetryNetworkIcon.classList.remove('proxy-active')
   }
 }
@@ -4448,6 +4451,9 @@ function openSettings(section?: string) {
     void loadLogsSection()
   } else {
     updateLogsStreaming()
+  }
+  if (!section && (isSettingsSectionActive('system') || isSettingsSectionActive('models'))) {
+    void loadSystemConfig()
   }
 }
 

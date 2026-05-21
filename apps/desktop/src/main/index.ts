@@ -20,6 +20,7 @@ const require = createRequire(import.meta.url)
 const execFileAsync = promisify(execFile)
 let activeProxyUrl = ''
 let globalAgentBootstrapped = false
+let electronSessionProxyApplied = false
 
 const possibleEnvPaths = [
   join(__dirname, '../.env'),           // apps/desktop/.env (from dist/)
@@ -3194,7 +3195,7 @@ function bootstrapGlobalAgent(proxyUrl: string): void {
 
 async function applyProxyConfig(proxyUrl: string, source: 'settings' | 'env' | 'runtime' = 'runtime'): Promise<boolean> {
   const normalized = proxyUrl.trim()
-  if (normalized === activeProxyUrl) {
+  if (normalized === activeProxyUrl && (!app.isReady() || electronSessionProxyApplied)) {
     return false
   }
 
@@ -3207,6 +3208,7 @@ async function applyProxyConfig(proxyUrl: string, source: 'settings' | 'env' | '
     try {
       await session.defaultSession.setProxy({ proxyRules: normalized || '' })
       await session.defaultSession.closeAllConnections()
+      electronSessionProxyApplied = true
       console.log(normalized
         ? `[Proxy] ✓ Applied ${source} proxy: ${normalized}`
         : `[Proxy] ✓ Cleared ${source} proxy`)
@@ -3215,6 +3217,7 @@ async function applyProxyConfig(proxyUrl: string, source: 'settings' | 'env' | '
     }
   } else if (normalized) {
     app.commandLine.appendSwitch('proxy-server', normalized)
+    electronSessionProxyApplied = false
   }
 
   activeProxyUrl = normalized
@@ -4784,7 +4787,8 @@ ipcMain.handle('system:telemetry', async () => {
     success: true,
     memoryBytes: process.memoryUsage().rss,
     activeNetworkInterfaces: getActiveNetworkInterfaceCount(),
-    proxyActive: Boolean(appSettings.system.proxy.trim()),
+    proxyActive: Boolean(activeProxyUrl.trim()),
+    activeProxyUrl,
   }
 })
 
