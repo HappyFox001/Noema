@@ -2536,7 +2536,12 @@ function scheduleTaskCommunicationSpeech(text: string, turnId: number): void {
   taskCommunicationSpeechQueue = taskCommunicationSpeechQueue
     .catch(() => undefined)
     .then(async () => {
-      if (isTurnCancelled(turnId) || !currentResponseFramePipeline || !ttsAvailable || !appSettings.voiceOutputEnabled) {
+      if (isTurnCancelled(turnId) || !ttsAvailable || !appSettings.voiceOutputEnabled) {
+        return
+      }
+      if (!currentResponseFramePipeline) {
+        await speakTaskCommunicationStandalone(content)
+        taskCommunicationManager.markProgressSpeechScheduled()
         return
       }
       await currentResponseFramePipeline.queueFrame({
@@ -2562,6 +2567,31 @@ function scheduleTaskCommunicationSpeech(text: string, turnId: number): void {
     .catch((error) => {
       console.warn('[TaskCommunication] Failed to schedule task update speech:', (error as Error).message)
     })
+}
+
+async function speakTaskCommunicationStandalone(content: string): Promise<void> {
+  if (!ttsService || !sdkInstance || !ttsAvailable || !appSettings.voiceOutputEnabled) {
+    return
+  }
+
+  const pluginContext = getPluginRuntimeContext(true)
+  const ttsText = sdkInstance.transformText('tts_input', content, pluginContext)
+  if (!ttsText) {
+    return
+  }
+
+  try {
+    await ttsService.startStreaming()
+    await ttsService.pushText(ttsText)
+    await ttsService.finishStreaming()
+  } catch (error: any) {
+    if (isRecoverableTTSError(error)) {
+      console.warn('[TaskCommunication] Recoverable standalone TTS error ignored:', error.message)
+      return
+    }
+    ttsAvailable = false
+    console.warn('[TaskCommunication] Standalone TTS failed:', error.message)
+  }
 }
 
 ipcMain.on('latency:firstAudioPlay', () => {
@@ -4112,6 +4142,7 @@ async function runConversationTurn(
 
     let shouldUseTTS = enableTTS && appSettings.voiceOutputEnabled && Boolean(ttsService) && ttsAvailable
     const pluginContext = getPluginRuntimeContext(shouldUseTTS)
+    let taskStartedInTurn = false
 
     const llmStreamBridge = new LLMStreamBridgeProcessor({
       queueFrame: (frame) => {
@@ -4137,6 +4168,9 @@ async function runConversationTurn(
         return responseFramePipeline?.queueFrame(frame) ?? Promise.resolve()
       },
       waitForIdle: () => responseFramePipeline?.waitForIdle() ?? Promise.resolve(),
+      onTaskStart: () => {
+        taskStartedInTurn = true
+      },
       onExpression: async (frame) => {
         if (isTurnCancelled(turnId)) return
         pendingExpressionFrame = frame
@@ -4219,7 +4253,7 @@ async function runConversationTurn(
     }
 
     completeCurrentTurn(turnId, responseFramePipeline)
-    if (taskCommunicationTurn) {
+    if (taskCommunicationTurn && !taskStartedInTurn) {
       taskCommunicationManager.clearTurn(taskCommunicationTurn)
     }
     voiceGraphPipeline.removeLane(responseLaneName)

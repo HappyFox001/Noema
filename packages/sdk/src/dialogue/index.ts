@@ -167,7 +167,7 @@ interface TaskRunJobInput {
   taskContextItems: TaskContextItem[]
 }
 
-const TASK_PROGRESS_MIN_INTERVAL_MS = 12000
+const TASK_PROGRESS_MIN_INTERVAL_MS = 8000
 
 function throwIfStreamCancelled(options?: StreamOptions): void {
   throwIfAborted(options?.signal)
@@ -297,7 +297,7 @@ export class DialogueOrchestrator {
     throwIfAborted(options?.signal)
     const turnId = generateId()
     this.runtimeEvents?.emit({
-      name: 'interaction.turn.started',
+      name: 'emotional.turn.started',
       turnId,
       correlationId: turnId,
       payload: {
@@ -306,7 +306,7 @@ export class DialogueOrchestrator {
       },
     })
     this.runtimeEvents?.emit({
-      name: 'interaction.input.received',
+      name: 'emotional.input.received',
       turnId,
       correlationId: turnId,
       payload: {
@@ -345,7 +345,7 @@ export class DialogueOrchestrator {
 
       throwIfAborted(options?.signal)
       this.runtimeEvents?.emit({
-        name: 'dialogue.intent.detected',
+        name: 'emotional.task_signal.detected',
         turnId,
         correlationId: turnId,
         payload: {
@@ -396,7 +396,7 @@ export class DialogueOrchestrator {
       })
       void this.recordEmotionalTurn(emotionalOutput.record)
       this.runtimeEvents?.emit({
-        name: 'dialogue.reply.completed',
+        name: 'emotional.reply.completed',
         turnId,
         correlationId: turnId,
         payload: {
@@ -448,6 +448,7 @@ export class DialogueOrchestrator {
         await options?.onTaskStart?.(admission.taskDescription)
         console.log('🚀 Reply 已流式输出完毕，开始执行任务...\n')
 
+        const progressContext = this.createTaskEmotionBridgeContext(turnContext, pluginRuntime, options)
         this.startDetachedTaskRun({
           taskIntent: {
             ...firstResult.taskIntent,
@@ -457,6 +458,7 @@ export class DialogueOrchestrator {
           taskContextItems,
           pluginRuntime,
           streamOptions: options,
+          progressContext,
         })
 
         this.context.recordItems([{
@@ -485,7 +487,7 @@ export class DialogueOrchestrator {
         assistantText: combinedReply,
       })
       this.runtimeEvents?.emit({
-        name: 'interaction.turn.completed',
+        name: 'emotional.turn.completed',
         turnId,
         correlationId: turnId,
         payload: {
@@ -511,7 +513,7 @@ export class DialogueOrchestrator {
       ) {
         this.context.restoreCheckpoint(contextCheckpoint)
         this.runtimeEvents?.emit({
-          name: 'interaction.turn.aborted',
+          name: 'emotional.turn.aborted',
           turnId,
           correlationId: turnId,
           payload: {
@@ -613,14 +615,21 @@ export class DialogueOrchestrator {
     taskContextItems: TaskContextItem[]
     pluginRuntime: PluginRuntimeContext
     streamOptions?: StreamOptions
+    progressContext?: ActiveTaskProgressContext
   }): void {
     scheduleAsyncTask(async () => {
+      if (options.progressContext) {
+        this.activeTaskProgressContext = options.progressContext
+      }
       const result = await this.runTaskThroughRuntimeJob(
         options.taskIntent,
         options.originalUserInput,
         options.taskContextItems
       )
       await this.waitForTaskProgressIdle()
+      if (this.activeTaskProgressContext === options.progressContext) {
+        this.activeTaskProgressContext = null
+      }
       await this.pluginManager.notifyTaskEnd({
         runtime: options.pluginRuntime,
         taskDescription: options.taskIntent.description,
@@ -645,6 +654,21 @@ export class DialogueOrchestrator {
         timestamp: Date.now(),
       }])
     })
+  }
+
+  private createTaskEmotionBridgeContext(
+    turnContext: Awaited<ReturnType<LLMContextAggregator['prepareUserTurn']>>,
+    pluginRuntime: PluginRuntimeContext,
+    streamOptions?: StreamOptions
+  ): ActiveTaskProgressContext {
+    return {
+      turnContext,
+      streamOptions,
+      pluginRuntime,
+      queue: Promise.resolve(),
+      lastEmittedAt: Date.now() - TASK_PROGRESS_MIN_INTERVAL_MS,
+      emittedStepIds: new Set(),
+    }
   }
 
   private async recordEmotionalTurn(record: EmotionalTurnRecord): Promise<void> {
@@ -750,7 +774,7 @@ export class DialogueOrchestrator {
     }
     await context.streamOptions?.onPhaseEnd?.('task_progress', result.reply)
     this.runtimeEvents?.emit({
-      name: 'dialogue.reply.completed',
+      name: 'emotional.reply.completed',
       payload: {
         phase: 'task_progress',
         text: result.reply,

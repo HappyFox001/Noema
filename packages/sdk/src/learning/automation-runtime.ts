@@ -267,7 +267,7 @@ export class LearningAutomationRuntime {
 }
 
 function isTerminalLearningEvent(event: RuntimeEvent): boolean {
-  return event.name === 'task.completed' || event.name === 'task.failed' || event.name === 'interaction.turn.completed'
+  return event.name === 'task.completed' || event.name === 'task.failed' || event.name === 'emotional.turn.completed'
 }
 
 function inferScope(candidate: LearningCandidate): string {

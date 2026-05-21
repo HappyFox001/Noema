@@ -135,10 +135,14 @@ export class TaskCommunicationManager {
         speak: false,
       })
     } else if (step.status === 'completed') {
-      this.emitStatus('Working', undefined, 'silent', {
+      const shouldSpeak = this.shouldSpeakProgress(step)
+      if (shouldSpeak) {
+        this.state.spokenProgressStepIds.add(step.id)
+      }
+      this.emitStatus('Working', shouldSpeak ? `这一步处理好了：${step.title}` : undefined, shouldSpeak ? 'info' : 'silent', {
         key,
         display: false,
-        speak: false,
+        speak: shouldSpeak,
       })
     } else if (step.status === 'failed') {
       this.emitStatus('Working', `这个步骤没有成功：${step.title}`, 'important', {

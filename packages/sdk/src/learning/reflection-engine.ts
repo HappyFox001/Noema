@@ -69,7 +69,7 @@ function selectLatestInteractionOrTaskEvents(events: LearningEventRecord[]): Lea
 
   const latestTurnTerminal = [...events]
     .reverse()
-    .find(event => event.name === 'interaction.turn.completed' || event.name === 'interaction.turn.aborted')
+    .find(event => event.name === 'emotional.turn.completed' || event.name === 'emotional.turn.aborted')
 
   if (latestTurnTerminal?.turnId) {
     return events.filter(event => event.turnId === latestTurnTerminal.turnId)
@@ -122,7 +122,7 @@ function buildCandidateInputs(
 ): CreateLearningCandidateInput[] {
   const taskFailed = events.find(event => event.name === 'task.failed')
   const taskCompleted = events.find(event => event.name === 'task.completed')
-  const intent = events.find(event => event.name === 'dialogue.intent.detected')
+  const intent = events.find(event => event.name === 'emotional.task_signal.detected')
   const hasTask = getBooleanPayload(intent, 'hasTask')
   const candidates: CreateLearningCandidateInput[] = []
 

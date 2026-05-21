@@ -8,13 +8,13 @@ import type { EmotionalTurnRecord } from './boundaries.js'
 import type { WorkArtifact, WorkDecision, WorkFailure, WorkSignal, WorkState, WorkThread } from './work-state.js'
 
 export type RuntimeEventName =
-  | 'interaction.input.received'
-  | 'interaction.turn.started'
-  | 'interaction.turn.completed'
-  | 'interaction.turn.aborted'
+  | 'emotional.input.received'
+  | 'emotional.turn.started'
+  | 'emotional.turn.completed'
+  | 'emotional.turn.aborted'
   | 'emotional.output.emitted'
-  | 'dialogue.intent.detected'
-  | 'dialogue.reply.completed'
+  | 'emotional.task_signal.detected'
+  | 'emotional.reply.completed'
   | 'work.thread.created'
   | 'work.thread.focused'
   | 'work.thread.paused'
@@ -68,20 +68,20 @@ export interface RuntimeEventBase<TName extends RuntimeEventName, TPayload> {
 }
 
 export type RuntimeEvent =
-  | RuntimeEventBase<'interaction.input.received', {
+  | RuntimeEventBase<'emotional.input.received', {
       userInput: string
       inputTimestamp: number
       source?: 'text' | 'voice' | 'system'
     }>
-  | RuntimeEventBase<'interaction.turn.started', {
+  | RuntimeEventBase<'emotional.turn.started', {
       userInput: string
       inputTimestamp: number
     }>
-  | RuntimeEventBase<'interaction.turn.completed', {
+  | RuntimeEventBase<'emotional.turn.completed', {
       userInput: string
       assistantText: string
     }>
-  | RuntimeEventBase<'interaction.turn.aborted', {
+  | RuntimeEventBase<'emotional.turn.aborted', {
       userInput: string
       preservedUserInput: boolean
     }>
@@ -95,13 +95,13 @@ export type RuntimeEvent =
         createdAt: number
       }
     }>
-  | RuntimeEventBase<'dialogue.intent.detected', {
+  | RuntimeEventBase<'emotional.task_signal.detected', {
       hasTask: boolean
       taskDescription?: string
       hasTools: boolean
       emotionTag?: string
     }>
-  | RuntimeEventBase<'dialogue.reply.completed', {
+  | RuntimeEventBase<'emotional.reply.completed', {
       phase: 'reply' | 'task_progress' | 'task_result'
       text: string
       emotionTag?: string
