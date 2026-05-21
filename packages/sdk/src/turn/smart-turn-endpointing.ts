@@ -48,6 +48,7 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
   private analyzeTimer: ReturnType<typeof setTimeout> | null = null
   private sttTimeoutTimer: ReturnType<typeof setTimeout> | null = null
   private turnStopTriggered = false
+  private waitingForTranscriptLogged = false
 
   onUserTurnStopped: ((params: UserTurnStoppedParams) => void | Promise<void>) | null = null
   onSmartTurnResult: ((result: SmartTurnResult) => void) | null = null
@@ -84,6 +85,7 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
     this.analyzeAttempts = 0
     this.isAnalyzing = false
     this.turnStopTriggered = false
+    this.waitingForTranscriptLogged = false
     this.cancelAllTimers()
     this.smartTurn?.reset()
   }
@@ -106,6 +108,7 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
     this.sttWaitReason = null
     this.analyzeAttempts = 0
     this.isAnalyzing = false
+    this.waitingForTranscriptLogged = false
     this.cancelAllTimers()
   }
 
@@ -270,8 +273,11 @@ export class SmartTurnEndpointingStrategy implements IEndpointingStrategy {
       return
     }
 
-    if (this.vadUserSpeaking || !this.turnComplete || !this.sttWaitDone || !this.text.trim()) {
-      if (this.turnComplete && this.sttWaitDone && !this.text.trim()) {
+    const hasText = this.text.trim().length > 0
+    const sttWaitExpired = this.sttWaitDone && this.sttWaitReason !== 'final_transcript'
+    if (this.vadUserSpeaking || !this.turnComplete || !this.sttWaitDone || (!hasText && !sttWaitExpired)) {
+      if (this.turnComplete && this.sttWaitDone && !hasText && !this.waitingForTranscriptLogged) {
+        this.waitingForTranscriptLogged = true
         console.log('[SmartTurn] Waiting for transcription text before stopping user turn')
       }
       return
