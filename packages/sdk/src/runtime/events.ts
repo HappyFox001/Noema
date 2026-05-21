@@ -4,8 +4,7 @@
 import { generateId } from '@her-text/core'
 import type { TaskExecutorKind } from '../session/task.js'
 import type { TaskPlan, TaskRunState, TaskStep } from '../session/task-plan.js'
-import type { EmotionalTurnRecord, FeedbackDecision } from './boundaries.js'
-import type { InteractionIntent, UserInterruptionKind } from './interaction.js'
+import type { EmotionalTurnRecord } from './boundaries.js'
 import type { WorkArtifact, WorkDecision, WorkFailure, WorkSignal, WorkState, WorkThread } from './work-state.js'
 
 export type RuntimeEventName =
@@ -13,13 +12,6 @@ export type RuntimeEventName =
   | 'interaction.turn.started'
   | 'interaction.turn.completed'
   | 'interaction.turn.aborted'
-  | 'interaction.intent.resolved'
-  | 'interaction.speech.stop_requested'
-  | 'interaction.speech.mute_requested'
-  | 'interaction.work.modify_requested'
-  | 'interaction.work.status_requested'
-  | 'interaction.work.resume_requested'
-  | 'interaction.work.cancel_requested'
   | 'emotional.output.emitted'
   | 'dialogue.intent.detected'
   | 'dialogue.reply.completed'
@@ -92,36 +84,6 @@ export type RuntimeEvent =
   | RuntimeEventBase<'interaction.turn.aborted', {
       userInput: string
       preservedUserInput: boolean
-    }>
-  | RuntimeEventBase<'interaction.intent.resolved', {
-      userInput: string
-      intents: InteractionIntent[]
-      interruptionKind: UserInterruptionKind
-      feedbackDecision?: FeedbackDecision
-    }>
-  | RuntimeEventBase<'interaction.speech.stop_requested', {
-      reason: string
-    }>
-  | RuntimeEventBase<'interaction.speech.mute_requested', {
-      muted: boolean
-      reason: string
-    }>
-  | RuntimeEventBase<'interaction.work.modify_requested', {
-      targetThreadId?: string
-      modification: string
-      reason: string
-    }>
-  | RuntimeEventBase<'interaction.work.status_requested', {
-      targetThreadId?: string
-      reason: string
-    }>
-  | RuntimeEventBase<'interaction.work.resume_requested', {
-      targetThreadId?: string
-      reason: string
-    }>
-  | RuntimeEventBase<'interaction.work.cancel_requested', {
-      targetThreadId?: string
-      reason: string
     }>
   | RuntimeEventBase<'emotional.output.emitted', {
       phase: 'reply' | 'task_progress' | 'task_result'

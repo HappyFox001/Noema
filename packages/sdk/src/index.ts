@@ -19,10 +19,7 @@ import { wrapTaskLLMWithRuntimeTransport } from './session/cli-task-llm.js'
 import {
   RuntimeEventBus,
   RuntimeJobManager,
-  InteractionRuntime,
   LongRunRuntime,
-  type InteractionResolveResult,
-  type OutputStateSnapshot,
   type RuntimeCapabilityContext,
   type RuntimeEventHandler,
   type WorkThread,
@@ -47,7 +44,6 @@ export class HerTextSDK {
   public agent: AgentCore
   public runtimeEvents: RuntimeEventBus
   public runtimeJobs: RuntimeJobManager
-  public interaction: InteractionRuntime
   public workState: WorkStateStore
   public longRuns: LongRunRuntime
   public runtime: RuntimeCapabilityContext
@@ -74,7 +70,6 @@ export class HerTextSDK {
     this.agent = new AgentCore()
     this.runtimeEvents = new RuntimeEventBus()
     this.runtimeJobs = new RuntimeJobManager(this.runtimeEvents)
-    this.interaction = new InteractionRuntime()
     this.workState = new WorkStateStore(config.memory.storageDir)
     this.longRuns = new LongRunRuntime()
     this.learning = new LearningAssetStore(config.memory.storageDir)
@@ -204,89 +199,6 @@ export class HerTextSDK {
     return await this.workState.recordModification(threadId, modification, reason) ?? null
   }
 
-  resolveInteraction(
-    input: UserInput,
-    outputState: OutputStateSnapshot
-  ): InteractionResolveResult {
-    this.runtimeEvents.emit({
-      name: 'interaction.input.received',
-      payload: {
-        userInput: input.text,
-        inputTimestamp: input.timestamp,
-        source: 'text',
-      },
-    })
-    const result = this.interaction.resolve({
-      userInput: input.text,
-      workState: this.workState.getSnapshot(),
-      outputState,
-      timestamp: input.timestamp,
-    })
-    this.runtimeEvents.emit({
-      name: 'interaction.intent.resolved',
-      payload: {
-        userInput: input.text,
-        intents: result.intents,
-        interruptionKind: result.interruptionKind,
-      },
-    })
-    for (const intent of result.intents) {
-      if (intent.kind === 'speech.stop') {
-        this.runtimeEvents.emit({
-          name: 'interaction.speech.stop_requested',
-          payload: { reason: intent.reason },
-        })
-      } else if (intent.kind === 'speech.mute' || intent.kind === 'speech.unmute') {
-        this.runtimeEvents.emit({
-          name: 'interaction.speech.mute_requested',
-          payload: {
-            muted: intent.kind === 'speech.mute',
-            reason: intent.reason,
-          },
-        })
-      } else if (intent.kind === 'work.modify') {
-        this.runtimeEvents.emit({
-          name: 'interaction.work.modify_requested',
-          threadId: intent.targetThreadId,
-          payload: {
-            targetThreadId: intent.targetThreadId,
-            modification: intent.modification || input.text,
-            reason: intent.reason,
-          },
-        })
-      } else if (intent.kind === 'work.status') {
-        this.runtimeEvents.emit({
-          name: 'interaction.work.status_requested',
-          threadId: intent.targetThreadId,
-          payload: {
-            targetThreadId: intent.targetThreadId,
-            reason: intent.reason,
-          },
-        })
-      } else if (intent.kind === 'work.resume') {
-        this.runtimeEvents.emit({
-          name: 'interaction.work.resume_requested',
-          threadId: intent.targetThreadId,
-          payload: {
-            targetThreadId: intent.targetThreadId,
-            reason: intent.reason,
-          },
-        })
-      } else if (intent.kind === 'work.cancel') {
-        this.runtimeEvents.emit({
-          name: 'interaction.work.cancel_requested',
-          threadId: intent.targetThreadId,
-          payload: {
-            targetThreadId: intent.targetThreadId,
-            reason: intent.reason,
-          },
-        })
-      }
-    }
-    return result
-  }
-
-  
   clearHistory(): void {
     this.dialogue.clearHistory()
   }

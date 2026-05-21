@@ -37,9 +37,7 @@ import {
 } from '../plugins/index.js'
 import { getWorkFeedbackRule, type RuntimeEventBus, type RuntimeJobManager, type RuntimeJobUnregister } from '../runtime/index.js'
 import { EmotionalRuntime } from '../runtime/emotional-runtime.js'
-import { InteractionRuntime } from '../runtime/interaction-runtime.js'
 import type { EmotionalTurnRecord } from '../runtime/boundaries.js'
-import type { InteractionResolveResult } from '../runtime/interaction.js'
 import type { WorkStateStore } from '../runtime/work-store.js'
 import type { WorkThread } from '../runtime/work-state.js'
 
@@ -190,7 +188,6 @@ export class DialogueOrchestrator {
   private unregisterTaskRunJob?: RuntimeJobUnregister
   private workState?: WorkStateStore
   private emotionalRuntime = new EmotionalRuntime()
-  private interactionRuntime = new InteractionRuntime()
   private taskAdmission: TaskAdmissionController
   private learning?: LearningAssetStore
   private agentSociety?: AgentSocietyRuntime
@@ -397,11 +394,6 @@ export class DialogueOrchestrator {
           output: emotionalOutput,
         },
       })
-      const interaction = this.resolveInteractionAfterEmotionalOutput(
-        input,
-        emotionalOutput.record,
-        turnId
-      )
       void this.recordEmotionalTurn(emotionalOutput.record)
       this.runtimeEvents?.emit({
         name: 'dialogue.reply.completed',
@@ -417,9 +409,9 @@ export class DialogueOrchestrator {
 
       let combinedReply = this.transformText('memory', firstResult.reply, pluginRuntime)
 
-      if (firstResult.hasTask && firstResult.taskDescription && firstResult.taskIntent && turnContext.hasTools) {
+      const shouldStartTask = firstResult.hasTask && firstResult.taskDescription && firstResult.taskIntent && turnContext.hasTools
+      if (shouldStartTask) {
         throwIfStreamCancelled(options)
-        await this.applyPreStartWorkIntents(interaction)
         const admission = await this.resolveTaskAdmission({
           originalUserInput: input.text,
           emotionalReply: firstResult.reply,
@@ -592,55 +584,6 @@ export class DialogueOrchestrator {
 
     await context.queue
     throwIfAborted(signal)
-  }
-
-  private resolveInteractionAfterEmotionalOutput(
-    input: UserInput,
-    emotionalTurn: EmotionalTurnRecord,
-    turnId: string
-  ): InteractionResolveResult {
-    const fallbackWorkState = {
-      activeThreads: [],
-      pausedThreads: [],
-      abandonedThreads: [],
-      completedThreads: [],
-      updatedAt: Date.now(),
-    }
-    const result = this.interactionRuntime.resolve({
-      userInput: input.text,
-      emotionalTurn,
-      workState: this.workState?.getSnapshot() ?? fallbackWorkState,
-      outputState: { speaking: false, muted: false },
-      timestamp: input.timestamp,
-    })
-    this.runtimeEvents?.emit({
-      name: 'interaction.intent.resolved',
-      turnId,
-      correlationId: turnId,
-      payload: {
-        userInput: input.text,
-        intents: result.intents,
-        interruptionKind: result.interruptionKind,
-      },
-    })
-    return result
-  }
-
-  private async applyPreStartWorkIntents(interaction: InteractionResolveResult): Promise<void> {
-    if (!this.workState) {
-      return
-    }
-    for (const intent of interaction.intents) {
-      if (intent.kind === 'work.pause' && intent.targetThreadId) {
-        await this.workState.pauseThread(intent.targetThreadId, intent.reason)
-      } else if (intent.kind === 'work.modify' && intent.targetThreadId) {
-        await this.workState.recordModification(
-          intent.targetThreadId,
-          intent.modification || intent.reason,
-          intent.reason
-        )
-      }
-    }
   }
 
   private async resolveTaskAdmission(input: {
