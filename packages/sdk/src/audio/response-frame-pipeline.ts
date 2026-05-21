@@ -644,6 +644,7 @@ export interface LLMChatStreamService {
     input: { text: string; timestamp: number },
     options: {
       signal?: AbortSignal
+      isCancelled?: () => boolean
       preserveUserInputOnAbort?: boolean
       getInterruptedAssistantText?: () => string | undefined
       pluginContext?: PluginRuntimeContext
@@ -668,6 +669,7 @@ export interface LLMResponseProcessorOptions {
   service: LLMChatStreamService
   bridge: LLMStreamBridgeProcessor
   signal?: AbortSignal
+  isCancelled?: () => boolean
   preserveUserInputOnAbort?: boolean
   getInterruptedAssistantText?: () => string | undefined
   pluginContext?: PluginRuntimeContext
@@ -724,6 +726,7 @@ export class LLMResponseProcessor implements ResponseFrameProcessor {
       },
       {
         signal: this.options.signal,
+        isCancelled: this.options.isCancelled,
         preserveUserInputOnAbort: this.options.preserveUserInputOnAbort,
         getInterruptedAssistantText: this.options.getInterruptedAssistantText,
         pluginContext: this.options.pluginContext,

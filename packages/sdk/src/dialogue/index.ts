@@ -46,6 +46,7 @@ import type { WorkThread } from '../runtime/work-state.js'
 export interface StreamOptions {
   
   signal?: AbortSignal
+  isCancelled?: () => boolean
   
   preserveUserInputOnAbort?: boolean
   
@@ -152,6 +153,15 @@ function buildEmotionalTurnTaskContext(record: EmotionalTurnRecord): TaskContext
   }
 }
 
+type TaskAdmissionAction = 'start_new' | 'revise_active' | 'replace_active' | 'queue_new'
+
+interface TaskAdmissionDecision {
+  action: TaskAdmissionAction
+  taskDescription: string
+  targetThreadId?: string
+  reason: string
+}
+
 interface ActiveTaskProgressContext {
   turnContext: Awaited<ReturnType<LLMContextAggregator['prepareUserTurn']>>
   streamOptions?: StreamOptions
@@ -168,6 +178,62 @@ interface TaskRunJobInput {
 }
 
 const TASK_PROGRESS_MIN_INTERVAL_MS = 12000
+
+function throwIfStreamCancelled(options?: StreamOptions): void {
+  throwIfAborted(options?.signal)
+  if (options?.isCancelled?.()) {
+    throw new DOMException('Turn cancelled before task handoff', 'AbortError')
+  }
+}
+
+function normalizeTaskAdmissionDecision(
+  content: string,
+  fallbackTaskDescription: string,
+  fallbackThreadId?: string
+): TaskAdmissionDecision {
+  let parsed: any
+  try {
+    parsed = JSON.parse(content)
+  } catch {
+    const match = content.match(/\{[\s\S]*\}/)
+    parsed = match ? JSON.parse(match[0]) : {}
+  }
+
+  const allowed = new Set<TaskAdmissionAction>(['start_new', 'revise_active', 'replace_active', 'queue_new'])
+  const action = allowed.has(parsed?.action) ? parsed.action as TaskAdmissionAction : 'start_new'
+  const needsTarget = action === 'revise_active' || action === 'replace_active'
+  const targetThreadId = typeof parsed?.targetThreadId === 'string' && parsed.targetThreadId.trim()
+    ? parsed.targetThreadId.trim()
+    : needsTarget
+      ? fallbackThreadId
+      : undefined
+  return {
+    action,
+    ...(targetThreadId ? { targetThreadId } : {}),
+    taskDescription: typeof parsed?.taskDescription === 'string' && parsed.taskDescription.trim()
+      ? parsed.taskDescription.trim()
+      : fallbackTaskDescription,
+    reason: typeof parsed?.reason === 'string' && parsed.reason.trim()
+      ? parsed.reason.trim()
+      : 'Task admission decision.',
+  }
+}
+
+function buildRevisionTaskDescription(
+  thread: WorkThread | undefined,
+  incomingTaskDescription: string,
+  reason: string
+): string {
+  if (!thread) {
+    return incomingTaskDescription
+  }
+
+  return [
+    `Revise the existing work thread "${thread.goal}" using this new user intent: ${incomingTaskDescription}`,
+    `Decision reason: ${reason}`,
+    'Reconcile state semantically: if the prior artifact already exists, update or rename it; if the prior attempt is incomplete, continue directly toward the revised intent; avoid creating duplicate artifacts unless the user clearly requested a separate one.',
+  ].join('\n')
+}
 
 export class DialogueOrchestrator {
   private context: ContextManager
@@ -401,30 +467,54 @@ export class DialogueOrchestrator {
           ...(firstResult.emotionTag ? { emotionTag: firstResult.emotionTag } : {}),
         },
       })
-      throwIfAborted(options?.signal)
+      throwIfStreamCancelled(options)
 
       let combinedReply = this.transformText('memory', firstResult.reply, pluginRuntime)
 
       if (firstResult.hasTask && firstResult.taskDescription && firstResult.taskIntent && turnContext.hasTools) {
-        throwIfAborted(options?.signal)
+        throwIfStreamCancelled(options)
         await this.applyPreStartWorkIntents(interaction)
+        const admission = await this.resolveTaskAdmission({
+          originalUserInput: input.text,
+          emotionalReply: firstResult.reply,
+          incomingTaskDescription: firstResult.taskDescription,
+          signal: options?.signal,
+        })
+        throwIfStreamCancelled(options)
         const taskContextItems: TaskContextItem[] = await this.resolveTaskContext(
           input.text,
-          firstResult.taskDescription,
+          admission.taskDescription,
           pluginRuntime
         )
         taskContextItems.push(buildEmotionalTurnTaskContext(emotionalOutput.record))
-        throwIfAborted(options?.signal)
+        const targetThread = admission.targetThreadId ? this.workState?.getThread(admission.targetThreadId) : null
+        if (targetThread) {
+          taskContextItems.push(buildResumeTaskContext(targetThread))
+          taskContextItems.push({
+            id: `task-admission-${turnId}`,
+            type: 'task_admission_decision',
+            name: 'Task admission decision',
+            content: JSON.stringify(admission, null, 2),
+          })
+          await this.workState?.recordModification(targetThread.id, firstResult.taskDescription, admission.reason)
+        }
+        if (admission.action === 'replace_active') {
+          this.cancelRunningTaskJobs('Task admission replaced active work with a revised user intent.')
+        }
+        throwIfStreamCancelled(options)
         await this.pluginManager.notifyTaskStart({
           runtime: pluginRuntime,
-          taskDescription: firstResult.taskDescription,
+          taskDescription: admission.taskDescription,
           originalUserInput: input.text,
         })
-        await options?.onTaskStart?.(firstResult.taskDescription)
+        await options?.onTaskStart?.(admission.taskDescription)
         console.log('🚀 Reply 已流式输出完毕，开始执行任务...\n')
 
         this.startDetachedTaskRun({
-          taskIntent: firstResult.taskIntent,
+          taskIntent: {
+            ...firstResult.taskIntent,
+            description: admission.taskDescription,
+          },
           originalUserInput: input.text,
           taskContextItems,
           pluginRuntime,
@@ -435,7 +525,7 @@ export class DialogueOrchestrator {
           role: 'tool',
           content: 'task_runtime_accepted',
           toolResults: [{
-            task: firstResult.taskDescription,
+            task: admission.taskDescription,
             success: true,
             summary: 'Task accepted and running in the work runtime.',
             iterations: 0,
@@ -603,6 +693,105 @@ export class DialogueOrchestrator {
           intent.modification || intent.reason,
           intent.reason
         )
+      }
+    }
+  }
+
+  private async resolveTaskAdmission(input: {
+    originalUserInput: string
+    emotionalReply: string
+    incomingTaskDescription: string
+    signal?: AbortSignal
+  }): Promise<TaskAdmissionDecision> {
+    const snapshot = this.workState?.getSnapshot()
+    const activeThreads = snapshot?.activeThreads ?? []
+    if (!snapshot || activeThreads.length === 0) {
+      return {
+        action: 'start_new',
+        taskDescription: input.incomingTaskDescription,
+        reason: 'No active work thread exists.',
+      }
+    }
+
+    const focusedThreadId = snapshot.focusedThreadId ?? activeThreads[0]?.id
+    const threadSummaries = [
+      ...activeThreads,
+      ...snapshot.pausedThreads,
+    ].slice(0, 6).map(thread => ({
+      id: thread.id,
+      goal: thread.goal,
+      status: thread.status,
+      resumeSummary: thread.resumeSummary,
+      currentStep: thread.currentStep?.title,
+      nextActions: thread.nextActions.slice(-3).map(action => action.title),
+      artifacts: thread.artifacts.slice(-5),
+      failures: thread.failures.slice(-2).map(failure => failure.message),
+    }))
+
+    try {
+      const response = await this.taskLLM.chat([
+        {
+          role: 'system',
+          content: [
+            'You are the task-layer admission controller for a durable work runtime.',
+            'Decide how a new task signal relates to existing work. Do not style user-facing speech.',
+            'Use semantic intent and current work state, not keyword matching.',
+            'Return exactly one JSON object with keys: action, targetThreadId, taskDescription, reason.',
+            'Allowed actions: start_new, revise_active, replace_active, queue_new.',
+            'Use revise_active when the new signal is a clarification, parameter, name, correction, or continuation of the focused work.',
+            'Use replace_active when the active work used a guessed/default parameter and the new signal supplies the real value, or when the same active goal should be cancelled and rerun with corrected intent.',
+            'Use queue_new only when it is clearly separate work that should run after the active work.',
+            'The taskDescription must be an executable task-layer goal. For revisions, include enough context to reconcile existing artifacts, such as rename/update if the old artifact already exists.',
+          ].join('\n'),
+        },
+        {
+          role: 'user',
+          content: JSON.stringify({
+            originalUserInput: input.originalUserInput,
+            emotionalReply: input.emotionalReply,
+            incomingTaskDescription: input.incomingTaskDescription,
+            focusedThreadId,
+            workThreads: threadSummaries,
+          }, null, 2),
+        },
+      ], {
+        response_format: { type: 'json_object' },
+        max_tokens: 700,
+        signal: input.signal,
+      })
+      const decision = normalizeTaskAdmissionDecision(
+        response.content,
+        input.incomingTaskDescription,
+        focusedThreadId
+      )
+      if (decision.targetThreadId && (decision.action === 'revise_active' || decision.action === 'replace_active')) {
+        decision.taskDescription = buildRevisionTaskDescription(
+          activeThreads.find(thread => thread.id === decision.targetThreadId) ?? activeThreads[0],
+          decision.taskDescription,
+          decision.reason
+        )
+      }
+      return decision
+    } catch (error) {
+      console.warn('[TaskAdmission] Falling back to active-thread revision:', (error as Error).message)
+      return {
+        action: 'revise_active',
+        targetThreadId: focusedThreadId,
+        taskDescription: buildRevisionTaskDescription(
+          activeThreads.find(thread => thread.id === focusedThreadId) ?? activeThreads[0],
+          input.incomingTaskDescription,
+          'Task admission model was unavailable.'
+        ),
+        reason: 'Fallback: preserve active work and treat the new task signal as a revision.',
+      }
+    }
+  }
+
+  private cancelRunningTaskJobs(reason: string): void {
+    const jobs = this.runtimeJobs?.list('running') ?? []
+    for (const job of jobs) {
+      if (job.kind === 'task.run') {
+        this.runtimeJobs?.cancel(job.id, reason)
       }
     }
   }

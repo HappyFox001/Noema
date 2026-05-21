@@ -753,6 +753,22 @@ function handleRuntimeEvent(event: any): void {
   }
   if (event.name === 'work.signal.emitted' && event.payload?.signal) {
     taskCommunicationManager.onWorkSignal(event.payload.signal)
+    return
+  }
+  if (event.name === 'task.completed' || event.name === 'task.failed') {
+    const success = event.name === 'task.completed'
+    const summary = event.payload?.finalMessage || event.payload?.summary || ''
+    taskCommunicationManager.onTaskEnd({
+      success,
+      summary,
+      ...(event.payload?.error ? { error: event.payload.error } : {}),
+    })
+    mainWindow?.webContents.send('conversation:frame', {
+      type: 'control.task_end',
+      success,
+      summary,
+      ...(event.payload?.error ? { error: event.payload.error } : {}),
+    } satisfies ConversationFrame)
   }
 }
 
@@ -4030,6 +4046,7 @@ async function runConversationTurn(
       service: sdkInstance,
       bridge: llmStreamBridge,
       signal: turnAbortSignal,
+      isCancelled: () => isTurnCancelled(turnId),
       preserveUserInputOnAbort: source === 'voice',
       getInterruptedAssistantText: () => interruptedTTSTextChunks.join(''),
       pluginContext,
