@@ -1,15 +1,15 @@
 /**
- * File walking and glob matching helpers for base search tools.
+ * File walking and glob matching helpers for built-in work search tools.
  */
 import { readdir } from 'node:fs/promises'
 import { join, relative } from 'node:path'
-import { resolveToolPath } from './node-ops.mjs'
+import { resolveToolPath } from './local-node-ops.js'
 
-export async function walkFiles(rootPath) {
+export async function walkFiles(rootPath?: string): Promise<string[]> {
   const root = resolveToolPath(rootPath)
-  const results = []
+  const results: string[] = []
 
-  async function visit(currentPath) {
+  async function visit(currentPath: string): Promise<void> {
     const entries = await readdir(currentPath, { withFileTypes: true })
 
     for (const entry of entries) {
@@ -32,7 +32,7 @@ export async function walkFiles(rootPath) {
   return results
 }
 
-export function matchesGlobPattern(filePath, rootPath, pattern) {
+export function matchesGlobPattern(filePath: string, rootPath: string | undefined, pattern?: string): boolean {
   if (!pattern) {
     return true
   }
@@ -42,19 +42,19 @@ export function matchesGlobPattern(filePath, rootPath, pattern) {
   return regex.test(relativePath)
 }
 
-export function matchesAnyGlobPattern(filePath, rootPath, patterns) {
+export function matchesAnyGlobPattern(filePath: string, rootPath: string | undefined, patterns: string[]): boolean {
   return patterns.some(pattern => matchesGlobPattern(filePath, rootPath, pattern))
 }
 
-function shouldSkipDirectory(name) {
+function shouldSkipDirectory(name: string): boolean {
   return name === '.git' || name === 'node_modules' || name === 'dist' || name === 'release'
 }
 
-function normalizePath(path) {
+function normalizePath(path: string): string {
   return path.replace(/\\/g, '/')
 }
 
-function globToRegExp(pattern) {
+function globToRegExp(pattern: string): RegExp {
   const normalized = normalizePath(pattern)
   let regex = '^'
 

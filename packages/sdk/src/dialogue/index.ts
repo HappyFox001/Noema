@@ -40,6 +40,7 @@ import { EmotionalRuntime } from '../runtime/emotional-runtime.js'
 import type { EmotionalTurnRecord } from '../runtime/boundaries.js'
 import type { WorkStateStore } from '../runtime/work-store.js'
 import type { WorkThread } from '../runtime/work-state.js'
+import { createLocalTools } from '../tools/local-tools.js'
 
 
 export interface StreamOptions {
@@ -255,11 +256,6 @@ export class DialogueOrchestrator {
         })
         this.scheduleTaskProgressFeedback(step, plan, task)
       },
-        resolveToolStrategyHints: (context) => this.pluginManager.getToolStrategyHints({
-          runtime: {},
-          taskDescription: context.taskDescription,
-          availableTools: context.availableTools,
-        }),
       }, config?.taskRuntime)
     this.contextAggregator = new LLMContextAggregator(memory, personality, agent, this.context, this.truncationPolicy)
     this.llmProcessor = new LLMProcessor(llm)
@@ -274,6 +270,9 @@ export class DialogueOrchestrator {
     this.taskLLM = await this.pluginManager.wrapTaskLLM(this.taskLLM, { runtime: {} })
     this.taskSession.setLLM(this.taskLLM)
     this.taskAdmission = new TaskAdmissionController(this.taskLLM)
+    for (const tool of createLocalTools()) {
+      this.agent.registerTool(tool)
+    }
     const pluginTools = await this.pluginManager.getTools({ runtime: {} })
     for (const tool of pluginTools) {
       this.agent.registerTool(tool)

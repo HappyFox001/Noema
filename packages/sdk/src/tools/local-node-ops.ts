@@ -1,14 +1,48 @@
 /**
- * Node filesystem and shell operations for base tools.
+ * Local filesystem and shell primitives used by the built-in work tools.
  */
-import { execFile, spawn } from 'node:child_process'
+import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, resolve } from 'node:path'
 
-const commandSessions = new Map()
+interface CommandSession {
+  id: string
+  command: string
+  cwd: string
+  child: ChildProcessWithoutNullStreams
+  pid: number
+  status: 'running' | 'exited' | 'error'
+  stdout: string
+  stderr: string
+  stdoutReadOffset: number
+  stderrReadOffset: number
+  exitCode: number | null
+  signal: string | null
+  startedAt: number
+  endedAt: number | null
+  maxBufferChars: number
+}
+
+export interface CommandSessionOutput {
+  session_id: string
+  command: string
+  cwd: string
+  pid: number
+  status: CommandSession['status']
+  running: boolean
+  stdout: string
+  stderr: string
+  stdout_truncated: boolean
+  stderr_truncated: boolean
+  exit_code: number | null
+  signal: string | null
+  duration_ms: number
+}
+
+const commandSessions = new Map<string, CommandSession>()
 let nextCommandSessionId = 1
 
-export function resolveToolPath(inputPath) {
+export function resolveToolPath(inputPath?: string): string {
   if (!inputPath) {
     return process.cwd()
   }
@@ -16,7 +50,7 @@ export function resolveToolPath(inputPath) {
   return isAbsolute(inputPath) ? inputPath : resolve(process.cwd(), inputPath)
 }
 
-export async function readTextFile(filePath, offset, limit) {
+export async function readTextFile(filePath: string, offset?: number, limit?: number): Promise<{ content: string; lines: number }> {
   const absolutePath = resolveToolPath(filePath)
   const content = await readFile(absolutePath, 'utf8')
   const lines = content.split('\n')
@@ -30,14 +64,19 @@ export async function readTextFile(filePath, offset, limit) {
   }
 }
 
-export async function writeTextFile(filePath, content) {
+export async function writeTextFile(filePath: string, content: string): Promise<number> {
   const absolutePath = resolveToolPath(filePath)
   await mkdir(dirname(absolutePath), { recursive: true })
   await writeFile(absolutePath, content, 'utf8')
   return Buffer.byteLength(content, 'utf8')
 }
 
-export async function editTextFile(filePath, oldString, newString, replaceAll) {
+export async function editTextFile(
+  filePath: string,
+  oldString: string,
+  newString: string,
+  replaceAll: boolean
+): Promise<number> {
   const absolutePath = resolveToolPath(filePath)
   const original = await readFile(absolutePath, 'utf8')
 
@@ -61,12 +100,19 @@ export async function editTextFile(filePath, oldString, newString, replaceAll) {
   return replaceAll ? occurrences : 1
 }
 
-export async function deleteFile(filePath) {
+export async function deleteFile(filePath: string): Promise<void> {
   const absolutePath = resolveToolPath(filePath)
   await rm(absolutePath, { force: false })
 }
 
-export async function readImageFile(filePath) {
+export async function readImageFile(filePath: string): Promise<{
+  path: string
+  base64: string
+  mimeType: string
+  width?: number
+  height?: number
+  bytes: number
+}> {
   const absolutePath = resolveToolPath(filePath)
   const buffer = await readFile(absolutePath)
   const metadata = detectImageMetadata(buffer, absolutePath)
@@ -80,7 +126,13 @@ export async function readImageFile(filePath) {
   }
 }
 
-export async function runCommand(command, options = {}) {
+export async function runCommand(command: string, options: { cwd?: string; timeout?: number } = {}): Promise<{
+  stdout: string
+  stderr: string
+  exitCode: number
+  durationMs: number
+  timedOut: boolean
+}> {
   const cwd = resolveToolPath(options.cwd)
   const startedAt = Date.now()
 
@@ -95,11 +147,11 @@ export async function runCommand(command, options = {}) {
         return
       }
 
-      const errorCode = error?.code
+      const errorCode = error.code
       const exitCode = typeof errorCode === 'number' ? errorCode : 1
-      const timedOut = Boolean(error?.killed && String(error?.signal || '').trim())
+      const timedOut = Boolean(error.killed && String(error.signal || '').trim())
 
-      if (String(error?.message || '').includes('spawn bash ENOENT')) {
+      if (String(error.message || '').includes('spawn bash ENOENT')) {
         reject(error)
         return
       }
@@ -109,7 +161,10 @@ export async function runCommand(command, options = {}) {
   })
 }
 
-export async function startCommandSession(command, options = {}) {
+export async function startCommandSession(
+  command: string,
+  options: { cwd?: string; maxBufferChars?: number; yieldTimeMs?: number; maxOutputChars?: number } = {}
+): Promise<CommandSessionOutput> {
   const cwd = resolveToolPath(options.cwd)
   const sessionId = `exec-${nextCommandSessionId++}`
   const maxBufferChars = clampNumber(Number(options.maxBufferChars ?? 200000), 10000, 2000000)
@@ -118,7 +173,7 @@ export async function startCommandSession(command, options = {}) {
     stdio: ['pipe', 'pipe', 'pipe'],
   })
 
-  const session = {
+  const session: CommandSession = {
     id: sessionId,
     command,
     cwd,
@@ -136,10 +191,10 @@ export async function startCommandSession(command, options = {}) {
     maxBufferChars,
   }
 
-  child.stdout?.setEncoding('utf8')
-  child.stderr?.setEncoding('utf8')
-  child.stdout?.on('data', chunk => appendSessionOutput(session, 'stdout', chunk))
-  child.stderr?.on('data', chunk => appendSessionOutput(session, 'stderr', chunk))
+  child.stdout.setEncoding('utf8')
+  child.stderr.setEncoding('utf8')
+  child.stdout.on('data', chunk => appendSessionOutput(session, 'stdout', String(chunk)))
+  child.stderr.on('data', chunk => appendSessionOutput(session, 'stderr', String(chunk)))
   child.on('error', error => {
     session.status = 'error'
     session.endedAt = Date.now()
@@ -159,7 +214,10 @@ export async function startCommandSession(command, options = {}) {
   })
 }
 
-export async function interactCommandSession(sessionId, options = {}) {
+export async function interactCommandSession(
+  sessionId: string,
+  options: { chars?: string; terminate?: boolean; close?: boolean; signal?: string; yieldTimeMs?: number; maxOutputChars?: number } = {}
+): Promise<CommandSessionOutput> {
   const session = commandSessions.get(sessionId)
   if (!session) {
     throw new Error(`Unknown exec session: ${sessionId}`)
@@ -169,7 +227,7 @@ export async function interactCommandSession(sessionId, options = {}) {
     if (session.status !== 'running') {
       throw new Error(`Exec session ${sessionId} is not running`)
     }
-    session.child.stdin?.write(options.chars)
+    session.child.stdin.write(options.chars)
   }
 
   if (options.terminate === true || options.close === true) {
@@ -182,10 +240,10 @@ export async function interactCommandSession(sessionId, options = {}) {
   })
 }
 
-export function listCommandSessions(options = {}) {
+export function listCommandSessions(options: { includeExited?: boolean; maxOutputChars?: number } = {}): CommandSessionOutput[] {
   const includeExited = options.includeExited === true
   const maxOutputChars = clampNumber(Number(options.maxOutputChars ?? 2000), 200, 50000)
-  const sessions = []
+  const sessions: CommandSessionOutput[] = []
 
   for (const session of commandSessions.values()) {
     if (!includeExited && session.status !== 'running') {
@@ -200,7 +258,7 @@ export function listCommandSessions(options = {}) {
   return sessions
 }
 
-export function readCommandSession(sessionId, options = {}) {
+export function readCommandSession(sessionId: string, options: { maxOutputChars?: number } = {}): CommandSessionOutput {
   const session = commandSessions.get(sessionId)
   if (!session) {
     throw new Error(`Unknown exec session: ${sessionId}`)
@@ -215,19 +273,10 @@ export function readCommandSession(sessionId, options = {}) {
   return output
 }
 
-export function terminateAllCommandSessions(signal = 'SIGTERM') {
-  const stopped = []
-  for (const session of commandSessions.values()) {
-    if (session.status !== 'running') {
-      continue
-    }
-    terminateCommandSession(session, signal)
-    stopped.push(session.id)
-  }
-  return stopped
-}
-
-function formatCommandSession(session, options = {}) {
+function formatCommandSession(
+  session: CommandSession,
+  options: { maxOutputChars?: number; consumeOutput?: boolean } = {}
+): CommandSessionOutput {
   const maxOutputChars = clampNumber(Number(options.maxOutputChars ?? 12000), 1000, 200000)
   const stdout = session.stdout.slice(session.stdoutReadOffset)
   const stderr = session.stderr.slice(session.stderrReadOffset)
@@ -253,7 +302,7 @@ function formatCommandSession(session, options = {}) {
   }
 }
 
-function cleanupEndedSessions() {
+function cleanupEndedSessions(): void {
   for (const [sessionId, session] of commandSessions) {
     if (session.status !== 'running' && session.endedAt && Date.now() - session.endedAt > 60000) {
       commandSessions.delete(sessionId)
@@ -261,19 +310,8 @@ function cleanupEndedSessions() {
   }
 }
 
-export function runCommandInBackground(command, cwd) {
-  const child = spawn('bash', ['-lc', command], {
-    cwd: resolveToolPath(cwd),
-    detached: true,
-    stdio: 'ignore',
-  })
-
-  child.unref()
-  return child.pid ?? -1
-}
-
-function appendSessionOutput(session, key, chunk) {
-  session[key] += String(chunk)
+function appendSessionOutput(session: CommandSession, key: 'stdout' | 'stderr', chunk: string): void {
+  session[key] += chunk
   if (session[key].length <= session.maxBufferChars) {
     return
   }
@@ -286,35 +324,35 @@ function appendSessionOutput(session, key, chunk) {
   }
 }
 
-function terminateCommandSession(session, signal = 'SIGTERM') {
+function terminateCommandSession(session: CommandSession, signal = 'SIGTERM'): void {
   if (session.status !== 'running') {
     return
   }
-  session.child.kill(typeof signal === 'string' && signal ? signal : 'SIGTERM')
+  session.child.kill((signal || 'SIGTERM') as NodeJS.Signals)
 }
 
-function delay(ms) {
+function delay(ms: number): Promise<void> {
   if (!ms) {
     return Promise.resolve()
   }
   return new Promise(resolvePromise => setTimeout(resolvePromise, ms))
 }
 
-function truncateHead(value, maxLength) {
+function truncateHead(value: string, maxLength: number): string {
   if (value.length <= maxLength) {
     return value
   }
   return value.slice(value.length - maxLength)
 }
 
-function clampNumber(value, min, max) {
+function clampNumber(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) {
     return min
   }
   return Math.max(min, Math.min(max, value))
 }
 
-function detectImageMetadata(buffer, filePath) {
+function detectImageMetadata(buffer: Buffer, filePath: string): { mimeType: string; width?: number; height?: number } {
   const png = detectPng(buffer)
   if (png) {
     return png
@@ -336,7 +374,7 @@ function detectImageMetadata(buffer, filePath) {
   return { mimeType: 'application/octet-stream' }
 }
 
-function detectPng(buffer) {
+function detectPng(buffer: Buffer): { mimeType: string; width: number; height: number } | null {
   if (
     buffer.length < 24 ||
     buffer[0] !== 0x89 ||
@@ -354,7 +392,7 @@ function detectPng(buffer) {
   }
 }
 
-function detectJpeg(buffer) {
+function detectJpeg(buffer: Buffer): { mimeType: string; width?: number; height?: number } | null {
   if (buffer.length < 4 || buffer[0] !== 0xff || buffer[1] !== 0xd8) {
     return null
   }

@@ -24,22 +24,5 @@ export default function plugin(ctx) {
         autoObserve: config.autoObserve !== false,
       })
     },
-    getToolStrategyHints() {
-      return [
-        {
-          id: 'browser-loop',
-          title: 'Browser workflow',
-          priority: 80,
-          content: [
-            '- Use browser_open or browser_search to enter a page, then browser_observe/browser_state to inspect URL, title, text, and numbered elements.',
-            '- Use browser_observe mode=snapshot/full when browser_state is ambiguous; use mode=visual/full when screenshot verification matters.',
-            '- Use browser_snapshot when browser_state is ambiguous; it returns CDP DOMSnapshot and Accessibility tree summaries with viewport coordinates.',
-            '- Use tool_search when a browser action is needed but the specific browser tool is not currently visible.',
-            '- Prefer browser_state element indexes first. Use coordinate clicks only when snapshots/screenshots expose a target that has no stable element index.',
-            '- Browser click/input/keys use real Electron input events. Observe state after navigation, click, form input, scroll, and wait.',
-          ].join('\n'),
-        },
-      ]
-    },
   }
 }

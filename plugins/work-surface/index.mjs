@@ -32,23 +32,6 @@ export default function plugin(ctx) {
         '- UI tools only display task state. Do not claim a task is complete unless the task runtime facts support it.',
       ].join('\n')
     },
-    getToolStrategyHints() {
-      if (!isEnabled()) {
-        return []
-      }
-      return [
-        {
-          id: 'work-surface-ui',
-          title: 'Realtime work surface',
-          priority: 70,
-          content: [
-            '- Use ui_create_surface once a task needs an interactive workspace.',
-            '- Use ui_show_table for lists, search results, comparisons, and structured tool output.',
-            '- Use ui_request_action or ui_request_input instead of asking users to infer the next clickable choice from prose.',
-          ].join('\n'),
-        },
-      ]
-    },
   }
 }
 

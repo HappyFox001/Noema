@@ -88,7 +88,7 @@ interface ActiveTaskRun {
 
 interface TaskSessionRuntimeHooks extends Pick<
   TaskRuntimeHooks,
-  'onUserInputRequest' | 'onRunStateChanged' | 'onPlanUpdated' | 'onStepUpdated' | 'resolveToolStrategyHints'
+  'onUserInputRequest' | 'onRunStateChanged' | 'onPlanUpdated' | 'onStepUpdated'
 > {
   runtimeEvents?: RuntimeEventBus
   workState?: WorkStateStore
@@ -372,7 +372,6 @@ export class TaskSession {
         this.persistSnapshot()
       },
       onUserInputRequest: this.runtimeHooks.onUserInputRequest,
-      resolveToolStrategyHints: this.runtimeHooks.resolveToolStrategyHints,
     }
     const request: TaskRuntimeRequest = {
       taskId: this.snapshot.taskId ?? generateId(),
@@ -988,7 +987,6 @@ function createLegacyTaskRuntimeAdapter(): TaskRuntimeAdapter {
           onStepUpdated: (step, plan) => hooks.onStepUpdated?.(step, plan),
           onCompact: hooks.onCompact,
           onUserInputRequest: hooks.onUserInputRequest,
-          resolveToolStrategyHints: hooks.resolveToolStrategyHints,
         },
         request.config,
         request.signal

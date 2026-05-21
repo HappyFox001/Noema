@@ -51,7 +51,6 @@ export interface TaskRuntimeAdapterHooks {
   onCompact?: (summary: string) => void
   onLog?: (chunk: { stream: 'stdout' | 'stderr' | 'system'; text: string }) => void
   onUserInputRequest?: TaskRuntimeHooks['onUserInputRequest']
-  resolveToolStrategyHints?: TaskRuntimeHooks['resolveToolStrategyHints']
 }
 
 export interface TaskRuntimeAdapter {
