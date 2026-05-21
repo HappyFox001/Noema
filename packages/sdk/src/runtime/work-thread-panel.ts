@@ -36,9 +36,13 @@ export interface WorkThreadPanelItem {
 
 export function buildWorkThreadPanelPlan(state: WorkState, fallbackPlan?: TaskPlan, longRuns: GoalRunPanelSummary[] = []): WorkThreadPanelPlan {
   const threads = collectPanelThreads(state)
-  const focused = threads.find(thread => thread.focused) ?? threads[0]
+  const focused = selectPanelFocus(threads)
   const sourceThread = findWorkThread(state, focused?.id)
-  const plan = sourceThread?.plan ?? fallbackPlan
+  const plan = fallbackPlan ?? sourceThread?.plan
+  const currentStep = plan?.steps.find(step => step.status === 'running') ??
+    (sourceThread?.currentStep && sourceThread.currentStep.status !== 'completed'
+      ? sourceThread.currentStep
+      : undefined)
   return {
     id: plan?.id ?? focused?.id ?? 'work-threads',
     title: focused ? 'Work Threads' : 'Task',
@@ -53,11 +57,20 @@ export function buildWorkThreadPanelPlan(state: WorkState, fallbackPlan?: TaskPl
     })),
     threads,
     currentThread: focused,
-    currentStep: sourceThread?.currentStep?.title,
+    currentStep: currentStep?.title,
     lastObservation: sourceThread?.observations.at(-1)?.summary,
     nextAction: sourceThread?.nextActions.at(-1)?.title,
     longRuns,
   }
+}
+
+function selectPanelFocus(threads: WorkThreadPanelItem[]): WorkThreadPanelItem | undefined {
+  const active = threads.filter(thread =>
+    thread.bucket === 'active' ||
+    thread.bucket === 'waiting' ||
+    thread.bucket === 'recoverable_failed'
+  )
+  return active.find(thread => thread.focused) ?? active[0] ?? threads.find(thread => thread.focused) ?? threads[0]
 }
 
 function collectPanelThreads(state: WorkState): WorkThreadPanelItem[] {

@@ -2797,6 +2797,40 @@ function renderTaskPanel(plan: TaskPanelPlan): void {
   title.textContent = plan.title || t('taskPanel.title')
   list.textContent = ''
 
+  for (const step of plan.steps.slice(0, 6)) {
+    const item = document.createElement('li')
+    item.className = `task-step ${step.status}`
+
+    const mark = document.createElement('span')
+    mark.className = 'task-step-mark'
+    mark.textContent = getTaskStepMark(step.status)
+
+    const text = document.createElement('span')
+    text.className = 'task-step-title'
+    text.textContent = step.title || step.description || t('taskPanel.step')
+
+    item.append(mark, text)
+    list.appendChild(item)
+  }
+
+  const details = [plan.currentStep, plan.nextAction, plan.lastObservation].filter(Boolean)
+  const maxDetails = Math.max(0, 3 - Math.min(plan.steps.length, 3))
+  for (const detail of details.slice(0, maxDetails)) {
+    const item = document.createElement('li')
+    item.className = 'task-step running'
+
+    const mark = document.createElement('span')
+    mark.className = 'task-step-mark'
+    mark.textContent = '•'
+
+    const text = document.createElement('span')
+    text.className = 'task-step-title'
+    text.textContent = detail
+
+    item.append(mark, text)
+    list.appendChild(item)
+  }
+
   for (const thread of (plan.threads ?? []).slice(0, 4)) {
     const item = document.createElement('li')
     item.className = `task-step ${mapThreadBucketToStepStatus(thread.bucket)}`
@@ -2813,23 +2847,6 @@ function renderTaskPanel(plan: TaskPanelPlan): void {
     list.appendChild(item)
   }
 
-  const details = [plan.currentStep, plan.lastObservation, plan.nextAction].filter(Boolean)
-  for (const detail of details.slice(0, 3)) {
-    const item = document.createElement('li')
-    item.className = 'task-step running'
-
-    const mark = document.createElement('span')
-    mark.className = 'task-step-mark'
-    mark.textContent = '•'
-
-    const text = document.createElement('span')
-    text.className = 'task-step-title'
-    text.textContent = detail
-
-    item.append(mark, text)
-    list.appendChild(item)
-  }
-
   for (const run of (plan.longRuns ?? []).slice(0, 3)) {
     const item = document.createElement('li')
     item.className = `task-step ${run.status === 'failed' || run.status === 'needs_human' ? 'failed' : run.status === 'completed' ? 'completed' : 'running'}`
@@ -2841,22 +2858,6 @@ function renderTaskPanel(plan: TaskPanelPlan): void {
     const text = document.createElement('span')
     text.className = 'task-step-title'
     text.textContent = `${run.goal} · ${run.metric}: ${run.latestResult} / best ${run.bestResult} / baseline ${run.baseline} · ${run.iterationCount} iterations`
-
-    item.append(mark, text)
-    list.appendChild(item)
-  }
-
-  for (const step of plan.steps.slice(0, 6)) {
-    const item = document.createElement('li')
-    item.className = `task-step ${step.status}`
-
-    const mark = document.createElement('span')
-    mark.className = 'task-step-mark'
-    mark.textContent = getTaskStepMark(step.status)
-
-    const text = document.createElement('span')
-    text.className = 'task-step-title'
-    text.textContent = step.title || step.description || t('taskPanel.step')
 
     item.append(mark, text)
     list.appendChild(item)
