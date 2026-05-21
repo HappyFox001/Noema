@@ -125,6 +125,32 @@ describe('runtime interaction routing', () => {
       }),
     ])
   })
+
+  test('ordinary chat can continue while active work remains focused', async () => {
+    const { InteractionRuntime } = await import('../dist/runtime/index.js')
+    const runtime = new InteractionRuntime()
+    const workState = {
+      activeThreads: [{ id: 'thread-bg', goal: 'background optimization', status: 'active', priority: 1, createdAt: 1, updatedAt: 1, userIntentHistory: [], emotionalTurnHistory: [], observations: [], artifacts: [], decisions: [], failures: [], nextActions: [] }],
+      pausedThreads: [],
+      abandonedThreads: [],
+      completedThreads: [],
+      focusedThreadId: 'thread-bg',
+      updatedAt: Date.now(),
+    }
+
+    const result = runtime.resolve({
+      userInput: '今天先聊两句',
+      timestamp: Date.now(),
+      workState,
+      outputState: { speaking: false, muted: false },
+    })
+
+    expect(result.intents).toEqual([expect.objectContaining({ kind: 'chat' })])
+    expect(workState.activeThreads[0]).toEqual(expect.objectContaining({
+      id: 'thread-bg',
+      status: 'active',
+    }))
+  })
 })
 
 describe('tool router', () => {
@@ -261,6 +287,10 @@ describe('long run runtime', () => {
           return { id: 'restore-best-source', description: 'restored the best retained source' }
         },
       })
+      run = await runtime.setStatus(run, 'paused')
+      const resumedRun = await runtime.resumeRunFor(run.artifactDir, 'context_compaction')
+      expect(resumedRun.status).toBe('paused')
+      run = await runtime.setStatus(resumedRun, 'running')
 
       run = await runtime.runIteration(run, {
         hypothesis: 'Fix the remaining string assignment',
@@ -271,8 +301,10 @@ describe('long run runtime', () => {
         verify: async () => measureTypeScriptErrors(projectDir),
         guard: async () => ({ passed: true }),
       })
+      run = await runtime.setStatus(run, 'completed')
 
       expect(run.baseline.metricValue).toBe(2)
+      expect(run.status).toBe('completed')
       expect(run.iterations.map(iteration => iteration.decision)).toEqual(['keep', 'discard', 'keep'])
       expect(run.iterations.map(iteration => iteration.metricValue)).toEqual([1, 2, 0])
       expect(rollback).toEqual(expect.objectContaining({ applied: true, destructive: false }))
@@ -281,6 +313,10 @@ describe('long run runtime', () => {
       const results = await readFile(join(run.artifactDir, 'results.tsv'), 'utf8')
       expect(results).toContain('bad-rewrite')
       expect(results).toContain('discard')
+      const runtimeLog = await readFile(join(run.artifactDir, 'runtime.log'), 'utf8')
+      expect(runtimeLog).toContain('status=paused')
+      expect(runtimeLog).toContain('resume=context_compaction')
+      expect(runtimeLog).toContain('status=completed')
     } finally {
       await rm(projectDir, { recursive: true, force: true })
       await rm(artifactRoot, { recursive: true, force: true })
@@ -673,6 +709,93 @@ describe('work state persistence', () => {
         summary: 'test is still running',
       }))
       await secondStore.flush()
+    } finally {
+      await rm(storageDir, { recursive: true, force: true })
+    }
+  })
+
+  test('builds a work panel from the same persisted state used by event and task records', async () => {
+    const { WorkStateStore, RuntimeEventBus, buildWorkThreadPanelPlan } = await import('../dist/runtime/index.js')
+    const storageDir = await mkdtemp(join(tmpdir(), 'her-text-work-panel-'))
+    try {
+      const events = new RuntimeEventBus()
+      const seen = []
+      events.subscribe(event => seen.push(event.name))
+      const store = new WorkStateStore(storageDir)
+      await store.initialize()
+      const thread = await store.createThread('Panel consistency task', { id: 'thread-panel', now: 9000 })
+      const plan = {
+        id: 'plan-panel',
+        title: 'Panel plan',
+        summary: 'Show the persisted work state',
+        createdAt: 9000,
+        updatedAt: 9100,
+        steps: [
+          { id: 'step-read', title: 'Read', description: 'Read context', status: 'completed', result: 'Read done' },
+          { id: 'step-test', title: 'Verify', description: 'Run verification', status: 'running' },
+        ],
+      }
+      await store.saveThread({
+        ...thread,
+        plan,
+        currentStep: plan.steps[1],
+        observations: [{
+          id: 'obs-panel',
+          turnIndex: 1,
+          toolName: 'run_tests',
+          kind: 'command',
+          status: 'success',
+          summary: 'verification still running',
+          createdAt: 9150,
+        }],
+        nextActions: [{
+          id: 'next-panel',
+          title: 'Finish verification',
+          reason: 'panel test',
+          stepId: 'step-test',
+          createdAt: 9200,
+        }],
+      }, 'panel state updated')
+      events.emit({
+        name: 'task.plan.updated',
+        threadId: thread.id,
+        taskId: 'task-panel',
+        payload: {
+          plan,
+          taskDescription: thread.goal,
+          originalUserInput: 'show panel',
+        },
+      })
+      await store.flush()
+
+      const restored = new WorkStateStore(storageDir)
+      await restored.initialize()
+      const panel = buildWorkThreadPanelPlan(restored.getSnapshot(), undefined, [{
+        id: 'run-panel',
+        goal: 'Panel consistency task',
+        metric: 'errors',
+        baseline: 2,
+        bestResult: 0,
+        latestResult: 0,
+        iterationCount: 3,
+        status: 'completed',
+      }])
+
+      expect(seen).toContain('task.plan.updated')
+      expect(panel.currentThread).toEqual(expect.objectContaining({
+        id: 'thread-panel',
+        bucket: 'active',
+        focused: true,
+      }))
+      expect(panel.steps.map(step => step.id)).toEqual(['step-read', 'step-test'])
+      expect(panel.currentStep).toBe('Verify')
+      expect(panel.lastObservation).toBe('verification still running')
+      expect(panel.nextAction).toBe('Finish verification')
+      expect(panel.longRuns[0]).toEqual(expect.objectContaining({
+        goal: 'Panel consistency task',
+        iterationCount: 3,
+      }))
+      await restored.flush()
     } finally {
       await rm(storageDir, { recursive: true, force: true })
     }
