@@ -151,6 +151,37 @@ describe('runtime interaction routing', () => {
       status: 'active',
     }))
   })
+
+  test('uses emotional task hints for work admission when original wording is colloquial', async () => {
+    const { InteractionRuntime } = await import('../dist/runtime/index.js')
+    const runtime = new InteractionRuntime()
+    const result = runtime.resolve({
+      userInput: '在桌面给我建一个陈志豪.md',
+      emotionalTurn: {
+        userInput: '在桌面给我建一个陈志豪.md',
+        replyText: '好呀，我这就帮你建一个，等我一下下哈。',
+        emotionTag: 'happy',
+        intentHints: ['在桌面创建一个名为“陈志豪.md”的文件'],
+        createdAt: Date.now(),
+      },
+      timestamp: Date.now(),
+      workState: {
+        activeThreads: [],
+        pausedThreads: [],
+        abandonedThreads: [],
+        completedThreads: [],
+        updatedAt: Date.now(),
+      },
+      outputState: { speaking: false, muted: false },
+    })
+
+    expect(result.intents).toEqual([
+      expect.objectContaining({
+        kind: 'work.start',
+        workDescription: '在桌面创建一个名为“陈志豪.md”的文件',
+      }),
+    ])
+  })
 })
 
 describe('tool router', () => {

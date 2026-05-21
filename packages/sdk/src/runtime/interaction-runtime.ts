@@ -45,7 +45,7 @@ const WORK_CORRECTION_PATTERNS = [
 ]
 
 const WORK_NEW_PATTERNS = [
-  /(帮我|给我|去|打开|创建|修改|修复|查一下|看一下|运行|执行|写一个|做一个)/,
+  /(帮我|给我|去|打开|创建|新建|建一个|建立|修改|修复|查一下|看一下|运行|执行|写一个|做一个)/,
 ]
 
 const WORK_PARALLEL_PATTERNS = [
@@ -55,6 +55,8 @@ const WORK_PARALLEL_PATTERNS = [
 export class InteractionRuntime {
   resolve(input: InteractionResolveInput): InteractionResolveResult {
     const text = input.userInput.trim()
+    const workHintText = input.emotionalTurn?.intentHints?.join('\n') ?? ''
+    const workAdmissionText = [text, workHintText].filter(Boolean).join('\n')
     const intents: InteractionIntent[] = []
     const focusedThreadId = input.workState.focusedThreadId
     const hasActiveWork = input.workState.activeThreads.length > 0
@@ -95,7 +97,7 @@ export class InteractionRuntime {
       }
     }
 
-    if (matchesAny(text, WORK_PAUSE_PATTERNS) && matchesAny(text, WORK_NEW_PATTERNS) && hasActiveWork) {
+    if (matchesAny(text, WORK_PAUSE_PATTERNS) && matchesAny(workAdmissionText, WORK_NEW_PATTERNS) && hasActiveWork) {
       intents.push({
         kind: 'work.pause',
         targetThreadId: focusedThreadId,
@@ -161,8 +163,8 @@ export class InteractionRuntime {
       }
     }
 
-    if (matchesAny(text, WORK_NEW_PATTERNS)) {
-      const startParallel = hasActiveWork && matchesAny(text, WORK_PARALLEL_PATTERNS)
+    if (matchesAny(workAdmissionText, WORK_NEW_PATTERNS)) {
+      const startParallel = hasActiveWork && matchesAny(workAdmissionText, WORK_PARALLEL_PATTERNS)
       intents.push({
         kind: startParallel ? 'work.start_parallel' : hasActiveWork ? 'work.queue_new' : 'work.start',
         workDescription: input.emotionalTurn?.intentHints?.[0] || text,
