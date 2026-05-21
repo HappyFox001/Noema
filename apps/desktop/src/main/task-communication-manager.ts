@@ -39,12 +39,10 @@ interface TaskCommunicationState {
   lastDisplayedAt: number
   lastStepId?: string
   lastStepStatus?: string
-  spokenProgressStepIds: Set<string>
   displayedKeys: Set<string>
 }
 
 const DISPLAY_INTERVAL_MS = 8000
-const PROGRESS_SPEECH_INTERVAL_MS = 12000
 
 export class TaskCommunicationManager {
   private turn: TaskCommunicationTurn | null = null
@@ -135,14 +133,10 @@ export class TaskCommunicationManager {
         speak: false,
       })
     } else if (step.status === 'completed') {
-      const shouldSpeak = this.shouldSpeakProgress(step)
-      if (shouldSpeak) {
-        this.state.spokenProgressStepIds.add(step.id)
-      }
-      this.emitStatus('Working', shouldSpeak ? `这一步处理好了：${step.title}` : undefined, shouldSpeak ? 'info' : 'silent', {
+      this.emitStatus('Working', undefined, 'silent', {
         key,
         display: false,
-        speak: shouldSpeak,
+        speak: false,
       })
     } else if (step.status === 'failed') {
       this.emitStatus('Working', `这个步骤没有成功：${step.title}`, 'important', {
@@ -188,17 +182,6 @@ export class TaskCommunicationManager {
       display: false,
       forceDisplay: true,
     })
-  }
-
-  private shouldSpeakProgress(step: TaskStep): boolean {
-    if (this.state.spokenProgressStepIds.has(step.id)) {
-      return false
-    }
-
-    const now = Date.now()
-    const elapsedSinceSpeech = now - this.state.lastSpeechCompletedAt
-
-    return elapsedSinceSpeech >= PROGRESS_SPEECH_INTERVAL_MS
   }
 
   private emitStatus(
@@ -319,7 +302,6 @@ export class TaskCommunicationManager {
       taskStartedAt: Date.now(),
       lastSpeechCompletedAt: Date.now(),
       lastDisplayedAt: 0,
-      spokenProgressStepIds: new Set(),
       displayedKeys: new Set(),
     }
   }
