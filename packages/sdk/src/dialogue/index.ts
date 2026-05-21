@@ -38,7 +38,7 @@ import { getWorkFeedbackRule, type RuntimeEventBus, type RuntimeJobManager, type
 import { EmotionalRuntime } from '../runtime/emotional-runtime.js'
 import { InteractionRuntime } from '../runtime/interaction-runtime.js'
 import type { EmotionalTurnRecord } from '../runtime/boundaries.js'
-import type { InteractionIntent, InteractionResolveResult } from '../runtime/interaction.js'
+import type { InteractionResolveResult } from '../runtime/interaction.js'
 import type { WorkStateStore } from '../runtime/work-store.js'
 import type { WorkThread } from '../runtime/work-state.js'
 
@@ -405,30 +405,26 @@ export class DialogueOrchestrator {
 
       let combinedReply = this.transformText('memory', firstResult.reply, pluginRuntime)
 
-      const workStartIntent = this.selectWorkStartIntent(interaction)
-      if (firstResult.hasTask && firstResult.taskDescription && firstResult.taskIntent && turnContext.hasTools && workStartIntent) {
+      if (firstResult.hasTask && firstResult.taskDescription && firstResult.taskIntent && turnContext.hasTools) {
         throwIfAborted(options?.signal)
         await this.applyPreStartWorkIntents(interaction)
         const taskContextItems: TaskContextItem[] = await this.resolveTaskContext(
           input.text,
-          workStartIntent.workDescription || firstResult.taskDescription,
+          firstResult.taskDescription,
           pluginRuntime
         )
         taskContextItems.push(buildEmotionalTurnTaskContext(emotionalOutput.record))
         throwIfAborted(options?.signal)
         await this.pluginManager.notifyTaskStart({
           runtime: pluginRuntime,
-          taskDescription: workStartIntent.workDescription || firstResult.taskDescription,
+          taskDescription: firstResult.taskDescription,
           originalUserInput: input.text,
         })
-        await options?.onTaskStart?.(workStartIntent.workDescription || firstResult.taskDescription)
+        await options?.onTaskStart?.(firstResult.taskDescription)
         console.log('🚀 Reply 已流式输出完毕，开始执行任务...\n')
 
         this.startDetachedTaskRun({
-          taskIntent: {
-            ...firstResult.taskIntent,
-            description: workStartIntent.workDescription || firstResult.taskIntent.description,
-          },
+          taskIntent: firstResult.taskIntent,
           originalUserInput: input.text,
           taskContextItems,
           pluginRuntime,
@@ -439,7 +435,7 @@ export class DialogueOrchestrator {
           role: 'tool',
           content: 'task_runtime_accepted',
           toolResults: [{
-            task: workStartIntent.workDescription || firstResult.taskDescription,
+            task: firstResult.taskDescription,
             success: true,
             summary: 'Task accepted and running in the work runtime.',
             iterations: 0,
@@ -592,14 +588,6 @@ export class DialogueOrchestrator {
       },
     })
     return result
-  }
-
-  private selectWorkStartIntent(interaction: InteractionResolveResult): InteractionIntent | null {
-    return interaction.intents.find(intent =>
-      intent.kind === 'work.start' ||
-      intent.kind === 'work.queue_new' ||
-      intent.kind === 'work.start_parallel'
-    ) ?? null
   }
 
   private async applyPreStartWorkIntents(interaction: InteractionResolveResult): Promise<void> {

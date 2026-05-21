@@ -76,7 +76,7 @@ describe('runtime interaction routing', () => {
     ])
   })
 
-  test('switching tasks pauses current work and preserves the new work request', async () => {
+  test('switching tasks only pauses current work while task admission remains outside interaction routing', async () => {
     const { InteractionRuntime } = await import('../dist/runtime/index.js')
     const runtime = new InteractionRuntime()
     const result = runtime.resolve({
@@ -93,14 +93,13 @@ describe('runtime interaction routing', () => {
       outputState: { speaking: false, muted: false },
     })
 
-    expect(result.interruptionKind).toBe('new_work')
+    expect(result.interruptionKind).toBe('pause_work')
     expect(result.intents).toEqual([
       expect.objectContaining({ kind: 'work.pause', targetThreadId: 'thread-current' }),
-      expect.objectContaining({ kind: 'work.queue_new', workDescription: '先别做这个，帮我看另一个问题' }),
     ])
   })
 
-  test('parallel task requests resolve to start_parallel while preserving active work', async () => {
+  test('parallel task wording is not admitted by the interaction protocol without a task-layer offer', async () => {
     const { InteractionRuntime } = await import('../dist/runtime/index.js')
     const runtime = new InteractionRuntime()
     const result = runtime.resolve({
@@ -117,11 +116,10 @@ describe('runtime interaction routing', () => {
       outputState: { speaking: false, muted: false },
     })
 
-    expect(result.interruptionKind).toBe('new_work')
+    expect(result.interruptionKind).toBe('none')
     expect(result.intents).toEqual([
       expect.objectContaining({
-        kind: 'work.start_parallel',
-        workDescription: '同时帮我运行另一个检查',
+        kind: 'chat',
       }),
     ])
   })
@@ -152,36 +150,6 @@ describe('runtime interaction routing', () => {
     }))
   })
 
-  test('uses emotional task hints for work admission when original wording is colloquial', async () => {
-    const { InteractionRuntime } = await import('../dist/runtime/index.js')
-    const runtime = new InteractionRuntime()
-    const result = runtime.resolve({
-      userInput: '在桌面给我建一个陈志豪.md',
-      emotionalTurn: {
-        userInput: '在桌面给我建一个陈志豪.md',
-        replyText: '好呀，我这就帮你建一个，等我一下下哈。',
-        emotionTag: 'happy',
-        intentHints: ['在桌面创建一个名为“陈志豪.md”的文件'],
-        createdAt: Date.now(),
-      },
-      timestamp: Date.now(),
-      workState: {
-        activeThreads: [],
-        pausedThreads: [],
-        abandonedThreads: [],
-        completedThreads: [],
-        updatedAt: Date.now(),
-      },
-      outputState: { speaking: false, muted: false },
-    })
-
-    expect(result.intents).toEqual([
-      expect.objectContaining({
-        kind: 'work.start',
-        workDescription: '在桌面创建一个名为“陈志豪.md”的文件',
-      }),
-    ])
-  })
 })
 
 describe('tool router', () => {
@@ -393,7 +361,7 @@ describe('emotional runtime', () => {
     })
   })
 
-  test('lets interaction runtime decide whether an emotional task hint starts work', async () => {
+  test('keeps emotional task hints as task-layer information instead of interaction admission', async () => {
     const { EmotionalRuntime, InteractionRuntime } = await import('../dist/runtime/index.js')
     const emotional = new EmotionalRuntime()
     const interaction = new InteractionRuntime()
@@ -419,10 +387,10 @@ describe('emotional runtime', () => {
 
     expect(result.intents).toEqual([
       expect.objectContaining({
-        kind: 'work.start',
-        workDescription: '修复测试',
+        kind: 'chat',
       }),
     ])
+    expect(output.record.intentHints).toEqual(['修复测试'])
   })
 
   test('keeps ordinary chat out of work admission after emotional output', async () => {

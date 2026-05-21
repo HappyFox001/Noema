@@ -10,14 +10,11 @@ export type InteractionIntentKind =
   | 'speech.mute'
   | 'speech.unmute'
   | 'speech.repeat'
-  | 'work.start'
   | 'work.resume'
   | 'work.pause'
   | 'work.modify'
   | 'work.status'
   | 'work.cancel'
-  | 'work.queue_new'
-  | 'work.start_parallel'
 
 export type UserInterruptionKind =
   | 'none'
@@ -27,7 +24,6 @@ export type UserInterruptionKind =
   | 'correction'
   | 'pause_work'
   | 'cancel_work'
-  | 'new_work'
 
 export interface InteractionIntent {
   kind: InteractionIntentKind
@@ -56,4 +52,3 @@ export interface WorkFeedbackInput {
   outputState: OutputStateSnapshot
   timestamp: number
 }
-

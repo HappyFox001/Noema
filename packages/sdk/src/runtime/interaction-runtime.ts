@@ -44,19 +44,9 @@ const WORK_CORRECTION_PATTERNS = [
   /(不对|错了|路径错|方向错|应该是|改成|换成)/,
 ]
 
-const WORK_NEW_PATTERNS = [
-  /(帮我|给我|去|打开|创建|新建|建一个|建立|修改|修复|查一下|看一下|运行|执行|写一个|做一个)/,
-]
-
-const WORK_PARALLEL_PATTERNS = [
-  /(同时|并行|另开|另外开|parallel|in parallel)/i,
-]
-
 export class InteractionRuntime {
   resolve(input: InteractionResolveInput): InteractionResolveResult {
     const text = input.userInput.trim()
-    const workHintText = input.emotionalTurn?.intentHints?.join('\n') ?? ''
-    const workAdmissionText = [text, workHintText].filter(Boolean).join('\n')
     const intents: InteractionIntent[] = []
     const focusedThreadId = input.workState.focusedThreadId
     const hasActiveWork = input.workState.activeThreads.length > 0
@@ -93,23 +83,6 @@ export class InteractionRuntime {
       })
       return {
         interruptionKind: 'cancel_work',
-        intents,
-      }
-    }
-
-    if (matchesAny(text, WORK_PAUSE_PATTERNS) && matchesAny(workAdmissionText, WORK_NEW_PATTERNS) && hasActiveWork) {
-      intents.push({
-        kind: 'work.pause',
-        targetThreadId: focusedThreadId,
-        reason: 'User asked to pause current work before starting another task.',
-      })
-      intents.push({
-        kind: 'work.queue_new',
-        workDescription: input.emotionalTurn?.intentHints?.[0] || text,
-        reason: 'User requested new work while pausing the current thread.',
-      })
-      return {
-        interruptionKind: 'new_work',
         intents,
       }
     }
@@ -159,23 +132,6 @@ export class InteractionRuntime {
       })
       return {
         interruptionKind: 'correction',
-        intents,
-      }
-    }
-
-    if (matchesAny(workAdmissionText, WORK_NEW_PATTERNS)) {
-      const startParallel = hasActiveWork && matchesAny(workAdmissionText, WORK_PARALLEL_PATTERNS)
-      intents.push({
-        kind: startParallel ? 'work.start_parallel' : hasActiveWork ? 'work.queue_new' : 'work.start',
-        workDescription: input.emotionalTurn?.intentHints?.[0] || text,
-        reason: hasActiveWork
-          ? startParallel
-            ? 'User requested another work thread to start in parallel.'
-            : 'User requested new work while another thread is active.'
-          : 'User requested new work.',
-      })
-      return {
-        interruptionKind: hasActiveWork ? 'new_work' : 'none',
         intents,
       }
     }
