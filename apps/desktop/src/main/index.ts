@@ -64,12 +64,8 @@ import {
   createVADAnalyzer,
   VADAnalyzer,
   TurnController,
-  SmartTurnAnalyzer,
-  type VADParams,
-  type EndpointingConfig,
   type TurnControllerEvents,
   type UserTurnStoppedParams,
-  type VoiceConfidenceProvider,
   VoiceGraphPipeline,
   type Frame,
   type FrameObserver,
@@ -95,8 +91,6 @@ import {
   type WorkSurfaceFrame,
 } from '@her-text/sdk'
 import { discoverRuntimePlugins, invokeRuntimePluginAdminAction } from './plugin-loader.js'
-import { initializeSileroVAD, isSileroVADAvailable } from './silero-vad-helper.js'
-import { initializeSmartTurn, isSmartTurnAvailable } from './smart-turn-helper.js'
 import {
   initializePersonalityManager,
   getPersonalityManager,
@@ -131,6 +125,12 @@ import {
   resizeWindowAroundCenter,
 } from './window-manager.js'
 import { registerLogIpcHandlers } from './ipc-handlers.js'
+import {
+  DEFAULT_VAD_CONFIG,
+  FALLBACK_ENDPOINTING_CONFIG,
+  LOW_LATENCY_VOICE_CONFIG,
+  VoiceRuntimeController,
+} from './voice-runtime-controller.js'
 const DEV_SERVER_URL = 'http://127.0.0.1:5173'
 
 type InterruptionReason = 'vad_start' | 'transcript_start' | 'manual' | 'provider_switch'
@@ -1059,100 +1059,8 @@ class FrameTraceObserver implements FrameObserver<Frame> {
 const frameTraceObserver = new FrameTraceObserver()
 
 
-const DEFAULT_VAD_CONFIG: Partial<VADParams> = {
-  confidence: 0.7,
-  startSecs: 0.2,
-  stopSecs: 0.15,
-  minVolume: 0.02,
-  sampleRate: 16000,
-}
-
-const LOW_LATENCY_VOICE_CONFIG = {
-  smartTurnAnalyzeIntervalMs: 100,
-  smartTurnSttTimeoutMs: 800,
-  smartTurnStopTimeoutMs: 700,
-  fallbackUserSpeechTimeoutMs: 400,
-  fallbackSttTimeoutMs: 800,
-  fallbackUserTurnStopTimeoutMs: 3000,
-  asrFallbackCommitGraceMs: 120,
-} as const
-
-let sileroVADProvider: VoiceConfidenceProvider | null = null
-let sileroVADInitPromise: Promise<VoiceConfidenceProvider | null> | null = null
-
-
-async function getSileroVADProvider(): Promise<VoiceConfidenceProvider | null> {
-  if (sileroVADProvider) {
-    return sileroVADProvider
-  }
-
-  if (sileroVADInitPromise) {
-    return sileroVADInitPromise
-  }
-
-  sileroVADInitPromise = (async () => {
-    try {
-      if (!isSileroVADAvailable()) {
-        console.log('[VAD] Silero VAD not available, falling back to RMS VAD')
-        return null
-      }
-
-      console.log('[VAD] Initializing Silero VAD...')
-      sileroVADProvider = await initializeSileroVAD(16000)
-      console.log('[VAD] Silero VAD initialized successfully')
-      return sileroVADProvider
-    } catch (error) {
-      console.error('[VAD] Failed to initialize Silero VAD:', error)
-      console.log('[VAD] Falling back to RMS VAD')
-      return null
-    }
-  })()
-
-  return sileroVADInitPromise
-}
-
-let smartTurnAnalyzer: SmartTurnAnalyzer | null = null
-let smartTurnInitPromise: Promise<SmartTurnAnalyzer | null> | null = null
-
-
-async function getSmartTurnAnalyzer(): Promise<SmartTurnAnalyzer | null> {
-  if (smartTurnAnalyzer) {
-    return smartTurnAnalyzer
-  }
-
-  if (smartTurnInitPromise) {
-    return smartTurnInitPromise
-  }
-
-  smartTurnInitPromise = (async () => {
-    try {
-      if (!isSmartTurnAvailable()) {
-        console.log('[SmartTurn] Smart Turn not available, falling back to fixed timeout')
-        return null
-      }
-
-      console.log('[SmartTurn] Initializing Smart Turn...')
-      smartTurnAnalyzer = await initializeSmartTurn(16000)
-      console.log('[SmartTurn] Smart Turn initialized successfully')
-      return smartTurnAnalyzer
-    } catch (error) {
-      console.error('[SmartTurn] Failed to initialize Smart Turn:', error)
-      console.log('[SmartTurn] Falling back to fixed timeout')
-      return null
-    }
-  })()
-
-  return smartTurnInitPromise
-}
-
-
-const FALLBACK_ENDPOINTING_CONFIG: Partial<EndpointingConfig> = {
-  userSpeechTimeout: LOW_LATENCY_VOICE_CONFIG.fallbackUserSpeechTimeoutMs,
-  sttTimeoutMs: LOW_LATENCY_VOICE_CONFIG.fallbackSttTimeoutMs,
-  userTurnStopTimeout: LOW_LATENCY_VOICE_CONFIG.fallbackUserTurnStopTimeoutMs,
-}
-
 const voiceGraphPipeline = new VoiceGraphPipeline()
+const voiceRuntimeController = new VoiceRuntimeController()
 
 
 class StreamingASRSession {
@@ -1244,7 +1152,7 @@ class StreamingASRSession {
     })
     await this.asr.connect()
 
-    const sileroProvider = await getSileroVADProvider()
+    const sileroProvider = await voiceRuntimeController.getSileroVADProvider()
     let vadAnalyzer: VADAnalyzer
     if (sileroProvider) {
       this.log('Using Silero VAD (neural network)')
@@ -1254,7 +1162,7 @@ class StreamingASRSession {
       vadAnalyzer = createVADAnalyzer(DEFAULT_VAD_CONFIG)
     }
 
-    const smartTurn = await getSmartTurnAnalyzer()
+    const smartTurn = await voiceRuntimeController.getSmartTurnAnalyzer()
 
     if (smartTurn) {
       this.log('Using Pipecat TurnAnalyzer Smart Turn endpointing')
@@ -2039,10 +1947,7 @@ async function downloadMissingLocalModels(): Promise<LocalModelStatus[]> {
     maxBuffer: 1024 * 1024,
   })
 
-  sileroVADProvider = null
-  sileroVADInitPromise = null
-  smartTurnAnalyzer = null
-  smartTurnInitPromise = null
+  voiceRuntimeController.resetLocalAnalyzers()
 
   return getLocalModelStatuses()
 }
