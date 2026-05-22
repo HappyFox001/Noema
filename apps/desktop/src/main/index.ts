@@ -51,7 +51,7 @@ console.log('[Env] LLM_1_BASE_URL:', process.env.LLM_1_BASE_URL || '✗ (not set
 console.log('[Env] TTS_1_API_KEY:', process.env.TTS_1_API_KEY ? '✓ (set)' : '✗ (not set)')
 console.log('[Env] ASR_1_API_KEY:', process.env.ASR_1_API_KEY ? '✓ (set)' : '✗ (not set)')
 
-import { app, BrowserWindow, ipcMain, systemPreferences, shell, dialog, nativeImage, Menu, session } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, dialog, nativeImage, Menu, session } from 'electron'
 import {
   type HerTextSDK,
   createSTTProvider,
@@ -133,6 +133,7 @@ import { registerConversationIpcHandlers } from './conversation-ipc-handlers.js'
 import { registerModelIpcHandlers } from './model-ipc-handlers.js'
 import { registerPersonalityIpcHandlers } from './personality-ipc-handlers.js'
 import { registerPluginIpcHandlers } from './plugin-ipc-handlers.js'
+import { registerSpeechIpcHandlers } from './speech-ipc-handlers.js'
 import {
   DEFAULT_VAD_CONFIG,
   FALLBACK_ENDPOINTING_CONFIG,
@@ -2040,6 +2041,24 @@ registerConversationIpcHandlers(ipcMain, {
     await interactiveInputStore?.clear()
   },
 })
+registerSpeechIpcHandlers(ipcMain, {
+  getASRConfig: getActiveASRConfig,
+  normalizeASRModelName,
+  getStreamingSession: () => streamingASRSession,
+  createStreamingSession: () => new StreamingASRSession(),
+  setStreamingSession: (session) => {
+    streamingASRSession = session as StreamingASRSession
+  },
+  sendToRenderer: (channel, ...args) => {
+    mainWindow?.webContents.send(channel, ...args)
+  },
+  runVoiceConversationTurn: async (text) => {
+    await runConversationTurn(text, appSettings.voiceOutputEnabled, 'voice')
+  },
+  isTaskRunActive,
+  interruptCurrentOutputOnly,
+  cancelCurrentTurn,
+})
 registerWindowIpcHandlers(ipcMain, {
   compactWindowSize: COMPACT_WINDOW_SIZE,
   settingsWindowSize: SETTINGS_WINDOW_SIZE,
@@ -3427,145 +3446,6 @@ async function runConversationTurn(
     return { success: false, error: error.message }
   }
 }
-
-ipcMain.handle('speech:transcribe', async (_, samples: number[]) => {
-  try {
-    const asrConfig = getActiveASRConfig()
-    const apiKey = asrConfig?.apiKey?.trim()
-    if (!apiKey) {
-      throw new Error('QWEN_API_KEY is not configured. Please set it in Settings > System > ASR.')
-    }
-
-    const baseTransport = new NodeRealtimeWebSocketTransport()
-    const transport = new ReconnectingWebSocketTransport(baseTransport, {
-      maxRetries: 3,
-      initialRetryDelayMs: 500,
-    })
-    const asr = createSTTProvider({
-      kind: 'qwen-realtime',
-      config: {
-        apiKey,
-        model: normalizeASRModelName(asrConfig?.modelName),
-        sampleRate: 16000,
-        language: 'zh',
-      },
-      transport,
-    })
-
-    try {
-      const text = await asr.transcribe(Int16Array.from(samples))
-      return { success: true, text }
-    } finally {
-      await asr.close().catch(() => undefined)
-    }
-  } catch (error: any) {
-    console.error('[Speech] Transcription failed:', error)
-    return { success: false, error: error.message }
-  }
-})
-
-ipcMain.handle('speech:stream:start', async () => {
-  try {
-    if (!streamingASRSession) {
-      streamingASRSession = new StreamingASRSession()
-    }
-
-    await streamingASRSession.start({
-      onTranscript: (text) => {
-        mainWindow?.webContents.send('speech:transcript', text)
-      },
-      onUserText: async (text) => {
-        await runConversationTurn(text, appSettings.voiceOutputEnabled, 'voice')
-      },
-      onStateChange: (state) => {
-        mainWindow?.webContents.send('speech:state', state)
-      },
-      onSpeechStart: () => {
-        mainWindow?.webContents.send('speech:user-speaking')
-      },
-      onInterruption: (reason) => {
-        const hasActiveTask = isTaskRunActive()
-        console.log(`[Speech] Interruption detected, ${hasActiveTask ? 'stopping output only' : 'cancelling turn'}, reason=${reason}`)
-
-        void (hasActiveTask
-          ? interruptCurrentOutputOnly({ closeTTS: true, reason })
-          : cancelCurrentTurn({ closeTTS: true, reason }))
-      }
-    })
-
-    return { success: true }
-  } catch (error: any) {
-    console.error('[Speech] Failed to start streaming:', error)
-    return { success: false, error: error.message }
-  }
-})
-
-ipcMain.on('speech:stream:append', (_, samples: number[] | Int16Array) => {
-  if (!streamingASRSession) {
-    console.error('[Speech] Failed to append streaming audio: ASR stream is not started')
-    return
-  }
-
-  void streamingASRSession.append(samples).catch((error: any) => {
-    if (error?.message === 'WebSocket connection aborted' ||
-        error?.message === 'Qwen STT WebSocket closed') {
-      return
-    }
-    console.error('[Speech] Failed to append streaming audio:', error)
-  })
-})
-
-ipcMain.handle('speech:stream:stop', async () => {
-  try {
-    await streamingASRSession?.stop()
-    return { success: true }
-  } catch (error: any) {
-    console.error('[Speech] Failed to stop streaming:', error)
-    return { success: false, error: error.message }
-  }
-})
-
-ipcMain.handle('permissions:getMicrophoneStatus', async () => {
-  if (process.platform !== 'darwin') {
-    return { success: true, status: 'granted' }
-  }
-
-  try {
-    return {
-      success: true,
-      status: systemPreferences.getMediaAccessStatus('microphone')
-    }
-  } catch (error: any) {
-    return { success: false, error: error.message }
-  }
-})
-
-ipcMain.handle('permissions:requestMicrophone', async () => {
-  if (process.platform !== 'darwin') {
-    return { success: true, granted: true }
-  }
-
-  try {
-    const currentStatus = systemPreferences.getMediaAccessStatus('microphone')
-    if (currentStatus === 'granted') {
-      return { success: true, granted: true, status: currentStatus }
-    }
-
-    if (currentStatus === 'denied' || currentStatus === 'restricted') {
-      await shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone')
-      return { success: true, granted: false, status: currentStatus, openedSettings: true }
-    }
-
-    const granted = await systemPreferences.askForMediaAccess('microphone')
-    return {
-      success: true,
-      granted,
-      status: systemPreferences.getMediaAccessStatus('microphone')
-    }
-  } catch (error: any) {
-    return { success: false, error: error.message }
-  }
-})
 
 ipcMain.handle('settings:update', async (_, partial: Partial<AppSettings>) => {
   const previous = {
