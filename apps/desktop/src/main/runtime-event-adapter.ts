@@ -3,6 +3,62 @@
  */
 import { logTaskRuntimeEvent } from './runtime-event-log.js'
 
+export const RUNTIME_EVENT_ADAPTER_FIXTURES = [
+  {
+    name: 'task.started',
+    payload: { taskDescription: 'Fixture task', originalUserInput: 'start fixture task' },
+  },
+  {
+    name: 'task.plan.updated',
+    taskId: 'fixture-task',
+    payload: {
+      taskDescription: 'Fixture task',
+      originalUserInput: 'start fixture task',
+      plan: {
+        title: 'Fixture plan',
+        steps: [{ id: 'step-1', title: 'Inspect state', status: 'running' }],
+      },
+    },
+  },
+  {
+    name: 'task.step.updated',
+    taskId: 'fixture-task',
+    payload: {
+      taskDescription: 'Fixture task',
+      originalUserInput: 'start fixture task',
+      step: { id: 'step-1', title: 'Inspect state', status: 'completed' },
+      plan: {
+        title: 'Fixture plan',
+        steps: [{ id: 'step-1', title: 'Inspect state', status: 'completed' }],
+      },
+    },
+  },
+  {
+    name: 'work.signal.emitted',
+    taskId: 'fixture-task',
+    payload: {
+      signal: {
+        id: 'signal-1',
+        threadId: 'thread-1',
+        kind: 'progress',
+        severity: 'ambient',
+        facts: { taskDescription: 'Fixture task' },
+        createdAt: 0,
+      },
+    },
+  },
+  {
+    name: 'task.completed',
+    taskId: 'fixture-task',
+    payload: { finalMessage: 'Fixture done', iterations: 1, toolCalls: 0 },
+  },
+  {
+    name: 'task.failed',
+    taskId: 'fixture-task',
+    payload: { finalMessage: 'Fixture failed', error: 'Fixture error', iterations: 1, toolCalls: 0 },
+  },
+] as const
+
 type RuntimeConversationFrame =
   | { type: 'control.task_end'; success: boolean; summary: string; error?: string }
 
