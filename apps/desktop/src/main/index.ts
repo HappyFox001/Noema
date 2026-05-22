@@ -58,7 +58,6 @@ import { app, BrowserWindow, ipcMain, systemPreferences, shell, dialog, nativeIm
 import {
   type HerTextSDK,
   createSTTProvider,
-  createTTSProvider,
   type STTProvider,
   type TTSProvider,
   createVADAnalyzer,
@@ -136,6 +135,8 @@ import {
   FALLBACK_ENDPOINTING_CONFIG,
   LOW_LATENCY_VOICE_CONFIG,
   VoiceRuntimeController,
+  createTTSProviderForConfig,
+  normalizeTTSModelName,
 } from './voice-runtime-controller.js'
 const DEV_SERVER_URL = 'http://127.0.0.1:5173'
 
@@ -2318,14 +2319,6 @@ function normalizeASRModelName(modelName?: string): string {
   return normalized
 }
 
-function normalizeTTSModelName(config: TTSModelConfig | null): string {
-  const modelName = config?.modelName?.trim()
-  if (modelName) {
-    return modelName
-  }
-  return getTTSProviderCatalogEntry(config?.provider).defaultModel
-}
-
 function normalizeASRLanguage(config: ASRModelConfig | null): string {
   return config?.language?.trim() || getASRProviderCatalogEntry(config?.provider).defaultLanguage
 }
@@ -2377,58 +2370,6 @@ function createASRProviderForConfig(
       fallbackTranscriptCommitGraceMs: LOW_LATENCY_VOICE_CONFIG.asrFallbackCommitGraceMs,
     },
     transport: reconnectingTransport,
-  })
-}
-
-function createTTSProviderForConfig(config: TTSModelConfig | null): TTSProvider {
-  if (!config?.apiKey?.trim()) {
-    throw new Error('TTS API key is not configured')
-  }
-
-  const providerEntry = getTTSProviderCatalogEntry(config.provider)
-  if (providerEntry.protocol === 'openai-speech') {
-    return createTTSProvider({
-      kind: 'openai-speech',
-      config: {
-        apiKey: config.apiKey,
-        baseUrl: config.baseUrl || providerEntry.defaultBaseUrl,
-        model: normalizeTTSModelName(config),
-        voiceId: config.voiceId || providerEntry.defaultVoiceId,
-        sampleRate: config.sampleRate || providerEntry.sampleRate,
-      },
-    })
-  }
-
-  if (providerEntry.protocol === 'elevenlabs-http') {
-    return createTTSProvider({
-      kind: 'elevenlabs-http',
-      config: {
-        apiKey: config.apiKey,
-        baseUrl: config.baseUrl || providerEntry.defaultBaseUrl,
-        model: normalizeTTSModelName(config),
-        voiceId: config.voiceId,
-        sampleRate: config.sampleRate || providerEntry.sampleRate,
-        language: config.language || providerEntry.defaultLanguage,
-        extra: config.extra as any,
-      },
-    })
-  }
-
-  return createTTSProvider({
-    kind: 'fish-realtime',
-    config: {
-      apiKey: config.apiKey,
-      voiceId: config.voiceId,
-      model: normalizeTTSModelName(config),
-      format: config.format || 'pcm',
-      sampleRate: config.sampleRate || providerEntry.sampleRate,
-      latency: 'balanced',
-      normalize: true,
-      prosody: {
-        speed: 1.0,
-        volume: 0,
-      },
-    },
   })
 }
 
