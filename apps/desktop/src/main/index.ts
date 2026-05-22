@@ -129,6 +129,7 @@ import {
   registerSystemIpcHandlers,
   registerWindowIpcHandlers,
 } from './ipc-handlers.js'
+import { registerConversationIpcHandlers } from './conversation-ipc-handlers.js'
 import { registerModelIpcHandlers } from './model-ipc-handlers.js'
 import { registerPersonalityIpcHandlers } from './personality-ipc-handlers.js'
 import { registerPluginIpcHandlers } from './plugin-ipc-handlers.js'
@@ -2026,6 +2027,19 @@ registerSystemIpcHandlers(ipcMain, {
 registerSettingsReadIpcHandlers(ipcMain, {
   getSettings: () => appSettings,
 })
+registerConversationIpcHandlers(ipcMain, {
+  getSdk: () => sdkInstance,
+  getSettings: () => appSettings,
+  getTtsEnabled: () => Boolean(ttsService) && appSettings.voiceOutputEnabled,
+  initializeSdk: initializeSDK,
+  initializeTtsProvider: initializeTTSProvider,
+  runConversationTurn,
+  cancelCurrentTurn,
+  invalidateTTSContext,
+  clearInteractiveInputs: async () => {
+    await interactiveInputStore?.clear()
+  },
+})
 registerWindowIpcHandlers(ipcMain, {
   compactWindowSize: COMPACT_WINDOW_SIZE,
   settingsWindowSize: SETTINGS_WINDOW_SIZE,
@@ -3183,28 +3197,6 @@ app.on('before-quit', async (event) => {
   app.exit(0)
 })
 
-// ========== IPC Handlers ==========
-
-ipcMain.handle('conversation:initialize', async () => {
-  try {
-    if (!sdkInstance) {
-      await initializeSDK()
-    }
-
-    await initializeTTSProvider()
-
-    return {
-      success: true,
-      ttsEnabled: Boolean(ttsService) && appSettings.voiceOutputEnabled,
-      settings: appSettings,
-      stats: sdkInstance?.getStats()
-    }
-  } catch (error: any) {
-    console.error('[Initialization] Failed:', error)
-    return { success: false, error: error.message }
-  }
-})
-
 interface ConversationTurnResult {
   success: boolean
   response?: string
@@ -3435,47 +3427,6 @@ async function runConversationTurn(
     return { success: false, error: error.message }
   }
 }
-
-ipcMain.handle('conversation:sendText', async (_, text, enableTTS) => {
-  return runConversationTurn(text, enableTTS, 'text')
-})
-
-ipcMain.handle('tts:stop', async () => {
-  try {
-    await cancelCurrentTurn({ closeTTS: true, reason: 'manual' })
-    invalidateTTSContext('manual')
-    return { success: true }
-  } catch (error: any) {
-    console.error('[TTS] Failed to stop:', error)
-    return { success: false, error: error.message }
-  }
-})
-
-ipcMain.handle('conversation:clearHistory', async () => {
-  try {
-    if (sdkInstance) {
-      await sdkInstance.memory.clearAll()
-      sdkInstance.clearHistory()
-    }
-    await interactiveInputStore?.clear()
-    return { success: true }
-  } catch (error: any) {
-    return { success: false, error: error.message }
-  }
-})
-
-ipcMain.handle('profile:clear', async () => {
-  try {
-    if (!sdkInstance) {
-      throw new Error('SDK not initialized')
-    }
-
-    await sdkInstance.memory.clearUserProfile()
-    return { success: true }
-  } catch (error: any) {
-    return { success: false, error: error.message }
-  }
-})
 
 ipcMain.handle('speech:transcribe', async (_, samples: number[]) => {
   try {
