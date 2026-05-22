@@ -21,3 +21,20 @@ export function registerLogIpcHandlers(ipcMain: IpcMain, appLogStore: AppLogStor
     appLogStore.setRendererStreaming(streaming === true)
   })
 }
+
+export function registerDebugIpcHandlers(
+  ipcMain: IpcMain,
+  frameTraceObserver: {
+    getTrace(): unknown[]
+    clear(): void
+  }
+): void {
+  ipcMain.handle('debug:frameTrace', async () => {
+    return frameTraceObserver.getTrace()
+  })
+
+  ipcMain.handle('debug:clearFrameTrace', async () => {
+    frameTraceObserver.clear()
+    return { success: true }
+  })
+}

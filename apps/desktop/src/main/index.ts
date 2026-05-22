@@ -124,7 +124,7 @@ import {
   createMainWindow,
   resizeWindowAroundCenter,
 } from './window-manager.js'
-import { registerLogIpcHandlers } from './ipc-handlers.js'
+import { registerDebugIpcHandlers, registerLogIpcHandlers } from './ipc-handlers.js'
 import {
   DEFAULT_VAD_CONFIG,
   FALLBACK_ENDPOINTING_CONFIG,
@@ -2091,15 +2091,7 @@ latencyTracker.setSendToRenderer((data) => {
   mainWindow?.webContents.send('latency:data', data)
 })
 
-ipcMain.handle('debug:frameTrace', async () => {
-  return frameTraceObserver.getTrace()
-})
-
-ipcMain.handle('debug:clearFrameTrace', async () => {
-  frameTraceObserver.clear()
-  return { success: true }
-})
-
+registerDebugIpcHandlers(ipcMain, frameTraceObserver)
 registerLogIpcHandlers(ipcMain, appLogStore)
 
 function splitDisplayUnits(text: string): string[] {
