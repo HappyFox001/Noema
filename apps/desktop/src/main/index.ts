@@ -124,6 +124,7 @@ import {
 } from './task-communication-manager.js'
 import { AppLogStore } from './app-log-store.js'
 import { handleDesktopRuntimeEvent } from './runtime-event-adapter.js'
+import { TaskCommunicationSpeechScheduler } from './task-communication-speech.js'
 const DEV_SERVER_URL = 'http://127.0.0.1:5173'
 
 type InterruptionReason = 'vad_start' | 'transcript_start' | 'manual' | 'provider_switch'
@@ -2122,70 +2123,25 @@ ipcMain.on('playback:complete', (_, requestId: number) => {
   latencyObserver.calculate()
 })
 
-let taskCommunicationSpeechQueue: Promise<void> = Promise.resolve()
-
-function scheduleTaskCommunicationSpeech(
-  text: string,
-  turnId: number,
-  phase: 'task_progress' | 'task_result' = 'task_progress'
-): void {
-  const content = sanitizeTextForSpeech(text)
-  if (!content || !appSettings.voiceOutputEnabled || !ttsAvailable) {
-    return
-  }
-
-  taskCommunicationSpeechQueue = taskCommunicationSpeechQueue
-    .catch(() => undefined)
-    .then(async () => {
-      if (isTurnCancelled(turnId) || !ttsAvailable || !appSettings.voiceOutputEnabled) {
-        return
-      }
-      if (!currentResponseFramePipeline) {
-        await playTaskCommunicationThroughResponsePipeline(content, turnId, phase)
-        taskCommunicationManager.markProgressSpeechScheduled()
-        return
-      }
-      await currentResponseFramePipeline.queueFrame({
-        type: 'phase_start',
-        kind: 'control',
-        phase,
-        timestamp: Date.now(),
-      })
-      await currentResponseFramePipeline.queueFrame({
-        type: 'tts_text',
-        kind: 'data',
-        text: content,
-        timestamp: Date.now(),
-      })
-      await currentResponseFramePipeline.queueFrame({
-        type: 'phase_end',
-        kind: 'control',
-        phase,
-        timestamp: Date.now(),
-      })
-      taskCommunicationManager.markProgressSpeechScheduled()
-    })
-    .catch((error) => {
-      console.warn('[TaskCommunication] Failed to schedule task update speech:', (error as Error).message)
-    })
-}
-
-async function playTaskCommunicationThroughResponsePipeline(
-  content: string,
-  turnId: number,
-  phase: 'task_progress' | 'task_result' = 'task_progress'
-): Promise<void> {
-  if (!sdkInstance || !ttsAvailable || !appSettings.voiceOutputEnabled) {
-    return
-  }
-
-  const sdk = sdkInstance
-  const laneName = `task-feedback:${turnId}:${Date.now()}`
-  const responseFramePipeline = voiceGraphPipeline.createResponseLane(laneName)
-  responseFramePipeline.addObserver(frameTraceObserver)
-
-  const pluginContext = getPluginRuntimeContext(true)
-  const displayController = new ConversationDisplayController(
+const taskCommunicationSpeechScheduler = new TaskCommunicationSpeechScheduler({
+  sanitizeTextForSpeech,
+  isTurnCancelled,
+  isRecoverableTTSError,
+  getVoiceOutputEnabled: () => appSettings.voiceOutputEnabled,
+  getTTSAvailable: () => ttsAvailable,
+  setTTSAvailable: (available) => {
+    ttsAvailable = available
+  },
+  getTTSService: () => ttsService,
+  getSdk: () => sdkInstance,
+  getCurrentResponseFramePipeline: () => currentResponseFramePipeline,
+  setCurrentResponseFramePipeline: (pipeline) => {
+    currentResponseFramePipeline = pipeline
+  },
+  voiceGraphPipeline,
+  frameTraceObserver,
+  getPluginRuntimeContext,
+  createDisplayController: (turnId) => new ConversationDisplayController(
     (nextText) => {
       if (isTurnCancelled(turnId)) return
       mainWindow?.webContents.send('conversation:response', nextText)
@@ -2194,89 +2150,14 @@ async function playTaskCommunicationThroughResponsePipeline(
       if (isTurnCancelled(turnId)) return
       mainWindow?.webContents.send('conversation:frame', frame)
     }
-  )
-  const previousResponseFramePipeline = currentResponseFramePipeline
-  if (!currentResponseFramePipeline) {
-    currentResponseFramePipeline = responseFramePipeline
-  }
-
-  try {
-    responseFramePipeline.setProcessors([
-      new ResponseTTSProcessor({
-        isCancelled: () => isTurnCancelled(turnId),
-        isEnabled: () => appSettings.voiceOutputEnabled && ttsAvailable,
-        getService: () => ttsService,
-        sanitizeText: sanitizeTextForSpeech,
-        transformTTSInput: (text) => sdk.transformText('tts_input', text, pluginContext),
-        toDisplayText: (text) => sdk.transformText('display', text, pluginContext),
-        onText: (textFrame, displayText) => {
-          currentTTSChunkSequence += 1
-          console.log(`[Main] TTS text frame #${turnId}:${currentTTSChunkSequence}, pushing:`, JSON.stringify(textFrame))
-          displayController.pushTTSChunkText(displayText)
-        },
-        onError: (error) => {
-          if (isRecoverableTTSError(error)) {
-            console.warn('[TTS] Recoverable frame error ignored:', error.message)
-            return
-          }
-          ttsAvailable = false
-        },
-        waitForPlayback: async (phase) => {
-          if (isTurnCancelled(turnId)) {
-            return
-          }
-          console.log(`[Conversation] Waiting for playback to complete before ending phase "${phase}"...`)
-          await waitForRendererPlaybackOrAbort(new AbortController().signal)
-          if (isTurnCancelled(turnId)) {
-            return
-          }
-          console.log(`[Conversation] Playback complete for phase "${phase}"`)
-        },
-        log: (message) => console.warn(message),
-      }),
-      new ResponseDisplayProcessor({
-        isCancelled: () => isTurnCancelled(turnId),
-        startPhase: (phase) => displayController.startPhase(phase),
-        endPhase: (phase) => displayController.endPhase(phase),
-        pushTextDelta: (delta) => displayController.pushTextDelta(delta),
-        startTask: (taskDescription) => displayController.startTask(taskDescription),
-        endTask: (result) => displayController.endTask(result),
-      }),
-    ])
-
-    await responseFramePipeline.queueFrame({
-      type: 'phase_start',
-      kind: 'control',
-      phase,
-      timestamp: Date.now(),
-    })
-    await responseFramePipeline.queueFrame({
-      type: 'tts_text',
-      kind: 'data',
-      text: content,
-      timestamp: Date.now(),
-    })
-    await responseFramePipeline.queueFrame({
-      type: 'phase_end',
-      kind: 'control',
-      phase,
-      timestamp: Date.now(),
-    })
-    await responseFramePipeline.waitForIdle()
-  } catch (error: any) {
-    if (isRecoverableTTSError(error)) {
-      console.warn('[TaskCommunication] Recoverable task feedback TTS error ignored:', error.message)
-      return
-    }
-    ttsAvailable = false
-    console.warn('[TaskCommunication] Task feedback response pipeline failed:', error.message)
-  } finally {
-    if (currentResponseFramePipeline === responseFramePipeline) {
-      currentResponseFramePipeline = previousResponseFramePipeline
-    }
-    voiceGraphPipeline.removeLane(laneName)
-  }
-}
+  ),
+  waitForRendererPlaybackOrAbort,
+  markProgressSpeechScheduled: () => taskCommunicationManager.markProgressSpeechScheduled(),
+  nextTTSChunkSequence: () => {
+    currentTTSChunkSequence += 1
+    return currentTTSChunkSequence
+  },
+})
 
 ipcMain.on('latency:firstAudioPlay', () => {
   void outputFramePipeline.queueFrame({
@@ -3857,7 +3738,7 @@ async function runConversationTurn(
       },
       onTaskFeedback: async (phase, message) => {
         if (isTurnCancelled(turnId)) return
-        scheduleTaskCommunicationSpeech(message, turnId, phase)
+        taskCommunicationSpeechScheduler.schedule(message, turnId, phase)
       },
       onExpression: async (frame) => {
         if (isTurnCancelled(turnId)) return
