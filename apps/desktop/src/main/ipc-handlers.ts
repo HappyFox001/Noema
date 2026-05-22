@@ -1,7 +1,7 @@
 /**
  * Registers grouped Electron IPC handlers for desktop main services.
  */
-import type { IpcMain } from 'electron'
+import { BrowserWindow, screen, type IpcMain } from 'electron'
 import type { AppLogStore } from './app-log-store.js'
 import type { AppSettings } from './settings-store.js'
 
@@ -64,4 +64,52 @@ export function registerSettingsReadIpcHandlers(
   }
 ): void {
   ipcMain.handle('settings:get', async () => options.getSettings())
+}
+
+export function registerWindowIpcHandlers(
+  ipcMain: IpcMain,
+  options: {
+    compactWindowSize: { width: number; height: number }
+    settingsWindowSize: { width: number; height: number }
+    taskWindowSize: { width: number; height: number }
+    resizeWindowAroundCenter(window: BrowserWindow, width: number, height: number): void
+  }
+): void {
+  ipcMain.on('window:move', (event, deltaX, deltaY) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (win) {
+      const [x, y] = win.getPosition()
+      win.setPosition(x + deltaX, y + deltaY)
+    }
+  })
+
+  ipcMain.handle('cursor:get-screen-point', () => {
+    const point = screen.getCursorScreenPoint()
+    const display = screen.getDisplayNearestPoint(point)
+    return {
+      x: point.x,
+      y: point.y,
+      displayBounds: display.bounds,
+    }
+  })
+
+  ipcMain.on('window:set-compact-mode', (event, compact) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win) {
+      return
+    }
+
+    const size = compact ? options.compactWindowSize : options.settingsWindowSize
+    options.resizeWindowAroundCenter(win, size.width, size.height)
+  })
+
+  ipcMain.on('window:set-task-mode', (event, active) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win) {
+      return
+    }
+
+    const size = active ? options.taskWindowSize : options.compactWindowSize
+    options.resizeWindowAroundCenter(win, size.width, size.height)
+  })
 }

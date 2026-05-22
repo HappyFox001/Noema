@@ -54,7 +54,7 @@ console.log('[Env] LLM_1_BASE_URL:', process.env.LLM_1_BASE_URL || '✗ (not set
 console.log('[Env] TTS_1_API_KEY:', process.env.TTS_1_API_KEY ? '✓ (set)' : '✗ (not set)')
 console.log('[Env] ASR_1_API_KEY:', process.env.ASR_1_API_KEY ? '✓ (set)' : '✗ (not set)')
 
-import { app, BrowserWindow, ipcMain, systemPreferences, shell, dialog, screen, nativeImage, Menu, session, type OpenDialogOptions } from 'electron'
+import { app, BrowserWindow, ipcMain, systemPreferences, shell, dialog, nativeImage, Menu, session, type OpenDialogOptions } from 'electron'
 import {
   type HerTextSDK,
   createSTTProvider,
@@ -129,6 +129,7 @@ import {
   registerLogIpcHandlers,
   registerSettingsReadIpcHandlers,
   registerSystemIpcHandlers,
+  registerWindowIpcHandlers,
 } from './ipc-handlers.js'
 import {
   DEFAULT_VAD_CONFIG,
@@ -2111,6 +2112,12 @@ registerSystemIpcHandlers(ipcMain, {
 registerSettingsReadIpcHandlers(ipcMain, {
   getSettings: () => appSettings,
 })
+registerWindowIpcHandlers(ipcMain, {
+  compactWindowSize: COMPACT_WINDOW_SIZE,
+  settingsWindowSize: SETTINGS_WINDOW_SIZE,
+  taskWindowSize: TASK_WINDOW_SIZE,
+  resizeWindowAroundCenter,
+})
 
 function splitDisplayUnits(text: string): string[] {
   const units: string[] = []
@@ -3296,44 +3303,6 @@ app.on('before-quit', async (event) => {
 })
 
 // ========== IPC Handlers ==========
-
-ipcMain.on('window:move', (event, deltaX, deltaY) => {
-  const win = BrowserWindow.fromWebContents(event.sender)
-  if (win) {
-    const [x, y] = win.getPosition()
-    win.setPosition(x + deltaX, y + deltaY)
-  }
-})
-
-ipcMain.handle('cursor:get-screen-point', () => {
-  const point = screen.getCursorScreenPoint()
-  const display = screen.getDisplayNearestPoint(point)
-  return {
-    x: point.x,
-    y: point.y,
-    displayBounds: display.bounds,
-  }
-})
-
-ipcMain.on('window:set-compact-mode', (event, compact) => {
-  const win = BrowserWindow.fromWebContents(event.sender)
-  if (!win) {
-    return
-  }
-
-  const size = compact ? COMPACT_WINDOW_SIZE : SETTINGS_WINDOW_SIZE
-  resizeWindowAroundCenter(win, size.width, size.height)
-})
-
-ipcMain.on('window:set-task-mode', (event, active) => {
-  const win = BrowserWindow.fromWebContents(event.sender)
-  if (!win) {
-    return
-  }
-
-  const size = active ? TASK_WINDOW_SIZE : COMPACT_WINDOW_SIZE
-  resizeWindowAroundCenter(win, size.width, size.height)
-})
 
 ipcMain.handle('conversation:initialize', async () => {
   try {
