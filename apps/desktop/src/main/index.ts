@@ -130,6 +130,7 @@ import {
   createMainWindow,
   resizeWindowAroundCenter,
 } from './window-manager.js'
+import { registerLogIpcHandlers } from './ipc-handlers.js'
 const DEV_SERVER_URL = 'http://127.0.0.1:5173'
 
 type InterruptionReason = 'vad_start' | 'transcript_start' | 'manual' | 'provider_switch'
@@ -2194,21 +2195,7 @@ ipcMain.handle('debug:clearFrameTrace', async () => {
   return { success: true }
 })
 
-ipcMain.handle('logs:list', async (_, limit?: number) => {
-  return {
-    success: true,
-    logs: appLogStore.list(Number(limit) || undefined),
-  }
-})
-
-ipcMain.handle('logs:clear', async () => {
-  appLogStore.clear()
-  return { success: true }
-})
-
-ipcMain.on('logs:setStreaming', (_, streaming: boolean) => {
-  appLogStore.setRendererStreaming(streaming === true)
-})
+registerLogIpcHandlers(ipcMain, appLogStore)
 
 function splitDisplayUnits(text: string): string[] {
   const units: string[] = []
