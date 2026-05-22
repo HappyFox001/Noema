@@ -113,3 +113,391 @@ export function registerWindowIpcHandlers(
     options.resizeWindowAroundCenter(win, size.width, size.height)
   })
 }
+
+export function registerMemoryIpcHandlers(
+  ipcMain: IpcMain,
+  options: {
+    getSdk(): any | null
+    getInteractiveInputStore(): {
+      list(): Promise<unknown[]>
+      delete(key: string): Promise<void>
+      clear(): Promise<void>
+    } | null
+  }
+): void {
+  const requireSdk = () => {
+    const sdk = options.getSdk()
+    if (!sdk) {
+      return { sdk: null, error: { success: false, error: 'SDK not initialized' } }
+    }
+    return { sdk, error: null }
+  }
+
+  ipcMain.handle('memory:getUserProfile', async () => {
+    const { sdk, error } = requireSdk()
+    if (!sdk) return error
+
+    try {
+      const profile = sdk.memory.getUserProfile()
+      const importantMemories: Record<string, string> = {}
+      if (profile.importantMemories instanceof Map) {
+        profile.importantMemories.forEach((value: string, key: string) => {
+          importantMemories[key] = value
+        })
+      } else if (profile.importantMemories && typeof profile.importantMemories === 'object') {
+        Object.entries(profile.importantMemories as Record<string, unknown>).forEach(([key, value]) => {
+          importantMemories[key] = String(value)
+        })
+      }
+
+      return {
+        success: true,
+        profile: {
+          basic: profile.basic,
+          importantMemories,
+        },
+      }
+    } catch (error: any) {
+      console.error('[Memory] Failed to get user profile:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('memory:updateUserProfile', async (_, updates: Record<string, string>) => {
+    const { sdk, error } = requireSdk()
+    if (!sdk) return error
+
+    try {
+      await sdk.memory.updateUserProfileBasic(updates)
+      return { success: true }
+    } catch (error: any) {
+      console.error('[Memory] Failed to update user profile:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('memory:addImportantMemory', async (_, key: string, value: string) => {
+    const { sdk, error } = requireSdk()
+    if (!sdk) return error
+
+    try {
+      await sdk.memory.addImportantMemory(key, value)
+      return { success: true }
+    } catch (error: any) {
+      console.error('[Memory] Failed to add important memory:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('memory:deleteImportantMemory', async (_, key: string) => {
+    const { sdk, error } = requireSdk()
+    if (!sdk) return error
+
+    try {
+      await sdk.memory.deleteImportantMemory(key)
+      return { success: true }
+    } catch (error: any) {
+      console.error('[Memory] Failed to delete important memory:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('memory:getConversationSummaries', async () => {
+    const { sdk, error } = requireSdk()
+    if (!sdk) return error
+
+    try {
+      const summaries = sdk.memory.getAllConversationSummaries()
+      return { success: true, summaries }
+    } catch (error: any) {
+      console.error('[Memory] Failed to get conversation summaries:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('memory:getWorkingMemory', async () => {
+    const { sdk, error } = requireSdk()
+    if (!sdk) return error
+
+    try {
+      const recentTurns = sdk.memory.getWorkingMemory()
+      return { success: true, memory: { recentTurns } }
+    } catch (error: any) {
+      console.error('[Memory] Failed to get working memory:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('memory:deleteConversationSummary', async (_, id: string) => {
+    const { sdk, error } = requireSdk()
+    if (!sdk) return error
+
+    try {
+      await sdk.memory.deleteConversationSummary(id)
+      return { success: true }
+    } catch (error: any) {
+      console.error('[Memory] Failed to delete conversation summary:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('memory:deleteConversationTurn', async (_, id: string) => {
+    const { sdk, error } = requireSdk()
+    if (!sdk) return error
+
+    try {
+      await sdk.memory.deleteConversationTurn(id)
+      return { success: true }
+    } catch (error: any) {
+      console.error('[Memory] Failed to delete conversation turn:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('memory:deleteProfileField', async (_, field: string) => {
+    const { sdk, error } = requireSdk()
+    if (!sdk) return error
+
+    try {
+      await sdk.memory.deleteProfileField(field)
+      return { success: true }
+    } catch (error: any) {
+      console.error('[Memory] Failed to delete profile field:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('memory:clearImportantMemories', async () => {
+    const { sdk, error } = requireSdk()
+    if (!sdk) return error
+
+    try {
+      await sdk.memory.clearImportantMemories()
+      return { success: true }
+    } catch (error: any) {
+      console.error('[Memory] Failed to clear important memories:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('memory:clearConversationSummaries', async () => {
+    const { sdk, error } = requireSdk()
+    if (!sdk) return error
+
+    try {
+      await sdk.memory.clearConversationSummaries()
+      return { success: true }
+    } catch (error: any) {
+      console.error('[Memory] Failed to clear conversation summaries:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('memory:clearWorkingMemory', async () => {
+    const { sdk, error } = requireSdk()
+    if (!sdk) return error
+
+    try {
+      await sdk.memory.clearWorkingMemory()
+      return { success: true }
+    } catch (error: any) {
+      console.error('[Memory] Failed to clear working memory:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('memory:listAccountInputs', async () => {
+    const interactiveInputStore = options.getInteractiveInputStore()
+    if (!interactiveInputStore) return { success: false, error: 'Interactive input store not initialized' }
+
+    try {
+      const inputs = await interactiveInputStore.list()
+      return { success: true, inputs }
+    } catch (error: any) {
+      console.error('[Memory] Failed to list account inputs:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('memory:deleteAccountInput', async (_, key: string) => {
+    const interactiveInputStore = options.getInteractiveInputStore()
+    if (!interactiveInputStore) return { success: false, error: 'Interactive input store not initialized' }
+
+    try {
+      await interactiveInputStore.delete(key)
+      return { success: true }
+    } catch (error: any) {
+      console.error('[Memory] Failed to delete account input:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('memory:clearAccountInputs', async () => {
+    const interactiveInputStore = options.getInteractiveInputStore()
+    if (!interactiveInputStore) return { success: false, error: 'Interactive input store not initialized' }
+
+    try {
+      await interactiveInputStore.clear()
+      return { success: true }
+    } catch (error: any) {
+      console.error('[Memory] Failed to clear account inputs:', error)
+      return { success: false, error: error.message }
+    }
+  })
+}
+
+export function registerLearningIpcHandlers(
+  ipcMain: IpcMain,
+  options: {
+    getSdk(): any | null
+    isSelfLearningEnabled(): boolean
+  }
+): void {
+  const requireLearning = () => {
+    const sdk = options.getSdk()
+    if (!sdk) {
+      return { sdk: null, error: { success: false, error: 'SDK not initialized' } }
+    }
+    if (!options.isSelfLearningEnabled()) {
+      return { sdk: null, error: { success: false, error: 'Self-learning is disabled.' } }
+    }
+    return { sdk, error: null }
+  }
+
+  ipcMain.handle('learning:overview', async () => {
+    const sdk = options.getSdk()
+    if (!sdk) return { success: false, error: 'SDK not initialized' }
+    if (!options.isSelfLearningEnabled()) {
+      return {
+        success: true,
+        disabled: true,
+        events: [],
+        reflections: [],
+        candidates: [],
+        assets: [],
+        agents: [],
+        automationDecisions: [],
+        rollbacks: [],
+      }
+    }
+
+    try {
+      const [
+        events,
+        reflections,
+        pendingCandidates,
+        assets,
+        agents,
+        automationDecisions,
+        rollbacks,
+      ] = await Promise.all([
+        sdk.learning.listEvents(80),
+        sdk.learning.listReflections(20),
+        sdk.learning.listCandidates(undefined, 50),
+        sdk.learning.listAssets(undefined, 80),
+        sdk.agentSociety.listAgents(),
+        sdk.learning.listAutomationDecisions(50),
+        sdk.learning.listAssetRollbacks(undefined, 50),
+      ])
+      return {
+        success: true,
+        events,
+        reflections,
+        candidates: pendingCandidates,
+        assets,
+        agents,
+        automationDecisions,
+        rollbacks,
+      }
+    } catch (error: any) {
+      console.error('[Learning] Failed to load overview:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('learning:reflectRecent', async () => {
+    const { sdk, error } = requireLearning()
+    if (!sdk) return error
+
+    try {
+      const result = await sdk.reflection.reflectRecentEvents()
+      return { success: true, result }
+    } catch (error: any) {
+      console.error('[Learning] Failed to reflect recent events:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('learning:deployCandidate', async (_event, payload: {
+    candidateId: string
+    scope: string
+    status?: 'draft' | 'active'
+  }) => {
+    const { sdk, error } = requireLearning()
+    if (!sdk) return error
+
+    try {
+      const asset = await sdk.learning.deployCandidate({
+        candidateId: payload.candidateId,
+        scope: payload.scope,
+        status: payload.status ?? 'draft',
+      })
+      return { success: true, asset }
+    } catch (error: any) {
+      console.error('[Learning] Failed to deploy candidate:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('learning:setAssetStatus', async (_event, id: string, status: 'draft' | 'active' | 'disabled' | 'archived') => {
+    const { sdk, error } = requireLearning()
+    if (!sdk) return error
+
+    try {
+      await sdk.learning.setAssetStatus(id, status)
+      return { success: true }
+    } catch (error: any) {
+      console.error('[Learning] Failed to set asset status:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('learning:deleteAsset', async (_event, id: string) => {
+    const { sdk, error } = requireLearning()
+    if (!sdk) return error
+
+    try {
+      await sdk.learning.deleteAsset(id)
+      return { success: true }
+    } catch (error: any) {
+      console.error('[Learning] Failed to delete asset:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('learning:rollbackAsset', async (_event, id: string, reason: string) => {
+    const { sdk, error } = requireLearning()
+    if (!sdk) return error
+
+    try {
+      const rollback = await sdk.learning.rollbackAsset(id, reason || 'Rolled back from Learning Center')
+      return { success: true, rollback }
+    } catch (error: any) {
+      console.error('[Learning] Failed to rollback asset:', error)
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('learning:setAgentStatus', async (_event, id: string, status: 'draft' | 'active' | 'disabled') => {
+    const { sdk, error } = requireLearning()
+    if (!sdk) return error
+
+    try {
+      await sdk.agentSociety.setAgentStatus(id, status)
+      return { success: true }
+    } catch (error: any) {
+      console.error('[Learning] Failed to set agent status:', error)
+      return { success: false, error: error.message }
+    }
+  })
+}
