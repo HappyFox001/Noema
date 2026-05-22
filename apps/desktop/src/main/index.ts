@@ -133,6 +133,7 @@ import { registerConversationIpcHandlers } from './conversation-ipc-handlers.js'
 import { registerModelIpcHandlers } from './model-ipc-handlers.js'
 import { registerPersonalityIpcHandlers } from './personality-ipc-handlers.js'
 import { registerPluginIpcHandlers } from './plugin-ipc-handlers.js'
+import { registerSettingsMutationIpcHandlers } from './settings-mutation-ipc-handlers.js'
 import { registerSpeechIpcHandlers } from './speech-ipc-handlers.js'
 import {
   DEFAULT_VAD_CONFIG,
@@ -2028,6 +2029,32 @@ registerSystemIpcHandlers(ipcMain, {
 registerSettingsReadIpcHandlers(ipcMain, {
   getSettings: () => appSettings,
 })
+registerSettingsMutationIpcHandlers(ipcMain, {
+  isDevMode,
+  getSettings: () => appSettings,
+  updateSettings: async (partial) => {
+    appSettings = await getSettingsStore().update(partial)
+    return appSettings
+  },
+  reloadSystemConfigFromEnv: () => getSettingsStore().reloadSystemConfigFromEnv(),
+  setSettings: (settings) => {
+    appSettings = settings
+  },
+  getRuntimeConfigSnapshot: () => ({
+    proxy: appSettings.system.proxy.trim(),
+    llm: getLLMConfigSignature(getActiveLLMConfig()),
+    taskLLM: getLLMConfigSignature(getActiveTaskConfig()),
+    taskRuntime: JSON.stringify(appSettings.system.taskRuntime),
+    tts: getTTSConfigSignature(getActiveTTSConfig()),
+    asr: getASRConfigSignature(getActiveASRConfig()),
+  }),
+  handleWorkSurfaceDisabled: () => {
+    workSurfaceController?.reset()
+    workSurfaceController = null
+    mainWindow?.webContents.send('workSurface:closed', '*')
+  },
+  applyRuntimeSystemConfigChanges,
+})
 registerConversationIpcHandlers(ipcMain, {
   getSdk: () => sdkInstance,
   getSettings: () => appSettings,
@@ -3447,43 +3474,6 @@ async function runConversationTurn(
   }
 }
 
-ipcMain.handle('settings:update', async (_, partial: Partial<AppSettings>) => {
-  const previous = {
-    proxy: appSettings.system.proxy.trim(),
-    llm: getLLMConfigSignature(getActiveLLMConfig()),
-    taskLLM: getLLMConfigSignature(getActiveTaskConfig()),
-    taskRuntime: JSON.stringify(appSettings.system.taskRuntime),
-    tts: getTTSConfigSignature(getActiveTTSConfig()),
-    asr: getASRConfigSignature(getActiveASRConfig()),
-  }
-  const previousPlugins = appSettings.plugins
-  const previousPluginConfigs = appSettings.pluginConfigs
-  appSettings = await getSettingsStore().update(partial)
-  if (appSettings.experimental?.workSurfaceEnabled === false) {
-    workSurfaceController?.reset()
-    workSurfaceController = null
-    mainWindow?.webContents.send('workSurface:closed', '*')
-  }
-  if (partial.experimental?.workSurfaceEnabled !== undefined) {
-    console.log('[WorkSurface] Enabled:', appSettings.experimental.workSurfaceEnabled)
-  }
-  const pluginsChanged =
-    (partial.plugins !== undefined && previousPlugins !== appSettings.plugins) ||
-    (partial.pluginConfigs !== undefined && previousPluginConfigs !== appSettings.pluginConfigs) ||
-    partial.experimental?.workSurfaceEnabled !== undefined
-  const selfLearningChanged = partial.experimental?.selfLearningEnabled !== undefined
-  if (selfLearningChanged) {
-    console.log('[SelfLearning] Enabled:', appSettings.experimental.selfLearningEnabled)
-  }
-
-  const runtimeSettingsChanged = partial.system !== undefined || pluginsChanged || selfLearningChanged
-  if (runtimeSettingsChanged) {
-    await applyRuntimeSystemConfigChanges(previous, { pluginsChanged: pluginsChanged || selfLearningChanged })
-  }
-
-  return appSettings
-})
-
 ipcMain.handle('workSurface:ready', async () => {
   return { success: true }
 })
@@ -3753,26 +3743,5 @@ async function confirmWorkSurfaceAction(action: any): Promise<boolean> {
   })
   return result.response === 1
 }
-
-ipcMain.handle('settings:resetSystemFromEnv', async () => {
-  if (!isDevMode()) {
-    return { success: false, error: 'Reloading .env is only available in development mode.' }
-  }
-  try {
-    const previous = {
-      proxy: appSettings.system.proxy.trim(),
-      llm: getLLMConfigSignature(getActiveLLMConfig()),
-      taskLLM: getLLMConfigSignature(getActiveTaskConfig()),
-      taskRuntime: JSON.stringify(appSettings.system.taskRuntime),
-      tts: getTTSConfigSignature(getActiveTTSConfig()),
-      asr: getASRConfigSignature(getActiveASRConfig()),
-    }
-    appSettings = await getSettingsStore().reloadSystemConfigFromEnv()
-    await applyRuntimeSystemConfigChanges(previous)
-    return { success: true, settings: appSettings }
-  } catch (error: any) {
-    return { success: false, error: error.message }
-  }
-})
 
 console.log('Her-Text Electron app started')
