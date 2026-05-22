@@ -123,7 +123,7 @@ import {
   type TaskCommunicationTurn,
 } from './task-communication-manager.js'
 import { AppLogStore } from './app-log-store.js'
-import { logTaskRuntimeEvent } from './runtime-event-log.js'
+import { handleDesktopRuntimeEvent } from './runtime-event-adapter.js'
 const DEV_SERVER_URL = 'http://127.0.0.1:5173'
 
 type InterruptionReason = 'vad_start' | 'transcript_start' | 'manual' | 'provider_switch'
@@ -477,46 +477,13 @@ function handleWorkSurfaceRuntimeEvent(event: any): void {
 }
 
 function handleRuntimeEvent(event: any): void {
-  logTaskRuntimeEvent(event)
-  handleWorkSurfaceRuntimeEvent(event)
-  if (event.name === 'task.started') {
-    taskCommunicationManager.onTaskStart(event.payload?.taskDescription || 'Task')
-    return
-  }
-  if (event.name === 'task.run_state.changed' && event.payload?.state) {
-    taskCommunicationManager.onRunStateChanged(event.payload.state, {
-      taskDescription: event.payload.taskDescription || 'Task',
-      originalUserInput: event.payload.originalUserInput || '',
-    })
-    return
-  }
-  if (event.name === 'task.plan.updated' && event.payload?.plan) {
-    taskCommunicationManager.onPlanUpdated(event.payload.plan)
-    return
-  }
-  if (event.name === 'task.step.updated' && event.payload?.step && event.payload?.plan) {
-    taskCommunicationManager.onStepUpdated(event.payload.step, event.payload.plan)
-    return
-  }
-  if (event.name === 'work.signal.emitted' && event.payload?.signal) {
-    taskCommunicationManager.onWorkSignal(event.payload.signal)
-    return
-  }
-  if (event.name === 'task.completed' || event.name === 'task.failed') {
-    const success = event.name === 'task.completed'
-    const summary = event.payload?.finalMessage || event.payload?.summary || ''
-    taskCommunicationManager.onTaskEnd({
-      success,
-      summary,
-      ...(event.payload?.error ? { error: event.payload.error } : {}),
-    })
-    mainWindow?.webContents.send('conversation:frame', {
-      type: 'control.task_end',
-      success,
-      summary,
-      ...(event.payload?.error ? { error: event.payload.error } : {}),
-    } satisfies ConversationFrame)
-  }
+  handleDesktopRuntimeEvent(event, {
+    taskCommunicationManager,
+    handleWorkSurfaceRuntimeEvent,
+    sendConversationFrame: (frame) => {
+      mainWindow?.webContents.send('conversation:frame', frame satisfies ConversationFrame)
+    },
+  })
 }
 
 function ensureWorkSurfaceForRuntimeEvent(event: any): void {
