@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url'
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { dirname, isAbsolute, resolve } from 'node:path'
-import type { Tool } from '@her-text/types'
+import type { Tool } from '../tools/types.js'
 import type { AgentRunContext, AgentRunInput, AgentRunResult, RuntimeAgentRecord } from './types.js'
 
 export type HardAgentProviderType = 'worker' | 'mcp' | 'native-helper' | 'local-model' | 'cli'

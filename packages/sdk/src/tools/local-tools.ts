@@ -1,7 +1,7 @@
 /**
  * Built-in local work tool registry.
  */
-import type { Tool } from '@her-text/types'
+import type { Tool } from './types.js'
 import { createFileTools } from './local-file-tools.js'
 import { createSearchTools } from './local-search-tools.js'
 import { createShellTools } from './local-shell-tools.js'

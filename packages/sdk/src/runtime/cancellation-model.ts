@@ -1,7 +1,7 @@
 /**
  * Records cancellation intent separately from task state mutation.
  */
-import { generateId } from '@her-text/core'
+import { generateId } from '../utils/index.js'
 import type { RuntimeEventBus } from './events.js'
 
 export type CancellationKind =

@@ -1,7 +1,7 @@
 /**
  * Shared host capability context for internal runtime jobs.
  */
-import type { LLMProvider } from '@her-text/core'
+import type { LLMProvider } from '../llm/index.js'
 import type { AgentCore } from '../agent/index.js'
 import type { AgentSocietyRuntime } from '../agent-society/index.js'
 import type { ContextManager } from '../context/index.js'

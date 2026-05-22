@@ -1,4 +1,5 @@
-import type { Tool, Personality } from '@her-text/types'
+import type { Tool } from '../tools/types.js'
+import type { Personality } from '../personality/index.js'
 import {
   createRuntimeAwareness,
   formatAwarenessBlock,

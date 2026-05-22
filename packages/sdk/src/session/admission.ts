@@ -1,7 +1,7 @@
 /**
  * Task-layer admission policy for relating new work signals to durable work.
  */
-import type { LLMProvider } from '@her-text/core'
+import type { LLMProvider } from '../llm/index.js'
 import type { WorkState, WorkThread } from '../runtime/work-state.js'
 
 export type TaskAdmissionAction = 'start_new' | 'revise_active' | 'replace_active' | 'queue_new'

@@ -4,7 +4,7 @@
  * Keeps tool selection deterministic and close to the runtime loop instead of
  * outsourcing core execution policy to plugin hints.
  */
-import type { Tool } from '@her-text/types'
+import type { Tool } from '../tools/types.js'
 import { isDeferredTool } from './tool-discovery.js'
 
 export function renderWorkToolStrategy(options: {

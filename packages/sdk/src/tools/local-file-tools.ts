@@ -1,7 +1,7 @@
 /**
  * Built-in local tools for exact file reads and writes.
  */
-import type { Tool } from '@her-text/types'
+import type { Tool } from './types.js'
 import { editTextFile, readTextFile, resolveToolPath, writeTextFile } from './local-node-ops.js'
 import { createTool } from './local-tool-factory.js'
 

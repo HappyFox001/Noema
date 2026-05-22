@@ -1,7 +1,7 @@
 /**
  * Async job manager for internal runtime capabilities.
  */
-import { generateId } from '@her-text/core'
+import { generateId } from '../utils/index.js'
 import type { RuntimeEventBus } from './events.js'
 
 export type RuntimeJobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'

@@ -37,6 +37,24 @@ export interface ToolCall {
 }
 
 
+export interface Tool {
+  name: string
+  description: string
+  parameters: {
+    type: 'object'
+    properties: Record<string, any>
+    required?: string[]
+  }
+  pluginId?: string
+  deferLoading?: boolean
+  searchKeywords?: string[]
+  safety?: 'safe' | 'read' | 'write' | 'external' | 'destructive' | 'computer'
+  requiresApproval?: boolean
+  timeoutMs?: number
+  execute: (params: any) => Promise<any>
+}
+
+
 export interface ToolResult {
   success: boolean
   result?: any

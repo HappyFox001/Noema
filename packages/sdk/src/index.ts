@@ -1,4 +1,5 @@
-import type { SDKConfig, UserInput, AgentResponse } from '@her-text/types'
+import type { SDKConfig } from './config/types.js'
+import type { UserInput } from './dialogue/processors.js'
 import { MemoryEngine } from './memory/index.js'
 import { PersonalityEngine } from './personality/index.js'
 import { AgentCore } from './agent/index.js'
@@ -12,7 +13,7 @@ import {
   ReflectionEngine,
   type LearningAutomationRuntimeOptions,
 } from './learning/index.js'
-import { createLLMProvider, type LLMProvider } from '@her-text/core'
+import { createLLMProvider, type LLMProvider } from './llm/index.js'
 import type { PluginRuntimeContext, SDKPlugin, TextTransformTarget } from './plugins/index.js'
 import type { TaskRuntimeHooks } from './session/task.js'
 import { wrapTaskLLMWithRuntimeTransport } from './session/cli-task-llm.js'
@@ -35,6 +36,11 @@ export interface HerTextSDKInitializeOptions {
   onTaskPlanUpdated?: TaskRuntimeHooks['onPlanUpdated']
   onTaskStepUpdated?: TaskRuntimeHooks['onStepUpdated']
   learningAutomation?: LearningAutomationRuntimeOptions
+}
+
+export interface AgentResponse {
+  text: string
+  shouldSpeak: boolean
 }
 
 
@@ -227,6 +233,9 @@ export class HerTextSDK {
 }
 
 export * from './memory/index.js'
+export * from './config/types.js'
+export * from './llm/index.js'
+export * from './utils/index.js'
 export * from './personality/index.js'
 export * from './agent/index.js'
 export * from './dialogue/index.js'

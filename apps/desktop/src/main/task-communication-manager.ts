@@ -29,7 +29,6 @@ export interface TaskCommunicationTurn {
   sendPlan: (plan: TaskPlan | WorkThreadPanelPlan) => void
   sendStatus: (frame: TaskCommunicationFrame) => void
   displayText: (text: string) => void
-  speak?: (text: string) => void
 }
 
 interface TaskCommunicationState {
@@ -69,7 +68,6 @@ export class TaskCommunicationManager {
     this.state = this.createState()
     this.emitStatus('Working', `正在处理：${taskDescription}`, 'silent', {
       display: false,
-      speak: false,
     })
   }
 
@@ -99,7 +97,6 @@ export class TaskCommunicationManager {
     if (state === 'failed') {
       this.emitStatus('Failed', '任务执行失败。', 'final', {
         display: false,
-        speak: false,
       })
       return
     }
@@ -130,18 +127,16 @@ export class TaskCommunicationManager {
       this.emitStatus('Working', `正在处理：${step.title}`, 'info', {
         key,
         display: false,
-        speak: false,
       })
     } else if (step.status === 'completed') {
       this.emitStatus('Working', undefined, 'silent', {
         key,
         display: false,
-        speak: false,
       })
     } else if (step.status === 'failed') {
       this.emitStatus('Working', `这个步骤没有成功：${step.title}`, 'important', {
         key,
-        speak: true,
+        display: true,
       })
     }
 
@@ -156,7 +151,6 @@ export class TaskCommunicationManager {
     this.emitStatus(status, message, severity, {
       key: `work-signal:${signal.id}`,
       display: signal.severity !== 'silent',
-      speak: signal.severity === 'speak' || signal.severity === 'interrupt',
       forceDisplay: signal.severity === 'interrupt',
     })
   }
@@ -165,7 +159,6 @@ export class TaskCommunicationManager {
     const label = request.label || '需要补充信息'
     this.emitStatus('Need input', `我需要你补充：${label}`, 'blocking', {
       key: `waiting:${request.id}`,
-      speak: true,
       forceDisplay: true,
     })
   }
@@ -178,7 +171,6 @@ export class TaskCommunicationManager {
 
     this.emitStatus('Failed', result.error || result.summary || '任务执行失败。', 'final', {
       key: 'task-end-failed',
-      speak: false,
       display: false,
       forceDisplay: true,
     })
@@ -188,7 +180,7 @@ export class TaskCommunicationManager {
     status: string,
     message: string | undefined,
     severity: TaskCommunicationSeverity,
-    options: { key?: string; display?: boolean; speak?: boolean; forceDisplay?: boolean } = {}
+    options: { key?: string; display?: boolean; forceDisplay?: boolean } = {}
   ): void {
     if (this.isUnavailable()) {
       return
@@ -207,19 +199,13 @@ export class TaskCommunicationManager {
 
     const key = options.key || `${status}:${message}`
     const now = Date.now()
-    const canSpeak = options.speak &&
-      (severity === 'blocking' || severity === 'important' || severity === 'info')
-    const canDisplay = options.display !== false && !canSpeak && (options.forceDisplay ||
+    const canDisplay = options.display !== false && (options.forceDisplay ||
       (!this.state.displayedKeys.has(key) && now - this.state.lastDisplayedAt >= DISPLAY_INTERVAL_MS)
     )
     if (canDisplay) {
       this.state.displayedKeys.add(key)
       this.state.lastDisplayedAt = now
       this.turn?.displayText(message)
-    }
-
-    if (canSpeak) {
-      this.turn?.speak?.(message)
     }
   }
 

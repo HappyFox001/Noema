@@ -1,8 +1,8 @@
 /**
  * Work execution primitives that will replace the legacy task loop incrementally.
  */
-import { generateId } from '@her-text/core'
-import type { Tool } from '@her-text/types'
+import { generateId } from '../utils/index.js'
+import type { Tool } from '../tools/types.js'
 import type { RuntimeEventBus } from './events.js'
 import { ToolOrchestrator, type ToolExecutionResult } from './tool-orchestrator.js'
 import { ToolRouter, type RoutedToolCall, type WorkToolCall } from './tool-router.js'

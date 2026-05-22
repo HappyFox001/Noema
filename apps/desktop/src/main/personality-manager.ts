@@ -4,7 +4,7 @@ import { existsSync } from 'fs'
 import { copyFile, readdir, mkdir } from 'fs/promises'
 import { fileURLToPath } from 'url'
 import { watch } from 'chokidar'
-import type { Personality } from '@her-text/types'
+import type { Personality } from '@her-text/sdk'
 import { loadPersonalityFromFile } from '@her-text/sdk/config/personality-loader'
 
 const DEFAULT_PERSONALITY_NAME = 'eva'

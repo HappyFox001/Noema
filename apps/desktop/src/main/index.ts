@@ -126,7 +126,7 @@ const DEV_SERVER_URL = 'http://127.0.0.1:5173'
 
 type InterruptionReason = 'vad_start' | 'transcript_start' | 'manual' | 'provider_switch'
 
-type ConversationPhase = 'reply' | 'task' | 'task_progress' | 'task_result'
+type ConversationPhase = 'reply' | 'task_progress' | 'task_result'
 
 type LocalModelStatus = {
   id: 'silero-vad' | 'smart-turn'
@@ -2995,7 +2995,7 @@ let appSettings: AppSettings = {
     taskModels: [{ id: 'default-task', modelName: 'gemini-3.1-pro-preview', apiKey: '', baseUrl: '' }],
     activeTaskId: 'default-task',
     taskRuntime: {
-      adapterId: 'work_runtime',
+      adapterId: 'task_runtime',
       maxTurns: 24,
       modelContextWindow: 128000,
       autoCompactTokenLimit: 115200,
@@ -4200,10 +4200,6 @@ async function runConversationTurn(
           status: message,
           severity: 'info',
         } satisfies ConversationFrame)
-      },
-      speak: (message) => {
-        if (isTurnCancelled(turnId)) return
-        scheduleTaskCommunicationSpeech(message, turnId)
       },
     }
     taskCommunicationManager.bindTurn(taskCommunicationTurn)

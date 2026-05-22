@@ -3,7 +3,7 @@
  */
 import { randomUUID } from 'node:crypto'
 import { spawn } from 'node:child_process'
-import type { LLMProvider } from '@her-text/core'
+import type { LLMProvider } from '../llm/index.js'
 import type { TaskRuntimeConfig } from './task.js'
 
 export function wrapTaskLLMWithRuntimeTransport(

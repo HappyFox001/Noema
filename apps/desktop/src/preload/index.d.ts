@@ -527,7 +527,7 @@ declare global {
         type: 'system.reset'
       } | {
         type: 'control.phase_start' | 'control.phase_end'
-        phase: 'reply' | 'task' | 'task_progress' | 'task_result'
+        phase: 'reply' | 'task_progress' | 'task_result'
       } | {
         type: 'control.task_start'
         taskDescription: string

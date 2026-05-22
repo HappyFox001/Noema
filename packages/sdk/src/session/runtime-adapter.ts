@@ -3,7 +3,7 @@
  *
  * Lets the task lifecycle keep one model while swapping the execution backend.
  */
-import type { LLMProvider } from '@her-text/core'
+import type { LLMProvider } from '../llm/index.js'
 import type { AgentCore } from '../agent/index.js'
 import type { ContextManager } from '../context/index.js'
 import type { ConversationSummary, UserProfile } from '../memory/index.js'
@@ -60,7 +60,5 @@ export interface TaskRuntimeAdapter {
   run(request: TaskRuntimeRequest, hooks: TaskRuntimeAdapterHooks): Promise<TaskRunResult>
 }
 
-export const WORK_TASK_RUNTIME_ADAPTER_ID = 'work_runtime'
-export const LEGACY_TASK_RUNTIME_ADAPTER_ID = 'legacy_tool_loop'
-export const BUILTIN_TASK_RUNTIME_ADAPTER_ID = LEGACY_TASK_RUNTIME_ADAPTER_ID
-export const LEGACY_TASK_RUNTIME_ADAPTER_ALIASES = ['builtin_tool_loop']
+export const WORK_TASK_RUNTIME_ADAPTER_ID = 'task_runtime'
+export const BUILTIN_TASK_RUNTIME_ADAPTER_ID = WORK_TASK_RUNTIME_ADAPTER_ID

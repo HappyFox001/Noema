@@ -1,7 +1,7 @@
 /**
  * SQLite-backed registry for runtime-managed agents.
  */
-import { generateId } from '@her-text/core'
+import { generateId } from '../utils/index.js'
 import { mkdir } from 'node:fs/promises'
 import { dirname, isAbsolute, resolve } from 'node:path'
 import {

@@ -1,7 +1,7 @@
 /**
  * Runtime for lightweight specialized agents.
  */
-import type { Tool } from '@her-text/types'
+import type { Tool } from '../tools/types.js'
 import type { AgentCore } from '../agent/index.js'
 import type { MemoryEngine } from '../memory/index.js'
 import type { RuntimeEventBus, RuntimeJobManager, RuntimeJobUnregister } from '../runtime/index.js'

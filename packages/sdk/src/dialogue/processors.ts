@@ -1,5 +1,4 @@
-import type { UserInput } from '@her-text/types'
-import type { LLMProvider } from '@her-text/core'
+import type { LLMProvider } from '../llm/index.js'
 import type { MemoryEngine } from '../memory/index.js'
 import type { PersonalityEngine } from '../personality/index.js'
 import type { AgentCore } from '../agent/index.js'
@@ -9,6 +8,12 @@ import { PROMPTS } from '../prompts.js'
 import type { TaskSession } from '../session/session.js'
 import type { TaskContextItem } from '../session/task.js'
 import type { StreamOptions } from './index.js'
+
+export interface UserInput {
+  text: string
+  timestamp: number
+  audioData?: ArrayBuffer
+}
 
 export interface ParsedEmotionalResponse {
   reply: string

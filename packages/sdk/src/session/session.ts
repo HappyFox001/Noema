@@ -1,5 +1,5 @@
-import type { LLMProvider } from '@her-text/core'
-import { generateId } from '@her-text/core'
+import type { LLMProvider } from '../llm/index.js'
+import { generateId } from '../utils/index.js'
 import type { AgentCore } from '../agent/index.js'
 import type { ContextManager } from '../context/index.js'
 import type { MemoryEngine } from '../memory/index.js'
@@ -23,8 +23,6 @@ import {
 } from './task.js'
 import {
   BUILTIN_TASK_RUNTIME_ADAPTER_ID,
-  LEGACY_TASK_RUNTIME_ADAPTER_ALIASES,
-  LEGACY_TASK_RUNTIME_ADAPTER_ID,
   WORK_TASK_RUNTIME_ADAPTER_ID,
   type TaskRuntimeAdapter,
   type TaskRuntimeAdapterHooks,
@@ -32,7 +30,7 @@ import {
 } from './runtime-adapter.js'
 import type { TaskIntent } from '../dialogue/processors.js'
 import type { TaskPlan, TaskRunState, TaskStep } from './task-plan.js'
-import { ToolRouter, WorkSession, type RuntimeEventBus } from '../runtime/index.js'
+import { ToolRouter, type RuntimeEventBus } from '../runtime/index.js'
 import type { WorkStateStore } from '../runtime/work-store.js'
 import type { WorkSignalKind, WorkSignalSeverity, WorkThread } from '../runtime/work-state.js'
 import type { EmotionalTurnRecord } from '../runtime/boundaries.js'
@@ -179,7 +177,7 @@ export class TaskSession {
   }
 
   setRuntimeAdapters(adapters: TaskRuntimeAdapter[]): void {
-    const internalIds = new Set([WORK_TASK_RUNTIME_ADAPTER_ID, LEGACY_TASK_RUNTIME_ADAPTER_ID, BUILTIN_TASK_RUNTIME_ADAPTER_ID])
+    const internalIds = new Set([WORK_TASK_RUNTIME_ADAPTER_ID, BUILTIN_TASK_RUNTIME_ADAPTER_ID])
     this.runtimeAdapters = [
       ...createDefaultTaskRuntimeAdapters(),
       ...adapters.filter(adapter => !internalIds.has(adapter.id)),
@@ -286,7 +284,6 @@ export class TaskSession {
         this.snapshot.recentTurns = [...this.snapshot.recentTurns, turn].slice(-6)
         this.persistTurn(turn)
         this.persistSnapshot()
-        this.emitTaskToolEvents(turn)
       },
       onStatusChanged: (status) => {
         this.snapshot.status = status
@@ -574,50 +571,6 @@ export class TaskSession {
     })
   }
 
-  private emitTaskToolEvents(turn: TaskTurnRecord): void {
-    const events = this.runtimeHooks.runtimeEvents
-    if (!events || !this.snapshot.taskId) {
-      return
-    }
-    turn.toolCalls.forEach((call, index) => {
-      const result = turn.toolResults[index]
-      events.emit({
-        name: 'task.tool.started',
-        taskId: this.snapshot.taskId ?? undefined,
-        payload: {
-          toolName: call.name,
-          callId: call.id,
-          taskDescription: this.snapshot.taskDescription ?? '',
-          ...(turn.stepId ? { stepId: turn.stepId } : {}),
-        },
-      })
-      if (result?.success === false) {
-        events.emit({
-          name: 'task.tool.failed',
-          taskId: this.snapshot.taskId ?? undefined,
-          payload: {
-            toolName: call.name,
-            callId: call.id,
-            taskDescription: this.snapshot.taskDescription ?? '',
-            error: result.error || `${call.name} failed`,
-          },
-        })
-        return
-      }
-      events.emit({
-        name: 'task.tool.completed',
-        taskId: this.snapshot.taskId ?? undefined,
-        payload: {
-          toolName: call.name,
-          callId: call.id,
-          taskDescription: this.snapshot.taskDescription ?? '',
-          success: true,
-          summary: summarizeToolResult(result),
-        },
-      })
-    })
-  }
-
   private async selectRuntimeAdapter(request: TaskRuntimeRequest): Promise<TaskRuntimeAdapter> {
     const configuredId = normalizeTaskRuntimeAdapterId(request.config.adapterId)
     const candidates = configuredId
@@ -634,7 +587,7 @@ export class TaskSession {
       console.warn(`[TaskSession] Task runtime adapter "${configuredId}" is unavailable; falling back to builtin`)
     }
     return this.runtimeAdapters.find(adapter => adapter.id === WORK_TASK_RUNTIME_ADAPTER_ID)
-      ?? createWorkTaskRuntimeAdapter()
+      ?? createTaskRuntimeAdapter()
   }
 
   getSnapshot(): SessionTaskSnapshot {
@@ -855,32 +808,6 @@ function cloneTaskPlan(plan: TaskPlan): TaskPlan {
   return JSON.parse(JSON.stringify(plan)) as TaskPlan
 }
 
-function summarizeToolResult(result: unknown): string | undefined {
-  if (!result || typeof result !== 'object') {
-    return undefined
-  }
-  const resultRecord = result as Record<string, unknown>
-  const body = resultRecord.result && typeof resultRecord.result === 'object'
-    ? resultRecord.result as Record<string, unknown>
-    : resultRecord
-  const summary = firstStringValue(body.summary, body.stdout, body.stderr, body.path, body.filePath, body.file_path)
-  return summary ? truncateSummary(summary) : undefined
-}
-
-function firstStringValue(...values: unknown[]): string | undefined {
-  for (const value of values) {
-    if (typeof value === 'string' && value.trim()) {
-      return value
-    }
-  }
-  return undefined
-}
-
-function truncateSummary(value: string): string {
-  const clean = value.replace(/\s+/g, ' ').trim()
-  return clean.length > 240 ? `${clean.slice(0, 237)}...` : clean
-}
-
 function mapTaskRunStateToWorkStatus(state: TaskRunState): WorkThread['status'] {
   if (state === 'completed') {
     return 'completed'
@@ -927,48 +854,13 @@ function extractEmotionalTurnRecords(items: TaskContextItem[]): EmotionalTurnRec
 }
 
 function createDefaultTaskRuntimeAdapters(): TaskRuntimeAdapter[] {
-  const legacy = createLegacyTaskRuntimeAdapter()
-  return [
-    createWorkTaskRuntimeAdapter(legacy),
-    legacy,
-  ]
+  return [createTaskRuntimeAdapter()]
 }
 
-function createWorkTaskRuntimeAdapter(legacy = createLegacyTaskRuntimeAdapter()): TaskRuntimeAdapter {
+function createTaskRuntimeAdapter(): TaskRuntimeAdapter {
   return {
     id: WORK_TASK_RUNTIME_ADAPTER_ID,
-    label: 'Work runtime',
-    async run(request, hooks) {
-      const events = request.dependencies.runtimeEvents
-      const workState = request.dependencies.workState
-      if (!events || !workState) {
-        return legacy.run(request, hooks)
-      }
-      const session = new WorkSession({
-        events,
-        workState,
-        tools: request.dependencies.agent.getTools(),
-        toolRouter: request.dependencies.toolRouter,
-      })
-      const task = session.createTask(request.taskId, request.taskDescription)
-      const turn = session.startTurn(task.id, 1)
-      try {
-        const result = await legacy.run(request, hooks)
-        session.completeTurn(turn, [], false, [])
-        session.updateTaskStatus(task.id, result.success ? 'completed' : 'failed')
-        return result
-      } catch (error) {
-        session.updateTaskStatus(task.id, 'failed')
-        throw error
-      }
-    },
-  }
-}
-
-function createLegacyTaskRuntimeAdapter(): TaskRuntimeAdapter {
-  return {
-    id: LEGACY_TASK_RUNTIME_ADAPTER_ID,
-    label: 'Legacy tool loop',
+    label: 'Task runtime',
     async run(request, hooks) {
       const runtime = new TaskRuntime(
         request.dependencies.llm,
@@ -989,7 +881,10 @@ function createLegacyTaskRuntimeAdapter(): TaskRuntimeAdapter {
           onUserInputRequest: hooks.onUserInputRequest,
         },
         request.config,
-        request.signal
+        request.signal,
+        request.taskId,
+        request.dependencies.runtimeEvents,
+        request.dependencies.toolRouter
       )
       return runtime.run()
     },
@@ -997,16 +892,13 @@ function createLegacyTaskRuntimeAdapter(): TaskRuntimeAdapter {
 }
 
 function getExecutorKind(adapter: TaskRuntimeAdapter): TaskExecutorKind {
-  return adapter.id === LEGACY_TASK_RUNTIME_ADAPTER_ID ? 'builtin' : 'adapter'
+  return adapter.id === WORK_TASK_RUNTIME_ADAPTER_ID ? 'builtin' : 'adapter'
 }
 
 function normalizeTaskRuntimeAdapterId(adapterId?: string): string | undefined {
   const trimmed = adapterId?.trim()
   if (!trimmed) {
     return undefined
-  }
-  if (LEGACY_TASK_RUNTIME_ADAPTER_ALIASES.includes(trimmed)) {
-    return LEGACY_TASK_RUNTIME_ADAPTER_ID
   }
   return trimmed
 }

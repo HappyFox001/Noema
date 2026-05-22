@@ -1,7 +1,7 @@
 /**
  * Shared factory for built-in local work tools.
  */
-import type { Tool } from '@her-text/types'
+import type { Tool } from './types.js'
 
 export type LocalToolDefinition = {
   name: string

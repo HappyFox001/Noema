@@ -1,7 +1,7 @@
 /**
  * Tool routing primitives for the next work execution engine.
  */
-import type { Tool } from '@her-text/types'
+import type { Tool } from '../tools/types.js'
 
 export type RoutedToolKind =
   | 'function'

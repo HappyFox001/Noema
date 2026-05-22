@@ -4,8 +4,8 @@
  * Defines generic hooks for setup, tools, prompt additions, text transforms,
  * task-context injection, expression selection, and admin actions.
  */
-import type { Tool } from '@her-text/types'
-import type { LLMProvider } from '@her-text/core'
+import type { Tool } from '../tools/types.js'
+import type { LLMProvider } from '../llm/index.js'
 import type { TaskRuntimeAdapter } from '../session/runtime-adapter.js'
 import type { TaskPlan, TaskRunState, TaskStep } from '../session/task-plan.js'
 

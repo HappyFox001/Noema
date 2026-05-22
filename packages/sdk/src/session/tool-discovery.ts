@@ -1,7 +1,7 @@
 /**
  * Builds Codex-style deferred tool discovery for task runtime.
  */
-import type { Tool } from '@her-text/types'
+import type { Tool } from '../tools/types.js'
 
 export interface ToolSearchResult {
   name: string

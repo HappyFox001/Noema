@@ -1,7 +1,7 @@
 /**
  * Runtime event backbone shared by dialogue, task, output, and learning layers.
  */
-import { generateId } from '@her-text/core'
+import { generateId } from '../utils/index.js'
 import type { TaskExecutorKind } from '../session/task.js'
 import type { TaskPlan, TaskRunState, TaskStep } from '../session/task-plan.js'
 import type { EmotionalTurnRecord } from './boundaries.js'

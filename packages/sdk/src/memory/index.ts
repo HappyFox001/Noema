@@ -1,9 +1,8 @@
 import type {
-  ConversationTurn,
   SDKConfig
-} from '@her-text/types'
-import { generateId } from '@her-text/core'
-import type { LLMProvider } from '@her-text/core'
+} from '../config/types.js'
+import { generateId } from '../utils/index.js'
+import type { LLMProvider } from '../llm/index.js'
 import { mkdir } from 'node:fs/promises'
 import { dirname, isAbsolute, resolve } from 'node:path'
 import {
@@ -14,6 +13,12 @@ import {
 } from './sqlite-runtime.js'
 import { PROMPTS } from '../prompts.js'
 
+export interface ConversationTurn {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  timestamp: number
+}
 
 export interface UserProfile {
   basic: {

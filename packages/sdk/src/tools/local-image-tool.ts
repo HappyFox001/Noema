@@ -1,7 +1,7 @@
 /**
  * Built-in local tool for attaching image files to work turns.
  */
-import type { Tool } from '@her-text/types'
+import type { Tool } from './types.js'
 import { readImageFile } from './local-node-ops.js'
 import { createTool } from './local-tool-factory.js'
 

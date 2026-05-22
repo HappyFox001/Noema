@@ -4,8 +4,8 @@
  * Builds task prompts, injects task context, runs model/tool iterations,
  * compacts long task history, and returns the final task result.
  */
-import type { Tool } from '@her-text/types'
-import type { LLMProvider } from '@her-text/core'
+import type { Tool } from '../tools/types.js'
+import type { LLMProvider } from '../llm/index.js'
 import type { AgentCore } from '../agent/index.js'
 import type { ContextManager } from '../context/index.js'
 import type { UserProfile, ConversationSummary } from '../memory/index.js'
@@ -13,6 +13,9 @@ import type { PersonalityEngine } from '../personality/index.js'
 import { createRuntimeAwareness, formatAwarenessBlock, formatMessageTime } from '../awareness/index.js'
 import { TurnRuntime } from './turn.js'
 import { PROMPTS } from '../prompts.js'
+import { RuntimeEventBus } from '../runtime/events.js'
+import { ToolOrchestrator, type ToolExecutionResult } from '../runtime/tool-orchestrator.js'
+import type { ToolRouter } from '../runtime/tool-router.js'
 import type { TaskPlan, TaskPlanDraft, TaskRunState, TaskStep, TaskStepStatus } from './task-plan.js'
 import {
   applyExecutionObservations,
@@ -33,6 +36,31 @@ import { renderWorkToolStrategy } from './work-tool-strategy.js'
 function verboseLog(message = ''): void {
   if (process.env.HER_TEXT_VERBOSE_LOGS === '1') {
     process.stdout.write(`${message}\n`)
+  }
+}
+
+function normalizeToolExecutionResult(execution: ToolExecutionResult): any {
+  const durationMs = execution.completedAt - execution.startedAt
+  if (execution.success) {
+    return {
+      success: true,
+      callId: execution.call.id,
+      name: execution.call.name,
+      result: execution.result,
+      attempts: execution.attempts,
+      duration_ms: durationMs,
+    }
+  }
+
+  return {
+    success: false,
+    callId: execution.call.id,
+    name: execution.call.name,
+    result: execution.result,
+    error: execution.error?.message ?? 'Tool execution failed',
+    normalized_error: execution.error,
+    attempts: execution.attempts,
+    duration_ms: durationMs,
   }
 }
 
@@ -189,19 +217,31 @@ export class TaskRuntime {
     private taskContextItems: TaskContextItem[] = [],
     private hooks: TaskRuntimeHooks = {},
     config: TaskRuntimeConfig = {},
-    private signal?: AbortSignal
+    private signal?: AbortSignal,
+    private taskId: string = 'task-runtime',
+    runtimeEvents?: RuntimeEventBus,
+    toolRouter?: ToolRouter
   ) {
-    this.turnRuntime = new TurnRuntime(llm, agent)
+    this.turnRuntime = new TurnRuntime(llm)
     this.maxTurns = clampInteger(config.maxTurns, 24, 4, 100)
     this.modelContextWindow = clampInteger(config.modelContextWindow, 128000, 4096, 1000000)
     this.autoCompactTokenLimit = resolveAutoCompactTokenLimit(config.autoCompactTokenLimit, this.modelContextWindow)
     this.keepRecentTurns = clampInteger(config.keepRecentTurns, 4, 1, this.maxTurns)
     this.executionState = createExecutionState(this.taskDescription)
+    this.toolOrchestrator = new ToolOrchestrator({
+      events: runtimeEvents ?? new RuntimeEventBus(50),
+      tools: this.agent.getTools(),
+      router: toolRouter,
+      defaultTimeoutMs: 30000,
+    })
   }
+
+  private toolOrchestrator: ToolOrchestrator
 
   async run(): Promise<TaskRunResult> {
     const tools = this.agent.getTools()
     this.availableTools = tools
+    this.toolOrchestrator?.setTools(tools)
     this.deferredToolSummary = renderDeferredToolSummary(tools)
     let messages: any[] = []
 
@@ -279,7 +319,8 @@ export class TaskRuntime {
           onObserving: () => {
             this.setRunState('observing')
             this.emitStepUpdated(step)
-          }
+          },
+          executeExternalTool: (call) => this.executeExternalTool(call)
         })
         this.throwIfAborted()
         toolCallsCount += turn.toolCalls.length
@@ -450,6 +491,25 @@ export class TaskRuntime {
       this.applyObservations(observations)
     }
     return observations
+  }
+
+  private async executeExternalTool(call: import('../tools/types.js').ToolCall): Promise<any> {
+    const execution = await this.toolOrchestrator.executeCall(
+      {
+        id: call.id,
+        name: call.function.name,
+        arguments: call.function.arguments,
+      },
+      {
+        threadId: this.taskId,
+        taskId: this.taskId,
+        taskDescription: this.taskDescription,
+        stepId: this.currentStep?.id,
+        signal: this.signal,
+      }
+    )
+
+    return normalizeToolExecutionResult(execution)
   }
 
   private createObservation(turnIndex: number, callIndex: number, toolName: string, toolResult: any): TaskObservation {

@@ -1,6 +1,6 @@
 import { readFile } from 'fs/promises'
 import { parse } from 'yaml'
-import type { Personality } from '@her-text/types'
+import type { Personality } from '../personality/index.js'
 
 export async function loadPersonalityFromFile(filePath: string): Promise<Personality> {
   try {

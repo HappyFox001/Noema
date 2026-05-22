@@ -3,7 +3,7 @@
  */
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { generateId } from '@her-text/core'
+import { generateId } from '../utils/index.js'
 
 export type GoalRunDirection = 'minimize' | 'maximize' | 'target'
 export type GoalRunStatus = 'initialized' | 'running' | 'paused' | 'completed' | 'needs_human' | 'failed'

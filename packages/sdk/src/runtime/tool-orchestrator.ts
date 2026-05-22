@@ -1,7 +1,7 @@
 /**
  * Executes routed work tools behind explicit policy and failure boundaries.
  */
-import type { Tool } from '@her-text/types'
+import type { Tool } from '../tools/types.js'
 import type { RuntimeEventBus } from './events.js'
 import { ToolRouter, type RoutedToolCall, type RoutedToolKind, type WorkToolCall } from './tool-router.js'
 
@@ -54,6 +54,7 @@ export interface ToolOrchestratorOptions {
   tools?: Tool[]
   router?: ToolRouter
   policies?: ToolExecutionPolicies
+  defaultTimeoutMs?: number
 }
 
 export class ToolOrchestrator {
@@ -149,7 +150,20 @@ export class ToolOrchestrator {
         return finish(false, attempt - 1, undefined, createFailure('cancelled', 'Tool call was cancelled', false))
       }
       try {
-        const result = await tool.execute(parsedArgs.value)
+        const result = await executeToolWithTimeout(
+          tool,
+          withRuntimeContext(parsedArgs.value, this.options.events, context),
+          tool.timeoutMs ?? this.options.defaultTimeoutMs
+        )
+        if (isFailedToolResult(result)) {
+          const failure = createFailure(
+            'execution_failed',
+            extractToolResultError(result),
+            false,
+            result
+          )
+          return finish(false, attempt, result, failure)
+        }
         return finish(true, attempt, result)
       } catch (error) {
         lastFailure = normalizeExecutionFailure(error, routedCall, this.options.policies?.retry?.retryableKinds)
@@ -187,6 +201,57 @@ export class ToolOrchestrator {
     }
     return undefined
   }
+}
+
+function withRuntimeContext(
+  args: Record<string, unknown>,
+  events: RuntimeEventBus,
+  context: ToolExecutionContext
+): Record<string, unknown> {
+  return {
+    ...args,
+    __runtime: {
+      events,
+      context,
+    },
+  }
+}
+
+async function executeToolWithTimeout(
+  tool: Tool,
+  args: Record<string, unknown>,
+  timeoutMs?: number
+): Promise<unknown> {
+  if (!timeoutMs || timeoutMs <= 0) {
+    return tool.execute(args)
+  }
+
+  return Promise.race([
+    tool.execute(args),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Tool execution timeout')), timeoutMs)
+    )
+  ])
+}
+
+function isFailedToolResult(result: unknown): boolean {
+  return Boolean(
+    result &&
+    typeof result === 'object' &&
+    'success' in result &&
+    (result as { success?: unknown }).success === false
+  )
+}
+
+function extractToolResultError(result: unknown): string {
+  if (!result || typeof result !== 'object') {
+    return 'Tool execution failed'
+  }
+  const error = (result as { error?: unknown }).error
+  if (typeof error === 'string' && error.trim()) {
+    return error
+  }
+  return 'Tool execution failed'
 }
 
 function parseToolArguments(raw: string): { ok: true, value: Record<string, unknown> } | { ok: false, failure: NormalizedToolFailure } {

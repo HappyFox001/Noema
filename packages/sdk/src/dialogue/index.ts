@@ -4,9 +4,9 @@
  * Coordinates conversational replies, task detection, task-context injection,
  * task runtime execution, plugin hooks, memory writes, and interruption recovery.
  */
-import type { UserInput } from '@her-text/types'
-import type { LLMProvider } from '@her-text/core'
-import { generateId } from '@her-text/core'
+import type { UserInput } from './processors.js'
+import type { LLMProvider } from '../llm/index.js'
+import { generateId } from '../utils/index.js'
 import type { MemoryEngine } from '../memory/index.js'
 import type { LearningAssetStore } from '../learning/store.js'
 import { selectExpressionRoutines } from '../learning/routine-policy.js'

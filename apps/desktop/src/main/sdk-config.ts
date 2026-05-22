@@ -1,6 +1,6 @@
 import { app } from 'electron'
 import { join } from 'path'
-import type { SDKConfig } from '@her-text/types'
+import type { SDKConfig } from '@her-text/sdk'
 import type { LLMModelConfig, TaskRuntimeSettings } from './settings-store.js'
 
 let personalityManager: any = null

@@ -1,6 +1,5 @@
-import type { ToolCall } from '@her-text/types'
-import type { LLMProvider } from '@her-text/core'
-import type { AgentCore } from '../agent/index.js'
+import type { ToolCall } from '../tools/types.js'
+import type { LLMProvider } from '../llm/index.js'
 
 export interface TurnRunResult {
   turnIndex: number
@@ -21,10 +20,12 @@ export interface TurnRuntimeHooks {
 }
 
 export type InternalToolHandler = (args: any, call: ToolCall) => Promise<any> | any
+export type ExternalToolExecutor = (call: ToolCall) => Promise<any>
 
 export interface TurnRuntimeOptions extends TurnRuntimeHooks {
   signal?: AbortSignal
   internalTools?: Record<string, InternalToolHandler>
+  executeExternalTool?: ExternalToolExecutor
 }
 
 function verboseLog(message = ''): void {
@@ -34,10 +35,7 @@ function verboseLog(message = ''): void {
 }
 
 export class TurnRuntime {
-  constructor(
-    private llm: LLMProvider,
-    private agent: AgentCore
-  ) {}
+  constructor(private llm: LLMProvider) {}
 
   async run(
     turnIndex: number,
@@ -118,10 +116,10 @@ export class TurnRuntime {
       throwIfAborted(options.signal)
       const handler = internalTools[call.function.name]
       if (!handler) {
-        const [result] = await this.agent.execute([call], {
-          timeout: 30000
-        })
-        results.push(result)
+        if (!options.executeExternalTool) {
+          throw new Error(`External tool executor is required for tool: ${call.function.name}`)
+        }
+        results.push(await options.executeExternalTool(call))
         continue
       }
 

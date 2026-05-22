@@ -1,6 +1,8 @@
+/**
+ * LLM provider abstraction and OpenAI-compatible implementation.
+ */
 import OpenAI from 'openai'
-import type { SDKConfig } from '@her-text/types'
-
+import type { SDKConfig } from '../config/types.js'
 
 export interface LLMResponse {
   content: string

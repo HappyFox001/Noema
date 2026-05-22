@@ -2,7 +2,7 @@
  * Built-in local tools for file discovery and content search.
  */
 import { readFile } from 'node:fs/promises'
-import type { Tool } from '@her-text/types'
+import type { Tool } from './types.js'
 import { resolveToolPath } from './local-node-ops.js'
 import { matchesAnyGlobPattern, matchesGlobPattern, walkFiles } from './local-search-utils.js'
 import { createTool } from './local-tool-factory.js'

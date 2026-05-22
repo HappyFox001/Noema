@@ -17,15 +17,9 @@ importers:
 
   apps/desktop:
     dependencies:
-      '@her-text/core':
-        specifier: workspace:*
-        version: link:../../packages/core
       '@her-text/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
-      '@her-text/types':
-        specifier: workspace:*
-        version: link:../../packages/types
       '@lobehub/icons-static-svg':
         specifier: ^1.90.0
         version: 1.90.0
@@ -79,42 +73,17 @@ importers:
         specifier: ^6.4.2
         version: 6.4.2(@types/node@20.19.39)(yaml@2.8.3)
 
-  packages/core:
-    dependencies:
-      '@her-text/types':
-        specifier: workspace:*
-        version: link:../types
-      openai:
-        specifier: ^4.28.0
-        version: 4.104.0(ws@8.20.0)
-    devDependencies:
-      '@types/jest':
-        specifier: ^29.5.0
-        version: 29.5.14
-      '@types/node':
-        specifier: ^20.11.0
-        version: 20.19.39
-      jest:
-        specifier: ^29.7.0
-        version: 29.7.0(@types/node@20.19.39)
-      typescript:
-        specifier: ^5.4.0
-        version: 5.9.3
-
   packages/sdk:
     dependencies:
-      '@her-text/core':
-        specifier: workspace:*
-        version: link:../core
-      '@her-text/types':
-        specifier: workspace:*
-        version: link:../types
       fft.js:
         specifier: ^4.0.4
         version: 4.0.4
       fish-audio:
         specifier: ^0.1.0
         version: 0.1.0
+      openai:
+        specifier: ^4.28.0
+        version: 4.104.0(ws@8.20.0)
       yaml:
         specifier: ^2.3.4
         version: 2.8.3
@@ -128,12 +97,6 @@ importers:
       jest:
         specifier: ^29.7.0
         version: 29.7.0(@types/node@20.19.39)
-      typescript:
-        specifier: ^5.4.0
-        version: 5.9.3
-
-  packages/types:
-    devDependencies:
       typescript:
         specifier: ^5.4.0
         version: 5.9.3
