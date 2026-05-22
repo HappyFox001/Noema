@@ -54,7 +54,7 @@ console.log('[Env] LLM_1_BASE_URL:', process.env.LLM_1_BASE_URL || '✗ (not set
 console.log('[Env] TTS_1_API_KEY:', process.env.TTS_1_API_KEY ? '✓ (set)' : '✗ (not set)')
 console.log('[Env] ASR_1_API_KEY:', process.env.ASR_1_API_KEY ? '✓ (set)' : '✗ (not set)')
 
-import { app, BrowserWindow, ipcMain, systemPreferences, shell, dialog, screen, nativeImage, Menu, session, type MenuItemConstructorOptions, type OpenDialogOptions } from 'electron'
+import { app, BrowserWindow, ipcMain, systemPreferences, shell, dialog, screen, nativeImage, Menu, session, type OpenDialogOptions } from 'electron'
 import {
   type HerTextSDK,
   createSTTProvider,
@@ -122,6 +122,14 @@ import { AppLogStore } from './app-log-store.js'
 import { handleDesktopRuntimeEvent } from './runtime-event-adapter.js'
 import { TaskCommunicationSpeechScheduler } from './task-communication-speech.js'
 import { initializeDesktopSDK } from './sdk-bootstrap.js'
+import { buildApplicationMenu } from './app-menu.js'
+import {
+  COMPACT_WINDOW_SIZE,
+  SETTINGS_WINDOW_SIZE,
+  TASK_WINDOW_SIZE,
+  createMainWindow,
+  resizeWindowAroundCenter,
+} from './window-manager.js'
 const DEV_SERVER_URL = 'http://127.0.0.1:5173'
 
 type InterruptionReason = 'vad_start' | 'transcript_start' | 'manual' | 'provider_switch'
@@ -2288,9 +2296,6 @@ if (process.env.HER_TEXT_DISABLE_GPU === '1') {
 }
 
 let mainWindow: BrowserWindow | null = null
-const COMPACT_WINDOW_SIZE = { width: 380, height: 380 }
-const TASK_WINDOW_SIZE = { width: 600, height: 380 }
-const SETTINGS_WINDOW_SIZE = { width: 500, height: 600 }
 
 function getAppIconPath(): string | undefined {
   const iconPath = app.isPackaged
@@ -2316,13 +2321,6 @@ function applyAppIcon(): void {
   }
 }
 
-function resizeWindowAroundCenter(window: BrowserWindow, width: number, height: number): void {
-  const bounds = window.getBounds()
-  const nextX = Math.round(bounds.x + (bounds.width - width) / 2)
-  const nextY = Math.round(bounds.y + (bounds.height - height) / 2)
-  window.setBounds({ x: nextX, y: nextY, width, height }, false)
-}
-
 function sendAppMenuCommand(command: string, payload?: unknown): void {
   if (!mainWindow || mainWindow.isDestroyed()) {
     void createWindow().then(() => {
@@ -2336,115 +2334,6 @@ function sendAppMenuCommand(command: string, payload?: unknown): void {
   mainWindow.webContents.send('app:menu-command', { command, payload })
 }
 
-function buildSettingsMenuItems(): MenuItemConstructorOptions[] {
-  return [
-    {
-      label: 'Settings...',
-      accelerator: 'CmdOrCtrl+,',
-      click: () => sendAppMenuCommand('open-settings'),
-    },
-    {
-      label: 'Plugins',
-      accelerator: 'CmdOrCtrl+Shift+P',
-      click: () => sendAppMenuCommand('open-settings', { section: 'plugins' }),
-    },
-    {
-      label: 'Models',
-      accelerator: 'CmdOrCtrl+Shift+M',
-      click: () => sendAppMenuCommand('open-settings', { section: 'models' }),
-    },
-    {
-      label: 'Logs',
-      accelerator: 'CmdOrCtrl+Shift+L',
-      click: () => sendAppMenuCommand('open-settings', { section: 'logs' }),
-    },
-  ]
-}
-
-function buildApplicationMenu(): Menu {
-  const template: MenuItemConstructorOptions[] = [
-    ...(process.platform === 'darwin'
-      ? [{
-          label: app.name,
-          submenu: [
-            { role: 'about' },
-            { type: 'separator' },
-            ...buildSettingsMenuItems(),
-            { type: 'separator' },
-            { role: 'services' },
-            { type: 'separator' },
-            { role: 'hide' },
-            { role: 'hideOthers' },
-            { role: 'unhide' },
-            { type: 'separator' },
-            { role: 'quit' },
-          ],
-        } satisfies MenuItemConstructorOptions]
-      : []),
-    {
-      label: 'File',
-      submenu: [
-        ...buildSettingsMenuItems(),
-        { type: 'separator' },
-        process.platform === 'darwin' ? { role: 'close' } : { role: 'quit' },
-      ],
-    },
-    {
-      label: 'Edit',
-      submenu: [
-        { role: 'undo' },
-        { role: 'redo' },
-        { type: 'separator' },
-        { role: 'cut' },
-        { role: 'copy' },
-        { role: 'paste' },
-        { role: 'selectAll' },
-      ],
-    },
-    {
-      label: 'View',
-      submenu: [
-        { role: 'reload' },
-        { role: 'forceReload' },
-        { role: 'toggleDevTools' },
-        { type: 'separator' },
-        { role: 'resetZoom' },
-        { role: 'zoomIn' },
-        { role: 'zoomOut' },
-        { type: 'separator' },
-        { role: 'togglefullscreen' },
-      ],
-    },
-    {
-      label: 'Window',
-      submenu: [
-        { role: 'minimize' },
-        { role: 'zoom' },
-        ...(process.platform === 'darwin'
-          ? [
-              { type: 'separator' } satisfies MenuItemConstructorOptions,
-              { role: 'front' } satisfies MenuItemConstructorOptions,
-            ]
-          : [
-              { role: 'close' } satisfies MenuItemConstructorOptions,
-            ]),
-      ],
-    },
-    {
-      role: 'help',
-      submenu: [
-        {
-          label: 'Open Project Website',
-          click: () => {
-            void shell.openExternal('https://github.com/0xhacker/her-text')
-          },
-        },
-      ],
-    },
-  ]
-
-  return Menu.buildFromTemplate(template)
-}
 let ttsService: TTSProvider | null = null
 let sdkInstance: HerTextSDK | null = null
 let ttsAvailable = true
@@ -2953,58 +2842,15 @@ function isDevMode(): boolean {
   return process.env.NODE_ENV === 'development'
 }
 
-async function loadRenderer(window: BrowserWindow): Promise<void> {
-  if (!isDevMode()) {
-    await window.loadFile(join(__dirname, 'renderer/index.html'))
-    return
-  }
-
-  const maxAttempts = 20
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      await window.loadURL(DEV_SERVER_URL)
-      window.webContents.openDevTools()
-      return
-    } catch (error) {
-      if (attempt === maxAttempts) {
-        throw error
-      }
-
-      console.warn(`[Electron] Dev server not ready (${attempt}/${maxAttempts}), retrying...`)
-      await new Promise((resolve) => setTimeout(resolve, 500))
-    }
-  }
-}
-
 async function createWindow() {
-  const appIconPath = getAppIconPath()
-
-  mainWindow = new BrowserWindow({
-    width: COMPACT_WINDOW_SIZE.width,
-    height: COMPACT_WINDOW_SIZE.height,
-    ...(appIconPath ? { icon: appIconPath } : {}),
-    frame: false,
-    transparent: true,
-    backgroundColor: '#00000000',
-    hasShadow: false,
-    alwaysOnTop: true,
-    resizable: false,
-    webPreferences: {
-      preload: join(__dirname, 'preload/index.cjs'),
-      contextIsolation: true,
-      nodeIntegration: false,
+  mainWindow = await createMainWindow({
+    dirname: __dirname,
+    devServerUrl: DEV_SERVER_URL,
+    isDevMode,
+    appIconPath: getAppIconPath(),
+    onClosed: () => {
+      mainWindow = null
     },
-  })
-
-  try {
-    await loadRenderer(mainWindow)
-  } catch (error) {
-    console.error('[Electron] Failed to load renderer:', error)
-  }
-
-  mainWindow.on('closed', () => {
-    mainWindow = null
   })
 }
 
@@ -3473,7 +3319,7 @@ async function cleanupUnknownRuntimePluginSettings(): Promise<void> {
 }
 
 app.whenReady().then(async () => {
-  Menu.setApplicationMenu(buildApplicationMenu())
+  Menu.setApplicationMenu(buildApplicationMenu(sendAppMenuCommand, app.name))
   applyAppIcon()
 
   await appLogStore.initializePersistence(join(app.getPath('userData'), 'logs.json'))
