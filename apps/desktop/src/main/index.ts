@@ -124,7 +124,7 @@ import {
   createMainWindow,
   resizeWindowAroundCenter,
 } from './window-manager.js'
-import { registerDebugIpcHandlers, registerLogIpcHandlers } from './ipc-handlers.js'
+import { registerDebugIpcHandlers, registerLogIpcHandlers, registerSystemIpcHandlers } from './ipc-handlers.js'
 import {
   DEFAULT_VAD_CONFIG,
   FALLBACK_ENDPOINTING_CONFIG,
@@ -2093,6 +2093,16 @@ latencyTracker.setSendToRenderer((data) => {
 
 registerDebugIpcHandlers(ipcMain, frameTraceObserver)
 registerLogIpcHandlers(ipcMain, appLogStore)
+registerSystemIpcHandlers(ipcMain, {
+  isDevMode,
+  getTelemetry: () => ({
+    success: true,
+    memoryBytes: process.memoryUsage().rss,
+    activeNetworkInterfaces: getActiveNetworkInterfaceCount(),
+    proxyActive: Boolean(activeProxyUrl.trim()),
+    activeProxyUrl,
+  }),
+})
 
 function splitDisplayUnits(text: string): string[] {
   const units: string[] = []
@@ -4109,16 +4119,6 @@ ipcMain.handle('settings:get', async () => {
   return appSettings
 })
 
-ipcMain.handle('system:telemetry', async () => {
-  return {
-    success: true,
-    memoryBytes: process.memoryUsage().rss,
-    activeNetworkInterfaces: getActiveNetworkInterfaceCount(),
-    proxyActive: Boolean(activeProxyUrl.trim()),
-    activeProxyUrl,
-  }
-})
-
 ipcMain.handle('settings:update', async (_, partial: Partial<AppSettings>) => {
   const previous = {
     proxy: appSettings.system.proxy.trim(),
@@ -4638,8 +4638,6 @@ function extractLive2dModelCapabilities(settings: any): {
     lipSyncParameters,
   }
 }
-
-ipcMain.handle('app:isDevMode', () => isDevMode())
 
 ipcMain.handle('settings:resetSystemFromEnv', async () => {
   if (!isDevMode()) {

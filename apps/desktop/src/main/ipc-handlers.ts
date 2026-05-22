@@ -38,3 +38,20 @@ export function registerDebugIpcHandlers(
     return { success: true }
   })
 }
+
+export function registerSystemIpcHandlers(
+  ipcMain: IpcMain,
+  options: {
+    isDevMode(): boolean
+    getTelemetry(): {
+      success: true
+      memoryBytes: number
+      activeNetworkInterfaces: number
+      proxyActive: boolean
+      activeProxyUrl: string
+    }
+  }
+): void {
+  ipcMain.handle('system:telemetry', async () => options.getTelemetry())
+  ipcMain.handle('app:isDevMode', () => options.isDevMode())
+}
