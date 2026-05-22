@@ -51,7 +51,7 @@ console.log('[Env] LLM_1_BASE_URL:', process.env.LLM_1_BASE_URL || '✗ (not set
 console.log('[Env] TTS_1_API_KEY:', process.env.TTS_1_API_KEY ? '✓ (set)' : '✗ (not set)')
 console.log('[Env] ASR_1_API_KEY:', process.env.ASR_1_API_KEY ? '✓ (set)' : '✗ (not set)')
 
-import { app, BrowserWindow, ipcMain, systemPreferences, shell, dialog, nativeImage, Menu, session, type OpenDialogOptions } from 'electron'
+import { app, BrowserWindow, ipcMain, systemPreferences, shell, dialog, nativeImage, Menu, session } from 'electron'
 import {
   type HerTextSDK,
   createSTTProvider,
@@ -130,6 +130,7 @@ import {
   registerWindowIpcHandlers,
 } from './ipc-handlers.js'
 import { registerModelIpcHandlers } from './model-ipc-handlers.js'
+import { registerPersonalityIpcHandlers } from './personality-ipc-handlers.js'
 import { registerPluginIpcHandlers } from './plugin-ipc-handlers.js'
 import {
   DEFAULT_VAD_CONFIG,
@@ -2042,6 +2043,17 @@ registerLearningIpcHandlers(ipcMain, {
 registerModelIpcHandlers(ipcMain, {
   resetLocalAnalyzers: () => voiceRuntimeController.resetLocalAnalyzers(),
 })
+registerPersonalityIpcHandlers(ipcMain, {
+  getSdk: () => sdkInstance,
+  getMainWindow: () => mainWindow,
+  getPersonalityManager,
+  getSettings: () => appSettings,
+  updateSettings: async (partial) => {
+    appSettings = await getSettingsStore().update(partial)
+    return appSettings
+  },
+  rebuildSdk: rebuildSDK,
+})
 registerPluginIpcHandlers(ipcMain, {
   getMainWindow: () => mainWindow,
   getSettings: () => appSettings,
@@ -3604,17 +3616,6 @@ ipcMain.handle('permissions:requestMicrophone', async () => {
   }
 })
 
-ipcMain.handle('sdk:getPersonality', async () => {
-  if (!sdkInstance) return null
-
-  try {
-    return sdkInstance.personality.getPersonality()
-  } catch (error: any) {
-    console.error('[SDK] Failed to get personality:', error)
-    return null
-  }
-})
-
 ipcMain.handle('settings:update', async (_, partial: Partial<AppSettings>) => {
   const previous = {
     proxy: appSettings.system.proxy.trim(),
@@ -3940,84 +3941,6 @@ ipcMain.handle('settings:resetSystemFromEnv', async () => {
     return { success: true, settings: appSettings }
   } catch (error: any) {
     return { success: false, error: error.message }
-  }
-})
-
-ipcMain.handle('personality:list', async () => {
-  try {
-    const personalityManager = getPersonalityManager()
-    return {
-      success: true,
-      current: appSettings.selectedPersonality,
-      items: await personalityManager.listRoleItems(appSettings.externalRolePaths)
-    }
-  } catch (error: any) {
-    return { success: false, error: error.message, items: [] }
-  }
-})
-
-ipcMain.handle('personality:set', async (_, ref: string) => {
-  try {
-    const personalityManager = getPersonalityManager()
-    await personalityManager.setCurrentPersonality(ref)
-    appSettings = await getSettingsStore().update({ selectedPersonality: ref })
-    await rebuildSDK()
-    return { success: true, current: ref }
-  } catch (error: any) {
-    return { success: false, error: error.message }
-  }
-})
-
-ipcMain.handle('personality:addFile', async () => {
-  try {
-    const dialogOptions: OpenDialogOptions = {
-      title: '选择角色 YAML 文件',
-      properties: ['openFile'],
-      filters: [
-        { name: 'YAML Role', extensions: ['yaml', 'yml'] },
-      ],
-    }
-    const result = mainWindow
-      ? await dialog.showOpenDialog(mainWindow, dialogOptions)
-      : await dialog.showOpenDialog(dialogOptions)
-
-    if (result.canceled || result.filePaths.length === 0) {
-      return { success: false, canceled: true }
-    }
-
-    const filePath = result.filePaths[0]
-    const personalityManager = getPersonalityManager()
-    await personalityManager.validateRoleFile(filePath)
-
-    const externalRolePaths = Array.from(new Set([
-      ...appSettings.externalRolePaths,
-      filePath,
-    ]))
-    appSettings = await getSettingsStore().update({ externalRolePaths })
-
-    const ref = `file:${filePath}`
-    return {
-      success: true,
-      item: {
-        id: ref,
-        name: filePath.split(/[\\/]/).pop()?.replace(/\.ya?ml$/i, '') ?? filePath,
-        path: filePath,
-        source: 'file',
-      }
-    }
-  } catch (error: any) {
-    return { success: false, error: error.message }
-  }
-})
-
-ipcMain.handle('sdk:getStats', async () => {
-  if (!sdkInstance) return null
-
-  try {
-    return sdkInstance.getStats()
-  } catch (error: any) {
-    console.error('[SDK] Failed to get stats:', error)
-    return null
   }
 })
 
