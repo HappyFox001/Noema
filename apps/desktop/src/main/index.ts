@@ -109,6 +109,7 @@ import {
 } from './task-communication-manager.js'
 import { AppLogStore } from './app-log-store.js'
 import { handleDesktopRuntimeEvent } from './runtime-event-adapter.js'
+import { RendererPlaybackCoordinator } from './renderer-playback-coordinator.js'
 import { TaskCommunicationSpeechScheduler } from './task-communication-speech.js'
 import { initializeDesktopSDK } from './sdk-bootstrap.js'
 import { buildApplicationMenu } from './app-menu.js'
@@ -1875,86 +1876,20 @@ function resolveRuntimePluginsDir(): string {
   return candidates[0]
 }
 
-let playbackRequestIdCounter = 0
-const playbackResolvers = new Map<number, () => void>()
+const rendererPlaybackCoordinator = new RendererPlaybackCoordinator({
+  hasRenderer: () => Boolean(mainWindow),
+  sendToRenderer: (channel, ...args) => {
+    mainWindow?.webContents.send(channel, ...args)
+  },
+  onPlaybackComplete: () => latencyObserver.calculate(),
+})
 
-
-async function waitForRendererPlayback(timeoutMs = 30000): Promise<void> {
-  if (!mainWindow) {
-    return
-  }
-
-  const requestId = ++playbackRequestIdCounter
-  console.log('[Playback] Requesting playback complete wait, requestId:', requestId)
-
-  return new Promise((resolve) => {
-    playbackResolvers.set(requestId, resolve)
-    mainWindow?.webContents.send('playback:waitRequest', requestId)
-
-    setTimeout(() => {
-      if (playbackResolvers.has(requestId)) {
-        console.log('[Playback] Wait timeout, requestId:', requestId)
-        playbackResolvers.delete(requestId)
-        resolve()
-      }
-    }, timeoutMs)
-  })
-}
-
-async function waitForRendererPlaybackOrAbort(signal: AbortSignal, timeoutMs = 30000): Promise<void> {
-  if (!mainWindow || signal.aborted) {
-    return
-  }
-
-  const requestId = ++playbackRequestIdCounter
-  console.log('[Playback] Requesting abortable playback complete wait, requestId:', requestId)
-
-  return new Promise((resolve) => {
-    let settled = false
-    let timeout: ReturnType<typeof setTimeout> | null = null
-
-    const cleanup = () => {
-      if (timeout) {
-        clearTimeout(timeout)
-        timeout = null
-      }
-      signal.removeEventListener('abort', onAbort)
-      playbackResolvers.delete(requestId)
-    }
-    const settle = () => {
-      if (settled) {
-        return
-      }
-      settled = true
-      cleanup()
-      resolve()
-    }
-    const onAbort = () => {
-      console.log('[Playback] Wait aborted, requestId:', requestId)
-      settle()
-    }
-
-    playbackResolvers.set(requestId, settle)
-    signal.addEventListener('abort', onAbort, { once: true })
-    mainWindow?.webContents.send('playback:waitRequest', requestId)
-
-    timeout = setTimeout(() => {
-      if (!settled) {
-        console.log('[Playback] Wait timeout, requestId:', requestId)
-        settle()
-      }
-    }, timeoutMs)
-  })
+function waitForRendererPlaybackOrAbort(signal: AbortSignal, timeoutMs = 30000): Promise<void> {
+  return rendererPlaybackCoordinator.waitForPlaybackOrAbort(signal, timeoutMs)
 }
 
 ipcMain.on('playback:complete', (_, requestId: number) => {
-  console.log('[Playback] Received complete notification, requestId:', requestId)
-  const resolver = playbackResolvers.get(requestId)
-  if (resolver) {
-    playbackResolvers.delete(requestId)
-    resolver()
-  }
-  latencyObserver.calculate()
+  rendererPlaybackCoordinator.complete(requestId)
 })
 
 const taskCommunicationSpeechScheduler = new TaskCommunicationSpeechScheduler({
