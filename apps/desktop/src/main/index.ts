@@ -54,7 +54,6 @@ console.log('[Env] ASR_1_API_KEY:', process.env.ASR_1_API_KEY ? 'âœ“ (set)' : 'â
 import { app, BrowserWindow, ipcMain, nativeImage, Menu, session } from 'electron'
 import {
   type HerTextSDK,
-  createSTTProvider,
   type STTProvider,
   type TTSProvider,
   createVADAnalyzer,
@@ -93,20 +92,18 @@ import {
 } from './sdk-config.js'
 import { SettingsStore, type AppSettings, type LLMModelConfig, type TTSModelConfig, type ASRModelConfig } from './settings-store.js'
 import {
-  getASRProviderCatalogEntry,
   getTTSProviderCatalogEntry,
 } from './model-provider-catalog.js'
 import { InteractiveInputStore, type StoredInteractiveInput, type StoredInteractiveInputGroup } from './interactive-input-store.js'
-import { NodeRealtimeWebSocketTransport } from './qwen-websocket-transport.js'
-import {
-  ReconnectingWebSocketTransport,
-  type ConnectionState,
-} from './reconnecting-websocket-transport.js'
 import {
   TaskCommunicationManager,
   type TaskCommunicationFrame,
   type TaskCommunicationTurn,
 } from './task-communication-manager.js'
+import {
+  createASRProviderForConfig,
+  normalizeASRModelName,
+} from './asr-provider-factory.js'
 import { AppLogStore } from './app-log-store.js'
 import { handleDesktopRuntimeEvent } from './runtime-event-adapter.js'
 import { RendererPlaybackCoordinator } from './renderer-playback-coordinator.js'
@@ -2259,68 +2256,6 @@ function getActiveTTSConfig(): TTSModelConfig | null {
 function getActiveASRConfig(): ASRModelConfig | null {
   const { asrModels, activeASRId } = appSettings.system
   return asrModels.find(m => m.id === activeASRId) || asrModels[0] || null
-}
-
-function normalizeASRModelName(modelName?: string): string {
-  const normalized = modelName?.trim()
-  if (!normalized || normalized === 'realtime' || normalized === 'qwen-realtime') {
-    return 'qwen3-asr-flash-realtime'
-  }
-  return normalized
-}
-
-function normalizeASRLanguage(config: ASRModelConfig | null): string {
-  return config?.language?.trim() || getASRProviderCatalogEntry(config?.provider).defaultLanguage
-}
-
-function createASRProviderForConfig(
-  config: ASRModelConfig | null,
-  callbacks?: {
-    onConnectionStateChange?: (state: ConnectionState) => void
-    onReconnectAttempt?: (attempt: number, maxRetries: number) => void
-  }
-): STTProvider {
-  if (!config?.apiKey?.trim()) {
-    throw new Error('ASR API key is not configured')
-  }
-
-  const providerEntry = getASRProviderCatalogEntry(config.provider)
-  if (providerEntry.protocol === 'openai-transcription') {
-    return createSTTProvider({
-      kind: 'openai-transcription',
-      config: {
-        apiKey: config.apiKey,
-        baseUrl: config.baseUrl || providerEntry.defaultBaseUrl,
-        model: config.modelName || providerEntry.defaultModel,
-        sampleRate: config.sampleRate || providerEntry.sampleRate,
-        language: config.language?.trim() || undefined,
-        receiveTimeoutMs: 20000,
-      },
-    })
-  }
-
-  const baseTransport = new NodeRealtimeWebSocketTransport()
-  const reconnectingTransport = new ReconnectingWebSocketTransport(baseTransport, {
-    maxRetries: callbacks ? 5 : 0,
-    initialRetryDelayMs: callbacks ? 1000 : 500,
-    maxRetryDelayMs: 16000,
-    onConnectionStateChange: callbacks?.onConnectionStateChange,
-    onReconnectAttempt: callbacks?.onReconnectAttempt,
-  })
-
-  return createSTTProvider({
-    kind: 'qwen-realtime',
-    config: {
-      apiKey: config.apiKey,
-      url: config.baseUrl,
-      model: normalizeASRModelName(config.modelName),
-      sampleRate: config.sampleRate || providerEntry.sampleRate,
-      language: normalizeASRLanguage(config),
-      receiveTimeoutMs: callbacks ? 1000 : 5000,
-      fallbackTranscriptCommitGraceMs: LOW_LATENCY_VOICE_CONFIG.asrFallbackCommitGraceMs,
-    },
-    transport: reconnectingTransport,
-  })
 }
 
 function getTTSConfigSignature(config: TTSModelConfig | null): string {
