@@ -3,6 +3,7 @@
  */
 import type { IpcMain } from 'electron'
 import type { AppLogStore } from './app-log-store.js'
+import type { AppSettings } from './settings-store.js'
 
 export function registerLogIpcHandlers(ipcMain: IpcMain, appLogStore: AppLogStore): void {
   ipcMain.handle('logs:list', async (_, limit?: number) => {
@@ -54,4 +55,13 @@ export function registerSystemIpcHandlers(
 ): void {
   ipcMain.handle('system:telemetry', async () => options.getTelemetry())
   ipcMain.handle('app:isDevMode', () => options.isDevMode())
+}
+
+export function registerSettingsReadIpcHandlers(
+  ipcMain: IpcMain,
+  options: {
+    getSettings(): AppSettings
+  }
+): void {
+  ipcMain.handle('settings:get', async () => options.getSettings())
 }

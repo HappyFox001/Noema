@@ -124,7 +124,12 @@ import {
   createMainWindow,
   resizeWindowAroundCenter,
 } from './window-manager.js'
-import { registerDebugIpcHandlers, registerLogIpcHandlers, registerSystemIpcHandlers } from './ipc-handlers.js'
+import {
+  registerDebugIpcHandlers,
+  registerLogIpcHandlers,
+  registerSettingsReadIpcHandlers,
+  registerSystemIpcHandlers,
+} from './ipc-handlers.js'
 import {
   DEFAULT_VAD_CONFIG,
   FALLBACK_ENDPOINTING_CONFIG,
@@ -2102,6 +2107,9 @@ registerSystemIpcHandlers(ipcMain, {
     proxyActive: Boolean(activeProxyUrl.trim()),
     activeProxyUrl,
   }),
+})
+registerSettingsReadIpcHandlers(ipcMain, {
+  getSettings: () => appSettings,
 })
 
 function splitDisplayUnits(text: string): string[] {
@@ -4113,10 +4121,6 @@ ipcMain.handle('sdk:getPersonality', async () => {
     console.error('[SDK] Failed to get personality:', error)
     return null
   }
-})
-
-ipcMain.handle('settings:get', async () => {
-  return appSettings
 })
 
 ipcMain.handle('settings:update', async (_, partial: Partial<AppSettings>) => {
