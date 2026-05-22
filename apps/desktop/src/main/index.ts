@@ -56,7 +56,7 @@ console.log('[Env] ASR_1_API_KEY:', process.env.ASR_1_API_KEY ? 'âœ“ (set)' : 'â
 
 import { app, BrowserWindow, ipcMain, systemPreferences, shell, dialog, screen, nativeImage, Menu, session, type MenuItemConstructorOptions, type OpenDialogOptions } from 'electron'
 import {
-  HerTextSDK,
+  type HerTextSDK,
   createSTTProvider,
   createTTSProvider,
   type STTProvider,
@@ -94,17 +94,13 @@ import {
   type SurfaceUserEvent,
   type WorkSurfaceFrame,
 } from '@her-text/sdk'
-import { discoverRuntimePlugins, invokeRuntimePluginAdminAction, loadRuntimePlugins } from './plugin-loader.js'
+import { discoverRuntimePlugins, invokeRuntimePluginAdminAction } from './plugin-loader.js'
 import { initializeSileroVAD, isSileroVADAvailable } from './silero-vad-helper.js'
 import { initializeSmartTurn, isSmartTurnAvailable } from './smart-turn-helper.js'
 import {
   initializePersonalityManager,
   getPersonalityManager,
-  buildSDKConfig,
   getStorageDir,
-  setActiveLLMConfig,
-  setActiveTaskLLMConfig,
-  setActiveTaskRuntimeConfig
 } from './sdk-config.js'
 import { SettingsStore, type AppSettings, type LLMModelConfig, type TTSModelConfig, type ASRModelConfig } from './settings-store.js'
 import {
@@ -125,6 +121,7 @@ import {
 import { AppLogStore } from './app-log-store.js'
 import { handleDesktopRuntimeEvent } from './runtime-event-adapter.js'
 import { TaskCommunicationSpeechScheduler } from './task-communication-speech.js'
+import { initializeDesktopSDK } from './sdk-bootstrap.js'
 const DEV_SERVER_URL = 'http://127.0.0.1:5173'
 
 type InterruptionReason = 'vad_start' | 'transcript_start' | 'manual' | 'provider_switch'
@@ -3347,19 +3344,15 @@ function formatTaskInputLabel(key: string): string {
 }
 
 async function initializeSDK(): Promise<void> {
-  setActiveLLMConfig(getActiveLLMConfig())
-  setActiveTaskLLMConfig(getActiveTaskConfig())
-  setActiveTaskRuntimeConfig(appSettings.system.taskRuntime)
-  const sdkConfig = await buildSDKConfig()
-  const pluginsDir = resolveRuntimePluginsDir()
-  console.log('[PluginLoader] Runtime plugins directory:', pluginsDir)
-  const plugins = await loadRuntimePlugins(pluginsDir, appSettings.plugins, appSettings.pluginConfigs)
-  sdkInstance = await HerTextSDK.initialize(sdkConfig, {
-    plugins,
-    selfLearningEnabled: appSettings.experimental?.selfLearningEnabled !== false,
+  const result = await initializeDesktopSDK({
+    appSettings,
+    activeLLMConfig: getActiveLLMConfig(),
+    activeTaskConfig: getActiveTaskConfig(),
+    pluginsDir: resolveRuntimePluginsDir(),
     onRuntimeEvent: handleRuntimeEvent,
     onTaskUserInputRequest: requestTaskUserInput,
   })
+  sdkInstance = result.sdk
   taskCommunicationManager.setPlanDecorator((plan) => buildCurrentWorkThreadPanelPlan(plan))
   console.log('[SDK] Initialized successfully')
 }
