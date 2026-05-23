@@ -2548,7 +2548,7 @@ function syncPluginUIStateSoon(): void {
 
 function syncPluginUIState(): void {
   const message = {
-    type: 'her-text:ui-state',
+    type: 'noema:ui-state',
     config: activePluginMainSurface?.config ?? activePluginTaskSurface?.config ?? {},
     state: getPluginUIState(),
   }
@@ -2605,7 +2605,7 @@ function queuePluginMainPointerClientPoint(clientX: number | null, clientY: numb
     }
 
     const frame = pluginUIMainView.querySelector<HTMLIFrameElement>('.plugin-ui-main-surface .plugin-ui-surface-frame')
-    frame?.contentWindow?.postMessage({ type: 'her-text:pointer', ...payload }, '*')
+    frame?.contentWindow?.postMessage({ type: 'noema:pointer', ...payload }, '*')
     lastPluginMainPointerActive = payload.active
   })
 }
@@ -2680,9 +2680,9 @@ window.addEventListener('message', (event) => {
   if (!data || typeof data !== 'object') {
     return
   }
-  if (data.type === 'her-text:ui-ready') {
+  if (data.type === 'noema:ui-ready') {
     syncPluginUIState()
-  } else if (data.type === 'her-text:context-menu') {
+  } else if (data.type === 'noema:context-menu') {
     const x = Number.isFinite(data.x) ? Number(data.x) : window.innerWidth / 2
     const y = Number.isFinite(data.y) ? Number(data.y) : window.innerHeight / 2
     showContextMenuAt(x, y)
@@ -8196,7 +8196,7 @@ async function initializeApp(): Promise<void> {
     await loadPluginUISurfaces()
     await refreshSetupReadiness()
     updateConversationButton()
-    console.log('Her-Text Renderer initialized')
+    console.log('Noema Renderer initialized')
   } catch (error) {
     console.error('Failed to initialize app:', error)
   }

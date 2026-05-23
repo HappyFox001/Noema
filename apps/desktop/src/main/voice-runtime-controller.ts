@@ -7,8 +7,8 @@ import type {
   TTSProvider,
   VADParams,
   VoiceConfidenceProvider,
-} from '@her-text/sdk'
-import { createTTSProvider } from '@her-text/sdk'
+} from '@noema/sdk'
+import { createTTSProvider } from '@noema/sdk'
 import { getTTSProviderCatalogEntry } from './model-provider-catalog.js'
 import { initializeSileroVAD, isSileroVADAvailable } from './silero-vad-helper.js'
 import { initializeSmartTurn, isSmartTurnAvailable } from './smart-turn-helper.js'

@@ -2,7 +2,7 @@
  * IPC handlers for conversation lifecycle and clear/stop commands.
  */
 import { type IpcMain } from 'electron'
-import type { HerTextSDK } from '@her-text/sdk'
+import type { NoemaSDK } from '@noema/sdk'
 import type { AppSettings } from './settings-store.js'
 
 export interface ConversationTurnResult {
@@ -15,7 +15,7 @@ export interface ConversationTurnResult {
 export function registerConversationIpcHandlers(
   ipcMain: IpcMain,
   options: {
-    getSdk(): HerTextSDK | null
+    getSdk(): NoemaSDK | null
     getSettings(): AppSettings
     getTtsEnabled(): boolean
     initializeSdk(): Promise<void>

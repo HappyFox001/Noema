@@ -222,7 +222,7 @@ export class WorkSurfaceView {
 
   private renderText(primary: string, secondary?: string): HTMLElement {
     const wrapper = document.createElement('div')
-    wrapper.className = 'work-surface-text'
+    wrapper.className = 'work-surface'
     const main = document.createElement('div')
     main.textContent = primary || ''
     wrapper.appendChild(main)

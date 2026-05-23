@@ -8,7 +8,7 @@ import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 import { promisify } from 'util'
 import { type IpcMain } from 'electron'
-import { createSTTProvider, type STTProvider } from '@her-text/sdk'
+import { createSTTProvider, type STTProvider } from '@noema/sdk'
 import { type ASRModelConfig, type LLMModelConfig, type TTSModelConfig } from './settings-store.js'
 import {
   getASRProviderCatalogEntry,

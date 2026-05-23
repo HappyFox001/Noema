@@ -1,7 +1,7 @@
 {
   "id": "live2d-avatar",
   "name": "Live2D Avatar",
-  "description": "Loads a configurable Live2D Cubism avatar in the main view and maps Her-Text state updates to motions, expressions, pose, and lip sync.",
+  "description": "Loads a configurable Live2D Cubism avatar in the main view and maps Noema state updates to motions, expressions, pose, and lip sync.",
   "version": "0.1.0",
   "type": "sdk-plugin",
   "main": "index.mjs",
@@ -125,7 +125,7 @@
     {
       "key": "lipSyncGain",
       "label": "Lip sync gain",
-      "description": "Multiplier applied to Her-Text output energy before writing mouth parameters.",
+      "description": "Multiplier applied to Noema output energy before writing mouth parameters.",
       "type": "number",
       "default": 1.8,
       "min": 0,
@@ -186,7 +186,7 @@
     {
       "key": "stateMotionsEnabled",
       "label": "Play state motions",
-      "description": "Only applies when Mouse tracking is off. Plays configured motion groups when Her-Text state changes.",
+      "description": "Only applies when Mouse tracking is off. Plays configured motion groups when Noema state changes.",
       "type": "boolean",
       "advanced": true,
       "default": false
@@ -243,7 +243,7 @@
   "i18n": {
     "zh-CN": {
       "name": "Live2D 形象",
-      "description": "在主视图加载可配置的 Live2D Cubism 形象，并把 Her-Text 状态映射到动作、表情、姿态和口型同步。",
+      "description": "在主视图加载可配置的 Live2D Cubism 形象，并把 Noema 状态映射到动作、表情、姿态和口型同步。",
       "pages.advanced.title": "高级模型参数",
       "pages.advanced.description": "模型适配边距、位置、口型平滑、状态 motion 映射",
       "config.modelDir.label": "模型目录",
@@ -264,7 +264,7 @@
       "config.offsetY.label": "垂直偏移",
       "config.offsetY.description": "模型的垂直偏移，单位为 CSS 像素。",
       "config.lipSyncGain.label": "口型强度",
-      "config.lipSyncGain.description": "写入口型参数前，对 Her-Text 输出能量应用的倍数。",
+      "config.lipSyncGain.description": "写入口型参数前，对 Noema 输出能量应用的倍数。",
       "config.lipSyncAttack.label": "张嘴速度",
       "config.lipSyncAttack.description": "输出能量升高时嘴巴张开的速度。",
       "config.lipSyncRelease.label": "闭嘴速度",
@@ -276,7 +276,7 @@
       "config.pointerTrackingStrength.label": "指针参数强度",
       "config.pointerTrackingStrength.description": "应用式鼠标参数映射的写入强度。",
       "config.stateMotionsEnabled.label": "播放状态动作",
-      "config.stateMotionsEnabled.description": "仅在关闭鼠标跟随后生效。Her-Text 状态变化时播放配置的 motion group。",
+      "config.stateMotionsEnabled.description": "仅在关闭鼠标跟随后生效。Noema 状态变化时播放配置的 motion group。",
       "config.idleMotion.label": "空闲动作组",
       "config.idleMotion.description": "空闲状态使用的 motion group。模型使用不同组名时可在这里覆盖。",
       "config.listeningMotion.label": "聆听动作组",
@@ -292,7 +292,7 @@
     },
     "en-US": {
       "name": "Live2D Avatar",
-      "description": "Loads a configurable Live2D Cubism avatar in the main view and maps Her-Text state updates to motions, expressions, pose, and lip sync.",
+      "description": "Loads a configurable Live2D Cubism avatar in the main view and maps Noema state updates to motions, expressions, pose, and lip sync.",
       "pages.advanced.title": "Advanced Model Parameters",
       "pages.advanced.description": "Model fit, position, lip-sync smoothing, and state motion mapping",
       "config.modelDir.label": "Model Folder",
@@ -313,7 +313,7 @@
       "config.offsetY.label": "Offset Y",
       "config.offsetY.description": "Vertical model offset in CSS pixels.",
       "config.lipSyncGain.label": "Lip Sync Gain",
-      "config.lipSyncGain.description": "Multiplier applied to Her-Text output energy before writing mouth parameters.",
+      "config.lipSyncGain.description": "Multiplier applied to Noema output energy before writing mouth parameters.",
       "config.lipSyncAttack.label": "Mouth Attack",
       "config.lipSyncAttack.description": "How quickly the mouth opens when output energy rises.",
       "config.lipSyncRelease.label": "Mouth Release",
@@ -325,7 +325,7 @@
       "config.pointerTrackingStrength.label": "Pointer Parameter Strength",
       "config.pointerTrackingStrength.description": "Strength for app-style direct mouse parameter mapping.",
       "config.stateMotionsEnabled.label": "Play State Motions",
-      "config.stateMotionsEnabled.description": "Only applies when Mouse Tracking is off. Plays configured motion groups when Her-Text state changes.",
+      "config.stateMotionsEnabled.description": "Only applies when Mouse Tracking is off. Plays configured motion groups when Noema state changes.",
       "config.idleMotion.label": "Idle Motion Group",
       "config.idleMotion.description": "Motion group used while idle. Override this if the model uses different group names.",
       "config.listeningMotion.label": "Listening Motion Group",

@@ -1,7 +1,7 @@
 /**
  * Live2D iframe controller.
  *
- * Loads PixiJS and pixi-live2d-display, maps Her-Text UI state into avatar
+ * Loads PixiJS and pixi-live2d-display, maps Noema UI state into avatar
  * hooks, and drives mouth parameters from renderer output energy.
  */
 const DEFAULT_CONFIG = {
@@ -113,11 +113,11 @@ const statusEl = document.getElementById('status')
 boot()
 
 window.addEventListener('message', (event) => {
-  if (event.data?.type === 'her-text:pointer') {
+  if (event.data?.type === 'noema:pointer') {
     handlePointerMessage(event.data)
     return
   }
-  if (event.data?.type !== 'her-text:ui-state') {
+  if (event.data?.type !== 'noema:ui-state') {
     return
   }
   if (event.data.config && typeof event.data.config === 'object') {
@@ -125,7 +125,7 @@ window.addEventListener('message', (event) => {
     syncPointerTrackingState()
     fitModel()
   }
-  applyHerTextState(event.data.state)
+  applyNoemaState(event.data.state)
 })
 
 window.addEventListener('resize', resize)
@@ -135,7 +135,7 @@ window.addEventListener('blur', handlePointerLeave)
 window.addEventListener('contextmenu', (event) => {
   event.preventDefault()
   window.parent.postMessage({
-    type: 'her-text:context-menu',
+    type: 'noema:context-menu',
     x: event.clientX,
     y: event.clientY,
   }, '*')
@@ -145,7 +145,7 @@ async function boot() {
   try {
     if (!state.config.modelUrl) {
       showStatus('请在插件设置里配置 Live2D .model3.json 路径')
-      window.parent.postMessage({ type: 'her-text:ui-ready' }, '*')
+      window.parent.postMessage({ type: 'noema:ui-ready' }, '*')
       return
     }
 
@@ -157,11 +157,11 @@ async function boot() {
     await createPixiApp()
     await loadModel(state.config.modelUrl)
     hideStatus()
-    window.parent.postMessage({ type: 'her-text:ui-ready' }, '*')
+    window.parent.postMessage({ type: 'noema:ui-ready' }, '*')
   } catch (error) {
     console.error('[Live2DAvatar] Failed to initialize:', error)
     showStatus(`Live2D 初始化失败：${formatError(error)}`)
-    window.parent.postMessage({ type: 'her-text:ui-ready' }, '*')
+    window.parent.postMessage({ type: 'noema:ui-ready' }, '*')
   }
 }
 
@@ -235,7 +235,7 @@ async function loadModelSettings(modelUrl) {
   return settings
 }
 
-function applyHerTextState(nextState) {
+function applyNoemaState(nextState) {
   state.statePayload = nextState || null
   const mode = pickAvatarMode(nextState)
   const outputEnergy = clampNumber(nextState?.orb?.outputEnergy, 0, 1)
@@ -310,7 +310,7 @@ function applyExpressionHook(emotion) {
     expressionManager.setExpression(expression)
     state.lastExpression = expression
   } catch {
-    // Some models do not name expressions after Her-Text emotions.
+    // Some models do not name expressions after Noema emotions.
   }
 }
 

@@ -1,7 +1,7 @@
 /**
  * Builds ASR providers from desktop ASR model settings.
  */
-import { createSTTProvider, type STTProvider } from '@her-text/sdk'
+import { createSTTProvider, type STTProvider } from '@noema/sdk'
 import type { ASRModelConfig } from './settings-store.js'
 import { getASRProviderCatalogEntry } from './model-provider-catalog.js'
 import { NodeRealtimeWebSocketTransport } from './qwen-websocket-transport.js'

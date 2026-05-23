@@ -30,7 +30,7 @@ function buildSettingsMenuItems(sendCommand: AppMenuCommandSender): MenuItemCons
   ]
 }
 
-export function buildApplicationMenu(sendCommand: AppMenuCommandSender, appName = 'Her-Text'): Menu {
+export function buildApplicationMenu(sendCommand: AppMenuCommandSender, appName = 'Noema'): Menu {
   const settingsItems = () => buildSettingsMenuItems(sendCommand)
   const template: MenuItemConstructorOptions[] = [
     ...(process.platform === 'darwin'
@@ -106,7 +106,7 @@ export function buildApplicationMenu(sendCommand: AppMenuCommandSender, appName 
         {
           label: 'Open Project Website',
           click: () => {
-            void shell.openExternal('https://github.com/0xhacker/her-text')
+            void shell.openExternal('https://github.com/0xhacker/noema')
           },
         },
       ],

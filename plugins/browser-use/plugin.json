@@ -13,7 +13,7 @@
   ],
   "config": {
     "headed": true,
-    "sessionPartition": "persist:her-text-browser-use",
+    "sessionPartition": "persist:noema-browser-use",
     "allowedDomains": "",
     "searchEngine": "duckduckgo",
     "actionTimeoutMs": 120000,
@@ -36,8 +36,8 @@
       "label": "会话分区",
       "description": "Electron 浏览器会话分区。使用 persist: 前缀可以保留 cookies 和登录状态。",
       "type": "string",
-      "default": "persist:her-text-browser-use",
-      "placeholder": "persist:her-text-browser-use"
+      "default": "persist:noema-browser-use",
+      "placeholder": "persist:noema-browser-use"
     },
     {
       "key": "allowedDomains",

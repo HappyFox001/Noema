@@ -1,6 +1,6 @@
 import { app } from 'electron'
 import { join } from 'path'
-import type { SDKConfig } from '@her-text/sdk'
+import type { SDKConfig } from '@noema/sdk'
 import type { LLMModelConfig, TaskRuntimeSettings } from './settings-store.js'
 
 let personalityManager: any = null
@@ -23,7 +23,7 @@ export function setActiveTaskRuntimeConfig(config: TaskRuntimeSettings | null): 
 
 export function getStorageDir(): string {
   const appDataDir = app.getPath('userData')
-  return join(appDataDir, 'her-text-data')
+  return join(appDataDir, 'noema-data')
 }
 
 export async function initializePersonalityManager(): Promise<void> {

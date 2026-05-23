@@ -1,4 +1,4 @@
--- Her-Text Memory Database Schema
+-- Noema Memory Database Schema
 -- SQLite database for local memory persistence
 
 -- 对话历史（工作记忆）

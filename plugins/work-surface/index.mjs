@@ -247,7 +247,7 @@ function publishPatch(surfaceId, patch) {
 }
 
 function publish(frame) {
-  const publisher = globalThis.__herTextPublishWorkSurfaceFrame
+  const publisher = globalThis.__noemaPublishWorkSurfaceFrame
   if (typeof publisher !== 'function') {
     return { success: false, error: 'Work surface host bridge is not available' }
   }
@@ -258,7 +258,7 @@ function publish(frame) {
 }
 
 function isEnabled() {
-  const readEnabled = globalThis.__herTextWorkSurfaceIsEnabled
+  const readEnabled = globalThis.__noemaWorkSurfaceIsEnabled
   return typeof readEnabled === 'function' && readEnabled() === true
 }
 

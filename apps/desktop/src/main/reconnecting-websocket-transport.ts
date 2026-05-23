@@ -3,7 +3,7 @@
 import type {
   RealtimeWebSocketTransport,
   RealtimeWebSocketReceiveResult,
-} from '@her-text/sdk'
+} from '@noema/sdk'
 
 export interface ReconnectingTransportConfig {
   

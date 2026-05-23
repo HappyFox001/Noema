@@ -53,7 +53,7 @@ console.log('[Env] ASR_1_API_KEY:', process.env.ASR_1_API_KEY ? 'âœ“ (set)' : 'â
 
 import { app, BrowserWindow, ipcMain, nativeImage, Menu, session } from 'electron'
 import {
-  type HerTextSDK,
+  type NoemaSDK,
   type STTProvider,
   type TTSProvider,
   createVADAnalyzer,
@@ -83,7 +83,7 @@ import {
   WorkSurfaceController,
   type WorkSurfaceSnapshot,
   type WorkSurfaceFrame,
-} from '@her-text/sdk'
+} from '@noema/sdk'
 import { discoverRuntimePlugins } from './plugin-loader.js'
 import {
   initializePersonalityManager,
@@ -349,9 +349,9 @@ function scheduleWorkSurfaceSnapshot(snapshot: WorkSurfaceSnapshot): void {
   }, 80)
 }
 
-;(globalThis as any).__herTextWorkSurfaceIsEnabled = () =>
+;(globalThis as any).__noemaWorkSurfaceIsEnabled = () =>
   appSettings.experimental?.workSurfaceEnabled === true
-;(globalThis as any).__herTextPublishWorkSurfaceFrame = publishWorkSurfaceFrame
+;(globalThis as any).__noemaPublishWorkSurfaceFrame = publishWorkSurfaceFrame
 
 function decorateInputWithWorkSurfaceContext(text: string, source: 'text' | 'voice'): string {
   if (!appSettings.experimental?.workSurfaceEnabled || !latestWorkSurfaceSelection?.selectedIds.length) {
@@ -2141,9 +2141,9 @@ function delayMs(ms: number): Promise<void> {
 }
 
 // The advanced orb uses WebGL, so GPU acceleration must stay enabled by default.
-// Set HER_TEXT_DISABLE_GPU=1 only as an emergency fallback for machines with
+// Set NOEMA_DISABLE_GPU=1 only as an emergency fallback for machines with
 // broken graphics drivers; that mode disables the advanced orb renderer.
-if (process.env.HER_TEXT_DISABLE_GPU === '1') {
+if (process.env.NOEMA_DISABLE_GPU === '1') {
   app.disableHardwareAcceleration()
   app.commandLine.appendSwitch('disable-gpu')
   app.commandLine.appendSwitch('disable-gpu-compositing')
@@ -2192,7 +2192,7 @@ function sendAppMenuCommand(command: string, payload?: unknown): void {
 }
 
 let ttsService: TTSProvider | null = null
-let sdkInstance: HerTextSDK | null = null
+let sdkInstance: NoemaSDK | null = null
 let ttsAvailable = true
 let settingsStore: SettingsStore | null = null
 let interactiveInputStore: InteractiveInputStore | null = null
@@ -3359,4 +3359,4 @@ async function runConversationTurn(
   }
 }
 
-console.log('Her-Text Electron app started')
+console.log('Noema Electron app started')

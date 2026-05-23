@@ -8,7 +8,7 @@ import type {
   SurfaceUserEvent,
   WorkSurfaceController,
   WorkSurfaceSnapshot,
-} from '@her-text/sdk'
+} from '@noema/sdk'
 
 type WorkSurfaceSelection = {
   surfaceId: string

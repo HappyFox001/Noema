@@ -3,7 +3,7 @@ import type { RawData } from 'ws'
 import type {
   RealtimeWebSocketReceiveResult,
   RealtimeWebSocketTransport
-} from '@her-text/sdk'
+} from '@noema/sdk'
 
 type PendingReceiver = {
   resolve: (value: RealtimeWebSocketReceiveResult) => void

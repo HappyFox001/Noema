@@ -22,7 +22,7 @@ export class MCPRemoteHttpClient {
       protocolVersion: '2024-11-05',
       capabilities: {},
       clientInfo: {
-        name: 'her-text',
+        name: 'noema',
         version: '0.1.0',
       },
     })

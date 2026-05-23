@@ -2,7 +2,7 @@
  * IPC handlers for speech transcription, streaming ASR, and microphone permissions.
  */
 import { shell, systemPreferences, type IpcMain } from 'electron'
-import { createSTTProvider } from '@her-text/sdk'
+import { createSTTProvider } from '@noema/sdk'
 import type { ASRModelConfig } from './settings-store.js'
 import { NodeRealtimeWebSocketTransport } from './qwen-websocket-transport.js'
 import { ReconnectingWebSocketTransport } from './reconnecting-websocket-transport.js'

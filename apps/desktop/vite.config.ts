@@ -11,7 +11,7 @@ function copyRendererLogo(outDir: string) {
   }
 
   mkdirSync(outDir, { recursive: true })
-  copyFileSync(rendererLogoSource, join(outDir, 'her-text-logo.png'))
+  copyFileSync(rendererLogoSource, join(outDir, 'noema-logo.png'))
 }
 
 export default defineConfig({
@@ -21,9 +21,9 @@ export default defineConfig({
   publicDir: resolve(__dirname, 'src/renderer/public'),
   plugins: [
     {
-      name: 'her-text-renderer-logo',
+      name: 'noema-renderer-logo',
       configureServer(server) {
-        server.middlewares.use('/her-text-logo.png', (_request, response) => {
+        server.middlewares.use('/noema-logo.png', (_request, response) => {
           if (!existsSync(rendererLogoSource)) {
             response.statusCode = 404
             response.end()

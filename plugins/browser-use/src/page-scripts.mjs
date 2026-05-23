@@ -118,8 +118,8 @@ export function buildMarkFileInputScript(index, markerId) {
       return { success: false, error: 'Element is not a file input', index: ${index}, tag: element.tagName.toLowerCase(), type: element.type || '' };
     }
     const marker = ${JSON.stringify(markerId)};
-    element.setAttribute('data-her-browser-use-file-id', marker);
-    return { success: true, index: ${index}, selector: '[data-her-browser-use-file-id="' + marker + '"]' };
+    element.setAttribute('data-noema-browser-use-file-id', marker);
+    return { success: true, index: ${index}, selector: '[data-noema-browser-use-file-id="' + marker + '"]' };
 
     ${sharedBrowserUseHelpers()}
   })()`

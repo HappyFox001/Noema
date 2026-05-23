@@ -1447,11 +1447,11 @@ body.work-surface-enabled .task-panel {
 
 .settings-brand {
   width: 100%;
-  height: 48px;
-  margin-bottom: 2px;
-  padding: 0 0 2px;
+  height: 72px;
+  margin-bottom: 8px;
+  padding: 0 0 4px;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
   overflow: visible;
   pointer-events: none;
@@ -1459,11 +1459,9 @@ body.work-surface-enabled .task-panel {
 
 .settings-brand-logo {
   display: block;
-  width: min(186px, calc(100% + 20px));
-  max-width: none;
-  height: auto;
+  width: 68px;
+  height: 68px;
   margin-top: 0;
-  transform: translateY(-24px);
   object-fit: contain;
   filter: drop-shadow(0 0 18px rgba(87, 211, 238, 0.22));
 }
@@ -3292,7 +3290,7 @@ body.theme-day .settings-nav::after {
 }
 
 body.theme-day .settings-brand-logo {
-  filter: invert(1) drop-shadow(0 0 15px rgba(20, 120, 140, 0.18));
+  filter: drop-shadow(0 0 15px rgba(20, 120, 140, 0.18));
 }
 
 body.theme-day .nav-item {

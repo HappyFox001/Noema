@@ -2,7 +2,7 @@
  * IPC handlers for personality selection and SDK metadata reads.
  */
 import { dialog, type BrowserWindow, type IpcMain, type OpenDialogOptions } from 'electron'
-import type { HerTextSDK } from '@her-text/sdk'
+import type { NoemaSDK } from '@noema/sdk'
 import type { AppSettings } from './settings-store.js'
 
 type PersonalityManagerLike = {
@@ -14,7 +14,7 @@ type PersonalityManagerLike = {
 export function registerPersonalityIpcHandlers(
   ipcMain: IpcMain,
   options: {
-    getSdk(): HerTextSDK | null
+    getSdk(): NoemaSDK | null
     getMainWindow(): BrowserWindow | null
     getPersonalityManager(): PersonalityManagerLike
     getSettings(): AppSettings

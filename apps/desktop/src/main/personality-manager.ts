@@ -4,8 +4,8 @@ import { existsSync } from 'fs'
 import { copyFile, readdir, mkdir } from 'fs/promises'
 import { fileURLToPath } from 'url'
 import { watch } from 'chokidar'
-import type { Personality } from '@her-text/sdk'
-import { loadPersonalityFromFile } from '@her-text/sdk/config/personality-loader'
+import type { Personality } from '@noema/sdk'
+import { loadPersonalityFromFile } from '@noema/sdk/config/personality-loader'
 
 const DEFAULT_PERSONALITY_NAME = 'eva'
 const SOURCE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '../../..')

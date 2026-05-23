@@ -1,7 +1,7 @@
 /**
  * Bootstraps the desktop SDK instance from settings and runtime plugins.
  */
-import { HerTextSDK } from '@her-text/sdk'
+import { NoemaSDK } from '@noema/sdk'
 import type { AppSettings, LLMModelConfig } from './settings-store.js'
 import { loadRuntimePlugins } from './plugin-loader.js'
 import {
@@ -21,7 +21,7 @@ export interface DesktopSDKBootstrapOptions {
 }
 
 export interface DesktopSDKBootstrapResult {
-  sdk: HerTextSDK
+  sdk: NoemaSDK
   pluginsDir: string
 }
 
@@ -39,7 +39,7 @@ export async function initializeDesktopSDK(
     options.appSettings.plugins,
     options.appSettings.pluginConfigs
   )
-  const sdk = await HerTextSDK.initialize(sdkConfig, {
+  const sdk = await NoemaSDK.initialize(sdkConfig, {
     plugins,
     selfLearningEnabled: options.appSettings.experimental?.selfLearningEnabled !== false,
     onRuntimeEvent: options.onRuntimeEvent,

@@ -673,12 +673,12 @@ export class ElectronBrowserController {
   }
 
   async createWindow() {
-    const partition = this.options.sessionPartition || 'persist:her-text-browser-use'
+    const partition = this.options.sessionPartition || 'persist:noema-browser-use'
     const browserWindow = new BrowserWindow({
       width: 1100,
       height: 760,
       show: Boolean(this.options.headed),
-      title: 'Her Text Browser Use',
+      title: 'Noema Browser Use',
       webPreferences: {
         sandbox: true,
         contextIsolation: true,

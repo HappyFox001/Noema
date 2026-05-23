@@ -6,7 +6,7 @@ export default function plugin(ctx) {
   const config = ctx.config || {}
   const controller = new ElectronBrowserController({
     headed: config.headed !== false,
-    sessionPartition: String(config.sessionPartition || 'persist:her-text-browser-use'),
+    sessionPartition: String(config.sessionPartition || 'persist:noema-browser-use'),
     allowedDomains: parseDomains(String(config.allowedDomains || '')),
     maxStateElements: clampInteger(Number(config.maxStateElements ?? 80), 20, 200),
     maxAxNodes: clampInteger(Number(config.maxAxNodes ?? 120), 20, 500),

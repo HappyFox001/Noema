@@ -17,12 +17,12 @@ importers:
 
   apps/desktop:
     dependencies:
-      '@her-text/sdk':
-        specifier: workspace:*
-        version: link:../../packages/sdk
       '@lobehub/icons-static-svg':
         specifier: ^1.90.0
         version: 1.90.0
+      '@noema/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
       chokidar:
         specifier: ^3.5.3
         version: 3.6.0

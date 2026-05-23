@@ -10,7 +10,7 @@ import {
   type OnnxInferenceSession,
   type OnnxTensor,
   type OnnxTensorFactory,
-} from '@her-text/sdk'
+} from '@noema/sdk'
 
 const require = createRequire(import.meta.url)
 const __filename = fileURLToPath(import.meta.url)
@@ -31,7 +31,7 @@ function loadOnnxRuntime(): any {
 
 function findModelPath(): string {
   const possiblePaths = [
-    // dist → desktop → apps → her-text → models/
+    // dist → desktop → apps → noema → models/
     join(__dirname, '../../../models/silero_vad.onnx'),
     join(__dirname, '../../../../models/silero_vad.onnx'),
     join(__dirname, './models/silero_vad.onnx'),

@@ -13,7 +13,7 @@ import type {
   TaskUserInputRequest,
   WorkSignal,
   WorkThreadPanelPlan,
-} from '@her-text/sdk'
+} from '@noema/sdk'
 
 export type TaskCommunicationSeverity = 'silent' | 'info' | 'important' | 'blocking' | 'final'
 

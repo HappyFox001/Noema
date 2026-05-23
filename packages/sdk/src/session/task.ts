@@ -34,7 +34,7 @@ import { isDeferredTool, renderDeferredToolSummary, searchDeferredTools } from '
 import { renderWorkToolStrategy } from './work-tool-strategy.js'
 
 function verboseLog(message = ''): void {
-  if (process.env.HER_TEXT_VERBOSE_LOGS === '1') {
+  if (process.env.NOEMA_VERBOSE_LOGS === '1') {
     process.stdout.write(`${message}\n`)
   }
 }

@@ -179,7 +179,7 @@ export class AppLogStore {
   }
 
   private shouldSkip(level: AppLogLevel, args: unknown[]): boolean {
-    if (process.env.HER_TEXT_VERBOSE_LOGS === '1') {
+    if (process.env.NOEMA_VERBOSE_LOGS === '1') {
       return false
     }
     if (level === 'warn' || level === 'error') {

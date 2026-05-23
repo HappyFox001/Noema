@@ -10,7 +10,7 @@ import {
   type OnnxInferenceSession,
   type OnnxTensor,
   type OnnxTensorFactory,
-} from '@her-text/sdk'
+} from '@noema/sdk'
 
 const require = createRequire(import.meta.url)
 const __filename = fileURLToPath(import.meta.url)

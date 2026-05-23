@@ -5,7 +5,7 @@ import {
   ResponseDisplayProcessor,
   ResponseTTSProcessor,
   type PluginRuntimeContext,
-} from '@her-text/sdk'
+} from '@noema/sdk'
 
 type TaskCommunicationPhase = 'task_progress' | 'task_result'
 

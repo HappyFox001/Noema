@@ -27,7 +27,7 @@ import {
   WorkStateStore,
 } from './runtime/index.js'
 
-export interface HerTextSDKInitializeOptions {
+export interface NoemaSDKInitializeOptions {
   plugins?: SDKPlugin[]
   selfLearningEnabled?: boolean
   onRuntimeEvent?: RuntimeEventHandler
@@ -44,7 +44,7 @@ export interface AgentResponse {
 }
 
 
-export class HerTextSDK {
+export class NoemaSDK {
   public memory: MemoryEngine
   public personality: PersonalityEngine
   public agent: AgentCore
@@ -63,7 +63,7 @@ export class HerTextSDK {
   private taskLLm: LLMProvider
   private selfLearningEnabled: boolean
 
-  private constructor(config: SDKConfig, options: HerTextSDKInitializeOptions = {}) {
+  private constructor(config: SDKConfig, options: NoemaSDKInitializeOptions = {}) {
     this.selfLearningEnabled = options.selfLearningEnabled !== false
     this.llm = createLLMProvider(config.llm, { defaultReasoningMode: 'minimal-or-none' })
     this.taskLLm = wrapTaskLLMWithRuntimeTransport(
@@ -142,9 +142,9 @@ export class HerTextSDK {
 
   static async initialize(
     config: SDKConfig,
-    options: HerTextSDKInitializeOptions = {}
-  ): Promise<HerTextSDK> {
-    const sdk = new HerTextSDK(config, options)
+    options: NoemaSDKInitializeOptions = {}
+  ): Promise<NoemaSDK> {
+    const sdk = new NoemaSDK(config, options)
     await sdk.memory.initialize()
     await sdk.workState.initialize()
     if (sdk.selfLearningEnabled) {

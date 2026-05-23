@@ -17,7 +17,7 @@ import type {
   RuntimePluginManifest,
   SDKPlugin,
   SDKPluginContext,
-} from '@her-text/sdk'
+} from '@noema/sdk'
 
 type RuntimePluginFactory = (context: SDKPluginContext) => SDKPlugin | Promise<SDKPlugin>
 type RuntimePluginManifestEntry = { manifest: RuntimePluginManifest; pluginDir: string }

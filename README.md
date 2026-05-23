@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/readme_logo.png" alt="Her-Text banner" width="900" />
+  <img src="./assets/readme_logo.png" alt="Noema logo" width="180" />
 </p>
 
 <p align="center">
@@ -26,7 +26,7 @@
 
 ---
 
-Her-Text is a small experiment toward something like JARVIS: a desktop companion
+Noema is a small experiment toward something like JARVIS: a desktop companion
 that can speak with personality, remember context, understand tasks, and act
 through tools.
 
@@ -125,7 +125,7 @@ provider choices.
 
 ### API Configuration
 
-Her-Text uses OpenAI-compatible chat endpoints for the dialogue and task models.
+Noema uses OpenAI-compatible chat endpoints for the dialogue and task models.
 Voice input and output are configured separately through ASR and TTS providers.
 
 The recommended setup is to open the desktop app and fill these fields in
@@ -183,9 +183,8 @@ example `LLM_2_API_KEY` or `TTS_2_PROVIDER`. Select the active profile with
 Build the main packages:
 
 ```bash
-pnpm --filter @her-text/core build
-pnpm --filter @her-text/sdk build
-pnpm --filter @her-text/desktop build
+pnpm --filter @noema/sdk build
+pnpm --filter @noema/desktop build
 ```
 
 Run all workspace builds through Turbo:
@@ -214,7 +213,7 @@ node --check plugins/<plugin-id>/index.mjs
 
 ## Plugins
 
-Her-Text loads runtime plugins from `plugins/*/plugin.json`. Plugins can register
+Noema loads runtime plugins from `plugins/*/plugin.json`. Plugins can register
 tools, extend prompts, inject task context, transform text, select expression
 assets, and expose admin actions.
 
@@ -243,7 +242,7 @@ The task runtime keeps execution explicit:
 - Execution state records observations, changed files, failures, pending verification, and active sessions.
 - New task requests are admitted as `keep_active`, `queue_new`, or `stop_active_start_new`.
 
-During long-running tasks, Her-Text can generate natural `task_progress`
+During long-running tasks, Noema can generate natural `task_progress`
 feedback through the emotional dialogue layer while leaving task execution to
 the task model.
 
@@ -263,7 +262,7 @@ future improvement.
 
 ## Acknowledgements
 
-The orb UI in Her-Text directly references the visual direction and interaction
+The orb UI in Noema directly references the visual direction and interaction
 ideas from these excellent Three.js projects. Thanks to their authors and
 communities:
 

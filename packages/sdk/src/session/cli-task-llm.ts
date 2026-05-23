@@ -57,7 +57,7 @@ function buildApiPrompt(messages: unknown, options: Record<string, any>): string
   const tools = Array.isArray(options.tools) ? options.tools : []
   const wantsJson = options.response_format?.type === 'json_object'
   return [
-    'You are acting only as a chat-completions model transport for her-text.',
+    'You are acting only as a chat-completions model transport for noema.',
     'Do not execute shell commands, do not read files, do not edit files, and do not use any CLI-native tools.',
     'The host runtime owns planning, tool execution, approvals, memory, and lifecycle state.',
     'Your job is only to return the next assistant message or function tool calls from the provided messages.',
