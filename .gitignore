@@ -7,6 +7,7 @@ dist
 out
 .next
 build
+apps/desktop/release/
 
 # Tauri
 **/target
