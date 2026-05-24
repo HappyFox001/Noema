@@ -15,8 +15,6 @@
 <p align="center">
   <a href="#features">Features</a>
   ·
-  <a href="#architecture">Architecture</a>
-  ·
   <a href="#quick-start">Quick Start</a>
   ·
   <a href="#plugins">Plugins</a>
@@ -55,29 +53,6 @@ The project is built around a three-layer runtime split:
 - **Interruption-aware audio path** that can stop speech output without necessarily cancelling active tasks.
 - **Persistent memory** backed by SQLite for conversation turns, summaries, user profile, and task runs.
 - **Extensible plugin system** for adding new runtime capabilities without changing the core.
-
-## Architecture
-
-```mermaid
-flowchart TD
-  User["User voice / text"] --> Emotional["Emotional layer<br/>personality, memory, task intent"]
-  Emotional --> Reply["Immediate reply<br/>display / TTS"]
-  Emotional --> Interaction["Interaction layer<br/>interruption and work intent routing"]
-  Interaction --> Work["Work layer<br/>WorkThread, plan, tools, execution state"]
-  Work --> Store["Durable work state<br/>snapshots, failures, next actions"]
-  Work --> Events["Runtime events<br/>task.*, work.signal.*"]
-  Events --> Output["Output layer<br/>panel, status, optional speech"]
-  Output --> User
-  Interaction -->|"speech.stop"| Output
-  Interaction -->|"pause / resume / abandon / modify"| Work
-```
-
-Task execution is intentionally asynchronous from the dialogue turn. The
-emotional layer can answer immediately, while the work layer continues through
-runtime jobs and emits structured events. Speech interruption stops playback; it
-does not automatically cancel an active task. Desktop task status, plans, and
-step changes are driven by runtime events and work signals, with durable
-`WorkThread` state available for pause, resume, abandon, focus, and recovery.
 
 ## Quick Start
 

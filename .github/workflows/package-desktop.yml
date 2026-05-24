@@ -103,35 +103,41 @@ jobs:
             os: windows-latest
             builder_args: --win
             artifact_name: noema-windows
-    if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == matrix.platform }}
 
     steps:
       - name: Checkout release tag
+        if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == matrix.platform }}
         uses: actions/checkout@v4
         with:
           ref: ${{ needs.prepare.outputs.tag }}
 
       - name: Setup pnpm
+        if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == matrix.platform }}
         uses: pnpm/action-setup@v4
         with:
           version: 10.33.2
 
       - name: Setup Node.js
+        if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == matrix.platform }}
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
 
       - name: Install dependencies
+        if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == matrix.platform }}
         run: pnpm install --frozen-lockfile
 
       - name: Build desktop app
+        if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == matrix.platform }}
         run: pnpm --filter @noema/desktop build
 
       - name: Package desktop app
+        if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == matrix.platform }}
         run: pnpm --filter @noema/desktop exec electron-builder ${{ matrix.builder_args }} --publish never
 
       - name: Upload installer artifacts
+        if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == matrix.platform }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
