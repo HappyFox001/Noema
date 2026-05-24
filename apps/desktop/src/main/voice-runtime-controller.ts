@@ -62,7 +62,7 @@ export class VoiceRuntimeController {
 
     this.sileroVADInitPromise = (async () => {
       try {
-        if (!isSileroVADAvailable()) {
+        if (!await isSileroVADAvailable()) {
           console.log('[VAD] Silero VAD not available, falling back to RMS VAD')
           return null
         }
@@ -92,7 +92,7 @@ export class VoiceRuntimeController {
 
     this.smartTurnInitPromise = (async () => {
       try {
-        if (!isSmartTurnAvailable()) {
+        if (!await isSmartTurnAvailable()) {
           console.log('[SmartTurn] Smart Turn not available, falling back to fixed timeout')
           return null
         }

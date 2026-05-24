@@ -2,10 +2,6 @@
  * IPC handlers and utilities for local model status and provider connection tests.
  */
 import { execFile } from 'child_process'
-import { existsSync } from 'fs'
-import { stat } from 'fs/promises'
-import { dirname, join } from 'path'
-import { fileURLToPath } from 'url'
 import { promisify } from 'util'
 import { type IpcMain } from 'electron'
 import { createSTTProvider, type STTProvider } from '@noema/sdk'
@@ -18,37 +14,11 @@ import {
   createTTSProviderForConfig,
   LOW_LATENCY_VOICE_CONFIG,
 } from './voice-runtime-controller.js'
+import { downloadMissingLocalModels, getLocalModelStatuses } from './local-models.js'
 import { NodeRealtimeWebSocketTransport } from './qwen-websocket-transport.js'
 import { ReconnectingWebSocketTransport } from './reconnecting-websocket-transport.js'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
 const execFileAsync = promisify(execFile)
-
-type LocalModelStatus = {
-  id: 'silero-vad' | 'smart-turn'
-  name: string
-  filename: string
-  purpose: string
-  exists: boolean
-  sizeBytes?: number
-  path: string
-}
-
-const LOCAL_MODEL_DEFINITIONS: Array<Omit<LocalModelStatus, 'exists' | 'sizeBytes' | 'path'>> = [
-  {
-    id: 'silero-vad',
-    name: 'Silero VAD',
-    filename: 'silero_vad.onnx',
-    purpose: '本地语音活动检测',
-  },
-  {
-    id: 'smart-turn',
-    name: 'Smart Turn v3.2',
-    filename: 'smart-turn-v3.2-cpu.onnx',
-    purpose: '本地智能话音结束判断',
-  },
-]
 
 type ApiModelTestKind = 'llm' | 'task' | 'tts' | 'asr'
 
@@ -88,70 +58,6 @@ export function registerModelIpcHandlers(
       return { success: false, error: error.message }
     }
   })
-}
-
-function resolveProjectModelsDir(): string {
-  return join(__dirname, '../../../models')
-}
-
-function resolveDownloadModelsScript(): string {
-  const candidates = [
-    join(__dirname, '../../../scripts/download-models.sh'),
-    join(__dirname, '../../../../scripts/download-models.sh'),
-    join(process.cwd(), 'scripts/download-models.sh'),
-    join(process.cwd(), '../../scripts/download-models.sh'),
-  ]
-
-  for (const candidate of candidates) {
-    if (existsSync(candidate)) {
-      return candidate
-    }
-  }
-
-  throw new Error(`download-models.sh not found. Searched paths:\n${candidates.join('\n')}`)
-}
-
-async function getLocalModelStatuses(): Promise<LocalModelStatus[]> {
-  const modelsDir = resolveProjectModelsDir()
-
-  return Promise.all(LOCAL_MODEL_DEFINITIONS.map(async (model) => {
-    const modelPath = join(modelsDir, model.filename)
-    try {
-      const file = await stat(modelPath)
-      return {
-        ...model,
-        exists: file.isFile(),
-        sizeBytes: file.size,
-        path: modelPath,
-      }
-    } catch {
-      return {
-        ...model,
-        exists: false,
-        path: modelPath,
-      }
-    }
-  }))
-}
-
-async function downloadMissingLocalModels(resetLocalAnalyzers: () => void): Promise<LocalModelStatus[]> {
-  const before = await getLocalModelStatuses()
-  if (before.every((model) => model.exists)) {
-    return before
-  }
-
-  const scriptPath = resolveDownloadModelsScript()
-  console.log('[Models] Downloading missing local models with:', scriptPath)
-  await execFileAsync('/bin/bash', [scriptPath], {
-    cwd: join(dirname(scriptPath), '..'),
-    env: { ...process.env },
-    timeout: 10 * 60 * 1000,
-    maxBuffer: 1024 * 1024,
-  })
-
-  resetLocalAnalyzers()
-
-  return getLocalModelStatuses()
 }
 
 async function testApiModel(kind: ApiModelTestKind, model: unknown): Promise<void> {

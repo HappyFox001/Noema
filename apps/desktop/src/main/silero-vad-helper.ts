@@ -1,9 +1,6 @@
 
 
 import { createRequire } from 'module'
-import { join, dirname } from 'path'
-import { fileURLToPath } from 'url'
-import { existsSync } from 'fs'
 import {
   createSileroVAD,
   type SileroVAD,
@@ -11,10 +8,9 @@ import {
   type OnnxTensor,
   type OnnxTensorFactory,
 } from '@noema/sdk'
+import { ensureLocalModelPath, isLocalModelAvailable } from './local-models.js'
 
 const require = createRequire(import.meta.url)
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let ort: any = null
@@ -26,28 +22,6 @@ function loadOnnxRuntime(): any {
     ort = require('onnxruntime-node')
   }
   return ort
-}
-
-
-function findModelPath(): string {
-  const possiblePaths = [
-    // dist → desktop → apps → noema → models/
-    join(__dirname, '../../../models/silero_vad.onnx'),
-    join(__dirname, '../../../../models/silero_vad.onnx'),
-    join(__dirname, './models/silero_vad.onnx'),
-    join(__dirname, '../models/silero_vad.onnx'),
-    join(process.cwd(), 'models/silero_vad.onnx'),
-    join(process.cwd(), '../../models/silero_vad.onnx'),
-  ]
-
-  for (const p of possiblePaths) {
-    if (existsSync(p)) {
-      console.log('[SileroVAD] Found model at:', p)
-      return p
-    }
-  }
-
-  throw new Error(`Silero VAD model not found. Searched paths:\n${possiblePaths.join('\n')}`)
 }
 
 
@@ -139,7 +113,7 @@ export async function initializeSileroVAD(sampleRate: number = 16000): Promise<S
   const onnxRuntime = loadOnnxRuntime()
   console.log('[SileroVAD] ONNX Runtime loaded')
 
-  const modelPath = findModelPath()
+  const modelPath = await ensureLocalModelPath('silero-vad')
 
   const sessionOptions = {
     executionProviders: ['cpu'],
@@ -162,11 +136,10 @@ export async function initializeSileroVAD(sampleRate: number = 16000): Promise<S
 }
 
 
-export function isSileroVADAvailable(): boolean {
+export async function isSileroVADAvailable(): Promise<boolean> {
   try {
     loadOnnxRuntime()
-    findModelPath()
-    return true
+    return await isLocalModelAvailable('silero-vad')
   } catch {
     return false
   }

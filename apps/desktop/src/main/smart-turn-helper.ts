@@ -1,9 +1,6 @@
 
 
 import { createRequire } from 'module'
-import { join, dirname } from 'path'
-import { fileURLToPath } from 'url'
-import { existsSync } from 'fs'
 import {
   SmartTurnAnalyzer,
   SimpleWhisperFeatureExtractor,
@@ -11,10 +8,9 @@ import {
   type OnnxTensor,
   type OnnxTensorFactory,
 } from '@noema/sdk'
+import { ensureLocalModelPath, isLocalModelAvailable } from './local-models.js'
 
 const require = createRequire(import.meta.url)
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let ort: any = null
@@ -26,27 +22,6 @@ function loadOnnxRuntime(): any {
     ort = require('onnxruntime-node')
   }
   return ort
-}
-
-
-function findModelPath(): string {
-  const possiblePaths = [
-    join(__dirname, '../../../models/smart-turn-v3.2-cpu.onnx'),
-    join(__dirname, '../../../../models/smart-turn-v3.2-cpu.onnx'),
-    join(__dirname, './models/smart-turn-v3.2-cpu.onnx'),
-    join(__dirname, '../models/smart-turn-v3.2-cpu.onnx'),
-    join(process.cwd(), 'models/smart-turn-v3.2-cpu.onnx'),
-    join(process.cwd(), '../../models/smart-turn-v3.2-cpu.onnx'),
-  ]
-
-  for (const p of possiblePaths) {
-    if (existsSync(p)) {
-      console.log('[SmartTurn] Found model at:', p)
-      return p
-    }
-  }
-
-  throw new Error(`Smart Turn model not found. Searched paths:\n${possiblePaths.join('\n')}`)
 }
 
 
@@ -137,7 +112,7 @@ export async function initializeSmartTurn(sampleRate: number = 16000): Promise<S
   const onnxRuntime = loadOnnxRuntime()
   console.log('[SmartTurn] ONNX Runtime loaded')
 
-  const modelPath = findModelPath()
+  const modelPath = await ensureLocalModelPath('smart-turn')
 
   const sessionOptions = {
     executionProviders: ['cpu'],
@@ -165,11 +140,10 @@ export async function initializeSmartTurn(sampleRate: number = 16000): Promise<S
 }
 
 
-export function isSmartTurnAvailable(): boolean {
+export async function isSmartTurnAvailable(): Promise<boolean> {
   try {
     loadOnnxRuntime()
-    findModelPath()
-    return true
+    return await isLocalModelAvailable('smart-turn')
   } catch {
     return false
   }
