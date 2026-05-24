@@ -40,6 +40,7 @@
   "build": {
     "appId": "com.xhacker.noema",
     "productName": "Noema",
+    "electronVersion": "28.3.3",
     "icon": "resources/icon.png",
     "directories": {
       "output": "release"
