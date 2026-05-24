@@ -659,6 +659,17 @@ declare global {
         y: number
         displayBounds: { x: number; y: number; width: number; height: number }
       }>
+      captureToClipboard: (rect: {
+        x: number
+        y: number
+        width: number
+        height: number
+      }) => Promise<{
+        success: boolean
+        width?: number
+        height?: number
+        error?: string
+      }>
       setCompactWindowMode: (compact: boolean) => void
       setTaskWindowMode: (active: boolean) => void
     }

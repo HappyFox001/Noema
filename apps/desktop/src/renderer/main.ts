@@ -623,6 +623,7 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'common.show': '显示',
     'common.hide': '隐藏',
     'common.updatedAt': '更新于 {time}',
+    'context.captureOrb': '截取小球',
     'context.clearHistory': '清除对话',
     'context.settings': '设置',
     'status.connectionFailed': 'Connection failed',
@@ -954,6 +955,8 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'about.title': '关于',
     'notice.voiceInputDisabled': '语音输入已关闭',
     'notice.voiceInputEnabled': '语音输入已开启',
+    'notice.orbCaptureCopied': '小球截图已复制到剪贴板',
+    'notice.orbCaptureFailed': '截图失败：{error}',
     'inputMeta.currentOnly': '仅用于当前任务',
     'inputMeta.persistent': '可选择保存，后续任务自动复用',
     'inputMeta.verification': '一次性验证码，不会保存',
@@ -986,6 +989,7 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'common.show': 'Show',
     'common.hide': 'Hide',
     'common.updatedAt': 'Updated {time}',
+    'context.captureOrb': 'Capture Orb',
     'context.clearHistory': 'Clear Conversation',
     'context.settings': 'Settings',
     'status.connectionFailed': 'Connection failed',
@@ -1317,6 +1321,8 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'about.title': 'About',
     'notice.voiceInputDisabled': 'Voice input disabled',
     'notice.voiceInputEnabled': 'Voice input enabled',
+    'notice.orbCaptureCopied': 'Orb screenshot copied to clipboard',
+    'notice.orbCaptureFailed': 'Capture failed: {error}',
     'inputMeta.currentOnly': 'Only used for the current task',
     'inputMeta.persistent': 'Can be saved and reused in later tasks',
     'inputMeta.verification': 'One-time verification code, not saved',
@@ -3645,6 +3651,71 @@ mainView.addEventListener('contextmenu', (e) => {
   showContextMenuAt(e.clientX, e.clientY)
 })
 
+function waitForNextPaint(): Promise<void> {
+  return new Promise(resolve => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => resolve())
+    })
+  })
+}
+
+function getVisibleOrbElement(): HTMLElement {
+  if (activePluginMainSurface?.mode === 'replace') {
+    const pluginSurface = pluginUIMainView.querySelector<HTMLElement>('.plugin-ui-main-surface.replace')
+    if (pluginSurface) {
+      return pluginUIMainView
+    }
+  }
+
+  const candidates: HTMLElement[] = [
+    planetOrbCanvas,
+    advancedOrbCanvas,
+    canvas,
+  ]
+  return candidates.find((candidate) => {
+    const rect = candidate.getBoundingClientRect()
+    return rect.width > 0 && rect.height > 0 && getComputedStyle(candidate).display !== 'none'
+  }) ?? pluginUIMainView
+}
+
+function getOrbCaptureRect(): { x: number; y: number; width: number; height: number } {
+  const target = getVisibleOrbElement()
+  const targetRect = target.getBoundingClientRect()
+  const slotRect = pluginUIMainView.getBoundingClientRect()
+  const padding = target === pluginUIMainView ? 0 : 14
+
+  const left = Math.max(0, Math.max(slotRect.left, targetRect.left - padding))
+  const top = Math.max(0, Math.max(slotRect.top, targetRect.top - padding))
+  const right = Math.min(window.innerWidth, Math.min(slotRect.right, targetRect.right + padding))
+  const bottom = Math.min(window.innerHeight, Math.min(slotRect.bottom, targetRect.bottom + padding))
+
+  return {
+    x: left,
+    y: top,
+    width: Math.max(1, right - left),
+    height: Math.max(1, bottom - top),
+  }
+}
+
+async function captureOrbToClipboard(): Promise<void> {
+  contextMenu.classList.remove('visible')
+  contextMenu.style.display = 'none'
+
+  try {
+    await waitForNextPaint()
+
+    const result = await window.electronAPI.captureToClipboard(getOrbCaptureRect())
+    if (result.success) {
+      showPanelNotice(t('notice.orbCaptureCopied'))
+      return
+    }
+
+    showPanelNotice(tf('notice.orbCaptureFailed', { error: result.error ?? 'unknown error' }), 'error')
+  } finally {
+    contextMenu.style.removeProperty('display')
+  }
+}
+
 function setPluginControlsPeek(visible: boolean): void {
   if (activePluginMainSurface?.mode !== 'replace') {
     mainView.classList.remove('controls-peek')
@@ -4288,6 +4359,9 @@ contextMenu.addEventListener('click', (e) => {
   switch (action) {
     case 'settings':
       openSettings()
+      break
+    case 'capture-orb':
+      void captureOrbToClipboard()
       break
     case 'clear-history':
       clearHistory()

@@ -316,6 +316,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getCursorScreenPoint: () =>
     ipcRenderer.invoke('cursor:get-screen-point'),
 
+  captureToClipboard: (rect) =>
+    ipcRenderer.invoke('window:capture-to-clipboard', rect),
+
   setCompactWindowMode: (compact) => {
     ipcRenderer.send('window:set-compact-mode', compact)
   },

@@ -1,9 +1,39 @@
 /**
  * Registers grouped Electron IPC handlers for desktop main services.
  */
-import { BrowserWindow, screen, type IpcMain } from 'electron'
+import { BrowserWindow, clipboard, screen, type IpcMain } from 'electron'
 import type { AppLogStore } from './app-log-store.js'
 import type { AppSettings } from './settings-store.js'
+
+interface CaptureRect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+function normalizeCaptureRect(rect: CaptureRect, bounds: { width: number; height: number }): CaptureRect | null {
+  const x = Math.max(0, Math.floor(Number(rect.x)))
+  const y = Math.max(0, Math.floor(Number(rect.y)))
+  const width = Math.max(1, Math.ceil(Number(rect.width)))
+  const height = Math.max(1, Math.ceil(Number(rect.height)))
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(width) || !Number.isFinite(height)) {
+    return null
+  }
+
+  const clampedWidth = Math.min(width, Math.max(0, bounds.width - x))
+  const clampedHeight = Math.min(height, Math.max(0, bounds.height - y))
+  if (clampedWidth < 1 || clampedHeight < 1) {
+    return null
+  }
+
+  return {
+    x,
+    y,
+    width: clampedWidth,
+    height: clampedHeight,
+  }
+}
 
 export function registerLogIpcHandlers(ipcMain: IpcMain, appLogStore: AppLogStore): void {
   ipcMain.handle('logs:list', async (_, limit?: number) => {
@@ -90,6 +120,35 @@ export function registerWindowIpcHandlers(
       x: point.x,
       y: point.y,
       displayBounds: display.bounds,
+    }
+  })
+
+  ipcMain.handle('window:capture-to-clipboard', async (event, rect: CaptureRect) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win || win.isDestroyed()) {
+      return { success: false, error: 'Window is not available' }
+    }
+
+    const bounds = win.getContentBounds()
+    const normalized = normalizeCaptureRect(rect, bounds)
+    if (!normalized) {
+      return { success: false, error: 'Invalid capture area' }
+    }
+
+    try {
+      const image = await win.webContents.capturePage(normalized)
+      if (image.isEmpty()) {
+        return { success: false, error: 'Capture returned an empty image' }
+      }
+      clipboard.writeImage(image)
+      const size = image.getSize()
+      return {
+        success: true,
+        width: size.width,
+        height: size.height,
+      }
+    } catch (error: any) {
+      return { success: false, error: error.message || String(error) }
     }
   })
 
