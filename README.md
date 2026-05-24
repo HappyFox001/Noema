@@ -24,6 +24,16 @@
   <a href="#plugins">Plugins</a>
 </p>
 
+<p align="center">
+  <img src="./assets/Halo.png" alt="Noema halo orb" width="250" />
+  <img src="./assets/live2d.png" alt="Noema Live2D avatar" width="250" />
+</p>
+
+<p align="center">
+  <img src="./assets/dark.png" alt="Noema dark control panel" width="390" />
+  <img src="./assets/light.png" alt="Noema light control panel" width="390" />
+</p>
+
 ---
 
 Noema is a small experiment toward something like JARVIS: a desktop companion

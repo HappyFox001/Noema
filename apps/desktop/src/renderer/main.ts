@@ -3697,6 +3697,21 @@ function getOrbCaptureRect(): { x: number; y: number; width: number; height: num
   }
 }
 
+function getHighResolutionCaptureRect(): {
+  x: number
+  y: number
+  width: number
+  height: number
+  scaleFactor: number
+} {
+  const rect = getOrbCaptureRect()
+  const scaleFactor = Math.max(1, Math.min(4, window.devicePixelRatio || 1))
+  return {
+    ...rect,
+    scaleFactor,
+  }
+}
+
 async function captureOrbToClipboard(): Promise<void> {
   contextMenu.classList.remove('visible')
   contextMenu.style.display = 'none'
@@ -3704,7 +3719,7 @@ async function captureOrbToClipboard(): Promise<void> {
   try {
     await waitForNextPaint()
 
-    const result = await window.electronAPI.captureToClipboard(getOrbCaptureRect())
+    const result = await window.electronAPI.captureToClipboard(getHighResolutionCaptureRect())
     if (result.success) {
       showPanelNotice(t('notice.orbCaptureCopied'))
       return

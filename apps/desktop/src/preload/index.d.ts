@@ -664,6 +664,7 @@ declare global {
         y: number
         width: number
         height: number
+        scaleFactor?: number
       }) => Promise<{
         success: boolean
         width?: number

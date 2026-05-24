@@ -10,14 +10,18 @@ interface CaptureRect {
   y: number
   width: number
   height: number
+  scaleFactor?: number
 }
 
 function normalizeCaptureRect(rect: CaptureRect, bounds: { width: number; height: number }): CaptureRect | null {
-  const x = Math.max(0, Math.floor(Number(rect.x)))
-  const y = Math.max(0, Math.floor(Number(rect.y)))
-  const width = Math.max(1, Math.ceil(Number(rect.width)))
-  const height = Math.max(1, Math.ceil(Number(rect.height)))
-  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(width) || !Number.isFinite(height)) {
+  const scaleFactor = Number.isFinite(Number(rect.scaleFactor))
+    ? Math.max(1, Math.min(4, Number(rect.scaleFactor)))
+    : 1
+  const x = Math.max(0, Math.floor(Number(rect.x) * scaleFactor))
+  const y = Math.max(0, Math.floor(Number(rect.y) * scaleFactor))
+  const width = Math.max(1, Math.ceil(Number(rect.width) * scaleFactor))
+  const height = Math.max(1, Math.ceil(Number(rect.height) * scaleFactor))
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(width) || !Number.isFinite(height) || !Number.isFinite(scaleFactor)) {
     return null
   }
 
@@ -32,6 +36,7 @@ function normalizeCaptureRect(rect: CaptureRect, bounds: { width: number; height
     y,
     width: clampedWidth,
     height: clampedHeight,
+    scaleFactor,
   }
 }
 
@@ -129,8 +134,15 @@ export function registerWindowIpcHandlers(
       return { success: false, error: 'Window is not available' }
     }
 
+    const scaleFactor = Number.isFinite(Number(rect.scaleFactor))
+      ? Math.max(1, Math.min(4, Number(rect.scaleFactor)))
+      : 1
     const bounds = win.getContentBounds()
-    const normalized = normalizeCaptureRect(rect, bounds)
+    const pixelBounds = {
+      width: Math.round(bounds.width * scaleFactor),
+      height: Math.round(bounds.height * scaleFactor),
+    }
+    const normalized = normalizeCaptureRect(rect, pixelBounds)
     if (!normalized) {
       return { success: false, error: 'Invalid capture area' }
     }
