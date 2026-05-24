@@ -54,6 +54,12 @@
       "target": [
         "dmg"
       ]
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "resources/icon.png"
     }
   }
 }

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/readme_logo.png" alt="Noema logo" width="180" />
+  <img src="./assets/readme_logo.png" alt="Noema logo" width="240" />
 </p>
 
 <p align="center">
@@ -18,8 +18,6 @@
   <a href="#architecture">Architecture</a>
   ·
   <a href="#quick-start">Quick Start</a>
-  ·
-  <a href="#development">Development</a>
   ·
   <a href="#plugins">Plugins</a>
 </p>
@@ -89,67 +87,27 @@ step changes are driven by runtime events and work signals, with durable
 - pnpm 8+
 - macOS, Windows, or Linux with microphone access
 
-### Install
-
 ```bash
 pnpm install
-```
-
-The postinstall step attempts to download local ONNX models used by VAD and
-smart turn detection. You can run it manually:
-
-```bash
-pnpm download:models
-```
-
-### Run the desktop app
-
-```bash
-pnpm desktop:dev
-```
-
-For a production-style local launch:
-
-```bash
+pnpm build
 pnpm start
 ```
 
-## Configuration
-
-Most runtime configuration can be edited from the desktop app's settings panel:
-
-- Dialogue model
-- Task model
-- ASR model
-- TTS model
-- Proxy
-- Voice input/output
-- Task runtime limits
-- Plugins
-- Personality profile
-
-The desktop main process also loads `.env` files from common project locations,
-including `apps/desktop/.env` and the repository root. Settings in the app are
-the preferred path for day-to-day development because they persist model and
-provider choices.
-
 ### API Configuration
 
-Noema uses OpenAI-compatible chat endpoints for the dialogue and task models.
-Voice input and output are configured separately through ASR and TTS providers.
+Noema has four independent model slots:
 
-The recommended setup is to open the desktop app and fill these fields in
-**Settings > System**:
+| Slot | Purpose | Default provider/model |
+| --- | --- | --- |
+| Dialogue | Low-latency conversation | OpenAI-compatible chat endpoint |
+| Task | Tool use, planning, and long-running work | OpenAI-compatible chat endpoint |
+| TTS | Voice output | Fish Audio `s2-pro` |
+| ASR | Voice input | Qwen `qwen3-asr-flash-realtime` |
 
-- **Dialogue model**: API key, model name, and base URL for normal conversation.
-- **Task model**: API key, model name, base URL, and transport for tool/task execution.
-- **ASR model**: provider, API key, model name, base URL, and language.
-- **TTS model**: provider, API key, model name, voice ID, base URL, and language.
-- **Proxy**: optional HTTP(S) proxy used by provider requests.
-
-You can also seed the same settings with a `.env` file. For lower latency with
-the default voice setup, a Japan-based network node is recommended when you use
-the proxy option.
+Configure these in **Settings > System** after launching the app, or seed the
+same values with a `.env` file in the repository root or `apps/desktop/.env`.
+When using the default Fish Audio + Qwen voice setup through a proxy, a
+Japan-based network node is recommended for lower latency.
 
 ```bash
 # Dialogue model, OpenAI-compatible
@@ -178,58 +136,17 @@ ASR_1_LANGUAGE=zh
 PROXY_URL=http://127.0.0.1:7890
 ```
 
-Reference docs for the default voice providers:
+The numbered suffix lets you save multiple profiles, for example
+`LLM_2_API_KEY`, `TASK_2_MODEL`, or `TTS_2_VOICE_ID`. Select the active profile
+with `LLM_ACTIVE`, `TASK_ACTIVE`, `TTS_ACTIVE`, and `ASR_ACTIVE`.
+
+Voice provider references:
 
 - Fish Audio TTS: [Fish Audio S2](https://fish.audio/s2/) and
   [Text to Speech API](https://docs.fish.audio/developer-guide/core-features/text-to-speech).
 - Qwen realtime ASR: [Realtime speech recognition](https://docs.qwencloud.com/developer-guides/speech/asr-realtime)
   and [speech-to-text models](https://docs.qwencloud.com/developer-guides/speech/speech-to-text-models)
   for `qwen3-asr-flash-realtime`.
-
-Provider defaults:
-
-| Area | Supported providers | Default model |
-| --- | --- | --- |
-| Dialogue / task LLM | OpenAI-compatible endpoint | user configured |
-| TTS | `fish`, `openai`, `elevenlabs` | `s2-pro` for Fish Audio |
-| ASR | `qwen`, `openai`, `groq` | `qwen3-asr-flash-realtime` |
-
-The indexed variables support multiple saved profiles from `1` to `10`, for
-example `LLM_2_API_KEY` or `TTS_2_PROVIDER`. Select the active profile with
-`LLM_ACTIVE`, `TASK_ACTIVE`, `TTS_ACTIVE`, and `ASR_ACTIVE`.
-
-## Development
-
-Build the main packages:
-
-```bash
-pnpm --filter @noema/sdk build
-pnpm --filter @noema/desktop build
-```
-
-Run all workspace builds through Turbo:
-
-```bash
-pnpm build
-```
-
-Start the Electron development app:
-
-```bash
-pnpm desktop:dev
-```
-
-Clear local conversation and task history:
-
-```bash
-pnpm history:clear
-```
-
-For changed runtime plugin files, run syntax checks when practical:
-
-```bash
-node --check plugins/<plugin-id>/index.mjs
-```
 
 ## Plugins
 
@@ -251,34 +168,6 @@ Plugin manifests declare permissions, config fields, default enablement, and
 admin actions. Keep plugin hooks generic: tools execute actions, context
 providers contribute task context, and UI/admin behavior remains separate from
 runtime execution.
-
-## Task Runtime
-
-The task runtime keeps execution explicit:
-
-- The dialogue model decides whether a user request contains a task.
-- The task model creates and updates a plan.
-- Tools perform external actions.
-- Execution state records observations, changed files, failures, pending verification, and active sessions.
-- New task requests are admitted as `keep_active`, `queue_new`, or `stop_active_start_new`.
-
-During long-running tasks, Noema can generate natural `task_progress`
-feedback through the emotional dialogue layer while leaving task execution to
-the task model.
-
-## Voice Runtime
-
-The voice path is frame-based and interruption-aware:
-
-- Renderer captures microphone audio with browser-level echo cancellation,
-  noise suppression, and automatic gain control.
-- Main process streams audio to ASR and endpointing.
-- TTS output is queued through the response frame pipeline.
-- Speech output can be interrupted without automatically aborting an active task.
-
-Application-level echo suppression is still evolving. Browser-level AEC is
-enabled, but robust filtering of TTS audio leaking back into ASR is an area for
-future improvement.
 
 ## Acknowledgements
 
