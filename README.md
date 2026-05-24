@@ -137,7 +137,9 @@ The recommended setup is to open the desktop app and fill these fields in
 - **TTS model**: provider, API key, model name, voice ID, base URL, and language.
 - **Proxy**: optional HTTP(S) proxy used by provider requests.
 
-You can also seed the same settings with a `.env` file:
+You can also seed the same settings with a `.env` file. For lower latency with
+the default voice setup, a Japan-based network node is recommended when you use
+the proxy option.
 
 ```bash
 # Dialogue model, OpenAI-compatible
@@ -165,6 +167,14 @@ ASR_1_LANGUAGE=zh
 # Optional
 PROXY_URL=http://127.0.0.1:7890
 ```
+
+Reference docs for the default voice providers:
+
+- Fish Audio TTS: [Fish Audio S2](https://fish.audio/s2/) and
+  [Text to Speech API](https://docs.fish.audio/developer-guide/core-features/text-to-speech).
+- Qwen realtime ASR: [Realtime speech recognition](https://docs.qwencloud.com/developer-guides/speech/asr-realtime)
+  and [speech-to-text models](https://docs.qwencloud.com/developer-guides/speech/speech-to-text-models)
+  for `qwen3-asr-flash-realtime`.
 
 Provider defaults:
 
