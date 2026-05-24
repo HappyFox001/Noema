@@ -132,8 +132,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build desktop app
-        run: pnpm --filter @noema/desktop build
+      - name: Build SDK and desktop app
+        run: |
+          pnpm --filter @noema/sdk build
+          pnpm --filter @noema/desktop build
 
       - name: Package desktop app
         run: pnpm --filter @noema/desktop exec electron-builder ${{ matrix.builder_args }} --publish never
