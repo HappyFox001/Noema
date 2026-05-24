@@ -32,6 +32,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
+      package_matrix: ${{ steps.version.outputs.package_matrix }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -58,8 +59,24 @@ jobs:
             echo "Tag already exists: $TAG"
             exit 1
           fi
+          case "${{ github.event.inputs.platform }}" in
+            all)
+              PACKAGE_MATRIX='{"include":[{"platform":"mac","os":"macos-latest","builder_args":"--mac","artifact_name":"noema-macos"},{"platform":"windows","os":"windows-latest","builder_args":"--win","artifact_name":"noema-windows"}]}'
+              ;;
+            mac)
+              PACKAGE_MATRIX='{"include":[{"platform":"mac","os":"macos-latest","builder_args":"--mac","artifact_name":"noema-macos"}]}'
+              ;;
+            windows)
+              PACKAGE_MATRIX='{"include":[{"platform":"windows","os":"windows-latest","builder_args":"--win","artifact_name":"noema-windows"}]}'
+              ;;
+            *)
+              echo "Invalid platform: ${{ github.event.inputs.platform }}"
+              exit 1
+              ;;
+          esac
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "package_matrix=$PACKAGE_MATRIX" >> "$GITHUB_OUTPUT"
 
       - name: Update package versions
         run: |
@@ -93,51 +110,35 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - platform: mac
-            os: macos-latest
-            builder_args: --mac
-            artifact_name: noema-macos
-          - platform: windows
-            os: windows-latest
-            builder_args: --win
-            artifact_name: noema-windows
+      matrix: ${{ fromJSON(needs.prepare.outputs.package_matrix) }}
 
     steps:
       - name: Checkout release tag
-        if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == matrix.platform }}
         uses: actions/checkout@v4
         with:
           ref: ${{ needs.prepare.outputs.tag }}
 
       - name: Setup pnpm
-        if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == matrix.platform }}
         uses: pnpm/action-setup@v4
         with:
           version: 10.33.2
 
       - name: Setup Node.js
-        if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == matrix.platform }}
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
 
       - name: Install dependencies
-        if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == matrix.platform }}
         run: pnpm install --frozen-lockfile
 
       - name: Build desktop app
-        if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == matrix.platform }}
         run: pnpm --filter @noema/desktop build
 
       - name: Package desktop app
-        if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == matrix.platform }}
         run: pnpm --filter @noema/desktop exec electron-builder ${{ matrix.builder_args }} --publish never
 
       - name: Upload installer artifacts
-        if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == matrix.platform }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
