@@ -32,6 +32,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
+      tag_exists: ${{ steps.version.outputs.tag_exists }}
       package_matrix: ${{ steps.version.outputs.package_matrix }}
     steps:
       - name: Checkout
@@ -55,9 +56,10 @@ jobs:
             exit 1
           fi
           TAG="v$VERSION"
+          TAG_EXISTS=false
           if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-            echo "Tag already exists: $TAG"
-            exit 1
+            echo "Tag already exists, reusing it: $TAG"
+            TAG_EXISTS=true
           fi
           case "${{ github.event.inputs.platform }}" in
             all)
@@ -76,9 +78,11 @@ jobs:
           esac
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "tag_exists=$TAG_EXISTS" >> "$GITHUB_OUTPUT"
           echo "package_matrix=$PACKAGE_MATRIX" >> "$GITHUB_OUTPUT"
 
       - name: Update package versions
+        if: ${{ steps.version.outputs.tag_exists != 'true' }}
         run: |
           node <<'NODE'
           const fs = require('fs')
@@ -93,6 +97,7 @@ jobs:
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
 
       - name: Commit and tag release
+        if: ${{ steps.version.outputs.tag_exists != 'true' }}
         run: |
           git add package.json packages/sdk/package.json apps/desktop/package.json
           if git diff --cached --quiet; then
