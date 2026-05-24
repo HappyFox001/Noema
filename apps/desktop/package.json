@@ -47,8 +47,16 @@
     "files": [
       "dist/**/*",
       "resources/icon.png",
-      "package.json"
+      "package.json",
+      "!dist/**/*.d.ts",
+      "!dist/**/*.d.ts.map",
+      "!node_modules/@noema/sdk/src/**",
+      "!node_modules/@noema/sdk/jest.config.cjs",
+      "!node_modules/@noema/sdk/tsconfig.json",
+      "!node_modules/@noema/sdk/**/*.d.ts",
+      "!node_modules/@noema/sdk/**/*.d.ts.map"
     ],
+    "afterPack": "scripts/prune-package.cjs",
     "mac": {
       "category": "public.app-category.productivity",
       "target": [

@@ -43,5 +43,7 @@ other/**
 *.md
 tmp/
 scripts/
+!apps/desktop/scripts/
+!apps/desktop/scripts/prune-package.cjs
 test/
 web/
