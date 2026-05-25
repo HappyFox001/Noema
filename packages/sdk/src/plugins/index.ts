@@ -42,6 +42,7 @@ export type PluginConfigField =
       advanced?: boolean
       type: 'file'
       default?: string
+      defaultPath?: string
       placeholder?: string
       buttonLabel?: string
       filters?: Array<{ name: string; extensions: string[] }>
@@ -53,6 +54,7 @@ export type PluginConfigField =
       advanced?: boolean
       type: 'directory'
       default?: string
+      defaultPath?: string
       placeholder?: string
       buttonLabel?: string
       targetKey?: string

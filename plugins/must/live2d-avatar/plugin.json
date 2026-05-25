@@ -44,6 +44,7 @@
       "description": "Select a Live2D model folder. The first .model3.json in the folder is used automatically.",
       "type": "directory",
       "default": "../models/Haru",
+      "defaultPath": "assets/models",
       "placeholder": "../models/Haru",
       "buttonLabel": "选择模型目录",
       "targetKey": "modelUrl",

@@ -2,7 +2,7 @@
  * IPC handlers for runtime plugin discovery, admin actions, and plugin asset selection.
  */
 import { readFile, readdir } from 'fs/promises'
-import { isAbsolute, join, resolve as resolvePath } from 'path'
+import { isAbsolute, join, relative, resolve as resolvePath } from 'path'
 import { fileURLToPath, pathToFileURL } from 'url'
 import { dialog, type BrowserWindow, type IpcMain, type OpenDialogOptions } from 'electron'
 import type { AppSettings } from './settings-store.js'
@@ -43,6 +43,7 @@ export function registerPluginIpcHandlers(
   })
 
   ipcMain.handle('plugins:selectConfigPath', async (_event, request?: {
+    pluginId?: string
     mode?: 'file' | 'directory'
     title?: string
     defaultPath?: string
@@ -55,7 +56,12 @@ export function registerPluginIpcHandlers(
       const dialogOptions: OpenDialogOptions = {
         title: request?.title || (mode === 'directory' ? '选择插件目录' : '选择插件文件'),
         properties: [mode === 'directory' ? 'openDirectory' : 'openFile'],
-        defaultPath: request?.defaultPath,
+        defaultPath: await resolvePluginDialogDefaultPath(
+          options.resolveRuntimePluginsDir(),
+          options.getSettings(),
+          request?.pluginId,
+          request?.defaultPath
+        ),
         filters: mode === 'file' && request?.filters?.length ? request.filters : undefined,
       }
       const result = await showOpenDialog(options.getMainWindow(), dialogOptions)
@@ -135,6 +141,33 @@ export function registerPluginIpcHandlers(
       return { success: false, error: error.message }
     }
   })
+}
+
+async function resolvePluginDialogDefaultPath(
+  pluginsDir: string,
+  settings: AppSettings,
+  pluginId?: string,
+  defaultPath?: string
+): Promise<string | undefined> {
+  if (!defaultPath) {
+    return undefined
+  }
+  if (isAbsolute(defaultPath) || !pluginId) {
+    return defaultPath
+  }
+
+  const plugins = await discoverRuntimePlugins(pluginsDir, settings.plugins, settings.pluginConfigs)
+  const plugin = plugins.find(item => item.id === pluginId)
+  if (!plugin) {
+    return undefined
+  }
+
+  const resolvedPath = resolvePath(plugin.pluginDir, defaultPath)
+  const relativePath = relative(plugin.pluginDir, resolvedPath)
+  if (isAbsolute(relativePath) || relativePath.startsWith('..')) {
+    return undefined
+  }
+  return resolvedPath
 }
 
 function showOpenDialog(

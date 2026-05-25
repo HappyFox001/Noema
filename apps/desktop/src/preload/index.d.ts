@@ -446,6 +446,7 @@ declare global {
         error?: string
       }>
       selectPluginConfigPath: (options?: {
+        pluginId?: string
         mode?: 'file' | 'directory'
         title?: string
         defaultPath?: string

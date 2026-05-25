@@ -1534,6 +1534,7 @@ type PluginConfigField =
       advanced?: boolean
       type: 'file'
       default?: string
+      defaultPath?: string
       placeholder?: string
       buttonLabel?: string
       filters?: Array<{ name: string; extensions: string[] }>
@@ -1545,6 +1546,7 @@ type PluginConfigField =
       advanced?: boolean
       type: 'directory'
       default?: string
+      defaultPath?: string
       placeholder?: string
       buttonLabel?: string
       targetKey?: string
@@ -5464,11 +5466,12 @@ async function selectPluginConfigPath(button: HTMLButtonElement): Promise<void> 
   button.disabled = true
   try {
     const result = await window.electronAPI.selectPluginConfigPath({
+      pluginId,
       mode: field.type,
       title: field.label
         ? tf('plugins.chooseField', { label: pluginConfigText(plugin, field, 'label', field.label) })
         : (field.type === 'directory' ? t('plugins.chooseDirectory') : t('plugins.chooseFile')),
-      defaultPath: await getPluginPathDefault(pluginId, key),
+      defaultPath: await getPluginPathDefault(plugin, field),
       filters: field.type === 'file' ? field.filters : undefined,
       resolveFileExtensions: field.type === 'directory' ? field.resolveFileExtensions : undefined,
       resolveRecursive: field.type === 'directory' ? field.resolveRecursive : undefined,
@@ -5585,10 +5588,13 @@ function getPluginPathHistoryKey(pluginId: string, key: string): string {
   return `${pluginId}:${key}`
 }
 
-async function getPluginPathDefault(pluginId: string, key: string): Promise<string | undefined> {
+async function getPluginPathDefault(
+  plugin: PluginInfo,
+  field: Extract<PluginConfigField, { type: 'file' | 'directory' }>
+): Promise<string | undefined> {
   const settings = await window.electronAPI.getSettings()
-  const history = settings.pluginPathHistory?.[getPluginPathHistoryKey(pluginId, key)]
-  return history?.lastPath || history?.recentPaths?.[0]
+  const history = settings.pluginPathHistory?.[getPluginPathHistoryKey(plugin.id, field.key)]
+  return history?.lastPath || history?.recentPaths?.[0] || field.defaultPath
 }
 
 async function updatePluginPathHistory(
