@@ -1498,6 +1498,7 @@ type UISettings = {
   }
   experimental?: {
     workSurfaceEnabled?: boolean
+    selfLearningEnabled?: boolean
   }
   selectedPersonality: string
   plugins: Record<string, boolean>
@@ -1767,7 +1768,11 @@ async function getPlanetOrbRenderer(): Promise<PlanetOrbRendererInstance> {
   }
   if (!planetOrbRendererPromise) {
     planetOrbRendererPromise = import('./orbs/planet-orb').then(({ PlanetOrbRenderer }) => {
-      planetOrbRenderer = new PlanetOrbRenderer(planetOrbCanvas)
+      planetOrbRenderer = new PlanetOrbRenderer(planetOrbCanvas, () => {
+        if (currentOrbStyle === 'planet') {
+          setOrbStyle('default')
+        }
+      })
       planetOrbRenderer.setMode(orbState.mode)
       return planetOrbRenderer
     })

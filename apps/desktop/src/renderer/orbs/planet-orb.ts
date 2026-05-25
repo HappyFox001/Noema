@@ -96,8 +96,12 @@ export class PlanetOrbRenderer {
   private pointerCurrent = new THREE.Vector2()
   private cursorSampledAt = 0
   private cursorRequestPending = false
+  private renderFailureReported = false
 
-  constructor(private readonly canvas: HTMLCanvasElement) {}
+  constructor(
+    private readonly canvas: HTMLCanvasElement,
+    private readonly onRenderFailure?: () => void
+  ) {}
 
   async setEnabled(enabled: boolean): Promise<boolean> {
     this.enabled = enabled
@@ -173,7 +177,7 @@ export class PlanetOrbRenderer {
       antialias: true,
       stencil: false,
       depth: true,
-      forceWebGL: false,
+      forceWebGL: true,
     })
     renderer.outputColorSpace = THREE.SRGBColorSpace
     renderer.toneMapping = THREE.ACESFilmicToneMapping
@@ -187,7 +191,7 @@ export class PlanetOrbRenderer {
     scene.add(camera)
 
     const textureLoader = new THREE.TextureLoader()
-    const noiseTexture = textureLoader.load(SINGULARITY_NOISE_URL)
+    const noiseTexture = await loadTexture(textureLoader, SINGULARITY_NOISE_URL)
     noiseTexture.wrapS = THREE.RepeatWrapping
     noiseTexture.wrapT = THREE.RepeatWrapping
     noiseTexture.generateMipmaps = false
@@ -195,7 +199,7 @@ export class PlanetOrbRenderer {
     noiseTexture.magFilter = THREE.LinearFilter
     noiseTexture.needsUpdate = true
 
-    const nebulaTexture = textureLoader.load(SINGULARITY_NEBULA_URL)
+    const nebulaTexture = await loadTexture(textureLoader, SINGULARITY_NEBULA_URL)
     nebulaTexture.mapping = THREE.EquirectangularReflectionMapping
     nebulaTexture.colorSpace = THREE.SRGBColorSpace
     nebulaTexture.generateMipmaps = false
@@ -219,6 +223,7 @@ export class PlanetOrbRenderer {
     this.resize()
     this.applyMode()
     await renderer.init()
+    renderer.render(scene, camera)
     this.initialized = true
   }
 
@@ -266,8 +271,24 @@ export class PlanetOrbRenderer {
     this.uniforms.power.value = 0.3 * (1 + energy * palette.energyPower)
     this.uniforms.noiseFactor.value = palette.noiseFactor * (1 + energy * 0.28)
     this.uniforms.rampEmission.value = palette.baseEmission + energy * palette.energyEmission
-    this.renderer.renderAsync(this.scene, this.camera)
+    try {
+      this.renderer.render(this.scene, this.camera)
+    } catch (error) {
+      this.reportRenderFailure(error)
+      return
+    }
     this.animationFrame = requestAnimationFrame(this.render)
+  }
+
+  private reportRenderFailure(error: unknown): void {
+    if (!this.renderFailureReported) {
+      console.error('[PlanetOrb] Failed to render singularity orb:', error)
+      this.renderFailureReported = true
+    }
+    this.enabled = false
+    this.canvas.classList.remove('active')
+    this.stop()
+    this.onRenderFailure?.()
   }
 
   private applyMode(): void {
@@ -315,6 +336,12 @@ export class PlanetOrbRenderer {
         this.cursorRequestPending = false
       })
   }
+}
+
+function loadTexture(loader: THREE.TextureLoader, url: string): Promise<THREE.Texture> {
+  return new Promise((resolve, reject) => {
+    loader.load(url, resolve, undefined, reject)
+  })
 }
 
 function createSingularityUniforms(): SingularityUniforms {

@@ -237,7 +237,7 @@ declare global {
         voiceOutputEnabled: boolean
         volume: number
         appearance: { orbStyle: 'default' | 'advanced' | 'planet'; theme: 'night' | 'day'; liquidGlassEnabled: boolean }
-        experimental?: { workSurfaceEnabled: boolean }
+        experimental?: { workSurfaceEnabled: boolean; selfLearningEnabled: boolean }
         selectedPersonality: string
         externalRolePaths: string[]
         pluginPathHistory: Record<string, { mode: 'file' | 'directory'; lastPath: string; recentPaths: string[] }>
@@ -260,7 +260,7 @@ declare global {
         voiceOutputEnabled: boolean
         volume: number
         appearance: { orbStyle: 'default' | 'advanced' | 'planet'; theme: 'night' | 'day'; liquidGlassEnabled: boolean }
-        experimental?: { workSurfaceEnabled: boolean }
+        experimental?: { workSurfaceEnabled: boolean; selfLearningEnabled: boolean }
         selectedPersonality: string
         externalRolePaths: string[]
         pluginPathHistory: Record<string, { mode: 'file' | 'directory'; lastPath: string; recentPaths: string[] }>
@@ -282,7 +282,7 @@ declare global {
         voiceOutputEnabled: boolean
         volume: number
         appearance: { orbStyle: 'default' | 'advanced' | 'planet'; theme: 'night' | 'day'; liquidGlassEnabled: boolean }
-        experimental?: { workSurfaceEnabled: boolean }
+        experimental?: { workSurfaceEnabled: boolean; selfLearningEnabled: boolean }
         selectedPersonality: string
         externalRolePaths: string[]
         system: {

@@ -1,6 +1,7 @@
 // Rewrites the packaged asar after removing development files and other-platform binaries.
 
 const fs = require('fs')
+const fsp = require('fs/promises')
 const os = require('os')
 const path = require('path')
 const asar = require('@electron/asar')
@@ -46,7 +47,7 @@ module.exports = async function prunePackage(context) {
       fs.renameSync(`${repackedPath}.unpacked`, `${appAsarPath}.unpacked`)
     }
   } finally {
-    fs.rmSync(tempRoot, { recursive: true, force: true })
+    await removeTempRoot(tempRoot)
   }
 }
 
@@ -85,4 +86,24 @@ function removeMatchingFiles(directory, shouldRemove) {
 
 function removePath(targetPath) {
   fs.rmSync(targetPath, { recursive: true, force: true })
+}
+
+async function removeTempRoot(tempRoot) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      await fsp.rm(tempRoot, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 200,
+      })
+      return
+    } catch (error) {
+      if (attempt === 4) {
+        console.warn('[PackagePrune] Failed to remove temporary directory:', tempRoot, error)
+        return
+      }
+      await new Promise(resolve => setTimeout(resolve, 250 * (attempt + 1)))
+    }
+  }
 }

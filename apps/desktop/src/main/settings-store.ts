@@ -293,8 +293,9 @@ const DEFAULT_SETTINGS: AppSettings = {
 }
 
 export class SettingsStore {
-  private settings: AppSettings = { ...DEFAULT_SETTINGS }
+  private settings: AppSettings = cloneDefaultSettings()
   private filePath: string
+  private persistQueue: Promise<void> = Promise.resolve()
 
   constructor() {
     this.filePath = join(app.getPath('userData'), 'settings.json')
@@ -310,7 +311,7 @@ export class SettingsStore {
       if (envConfig) {
         console.log('[SettingsStore] First run: loading config from .env')
         this.settings = {
-          ...DEFAULT_SETTINGS,
+          ...cloneDefaultSettings(),
           system: this.mergeSystemConfig(DEFAULT_SYSTEM_CONFIG, envConfig)
         }
       }
@@ -342,7 +343,7 @@ export class SettingsStore {
       }
 
       this.settings = {
-        ...DEFAULT_SETTINGS,
+        ...cloneDefaultSettings(),
         ...parsed,
         language: normalizeLanguage(parsed.language),
         appearance: normalizeAppearanceSettings(parsed.appearance),
@@ -359,11 +360,11 @@ export class SettingsStore {
       const envConfig = loadSystemConfigFromEnv()
       if (envConfig) {
         this.settings = {
-          ...DEFAULT_SETTINGS,
+          ...cloneDefaultSettings(),
           system: this.mergeSystemConfig(DEFAULT_SYSTEM_CONFIG, envConfig)
         }
       } else {
-        this.settings = { ...DEFAULT_SETTINGS }
+        this.settings = cloneDefaultSettings()
       }
       await this.persist()
     }
@@ -485,17 +486,11 @@ export class SettingsStore {
   }
 
   getSettings(): AppSettings {
-    return { ...this.settings }
+    return cloneSettings(this.settings)
   }
 
   async update(partial: Partial<AppSettings>): Promise<AppSettings> {
-    this.settings = {
-      ...this.settings,
-      ...partial,
-      appearance: normalizeAppearanceSettings(partial.appearance, this.settings.appearance),
-      experimental: normalizeExperimentalSettings(partial.experimental, this.settings.experimental),
-      volume: clampVolume(partial.volume ?? this.settings.volume)
-    }
+    this.settings = normalizeSettingsPatch(this.settings, partial)
     await this.persist()
     return this.getSettings()
   }
@@ -528,7 +523,113 @@ export class SettingsStore {
   }
 
   private async persist(): Promise<void> {
-    await writeFile(this.filePath, JSON.stringify(this.settings, null, 2), 'utf-8')
+    const snapshot = JSON.stringify(this.settings, null, 2)
+    const write = this.persistQueue.then(() => writeFile(this.filePath, snapshot, 'utf-8'))
+    this.persistQueue = write.catch(() => undefined)
+    await write
+  }
+}
+
+function cloneDefaultSettings(): AppSettings {
+  return cloneSettings({
+    ...DEFAULT_SETTINGS,
+    appearance: DEFAULT_APPEARANCE_SETTINGS,
+    experimental: DEFAULT_EXPERIMENTAL_SETTINGS,
+    externalRolePaths: [],
+    plugins: {},
+    pluginConfigs: {},
+    pluginPathHistory: {},
+    system: DEFAULT_SYSTEM_CONFIG
+  })
+}
+
+function cloneSettings(settings: AppSettings): AppSettings {
+  return {
+    ...settings,
+    appearance: { ...settings.appearance },
+    experimental: { ...settings.experimental },
+    externalRolePaths: [...settings.externalRolePaths],
+    plugins: { ...settings.plugins },
+    pluginConfigs: Object.fromEntries(
+      Object.entries(settings.pluginConfigs).map(([pluginId, config]) => [pluginId, { ...config }])
+    ),
+    pluginPathHistory: Object.fromEntries(
+      Object.entries(settings.pluginPathHistory).map(([key, history]) => [
+        key,
+        {
+          ...history,
+          recentPaths: [...history.recentPaths],
+        },
+      ])
+    ),
+    system: cloneSystemConfig(settings.system)
+  }
+}
+
+function cloneSystemConfig(config: SystemConfig): SystemConfig {
+  return {
+    ...config,
+    llmModels: config.llmModels.map(model => ({ ...model })),
+    taskModels: config.taskModels.map(model => ({ ...model })),
+    taskRuntime: {
+      ...config.taskRuntime,
+      extraArgs: [...config.taskRuntime.extraArgs]
+    },
+    ttsModels: config.ttsModels.map(model => ({
+      ...model,
+      extra: model.extra ? { ...model.extra } : undefined
+    })),
+    asrModels: config.asrModels.map(model => ({
+      ...model,
+      extra: model.extra ? { ...model.extra } : undefined
+    }))
+  }
+}
+
+function normalizeSettingsPatch(current: AppSettings, partial: Partial<AppSettings>): AppSettings {
+  return {
+    ...current,
+    ...partial,
+    language: partial.language !== undefined ? normalizeLanguage(partial.language) : current.language,
+    voiceInputEnabled: typeof partial.voiceInputEnabled === 'boolean'
+      ? partial.voiceInputEnabled
+      : current.voiceInputEnabled,
+    voiceOutputEnabled: typeof partial.voiceOutputEnabled === 'boolean'
+      ? partial.voiceOutputEnabled
+      : current.voiceOutputEnabled,
+    volume: clampVolume(partial.volume ?? current.volume),
+    appearance: normalizeAppearanceSettings(partial.appearance, current.appearance),
+    experimental: normalizeExperimentalSettings(partial.experimental, current.experimental),
+    externalRolePaths: Array.isArray(partial.externalRolePaths)
+      ? partial.externalRolePaths
+      : current.externalRolePaths,
+    plugins: partial.plugins && typeof partial.plugins === 'object'
+      ? partial.plugins
+      : current.plugins,
+    pluginConfigs: partial.pluginConfigs && typeof partial.pluginConfigs === 'object'
+      ? partial.pluginConfigs
+      : current.pluginConfigs,
+    pluginPathHistory: partial.pluginPathHistory && typeof partial.pluginPathHistory === 'object'
+      ? partial.pluginPathHistory
+      : current.pluginPathHistory,
+    system: partial.system ? normalizeSystemConfig(partial.system, current.system) : current.system
+  }
+}
+
+function normalizeSystemConfig(value: Partial<SystemConfig>, fallback: SystemConfig): SystemConfig {
+  return {
+    ...fallback,
+    ...value,
+    proxy: typeof value.proxy === 'string' ? value.proxy : fallback.proxy,
+    llmModels: Array.isArray(value.llmModels) && value.llmModels.length ? value.llmModels : fallback.llmModels,
+    activeLLMId: typeof value.activeLLMId === 'string' ? value.activeLLMId : fallback.activeLLMId,
+    taskModels: Array.isArray(value.taskModels) && value.taskModels.length ? value.taskModels : fallback.taskModels,
+    activeTaskId: typeof value.activeTaskId === 'string' ? value.activeTaskId : fallback.activeTaskId,
+    taskRuntime: normalizeTaskRuntimeSettings(value.taskRuntime ?? fallback.taskRuntime),
+    ttsModels: Array.isArray(value.ttsModels) && value.ttsModels.length ? value.ttsModels : fallback.ttsModels,
+    activeTTSId: typeof value.activeTTSId === 'string' ? value.activeTTSId : fallback.activeTTSId,
+    asrModels: Array.isArray(value.asrModels) && value.asrModels.length ? value.asrModels : fallback.asrModels,
+    activeASRId: typeof value.activeASRId === 'string' ? value.activeASRId : fallback.activeASRId
   }
 }
 
@@ -541,7 +642,9 @@ function normalizeAppearanceSettings(value: unknown, fallback: AppearanceSetting
     ? value as Partial<AppearanceSettings>
     : {}
   return {
-    orbStyle: source.orbStyle === 'advanced' || source.orbStyle === 'planet' ? source.orbStyle : fallback.orbStyle,
+    orbStyle: source.orbStyle === 'default' || source.orbStyle === 'advanced' || source.orbStyle === 'planet'
+      ? source.orbStyle
+      : fallback.orbStyle,
     theme: source.theme === 'day' || source.theme === 'night' ? source.theme : fallback.theme,
     liquidGlassEnabled: typeof source.liquidGlassEnabled === 'boolean'
       ? source.liquidGlassEnabled
