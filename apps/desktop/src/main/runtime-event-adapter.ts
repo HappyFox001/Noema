@@ -71,13 +71,11 @@ export interface RuntimeEventAdapterOptions {
     onWorkSignal(signal: any): void
     onTaskEnd(result: { success: boolean; summary: string; error?: string }): void
   }
-  handleWorkSurfaceRuntimeEvent(event: any): void
   sendConversationFrame(frame: RuntimeConversationFrame): void
 }
 
 export function handleDesktopRuntimeEvent(event: any, options: RuntimeEventAdapterOptions): void {
   logTaskRuntimeEvent(event)
-  options.handleWorkSurfaceRuntimeEvent(event)
   if (event.name === 'task.started') {
     options.taskCommunicationManager.onTaskStart(event.payload?.taskDescription || 'Task')
     return

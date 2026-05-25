@@ -6,7 +6,6 @@
  */
 import './styles.css'
 import { initializeLiquidGlassSurface } from './liquid-glass-surface'
-import { WorkSurfaceView } from './work-surface'
 import claudeCodeLogoUrl from './assets/claude_code_logo.png'
 import codexLogoUrl from './assets/codex_logo.png'
 import claudeIconUrl from '@lobehub/icons-static-svg/icons/claude-color.svg?url'
@@ -666,8 +665,6 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'appearance.liquidGlass': '液态水效果',
     'appearance.liquidGlassDesc': '关闭设置面板的液态覆盖层以降低 GPU 占用。',
     'experimental.title': '实验功能',
-    'experimental.workSurface': '实时工作页面',
-    'experimental.workSurfaceDesc': '让复杂任务使用受控工作台界面展示状态、结果和可继续操作对象。默认关闭。',
     'experimental.selfLearning': '自动学习',
     'experimental.selfLearningDesc': '允许自动记录 runtime 事件、生成学习候选和创建 specialized agents。关闭后相关后台流程全部停用。',
     'learning.disabled': '自动学习已关闭。开启实验功能里的“自动学习”后，这里才会记录事件、反思和 agents。',
@@ -1032,8 +1029,6 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'appearance.liquidGlass': 'Liquid Effect',
     'appearance.liquidGlassDesc': 'Disable the liquid overlay on the settings panel to reduce GPU usage.',
     'experimental.title': 'Experimental',
-    'experimental.workSurface': 'Realtime Work Surface',
-    'experimental.workSurfaceDesc': 'Use a controlled workspace UI for complex tasks. Disabled by default.',
     'experimental.selfLearning': 'Self-Learning',
     'experimental.selfLearningDesc': 'Allow runtime event learning, candidate generation, and specialized agents. Disabling it stops the related background flows.',
     'learning.disabled': 'Self-learning is disabled. Enable Self-Learning in Experimental before events, reflections, and agents are recorded.',
@@ -1497,7 +1492,6 @@ type UISettings = {
     liquidGlassEnabled?: boolean
   }
   experimental?: {
-    workSurfaceEnabled?: boolean
     selfLearningEnabled?: boolean
   }
   selectedPersonality: string
@@ -1696,8 +1690,6 @@ const voiceRecorder = new VoiceRecorder()
 // Canvas rendering
 const pluginUIMainView = document.getElementById('orb-slot') as HTMLElement
 const pluginUITaskPanel = document.getElementById('task-panel') as HTMLElement
-const workSurfaceRoot = document.getElementById('work-surface-root') as HTMLElement
-const workSurfaceView = new WorkSurfaceView(workSurfaceRoot, { setTaskPanelVisible })
 const canvas = document.getElementById('orb-canvas') as HTMLCanvasElement
 const ctx = canvas.getContext('2d', { alpha: true })!
 const advancedOrbCanvas = document.getElementById('advanced-orb-canvas') as HTMLCanvasElement
@@ -3067,30 +3059,6 @@ async function initialize() {
       handleConversationFrame(frame as ConversationFrame)
     })
 
-    window.electronAPI.onWorkSurfaceFrame((frame) => {
-      if (frame?.type === 'surface.close') {
-        workSurfaceView.close()
-      }
-    })
-
-    window.electronAPI.onWorkSurfaceCreated((snapshot) => {
-      workSurfaceView.renderSnapshot(snapshot)
-    })
-
-    window.electronAPI.onWorkSurfaceSnapshot((snapshot) => {
-      workSurfaceView.renderSnapshot(snapshot)
-    })
-
-    window.electronAPI.onWorkSurfaceClosed(() => {
-      workSurfaceView.close()
-    })
-
-    window.electronAPI.onWorkSurfaceError((error) => {
-      console.warn('[WorkSurface] Error:', error)
-    })
-
-    void window.electronAPI.workSurfaceReady()
-
     window.electronAPI.onTTSConnected((contextId) => {
       console.log(`[UI] TTS connected (context #${contextId})`)
       setOrbMode('thinking')
@@ -3309,7 +3277,6 @@ const orbStyleLabel = document.getElementById('orb-style-label') as HTMLElement
 const appearanceThemeTrigger = document.getElementById('appearance-theme-trigger') as HTMLButtonElement
 const appearanceThemeLabel = document.getElementById('appearance-theme-label') as HTMLElement
 const liquidGlassToggle = document.getElementById('liquid-glass-toggle') as HTMLInputElement
-const workSurfaceToggle = document.getElementById('work-surface-toggle') as HTMLInputElement
 const selfLearningToggle = document.getElementById('self-learning-toggle') as HTMLInputElement
 const selfLearningOpenBtn = document.getElementById('self-learning-open-btn') as HTMLButtonElement
 const personalitySelect = document.getElementById('personality-select') as HTMLSelectElement
@@ -3362,10 +3329,8 @@ function applySettingsToUI(settings: UISettings) {
   setAppearanceTheme(parseAppearanceTheme(settings.appearance?.theme))
   setOrbStyle(parseOrbStyle(settings.appearance?.orbStyle))
   setLiquidGlassEnabled(settings.appearance?.liquidGlassEnabled !== false)
-  workSurfaceToggle.checked = settings.experimental?.workSurfaceEnabled === true
   selfLearningToggle.checked = settings.experimental?.selfLearningEnabled !== false
   selfLearningOpenBtn.hidden = settings.experimental?.selfLearningEnabled === false
-  workSurfaceView.setEnabled(settings.experimental?.workSurfaceEnabled === true)
 
   startConversationBtn.disabled = !settings.voiceInputEnabled
   updateConversationButton()
@@ -3610,20 +3575,9 @@ liquidGlassToggle.addEventListener('change', async () => {
   })
 })
 
-workSurfaceToggle.addEventListener('change', async () => {
-  const settings = await window.electronAPI.updateSettings({
-    experimental: {
-      workSurfaceEnabled: workSurfaceToggle.checked,
-      selfLearningEnabled: selfLearningToggle.checked
-    }
-  })
-  applySettingsToUI(settings)
-})
-
 selfLearningToggle.addEventListener('change', async () => {
   const settings = await window.electronAPI.updateSettings({
     experimental: {
-      workSurfaceEnabled: workSurfaceToggle.checked,
       selfLearningEnabled: selfLearningToggle.checked
     }
   })

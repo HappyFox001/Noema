@@ -24,6 +24,7 @@ type RuntimePluginManifestEntry = { manifest: RuntimePluginManifest; pluginDir: 
 
 const manifestCache = new Map<string, RuntimePluginManifestEntry[]>()
 const factoryCache = new Map<string, RuntimePluginFactory>()
+const RUNTIME_PLUGIN_GROUP_DIRS = ['must']
 
 export interface RuntimePluginInfo {
   id: string
@@ -127,15 +128,10 @@ async function readRuntimePluginManifests(
     return []
   }
 
-  const entries = await readdir(pluginsDir, { withFileTypes: true })
   const manifests: Array<{ manifest: RuntimePluginManifest; pluginDir: string }> = []
+  const pluginDirs = await listRuntimePluginDirs(pluginsDir)
 
-  for (const entry of entries) {
-    if (!entry.isDirectory()) {
-      continue
-    }
-
-    const pluginDir = join(pluginsDir, entry.name)
+  for (const pluginDir of pluginDirs) {
     const manifestPath = join(pluginDir, 'plugin.json')
     if (!existsSync(manifestPath)) {
       continue
@@ -155,6 +151,26 @@ async function readRuntimePluginManifests(
 
   manifestCache.set(cacheKey, manifests)
   return manifests
+}
+
+async function listRuntimePluginDirs(pluginsDir: string): Promise<string[]> {
+  const entries = await readdir(pluginsDir, { withFileTypes: true })
+  const pluginDirs: string[] = []
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) {
+      continue
+    }
+
+    const entryPath = join(pluginsDir, entry.name)
+    if (RUNTIME_PLUGIN_GROUP_DIRS.includes(entry.name)) {
+      pluginDirs.push(...await listRuntimePluginDirs(entryPath))
+      continue
+    }
+    pluginDirs.push(entryPath)
+  }
+
+  return pluginDirs
 }
 
 async function loadRuntimePlugin(

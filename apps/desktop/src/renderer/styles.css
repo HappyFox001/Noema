@@ -594,388 +594,8 @@ body.plugin-task-surface-replace .task-panel {
 }
 
 body.plugin-task-surface-replace .task-panel-title,
-body.plugin-task-surface-replace .task-steps,
-body.work-surface-enabled .task-panel-title,
-body.work-surface-enabled .task-steps {
+body.plugin-task-surface-replace .task-steps {
   display: none;
-}
-
-:root {
-  --ws-bg: rgba(8, 12, 18, 0.86);
-  --ws-panel: rgba(18, 24, 32, 0.72);
-  --ws-border: rgba(170, 220, 255, 0.18);
-  --ws-border-strong: rgba(170, 220, 255, 0.34);
-  --ws-text: rgba(238, 246, 255, 0.94);
-  --ws-muted: rgba(180, 196, 214, 0.66);
-  --ws-accent: rgb(112, 211, 255);
-  --ws-danger: rgb(255, 112, 132);
-}
-
-body.work-surface-enabled .task-panel {
-  width: min(520px, calc(100vw - 44px));
-  max-height: min(520px, calc(100vh - 72px));
-  padding: 0;
-}
-
-.work-surface-root {
-  width: 100%;
-  max-height: min(520px, calc(100vh - 72px));
-  overflow: hidden;
-  color: var(--ws-text);
-  font-family: var(--font-ui);
-}
-
-.work-surface-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--ws-border);
-  background: linear-gradient(90deg, rgba(112, 211, 255, 0.12), transparent 58%);
-}
-
-.work-surface-tabs {
-  display: flex;
-  flex: 1 0 100%;
-  gap: 6px;
-  min-width: 0;
-  overflow: auto;
-}
-
-.work-surface-tab {
-  max-width: 150px;
-  min-height: 24px;
-  border: 1px solid rgba(170, 220, 255, 0.14);
-  border-radius: 7px;
-  background: rgba(255, 255, 255, 0.035);
-  color: var(--ws-muted);
-  font: inherit;
-  font-size: 10px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.work-surface-tab.active {
-  border-color: rgba(112, 211, 255, 0.42);
-  color: var(--ws-accent);
-}
-
-.work-surface-title {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-  font-weight: 760;
-  letter-spacing: 0;
-}
-
-.work-surface-mode,
-.work-surface-muted {
-  color: var(--ws-muted);
-  font-size: 10px;
-}
-
-.work-surface-body {
-  display: grid;
-  gap: 10px;
-  max-height: 460px;
-  padding: 12px;
-  overflow: auto;
-}
-
-.work-surface-component {
-  border: 1px solid var(--ws-border);
-  background: var(--ws-panel);
-  border-radius: 8px;
-  padding: 10px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
-}
-
-.work-surface-component[draggable="true"] {
-  cursor: grab;
-}
-
-.work-surface-component:focus-visible,
-.work-surface-component:hover,
-.work-surface-component.focused {
-  border-color: var(--ws-border-strong);
-  outline: none;
-}
-
-.work-surface-component.loading {
-  background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.03), rgba(112, 211, 255, 0.08), rgba(255, 255, 255, 0.03)),
-    var(--ws-panel);
-  background-size: 220% 100%;
-  animation: work-surface-loading 1.35s ease-in-out infinite;
-}
-
-.work-surface-component.error,
-.work-surface-empty {
-  color: var(--ws-muted);
-  border: 1px solid var(--ws-border);
-  border-radius: 8px;
-  padding: 10px;
-  background: rgba(0, 0, 0, 0.18);
-}
-
-.work-surface-component.error {
-  color: var(--ws-danger);
-}
-
-.work-surface-root.readonly .work-surface-action,
-.work-surface-root.readonly .work-surface-field input,
-.work-surface-root.readonly .work-surface-field textarea,
-.work-surface-root.readonly .work-surface-field select {
-  opacity: 0.6;
-  pointer-events: none;
-}
-
-@keyframes work-surface-loading {
-  from { background-position: 100% 0; }
-  to { background-position: -100% 0; }
-}
-
-.work-surface-component-title {
-  margin-bottom: 8px;
-  color: var(--ws-accent);
-  font-size: 10px;
-  font-weight: 720;
-  text-transform: uppercase;
-}
-
-.work-surface-plan,
-.work-surface-artifacts,
-.work-surface-actions,
-.work-surface-form,
-.work-surface-markdown,
-.work-surface-timeline,
-.work-surface-inspector {
-  display: grid;
-  gap: 7px;
-}
-
-.work-surface-plan {
-  margin: 0;
-  padding-left: 18px;
-}
-
-.work-surface-plan-step {
-  color: var(--ws-text);
-  font-size: 11px;
-}
-
-.work-surface-plan-step.running {
-  color: var(--ws-accent);
-}
-
-.work-surface-markdown p,
-.work-surface-markdown li {
-  margin: 0;
-  min-width: 0;
-  color: var(--ws-text);
-  font-size: 11px;
-  line-height: 1.55;
-  overflow-wrap: anywhere;
-}
-
-.work-surface-markdown pre {
-  margin: 0;
-  max-width: 100%;
-  overflow: auto;
-  border: 1px solid rgba(170, 220, 255, 0.14);
-  border-radius: 7px;
-  background: rgba(0, 0, 0, 0.26);
-  padding: 8px;
-}
-
-.work-surface-markdown code {
-  color: rgba(220, 246, 255, 0.92);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 10px;
-}
-
-.work-surface-table-wrap {
-  display: grid;
-  gap: 8px;
-  min-width: 0;
-}
-
-.work-surface-table-toolbar,
-.work-surface-table-pager {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.work-surface-table-toolbar input {
-  width: min(180px, 100%);
-  min-height: 28px;
-  border: 1px solid var(--ws-border);
-  border-radius: 7px;
-  background: rgba(0, 0, 0, 0.22);
-  color: var(--ws-text);
-  font: inherit;
-  font-size: 10px;
-  padding: 0 8px;
-}
-
-.work-surface-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 10px;
-}
-
-.work-surface-table th,
-.work-surface-table td {
-  max-width: 180px;
-  padding: 6px 7px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  border-bottom: 1px solid rgba(170, 220, 255, 0.12);
-  text-align: left;
-}
-
-.work-surface-sort {
-  appearance: none;
-  width: 100%;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  padding: 0;
-}
-
-.work-surface-row-actions .work-surface-actions {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.work-surface-row-actions .work-surface-action {
-  min-height: 24px;
-  padding: 0 8px;
-}
-
-.work-surface-action,
-.work-surface-artifact {
-  min-height: 28px;
-  border: 1px solid rgba(170, 220, 255, 0.18);
-  border-radius: 7px;
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(238, 246, 255, 0.9);
-  font: inherit;
-}
-
-.work-surface-action.primary {
-  border-color: rgba(112, 211, 255, 0.44);
-  color: var(--ws-accent);
-}
-
-.work-surface-action.danger {
-  border-color: rgba(255, 112, 132, 0.38);
-  color: var(--ws-danger);
-}
-
-.work-surface-field {
-  display: grid;
-  gap: 5px;
-  color: var(--ws-muted);
-  font-size: 10px;
-}
-
-.work-surface-field input,
-.work-surface-field textarea,
-.work-surface-field select {
-  width: 100%;
-  min-height: 28px;
-  border: 1px solid var(--ws-border);
-  border-radius: 7px;
-  background: rgba(0, 0, 0, 0.22);
-  color: var(--ws-text);
-  font: inherit;
-}
-
-.work-surface-field select {
-  appearance: none;
-  -webkit-appearance: none;
-  min-height: 30px;
-  padding: 0 34px 0 10px;
-  background:
-    var(--select-chevron-dark) right 11px center / 14px 14px no-repeat,
-    rgba(0, 0, 0, 0.22);
-  font-family: var(--control-font);
-  font-size: 10px;
-}
-
-.work-surface-field select option {
-  font-family: var(--control-font);
-}
-
-.work-surface-chart {
-  position: relative;
-  display: flex;
-  align-items: end;
-  gap: 4px;
-  height: 90px;
-}
-
-.work-surface-chart.pie-rendered {
-  width: 92px;
-  height: 92px;
-  border-radius: 50%;
-  background: var(--work-surface-pie);
-}
-
-.work-surface-chart.scatter-rendered {
-  display: block;
-  border-left: 1px solid rgba(170, 220, 255, 0.18);
-  border-bottom: 1px solid rgba(170, 220, 255, 0.18);
-}
-
-.work-surface-chart-dot {
-  position: absolute;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--ws-accent);
-  box-shadow: 0 0 10px rgba(112, 211, 255, 0.45);
-}
-
-.work-surface-chart-bar {
-  flex: 1;
-  min-width: 4px;
-  border-radius: 4px 4px 0 0;
-  background: linear-gradient(180deg, var(--ws-accent), rgba(112, 211, 255, 0.22));
-}
-
-.work-surface-timeline,
-.work-surface-inspector {
-  margin: 0;
-}
-
-.work-surface-timeline-item.failed {
-  color: var(--ws-danger);
-}
-
-.work-surface-inspector {
-  grid-template-columns: minmax(80px, auto) 1fr;
-}
-
-.work-surface-inspector dt {
-  color: var(--ws-muted);
-}
-
-.work-surface-inspector dd {
-  margin: 0;
-  min-width: 0;
-  overflow-wrap: anywhere;
 }
 
 .plugin-ui-task-surface {
@@ -6134,8 +5754,7 @@ body.theme-day select {
 }
 
 body.theme-day .settings-select,
-body.theme-day select.plugin-config-input,
-body.theme-day .work-surface-field select {
+body.theme-day select.plugin-config-input {
   background:
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='rgba(20,62,60,0.72)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") right 9px center / 14px 14px no-repeat,
     linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(246, 250, 249, 0.64)),
@@ -7520,8 +7139,7 @@ body.theme-day .tts-button {
 }
 
 .settings-select:hover,
-select.plugin-config-input:hover,
-.work-surface-field select:hover {
+select.plugin-config-input:hover {
   border-color: rgba(255, 255, 255, 0.18);
 }
 
@@ -7724,8 +7342,7 @@ body.theme-day .config-provider-trigger:hover {
 }
 
 body.theme-day .settings-select:hover,
-body.theme-day select.plugin-config-input:hover,
-body.theme-day .work-surface-field select:hover {
+body.theme-day select.plugin-config-input:hover {
   border-color: rgba(16, 45, 52, 0.2);
 }
 
@@ -7769,8 +7386,7 @@ body.theme-day .plugin-admin-section {
 
 .settings-select,
 select.plugin-config-input,
-.edit-field select,
-.work-surface-field select {
+.edit-field select {
   appearance: none;
   -webkit-appearance: none;
   min-height: 32px;
@@ -7793,8 +7409,7 @@ select.plugin-config-input,
 
 .settings-select:hover,
 select.plugin-config-input:hover,
-.edit-field select:hover,
-.work-surface-field select:hover {
+.edit-field select:hover {
   border-color: rgba(255, 255, 255, 0.18);
   background:
     var(--select-chevron-dark) right 12px center / 14px 14px no-repeat,
@@ -7807,9 +7422,7 @@ select.plugin-config-input:hover,
 select.plugin-config-input:focus,
 select.plugin-config-input:focus-visible,
 .edit-field select:focus,
-.edit-field select:focus-visible,
-.work-surface-field select:focus,
-.work-surface-field select:focus-visible {
+.edit-field select:focus-visible {
   border-color: rgba(255, 255, 255, 0.3);
   box-shadow:
     0 0 0 3px rgba(255, 255, 255, 0.06),
@@ -7818,8 +7431,7 @@ select.plugin-config-input:focus-visible,
 
 .settings-select option,
 select.plugin-config-input option,
-.edit-field select option,
-.work-surface-field select option {
+.edit-field select option {
   background: #1c1c1e;
   color: rgba(248, 250, 250, 0.92);
   font-family: var(--control-font);
@@ -7827,8 +7439,7 @@ select.plugin-config-input option,
 
 body.theme-day .settings-select,
 body.theme-day select.plugin-config-input,
-body.theme-day .edit-field select,
-body.theme-day .work-surface-field select {
+body.theme-day .edit-field select {
   background:
     var(--select-chevron-day) right 12px center / 14px 14px no-repeat,
     linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(246, 250, 249, 0.64)),
@@ -7840,8 +7451,7 @@ body.theme-day .work-surface-field select {
 
 body.theme-day .settings-select:hover,
 body.theme-day select.plugin-config-input:hover,
-body.theme-day .edit-field select:hover,
-body.theme-day .work-surface-field select:hover {
+body.theme-day .edit-field select:hover {
   border-color: rgba(16, 45, 52, 0.2);
   background:
     var(--select-chevron-day) right 12px center / 14px 14px no-repeat,

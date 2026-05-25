@@ -57,6 +57,12 @@
       "!node_modules/@noema/sdk/**/*.d.ts",
       "!node_modules/@noema/sdk/**/*.d.ts.map"
     ],
+    "extraResources": [
+      {
+        "from": "../../plugins/must",
+        "to": "plugins/must"
+      }
+    ],
     "afterPack": "scripts/prune-package.cjs",
     "mac": {
       "category": "public.app-category.productivity",

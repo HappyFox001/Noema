@@ -198,41 +198,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('conversation:frame', (_, frame) => callback(frame))
   },
 
-  workSurfaceReady: () =>
-    ipcRenderer.invoke('workSurface:ready'),
-
-  requestWorkSurfaceSnapshot: (surfaceId) =>
-    ipcRenderer.invoke('workSurface:requestSnapshot', surfaceId),
-
-  listWorkSurfaceSnapshots: () =>
-    ipcRenderer.invoke('workSurface:listSnapshots'),
-
-  searchWorkSurfaceSnapshots: (query) =>
-    ipcRenderer.invoke('workSurface:searchSnapshots', query),
-
-  sendWorkSurfaceEvent: (event) =>
-    ipcRenderer.invoke('workSurface:event', event),
-
-  onWorkSurfaceFrame: (callback) => {
-    ipcRenderer.on('workSurface:frame', (_, frame) => callback(frame))
-  },
-
-  onWorkSurfaceCreated: (callback) => {
-    ipcRenderer.on('workSurface:created', (_, snapshot) => callback(snapshot))
-  },
-
-  onWorkSurfaceSnapshot: (callback) => {
-    ipcRenderer.on('workSurface:snapshot', (_, snapshot) => callback(snapshot))
-  },
-
-  onWorkSurfaceClosed: (callback) => {
-    ipcRenderer.on('workSurface:closed', (_, surfaceId) => callback(surfaceId))
-  },
-
-  onWorkSurfaceError: (callback) => {
-    ipcRenderer.on('workSurface:error', (_, error) => callback(error))
-  },
-
   onSpeechTranscript: (callback) => {
     ipcRenderer.on('speech:transcript', (_, text) => callback(text))
   },

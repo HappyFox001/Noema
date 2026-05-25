@@ -22,7 +22,6 @@ export function registerSettingsMutationIpcHandlers(
     reloadSystemConfigFromEnv(): Promise<AppSettings>
     setSettings(settings: AppSettings): void
     getRuntimeConfigSnapshot(): RuntimeConfigSnapshot
-    handleWorkSurfaceDisabled(): void
     applyRuntimeSystemConfigChanges(
       previous: RuntimeConfigSnapshot,
       options?: { pluginsChanged?: boolean }
@@ -34,16 +33,9 @@ export function registerSettingsMutationIpcHandlers(
     const previousSettings = options.getSettings()
     const appSettings = await options.updateSettings(partial)
 
-    if (appSettings.experimental?.workSurfaceEnabled === false) {
-      options.handleWorkSurfaceDisabled()
-    }
-    if (partial.experimental?.workSurfaceEnabled !== undefined) {
-      console.log('[WorkSurface] Enabled:', appSettings.experimental.workSurfaceEnabled)
-    }
     const pluginsChanged =
       (partial.plugins !== undefined && previousSettings.plugins !== appSettings.plugins) ||
-      (partial.pluginConfigs !== undefined && previousSettings.pluginConfigs !== appSettings.pluginConfigs) ||
-      partial.experimental?.workSurfaceEnabled !== undefined
+      (partial.pluginConfigs !== undefined && previousSettings.pluginConfigs !== appSettings.pluginConfigs)
     const selfLearningChanged = partial.experimental?.selfLearningEnabled !== undefined
     if (selfLearningChanged) {
       console.log('[SelfLearning] Enabled:', appSettings.experimental.selfLearningEnabled)
