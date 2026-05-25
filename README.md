@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>Putting a living soul into the desktop.</strong>
+  <strong>Neoma: Putting a living soul into the desktop.</strong>
 </p>
 
 <p align="center">
@@ -11,6 +11,14 @@
   an experiment toward AI that can talk, accompany, and act beside us.
 </p>
 
+<p align="center">
+  <a href="https://noema-web.netlify.app/">
+    <img src="https://img.shields.io/badge/Web-noema--web.netlify.app-111111?style=for-the-badge&labelColor=111111&color=7dd3fc" alt="Noema website" />
+  </a>
+  <a href="https://noema-web.netlify.app/docs">
+    <img src="https://img.shields.io/badge/Docs-Read%20the%20docs-111111?style=for-the-badge&labelColor=111111&color=c4b5fd" alt="Noema documentation" />
+  </a>
+</p>
 
 <p align="center">
   <a href="#features">Features</a>
