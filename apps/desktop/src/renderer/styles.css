@@ -718,12 +718,9 @@ body.plugin-task-surface-replace .task-steps {
   cursor: move;
 }
 
+.main-notice,
 .panel-notice {
   position: fixed;
-  right: 18px;
-  bottom: 18px;
-  z-index: 1100;
-  max-width: min(320px, calc(100vw - 36px));
   padding: 9px 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 10px;
@@ -738,13 +735,41 @@ body.plugin-task-surface-replace .task-steps {
   pointer-events: none;
   transform: translateY(8px);
   transition: opacity 160ms ease, transform 160ms ease;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.main-notice {
+  left: 50%;
+  bottom: 64px;
+  z-index: 760;
+  width: max-content;
+  max-width: min(300px, calc(100vw - 40px));
+  text-align: center;
+  transform: translate(-50%, 8px) scale(0.98);
+}
+
+.panel-notice {
+  right: 18px;
+  bottom: 18px;
+  z-index: 1100;
+  max-width: min(320px, calc(100vw - 36px));
+}
+
+.main-notice.visible,
+.panel-notice.visible {
+  opacity: 1;
+}
+
+.main-notice.visible {
+  transform: translate(-50%, 0) scale(1);
 }
 
 .panel-notice.visible {
-  opacity: 1;
   transform: translateY(0);
 }
 
+.main-notice.error,
 .panel-notice.error {
   border-color: rgba(226, 196, 196, 0.22);
   background: rgba(38, 18, 22, 0.9);
@@ -5909,6 +5934,7 @@ body.theme-day .reset-all-btn {
   border-color: rgba(190, 64, 64, 0.22);
 }
 
+body.theme-day .main-notice,
 body.theme-day .panel-notice,
 body.theme-day .confirm-dialog,
 body.theme-day .interactive-input-modal {
@@ -6283,6 +6309,7 @@ body.theme-day .settings-brand-logo {
 .confirm-dialog,
 .interactive-input-dialog,
 .task-panel,
+.main-notice,
 .panel-notice {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.065), rgba(255, 255, 255, 0.022)),
@@ -6358,6 +6385,7 @@ body.theme-day .settings-brand-logo {
 }
 
 .task-step.failed .task-step-mark,
+.main-notice.error,
 .panel-notice.error,
 .memory-card.danger-zone,
 .memory-card.danger-zone .memory-card-header,
@@ -6368,6 +6396,14 @@ body.theme-day .settings-brand-logo {
 .reset-all-btn,
 .settings-btn.danger {
   border-color: rgba(224, 202, 202, 0.24);
+}
+
+.main-notice.error,
+.panel-notice.error {
+  background:
+    linear-gradient(180deg, rgba(90, 38, 44, 0.42), rgba(44, 18, 23, 0.36)),
+    rgba(36, 18, 22, 0.88);
+  color: rgba(255, 236, 238, 0.92);
 }
 
 .text-input,
@@ -6614,12 +6650,22 @@ body.theme-day .context-menu,
 body.theme-day .memory-dialog,
 body.theme-day .confirm-dialog,
 body.theme-day .interactive-input-dialog,
+body.theme-day .main-notice,
 body.theme-day .panel-notice {
   background:
     linear-gradient(180deg, rgba(246, 249, 248, 0.62), rgba(230, 236, 234, 0.48)),
     rgba(226, 233, 231, 0.74);
   border-color: rgba(16, 45, 52, 0.14);
   box-shadow: 0 20px 54px rgba(38, 56, 60, 0.13), inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+body.theme-day .main-notice.error,
+body.theme-day .panel-notice.error {
+  background:
+    linear-gradient(180deg, rgba(255, 244, 244, 0.82), rgba(250, 229, 230, 0.76)),
+    rgba(250, 235, 235, 0.92);
+  border-color: rgba(180, 68, 68, 0.18);
+  color: rgba(124, 36, 36, 0.94);
 }
 
 body.theme-day .nav-item.active,

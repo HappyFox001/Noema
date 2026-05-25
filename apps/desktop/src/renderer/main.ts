@@ -2490,6 +2490,35 @@ function setOrbStyle(style: OrbStyle): void {
   }
 }
 
+type NoticeTone = 'info' | 'error'
+
+function getErrorText(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message || 'unknown error'
+  }
+  if (typeof error === 'string') {
+    return error || 'unknown error'
+  }
+  return String(error ?? 'unknown error')
+}
+
+function formatErrorText(prefix: string, error: unknown): string {
+  return `${prefix}: ${getErrorText(error)}`
+}
+
+let mainNoticeTimer: number | undefined
+function showMainNotice(text: string, tone: NoticeTone = 'info'): void {
+  const notice = document.getElementById('main-notice')
+  if (!notice) return
+
+  notice.textContent = text
+  notice.className = `main-notice visible ${tone === 'error' ? 'error' : ''}`
+  window.clearTimeout(mainNoticeTimer)
+  mainNoticeTimer = window.setTimeout(() => {
+    notice.classList.remove('visible')
+  }, tone === 'error' ? 3600 : 2200)
+}
+
 let panelNoticeTimer: number | undefined
 function hidePanelNotice(): void {
   const notice = document.getElementById('panel-notice')
@@ -2500,7 +2529,7 @@ function hidePanelNotice(): void {
   notice.classList.remove('visible')
 }
 
-function showPanelNotice(text: string, tone: 'info' | 'error' = 'info') {
+function showPanelNotice(text: string, tone: NoticeTone = 'info') {
   const notice = document.getElementById('panel-notice')
   if (!notice) return
 
@@ -2509,7 +2538,11 @@ function showPanelNotice(text: string, tone: 'info' | 'error' = 'info') {
   window.clearTimeout(panelNoticeTimer)
   panelNoticeTimer = window.setTimeout(() => {
     notice.classList.remove('visible')
-  }, 2200)
+  }, tone === 'error' ? 3600 : 2200)
+}
+
+function showPanelError(prefix: string, error: unknown): void {
+  showPanelNotice(formatErrorText(prefix, error), 'error')
 }
 
 function setTextDisplay(text: string) {
@@ -2972,7 +3005,8 @@ function handleConversationFrame(frame: ConversationFrame) {
       break
     case 'control.task_end':
       if (!frame.success) {
-        setStatus(frame.error ? `${t('taskPanel.failed')}: ${frame.error}` : t('taskPanel.failed'))
+        showMainNotice(frame.error ? formatErrorText('Task failed', frame.error) : 'Task failed', 'error')
+        setStatus('Task failed')
       }
       hideTaskPanelSoon()
       break
@@ -3071,7 +3105,8 @@ async function initialize() {
 
     window.electronAPI.onTTSError((error) => {
       console.error('[UI] TTS error:', error)
-      setStatus(`TTS Error: ${error}`)
+      showMainNotice(formatErrorText('TTS playback failed', error), 'error')
+      setStatus('TTS failed')
     })
 
     window.electronAPI.onLatencyData((data) => {
@@ -3101,7 +3136,8 @@ async function initialize() {
 
     window.electronAPI.onSpeechError((error) => {
       console.error('[UI] Speech error:', error)
-      setStatus(`Speech Error: ${error}`)
+      showMainNotice(formatErrorText('Speech recognition failed', error), 'error')
+      setStatus('Speech failed')
       setOrbMode('idle')
     })
 
@@ -3117,7 +3153,8 @@ async function initialize() {
 
     window.electronAPI.onSpeechConnectionFailed(() => {
       console.error('[UI] Speech WebSocket connection failed')
-      setStatus(t('status.connectionFailed'))
+      showMainNotice('Speech connection failed', 'error')
+      setStatus('Connection failed')
       setOrbMode('idle')
     })
 
@@ -3156,7 +3193,8 @@ async function initialize() {
     })
   } catch (error: any) {
     console.error('Initialization error:', error)
-    setStatus(`Error: ${error.message}`)
+    showMainNotice(formatErrorText('Initialization failed', error), 'error')
+    setStatus('Initialization failed')
     startConversationBtn.disabled = false
   }
 }
@@ -3172,7 +3210,8 @@ async function stopConversationStreaming(): Promise<void> {
 
     await window.electronAPI.stopSpeechStream()
   } catch (error: any) {
-    setStatus(`Voice Error: ${error.message}`)
+    showMainNotice(formatErrorText('Voice input failed', error), 'error')
+    setStatus('Voice input failed')
     setOrbMode('idle')
   }
 }
@@ -3206,6 +3245,7 @@ startConversationBtn.addEventListener('click', async () => {
   }
 
   if (!voiceInputEnabled) {
+    showMainNotice('Voice input is disabled', 'info')
     setStatus(t('status.voiceInputDisabled'))
     return
   }
@@ -3214,13 +3254,26 @@ startConversationBtn.addEventListener('click', async () => {
     return
   }
 
-  await initialize()
+  try {
+    await initialize()
+    if (!isInitialized) {
+      return
+    }
 
-  voiceRecorder.warmup().catch(console.warn)
+    voiceRecorder.warmup().catch(console.warn)
 
-  activeMode = 'conversation'
-  await startConversationStreaming()
-  updateConversationButton()
+    activeMode = 'conversation'
+    await startConversationStreaming()
+    updateConversationButton()
+  } catch (error) {
+    activeMode = null
+    conversationStreamActive = false
+    isVoiceListening = false
+    showMainNotice(formatErrorText('Voice input failed', error), 'error')
+    setStatus('Voice input failed')
+    setOrbMode('idle')
+    updateConversationButton()
+  }
 })
 
 async function sendMessage(text: string) {
@@ -3239,7 +3292,8 @@ async function sendMessage(text: string) {
     }
   } catch (error: any) {
     console.error('Send error:', error)
-    setStatus(`Error: ${error.message}`)
+    showMainNotice(formatErrorText('Message failed', error), 'error')
+    setStatus('Message failed')
     setOrbMode('idle')
   } finally {
     if (activeMode === 'conversation' && conversationStreamActive && voiceInputEnabled) {
@@ -3377,9 +3431,15 @@ async function enableVoiceInput(): Promise<void> {
   if (currentStatus !== 'granted') {
     const permission = await window.electronAPI.requestMicrophonePermission()
     if (!permission.success || !permission.granted) {
+      showMainNotice(
+        permission.openedSettings
+          ? 'Microphone permission requires approval in System Settings'
+          : formatErrorText('Microphone permission denied', permission.error),
+        'error'
+      )
       setStatus(permission.openedSettings
-        ? t('voice.micPermissionSettings')
-        : (permission.error || t('voice.micPermissionDenied')))
+        ? 'Microphone permission required'
+        : 'Microphone permission denied')
       return
     }
   }
@@ -3394,7 +3454,7 @@ async function enableVoiceInput(): Promise<void> {
 async function loadPersonalities(): Promise<void> {
   const result = await window.electronAPI.listPersonalities()
   if (!result.success) {
-    showPanelNotice(tf('personality.listLoadFailed', { error: result.error ?? 'unknown error' }), 'error')
+    showPanelError('Failed to load personality list', result.error)
     return
   }
 
@@ -3684,7 +3744,7 @@ async function captureOrbToClipboard(): Promise<void> {
       return
     }
 
-    showPanelNotice(tf('notice.orbCaptureFailed', { error: result.error ?? 'unknown error' }), 'error')
+    showPanelError('Capture failed', result.error)
   } finally {
     contextMenu.style.removeProperty('display')
   }
@@ -4218,7 +4278,7 @@ function attachLearningAppHandlers(): void {
       const scope = kind === 'agent' ? 'agent' : 'task'
       const response = await window.electronAPI.deployLearningCandidate({ candidateId, scope, status: 'draft' })
       if (!response.success) {
-        showNotice(tf('learning.deployFailed', { error: response.error ?? 'unknown error' }))
+        showNotice(formatErrorText('Deploy failed', response.error))
       }
       await refreshLearningSection()
     })
@@ -4232,7 +4292,7 @@ function attachLearningAppHandlers(): void {
       button.disabled = true
       const response = await window.electronAPI.setLearningAssetStatus(id, status)
       if (!response.success) {
-        showNotice(tf('learning.updateFailed', { error: response.error ?? 'unknown error' }))
+        showNotice(formatErrorText('Update failed', response.error))
       }
       await refreshLearningSection()
     })
@@ -4245,7 +4305,7 @@ function attachLearningAppHandlers(): void {
       button.disabled = true
       const response = await window.electronAPI.rollbackLearningAsset(id, 'Rolled back from Learning Center')
       if (!response.success) {
-        showNotice(tf('learning.rollbackFailed', { error: response.error ?? 'unknown error' }))
+        showNotice(formatErrorText('Rollback failed', response.error))
       }
       await refreshLearningSection()
     })
@@ -4259,7 +4319,7 @@ function attachLearningAppHandlers(): void {
       button.disabled = true
       const response = await window.electronAPI.setRuntimeAgentStatus(id, status)
       if (!response.success) {
-        showNotice(tf('learning.updateFailed', { error: response.error ?? 'unknown error' }))
+        showNotice(formatErrorText('Update failed', response.error))
       }
       await refreshLearningSection()
     })
@@ -4857,7 +4917,7 @@ personalitySelect.addEventListener('change', async () => {
   const selected = personalitySelect.value
   const result = await window.electronAPI.setPersonality(selected)
   if (!result.success) {
-    showPanelNotice(tf('personality.switchFailed', { error: result.error }), 'error')
+    showPanelError('Failed to switch personality', result.error)
     return
   }
 
@@ -5087,7 +5147,7 @@ async function runPluginAdminAction(
   const result = await window.electronAPI.pluginAdminAction(plugin.id, action, payload)
   if (!result.success) {
     if (!options.silent) {
-      showPanelNotice(tf('plugins.actionFailed', { error: result.error ?? 'unknown error' }), 'error')
+      showPanelError('Plugin action failed', result.error)
     }
     return null
   }
@@ -5144,7 +5204,7 @@ function renderMCPAdmin(container: HTMLElement, plugin: PluginInfo, state: any):
       try {
         headers = JSON.parse(headersText)
       } catch {
-        showPanelNotice(t('plugins.mcpHeadersInvalid'), 'error')
+        showPanelNotice('Headers must be valid JSON', 'error')
         return
       }
     }
@@ -5339,7 +5399,7 @@ async function updatePluginEnabled(input: HTMLInputElement): Promise<void> {
     showPanelNotice(input.checked ? t('plugins.enabled') : t('plugins.disabled'))
   } catch (error: any) {
     input.checked = !input.checked
-    showPanelNotice(tf('plugins.updateFailed', { error: error.message }), 'error')
+    showPanelError('Plugin update failed', error)
   } finally {
     input.disabled = false
   }
@@ -5364,7 +5424,7 @@ async function updatePluginConfigInput(
     syncPluginListCard(pluginId)
     showPanelNotice(t('plugins.configUpdated'))
   } catch (error: any) {
-    showPanelNotice(tf('plugins.configSaveFailed', { error: error.message }), 'error')
+    showPanelError('Failed to save plugin settings', error)
   } finally {
     input.disabled = false
   }
@@ -5417,11 +5477,11 @@ async function selectPluginConfigPath(button: HTMLButtonElement): Promise<void> 
       return
     }
     if (!result.success) {
-      throw new Error(result.error || t('plugins.pathSelectFailedFallback'))
+      throw new Error(result.error || 'Path selection failed')
     }
     const selectedValue = field.type === 'directory' ? result.directoryPath : result.fileUrl
     if (!selectedValue) {
-      throw new Error(field.type === 'directory' ? t('plugins.directorySelectFailed') : t('plugins.fileSelectFailed'))
+      throw new Error(field.type === 'directory' ? 'Directory selection failed' : 'File selection failed')
     }
     const configPatch: Record<string, unknown> = { [key]: selectedValue }
     if (field.type === 'directory' && field.targetKey && result.resolvedFileUrl) {
@@ -5443,7 +5503,7 @@ async function selectPluginConfigPath(button: HTMLButtonElement): Promise<void> 
     syncPluginListCard(pluginId)
     showPanelNotice(t('plugins.pathUpdated'))
   } catch (error: any) {
-    showPanelNotice(tf('plugins.pathSelectFailed', { error: error.message }), 'error')
+    showPanelError('Path selection failed', error)
   } finally {
     button.disabled = false
   }
@@ -5914,7 +5974,7 @@ addPersonalityFileBtn.addEventListener('click', async () => {
   }
 
   if (!result.success || !result.item) {
-    showPanelNotice(tf('personality.addFailed', { error: result.error ?? 'unknown error' }), 'error')
+    showPanelError('Failed to add role', result.error)
     return
   }
 
@@ -5922,7 +5982,7 @@ addPersonalityFileBtn.addEventListener('click', async () => {
   personalitySelect.value = result.item.id
   const setResult = await window.electronAPI.setPersonality(result.item.id)
   if (!setResult.success) {
-    showPanelNotice(tf('personality.switchFailed', { error: setResult.error }), 'error')
+    showPanelError('Failed to switch personality', setResult.error)
     return
   }
 
@@ -6260,7 +6320,7 @@ async function deleteProfileField(field: string): Promise<void> {
     showPanelNotice(t('common.deleted'))
   } catch (error: any) {
     console.error('Failed to delete profile field:', error)
-    showPanelNotice(t('common.deleteFailed'), 'error')
+    showPanelNotice('Delete failed', 'error')
   }
 }
 
@@ -6336,7 +6396,7 @@ async function deleteImportantMemory(key: string): Promise<void> {
     showPanelNotice(t('memory.memoryDeleted'))
   } catch (error: any) {
     console.error('Failed to delete memory:', error)
-    showPanelNotice(t('common.deleteFailed'), 'error')
+    showPanelNotice('Delete failed', 'error')
   }
 }
 
@@ -6424,7 +6484,7 @@ async function deleteConversationSummary(id: string): Promise<void> {
     showPanelNotice(t('common.deleted'))
   } catch (error: any) {
     console.error('Failed to delete summary:', error)
-    showPanelNotice(t('common.deleteFailed'), 'error')
+    showPanelNotice('Delete failed', 'error')
   }
 }
 
@@ -6502,7 +6562,7 @@ async function deleteConversationTurn(id: string): Promise<void> {
     showPanelNotice(t('common.deleted'))
   } catch (error: any) {
     console.error('Failed to delete conversation turn:', error)
-    showPanelNotice(t('common.deleteFailed'), 'error')
+    showPanelNotice('Delete failed', 'error')
   }
 }
 
@@ -6661,7 +6721,7 @@ async function deleteAccountInput(key: string): Promise<void> {
     showPanelNotice(t('memory.accountDeleted'))
   } catch (error: any) {
     console.error('Failed to delete account input:', error)
-    showPanelNotice(t('common.deleteFailed'), 'error')
+    showPanelNotice('Delete failed', 'error')
   }
 }
 
@@ -6694,7 +6754,7 @@ clearAccountInputsBtn.addEventListener('click', async () => {
     showPanelNotice(t('memory.accountCleared'))
   } catch (error: any) {
     console.error('Failed to clear account inputs:', error)
-    showPanelNotice(t('memory.clearFailed'), 'error')
+    showPanelNotice('Clear failed', 'error')
   }
 })
 
@@ -6910,7 +6970,7 @@ async function ensureSetupReadyForConversation(): Promise<boolean> {
     return true
   }
 
-  showPanelNotice(tf('system.needConfigCount', { count: readiness.issues.length }), 'error')
+  showPanelNotice(`${readiness.issues.length} required setting${readiness.issues.length === 1 ? '' : 's'} need attention`, 'error')
   openSettings('models')
   return false
 }
@@ -7718,7 +7778,7 @@ async function testApiModel(
     currentSystemConfig.asrModels.find(m => m.id === id)
 
   if (!model) {
-    showPanelNotice(t('system.modelMissing'), 'error')
+    showPanelNotice('Model configuration is missing', 'error')
     return
   }
 
@@ -7741,7 +7801,7 @@ async function testApiModel(
     button.textContent = t('common.failed')
     button.classList.remove('testing')
     button.classList.add('danger')
-    showPanelNotice(tf('system.apiFailed', { error: error.message ?? String(error) }), 'error')
+    showPanelError('API test failed', error)
   } finally {
     window.setTimeout(() => {
       button.disabled = false
@@ -8169,7 +8229,7 @@ downloadLocalModelsBtn.addEventListener('click', async () => {
     showPanelNotice(t('system.localModelReady'))
     await refreshSetupReadiness()
   } catch (error: any) {
-    showPanelNotice(tf('system.localModelDownloadFailed', { error: error.message ?? String(error) }), 'error')
+    showPanelError('Model download failed', error)
     await loadLocalModelStatus()
     await refreshSetupReadiness()
   }
