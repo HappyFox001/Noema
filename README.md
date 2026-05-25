@@ -71,8 +71,13 @@ The project is built around a three-layer runtime split:
 - macOS, Windows, or Linux with microphone access
 
 ```bash
+# Install workspace dependencies.
 pnpm install
+
+# Build the SDK and desktop app.
 pnpm build
+
+# Launch the desktop app.
 pnpm start
 ```
 
