@@ -42,13 +42,34 @@ module.exports = async function prunePackage(context) {
     await asar.createPackageWithOptions(unpackedPath, repackedPath, {
       unpack: '**/*.{node,dylib,dll,so,so.*}'
     })
-    fs.renameSync(repackedPath, appAsarPath)
+    movePath(repackedPath, appAsarPath)
     if (fs.existsSync(`${repackedPath}.unpacked`)) {
-      fs.renameSync(`${repackedPath}.unpacked`, `${appAsarPath}.unpacked`)
+      movePath(`${repackedPath}.unpacked`, `${appAsarPath}.unpacked`)
     }
   } finally {
     await removeTempRoot(tempRoot)
   }
+}
+
+function movePath(sourcePath, targetPath) {
+  try {
+    fs.renameSync(sourcePath, targetPath)
+    return
+  } catch (error) {
+    if (!error || error.code !== 'EXDEV') {
+      throw error
+    }
+  }
+
+  const sourceStat = fs.statSync(sourcePath)
+  if (sourceStat.isDirectory()) {
+    fs.cpSync(sourcePath, targetPath, { recursive: true, force: true })
+    fs.rmSync(sourcePath, { recursive: true, force: true })
+    return
+  }
+
+  fs.copyFileSync(sourcePath, targetPath)
+  fs.rmSync(sourcePath, { force: true })
 }
 
 function pruneCommonDevelopmentFiles(appPath) {
