@@ -11,8 +11,8 @@
     "network"
   ],
   "config": {
-    "modelDir": "../models/Haru",
-    "modelUrl": "../models/Haru/haru_greeter_t03.model3.json",
+    "modelDir": "../models/Mao",
+    "modelUrl": "../models/Mao/Mao.model3.json",
     "pixiUrl": "https://cdn.jsdelivr.net/npm/pixi.js@6.5.10/dist/browser/pixi.min.js",
     "cubismCoreUrl": "https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js",
     "live2dDisplayUrl": "https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/cubism4.min.js",
@@ -43,9 +43,9 @@
       "label": "Model Folder",
       "description": "Select a Live2D model folder. The first .model3.json in the folder is used automatically.",
       "type": "directory",
-      "default": "../models/Haru",
+      "default": "../models/Mao",
       "defaultPath": "assets/models",
-      "placeholder": "../models/Haru",
+      "placeholder": "../models/Mao",
       "buttonLabel": "选择模型目录",
       "targetKey": "modelUrl",
       "resolveFileExtensions": ["model3.json"],

@@ -5,7 +5,7 @@
  * hooks, and drives mouth parameters from renderer output energy.
  */
 const DEFAULT_CONFIG = {
-  modelUrl: '../models/Haru/haru_greeter_t03.model3.json',
+  modelUrl: '../models/Mao/Mao.model3.json',
   pixiUrl: 'https://cdn.jsdelivr.net/npm/pixi.js@6.5.10/dist/browser/pixi.min.js',
   cubismCoreUrl: 'https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js',
   live2dDisplayUrl: 'https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/cubism4.min.js',
