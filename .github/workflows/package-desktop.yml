@@ -178,6 +178,16 @@ jobs:
           draft: ${{ github.event.inputs.draft }}
           prerelease: ${{ contains(needs.prepare.outputs.version, '-') }}
           generate_release_notes: true
+          body: |
+            ## macOS first launch
+
+            If macOS blocks Noema from opening after installation, run:
+
+            ```bash
+            find /Applications/Noema.app -exec xattr -c {} \;
+            ```
+
+            This clears quarantine attributes from the app bundle and allows macOS to launch it.
           files: |
             release-artifacts/*.dmg
             release-artifacts/*.exe
