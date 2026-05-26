@@ -41,6 +41,7 @@ other/
 other/**
 
 *.md
+lanuch/
 tmp/
 scripts/
 !apps/desktop/scripts/
