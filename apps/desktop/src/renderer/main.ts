@@ -7454,6 +7454,7 @@ function renderModelCard(kind: ModelListKind, model: LLMModelConfig | TTSModelCo
   if (kind === 'tts') {
     const item = model as TTSModelConfig
     const models = currentSystemConfig.ttsModels
+    const providerEntry = getTTSProviderCatalogEntry(item.provider)
     const fields = [
       shouldShowTTSField(item.provider, 'apiKey') ? `
         <div class="config-field">
@@ -7464,7 +7465,7 @@ function renderModelCard(kind: ModelListKind, model: LLMModelConfig | TTSModelCo
       shouldShowTTSField(item.provider, 'baseUrl') ? `
         <div class="config-field">
           <span class="config-field-label">Base URL</span>
-          <input type="text" class="config-field-input" value="${escapeHtml(item.baseUrl || '')}" data-field="baseUrl" placeholder="https://api.openai.com/v1" />
+          <input type="text" class="config-field-input" value="${escapeHtml(item.baseUrl || '')}" data-field="baseUrl" placeholder="${escapeHtml(providerEntry.defaultBaseUrl || 'Leave blank for default')}" />
         </div>
       ` : '',
       shouldShowTTSField(item.provider, 'voiceId') ? `
@@ -8019,7 +8020,12 @@ async function updateTaskTransport(id: string, transport: NonNullable<LLMModelCo
   const model = currentSystemConfig.taskModels.find(m => m.id === id)
   if (!model) return
 
+  const transportChanged = getTaskModelTransport(model) !== transport
   model.transport = transport
+  if (transportChanged && transport === 'openai_compatible') {
+    model.modelName ||= 'gemini-3.1-pro-preview'
+    model.baseUrl ||= 'https://generativelanguage.googleapis.com/v1beta/openai'
+  }
   await saveSystemConfigForModel('task')
   syncModelCard('task', id)
 }
@@ -8074,12 +8080,21 @@ async function updateTTSProvider(id: string, provider: TTSProviderType): Promise
   if (!model) return
 
   const providerEntry = getTTSProviderCatalogEntry(provider)
+  const providerChanged = model.provider !== provider
   model.provider = provider
-  model.modelName ||= providerEntry.defaultModel
-  model.baseUrl ||= providerEntry.defaultBaseUrl
-  model.voiceId ||= providerEntry.defaultVoiceId || ''
-  model.language ||= providerEntry.defaultLanguage
-  model.sampleRate ||= providerEntry.sampleRate
+  if (providerChanged) {
+    model.modelName = providerEntry.defaultModel
+    model.baseUrl = providerEntry.defaultBaseUrl
+    model.voiceId = providerEntry.defaultVoiceId || ''
+    model.language = providerEntry.defaultLanguage
+    model.sampleRate = providerEntry.sampleRate
+  } else {
+    model.modelName ||= providerEntry.defaultModel
+    model.baseUrl ||= providerEntry.defaultBaseUrl
+    model.voiceId ||= providerEntry.defaultVoiceId || ''
+    model.language ||= providerEntry.defaultLanguage
+    model.sampleRate ||= providerEntry.sampleRate
+  }
   model.format ||= 'pcm'
   await saveSystemConfigForModel('tts')
   syncModelCard('tts', id)

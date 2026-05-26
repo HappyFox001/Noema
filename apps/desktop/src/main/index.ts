@@ -1800,7 +1800,7 @@ let appSettings: AppSettings = {
     },
     ttsModels: [{ id: 'default-tts', provider: 'fish', modelName: 's2-pro', apiKey: '', voiceId: '', baseUrl: '', language: '', format: 'pcm', sampleRate: 16000 }],
     activeTTSId: 'default-tts',
-    asrModels: [{ id: 'default-asr', provider: 'qwen', modelName: 'qwen3-asr-flash-realtime', apiKey: '', baseUrl: '', language: 'zh', sampleRate: 16000 }],
+    asrModels: [{ id: 'default-asr', provider: 'qwen', modelName: 'qwen3-asr-flash-realtime', apiKey: '', baseUrl: 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime', language: 'zh', sampleRate: 16000 }],
     activeASRId: 'default-asr'
   }
 }

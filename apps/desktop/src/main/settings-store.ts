@@ -310,7 +310,7 @@ export class SettingsStore {
         console.log('[SettingsStore] First run: loading config from .env')
         this.settings = {
           ...cloneDefaultSettings(),
-          system: this.mergeSystemConfig(DEFAULT_SYSTEM_CONFIG, envConfig)
+          system: normalizeSystemConfig(this.mergeSystemConfig(DEFAULT_SYSTEM_CONFIG, envConfig), DEFAULT_SYSTEM_CONFIG)
         }
       }
       await this.persist()
@@ -339,6 +339,7 @@ export class SettingsStore {
           systemConfig = this.mergeSystemConfig(systemConfig, envConfig)
         }
       }
+      systemConfig = normalizeSystemConfig(systemConfig, DEFAULT_SYSTEM_CONFIG)
 
       this.settings = {
         ...cloneDefaultSettings(),
@@ -359,7 +360,7 @@ export class SettingsStore {
       if (envConfig) {
         this.settings = {
           ...cloneDefaultSettings(),
-          system: this.mergeSystemConfig(DEFAULT_SYSTEM_CONFIG, envConfig)
+          system: normalizeSystemConfig(this.mergeSystemConfig(DEFAULT_SYSTEM_CONFIG, envConfig), DEFAULT_SYSTEM_CONFIG)
         }
       } else {
         this.settings = cloneDefaultSettings()
@@ -615,20 +616,163 @@ function normalizeSettingsPatch(current: AppSettings, partial: Partial<AppSettin
 }
 
 function normalizeSystemConfig(value: Partial<SystemConfig>, fallback: SystemConfig): SystemConfig {
+  const llmModels = Array.isArray(value.llmModels) && value.llmModels.length
+    ? value.llmModels.map((model, index) => normalizeLLMModelConfig(model, fallback.llmModels[index] ?? fallback.llmModels[0], index))
+    : fallback.llmModels.map((model, index) => normalizeLLMModelConfig(model, DEFAULT_SYSTEM_CONFIG.llmModels[index] ?? DEFAULT_SYSTEM_CONFIG.llmModels[0], index))
+  const taskModels = Array.isArray(value.taskModels) && value.taskModels.length
+    ? value.taskModels.map((model, index) => normalizeTaskModelConfig(model, fallback.taskModels[index] ?? fallback.taskModels[0], index))
+    : fallback.taskModels.map((model, index) => normalizeTaskModelConfig(model, DEFAULT_SYSTEM_CONFIG.taskModels[index] ?? DEFAULT_SYSTEM_CONFIG.taskModels[0], index))
+  const ttsModels = Array.isArray(value.ttsModels) && value.ttsModels.length
+    ? value.ttsModels.map((model, index) => normalizeTTSModelConfig(model, fallback.ttsModels[index] ?? fallback.ttsModels[0], index))
+    : fallback.ttsModels.map((model, index) => normalizeTTSModelConfig(model, DEFAULT_SYSTEM_CONFIG.ttsModels[index] ?? DEFAULT_SYSTEM_CONFIG.ttsModels[0], index))
+  const asrModels = Array.isArray(value.asrModels) && value.asrModels.length
+    ? value.asrModels.map((model, index) => normalizeASRModelConfig(model, fallback.asrModels[index] ?? fallback.asrModels[0], index))
+    : fallback.asrModels.map((model, index) => normalizeASRModelConfig(model, DEFAULT_SYSTEM_CONFIG.asrModels[index] ?? DEFAULT_SYSTEM_CONFIG.asrModels[0], index))
+
   return {
     ...fallback,
     ...value,
     proxy: typeof value.proxy === 'string' ? value.proxy : fallback.proxy,
-    llmModels: Array.isArray(value.llmModels) && value.llmModels.length ? value.llmModels : fallback.llmModels,
-    activeLLMId: typeof value.activeLLMId === 'string' ? value.activeLLMId : fallback.activeLLMId,
-    taskModels: Array.isArray(value.taskModels) && value.taskModels.length ? value.taskModels : fallback.taskModels,
-    activeTaskId: typeof value.activeTaskId === 'string' ? value.activeTaskId : fallback.activeTaskId,
+    llmModels,
+    activeLLMId: normalizeActiveModelId(value.activeLLMId, fallback.activeLLMId, llmModels),
+    taskModels,
+    activeTaskId: normalizeActiveModelId(value.activeTaskId, fallback.activeTaskId, taskModels),
     taskRuntime: normalizeTaskRuntimeSettings(value.taskRuntime ?? fallback.taskRuntime),
-    ttsModels: Array.isArray(value.ttsModels) && value.ttsModels.length ? value.ttsModels : fallback.ttsModels,
-    activeTTSId: typeof value.activeTTSId === 'string' ? value.activeTTSId : fallback.activeTTSId,
-    asrModels: Array.isArray(value.asrModels) && value.asrModels.length ? value.asrModels : fallback.asrModels,
-    activeASRId: typeof value.activeASRId === 'string' ? value.activeASRId : fallback.activeASRId
+    ttsModels,
+    activeTTSId: normalizeActiveModelId(value.activeTTSId, fallback.activeTTSId, ttsModels),
+    asrModels,
+    activeASRId: normalizeActiveModelId(value.activeASRId, fallback.activeASRId, asrModels)
   }
+}
+
+function normalizeActiveModelId<T extends { id: string }>(
+  value: unknown,
+  fallback: string,
+  models: T[]
+): string {
+  const preferred = typeof value === 'string' ? value : fallback
+  return models.some(model => model.id === preferred) ? preferred : models[0]?.id ?? ''
+}
+
+function normalizeLLMModelConfig(value: unknown, fallback: LLMModelConfig, index: number): LLMModelConfig {
+  const source = value && typeof value === 'object' ? value as Partial<LLMModelConfig> : {}
+  return {
+    id: typeof source.id === 'string' && source.id ? source.id : fallback?.id || `llm-${index + 1}`,
+    modelName: typeof source.modelName === 'string' ? source.modelName : fallback?.modelName || '',
+    apiKey: typeof source.apiKey === 'string' ? source.apiKey : fallback?.apiKey || '',
+    baseUrl: typeof source.baseUrl === 'string' ? source.baseUrl : fallback?.baseUrl || ''
+  }
+}
+
+function normalizeTaskModelConfig(value: unknown, fallback: LLMModelConfig, index: number): LLMModelConfig {
+  const model = normalizeLLMModelConfig(value, fallback, index)
+  const source = value && typeof value === 'object' ? value as Partial<LLMModelConfig> : {}
+  const transport = source.transport === 'codex_local' || source.transport === 'claude_code_local'
+    ? source.transport
+    : 'openai_compatible'
+  return {
+    ...model,
+    transport,
+    modelName: transport === 'openai_compatible'
+      ? model.modelName || 'gemini-3.1-pro-preview'
+      : model.modelName,
+    baseUrl: transport === 'openai_compatible'
+      ? model.baseUrl
+      : model.baseUrl
+  }
+}
+
+function normalizeTTSModelConfig(value: unknown, fallback: TTSModelConfig, index: number): TTSModelConfig {
+  const source = value && typeof value === 'object' ? value as Partial<TTSModelConfig> : {}
+  const provider = source.provider === 'openai' || source.provider === 'elevenlabs' || source.provider === 'fish'
+    ? source.provider
+    : fallback?.provider || 'fish'
+  const providerEntry = getTTSProviderCatalogEntry(provider)
+  const baseUrl = normalizeTTSBaseUrl(provider, source.baseUrl)
+
+  return {
+    id: typeof source.id === 'string' && source.id ? source.id : fallback?.id || `tts-${index + 1}`,
+    provider,
+    modelName: typeof source.modelName === 'string' && source.modelName.trim()
+      ? source.modelName
+      : providerEntry.defaultModel,
+    apiKey: typeof source.apiKey === 'string' ? source.apiKey : fallback?.apiKey || '',
+    voiceId: typeof source.voiceId === 'string'
+      ? source.voiceId
+      : providerEntry.defaultVoiceId || '',
+    baseUrl,
+    language: typeof source.language === 'string' && source.language.trim()
+      ? source.language
+      : providerEntry.defaultLanguage,
+    format: source.format === 'mp3' || source.format === 'opus' ? source.format : 'pcm',
+    sampleRate: clampInteger(source.sampleRate, providerEntry.sampleRate, 8000, 48000),
+    extra: source.extra && typeof source.extra === 'object' ? { ...source.extra } : undefined
+  }
+}
+
+function normalizeASRModelConfig(value: unknown, fallback: ASRModelConfig, index: number): ASRModelConfig {
+  const source = value && typeof value === 'object' ? value as Partial<ASRModelConfig> : {}
+  const provider = source.provider === 'openai' || source.provider === 'groq' || source.provider === 'qwen'
+    ? source.provider
+    : fallback?.provider || 'qwen'
+  const providerEntry = getASRProviderCatalogEntry(provider)
+  const sourceBaseUrl = typeof source.baseUrl === 'string' && source.baseUrl.trim()
+    ? source.baseUrl
+    : ''
+  const baseUrl = normalizeASRBaseUrl(provider, sourceBaseUrl)
+
+  return {
+    id: typeof source.id === 'string' && source.id ? source.id : fallback?.id || `asr-${index + 1}`,
+    provider,
+    modelName: typeof source.modelName === 'string' && source.modelName.trim()
+      ? source.modelName
+      : providerEntry.defaultModel,
+    apiKey: typeof source.apiKey === 'string' ? source.apiKey : fallback?.apiKey || '',
+    baseUrl,
+    language: typeof source.language === 'string' && source.language.trim()
+      ? source.language
+      : providerEntry.defaultLanguage,
+    sampleRate: clampInteger(source.sampleRate, providerEntry.sampleRate, 8000, 48000),
+    extra: source.extra && typeof source.extra === 'object' ? { ...source.extra } : undefined
+  }
+}
+
+function normalizeTTSBaseUrl(provider: TTSProviderType, value: unknown): string {
+  const providerEntry = getTTSProviderCatalogEntry(provider)
+  const baseUrl = typeof value === 'string' ? value.trim() : ''
+  if (provider === 'fish') {
+    return providerEntry.defaultBaseUrl
+  }
+  if (!baseUrl) {
+    return providerEntry.defaultBaseUrl
+  }
+  if (provider === 'openai' && baseUrl.includes('api.elevenlabs.io')) {
+    return providerEntry.defaultBaseUrl
+  }
+  if (provider === 'elevenlabs' && baseUrl.includes('api.openai.com')) {
+    return providerEntry.defaultBaseUrl
+  }
+  return baseUrl
+}
+
+function normalizeASRBaseUrl(provider: ASRProviderType, value: unknown): string {
+  const providerEntry = getASRProviderCatalogEntry(provider)
+  const baseUrl = typeof value === 'string' ? value.trim() : ''
+  if (!baseUrl) {
+    return providerEntry.defaultBaseUrl
+  }
+  if (provider === 'qwen') {
+    return baseUrl.startsWith('ws://') || baseUrl.startsWith('wss://')
+      ? baseUrl
+      : providerEntry.defaultBaseUrl
+  }
+  if (provider === 'openai' && baseUrl.startsWith('wss://')) {
+    return providerEntry.defaultBaseUrl
+  }
+  if (provider === 'groq' && (baseUrl.startsWith('wss://') || baseUrl.includes('api.openai.com'))) {
+    return providerEntry.defaultBaseUrl
+  }
+  return baseUrl
 }
 
 function normalizeLanguage(value: unknown): AppSettings['language'] {

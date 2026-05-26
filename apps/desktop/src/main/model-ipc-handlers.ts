@@ -14,6 +14,10 @@ import {
   createTTSProviderForConfig,
   LOW_LATENCY_VOICE_CONFIG,
 } from './voice-runtime-controller.js'
+import {
+  normalizeASRModelName,
+  normalizeQwenRealtimeUrl,
+} from './asr-provider-factory.js'
 import { downloadMissingLocalModels, getLocalModelStatuses } from './local-models.js'
 import { NodeRealtimeWebSocketTransport } from './qwen-websocket-transport.js'
 import { ReconnectingWebSocketTransport } from './reconnecting-websocket-transport.js'
@@ -204,7 +208,7 @@ function createASRProviderForConfig(config: ASRModelConfig): STTProvider {
     kind: 'qwen-realtime',
     config: {
       apiKey: config.apiKey,
-      url: config.baseUrl,
+      url: normalizeQwenRealtimeUrl(config.baseUrl),
       model: normalizeASRModelName(config.modelName),
       sampleRate: config.sampleRate || providerEntry.sampleRate,
       language: config.language?.trim() || providerEntry.defaultLanguage,
@@ -213,14 +217,6 @@ function createASRProviderForConfig(config: ASRModelConfig): STTProvider {
     },
     transport: reconnectingTransport,
   })
-}
-
-function normalizeASRModelName(modelName?: string): string {
-  const normalized = modelName?.trim()
-  if (!normalized || normalized === 'realtime' || normalized === 'qwen-realtime') {
-    return 'qwen3-asr-flash-realtime'
-  }
-  return normalized
 }
 
 async function testOpenAICompatibleModel(model: LLMModelConfig): Promise<void> {
