@@ -268,7 +268,7 @@ const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
     provider: 'qwen',
     modelName: 'qwen3-asr-flash-realtime',
     apiKey: '',
-    baseUrl: '',
+    baseUrl: getASRProviderCatalogEntry('qwen').defaultBaseUrl,
     language: 'zh',
     sampleRate: 16000
   }],

@@ -66,6 +66,10 @@ export class ReconnectingWebSocketTransport implements RealtimeWebSocketTranspor
       await this.baseTransport.connect(options)
       this.setConnectionState('connected')
     } catch (error) {
+      if (this.closed && error instanceof Error && error.message === 'WebSocket connection aborted') {
+        this.setConnectionState('disconnected')
+        return
+      }
       console.error('[ReconnectingWS] Initial connection failed:', error)
       this.setConnectionState('disconnected')
       throw error

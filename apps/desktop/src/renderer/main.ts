@@ -7507,6 +7507,7 @@ function renderModelCard(kind: ModelListKind, model: LLMModelConfig | TTSModelCo
 
   const item = model as ASRModelConfig
   const models = currentSystemConfig.asrModels
+  const providerEntry = getASRProviderCatalogEntry(item.provider)
   const fields = [
     shouldShowASRField(item.provider, 'apiKey') ? `
       <div class="config-field">
@@ -7517,7 +7518,7 @@ function renderModelCard(kind: ModelListKind, model: LLMModelConfig | TTSModelCo
     shouldShowASRField(item.provider, 'baseUrl') ? `
       <div class="config-field">
         <span class="config-field-label">Base URL</span>
-        <input type="text" class="config-field-input" value="${escapeHtml(item.baseUrl || '')}" data-field="baseUrl" placeholder="https://api.openai.com/v1" />
+        <input type="text" class="config-field-input" value="${escapeHtml(item.baseUrl || '')}" data-field="baseUrl" placeholder="${escapeHtml(providerEntry.defaultBaseUrl || 'Leave blank for default')}" />
       </div>
     ` : '',
     shouldShowASRField(item.provider, 'language') ? `
@@ -8138,11 +8139,19 @@ async function updateASRProvider(id: string, provider: ASRProviderType): Promise
   if (!model) return
 
   const providerEntry = getASRProviderCatalogEntry(provider)
+  const providerChanged = model.provider !== provider
   model.provider = provider
-  model.modelName ||= providerEntry.defaultModel
-  model.baseUrl ||= providerEntry.defaultBaseUrl
-  model.language ||= providerEntry.defaultLanguage
-  model.sampleRate ||= providerEntry.sampleRate
+  if (providerChanged) {
+    model.modelName = providerEntry.defaultModel
+    model.baseUrl = providerEntry.defaultBaseUrl
+    model.language = providerEntry.defaultLanguage
+    model.sampleRate = providerEntry.sampleRate
+  } else {
+    model.modelName ||= providerEntry.defaultModel
+    model.baseUrl ||= providerEntry.defaultBaseUrl
+    model.language ||= providerEntry.defaultLanguage
+    model.sampleRate ||= providerEntry.sampleRate
+  }
   await saveSystemConfigForModel('asr')
   syncModelCard('asr', id)
 }

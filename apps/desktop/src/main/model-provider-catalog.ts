@@ -76,7 +76,7 @@ export const ASR_PROVIDER_CATALOG: ASRProviderCatalogEntry[] = [
     protocol: 'qwen-realtime',
     implemented: true,
     defaultModel: 'qwen3-asr-flash-realtime',
-    defaultBaseUrl: '',
+    defaultBaseUrl: 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime',
     defaultLanguage: 'zh',
     requiresVoiceId: false,
     sampleRate: 16000,

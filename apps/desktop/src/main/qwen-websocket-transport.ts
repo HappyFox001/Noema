@@ -146,7 +146,7 @@ export class NodeRealtimeWebSocketTransport implements RealtimeWebSocketTranspor
       if (this.pendingConnectReject) {
         const rejectPendingConnect = this.pendingConnectReject
         this.pendingConnectReject = null
-        rejectPendingConnect(new Error('WebSocket connection aborted'))
+        queueMicrotask(() => rejectPendingConnect(new Error('WebSocket connection aborted')))
       }
 
       while (this.pendingReceivers.length > 0) {

@@ -23,6 +23,30 @@ export function normalizeASRLanguage(config: ASRModelConfig | null): string {
   return config?.language?.trim() || getASRProviderCatalogEntry(config?.provider).defaultLanguage
 }
 
+export function normalizeQwenRealtimeUrl(baseUrl?: string): string {
+  const defaultUrl = getASRProviderCatalogEntry('qwen').defaultBaseUrl
+  const normalized = baseUrl?.trim()
+  if (!normalized) {
+    return defaultUrl
+  }
+
+  if (normalized.startsWith('ws://') || normalized.startsWith('wss://')) {
+    return normalized
+  }
+
+  try {
+    const url = new URL(normalized)
+    if (url.hostname.includes('dashscope.aliyuncs.com')) {
+      return defaultUrl
+    }
+  } catch {
+    return defaultUrl
+  }
+
+  console.warn('[ASR] Ignoring non-WebSocket Qwen Realtime Base URL. Leave it blank to use the default DashScope endpoint.')
+  return defaultUrl
+}
+
 export function createASRProviderForConfig(
   config: ASRModelConfig | null,
   callbacks?: {
@@ -62,7 +86,7 @@ export function createASRProviderForConfig(
     kind: 'qwen-realtime',
     config: {
       apiKey: config.apiKey,
-      url: config.baseUrl,
+      url: normalizeQwenRealtimeUrl(config.baseUrl),
       model: normalizeASRModelName(config.modelName),
       sampleRate: config.sampleRate || providerEntry.sampleRate,
       language: normalizeASRLanguage(config),
