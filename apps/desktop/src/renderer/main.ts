@@ -2493,6 +2493,14 @@ function setOrbStyle(style: OrbStyle): void {
 }
 
 type NoticeTone = 'info' | 'error'
+type MainErrorScope =
+  | 'asr'
+  | 'tts'
+  | 'voice'
+  | 'task'
+  | 'initialization'
+  | 'message'
+  | 'permission'
 
 function getErrorText(error: unknown): string {
   if (error instanceof Error) {
@@ -2508,6 +2516,51 @@ function formatErrorText(prefix: string, error: unknown): string {
   return `${prefix}: ${getErrorText(error)}`
 }
 
+function formatMainError(scope: MainErrorScope, error?: unknown): string {
+  const message = getErrorText(error).trim()
+  const lower = message.toLowerCase()
+
+  if (scope === 'asr' || scope === 'voice') {
+    if (lower.includes('unexpected server response: 404') || lower.includes(' 404')) {
+      return 'ASR endpoint not found (404). Check the provider and Base URL.'
+    }
+    if (lower.includes('api key') || lower.includes('unauthorized') || lower.includes('401')) {
+      return 'ASR authentication failed. Check the API key.'
+    }
+    if (lower.includes('websocket connection aborted')) {
+      return 'ASR connection was interrupted. Please try again.'
+    }
+    if (lower.includes('websocket') || lower.includes('connection') || lower.includes('network')) {
+      return formatErrorText('ASR connection failed', error)
+    }
+    return formatErrorText('Voice input failed', error)
+  }
+
+  if (scope === 'tts') {
+    if (lower.includes('api key') || lower.includes('unauthorized') || lower.includes('401')) {
+      return 'TTS authentication failed. Check the API key.'
+    }
+    if (lower.includes('voice') || lower.includes('voiceid')) {
+      return 'TTS voice is not available. Check the Voice ID.'
+    }
+    return formatErrorText('TTS playback failed', error)
+  }
+
+  if (scope === 'permission') {
+    return message || 'Microphone permission is required.'
+  }
+
+  if (scope === 'task') {
+    return message ? formatErrorText('Task failed', error) : 'Task failed.'
+  }
+
+  if (scope === 'initialization') {
+    return formatErrorText('Initialization failed', error)
+  }
+
+  return formatErrorText('Message failed', error)
+}
+
 let mainNoticeTimer: number | undefined
 function showMainNotice(text: string, tone: NoticeTone = 'info'): void {
   const notice = document.getElementById('main-notice')
@@ -2519,6 +2572,10 @@ function showMainNotice(text: string, tone: NoticeTone = 'info'): void {
   mainNoticeTimer = window.setTimeout(() => {
     notice.classList.remove('visible')
   }, tone === 'error' ? 3600 : 2200)
+}
+
+function showMainError(scope: MainErrorScope, error?: unknown): void {
+  showMainNotice(formatMainError(scope, error), 'error')
 }
 
 let panelNoticeTimer: number | undefined
@@ -3007,8 +3064,8 @@ function handleConversationFrame(frame: ConversationFrame) {
       break
     case 'control.task_end':
       if (!frame.success) {
-        showMainNotice(frame.error ? formatErrorText('Task failed', frame.error) : 'Task failed', 'error')
-        setStatus('Task failed')
+        showMainError('task', frame.error)
+        setStatus(getReadyStatus())
       }
       hideTaskPanelSoon()
       break
@@ -3107,8 +3164,8 @@ async function initialize() {
 
     window.electronAPI.onTTSError((error) => {
       console.error('[UI] TTS error:', error)
-      showMainNotice(formatErrorText('TTS playback failed', error), 'error')
-      setStatus('TTS failed')
+      showMainError('tts', error)
+      setStatus(getReadyStatus())
     })
 
     window.electronAPI.onLatencyData((data) => {
@@ -3138,8 +3195,8 @@ async function initialize() {
 
     window.electronAPI.onSpeechError((error) => {
       console.error('[UI] Speech error:', error)
-      showMainNotice(formatErrorText('Speech recognition failed', error), 'error')
-      setStatus('Speech failed')
+      showMainError('asr', error)
+      setStatus(getReadyStatus())
       setOrbMode('idle')
     })
 
@@ -3155,8 +3212,8 @@ async function initialize() {
 
     window.electronAPI.onSpeechConnectionFailed(() => {
       console.error('[UI] Speech WebSocket connection failed')
-      showMainNotice('Speech connection failed', 'error')
-      setStatus('Connection failed')
+      showMainError('asr', 'Speech connection failed')
+      setStatus(getReadyStatus())
       setOrbMode('idle')
     })
 
@@ -3195,8 +3252,8 @@ async function initialize() {
     })
   } catch (error: any) {
     console.error('Initialization error:', error)
-    showMainNotice(formatErrorText('Initialization failed', error), 'error')
-    setStatus('Initialization failed')
+    showMainError('initialization', error)
+    setStatus(getReadyStatus())
     startConversationBtn.disabled = false
   }
 }
@@ -3212,8 +3269,8 @@ async function stopConversationStreaming(): Promise<void> {
 
     await window.electronAPI.stopSpeechStream()
   } catch (error: any) {
-    showMainNotice(formatErrorText('Voice input failed', error), 'error')
-    setStatus('Voice input failed')
+    showMainError('voice', error)
+    setStatus(getReadyStatus())
     setOrbMode('idle')
   }
 }
@@ -3271,8 +3328,10 @@ startConversationBtn.addEventListener('click', async () => {
     activeMode = null
     conversationStreamActive = false
     isVoiceListening = false
-    showMainNotice(formatErrorText('Voice input failed', error), 'error')
-    setStatus('Voice input failed')
+    textRevealer.reset()
+    clearTextDisplay()
+    showMainError('voice', error)
+    setStatus(getReadyStatus())
     setOrbMode('idle')
     updateConversationButton()
   }
@@ -3294,8 +3353,7 @@ async function sendMessage(text: string) {
     }
   } catch (error: any) {
     console.error('Send error:', error)
-    showMainNotice(formatErrorText('Message failed', error), 'error')
-    setStatus('Message failed')
+    showMainError('message', error)
     setOrbMode('idle')
   } finally {
     if (activeMode === 'conversation' && conversationStreamActive && voiceInputEnabled) {
@@ -3433,15 +3491,13 @@ async function enableVoiceInput(): Promise<void> {
   if (currentStatus !== 'granted') {
     const permission = await window.electronAPI.requestMicrophonePermission()
     if (!permission.success || !permission.granted) {
-      showMainNotice(
+      showMainError(
+        'permission',
         permission.openedSettings
-          ? 'Microphone permission requires approval in System Settings'
-          : formatErrorText('Microphone permission denied', permission.error),
-        'error'
+          ? 'Microphone permission requires approval in System Settings.'
+          : formatErrorText('Microphone permission denied', permission.error)
       )
-      setStatus(permission.openedSettings
-        ? 'Microphone permission required'
-        : 'Microphone permission denied')
+      setStatus(getReadyStatus())
       return
     }
   }
