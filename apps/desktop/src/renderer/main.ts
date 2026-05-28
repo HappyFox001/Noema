@@ -3369,6 +3369,7 @@ async function sendMessage(text: string) {
 const contextMenu = document.getElementById('context-menu')!
 const settingsPanel = document.getElementById('settings-panel')!
 const settingsClose = document.getElementById('settings-close')!
+const orbSettingsBtn = document.getElementById('orb-settings-btn') as HTMLButtonElement
 const mainView = document.getElementById('main-view')!
 const settingsNav = document.querySelector('.settings-nav') as HTMLElement
 const modelNavItem = document.querySelector('.nav-item[data-section="models"]') as HTMLElement | null
@@ -4586,6 +4587,12 @@ function openSettings(section?: string) {
     void loadSystemConfig()
   }
 }
+
+orbSettingsBtn.addEventListener('click', (event) => {
+  event.preventDefault()
+  event.stopPropagation()
+  openSettings()
+})
 
 // Close settings panel
 function closeSettings() {
