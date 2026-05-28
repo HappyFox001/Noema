@@ -661,6 +661,22 @@ declare global {
         height?: number
         error?: string
       }>
+      captureWindow: () => Promise<{
+        success: boolean
+        width?: number
+        height?: number
+        dataUrl?: string
+        error?: string
+      }>
+      beginThemeTransitionCover: () => Promise<{
+        success: boolean
+        width?: number
+        height?: number
+        dataUrl?: string
+        error?: string
+      }>
+      endThemeTransitionCover: () => Promise<{ success: boolean; error?: string }>
+      playThemeTransitionCover: (afterDataUrl: string) => Promise<{ success: boolean; error?: string }>
       setCompactWindowMode: (compact: boolean) => void
       setTaskWindowMode: (active: boolean) => void
     }

@@ -1515,6 +1515,96 @@ const APPEARANCE_THEME_OPTIONS: Array<{ value: AppearanceTheme; labelKey: string
   { value: 'day', labelKey: 'appearance.themeDay' }
 ]
 
+type WindowCapture = {
+  success: boolean
+  width?: number
+  height?: number
+  dataUrl?: string
+  error?: string
+}
+
+class ThemeSliceTransition {
+  private running = false
+
+  async run(applyTheme: () => void): Promise<void> {
+    if (this.running) {
+      return
+    }
+
+    this.running = true
+    let coverActive = false
+    try {
+      const before = await this.beginCover()
+      if (!before.dataUrl) {
+        applyTheme()
+        return
+      }
+      coverActive = true
+
+      applyTheme()
+      await this.waitForPaint()
+
+      const after = await this.capture()
+      if (!after.dataUrl) {
+        return
+      }
+
+      const result = await window.electronAPI.playThemeTransitionCover(after.dataUrl)
+      coverActive = false
+      if (!result.success) {
+        console.warn('[ThemeTransition] Cover transition playback failed:', result.error)
+      }
+    } catch (error) {
+      console.warn('[ThemeTransition] Theme slice transition failed:', error)
+    } finally {
+      if (coverActive) {
+        await window.electronAPI.endThemeTransitionCover()
+      }
+      this.running = false
+    }
+  }
+
+  private async beginCover(): Promise<WindowCapture> {
+    try {
+      const capture = await window.electronAPI.beginThemeTransitionCover()
+      if (!capture.success || !capture.dataUrl) {
+        console.warn('[ThemeTransition] Failed to begin transition cover:', capture.error)
+        return { success: false, error: capture.error }
+      }
+      return capture
+    } catch (error) {
+      console.warn('[ThemeTransition] Failed to begin transition cover:', error)
+      return { success: false, error: String(error) }
+    }
+  }
+
+  private async capture(): Promise<WindowCapture> {
+    try {
+      const capture = await window.electronAPI.captureWindow()
+      if (!capture.success || !capture.dataUrl) {
+        console.warn('[ThemeTransition] Failed to capture window:', capture.error)
+        return { success: false, error: capture.error }
+      }
+      return capture
+    } catch (error) {
+      console.warn('[ThemeTransition] Failed to capture window:', error)
+      return { success: false, error: String(error) }
+    }
+  }
+
+  private waitForPaint(): Promise<void> {
+    return new Promise(resolve => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => resolve())
+          })
+        })
+      })
+    })
+  }
+}
+
 type PluginConfigField =
   | {
       key: string
@@ -3428,6 +3518,7 @@ let logEntries: AppLogEntry[] = []
 let activeLogLevel: AppLogLevel | 'all' = 'all'
 let currentLiquidGlassEnabled = true
 let liquidGlassSurface: ReturnType<typeof initializeLiquidGlassSurface> | null = null
+const themeSliceTransition = new ThemeSliceTransition()
 
 function applySettingsToUI(settings: UISettings) {
   setLanguage(settings.language || 'zh-CN')
@@ -3556,6 +3647,10 @@ function setAppearanceTheme(theme: AppearanceTheme): void {
   renderAppearanceThemeControls()
 }
 
+async function switchAppearanceTheme(theme: AppearanceTheme): Promise<void> {
+  await themeSliceTransition.run(() => setAppearanceTheme(theme))
+}
+
 function setLiquidGlassEnabled(enabled: boolean): void {
   currentLiquidGlassEnabled = enabled
   liquidGlassToggle.checked = enabled
@@ -3656,7 +3751,7 @@ function openAppearanceThemeMenu(): void {
       const theme = parseAppearanceTheme(option.dataset.appearanceTheme)
       closeAppearanceThemeMenu()
       if (theme === currentAppearanceTheme) return
-      setAppearanceTheme(theme)
+      await switchAppearanceTheme(theme)
       await window.electronAPI.updateSettings({ appearance: { orbStyle: currentOrbStyle, theme, liquidGlassEnabled: currentLiquidGlassEnabled } })
     })
   })

@@ -13,6 +13,8 @@ interface CaptureRect {
   scaleFactor?: number
 }
 
+let themeTransitionCoverWindow: BrowserWindow | null = null
+
 function normalizeCaptureRect(rect: CaptureRect, bounds: { width: number; height: number }): CaptureRect | null {
   const scaleFactor = Number.isFinite(Number(rect.scaleFactor))
     ? Math.max(1, Math.min(4, Number(rect.scaleFactor)))
@@ -37,6 +39,464 @@ function normalizeCaptureRect(rect: CaptureRect, bounds: { width: number; height
     width: clampedWidth,
     height: clampedHeight,
     scaleFactor,
+  }
+}
+
+function closeThemeTransitionCoverWindow(): void {
+  const cover = themeTransitionCoverWindow
+  themeTransitionCoverWindow = null
+  if (cover && !cover.isDestroyed()) {
+    cover.close()
+  }
+}
+
+async function showThemeTransitionCoverWindow(win: BrowserWindow, dataUrl: string): Promise<void> {
+  closeThemeTransitionCoverWindow()
+
+  const bounds = win.getBounds()
+  const cover = new BrowserWindow({
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height,
+    parent: win,
+    frame: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    hasShadow: false,
+    alwaysOnTop: true,
+    focusable: false,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    show: false,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  })
+
+  cover.setIgnoreMouseEvents(true, { forward: true })
+  themeTransitionCoverWindow = cover
+
+  const html = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: transparent;
+    }
+    img {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      object-fit: fill;
+      user-select: none;
+      -webkit-user-drag: none;
+    }
+    canvas {
+      position: fixed;
+      inset: 0;
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      opacity: 0;
+      background: transparent;
+    }
+    canvas.visible {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+  <img id="fallback" src="${dataUrl}" alt="">
+  <canvas id="transition"></canvas>
+  <script>
+    window.__beforeUrl = ${JSON.stringify(dataUrl)};
+    const TILE_SIZE = 48;
+    const CAMERA_Z = 150;
+    const CAMERA_FOV = 50;
+    const PROGRESS_EASE = 0.095;
+    const PROGRESS_DONE_THRESHOLD = 0.003;
+
+    function random(seed) {
+      const value = Math.sin(seed * 12.9898) * 43758.5453;
+      return value - Math.floor(value);
+    }
+
+    function loadImage(src) {
+      return new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error('Theme transition image failed to load.'));
+        image.src = src;
+      });
+    }
+
+    function createShader(gl, type, source) {
+      const shader = gl.createShader(type);
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        throw new Error(gl.getShaderInfoLog(shader) || 'Shader compile failed.');
+      }
+      return shader;
+    }
+
+    function createProgram(gl) {
+      const vertex = createShader(gl, gl.VERTEX_SHADER, \`#version 300 es
+        precision highp float;
+
+        in vec2 a_position;
+        in vec2 a_uv;
+        in vec2 i_center;
+        in vec2 i_size;
+        in vec2 i_uvOffset;
+        in vec2 i_uvSize;
+        in vec3 i_offset;
+        in vec3 i_rotation;
+
+        uniform vec2 u_worldSize;
+        uniform float u_cameraZ;
+        uniform float u_progress;
+        uniform float u_meshZ;
+
+        out vec2 v_uv;
+
+        mat3 rotationMatrixXYZ(vec3 r) {
+          float cx = cos(r.x);
+          float sx = sin(r.x);
+          float cy = cos(r.y);
+          float sy = sin(r.y);
+          float cz = cos(r.z);
+          float sz = sin(r.z);
+
+          return mat3(
+             cy * cz, cx * sz + sx * sy * cz, sx * sz - cx * sy * cz,
+            -cy * sz, cx * cz - sx * sy * sz, sx * cz + cx * sy * sz,
+                  sy,               -sx * cy,                cx * cy
+          );
+        }
+
+        void main() {
+          vec3 transformed = vec3(a_position * i_size, 0.0);
+          transformed = rotationMatrixXYZ(u_progress * i_rotation) * transformed;
+          transformed += vec3(i_center, u_meshZ);
+          transformed += u_progress * i_offset;
+
+          float cameraDepth = max(1.0, u_cameraZ - transformed.z);
+          float perspective = u_cameraZ / cameraDepth;
+          vec2 projected = transformed.xy * perspective;
+          vec2 clip = vec2(projected.x / (u_worldSize.x * 0.5), projected.y / (u_worldSize.y * 0.5));
+          float depth = (u_cameraZ - transformed.z) / (u_cameraZ * 2.0);
+
+          gl_Position = vec4(clip, depth, 1.0);
+          v_uv = i_uvOffset + a_uv * i_uvSize;
+        }
+      \`);
+      const fragment = createShader(gl, gl.FRAGMENT_SHADER, \`#version 300 es
+        precision highp float;
+
+        uniform sampler2D u_texture;
+        uniform float u_opacity;
+
+        in vec2 v_uv;
+        out vec4 outColor;
+
+        void main() {
+          vec4 color = texture(u_texture, v_uv);
+          outColor = vec4(color.rgb, color.a * u_opacity);
+        }
+      \`);
+      const program = gl.createProgram();
+      gl.attachShader(program, vertex);
+      gl.attachShader(program, fragment);
+      gl.linkProgram(program);
+      gl.deleteShader(vertex);
+      gl.deleteShader(fragment);
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        throw new Error(gl.getProgramInfoLog(program) || 'Program link failed.');
+      }
+      return program;
+    }
+
+    function createTexture(gl, image) {
+      const texture = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+      return texture;
+    }
+
+    function colorToCss(color) {
+      return 'rgb(' + Math.round(color[0] * 255) + ', ' + Math.round(color[1] * 255) + ', ' + Math.round(color[2] * 255) + ')';
+    }
+
+    function inferThemeBackgroundColor(image) {
+      const sampleSize = 32;
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
+      if (!context) {
+        return [0.012, 0.016, 0.02];
+      }
+
+      canvas.width = sampleSize;
+      canvas.height = sampleSize;
+      context.clearRect(0, 0, sampleSize, sampleSize);
+      context.drawImage(image, 0, 0, sampleSize, sampleSize);
+      const pixels = context.getImageData(0, 0, sampleSize, sampleSize).data;
+      let luminance = 0;
+      let weight = 0;
+
+      for (let y = 0; y < sampleSize; y += 1) {
+        for (let x = Math.floor(sampleSize * 0.36); x < sampleSize; x += 1) {
+          const offset = (y * sampleSize + x) * 4;
+          const alpha = pixels[offset + 3] / 255;
+          if (alpha <= 0.03) {
+            continue;
+          }
+
+          const r = pixels[offset] / 255;
+          const g = pixels[offset + 1] / 255;
+          const b = pixels[offset + 2] / 255;
+          luminance += (r * 0.2126 + g * 0.7152 + b * 0.0722) * alpha;
+          weight += alpha;
+        }
+      }
+
+      const average = weight > 0 ? luminance / weight : 0;
+      return average > 0.48 ? [0.89, 0.915, 0.905] : [0.012, 0.016, 0.02];
+    }
+
+    function flattenImage(image, backgroundColor) {
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d', { alpha: false });
+      const width = image.naturalWidth || image.width;
+      const height = image.naturalHeight || image.height;
+
+      canvas.width = width;
+      canvas.height = height;
+      if (!context) {
+        return image;
+      }
+
+      context.fillStyle = colorToCss(backgroundColor);
+      context.fillRect(0, 0, width, height);
+      context.drawImage(image, 0, 0, width, height);
+      return canvas;
+    }
+
+    function bindAttribute(gl, program, name, size, data, divisor) {
+      const location = gl.getAttribLocation(program, name);
+      const buffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+      gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(location);
+      gl.vertexAttribPointer(location, size, gl.FLOAT, false, 0, 0);
+      gl.vertexAttribDivisor(location, divisor);
+      return buffer;
+    }
+
+    function getWorldSize(width, height) {
+      const vFov = (CAMERA_FOV * Math.PI) / 180;
+      const worldHeight = 2 * Math.tan(vFov / 2) * Math.abs(CAMERA_Z);
+      return {
+        width: worldHeight * (width / Math.max(1, height)),
+        height: worldHeight,
+      };
+    }
+
+    function createPlane(gl, program, width, height, anim, worldSize) {
+      const nx = Math.ceil(width / TILE_SIZE);
+      const ny = Math.ceil(height / TILE_SIZE);
+      const count = nx * ny;
+      const centers = new Float32Array(count * 2);
+      const sizes = new Float32Array(count * 2);
+      const uvOffsets = new Float32Array(count * 2);
+      const uvSizes = new Float32Array(count * 2);
+      const offsets = new Float32Array(count * 3);
+      const rotations = new Float32Array(count * 3);
+      const tileWidth = worldSize.width / nx;
+      const tileHeight = worldSize.height / ny;
+      let index = 0;
+
+      for (let i = 0; i < nx; i += 1) {
+        for (let j = 0; j < ny; j += 1) {
+          const seed = i * ny + j + anim * 1000;
+
+          centers[index * 2] = -worldSize.width / 2 + tileWidth * (i + 0.5);
+          centers[index * 2 + 1] = worldSize.height / 2 - tileHeight * (j + 0.5);
+          sizes[index * 2] = tileWidth;
+          sizes[index * 2 + 1] = tileHeight;
+          uvOffsets[index * 2] = i / nx;
+          uvOffsets[index * 2 + 1] = 1 - (j + 1) / ny;
+          uvSizes[index * 2] = 1 / nx;
+          uvSizes[index * 2 + 1] = 1 / ny;
+
+          if (anim === 1) {
+            offsets[index * 3] = (random(seed + 1) - 0.5) * 10;
+            offsets[index * 3 + 1] = 50 + random(seed + 2) * 50;
+            offsets[index * 3 + 2] = 20 + random(seed + 3) * 30;
+          } else {
+            offsets[index * 3] = (random(seed + 1) - 0.5) * 20;
+            offsets[index * 3 + 1] = (random(seed + 2) - 0.5) * 20;
+            offsets[index * 3 + 2] = 20 + random(seed + 3) * 180;
+          }
+
+          rotations[index * 3] = (random(seed + 4) - 0.5) * Math.PI * 4;
+          rotations[index * 3 + 1] = (random(seed + 5) - 0.5) * Math.PI * 4;
+          rotations[index * 3 + 2] = (random(seed + 6) - 0.5) * Math.PI * 4;
+          index += 1;
+        }
+      }
+
+      const vao = gl.createVertexArray();
+      gl.bindVertexArray(vao);
+      const buffers = [
+        bindAttribute(gl, program, 'a_position', 2, new Float32Array([-0.5, -0.5, 0.5, -0.5, -0.5, 0.5, 0.5, 0.5]), 0),
+        bindAttribute(gl, program, 'a_uv', 2, new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), 0),
+        bindAttribute(gl, program, 'i_center', 2, centers, 1),
+        bindAttribute(gl, program, 'i_size', 2, sizes, 1),
+        bindAttribute(gl, program, 'i_uvOffset', 2, uvOffsets, 1),
+        bindAttribute(gl, program, 'i_uvSize', 2, uvSizes, 1),
+        bindAttribute(gl, program, 'i_offset', 3, offsets, 1),
+        bindAttribute(gl, program, 'i_rotation', 3, rotations, 1),
+      ];
+      gl.bindVertexArray(null);
+      return { vao, count, buffers };
+    }
+
+    window.playThemeTransition = async function(afterUrl) {
+      const fallback = document.getElementById('fallback');
+      const canvas = document.getElementById('transition');
+      const gl = canvas.getContext('webgl2', { alpha: true, antialias: true });
+      if (!gl) {
+        fallback.src = afterUrl;
+        return false;
+      }
+
+      const beforeImage = await loadImage(window.__beforeUrl);
+      const afterImage = await loadImage(afterUrl);
+      const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+      const width = Math.max(1, window.innerWidth);
+      const height = Math.max(1, window.innerHeight);
+      canvas.width = Math.round(width * pixelRatio);
+      canvas.height = Math.round(height * pixelRatio);
+      canvas.style.width = width + 'px';
+      canvas.style.height = height + 'px';
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      gl.enable(gl.DEPTH_TEST);
+      gl.depthFunc(gl.LEQUAL);
+
+      const program = createProgram(gl);
+      gl.useProgram(program);
+      const uWorldSize = gl.getUniformLocation(program, 'u_worldSize');
+      const uCameraZ = gl.getUniformLocation(program, 'u_cameraZ');
+      const uProgress = gl.getUniformLocation(program, 'u_progress');
+      const uMeshZ = gl.getUniformLocation(program, 'u_meshZ');
+      const uOpacity = gl.getUniformLocation(program, 'u_opacity');
+      const uTexture = gl.getUniformLocation(program, 'u_texture');
+      gl.uniform1i(uTexture, 0);
+      gl.uniform1f(uCameraZ, CAMERA_Z);
+
+      const beforeBackground = inferThemeBackgroundColor(beforeImage);
+      const afterBackground = inferThemeBackgroundColor(afterImage);
+      const beforeTexture = createTexture(gl, flattenImage(beforeImage, beforeBackground));
+      const afterTexture = createTexture(gl, flattenImage(afterImage, afterBackground));
+      const worldSize = getWorldSize(width, height);
+      const plane1 = createPlane(gl, program, width, height, 1, worldSize);
+      const plane2 = createPlane(gl, program, width, height, 2, worldSize);
+      const stageColor = beforeBackground;
+      let firstFrame = true;
+
+      gl.uniform2f(uWorldSize, worldSize.width, worldSize.height);
+
+      function drawPlane(plane, texture, planeProgress, opacity, meshZ) {
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.uniform1f(uProgress, planeProgress);
+        gl.uniform1f(uOpacity, opacity);
+        gl.uniform1f(uMeshZ, meshZ);
+        gl.bindVertexArray(plane.vao);
+        gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, plane.count);
+      }
+
+      return await new Promise((resolve) => {
+        let progress = 0;
+
+        function tick() {
+          progress += (1 - progress) * PROGRESS_EASE;
+
+          if (Math.abs(1 - progress) < PROGRESS_DONE_THRESHOLD) {
+            progress = 1;
+          }
+
+          gl.clearColor(stageColor[0], stageColor[1], stageColor[2], 1);
+          gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+          drawPlane(plane2, afterTexture, -1 + progress, progress, progress - 1);
+          drawPlane(plane1, beforeTexture, progress, 1 - progress, progress);
+
+          if (firstFrame) {
+            firstFrame = false;
+            canvas.classList.add('visible');
+            fallback.style.visibility = 'hidden';
+          }
+
+          if (progress === 1) {
+            resolve(true);
+            return;
+          }
+
+          requestAnimationFrame(tick);
+        }
+
+        requestAnimationFrame(tick);
+      });
+    };
+  </script>
+</body>
+</html>`
+
+  cover.once('closed', () => {
+    if (themeTransitionCoverWindow === cover) {
+      themeTransitionCoverWindow = null
+    }
+  })
+
+  await cover.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
+  if (!cover.isDestroyed()) {
+    cover.showInactive()
+  }
+}
+
+async function playThemeTransitionCoverWindow(afterDataUrl: string): Promise<void> {
+  const cover = themeTransitionCoverWindow
+  if (!cover || cover.isDestroyed()) {
+    throw new Error('Theme transition cover window is not available')
+  }
+
+  try {
+    await cover.webContents.executeJavaScript(
+      `window.playThemeTransition(${JSON.stringify(afterDataUrl)})`,
+      true
+    )
+  } finally {
+    closeThemeTransitionCoverWindow()
   }
 }
 
@@ -160,6 +620,75 @@ export function registerWindowIpcHandlers(
         height: size.height,
       }
     } catch (error: any) {
+      return { success: false, error: error.message || String(error) }
+    }
+  })
+
+  ipcMain.handle('window:capture', async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win || win.isDestroyed()) {
+      return { success: false, error: 'Window is not available' }
+    }
+
+    try {
+      const image = await win.webContents.capturePage()
+      if (image.isEmpty()) {
+        return { success: false, error: 'Capture returned an empty image' }
+      }
+      const size = image.getSize()
+      return {
+        success: true,
+        width: size.width,
+        height: size.height,
+        dataUrl: image.toDataURL(),
+      }
+    } catch (error: any) {
+      return { success: false, error: error.message || String(error) }
+    }
+  })
+
+  ipcMain.handle('window:theme-transition-cover-begin', async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win || win.isDestroyed()) {
+      return { success: false, error: 'Window is not available' }
+    }
+
+    try {
+      const image = await win.webContents.capturePage()
+      if (image.isEmpty()) {
+        return { success: false, error: 'Capture returned an empty image' }
+      }
+      const size = image.getSize()
+      const dataUrl = image.toDataURL()
+      await showThemeTransitionCoverWindow(win, dataUrl)
+      return {
+        success: true,
+        width: size.width,
+        height: size.height,
+        dataUrl,
+      }
+    } catch (error: any) {
+      closeThemeTransitionCoverWindow()
+      return { success: false, error: error.message || String(error) }
+    }
+  })
+
+  ipcMain.handle('window:theme-transition-cover-end', async () => {
+    closeThemeTransitionCoverWindow()
+    return { success: true }
+  })
+
+  ipcMain.handle('window:theme-transition-cover-play', async (_, afterDataUrl: string) => {
+    if (!afterDataUrl || typeof afterDataUrl !== 'string') {
+      closeThemeTransitionCoverWindow()
+      return { success: false, error: 'Missing transition target image' }
+    }
+
+    try {
+      await playThemeTransitionCoverWindow(afterDataUrl)
+      return { success: true }
+    } catch (error: any) {
+      closeThemeTransitionCoverWindow()
       return { success: false, error: error.message || String(error) }
     }
   })

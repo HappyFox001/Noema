@@ -284,6 +284,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   captureToClipboard: (rect) =>
     ipcRenderer.invoke('window:capture-to-clipboard', rect),
 
+  captureWindow: () =>
+    ipcRenderer.invoke('window:capture'),
+
+  beginThemeTransitionCover: () =>
+    ipcRenderer.invoke('window:theme-transition-cover-begin'),
+
+  endThemeTransitionCover: () =>
+    ipcRenderer.invoke('window:theme-transition-cover-end'),
+
+  playThemeTransitionCover: (afterDataUrl) =>
+    ipcRenderer.invoke('window:theme-transition-cover-play', afterDataUrl),
+
   setCompactWindowMode: (compact) => {
     ipcRenderer.send('window:set-compact-mode', compact)
   },
