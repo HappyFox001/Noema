@@ -183,10 +183,14 @@ body.theme-day.settings-open:not(.settings-closing) .liquid-glass-surface {
   align-items: center;
   justify-content: center;
   padding: 0;
-  border: 0;
-  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: rgba(5, 7, 8, 0.34);
   color: rgba(255, 255, 255, 0.68);
-  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.42));
+  box-shadow:
+    0 8px 18px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.3));
   opacity: 0.72;
   cursor: pointer;
   -webkit-app-region: no-drag;
@@ -203,6 +207,8 @@ body.theme-day.settings-open:not(.settings-closing) .liquid-glass-surface {
 .orb-settings-btn:hover {
   opacity: 1;
   transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(12, 15, 17, 0.48);
   color: rgba(255, 255, 255, 0.94);
   filter: drop-shadow(0 3px 12px rgba(0, 0, 0, 0.55));
 }
@@ -3140,8 +3146,16 @@ body.theme-day .text-display {
 }
 
 body.theme-day .status {
-  color: rgba(24, 58, 58, 0.76);
-  text-shadow: 0 1px 8px rgba(255, 255, 255, 0.60);
+  padding: 2px 8px;
+  border: 1px solid rgba(20, 32, 36, 0.14);
+  border-radius: 999px;
+  background: rgba(246, 250, 249, 0.74);
+  color: rgba(12, 34, 36, 0.94);
+  box-shadow:
+    0 8px 18px rgba(38, 56, 60, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.58);
+  backdrop-filter: blur(8px);
 }
 
 body.theme-day .start-button {
@@ -3154,15 +3168,20 @@ body.theme-day .start-button {
 }
 
 body.theme-day .orb-settings-btn {
-  background: transparent;
-  color: rgba(30, 44, 48, 0.70);
-  filter: drop-shadow(0 2px 8px rgba(255, 255, 255, 0.72));
+  opacity: 0.92;
+  background: rgba(246, 250, 249, 0.66);
+  border: 1px solid rgba(20, 32, 36, 0.14);
+  border-radius: 10px;
+  color: rgba(18, 28, 31, 0.9);
+  filter: drop-shadow(0 8px 18px rgba(38, 56, 60, 0.18));
 }
 
 body.theme-day .orb-settings-btn:hover {
-  color: rgba(20, 32, 36, 0.94);
-  background: transparent;
-  filter: drop-shadow(0 3px 12px rgba(255, 255, 255, 0.82));
+  opacity: 1;
+  color: rgba(8, 18, 21, 0.96);
+  background: rgba(255, 255, 255, 0.82);
+  border-color: rgba(20, 32, 36, 0.2);
+  filter: drop-shadow(0 10px 22px rgba(38, 56, 60, 0.22));
 }
 
 .settings-btn.danger {
