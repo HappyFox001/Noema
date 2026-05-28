@@ -1543,6 +1543,8 @@ class ThemeSliceTransition {
 
       applyTheme()
       await this.waitForPaint()
+      await this.waitForCompositor()
+      await this.waitForPaint()
 
       const after = await this.capture()
       if (!after.dataUrl) {
@@ -1602,6 +1604,10 @@ class ThemeSliceTransition {
         })
       })
     })
+  }
+
+  private waitForCompositor(): Promise<void> {
+    return new Promise(resolve => window.setTimeout(resolve, 80))
   }
 }
 
