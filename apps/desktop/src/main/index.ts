@@ -142,6 +142,11 @@ type InterruptionReason = 'vad_start' | 'transcript_start' | 'manual' | 'provide
 
 type ConversationPhase = 'reply' | 'task_progress' | 'task_result'
 
+interface PendingSpeakingInterruption {
+  interruptedAssistantText: string
+  interruptedAt: number
+}
+
 const nativeConsole = {
   debug: console.debug.bind(console),
   log: console.log.bind(console),
@@ -1281,6 +1286,8 @@ const cancelledTurnIds = new Set<number>()
 let currentTTSContextId = 0
 let ttsProviderGeneration = 0
 let ttsPrewarmPromise: Promise<void> | null = null
+let currentSpeakingAssistantText = ''
+let pendingSpeakingInterruption: PendingSpeakingInterruption | null = null
 
 
 function invalidateTTSContext(reason: InterruptionReason = 'manual'): void {
@@ -1293,6 +1300,29 @@ function invalidateTTSContext(reason: InterruptionReason = 'manual'): void {
     reason,
     timestamp: Date.now(),
   })
+}
+
+function rememberSpeakingInterruption(reason: InterruptionReason): void {
+  if (reason !== 'vad_start' && reason !== 'transcript_start') {
+    return
+  }
+
+  const interruptedAssistantText = currentSpeakingAssistantText.trim()
+  if (!interruptedAssistantText) {
+    return
+  }
+
+  pendingSpeakingInterruption = {
+    interruptedAssistantText,
+    interruptedAt: Date.now(),
+  }
+  console.log(`[Interruption] Recorded speaking interruption (${reason}), chars=${interruptedAssistantText.length}`)
+}
+
+function consumePendingSpeakingInterruption(): PendingSpeakingInterruption | undefined {
+  const pending = pendingSpeakingInterruption ?? undefined
+  pendingSpeakingInterruption = null
+  return pending
 }
 
 function prewarmTTSStreaming(reason: string): void {
@@ -1348,6 +1378,9 @@ async function interruptCurrentOutputOnly(
   console.log(`[Turn] Interrupting output only for turn #${currentTurnId}`)
   cancelledTurnIds.add(currentTurnId)
   currentResponseFramePipeline?.interrupt()
+  if (options.closeTTS) {
+    rememberSpeakingInterruption(reason)
+  }
   invalidateTTSContext(reason)
 
   if (options.closeTTS) {
@@ -1375,6 +1408,9 @@ async function cancelCurrentTurn(
   }
 
   if (cancelledExistingTurn) {
+    if (options.closeTTS) {
+      rememberSpeakingInterruption(reason)
+    }
     invalidateTTSContext(reason)
   }
 
@@ -1393,6 +1429,7 @@ function completeCurrentTurn(turnId: number, pipeline: ResponseFramePipeline | n
   if (currentResponseFramePipeline === pipeline) {
     currentResponseFramePipeline = null
   }
+  currentSpeakingAssistantText = ''
 
   currentTurnAbortController = null
 }
@@ -2722,6 +2759,8 @@ async function runConversationTurn(
     turnId = await startNewTurn({
       preserveActiveTask: source === 'voice'
     })
+    const speakingInterruption = consumePendingSpeakingInterruption()
+    currentSpeakingAssistantText = ''
     const turnAbortSignal = currentTurnAbortController!.signal
 
     mainWindow?.webContents.send('turn:start', turnId)
@@ -2806,6 +2845,7 @@ async function runConversationTurn(
       isCancelled: () => isTurnCancelled(turnId),
       preserveUserInputOnAbort: source === 'voice',
       getInterruptedAssistantText: () => interruptedTTSTextChunks.join(''),
+      speakingInterruption,
       pluginContext,
       queueFrame: (frame) => {
         return responseFramePipeline?.queueFrame(frame) ?? Promise.resolve()
@@ -2848,6 +2888,7 @@ async function runConversationTurn(
         onText: (textFrame, displayText) => {
           currentTTSChunkSequence += 1
           interruptedTTSTextChunks.push(displayText)
+          currentSpeakingAssistantText = interruptedTTSTextChunks.join('')
           console.log(`[Main] TTS text frame #${turnId}:${currentTTSChunkSequence}, pushing:`, JSON.stringify(textFrame))
           displayController.pushTTSChunkText(displayText)
         },
@@ -2911,6 +2952,7 @@ async function runConversationTurn(
       currentResponseFramePipeline?.stop()
       currentResponseFramePipeline = null
     }
+    currentSpeakingAssistantText = ''
     if (taskCommunicationTurn) {
       taskCommunicationManager.clearTurn(taskCommunicationTurn)
     }

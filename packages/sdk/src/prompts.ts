@@ -85,6 +85,24 @@ ${context.error ? `错误信息：${context.error}` : ''}
 - 不要说“步骤”“已完成”“处理好了”“任务进度”“当前任务”这类系统词
 - 可以用轻松口吻说明你看到了什么、接下来还在等什么
 - 不要说整个任务已经完成，除非后面没有要做的事`,
+
+    speakingInterruptionAwareness: (context: {
+      records: Array<{
+        userInput: string
+        interruptedAssistantText: string
+      }>
+    }) => `打断意识规则：
+- 下面是最近对话里，用户在你语音输出时终止音频的记录；"被打断的话"只表示你当时正在说或准备说的内容，不代表已经完整表达。
+- 先判断用户这次打断是否有明确语义：纠正、补充、追问、改变方向、要求停止，都算正常打断，正常接话即可，不要抱怨。
+- 如果最近多次打断都只是低信息量或无意义内容，例如"嗯"、"啊"、"等下"但没有后续意图，你可以轻微不满，像真实聊天一样提醒用户别总打断你。
+- 不要机械提到"打断记录"、"音频"、"TTS"、"规则"这些系统词。
+- 不要因为一次正常打断就抱怨；只有形成明显模式时才表达不满。
+
+最近 speaking 打断：
+${context.records.map((record, index) => [
+  `${index + 1}. 用户输入：${record.userInput || '（空）'}`,
+  `   被打断的话：${record.interruptedAssistantText || '（空）'}`,
+].join('\n')).join('\n')}`,
   },
 
   

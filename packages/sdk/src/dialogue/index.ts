@@ -51,6 +51,8 @@ export interface StreamOptions {
   preserveUserInputOnAbort?: boolean
   
   getInterruptedAssistantText?: () => string | undefined
+
+  speakingInterruption?: SpeakingInterruptionInput
   
   pluginContext?: PluginRuntimeContext
   
@@ -79,6 +81,16 @@ export interface StreamOptions {
   ) => Promise<void> | void
 
   onExpression?: (frame: ExpressionFrame) => Promise<void> | void
+}
+
+export interface SpeakingInterruptionInput {
+  interruptedAssistantText: string
+  interruptedAt: number
+}
+
+interface SpeakingInterruptionRecord extends SpeakingInterruptionInput {
+  turnIndex: number
+  userInput: string
 }
 
 
@@ -174,12 +186,23 @@ interface TaskRunJobInput {
 }
 
 const TASK_PROGRESS_MIN_INTERVAL_MS = 8000
+const INTERRUPTION_RECORD_LIMIT = 10
+const INTERRUPTION_PROMPT_RECENT_TURNS = 3
+const INTERRUPTION_TEXT_LIMIT = 180
 
 function throwIfStreamCancelled(options?: StreamOptions): void {
   throwIfAborted(options?.signal)
   if (options?.isCancelled?.()) {
     throw new DOMException('Turn cancelled before task handoff', 'AbortError')
   }
+}
+
+function limitInterruptionText(text: string, limit = INTERRUPTION_TEXT_LIMIT): string {
+  const normalized = text.replace(/\s+/g, ' ').trim()
+  if (normalized.length <= limit) {
+    return normalized
+  }
+  return `${normalized.slice(0, limit)}...`
 }
 
 export class DialogueOrchestrator {
@@ -198,6 +221,8 @@ export class DialogueOrchestrator {
   private learning?: LearningAssetStore
   private agentSociety?: AgentSocietyRuntime
   private activeTaskProgressContext: ActiveTaskProgressContext | null = null
+  private emotionalTurnIndex = 0
+  private speakingInterruptionRecords: SpeakingInterruptionRecord[] = []
 
   private truncationPolicy: TruncationPolicy = {
     maxTokens: 8000,
@@ -299,6 +324,7 @@ export class DialogueOrchestrator {
     options?: StreamOptions
   ): AsyncGenerator<string> {
     throwIfAborted(options?.signal)
+    const emotionalTurnIndex = ++this.emotionalTurnIndex
     const turnId = generateId()
     this.runtimeEvents?.emit({
       name: 'emotional.turn.started',
@@ -322,6 +348,7 @@ export class DialogueOrchestrator {
     const contextCheckpoint = this.context.createCheckpoint()
     const turnContext = await this.contextAggregator.prepareUserTurn(input, options?.signal)
     const pluginRuntime = options?.pluginContext ?? {}
+    this.recordSpeakingInterruption(emotionalTurnIndex, input, options, pluginRuntime)
     await this.pluginManager.notifyConversationTurnStart({
       runtime: pluginRuntime,
       userInput: input.text,
@@ -335,6 +362,10 @@ export class DialogueOrchestrator {
         detectTask: true,
         hasTools: turnContext.hasTools,
       })
+      const promptAdditions = this.withInterruptionAwareness(
+        firstPromptAdditions,
+        emotionalTurnIndex
+      )
 
       throwIfAborted(options?.signal)
       const firstResult = await this.llmProcessor.runEmotionalLayer({
@@ -344,7 +375,7 @@ export class DialogueOrchestrator {
         detectTask: true,
         currentContext: this.context.forPrompt(),
         baseInstructions: buildBaseInstructions(),
-        pluginPromptAdditions: firstPromptAdditions,
+        pluginPromptAdditions: promptAdditions,
       })
 
       throwIfAborted(options?.signal)
@@ -1065,6 +1096,68 @@ export class DialogueOrchestrator {
       path: item.path,
       content: item.content,
     }))
+  }
+
+  private recordSpeakingInterruption(
+    turnIndex: number,
+    input: UserInput,
+    options: StreamOptions | undefined,
+    pluginRuntime: PluginRuntimeContext
+  ): void {
+    const interruption = options?.speakingInterruption
+    if (!interruption?.interruptedAssistantText.trim()) {
+      return
+    }
+
+    const interruptedAssistantText = this.transformText(
+      'interrupted_assistant',
+      interruption.interruptedAssistantText.trim(),
+      pluginRuntime
+    )
+    if (!interruptedAssistantText) {
+      return
+    }
+
+    this.speakingInterruptionRecords.push({
+      ...interruption,
+      interruptedAssistantText,
+      userInput: input.text,
+      turnIndex,
+    })
+
+    if (this.speakingInterruptionRecords.length > INTERRUPTION_RECORD_LIMIT) {
+      this.speakingInterruptionRecords.splice(
+        0,
+        this.speakingInterruptionRecords.length - INTERRUPTION_RECORD_LIMIT
+      )
+    }
+    this.speakingInterruptionRecords = this.speakingInterruptionRecords.filter(
+      record => record.turnIndex >= turnIndex - INTERRUPTION_RECORD_LIMIT + 1
+    )
+  }
+
+  private withInterruptionAwareness(
+    additions: string[],
+    currentTurnIndex: number
+  ): string[] {
+    const recentThreshold = currentTurnIndex - INTERRUPTION_PROMPT_RECENT_TURNS + 1
+    const hasRecentSpeakingInterruption = this.speakingInterruptionRecords.some(
+      record => record.turnIndex >= recentThreshold
+    )
+    if (!hasRecentSpeakingInterruption) {
+      return additions
+    }
+
+    const recordThreshold = currentTurnIndex - INTERRUPTION_RECORD_LIMIT + 1
+    const records = this.speakingInterruptionRecords
+      .filter(record => record.turnIndex >= recordThreshold)
+      .slice(-INTERRUPTION_RECORD_LIMIT)
+    return [...additions, PROMPTS.dialogue.speakingInterruptionAwareness({
+      records: records.map(record => ({
+        userInput: limitInterruptionText(record.userInput),
+        interruptedAssistantText: limitInterruptionText(record.interruptedAssistantText),
+      })),
+    })]
   }
 
   private recordInterruptedTurn(

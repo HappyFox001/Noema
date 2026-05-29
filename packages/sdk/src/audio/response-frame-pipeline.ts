@@ -9,6 +9,7 @@ import { FramePipeline, type Frame, type FrameProcessor } from './frame-pipeline
 import type { TTSProvider } from './providers.js'
 import type { InterruptionReason } from '../turn/types.js'
 import type { ExpressionFrame, PluginRuntimeContext } from '../plugins/index.js'
+import type { SpeakingInterruptionInput } from '../dialogue/index.js'
 
 export type ResponseFrame = Frame & (
   | { type: 'phase_start'; phase: 'reply' | 'task_progress' | 'task_result' }
@@ -647,6 +648,7 @@ export interface LLMChatStreamService {
       isCancelled?: () => boolean
       preserveUserInputOnAbort?: boolean
       getInterruptedAssistantText?: () => string | undefined
+      speakingInterruption?: SpeakingInterruptionInput
       pluginContext?: PluginRuntimeContext
       onPhaseStart?: (phase: 'reply' | 'task_progress' | 'task_result') => Promise<void> | void
       onDisplayChunk?: (
@@ -676,6 +678,7 @@ export interface LLMResponseProcessorOptions {
   isCancelled?: () => boolean
   preserveUserInputOnAbort?: boolean
   getInterruptedAssistantText?: () => string | undefined
+  speakingInterruption?: SpeakingInterruptionInput
   pluginContext?: PluginRuntimeContext
   queueFrame?: (frame: ResponseFrame) => Promise<void> | void
   waitForIdle?: () => Promise<void>
@@ -737,6 +740,7 @@ export class LLMResponseProcessor implements ResponseFrameProcessor {
         isCancelled: this.options.isCancelled,
         preserveUserInputOnAbort: this.options.preserveUserInputOnAbort,
         getInterruptedAssistantText: this.options.getInterruptedAssistantText,
+        speakingInterruption: this.options.speakingInterruption,
         pluginContext: this.options.pluginContext,
         onPhaseStart: async (phase) => {
           await this.options.bridge.onPhaseStart(phase)
