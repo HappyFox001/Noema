@@ -893,6 +893,10 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'plugins.installed': '本地插件',
     'plugins.refresh': '刷新',
     'plugins.refreshing': '刷新中...',
+    'plugins.install': '安装',
+    'plugins.installing': '安装中...',
+    'plugins.installedNotice': '插件已安装',
+    'plugins.installFailed': '插件安装失败: {error}',
     'plugins.marketplaceCached': '缓存于 {time}',
     'plugins.marketplaceFetched': '更新于 {time}',
     'plugins.marketplaceRefreshFailed': '刷新失败: {error}',
@@ -1279,6 +1283,10 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'plugins.installed': 'Installed',
     'plugins.refresh': 'Refresh',
     'plugins.refreshing': 'Refreshing...',
+    'plugins.install': 'Install',
+    'plugins.installing': 'Installing...',
+    'plugins.installedNotice': 'Plugin installed',
+    'plugins.installFailed': 'Plugin install failed: {error}',
     'plugins.marketplaceCached': 'Cached at {time}',
     'plugins.marketplaceFetched': 'Updated at {time}',
     'plugins.marketplaceRefreshFailed': 'Refresh failed: {error}',
@@ -3582,6 +3590,7 @@ let pluginMarketplaceQuery = ''
 let pluginMarketplaceCached = false
 let pluginMarketplaceFetchedAt: number | undefined
 let pluginMarketplaceRefreshing = false
+let installingMarketplacePluginId = ''
 let activePluginPage: PluginPage = 'local'
 let activePluginDetail: { pluginId: string; page: 'main' | 'advanced' } | null = null
 let pluginsListLoadPromise: Promise<void> | null = null
@@ -5275,6 +5284,7 @@ function renderPluginMarketplaceCard(item: PluginMarketplaceItem): string {
     : item.installed
       ? t('plugins.installedStatus')
       : t('plugins.availableStatus')
+  const installing = installingMarketplacePluginId === item.id
   return `
     <div class="plugin-marketplace-card">
       <div class="plugin-marketplace-card-top">
@@ -5289,7 +5299,12 @@ function renderPluginMarketplaceCard(item: PluginMarketplaceItem): string {
       </div>
       ${item.description ? `<div class="plugin-description">${escapeHtml(item.description)}</div>` : ''}
       ${item.tags.length ? `<div class="plugin-marketplace-tags">${item.tags.map(tag => `<span>${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
-      <button class="plugin-admin-button secondary plugin-marketplace-card-btn" type="button" data-plugin-marketplace-source="${escapeHtml(item.sourceUrl)}">${escapeHtml(t('plugins.viewSource'))}</button>
+      <div class="plugin-marketplace-card-actions">
+        ${item.installed
+          ? ''
+          : `<button class="plugin-admin-button plugin-marketplace-card-btn" type="button" data-plugin-marketplace-install="${escapeHtml(item.id)}" ${installing ? 'disabled' : ''}>${escapeHtml(installing ? t('plugins.installing') : t('plugins.install'))}</button>`}
+        <button class="plugin-admin-button secondary plugin-marketplace-card-btn" type="button" data-plugin-marketplace-source="${escapeHtml(item.sourceUrl)}">${escapeHtml(t('plugins.viewSource'))}</button>
+      </div>
     </div>
   `
 }
@@ -5373,6 +5388,40 @@ async function uninstallPlugin(pluginId: string): Promise<void> {
   showPanelNotice(t('plugins.uninstalled'))
   await loadPluginsSection(true)
   await loadPluginUISurfaces()
+}
+
+async function installPluginFromMarketplace(pluginId: string): Promise<void> {
+  if (installingMarketplacePluginId) {
+    return
+  }
+
+  installingMarketplacePluginId = pluginId
+  renderPluginsSection(cachedPlugins, cachedPluginMarketplace)
+  try {
+    const result = await window.electronAPI.installPluginFromMarketplace(pluginId)
+    if (!result.success) {
+      throw new Error(result.error || 'unknown error')
+    }
+
+    const settings = await window.electronAPI.getSettings()
+    await window.electronAPI.updateSettings({
+      plugins: {
+        ...(settings.plugins ?? {}),
+        [pluginId]: true,
+      },
+    })
+
+    pluginsListLoaded = false
+    showPanelNotice(t('plugins.installedNotice'))
+    await loadPluginsSection(true)
+    await refreshPluginMarketplace()
+    await loadPluginUISurfaces()
+  } catch (error: any) {
+    showPanelNotice(tf('plugins.installFailed', { error: getErrorText(error) }), 'error')
+  } finally {
+    installingMarketplacePluginId = ''
+    renderPluginsSection(cachedPlugins, cachedPluginMarketplace)
+  }
 }
 
 function renderPluginListCard(plugin: PluginInfo): string {
@@ -5956,6 +6005,13 @@ function bindPluginsListEvents(): void {
     if (marketplaceRefreshButton) {
       event.stopPropagation()
       void refreshPluginMarketplace()
+      return
+    }
+
+    const marketplaceInstallButton = target.closest<HTMLButtonElement>('[data-plugin-marketplace-install]')
+    if (marketplaceInstallButton?.dataset.pluginMarketplaceInstall) {
+      event.stopPropagation()
+      void installPluginFromMarketplace(marketplaceInstallButton.dataset.pluginMarketplaceInstall)
       return
     }
 

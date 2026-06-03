@@ -2044,6 +2044,12 @@ body.theme-day .settings-telemetry-bar {
   min-height: 28px;
 }
 
+.plugin-marketplace-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .plugin-marketplace-empty,
 .plugin-marketplace-error {
   grid-column: 1 / -1;

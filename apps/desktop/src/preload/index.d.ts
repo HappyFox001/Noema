@@ -468,6 +468,11 @@ declare global {
         error?: string
         pluginDir?: string
       }>
+      installPluginFromMarketplace: (pluginId: string) => Promise<{
+        success: boolean
+        error?: string
+        pluginDir?: string
+      }>
       pluginAdminAction: (pluginId: string, action: string, payload?: unknown) => Promise<{
         success: boolean
         state?: unknown

@@ -149,6 +149,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   uninstallPlugin: (pluginId) =>
     ipcRenderer.invoke('plugins:uninstall', pluginId),
 
+  installPluginFromMarketplace: (pluginId) =>
+    ipcRenderer.invoke('plugins:installFromMarketplace', pluginId),
+
   pluginAdminAction: (pluginId, action, payload) =>
     ipcRenderer.invoke('plugins:adminAction', pluginId, action, payload),
 

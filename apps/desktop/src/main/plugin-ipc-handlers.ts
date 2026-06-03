@@ -1,19 +1,21 @@
 /**
  * IPC handlers for runtime plugin discovery, admin actions, and plugin asset selection.
  */
-import { mkdir, readFile, readdir, writeFile } from 'fs/promises'
+import { mkdir, readFile, readdir, rename, rm, writeFile } from 'fs/promises'
 import { isAbsolute, join, relative, resolve as resolvePath } from 'path'
 import { fileURLToPath, pathToFileURL } from 'url'
 import { app, dialog, net, shell, type BrowserWindow, type IpcMain, type OpenDialogOptions } from 'electron'
 import type { AppSettings } from './settings-store.js'
 import {
   discoverRuntimePlugins,
+  invalidateRuntimePluginManifests,
   invokeRuntimePluginAdminAction,
   uninstallRuntimePlugin,
 } from './plugin-loader.js'
 
 const PLUGIN_MARKETPLACE_REGISTRY_URL = 'https://raw.githubusercontent.com/HappyFox001/Noema-Plugin/main/registry.json'
 const PLUGIN_MARKETPLACE_REPO_URL = 'https://github.com/HappyFox001/Noema-Plugin'
+const PLUGIN_MARKETPLACE_API_CONTENTS_URL = 'https://api.github.com/repos/HappyFox001/Noema-Plugin/contents'
 
 interface PluginMarketplaceRegistry {
   schemaVersion?: number
@@ -33,6 +35,13 @@ interface PluginMarketplaceRegistryItem {
 interface PluginMarketplaceCache {
   fetchedAt: number
   registry: PluginMarketplaceRegistry
+}
+
+interface GitHubContentItem {
+  type?: string
+  name?: string
+  path?: string
+  download_url?: string | null
 }
 
 export function registerPluginIpcHandlers(
@@ -123,6 +132,18 @@ export function registerPluginIpcHandlers(
   ipcMain.handle('plugins:uninstall', async (_event, pluginId: string) => {
     try {
       const result = await uninstallRuntimePlugin(options.resolveRuntimePluginsDir(), pluginId)
+      return { success: true, ...result }
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('plugins:installFromMarketplace', async (_event, pluginId: string) => {
+    try {
+      const result = await installPluginFromMarketplace(
+        options.resolveRuntimePluginsDir(),
+        pluginId
+      )
       return { success: true, ...result }
     } catch (error: any) {
       return { success: false, error: error.message }
@@ -317,6 +338,140 @@ async function fetchPluginMarketplaceRegistry(): Promise<PluginMarketplaceRegist
   } finally {
     clearTimeout(timeout)
   }
+}
+
+async function installPluginFromMarketplace(
+  pluginsDir: string,
+  pluginId: string
+): Promise<{ pluginDir: string }> {
+  const safePluginId = normalizePluginId(pluginId)
+  const { registry } = await loadPluginMarketplaceRegistry(false)
+  const item = (registry.plugins ?? []).find(candidate => candidate.id === safePluginId)
+  if (!item?.path) {
+    throw new Error(`Marketplace plugin not found: ${pluginId}`)
+  }
+
+  const pluginPath = normalizeMarketplacePluginPath(item.path)
+  const localPluginsDir = resolvePath(pluginsDir, 'local')
+  const targetDir = resolvePath(localPluginsDir, safePluginId)
+  const relativeTarget = relative(localPluginsDir, targetDir)
+  if (isAbsolute(relativeTarget) || relativeTarget.startsWith('..')) {
+    throw new Error(`Invalid plugin id: ${pluginId}`)
+  }
+
+  const existingPlugins = await discoverRuntimePlugins(pluginsDir)
+  if (existingPlugins.some(plugin => plugin.id === safePluginId)) {
+    throw new Error(`Plugin already installed: ${safePluginId}`)
+  }
+
+  const tempDir = resolvePath(localPluginsDir, `.${safePluginId}.${Date.now()}.installing`)
+  await mkdir(localPluginsDir, { recursive: true })
+  await rm(tempDir, { recursive: true, force: true })
+  await mkdir(tempDir, { recursive: true })
+
+  try {
+    await downloadMarketplaceDirectory(pluginPath, tempDir)
+    const manifestPath = resolvePath(tempDir, 'plugin.json')
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as { id?: string; type?: string }
+    if (manifest.type !== 'sdk-plugin') {
+      throw new Error('Downloaded plugin manifest is not an sdk-plugin')
+    }
+    if (manifest.id !== safePluginId) {
+      throw new Error(`Downloaded plugin id mismatch: expected ${safePluginId}, got ${manifest.id || 'unknown'}`)
+    }
+
+    await rename(tempDir, targetDir)
+    invalidateRuntimePluginManifests(pluginsDir)
+    return { pluginDir: targetDir }
+  } catch (error) {
+    await rm(tempDir, { recursive: true, force: true })
+    throw error
+  }
+}
+
+function normalizePluginId(pluginId: string): string {
+  const normalized = pluginId.trim()
+  if (!/^[a-z0-9][a-z0-9._-]*$/i.test(normalized)) {
+    throw new Error(`Invalid plugin id: ${pluginId}`)
+  }
+  return normalized
+}
+
+function normalizeMarketplacePluginPath(pluginPath: string): string {
+  const normalized = pluginPath.replace(/^\/+/, '').replace(/\/+$/, '')
+  const parts = normalized.split('/')
+  if (
+    parts.length < 2 ||
+    parts[0] !== 'plugins' ||
+    parts.some(part => !part || part === '.' || part === '..')
+  ) {
+    throw new Error(`Invalid marketplace plugin path: ${pluginPath}`)
+  }
+  return normalized
+}
+
+async function downloadMarketplaceDirectory(remotePath: string, localDir: string): Promise<void> {
+  const entries = await fetchGitHubContents(remotePath)
+  await mkdir(localDir, { recursive: true })
+
+  for (const entry of entries) {
+    if (!entry.name || !entry.path || entry.name === '.' || entry.name === '..') {
+      continue
+    }
+
+    const targetPath = resolvePath(localDir, entry.name)
+    const relativeTarget = relative(localDir, targetPath)
+    if (isAbsolute(relativeTarget) || relativeTarget.startsWith('..')) {
+      throw new Error(`Unsafe marketplace entry: ${entry.name}`)
+    }
+
+    if (entry.type === 'dir') {
+      await downloadMarketplaceDirectory(entry.path, targetPath)
+      continue
+    }
+
+    if (entry.type !== 'file' || !entry.download_url) {
+      continue
+    }
+
+    await downloadMarketplaceFile(entry.download_url, targetPath)
+  }
+}
+
+async function fetchGitHubContents(remotePath: string): Promise<GitHubContentItem[]> {
+  const url = `${PLUGIN_MARKETPLACE_API_CONTENTS_URL}/${encodeURIComponentPath(remotePath)}?ref=main`
+  const response = await net.fetch(url, {
+    redirect: 'follow',
+    headers: {
+      accept: 'application/vnd.github+json',
+      'User-Agent': 'Noema Desktop',
+    },
+  })
+  if (!response.ok) {
+    throw new Error(`Marketplace content request failed: ${response.status}`)
+  }
+
+  const data = await response.json() as GitHubContentItem[] | GitHubContentItem
+  return Array.isArray(data) ? data : [data]
+}
+
+async function downloadMarketplaceFile(downloadUrl: string, targetPath: string): Promise<void> {
+  const response = await net.fetch(downloadUrl, {
+    redirect: 'follow',
+    headers: {
+      'User-Agent': 'Noema Desktop',
+    },
+  })
+  if (!response.ok) {
+    throw new Error(`Marketplace file download failed: ${response.status}`)
+  }
+
+  await mkdir(resolvePath(targetPath, '..'), { recursive: true })
+  await writeFile(targetPath, Buffer.from(await response.arrayBuffer()))
+}
+
+function encodeURIComponentPath(path: string): string {
+  return path.split('/').map(part => encodeURIComponent(part)).join('/')
 }
 
 async function resolvePluginDialogDefaultPath(
