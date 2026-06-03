@@ -904,6 +904,13 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'plugins.installedStatus': '已安装',
     'plugins.enabledStatus': '已启用',
     'plugins.availableStatus': '可获取',
+    'plugins.uninstall': '卸载插件',
+    'plugins.uninstallTitle': '卸载插件',
+    'plugins.uninstallConfirm': '将从本地删除 {name} 的插件目录。这个操作无法撤销。',
+    'plugins.uninstalled': '插件已卸载',
+    'plugins.uninstallFailed': '插件卸载失败: {error}',
+    'plugins.dangerZone': '危险操作',
+    'plugins.uninstallDesc': '从本机删除这个插件目录。若插件正在运行，运行时会在下一次插件重载后完全移除。',
     'plugins.loadFailed': '插件加载失败',
     'plugins.uiLoadFailed': '插件 UI 加载失败',
     'plugins.empty': '未发现插件',
@@ -1283,6 +1290,13 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'plugins.installedStatus': 'Installed',
     'plugins.enabledStatus': 'Enabled',
     'plugins.availableStatus': 'Available',
+    'plugins.uninstall': 'Uninstall Plugin',
+    'plugins.uninstallTitle': 'Uninstall Plugin',
+    'plugins.uninstallConfirm': 'Delete the local plugin directory for {name}. This cannot be undone.',
+    'plugins.uninstalled': 'Plugin uninstalled',
+    'plugins.uninstallFailed': 'Plugin uninstall failed: {error}',
+    'plugins.dangerZone': 'Danger Zone',
+    'plugins.uninstallDesc': 'Delete this plugin directory from this machine. If it is running, it is fully removed on the next plugin reload.',
     'plugins.loadFailed': 'Failed to load plugins',
     'plugins.uiLoadFailed': 'Plugin UI load failed',
     'plugins.empty': 'No plugins found',
@@ -5319,6 +5333,48 @@ async function refreshPluginMarketplace(): Promise<void> {
   }
 }
 
+async function uninstallPlugin(pluginId: string): Promise<void> {
+  const plugin = cachedPlugins.find(item => item.id === pluginId)
+  if (!plugin) {
+    return
+  }
+
+  const confirmed = await showConfirmDialog({
+    title: t('plugins.uninstallTitle'),
+    message: tf('plugins.uninstallConfirm', {
+      name: pluginText(plugin, 'name', plugin.name),
+    }),
+    detail: plugin.pluginDir,
+    confirmText: t('plugins.uninstall'),
+    tone: 'danger',
+  })
+  if (!confirmed) {
+    return
+  }
+
+  const result = await window.electronAPI.uninstallPlugin(pluginId)
+  if (!result.success) {
+    showPanelNotice(tf('plugins.uninstallFailed', { error: result.error ?? 'unknown error' }), 'error')
+    return
+  }
+
+  const settings = await window.electronAPI.getSettings()
+  const nextPlugins = { ...(settings.plugins ?? {}) }
+  delete nextPlugins[pluginId]
+  const nextPluginConfigs = { ...(settings.pluginConfigs ?? {}) }
+  delete nextPluginConfigs[pluginId]
+  await window.electronAPI.updateSettings({
+    plugins: nextPlugins,
+    pluginConfigs: nextPluginConfigs,
+  })
+
+  pluginsListLoaded = false
+  activePluginDetail = null
+  showPanelNotice(t('plugins.uninstalled'))
+  await loadPluginsSection(true)
+  await loadPluginUISurfaces()
+}
+
 function renderPluginListCard(plugin: PluginInfo): string {
   return `
     <div class="plugin-card plugin-card-list" data-plugin-id="${escapeHtml(plugin.id)}">
@@ -5368,6 +5424,7 @@ function renderPluginDetail(plugin: PluginInfo, page: 'main' | 'advanced' = 'mai
       </div>
     </div>
     ${isAdvancedPage ? '' : renderPluginAdminContainer(plugin)}
+    ${isAdvancedPage ? '' : renderPluginDangerZone(plugin)}
   `
 
   if (!isAdvancedPage) {
@@ -5425,6 +5482,18 @@ function renderPluginAdminContainer(plugin: PluginInfo): string {
   return `
     <div class="plugin-card plugin-admin-card" data-plugin-admin="${escapeHtml(plugin.id)}">
       <div class="plugin-admin-loading">${escapeHtml(t('plugins.adminLoading'))}</div>
+    </div>
+  `
+}
+
+function renderPluginDangerZone(plugin: PluginInfo): string {
+  return `
+    <div class="plugin-card plugin-danger-card" data-plugin-danger="${escapeHtml(plugin.id)}">
+      <div class="plugin-danger-copy">
+        <div class="plugin-admin-title">${escapeHtml(t('plugins.dangerZone'))}</div>
+        <div class="plugin-admin-subtitle">${escapeHtml(t('plugins.uninstallDesc'))}</div>
+      </div>
+      <button class="plugin-admin-button danger" type="button" data-plugin-uninstall="${escapeHtml(plugin.id)}">${escapeHtml(t('plugins.uninstall'))}</button>
     </div>
   `
 }
@@ -5894,6 +5963,13 @@ function bindPluginsListEvents(): void {
     if (marketplaceSourceButton) {
       event.stopPropagation()
       void window.electronAPI.openPluginMarketplaceSource(marketplaceSourceButton.dataset.pluginMarketplaceSource)
+      return
+    }
+
+    const uninstallButton = target.closest<HTMLButtonElement>('[data-plugin-uninstall]')
+    if (uninstallButton?.dataset.pluginUninstall) {
+      event.stopPropagation()
+      void uninstallPlugin(uninstallButton.dataset.pluginUninstall)
       return
     }
 

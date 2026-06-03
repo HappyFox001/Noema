@@ -2113,6 +2113,21 @@ body.theme-day .settings-telemetry-bar {
   color: rgba(255, 255, 255, 0.38);
 }
 
+.plugin-danger-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  border-color: rgba(255, 112, 112, 0.14);
+  background:
+    linear-gradient(180deg, rgba(255, 112, 112, 0.045), rgba(255, 255, 255, 0.018)),
+    rgba(120, 28, 28, 0.045);
+}
+
+.plugin-danger-copy {
+  min-width: 0;
+}
+
 .plugin-enter {
   color: rgba(255, 255, 255, 0.62);
 }
@@ -5876,6 +5891,10 @@ body.task-active:not(.settings-open) #main-view {
 
 /* Responsive */
 @media (max-width: 480px) {
+  .plugin-danger-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .config-field {
     grid-template-columns: minmax(0, 1fr);
     align-items: flex-start;

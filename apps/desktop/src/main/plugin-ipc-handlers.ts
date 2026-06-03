@@ -6,7 +6,11 @@ import { isAbsolute, join, relative, resolve as resolvePath } from 'path'
 import { fileURLToPath, pathToFileURL } from 'url'
 import { app, dialog, net, shell, type BrowserWindow, type IpcMain, type OpenDialogOptions } from 'electron'
 import type { AppSettings } from './settings-store.js'
-import { discoverRuntimePlugins, invokeRuntimePluginAdminAction } from './plugin-loader.js'
+import {
+  discoverRuntimePlugins,
+  invokeRuntimePluginAdminAction,
+  uninstallRuntimePlugin,
+} from './plugin-loader.js'
 
 const PLUGIN_MARKETPLACE_REGISTRY_URL = 'https://raw.githubusercontent.com/HappyFox001/Noema-Plugin/main/registry.json'
 const PLUGIN_MARKETPLACE_REPO_URL = 'https://github.com/HappyFox001/Noema-Plugin'
@@ -114,6 +118,15 @@ export function registerPluginIpcHandlers(
       : PLUGIN_MARKETPLACE_REPO_URL
     await shell.openExternal(target)
     return { success: true }
+  })
+
+  ipcMain.handle('plugins:uninstall', async (_event, pluginId: string) => {
+    try {
+      const result = await uninstallRuntimePlugin(options.resolveRuntimePluginsDir(), pluginId)
+      return { success: true, ...result }
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
   })
 
   ipcMain.handle('plugins:adminAction', async (_event, pluginId: string, action: string, payload: unknown) => {

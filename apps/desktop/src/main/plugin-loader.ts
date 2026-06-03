@@ -6,8 +6,8 @@
  */
 import { app } from 'electron'
 import { existsSync } from 'fs'
-import { mkdir, readdir, readFile } from 'fs/promises'
-import { dirname, isAbsolute, join, relative, resolve } from 'path'
+import { mkdir, readdir, readFile, rm } from 'fs/promises'
+import { isAbsolute, join, relative, resolve } from 'path'
 import { pathToFileURL } from 'url'
 import type {
   PluginAdminSchema,
@@ -152,6 +152,40 @@ async function readRuntimePluginManifests(
   return manifests
 }
 
+export function invalidateRuntimePluginManifests(pluginsDir?: string): void {
+  if (pluginsDir) {
+    manifestCache.delete(resolve(pluginsDir))
+    return
+  }
+
+  manifestCache.clear()
+}
+
+export async function uninstallRuntimePlugin(
+  pluginsDir: string,
+  pluginId: string
+): Promise<{ pluginDir: string }> {
+  const manifests = await readRuntimePluginManifests(pluginsDir)
+  const entry = manifests.find(item => item.manifest.id === pluginId)
+  if (!entry) {
+    throw new Error(`Plugin not found: ${pluginId}`)
+  }
+
+  if (!isRuntimePluginDirAllowed(pluginsDir, entry.pluginDir)) {
+    throw new Error(`Plugin directory is outside local plugin roots: ${entry.pluginDir}`)
+  }
+
+  await rm(entry.pluginDir, { recursive: true, force: true })
+  invalidateRuntimePluginManifests(pluginsDir)
+  for (const mainPath of factoryCache.keys()) {
+    if (isPathInside(entry.pluginDir, mainPath)) {
+      factoryCache.delete(mainPath)
+    }
+  }
+
+  return { pluginDir: entry.pluginDir }
+}
+
 async function listRuntimePluginDirs(pluginsDir: string): Promise<string[]> {
   const pluginRoots = getRuntimePluginRoots(pluginsDir)
   const pluginDirs: string[] = []
@@ -182,13 +216,19 @@ async function listRuntimePluginDirs(pluginsDir: string): Promise<string[]> {
 }
 
 function getRuntimePluginRoots(pluginsDir: string): string[] {
-  const projectRoot = dirname(resolve(pluginsDir))
-  const workspaceRoot = dirname(projectRoot)
-  const externalPluginsDir = join(workspaceRoot, 'Noema-plugin')
   return [
     join(pluginsDir, 'must'),
-    join(externalPluginsDir, 'plugins'),
+    join(pluginsDir, 'local'),
   ]
+}
+
+function isRuntimePluginDirAllowed(pluginsDir: string, pluginDir: string): boolean {
+  return getRuntimePluginRoots(pluginsDir).some(root => isPathInside(root, pluginDir))
+}
+
+function isPathInside(parent: string, child: string): boolean {
+  const relativePath = relative(resolve(parent), resolve(child))
+  return relativePath === '' || (!isAbsolute(relativePath) && !relativePath.startsWith('..'))
 }
 
 async function loadRuntimePlugin(
