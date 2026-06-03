@@ -889,6 +889,21 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'taskRuntime.maxTurnsDesc': '任务运行超过该轮数后停止。',
     'taskRuntime.title': '任务执行参数',
     'plugins.title': '插件',
+    'plugins.marketplace': '插件市场',
+    'plugins.installed': '本地插件',
+    'plugins.refresh': '刷新',
+    'plugins.refreshing': '刷新中...',
+    'plugins.marketplaceCached': '缓存于 {time}',
+    'plugins.marketplaceFetched': '更新于 {time}',
+    'plugins.marketplaceRefreshFailed': '刷新失败: {error}',
+    'plugins.marketplaceSearch': '搜索插件、标签或描述',
+    'plugins.marketplaceEmpty': '未找到匹配的远程插件',
+    'plugins.marketplaceUnavailable': '插件市场暂不可用',
+    'plugins.marketplaceSource': '来源',
+    'plugins.viewSource': '查看仓库',
+    'plugins.installedStatus': '已安装',
+    'plugins.enabledStatus': '已启用',
+    'plugins.availableStatus': '可获取',
     'plugins.loadFailed': '插件加载失败',
     'plugins.uiLoadFailed': '插件 UI 加载失败',
     'plugins.empty': '未发现插件',
@@ -1253,6 +1268,21 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'taskRuntime.maxTurnsDesc': 'Stop a task after this many runtime turns.',
     'taskRuntime.title': 'Task Runtime Params',
     'plugins.title': 'Plugins',
+    'plugins.marketplace': 'Marketplace',
+    'plugins.installed': 'Installed',
+    'plugins.refresh': 'Refresh',
+    'plugins.refreshing': 'Refreshing...',
+    'plugins.marketplaceCached': 'Cached at {time}',
+    'plugins.marketplaceFetched': 'Updated at {time}',
+    'plugins.marketplaceRefreshFailed': 'Refresh failed: {error}',
+    'plugins.marketplaceSearch': 'Search plugins, tags, or descriptions',
+    'plugins.marketplaceEmpty': 'No remote plugins match your search',
+    'plugins.marketplaceUnavailable': 'Plugin marketplace unavailable',
+    'plugins.marketplaceSource': 'Source',
+    'plugins.viewSource': 'View Source',
+    'plugins.installedStatus': 'Installed',
+    'plugins.enabledStatus': 'Enabled',
+    'plugins.availableStatus': 'Available',
     'plugins.loadFailed': 'Failed to load plugins',
     'plugins.uiLoadFailed': 'Plugin UI load failed',
     'plugins.empty': 'No plugins found',
@@ -1712,6 +1742,21 @@ type PluginInfo = {
     }>
   }
 }
+
+type PluginMarketplaceItem = {
+  id: string
+  name: string
+  version?: string
+  description?: string
+  path?: string
+  manifest?: string
+  tags: string[]
+  sourceUrl: string
+  installed: boolean
+  enabled: boolean
+}
+
+type PluginPage = 'local' | 'marketplace'
 
 type Live2dModelCapabilities = {
   motionGroups: string[]
@@ -3516,6 +3561,14 @@ let activeLearningView: LearningView = 'overview'
 let lastLearningOverview: LearningOverviewData | null = null
 let activeLearningDetail: { type: LearningDetailType; id: string } | null = null
 let cachedPlugins: PluginInfo[] = []
+let cachedPluginMarketplace: PluginMarketplaceItem[] = []
+let pluginMarketplaceError = ''
+let pluginMarketplaceSource = ''
+let pluginMarketplaceQuery = ''
+let pluginMarketplaceCached = false
+let pluginMarketplaceFetchedAt: number | undefined
+let pluginMarketplaceRefreshing = false
+let activePluginPage: PluginPage = 'local'
 let activePluginDetail: { pluginId: string; page: 'main' | 'advanced' } | null = null
 let pluginsListLoadPromise: Promise<void> | null = null
 let pluginsListLoaded = false
@@ -5093,7 +5146,7 @@ personalitySelect.addEventListener('change', async () => {
 
 async function loadPluginsSection(force = false): Promise<void> {
   if (!force && pluginsListLoaded) {
-    renderPluginsSection(cachedPlugins)
+    renderPluginsSection(cachedPlugins, cachedPluginMarketplace)
     return
   }
   if (pluginsListLoadPromise) {
@@ -5102,15 +5155,23 @@ async function loadPluginsSection(force = false): Promise<void> {
 
   pluginsList.innerHTML = `<div class="profile-loading">${escapeHtml(t('common.loading'))}</div>`
 
-  pluginsListLoadPromise = window.electronAPI.listPlugins()
-    .then((result) => {
-      if (!result.success) {
-        pluginsList.innerHTML = `<div class="profile-loading">${escapeHtml(t('plugins.loadFailed'))}: ${escapeHtml(result.error ?? 'unknown error')}</div>`
+  pluginsListLoadPromise = Promise.all([
+    window.electronAPI.listPlugins(),
+    window.electronAPI.listPluginMarketplace(),
+  ])
+    .then(([pluginsResult, marketplaceResult]) => {
+      if (!pluginsResult.success) {
+        pluginsList.innerHTML = `<div class="profile-loading">${escapeHtml(t('plugins.loadFailed'))}: ${escapeHtml(pluginsResult.error ?? 'unknown error')}</div>`
         return
       }
 
       pluginsListLoaded = true
-      renderPluginsSection(result.plugins)
+      cachedPluginMarketplace = marketplaceResult.success ? marketplaceResult.plugins : []
+      pluginMarketplaceError = marketplaceResult.success ? '' : (marketplaceResult.error ?? 'unknown error')
+      pluginMarketplaceSource = marketplaceResult.source ?? ''
+      pluginMarketplaceCached = marketplaceResult.cached === true
+      pluginMarketplaceFetchedAt = marketplaceResult.fetchedAt
+      renderPluginsSection(pluginsResult.plugins, cachedPluginMarketplace)
     })
     .finally(() => {
       pluginsListLoadPromise = null
@@ -5118,15 +5179,144 @@ async function loadPluginsSection(force = false): Promise<void> {
   return pluginsListLoadPromise
 }
 
-function renderPluginsSection(plugins: PluginInfo[]): void {
+function renderPluginsSection(plugins: PluginInfo[], marketplace = cachedPluginMarketplace): void {
   cachedPlugins = plugins
+  cachedPluginMarketplace = marketplace
   activePluginDetail = null
-  if (plugins.length === 0) {
-    pluginsList.innerHTML = `<div class="profile-loading">${escapeHtml(t('plugins.empty'))}</div>`
+
+  pluginsList.innerHTML = `
+    ${renderPluginPageTabs()}
+    <div class="plugin-page-panel">
+      ${activePluginPage === 'marketplace'
+        ? renderPluginMarketplace(marketplace)
+        : renderInstalledPluginsPage(plugins)}
+    </div>
+  `
+}
+
+function renderPluginPageTabs(): string {
+  return `
+    <div class="plugin-page-tabs" role="tablist" aria-label="${escapeHtml(t('plugins.title'))}">
+      <button class="plugin-page-tab ${activePluginPage === 'local' ? 'active' : ''}" type="button" role="tab" aria-selected="${activePluginPage === 'local'}" data-plugin-page="local">
+        <span>${escapeHtml(t('plugins.installed'))}</span>
+        <strong>${escapeHtml(String(cachedPlugins.length))}</strong>
+      </button>
+      <button class="plugin-page-tab ${activePluginPage === 'marketplace' ? 'active' : ''}" type="button" role="tab" aria-selected="${activePluginPage === 'marketplace'}" data-plugin-page="marketplace">
+        <span>${escapeHtml(t('plugins.marketplace'))}</span>
+        <strong>${escapeHtml(String(cachedPluginMarketplace.length))}</strong>
+      </button>
+    </div>
+  `
+}
+
+function renderInstalledPluginsPage(plugins: PluginInfo[]): string {
+  return `
+    <div class="plugin-section-heading">
+      <span>${escapeHtml(t('plugins.installed'))}</span>
+      <span>${escapeHtml(String(plugins.length))}</span>
+    </div>
+    ${plugins.length ? plugins.map(renderPluginListCard).join('') : `<div class="profile-loading">${escapeHtml(t('plugins.empty'))}</div>`}
+  `
+}
+
+function renderPluginMarketplace(marketplace: PluginMarketplaceItem[]): string {
+  const query = pluginMarketplaceQuery.trim().toLowerCase()
+  const filtered = query
+    ? marketplace.filter(item => getPluginMarketplaceSearchText(item).includes(query))
+    : marketplace
+  const sourceLabel = pluginMarketplaceSource
+    ? pluginMarketplaceSource.replace(/^https?:\/\//, '')
+    : 'github.com/HappyFox001/Noema-Plugin'
+  const syncText = pluginMarketplaceFetchedAt
+      ? tf(pluginMarketplaceCached ? 'plugins.marketplaceCached' : 'plugins.marketplaceFetched', {
+        time: formatTimestamp(pluginMarketplaceFetchedAt),
+      })
+    : ''
+
+  return `
+    <div class="plugin-marketplace-panel">
+      <div class="plugin-marketplace-header">
+        <div>
+          <div class="plugin-section-title">${escapeHtml(t('plugins.marketplace'))}</div>
+          <div class="plugin-marketplace-source">${escapeHtml(t('plugins.marketplaceSource'))}: ${escapeHtml(sourceLabel)}</div>
+          ${syncText ? `<div class="plugin-marketplace-source">${escapeHtml(syncText)}</div>` : ''}
+        </div>
+        <div class="plugin-marketplace-actions">
+          <button class="plugin-admin-button secondary plugin-marketplace-source-btn" type="button" data-plugin-marketplace-refresh="true" ${pluginMarketplaceRefreshing ? 'disabled' : ''}>${escapeHtml(pluginMarketplaceRefreshing ? t('plugins.refreshing') : t('plugins.refresh'))}</button>
+          <button class="plugin-admin-button secondary plugin-marketplace-source-btn" type="button" data-plugin-marketplace-source="${escapeHtml(pluginMarketplaceSource)}">${escapeHtml(t('plugins.viewSource'))}</button>
+        </div>
+      </div>
+      <input class="plugin-marketplace-search" type="search" value="${escapeHtml(pluginMarketplaceQuery)}" placeholder="${escapeHtml(t('plugins.marketplaceSearch'))}" data-plugin-marketplace-search="true" />
+      ${pluginMarketplaceError ? `<div class="plugin-marketplace-error">${escapeHtml(t('plugins.marketplaceUnavailable'))}: ${escapeHtml(pluginMarketplaceError)}</div>` : ''}
+      <div class="plugin-marketplace-grid">
+        ${filtered.length ? filtered.map(renderPluginMarketplaceCard).join('') : `<div class="plugin-marketplace-empty">${escapeHtml(t('plugins.marketplaceEmpty'))}</div>`}
+      </div>
+    </div>
+  `
+}
+
+function renderPluginMarketplaceCard(item: PluginMarketplaceItem): string {
+  const statusText = item.enabled
+    ? t('plugins.enabledStatus')
+    : item.installed
+      ? t('plugins.installedStatus')
+      : t('plugins.availableStatus')
+  return `
+    <div class="plugin-marketplace-card">
+      <div class="plugin-marketplace-card-top">
+        <div class="plugin-info">
+          <div class="plugin-title-row">
+            <span class="plugin-name">${escapeHtml(item.name)}</span>
+            ${item.version ? `<span class="plugin-version">v${escapeHtml(item.version)}</span>` : ''}
+          </div>
+          <div class="plugin-id">${escapeHtml(item.id)}</div>
+        </div>
+        <span class="plugin-marketplace-status ${item.enabled ? 'enabled' : item.installed ? 'installed' : ''}">${escapeHtml(statusText)}</span>
+      </div>
+      ${item.description ? `<div class="plugin-description">${escapeHtml(item.description)}</div>` : ''}
+      ${item.tags.length ? `<div class="plugin-marketplace-tags">${item.tags.map(tag => `<span>${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
+      <button class="plugin-admin-button secondary plugin-marketplace-card-btn" type="button" data-plugin-marketplace-source="${escapeHtml(item.sourceUrl)}">${escapeHtml(t('plugins.viewSource'))}</button>
+    </div>
+  `
+}
+
+function getPluginMarketplaceSearchText(item: PluginMarketplaceItem): string {
+  return [
+    item.id,
+    item.name,
+    item.version,
+    item.description,
+    item.path,
+    ...item.tags,
+  ].filter(Boolean).join(' ').toLowerCase()
+}
+
+async function refreshPluginMarketplace(): Promise<void> {
+  if (pluginMarketplaceRefreshing) {
     return
   }
 
-  pluginsList.innerHTML = plugins.map(renderPluginListCard).join('')
+  pluginMarketplaceRefreshing = true
+  pluginMarketplaceError = ''
+  renderPluginsSection(cachedPlugins, cachedPluginMarketplace)
+  try {
+    const result = await window.electronAPI.listPluginMarketplace({ refresh: true })
+    if (!result.success) {
+      throw new Error(result.error || 'unknown error')
+    }
+
+    cachedPluginMarketplace = result.plugins
+    pluginMarketplaceSource = result.source ?? pluginMarketplaceSource
+    pluginMarketplaceCached = result.cached === true
+    pluginMarketplaceFetchedAt = result.fetchedAt
+    pluginMarketplaceError = ''
+  } catch (error: any) {
+    pluginMarketplaceError = getErrorText(error)
+    showPanelNotice(tf('plugins.marketplaceRefreshFailed', { error: pluginMarketplaceError }), 'error')
+  } finally {
+    pluginMarketplaceRefreshing = false
+    renderPluginsSection(cachedPlugins, cachedPluginMarketplace)
+  }
 }
 
 function renderPluginListCard(plugin: PluginInfo): string {
@@ -5686,6 +5876,27 @@ function bindPluginsListEvents(): void {
       return
     }
 
+    const pageButton = target.closest<HTMLButtonElement>('[data-plugin-page]')
+    if (pageButton?.dataset.pluginPage === 'local' || pageButton?.dataset.pluginPage === 'marketplace') {
+      activePluginPage = pageButton.dataset.pluginPage
+      renderPluginsSection(cachedPlugins, cachedPluginMarketplace)
+      return
+    }
+
+    const marketplaceRefreshButton = target.closest<HTMLButtonElement>('[data-plugin-marketplace-refresh]')
+    if (marketplaceRefreshButton) {
+      event.stopPropagation()
+      void refreshPluginMarketplace()
+      return
+    }
+
+    const marketplaceSourceButton = target.closest<HTMLButtonElement>('[data-plugin-marketplace-source]')
+    if (marketplaceSourceButton) {
+      event.stopPropagation()
+      void window.electronAPI.openPluginMarketplaceSource(marketplaceSourceButton.dataset.pluginMarketplaceSource)
+      return
+    }
+
     const backButton = target.closest<HTMLButtonElement>('.plugin-back-btn')
     if (backButton) {
       if (activePluginDetail?.page === 'advanced') {
@@ -5699,8 +5910,8 @@ function bindPluginsListEvents(): void {
       return
     }
 
-    const pageButton = target.closest<HTMLButtonElement>('[data-plugin-config-page]')
-    if (pageButton?.dataset.pluginConfigPage === 'advanced' && activePluginDetail) {
+    const configPageButton = target.closest<HTMLButtonElement>('[data-plugin-config-page]')
+    if (configPageButton?.dataset.pluginConfigPage === 'advanced' && activePluginDetail) {
       const plugin = cachedPlugins.find(item => item.id === activePluginDetail?.pluginId)
       if (plugin) {
         renderPluginDetail(plugin, 'advanced')
@@ -5741,6 +5952,19 @@ function bindPluginsListEvents(): void {
     if (input.matches('input[data-plugin-config], select[data-plugin-config], textarea[data-plugin-config]')) {
       void updatePluginConfigInput(input)
     }
+  })
+
+  pluginsList.addEventListener('input', (event) => {
+    const input = event.target as HTMLInputElement | null
+    if (!input?.matches('[data-plugin-marketplace-search]')) {
+      return
+    }
+
+    pluginMarketplaceQuery = input.value
+    renderPluginsSection(cachedPlugins, cachedPluginMarketplace)
+    const searchInput = pluginsList.querySelector<HTMLInputElement>('[data-plugin-marketplace-search]')
+    searchInput?.focus()
+    searchInput?.setSelectionRange(pluginMarketplaceQuery.length, pluginMarketplaceQuery.length)
   })
 }
 

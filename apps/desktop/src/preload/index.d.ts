@@ -439,6 +439,30 @@ declare global {
           }
         }>
       }>
+      listPluginMarketplace: (options?: { refresh?: boolean }) => Promise<{
+        success: boolean
+        error?: string
+        source?: string
+        registryUrl?: string
+        cached?: boolean
+        fetchedAt?: number
+        plugins: Array<{
+          id: string
+          name: string
+          version?: string
+          description?: string
+          path?: string
+          manifest?: string
+          tags: string[]
+          sourceUrl: string
+          installed: boolean
+          enabled: boolean
+        }>
+      }>
+      openPluginMarketplaceSource: (sourceUrl?: string) => Promise<{
+        success: boolean
+        error?: string
+      }>
       pluginAdminAction: (pluginId: string, action: string, payload?: unknown) => Promise<{
         success: boolean
         state?: unknown

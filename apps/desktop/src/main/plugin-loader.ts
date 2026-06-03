@@ -7,7 +7,7 @@
 import { app } from 'electron'
 import { existsSync } from 'fs'
 import { mkdir, readdir, readFile } from 'fs/promises'
-import { isAbsolute, join, relative, resolve } from 'path'
+import { dirname, isAbsolute, join, relative, resolve } from 'path'
 import { pathToFileURL } from 'url'
 import type {
   PluginAdminSchema,
@@ -153,23 +153,42 @@ async function readRuntimePluginManifests(
 }
 
 async function listRuntimePluginDirs(pluginsDir: string): Promise<string[]> {
-  const mustDir = join(pluginsDir, 'must')
-  if (!existsSync(mustDir)) {
-    return []
-  }
-
-  const entries = await readdir(mustDir, { withFileTypes: true })
+  const pluginRoots = getRuntimePluginRoots(pluginsDir)
   const pluginDirs: string[] = []
+  const seenPluginDirs = new Set<string>()
 
-  for (const entry of entries) {
-    if (!entry.isDirectory()) {
+  for (const pluginRoot of pluginRoots) {
+    if (!existsSync(pluginRoot)) {
       continue
     }
 
-    pluginDirs.push(join(mustDir, entry.name))
+    const entries = await readdir(pluginRoot, { withFileTypes: true })
+    for (const entry of entries) {
+      if (!entry.isDirectory()) {
+        continue
+      }
+
+      const pluginDir = resolve(pluginRoot, entry.name)
+      if (seenPluginDirs.has(pluginDir)) {
+        continue
+      }
+
+      seenPluginDirs.add(pluginDir)
+      pluginDirs.push(pluginDir)
+    }
   }
 
   return pluginDirs
+}
+
+function getRuntimePluginRoots(pluginsDir: string): string[] {
+  const projectRoot = dirname(resolve(pluginsDir))
+  const workspaceRoot = dirname(projectRoot)
+  const externalPluginsDir = join(workspaceRoot, 'Noema-plugin')
+  return [
+    join(pluginsDir, 'must'),
+    join(externalPluginsDir, 'plugins'),
+  ]
 }
 
 async function loadRuntimePlugin(

@@ -140,6 +140,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   listPlugins: () =>
     ipcRenderer.invoke('plugins:list'),
 
+  listPluginMarketplace: (options) =>
+    ipcRenderer.invoke('plugins:marketplace', options),
+
+  openPluginMarketplaceSource: (sourceUrl) =>
+    ipcRenderer.invoke('plugins:openMarketplaceSource', sourceUrl),
+
   pluginAdminAction: (pluginId, action, payload) =>
     ipcRenderer.invoke('plugins:adminAction', pluginId, action, payload),
 

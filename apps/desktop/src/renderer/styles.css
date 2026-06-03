@@ -1855,6 +1855,213 @@ body.theme-day .settings-telemetry-bar {
   gap: 10px;
 }
 
+.plugin-page-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.plugin-page-tab {
+  min-width: 0;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.48);
+  font-family: var(--font-soft);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.plugin-page-tab strong {
+  flex-shrink: 0;
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.36);
+}
+
+.plugin-page-tab.active {
+  border-color: rgba(255, 255, 255, 0.10);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.065), rgba(255, 255, 255, 0.026)),
+    rgba(255, 255, 255, 0.035);
+  color: rgba(255, 255, 255, 0.88);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.plugin-page-tab.active strong {
+  color: rgba(255, 255, 255, 0.60);
+}
+
+.plugin-page-panel {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.plugin-marketplace-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.018)),
+    rgba(255, 255, 255, 0.018);
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+}
+
+.plugin-marketplace-header,
+.plugin-marketplace-card-top,
+.plugin-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.plugin-section-title,
+.plugin-section-heading {
+  font-family: var(--font-soft);
+  font-size: 12px;
+  letter-spacing: 0;
+  color: rgba(255, 255, 255, 0.76);
+}
+
+.plugin-section-heading {
+  padding: 2px 2px 0;
+  color: rgba(255, 255, 255, 0.52);
+}
+
+.plugin-marketplace-source {
+  margin-top: 4px;
+  font-family: var(--font-ui);
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.36);
+  overflow-wrap: anywhere;
+}
+
+.plugin-marketplace-actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.plugin-marketplace-search {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  padding: 0 11px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  outline: none;
+  background: rgba(0, 0, 0, 0.16);
+  color: rgba(255, 255, 255, 0.84);
+  font-family: var(--font-soft);
+  font-size: 12px;
+}
+
+.plugin-marketplace-search:focus {
+  border-color: rgba(255, 255, 255, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.plugin-marketplace-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(178px, 1fr));
+  gap: 10px;
+}
+
+.plugin-marketplace-card {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.065);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.plugin-marketplace-status {
+  flex-shrink: 0;
+  padding: 4px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.48);
+  font-family: var(--font-ui);
+  font-size: 9px;
+  line-height: 1;
+}
+
+.plugin-marketplace-status.installed {
+  color: rgba(164, 219, 255, 0.82);
+  border-color: rgba(164, 219, 255, 0.20);
+  background: rgba(80, 158, 205, 0.08);
+}
+
+.plugin-marketplace-status.enabled {
+  color: rgba(178, 234, 195, 0.88);
+  border-color: rgba(178, 234, 195, 0.22);
+  background: rgba(77, 170, 105, 0.09);
+}
+
+.plugin-marketplace-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.plugin-marketplace-tags span {
+  padding: 3px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.065);
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.38);
+  font-family: var(--font-ui);
+  font-size: 9px;
+  line-height: 1;
+}
+
+.plugin-marketplace-card-btn,
+.plugin-marketplace-source-btn {
+  align-self: flex-start;
+  min-height: 28px;
+}
+
+.plugin-marketplace-empty,
+.plugin-marketplace-error {
+  grid-column: 1 / -1;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.42);
+  font-family: var(--font-soft);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.plugin-marketplace-error {
+  color: rgba(255, 196, 196, 0.82);
+  border-color: rgba(255, 112, 112, 0.16);
+  background: rgba(150, 42, 42, 0.08);
+}
+
 .plugin-card {
   min-width: 0;
   max-width: 100%;
@@ -6035,6 +6242,8 @@ body.theme-day .model-manager-title,
 body.theme-day .config-model-name input,
 body.theme-day .local-model-name span:first-child,
 body.theme-day .config-model-active-badge,
+body.theme-day .plugin-section-title,
+body.theme-day .plugin-page-tab.active,
 body.theme-day .plugin-name,
 body.theme-day .plugin-config-label,
 body.theme-day .plugin-admin-title,
@@ -6068,6 +6277,9 @@ body.theme-day .model-overview-meta span,
 body.theme-day .model-manager-subtitle,
 body.theme-day .config-model-provider,
 body.theme-day .config-model-meta,
+body.theme-day .plugin-marketplace-source,
+body.theme-day .plugin-section-heading,
+body.theme-day .plugin-marketplace-empty,
 body.theme-day .plugin-version,
 body.theme-day .plugin-id,
 body.theme-day .plugin-description,
@@ -6095,8 +6307,13 @@ body.theme-day .conversation-item.assistant,
 body.theme-day .memory-item,
 body.theme-day .account-input-item,
 body.theme-day .profile-field,
+body.theme-day .plugin-page-tabs,
+body.theme-day .plugin-page-tab.active,
+body.theme-day .plugin-marketplace-panel,
+body.theme-day .plugin-marketplace-card,
 body.theme-day .plugin-admin-item,
 body.theme-day .plugin-admin-skill,
+body.theme-day .plugin-marketplace-tags span,
 body.theme-day .plugin-permissions span {
   background: rgba(255, 255, 255, 0.42) !important;
   border-color: rgba(34, 80, 76, 0.12) !important;
@@ -6136,6 +6353,42 @@ body.theme-day .local-model-status {
   border-color: rgba(88, 100, 100, 0.18) !important;
   color: rgba(54, 64, 64, 0.94) !important;
   text-shadow: none !important;
+}
+
+body.theme-day .plugin-marketplace-search {
+  background: rgba(255, 255, 255, 0.58) !important;
+  border-color: rgba(34, 80, 76, 0.14) !important;
+  color: rgba(22, 34, 36, 0.88) !important;
+}
+
+body.theme-day .plugin-marketplace-status {
+  color: rgba(54, 64, 64, 0.78);
+  border-color: rgba(34, 80, 76, 0.14);
+  background: rgba(92, 104, 104, 0.07);
+}
+
+body.theme-day .plugin-marketplace-status.installed {
+  color: rgba(22, 92, 122, 0.90);
+  border-color: rgba(42, 116, 152, 0.20);
+  background: rgba(64, 142, 182, 0.10);
+}
+
+body.theme-day .plugin-marketplace-status.enabled {
+  color: rgba(32, 112, 64, 0.90);
+  border-color: rgba(54, 132, 80, 0.20);
+  background: rgba(78, 160, 100, 0.10);
+}
+
+body.theme-day .plugin-page-tab {
+  color: rgba(47, 66, 68, 0.62);
+}
+
+body.theme-day .plugin-page-tab strong {
+  color: rgba(47, 66, 68, 0.48);
+}
+
+body.theme-day .plugin-page-tab.active strong {
+  color: rgba(16, 28, 31, 0.70);
 }
 
 body.theme-day .loading-spinner {
@@ -6532,6 +6785,7 @@ body.theme-day .settings-brand-logo {
 .settings-btn,
 .config-add-btn,
 .model-back-btn,
+.plugin-page-tab,
 .plugin-back-btn,
 .config-model-btn,
 .config-reset-btn,
@@ -7153,6 +7407,7 @@ body.theme-day .tts-button {
 .settings-btn:focus-visible,
 .config-add-btn:focus-visible,
 .model-back-btn:focus-visible,
+.plugin-page-tab:focus-visible,
 .plugin-back-btn:focus-visible,
 .config-model-btn:focus-visible,
 .config-reset-btn:focus-visible,
@@ -7172,6 +7427,7 @@ body.theme-day .tts-button {
 .settings-btn:active,
 .config-add-btn:active,
 .model-back-btn:active,
+.plugin-page-tab:active,
 .plugin-back-btn:active,
 .config-model-btn:active,
 .config-reset-btn:active,

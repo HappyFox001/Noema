@@ -1,12 +1,35 @@
 /**
  * IPC handlers for runtime plugin discovery, admin actions, and plugin asset selection.
  */
-import { readFile, readdir } from 'fs/promises'
+import { mkdir, readFile, readdir, writeFile } from 'fs/promises'
 import { isAbsolute, join, relative, resolve as resolvePath } from 'path'
 import { fileURLToPath, pathToFileURL } from 'url'
-import { dialog, type BrowserWindow, type IpcMain, type OpenDialogOptions } from 'electron'
+import { app, dialog, net, shell, type BrowserWindow, type IpcMain, type OpenDialogOptions } from 'electron'
 import type { AppSettings } from './settings-store.js'
 import { discoverRuntimePlugins, invokeRuntimePluginAdminAction } from './plugin-loader.js'
+
+const PLUGIN_MARKETPLACE_REGISTRY_URL = 'https://raw.githubusercontent.com/HappyFox001/Noema-Plugin/main/registry.json'
+const PLUGIN_MARKETPLACE_REPO_URL = 'https://github.com/HappyFox001/Noema-Plugin'
+
+interface PluginMarketplaceRegistry {
+  schemaVersion?: number
+  plugins?: PluginMarketplaceRegistryItem[]
+}
+
+interface PluginMarketplaceRegistryItem {
+  id?: string
+  name?: string
+  version?: string
+  description?: string
+  path?: string
+  manifest?: string
+  tags?: string[]
+}
+
+interface PluginMarketplaceCache {
+  fetchedAt: number
+  registry: PluginMarketplaceRegistry
+}
 
 export function registerPluginIpcHandlers(
   ipcMain: IpcMain,
@@ -30,6 +53,67 @@ export function registerPluginIpcHandlers(
     } catch (error: any) {
       return { success: false, error: error.message, plugins: [] }
     }
+  })
+
+  ipcMain.handle('plugins:marketplace', async (_event, request?: { refresh?: boolean }) => {
+    try {
+      const settings = options.getSettings()
+      const installedPlugins = await discoverRuntimePlugins(
+        options.resolveRuntimePluginsDir(),
+        settings.plugins,
+        settings.pluginConfigs
+      )
+      const installedById = new Map(installedPlugins.map(plugin => [plugin.id, plugin]))
+      const { registry, cached, fetchedAt } = await loadPluginMarketplaceRegistry(request?.refresh === true)
+      const items = (registry.plugins ?? [])
+        .filter(item => typeof item.id === 'string' && item.id.trim().length > 0)
+        .map(item => {
+          const id = item.id!.trim()
+          const installed = installedById.get(id)
+          const sourceUrl = item.path
+            ? `${PLUGIN_MARKETPLACE_REPO_URL}/tree/main/${item.path.replace(/^\/+/, '')}`
+            : PLUGIN_MARKETPLACE_REPO_URL
+          return {
+            id,
+            name: item.name || id,
+            version: item.version,
+            description: item.description,
+            path: item.path,
+            manifest: item.manifest,
+            tags: Array.isArray(item.tags) ? item.tags.filter(tag => typeof tag === 'string') : [],
+            sourceUrl,
+            installed: Boolean(installed),
+            enabled: installed?.enabled ?? false,
+          }
+        })
+
+      return {
+        success: true,
+        source: PLUGIN_MARKETPLACE_REPO_URL,
+        registryUrl: PLUGIN_MARKETPLACE_REGISTRY_URL,
+        cached,
+        fetchedAt,
+        plugins: items,
+      }
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message,
+        source: PLUGIN_MARKETPLACE_REPO_URL,
+        registryUrl: PLUGIN_MARKETPLACE_REGISTRY_URL,
+        cached: false,
+        fetchedAt: undefined,
+        plugins: [],
+      }
+    }
+  })
+
+  ipcMain.handle('plugins:openMarketplaceSource', async (_event, sourceUrl?: string) => {
+    const target = typeof sourceUrl === 'string' && sourceUrl.startsWith(PLUGIN_MARKETPLACE_REPO_URL)
+      ? sourceUrl
+      : PLUGIN_MARKETPLACE_REPO_URL
+    await shell.openExternal(target)
+    return { success: true }
   })
 
   ipcMain.handle('plugins:adminAction', async (_event, pluginId: string, action: string, payload: unknown) => {
@@ -141,6 +225,85 @@ export function registerPluginIpcHandlers(
       return { success: false, error: error.message }
     }
   })
+}
+
+async function loadPluginMarketplaceRegistry(forceRefresh: boolean): Promise<{
+  registry: PluginMarketplaceRegistry
+  cached: boolean
+  fetchedAt: number
+}> {
+  if (!forceRefresh) {
+    const cached = await readPluginMarketplaceCache()
+    if (cached) {
+      return {
+        registry: cached.registry,
+        cached: true,
+        fetchedAt: cached.fetchedAt,
+      }
+    }
+  }
+
+  try {
+    const registry = await fetchPluginMarketplaceRegistry()
+    const fetchedAt = Date.now()
+    await writePluginMarketplaceCache({ fetchedAt, registry })
+    return { registry, cached: false, fetchedAt }
+  } catch (error) {
+    const cached = await readPluginMarketplaceCache()
+    if (cached) {
+      return {
+        registry: cached.registry,
+        cached: true,
+        fetchedAt: cached.fetchedAt,
+      }
+    }
+    throw error
+  }
+}
+
+async function readPluginMarketplaceCache(): Promise<PluginMarketplaceCache | null> {
+  try {
+    const raw = await readFile(getPluginMarketplaceCachePath(), 'utf8')
+    const parsed = JSON.parse(raw) as PluginMarketplaceCache
+    if (!parsed || typeof parsed.fetchedAt !== 'number' || !parsed.registry) {
+      return null
+    }
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+async function writePluginMarketplaceCache(cache: PluginMarketplaceCache): Promise<void> {
+  const cachePath = getPluginMarketplaceCachePath()
+  await mkdir(resolvePath(cachePath, '..'), { recursive: true })
+  await writeFile(cachePath, JSON.stringify(cache, null, 2), 'utf8')
+}
+
+function getPluginMarketplaceCachePath(): string {
+  return join(app.getPath('userData'), 'plugin-marketplace-cache.json')
+}
+
+async function fetchPluginMarketplaceRegistry(): Promise<PluginMarketplaceRegistry> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 8000)
+  try {
+    const response = await net.fetch(PLUGIN_MARKETPLACE_REGISTRY_URL, {
+      redirect: 'follow',
+      signal: controller.signal,
+      headers: {
+        accept: 'application/json',
+        'User-Agent': 'Noema Desktop',
+      },
+    })
+    if (!response.ok) {
+      throw new Error(`Marketplace registry request failed: ${response.status}`)
+    }
+
+    return await response.json() as PluginMarketplaceRegistry
+  } finally {
+    clearTimeout(timeout)
+  }
 }
 
 async function resolvePluginDialogDefaultPath(
