@@ -3750,7 +3750,9 @@ function setLiquidGlassEnabled(enabled: boolean): void {
     liquidGlassSurface = null
     return
   }
-  ensureLiquidGlassSurfaceActive(false)
+  if (document.body.classList.contains('settings-open')) {
+    ensureLiquidGlassSurfaceActive(true)
+  }
 }
 
 function ensureLiquidGlassSurfaceActive(active: boolean): void {
@@ -4755,7 +4757,7 @@ async function openSettings(section?: string): Promise<void> {
     document.body.classList.remove('settings-closing')
     document.body.classList.add('settings-open')
     document.body.classList.remove('window-mode-changing')
-    ensureLiquidGlassSurfaceActive(false)
+    ensureLiquidGlassSurfaceActive(true)
     startSystemTelemetry()
     settingsPanel.classList.remove('warping-out')
     settingsPanel.classList.add('visible', 'warping-in')
