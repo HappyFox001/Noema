@@ -711,8 +711,8 @@ declare global {
       }>
       endThemeTransitionCover: () => Promise<{ success: boolean; error?: string }>
       playThemeTransitionCover: (afterDataUrl: string) => Promise<{ success: boolean; error?: string }>
-      setCompactWindowMode: (compact: boolean) => void
-      setTaskWindowMode: (active: boolean) => void
+      setCompactWindowMode: (compact: boolean) => Promise<{ success: boolean; error?: string }>
+      setTaskWindowMode: (active: boolean) => Promise<{ success: boolean; error?: string }>
     }
   }
 }

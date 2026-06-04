@@ -3030,7 +3030,7 @@ function setTaskPanelVisible(visible: boolean): void {
   document.body.classList.toggle('task-active', visible)
   pluginUITaskPanel.setAttribute('aria-hidden', String(!visible))
   if (!document.body.classList.contains('settings-open')) {
-    window.electronAPI.setTaskWindowMode(visible)
+    void window.electronAPI.setTaskWindowMode(visible)
   }
   syncPluginUIStateSoon()
 }
@@ -4729,17 +4729,21 @@ function switchSettingsSection(section: string): void {
   }
 }
 
-function openSettings(section?: string) {
+async function openSettings(section?: string): Promise<void> {
   if (settingsCloseAnimationTimer !== undefined) {
     window.clearTimeout(settingsCloseAnimationTimer)
     settingsCloseAnimationTimer = undefined
   }
 
-  window.electronAPI.setCompactWindowMode(false)
+  document.body.classList.add('window-mode-changing')
   orbAnimationPaused = true
   stopOrbAnimation()
+  await window.electronAPI.setCompactWindowMode(false).catch((error) => {
+    console.warn('[Window] Failed to enter settings window mode:', error)
+  })
   document.body.classList.remove('settings-closing')
   document.body.classList.add('settings-open')
+  document.body.classList.remove('window-mode-changing')
   ensureLiquidGlassSurfaceActive(true)
   startSystemTelemetry()
   settingsPanel.classList.remove('warping-out')
@@ -4768,7 +4772,7 @@ function openSettings(section?: string) {
 orbSettingsBtn.addEventListener('click', (event) => {
   event.preventDefault()
   event.stopPropagation()
-  openSettings()
+  void openSettings()
 })
 
 // Close settings panel
@@ -4786,18 +4790,28 @@ function closeSettings() {
   }
 
   settingsCloseAnimationTimer = window.setTimeout(() => {
+    void finishCloseSettings()
+  }, 260)
+}
+
+async function finishCloseSettings(): Promise<void> {
+  document.body.classList.add('window-mode-changing')
+  try {
     if (document.body.classList.contains('task-active')) {
-      window.electronAPI.setTaskWindowMode(true)
+      await window.electronAPI.setTaskWindowMode(true)
     } else {
-      window.electronAPI.setCompactWindowMode(true)
+      await window.electronAPI.setCompactWindowMode(true)
     }
+  } catch (error) {
+    console.warn('[Window] Failed to leave settings window mode:', error)
+  } finally {
     orbAnimationPaused = false
-    document.body.classList.remove('settings-open', 'settings-closing')
+    document.body.classList.remove('settings-open', 'settings-closing', 'window-mode-changing')
     settingsPanel.classList.remove('visible', 'warping-out')
     mainView.removeAttribute('aria-hidden')
     startOrbAnimation()
     settingsCloseAnimationTimer = undefined
-  }, 260)
+  }
 }
 
 function handleSettingsClose(event: Event) {
@@ -4811,7 +4825,7 @@ settingsClose.addEventListener('click', handleSettingsClose)
 
 window.electronAPI.onAppMenuCommand((message) => {
   if (message.command === 'open-settings') {
-    openSettings(message.payload?.section)
+    void openSettings(message.payload?.section)
   }
 })
 

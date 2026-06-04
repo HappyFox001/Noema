@@ -3423,9 +3423,20 @@ body.theme-day .orb-settings-btn:hover {
 }
 
 body.settings-open #main-view {
-  opacity: 0.18;
-  transform: scale(0.985);
+  opacity: 0;
+  transform: none;
   pointer-events: none;
+}
+
+body.window-mode-changing #main-view {
+  opacity: 0 !important;
+  transform: none !important;
+  transition: none !important;
+  pointer-events: none;
+}
+
+body.window-mode-changing .settings-panel {
+  transition: none !important;
 }
 
 body:not(.settings-open) #main-view {

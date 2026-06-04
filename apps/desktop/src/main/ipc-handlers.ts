@@ -693,24 +693,28 @@ export function registerWindowIpcHandlers(
     }
   })
 
-  ipcMain.on('window:set-compact-mode', (event, compact) => {
+  ipcMain.handle('window:set-compact-mode', async (event, compact) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win) {
-      return
+      return { success: false, error: 'Window is not available' }
     }
 
     const size = compact ? options.compactWindowSize : options.settingsWindowSize
     options.resizeWindowAroundCenter(win, size.width, size.height)
+    await new Promise(resolve => setTimeout(resolve, 0))
+    return { success: true }
   })
 
-  ipcMain.on('window:set-task-mode', (event, active) => {
+  ipcMain.handle('window:set-task-mode', async (event, active) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win) {
-      return
+      return { success: false, error: 'Window is not available' }
     }
 
     const size = active ? options.taskWindowSize : options.compactWindowSize
     options.resizeWindowAroundCenter(win, size.width, size.height)
+    await new Promise(resolve => setTimeout(resolve, 0))
+    return { success: true }
   })
 }
 

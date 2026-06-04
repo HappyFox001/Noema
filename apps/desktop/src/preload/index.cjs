@@ -309,10 +309,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('window:theme-transition-cover-play', afterDataUrl),
 
   setCompactWindowMode: (compact) => {
-    ipcRenderer.send('window:set-compact-mode', compact)
+    return ipcRenderer.invoke('window:set-compact-mode', compact)
   },
 
   setTaskWindowMode: (active) => {
-    ipcRenderer.send('window:set-task-mode', active)
+    return ipcRenderer.invoke('window:set-task-mode', active)
   },
 })
