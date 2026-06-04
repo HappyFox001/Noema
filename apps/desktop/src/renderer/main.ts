@@ -1963,10 +1963,15 @@ function resizeOrbCanvas(): void {
 }
 
 function updateOrbAudioEnergy(source: 'input' | 'output', samples: Int16Array | Uint8Array): void {
+  const orbSuspended = orbAnimationPaused || document.body.classList.contains('settings-open')
   if (currentOrbStyle === 'advanced') {
-    void getAdvancedOrbRenderer().then(renderer => renderer.updateAudioEnergy(source, samples))
+    if (!orbSuspended && advancedOrbRenderer) {
+      advancedOrbRenderer.updateAudioEnergy(source, samples)
+    }
   } else if (currentOrbStyle === 'planet') {
-    void getPlanetOrbRenderer().then(renderer => renderer.updateAudioEnergy(source, samples))
+    if (!orbSuspended && planetOrbRenderer) {
+      planetOrbRenderer.updateAudioEnergy(source, samples)
+    }
   }
   const next = calculatePcmEnergy(samples)
   if (source === 'input') {
@@ -2398,6 +2403,9 @@ function drawOrbMembrane(
 }
 
 function startOrbAnimation(): void {
+  if (orbAnimationPaused || document.body.classList.contains('settings-open')) {
+    return
+  }
   if (currentOrbStyle === 'advanced') {
     void getAdvancedOrbRenderer()
       .then(renderer => renderer.setEnabled(true))
@@ -3742,10 +3750,7 @@ function setLiquidGlassEnabled(enabled: boolean): void {
     liquidGlassSurface = null
     return
   }
-  if (!document.body.classList.contains('settings-open')) {
-    return
-  }
-  ensureLiquidGlassSurfaceActive(true)
+  ensureLiquidGlassSurfaceActive(false)
 }
 
 function ensureLiquidGlassSurfaceActive(active: boolean): void {
@@ -4750,7 +4755,7 @@ async function openSettings(section?: string): Promise<void> {
     document.body.classList.remove('settings-closing')
     document.body.classList.add('settings-open')
     document.body.classList.remove('window-mode-changing')
-    ensureLiquidGlassSurfaceActive(true)
+    ensureLiquidGlassSurfaceActive(false)
     startSystemTelemetry()
     settingsPanel.classList.remove('warping-out')
     settingsPanel.classList.add('visible', 'warping-in')

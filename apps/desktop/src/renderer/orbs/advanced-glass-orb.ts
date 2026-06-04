@@ -5,11 +5,9 @@
  * separate from the main renderer UI state machine.
  */
 import * as THREE from 'three'
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js'
 
-const GLASS_MODEL_URL = new URL('./glass-assets/models/model.glb', import.meta.url).href
-const GLASS_ENV_URL = new URL('./glass-assets/env/warehouse.hdr', import.meta.url).href
+const GLASS_ENV_URL = new URL('./glass-assets/env/warehouse-low.hdr', import.meta.url).href
 
 export type AdvancedOrbMode = 'idle' | 'listening' | 'thinking' | 'speaking' | 'interrupted'
 
@@ -179,34 +177,11 @@ export class AdvancedGlassOrbRenderer {
 
     const modelRoot = new THREE.Group()
     const fragments: GlassFragment[] = []
-    try {
-      const gltf = await new GLTFLoader().loadAsync(GLASS_MODEL_URL)
-      gltf.scene.traverse((object) => {
-        const mesh = object as THREE.Mesh
-        if (!mesh.isMesh || !mesh.geometry) return
-        const clone = new THREE.Mesh(mesh.geometry, material)
-        clone.position.copy(mesh.position)
-        clone.rotation.copy(mesh.rotation)
-        clone.scale.copy(mesh.scale)
-        modelRoot.add(clone)
-        fragments.push(createFragment(clone))
-      })
-    } catch (error) {
-      console.warn('[AdvancedOrb] Failed to load glass model; using procedural fallback.', error)
-      const fallback = createFallbackGlassShape(material)
-      for (const child of [...fallback.children]) {
-        const mesh = child as THREE.Mesh
-        modelRoot.add(mesh)
-        fragments.push(createFragment(mesh))
-      }
-    }
-    if (fragments.length === 0) {
-      const fallback = createFallbackGlassShape(material)
-      for (const child of [...fallback.children]) {
-        const mesh = child as THREE.Mesh
-        modelRoot.add(mesh)
-        fragments.push(createFragment(mesh))
-      }
+    const fallback = createFallbackGlassShape(material)
+    for (const child of [...fallback.children]) {
+      const mesh = child as THREE.Mesh
+      modelRoot.add(mesh)
+      fragments.push(createFragment(mesh))
     }
     normalizeModelRoot(modelRoot)
     group.add(modelRoot)

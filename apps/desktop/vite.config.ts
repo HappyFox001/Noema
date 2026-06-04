@@ -3,7 +3,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'fs'
 import { join, resolve } from 'path'
 
 const projectRoot = resolve(__dirname, '../..')
-const rendererLogoSource = resolve(projectRoot, 'assets/banner.png')
+const rendererLogoSource = resolve(projectRoot, 'assets/banner.webp')
 
 function copyRendererLogo(outDir: string) {
   if (!existsSync(rendererLogoSource)) {
@@ -11,7 +11,7 @@ function copyRendererLogo(outDir: string) {
   }
 
   mkdirSync(outDir, { recursive: true })
-  copyFileSync(rendererLogoSource, join(outDir, 'noema-logo.png'))
+  copyFileSync(rendererLogoSource, join(outDir, 'noema-logo.webp'))
 }
 
 export default defineConfig({
@@ -23,14 +23,14 @@ export default defineConfig({
     {
       name: 'noema-renderer-logo',
       configureServer(server) {
-        server.middlewares.use('/noema-logo.png', (_request, response) => {
+        server.middlewares.use('/noema-logo.webp', (_request, response) => {
           if (!existsSync(rendererLogoSource)) {
             response.statusCode = 404
             response.end()
             return
           }
 
-          response.setHeader('Content-Type', 'image/png')
+          response.setHeader('Content-Type', 'image/webp')
           response.setHeader('Cache-Control', 'no-store')
           response.end(readFileSync(rendererLogoSource))
         })

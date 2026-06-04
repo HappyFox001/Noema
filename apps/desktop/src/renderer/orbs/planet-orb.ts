@@ -43,7 +43,7 @@ import {
 } from 'three/tsl'
 
 const SINGULARITY_NOISE_URL = new URL('./singularity-assets/noise_deep.png', import.meta.url).href
-const SINGULARITY_NEBULA_URL = new URL('./singularity-assets/nebula.png', import.meta.url).href
+const SINGULARITY_NEBULA_URL = new URL('./singularity-assets/nebula.webp', import.meta.url).href
 
 export type PlanetOrbMode = 'idle' | 'listening' | 'thinking' | 'speaking' | 'interrupted'
 
