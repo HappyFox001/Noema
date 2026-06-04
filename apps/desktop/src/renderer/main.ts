@@ -4738,20 +4738,34 @@ async function openSettings(section?: string): Promise<void> {
   document.body.classList.add('window-mode-changing')
   orbAnimationPaused = true
   stopOrbAnimation()
-  await window.electronAPI.setCompactWindowMode(false).catch((error) => {
-    console.warn('[Window] Failed to enter settings window mode:', error)
-  })
-  document.body.classList.remove('settings-closing')
-  document.body.classList.add('settings-open')
-  document.body.classList.remove('window-mode-changing')
-  ensureLiquidGlassSurfaceActive(true)
-  startSystemTelemetry()
-  settingsPanel.classList.remove('warping-out')
-  settingsPanel.classList.add('visible', 'warping-in')
-  window.setTimeout(() => {
-    settingsPanel.classList.remove('warping-in')
-  }, 380)
-  mainView.setAttribute('aria-hidden', 'true')
+  let windowHiddenForResize = false
+  try {
+    await window.electronAPI.setWindowOpacity(0)
+    windowHiddenForResize = true
+    mainView.getBoundingClientRect()
+    await waitForNextPaint()
+    await window.electronAPI.setCompactWindowMode(false).catch((error) => {
+      console.warn('[Window] Failed to enter settings window mode:', error)
+    })
+    document.body.classList.remove('settings-closing')
+    document.body.classList.add('settings-open')
+    document.body.classList.remove('window-mode-changing')
+    ensureLiquidGlassSurfaceActive(true)
+    startSystemTelemetry()
+    settingsPanel.classList.remove('warping-out')
+    settingsPanel.classList.add('visible', 'warping-in')
+    window.setTimeout(() => {
+      settingsPanel.classList.remove('warping-in')
+    }, 380)
+    mainView.setAttribute('aria-hidden', 'true')
+    await waitForNextPaint()
+  } finally {
+    if (windowHiddenForResize) {
+      await window.electronAPI.setWindowOpacity(1).catch((error) => {
+        console.warn('[Window] Failed to restore window opacity:', error)
+      })
+    }
+  }
   void refreshSetupReadiness()
 
   if (section) {

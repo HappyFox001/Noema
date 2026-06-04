@@ -3424,12 +3424,14 @@ body.theme-day .orb-settings-btn:hover {
 
 body.settings-open #main-view {
   opacity: 0;
+  visibility: hidden;
   transform: none;
   pointer-events: none;
 }
 
 body.window-mode-changing #main-view {
   opacity: 0 !important;
+  visibility: hidden !important;
   transform: none !important;
   transition: none !important;
   pointer-events: none;
@@ -3441,6 +3443,7 @@ body.window-mode-changing .settings-panel {
 
 body:not(.settings-open) #main-view {
   opacity: 1;
+  visibility: visible;
   transform: translateX(0);
   pointer-events: auto;
 }

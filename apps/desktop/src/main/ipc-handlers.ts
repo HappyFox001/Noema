@@ -588,6 +588,17 @@ export function registerWindowIpcHandlers(
     }
   })
 
+  ipcMain.handle('window:set-opacity', (event, opacity) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win || win.isDestroyed()) {
+      return { success: false, error: 'Window is not available' }
+    }
+
+    const value = Number(opacity)
+    win.setOpacity(Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 1)
+    return { success: true }
+  })
+
   ipcMain.handle('window:capture-to-clipboard', async (event, rect: CaptureRect) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win || win.isDestroyed()) {

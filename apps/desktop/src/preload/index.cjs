@@ -293,6 +293,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getCursorScreenPoint: () =>
     ipcRenderer.invoke('cursor:get-screen-point'),
 
+  setWindowOpacity: (opacity) =>
+    ipcRenderer.invoke('window:set-opacity', opacity),
+
   captureToClipboard: (rect) =>
     ipcRenderer.invoke('window:capture-to-clipboard', rect),
 

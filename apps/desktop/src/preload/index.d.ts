@@ -683,6 +683,7 @@ declare global {
         y: number
         displayBounds: { x: number; y: number; width: number; height: number }
       }>
+      setWindowOpacity: (opacity: number) => Promise<{ success: boolean; error?: string }>
       captureToClipboard: (rect: {
         x: number
         y: number
