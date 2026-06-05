@@ -87,6 +87,10 @@
               <span class="nav-icon">○</span>
               <span class="nav-label" data-i18n="nav.about">关于</span>
             </div>
+            <button id="app-update-button" class="nav-item app-update-button" type="button" aria-label="检查更新" title="检查更新" data-state="idle" hidden>
+              <span class="nav-icon">↗</span>
+              <span id="app-update-label" class="nav-label app-update-label">update</span>
+            </button>
           </nav>
 
           
@@ -566,9 +570,29 @@
               <div class="about-card">
                 <div class="about-orb"></div>
                 <h3 class="about-name">Noema</h3>
-                <p class="about-version">v0.1.0</p>
+                <p id="about-version" class="about-version">v--</p>
                 <p class="about-desc" data-i18n="about.desc">把一个鲜活的灵魂放进桌面。</p>
                 <div class="about-quote" data-i18n="about.quote">把语音、记忆、情绪、人格和工具连接起来，尝试做一个能聊天、能陪伴，也能和你一起做事的桌面 AI。</div>
+              </div>
+
+              <div class="author-strip">
+                <img class="author-avatar" src="./author.webp" alt="HappyFox001" />
+                <div class="author-info">
+                  <strong class="author-name">HappyFox001</strong>
+                  <div class="author-links" aria-label="Author links">
+                    <span class="author-link author-link-github" title="GitHub" aria-label="GitHub">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M12 2.5c-5.25 0-9.5 4.25-9.5 9.5 0 4.2 2.72 7.75 6.5 9 .48.08.66-.2.66-.46v-1.7c-2.64.58-3.2-1.12-3.2-1.12-.44-1.1-1.06-1.4-1.06-1.4-.86-.58.06-.56.06-.56.96.06 1.46.98 1.46.98.84 1.44 2.2 1.02 2.74.78.08-.6.32-1.02.6-1.26-2.1-.24-4.32-1.06-4.32-4.68 0-1.04.36-1.88.98-2.54-.1-.24-.42-1.22.1-2.5 0 0 .8-.26 2.62.98.76-.22 1.58-.32 2.4-.32.8 0 1.62.1 2.38.32 1.82-1.24 2.62-.98 2.62-.98.52 1.28.2 2.26.1 2.5.62.66.98 1.5.98 2.54 0 3.64-2.22 4.44-4.34 4.68.34.3.64.88.64 1.78v2.64c0 .26.18.54.68.44 3.78-1.26 6.48-4.8 6.48-9 0-5.25-4.25-9.5-9.5-9.5Z"></path>
+                      </svg>
+                    </span>
+                    <span class="author-link author-link-email" title="Email" aria-label="Email">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M4.75 6.5h14.5c.7 0 1.25.56 1.25 1.25v8.5c0 .7-.56 1.25-1.25 1.25H4.75c-.7 0-1.25-.56-1.25-1.25v-8.5c0-.7.56-1.25 1.25-1.25Z"></path>
+                        <path d="m4.5 7.5 7.5 5.3 7.5-5.3"></path>
+                      </svg>
+                    </span>
+                  </div>
+                </div>
               </div>
             </section>
           </div>

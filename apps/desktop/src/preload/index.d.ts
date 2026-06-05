@@ -303,6 +303,20 @@ declare global {
         error?: string
       }>
       isDevMode: () => Promise<boolean>
+      getAppVersion: () => Promise<string>
+      checkForUpdates: (options?: { force?: boolean }) => Promise<{
+        success: boolean
+        error?: string
+        currentVersion: string
+        latestVersion?: string
+        updateAvailable: boolean
+        releaseName?: string
+        releaseNotes?: string
+        releaseUrl?: string
+        publishedAt?: string
+        checkedAt: number
+      }>
+      openReleasePage: (releaseUrl?: string) => Promise<{ success: boolean; error?: string }>
       getLocalModelStatus: () => Promise<{
         success: boolean
         error?: string

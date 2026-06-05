@@ -1,7 +1,7 @@
 /**
  * Registers grouped Electron IPC handlers for desktop main services.
  */
-import { BrowserWindow, clipboard, screen, type IpcMain } from 'electron'
+import { app, BrowserWindow, clipboard, net, screen, shell, type IpcMain } from 'electron'
 import type { AppLogStore } from './app-log-store.js'
 import type { AppSettings } from './settings-store.js'
 
@@ -14,6 +14,22 @@ interface CaptureRect {
 }
 
 let themeTransitionCoverWindow: BrowserWindow | null = null
+const APP_RELEASES_API_URL = 'https://api.github.com/repos/HappyFox001/Noema/releases/latest'
+const APP_RELEASES_PAGE_URL = 'https://github.com/HappyFox001/Noema/releases'
+let appUpdateCache: { checkedAt: number; result: AppUpdateCheckResult } | null = null
+
+interface AppUpdateCheckResult {
+  success: boolean
+  error?: string
+  currentVersion: string
+  latestVersion?: string
+  updateAvailable: boolean
+  releaseName?: string
+  releaseNotes?: string
+  releaseUrl?: string
+  publishedAt?: string
+  checkedAt: number
+}
 
 function normalizeCaptureRect(rect: CaptureRect, bounds: { width: number; height: number }): CaptureRect | null {
   const scaleFactor = Number.isFinite(Number(rect.scaleFactor))
@@ -48,6 +64,91 @@ function closeThemeTransitionCoverWindow(): void {
   if (cover && !cover.isDestroyed()) {
     cover.close()
   }
+}
+
+async function checkAppUpdates(force = false): Promise<AppUpdateCheckResult> {
+  const now = Date.now()
+  const currentVersion = app.getVersion()
+  if (!force && appUpdateCache && now - appUpdateCache.checkedAt < 30 * 60 * 1000) {
+    return appUpdateCache.result
+  }
+
+  try {
+    const response = await Promise.race([
+      net.fetch(APP_RELEASES_API_URL, {
+        headers: {
+          Accept: 'application/vnd.github+json',
+          'User-Agent': `Noema/${currentVersion}`,
+        },
+      }),
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Update check timed out')), 10000)
+      }),
+    ])
+    if (!response.ok) {
+      throw new Error(`GitHub release check failed: HTTP ${response.status}`)
+    }
+
+    const release = await response.json() as {
+      tag_name?: string
+      name?: string
+      body?: string
+      html_url?: string
+      published_at?: string
+    }
+    const latestVersion = normalizeVersion(release.tag_name || release.name || '')
+    if (!latestVersion) {
+      throw new Error('Latest release does not include a version tag')
+    }
+
+    const result: AppUpdateCheckResult = {
+      success: true,
+      currentVersion,
+      latestVersion,
+      updateAvailable: compareVersions(latestVersion, currentVersion) > 0,
+      releaseName: release.name || release.tag_name || latestVersion,
+      releaseNotes: typeof release.body === 'string' ? release.body : '',
+      releaseUrl: release.html_url || APP_RELEASES_PAGE_URL,
+      publishedAt: release.published_at,
+      checkedAt: Date.now(),
+    }
+    appUpdateCache = { checkedAt: result.checkedAt, result }
+    return result
+  } catch (error: any) {
+    const result: AppUpdateCheckResult = {
+      success: false,
+      error: error?.message || String(error),
+      currentVersion,
+      updateAvailable: false,
+      checkedAt: Date.now(),
+    }
+    appUpdateCache = { checkedAt: result.checkedAt, result }
+    return result
+  }
+}
+
+function normalizeVersion(value: string): string {
+  return value.trim().replace(/^v/i, '').split(/[+\s]/)[0]
+}
+
+function compareVersions(left: string, right: string): number {
+  const leftParts = parseVersionParts(left)
+  const rightParts = parseVersionParts(right)
+  for (let index = 0; index < Math.max(leftParts.length, rightParts.length); index++) {
+    const diff = (leftParts[index] ?? 0) - (rightParts[index] ?? 0)
+    if (diff !== 0) {
+      return diff > 0 ? 1 : -1
+    }
+  }
+  return 0
+}
+
+function parseVersionParts(value: string): number[] {
+  const normalized = normalizeVersion(value).split('-')[0]
+  return normalized.split('.').map(part => {
+    const parsed = Number.parseInt(part, 10)
+    return Number.isFinite(parsed) ? parsed : 0
+  })
 }
 
 async function showThemeTransitionCoverWindow(win: BrowserWindow, dataUrl: string): Promise<void> {
@@ -550,6 +651,27 @@ export function registerSystemIpcHandlers(
 ): void {
   ipcMain.handle('system:telemetry', async () => options.getTelemetry())
   ipcMain.handle('app:isDevMode', () => options.isDevMode())
+  ipcMain.handle('app:getVersion', () => app.getVersion())
+  ipcMain.handle('app:checkForUpdates', async (_event, request?: { force?: boolean }) => {
+    return checkAppUpdates(request?.force === true)
+  })
+  ipcMain.handle('app:openReleasePage', async (_event, releaseUrl?: string) => {
+    const target = isAllowedReleaseUrl(releaseUrl) ? releaseUrl! : APP_RELEASES_PAGE_URL
+    await shell.openExternal(target)
+    return { success: true }
+  })
+}
+
+function isAllowedReleaseUrl(value?: string): boolean {
+  if (!value) return false
+  try {
+    const url = new URL(value)
+    return url.protocol === 'https:' &&
+      url.hostname === 'github.com' &&
+      /^\/HappyFox001\/Noema\/releases(\/|$)/.test(url.pathname)
+  } catch {
+    return false
+  }
 }
 
 export function registerSettingsReadIpcHandlers(

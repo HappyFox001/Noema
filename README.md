@@ -168,6 +168,12 @@ communities:
 - [Singularity](https://github.com/MisterPrada/singularity) by MisterPrada for
   real-time Three.js scene and orb interaction inspiration.
 
+Community thanks:
+
+<a href="http://linux.do/">
+  <img src="./assets/LinuxDo.png" alt="LinuxDo" width="72" />
+</a>
+
 ## License
 
 AGPL-3.0-only. See [LICENSE](./LICENSE).

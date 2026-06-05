@@ -976,6 +976,18 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'about.desc': '把一个鲜活的灵魂放进桌面。',
     'about.quote': '把语音、记忆、情绪、人格和工具连接起来，尝试做一个能聊天、能陪伴，也能和你一起做事的桌面 AI。',
     'about.title': '关于',
+    'updates.kicker': '版本更新',
+    'updates.idleTitle': '检查 Noema 是否有新版本',
+    'updates.idleDesc': '更新提示只会出现在这里，不会打断当前对话。',
+    'updates.check': '检查更新',
+    'updates.checking': '检查中...',
+    'updates.latestTitle': '当前已是最新版本',
+    'updates.latestDesc': '当前版本 v{current}，上次检查 {time}。',
+    'updates.availableTitle': '发现新版本 v{latest}',
+    'updates.availableDesc': '当前版本 v{current}。这是非强制更新，你可以稍后再处理。',
+    'updates.failedTitle': '暂时无法检查更新',
+    'updates.failedDesc': '{error}',
+    'updates.openRelease': '查看发布页',
     'notice.voiceInputDisabled': '语音输入已关闭',
     'notice.voiceInputEnabled': '语音输入已开启',
     'notice.orbCaptureCopied': '小球截图已复制到剪贴板',
@@ -1366,6 +1378,18 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'about.desc': 'Putting a living soul into the desktop.',
     'about.quote': 'Voice, memory, emotion, personality, and tools — an experiment toward AI that can talk, accompany, and act beside us.',
     'about.title': 'About',
+    'updates.kicker': 'Version Update',
+    'updates.idleTitle': 'Check whether a new Noema version is available',
+    'updates.idleDesc': 'Update prompts only appear here and never interrupt the current conversation.',
+    'updates.check': 'Check Updates',
+    'updates.checking': 'Checking...',
+    'updates.latestTitle': 'You are on the latest version',
+    'updates.latestDesc': 'Current version v{current}. Last checked {time}.',
+    'updates.availableTitle': 'New version v{latest} available',
+    'updates.availableDesc': 'Current version v{current}. This update is optional; you can handle it later.',
+    'updates.failedTitle': 'Unable to check for updates',
+    'updates.failedDesc': '{error}',
+    'updates.openRelease': 'View Release',
     'notice.voiceInputDisabled': 'Voice input disabled',
     'notice.voiceInputEnabled': 'Voice input enabled',
     'notice.orbCaptureCopied': 'Orb screenshot copied to clipboard',
@@ -1396,6 +1420,7 @@ function setLanguage(language: LanguageCode): void {
   renderAppearanceThemeControls()
   renderSystemConfigIfReady()
   renderPluginsForCurrentLanguage()
+  renderAppUpdateState()
 }
 
 function applyI18n(): void {
@@ -3548,9 +3573,15 @@ const modelNavLabel = modelNavItem?.querySelector('.nav-label') as HTMLElement |
 const telemetryMemory = document.getElementById('telemetry-memory') as HTMLElement
 const telemetryNetworkIcon = document.getElementById('telemetry-network-icon') as HTMLElement
 const telemetryNetwork = document.getElementById('telemetry-network') as HTMLElement
+const aboutVersion = document.getElementById('about-version') as HTMLElement
+const appUpdateButton = document.getElementById('app-update-button') as HTMLButtonElement
+const appUpdateLabel = document.getElementById('app-update-label') as HTMLElement
 
 let settingsCloseAnimationTimer: number | undefined
 let telemetryRefreshTimer: number | undefined
+let currentAppVersion = ''
+let appUpdateChecking = false
+let lastAppUpdateResult: AppUpdateCheckResult | null = null
 
 let setupReadiness: SetupReadiness = { ready: true, issues: [] }
 const volumeSlider = document.getElementById('volume-slider') as HTMLInputElement
@@ -3587,6 +3618,8 @@ type LearningOverviewData = {
   automationDecisions?: any[]
   rollbacks?: any[]
 }
+
+type AppUpdateCheckResult = Awaited<ReturnType<typeof window.electronAPI.checkForUpdates>>
 let activeLearningView: LearningView = 'overview'
 let lastLearningOverview: LearningOverviewData | null = null
 let activeLearningDetail: { type: LearningDetailType; id: string } | null = null
@@ -4711,6 +4744,102 @@ function stopSystemTelemetry(): void {
   telemetryRefreshTimer = undefined
 }
 
+async function loadAppVersion(): Promise<void> {
+  try {
+    currentAppVersion = await window.electronAPI.getAppVersion()
+    aboutVersion.textContent = `v${currentAppVersion}`
+  } catch (error) {
+    console.warn('[Update] Failed to read app version:', error)
+    aboutVersion.textContent = 'v--'
+  }
+  renderAppUpdateState()
+}
+
+function renderAppUpdateState(): void {
+  if (!appUpdateButton) {
+    return
+  }
+
+  const shouldShowUpdateButton = Boolean(
+    lastAppUpdateResult?.success && lastAppUpdateResult.updateAvailable
+  )
+
+  appUpdateButton.hidden = !shouldShowUpdateButton
+  appUpdateButton.disabled = false
+  let state = 'idle'
+  let label = t('updates.idleTitle')
+  let buttonText = currentLanguage === 'zh-CN' ? '更新' : 'update'
+
+  if (appUpdateChecking) {
+    state = 'checking'
+    label = t('updates.checking')
+    buttonText = currentLanguage === 'zh-CN' ? '更新' : 'update'
+  } else if (!lastAppUpdateResult) {
+    state = 'idle'
+    label = t('updates.idleTitle')
+    buttonText = currentLanguage === 'zh-CN' ? '更新' : 'update'
+  } else if (!lastAppUpdateResult.success) {
+    state = 'error'
+    label = t('updates.failedTitle')
+    buttonText = currentLanguage === 'zh-CN' ? '更新' : 'update'
+  } else if (lastAppUpdateResult.updateAvailable && lastAppUpdateResult.latestVersion) {
+    state = 'available'
+    label = tf('updates.availableTitle', { latest: lastAppUpdateResult.latestVersion })
+    buttonText = currentLanguage === 'zh-CN' ? '更新' : 'update'
+  } else {
+    state = 'latest'
+    label = t('updates.latestTitle')
+    buttonText = currentLanguage === 'zh-CN' ? '更新' : 'update'
+  }
+
+  appUpdateButton.dataset.state = state
+  appUpdateButton.title = label
+  appUpdateButton.setAttribute('aria-label', label)
+  appUpdateLabel.textContent = buttonText
+}
+
+async function checkAppUpdates(force = false, notify = false): Promise<void> {
+  if (appUpdateChecking) {
+    return
+  }
+
+  appUpdateChecking = true
+  renderAppUpdateState()
+  try {
+    lastAppUpdateResult = await window.electronAPI.checkForUpdates({ force })
+  } catch (error: any) {
+    lastAppUpdateResult = {
+      success: false,
+      error: error?.message || String(error),
+      currentVersion: currentAppVersion || '--',
+      updateAvailable: false,
+      checkedAt: Date.now(),
+    }
+  } finally {
+    appUpdateChecking = false
+    renderAppUpdateState()
+  }
+
+  if (!notify || !lastAppUpdateResult) {
+    return
+  }
+  if (!lastAppUpdateResult.success) {
+    showPanelNotice(tf('updates.failedDesc', {
+      error: lastAppUpdateResult.error || t('common.failed'),
+    }), 'error')
+  } else if (lastAppUpdateResult.updateAvailable && lastAppUpdateResult.latestVersion) {
+    showPanelNotice(tf('updates.availableTitle', {
+      latest: lastAppUpdateResult.latestVersion,
+    }))
+  } else {
+    showPanelNotice(t('updates.latestTitle'))
+  }
+}
+
+appUpdateButton.addEventListener('click', () => {
+  void window.electronAPI.openReleasePage(lastAppUpdateResult?.releaseUrl)
+})
+
 // Open settings panel
 function switchSettingsSection(section: string): void {
   document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'))
@@ -4774,6 +4903,7 @@ async function openSettings(section?: string): Promise<void> {
     }
   }
   void refreshSetupReadiness()
+  void checkAppUpdates(false, false)
 
   if (section) {
     switchSettingsSection(section)
@@ -8883,6 +9013,7 @@ window.addEventListener('scroll', () => {
 async function initializeApp(): Promise<void> {
   try {
     await revealDevOnlyControls()
+    await loadAppVersion()
     await loadSettings()
     await loadPersonalities()
     await loadSystemConfig()
