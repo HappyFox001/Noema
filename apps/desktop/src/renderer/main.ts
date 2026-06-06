@@ -1795,6 +1795,7 @@ type PluginMarketplaceItem = {
   name: string
   version?: string
   description?: string
+  i18n?: Record<string, { name?: string; description?: string }>
   path?: string
   manifest?: string
   tags: string[]
@@ -5444,6 +5445,8 @@ function renderPluginMarketplace(marketplace: PluginMarketplaceItem[]): string {
 }
 
 function renderPluginMarketplaceCard(item: PluginMarketplaceItem): string {
+  const displayName = pluginMarketplaceText(item, 'name', item.name)
+  const displayDescription = pluginMarketplaceText(item, 'description', item.description ?? '')
   const statusText = item.enabled
     ? t('plugins.enabledStatus')
     : item.installed
@@ -5455,14 +5458,14 @@ function renderPluginMarketplaceCard(item: PluginMarketplaceItem): string {
       <div class="plugin-marketplace-card-top">
         <div class="plugin-info">
           <div class="plugin-title-row">
-            <span class="plugin-name">${escapeHtml(item.name)}</span>
+            <span class="plugin-name">${escapeHtml(displayName)}</span>
             ${item.version ? `<span class="plugin-version">v${escapeHtml(item.version)}</span>` : ''}
           </div>
           <div class="plugin-id">${escapeHtml(item.id)}</div>
         </div>
         <span class="plugin-marketplace-status ${item.enabled ? 'enabled' : item.installed ? 'installed' : ''}">${escapeHtml(statusText)}</span>
       </div>
-      ${item.description ? `<div class="plugin-description">${escapeHtml(item.description)}</div>` : ''}
+      ${displayDescription ? `<div class="plugin-description">${escapeHtml(displayDescription)}</div>` : ''}
       ${item.tags.length ? `<div class="plugin-marketplace-tags">${item.tags.map(tag => `<span>${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
       <div class="plugin-marketplace-card-actions">
         ${item.installed
@@ -5480,9 +5483,20 @@ function getPluginMarketplaceSearchText(item: PluginMarketplaceItem): string {
     item.name,
     item.version,
     item.description,
+    pluginMarketplaceText(item, 'name', ''),
+    pluginMarketplaceText(item, 'description', ''),
     item.path,
     ...item.tags,
   ].filter(Boolean).join(' ').toLowerCase()
+}
+
+function pluginMarketplaceText(
+  item: PluginMarketplaceItem,
+  key: 'name' | 'description',
+  fallback: string
+): string {
+  return item.i18n?.[currentLanguage]?.[key]
+    ?? fallback
 }
 
 async function refreshPluginMarketplace(): Promise<void> {

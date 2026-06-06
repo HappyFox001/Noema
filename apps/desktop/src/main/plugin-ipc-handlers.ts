@@ -27,6 +27,7 @@ interface PluginMarketplaceRegistryItem {
   name?: string
   version?: string
   description?: string
+  i18n?: Record<string, { name?: string; description?: string }>
   path?: string
   manifest?: string
   tags?: string[]
@@ -91,6 +92,7 @@ export function registerPluginIpcHandlers(
             name: item.name || id,
             version: item.version,
             description: item.description,
+            i18n: item.i18n,
             path: item.path,
             manifest: item.manifest,
             tags: Array.isArray(item.tags) ? item.tags.filter(tag => typeof tag === 'string') : [],
@@ -99,6 +101,7 @@ export function registerPluginIpcHandlers(
             enabled: installed?.enabled ?? false,
           }
         })
+        .sort((a, b) => Number(a.installed) - Number(b.installed))
 
       return {
         success: true,

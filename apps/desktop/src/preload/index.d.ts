@@ -465,6 +465,7 @@ declare global {
           name: string
           version?: string
           description?: string
+          i18n?: Record<string, { name?: string; description?: string }>
           path?: string
           manifest?: string
           tags: string[]
