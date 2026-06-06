@@ -6,7 +6,7 @@
  */
 import { app } from 'electron'
 import { existsSync } from 'fs'
-import { mkdir, readdir, readFile, rm } from 'fs/promises'
+import { cp, mkdir, readdir, readFile, rm, writeFile } from 'fs/promises'
 import { isAbsolute, join, relative, resolve } from 'path'
 import { pathToFileURL } from 'url'
 import type {
@@ -122,6 +122,8 @@ async function readRuntimePluginManifests(
     return cached
   }
 
+  await seedBundledRuntimePlugins(pluginsDir)
+
   const manifests: Array<{ manifest: RuntimePluginManifest; pluginDir: string }> = []
   const seenPluginIds = new Set<string>()
   const pluginDirs = await listRuntimePluginDirs(pluginsDir)
@@ -219,16 +221,9 @@ async function listRuntimePluginDirs(pluginsDir: string): Promise<string[]> {
 }
 
 function getRuntimePluginRoots(pluginsDir: string): string[] {
-  const roots = [
+  return [
     join(pluginsDir, 'local'),
   ]
-  const bundledPluginsDir = join(process.resourcesPath, 'plugins')
-  if (resolve(bundledPluginsDir) !== resolve(pluginsDir)) {
-    roots.push(
-      join(bundledPluginsDir, 'local')
-    )
-  }
-  return roots
 }
 
 function getWritableRuntimePluginRoots(pluginsDir: string): string[] {
@@ -244,6 +239,42 @@ function isRuntimePluginDirAllowed(pluginsDir: string, pluginDir: string): boole
 function isPathInside(parent: string, child: string): boolean {
   const relativePath = relative(resolve(parent), resolve(child))
   return relativePath === '' || (!isAbsolute(relativePath) && !relativePath.startsWith('..'))
+}
+
+async function seedBundledRuntimePlugins(pluginsDir: string): Promise<void> {
+  if (!app.isPackaged) {
+    return
+  }
+
+  const seedMarkerPath = join(pluginsDir, '.bundled-plugins-seeded')
+  if (existsSync(seedMarkerPath)) {
+    return
+  }
+
+  const bundledLocalPluginsDir = join(process.resourcesPath, 'plugins', 'local')
+  if (!existsSync(bundledLocalPluginsDir)) {
+    return
+  }
+
+  const localPluginsDir = join(pluginsDir, 'local')
+  await mkdir(localPluginsDir, { recursive: true })
+
+  const entries = await readdir(bundledLocalPluginsDir, { withFileTypes: true })
+  for (const entry of entries) {
+    if (!entry.isDirectory()) {
+      continue
+    }
+
+    const sourceDir = resolve(bundledLocalPluginsDir, entry.name)
+    const targetDir = resolve(localPluginsDir, entry.name)
+    if (existsSync(targetDir)) {
+      continue
+    }
+
+    await cp(sourceDir, targetDir, { recursive: true })
+  }
+
+  await writeFile(seedMarkerPath, String(Date.now()), 'utf8')
 }
 
 async function loadRuntimePlugin(
