@@ -122,13 +122,12 @@ async function readRuntimePluginManifests(
     return cached
   }
 
-  if (!existsSync(pluginsDir)) {
-    console.warn('[PluginLoader] Plugin directory not found:', pluginsDir)
-    return []
-  }
-
   const manifests: Array<{ manifest: RuntimePluginManifest; pluginDir: string }> = []
+  const seenPluginIds = new Set<string>()
   const pluginDirs = await listRuntimePluginDirs(pluginsDir)
+  if (!pluginDirs.length) {
+    console.warn('[PluginLoader] No plugin directories found under runtime roots:', getRuntimePluginRoots(pluginsDir))
+  }
 
   for (const pluginDir of pluginDirs) {
     const manifestPath = join(pluginDir, 'plugin.json')
@@ -141,7 +140,11 @@ async function readRuntimePluginManifests(
       if (manifest.type !== 'sdk-plugin') {
         continue
       }
+      if (seenPluginIds.has(manifest.id)) {
+        continue
+      }
 
+      seenPluginIds.add(manifest.id)
       manifests.push({ manifest, pluginDir })
     } catch (error) {
       console.error(`[PluginLoader] Failed to read plugin manifest from ${pluginDir}:`, error)
@@ -216,14 +219,26 @@ async function listRuntimePluginDirs(pluginsDir: string): Promise<string[]> {
 }
 
 function getRuntimePluginRoots(pluginsDir: string): string[] {
+  const roots = [
+    join(pluginsDir, 'local'),
+  ]
+  const bundledPluginsDir = join(process.resourcesPath, 'plugins')
+  if (resolve(bundledPluginsDir) !== resolve(pluginsDir)) {
+    roots.push(
+      join(bundledPluginsDir, 'local')
+    )
+  }
+  return roots
+}
+
+function getWritableRuntimePluginRoots(pluginsDir: string): string[] {
   return [
-    join(pluginsDir, 'must'),
     join(pluginsDir, 'local'),
   ]
 }
 
 function isRuntimePluginDirAllowed(pluginsDir: string, pluginDir: string): boolean {
-  return getRuntimePluginRoots(pluginsDir).some(root => isPathInside(root, pluginDir))
+  return getWritableRuntimePluginRoots(pluginsDir).some(root => isPathInside(root, pluginDir))
 }
 
 function isPathInside(parent: string, child: string): boolean {

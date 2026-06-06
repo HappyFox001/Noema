@@ -1485,6 +1485,10 @@ function getPluginRuntimeContext(enabled: boolean): PluginRuntimeContext {
 }
 
 function resolveRuntimePluginsDir(): string {
+  if (app.isPackaged) {
+    return join(app.getPath('userData'), 'plugins')
+  }
+
   const candidates = [
     join(process.cwd(), 'plugins'),
     join(process.resourcesPath, 'plugins'),
@@ -1498,7 +1502,7 @@ function resolveRuntimePluginsDir(): string {
   }
 
   console.warn('[PluginLoader] Runtime plugins directory not found. Tried:', candidates)
-  return candidates[0]
+  return join(app.getPath('userData'), 'plugins')
 }
 
 const rendererPlaybackCoordinator = new RendererPlaybackCoordinator({

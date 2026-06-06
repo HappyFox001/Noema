@@ -59,8 +59,8 @@
     ],
     "extraResources": [
       {
-        "from": "../../plugins/must",
-        "to": "plugins/must"
+        "from": "../../plugins",
+        "to": "plugins"
       }
     ],
     "afterPack": "scripts/prune-package.cjs",
