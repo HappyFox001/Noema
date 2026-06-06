@@ -3,7 +3,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'fs'
 import { join, resolve } from 'path'
 
 const projectRoot = resolve(__dirname, '../..')
-const rendererLogoSource = resolve(projectRoot, 'assets/banner.webp')
+const rendererLogoSource = resolve(projectRoot, 'assets/logo.webp')
 
 function copyRendererLogo(outDir: string) {
   if (!existsSync(rendererLogoSource)) {

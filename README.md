@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/readme_logo.png" alt="Noema logo" width="240" />
+  <img src="./assets/banner.png" alt="Noema banner" width="720" />
 </p>
 
 <p align="center">
