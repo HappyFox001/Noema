@@ -1,14 +1,17 @@
+<h1 style="border-bottom: none" align="center">
+  Noema
+  <br />
+  <p>Putting a living soul into the desktop</p>
+</h1>
+
+<div align="center">
+  <blockquote>
+    <em><strong>Voice, memory, emotion, personality, and tools, connected into a desktop companion.</strong></em>
+  </blockquote>
+</div>
+
 <p align="center">
   <img src="./assets/banner.png" alt="Noema banner" width="100%" />
-</p>
-
-<p align="center">
-  <strong>Neoma: Putting a living soul into the desktop.</strong>
-</p>
-
-<p align="center">
-  Voice, memory, emotion, personality, and tools —
-  an experiment toward AI that can talk, accompany, and act beside us.
 </p>
 
 <p align="center">
