@@ -36,7 +36,8 @@ export class DragonCursorEffect {
   private readonly xmlns = 'http://www.w3.org/2000/svg'
   private readonly xlinkns = 'http://www.w3.org/1999/xlink'
   private readonly N = 40
-  private readonly bodyScale = 1 / 6
+  private readonly bodyScale = 0.19
+  private readonly segmentStride = 0.19
   private readonly elems: DragonElement[] = []
   private readonly pointer = { x: 0, y: 0 }
   private svg: SVGSVGElement | null = null
@@ -72,7 +73,7 @@ export class DragonCursorEffect {
     this.radm = Math.min(this.pointer.x, this.pointer.y) - 20
 
     for (let i = 0; i < this.N; i++) {
-      this.elems[i] = { use: null, x: this.width / 2, y: 0 }
+      this.elems[i] = { use: null, x: this.width / 2, y: this.height / 2 }
     }
 
     for (let i = 1; i < this.N; i++) {
@@ -145,13 +146,15 @@ export class DragonCursorEffect {
       const e = this.elems[i]
       const ep = this.elems[i - 1]
       const a = Math.atan2(e.y - ep.y, e.x - ep.x)
-      e.x += (ep.x - e.x + (Math.cos(a) * (100 - i)) / 5) / 4
-      e.y += (ep.y - e.y + (Math.sin(a) * (100 - i)) / 5) / 4
-      const s = ((162 + 4 * (1 - i)) / 50) * this.bodyScale
+      const segmentLength = Math.max(2.4, ((100 - i) / 5) * this.segmentStride)
+      e.x += (ep.x - e.x + Math.cos(a) * segmentLength) / 4
+      e.y += (ep.y - e.y + Math.sin(a) * segmentLength) / 4
+      const s = this.getElementScale(i)
+      const forwardOffset = this.getElementForwardOffset(i)
       e.use?.setAttributeNS(
         null,
         'transform',
-        `translate(${(ep.x + e.x) / 2},${(ep.y + e.y) / 2}) rotate(${(180 / Math.PI) * a}) translate(${0},${0}) scale(${s},${s})`
+        `translate(${(ep.x + e.x) / 2},${(ep.y + e.y) / 2}) rotate(${(180 / Math.PI) * a}) translate(${forwardOffset},0) scale(${s},${s})`
       )
     }
 
@@ -161,6 +164,19 @@ export class DragonCursorEffect {
       this.pointer.x += (this.width / 2 - this.pointer.x) * 0.05
       this.pointer.y += (this.height / 2 - this.pointer.y) * 0.05
     }
+  }
+
+  private getElementScale(index: number): number {
+    const baseScale = ((162 + 4 * (1 - index)) / 50) * this.bodyScale
+    if (index === 1) return baseScale * 0.86
+    if (index === 8 || index === 14) return baseScale * 0.72
+    return baseScale
+  }
+
+  private getElementForwardOffset(index: number): number {
+    if (index === 1) return -8
+    if (index === 8 || index === 14) return -5
+    return 0
   }
 }
 
