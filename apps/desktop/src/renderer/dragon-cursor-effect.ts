@@ -33,7 +33,18 @@ type DragonElement = {
   opacity: number
 }
 
+type DragonSnapshot = {
+  version: 1
+  width: number
+  height: number
+  pointer: { x: number; y: number }
+  rad: number
+  frm: number
+  elems: Array<{ x: number; y: number; opacity: number }>
+}
+
 export class DragonCursorEffect {
+  private static readonly storageKey = 'noema.dragon-cursor.snapshot.v1'
   private readonly xmlns = 'http://www.w3.org/2000/svg'
   private readonly xlinkns = 'http://www.w3.org/1999/xlink'
   private readonly N = 40
@@ -48,8 +59,10 @@ export class DragonCursorEffect {
   private radm = 0
   private frm = Math.random()
   private rad = 0
+  private lastPersistedAt = 0
   private animationFrame = 0
   private initialized = false
+  private wasActive = false
 
   constructor(private readonly host: HTMLElement) {}
 
@@ -76,6 +89,7 @@ export class DragonCursorEffect {
     for (let i = 0; i < this.N; i++) {
       this.elems[i] = { use: null, x: this.width / 2, y: this.height / 2, opacity: 0.16 }
     }
+    this.restoreSnapshot()
 
     for (let i = 1; i < this.N; i++) {
       if (i === 1) this.prepend('Cabeza', i)
@@ -85,6 +99,7 @@ export class DragonCursorEffect {
 
     window.addEventListener('resize', this.handleResize, false)
     window.addEventListener('pointermove', this.handlePointerMove, false)
+    window.addEventListener('pagehide', this.handlePageHide, false)
     document.addEventListener('transitionend', this.handlePanelTransition, false)
     this.run()
   }
@@ -92,8 +107,10 @@ export class DragonCursorEffect {
   destroy(): void {
     window.removeEventListener('resize', this.handleResize, false)
     window.removeEventListener('pointermove', this.handlePointerMove, false)
+    window.removeEventListener('pagehide', this.handlePageHide, false)
     document.removeEventListener('transitionend', this.handlePanelTransition, false)
     if (this.animationFrame) window.cancelAnimationFrame(this.animationFrame)
+    this.persistSnapshot()
     this.svg?.remove()
     this.svg = null
     this.screen = null
@@ -111,7 +128,12 @@ export class DragonCursorEffect {
     }
   }
 
+  private readonly handlePageHide = (): void => {
+    this.persistSnapshot()
+  }
+
   private readonly handlePointerMove = (event: PointerEvent): void => {
+    if (!this.isActive()) return
     const rect = this.host.getBoundingClientRect()
     this.pointer.x = event.clientX - rect.left
     this.pointer.y = event.clientY - rect.top
@@ -137,6 +159,15 @@ export class DragonCursorEffect {
     this.animationFrame = window.requestAnimationFrame(this.run)
     const first = this.elems[0]
     if (!first) return
+    const active = this.isActive()
+    if (!active) {
+      if (this.wasActive) {
+        this.persistSnapshot()
+      }
+      this.wasActive = false
+      return
+    }
+    this.wasActive = true
 
     const ax = (Math.cos(3 * this.frm) * this.rad * this.width) / this.height
     const ay = (Math.sin(4 * this.frm) * this.rad * this.height) / this.width
@@ -171,6 +202,75 @@ export class DragonCursorEffect {
     if (this.rad > 60) {
       this.pointer.x += (this.width / 2 - this.pointer.x) * 0.05
       this.pointer.y += (this.height / 2 - this.pointer.y) * 0.05
+    }
+    this.persistSnapshotThrottled()
+  }
+
+  private isActive(): boolean {
+    return (
+      document.body.classList.contains('settings-open') &&
+      !document.body.classList.contains('settings-closing') &&
+      !document.body.classList.contains('dragon-cursor-disabled')
+    )
+  }
+
+  private restoreSnapshot(): void {
+    try {
+      const raw = window.localStorage.getItem(DragonCursorEffect.storageKey)
+      if (!raw) return
+      const snapshot = JSON.parse(raw) as Partial<DragonSnapshot>
+      if (
+        snapshot.version !== 1 ||
+        !snapshot.width ||
+        !snapshot.height ||
+        !snapshot.pointer ||
+        !Array.isArray(snapshot.elems) ||
+        snapshot.elems.length !== this.N
+      ) {
+        return
+      }
+
+      const scaleX = this.width / snapshot.width
+      const scaleY = this.height / snapshot.height
+      this.pointer.x = snapshot.pointer.x * scaleX
+      this.pointer.y = snapshot.pointer.y * scaleY
+      this.rad = typeof snapshot.rad === 'number' ? snapshot.rad : this.rad
+      this.frm = typeof snapshot.frm === 'number' ? snapshot.frm : this.frm
+
+      snapshot.elems.forEach((item, index) => {
+        const elem = this.elems[index]
+        if (!elem || typeof item.x !== 'number' || typeof item.y !== 'number') return
+        elem.x = item.x * scaleX
+        elem.y = item.y * scaleY
+        elem.opacity = typeof item.opacity === 'number' ? item.opacity : elem.opacity
+      })
+    } catch {
+      window.localStorage.removeItem(DragonCursorEffect.storageKey)
+    }
+  }
+
+  private persistSnapshotThrottled(): void {
+    const now = performance.now()
+    if (now - this.lastPersistedAt < 500) return
+    this.lastPersistedAt = now
+    this.persistSnapshot()
+  }
+
+  private persistSnapshot(): void {
+    if (!this.initialized || this.elems.length !== this.N) return
+    const snapshot: DragonSnapshot = {
+      version: 1,
+      width: this.width,
+      height: this.height,
+      pointer: { x: this.pointer.x, y: this.pointer.y },
+      rad: this.rad,
+      frm: this.frm,
+      elems: this.elems.map(elem => ({ x: elem.x, y: elem.y, opacity: elem.opacity })),
+    }
+    try {
+      window.localStorage.setItem(DragonCursorEffect.storageKey, JSON.stringify(snapshot))
+    } catch {
+      // Ignore storage failures; the dragon can always fall back to its centered initial state.
     }
   }
 
