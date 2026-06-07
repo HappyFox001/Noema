@@ -187,8 +187,8 @@ body.theme-day.settings-open:not(.settings-closing) .liquid-glass-surface {
   opacity: 0;
   mix-blend-mode: screen;
   filter:
-    drop-shadow(0 0 8px rgba(0, 238, 255, 0.18))
-    drop-shadow(0 0 18px rgba(0, 238, 255, 0.08));
+    drop-shadow(0 0 8px rgba(255, 255, 255, 0.16))
+    drop-shadow(0 0 18px rgba(255, 255, 255, 0.08));
   -webkit-app-region: no-drag;
   app-region: no-drag;
   transition: opacity 180ms ease;
@@ -207,6 +207,18 @@ body.settings-open:not(.settings-closing) .dragon-cursor-stage {
   height: 100%;
   overflow: visible;
   display: block;
+  filter: brightness(0) invert(1);
+}
+
+body.theme-day .dragon-cursor-stage {
+  mix-blend-mode: multiply;
+  filter:
+    drop-shadow(0 0 8px rgba(0, 0, 0, 0.12))
+    drop-shadow(0 0 18px rgba(0, 0, 0, 0.06));
+}
+
+body.theme-day .dragon-cursor-svg {
+  filter: brightness(0);
 }
 
 .orb-settings-btn {
