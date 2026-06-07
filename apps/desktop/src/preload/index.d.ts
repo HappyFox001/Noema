@@ -236,7 +236,7 @@ declare global {
         voiceInputEnabled: boolean
         voiceOutputEnabled: boolean
         volume: number
-        appearance: { orbStyle: 'default' | 'advanced' | 'planet'; theme: 'night' | 'day'; liquidGlassEnabled: boolean }
+        appearance: { orbStyle: 'default' | 'advanced' | 'planet'; theme: 'night' | 'day'; liquidGlassEnabled: boolean; dragonCursorEnabled: boolean }
         experimental?: { selfLearningEnabled: boolean }
         selectedPersonality: string
         externalRolePaths: string[]
@@ -259,7 +259,7 @@ declare global {
         voiceInputEnabled: boolean
         voiceOutputEnabled: boolean
         volume: number
-        appearance: { orbStyle: 'default' | 'advanced' | 'planet'; theme: 'night' | 'day'; liquidGlassEnabled: boolean }
+        appearance: { orbStyle: 'default' | 'advanced' | 'planet'; theme: 'night' | 'day'; liquidGlassEnabled: boolean; dragonCursorEnabled: boolean }
         experimental?: { selfLearningEnabled: boolean }
         selectedPersonality: string
         externalRolePaths: string[]
@@ -281,7 +281,7 @@ declare global {
         voiceInputEnabled: boolean
         voiceOutputEnabled: boolean
         volume: number
-        appearance: { orbStyle: 'default' | 'advanced' | 'planet'; theme: 'night' | 'day'; liquidGlassEnabled: boolean }
+        appearance: { orbStyle: 'default' | 'advanced' | 'planet'; theme: 'night' | 'day'; liquidGlassEnabled: boolean; dragonCursorEnabled: boolean }
         experimental?: { selfLearningEnabled: boolean }
         selectedPersonality: string
         externalRolePaths: string[]

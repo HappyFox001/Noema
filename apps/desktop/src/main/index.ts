@@ -1814,7 +1814,7 @@ let appSettings: AppSettings = {
   voiceInputEnabled: true,
   voiceOutputEnabled: true,
   volume: 70,
-  appearance: { orbStyle: 'default', theme: 'night', liquidGlassEnabled: true },
+  appearance: { orbStyle: 'default', theme: 'night', liquidGlassEnabled: true, dragonCursorEnabled: true },
   experimental: { selfLearningEnabled: true },
   selectedPersonality: 'role:eva',
   externalRolePaths: [],

@@ -194,7 +194,7 @@ body.theme-day.settings-open:not(.settings-closing) .liquid-glass-surface {
   transition: opacity 180ms ease;
 }
 
-body.settings-open:not(.settings-closing) .dragon-cursor-stage {
+body.settings-open:not(.settings-closing):not(.dragon-cursor-disabled) .dragon-cursor-stage {
   display: block;
   visibility: visible;
   opacity: 0.66;

@@ -667,6 +667,8 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'appearance.themeDay': '白天',
     'appearance.liquidGlass': '液态水效果',
     'appearance.liquidGlassDesc': '关闭设置面板的液态覆盖层以降低 GPU 占用。',
+    'appearance.dragonCursor': '游龙效果',
+    'appearance.dragonCursorDesc': '在设置面板中显示跟随鼠标游动的龙形光标。',
     'experimental.title': '实验功能',
     'experimental.selfLearning': '自动学习',
     'experimental.selfLearningDesc': '允许自动记录 runtime 事件、生成学习候选和创建 specialized agents。关闭后相关后台流程全部停用。',
@@ -1069,6 +1071,8 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'appearance.themeDay': 'Day',
     'appearance.liquidGlass': 'Liquid Effect',
     'appearance.liquidGlassDesc': 'Disable the liquid overlay on the settings panel to reduce GPU usage.',
+    'appearance.dragonCursor': 'Dragon Effect',
+    'appearance.dragonCursorDesc': 'Show the mouse-following dragon cursor in the settings panel.',
     'experimental.title': 'Experimental',
     'experimental.selfLearning': 'Self-Learning',
     'experimental.selfLearningDesc': 'Allow runtime event learning, candidate generation, and specialized agents. Disabling it stops the related background flows.',
@@ -1570,6 +1574,7 @@ type UISettings = {
     orbStyle?: OrbStyle
     theme?: AppearanceTheme
     liquidGlassEnabled?: boolean
+    dragonCursorEnabled?: boolean
   }
   experimental?: {
     selfLearningEnabled?: boolean
@@ -3598,6 +3603,7 @@ const orbStyleLabel = document.getElementById('orb-style-label') as HTMLElement
 const appearanceThemeTrigger = document.getElementById('appearance-theme-trigger') as HTMLButtonElement
 const appearanceThemeLabel = document.getElementById('appearance-theme-label') as HTMLElement
 const liquidGlassToggle = document.getElementById('liquid-glass-toggle') as HTMLInputElement
+const dragonCursorToggle = document.getElementById('dragon-cursor-toggle') as HTMLInputElement
 const selfLearningToggle = document.getElementById('self-learning-toggle') as HTMLInputElement
 const selfLearningOpenBtn = document.getElementById('self-learning-open-btn') as HTMLButtonElement
 const personalitySelect = document.getElementById('personality-select') as HTMLSelectElement
@@ -3644,6 +3650,7 @@ const live2dCapabilitiesCache = new Map<string, Live2dModelCapabilities>()
 let logEntries: AppLogEntry[] = []
 let activeLogLevel: AppLogLevel | 'all' = 'all'
 let currentLiquidGlassEnabled = true
+let currentDragonCursorEnabled = true
 let liquidGlassSurface: ReturnType<typeof initializeLiquidGlassSurface> | null = null
 const themeSliceTransition = new ThemeSliceTransition()
 
@@ -3662,6 +3669,7 @@ function applySettingsToUI(settings: UISettings) {
   setAppearanceTheme(parseAppearanceTheme(settings.appearance?.theme))
   setOrbStyle(parseOrbStyle(settings.appearance?.orbStyle))
   setLiquidGlassEnabled(settings.appearance?.liquidGlassEnabled !== false)
+  setDragonCursorEnabled(settings.appearance?.dragonCursorEnabled !== false)
   selfLearningToggle.checked = settings.experimental?.selfLearningEnabled !== false
   selfLearningOpenBtn.hidden = settings.experimental?.selfLearningEnabled === false
 
@@ -3792,6 +3800,12 @@ function setLiquidGlassEnabled(enabled: boolean): void {
   }
 }
 
+function setDragonCursorEnabled(enabled: boolean): void {
+  currentDragonCursorEnabled = enabled
+  dragonCursorToggle.checked = enabled
+  document.body.classList.toggle('dragon-cursor-disabled', !enabled)
+}
+
 function ensureLiquidGlassSurfaceActive(active: boolean): void {
   if (!currentLiquidGlassEnabled) {
     return
@@ -3841,7 +3855,14 @@ function openOrbStyleMenu(): void {
       closeOrbStyleMenu()
       if (orbStyle === currentOrbStyle) return
       setOrbStyle(orbStyle)
-      await window.electronAPI.updateSettings({ appearance: { orbStyle, theme: currentAppearanceTheme, liquidGlassEnabled: currentLiquidGlassEnabled } })
+      await window.electronAPI.updateSettings({
+        appearance: {
+          orbStyle,
+          theme: currentAppearanceTheme,
+          liquidGlassEnabled: currentLiquidGlassEnabled,
+          dragonCursorEnabled: currentDragonCursorEnabled
+        }
+      })
     })
   })
 
@@ -3878,7 +3899,14 @@ function openAppearanceThemeMenu(): void {
       closeAppearanceThemeMenu()
       if (theme === currentAppearanceTheme) return
       await switchAppearanceTheme(theme)
-      await window.electronAPI.updateSettings({ appearance: { orbStyle: currentOrbStyle, theme, liquidGlassEnabled: currentLiquidGlassEnabled } })
+      await window.electronAPI.updateSettings({
+        appearance: {
+          orbStyle: currentOrbStyle,
+          theme,
+          liquidGlassEnabled: currentLiquidGlassEnabled,
+          dragonCursorEnabled: currentDragonCursorEnabled
+        }
+      })
     })
   })
 
@@ -3910,7 +3938,21 @@ liquidGlassToggle.addEventListener('change', async () => {
     appearance: {
       orbStyle: currentOrbStyle,
       theme: currentAppearanceTheme,
-      liquidGlassEnabled: enabled
+      liquidGlassEnabled: enabled,
+      dragonCursorEnabled: currentDragonCursorEnabled
+    }
+  })
+})
+
+dragonCursorToggle.addEventListener('change', async () => {
+  const enabled = dragonCursorToggle.checked
+  setDragonCursorEnabled(enabled)
+  await window.electronAPI.updateSettings({
+    appearance: {
+      orbStyle: currentOrbStyle,
+      theme: currentAppearanceTheme,
+      liquidGlassEnabled: currentLiquidGlassEnabled,
+      dragonCursorEnabled: enabled
     }
   })
 })

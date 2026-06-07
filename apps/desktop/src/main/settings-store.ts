@@ -218,6 +218,7 @@ export interface AppearanceSettings {
   orbStyle: 'default' | 'advanced' | 'planet'
   theme: 'night' | 'day'
   liquidGlassEnabled: boolean
+  dragonCursorEnabled: boolean
 }
 
 export interface ExperimentalSettings {
@@ -227,7 +228,8 @@ export interface ExperimentalSettings {
 const DEFAULT_APPEARANCE_SETTINGS: AppearanceSettings = {
   orbStyle: 'default',
   theme: 'night',
-  liquidGlassEnabled: true
+  liquidGlassEnabled: true,
+  dragonCursorEnabled: true
 }
 
 const DEFAULT_EXPERIMENTAL_SETTINGS: ExperimentalSettings = {
@@ -790,7 +792,10 @@ function normalizeAppearanceSettings(value: unknown, fallback: AppearanceSetting
     theme: source.theme === 'day' || source.theme === 'night' ? source.theme : fallback.theme,
     liquidGlassEnabled: typeof source.liquidGlassEnabled === 'boolean'
       ? source.liquidGlassEnabled
-      : fallback.liquidGlassEnabled
+      : fallback.liquidGlassEnabled,
+    dragonCursorEnabled: typeof source.dragonCursorEnabled === 'boolean'
+      ? source.dragonCursorEnabled
+      : fallback.dragonCursorEnabled
   }
 }
 
