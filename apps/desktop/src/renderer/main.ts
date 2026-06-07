@@ -4922,17 +4922,14 @@ async function openSettings(section?: string): Promise<void> {
   stopOrbAnimation()
   let windowHiddenForResize = false
   try {
-    await window.electronAPI.setWindowOpacity(0)
+    await window.electronAPI.setWindowOpacity(0.01)
     windowHiddenForResize = true
-    mainView.getBoundingClientRect()
-    await waitForNextPaint()
     await window.electronAPI.setCompactWindowMode(false).catch((error) => {
       console.warn('[Window] Failed to enter settings window mode:', error)
     })
     document.body.classList.remove('settings-closing')
     document.body.classList.add('settings-open')
     document.body.classList.remove('window-mode-changing')
-    ensureLiquidGlassSurfaceActive(true)
     startSystemTelemetry()
     settingsPanel.classList.remove('warping-out')
     settingsPanel.classList.add('visible', 'warping-in')
@@ -4948,6 +4945,7 @@ async function openSettings(section?: string): Promise<void> {
       })
     }
   }
+  window.requestAnimationFrame(() => ensureLiquidGlassSurfaceActive(true))
   void refreshSetupReadiness()
   void checkAppUpdates(false, false)
 
