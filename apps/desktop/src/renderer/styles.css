@@ -172,6 +172,43 @@ body.theme-day.settings-open:not(.settings-closing) .liquid-glass-surface {
   transition: opacity 180ms ease, transform 220ms ease;
 }
 
+.dragon-cursor-stage {
+  position: fixed;
+  inset: 0;
+  z-index: 9990;
+  width: 100%;
+  height: 100%;
+  display: none;
+  visibility: hidden;
+  overflow: hidden;
+  pointer-events: none;
+  contain: layout paint;
+  isolation: isolate;
+  opacity: 0;
+  mix-blend-mode: screen;
+  filter:
+    drop-shadow(0 0 8px rgba(0, 238, 255, 0.18))
+    drop-shadow(0 0 18px rgba(0, 238, 255, 0.08));
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  transition: opacity 180ms ease;
+}
+
+body.settings-open:not(.settings-closing) .dragon-cursor-stage {
+  display: block;
+  visibility: visible;
+  opacity: 0.28;
+}
+
+.dragon-cursor-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  display: block;
+}
+
 .orb-settings-btn {
   position: absolute;
   top: 22px;

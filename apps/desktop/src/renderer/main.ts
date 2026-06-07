@@ -6,6 +6,7 @@
  */
 import './styles.css'
 import { initializeLiquidGlassSurface } from './liquid-glass-surface'
+import { initializeDragonCursorEffect } from './dragon-cursor-effect'
 import claudeCodeLogoUrl from './assets/claude_code_logo.png'
 import codexLogoUrl from './assets/codex_logo.png'
 import claudeIconUrl from '@lobehub/icons-static-svg/icons/claude-color.svg?url'
@@ -26,6 +27,8 @@ import {
 } from '../main/model-provider-catalog'
 
 // ========== Audio Player ==========
+
+initializeDragonCursorEffect()
 
 class AudioPlayer {
   private audioContext: AudioContext | null = null
