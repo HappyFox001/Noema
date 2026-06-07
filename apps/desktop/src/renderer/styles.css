@@ -197,7 +197,7 @@ body.theme-day.settings-open:not(.settings-closing) .liquid-glass-surface {
 body.settings-open:not(.settings-closing) .dragon-cursor-stage {
   display: block;
   visibility: visible;
-  opacity: 0.28;
+  opacity: 0.66;
 }
 
 .dragon-cursor-svg {
