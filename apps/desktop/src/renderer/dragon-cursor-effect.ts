@@ -36,7 +36,7 @@ export class DragonCursorEffect {
   private readonly xmlns = 'http://www.w3.org/2000/svg'
   private readonly xlinkns = 'http://www.w3.org/1999/xlink'
   private readonly N = 40
-  private readonly bodyScale = 1 / 3
+  private readonly bodyScale = 1 / 6
   private readonly elems: DragonElement[] = []
   private readonly pointer = { x: 0, y: 0 }
   private svg: SVGSVGElement | null = null
