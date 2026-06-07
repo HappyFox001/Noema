@@ -30,6 +30,7 @@ type DragonElement = {
   use: SVGUseElement | null
   x: number
   y: number
+  opacity: number
 }
 
 export class DragonCursorEffect {
@@ -73,7 +74,7 @@ export class DragonCursorEffect {
     this.radm = Math.min(this.pointer.x, this.pointer.y) - 20
 
     for (let i = 0; i < this.N; i++) {
-      this.elems[i] = { use: null, x: this.width / 2, y: this.height / 2 }
+      this.elems[i] = { use: null, x: this.width / 2, y: this.height / 2, opacity: 0.16 }
     }
 
     for (let i = 1; i < this.N; i++) {
@@ -139,16 +140,22 @@ export class DragonCursorEffect {
 
     const ax = (Math.cos(3 * this.frm) * this.rad * this.width) / this.height
     const ay = (Math.sin(4 * this.frm) * this.rad * this.height) / this.width
+    const firstPreviousX = first.x
+    const firstPreviousY = first.y
     first.x += (ax + this.pointer.x - first.x) / 10
     first.y += (ay + this.pointer.y - first.y) / 10
+    first.opacity = this.getElementOpacity(0, Math.hypot(first.x - firstPreviousX, first.y - firstPreviousY))
 
     for (let i = 1; i < this.N; i++) {
       const e = this.elems[i]
       const ep = this.elems[i - 1]
       const a = Math.atan2(e.y - ep.y, e.x - ep.x)
       const segmentLength = Math.max(2.4, ((100 - i) / 5) * this.segmentStride)
+      const previousX = e.x
+      const previousY = e.y
       e.x += (ep.x - e.x + Math.cos(a) * segmentLength) / 4
       e.y += (ep.y - e.y + Math.sin(a) * segmentLength) / 4
+      e.opacity += (this.getElementOpacity(i, Math.hypot(e.x - previousX, e.y - previousY)) - e.opacity) / 3
       const s = this.getElementScale(i)
       const forwardOffset = this.getElementForwardOffset(i)
       e.use?.setAttributeNS(
@@ -156,6 +163,7 @@ export class DragonCursorEffect {
         'transform',
         `translate(${(ep.x + e.x) / 2},${(ep.y + e.y) / 2}) rotate(${(180 / Math.PI) * a}) translate(${forwardOffset},0) scale(${s},${s})`
       )
+      e.use?.setAttributeNS(null, 'opacity', e.opacity.toFixed(3))
     }
 
     if (this.rad < this.radm) this.rad++
@@ -177,6 +185,14 @@ export class DragonCursorEffect {
     if (index === 1) return -8
     if (index === 8 || index === 14) return -5
     return 0
+  }
+
+  private getElementOpacity(index: number, speed: number): number {
+    const frontWeight = 1 - Math.min(1, Math.max(0, (index - 1) / (this.N - 1)))
+    const speedWeight = Math.min(1, speed / 9)
+    const baseOpacity = 0.08 + frontWeight * 0.14
+    const speedBoost = speedWeight * (0.1 + frontWeight * 0.42)
+    return Math.min(0.78, baseOpacity + speedBoost)
   }
 }
 
