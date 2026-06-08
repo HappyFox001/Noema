@@ -2051,41 +2051,58 @@ body.plugin-task-surface-replace .task-steps {
 }
 
 .settings-telemetry-bar {
-  position: sticky;
-  top: 0;
-  z-index: 8;
+  position: absolute;
+  top: 20px;
+  right: 74px;
+  z-index: 3;
   display: flex;
   justify-content: flex-end;
   align-items: center;
-  gap: 12px;
-  width: fit-content;
-  margin: -40px 0 16px auto;
+  gap: 6px;
+  width: min(310px, calc(100vw - 220px));
+  margin: 0;
   padding: 0;
   color: rgba(244, 248, 248, 0.92);
   background: transparent;
+  flex-wrap: nowrap;
+  pointer-events: none;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .telemetry-item {
   min-width: 0;
+  flex: 1 1 0;
   display: flex;
   align-items: center;
-  gap: 4px;
-  height: 20px;
+  gap: 5px;
+  height: 34px;
+  padding: 0 7px;
+  border: 1px solid rgba(232, 238, 238, 0.11);
+  border-radius: 7px;
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)),
+    rgba(8, 10, 11, 0.38);
   color: inherit;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 8px 18px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
 }
 
 .telemetry-icon {
-  width: 16px;
-  height: 16px;
-  flex: 0 0 16px;
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
   display: inline-grid;
   place-items: center;
   color: currentColor;
 }
 
 .telemetry-icon svg {
-  width: 16px;
-  height: 16px;
+  width: 15px;
+  height: 15px;
   fill: none;
   stroke: currentColor;
   stroke-width: 2.1;
@@ -2101,14 +2118,33 @@ body.theme-day .telemetry-network-icon.proxy-active {
   color: rgba(8, 145, 178, 0.96);
 }
 
-.telemetry-item strong {
+.telemetry-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  line-height: 1;
+}
+
+.telemetry-copy strong {
   color: currentColor;
   font-family: var(--control-font);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.telemetry-copy span {
+  min-width: 0;
+  color: rgba(244, 248, 248, 0.56);
+  font-family: var(--control-font);
+  font-size: 9px;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 body.theme-day .settings-telemetry-bar {
@@ -2117,8 +2153,9 @@ body.theme-day .settings-telemetry-bar {
 
 @media (max-width: 640px) {
   .settings-telemetry-bar {
-    gap: 10px;
-    margin-top: -38px;
+    gap: 5px;
+    right: 66px;
+    width: min(278px, calc(100vw - 184px));
   }
 
   .log-toolbar {
@@ -3907,16 +3944,68 @@ body.theme-day .settings-toggle input:checked + .toggle-slider {
 }
 
 .appearance-provider-control {
-  width: min(100%, 136px);
+  width: min(100%, 156px);
 }
 
 .appearance-provider-trigger {
   min-height: 30px;
 }
 
+.orb-style-trigger.no-logo {
+  grid-template-columns: 22px minmax(0, 1fr) 14px;
+  gap: 7px;
+}
+
 .appearance-provider-option-spacer {
   width: 20px;
   height: 20px;
+}
+
+.orb-style-glyph {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  display: inline-block;
+  flex: 0 0 20px;
+  border-radius: 50%;
+}
+
+.orb-style-trigger[data-orb-style="default"] .orb-style-glyph,
+.orb-style-glyph[data-orb-style="default"] {
+  border-radius: 42% 58% 48% 52% / 52% 44% 56% 48%;
+  background:
+    radial-gradient(circle at 34% 24%, rgba(255, 255, 255, 0.95), transparent 22%),
+    radial-gradient(circle at 62% 66%, rgba(255, 255, 255, 0.30), transparent 30%),
+    rgba(238, 242, 242, 0.16);
+  border: 1px solid rgba(238, 242, 242, 0.50);
+  box-shadow:
+    0 0 10px rgba(238, 242, 242, 0.20),
+    inset 0 0 8px rgba(255, 255, 255, 0.16);
+}
+
+.orb-style-trigger[data-orb-style="advanced"] .orb-style-glyph,
+.orb-style-glyph[data-orb-style="advanced"] {
+  background:
+    radial-gradient(circle at 28% 24%, rgba(255, 255, 255, 0.95), transparent 16%),
+    radial-gradient(circle at 60% 58%, rgba(232, 238, 238, 0.18), transparent 46%),
+    radial-gradient(circle at 50% 50%, rgba(248, 250, 250, 0.05), rgba(8, 10, 10, 0.72) 68%, rgba(255, 255, 255, 0.16));
+  border: 1px solid rgba(238, 242, 242, 0.52);
+  box-shadow:
+    0 0 12px rgba(238, 242, 242, 0.20),
+    inset 0 0 9px rgba(255, 255, 255, 0.14);
+}
+
+.orb-style-trigger[data-orb-style="planet"] .orb-style-glyph,
+.orb-style-glyph[data-orb-style="planet"] {
+  background:
+    radial-gradient(circle at 50% 50%, rgba(10, 12, 13, 0.98) 0 38%, transparent 40%),
+    conic-gradient(from 24deg, transparent 0 16%, rgba(210, 245, 240, 0.74) 18% 26%, transparent 28% 100%);
+  border: 1px solid rgba(185, 230, 224, 0.42);
+  box-shadow: 0 0 11px rgba(170, 236, 228, 0.18);
+}
+
+.orb-style-trigger.config-provider-trigger.no-logo {
+  grid-template-columns: 22px minmax(0, 1fr) 14px;
 }
 
 body.theme-day .settings-panel {
@@ -10778,6 +10867,10 @@ body.chat-open .chat-message-list,
 body.chat-open .chat-config {
   -webkit-app-region: no-drag !important;
   app-region: no-drag !important;
+}
+
+.orb-style-trigger.config-provider-trigger.no-logo {
+  grid-template-columns: 22px minmax(0, 1fr) 14px;
 }
 
 #app .orb-entry-control,

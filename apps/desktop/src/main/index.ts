@@ -17,6 +17,8 @@ const require = createRequire(import.meta.url)
 let activeProxyUrl = ''
 let globalAgentBootstrapped = false
 let electronSessionProxyApplied = false
+let previousTelemetryCpu = process.cpuUsage()
+let previousTelemetryAt = process.hrtime.bigint()
 
 const possibleEnvPaths = [
   join(__dirname, '../.env'),           // apps/desktop/.env (from dist/)
@@ -1585,6 +1587,7 @@ registerSystemIpcHandlers(ipcMain, {
   isDevMode,
   getTelemetry: () => ({
     success: true,
+    cpuPercent: getRendererProcessCpuPercent(),
     memoryBytes: process.memoryUsage().rss,
     activeNetworkInterfaces: getActiveNetworkInterfaceCount(),
     proxyActive: Boolean(activeProxyUrl.trim()),
@@ -2080,6 +2083,26 @@ function getActiveNetworkInterfaceCount(): number {
     }
     return count + 1
   }, 0)
+}
+
+function getRendererProcessCpuPercent(): number {
+  const now = process.hrtime.bigint()
+  const usage = process.cpuUsage()
+  const elapsedMicros = Number(now - previousTelemetryAt) / 1000
+  const cpuMicros =
+    usage.user +
+    usage.system -
+    previousTelemetryCpu.user -
+    previousTelemetryCpu.system
+
+  previousTelemetryAt = now
+  previousTelemetryCpu = usage
+
+  if (!Number.isFinite(elapsedMicros) || elapsedMicros <= 0 || cpuMicros < 0) {
+    return 0
+  }
+
+  return Math.max(0, Math.min(999, (cpuMicros / elapsedMicros) * 100))
 }
 
 function configureProxyFromEnv(): void {

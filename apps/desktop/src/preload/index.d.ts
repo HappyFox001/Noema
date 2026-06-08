@@ -225,6 +225,7 @@ declare global {
       setLogsStreaming: (streaming: boolean) => void
       getSystemTelemetry: () => Promise<{
         success: boolean
+        cpuPercent: number
         memoryBytes: number
         activeNetworkInterfaces: number
         proxyActive: boolean

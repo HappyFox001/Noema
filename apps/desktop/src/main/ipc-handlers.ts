@@ -642,6 +642,7 @@ export function registerSystemIpcHandlers(
     isDevMode(): boolean
     getTelemetry(): {
       success: true
+      cpuPercent: number
       memoryBytes: number
       activeNetworkInterfaces: number
       proxyActive: boolean

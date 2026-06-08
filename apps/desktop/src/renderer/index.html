@@ -334,6 +334,59 @@
       
       <div id="settings-panel" class="app-surface settings-panel">
         <button id="settings-close" class="settings-close">×</button>
+        <div id="settings-telemetry-bar" class="settings-telemetry-bar" aria-label="System telemetry">
+          <div class="telemetry-item">
+            <span class="telemetry-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <rect x="7" y="7" width="10" height="10" rx="2.2"></rect>
+                <path d="M10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4"></path>
+              </svg>
+            </span>
+            <span class="telemetry-copy">
+              <strong>CPU</strong>
+              <span id="telemetry-cpu">--</span>
+            </span>
+          </div>
+          <div class="telemetry-item">
+            <span class="telemetry-icon telemetry-network-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path d="M4.5 9.5a11 11 0 0 1 15 0"></path>
+                <path d="M8 13a6 6 0 0 1 8 0"></path>
+                <path d="M11.2 16.4a1.2 1.2 0 0 1 1.6 0"></path>
+                <path d="M12 19h.01"></path>
+              </svg>
+            </span>
+            <span class="telemetry-copy">
+              <strong>WIFI</strong>
+              <span id="telemetry-wifi">--</span>
+            </span>
+          </div>
+          <div class="telemetry-item">
+            <span class="telemetry-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path d="M5 19h2.7v-4.8H5V19Z"></path>
+                <path d="M10.6 19h2.7V9.5h-2.7V19Z"></path>
+                <path d="M16.3 19H19V5h-2.7v14Z"></path>
+              </svg>
+            </span>
+            <span class="telemetry-copy">
+              <strong>4G</strong>
+              <span id="telemetry-network">--</span>
+            </span>
+          </div>
+          <div class="telemetry-item">
+            <span id="telemetry-network-icon" class="telemetry-icon telemetry-network-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="8.5"></circle>
+                <path d="M3.5 12h17M12 3.5c2.2 2.5 3.3 5.3 3.3 8.5s-1.1 6-3.3 8.5C9.8 18 8.7 15.2 8.7 12S9.8 6 12 3.5Z"></path>
+              </svg>
+            </span>
+            <span class="telemetry-copy">
+              <strong>PROXY</strong>
+              <span id="telemetry-proxy">--</span>
+            </span>
+          </div>
+        </div>
 
         <div class="settings-layout">
           
@@ -377,29 +430,6 @@
 
           
           <div class="settings-content">
-            <div id="settings-telemetry-bar" class="settings-telemetry-bar" aria-label="System telemetry">
-              <div class="telemetry-item">
-                <span class="telemetry-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24">
-                    <rect x="7" y="7" width="10" height="10" rx="2.2"></rect>
-                    <path d="M10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4"></path>
-                  </svg>
-                </span>
-                <strong id="telemetry-memory">--</strong>
-              </div>
-              <div class="telemetry-item">
-                <span id="telemetry-network-icon" class="telemetry-icon telemetry-network-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24">
-                    <path d="M4.5 9.5a11 11 0 0 1 15 0"></path>
-                    <path d="M8 13a6 6 0 0 1 8 0"></path>
-                    <path d="M11.2 16.4a1.2 1.2 0 0 1 1.6 0"></path>
-                    <path d="M12 19h.01"></path>
-                  </svg>
-                </span>
-                <strong id="telemetry-network">--</strong>
-              </div>
-            </div>
-            
             <section id="section-system" class="settings-section active">
               <h2 class="section-title" data-i18n="system.title">系统设置</h2>
 
@@ -436,7 +466,8 @@
                     <span class="row-desc" data-i18n="appearance.orbStyleDesc">选择主界面小球的视觉表现。</span>
                   </div>
                   <div class="config-provider-control appearance-provider-control">
-                    <button class="config-provider-trigger no-logo appearance-provider-trigger" id="orb-style-trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
+                    <button class="config-provider-trigger no-logo appearance-provider-trigger orb-style-trigger" id="orb-style-trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
+                      <span class="orb-style-glyph" aria-hidden="true"></span>
                       <span class="config-provider-trigger-label" id="orb-style-label">默认小球</span>
                       <span class="config-provider-trigger-arrow"></span>
                     </button>

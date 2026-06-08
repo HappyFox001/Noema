@@ -1571,6 +1571,7 @@ type AppLogEntry = {
 
 type SystemTelemetry = {
   success: boolean
+  cpuPercent: number
   memoryBytes: number
   activeNetworkInterfaces: number
   proxyActive: boolean
@@ -3609,9 +3610,11 @@ const mainView = document.getElementById('main-view')!
 const settingsNav = document.querySelector('.settings-nav') as HTMLElement
 const modelNavItem = document.querySelector('.nav-item[data-section="models"]') as HTMLElement | null
 const modelNavLabel = modelNavItem?.querySelector('.nav-label') as HTMLElement | null
-const telemetryMemory = document.getElementById('telemetry-memory') as HTMLElement
+const telemetryCpu = document.getElementById('telemetry-cpu') as HTMLElement
+const telemetryWifi = document.getElementById('telemetry-wifi') as HTMLElement
 const telemetryNetworkIcon = document.getElementById('telemetry-network-icon') as HTMLElement
 const telemetryNetwork = document.getElementById('telemetry-network') as HTMLElement
+const telemetryProxy = document.getElementById('telemetry-proxy') as HTMLElement
 const aboutVersion = document.getElementById('about-version') as HTMLElement
 const appUpdateButton = document.getElementById('app-update-button') as HTMLButtonElement
 const appUpdateLabel = document.getElementById('app-update-label') as HTMLElement
@@ -3874,7 +3877,7 @@ function openOrbStyleMenu(): void {
   menu.innerHTML = ORB_STYLE_OPTIONS.map(option => `
     <button class="config-provider-option appearance-provider-option ${option.value === currentOrbStyle ? 'selected' : ''}" type="button" role="option" aria-selected="${option.value === currentOrbStyle ? 'true' : 'false'}" data-orb-style="${option.value}">
       <span class="config-provider-option-check">${option.value === currentOrbStyle ? '✓' : ''}</span>
-      <span class="appearance-provider-option-spacer" aria-hidden="true"></span>
+      <span class="orb-style-glyph" data-orb-style="${option.value}" aria-hidden="true"></span>
       <span class="config-provider-option-label">${escapeHtml(t(option.labelKey))}</span>
     </button>
   `).join('')
@@ -4760,22 +4763,6 @@ contextMenu.addEventListener('click', (e) => {
   contextMenu.classList.remove('visible')
 })
 
-function getNetworkLabel(telemetry: SystemTelemetry): string {
-  if (!navigator.onLine || telemetry.activeNetworkInterfaces === 0) {
-    return 'OFFLINE'
-  }
-
-  const connection = (navigator as any).connection
-  const effectiveType = typeof connection?.effectiveType === 'string'
-    ? connection.effectiveType.toUpperCase()
-    : ''
-  const downlink = typeof connection?.downlink === 'number'
-    ? `${connection.downlink.toFixed(connection.downlink >= 10 ? 0 : 1)} MBPS`
-    : ''
-
-  return [effectiveType || 'ONLINE', downlink, telemetry.proxyActive ? 'PROXY' : ''].filter(Boolean).join(' / ')
-}
-
 function formatTelemetryBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) {
     return '--'
@@ -4787,20 +4774,50 @@ function formatTelemetryBytes(bytes: number): string {
   return `${mib.toFixed(1)}M`
 }
 
+function formatTelemetryPercent(value: number): string {
+  if (!Number.isFinite(value) || value < 0) {
+    return '--'
+  }
+  return `${Math.round(value)}%`
+}
+
+function getConnectionTelemetry(telemetry: SystemTelemetry): { wifi: string; cellular: string } {
+  if (!navigator.onLine || telemetry.activeNetworkInterfaces === 0) {
+    return { wifi: 'OFF', cellular: '--' }
+  }
+
+  const connection = (navigator as any).connection
+  const downlink = typeof connection?.downlink === 'number'
+    ? `${connection.downlink.toFixed(connection.downlink >= 10 ? 0 : 1)}M`
+    : '--'
+
+  return {
+    wifi: telemetry.activeNetworkInterfaces > 1 ? `${telemetry.activeNetworkInterfaces} NET` : 'ON',
+    cellular: downlink,
+  }
+}
+
 async function refreshSystemTelemetry(): Promise<void> {
   try {
     const telemetry = await window.electronAPI.getSystemTelemetry()
     if (!telemetry.success) {
       throw new Error(telemetry.error ?? 'telemetry unavailable')
     }
-    telemetryMemory.textContent = formatTelemetryBytes(telemetry.memoryBytes)
-    telemetryNetwork.textContent = getNetworkLabel(telemetry)
-    telemetryNetwork.title = telemetry.activeProxyUrl ? `Proxy: ${telemetry.activeProxyUrl}` : ''
+    const connection = getConnectionTelemetry(telemetry)
+    telemetryCpu.textContent = formatTelemetryPercent(telemetry.cpuPercent)
+    telemetryCpu.title = `Memory: ${formatTelemetryBytes(telemetry.memoryBytes)}`
+    telemetryWifi.textContent = connection.wifi
+    telemetryNetwork.textContent = connection.cellular
+    telemetryProxy.textContent = telemetry.proxyActive ? '已启用' : '未启用'
+    telemetryProxy.title = telemetry.activeProxyUrl ? `Proxy: ${telemetry.activeProxyUrl}` : ''
     telemetryNetworkIcon.classList.toggle('proxy-active', telemetry.proxyActive)
   } catch {
-    telemetryMemory.textContent = '--'
+    telemetryCpu.textContent = '--'
+    telemetryCpu.title = ''
+    telemetryWifi.textContent = '--'
     telemetryNetwork.textContent = 'UNKNOWN'
-    telemetryNetwork.title = ''
+    telemetryProxy.textContent = '--'
+    telemetryProxy.title = ''
     telemetryNetworkIcon.classList.remove('proxy-active')
   }
 }
