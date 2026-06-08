@@ -7,6 +7,8 @@
 import './styles.css'
 import { initializeLiquidGlassSurface } from './liquid-glass-surface'
 import { initializeDragonCursorEffect } from './dragon-cursor-effect'
+import { initializeChatPanel } from './surfaces/chat-panel'
+import { initializeOrbEntryMenu } from './surfaces/orb-entry-menu'
 import claudeCodeLogoUrl from './assets/claude_code_logo.png'
 import codexLogoUrl from './assets/codex_logo.png'
 import claudeIconUrl from '@lobehub/icons-static-svg/icons/claude-color.svg?url'
@@ -3613,7 +3615,6 @@ const appUpdateButton = document.getElementById('app-update-button') as HTMLButt
 const appUpdateLabel = document.getElementById('app-update-label') as HTMLElement
 
 let settingsCloseAnimationTimer: number | undefined
-let chatCloseAnimationTimer: number | undefined
 let telemetryRefreshTimer: number | undefined
 let currentAppVersion = ''
 let appUpdateChecking = false
@@ -4938,103 +4939,12 @@ function switchSettingsSection(section: string): void {
   }
 }
 
-function setOrbEntryMenuVisible(visible: boolean): void {
-  orbEntryMenu.classList.toggle('visible', visible)
-  orbEntryMenu.setAttribute('aria-hidden', visible ? 'false' : 'true')
-  orbSettingsBtn.setAttribute('aria-expanded', visible ? 'true' : 'false')
-}
-
-function appendLocalChatMessage(text: string, role: 'user' | 'assistant'): void {
-  const message = document.createElement('article')
-  message.className = `chat-message ${role}`
-  const time = new Date().toLocaleTimeString(currentLanguage === 'zh-CN' ? 'zh-CN' : 'en-US', {
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-  message.innerHTML = `<p>${escapeHtml(text)}</p><span>${escapeHtml(time)}</span>`
-  chatMessageList.appendChild(message)
-  chatMessageList.scrollTop = chatMessageList.scrollHeight
-}
-
-async function openChat(): Promise<void> {
-  if (chatCloseAnimationTimer !== undefined) {
-    window.clearTimeout(chatCloseAnimationTimer)
-    chatCloseAnimationTimer = undefined
-  }
-
-  setOrbEntryMenuVisible(false)
-  document.body.classList.add('window-mode-changing')
-  orbAnimationPaused = true
-  stopOrbAnimation()
-  let windowHiddenForResize = false
-  try {
-    await window.electronAPI.setWindowOpacity(0.01)
-    windowHiddenForResize = true
-    await window.electronAPI.setCompactWindowMode(false).catch((error) => {
-      console.warn('[Window] Failed to enter chat window mode:', error)
-    })
-    document.body.classList.remove('settings-open', 'settings-closing')
-    settingsPanel.classList.remove('visible', 'warping-in', 'warping-out')
-    document.body.classList.add('chat-open')
-    document.body.classList.remove('window-mode-changing')
-    chatPanel.classList.add('visible')
-    chatPanel.setAttribute('aria-hidden', 'false')
-    mainView.setAttribute('aria-hidden', 'true')
-    await waitForNextPaint()
-  } finally {
-    if (windowHiddenForResize) {
-      await window.electronAPI.setWindowOpacity(1).catch((error) => {
-        console.warn('[Window] Failed to restore window opacity:', error)
-      })
-    }
-  }
-
-  window.requestAnimationFrame(() => {
-    chatMessageList.scrollTop = chatMessageList.scrollHeight
-    chatComposeInput.focus()
-  })
-}
-
-function closeChat(): void {
-  if (!document.body.classList.contains('chat-open')) {
-    return
-  }
-  chatPanel.classList.remove('visible')
-  chatPanel.setAttribute('aria-hidden', 'true')
-  if (chatCloseAnimationTimer !== undefined) {
-    window.clearTimeout(chatCloseAnimationTimer)
-  }
-  chatCloseAnimationTimer = window.setTimeout(() => {
-    void finishCloseChat()
-  }, 220)
-}
-
-async function finishCloseChat(): Promise<void> {
-  document.body.classList.add('window-mode-changing')
-  try {
-    if (document.body.classList.contains('task-active')) {
-      await window.electronAPI.setTaskWindowMode(true)
-    } else {
-      await window.electronAPI.setCompactWindowMode(true)
-    }
-  } catch (error) {
-    console.warn('[Window] Failed to leave chat window mode:', error)
-  } finally {
-    orbAnimationPaused = false
-    document.body.classList.remove('chat-open', 'window-mode-changing')
-    mainView.removeAttribute('aria-hidden')
-    startOrbAnimation()
-    chatCloseAnimationTimer = undefined
-  }
-}
-
 async function openSettings(section?: string): Promise<void> {
   if (settingsCloseAnimationTimer !== undefined) {
     window.clearTimeout(settingsCloseAnimationTimer)
     settingsCloseAnimationTimer = undefined
   }
 
-  setOrbEntryMenuVisible(false)
   document.body.classList.add('window-mode-changing')
   orbAnimationPaused = true
   stopOrbAnimation()
@@ -5085,34 +4995,46 @@ async function openSettings(section?: string): Promise<void> {
   }
 }
 
-orbSettingsBtn.addEventListener('click', (event) => {
-  event.preventDefault()
-  event.stopPropagation()
-  setOrbEntryMenuVisible(!orbEntryMenu.classList.contains('visible'))
+const chatPanelController = initializeChatPanel({
+  panel: chatPanel,
+  closeButton: chatClose,
+  composeForm: chatComposeForm,
+  composeInput: chatComposeInput,
+  messageList: chatMessageList,
+  mainView,
+  settingsPanel,
+  getLanguage: () => currentLanguage,
+  escapeHtml,
+  waitForNextPaint,
+  enterFullWindowMode: () => window.electronAPI.setCompactWindowMode(false).catch((error) => {
+    console.warn('[Window] Failed to enter chat window mode:', error)
+  }),
+  restoreCompactWindowMode: async () => {
+    if (document.body.classList.contains('task-active')) {
+      await window.electronAPI.setTaskWindowMode(true)
+    } else {
+      await window.electronAPI.setCompactWindowMode(true)
+    }
+  },
+  pausePresence: () => {
+    orbAnimationPaused = true
+    stopOrbAnimation()
+  },
+  resumePresence: () => {
+    orbAnimationPaused = false
+    startOrbAnimation()
+  },
 })
 
-orbEntryMenu.addEventListener('click', (event) => {
-  const target = event.target as HTMLElement | null
-  const item = target?.closest<HTMLElement>('[data-entry-action]')
-  if (!item) {
-    return
-  }
-  event.preventDefault()
-  event.stopPropagation()
-  const action = item.dataset.entryAction
-  if (action === 'system') {
+initializeOrbEntryMenu({
+  trigger: orbSettingsBtn,
+  menu: orbEntryMenu,
+  onOpenSystem: () => {
     void openSettings('system')
-  }
-  if (action === 'chat') {
-    void openChat()
-  }
-})
-
-document.addEventListener('pointerdown', (event) => {
-  const target = event.target as HTMLElement | null
-  if (!target?.closest('#orb-entry-menu') && !target?.closest('#orb-settings-btn')) {
-    setOrbEntryMenuVisible(false)
-  }
+  },
+  onOpenChat: () => {
+    void chatPanelController.open()
+  },
 })
 
 // Close settings panel
@@ -5162,40 +5084,6 @@ function handleSettingsClose(event: Event) {
 
 settingsClose.addEventListener('pointerdown', handleSettingsClose)
 settingsClose.addEventListener('click', handleSettingsClose)
-
-chatClose.addEventListener('pointerdown', (event) => {
-  event.preventDefault()
-  event.stopPropagation()
-  closeChat()
-})
-chatClose.addEventListener('click', (event) => {
-  event.preventDefault()
-  event.stopPropagation()
-  closeChat()
-})
-
-chatComposeInput.addEventListener('input', () => {
-  chatComposeInput.style.height = 'auto'
-  chatComposeInput.style.height = `${Math.min(chatComposeInput.scrollHeight, 120)}px`
-})
-
-chatComposeInput.addEventListener('keydown', (event) => {
-  if (event.key === 'Enter' && !event.shiftKey) {
-    event.preventDefault()
-    chatComposeForm.requestSubmit()
-  }
-})
-
-chatComposeForm.addEventListener('submit', (event) => {
-  event.preventDefault()
-  const text = chatComposeInput.value.trim()
-  if (!text) {
-    return
-  }
-  appendLocalChatMessage(text, 'user')
-  chatComposeInput.value = ''
-  chatComposeInput.style.height = 'auto'
-})
 
 window.electronAPI.onAppMenuCommand((message) => {
   if (message.command === 'open-settings') {
