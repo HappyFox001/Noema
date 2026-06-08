@@ -7,6 +7,8 @@
 import './styles.css'
 import { initializeLiquidGlassSurface } from './liquid-glass-surface'
 import { initializeDragonCursorEffect } from './dragon-cursor-effect'
+import { initializeChatPanel } from './surfaces/chat-panel'
+import { initializeOrbEntryMenu } from './surfaces/orb-entry-menu'
 import claudeCodeLogoUrl from './assets/claude_code_logo.png'
 import codexLogoUrl from './assets/codex_logo.png'
 import claudeIconUrl from '@lobehub/icons-static-svg/icons/claude-color.svg?url'
@@ -626,8 +628,19 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'common.hide': '隐藏',
     'common.updatedAt': '更新于 {time}',
     'context.captureOrb': '截取小球',
+    'context.chat': '聊天',
     'context.clearHistory': '清除对话',
-    'context.settings': '设置',
+    'context.settings': '系统面板',
+    'entry.chat': 'Chat',
+    'entry.system': '系统页面',
+    'chat.identity': '陈知遥 · Companion Mode',
+    'chat.placeholder': '输入消息...',
+    'chat.profileDesc': '自然、亲近、克制的桌面 AI 伴侣。当前只开放聊天、记忆和轻量角色体验。',
+    'chat.search': '搜索角色或对话',
+    'chat.subtitle': '角色对话',
+    'chat.threadEva': '嗯，我在。你慢慢说。',
+    'chat.threadRuntime': '任务、权限和上下文状态',
+    'chat.title': 'Chat',
     'status.connectionFailed': 'Connection failed',
     'status.initializing': 'Initializing...',
     'status.listening': 'Listening...',
@@ -1030,8 +1043,19 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'common.hide': 'Hide',
     'common.updatedAt': 'Updated {time}',
     'context.captureOrb': 'Capture Orb',
+    'context.chat': 'Chat',
     'context.clearHistory': 'Clear Conversation',
-    'context.settings': 'Settings',
+    'context.settings': 'System Panel',
+    'entry.chat': 'Chat',
+    'entry.system': 'System',
+    'chat.identity': 'Chen Zhiyao · Companion Mode',
+    'chat.placeholder': 'Write a message...',
+    'chat.profileDesc': 'A natural, close, and restrained desktop AI companion. Chat, memory, and lightweight character experiences are enabled for now.',
+    'chat.search': 'Search characters or chats',
+    'chat.subtitle': 'Character chat',
+    'chat.threadEva': 'I am here. Take your time.',
+    'chat.threadRuntime': 'Task, permission, and context status',
+    'chat.title': 'Chat',
     'status.connectionFailed': 'Connection failed',
     'status.initializing': 'Initializing...',
     'status.listening': 'Listening...',
@@ -3575,6 +3599,12 @@ const contextMenu = document.getElementById('context-menu')!
 const settingsPanel = document.getElementById('settings-panel')!
 const settingsClose = document.getElementById('settings-close')!
 const orbSettingsBtn = document.getElementById('orb-settings-btn') as HTMLButtonElement
+const orbEntryMenu = document.getElementById('orb-entry-menu') as HTMLElement
+const chatPanel = document.getElementById('chat-panel') as HTMLElement
+const chatClose = document.getElementById('chat-close') as HTMLButtonElement
+const chatComposeForm = document.getElementById('chat-compose-form') as HTMLFormElement
+const chatComposeInput = document.getElementById('chat-compose-input') as HTMLTextAreaElement
+const chatMessageList = document.getElementById('chat-message-list') as HTMLElement
 const mainView = document.getElementById('main-view')!
 const settingsNav = document.querySelector('.settings-nav') as HTMLElement
 const modelNavItem = document.querySelector('.nav-item[data-section="models"]') as HTMLElement | null
@@ -4716,6 +4746,9 @@ contextMenu.addEventListener('click', (e) => {
     case 'settings':
       openSettings()
       break
+    case 'chat':
+      void chatPanelController.open()
+      break
     case 'capture-orb':
       void captureOrbToClipboard()
       break
@@ -4929,6 +4962,9 @@ async function openSettings(section?: string): Promise<void> {
     })
     document.body.classList.remove('settings-closing')
     document.body.classList.add('settings-open')
+    document.body.classList.remove('chat-open')
+    chatPanel.classList.remove('visible')
+    chatPanel.setAttribute('aria-hidden', 'true')
     document.body.classList.remove('window-mode-changing')
     startSystemTelemetry()
     settingsPanel.classList.remove('warping-out')
@@ -4964,10 +5000,46 @@ async function openSettings(section?: string): Promise<void> {
   }
 }
 
-orbSettingsBtn.addEventListener('click', (event) => {
-  event.preventDefault()
-  event.stopPropagation()
-  void openSettings()
+const chatPanelController = initializeChatPanel({
+  panel: chatPanel,
+  closeButton: chatClose,
+  composeForm: chatComposeForm,
+  composeInput: chatComposeInput,
+  messageList: chatMessageList,
+  mainView,
+  settingsPanel,
+  getLanguage: () => currentLanguage,
+  escapeHtml,
+  waitForNextPaint,
+  enterFullWindowMode: () => window.electronAPI.setCompactWindowMode(false).catch((error) => {
+    console.warn('[Window] Failed to enter chat window mode:', error)
+  }),
+  restoreCompactWindowMode: async () => {
+    if (document.body.classList.contains('task-active')) {
+      await window.electronAPI.setTaskWindowMode(true)
+    } else {
+      await window.electronAPI.setCompactWindowMode(true)
+    }
+  },
+  pausePresence: () => {
+    orbAnimationPaused = true
+    stopOrbAnimation()
+  },
+  resumePresence: () => {
+    orbAnimationPaused = false
+    startOrbAnimation()
+  },
+})
+
+initializeOrbEntryMenu({
+  trigger: orbSettingsBtn,
+  menu: orbEntryMenu,
+  onOpenSystem: () => {
+    void openSettings('system')
+  },
+  onOpenChat: () => {
+    void chatPanelController.open()
+  },
 })
 
 // Close settings panel
