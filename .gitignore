@@ -41,6 +41,7 @@ other/
 other/**
 
 *.md
+!AGENTS.md
 lanuch/
 tmp/
 scripts/
