@@ -14,8 +14,10 @@ export interface OrbEntryMenuOptions {
 
 export function initializeOrbEntryMenu(options: OrbEntryMenuOptions): OrbEntryMenuController {
   const { trigger, menu, onOpenSystem, onOpenChat } = options
+  const control = trigger.closest<HTMLElement>('.orb-entry-control')
 
   function setVisible(visible: boolean): void {
+    control?.classList.toggle('is-open', visible)
     menu.classList.toggle('visible', visible)
     menu.setAttribute('aria-hidden', visible ? 'false' : 'true')
     trigger.setAttribute('aria-expanded', visible ? 'true' : 'false')
@@ -52,7 +54,7 @@ export function initializeOrbEntryMenu(options: OrbEntryMenuOptions): OrbEntryMe
 
   document.addEventListener('pointerdown', (event) => {
     const target = event.target as HTMLElement | null
-    if (!target?.closest('#orb-entry-menu') && !target?.closest('#orb-settings-btn')) {
+    if (!target?.closest('.orb-entry-control')) {
       setVisible(false)
     }
   })

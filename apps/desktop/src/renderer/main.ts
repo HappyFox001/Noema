@@ -628,8 +628,9 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'common.hide': '隐藏',
     'common.updatedAt': '更新于 {time}',
     'context.captureOrb': '截取小球',
+    'context.chat': '聊天',
     'context.clearHistory': '清除对话',
-    'context.settings': '设置',
+    'context.settings': '系统面板',
     'entry.chat': 'Chat',
     'entry.system': '系统页面',
     'chat.identity': '陈知遥 · Companion Mode',
@@ -1042,8 +1043,9 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'common.hide': 'Hide',
     'common.updatedAt': 'Updated {time}',
     'context.captureOrb': 'Capture Orb',
+    'context.chat': 'Chat',
     'context.clearHistory': 'Clear Conversation',
-    'context.settings': 'Settings',
+    'context.settings': 'System Panel',
     'entry.chat': 'Chat',
     'entry.system': 'System',
     'chat.identity': 'Chen Zhiyao · Companion Mode',
@@ -4743,6 +4745,9 @@ contextMenu.addEventListener('click', (e) => {
   switch (action) {
     case 'settings':
       openSettings()
+      break
+    case 'chat':
+      void chatPanelController.open()
       break
     case 'capture-orb':
       void captureOrbToClipboard()
