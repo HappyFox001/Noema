@@ -324,6 +324,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return ipcRenderer.invoke('window:set-compact-mode', compact)
   },
 
+  setChatWindowMode: (active, fullscreen = false) => {
+    return ipcRenderer.invoke('window:set-chat-mode', active, fullscreen)
+  },
+
   setTaskWindowMode: (active) => {
     return ipcRenderer.invoke('window:set-task-mode', active)
   },

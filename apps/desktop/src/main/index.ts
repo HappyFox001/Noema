@@ -107,6 +107,7 @@ import { TaskCommunicationSpeechScheduler } from './task-communication-speech.js
 import { initializeDesktopSDK } from './sdk-bootstrap.js'
 import { buildApplicationMenu } from './app-menu.js'
 import {
+  CHAT_WINDOW_DESIGN_SIZE,
   COMPACT_WINDOW_SIZE,
   SETTINGS_WINDOW_SIZE,
   TASK_WINDOW_SIZE,
@@ -1646,6 +1647,7 @@ registerSpeechIpcHandlers(ipcMain, {
   cancelCurrentTurn,
 })
 registerWindowIpcHandlers(ipcMain, {
+  chatWindowDesignSize: CHAT_WINDOW_DESIGN_SIZE,
   compactWindowSize: COMPACT_WINDOW_SIZE,
   settingsWindowSize: SETTINGS_WINDOW_SIZE,
   taskWindowSize: TASK_WINDOW_SIZE,

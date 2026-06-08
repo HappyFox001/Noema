@@ -728,6 +728,13 @@ declare global {
       endThemeTransitionCover: () => Promise<{ success: boolean; error?: string }>
       playThemeTransitionCover: (afterDataUrl: string) => Promise<{ success: boolean; error?: string }>
       setCompactWindowMode: (compact: boolean) => Promise<{ success: boolean; error?: string }>
+      setChatWindowMode: (active: boolean, fullscreen?: boolean) => Promise<{
+        success: boolean
+        fullscreen?: boolean
+        width?: number
+        height?: number
+        error?: string
+      }>
       setTaskWindowMode: (active: boolean) => Promise<{ success: boolean; error?: string }>
     }
   }

@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 1200" role="img" aria-labelledby="title desc">
+  <title id="title">Daphne Spencers volleyball portrait</title>
+  <desc id="desc">A stylized red-haired volleyball player in an orange and navy uniform holding a white volleyball.</desc>
+  <defs>
+    <linearGradient id="court" x1="0" x2="1" y1="0" y2="1">
+      <stop stop-color="#456b67" offset="0"/>
+      <stop stop-color="#131717" offset="0.42"/>
+      <stop stop-color="#e3a073" offset="1"/>
+    </linearGradient>
+    <linearGradient id="hair" x1="0.2" x2="0.82" y1="0.1" y2="0.9">
+      <stop stop-color="#f09376" offset="0"/>
+      <stop stop-color="#b94e3f" offset="0.44"/>
+      <stop stop-color="#713027" offset="1"/>
+    </linearGradient>
+    <linearGradient id="skin" x1="0.32" x2="0.78" y1="0.1" y2="1">
+      <stop stop-color="#ffe1d4" offset="0"/>
+      <stop stop-color="#efb199" offset="0.62"/>
+      <stop stop-color="#bd7668" offset="1"/>
+    </linearGradient>
+    <linearGradient id="uniform" x1="0.15" x2="0.86" y1="0.05" y2="0.95">
+      <stop stop-color="#ff8d60" offset="0"/>
+      <stop stop-color="#e95d3b" offset="0.58"/>
+      <stop stop-color="#812f2c" offset="1"/>
+    </linearGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#000" flood-opacity="0.34"/>
+    </filter>
+  </defs>
+  <rect width="960" height="1200" fill="url(#court)"/>
+  <g opacity="0.8">
+    <rect x="-20" y="128" width="1040" height="162" fill="#d9ebe6" opacity="0.86"/>
+    <path d="M-20 166h1040M-20 225h1040M80 128v162M210 128v162M340 128v162M470 128v162M600 128v162M730 128v162M860 128v162" fill="none" stroke="#2b5251" stroke-width="8" opacity="0.82"/>
+    <rect x="-30" y="292" width="1030" height="18" fill="#f2f2eb" opacity="0.88"/>
+    <rect x="-20" y="750" width="1040" height="140" fill="#31578a" opacity="0.72"/>
+    <path d="M0 889h960v311H0z" fill="#e4a074" opacity="0.72"/>
+  </g>
+  <g filter="url(#softShadow)">
+    <path d="M339 410c-68 26-107 111-123 230-13 96-7 205-52 318 61 34 161 32 238 18l37-266-14-230-86-70Z" fill="url(#skin)"/>
+    <path d="M647 421c63 32 91 110 111 202 19 86 47 154 91 224-47 47-116 57-170 34-38-122-53-226-72-343l40-117Z" fill="url(#skin)"/>
+    <path d="M343 278c-3-94 55-178 159-180 105-2 182 75 189 179 9 126-57 205-171 212-103 7-174-68-177-211Z" fill="url(#hair)"/>
+    <path d="M353 219c-54 42-77 114-62 203 13 75 54 132 101 157 3-81 13-171 52-259l-91-101Z" fill="#7a302a"/>
+    <path d="M689 233c63 59 79 146 51 244-22 75-65 116-108 132 9-87 6-166-30-283l87-93Z" fill="#8c372f"/>
+    <path d="M405 250c17-69 74-113 140-112 80 2 127 58 132 139 6 101-48 177-133 180-88 4-154-71-139-207Z" fill="url(#skin)"/>
+    <path d="M391 271c70-7 128-34 181-94 28 57 67 88 110 102-13-92-76-158-165-164-83-6-143 53-126 156Z" fill="url(#hair)"/>
+    <path d="M385 330c-22-13-47 1-43 36 4 34 29 55 55 50l-12-86Z" fill="url(#skin)"/>
+    <path d="M666 331c24-12 47 4 41 38-6 33-29 52-53 47l12-85Z" fill="url(#skin)"/>
+    <path d="M456 546h142l96 70c-5 131-14 259-21 390H334c-4-143-15-269-24-387l146-73Z" fill="url(#uniform)"/>
+    <path d="M340 617c85 42 238 46 347-1l17 73c-106 51-259 49-378-1l14-71Z" fill="#182342"/>
+    <path d="M392 535l60-36 76 114 71-115 64 38-67 126H459L392 535Z" fill="#1d294b"/>
+    <path d="M461 603c26 16 79 16 107 0l-10 55h-88l-9-55Z" fill="#f3e0d2" opacity="0.88"/>
+    <path d="M442 742h149c-8 42-12 83-13 122H453c-2-43-5-84-11-122Z" fill="#7e2c2f" opacity="0.5"/>
+    <path d="M408 1006h218l31 146H381l27-146Z" fill="#1d294b"/>
+    <path d="M302 645c-48 70-70 181-96 299l73 28c48-119 79-231 101-326l-78-1Z" fill="#9f3b34"/>
+    <path d="M652 637c26 103 50 191 102 291l70-45c-45-97-65-202-91-261l-81 15Z" fill="#a63c33"/>
+    <circle cx="761" cy="534" r="130" fill="#f5f2e8"/>
+    <g fill="none" stroke="#c8c5bd" stroke-width="10" opacity="0.92">
+      <path d="M640 530c62-14 116-48 161-105"/>
+      <path d="M676 632c9-80 39-154 88-219"/>
+      <path d="M765 664c-36-67-44-141-22-221"/>
+      <path d="M869 575c-69-28-139-33-213-12"/>
+      <path d="M843 469c-49 29-105 45-170 44"/>
+    </g>
+    <path d="M459 363c22 22 72 22 94 1" fill="none" stroke="#6b3430" stroke-width="8" stroke-linecap="round"/>
+    <path d="M439 296c22-18 54-17 78 2M568 298c25-19 58-17 83 3" fill="none" stroke="#713027" stroke-width="11" stroke-linecap="round"/>
+    <ellipse cx="477" cy="333" rx="16" ry="21" fill="#3b3436"/>
+    <ellipse cx="611" cy="333" rx="16" ry="21" fill="#3b3436"/>
+    <circle cx="482" cy="326" r="5" fill="#fff"/>
+    <circle cx="616" cy="326" r="5" fill="#fff"/>
+    <path d="M540 344c-8 28-16 45-35 54 17 12 47 10 64-3" fill="none" stroke="#b66d63" stroke-width="7" stroke-linecap="round"/>
+    <path d="M487 430c28 20 75 21 104 0" fill="none" stroke="#7c3430" stroke-width="8" stroke-linecap="round"/>
+    <text x="501" y="721" text-anchor="middle" font-family="Arial Black, Arial, sans-serif" font-size="118" fill="#f4eee8" stroke="#772f2b" stroke-width="8">9</text>
+  </g>
+</svg>
