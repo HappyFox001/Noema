@@ -169,8 +169,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
 
-    const deltaX = event.screenX - lastDragX
-    const deltaY = event.screenY - lastDragY
+    const deltaX = Math.round(event.screenX - lastDragX)
+    const deltaY = Math.round(event.screenY - lastDragY)
     lastDragX = event.screenX
     lastDragY = event.screenY
     if (deltaX !== 0 || deltaY !== 0) {

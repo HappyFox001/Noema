@@ -719,7 +719,12 @@ export function registerWindowIpcHandlers(
     const win = BrowserWindow.fromWebContents(event.sender)
     if (win) {
       const [x, y] = win.getPosition()
-      win.setPosition(x + deltaX, y + deltaY)
+      const nextDeltaX = Number(deltaX)
+      const nextDeltaY = Number(deltaY)
+      if (!Number.isFinite(nextDeltaX) || !Number.isFinite(nextDeltaY)) {
+        return
+      }
+      win.setPosition(Math.round(x + nextDeltaX), Math.round(y + nextDeltaY))
     }
   })
 
