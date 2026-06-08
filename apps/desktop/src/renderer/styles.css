@@ -10779,3 +10779,20 @@ body.chat-open .chat-config {
   -webkit-app-region: no-drag !important;
   app-region: no-drag !important;
 }
+
+#app .orb-entry-control,
+#app .orb-entry-control *,
+#main-view .orb-entry-control,
+#main-view .orb-entry-control * {
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+  pointer-events: auto;
+}
+
+body:not(.settings-open):not(.chat-open) #app,
+body:not(.settings-open):not(.chat-open) #main-view,
+body:not(.settings-open):not(.chat-open) .container,
+body:not(.settings-open):not(.chat-open) .orb-slot {
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
+}
