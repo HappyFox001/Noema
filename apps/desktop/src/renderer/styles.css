@@ -178,13 +178,15 @@ body.theme-day.settings-open:not(.settings-closing) .liquid-glass-surface {
   z-index: 9990;
   width: 100%;
   height: 100%;
-  display: none;
+  display: block;
   visibility: hidden;
   overflow: hidden;
   pointer-events: none;
   contain: layout paint;
   isolation: isolate;
   opacity: 0;
+  transform: translateZ(0);
+  will-change: opacity, transform;
   mix-blend-mode: screen;
   filter:
     drop-shadow(0 0 8px rgba(255, 255, 255, 0.16))
@@ -195,7 +197,6 @@ body.theme-day.settings-open:not(.settings-closing) .liquid-glass-surface {
 }
 
 body.settings-open:not(.settings-closing):not(.dragon-cursor-disabled) .dragon-cursor-stage {
-  display: block;
   visibility: visible;
   opacity: 0.42;
 }
