@@ -53,6 +53,14 @@
       </aside>
 
       <section id="chat-panel" class="app-surface chat-panel" aria-hidden="true">
+        <div class="chat-resize-handle n" data-chat-resize-edge="n" aria-hidden="true"></div>
+        <div class="chat-resize-handle s" data-chat-resize-edge="s" aria-hidden="true"></div>
+        <div class="chat-resize-handle e" data-chat-resize-edge="e" aria-hidden="true"></div>
+        <div class="chat-resize-handle w" data-chat-resize-edge="w" aria-hidden="true"></div>
+        <div class="chat-resize-handle ne" data-chat-resize-edge="ne" aria-hidden="true"></div>
+        <div class="chat-resize-handle nw" data-chat-resize-edge="nw" aria-hidden="true"></div>
+        <div class="chat-resize-handle se" data-chat-resize-edge="se" aria-hidden="true"></div>
+        <div class="chat-resize-handle sw" data-chat-resize-edge="sw" aria-hidden="true"></div>
         <button id="chat-close" class="settings-close chat-close" type="button" aria-label="Close chat">×</button>
         <div class="chat-window-controls" aria-label="Chat window controls">
           <button class="chat-window-control fullscreen" type="button" aria-label="Toggle fullscreen" data-chat-action="window-fullscreen">
@@ -102,10 +110,11 @@
               </svg>
             </button>
             <div class="chat-nav-spacer"></div>
-            <button class="chat-nav-item language-toggle" type="button" aria-label="Switch language" title="Switch language" data-chat-action="language">
-              <span class="chat-language-mark">
-                <span data-chat-language-option="zh">中</span>
-                <span data-chat-language-option="en">EN</span>
+            <button class="chat-nav-item language-toggle" type="button" aria-label="Switch language" title="Switch language" aria-pressed="false" data-chat-action="language">
+              <span class="chat-language-mark" aria-hidden="true">
+                <span class="chat-language-card latin"></span>
+                <span class="chat-language-card han"></span>
+                <span class="chat-language-bridge"></span>
               </span>
             </button>
             <button class="chat-nav-item" type="button" aria-label="Voice" title="Voice" data-i18n-title="chat.navVoice" data-chat-nav="voice">
@@ -155,11 +164,6 @@
                   <h1>EVA</h1>
                   <span class="chat-identity-meta">zh-CN · local-yaml</span>
                 </div>
-              </div>
-              <div class="chat-session-strip" aria-label="Session status">
-                <span data-i18n="chat.statusLocal">本地</span>
-                <span data-i18n="chat.statusText">文本</span>
-                <span data-i18n="chat.statusHistory">历史角色</span>
               </div>
               <div class="chat-header-actions">
                 <button class="chat-icon-btn" type="button" aria-label="Voice" data-chat-action="voice-call">

@@ -750,6 +750,17 @@ declare global {
         height?: number
         error?: string
       }>
+      resizeChatWindow: (
+        edge: 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw',
+        deltaX: number,
+        deltaY: number
+      ) => Promise<{
+        success: boolean
+        fullscreen?: boolean
+        width?: number
+        height?: number
+        error?: string
+      }>
       setTaskWindowMode: (active: boolean) => Promise<{ success: boolean; error?: string }>
     }
   }

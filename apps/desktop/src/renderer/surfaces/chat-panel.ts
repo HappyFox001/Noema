@@ -15,6 +15,8 @@ import {
 } from './chat-model'
 import { createChatRenderer } from './chat-renderer'
 
+type ChatResizeEdge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
+
 export interface ChatPanelController {
   open(): Promise<void>
   close(): void
@@ -45,12 +47,15 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let toastTimer: number | undefined
   let fullscreen = false
   let dragging = false
+  let resizing = false
+  let resizeEdge: ChatResizeEdge | '' = ''
   let lastDragX = 0
   let lastDragY = 0
   const state = createInitialChatState()
   const panel = options.panel
   const navItems = Array.from(panel.querySelectorAll<HTMLButtonElement>('[data-chat-nav]'))
   const searchInput = panel.querySelector<HTMLInputElement>('.chat-search input')
+  const languageButton = panel.querySelector<HTMLButtonElement>('[data-chat-action="language"]')
   const languageMark = panel.querySelector<HTMLElement>('.chat-language-mark')
   const windowCloseButton = panel.querySelector<HTMLButtonElement>('[data-chat-action="window-close"]')
   const windowFullscreenButton = panel.querySelector<HTMLButtonElement>('[data-chat-action="window-fullscreen"]')
@@ -111,13 +116,17 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     showToast(`${label} view`)
   }
 
-  function setChatFullscreen(active: boolean): void {
+  function setFullscreenState(active: boolean): void {
     fullscreen = active
     document.body.classList.toggle('chat-fullscreen', fullscreen)
     fullscreenButtons.forEach((button) => {
       button.classList.toggle('is-active', fullscreen)
       button.setAttribute('aria-label', fullscreen ? 'Exit fullscreen' : 'Toggle fullscreen')
     })
+  }
+
+  function setChatFullscreen(active: boolean): void {
+    setFullscreenState(active)
     void window.electronAPI.setChatWindowMode(true, fullscreen).catch((error) => {
       console.warn('[Window] Failed to toggle chat fullscreen mode:', error)
     })
@@ -126,12 +135,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function isInteractiveTarget(target: EventTarget | null): boolean {
     return Boolean((target as HTMLElement | null)?.closest(
-      'button, input, textarea, select, a, .chat-thread-list, .chat-composer, .chat-config-portrait, .chat-config-copy, .chat-asset-list'
+      'button, input, textarea, select, a, .chat-thread-list, .chat-composer, .chat-config-portrait, .chat-config-copy, .chat-asset-list, .chat-resize-handle'
     ))
   }
 
   function beginManualDrag(event: PointerEvent): void {
-    if (event.button !== 0 || fullscreen || isInteractiveTarget(event.target)) {
+    if (event.button !== 0 || fullscreen || resizing || isInteractiveTarget(event.target)) {
       return
     }
 
@@ -157,6 +166,69 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function endManualDrag(): void {
     dragging = false
+  }
+
+  function isChatResizeEdge(value: string | undefined): value is ChatResizeEdge {
+    return value === 'n'
+      || value === 's'
+      || value === 'e'
+      || value === 'w'
+      || value === 'ne'
+      || value === 'nw'
+      || value === 'se'
+      || value === 'sw'
+  }
+
+  function beginChatResize(event: PointerEvent): void {
+    const handle = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-chat-resize-edge]')
+    if (event.button !== 0 || !handle || !panel.contains(handle)) {
+      return
+    }
+
+    const edge = handle.dataset.chatResizeEdge
+    if (!isChatResizeEdge(edge)) {
+      return
+    }
+
+    resizing = true
+    resizeEdge = edge
+    lastDragX = event.screenX
+    lastDragY = event.screenY
+    panel.classList.add('is-resizing')
+    handle.setPointerCapture?.(event.pointerId)
+    event.preventDefault()
+    event.stopPropagation()
+  }
+
+  function updateChatResize(event: PointerEvent): void {
+    if (!resizing || !resizeEdge) {
+      return
+    }
+
+    const deltaX = Math.round(event.screenX - lastDragX)
+    const deltaY = Math.round(event.screenY - lastDragY)
+    lastDragX = event.screenX
+    lastDragY = event.screenY
+    if (deltaX === 0 && deltaY === 0) {
+      return
+    }
+
+    void window.electronAPI.resizeChatWindow(resizeEdge, deltaX, deltaY).then((response) => {
+      if (response.success) {
+        setFullscreenState(Boolean(response.fullscreen))
+      }
+    }).catch((error) => {
+      console.warn('[Window] Failed to resize chat window:', error)
+    })
+  }
+
+  function endChatResize(): void {
+    if (!resizing) {
+      return
+    }
+    resizing = false
+    resizeEdge = ''
+    panel.classList.remove('is-resizing')
   }
 
   function getTimeLabel(): string {
@@ -294,9 +366,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!document.body.classList.contains('chat-open')) {
       return
     }
-    fullscreen = false
-    document.body.classList.remove('chat-fullscreen')
-    fullscreenButtons.forEach((button) => button.classList.remove('is-active'))
+    setFullscreenState(false)
     options.panel.classList.remove('visible')
     options.panel.setAttribute('aria-hidden', 'true')
     if (closeAnimationTimer !== undefined) {
@@ -409,9 +479,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     handleAction(target.dataset.chatAction || '', target)
   })
 
+  panel.addEventListener('pointerdown', beginChatResize)
   panel.addEventListener('pointerdown', beginManualDrag)
+  window.addEventListener('pointermove', updateChatResize)
   window.addEventListener('pointermove', updateManualDrag)
+  window.addEventListener('pointerup', endChatResize)
   window.addEventListener('pointerup', endManualDrag)
+  window.addEventListener('pointercancel', endChatResize)
   window.addEventListener('pointercancel', endManualDrag)
 
   renderChat()
@@ -420,10 +494,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   return { open, close, refreshLanguage: renderChat }
 
   function syncLanguageControl(): void {
+    const language = options.getLanguage()
+    languageButton?.setAttribute('aria-pressed', language === 'en-US' ? 'true' : 'false')
+    languageButton?.setAttribute('title', language === 'zh-CN' ? 'Switch to English' : '切换到中文')
     if (!languageMark) {
       return
     }
-    languageMark.dataset.language = options.getLanguage()
+    languageMark.dataset.language = language
   }
 
   async function hydrateChatResources(): Promise<void> {
