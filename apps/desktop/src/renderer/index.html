@@ -69,57 +69,46 @@
         </div>
         <div class="chat-shell">
           <nav class="chat-nav" aria-label="Chat navigation">
-            <button class="chat-nav-item active" type="button" aria-label="Home" data-chat-nav="home">
+            <div class="chat-nav-brand" aria-hidden="true">N</div>
+            <button class="chat-nav-item active" type="button" aria-label="Session" title="Session" data-chat-nav="session">
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M3.4 11 12 3.6 20.6 11v9.2H15v-6h-6v6H3.4V11Z"></path>
               </svg>
             </button>
-            <button class="chat-nav-item" type="button" aria-label="Explore" data-chat-nav="explore">
+            <button class="chat-nav-item" type="button" aria-label="Characters" title="Characters" data-chat-nav="characters">
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <circle cx="12" cy="12" r="8.4"></circle>
                 <path d="m14.6 9.4-1.4 3.8-3.8 1.4 1.4-3.8 3.8-1.4Z"></path>
               </svg>
             </button>
-            <button class="chat-nav-item" type="button" aria-label="Chats" data-chat-nav="chats">
+            <button class="chat-nav-item" type="button" aria-label="Conversations" title="Conversations" data-chat-nav="conversations">
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M5 6.8A3.8 3.8 0 0 1 8.8 3h6.4A3.8 3.8 0 0 1 19 6.8v4.8a3.8 3.8 0 0 1-3.8 3.8H11l-4.2 3.4v-3.6A3.8 3.8 0 0 1 5 11.6V6.8Z"></path>
               </svg>
             </button>
-            <button class="chat-nav-item" type="button" aria-label="Media" data-chat-nav="media">
+            <button class="chat-nav-item" type="button" aria-label="Assets" title="Assets" data-chat-nav="assets">
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <rect x="4" y="5" width="16" height="14" rx="3"></rect>
                 <path d="m7.5 16 3.8-4 2.7 2.8 1.8-1.9 2.7 3.1"></path>
               </svg>
             </button>
-            <button class="chat-nav-item" type="button" aria-label="Tools" data-chat-nav="tools">
+            <button class="chat-nav-item" type="button" aria-label="Runtime" title="Runtime" data-chat-nav="runtime">
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="m14.5 4.5 5 5"></path>
                 <path d="M4.5 19.5 17 7"></path>
                 <path d="m7.2 4.8.8 2.4 2.4.8-2.4.8-.8 2.4-.8-2.4L4 8l2.4-.8.8-2.4Z"></path>
               </svg>
             </button>
-            <button class="chat-nav-item ticket" type="button" aria-label="Pass" data-chat-nav="pass">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M4.4 8.2 13.8 3l5.8 10.5-9.4 5.2L4.4 8.2Z"></path>
-                <path d="m12.3 8.4 2.2 3.9M8.4 10.6l1.3 2.3"></path>
-              </svg>
-            </button>
             <div class="chat-nav-spacer"></div>
             <button class="chat-nav-item" type="button" aria-label="Language" data-chat-action="language">
               <span class="chat-language-mark">US</span>
             </button>
-            <button class="chat-nav-item" type="button" aria-label="Community" data-chat-nav="community">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M7.2 9.5a3.2 3.2 0 0 1 6.4 0v5.2a3.2 3.2 0 0 1-6.4 0V9.5Z"></path>
-                <path d="M10.4 18v2.6M5.4 12.6H3.8M16.2 12.6h-2.6M17.7 9.8a2.7 2.7 0 0 1 0 5.2M19.7 8.2a5.5 5.5 0 0 1 0 8.6"></path>
-              </svg>
-            </button>
-            <button class="chat-nav-item" type="button" aria-label="Calls" data-chat-nav="calls">
+            <button class="chat-nav-item" type="button" aria-label="Voice" title="Voice" data-chat-nav="voice">
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M8.4 4.4 10 8.2 7.8 10c1.1 2.4 3 4.3 5.4 5.4l1.8-2.2 3.8 1.6v3.6c0 1-.8 1.7-1.8 1.6C10.1 19.6 4.4 13.9 4 7c-.1-1 .6-1.8 1.6-1.8h2.8Z"></path>
               </svg>
             </button>
-            <button class="chat-nav-item" type="button" aria-label="Rewards" data-chat-nav="rewards">
+            <button class="chat-nav-item" type="button" aria-label="Archive" title="Archive" data-chat-nav="archive">
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M8 4h8v3.5a4 4 0 0 1-8 0V4Z"></path>
                 <path d="M6 5H3.8v1.7A3.3 3.3 0 0 0 8 9.9M18 5h2.2v1.7A3.3 3.3 0 0 1 16 9.9M12 12v4M8.5 20h7M10 16h4"></path>
@@ -129,14 +118,17 @@
 
           <aside class="chat-characters">
             <div class="chat-characters-header">
-              <h2 data-i18n="chat.title">Chat</h2>
+              <div>
+                <span class="chat-panel-kicker">Noema chat</span>
+                <h2 data-i18n="chat.title">会话</h2>
+              </div>
               <button class="chat-new-group-btn" type="button" aria-label="New group" title="New group" data-chat-action="new-group">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M8.5 12.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"></path>
                   <path d="M2.5 20a6 6 0 0 1 12 0"></path>
                   <path d="M17 8v6M14 11h6"></path>
                 </svg>
-                <span>New Group</span>
+                <span>新建</span>
               </button>
             </div>
             <label class="chat-search">
@@ -147,56 +139,22 @@
               <input type="search" data-i18n-placeholder="chat.search" placeholder="搜索角色或对话" />
             </label>
             <div class="chat-thread-list" aria-label="Conversations">
-              <button class="chat-thread active" type="button" data-character="Daphne" data-profile="Daphne Spencers" data-preview="Hey, it’s Daphne. Locker ro..." data-time="5:55PM">
-                <span class="chat-avatar daphne-avatar"></span>
-                <span class="chat-thread-copy">
-                  <strong>Daphne Spencers</strong>
-                  <span>Hey, it’s Daphne. Locker ro...</span>
-                </span>
-                <time>5:55PM</time>
-              </button>
-              <button class="chat-thread" type="button" data-character="Katarina" data-profile="Katarina Sommerfeld" data-preview="Hallo! You’re not from aro..." data-time="5:52PM">
-                <span class="chat-avatar profile katarina"></span>
-                <span class="chat-thread-copy">
-                  <strong>Katarina Sommerfeld</strong>
-                  <span>Hallo! You’re not from aro...</span>
-                </span>
-                <time>5:52PM</time>
-              </button>
-              <button class="chat-thread" type="button" data-character="Darkangel666" data-profile="Darkangel666" data-preview="Bruh, you better not ghos..." data-time="5:47PM">
-                <span class="chat-avatar profile darkangel"></span>
-                <span class="chat-thread-copy">
-                  <strong>Darkangel666</strong>
-                  <span>"Bruh, you better not ghos...</span>
-                </span>
-                <time>5:47PM</time>
-              </button>
-              <button class="chat-thread" type="button" data-character="Simona" data-profile="Simona Rossi" data-preview="Wait... You’re still up? I tho..." data-time="1:35PM">
-                <span class="chat-avatar profile simona"></span>
-                <span class="chat-thread-copy">
-                  <strong>Simona Rossi</strong>
-                  <span>Wait... You’re still up? I tho...</span>
-                </span>
-                <time>1:35PM</time>
-              </button>
-              <button class="chat-thread" type="button" data-character="Diane" data-profile="Diane Robinson" data-preview="I noticed you checking m..." data-time="7:15PM">
-                <span class="chat-avatar profile diane"></span>
-                <span class="chat-thread-copy">
-                  <strong>Diane Robinson</strong>
-                  <span>I noticed you checking m...</span>
-                </span>
-                <time>7:15PM</time>
-              </button>
             </div>
           </aside>
 
           <main class="chat-main">
             <header class="chat-header">
               <div class="chat-identity">
-                <span class="chat-avatar large daphne-avatar"></span>
+                <span class="chat-avatar large eva-avatar">EVA</span>
                 <div>
-                  <h1>Daphne</h1>
+                  <h1>EVA</h1>
+                  <span class="chat-identity-meta">zh-CN · local-yaml</span>
                 </div>
+              </div>
+              <div class="chat-session-strip" aria-label="Session status">
+                <span>local</span>
+                <span>text</span>
+                <span>voice-ready</span>
               </div>
               <div class="chat-header-actions">
                 <button class="chat-icon-btn" type="button" aria-label="Voice" data-chat-action="voice-call">
@@ -219,34 +177,8 @@
             </header>
 
             <div id="chat-message-list" class="chat-message-list" aria-live="polite">
-              <article class="chat-video-message">
-                <div class="chat-video-card">
-                  <img src="./daphne-spencers.svg" alt="Daphne volleyball video preview" />
-                  <button class="chat-video-play" type="button" aria-label="Play video" data-chat-action="video-play">
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M8 5.5v13l10-6.5-10-6.5Z"></path>
-                    </svg>
-                  </button>
-                  <button class="chat-video-more" type="button" aria-label="Video options" data-chat-action="video-more">
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M12 5.5h.01M12 12h.01M12 18.5h.01"></path>
-                    </svg>
-                  </button>
-                  <span class="chat-video-progress"></span>
-                </div>
-              </article>
-              <article class="chat-message assistant">
-                <p>Hey, it’s Daphne. Locker room’s empty... I'm the last to leave... Were you looking for something?</p>
-                <span><i></i>5:55PM</span>
-              </article>
-              <button class="chat-suggestion" type="button" data-chat-action="suggestion" data-message="Send me a video of you">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <rect x="4" y="7" width="13" height="10" rx="2"></rect>
-                  <path d="m17 10 3-2v8l-3-2M8 7l1.1-2h3.8L14 7"></path>
-                </svg>
-                <span>Send me a video of you</span>
-              </button>
             </div>
+            <div class="chat-suggestion-list" aria-label="Suggested prompts"></div>
 
             <form id="chat-compose-form" class="chat-composer">
               <textarea id="chat-compose-input" rows="1" data-i18n-placeholder="chat.placeholder" placeholder="输入消息..."></textarea>
@@ -275,32 +207,19 @@
 
           <aside class="chat-config">
             <div class="chat-config-portrait">
-              <img src="./daphne-spencers.svg" alt="Daphne Spencers volleyball portrait" />
-              <span class="chat-version-pill">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M6 5h12v14H6z"></path>
-                  <path d="m9 9 3 2.5L15 9v6l-3-2.5L9 15V9Z"></path>
-                </svg>
-                V2
-              </span>
-              <button class="chat-carousel prev" type="button" aria-label="Previous image" data-chat-action="carousel-prev">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="m15 5-7 7 7 7"></path>
-                </svg>
-              </button>
-              <button class="chat-carousel next" type="button" aria-label="Next image" data-chat-action="carousel-next">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="m9 5 7 7-7 7"></path>
-                </svg>
-              </button>
-              <div class="chat-carousel-dots" aria-hidden="true">
-                <span class="active" data-chat-action="carousel-dot" data-slide="0"></span>
-                <span data-chat-action="carousel-dot" data-slide="1"></span>
-              </div>
             </div>
             <div class="chat-config-copy">
-              <h2>Daphne Spencers</h2>
-              <p data-i18n="chat.profileDesc">College volleyball star Daphne Spencers dreams of going pro... and sneaking into the men’s locker room for an extra workout.</p>
+              <span class="chat-panel-kicker">角色模块</span>
+              <h2>EVA</h2>
+              <p data-i18n="chat.profileDesc">熟悉、轻松、反应快的陪伴角色。默认短句回应，保留分寸。</p>
+            </div>
+            <div class="chat-config-section">
+              <h3>角色包</h3>
+              <div class="chat-config-meta"></div>
+            </div>
+            <div class="chat-config-section">
+              <h3>资源</h3>
+              <ul class="chat-asset-list"></ul>
             </div>
             <button class="chat-generate-btn" type="button" data-chat-action="generate-image">
               <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -308,7 +227,7 @@
                 <rect x="8" y="8" width="8" height="8" rx="2"></rect>
                 <path d="M10.8 12h2.4M12 10.8v2.4"></path>
               </svg>
-              <span>Generate Image</span>
+              <span>生成图片</span>
             </button>
           </aside>
         </div>

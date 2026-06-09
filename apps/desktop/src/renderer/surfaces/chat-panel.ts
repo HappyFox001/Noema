@@ -1,6 +1,17 @@
 /**
  * Owns the standalone chat surface interactions and window mode transitions.
  */
+import {
+  createInitialChatState,
+  createLocalAssistantDraft,
+  createLocalUserMessage,
+  getActiveConversation,
+  getCharacterForConversation,
+  type ChatConversationSummary,
+  type ChatMessage,
+} from './chat-model'
+import { createChatRenderer } from './chat-renderer'
+
 export interface ChatPanelController {
   open(): Promise<void>
   close(): void
@@ -27,44 +38,30 @@ export interface ChatPanelOptions {
 export function initializeChatPanel(options: ChatPanelOptions): ChatPanelController {
   let closeAnimationTimer: number | undefined
   let toastTimer: number | undefined
-  let carouselSlide = 0
   let fullscreen = false
   let dragging = false
   let lastDragX = 0
   let lastDragY = 0
+  const state = createInitialChatState()
   const panel = options.panel
   const navItems = Array.from(panel.querySelectorAll<HTMLButtonElement>('[data-chat-nav]'))
-  const threads = Array.from(panel.querySelectorAll<HTMLButtonElement>('.chat-thread'))
   const searchInput = panel.querySelector<HTMLInputElement>('.chat-search input')
-  const headerAvatar = panel.querySelector<HTMLElement>('.chat-identity .chat-avatar')
-  const headerName = panel.querySelector<HTMLElement>('.chat-identity h1')
-  const profileTitle = panel.querySelector<HTMLElement>('.chat-config-copy h2')
-  const profileCopy = panel.querySelector<HTMLElement>('.chat-config-copy p')
-  const portrait = panel.querySelector<HTMLElement>('.chat-config-portrait')
-  const carouselDots = Array.from(panel.querySelectorAll<HTMLElement>('[data-chat-action="carousel-dot"]'))
-  const videoCard = panel.querySelector<HTMLElement>('.chat-video-card')
-  const videoPlayButton = panel.querySelector<HTMLButtonElement>('[data-chat-action="video-play"]')
   const languageMark = panel.querySelector<HTMLElement>('.chat-language-mark')
   const generateButton = panel.querySelector<HTMLButtonElement>('[data-chat-action="generate-image"]')
   const generateLabel = generateButton?.querySelector<HTMLElement>('span')
   const windowCloseButton = panel.querySelector<HTMLButtonElement>('[data-chat-action="window-close"]')
   const windowFullscreenButton = panel.querySelector<HTMLButtonElement>('[data-chat-action="window-fullscreen"]')
   const fullscreenButtons = Array.from(panel.querySelectorAll<HTMLElement>('[data-chat-action="details"], [data-chat-action="window-fullscreen"]'))
-  const shell = panel.querySelector<HTMLElement>('.chat-shell')
+  const renderer = createChatRenderer({
+    panel,
+    messageList: options.messageList,
+    escapeHtml: options.escapeHtml,
+  })
   const toast = document.createElement('div')
 
   toast.className = 'chat-status-toast'
   toast.setAttribute('role', 'status')
   panel.appendChild(toast)
-
-  const profileDescriptions: Record<string, string> = {
-    'Daphne Spencers': 'College volleyball star Daphne Spencers dreams of going pro... and sneaking into the men’s locker room for an extra workout.',
-    'Katarina Sommerfeld': 'Exchange student Katarina keeps her evenings precise, bright, and difficult to read.',
-    Darkangel666: 'A late-night regular with a sharp mouth, heavy eyeliner, and very little patience for being ignored.',
-    'Simona Rossi': 'Simona messages after midnight, half amused and half convinced she should have gone to sleep.',
-    'Diane Robinson': 'Diane notices small details first and asks questions before anyone else thinks to look.',
-    'Volleyball Group': 'A fresh group draft for planning clips, calls, and private character chats.',
-  }
 
   function showToast(message: string): void {
     toast.textContent = message
@@ -78,44 +75,18 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }, 1500)
   }
 
-  function getAvatarClass(thread: HTMLElement): string {
-    const avatar = thread.querySelector<HTMLElement>('.chat-avatar')
-    if (!avatar) {
-      return 'daphne-avatar'
-    }
-    return Array.from(avatar.classList)
-      .filter((className) => className !== 'chat-avatar')
-      .join(' ')
+  function renderChat(): void {
+    const conversation = getActiveConversation(state)
+    const character = getCharacterForConversation(state, conversation)
+    renderer.renderConversationList(state.conversations, state.characters, conversation.id)
+    renderer.renderActiveConversation(conversation, character)
   }
 
-  function setActiveThread(thread: HTMLButtonElement): void {
-    threads.forEach((item) => item.classList.toggle('active', item === thread))
-    threads.forEach((item) => item.classList.toggle('is-active', item === thread))
-
-    const character = thread.dataset.character || 'Daphne'
-    const profile = thread.dataset.profile || `${character} Spencers`
-    const avatarClass = getAvatarClass(thread)
-    if (headerName) {
-      headerName.textContent = character
+  function refreshConversationList(): void {
+    renderer.renderConversationList(state.conversations, state.characters, state.activeConversationId)
+    if (searchInput?.value) {
+      renderer.filterConversations(searchInput.value)
     }
-    if (profileTitle) {
-      profileTitle.textContent = profile
-    }
-    if (profileCopy) {
-      profileCopy.textContent = profileDescriptions[profile] || profileDescriptions['Daphne Spencers']
-    }
-    if (headerAvatar) {
-      headerAvatar.className = `chat-avatar large ${avatarClass}`
-    }
-    showToast(`${profile} selected`)
-  }
-
-  function filterThreads(query: string): void {
-    const normalized = query.trim().toLowerCase()
-    threads.forEach((thread) => {
-      const text = `${thread.dataset.profile || ''} ${thread.dataset.preview || ''}`.toLowerCase()
-      thread.classList.toggle('is-hidden', Boolean(normalized) && !text.includes(normalized))
-    })
   }
 
   function setActiveNav(button: HTMLButtonElement): void {
@@ -123,15 +94,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     navItems.forEach((item) => item.classList.toggle('is-active', item === button))
     const label = button.getAttribute('aria-label') || 'Section'
     showToast(`${label} view`)
-  }
-
-  function setCarouselSlide(nextSlide: number): void {
-    carouselSlide = (nextSlide + carouselDots.length) % Math.max(1, carouselDots.length)
-    portrait?.setAttribute('data-slide', String(carouselSlide))
-    carouselDots.forEach((dot, index) => {
-      dot.classList.toggle('active', index === carouselSlide)
-      dot.classList.toggle('is-active', index === carouselSlide)
-    })
   }
 
   function setChatFullscreen(active: boolean): void {
@@ -149,7 +111,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function isInteractiveTarget(target: EventTarget | null): boolean {
     return Boolean((target as HTMLElement | null)?.closest(
-      'button, input, textarea, select, a, .chat-thread-list, .chat-composer, .chat-config-portrait, .chat-config-copy'
+      'button, input, textarea, select, a, .chat-thread-list, .chat-composer, .chat-config-portrait, .chat-config-copy, .chat-asset-list'
     ))
   }
 
@@ -182,44 +144,46 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     dragging = false
   }
 
-  function appendLocalMessage(text: string, role: 'user' | 'assistant'): void {
-    const message = document.createElement('article')
-    message.className = `chat-message ${role}`
-    const time = new Date().toLocaleTimeString(options.getLanguage() === 'zh-CN' ? 'zh-CN' : 'en-US', {
+  function getTimeLabel(): string {
+    return new Date().toLocaleTimeString(options.getLanguage() === 'zh-CN' ? 'zh-CN' : 'en-US', {
       hour: '2-digit',
       minute: '2-digit',
     })
-    message.innerHTML = `<p>${options.escapeHtml(text)}</p><span>${options.escapeHtml(time)}</span>`
-    options.messageList.appendChild(message)
-    options.messageList.scrollTop = options.messageList.scrollHeight
   }
 
-  function createGroupThread(): void {
-    const existing = panel.querySelector<HTMLButtonElement>('[data-profile="Volleyball Group"]')
-    if (existing) {
-      setActiveThread(existing)
+  function getActiveMutableConversation(): ChatConversationSummary {
+    return getActiveConversation(state)
+  }
+
+  function setActiveConversation(conversationId: string): void {
+    if (!state.conversations.some((conversation) => conversation.id === conversationId)) {
       return
     }
+    state.activeConversationId = conversationId
+    renderChat()
+    showToast(getActiveConversation(state).title)
+  }
 
-    const thread = document.createElement('button')
-    thread.className = 'chat-thread'
-    thread.type = 'button'
-    thread.dataset.character = 'Group'
-    thread.dataset.profile = 'Volleyball Group'
-    thread.dataset.preview = 'Daphne, Katarina, Simona...'
-    thread.dataset.time = 'Draft'
-    thread.innerHTML = `
-      <span class="chat-avatar daphne-avatar"></span>
-      <span class="chat-thread-copy">
-        <strong>Volleyball Group</strong>
-        <span>Daphne, Katarina, Simona...</span>
-      </span>
-      <time>Draft</time>
-    `
-    thread.addEventListener('click', () => setActiveThread(thread))
-    threads.unshift(thread)
-    panel.querySelector('.chat-thread-list')?.prepend(thread)
-    setActiveThread(thread)
+  function createDraftConversation(): void {
+    const draftCharacter = state.characters.find((character) => character.id === 'character-pack-draft') ?? state.characters[0]
+    const conversation: ChatConversationSummary = {
+      id: `draft-${Date.now()}`,
+      characterId: draftCharacter.id,
+      title: '新角色资源包',
+      preview: '准备创建 manifest、persona、头像和生成配置。',
+      updatedLabel: '新建',
+      messages: [
+        {
+          id: `draft-welcome-${Date.now()}`,
+          role: 'assistant',
+          text: '先告诉我角色名、性格、视觉方向和用途。我会把它整理成角色资源包草稿。',
+          createdLabel: '新建',
+        },
+      ],
+    }
+    state.conversations.unshift(conversation)
+    state.activeConversationId = conversation.id
+    renderChat()
   }
 
   function handleAction(action: string, target: HTMLElement): void {
@@ -233,8 +197,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         break
       }
       case 'new-group':
-        createGroupThread()
-        showToast('Group draft created')
+        createDraftConversation()
+        showToast('角色包草稿已创建')
         break
       case 'voice-call':
         target.classList.toggle('is-active')
@@ -252,16 +216,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         close()
         break
       case 'video-play':
-        videoCard?.classList.toggle('is-playing')
-        target.setAttribute('aria-label', videoCard?.classList.contains('is-playing') ? 'Pause video' : 'Play video')
-        showToast(videoCard?.classList.contains('is-playing') ? 'Video playing' : 'Video paused')
-        break
       case 'video-more':
-        target.classList.toggle('is-active')
-        showToast('Video options')
+        showToast('媒体预览将在图片生成接入后启用')
         break
       case 'suggestion':
-        options.composeInput.value = target.dataset.message || 'Send me a video of you'
+        options.composeInput.value = target.dataset.message || ''
         options.composeInput.focus()
         options.composeInput.dispatchEvent(new Event('input'))
         break
@@ -270,37 +229,46 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         target.classList.toggle('is-active')
         showToast(action === 'attach-image' ? 'Image attachment selected' : 'Video attachment selected')
         break
-      case 'carousel-prev':
-        setCarouselSlide(carouselSlide - 1)
-        break
-      case 'carousel-next':
-        setCarouselSlide(carouselSlide + 1)
-        break
-      case 'carousel-dot':
-        setCarouselSlide(Number(target.dataset.slide || 0))
-        break
       case 'generate-image':
         if (!generateButton || generateButton.classList.contains('is-loading')) {
           return
         }
         generateButton.classList.add('is-loading')
         if (generateLabel) {
-          generateLabel.textContent = 'Generating...'
+          generateLabel.textContent = '生成中...'
         }
-        showToast('Image request queued')
+        queueLocalAssistantMessage('图片生成请求已进入队列。下一步会把角色视觉设定、参考图和用户描述合成为生成参数。', 'generating_image')
+        showToast('图片生成请求已排队')
         window.setTimeout(() => {
           generateButton.classList.remove('is-loading')
           generateButton.classList.add('is-done')
           if (generateLabel) {
-            generateLabel.textContent = 'Generate Image'
+            generateLabel.textContent = '生成图片'
           }
-          showToast('Image preview ready')
+          showToast('图片预览待接入')
           window.setTimeout(() => generateButton.classList.remove('is-done'), 1200)
         }, 900)
         break
       default:
         break
     }
+  }
+
+  function queueLocalAssistantMessage(text: string, stateOverride?: ChatMessage['state']): void {
+    const conversation = getActiveMutableConversation()
+    const message = createLocalAssistantDraft(text, getTimeLabel())
+    if (stateOverride) {
+      message.state = stateOverride
+    }
+    conversation.messages.push(message)
+    conversation.preview = text
+    conversation.updatedLabel = '现在'
+    renderer.appendMessage(message)
+    refreshConversationList()
+    window.setTimeout(() => {
+      message.state = undefined
+      renderer.setAssistantMessageState(message.id, undefined)
+    }, 700)
   }
 
   async function open(): Promise<void> {
@@ -419,25 +387,35 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!text) {
       return
     }
-    appendLocalMessage(text, 'user')
+    const conversation = getActiveMutableConversation()
+    const userMessage = createLocalUserMessage(text, getTimeLabel())
+    conversation.messages.push(userMessage)
+    conversation.preview = text
+    conversation.updatedLabel = '现在'
+    renderer.appendMessage(userMessage)
+    refreshConversationList()
     options.composeInput.value = ''
     options.composeInput.style.height = 'auto'
+    queueLocalAssistantMessage(buildLocalAssistantReply(text))
   })
 
   navItems.forEach((button) => {
     button.addEventListener('click', () => setActiveNav(button))
   })
 
-  threads.forEach((thread) => {
-    thread.addEventListener('click', () => setActiveThread(thread))
-  })
-
   searchInput?.addEventListener('input', () => {
-    filterThreads(searchInput.value)
+    renderer.filterConversations(searchInput.value)
   })
 
   panel.addEventListener('click', (event) => {
-    const target = (event.target as HTMLElement).closest<HTMLElement>('[data-chat-action]')
+    const eventTarget = event.target as HTMLElement
+    const thread = eventTarget.closest<HTMLElement>('[data-conversation-id]')
+    if (thread && panel.contains(thread)) {
+      setActiveConversation(thread.dataset.conversationId || '')
+      return
+    }
+
+    const target = eventTarget.closest<HTMLElement>('[data-chat-action]')
     if (!target || !panel.contains(target)) {
       return
     }
@@ -449,7 +427,20 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   window.addEventListener('pointerup', endManualDrag)
   window.addEventListener('pointercancel', endManualDrag)
 
-  setCarouselSlide(0)
+  renderChat()
 
   return { open, close }
+}
+
+function buildLocalAssistantReply(userText: string): string {
+  if (/图片|头像|画|生成/.test(userText)) {
+    return '我先把这条当作图片生成意图记录下来。真正接入后会从角色包里取视觉设定、参考图和 generation.json。'
+  }
+  if (/角色包|manifest|persona|导入|资源/.test(userText)) {
+    return '可以。这里会走角色资源包流程：先补 manifest 和 persona，再校验资产路径，最后保存到本地角色库。'
+  }
+  if (/工具|执行|项目|文件/.test(userText)) {
+    return '这类消息后续会交给 runtime 执行，chat 页面只展示流式文本、工具状态和最终结果。'
+  }
+  return '嗯，我记下了。现在这个 chat 页面先把消息、角色状态和资源包信息接起来，后面再接真实流式 runtime。'
 }
