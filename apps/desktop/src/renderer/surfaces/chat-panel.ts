@@ -15,6 +15,7 @@ import { createChatRenderer } from './chat-renderer'
 export interface ChatPanelController {
   open(): Promise<void>
   close(): void
+  refreshLanguage(): void
 }
 
 export interface ChatPanelOptions {
@@ -55,6 +56,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   const renderer = createChatRenderer({
     panel,
     messageList: options.messageList,
+    getLanguage: options.getLanguage,
     escapeHtml: options.escapeHtml,
   })
   const toast = document.createElement('div')
@@ -78,12 +80,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   function renderChat(): void {
     const conversation = getActiveConversation(state)
     const character = getCharacterForConversation(state, conversation)
-    renderer.renderConversationList(state.conversations, state.characters, conversation.id)
+    renderer.renderConversationList(state.conversations, state.characterResources, conversation.id)
     renderer.renderActiveConversation(conversation, character)
   }
 
   function refreshConversationList(): void {
-    renderer.renderConversationList(state.conversations, state.characters, state.activeConversationId)
+    renderer.renderConversationList(state.conversations, state.characterResources, state.activeConversationId)
     if (searchInput?.value) {
       renderer.filterConversations(searchInput.value)
     }
@@ -164,28 +166,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     showToast(getActiveConversation(state).title)
   }
 
-  function createDraftConversation(): void {
-    const draftCharacter = state.characters.find((character) => character.id === 'character-pack-draft') ?? state.characters[0]
-    const conversation: ChatConversationSummary = {
-      id: `draft-${Date.now()}`,
-      characterId: draftCharacter.id,
-      title: '新角色资源包',
-      preview: '准备创建 manifest、persona、头像和生成配置。',
-      updatedLabel: '新建',
-      messages: [
-        {
-          id: `draft-welcome-${Date.now()}`,
-          role: 'assistant',
-          text: '先告诉我角色名、性格、视觉方向和用途。我会把它整理成角色资源包草稿。',
-          createdLabel: '新建',
-        },
-      ],
-    }
-    state.conversations.unshift(conversation)
-    state.activeConversationId = conversation.id
-    renderChat()
-  }
-
   function handleAction(action: string, target: HTMLElement): void {
     switch (action) {
       case 'language': {
@@ -194,11 +174,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           languageMark.textContent = nextLanguage
         }
         showToast(nextLanguage === 'US' ? 'English preview' : 'Chinese preview')
+        renderChat()
         break
       }
       case 'new-group':
-        createDraftConversation()
-        showToast('角色包草稿已创建')
+        showToast(options.getLanguage() === 'zh-CN' ? '先开始一次对话，角色才会进入历史列表' : 'Start a conversation before adding a character to history')
         break
       case 'voice-call':
         target.classList.toggle('is-active')
@@ -229,6 +209,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         target.classList.toggle('is-active')
         showToast(action === 'attach-image' ? 'Image attachment selected' : 'Video attachment selected')
         break
+      case 'open-source': {
+        const conversation = getActiveConversation(state)
+        const character = getCharacterForConversation(state, conversation)
+        window.open(character.sourceUrl, '_blank', 'noreferrer')
+        showToast(options.getLanguage() === 'zh-CN' ? '已打开资料来源' : 'Source opened')
+        break
+      }
       case 'generate-image':
         if (!generateButton || generateButton.classList.contains('is-loading')) {
           return
@@ -429,7 +416,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   renderChat()
 
-  return { open, close }
+  return { open, close, refreshLanguage: renderChat }
 }
 
 function buildLocalAssistantReply(userText: string): string {

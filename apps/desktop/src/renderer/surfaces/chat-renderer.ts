@@ -2,21 +2,23 @@
  * Renders chat state into the standalone chat surface DOM.
  */
 import type {
-  ChatCharacterAssetSummary,
-  ChatCharacterPackSummary,
+  ChatCharacterProfileField,
+  ChatCharacterResource,
   ChatConversationSummary,
   ChatMessage,
 } from './chat-model'
+import { localizeChatText, type ChatLanguageCode } from './chat-model'
 
 export interface ChatRendererOptions {
   panel: HTMLElement
   messageList: HTMLElement
+  getLanguage(): ChatLanguageCode
   escapeHtml(value: string): string
 }
 
 export interface ChatRenderer {
-  renderConversationList(conversations: ChatConversationSummary[], characters: ChatCharacterPackSummary[], activeId: string): void
-  renderActiveConversation(conversation: ChatConversationSummary, character: ChatCharacterPackSummary): void
+  renderConversationList(conversations: ChatConversationSummary[], characters: ChatCharacterResource[], activeId: string): void
+  renderActiveConversation(conversation: ChatConversationSummary, character: ChatCharacterResource): void
   renderMessages(messages: ChatMessage[]): void
   appendMessage(message: ChatMessage): void
   setAssistantMessageState(messageId: string, state: ChatMessage['state']): void
@@ -37,66 +39,70 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
 
   function renderConversationList(
     conversations: ChatConversationSummary[],
-    characters: ChatCharacterPackSummary[],
+    characters: ChatCharacterResource[],
     activeId: string
   ): void {
     if (!threadList) return
 
+    const language = options.getLanguage()
     threadList.innerHTML = conversations.map((conversation) => {
       const character = characters.find((item) => item.id === conversation.characterId) ?? characters[0]
       const active = conversation.id === activeId
+      const title = localizeChatText(conversation.title, language)
+      const preview = localizeChatText(conversation.preview, language)
+      const characterName = localizeChatText(character.displayName, language)
+      const tags = character.tags.map((tag) => localizeChatText(tag, language)).join(' ')
       return `
-        <button class="chat-thread ${active ? 'active is-active' : ''}" type="button" data-conversation-id="${options.escapeHtml(conversation.id)}" data-search="${options.escapeHtml(`${conversation.title} ${conversation.preview} ${character.displayName} ${character.tags.join(' ')}`)}">
+        <button class="chat-thread ${active ? 'active is-active' : ''}" type="button" data-conversation-id="${options.escapeHtml(conversation.id)}" data-search="${options.escapeHtml(`${title} ${preview} ${characterName} ${tags}`)}">
           ${renderAvatar(character, false)}
           <span class="chat-thread-copy">
-            <strong>${options.escapeHtml(conversation.title)}</strong>
-            <span>${options.escapeHtml(conversation.preview)}</span>
+            <strong>${options.escapeHtml(title)}</strong>
+            <span>${options.escapeHtml(preview)}</span>
           </span>
-          <time>${options.escapeHtml(conversation.updatedLabel)}</time>
+          <time>${options.escapeHtml(localizeChatText(conversation.updatedLabel, language))}</time>
         </button>
       `
     }).join('')
   }
 
-  function renderActiveConversation(conversation: ChatConversationSummary, character: ChatCharacterPackSummary): void {
+  function renderActiveConversation(conversation: ChatConversationSummary, character: ChatCharacterResource): void {
+    const language = options.getLanguage()
     if (headerAvatar) {
       headerAvatar.className = `chat-avatar large ${character.avatarClass}`
       headerAvatar.textContent = character.accent
     }
     if (headerName) {
-      headerName.textContent = character.name
+      headerName.textContent = localizeChatText(character.displayName, language)
     }
     if (headerMeta) {
-      headerMeta.textContent = `${character.language} · ${character.packVersion}`
+      headerMeta.textContent = `${character.locale} · ${localizeChatText(character.subtitle, language)}`
     }
     if (profileTitle) {
-      profileTitle.textContent = character.displayName
+      profileTitle.textContent = localizeChatText(character.displayName, language)
     }
     if (profileCopy) {
-      profileCopy.textContent = character.description
+      profileCopy.textContent = localizeChatText(character.description, language)
     }
     if (portrait) {
       portrait.innerHTML = `
         <div class="chat-character-stage ${options.escapeHtml(character.avatarClass)}">
           <span>${options.escapeHtml(character.accent)}</span>
         </div>
-        <span class="chat-version-pill">${options.escapeHtml(character.packVersion)}</span>
+        <a class="chat-version-pill" href="${options.escapeHtml(character.sourceUrl)}" target="_blank" rel="noreferrer">${options.escapeHtml(character.sourceLabel)}</a>
       `
     }
     if (configMeta) {
-      configMeta.innerHTML = [
-        character.source,
-        ...character.tags,
-        ...character.capabilities.map((capability) => `cap:${capability}`),
-      ].map((item) => `<span>${options.escapeHtml(item)}</span>`).join('')
+      configMeta.innerHTML = character.tags
+        .map((item) => `<span>${options.escapeHtml(localizeChatText(item, language))}</span>`)
+        .join('')
     }
     if (assetList) {
-      assetList.innerHTML = character.assets.map(renderAsset).join('')
+      assetList.innerHTML = character.profileFields.map(renderProfileField).join('')
     }
     if (suggestionList) {
       suggestionList.innerHTML = character.suggestedPrompts.map((prompt) => `
-        <button class="chat-suggestion" type="button" data-chat-action="suggestion" data-message="${options.escapeHtml(prompt)}">
-          <span>${options.escapeHtml(prompt)}</span>
+        <button class="chat-suggestion" type="button" data-chat-action="suggestion" data-message="${options.escapeHtml(localizeChatText(prompt, language))}">
+          <span>${options.escapeHtml(localizeChatText(prompt, language))}</span>
         </button>
       `).join('')
     }
@@ -132,24 +138,26 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
   }
 
   function renderMessage(message: ChatMessage): string {
-    const stateLabel = message.state ? `<em>${options.escapeHtml(formatState(message.state))}</em>` : ''
+    const language = options.getLanguage()
+    const stateLabel = message.state ? `<em>${options.escapeHtml(formatState(message.state, language))}</em>` : ''
     return `
       <article class="chat-message ${options.escapeHtml(message.role)}" data-message-id="${options.escapeHtml(message.id)}" ${message.state ? `data-state="${options.escapeHtml(message.state)}"` : ''}>
-        <p>${options.escapeHtml(message.text)}</p>
-        <span>${stateLabel}${options.escapeHtml(message.createdLabel)}</span>
+        <p>${options.escapeHtml(localizeChatText(message.text, language))}</p>
+        <span>${stateLabel}${options.escapeHtml(localizeChatText(message.createdLabel, language))}</span>
       </article>
     `
   }
 
-  function renderAvatar(character: ChatCharacterPackSummary, large: boolean): string {
+  function renderAvatar(character: ChatCharacterResource, large: boolean): string {
     return `<span class="chat-avatar ${large ? 'large ' : ''}${options.escapeHtml(character.avatarClass)}">${options.escapeHtml(character.accent)}</span>`
   }
 
-  function renderAsset(asset: ChatCharacterAssetSummary): string {
+  function renderProfileField(field: ChatCharacterProfileField): string {
+    const language = options.getLanguage()
     return `
-      <li class="chat-asset-item" data-status="${options.escapeHtml(asset.status)}">
-        <span>${options.escapeHtml(asset.label)}</span>
-        <small>${options.escapeHtml(asset.kind)} · ${options.escapeHtml(asset.status)}</small>
+      <li class="chat-asset-item">
+        <span>${options.escapeHtml(localizeChatText(field.label, language))}</span>
+        <small>${options.escapeHtml(localizeChatText(field.value, language))}</small>
       </li>
     `
   }
@@ -168,14 +176,14 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
   }
 }
 
-function formatState(state: NonNullable<ChatMessage['state']>): string {
+function formatState(state: NonNullable<ChatMessage['state']>, language: ChatLanguageCode): string {
   switch (state) {
     case 'generating_image':
-      return '生成图片中 · '
+      return language === 'zh-CN' ? '生成图片中 · ' : 'Generating image · '
     case 'using_tool':
-      return '调用工具中 · '
+      return language === 'zh-CN' ? '调用工具中 · ' : 'Using tool · '
     case 'thinking':
-      return '思考中 · '
+      return language === 'zh-CN' ? '思考中 · ' : 'Thinking · '
     default:
       return ''
   }

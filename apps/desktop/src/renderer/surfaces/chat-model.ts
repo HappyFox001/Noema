@@ -1,166 +1,165 @@
 /**
- * Defines the renderer-side chat model used by the chat surface.
+ * Defines the renderer-side chat resources and seeded history.
  */
+export type ChatLanguageCode = 'zh-CN' | 'en-US'
+
 export type ChatMessageRole = 'user' | 'assistant' | 'system'
 
 export type ChatActivityState = 'idle' | 'thinking' | 'generating_image' | 'using_tool'
 
-export interface ChatCharacterPackSummary {
+export type ChatLocalizedText = Record<ChatLanguageCode, string>
+
+export interface ChatCharacterResource {
   id: string
-  name: string
-  displayName: string
-  description: string
+  displayName: ChatLocalizedText
+  nativeName: string
+  subtitle: ChatLocalizedText
+  description: ChatLocalizedText
   avatarClass: string
   accent: string
-  language: string
-  packVersion: string
-  source: 'built-in' | 'local' | 'draft'
-  tags: string[]
-  capabilities: Array<'text' | 'voice' | 'image' | 'tools'>
-  assets: ChatCharacterAssetSummary[]
-  suggestedPrompts: string[]
+  locale: string
+  sourceUrl: string
+  sourceLabel: string
+  tags: ChatLocalizedText[]
+  profileFields: ChatCharacterProfileField[]
+  suggestedPrompts: ChatLocalizedText[]
 }
 
-export interface ChatCharacterAssetSummary {
+export interface ChatCharacterProfileField {
   id: string
-  label: string
-  kind: 'portrait' | 'expression' | 'reference' | 'voice' | 'prompt'
-  status: 'ready' | 'missing' | 'draft'
+  label: ChatLocalizedText
+  value: ChatLocalizedText
 }
 
 export interface ChatConversationSummary {
   id: string
   characterId: string
-  title: string
-  preview: string
-  updatedLabel: string
+  title: ChatLocalizedText
+  preview: ChatLocalizedText
+  updatedLabel: ChatLocalizedText
   messages: ChatMessage[]
 }
 
 export interface ChatMessage {
   id: string
   role: ChatMessageRole
-  text: string
-  createdLabel: string
+  text: ChatLocalizedText
+  createdLabel: ChatLocalizedText
   state?: ChatActivityState
 }
 
 export interface ChatState {
   activeConversationId: string
-  characters: ChatCharacterPackSummary[]
+  characterResources: ChatCharacterResource[]
   conversations: ChatConversationSummary[]
 }
 
-const EVA_CHARACTER: ChatCharacterPackSummary = {
-  id: 'eva',
-  name: 'EVA',
-  displayName: '陈知遥 / EVA',
-  description: '熟悉、轻松、反应快的陪伴角色。默认短句回应，保留分寸，不把普通聊天写成故事。',
-  avatarClass: 'eva-avatar',
-  accent: 'EVA',
-  language: 'zh-CN',
-  packVersion: 'local-yaml',
-  source: 'built-in',
-  tags: ['companion', 'voice-ready', 'zh-CN'],
-  capabilities: ['text', 'voice', 'tools'],
-  assets: [
-    { id: 'persona', label: 'persona.yaml', kind: 'prompt', status: 'ready' },
-    { id: 'voice', label: 'Voice preset', kind: 'voice', status: 'draft' },
-    { id: 'portrait', label: 'Portrait', kind: 'portrait', status: 'missing' },
-    { id: 'expressions', label: 'Expression set', kind: 'expression', status: 'draft' },
+const CHEN_QIANYU_RESOURCE: ChatCharacterResource = {
+  id: 'chen-qianyu',
+  displayName: {
+    'zh-CN': '陈千语',
+    'en-US': 'Chen Qianyu',
+  },
+  nativeName: '陈千语',
+  subtitle: {
+    'zh-CN': '明日方舟：终末地 · 角色资料测试',
+    'en-US': 'Arknights: Endfield · profile test resource',
+  },
+  description: {
+    'zh-CN': '终末地工业特勤干员，剑术与身体能力突出。这个资源只保留基础身份字段、简短描述和来源链接，用于 chat 历史角色列表测试。',
+    'en-US': 'An Endfield Industries specialist operator known for sword practice and strong physical ability. This test resource keeps only basic identity fields, a short note, and source links.',
+  },
+  avatarClass: 'chen-qianyu-avatar',
+  accent: 'CQ',
+  locale: 'zh-CN',
+  sourceUrl: 'https://end.wiki/zh-Hans/characters/chr-0005-chen/',
+  sourceLabel: 'end.wiki',
+  tags: [
+    { 'zh-CN': '历史对话', 'en-US': 'history' },
+    { 'zh-CN': '物理', 'en-US': 'physical' },
+    { 'zh-CN': '近卫', 'en-US': 'guard' },
+    { 'zh-CN': '剑', 'en-US': 'sword' },
   ],
-  suggestedPrompts: ['今天聊点轻松的', '帮我整理一下现在的想法', '生成一张角色头像草稿'],
-}
-
-const DESIGN_DRAFT_CHARACTER: ChatCharacterPackSummary = {
-  id: 'character-pack-draft',
-  name: '角色包草稿',
-  displayName: 'Character Pack Draft',
-  description: '用于验证角色资源包创建流程的草稿角色，覆盖 manifest、persona、头像、声音和图片生成配置。',
-  avatarClass: 'pack-avatar',
-  accent: 'CP',
-  language: 'zh-CN',
-  packVersion: 'draft',
-  source: 'draft',
-  tags: ['draft', 'image-ready', 'schema'],
-  capabilities: ['text', 'image', 'tools'],
-  assets: [
-    { id: 'manifest', label: 'manifest.json', kind: 'prompt', status: 'draft' },
-    { id: 'generation', label: 'generation.json', kind: 'reference', status: 'draft' },
-    { id: 'cover', label: 'cover.png', kind: 'portrait', status: 'missing' },
-    { id: 'voice', label: 'voice.json', kind: 'voice', status: 'draft' },
+  profileFields: [
+    {
+      id: 'source',
+      label: { 'zh-CN': '来源', 'en-US': 'Source' },
+      value: { 'zh-CN': '明日方舟：终末地', 'en-US': 'Arknights: Endfield' },
+    },
+    {
+      id: 'rarity',
+      label: { 'zh-CN': '稀有度', 'en-US': 'Rarity' },
+      value: { 'zh-CN': '5 星', 'en-US': '5-star' },
+    },
+    {
+      id: 'role',
+      label: { 'zh-CN': '定位', 'en-US': 'Role' },
+      value: { 'zh-CN': '物理 / 近卫 / 剑', 'en-US': 'Physical / Guard / Sword' },
+    },
+    {
+      id: 'faction',
+      label: { 'zh-CN': '阵营', 'en-US': 'Faction' },
+      value: { 'zh-CN': '终末地工业', 'en-US': 'Endfield Industries' },
+    },
+    {
+      id: 'birthday',
+      label: { 'zh-CN': '生日', 'en-US': 'Birthday' },
+      value: { 'zh-CN': '8 月 18 日', 'en-US': 'August 18' },
+    },
+    {
+      id: 'trait',
+      label: { 'zh-CN': '基础特征', 'en-US': 'Profile note' },
+      value: {
+        'zh-CN': '武术训练、宏山剑术、耐力训练',
+        'en-US': 'Martial arts, Hongshan swordmancy, endurance training',
+      },
+    },
   ],
-  suggestedPrompts: ['创建一个新角色资源包', '导入已有角色卡', '检查资源包缺失项'],
-}
-
-const LOCAL_ASSISTANT_CHARACTER: ChatCharacterPackSummary = {
-  id: 'runtime-assistant',
-  name: 'Runtime',
-  displayName: 'Noema Runtime',
-  description: '面向工具调用和任务执行的运行时角色，用于展示流式文本、工具状态和本地任务结果。',
-  avatarClass: 'runtime-avatar',
-  accent: 'RT',
-  language: 'zh-CN',
-  packVersion: 'system',
-  source: 'local',
-  tags: ['tools', 'runtime', 'streaming'],
-  capabilities: ['text', 'tools'],
-  assets: [
-    { id: 'tools', label: 'tools.json', kind: 'prompt', status: 'ready' },
-    { id: 'memory', label: 'memory_seed.md', kind: 'prompt', status: 'draft' },
-    { id: 'references', label: 'references/', kind: 'reference', status: 'missing' },
+  suggestedPrompts: [
+    {
+      'zh-CN': '用基础字段生成一段角色开场白',
+      'en-US': 'Draft an intro from the basic profile',
+    },
+    {
+      'zh-CN': '把这套资料整理成角色资源 JSON',
+      'en-US': 'Turn this profile into character JSON',
+    },
+    {
+      'zh-CN': '只保留聊天需要的字段',
+      'en-US': 'Keep only chat-facing fields',
+    },
   ],
-  suggestedPrompts: ['总结当前项目结构', '展示一次工具调用状态', '把结果保存到会话'],
 }
 
 export function createInitialChatState(): ChatState {
-  const characters = [EVA_CHARACTER, DESIGN_DRAFT_CHARACTER, LOCAL_ASSISTANT_CHARACTER]
   return {
-    activeConversationId: 'eva-main',
-    characters,
+    activeConversationId: 'chen-qianyu-history',
+    characterResources: [CHEN_QIANYU_RESOURCE],
     conversations: [
       {
-        id: 'eva-main',
-        characterId: EVA_CHARACTER.id,
-        title: EVA_CHARACTER.displayName,
-        preview: '嗯，我在。你想先聊角色包，还是先改 chat 页面？',
-        updatedLabel: '现在',
+        id: 'chen-qianyu-history',
+        characterId: CHEN_QIANYU_RESOURCE.id,
+        title: CHEN_QIANYU_RESOURCE.displayName,
+        preview: {
+          'zh-CN': '已导入基础资料，可用于角色资源和历史对话列表测试。',
+          'en-US': 'Basic profile imported for character resource and history list testing.',
+        },
+        updatedLabel: {
+          'zh-CN': '测试',
+          'en-US': 'Test',
+        },
         messages: [
           {
-            id: 'eva-welcome',
+            id: 'chen-qianyu-welcome',
             role: 'assistant',
-            text: '嗯，我在。你想先聊角色包，还是先改 chat 页面？',
-            createdLabel: '现在',
-          },
-        ],
-      },
-      {
-        id: 'pack-design',
-        characterId: DESIGN_DRAFT_CHARACTER.id,
-        title: DESIGN_DRAFT_CHARACTER.displayName,
-        preview: '资源包草稿已准备，下一步可以补 manifest 和资产校验。',
-        updatedLabel: '草稿',
-        messages: [
-          {
-            id: 'pack-welcome',
-            role: 'assistant',
-            text: '资源包草稿已准备。下一步可以补 manifest、persona、头像和图片生成配置。',
-            createdLabel: '草稿',
-          },
-        ],
-      },
-      {
-        id: 'runtime-flow',
-        characterId: LOCAL_ASSISTANT_CHARACTER.id,
-        title: LOCAL_ASSISTANT_CHARACTER.displayName,
-        preview: '这里用于预览流式渲染、工具调用和本地任务消息。',
-        updatedLabel: '预览',
-        messages: [
-          {
-            id: 'runtime-welcome',
-            role: 'assistant',
-            text: '这里用于预览流式渲染、工具调用和本地任务消息。实际执行仍由 runtime 负责。',
-            createdLabel: '预览',
+            text: {
+              'zh-CN': '陈千语基础资料已接入。当前 chat 列表只展示有历史对话的角色。',
+              'en-US': 'Chen Qianyu basic profile is connected. The chat list now shows only characters with conversation history.',
+            },
+            createdLabel: {
+              'zh-CN': '测试',
+              'en-US': 'Test',
+            },
           },
         ],
       },
@@ -176,17 +175,17 @@ export function getActiveConversation(state: ChatState): ChatConversationSummary
 export function getCharacterForConversation(
   state: ChatState,
   conversation: ChatConversationSummary
-): ChatCharacterPackSummary {
-  return state.characters.find((character) => character.id === conversation.characterId)
-    ?? state.characters[0]
+): ChatCharacterResource {
+  return state.characterResources.find((character) => character.id === conversation.characterId)
+    ?? state.characterResources[0]
 }
 
 export function createLocalUserMessage(text: string, createdLabel: string): ChatMessage {
   return {
     id: `user-${Date.now()}`,
     role: 'user',
-    text,
-    createdLabel,
+    text: { 'zh-CN': text, 'en-US': text },
+    createdLabel: { 'zh-CN': createdLabel, 'en-US': createdLabel },
   }
 }
 
@@ -194,8 +193,12 @@ export function createLocalAssistantDraft(text: string, createdLabel: string): C
   return {
     id: `assistant-${Date.now()}`,
     role: 'assistant',
-    text,
-    createdLabel,
+    text: { 'zh-CN': text, 'en-US': text },
+    createdLabel: { 'zh-CN': createdLabel, 'en-US': createdLabel },
     state: 'thinking',
   }
+}
+
+export function localizeChatText(value: ChatLocalizedText, language: ChatLanguageCode): string {
+  return value[language] ?? value['zh-CN']
 }

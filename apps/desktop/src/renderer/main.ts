@@ -633,14 +633,30 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'context.settings': '系统面板',
     'entry.chat': 'Chat',
     'entry.system': '系统页面',
-    'chat.identity': 'EVA',
-    'chat.placeholder': 'Write a message...',
-    'chat.profileDesc': '熟悉、轻松、反应快的陪伴角色。默认短句回应，保留分寸。',
-    'chat.search': '搜索角色或对话',
-    'chat.subtitle': 'Character chat',
-    'chat.threadEva': '嗯，我在。你想先聊角色包，还是先改 chat 页面？',
+    'chat.identity': '陈千语',
+    'chat.kicker': 'Noema chat',
+    'chat.navArchive': '归档',
+    'chat.navAssets': '资源',
+    'chat.navCharacters': '角色',
+    'chat.navConversations': '会话',
+    'chat.navRuntime': '运行时',
+    'chat.navSession': '当前会话',
+    'chat.navVoice': '语音',
+    'chat.new': '新建',
+    'chat.openSource': '打开来源',
+    'chat.placeholder': '输入消息...',
+    'chat.profileDesc': '独立角色资源只保留基础字段、简短描述和来源链接。',
+    'chat.profileFields': '基础字段',
+    'chat.profileTags': '标签',
+    'chat.resourceKicker': '角色资源',
+    'chat.search': '搜索历史角色或对话',
+    'chat.statusHistory': '历史角色',
+    'chat.statusLocal': '本地',
+    'chat.statusText': '文本',
+    'chat.subtitle': '历史角色对话',
+    'chat.threadEva': '陈千语基础资料已接入。',
     'chat.threadRuntime': '流式文本、工具调用和本地任务状态',
-    'chat.title': 'Chat',
+    'chat.title': '会话',
     'status.connectionFailed': 'Connection failed',
     'status.initializing': 'Initializing...',
     'status.listening': 'Listening...',
@@ -1048,12 +1064,28 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'context.settings': 'System Panel',
     'entry.chat': 'Chat',
     'entry.system': 'System',
-    'chat.identity': 'EVA',
+    'chat.identity': 'Chen Qianyu',
+    'chat.kicker': 'Noema chat',
+    'chat.navArchive': 'Archive',
+    'chat.navAssets': 'Assets',
+    'chat.navCharacters': 'Characters',
+    'chat.navConversations': 'Conversations',
+    'chat.navRuntime': 'Runtime',
+    'chat.navSession': 'Session',
+    'chat.navVoice': 'Voice',
+    'chat.new': 'New',
+    'chat.openSource': 'Open source',
     'chat.placeholder': 'Write a message...',
-    'chat.profileDesc': 'Familiar, direct, and lightweight companion character for local chat.',
-    'chat.search': 'Search for a profile...',
-    'chat.subtitle': 'Character chat',
-    'chat.threadEva': 'I am here. Character pack or chat page first?',
+    'chat.profileDesc': 'Independent character resources keep only basic fields, a short note, and source links.',
+    'chat.profileFields': 'Basic fields',
+    'chat.profileTags': 'Tags',
+    'chat.resourceKicker': 'Character resource',
+    'chat.search': 'Search history characters or chats',
+    'chat.statusHistory': 'History only',
+    'chat.statusLocal': 'Local',
+    'chat.statusText': 'Text',
+    'chat.subtitle': 'History character chat',
+    'chat.threadEva': 'Chen Qianyu basic profile is connected.',
     'chat.threadRuntime': 'Streaming text, tool calls, and local task status',
     'chat.title': 'Chat',
     'status.connectionFailed': 'Connection failed',
@@ -1432,6 +1464,7 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
 }
 
 let currentLanguage: LanguageCode = 'zh-CN'
+let refreshChatLanguage: (() => void) | null = null
 
 function t(key: string): string {
   return I18N[currentLanguage][key] ?? I18N['zh-CN'][key] ?? key
@@ -1452,6 +1485,7 @@ function setLanguage(language: LanguageCode): void {
   renderSystemConfigIfReady()
   renderPluginsForCurrentLanguage()
   renderAppUpdateState()
+  refreshChatLanguage?.()
 }
 
 function applyI18n(): void {
@@ -5047,6 +5081,7 @@ const chatPanelController = initializeChatPanel({
     startOrbAnimation()
   },
 })
+refreshChatLanguage = () => chatPanelController.refreshLanguage()
 
 initializeOrbEntryMenu({
   trigger: orbSettingsBtn,
