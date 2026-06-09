@@ -16,6 +16,10 @@
     "zh-CN": "出身宏山城，接受武术、宏山剑术和耐力训练。加入应龙特勤队后，以持续精进战斗技巧和在行动中承担责任而被同伴记住。",
     "en-US": "Raised in Hongshan, trained in martial arts, Hongshan swordmancy, and endurance work. After joining the Yinglung Special Task Force, she became known for refining her combat skills and taking responsibility in the field."
   },
+  "firstMessage": {
+    "zh-CN": "准备好了。需要我说明这次行动的重点吗？",
+    "en-US": "Ready. Do you need me to outline the focus of this operation?"
+  },
   "tag": {
     "zh-CN": ["物理", "近卫", "剑", "终末地工业", "应龙特勤队"],
     "en-US": ["physical", "guard", "sword", "Endfield Industries", "Yinglung Special Task Force"]

@@ -15,6 +15,7 @@ export interface ChatCharacterResource {
   displayName: ChatLocalizedText
   description: ChatLocalizedText
   background: ChatLocalizedText
+  firstMessage: ChatLocalizedText
   tag: Record<ChatLanguageCode, string[]>
   avatarImage: string
   bodyImage: string
@@ -116,25 +117,19 @@ function createSeedHistory(characterResources: ChatCharacterResource[]): ChatCon
       id: `${character.id}-history`,
       characterId: character.id,
       title: character.displayName,
-      preview: {
-        'zh-CN': '已导入角色资源，可用于历史对话列表测试。',
-        'en-US': 'Character resource imported for history list testing.',
-      },
+      preview: character.firstMessage,
       updatedLabel: {
-        'zh-CN': '测试',
-        'en-US': 'Test',
+        'zh-CN': '刚刚',
+        'en-US': 'Now',
       },
       messages: [
         {
           id: `${character.id}-welcome`,
           role: 'assistant',
-          text: {
-            'zh-CN': '陈千语角色资源已接入。当前 chat 列表只展示有历史对话的角色。',
-            'en-US': 'Chen Qianyu character resource is connected. The chat list now shows only characters with conversation history.',
-          },
+          text: character.firstMessage,
           createdLabel: {
-            'zh-CN': '测试',
-            'en-US': 'Test',
+            'zh-CN': '刚刚',
+            'en-US': 'Now',
           },
         },
       ],
