@@ -98,10 +98,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     escapeHtml: options.escapeHtml,
   })
   const toast = document.createElement('div')
+  const runtimeModelPicker = document.createElement('div')
   const attachmentTray = document.createElement('div')
   let chatSystemConfig: ChatSystemConfig | null = null
   let openChatModelDropdownId = ''
   let openChatProviderDropdownId = ''
+  let openChatRuntimeModelPicker = false
+  let activeChatRuntimeProvider = ''
   let pendingAttachments: PendingChatAttachment[] = []
   let cameraStream: MediaStream | null = null
   let cameraOverlay: HTMLElement | null = null
@@ -111,6 +114,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   toast.className = 'chat-status-toast'
   toast.setAttribute('role', 'status')
   panel.appendChild(toast)
+  runtimeModelPicker.className = 'chat-runtime-model-picker'
+  runtimeModelPicker.setAttribute('aria-label', 'Chat model selector')
+  options.composeForm.parentElement?.insertBefore(runtimeModelPicker, options.composeForm)
   attachmentTray.className = 'chat-attachment-tray'
   attachmentTray.setAttribute('aria-label', 'Selected attachments')
   options.composeForm.insertBefore(attachmentTray, options.composeForm.firstElementChild)
@@ -636,9 +642,100 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         chatSystemConfig.activeChatId = chatSystemConfig.chatModels[0]?.id || ''
       }
       renderChatModelConfig()
+      renderChatRuntimeModelPicker()
     } catch (error: any) {
       showToast(error?.message || String(error))
     }
+  }
+
+  function renderChatRuntimeModelPicker(): void {
+    const config = chatSystemConfig
+    if (!config) {
+      runtimeModelPicker.innerHTML = ''
+      return
+    }
+    const groups = getUsableChatModelGroups(config)
+    const activeModel = groups.flatMap((group) => group.models).find((model) => model.id === config.activeChatId)
+      ?? groups[0]?.models[0]
+      ?? null
+    if (activeModel && config.activeChatId !== activeModel.id) {
+      config.activeChatId = activeModel.id
+      void saveChatModelConfig()
+    }
+    const activeProvider = activeChatRuntimeProvider && groups.some((group) => group.provider.value === activeChatRuntimeProvider)
+      ? activeChatRuntimeProvider
+      : getProviderEntry(activeModel?.provider).value
+    activeChatRuntimeProvider = activeProvider
+    const activeProviderGroup = groups.find((group) => group.provider.value === activeProvider) ?? groups[0]
+    runtimeModelPicker.innerHTML = `
+      <div class="chat-runtime-model-shell ${openChatRuntimeModelPicker ? 'open' : ''}">
+        <button class="chat-runtime-model-current" type="button" data-chat-runtime-action="toggle-model-picker" ${groups.length ? '' : 'disabled'}>
+          <span class="chat-runtime-model-icon">${activeModel ? renderChatModelLogo(activeModel) : renderProviderLogo('openai-compatible')}</span>
+          <span class="chat-runtime-model-copy">
+            <strong>${options.escapeHtml(activeModel?.modelName || (options.getLanguage() === 'zh-CN' ? '无模型' : 'No model'))}</strong>
+            <small>${options.escapeHtml(activeModel ? getProviderEntry(activeModel.provider).label : (options.getLanguage() === 'zh-CN' ? '模型页添加' : 'Add in models'))}</small>
+          </span>
+          <span class="chat-runtime-model-chevron"></span>
+        </button>
+        ${openChatRuntimeModelPicker ? renderChatRuntimeModelMenu(groups, activeProviderGroup, activeModel?.id || '') : ''}
+      </div>
+    `
+  }
+
+  function renderChatRuntimeModelMenu(
+    groups: Array<{ provider: ReturnType<typeof getProviderEntry>; models: ChatModelConfig[] }>,
+    activeProviderGroup: { provider: ReturnType<typeof getProviderEntry>; models: ChatModelConfig[] } | undefined,
+    activeModelId: string
+  ): string {
+    if (!groups.length || !activeProviderGroup) {
+      return `
+        <div class="chat-runtime-model-menu empty">
+          <span>${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '暂无可用模型' : 'No available models')}</span>
+        </div>
+      `
+    }
+    return `
+      <div class="chat-runtime-model-menu">
+        <div class="chat-runtime-provider-tabs">
+          ${groups.map((group) => `
+            <button class="${group.provider.value === activeProviderGroup.provider.value ? 'active' : ''}" type="button" data-chat-runtime-provider="${options.escapeHtml(group.provider.value)}">
+              <span>${renderProviderLogo(group.provider.value)}</span>
+              <strong>${options.escapeHtml(group.provider.label)}</strong>
+              <small>${options.escapeHtml(String(group.models.length))}</small>
+            </button>
+          `).join('')}
+        </div>
+        <div class="chat-runtime-model-options">
+          ${activeProviderGroup.models.map((model) => `
+            <button class="${model.id === activeModelId ? 'selected' : ''}" type="button" data-chat-runtime-model-id="${options.escapeHtml(model.id)}">
+              <strong>${options.escapeHtml(model.modelName)}</strong>
+              <small>${options.escapeHtml(getProviderEntry(model.provider).label)}</small>
+            </button>
+          `).join('')}
+        </div>
+      </div>
+    `
+  }
+
+  function getUsableChatModelGroups(config: ChatSystemConfig): Array<{ provider: ReturnType<typeof getProviderEntry>; models: ChatModelConfig[] }> {
+    const grouped = new Map<string, { provider: ReturnType<typeof getProviderEntry>; models: ChatModelConfig[] }>()
+    config.chatModels
+      .filter(isUsableChatModel)
+      .forEach((model) => {
+        const provider = getProviderEntry(model.provider)
+        const group = grouped.get(provider.value) ?? { provider, models: [] }
+        group.models.push(model)
+        grouped.set(provider.value, group)
+      })
+    return [...grouped.values()]
+  }
+
+  function isUsableChatModel(model: ChatModelConfig): boolean {
+    const provider = getProviderEntry(model.provider)
+    const hasModelName = Boolean(model.modelName.trim())
+    const hasCredential = Boolean(model.apiKey.trim()) || provider.value === 'ollama'
+    const hasEndpoint = Boolean(model.baseUrl.trim()) || provider.value === 'openai'
+    return hasModelName && hasCredential && hasEndpoint
   }
 
   function renderChatModelConfig(): void {
@@ -769,6 +866,17 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       chatModels: settings.system.chatModels.map((model) => ({ ...model })),
       activeChatId: settings.system.activeChatId,
     }
+    renderChatRuntimeModelPicker()
+  }
+
+  async function selectRuntimeChatModel(id: string): Promise<void> {
+    if (!chatSystemConfig || !chatSystemConfig.chatModels.some((model) => model.id === id && isUsableChatModel(model))) {
+      return
+    }
+    chatSystemConfig.activeChatId = id
+    openChatRuntimeModelPicker = false
+    await saveChatModelConfig()
+    renderChatRuntimeModelPicker()
   }
 
   async function addChatModel(): Promise<void> {
@@ -785,6 +893,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     await saveChatModelConfig()
     renderChatModelConfig()
+    renderChatRuntimeModelPicker()
   }
 
   async function updateChatModel(id: string, field: keyof ChatModelConfig, value: string): Promise<void> {
@@ -801,6 +910,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     model[field] = value
     await saveChatModelConfig()
     renderChatModelConfig()
+    renderChatRuntimeModelPicker()
   }
 
   async function updateChatProvider(id: string, provider: string): Promise<void> {
@@ -818,6 +928,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     openChatProviderDropdownId = ''
     await saveChatModelConfig()
     renderChatModelConfig()
+    renderChatRuntimeModelPicker()
   }
 
   async function fetchChatModels(id: string): Promise<void> {
@@ -849,6 +960,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     } finally {
       chatModelLoading.delete(id)
       renderChatModelConfig()
+      renderChatRuntimeModelPicker()
     }
   }
 
@@ -869,6 +981,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     await saveChatModelConfig()
     renderChatModelConfig()
+    renderChatRuntimeModelPicker()
   }
 
   async function open(): Promise<void> {
@@ -905,6 +1018,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       options.messageList.scrollTop = options.messageList.scrollHeight
       options.composeInput.focus()
     })
+    void loadChatModelConfig()
   }
 
   function close(): void {
@@ -1024,6 +1138,29 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
 
+    const runtimeAction = eventTarget.closest<HTMLElement>('[data-chat-runtime-action]')
+    if (runtimeAction && panel.contains(runtimeAction)) {
+      if (runtimeAction.dataset.chatRuntimeAction === 'toggle-model-picker') {
+        openChatRuntimeModelPicker = !openChatRuntimeModelPicker
+        renderChatRuntimeModelPicker()
+      }
+      return
+    }
+
+    const runtimeProvider = eventTarget.closest<HTMLElement>('[data-chat-runtime-provider]')
+    if (runtimeProvider && panel.contains(runtimeProvider)) {
+      activeChatRuntimeProvider = runtimeProvider.dataset.chatRuntimeProvider || activeChatRuntimeProvider
+      openChatRuntimeModelPicker = true
+      renderChatRuntimeModelPicker()
+      return
+    }
+
+    const runtimeModel = eventTarget.closest<HTMLElement>('[data-chat-runtime-model-id]')
+    if (runtimeModel && panel.contains(runtimeModel)) {
+      void selectRuntimeChatModel(runtimeModel.dataset.chatRuntimeModelId || '')
+      return
+    }
+
     const modelAction = eventTarget.closest<HTMLElement>('[data-chat-model-action]')
     if (modelAction && panel.contains(modelAction)) {
       const card = modelAction.closest<HTMLElement>('[data-chat-model-id]')
@@ -1099,6 +1236,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   renderChat()
   void hydrateChatResources()
+  void loadChatModelConfig()
 
   return { open, close, refreshLanguage: renderChat }
 
