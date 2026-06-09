@@ -1,0 +1,25 @@
+{
+  "id": "chen-qianyu",
+  "name": {
+    "zh-CN": "陈千语",
+    "en-US": "Chen Qianyu"
+  },
+  "displayName": {
+    "zh-CN": "陈千语",
+    "en-US": "Chen Qianyu"
+  },
+  "description": {
+    "zh-CN": "终末地工业特勤干员，剑术与身体能力突出，性格直接且行动力强。",
+    "en-US": "An Endfield Industries specialist operator with strong sword skills, direct temperament, and high physical capability."
+  },
+  "background": {
+    "zh-CN": "出身宏山城，接受武术、宏山剑术和耐力训练。加入应龙特勤队后，以持续精进战斗技巧和在行动中承担责任而被同伴记住。",
+    "en-US": "Raised in Hongshan, trained in martial arts, Hongshan swordmancy, and endurance work. After joining the Yinglung Special Task Force, she became known for refining her combat skills and taking responsibility in the field."
+  },
+  "tag": {
+    "zh-CN": ["物理", "近卫", "剑", "终末地工业", "应龙特勤队"],
+    "en-US": ["physical", "guard", "sword", "Endfield Industries", "Yinglung Special Task Force"]
+  },
+  "avatarImage": "/chat-resources/chen-qianyu/avatar.png",
+  "bodyImage": "/chat-resources/chen-qianyu/body.png"
+}

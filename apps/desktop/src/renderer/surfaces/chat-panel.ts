@@ -2,11 +2,14 @@
  * Owns the standalone chat surface interactions and window mode transitions.
  */
 import {
+  applyChatResourceState,
   createInitialChatState,
   createLocalAssistantDraft,
   createLocalUserMessage,
   getActiveConversation,
   getCharacterForConversation,
+  loadChatResourceState,
+  localizeChatText,
   type ChatConversationSummary,
   type ChatMessage,
 } from './chat-model'
@@ -48,8 +51,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   const navItems = Array.from(panel.querySelectorAll<HTMLButtonElement>('[data-chat-nav]'))
   const searchInput = panel.querySelector<HTMLInputElement>('.chat-search input')
   const languageMark = panel.querySelector<HTMLElement>('.chat-language-mark')
-  const generateButton = panel.querySelector<HTMLButtonElement>('[data-chat-action="generate-image"]')
-  const generateLabel = generateButton?.querySelector<HTMLElement>('span')
   const windowCloseButton = panel.querySelector<HTMLButtonElement>('[data-chat-action="window-close"]')
   const windowFullscreenButton = panel.querySelector<HTMLButtonElement>('[data-chat-action="window-fullscreen"]')
   const fullscreenButtons = Array.from(panel.querySelectorAll<HTMLElement>('[data-chat-action="details"], [data-chat-action="window-fullscreen"]'))
@@ -79,7 +80,17 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function renderChat(): void {
     const conversation = getActiveConversation(state)
+    if (!conversation) {
+      renderer.renderConversationList([], [], '')
+      renderer.renderEmptyState()
+      return
+    }
     const character = getCharacterForConversation(state, conversation)
+    if (!character) {
+      renderer.renderConversationList([], [], '')
+      renderer.renderEmptyState()
+      return
+    }
     renderer.renderConversationList(state.conversations, state.characterResources, conversation.id)
     renderer.renderActiveConversation(conversation, character)
   }
@@ -153,7 +164,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     })
   }
 
-  function getActiveMutableConversation(): ChatConversationSummary {
+  function getActiveMutableConversation(): ChatConversationSummary | undefined {
     return getActiveConversation(state)
   }
 
@@ -163,7 +174,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     state.activeConversationId = conversationId
     renderChat()
-    showToast(getActiveConversation(state).title)
+    const conversation = getActiveConversation(state)
+    if (conversation) {
+      showToast(localizeChatText(conversation.title, options.getLanguage()))
+    }
   }
 
   function handleAction(action: string, target: HTMLElement): void {
@@ -209,33 +223,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         target.classList.toggle('is-active')
         showToast(action === 'attach-image' ? 'Image attachment selected' : 'Video attachment selected')
         break
-      case 'open-source': {
-        const conversation = getActiveConversation(state)
-        const character = getCharacterForConversation(state, conversation)
-        window.open(character.sourceUrl, '_blank', 'noreferrer')
-        showToast(options.getLanguage() === 'zh-CN' ? '已打开资料来源' : 'Source opened')
+      case 'character-profile': {
+        showToast(options.getLanguage() === 'zh-CN' ? '正在显示角色资料' : 'Showing character profile')
         break
       }
-      case 'generate-image':
-        if (!generateButton || generateButton.classList.contains('is-loading')) {
-          return
-        }
-        generateButton.classList.add('is-loading')
-        if (generateLabel) {
-          generateLabel.textContent = '生成中...'
-        }
-        queueLocalAssistantMessage('图片生成请求已进入队列。下一步会把角色视觉设定、参考图和用户描述合成为生成参数。', 'generating_image')
-        showToast('图片生成请求已排队')
-        window.setTimeout(() => {
-          generateButton.classList.remove('is-loading')
-          generateButton.classList.add('is-done')
-          if (generateLabel) {
-            generateLabel.textContent = '生成图片'
-          }
-          showToast('图片预览待接入')
-          window.setTimeout(() => generateButton.classList.remove('is-done'), 1200)
-        }, 900)
-        break
       default:
         break
     }
@@ -243,13 +234,17 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function queueLocalAssistantMessage(text: string, stateOverride?: ChatMessage['state']): void {
     const conversation = getActiveMutableConversation()
+    if (!conversation) {
+      showToast(options.getLanguage() === 'zh-CN' ? '角色资源尚未加载' : 'Character resources are not loaded')
+      return
+    }
     const message = createLocalAssistantDraft(text, getTimeLabel())
     if (stateOverride) {
       message.state = stateOverride
     }
     conversation.messages.push(message)
-    conversation.preview = text
-    conversation.updatedLabel = '现在'
+    conversation.preview = { 'zh-CN': text, 'en-US': text }
+    conversation.updatedLabel = { 'zh-CN': '现在', 'en-US': 'Now' }
     renderer.appendMessage(message)
     refreshConversationList()
     window.setTimeout(() => {
@@ -375,10 +370,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
     const conversation = getActiveMutableConversation()
+    if (!conversation) {
+      showToast(options.getLanguage() === 'zh-CN' ? '角色资源尚未加载' : 'Character resources are not loaded')
+      return
+    }
     const userMessage = createLocalUserMessage(text, getTimeLabel())
     conversation.messages.push(userMessage)
-    conversation.preview = text
-    conversation.updatedLabel = '现在'
+    conversation.preview = { 'zh-CN': text, 'en-US': text }
+    conversation.updatedLabel = { 'zh-CN': '现在', 'en-US': 'Now' }
     renderer.appendMessage(userMessage)
     refreshConversationList()
     options.composeInput.value = ''
@@ -415,8 +414,19 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   window.addEventListener('pointercancel', endManualDrag)
 
   renderChat()
+  void hydrateChatResources()
 
   return { open, close, refreshLanguage: renderChat }
+
+  async function hydrateChatResources(): Promise<void> {
+    try {
+      applyChatResourceState(state, await loadChatResourceState())
+      renderChat()
+    } catch (error) {
+      console.warn('[Chat] Failed to load chat resources:', error)
+      showToast(options.getLanguage() === 'zh-CN' ? '角色资源加载失败' : 'Failed to load character resources')
+    }
+  }
 }
 
 function buildLocalAssistantReply(userText: string): string {

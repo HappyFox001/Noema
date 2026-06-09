@@ -11295,7 +11295,15 @@ body.chat-open #app {
   border-radius: 13px;
   font-family: var(--font-ui);
   font-size: 11px;
+  overflow: hidden;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.13);
+}
+
+.chat-avatar img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
 }
 
 .chat-avatar.large {
@@ -11507,6 +11515,14 @@ body.chat-open #app {
     radial-gradient(circle at 50% 30%, rgba(248, 250, 250, 0.16), transparent 28%),
     radial-gradient(circle at 50% 58%, rgba(218, 232, 224, 0.1), transparent 42%),
     rgba(255, 255, 255, 0.035);
+  overflow: hidden;
+}
+
+.chat-character-image {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
 }
 
 .chat-character-stage {
@@ -11538,6 +11554,7 @@ body.chat-open #app {
   color: rgba(248, 250, 250, 0.56);
   font-size: 12px;
   line-height: 1.65;
+  white-space: pre-line;
 }
 
 .chat-config-section {

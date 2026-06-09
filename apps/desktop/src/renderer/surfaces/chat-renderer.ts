@@ -2,7 +2,6 @@
  * Renders chat state into the standalone chat surface DOM.
  */
 import type {
-  ChatCharacterProfileField,
   ChatCharacterResource,
   ChatConversationSummary,
   ChatMessage,
@@ -19,6 +18,7 @@ export interface ChatRendererOptions {
 export interface ChatRenderer {
   renderConversationList(conversations: ChatConversationSummary[], characters: ChatCharacterResource[], activeId: string): void
   renderActiveConversation(conversation: ChatConversationSummary, character: ChatCharacterResource): void
+  renderEmptyState(): void
   renderMessages(messages: ChatMessage[]): void
   appendMessage(message: ChatMessage): void
   setAssistantMessageState(messageId: string, state: ChatMessage['state']): void
@@ -51,7 +51,7 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
       const title = localizeChatText(conversation.title, language)
       const preview = localizeChatText(conversation.preview, language)
       const characterName = localizeChatText(character.displayName, language)
-      const tags = character.tags.map((tag) => localizeChatText(tag, language)).join(' ')
+      const tags = getCharacterTags(character, language).join(' ')
       return `
         <button class="chat-thread ${active ? 'active is-active' : ''}" type="button" data-conversation-id="${options.escapeHtml(conversation.id)}" data-search="${options.escapeHtml(`${title} ${preview} ${characterName} ${tags}`)}">
           ${renderAvatar(character, false)}
@@ -68,45 +68,76 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
   function renderActiveConversation(conversation: ChatConversationSummary, character: ChatCharacterResource): void {
     const language = options.getLanguage()
     if (headerAvatar) {
-      headerAvatar.className = `chat-avatar large ${character.avatarClass}`
-      headerAvatar.textContent = character.accent
+      headerAvatar.className = 'chat-avatar large'
+      headerAvatar.innerHTML = renderAvatarImage(character, language)
     }
     if (headerName) {
       headerName.textContent = localizeChatText(character.displayName, language)
     }
     if (headerMeta) {
-      headerMeta.textContent = `${character.locale} · ${localizeChatText(character.subtitle, language)}`
+      headerMeta.textContent = getCharacterTags(character, language).slice(0, 3).join(' · ')
     }
     if (profileTitle) {
       profileTitle.textContent = localizeChatText(character.displayName, language)
     }
     if (profileCopy) {
-      profileCopy.textContent = localizeChatText(character.description, language)
+      profileCopy.textContent = `${localizeChatText(character.description, language)}\n\n${localizeChatText(character.background, language)}`
     }
     if (portrait) {
       portrait.innerHTML = `
-        <div class="chat-character-stage ${options.escapeHtml(character.avatarClass)}">
-          <span>${options.escapeHtml(character.accent)}</span>
-        </div>
-        <a class="chat-version-pill" href="${options.escapeHtml(character.sourceUrl)}" target="_blank" rel="noreferrer">${options.escapeHtml(character.sourceLabel)}</a>
+        <img class="chat-character-image" src="${options.escapeHtml(character.bodyImage)}" alt="${options.escapeHtml(localizeChatText(character.displayName, language))}" />
       `
     }
     if (configMeta) {
-      configMeta.innerHTML = character.tags
-        .map((item) => `<span>${options.escapeHtml(localizeChatText(item, language))}</span>`)
+      configMeta.innerHTML = getCharacterTags(character, language)
+        .map((item) => `<span>${options.escapeHtml(item)}</span>`)
         .join('')
     }
     if (assetList) {
-      assetList.innerHTML = character.profileFields.map(renderProfileField).join('')
+      assetList.innerHTML = ''
     }
     if (suggestionList) {
-      suggestionList.innerHTML = character.suggestedPrompts.map((prompt) => `
-        <button class="chat-suggestion" type="button" data-chat-action="suggestion" data-message="${options.escapeHtml(localizeChatText(prompt, language))}">
-          <span>${options.escapeHtml(localizeChatText(prompt, language))}</span>
-        </button>
-      `).join('')
+      suggestionList.innerHTML = ''
     }
     renderMessages(conversation.messages)
+  }
+
+  function renderEmptyState(): void {
+    const language = options.getLanguage()
+    const emptyTitle = language === 'zh-CN' ? '暂无历史角色' : 'No history characters'
+    const emptyCopy = language === 'zh-CN'
+      ? 'chat 会在角色产生历史对话后读取资源并显示在这里。'
+      : 'Chat resources appear here after a character has conversation history.'
+
+    if (headerAvatar) {
+      headerAvatar.className = 'chat-avatar large'
+      headerAvatar.textContent = 'N'
+    }
+    if (headerName) {
+      headerName.textContent = emptyTitle
+    }
+    if (headerMeta) {
+      headerMeta.textContent = emptyCopy
+    }
+    if (profileTitle) {
+      profileTitle.textContent = emptyTitle
+    }
+    if (profileCopy) {
+      profileCopy.textContent = emptyCopy
+    }
+    if (portrait) {
+      portrait.innerHTML = ''
+    }
+    if (configMeta) {
+      configMeta.innerHTML = ''
+    }
+    if (assetList) {
+      assetList.innerHTML = ''
+    }
+    if (suggestionList) {
+      suggestionList.innerHTML = ''
+    }
+    options.messageList.innerHTML = ''
   }
 
   function renderMessages(messages: ChatMessage[]): void {
@@ -149,26 +180,26 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
   }
 
   function renderAvatar(character: ChatCharacterResource, large: boolean): string {
-    return `<span class="chat-avatar ${large ? 'large ' : ''}${options.escapeHtml(character.avatarClass)}">${options.escapeHtml(character.accent)}</span>`
-  }
-
-  function renderProfileField(field: ChatCharacterProfileField): string {
-    const language = options.getLanguage()
-    return `
-      <li class="chat-asset-item">
-        <span>${options.escapeHtml(localizeChatText(field.label, language))}</span>
-        <small>${options.escapeHtml(localizeChatText(field.value, language))}</small>
-      </li>
-    `
+    return `<span class="chat-avatar ${large ? 'large' : ''}">${renderAvatarImage(character, options.getLanguage())}</span>`
   }
 
   function scrollToLatest(): void {
     options.messageList.scrollTop = options.messageList.scrollHeight
   }
 
+  function renderAvatarImage(character: ChatCharacterResource, language: ChatLanguageCode): string {
+    const name = localizeChatText(character.displayName, language)
+    return `<img src="${options.escapeHtml(character.avatarImage)}" alt="${options.escapeHtml(name)}" />`
+  }
+
+  function getCharacterTags(character: ChatCharacterResource, language: ChatLanguageCode): string[] {
+    return character.tag[language] ?? character.tag['zh-CN']
+  }
+
   return {
     renderConversationList,
     renderActiveConversation,
+    renderEmptyState,
     renderMessages,
     appendMessage,
     setAssistantMessageState,

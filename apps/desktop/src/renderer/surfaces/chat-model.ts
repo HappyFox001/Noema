@@ -1,5 +1,5 @@
 /**
- * Defines the renderer-side chat resources and seeded history.
+ * Defines chat resource manifests and runtime chat state loading.
  */
 export type ChatLanguageCode = 'zh-CN' | 'en-US'
 
@@ -11,24 +11,13 @@ export type ChatLocalizedText = Record<ChatLanguageCode, string>
 
 export interface ChatCharacterResource {
   id: string
+  name: ChatLocalizedText
   displayName: ChatLocalizedText
-  nativeName: string
-  subtitle: ChatLocalizedText
   description: ChatLocalizedText
-  avatarClass: string
-  accent: string
-  locale: string
-  sourceUrl: string
-  sourceLabel: string
-  tags: ChatLocalizedText[]
-  profileFields: ChatCharacterProfileField[]
-  suggestedPrompts: ChatLocalizedText[]
-}
-
-export interface ChatCharacterProfileField {
-  id: string
-  label: ChatLocalizedText
-  value: ChatLocalizedText
+  background: ChatLocalizedText
+  tag: Record<ChatLanguageCode, string[]>
+  avatarImage: string
+  bodyImage: string
 }
 
 export interface ChatConversationSummary {
@@ -54,120 +43,36 @@ export interface ChatState {
   conversations: ChatConversationSummary[]
 }
 
-const CHEN_QIANYU_RESOURCE: ChatCharacterResource = {
-  id: 'chen-qianyu',
-  displayName: {
-    'zh-CN': '陈千语',
-    'en-US': 'Chen Qianyu',
-  },
-  nativeName: '陈千语',
-  subtitle: {
-    'zh-CN': '明日方舟：终末地 · 角色资料测试',
-    'en-US': 'Arknights: Endfield · profile test resource',
-  },
-  description: {
-    'zh-CN': '终末地工业特勤干员，剑术与身体能力突出。这个资源只保留基础身份字段、简短描述和来源链接，用于 chat 历史角色列表测试。',
-    'en-US': 'An Endfield Industries specialist operator known for sword practice and strong physical ability. This test resource keeps only basic identity fields, a short note, and source links.',
-  },
-  avatarClass: 'chen-qianyu-avatar',
-  accent: 'CQ',
-  locale: 'zh-CN',
-  sourceUrl: 'https://end.wiki/zh-Hans/characters/chr-0005-chen/',
-  sourceLabel: 'end.wiki',
-  tags: [
-    { 'zh-CN': '历史对话', 'en-US': 'history' },
-    { 'zh-CN': '物理', 'en-US': 'physical' },
-    { 'zh-CN': '近卫', 'en-US': 'guard' },
-    { 'zh-CN': '剑', 'en-US': 'sword' },
-  ],
-  profileFields: [
-    {
-      id: 'source',
-      label: { 'zh-CN': '来源', 'en-US': 'Source' },
-      value: { 'zh-CN': '明日方舟：终末地', 'en-US': 'Arknights: Endfield' },
-    },
-    {
-      id: 'rarity',
-      label: { 'zh-CN': '稀有度', 'en-US': 'Rarity' },
-      value: { 'zh-CN': '5 星', 'en-US': '5-star' },
-    },
-    {
-      id: 'role',
-      label: { 'zh-CN': '定位', 'en-US': 'Role' },
-      value: { 'zh-CN': '物理 / 近卫 / 剑', 'en-US': 'Physical / Guard / Sword' },
-    },
-    {
-      id: 'faction',
-      label: { 'zh-CN': '阵营', 'en-US': 'Faction' },
-      value: { 'zh-CN': '终末地工业', 'en-US': 'Endfield Industries' },
-    },
-    {
-      id: 'birthday',
-      label: { 'zh-CN': '生日', 'en-US': 'Birthday' },
-      value: { 'zh-CN': '8 月 18 日', 'en-US': 'August 18' },
-    },
-    {
-      id: 'trait',
-      label: { 'zh-CN': '基础特征', 'en-US': 'Profile note' },
-      value: {
-        'zh-CN': '武术训练、宏山剑术、耐力训练',
-        'en-US': 'Martial arts, Hongshan swordmancy, endurance training',
-      },
-    },
-  ],
-  suggestedPrompts: [
-    {
-      'zh-CN': '用基础字段生成一段角色开场白',
-      'en-US': 'Draft an intro from the basic profile',
-    },
-    {
-      'zh-CN': '把这套资料整理成角色资源 JSON',
-      'en-US': 'Turn this profile into character JSON',
-    },
-    {
-      'zh-CN': '只保留聊天需要的字段',
-      'en-US': 'Keep only chat-facing fields',
-    },
-  ],
-}
+const CHAT_RESOURCE_MANIFESTS = [
+  '/chat-resources/chen-qianyu/manifest.json',
+]
 
 export function createInitialChatState(): ChatState {
   return {
-    activeConversationId: 'chen-qianyu-history',
-    characterResources: [CHEN_QIANYU_RESOURCE],
-    conversations: [
-      {
-        id: 'chen-qianyu-history',
-        characterId: CHEN_QIANYU_RESOURCE.id,
-        title: CHEN_QIANYU_RESOURCE.displayName,
-        preview: {
-          'zh-CN': '已导入基础资料，可用于角色资源和历史对话列表测试。',
-          'en-US': 'Basic profile imported for character resource and history list testing.',
-        },
-        updatedLabel: {
-          'zh-CN': '测试',
-          'en-US': 'Test',
-        },
-        messages: [
-          {
-            id: 'chen-qianyu-welcome',
-            role: 'assistant',
-            text: {
-              'zh-CN': '陈千语基础资料已接入。当前 chat 列表只展示有历史对话的角色。',
-              'en-US': 'Chen Qianyu basic profile is connected. The chat list now shows only characters with conversation history.',
-            },
-            createdLabel: {
-              'zh-CN': '测试',
-              'en-US': 'Test',
-            },
-          },
-        ],
-      },
-    ],
+    activeConversationId: '',
+    characterResources: [],
+    conversations: [],
   }
 }
 
-export function getActiveConversation(state: ChatState): ChatConversationSummary {
+export async function loadChatResourceState(): Promise<ChatState> {
+  const characterResources = await Promise.all(CHAT_RESOURCE_MANIFESTS.map(loadChatResourceManifest))
+  const conversations = createSeedHistory(characterResources)
+
+  return {
+    activeConversationId: conversations[0]?.id ?? '',
+    characterResources,
+    conversations,
+  }
+}
+
+export function applyChatResourceState(target: ChatState, source: ChatState): void {
+  target.activeConversationId = source.activeConversationId
+  target.characterResources = source.characterResources
+  target.conversations = source.conversations
+}
+
+export function getActiveConversation(state: ChatState): ChatConversationSummary | undefined {
   return state.conversations.find((conversation) => conversation.id === state.activeConversationId)
     ?? state.conversations[0]
 }
@@ -175,7 +80,7 @@ export function getActiveConversation(state: ChatState): ChatConversationSummary
 export function getCharacterForConversation(
   state: ChatState,
   conversation: ChatConversationSummary
-): ChatCharacterResource {
+): ChatCharacterResource | undefined {
   return state.characterResources.find((character) => character.id === conversation.characterId)
     ?? state.characterResources[0]
 }
@@ -201,4 +106,44 @@ export function createLocalAssistantDraft(text: string, createdLabel: string): C
 
 export function localizeChatText(value: ChatLocalizedText, language: ChatLanguageCode): string {
   return value[language] ?? value['zh-CN']
+}
+
+function createSeedHistory(characterResources: ChatCharacterResource[]): ChatConversationSummary[] {
+  return characterResources
+    .filter((character) => character.id === 'chen-qianyu')
+    .map((character) => ({
+      id: `${character.id}-history`,
+      characterId: character.id,
+      title: character.displayName,
+      preview: {
+        'zh-CN': '已导入角色资源，可用于历史对话列表测试。',
+        'en-US': 'Character resource imported for history list testing.',
+      },
+      updatedLabel: {
+        'zh-CN': '测试',
+        'en-US': 'Test',
+      },
+      messages: [
+        {
+          id: `${character.id}-welcome`,
+          role: 'assistant',
+          text: {
+            'zh-CN': '陈千语角色资源已接入。当前 chat 列表只展示有历史对话的角色。',
+            'en-US': 'Chen Qianyu character resource is connected. The chat list now shows only characters with conversation history.',
+          },
+          createdLabel: {
+            'zh-CN': '测试',
+            'en-US': 'Test',
+          },
+        },
+      ],
+    }))
+}
+
+async function loadChatResourceManifest(path: string): Promise<ChatCharacterResource> {
+  const response = await fetch(path)
+  if (!response.ok) {
+    throw new Error(`Failed to load chat resource manifest: ${path}`)
+  }
+  return await response.json() as ChatCharacterResource
 }
