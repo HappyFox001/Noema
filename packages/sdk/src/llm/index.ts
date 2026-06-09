@@ -114,9 +114,220 @@ export class OpenAIProvider implements LLMProvider {
   }
 }
 
+export class AnthropicMessagesProvider implements LLMProvider {
+  constructor(
+    private apiKey: string,
+    private model: string,
+    private baseURL: string = 'https://api.anthropic.com/v1'
+  ) {}
+
+  async chat(messages: any[], options?: any): Promise<LLMResponse> {
+    const { signal, ...requestOptions } = options ?? {}
+    const response = await fetch(`${this.normalizedBaseURL()}/messages`, {
+      method: 'POST',
+      headers: this.headers(),
+      body: JSON.stringify({
+        model: this.model,
+        max_tokens: requestOptions.max_tokens ?? requestOptions.maxTokens ?? 1024,
+        ...this.convertMessages(messages),
+        ...this.cleanRequestOptions(requestOptions),
+      }),
+      signal,
+    })
+
+    const bodyText = await response.text()
+    const body = this.parseJson(bodyText)
+    if (!response.ok) {
+      throw new Error(body?.error?.message || bodyText.slice(0, 300) || `Anthropic request failed with HTTP ${response.status}`)
+    }
+
+    return {
+      content: this.extractContent(body),
+      finishReason: body?.stop_reason ?? null,
+      usage: body?.usage
+        ? {
+            inputTokens: body.usage.input_tokens,
+            outputTokens: body.usage.output_tokens,
+            totalTokens: (body.usage.input_tokens ?? 0) + (body.usage.output_tokens ?? 0),
+          }
+        : undefined,
+    }
+  }
+
+  async *streamChat(messages: any[], options?: any): AsyncGenerator<string> {
+    const { signal, ...requestOptions } = options ?? {}
+    const response = await fetch(`${this.normalizedBaseURL()}/messages`, {
+      method: 'POST',
+      headers: this.headers(),
+      body: JSON.stringify({
+        model: this.model,
+        max_tokens: requestOptions.max_tokens ?? requestOptions.maxTokens ?? 1024,
+        stream: true,
+        ...this.convertMessages(messages),
+        ...this.cleanRequestOptions(requestOptions),
+      }),
+      signal,
+    })
+
+    if (!response.ok) {
+      const bodyText = await response.text()
+      const body = this.parseJson(bodyText)
+      throw new Error(body?.error?.message || bodyText.slice(0, 300) || `Anthropic stream failed with HTTP ${response.status}`)
+    }
+
+    const reader = response.body?.getReader()
+    if (!reader) {
+      return
+    }
+
+    const decoder = new TextDecoder()
+    let buffer = ''
+    try {
+      while (true) {
+        if (signal?.aborted) {
+          return
+        }
+        const { done, value } = await reader.read()
+        if (done) {
+          break
+        }
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split(/\r?\n/)
+        buffer = lines.pop() ?? ''
+        for (const line of lines) {
+          const chunk = this.parseSSELine(line)
+          if (chunk) {
+            yield chunk
+          }
+        }
+      }
+      const tail = this.parseSSELine(buffer)
+      if (tail) {
+        yield tail
+      }
+    } finally {
+      reader.releaseLock()
+    }
+  }
+
+  private normalizedBaseURL(): string {
+    return this.baseURL.replace(/\/+$/, '')
+  }
+
+  private headers(): Record<string, string> {
+    return {
+      'content-type': 'application/json',
+      'x-api-key': this.apiKey,
+      'anthropic-version': '2023-06-01',
+    }
+  }
+
+  private convertMessages(messages: any[]): { system?: string; messages: any[] } {
+    const systemParts: string[] = []
+    const anthropicMessages: any[] = []
+
+    for (const message of messages) {
+      const role = message?.role
+      const content = this.normalizeContent(message?.content)
+      if (!content) {
+        continue
+      }
+      if (role === 'system' || role === 'developer') {
+        systemParts.push(content)
+        continue
+      }
+      anthropicMessages.push({
+        role: role === 'assistant' ? 'assistant' : 'user',
+        content,
+      })
+    }
+
+    return {
+      ...(systemParts.length ? { system: systemParts.join('\n\n') } : {}),
+      messages: this.mergeAdjacentMessages(anthropicMessages),
+    }
+  }
+
+  private normalizeContent(content: any): string {
+    if (typeof content === 'string') {
+      return content
+    }
+    if (Array.isArray(content)) {
+      return content
+        .map(part => typeof part === 'string' ? part : part?.text)
+        .filter(Boolean)
+        .join('\n')
+    }
+    return content == null ? '' : String(content)
+  }
+
+  private mergeAdjacentMessages(messages: any[]): any[] {
+    const merged: any[] = []
+    for (const message of messages) {
+      const previous = merged[merged.length - 1]
+      if (previous?.role === message.role) {
+        previous.content = `${previous.content}\n\n${message.content}`
+      } else {
+        merged.push({ ...message })
+      }
+    }
+    return merged
+  }
+
+  private cleanRequestOptions(options: any): any {
+    const {
+      max_tokens,
+      maxTokens,
+      signal,
+      messages,
+      model,
+      stream,
+      reasoning_effort,
+      ...rest
+    } = options ?? {}
+    return rest
+  }
+
+  private parseSSELine(line: string): string {
+    if (!line.startsWith('data:')) {
+      return ''
+    }
+    const data = line.slice(5).trim()
+    if (!data || data === '[DONE]') {
+      return ''
+    }
+    const parsed = this.parseJson(data)
+    return parsed?.type === 'content_block_delta' && parsed?.delta?.type === 'text_delta'
+      ? parsed.delta.text || ''
+      : ''
+  }
+
+  private extractContent(body: any): string {
+    if (!Array.isArray(body?.content)) {
+      return ''
+    }
+    return body.content
+      .map((part: any) => part?.type === 'text' ? part.text : '')
+      .filter(Boolean)
+      .join('')
+  }
+
+  private parseJson(text: string): any {
+    try {
+      return JSON.parse(text)
+    } catch {
+      return null
+    }
+  }
+}
+
 export function createLLMProvider(config: SDKConfig['llm'], options: LLMProviderOptions = {}): LLMProvider {
   if (config.baseURL) {
     console.log(`[LLM] Using custom endpoint: ${config.baseURL}`)
+  }
+
+  if (config.provider === 'claude' || config.provider === 'anthropic') {
+    return new AnthropicMessagesProvider(config.apiKey, config.model, config.baseURL)
   }
 
   return new OpenAIProvider(config.apiKey, config.model, config.baseURL, options)

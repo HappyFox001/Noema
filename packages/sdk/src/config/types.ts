@@ -5,12 +5,14 @@ import type { Personality } from '../personality/index.js'
 
 export interface SDKConfig {
   llm: {
+    provider?: string
     apiKey: string
     model: string
     baseURL?: string
   }
 
   taskLLM?: {
+    provider?: string
     apiKey: string
     model: string
     baseURL?: string

@@ -10,8 +10,10 @@ import { existsSync } from 'fs'
 import { mkdir, readFile, writeFile } from 'fs/promises'
 import {
   getASRProviderCatalogEntry,
+  getLLMProviderCatalogEntry,
   getTTSProviderCatalogEntry,
   type ASRProviderType,
+  type LLMProviderType,
   type TTSProviderType,
 } from './model-provider-catalog.js'
 
@@ -36,13 +38,16 @@ function loadSystemConfigFromEnv(): SystemConfig | null {
     const modelName = env[`TASK_${i}_MODEL`]
     const apiKey = env[`TASK_${i}_API_KEY`] || env[`LLM_${i}_API_KEY`]
     const baseUrl = env[`TASK_${i}_BASE_URL`] || env[`LLM_${i}_BASE_URL`]
+    const provider = env[`TASK_${i}_PROVIDER`] as LLMProviderType | undefined
 
-    if (modelName || apiKey || baseUrl) {
+    if (modelName || apiKey || baseUrl || provider) {
+      const providerEntry = getLLMProviderCatalogEntry(provider)
       taskModels.push({
         id: `env-task-${i}`,
-        modelName: modelName || 'gemini-3.1-pro-preview',
+        provider: providerEntry.value,
+        modelName: modelName || providerEntry.defaultModel || 'gemini-3.1-pro-preview',
         apiKey: apiKey || '',
-        baseUrl: baseUrl || ''
+        baseUrl: baseUrl || providerEntry.defaultBaseUrl
       })
     }
   }
@@ -52,13 +57,16 @@ function loadSystemConfigFromEnv(): SystemConfig | null {
     const modelName = env[`LLM_${i}_MODEL`]
     const apiKey = env[`LLM_${i}_API_KEY`]
     const baseUrl = env[`LLM_${i}_BASE_URL`]
+    const provider = env[`LLM_${i}_PROVIDER`] as LLMProviderType | undefined
 
-    if (modelName || apiKey) {
+    if (modelName || apiKey || baseUrl || provider) {
+      const providerEntry = getLLMProviderCatalogEntry(provider)
       llmModels.push({
         id: `env-llm-${i}`,
-        modelName: modelName || '',
+        provider: providerEntry.value,
+        modelName: modelName || providerEntry.defaultModel,
         apiKey: apiKey || '',
-        baseUrl: baseUrl || ''
+        baseUrl: baseUrl || providerEntry.defaultBaseUrl
       })
     }
   }
@@ -127,6 +135,7 @@ function loadSystemConfigFromEnv(): SystemConfig | null {
 
 export interface LLMModelConfig {
   id: string
+  provider?: LLMProviderType
   transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'
   modelName: string
   apiKey: string
@@ -240,6 +249,7 @@ const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
   proxy: '',
   llmModels: [{
     id: 'default-llm',
+    provider: 'openai-compatible',
     modelName: '',
     apiKey: '',
     baseUrl: ''
@@ -247,6 +257,7 @@ const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
   activeLLMId: 'default-llm',
   taskModels: [{
     id: 'default-task',
+    provider: 'gemini',
     modelName: 'gemini-3.1-pro-preview',
     apiKey: '',
     baseUrl: ''
@@ -658,11 +669,16 @@ function normalizeActiveModelId<T extends { id: string }>(
 
 function normalizeLLMModelConfig(value: unknown, fallback: LLMModelConfig, index: number): LLMModelConfig {
   const source = value && typeof value === 'object' ? value as Partial<LLMModelConfig> : {}
+  const provider = normalizeLLMProvider(source.provider, fallback?.provider)
+  const providerEntry = getLLMProviderCatalogEntry(provider)
   return {
     id: typeof source.id === 'string' && source.id ? source.id : fallback?.id || `llm-${index + 1}`,
-    modelName: typeof source.modelName === 'string' ? source.modelName : fallback?.modelName || '',
+    provider,
+    modelName: typeof source.modelName === 'string'
+      ? source.modelName
+      : fallback?.modelName || providerEntry.defaultModel,
     apiKey: typeof source.apiKey === 'string' ? source.apiKey : fallback?.apiKey || '',
-    baseUrl: typeof source.baseUrl === 'string' ? source.baseUrl : fallback?.baseUrl || ''
+    baseUrl: typeof source.baseUrl === 'string' ? source.baseUrl : fallback?.baseUrl || providerEntry.defaultBaseUrl
   }
 }
 
@@ -686,9 +702,7 @@ function normalizeTaskModelConfig(value: unknown, fallback: LLMModelConfig, inde
 
 function normalizeTTSModelConfig(value: unknown, fallback: TTSModelConfig, index: number): TTSModelConfig {
   const source = value && typeof value === 'object' ? value as Partial<TTSModelConfig> : {}
-  const provider = source.provider === 'openai' || source.provider === 'elevenlabs' || source.provider === 'fish'
-    ? source.provider
-    : fallback?.provider || 'fish'
+  const provider = normalizeTTSProvider(source.provider, fallback?.provider)
   const providerEntry = getTTSProviderCatalogEntry(provider)
   const baseUrl = normalizeTTSBaseUrl(provider, source.baseUrl)
 
@@ -714,9 +728,7 @@ function normalizeTTSModelConfig(value: unknown, fallback: TTSModelConfig, index
 
 function normalizeASRModelConfig(value: unknown, fallback: ASRModelConfig, index: number): ASRModelConfig {
   const source = value && typeof value === 'object' ? value as Partial<ASRModelConfig> : {}
-  const provider = source.provider === 'openai' || source.provider === 'groq' || source.provider === 'qwen'
-    ? source.provider
-    : fallback?.provider || 'qwen'
+  const provider = normalizeASRProvider(source.provider, fallback?.provider)
   const providerEntry = getASRProviderCatalogEntry(provider)
   const sourceBaseUrl = typeof source.baseUrl === 'string' && source.baseUrl.trim()
     ? source.baseUrl
@@ -739,6 +751,21 @@ function normalizeASRModelConfig(value: unknown, fallback: ASRModelConfig, index
   }
 }
 
+function normalizeLLMProvider(value: unknown, fallback: unknown): LLMProviderType {
+  const candidate = typeof value === 'string' ? value : fallback
+  return getLLMProviderCatalogEntry(typeof candidate === 'string' ? candidate : undefined).value
+}
+
+function normalizeTTSProvider(value: unknown, fallback: unknown): TTSProviderType {
+  const candidate = typeof value === 'string' ? value : fallback
+  return getTTSProviderCatalogEntry(typeof candidate === 'string' ? candidate : undefined).value
+}
+
+function normalizeASRProvider(value: unknown, fallback: unknown): ASRProviderType {
+  const candidate = typeof value === 'string' ? value : fallback
+  return getASRProviderCatalogEntry(typeof candidate === 'string' ? candidate : undefined).value
+}
+
 function normalizeTTSBaseUrl(provider: TTSProviderType, value: unknown): string {
   const providerEntry = getTTSProviderCatalogEntry(provider)
   const baseUrl = typeof value === 'string' ? value.trim() : ''
@@ -748,7 +775,7 @@ function normalizeTTSBaseUrl(provider: TTSProviderType, value: unknown): string 
   if (!baseUrl) {
     return providerEntry.defaultBaseUrl
   }
-  if (provider === 'openai' && baseUrl.includes('api.elevenlabs.io')) {
+  if ((provider === 'openai' || provider === 'openai-compatible') && baseUrl.includes('api.elevenlabs.io')) {
     return providerEntry.defaultBaseUrl
   }
   if (provider === 'elevenlabs' && baseUrl.includes('api.openai.com')) {
@@ -768,7 +795,7 @@ function normalizeASRBaseUrl(provider: ASRProviderType, value: unknown): string 
       ? baseUrl
       : providerEntry.defaultBaseUrl
   }
-  if (provider === 'openai' && baseUrl.startsWith('wss://')) {
+  if ((provider === 'openai' || provider === 'openai-compatible' || provider === 'azure-openai') && baseUrl.startsWith('wss://')) {
     return providerEntry.defaultBaseUrl
   }
   if (provider === 'groq' && (baseUrl.startsWith('wss://') || baseUrl.includes('api.openai.com'))) {

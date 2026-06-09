@@ -60,11 +60,13 @@ export async function buildSDKConfig(): Promise<SDKConfig> {
 
   return {
     llm: {
+      ...(activeLLMConfig?.provider ? { provider: activeLLMConfig.provider } : {}),
       apiKey: llmApiKey,
       model: llmModel,
       baseURL: llmBaseURL
     },
     taskLLM: {
+      ...(activeTaskLLMConfig?.provider ? { provider: activeTaskLLMConfig.provider } : {}),
       apiKey: taskLLMApiKey,
       model: taskLLMModel,
       baseURL: taskLLMBaseURL

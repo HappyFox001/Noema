@@ -126,6 +126,10 @@ export function createTTSProviderForConfig(config: TTSModelConfig | null): TTSPr
   }
 
   const providerEntry = getTTSProviderCatalogEntry(config.provider)
+  if (!providerEntry.implemented) {
+    throw new Error(`${providerEntry.label} TTS is listed in the catalog but is not implemented in the runtime yet`)
+  }
+
   if (providerEntry.protocol === 'openai-speech') {
     return createTTSProvider({
       kind: 'openai-speech',
@@ -152,6 +156,10 @@ export function createTTSProviderForConfig(config: TTSModelConfig | null): TTSPr
         extra: config.extra as any,
       },
     })
+  }
+
+  if (providerEntry.protocol !== 'fish-realtime') {
+    throw new Error(`Unsupported TTS provider protocol: ${providerEntry.protocol}`)
   }
 
   return createTTSProvider({

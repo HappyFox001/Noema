@@ -12,19 +12,27 @@ import { initializeOrbEntryMenu } from './surfaces/orb-entry-menu'
 import claudeCodeLogoUrl from './assets/claude_code_logo.png'
 import codexLogoUrl from './assets/codex_logo.png'
 import claudeIconUrl from '@lobehub/icons-static-svg/icons/claude-color.svg?url'
+import assemblyAIIconUrl from '@lobehub/icons-static-svg/icons/assemblyai-color.svg?url'
+import azureAIIconUrl from '@lobehub/icons-static-svg/icons/azureai-color.svg?url'
 import deepseekIconUrl from '@lobehub/icons-static-svg/icons/deepseek-color.svg?url'
 import elevenLabsIconUrl from '@lobehub/icons-static-svg/icons/elevenlabs.svg?url'
 import fishAudioIconUrl from '@lobehub/icons-static-svg/icons/fishaudio.svg?url'
 import geminiIconUrl from '@lobehub/icons-static-svg/icons/gemini-color.svg?url'
+import googleCloudIconUrl from '@lobehub/icons-static-svg/icons/googlecloud-color.svg?url'
 import groqIconUrl from '@lobehub/icons-static-svg/icons/groq.svg?url'
+import minimaxIconUrl from '@lobehub/icons-static-svg/icons/minimax-color.svg?url'
+import ollamaIconUrl from '@lobehub/icons-static-svg/icons/ollama.svg?url'
 import openAIIconUrl from '@lobehub/icons-static-svg/icons/openai.svg?url'
 import qwenIconUrl from '@lobehub/icons-static-svg/icons/qwen-color.svg?url'
 import {
   ASR_PROVIDER_CATALOG,
+  LLM_PROVIDER_CATALOG,
   TTS_PROVIDER_CATALOG,
   getASRProviderCatalogEntry,
+  getLLMProviderCatalogEntry,
   getTTSProviderCatalogEntry,
   type ASRProviderType,
+  type LLMProviderType,
   type TTSProviderType,
 } from '../main/model-provider-catalog'
 
@@ -1510,6 +1518,7 @@ function renderSystemConfigIfReady(): void {
 
 type LLMModelConfig = {
   id: string
+  provider?: LLMProviderType
   transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'
   modelName: string
   apiKey: string
@@ -6720,7 +6729,7 @@ function getTaskTransportLogo(transport: NonNullable<LLMModelConfig['transport']
 function getTaskModelLogo(model: LLMModelConfig): ModelLogo {
   const transport = getTaskModelTransport(model)
   return transport === 'openai_compatible'
-    ? getLLMModelLogo(model)
+    ? getLLMProviderLogo(model.provider, model)
     : getTaskTransportLogo(transport)
 }
 
@@ -8243,12 +8252,13 @@ function renderModelCard(kind: ModelListKind, model: LLMModelConfig | TTSModelCo
   if (kind === 'llm') {
     const item = model as LLMModelConfig
     const models = currentSystemConfig.llmModels
+    const providerEntry = getLLMProviderCatalogEntry(item.provider)
     return `
     <div class="config-model-card ${item.id === currentSystemConfig.activeLLMId ? 'active' : ''}" data-id="${escapeHtml(item.id)}">
       <div class="config-model-header">
         <div class="config-model-name">
-          ${renderModelLogo(getLLMModelLogo(item))}
-          <input type="text" value="${escapeHtml(item.modelName)}" data-field="modelName" placeholder="deepseek-chat" />
+          ${renderLLMProviderControl(item)}
+          <input type="text" value="${escapeHtml(item.modelName)}" data-field="modelName" placeholder="${escapeHtml(providerEntry.defaultModel || 'model-name')}" />
           ${item.id === currentSystemConfig.activeLLMId ? `<span class="config-model-active-badge">${escapeHtml(t('common.active'))}</span>` : ''}
         </div>
         <div class="config-model-actions">
@@ -8259,8 +8269,12 @@ function renderModelCard(kind: ModelListKind, model: LLMModelConfig | TTSModelCo
       </div>
       <div class="config-model-fields">
         <div class="config-field">
+          <span class="config-field-label">Provider</span>
+          ${renderLLMProviderControl(item)}
+        </div>
+        <div class="config-field">
           <span class="config-field-label">API Key</span>
-          <input type="text" class="config-field-input masked" value="${escapeHtml(item.apiKey)}" data-field="apiKey" placeholder="sk-..." />
+          <input type="text" class="config-field-input masked" value="${escapeHtml(item.apiKey)}" data-field="apiKey" placeholder="${escapeHtml(providerEntry.defaultApiKeyPlaceholder)}" />
         </div>
         <div class="config-field">
           <span class="config-field-label">Base URL</span>
@@ -8276,12 +8290,13 @@ function renderModelCard(kind: ModelListKind, model: LLMModelConfig | TTSModelCo
     const models = currentSystemConfig.taskModels
     const transport = getTaskModelTransport(item)
     const isCli = transport !== 'openai_compatible'
+    const providerEntry = getLLMProviderCatalogEntry(item.provider)
     const taskFields = isCli
       ? ''
       : `
         <div class="config-field">
           <span class="config-field-label">API Key</span>
-          <input type="text" class="config-field-input masked" value="${escapeHtml(item.apiKey)}" data-field="apiKey" placeholder="sk-..." />
+          <input type="text" class="config-field-input masked" value="${escapeHtml(item.apiKey)}" data-field="apiKey" placeholder="${escapeHtml(providerEntry.defaultApiKeyPlaceholder)}" />
         </div>
         <div class="config-field">
           <span class="config-field-label">Base URL</span>
@@ -8292,10 +8307,10 @@ function renderModelCard(kind: ModelListKind, model: LLMModelConfig | TTSModelCo
     <div class="config-model-card ${item.id === currentSystemConfig.activeTaskId ? 'active' : ''}" data-id="${escapeHtml(item.id)}">
       <div class="config-model-header">
         <div class="config-model-name">
-          ${renderTaskTransportControl(item)}
+          ${renderTaskProviderControl(item)}
           ${isCli
             ? '<span class="config-model-cli-default">CLI default</span>'
-            : `<input type="text" value="${escapeHtml(item.modelName)}" data-field="modelName" placeholder="gemini-3.1-pro-preview" />`
+            : `<input type="text" value="${escapeHtml(item.modelName)}" data-field="modelName" placeholder="${escapeHtml(providerEntry.defaultModel || 'model-name')}" />`
           }
           ${item.id === currentSystemConfig.activeTaskId ? `<span class="config-model-active-badge">${escapeHtml(t('common.active'))}</span>` : ''}
         </div>
@@ -8307,8 +8322,8 @@ function renderModelCard(kind: ModelListKind, model: LLMModelConfig | TTSModelCo
       </div>
       <div class="config-model-fields">
         <div class="config-field">
-          <span class="config-field-label">Transport</span>
-          ${renderTaskTransportControl(item)}
+          <span class="config-field-label">Provider</span>
+          ${renderTaskProviderControl(item)}
         </div>
         ${taskFields}
       </div>
@@ -8457,42 +8472,99 @@ function getLLMModelLogo(model: Pick<LLMModelConfig, 'modelName' | 'baseUrl'>): 
   return { src: openAIIconUrl, alt: 'OpenAI', tone: 'light' }
 }
 
+function getLLMProviderLogo(provider: LLMProviderType | undefined, model?: Pick<LLMModelConfig, 'modelName' | 'baseUrl'>): ModelLogo {
+  switch (provider) {
+    case 'gemini':
+      return { src: geminiIconUrl, alt: 'Gemini' }
+    case 'claude':
+      return { src: claudeIconUrl, alt: 'Claude' }
+    case 'deepseek':
+      return { src: deepseekIconUrl, alt: 'DeepSeek' }
+    case 'qwen':
+      return { src: qwenIconUrl, alt: 'Qwen' }
+    case 'groq':
+      return { src: groqIconUrl, alt: 'Groq', tone: 'light' }
+    case 'azure-openai':
+      return { src: azureAIIconUrl, alt: 'Azure OpenAI' }
+    case 'ollama':
+      return { src: ollamaIconUrl, alt: 'Ollama', tone: 'light' }
+    case 'openai':
+    case 'openai-compatible':
+      return { src: openAIIconUrl, alt: getLLMProviderCatalogEntry(provider).label, tone: 'light' }
+    default:
+      return model ? getLLMModelLogo(model) : { src: openAIIconUrl, alt: 'OpenAI', tone: 'light' }
+  }
+}
+
 function getTTSProviderLogo(provider: TTSProviderType): ModelLogo {
   switch (provider) {
     case 'fish':
       return { src: fishAudioIconUrl, alt: 'Fish Audio', tone: 'light' }
     case 'elevenlabs':
       return { src: elevenLabsIconUrl, alt: 'ElevenLabs', tone: 'light' }
+    case 'gemini':
+      return { src: geminiIconUrl, alt: getTTSProviderCatalogEntry(provider).label }
+    case 'google-cloud':
+      return { src: googleCloudIconUrl, alt: 'Google Cloud' }
+    case 'groq':
+      return { src: groqIconUrl, alt: 'Groq', tone: 'light' }
+    case 'azure-openai':
+    case 'azure-speech':
+      return { src: azureAIIconUrl, alt: getTTSProviderCatalogEntry(provider).label }
+    case 'minimax':
+      return { src: minimaxIconUrl, alt: 'MiniMax' }
     case 'openai':
+    case 'openai-compatible':
     default:
-      return { src: openAIIconUrl, alt: 'OpenAI', tone: 'light' }
+      return { src: openAIIconUrl, alt: getTTSProviderCatalogEntry(provider).label, tone: 'light' }
   }
 }
 
 function getASRProviderLogo(provider: ASRProviderType): ModelLogo {
   switch (provider) {
+    case 'fish':
+      return { src: fishAudioIconUrl, alt: 'Fish Audio', tone: 'light' }
+    case 'elevenlabs':
+      return { src: elevenLabsIconUrl, alt: 'ElevenLabs', tone: 'light' }
     case 'qwen':
       return { src: qwenIconUrl, alt: 'Qwen' }
     case 'groq':
       return { src: groqIconUrl, alt: 'Groq', tone: 'light' }
+    case 'assemblyai':
+      return { src: assemblyAIIconUrl, alt: 'AssemblyAI' }
+    case 'google-cloud':
+      return { src: googleCloudIconUrl, alt: 'Google Cloud' }
+    case 'azure-openai':
+    case 'azure-speech':
+      return { src: azureAIIconUrl, alt: getASRProviderCatalogEntry(provider).label }
     case 'openai':
+    case 'openai-compatible':
     default:
-      return { src: openAIIconUrl, alt: 'OpenAI', tone: 'light' }
+      return { src: openAIIconUrl, alt: getASRProviderCatalogEntry(provider).label, tone: 'light' }
   }
 }
 
-const TTS_PROVIDERS = TTS_PROVIDER_CATALOG.filter(provider => provider.implemented)
+const TTS_PROVIDERS = TTS_PROVIDER_CATALOG
+const LLM_PROVIDERS = LLM_PROVIDER_CATALOG
 const TASK_MODEL_TRANSPORTS: Array<{ value: NonNullable<LLMModelConfig['transport']>; label: string }> = [
   { value: 'openai_compatible', label: 'API' },
   { value: 'codex_local', label: 'Codex' },
   { value: 'claude_code_local', label: 'Claude Code' },
 ]
+const TASK_PROVIDER_OPTIONS = [
+  ...LLM_PROVIDERS,
+  ...TASK_MODEL_TRANSPORTS.filter(provider => provider.value !== 'openai_compatible'),
+]
+
+function getLLMProviderLabel(provider: LLMProviderType | undefined): string {
+  return getLLMProviderCatalogEntry(provider).label
+}
 
 function getTTSProviderLabel(provider: TTSProviderType): string {
   return TTS_PROVIDERS.find(p => p.value === provider)?.label || provider
 }
 
-function renderProviderControl(kind: 'tts' | 'asr' | 'task-transport', value: string, label: string, logo?: ModelLogo): string {
+function renderProviderControl(kind: 'llm' | 'task-llm' | 'task-provider' | 'tts' | 'asr' | 'task-transport', value: string, label: string, logo?: ModelLogo): string {
   const field = kind === 'task-transport' ? 'transport' : 'provider'
   return `
     <span class="config-provider-control">
@@ -8504,6 +8576,21 @@ function renderProviderControl(kind: 'tts' | 'asr' | 'task-transport', value: st
       </button>
     </span>
   `
+}
+
+function renderLLMProviderControl(model: LLMModelConfig, kind: 'llm' | 'task-llm' = 'llm'): string {
+  const provider = getLLMProviderCatalogEntry(model.provider).value
+  return renderProviderControl(kind, provider, getLLMProviderLabel(provider), getLLMProviderLogo(provider, model))
+}
+
+function renderTaskProviderControl(model: LLMModelConfig): string {
+  const transport = getTaskModelTransport(model)
+  if (transport !== 'openai_compatible') {
+    return renderProviderControl('task-provider', transport, getTaskTransportLabel(transport), getTaskTransportLogo(transport))
+  }
+
+  const provider = getLLMProviderCatalogEntry(model.provider).value
+  return renderProviderControl('task-provider', provider, getLLMProviderLabel(provider), getLLMProviderLogo(provider, model))
 }
 
 function renderTTSProviderControl(provider: TTSProviderType): string {
@@ -8539,7 +8626,7 @@ function renderTTSModels(): void {
   renderModelList('tts')
 }
 
-const ASR_PROVIDERS = ASR_PROVIDER_CATALOG.filter(provider => provider.implemented)
+const ASR_PROVIDERS = ASR_PROVIDER_CATALOG
 
 function getASRProviderLabel(provider: ASRProviderType): string {
   return ASR_PROVIDERS.find(p => p.value === provider)?.label || provider
@@ -8573,10 +8660,14 @@ function closeProviderMenu(): void {
 }
 
 function openProviderMenu(button: HTMLButtonElement, id: string): void {
-  const kind = button.dataset.providerKind as 'tts' | 'asr' | 'task-transport' | undefined
+  const kind = button.dataset.providerKind as 'llm' | 'task-llm' | 'task-provider' | 'tts' | 'asr' | 'task-transport' | undefined
   if (!kind) return
 
-  const providers = kind === 'tts'
+  const providers = kind === 'llm' || kind === 'task-llm'
+    ? LLM_PROVIDERS
+    : kind === 'task-provider'
+      ? TASK_PROVIDER_OPTIONS
+    : kind === 'tts'
     ? TTS_PROVIDERS
     : kind === 'asr'
       ? ASR_PROVIDERS
@@ -8599,7 +8690,14 @@ function openProviderMenu(button: HTMLButtonElement, id: string): void {
   menu.style.left = `${Math.min(rect.left, window.innerWidth - menuWidth - 12)}px`
   menu.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - providers.length * optionHeight - 14)}px`
   menu.innerHTML = providers.map(provider => {
-    const logo = kind === 'tts'
+    const implemented = 'implemented' in provider ? provider.implemented : true
+    const logo = kind === 'llm' || kind === 'task-llm'
+      ? getLLMProviderLogo(provider.value as LLMProviderType)
+      : kind === 'task-provider'
+        ? provider.value === 'codex_local' || provider.value === 'claude_code_local'
+          ? getTaskTransportLogo(provider.value as NonNullable<LLMModelConfig['transport']>)
+          : getLLMProviderLogo(provider.value as LLMProviderType)
+      : kind === 'tts'
       ? getTTSProviderLogo(provider.value as TTSProviderType)
       : kind === 'asr'
         ? getASRProviderLogo(provider.value as ASRProviderType)
@@ -8607,10 +8705,10 @@ function openProviderMenu(button: HTMLButtonElement, id: string): void {
           ? getLLMModelLogo(taskModel)
           : getTaskTransportLogo(provider.value as NonNullable<LLMModelConfig['transport']>)
     return `
-    <button class="config-provider-option ${provider.value === currentValue ? 'selected' : ''}" type="button" role="option" aria-selected="${provider.value === currentValue ? 'true' : 'false'}" data-provider-value="${escapeHtml(provider.value)}">
+    <button class="config-provider-option ${provider.value === currentValue ? 'selected' : ''} ${implemented ? '' : 'disabled'}" type="button" role="option" aria-selected="${provider.value === currentValue ? 'true' : 'false'}" data-provider-value="${escapeHtml(provider.value)}" ${implemented ? '' : 'disabled'}>
       <span class="config-provider-option-check">${provider.value === currentValue ? '✓' : ''}</span>
       ${logo ? renderModelLogo(logo, 'provider-option') : ''}
-      <span class="config-provider-option-label">${escapeHtml(provider.label)}</span>
+      <span class="config-provider-option-label">${escapeHtml(provider.label)}${implemented ? '' : ' · TODO'}</span>
     </button>
   `
   }).join('')
@@ -8623,7 +8721,17 @@ function openProviderMenu(button: HTMLButtonElement, id: string): void {
         return
       }
       closeProviderMenu()
-      if (kind === 'tts') {
+      if (kind === 'llm') {
+        await updateLLMProvider(id, provider as LLMProviderType)
+      } else if (kind === 'task-provider') {
+        if (provider === 'codex_local' || provider === 'claude_code_local') {
+          await updateTaskTransport(id, provider as NonNullable<LLMModelConfig['transport']>)
+        } else {
+          await updateTaskProvider(id, provider as LLMProviderType)
+        }
+      } else if (kind === 'task-llm') {
+        await updateTaskProvider(id, provider as LLMProviderType)
+      } else if (kind === 'tts') {
         await updateTTSProvider(id, provider as TTSProviderType)
       } else if (kind === 'asr') {
         await updateASRProvider(id, provider as ASRProviderType)
@@ -8837,6 +8945,25 @@ async function updateLLMModel(id: string, updates: Partial<LLMModelConfig>): Pro
   }
 }
 
+async function updateLLMProvider(id: string, provider: LLMProviderType): Promise<void> {
+  if (!currentSystemConfig) return
+  const model = currentSystemConfig.llmModels.find(m => m.id === id)
+  if (!model) return
+
+  const providerEntry = getLLMProviderCatalogEntry(provider)
+  const providerChanged = model.provider !== provider
+  model.provider = provider
+  if (providerChanged) {
+    model.modelName = providerEntry.defaultModel
+    model.baseUrl = providerEntry.defaultBaseUrl
+  } else {
+    model.modelName ||= providerEntry.defaultModel
+    model.baseUrl ||= providerEntry.defaultBaseUrl
+  }
+  await saveSystemConfigForModel('llm')
+  syncModelCard('llm', id)
+}
+
 async function activateLLMModel(id: string): Promise<void> {
   if (!currentSystemConfig) return
   const previousId = currentSystemConfig.activeLLMId
@@ -8861,9 +8988,10 @@ async function addLLMModel(): Promise<void> {
   if (!currentSystemConfig) return
   const newModel: LLMModelConfig = {
     id: generateId(),
-    modelName: '',
+    provider: 'openai-compatible',
+    modelName: getLLMProviderCatalogEntry('openai-compatible').defaultModel,
     apiKey: '',
-    baseUrl: ''
+    baseUrl: getLLMProviderCatalogEntry('openai-compatible').defaultBaseUrl
   }
   currentSystemConfig.llmModels.push(newModel)
   await saveSystemConfigForModel('llm')
@@ -8888,8 +9016,30 @@ async function updateTaskTransport(id: string, transport: NonNullable<LLMModelCo
   const transportChanged = getTaskModelTransport(model) !== transport
   model.transport = transport
   if (transportChanged && transport === 'openai_compatible') {
-    model.modelName ||= 'gemini-3.1-pro-preview'
-    model.baseUrl ||= 'https://generativelanguage.googleapis.com/v1beta/openai'
+    const providerEntry = getLLMProviderCatalogEntry(model.provider || 'gemini')
+    model.provider ||= providerEntry.value
+    model.modelName ||= providerEntry.defaultModel || 'gemini-3.1-pro-preview'
+    model.baseUrl ||= providerEntry.defaultBaseUrl
+  }
+  await saveSystemConfigForModel('task')
+  syncModelCard('task', id)
+}
+
+async function updateTaskProvider(id: string, provider: LLMProviderType): Promise<void> {
+  if (!currentSystemConfig) return
+  const model = currentSystemConfig.taskModels.find(m => m.id === id)
+  if (!model) return
+
+  const providerEntry = getLLMProviderCatalogEntry(provider)
+  const providerChanged = model.provider !== provider
+  model.provider = provider
+  model.transport = 'openai_compatible'
+  if (providerChanged) {
+    model.modelName = providerEntry.defaultModel
+    model.baseUrl = providerEntry.defaultBaseUrl
+  } else {
+    model.modelName ||= providerEntry.defaultModel
+    model.baseUrl ||= providerEntry.defaultBaseUrl
   }
   await saveSystemConfigForModel('task')
   syncModelCard('task', id)
@@ -8919,10 +9069,11 @@ async function addTaskModel(): Promise<void> {
   if (!currentSystemConfig) return
   const newModel: LLMModelConfig = {
     id: generateId(),
+    provider: 'gemini',
     transport: 'openai_compatible',
-    modelName: 'gemini-3.1-pro-preview',
+    modelName: getLLMProviderCatalogEntry('gemini').defaultModel,
     apiKey: '',
-    baseUrl: ''
+    baseUrl: getLLMProviderCatalogEntry('gemini').defaultBaseUrl
   }
   currentSystemConfig.taskModels.push(newModel)
   await saveSystemConfigForModel('task')

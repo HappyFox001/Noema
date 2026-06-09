@@ -244,14 +244,14 @@ declare global {
         pluginPathHistory: Record<string, { mode: 'file' | 'directory'; lastPath: string; recentPaths: string[] }>
         system: {
           proxy: string
-          llmModels: Array<{ id: string; modelName: string; apiKey: string; baseUrl: string }>
+          llmModels: Array<{ id: string; provider?: string; modelName: string; apiKey: string; baseUrl: string }>
           activeLLMId: string
-          taskModels: Array<{ id: string; transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'; modelName: string; apiKey: string; baseUrl: string }>
+          taskModels: Array<{ id: string; provider?: string; transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'; modelName: string; apiKey: string; baseUrl: string }>
           activeTaskId: string
           taskRuntime: any
-          ttsModels: Array<{ id: string; provider: 'fish'; modelName: string; apiKey: string; voiceId?: string }>
+          ttsModels: Array<{ id: string; provider: string; modelName: string; apiKey: string; voiceId?: string; baseUrl?: string; language?: string; format?: 'pcm' | 'mp3' | 'opus'; sampleRate?: number; extra?: Record<string, unknown> }>
           activeTTSId: string
-          asrModels: Array<{ id: string; provider: 'qwen'; modelName: string; apiKey: string }>
+          asrModels: Array<{ id: string; provider: string; modelName: string; apiKey: string; baseUrl?: string; language?: string; sampleRate?: number; extra?: Record<string, unknown> }>
           activeASRId: string
         }
       }>
@@ -267,14 +267,14 @@ declare global {
         pluginPathHistory: Record<string, { mode: 'file' | 'directory'; lastPath: string; recentPaths: string[] }>
         system: {
           proxy: string
-          llmModels: Array<{ id: string; modelName: string; apiKey: string; baseUrl: string }>
+          llmModels: Array<{ id: string; provider?: string; modelName: string; apiKey: string; baseUrl: string }>
           activeLLMId: string
-          taskModels: Array<{ id: string; transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'; modelName: string; apiKey: string; baseUrl: string }>
+          taskModels: Array<{ id: string; provider?: string; transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'; modelName: string; apiKey: string; baseUrl: string }>
           activeTaskId: string
           taskRuntime: any
-          ttsModels: Array<{ id: string; provider: 'fish'; modelName: string; apiKey: string; voiceId?: string }>
+          ttsModels: Array<{ id: string; provider: string; modelName: string; apiKey: string; voiceId?: string; baseUrl?: string; language?: string; format?: 'pcm' | 'mp3' | 'opus'; sampleRate?: number; extra?: Record<string, unknown> }>
           activeTTSId: string
-          asrModels: Array<{ id: string; provider: 'qwen'; modelName: string; apiKey: string }>
+          asrModels: Array<{ id: string; provider: string; modelName: string; apiKey: string; baseUrl?: string; language?: string; sampleRate?: number; extra?: Record<string, unknown> }>
           activeASRId: string
         }
       }>) => Promise<{
@@ -288,14 +288,14 @@ declare global {
         externalRolePaths: string[]
         system: {
           proxy: string
-          llmModels: Array<{ id: string; modelName: string; apiKey: string; baseUrl: string }>
+          llmModels: Array<{ id: string; provider?: string; modelName: string; apiKey: string; baseUrl: string }>
           activeLLMId: string
-          taskModels: Array<{ id: string; transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'; modelName: string; apiKey: string; baseUrl: string }>
+          taskModels: Array<{ id: string; provider?: string; transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'; modelName: string; apiKey: string; baseUrl: string }>
           activeTaskId: string
           taskRuntime: any
-          ttsModels: Array<{ id: string; provider: 'fish'; modelName: string; apiKey: string; voiceId?: string }>
+          ttsModels: Array<{ id: string; provider: string; modelName: string; apiKey: string; voiceId?: string; baseUrl?: string; language?: string; format?: 'pcm' | 'mp3' | 'opus'; sampleRate?: number; extra?: Record<string, unknown> }>
           activeTTSId: string
-          asrModels: Array<{ id: string; provider: 'qwen'; modelName: string; apiKey: string }>
+          asrModels: Array<{ id: string; provider: string; modelName: string; apiKey: string; baseUrl?: string; language?: string; sampleRate?: number; extra?: Record<string, unknown> }>
           activeASRId: string
         }
       }>
@@ -347,9 +347,9 @@ declare global {
       testApiModel: (
         kind: 'llm' | 'task' | 'tts' | 'asr',
         model:
-          | { id: string; transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'; modelName: string; apiKey: string; baseUrl: string }
-          | { id: string; provider: 'fish'; modelName: string; apiKey: string; voiceId?: string }
-          | { id: string; provider: 'qwen'; modelName: string; apiKey: string }
+          | { id: string; provider?: string; transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'; modelName: string; apiKey: string; baseUrl: string }
+          | { id: string; provider: string; modelName: string; apiKey: string; voiceId?: string; baseUrl?: string; language?: string; sampleRate?: number }
+          | { id: string; provider: string; modelName: string; apiKey: string; baseUrl?: string; language?: string; sampleRate?: number }
       ) => Promise<{
         success: boolean
         message?: string

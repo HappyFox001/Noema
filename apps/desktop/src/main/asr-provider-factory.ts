@@ -59,6 +59,10 @@ export function createASRProviderForConfig(
   }
 
   const providerEntry = getASRProviderCatalogEntry(config.provider)
+  if (!providerEntry.implemented) {
+    throw new Error(`${providerEntry.label} ASR is listed in the catalog but is not implemented in the runtime yet`)
+  }
+
   if (providerEntry.protocol === 'openai-transcription') {
     return createSTTProvider({
       kind: 'openai-transcription',
@@ -71,6 +75,10 @@ export function createASRProviderForConfig(
         receiveTimeoutMs: 20000,
       },
     })
+  }
+
+  if (providerEntry.protocol !== 'qwen-realtime') {
+    throw new Error(`Unsupported ASR provider protocol: ${providerEntry.protocol}`)
   }
 
   const baseTransport = new NodeRealtimeWebSocketTransport()
