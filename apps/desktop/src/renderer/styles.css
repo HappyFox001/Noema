@@ -11186,9 +11186,72 @@ body.chat-open #app {
   transform: translateY(-1px);
 }
 
+.chat-nav-item.language-toggle {
+  width: 46px;
+  height: 30px;
+  min-width: 46px;
+  min-height: 30px;
+  padding: 3px;
+  border-radius: 999px;
+}
+
 .chat-language-mark {
-  font-size: 11px;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  border-radius: inherit;
+  background: rgba(255, 255, 255, 0.035);
+  color: rgba(248, 250, 250, 0.52);
+  font-family: var(--font-ui);
+  font-size: 9px;
+  font-weight: 700;
   letter-spacing: 0;
+}
+
+.chat-language-mark::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  width: calc(50% - 2px);
+  border-radius: 999px;
+  background: rgba(218, 232, 224, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  transition: transform 160ms ease;
+}
+
+.chat-language-mark[data-language='en-US']::before {
+  transform: translateX(100%);
+}
+
+.chat-language-mark span {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+}
+
+.chat-language-mark[data-language='zh-CN'] [data-chat-language-option='zh'],
+.chat-language-mark[data-language='en-US'] [data-chat-language-option='en'] {
+  color: rgba(255, 255, 255, 0.94);
+}
+
+body.theme-day .chat-language-mark {
+  background: rgba(19, 42, 45, 0.055);
+  color: rgba(13, 31, 34, 0.48);
+}
+
+body.theme-day .chat-language-mark::before {
+  background: rgba(33, 72, 72, 0.13);
+}
+
+body.theme-day .chat-language-mark[data-language='zh-CN'] [data-chat-language-option='zh'],
+body.theme-day .chat-language-mark[data-language='en-US'] [data-chat-language-option='en'] {
+  color: rgba(13, 31, 34, 0.86);
 }
 
 .chat-characters {

@@ -5060,6 +5060,11 @@ const chatPanelController = initializeChatPanel({
   mainView,
   settingsPanel,
   getLanguage: () => currentLanguage,
+  setLanguage: async (language) => {
+    setLanguage(language)
+    languageSelect.value = language
+    await window.electronAPI.updateSettings({ language })
+  },
   escapeHtml,
   waitForNextPaint,
   enterFullWindowMode: () => window.electronAPI.setChatWindowMode(true).catch((error) => {

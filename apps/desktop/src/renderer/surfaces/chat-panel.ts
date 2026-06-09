@@ -30,6 +30,7 @@ export interface ChatPanelOptions {
   mainView: HTMLElement
   settingsPanel: HTMLElement
   getLanguage(): 'zh-CN' | 'en-US'
+  setLanguage(language: 'zh-CN' | 'en-US'): Promise<void> | void
   escapeHtml(value: string): string
   waitForNextPaint(): Promise<void>
   enterFullWindowMode(): Promise<void>
@@ -79,6 +80,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   function renderChat(): void {
+    syncLanguageControl()
     const conversation = getActiveConversation(state)
     if (!conversation) {
       renderer.renderConversationList([], [], '')
@@ -183,12 +185,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   function handleAction(action: string, target: HTMLElement): void {
     switch (action) {
       case 'language': {
-        const nextLanguage = languageMark?.textContent === 'US' ? 'CN' : 'US'
-        if (languageMark) {
-          languageMark.textContent = nextLanguage
-        }
-        showToast(nextLanguage === 'US' ? 'English preview' : 'Chinese preview')
-        renderChat()
+        const nextLanguage = options.getLanguage() === 'zh-CN' ? 'en-US' : 'zh-CN'
+        void Promise.resolve(options.setLanguage(nextLanguage)).then(() => {
+          syncLanguageControl()
+          showToast(nextLanguage === 'zh-CN' ? '已切换中文' : 'Switched to English')
+        })
         break
       }
       case 'new-group':
@@ -417,6 +418,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   void hydrateChatResources()
 
   return { open, close, refreshLanguage: renderChat }
+
+  function syncLanguageControl(): void {
+    if (!languageMark) {
+      return
+    }
+    languageMark.dataset.language = options.getLanguage()
+  }
 
   async function hydrateChatResources(): Promise<void> {
     try {
