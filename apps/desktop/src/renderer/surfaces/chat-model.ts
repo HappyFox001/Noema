@@ -43,10 +43,6 @@ export interface ChatState {
   conversations: ChatConversationSummary[]
 }
 
-const CHAT_RESOURCE_MANIFESTS = [
-  '/chat-resources/chen-qianyu/manifest.json',
-]
-
 export function createInitialChatState(): ChatState {
   return {
     activeConversationId: '',
@@ -56,7 +52,12 @@ export function createInitialChatState(): ChatState {
 }
 
 export async function loadChatResourceState(): Promise<ChatState> {
-  const characterResources = await Promise.all(CHAT_RESOURCE_MANIFESTS.map(loadChatResourceManifest))
+  const response = await window.electronAPI.listChatRoleResources()
+  if (!response.success) {
+    throw new Error(response.error || 'Failed to load chat role resources')
+  }
+
+  const characterResources = response.resources ?? []
   const conversations = createSeedHistory(characterResources)
 
   return {
@@ -138,12 +139,4 @@ function createSeedHistory(characterResources: ChatCharacterResource[]): ChatCon
         },
       ],
     }))
-}
-
-async function loadChatResourceManifest(path: string): Promise<ChatCharacterResource> {
-  const response = await fetch(path)
-  if (!response.ok) {
-    throw new Error(`Failed to load chat resource manifest: ${path}`)
-  }
-  return await response.json() as ChatCharacterResource
 }

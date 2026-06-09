@@ -125,6 +125,7 @@ import {
   registerSystemIpcHandlers,
   registerWindowIpcHandlers,
 } from './ipc-handlers.js'
+import { registerChatRoleResourceIpcHandlers } from './chat-role-resource-ipc-handlers.js'
 import { registerConversationIpcHandlers } from './conversation-ipc-handlers.js'
 import { registerModelIpcHandlers } from './model-ipc-handlers.js'
 import { registerPersonalityIpcHandlers } from './personality-ipc-handlers.js'
@@ -1678,6 +1679,7 @@ registerPersonalityIpcHandlers(ipcMain, {
   },
   rebuildSdk: rebuildSDK,
 })
+registerChatRoleResourceIpcHandlers(ipcMain)
 registerPluginIpcHandlers(ipcMain, {
   getMainWindow: () => mainWindow,
   getSettings: () => appSettings,

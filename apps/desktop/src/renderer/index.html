@@ -69,7 +69,9 @@
         </div>
         <div class="chat-shell">
           <nav class="chat-nav" aria-label="Chat navigation">
-            <div class="chat-nav-brand" aria-hidden="true">N</div>
+            <div class="chat-nav-brand" aria-hidden="true">
+              <img src="/noema-logo.webp" alt="" />
+            </div>
             <button class="chat-nav-item active" type="button" aria-label="Session" title="Session" data-i18n-title="chat.navSession" data-chat-nav="session">
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M3.4 11 12 3.6 20.6 11v9.2H15v-6h-6v6H3.4V11Z"></path>
@@ -181,8 +183,7 @@
             <div class="chat-suggestion-list" aria-label="Suggested prompts"></div>
 
             <form id="chat-compose-form" class="chat-composer">
-              <textarea id="chat-compose-input" rows="1" data-i18n-placeholder="chat.placeholder" placeholder="输入消息..."></textarea>
-              <div class="chat-compose-actions">
+              <div class="chat-compose-attachments" aria-label="Message attachments">
                 <button class="chat-compose-tool" type="button" aria-label="Attach image" data-chat-action="attach-image">
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <rect x="4" y="5" width="16" height="14" rx="3"></rect>
@@ -195,13 +196,14 @@
                     <path d="m16 10 4-2.4v8.8L16 14M7.4 6.5l1.2-2h3.2l1.2 2"></path>
                   </svg>
                 </button>
-                <button id="chat-send-btn" class="chat-send-btn" type="submit" aria-label="Send message">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="m20.5 3.5-8.7 17-2.2-7.1-6.7-3.1 17.6-6.8Z"></path>
-                    <path d="m9.8 13.3 10.7-9.8"></path>
-                  </svg>
-                </button>
               </div>
+              <textarea id="chat-compose-input" rows="1" data-i18n-placeholder="chat.placeholder" placeholder="输入消息..."></textarea>
+              <button id="chat-send-btn" class="chat-send-btn" type="submit" aria-label="Send message">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m20.5 3.5-8.7 17-2.2-7.1-6.7-3.1 17.6-6.8Z"></path>
+                  <path d="m9.8 13.3 10.7-9.8"></path>
+                </svg>
+              </button>
             </form>
           </main>
 

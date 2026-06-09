@@ -42,3 +42,5 @@ pnpm --filter @her-text/desktop build
 ```
 
 For runtime plugin files, run `node --check` on changed `.mjs` files when practical.
+
+Do not run startup tests unless the user explicitly asks for them. This includes launching Electron, starting Vite/dev servers, or opening browser-based smoke tests for verification.

@@ -36,6 +36,7 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
   const configMeta = options.panel.querySelector<HTMLElement>('.chat-config-meta')
   const assetList = options.panel.querySelector<HTMLElement>('.chat-asset-list')
   const suggestionList = options.panel.querySelector<HTMLElement>('.chat-suggestion-list')
+  let activeMessageCharacter: ChatCharacterResource | undefined
 
   function renderConversationList(
     conversations: ChatConversationSummary[],
@@ -67,6 +68,7 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
 
   function renderActiveConversation(conversation: ChatConversationSummary, character: ChatCharacterResource): void {
     const language = options.getLanguage()
+    activeMessageCharacter = character
     if (headerAvatar) {
       headerAvatar.className = 'chat-avatar large'
       headerAvatar.innerHTML = renderAvatarImage(character, language)
@@ -137,6 +139,7 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     if (suggestionList) {
       suggestionList.innerHTML = ''
     }
+    activeMessageCharacter = undefined
     options.messageList.innerHTML = ''
   }
 
@@ -171,10 +174,16 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
   function renderMessage(message: ChatMessage): string {
     const language = options.getLanguage()
     const stateLabel = message.state ? `<em>${options.escapeHtml(formatState(message.state, language))}</em>` : ''
+    const assistantAvatar = message.role === 'assistant' && activeMessageCharacter
+      ? `<div class="chat-message-avatar">${renderAvatarImage(activeMessageCharacter, language)}</div>`
+      : ''
     return `
       <article class="chat-message ${options.escapeHtml(message.role)}" data-message-id="${options.escapeHtml(message.id)}" ${message.state ? `data-state="${options.escapeHtml(message.state)}"` : ''}>
-        <p>${options.escapeHtml(localizeChatText(message.text, language))}</p>
-        <span>${stateLabel}${options.escapeHtml(localizeChatText(message.createdLabel, language))}</span>
+        ${assistantAvatar}
+        <div class="chat-message-body">
+          <p>${options.escapeHtml(localizeChatText(message.text, language))}</p>
+          <small>${stateLabel}${options.escapeHtml(localizeChatText(message.createdLabel, language))}</small>
+        </div>
       </article>
     `
   }

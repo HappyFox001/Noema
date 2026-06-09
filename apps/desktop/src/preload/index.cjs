@@ -182,6 +182,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   addPersonalityFile: () =>
     ipcRenderer.invoke('personality:addFile'),
 
+  listChatRoleResources: () =>
+    ipcRenderer.invoke('chat-role-resources:list'),
+
   submitInteractiveInput: (requestId, response) =>
     ipcRenderer.invoke(`interactive-input:response:${requestId}`, response),
 

@@ -20,6 +20,6 @@
     "zh-CN": ["物理", "近卫", "剑", "终末地工业", "应龙特勤队"],
     "en-US": ["physical", "guard", "sword", "Endfield Industries", "Yinglung Special Task Force"]
   },
-  "avatarImage": "/chat-resources/chen-qianyu/avatar.png",
-  "bodyImage": "/chat-resources/chen-qianyu/body.png"
+  "avatarImage": "avatar.png",
+  "bodyImage": "body.png"
 }

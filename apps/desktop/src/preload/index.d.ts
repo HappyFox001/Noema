@@ -560,6 +560,20 @@ declare global {
         }
         error?: string
       }>
+      listChatRoleResources: () => Promise<{
+        success: boolean
+        resources?: Array<{
+          id: string
+          name: Record<string, string>
+          displayName: Record<string, string>
+          description: Record<string, string>
+          background: Record<string, string>
+          tag: Record<string, string[]>
+          avatarImage: string
+          bodyImage: string
+        }>
+        error?: string
+      }>
       submitInteractiveInput: (requestId: string, response: {
         value: string
         remembered?: boolean
