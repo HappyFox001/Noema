@@ -25,7 +25,7 @@
     "check:runtime-naming": "node ./scripts/check-runtime-naming.mjs"
   },
   "devDependencies": {
-    "turbo": "^2.9.15",
+    "turbo": "^2.9.16",
     "typescript": "^5.4.0"
   },
   "engines": {
