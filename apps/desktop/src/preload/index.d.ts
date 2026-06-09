@@ -246,6 +246,8 @@ declare global {
           proxy: string
           llmModels: Array<{ id: string; provider?: string; modelName: string; apiKey: string; baseUrl: string }>
           activeLLMId: string
+          chatModels: Array<{ id: string; provider?: string; modelName: string; apiKey: string; baseUrl: string }>
+          activeChatId: string
           taskModels: Array<{ id: string; provider?: string; transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'; modelName: string; apiKey: string; baseUrl: string }>
           activeTaskId: string
           taskRuntime: any
@@ -269,6 +271,8 @@ declare global {
           proxy: string
           llmModels: Array<{ id: string; provider?: string; modelName: string; apiKey: string; baseUrl: string }>
           activeLLMId: string
+          chatModels: Array<{ id: string; provider?: string; modelName: string; apiKey: string; baseUrl: string }>
+          activeChatId: string
           taskModels: Array<{ id: string; provider?: string; transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'; modelName: string; apiKey: string; baseUrl: string }>
           activeTaskId: string
           taskRuntime: any
@@ -290,6 +294,8 @@ declare global {
           proxy: string
           llmModels: Array<{ id: string; provider?: string; modelName: string; apiKey: string; baseUrl: string }>
           activeLLMId: string
+          chatModels: Array<{ id: string; provider?: string; modelName: string; apiKey: string; baseUrl: string }>
+          activeChatId: string
           taskModels: Array<{ id: string; provider?: string; transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'; modelName: string; apiKey: string; baseUrl: string }>
           activeTaskId: string
           taskRuntime: any
@@ -572,6 +578,64 @@ declare global {
           avatarImage: string
           bodyImage: string
         }>
+        error?: string
+      }>
+      sendChatMessage: (request: {
+        input: string
+        language?: string
+        messages?: Array<{
+          role: 'system' | 'user' | 'assistant'
+          content: string
+        }>
+        attachments?: Array<{
+          kind: 'image' | 'video'
+          name: string
+          mimeType: string
+          dataUrl?: string
+          size?: number
+        }>
+        character?: {
+          id?: string
+          displayName?: string
+          description?: string
+          background?: string
+          firstMessage?: string
+          tags?: string[]
+          instructions?: string
+        }
+      }) => Promise<{
+        success: boolean
+        response?: string
+        error?: string
+      }>
+      listChatModels: (request: {
+        provider?: string
+        apiKey?: string
+        baseUrl?: string
+      }) => Promise<{
+        success: boolean
+        models?: string[]
+        error?: string
+      }>
+      selectChatMedia: (request?: {
+        kind?: 'image' | 'video' | 'media'
+      }) => Promise<{
+        success: boolean
+        canceled?: boolean
+        attachments?: Array<{
+          kind: 'image' | 'video'
+          name: string
+          mimeType: string
+          dataUrl?: string
+          size?: number
+        }>
+        error?: string
+      }>
+      requestChatCameraPermission: () => Promise<{
+        success: boolean
+        granted?: boolean
+        status?: string
+        openedSettings?: boolean
         error?: string
       }>
       submitInteractiveInput: (requestId: string, response: {

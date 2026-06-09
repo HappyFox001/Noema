@@ -1,6 +1,19 @@
 /**
  * Owns the standalone chat surface interactions and window mode transitions.
  */
+import claudeIconUrl from '@lobehub/icons-static-svg/icons/claude-color.svg?url'
+import azureAIIconUrl from '@lobehub/icons-static-svg/icons/azureai-color.svg?url'
+import deepseekIconUrl from '@lobehub/icons-static-svg/icons/deepseek-color.svg?url'
+import geminiIconUrl from '@lobehub/icons-static-svg/icons/gemini-color.svg?url'
+import groqIconUrl from '@lobehub/icons-static-svg/icons/groq.svg?url'
+import ollamaIconUrl from '@lobehub/icons-static-svg/icons/ollama.svg?url'
+import openAIIconUrl from '@lobehub/icons-static-svg/icons/openai.svg?url'
+import qwenIconUrl from '@lobehub/icons-static-svg/icons/qwen-color.svg?url'
+import {
+  LLM_PROVIDER_CATALOG,
+  getLLMProviderCatalogEntry,
+  type LLMProviderType,
+} from '../../main/model-provider-catalog'
 import {
   applyChatResourceState,
   createInitialChatState,
@@ -11,11 +24,28 @@ import {
   loadChatResourceState,
   localizeChatText,
   type ChatConversationSummary,
+  type ChatMessageAttachment,
   type ChatMessage,
 } from './chat-model'
 import { createChatRenderer } from './chat-renderer'
 
 type ChatResizeEdge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
+
+interface ChatModelConfig {
+  id: string
+  provider?: string
+  modelName: string
+  apiKey: string
+  baseUrl: string
+}
+
+interface ChatSystemConfig {
+  chatModels: ChatModelConfig[]
+  activeChatId: string
+  [key: string]: unknown
+}
+
+type PendingChatAttachment = ChatMessageAttachment
 
 export interface ChatPanelController {
   open(): Promise<void>
@@ -55,6 +85,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   const panel = options.panel
   const navItems = Array.from(panel.querySelectorAll<HTMLButtonElement>('[data-chat-nav]'))
   const searchInput = panel.querySelector<HTMLInputElement>('.chat-search input')
+  const modelList = panel.querySelector<HTMLElement>('.chat-model-list')
   const languageButton = panel.querySelector<HTMLButtonElement>('[data-chat-action="language"]')
   const languageMark = panel.querySelector<HTMLElement>('.chat-language-mark')
   const windowCloseButton = panel.querySelector<HTMLButtonElement>('[data-chat-action="window-close"]')
@@ -67,10 +98,22 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     escapeHtml: options.escapeHtml,
   })
   const toast = document.createElement('div')
+  const attachmentTray = document.createElement('div')
+  let chatSystemConfig: ChatSystemConfig | null = null
+  let openChatModelDropdownId = ''
+  let openChatProviderDropdownId = ''
+  let pendingAttachments: PendingChatAttachment[] = []
+  let cameraStream: MediaStream | null = null
+  let cameraOverlay: HTMLElement | null = null
+  const chatModelOptions = new Map<string, string[]>()
+  const chatModelLoading = new Set<string>()
 
   toast.className = 'chat-status-toast'
   toast.setAttribute('role', 'status')
   panel.appendChild(toast)
+  attachmentTray.className = 'chat-attachment-tray'
+  attachmentTray.setAttribute('aria-label', 'Selected attachments')
+  options.composeForm.insertBefore(attachmentTray, options.composeForm.firstElementChild)
 
   function showToast(message: string): void {
     toast.textContent = message
@@ -86,6 +129,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function renderChat(): void {
     syncLanguageControl()
+    syncChatView()
     const conversation = getActiveConversation(state)
     if (!conversation) {
       renderer.renderConversationList([], [], '')
@@ -112,8 +156,19 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   function setActiveNav(button: HTMLButtonElement): void {
     navItems.forEach((item) => item.classList.toggle('active', item === button))
     navItems.forEach((item) => item.classList.toggle('is-active', item === button))
+    panel.dataset.chatView = button.dataset.chatNav || 'session'
+    syncChatView()
+    if (button.dataset.chatNav === 'models') {
+      void loadChatModelConfig()
+    }
     const label = button.getAttribute('aria-label') || 'Section'
     showToast(`${label} view`)
+  }
+
+  function syncChatView(): void {
+    if (!panel.dataset.chatView) {
+      panel.dataset.chatView = 'session'
+    }
   }
 
   function setFullscreenState(active: boolean): void {
@@ -267,6 +322,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       case 'new-group':
         showToast(options.getLanguage() === 'zh-CN' ? '先开始一次对话，角色才会进入历史列表' : 'Start a conversation before adding a character to history')
         break
+      case 'add-chat-model':
+        void addChatModel()
+        break
+      case 'close-chat-models':
+        panel.dataset.chatView = 'session'
+        navItems.forEach((item) => item.classList.toggle('active', item.dataset.chatNav === 'session'))
+        navItems.forEach((item) => item.classList.toggle('is-active', item.dataset.chatNav === 'session'))
+        break
       case 'voice-call':
         target.classList.toggle('is-active')
         showToast(target.classList.contains('is-active') ? 'Voice call ready' : 'Voice call closed')
@@ -292,9 +355,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         options.composeInput.dispatchEvent(new Event('input'))
         break
       case 'attach-image':
+        void selectLocalMedia()
+        break
       case 'attach-video':
-        target.classList.toggle('is-active')
-        showToast(action === 'attach-image' ? 'Image attachment selected' : 'Video attachment selected')
+        void openCameraCapture()
         break
       case 'character-profile': {
         showToast(options.getLanguage() === 'zh-CN' ? '正在显示角色资料' : 'Showing character profile')
@@ -305,25 +369,506 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
   }
 
-  function queueLocalAssistantMessage(text: string, stateOverride?: ChatMessage['state']): void {
+  async function selectLocalMedia(): Promise<void> {
+    try {
+      const response = await window.electronAPI.selectChatMedia({ kind: 'media' })
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to select media')
+      }
+      if (response.canceled || !response.attachments?.length) {
+        return
+      }
+      addPendingAttachments(response.attachments.map(toPendingAttachment))
+    } catch (error: any) {
+      showToast(error?.message || String(error))
+    }
+  }
+
+  async function openCameraCapture(): Promise<void> {
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error(options.getLanguage() === 'zh-CN' ? '当前环境不支持摄像头' : 'Camera is not available')
+      }
+      await closeCameraCapture()
+      const permission = await window.electronAPI.requestChatCameraPermission()
+      if (!permission.success || !permission.granted) {
+        throw new Error(permission.openedSettings
+          ? (options.getLanguage() === 'zh-CN' ? '请在系统设置中允许摄像头权限' : 'Enable camera permission in System Settings')
+          : (permission.error || (options.getLanguage() === 'zh-CN' ? '摄像头权限未授予' : 'Camera permission was not granted')))
+      }
+      cameraOverlay = createCameraOverlay()
+      panel.appendChild(cameraOverlay)
+      cameraStream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          facingMode: 'user',
+        },
+        audio: false,
+      })
+      const video = cameraOverlay.querySelector<HTMLVideoElement>('video')
+      if (!video) {
+        throw new Error('Camera preview is missing')
+      }
+      video.srcObject = cameraStream
+      await waitForCameraReady(video, cameraOverlay)
+      await video.play()
+      setCameraReady(cameraOverlay, true)
+    } catch (error: any) {
+      await closeCameraCapture()
+      showToast(error?.message || String(error))
+    }
+  }
+
+  function createCameraOverlay(): HTMLElement {
+    const overlay = document.createElement('div')
+    overlay.className = 'chat-camera-overlay'
+    overlay.dataset.ready = 'false'
+    overlay.innerHTML = `
+      <div class="chat-camera-panel">
+        <div class="chat-camera-head">
+          <span>${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '摄像头' : 'Camera')}</span>
+          <small data-chat-camera-status>${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '正在启动' : 'Starting')}</small>
+        </div>
+        <div class="chat-camera-frame">
+          <video class="chat-camera-preview" autoplay playsinline muted></video>
+          <span class="chat-camera-loading">${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '等待画面' : 'Waiting for video')}</span>
+        </div>
+        <div class="chat-camera-actions">
+          <button type="button" data-chat-camera-action="close">${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '关闭' : 'Close')}</button>
+          <button class="primary" type="button" data-chat-camera-action="capture" disabled>${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '拍照' : 'Capture')}</button>
+        </div>
+      </div>
+    `
+    overlay.addEventListener('click', (event) => {
+      const action = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-chat-camera-action]')?.dataset.chatCameraAction
+      if (action === 'close') {
+        void closeCameraCapture()
+      }
+      if (action === 'capture') {
+        captureCameraFrame(video)
+      }
+    })
+    return overlay
+  }
+
+  function waitForCameraReady(video: HTMLVideoElement, overlay: HTMLElement): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (video.readyState >= HTMLMediaElement.HAVE_METADATA && video.videoWidth && video.videoHeight) {
+        setCameraStatus(overlay, options.getLanguage() === 'zh-CN' ? '已就绪' : 'Ready')
+        resolve()
+        return
+      }
+      const timeout = window.setTimeout(() => {
+        cleanup()
+        reject(new Error(options.getLanguage() === 'zh-CN' ? '摄像头启动超时' : 'Camera startup timed out'))
+      }, 8000)
+      const cleanup = () => {
+        window.clearTimeout(timeout)
+        video.removeEventListener('loadedmetadata', onReady)
+        video.removeEventListener('canplay', onReady)
+        video.removeEventListener('error', onError)
+      }
+      const onReady = () => {
+        if (video.readyState < HTMLMediaElement.HAVE_METADATA || !video.videoWidth || !video.videoHeight) {
+          return
+        }
+        setCameraStatus(overlay, options.getLanguage() === 'zh-CN' ? '已就绪' : 'Ready')
+        cleanup()
+        resolve()
+      }
+      const onError = () => {
+        cleanup()
+        reject(new Error(options.getLanguage() === 'zh-CN' ? '摄像头预览失败' : 'Camera preview failed'))
+      }
+      video.addEventListener('loadedmetadata', onReady)
+      video.addEventListener('canplay', onReady)
+      video.addEventListener('error', onError)
+    })
+  }
+
+  function setCameraReady(overlay: HTMLElement, ready: boolean): void {
+    overlay.dataset.ready = ready ? 'true' : 'false'
+    overlay.querySelector<HTMLButtonElement>('[data-chat-camera-action="capture"]')?.toggleAttribute('disabled', !ready)
+  }
+
+  function setCameraStatus(overlay: HTMLElement, text: string): void {
+    const status = overlay.querySelector<HTMLElement>('[data-chat-camera-status]')
+    if (status) {
+      status.textContent = text
+    }
+  }
+
+  function captureCameraFrame(video: HTMLVideoElement | null): void {
+    if (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || !video.videoWidth || !video.videoHeight) {
+      showToast(options.getLanguage() === 'zh-CN' ? '摄像头尚未准备好' : 'Camera is not ready')
+      return
+    }
+    const canvas = document.createElement('canvas')
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    const context = canvas.getContext('2d')
+    if (!context) {
+      return
+    }
+    context.drawImage(video, 0, 0, canvas.width, canvas.height)
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.9)
+    addPendingAttachments([{
+      id: `camera-${Date.now()}`,
+      kind: 'image',
+      name: `camera-${new Date().toISOString().replace(/[:.]/g, '-')}.jpg`,
+      mimeType: 'image/jpeg',
+      dataUrl,
+      size: Math.round((dataUrl.length * 3) / 4),
+    }])
+    void closeCameraCapture()
+  }
+
+  async function closeCameraCapture(): Promise<void> {
+    cameraStream?.getTracks().forEach((track) => track.stop())
+    cameraStream = null
+    cameraOverlay?.remove()
+    cameraOverlay = null
+  }
+
+  function addPendingAttachments(attachments: PendingChatAttachment[]): void {
+    pendingAttachments = [...pendingAttachments, ...attachments].slice(0, 8)
+    renderPendingAttachments()
+    options.composeInput.focus()
+  }
+
+  function renderPendingAttachments(): void {
+    attachmentTray.classList.toggle('visible', pendingAttachments.length > 0)
+    attachmentTray.innerHTML = pendingAttachments.map((attachment) => `
+      <div class="chat-attachment-chip" data-chat-attachment-id="${options.escapeHtml(attachment.id)}">
+        ${attachment.kind === 'video'
+          ? `<video src="${options.escapeHtml(attachment.dataUrl || '')}" muted preload="metadata"></video>`
+          : `<img src="${options.escapeHtml(attachment.dataUrl || '')}" alt="${options.escapeHtml(attachment.name)}" />`}
+        <span>${options.escapeHtml(attachment.name)}</span>
+        <button type="button" aria-label="Remove attachment" data-chat-attachment-remove="${options.escapeHtml(attachment.id)}">×</button>
+      </div>
+    `).join('')
+  }
+
+  function toPendingAttachment(attachment: Omit<PendingChatAttachment, 'id'> & { id?: string }): PendingChatAttachment {
+    return {
+      id: attachment.id || `attachment-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      kind: attachment.kind,
+      name: attachment.name,
+      mimeType: attachment.mimeType,
+      dataUrl: attachment.dataUrl,
+      size: attachment.size,
+    }
+  }
+
+  async function queueAssistantReply(userText: string, attachments: ChatMessageAttachment[] = []): Promise<void> {
     const conversation = getActiveMutableConversation()
     if (!conversation) {
       showToast(options.getLanguage() === 'zh-CN' ? '角色资源尚未加载' : 'Character resources are not loaded')
       return
     }
-    const message = createLocalAssistantDraft(text, getTimeLabel())
-    if (stateOverride) {
-      message.state = stateOverride
-    }
+    const character = getCharacterForConversation(state, conversation)
+    const language = options.getLanguage()
+    const message = createLocalAssistantDraft('', getTimeLabel())
     conversation.messages.push(message)
-    conversation.preview = { 'zh-CN': text, 'en-US': text }
+    conversation.preview = { 'zh-CN': '思考中...', 'en-US': 'Thinking...' }
     conversation.updatedLabel = { 'zh-CN': '现在', 'en-US': 'Now' }
     renderer.appendMessage(message)
     refreshConversationList()
-    window.setTimeout(() => {
+    try {
+      const response = await window.electronAPI.sendChatMessage({
+        input: userText || (language === 'zh-CN' ? '请根据附件进行回复。' : 'Please respond to the attached media.'),
+        language,
+        attachments: attachments.map((attachment) => ({
+          kind: attachment.kind,
+          name: attachment.name,
+          mimeType: attachment.mimeType,
+          dataUrl: attachment.dataUrl,
+          size: attachment.size,
+        })),
+        messages: conversation.messages
+          .filter((item) => item.id !== message.id)
+          .slice(0, -1)
+          .map((item) => ({
+            role: item.role,
+            content: localizeChatText(item.text, language),
+          })),
+        character: character ? {
+          id: character.id,
+          displayName: localizeChatText(character.displayName, language),
+          description: localizeChatText(character.description, language),
+          background: localizeChatText(character.background, language),
+          firstMessage: localizeChatText(character.firstMessage, language),
+          tags: character.tag[language] ?? character.tag['zh-CN'],
+        } : undefined,
+      })
+      const reply = response.success
+        ? (response.response || '')
+        : (response.error || 'Chat model failed')
+      message.text = { 'zh-CN': reply, 'en-US': reply }
       message.state = undefined
-      renderer.setAssistantMessageState(message.id, undefined)
-    }, 700)
+      conversation.preview = { 'zh-CN': reply, 'en-US': reply }
+      renderer.renderMessages(conversation.messages)
+      refreshConversationList()
+      if (!response.success) {
+        showToast(response.error || 'Chat model failed')
+      }
+    } catch (error: any) {
+      const errorText = error?.message || String(error)
+      message.text = { 'zh-CN': errorText, 'en-US': errorText }
+      message.state = undefined
+      conversation.preview = { 'zh-CN': errorText, 'en-US': errorText }
+      renderer.renderMessages(conversation.messages)
+      refreshConversationList()
+      showToast(errorText)
+    }
+  }
+
+  async function loadChatModelConfig(): Promise<void> {
+    try {
+      const settings = await window.electronAPI.getSettings()
+      chatSystemConfig = {
+        ...settings.system,
+        chatModels: settings.system.chatModels.length ? settings.system.chatModels.map((model) => ({ ...model })) : [createDefaultChatModel()],
+        activeChatId: settings.system.activeChatId || settings.system.chatModels[0]?.id || 'default-chat',
+      }
+      if (!chatSystemConfig.chatModels.some((model) => model.id === chatSystemConfig!.activeChatId)) {
+        chatSystemConfig.activeChatId = chatSystemConfig.chatModels[0]?.id || ''
+      }
+      renderChatModelConfig()
+    } catch (error: any) {
+      showToast(error?.message || String(error))
+    }
+  }
+
+  function renderChatModelConfig(): void {
+    if (!modelList) {
+      return
+    }
+    const config = chatSystemConfig
+    if (!config || config.chatModels.length === 0) {
+      modelList.innerHTML = `<div class="chat-model-empty">${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '暂无 chat 模型配置' : 'No chat model configured')}</div>`
+      return
+    }
+
+    modelList.innerHTML = `
+      <div class="chat-model-list-head">
+        <span>${options.escapeHtml(options.getLanguage() === 'zh-CN' ? 'API 路由' : 'API routes')}</span>
+        <small>${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '管理 provider、模型名、密钥和地址。' : 'Manage provider, model name, key, and URL.')}</small>
+      </div>
+      ${config.chatModels.map((model) => renderChatModelCard(model, config)).join('')}
+    `
+  }
+
+  function renderChatModelCard(model: ChatModelConfig, config: ChatSystemConfig): string {
+    const canDelete = config.chatModels.length > 1
+    const providerEntry = getProviderEntry(model.provider)
+    return `
+      <article class="chat-model-card" data-chat-model-id="${options.escapeHtml(model.id)}">
+        <div class="chat-model-route">
+          <span class="chat-model-logo">${renderChatModelLogo(model)}</span>
+          <div class="chat-model-title">
+            ${renderChatModelCombobox(model, providerEntry.defaultModel || 'model-name')}
+            <span class="chat-model-provider-name">${options.escapeHtml(providerEntry.label)}</span>
+          </div>
+        </div>
+        ${renderChatProviderSelect(model)}
+        <div class="chat-model-fields">
+          <div class="chat-model-field">
+            <label>${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '密钥' : 'Key')}</label>
+            <input class="chat-model-input" type="password" data-chat-model-field="apiKey" value="${options.escapeHtml(model.apiKey)}" placeholder="${options.escapeHtml(providerEntry.defaultApiKeyPlaceholder)}" />
+          </div>
+          <div class="chat-model-field">
+            <label>${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '地址' : 'URL')}</label>
+            <input class="chat-model-input" type="text" data-chat-model-field="baseUrl" value="${options.escapeHtml(model.baseUrl)}" placeholder="${options.escapeHtml(providerEntry.defaultBaseUrl)}" />
+          </div>
+          <div class="chat-model-actions" aria-label="Model actions">
+            ${canDelete ? `<button class="danger" type="button" data-chat-model-action="delete">${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '移除' : 'Remove')}</button>` : ''}
+          </div>
+        </div>
+      </article>
+    `
+  }
+
+  function renderChatModelCombobox(model: ChatModelConfig, placeholder: string): string {
+    const open = openChatModelDropdownId === model.id
+    return `
+      <div class="chat-model-combo ${open ? 'open' : ''}">
+        <input class="chat-model-input" type="text" data-chat-model-field="modelName" value="${options.escapeHtml(model.modelName)}" placeholder="${options.escapeHtml(placeholder)}" autocomplete="off" />
+        <button class="chat-model-combo-trigger" type="button" data-chat-model-action="toggle-models" aria-label="${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '选择模型' : 'Choose model')}"></button>
+        ${open ? renderChatModelDropdown(model) : ''}
+      </div>
+    `
+  }
+
+  function renderChatModelDropdown(model: ChatModelConfig): string {
+    const loading = chatModelLoading.has(model.id)
+    const models = chatModelOptions.get(model.id) || []
+    const emptyText = options.getLanguage() === 'zh-CN'
+      ? '可手动输入，或从接口拉取模型列表。'
+      : 'Type manually, or fetch available models.'
+    return `
+      <div class="chat-model-dropdown">
+        <button class="chat-model-fetch" type="button" data-chat-model-action="get-models">
+          ${options.escapeHtml(loading ? (options.getLanguage() === 'zh-CN' ? '获取中...' : 'Loading...') : 'Get models')}
+        </button>
+        ${models.length
+          ? `<div class="chat-model-options">
+              ${models.map((name) => `
+                <button type="button" data-chat-model-action="choose-model" data-chat-model-name="${options.escapeHtml(name)}">
+                  ${options.escapeHtml(name)}
+                </button>
+              `).join('')}
+            </div>`
+          : `<span class="chat-model-dropdown-empty">${options.escapeHtml(emptyText)}</span>`}
+      </div>
+    `
+  }
+
+  function renderChatProviderSelect(model: ChatModelConfig): string {
+    const current = getProviderEntry(model.provider)
+    const open = openChatProviderDropdownId === model.id
+    return `
+      <div class="chat-provider-select ${open ? 'open' : ''}">
+        <button class="chat-provider-current" type="button" data-chat-model-action="toggle-providers" aria-label="${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '选择服务商' : 'Choose provider')}">
+          <span class="chat-provider-current-icon">${renderProviderLogo(current.value, model)}</span>
+          <span class="chat-provider-current-copy">
+            <strong>${options.escapeHtml(current.label)}</strong>
+            <small>${options.escapeHtml(current.value)}</small>
+          </span>
+          <span class="chat-provider-current-chevron"></span>
+        </button>
+        ${open ? `<div class="chat-provider-menu" aria-label="Provider">
+          ${LLM_PROVIDER_CATALOG.map((provider) => renderChatProviderOption(provider.value, model)).join('')}
+        </div>` : ''}
+      </div>
+    `
+  }
+
+  function renderChatProviderOption(provider: LLMProviderType, model: ChatModelConfig): string {
+    const selected = getProviderEntry(model.provider).value === provider
+    const entry = getLLMProviderCatalogEntry(provider)
+    return `
+      <button class="chat-provider-option ${selected ? 'selected' : ''}" type="button" title="${options.escapeHtml(entry.label)}" data-chat-provider="${options.escapeHtml(provider)}">
+        ${renderProviderLogo(provider, model)}
+        <span>
+          <strong>${options.escapeHtml(entry.label)}</strong>
+          <small>${options.escapeHtml(entry.value)}</small>
+        </span>
+      </button>
+    `
+  }
+
+  async function saveChatModelConfig(): Promise<void> {
+    if (!chatSystemConfig) {
+      return
+    }
+    const settings = await window.electronAPI.updateSettings({ system: chatSystemConfig as any })
+    chatSystemConfig = {
+      ...settings.system,
+      chatModels: settings.system.chatModels.map((model) => ({ ...model })),
+      activeChatId: settings.system.activeChatId,
+    }
+  }
+
+  async function addChatModel(): Promise<void> {
+    if (!chatSystemConfig) {
+      await loadChatModelConfig()
+    }
+    if (!chatSystemConfig) {
+      return
+    }
+    const nextModel = createDefaultChatModel(`chat-${Date.now()}`)
+    chatSystemConfig.chatModels.push(nextModel)
+    if (!chatSystemConfig.activeChatId) {
+      chatSystemConfig.activeChatId = nextModel.id
+    }
+    await saveChatModelConfig()
+    renderChatModelConfig()
+  }
+
+  async function updateChatModel(id: string, field: keyof ChatModelConfig, value: string): Promise<void> {
+    if (!chatSystemConfig) {
+      return
+    }
+    const model = chatSystemConfig.chatModels.find((item) => item.id === id)
+    if (!model) {
+      return
+    }
+    if (field === 'id') {
+      return
+    }
+    model[field] = value
+    await saveChatModelConfig()
+    renderChatModelConfig()
+  }
+
+  async function updateChatProvider(id: string, provider: string): Promise<void> {
+    if (!chatSystemConfig) {
+      return
+    }
+    const model = chatSystemConfig.chatModels.find((item) => item.id === id)
+    if (!model) {
+      return
+    }
+    const entry = getProviderEntry(provider)
+    model.provider = entry.value
+    model.modelName = model.modelName.trim() || entry.defaultModel
+    model.baseUrl = entry.defaultBaseUrl
+    openChatProviderDropdownId = ''
+    await saveChatModelConfig()
+    renderChatModelConfig()
+  }
+
+  async function fetchChatModels(id: string): Promise<void> {
+    if (!chatSystemConfig) {
+      return
+    }
+    const model = chatSystemConfig.chatModels.find((item) => item.id === id)
+    if (!model || chatModelLoading.has(id)) {
+      return
+    }
+    openChatModelDropdownId = id
+    chatModelLoading.add(id)
+    renderChatModelConfig()
+    try {
+      const response = await window.electronAPI.listChatModels({
+        provider: model.provider,
+        apiKey: model.apiKey,
+        baseUrl: model.baseUrl,
+      })
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to get models')
+      }
+      chatModelOptions.set(id, response.models || [])
+      if (!response.models?.length) {
+        showToast(options.getLanguage() === 'zh-CN' ? '没有返回可用模型' : 'No models returned')
+      }
+    } catch (error: any) {
+      showToast(error?.message || String(error))
+    } finally {
+      chatModelLoading.delete(id)
+      renderChatModelConfig()
+    }
+  }
+
+  async function deleteChatModel(id: string): Promise<void> {
+    if (!chatSystemConfig || chatSystemConfig.chatModels.length <= 1) {
+      return
+    }
+    chatSystemConfig.chatModels = chatSystemConfig.chatModels.filter((model) => model.id !== id)
+    if (chatSystemConfig.activeChatId === id) {
+      chatSystemConfig.activeChatId = chatSystemConfig.chatModels[0]?.id || ''
+    }
+    chatModelOptions.delete(id)
+    if (openChatModelDropdownId === id) {
+      openChatModelDropdownId = ''
+    }
+    if (openChatProviderDropdownId === id) {
+      openChatProviderDropdownId = ''
+    }
+    await saveChatModelConfig()
+    renderChatModelConfig()
   }
 
   async function open(): Promise<void> {
@@ -366,6 +911,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!document.body.classList.contains('chat-open')) {
       return
     }
+    void closeCameraCapture()
     setFullscreenState(false)
     options.panel.classList.remove('visible')
     options.panel.setAttribute('aria-hidden', 'true')
@@ -437,7 +983,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   options.composeForm.addEventListener('submit', (event) => {
     event.preventDefault()
     const text = options.composeInput.value.trim()
-    if (!text) {
+    const attachments = pendingAttachments.map((attachment) => ({ ...attachment }))
+    if (!text && attachments.length === 0) {
       return
     }
     const conversation = getActiveMutableConversation()
@@ -445,15 +992,18 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       showToast(options.getLanguage() === 'zh-CN' ? '角色资源尚未加载' : 'Character resources are not loaded')
       return
     }
-    const userMessage = createLocalUserMessage(text, getTimeLabel())
+    const displayText = text || (options.getLanguage() === 'zh-CN' ? '已发送附件' : 'Sent attachment')
+    const userMessage = createLocalUserMessage(displayText, getTimeLabel(), attachments)
     conversation.messages.push(userMessage)
-    conversation.preview = { 'zh-CN': text, 'en-US': text }
+    conversation.preview = { 'zh-CN': displayText, 'en-US': displayText }
     conversation.updatedLabel = { 'zh-CN': '现在', 'en-US': 'Now' }
     renderer.appendMessage(userMessage)
     refreshConversationList()
     options.composeInput.value = ''
     options.composeInput.style.height = 'auto'
-    queueLocalAssistantMessage(buildLocalAssistantReply(text))
+    pendingAttachments = []
+    renderPendingAttachments()
+    void queueAssistantReply(text, attachments)
   })
 
   navItems.forEach((button) => {
@@ -466,6 +1016,51 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   panel.addEventListener('click', (event) => {
     const eventTarget = event.target as HTMLElement
+    const attachmentRemove = eventTarget.closest<HTMLElement>('[data-chat-attachment-remove]')
+    if (attachmentRemove && panel.contains(attachmentRemove)) {
+      const id = attachmentRemove.dataset.chatAttachmentRemove || ''
+      pendingAttachments = pendingAttachments.filter((attachment) => attachment.id !== id)
+      renderPendingAttachments()
+      return
+    }
+
+    const modelAction = eventTarget.closest<HTMLElement>('[data-chat-model-action]')
+    if (modelAction && panel.contains(modelAction)) {
+      const card = modelAction.closest<HTMLElement>('[data-chat-model-id]')
+      const modelId = card?.dataset.chatModelId || ''
+      if (modelId && modelAction.dataset.chatModelAction === 'toggle-models') {
+        openChatModelDropdownId = openChatModelDropdownId === modelId ? '' : modelId
+        openChatProviderDropdownId = ''
+        renderChatModelConfig()
+      }
+      if (modelId && modelAction.dataset.chatModelAction === 'toggle-providers') {
+        openChatProviderDropdownId = openChatProviderDropdownId === modelId ? '' : modelId
+        openChatModelDropdownId = ''
+        renderChatModelConfig()
+      }
+      if (modelId && modelAction.dataset.chatModelAction === 'get-models') {
+        void fetchChatModels(modelId)
+      }
+      if (modelId && modelAction.dataset.chatModelAction === 'choose-model') {
+        void updateChatModel(modelId, 'modelName', modelAction.dataset.chatModelName || '')
+      }
+      if (modelId && modelAction.dataset.chatModelAction === 'delete') {
+        void deleteChatModel(modelId)
+      }
+      return
+    }
+
+    const providerAction = eventTarget.closest<HTMLElement>('[data-chat-provider]')
+    if (providerAction && panel.contains(providerAction)) {
+      const card = providerAction.closest<HTMLElement>('[data-chat-model-id]')
+      const modelId = card?.dataset.chatModelId || ''
+      const provider = providerAction.dataset.chatProvider || ''
+      if (modelId && provider) {
+        void updateChatProvider(modelId, provider)
+      }
+      return
+    }
+
     const thread = eventTarget.closest<HTMLElement>('[data-conversation-id]')
     if (thread && panel.contains(thread)) {
       setActiveConversation(thread.dataset.conversationId || '')
@@ -477,6 +1072,20 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
     handleAction(target.dataset.chatAction || '', target)
+  })
+
+  panel.addEventListener('change', (event) => {
+    const input = (event.target as HTMLElement | null)?.closest<HTMLInputElement>('[data-chat-model-field]')
+    if (!input || !panel.contains(input)) {
+      return
+    }
+    const card = input.closest<HTMLElement>('[data-chat-model-id]')
+    const modelId = card?.dataset.chatModelId || ''
+    const field = input.dataset.chatModelField as keyof ChatModelConfig | undefined
+    if (!modelId || !field) {
+      return
+    }
+    void updateChatModel(modelId, field, input.value.trim())
   })
 
   panel.addEventListener('pointerdown', beginChatResize)
@@ -514,15 +1123,69 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 }
 
-function buildLocalAssistantReply(userText: string): string {
-  if (/图片|头像|画|生成/.test(userText)) {
-    return '我先把这条当作图片生成意图记录下来。真正接入后会从角色包里取视觉设定、参考图和 generation.json。'
+function createDefaultChatModel(id = 'default-chat'): ChatModelConfig {
+  const provider = getLLMProviderCatalogEntry('openai-compatible')
+  return {
+    id,
+    provider: provider.value,
+    modelName: provider.defaultModel,
+    apiKey: '',
+    baseUrl: provider.defaultBaseUrl,
   }
-  if (/角色包|manifest|persona|导入|资源/.test(userText)) {
-    return '可以。这里会走角色资源包流程：先补 manifest 和 persona，再校验资产路径，最后保存到本地角色库。'
+}
+
+function getProviderEntry(provider: string | undefined) {
+  return getLLMProviderCatalogEntry(provider as LLMProviderType | undefined)
+}
+
+function renderChatModelLogo(model: ChatModelConfig | undefined): string {
+  if (!model) {
+    return renderProviderLogo('openai-compatible')
   }
-  if (/工具|执行|项目|文件/.test(userText)) {
-    return '这类消息后续会交给 runtime 执行，chat 页面只展示流式文本、工具状态和最终结果。'
+  return renderProviderLogo(getProviderEntry(model.provider).value, model)
+}
+
+function renderProviderLogo(provider: LLMProviderType, model?: Pick<ChatModelConfig, 'modelName' | 'baseUrl'>): string {
+  const logo = getProviderLogo(provider, model)
+  return `<img src="${logo.src}" alt="${logo.alt}" />`
+}
+
+function getProviderLogo(provider: LLMProviderType, model?: Pick<ChatModelConfig, 'modelName' | 'baseUrl'>): { src: string; alt: string } {
+  switch (provider) {
+    case 'gemini':
+      return { src: geminiIconUrl, alt: 'Gemini' }
+    case 'claude':
+      return { src: claudeIconUrl, alt: 'Claude' }
+    case 'qwen':
+      return { src: qwenIconUrl, alt: 'Qwen' }
+    case 'deepseek':
+      return { src: deepseekIconUrl, alt: 'DeepSeek' }
+    case 'groq':
+      return { src: groqIconUrl, alt: 'Groq' }
+    case 'ollama':
+      return { src: ollamaIconUrl, alt: 'Ollama' }
+    case 'azure-openai':
+      return { src: azureAIIconUrl, alt: 'Azure OpenAI' }
+    case 'openai':
+    case 'openai-compatible':
+    default:
+      return inferProviderLogo(model)
   }
-  return '嗯，我记下了。现在这个 chat 页面先把消息、角色状态和资源包信息接起来，后面再接真实流式 runtime。'
+}
+
+function inferProviderLogo(model?: Pick<ChatModelConfig, 'modelName' | 'baseUrl'>): { src: string; alt: string } {
+  const text = `${model?.modelName || ''} ${model?.baseUrl || ''}`.toLowerCase()
+  if (text.includes('gemini') || text.includes('google')) {
+    return { src: geminiIconUrl, alt: 'Gemini' }
+  }
+  if (text.includes('claude') || text.includes('anthropic')) {
+    return { src: claudeIconUrl, alt: 'Claude' }
+  }
+  if (text.includes('deepseek')) {
+    return { src: deepseekIconUrl, alt: 'DeepSeek' }
+  }
+  if (text.includes('qwen') || text.includes('dashscope')) {
+    return { src: qwenIconUrl, alt: 'Qwen' }
+  }
+  return { src: openAIIconUrl, alt: 'OpenAI' }
 }

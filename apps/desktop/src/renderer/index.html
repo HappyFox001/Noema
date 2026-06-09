@@ -109,6 +109,13 @@
                 <path d="m7.2 4.8.8 2.4 2.4.8-2.4.8-.8 2.4-.8-2.4L4 8l2.4-.8.8-2.4Z"></path>
               </svg>
             </button>
+            <button class="chat-nav-item" type="button" aria-label="Chat models" title="Chat models" data-chat-nav="models">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="4" y="5" width="16" height="14" rx="3"></rect>
+                <path d="M8 9h8M8 13h5"></path>
+                <path d="M16.5 14.5 19 17l-2.5 2.5"></path>
+              </svg>
+            </button>
             <div class="chat-nav-spacer"></div>
             <button class="chat-nav-item language-toggle" type="button" aria-label="Switch language" title="Switch language" aria-pressed="false" data-chat-action="language">
               <span class="chat-language-mark" aria-hidden="true">
@@ -191,13 +198,13 @@
 
             <form id="chat-compose-form" class="chat-composer">
               <div class="chat-compose-attachments" aria-label="Message attachments">
-                <button class="chat-compose-tool" type="button" aria-label="Attach image" data-chat-action="attach-image">
+                <button class="chat-compose-tool" type="button" aria-label="Attach media" data-chat-action="attach-image">
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <rect x="4" y="5" width="16" height="14" rx="3"></rect>
                     <path d="m7.3 15.5 3-3.2 2.5 2.6 1.7-1.9 2.8 2.9M8.2 8.8h.01"></path>
                   </svg>
                 </button>
-                <button class="chat-compose-tool" type="button" aria-label="Attach video" data-chat-action="attach-video">
+                <button class="chat-compose-tool" type="button" aria-label="Open camera" data-chat-action="attach-video">
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <rect x="3.8" y="6.5" width="12.2" height="11" rx="2.2"></rect>
                     <path d="m16 10 4-2.4v8.8L16 14M7.4 6.5l1.2-2h3.2l1.2 2"></path>
@@ -239,6 +246,24 @@
               <span data-i18n="chat.characterProfile">角色资料</span>
             </button>
           </aside>
+
+          <section class="chat-model-page" aria-label="Chat model settings">
+            <header class="chat-model-page-header">
+              <div>
+                <span class="chat-panel-kicker">Chat runtime</span>
+                <h2>模型</h2>
+              </div>
+              <div class="chat-model-page-actions">
+                <button class="chat-model-btn subtle" type="button" data-chat-action="close-chat-models">返回</button>
+                <button class="chat-new-group-btn" type="button" data-chat-action="add-chat-model">
+                  <span>+ API</span>
+                </button>
+              </div>
+            </header>
+            <div class="chat-model-page-body">
+              <div class="chat-model-list"></div>
+            </div>
+          </section>
         </div>
       </section>
 

@@ -23,6 +23,7 @@ function loadSystemConfigFromEnv(): SystemConfig | null {
 
   const hasEnvConfig = Object.keys(env).some(key =>
     key.startsWith('LLM_') ||
+    key.startsWith('CHAT_') ||
     key.startsWith('TASK_') ||
     key.startsWith('TTS_') ||
     key.startsWith('ASR_') ||
@@ -63,6 +64,25 @@ function loadSystemConfigFromEnv(): SystemConfig | null {
       const providerEntry = getLLMProviderCatalogEntry(provider)
       llmModels.push({
         id: `env-llm-${i}`,
+        provider: providerEntry.value,
+        modelName: modelName || providerEntry.defaultModel,
+        apiKey: apiKey || '',
+        baseUrl: baseUrl || providerEntry.defaultBaseUrl
+      })
+    }
+  }
+
+  const chatModels: LLMModelConfig[] = []
+  for (let i = 1; i <= 10; i++) {
+    const modelName = env[`CHAT_${i}_MODEL`]
+    const apiKey = env[`CHAT_${i}_API_KEY`]
+    const baseUrl = env[`CHAT_${i}_BASE_URL`]
+    const provider = env[`CHAT_${i}_PROVIDER`] as LLMProviderType | undefined
+
+    if (modelName || apiKey || baseUrl || provider) {
+      const providerEntry = getLLMProviderCatalogEntry(provider)
+      chatModels.push({
+        id: `env-chat-${i}`,
         provider: providerEntry.value,
         modelName: modelName || providerEntry.defaultModel,
         apiKey: apiKey || '',
@@ -114,6 +134,7 @@ function loadSystemConfigFromEnv(): SystemConfig | null {
   }
 
   const llmActive = parseInt(env['LLM_ACTIVE'] || '1', 10) - 1
+  const chatActive = parseInt(env['CHAT_ACTIVE'] || '1', 10) - 1
   const taskActive = parseInt(env['TASK_ACTIVE'] || '1', 10) - 1
   const ttsActive = parseInt(env['TTS_ACTIVE'] || '1', 10) - 1
   const asrActive = parseInt(env['ASR_ACTIVE'] || '1', 10) - 1
@@ -122,6 +143,8 @@ function loadSystemConfigFromEnv(): SystemConfig | null {
     proxy: env['PROXY_URL'] || env['HTTPS_PROXY'] || env['HTTP_PROXY'] || '',
     llmModels: llmModels.length > 0 ? llmModels : [],
     activeLLMId: llmModels[llmActive]?.id || llmModels[0]?.id || '',
+    chatModels: chatModels.length > 0 ? chatModels : [],
+    activeChatId: chatModels[chatActive]?.id || chatModels[0]?.id || '',
     taskModels: taskModels.length > 0 ? taskModels : [],
     activeTaskId: taskModels[taskActive]?.id || taskModels[0]?.id || '',
     taskRuntime: DEFAULT_TASK_RUNTIME_SETTINGS,
@@ -173,6 +196,8 @@ export interface SystemConfig {
   proxy: string
   llmModels: LLMModelConfig[]
   activeLLMId: string
+  chatModels: LLMModelConfig[]
+  activeChatId: string
   taskModels: LLMModelConfig[]
   activeTaskId: string
   taskRuntime: TaskRuntimeSettings
@@ -255,6 +280,14 @@ const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
     baseUrl: ''
   }],
   activeLLMId: 'default-llm',
+  chatModels: [{
+    id: 'default-chat',
+    provider: 'openai-compatible',
+    modelName: '',
+    apiKey: '',
+    baseUrl: ''
+  }],
+  activeChatId: 'default-chat',
   taskModels: [{
     id: 'default-task',
     provider: 'gemini',
@@ -338,6 +371,7 @@ export class SettingsStore {
         ...DEFAULT_SYSTEM_CONFIG,
         ...(parsed.system ?? {}),
         llmModels: parsed.system?.llmModels?.length ? parsed.system.llmModels : DEFAULT_SYSTEM_CONFIG.llmModels,
+        chatModels: parsed.system?.chatModels?.length ? parsed.system.chatModels : DEFAULT_SYSTEM_CONFIG.chatModels,
         taskModels: parsed.system?.taskModels?.length ? parsed.system.taskModels : DEFAULT_SYSTEM_CONFIG.taskModels,
         taskRuntime: normalizeTaskRuntimeSettings(parsed.system?.taskRuntime),
         ttsModels: parsed.system?.ttsModels?.length ? parsed.system.ttsModels : DEFAULT_SYSTEM_CONFIG.ttsModels,
@@ -385,10 +419,11 @@ export class SettingsStore {
   
   private hasEmptyApiKeys(config: SystemConfig): boolean {
     const llmEmpty = config.llmModels.some(m => !m.apiKey)
+    const chatEmpty = config.chatModels.some(m => !m.apiKey)
     const taskEmpty = config.taskModels.some(m => (m.transport ?? 'openai_compatible') === 'openai_compatible' && !m.apiKey)
     const ttsEmpty = config.ttsModels.some(m => !m.apiKey)
     const asrEmpty = config.asrModels.some(m => !m.apiKey)
-    return llmEmpty || taskEmpty || ttsEmpty || asrEmpty
+    return llmEmpty || chatEmpty || taskEmpty || ttsEmpty || asrEmpty
   }
 
   
@@ -409,6 +444,29 @@ export class SettingsStore {
       !base.llmModels[0].apiKey &&
       base.llmModels[0].id === 'default-llm' &&
       env.llmModels.length > 0
+
+    const chatModels = base.chatModels.map((model, index) => {
+      if (!model.apiKey && env.chatModels[index]?.apiKey) {
+        return {
+          ...model,
+          apiKey: env.chatModels[index].apiKey,
+          baseUrl: model.baseUrl || env.chatModels[index].baseUrl,
+        }
+      }
+      if (!model.apiKey && env.chatModels[0]?.apiKey) {
+        return {
+          ...model,
+          apiKey: env.chatModels[0].apiKey,
+          baseUrl: model.baseUrl || env.chatModels[0].baseUrl,
+        }
+      }
+      return model
+    })
+
+    const useEnvChat = base.chatModels.length === 1 &&
+      !base.chatModels[0].apiKey &&
+      base.chatModels[0].id === 'default-chat' &&
+      env.chatModels.length > 0
 
     const taskModels = base.taskModels.map((model, index) => {
       if (!model.apiKey && env.taskModels[index]?.apiKey) {
@@ -487,6 +545,8 @@ export class SettingsStore {
       proxy,
       llmModels: useEnvLLM ? env.llmModels : llmModels,
       activeLLMId: useEnvLLM ? env.activeLLMId : base.activeLLMId,
+      chatModels: useEnvChat ? env.chatModels : chatModels,
+      activeChatId: useEnvChat ? env.activeChatId : base.activeChatId,
       taskModels: useEnvTask ? env.taskModels : taskModels,
       activeTaskId: useEnvTask ? env.activeTaskId : base.activeTaskId,
       taskRuntime: normalizeTaskRuntimeSettings(base.taskRuntime),
@@ -582,6 +642,7 @@ function cloneSystemConfig(config: SystemConfig): SystemConfig {
   return {
     ...config,
     llmModels: config.llmModels.map(model => ({ ...model })),
+    chatModels: config.chatModels.map(model => ({ ...model })),
     taskModels: config.taskModels.map(model => ({ ...model })),
     taskRuntime: {
       ...config.taskRuntime,
@@ -632,6 +693,9 @@ function normalizeSystemConfig(value: Partial<SystemConfig>, fallback: SystemCon
   const llmModels = Array.isArray(value.llmModels) && value.llmModels.length
     ? value.llmModels.map((model, index) => normalizeLLMModelConfig(model, fallback.llmModels[index] ?? fallback.llmModels[0], index))
     : fallback.llmModels.map((model, index) => normalizeLLMModelConfig(model, DEFAULT_SYSTEM_CONFIG.llmModels[index] ?? DEFAULT_SYSTEM_CONFIG.llmModels[0], index))
+  const chatModels = Array.isArray(value.chatModels) && value.chatModels.length
+    ? value.chatModels.map((model, index) => normalizeLLMModelConfig(model, fallback.chatModels[index] ?? fallback.chatModels[0], index))
+    : fallback.chatModels.map((model, index) => normalizeLLMModelConfig(model, DEFAULT_SYSTEM_CONFIG.chatModels[index] ?? DEFAULT_SYSTEM_CONFIG.chatModels[0], index))
   const taskModels = Array.isArray(value.taskModels) && value.taskModels.length
     ? value.taskModels.map((model, index) => normalizeTaskModelConfig(model, fallback.taskModels[index] ?? fallback.taskModels[0], index))
     : fallback.taskModels.map((model, index) => normalizeTaskModelConfig(model, DEFAULT_SYSTEM_CONFIG.taskModels[index] ?? DEFAULT_SYSTEM_CONFIG.taskModels[0], index))
@@ -648,6 +712,8 @@ function normalizeSystemConfig(value: Partial<SystemConfig>, fallback: SystemCon
     proxy: typeof value.proxy === 'string' ? value.proxy : fallback.proxy,
     llmModels,
     activeLLMId: normalizeActiveModelId(value.activeLLMId, fallback.activeLLMId, llmModels),
+    chatModels,
+    activeChatId: normalizeActiveModelId(value.activeChatId, fallback.activeChatId, chatModels),
     taskModels,
     activeTaskId: normalizeActiveModelId(value.activeTaskId, fallback.activeTaskId, taskModels),
     taskRuntime: normalizeTaskRuntimeSettings(value.taskRuntime ?? fallback.taskRuntime),

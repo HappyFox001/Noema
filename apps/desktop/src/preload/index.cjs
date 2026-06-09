@@ -185,6 +185,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   listChatRoleResources: () =>
     ipcRenderer.invoke('chat-role-resources:list'),
 
+  sendChatMessage: (request) =>
+    ipcRenderer.invoke('chat:sendMessage', request),
+
+  listChatModels: (request) =>
+    ipcRenderer.invoke('chat:listModels', request),
+
+  selectChatMedia: (request) =>
+    ipcRenderer.invoke('chat:selectMedia', request),
+
+  requestChatCameraPermission: () =>
+    ipcRenderer.invoke('chat:requestCameraPermission'),
+
   submitInteractiveInput: (requestId, response) =>
     ipcRenderer.invoke(`interactive-input:response:${requestId}`, response),
 

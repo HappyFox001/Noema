@@ -181,10 +181,34 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
       <article class="chat-message ${options.escapeHtml(message.role)}" data-message-id="${options.escapeHtml(message.id)}" ${message.state ? `data-state="${options.escapeHtml(message.state)}"` : ''}>
         ${assistantAvatar}
         <div class="chat-message-body">
+          ${renderMessageAttachments(message)}
           <p>${options.escapeHtml(localizeChatText(message.text, language))}</p>
           <small>${stateLabel}${options.escapeHtml(localizeChatText(message.createdLabel, language))}</small>
         </div>
       </article>
+    `
+  }
+
+  function renderMessageAttachments(message: ChatMessage): string {
+    if (!message.attachments?.length) {
+      return ''
+    }
+    return `
+      <div class="chat-message-attachments">
+        ${message.attachments.map((attachment) => {
+          if (attachment.kind === 'video' && attachment.dataUrl) {
+            return `
+              <video class="chat-message-attachment video" src="${options.escapeHtml(attachment.dataUrl)}" controls preload="metadata" title="${options.escapeHtml(attachment.name)}"></video>
+            `
+          }
+          if (attachment.dataUrl) {
+            return `
+              <img class="chat-message-attachment image" src="${options.escapeHtml(attachment.dataUrl)}" alt="${options.escapeHtml(attachment.name)}" />
+            `
+          }
+          return `<span class="chat-message-attachment file">${options.escapeHtml(attachment.name)}</span>`
+        }).join('')}
+      </div>
     `
   }
 

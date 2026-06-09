@@ -1574,6 +1574,8 @@ type SystemConfig = {
   proxy: string
   llmModels: LLMModelConfig[]
   activeLLMId: string
+  chatModels: LLMModelConfig[]
+  activeChatId: string
   taskModels: LLMModelConfig[]
   activeTaskId: string
   taskRuntime: TaskRuntimeSettings

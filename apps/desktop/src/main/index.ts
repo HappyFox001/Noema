@@ -126,6 +126,7 @@ import {
   registerWindowIpcHandlers,
 } from './ipc-handlers.js'
 import { registerChatRoleResourceIpcHandlers } from './chat-role-resource-ipc-handlers.js'
+import { registerChatIpcHandlers } from './chat-ipc-handlers.js'
 import { registerConversationIpcHandlers } from './conversation-ipc-handlers.js'
 import { registerModelIpcHandlers } from './model-ipc-handlers.js'
 import { registerPersonalityIpcHandlers } from './personality-ipc-handlers.js'
@@ -1612,6 +1613,7 @@ registerSettingsMutationIpcHandlers(ipcMain, {
   getRuntimeConfigSnapshot: () => ({
     proxy: appSettings.system.proxy.trim(),
     llm: getLLMConfigSignature(getActiveLLMConfig()),
+    chatLLM: getLLMConfigSignature(getChatModelConfig()),
     taskLLM: getLLMConfigSignature(getActiveTaskConfig()),
     taskRuntime: JSON.stringify(appSettings.system.taskRuntime),
     tts: getTTSConfigSignature(getActiveTTSConfig()),
@@ -1680,6 +1682,10 @@ registerPersonalityIpcHandlers(ipcMain, {
   rebuildSdk: rebuildSDK,
 })
 registerChatRoleResourceIpcHandlers(ipcMain)
+registerChatIpcHandlers(ipcMain, {
+  getModelConfig: getChatModelConfig,
+  getMainWindow: () => mainWindow,
+})
 registerPluginIpcHandlers(ipcMain, {
   getMainWindow: () => mainWindow,
   getSettings: () => appSettings,
@@ -1832,6 +1838,8 @@ let appSettings: AppSettings = {
     proxy: '',
     llmModels: [{ id: 'default-llm', modelName: '', apiKey: '', baseUrl: '' }],
     activeLLMId: 'default-llm',
+    chatModels: [{ id: 'default-chat', modelName: '', apiKey: '', baseUrl: '' }],
+    activeChatId: 'default-chat',
     taskModels: [{ id: 'default-task', modelName: 'gemini-3.1-pro-preview', apiKey: '', baseUrl: '' }],
     activeTaskId: 'default-task',
     taskRuntime: {
@@ -1857,6 +1865,14 @@ let appSettings: AppSettings = {
 function getActiveLLMConfig(): LLMModelConfig | null {
   const { llmModels, activeLLMId } = appSettings.system
   return llmModels.find(m => m.id === activeLLMId) || llmModels[0] || null
+}
+
+function getChatModelConfig(): LLMModelConfig | null {
+  const { chatModels, activeChatId } = appSettings.system
+  const config = chatModels.find(m => m.id === activeChatId)
+    || chatModels[0]
+    || null
+  return config ? { ...config } : null
 }
 
 

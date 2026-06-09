@@ -30,11 +30,21 @@ export interface ChatConversationSummary {
   messages: ChatMessage[]
 }
 
+export interface ChatMessageAttachment {
+  id: string
+  kind: 'image' | 'video'
+  name: string
+  mimeType: string
+  dataUrl?: string
+  size?: number
+}
+
 export interface ChatMessage {
   id: string
   role: ChatMessageRole
   text: ChatLocalizedText
   createdLabel: ChatLocalizedText
+  attachments?: ChatMessageAttachment[]
   state?: ChatActivityState
 }
 
@@ -87,12 +97,13 @@ export function getCharacterForConversation(
     ?? state.characterResources[0]
 }
 
-export function createLocalUserMessage(text: string, createdLabel: string): ChatMessage {
+export function createLocalUserMessage(text: string, createdLabel: string, attachments: ChatMessageAttachment[] = []): ChatMessage {
   return {
     id: `user-${Date.now()}`,
     role: 'user',
     text: { 'zh-CN': text, 'en-US': text },
     createdLabel: { 'zh-CN': createdLabel, 'en-US': createdLabel },
+    ...(attachments.length ? { attachments: attachments.map((attachment) => ({ ...attachment })) } : {}),
   }
 }
 

@@ -233,7 +233,7 @@ export class AnthropicMessagesProvider implements LLMProvider {
         continue
       }
       if (role === 'system' || role === 'developer') {
-        systemParts.push(content)
+        systemParts.push(this.contentToText(content))
         continue
       }
       anthropicMessages.push({
@@ -248,27 +248,71 @@ export class AnthropicMessagesProvider implements LLMProvider {
     }
   }
 
-  private normalizeContent(content: any): string {
+  private normalizeContent(content: any): string | any[] {
     if (typeof content === 'string') {
       return content
     }
     if (Array.isArray(content)) {
-      return content
-        .map(part => typeof part === 'string' ? part : part?.text)
+      const parts = content
+        .map(part => this.normalizeContentPart(part))
         .filter(Boolean)
-        .join('\n')
+      return parts.length ? parts : ''
     }
     return content == null ? '' : String(content)
+  }
+
+  private normalizeContentPart(part: any): any {
+    if (typeof part === 'string') {
+      return { type: 'text', text: part }
+    }
+    if (part?.type === 'text' && part.text) {
+      return { type: 'text', text: String(part.text) }
+    }
+    if (part?.type === 'image_url' && part.image_url?.url) {
+      const source = this.parseDataUrl(part.image_url.url)
+      if (!source) {
+        return undefined
+      }
+      return {
+        type: 'image',
+        source,
+      }
+    }
+    return part?.text ? { type: 'text', text: String(part.text) } : undefined
+  }
+
+  private contentToText(content: string | any[]): string {
+    if (typeof content === 'string') {
+      return content
+    }
+    return content
+      .map(part => typeof part === 'string' ? part : part?.text)
+      .filter(Boolean)
+      .join('\n')
+  }
+
+  private parseDataUrl(value: string): { type: 'base64'; media_type: string; data: string } | null {
+    const match = /^data:([^;,]+);base64,(.+)$/s.exec(value)
+    if (!match) {
+      return null
+    }
+    return {
+      type: 'base64',
+      media_type: match[1],
+      data: match[2],
+    }
   }
 
   private mergeAdjacentMessages(messages: any[]): any[] {
     const merged: any[] = []
     for (const message of messages) {
       const previous = merged[merged.length - 1]
-      if (previous?.role === message.role) {
-        previous.content = `${previous.content}\n\n${message.content}`
-      } else {
-        merged.push({ ...message })
+    if (previous?.role === message.role && typeof previous.content === 'string' && typeof message.content === 'string') {
+      previous.content = `${previous.content}\n\n${message.content}`
+    } else if (previous?.role === message.role && Array.isArray(previous.content) && Array.isArray(message.content)) {
+      previous.content = [...previous.content, ...message.content]
+    } else {
+      merged.push({ ...message })
       }
     }
     return merged
