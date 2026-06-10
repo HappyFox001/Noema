@@ -65,9 +65,10 @@ export class NoemaSDK {
 
   private constructor(config: SDKConfig, options: NoemaSDKInitializeOptions = {}) {
     this.selfLearningEnabled = options.selfLearningEnabled !== false
-    this.llm = createLLMProvider(config.llm, { defaultReasoningMode: 'minimal-or-none' })
+    const proxyUrl = config.network?.proxyUrl
+    this.llm = createLLMProvider(config.llm, { defaultReasoningMode: 'minimal-or-none', proxyUrl })
     this.taskLLm = wrapTaskLLMWithRuntimeTransport(
-      createLLMProvider(config.taskLLM ?? config.llm),
+      createLLMProvider(config.taskLLM ?? config.llm, { proxyUrl }),
       config.taskRuntime
     )
 

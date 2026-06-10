@@ -7,6 +7,7 @@ import { loadRuntimePlugins } from './plugin-loader.js'
 import {
   buildSDKConfig,
   setActiveLLMConfig,
+  setActiveProxyUrl,
   setActiveTaskLLMConfig,
   setActiveTaskRuntimeConfig,
 } from './sdk-config.js'
@@ -31,6 +32,7 @@ export async function initializeDesktopSDK(
   setActiveLLMConfig(options.activeLLMConfig)
   setActiveTaskLLMConfig(options.activeTaskConfig)
   setActiveTaskRuntimeConfig(options.appSettings.system.taskRuntime)
+  setActiveProxyUrl(options.appSettings.system.proxy)
 
   const sdkConfig = await buildSDKConfig()
   console.log('[PluginLoader] Runtime plugins directory:', options.pluginsDir)

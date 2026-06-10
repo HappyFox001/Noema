@@ -7,6 +7,7 @@ let personalityManager: any = null
 let activeLLMConfig: LLMModelConfig | null = null
 let activeTaskLLMConfig: LLMModelConfig | null = null
 let activeTaskRuntimeConfig: TaskRuntimeSettings | null = null
+let activeProxyUrl = ''
 
 
 export function setActiveLLMConfig(config: LLMModelConfig | null): void {
@@ -19,6 +20,10 @@ export function setActiveTaskLLMConfig(config: LLMModelConfig | null): void {
 
 export function setActiveTaskRuntimeConfig(config: TaskRuntimeSettings | null): void {
   activeTaskRuntimeConfig = config
+}
+
+export function setActiveProxyUrl(proxyUrl: string): void {
+  activeProxyUrl = proxyUrl.trim()
 }
 
 export function getStorageDir(): string {
@@ -72,6 +77,9 @@ export async function buildSDKConfig(): Promise<SDKConfig> {
       baseURL: taskLLMBaseURL
     },
     taskRuntime,
+    network: {
+      proxyUrl: activeProxyUrl
+    },
     memory: {
       storageDir: getStorageDir()
     },

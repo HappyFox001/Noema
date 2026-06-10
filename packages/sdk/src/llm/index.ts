@@ -3,6 +3,7 @@
  */
 import OpenAI from 'openai'
 import type { SDKConfig } from '../config/types.js'
+import { createProxyFetch, createProxyHttpAgent, normalizeProxyUrl } from '../utils/proxy.js'
 
 export interface LLMResponse {
   content: string
@@ -23,6 +24,7 @@ export interface LLMProvider {
 export interface LLMProviderOptions {
   defaultReasoningMode?: 'minimal-or-none'
   geminiThinkingMode?: 'minimal-or-none'
+  proxyUrl?: string
 }
 
 export class OpenAIProvider implements LLMProvider {
@@ -38,6 +40,7 @@ export class OpenAIProvider implements LLMProvider {
       apiKey,
       baseURL,
       dangerouslyAllowBrowser: true,
+      httpAgent: createProxyHttpAgent(providerOptions.proxyUrl),
     })
   }
 
@@ -161,12 +164,13 @@ export class AnthropicMessagesProvider implements LLMProvider {
   constructor(
     private apiKey: string,
     private model: string,
-    private baseURL: string = 'https://api.anthropic.com/v1'
+    private baseURL: string = 'https://api.anthropic.com/v1',
+    private providerOptions: LLMProviderOptions = {}
   ) {}
 
   async chat(messages: any[], options?: any): Promise<LLMResponse> {
     const { signal, ...requestOptions } = options ?? {}
-    const response = await fetch(`${this.normalizedBaseURL()}/messages`, {
+    const response = await this.fetch(`${this.normalizedBaseURL()}/messages`, {
       method: 'POST',
       headers: this.headers(),
       body: JSON.stringify({
@@ -199,7 +203,7 @@ export class AnthropicMessagesProvider implements LLMProvider {
 
   async *streamChat(messages: any[], options?: any): AsyncGenerator<string> {
     const { signal, ...requestOptions } = options ?? {}
-    const response = await fetch(`${this.normalizedBaseURL()}/messages`, {
+    const response = await this.fetch(`${this.normalizedBaseURL()}/messages`, {
       method: 'POST',
       headers: this.headers(),
       body: JSON.stringify({
@@ -255,6 +259,10 @@ export class AnthropicMessagesProvider implements LLMProvider {
 
   private normalizedBaseURL(): string {
     return this.baseURL.replace(/\/+$/, '')
+  }
+
+  private fetch(input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]): Promise<Response> {
+    return createProxyFetch(this.providerOptions.proxyUrl)(input, init)
   }
 
   private headers(): Record<string, string> {
@@ -412,9 +420,13 @@ export function createLLMProvider(config: SDKConfig['llm'], options: LLMProvider
   if (config.baseURL) {
     console.log(`[LLM] Using custom endpoint: ${config.baseURL}`)
   }
+  const proxyUrl = normalizeProxyUrl(options.proxyUrl)
+  if (proxyUrl) {
+    console.log(`[LLM] Using proxy: ${proxyUrl}`)
+  }
 
   if (config.provider === 'claude' || config.provider === 'anthropic') {
-    return new AnthropicMessagesProvider(config.apiKey, config.model, config.baseURL)
+    return new AnthropicMessagesProvider(config.apiKey, config.model, config.baseURL, options)
   }
 
   return new OpenAIProvider(config.apiKey, config.model, config.baseURL, options)

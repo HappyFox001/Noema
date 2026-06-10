@@ -33,6 +33,10 @@ export interface SDKConfig {
     env?: Record<string, string>
   }
 
+  network?: {
+    proxyUrl?: string
+  }
+
   memory: {
     vectorDB?: 'chroma' | 'lancedb'
     storageDir: string
