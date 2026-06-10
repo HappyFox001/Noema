@@ -6,6 +6,7 @@ import { dialog, systemPreferences, shell, type BrowserWindow, type OpenDialogOp
 import { readFile } from 'fs/promises'
 import { basename, extname } from 'path'
 import { createChatSessionFromModel, type ChatCharacterContext, type ChatMessage, type ChatModelConfig } from '@noema/sdk'
+import { ChatHistoryStore, type StoredChatConversation } from './chat-history-store.js'
 
 export interface ChatIpcModelConfig {
   provider?: string
@@ -70,11 +71,18 @@ export interface ChatCameraPermissionResult {
   error?: string
 }
 
+export interface ChatHistoryResult {
+  success: boolean
+  conversations?: StoredChatConversation[]
+  error?: string
+}
+
 export function registerChatIpcHandlers(
   ipcMain: IpcMain,
   options: {
     getModelConfig(): ChatIpcModelConfig | null
     getMainWindow?(): BrowserWindow | null
+    getChatHistoryStore(): ChatHistoryStore
   }
 ): void {
   ipcMain.handle('chat:sendMessage', async (_, request: ChatSendMessageRequest): Promise<ChatSendMessageResult> => {
@@ -237,6 +245,46 @@ export function registerChatIpcHandlers(
         status: systemPreferences.getMediaAccessStatus('camera'),
       }
     } catch (error: any) {
+      return { success: false, error: error?.message || String(error) }
+    }
+  })
+
+  ipcMain.handle('chat-history:list', async (): Promise<ChatHistoryResult> => {
+    try {
+      const conversations = await options.getChatHistoryStore().listConversations()
+      return { success: true, conversations }
+    } catch (error: any) {
+      console.error('[ChatHistory] Failed to list conversations:', error)
+      return { success: false, error: error?.message || String(error) }
+    }
+  })
+
+  ipcMain.handle('chat-history:upsert', async (_, conversation: StoredChatConversation): Promise<{ success: boolean; error?: string }> => {
+    try {
+      await options.getChatHistoryStore().upsertConversation(conversation)
+      return { success: true }
+    } catch (error: any) {
+      console.error('[ChatHistory] Failed to save conversation:', error)
+      return { success: false, error: error?.message || String(error) }
+    }
+  })
+
+  ipcMain.handle('chat-history:delete', async (_, id: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      await options.getChatHistoryStore().deleteConversation(String(id || ''))
+      return { success: true }
+    } catch (error: any) {
+      console.error('[ChatHistory] Failed to delete conversation:', error)
+      return { success: false, error: error?.message || String(error) }
+    }
+  })
+
+  ipcMain.handle('chat-history:clear', async (): Promise<{ success: boolean; error?: string }> => {
+    try {
+      await options.getChatHistoryStore().clearConversations()
+      return { success: true }
+    } catch (error: any) {
+      console.error('[ChatHistory] Failed to clear conversations:', error)
       return { success: false, error: error?.message || String(error) }
     }
   })
