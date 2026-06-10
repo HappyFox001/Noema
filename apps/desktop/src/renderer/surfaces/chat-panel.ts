@@ -622,37 +622,70 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         tags: character.tag[language] ?? character.tag['zh-CN'],
       } : undefined,
     }
-    let streamedReply = ''
-    let renderFrame = 0
-    const flushStreamedReply = (): void => {
-      renderFrame = 0
-      message.text = { 'zh-CN': streamedReply, 'en-US': streamedReply }
-      message.state = streamedReply ? undefined : 'thinking'
-      conversation.preview = { 'zh-CN': streamedReply || '思考中...', 'en-US': streamedReply || 'Thinking...' }
-      renderer.renderMessages(conversation.messages)
+    let completeReply = ''
+    let visibleReply = ''
+    let pendingReveal = ''
+    let revealFrame = 0
+    const renderVisibleReply = (): void => {
+      message.text = { 'zh-CN': visibleReply, 'en-US': visibleReply }
+      message.state = visibleReply ? undefined : 'thinking'
+      conversation.preview = { 'zh-CN': visibleReply || '思考中...', 'en-US': visibleReply || 'Thinking...' }
+      renderer.replaceMessage(message)
       refreshConversationList()
     }
-    const scheduleStreamedReplyRender = (): void => {
-      if (renderFrame) {
+    const revealNextReplySlice = (continueScheduling = true): void => {
+      revealFrame = 0
+      if (!pendingReveal) {
         return
       }
-      renderFrame = window.requestAnimationFrame(flushStreamedReply)
+      const size = getStreamRevealSliceSize(pendingReveal)
+      visibleReply += pendingReveal.slice(0, size)
+      pendingReveal = pendingReveal.slice(size)
+      renderVisibleReply()
+      if (continueScheduling) {
+        scheduleStreamReveal()
+      }
+    }
+    const scheduleStreamReveal = (): void => {
+      if (revealFrame || !pendingReveal) {
+        return
+      }
+      revealFrame = window.requestAnimationFrame(revealNextReplySlice)
+    }
+    const enqueueStreamDelta = (delta: string): void => {
+      completeReply += delta
+      pendingReveal += delta
+      scheduleStreamReveal()
+    }
+    const revealPendingReply = async (): Promise<void> => {
+      while (pendingReveal) {
+        await new Promise<void>((resolve) => {
+          window.requestAnimationFrame(() => {
+            revealNextReplySlice(false)
+            resolve()
+          })
+        })
+      }
     }
     try {
       const response = typeof window.electronAPI.streamChatMessage === 'function'
         ? await window.electronAPI.streamChatMessage(request, {
           onDelta(delta) {
-            streamedReply += delta
-            scheduleStreamedReplyRender()
+            enqueueStreamDelta(delta)
           },
         })
         : await window.electronAPI.sendChatMessage(request)
-      if (renderFrame) {
-        window.cancelAnimationFrame(renderFrame)
-        flushStreamedReply()
+      const responseReply = response.success ? response.response || '' : ''
+      if (responseReply && responseReply !== completeReply) {
+        enqueueStreamDelta(responseReply.slice(completeReply.length))
       }
+      if (revealFrame) {
+        window.cancelAnimationFrame(revealFrame)
+        revealFrame = 0
+      }
+      await revealPendingReply()
       const reply = response.success
-        ? (response.response || streamedReply || '')
+        ? (response.response || completeReply || visibleReply || '')
         : (response.error || 'Chat model failed')
       message.text = { 'zh-CN': reply, 'en-US': reply }
       message.state = undefined
@@ -1330,6 +1363,19 @@ function createDefaultChatModel(id = 'default-chat'): ChatModelConfig {
     apiKey: '',
     baseUrl: provider.defaultBaseUrl,
   }
+}
+
+function getStreamRevealSliceSize(pending: string): number {
+  if (pending.length > 1200) {
+    return 24
+  }
+  if (pending.length > 480) {
+    return 16
+  }
+  if (pending.length > 160) {
+    return 10
+  }
+  return 5
 }
 
 function getProviderEntry(provider: string | undefined) {

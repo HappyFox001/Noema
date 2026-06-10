@@ -12290,6 +12290,26 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-model-page {
   border-color: rgba(255, 120, 120, 0.22);
 }
 
+.noema-chat-section.is-streaming,
+.noema-chat-card.is-streaming,
+.noema-chat-code.is-streaming {
+  position: relative;
+}
+
+.noema-chat-card.is-streaming::after,
+.noema-chat-code.is-streaming::after {
+  content: '';
+  width: 5px;
+  height: 5px;
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  border-radius: 999px;
+  background: rgba(218, 232, 224, 0.5);
+  box-shadow: 0 0 12px rgba(218, 232, 224, 0.24);
+  animation: chat-thinking-dot 1.05s ease-in-out infinite;
+}
+
 .noema-chat-code {
   position: relative;
   margin: 0;

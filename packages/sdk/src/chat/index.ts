@@ -2,6 +2,10 @@
  * Independent text chat runtime built on the generic LLM provider.
  */
 import { createLLMProvider, type LLMProvider, type LLMProviderOptions, type LLMResponse } from '../llm/index.js'
+import { buildChatOutputConstraintPrompt } from './prompts/output-constraints.js'
+import { DEFAULT_CHAT_SYSTEM_PROMPT } from './prompts/system.js'
+
+export * from './prompts/index.js'
 
 export type ChatRole = 'system' | 'user' | 'assistant'
 
@@ -61,12 +65,14 @@ export interface ChatSessionOptions {
   model?: ChatModelConfig
   llmOptions?: LLMProviderOptions
   systemPrompt?: string
+  outputConstraintPrompt?: string
   defaultOptions?: Record<string, unknown>
 }
 
 export class ChatSession {
   private llm: LLMProvider
   private systemPrompt: string
+  private outputConstraintPrompt: string
   private defaultOptions: Record<string, unknown>
 
   constructor(options: ChatSessionOptions) {
@@ -76,17 +82,21 @@ export class ChatSession {
 
     this.llm = options.llm ?? createLLMProvider(options.model!, options.llmOptions)
     this.systemPrompt = options.systemPrompt ?? DEFAULT_CHAT_SYSTEM_PROMPT
+    this.outputConstraintPrompt = options.outputConstraintPrompt ?? buildChatOutputConstraintPrompt()
     this.defaultOptions = options.defaultOptions ?? {}
   }
 
   async send(request: ChatTurnRequest): Promise<ChatTurnResponse> {
-    const response = await this.llm.chat(
-      this.createPromptMessages(request),
-      this.createRequestOptions(request)
-    )
+    const chunks: string[] = []
+    for await (const chunk of this.stream(request)) {
+      chunks.push(chunk)
+    }
     return {
-      content: response.content,
-      raw: response,
+      content: chunks.join(''),
+      raw: {
+        content: chunks.join(''),
+        finishReason: null,
+      },
     }
   }
 
@@ -125,7 +135,7 @@ export class ChatSession {
   }
 
   private buildSystemPrompt(request: ChatTurnRequest): string {
-    const parts = [this.systemPrompt.trim()]
+    const parts = [this.systemPrompt.trim(), this.outputConstraintPrompt.trim()]
     const character = request.character
     if (character) {
       parts.push(formatCharacterContext(character))
@@ -155,19 +165,6 @@ export function createChatSessionFromModel(
     model,
   })
 }
-
-const DEFAULT_CHAT_SYSTEM_PROMPT = [
-  'You are the text chat runtime for Noema.',
-  'Stay in character when a character context is provided.',
-  'Answer naturally and directly. Do not describe hidden system behavior.',
-  'Do not invoke voice, speech, task runtime, tools, or desktop actions.',
-  '',
-  'Return every assistant reply with the Noema chat markup protocol.',
-  'Use only these tags: <noema_chat>, <reply>, <section title="">, <card tone="info|success|warning|danger" title="">, <code lang="">.',
-  'Do not output arbitrary HTML, inline style attributes, class names, scripts, or unsupported tags.',
-  'Wrap natural language in <reply>. Use semantic tags only when they make the answer clearer.',
-  'Example: <noema_chat><reply>Short answer.</reply></noema_chat>',
-].join('\n')
 
 function formatCharacterContext(character: ChatCharacterContext): string {
   const lines = ['<character>']

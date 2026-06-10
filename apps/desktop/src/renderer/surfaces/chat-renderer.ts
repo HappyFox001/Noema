@@ -7,6 +7,7 @@ import type {
   ChatMessage,
 } from './chat-model'
 import { localizeChatText, type ChatLanguageCode } from './chat-model'
+import { hasNoemaChatMarkup, renderNoemaChatMarkup } from './noema-chat-markup'
 
 export interface ChatRendererOptions {
   panel: HTMLElement
@@ -21,6 +22,7 @@ export interface ChatRenderer {
   renderEmptyState(): void
   renderMessages(messages: ChatMessage[]): void
   appendMessage(message: ChatMessage): void
+  replaceMessage(message: ChatMessage): void
   setAssistantMessageState(messageId: string, state: ChatMessage['state']): void
   filterConversations(query: string): void
 }
@@ -153,6 +155,16 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     scrollToLatest()
   }
 
+  function replaceMessage(message: ChatMessage): void {
+    const existing = options.messageList.querySelector<HTMLElement>(`[data-message-id="${cssEscape(message.id)}"]`)
+    if (!existing) {
+      appendMessage(message)
+      return
+    }
+    existing.outerHTML = renderMessage(message)
+    scrollToLatest()
+  }
+
   function setAssistantMessageState(messageId: string, state: ChatMessage['state']): void {
     const message = options.messageList.querySelector<HTMLElement>(`[data-message-id="${cssEscape(messageId)}"]`)
     if (!message) return
@@ -195,7 +207,7 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
   function renderMessageContent(message: ChatMessage, language: ChatLanguageCode): string {
     const text = localizeChatText(message.text, language)
     if (message.role === 'assistant' && hasNoemaChatMarkup(text)) {
-      const markup = renderNoemaChatMarkup(text)
+      const markup = renderNoemaChatMarkup(text, { escapeHtml: options.escapeHtml })
       return markup || renderNoemaStreamStatus(language)
     }
     return `<p>${options.escapeHtml(text)}</p>`
@@ -279,6 +291,7 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     renderEmptyState,
     renderMessages,
     appendMessage,
+    replaceMessage,
     setAssistantMessageState,
     filterConversations,
   }
@@ -295,135 +308,6 @@ function formatState(state: NonNullable<ChatMessage['state']>, language: ChatLan
     default:
       return ''
   }
-}
-
-function hasNoemaChatMarkup(value: string): boolean {
-  return /<noema_chat\b/i.test(value)
-}
-
-function renderNoemaChatMarkup(value: string): string {
-  const reply = extractNoemaReply(value)
-  if (!reply.trim()) {
-    return ''
-  }
-  return renderNoemaBlocks(reply)
-}
-
-function extractNoemaReply(value: string): string {
-  const replyOpen = /<reply\b[^>]*>/i.exec(value)
-  if (replyOpen) {
-    const start = replyOpen.index + replyOpen[0].length
-    const close = value.slice(start).search(/<\/reply>/i)
-    return close >= 0 ? value.slice(start, start + close) : value.slice(start)
-  }
-
-  const rootOpen = /<noema_chat\b[^>]*>/i.exec(value)
-  if (!rootOpen) {
-    return value
-  }
-  const start = rootOpen.index + rootOpen[0].length
-  const close = value.slice(start).search(/<\/noema_chat>/i)
-  return close >= 0 ? value.slice(start, start + close) : value.slice(start)
-}
-
-function renderNoemaBlocks(source: string): string {
-  const blocks: string[] = []
-  const blockPattern = /<(section|card|code)\b([^>]*)>([\s\S]*?)<\/\1>/gi
-  let cursor = 0
-  let match: RegExpExecArray | null
-  while ((match = blockPattern.exec(source)) !== null) {
-    blocks.push(renderNoemaParagraphs(source.slice(cursor, match.index)))
-    const tag = match[1].toLowerCase()
-    const attrs = readNoemaAttributes(match[2])
-    const content = match[3]
-    if (tag === 'section') {
-      blocks.push(renderNoemaSection(attrs, content))
-    } else if (tag === 'card') {
-      blocks.push(renderNoemaCard(attrs, content))
-    } else if (tag === 'code') {
-      blocks.push(renderNoemaCode(attrs, content))
-    }
-    cursor = match.index + match[0].length
-  }
-  blocks.push(renderNoemaParagraphs(source.slice(cursor)))
-  return blocks.filter(Boolean).join('')
-}
-
-function renderNoemaSection(attrs: Record<string, string>, content: string): string {
-  const title = attrs.title?.trim()
-  return `
-    <section class="noema-chat-section">
-      ${title ? `<h4>${escapeHtml(title)}</h4>` : ''}
-      ${renderNoemaBlocks(content)}
-    </section>
-  `
-}
-
-function renderNoemaCard(attrs: Record<string, string>, content: string): string {
-  const tone = normalizeNoemaTone(attrs.tone)
-  const title = attrs.title?.trim()
-  return `
-    <aside class="noema-chat-card ${tone}">
-      ${title ? `<strong>${escapeHtml(title)}</strong>` : ''}
-      ${renderNoemaBlocks(content)}
-    </aside>
-  `
-}
-
-function renderNoemaCode(attrs: Record<string, string>, content: string): string {
-  const language = attrs.lang?.trim()
-  return `
-    <pre class="noema-chat-code"${language ? ` data-language="${escapeHtml(language)}"` : ''}><code>${escapeHtml(decodeNoemaEntities(stripNoemaTags(content).trim()))}</code></pre>
-  `
-}
-
-function renderNoemaParagraphs(source: string): string {
-  const text = decodeNoemaEntities(stripNoemaTags(source)).trim()
-  if (!text) {
-    return ''
-  }
-  return text
-    .split(/\n{2,}/)
-    .map((paragraph) => paragraph.trim())
-    .filter(Boolean)
-    .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, '<br>')}</p>`)
-    .join('')
-}
-
-function readNoemaAttributes(source: string): Record<string, string> {
-  const attrs: Record<string, string> = {}
-  const attrPattern = /\b(title|tone|lang)="([^"]*)"/gi
-  let match: RegExpExecArray | null
-  while ((match = attrPattern.exec(source)) !== null) {
-    attrs[match[1].toLowerCase()] = decodeNoemaEntities(match[2])
-  }
-  return attrs
-}
-
-function normalizeNoemaTone(value: string | undefined): string {
-  return value === 'success' || value === 'warning' || value === 'danger' ? value : 'info'
-}
-
-function stripNoemaTags(value: string): string {
-  return value.replace(/<\/?[a-zA-Z_][^>]*>/g, '')
-}
-
-function decodeNoemaEntities(value: string): string {
-  return value
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
 }
 
 function cssEscape(value: string): string {
