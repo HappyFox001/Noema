@@ -12235,7 +12235,9 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-model-page {
 }
 
 .noema-chat-section,
-.noema-chat-card {
+.noema-chat-card,
+.roleplay-chat-note,
+.roleplay-chat-speech {
   min-width: min(360px, 100%);
 }
 
@@ -12245,7 +12247,8 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-model-page {
 }
 
 .noema-chat-section h4,
-.noema-chat-card strong {
+.noema-chat-card strong,
+.roleplay-chat-note strong {
   margin: 0;
   color: rgba(248, 250, 250, 0.88);
   font-family: var(--font-ui);
@@ -12255,13 +12258,65 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-model-page {
 }
 
 .noema-chat-section p,
-.noema-chat-card p {
+.noema-chat-card p,
+.roleplay-chat-note p,
+.roleplay-chat-speech p {
   padding: 0;
   border: 0;
   border-radius: 0;
   background: transparent;
   color: rgba(248, 250, 250, 0.78);
   box-shadow: none;
+}
+
+.roleplay-chat-speech {
+  display: grid;
+  gap: 7px;
+  padding: 11px 13px;
+  border-radius: 15px;
+  border: 1px solid rgba(255, 255, 255, 0.085);
+  background: rgba(255, 255, 255, 0.058);
+  color: rgba(248, 250, 250, 0.88);
+  font-family: var(--font-mixed);
+  font-size: 13px;
+  line-height: 1.62;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.055);
+}
+
+.roleplay-chat-note {
+  display: grid;
+  gap: 6px;
+  padding: 9px 11px;
+  border: 1px solid rgba(248, 250, 250, 0.08);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.026);
+}
+
+.roleplay-chat-note.thinking,
+.roleplay-chat-note.role-think {
+  border-color: rgba(182, 202, 196, 0.12);
+  background:
+    linear-gradient(180deg, rgba(218, 232, 224, 0.04), rgba(218, 232, 224, 0.018)),
+    rgba(255, 255, 255, 0.018);
+}
+
+.roleplay-chat-note.role-action,
+.roleplay-chat-note.scene {
+  border-style: dashed;
+}
+
+.roleplay-chat-note.ooc {
+  border-color: rgba(244, 190, 110, 0.16);
+}
+
+.roleplay-chat-note p {
+  color: rgba(248, 250, 250, 0.58);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.roleplay-chat-note.role-think p {
+  font-style: italic;
 }
 
 .noema-chat-card {
@@ -12292,12 +12347,16 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-model-page {
 
 .noema-chat-section.is-streaming,
 .noema-chat-card.is-streaming,
-.noema-chat-code.is-streaming {
+.noema-chat-code.is-streaming,
+.roleplay-chat-note.is-streaming,
+.roleplay-chat-speech.is-streaming {
   position: relative;
 }
 
 .noema-chat-card.is-streaming::after,
-.noema-chat-code.is-streaming::after {
+.noema-chat-code.is-streaming::after,
+.roleplay-chat-note.is-streaming::after,
+.roleplay-chat-speech.is-streaming::after {
   content: '';
   width: 5px;
   height: 5px;

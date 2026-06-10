@@ -7,7 +7,7 @@ import type {
   ChatMessage,
 } from './chat-model'
 import { localizeChatText, type ChatLanguageCode } from './chat-model'
-import { hasNoemaChatMarkup, renderNoemaChatMarkup } from './noema-chat-markup'
+import { hasRoleplayChatMarkup, renderRoleplayChatMarkup } from './noema-chat-markup'
 
 export interface ChatRendererOptions {
   panel: HTMLElement
@@ -206,8 +206,8 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
 
   function renderMessageContent(message: ChatMessage, language: ChatLanguageCode): string {
     const text = localizeChatText(message.text, language)
-    if (message.role === 'assistant' && hasNoemaChatMarkup(text)) {
-      const markup = renderNoemaChatMarkup(text, { escapeHtml: options.escapeHtml })
+    if (message.role === 'assistant' && hasRoleplayChatMarkup(text)) {
+      const markup = renderRoleplayChatMarkup(text, { escapeHtml: options.escapeHtml })
       return markup || renderNoemaStreamStatus(language)
     }
     return `<p>${options.escapeHtml(text)}</p>`
