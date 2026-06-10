@@ -112,7 +112,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   const chatModelOptions = new Map<string, string[]>()
   const chatModelLoading = new Set<string>()
 
-  shell?.classList.add('nav-compact')
   toast.className = 'chat-status-toast'
   toast.setAttribute('role', 'status')
   panel.appendChild(toast)
@@ -333,9 +332,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       case 'add-chat-model':
         void addChatModel()
         break
-      case 'toggle-nav-labels':
-        toggleNavLabels()
-        break
       case 'toggle-threads':
         toggleThreadsRail()
         break
@@ -381,18 +377,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       default:
         break
     }
-  }
-
-  function toggleNavLabels(): void {
-    if (!shell) {
-      return
-    }
-    const expanded = !shell.classList.contains('nav-expanded')
-    shell.classList.toggle('nav-expanded', expanded)
-    shell.classList.toggle('nav-compact', !expanded)
-    showToast(expanded
-      ? (options.getLanguage() === 'zh-CN' ? '导航文字已展开' : 'Navigation labels shown')
-      : (options.getLanguage() === 'zh-CN' ? '导航文字已收起' : 'Navigation labels hidden'))
   }
 
   function toggleThreadsRail(): void {
@@ -1273,12 +1257,29 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function syncLanguageControl(): void {
     const language = options.getLanguage()
+    syncNavLabels(language)
     languageButton?.setAttribute('aria-pressed', language === 'en-US' ? 'true' : 'false')
+    languageButton?.setAttribute('aria-label', language === 'zh-CN' ? '切换到英文' : 'Switch to Chinese')
     languageButton?.setAttribute('title', language === 'zh-CN' ? 'Switch to English' : '切换到中文')
     if (!languageMark) {
       return
     }
     languageMark.dataset.language = language
+  }
+
+  function syncNavLabels(language: ReturnType<ChatPanelOptions['getLanguage']>): void {
+    panel.querySelectorAll<HTMLElement>('[data-chat-label-zh][data-chat-label-en]').forEach((label) => {
+      label.textContent = language === 'zh-CN' ? label.dataset.chatLabelZh ?? '' : label.dataset.chatLabelEn ?? ''
+    })
+    navItems.forEach((item) => {
+      const label = item.querySelector<HTMLElement>('[data-chat-label-zh][data-chat-label-en]')
+      const text = label?.textContent?.trim()
+      if (!text) {
+        return
+      }
+      item.setAttribute('aria-label', text)
+      item.setAttribute('title', text)
+    })
   }
 
   async function hydrateChatResources(): Promise<void> {
