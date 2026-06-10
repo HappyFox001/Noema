@@ -45,6 +45,7 @@ export interface ChatCharacterContext {
   tags?: string[]
   instructions?: string
   sceneState?: Record<string, unknown>
+  canonMemory?: string[]
   narrativeSummaries?: Array<{
     startMessageIndex?: number
     endMessageIndex?: number
@@ -188,8 +189,21 @@ function formatCharacterContext(character: ChatCharacterContext): string {
   appendTag(lines, 'instructions', character.instructions)
   lines.push('</character>')
   appendSceneState(lines, character.sceneState)
+  appendCanonMemory(lines, character.canonMemory)
   appendNarrativeSummaries(lines, character.narrativeSummaries)
   return lines.join('\n')
+}
+
+function appendCanonMemory(lines: string[], memory: string[] | undefined): void {
+  const entries = memory?.map((item) => item.trim()).filter(Boolean) ?? []
+  if (!entries.length) {
+    return
+  }
+  lines.push('<canon_memory>')
+  for (const item of entries) {
+    lines.push(`<memory>${escapeXml(item)}</memory>`)
+  }
+  lines.push('</canon_memory>')
 }
 
 function appendSceneState(lines: string[], sceneState: Record<string, unknown> | undefined): void {

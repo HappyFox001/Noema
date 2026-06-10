@@ -573,7 +573,9 @@ declare global {
           name: Record<string, string>
           displayName: Record<string, string>
           description: Record<string, string>
+          story: Record<string, string>
           background: Record<string, string>
+          scene: Record<string, unknown>
           tag: Record<string, string[]>
           avatarImage: string
           bodyImage: string
@@ -588,6 +590,7 @@ declare global {
           title: Record<string, string>
           preview: Record<string, string>
           updatedLabel: Record<string, string>
+          sceneState?: Record<string, unknown>
           summaries?: Array<{
             id: string
             text: Record<string, string>
@@ -621,6 +624,7 @@ declare global {
         title: Record<string, string>
         preview: Record<string, string>
         updatedLabel: Record<string, string>
+        sceneState: unknown
         summaries?: unknown[]
         messages: unknown[]
       }) => Promise<{ success: boolean; error?: string }>
@@ -646,10 +650,18 @@ declare global {
           id?: string
           displayName?: string
           description?: string
+          story?: string
           background?: string
           firstMessage?: string
           tags?: string[]
           instructions?: string
+          sceneState?: Record<string, unknown>
+          canonMemory?: string[]
+          narrativeSummaries?: Array<{
+            startMessageIndex?: number
+            endMessageIndex?: number
+            text: string
+          }>
         }
       }) => Promise<{
         success: boolean
@@ -676,10 +688,18 @@ declare global {
           id?: string
           displayName?: string
           description?: string
+          story?: string
           background?: string
           firstMessage?: string
           tags?: string[]
           instructions?: string
+          sceneState?: Record<string, unknown>
+          canonMemory?: string[]
+          narrativeSummaries?: Array<{
+            startMessageIndex?: number
+            endMessageIndex?: number
+            text: string
+          }>
         }
       }, handlers?: {
         onDelta?: (delta: string) => void

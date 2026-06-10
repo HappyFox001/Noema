@@ -86,7 +86,11 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
       profileTitle.textContent = localizeChatText(character.displayName, language)
     }
     if (profileCopy) {
-      profileCopy.textContent = `${localizeChatText(character.description, language)}\n\n${localizeChatText(character.background, language)}`
+      profileCopy.textContent = [
+        localizeChatText(character.description, language),
+        localizeChatText(character.story, language),
+        localizeChatText(character.background, language),
+      ].filter(Boolean).join('\n\n')
     }
     if (portrait) {
       portrait.innerHTML = `

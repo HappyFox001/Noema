@@ -145,13 +145,22 @@ function rowToConversation(row: ChatConversationRow): StoredChatConversation {
     title: parseJsonRecord(row.title_json),
     preview: parseJsonRecord(row.preview_json),
     updatedLabel: parseJsonRecord(row.updated_label_json),
-    sceneState: parseJsonRecord(row.scene_state_json),
+    sceneState: parseJsonObject(row.scene_state_json),
     summaries: parseJsonArray(row.summaries_json),
     messages: parseJsonArray(row.messages_json),
   }
 }
 
 function parseJsonRecord(value: string): Record<string, string> {
+  try {
+    const parsed = JSON.parse(value)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function parseJsonObject(value: string): Record<string, unknown> {
   try {
     const parsed = JSON.parse(value)
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}

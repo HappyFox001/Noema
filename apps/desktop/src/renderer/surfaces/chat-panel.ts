@@ -627,6 +627,47 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
   }
 
+  function renderSceneStatePanel(conversation: ChatConversationSummary | undefined): void {
+    if (!sceneStatePanel || !conversation) {
+      return
+    }
+    const language = options.getLanguage()
+    const zh = language === 'zh-CN'
+    const scene = localizeSceneState(conversation.sceneState, language)
+    const location = String(scene.location || (zh ? '未设定' : 'Unset'))
+    const objective = String(scene.objective || (zh ? '未设定' : 'Unset'))
+    const status = String(scene.status || '')
+    const items = Array.isArray(scene.items) ? scene.items.map(String).filter(Boolean) : []
+    const rules = String(scene.rules || '')
+    sceneStatePanel.classList.toggle('is-collapsed', sceneStateCollapsed)
+    sceneStatePanel.innerHTML = `
+      <button class="chat-scene-state-head" type="button" data-chat-action="toggle-scene-state" aria-expanded="${sceneStateCollapsed ? 'false' : 'true'}">
+        <span>
+          <small>${options.escapeHtml(zh ? 'Scene state' : 'Scene state')}</small>
+          <strong>${options.escapeHtml(location)}</strong>
+        </span>
+        <em>${options.escapeHtml(zh ? '场景状态' : 'State')}</em>
+      </button>
+      <div class="chat-scene-state-body">
+        <div class="chat-scene-state-grid">
+          ${renderSceneStateItem(zh ? '目标' : 'Objective', objective)}
+          ${renderSceneStateItem(zh ? '状态' : 'Status', status || (zh ? '等待推进' : 'Waiting'))}
+        </div>
+        ${items.length ? `<div class="chat-scene-state-items">${items.map((item) => `<span>${options.escapeHtml(item)}</span>`).join('')}</div>` : ''}
+        ${rules ? `<p class="chat-scene-state-rules">${options.escapeHtml(rules)}</p>` : ''}
+      </div>
+    `
+  }
+
+  function renderSceneStateItem(label: string, value: string): string {
+    return `
+      <article>
+        <span>${options.escapeHtml(label)}</span>
+        <strong>${options.escapeHtml(value)}</strong>
+      </article>
+    `
+  }
+
   async function queueAssistantReply(userText: string, attachments: ChatMessageAttachment[] = []): Promise<void> {
     const conversation = getActiveMutableConversation()
     if (!conversation) {
@@ -1269,6 +1310,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       title: character.displayName,
       preview: character.firstMessage,
       updatedLabel: { 'zh-CN': '刚刚', 'en-US': 'Now' },
+      sceneState: character.scene,
       summaries: [],
       messages: [{
         id: `${character.id}-welcome-${Date.now()}`,
@@ -1481,6 +1523,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         settings.sceneImmersion
           ? '场景化体验已开启：可以使用角色背景、场景信息、示例对话和感官细节来推进故事。'
           : '场景化体验已关闭：不要主动扩写大段场景背景，优先保持直接、紧凑、围绕当前对话。',
+        '如果本轮导致当前地点、目标、道具或角色/环境状态发生变化，请在回复末尾追加 <scene_update>{"location":"...","objective":"...","items":["..."],"status":"..."}</scene_update>。只输出发生变化的字段，不要把 scene_update 写进正常叙事。',
         '</conversation_preferences>',
       ]
       : [
@@ -1491,6 +1534,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         settings.sceneImmersion
           ? 'Scene mode is enabled: use character background, scene context, example dialogue, and sensory detail to move the story forward.'
           : 'Scene mode is disabled: do not proactively expand long scene background; stay direct, compact, and centered on the current exchange.',
+        'If this turn changes the current location, objective, items, character state, or environment state, append <scene_update>{"location":"...","objective":"...","items":["..."],"status":"..."}</scene_update> at the end. Include only changed fields and do not include scene_update in normal prose.',
         '</conversation_preferences>',
       ]
     return outputLength.join('\n')
@@ -1954,6 +1998,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
 
+    if (eventTarget.closest<HTMLElement>('[data-chat-action="toggle-scene-state"]')) {
+      sceneStateCollapsed = !sceneStateCollapsed
+      renderSceneStatePanel(getActiveConversation(state))
+      return
+    }
+
     const sideAction = eventTarget.closest<HTMLElement>('[data-chat-side-action]')
     if (sideAction && panel.contains(sideAction)) {
       if (sideAction.dataset.chatSideAction === 'conversation-management') {
@@ -2153,6 +2203,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       title: conversation.title,
       preview: conversation.preview,
       updatedLabel: conversation.updatedLabel,
+      sceneState: conversation.sceneState,
       summaries: conversation.summaries.map((summary) => ({ ...summary })),
       messages: conversation.messages.map((messageItem) => ({
         ...messageItem,
