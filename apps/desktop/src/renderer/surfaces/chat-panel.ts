@@ -83,6 +83,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let lastDragY = 0
   const state = createInitialChatState()
   const panel = options.panel
+  const shell = panel.querySelector<HTMLElement>('.chat-shell')
   const navItems = Array.from(panel.querySelectorAll<HTMLButtonElement>('[data-chat-nav]'))
   const searchInput = panel.querySelector<HTMLInputElement>('.chat-search input')
   const modelList = panel.querySelector<HTMLElement>('.chat-model-list')
@@ -111,6 +112,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   const chatModelOptions = new Map<string, string[]>()
   const chatModelLoading = new Set<string>()
 
+  shell?.classList.add('nav-compact')
   toast.className = 'chat-status-toast'
   toast.setAttribute('role', 'status')
   panel.appendChild(toast)
@@ -331,6 +333,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       case 'add-chat-model':
         void addChatModel()
         break
+      case 'toggle-nav-labels':
+        toggleNavLabels()
+        break
+      case 'toggle-threads':
+        toggleThreadsRail()
+        break
       case 'close-chat-models':
         panel.dataset.chatView = 'session'
         navItems.forEach((item) => item.classList.toggle('active', item.dataset.chatNav === 'session'))
@@ -373,6 +381,29 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       default:
         break
     }
+  }
+
+  function toggleNavLabels(): void {
+    if (!shell) {
+      return
+    }
+    const expanded = !shell.classList.contains('nav-expanded')
+    shell.classList.toggle('nav-expanded', expanded)
+    shell.classList.toggle('nav-compact', !expanded)
+    showToast(expanded
+      ? (options.getLanguage() === 'zh-CN' ? '导航文字已展开' : 'Navigation labels shown')
+      : (options.getLanguage() === 'zh-CN' ? '导航文字已收起' : 'Navigation labels hidden'))
+  }
+
+  function toggleThreadsRail(): void {
+    if (!shell) {
+      return
+    }
+    const collapsed = !shell.classList.contains('threads-collapsed')
+    shell.classList.toggle('threads-collapsed', collapsed)
+    showToast(collapsed
+      ? (options.getLanguage() === 'zh-CN' ? '会话栏已收起' : 'Conversation rail collapsed')
+      : (options.getLanguage() === 'zh-CN' ? '会话栏已展开' : 'Conversation rail expanded'))
   }
 
   async function selectLocalMedia(): Promise<void> {
@@ -452,7 +483,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         void closeCameraCapture()
       }
       if (action === 'capture') {
-        captureCameraFrame(video)
+        captureCameraFrame(overlay.querySelector<HTMLVideoElement>('video'))
       }
     })
     return overlay
@@ -506,7 +537,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   function captureCameraFrame(video: HTMLVideoElement | null): void {
-    if (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || !video.videoWidth || !video.videoHeight) {
+    if (!video || !video.videoWidth || !video.videoHeight) {
       showToast(options.getLanguage() === 'zh-CN' ? '摄像头尚未准备好' : 'Camera is not ready')
       return
     }
