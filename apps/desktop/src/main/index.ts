@@ -1847,8 +1847,9 @@ let appSettings: AppSettings = {
     proxy: '',
     llmModels: [{ id: 'default-llm', modelName: '', apiKey: '', baseUrl: '' }],
     activeLLMId: 'default-llm',
-    chatModels: [{ id: 'default-chat', modelName: '', apiKey: '', baseUrl: '' }],
+    chatModels: [{ id: 'default-chat', modelType: 'llm', modelName: '', enabledModels: [], availableModels: [], apiKey: '', baseUrl: '' }],
     activeChatId: 'default-chat',
+    activeChatModelName: '',
     taskModels: [{ id: 'default-task', modelName: 'gemini-3.1-pro-preview', apiKey: '', baseUrl: '' }],
     activeTaskId: 'default-task',
     taskRuntime: {
@@ -1878,10 +1879,20 @@ function getActiveLLMConfig(): LLMModelConfig | null {
 
 function getChatModelConfig(): LLMModelConfig | null {
   const { chatModels, activeChatId } = appSettings.system
-  const config = chatModels.find(m => m.id === activeChatId)
-    || chatModels[0]
+  const llmChatModels = chatModels.filter(model => model.modelType !== 'image')
+  const config = llmChatModels.find(m => m.id === activeChatId)
+    || llmChatModels[0]
     || null
-  return config ? { ...config } : null
+  if (!config) {
+    return null
+  }
+  return {
+    id: config.id,
+    provider: config.provider as LLMModelConfig['provider'],
+    modelName: appSettings.system.activeChatModelName,
+    apiKey: config.apiKey,
+    baseUrl: config.baseUrl,
+  }
 }
 
 

@@ -2,17 +2,34 @@
  * Owns the standalone chat surface interactions and window mode transitions.
  */
 import claudeIconUrl from '@lobehub/icons-static-svg/icons/claude-color.svg?url'
+import adobeFireflyIconUrl from '@lobehub/icons-static-svg/icons/adobefirefly-color.svg?url'
+import alibabaCloudIconUrl from '@lobehub/icons-static-svg/icons/alibabacloud-color.svg?url'
+import automaticIconUrl from '@lobehub/icons-static-svg/icons/automatic-color.svg?url'
 import azureAIIconUrl from '@lobehub/icons-static-svg/icons/azureai-color.svg?url'
+import baiduCloudIconUrl from '@lobehub/icons-static-svg/icons/baiducloud-color.svg?url'
+import comfyUIIconUrl from '@lobehub/icons-static-svg/icons/comfyui-color.svg?url'
 import deepseekIconUrl from '@lobehub/icons-static-svg/icons/deepseek-color.svg?url'
+import falIconUrl from '@lobehub/icons-static-svg/icons/fal-color.svg?url'
 import geminiIconUrl from '@lobehub/icons-static-svg/icons/gemini-color.svg?url'
 import groqIconUrl from '@lobehub/icons-static-svg/icons/groq.svg?url'
+import huggingFaceIconUrl from '@lobehub/icons-static-svg/icons/huggingface-color.svg?url'
+import ideogramIconUrl from '@lobehub/icons-static-svg/icons/ideogram.svg?url'
 import newAPIIconUrl from '@lobehub/icons-static-svg/icons/newapi-color.svg?url'
 import ollamaIconUrl from '@lobehub/icons-static-svg/icons/ollama.svg?url'
 import openAIIconUrl from '@lobehub/icons-static-svg/icons/openai.svg?url'
 import qwenIconUrl from '@lobehub/icons-static-svg/icons/qwen-color.svg?url'
+import recraftIconUrl from '@lobehub/icons-static-svg/icons/recraft.svg?url'
+import replicateIconUrl from '@lobehub/icons-static-svg/icons/replicate.svg?url'
+import siliconCloudIconUrl from '@lobehub/icons-static-svg/icons/siliconcloud-color.svg?url'
+import stabilityIconUrl from '@lobehub/icons-static-svg/icons/stability-color.svg?url'
+import tencentCloudIconUrl from '@lobehub/icons-static-svg/icons/tencentcloud-color.svg?url'
+import volcengineIconUrl from '@lobehub/icons-static-svg/icons/volcengine-color.svg?url'
 import {
+  IMAGE_PROVIDER_CATALOG,
   LLM_PROVIDER_CATALOG,
+  getImageProviderCatalogEntry,
   getLLMProviderCatalogEntry,
+  type ImageProviderType,
   type LLMProviderType,
 } from '../../main/model-provider-catalog'
 import {
@@ -35,8 +52,12 @@ type ChatResizeEdge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
 
 interface ChatModelConfig {
   id: string
+  modelType: 'llm' | 'image'
   provider?: string
   modelName: string
+  enabledModels: string[]
+  availableModels: string[]
+  modelsFetchedAt?: number
   apiKey: string
   baseUrl: string
 }
@@ -44,6 +65,7 @@ interface ChatModelConfig {
 interface ChatSystemConfig {
   chatModels: ChatModelConfig[]
   activeChatId: string
+  activeChatModelName: string
   [key: string]: unknown
 }
 
@@ -140,6 +162,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let openChatModelDropdownId = ''
   let openChatProviderDropdownId = ''
   let openChatRuntimeModelPicker = false
+  let openChatModelTypePicker = false
   let activeChatRuntimeProvider = ''
   let pendingAttachments: PendingChatAttachment[] = []
   let cameraStream: MediaStream | null = null
@@ -388,7 +411,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         void createChatConversation()
         break
       case 'add-chat-model':
-        void addChatModel()
+        openChatModelTypePicker = !openChatModelTypePicker
+        openChatModelDropdownId = ''
+        openChatProviderDropdownId = ''
+        renderChatModelConfig()
         break
       case 'toggle-threads':
         toggleThreadsRail()
@@ -1033,10 +1059,18 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         ...settings.system,
         chatModels: settings.system.chatModels.length ? settings.system.chatModels.map((model) => ({ ...model })) : [createDefaultChatModel()],
         activeChatId: settings.system.activeChatId || settings.system.chatModels[0]?.id || 'default-chat',
+        activeChatModelName: settings.system.activeChatModelName,
       }
       if (!chatSystemConfig.chatModels.some((model) => model.id === chatSystemConfig!.activeChatId)) {
         chatSystemConfig.activeChatId = chatSystemConfig.chatModels[0]?.id || ''
       }
+      chatModelOptions.clear()
+      chatSystemConfig.chatModels.forEach((model) => {
+        const cachedModels = normalizeModelNameList(model.availableModels)
+        if (cachedModels.length) {
+          chatModelOptions.set(model.id, cachedModels)
+        }
+      })
       renderChatModelConfig()
       renderChatRuntimeModelPicker()
     } catch (error: any) {
@@ -1051,37 +1085,39 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
     const groups = getUsableChatModelGroups(config)
-    const activeModel = groups.flatMap((group) => group.models).find((model) => model.id === config.activeChatId)
+    const activeModel = groups.flatMap((group) => group.models).find((model) => model.api.id === config.activeChatId && model.modelName === getActiveChatModelName(config))
       ?? groups[0]?.models[0]
       ?? null
-    if (activeModel && config.activeChatId !== activeModel.id) {
-      config.activeChatId = activeModel.id
+    if (activeModel && (config.activeChatId !== activeModel.api.id || getActiveChatModelName(config) !== activeModel.modelName)) {
+      config.activeChatId = activeModel.api.id
+      config.activeChatModelName = activeModel.modelName
+      activeModel.api.modelName = activeModel.modelName
       void saveChatModelConfig()
     }
     const activeProvider = activeChatRuntimeProvider && groups.some((group) => group.provider.value === activeChatRuntimeProvider)
       ? activeChatRuntimeProvider
-      : getProviderEntry(activeModel?.provider).value
+      : getLLMProviderEntry(activeModel?.provider).value
     activeChatRuntimeProvider = activeProvider
     const activeProviderGroup = groups.find((group) => group.provider.value === activeProvider) ?? groups[0]
     runtimeModelPicker.innerHTML = `
       <div class="chat-runtime-model-shell ${openChatRuntimeModelPicker ? 'open' : ''}">
         <button class="chat-runtime-model-current" type="button" data-chat-runtime-action="toggle-model-picker" ${groups.length ? '' : 'disabled'}>
-          <span class="chat-runtime-model-icon">${activeModel ? renderChatModelLogo(activeModel) : renderProviderLogo('openai-compatible')}</span>
+          <span class="chat-runtime-model-icon">${activeModel ? renderChatModelLogo(activeModel.api) : renderProviderLogo('openai-compatible')}</span>
           <span class="chat-runtime-model-copy">
             <strong>${options.escapeHtml(activeModel?.modelName || (options.getLanguage() === 'zh-CN' ? '无模型' : 'No model'))}</strong>
-            <small>${options.escapeHtml(activeModel ? getProviderEntry(activeModel.provider).label : (options.getLanguage() === 'zh-CN' ? '模型页添加' : 'Add in models'))}</small>
+            <small>${options.escapeHtml(activeModel ? getLLMProviderEntry(activeModel.api.provider).label : (options.getLanguage() === 'zh-CN' ? '模型页添加' : 'Add in models'))}</small>
           </span>
           <span class="chat-runtime-model-chevron"></span>
         </button>
-        ${openChatRuntimeModelPicker ? renderChatRuntimeModelMenu(groups, activeProviderGroup, activeModel?.id || '') : ''}
+        ${openChatRuntimeModelPicker ? renderChatRuntimeModelMenu(groups, activeProviderGroup, activeModel) : ''}
       </div>
     `
   }
 
   function renderChatRuntimeModelMenu(
-    groups: Array<{ provider: ReturnType<typeof getProviderEntry>; models: ChatModelConfig[] }>,
-    activeProviderGroup: { provider: ReturnType<typeof getProviderEntry>; models: ChatModelConfig[] } | undefined,
-    activeModelId: string
+    groups: ChatRuntimeModelGroup[],
+    activeProviderGroup: ChatRuntimeModelGroup | undefined,
+    activeModel: ChatRuntimeModelOption | null
   ): string {
     if (!groups.length || !activeProviderGroup) {
       return `
@@ -1103,9 +1139,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         </div>
         <div class="chat-runtime-model-options">
           ${activeProviderGroup.models.map((model) => `
-            <button class="${model.id === activeModelId ? 'selected' : ''}" type="button" data-chat-runtime-model-id="${options.escapeHtml(model.id)}">
+            <button class="${activeModel && model.api.id === activeModel.api.id && model.modelName === activeModel.modelName ? 'selected' : ''}" type="button" data-chat-runtime-model-id="${options.escapeHtml(model.api.id)}" data-chat-runtime-model-name="${options.escapeHtml(model.modelName)}">
               <strong>${options.escapeHtml(model.modelName)}</strong>
-              <small>${options.escapeHtml(getProviderEntry(model.provider).label)}</small>
+              <small>${options.escapeHtml(getLLMProviderEntry(model.api.provider).label)}</small>
             </button>
           `).join('')}
         </div>
@@ -1113,22 +1149,32 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     `
   }
 
-  function getUsableChatModelGroups(config: ChatSystemConfig): Array<{ provider: ReturnType<typeof getProviderEntry>; models: ChatModelConfig[] }> {
-    const grouped = new Map<string, { provider: ReturnType<typeof getProviderEntry>; models: ChatModelConfig[] }>()
+  type ChatRuntimeModelOption = { api: ChatModelConfig; modelName: string }
+  type ChatRuntimeModelGroup = { provider: ReturnType<typeof getLLMProviderEntry>; models: ChatRuntimeModelOption[] }
+
+  function getUsableChatModelGroups(config: ChatSystemConfig): ChatRuntimeModelGroup[] {
+    const grouped = new Map<string, ChatRuntimeModelGroup>()
     config.chatModels
-      .filter(isUsableChatModel)
       .forEach((model) => {
-        const provider = getProviderEntry(model.provider)
+        if (!isUsableChatApi(model)) {
+          return
+        }
+        const provider = getLLMProviderEntry(model.provider)
         const group = grouped.get(provider.value) ?? { provider, models: [] }
-        group.models.push(model)
+        getEnabledModelNames(model).forEach((modelName) => {
+          group.models.push({ api: model, modelName })
+        })
         grouped.set(provider.value, group)
       })
     return [...grouped.values()]
   }
 
-  function isUsableChatModel(model: ChatModelConfig): boolean {
-    const provider = getProviderEntry(model.provider)
-    const hasModelName = Boolean(model.modelName.trim())
+  function isUsableChatApi(model: ChatModelConfig): boolean {
+    if (getChatModelType(model) !== 'llm') {
+      return false
+    }
+    const provider = getLLMProviderEntry(model.provider)
+    const hasModelName = getEnabledModelNames(model).length > 0
     const hasCredential = Boolean(model.apiKey.trim()) || provider.value === 'ollama'
     const hasEndpoint = Boolean(model.baseUrl.trim()) || provider.value === 'openai'
     return hasModelName && hasCredential && hasEndpoint
@@ -1595,39 +1641,126 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     modelList.innerHTML = `
       <div class="chat-model-list-head">
         <span>${options.escapeHtml(options.getLanguage() === 'zh-CN' ? 'API 路由' : 'API routes')}</span>
-        <small>${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '管理 provider、模型名、密钥和地址。' : 'Manage provider, model name, key, and URL.')}</small>
+        <small>${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '管理 LLM / 生图 provider、模型名、密钥和地址。' : 'Manage LLM / image providers, model name, key, and URL.')}</small>
       </div>
+      ${openChatModelTypePicker ? renderChatModelTypePicker() : ''}
       ${config.chatModels.map((model) => renderChatModelCard(model, config)).join('')}
+    `
+  }
+
+  function renderChatModelTypePicker(): string {
+    const types: Array<{ value: 'llm' | 'image'; label: string; description: string }> = options.getLanguage() === 'zh-CN'
+      ? [
+          { value: 'llm', label: 'LLM 模型', description: '对话、角色回复、文本推理' },
+          { value: 'image', label: '生图模型', description: '图片生成、编辑、本地工作流' },
+        ]
+      : [
+          { value: 'llm', label: 'LLM model', description: 'Chat, role replies, text reasoning' },
+          { value: 'image', label: 'Image model', description: 'Image generation, editing, local workflows' },
+        ]
+    return `
+      <div class="chat-api-type-picker" role="dialog" aria-label="${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '选择 API 类型' : 'Choose API type')}">
+        ${types.map((type) => `
+          <button class="chat-api-type-option" type="button" data-chat-add-model-type="${type.value}">
+            <span class="chat-model-type-dot ${type.value}"></span>
+            <span>
+              <strong>${options.escapeHtml(type.label)}</strong>
+              <small>${options.escapeHtml(type.description)}</small>
+            </span>
+          </button>
+        `).join('')}
+      </div>
     `
   }
 
   function renderChatModelCard(model: ChatModelConfig, config: ChatSystemConfig): string {
     const canDelete = config.chatModels.length > 1
-    const providerEntry = getProviderEntry(model.provider)
+    const providerEntry = getChatProviderEntry(model)
     return `
       <article class="chat-model-card" data-chat-model-id="${options.escapeHtml(model.id)}">
-        <div class="chat-model-route">
+        <div class="chat-api-config">
           <span class="chat-model-logo">${renderChatModelLogo(model)}</span>
-          <div class="chat-model-title">
-            ${renderChatModelCombobox(model, providerEntry.defaultModel || 'model-name')}
-            <span class="chat-model-provider-name">${options.escapeHtml(providerEntry.label)}</span>
+          <div class="chat-api-config-main">
+            ${renderChatProviderSelect(model)}
+            <div class="chat-model-fields compact">
+              <div class="chat-model-field">
+                <label>${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '密钥' : 'Key')}</label>
+                <input class="chat-model-input" type="password" data-chat-model-field="apiKey" value="${options.escapeHtml(model.apiKey)}" placeholder="${options.escapeHtml(providerEntry.defaultApiKeyPlaceholder)}" />
+              </div>
+              <div class="chat-model-field">
+                <label>${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '地址' : 'URL')}</label>
+                <input class="chat-model-input" type="text" data-chat-model-field="baseUrl" value="${options.escapeHtml(model.baseUrl)}" placeholder="${options.escapeHtml(providerEntry.defaultBaseUrl)}" />
+              </div>
+            </div>
           </div>
         </div>
-        ${renderChatProviderSelect(model)}
-        <div class="chat-model-fields">
-          <div class="chat-model-field">
-            <label>${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '密钥' : 'Key')}</label>
-            <input class="chat-model-input" type="password" data-chat-model-field="apiKey" value="${options.escapeHtml(model.apiKey)}" placeholder="${options.escapeHtml(providerEntry.defaultApiKeyPlaceholder)}" />
-          </div>
-          <div class="chat-model-field">
-            <label>${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '地址' : 'URL')}</label>
-            <input class="chat-model-input" type="text" data-chat-model-field="baseUrl" value="${options.escapeHtml(model.baseUrl)}" placeholder="${options.escapeHtml(providerEntry.defaultBaseUrl)}" />
-          </div>
-          <div class="chat-model-actions" aria-label="Model actions">
-            ${canDelete ? `<button class="danger" type="button" data-chat-model-action="delete">${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '移除' : 'Remove')}</button>` : ''}
-          </div>
+        ${renderChatModelTypeBadge(model)}
+        ${renderChatApiModelSelector(model)}
+        <div class="chat-model-actions" aria-label="Model actions">
+          ${canDelete ? `<button class="danger" type="button" data-chat-model-action="delete">${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '移除' : 'Remove')}</button>` : ''}
         </div>
       </article>
+    `
+  }
+
+  function renderChatApiModelSelector(model: ChatModelConfig): string {
+    const type = getChatModelType(model)
+    if (type === 'image') {
+      return `
+        <div class="chat-api-models">
+          <div class="chat-api-models-head">
+            <strong>${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '模型' : 'Model')}</strong>
+          </div>
+          ${renderChatModelCombobox(model, getChatProviderEntry(model).defaultModel || 'model-name')}
+        </div>
+      `
+    }
+
+    const availableModels = getAvailableModelNames(model)
+    const enabledModels = getEnabledModelNames(model)
+    const fetchedLabel = model.modelsFetchedAt
+      ? formatModelCacheTime(model.modelsFetchedAt, options.getLanguage())
+      : (options.getLanguage() === 'zh-CN' ? '未缓存' : 'No cache')
+    const manualName = model.modelName.trim()
+    return `
+      <div class="chat-api-models">
+        <div class="chat-api-models-head">
+          <strong>${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '模型' : 'Models')}</strong>
+          <span>${options.escapeHtml(fetchedLabel)}</span>
+          <button class="chat-model-fetch inline" type="button" data-chat-model-action="get-models">
+            ${options.escapeHtml(chatModelLoading.has(model.id) ? (options.getLanguage() === 'zh-CN' ? '刷新中...' : 'Refreshing...') : (availableModels.length ? (options.getLanguage() === 'zh-CN' ? '刷新' : 'Refresh') : 'Get models'))}
+          </button>
+        </div>
+        ${availableModels.length
+          ? `<div class="chat-api-model-options">
+              ${availableModels.map((name) => `
+                <button class="${enabledModels.includes(name) ? 'selected' : ''}" type="button" data-chat-model-action="toggle-enabled-model" data-chat-model-name="${options.escapeHtml(name)}">
+                  <span>${enabledModels.includes(name) ? '✓' : ''}</span>
+                  <strong>${options.escapeHtml(name)}</strong>
+                </button>
+              `).join('')}
+            </div>`
+          : `<div class="chat-api-model-manual">
+              ${renderChatModelCombobox(model, getChatProviderEntry(model).defaultModel || 'model-name')}
+              <small>${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '可手动输入一个模型，或点击 Get models 获取并缓存列表。' : 'Enter one model manually, or click Get models to fetch and cache the list.')}</small>
+            </div>`}
+        ${manualName && availableModels.length && !availableModels.includes(manualName)
+          ? `<button class="chat-api-model-add-manual" type="button" data-chat-model-action="toggle-enabled-model" data-chat-model-name="${options.escapeHtml(manualName)}">${options.escapeHtml(options.getLanguage() === 'zh-CN' ? `添加手动模型：${manualName}` : `Add manual model: ${manualName}`)}</button>`
+          : ''}
+      </div>
+    `
+  }
+
+  function renderChatModelTypeBadge(model: ChatModelConfig): string {
+    const type = getChatModelType(model)
+    const label = type === 'image'
+      ? (options.getLanguage() === 'zh-CN' ? '生图模型' : 'Image')
+      : 'LLM'
+    return `
+      <div class="chat-model-type-badge" aria-label="Model type">
+        <span class="chat-model-type-dot ${type}"></span>
+        <strong>${options.escapeHtml(label)}</strong>
+      </div>
     `
   }
 
@@ -1643,6 +1776,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   function renderChatModelDropdown(model: ChatModelConfig): string {
+    if (getChatModelType(model) === 'image') {
+      return `
+        <div class="chat-model-dropdown">
+          <span class="chat-model-dropdown-empty">${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '生图模型请按厂商文档手动填写模型名或工作流名称。' : 'For image models, enter the model or workflow name manually.')}</span>
+        </div>
+      `
+    }
     const loading = chatModelLoading.has(model.id)
     const models = chatModelOptions.get(model.id) || []
     const emptyText = options.getLanguage() === 'zh-CN'
@@ -1667,12 +1807,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   function renderChatProviderSelect(model: ChatModelConfig): string {
-    const current = getProviderEntry(model.provider)
+    const current = getChatProviderEntry(model)
     const open = openChatProviderDropdownId === model.id
     return `
       <div class="chat-provider-select ${open ? 'open' : ''}">
         <button class="chat-provider-current" type="button" data-chat-model-action="toggle-providers" aria-label="${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '选择服务商' : 'Choose provider')}">
-          <span class="chat-provider-current-icon">${renderProviderLogo(current.value)}</span>
+          <span class="chat-provider-current-icon">${renderChatProviderLogo(model)}</span>
           <span class="chat-provider-current-copy">
             <strong>${options.escapeHtml(current.label)}</strong>
             <small>${options.escapeHtml(current.value)}</small>
@@ -1680,18 +1820,20 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           <span class="chat-provider-current-chevron"></span>
         </button>
         ${open ? `<div class="chat-provider-menu" aria-label="Provider">
-          ${LLM_PROVIDER_CATALOG.map((provider) => renderChatProviderOption(provider.value, model)).join('')}
+          ${getChatProviderCatalog(model).map((provider) => renderChatProviderOption(provider.value, model)).join('')}
         </div>` : ''}
       </div>
     `
   }
 
-  function renderChatProviderOption(provider: LLMProviderType, model: ChatModelConfig): string {
-    const selected = getProviderEntry(model.provider).value === provider
-    const entry = getLLMProviderCatalogEntry(provider)
+  function renderChatProviderOption(provider: LLMProviderType | ImageProviderType, model: ChatModelConfig): string {
+    const selected = getChatProviderEntry(model).value === provider
+    const entry = getChatModelType(model) === 'image'
+      ? getImageProviderCatalogEntry(provider)
+      : getLLMProviderCatalogEntry(provider)
     return `
       <button class="chat-provider-option ${selected ? 'selected' : ''}" type="button" title="${options.escapeHtml(entry.label)}" data-chat-provider="${options.escapeHtml(provider)}">
-        ${renderProviderLogo(provider)}
+        ${getChatModelType(model) === 'image' ? renderImageProviderLogo(provider as ImageProviderType) : renderProviderLogo(provider as LLMProviderType)}
         <span>
           <strong>${options.escapeHtml(entry.label)}</strong>
           <small>${options.escapeHtml(entry.value)}</small>
@@ -1709,32 +1851,38 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       ...settings.system,
       chatModels: settings.system.chatModels.map((model) => ({ ...model })),
       activeChatId: settings.system.activeChatId,
+      activeChatModelName: settings.system.activeChatModelName,
     }
     renderChatRuntimeModelPicker()
   }
 
-  async function selectRuntimeChatModel(id: string): Promise<void> {
-    if (!chatSystemConfig || !chatSystemConfig.chatModels.some((model) => model.id === id && isUsableChatModel(model))) {
+  async function selectRuntimeChatModel(id: string, modelName: string): Promise<void> {
+    const api = chatSystemConfig?.chatModels.find((model) => model.id === id)
+    if (!chatSystemConfig || !api || !isUsableChatApi(api) || !getEnabledModelNames(api).includes(modelName)) {
       return
     }
     chatSystemConfig.activeChatId = id
+    chatSystemConfig.activeChatModelName = modelName
+    api.modelName = modelName
     openChatRuntimeModelPicker = false
     await saveChatModelConfig()
     renderChatRuntimeModelPicker()
   }
 
-  async function addChatModel(): Promise<void> {
+  async function addChatModel(modelType: 'llm' | 'image' = 'llm'): Promise<void> {
     if (!chatSystemConfig) {
       await loadChatModelConfig()
     }
     if (!chatSystemConfig) {
       return
     }
-    const nextModel = createDefaultChatModel(`chat-${Date.now()}`)
+    const nextModel = createDefaultChatModel(`chat-${Date.now()}`, modelType)
     chatSystemConfig.chatModels.push(nextModel)
     if (!chatSystemConfig.activeChatId) {
       chatSystemConfig.activeChatId = nextModel.id
+      chatSystemConfig.activeChatModelName = nextModel.enabledModels[0] || ''
     }
+    openChatModelTypePicker = false
     await saveChatModelConfig()
     renderChatModelConfig()
     renderChatRuntimeModelPicker()
@@ -1751,7 +1899,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (field === 'id') {
       return
     }
-    model[field] = value
+    ;(model[field] as string) = value
+    if (field === 'modelName' && value.trim()) {
+      model.enabledModels = mergeModelNames(model.enabledModels, [value.trim()])
+    }
     await saveChatModelConfig()
     renderChatModelConfig()
     renderChatRuntimeModelPicker()
@@ -1765,9 +1916,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!model) {
       return
     }
-    const entry = getProviderEntry(provider)
+    const entry = getChatModelType(model) === 'image'
+      ? getImageProviderCatalogEntry(provider)
+      : getLLMProviderCatalogEntry(provider)
     model.provider = entry.value
     model.modelName = model.modelName.trim() || entry.defaultModel
+    model.enabledModels = [model.modelName]
+    model.availableModels = []
+    model.modelsFetchedAt = undefined
     model.baseUrl = entry.defaultBaseUrl
     openChatProviderDropdownId = ''
     await saveChatModelConfig()
@@ -1783,6 +1939,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!model || chatModelLoading.has(id)) {
       return
     }
+    if (getChatModelType(model) === 'image') {
+      showToast(options.getLanguage() === 'zh-CN' ? '生图模型请手动填写模型名或工作流名称' : 'Enter image model or workflow names manually')
+      return
+    }
     openChatModelDropdownId = id
     chatModelLoading.add(id)
     renderChatModelConfig()
@@ -1795,10 +1955,15 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       if (!response.success) {
         throw new Error(response.error || 'Failed to get models')
       }
-      chatModelOptions.set(id, response.models || [])
-      if (!response.models?.length) {
+      const models = normalizeModelNameList(response.models || [])
+      chatModelOptions.set(id, models)
+      model.availableModels = models
+      model.modelsFetchedAt = Date.now()
+      model.enabledModels = mergeModelNames(model.enabledModels, getEnabledModelNames(model).length ? [] : models.slice(0, 1))
+      if (!models.length) {
         showToast(options.getLanguage() === 'zh-CN' ? '没有返回可用模型' : 'No models returned')
       }
+      await saveChatModelConfig()
     } catch (error: any) {
       showToast(error?.message || String(error))
     } finally {
@@ -1808,6 +1973,32 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
   }
 
+  async function toggleChatApiEnabledModel(id: string, modelName: string): Promise<void> {
+    if (!chatSystemConfig) {
+      return
+    }
+    const model = chatSystemConfig.chatModels.find((item) => item.id === id)
+    const name = modelName.trim()
+    if (!model || !name) {
+      return
+    }
+    const current = getEnabledModelNames(model)
+    const next = current.includes(name)
+      ? current.filter((item) => item !== name)
+      : [...current, name]
+    model.enabledModels = next.length ? next : [name]
+    model.availableModels = mergeModelNames(model.availableModels, [name])
+    if (!model.enabledModels.includes(model.modelName)) {
+      model.modelName = model.enabledModels[0] || ''
+    }
+    if (chatSystemConfig.activeChatId === id && !model.enabledModels.includes(getActiveChatModelName(chatSystemConfig))) {
+      chatSystemConfig.activeChatModelName = model.modelName
+    }
+    await saveChatModelConfig()
+    renderChatModelConfig()
+    renderChatRuntimeModelPicker()
+  }
+
   async function deleteChatModel(id: string): Promise<void> {
     if (!chatSystemConfig || chatSystemConfig.chatModels.length <= 1) {
       return
@@ -1815,6 +2006,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     chatSystemConfig.chatModels = chatSystemConfig.chatModels.filter((model) => model.id !== id)
     if (chatSystemConfig.activeChatId === id) {
       chatSystemConfig.activeChatId = chatSystemConfig.chatModels[0]?.id || ''
+      chatSystemConfig.activeChatModelName = chatSystemConfig.chatModels[0]?.enabledModels[0] || ''
     }
     chatModelOptions.delete(id)
     if (openChatModelDropdownId === id) {
@@ -2075,7 +2267,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
     const runtimeModel = eventTarget.closest<HTMLElement>('[data-chat-runtime-model-id]')
     if (runtimeModel && panel.contains(runtimeModel)) {
-      void selectRuntimeChatModel(runtimeModel.dataset.chatRuntimeModelId || '')
+      void selectRuntimeChatModel(runtimeModel.dataset.chatRuntimeModelId || '', runtimeModel.dataset.chatRuntimeModelName || '')
       return
     }
 
@@ -2099,8 +2291,20 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       if (modelId && modelAction.dataset.chatModelAction === 'choose-model') {
         void updateChatModel(modelId, 'modelName', modelAction.dataset.chatModelName || '')
       }
+      if (modelId && modelAction.dataset.chatModelAction === 'toggle-enabled-model') {
+        void toggleChatApiEnabledModel(modelId, modelAction.dataset.chatModelName || '')
+      }
       if (modelId && modelAction.dataset.chatModelAction === 'delete') {
         void deleteChatModel(modelId)
+      }
+      return
+    }
+
+    const addModelTypeAction = eventTarget.closest<HTMLElement>('[data-chat-add-model-type]')
+    if (addModelTypeAction && panel.contains(addModelTypeAction)) {
+      const modelType = addModelTypeAction.dataset.chatAddModelType
+      if (modelType === 'llm' || modelType === 'image') {
+        void addChatModel(modelType)
       }
       return
     }
@@ -2261,12 +2465,17 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 }
 
-function createDefaultChatModel(id = 'default-chat'): ChatModelConfig {
-  const provider = getLLMProviderCatalogEntry('openai-compatible')
+function createDefaultChatModel(id = 'default-chat', modelType: 'llm' | 'image' = 'llm'): ChatModelConfig {
+  const provider = modelType === 'image'
+    ? getImageProviderCatalogEntry('openai-image')
+    : getLLMProviderCatalogEntry('openai-compatible')
   return {
     id,
+    modelType,
     provider: provider.value,
     modelName: provider.defaultModel,
+    enabledModels: provider.defaultModel ? [provider.defaultModel] : [],
+    availableModels: [],
     apiKey: '',
     baseUrl: provider.defaultBaseUrl,
   }
@@ -2375,20 +2584,90 @@ function getStreamRevealSliceSize(pending: string): number {
   return 5
 }
 
-function getProviderEntry(provider: string | undefined) {
+function getChatModelType(model: ChatModelConfig | undefined): 'llm' | 'image' {
+  return model?.modelType ?? 'llm'
+}
+
+function getActiveChatModelName(config: ChatSystemConfig): string {
+  return config.activeChatModelName.trim()
+}
+
+function getEnabledModelNames(model: ChatModelConfig | undefined): string[] {
+  if (!model) {
+    return []
+  }
+  return normalizeModelNameList(model.enabledModels)
+}
+
+function getAvailableModelNames(model: ChatModelConfig): string[] {
+  return normalizeModelNameList(model.availableModels)
+}
+
+function normalizeModelNameList(value: unknown): string[] {
+  const list = Array.isArray(value)
+    ? value.map((item) => typeof item === 'string' ? item.trim() : '').filter(Boolean)
+    : []
+  return [...new Set(list)]
+}
+
+function mergeModelNames(current: unknown, additions: unknown): string[] {
+  return normalizeModelNameList([
+    ...normalizeModelNameList(current),
+    ...normalizeModelNameList(additions),
+  ])
+}
+
+function formatModelCacheTime(value: number, language: 'zh-CN' | 'en-US'): string {
+  if (!Number.isFinite(value) || value <= 0) {
+    return language === 'zh-CN' ? '未缓存' : 'No cache'
+  }
+  const text = new Date(value).toLocaleString(language === 'zh-CN' ? 'zh-CN' : 'en-US', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+  return language === 'zh-CN' ? `缓存 ${text}` : `Cached ${text}`
+}
+
+function getLLMProviderEntry(provider: string | undefined) {
   return getLLMProviderCatalogEntry(provider as LLMProviderType | undefined)
+}
+
+function getChatProviderEntry(model: ChatModelConfig) {
+  return getChatModelType(model) === 'image'
+    ? getImageProviderCatalogEntry(model.provider)
+    : getLLMProviderEntry(model.provider)
+}
+
+function getChatProviderCatalog(model: ChatModelConfig) {
+  return getChatModelType(model) === 'image' ? IMAGE_PROVIDER_CATALOG : LLM_PROVIDER_CATALOG
 }
 
 function renderChatModelLogo(model: ChatModelConfig | undefined): string {
   if (!model) {
     return renderProviderLogo('openai-compatible')
   }
-  const provider = getProviderEntry(model.provider).value
-  return renderProviderLogo(provider)
+  const provider = getChatProviderEntry(model).value
+  return getChatModelType(model) === 'image'
+    ? renderImageProviderLogo(provider as ImageProviderType)
+    : renderProviderLogo(provider as LLMProviderType)
+}
+
+function renderChatProviderLogo(model: ChatModelConfig): string {
+  const provider = getChatProviderEntry(model).value
+  return getChatModelType(model) === 'image'
+    ? renderImageProviderLogo(provider as ImageProviderType)
+    : renderProviderLogo(provider as LLMProviderType)
 }
 
 function renderProviderLogo(provider: LLMProviderType): string {
   const logo = getProviderLogo(provider)
+  return `<img src="${logo.src}" alt="${logo.alt}" />`
+}
+
+function renderImageProviderLogo(provider: ImageProviderType): string {
+  const logo = getImageProviderLogo(provider)
   return `<img src="${logo.src}" alt="${logo.alt}" />`
 }
 
@@ -2413,5 +2692,43 @@ function getProviderLogo(provider: LLMProviderType): { src: string; alt: string 
     case 'openai':
     default:
       return { src: openAIIconUrl, alt: 'OpenAI' }
+  }
+}
+
+function getImageProviderLogo(provider: ImageProviderType): { src: string; alt: string } {
+  switch (provider) {
+    case 'google-imagen':
+      return { src: geminiIconUrl, alt: 'Google Imagen' }
+    case 'stability':
+      return { src: stabilityIconUrl, alt: 'Stability AI' }
+    case 'replicate':
+      return { src: replicateIconUrl, alt: 'Replicate' }
+    case 'fal':
+      return { src: falIconUrl, alt: 'fal.ai' }
+    case 'comfyui':
+      return { src: comfyUIIconUrl, alt: 'ComfyUI' }
+    case 'automatic1111':
+      return { src: automaticIconUrl, alt: 'AUTOMATIC1111' }
+    case 'aliyun-bailian':
+      return { src: alibabaCloudIconUrl, alt: '阿里云百炼' }
+    case 'volcengine-ark':
+      return { src: volcengineIconUrl, alt: '火山方舟' }
+    case 'tencent-hunyuan':
+      return { src: tencentCloudIconUrl, alt: '腾讯混元' }
+    case 'baidu-qianfan':
+      return { src: baiduCloudIconUrl, alt: '百度千帆' }
+    case 'siliconflow':
+      return { src: siliconCloudIconUrl, alt: 'SiliconFlow' }
+    case 'huggingface':
+      return { src: huggingFaceIconUrl, alt: 'Hugging Face' }
+    case 'adobe-firefly':
+      return { src: adobeFireflyIconUrl, alt: 'Adobe Firefly' }
+    case 'ideogram':
+      return { src: ideogramIconUrl, alt: 'Ideogram' }
+    case 'recraft':
+      return { src: recraftIconUrl, alt: 'Recraft' }
+    case 'openai-image':
+    default:
+      return { src: openAIIconUrl, alt: 'OpenAI Images' }
   }
 }

@@ -246,8 +246,9 @@ declare global {
           proxy: string
           llmModels: Array<{ id: string; provider?: string; modelName: string; apiKey: string; baseUrl: string }>
           activeLLMId: string
-          chatModels: Array<{ id: string; provider?: string; modelName: string; apiKey: string; baseUrl: string }>
+          chatModels: Array<{ id: string; modelType: 'llm' | 'image'; provider?: string; modelName: string; enabledModels: string[]; availableModels: string[]; modelsFetchedAt?: number; apiKey: string; baseUrl: string }>
           activeChatId: string
+          activeChatModelName: string
           taskModels: Array<{ id: string; provider?: string; transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'; modelName: string; apiKey: string; baseUrl: string }>
           activeTaskId: string
           taskRuntime: any
@@ -271,8 +272,9 @@ declare global {
           proxy: string
           llmModels: Array<{ id: string; provider?: string; modelName: string; apiKey: string; baseUrl: string }>
           activeLLMId: string
-          chatModels: Array<{ id: string; provider?: string; modelName: string; apiKey: string; baseUrl: string }>
+          chatModels: Array<{ id: string; modelType: 'llm' | 'image'; provider?: string; modelName: string; enabledModels: string[]; availableModels: string[]; modelsFetchedAt?: number; apiKey: string; baseUrl: string }>
           activeChatId: string
+          activeChatModelName: string
           taskModels: Array<{ id: string; provider?: string; transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'; modelName: string; apiKey: string; baseUrl: string }>
           activeTaskId: string
           taskRuntime: any
@@ -294,8 +296,9 @@ declare global {
           proxy: string
           llmModels: Array<{ id: string; provider?: string; modelName: string; apiKey: string; baseUrl: string }>
           activeLLMId: string
-          chatModels: Array<{ id: string; provider?: string; modelName: string; apiKey: string; baseUrl: string }>
+          chatModels: Array<{ id: string; modelType: 'llm' | 'image'; provider?: string; modelName: string; enabledModels: string[]; availableModels: string[]; modelsFetchedAt?: number; apiKey: string; baseUrl: string }>
           activeChatId: string
+          activeChatModelName: string
           taskModels: Array<{ id: string; provider?: string; transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'; modelName: string; apiKey: string; baseUrl: string }>
           activeTaskId: string
           taskRuntime: any
