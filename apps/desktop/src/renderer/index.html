@@ -140,63 +140,71 @@
               <path d="m9 6 6 6-6 6"></path>
             </svg>
           </button>
+          <button class="chat-thread-rail-menu" type="button" aria-label="Conversation actions" title="Conversation actions" data-chat-action="more">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 7h10M5 12h10M5 17h10"></path>
+              <path d="M19 7h.01M19 12h.01M19 17h.01"></path>
+            </svg>
+          </button>
 
           <main class="chat-main">
-            <header class="chat-header">
-              <div class="chat-identity">
-                <span class="chat-avatar large eva-avatar">EVA</span>
-                <div>
-                  <h1>EVA</h1>
-                  <span class="chat-identity-meta">zh-CN · local-yaml</span>
+            <div class="chat-main-viewport">
+              <header class="chat-header">
+                <div class="chat-identity">
+                  <span class="chat-avatar large eva-avatar">EVA</span>
+                  <div>
+                    <h1>EVA</h1>
+                    <span class="chat-identity-meta">zh-CN · local-yaml</span>
+                  </div>
                 </div>
-              </div>
-              <div class="chat-header-actions">
-                <button class="chat-icon-btn" type="button" aria-label="Voice" data-chat-action="voice-call">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M8.3 4.7 10.2 9 7.8 11.1c1.2 2.6 3.3 4.8 6 6l2.1-2.4 4.3 1.9v3.8c0 1-.8 1.8-1.8 1.7C10 21.5 3.5 15 2.9 6.6c-.1-1 .7-1.9 1.7-1.9h3.7Z"></path>
-                    <path class="chat-call-spark" d="m18.2 2.8.6 1.7 1.7.6-1.7.6-.6 1.7-.6-1.7-1.7-.6 1.7-.6.6-1.7Z"></path>
-                  </svg>
-                </button>
-                <button class="chat-icon-btn" type="button" aria-label="More" data-chat-action="more">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M12 5.5h.01M12 12h.01M12 18.5h.01"></path>
-                  </svg>
-                </button>
-                <button class="chat-icon-btn menu-lines" type="button" aria-label="Toggle character panel" title="Toggle character panel" aria-expanded="true" data-chat-action="toggle-character-panel">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M9 6h11M9 12h11M9 18h11M4 6l3 3M7 6 4 9"></path>
-                  </svg>
-                </button>
-              </div>
-            </header>
+                <div class="chat-header-actions">
+                  <button class="chat-icon-btn" type="button" aria-label="Voice" data-chat-action="voice-call">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M8.3 4.7 10.2 9 7.8 11.1c1.2 2.6 3.3 4.8 6 6l2.1-2.4 4.3 1.9v3.8c0 1-.8 1.8-1.8 1.7C10 21.5 3.5 15 2.9 6.6c-.1-1 .7-1.9 1.7-1.9h3.7Z"></path>
+                      <path class="chat-call-spark" d="m18.2 2.8.6 1.7 1.7.6-1.7.6-.6 1.7-.6-1.7-1.7-.6 1.7-.6.6-1.7Z"></path>
+                    </svg>
+                  </button>
+                  <button class="chat-icon-btn" type="button" aria-label="More" data-chat-action="more">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M12 5.5h.01M12 12h.01M12 18.5h.01"></path>
+                    </svg>
+                  </button>
+                  <button class="chat-icon-btn menu-lines" type="button" aria-label="Toggle character panel" title="Toggle character panel" aria-expanded="true" data-chat-action="toggle-character-panel">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M9 6h11M9 12h11M9 18h11M4 6l3 3M7 6 4 9"></path>
+                    </svg>
+                  </button>
+                </div>
+              </header>
 
-            <div id="chat-message-list" class="chat-message-list" aria-live="polite">
+              <div id="chat-message-list" class="chat-message-list" aria-live="polite">
+              </div>
+              <div class="chat-suggestion-list" aria-label="Suggested prompts"></div>
+
+              <form id="chat-compose-form" class="chat-composer">
+                <div class="chat-compose-attachments" aria-label="Message attachments">
+                  <button class="chat-compose-tool" type="button" aria-label="Attach media" data-chat-action="attach-image">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <rect x="4" y="5" width="16" height="14" rx="3"></rect>
+                      <path d="m7.3 15.5 3-3.2 2.5 2.6 1.7-1.9 2.8 2.9M8.2 8.8h.01"></path>
+                    </svg>
+                  </button>
+                  <button class="chat-compose-tool" type="button" aria-label="Open camera" data-chat-action="attach-video">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <rect x="3.8" y="6.5" width="12.2" height="11" rx="2.2"></rect>
+                      <path d="m16 10 4-2.4v8.8L16 14M7.4 6.5l1.2-2h3.2l1.2 2"></path>
+                    </svg>
+                  </button>
+                </div>
+                <textarea id="chat-compose-input" rows="1" data-i18n-placeholder="chat.placeholder" placeholder="输入消息..."></textarea>
+                <button id="chat-send-btn" class="chat-send-btn" type="submit" aria-label="Send message">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="m20.5 3.5-8.7 17-2.2-7.1-6.7-3.1 17.6-6.8Z"></path>
+                    <path d="m9.8 13.3 10.7-9.8"></path>
+                  </svg>
+                </button>
+              </form>
             </div>
-            <div class="chat-suggestion-list" aria-label="Suggested prompts"></div>
-
-            <form id="chat-compose-form" class="chat-composer">
-              <div class="chat-compose-attachments" aria-label="Message attachments">
-                <button class="chat-compose-tool" type="button" aria-label="Attach media" data-chat-action="attach-image">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <rect x="4" y="5" width="16" height="14" rx="3"></rect>
-                    <path d="m7.3 15.5 3-3.2 2.5 2.6 1.7-1.9 2.8 2.9M8.2 8.8h.01"></path>
-                  </svg>
-                </button>
-                <button class="chat-compose-tool" type="button" aria-label="Open camera" data-chat-action="attach-video">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <rect x="3.8" y="6.5" width="12.2" height="11" rx="2.2"></rect>
-                    <path d="m16 10 4-2.4v8.8L16 14M7.4 6.5l1.2-2h3.2l1.2 2"></path>
-                  </svg>
-                </button>
-              </div>
-              <textarea id="chat-compose-input" rows="1" data-i18n-placeholder="chat.placeholder" placeholder="输入消息..."></textarea>
-              <button id="chat-send-btn" class="chat-send-btn" type="submit" aria-label="Send message">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="m20.5 3.5-8.7 17-2.2-7.1-6.7-3.1 17.6-6.8Z"></path>
-                  <path d="m9.8 13.3 10.7-9.8"></path>
-                </svg>
-              </button>
-            </form>
           </main>
 
           <aside class="chat-config">

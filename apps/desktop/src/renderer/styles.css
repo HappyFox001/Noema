@@ -12082,7 +12082,8 @@ body.chat-fullscreen .chat-nav-item.language-toggle {
 }
 
 .chat-collapse-threads svg,
-.chat-thread-rail-toggle svg {
+.chat-thread-rail-toggle svg,
+.chat-thread-rail-menu svg {
   width: 16px;
   height: 16px;
   fill: none;
@@ -12093,16 +12094,19 @@ body.chat-fullscreen .chat-nav-item.language-toggle {
 }
 
 .chat-collapse-threads:hover,
-.chat-thread-rail-toggle:hover {
+.chat-thread-rail-toggle:hover,
+.chat-thread-rail-menu:hover,
+.chat-thread-rail-menu.is-active {
   border-color: rgba(218, 232, 224, 0.2);
   background: rgba(218, 232, 224, 0.08);
   color: rgba(248, 250, 250, 0.86);
 }
 
-.chat-thread-rail-toggle {
+.chat-thread-rail-toggle,
+.chat-thread-rail-menu {
   position: absolute;
   top: 20px;
-  left: 69px;
+  left: 78px;
   width: 30px;
   height: 30px;
   z-index: 2;
@@ -12116,17 +12120,32 @@ body.chat-fullscreen .chat-nav-item.language-toggle {
   font-family: var(--font-ui);
 }
 
+.chat-thread-rail-menu {
+  left: 116px;
+  display: none;
+}
+
+.chat-thread-rail-menu svg {
+  width: 18px;
+  height: 18px;
+}
+
 .chat-thread-rail-toggle span {
   display: none;
 }
 
-.chat-shell.threads-collapsed .chat-thread-rail-toggle {
+.chat-shell.threads-collapsed .chat-thread-rail-toggle,
+.chat-shell.threads-collapsed .chat-thread-rail-menu {
   display: grid;
   place-items: center;
 }
 
 body.chat-fullscreen .chat-shell.threads-collapsed .chat-thread-rail-toggle {
-  left: 155px;
+  left: 164px;
+}
+
+body.chat-fullscreen .chat-shell.threads-collapsed .chat-thread-rail-menu {
+  left: 202px;
 }
 
 .chat-shell.threads-collapsed .chat-characters {
@@ -13964,6 +13983,71 @@ body.theme-day .chat-send-btn {
   outline-offset: 2px;
 }
 
+.chat-shell {
+  --chat-viewport-max-width: min(700px, 72vw);
+  --chat-viewport-gutter: clamp(14px, 2.6vw, 48px);
+}
+
+.chat-shell.profile-collapsed {
+  grid-template-columns: 6.738% 23.193% 49.024% 1fr;
+}
+
+body.chat-fullscreen .chat-shell.profile-collapsed {
+  grid-template-columns: 154px minmax(230px, 23.193%) 49.024% 1fr;
+}
+
+.chat-shell.threads-collapsed.profile-collapsed {
+  grid-template-columns: 68px 34px minmax(420px, 49.024%) 1fr;
+}
+
+body.chat-fullscreen .chat-shell.threads-collapsed.profile-collapsed {
+  grid-template-columns: 154px 34px minmax(420px, 49.024%) 1fr;
+}
+
+.chat-shell.profile-collapsed .chat-main {
+  grid-column: 3 / 5;
+  width: 100%;
+  justify-self: stretch;
+}
+
+.chat-main {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  align-items: stretch;
+  justify-items: center;
+  min-width: 0;
+  border-right: 0;
+  background: transparent;
+}
+
+.chat-main-viewport {
+  width: min(calc(100% - (var(--chat-viewport-gutter) * 2)), var(--chat-viewport-max-width));
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: 11.307% minmax(0, 1fr) auto auto auto;
+  justify-self: center;
+  box-sizing: border-box;
+  border-right: 1px solid rgba(255, 255, 255, 0.075);
+  background: rgba(10, 11, 12, 0.6);
+}
+
+.chat-main-viewport > .chat-runtime-model-picker {
+  margin-right: 0;
+  margin-bottom: 6px;
+  margin-left: 0;
+  align-self: end;
+  justify-self: start;
+}
+
+.chat-main-viewport > .chat-composer {
+  width: 100%;
+  box-sizing: border-box;
+  margin-right: 0;
+  margin-left: 0;
+}
+
 .chat-thread-list::-webkit-scrollbar,
 .chat-message-list::-webkit-scrollbar,
 .chat-config::-webkit-scrollbar,
@@ -14072,6 +14156,10 @@ body.theme-day .chat-send-btn {
 
   .chat-message {
     max-width: 88%;
+  }
+
+  .chat-main-viewport {
+    width: 100%;
   }
 
   .chat-suggestion-list .chat-suggestion {
