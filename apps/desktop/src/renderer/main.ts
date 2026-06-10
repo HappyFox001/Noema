@@ -21,6 +21,7 @@ import geminiIconUrl from '@lobehub/icons-static-svg/icons/gemini-color.svg?url'
 import googleCloudIconUrl from '@lobehub/icons-static-svg/icons/googlecloud-color.svg?url'
 import groqIconUrl from '@lobehub/icons-static-svg/icons/groq.svg?url'
 import minimaxIconUrl from '@lobehub/icons-static-svg/icons/minimax-color.svg?url'
+import newAPIIconUrl from '@lobehub/icons-static-svg/icons/newapi-color.svg?url'
 import ollamaIconUrl from '@lobehub/icons-static-svg/icons/ollama.svg?url'
 import openAIIconUrl from '@lobehub/icons-static-svg/icons/openai.svg?url'
 import qwenIconUrl from '@lobehub/icons-static-svg/icons/qwen-color.svg?url'
@@ -6725,7 +6726,7 @@ function getTaskTransportLogo(transport: NonNullable<LLMModelConfig['transport']
   if (transport === 'claude_code_local') {
     return { src: claudeCodeLogoUrl, alt: 'Claude Code' }
   }
-  return { src: openAIIconUrl, alt: 'OpenAI', tone: 'light' }
+  return { src: newAPIIconUrl, alt: 'New API' }
 }
 
 function getTaskModelLogo(model: LLMModelConfig): ModelLogo {
@@ -8490,8 +8491,9 @@ function getLLMProviderLogo(provider: LLMProviderType | undefined, model?: Pick<
       return { src: azureAIIconUrl, alt: 'Azure OpenAI' }
     case 'ollama':
       return { src: ollamaIconUrl, alt: 'Ollama', tone: 'light' }
-    case 'openai':
     case 'openai-compatible':
+      return { src: newAPIIconUrl, alt: 'New API' }
+    case 'openai':
       return { src: openAIIconUrl, alt: getLLMProviderCatalogEntry(provider).label, tone: 'light' }
     default:
       return model ? getLLMModelLogo(model) : { src: openAIIconUrl, alt: 'OpenAI', tone: 'light' }
@@ -8515,8 +8517,9 @@ function getTTSProviderLogo(provider: TTSProviderType): ModelLogo {
       return { src: azureAIIconUrl, alt: getTTSProviderCatalogEntry(provider).label }
     case 'minimax':
       return { src: minimaxIconUrl, alt: 'MiniMax' }
-    case 'openai':
     case 'openai-compatible':
+      return { src: newAPIIconUrl, alt: getTTSProviderCatalogEntry(provider).label }
+    case 'openai':
     default:
       return { src: openAIIconUrl, alt: getTTSProviderCatalogEntry(provider).label, tone: 'light' }
   }
@@ -8539,8 +8542,9 @@ function getASRProviderLogo(provider: ASRProviderType): ModelLogo {
     case 'azure-openai':
     case 'azure-speech':
       return { src: azureAIIconUrl, alt: getASRProviderCatalogEntry(provider).label }
-    case 'openai':
     case 'openai-compatible':
+      return { src: newAPIIconUrl, alt: getASRProviderCatalogEntry(provider).label }
+    case 'openai':
     default:
       return { src: openAIIconUrl, alt: getASRProviderCatalogEntry(provider).label, tone: 'light' }
   }
@@ -8703,9 +8707,7 @@ function openProviderMenu(button: HTMLButtonElement, id: string): void {
       ? getTTSProviderLogo(provider.value as TTSProviderType)
       : kind === 'asr'
         ? getASRProviderLogo(provider.value as ASRProviderType)
-        : provider.value === 'openai_compatible' && taskModel
-          ? getLLMModelLogo(taskModel)
-          : getTaskTransportLogo(provider.value as NonNullable<LLMModelConfig['transport']>)
+        : getTaskTransportLogo(provider.value as NonNullable<LLMModelConfig['transport']>)
     return `
     <button class="config-provider-option ${provider.value === currentValue ? 'selected' : ''} ${implemented ? '' : 'disabled'}" type="button" role="option" aria-selected="${provider.value === currentValue ? 'true' : 'false'}" data-provider-value="${escapeHtml(provider.value)}" ${implemented ? '' : 'disabled'}>
       <span class="config-provider-option-check">${provider.value === currentValue ? '✓' : ''}</span>

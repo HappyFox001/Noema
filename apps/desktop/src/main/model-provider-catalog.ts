@@ -85,6 +85,15 @@ export interface LLMProviderCatalogEntry {
 
 export const LLM_PROVIDER_CATALOG: LLMProviderCatalogEntry[] = [
   {
+    value: 'openai-compatible',
+    label: 'OpenAI-compatible',
+    protocol: 'openai-chat-completions',
+    implemented: true,
+    defaultModel: '',
+    defaultBaseUrl: '',
+    defaultApiKeyPlaceholder: 'API Key',
+  },
+  {
     value: 'openai',
     label: 'OpenAI',
     protocol: 'openai-chat-completions',
@@ -155,15 +164,6 @@ export const LLM_PROVIDER_CATALOG: LLMProviderCatalogEntry[] = [
     defaultModel: 'llama3.2',
     defaultBaseUrl: 'http://localhost:11434/v1',
     defaultApiKeyPlaceholder: 'ollama',
-  },
-  {
-    value: 'openai-compatible',
-    label: 'OpenAI-compatible',
-    protocol: 'openai-chat-completions',
-    implemented: true,
-    defaultModel: '',
-    defaultBaseUrl: '',
-    defaultApiKeyPlaceholder: 'API Key',
   },
 ]
 
@@ -405,7 +405,9 @@ export const ASR_PROVIDER_CATALOG: ASRProviderCatalogEntry[] = [
 ]
 
 export function getLLMProviderCatalogEntry(provider: string | undefined): LLMProviderCatalogEntry {
-  return LLM_PROVIDER_CATALOG.find(entry => entry.value === provider) ?? LLM_PROVIDER_CATALOG[8]
+  return LLM_PROVIDER_CATALOG.find(entry => entry.value === provider)
+    ?? LLM_PROVIDER_CATALOG.find(entry => entry.value === 'openai-compatible')
+    ?? LLM_PROVIDER_CATALOG[0]
 }
 
 export function getTTSProviderCatalogEntry(provider: string | undefined): TTSProviderCatalogEntry {

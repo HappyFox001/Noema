@@ -214,16 +214,14 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
   function renderCharacterActionEntrances(language: ChatLanguageCode): string {
     const items = language === 'zh-CN'
       ? [
-        { action: 'new-conversation', title: '开始新聊天' },
-        { action: 'conversation-settings', title: '聊天设定' },
-        { action: 'memory-management', title: '总结和标记' },
-        { action: 'character-profile', title: '角色详情' },
+        { action: 'conversation-management', title: '对话管理' },
+        { action: 'conversation-settings', title: '对话设置' },
+        { action: 'memory-management', title: '记忆管理' },
       ]
       : [
-        { action: 'new-conversation', title: 'New Chat' },
-        { action: 'conversation-settings', title: 'Chat Settings' },
-        { action: 'memory-management', title: 'Summary & Tags' },
-        { action: 'character-profile', title: 'Character Details' },
+        { action: 'conversation-management', title: 'Chats' },
+        { action: 'conversation-settings', title: 'Settings' },
+        { action: 'memory-management', title: 'Memory' },
       ]
     return items.map((item) => `
       <li class="chat-side-entry">

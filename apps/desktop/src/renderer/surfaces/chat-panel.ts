@@ -6,6 +6,7 @@ import azureAIIconUrl from '@lobehub/icons-static-svg/icons/azureai-color.svg?ur
 import deepseekIconUrl from '@lobehub/icons-static-svg/icons/deepseek-color.svg?url'
 import geminiIconUrl from '@lobehub/icons-static-svg/icons/gemini-color.svg?url'
 import groqIconUrl from '@lobehub/icons-static-svg/icons/groq.svg?url'
+import newAPIIconUrl from '@lobehub/icons-static-svg/icons/newapi-color.svg?url'
 import ollamaIconUrl from '@lobehub/icons-static-svg/icons/ollama.svg?url'
 import openAIIconUrl from '@lobehub/icons-static-svg/icons/openai.svg?url'
 import qwenIconUrl from '@lobehub/icons-static-svg/icons/qwen-color.svg?url'
@@ -47,6 +48,15 @@ interface ChatSystemConfig {
 
 type PendingChatAttachment = ChatMessageAttachment
 
+interface ChatConversationSettings {
+  textStreaming: boolean
+  sceneImmersion: boolean
+  language: 'auto' | 'zh-CN' | 'en-US'
+  contextBudget: number
+  temperature: number
+  diversity: number
+}
+
 export interface ChatPanelController {
   open(): Promise<void>
   close(): void
@@ -87,6 +97,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   const navItems = Array.from(panel.querySelectorAll<HTMLButtonElement>('[data-chat-nav]'))
   const searchInput = panel.querySelector<HTMLInputElement>('.chat-search input')
   const modelList = panel.querySelector<HTMLElement>('.chat-model-list')
+  const conversationSettingsBody = panel.querySelector<HTMLElement>('.chat-conversation-settings-body')
+  const conversationSettingsTitle = panel.querySelector<HTMLElement>('[data-chat-settings-title]')
+  const conversationSettingsKicker = panel.querySelector<HTMLElement>('[data-chat-settings-kicker]')
+  const conversationSettingsClose = panel.querySelector<HTMLElement>('[data-chat-settings-close]')
   const languageButton = panel.querySelector<HTMLButtonElement>('[data-chat-action="language"]')
   const languageMark = panel.querySelector<HTMLElement>('.chat-language-mark')
   const windowCloseButton = panel.querySelector<HTMLButtonElement>('[data-chat-action="window-close"]')
@@ -111,6 +125,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let cameraOverlay: HTMLElement | null = null
   const chatModelOptions = new Map<string, string[]>()
   const chatModelLoading = new Set<string>()
+  let conversationSettings = loadConversationSettings()
 
   toast.className = 'chat-status-toast'
   toast.setAttribute('role', 'status')
@@ -164,6 +179,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     navItems.forEach((item) => item.classList.toggle('active', item === button))
     navItems.forEach((item) => item.classList.toggle('is-active', item === button))
     panel.dataset.chatView = button.dataset.chatNav || 'session'
+    syncSideActionState('')
     syncChatView()
     if (button.dataset.chatNav === 'models') {
       void loadChatModelConfig()
@@ -339,6 +355,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         panel.dataset.chatView = 'session'
         navItems.forEach((item) => item.classList.toggle('active', item.dataset.chatNav === 'session'))
         navItems.forEach((item) => item.classList.toggle('is-active', item.dataset.chatNav === 'session'))
+        syncSideActionState('')
+        break
+      case 'close-conversation-settings':
+        panel.dataset.chatView = 'session'
+        navItems.forEach((item) => item.classList.toggle('active', item.dataset.chatNav === 'session'))
+        navItems.forEach((item) => item.classList.toggle('is-active', item.dataset.chatNav === 'session'))
+        syncSideActionState('')
         break
       case 'voice-call':
         target.classList.toggle('is-active')
@@ -814,6 +837,169 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     return hasModelName && hasCredential && hasEndpoint
   }
 
+  function openConversationSettings(): void {
+    panel.dataset.chatView = 'conversation-settings'
+    navItems.forEach((item) => item.classList.toggle('active', false))
+    navItems.forEach((item) => item.classList.toggle('is-active', false))
+    syncSideActionState('conversation-settings')
+    renderConversationSettings()
+  }
+
+  function syncSideActionState(activeAction: string): void {
+    panel.querySelectorAll<HTMLElement>('[data-chat-side-action]').forEach((button) => {
+      const active = button.dataset.chatSideAction === activeAction
+      button.classList.toggle('is-active', active)
+      button.setAttribute('aria-pressed', active ? 'true' : 'false')
+    })
+  }
+
+  function renderConversationSettings(): void {
+    if (!conversationSettingsBody) {
+      return
+    }
+    const language = options.getLanguage()
+    const zh = language === 'zh-CN'
+    conversationSettingsBody.innerHTML = `
+      <div class="chat-settings-stage">
+        <section class="chat-settings-hero" aria-label="${options.escapeHtml(zh ? '常规设置' : 'General settings')}">
+          <div class="chat-settings-hero-copy">
+            <span>${options.escapeHtml(zh ? '常规设置' : 'General')}</span>
+            <h3>${options.escapeHtml(zh ? '塑造这段对话的节奏' : 'Shape the rhythm of this conversation')}</h3>
+            <p>${options.escapeHtml(zh
+              ? '这些设置控制文本出现方式、场景沉浸感和默认语言。它们会作为当前设备上的对话偏好保存。'
+              : 'These controls tune streaming, scene context, and language preference for this device.')}</p>
+          </div>
+          <div class="chat-settings-toggles">
+            ${renderConversationToggle('textStreaming', zh ? '文字流' : 'Text stream', zh ? '逐字呈现回复，保留正在生成的节奏。' : 'Reveal replies progressively while the answer is composed.')}
+            ${renderConversationToggle('sceneImmersion', zh ? '场景化体验' : 'Scene mode', zh ? '允许角色把场景和示例对话纳入上下文。' : 'Let character scenes and example dialogue enter the context.')}
+          </div>
+        </section>
+
+        <section class="chat-settings-language-panel">
+          <div>
+            <span class="chat-settings-section-label">${options.escapeHtml(zh ? '语言' : 'Language')}</span>
+            <p>${options.escapeHtml(zh ? '影响系统提示、角色资料和回复格式的默认语言。' : 'Affects system prompts, character resources, and response formatting.')}</p>
+          </div>
+          <label class="chat-settings-select-wrap">
+            <select data-chat-setting="language" aria-label="${options.escapeHtml(zh ? '语言' : 'Language')}">
+              ${renderConversationLanguageOption('auto', zh ? '跟随界面' : 'Follow UI')}
+              ${renderConversationLanguageOption('zh-CN', zh ? '简体中文' : 'Simplified Chinese')}
+              ${renderConversationLanguageOption('en-US', zh ? 'English' : 'English')}
+            </select>
+            <span aria-hidden="true"></span>
+          </label>
+        </section>
+
+        <section class="chat-settings-budget-panel">
+          <div class="chat-settings-panel-head">
+            <div>
+              <span class="chat-settings-section-label">${options.escapeHtml(zh ? '上下文预算' : 'Context budget')}</span>
+              <p>${options.escapeHtml(zh ? '控制本轮对话能携带的最大记忆与上下文长度。' : 'Controls how much memory and context this chat may carry.')}</p>
+            </div>
+            <output>${options.escapeHtml(String(conversationSettings.contextBudget))}</output>
+          </div>
+          ${renderConversationRange('contextBudget', 225, 650, 25, conversationSettings.contextBudget, [
+            { value: 225, label: zh ? '轻量' : 'Lean' },
+            { value: 450, label: zh ? '均衡' : 'Balanced' },
+            { value: 550, label: zh ? '长文' : 'Long' },
+            { value: 650, label: zh ? '深记忆' : 'Deep' },
+          ])}
+        </section>
+
+        <section class="chat-settings-parameter-panel">
+          <div class="chat-settings-panel-head compact">
+            <div>
+              <span class="chat-settings-section-label">${options.escapeHtml(zh ? '参数' : 'Parameters')}</span>
+              <p>${options.escapeHtml(zh ? '保留模型创作空间，同时避免角色漂移。' : 'Keep creative room without letting the character drift.')}</p>
+            </div>
+            <button type="button" data-chat-setting-reset>${options.escapeHtml(zh ? '重置' : 'Reset')}</button>
+          </div>
+          <div class="chat-settings-parameter-grid">
+            ${renderConversationParameter('temperature', zh ? '温度' : 'Temperature', zh ? '克制' : 'Precise', zh ? '灵动' : 'Expressive')}
+            ${renderConversationParameter('diversity', zh ? '内容多样性' : 'Diversity', zh ? '稳定' : 'Stable', zh ? '丰富' : 'Varied')}
+          </div>
+        </section>
+      </div>
+    `
+  }
+
+  function renderConversationToggle(key: 'textStreaming' | 'sceneImmersion', title: string, copy: string): string {
+    const checked = conversationSettings[key]
+    return `
+      <label class="chat-settings-toggle-row">
+        <span>
+          <strong>${options.escapeHtml(title)}</strong>
+          <small>${options.escapeHtml(copy)}</small>
+        </span>
+        <input type="checkbox" data-chat-setting="${key}" ${checked ? 'checked' : ''} />
+        <i aria-hidden="true"></i>
+      </label>
+    `
+  }
+
+  function renderConversationLanguageOption(value: ChatConversationSettings['language'], label: string): string {
+    return `<option value="${options.escapeHtml(value)}" ${conversationSettings.language === value ? 'selected' : ''}>${options.escapeHtml(label)}</option>`
+  }
+
+  function renderConversationRange(
+    key: keyof Pick<ChatConversationSettings, 'contextBudget' | 'temperature' | 'diversity'>,
+    min: number,
+    max: number,
+    step: number,
+    value: number,
+    markers: Array<{ value: number; label: string }>
+  ): string {
+    const progress = Math.max(0, Math.min(100, ((value - min) / (max - min)) * 100))
+    return `
+      <div class="chat-settings-range" style="--chat-setting-progress: ${progress}%">
+        <input type="range" data-chat-setting="${options.escapeHtml(key)}" min="${min}" max="${max}" step="${step}" value="${options.escapeHtml(String(value))}" />
+        <div class="chat-settings-range-markers">
+          ${markers.map((marker) => `
+            <span style="left: ${Math.max(0, Math.min(100, ((marker.value - min) / (max - min)) * 100))}%">
+              <b>${options.escapeHtml(String(marker.value))}</b>
+              <em>${options.escapeHtml(marker.label)}</em>
+            </span>
+          `).join('')}
+        </div>
+      </div>
+    `
+  }
+
+  function renderConversationParameter(key: 'temperature' | 'diversity', title: string, minLabel: string, maxLabel: string): string {
+    const value = conversationSettings[key]
+    return `
+      <article class="chat-settings-parameter">
+        <div>
+          <strong>${options.escapeHtml(title)}</strong>
+          <output>${options.escapeHtml(value.toFixed(2))}</output>
+        </div>
+        ${renderConversationRange(key, 0, 1, 0.05, value, [
+          { value: 0, label: minLabel },
+          { value: 1, label: maxLabel },
+        ])}
+      </article>
+    `
+  }
+
+  function updateConversationSetting(control: HTMLInputElement | HTMLSelectElement): void {
+    const key = control.dataset.chatSetting as keyof ChatConversationSettings | undefined
+    if (!key) {
+      return
+    }
+    if (key === 'textStreaming' || key === 'sceneImmersion') {
+      conversationSettings = { ...conversationSettings, [key]: (control as HTMLInputElement).checked }
+    } else if (key === 'language') {
+      const value = control.value === 'zh-CN' || control.value === 'en-US' ? control.value : 'auto'
+      conversationSettings = { ...conversationSettings, language: value }
+    } else if (key === 'contextBudget') {
+      conversationSettings = { ...conversationSettings, contextBudget: clampNumber(Number(control.value), 225, 650) }
+    } else if (key === 'temperature' || key === 'diversity') {
+      conversationSettings = { ...conversationSettings, [key]: clampNumber(Number(control.value), 0, 1) }
+    }
+    saveConversationSettings(conversationSettings)
+    renderConversationSettings()
+  }
+
   function renderChatModelConfig(): void {
     if (!modelList) {
       return
@@ -904,7 +1090,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     return `
       <div class="chat-provider-select ${open ? 'open' : ''}">
         <button class="chat-provider-current" type="button" data-chat-model-action="toggle-providers" aria-label="${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '选择服务商' : 'Choose provider')}">
-          <span class="chat-provider-current-icon">${renderProviderLogo(current.value, model)}</span>
+          <span class="chat-provider-current-icon">${renderProviderLogo(current.value)}</span>
           <span class="chat-provider-current-copy">
             <strong>${options.escapeHtml(current.label)}</strong>
             <small>${options.escapeHtml(current.value)}</small>
@@ -923,7 +1109,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const entry = getLLMProviderCatalogEntry(provider)
     return `
       <button class="chat-provider-option ${selected ? 'selected' : ''}" type="button" title="${options.escapeHtml(entry.label)}" data-chat-provider="${options.escapeHtml(provider)}">
-        ${renderProviderLogo(provider, model)}
+        ${renderProviderLogo(provider)}
         <span>
           <strong>${options.escapeHtml(entry.label)}</strong>
           <small>${options.escapeHtml(entry.value)}</small>
@@ -1206,6 +1392,15 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   panel.addEventListener('click', (event) => {
     const eventTarget = event.target as HTMLElement
+    const settingsReset = eventTarget.closest<HTMLElement>('[data-chat-setting-reset]')
+    if (settingsReset && panel.contains(settingsReset)) {
+      conversationSettings = getDefaultConversationSettings()
+      saveConversationSettings(conversationSettings)
+      renderConversationSettings()
+      showToast(options.getLanguage() === 'zh-CN' ? '对话设置已重置' : 'Conversation settings reset')
+      return
+    }
+
     const attachmentRemove = eventTarget.closest<HTMLElement>('[data-chat-attachment-remove]')
     if (attachmentRemove && panel.contains(attachmentRemove)) {
       const id = attachmentRemove.dataset.chatAttachmentRemove || ''
@@ -1225,6 +1420,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
     const sideAction = eventTarget.closest<HTMLElement>('[data-chat-side-action]')
     if (sideAction && panel.contains(sideAction)) {
+      if (sideAction.dataset.chatSideAction === 'conversation-settings') {
+        openConversationSettings()
+        return
+      }
       const labels = getChatSideActionLabels(options.getLanguage())
       const label = labels[sideAction.dataset.chatSideAction || ''] || ''
       showToast(label)
@@ -1296,6 +1495,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   })
 
   panel.addEventListener('change', (event) => {
+    const settingsControl = (event.target as HTMLElement | null)?.closest<HTMLInputElement | HTMLSelectElement>('[data-chat-setting]')
+    if (settingsControl && panel.contains(settingsControl)) {
+      updateConversationSetting(settingsControl)
+      return
+    }
     const input = (event.target as HTMLElement | null)?.closest<HTMLInputElement>('[data-chat-model-field]')
     if (!input || !panel.contains(input)) {
       return
@@ -1307,6 +1511,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
     void updateChatModel(modelId, field, input.value.trim())
+  })
+
+  panel.addEventListener('input', (event) => {
+    const settingsControl = (event.target as HTMLElement | null)?.closest<HTMLInputElement>('[data-chat-setting]')
+    if (!settingsControl || !panel.contains(settingsControl)) {
+      return
+    }
+    updateConversationSetting(settingsControl)
   })
 
   panel.addEventListener('pointerdown', beginChatResize)
@@ -1349,6 +1561,18 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       item.setAttribute('aria-label', text)
       item.setAttribute('title', text)
     })
+    if (conversationSettingsTitle) {
+      conversationSettingsTitle.textContent = language === 'zh-CN' ? '对话设置' : 'Conversation settings'
+    }
+    if (conversationSettingsKicker) {
+      conversationSettingsKicker.textContent = language === 'zh-CN' ? 'Conversation design' : 'Conversation design'
+    }
+    if (conversationSettingsClose) {
+      conversationSettingsClose.textContent = language === 'zh-CN' ? '返回' : 'Back'
+    }
+    if (panel.dataset.chatView === 'conversation-settings') {
+      renderConversationSettings()
+    }
   }
 
   async function hydrateChatResources(): Promise<void> {
@@ -1373,22 +1597,65 @@ function createDefaultChatModel(id = 'default-chat'): ChatModelConfig {
   }
 }
 
+function getDefaultConversationSettings(): ChatConversationSettings {
+  return {
+    textStreaming: true,
+    sceneImmersion: false,
+    language: 'auto',
+    contextBudget: 450,
+    temperature: 0.7,
+    diversity: 0.7,
+  }
+}
+
+function loadConversationSettings(): ChatConversationSettings {
+  const defaults = getDefaultConversationSettings()
+  try {
+    const raw = window.localStorage.getItem('noema.chat.conversationSettings')
+    if (!raw) {
+      return defaults
+    }
+    const parsed = JSON.parse(raw) as Partial<ChatConversationSettings>
+    return {
+      textStreaming: typeof parsed.textStreaming === 'boolean' ? parsed.textStreaming : defaults.textStreaming,
+      sceneImmersion: typeof parsed.sceneImmersion === 'boolean' ? parsed.sceneImmersion : defaults.sceneImmersion,
+      language: parsed.language === 'zh-CN' || parsed.language === 'en-US' || parsed.language === 'auto' ? parsed.language : defaults.language,
+      contextBudget: Number.isFinite(Number(parsed.contextBudget)) ? clampNumber(Number(parsed.contextBudget), 225, 650) : defaults.contextBudget,
+      temperature: Number.isFinite(Number(parsed.temperature)) ? clampNumber(Number(parsed.temperature), 0, 1) : defaults.temperature,
+      diversity: Number.isFinite(Number(parsed.diversity)) ? clampNumber(Number(parsed.diversity), 0, 1) : defaults.diversity,
+    }
+  } catch {
+    return defaults
+  }
+}
+
+function saveConversationSettings(settings: ChatConversationSettings): void {
+  try {
+    window.localStorage.setItem('noema.chat.conversationSettings', JSON.stringify(settings))
+  } catch {
+    // Local storage may be unavailable in restricted renderer contexts.
+  }
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) {
+    return min
+  }
+  return Math.min(max, Math.max(min, value))
+}
+
 function getChatSideActionLabels(language: 'zh-CN' | 'en-US'): Record<string, string> {
   if (language === 'zh-CN') {
     return {
-      'new-conversation': '开始新聊天',
       'conversation-management': '对话管理',
-      'conversation-settings': '聊天设定',
-      'memory-management': '总结和标记',
-      'character-profile': '角色详情',
+      'conversation-settings': '对话设置',
+      'memory-management': '记忆管理',
     }
   }
   return {
-    'new-conversation': 'New Chat',
     'conversation-management': 'Chats',
-    'conversation-settings': 'Chat Settings',
-    'memory-management': 'Summary & Tags',
-    'character-profile': 'Character Details',
+    'conversation-settings': 'Settings',
+    'memory-management': 'Memory',
   }
 }
 
@@ -1413,15 +1680,16 @@ function renderChatModelLogo(model: ChatModelConfig | undefined): string {
   if (!model) {
     return renderProviderLogo('openai-compatible')
   }
-  return renderProviderLogo(getProviderEntry(model.provider).value, model)
+  const provider = getProviderEntry(model.provider).value
+  return renderProviderLogo(provider)
 }
 
-function renderProviderLogo(provider: LLMProviderType, model?: Pick<ChatModelConfig, 'modelName' | 'baseUrl'>): string {
-  const logo = getProviderLogo(provider, model)
+function renderProviderLogo(provider: LLMProviderType): string {
+  const logo = getProviderLogo(provider)
   return `<img src="${logo.src}" alt="${logo.alt}" />`
 }
 
-function getProviderLogo(provider: LLMProviderType, model?: Pick<ChatModelConfig, 'modelName' | 'baseUrl'>): { src: string; alt: string } {
+function getProviderLogo(provider: LLMProviderType): { src: string; alt: string } {
   switch (provider) {
     case 'gemini':
       return { src: geminiIconUrl, alt: 'Gemini' }
@@ -1437,26 +1705,10 @@ function getProviderLogo(provider: LLMProviderType, model?: Pick<ChatModelConfig
       return { src: ollamaIconUrl, alt: 'Ollama' }
     case 'azure-openai':
       return { src: azureAIIconUrl, alt: 'Azure OpenAI' }
-    case 'openai':
     case 'openai-compatible':
+      return { src: newAPIIconUrl, alt: 'New API' }
+    case 'openai':
     default:
-      return inferProviderLogo(model)
+      return { src: openAIIconUrl, alt: 'OpenAI' }
   }
-}
-
-function inferProviderLogo(model?: Pick<ChatModelConfig, 'modelName' | 'baseUrl'>): { src: string; alt: string } {
-  const text = `${model?.modelName || ''} ${model?.baseUrl || ''}`.toLowerCase()
-  if (text.includes('gemini') || text.includes('google')) {
-    return { src: geminiIconUrl, alt: 'Gemini' }
-  }
-  if (text.includes('claude') || text.includes('anthropic')) {
-    return { src: claudeIconUrl, alt: 'Claude' }
-  }
-  if (text.includes('deepseek')) {
-    return { src: deepseekIconUrl, alt: 'DeepSeek' }
-  }
-  if (text.includes('qwen') || text.includes('dashscope')) {
-    return { src: qwenIconUrl, alt: 'Qwen' }
-  }
-  return { src: openAIIconUrl, alt: 'OpenAI' }
 }
