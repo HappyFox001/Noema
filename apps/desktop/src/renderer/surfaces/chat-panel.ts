@@ -1376,15 +1376,19 @@ function createDefaultChatModel(id = 'default-chat'): ChatModelConfig {
 function getChatSideActionLabels(language: 'zh-CN' | 'en-US'): Record<string, string> {
   if (language === 'zh-CN') {
     return {
+      'new-conversation': '开始新聊天',
       'conversation-management': '对话管理',
-      'conversation-settings': '对话设置',
-      'memory-management': '记忆管理',
+      'conversation-settings': '聊天设定',
+      'memory-management': '总结和标记',
+      'character-profile': '角色详情',
     }
   }
   return {
+    'new-conversation': 'New Chat',
     'conversation-management': 'Chats',
-    'conversation-settings': 'Settings',
-    'memory-management': 'Memory',
+    'conversation-settings': 'Chat Settings',
+    'memory-management': 'Summary & Tags',
+    'character-profile': 'Character Details',
   }
 }
 

@@ -214,23 +214,24 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
   function renderCharacterActionEntrances(language: ChatLanguageCode): string {
     const items = language === 'zh-CN'
       ? [
-        { action: 'conversation-management', title: '对话管理', meta: '历史、分支与归档' },
-        { action: 'conversation-settings', title: '对话设置', meta: '模型、风格与上下文' },
-        { action: 'memory-management', title: '记忆管理', meta: '角色记忆与长期资料' },
+        { action: 'new-conversation', title: '开始新聊天' },
+        { action: 'conversation-settings', title: '聊天设定' },
+        { action: 'memory-management', title: '总结和标记' },
+        { action: 'character-profile', title: '角色详情' },
       ]
       : [
-        { action: 'conversation-management', title: 'Chats', meta: 'History, branches, archive' },
-        { action: 'conversation-settings', title: 'Settings', meta: 'Model, style, context' },
-        { action: 'memory-management', title: 'Memory', meta: 'Character memory and notes' },
+        { action: 'new-conversation', title: 'New Chat' },
+        { action: 'conversation-settings', title: 'Chat Settings' },
+        { action: 'memory-management', title: 'Summary & Tags' },
+        { action: 'character-profile', title: 'Character Details' },
       ]
     return items.map((item) => `
       <li class="chat-side-entry">
-        <button type="button" data-chat-side-action="${options.escapeHtml(item.action)}">
-          <span class="chat-side-entry-mark" aria-hidden="true"></span>
+        <button type="button" data-chat-side-action="${options.escapeHtml(item.action)}" aria-label="${options.escapeHtml(item.title)}">
           <span class="chat-side-entry-copy">
             <strong>${options.escapeHtml(item.title)}</strong>
-            <small>${options.escapeHtml(item.meta)}</small>
           </span>
+          <span class="chat-side-entry-arrow" aria-hidden="true">›</span>
         </button>
       </li>
     `).join('')
