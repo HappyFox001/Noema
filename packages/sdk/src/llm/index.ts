@@ -46,7 +46,7 @@ export class OpenAIProvider implements LLMProvider {
     const response = await this.client.chat.completions.create({
       model: this.model,
       messages,
-      ...this.withDefaultReasoning(requestOptions)
+      ...this.withDefaultReasoning(this.cleanOpenAICompatibleRequestOptions(requestOptions, false))
     } as any, signal ? { signal } : undefined)
 
     const message = response.choices[0]?.message
@@ -71,7 +71,7 @@ export class OpenAIProvider implements LLMProvider {
       model: this.model,
       messages,
       stream: true,
-      ...this.withDefaultReasoning(requestOptions)
+      ...this.withDefaultReasoning(this.cleanOpenAICompatibleRequestOptions(requestOptions, true))
     } as any, signal ? { signal } : undefined) as any
 
     for await (const chunk of stream) {
@@ -86,6 +86,10 @@ export class OpenAIProvider implements LLMProvider {
   }
 
   private withDefaultReasoning(requestOptions: any): any {
+    if (isOfficialGeminiOpenAIEndpoint(this.baseURL)) {
+      return requestOptions
+    }
+
     if (!this.shouldApplyMinimalReasoning(requestOptions)) {
       return requestOptions
     }
@@ -111,6 +115,45 @@ export class OpenAIProvider implements LLMProvider {
     }
 
     return true
+  }
+
+  private cleanOpenAICompatibleRequestOptions(requestOptions: any, streaming: boolean): any {
+    if (!isOfficialGeminiOpenAIEndpoint(this.baseURL)) {
+      return requestOptions
+    }
+
+    const {
+      signal,
+      messages,
+      model,
+      stream,
+      stream_options,
+      streamOptions,
+      max_tokens,
+      max_completion_tokens,
+      maxTokens,
+      reasoning_effort,
+      reasoning,
+      thinking,
+      tools,
+      tool_choice,
+      parallel_tool_calls,
+      response_format,
+      ...rest
+    } = requestOptions ?? {}
+
+    const cleaned: any = {}
+    for (const key of ['temperature', 'top_p', 'top_k', 'stop', 'presence_penalty', 'frequency_penalty', 'seed'] as const) {
+      if (rest[key] !== undefined) {
+        cleaned[key] = rest[key]
+      }
+    }
+
+    if (!streaming && (max_tokens ?? max_completion_tokens ?? maxTokens) !== undefined) {
+      cleaned.max_tokens = max_tokens ?? max_completion_tokens ?? maxTokens
+    }
+
+    return cleaned
   }
 }
 

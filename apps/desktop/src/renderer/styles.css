@@ -12234,11 +12234,61 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-model-page {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.055);
 }
 
+.roleplay-chat-frame {
+  position: relative;
+  width: min(720px, 100%);
+  min-width: min(420px, 100%);
+  display: grid;
+  gap: 10px;
+  padding: 18px 20px 20px;
+  overflow: hidden;
+  border: 1px solid rgba(248, 250, 250, 0.105);
+  border-radius: 19px;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(218, 232, 224, 0.09), transparent 32%),
+    linear-gradient(135deg, rgba(22, 23, 25, 0.9), rgba(12, 12, 14, 0.82)),
+    rgba(9, 9, 11, 0.86);
+  box-shadow:
+    0 22px 48px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.roleplay-chat-frame::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025), transparent 38%),
+    radial-gradient(circle at 70% 20%, rgba(157, 126, 94, 0.08), transparent 36%);
+  opacity: 0.82;
+}
+
+.roleplay-chat-frame > * {
+  position: relative;
+  z-index: 1;
+}
+
+.roleplay-chat-frame > p {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: rgba(220, 222, 218, 0.74);
+  font-family: var(--font-mixed);
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 500;
+  line-height: 1.65;
+  box-shadow: none;
+}
+
 .noema-chat-section,
 .noema-chat-card,
 .roleplay-chat-note,
-.roleplay-chat-speech {
-  min-width: min(360px, 100%);
+.roleplay-chat-speech,
+.roleplay-chat-narration {
+  min-width: 0;
 }
 
 .noema-chat-section {
@@ -12260,7 +12310,8 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-model-page {
 .noema-chat-section p,
 .noema-chat-card p,
 .roleplay-chat-note p,
-.roleplay-chat-speech p {
+.roleplay-chat-speech p,
+.roleplay-chat-narration p {
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -12269,54 +12320,107 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-model-page {
   box-shadow: none;
 }
 
-.roleplay-chat-speech {
+.roleplay-chat-narration {
   display: grid;
   gap: 7px;
-  padding: 11px 13px;
-  border-radius: 15px;
-  border: 1px solid rgba(255, 255, 255, 0.085);
-  background: rgba(255, 255, 255, 0.058);
-  color: rgba(248, 250, 250, 0.88);
+}
+
+.roleplay-chat-narration p {
+  color: rgba(220, 222, 218, 0.74);
   font-family: var(--font-mixed);
   font-size: 13px;
-  line-height: 1.62;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.055);
+  font-weight: 500;
+  line-height: 1.65;
+}
+
+.roleplay-chat-speech {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 6px;
+  row-gap: 7px;
+  align-items: baseline;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: rgba(248, 250, 250, 0.92);
+  font-family: var(--font-mixed);
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.58;
+  box-shadow: none;
+}
+
+.roleplay-chat-speaker {
+  color: rgba(239, 231, 218, 0.94);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.58;
+}
+
+.roleplay-chat-speech p {
+  color: rgba(228, 226, 220, 0.92);
+  font-weight: 650;
+}
+
+.roleplay-chat-speech.has-speaker p {
+  grid-column: 2;
+}
+
+.roleplay-chat-speech.no-speaker p {
+  grid-column: 1 / -1;
 }
 
 .roleplay-chat-note {
   display: grid;
-  gap: 6px;
-  padding: 9px 11px;
-  border: 1px solid rgba(248, 250, 250, 0.08);
-  border-radius: 13px;
-  background: rgba(255, 255, 255, 0.026);
+  gap: 5px;
+  padding: 0 0 0 11px;
+  border: 0;
+  border-left: 2px solid rgba(248, 250, 250, 0.1);
+  border-radius: 0;
+  background: transparent;
 }
 
 .roleplay-chat-note.thinking,
 .roleplay-chat-note.role-think {
-  border-color: rgba(182, 202, 196, 0.12);
-  background:
-    linear-gradient(180deg, rgba(218, 232, 224, 0.04), rgba(218, 232, 224, 0.018)),
-    rgba(255, 255, 255, 0.018);
+  border-left-color: rgba(161, 178, 173, 0.34);
 }
 
 .roleplay-chat-note.role-action,
 .roleplay-chat-note.scene {
-  border-style: dashed;
+  border-left-color: rgba(188, 142, 104, 0.34);
 }
 
 .roleplay-chat-note.ooc {
-  border-color: rgba(244, 190, 110, 0.16);
+  border-left-color: rgba(244, 190, 110, 0.42);
 }
 
 .roleplay-chat-note p {
-  color: rgba(248, 250, 250, 0.58);
-  font-size: 12px;
-  line-height: 1.55;
+  color: rgba(248, 250, 250, 0.56);
+  font-family: var(--font-mixed);
+  font-size: 13px;
+  line-height: 1.62;
 }
 
 .roleplay-chat-note.role-think p {
+  color: rgba(199, 207, 204, 0.58);
   font-style: italic;
+  font-weight: 500;
+}
+
+.roleplay-chat-note.role-action p,
+.roleplay-chat-note.scene p {
+  color: rgba(210, 176, 145, 0.68);
+  font-style: italic;
+}
+
+.roleplay-chat-note strong {
+  color: rgba(248, 250, 250, 0.34);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .noema-chat-card {
@@ -12349,14 +12453,16 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-model-page {
 .noema-chat-card.is-streaming,
 .noema-chat-code.is-streaming,
 .roleplay-chat-note.is-streaming,
-.roleplay-chat-speech.is-streaming {
+.roleplay-chat-speech.is-streaming,
+.roleplay-chat-narration.is-streaming {
   position: relative;
 }
 
 .noema-chat-card.is-streaming::after,
 .noema-chat-code.is-streaming::after,
 .roleplay-chat-note.is-streaming::after,
-.roleplay-chat-speech.is-streaming::after {
+.roleplay-chat-speech.is-streaming::after,
+.roleplay-chat-narration.is-streaming::after {
   content: '';
   width: 5px;
   height: 5px;

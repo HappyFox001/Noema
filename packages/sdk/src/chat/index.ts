@@ -87,16 +87,13 @@ export class ChatSession {
   }
 
   async send(request: ChatTurnRequest): Promise<ChatTurnResponse> {
-    const chunks: string[] = []
-    for await (const chunk of this.stream(request)) {
-      chunks.push(chunk)
-    }
+    const response = await this.llm.chat(
+      this.createPromptMessages(request),
+      this.createRequestOptions(request)
+    )
     return {
-      content: chunks.join(''),
-      raw: {
-        content: chunks.join(''),
-        finishReason: null,
-      },
+      content: response.content,
+      raw: response,
     }
   }
 

@@ -15,6 +15,7 @@ interface NoemaTagMatch {
 type RoleplayMarkupTag =
   | 'thinking'
   | 'think'
+  | 'narration'
   | 'role_think'
   | 'role_chat'
   | 'role_action'
@@ -33,7 +34,8 @@ export function renderRoleplayChatMarkup(value: string, options: RoleplayMarkupR
   if (!content.trim()) {
     return ''
   }
-  return renderRoleplayBlocks(content, options)
+  const rendered = renderRoleplayBlocks(content, options)
+  return rendered ? `<div class="roleplay-chat-frame">${rendered}</div>` : ''
 }
 
 function extractRoleplayChatContent(value: string): string {
@@ -80,10 +82,12 @@ function renderRoleplayBlocks(source: string, options: RoleplayMarkupRenderOptio
 
     if (tag.name === 'thinking' || tag.name === 'think') {
       blocks.push(renderRoleplayNote('thinking', tag.attrs, content, complete, options))
+    } else if (tag.name === 'narration') {
+      blocks.push(renderRoleplayNarration(content, complete, options))
     } else if (tag.name === 'role_think') {
       blocks.push(renderRoleplayNote('role-think', tag.attrs, content, complete, options))
     } else if (tag.name === 'role_chat') {
-      blocks.push(renderRoleplaySpeech(content, complete, options))
+      blocks.push(renderRoleplaySpeech(tag.attrs, content, complete, options))
     } else if (tag.name === 'role_action') {
       blocks.push(renderRoleplayNote('role-action', tag.attrs, content, complete, options))
     } else if (tag.name === 'scene') {
@@ -108,7 +112,7 @@ function renderRoleplayBlocks(source: string, options: RoleplayMarkupRenderOptio
 }
 
 function findNextRoleplayTag(source: string, start: number): NoemaTagMatch | null {
-  const open = /<(thinking|think|role_think|role_chat|role_action|scene|ooc|section|card|code)\b([^>]*)>/gi
+  const open = /<(thinking|think|narration|role_think|role_chat|role_action|scene|ooc|section|card|code)\b([^>]*)>/gi
   open.lastIndex = start
   const match = open.exec(source)
   if (!match) {
@@ -128,6 +132,18 @@ function findClosingTag(source: string, tag: string, start: number): number {
   return match ? start + match.index : -1
 }
 
+function renderRoleplayNarration(
+  content: string,
+  complete: boolean,
+  options: RoleplayMarkupRenderOptions
+): string {
+  return `
+    <div class="roleplay-chat-narration ${complete ? '' : 'is-streaming'}">
+      ${renderRoleplayParagraphs(content, options)}
+    </div>
+  `
+}
+
 function renderRoleplayNote(
   kind: string,
   attrs: Record<string, string>,
@@ -145,12 +161,15 @@ function renderRoleplayNote(
 }
 
 function renderRoleplaySpeech(
+  attrs: Record<string, string>,
   content: string,
   complete: boolean,
   options: RoleplayMarkupRenderOptions
 ): string {
+  const speaker = attrs.name?.trim() || attrs.title?.trim()
   return `
-    <div class="roleplay-chat-speech ${complete ? '' : 'is-streaming'}">
+    <div class="roleplay-chat-speech ${speaker ? 'has-speaker' : 'no-speaker'} ${complete ? '' : 'is-streaming'}">
+      ${speaker ? `<strong class="roleplay-chat-speaker">${options.escapeHtml(speaker)}:</strong>` : ''}
       ${renderRoleplayBlocks(content, options)}
     </div>
   `
@@ -224,7 +243,7 @@ function trimTrailingIncompleteTag(value: string): string {
 
 function readRoleplayAttributes(source: string): Record<string, string> {
   const attrs: Record<string, string> = {}
-  const attrPattern = /\b(title|tone|lang)="([^"]*)"/gi
+  const attrPattern = /\b(title|tone|lang|name)="([^"]*)"/gi
   let match: RegExpExecArray | null
   while ((match = attrPattern.exec(source)) !== null) {
     attrs[match[1].toLowerCase()] = decodeNoemaEntities(match[2])

@@ -123,14 +123,15 @@ export function registerChatIpcHandlers(
           max_tokens: 1024,
         },
       })
-      const chunks: string[] = []
-      for await (const delta of session.stream({
+      const turnRequest = {
         input,
         language: request.language,
         messages: normalizeMessages(request.messages),
         attachments: normalizeAttachments(request.attachments),
         character: request.character,
-      })) {
+      }
+      const chunks: string[] = []
+      for await (const delta of session.stream(turnRequest)) {
         chunks.push(delta)
         if (streamId) {
           event.sender.send('chat:streamDelta', { streamId, delta })
