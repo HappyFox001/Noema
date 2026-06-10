@@ -596,35 +596,63 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     conversation.updatedLabel = { 'zh-CN': '现在', 'en-US': 'Now' }
     renderer.appendMessage(message)
     refreshConversationList()
-    try {
-      const response = await window.electronAPI.sendChatMessage({
-        input: userText || (language === 'zh-CN' ? '请根据附件进行回复。' : 'Please respond to the attached media.'),
-        language,
-        attachments: attachments.map((attachment) => ({
-          kind: attachment.kind,
-          name: attachment.name,
-          mimeType: attachment.mimeType,
-          dataUrl: attachment.dataUrl,
-          size: attachment.size,
+    const request = {
+      input: userText || (language === 'zh-CN' ? '请根据附件进行回复。' : 'Please respond to the attached media.'),
+      language,
+      attachments: attachments.map((attachment) => ({
+        kind: attachment.kind,
+        name: attachment.name,
+        mimeType: attachment.mimeType,
+        dataUrl: attachment.dataUrl,
+        size: attachment.size,
+      })),
+      messages: conversation.messages
+        .filter((item) => item.id !== message.id)
+        .slice(0, -1)
+        .map((item) => ({
+          role: item.role,
+          content: localizeChatText(item.text, language),
         })),
-        messages: conversation.messages
-          .filter((item) => item.id !== message.id)
-          .slice(0, -1)
-          .map((item) => ({
-            role: item.role,
-            content: localizeChatText(item.text, language),
-          })),
-        character: character ? {
-          id: character.id,
-          displayName: localizeChatText(character.displayName, language),
-          description: localizeChatText(character.description, language),
-          background: localizeChatText(character.background, language),
-          firstMessage: localizeChatText(character.firstMessage, language),
-          tags: character.tag[language] ?? character.tag['zh-CN'],
-        } : undefined,
-      })
+      character: character ? {
+        id: character.id,
+        displayName: localizeChatText(character.displayName, language),
+        description: localizeChatText(character.description, language),
+        background: localizeChatText(character.background, language),
+        firstMessage: localizeChatText(character.firstMessage, language),
+        tags: character.tag[language] ?? character.tag['zh-CN'],
+      } : undefined,
+    }
+    let streamedReply = ''
+    let renderFrame = 0
+    const flushStreamedReply = (): void => {
+      renderFrame = 0
+      message.text = { 'zh-CN': streamedReply, 'en-US': streamedReply }
+      message.state = streamedReply ? undefined : 'thinking'
+      conversation.preview = { 'zh-CN': streamedReply || '思考中...', 'en-US': streamedReply || 'Thinking...' }
+      renderer.renderMessages(conversation.messages)
+      refreshConversationList()
+    }
+    const scheduleStreamedReplyRender = (): void => {
+      if (renderFrame) {
+        return
+      }
+      renderFrame = window.requestAnimationFrame(flushStreamedReply)
+    }
+    try {
+      const response = typeof window.electronAPI.streamChatMessage === 'function'
+        ? await window.electronAPI.streamChatMessage(request, {
+          onDelta(delta) {
+            streamedReply += delta
+            scheduleStreamedReplyRender()
+          },
+        })
+        : await window.electronAPI.sendChatMessage(request)
+      if (renderFrame) {
+        window.cancelAnimationFrame(renderFrame)
+        flushStreamedReply()
+      }
       const reply = response.success
-        ? (response.response || '')
+        ? (response.response || streamedReply || '')
         : (response.error || 'Chat model failed')
       message.text = { 'zh-CN': reply, 'en-US': reply }
       message.state = undefined

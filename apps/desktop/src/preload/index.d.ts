@@ -608,6 +608,42 @@ declare global {
         response?: string
         error?: string
       }>
+      streamChatMessage: (request: {
+        input: string
+        language?: string
+        messages?: Array<{
+          role: 'system' | 'user' | 'assistant'
+          content: string
+        }>
+        attachments?: Array<{
+          kind: 'image' | 'video'
+          name: string
+          mimeType: string
+          dataUrl?: string
+          size?: number
+        }>
+        character?: {
+          id?: string
+          displayName?: string
+          description?: string
+          background?: string
+          firstMessage?: string
+          tags?: string[]
+          instructions?: string
+        }
+      }, handlers?: {
+        onDelta?: (delta: string) => void
+        onDone?: (result: {
+          success: boolean
+          response?: string
+          error?: string
+        }) => void
+        onError?: (error: string) => void
+      }) => Promise<{
+        success: boolean
+        response?: string
+        error?: string
+      }>
       listChatModels: (request: {
         provider?: string
         apiKey?: string

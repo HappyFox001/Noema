@@ -188,6 +188,28 @@ contextBridge.exposeInMainWorld('electronAPI', {
   sendChatMessage: (request) =>
     ipcRenderer.invoke('chat:sendMessage', request),
 
+  streamChatMessage: (request, handlers = {}) => {
+    const streamId = `chat-stream-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    const onDelta = (_, event) => {
+      if (event?.streamId === streamId && typeof event.delta === 'string') {
+        handlers.onDelta?.(event.delta)
+      }
+    }
+    ipcRenderer.on('chat:streamDelta', onDelta)
+    return ipcRenderer.invoke('chat:streamMessage', { ...request, streamId })
+      .then((result) => {
+        handlers.onDone?.(result)
+        return result
+      })
+      .catch((error) => {
+        handlers.onError?.(error?.message || String(error))
+        throw error
+      })
+      .finally(() => {
+        ipcRenderer.removeListener('chat:streamDelta', onDelta)
+      })
+  },
+
   listChatModels: (request) =>
     ipcRenderer.invoke('chat:listModels', request),
 

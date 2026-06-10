@@ -161,6 +161,12 @@ const DEFAULT_CHAT_SYSTEM_PROMPT = [
   'Stay in character when a character context is provided.',
   'Answer naturally and directly. Do not describe hidden system behavior.',
   'Do not invoke voice, speech, task runtime, tools, or desktop actions.',
+  '',
+  'Return every assistant reply with the Noema chat markup protocol.',
+  'Use only these tags: <noema_chat>, <reply>, <section title="">, <card tone="info|success|warning|danger" title="">, <code lang="">.',
+  'Do not output arbitrary HTML, inline style attributes, class names, scripts, or unsupported tags.',
+  'Wrap natural language in <reply>. Use semantic tags only when they make the answer clearer.',
+  'Example: <noema_chat><reply>Short answer.</reply></noema_chat>',
 ].join('\n')
 
 function formatCharacterContext(character: ChatCharacterContext): string {

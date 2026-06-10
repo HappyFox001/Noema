@@ -16,6 +16,7 @@ export interface ChatIpcModelConfig {
 
 export interface ChatSendMessageRequest {
   input: string
+  streamId?: string
   language?: string
   messages?: ChatMessage[]
   attachments?: ChatIpcAttachment[]
@@ -101,6 +102,47 @@ export function registerChatIpcHandlers(
       }
     } catch (error: any) {
       console.error('[Chat] Failed to send message:', error)
+      return {
+        success: false,
+        error: error?.message || String(error),
+      }
+    }
+  })
+
+  ipcMain.handle('chat:streamMessage', async (event, request: ChatSendMessageRequest): Promise<ChatSendMessageResult> => {
+    const streamId = typeof request?.streamId === 'string' ? request.streamId : ''
+    try {
+      const input = typeof request?.input === 'string' ? request.input.trim() : ''
+      if (!input) {
+        throw new Error('Message is empty')
+      }
+
+      const model = toChatModelConfig(options.getModelConfig())
+      const session = createChatSessionFromModel(model, {
+        defaultOptions: {
+          max_tokens: 1024,
+        },
+      })
+      const chunks: string[] = []
+      for await (const delta of session.stream({
+        input,
+        language: request.language,
+        messages: normalizeMessages(request.messages),
+        attachments: normalizeAttachments(request.attachments),
+        character: request.character,
+      })) {
+        chunks.push(delta)
+        if (streamId) {
+          event.sender.send('chat:streamDelta', { streamId, delta })
+        }
+      }
+
+      return {
+        success: true,
+        response: chunks.join(''),
+      }
+    } catch (error: any) {
+      console.error('[Chat] Failed to stream message:', error)
       return {
         success: false,
         error: error?.message || String(error),

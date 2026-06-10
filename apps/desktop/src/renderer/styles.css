@@ -12234,6 +12234,96 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-model-page {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.055);
 }
 
+.noema-chat-section,
+.noema-chat-card {
+  min-width: min(360px, 100%);
+}
+
+.noema-chat-section {
+  display: grid;
+  gap: 7px;
+}
+
+.noema-chat-section h4,
+.noema-chat-card strong {
+  margin: 0;
+  color: rgba(248, 250, 250, 0.88);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.noema-chat-section p,
+.noema-chat-card p {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: rgba(248, 250, 250, 0.78);
+  box-shadow: none;
+}
+
+.noema-chat-card {
+  display: grid;
+  gap: 7px;
+  padding: 11px 12px;
+  border: 1px solid rgba(218, 232, 224, 0.13);
+  border-radius: 15px;
+  background:
+    linear-gradient(180deg, rgba(248, 250, 250, 0.055), rgba(248, 250, 250, 0.025)),
+    rgba(255, 255, 255, 0.035);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.055),
+    0 14px 32px rgba(0, 0, 0, 0.16);
+}
+
+.noema-chat-card.success {
+  border-color: rgba(132, 232, 178, 0.18);
+}
+
+.noema-chat-card.warning {
+  border-color: rgba(244, 190, 110, 0.22);
+}
+
+.noema-chat-card.danger {
+  border-color: rgba(255, 120, 120, 0.22);
+}
+
+.noema-chat-code {
+  position: relative;
+  margin: 0;
+  max-width: 100%;
+  overflow: auto;
+  padding: 12px 13px;
+  border: 1px solid rgba(255, 255, 255, 0.095);
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.26);
+  color: rgba(248, 250, 250, 0.82);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.58;
+  white-space: pre-wrap;
+}
+
+.noema-chat-code[data-language]::before {
+  content: attr(data-language);
+  display: block;
+  margin-bottom: 8px;
+  color: rgba(248, 250, 250, 0.36);
+  font-family: var(--font-ui);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.chat-message-body > .noema-chat-section + small,
+.chat-message-body > .noema-chat-card + small,
+.chat-message-body > .noema-chat-code + small {
+  margin-top: 1px;
+}
+
 .chat-message.user p {
   border-color: rgba(218, 232, 224, 0.18);
   background: rgba(218, 232, 224, 0.13);
@@ -12276,6 +12366,64 @@ body.theme-day .chat-message-avatar {
   box-shadow:
     0 0 22px rgba(218, 232, 224, 0.07),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.chat-message[data-state='thinking'] {
+  max-width: min(360px, 70%);
+  align-items: center;
+}
+
+.chat-message[data-state='thinking'] .chat-message-body {
+  min-height: 32px;
+  justify-content: center;
+  gap: 0;
+}
+
+.chat-thinking-status {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  width: fit-content;
+  color: rgba(218, 232, 224, 0.72);
+  font-family: var(--font-mixed);
+  font-size: 13px;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.chat-thinking-dots {
+  display: inline-flex;
+  width: 18px;
+  justify-content: space-between;
+  color: rgba(218, 232, 224, 0.62);
+}
+
+.chat-thinking-dots i {
+  display: block;
+  font-style: normal;
+  animation: chat-thinking-dot 1.05s ease-in-out infinite;
+}
+
+.chat-thinking-dots i:nth-child(2) {
+  animation-delay: 140ms;
+}
+
+.chat-thinking-dots i:nth-child(3) {
+  animation-delay: 280ms;
+}
+
+@keyframes chat-thinking-dot {
+  0%,
+  72%,
+  100% {
+    opacity: 0.32;
+    transform: translateY(0);
+  }
+
+  36% {
+    opacity: 1;
+    transform: translateY(-1px);
+  }
 }
 
 .chat-suggestion-list {
