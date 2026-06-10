@@ -18,6 +18,8 @@ export interface ChatSendMessageRequest {
   input: string
   streamId?: string
   language?: string
+  preferencePrompt?: string
+  options?: Record<string, unknown>
   messages?: ChatMessage[]
   attachments?: ChatIpcAttachment[]
   character?: ChatCharacterContext
@@ -94,6 +96,8 @@ export function registerChatIpcHandlers(
         messages: normalizeMessages(request.messages),
         attachments: normalizeAttachments(request.attachments),
         character: request.character,
+        preferencePrompt: normalizePreferencePrompt(request.preferencePrompt),
+        options: normalizeChatRequestOptions(request.options),
       })
 
       return {
@@ -129,6 +133,8 @@ export function registerChatIpcHandlers(
         messages: normalizeMessages(request.messages),
         attachments: normalizeAttachments(request.attachments),
         character: request.character,
+        preferencePrompt: normalizePreferencePrompt(request.preferencePrompt),
+        options: normalizeChatRequestOptions(request.options),
       }
       const chunks: string[] = []
       for await (const delta of session.stream(turnRequest)) {
@@ -262,6 +268,44 @@ function buildModelsRequestHeaders(request: ChatListModelsRequest): Record<strin
     }
   }
   return apiKey ? { Authorization: `Bearer ${apiKey}` } : {}
+}
+
+function normalizePreferencePrompt(prompt: string | undefined): string | undefined {
+  const normalized = typeof prompt === 'string' ? prompt.trim() : ''
+  return normalized || undefined
+}
+
+function normalizeChatRequestOptions(options: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+  if (!options || typeof options !== 'object') {
+    return undefined
+  }
+  const normalized: Record<string, unknown> = {}
+  const temperature = normalizeNumberOption(options.temperature, 0, 2)
+  const topP = normalizeNumberOption(options.top_p, 0, 1)
+  const maxTokens = normalizeIntegerOption(options.max_tokens, 1, 5000)
+  if (temperature !== undefined) {
+    normalized.temperature = temperature
+  }
+  if (topP !== undefined) {
+    normalized.top_p = topP
+  }
+  if (maxTokens !== undefined) {
+    normalized.max_tokens = maxTokens
+  }
+  return Object.keys(normalized).length ? normalized : undefined
+}
+
+function normalizeNumberOption(value: unknown, min: number, max: number): number | undefined {
+  const number = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(number)) {
+    return undefined
+  }
+  return Math.min(max, Math.max(min, number))
+}
+
+function normalizeIntegerOption(value: unknown, min: number, max: number): number | undefined {
+  const number = normalizeNumberOption(value, min, max)
+  return number === undefined ? undefined : Math.round(number)
 }
 
 function parseJson(text: string): unknown {

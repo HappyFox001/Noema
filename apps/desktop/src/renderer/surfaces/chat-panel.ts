@@ -48,11 +48,15 @@ interface ChatSystemConfig {
 
 type PendingChatAttachment = ChatMessageAttachment
 
+const CHAT_OUTPUT_TOKEN_MIN = 225
+const CHAT_OUTPUT_TOKEN_MAX = 5000
+const CHAT_OUTPUT_TOKEN_STEP = 50
+
 interface ChatConversationSettings {
   textStreaming: boolean
   sceneImmersion: boolean
   language: 'auto' | 'zh-CN' | 'en-US'
-  contextBudget: number
+  outputTokenBudget: number
   temperature: number
   diversity: number
 }
@@ -97,6 +101,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   const navItems = Array.from(panel.querySelectorAll<HTMLButtonElement>('[data-chat-nav]'))
   const searchInput = panel.querySelector<HTMLInputElement>('.chat-search input')
   const modelList = panel.querySelector<HTMLElement>('.chat-model-list')
+  const conversationSettingsPanel = panel.querySelector<HTMLElement>('.chat-conversation-settings-page')
   const conversationSettingsBody = panel.querySelector<HTMLElement>('.chat-conversation-settings-body')
   const conversationSettingsTitle = panel.querySelector<HTMLElement>('[data-chat-settings-title]')
   const conversationSettingsKicker = panel.querySelector<HTMLElement>('[data-chat-settings-kicker]')
@@ -358,10 +363,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         syncSideActionState('')
         break
       case 'close-conversation-settings':
-        panel.dataset.chatView = 'session'
-        navItems.forEach((item) => item.classList.toggle('active', item.dataset.chatNav === 'session'))
-        navItems.forEach((item) => item.classList.toggle('is-active', item.dataset.chatNav === 'session'))
-        syncSideActionState('')
+        closeConversationSettings()
         break
       case 'voice-call':
         target.classList.toggle('is-active')
@@ -612,7 +614,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
     const character = getCharacterForConversation(state, conversation)
-    const language = options.getLanguage()
+    const uiLanguage = options.getLanguage()
+    const language = getEffectiveConversationLanguage()
     const message = createLocalAssistantDraft('', getTimeLabel())
     conversation.messages.push(message)
     conversation.preview = { 'zh-CN': '思考中...', 'en-US': 'Thinking...' }
@@ -620,8 +623,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     renderer.appendMessage(message)
     refreshConversationList()
     const request = {
-      input: userText || (language === 'zh-CN' ? '请根据附件进行回复。' : 'Please respond to the attached media.'),
+      input: userText || (uiLanguage === 'zh-CN' ? '请根据附件进行回复。' : 'Please respond to the attached media.'),
       language,
+      preferencePrompt: buildConversationPreferencePrompt(conversationSettings, language),
+      options: buildConversationRequestOptions(conversationSettings),
       attachments: attachments.map((attachment) => ({
         kind: attachment.kind,
         name: attachment.name,
@@ -640,8 +645,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         id: character.id,
         displayName: localizeChatText(character.displayName, language),
         description: localizeChatText(character.description, language),
-        background: localizeChatText(character.background, language),
-        firstMessage: localizeChatText(character.firstMessage, language),
+        background: conversationSettings.sceneImmersion ? localizeChatText(character.background, language) : '',
+        firstMessage: conversationSettings.sceneImmersion ? localizeChatText(character.firstMessage, language) : '',
         tags: character.tag[language] ?? character.tag['zh-CN'],
       } : undefined,
     }
@@ -691,7 +696,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       }
     }
     try {
-      const response = typeof window.electronAPI.streamChatMessage === 'function'
+      const response = conversationSettings.textStreaming && typeof window.electronAPI.streamChatMessage === 'function'
         ? await window.electronAPI.streamChatMessage(request, {
           onDelta(delta) {
             enqueueStreamDelta(delta)
@@ -838,11 +843,16 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   function openConversationSettings(): void {
-    panel.dataset.chatView = 'conversation-settings'
-    navItems.forEach((item) => item.classList.toggle('active', false))
-    navItems.forEach((item) => item.classList.toggle('is-active', false))
+    conversationSettingsPanel?.classList.add('visible')
+    conversationSettingsPanel?.setAttribute('aria-hidden', 'false')
     syncSideActionState('conversation-settings')
     renderConversationSettings()
+  }
+
+  function closeConversationSettings(): void {
+    conversationSettingsPanel?.classList.remove('visible')
+    conversationSettingsPanel?.setAttribute('aria-hidden', 'true')
+    syncSideActionState('')
   }
 
   function syncSideActionState(activeAction: string): void {
@@ -861,24 +871,22 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const zh = language === 'zh-CN'
     conversationSettingsBody.innerHTML = `
       <div class="chat-settings-stage">
-        <section class="chat-settings-hero" aria-label="${options.escapeHtml(zh ? '常规设置' : 'General settings')}">
-          <div class="chat-settings-hero-copy">
-            <span>${options.escapeHtml(zh ? '常规设置' : 'General')}</span>
-            <h3>${options.escapeHtml(zh ? '塑造这段对话的节奏' : 'Shape the rhythm of this conversation')}</h3>
-            <p>${options.escapeHtml(zh
-              ? '这些设置控制文本出现方式、场景沉浸感和默认语言。它们会作为当前设备上的对话偏好保存。'
-              : 'These controls tune streaming, scene context, and language preference for this device.')}</p>
-          </div>
-          <div class="chat-settings-toggles">
-            ${renderConversationToggle('textStreaming', zh ? '文字流' : 'Text stream', zh ? '逐字呈现回复，保留正在生成的节奏。' : 'Reveal replies progressively while the answer is composed.')}
-            ${renderConversationToggle('sceneImmersion', zh ? '场景化体验' : 'Scene mode', zh ? '允许角色把场景和示例对话纳入上下文。' : 'Let character scenes and example dialogue enter the context.')}
-          </div>
+        <section class="chat-settings-intro" aria-label="${options.escapeHtml(zh ? '常规设置' : 'General settings')}">
+          <span>${options.escapeHtml(zh ? '偏好' : 'Preferences')}</span>
+          <p>${options.escapeHtml(zh
+            ? '只影响当前设备上的 chat 对话偏好；不会打断正在进行的对话。'
+            : 'Device-local chat preferences. The current conversation stays in place.')}</p>
         </section>
+
+        <div class="chat-settings-toggles">
+          ${renderConversationToggle('textStreaming', zh ? '文字流' : 'Text stream', zh ? '逐字呈现回复' : 'Progressive reveal')}
+          ${renderConversationToggle('sceneImmersion', zh ? '场景化体验' : 'Scene mode', zh ? '引入角色场景与示例' : 'Use character scenes')}
+        </div>
 
         <section class="chat-settings-language-panel">
           <div>
             <span class="chat-settings-section-label">${options.escapeHtml(zh ? '语言' : 'Language')}</span>
-            <p>${options.escapeHtml(zh ? '影响系统提示、角色资料和回复格式的默认语言。' : 'Affects system prompts, character resources, and response formatting.')}</p>
+            <p>${options.escapeHtml(zh ? '用于角色资料与回复格式。' : 'For profile and response formatting.')}</p>
           </div>
           <label class="chat-settings-select-wrap">
             <select data-chat-setting="language" aria-label="${options.escapeHtml(zh ? '语言' : 'Language')}">
@@ -893,16 +901,16 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         <section class="chat-settings-budget-panel">
           <div class="chat-settings-panel-head">
             <div>
-              <span class="chat-settings-section-label">${options.escapeHtml(zh ? '上下文预算' : 'Context budget')}</span>
-              <p>${options.escapeHtml(zh ? '控制本轮对话能携带的最大记忆与上下文长度。' : 'Controls how much memory and context this chat may carry.')}</p>
+              <span class="chat-settings-section-label">${options.escapeHtml(zh ? '输出长度' : 'Output length')}</span>
+              <p>${options.escapeHtml(zh ? '动态强调本次回复的目标输出 token。' : 'Dynamically emphasizes the target output tokens.')}</p>
             </div>
-            <output>${options.escapeHtml(String(conversationSettings.contextBudget))}</output>
+            <output>${options.escapeHtml(String(conversationSettings.outputTokenBudget))}</output>
           </div>
-          ${renderConversationRange('contextBudget', 225, 650, 25, conversationSettings.contextBudget, [
+          ${renderConversationRange('outputTokenBudget', CHAT_OUTPUT_TOKEN_MIN, CHAT_OUTPUT_TOKEN_MAX, CHAT_OUTPUT_TOKEN_STEP, conversationSettings.outputTokenBudget, [
             { value: 225, label: zh ? '轻量' : 'Lean' },
-            { value: 450, label: zh ? '均衡' : 'Balanced' },
-            { value: 550, label: zh ? '长文' : 'Long' },
-            { value: 650, label: zh ? '深记忆' : 'Deep' },
+            { value: 1000, label: zh ? '日常' : 'Daily' },
+            { value: 2500, label: zh ? '长文' : 'Long' },
+            { value: 5000, label: zh ? '深记忆' : 'Deep' },
           ])}
         </section>
 
@@ -910,7 +918,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           <div class="chat-settings-panel-head compact">
             <div>
               <span class="chat-settings-section-label">${options.escapeHtml(zh ? '参数' : 'Parameters')}</span>
-              <p>${options.escapeHtml(zh ? '保留模型创作空间，同时避免角色漂移。' : 'Keep creative room without letting the character drift.')}</p>
+              <p>${options.escapeHtml(zh ? '创作空间与稳定性。' : 'Room and stability.')}</p>
             </div>
             <button type="button" data-chat-setting-reset>${options.escapeHtml(zh ? '重置' : 'Reset')}</button>
           </div>
@@ -942,7 +950,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   function renderConversationRange(
-    key: keyof Pick<ChatConversationSettings, 'contextBudget' | 'temperature' | 'diversity'>,
+    key: keyof Pick<ChatConversationSettings, 'outputTokenBudget' | 'temperature' | 'diversity'>,
     min: number,
     max: number,
     step: number,
@@ -991,13 +999,54 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     } else if (key === 'language') {
       const value = control.value === 'zh-CN' || control.value === 'en-US' ? control.value : 'auto'
       conversationSettings = { ...conversationSettings, language: value }
-    } else if (key === 'contextBudget') {
-      conversationSettings = { ...conversationSettings, contextBudget: clampNumber(Number(control.value), 225, 650) }
+    } else if (key === 'outputTokenBudget') {
+      conversationSettings = {
+        ...conversationSettings,
+        outputTokenBudget: clampNumber(Number(control.value), CHAT_OUTPUT_TOKEN_MIN, CHAT_OUTPUT_TOKEN_MAX),
+      }
     } else if (key === 'temperature' || key === 'diversity') {
       conversationSettings = { ...conversationSettings, [key]: clampNumber(Number(control.value), 0, 1) }
     }
     saveConversationSettings(conversationSettings)
     renderConversationSettings()
+  }
+
+  function getEffectiveConversationLanguage(): 'zh-CN' | 'en-US' {
+    return conversationSettings.language === 'auto' ? options.getLanguage() : conversationSettings.language
+  }
+
+  function buildConversationRequestOptions(settings: ChatConversationSettings): Record<string, unknown> {
+    return {
+      temperature: settings.temperature,
+      top_p: settings.diversity,
+      max_tokens: Math.round(settings.outputTokenBudget),
+    }
+  }
+
+  function buildConversationPreferencePrompt(settings: ChatConversationSettings, language: 'zh-CN' | 'en-US'): string {
+    const targetTokens = Math.round(settings.outputTokenBudget)
+    const outputLength = language === 'zh-CN'
+      ? [
+        '<conversation_preferences>',
+        `本次回复的目标输出长度约为 ${targetTokens} tokens。`,
+        `请主动围绕这个 token 预算组织回复的密度、段落数量和叙事推进速度。`,
+        '如果用户明确要求更短或更长，以用户本轮要求优先；否则不要明显少于该预算，也不要为了凑长度重复内容。',
+        settings.sceneImmersion
+          ? '场景化体验已开启：可以使用角色背景、场景信息、示例对话和感官细节来推进故事。'
+          : '场景化体验已关闭：不要主动扩写大段场景背景，优先保持直接、紧凑、围绕当前对话。',
+        '</conversation_preferences>',
+      ]
+      : [
+        '<conversation_preferences>',
+        `Target this reply at roughly ${targetTokens} output tokens.`,
+        'Use that token budget to decide density, paragraph count, and narrative pacing.',
+        'If the user explicitly asks for a shorter or longer answer, follow the user; otherwise do not undershoot the budget noticeably and do not pad with repetition.',
+        settings.sceneImmersion
+          ? 'Scene mode is enabled: use character background, scene context, example dialogue, and sensory detail to move the story forward.'
+          : 'Scene mode is disabled: do not proactively expand long scene background; stay direct, compact, and centered on the current exchange.',
+        '</conversation_preferences>',
+      ]
+    return outputLength.join('\n')
   }
 
   function renderChatModelConfig(): void {
@@ -1392,6 +1441,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   panel.addEventListener('click', (event) => {
     const eventTarget = event.target as HTMLElement
+    if (eventTarget === conversationSettingsPanel) {
+      closeConversationSettings()
+      return
+    }
+
     const settingsReset = eventTarget.closest<HTMLElement>('[data-chat-setting-reset]')
     if (settingsReset && panel.contains(settingsReset)) {
       conversationSettings = getDefaultConversationSettings()
@@ -1529,6 +1583,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   window.addEventListener('pointerup', endManualDrag)
   window.addEventListener('pointercancel', endChatResize)
   window.addEventListener('pointercancel', endManualDrag)
+  window.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && conversationSettingsPanel?.classList.contains('visible')) {
+      closeConversationSettings()
+    }
+  })
 
   renderChat()
   void hydrateChatResources()
@@ -1570,7 +1629,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (conversationSettingsClose) {
       conversationSettingsClose.textContent = language === 'zh-CN' ? '返回' : 'Back'
     }
-    if (panel.dataset.chatView === 'conversation-settings') {
+    if (conversationSettingsPanel?.classList.contains('visible')) {
       renderConversationSettings()
     }
   }
@@ -1602,7 +1661,7 @@ function getDefaultConversationSettings(): ChatConversationSettings {
     textStreaming: true,
     sceneImmersion: false,
     language: 'auto',
-    contextBudget: 450,
+    outputTokenBudget: 450,
     temperature: 0.7,
     diversity: 0.7,
   }
@@ -1615,12 +1674,15 @@ function loadConversationSettings(): ChatConversationSettings {
     if (!raw) {
       return defaults
     }
-    const parsed = JSON.parse(raw) as Partial<ChatConversationSettings>
+    const parsed = JSON.parse(raw) as Partial<ChatConversationSettings> & { contextBudget?: number }
+    const savedOutputTokenBudget = parsed.outputTokenBudget ?? parsed.contextBudget
     return {
       textStreaming: typeof parsed.textStreaming === 'boolean' ? parsed.textStreaming : defaults.textStreaming,
       sceneImmersion: typeof parsed.sceneImmersion === 'boolean' ? parsed.sceneImmersion : defaults.sceneImmersion,
       language: parsed.language === 'zh-CN' || parsed.language === 'en-US' || parsed.language === 'auto' ? parsed.language : defaults.language,
-      contextBudget: Number.isFinite(Number(parsed.contextBudget)) ? clampNumber(Number(parsed.contextBudget), 225, 650) : defaults.contextBudget,
+      outputTokenBudget: Number.isFinite(Number(savedOutputTokenBudget))
+        ? clampNumber(Number(savedOutputTokenBudget), CHAT_OUTPUT_TOKEN_MIN, CHAT_OUTPUT_TOKEN_MAX)
+        : defaults.outputTokenBudget,
       temperature: Number.isFinite(Number(parsed.temperature)) ? clampNumber(Number(parsed.temperature), 0, 1) : defaults.temperature,
       diversity: Number.isFinite(Number(parsed.diversity)) ? clampNumber(Number(parsed.diversity), 0, 1) : defaults.diversity,
     }

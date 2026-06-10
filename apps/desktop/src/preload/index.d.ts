@@ -583,6 +583,8 @@ declare global {
       sendChatMessage: (request: {
         input: string
         language?: string
+        preferencePrompt?: string
+        options?: Record<string, unknown>
         messages?: Array<{
           role: 'system' | 'user' | 'assistant'
           content: string
@@ -611,6 +613,8 @@ declare global {
       streamChatMessage: (request: {
         input: string
         language?: string
+        preferencePrompt?: string
+        options?: Record<string, unknown>
         messages?: Array<{
           role: 'system' | 'user' | 'assistant'
           content: string

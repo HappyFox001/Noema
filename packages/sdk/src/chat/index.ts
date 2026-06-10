@@ -51,6 +51,7 @@ export interface ChatTurnRequest {
   attachments?: ChatAttachment[]
   character?: ChatCharacterContext
   language?: string
+  preferencePrompt?: string
   options?: Record<string, unknown>
   signal?: AbortSignal
 }
@@ -139,6 +140,9 @@ export class ChatSession {
     }
     if (request.language) {
       parts.push(`Reply in ${request.language} unless the user clearly asks for another language.`)
+    }
+    if (request.preferencePrompt) {
+      parts.push(request.preferencePrompt.trim())
     }
     return parts.filter(Boolean).join('\n\n')
   }
