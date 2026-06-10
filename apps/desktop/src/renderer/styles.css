@@ -12127,6 +12127,7 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-model-page {
 
 .chat-main {
   grid-template-rows: auto minmax(0, 1fr) auto auto;
+  min-height: 0;
   border-right: 1px solid rgba(255, 255, 255, 0.075);
 }
 
@@ -12181,8 +12182,13 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-model-page {
 }
 
 .chat-message-list {
+  min-height: 0;
   gap: 12px;
   padding: 22px 22px 14px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
   background:
     radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.035), transparent 34%),
     transparent;
@@ -12239,8 +12245,8 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-model-page {
   width: min(720px, 100%);
   min-width: min(420px, 100%);
   display: grid;
-  gap: 10px;
-  padding: 18px 20px 20px;
+  gap: 12px;
+  padding: 20px 22px 22px;
   overflow: hidden;
   border: 1px solid rgba(248, 250, 250, 0.105);
   border-radius: 19px;
@@ -12276,42 +12282,18 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-model-page {
   background: transparent;
   color: rgba(220, 222, 218, 0.74);
   font-family: var(--font-mixed);
-  font-size: 13px;
-  font-style: normal;
+  font-size: 16px;
+  font-style: italic;
   font-weight: 500;
-  line-height: 1.65;
+  line-height: 1.78;
   box-shadow: none;
 }
 
-.noema-chat-section,
-.noema-chat-card,
-.roleplay-chat-note,
-.roleplay-chat-speech,
-.roleplay-chat-narration {
+.roleplay-chat-speech {
   min-width: 0;
 }
 
-.noema-chat-section {
-  display: grid;
-  gap: 7px;
-}
-
-.noema-chat-section h4,
-.noema-chat-card strong,
-.roleplay-chat-note strong {
-  margin: 0;
-  color: rgba(248, 250, 250, 0.88);
-  font-family: var(--font-ui);
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1.25;
-}
-
-.noema-chat-section p,
-.noema-chat-card p,
-.roleplay-chat-note p,
-.roleplay-chat-speech p,
-.roleplay-chat-narration p {
+.roleplay-chat-speech p {
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -12320,149 +12302,39 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-model-page {
   box-shadow: none;
 }
 
-.roleplay-chat-narration {
-  display: grid;
-  gap: 7px;
-}
-
-.roleplay-chat-narration p {
-  color: rgba(220, 222, 218, 0.74);
-  font-family: var(--font-mixed);
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1.65;
-}
-
 .roleplay-chat-speech {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  column-gap: 6px;
-  row-gap: 7px;
-  align-items: baseline;
+  gap: 8px;
   padding: 0;
   border: 0;
   border-radius: 0;
   background: transparent;
   color: rgba(248, 250, 250, 0.92);
   font-family: var(--font-mixed);
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 650;
-  line-height: 1.58;
+  line-height: 1.78;
   box-shadow: none;
 }
 
-.roleplay-chat-speaker {
-  color: rgba(239, 231, 218, 0.94);
-  font-family: var(--font-ui);
-  font-size: 14px;
-  font-weight: 800;
-  line-height: 1.58;
-}
-
 .roleplay-chat-speech p {
-  color: rgba(228, 226, 220, 0.92);
-  font-weight: 650;
+  color: rgba(244, 242, 236, 0.94);
+  font-weight: 600;
+  line-height: 1.78;
 }
 
-.roleplay-chat-speech.has-speaker p {
-  grid-column: 2;
-}
-
-.roleplay-chat-speech.no-speaker p {
-  grid-column: 1 / -1;
-}
-
-.roleplay-chat-note {
-  display: grid;
-  gap: 5px;
-  padding: 0 0 0 11px;
-  border: 0;
-  border-left: 2px solid rgba(248, 250, 250, 0.1);
-  border-radius: 0;
-  background: transparent;
-}
-
-.roleplay-chat-note.thinking,
-.roleplay-chat-note.role-think {
-  border-left-color: rgba(161, 178, 173, 0.34);
-}
-
-.roleplay-chat-note.role-action,
-.roleplay-chat-note.scene {
-  border-left-color: rgba(188, 142, 104, 0.34);
-}
-
-.roleplay-chat-note.ooc {
-  border-left-color: rgba(244, 190, 110, 0.42);
-}
-
-.roleplay-chat-note p {
-  color: rgba(248, 250, 250, 0.56);
+.chat-message .roleplay-chat-quote {
+  color: rgba(244, 242, 236, 0.94);
   font-family: var(--font-mixed);
-  font-size: 13px;
-  line-height: 1.62;
+  font-size: 16px;
+  font-weight: 600;
 }
 
-.roleplay-chat-note.role-think p {
-  color: rgba(199, 207, 204, 0.58);
-  font-style: italic;
-  font-weight: 500;
-}
-
-.roleplay-chat-note.role-action p,
-.roleplay-chat-note.scene p {
-  color: rgba(210, 176, 145, 0.68);
-  font-style: italic;
-}
-
-.roleplay-chat-note strong {
-  color: rgba(248, 250, 250, 0.34);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.noema-chat-card {
-  display: grid;
-  gap: 7px;
-  padding: 11px 12px;
-  border: 1px solid rgba(218, 232, 224, 0.13);
-  border-radius: 15px;
-  background:
-    linear-gradient(180deg, rgba(248, 250, 250, 0.055), rgba(248, 250, 250, 0.025)),
-    rgba(255, 255, 255, 0.035);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.055),
-    0 14px 32px rgba(0, 0, 0, 0.16);
-}
-
-.noema-chat-card.success {
-  border-color: rgba(132, 232, 178, 0.18);
-}
-
-.noema-chat-card.warning {
-  border-color: rgba(244, 190, 110, 0.22);
-}
-
-.noema-chat-card.danger {
-  border-color: rgba(255, 120, 120, 0.22);
-}
-
-.noema-chat-section.is-streaming,
-.noema-chat-card.is-streaming,
-.noema-chat-code.is-streaming,
-.roleplay-chat-note.is-streaming,
-.roleplay-chat-speech.is-streaming,
-.roleplay-chat-narration.is-streaming {
+.roleplay-chat-speech.is-streaming {
   position: relative;
 }
 
-.noema-chat-card.is-streaming::after,
-.noema-chat-code.is-streaming::after,
-.roleplay-chat-note.is-streaming::after,
-.roleplay-chat-speech.is-streaming::after,
-.roleplay-chat-narration.is-streaming::after {
+.roleplay-chat-speech.is-streaming::after {
   content: '';
   width: 5px;
   height: 5px;
@@ -12473,40 +12345,6 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-model-page {
   background: rgba(218, 232, 224, 0.5);
   box-shadow: 0 0 12px rgba(218, 232, 224, 0.24);
   animation: chat-thinking-dot 1.05s ease-in-out infinite;
-}
-
-.noema-chat-code {
-  position: relative;
-  margin: 0;
-  max-width: 100%;
-  overflow: auto;
-  padding: 12px 13px;
-  border: 1px solid rgba(255, 255, 255, 0.095);
-  border-radius: 14px;
-  background: rgba(0, 0, 0, 0.26);
-  color: rgba(248, 250, 250, 0.82);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  line-height: 1.58;
-  white-space: pre-wrap;
-}
-
-.noema-chat-code[data-language]::before {
-  content: attr(data-language);
-  display: block;
-  margin-bottom: 8px;
-  color: rgba(248, 250, 250, 0.36);
-  font-family: var(--font-ui);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.chat-message-body > .noema-chat-section + small,
-.chat-message-body > .noema-chat-card + small,
-.chat-message-body > .noema-chat-code + small {
-  margin-top: 1px;
 }
 
 .chat-message.user p {
@@ -13273,13 +13111,84 @@ body.theme-day .chat-send-btn {
 }
 
 .chat-asset-list {
-  gap: 7px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
 }
 
-.chat-asset-item {
-  min-height: 38px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.035);
+.chat-side-entry {
+  min-width: 0;
+}
+
+.chat-side-entry button {
+  width: 100%;
+  min-height: 72px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 10px;
+  border: 1px solid rgba(248, 250, 250, 0.095);
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(248, 250, 250, 0.048), rgba(248, 250, 250, 0.018)),
+    rgba(255, 255, 255, 0.026);
+  color: rgba(248, 250, 250, 0.82);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease,
+    color 160ms ease;
+}
+
+.chat-side-entry button:hover {
+  border-color: rgba(218, 232, 224, 0.18);
+  background:
+    linear-gradient(180deg, rgba(248, 250, 250, 0.07), rgba(248, 250, 250, 0.028)),
+    rgba(218, 232, 224, 0.045);
+  color: rgba(248, 250, 250, 0.94);
+  transform: translateY(-1px);
+}
+
+.chat-side-entry-mark {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: rgba(218, 232, 224, 0.62);
+  box-shadow: 0 0 14px rgba(218, 232, 224, 0.18);
+}
+
+.chat-side-entry-copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.chat-side-entry-copy strong,
+.chat-side-entry-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-side-entry-copy strong {
+  color: rgba(248, 250, 250, 0.86);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.28;
+  white-space: nowrap;
+}
+
+.chat-side-entry-copy small {
+  color: rgba(248, 250, 250, 0.42);
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.35;
+  white-space: normal;
 }
 
 .chat-asset-item span {

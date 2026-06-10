@@ -1223,6 +1223,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
 
+    const sideAction = eventTarget.closest<HTMLElement>('[data-chat-side-action]')
+    if (sideAction && panel.contains(sideAction)) {
+      const labels = getChatSideActionLabels(options.getLanguage())
+      const label = labels[sideAction.dataset.chatSideAction || ''] || ''
+      showToast(label)
+      return
+    }
+
     const runtimeProvider = eventTarget.closest<HTMLElement>('[data-chat-runtime-provider]')
     if (runtimeProvider && panel.contains(runtimeProvider)) {
       activeChatRuntimeProvider = runtimeProvider.dataset.chatRuntimeProvider || activeChatRuntimeProvider
@@ -1362,6 +1370,21 @@ function createDefaultChatModel(id = 'default-chat'): ChatModelConfig {
     modelName: provider.defaultModel,
     apiKey: '',
     baseUrl: provider.defaultBaseUrl,
+  }
+}
+
+function getChatSideActionLabels(language: 'zh-CN' | 'en-US'): Record<string, string> {
+  if (language === 'zh-CN') {
+    return {
+      'conversation-management': '对话管理',
+      'conversation-settings': '对话设置',
+      'memory-management': '记忆管理',
+    }
+  }
+  return {
+    'conversation-management': 'Chats',
+    'conversation-settings': 'Settings',
+    'memory-management': 'Memory',
   }
 }
 
