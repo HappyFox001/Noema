@@ -1,37 +1,24 @@
 /**
  * Owns the standalone chat surface interactions and window mode transitions.
  */
-import claudeIconUrl from '@lobehub/icons-static-svg/icons/claude-color.svg?url'
-import adobeFireflyIconUrl from '@lobehub/icons-static-svg/icons/adobefirefly-color.svg?url'
-import alibabaCloudIconUrl from '@lobehub/icons-static-svg/icons/alibabacloud-color.svg?url'
-import automaticIconUrl from '@lobehub/icons-static-svg/icons/automatic-color.svg?url'
-import azureAIIconUrl from '@lobehub/icons-static-svg/icons/azureai-color.svg?url'
-import baiduCloudIconUrl from '@lobehub/icons-static-svg/icons/baiducloud-color.svg?url'
-import comfyUIIconUrl from '@lobehub/icons-static-svg/icons/comfyui-color.svg?url'
-import deepseekIconUrl from '@lobehub/icons-static-svg/icons/deepseek-color.svg?url'
-import falIconUrl from '@lobehub/icons-static-svg/icons/fal-color.svg?url'
-import geminiIconUrl from '@lobehub/icons-static-svg/icons/gemini-color.svg?url'
-import groqIconUrl from '@lobehub/icons-static-svg/icons/groq.svg?url'
-import huggingFaceIconUrl from '@lobehub/icons-static-svg/icons/huggingface-color.svg?url'
-import ideogramIconUrl from '@lobehub/icons-static-svg/icons/ideogram.svg?url'
-import newAPIIconUrl from '@lobehub/icons-static-svg/icons/newapi-color.svg?url'
-import ollamaIconUrl from '@lobehub/icons-static-svg/icons/ollama.svg?url'
-import openAIIconUrl from '@lobehub/icons-static-svg/icons/openai.svg?url'
-import qwenIconUrl from '@lobehub/icons-static-svg/icons/qwen-color.svg?url'
-import recraftIconUrl from '@lobehub/icons-static-svg/icons/recraft.svg?url'
-import replicateIconUrl from '@lobehub/icons-static-svg/icons/replicate.svg?url'
-import siliconCloudIconUrl from '@lobehub/icons-static-svg/icons/siliconcloud-color.svg?url'
-import stabilityIconUrl from '@lobehub/icons-static-svg/icons/stability-color.svg?url'
-import tencentCloudIconUrl from '@lobehub/icons-static-svg/icons/tencentcloud-color.svg?url'
-import volcengineIconUrl from '@lobehub/icons-static-svg/icons/volcengine-color.svg?url'
+import { getImageProviderCatalogEntry, getLLMProviderCatalogEntry } from '../../main/model-provider-catalog'
 import {
-  IMAGE_PROVIDER_CATALOG,
-  LLM_PROVIDER_CATALOG,
-  getImageProviderCatalogEntry,
-  getLLMProviderCatalogEntry,
-  type ImageProviderType,
-  type LLMProviderType,
-} from '../../main/model-provider-catalog'
+  CHAT_CONTEXT_TURNS_MAX,
+  CHAT_CONTEXT_TURNS_MIN,
+  CHAT_OUTPUT_TOKEN_MAX,
+  CHAT_OUTPUT_TOKEN_MIN,
+  CHAT_SUMMARY_BATCH_MESSAGE_COUNT,
+  CHAT_SUMMARY_LIMIT_MAX,
+  CHAT_SUMMARY_LIMIT_MIN,
+  buildConversationPreferencePrompt,
+  buildConversationRequestOptions,
+  clampNumber,
+  getDefaultConversationSettings,
+  loadConversationSettings,
+  renderConversationSettingsPage,
+  saveConversationSettings,
+  type ChatConversationSettings,
+} from './chat-conversation-settings'
 import {
   applyChatResourceState,
   createInitialChatState,
@@ -46,50 +33,26 @@ import {
   type ChatMessageAttachment,
   type ChatMessage,
 } from './chat-model'
+import {
+  createDefaultChatModel,
+  getActiveChatModelName,
+  getAvailableModelNames,
+  getChatModelType,
+  getEnabledModelNames,
+  getLLMProviderEntry,
+  mergeModelNames,
+  normalizeModelNameList,
+  renderChatModelConfigPage,
+  renderChatModelLogo,
+  renderProviderLogo,
+  type ChatModelConfig,
+  type ChatSystemConfig,
+} from './chat-model-config-page'
 import { createChatRenderer } from './chat-renderer'
 
 type ChatResizeEdge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
 
-interface ChatModelConfig {
-  id: string
-  modelType: 'llm' | 'image'
-  provider?: string
-  modelName: string
-  enabledModels: string[]
-  availableModels: string[]
-  modelsFetchedAt?: number
-  apiKey: string
-  baseUrl: string
-}
-
-interface ChatSystemConfig {
-  chatModels: ChatModelConfig[]
-  activeChatId: string
-  activeChatModelName: string
-  [key: string]: unknown
-}
-
 type PendingChatAttachment = ChatMessageAttachment
-
-const CHAT_OUTPUT_TOKEN_MIN = 225
-const CHAT_OUTPUT_TOKEN_MAX = 5000
-const CHAT_OUTPUT_TOKEN_STEP = 50
-const CHAT_CONTEXT_TURNS_MIN = 15
-const CHAT_CONTEXT_TURNS_MAX = 30
-const CHAT_SUMMARY_LIMIT_MIN = 0
-const CHAT_SUMMARY_LIMIT_MAX = 24
-const CHAT_SUMMARY_BATCH_MESSAGE_COUNT = 10
-
-interface ChatConversationSettings {
-  textStreaming: boolean
-  sceneImmersion: boolean
-  language: 'auto' | 'zh-CN' | 'en-US'
-  outputTokenBudget: number
-  temperature: number
-  diversity: number
-  shortTermTurns: number
-  summaryLimit: number
-}
 
 export interface ChatPanelController {
   open(): Promise<void>
@@ -1426,126 +1389,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!conversationSettingsBody) {
       return
     }
-    const language = options.getLanguage()
-    const zh = language === 'zh-CN'
-    conversationSettingsBody.innerHTML = `
-      <div class="chat-settings-stage">
-        <section class="chat-settings-intro" aria-label="${options.escapeHtml(zh ? '常规设置' : 'General settings')}">
-          <span>${options.escapeHtml(zh ? '偏好' : 'Preferences')}</span>
-          <p>${options.escapeHtml(zh
-            ? '只影响当前设备上的 chat 对话偏好；不会打断正在进行的对话。'
-            : 'Device-local chat preferences. The current conversation stays in place.')}</p>
-        </section>
-
-        <div class="chat-settings-toggles">
-          ${renderConversationToggle('textStreaming', zh ? '文字流' : 'Text stream', zh ? '逐字呈现回复' : 'Progressive reveal')}
-          ${renderConversationToggle('sceneImmersion', zh ? '场景化体验' : 'Scene mode', zh ? '引入角色场景与示例' : 'Use character scenes')}
-        </div>
-
-        <section class="chat-settings-language-panel">
-          <div>
-            <span class="chat-settings-section-label">${options.escapeHtml(zh ? '语言' : 'Language')}</span>
-            <p>${options.escapeHtml(zh ? '用于角色资料与回复格式。' : 'For profile and response formatting.')}</p>
-          </div>
-          <label class="chat-settings-select-wrap">
-            <select data-chat-setting="language" aria-label="${options.escapeHtml(zh ? '语言' : 'Language')}">
-              ${renderConversationLanguageOption('auto', zh ? '跟随界面' : 'Follow UI')}
-              ${renderConversationLanguageOption('zh-CN', zh ? '简体中文' : 'Simplified Chinese')}
-              ${renderConversationLanguageOption('en-US', zh ? 'English' : 'English')}
-            </select>
-            <span aria-hidden="true"></span>
-          </label>
-        </section>
-
-        <section class="chat-settings-budget-panel">
-          <div class="chat-settings-panel-head">
-            <div>
-              <span class="chat-settings-section-label">${options.escapeHtml(zh ? '输出长度' : 'Output length')}</span>
-              <p>${options.escapeHtml(zh ? '动态强调本次回复的目标输出 token。' : 'Dynamically emphasizes the target output tokens.')}</p>
-            </div>
-            <output>${options.escapeHtml(String(conversationSettings.outputTokenBudget))}</output>
-          </div>
-          ${renderConversationRange('outputTokenBudget', CHAT_OUTPUT_TOKEN_MIN, CHAT_OUTPUT_TOKEN_MAX, CHAT_OUTPUT_TOKEN_STEP, conversationSettings.outputTokenBudget, [
-            { value: 225, label: zh ? '轻量' : 'Lean' },
-            { value: 1000, label: zh ? '日常' : 'Daily' },
-            { value: 2500, label: zh ? '长文' : 'Long' },
-            { value: 5000, label: zh ? '深记忆' : 'Deep' },
-          ])}
-        </section>
-
-        <section class="chat-settings-parameter-panel">
-          <div class="chat-settings-panel-head compact">
-            <div>
-              <span class="chat-settings-section-label">${options.escapeHtml(zh ? '参数' : 'Parameters')}</span>
-              <p>${options.escapeHtml(zh ? '创作空间与稳定性。' : 'Room and stability.')}</p>
-            </div>
-            <button type="button" data-chat-setting-reset>${options.escapeHtml(zh ? '重置' : 'Reset')}</button>
-          </div>
-          <div class="chat-settings-parameter-grid">
-            ${renderConversationParameter('temperature', zh ? '温度' : 'Temperature', zh ? '克制' : 'Precise', zh ? '灵动' : 'Expressive')}
-            ${renderConversationParameter('diversity', zh ? '内容多样性' : 'Diversity', zh ? '稳定' : 'Stable', zh ? '丰富' : 'Varied')}
-          </div>
-        </section>
-      </div>
-    `
-  }
-
-  function renderConversationToggle(key: 'textStreaming' | 'sceneImmersion', title: string, copy: string): string {
-    const checked = conversationSettings[key]
-    return `
-      <label class="chat-settings-toggle-row">
-        <span>
-          <strong>${options.escapeHtml(title)}</strong>
-          <small>${options.escapeHtml(copy)}</small>
-        </span>
-        <input type="checkbox" data-chat-setting="${key}" ${checked ? 'checked' : ''} />
-        <i aria-hidden="true"></i>
-      </label>
-    `
-  }
-
-  function renderConversationLanguageOption(value: ChatConversationSettings['language'], label: string): string {
-    return `<option value="${options.escapeHtml(value)}" ${conversationSettings.language === value ? 'selected' : ''}>${options.escapeHtml(label)}</option>`
-  }
-
-  function renderConversationRange(
-    key: keyof Pick<ChatConversationSettings, 'outputTokenBudget' | 'temperature' | 'diversity'>,
-    min: number,
-    max: number,
-    step: number,
-    value: number,
-    markers: Array<{ value: number; label: string }>
-  ): string {
-    const progress = Math.max(0, Math.min(100, ((value - min) / (max - min)) * 100))
-    return `
-      <div class="chat-settings-range" style="--chat-setting-progress: ${progress}%">
-        <input type="range" data-chat-setting="${options.escapeHtml(key)}" min="${min}" max="${max}" step="${step}" value="${options.escapeHtml(String(value))}" />
-        <div class="chat-settings-range-markers">
-          ${markers.map((marker) => `
-            <span style="left: ${Math.max(0, Math.min(100, ((marker.value - min) / (max - min)) * 100))}%">
-              <b>${options.escapeHtml(String(marker.value))}</b>
-              <em>${options.escapeHtml(marker.label)}</em>
-            </span>
-          `).join('')}
-        </div>
-      </div>
-    `
-  }
-
-  function renderConversationParameter(key: 'temperature' | 'diversity', title: string, minLabel: string, maxLabel: string): string {
-    const value = conversationSettings[key]
-    return `
-      <article class="chat-settings-parameter">
-        <div>
-          <strong>${options.escapeHtml(title)}</strong>
-          <output>${options.escapeHtml(value.toFixed(2))}</output>
-        </div>
-        ${renderConversationRange(key, 0, 1, 0.05, value, [
-          { value: 0, label: minLabel },
-          { value: 1, label: maxLabel },
-        ])}
-      </article>
-    `
+    conversationSettingsBody.innerHTML = renderConversationSettingsPage(conversationSettings, {
+      language: options.getLanguage(),
+      escapeHtml: options.escapeHtml,
+    })
   }
 
   function updateConversationSetting(control: HTMLInputElement | HTMLSelectElement): void {
@@ -1592,254 +1439,19 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     return conversationSettings.language === 'auto' ? options.getLanguage() : conversationSettings.language
   }
 
-  function buildConversationRequestOptions(settings: ChatConversationSettings): Record<string, unknown> {
-    return {
-      temperature: settings.temperature,
-      top_p: settings.diversity,
-      max_tokens: Math.round(settings.outputTokenBudget),
-    }
-  }
-
-  function buildConversationPreferencePrompt(settings: ChatConversationSettings, language: 'zh-CN' | 'en-US'): string {
-    const targetTokens = Math.round(settings.outputTokenBudget)
-    const outputLength = language === 'zh-CN'
-      ? [
-        '<conversation_preferences>',
-        `本次回复的目标输出长度约为 ${targetTokens} tokens。`,
-        `请主动围绕这个 token 预算组织回复的密度、段落数量和叙事推进速度。`,
-        '如果用户明确要求更短或更长，以用户本轮要求优先；否则不要明显少于该预算，也不要为了凑长度重复内容。',
-        settings.sceneImmersion
-          ? '场景化体验已开启：可以使用角色背景、场景信息、示例对话和感官细节来推进故事。'
-          : '场景化体验已关闭：不要主动扩写大段场景背景，优先保持直接、紧凑、围绕当前对话。',
-        '如果本轮导致当前地点、角色/环境状态或装备栏发生变化，请在回复末尾追加 <scene_update>{"location":"...","status":"🙂 愉悦度 45  ⚡ 兴奋值 22","equipment":[{"name":"装备名称","ability":"能力","quantity":1}]}</scene_update>。只输出发生变化的字段，不要把 scene_update 写进正常叙事。',
-        '</conversation_preferences>',
-      ]
-      : [
-        '<conversation_preferences>',
-        `Target this reply at roughly ${targetTokens} output tokens.`,
-        'Use that token budget to decide density, paragraph count, and narrative pacing.',
-        'If the user explicitly asks for a shorter or longer answer, follow the user; otherwise do not undershoot the budget noticeably and do not pad with repetition.',
-        settings.sceneImmersion
-          ? 'Scene mode is enabled: use character background, scene context, example dialogue, and sensory detail to move the story forward.'
-          : 'Scene mode is disabled: do not proactively expand long scene background; stay direct, compact, and centered on the current exchange.',
-        'If this turn changes the current location, character/environment status, or equipment, append <scene_update>{"location":"...","status":"🙂 pleasure 45  ⚡ arousal 22","equipment":[{"name":"item name","ability":"ability","quantity":1}]}</scene_update> at the end. Include only changed fields and do not include scene_update in normal prose.',
-        '</conversation_preferences>',
-      ]
-    return outputLength.join('\n')
-  }
-
   function renderChatModelConfig(): void {
     if (!modelList) {
       return
     }
-    const config = chatSystemConfig
-    if (!config || config.chatModels.length === 0) {
-      modelList.innerHTML = `<div class="chat-model-empty">${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '暂无 chat 模型配置' : 'No chat model configured')}</div>`
-      return
-    }
-
-    modelList.innerHTML = `
-      <div class="chat-model-list-head">
-        <span>${options.escapeHtml(options.getLanguage() === 'zh-CN' ? 'API 路由' : 'API routes')}</span>
-        <small>${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '管理 LLM / 生图 provider、模型名、密钥和地址。' : 'Manage LLM / image providers, model name, key, and URL.')}</small>
-      </div>
-      ${openChatModelTypePicker ? renderChatModelTypePicker() : ''}
-      ${config.chatModels.map((model) => renderChatModelCard(model, config)).join('')}
-    `
-  }
-
-  function renderChatModelTypePicker(): string {
-    const types: Array<{ value: 'llm' | 'image'; label: string; description: string }> = options.getLanguage() === 'zh-CN'
-      ? [
-          { value: 'llm', label: 'LLM 模型', description: '对话、角色回复、文本推理' },
-          { value: 'image', label: '生图模型', description: '图片生成、编辑、本地工作流' },
-        ]
-      : [
-          { value: 'llm', label: 'LLM model', description: 'Chat, role replies, text reasoning' },
-          { value: 'image', label: 'Image model', description: 'Image generation, editing, local workflows' },
-        ]
-    return `
-      <div class="chat-api-type-picker" role="dialog" aria-label="${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '选择 API 类型' : 'Choose API type')}">
-        ${types.map((type) => `
-          <button class="chat-api-type-option" type="button" data-chat-add-model-type="${type.value}">
-            <span class="chat-model-type-dot ${type.value}"></span>
-            <span>
-              <strong>${options.escapeHtml(type.label)}</strong>
-              <small>${options.escapeHtml(type.description)}</small>
-            </span>
-          </button>
-        `).join('')}
-      </div>
-    `
-  }
-
-  function renderChatModelCard(model: ChatModelConfig, config: ChatSystemConfig): string {
-    const canDelete = config.chatModels.length > 1
-    const providerEntry = getChatProviderEntry(model)
-    return `
-      <article class="chat-model-card" data-chat-model-id="${options.escapeHtml(model.id)}">
-        <div class="chat-api-config">
-          <span class="chat-model-logo">${renderChatModelLogo(model)}</span>
-          <div class="chat-api-config-main">
-            ${renderChatProviderSelect(model)}
-            <div class="chat-model-fields compact">
-              <div class="chat-model-field">
-                <label>${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '密钥' : 'Key')}</label>
-                <input class="chat-model-input" type="password" data-chat-model-field="apiKey" value="${options.escapeHtml(model.apiKey)}" placeholder="${options.escapeHtml(providerEntry.defaultApiKeyPlaceholder)}" />
-              </div>
-              <div class="chat-model-field">
-                <label>${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '地址' : 'URL')}</label>
-                <input class="chat-model-input" type="text" data-chat-model-field="baseUrl" value="${options.escapeHtml(model.baseUrl)}" placeholder="${options.escapeHtml(providerEntry.defaultBaseUrl)}" />
-              </div>
-            </div>
-          </div>
-        </div>
-        ${renderChatModelTypeBadge(model)}
-        ${renderChatApiModelSelector(model)}
-        <div class="chat-model-actions" aria-label="Model actions">
-          ${canDelete ? `<button class="danger" type="button" data-chat-model-action="delete">${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '移除' : 'Remove')}</button>` : ''}
-        </div>
-      </article>
-    `
-  }
-
-  function renderChatApiModelSelector(model: ChatModelConfig): string {
-    const type = getChatModelType(model)
-    if (type === 'image') {
-      return `
-        <div class="chat-api-models">
-          <div class="chat-api-models-head">
-            <strong>${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '模型' : 'Model')}</strong>
-          </div>
-          ${renderChatModelCombobox(model, getChatProviderEntry(model).defaultModel || 'model-name')}
-        </div>
-      `
-    }
-
-    const availableModels = getAvailableModelNames(model)
-    const enabledModels = getEnabledModelNames(model)
-    const fetchedLabel = model.modelsFetchedAt
-      ? formatModelCacheTime(model.modelsFetchedAt, options.getLanguage())
-      : (options.getLanguage() === 'zh-CN' ? '未缓存' : 'No cache')
-    const manualName = model.modelName.trim()
-    return `
-      <div class="chat-api-models">
-        <div class="chat-api-models-head">
-          <strong>${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '模型' : 'Models')}</strong>
-          <span>${options.escapeHtml(fetchedLabel)}</span>
-          <button class="chat-model-fetch inline" type="button" data-chat-model-action="get-models">
-            ${options.escapeHtml(chatModelLoading.has(model.id) ? (options.getLanguage() === 'zh-CN' ? '刷新中...' : 'Refreshing...') : (availableModels.length ? (options.getLanguage() === 'zh-CN' ? '刷新' : 'Refresh') : 'Get models'))}
-          </button>
-        </div>
-        ${availableModels.length
-          ? `<div class="chat-api-model-options">
-              ${availableModels.map((name) => `
-                <button class="${enabledModels.includes(name) ? 'selected' : ''}" type="button" data-chat-model-action="toggle-enabled-model" data-chat-model-name="${options.escapeHtml(name)}">
-                  <span>${enabledModels.includes(name) ? '✓' : ''}</span>
-                  <strong>${options.escapeHtml(name)}</strong>
-                </button>
-              `).join('')}
-            </div>`
-          : `<div class="chat-api-model-manual">
-              ${renderChatModelCombobox(model, getChatProviderEntry(model).defaultModel || 'model-name')}
-              <small>${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '可手动输入一个模型，或点击 Get models 获取并缓存列表。' : 'Enter one model manually, or click Get models to fetch and cache the list.')}</small>
-            </div>`}
-        ${manualName && availableModels.length && !availableModels.includes(manualName)
-          ? `<button class="chat-api-model-add-manual" type="button" data-chat-model-action="toggle-enabled-model" data-chat-model-name="${options.escapeHtml(manualName)}">${options.escapeHtml(options.getLanguage() === 'zh-CN' ? `添加手动模型：${manualName}` : `Add manual model: ${manualName}`)}</button>`
-          : ''}
-      </div>
-    `
-  }
-
-  function renderChatModelTypeBadge(model: ChatModelConfig): string {
-    const type = getChatModelType(model)
-    const label = type === 'image'
-      ? (options.getLanguage() === 'zh-CN' ? '生图模型' : 'Image')
-      : 'LLM'
-    return `
-      <div class="chat-model-type-badge" aria-label="Model type">
-        <span class="chat-model-type-dot ${type}"></span>
-        <strong>${options.escapeHtml(label)}</strong>
-      </div>
-    `
-  }
-
-  function renderChatModelCombobox(model: ChatModelConfig, placeholder: string): string {
-    const open = openChatModelDropdownId === model.id
-    return `
-      <div class="chat-model-combo ${open ? 'open' : ''}">
-        <input class="chat-model-input" type="text" data-chat-model-field="modelName" value="${options.escapeHtml(model.modelName)}" placeholder="${options.escapeHtml(placeholder)}" autocomplete="off" />
-        <button class="chat-model-combo-trigger" type="button" data-chat-model-action="toggle-models" aria-label="${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '选择模型' : 'Choose model')}"></button>
-        ${open ? renderChatModelDropdown(model) : ''}
-      </div>
-    `
-  }
-
-  function renderChatModelDropdown(model: ChatModelConfig): string {
-    if (getChatModelType(model) === 'image') {
-      return `
-        <div class="chat-model-dropdown">
-          <span class="chat-model-dropdown-empty">${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '生图模型请按厂商文档手动填写模型名或工作流名称。' : 'For image models, enter the model or workflow name manually.')}</span>
-        </div>
-      `
-    }
-    const loading = chatModelLoading.has(model.id)
-    const models = chatModelOptions.get(model.id) || []
-    const emptyText = options.getLanguage() === 'zh-CN'
-      ? '可手动输入，或从接口拉取模型列表。'
-      : 'Type manually, or fetch available models.'
-    return `
-      <div class="chat-model-dropdown">
-        <button class="chat-model-fetch" type="button" data-chat-model-action="get-models">
-          ${options.escapeHtml(loading ? (options.getLanguage() === 'zh-CN' ? '获取中...' : 'Loading...') : 'Get models')}
-        </button>
-        ${models.length
-          ? `<div class="chat-model-options">
-              ${models.map((name) => `
-                <button type="button" data-chat-model-action="choose-model" data-chat-model-name="${options.escapeHtml(name)}">
-                  ${options.escapeHtml(name)}
-                </button>
-              `).join('')}
-            </div>`
-          : `<span class="chat-model-dropdown-empty">${options.escapeHtml(emptyText)}</span>`}
-      </div>
-    `
-  }
-
-  function renderChatProviderSelect(model: ChatModelConfig): string {
-    const current = getChatProviderEntry(model)
-    const open = openChatProviderDropdownId === model.id
-    return `
-      <div class="chat-provider-select ${open ? 'open' : ''}">
-        <button class="chat-provider-current" type="button" data-chat-model-action="toggle-providers" aria-label="${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '选择服务商' : 'Choose provider')}">
-          <span class="chat-provider-current-icon">${renderChatProviderLogo(model)}</span>
-          <span class="chat-provider-current-copy">
-            <strong>${options.escapeHtml(current.label)}</strong>
-            <small>${options.escapeHtml(current.value)}</small>
-          </span>
-          <span class="chat-provider-current-chevron"></span>
-        </button>
-        ${open ? `<div class="chat-provider-menu" aria-label="Provider">
-          ${getChatProviderCatalog(model).map((provider) => renderChatProviderOption(provider.value, model)).join('')}
-        </div>` : ''}
-      </div>
-    `
-  }
-
-  function renderChatProviderOption(provider: LLMProviderType | ImageProviderType, model: ChatModelConfig): string {
-    const selected = getChatProviderEntry(model).value === provider
-    const entry = getChatModelType(model) === 'image'
-      ? getImageProviderCatalogEntry(provider)
-      : getLLMProviderCatalogEntry(provider)
-    return `
-      <button class="chat-provider-option ${selected ? 'selected' : ''}" type="button" title="${options.escapeHtml(entry.label)}" data-chat-provider="${options.escapeHtml(provider)}">
-        ${getChatModelType(model) === 'image' ? renderImageProviderLogo(provider as ImageProviderType) : renderProviderLogo(provider as LLMProviderType)}
-        <span>
-          <strong>${options.escapeHtml(entry.label)}</strong>
-          <small>${options.escapeHtml(entry.value)}</small>
-        </span>
-      </button>
-    `
+    modelList.innerHTML = renderChatModelConfigPage(chatSystemConfig, {
+      language: options.getLanguage(),
+      escapeHtml: options.escapeHtml,
+      openTypePicker: openChatModelTypePicker,
+      openModelDropdownId: openChatModelDropdownId,
+      openProviderDropdownId: openChatProviderDropdownId,
+      loadingModelIds: chatModelLoading,
+      modelOptions: chatModelOptions,
+    })
   }
 
   async function saveChatModelConfig(): Promise<void> {
@@ -2465,79 +2077,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 }
 
-function createDefaultChatModel(id = 'default-chat', modelType: 'llm' | 'image' = 'llm'): ChatModelConfig {
-  const provider = modelType === 'image'
-    ? getImageProviderCatalogEntry('openai-image')
-    : getLLMProviderCatalogEntry('openai-compatible')
-  return {
-    id,
-    modelType,
-    provider: provider.value,
-    modelName: provider.defaultModel,
-    enabledModels: provider.defaultModel ? [provider.defaultModel] : [],
-    availableModels: [],
-    apiKey: '',
-    baseUrl: provider.defaultBaseUrl,
-  }
-}
-
-function getDefaultConversationSettings(): ChatConversationSettings {
-  return {
-    textStreaming: true,
-    sceneImmersion: false,
-    language: 'auto',
-    outputTokenBudget: 450,
-    temperature: 0.7,
-    diversity: 0.7,
-    shortTermTurns: 15,
-    summaryLimit: 8,
-  }
-}
-
-function loadConversationSettings(): ChatConversationSettings {
-  const defaults = getDefaultConversationSettings()
-  try {
-    const raw = window.localStorage.getItem('noema.chat.conversationSettings')
-    if (!raw) {
-      return defaults
-    }
-    const parsed = JSON.parse(raw) as Partial<ChatConversationSettings>
-    return {
-      textStreaming: typeof parsed.textStreaming === 'boolean' ? parsed.textStreaming : defaults.textStreaming,
-      sceneImmersion: typeof parsed.sceneImmersion === 'boolean' ? parsed.sceneImmersion : defaults.sceneImmersion,
-      language: parsed.language === 'zh-CN' || parsed.language === 'en-US' || parsed.language === 'auto' ? parsed.language : defaults.language,
-      outputTokenBudget: Number.isFinite(Number(parsed.outputTokenBudget))
-        ? clampNumber(Number(parsed.outputTokenBudget), CHAT_OUTPUT_TOKEN_MIN, CHAT_OUTPUT_TOKEN_MAX)
-        : defaults.outputTokenBudget,
-      temperature: Number.isFinite(Number(parsed.temperature)) ? clampNumber(Number(parsed.temperature), 0, 1) : defaults.temperature,
-      diversity: Number.isFinite(Number(parsed.diversity)) ? clampNumber(Number(parsed.diversity), 0, 1) : defaults.diversity,
-      shortTermTurns: Number.isFinite(Number(parsed.shortTermTurns))
-        ? Math.round(clampNumber(Number(parsed.shortTermTurns), CHAT_CONTEXT_TURNS_MIN, CHAT_CONTEXT_TURNS_MAX))
-        : defaults.shortTermTurns,
-      summaryLimit: Number.isFinite(Number(parsed.summaryLimit))
-        ? Math.round(clampNumber(Number(parsed.summaryLimit), CHAT_SUMMARY_LIMIT_MIN, CHAT_SUMMARY_LIMIT_MAX))
-        : defaults.summaryLimit,
-    }
-  } catch {
-    return defaults
-  }
-}
-
-function saveConversationSettings(settings: ChatConversationSettings): void {
-  try {
-    window.localStorage.setItem('noema.chat.conversationSettings', JSON.stringify(settings))
-  } catch {
-    // Local storage may be unavailable in restricted renderer contexts.
-  }
-}
-
-function clampNumber(value: number, min: number, max: number): number {
-  if (!Number.isFinite(value)) {
-    return min
-  }
-  return Math.min(max, Math.max(min, value))
-}
-
 function formatChatHistoryRole(role: ChatMessage['role'], language: 'zh-CN' | 'en-US'): string {
   if (role === 'user') {
     return language === 'zh-CN' ? '你' : 'You'
@@ -2582,153 +2121,4 @@ function getStreamRevealSliceSize(pending: string): number {
     return 10
   }
   return 5
-}
-
-function getChatModelType(model: ChatModelConfig | undefined): 'llm' | 'image' {
-  return model?.modelType ?? 'llm'
-}
-
-function getActiveChatModelName(config: ChatSystemConfig): string {
-  return config.activeChatModelName.trim()
-}
-
-function getEnabledModelNames(model: ChatModelConfig | undefined): string[] {
-  if (!model) {
-    return []
-  }
-  return normalizeModelNameList(model.enabledModels)
-}
-
-function getAvailableModelNames(model: ChatModelConfig): string[] {
-  return normalizeModelNameList(model.availableModels)
-}
-
-function normalizeModelNameList(value: unknown): string[] {
-  const list = Array.isArray(value)
-    ? value.map((item) => typeof item === 'string' ? item.trim() : '').filter(Boolean)
-    : []
-  return [...new Set(list)]
-}
-
-function mergeModelNames(current: unknown, additions: unknown): string[] {
-  return normalizeModelNameList([
-    ...normalizeModelNameList(current),
-    ...normalizeModelNameList(additions),
-  ])
-}
-
-function formatModelCacheTime(value: number, language: 'zh-CN' | 'en-US'): string {
-  if (!Number.isFinite(value) || value <= 0) {
-    return language === 'zh-CN' ? '未缓存' : 'No cache'
-  }
-  const text = new Date(value).toLocaleString(language === 'zh-CN' ? 'zh-CN' : 'en-US', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-  return language === 'zh-CN' ? `缓存 ${text}` : `Cached ${text}`
-}
-
-function getLLMProviderEntry(provider: string | undefined) {
-  return getLLMProviderCatalogEntry(provider as LLMProviderType | undefined)
-}
-
-function getChatProviderEntry(model: ChatModelConfig) {
-  return getChatModelType(model) === 'image'
-    ? getImageProviderCatalogEntry(model.provider)
-    : getLLMProviderEntry(model.provider)
-}
-
-function getChatProviderCatalog(model: ChatModelConfig) {
-  return getChatModelType(model) === 'image' ? IMAGE_PROVIDER_CATALOG : LLM_PROVIDER_CATALOG
-}
-
-function renderChatModelLogo(model: ChatModelConfig | undefined): string {
-  if (!model) {
-    return renderProviderLogo('openai-compatible')
-  }
-  const provider = getChatProviderEntry(model).value
-  return getChatModelType(model) === 'image'
-    ? renderImageProviderLogo(provider as ImageProviderType)
-    : renderProviderLogo(provider as LLMProviderType)
-}
-
-function renderChatProviderLogo(model: ChatModelConfig): string {
-  const provider = getChatProviderEntry(model).value
-  return getChatModelType(model) === 'image'
-    ? renderImageProviderLogo(provider as ImageProviderType)
-    : renderProviderLogo(provider as LLMProviderType)
-}
-
-function renderProviderLogo(provider: LLMProviderType): string {
-  const logo = getProviderLogo(provider)
-  return `<img src="${logo.src}" alt="${logo.alt}" />`
-}
-
-function renderImageProviderLogo(provider: ImageProviderType): string {
-  const logo = getImageProviderLogo(provider)
-  return `<img src="${logo.src}" alt="${logo.alt}" />`
-}
-
-function getProviderLogo(provider: LLMProviderType): { src: string; alt: string } {
-  switch (provider) {
-    case 'gemini':
-      return { src: geminiIconUrl, alt: 'Gemini' }
-    case 'claude':
-      return { src: claudeIconUrl, alt: 'Claude' }
-    case 'qwen':
-      return { src: qwenIconUrl, alt: 'Qwen' }
-    case 'deepseek':
-      return { src: deepseekIconUrl, alt: 'DeepSeek' }
-    case 'groq':
-      return { src: groqIconUrl, alt: 'Groq' }
-    case 'ollama':
-      return { src: ollamaIconUrl, alt: 'Ollama' }
-    case 'azure-openai':
-      return { src: azureAIIconUrl, alt: 'Azure OpenAI' }
-    case 'openai-compatible':
-      return { src: newAPIIconUrl, alt: 'New API' }
-    case 'openai':
-    default:
-      return { src: openAIIconUrl, alt: 'OpenAI' }
-  }
-}
-
-function getImageProviderLogo(provider: ImageProviderType): { src: string; alt: string } {
-  switch (provider) {
-    case 'google-imagen':
-      return { src: geminiIconUrl, alt: 'Google Imagen' }
-    case 'stability':
-      return { src: stabilityIconUrl, alt: 'Stability AI' }
-    case 'replicate':
-      return { src: replicateIconUrl, alt: 'Replicate' }
-    case 'fal':
-      return { src: falIconUrl, alt: 'fal.ai' }
-    case 'comfyui':
-      return { src: comfyUIIconUrl, alt: 'ComfyUI' }
-    case 'automatic1111':
-      return { src: automaticIconUrl, alt: 'AUTOMATIC1111' }
-    case 'aliyun-bailian':
-      return { src: alibabaCloudIconUrl, alt: '阿里云百炼' }
-    case 'volcengine-ark':
-      return { src: volcengineIconUrl, alt: '火山方舟' }
-    case 'tencent-hunyuan':
-      return { src: tencentCloudIconUrl, alt: '腾讯混元' }
-    case 'baidu-qianfan':
-      return { src: baiduCloudIconUrl, alt: '百度千帆' }
-    case 'siliconflow':
-      return { src: siliconCloudIconUrl, alt: 'SiliconFlow' }
-    case 'huggingface':
-      return { src: huggingFaceIconUrl, alt: 'Hugging Face' }
-    case 'adobe-firefly':
-      return { src: adobeFireflyIconUrl, alt: 'Adobe Firefly' }
-    case 'ideogram':
-      return { src: ideogramIconUrl, alt: 'Ideogram' }
-    case 'recraft':
-      return { src: recraftIconUrl, alt: 'Recraft' }
-    case 'openai-image':
-    default:
-      return { src: openAIIconUrl, alt: 'OpenAI Images' }
-  }
 }
