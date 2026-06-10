@@ -588,6 +588,15 @@ declare global {
           title: Record<string, string>
           preview: Record<string, string>
           updatedLabel: Record<string, string>
+          summaries?: Array<{
+            id: string
+            text: Record<string, string>
+            createdLabel: Record<string, string>
+            messageCount: number
+            startMessageIndex: number
+            endMessageIndex: number
+            sourceMessageIds: string[]
+          }>
           messages: Array<{
             id: string
             role: 'system' | 'user' | 'assistant'
@@ -612,6 +621,7 @@ declare global {
         title: Record<string, string>
         preview: Record<string, string>
         updatedLabel: Record<string, string>
+        summaries?: unknown[]
         messages: unknown[]
       }) => Promise<{ success: boolean; error?: string }>
       deleteChatConversation: (id: string) => Promise<{ success: boolean; error?: string }>

@@ -11,6 +11,7 @@ export interface StoredChatConversation {
   title: Record<string, string>
   preview: Record<string, string>
   updatedLabel: Record<string, string>
+  summaries: unknown[]
   messages: unknown[]
 }
 
@@ -20,6 +21,7 @@ interface ChatConversationRow {
   title_json: string
   preview_json: string
   updated_label_json: string
+  summaries_json: string
   messages_json: string
 }
 
@@ -33,26 +35,14 @@ export class ChatHistoryStore {
       return
     }
     await mkdir(dirname(this.dbPath), { recursive: true })
-    await runSqlite(this.dbPath, `
-      CREATE TABLE IF NOT EXISTS chat_conversations (
-        id TEXT PRIMARY KEY,
-        character_id TEXT NOT NULL,
-        title_json TEXT NOT NULL,
-        preview_json TEXT NOT NULL,
-        updated_label_json TEXT NOT NULL,
-        messages_json TEXT NOT NULL,
-        updated_at INTEGER NOT NULL,
-        created_at INTEGER DEFAULT (strftime('%s', 'now'))
-      );
-      CREATE INDEX IF NOT EXISTS idx_chat_conversations_updated_at ON chat_conversations(updated_at DESC);
-    `)
+    await ensureCurrentSchema(this.dbPath)
     this.initialized = true
   }
 
   async listConversations(): Promise<StoredChatConversation[]> {
     await this.initialize()
     const rows = await runSqliteJson<ChatConversationRow>(this.dbPath, `
-      SELECT id, character_id, title_json, preview_json, updated_label_json, messages_json
+      SELECT id, character_id, title_json, preview_json, updated_label_json, summaries_json, messages_json
       FROM chat_conversations
       ORDER BY updated_at DESC;
     `)
@@ -68,6 +58,7 @@ export class ChatHistoryStore {
         title_json,
         preview_json,
         updated_label_json,
+        summaries_json,
         messages_json,
         updated_at
       ) VALUES (
@@ -76,6 +67,7 @@ export class ChatHistoryStore {
         ${sqlText(JSON.stringify(conversation.title ?? {}))},
         ${sqlText(JSON.stringify(conversation.preview ?? {}))},
         ${sqlText(JSON.stringify(conversation.updatedLabel ?? {}))},
+        ${sqlText(JSON.stringify(conversation.summaries))},
         ${sqlText(JSON.stringify(conversation.messages ?? []))},
         ${Date.now()}
       )
@@ -84,6 +76,7 @@ export class ChatHistoryStore {
         title_json = excluded.title_json,
         preview_json = excluded.preview_json,
         updated_label_json = excluded.updated_label_json,
+        summaries_json = excluded.summaries_json,
         messages_json = excluded.messages_json,
         updated_at = excluded.updated_at;
     `)
@@ -100,6 +93,44 @@ export class ChatHistoryStore {
   }
 }
 
+async function ensureCurrentSchema(dbPath: string): Promise<void> {
+  await createCurrentSchema(dbPath)
+  const columns = await runSqliteJson<{ name: string }>(dbPath, 'PRAGMA table_info(chat_conversations);')
+  const columnNames = new Set(columns.map((column) => column.name))
+  const requiredColumns = [
+    'id',
+    'character_id',
+    'title_json',
+    'preview_json',
+    'updated_label_json',
+    'summaries_json',
+    'messages_json',
+    'updated_at',
+    'created_at',
+  ]
+  if (!requiredColumns.every((column) => columnNames.has(column))) {
+    await runSqlite(dbPath, 'DROP TABLE IF EXISTS chat_conversations;')
+    await createCurrentSchema(dbPath)
+  }
+}
+
+async function createCurrentSchema(dbPath: string): Promise<void> {
+  await runSqlite(dbPath, `
+      CREATE TABLE IF NOT EXISTS chat_conversations (
+        id TEXT PRIMARY KEY,
+        character_id TEXT NOT NULL,
+        title_json TEXT NOT NULL,
+        preview_json TEXT NOT NULL,
+        updated_label_json TEXT NOT NULL,
+        summaries_json TEXT NOT NULL,
+        messages_json TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        created_at INTEGER DEFAULT (strftime('%s', 'now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_chat_conversations_updated_at ON chat_conversations(updated_at DESC);
+    `)
+}
+
 function rowToConversation(row: ChatConversationRow): StoredChatConversation {
   return {
     id: row.id,
@@ -107,6 +138,7 @@ function rowToConversation(row: ChatConversationRow): StoredChatConversation {
     title: parseJsonRecord(row.title_json),
     preview: parseJsonRecord(row.preview_json),
     updatedLabel: parseJsonRecord(row.updated_label_json),
+    summaries: parseJsonArray(row.summaries_json),
     messages: parseJsonArray(row.messages_json),
   }
 }

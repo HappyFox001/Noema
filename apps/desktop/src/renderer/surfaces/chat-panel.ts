@@ -25,6 +25,7 @@ import {
   loadChatResourceState,
   localizeChatText,
   type ChatConversationSummary,
+  type ChatMemorySummary,
   type ChatMessageAttachment,
   type ChatMessage,
 } from './chat-model'
@@ -51,6 +52,11 @@ type PendingChatAttachment = ChatMessageAttachment
 const CHAT_OUTPUT_TOKEN_MIN = 225
 const CHAT_OUTPUT_TOKEN_MAX = 5000
 const CHAT_OUTPUT_TOKEN_STEP = 50
+const CHAT_CONTEXT_TURNS_MIN = 15
+const CHAT_CONTEXT_TURNS_MAX = 30
+const CHAT_SUMMARY_LIMIT_MIN = 0
+const CHAT_SUMMARY_LIMIT_MAX = 24
+const CHAT_SUMMARY_BATCH_MESSAGE_COUNT = 10
 
 interface ChatConversationSettings {
   textStreaming: boolean
@@ -59,6 +65,8 @@ interface ChatConversationSettings {
   outputTokenBudget: number
   temperature: number
   diversity: number
+  shortTermTurns: number
+  summaryLimit: number
 }
 
 export interface ChatPanelController {
@@ -643,13 +651,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         dataUrl: attachment.dataUrl,
         size: attachment.size,
       })),
-      messages: conversation.messages
-        .filter((item) => item.id !== message.id)
-        .slice(0, -1)
-        .map((item) => ({
-          role: item.role,
-          content: localizeChatText(item.text, language),
-        })),
+      messages: buildConversationContextMessages(conversation, message.id, language),
       character: character ? {
         id: character.id,
         displayName: localizeChatText(character.displayName, language),
@@ -730,6 +732,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       renderer.renderMessages(conversation.messages)
       refreshConversationList()
       void persistConversation(conversation)
+      void summarizeConversationOverflow(conversation, language)
       if (!response.success) {
         showToast(response.error || 'Chat model failed')
       }
@@ -743,6 +746,142 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       void persistConversation(conversation)
       showToast(errorText)
     }
+  }
+
+  function buildConversationContextMessages(
+    conversation: ChatConversationSummary,
+    draftMessageId: string,
+    language: 'zh-CN' | 'en-US'
+  ): Array<{ role: ChatMessage['role']; content: string }> {
+    const keepMessages = getShortTermMessageLimit()
+    const sourceMessages = conversation.messages
+      .filter((item) => item.id !== draftMessageId && item.state === undefined)
+      .slice(0, -1)
+    const recentMessages = sourceMessages.slice(-keepMessages)
+    const recentMessageIds = new Set(recentMessages.map((item) => item.id))
+    const summaries = getRetainedSummaries(conversation)
+      .filter((summary) => !summary.sourceMessageIds.some((id) => recentMessageIds.has(id)))
+    const summaryMessages = summaries
+      .map((summary, index) => {
+        const content = localizeChatText(summary.text, language).trim()
+        if (!content) {
+          return null
+        }
+        return {
+          role: 'system' as const,
+          content: [
+            `<conversation_summary index="${index + 1}" source_messages="${summary.startMessageIndex}->${summary.endMessageIndex}" messages="${summary.messageCount}">`,
+            content,
+            '</conversation_summary>',
+          ].join('\n'),
+        }
+      })
+      .filter((item): item is { role: 'system'; content: string } => Boolean(item))
+
+    return [
+      ...summaryMessages,
+      ...recentMessages.map((item) => ({
+        role: item.role,
+        content: localizeChatText(item.text, language),
+      })),
+    ]
+  }
+
+  async function summarizeConversationOverflow(
+    conversation: ChatConversationSummary,
+    language: 'zh-CN' | 'en-US',
+    force = false
+  ): Promise<void> {
+    const keepMessages = getShortTermMessageLimit()
+    const summarizedIds = new Set(conversation.summaries.flatMap((summary) => summary.sourceMessageIds))
+    const stableMessages = conversation.messages.filter((messageItem) => messageItem.state === undefined)
+    const candidateMessages = stableMessages.filter((messageItem) => !summarizedIds.has(messageItem.id))
+    const overflowCount = candidateMessages.length - keepMessages
+    const batchSize = force ? Math.min(CHAT_SUMMARY_BATCH_MESSAGE_COUNT, Math.max(0, overflowCount)) : CHAT_SUMMARY_BATCH_MESSAGE_COUNT
+    if (overflowCount < batchSize || batchSize <= 0 || conversationSettings.summaryLimit <= 0) {
+      return
+    }
+
+    const messagesToSummarize = candidateMessages.slice(0, batchSize)
+    const startMessageIndex = getConversationMessageOrdinal(conversation, messagesToSummarize[0]?.id)
+    const endMessageIndex = getConversationMessageOrdinal(conversation, messagesToSummarize[messagesToSummarize.length - 1]?.id)
+    const transcript = messagesToSummarize
+      .map((messageItem) => {
+        const ordinal = getConversationMessageOrdinal(conversation, messageItem.id)
+        return `#${ordinal} ${formatChatHistoryRole(messageItem.role, language)}: ${localizeChatText(messageItem.text, language)}`
+      })
+      .join('\n\n')
+    if (!transcript.trim()) {
+      return
+    }
+
+    try {
+      const zh = language === 'zh-CN'
+      const response = await window.electronAPI.sendChatMessage({
+        input: zh
+          ? [
+            '请把下面这段历史对话压缩成短期上下文摘要。',
+            `这是原始对话第 ${startMessageIndex} -> ${endMessageIndex} 条消息的摘要。`,
+            '要求：保留事实、关系变化、未完成承诺、用户偏好、角色状态和重要情绪；不要加入新剧情；用 3-6 条紧凑要点。',
+            '',
+            transcript,
+          ].join('\n')
+          : [
+            'Compress the following chat history into a short-term context summary.',
+            `This summary covers original conversation messages ${startMessageIndex} -> ${endMessageIndex}.`,
+            'Keep facts, relationship changes, unresolved commitments, user preferences, character state, and important emotions. Do not invent new events. Use 3-6 compact bullets.',
+            '',
+            transcript,
+          ].join('\n'),
+        language,
+        options: {
+          temperature: 0.2,
+          top_p: 0.5,
+          max_tokens: 420,
+        },
+      })
+      const summaryText = response.success ? (response.response || '').trim() : ''
+      if (!summaryText) {
+        return
+      }
+      const summary: ChatMemorySummary = {
+        id: `summary-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        text: { 'zh-CN': summaryText, 'en-US': summaryText },
+        createdLabel: { 'zh-CN': getTimeLabel(), 'en-US': getTimeLabel() },
+        messageCount: messagesToSummarize.length,
+        startMessageIndex,
+        endMessageIndex,
+        sourceMessageIds: messagesToSummarize.map((messageItem) => messageItem.id),
+      }
+      conversation.summaries = trimSummaries([...conversation.summaries, summary])
+      await persistConversation(conversation)
+      if (chatHistoryPanel?.classList.contains('visible')) {
+        renderChatHistoryManager()
+      }
+    } catch (error) {
+      console.warn('[ChatSummary] Failed to summarize overflow context:', error)
+    }
+  }
+
+  function getShortTermMessageLimit(): number {
+    return Math.max(2, Math.round(conversationSettings.shortTermTurns) * 2)
+  }
+
+  function getConversationMessageOrdinal(conversation: ChatConversationSummary, messageId: string | undefined): number {
+    if (!messageId) {
+      return 1
+    }
+    const index = conversation.messages.findIndex((messageItem) => messageItem.id === messageId)
+    return index >= 0 ? index + 1 : 1
+  }
+
+  function getRetainedSummaries(conversation: ChatConversationSummary): ChatMemorySummary[] {
+    return trimSummaries(conversation.summaries)
+  }
+
+  function trimSummaries(summaries: ChatMemorySummary[]): ChatMemorySummary[] {
+    const limit = Math.round(conversationSettings.summaryLimit)
+    return limit <= 0 ? [] : summaries.slice(-limit)
   }
 
   async function loadChatModelConfig(): Promise<void> {
@@ -884,34 +1023,97 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
     const language = options.getLanguage()
+    const zh = language === 'zh-CN'
     const activeConversation = getActiveConversation(state)
-    chatHistorySessionList.innerHTML = state.conversations.length
-      ? state.conversations.map((conversation) => `
-          <button class="chat-history-session ${conversation.id === state.activeConversationId ? 'is-active' : ''}" type="button" data-chat-history-conversation="${options.escapeHtml(conversation.id)}">
-            <strong>${options.escapeHtml(localizeChatText(conversation.title, language))}</strong>
-            <span>${options.escapeHtml(localizeChatText(conversation.preview, language))}</span>
-            <small>${options.escapeHtml(localizeChatText(conversation.updatedLabel, language))}</small>
-          </button>
-        `).join('')
-      : `<div class="chat-history-empty">${options.escapeHtml(language === 'zh-CN' ? '暂无历史对话' : 'No conversations')}</div>`
-
     if (!activeConversation) {
-      chatHistoryMessageList.innerHTML = `<div class="chat-history-empty">${options.escapeHtml(language === 'zh-CN' ? '选择一段对话查看消息' : 'Select a conversation')}</div>`
+      chatHistorySessionList.innerHTML = ''
+      chatHistoryMessageList.innerHTML = `<div class="chat-history-empty">${options.escapeHtml(zh ? '暂无可管理的对话' : 'No conversation to manage')}</div>`
       return
     }
 
-    chatHistoryMessageList.innerHTML = `
-      <div class="chat-history-thread-head">
+    const stableMessages = activeConversation.messages.filter((messageItem) => messageItem.state === undefined)
+    const keepMessages = getShortTermMessageLimit()
+    const recentMessages = stableMessages.slice(-keepMessages)
+    const retainedSummaries = getRetainedSummaries(activeConversation)
+    const archivedCount = Math.max(0, stableMessages.length - recentMessages.length)
+    const summaryCovered = retainedSummaries.reduce((count, summary) => count + summary.messageCount, 0)
+    chatHistorySessionList.innerHTML = `
+      <section class="chat-context-brief">
         <div>
+          <span>${options.escapeHtml(zh ? '当前对话' : 'Current thread')}</span>
           <strong>${options.escapeHtml(localizeChatText(activeConversation.title, language))}</strong>
-          <span>${options.escapeHtml(String(activeConversation.messages.length))} ${options.escapeHtml(language === 'zh-CN' ? '条消息' : 'messages')}</span>
+          <p>${options.escapeHtml(localizeChatText(activeConversation.preview, language))}</p>
         </div>
         <button type="button" data-chat-history-action="delete-conversation" data-chat-history-id="${options.escapeHtml(activeConversation.id)}">
-          ${options.escapeHtml(language === 'zh-CN' ? '删除对话' : 'Delete')}
+          ${options.escapeHtml(zh ? '删除整段' : 'Delete thread')}
         </button>
-      </div>
-      <div class="chat-history-messages">
-        ${activeConversation.messages.map((messageItem) => `
+      </section>
+      <section class="chat-context-controls">
+        ${renderContextControl(
+          'shortTermTurns',
+          zh ? '短期完整轮数' : 'Short-term turns',
+          zh ? '最近这些轮次会原样进入模型上下文。' : 'The latest turns are sent as full messages.',
+          CHAT_CONTEXT_TURNS_MIN,
+          CHAT_CONTEXT_TURNS_MAX,
+          1,
+          conversationSettings.shortTermTurns,
+          zh ? '轮' : 'turns'
+        )}
+        ${renderContextControl(
+          'summaryLimit',
+          zh ? '摘要保留条数' : 'Summary limit',
+          zh ? '旧上下文会压缩为摘要，并按此上限保留。' : 'Older context is compressed and kept up to this limit.',
+          CHAT_SUMMARY_LIMIT_MIN,
+          CHAT_SUMMARY_LIMIT_MAX,
+          1,
+          conversationSettings.summaryLimit,
+          zh ? '条' : 'items'
+        )}
+      </section>
+      <section class="chat-context-metrics">
+        <span><b>${options.escapeHtml(String(recentMessages.length))}</b>${options.escapeHtml(zh ? '完整消息' : 'full messages')}</span>
+        <span><b>${options.escapeHtml(String(retainedSummaries.length))}</b>${options.escapeHtml(zh ? '摘要' : 'summaries')}</span>
+        <span><b>${options.escapeHtml(String(summaryCovered))}</b>${options.escapeHtml(zh ? '已压缩消息' : 'compressed')}</span>
+        <span><b>${options.escapeHtml(String(archivedCount))}</b>${options.escapeHtml(zh ? '候选旧消息' : 'older')}</span>
+      </section>
+    `
+
+    chatHistoryMessageList.innerHTML = `
+      <section class="chat-context-section">
+        <div class="chat-context-section-head">
+          <div>
+            <span>${options.escapeHtml(zh ? '长期摘要' : 'Long-term summaries')}</span>
+            <strong>${options.escapeHtml(zh ? '摘要管理' : 'Summary management')}</strong>
+          </div>
+          <button type="button" data-chat-history-action="summarize-now">${options.escapeHtml(zh ? '立即整理' : 'Summarize')}</button>
+        </div>
+        <div class="chat-history-summaries">
+          ${retainedSummaries.length
+            ? retainedSummaries.slice().reverse().map((summary) => `
+              <article class="chat-history-summary">
+                <div>
+                  <strong>${options.escapeHtml(localizeChatText(summary.createdLabel, language))}</strong>
+                  <span>${options.escapeHtml(formatSummaryRange(summary, language))}</span>
+                </div>
+                <p>${options.escapeHtml(localizeChatText(summary.text, language))}</p>
+                <button type="button" data-chat-history-action="delete-summary" data-chat-history-summary="${options.escapeHtml(summary.id)}">
+                  ${options.escapeHtml(zh ? '删除摘要' : 'Remove summary')}
+                </button>
+              </article>
+            `).join('')
+            : `<div class="chat-history-empty compact">${options.escapeHtml(zh ? '旧消息超过短期范围后，会在回复完成时自动生成摘要。' : 'Summaries appear automatically after older messages exceed the short-term range.')}</div>`}
+        </div>
+      </section>
+      <section class="chat-context-section">
+        <div class="chat-context-section-head">
+          <div>
+            <span>${options.escapeHtml(zh ? '短期上下文' : 'Short-term context')}</span>
+            <strong>${options.escapeHtml(zh ? '保留的完整消息' : 'Full messages kept')}</strong>
+          </div>
+          <small>${options.escapeHtml(String(recentMessages.length))} / ${options.escapeHtml(String(stableMessages.length))}</small>
+        </div>
+        <div class="chat-history-messages">
+          ${recentMessages.length ? recentMessages.map((messageItem) => `
           <article class="chat-history-message ${options.escapeHtml(messageItem.role)}">
             <div>
               <strong>${options.escapeHtml(formatChatHistoryRole(messageItem.role, language))}</strong>
@@ -919,11 +1121,35 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             </div>
             <p>${options.escapeHtml(localizeChatText(messageItem.text, language))}</p>
             <button type="button" data-chat-history-action="delete-message" data-chat-history-message="${options.escapeHtml(messageItem.id)}">
-              ${options.escapeHtml(language === 'zh-CN' ? '删除' : 'Remove')}
+              ${options.escapeHtml(zh ? '删除' : 'Remove')}
             </button>
           </article>
-        `).join('')}
-      </div>
+        `).join('') : `<div class="chat-history-empty compact">${options.escapeHtml(zh ? '暂无短期消息' : 'No short-term messages')}</div>`}
+        </div>
+      </section>
+    `
+  }
+
+  function renderContextControl(
+    key: 'shortTermTurns' | 'summaryLimit',
+    title: string,
+    copy: string,
+    min: number,
+    max: number,
+    step: number,
+    value: number,
+    unit: string
+  ): string {
+    const progress = Math.max(0, Math.min(100, ((value - min) / (max - min)) * 100))
+    return `
+      <label class="chat-context-control" style="--chat-context-progress: ${progress}%">
+        <span>
+          <strong>${options.escapeHtml(title)}</strong>
+          <small>${options.escapeHtml(copy)}</small>
+        </span>
+        <output>${options.escapeHtml(String(value))}<em>${options.escapeHtml(unit)}</em></output>
+        <input type="range" data-chat-setting="${options.escapeHtml(key)}" min="${min}" max="${max}" step="${step}" value="${options.escapeHtml(String(value))}" />
+      </label>
     `
   }
 
@@ -943,11 +1169,22 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
     conversation.messages = conversation.messages.filter((message) => message.id !== messageId)
+    conversation.summaries = conversation.summaries.filter((summary) => !summary.sourceMessageIds.includes(messageId))
     const lastMessage = conversation.messages[conversation.messages.length - 1]
     conversation.preview = lastMessage?.text ?? { 'zh-CN': '', 'en-US': '' }
     conversation.updatedLabel = { 'zh-CN': '现在', 'en-US': 'Now' }
     await persistConversation(conversation)
     renderChat()
+    renderChatHistoryManager()
+  }
+
+  async function deleteChatHistorySummary(summaryId: string): Promise<void> {
+    const conversation = getActiveConversation(state)
+    if (!conversation) {
+      return
+    }
+    conversation.summaries = conversation.summaries.filter((summary) => summary.id !== summaryId)
+    await persistConversation(conversation)
     renderChatHistoryManager()
   }
 
@@ -973,6 +1210,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       title: character.displayName,
       preview: character.firstMessage,
       updatedLabel: { 'zh-CN': '刚刚', 'en-US': 'Now' },
+      summaries: [],
       messages: [{
         id: `${character.id}-welcome-${Date.now()}`,
         role: 'assistant',
@@ -1138,9 +1376,27 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       }
     } else if (key === 'temperature' || key === 'diversity') {
       conversationSettings = { ...conversationSettings, [key]: clampNumber(Number(control.value), 0, 1) }
+    } else if (key === 'shortTermTurns') {
+      conversationSettings = {
+        ...conversationSettings,
+        shortTermTurns: Math.round(clampNumber(Number(control.value), CHAT_CONTEXT_TURNS_MIN, CHAT_CONTEXT_TURNS_MAX)),
+      }
+    } else if (key === 'summaryLimit') {
+      conversationSettings = {
+        ...conversationSettings,
+        summaryLimit: Math.round(clampNumber(Number(control.value), CHAT_SUMMARY_LIMIT_MIN, CHAT_SUMMARY_LIMIT_MAX)),
+      }
+      const conversation = getActiveMutableConversation()
+      if (conversation) {
+        conversation.summaries = trimSummaries(conversation.summaries)
+        void persistConversation(conversation)
+      }
     }
     saveConversationSettings(conversationSettings)
     renderConversationSettings()
+    if (chatHistoryPanel?.classList.contains('visible')) {
+      renderChatHistoryManager()
+    }
   }
 
   function getEffectiveConversationLanguage(): 'zh-CN' | 'en-US' {
@@ -1599,6 +1855,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         void deleteActiveChatHistoryConversation(historyAction.dataset.chatHistoryId || '')
       } else if (action === 'delete-message') {
         void deleteChatHistoryMessage(historyAction.dataset.chatHistoryMessage || '')
+      } else if (action === 'delete-summary') {
+        void deleteChatHistorySummary(historyAction.dataset.chatHistorySummary || '')
+      } else if (action === 'summarize-now') {
+        const conversation = getActiveMutableConversation()
+        if (conversation) {
+          void summarizeConversationOverflow(conversation, getEffectiveConversationLanguage(), true)
+        }
       }
       return
     }
@@ -1608,6 +1871,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       conversationSettings = getDefaultConversationSettings()
       saveConversationSettings(conversationSettings)
       renderConversationSettings()
+      if (chatHistoryPanel?.classList.contains('visible')) {
+        renderChatHistoryManager()
+      }
       showToast(options.getLanguage() === 'zh-CN' ? '对话设置已重置' : 'Conversation settings reset')
       return
     }
@@ -1797,7 +2063,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       chatHistoryTitle.textContent = language === 'zh-CN' ? '对话管理' : 'Conversation management'
     }
     if (chatHistoryKicker) {
-      chatHistoryKicker.textContent = language === 'zh-CN' ? 'Archive' : 'Archive'
+      chatHistoryKicker.textContent = language === 'zh-CN' ? 'Context memory' : 'Context memory'
     }
     if (conversationSettingsPanel?.classList.contains('visible')) {
       renderConversationSettings()
@@ -1828,6 +2094,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       title: conversation.title,
       preview: conversation.preview,
       updatedLabel: conversation.updatedLabel,
+      summaries: conversation.summaries.map((summary) => ({ ...summary })),
       messages: conversation.messages.map((messageItem) => ({
         ...messageItem,
         state: undefined,
@@ -1858,6 +2125,8 @@ function getDefaultConversationSettings(): ChatConversationSettings {
     outputTokenBudget: 450,
     temperature: 0.7,
     diversity: 0.7,
+    shortTermTurns: 15,
+    summaryLimit: 8,
   }
 }
 
@@ -1868,17 +2137,22 @@ function loadConversationSettings(): ChatConversationSettings {
     if (!raw) {
       return defaults
     }
-    const parsed = JSON.parse(raw) as Partial<ChatConversationSettings> & { contextBudget?: number }
-    const savedOutputTokenBudget = parsed.outputTokenBudget ?? parsed.contextBudget
+    const parsed = JSON.parse(raw) as Partial<ChatConversationSettings>
     return {
       textStreaming: typeof parsed.textStreaming === 'boolean' ? parsed.textStreaming : defaults.textStreaming,
       sceneImmersion: typeof parsed.sceneImmersion === 'boolean' ? parsed.sceneImmersion : defaults.sceneImmersion,
       language: parsed.language === 'zh-CN' || parsed.language === 'en-US' || parsed.language === 'auto' ? parsed.language : defaults.language,
-      outputTokenBudget: Number.isFinite(Number(savedOutputTokenBudget))
-        ? clampNumber(Number(savedOutputTokenBudget), CHAT_OUTPUT_TOKEN_MIN, CHAT_OUTPUT_TOKEN_MAX)
+      outputTokenBudget: Number.isFinite(Number(parsed.outputTokenBudget))
+        ? clampNumber(Number(parsed.outputTokenBudget), CHAT_OUTPUT_TOKEN_MIN, CHAT_OUTPUT_TOKEN_MAX)
         : defaults.outputTokenBudget,
       temperature: Number.isFinite(Number(parsed.temperature)) ? clampNumber(Number(parsed.temperature), 0, 1) : defaults.temperature,
       diversity: Number.isFinite(Number(parsed.diversity)) ? clampNumber(Number(parsed.diversity), 0, 1) : defaults.diversity,
+      shortTermTurns: Number.isFinite(Number(parsed.shortTermTurns))
+        ? Math.round(clampNumber(Number(parsed.shortTermTurns), CHAT_CONTEXT_TURNS_MIN, CHAT_CONTEXT_TURNS_MAX))
+        : defaults.shortTermTurns,
+      summaryLimit: Number.isFinite(Number(parsed.summaryLimit))
+        ? Math.round(clampNumber(Number(parsed.summaryLimit), CHAT_SUMMARY_LIMIT_MIN, CHAT_SUMMARY_LIMIT_MAX))
+        : defaults.summaryLimit,
     }
   } catch {
     return defaults
@@ -1908,6 +2182,14 @@ function formatChatHistoryRole(role: ChatMessage['role'], language: 'zh-CN' | 'e
     return 'System'
   }
   return language === 'zh-CN' ? '角色' : 'Character'
+}
+
+function formatSummaryRange(summary: ChatMemorySummary, language: 'zh-CN' | 'en-US'): string {
+  const start = Math.max(1, Math.round(Number(summary.startMessageIndex) || 1))
+  const end = Math.max(start, Math.round(Number(summary.endMessageIndex) || start))
+  return language === 'zh-CN'
+    ? `${start} -> ${end} 原始消息摘要`
+    : `messages ${start} -> ${end}`
 }
 
 function getChatSideActionLabels(language: 'zh-CN' | 'en-US'): Record<string, string> {

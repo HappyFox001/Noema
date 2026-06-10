@@ -27,7 +27,18 @@ export interface ChatConversationSummary {
   title: ChatLocalizedText
   preview: ChatLocalizedText
   updatedLabel: ChatLocalizedText
+  summaries: ChatMemorySummary[]
   messages: ChatMessage[]
+}
+
+export interface ChatMemorySummary {
+  id: string
+  text: ChatLocalizedText
+  createdLabel: ChatLocalizedText
+  messageCount: number
+  startMessageIndex: number
+  endMessageIndex: number
+  sourceMessageIds: string[]
 }
 
 export interface ChatMessageAttachment {
@@ -137,6 +148,7 @@ function createSeedHistory(characterResources: ChatCharacterResource[]): ChatCon
         'zh-CN': '刚刚',
         'en-US': 'Now',
       },
+      summaries: [],
       messages: [
         {
           id: `${character.id}-welcome`,
@@ -164,11 +176,31 @@ function normalizeStoredConversations(
       title: normalizeLocalizedText(conversation.title),
       preview: normalizeLocalizedText(conversation.preview),
       updatedLabel: normalizeLocalizedText(conversation.updatedLabel),
+      summaries: Array.isArray(conversation.summaries)
+        ? conversation.summaries.map(normalizeStoredSummary).filter(Boolean) as ChatMemorySummary[]
+        : [],
       messages: Array.isArray(conversation.messages)
         ? conversation.messages.map(normalizeStoredMessage).filter(Boolean) as ChatMessage[]
         : [],
     }))
     .filter((conversation) => conversation.messages.length > 0)
+}
+
+function normalizeStoredSummary(summary: ChatMemorySummary): ChatMemorySummary | null {
+  if (!summary?.id) {
+    return null
+  }
+  return {
+    id: String(summary.id),
+    text: normalizeLocalizedText(summary.text),
+    createdLabel: normalizeLocalizedText(summary.createdLabel),
+    messageCount: Math.max(0, Math.round(Number(summary.messageCount) || 0)),
+    startMessageIndex: Math.max(1, Math.round(Number(summary.startMessageIndex) || 1)),
+    endMessageIndex: Math.max(1, Math.round(Number(summary.endMessageIndex) || Number(summary.messageCount) || 1)),
+    sourceMessageIds: Array.isArray(summary.sourceMessageIds)
+      ? summary.sourceMessageIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+      : [],
+  }
 }
 
 function normalizeStoredMessage(message: ChatMessage): ChatMessage | null {
