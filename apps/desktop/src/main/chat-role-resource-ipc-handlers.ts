@@ -14,7 +14,9 @@ interface ChatRoleResourceManifest {
   name: Record<string, string>
   displayName: Record<string, string>
   description: Record<string, string>
+  story: Record<string, string>
   background: Record<string, string>
+  scene: Record<string, any>
   firstMessage: Record<string, string>
   tag: Record<string, string[]>
   avatarImage: string

@@ -39,10 +39,17 @@ export interface ChatCharacterContext {
   id?: string
   displayName?: string
   description?: string
+  story?: string
   background?: string
   firstMessage?: string
   tags?: string[]
   instructions?: string
+  sceneState?: Record<string, unknown>
+  narrativeSummaries?: Array<{
+    startMessageIndex?: number
+    endMessageIndex?: number
+    text: string
+  }>
 }
 
 export interface ChatTurnRequest {
@@ -172,6 +179,7 @@ function formatCharacterContext(character: ChatCharacterContext): string {
   appendTag(lines, 'id', character.id)
   appendTag(lines, 'display_name', character.displayName)
   appendTag(lines, 'description', character.description)
+  appendTag(lines, 'story', character.story)
   appendTag(lines, 'background', character.background)
   appendTag(lines, 'first_message', character.firstMessage)
   if (character.tags?.length) {
@@ -179,7 +187,48 @@ function formatCharacterContext(character: ChatCharacterContext): string {
   }
   appendTag(lines, 'instructions', character.instructions)
   lines.push('</character>')
+  appendSceneState(lines, character.sceneState)
+  appendNarrativeSummaries(lines, character.narrativeSummaries)
   return lines.join('\n')
+}
+
+function appendSceneState(lines: string[], sceneState: Record<string, unknown> | undefined): void {
+  if (!sceneState || typeof sceneState !== 'object') {
+    return
+  }
+  const entries = Object.entries(sceneState).filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== '')
+  if (!entries.length) {
+    return
+  }
+  lines.push('<scene_state>')
+  for (const [key, value] of entries) {
+    if (Array.isArray(value)) {
+      lines.push(`<${key}>${escapeXml(value.map((item) => String(item)).join(', '))}</${key}>`)
+    } else {
+      appendTag(lines, key, String(value))
+    }
+  }
+  lines.push('</scene_state>')
+}
+
+function appendNarrativeSummaries(
+  lines: string[],
+  summaries: ChatCharacterContext['narrativeSummaries']
+): void {
+  if (!summaries?.length) {
+    return
+  }
+  lines.push('<narrative_summaries>')
+  for (const summary of summaries) {
+    const text = summary.text?.trim()
+    if (!text) {
+      continue
+    }
+    lines.push(`<summary source_messages="${summary.startMessageIndex ?? '?'}->${summary.endMessageIndex ?? '?'}">`)
+    lines.push(escapeXml(text))
+    lines.push('</summary>')
+  }
+  lines.push('</narrative_summaries>')
 }
 
 function appendTag(lines: string[], tag: string, value: string | undefined): void {

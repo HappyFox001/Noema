@@ -14,7 +14,9 @@ export interface ChatCharacterResource {
   name: ChatLocalizedText
   displayName: ChatLocalizedText
   description: ChatLocalizedText
+  story: ChatLocalizedText
   background: ChatLocalizedText
+  scene: ChatSceneState
   firstMessage: ChatLocalizedText
   tag: Record<ChatLanguageCode, string[]>
   avatarImage: string
@@ -27,8 +29,18 @@ export interface ChatConversationSummary {
   title: ChatLocalizedText
   preview: ChatLocalizedText
   updatedLabel: ChatLocalizedText
+  sceneState: ChatSceneState
   summaries: ChatMemorySummary[]
   messages: ChatMessage[]
+}
+
+export interface ChatSceneState {
+  location?: ChatLocalizedText
+  objective?: ChatLocalizedText
+  items?: ChatLocalizedText[]
+  status?: ChatLocalizedText
+  rules?: ChatLocalizedText
+  [key: string]: ChatLocalizedText | ChatLocalizedText[] | undefined
 }
 
 export interface ChatMemorySummary {
@@ -148,6 +160,7 @@ function createSeedHistory(characterResources: ChatCharacterResource[]): ChatCon
         'zh-CN': '刚刚',
         'en-US': 'Now',
       },
+      sceneState: normalizeSceneState(character.scene),
       summaries: [],
       messages: [
         {
@@ -176,6 +189,7 @@ function normalizeStoredConversations(
       title: normalizeLocalizedText(conversation.title),
       preview: normalizeLocalizedText(conversation.preview),
       updatedLabel: normalizeLocalizedText(conversation.updatedLabel),
+      sceneState: normalizeSceneState(conversation.sceneState ?? getCharacterScene(characterResources, conversation.characterId)),
       summaries: Array.isArray(conversation.summaries)
         ? conversation.summaries.map(normalizeStoredSummary).filter(Boolean) as ChatMemorySummary[]
         : [],
@@ -184,6 +198,10 @@ function normalizeStoredConversations(
         : [],
     }))
     .filter((conversation) => conversation.messages.length > 0)
+}
+
+function getCharacterScene(characterResources: ChatCharacterResource[], characterId: string): ChatSceneState {
+  return characterResources.find((character) => character.id === characterId)?.scene ?? {}
 }
 
 function normalizeStoredSummary(summary: ChatMemorySummary): ChatMemorySummary | null {
@@ -201,6 +219,21 @@ function normalizeStoredSummary(summary: ChatMemorySummary): ChatMemorySummary |
       ? summary.sourceMessageIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
       : [],
   }
+}
+
+function normalizeSceneState(value: ChatSceneState | undefined): ChatSceneState {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {}
+  }
+  const normalized: ChatSceneState = {}
+  for (const [key, entry] of Object.entries(value)) {
+    if (Array.isArray(entry)) {
+      normalized[key] = entry.map(normalizeLocalizedText).filter((item) => item['zh-CN'] || item['en-US'])
+    } else if (entry && typeof entry === 'object') {
+      normalized[key] = normalizeLocalizedText(entry as ChatLocalizedText)
+    }
+  }
+  return normalized
 }
 
 function normalizeStoredMessage(message: ChatMessage): ChatMessage | null {

@@ -114,6 +114,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   const conversationSettingsTitle = panel.querySelector<HTMLElement>('[data-chat-settings-title]')
   const conversationSettingsKicker = panel.querySelector<HTMLElement>('[data-chat-settings-kicker]')
   const conversationSettingsClose = panel.querySelector<HTMLElement>('[data-chat-settings-close]')
+  const sceneStatePanel = panel.querySelector<HTMLElement>('.chat-scene-state')
   const chatHistoryPanel = panel.querySelector<HTMLElement>('.chat-history-manager')
   const chatHistorySessionList = panel.querySelector<HTMLElement>('.chat-history-session-list')
   const chatHistoryMessageList = panel.querySelector<HTMLElement>('.chat-history-message-list')
@@ -144,6 +145,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   const chatModelOptions = new Map<string, string[]>()
   const chatModelLoading = new Set<string>()
   let conversationSettings = loadConversationSettings()
+  let sceneStateCollapsed = false
 
   toast.className = 'chat-status-toast'
   toast.setAttribute('role', 'status')
@@ -184,6 +186,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     renderer.renderConversationList(state.conversations, state.characterResources, conversation.id)
     renderer.renderActiveConversation(conversation, character)
+    renderSceneStatePanel(conversation)
   }
 
   function refreshConversationList(): void {
@@ -656,9 +659,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         id: character.id,
         displayName: localizeChatText(character.displayName, language),
         description: localizeChatText(character.description, language),
+        story: localizeChatText(character.story, language),
         background: conversationSettings.sceneImmersion ? localizeChatText(character.background, language) : '',
         firstMessage: conversationSettings.sceneImmersion ? localizeChatText(character.firstMessage, language) : '',
         tags: character.tag[language] ?? character.tag['zh-CN'],
+        sceneState: localizeSceneState(conversation.sceneState, language),
+        narrativeSummaries: buildNarrativeSummaries(conversation, language),
       } : undefined,
     }
     let completeReply = ''
@@ -723,9 +729,15 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         revealFrame = 0
       }
       await revealPendingReply()
-      const reply = response.success
+      const rawReply = response.success
         ? (response.response || completeReply || visibleReply || '')
         : (response.error || 'Chat model failed')
+      const parsedReply = response.success ? extractSceneUpdate(rawReply) : { text: rawReply, update: null }
+      if (parsedReply.update) {
+        conversation.sceneState = mergeSceneState(conversation.sceneState, parsedReply.update, language)
+        renderSceneStatePanel(conversation)
+      }
+      const reply = parsedReply.text
       message.text = { 'zh-CN': reply, 'en-US': reply }
       message.state = undefined
       conversation.preview = { 'zh-CN': reply, 'en-US': reply }
@@ -758,33 +770,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       .filter((item) => item.id !== draftMessageId && item.state === undefined)
       .slice(0, -1)
     const recentMessages = sourceMessages.slice(-keepMessages)
-    const recentMessageIds = new Set(recentMessages.map((item) => item.id))
-    const summaries = getRetainedSummaries(conversation)
-      .filter((summary) => !summary.sourceMessageIds.some((id) => recentMessageIds.has(id)))
-    const summaryMessages = summaries
-      .map((summary, index) => {
-        const content = localizeChatText(summary.text, language).trim()
-        if (!content) {
-          return null
-        }
-        return {
-          role: 'system' as const,
-          content: [
-            `<conversation_summary index="${index + 1}" source_messages="${summary.startMessageIndex}->${summary.endMessageIndex}" messages="${summary.messageCount}">`,
-            content,
-            '</conversation_summary>',
-          ].join('\n'),
-        }
-      })
-      .filter((item): item is { role: 'system'; content: string } => Boolean(item))
-
-    return [
-      ...summaryMessages,
-      ...recentMessages.map((item) => ({
+    return recentMessages.map((item) => ({
         role: item.role,
         content: localizeChatText(item.text, language),
-      })),
-    ]
+      }))
   }
 
   async function summarizeConversationOverflow(
@@ -882,6 +871,76 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   function trimSummaries(summaries: ChatMemorySummary[]): ChatMemorySummary[] {
     const limit = Math.round(conversationSettings.summaryLimit)
     return limit <= 0 ? [] : summaries.slice(-limit)
+  }
+
+  function buildNarrativeSummaries(
+    conversation: ChatConversationSummary,
+    language: 'zh-CN' | 'en-US'
+  ): Array<{ startMessageIndex: number; endMessageIndex: number; text: string }> {
+    const keepMessages = getShortTermMessageLimit()
+    const recentIds = new Set(conversation.messages.filter((item) => item.state === undefined).slice(-keepMessages).map((item) => item.id))
+    return getRetainedSummaries(conversation)
+      .filter((summary) => !summary.sourceMessageIds.some((id) => recentIds.has(id)))
+      .map((summary) => ({
+        startMessageIndex: summary.startMessageIndex,
+        endMessageIndex: summary.endMessageIndex,
+        text: localizeChatText(summary.text, language),
+      }))
+      .filter((summary) => summary.text.trim())
+  }
+
+  function localizeSceneState(sceneState: ChatConversationSummary['sceneState'], language: 'zh-CN' | 'en-US'): Record<string, unknown> {
+    const localized: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(sceneState ?? {})) {
+      if (Array.isArray(value)) {
+        localized[key] = value.map((item) => localizeChatText(item, language)).filter(Boolean)
+      } else if (value && typeof value === 'object') {
+        localized[key] = localizeChatText(value as any, language)
+      }
+    }
+    return localized
+  }
+
+  function extractSceneUpdate(text: string): { text: string; update: Record<string, unknown> | null } {
+    const match = text.match(/<scene_update>\s*([\s\S]*?)\s*<\/scene_update>/i)
+    if (!match) {
+      return { text, update: null }
+    }
+    try {
+      const parsed = JSON.parse(match[1])
+      return {
+        text: text.replace(match[0], '').trim(),
+        update: parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null,
+      }
+    } catch {
+      return { text: text.replace(match[0], '').trim(), update: null }
+    }
+  }
+
+  function mergeSceneState(
+    current: ChatConversationSummary['sceneState'],
+    update: Record<string, unknown>,
+    language: 'zh-CN' | 'en-US'
+  ): ChatConversationSummary['sceneState'] {
+    const next = { ...(current ?? {}) }
+    for (const [key, value] of Object.entries(update)) {
+      if (value === null || value === undefined || value === '') {
+        continue
+      }
+      if (Array.isArray(value)) {
+        next[key] = value.map((item) => ({ 'zh-CN': String(item), 'en-US': String(item) }))
+      } else if (typeof value === 'object') {
+        next[key] = value as any
+      } else {
+        const existing = next[key]
+        const localized = existing && !Array.isArray(existing) && typeof existing === 'object'
+          ? { ...(existing as Record<string, string>) }
+          : { 'zh-CN': '', 'en-US': '' }
+        localized[language] = String(value)
+        next[key] = localized as any
+      }
+    }
+    return next
   }
 
   async function loadChatModelConfig(): Promise<void> {

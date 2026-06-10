@@ -11,6 +11,7 @@ export interface StoredChatConversation {
   title: Record<string, string>
   preview: Record<string, string>
   updatedLabel: Record<string, string>
+  sceneState: unknown
   summaries: unknown[]
   messages: unknown[]
 }
@@ -21,6 +22,7 @@ interface ChatConversationRow {
   title_json: string
   preview_json: string
   updated_label_json: string
+  scene_state_json: string
   summaries_json: string
   messages_json: string
 }
@@ -42,7 +44,7 @@ export class ChatHistoryStore {
   async listConversations(): Promise<StoredChatConversation[]> {
     await this.initialize()
     const rows = await runSqliteJson<ChatConversationRow>(this.dbPath, `
-      SELECT id, character_id, title_json, preview_json, updated_label_json, summaries_json, messages_json
+      SELECT id, character_id, title_json, preview_json, updated_label_json, scene_state_json, summaries_json, messages_json
       FROM chat_conversations
       ORDER BY updated_at DESC;
     `)
@@ -58,6 +60,7 @@ export class ChatHistoryStore {
         title_json,
         preview_json,
         updated_label_json,
+        scene_state_json,
         summaries_json,
         messages_json,
         updated_at
@@ -67,6 +70,7 @@ export class ChatHistoryStore {
         ${sqlText(JSON.stringify(conversation.title ?? {}))},
         ${sqlText(JSON.stringify(conversation.preview ?? {}))},
         ${sqlText(JSON.stringify(conversation.updatedLabel ?? {}))},
+        ${sqlText(JSON.stringify(conversation.sceneState))},
         ${sqlText(JSON.stringify(conversation.summaries))},
         ${sqlText(JSON.stringify(conversation.messages ?? []))},
         ${Date.now()}
@@ -76,6 +80,7 @@ export class ChatHistoryStore {
         title_json = excluded.title_json,
         preview_json = excluded.preview_json,
         updated_label_json = excluded.updated_label_json,
+        scene_state_json = excluded.scene_state_json,
         summaries_json = excluded.summaries_json,
         messages_json = excluded.messages_json,
         updated_at = excluded.updated_at;
@@ -103,6 +108,7 @@ async function ensureCurrentSchema(dbPath: string): Promise<void> {
     'title_json',
     'preview_json',
     'updated_label_json',
+    'scene_state_json',
     'summaries_json',
     'messages_json',
     'updated_at',
@@ -122,6 +128,7 @@ async function createCurrentSchema(dbPath: string): Promise<void> {
         title_json TEXT NOT NULL,
         preview_json TEXT NOT NULL,
         updated_label_json TEXT NOT NULL,
+        scene_state_json TEXT NOT NULL,
         summaries_json TEXT NOT NULL,
         messages_json TEXT NOT NULL,
         updated_at INTEGER NOT NULL,
@@ -138,6 +145,7 @@ function rowToConversation(row: ChatConversationRow): StoredChatConversation {
     title: parseJsonRecord(row.title_json),
     preview: parseJsonRecord(row.preview_json),
     updatedLabel: parseJsonRecord(row.updated_label_json),
+    sceneState: parseJsonRecord(row.scene_state_json),
     summaries: parseJsonArray(row.summaries_json),
     messages: parseJsonArray(row.messages_json),
   }
