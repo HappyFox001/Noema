@@ -255,6 +255,25 @@
               <div class="chat-conversation-settings-body"></div>
             </div>
           </section>
+
+          <section class="chat-history-manager" aria-label="Conversation management" aria-hidden="true">
+            <div class="chat-history-dialog" role="dialog" aria-modal="true" aria-labelledby="chat-history-title">
+              <header class="chat-history-header">
+                <div>
+                  <span class="chat-panel-kicker" data-chat-history-kicker>Archive</span>
+                  <h2 id="chat-history-title" data-chat-history-title>对话管理</h2>
+                </div>
+                <div class="chat-history-actions">
+                  <button class="chat-model-btn subtle" type="button" data-chat-history-action="clear">清空</button>
+                  <button class="chat-model-btn subtle" type="button" data-chat-action="close-chat-history">完成</button>
+                </div>
+              </header>
+              <div class="chat-history-body">
+                <div class="chat-history-session-list"></div>
+                <div class="chat-history-message-list"></div>
+              </div>
+            </div>
+          </section>
         </div>
       </section>
 

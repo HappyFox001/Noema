@@ -580,6 +580,42 @@ declare global {
         }>
         error?: string
       }>
+      listChatConversations: () => Promise<{
+        success: boolean
+        conversations?: Array<{
+          id: string
+          characterId: string
+          title: Record<string, string>
+          preview: Record<string, string>
+          updatedLabel: Record<string, string>
+          messages: Array<{
+            id: string
+            role: 'system' | 'user' | 'assistant'
+            text: Record<string, string>
+            createdLabel: Record<string, string>
+            attachments?: Array<{
+              id: string
+              kind: 'image' | 'video'
+              name: string
+              mimeType: string
+              dataUrl?: string
+              size?: number
+            }>
+            state?: 'idle' | 'thinking' | 'generating_image' | 'using_tool'
+          }>
+        }>
+        error?: string
+      }>
+      saveChatConversation: (conversation: {
+        id: string
+        characterId: string
+        title: Record<string, string>
+        preview: Record<string, string>
+        updatedLabel: Record<string, string>
+        messages: unknown[]
+      }) => Promise<{ success: boolean; error?: string }>
+      deleteChatConversation: (id: string) => Promise<{ success: boolean; error?: string }>
+      clearChatConversations: () => Promise<{ success: boolean; error?: string }>
       sendChatMessage: (request: {
         input: string
         language?: string

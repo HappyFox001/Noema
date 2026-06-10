@@ -106,6 +106,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   const conversationSettingsTitle = panel.querySelector<HTMLElement>('[data-chat-settings-title]')
   const conversationSettingsKicker = panel.querySelector<HTMLElement>('[data-chat-settings-kicker]')
   const conversationSettingsClose = panel.querySelector<HTMLElement>('[data-chat-settings-close]')
+  const chatHistoryPanel = panel.querySelector<HTMLElement>('.chat-history-manager')
+  const chatHistorySessionList = panel.querySelector<HTMLElement>('.chat-history-session-list')
+  const chatHistoryMessageList = panel.querySelector<HTMLElement>('.chat-history-message-list')
+  const chatHistoryTitle = panel.querySelector<HTMLElement>('[data-chat-history-title]')
+  const chatHistoryKicker = panel.querySelector<HTMLElement>('[data-chat-history-kicker]')
   const languageButton = panel.querySelector<HTMLButtonElement>('[data-chat-action="language"]')
   const languageMark = panel.querySelector<HTMLElement>('.chat-language-mark')
   const windowCloseButton = panel.querySelector<HTMLButtonElement>('[data-chat-action="window-close"]')
@@ -335,6 +340,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (conversation) {
       showToast(localizeChatText(conversation.title, options.getLanguage()))
     }
+    void persistConversation(conversation)
   }
 
   function handleAction(action: string, target: HTMLElement): void {
@@ -348,7 +354,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         break
       }
       case 'new-group':
-        showToast(options.getLanguage() === 'zh-CN' ? '先开始一次对话，角色才会进入历史列表' : 'Start a conversation before adding a character to history')
+        void createChatConversation()
         break
       case 'add-chat-model':
         void addChatModel()
@@ -364,6 +370,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         break
       case 'close-conversation-settings':
         closeConversationSettings()
+        break
+      case 'close-chat-history':
+        closeChatHistoryManager()
         break
       case 'voice-call':
         target.classList.toggle('is-active')
@@ -720,6 +729,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       conversation.preview = { 'zh-CN': reply, 'en-US': reply }
       renderer.renderMessages(conversation.messages)
       refreshConversationList()
+      void persistConversation(conversation)
       if (!response.success) {
         showToast(response.error || 'Chat model failed')
       }
@@ -730,6 +740,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       conversation.preview = { 'zh-CN': errorText, 'en-US': errorText }
       renderer.renderMessages(conversation.messages)
       refreshConversationList()
+      void persistConversation(conversation)
       showToast(errorText)
     }
   }
@@ -853,6 +864,127 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     conversationSettingsPanel?.classList.remove('visible')
     conversationSettingsPanel?.setAttribute('aria-hidden', 'true')
     syncSideActionState('')
+  }
+
+  function openChatHistoryManager(): void {
+    chatHistoryPanel?.classList.add('visible')
+    chatHistoryPanel?.setAttribute('aria-hidden', 'false')
+    syncSideActionState('conversation-management')
+    renderChatHistoryManager()
+  }
+
+  function closeChatHistoryManager(): void {
+    chatHistoryPanel?.classList.remove('visible')
+    chatHistoryPanel?.setAttribute('aria-hidden', 'true')
+    syncSideActionState('')
+  }
+
+  function renderChatHistoryManager(): void {
+    if (!chatHistorySessionList || !chatHistoryMessageList) {
+      return
+    }
+    const language = options.getLanguage()
+    const activeConversation = getActiveConversation(state)
+    chatHistorySessionList.innerHTML = state.conversations.length
+      ? state.conversations.map((conversation) => `
+          <button class="chat-history-session ${conversation.id === state.activeConversationId ? 'is-active' : ''}" type="button" data-chat-history-conversation="${options.escapeHtml(conversation.id)}">
+            <strong>${options.escapeHtml(localizeChatText(conversation.title, language))}</strong>
+            <span>${options.escapeHtml(localizeChatText(conversation.preview, language))}</span>
+            <small>${options.escapeHtml(localizeChatText(conversation.updatedLabel, language))}</small>
+          </button>
+        `).join('')
+      : `<div class="chat-history-empty">${options.escapeHtml(language === 'zh-CN' ? '暂无历史对话' : 'No conversations')}</div>`
+
+    if (!activeConversation) {
+      chatHistoryMessageList.innerHTML = `<div class="chat-history-empty">${options.escapeHtml(language === 'zh-CN' ? '选择一段对话查看消息' : 'Select a conversation')}</div>`
+      return
+    }
+
+    chatHistoryMessageList.innerHTML = `
+      <div class="chat-history-thread-head">
+        <div>
+          <strong>${options.escapeHtml(localizeChatText(activeConversation.title, language))}</strong>
+          <span>${options.escapeHtml(String(activeConversation.messages.length))} ${options.escapeHtml(language === 'zh-CN' ? '条消息' : 'messages')}</span>
+        </div>
+        <button type="button" data-chat-history-action="delete-conversation" data-chat-history-id="${options.escapeHtml(activeConversation.id)}">
+          ${options.escapeHtml(language === 'zh-CN' ? '删除对话' : 'Delete')}
+        </button>
+      </div>
+      <div class="chat-history-messages">
+        ${activeConversation.messages.map((messageItem) => `
+          <article class="chat-history-message ${options.escapeHtml(messageItem.role)}">
+            <div>
+              <strong>${options.escapeHtml(formatChatHistoryRole(messageItem.role, language))}</strong>
+              <time>${options.escapeHtml(localizeChatText(messageItem.createdLabel, language))}</time>
+            </div>
+            <p>${options.escapeHtml(localizeChatText(messageItem.text, language))}</p>
+            <button type="button" data-chat-history-action="delete-message" data-chat-history-message="${options.escapeHtml(messageItem.id)}">
+              ${options.escapeHtml(language === 'zh-CN' ? '删除' : 'Remove')}
+            </button>
+          </article>
+        `).join('')}
+      </div>
+    `
+  }
+
+  async function deleteActiveChatHistoryConversation(id: string): Promise<void> {
+    state.conversations = state.conversations.filter((conversation) => conversation.id !== id)
+    if (state.activeConversationId === id) {
+      state.activeConversationId = state.conversations[0]?.id ?? ''
+    }
+    await window.electronAPI.deleteChatConversation(id)
+    renderChat()
+    renderChatHistoryManager()
+  }
+
+  async function deleteChatHistoryMessage(messageId: string): Promise<void> {
+    const conversation = getActiveConversation(state)
+    if (!conversation) {
+      return
+    }
+    conversation.messages = conversation.messages.filter((message) => message.id !== messageId)
+    const lastMessage = conversation.messages[conversation.messages.length - 1]
+    conversation.preview = lastMessage?.text ?? { 'zh-CN': '', 'en-US': '' }
+    conversation.updatedLabel = { 'zh-CN': '现在', 'en-US': 'Now' }
+    await persistConversation(conversation)
+    renderChat()
+    renderChatHistoryManager()
+  }
+
+  async function clearChatHistory(): Promise<void> {
+    state.conversations = []
+    state.activeConversationId = ''
+    await window.electronAPI.clearChatConversations()
+    renderChat()
+    renderChatHistoryManager()
+  }
+
+  async function createChatConversation(): Promise<void> {
+    const character = state.characterResources.find((item) => item.id === getActiveConversation(state)?.characterId)
+      ?? state.characterResources[0]
+    if (!character) {
+      showToast(options.getLanguage() === 'zh-CN' ? '角色资源尚未加载' : 'Character resources are not loaded')
+      return
+    }
+    const now = getTimeLabel()
+    const conversation: ChatConversationSummary = {
+      id: `${character.id}-${Date.now()}`,
+      characterId: character.id,
+      title: character.displayName,
+      preview: character.firstMessage,
+      updatedLabel: { 'zh-CN': '刚刚', 'en-US': 'Now' },
+      messages: [{
+        id: `${character.id}-welcome-${Date.now()}`,
+        role: 'assistant',
+        text: character.firstMessage,
+        createdLabel: { 'zh-CN': now, 'en-US': now },
+      }],
+    }
+    state.conversations = [conversation, ...state.conversations]
+    state.activeConversationId = conversation.id
+    await persistConversation(conversation)
+    renderChat()
+    renderChatHistoryManager()
   }
 
   function syncSideActionState(activeAction: string): void {
@@ -1428,6 +1560,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     options.composeInput.style.height = 'auto'
     pendingAttachments = []
     renderPendingAttachments()
+    void persistConversation(conversation)
     void queueAssistantReply(text, attachments)
   })
 
@@ -1443,6 +1576,30 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const eventTarget = event.target as HTMLElement
     if (eventTarget === conversationSettingsPanel) {
       closeConversationSettings()
+      return
+    }
+    if (eventTarget === chatHistoryPanel) {
+      closeChatHistoryManager()
+      return
+    }
+
+    const historyConversation = eventTarget.closest<HTMLElement>('[data-chat-history-conversation]')
+    if (historyConversation && panel.contains(historyConversation)) {
+      setActiveConversation(historyConversation.dataset.chatHistoryConversation || '')
+      renderChatHistoryManager()
+      return
+    }
+
+    const historyAction = eventTarget.closest<HTMLElement>('[data-chat-history-action]')
+    if (historyAction && panel.contains(historyAction)) {
+      const action = historyAction.dataset.chatHistoryAction || ''
+      if (action === 'clear') {
+        void clearChatHistory()
+      } else if (action === 'delete-conversation') {
+        void deleteActiveChatHistoryConversation(historyAction.dataset.chatHistoryId || '')
+      } else if (action === 'delete-message') {
+        void deleteChatHistoryMessage(historyAction.dataset.chatHistoryMessage || '')
+      }
       return
     }
 
@@ -1474,6 +1631,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
     const sideAction = eventTarget.closest<HTMLElement>('[data-chat-side-action]')
     if (sideAction && panel.contains(sideAction)) {
+      if (sideAction.dataset.chatSideAction === 'conversation-management') {
+        openChatHistoryManager()
+        return
+      }
       if (sideAction.dataset.chatSideAction === 'conversation-settings') {
         openConversationSettings()
         return
@@ -1587,6 +1748,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (event.key === 'Escape' && conversationSettingsPanel?.classList.contains('visible')) {
       closeConversationSettings()
     }
+    if (event.key === 'Escape' && chatHistoryPanel?.classList.contains('visible')) {
+      closeChatHistoryManager()
+    }
   })
 
   renderChat()
@@ -1629,8 +1793,17 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (conversationSettingsClose) {
       conversationSettingsClose.textContent = language === 'zh-CN' ? '返回' : 'Back'
     }
+    if (chatHistoryTitle) {
+      chatHistoryTitle.textContent = language === 'zh-CN' ? '对话管理' : 'Conversation management'
+    }
+    if (chatHistoryKicker) {
+      chatHistoryKicker.textContent = language === 'zh-CN' ? 'Archive' : 'Archive'
+    }
     if (conversationSettingsPanel?.classList.contains('visible')) {
       renderConversationSettings()
+    }
+    if (chatHistoryPanel?.classList.contains('visible')) {
+      renderChatHistoryManager()
     }
   }
 
@@ -1638,9 +1811,30 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     try {
       applyChatResourceState(state, await loadChatResourceState())
       renderChat()
+      await Promise.all(state.conversations.map((conversation) => persistConversation(conversation)))
     } catch (error) {
       console.warn('[Chat] Failed to load chat resources:', error)
       showToast(options.getLanguage() === 'zh-CN' ? '角色资源加载失败' : 'Failed to load character resources')
+    }
+  }
+
+  async function persistConversation(conversation: ChatConversationSummary | undefined): Promise<void> {
+    if (!conversation) {
+      return
+    }
+    const response = await window.electronAPI.saveChatConversation({
+      id: conversation.id,
+      characterId: conversation.characterId,
+      title: conversation.title,
+      preview: conversation.preview,
+      updatedLabel: conversation.updatedLabel,
+      messages: conversation.messages.map((messageItem) => ({
+        ...messageItem,
+        state: undefined,
+      })),
+    })
+    if (!response.success) {
+      console.warn('[ChatHistory] Failed to persist conversation:', response.error)
     }
   }
 }
@@ -1704,6 +1898,16 @@ function clampNumber(value: number, min: number, max: number): number {
     return min
   }
   return Math.min(max, Math.max(min, value))
+}
+
+function formatChatHistoryRole(role: ChatMessage['role'], language: 'zh-CN' | 'en-US'): string {
+  if (role === 'user') {
+    return language === 'zh-CN' ? '你' : 'You'
+  }
+  if (role === 'system') {
+    return 'System'
+  }
+  return language === 'zh-CN' ? '角色' : 'Character'
 }
 
 function getChatSideActionLabels(language: 'zh-CN' | 'en-US'): Record<string, string> {

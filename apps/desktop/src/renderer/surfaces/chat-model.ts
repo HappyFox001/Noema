@@ -63,18 +63,22 @@ export function createInitialChatState(): ChatState {
 }
 
 export async function loadChatResourceState(): Promise<ChatState> {
-  const response = await window.electronAPI.listChatRoleResources()
-  if (!response.success) {
-    throw new Error(response.error || 'Failed to load chat role resources')
+  const [resourceResponse, historyResponse] = await Promise.all([
+    window.electronAPI.listChatRoleResources(),
+    window.electronAPI.listChatConversations(),
+  ])
+  if (!resourceResponse.success) {
+    throw new Error(resourceResponse.error || 'Failed to load chat role resources')
   }
 
-  const characterResources = response.resources ?? []
-  const conversations = createSeedHistory(characterResources)
+  const characterResources = resourceResponse.resources ?? []
+  const conversations = normalizeStoredConversations(historyResponse.conversations ?? [], characterResources)
+  const seededConversations = conversations.length ? conversations : createSeedHistory(characterResources)
 
   return {
-    activeConversationId: conversations[0]?.id ?? '',
+    activeConversationId: seededConversations[0]?.id ?? '',
     characterResources,
-    conversations,
+    conversations: seededConversations,
   }
 }
 
@@ -145,4 +149,43 @@ function createSeedHistory(characterResources: ChatCharacterResource[]): ChatCon
         },
       ],
     }))
+}
+
+function normalizeStoredConversations(
+  conversations: ChatConversationSummary[],
+  characterResources: ChatCharacterResource[]
+): ChatConversationSummary[] {
+  const characterIds = new Set(characterResources.map((character) => character.id))
+  return conversations
+    .filter((conversation) => conversation.id && characterIds.has(conversation.characterId))
+    .map((conversation) => ({
+      id: String(conversation.id),
+      characterId: String(conversation.characterId),
+      title: normalizeLocalizedText(conversation.title),
+      preview: normalizeLocalizedText(conversation.preview),
+      updatedLabel: normalizeLocalizedText(conversation.updatedLabel),
+      messages: Array.isArray(conversation.messages)
+        ? conversation.messages.map(normalizeStoredMessage).filter(Boolean) as ChatMessage[]
+        : [],
+    }))
+    .filter((conversation) => conversation.messages.length > 0)
+}
+
+function normalizeStoredMessage(message: ChatMessage): ChatMessage | null {
+  if (!message?.id || (message.role !== 'user' && message.role !== 'assistant' && message.role !== 'system')) {
+    return null
+  }
+  return {
+    id: String(message.id),
+    role: message.role,
+    text: normalizeLocalizedText(message.text),
+    createdLabel: normalizeLocalizedText(message.createdLabel),
+    ...(Array.isArray(message.attachments) ? { attachments: message.attachments } : {}),
+  }
+}
+
+function normalizeLocalizedText(value: ChatLocalizedText | undefined): ChatLocalizedText {
+  const zh = typeof value?.['zh-CN'] === 'string' ? value['zh-CN'] : ''
+  const en = typeof value?.['en-US'] === 'string' ? value['en-US'] : zh
+  return { 'zh-CN': zh, 'en-US': en }
 }

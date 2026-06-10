@@ -127,6 +127,7 @@ import {
 } from './ipc-handlers.js'
 import { registerChatRoleResourceIpcHandlers } from './chat-role-resource-ipc-handlers.js'
 import { registerChatIpcHandlers } from './chat-ipc-handlers.js'
+import { ChatHistoryStore } from './chat-history-store.js'
 import { registerConversationIpcHandlers } from './conversation-ipc-handlers.js'
 import { registerModelIpcHandlers } from './model-ipc-handlers.js'
 import { registerPersonalityIpcHandlers } from './personality-ipc-handlers.js'
@@ -1681,10 +1682,17 @@ registerPersonalityIpcHandlers(ipcMain, {
   },
   rebuildSdk: rebuildSDK,
 })
+let chatHistoryStore: ChatHistoryStore | null = null
+function getChatHistoryStore(): ChatHistoryStore {
+  chatHistoryStore ??= new ChatHistoryStore(join(getStorageDir(), 'chat-history.sqlite3'))
+  return chatHistoryStore
+}
+
 registerChatRoleResourceIpcHandlers(ipcMain)
 registerChatIpcHandlers(ipcMain, {
   getModelConfig: getChatModelConfig,
   getMainWindow: () => mainWindow,
+  getChatHistoryStore,
 })
 registerPluginIpcHandlers(ipcMain, {
   getMainWindow: () => mainWindow,
