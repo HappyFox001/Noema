@@ -36,11 +36,10 @@ export interface ChatConversationSummary {
 
 export interface ChatSceneState {
   location?: ChatLocalizedText
-  objective?: ChatLocalizedText
-  items?: ChatLocalizedText[]
-  status?: ChatLocalizedText
+  status?: ChatLocalizedText | unknown
+  equipment?: unknown[]
   rules?: ChatLocalizedText
-  [key: string]: ChatLocalizedText | ChatLocalizedText[] | undefined
+  [key: string]: unknown
 }
 
 export interface ChatMemorySummary {
@@ -227,13 +226,38 @@ function normalizeSceneState(value: ChatSceneState | undefined): ChatSceneState 
   }
   const normalized: ChatSceneState = {}
   for (const [key, entry] of Object.entries(value)) {
-    if (Array.isArray(entry)) {
-      normalized[key] = entry.map(normalizeLocalizedText).filter((item) => item['zh-CN'] || item['en-US'])
-    } else if (entry && typeof entry === 'object') {
-      normalized[key] = normalizeLocalizedText(entry as ChatLocalizedText)
+    if (key === 'objective' || key === 'items') {
+      continue
     }
+    normalized[key] = normalizeSceneValue(entry)
   }
   return normalized
+}
+
+function normalizeSceneValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(normalizeSceneValue).filter((item) => {
+      if (item === null || item === undefined || item === '') {
+        return false
+      }
+      return !(typeof item === 'object' && !Array.isArray(item) && Object.keys(item).length === 0)
+    })
+  }
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    if (typeof record['zh-CN'] === 'string' || typeof record['en-US'] === 'string') {
+      return normalizeLocalizedText(record as ChatLocalizedText)
+    }
+    const normalized: Record<string, unknown> = {}
+    for (const [key, childValue] of Object.entries(record)) {
+      const nextValue = normalizeSceneValue(childValue)
+      if (nextValue !== null && nextValue !== undefined && nextValue !== '') {
+        normalized[key] = nextValue
+      }
+    }
+    return normalized
+  }
+  return value
 }
 
 function normalizeStoredMessage(message: ChatMessage): ChatMessage | null {

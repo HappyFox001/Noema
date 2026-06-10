@@ -98,6 +98,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let closeAnimationTimer: number | undefined
   let toastTimer: number | undefined
   let fullscreen = false
+  let characterPanelCollapsed = false
   let dragging = false
   let resizing = false
   let resizeEdge: ChatResizeEdge | '' = ''
@@ -114,7 +115,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   const conversationSettingsTitle = panel.querySelector<HTMLElement>('[data-chat-settings-title]')
   const conversationSettingsKicker = panel.querySelector<HTMLElement>('[data-chat-settings-kicker]')
   const conversationSettingsClose = panel.querySelector<HTMLElement>('[data-chat-settings-close]')
-  const sceneStatePanel = panel.querySelector<HTMLElement>('.chat-scene-state')
   const chatHistoryPanel = panel.querySelector<HTMLElement>('.chat-history-manager')
   const chatHistorySessionList = panel.querySelector<HTMLElement>('.chat-history-session-list')
   const chatHistoryMessageList = panel.querySelector<HTMLElement>('.chat-history-message-list')
@@ -124,12 +124,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   const languageMark = panel.querySelector<HTMLElement>('.chat-language-mark')
   const windowCloseButton = panel.querySelector<HTMLButtonElement>('[data-chat-action="window-close"]')
   const windowFullscreenButton = panel.querySelector<HTMLButtonElement>('[data-chat-action="window-fullscreen"]')
-  const fullscreenButtons = Array.from(panel.querySelectorAll<HTMLElement>('[data-chat-action="details"], [data-chat-action="window-fullscreen"]'))
+  const characterPanelButton = panel.querySelector<HTMLButtonElement>('[data-chat-action="toggle-character-panel"]')
+  const fullscreenButtons = Array.from(panel.querySelectorAll<HTMLElement>('[data-chat-action="window-fullscreen"]'))
   const renderer = createChatRenderer({
     panel,
     messageList: options.messageList,
     getLanguage: options.getLanguage,
     escapeHtml: options.escapeHtml,
+    getSceneCollapsed: () => sceneStateCollapsed,
   })
   const toast = document.createElement('div')
   const runtimeModelPicker = document.createElement('div')
@@ -184,9 +186,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       renderer.renderEmptyState()
       return
     }
+    const sceneChanged = ensureConversationSceneDefaults(conversation, character)
     renderer.renderConversationList(state.conversations, state.characterResources, conversation.id)
     renderer.renderActiveConversation(conversation, character)
-    renderSceneStatePanel(conversation)
+    if (sceneChanged) {
+      void persistConversation(conversation)
+    }
   }
 
   function refreshConversationList(): void {
@@ -230,6 +235,21 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       console.warn('[Window] Failed to toggle chat fullscreen mode:', error)
     })
     showToast(fullscreen ? 'Fullscreen chat' : 'Windowed chat')
+  }
+
+  function setCharacterPanelCollapsed(collapsed: boolean): void {
+    characterPanelCollapsed = collapsed
+    shell?.classList.toggle('profile-collapsed', characterPanelCollapsed)
+    characterPanelButton?.classList.toggle('is-active', characterPanelCollapsed)
+    characterPanelButton?.setAttribute('aria-expanded', characterPanelCollapsed ? 'false' : 'true')
+    characterPanelButton?.setAttribute(
+      'aria-label',
+      characterPanelCollapsed ? 'Show character panel' : 'Hide character panel'
+    )
+    characterPanelButton?.setAttribute(
+      'title',
+      characterPanelCollapsed ? 'Show character panel' : 'Hide character panel'
+    )
   }
 
   function isInteractiveTarget(target: EventTarget | null): boolean {
@@ -393,7 +413,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         target.classList.toggle('is-active')
         showToast('Conversation actions')
         break
-      case 'details':
+      case 'toggle-character-panel':
+        setCharacterPanelCollapsed(!characterPanelCollapsed)
+        break
       case 'window-fullscreen':
         setChatFullscreen(!fullscreen)
         break
@@ -627,47 +649,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
   }
 
-  function renderSceneStatePanel(conversation: ChatConversationSummary | undefined): void {
-    if (!sceneStatePanel || !conversation) {
-      return
-    }
-    const language = options.getLanguage()
-    const zh = language === 'zh-CN'
-    const scene = localizeSceneState(conversation.sceneState, language)
-    const location = String(scene.location || (zh ? '未设定' : 'Unset'))
-    const objective = String(scene.objective || (zh ? '未设定' : 'Unset'))
-    const status = String(scene.status || '')
-    const items = Array.isArray(scene.items) ? scene.items.map(String).filter(Boolean) : []
-    const rules = String(scene.rules || '')
-    sceneStatePanel.classList.toggle('is-collapsed', sceneStateCollapsed)
-    sceneStatePanel.innerHTML = `
-      <button class="chat-scene-state-head" type="button" data-chat-action="toggle-scene-state" aria-expanded="${sceneStateCollapsed ? 'false' : 'true'}">
-        <span>
-          <small>${options.escapeHtml(zh ? 'Scene state' : 'Scene state')}</small>
-          <strong>${options.escapeHtml(location)}</strong>
-        </span>
-        <em>${options.escapeHtml(zh ? '场景状态' : 'State')}</em>
-      </button>
-      <div class="chat-scene-state-body">
-        <div class="chat-scene-state-grid">
-          ${renderSceneStateItem(zh ? '目标' : 'Objective', objective)}
-          ${renderSceneStateItem(zh ? '状态' : 'Status', status || (zh ? '等待推进' : 'Waiting'))}
-        </div>
-        ${items.length ? `<div class="chat-scene-state-items">${items.map((item) => `<span>${options.escapeHtml(item)}</span>`).join('')}</div>` : ''}
-        ${rules ? `<p class="chat-scene-state-rules">${options.escapeHtml(rules)}</p>` : ''}
-      </div>
-    `
-  }
-
-  function renderSceneStateItem(label: string, value: string): string {
-    return `
-      <article>
-        <span>${options.escapeHtml(label)}</span>
-        <strong>${options.escapeHtml(value)}</strong>
-      </article>
-    `
-  }
-
   async function queueAssistantReply(userText: string, attachments: ChatMessageAttachment[] = []): Promise<void> {
     const conversation = getActiveMutableConversation()
     if (!conversation) {
@@ -675,6 +656,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
     const character = getCharacterForConversation(state, conversation)
+    if (character && ensureConversationSceneDefaults(conversation, character)) {
+      void persistConversation(conversation)
+    }
     const uiLanguage = options.getLanguage()
     const language = getEffectiveConversationLanguage()
     const message = createLocalAssistantDraft('', getTimeLabel())
@@ -713,9 +697,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     let pendingReveal = ''
     let revealFrame = 0
     const renderVisibleReply = (): void => {
-      message.text = { 'zh-CN': visibleReply, 'en-US': visibleReply }
-      message.state = visibleReply ? undefined : 'thinking'
-      conversation.preview = { 'zh-CN': visibleReply || '思考中...', 'en-US': visibleReply || 'Thinking...' }
+      const displayReply = stripSceneUpdateMarkup(visibleReply)
+      message.text = { 'zh-CN': displayReply, 'en-US': displayReply }
+      message.state = displayReply ? undefined : 'thinking'
+      conversation.preview = { 'zh-CN': displayReply || '思考中...', 'en-US': displayReply || 'Thinking...' }
       renderer.replaceMessage(message)
       refreshConversationList()
     }
@@ -776,7 +761,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       const parsedReply = response.success ? extractSceneUpdate(rawReply) : { text: rawReply, update: null }
       if (parsedReply.update) {
         conversation.sceneState = mergeSceneState(conversation.sceneState, parsedReply.update, language)
-        renderSceneStatePanel(conversation)
       }
       const reply = parsedReply.text
       message.text = { 'zh-CN': reply, 'en-US': reply }
@@ -930,22 +914,60 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       .filter((summary) => summary.text.trim())
   }
 
+  function ensureConversationSceneDefaults(
+    conversation: ChatConversationSummary,
+    character: ChatCharacterResource
+  ): boolean {
+    let changed = false
+    const scene = { ...(conversation.sceneState ?? {}) }
+    for (const [key, value] of Object.entries(character.scene ?? {})) {
+      if (key === 'objective' || key === 'items') {
+        continue
+      }
+      if (scene[key] === undefined || scene[key] === null || scene[key] === '') {
+        scene[key] = structuredClone(value)
+        changed = true
+      }
+    }
+    if (changed) {
+      conversation.sceneState = scene
+    }
+    return changed
+  }
+
   function localizeSceneState(sceneState: ChatConversationSummary['sceneState'], language: 'zh-CN' | 'en-US'): Record<string, unknown> {
     const localized: Record<string, unknown> = {}
     for (const [key, value] of Object.entries(sceneState ?? {})) {
-      if (Array.isArray(value)) {
-        localized[key] = value.map((item) => localizeChatText(item, language)).filter(Boolean)
-      } else if (value && typeof value === 'object') {
-        localized[key] = localizeChatText(value as any, language)
+      if (key === 'objective' || key === 'items') {
+        continue
       }
+      localized[key] = localizeSceneValue(value, language)
     }
     return localized
+  }
+
+  function localizeSceneValue(value: unknown, language: 'zh-CN' | 'en-US'): unknown {
+    if (Array.isArray(value)) {
+      return value.map((item) => localizeSceneValue(item, language))
+    }
+    if (value && typeof value === 'object') {
+      const record = value as Record<string, unknown>
+      if (typeof record['zh-CN'] === 'string' || typeof record['en-US'] === 'string') {
+        return localizeChatText(record as any, language)
+      }
+      const localized: Record<string, unknown> = {}
+      for (const [key, childValue] of Object.entries(record)) {
+        localized[key] = localizeSceneValue(childValue, language)
+      }
+      return localized
+    }
+    return value
   }
 
   function extractSceneUpdate(text: string): { text: string; update: Record<string, unknown> | null } {
     const match = text.match(/<scene_update>\s*([\s\S]*?)\s*<\/scene_update>/i)
     if (!match) {
-      return { text, update: null }
+      return { text: stripSceneUpdateMarkup(text).trim(), update: null }
     }
     try {
       const parsed = JSON.parse(match[1])
@@ -958,6 +980,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
   }
 
+  function stripSceneUpdateMarkup(text: string): string {
+    return text
+      .replace(/<scene_update>\s*[\s\S]*?<\/scene_update>/gi, '')
+      .replace(/<scene_update[\s\S]*$/i, '')
+  }
+
   function mergeSceneState(
     current: ChatConversationSummary['sceneState'],
     update: Record<string, unknown>,
@@ -965,23 +993,37 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   ): ChatConversationSummary['sceneState'] {
     const next = { ...(current ?? {}) }
     for (const [key, value] of Object.entries(update)) {
+      if (key === 'objective' || key === 'items') {
+        continue
+      }
       if (value === null || value === undefined || value === '') {
         continue
       }
-      if (Array.isArray(value)) {
-        next[key] = value.map((item) => ({ 'zh-CN': String(item), 'en-US': String(item) }))
-      } else if (typeof value === 'object') {
-        next[key] = value as any
-      } else {
-        const existing = next[key]
-        const localized = existing && !Array.isArray(existing) && typeof existing === 'object'
-          ? { ...(existing as Record<string, string>) }
-          : { 'zh-CN': '', 'en-US': '' }
-        localized[language] = String(value)
-        next[key] = localized as any
-      }
+      next[key] = normalizeSceneUpdateValue(value, language, next[key])
     }
     return next
+  }
+
+  function normalizeSceneUpdateValue(value: unknown, language: 'zh-CN' | 'en-US', existing?: unknown): unknown {
+    if (Array.isArray(value)) {
+      return value.map((item) => normalizeSceneUpdateValue(item, language))
+    }
+    if (value && typeof value === 'object') {
+      const record = value as Record<string, unknown>
+      if (typeof record['zh-CN'] === 'string' || typeof record['en-US'] === 'string') {
+        return record
+      }
+      const normalized: Record<string, unknown> = {}
+      for (const [childKey, childValue] of Object.entries(record)) {
+        normalized[childKey] = normalizeSceneUpdateValue(childValue, language)
+      }
+      return normalized
+    }
+    const localized = existing && !Array.isArray(existing) && typeof existing === 'object'
+      ? { ...(existing as Record<string, string>) }
+      : { 'zh-CN': '', 'en-US': '' }
+    localized[language] = String(value)
+    return localized
   }
 
   async function loadChatModelConfig(): Promise<void> {
@@ -1523,7 +1565,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         settings.sceneImmersion
           ? '场景化体验已开启：可以使用角色背景、场景信息、示例对话和感官细节来推进故事。'
           : '场景化体验已关闭：不要主动扩写大段场景背景，优先保持直接、紧凑、围绕当前对话。',
-        '如果本轮导致当前地点、目标、道具或角色/环境状态发生变化，请在回复末尾追加 <scene_update>{"location":"...","objective":"...","items":["..."],"status":"..."}</scene_update>。只输出发生变化的字段，不要把 scene_update 写进正常叙事。',
+        '如果本轮导致当前地点、角色/环境状态或装备栏发生变化，请在回复末尾追加 <scene_update>{"location":"...","status":"🙂 愉悦度 45  ⚡ 兴奋值 22","equipment":[{"name":"装备名称","ability":"能力","quantity":1}]}</scene_update>。只输出发生变化的字段，不要把 scene_update 写进正常叙事。',
         '</conversation_preferences>',
       ]
       : [
@@ -1534,7 +1576,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         settings.sceneImmersion
           ? 'Scene mode is enabled: use character background, scene context, example dialogue, and sensory detail to move the story forward.'
           : 'Scene mode is disabled: do not proactively expand long scene background; stay direct, compact, and centered on the current exchange.',
-        'If this turn changes the current location, objective, items, character state, or environment state, append <scene_update>{"location":"...","objective":"...","items":["..."],"status":"..."}</scene_update> at the end. Include only changed fields and do not include scene_update in normal prose.',
+        'If this turn changes the current location, character/environment status, or equipment, append <scene_update>{"location":"...","status":"🙂 pleasure 45  ⚡ arousal 22","equipment":[{"name":"item name","ability":"ability","quantity":1}]}</scene_update> at the end. Include only changed fields and do not include scene_update in normal prose.',
         '</conversation_preferences>',
       ]
     return outputLength.join('\n')
@@ -2000,7 +2042,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
     if (eventTarget.closest<HTMLElement>('[data-chat-action="toggle-scene-state"]')) {
       sceneStateCollapsed = !sceneStateCollapsed
-      renderSceneStatePanel(getActiveConversation(state))
+      const conversation = getActiveConversation(state)
+      if (conversation) {
+        renderer.renderMessages(conversation.messages)
+      }
       return
     }
 

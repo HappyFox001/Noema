@@ -25,27 +25,37 @@
       "zh-CN": "装备调试间",
       "en-US": "equipment calibration room"
     },
-    "objective": {
-      "zh-CN": "确认行动重点并完成出发前准备",
-      "en-US": "confirm the operation focus and finish pre-departure preparation"
-    },
-    "items": [
+    "equipment": [
       {
-        "zh-CN": "战术护甲",
-        "en-US": "tactical armor"
+        "name": {
+          "zh-CN": "战术护甲",
+          "en-US": "tactical armor"
+        },
+        "ability": {
+          "zh-CN": "降低冲击伤害",
+          "en-US": "reduces impact damage"
+        },
+        "quantity": 1
       },
       {
-        "zh-CN": "短距通讯器",
-        "en-US": "short-range communicator"
+        "name": {
+          "zh-CN": "短距通讯器",
+          "en-US": "short-range communicator"
+        },
+        "ability": {
+          "zh-CN": "维持小队近距联络",
+          "en-US": "maintains short-range squad contact"
+        },
+        "quantity": 1
       }
     ],
     "status": {
-      "zh-CN": "陈千语已完成基础整备，正在等待用户确认行动重点。",
-      "en-US": "Chen Qianyu has completed basic preparation and is waiting for the user to confirm the operation focus."
+      "zh-CN": "🙂 愉悦度 42  ⚡ 兴奋值 18  🛡️ 警戒 63",
+      "en-US": "🙂 pleasure 42  ⚡ arousal 18  🛡️ alertness 63"
     },
     "rules": {
-      "zh-CN": "场景状态是当前存档。模型可以根据对话推进更新地点、目标、道具和状态，但不得凭空移除重要道具、跳过关键冲突或违背已经确认的事实。",
-      "en-US": "Scene state is the current save state. The model may update location, objective, items, and status as the conversation advances, but must not remove important items, skip key conflicts, or contradict confirmed facts."
+      "zh-CN": "场景状态是当前存档。模型可以根据对话推进更新地点、状态和装备栏；状态应尽量是简洁变量，例如愉悦度、兴奋值、警戒、体力等，可配合 emoji 和数值。装备栏必须使用 equipment 数组，每项包含 name、ability、quantity。不得凭空移除重要装备、跳过关键冲突或违背已经确认的事实。",
+      "en-US": "Scene state is the current save state. The model may update location, status, and equipment as the conversation advances. Status should stay as compact variables such as pleasure, arousal, alertness, stamina, etc., optionally with emoji and values. Equipment must use an equipment array where each item includes name, ability, and quantity. Do not remove important equipment without cause, skip key conflicts, or contradict confirmed facts."
     }
   },
   "firstMessage": {

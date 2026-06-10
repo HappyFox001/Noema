@@ -14,6 +14,7 @@ export interface ChatRendererOptions {
   messageList: HTMLElement
   getLanguage(): ChatLanguageCode
   escapeHtml(value: string): string
+  getSceneCollapsed?(): boolean
 }
 
 export interface ChatRenderer {
@@ -40,6 +41,7 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
   const assetTitle = assetList?.closest<HTMLElement>('.chat-config-section')?.querySelector<HTMLElement>('h3')
   const suggestionList = options.panel.querySelector<HTMLElement>('.chat-suggestion-list')
   let activeMessageCharacter: ChatCharacterResource | undefined
+  let activeConversation: ChatConversationSummary | undefined
 
   function renderConversationList(
     conversations: ChatConversationSummary[],
@@ -71,6 +73,7 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
 
   function renderActiveConversation(conversation: ChatConversationSummary, character: ChatCharacterResource): void {
     const language = options.getLanguage()
+    activeConversation = conversation
     activeMessageCharacter = character
     if (headerAvatar) {
       headerAvatar.className = 'chat-avatar large'
@@ -153,16 +156,22 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
       suggestionList.innerHTML = ''
     }
     activeMessageCharacter = undefined
+    activeConversation = undefined
     options.messageList.innerHTML = ''
   }
 
   function renderMessages(messages: ChatMessage[]): void {
-    options.messageList.innerHTML = messages.map(renderMessage).join('')
+    const lastAssistantId = findLastAssistantMessageId(messages)
+    options.messageList.innerHTML = messages.map((message) => renderMessage(message, message.id === lastAssistantId)).join('')
     scrollToLatest()
   }
 
   function appendMessage(message: ChatMessage): void {
-    options.messageList.insertAdjacentHTML('beforeend', renderMessage(message))
+    if (message.role === 'assistant' && activeConversation) {
+      renderMessages(activeConversation.messages)
+      return
+    }
+    options.messageList.insertAdjacentHTML('beforeend', renderMessage(message, false))
     scrollToLatest()
   }
 
@@ -172,7 +181,11 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
       appendMessage(message)
       return
     }
-    existing.outerHTML = renderMessage(message)
+    if (message.role === 'assistant' && activeConversation) {
+      renderMessages(activeConversation.messages)
+      return
+    }
+    existing.outerHTML = renderMessage(message, false)
     scrollToLatest()
   }
 
@@ -194,7 +207,7 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     })
   }
 
-  function renderMessage(message: ChatMessage): string {
+  function renderMessage(message: ChatMessage, includeSceneState: boolean): string {
     const language = options.getLanguage()
     if (message.state === 'thinking') {
       return renderThinkingMessage(message, language)
@@ -209,10 +222,170 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
         <div class="chat-message-body">
           ${renderMessageAttachments(message)}
           ${renderMessageContent(message, language)}
+          ${includeSceneState ? renderInlineSceneState(language) : ''}
           <small>${stateLabel}${options.escapeHtml(localizeChatText(message.createdLabel, language))}</small>
         </div>
       </article>
     `
+  }
+
+  function findLastAssistantMessageId(messages: ChatMessage[]): string {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (messages[index].role === 'assistant' && messages[index].state === undefined) {
+        return messages[index].id
+      }
+    }
+    return ''
+  }
+
+  function renderInlineSceneState(language: ChatLanguageCode): string {
+    if (!activeConversation?.sceneState) {
+      return ''
+    }
+    const collapsed = options.getSceneCollapsed?.() ?? false
+    const scene = localizeSceneState(activeConversation.sceneState, language)
+    const location = String(scene.location || '')
+    const statusItems = normalizeSceneStatus(scene.status)
+    const equipment = normalizeSceneEquipment(scene.equipment)
+    if (!location && !statusItems.length && !equipment.length) {
+      return ''
+    }
+    return `
+      <section class="chat-inline-scene">
+        <div class="chat-inline-scene-lines">
+          ${renderInlineSceneLine(language === 'zh-CN' ? '地点' : 'Place', location || (language === 'zh-CN' ? '未设定' : 'Unset'))}
+          <div class="chat-inline-scene-line">
+            <span>${options.escapeHtml(language === 'zh-CN' ? '状态' : 'Status')}</span>
+            <div class="chat-inline-scene-status">
+              ${statusItems.length ? statusItems.map((item) => `<em>${options.escapeHtml(item)}</em>`).join('') : `<em>${options.escapeHtml(language === 'zh-CN' ? '平稳' : 'steady')}</em>`}
+            </div>
+          </div>
+        </div>
+        <button class="chat-inline-equipment-toggle" type="button" data-chat-action="toggle-scene-state" aria-expanded="${collapsed ? 'false' : 'true'}">
+          <span>${options.escapeHtml(language === 'zh-CN' ? '装备栏' : 'Equipment')}</span>
+          <em>${options.escapeHtml(String(equipment.length))}</em>
+          <strong aria-hidden="true">${collapsed ? options.escapeHtml(language === 'zh-CN' ? '展开' : 'Open') : options.escapeHtml(language === 'zh-CN' ? '收起' : 'Close')}</strong>
+        </button>
+        <div class="chat-inline-equipment ${collapsed ? 'is-collapsed' : ''}">
+          <table>
+            <thead>
+              <tr>
+                <th>${options.escapeHtml(language === 'zh-CN' ? '装备名称' : 'Name')}</th>
+                <th>${options.escapeHtml(language === 'zh-CN' ? '能力' : 'Ability')}</th>
+                <th>${options.escapeHtml(language === 'zh-CN' ? '数量' : 'Qty')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${equipment.length ? equipment.map((item) => `
+                <tr>
+                  <td>${options.escapeHtml(item.name)}</td>
+                  <td>${options.escapeHtml(item.ability)}</td>
+                  <td>${options.escapeHtml(item.quantity)}</td>
+                </tr>
+              `).join('') : `
+                <tr>
+                  <td colspan="3">${options.escapeHtml(language === 'zh-CN' ? '暂无装备记录' : 'No equipment recorded')}</td>
+                </tr>
+              `}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    `
+  }
+
+  function renderInlineSceneLine(label: string, value: string): string {
+    return `
+      <div class="chat-inline-scene-line">
+        <span>${options.escapeHtml(label)}</span>
+        <strong>${options.escapeHtml(value)}</strong>
+      </div>
+    `
+  }
+
+  function normalizeSceneStatus(value: unknown): string[] {
+    if (Array.isArray(value)) {
+      return value.map(formatSceneStatusItem).filter(Boolean)
+    }
+    if (value && typeof value === 'object') {
+      return Object.entries(value as Record<string, unknown>)
+        .map(([key, item]) => `${key} ${formatSceneScalar(item)}`.trim())
+        .filter(Boolean)
+    }
+    return String(value || '')
+      .split(/\s{2,}|[，,；;]/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+  }
+
+  function formatSceneStatusItem(value: unknown): string {
+    if (value && typeof value === 'object') {
+      const record = value as Record<string, unknown>
+      const emoji = formatSceneScalar(record.emoji)
+      const name = formatSceneScalar(record.name ?? record.label ?? record.key)
+      const amount = formatSceneScalar(record.value ?? record.amount ?? record.level)
+      return [emoji, name, amount].filter(Boolean).join(' ')
+    }
+    return formatSceneScalar(value)
+  }
+
+  function normalizeSceneEquipment(value: unknown): Array<{ name: string; ability: string; quantity: string }> {
+    if (!Array.isArray(value)) {
+      return []
+    }
+    return value
+      .map((item) => {
+        if (item && typeof item === 'object') {
+          const record = item as Record<string, unknown>
+          return {
+            name: formatSceneScalar(record.name) || '-',
+            ability: formatSceneScalar(record.ability) || '-',
+            quantity: formatSceneScalar(record.quantity ?? record.count) || '1',
+          }
+        }
+        return {
+          name: formatSceneScalar(item) || '-',
+          ability: '-',
+          quantity: '1',
+        }
+      })
+      .filter((item) => item.name !== '-')
+  }
+
+  function formatSceneScalar(value: unknown): string {
+    if (value === null || value === undefined) {
+      return ''
+    }
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      return String(value)
+    }
+    return ''
+  }
+
+  function localizeSceneState(sceneState: ChatConversationSummary['sceneState'], language: ChatLanguageCode): Record<string, unknown> {
+    const localized: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(sceneState ?? {})) {
+      localized[key] = localizeSceneValue(value, language)
+    }
+    return localized
+  }
+
+  function localizeSceneValue(value: unknown, language: ChatLanguageCode): unknown {
+    if (Array.isArray(value)) {
+      return value.map((item) => localizeSceneValue(item, language))
+    }
+    if (value && typeof value === 'object') {
+      const record = value as Record<string, unknown>
+      if (typeof record['zh-CN'] === 'string' || typeof record['en-US'] === 'string') {
+        return localizeChatText(record as any, language)
+      }
+      const localized: Record<string, unknown> = {}
+      for (const [key, childValue] of Object.entries(record)) {
+        localized[key] = localizeSceneValue(childValue, language)
+      }
+      return localized
+    }
+    return value
   }
 
   function renderCharacterActionEntrances(language: ChatLanguageCode): string {
