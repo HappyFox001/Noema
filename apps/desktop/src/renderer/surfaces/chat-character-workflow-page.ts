@@ -2,9 +2,12 @@
  * Renders the Character Workflow chat page shell.
  */
 import {
+  applyWorkflowRunEvent,
   createStandardCharacterWorkflow,
+  createWorkflowRunState,
   createWorkflowRunSession,
   type CharacterWorkflow,
+  type CharacterWorkflowRunState,
   type WorkflowRunSession,
 } from '@noema/sdk/character-workflow'
 
@@ -20,19 +23,40 @@ export function renderCharacterWorkflowPage(options: CharacterWorkflowPageOption
     now: 1,
     language: options.language,
   })
-  const run = createWorkflowRunSession(workflow, 1)
+  const runState = createPreviewRunState(workflow)
   return `
     <div class="chat-character-workflow-shell">
-      ${renderFileTabs(workflow, run, options)}
+      ${renderFileTabs(runState.workflow, runState.run, options)}
       <div class="chat-character-workflow-stage">
-        ${renderRunToolbar(workflow, run, options)}
+        ${renderRunToolbar(runState.workflow, runState.run, options)}
         <div class="chat-character-workflow-grid">
-          ${renderWorkflowCanvas(workflow, options)}
-          ${renderWorkflowArtifacts(options)}
+          ${renderWorkflowCanvas(runState.workflow, options)}
+          ${renderWorkflowArtifacts(runState, options)}
         </div>
       </div>
     </div>
   `
+}
+
+function createPreviewRunState(workflow: CharacterWorkflow): CharacterWorkflowRunState {
+  const run = createWorkflowRunSession(workflow, 1)
+  return [
+    { type: 'run.started' as const, runId: run.id, timestamp: 2 },
+    { type: 'node.started' as const, runId: run.id, nodeId: 'brief-input', timestamp: 3 },
+    { type: 'node.finished' as const, runId: run.id, nodeId: 'brief-input', timestamp: 4 },
+    { type: 'node.started' as const, runId: run.id, nodeId: 'concept-generator', timestamp: 5 },
+    { type: 'node.finished' as const, runId: run.id, nodeId: 'concept-generator', timestamp: 6 },
+    { type: 'node.started' as const, runId: run.id, nodeId: 'persona-generator', timestamp: 7 },
+    { type: 'node.artifact.created' as const, runId: run.id, nodeId: 'persona-generator', artifact: {
+      id: 'preview-card',
+      type: 'character-card' as const,
+      sourceNodeId: 'persona-generator',
+      createdAt: 7,
+      card: createPreviewCharacterCard(),
+    }, timestamp: 8 },
+    { type: 'node.finished' as const, runId: run.id, nodeId: 'persona-generator', timestamp: 9 },
+    { type: 'node.started' as const, runId: run.id, nodeId: 'dialogue-generator', timestamp: 10 },
+  ].reduce(applyWorkflowRunEvent, createWorkflowRunState(workflow, 1))
 }
 
 function renderFileTabs(
@@ -98,7 +122,7 @@ function renderWorkflowCanvas(workflow: CharacterWorkflow, options: CharacterWor
     <section class="chat-workflow-canvas" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '工作流执行画布' : 'Workflow run canvas')}">
       <div class="chat-workflow-canvas-grid" aria-hidden="true"></div>
       ${visibleNodes.map((node, index) => `
-        <article class="chat-workflow-node ${index < 3 ? 'done' : index === 3 ? 'running' : ''}" style="--node-x: ${node.position.x / 10}px; --node-y: ${node.position.y / 10}px">
+        <article class="chat-workflow-node ${node.state?.status ?? 'idle'}" style="--node-x: ${node.position.x / 10}px; --node-y: ${node.position.y / 10}px">
           <span>${options.escapeHtml(formatNodeType(node.type))}</span>
           <strong>${options.escapeHtml(node.title)}</strong>
           <small>${options.escapeHtml(Object.keys(node.outputs)[0] || 'artifact')}</small>
@@ -111,7 +135,11 @@ function renderWorkflowCanvas(workflow: CharacterWorkflow, options: CharacterWor
   `
 }
 
-function renderWorkflowArtifacts(options: CharacterWorkflowPageOptions): string {
+function renderWorkflowArtifacts(
+  state: CharacterWorkflowRunState,
+  options: CharacterWorkflowPageOptions
+): string {
+  const card = state.artifacts.find((artifact) => artifact.type === 'character-card')?.card
   const assets = options.language === 'zh-CN'
     ? [
         ['avatar', '头像照', '角色列表、会话顶部、社区卡片'],
@@ -130,8 +158,8 @@ function renderWorkflowArtifacts(options: CharacterWorkflowPageOptions): string 
         <strong>${options.escapeHtml(options.language === 'zh-CN' ? '核心图包' : 'Core image pack')}</strong>
       </div>
       <div class="chat-workflow-card-preview">
-        <h4>${options.escapeHtml(options.language === 'zh-CN' ? 'Draft 01' : 'Draft 01')}</h4>
-        <p>${options.escapeHtml(options.language === 'zh-CN' ? '等待 LLM 节点写入角色身份、人格、对话风格和游戏化状态。' : 'Waiting for LLM nodes to write identity, persona, dialogue style, and game state.')}</p>
+        <h4>${options.escapeHtml(card?.identity.displayName || 'Draft 01')}</h4>
+        <p>${options.escapeHtml(card?.persona.summary || (options.language === 'zh-CN' ? '等待 LLM 节点写入角色身份、人格、对话风格和游戏化状态。' : 'Waiting for LLM nodes to write identity, persona, dialogue style, and game state.'))}</p>
       </div>
       <div class="chat-workflow-asset-list">
         ${assets.map(([kind, title, copy]) => `
@@ -146,6 +174,61 @@ function renderWorkflowArtifacts(options: CharacterWorkflowPageOptions): string 
       </div>
     </aside>
   `
+}
+
+function createPreviewCharacterCard() {
+  return {
+    schemaVersion: '1.0' as const,
+    id: 'draft-01',
+    identity: {
+      name: 'Draft 01',
+      displayName: 'Draft 01',
+      role: 'Companion character',
+      tags: ['workflow', 'draft'],
+    },
+    world: {
+      genre: 'original',
+      setting: 'Noema character workflow draft',
+    },
+    persona: {
+      summary: '一个正在由工作流逐步生成的角色草稿，身份、人设和图包会随着节点执行逐步填充。',
+      traits: ['curious'],
+      values: ['consistency'],
+      flaws: [],
+      goals: ['become a complete character pack'],
+      boundaries: [],
+    },
+    dialogue: {
+      language: 'zh-CN' as const,
+      style: '自然、简洁、角色一致',
+      firstMessage: '我还在生成中，等我的设定和图包完成吧。',
+      userAddressing: '你',
+      examples: [],
+    },
+    visual: {
+      artStyle: 'anime reference sheet',
+      appearance: 'pending',
+      hair: 'pending',
+      eyes: 'pending',
+      outfit: 'pending',
+      signatureItems: [],
+      colorPalette: [],
+      negativeTraits: [],
+    },
+    game: {
+      stats: [],
+      skills: [],
+      inventory: [],
+      relationshipRules: [],
+      sceneHooks: [],
+    },
+    generation: {
+      promptBase: '',
+      negativePrompt: '',
+      referenceAssets: [],
+      preferredAspectRatios: ['1:1', '3:4', '16:9'],
+    },
+  }
 }
 
 function formatNodeType(type: string): string {
