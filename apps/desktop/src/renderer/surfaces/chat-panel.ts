@@ -1454,6 +1454,18 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     })
   }
 
+  function getChatModelCard(modelId: string): HTMLElement | null {
+    if (!modelList) {
+      return null
+    }
+    return Array.from(modelList.querySelectorAll<HTMLElement>('.chat-model-card'))
+      .find((card) => card.dataset.chatModelId === modelId) ?? null
+  }
+
+  function getChatApiModelOptions(modelId: string): HTMLElement | null {
+    return getChatModelCard(modelId)?.querySelector<HTMLElement>('.chat-api-model-options') ?? null
+  }
+
   async function saveChatModelConfig(): Promise<void> {
     if (!chatSystemConfig) {
       return
@@ -1589,6 +1601,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!chatSystemConfig) {
       return
     }
+    const modelOptionsScrollTop = getChatApiModelOptions(id)?.scrollTop ?? 0
     const model = chatSystemConfig.chatModels.find((item) => item.id === id)
     const name = modelName.trim()
     if (!model || !name) {
@@ -1608,6 +1621,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     await saveChatModelConfig()
     renderChatModelConfig()
+    const modelOptions = getChatApiModelOptions(id)
+    if (modelOptions) {
+      modelOptions.scrollTop = modelOptionsScrollTop
+    }
     renderChatRuntimeModelPicker()
   }
 

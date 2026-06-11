@@ -12737,6 +12737,26 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-conversation-settings-p
   gap: 6px;
   max-height: 118px;
   overflow-y: auto;
+  padding-right: 3px;
+  scrollbar-color: rgba(248, 250, 250, 0.18) transparent;
+  scrollbar-width: thin;
+}
+
+.chat-api-model-options::-webkit-scrollbar {
+  width: 4px;
+}
+
+.chat-api-model-options::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chat-api-model-options::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(248, 250, 250, 0.16);
+}
+
+.chat-api-model-options:hover::-webkit-scrollbar-thumb {
+  background: rgba(248, 250, 250, 0.24);
 }
 
 .chat-api-model-options button,
