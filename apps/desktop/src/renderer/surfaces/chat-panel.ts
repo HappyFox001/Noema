@@ -138,6 +138,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let conversationSettings = loadConversationSettings()
   let sceneStateCollapsed = false
   let characterWorkflowRenderToken = 0
+  const characterWorkflowConfigOverrides: Record<string, Record<string, unknown>> = {}
 
   toast.className = 'chat-status-toast'
   toast.setAttribute('role', 'status')
@@ -1475,6 +1476,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const pageOptions = {
       language: options.getLanguage(),
       escapeHtml: options.escapeHtml,
+      configOverrides: characterWorkflowConfigOverrides,
     } as const
     characterWorkflowRoot.innerHTML = renderCharacterWorkflowLoadingPage(pageOptions)
     void renderCharacterWorkflowPage(pageOptions).then((html) => {
@@ -1507,6 +1509,29 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         showToast(options.getLanguage() === 'zh-CN' ? '工作流操作待接入' : 'Workflow action pending')
         break
     }
+  }
+
+  function updateCharacterWorkflowParameter(control: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement): void {
+    const nodeId = control.dataset.chatWorkflowNode || ''
+    const paramId = control.dataset.chatWorkflowParam || ''
+    const paramType = control.dataset.chatWorkflowParamType || ''
+    if (!nodeId || !paramId) {
+      return
+    }
+    characterWorkflowConfigOverrides[nodeId] ??= {}
+    if (control instanceof HTMLInputElement && control.type === 'checkbox') {
+      characterWorkflowConfigOverrides[nodeId][paramId] = control.checked
+    } else if (paramType === 'number' || paramType === 'integer') {
+      characterWorkflowConfigOverrides[nodeId][paramId] = Number(control.value)
+    } else if (paramType === 'string-list' || paramType === 'multi-select') {
+      characterWorkflowConfigOverrides[nodeId][paramId] = control.value
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean)
+    } else {
+      characterWorkflowConfigOverrides[nodeId][paramId] = control.value
+    }
+    renderCharacterWorkflow()
   }
 
   function getChatModelCard(modelId: string): HTMLElement | null {
@@ -2024,6 +2049,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   })
 
   panel.addEventListener('change', (event) => {
+    const workflowParam = (event.target as HTMLElement | null)?.closest<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('[data-chat-workflow-param]')
+    if (workflowParam && panel.contains(workflowParam)) {
+      updateCharacterWorkflowParameter(workflowParam)
+      return
+    }
     const settingsControl = (event.target as HTMLElement | null)?.closest<HTMLInputElement | HTMLSelectElement>('[data-chat-setting]')
     if (settingsControl && panel.contains(settingsControl)) {
       updateConversationSetting(settingsControl)

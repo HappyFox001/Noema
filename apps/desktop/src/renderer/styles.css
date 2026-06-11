@@ -12027,14 +12027,24 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
 }
 
 .chat-workflow-node-widget span,
-.chat-workflow-node-widget b {
+.chat-workflow-node-widget input,
+.chat-workflow-node-widget select,
+.chat-workflow-node-widget textarea {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.chat-workflow-node-widget b {
+.chat-workflow-node-widget input,
+.chat-workflow-node-widget select,
+.chat-workflow-node-widget textarea {
+  width: 100%;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
   color: rgba(248, 250, 250, 0.66);
   font-family: var(--font-mono, monospace);
   font-size: 10px;
@@ -12042,9 +12052,25 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   text-align: right;
 }
 
-.chat-workflow-node-widget.boolean b,
-.chat-workflow-node-widget.number b,
-.chat-workflow-node-widget.integer b {
+.chat-workflow-node-widget textarea {
+  resize: none;
+  line-height: 20px;
+}
+
+.chat-workflow-node-widget select {
+  appearance: none;
+}
+
+.chat-workflow-node-widget input[type='checkbox'] {
+  justify-self: end;
+  width: 14px;
+  height: 14px;
+  accent-color: rgba(162, 202, 188, 0.92);
+}
+
+.chat-workflow-node-widget.boolean input,
+.chat-workflow-node-widget.number input,
+.chat-workflow-node-widget.integer input {
   color: rgba(219, 189, 130, 0.76);
 }
 

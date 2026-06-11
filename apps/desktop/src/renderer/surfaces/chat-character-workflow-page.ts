@@ -16,6 +16,7 @@ import {
 export interface CharacterWorkflowPageOptions {
   language: 'zh-CN' | 'en-US'
   escapeHtml(value: string): string
+  configOverrides?: Record<string, Record<string, unknown>>
 }
 
 export async function renderCharacterWorkflowPage(options: CharacterWorkflowPageOptions): Promise<string> {
@@ -25,6 +26,7 @@ export async function renderCharacterWorkflowPage(options: CharacterWorkflowPage
     now: 1,
     language: options.language,
   })
+  applyWorkflowConfigOverrides(workflow, options.configOverrides)
   const runState = await createPreviewRunState(workflow)
   return `
     <div class="chat-character-workflow-shell">
@@ -153,7 +155,7 @@ function renderWorkflowNode(
         ${renderNodePorts('output', node.outputs, options)}
       </div>
       <div class="chat-workflow-node-widgets">
-        ${parameters.slice(0, 5).map((parameterItem) => renderNodeParameter(parameterItem, node.config[parameterItem.id], options)).join('')}
+        ${parameters.slice(0, 5).map((parameterItem) => renderNodeParameter(parameterItem, node, node.config[parameterItem.id], options)).join('')}
         ${parameters.length > 5 ? `<small class="chat-workflow-node-more">+${parameters.length - 5}</small>` : ''}
       </div>
     </article>
@@ -183,19 +185,70 @@ function renderNodePorts(
 
 function renderNodeParameter(
   parameterItem: CharacterWorkflowNodeParameter,
+  node: CharacterWorkflowNode,
   value: unknown,
   options: CharacterWorkflowPageOptions
 ): string {
+  const field = renderParameterField(parameterItem, node, value ?? parameterItem.defaultValue, options)
   return `
     <label class="chat-workflow-node-widget ${parameterItem.type} ${parameterItem.advanced ? 'advanced' : ''}">
       <span>${options.escapeHtml(parameterItem.label)}</span>
-      <b>${options.escapeHtml(formatParameterValue(value ?? parameterItem.defaultValue))}</b>
+      ${field}
     </label>
   `
 }
 
 function createDefinitionMap(): Map<string, CharacterWorkflowNodeDefinition> {
   return new Map(getStandardCharacterWorkflowNodeDefinitions().map((definition) => [definition.type, definition]))
+}
+
+function renderParameterField(
+  parameterItem: CharacterWorkflowNodeParameter,
+  node: CharacterWorkflowNode,
+  value: unknown,
+  options: CharacterWorkflowPageOptions
+): string {
+  const baseAttrs = `data-chat-workflow-param="${options.escapeHtml(parameterItem.id)}" data-chat-workflow-node="${options.escapeHtml(node.id)}" data-chat-workflow-param-type="${options.escapeHtml(parameterItem.type)}"`
+  if (parameterItem.type === 'boolean') {
+    return `<input type="checkbox" ${baseAttrs} ${value ? 'checked' : ''} aria-label="${options.escapeHtml(parameterItem.label)}">`
+  }
+  if (parameterItem.type === 'number' || parameterItem.type === 'integer') {
+    return `<input type="number" ${baseAttrs} value="${options.escapeHtml(formatParameterValue(value))}" ${parameterItem.min === undefined ? '' : `min="${parameterItem.min}"`} ${parameterItem.max === undefined ? '' : `max="${parameterItem.max}"`} ${parameterItem.step === undefined ? '' : `step="${parameterItem.step}"`} aria-label="${options.escapeHtml(parameterItem.label)}">`
+  }
+  if (parameterItem.type === 'select') {
+    return `
+      <select ${baseAttrs} aria-label="${options.escapeHtml(parameterItem.label)}">
+        ${(parameterItem.options ?? []).map((optionItem) => `
+          <option value="${options.escapeHtml(optionItem.value)}" ${String(value) === optionItem.value ? 'selected' : ''}>${options.escapeHtml(optionItem.label)}</option>
+        `).join('')}
+      </select>
+    `
+  }
+  if (parameterItem.type === 'multi-select' || parameterItem.type === 'string-list') {
+    return `<input type="text" ${baseAttrs} value="${options.escapeHtml(formatParameterValue(value))}" aria-label="${options.escapeHtml(parameterItem.label)}">`
+  }
+  if (parameterItem.type === 'textarea') {
+    return `<textarea ${baseAttrs} rows="1" aria-label="${options.escapeHtml(parameterItem.label)}">${options.escapeHtml(formatParameterValue(value))}</textarea>`
+  }
+  return `<input type="text" ${baseAttrs} value="${options.escapeHtml(formatParameterValue(value))}" aria-label="${options.escapeHtml(parameterItem.label)}">`
+}
+
+function applyWorkflowConfigOverrides(
+  workflow: CharacterWorkflow,
+  overrides: Record<string, Record<string, unknown>> | undefined
+): void {
+  if (!overrides) {
+    return
+  }
+  for (const node of workflow.nodes) {
+    const override = overrides[node.id]
+    if (override) {
+      node.config = {
+        ...node.config,
+        ...override,
+      }
+    }
+  }
 }
 
 function formatParameterValue(value: unknown): string {
