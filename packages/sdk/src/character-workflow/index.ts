@@ -323,6 +323,13 @@ export interface WorkflowRunSession {
   updatedAt: number
 }
 
+export interface CharacterWorkflowRunState {
+  workflow: CharacterWorkflow
+  run: WorkflowRunSession
+  artifacts: CharacterArtifact[]
+  events: CharacterWorkflowRunEvent[]
+}
+
 export type CharacterWorkflowRunEvent =
   | { type: 'run.started'; runId: string; timestamp: number }
   | { type: 'node.queued'; runId: string; nodeId: string; timestamp: number }
@@ -432,6 +439,102 @@ export function createWorkflowRunSession(
   }
 }
 
+export function createWorkflowRunState(
+  workflow: CharacterWorkflow,
+  now = Date.now()
+): CharacterWorkflowRunState {
+  return {
+    workflow: cloneWorkflow(workflow),
+    run: createWorkflowRunSession(workflow, now),
+    artifacts: [],
+    events: [],
+  }
+}
+
+export function applyWorkflowRunEvent(
+  state: CharacterWorkflowRunState,
+  event: CharacterWorkflowRunEvent
+): CharacterWorkflowRunState {
+  if (event.runId !== state.run.id) {
+    return state
+  }
+  const next: CharacterWorkflowRunState = {
+    workflow: cloneWorkflow(state.workflow),
+    run: {
+      ...state.run,
+      progress: { ...state.run.progress },
+      tabs: { ...state.run.tabs },
+      updatedAt: event.timestamp,
+    },
+    artifacts: [...state.artifacts],
+    events: [...state.events, event],
+  }
+
+  switch (event.type) {
+    case 'run.started':
+      next.run.status = 'running'
+      break
+    case 'node.queued':
+      updateWorkflowNode(next.workflow, event.nodeId, {
+        status: 'queued',
+        error: undefined,
+      })
+      next.run.status = 'running'
+      break
+    case 'node.started':
+      updateWorkflowNode(next.workflow, event.nodeId, {
+        status: 'running',
+        error: undefined,
+        startedAt: event.timestamp,
+      })
+      next.run.status = 'running'
+      next.run.activeNodeId = event.nodeId
+      break
+    case 'node.progress':
+      next.run.status = 'running'
+      next.run.activeNodeId = event.nodeId
+      break
+    case 'node.artifact.created':
+      next.artifacts = upsertArtifact(next.artifacts, event.artifact)
+      next.run.status = 'running'
+      next.run.activeNodeId = event.nodeId
+      break
+    case 'node.finished':
+      updateWorkflowNode(next.workflow, event.nodeId, {
+        status: 'done',
+        error: undefined,
+        finishedAt: event.timestamp,
+      })
+      next.run.activeNodeId = undefined
+      break
+    case 'node.failed':
+      updateWorkflowNode(next.workflow, event.nodeId, {
+        status: 'failed',
+        error: event.error,
+        finishedAt: event.timestamp,
+      })
+      next.run.status = 'failed'
+      next.run.activeNodeId = event.nodeId
+      break
+    case 'run.finished':
+      next.run.status = next.run.progress.failed > 0 ? 'failed' : 'done'
+      next.run.activeNodeId = undefined
+      break
+    default:
+      break
+  }
+
+  next.run.progress = calculateRunProgress(next.workflow)
+  return next
+}
+
+export function collectWorkflowArtifacts<T extends CharacterArtifactType>(
+  state: CharacterWorkflowRunState,
+  type: T
+): Array<Extract<CharacterArtifact, { type: T }>> {
+  return state.artifacts.filter((artifact): artifact is Extract<CharacterArtifact, { type: T }> => artifact.type === type)
+}
+
 function createWorkflowNodeFactory() {
   return (
     type: CharacterNodeType,
@@ -451,6 +554,70 @@ function createWorkflowNodeFactory() {
     config,
     state: { status: 'idle' },
   })
+}
+
+function cloneWorkflow(workflow: CharacterWorkflow): CharacterWorkflow {
+  return {
+    ...workflow,
+    nodes: workflow.nodes.map((nodeItem) => ({
+      ...nodeItem,
+      position: { ...nodeItem.position },
+      inputs: { ...nodeItem.inputs },
+      outputs: { ...nodeItem.outputs },
+      config: { ...nodeItem.config },
+      state: nodeItem.state ? { ...nodeItem.state } : undefined,
+    })),
+    edges: workflow.edges.map((edge) => ({
+      ...edge,
+      from: { ...edge.from },
+      to: { ...edge.to },
+    })),
+    defaults: { ...workflow.defaults },
+    metadata: { ...workflow.metadata },
+  }
+}
+
+function updateWorkflowNode(
+  workflow: CharacterWorkflow,
+  nodeId: string,
+  state: Partial<CharacterWorkflowNodeState>
+): void {
+  const target = workflow.nodes.find((nodeItem) => nodeItem.id === nodeId)
+  if (!target) {
+    return
+  }
+  target.state = {
+    status: target.state?.status ?? 'idle',
+    ...target.state,
+    ...state,
+  }
+}
+
+function calculateRunProgress(workflow: CharacterWorkflow): WorkflowRunSession['progress'] {
+  return workflow.nodes.reduce<WorkflowRunSession['progress']>((progress, nodeItem) => {
+    const status = nodeItem.state?.status ?? 'idle'
+    if (status === 'done') {
+      progress.done += 1
+    } else if (status === 'failed') {
+      progress.failed += 1
+    } else if (status === 'skipped') {
+      progress.skipped += 1
+    }
+    return progress
+  }, {
+    total: workflow.nodes.length,
+    done: 0,
+    failed: 0,
+    skipped: 0,
+  })
+}
+
+function upsertArtifact(artifacts: CharacterArtifact[], artifact: CharacterArtifact): CharacterArtifact[] {
+  const existingIndex = artifacts.findIndex((item) => item.id === artifact.id)
+  if (existingIndex < 0) {
+    return [...artifacts, artifact]
+  }
+  return artifacts.map((item, index) => index === existingIndex ? artifact : item)
 }
 
 function port(
