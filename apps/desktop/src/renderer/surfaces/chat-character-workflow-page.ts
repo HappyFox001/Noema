@@ -2,8 +2,8 @@
  * Renders the Character Workflow chat page shell.
  */
 import {
+  createWorkflowRunState,
   createStandardCharacterWorkflow,
-  executeCharacterWorkflow,
   getStandardCharacterWorkflowNodeDefinitions,
   type CharacterWorkflow,
   type CharacterWorkflowNode,
@@ -17,9 +17,20 @@ export interface CharacterWorkflowPageOptions {
   language: 'zh-CN' | 'en-US'
   escapeHtml(value: string): string
   configOverrides?: Record<string, Record<string, unknown>>
+  positionOverrides?: Record<string, { x: number; y: number }>
+  runState?: CharacterWorkflowRunState | null
+  tabs: CharacterWorkflowFileTab[]
+  activeTabId: string
 }
 
-export async function renderCharacterWorkflowPage(options: CharacterWorkflowPageOptions): Promise<string> {
+export interface CharacterWorkflowFileTab {
+  id: string
+  title: string
+  kind: 'workflow' | 'run' | 'character'
+  state?: 'running' | 'failed' | 'dirty'
+}
+
+export function renderCharacterWorkflowPage(options: CharacterWorkflowPageOptions): string {
   const workflow = createStandardCharacterWorkflow({
     id: 'draft-character-workflow',
     name: options.language === 'zh-CN' ? 'Draft 01' : 'Draft 01',
@@ -27,10 +38,13 @@ export async function renderCharacterWorkflowPage(options: CharacterWorkflowPage
     language: options.language,
   })
   applyWorkflowConfigOverrides(workflow, options.configOverrides)
-  const runState = await createPreviewRunState(workflow)
+  applyWorkflowPositionOverrides(workflow, options.positionOverrides)
+  const runState = options.runState ?? createWorkflowRunState(workflow, 1)
+  applyWorkflowConfigOverrides(runState.workflow, options.configOverrides)
+  applyWorkflowPositionOverrides(runState.workflow, options.positionOverrides)
   return `
     <div class="chat-character-workflow-shell">
-      ${renderFileTabs(runState.workflow, runState.run, options)}
+      ${renderFileTabs(options)}
       <div class="chat-character-workflow-stage">
         ${renderRunToolbar(runState.workflow, runState.run, options)}
         <div class="chat-character-workflow-grid">
@@ -42,52 +56,26 @@ export async function renderCharacterWorkflowPage(options: CharacterWorkflowPage
   `
 }
 
-export function renderCharacterWorkflowLoadingPage(options: CharacterWorkflowPageOptions): string {
-  return `
-    <div class="chat-character-workflow-shell">
-      <div class="chat-workflow-loading">
-        <span>${options.escapeHtml(options.language === 'zh-CN' ? '正在准备角色工作流' : 'Preparing character workflow')}</span>
-      </div>
-    </div>
-  `
-}
-
-async function createPreviewRunState(workflow: CharacterWorkflow): Promise<CharacterWorkflowRunState> {
-  let tick = 1
-  return executeCharacterWorkflow(workflow, {
-    now: () => ++tick,
-  })
-}
-
-function renderFileTabs(
-  workflow: CharacterWorkflow,
-  run: WorkflowRunSession,
-  options: CharacterWorkflowPageOptions
-): string {
-  const previewTitle = options.language === 'zh-CN' ? '角色包预览.character' : 'Character Pack Preview.character'
+function renderFileTabs(options: CharacterWorkflowPageOptions): string {
   return `
     <div class="chat-workflow-file-tabs" role="tablist" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '角色工作流文件' : 'Character workflow files')}">
-      ${renderFileTab(`${workflow.name}.workflow`, 'workflow', true, options)}
-      ${renderFileTab(run.title, 'run', false, options, 'running')}
-      ${renderFileTab(previewTitle, 'character', false, options)}
+      ${options.tabs.map((tab) => renderFileTab(tab, tab.id === options.activeTabId, options)).join('')}
       <button class="chat-workflow-new-tab" type="button" data-chat-workflow-action="new-run" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '新建运行' : 'New run')}">+</button>
     </div>
   `
 }
 
 function renderFileTab(
-  title: string,
-  kind: 'workflow' | 'run' | 'character',
+  tab: CharacterWorkflowFileTab,
   active: boolean,
-  options: CharacterWorkflowPageOptions,
-  state?: 'running' | 'failed' | 'dirty'
+  options: CharacterWorkflowPageOptions
 ): string {
   return `
-    <button class="chat-workflow-file-tab ${active ? 'active' : ''} ${state ? `is-${state}` : ''}" type="button" role="tab" aria-selected="${active ? 'true' : 'false'}">
-      <span class="chat-workflow-file-icon ${kind}" aria-hidden="true"></span>
-      <strong>${options.escapeHtml(title)}</strong>
-      ${state ? `<span class="chat-workflow-file-state" aria-hidden="true"></span>` : ''}
-      <span class="chat-workflow-file-close" aria-hidden="true">×</span>
+    <button class="chat-workflow-file-tab ${active ? 'active' : ''} ${tab.state ? `is-${tab.state}` : ''}" type="button" role="tab" aria-selected="${active ? 'true' : 'false'}" data-chat-workflow-tab="${options.escapeHtml(tab.id)}">
+      <span class="chat-workflow-file-icon ${tab.kind}" aria-hidden="true"></span>
+      <strong>${options.escapeHtml(tab.title)}</strong>
+      ${tab.state ? `<span class="chat-workflow-file-state" aria-hidden="true"></span>` : ''}
+      <span class="chat-workflow-file-close" data-chat-workflow-close-tab="${options.escapeHtml(tab.id)}" aria-hidden="true">×</span>
     </button>
   `
 }
@@ -98,9 +86,11 @@ function renderRunToolbar(
   options: CharacterWorkflowPageOptions
 ): string {
   const done = run.progress.done
-  const statusLabel = run.status === 'done'
-    ? (options.language === 'zh-CN' ? '角色资源已生成' : 'Character resources generated')
-    : (options.language === 'zh-CN' ? '正在生成角色资源' : 'Generating character resources')
+  const statusLabel = run.status === 'idle'
+    ? (options.language === 'zh-CN' ? '等待运行' : 'Ready')
+    : run.status === 'done'
+      ? (options.language === 'zh-CN' ? '角色资源已生成' : 'Character resources generated')
+      : (options.language === 'zh-CN' ? '正在生成角色资源' : 'Generating character resources')
   return `
     <header class="chat-workflow-run-toolbar">
       <div>
@@ -143,8 +133,8 @@ function renderWorkflowNode(
 ): string {
   const parameters = definition?.parameters ?? []
   return `
-    <article class="chat-workflow-node ${node.state?.status ?? 'idle'} ${definition?.category ?? 'unknown'}" style="--node-x: ${node.position.x / 5}px; --node-y: ${node.position.y / 2.2}px">
-      <header class="chat-workflow-node-head">
+    <article class="chat-workflow-node ${node.state?.status ?? 'idle'} ${definition?.category ?? 'unknown'}" style="--node-x: ${node.position.x}px; --node-y: ${node.position.y}px" data-chat-workflow-node-id="${options.escapeHtml(node.id)}">
+      <header class="chat-workflow-node-head" data-chat-workflow-drag-handle>
         <button type="button" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '折叠节点' : 'Collapse node')}"></button>
         <span>${options.escapeHtml(formatNodeType(node.type))}</span>
         <strong>${options.escapeHtml(node.title)}</strong>
@@ -247,6 +237,21 @@ function applyWorkflowConfigOverrides(
         ...node.config,
         ...override,
       }
+    }
+  }
+}
+
+function applyWorkflowPositionOverrides(
+  workflow: CharacterWorkflow,
+  overrides: Record<string, { x: number; y: number }> | undefined
+): void {
+  if (!overrides) {
+    return
+  }
+  for (const node of workflow.nodes) {
+    const override = overrides[node.id]
+    if (override) {
+      node.position = { ...override }
     }
   }
 }

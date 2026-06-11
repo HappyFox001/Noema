@@ -11844,8 +11844,8 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
 
 .chat-workflow-canvas-plane {
   position: relative;
-  min-width: 760px;
-  min-height: 520px;
+  min-width: 2240px;
+  min-height: 720px;
 }
 
 .chat-workflow-node {
@@ -11890,6 +11890,12 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
     0 20px 40px rgba(0, 0, 0, 0.28);
 }
 
+.chat-workflow-node.is-dragging {
+  z-index: 10;
+  cursor: grabbing;
+  user-select: none;
+}
+
 .chat-workflow-node-head {
   min-height: 34px;
   display: grid;
@@ -11897,6 +11903,7 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   align-items: center;
   column-gap: 7px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  cursor: grab;
 }
 
 .chat-workflow-node-head button {

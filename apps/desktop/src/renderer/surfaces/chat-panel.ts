@@ -3,6 +3,12 @@
  */
 import { getImageProviderCatalogEntry, getLLMProviderCatalogEntry } from '../../main/model-provider-catalog'
 import {
+  createStandardCharacterWorkflow,
+  createWorkflowRunState,
+  executeCharacterWorkflow,
+  type CharacterWorkflowRunState,
+} from '@noema/sdk/character-workflow'
+import {
   CHAT_CONTEXT_TURNS_MAX,
   CHAT_CONTEXT_TURNS_MIN,
   CHAT_OUTPUT_TOKEN_MAX,
@@ -19,7 +25,7 @@ import {
   saveConversationSettings,
   type ChatConversationSettings,
 } from './chat-conversation-settings'
-import { renderCharacterWorkflowLoadingPage, renderCharacterWorkflowPage } from './chat-character-workflow-page'
+import { renderCharacterWorkflowPage, type CharacterWorkflowFileTab } from './chat-character-workflow-page'
 import {
   applyChatResourceState,
   createInitialChatState,
@@ -139,6 +145,19 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let sceneStateCollapsed = false
   let characterWorkflowRenderToken = 0
   const characterWorkflowConfigOverrides: Record<string, Record<string, unknown>> = {}
+  const characterWorkflowPositionOverrides: Record<string, { x: number; y: number }> = {}
+  let characterWorkflowRunState: CharacterWorkflowRunState | null = null
+  let characterWorkflowRunCount = 0
+  let characterWorkflowActiveTabId = 'workflow'
+  let characterWorkflowPackTabOpen = false
+  let characterWorkflowDragging: {
+    nodeId: string
+    pointerId: number
+    startX: number
+    startY: number
+    originX: number
+    originY: number
+  } | null = null
 
   toast.className = 'chat-status-toast'
   toast.setAttribute('role', 'status')
@@ -249,6 +268,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   function isInteractiveTarget(target: EventTarget | null): boolean {
     return Boolean((target as HTMLElement | null)?.closest(
       'button, input, textarea, select, a, .chat-thread-list, .chat-composer, .chat-config-portrait, .chat-config-copy, .chat-asset-list, .chat-resize-handle'
+      + ', .chat-character-workflow-page'
     ))
   }
 
@@ -1472,42 +1492,123 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!characterWorkflowRoot) {
       return
     }
-    const renderToken = ++characterWorkflowRenderToken
-    const pageOptions = {
+    const workflow = createConfiguredCharacterWorkflow()
+    const runState = characterWorkflowRunState ?? createWorkflowRunState(workflow, 1)
+    characterWorkflowRoot.innerHTML = renderCharacterWorkflowPage({
       language: options.getLanguage(),
       escapeHtml: options.escapeHtml,
       configOverrides: characterWorkflowConfigOverrides,
-    } as const
-    characterWorkflowRoot.innerHTML = renderCharacterWorkflowLoadingPage(pageOptions)
-    void renderCharacterWorkflowPage(pageOptions).then((html) => {
-      if (renderToken === characterWorkflowRenderToken) {
-        characterWorkflowRoot.innerHTML = html
-      }
-    }).catch((error) => {
-      console.warn('[CharacterWorkflow] Failed to render workflow page:', error)
-      if (renderToken === characterWorkflowRenderToken) {
-        characterWorkflowRoot.innerHTML = renderCharacterWorkflowLoadingPage(pageOptions)
-      }
+      positionOverrides: characterWorkflowPositionOverrides,
+      runState,
+      tabs: getCharacterWorkflowTabs(),
+      activeTabId: characterWorkflowActiveTabId,
     })
+  }
+
+  function createConfiguredCharacterWorkflow() {
+    const workflow = createStandardCharacterWorkflow({
+      id: 'draft-character-workflow',
+      name: 'Draft 01',
+      now: 1,
+      language: options.getLanguage(),
+    })
+    for (const node of workflow.nodes) {
+      if (characterWorkflowConfigOverrides[node.id]) {
+        node.config = {
+          ...node.config,
+          ...characterWorkflowConfigOverrides[node.id],
+        }
+      }
+      if (characterWorkflowPositionOverrides[node.id]) {
+        node.position = { ...characterWorkflowPositionOverrides[node.id] }
+      }
+    }
+    return workflow
+  }
+
+  function getCharacterWorkflowTabs(): CharacterWorkflowFileTab[] {
+    const tabs: CharacterWorkflowFileTab[] = [{
+      id: 'workflow',
+      title: 'Draft 01.workflow',
+      kind: 'workflow',
+    }]
+    if (characterWorkflowRunState) {
+      tabs.push({
+        id: characterWorkflowRunState.run.id,
+        title: characterWorkflowRunState.run.title,
+        kind: 'run',
+        state: characterWorkflowRunState.run.status === 'running' ? 'running' : characterWorkflowRunState.run.status === 'failed' ? 'failed' : undefined,
+      })
+    }
+    if (characterWorkflowPackTabOpen && characterWorkflowRunState?.artifacts.some((artifact) => artifact.type === 'character-pack')) {
+      tabs.push({
+        id: 'character-pack',
+        title: options.getLanguage() === 'zh-CN' ? '角色包.character' : 'Character Pack.character',
+        kind: 'character',
+      })
+    }
+    return tabs
   }
 
   function handleCharacterWorkflowAction(action: string): void {
     switch (action) {
       case 'run':
+        void runCharacterWorkflow(false)
+        break
       case 'new-run':
-        renderCharacterWorkflow()
-        showToast(options.getLanguage() === 'zh-CN' ? '已启动角色工作流运行' : 'Character workflow run started')
+        void runCharacterWorkflow(true)
         break
       case 'stop':
         characterWorkflowRenderToken += 1
         showToast(options.getLanguage() === 'zh-CN' ? '已停止当前工作流刷新' : 'Stopped current workflow refresh')
         break
       case 'export':
-        showToast(options.getLanguage() === 'zh-CN' ? '角色包已生成，导出接口待接入文件系统' : 'Character pack generated; file export bridge pending')
+        if (characterWorkflowRunState?.artifacts.some((artifact) => artifact.type === 'character-pack')) {
+          characterWorkflowPackTabOpen = true
+          characterWorkflowActiveTabId = 'character-pack'
+          renderCharacterWorkflow()
+          showToast(options.getLanguage() === 'zh-CN' ? '已打开角色包文件' : 'Character pack file opened')
+        } else {
+          showToast(options.getLanguage() === 'zh-CN' ? '请先运行工作流生成角色包' : 'Run the workflow before export')
+        }
         break
       default:
         showToast(options.getLanguage() === 'zh-CN' ? '工作流操作待接入' : 'Workflow action pending')
         break
+    }
+  }
+
+  async function runCharacterWorkflow(newRun: boolean): Promise<void> {
+    const renderToken = ++characterWorkflowRenderToken
+    if (newRun) {
+      characterWorkflowRunState = null
+      characterWorkflowPackTabOpen = false
+    }
+    characterWorkflowRunCount += 1
+    const workflow = createConfiguredCharacterWorkflow()
+    const draftRunState = createWorkflowRunState(workflow, Date.now())
+    draftRunState.run.title = `Draft ${String(characterWorkflowRunCount).padStart(2, '0')}.run`
+    draftRunState.run.status = 'running'
+    characterWorkflowRunState = draftRunState
+    characterWorkflowActiveTabId = draftRunState.run.id
+    renderCharacterWorkflow()
+    showToast(options.getLanguage() === 'zh-CN' ? '角色工作流运行中' : 'Character workflow running')
+    try {
+      let tick = Date.now()
+      const nextState = await executeCharacterWorkflow(workflow, { now: () => ++tick })
+      nextState.run.title = draftRunState.run.title
+      if (renderToken !== characterWorkflowRenderToken) {
+        return
+      }
+      characterWorkflowRunState = nextState
+      characterWorkflowActiveTabId = nextState.run.id
+      renderCharacterWorkflow()
+      showToast(options.getLanguage() === 'zh-CN' ? '角色工作流已完成' : 'Character workflow finished')
+    } catch (error) {
+      console.warn('[CharacterWorkflow] Failed to run workflow:', error)
+      if (renderToken === characterWorkflowRenderToken) {
+        showToast(options.getLanguage() === 'zh-CN' ? '角色工作流运行失败' : 'Character workflow failed')
+      }
     }
   }
 
@@ -1532,6 +1633,82 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       characterWorkflowConfigOverrides[nodeId][paramId] = control.value
     }
     renderCharacterWorkflow()
+  }
+
+  function selectCharacterWorkflowTab(tabId: string): void {
+    if (!getCharacterWorkflowTabs().some((tab) => tab.id === tabId)) {
+      return
+    }
+    characterWorkflowActiveTabId = tabId
+    renderCharacterWorkflow()
+  }
+
+  function closeCharacterWorkflowTab(tabId: string): void {
+    if (tabId === 'workflow') {
+      return
+    }
+    if (tabId === characterWorkflowRunState?.run.id) {
+      characterWorkflowRunState = null
+      characterWorkflowPackTabOpen = false
+    }
+    if (tabId === 'character-pack') {
+      characterWorkflowPackTabOpen = false
+      characterWorkflowActiveTabId = characterWorkflowRunState?.run.id ?? 'workflow'
+    }
+    if (!getCharacterWorkflowTabs().some((tab) => tab.id === characterWorkflowActiveTabId)) {
+      characterWorkflowActiveTabId = 'workflow'
+    }
+    renderCharacterWorkflow()
+  }
+
+  function beginCharacterWorkflowNodeDrag(event: PointerEvent): void {
+    const handle = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-chat-workflow-drag-handle]')
+    const node = handle?.closest<HTMLElement>('[data-chat-workflow-node-id]')
+    if (!handle || !node || !panel.contains(node) || event.button !== 0) {
+      return
+    }
+    const nodeId = node.dataset.chatWorkflowNodeId || ''
+    if (!nodeId) {
+      return
+    }
+    const fallbackWorkflow = createConfiguredCharacterWorkflow()
+    const fallbackNode = fallbackWorkflow.nodes.find((item) => item.id === nodeId)
+    const origin = characterWorkflowPositionOverrides[nodeId] ?? fallbackNode?.position ?? { x: 0, y: 0 }
+    characterWorkflowDragging = {
+      nodeId,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: origin.x,
+      originY: origin.y,
+    }
+    node.setPointerCapture?.(event.pointerId)
+    node.classList.add('is-dragging')
+    event.preventDefault()
+    event.stopPropagation()
+  }
+
+  function updateCharacterWorkflowNodeDrag(event: PointerEvent): void {
+    if (!characterWorkflowDragging || characterWorkflowDragging.pointerId !== event.pointerId) {
+      return
+    }
+    const nextX = Math.max(0, Math.round(characterWorkflowDragging.originX + event.clientX - characterWorkflowDragging.startX))
+    const nextY = Math.max(0, Math.round(characterWorkflowDragging.originY + event.clientY - characterWorkflowDragging.startY))
+    characterWorkflowPositionOverrides[characterWorkflowDragging.nodeId] = { x: nextX, y: nextY }
+    const node = panel.querySelector<HTMLElement>(`[data-chat-workflow-node-id="${CSS.escape(characterWorkflowDragging.nodeId)}"]`)
+    if (node) {
+      node.style.setProperty('--node-x', `${nextX}px`)
+      node.style.setProperty('--node-y', `${nextY}px`)
+    }
+  }
+
+  function endCharacterWorkflowNodeDrag(event: PointerEvent): void {
+    if (!characterWorkflowDragging || characterWorkflowDragging.pointerId !== event.pointerId) {
+      return
+    }
+    const node = panel.querySelector<HTMLElement>(`[data-chat-workflow-node-id="${CSS.escape(characterWorkflowDragging.nodeId)}"]`)
+    node?.classList.remove('is-dragging')
+    characterWorkflowDragging = null
   }
 
   function getChatModelCard(modelId: string): HTMLElement | null {
@@ -2029,6 +2206,18 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
 
+    const workflowCloseTab = eventTarget.closest<HTMLElement>('[data-chat-workflow-close-tab]')
+    if (workflowCloseTab && panel.contains(workflowCloseTab)) {
+      closeCharacterWorkflowTab(workflowCloseTab.dataset.chatWorkflowCloseTab || '')
+      return
+    }
+
+    const workflowTab = eventTarget.closest<HTMLElement>('[data-chat-workflow-tab]')
+    if (workflowTab && panel.contains(workflowTab)) {
+      selectCharacterWorkflowTab(workflowTab.dataset.chatWorkflowTab || '')
+      return
+    }
+
     const workflowAction = eventTarget.closest<HTMLElement>('[data-chat-workflow-action]')
     if (workflowAction && panel.contains(workflowAction)) {
       handleCharacterWorkflowAction(workflowAction.dataset.chatWorkflowAction || '')
@@ -2081,12 +2270,16 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   })
 
   panel.addEventListener('pointerdown', beginChatResize)
+  panel.addEventListener('pointerdown', beginCharacterWorkflowNodeDrag)
   panel.addEventListener('pointerdown', beginManualDrag)
   window.addEventListener('pointermove', updateChatResize)
+  window.addEventListener('pointermove', updateCharacterWorkflowNodeDrag)
   window.addEventListener('pointermove', updateManualDrag)
   window.addEventListener('pointerup', endChatResize)
+  window.addEventListener('pointerup', endCharacterWorkflowNodeDrag)
   window.addEventListener('pointerup', endManualDrag)
   window.addEventListener('pointercancel', endChatResize)
+  window.addEventListener('pointercancel', endCharacterWorkflowNodeDrag)
   window.addEventListener('pointercancel', endManualDrag)
   window.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && conversationSettingsPanel?.classList.contains('visible')) {
