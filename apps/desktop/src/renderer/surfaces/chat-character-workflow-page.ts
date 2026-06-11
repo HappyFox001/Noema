@@ -25,6 +25,7 @@ export interface CharacterWorkflowPageOptions {
   activeTabId: string
   selectedNodeId: string
   activePanel: CharacterWorkflowSidePanel
+  inspectorCollapsed: boolean
 }
 
 export interface CharacterWorkflowFileTab {
@@ -52,10 +53,9 @@ export function renderCharacterWorkflowPage(options: CharacterWorkflowPageOption
     <div class="chat-character-workflow-shell">
       ${renderFileTabs(options)}
       <div class="chat-character-workflow-stage">
-        ${renderRunToolbar(runState.workflow, runState.run, options)}
-        <div class="chat-character-workflow-grid">
+        <div class="chat-character-workflow-grid ${options.inspectorCollapsed ? 'inspector-collapsed' : ''}">
           ${renderWorkflowSidebar(runState, options)}
-          ${renderWorkflowCanvas(runState.workflow, options)}
+          ${renderWorkflowCanvas(runState, options)}
           ${renderWorkflowInspector(runState, options)}
         </div>
       </div>
@@ -117,17 +117,21 @@ function renderRunToolbar(
   `
 }
 
-function renderWorkflowCanvas(workflow: CharacterWorkflow, options: CharacterWorkflowPageOptions): string {
+function renderWorkflowCanvas(state: CharacterWorkflowRunState, options: CharacterWorkflowPageOptions): string {
   const definitionMap = createDefinitionMap()
+  const workflow = state.workflow
   const visibleNodes = workflow.nodes.slice(0, 11)
   return `
     <section class="chat-workflow-canvas" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '工作流执行画布' : 'Workflow run canvas')}">
-      <div class="chat-workflow-canvas-plane">
-        <div class="chat-workflow-canvas-grid" aria-hidden="true"></div>
-        ${visibleNodes.map((node) => renderWorkflowNode(node, definitionMap.get(node.type), options)).join('')}
-        <div class="chat-workflow-flow-line one" aria-hidden="true"></div>
-        <div class="chat-workflow-flow-line two" aria-hidden="true"></div>
-        <div class="chat-workflow-flow-line three" aria-hidden="true"></div>
+      ${renderRunToolbar(state.workflow, state.run, options)}
+      <div class="chat-workflow-canvas-viewport">
+        <div class="chat-workflow-canvas-plane">
+          <div class="chat-workflow-canvas-grid" aria-hidden="true"></div>
+          ${visibleNodes.map((node) => renderWorkflowNode(node, definitionMap.get(node.type), options)).join('')}
+          <div class="chat-workflow-flow-line one" aria-hidden="true"></div>
+          <div class="chat-workflow-flow-line two" aria-hidden="true"></div>
+          <div class="chat-workflow-flow-line three" aria-hidden="true"></div>
+        </div>
       </div>
     </section>
   `
@@ -205,36 +209,53 @@ function renderWorkflowInspector(
   if (!selectedNode || !definition) {
     return `
       <aside class="chat-workflow-inspector">
-        <div class="chat-workflow-inspector-empty">${options.escapeHtml(options.language === 'zh-CN' ? '选择一个节点编辑参数。' : 'Select a node to edit parameters.')}</div>
+        ${renderInspectorToggle(options)}
+        <div class="chat-workflow-inspector-scroll">
+          <div class="chat-workflow-inspector-empty">${options.escapeHtml(options.language === 'zh-CN' ? '选择一个节点编辑参数。' : 'Select a node to edit parameters.')}</div>
+        </div>
       </aside>
     `
   }
   const producedArtifacts = state.artifacts.filter((artifact) => artifact.sourceNodeId === selectedNode.id)
   return `
     <aside class="chat-workflow-inspector" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '节点参数面板' : 'Node inspector')}">
-      <header class="chat-workflow-inspector-head">
-        <span>${options.escapeHtml(definition.category)} / ${options.escapeHtml(definition.executor)}</span>
-        <strong>${options.escapeHtml(selectedNode.title)}</strong>
-        <small>${options.escapeHtml(definition.description)}</small>
-      </header>
-      <section class="chat-workflow-inspector-section">
-        <h4>${options.escapeHtml(options.language === 'zh-CN' ? '参数' : 'Parameters')}</h4>
-        <div class="chat-workflow-inspector-fields">
-          ${definition.parameters.map((parameterItem) => renderInspectorParameter(parameterItem, selectedNode, selectedNode.config[parameterItem.id], options)).join('')}
-        </div>
-      </section>
-      <section class="chat-workflow-inspector-section">
-        <h4>${options.escapeHtml(options.language === 'zh-CN' ? '输入 / 输出' : 'Inputs / Outputs')}</h4>
-        <div class="chat-workflow-inspector-ports">
-          ${Object.values(selectedNode.inputs).map((portItem) => `<span><b>IN</b>${options.escapeHtml(portItem.label)}</span>`).join('') || '<span><b>IN</b>-</span>'}
-          ${Object.values(selectedNode.outputs).map((portItem) => `<span><b>OUT</b>${options.escapeHtml(portItem.label)}</span>`).join('')}
-        </div>
-      </section>
-      <section class="chat-workflow-inspector-section">
-        <h4>${options.escapeHtml(options.language === 'zh-CN' ? 'Agent 路径关联' : 'Agent Path Link')}</h4>
-        ${renderInspectorAgentPath(pathStep, producedArtifacts.length, options)}
-      </section>
+      ${renderInspectorToggle(options)}
+      <div class="chat-workflow-inspector-scroll">
+        <header class="chat-workflow-inspector-head">
+          <span>${options.escapeHtml(definition.category)} / ${options.escapeHtml(definition.executor)}</span>
+          <strong>${options.escapeHtml(selectedNode.title)}</strong>
+          <small>${options.escapeHtml(definition.description)}</small>
+        </header>
+        <section class="chat-workflow-inspector-section">
+          <h4>${options.escapeHtml(options.language === 'zh-CN' ? '参数' : 'Parameters')}</h4>
+          <div class="chat-workflow-inspector-fields">
+            ${definition.parameters.map((parameterItem) => renderInspectorParameter(parameterItem, selectedNode, selectedNode.config[parameterItem.id], options)).join('')}
+          </div>
+        </section>
+        <section class="chat-workflow-inspector-section">
+          <h4>${options.escapeHtml(options.language === 'zh-CN' ? '输入 / 输出' : 'Inputs / Outputs')}</h4>
+          <div class="chat-workflow-inspector-ports">
+            ${Object.values(selectedNode.inputs).map((portItem) => `<span><b>IN</b>${options.escapeHtml(portItem.label)}</span>`).join('') || '<span><b>IN</b>-</span>'}
+            ${Object.values(selectedNode.outputs).map((portItem) => `<span><b>OUT</b>${options.escapeHtml(portItem.label)}</span>`).join('')}
+          </div>
+        </section>
+        <section class="chat-workflow-inspector-section">
+          <h4>${options.escapeHtml(options.language === 'zh-CN' ? 'Agent 路径关联' : 'Agent Path Link')}</h4>
+          ${renderInspectorAgentPath(pathStep, producedArtifacts.length, options)}
+        </section>
+      </div>
     </aside>
+  `
+}
+
+function renderInspectorToggle(options: CharacterWorkflowPageOptions): string {
+  const label = options.inspectorCollapsed
+    ? (options.language === 'zh-CN' ? '展开参数面板' : 'Expand inspector')
+    : (options.language === 'zh-CN' ? '收起参数面板' : 'Collapse inspector')
+  return `
+    <button class="chat-workflow-inspector-toggle" type="button" data-chat-workflow-action="toggle-inspector" aria-label="${options.escapeHtml(label)}" title="${options.escapeHtml(label)}">
+      <span aria-hidden="true"></span>
+    </button>
   `
 }
 

@@ -63,6 +63,7 @@ type PendingChatAttachment = ChatMessageAttachment
 
 interface CharacterWorkflowEditorState {
   activePanel: CharacterWorkflowSidePanel
+  inspectorCollapsed: boolean
 }
 
 export interface ChatPanelController {
@@ -157,6 +158,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let selectedWorkflowNodeId = 'brief-input'
   const characterWorkflowEditorState: CharacterWorkflowEditorState = {
     activePanel: 'workflow',
+    inspectorCollapsed: false,
   }
   let characterWorkflowDragging: {
     nodeId: string
@@ -276,7 +278,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   function isInteractiveTarget(target: EventTarget | null): boolean {
     return Boolean((target as HTMLElement | null)?.closest(
       'button, input, textarea, select, a, .chat-thread-list, .chat-composer, .chat-config-portrait, .chat-config-copy, .chat-asset-list, .chat-resize-handle'
-      + ', .chat-character-workflow-page'
+      + ', .chat-character-workflow-body'
     ))
   }
 
@@ -1512,6 +1514,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       activeTabId: characterWorkflowActiveTabId,
       selectedNodeId: selectedWorkflowNodeId,
       activePanel: characterWorkflowEditorState.activePanel,
+      inspectorCollapsed: characterWorkflowEditorState.inspectorCollapsed,
     })
   }
 
@@ -1581,6 +1584,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         } else {
           showToast(options.getLanguage() === 'zh-CN' ? '请先运行工作流生成角色包' : 'Run the workflow before export')
         }
+        break
+      case 'toggle-inspector':
+        toggleCharacterWorkflowInspector()
         break
       default:
         showToast(options.getLanguage() === 'zh-CN' ? '工作流操作待接入' : 'Workflow action pending')
@@ -1667,6 +1673,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
     characterWorkflowEditorState.activePanel = panelId
+    renderCharacterWorkflow()
+  }
+
+  function toggleCharacterWorkflowInspector(): void {
+    characterWorkflowEditorState.inspectorCollapsed = !characterWorkflowEditorState.inspectorCollapsed
     renderCharacterWorkflow()
   }
 
