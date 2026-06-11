@@ -2,9 +2,11 @@
  * Renders the Character Workflow chat page shell.
  */
 import {
+  createCharacterWorkflowAgentPath,
   createWorkflowRunState,
   createStandardCharacterWorkflow,
   getStandardCharacterWorkflowNodeDefinitions,
+  type CharacterWorkflowAgentPathStep,
   type CharacterWorkflow,
   type CharacterWorkflowNode,
   type CharacterWorkflowNodeDefinition,
@@ -133,6 +135,7 @@ function renderWorkflowSidebar(
   options: CharacterWorkflowPageOptions
 ): string {
   const definitionMap = createDefinitionMap()
+  const agentPath = createCharacterWorkflowAgentPath(state.workflow)
   const categories = ['input', 'llm', 'image', 'validation', 'export']
   return `
     <aside class="chat-workflow-sidebar" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '工作流工具' : 'Workflow tools')}">
@@ -141,6 +144,10 @@ function renderWorkflowSidebar(
         <button type="button" data-chat-workflow-panel="workflow">${options.escapeHtml(options.language === 'zh-CN' ? '运行路径' : 'Run Path')}</button>
         <button type="button" data-chat-workflow-panel="assets">${options.escapeHtml(options.language === 'zh-CN' ? '资产' : 'Assets')}</button>
         <button type="button" data-chat-workflow-panel="nodes">${options.escapeHtml(options.language === 'zh-CN' ? '节点库' : 'Nodes')}</button>
+      </section>
+      <section class="chat-workflow-sidebar-section compact">
+        <strong>${options.escapeHtml(options.language === 'zh-CN' ? 'Agent Path' : 'Agent Path')}</strong>
+        ${agentPath.slice(0, 6).map((step) => renderSidebarAgentPathStep(step, options)).join('')}
       </section>
       <section class="chat-workflow-sidebar-section">
         <strong>${options.escapeHtml(options.language === 'zh-CN' ? 'Nodes' : 'Nodes')}</strong>
@@ -160,6 +167,18 @@ function renderWorkflowSidebar(
   `
 }
 
+function renderSidebarAgentPathStep(
+  step: CharacterWorkflowAgentPathStep,
+  options: CharacterWorkflowPageOptions
+): string {
+  return `
+    <button type="button" data-chat-workflow-node-select="${options.escapeHtml(step.nodeId)}" data-chat-workflow-panel="workflow">
+      <span>${options.escapeHtml(step.title)}</span>
+      <em>${options.escapeHtml(step.status)}</em>
+    </button>
+  `
+}
+
 function renderSidebarArtifactCount(
   state: CharacterWorkflowRunState,
   type: string,
@@ -174,8 +193,10 @@ function renderWorkflowInspector(
   options: CharacterWorkflowPageOptions
 ): string {
   const definitionMap = createDefinitionMap()
+  const agentPath = createCharacterWorkflowAgentPath(state.workflow)
   const selectedNode = state.workflow.nodes.find((node) => node.id === options.selectedNodeId) ?? state.workflow.nodes[0]
   const definition = selectedNode ? definitionMap.get(selectedNode.type) : undefined
+  const pathStep = selectedNode ? agentPath.find((step) => step.nodeId === selectedNode.id) : undefined
   if (!selectedNode || !definition) {
     return `
       <aside class="chat-workflow-inspector">
@@ -206,13 +227,27 @@ function renderWorkflowInspector(
       </section>
       <section class="chat-workflow-inspector-section">
         <h4>${options.escapeHtml(options.language === 'zh-CN' ? 'Agent 路径关联' : 'Agent Path Link')}</h4>
-        <div class="chat-workflow-agent-path">
-          <span>${options.escapeHtml(definition.executor)}</span>
-          <strong>${options.escapeHtml(formatNodeType(selectedNode.type))}</strong>
-          <small>${options.escapeHtml(producedArtifacts.length ? `${producedArtifacts.length} artifact(s)` : 'waiting for run output')}</small>
-        </div>
+        ${renderInspectorAgentPath(pathStep, producedArtifacts.length, options)}
       </section>
     </aside>
+  `
+}
+
+function renderInspectorAgentPath(
+  step: CharacterWorkflowAgentPathStep | undefined,
+  producedArtifactCount: number,
+  options: CharacterWorkflowPageOptions
+): string {
+  if (!step) {
+    return `<div class="chat-workflow-agent-path"><small>${options.escapeHtml(options.language === 'zh-CN' ? '未找到路径步骤' : 'No path step found')}</small></div>`
+  }
+  return `
+    <div class="chat-workflow-agent-path">
+      <span>${options.escapeHtml(step.executor)}</span>
+      <strong>${options.escapeHtml(step.title)}</strong>
+      <small>${options.escapeHtml(`${step.inputArtifactTypes.join(', ') || '-'} -> ${step.outputArtifactTypes.join(', ') || '-'}`)}</small>
+      <small>${options.escapeHtml(producedArtifactCount ? `${producedArtifactCount} artifact(s)` : 'waiting for run output')}</small>
+    </div>
   `
 }
 

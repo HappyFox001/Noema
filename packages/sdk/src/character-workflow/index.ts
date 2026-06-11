@@ -413,6 +413,18 @@ export interface CharacterWorkflowRunner {
   run(workflow: CharacterWorkflow): Promise<CharacterWorkflowRunState>
 }
 
+export interface CharacterWorkflowAgentPathStep {
+  nodeId: string
+  nodeType: CharacterNodeType
+  title: string
+  category: CharacterWorkflowNodeCategory
+  executor: CharacterWorkflowExecutorKind
+  status: CharacterNodeStatus
+  inputArtifactTypes: CharacterArtifactType[]
+  outputArtifactTypes: CharacterArtifactType[]
+  configKeys: string[]
+}
+
 export type CharacterWorkflowRunEvent =
   | { type: 'run.started'; runId: string; timestamp: number }
   | { type: 'node.queued'; runId: string; nodeId: string; timestamp: number }
@@ -1001,6 +1013,26 @@ export async function executeCharacterWorkflow(
   options: CharacterWorkflowRunnerOptions = {}
 ): Promise<CharacterWorkflowRunState> {
   return createCharacterWorkflowRunner(options).run(workflow)
+}
+
+export function createCharacterWorkflowAgentPath(
+  workflow: CharacterWorkflow,
+  registry: CharacterWorkflowNodeRegistry = createCharacterWorkflowNodeRegistry()
+): CharacterWorkflowAgentPathStep[] {
+  return getWorkflowExecutionOrder(workflow).map((nodeItem) => {
+    const definition = registry.require(nodeItem.type)
+    return {
+      nodeId: nodeItem.id,
+      nodeType: nodeItem.type,
+      title: nodeItem.title,
+      category: definition.category,
+      executor: definition.executor,
+      status: nodeItem.state?.status ?? 'idle',
+      inputArtifactTypes: Object.values(nodeItem.inputs).map((portItem) => portItem.artifactType),
+      outputArtifactTypes: Object.values(nodeItem.outputs).map((portItem) => portItem.artifactType),
+      configKeys: definition.parameters.map((parameterItem) => parameterItem.id),
+    }
+  })
 }
 
 export function collectWorkflowArtifacts<T extends CharacterArtifactType>(
