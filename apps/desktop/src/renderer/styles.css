@@ -11897,6 +11897,12 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   font-family: var(--font-mono, monospace);
 }
 
+.chat-workflow-sidebar-section button.active {
+  border-color: rgba(82, 168, 255, 0.46);
+  background: rgba(82, 168, 255, 0.08);
+  color: rgba(248, 250, 250, 0.82);
+}
+
 .chat-workflow-inspector {
   display: grid;
   grid-template-rows: auto auto auto minmax(0, 1fr);

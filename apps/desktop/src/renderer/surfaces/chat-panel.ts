@@ -25,7 +25,7 @@ import {
   saveConversationSettings,
   type ChatConversationSettings,
 } from './chat-conversation-settings'
-import { renderCharacterWorkflowPage, type CharacterWorkflowFileTab } from './chat-character-workflow-page'
+import { renderCharacterWorkflowPage, type CharacterWorkflowFileTab, type CharacterWorkflowSidePanel } from './chat-character-workflow-page'
 import {
   applyChatResourceState,
   createInitialChatState,
@@ -60,6 +60,10 @@ import { createChatRenderer } from './chat-renderer'
 type ChatResizeEdge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
 
 type PendingChatAttachment = ChatMessageAttachment
+
+interface CharacterWorkflowEditorState {
+  activePanel: CharacterWorkflowSidePanel
+}
 
 export interface ChatPanelController {
   open(): Promise<void>
@@ -151,6 +155,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let characterWorkflowActiveTabId = 'workflow'
   let characterWorkflowPackTabOpen = false
   let selectedWorkflowNodeId = 'brief-input'
+  const characterWorkflowEditorState: CharacterWorkflowEditorState = {
+    activePanel: 'workflow',
+  }
   let characterWorkflowDragging: {
     nodeId: string
     pointerId: number
@@ -1504,6 +1511,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       tabs: getCharacterWorkflowTabs(),
       activeTabId: characterWorkflowActiveTabId,
       selectedNodeId: selectedWorkflowNodeId,
+      activePanel: characterWorkflowEditorState.activePanel,
     })
   }
 
@@ -1651,6 +1659,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
     selectedWorkflowNodeId = nodeId
+    renderCharacterWorkflow()
+  }
+
+  function setCharacterWorkflowPanel(panelId: string): void {
+    if (panelId !== 'workflow' && panelId !== 'assets' && panelId !== 'nodes') {
+      return
+    }
+    characterWorkflowEditorState.activePanel = panelId
     renderCharacterWorkflow()
   }
 
@@ -2225,9 +2241,19 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
     const workflowNodeSelect = eventTarget.closest<HTMLElement>('[data-chat-workflow-node-select]')
     if (workflowNodeSelect && panel.contains(workflowNodeSelect)) {
+      const panelId = workflowNodeSelect.dataset.chatWorkflowPanel
+      if (panelId) {
+        setCharacterWorkflowPanel(panelId)
+      }
       if (!eventTarget.closest('[data-chat-workflow-param]')) {
         selectWorkflowNode(workflowNodeSelect.dataset.chatWorkflowNodeSelect || '')
       }
+      return
+    }
+
+    const workflowPanel = eventTarget.closest<HTMLElement>('[data-chat-workflow-panel]')
+    if (workflowPanel && panel.contains(workflowPanel)) {
+      setCharacterWorkflowPanel(workflowPanel.dataset.chatWorkflowPanel || '')
       return
     }
 

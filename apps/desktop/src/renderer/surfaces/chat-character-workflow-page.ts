@@ -24,6 +24,7 @@ export interface CharacterWorkflowPageOptions {
   tabs: CharacterWorkflowFileTab[]
   activeTabId: string
   selectedNodeId: string
+  activePanel: CharacterWorkflowSidePanel
 }
 
 export interface CharacterWorkflowFileTab {
@@ -32,6 +33,8 @@ export interface CharacterWorkflowFileTab {
   kind: 'workflow' | 'run' | 'character'
   state?: 'running' | 'failed' | 'dirty'
 }
+
+export type CharacterWorkflowSidePanel = 'workflow' | 'assets' | 'nodes'
 
 export function renderCharacterWorkflowPage(options: CharacterWorkflowPageOptions): string {
   const workflow = createStandardCharacterWorkflow({
@@ -141,9 +144,9 @@ function renderWorkflowSidebar(
     <aside class="chat-workflow-sidebar" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '工作流工具' : 'Workflow tools')}">
       <section class="chat-workflow-sidebar-section">
         <strong>${options.escapeHtml(options.language === 'zh-CN' ? 'Workflow' : 'Workflow')}</strong>
-        <button type="button" data-chat-workflow-panel="workflow">${options.escapeHtml(options.language === 'zh-CN' ? '运行路径' : 'Run Path')}</button>
-        <button type="button" data-chat-workflow-panel="assets">${options.escapeHtml(options.language === 'zh-CN' ? '资产' : 'Assets')}</button>
-        <button type="button" data-chat-workflow-panel="nodes">${options.escapeHtml(options.language === 'zh-CN' ? '节点库' : 'Nodes')}</button>
+        <button class="${options.activePanel === 'workflow' ? 'active' : ''}" type="button" data-chat-workflow-panel="workflow">${options.escapeHtml(options.language === 'zh-CN' ? '运行路径' : 'Run Path')}</button>
+        <button class="${options.activePanel === 'assets' ? 'active' : ''}" type="button" data-chat-workflow-panel="assets">${options.escapeHtml(options.language === 'zh-CN' ? '资产' : 'Assets')}</button>
+        <button class="${options.activePanel === 'nodes' ? 'active' : ''}" type="button" data-chat-workflow-panel="nodes">${options.escapeHtml(options.language === 'zh-CN' ? '节点库' : 'Nodes')}</button>
       </section>
       <section class="chat-workflow-sidebar-section compact">
         <strong>${options.escapeHtml(options.language === 'zh-CN' ? 'Agent Path' : 'Agent Path')}</strong>
@@ -153,7 +156,8 @@ function renderWorkflowSidebar(
         <strong>${options.escapeHtml(options.language === 'zh-CN' ? 'Nodes' : 'Nodes')}</strong>
         ${categories.map((category) => {
           const count = state.workflow.nodes.filter((node) => definitionMap.get(node.type)?.category === category).length
-          return `<button type="button" data-chat-workflow-panel="nodes" data-chat-workflow-node-category="${category}"><span>${options.escapeHtml(category)}</span><em>${count}</em></button>`
+          const firstNode = state.workflow.nodes.find((node) => definitionMap.get(node.type)?.category === category)
+          return `<button type="button" data-chat-workflow-panel="nodes" data-chat-workflow-node-category="${category}" ${firstNode ? `data-chat-workflow-node-select="${options.escapeHtml(firstNode.id)}"` : ''}><span>${options.escapeHtml(category)}</span><em>${count}</em></button>`
         }).join('')}
       </section>
       <section class="chat-workflow-sidebar-section">
@@ -185,7 +189,8 @@ function renderSidebarArtifactCount(
   options: CharacterWorkflowPageOptions
 ): string {
   const count = state.artifacts.filter((artifact) => artifact.type === type).length
-  return `<button type="button" data-chat-workflow-panel="assets" data-chat-workflow-artifact-type="${options.escapeHtml(type)}"><span>${options.escapeHtml(type)}</span><em>${count}</em></button>`
+  const sourceNodeId = [...state.artifacts].reverse().find((artifact) => artifact.type === type)?.sourceNodeId
+  return `<button type="button" data-chat-workflow-panel="assets" data-chat-workflow-artifact-type="${options.escapeHtml(type)}" ${sourceNodeId ? `data-chat-workflow-node-select="${options.escapeHtml(sourceNodeId)}"` : ''}><span>${options.escapeHtml(type)}</span><em>${count}</em></button>`
 }
 
 function renderWorkflowInspector(
