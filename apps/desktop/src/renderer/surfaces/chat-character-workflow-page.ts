@@ -2,10 +2,8 @@
  * Renders the Character Workflow chat page shell.
  */
 import {
-  applyWorkflowRunEvent,
   createStandardCharacterWorkflow,
-  createWorkflowRunState,
-  createWorkflowRunSession,
+  executeCharacterWorkflow,
   getStandardCharacterWorkflowNodeDefinitions,
   type CharacterWorkflow,
   type CharacterWorkflowNode,
@@ -20,14 +18,14 @@ export interface CharacterWorkflowPageOptions {
   escapeHtml(value: string): string
 }
 
-export function renderCharacterWorkflowPage(options: CharacterWorkflowPageOptions): string {
+export async function renderCharacterWorkflowPage(options: CharacterWorkflowPageOptions): Promise<string> {
   const workflow = createStandardCharacterWorkflow({
     id: 'draft-character-workflow',
     name: options.language === 'zh-CN' ? 'Draft 01' : 'Draft 01',
     now: 1,
     language: options.language,
   })
-  const runState = createPreviewRunState(workflow)
+  const runState = await createPreviewRunState(workflow)
   return `
     <div class="chat-character-workflow-shell">
       ${renderFileTabs(runState.workflow, runState.run, options)}
@@ -42,25 +40,21 @@ export function renderCharacterWorkflowPage(options: CharacterWorkflowPageOption
   `
 }
 
-function createPreviewRunState(workflow: CharacterWorkflow): CharacterWorkflowRunState {
-  const run = createWorkflowRunSession(workflow, 1)
-  return [
-    { type: 'run.started' as const, runId: run.id, timestamp: 2 },
-    { type: 'node.started' as const, runId: run.id, nodeId: 'brief-input', timestamp: 3 },
-    { type: 'node.finished' as const, runId: run.id, nodeId: 'brief-input', timestamp: 4 },
-    { type: 'node.started' as const, runId: run.id, nodeId: 'concept-generator', timestamp: 5 },
-    { type: 'node.finished' as const, runId: run.id, nodeId: 'concept-generator', timestamp: 6 },
-    { type: 'node.started' as const, runId: run.id, nodeId: 'persona-generator', timestamp: 7 },
-    { type: 'node.artifact.created' as const, runId: run.id, nodeId: 'persona-generator', artifact: {
-      id: 'preview-card',
-      type: 'character-card' as const,
-      sourceNodeId: 'persona-generator',
-      createdAt: 7,
-      card: createPreviewCharacterCard(),
-    }, timestamp: 8 },
-    { type: 'node.finished' as const, runId: run.id, nodeId: 'persona-generator', timestamp: 9 },
-    { type: 'node.started' as const, runId: run.id, nodeId: 'dialogue-generator', timestamp: 10 },
-  ].reduce(applyWorkflowRunEvent, createWorkflowRunState(workflow, 1))
+export function renderCharacterWorkflowLoadingPage(options: CharacterWorkflowPageOptions): string {
+  return `
+    <div class="chat-character-workflow-shell">
+      <div class="chat-workflow-loading">
+        <span>${options.escapeHtml(options.language === 'zh-CN' ? '正在准备角色工作流' : 'Preparing character workflow')}</span>
+      </div>
+    </div>
+  `
+}
+
+async function createPreviewRunState(workflow: CharacterWorkflow): Promise<CharacterWorkflowRunState> {
+  let tick = 1
+  return executeCharacterWorkflow(workflow, {
+    now: () => ++tick,
+  })
 }
 
 function renderFileTabs(
@@ -101,7 +95,10 @@ function renderRunToolbar(
   run: WorkflowRunSession,
   options: CharacterWorkflowPageOptions
 ): string {
-  const done = Math.max(0, Math.round(workflow.nodes.length * 0.46))
+  const done = run.progress.done
+  const statusLabel = run.status === 'done'
+    ? (options.language === 'zh-CN' ? '角色资源已生成' : 'Character resources generated')
+    : (options.language === 'zh-CN' ? '正在生成角色资源' : 'Generating character resources')
   return `
     <header class="chat-workflow-run-toolbar">
       <div>
@@ -109,7 +106,7 @@ function renderRunToolbar(
         <h3>${options.escapeHtml(run.title)}</h3>
       </div>
       <div class="chat-workflow-run-status">
-        <span>${options.escapeHtml(options.language === 'zh-CN' ? '正在生成角色资源' : 'Generating character resources')}</span>
+        <span>${options.escapeHtml(statusLabel)}</span>
         <strong>${done}/${workflow.nodes.length}</strong>
       </div>
       <div class="chat-workflow-run-actions">

@@ -19,7 +19,7 @@ import {
   saveConversationSettings,
   type ChatConversationSettings,
 } from './chat-conversation-settings'
-import { renderCharacterWorkflowPage } from './chat-character-workflow-page'
+import { renderCharacterWorkflowLoadingPage, renderCharacterWorkflowPage } from './chat-character-workflow-page'
 import {
   applyChatResourceState,
   createInitialChatState,
@@ -137,6 +137,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   const chatModelLoading = new Set<string>()
   let conversationSettings = loadConversationSettings()
   let sceneStateCollapsed = false
+  let characterWorkflowRenderToken = 0
 
   toast.className = 'chat-status-toast'
   toast.setAttribute('role', 'status')
@@ -1470,9 +1471,21 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!characterWorkflowRoot) {
       return
     }
-    characterWorkflowRoot.innerHTML = renderCharacterWorkflowPage({
+    const renderToken = ++characterWorkflowRenderToken
+    const pageOptions = {
       language: options.getLanguage(),
       escapeHtml: options.escapeHtml,
+    } as const
+    characterWorkflowRoot.innerHTML = renderCharacterWorkflowLoadingPage(pageOptions)
+    void renderCharacterWorkflowPage(pageOptions).then((html) => {
+      if (renderToken === characterWorkflowRenderToken) {
+        characterWorkflowRoot.innerHTML = html
+      }
+    }).catch((error) => {
+      console.warn('[CharacterWorkflow] Failed to render workflow page:', error)
+      if (renderToken === characterWorkflowRenderToken) {
+        characterWorkflowRoot.innerHTML = renderCharacterWorkflowLoadingPage(pageOptions)
+      }
     })
   }
 
