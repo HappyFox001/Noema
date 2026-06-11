@@ -1489,6 +1489,26 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     })
   }
 
+  function handleCharacterWorkflowAction(action: string): void {
+    switch (action) {
+      case 'run':
+      case 'new-run':
+        renderCharacterWorkflow()
+        showToast(options.getLanguage() === 'zh-CN' ? '已启动角色工作流运行' : 'Character workflow run started')
+        break
+      case 'stop':
+        characterWorkflowRenderToken += 1
+        showToast(options.getLanguage() === 'zh-CN' ? '已停止当前工作流刷新' : 'Stopped current workflow refresh')
+        break
+      case 'export':
+        showToast(options.getLanguage() === 'zh-CN' ? '角色包已生成，导出接口待接入文件系统' : 'Character pack generated; file export bridge pending')
+        break
+      default:
+        showToast(options.getLanguage() === 'zh-CN' ? '工作流操作待接入' : 'Workflow action pending')
+        break
+    }
+  }
+
   function getChatModelCard(modelId: string): HTMLElement | null {
     if (!modelList) {
       return null
@@ -1981,6 +2001,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       if (modelId && provider) {
         void updateChatProvider(modelId, provider)
       }
+      return
+    }
+
+    const workflowAction = eventTarget.closest<HTMLElement>('[data-chat-workflow-action]')
+    if (workflowAction && panel.contains(workflowAction)) {
+      handleCharacterWorkflowAction(workflowAction.dataset.chatWorkflowAction || '')
       return
     }
 

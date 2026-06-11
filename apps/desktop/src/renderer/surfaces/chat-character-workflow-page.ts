@@ -68,7 +68,7 @@ function renderFileTabs(
       ${renderFileTab(`${workflow.name}.workflow`, 'workflow', true, options)}
       ${renderFileTab(run.title, 'run', false, options, 'running')}
       ${renderFileTab(previewTitle, 'character', false, options)}
-      <button class="chat-workflow-new-tab" type="button" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '新建运行' : 'New run')}">+</button>
+      <button class="chat-workflow-new-tab" type="button" data-chat-workflow-action="new-run" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '新建运行' : 'New run')}">+</button>
     </div>
   `
 }
@@ -110,8 +110,9 @@ function renderRunToolbar(
         <strong>${done}/${workflow.nodes.length}</strong>
       </div>
       <div class="chat-workflow-run-actions">
-        <button type="button">${options.escapeHtml(options.language === 'zh-CN' ? '停止' : 'Stop')}</button>
-        <button type="button">${options.escapeHtml(options.language === 'zh-CN' ? '导出' : 'Export')}</button>
+        <button type="button" data-chat-workflow-action="run">${options.escapeHtml(options.language === 'zh-CN' ? '运行' : 'Run')}</button>
+        <button type="button" data-chat-workflow-action="stop">${options.escapeHtml(options.language === 'zh-CN' ? '停止' : 'Stop')}</button>
+        <button type="button" data-chat-workflow-action="export">${options.escapeHtml(options.language === 'zh-CN' ? '导出' : 'Export')}</button>
       </div>
     </header>
   `
