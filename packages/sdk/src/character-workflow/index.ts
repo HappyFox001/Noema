@@ -385,6 +385,34 @@ export interface CharacterWorkflowRunState {
   events: CharacterWorkflowRunEvent[]
 }
 
+export interface CharacterWorkflowNodeExecutionInput {
+  workflow: CharacterWorkflow
+  node: CharacterWorkflowNode
+  definition: CharacterWorkflowNodeDefinition
+  config: Record<string, unknown>
+  inputArtifacts: CharacterArtifact[]
+  artifacts: CharacterArtifact[]
+  runId: string
+  timestamp: number
+  signal?: AbortSignal
+}
+
+export type CharacterWorkflowNodeExecutor = (
+  input: CharacterWorkflowNodeExecutionInput
+) => CharacterArtifact[] | void | Promise<CharacterArtifact[] | void>
+
+export interface CharacterWorkflowRunnerOptions {
+  registry?: CharacterWorkflowNodeRegistry
+  executors?: Partial<Record<CharacterNodeType, CharacterWorkflowNodeExecutor>>
+  now?: () => number
+  signal?: AbortSignal
+  onEvent?: (event: CharacterWorkflowRunEvent) => void | Promise<void>
+}
+
+export interface CharacterWorkflowRunner {
+  run(workflow: CharacterWorkflow): Promise<CharacterWorkflowRunState>
+}
+
 export type CharacterWorkflowRunEvent =
   | { type: 'run.started'; runId: string; timestamp: number }
   | { type: 'node.queued'; runId: string; nodeId: string; timestamp: number }
@@ -742,6 +770,7 @@ export function createStandardCharacterWorkflow(
       ['visual-spec-generator', 'visual', 'image-prompt-composer', 'visual'],
       ['image-prompt-composer', 'prompts', 'portrait-generator', 'prompts'],
       ['dialogue-generator', 'card', 'schema-validator', 'card'],
+      ['dialogue-generator', 'card', 'consistency-critic', 'card'],
       ['schema-validator', 'report', 'consistency-critic', 'report'],
       ['portrait-generator', 'assets', 'consistency-critic', 'assets'],
       ['dialogue-generator', 'card', 'character-pack-exporter', 'card'],
@@ -875,6 +904,105 @@ export function applyWorkflowRunEvent(
   return next
 }
 
+export function createCharacterWorkflowRunner(
+  options: CharacterWorkflowRunnerOptions = {}
+): CharacterWorkflowRunner {
+  const registry = options.registry ?? createCharacterWorkflowNodeRegistry()
+  const executors = {
+    ...createDefaultCharacterWorkflowExecutors(),
+    ...options.executors,
+  }
+  const now = options.now ?? Date.now
+
+  return {
+    async run(workflow) {
+      let state = createWorkflowRunState(workflow, now())
+      const emit = async (event: CharacterWorkflowRunEvent) => {
+        state = applyWorkflowRunEvent(state, event)
+        await options.onEvent?.(event)
+      }
+
+      await emit({ type: 'run.started', runId: state.run.id, timestamp: now() })
+
+      for (const nodeItem of getWorkflowExecutionOrder(state.workflow)) {
+        if (options.signal?.aborted) {
+          break
+        }
+
+        const definition = registry.require(nodeItem.type)
+        const inputArtifacts = resolveNodeInputArtifacts(state.workflow, nodeItem, state.artifacts)
+        const missingInput = findMissingRequiredInput(nodeItem, inputArtifacts)
+        if (missingInput) {
+          await emit({
+            type: 'node.failed',
+            runId: state.run.id,
+            nodeId: nodeItem.id,
+            error: `Missing required input: ${missingInput.label}`,
+            timestamp: now(),
+          })
+          break
+        }
+
+        await emit({ type: 'node.started', runId: state.run.id, nodeId: nodeItem.id, timestamp: now() })
+        const executor = executors[nodeItem.type]
+        if (!executor) {
+          await emit({
+            type: 'node.failed',
+            runId: state.run.id,
+            nodeId: nodeItem.id,
+            error: `No executor registered for node type: ${nodeItem.type}`,
+            timestamp: now(),
+          })
+          break
+        }
+
+        try {
+          const artifacts = await executor({
+            workflow: state.workflow,
+            node: nodeItem,
+            definition,
+            config: nodeItem.config,
+            inputArtifacts,
+            artifacts: state.artifacts,
+            runId: state.run.id,
+            timestamp: now(),
+            signal: options.signal,
+          }) ?? []
+          for (const artifact of artifacts) {
+            await emit({
+              type: 'node.artifact.created',
+              runId: state.run.id,
+              nodeId: nodeItem.id,
+              artifact,
+              timestamp: now(),
+            })
+          }
+          await emit({ type: 'node.finished', runId: state.run.id, nodeId: nodeItem.id, timestamp: now() })
+        } catch (error) {
+          await emit({
+            type: 'node.failed',
+            runId: state.run.id,
+            nodeId: nodeItem.id,
+            error: error instanceof Error ? error.message : String(error),
+            timestamp: now(),
+          })
+          break
+        }
+      }
+
+      await emit({ type: 'run.finished', runId: state.run.id, timestamp: now() })
+      return state
+    },
+  }
+}
+
+export async function executeCharacterWorkflow(
+  workflow: CharacterWorkflow,
+  options: CharacterWorkflowRunnerOptions = {}
+): Promise<CharacterWorkflowRunState> {
+  return createCharacterWorkflowRunner(options).run(workflow)
+}
+
 export function collectWorkflowArtifacts<T extends CharacterArtifactType>(
   state: CharacterWorkflowRunState,
   type: T
@@ -947,6 +1075,264 @@ function createDefaultNodeConfig(definition: CharacterWorkflowNodeDefinition): R
       Array.isArray(item.defaultValue) ? [...item.defaultValue] : item.defaultValue,
     ])
   )
+}
+
+function createDefaultCharacterWorkflowExecutors(): Partial<Record<CharacterNodeType, CharacterWorkflowNodeExecutor>> {
+  return {
+    'brief-input': ({ node, config, timestamp }) => [{
+      id: `${node.id}-brief`,
+      type: 'character-brief',
+      sourceNodeId: node.id,
+      createdAt: timestamp,
+      brief: {
+        characterType: stringConfig(config.characterType, '原创陪伴角色'),
+        world: stringConfig(config.world, '近未来都市、轻奇幻、可长期互动'),
+        personalityKeywords: stringListConfig(config.personalityKeywords),
+        visualDirection: stringConfig(config.visualDirection, '清晰、稳定、可重复生成的角色视觉方向'),
+        interactionGoal: stringConfig(config.interactionGoal, '长期聊天、角色扮演和游戏化成长'),
+        forbiddenContent: stringListConfig(config.forbiddenContent),
+      },
+    }],
+    'concept-generator': (input) => [createCardArtifact(input, 'concept')],
+    'persona-generator': (input) => [createCardArtifact(input, 'persona')],
+    'dialogue-generator': (input) => [createCardArtifact(input, 'dialogue')],
+    'game-profile-generator': ({ node, timestamp }) => [{
+      id: `${node.id}-game`,
+      type: 'game-profile',
+      sourceNodeId: node.id,
+      createdAt: timestamp,
+      game: createExecutableCharacterCard().game,
+    }],
+    'visual-spec-generator': ({ node, config, timestamp }) => [{
+      id: `${node.id}-visual`,
+      type: 'visual-spec',
+      sourceNodeId: node.id,
+      createdAt: timestamp,
+      spec: {
+        ...createExecutableCharacterCard().visual,
+        artStyle: stringConfig(config.artStyle, 'anime reference sheet'),
+        negativeTraits: stringListConfig(config.negativeTraits),
+      },
+    }],
+    'image-prompt-composer': ({ node, config, timestamp }) => {
+      const requiredAssets = stringListConfig(config.requiredAssets, ['avatar', 'character-normal', 'character-detail-sheet'])
+      return [{
+        id: `${node.id}-prompts`,
+        type: 'image-prompt',
+        sourceNodeId: node.id,
+        createdAt: timestamp,
+        prompts: requiredAssets.map((kind) => ({
+          id: `${kind}-prompt`,
+          kind: kind as CharacterImageAssetKind,
+          prompt: `high quality ${kind} for a consistent original character, ${stringConfig(config.promptLanguage, 'en-US')}`,
+          negativePrompt: stringConfig(config.negativePrompt, 'low quality, bad anatomy'),
+          aspectRatio: kind === 'character-detail-sheet' ? '16:9' : '1:1',
+          count: 1,
+        })),
+      }]
+    },
+    'portrait-generator': ({ node, config, inputArtifacts, timestamp }) => {
+      const prompts = inputArtifacts.flatMap((artifact) => artifact.type === 'image-prompt' ? artifact.prompts : [])
+      return [{
+        id: `${node.id}-assets`,
+        type: 'image-asset',
+        sourceNodeId: node.id,
+        createdAt: timestamp,
+        assets: prompts.map((promptItem) => ({
+          id: `${promptItem.kind}-asset`,
+          kind: promptItem.kind,
+          path: `memory://character-workflow/${node.id}/${promptItem.kind}.png`,
+          promptId: promptItem.id,
+          seed: numberConfig(config.seed, -1),
+          modelName: stringConfig(config.imageModelName, ''),
+          sourceNodeId: node.id,
+        })),
+      }]
+    },
+    'schema-validator': ({ node, inputArtifacts, timestamp }) => [{
+      id: `${node.id}-report`,
+      type: 'validation-report',
+      sourceNodeId: node.id,
+      createdAt: timestamp,
+      report: {
+        passed: inputArtifacts.some((artifact) => artifact.type === 'character-card'),
+        issues: [],
+      },
+    }],
+    'consistency-critic': ({ node, inputArtifacts, timestamp }) => [{
+      id: `${node.id}-report`,
+      type: 'validation-report',
+      sourceNodeId: node.id,
+      createdAt: timestamp,
+      report: {
+        passed: inputArtifacts.some((artifact) => artifact.type === 'character-card')
+          && inputArtifacts.some((artifact) => artifact.type === 'image-asset'),
+        issues: [],
+      },
+    }],
+    'safety-rights-check': ({ node, timestamp }) => [{
+      id: `${node.id}-report`,
+      type: 'validation-report',
+      sourceNodeId: node.id,
+      createdAt: timestamp,
+      report: { passed: true, issues: [] },
+    }],
+    'character-pack-exporter': ({ node, timestamp }) => [{
+      id: `${node.id}-pack`,
+      type: 'character-pack',
+      sourceNodeId: node.id,
+      createdAt: timestamp,
+      pack: {
+        path: 'memory://character-workflow/character-pack',
+        manifestPath: 'memory://character-workflow/character-pack/manifest.json',
+        cardPath: 'memory://character-workflow/character-pack/card.json',
+        assetPaths: [],
+      },
+    }],
+  }
+}
+
+function createCardArtifact(input: CharacterWorkflowNodeExecutionInput, stage: string): CharacterCardArtifact {
+  const previousCard = [...input.inputArtifacts, ...input.artifacts]
+    .reverse()
+    .find((artifact): artifact is CharacterCardArtifact => artifact.type === 'character-card')
+    ?.card
+  return {
+    id: `${input.node.id}-card`,
+    type: 'character-card',
+    sourceNodeId: input.node.id,
+    createdAt: input.timestamp,
+    card: {
+      ...(previousCard ?? createExecutableCharacterCard()),
+      generation: {
+        ...(previousCard ?? createExecutableCharacterCard()).generation,
+        promptBase: `Generated through ${stage} stage.`,
+      },
+    },
+  }
+}
+
+function createExecutableCharacterCard(): CharacterCard {
+  return {
+    schemaVersion: '1.0',
+    id: 'workflow-draft',
+    identity: {
+      name: 'Workflow Draft',
+      displayName: 'Workflow Draft',
+      role: 'Companion character',
+      tags: ['workflow', 'draft'],
+    },
+    world: {
+      genre: 'original',
+      setting: 'Noema character workflow',
+    },
+    persona: {
+      summary: 'A structured character draft produced by the workflow runner.',
+      traits: ['consistent'],
+      values: ['coherence'],
+      flaws: [],
+      goals: ['become a complete character pack'],
+      boundaries: [],
+    },
+    dialogue: {
+      language: 'zh-CN',
+      style: '自然、稳定、角色一致',
+      firstMessage: '我的角色卡正在由工作流生成。',
+      userAddressing: '你',
+      examples: [],
+    },
+    visual: {
+      artStyle: 'anime reference sheet',
+      appearance: 'consistent original character',
+      hair: 'defined by visual spec',
+      eyes: 'defined by visual spec',
+      outfit: 'defined by visual spec',
+      signatureItems: [],
+      colorPalette: [],
+      negativeTraits: [],
+    },
+    game: {
+      stats: [
+        { id: 'focus', label: 'Focus', value: 70, min: 0, max: 100 },
+        { id: 'trust', label: 'Trust', value: 50, min: 0, max: 100 },
+      ],
+      skills: [],
+      inventory: [],
+      relationshipRules: [],
+      sceneHooks: [],
+    },
+    generation: {
+      promptBase: '',
+      negativePrompt: '',
+      referenceAssets: [],
+      preferredAspectRatios: ['1:1', '3:4', '16:9'],
+    },
+  }
+}
+
+function getWorkflowExecutionOrder(workflow: CharacterWorkflow): CharacterWorkflowNode[] {
+  const nodesById = new Map(workflow.nodes.map((nodeItem) => [nodeItem.id, nodeItem]))
+  const incoming = new Map(workflow.nodes.map((nodeItem) => [nodeItem.id, 0]))
+  const outgoing = new Map<string, CharacterWorkflowEdge[]>()
+  for (const edge of workflow.edges) {
+    incoming.set(edge.to.nodeId, (incoming.get(edge.to.nodeId) ?? 0) + 1)
+    const edges = outgoing.get(edge.from.nodeId) ?? []
+    edges.push(edge)
+    outgoing.set(edge.from.nodeId, edges)
+  }
+  const ready = workflow.nodes.filter((nodeItem) => (incoming.get(nodeItem.id) ?? 0) === 0)
+  const ordered: CharacterWorkflowNode[] = []
+  while (ready.length) {
+    const nodeItem = ready.shift()
+    if (!nodeItem) {
+      continue
+    }
+    ordered.push(nodeItem)
+    for (const edge of outgoing.get(nodeItem.id) ?? []) {
+      const nextCount = (incoming.get(edge.to.nodeId) ?? 0) - 1
+      incoming.set(edge.to.nodeId, nextCount)
+      if (nextCount === 0) {
+        const nextNode = nodesById.get(edge.to.nodeId)
+        if (nextNode) {
+          ready.push(nextNode)
+        }
+      }
+    }
+  }
+  return ordered.length === workflow.nodes.length ? ordered : workflow.nodes
+}
+
+function resolveNodeInputArtifacts(
+  workflow: CharacterWorkflow,
+  node: CharacterWorkflowNode,
+  artifacts: CharacterArtifact[]
+): CharacterArtifact[] {
+  const incomingEdges = workflow.edges.filter((edge) => edge.to.nodeId === node.id)
+  const acceptedTypes = new Set(incomingEdges
+    .map((edge) => node.inputs[edge.to.port]?.artifactType)
+    .filter(Boolean))
+  return artifacts.filter((artifact) => acceptedTypes.has(artifact.type))
+}
+
+function findMissingRequiredInput(
+  node: CharacterWorkflowNode,
+  inputArtifacts: CharacterArtifact[]
+): CharacterNodePort | undefined {
+  return Object.values(node.inputs).find((input) => (
+    input.required && !inputArtifacts.some((artifact) => artifact.type === input.artifactType)
+  ))
+}
+
+function stringConfig(value: unknown, fallback: string): string {
+  return typeof value === 'string' ? value : fallback
+}
+
+function stringListConfig(value: unknown, fallback: string[] = []): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : fallback
+}
+
+function numberConfig(value: unknown, fallback: number): number {
+  return typeof value === 'number' ? value : fallback
 }
 
 function updateWorkflowNode(
