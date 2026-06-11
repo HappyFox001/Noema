@@ -248,9 +248,9 @@ function renderWorkflowNode(
         ${renderNodePorts('input', node.inputs, options)}
         ${renderNodePorts('output', node.outputs, options)}
       </div>
-      <div class="chat-workflow-node-widgets">
-        ${parameters.slice(0, 5).map((parameterItem) => renderNodeParameter(parameterItem, node, node.config[parameterItem.id], options)).join('')}
-        ${parameters.length > 5 ? `<small class="chat-workflow-node-more">+${parameters.length - 5}</small>` : ''}
+      <div class="chat-workflow-node-summary">
+        <span>${options.escapeHtml(parameters.length ? `${parameters.length} params` : 'no params')}</span>
+        <small>${options.escapeHtml(node.state?.status ?? 'idle')}</small>
       </div>
     </article>
   `
@@ -274,21 +274,6 @@ function renderNodePorts(
         </span>
       `).join('')}
     </div>
-  `
-}
-
-function renderNodeParameter(
-  parameterItem: CharacterWorkflowNodeParameter,
-  node: CharacterWorkflowNode,
-  value: unknown,
-  options: CharacterWorkflowPageOptions
-): string {
-  const field = renderParameterField(parameterItem, node, value ?? parameterItem.defaultValue, options)
-  return `
-    <label class="chat-workflow-node-widget ${parameterItem.type} ${parameterItem.advanced ? 'advanced' : ''}">
-      <span>${options.escapeHtml(parameterItem.label)}</span>
-      ${field}
-    </label>
   `
 }
 
