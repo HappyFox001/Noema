@@ -11,6 +11,11 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./character-workflow": {
+      "types": "./dist/character-workflow/index.d.ts",
+      "import": "./dist/character-workflow/index.js",
+      "default": "./dist/character-workflow/index.js"
+    },
     "./config/personality-loader": {
       "types": "./dist/config/personality-loader.d.ts",
       "import": "./dist/config/personality-loader.js",

@@ -94,6 +94,13 @@
               </svg>
               <span data-chat-label-zh="模型" data-chat-label-en="Models">Models</span>
             </button>
+            <button class="chat-nav-item" type="button" aria-label="Character Workflow" title="Character Workflow" data-chat-nav="character-workflow">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M6 7.5h4v4H6zM14 4.5h4v4h-4zM14 15.5h4v4h-4z"></path>
+                <path d="M10 9.5h2.2c1 0 1.8-.8 1.8-1.8V6.5M10 9.5h2.2c1 0 1.8.8 1.8 1.8v6.2"></path>
+              </svg>
+              <span data-chat-label-zh="工作流" data-chat-label-en="Workflow">Workflow</span>
+            </button>
             <div class="chat-nav-spacer"></div>
             <button class="chat-nav-item language-toggle" type="button" aria-label="Switch language" title="Switch language" aria-pressed="false" data-chat-action="language">
               <span class="chat-language-mark" aria-hidden="true">
@@ -248,6 +255,21 @@
             </header>
             <div class="chat-model-page-body">
               <div class="chat-model-list"></div>
+            </div>
+          </section>
+
+          <section class="chat-character-workflow-page" aria-label="Character workflow">
+            <header class="chat-character-workflow-header">
+              <div>
+                <span class="chat-panel-kicker">Character Workflow</span>
+                <h2 data-chat-character-workflow-title>角色工作流</h2>
+              </div>
+              <div class="chat-model-page-actions">
+                <button class="chat-model-btn subtle" type="button" data-chat-action="close-character-workflow">返回</button>
+              </div>
+            </header>
+            <div class="chat-character-workflow-body">
+              <div class="chat-character-workflow-root"></div>
             </div>
           </section>
 

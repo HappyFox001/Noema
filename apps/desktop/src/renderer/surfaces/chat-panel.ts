@@ -19,6 +19,7 @@ import {
   saveConversationSettings,
   type ChatConversationSettings,
 } from './chat-conversation-settings'
+import { renderCharacterWorkflowPage } from './chat-character-workflow-page'
 import {
   applyChatResourceState,
   createInitialChatState,
@@ -100,6 +101,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   const conversationSettingsTitle = panel.querySelector<HTMLElement>('[data-chat-settings-title]')
   const conversationSettingsKicker = panel.querySelector<HTMLElement>('[data-chat-settings-kicker]')
   const conversationSettingsClose = panel.querySelector<HTMLElement>('[data-chat-settings-close]')
+  const characterWorkflowRoot = panel.querySelector<HTMLElement>('.chat-character-workflow-root')
+  const characterWorkflowTitle = panel.querySelector<HTMLElement>('[data-chat-character-workflow-title]')
   const chatHistoryPanel = panel.querySelector<HTMLElement>('.chat-history-manager')
   const chatHistorySessionList = panel.querySelector<HTMLElement>('.chat-history-session-list')
   const chatHistoryMessageList = panel.querySelector<HTMLElement>('.chat-history-message-list')
@@ -195,6 +198,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     syncChatView()
     if (button.dataset.chatNav === 'models') {
       void loadChatModelConfig()
+    }
+    if (button.dataset.chatNav === 'character-workflow') {
+      renderCharacterWorkflow()
     }
     const label = button.getAttribute('aria-label') || 'Section'
     showToast(`${label} view`)
@@ -383,6 +389,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         toggleThreadsRail()
         break
       case 'close-chat-models':
+        panel.dataset.chatView = 'session'
+        navItems.forEach((item) => item.classList.toggle('active', item.dataset.chatNav === 'session'))
+        navItems.forEach((item) => item.classList.toggle('is-active', item.dataset.chatNav === 'session'))
+        syncSideActionState('')
+        break
+      case 'close-character-workflow':
         panel.dataset.chatView = 'session'
         navItems.forEach((item) => item.classList.toggle('active', item.dataset.chatNav === 'session'))
         navItems.forEach((item) => item.classList.toggle('is-active', item.dataset.chatNav === 'session'))
@@ -1454,6 +1466,16 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     })
   }
 
+  function renderCharacterWorkflow(): void {
+    if (!characterWorkflowRoot) {
+      return
+    }
+    characterWorkflowRoot.innerHTML = renderCharacterWorkflowPage({
+      language: options.getLanguage(),
+      escapeHtml: options.escapeHtml,
+    })
+  }
+
   function getChatModelCard(modelId: string): HTMLElement | null {
     if (!modelList) {
       return null
@@ -2046,6 +2068,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (conversationSettingsClose) {
       conversationSettingsClose.textContent = language === 'zh-CN' ? '返回' : 'Back'
     }
+    if (characterWorkflowTitle) {
+      characterWorkflowTitle.textContent = language === 'zh-CN' ? '角色工作流' : 'Character Workflow'
+    }
     if (chatHistoryTitle) {
       chatHistoryTitle.textContent = language === 'zh-CN' ? '对话管理' : 'Conversation management'
     }
@@ -2057,6 +2082,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     if (chatHistoryPanel?.classList.contains('visible')) {
       renderChatHistoryManager()
+    }
+    if (panel.dataset.chatView === 'character-workflow') {
+      renderCharacterWorkflow()
     }
   }
 
