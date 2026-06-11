@@ -6,7 +6,11 @@ import {
   createStandardCharacterWorkflow,
   createWorkflowRunState,
   createWorkflowRunSession,
+  getStandardCharacterWorkflowNodeDefinitions,
   type CharacterWorkflow,
+  type CharacterWorkflowNode,
+  type CharacterWorkflowNodeDefinition,
+  type CharacterWorkflowNodeParameter,
   type CharacterWorkflowRunState,
   type WorkflowRunSession,
 } from '@noema/sdk/character-workflow'
@@ -117,22 +121,96 @@ function renderRunToolbar(
 }
 
 function renderWorkflowCanvas(workflow: CharacterWorkflow, options: CharacterWorkflowPageOptions): string {
-  const visibleNodes = workflow.nodes.slice(0, 8)
+  const definitionMap = createDefinitionMap()
+  const visibleNodes = workflow.nodes.slice(0, 11)
   return `
     <section class="chat-workflow-canvas" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '工作流执行画布' : 'Workflow run canvas')}">
-      <div class="chat-workflow-canvas-grid" aria-hidden="true"></div>
-      ${visibleNodes.map((node, index) => `
-        <article class="chat-workflow-node ${node.state?.status ?? 'idle'}" style="--node-x: ${node.position.x / 10}px; --node-y: ${node.position.y / 10}px">
-          <span>${options.escapeHtml(formatNodeType(node.type))}</span>
-          <strong>${options.escapeHtml(node.title)}</strong>
-          <small>${options.escapeHtml(Object.keys(node.outputs)[0] || 'artifact')}</small>
-        </article>
-      `).join('')}
-      <div class="chat-workflow-flow-line one" aria-hidden="true"></div>
-      <div class="chat-workflow-flow-line two" aria-hidden="true"></div>
-      <div class="chat-workflow-flow-line three" aria-hidden="true"></div>
+      <div class="chat-workflow-canvas-plane">
+        <div class="chat-workflow-canvas-grid" aria-hidden="true"></div>
+        ${visibleNodes.map((node) => renderWorkflowNode(node, definitionMap.get(node.type), options)).join('')}
+        <div class="chat-workflow-flow-line one" aria-hidden="true"></div>
+        <div class="chat-workflow-flow-line two" aria-hidden="true"></div>
+        <div class="chat-workflow-flow-line three" aria-hidden="true"></div>
+      </div>
     </section>
   `
+}
+
+function renderWorkflowNode(
+  node: CharacterWorkflowNode,
+  definition: CharacterWorkflowNodeDefinition | undefined,
+  options: CharacterWorkflowPageOptions
+): string {
+  const parameters = definition?.parameters ?? []
+  return `
+    <article class="chat-workflow-node ${node.state?.status ?? 'idle'} ${definition?.category ?? 'unknown'}" style="--node-x: ${node.position.x / 5}px; --node-y: ${node.position.y / 2.2}px">
+      <header class="chat-workflow-node-head">
+        <button type="button" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '折叠节点' : 'Collapse node')}"></button>
+        <span>${options.escapeHtml(formatNodeType(node.type))}</span>
+        <strong>${options.escapeHtml(node.title)}</strong>
+        <em>${options.escapeHtml(definition?.executor ?? 'manual')}</em>
+      </header>
+      <div class="chat-workflow-node-ports">
+        ${renderNodePorts('input', node.inputs, options)}
+        ${renderNodePorts('output', node.outputs, options)}
+      </div>
+      <div class="chat-workflow-node-widgets">
+        ${parameters.slice(0, 5).map((parameterItem) => renderNodeParameter(parameterItem, node.config[parameterItem.id], options)).join('')}
+        ${parameters.length > 5 ? `<small class="chat-workflow-node-more">+${parameters.length - 5}</small>` : ''}
+      </div>
+    </article>
+  `
+}
+
+function renderNodePorts(
+  side: 'input' | 'output',
+  ports: CharacterWorkflowNode['inputs'],
+  options: CharacterWorkflowPageOptions
+): string {
+  const entries = Object.values(ports)
+  if (!entries.length) {
+    return `<div class="chat-workflow-node-port-list ${side} empty"></div>`
+  }
+  return `
+    <div class="chat-workflow-node-port-list ${side}">
+      ${entries.map((portItem) => `
+        <span class="chat-workflow-node-port ${portItem.required ? 'required' : ''}">
+          <i aria-hidden="true"></i>
+          <b>${options.escapeHtml(portItem.label)}</b>
+        </span>
+      `).join('')}
+    </div>
+  `
+}
+
+function renderNodeParameter(
+  parameterItem: CharacterWorkflowNodeParameter,
+  value: unknown,
+  options: CharacterWorkflowPageOptions
+): string {
+  return `
+    <label class="chat-workflow-node-widget ${parameterItem.type} ${parameterItem.advanced ? 'advanced' : ''}">
+      <span>${options.escapeHtml(parameterItem.label)}</span>
+      <b>${options.escapeHtml(formatParameterValue(value ?? parameterItem.defaultValue))}</b>
+    </label>
+  `
+}
+
+function createDefinitionMap(): Map<string, CharacterWorkflowNodeDefinition> {
+  return new Map(getStandardCharacterWorkflowNodeDefinitions().map((definition) => [definition.type, definition]))
+}
+
+function formatParameterValue(value: unknown): string {
+  if (Array.isArray(value)) {
+    return value.length ? value.join(', ') : '[]'
+  }
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false'
+  }
+  if (value === undefined || value === null || value === '') {
+    return '-'
+  }
+  return String(value)
 }
 
 function renderWorkflowArtifacts(
