@@ -150,6 +150,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let characterWorkflowRunCount = 0
   let characterWorkflowActiveTabId = 'workflow'
   let characterWorkflowPackTabOpen = false
+  let selectedWorkflowNodeId = 'brief-input'
   let characterWorkflowDragging: {
     nodeId: string
     pointerId: number
@@ -1502,6 +1503,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       runState,
       tabs: getCharacterWorkflowTabs(),
       activeTabId: characterWorkflowActiveTabId,
+      selectedNodeId: selectedWorkflowNodeId,
     })
   }
 
@@ -1619,6 +1621,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!nodeId || !paramId) {
       return
     }
+    selectedWorkflowNodeId = nodeId
     characterWorkflowConfigOverrides[nodeId] ??= {}
     if (control instanceof HTMLInputElement && control.type === 'checkbox') {
       characterWorkflowConfigOverrides[nodeId][paramId] = control.checked
@@ -1640,6 +1643,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
     characterWorkflowActiveTabId = tabId
+    renderCharacterWorkflow()
+  }
+
+  function selectWorkflowNode(nodeId: string): void {
+    if (!nodeId) {
+      return
+    }
+    selectedWorkflowNodeId = nodeId
     renderCharacterWorkflow()
   }
 
@@ -2209,6 +2220,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const workflowCloseTab = eventTarget.closest<HTMLElement>('[data-chat-workflow-close-tab]')
     if (workflowCloseTab && panel.contains(workflowCloseTab)) {
       closeCharacterWorkflowTab(workflowCloseTab.dataset.chatWorkflowCloseTab || '')
+      return
+    }
+
+    const workflowNodeSelect = eventTarget.closest<HTMLElement>('[data-chat-workflow-node-select]')
+    if (workflowNodeSelect && panel.contains(workflowNodeSelect)) {
+      if (!eventTarget.closest('[data-chat-workflow-param]')) {
+        selectWorkflowNode(workflowNodeSelect.dataset.chatWorkflowNodeSelect || '')
+      }
       return
     }
 

@@ -21,6 +21,7 @@ export interface CharacterWorkflowPageOptions {
   runState?: CharacterWorkflowRunState | null
   tabs: CharacterWorkflowFileTab[]
   activeTabId: string
+  selectedNodeId: string
 }
 
 export interface CharacterWorkflowFileTab {
@@ -48,8 +49,9 @@ export function renderCharacterWorkflowPage(options: CharacterWorkflowPageOption
       <div class="chat-character-workflow-stage">
         ${renderRunToolbar(runState.workflow, runState.run, options)}
         <div class="chat-character-workflow-grid">
+          ${renderWorkflowSidebar(runState, options)}
           ${renderWorkflowCanvas(runState.workflow, options)}
-          ${renderWorkflowArtifacts(runState, options)}
+          ${renderWorkflowInspector(runState, options)}
         </div>
       </div>
     </div>
@@ -126,6 +128,108 @@ function renderWorkflowCanvas(workflow: CharacterWorkflow, options: CharacterWor
   `
 }
 
+function renderWorkflowSidebar(
+  state: CharacterWorkflowRunState,
+  options: CharacterWorkflowPageOptions
+): string {
+  const definitionMap = createDefinitionMap()
+  const categories = ['input', 'llm', 'image', 'validation', 'export']
+  return `
+    <aside class="chat-workflow-sidebar" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '工作流工具' : 'Workflow tools')}">
+      <section class="chat-workflow-sidebar-section">
+        <strong>${options.escapeHtml(options.language === 'zh-CN' ? 'Workflow' : 'Workflow')}</strong>
+        <button type="button" data-chat-workflow-panel="workflow">${options.escapeHtml(options.language === 'zh-CN' ? '运行路径' : 'Run Path')}</button>
+        <button type="button" data-chat-workflow-panel="assets">${options.escapeHtml(options.language === 'zh-CN' ? '资产' : 'Assets')}</button>
+        <button type="button" data-chat-workflow-panel="nodes">${options.escapeHtml(options.language === 'zh-CN' ? '节点库' : 'Nodes')}</button>
+      </section>
+      <section class="chat-workflow-sidebar-section">
+        <strong>${options.escapeHtml(options.language === 'zh-CN' ? 'Nodes' : 'Nodes')}</strong>
+        ${categories.map((category) => {
+          const count = state.workflow.nodes.filter((node) => definitionMap.get(node.type)?.category === category).length
+          return `<button type="button" data-chat-workflow-panel="nodes" data-chat-workflow-node-category="${category}"><span>${options.escapeHtml(category)}</span><em>${count}</em></button>`
+        }).join('')}
+      </section>
+      <section class="chat-workflow-sidebar-section">
+        <strong>${options.escapeHtml(options.language === 'zh-CN' ? 'Assets' : 'Assets')}</strong>
+        ${renderSidebarArtifactCount(state, 'character-card', options)}
+        ${renderSidebarArtifactCount(state, 'image-asset', options)}
+        ${renderSidebarArtifactCount(state, 'validation-report', options)}
+        ${renderSidebarArtifactCount(state, 'character-pack', options)}
+      </section>
+    </aside>
+  `
+}
+
+function renderSidebarArtifactCount(
+  state: CharacterWorkflowRunState,
+  type: string,
+  options: CharacterWorkflowPageOptions
+): string {
+  const count = state.artifacts.filter((artifact) => artifact.type === type).length
+  return `<button type="button" data-chat-workflow-panel="assets" data-chat-workflow-artifact-type="${options.escapeHtml(type)}"><span>${options.escapeHtml(type)}</span><em>${count}</em></button>`
+}
+
+function renderWorkflowInspector(
+  state: CharacterWorkflowRunState,
+  options: CharacterWorkflowPageOptions
+): string {
+  const definitionMap = createDefinitionMap()
+  const selectedNode = state.workflow.nodes.find((node) => node.id === options.selectedNodeId) ?? state.workflow.nodes[0]
+  const definition = selectedNode ? definitionMap.get(selectedNode.type) : undefined
+  if (!selectedNode || !definition) {
+    return `
+      <aside class="chat-workflow-inspector">
+        <div class="chat-workflow-inspector-empty">${options.escapeHtml(options.language === 'zh-CN' ? '选择一个节点编辑参数。' : 'Select a node to edit parameters.')}</div>
+      </aside>
+    `
+  }
+  const producedArtifacts = state.artifacts.filter((artifact) => artifact.sourceNodeId === selectedNode.id)
+  return `
+    <aside class="chat-workflow-inspector" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '节点参数面板' : 'Node inspector')}">
+      <header class="chat-workflow-inspector-head">
+        <span>${options.escapeHtml(definition.category)} / ${options.escapeHtml(definition.executor)}</span>
+        <strong>${options.escapeHtml(selectedNode.title)}</strong>
+        <small>${options.escapeHtml(definition.description)}</small>
+      </header>
+      <section class="chat-workflow-inspector-section">
+        <h4>${options.escapeHtml(options.language === 'zh-CN' ? '参数' : 'Parameters')}</h4>
+        <div class="chat-workflow-inspector-fields">
+          ${definition.parameters.map((parameterItem) => renderInspectorParameter(parameterItem, selectedNode, selectedNode.config[parameterItem.id], options)).join('')}
+        </div>
+      </section>
+      <section class="chat-workflow-inspector-section">
+        <h4>${options.escapeHtml(options.language === 'zh-CN' ? '输入 / 输出' : 'Inputs / Outputs')}</h4>
+        <div class="chat-workflow-inspector-ports">
+          ${Object.values(selectedNode.inputs).map((portItem) => `<span><b>IN</b>${options.escapeHtml(portItem.label)}</span>`).join('') || '<span><b>IN</b>-</span>'}
+          ${Object.values(selectedNode.outputs).map((portItem) => `<span><b>OUT</b>${options.escapeHtml(portItem.label)}</span>`).join('')}
+        </div>
+      </section>
+      <section class="chat-workflow-inspector-section">
+        <h4>${options.escapeHtml(options.language === 'zh-CN' ? 'Agent 路径关联' : 'Agent Path Link')}</h4>
+        <div class="chat-workflow-agent-path">
+          <span>${options.escapeHtml(definition.executor)}</span>
+          <strong>${options.escapeHtml(formatNodeType(selectedNode.type))}</strong>
+          <small>${options.escapeHtml(producedArtifacts.length ? `${producedArtifacts.length} artifact(s)` : 'waiting for run output')}</small>
+        </div>
+      </section>
+    </aside>
+  `
+}
+
+function renderInspectorParameter(
+  parameterItem: CharacterWorkflowNodeParameter,
+  node: CharacterWorkflowNode,
+  value: unknown,
+  options: CharacterWorkflowPageOptions
+): string {
+  return `
+    <label class="chat-workflow-inspector-field">
+      <span>${options.escapeHtml(parameterItem.label)}</span>
+      ${renderParameterField(parameterItem, node, value ?? parameterItem.defaultValue, options)}
+    </label>
+  `
+}
+
 function renderWorkflowNode(
   node: CharacterWorkflowNode,
   definition: CharacterWorkflowNodeDefinition | undefined,
@@ -133,7 +237,7 @@ function renderWorkflowNode(
 ): string {
   const parameters = definition?.parameters ?? []
   return `
-    <article class="chat-workflow-node ${node.state?.status ?? 'idle'} ${definition?.category ?? 'unknown'}" style="--node-x: ${node.position.x}px; --node-y: ${node.position.y}px" data-chat-workflow-node-id="${options.escapeHtml(node.id)}">
+    <article class="chat-workflow-node ${node.state?.status ?? 'idle'} ${definition?.category ?? 'unknown'} ${options.selectedNodeId === node.id ? 'selected' : ''}" style="--node-x: ${node.position.x}px; --node-y: ${node.position.y}px" data-chat-workflow-node-id="${options.escapeHtml(node.id)}" data-chat-workflow-node-select="${options.escapeHtml(node.id)}">
       <header class="chat-workflow-node-head" data-chat-workflow-drag-handle>
         <button type="button" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '折叠节点' : 'Collapse node')}"></button>
         <span>${options.escapeHtml(formatNodeType(node.type))}</span>
@@ -267,102 +371,6 @@ function formatParameterValue(value: unknown): string {
     return '-'
   }
   return String(value)
-}
-
-function renderWorkflowArtifacts(
-  state: CharacterWorkflowRunState,
-  options: CharacterWorkflowPageOptions
-): string {
-  const card = state.artifacts.find((artifact) => artifact.type === 'character-card')?.card
-  const assets = options.language === 'zh-CN'
-    ? [
-        ['avatar', '头像照', '角色列表、会话顶部、社区卡片'],
-        ['normal', '正常角色图', '标准展示和后续生图主参考'],
-        ['sheet', '角色细节设定图', '正面、侧面、鞋袜、服装、配饰细节'],
-      ]
-    : [
-        ['avatar', 'Avatar', 'Character list, chat header, community card'],
-        ['normal', 'Normal character art', 'Main display and generation reference'],
-        ['sheet', 'Detail reference sheet', 'Front, side, shoes, socks, outfit details'],
-      ]
-  return `
-    <aside class="chat-workflow-artifacts" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '角色资源产物' : 'Character artifacts')}">
-      <div class="chat-workflow-artifacts-head">
-        <span>${options.escapeHtml(options.language === 'zh-CN' ? 'Character Pack' : 'Character Pack')}</span>
-        <strong>${options.escapeHtml(options.language === 'zh-CN' ? '核心图包' : 'Core image pack')}</strong>
-      </div>
-      <div class="chat-workflow-card-preview">
-        <h4>${options.escapeHtml(card?.identity.displayName || 'Draft 01')}</h4>
-        <p>${options.escapeHtml(card?.persona.summary || (options.language === 'zh-CN' ? '等待 LLM 节点写入角色身份、人格、对话风格和游戏化状态。' : 'Waiting for LLM nodes to write identity, persona, dialogue style, and game state.'))}</p>
-      </div>
-      <div class="chat-workflow-asset-list">
-        ${assets.map(([kind, title, copy]) => `
-          <article class="chat-workflow-asset ${kind}">
-            <div aria-hidden="true"></div>
-            <span>
-              <strong>${options.escapeHtml(title)}</strong>
-              <small>${options.escapeHtml(copy)}</small>
-            </span>
-          </article>
-        `).join('')}
-      </div>
-    </aside>
-  `
-}
-
-function createPreviewCharacterCard() {
-  return {
-    schemaVersion: '1.0' as const,
-    id: 'draft-01',
-    identity: {
-      name: 'Draft 01',
-      displayName: 'Draft 01',
-      role: 'Companion character',
-      tags: ['workflow', 'draft'],
-    },
-    world: {
-      genre: 'original',
-      setting: 'Noema character workflow draft',
-    },
-    persona: {
-      summary: '一个正在由工作流逐步生成的角色草稿，身份、人设和图包会随着节点执行逐步填充。',
-      traits: ['curious'],
-      values: ['consistency'],
-      flaws: [],
-      goals: ['become a complete character pack'],
-      boundaries: [],
-    },
-    dialogue: {
-      language: 'zh-CN' as const,
-      style: '自然、简洁、角色一致',
-      firstMessage: '我还在生成中，等我的设定和图包完成吧。',
-      userAddressing: '你',
-      examples: [],
-    },
-    visual: {
-      artStyle: 'anime reference sheet',
-      appearance: 'pending',
-      hair: 'pending',
-      eyes: 'pending',
-      outfit: 'pending',
-      signatureItems: [],
-      colorPalette: [],
-      negativeTraits: [],
-    },
-    game: {
-      stats: [],
-      skills: [],
-      inventory: [],
-      relationshipRules: [],
-      sceneHooks: [],
-    },
-    generation: {
-      promptBase: '',
-      negativePrompt: '',
-      referenceAssets: [],
-      preferredAspectRatios: ['1:1', '3:4', '16:9'],
-    },
-  }
 }
 
 function formatNodeType(type: string): string {

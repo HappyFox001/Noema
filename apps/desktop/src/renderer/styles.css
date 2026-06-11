@@ -11827,7 +11827,174 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
 .chat-character-workflow-grid {
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
+  grid-template-columns: 184px minmax(0, 1fr) 336px;
+}
+
+.chat-workflow-sidebar,
+.chat-workflow-inspector {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  border-right: 1px solid rgba(248, 250, 250, 0.08);
+  background: rgba(8, 9, 10, 0.96);
+}
+
+.chat-workflow-inspector {
+  border-right: 0;
+  border-left: 1px solid rgba(248, 250, 250, 0.09);
+}
+
+.chat-workflow-sidebar {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  padding: 14px 10px;
+}
+
+.chat-workflow-sidebar-section,
+.chat-workflow-inspector-section {
+  display: grid;
+  gap: 7px;
+}
+
+.chat-workflow-sidebar-section strong,
+.chat-workflow-inspector-section h4,
+.chat-workflow-inspector-head span {
+  color: rgba(162, 202, 188, 0.64);
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 760;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.chat-workflow-sidebar-section button {
+  min-width: 0;
+  height: 30px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.026);
+  color: rgba(248, 250, 250, 0.64);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  text-align: left;
+}
+
+.chat-workflow-sidebar-section button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-workflow-sidebar-section button em {
+  color: rgba(248, 250, 250, 0.4);
+  font-style: normal;
+  font-family: var(--font-mono, monospace);
+}
+
+.chat-workflow-inspector {
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  gap: 14px;
+  padding: 16px;
+}
+
+.chat-workflow-inspector-head {
+  display: grid;
+  gap: 7px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.chat-workflow-inspector-head strong {
+  color: rgba(248, 250, 250, 0.9);
+  font-family: var(--font-ui);
+  font-size: 18px;
+  line-height: 1.1;
+}
+
+.chat-workflow-inspector-head small,
+.chat-workflow-agent-path small {
+  color: rgba(248, 250, 250, 0.46);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.chat-workflow-inspector-fields {
+  display: grid;
+  gap: 8px;
+}
+
+.chat-workflow-inspector-field {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.chat-workflow-inspector-field span {
+  color: rgba(248, 250, 250, 0.48);
+  font-family: var(--font-ui);
+  font-size: 11px;
+}
+
+.chat-workflow-inspector-field input,
+.chat-workflow-inspector-field select,
+.chat-workflow-inspector-field textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 30px;
+  padding: 0 9px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 6px;
+  outline: 0;
+  background: rgba(255, 255, 255, 0.035);
+  color: rgba(248, 250, 250, 0.76);
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+}
+
+.chat-workflow-inspector-field textarea {
+  padding-top: 8px;
+  resize: vertical;
+}
+
+.chat-workflow-inspector-ports,
+.chat-workflow-agent-path {
+  display: grid;
+  gap: 6px;
+}
+
+.chat-workflow-inspector-ports span,
+.chat-workflow-agent-path {
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.055);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.026);
+  color: rgba(248, 250, 250, 0.62);
+  font-family: var(--font-ui);
+  font-size: 11px;
+}
+
+.chat-workflow-inspector-ports b,
+.chat-workflow-agent-path span {
+  color: rgba(219, 189, 130, 0.8);
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+}
+
+.chat-workflow-agent-path {
+  align-items: flex-start;
+  flex-direction: column;
 }
 
 .chat-workflow-canvas {
@@ -11888,6 +12055,14 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
     inset 0 1px 0 rgba(255, 255, 255, 0.06),
     0 0 0 1px rgba(219, 189, 130, 0.12),
     0 20px 40px rgba(0, 0, 0, 0.28);
+}
+
+.chat-workflow-node.selected {
+  border-color: rgba(82, 168, 255, 0.78);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 0 0 1px rgba(82, 168, 255, 0.18),
+    0 20px 40px rgba(0, 0, 0, 0.3);
 }
 
 .chat-workflow-node.is-dragging {
