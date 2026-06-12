@@ -1,6 +1,17 @@
 /**
  * Defines serializable state for the character resource graph workbench.
  */
+export type SerializedCharacterResourceLinkKind = 'requires' | 'constrains' | 'references' | 'validates' | 'exports' | 'suggests'
+
+export interface SerializedCharacterResourceLink {
+  id: string
+  sourceNodeId: string
+  sourceSlotId: string
+  targetNodeId: string
+  targetSlotId: string
+  kind: SerializedCharacterResourceLinkKind
+}
+
 export interface CharacterResourceViewState {
   zoom?: number
   panX?: number
@@ -23,7 +34,10 @@ export interface CharacterResourceViewState {
   }>
   nodeSizes?: Record<string, { width: number; height: number }>
   selectedLinkId?: string
-  linkKinds?: Record<string, 'requires' | 'constrains' | 'references' | 'validates' | 'exports' | 'suggests'>
+  linkKinds?: Record<string, SerializedCharacterResourceLinkKind>
+  customLinks?: SerializedCharacterResourceLink[]
+  deletedLinkIds?: string[]
+  replacedTargetSlots?: string[]
 }
 
 export interface SerializedCharacterResourceGraph {

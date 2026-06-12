@@ -8,7 +8,7 @@ import { computePosition, flip, offset, shift } from '@floating-ui/dom'
 import { LGraph, LiteGraph } from 'litegraph.js'
 import { Download, Link2Off, Maximize, MessageCircle, Package, Play, RotateCcw, Save, Search, createIcons } from 'lucide'
 import * as Y from 'yjs'
-import type { CharacterResourceViewState } from './chat-character-resource-graph-state'
+import type { CharacterResourceViewState, SerializedCharacterResourceLinkKind } from './chat-character-resource-graph-state'
 
 export interface CharacterWorkflowPageOptions {
   language: 'zh-CN' | 'en-US'
@@ -38,7 +38,7 @@ export type CharacterWorkflowSidePanel = 'workflow' | 'assets' | 'nodes'
 type CharacterResourceNodeStatus = 'idle' | 'dirty' | 'queued' | 'running' | 'done' | 'failed' | 'stale' | 'disabled'
 type CharacterResourcePreviewType = 'text-card' | 'image' | 'voice' | 'rule' | 'validation' | 'package'
 type CharacterResourceParameterType = 'text' | 'textarea' | 'number' | 'integer' | 'boolean' | 'select' | 'multi-select' | 'string-list'
-type CharacterResourceLinkKind = 'requires' | 'constrains' | 'references' | 'validates' | 'exports' | 'suggests'
+type CharacterResourceLinkKind = SerializedCharacterResourceLinkKind
 
 interface CharacterResourceGraph {
   id: string
@@ -166,6 +166,17 @@ export interface CharacterResourceRunState {
 
 export function createDraftCharacterResourceRunState(runNumber: number, status: CharacterResourceRunState['run']['status'] = 'running'): CharacterResourceRunState {
   const id = `resource-run-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  const deletedLinkIds = new Set(viewState.deletedLinkIds ?? [])
+  const replacedTargetSlots = new Set(viewState.replacedTargetSlots ?? [])
+  const customLinks = (viewState.customLinks ?? []).map((item) => ({
+    ...item,
+    label: LINK_KIND_LABELS[item.kind],
+    status: 'valid' as const,
+  }))
+  const graphLinks = [
+    ...DEFAULT_LINKS.filter((item) => !replacedTargetSlots.has(getTargetSlotKey(item)) && !deletedLinkIds.has(item.id)),
+    ...customLinks.filter((item) => !deletedLinkIds.has(item.id)),
+  ]
   return {
     run: {
       id,
@@ -706,6 +717,37 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
       preview.innerHTML = `<strong>${firstCard.dataset.resourcePreviewTitle ?? ''}</strong><p>${firstCard.dataset.resourcePreviewBody ?? ''}</p>`
     }
   }
+  const dispatchSlotConnect = (sourceSlot: HTMLElement, targetSlot: HTMLElement) => {
+    root.dispatchEvent(new CustomEvent('character-resource-slot-connect', {
+      bubbles: true,
+      detail: {
+        sourceNodeId: sourceSlot.dataset.resourceSlotNode ?? '',
+        sourceSlotId: sourceSlot.dataset.resourceSlotId ?? '',
+        sourceSide: sourceSlot.dataset.resourceSlotSide ?? '',
+        sourceType: sourceSlot.dataset.resourceSlotType ?? '',
+        targetNodeId: targetSlot.dataset.resourceSlotNode ?? '',
+        targetSlotId: targetSlot.dataset.resourceSlotId ?? '',
+        targetSide: targetSlot.dataset.resourceSlotSide ?? '',
+        targetType: targetSlot.dataset.resourceSlotType ?? '',
+      },
+    }))
+  }
+  const inferNodeSurfaceSlot = (slotElement: HTMLElement, event: PointerEvent) => {
+    const sourceType = slotElement.dataset.resourceSlotType ?? ''
+    const sourceSide = slotElement.dataset.resourceSlotSide ?? ''
+    const targetNode = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('.chat-resource-node')
+    if (!targetNode || targetNode.contains(slotElement)) {
+      return null
+    }
+    const candidates = Array.from(targetNode.querySelectorAll<HTMLElement>('.chat-resource-slot'))
+      .filter((candidate) => candidate.dataset.resourceSlotType === sourceType && candidate.dataset.resourceSlotSide !== sourceSide)
+      .sort((a, b) => {
+        const aRect = a.getBoundingClientRect()
+        const bRect = b.getBoundingClientRect()
+        return Math.abs(aRect.top + aRect.height / 2 - event.clientY) - Math.abs(bRect.top + bRect.height / 2 - event.clientY)
+      })
+    return candidates[0] ?? null
+  }
   root.querySelectorAll<HTMLElement>('.chat-resource-slot').forEach((slotElement) => {
     const startSlotDrag = (event: PointerEvent) => {
       const sourceType = slotElement.dataset.resourceSlotType ?? ''
@@ -744,14 +786,16 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
       removeConnectionGhost()
       root.querySelectorAll<HTMLElement>('.chat-resource-slot.is-compatible-candidate').forEach((candidate) => candidate.classList.remove('is-compatible-candidate'))
       const dropTarget = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('.chat-resource-slot')
-      if (dropTarget && dropTarget !== slotElement && dropTarget.dataset.resourceSlotType === slotElement.dataset.resourceSlotType && dropTarget.dataset.resourceSlotSide !== slotElement.dataset.resourceSlotSide) {
+      const inferredTarget = dropTarget ?? inferNodeSurfaceSlot(slotElement, event)
+      if (inferredTarget && inferredTarget !== slotElement && inferredTarget.dataset.resourceSlotType === slotElement.dataset.resourceSlotType && inferredTarget.dataset.resourceSlotSide !== slotElement.dataset.resourceSlotSide) {
         root.dataset.resourceSlotDropResult = JSON.stringify({
           sourceNodeId: slotElement.dataset.resourceSlotNode ?? '',
           sourceSlotId: slotElement.dataset.resourceSlotId ?? '',
-          targetNodeId: dropTarget.dataset.resourceSlotNode ?? '',
-          targetSlotId: dropTarget.dataset.resourceSlotId ?? '',
+          targetNodeId: inferredTarget.dataset.resourceSlotNode ?? '',
+          targetSlotId: inferredTarget.dataset.resourceSlotId ?? '',
           type: slotElement.dataset.resourceSlotType ?? '',
         })
+        dispatchSlotConnect(slotElement, inferredTarget)
         root.querySelector<HTMLElement>('.chat-resource-placement-ghost')?.classList.remove('is-visible')
       } else {
         openSearchFromSlotDrag(slotElement, event)
@@ -847,7 +891,7 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
     id: 'draft-character-resource-graph',
     title: 'Draft Character Resource Graph',
     nodes,
-    links: DEFAULT_LINKS
+    links: graphLinks
       .filter((item) => !deletedNodeIds.has(item.sourceNodeId) && !deletedNodeIds.has(item.targetNodeId))
       .map((item) => {
         const kind = viewState.linkKinds?.[item.id] ?? item.kind
@@ -1394,6 +1438,9 @@ function renderLinkInspector(graph: CharacterResourceGraph, linkItem: CharacterR
             <span><b>IN</b>${options.escapeHtml(linkItem.targetSlotId)}<small>${options.escapeHtml(linkItem.targetNodeId)}</small></span>
           </div>
         </section>
+        <section class="chat-workflow-inspector-section">
+          <button class="chat-resource-danger-action" type="button" data-chat-workflow-action="delete-selection">Disconnect</button>
+        </section>
       </div>
     </aside>
   `
@@ -1575,6 +1622,10 @@ function link(
     label: LINK_KIND_LABELS[kind],
     status: 'valid',
   }
+}
+
+function getTargetSlotKey(linkItem: Pick<CharacterResourceLink, 'targetNodeId' | 'targetSlotId'>): string {
+  return `${linkItem.targetNodeId}:${linkItem.targetSlotId}`
 }
 
 function validateLink(

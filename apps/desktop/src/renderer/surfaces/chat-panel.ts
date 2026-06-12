@@ -28,7 +28,7 @@ import {
   type CharacterWorkflowFileTab,
   type CharacterWorkflowSidePanel,
 } from './chat-character-workflow-page'
-import { serializeCharacterResourceGraph } from './chat-character-resource-graph-state'
+import { serializeCharacterResourceGraph, type SerializedCharacterResourceLink, type SerializedCharacterResourceLinkKind } from './chat-character-resource-graph-state'
 import {
   applyChatResourceState,
   createInitialChatState,
@@ -69,6 +69,17 @@ interface CharacterWorkflowEditorState {
   sidebarCollapsed: boolean
   inspectorCollapsed: boolean
   nodeSearchOpen: boolean
+}
+
+interface CharacterResourceSlotConnectDetail {
+  sourceNodeId: string
+  sourceSlotId: string
+  sourceSide: string
+  sourceType: string
+  targetNodeId: string
+  targetSlotId: string
+  targetSide: string
+  targetType: string
 }
 
 export interface ChatPanelController {
@@ -175,7 +186,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     duplicatedNodes: [] as Array<{ id: string; sourceId: string; offsetX: number; offsetY: number }>,
     nodeSizes: {} as Record<string, { width: number; height: number }>,
     selectedLinkId: '',
-    linkKinds: {} as Record<string, 'requires' | 'constrains' | 'references' | 'validates' | 'exports' | 'suggests'>,
+    linkKinds: {} as Record<string, SerializedCharacterResourceLinkKind>,
+    customLinks: [] as SerializedCharacterResourceLink[],
+    deletedLinkIds: new Set<string>(),
+    replacedTargetSlots: new Set<string>(),
   }
   const characterWorkflowEditorState: CharacterWorkflowEditorState = {
     activePanel: 'workflow',
@@ -1567,6 +1581,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         nodeSizes: characterResourceViewState.nodeSizes,
         selectedLinkId: characterResourceViewState.selectedLinkId,
         linkKinds: characterResourceViewState.linkKinds,
+        customLinks: characterResourceViewState.customLinks,
+        deletedLinkIds: [...characterResourceViewState.deletedLinkIds],
+        replacedTargetSlots: [...characterResourceViewState.replacedTargetSlots],
       },
     })
     initializeCharacterResourceWorkbench(characterWorkflowRoot)
@@ -1657,6 +1674,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             nodeSizes: characterResourceViewState.nodeSizes,
             selectedLinkId: characterResourceViewState.selectedLinkId,
             linkKinds: characterResourceViewState.linkKinds,
+            customLinks: characterResourceViewState.customLinks,
+            deletedLinkIds: [...characterResourceViewState.deletedLinkIds],
+            replacedTargetSlots: [...characterResourceViewState.replacedTargetSlots],
           },
           configOverrides: characterWorkflowConfigOverrides,
           positionOverrides: characterWorkflowPositionOverrides,
@@ -1711,6 +1731,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         renderCharacterWorkflow()
       },
       'delete-selection': () => {
+        if (deleteSelectedCharacterResourceLink()) {
+          return
+        }
         if (!selectedWorkflowNodeId || selectedWorkflowNodeId === 'brief-input') {
           showToast(options.getLanguage() === 'zh-CN' ? 'Brief 节点不能删除' : 'Brief node cannot be deleted')
           return
@@ -1736,7 +1759,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         if (!allowedKinds.has(kind)) {
           return
         }
-        characterResourceViewState.linkKinds[characterResourceViewState.selectedLinkId] = kind as 'requires' | 'constrains' | 'references' | 'validates' | 'exports' | 'suggests'
+        characterResourceViewState.linkKinds[characterResourceViewState.selectedLinkId] = kind as SerializedCharacterResourceLinkKind
+        const customLink = characterResourceViewState.customLinks.find((linkItem) => linkItem.id === characterResourceViewState.selectedLinkId)
+        if (customLink) {
+          customLink.kind = kind as SerializedCharacterResourceLinkKind
+        }
         renderCharacterWorkflow()
       },
     }
@@ -1831,6 +1858,75 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       characterResourceViewState.selectedNodeIds = [nodeId]
     }
     renderCharacterWorkflow()
+  }
+
+  function getCharacterResourceTargetSlotKey(linkItem: Pick<SerializedCharacterResourceLink, 'targetNodeId' | 'targetSlotId'>): string {
+    return `${linkItem.targetNodeId}:${linkItem.targetSlotId}`
+  }
+
+  function upsertCharacterResourceLink(detail: CharacterResourceSlotConnectDetail): void {
+    const sourceIsOutput = detail.sourceSide === 'output'
+    const output = sourceIsOutput
+      ? { nodeId: detail.sourceNodeId, slotId: detail.sourceSlotId, type: detail.sourceType }
+      : { nodeId: detail.targetNodeId, slotId: detail.targetSlotId, type: detail.targetType }
+    const input = sourceIsOutput
+      ? { nodeId: detail.targetNodeId, slotId: detail.targetSlotId, type: detail.targetType }
+      : { nodeId: detail.sourceNodeId, slotId: detail.sourceSlotId, type: detail.sourceType }
+    if (!output.nodeId || !output.slotId || !input.nodeId || !input.slotId || output.type !== input.type) {
+      showToast(options.getLanguage() === 'zh-CN' ? 'slot 类型不兼容，未创建连接' : 'Slot types are incompatible; no link was created')
+      return
+    }
+    const targetKey = `${input.nodeId}:${input.slotId}`
+    const linkId = `${output.nodeId}:${output.slotId}->${input.nodeId}:${input.slotId}`
+    const nextLink: SerializedCharacterResourceLink = {
+      id: linkId,
+      sourceNodeId: output.nodeId,
+      sourceSlotId: output.slotId,
+      targetNodeId: input.nodeId,
+      targetSlotId: input.slotId,
+      kind: 'requires',
+    }
+    const movingLinkId = characterResourceViewState.selectedLinkId
+    if (movingLinkId && movingLinkId !== linkId) {
+      const movingCustomIndex = characterResourceViewState.customLinks.findIndex((linkItem) => linkItem.id === movingLinkId)
+      if (movingCustomIndex >= 0) {
+        characterResourceViewState.customLinks.splice(movingCustomIndex, 1)
+      } else {
+        characterResourceViewState.deletedLinkIds.add(movingLinkId)
+      }
+      delete characterResourceViewState.linkKinds[movingLinkId]
+    }
+    characterResourceViewState.replacedTargetSlots.add(targetKey)
+    characterResourceViewState.deletedLinkIds.delete(linkId)
+    const existingIndex = characterResourceViewState.customLinks.findIndex((linkItem) => getCharacterResourceTargetSlotKey(linkItem) === targetKey)
+    if (existingIndex >= 0) {
+      characterResourceViewState.customLinks[existingIndex] = {
+        ...nextLink,
+        kind: characterResourceViewState.customLinks[existingIndex].kind,
+      }
+    } else {
+      characterResourceViewState.customLinks.push(nextLink)
+    }
+    characterResourceViewState.selectedLinkId = linkId
+    characterResourceViewState.selectedNodeIds = []
+    renderCharacterWorkflow()
+  }
+
+  function deleteSelectedCharacterResourceLink(): boolean {
+    const linkId = characterResourceViewState.selectedLinkId
+    if (!linkId) {
+      return false
+    }
+    const customIndex = characterResourceViewState.customLinks.findIndex((linkItem) => linkItem.id === linkId)
+    if (customIndex >= 0) {
+      characterResourceViewState.customLinks.splice(customIndex, 1)
+    } else {
+      characterResourceViewState.deletedLinkIds.add(linkId)
+    }
+    delete characterResourceViewState.linkKinds[linkId]
+    characterResourceViewState.selectedLinkId = ''
+    renderCharacterWorkflow()
+    return true
   }
 
   function setCharacterWorkflowPanel(panelId: string): void {
@@ -2418,6 +2514,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   searchInput?.addEventListener('input', () => {
     renderer.filterConversations(searchInput.value)
+  })
+
+  panel.addEventListener('character-resource-slot-connect', (event) => {
+    const detail = (event as CustomEvent<CharacterResourceSlotConnectDetail>).detail
+    upsertCharacterResourceLink(detail)
   })
 
   panel.addEventListener('click', (event) => {
