@@ -13135,6 +13135,45 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   outline-offset: -1px;
 }
 
+@media (max-width: 980px) {
+  .chat-resource-workspace,
+  .chat-resource-workspace.sidebar-collapsed,
+  .chat-resource-workspace.inspector-collapsed,
+  .chat-resource-workspace.sidebar-collapsed.inspector-collapsed {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) 56px;
+  }
+
+  .chat-resource-workspace .chat-resource-library,
+  .chat-resource-workspace .chat-resource-inspector,
+  .chat-resource-split-gutter {
+    display: none;
+  }
+
+  .chat-resource-workspace .chat-resource-canvas,
+  .chat-resource-bottom-toolbar {
+    grid-column: 1;
+  }
+
+  .chat-resource-tabs {
+    right: 10px;
+    overflow-x: auto;
+  }
+
+  .chat-resource-tab-panel {
+    grid-template-columns: minmax(0, 1fr);
+    overflow-y: auto;
+  }
+
+  .chat-resource-bottom-toolbar {
+    overflow-x: auto;
+  }
+
+  .chat-resource-bottom-toolbar div {
+    min-width: 170px;
+  }
+}
+
 .chat-settings-stage {
   min-height: 100%;
   display: grid;
