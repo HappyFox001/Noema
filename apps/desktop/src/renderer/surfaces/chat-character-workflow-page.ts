@@ -711,8 +711,8 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
       { id: 'package-preview', title: 'Package Preview', kind: 'package-preview' },
       { id: 'run-draft', title: 'Run Draft', kind: 'run-draft' },
     ],
-    viewport: { x: 0, y: 0, zoom: viewState.zoom ?? 0.84 },
-    selection: { nodeIds: [options.selectedNodeId || 'brief-input'], linkIds: [] },
+    viewport: { x: viewState.panX ?? 0, y: viewState.panY ?? 0, zoom: viewState.zoom ?? 0.84 },
+    selection: { nodeIds: viewState.selectedNodeIds?.length ? viewState.selectedNodeIds : [options.selectedNodeId || 'brief-input'], linkIds: [] },
     panels: {
       leftWidth: options.sidebarCollapsed ? 0 : 246,
       rightWidth: options.inspectorCollapsed ? 0 : 312,
@@ -877,11 +877,12 @@ function renderResourceCanvas(graph: CharacterResourceGraph, yjsSnapshot: string
       ${activeTab === 'package-preview' ? renderPackagePreview(graph, options) : ''}
       ${activeTab === 'run-draft' ? renderRunDraft(graph, options) : ''}
       <div class="chat-workflow-canvas-viewport ${activeTab === 'workflow' ? 'active' : 'inactive'}" data-resource-viewport="${options.escapeHtml(JSON.stringify(graph.viewport))}">
-        <div class="chat-workflow-canvas-plane chat-resource-graph-plane" style="--resource-zoom: ${graph.viewport.zoom}">
+        <div class="chat-workflow-canvas-plane chat-resource-graph-plane" style="--resource-zoom: ${graph.viewport.zoom}; --resource-pan-x: ${graph.viewport.x}px; --resource-pan-y: ${graph.viewport.y}px">
           <div class="chat-workflow-canvas-grid" aria-hidden="true"></div>
           ${graph.groups.map((group) => renderGroup(group, graph, options)).join('')}
           ${options.viewState?.hideLinks ? '' : renderLinkOverlay(graph, options)}
           ${graph.nodes.map((node) => renderResourceNode(node, graph, options)).join('')}
+          ${renderSelectionBox(options.viewState?.selectionBox)}
           ${renderSelectionRectangle(graph)}
         </div>
       </div>
@@ -1294,6 +1295,13 @@ function renderSelectionRectangle(graph: CharacterResourceGraph): string {
     return ''
   }
   return `<div class="chat-resource-selection-rectangle" style="left:${selected.position.x - 5}px;top:${selected.position.y - 5}px;width:${selected.size.width + 10}px;height:${selected.size.height + 10}px"></div>`
+}
+
+function renderSelectionBox(selectionBox: CharacterResourceViewState['selectionBox'] | undefined): string {
+  if (!selectionBox) {
+    return ''
+  }
+  return `<div class="chat-resource-selection-box" style="left:${selectionBox.x}px;top:${selectionBox.y}px;width:${selectionBox.width}px;height:${selectionBox.height}px"></div>`
 }
 
 function createDefinition(

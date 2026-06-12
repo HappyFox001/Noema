@@ -12581,7 +12581,7 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   min-width: 2420px;
   min-height: 1120px;
   transform-origin: 0 0;
-  transform: scale(var(--resource-zoom, 1));
+  transform: translate(var(--resource-pan-x, 0), var(--resource-pan-y, 0)) scale(var(--resource-zoom, 1));
 }
 
 .chat-workflow-canvas-viewport.inactive {
@@ -12951,6 +12951,15 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   z-index: 4;
   border: 1px solid rgba(82, 168, 255, 0.72);
   border-radius: 10px;
+  pointer-events: none;
+}
+
+.chat-resource-selection-box {
+  position: absolute;
+  z-index: 5;
+  border: 1px solid rgba(82, 168, 255, 0.8);
+  border-radius: 4px;
+  background: rgba(82, 168, 255, 0.11);
   pointer-events: none;
 }
 

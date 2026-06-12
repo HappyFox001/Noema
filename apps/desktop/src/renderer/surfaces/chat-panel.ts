@@ -164,7 +164,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let characterResourceDuplicateCount = 0
   const characterResourceViewState = {
     zoom: 0.84,
+    panX: 0,
+    panY: 0,
     hideLinks: false,
+    selectedNodeIds: ['brief-input'] as string[],
+    selectionBox: null as { x: number; y: number; width: number; height: number } | null,
     collapsedNodeIds: new Set<string>(),
     deletedNodeIds: new Set<string>(),
     duplicatedNodes: [] as Array<{ id: string; sourceId: string; offsetX: number; offsetY: number }>,
@@ -181,6 +185,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     startY: number
     originX: number
     originY: number
+  } | null = null
+  let characterResourceViewportDrag: {
+    mode: 'pan' | 'select'
+    pointerId: number
+    startX: number
+    startY: number
+    originPanX: number
+    originPanY: number
   } | null = null
 
   toast.className = 'chat-status-toast'
@@ -1530,7 +1542,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       inspectorCollapsed: characterWorkflowEditorState.inspectorCollapsed,
       viewState: {
         zoom: characterResourceViewState.zoom,
+        panX: characterResourceViewState.panX,
+        panY: characterResourceViewState.panY,
         hideLinks: characterResourceViewState.hideLinks,
+        selectedNodeIds: characterResourceViewState.selectedNodeIds,
+        selectionBox: characterResourceViewState.selectionBox,
         collapsedNodeIds: [...characterResourceViewState.collapsedNodeIds],
         deletedNodeIds: [...characterResourceViewState.deletedNodeIds],
         duplicatedNodes: characterResourceViewState.duplicatedNodes,
@@ -1613,7 +1629,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           selectedNodeId: selectedWorkflowNodeId,
           viewState: {
             zoom: characterResourceViewState.zoom,
+            panX: characterResourceViewState.panX,
+            panY: characterResourceViewState.panY,
             hideLinks: characterResourceViewState.hideLinks,
+            selectedNodeIds: characterResourceViewState.selectedNodeIds,
+            selectionBox: characterResourceViewState.selectionBox,
             collapsedNodeIds: [...characterResourceViewState.collapsedNodeIds],
             deletedNodeIds: [...characterResourceViewState.deletedNodeIds],
             duplicatedNodes: characterResourceViewState.duplicatedNodes,
@@ -1626,10 +1646,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       },
       'fit-view': () => {
         characterResourceViewState.zoom = 0.72
+        characterResourceViewState.panX = -42
+        characterResourceViewState.panY = -24
         renderCharacterWorkflow()
       },
       'reset-view': () => {
         characterResourceViewState.zoom = 0.84
+        characterResourceViewState.panX = 0
+        characterResourceViewState.panY = 0
         renderCharacterWorkflow()
       },
       'toggle-links': () => {
@@ -1663,6 +1687,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           offsetY: 28 * characterResourceDuplicateCount,
         })
         selectedWorkflowNodeId = duplicateId
+        characterResourceViewState.selectedNodeIds = [duplicateId]
         renderCharacterWorkflow()
       },
       'delete-selection': () => {
@@ -1672,6 +1697,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         }
         characterResourceViewState.deletedNodeIds.add(selectedWorkflowNodeId)
         selectedWorkflowNodeId = 'brief-input'
+        characterResourceViewState.selectedNodeIds = ['brief-input']
         renderCharacterWorkflow()
       },
       'open-node-search': () => {
@@ -1754,11 +1780,24 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     renderCharacterWorkflow()
   }
 
-  function selectWorkflowNode(nodeId: string): void {
+  function selectWorkflowNode(nodeId: string, additive = false): void {
     if (!nodeId) {
       return
     }
     selectedWorkflowNodeId = nodeId
+    characterResourceViewState.selectedNodeIds = [nodeId]
+    selectedWorkflowNodeId = nodeId
+    if (additive) {
+      const current = new Set(characterResourceViewState.selectedNodeIds)
+      if (current.has(nodeId)) {
+        current.delete(nodeId)
+      } else {
+        current.add(nodeId)
+      }
+      characterResourceViewState.selectedNodeIds = current.size ? [...current] : [nodeId]
+    } else {
+      characterResourceViewState.selectedNodeIds = [nodeId]
+    }
     renderCharacterWorkflow()
   }
 
@@ -1822,6 +1861,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     node.setPointerCapture?.(event.pointerId)
     node.classList.add('is-dragging')
+    node.style.zIndex = '50'
     event.preventDefault()
     event.stopPropagation()
   }
@@ -1846,7 +1886,105 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     const node = panel.querySelector<HTMLElement>(`[data-chat-workflow-node-id="${CSS.escape(characterWorkflowDragging.nodeId)}"]`)
     node?.classList.remove('is-dragging')
+    if (node) {
+      node.style.zIndex = '20'
+    }
     characterWorkflowDragging = null
+  }
+
+  function beginCharacterResourceViewportDrag(event: PointerEvent): void {
+    if (characterWorkflowDragging || event.button !== 0) {
+      return
+    }
+    const target = event.target as HTMLElement | null
+    const viewport = target?.closest<HTMLElement>('.chat-workflow-canvas-viewport.active')
+    if (!viewport || target?.closest('[data-chat-workflow-node-id], button, input, textarea, select, .chat-resource-tab-panel')) {
+      return
+    }
+    characterResourceViewportDrag = {
+      mode: event.shiftKey ? 'select' : 'pan',
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originPanX: characterResourceViewState.panX,
+      originPanY: characterResourceViewState.panY,
+    }
+    if (characterResourceViewportDrag.mode === 'select') {
+      characterResourceViewState.selectionBox = { x: event.offsetX, y: event.offsetY, width: 0, height: 0 }
+      characterResourceViewState.selectedNodeIds = []
+    }
+    viewport.setPointerCapture?.(event.pointerId)
+    event.preventDefault()
+  }
+
+  function updateCharacterResourceViewportDrag(event: PointerEvent): void {
+    if (!characterResourceViewportDrag || characterResourceViewportDrag.pointerId !== event.pointerId) {
+      return
+    }
+    if (characterResourceViewportDrag.mode === 'pan') {
+      characterResourceViewState.panX = Math.round(characterResourceViewportDrag.originPanX + event.clientX - characterResourceViewportDrag.startX)
+      characterResourceViewState.panY = Math.round(characterResourceViewportDrag.originPanY + event.clientY - characterResourceViewportDrag.startY)
+      const plane = panel.querySelector<HTMLElement>('.chat-resource-graph-plane')
+      plane?.style.setProperty('--resource-pan-x', `${characterResourceViewState.panX}px`)
+      plane?.style.setProperty('--resource-pan-y', `${characterResourceViewState.panY}px`)
+      return
+    }
+    const startX = characterResourceViewportDrag.startX
+    const startY = characterResourceViewportDrag.startY
+    const left = Math.min(startX, event.clientX)
+    const top = Math.min(startY, event.clientY)
+    const width = Math.abs(event.clientX - startX)
+    const height = Math.abs(event.clientY - startY)
+    const viewport = panel.querySelector<HTMLElement>('.chat-workflow-canvas-viewport.active')
+    const rect = viewport?.getBoundingClientRect()
+    if (!rect) {
+      return
+    }
+    characterResourceViewState.selectionBox = {
+      x: Math.round((left - rect.left - characterResourceViewState.panX) / characterResourceViewState.zoom),
+      y: Math.round((top - rect.top - characterResourceViewState.panY) / characterResourceViewState.zoom),
+      width: Math.round(width / characterResourceViewState.zoom),
+      height: Math.round(height / characterResourceViewState.zoom),
+    }
+    const box = panel.querySelector<HTMLElement>('.chat-resource-selection-box')
+    if (box) {
+      box.style.left = `${characterResourceViewState.selectionBox.x}px`
+      box.style.top = `${characterResourceViewState.selectionBox.y}px`
+      box.style.width = `${characterResourceViewState.selectionBox.width}px`
+      box.style.height = `${characterResourceViewState.selectionBox.height}px`
+    }
+  }
+
+  function endCharacterResourceViewportDrag(event: PointerEvent): void {
+    if (!characterResourceViewportDrag || characterResourceViewportDrag.pointerId !== event.pointerId) {
+      return
+    }
+    if (characterResourceViewportDrag.mode === 'select' && characterResourceViewState.selectionBox) {
+      const box = characterResourceViewState.selectionBox
+      const selected = Array.from(panel.querySelectorAll<HTMLElement>('[data-chat-workflow-node-id]')).filter((node) => {
+        const x = Number.parseFloat(node.style.getPropertyValue('--node-x')) || 0
+        const y = Number.parseFloat(node.style.getPropertyValue('--node-y')) || 0
+        const width = Number.parseFloat(node.style.getPropertyValue('--node-w')) || 268
+        const height = Number.parseFloat(node.style.getPropertyValue('--node-h')) || 226
+        return x < box.x + box.width && x + width > box.x && y < box.y + box.height && y + height > box.y
+      }).map((node) => node.dataset.chatWorkflowNodeId || '').filter(Boolean)
+      characterResourceViewState.selectedNodeIds = selected.length ? selected : ['brief-input']
+      selectedWorkflowNodeId = characterResourceViewState.selectedNodeIds[0] ?? 'brief-input'
+      characterResourceViewState.selectionBox = null
+      renderCharacterWorkflow()
+    }
+    characterResourceViewportDrag = null
+  }
+
+  function updateCharacterResourceViewportZoom(event: WheelEvent): void {
+    const viewport = (event.target as HTMLElement | null)?.closest<HTMLElement>('.chat-workflow-canvas-viewport.active')
+    if (!viewport || !panel.contains(viewport)) {
+      return
+    }
+    event.preventDefault()
+    const nextZoom = Math.min(1.4, Math.max(0.46, characterResourceViewState.zoom + (event.deltaY > 0 ? -0.05 : 0.05)))
+    characterResourceViewState.zoom = Math.round(nextZoom * 100) / 100
+    renderCharacterWorkflow()
   }
 
   function getChatModelCard(modelId: string): HTMLElement | null {
@@ -2357,7 +2495,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         setCharacterWorkflowPanel(panelId)
       }
       if (!eventTarget.closest('[data-chat-workflow-param]')) {
-        selectWorkflowNode(workflowNodeSelect.dataset.chatWorkflowNodeSelect || '')
+        selectWorkflowNode(workflowNodeSelect.dataset.chatWorkflowNodeSelect || '', event.metaKey || event.ctrlKey || event.shiftKey)
       }
       return
     }
@@ -2427,15 +2565,20 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   panel.addEventListener('pointerdown', beginChatResize)
   panel.addEventListener('pointerdown', beginCharacterWorkflowNodeDrag)
+  panel.addEventListener('pointerdown', beginCharacterResourceViewportDrag)
+  panel.addEventListener('wheel', updateCharacterResourceViewportZoom, { passive: false })
   panel.addEventListener('pointerdown', beginManualDrag)
   window.addEventListener('pointermove', updateChatResize)
   window.addEventListener('pointermove', updateCharacterWorkflowNodeDrag)
+  window.addEventListener('pointermove', updateCharacterResourceViewportDrag)
   window.addEventListener('pointermove', updateManualDrag)
   window.addEventListener('pointerup', endChatResize)
   window.addEventListener('pointerup', endCharacterWorkflowNodeDrag)
+  window.addEventListener('pointerup', endCharacterResourceViewportDrag)
   window.addEventListener('pointerup', endManualDrag)
   window.addEventListener('pointercancel', endChatResize)
   window.addEventListener('pointercancel', endCharacterWorkflowNodeDrag)
+  window.addEventListener('pointercancel', endCharacterResourceViewportDrag)
   window.addEventListener('pointercancel', endManualDrag)
   window.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && conversationSettingsPanel?.classList.contains('visible')) {

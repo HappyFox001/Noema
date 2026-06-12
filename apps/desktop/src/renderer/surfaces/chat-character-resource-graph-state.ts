@@ -3,7 +3,16 @@
  */
 export interface CharacterResourceViewState {
   zoom?: number
+  panX?: number
+  panY?: number
   hideLinks?: boolean
+  selectedNodeIds?: string[]
+  selectionBox?: {
+    x: number
+    y: number
+    width: number
+    height: number
+  } | null
   collapsedNodeIds?: string[]
   deletedNodeIds?: string[]
   duplicatedNodes?: Array<{
