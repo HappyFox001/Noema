@@ -523,6 +523,7 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
 
   const searchInput = root.querySelector<HTMLElement>('.chat-resource-search-panel [data-chat-resource-node-search]')
   const searchPopover = root.querySelector<HTMLElement>('.chat-resource-node-search-popover')
+  const searchFilters = new Map<HTMLElement, () => void>()
   root.querySelectorAll<HTMLInputElement>('[data-chat-resource-node-search]').forEach((inputElement) => {
     const searchScope = inputElement.closest<HTMLElement>('[data-resource-node-search-scope]') ?? root
     const preview = searchScope.querySelector<HTMLElement>('[data-resource-node-preview]')
@@ -541,7 +542,11 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
         const searchable = (card.dataset.resourceSearchText ?? '').toLowerCase()
         const activeCategory = card.closest<HTMLElement>('[data-resource-node-search-scope]')?.dataset.resourceNodeSearchCategory ?? 'all'
         const matchesCategory = activeCategory === 'all' || card.dataset.resourceCategory === activeCategory
-        card.hidden = (Boolean(query) && !searchable.includes(query)) || !matchesCategory
+        const contextType = searchScope.dataset.resourceSearchContextType ?? ''
+        const contextSide = searchScope.dataset.resourceSearchContextSide ?? ''
+        const compatibleTypes = contextSide === 'input' ? card.dataset.resourceOutputTypes : card.dataset.resourceInputTypes
+        const matchesContext = !contextType || (compatibleTypes ?? '').split(' ').includes(contextType)
+        card.hidden = (Boolean(query) && !searchable.includes(query)) || !matchesCategory || !matchesContext
       })
     }
     const focusNextCard = (direction: 1 | -1) => {
@@ -566,6 +571,13 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
         event.preventDefault()
         const firstCard = filterTargets().find((card) => !card.hidden)
         firstCard?.click()
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        root.classList.remove('is-node-search-open')
+        searchScope.removeAttribute('data-resource-search-context-type')
+        searchScope.removeAttribute('data-resource-search-context-side')
+        filterCards()
       }
     }
     const handleCardHover = (event: Event) => {
@@ -593,6 +605,7 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
     searchScope.addEventListener('mouseover', handleCardHover)
     searchScope.addEventListener('focusin', handleCardHover)
     searchScope.addEventListener('click', handleCategoryFilter)
+    searchFilters.set(searchScope, filterCards)
     filterCards()
     cleanups.push(() => {
       inputElement.removeEventListener('input', filterCards)
@@ -600,6 +613,7 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
       searchScope.removeEventListener('mouseover', handleCardHover)
       searchScope.removeEventListener('focusin', handleCardHover)
       searchScope.removeEventListener('click', handleCategoryFilter)
+      searchFilters.delete(searchScope)
     })
   })
   if (root.classList.contains('is-node-search-open')) {
@@ -634,11 +648,70 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
   window.addEventListener('resize', measureSlots)
   cleanups.push(() => window.removeEventListener('resize', measureSlots))
 
+  const removeConnectionGhost = () => root.querySelector<HTMLElement>('.chat-resource-connection-ghost')?.remove()
+  const ensureConnectionGhost = () => {
+    let ghost = root.querySelector<SVGSVGElement>('.chat-resource-connection-ghost')
+    if (!ghost) {
+      ghost = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+      ghost.classList.add('chat-resource-connection-ghost')
+      ghost.setAttribute('aria-hidden', 'true')
+      ghost.innerHTML = '<path></path>'
+      root.append(ghost)
+    }
+    return ghost
+  }
+  const updateConnectionGhost = (sourceSlot: HTMLElement, event: PointerEvent) => {
+    const hostRect = root.getBoundingClientRect()
+    const slotRect = sourceSlot.getBoundingClientRect()
+    const x1 = Math.round(slotRect.left - hostRect.left + slotRect.width / 2)
+    const y1 = Math.round(slotRect.top - hostRect.top + slotRect.height / 2)
+    const x2 = Math.round(event.clientX - hostRect.left)
+    const y2 = Math.round(event.clientY - hostRect.top)
+    const mid = Math.max(48, Math.abs(x2 - x1) * 0.45)
+    const path = sourceSlot.dataset.resourceSlotSide === 'input'
+      ? `M ${x2} ${y2} C ${x2 + mid} ${y2}, ${x1 - mid} ${y1}, ${x1} ${y1}`
+      : `M ${x1} ${y1} C ${x1 + mid} ${y1}, ${x2 - mid} ${y2}, ${x2} ${y2}`
+    const ghost = ensureConnectionGhost()
+    ghost.setAttribute('viewBox', `0 0 ${Math.round(hostRect.width)} ${Math.round(hostRect.height)}`)
+    ghost.querySelector('path')?.setAttribute('d', path)
+  }
+  const showPlacementGhost = (event: PointerEvent) => {
+    const hostRect = root.getBoundingClientRect()
+    let ghost = root.querySelector<HTMLElement>('.chat-resource-placement-ghost')
+    if (!ghost) {
+      ghost = document.createElement('div')
+      ghost.className = 'chat-resource-placement-ghost'
+      ghost.textContent = 'Placement'
+      root.append(ghost)
+    }
+    ghost.style.left = `${Math.round(event.clientX - hostRect.left)}px`
+    ghost.style.top = `${Math.round(event.clientY - hostRect.top)}px`
+    ghost.classList.add('is-visible')
+  }
+  const openSearchFromSlotDrag = (slotElement: HTMLElement, event: PointerEvent) => {
+    if (!searchPopover || !(canvas instanceof HTMLElement)) {
+      return
+    }
+    const canvasRect = canvas.getBoundingClientRect()
+    searchPopover.style.left = `${Math.round(event.clientX - canvasRect.left + 12)}px`
+    searchPopover.style.top = `${Math.round(event.clientY - canvasRect.top + 12)}px`
+    searchPopover.dataset.resourceSearchContextType = slotElement.dataset.resourceSlotType ?? ''
+    searchPopover.dataset.resourceSearchContextSide = slotElement.dataset.resourceSlotSide ?? ''
+    root.classList.add('is-node-search-open')
+    searchFilters.get(searchPopover)?.()
+    const firstCard = Array.from(searchPopover.querySelectorAll<HTMLButtonElement>('[data-resource-library-card]')).find((card) => !card.hidden)
+    firstCard?.focus()
+    const preview = searchPopover.querySelector<HTMLElement>('[data-resource-node-preview]')
+    if (preview && firstCard) {
+      preview.innerHTML = `<strong>${firstCard.dataset.resourcePreviewTitle ?? ''}</strong><p>${firstCard.dataset.resourcePreviewBody ?? ''}</p>`
+    }
+  }
   root.querySelectorAll<HTMLElement>('.chat-resource-slot').forEach((slotElement) => {
     const startSlotDrag = (event: PointerEvent) => {
       const sourceType = slotElement.dataset.resourceSlotType ?? ''
+      const sourceSide = slotElement.dataset.resourceSlotSide ?? ''
       const compatibleSlots = Array.from(root.querySelectorAll<HTMLElement>('.chat-resource-slot'))
-        .filter((candidate) => candidate !== slotElement && candidate.dataset.resourceSlotType === sourceType)
+        .filter((candidate) => candidate !== slotElement && candidate.dataset.resourceSlotType === sourceType && candidate.dataset.resourceSlotSide !== sourceSide)
       compatibleSlots.forEach((candidate) => candidate.classList.add('is-compatible-candidate'))
       root.dataset.resourceSlotDragState = JSON.stringify({
         source: {
@@ -652,6 +725,7 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
       })
       root.classList.add('is-slot-dragging')
       slotElement.setPointerCapture?.(event.pointerId)
+      updateConnectionGhost(slotElement, event)
     }
     const updateSlotDrag = (event: PointerEvent) => {
       if (!root.classList.contains('is-slot-dragging')) {
@@ -662,10 +736,26 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
         ...state,
         pointer: { x: Math.round(event.clientX), y: Math.round(event.clientY) },
       })
+      updateConnectionGhost(slotElement, event)
+      showPlacementGhost(event)
     }
-    const endSlotDrag = () => {
+    const endSlotDrag = (event: PointerEvent) => {
       root.classList.remove('is-slot-dragging')
+      removeConnectionGhost()
       root.querySelectorAll<HTMLElement>('.chat-resource-slot.is-compatible-candidate').forEach((candidate) => candidate.classList.remove('is-compatible-candidate'))
+      const dropTarget = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('.chat-resource-slot')
+      if (dropTarget && dropTarget !== slotElement && dropTarget.dataset.resourceSlotType === slotElement.dataset.resourceSlotType && dropTarget.dataset.resourceSlotSide !== slotElement.dataset.resourceSlotSide) {
+        root.dataset.resourceSlotDropResult = JSON.stringify({
+          sourceNodeId: slotElement.dataset.resourceSlotNode ?? '',
+          sourceSlotId: slotElement.dataset.resourceSlotId ?? '',
+          targetNodeId: dropTarget.dataset.resourceSlotNode ?? '',
+          targetSlotId: dropTarget.dataset.resourceSlotId ?? '',
+          type: slotElement.dataset.resourceSlotType ?? '',
+        })
+        root.querySelector<HTMLElement>('.chat-resource-placement-ghost')?.classList.remove('is-visible')
+      } else {
+        openSearchFromSlotDrag(slotElement, event)
+      }
     }
     slotElement.addEventListener('pointerdown', startSlotDrag)
     slotElement.addEventListener('pointermove', updateSlotDrag)
@@ -911,8 +1001,10 @@ function renderNodeLibraryCard(definition: CharacterResourceNodeDefinition, grap
     ...definition.inputs.map((slotItem) => slotItem.type),
     ...definition.outputs.map((slotItem) => slotItem.type),
   ].join(' ')
+  const inputTypes = definition.inputs.map((slotItem) => slotItem.type).join(' ')
+  const outputTypes = definition.outputs.map((slotItem) => slotItem.type).join(' ')
   return `
-    <button class="chat-resource-library-card" type="button" data-resource-library-card data-resource-category="${options.escapeHtml(definition.category)}" data-resource-search-text="${options.escapeHtml(searchText)}" data-resource-preview-title="${options.escapeHtml(definition.displayName)}" data-resource-preview-body="${options.escapeHtml(definition.description)}" data-chat-workflow-panel="nodes" ${existing ? `data-chat-workflow-node-select="${options.escapeHtml(existing.id)}"` : ''}>
+    <button class="chat-resource-library-card" type="button" data-resource-library-card data-resource-category="${options.escapeHtml(definition.category)}" data-resource-input-types="${options.escapeHtml(inputTypes)}" data-resource-output-types="${options.escapeHtml(outputTypes)}" data-resource-search-text="${options.escapeHtml(searchText)}" data-resource-preview-title="${options.escapeHtml(definition.displayName)}" data-resource-preview-body="${options.escapeHtml(definition.description)}" data-chat-workflow-panel="nodes" ${existing ? `data-chat-workflow-node-select="${options.escapeHtml(existing.id)}"` : ''}>
       <span>
         <b>${options.escapeHtml(definition.displayName)}</b>
         <small>${options.escapeHtml(definition.category)} / ${options.escapeHtml(definition.source)}</small>
