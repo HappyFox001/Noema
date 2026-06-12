@@ -8,6 +8,7 @@ import { computePosition, flip, offset, shift } from '@floating-ui/dom'
 import { LGraph, LiteGraph } from 'litegraph.js'
 import { Download, Link2Off, Maximize, MessageCircle, Package, Play, RotateCcw, Save, Search, createIcons } from 'lucide'
 import * as Y from 'yjs'
+import type { CharacterResourceViewState } from './chat-character-resource-graph-state'
 
 export interface CharacterWorkflowPageOptions {
   language: 'zh-CN' | 'en-US'
@@ -32,30 +33,6 @@ export interface CharacterWorkflowFileTab {
 }
 
 export type CharacterWorkflowSidePanel = 'workflow' | 'assets' | 'nodes'
-
-export interface CharacterResourceViewState {
-  zoom?: number
-  hideLinks?: boolean
-  collapsedNodeIds?: string[]
-  deletedNodeIds?: string[]
-  duplicatedNodes?: Array<{
-    id: string
-    sourceId: string
-    offsetX: number
-    offsetY: number
-  }>
-}
-
-export interface SerializedCharacterResourceGraph {
-  schemaVersion: 1
-  graphId: string
-  activeTabId: string
-  selectedNodeId: string
-  viewState: CharacterResourceViewState
-  configOverrides: Record<string, Record<string, unknown>>
-  positionOverrides: Record<string, { x: number; y: number }>
-  yjsSnapshot: string
-}
 
 type CharacterResourceNodeStatus = 'idle' | 'dirty' | 'queued' | 'running' | 'done' | 'failed' | 'stale' | 'disabled'
 type CharacterResourcePreviewType = 'text-card' | 'image' | 'voice' | 'rule' | 'validation' | 'package'
@@ -213,30 +190,6 @@ export function completeCharacterResourceRunState(state: CharacterResourceRunSta
       { type: 'agent-policy', sourceNodeId: 'agent-policy', title: 'Agent Policy', summary: 'Mock autonomous generation boundaries and revision budget are ready for backend execution.' },
       { type: 'character-pack', sourceNodeId: 'character-package', title: 'Character Package', summary: 'Mock package manifest includes graph resources, runtime state, validation, and chat-test entry.' },
     ],
-  }
-}
-
-export function serializeCharacterResourceGraph(input: Omit<SerializedCharacterResourceGraph, 'schemaVersion'>): string {
-  return JSON.stringify({
-    schemaVersion: 1,
-    ...input,
-  } satisfies SerializedCharacterResourceGraph)
-}
-
-export function deserializeCharacterResourceGraph(serialized: string): SerializedCharacterResourceGraph {
-  const parsed = JSON.parse(serialized) as Partial<SerializedCharacterResourceGraph>
-  if (parsed.schemaVersion !== 1 || !parsed.graphId) {
-    throw new Error('Unsupported character resource graph snapshot.')
-  }
-  return {
-    schemaVersion: 1,
-    graphId: parsed.graphId,
-    activeTabId: parsed.activeTabId ?? 'workflow',
-    selectedNodeId: parsed.selectedNodeId ?? 'brief-input',
-    viewState: parsed.viewState ?? {},
-    configOverrides: parsed.configOverrides ?? {},
-    positionOverrides: parsed.positionOverrides ?? {},
-    yjsSnapshot: parsed.yjsSnapshot ?? '{}',
   }
 }
 

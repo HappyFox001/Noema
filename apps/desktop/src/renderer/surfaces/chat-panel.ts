@@ -24,11 +24,11 @@ import {
   createDraftCharacterResourceRunState,
   initializeCharacterResourceWorkbench,
   renderCharacterWorkflowPage,
-  serializeCharacterResourceGraph,
   type CharacterResourceRunState,
   type CharacterWorkflowFileTab,
   type CharacterWorkflowSidePanel,
 } from './chat-character-workflow-page'
+import { serializeCharacterResourceGraph } from './chat-character-resource-graph-state'
 import {
   applyChatResourceState,
   createInitialChatState,
