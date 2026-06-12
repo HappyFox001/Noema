@@ -12815,10 +12815,35 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   stroke: rgba(238, 242, 242, 0.54);
 }
 
+.chat-resource-link.invalid path:not(.hit-area) {
+  stroke: rgba(255, 104, 104, 0.55);
+  stroke-dasharray: 3 5;
+}
+
+.chat-resource-link.hidden {
+  opacity: 0.16;
+}
+
+.chat-resource-link.flowing path:not(.hit-area) {
+  stroke-width: 2.5;
+  stroke-dasharray: 10 7;
+  animation: chat-resource-link-flow 1.15s linear infinite;
+}
+
 .chat-resource-link:hover path:not(.hit-area),
 .chat-resource-link.selected path:not(.hit-area) {
   stroke-width: 3;
   filter: drop-shadow(0 0 6px rgba(82, 168, 255, 0.34));
+}
+
+@keyframes chat-resource-link-flow {
+  from {
+    stroke-dashoffset: 0;
+  }
+
+  to {
+    stroke-dashoffset: -34;
+  }
 }
 
 .chat-resource-node {
