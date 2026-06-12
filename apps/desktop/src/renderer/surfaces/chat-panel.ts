@@ -173,6 +173,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     deletedNodeIds: new Set<string>(),
     duplicatedNodes: [] as Array<{ id: string; sourceId: string; offsetX: number; offsetY: number }>,
     nodeSizes: {} as Record<string, { width: number; height: number }>,
+    selectedLinkId: '',
+    linkKinds: {} as Record<string, 'requires' | 'constrains' | 'references' | 'validates' | 'exports' | 'suggests'>,
   }
   const characterWorkflowEditorState: CharacterWorkflowEditorState = {
     activePanel: 'workflow',
@@ -1560,6 +1562,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         deletedNodeIds: [...characterResourceViewState.deletedNodeIds],
         duplicatedNodes: characterResourceViewState.duplicatedNodes,
         nodeSizes: characterResourceViewState.nodeSizes,
+        selectedLinkId: characterResourceViewState.selectedLinkId,
+        linkKinds: characterResourceViewState.linkKinds,
       },
     })
     initializeCharacterResourceWorkbench(characterWorkflowRoot)
@@ -1648,6 +1652,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             deletedNodeIds: [...characterResourceViewState.deletedNodeIds],
             duplicatedNodes: characterResourceViewState.duplicatedNodes,
             nodeSizes: characterResourceViewState.nodeSizes,
+            selectedLinkId: characterResourceViewState.selectedLinkId,
+            linkKinds: characterResourceViewState.linkKinds,
           },
           configOverrides: characterWorkflowConfigOverrides,
           positionOverrides: characterWorkflowPositionOverrides,
@@ -1716,7 +1722,19 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         renderCharacterWorkflow()
       },
       'chat-test': () => showToast(options.getLanguage() === 'zh-CN' ? '聊天测试入口已准备，但不调用真实聊天' : 'Chat test entry is ready without calling real chat'),
-      'set-link-kind': () => showToast(options.getLanguage() === 'zh-CN' ? '请选择具体连线后修改类型' : 'Select a concrete link before changing kind'),
+      'set-link-kind': () => {
+        const kind = target?.dataset.resourceLinkKind || ''
+        const allowedKinds = new Set(['requires', 'constrains', 'references', 'validates', 'exports', 'suggests'])
+        if (!characterResourceViewState.selectedLinkId || !kind) {
+          showToast(options.getLanguage() === 'zh-CN' ? '请选择具体连线后修改类型' : 'Select a concrete link before changing kind')
+          return
+        }
+        if (!allowedKinds.has(kind)) {
+          return
+        }
+        characterResourceViewState.linkKinds[characterResourceViewState.selectedLinkId] = kind as 'requires' | 'constrains' | 'references' | 'validates' | 'exports' | 'suggests'
+        renderCharacterWorkflow()
+      },
     }
     const command = commands[action]
     if (!command) {
@@ -1796,8 +1814,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
     selectedWorkflowNodeId = nodeId
-    characterResourceViewState.selectedNodeIds = [nodeId]
-    selectedWorkflowNodeId = nodeId
+    characterResourceViewState.selectedLinkId = ''
     if (additive) {
       const current = new Set(characterResourceViewState.selectedNodeIds)
       if (current.has(nodeId)) {
@@ -2557,8 +2574,17 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
 
+    const workflowLinkSelect = eventTarget.closest<HTMLElement>('[data-chat-workflow-link-select]')
+    if (workflowLinkSelect && panel.contains(workflowLinkSelect)) {
+      characterResourceViewState.selectedLinkId = workflowLinkSelect.dataset.chatWorkflowLinkSelect || ''
+      characterResourceViewState.selectedNodeIds = []
+      renderCharacterWorkflow()
+      return
+    }
+
     const workflowNodeSelect = eventTarget.closest<HTMLElement>('[data-chat-workflow-node-select]')
     if (workflowNodeSelect && panel.contains(workflowNodeSelect)) {
+      characterResourceViewState.selectedLinkId = ''
       const panelId = workflowNodeSelect.dataset.chatWorkflowPanel
       if (panelId) {
         setCharacterWorkflowPanel(panelId)

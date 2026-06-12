@@ -22,6 +22,8 @@ export interface CharacterResourceViewState {
     offsetY: number
   }>
   nodeSizes?: Record<string, { width: number; height: number }>
+  selectedLinkId?: string
+  linkKinds?: Record<string, 'requires' | 'constrains' | 'references' | 'validates' | 'exports' | 'suggests'>
 }
 
 export interface SerializedCharacterResourceGraph {

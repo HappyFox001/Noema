@@ -701,7 +701,15 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
     nodes,
     links: DEFAULT_LINKS
       .filter((item) => !deletedNodeIds.has(item.sourceNodeId) && !deletedNodeIds.has(item.targetNodeId))
-      .map((item) => ({ ...item, status: validateLink(item, nodes, definitions) ? 'valid' : 'invalid' })),
+      .map((item) => {
+        const kind = viewState.linkKinds?.[item.id] ?? item.kind
+        return {
+          ...item,
+          kind,
+          label: LINK_KIND_LABELS[kind],
+          status: validateLink(item, nodes, definitions) ? 'valid' : 'invalid',
+        }
+      }),
     groups: [
       { id: 'core-character', title: 'Core Character', nodeIds: ['brief-input', 'identity-card', 'persona-engine', 'dialogue-style'], color: 'rgba(82, 168, 255, 0.16)' },
       { id: 'asset-pack', title: 'Resource Pack', nodeIds: ['visual-spec', 'image-assets', 'voice-profile'], color: 'rgba(219, 189, 130, 0.16)' },
@@ -713,7 +721,7 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
       { id: 'run-draft', title: 'Run Draft', kind: 'run-draft' },
     ],
     viewport: { x: viewState.panX ?? 0, y: viewState.panY ?? 0, zoom: viewState.zoom ?? 0.84 },
-    selection: { nodeIds: viewState.selectedNodeIds?.length ? viewState.selectedNodeIds : [options.selectedNodeId || 'brief-input'], linkIds: [] },
+    selection: { nodeIds: viewState.selectedNodeIds?.length ? viewState.selectedNodeIds : [options.selectedNodeId || 'brief-input'], linkIds: viewState.selectedLinkId ? [viewState.selectedLinkId] : [] },
     panels: {
       leftWidth: options.sidebarCollapsed ? 0 : 246,
       rightWidth: options.inspectorCollapsed ? 0 : 312,
@@ -1059,8 +1067,9 @@ function renderLinkPath(linkItem: CharacterResourceLink, graph: CharacterResourc
   const mid = Math.max(80, Math.abs(x2 - x1) * 0.45)
   const path = `M ${x1} ${y1} C ${x1 + mid} ${y1}, ${x2 - mid} ${y2}, ${x2} ${y2}`
   return `
-    <g class="chat-resource-link ${options.escapeHtml(linkItem.kind)} ${options.escapeHtml(linkItem.status)}" data-chat-resource-link-id="${options.escapeHtml(linkItem.id)}">
+    <g class="chat-resource-link ${options.escapeHtml(linkItem.kind)} ${options.escapeHtml(linkItem.status)} ${graph.selection.linkIds.includes(linkItem.id) ? 'selected' : ''}" data-chat-resource-link-id="${options.escapeHtml(linkItem.id)}" data-chat-workflow-link-select="${options.escapeHtml(linkItem.id)}">
       <path d="${path}" marker-end="url(#chat-resource-arrow)"></path>
+      <path class="hit-area" d="${path}"></path>
       <text x="${(x1 + x2) / 2}" y="${(y1 + y2) / 2 - 7}">${options.escapeHtml(LINK_KIND_LABELS[linkItem.kind])}</text>
     </g>
   `
@@ -1163,6 +1172,10 @@ function renderNodeFooter(
 }
 
 function renderResourceInspector(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): string {
+  const selectedLink = graph.links.find((linkItem) => graph.selection.linkIds.includes(linkItem.id))
+  if (selectedLink) {
+    return renderLinkInspector(graph, selectedLink, options)
+  }
   const selectedNode = graph.nodes.find((node) => graph.selection.nodeIds.includes(node.id)) ?? graph.nodes[0]
   const definition = getDefinition(selectedNode.type)
   const output = graph.mockOutputs.find((item) => item.nodeId === selectedNode.id)
@@ -1199,6 +1212,35 @@ function renderResourceInspector(graph: CharacterResourceGraph, options: Charact
           <h4>Link Kinds</h4>
           <div class="chat-resource-link-kind-list">
             ${(Object.keys(LINK_KIND_LABELS) as CharacterResourceLinkKind[]).map((kind) => `<button type="button" data-chat-workflow-action="set-link-kind" title="${options.escapeHtml(kind)}">${options.escapeHtml(kind)}</button>`).join('')}
+          </div>
+        </section>
+      </div>
+    </aside>
+  `
+}
+
+function renderLinkInspector(graph: CharacterResourceGraph, linkItem: CharacterResourceLink, options: CharacterWorkflowPageOptions): string {
+  const source = graph.nodes.find((node) => node.id === linkItem.sourceNodeId)
+  const target = graph.nodes.find((node) => node.id === linkItem.targetNodeId)
+  return `
+    <aside class="chat-workflow-inspector chat-resource-inspector" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '连线 Inspector' : 'Link inspector')}">
+      <div class="chat-workflow-inspector-scroll">
+        <header class="chat-workflow-inspector-head">
+          <span>${options.escapeHtml(linkItem.kind)} / ${options.escapeHtml(linkItem.status)}</span>
+          <strong>${options.escapeHtml(source?.title ?? linkItem.sourceNodeId)} -> ${options.escapeHtml(target?.title ?? linkItem.targetNodeId)}</strong>
+          <small>${options.escapeHtml(`${linkItem.sourceSlotId} -> ${linkItem.targetSlotId}`)}</small>
+        </header>
+        <section class="chat-workflow-inspector-section">
+          <h4>Link Kind</h4>
+          <div class="chat-resource-link-kind-list">
+            ${(Object.keys(LINK_KIND_LABELS) as CharacterResourceLinkKind[]).map((kind) => `<button class="${kind === linkItem.kind ? 'active' : ''}" type="button" data-chat-workflow-action="set-link-kind" data-resource-link-kind="${options.escapeHtml(kind)}" title="${options.escapeHtml(kind)}">${options.escapeHtml(kind)}</button>`).join('')}
+          </div>
+        </section>
+        <section class="chat-workflow-inspector-section">
+          <h4>Connection</h4>
+          <div class="chat-workflow-inspector-ports">
+            <span><b>OUT</b>${options.escapeHtml(linkItem.sourceSlotId)}<small>${options.escapeHtml(linkItem.sourceNodeId)}</small></span>
+            <span><b>IN</b>${options.escapeHtml(linkItem.targetSlotId)}<small>${options.escapeHtml(linkItem.targetNodeId)}</small></span>
           </div>
         </section>
       </div>
