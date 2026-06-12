@@ -1097,14 +1097,14 @@ function renderValidationPanel(graph: CharacterResourceGraph, missing: string[],
     ...invalidLinks.map((linkItem) => `Invalid link: ${linkItem.sourceNodeId} -> ${linkItem.targetNodeId}`),
   ]
   return `
-    <section class="chat-resource-validation-panel">
+    <section class="chat-resource-validation-panel ${warnings.length ? 'error' : 'empty'}">
       <header>
         <strong>Validation</strong>
         <span>${warnings.length ? `${warnings.length} issues` : 'pass'}</span>
       </header>
       ${warnings.length
-        ? warnings.map((warning) => `<p>${options.escapeHtml(warning)}</p>`).join('')
-        : '<p>All required resource links are present in the current graph snapshot.</p>'}
+        ? warnings.map((warning) => `<p class="error">${options.escapeHtml(warning)}</p>`).join('')
+        : '<div class="chat-resource-panel-state empty"><strong>No blocking issues</strong><span>All required resource links are present in the current graph snapshot.</span></div>'}
     </section>
   `
 }
@@ -1134,7 +1134,7 @@ function renderRunDraft(graph: CharacterResourceGraph, options: CharacterWorkflo
             <span>${options.escapeHtml(artifact.type)} / ${options.escapeHtml(artifact.sourceNodeId)}</span>
             <p>${options.escapeHtml(artifact.summary ?? 'Mock artifact produced by the frontend lifecycle.')}</p>
           </article>
-        `).join('') || '<article><b>No artifacts yet</b><span>idle</span><p>Run the resource graph mock lifecycle to populate this draft.</p></article>'}
+        `).join('') || '<div class="chat-resource-panel-state empty"><strong>No artifacts yet</strong><span>Run the resource graph mock lifecycle to populate this draft.</span></div>'}
       </section>
       <section class="chat-resource-validation-panel">
         <header>
