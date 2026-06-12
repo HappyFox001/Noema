@@ -12910,6 +12910,20 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   font-size: 9px;
 }
 
+.chat-resource-slot {
+  cursor: crosshair;
+}
+
+.chat-resource-slot.is-compatible-candidate .chat-resource-slot-dot {
+  border-color: rgba(82, 168, 255, 0.9);
+  background: rgba(82, 168, 255, 0.34);
+  box-shadow: 0 0 0 4px rgba(82, 168, 255, 0.12);
+}
+
+.chat-resource-workbench.is-slot-dragging .chat-resource-slot:not(.is-compatible-candidate) {
+  opacity: 0.45;
+}
+
 .chat-resource-selection-rectangle {
   position: absolute;
   z-index: 4;

@@ -551,6 +551,70 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
     })
   }
 
+  const measureSlots = () => {
+    const hostRect = root.getBoundingClientRect()
+    const slotLayout = Array.from(root.querySelectorAll<HTMLElement>('.chat-resource-slot')).map((slotElement) => {
+      const rect = slotElement.getBoundingClientRect()
+      return {
+        nodeId: slotElement.dataset.resourceSlotNode ?? '',
+        slotId: slotElement.dataset.resourceSlotId ?? '',
+        side: slotElement.dataset.resourceSlotSide ?? '',
+        type: slotElement.dataset.resourceSlotType ?? '',
+        x: Math.round(rect.left - hostRect.left + rect.width / 2),
+        y: Math.round(rect.top - hostRect.top + rect.height / 2),
+      }
+    })
+    root.dataset.resourceSlotLayout = JSON.stringify(slotLayout)
+  }
+  measureSlots()
+  window.addEventListener('resize', measureSlots)
+  cleanups.push(() => window.removeEventListener('resize', measureSlots))
+
+  root.querySelectorAll<HTMLElement>('.chat-resource-slot').forEach((slotElement) => {
+    const startSlotDrag = (event: PointerEvent) => {
+      const sourceType = slotElement.dataset.resourceSlotType ?? ''
+      const compatibleSlots = Array.from(root.querySelectorAll<HTMLElement>('.chat-resource-slot'))
+        .filter((candidate) => candidate !== slotElement && candidate.dataset.resourceSlotType === sourceType)
+      compatibleSlots.forEach((candidate) => candidate.classList.add('is-compatible-candidate'))
+      root.dataset.resourceSlotDragState = JSON.stringify({
+        source: {
+          nodeId: slotElement.dataset.resourceSlotNode ?? '',
+          slotId: slotElement.dataset.resourceSlotId ?? '',
+          side: slotElement.dataset.resourceSlotSide ?? '',
+          type: sourceType,
+        },
+        pointer: { x: Math.round(event.clientX), y: Math.round(event.clientY) },
+        compatibleCount: compatibleSlots.length,
+      })
+      root.classList.add('is-slot-dragging')
+      slotElement.setPointerCapture?.(event.pointerId)
+    }
+    const updateSlotDrag = (event: PointerEvent) => {
+      if (!root.classList.contains('is-slot-dragging')) {
+        return
+      }
+      const state = root.dataset.resourceSlotDragState ? JSON.parse(root.dataset.resourceSlotDragState) as Record<string, unknown> : {}
+      root.dataset.resourceSlotDragState = JSON.stringify({
+        ...state,
+        pointer: { x: Math.round(event.clientX), y: Math.round(event.clientY) },
+      })
+    }
+    const endSlotDrag = () => {
+      root.classList.remove('is-slot-dragging')
+      root.querySelectorAll<HTMLElement>('.chat-resource-slot.is-compatible-candidate').forEach((candidate) => candidate.classList.remove('is-compatible-candidate'))
+    }
+    slotElement.addEventListener('pointerdown', startSlotDrag)
+    slotElement.addEventListener('pointermove', updateSlotDrag)
+    slotElement.addEventListener('pointerup', endSlotDrag)
+    slotElement.addEventListener('pointercancel', endSlotDrag)
+    cleanups.push(() => {
+      slotElement.removeEventListener('pointerdown', startSlotDrag)
+      slotElement.removeEventListener('pointermove', updateSlotDrag)
+      slotElement.removeEventListener('pointerup', endSlotDrag)
+      slotElement.removeEventListener('pointercancel', endSlotDrag)
+    })
+  })
+
   createIcons({
     icons: {
       Download,
