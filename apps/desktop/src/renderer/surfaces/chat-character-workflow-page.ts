@@ -22,6 +22,7 @@ export interface CharacterWorkflowPageOptions {
   activePanel: CharacterWorkflowSidePanel
   sidebarCollapsed: boolean
   inspectorCollapsed: boolean
+  nodeSearchOpen?: boolean
   viewState?: CharacterResourceViewState
 }
 
@@ -410,7 +411,7 @@ export function renderCharacterWorkflowPage(options: CharacterWorkflowPageOption
   const liteGraphSnapshot = createLiteGraphSnapshot(graph)
   const yjsSnapshot = createYjsSnapshot(graph, liteGraphSnapshot)
   return `
-    <div class="chat-character-workflow-shell chat-resource-workbench" data-resource-graph-id="${options.escapeHtml(graph.id)}">
+    <div class="chat-character-workflow-shell chat-resource-workbench ${options.nodeSearchOpen ? 'is-node-search-open' : ''}" data-resource-graph-id="${options.escapeHtml(graph.id)}">
       ${renderFileTabs(options)}
       <div class="chat-character-workflow-stage">
         <div class="chat-resource-workspace ${options.sidebarCollapsed ? 'sidebar-collapsed' : ''} ${options.inspectorCollapsed ? 'inspector-collapsed' : ''}" style="--resource-left-panel: ${graph.panels.leftWidth}px; --resource-right-panel: ${graph.panels.rightWidth}px; --resource-bottom-panel: ${graph.panels.bottomHeight}px">
@@ -492,10 +493,12 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
     onDrop: () => root.classList.remove('is-resource-dragging'),
   }))
 
-  const searchInput = root.querySelector<HTMLElement>('[data-chat-resource-node-search]')
+  const searchInput = root.querySelector<HTMLElement>('.chat-resource-search-panel [data-chat-resource-node-search]')
   const searchPopover = root.querySelector<HTMLElement>('.chat-resource-node-search-popover')
-  if (searchInput instanceof HTMLInputElement) {
-    const preview = root.querySelector<HTMLElement>('[data-resource-node-preview]')
+  root.querySelectorAll<HTMLInputElement>('[data-chat-resource-node-search]').forEach((inputElement) => {
+    const searchScope = inputElement.closest<HTMLElement>('[data-resource-node-search-scope]') ?? root
+    const preview = searchScope.querySelector<HTMLElement>('[data-resource-node-preview]')
+    const filterTargets = () => Array.from(searchScope.querySelectorAll<HTMLButtonElement>('[data-resource-library-card]'))
     const updatePreview = (card: HTMLElement) => {
       if (!preview) {
         return
@@ -505,14 +508,16 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
       preview.innerHTML = `<strong>${title}</strong><p>${body}</p>`
     }
     const filterCards = () => {
-      const query = searchInput.value.trim().toLowerCase()
-      root.querySelectorAll<HTMLElement>('[data-resource-library-card]').forEach((card) => {
+      const query = inputElement.value.trim().toLowerCase()
+      filterTargets().forEach((card) => {
         const searchable = (card.dataset.resourceSearchText ?? '').toLowerCase()
-        card.hidden = Boolean(query) && !searchable.includes(query)
+        const activeCategory = card.closest<HTMLElement>('[data-resource-node-search-scope]')?.dataset.resourceNodeSearchCategory ?? 'all'
+        const matchesCategory = activeCategory === 'all' || card.dataset.resourceCategory === activeCategory
+        card.hidden = (Boolean(query) && !searchable.includes(query)) || !matchesCategory
       })
     }
     const focusNextCard = (direction: 1 | -1) => {
-      const cards = Array.from(root.querySelectorAll<HTMLButtonElement>('[data-resource-library-card]')).filter((card) => !card.hidden)
+      const cards = filterTargets().filter((card) => !card.hidden)
       const activeIndex = Math.max(0, cards.findIndex((card) => card === document.activeElement))
       const next = cards[(activeIndex + direction + cards.length) % cards.length]
       next?.focus()
@@ -529,23 +534,48 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
         event.preventDefault()
         focusNextCard(-1)
       }
+      if (event.key === 'Enter') {
+        event.preventDefault()
+        const firstCard = filterTargets().find((card) => !card.hidden)
+        firstCard?.click()
+      }
     }
     const handleCardHover = (event: Event) => {
       const card = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-resource-library-card]')
-      if (card) {
+      if (card && searchScope.contains(card)) {
         updatePreview(card)
       }
     }
-    searchInput.addEventListener('input', filterCards)
-    searchInput.addEventListener('keydown', handleSearchKey)
-    root.addEventListener('mouseover', handleCardHover)
-    root.addEventListener('focusin', handleCardHover)
+    const handleCategoryFilter = (event: Event) => {
+      const categoryButton = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>('[data-resource-node-search-category]')
+      const scope = categoryButton?.closest<HTMLElement>('[data-resource-node-search-scope]')
+      if (!categoryButton || !scope) {
+        return
+      }
+      scope.dataset.resourceNodeSearchCategory = categoryButton.dataset.resourceNodeSearchCategory ?? 'all'
+      scope.querySelectorAll<HTMLElement>('[data-resource-node-search-category]').forEach((button) => button.classList.toggle('active', button === categoryButton))
+      filterCards()
+      const firstCard = filterTargets().find((card) => !card.hidden)
+      if (firstCard) {
+        updatePreview(firstCard)
+      }
+    }
+    inputElement.addEventListener('input', filterCards)
+    inputElement.addEventListener('keydown', handleSearchKey)
+    searchScope.addEventListener('mouseover', handleCardHover)
+    searchScope.addEventListener('focusin', handleCardHover)
+    searchScope.addEventListener('click', handleCategoryFilter)
+    filterCards()
     cleanups.push(() => {
-      searchInput.removeEventListener('input', filterCards)
-      searchInput.removeEventListener('keydown', handleSearchKey)
-      root.removeEventListener('mouseover', handleCardHover)
-      root.removeEventListener('focusin', handleCardHover)
+      inputElement.removeEventListener('input', filterCards)
+      inputElement.removeEventListener('keydown', handleSearchKey)
+      searchScope.removeEventListener('mouseover', handleCardHover)
+      searchScope.removeEventListener('focusin', handleCardHover)
+      searchScope.removeEventListener('click', handleCategoryFilter)
     })
+  })
+  if (root.classList.contains('is-node-search-open')) {
+    root.querySelector<HTMLInputElement>('.chat-resource-node-search-popover [data-chat-resource-node-search]')?.focus()
   }
   if (searchInput && searchPopover) {
     void computePosition(searchInput, searchPopover, {
@@ -812,7 +842,7 @@ function renderResourceLibrary(graph: CharacterResourceGraph, options: Character
           <button class="${graph.panels.activePanel === 'assets' ? 'active' : ''}" type="button" data-chat-workflow-panel="assets"><span>Package</span><em>${graph.mockOutputs.length}</em></button>
           <button class="${graph.panels.activePanel === 'nodes' ? 'active' : ''}" type="button" data-chat-workflow-panel="nodes"><span>Nodes</span><em>${RESOURCE_NODE_DEFINITIONS.length}</em></button>
         </section>
-        <section class="chat-resource-search-panel">
+        <section class="chat-resource-search-panel" data-resource-node-search-scope data-resource-node-search-category="all">
           <label>
             <span>${options.escapeHtml(options.language === 'zh-CN' ? '搜索节点' : 'Search nodes')}</span>
             <input type="search" value="" placeholder="${options.escapeHtml(options.language === 'zh-CN' ? '名称 / 类型 / slot' : 'name / type / slot')}" data-chat-resource-node-search>
@@ -854,7 +884,7 @@ function renderNodeLibraryCard(definition: CharacterResourceNodeDefinition, grap
     ...definition.outputs.map((slotItem) => slotItem.type),
   ].join(' ')
   return `
-    <button class="chat-resource-library-card" type="button" data-resource-library-card data-resource-search-text="${options.escapeHtml(searchText)}" data-resource-preview-title="${options.escapeHtml(definition.displayName)}" data-resource-preview-body="${options.escapeHtml(definition.description)}" data-chat-workflow-panel="nodes" ${existing ? `data-chat-workflow-node-select="${options.escapeHtml(existing.id)}"` : ''}>
+    <button class="chat-resource-library-card" type="button" data-resource-library-card data-resource-category="${options.escapeHtml(definition.category)}" data-resource-search-text="${options.escapeHtml(searchText)}" data-resource-preview-title="${options.escapeHtml(definition.displayName)}" data-resource-preview-body="${options.escapeHtml(definition.description)}" data-chat-workflow-panel="nodes" ${existing ? `data-chat-workflow-node-select="${options.escapeHtml(existing.id)}"` : ''}>
       <span>
         <b>${options.escapeHtml(definition.displayName)}</b>
         <small>${options.escapeHtml(definition.category)} / ${options.escapeHtml(definition.source)}</small>
@@ -1310,14 +1340,29 @@ function renderBottomToolbar(graph: CharacterResourceGraph, options: CharacterWo
 }
 
 function renderNodeSearchPopover(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): string {
-  const candidates = definitionFuse.search('persona').map((result) => result.item).slice(0, 6)
+  const candidates = definitionFuse.search('persona').map((result) => result.item)
+  const categories = getResourceCategories()
   return `
-    <div class="chat-resource-node-search-popover" role="dialog" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '节点搜索' : 'Node search')}">
+    <div class="chat-resource-node-search-popover" role="dialog" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '节点搜索' : 'Node search')}" data-resource-node-search-scope data-resource-node-search-category="all">
       <header>
         <strong>${options.escapeHtml(options.language === 'zh-CN' ? '添加可连接节点' : 'Add connectable node')}</strong>
         <span>${options.escapeHtml(String(candidates.length))}</span>
       </header>
+      <label class="chat-resource-node-search-field">
+        <span>${options.escapeHtml(options.language === 'zh-CN' ? '搜索' : 'Search')}</span>
+        <input type="search" value="" placeholder="${options.escapeHtml(options.language === 'zh-CN' ? '名称 / 类型 / slot' : 'name / type / slot')}" data-chat-resource-node-search>
+      </label>
+      <div class="chat-resource-node-search-filters" role="toolbar" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '节点分类筛选' : 'Node category filters')}">
+        <button class="active" type="button" data-resource-node-search-category="all">All</button>
+        ${categories.map((category) => `<button type="button" data-resource-node-search-category="${options.escapeHtml(category)}">${options.escapeHtml(category)}</button>`).join('')}
+      </div>
+      <div class="chat-resource-node-search-results">
       ${candidates.map((definition) => renderNodeLibraryCard(definition, graph, options)).join('')}
+      </div>
+      <div class="chat-resource-node-preview" data-resource-node-preview>
+        <strong>${options.escapeHtml(candidates[0]?.displayName ?? 'Node Preview')}</strong>
+        <p>${options.escapeHtml(candidates[0]?.description ?? '')}</p>
+      </div>
     </div>
   `
 }

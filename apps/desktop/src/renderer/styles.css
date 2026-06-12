@@ -12523,6 +12523,13 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   align-items: center;
 }
 
+.chat-resource-library-card:hover,
+.chat-resource-library-card:focus-visible {
+  border-color: rgba(82, 168, 255, 0.32) !important;
+  background: rgba(82, 168, 255, 0.08) !important;
+  color: rgba(248, 250, 250, 0.86) !important;
+}
+
 .chat-resource-library-card span {
   display: grid;
   gap: 3px;
@@ -13071,7 +13078,8 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   backdrop-filter: blur(18px);
 }
 
-.chat-resource-workbench.is-resource-dragging .chat-resource-node-search-popover {
+.chat-resource-workbench.is-resource-dragging .chat-resource-node-search-popover,
+.chat-resource-workbench.is-node-search-open .chat-resource-node-search-popover {
   display: grid;
 }
 
@@ -13086,6 +13094,72 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   color: rgba(248, 250, 250, 0.72);
   font-family: var(--font-ui);
   font-size: 11px;
+}
+
+.chat-resource-node-search-field {
+  display: grid;
+  gap: 5px;
+}
+
+.chat-resource-node-search-field span {
+  color: rgba(162, 202, 188, 0.62);
+  font-family: var(--font-ui);
+  font-size: 9px;
+  font-weight: 760;
+  text-transform: uppercase;
+}
+
+.chat-resource-node-search-field input {
+  width: 100%;
+  height: 30px;
+  border: 1px solid rgba(248, 250, 250, 0.09);
+  border-radius: 6px;
+  outline: 0;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(248, 250, 250, 0.82);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  padding: 0 8px;
+}
+
+.chat-resource-node-search-field input:focus {
+  border-color: rgba(82, 168, 255, 0.38);
+  box-shadow: 0 0 0 2px rgba(82, 168, 255, 0.09);
+}
+
+.chat-resource-node-search-filters {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.chat-resource-node-search-filters button {
+  height: 23px;
+  flex: 0 0 auto;
+  padding: 0 8px;
+  border: 1px solid rgba(248, 250, 250, 0.075);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.028);
+  color: rgba(248, 250, 250, 0.48);
+  font-family: var(--font-ui);
+  font-size: 10px;
+}
+
+.chat-resource-node-search-filters button.active,
+.chat-resource-node-search-filters button:hover,
+.chat-resource-node-search-filters button:focus-visible {
+  border-color: rgba(82, 168, 255, 0.34);
+  background: rgba(82, 168, 255, 0.1);
+  color: rgba(248, 250, 250, 0.82);
+}
+
+.chat-resource-node-search-results {
+  display: grid;
+  max-height: 276px;
+  gap: 6px;
+  overflow: auto;
+  padding-right: 2px;
 }
 
 .chat-resource-output-card {

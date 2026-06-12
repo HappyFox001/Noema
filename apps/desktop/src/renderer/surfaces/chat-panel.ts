@@ -68,6 +68,7 @@ interface CharacterWorkflowEditorState {
   activePanel: CharacterWorkflowSidePanel
   sidebarCollapsed: boolean
   inspectorCollapsed: boolean
+  nodeSearchOpen: boolean
 }
 
 export interface ChatPanelController {
@@ -180,6 +181,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     activePanel: 'workflow',
     sidebarCollapsed: false,
     inspectorCollapsed: false,
+    nodeSearchOpen: false,
   }
   let characterWorkflowDragging: {
     nodeId: string
@@ -1551,6 +1553,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       activePanel: characterWorkflowEditorState.activePanel,
       sidebarCollapsed: characterWorkflowEditorState.sidebarCollapsed,
       inspectorCollapsed: characterWorkflowEditorState.inspectorCollapsed,
+      nodeSearchOpen: characterWorkflowEditorState.nodeSearchOpen,
       viewState: {
         zoom: characterResourceViewState.zoom,
         panX: characterResourceViewState.panX,
@@ -1719,6 +1722,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       },
       'open-node-search': () => {
         characterWorkflowEditorState.activePanel = 'nodes'
+        characterWorkflowEditorState.nodeSearchOpen = true
         renderCharacterWorkflow()
       },
       'chat-test': () => showToast(options.getLanguage() === 'zh-CN' ? '聊天测试入口已准备，但不调用真实聊天' : 'Chat test entry is ready without calling real chat'),
@@ -1834,6 +1838,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
     characterWorkflowEditorState.activePanel = panelId
+    if (panelId !== 'nodes') {
+      characterWorkflowEditorState.nodeSearchOpen = false
+    }
     renderCharacterWorkflow()
   }
 
@@ -2578,6 +2585,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (workflowLinkSelect && panel.contains(workflowLinkSelect)) {
       characterResourceViewState.selectedLinkId = workflowLinkSelect.dataset.chatWorkflowLinkSelect || ''
       characterResourceViewState.selectedNodeIds = []
+      characterWorkflowEditorState.nodeSearchOpen = false
       renderCharacterWorkflow()
       return
     }
@@ -2585,6 +2593,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const workflowNodeSelect = eventTarget.closest<HTMLElement>('[data-chat-workflow-node-select]')
     if (workflowNodeSelect && panel.contains(workflowNodeSelect)) {
       characterResourceViewState.selectedLinkId = ''
+      characterWorkflowEditorState.nodeSearchOpen = false
       const panelId = workflowNodeSelect.dataset.chatWorkflowPanel
       if (panelId) {
         setCharacterWorkflowPanel(panelId)
@@ -2685,6 +2694,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     if (event.key === 'Escape' && chatHistoryPanel?.classList.contains('visible')) {
       closeChatHistoryManager()
+    }
+    if (event.key === 'Escape' && characterWorkflowEditorState.nodeSearchOpen) {
+      characterWorkflowEditorState.nodeSearchOpen = false
+      renderCharacterWorkflow()
     }
   })
 
