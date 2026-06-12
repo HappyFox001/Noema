@@ -747,13 +747,16 @@ function renderSidebarToggle(options: CharacterWorkflowPageOptions): string {
 }
 
 function renderResourceCanvas(graph: CharacterResourceGraph, yjsSnapshot: string, options: CharacterWorkflowPageOptions): string {
+  const activeTab = normalizeActiveTab(options.activeTabId)
   return `
     <section class="chat-workflow-canvas chat-resource-canvas" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '角色资源图画布' : 'Character resource graph canvas')}">
       ${renderCanvasControls(graph, options)}
       <div class="chat-resource-tabs">
-        ${graph.tabs.map((tab) => `<button class="${tab.id === normalizeActiveTab(options.activeTabId) ? 'active' : ''}" type="button" data-chat-workflow-tab="${options.escapeHtml(tab.id === 'package-preview' ? 'character-pack' : tab.id)}">${options.escapeHtml(tab.title)}</button>`).join('')}
+        ${graph.tabs.map((tab) => `<button class="${tab.id === activeTab ? 'active' : ''}" type="button" data-chat-workflow-tab="${options.escapeHtml(tab.id === 'package-preview' ? 'character-pack' : tab.id)}">${options.escapeHtml(tab.title)}</button>`).join('')}
       </div>
-      <div class="chat-workflow-canvas-viewport" data-resource-viewport="${options.escapeHtml(JSON.stringify(graph.viewport))}">
+      ${activeTab === 'package-preview' ? renderPackagePreview(graph, options) : ''}
+      ${activeTab === 'run-draft' ? renderRunDraft(graph, options) : ''}
+      <div class="chat-workflow-canvas-viewport ${activeTab === 'workflow' ? 'active' : 'inactive'}" data-resource-viewport="${options.escapeHtml(JSON.stringify(graph.viewport))}">
         <div class="chat-workflow-canvas-plane chat-resource-graph-plane" style="--resource-zoom: ${graph.viewport.zoom}">
           <div class="chat-workflow-canvas-grid" aria-hidden="true"></div>
           ${graph.groups.map((group) => renderGroup(group, graph, options)).join('')}
@@ -766,6 +769,101 @@ function renderResourceCanvas(graph: CharacterResourceGraph, yjsSnapshot: string
       ${renderNodeSearchPopover(graph, options)}
       ${renderCanvasContextMenu(options)}
     </section>
+  `
+}
+
+function renderPackagePreview(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): string {
+  const requiredTypes = ['identity', 'persona', 'scene', 'dialogue', 'rp-rule']
+  const outputTypes = new Set(graph.links.map((linkItem) => linkItem.targetSlotId))
+  const missing = requiredTypes.filter((type) => !outputTypes.has(type))
+  const manifest = {
+    id: graph.id,
+    title: graph.title,
+    resources: graph.mockOutputs.length,
+    links: graph.links.length,
+    missing,
+  }
+  return `
+    <div class="chat-resource-tab-panel package-preview">
+      <section class="chat-resource-manifest-preview">
+        <header>
+          <span>manifest.json</span>
+          <strong>${options.escapeHtml(graph.title)}</strong>
+        </header>
+        <pre>${options.escapeHtml(JSON.stringify(manifest, null, 2))}</pre>
+      </section>
+      <section class="chat-resource-package-list">
+        <header>
+          <strong>Resources</strong>
+          <span>${graph.mockOutputs.length}</span>
+        </header>
+        ${graph.mockOutputs.map((output) => `
+          <article>
+            <b>${options.escapeHtml(output.title)}</b>
+            <span>${options.escapeHtml(output.type)} / ${options.escapeHtml(output.status)}</span>
+            <p>${options.escapeHtml(output.summary)}</p>
+          </article>
+        `).join('')}
+      </section>
+      ${renderValidationPanel(graph, missing, options)}
+    </div>
+  `
+}
+
+function renderValidationPanel(graph: CharacterResourceGraph, missing: string[], options: CharacterWorkflowPageOptions): string {
+  const invalidLinks = graph.links.filter((linkItem) => linkItem.status !== 'valid')
+  const warnings = [
+    ...missing.map((type) => `Missing required package input: ${type}`),
+    ...invalidLinks.map((linkItem) => `Invalid link: ${linkItem.sourceNodeId} -> ${linkItem.targetNodeId}`),
+  ]
+  return `
+    <section class="chat-resource-validation-panel">
+      <header>
+        <strong>Validation</strong>
+        <span>${warnings.length ? `${warnings.length} issues` : 'pass'}</span>
+      </header>
+      ${warnings.length
+        ? warnings.map((warning) => `<p>${options.escapeHtml(warning)}</p>`).join('')
+        : '<p>All required resource links are present in the current graph snapshot.</p>'}
+    </section>
+  `
+}
+
+function renderRunDraft(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): string {
+  const runStatus = options.runState?.run?.status ?? 'idle'
+  const lifecycle = ['queued', 'running', 'done', 'failed'] as const
+  return `
+    <div class="chat-resource-tab-panel run-draft">
+      <section class="chat-resource-run-summary">
+        <header>
+          <span>${options.escapeHtml(options.runState?.run?.id ?? 'no-run')}</span>
+          <strong>${options.escapeHtml(options.runState?.run?.title ?? 'Run Draft')}</strong>
+        </header>
+        <div class="chat-resource-run-lifecycle">
+          ${lifecycle.map((step) => `<i class="${runStatus === step || (runStatus === 'idle' && step === 'queued') ? 'active' : ''}">${options.escapeHtml(step)}</i>`).join('')}
+        </div>
+      </section>
+      <section class="chat-resource-package-list">
+        <header>
+          <strong>Produced Artifacts</strong>
+          <span>${options.escapeHtml(String(options.runState?.artifacts?.length ?? 0))}</span>
+        </header>
+        ${(options.runState?.artifacts ?? []).map((artifact) => `
+          <article>
+            <b>${options.escapeHtml(artifact.title ?? artifact.type)}</b>
+            <span>${options.escapeHtml(artifact.type)} / ${options.escapeHtml(artifact.sourceNodeId)}</span>
+            <p>${options.escapeHtml(artifact.summary ?? 'Mock artifact produced by the frontend lifecycle.')}</p>
+          </article>
+        `).join('') || '<article><b>No artifacts yet</b><span>idle</span><p>Run the resource graph mock lifecycle to populate this draft.</p></article>'}
+      </section>
+      <section class="chat-resource-validation-panel">
+        <header>
+          <strong>Agent Boundary</strong>
+          <span>${graph.nodes.length} nodes</span>
+        </header>
+        <p>Backend agents are not called here. This draft only mirrors queued/running/done/failed frontend lifecycle state.</p>
+      </section>
+    </div>
   `
 }
 
@@ -1183,7 +1281,7 @@ function normalizeActiveTab(activeTabId: string): string {
   if (activeTabId === 'character-pack') {
     return 'package-preview'
   }
-  if (activeTabId.startsWith('run-')) {
+  if (activeTabId.startsWith('run-') || activeTabId.startsWith('resource-run-')) {
     return 'run-draft'
   }
   return activeTabId
