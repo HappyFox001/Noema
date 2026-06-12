@@ -478,13 +478,41 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
       contextMenu.classList.add('is-open')
       contextMenu.style.left = `${event.offsetX}px`
       contextMenu.style.top = `${event.offsetY}px`
+      contextMenu.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus()
     }
     const closeContextMenu = () => contextMenu?.classList.remove('is-open')
+    const handleContextMenuKey = (event: KeyboardEvent) => {
+      if (!contextMenu?.classList.contains('is-open')) {
+        return
+      }
+      const menuItems = Array.from(contextMenu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'))
+      const activeIndex = Math.max(0, menuItems.findIndex((item) => item === document.activeElement))
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault()
+        const direction = event.key === 'ArrowDown' ? 1 : -1
+        menuItems[(activeIndex + direction + menuItems.length) % menuItems.length]?.focus()
+      }
+      if (event.key === 'Home') {
+        event.preventDefault()
+        menuItems[0]?.focus()
+      }
+      if (event.key === 'End') {
+        event.preventDefault()
+        menuItems[menuItems.length - 1]?.focus()
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        closeContextMenu()
+        canvas.focus()
+      }
+    }
     canvas.addEventListener('contextmenu', openContextMenu)
     root.addEventListener('click', closeContextMenu)
+    contextMenu?.addEventListener('keydown', handleContextMenuKey)
     cleanups.push(() => {
       canvas.removeEventListener('contextmenu', openContextMenu)
       root.removeEventListener('click', closeContextMenu)
+      contextMenu?.removeEventListener('keydown', handleContextMenuKey)
     })
   }
 
@@ -908,7 +936,7 @@ function renderSidebarToggle(options: CharacterWorkflowPageOptions): string {
 function renderResourceCanvas(graph: CharacterResourceGraph, yjsSnapshot: string, options: CharacterWorkflowPageOptions): string {
   const activeTab = normalizeActiveTab(options.activeTabId)
   return `
-    <section class="chat-workflow-canvas chat-resource-canvas" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '角色资源图画布' : 'Character resource graph canvas')}">
+    <section class="chat-workflow-canvas chat-resource-canvas" tabindex="-1" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '角色资源图画布' : 'Character resource graph canvas')}">
       ${renderCanvasControls(graph, options)}
       <div class="chat-resource-tabs">
         ${graph.tabs.map((tab) => `<button class="${tab.id === activeTab ? 'active' : ''}" type="button" data-chat-workflow-tab="${options.escapeHtml(tab.id === 'package-preview' ? 'character-pack' : tab.id)}">${options.escapeHtml(tab.title)}</button>`).join('')}

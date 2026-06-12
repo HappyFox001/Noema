@@ -13112,6 +13112,12 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   display: grid;
 }
 
+.chat-resource-context-menu button:focus-visible {
+  border-color: rgba(82, 168, 255, 0.36);
+  background: rgba(82, 168, 255, 0.1);
+  color: rgba(248, 250, 250, 0.86);
+}
+
 .chat-resource-node-search-popover header {
   display: flex;
   align-items: center;
