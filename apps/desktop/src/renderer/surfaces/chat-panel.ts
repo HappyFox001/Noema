@@ -24,6 +24,7 @@ import {
   createDraftCharacterResourceRunState,
   initializeCharacterResourceWorkbench,
   renderCharacterWorkflowPage,
+  serializeCharacterResourceGraph,
   type CharacterResourceRunState,
   type CharacterWorkflowFileTab,
   type CharacterWorkflowSidePanel,
@@ -159,6 +160,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let characterWorkflowActiveTabId = 'workflow'
   let characterWorkflowPackTabOpen = false
   let selectedWorkflowNodeId = 'brief-input'
+  let lastCharacterResourceGraphSnapshot = ''
   let characterResourceDuplicateCount = 0
   const characterResourceViewState = {
     zoom: 0.84,
@@ -1603,7 +1605,25 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function executeCharacterResourceCommand(action: string, target?: HTMLElement): boolean {
     const commands: Record<string, () => void> = {
-      'save-graph': () => showToast(options.getLanguage() === 'zh-CN' ? '资源图前端状态已保存到本地快照' : 'Resource graph frontend state saved to local snapshot'),
+      'save-graph': () => {
+        const yjsSnapshot = characterWorkflowRoot?.querySelector<HTMLElement>('.chat-resource-serializer')?.dataset.yjsSnapshot ?? '{}'
+        lastCharacterResourceGraphSnapshot = serializeCharacterResourceGraph({
+          graphId: 'draft-character-resource-graph',
+          activeTabId: characterWorkflowActiveTabId,
+          selectedNodeId: selectedWorkflowNodeId,
+          viewState: {
+            zoom: characterResourceViewState.zoom,
+            hideLinks: characterResourceViewState.hideLinks,
+            collapsedNodeIds: [...characterResourceViewState.collapsedNodeIds],
+            deletedNodeIds: [...characterResourceViewState.deletedNodeIds],
+            duplicatedNodes: characterResourceViewState.duplicatedNodes,
+          },
+          configOverrides: characterWorkflowConfigOverrides,
+          positionOverrides: characterWorkflowPositionOverrides,
+          yjsSnapshot,
+        })
+        showToast(options.getLanguage() === 'zh-CN' ? '资源图前端状态已保存到本地快照' : 'Resource graph frontend state saved to local snapshot')
+      },
       'fit-view': () => {
         characterResourceViewState.zoom = 0.72
         renderCharacterWorkflow()
