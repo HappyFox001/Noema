@@ -25,7 +25,12 @@ import {
   saveConversationSettings,
   type ChatConversationSettings,
 } from './chat-conversation-settings'
-import { renderCharacterWorkflowPage, type CharacterWorkflowFileTab, type CharacterWorkflowSidePanel } from './chat-character-workflow-page'
+import {
+  initializeCharacterResourceWorkbench,
+  renderCharacterWorkflowPage,
+  type CharacterWorkflowFileTab,
+  type CharacterWorkflowSidePanel,
+} from './chat-character-workflow-page'
 import {
   applyChatResourceState,
   createInitialChatState,
@@ -1519,6 +1524,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       sidebarCollapsed: characterWorkflowEditorState.sidebarCollapsed,
       inspectorCollapsed: characterWorkflowEditorState.inspectorCollapsed,
     })
+    initializeCharacterResourceWorkbench(characterWorkflowRoot)
   }
 
   function createConfiguredCharacterWorkflow() {

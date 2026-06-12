@@ -1,26 +1,20 @@
 /**
- * Renders the Character Workflow chat page shell.
+ * Renders the character resource graph workbench for the chat surface.
  */
-import {
-  createCharacterWorkflowAgentPath,
-  createWorkflowRunState,
-  createStandardCharacterWorkflow,
-  getStandardCharacterWorkflowNodeDefinitions,
-  type CharacterWorkflowAgentPathStep,
-  type CharacterWorkflow,
-  type CharacterWorkflowNode,
-  type CharacterWorkflowNodeDefinition,
-  type CharacterWorkflowNodeParameter,
-  type CharacterWorkflowRunState,
-  type WorkflowRunSession,
-} from '@noema/sdk/character-workflow'
+import Fuse from 'fuse.js'
+import Split from 'split-grid'
+import { draggable, dropTargetForElements, monitorForElements } from '@atlaskit/pragmatic-drag-and-drop/dist/esm/adapter/element-adapter.js'
+import { computePosition, flip, offset, shift } from '@floating-ui/dom'
+import { LGraph, LiteGraph } from 'litegraph.js'
+import { Download, Link2Off, Maximize, MessageCircle, Package, Play, RotateCcw, Save, Search, createIcons } from 'lucide'
+import * as Y from 'yjs'
 
 export interface CharacterWorkflowPageOptions {
   language: 'zh-CN' | 'en-US'
   escapeHtml(value: string): string
   configOverrides?: Record<string, Record<string, unknown>>
   positionOverrides?: Record<string, { x: number; y: number }>
-  runState?: CharacterWorkflowRunState | null
+  runState?: CharacterResourceRunState | null
   tabs: CharacterWorkflowFileTab[]
   activeTabId: string
   selectedNodeId: string
@@ -38,139 +32,625 @@ export interface CharacterWorkflowFileTab {
 
 export type CharacterWorkflowSidePanel = 'workflow' | 'assets' | 'nodes'
 
+type CharacterResourceNodeStatus = 'idle' | 'dirty' | 'queued' | 'running' | 'done' | 'failed' | 'stale' | 'disabled'
+type CharacterResourcePreviewType = 'text-card' | 'image' | 'voice' | 'rule' | 'validation' | 'package'
+type CharacterResourceParameterType = 'text' | 'textarea' | 'number' | 'integer' | 'boolean' | 'select' | 'multi-select' | 'string-list'
+type CharacterResourceLinkKind = 'requires' | 'constrains' | 'references' | 'validates' | 'exports' | 'suggests'
+
+interface CharacterResourceGraph {
+  id: string
+  title: string
+  nodes: CharacterResourceNode[]
+  links: CharacterResourceLink[]
+  groups: CharacterResourceGroup[]
+  tabs: CharacterResourceGraphTab[]
+  viewport: CharacterResourceViewport
+  selection: CharacterResourceSelection
+  panels: CharacterResourcePanels
+  mockOutputs: CharacterResourceMockOutput[]
+}
+
+interface CharacterResourceNodeDefinition {
+  type: string
+  displayName: string
+  aliases: string[]
+  category: string
+  source: 'core' | 'asset' | 'agent' | 'safety'
+  description: string
+  inputs: CharacterResourceSlotDefinition[]
+  outputs: CharacterResourceSlotDefinition[]
+  parameters: CharacterResourceParameterDefinition[]
+  defaultSize: { width: number; height: number }
+  previewType: CharacterResourcePreviewType
+}
+
+interface CharacterResourceSlotDefinition {
+  id: string
+  label: string
+  type: string
+  required?: boolean
+  tooltip: string
+}
+
+interface CharacterResourceParameterDefinition {
+  id: string
+  label: string
+  type: CharacterResourceParameterType
+  defaultValue: unknown
+  min?: number
+  max?: number
+  step?: number
+  options?: Array<{ label: string; value: string }>
+}
+
+interface CharacterResourceNode {
+  id: string
+  type: string
+  title: string
+  position: { x: number; y: number }
+  size: { width: number; height: number }
+  status: CharacterResourceNodeStatus
+  collapsed?: boolean
+  zIndex: number
+  config: Record<string, unknown>
+}
+
+interface CharacterResourceLink {
+  id: string
+  sourceNodeId: string
+  sourceSlotId: string
+  targetNodeId: string
+  targetSlotId: string
+  kind: CharacterResourceLinkKind
+  label: string
+  status: 'valid' | 'warning' | 'invalid' | 'hidden'
+}
+
+interface CharacterResourceGroup {
+  id: string
+  title: string
+  nodeIds: string[]
+  color: string
+}
+
+interface CharacterResourceGraphTab {
+  id: string
+  title: string
+  kind: 'resource-graph' | 'package-preview' | 'run-draft'
+}
+
+interface CharacterResourceViewport {
+  x: number
+  y: number
+  zoom: number
+}
+
+interface CharacterResourceSelection {
+  nodeIds: string[]
+  linkIds: string[]
+}
+
+interface CharacterResourcePanels {
+  leftWidth: number
+  rightWidth: number
+  bottomHeight: number
+  activePanel: CharacterWorkflowSidePanel
+}
+
+interface CharacterResourceMockOutput {
+  id: string
+  nodeId: string
+  type: string
+  title: string
+  summary: string
+  status: CharacterResourceNodeStatus
+}
+
+interface CharacterResourceRunState {
+  run?: {
+    id: string
+    title: string
+    status: 'idle' | 'running' | 'failed' | 'done'
+  }
+  artifacts?: Array<{
+    id?: string
+    type: string
+    sourceNodeId: string
+    title?: string
+    summary?: string
+  }>
+}
+
+const LINK_KIND_LABELS: Record<CharacterResourceLinkKind, string> = {
+  requires: 'requires',
+  constrains: 'constrains',
+  references: 'references',
+  validates: 'validates',
+  exports: 'exports',
+  suggests: 'suggests',
+}
+
+const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
+  createDefinition('brief', 'Character Brief', ['需求', 'brief', 'goal'], 'brief', 'core', 'Defines generation intent, target interaction, audience, taboo zones, and acceptance boundaries.', [], [
+    slot('brief', 'Brief', 'brief', 'Generation brief and boundaries.'),
+  ], [
+    param('prompt', 'Prompt', 'textarea', 'A slow-burn agentic RP character with rich resources and explicit constraints.'),
+    param('audience', 'Audience', 'text', 'private roleplay'),
+  ], 'text-card'),
+  createDefinition('identity', 'Identity Card', ['身份', 'name', 'profile'], 'identity', 'core', 'Stores name, address forms, public identity, age band, occupation, tags, and relationship anchor.', [
+    slot('brief', 'Brief', 'brief', 'Identity must satisfy this brief.', true),
+  ], [
+    slot('identity', 'Identity', 'identity', 'Structured identity resource.'),
+  ], [
+    param('name', 'Name', 'text', 'Chen Qianyu'),
+    param('tags', 'Tags', 'string-list', ['reserved', 'strategic', 'slow-burn']),
+  ], 'text-card'),
+  createDefinition('persona', 'Persona Engine', ['性格', 'persona', 'motivation'], 'persona', 'core', 'Models values, flaws, secrets, desire, refusal rules, and emotional inertia.', [
+    slot('identity', 'Identity', 'identity', 'Identity anchor.', true),
+    slot('brief', 'Brief', 'brief', 'Intent boundary.', true),
+  ], [
+    slot('persona', 'Persona', 'persona', 'Character psychology resource.'),
+  ], [
+    param('coreDrive', 'Core Drive', 'textarea', 'Protect control while testing trust.'),
+    param('contradiction', 'Contradiction', 'textarea', 'Craves closeness but punishes rushed intimacy.'),
+  ], 'text-card'),
+  createDefinition('world', 'World Bible', ['世界观', 'setting', 'lore'], 'world', 'asset', 'Defines era, factions, locations, rules, social pressure, and plot affordances.', [
+    slot('brief', 'Brief', 'brief', 'World should support the brief.', true),
+  ], [
+    slot('world', 'World', 'world', 'World and lore resource.'),
+  ], [
+    param('era', 'Era', 'select', 'modern', undefined, undefined, undefined, [
+      { label: 'Modern', value: 'modern' },
+      { label: 'Near Future', value: 'near-future' },
+      { label: 'Fantasy', value: 'fantasy' },
+    ]),
+    param('locations', 'Locations', 'string-list', ['private study', 'rainy balcony', 'auction house']),
+  ], 'text-card'),
+  createDefinition('scene', 'Opening Scene', ['场景', 'state', 'opening'], 'scene', 'asset', 'Builds initial place, state variables, props, relationship state, and opening pressure.', [
+    slot('persona', 'Persona', 'persona', 'Persona informs scene tension.', true),
+    slot('world', 'World', 'world', 'World context.', true),
+  ], [
+    slot('scene', 'Scene', 'scene', 'Initial runtime scene state.'),
+  ], [
+    param('place', 'Place', 'text', 'a private study after midnight'),
+    param('objective', 'Objective', 'textarea', 'Make the user negotiate access instead of receiving it.'),
+  ], 'rule'),
+  createDefinition('dialogue', 'Dialogue Style', ['对话', 'voice text', 'examples'], 'dialogue', 'core', 'Defines first message, speech habits, address rules, example dialogues, and taboo phrasing.', [
+    slot('persona', 'Persona', 'persona', 'Persona voice.', true),
+    slot('scene', 'Scene', 'scene', 'Opening context.', true),
+  ], [
+    slot('dialogue', 'Dialogue', 'dialogue', 'Dialogue and first-message resource.'),
+  ], [
+    param('firstMessage', 'First Message', 'textarea', 'You are late. I dislike waiting, but I dislike easy apologies more.'),
+    param('temperature', 'Variation', 'number', 0.72, 0, 1, 0.01),
+  ], 'text-card'),
+  createDefinition('visual', 'Visual Spec', ['视觉', 'appearance', 'outfit'], 'visual', 'asset', 'Defines body, face, hair, clothes, palette, negative visual traits, and image prompt constraints.', [
+    slot('identity', 'Identity', 'identity', 'Identity visual anchor.', true),
+    slot('persona', 'Persona', 'persona', 'Persona should influence visual tone.', true),
+  ], [
+    slot('visual', 'Visual', 'visual', 'Visual specification.'),
+  ], [
+    param('palette', 'Palette', 'string-list', ['black jade', 'warm ivory', 'muted gold']),
+    param('negative', 'Negative Traits', 'string-list', ['childlike', 'generic smile', 'overexposed']),
+  ], 'image'),
+  createDefinition('image', 'Image Asset Set', ['头像', '立绘', 'image'], 'image', 'asset', 'Defines avatar, body image, expression sheet, outfit variants, and scene reference outputs.', [
+    slot('visual', 'Visual', 'visual', 'Visual prompt input.', true),
+  ], [
+    slot('imageAsset', 'Images', 'image-asset', 'Image asset references.'),
+  ], [
+    param('count', 'Asset Count', 'integer', 4, 1, 12, 1),
+    param('styleLock', 'Style Lock', 'boolean', true),
+  ], 'image'),
+  createDefinition('voice', 'Voice Profile', ['语音', 'tts', 'tone'], 'voice', 'asset', 'Defines TTS profile, tempo, timbre, sample lines, and emotional delivery constraints.', [
+    slot('dialogue', 'Dialogue', 'dialogue', 'Dialogue samples.', true),
+  ], [
+    slot('voice', 'Voice', 'voice', 'Voice/TTS resource.'),
+  ], [
+    param('timbre', 'Timbre', 'text', 'low, controlled, slightly amused'),
+    param('speed', 'Speed', 'number', 0.92, 0.5, 1.5, 0.01),
+  ], 'voice'),
+  createDefinition('memory', 'Memory Rules', ['记忆', 'summary', 'state'], 'memory', 'agent', 'Configures long-term memory, summary thresholds, relationship variables, and state update rules.', [
+    slot('persona', 'Persona', 'persona', 'Persona memory rules.', true),
+    slot('scene', 'Scene', 'scene', 'Runtime state shape.', true),
+  ], [
+    slot('memory', 'Memory', 'memory', 'Memory policy.'),
+  ], [
+    param('shortTermTurns', 'Short-Term Turns', 'integer', 8, 2, 24, 1),
+    param('summaryPolicy', 'Summary Policy', 'textarea', 'Preserve promises, leverage, emotional shifts, and unresolved debts.'),
+  ], 'rule'),
+  createDefinition('rp-rule', 'RP Constraints', ['规则', 'boundary', 'policy'], 'rp-rule', 'safety', 'Defines roleplay boundaries, pacing rules, refusal strategy, continuity locks, and player agency limits.', [
+    slot('brief', 'Brief', 'brief', 'User boundaries.', true),
+    slot('persona', 'Persona', 'persona', 'Character behavior constraints.', true),
+  ], [
+    slot('rules', 'Rules', 'rp-rule', 'RP rule set.'),
+  ], [
+    param('slowBurn', 'Slow Burn', 'boolean', true),
+    param('forbiddenMoves', 'Forbidden Moves', 'string-list', ['instant compliance', 'breaking character', 'plot teleport']),
+  ], 'rule'),
+  createDefinition('critic', 'Consistency Critic', ['校验', 'critic', 'validation'], 'critic', 'safety', 'Checks identity, persona, world, scene, visual, dialogue, memory, and safety consistency.', [
+    slot('identity', 'Identity', 'identity', 'Identity input.', true),
+    slot('persona', 'Persona', 'persona', 'Persona input.', true),
+    slot('world', 'World', 'world', 'World input.'),
+    slot('dialogue', 'Dialogue', 'dialogue', 'Dialogue input.'),
+    slot('rules', 'Rules', 'rp-rule', 'Rule input.'),
+  ], [
+    slot('validation', 'Validation', 'validation-report', 'Validation report.'),
+  ], [
+    param('strictness', 'Strictness', 'select', 'high', undefined, undefined, undefined, [
+      { label: 'Medium', value: 'medium' },
+      { label: 'High', value: 'high' },
+      { label: 'Severe', value: 'severe' },
+    ]),
+  ], 'validation'),
+  createDefinition('agent-policy', 'Agent Policy', ['agent', '自主', 'plan'], 'agent-policy', 'agent', 'Constrains backend agent autonomy, revision budget, model selection, and handoff rules.', [
+    slot('brief', 'Brief', 'brief', 'Primary goal.', true),
+    slot('validation', 'Validation', 'validation-report', 'Quality gate.'),
+  ], [
+    slot('policy', 'Policy', 'agent-policy', 'Agent execution policy.'),
+  ], [
+    param('revisionBudget', 'Revision Budget', 'integer', 4, 1, 12, 1),
+    param('allowAutonomy', 'Allow Autonomy', 'boolean', true),
+  ], 'rule'),
+  createDefinition('export', 'Character Package', ['导出', 'manifest', 'package'], 'export', 'core', 'Assembles final manifest, resource list, runtime context, missing assets, and chat test entry.', [
+    slot('identity', 'Identity', 'identity', 'Identity resource.', true),
+    slot('persona', 'Persona', 'persona', 'Persona resource.', true),
+    slot('world', 'World', 'world', 'World resource.'),
+    slot('scene', 'Scene', 'scene', 'Scene resource.', true),
+    slot('dialogue', 'Dialogue', 'dialogue', 'Dialogue resource.', true),
+    slot('imageAsset', 'Images', 'image-asset'),
+    slot('voice', 'Voice', 'voice'),
+    slot('memory', 'Memory', 'memory'),
+    slot('rules', 'Rules', 'rp-rule', 'Runtime rules.', true),
+    slot('policy', 'Policy', 'agent-policy'),
+  ], [
+    slot('pack', 'Package', 'character-pack', 'Exportable character pack.'),
+  ], [
+    param('format', 'Format', 'select', 'noema-role-chat', undefined, undefined, undefined, [
+      { label: 'Noema Role Chat', value: 'noema-role-chat' },
+      { label: 'Portable JSON', value: 'portable-json' },
+    ]),
+  ], 'package'),
+]
+
+const DEFAULT_NODE_PLACEMENT: Array<{ id: string; type: string; title: string; x: number; y: number; status?: CharacterResourceNodeStatus }> = [
+  { id: 'brief-input', type: 'brief', title: 'Brief', x: 88, y: 96, status: 'dirty' },
+  { id: 'identity-card', type: 'identity', title: 'Identity Card', x: 402, y: 48 },
+  { id: 'persona-engine', type: 'persona', title: 'Persona Engine', x: 726, y: 72 },
+  { id: 'world-bible', type: 'world', title: 'World Bible', x: 402, y: 276 },
+  { id: 'opening-scene', type: 'scene', title: 'Opening Scene', x: 726, y: 320 },
+  { id: 'dialogue-style', type: 'dialogue', title: 'Dialogue Style', x: 1052, y: 180 },
+  { id: 'visual-spec', type: 'visual', title: 'Visual Spec', x: 724, y: 546 },
+  { id: 'image-assets', type: 'image', title: 'Image Asset Set', x: 1052, y: 528, status: 'queued' },
+  { id: 'voice-profile', type: 'voice', title: 'Voice Profile', x: 1378, y: 116 },
+  { id: 'memory-rules', type: 'memory', title: 'Memory Rules', x: 1378, y: 340 },
+  { id: 'rp-constraints', type: 'rp-rule', title: 'RP Constraints', x: 1052, y: 760 },
+  { id: 'consistency-critic', type: 'critic', title: 'Consistency Critic', x: 1706, y: 278, status: 'stale' },
+  { id: 'agent-policy', type: 'agent-policy', title: 'Agent Policy', x: 1706, y: 548 },
+  { id: 'character-package', type: 'export', title: 'Character Package', x: 2038, y: 392 },
+]
+
+const DEFAULT_LINKS: CharacterResourceLink[] = [
+  link('brief-input', 'brief', 'identity-card', 'brief', 'requires'),
+  link('brief-input', 'brief', 'persona-engine', 'brief', 'requires'),
+  link('brief-input', 'brief', 'world-bible', 'brief', 'suggests'),
+  link('identity-card', 'identity', 'persona-engine', 'identity', 'requires'),
+  link('persona-engine', 'persona', 'opening-scene', 'persona', 'requires'),
+  link('world-bible', 'world', 'opening-scene', 'world', 'requires'),
+  link('persona-engine', 'persona', 'dialogue-style', 'persona', 'requires'),
+  link('opening-scene', 'scene', 'dialogue-style', 'scene', 'requires'),
+  link('identity-card', 'identity', 'visual-spec', 'identity', 'references'),
+  link('persona-engine', 'persona', 'visual-spec', 'persona', 'constrains'),
+  link('visual-spec', 'visual', 'image-assets', 'visual', 'requires'),
+  link('dialogue-style', 'dialogue', 'voice-profile', 'dialogue', 'references'),
+  link('persona-engine', 'persona', 'memory-rules', 'persona', 'requires'),
+  link('opening-scene', 'scene', 'memory-rules', 'scene', 'requires'),
+  link('brief-input', 'brief', 'rp-constraints', 'brief', 'constrains'),
+  link('persona-engine', 'persona', 'rp-constraints', 'persona', 'constrains'),
+  link('identity-card', 'identity', 'consistency-critic', 'identity', 'validates'),
+  link('persona-engine', 'persona', 'consistency-critic', 'persona', 'validates'),
+  link('world-bible', 'world', 'consistency-critic', 'world', 'validates'),
+  link('dialogue-style', 'dialogue', 'consistency-critic', 'dialogue', 'validates'),
+  link('rp-constraints', 'rules', 'consistency-critic', 'rules', 'validates'),
+  link('brief-input', 'brief', 'agent-policy', 'brief', 'requires'),
+  link('consistency-critic', 'validation', 'agent-policy', 'validation', 'requires'),
+  link('identity-card', 'identity', 'character-package', 'identity', 'exports'),
+  link('persona-engine', 'persona', 'character-package', 'persona', 'exports'),
+  link('world-bible', 'world', 'character-package', 'world', 'exports'),
+  link('opening-scene', 'scene', 'character-package', 'scene', 'exports'),
+  link('dialogue-style', 'dialogue', 'character-package', 'dialogue', 'exports'),
+  link('image-assets', 'imageAsset', 'character-package', 'imageAsset', 'exports'),
+  link('voice-profile', 'voice', 'character-package', 'voice', 'exports'),
+  link('memory-rules', 'memory', 'character-package', 'memory', 'exports'),
+  link('rp-constraints', 'rules', 'character-package', 'rules', 'exports'),
+  link('agent-policy', 'policy', 'character-package', 'policy', 'exports'),
+]
+
+const definitionFuse = new Fuse(RESOURCE_NODE_DEFINITIONS, {
+  keys: ['type', 'displayName', 'aliases', 'category', 'source', 'description', 'inputs.type', 'outputs.type'],
+  threshold: 0.28,
+  ignoreLocation: true,
+})
+
+const workbenchCleanups = new WeakMap<HTMLElement, Array<() => void>>()
+
 export function renderCharacterWorkflowPage(options: CharacterWorkflowPageOptions): string {
-  const workflow = createStandardCharacterWorkflow({
-    id: 'draft-character-workflow',
-    name: options.language === 'zh-CN' ? 'Draft 01' : 'Draft 01',
-    now: 1,
-    language: options.language,
-  })
-  applyWorkflowConfigOverrides(workflow, options.configOverrides)
-  applyWorkflowPositionOverrides(workflow, options.positionOverrides)
-  const runState = options.runState ?? createWorkflowRunState(workflow, 1)
-  applyWorkflowConfigOverrides(runState.workflow, options.configOverrides)
-  applyWorkflowPositionOverrides(runState.workflow, options.positionOverrides)
+  const graph = createCharacterResourceGraph(options)
+  const liteGraphSnapshot = createLiteGraphSnapshot(graph)
+  const yjsSnapshot = createYjsSnapshot(graph, liteGraphSnapshot)
   return `
-    <div class="chat-character-workflow-shell">
+    <div class="chat-character-workflow-shell chat-resource-workbench" data-resource-graph-id="${options.escapeHtml(graph.id)}">
       ${renderFileTabs(options)}
       <div class="chat-character-workflow-stage">
-        <div class="chat-character-workflow-grid ${options.sidebarCollapsed ? 'sidebar-collapsed' : ''} ${options.inspectorCollapsed ? 'inspector-collapsed' : ''}">
-          ${renderSidebarToggle(options)}
-          ${renderWorkflowSidebar(runState, options)}
-          ${renderWorkflowCanvas(runState, options)}
-          ${renderWorkflowInspector(runState, options)}
+        <div class="chat-resource-workspace ${options.sidebarCollapsed ? 'sidebar-collapsed' : ''} ${options.inspectorCollapsed ? 'inspector-collapsed' : ''}" style="--resource-left-panel: ${graph.panels.leftWidth}px; --resource-right-panel: ${graph.panels.rightWidth}px; --resource-bottom-panel: ${graph.panels.bottomHeight}px">
+          ${renderResourceLibrary(graph, options)}
+          <div class="chat-resource-split-gutter left" data-resource-split-gutter="left" aria-hidden="true"></div>
+          ${renderResourceCanvas(graph, yjsSnapshot, options)}
+          <div class="chat-resource-split-gutter right" data-resource-split-gutter="right" aria-hidden="true"></div>
+          ${renderResourceInspector(graph, options)}
+          ${renderBottomToolbar(graph, options)}
         </div>
       </div>
     </div>
   `
 }
 
+export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
+  workbenchCleanups.get(root)?.forEach((cleanup) => cleanup())
+  const cleanups: Array<() => void> = []
+  const workspace = root.querySelector<HTMLElement>('.chat-resource-workspace')
+  const leftGutter = root.querySelector<HTMLElement>('[data-resource-split-gutter="left"]')
+  const rightGutter = root.querySelector<HTMLElement>('[data-resource-split-gutter="right"]')
+  if (workspace && leftGutter && rightGutter) {
+    const split = Split({
+      columnGutters: [
+        { element: leftGutter, track: 1 },
+        { element: rightGutter, track: 3 },
+      ],
+      columnMinSizes: { 0: 0, 2: 420, 4: 0 },
+      snapOffset: 42,
+    })
+    cleanups.push(() => split.destroy(true))
+  }
+
+  root.querySelectorAll<HTMLElement>('.chat-resource-node').forEach((node) => {
+    const handle = node.querySelector<HTMLElement>('[data-chat-workflow-drag-handle]') ?? node
+    cleanups.push(draggable({
+      element: node,
+      dragHandle: handle,
+      getInitialData: () => ({
+        kind: 'character-resource-node',
+        nodeId: node.dataset.chatWorkflowNodeId ?? '',
+        nodeType: node.dataset.resourceNodeType ?? '',
+      }),
+      onDragStart: () => node.classList.add('is-pragmatic-dragging'),
+      onDrop: () => node.classList.remove('is-pragmatic-dragging'),
+    }))
+  })
+
+  const canvas = root.querySelector<HTMLElement>('.chat-resource-canvas')
+  if (canvas) {
+    cleanups.push(dropTargetForElements({
+      element: canvas,
+      getData: () => ({ kind: 'character-resource-canvas' }),
+      onDragEnter: () => canvas.classList.add('is-drag-target'),
+      onDragLeave: () => canvas.classList.remove('is-drag-target'),
+      onDrop: () => canvas.classList.remove('is-drag-target'),
+    }))
+  }
+
+  cleanups.push(monitorForElements({
+    onDragStart: () => root.classList.add('is-resource-dragging'),
+    onDrop: () => root.classList.remove('is-resource-dragging'),
+  }))
+
+  const searchInput = root.querySelector<HTMLElement>('[data-chat-resource-node-search]')
+  const searchPopover = root.querySelector<HTMLElement>('.chat-resource-node-search-popover')
+  if (searchInput && searchPopover) {
+    void computePosition(searchInput, searchPopover, {
+      placement: 'right-start',
+      middleware: [offset(10), flip(), shift({ padding: 12 })],
+    }).then(({ x, y }) => {
+      searchPopover.style.left = `${Math.round(x)}px`
+      searchPopover.style.top = `${Math.round(y)}px`
+    })
+  }
+
+  createIcons({
+    icons: {
+      Download,
+      Link2Off,
+      Maximize,
+      MessageCircle,
+      Package,
+      Play,
+      RotateCcw,
+      Save,
+      Search,
+    },
+    root,
+  })
+  workbenchCleanups.set(root, cleanups)
+}
+
+function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): CharacterResourceGraph {
+  const definitions = new Map(RESOURCE_NODE_DEFINITIONS.map((definition) => [definition.type, definition]))
+  const nodes = DEFAULT_NODE_PLACEMENT.map((placement, index) => {
+    const definition = definitions.get(placement.type)!
+    return {
+      id: placement.id,
+      type: placement.type,
+      title: placement.title,
+      position: options.positionOverrides?.[placement.id] ?? { x: placement.x, y: placement.y },
+      size: definition.defaultSize,
+      status: placement.status ?? 'idle',
+      zIndex: index + 1,
+      config: {
+        ...Object.fromEntries(definition.parameters.map((parameterItem) => [parameterItem.id, parameterItem.defaultValue])),
+        ...(options.configOverrides?.[placement.id] ?? {}),
+      },
+    } satisfies CharacterResourceNode
+  })
+  const runArtifacts = options.runState?.artifacts ?? []
+  const mockOutputs = nodes.map((node) => {
+    const definition = definitions.get(node.type)!
+    const artifact = runArtifacts.find((item) => item.sourceNodeId === node.id)
+    return {
+      id: `${node.id}-mock-output`,
+      nodeId: node.id,
+      type: artifact?.type ?? definition.outputs[0]?.type ?? definition.previewType,
+      title: artifact?.title ?? definition.displayName,
+      summary: artifact?.summary ?? createMockOutputSummary(definition, node),
+      status: artifact ? 'done' : node.status,
+    } satisfies CharacterResourceMockOutput
+  })
+  return {
+    id: 'draft-character-resource-graph',
+    title: 'Draft Character Resource Graph',
+    nodes,
+    links: DEFAULT_LINKS.map((item) => ({ ...item, status: validateLink(item, nodes, definitions) ? 'valid' : 'invalid' })),
+    groups: [
+      { id: 'core-character', title: 'Core Character', nodeIds: ['brief-input', 'identity-card', 'persona-engine', 'dialogue-style'], color: 'rgba(82, 168, 255, 0.16)' },
+      { id: 'asset-pack', title: 'Resource Pack', nodeIds: ['visual-spec', 'image-assets', 'voice-profile'], color: 'rgba(219, 189, 130, 0.16)' },
+      { id: 'agent-boundary', title: 'Agent Boundary', nodeIds: ['memory-rules', 'rp-constraints', 'consistency-critic', 'agent-policy'], color: 'rgba(162, 202, 188, 0.16)' },
+    ],
+    tabs: [
+      { id: 'workflow', title: 'Draft 01.resourcegraph', kind: 'resource-graph' },
+      { id: 'package-preview', title: 'Package Preview', kind: 'package-preview' },
+      { id: 'run-draft', title: 'Run Draft', kind: 'run-draft' },
+    ],
+    viewport: { x: 0, y: 0, zoom: 0.84 },
+    selection: { nodeIds: [options.selectedNodeId || 'brief-input'], linkIds: [] },
+    panels: {
+      leftWidth: options.sidebarCollapsed ? 0 : 246,
+      rightWidth: options.inspectorCollapsed ? 0 : 312,
+      bottomHeight: 62,
+      activePanel: options.activePanel,
+    },
+    mockOutputs,
+  }
+}
+
+function createLiteGraphSnapshot(graph: CharacterResourceGraph): unknown {
+  const liteGraph = new LGraph()
+  for (const definition of RESOURCE_NODE_DEFINITIONS) {
+    if (!LiteGraph.registered_node_types?.[`noema/${definition.type}`]) {
+      LiteGraph.registerNodeType(`noema/${definition.type}`, class extends LGraph.LGraphNode {
+        constructor(title?: string) {
+          super(title ?? definition.displayName)
+          this.size = [definition.defaultSize.width, definition.defaultSize.height]
+          definition.inputs.forEach((input) => this.addInput(input.label, input.type))
+          definition.outputs.forEach((output) => this.addOutput(output.label, output.type))
+        }
+      })
+    }
+  }
+  for (const node of graph.nodes) {
+    const liteNode = LiteGraph.createNode(`noema/${node.type}`, node.title)
+    if (!liteNode) {
+      continue
+    }
+    liteNode.id = Number(node.zIndex)
+    liteNode.pos = [node.position.x, node.position.y]
+    liteNode.size = [node.size.width, node.size.height]
+    liteNode.properties = { ...node.config, noemaNodeId: node.id, status: node.status }
+    liteGraph.add(liteNode)
+  }
+  return liteGraph.serialize()
+}
+
+function createYjsSnapshot(graph: CharacterResourceGraph, liteGraphSnapshot: unknown): string {
+  const document = new Y.Doc()
+  const meta = document.getMap<unknown>('characterResourceGraph')
+  meta.set('id', graph.id)
+  meta.set('viewport', graph.viewport)
+  meta.set('panels', graph.panels)
+  meta.set('selection', graph.selection)
+  meta.set('liteGraph', liteGraphSnapshot)
+  meta.set('serializedAt', new Date(0).toISOString())
+  return JSON.stringify(meta.toJSON())
+}
+
 function renderFileTabs(options: CharacterWorkflowPageOptions): string {
+  const tabs = options.tabs.length ? options.tabs : [{
+    id: 'workflow',
+    title: 'Draft 01.resourcegraph',
+    kind: 'workflow' as const,
+  }]
   return `
-    <div class="chat-workflow-file-tabs" role="tablist" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '角色工作流文件' : 'Character workflow files')}">
-      ${options.tabs.map((tab) => renderFileTab(tab, tab.id === options.activeTabId, options)).join('')}
-      <button class="chat-workflow-new-tab" type="button" data-chat-workflow-action="new-run" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '新建运行' : 'New run')}">+</button>
+    <div class="chat-workflow-file-tabs" role="tablist" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '角色资源图文件' : 'Character resource graph files')}">
+      ${tabs.map((tab) => renderFileTab(tab, tab.id === options.activeTabId, options)).join('')}
+      <button class="chat-workflow-new-tab" type="button" data-chat-workflow-action="new-run" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '新建运行草稿' : 'New run draft')}">+</button>
     </div>
   `
 }
 
-function renderFileTab(
-  tab: CharacterWorkflowFileTab,
-  active: boolean,
-  options: CharacterWorkflowPageOptions
-): string {
+function renderFileTab(tab: CharacterWorkflowFileTab, active: boolean, options: CharacterWorkflowPageOptions): string {
   return `
     <button class="chat-workflow-file-tab ${active ? 'active' : ''} ${tab.state ? `is-${tab.state}` : ''}" type="button" role="tab" aria-selected="${active ? 'true' : 'false'}" data-chat-workflow-tab="${options.escapeHtml(tab.id)}">
       <span class="chat-workflow-file-icon ${tab.kind}" aria-hidden="true"></span>
       <strong>${options.escapeHtml(tab.title)}</strong>
-      ${tab.state ? `<span class="chat-workflow-file-state" aria-hidden="true"></span>` : ''}
+      ${tab.state ? '<span class="chat-workflow-file-state" aria-hidden="true"></span>' : ''}
       <span class="chat-workflow-file-close" data-chat-workflow-close-tab="${options.escapeHtml(tab.id)}" aria-hidden="true">×</span>
     </button>
   `
 }
 
-function renderCanvasControls(
-  run: WorkflowRunSession,
-  options: CharacterWorkflowPageOptions
-): string {
-  const running = run.status === 'running'
-  const label = running
-    ? (options.language === 'zh-CN' ? '停止工作流' : 'Stop workflow')
-    : (options.language === 'zh-CN' ? '运行工作流' : 'Run workflow')
+function renderResourceLibrary(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): string {
+  const categories = getResourceCategories()
+  const searchResults = definitionFuse.search('').map((result) => result.item)
   return `
-    <div class="chat-workflow-canvas-controls" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '画布控制' : 'Canvas controls')}">
-      <button class="chat-workflow-run-toggle ${running ? 'is-running' : ''}" type="button" data-chat-workflow-action="${running ? 'stop' : 'run'}" aria-label="${options.escapeHtml(label)}" title="${options.escapeHtml(label)}">
-        <span aria-hidden="true"></span>
-      </button>
-      ${renderInspectorToggle(options)}
-    </div>
-  `
-}
-
-function renderWorkflowCanvas(state: CharacterWorkflowRunState, options: CharacterWorkflowPageOptions): string {
-  const definitionMap = createDefinitionMap()
-  const workflow = state.workflow
-  const visibleNodes = workflow.nodes.slice(0, 11)
-  return `
-    <section class="chat-workflow-canvas" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '工作流执行画布' : 'Workflow run canvas')}">
-      ${renderCanvasControls(state.run, options)}
-      <div class="chat-workflow-canvas-viewport">
-        <div class="chat-workflow-canvas-plane">
-          <div class="chat-workflow-canvas-grid" aria-hidden="true"></div>
-          ${visibleNodes.map((node) => renderWorkflowNode(node, definitionMap.get(node.type), options)).join('')}
-          <div class="chat-workflow-flow-line one" aria-hidden="true"></div>
-          <div class="chat-workflow-flow-line two" aria-hidden="true"></div>
-          <div class="chat-workflow-flow-line three" aria-hidden="true"></div>
-        </div>
-      </div>
-    </section>
-  `
-}
-
-function renderWorkflowSidebar(
-  state: CharacterWorkflowRunState,
-  options: CharacterWorkflowPageOptions
-): string {
-  const definitionMap = createDefinitionMap()
-  const agentPath = createCharacterWorkflowAgentPath(state.workflow)
-  const categories = ['input', 'llm', 'image', 'validation', 'export']
-  return `
-    <aside class="chat-workflow-sidebar" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '工作流工具' : 'Workflow tools')}">
+    <aside class="chat-workflow-sidebar chat-resource-library" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '资源节点库' : 'Resource node library')}">
+      ${renderSidebarToggle(options)}
       <div class="chat-workflow-sidebar-scroll">
         <section class="chat-workflow-sidebar-section">
-          <strong>${options.escapeHtml(options.language === 'zh-CN' ? 'Workflow' : 'Workflow')}</strong>
-          <button class="${options.activePanel === 'workflow' ? 'active' : ''}" type="button" data-chat-workflow-panel="workflow">${options.escapeHtml(options.language === 'zh-CN' ? '运行路径' : 'Run Path')}</button>
-          <button class="${options.activePanel === 'assets' ? 'active' : ''}" type="button" data-chat-workflow-panel="assets">${options.escapeHtml(options.language === 'zh-CN' ? '资产' : 'Assets')}</button>
-          <button class="${options.activePanel === 'nodes' ? 'active' : ''}" type="button" data-chat-workflow-panel="nodes">${options.escapeHtml(options.language === 'zh-CN' ? '节点库' : 'Nodes')}</button>
+          <strong>${options.escapeHtml(options.language === 'zh-CN' ? 'Resource Library' : 'Resource Library')}</strong>
+          <button class="${graph.panels.activePanel === 'workflow' ? 'active' : ''}" type="button" data-chat-workflow-panel="workflow"><span>Graph</span><em>${graph.nodes.length}</em></button>
+          <button class="${graph.panels.activePanel === 'assets' ? 'active' : ''}" type="button" data-chat-workflow-panel="assets"><span>Package</span><em>${graph.mockOutputs.length}</em></button>
+          <button class="${graph.panels.activePanel === 'nodes' ? 'active' : ''}" type="button" data-chat-workflow-panel="nodes"><span>Nodes</span><em>${RESOURCE_NODE_DEFINITIONS.length}</em></button>
         </section>
-        <section class="chat-workflow-sidebar-section compact">
-          <strong>${options.escapeHtml(options.language === 'zh-CN' ? 'Agent Path' : 'Agent Path')}</strong>
-          ${agentPath.slice(0, 6).map((step) => renderSidebarAgentPathStep(step, options)).join('')}
+        <section class="chat-resource-search-panel">
+          <label>
+            <span>${options.escapeHtml(options.language === 'zh-CN' ? '搜索节点' : 'Search nodes')}</span>
+            <input type="search" value="" placeholder="${options.escapeHtml(options.language === 'zh-CN' ? '名称 / 类型 / slot' : 'name / type / slot')}" data-chat-resource-node-search>
+          </label>
+          <div class="chat-resource-search-results">
+            ${searchResults.slice(0, 5).map((definition) => renderNodeLibraryCard(definition, graph, options)).join('')}
+          </div>
         </section>
         <section class="chat-workflow-sidebar-section">
-          <strong>${options.escapeHtml(options.language === 'zh-CN' ? 'Nodes' : 'Nodes')}</strong>
+          <strong>${options.escapeHtml(options.language === 'zh-CN' ? 'Categories' : 'Categories')}</strong>
           ${categories.map((category) => {
-            const count = state.workflow.nodes.filter((node) => definitionMap.get(node.type)?.category === category).length
-            const firstNode = state.workflow.nodes.find((node) => definitionMap.get(node.type)?.category === category)
-            return `<button type="button" data-chat-workflow-panel="nodes" data-chat-workflow-node-category="${category}" ${firstNode ? `data-chat-workflow-node-select="${options.escapeHtml(firstNode.id)}"` : ''}><span>${options.escapeHtml(category)}</span><em>${count}</em></button>`
+            const count = RESOURCE_NODE_DEFINITIONS.filter((definition) => definition.category === category).length
+            const firstNode = graph.nodes.find((node) => node.type === category)
+            return `<button type="button" data-chat-workflow-panel="nodes" ${firstNode ? `data-chat-workflow-node-select="${options.escapeHtml(firstNode.id)}"` : ''}><span>${options.escapeHtml(category)}</span><em>${count}</em></button>`
           }).join('')}
         </section>
-        <section class="chat-workflow-sidebar-section">
-          <strong>${options.escapeHtml(options.language === 'zh-CN' ? 'Assets' : 'Assets')}</strong>
-          ${renderSidebarArtifactCount(state, 'character-card', options)}
-          ${renderSidebarArtifactCount(state, 'image-asset', options)}
-          ${renderSidebarArtifactCount(state, 'validation-report', options)}
-          ${renderSidebarArtifactCount(state, 'character-pack', options)}
+        <section class="chat-workflow-sidebar-section compact">
+          <strong>${options.escapeHtml(options.language === 'zh-CN' ? 'Favorites' : 'Favorites')}</strong>
+          ${RESOURCE_NODE_DEFINITIONS.slice(0, 4).map((definition) => renderNodeLibraryCard(definition, graph, options)).join('')}
         </section>
       </div>
     </aside>
   `
 }
 
+function renderNodeLibraryCard(definition: CharacterResourceNodeDefinition, graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): string {
+  const existing = graph.nodes.find((node) => node.type === definition.type)
+  return `
+    <button class="chat-resource-library-card" type="button" data-chat-workflow-panel="nodes" ${existing ? `data-chat-workflow-node-select="${options.escapeHtml(existing.id)}"` : ''}>
+      <span>
+        <b>${options.escapeHtml(definition.displayName)}</b>
+        <small>${options.escapeHtml(definition.category)} / ${options.escapeHtml(definition.source)}</small>
+      </span>
+      <em>${options.escapeHtml(definition.outputs[0]?.type ?? '-')}</em>
+    </button>
+  `
+}
+
 function renderSidebarToggle(options: CharacterWorkflowPageOptions): string {
   const label = options.sidebarCollapsed
-    ? (options.language === 'zh-CN' ? '展开工作流侧栏' : 'Expand workflow sidebar')
-    : (options.language === 'zh-CN' ? '收起工作流侧栏' : 'Collapse workflow sidebar')
+    ? (options.language === 'zh-CN' ? '展开资源库' : 'Expand resource library')
+    : (options.language === 'zh-CN' ? '收起资源库' : 'Collapse resource library')
   return `
     <button class="chat-workflow-sidebar-toggle" type="button" data-chat-workflow-action="toggle-sidebar" aria-label="${options.escapeHtml(label)}" title="${options.escapeHtml(label)}">
       <span aria-hidden="true"></span>
@@ -178,52 +658,210 @@ function renderSidebarToggle(options: CharacterWorkflowPageOptions): string {
   `
 }
 
-function renderSidebarAgentPathStep(
-  step: CharacterWorkflowAgentPathStep,
-  options: CharacterWorkflowPageOptions
-): string {
+function renderResourceCanvas(graph: CharacterResourceGraph, yjsSnapshot: string, options: CharacterWorkflowPageOptions): string {
   return `
-    <button type="button" data-chat-workflow-node-select="${options.escapeHtml(step.nodeId)}" data-chat-workflow-panel="workflow">
-      <span>${options.escapeHtml(step.title)}</span>
-      <em>${options.escapeHtml(step.status)}</em>
+    <section class="chat-workflow-canvas chat-resource-canvas" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '角色资源图画布' : 'Character resource graph canvas')}">
+      ${renderCanvasControls(graph, options)}
+      <div class="chat-resource-tabs">
+        ${graph.tabs.map((tab) => `<button class="${tab.id === normalizeActiveTab(options.activeTabId) ? 'active' : ''}" type="button" data-chat-workflow-tab="${options.escapeHtml(tab.id === 'package-preview' ? 'character-pack' : tab.id)}">${options.escapeHtml(tab.title)}</button>`).join('')}
+      </div>
+      <div class="chat-workflow-canvas-viewport" data-resource-viewport="${options.escapeHtml(JSON.stringify(graph.viewport))}">
+        <div class="chat-workflow-canvas-plane chat-resource-graph-plane" style="--resource-zoom: ${graph.viewport.zoom}">
+          <div class="chat-workflow-canvas-grid" aria-hidden="true"></div>
+          ${graph.groups.map((group) => renderGroup(group, graph, options)).join('')}
+          ${renderLinkOverlay(graph, options)}
+          ${graph.nodes.map((node) => renderResourceNode(node, graph, options)).join('')}
+          ${renderSelectionRectangle(graph)}
+        </div>
+      </div>
+      <div class="chat-resource-serializer" aria-hidden="true" data-yjs-snapshot="${options.escapeHtml(yjsSnapshot)}"></div>
+      ${renderNodeSearchPopover(graph, options)}
+      ${renderCanvasContextMenu(options)}
+    </section>
+  `
+}
+
+function renderCanvasControls(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): string {
+  const running = options.runState?.run?.status === 'running'
+  return `
+    <div class="chat-workflow-canvas-controls chat-resource-canvas-controls" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '画布控制' : 'Canvas controls')}">
+      <button class="chat-workflow-run-toggle ${running ? 'is-running' : ''}" type="button" data-chat-workflow-action="${running ? 'stop' : 'run'}" aria-label="${options.escapeHtml(running ? 'Stop mock run' : 'Run mock lifecycle')}" title="${options.escapeHtml(running ? 'Stop mock run' : 'Run mock lifecycle')}"><i icon-name="play" aria-hidden="true"></i></button>
+      <button type="button" data-chat-workflow-action="fit-view" title="Fit view" aria-label="Fit view"><i icon-name="maximize" aria-hidden="true"></i></button>
+      <button type="button" data-chat-workflow-action="reset-view" title="Reset view" aria-label="Reset view"><i icon-name="rotate-ccw" aria-hidden="true"></i></button>
+      <button type="button" data-chat-workflow-action="toggle-links" title="Toggle links" aria-label="Toggle links"><i icon-name="link-2-off" aria-hidden="true"></i></button>
+      ${renderInspectorToggle(options)}
+      <span class="chat-resource-zoom-label">${Math.round(graph.viewport.zoom * 100)}%</span>
+    </div>
+    <div class="chat-resource-minimap" aria-label="Graph overview">
+      ${graph.nodes.map((node) => `<i class="${graph.selection.nodeIds.includes(node.id) ? 'selected' : ''}" style="left:${Math.round(node.position.x / 24)}px;top:${Math.round(node.position.y / 24)}px;width:${Math.max(8, Math.round(node.size.width / 24))}px;height:${Math.max(6, Math.round(node.size.height / 24))}px"></i>`).join('')}
+    </div>
+  `
+}
+
+function renderInspectorToggle(options: CharacterWorkflowPageOptions): string {
+  const label = options.inspectorCollapsed
+    ? (options.language === 'zh-CN' ? '展开 Inspector' : 'Expand inspector')
+    : (options.language === 'zh-CN' ? '收起 Inspector' : 'Collapse inspector')
+  return `
+    <button class="chat-workflow-inspector-toggle" type="button" data-chat-workflow-action="toggle-inspector" aria-label="${options.escapeHtml(label)}" title="${options.escapeHtml(label)}">
+      <span aria-hidden="true"></span>
     </button>
   `
 }
 
-function renderSidebarArtifactCount(
-  state: CharacterWorkflowRunState,
-  type: string,
-  options: CharacterWorkflowPageOptions
-): string {
-  const count = state.artifacts.filter((artifact) => artifact.type === type).length
-  const sourceNodeId = [...state.artifacts].reverse().find((artifact) => artifact.type === type)?.sourceNodeId
-  return `<button type="button" data-chat-workflow-panel="assets" data-chat-workflow-artifact-type="${options.escapeHtml(type)}" ${sourceNodeId ? `data-chat-workflow-node-select="${options.escapeHtml(sourceNodeId)}"` : ''}><span>${options.escapeHtml(type)}</span><em>${count}</em></button>`
+function renderGroup(group: CharacterResourceGroup, graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): string {
+  const nodes = group.nodeIds
+    .map((id) => graph.nodes.find((node) => node.id === id))
+    .filter((node): node is CharacterResourceNode => Boolean(node))
+  if (!nodes.length) {
+    return ''
+  }
+  const left = Math.min(...nodes.map((node) => node.position.x)) - 24
+  const top = Math.min(...nodes.map((node) => node.position.y)) - 34
+  const right = Math.max(...nodes.map((node) => node.position.x + node.size.width)) + 24
+  const bottom = Math.max(...nodes.map((node) => node.position.y + node.size.height)) + 24
+  return `<div class="chat-resource-group" style="left:${left}px;top:${top}px;width:${right - left}px;height:${bottom - top}px;--group-color:${group.color}"><span>${options.escapeHtml(group.title)}</span></div>`
 }
 
-function renderWorkflowInspector(
-  state: CharacterWorkflowRunState,
+function renderLinkOverlay(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): string {
+  return `
+    <svg class="chat-resource-link-overlay" width="2600" height="1180" viewBox="0 0 2600 1180" aria-hidden="true">
+      <defs>
+        <marker id="chat-resource-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+          <path d="M0,0 L8,4 L0,8 Z"></path>
+        </marker>
+      </defs>
+      ${graph.links.map((linkItem) => renderLinkPath(linkItem, graph, options)).join('')}
+    </svg>
+  `
+}
+
+function renderLinkPath(linkItem: CharacterResourceLink, graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): string {
+  const source = graph.nodes.find((node) => node.id === linkItem.sourceNodeId)
+  const target = graph.nodes.find((node) => node.id === linkItem.targetNodeId)
+  if (!source || !target) {
+    return ''
+  }
+  const sourceSlot = getSlotOffset(source, getOutputIndex(source.type, linkItem.sourceSlotId), 'output')
+  const targetSlot = getSlotOffset(target, getInputIndex(target.type, linkItem.targetSlotId), 'input')
+  const x1 = source.position.x + source.size.width + sourceSlot.x
+  const y1 = source.position.y + sourceSlot.y
+  const x2 = target.position.x + targetSlot.x
+  const y2 = target.position.y + targetSlot.y
+  const mid = Math.max(80, Math.abs(x2 - x1) * 0.45)
+  const path = `M ${x1} ${y1} C ${x1 + mid} ${y1}, ${x2 - mid} ${y2}, ${x2} ${y2}`
+  return `
+    <g class="chat-resource-link ${options.escapeHtml(linkItem.kind)} ${options.escapeHtml(linkItem.status)}" data-chat-resource-link-id="${options.escapeHtml(linkItem.id)}">
+      <path d="${path}" marker-end="url(#chat-resource-arrow)"></path>
+      <text x="${(x1 + x2) / 2}" y="${(y1 + y2) / 2 - 7}">${options.escapeHtml(LINK_KIND_LABELS[linkItem.kind])}</text>
+    </g>
+  `
+}
+
+function renderResourceNode(node: CharacterResourceNode, graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): string {
+  const definition = getDefinition(node.type)
+  const selected = graph.selection.nodeIds.includes(node.id)
+  const output = graph.mockOutputs.find((item) => item.nodeId === node.id)
+  return `
+    <article class="chat-workflow-node chat-resource-node ${node.status} ${definition.category} ${selected ? 'selected' : ''} ${node.collapsed ? 'collapsed' : ''}" style="--node-x: ${node.position.x}px; --node-y: ${node.position.y}px; --node-w: ${node.size.width}px; --node-h: ${node.size.height}px; z-index: ${node.zIndex}" data-chat-workflow-node-id="${options.escapeHtml(node.id)}" data-chat-workflow-node-select="${options.escapeHtml(node.id)}" data-resource-node-type="${options.escapeHtml(node.type)}">
+      ${renderNodeHeader(node, definition, options)}
+      ${renderNodeSlots(node, definition, options)}
+      ${renderNodeWidgets(node, definition, options)}
+      ${renderNodeContent(node, definition, output, options)}
+      ${renderNodeFooter(node, definition, graph, options)}
+    </article>
+  `
+}
+
+function renderNodeHeader(node: CharacterResourceNode, definition: CharacterResourceNodeDefinition, options: CharacterWorkflowPageOptions): string {
+  return `
+    <header class="chat-workflow-node-head chat-resource-node-header" data-chat-workflow-drag-handle>
+      <button type="button" data-chat-workflow-action="toggle-node-collapse" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '折叠节点' : 'Collapse node')}"></button>
+      <span>${options.escapeHtml(definition.category)} / ${options.escapeHtml(definition.source)}</span>
+      <strong>${options.escapeHtml(node.title)}</strong>
+      <em>${options.escapeHtml(node.status)}</em>
+    </header>
+  `
+}
+
+function renderNodeSlots(node: CharacterResourceNode, definition: CharacterResourceNodeDefinition, options: CharacterWorkflowPageOptions): string {
+  return `
+    <div class="chat-workflow-node-ports chat-resource-node-slots">
+      ${renderSlotList(node, definition.inputs, 'input', options)}
+      ${renderSlotList(node, definition.outputs, 'output', options)}
+    </div>
+  `
+}
+
+function renderSlotList(node: CharacterResourceNode, slots: CharacterResourceSlotDefinition[], side: 'input' | 'output', options: CharacterWorkflowPageOptions): string {
+  if (!slots.length) {
+    return `<div class="chat-workflow-node-port-list ${side} empty"></div>`
+  }
+  return `
+    <div class="chat-workflow-node-port-list ${side}">
+      ${slots.map((slotItem) => `
+        <span class="chat-workflow-node-port chat-resource-slot ${slotItem.required ? 'required' : ''}" data-resource-slot-node="${options.escapeHtml(node.id)}" data-resource-slot-id="${options.escapeHtml(slotItem.id)}" data-resource-slot-side="${side}" data-resource-slot-type="${options.escapeHtml(slotItem.type)}" title="${options.escapeHtml(slotItem.tooltip)}">
+          <i class="chat-resource-slot-dot" aria-hidden="true"></i>
+          <b>${options.escapeHtml(slotItem.label)}</b>
+        </span>
+      `).join('')}
+    </div>
+  `
+}
+
+function renderNodeWidgets(node: CharacterResourceNode, definition: CharacterResourceNodeDefinition, options: CharacterWorkflowPageOptions): string {
+  return `
+    <div class="chat-resource-node-widgets">
+      ${definition.parameters.slice(0, 3).map((parameterItem) => `
+        <label>
+          <span>${options.escapeHtml(parameterItem.label)}</span>
+          ${renderParameterField(parameterItem, node, node.config[parameterItem.id], options)}
+        </label>
+      `).join('')}
+    </div>
+  `
+}
+
+function renderNodeContent(
+  node: CharacterResourceNode,
+  definition: CharacterResourceNodeDefinition,
+  output: CharacterResourceMockOutput | undefined,
   options: CharacterWorkflowPageOptions
 ): string {
-  const definitionMap = createDefinitionMap()
-  const agentPath = createCharacterWorkflowAgentPath(state.workflow)
-  const selectedNode = state.workflow.nodes.find((node) => node.id === options.selectedNodeId) ?? state.workflow.nodes[0]
-  const definition = selectedNode ? definitionMap.get(selectedNode.type) : undefined
-  const pathStep = selectedNode ? agentPath.find((step) => step.nodeId === selectedNode.id) : undefined
-  if (!selectedNode || !definition) {
-    return `
-      <aside class="chat-workflow-inspector">
-        <div class="chat-workflow-inspector-scroll">
-          <div class="chat-workflow-inspector-empty">${options.escapeHtml(options.language === 'zh-CN' ? '选择一个节点编辑参数。' : 'Select a node to edit parameters.')}</div>
-        </div>
-      </aside>
-    `
-  }
-  const producedArtifacts = state.artifacts.filter((artifact) => artifact.sourceNodeId === selectedNode.id)
+  const previewClass = `preview-${definition.previewType}`
   return `
-    <aside class="chat-workflow-inspector" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '节点参数面板' : 'Node inspector')}">
+    <div class="chat-resource-node-content ${previewClass}">
+      <strong>${options.escapeHtml(output?.title ?? definition.displayName)}</strong>
+      <p>${options.escapeHtml(output?.summary ?? definition.description)}</p>
+    </div>
+  `
+}
+
+function renderNodeFooter(
+  node: CharacterResourceNode,
+  definition: CharacterResourceNodeDefinition,
+  graph: CharacterResourceGraph,
+  options: CharacterWorkflowPageOptions
+): string {
+  const inbound = graph.links.filter((linkItem) => linkItem.targetNodeId === node.id).length
+  const outbound = graph.links.filter((linkItem) => linkItem.sourceNodeId === node.id).length
+  return `
+    <footer class="chat-resource-node-footer">
+      <span>${options.escapeHtml(`${inbound} in / ${outbound} out`)}</span>
+      <button type="button" data-chat-workflow-node-select="${options.escapeHtml(node.id)}">${options.escapeHtml(definition.previewType)}</button>
+    </footer>
+  `
+}
+
+function renderResourceInspector(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): string {
+  const selectedNode = graph.nodes.find((node) => graph.selection.nodeIds.includes(node.id)) ?? graph.nodes[0]
+  const definition = getDefinition(selectedNode.type)
+  const output = graph.mockOutputs.find((item) => item.nodeId === selectedNode.id)
+  return `
+    <aside class="chat-workflow-inspector chat-resource-inspector" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '资源 Inspector' : 'Resource inspector')}">
       <div class="chat-workflow-inspector-scroll">
         <header class="chat-workflow-inspector-head">
-          <span>${options.escapeHtml(definition.category)} / ${options.escapeHtml(definition.executor)}</span>
+          <span>${options.escapeHtml(`${definition.category} / ${definition.source} / ${definition.previewType}`)}</span>
           <strong>${options.escapeHtml(selectedNode.title)}</strong>
           <small>${options.escapeHtml(definition.description)}</small>
         </header>
@@ -234,53 +872,34 @@ function renderWorkflowInspector(
           </div>
         </section>
         <section class="chat-workflow-inspector-section">
-          <h4>${options.escapeHtml(options.language === 'zh-CN' ? '输入 / 输出' : 'Inputs / Outputs')}</h4>
+          <h4>Slots</h4>
           <div class="chat-workflow-inspector-ports">
-            ${Object.values(selectedNode.inputs).map((portItem) => `<span><b>IN</b>${options.escapeHtml(portItem.label)}</span>`).join('') || '<span><b>IN</b>-</span>'}
-            ${Object.values(selectedNode.outputs).map((portItem) => `<span><b>OUT</b>${options.escapeHtml(portItem.label)}</span>`).join('')}
+            ${definition.inputs.map((slotItem) => `<span><b>IN</b>${options.escapeHtml(slotItem.label)}<small>${options.escapeHtml(slotItem.type)}</small></span>`).join('') || '<span><b>IN</b>-</span>'}
+            ${definition.outputs.map((slotItem) => `<span><b>OUT</b>${options.escapeHtml(slotItem.label)}<small>${options.escapeHtml(slotItem.type)}</small></span>`).join('')}
           </div>
         </section>
         <section class="chat-workflow-inspector-section">
-          <h4>${options.escapeHtml(options.language === 'zh-CN' ? 'Agent 路径关联' : 'Agent Path Link')}</h4>
-          ${renderInspectorAgentPath(pathStep, producedArtifacts.length, options)}
+          <h4>${options.escapeHtml(options.language === 'zh-CN' ? 'Mock Output' : 'Mock Output')}</h4>
+          <div class="chat-resource-output-card">
+            <strong>${options.escapeHtml(output?.title ?? definition.displayName)}</strong>
+            <p>${options.escapeHtml(output?.summary ?? '')}</p>
+            <span>${options.escapeHtml(output?.status ?? selectedNode.status)}</span>
+          </div>
+        </section>
+        <section class="chat-workflow-inspector-section">
+          <h4>Link Kinds</h4>
+          <div class="chat-resource-link-kind-list">
+            ${(Object.keys(LINK_KIND_LABELS) as CharacterResourceLinkKind[]).map((kind) => `<button type="button" data-chat-workflow-action="set-link-kind" title="${options.escapeHtml(kind)}">${options.escapeHtml(kind)}</button>`).join('')}
+          </div>
         </section>
       </div>
     </aside>
   `
 }
 
-function renderInspectorToggle(options: CharacterWorkflowPageOptions): string {
-  const label = options.inspectorCollapsed
-    ? (options.language === 'zh-CN' ? '展开参数面板' : 'Expand inspector')
-    : (options.language === 'zh-CN' ? '收起参数面板' : 'Collapse inspector')
-  return `
-    <button class="chat-workflow-inspector-toggle" type="button" data-chat-workflow-action="toggle-inspector" aria-label="${options.escapeHtml(label)}" title="${options.escapeHtml(label)}">
-      <span aria-hidden="true"></span>
-    </button>
-  `
-}
-
-function renderInspectorAgentPath(
-  step: CharacterWorkflowAgentPathStep | undefined,
-  producedArtifactCount: number,
-  options: CharacterWorkflowPageOptions
-): string {
-  if (!step) {
-    return `<div class="chat-workflow-agent-path"><small>${options.escapeHtml(options.language === 'zh-CN' ? '未找到路径步骤' : 'No path step found')}</small></div>`
-  }
-  return `
-    <div class="chat-workflow-agent-path">
-      <span>${options.escapeHtml(step.executor)}</span>
-      <strong>${options.escapeHtml(step.title)}</strong>
-      <small>${options.escapeHtml(`${step.inputArtifactTypes.join(', ') || '-'} -> ${step.outputArtifactTypes.join(', ') || '-'}`)}</small>
-      <small>${options.escapeHtml(producedArtifactCount ? `${producedArtifactCount} artifact(s)` : 'waiting for run output')}</small>
-    </div>
-  `
-}
-
 function renderInspectorParameter(
-  parameterItem: CharacterWorkflowNodeParameter,
-  node: CharacterWorkflowNode,
+  parameterItem: CharacterResourceParameterDefinition,
+  node: CharacterResourceNode,
   value: unknown,
   options: CharacterWorkflowPageOptions
 ): string {
@@ -292,60 +911,9 @@ function renderInspectorParameter(
   `
 }
 
-function renderWorkflowNode(
-  node: CharacterWorkflowNode,
-  definition: CharacterWorkflowNodeDefinition | undefined,
-  options: CharacterWorkflowPageOptions
-): string {
-  const parameters = definition?.parameters ?? []
-  return `
-    <article class="chat-workflow-node ${node.state?.status ?? 'idle'} ${definition?.category ?? 'unknown'} ${options.selectedNodeId === node.id ? 'selected' : ''}" style="--node-x: ${node.position.x}px; --node-y: ${node.position.y}px" data-chat-workflow-node-id="${options.escapeHtml(node.id)}" data-chat-workflow-node-select="${options.escapeHtml(node.id)}">
-      <header class="chat-workflow-node-head" data-chat-workflow-drag-handle>
-        <button type="button" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '折叠节点' : 'Collapse node')}"></button>
-        <span>${options.escapeHtml(formatNodeType(node.type))}</span>
-        <strong>${options.escapeHtml(node.title)}</strong>
-        <em>${options.escapeHtml(definition?.executor ?? 'manual')}</em>
-      </header>
-      <div class="chat-workflow-node-ports">
-        ${renderNodePorts('input', node.inputs, options)}
-        ${renderNodePorts('output', node.outputs, options)}
-      </div>
-      <div class="chat-workflow-node-summary">
-        <span>${options.escapeHtml(parameters.length ? `${parameters.length} params` : 'no params')}</span>
-        <small>${options.escapeHtml(node.state?.status ?? 'idle')}</small>
-      </div>
-    </article>
-  `
-}
-
-function renderNodePorts(
-  side: 'input' | 'output',
-  ports: CharacterWorkflowNode['inputs'],
-  options: CharacterWorkflowPageOptions
-): string {
-  const entries = Object.values(ports)
-  if (!entries.length) {
-    return `<div class="chat-workflow-node-port-list ${side} empty"></div>`
-  }
-  return `
-    <div class="chat-workflow-node-port-list ${side}">
-      ${entries.map((portItem) => `
-        <span class="chat-workflow-node-port ${portItem.required ? 'required' : ''}">
-          <i aria-hidden="true"></i>
-          <b>${options.escapeHtml(portItem.label)}</b>
-        </span>
-      `).join('')}
-    </div>
-  `
-}
-
-function createDefinitionMap(): Map<string, CharacterWorkflowNodeDefinition> {
-  return new Map(getStandardCharacterWorkflowNodeDefinitions().map((definition) => [definition.type, definition]))
-}
-
 function renderParameterField(
-  parameterItem: CharacterWorkflowNodeParameter,
-  node: CharacterWorkflowNode,
+  parameterItem: CharacterResourceParameterDefinition,
+  node: CharacterResourceNode,
   value: unknown,
   options: CharacterWorkflowPageOptions
 ): string {
@@ -359,9 +927,7 @@ function renderParameterField(
   if (parameterItem.type === 'select') {
     return `
       <select ${baseAttrs} aria-label="${options.escapeHtml(parameterItem.label)}">
-        ${(parameterItem.options ?? []).map((optionItem) => `
-          <option value="${options.escapeHtml(optionItem.value)}" ${String(value) === optionItem.value ? 'selected' : ''}>${options.escapeHtml(optionItem.label)}</option>
-        `).join('')}
+        ${(parameterItem.options ?? []).map((optionItem) => `<option value="${options.escapeHtml(optionItem.value)}" ${String(value) === optionItem.value ? 'selected' : ''}>${options.escapeHtml(optionItem.label)}</option>`).join('')}
       </select>
     `
   }
@@ -369,60 +935,197 @@ function renderParameterField(
     return `<input type="text" ${baseAttrs} value="${options.escapeHtml(formatParameterValue(value))}" aria-label="${options.escapeHtml(parameterItem.label)}">`
   }
   if (parameterItem.type === 'textarea') {
-    return `<textarea ${baseAttrs} rows="1" aria-label="${options.escapeHtml(parameterItem.label)}">${options.escapeHtml(formatParameterValue(value))}</textarea>`
+    return `<textarea ${baseAttrs} rows="2" aria-label="${options.escapeHtml(parameterItem.label)}">${options.escapeHtml(formatParameterValue(value))}</textarea>`
   }
   return `<input type="text" ${baseAttrs} value="${options.escapeHtml(formatParameterValue(value))}" aria-label="${options.escapeHtml(parameterItem.label)}">`
 }
 
-function applyWorkflowConfigOverrides(
-  workflow: CharacterWorkflow,
-  overrides: Record<string, Record<string, unknown>> | undefined
-): void {
-  if (!overrides) {
-    return
+function renderBottomToolbar(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): string {
+  const packageNode = graph.nodes.find((node) => node.type === 'export')
+  const validationIssues = graph.links.filter((linkItem) => linkItem.status !== 'valid').length
+  return `
+    <footer class="chat-resource-bottom-toolbar">
+      <div>
+        <strong>${options.escapeHtml(graph.title)}</strong>
+        <span>${options.escapeHtml(`${graph.nodes.length} nodes / ${graph.links.length} links / ${validationIssues} issues`)}</span>
+      </div>
+      <button type="button" data-chat-workflow-action="save-graph"><i icon-name="save" aria-hidden="true"></i><span>Save</span></button>
+      <button type="button" data-chat-workflow-tab="character-pack" ${packageNode ? `data-chat-workflow-node-select="${options.escapeHtml(packageNode.id)}"` : ''}><i icon-name="package" aria-hidden="true"></i><span>Preview</span></button>
+      <button type="button" data-chat-workflow-node-select="consistency-critic">Validate</button>
+      <button type="button" data-chat-workflow-action="chat-test"><i icon-name="message-circle" aria-hidden="true"></i><span>Chat Test</span></button>
+      <button type="button" data-chat-workflow-action="export"><i icon-name="download" aria-hidden="true"></i><span>Export</span></button>
+    </footer>
+  `
+}
+
+function renderNodeSearchPopover(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): string {
+  const candidates = definitionFuse.search('persona').map((result) => result.item).slice(0, 6)
+  return `
+    <div class="chat-resource-node-search-popover" role="dialog" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '节点搜索' : 'Node search')}">
+      <header>
+        <strong>${options.escapeHtml(options.language === 'zh-CN' ? '添加可连接节点' : 'Add connectable node')}</strong>
+        <span>${options.escapeHtml(String(candidates.length))}</span>
+      </header>
+      ${candidates.map((definition) => renderNodeLibraryCard(definition, graph, options)).join('')}
+    </div>
+  `
+}
+
+function renderCanvasContextMenu(options: CharacterWorkflowPageOptions): string {
+  return `
+    <div class="chat-resource-context-menu" role="menu" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '画布菜单' : 'Canvas menu')}">
+      <button type="button" role="menuitem" data-chat-workflow-action="open-node-search">Add Node</button>
+      <button type="button" role="menuitem" data-chat-workflow-action="fit-view">Fit View</button>
+      <button type="button" role="menuitem" data-chat-workflow-action="duplicate-selection">Duplicate</button>
+      <button type="button" role="menuitem" data-chat-workflow-action="delete-selection">Delete</button>
+    </div>
+  `
+}
+
+function renderSelectionRectangle(graph: CharacterResourceGraph): string {
+  const selected = graph.nodes.find((node) => graph.selection.nodeIds.includes(node.id))
+  if (!selected) {
+    return ''
   }
-  for (const node of workflow.nodes) {
-    const override = overrides[node.id]
-    if (override) {
-      node.config = {
-        ...node.config,
-        ...override,
-      }
-    }
+  return `<div class="chat-resource-selection-rectangle" style="left:${selected.position.x - 5}px;top:${selected.position.y - 5}px;width:${selected.size.width + 10}px;height:${selected.size.height + 10}px"></div>`
+}
+
+function createDefinition(
+  type: string,
+  displayName: string,
+  aliases: string[],
+  category: string,
+  source: CharacterResourceNodeDefinition['source'],
+  description: string,
+  inputs: CharacterResourceSlotDefinition[],
+  outputs: CharacterResourceSlotDefinition[],
+  parameters: CharacterResourceParameterDefinition[],
+  previewType: CharacterResourcePreviewType
+): CharacterResourceNodeDefinition {
+  return {
+    type,
+    displayName,
+    aliases,
+    category,
+    source,
+    description,
+    inputs,
+    outputs,
+    parameters,
+    defaultSize: { width: 268, height: 226 },
+    previewType,
   }
 }
 
-function applyWorkflowPositionOverrides(
-  workflow: CharacterWorkflow,
-  overrides: Record<string, { x: number; y: number }> | undefined
-): void {
-  if (!overrides) {
-    return
+function slot(id: string, label: string, type: string, tooltip = '', required = false): CharacterResourceSlotDefinition {
+  return { id, label, type, required, tooltip: tooltip || type }
+}
+
+function param(
+  id: string,
+  label: string,
+  type: CharacterResourceParameterType,
+  defaultValue: unknown,
+  min?: number,
+  max?: number,
+  step?: number,
+  options?: Array<{ label: string; value: string }>
+): CharacterResourceParameterDefinition {
+  return { id, label, type, defaultValue, min, max, step, options }
+}
+
+function link(
+  sourceNodeId: string,
+  sourceSlotId: string,
+  targetNodeId: string,
+  targetSlotId: string,
+  kind: CharacterResourceLinkKind
+): CharacterResourceLink {
+  return {
+    id: `${sourceNodeId}:${sourceSlotId}->${targetNodeId}:${targetSlotId}`,
+    sourceNodeId,
+    sourceSlotId,
+    targetNodeId,
+    targetSlotId,
+    kind,
+    label: LINK_KIND_LABELS[kind],
+    status: 'valid',
   }
-  for (const node of workflow.nodes) {
-    const override = overrides[node.id]
-    if (override) {
-      node.position = { ...override }
-    }
+}
+
+function validateLink(
+  linkItem: CharacterResourceLink,
+  nodes: CharacterResourceNode[],
+  definitions: Map<string, CharacterResourceNodeDefinition>
+): boolean {
+  const source = nodes.find((node) => node.id === linkItem.sourceNodeId)
+  const target = nodes.find((node) => node.id === linkItem.targetNodeId)
+  if (!source || !target) {
+    return false
   }
+  const sourceSlot = definitions.get(source.type)?.outputs.find((slotItem) => slotItem.id === linkItem.sourceSlotId)
+  const targetSlot = definitions.get(target.type)?.inputs.find((slotItem) => slotItem.id === linkItem.targetSlotId)
+  return Boolean(sourceSlot && targetSlot && sourceSlot.type === targetSlot.type)
+}
+
+function getDefinition(type: string): CharacterResourceNodeDefinition {
+  return RESOURCE_NODE_DEFINITIONS.find((definition) => definition.type === type) ?? RESOURCE_NODE_DEFINITIONS[0]
+}
+
+function getResourceCategories(): string[] {
+  return [...new Set(RESOURCE_NODE_DEFINITIONS.map((definition) => definition.category))]
+}
+
+function getInputIndex(type: string, slotId: string): number {
+  return Math.max(0, getDefinition(type).inputs.findIndex((slotItem) => slotItem.id === slotId))
+}
+
+function getOutputIndex(type: string, slotId: string): number {
+  return Math.max(0, getDefinition(type).outputs.findIndex((slotItem) => slotItem.id === slotId))
+}
+
+function getSlotOffset(node: CharacterResourceNode, index: number, side: 'input' | 'output'): { x: number; y: number } {
+  return {
+    x: side === 'input' ? 0 : 0,
+    y: 64 + index * 23,
+  }
+}
+
+function normalizeActiveTab(activeTabId: string): string {
+  if (activeTabId === 'character-pack') {
+    return 'package-preview'
+  }
+  if (activeTabId.startsWith('run-')) {
+    return 'run-draft'
+  }
+  return activeTabId
+}
+
+function createMockOutputSummary(definition: CharacterResourceNodeDefinition, node: CharacterResourceNode): string {
+  if (definition.previewType === 'image') {
+    return 'Mock image resources are reserved in graph state; backend image generation is not called in this phase.'
+  }
+  if (definition.previewType === 'voice') {
+    return 'Mock voice profile includes timbre, speed, and sample-line constraints for later TTS generation.'
+  }
+  if (definition.previewType === 'validation') {
+    return 'Mock validation checks required slots, incompatible links, missing outputs, and package completeness.'
+  }
+  if (definition.previewType === 'package') {
+    return 'Mock package manifest combines character card, resources, runtime state, validation, and chat-test entry.'
+  }
+  return `${definition.displayName} is configured by ${Object.keys(node.config).length} parameter fields and participates in the resource graph.`
 }
 
 function formatParameterValue(value: unknown): string {
   if (Array.isArray(value)) {
-    return value.length ? value.join(', ') : '[]'
+    return value.length ? value.join(', ') : ''
   }
   if (typeof value === 'boolean') {
     return value ? 'true' : 'false'
   }
-  if (value === undefined || value === null || value === '') {
-    return '-'
+  if (value === undefined || value === null) {
+    return ''
   }
   return String(value)
-}
-
-function formatNodeType(type: string): string {
-  return type
-    .split('-')
-    .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
-    .join(' ')
 }
