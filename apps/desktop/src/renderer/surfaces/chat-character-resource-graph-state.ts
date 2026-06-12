@@ -21,6 +21,7 @@ export interface CharacterResourceViewState {
     offsetX: number
     offsetY: number
   }>
+  nodeSizes?: Record<string, { width: number; height: number }>
 }
 
 export interface SerializedCharacterResourceGraph {

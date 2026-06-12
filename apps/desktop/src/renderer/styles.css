@@ -12829,6 +12829,15 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   border-color: rgba(162, 202, 188, 0.52);
 }
 
+.chat-resource-node.disabled {
+  opacity: 0.52;
+  filter: grayscale(0.45);
+}
+
+.chat-resource-node.dirty {
+  border-color: rgba(82, 168, 255, 0.64);
+}
+
 .chat-resource-node.collapsed {
   min-height: 40px;
 }
@@ -12930,6 +12939,25 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   color: rgba(248, 250, 250, 0.58);
   font-family: var(--font-ui);
   font-size: 9px;
+}
+
+.chat-resource-node-resize {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 13px;
+  height: 13px;
+  padding: 0;
+  border: 0;
+  border-right: 1px solid rgba(248, 250, 250, 0.34);
+  border-bottom: 1px solid rgba(248, 250, 250, 0.34);
+  background: transparent;
+  cursor: nwse-resize;
+}
+
+.chat-resource-node.is-resizing {
+  z-index: 60;
+  outline: 1px solid rgba(82, 168, 255, 0.72);
 }
 
 .chat-resource-slot {

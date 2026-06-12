@@ -650,7 +650,7 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
       type: placement.type,
       title: placement.title,
       position: options.positionOverrides?.[placement.id] ?? { x: placement.x, y: placement.y },
-      size: definition.defaultSize,
+      size: viewState.nodeSizes?.[placement.id] ?? definition.defaultSize,
       status: placement.status ?? 'idle',
       collapsed: collapsedNodeIds.has(placement.id),
       zIndex: index + 1,
@@ -673,6 +673,7 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
         x: sourceNode.position.x + duplicate.offsetX,
         y: sourceNode.position.y + duplicate.offsetY,
       },
+      size: viewState.nodeSizes?.[duplicate.id] ?? sourceNode.size,
       collapsed: collapsedNodeIds.has(duplicate.id),
       zIndex: nodes.length + 1,
       config: {
@@ -1076,6 +1077,7 @@ function renderResourceNode(node: CharacterResourceNode, graph: CharacterResourc
       ${renderNodeWidgets(node, definition, options)}
       ${renderNodeContent(node, definition, output, options)}
       ${renderNodeFooter(node, definition, graph, options)}
+      <button class="chat-resource-node-resize" type="button" data-resource-node-resize aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '调整节点尺寸' : 'Resize node')}"></button>
     </article>
   `
 }

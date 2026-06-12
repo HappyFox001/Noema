@@ -172,6 +172,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     collapsedNodeIds: new Set<string>(),
     deletedNodeIds: new Set<string>(),
     duplicatedNodes: [] as Array<{ id: string; sourceId: string; offsetX: number; offsetY: number }>,
+    nodeSizes: {} as Record<string, { width: number; height: number }>,
   }
   const characterWorkflowEditorState: CharacterWorkflowEditorState = {
     activePanel: 'workflow',
@@ -193,6 +194,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     startY: number
     originPanX: number
     originPanY: number
+  } | null = null
+  let characterResourceNodeResize: {
+    nodeId: string
+    pointerId: number
+    startX: number
+    startY: number
+    originWidth: number
+    originHeight: number
   } | null = null
 
   toast.className = 'chat-status-toast'
@@ -1550,6 +1559,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         collapsedNodeIds: [...characterResourceViewState.collapsedNodeIds],
         deletedNodeIds: [...characterResourceViewState.deletedNodeIds],
         duplicatedNodes: characterResourceViewState.duplicatedNodes,
+        nodeSizes: characterResourceViewState.nodeSizes,
       },
     })
     initializeCharacterResourceWorkbench(characterWorkflowRoot)
@@ -1637,6 +1647,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             collapsedNodeIds: [...characterResourceViewState.collapsedNodeIds],
             deletedNodeIds: [...characterResourceViewState.deletedNodeIds],
             duplicatedNodes: characterResourceViewState.duplicatedNodes,
+            nodeSizes: characterResourceViewState.nodeSizes,
           },
           configOverrides: characterWorkflowConfigOverrides,
           positionOverrides: characterWorkflowPositionOverrides,
@@ -1892,8 +1903,66 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     characterWorkflowDragging = null
   }
 
+  function beginCharacterResourceNodeResize(event: PointerEvent): void {
+    const handle = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-resource-node-resize]')
+    const node = handle?.closest<HTMLElement>('[data-chat-workflow-node-id]')
+    if (!handle || !node || !panel.contains(node) || event.button !== 0) {
+      return
+    }
+    const nodeId = node.dataset.chatWorkflowNodeId || ''
+    if (!nodeId) {
+      return
+    }
+    const originWidth = characterResourceViewState.nodeSizes[nodeId]?.width
+      ?? Number.parseFloat(node.style.getPropertyValue('--node-w'))
+      ?? 268
+    const originHeight = characterResourceViewState.nodeSizes[nodeId]?.height
+      ?? Number.parseFloat(node.style.getPropertyValue('--node-h'))
+      ?? 226
+    characterResourceNodeResize = {
+      nodeId,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originWidth,
+      originHeight,
+    }
+    selectedWorkflowNodeId = nodeId
+    characterResourceViewState.selectedNodeIds = [nodeId]
+    node.classList.add('is-resizing')
+    node.setPointerCapture?.(event.pointerId)
+    event.preventDefault()
+    event.stopPropagation()
+  }
+
+  function updateCharacterResourceNodeResize(event: PointerEvent): void {
+    if (!characterResourceNodeResize || characterResourceNodeResize.pointerId !== event.pointerId) {
+      return
+    }
+    const nextWidth = Math.max(220, Math.round(characterResourceNodeResize.originWidth + event.clientX - characterResourceNodeResize.startX))
+    const nextHeight = Math.max(84, Math.round(characterResourceNodeResize.originHeight + event.clientY - characterResourceNodeResize.startY))
+    characterResourceViewState.nodeSizes[characterResourceNodeResize.nodeId] = {
+      width: nextWidth,
+      height: nextHeight,
+    }
+    const node = panel.querySelector<HTMLElement>(`[data-chat-workflow-node-id="${CSS.escape(characterResourceNodeResize.nodeId)}"]`)
+    if (node) {
+      node.style.setProperty('--node-w', `${nextWidth}px`)
+      node.style.setProperty('--node-h', `${nextHeight}px`)
+    }
+  }
+
+  function endCharacterResourceNodeResize(event: PointerEvent): void {
+    if (!characterResourceNodeResize || characterResourceNodeResize.pointerId !== event.pointerId) {
+      return
+    }
+    const node = panel.querySelector<HTMLElement>(`[data-chat-workflow-node-id="${CSS.escape(characterResourceNodeResize.nodeId)}"]`)
+    node?.classList.remove('is-resizing')
+    characterResourceNodeResize = null
+  }
+
   function beginCharacterResourceViewportDrag(event: PointerEvent): void {
-    if (characterWorkflowDragging || event.button !== 0) {
+    if (characterWorkflowDragging || characterResourceNodeResize || event.button !== 0) {
       return
     }
     const target = event.target as HTMLElement | null
@@ -2564,19 +2633,23 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   })
 
   panel.addEventListener('pointerdown', beginChatResize)
+  panel.addEventListener('pointerdown', beginCharacterResourceNodeResize)
   panel.addEventListener('pointerdown', beginCharacterWorkflowNodeDrag)
   panel.addEventListener('pointerdown', beginCharacterResourceViewportDrag)
   panel.addEventListener('wheel', updateCharacterResourceViewportZoom, { passive: false })
   panel.addEventListener('pointerdown', beginManualDrag)
   window.addEventListener('pointermove', updateChatResize)
+  window.addEventListener('pointermove', updateCharacterResourceNodeResize)
   window.addEventListener('pointermove', updateCharacterWorkflowNodeDrag)
   window.addEventListener('pointermove', updateCharacterResourceViewportDrag)
   window.addEventListener('pointermove', updateManualDrag)
   window.addEventListener('pointerup', endChatResize)
+  window.addEventListener('pointerup', endCharacterResourceNodeResize)
   window.addEventListener('pointerup', endCharacterWorkflowNodeDrag)
   window.addEventListener('pointerup', endCharacterResourceViewportDrag)
   window.addEventListener('pointerup', endManualDrag)
   window.addEventListener('pointercancel', endChatResize)
+  window.addEventListener('pointercancel', endCharacterResourceNodeResize)
   window.addEventListener('pointercancel', endCharacterWorkflowNodeDrag)
   window.addEventListener('pointercancel', endCharacterResourceViewportDrag)
   window.addEventListener('pointercancel', endManualDrag)
