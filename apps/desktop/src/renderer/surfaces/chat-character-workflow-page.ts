@@ -541,6 +541,59 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
 
   const searchInput = root.querySelector<HTMLElement>('[data-chat-resource-node-search]')
   const searchPopover = root.querySelector<HTMLElement>('.chat-resource-node-search-popover')
+  if (searchInput instanceof HTMLInputElement) {
+    const preview = root.querySelector<HTMLElement>('[data-resource-node-preview]')
+    const updatePreview = (card: HTMLElement) => {
+      if (!preview) {
+        return
+      }
+      const title = card.dataset.resourcePreviewTitle ?? ''
+      const body = card.dataset.resourcePreviewBody ?? ''
+      preview.innerHTML = `<strong>${title}</strong><p>${body}</p>`
+    }
+    const filterCards = () => {
+      const query = searchInput.value.trim().toLowerCase()
+      root.querySelectorAll<HTMLElement>('[data-resource-library-card]').forEach((card) => {
+        const searchable = (card.dataset.resourceSearchText ?? '').toLowerCase()
+        card.hidden = Boolean(query) && !searchable.includes(query)
+      })
+    }
+    const focusNextCard = (direction: 1 | -1) => {
+      const cards = Array.from(root.querySelectorAll<HTMLButtonElement>('[data-resource-library-card]')).filter((card) => !card.hidden)
+      const activeIndex = Math.max(0, cards.findIndex((card) => card === document.activeElement))
+      const next = cards[(activeIndex + direction + cards.length) % cards.length]
+      next?.focus()
+      if (next) {
+        updatePreview(next)
+      }
+    }
+    const handleSearchKey = (event: KeyboardEvent) => {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault()
+        focusNextCard(1)
+      }
+      if (event.key === 'ArrowUp') {
+        event.preventDefault()
+        focusNextCard(-1)
+      }
+    }
+    const handleCardHover = (event: Event) => {
+      const card = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-resource-library-card]')
+      if (card) {
+        updatePreview(card)
+      }
+    }
+    searchInput.addEventListener('input', filterCards)
+    searchInput.addEventListener('keydown', handleSearchKey)
+    root.addEventListener('mouseover', handleCardHover)
+    root.addEventListener('focusin', handleCardHover)
+    cleanups.push(() => {
+      searchInput.removeEventListener('input', filterCards)
+      searchInput.removeEventListener('keydown', handleSearchKey)
+      root.removeEventListener('mouseover', handleCardHover)
+      root.removeEventListener('focusin', handleCardHover)
+    })
+  }
   if (searchInput && searchPopover) {
     void computePosition(searchInput, searchPopover, {
       placement: 'right-start',
@@ -784,7 +837,9 @@ function renderFileTab(tab: CharacterWorkflowFileTab, active: boolean, options: 
 
 function renderResourceLibrary(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): string {
   const categories = getResourceCategories()
-  const searchResults = definitionFuse.search('').map((result) => result.item)
+  const searchResults = RESOURCE_NODE_DEFINITIONS
+    .slice()
+    .sort((a, b) => a.category.localeCompare(b.category) || a.displayName.localeCompare(b.displayName))
   return `
     <aside class="chat-workflow-sidebar chat-resource-library" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '资源节点库' : 'Resource node library')}">
       ${renderSidebarToggle(options)}
@@ -803,6 +858,10 @@ function renderResourceLibrary(graph: CharacterResourceGraph, options: Character
           <div class="chat-resource-search-results">
             ${searchResults.slice(0, 5).map((definition) => renderNodeLibraryCard(definition, graph, options)).join('')}
           </div>
+          <div class="chat-resource-node-preview" data-resource-node-preview>
+            <strong>${options.escapeHtml(searchResults[0]?.displayName ?? 'Node Preview')}</strong>
+            <p>${options.escapeHtml(searchResults[0]?.description ?? '')}</p>
+          </div>
         </section>
         <section class="chat-workflow-sidebar-section">
           <strong>${options.escapeHtml(options.language === 'zh-CN' ? 'Categories' : 'Categories')}</strong>
@@ -814,7 +873,7 @@ function renderResourceLibrary(graph: CharacterResourceGraph, options: Character
         </section>
         <section class="chat-workflow-sidebar-section compact">
           <strong>${options.escapeHtml(options.language === 'zh-CN' ? 'Favorites' : 'Favorites')}</strong>
-          ${RESOURCE_NODE_DEFINITIONS.slice(0, 4).map((definition) => renderNodeLibraryCard(definition, graph, options)).join('')}
+          ${RESOURCE_NODE_DEFINITIONS.filter((definition) => definition.source === 'core' || definition.source === 'agent').slice(0, 4).map((definition) => renderNodeLibraryCard(definition, graph, options)).join('')}
         </section>
       </div>
     </aside>
@@ -823,8 +882,17 @@ function renderResourceLibrary(graph: CharacterResourceGraph, options: Character
 
 function renderNodeLibraryCard(definition: CharacterResourceNodeDefinition, graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): string {
   const existing = graph.nodes.find((node) => node.type === definition.type)
+  const searchText = [
+    definition.type,
+    definition.displayName,
+    definition.category,
+    definition.source,
+    ...definition.aliases,
+    ...definition.inputs.map((slotItem) => slotItem.type),
+    ...definition.outputs.map((slotItem) => slotItem.type),
+  ].join(' ')
   return `
-    <button class="chat-resource-library-card" type="button" data-chat-workflow-panel="nodes" ${existing ? `data-chat-workflow-node-select="${options.escapeHtml(existing.id)}"` : ''}>
+    <button class="chat-resource-library-card" type="button" data-resource-library-card data-resource-search-text="${options.escapeHtml(searchText)}" data-resource-preview-title="${options.escapeHtml(definition.displayName)}" data-resource-preview-body="${options.escapeHtml(definition.description)}" data-chat-workflow-panel="nodes" ${existing ? `data-chat-workflow-node-select="${options.escapeHtml(existing.id)}"` : ''}>
       <span>
         <b>${options.escapeHtml(definition.displayName)}</b>
         <small>${options.escapeHtml(definition.category)} / ${options.escapeHtml(definition.source)}</small>
