@@ -146,7 +146,7 @@ interface CharacterResourceMockOutput {
   status: CharacterResourceNodeStatus
 }
 
-interface CharacterResourceRunState {
+export interface CharacterResourceRunState {
   run?: {
     id: string
     title: string
@@ -159,6 +159,36 @@ interface CharacterResourceRunState {
     title?: string
     summary?: string
   }>
+}
+
+export function createDraftCharacterResourceRunState(runNumber: number, status: CharacterResourceRunState['run']['status'] = 'running'): CharacterResourceRunState {
+  const id = `resource-run-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  return {
+    run: {
+      id,
+      title: `Resource Draft ${String(runNumber).padStart(2, '0')}.run`,
+      status,
+    },
+    artifacts: [],
+  }
+}
+
+export function completeCharacterResourceRunState(state: CharacterResourceRunState): CharacterResourceRunState {
+  const run = state.run ?? createDraftCharacterResourceRunState(1, 'done').run!
+  return {
+    run: {
+      ...run,
+      status: 'done',
+    },
+    artifacts: [
+      { type: 'character-card', sourceNodeId: 'identity-card', title: 'Identity Card', summary: 'Mock identity resource assembled from the current resource graph.' },
+      { type: 'character-card', sourceNodeId: 'persona-engine', title: 'Persona Engine', summary: 'Mock persona resource assembled with constraints and contradictions.' },
+      { type: 'image-asset', sourceNodeId: 'image-assets', title: 'Image Asset Set', summary: 'Mock avatar, body image, expression sheet, and scene reference slots reserved.' },
+      { type: 'validation-report', sourceNodeId: 'consistency-critic', title: 'Consistency Report', summary: 'Mock validation report checks required resources, slot compatibility, and package gaps.' },
+      { type: 'agent-policy', sourceNodeId: 'agent-policy', title: 'Agent Policy', summary: 'Mock autonomous generation boundaries and revision budget are ready for backend execution.' },
+      { type: 'character-pack', sourceNodeId: 'character-package', title: 'Character Package', summary: 'Mock package manifest includes graph resources, runtime state, validation, and chat-test entry.' },
+    ],
+  }
 }
 
 const LINK_KIND_LABELS: Record<CharacterResourceLinkKind, string> = {

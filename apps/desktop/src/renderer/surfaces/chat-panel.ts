@@ -3,12 +3,6 @@
  */
 import { getImageProviderCatalogEntry, getLLMProviderCatalogEntry } from '../../main/model-provider-catalog'
 import {
-  createStandardCharacterWorkflow,
-  createWorkflowRunState,
-  executeCharacterWorkflow,
-  type CharacterWorkflowRunState,
-} from '@noema/sdk/character-workflow'
-import {
   CHAT_CONTEXT_TURNS_MAX,
   CHAT_CONTEXT_TURNS_MIN,
   CHAT_OUTPUT_TOKEN_MAX,
@@ -26,8 +20,11 @@ import {
   type ChatConversationSettings,
 } from './chat-conversation-settings'
 import {
+  completeCharacterResourceRunState,
+  createDraftCharacterResourceRunState,
   initializeCharacterResourceWorkbench,
   renderCharacterWorkflowPage,
+  type CharacterResourceRunState,
   type CharacterWorkflowFileTab,
   type CharacterWorkflowSidePanel,
 } from './chat-character-workflow-page'
@@ -157,7 +154,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let characterWorkflowRenderToken = 0
   const characterWorkflowConfigOverrides: Record<string, Record<string, unknown>> = {}
   const characterWorkflowPositionOverrides: Record<string, { x: number; y: number }> = {}
-  let characterWorkflowRunState: CharacterWorkflowRunState | null = null
+  let characterWorkflowRunState: CharacterResourceRunState | null = null
   let characterWorkflowRunCount = 0
   let characterWorkflowActiveTabId = 'workflow'
   let characterWorkflowPackTabOpen = false
@@ -1509,14 +1506,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!characterWorkflowRoot) {
       return
     }
-    const workflow = createConfiguredCharacterWorkflow()
-    const runState = characterWorkflowRunState ?? createWorkflowRunState(workflow, 1)
     characterWorkflowRoot.innerHTML = renderCharacterWorkflowPage({
       language: options.getLanguage(),
       escapeHtml: options.escapeHtml,
       configOverrides: characterWorkflowConfigOverrides,
       positionOverrides: characterWorkflowPositionOverrides,
-      runState,
+      runState: characterWorkflowRunState,
       tabs: getCharacterWorkflowTabs(),
       activeTabId: characterWorkflowActiveTabId,
       selectedNodeId: selectedWorkflowNodeId,
@@ -1527,31 +1522,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     initializeCharacterResourceWorkbench(characterWorkflowRoot)
   }
 
-  function createConfiguredCharacterWorkflow() {
-    const workflow = createStandardCharacterWorkflow({
-      id: 'draft-character-workflow',
-      name: 'Draft 01',
-      now: 1,
-      language: options.getLanguage(),
-    })
-    for (const node of workflow.nodes) {
-      if (characterWorkflowConfigOverrides[node.id]) {
-        node.config = {
-          ...node.config,
-          ...characterWorkflowConfigOverrides[node.id],
-        }
-      }
-      if (characterWorkflowPositionOverrides[node.id]) {
-        node.position = { ...characterWorkflowPositionOverrides[node.id] }
-      }
-    }
-    return workflow
-  }
-
   function getCharacterWorkflowTabs(): CharacterWorkflowFileTab[] {
     const tabs: CharacterWorkflowFileTab[] = [{
       id: 'workflow',
-      title: 'Draft 01.workflow',
+      title: 'Draft 01.resourcegraph',
       kind: 'workflow',
     }]
     if (characterWorkflowRunState) {
@@ -1586,7 +1560,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           characterWorkflowRunState.run.status = 'idle'
           renderCharacterWorkflow()
         }
-        showToast(options.getLanguage() === 'zh-CN' ? '已停止当前工作流刷新' : 'Stopped current workflow refresh')
+        showToast(options.getLanguage() === 'zh-CN' ? '已停止资源图 mock lifecycle' : 'Stopped resource graph mock lifecycle')
         break
       case 'export':
         if (characterWorkflowRunState?.artifacts.some((artifact) => artifact.type === 'character-pack')) {
@@ -1595,7 +1569,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           renderCharacterWorkflow()
           showToast(options.getLanguage() === 'zh-CN' ? '已打开角色包文件' : 'Character pack file opened')
         } else {
-          showToast(options.getLanguage() === 'zh-CN' ? '请先运行工作流生成角色包' : 'Run the workflow before export')
+          showToast(options.getLanguage() === 'zh-CN' ? '请先运行资源图 mock lifecycle 生成角色包' : 'Run the resource graph mock lifecycle before export')
         }
         break
       case 'toggle-inspector':
@@ -1605,7 +1579,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         toggleCharacterWorkflowSidebar()
         break
       default:
-        showToast(options.getLanguage() === 'zh-CN' ? '工作流操作待接入' : 'Workflow action pending')
+        showToast(options.getLanguage() === 'zh-CN' ? '资源图操作待接入' : 'Resource graph action pending')
         break
     }
   }
@@ -1617,29 +1591,28 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       characterWorkflowPackTabOpen = false
     }
     characterWorkflowRunCount += 1
-    const workflow = createConfiguredCharacterWorkflow()
-    const draftRunState = createWorkflowRunState(workflow, Date.now())
-    draftRunState.run.title = `Draft ${String(characterWorkflowRunCount).padStart(2, '0')}.run`
-    draftRunState.run.status = 'running'
+    const draftRunState = createDraftCharacterResourceRunState(characterWorkflowRunCount, 'running')
     characterWorkflowRunState = draftRunState
-    characterWorkflowActiveTabId = draftRunState.run.id
+    characterWorkflowActiveTabId = draftRunState.run?.id ?? 'run-draft'
     renderCharacterWorkflow()
-    showToast(options.getLanguage() === 'zh-CN' ? '角色工作流运行中' : 'Character workflow running')
+    showToast(options.getLanguage() === 'zh-CN' ? '资源图 mock lifecycle 运行中' : 'Resource graph mock lifecycle running')
     try {
-      let tick = Date.now()
-      const nextState = await executeCharacterWorkflow(workflow, { now: () => ++tick })
-      nextState.run.title = draftRunState.run.title
       if (renderToken !== characterWorkflowRenderToken) {
         return
       }
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 180))
+      const nextState = completeCharacterResourceRunState(draftRunState)
       characterWorkflowRunState = nextState
-      characterWorkflowActiveTabId = nextState.run.id
+      characterWorkflowActiveTabId = nextState.run?.id ?? 'run-draft'
       renderCharacterWorkflow()
-      showToast(options.getLanguage() === 'zh-CN' ? '角色工作流已完成' : 'Character workflow finished')
+      showToast(options.getLanguage() === 'zh-CN' ? '资源图 mock lifecycle 已完成' : 'Resource graph mock lifecycle finished')
     } catch (error) {
-      console.warn('[CharacterWorkflow] Failed to run workflow:', error)
+      console.warn('[CharacterResourceGraph] Failed to run mock lifecycle:', error)
       if (renderToken === characterWorkflowRenderToken) {
-        showToast(options.getLanguage() === 'zh-CN' ? '角色工作流运行失败' : 'Character workflow failed')
+        characterWorkflowRunState = draftRunState.run
+          ? { ...draftRunState, run: { ...draftRunState.run, status: 'failed' } }
+          : draftRunState
+        showToast(options.getLanguage() === 'zh-CN' ? '资源图 mock lifecycle 失败' : 'Resource graph mock lifecycle failed')
       }
     }
   }
@@ -1730,9 +1703,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!nodeId) {
       return
     }
-    const fallbackWorkflow = createConfiguredCharacterWorkflow()
-    const fallbackNode = fallbackWorkflow.nodes.find((item) => item.id === nodeId)
-    const origin = characterWorkflowPositionOverrides[nodeId] ?? fallbackNode?.position ?? { x: 0, y: 0 }
+    const origin = characterWorkflowPositionOverrides[nodeId] ?? {
+      x: Number.parseFloat(node.style.getPropertyValue('--node-x')) || 0,
+      y: Number.parseFloat(node.style.getPropertyValue('--node-y')) || 0,
+    }
     characterWorkflowDragging = {
       nodeId,
       pointerId: event.pointerId,
@@ -2408,7 +2382,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       conversationSettingsClose.textContent = language === 'zh-CN' ? '返回' : 'Back'
     }
     if (characterWorkflowTitle) {
-      characterWorkflowTitle.textContent = language === 'zh-CN' ? '角色工作流' : 'Character Workflow'
+      characterWorkflowTitle.textContent = language === 'zh-CN' ? '角色资源图' : 'Character Resource Graph'
     }
     if (chatHistoryTitle) {
       chatHistoryTitle.textContent = language === 'zh-CN' ? '对话管理' : 'Conversation management'
