@@ -1555,38 +1555,60 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!characterWorkflowRoot) {
       return
     }
-    characterWorkflowRoot.innerHTML = renderCharacterWorkflowPage({
-      language: options.getLanguage(),
-      escapeHtml: options.escapeHtml,
-      configOverrides: characterWorkflowConfigOverrides,
-      positionOverrides: characterWorkflowPositionOverrides,
-      runState: characterWorkflowRunState,
-      tabs: getCharacterWorkflowTabs(),
-      activeTabId: characterWorkflowActiveTabId,
-      selectedNodeId: selectedWorkflowNodeId,
-      activePanel: characterWorkflowEditorState.activePanel,
-      sidebarCollapsed: characterWorkflowEditorState.sidebarCollapsed,
-      inspectorCollapsed: characterWorkflowEditorState.inspectorCollapsed,
-      nodeSearchOpen: characterWorkflowEditorState.nodeSearchOpen,
-      viewState: {
-        zoom: characterResourceViewState.zoom,
-        panX: characterResourceViewState.panX,
-        panY: characterResourceViewState.panY,
-        hideLinks: characterResourceViewState.hideLinks,
-        selectedNodeIds: characterResourceViewState.selectedNodeIds,
-        selectionBox: characterResourceViewState.selectionBox,
-        collapsedNodeIds: [...characterResourceViewState.collapsedNodeIds],
-        deletedNodeIds: [...characterResourceViewState.deletedNodeIds],
-        duplicatedNodes: characterResourceViewState.duplicatedNodes,
-        nodeSizes: characterResourceViewState.nodeSizes,
-        selectedLinkId: characterResourceViewState.selectedLinkId,
-        linkKinds: characterResourceViewState.linkKinds,
-        customLinks: characterResourceViewState.customLinks,
-        deletedLinkIds: [...characterResourceViewState.deletedLinkIds],
-        replacedTargetSlots: [...characterResourceViewState.replacedTargetSlots],
-      },
-    })
-    initializeCharacterResourceWorkbench(characterWorkflowRoot)
+    try {
+      characterWorkflowRoot.innerHTML = renderCharacterWorkflowPage({
+        language: options.getLanguage(),
+        escapeHtml: options.escapeHtml,
+        configOverrides: characterWorkflowConfigOverrides,
+        positionOverrides: characterWorkflowPositionOverrides,
+        runState: characterWorkflowRunState,
+        tabs: getCharacterWorkflowTabs(),
+        activeTabId: characterWorkflowActiveTabId,
+        selectedNodeId: selectedWorkflowNodeId,
+        activePanel: characterWorkflowEditorState.activePanel,
+        sidebarCollapsed: characterWorkflowEditorState.sidebarCollapsed,
+        inspectorCollapsed: characterWorkflowEditorState.inspectorCollapsed,
+        nodeSearchOpen: characterWorkflowEditorState.nodeSearchOpen,
+        viewState: {
+          zoom: characterResourceViewState.zoom,
+          panX: characterResourceViewState.panX,
+          panY: characterResourceViewState.panY,
+          hideLinks: characterResourceViewState.hideLinks,
+          selectedNodeIds: characterResourceViewState.selectedNodeIds,
+          selectionBox: characterResourceViewState.selectionBox,
+          collapsedNodeIds: [...characterResourceViewState.collapsedNodeIds],
+          deletedNodeIds: [...characterResourceViewState.deletedNodeIds],
+          duplicatedNodes: characterResourceViewState.duplicatedNodes,
+          nodeSizes: characterResourceViewState.nodeSizes,
+          selectedLinkId: characterResourceViewState.selectedLinkId,
+          linkKinds: characterResourceViewState.linkKinds,
+          customLinks: characterResourceViewState.customLinks,
+          deletedLinkIds: [...characterResourceViewState.deletedLinkIds],
+          replacedTargetSlots: [...characterResourceViewState.replacedTargetSlots],
+        },
+      })
+    } catch (error) {
+      console.error('[CharacterResource] Failed to render workflow:', error)
+      characterWorkflowRoot.innerHTML = renderCharacterWorkflowError(error)
+      return
+    }
+    try {
+      initializeCharacterResourceWorkbench(characterWorkflowRoot)
+    } catch (error) {
+      console.error('[CharacterResource] Failed to initialize workflow interactions:', error)
+      characterWorkflowRoot.querySelector('.chat-resource-workbench')?.classList.add('interaction-error')
+      showToast(options.getLanguage() === 'zh-CN' ? '资源图交互初始化失败，已保留静态视图' : 'Resource graph interactions failed; static view kept')
+    }
+  }
+
+  function renderCharacterWorkflowError(error: unknown): string {
+    const message = error instanceof Error ? error.message : String(error)
+    return `
+      <div class="chat-resource-fatal-state">
+        <strong>${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '角色资源图渲染失败' : 'Character resource graph failed to render')}</strong>
+        <span>${options.escapeHtml(message)}</span>
+      </div>
+    `
   }
 
   function getCharacterWorkflowTabs(): CharacterWorkflowFileTab[] {

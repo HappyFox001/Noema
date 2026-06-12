@@ -417,6 +417,14 @@ const definitionFuse = new Fuse(RESOURCE_NODE_DEFINITIONS, {
 
 const workbenchCleanups = new WeakMap<HTMLElement, Array<() => void>>()
 
+function addWorkbenchCleanup(cleanups: Array<() => void>, setup: () => void): void {
+  try {
+    setup()
+  } catch (error) {
+    console.warn('[CharacterResource] Workbench enhancement disabled:', error)
+  }
+}
+
 export function renderCharacterWorkflowPage(options: CharacterWorkflowPageOptions): string {
   const graph = createCharacterResourceGraph(options)
   const liteGraphSnapshot = createLiteGraphSnapshot(graph)
@@ -458,29 +466,33 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
 
   root.querySelectorAll<HTMLElement>('.chat-resource-node').forEach((node) => {
     const handle = node.querySelector<HTMLElement>('[data-chat-workflow-drag-handle]') ?? node
-    cleanups.push(draggable({
-      element: node,
-      dragHandle: handle,
-      getInitialData: () => ({
-        kind: 'character-resource-node',
-        nodeId: node.dataset.chatWorkflowNodeId ?? '',
-        nodeType: node.dataset.resourceNodeType ?? '',
-      }),
-      onDragStart: () => node.classList.add('is-pragmatic-dragging'),
-      onDrop: () => node.classList.remove('is-pragmatic-dragging'),
-    }))
+    addWorkbenchCleanup(cleanups, () => {
+      cleanups.push(draggable({
+        element: node,
+        dragHandle: handle,
+        getInitialData: () => ({
+          kind: 'character-resource-node',
+          nodeId: node.dataset.chatWorkflowNodeId ?? '',
+          nodeType: node.dataset.resourceNodeType ?? '',
+        }),
+        onDragStart: () => node.classList.add('is-pragmatic-dragging'),
+        onDrop: () => node.classList.remove('is-pragmatic-dragging'),
+      }))
+    })
   })
 
   const canvas = root.querySelector<HTMLElement>('.chat-resource-canvas')
   const contextMenu = root.querySelector<HTMLElement>('.chat-resource-context-menu')
   if (canvas) {
-    cleanups.push(dropTargetForElements({
-      element: canvas,
-      getData: () => ({ kind: 'character-resource-canvas' }),
-      onDragEnter: () => canvas.classList.add('is-drag-target'),
-      onDragLeave: () => canvas.classList.remove('is-drag-target'),
-      onDrop: () => canvas.classList.remove('is-drag-target'),
-    }))
+    addWorkbenchCleanup(cleanups, () => {
+      cleanups.push(dropTargetForElements({
+        element: canvas,
+        getData: () => ({ kind: 'character-resource-canvas' }),
+        onDragEnter: () => canvas.classList.add('is-drag-target'),
+        onDragLeave: () => canvas.classList.remove('is-drag-target'),
+        onDrop: () => canvas.classList.remove('is-drag-target'),
+      }))
+    })
     const openContextMenu = (event: MouseEvent) => {
       if (!contextMenu || !(event.target as HTMLElement | null)?.closest('.chat-resource-canvas')) {
         return
@@ -527,10 +539,12 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
     })
   }
 
-  cleanups.push(monitorForElements({
-    onDragStart: () => root.classList.add('is-resource-dragging'),
-    onDrop: () => root.classList.remove('is-resource-dragging'),
-  }))
+  addWorkbenchCleanup(cleanups, () => {
+    cleanups.push(monitorForElements({
+      onDragStart: () => root.classList.add('is-resource-dragging'),
+      onDrop: () => root.classList.remove('is-resource-dragging'),
+    }))
+  })
 
   const searchInput = root.querySelector<HTMLElement>('.chat-resource-search-panel [data-chat-resource-node-search]')
   const searchPopover = root.querySelector<HTMLElement>('.chat-resource-node-search-popover')
