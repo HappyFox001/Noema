@@ -25,6 +25,7 @@ export interface CharacterWorkflowPageOptions {
   activeTabId: string
   selectedNodeId: string
   activePanel: CharacterWorkflowSidePanel
+  sidebarCollapsed: boolean
   inspectorCollapsed: boolean
 }
 
@@ -53,7 +54,8 @@ export function renderCharacterWorkflowPage(options: CharacterWorkflowPageOption
     <div class="chat-character-workflow-shell">
       ${renderFileTabs(options)}
       <div class="chat-character-workflow-stage">
-        <div class="chat-character-workflow-grid ${options.inspectorCollapsed ? 'inspector-collapsed' : ''}">
+        <div class="chat-character-workflow-grid ${options.sidebarCollapsed ? 'sidebar-collapsed' : ''} ${options.inspectorCollapsed ? 'inspector-collapsed' : ''}">
+          ${renderSidebarToggle(options)}
           ${renderWorkflowSidebar(runState, options)}
           ${renderWorkflowCanvas(runState, options)}
           ${renderWorkflowInspector(runState, options)}
@@ -87,33 +89,21 @@ function renderFileTab(
   `
 }
 
-function renderRunToolbar(
-  workflow: CharacterWorkflow,
+function renderCanvasControls(
   run: WorkflowRunSession,
   options: CharacterWorkflowPageOptions
 ): string {
-  const done = run.progress.done
-  const statusLabel = run.status === 'idle'
-    ? (options.language === 'zh-CN' ? '等待运行' : 'Ready')
-    : run.status === 'done'
-      ? (options.language === 'zh-CN' ? '角色资源已生成' : 'Character resources generated')
-      : (options.language === 'zh-CN' ? '正在生成角色资源' : 'Generating character resources')
+  const running = run.status === 'running'
+  const label = running
+    ? (options.language === 'zh-CN' ? '停止工作流' : 'Stop workflow')
+    : (options.language === 'zh-CN' ? '运行工作流' : 'Run workflow')
   return `
-    <header class="chat-workflow-run-toolbar">
-      <div>
-        <span>${options.escapeHtml(options.language === 'zh-CN' ? 'Character Workflow' : 'Character Workflow')}</span>
-        <h3>${options.escapeHtml(run.title)}</h3>
-      </div>
-      <div class="chat-workflow-run-status">
-        <span>${options.escapeHtml(statusLabel)}</span>
-        <strong>${done}/${workflow.nodes.length}</strong>
-      </div>
-      <div class="chat-workflow-run-actions">
-        <button type="button" data-chat-workflow-action="run">${options.escapeHtml(options.language === 'zh-CN' ? '运行' : 'Run')}</button>
-        <button type="button" data-chat-workflow-action="stop">${options.escapeHtml(options.language === 'zh-CN' ? '停止' : 'Stop')}</button>
-        <button type="button" data-chat-workflow-action="export">${options.escapeHtml(options.language === 'zh-CN' ? '导出' : 'Export')}</button>
-      </div>
-    </header>
+    <div class="chat-workflow-canvas-controls" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '画布控制' : 'Canvas controls')}">
+      <button class="chat-workflow-run-toggle ${running ? 'is-running' : ''}" type="button" data-chat-workflow-action="${running ? 'stop' : 'run'}" aria-label="${options.escapeHtml(label)}" title="${options.escapeHtml(label)}">
+        <span aria-hidden="true"></span>
+      </button>
+      ${renderInspectorToggle(options)}
+    </div>
   `
 }
 
@@ -123,7 +113,7 @@ function renderWorkflowCanvas(state: CharacterWorkflowRunState, options: Charact
   const visibleNodes = workflow.nodes.slice(0, 11)
   return `
     <section class="chat-workflow-canvas" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '工作流执行画布' : 'Workflow run canvas')}">
-      ${renderRunToolbar(state.workflow, state.run, options)}
+      ${renderCanvasControls(state.run, options)}
       <div class="chat-workflow-canvas-viewport">
         <div class="chat-workflow-canvas-plane">
           <div class="chat-workflow-canvas-grid" aria-hidden="true"></div>
@@ -146,32 +136,45 @@ function renderWorkflowSidebar(
   const categories = ['input', 'llm', 'image', 'validation', 'export']
   return `
     <aside class="chat-workflow-sidebar" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '工作流工具' : 'Workflow tools')}">
-      <section class="chat-workflow-sidebar-section">
-        <strong>${options.escapeHtml(options.language === 'zh-CN' ? 'Workflow' : 'Workflow')}</strong>
-        <button class="${options.activePanel === 'workflow' ? 'active' : ''}" type="button" data-chat-workflow-panel="workflow">${options.escapeHtml(options.language === 'zh-CN' ? '运行路径' : 'Run Path')}</button>
-        <button class="${options.activePanel === 'assets' ? 'active' : ''}" type="button" data-chat-workflow-panel="assets">${options.escapeHtml(options.language === 'zh-CN' ? '资产' : 'Assets')}</button>
-        <button class="${options.activePanel === 'nodes' ? 'active' : ''}" type="button" data-chat-workflow-panel="nodes">${options.escapeHtml(options.language === 'zh-CN' ? '节点库' : 'Nodes')}</button>
-      </section>
-      <section class="chat-workflow-sidebar-section compact">
-        <strong>${options.escapeHtml(options.language === 'zh-CN' ? 'Agent Path' : 'Agent Path')}</strong>
-        ${agentPath.slice(0, 6).map((step) => renderSidebarAgentPathStep(step, options)).join('')}
-      </section>
-      <section class="chat-workflow-sidebar-section">
-        <strong>${options.escapeHtml(options.language === 'zh-CN' ? 'Nodes' : 'Nodes')}</strong>
-        ${categories.map((category) => {
-          const count = state.workflow.nodes.filter((node) => definitionMap.get(node.type)?.category === category).length
-          const firstNode = state.workflow.nodes.find((node) => definitionMap.get(node.type)?.category === category)
-          return `<button type="button" data-chat-workflow-panel="nodes" data-chat-workflow-node-category="${category}" ${firstNode ? `data-chat-workflow-node-select="${options.escapeHtml(firstNode.id)}"` : ''}><span>${options.escapeHtml(category)}</span><em>${count}</em></button>`
-        }).join('')}
-      </section>
-      <section class="chat-workflow-sidebar-section">
-        <strong>${options.escapeHtml(options.language === 'zh-CN' ? 'Assets' : 'Assets')}</strong>
-        ${renderSidebarArtifactCount(state, 'character-card', options)}
-        ${renderSidebarArtifactCount(state, 'image-asset', options)}
-        ${renderSidebarArtifactCount(state, 'validation-report', options)}
-        ${renderSidebarArtifactCount(state, 'character-pack', options)}
-      </section>
+      <div class="chat-workflow-sidebar-scroll">
+        <section class="chat-workflow-sidebar-section">
+          <strong>${options.escapeHtml(options.language === 'zh-CN' ? 'Workflow' : 'Workflow')}</strong>
+          <button class="${options.activePanel === 'workflow' ? 'active' : ''}" type="button" data-chat-workflow-panel="workflow">${options.escapeHtml(options.language === 'zh-CN' ? '运行路径' : 'Run Path')}</button>
+          <button class="${options.activePanel === 'assets' ? 'active' : ''}" type="button" data-chat-workflow-panel="assets">${options.escapeHtml(options.language === 'zh-CN' ? '资产' : 'Assets')}</button>
+          <button class="${options.activePanel === 'nodes' ? 'active' : ''}" type="button" data-chat-workflow-panel="nodes">${options.escapeHtml(options.language === 'zh-CN' ? '节点库' : 'Nodes')}</button>
+        </section>
+        <section class="chat-workflow-sidebar-section compact">
+          <strong>${options.escapeHtml(options.language === 'zh-CN' ? 'Agent Path' : 'Agent Path')}</strong>
+          ${agentPath.slice(0, 6).map((step) => renderSidebarAgentPathStep(step, options)).join('')}
+        </section>
+        <section class="chat-workflow-sidebar-section">
+          <strong>${options.escapeHtml(options.language === 'zh-CN' ? 'Nodes' : 'Nodes')}</strong>
+          ${categories.map((category) => {
+            const count = state.workflow.nodes.filter((node) => definitionMap.get(node.type)?.category === category).length
+            const firstNode = state.workflow.nodes.find((node) => definitionMap.get(node.type)?.category === category)
+            return `<button type="button" data-chat-workflow-panel="nodes" data-chat-workflow-node-category="${category}" ${firstNode ? `data-chat-workflow-node-select="${options.escapeHtml(firstNode.id)}"` : ''}><span>${options.escapeHtml(category)}</span><em>${count}</em></button>`
+          }).join('')}
+        </section>
+        <section class="chat-workflow-sidebar-section">
+          <strong>${options.escapeHtml(options.language === 'zh-CN' ? 'Assets' : 'Assets')}</strong>
+          ${renderSidebarArtifactCount(state, 'character-card', options)}
+          ${renderSidebarArtifactCount(state, 'image-asset', options)}
+          ${renderSidebarArtifactCount(state, 'validation-report', options)}
+          ${renderSidebarArtifactCount(state, 'character-pack', options)}
+        </section>
+      </div>
     </aside>
+  `
+}
+
+function renderSidebarToggle(options: CharacterWorkflowPageOptions): string {
+  const label = options.sidebarCollapsed
+    ? (options.language === 'zh-CN' ? '展开工作流侧栏' : 'Expand workflow sidebar')
+    : (options.language === 'zh-CN' ? '收起工作流侧栏' : 'Collapse workflow sidebar')
+  return `
+    <button class="chat-workflow-sidebar-toggle" type="button" data-chat-workflow-action="toggle-sidebar" aria-label="${options.escapeHtml(label)}" title="${options.escapeHtml(label)}">
+      <span aria-hidden="true"></span>
+    </button>
   `
 }
 
@@ -209,7 +212,6 @@ function renderWorkflowInspector(
   if (!selectedNode || !definition) {
     return `
       <aside class="chat-workflow-inspector">
-        ${renderInspectorToggle(options)}
         <div class="chat-workflow-inspector-scroll">
           <div class="chat-workflow-inspector-empty">${options.escapeHtml(options.language === 'zh-CN' ? '选择一个节点编辑参数。' : 'Select a node to edit parameters.')}</div>
         </div>
@@ -219,7 +221,6 @@ function renderWorkflowInspector(
   const producedArtifacts = state.artifacts.filter((artifact) => artifact.sourceNodeId === selectedNode.id)
   return `
     <aside class="chat-workflow-inspector" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '节点参数面板' : 'Node inspector')}">
-      ${renderInspectorToggle(options)}
       <div class="chat-workflow-inspector-scroll">
         <header class="chat-workflow-inspector-head">
           <span>${options.escapeHtml(definition.category)} / ${options.escapeHtml(definition.executor)}</span>

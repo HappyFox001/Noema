@@ -63,6 +63,7 @@ type PendingChatAttachment = ChatMessageAttachment
 
 interface CharacterWorkflowEditorState {
   activePanel: CharacterWorkflowSidePanel
+  sidebarCollapsed: boolean
   inspectorCollapsed: boolean
 }
 
@@ -158,6 +159,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let selectedWorkflowNodeId = 'brief-input'
   const characterWorkflowEditorState: CharacterWorkflowEditorState = {
     activePanel: 'workflow',
+    sidebarCollapsed: false,
     inspectorCollapsed: false,
   }
   let characterWorkflowDragging: {
@@ -1514,6 +1516,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       activeTabId: characterWorkflowActiveTabId,
       selectedNodeId: selectedWorkflowNodeId,
       activePanel: characterWorkflowEditorState.activePanel,
+      sidebarCollapsed: characterWorkflowEditorState.sidebarCollapsed,
       inspectorCollapsed: characterWorkflowEditorState.inspectorCollapsed,
     })
   }
@@ -1573,6 +1576,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         break
       case 'stop':
         characterWorkflowRenderToken += 1
+        if (characterWorkflowRunState?.run.status === 'running') {
+          characterWorkflowRunState.run.status = 'idle'
+          renderCharacterWorkflow()
+        }
         showToast(options.getLanguage() === 'zh-CN' ? '已停止当前工作流刷新' : 'Stopped current workflow refresh')
         break
       case 'export':
@@ -1587,6 +1594,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         break
       case 'toggle-inspector':
         toggleCharacterWorkflowInspector()
+        break
+      case 'toggle-sidebar':
+        toggleCharacterWorkflowSidebar()
         break
       default:
         showToast(options.getLanguage() === 'zh-CN' ? '工作流操作待接入' : 'Workflow action pending')
@@ -1678,6 +1688,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function toggleCharacterWorkflowInspector(): void {
     characterWorkflowEditorState.inspectorCollapsed = !characterWorkflowEditorState.inspectorCollapsed
+    renderCharacterWorkflow()
+  }
+
+  function toggleCharacterWorkflowSidebar(): void {
+    characterWorkflowEditorState.sidebarCollapsed = !characterWorkflowEditorState.sidebarCollapsed
     renderCharacterWorkflow()
   }
 

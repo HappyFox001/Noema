@@ -11774,82 +11774,79 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   font-size: 12px;
 }
 
-.chat-workflow-run-toolbar {
+.chat-workflow-canvas-controls {
   position: absolute;
-  top: 12px;
-  right: 12px;
+  top: 8px;
+  right: 8px;
   z-index: 6;
-  min-width: 0;
-  max-width: min(560px, calc(100% - 24px));
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px;
-  border: 1px solid rgba(248, 250, 250, 0.09);
-  border-radius: 10px;
-  background: rgba(10, 11, 12, 0.88);
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid rgba(248, 250, 250, 0.08);
+  border-radius: 8px;
+  background: rgba(8, 9, 10, 0.76);
   backdrop-filter: blur(16px);
-  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.22);
 }
 
-.chat-workflow-run-toolbar span,
-.chat-workflow-run-status span {
-  color: rgba(248, 250, 250, 0.44);
-  font-family: var(--font-ui);
-  font-size: 11px;
-  line-height: 1.35;
-}
-
-.chat-workflow-run-toolbar h3 {
-  max-width: 150px;
-  margin: 2px 0 0;
-  overflow: hidden;
-  color: rgba(248, 250, 250, 0.9);
-  font-family: var(--font-ui);
-  font-size: 12px;
-  line-height: 1;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.chat-workflow-run-status {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 0 4px;
-}
-
-.chat-workflow-run-status strong {
-  color: rgba(219, 232, 224, 0.9);
-  font-family: var(--font-mono, monospace);
-  font-size: 12px;
-}
-
-.chat-workflow-run-actions {
-  display: flex;
-  gap: 5px;
-}
-
-.chat-workflow-run-actions button {
-  height: 28px;
-  padding: 0 9px;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 7px;
+.chat-workflow-run-toggle,
+.chat-workflow-inspector-toggle {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(248, 250, 250, 0.1);
+  border-radius: 6px;
   background: rgba(255, 255, 255, 0.035);
-  color: rgba(248, 250, 250, 0.66);
-  font-family: var(--font-ui);
-  font-size: 11px;
+  color: rgba(248, 250, 250, 0.62);
+  cursor: pointer;
+}
+
+.chat-workflow-run-toggle:hover,
+.chat-workflow-inspector-toggle:hover {
+  border-color: rgba(248, 250, 250, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(248, 250, 250, 0.82);
+}
+
+.chat-workflow-run-toggle span {
+  width: 0;
+  height: 0;
+  margin-left: 2px;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 8px solid currentColor;
+}
+
+.chat-workflow-run-toggle.is-running span {
+  width: 8px;
+  height: 8px;
+  margin-left: 0;
+  border: 0;
+  border-radius: 1px;
+  background: currentColor;
 }
 
 .chat-character-workflow-grid {
+  position: relative;
   min-height: 0;
   height: 100%;
   display: grid;
   grid-template-columns: 176px minmax(0, 1fr) 238px;
 }
 
+.chat-character-workflow-grid.sidebar-collapsed {
+  grid-template-columns: 0 minmax(0, 1fr) 238px;
+}
+
 .chat-character-workflow-grid.inspector-collapsed {
-  grid-template-columns: 176px minmax(0, 1fr) 34px;
+  grid-template-columns: 176px minmax(0, 1fr) 0;
+}
+
+.chat-character-workflow-grid.sidebar-collapsed.inspector-collapsed {
+  grid-template-columns: 0 minmax(0, 1fr) 0;
 }
 
 .chat-workflow-sidebar,
@@ -11861,7 +11858,10 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
 }
 
 .chat-workflow-sidebar {
-  overflow: auto;
+  position: relative;
+  overflow: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(248, 250, 250, 0.08) transparent;
 }
 
 .chat-workflow-inspector {
@@ -11871,10 +11871,90 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
 }
 
 .chat-workflow-sidebar {
+  height: 100%;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  align-content: start;
+  padding: 0;
+}
+
+.chat-workflow-sidebar-scroll {
+  min-height: 0;
   display: grid;
   align-content: start;
   gap: 14px;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding: 14px 10px;
+}
+
+.chat-workflow-sidebar-toggle {
+  position: absolute;
+  top: 8px;
+  left: 184px;
+  z-index: 4;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(248, 250, 250, 0.1);
+  border-radius: 6px;
+  background: rgba(15, 17, 18, 0.92);
+  color: rgba(248, 250, 250, 0.58);
+  cursor: pointer;
+}
+
+.chat-workflow-sidebar-toggle span {
+  width: 6px;
+  height: 6px;
+  border-top: 1px solid currentColor;
+  border-right: 1px solid currentColor;
+  transform: rotate(225deg) translate(-1px, -1px);
+}
+
+.chat-character-workflow-grid.sidebar-collapsed .chat-workflow-sidebar-toggle {
+  left: 8px;
+}
+
+.chat-character-workflow-grid.sidebar-collapsed .chat-workflow-sidebar-toggle span {
+  transform: rotate(45deg) translateX(-1px);
+}
+
+.chat-character-workflow-grid.sidebar-collapsed .chat-workflow-sidebar-scroll {
+  display: none;
+}
+
+.chat-character-workflow-grid.sidebar-collapsed .chat-workflow-sidebar,
+.chat-character-workflow-grid.inspector-collapsed .chat-workflow-inspector {
+  border: 0;
+  background: transparent;
+}
+
+.chat-workflow-sidebar-scroll:hover {
+  scrollbar-color: rgba(248, 250, 250, 0.16) transparent;
+}
+
+.chat-workflow-sidebar-scroll::-webkit-scrollbar,
+.chat-workflow-inspector-scroll::-webkit-scrollbar {
+  width: 3px;
+  height: 3px;
+}
+
+.chat-workflow-sidebar-scroll::-webkit-scrollbar-track,
+.chat-workflow-inspector-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chat-workflow-sidebar-scroll::-webkit-scrollbar-thumb,
+.chat-workflow-inspector-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(248, 250, 250, 0.08);
+}
+
+.chat-workflow-sidebar-scroll:hover::-webkit-scrollbar-thumb,
+.chat-workflow-inspector-scroll:hover::-webkit-scrollbar-thumb {
+  background: rgba(248, 250, 250, 0.16);
 }
 
 .chat-workflow-sidebar-section,
@@ -11948,24 +12028,7 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   overscroll-behavior: contain;
   padding: 14px;
   scrollbar-width: thin;
-  scrollbar-color: rgba(248, 250, 250, 0.22) transparent;
-}
-
-.chat-workflow-inspector-toggle {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 4;
-  width: 20px;
-  height: 20px;
-  display: grid;
-  place-items: center;
-  padding: 0;
-  border: 1px solid rgba(248, 250, 250, 0.1);
-  border-radius: 6px;
-  background: rgba(15, 17, 18, 0.92);
-  color: rgba(248, 250, 250, 0.58);
-  cursor: pointer;
+  scrollbar-color: rgba(248, 250, 250, 0.08) transparent;
 }
 
 .chat-workflow-inspector-toggle span {
@@ -11976,10 +12039,6 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   transform: rotate(45deg) translateX(-1px);
 }
 
-.chat-character-workflow-grid.inspector-collapsed .chat-workflow-inspector-toggle {
-  right: 6px;
-}
-
 .chat-character-workflow-grid.inspector-collapsed .chat-workflow-inspector-toggle span {
   transform: rotate(225deg) translate(-1px, -1px);
 }
@@ -11988,13 +12047,8 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   display: none;
 }
 
-.chat-workflow-inspector-scroll::-webkit-scrollbar {
-  width: 6px;
-}
-
-.chat-workflow-inspector-scroll::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: rgba(248, 250, 250, 0.2);
+.chat-workflow-inspector-scroll:hover {
+  scrollbar-color: rgba(248, 250, 250, 0.16) transparent;
 }
 
 .chat-workflow-inspector-head {
@@ -15133,13 +15187,6 @@ body.chat-fullscreen .chat-shell.threads-collapsed.profile-collapsed {
 
   .chat-character-workflow-grid {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .chat-workflow-run-toolbar {
-    left: 10px;
-    right: 10px;
-    justify-content: flex-end;
-    gap: 5px;
   }
 
   .chat-conversation-settings-header {
