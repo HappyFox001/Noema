@@ -159,6 +159,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let characterWorkflowActiveTabId = 'workflow'
   let characterWorkflowPackTabOpen = false
   let selectedWorkflowNodeId = 'brief-input'
+  let characterResourceDuplicateCount = 0
+  const characterResourceViewState = {
+    zoom: 0.84,
+    hideLinks: false,
+    collapsedNodeIds: new Set<string>(),
+    deletedNodeIds: new Set<string>(),
+    duplicatedNodes: [] as Array<{ id: string; sourceId: string; offsetX: number; offsetY: number }>,
+  }
   const characterWorkflowEditorState: CharacterWorkflowEditorState = {
     activePanel: 'workflow',
     sidebarCollapsed: false,
@@ -1518,6 +1526,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       activePanel: characterWorkflowEditorState.activePanel,
       sidebarCollapsed: characterWorkflowEditorState.sidebarCollapsed,
       inspectorCollapsed: characterWorkflowEditorState.inspectorCollapsed,
+      viewState: {
+        zoom: characterResourceViewState.zoom,
+        hideLinks: characterResourceViewState.hideLinks,
+        collapsedNodeIds: [...characterResourceViewState.collapsedNodeIds],
+        deletedNodeIds: [...characterResourceViewState.deletedNodeIds],
+        duplicatedNodes: characterResourceViewState.duplicatedNodes,
+      },
     })
     initializeCharacterResourceWorkbench(characterWorkflowRoot)
   }
@@ -1546,7 +1561,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     return tabs
   }
 
-  function handleCharacterWorkflowAction(action: string): void {
+  function handleCharacterWorkflowAction(action: string, target?: HTMLElement): void {
     switch (action) {
       case 'run':
         void runCharacterWorkflow(false)
@@ -1579,9 +1594,79 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         toggleCharacterWorkflowSidebar()
         break
       default:
-        showToast(options.getLanguage() === 'zh-CN' ? '资源图操作待接入' : 'Resource graph action pending')
+        if (!executeCharacterResourceCommand(action, target)) {
+          showToast(options.getLanguage() === 'zh-CN' ? '资源图操作待接入' : 'Resource graph action pending')
+        }
         break
     }
+  }
+
+  function executeCharacterResourceCommand(action: string, target?: HTMLElement): boolean {
+    const commands: Record<string, () => void> = {
+      'save-graph': () => showToast(options.getLanguage() === 'zh-CN' ? '资源图前端状态已保存到本地快照' : 'Resource graph frontend state saved to local snapshot'),
+      'fit-view': () => {
+        characterResourceViewState.zoom = 0.72
+        renderCharacterWorkflow()
+      },
+      'reset-view': () => {
+        characterResourceViewState.zoom = 0.84
+        renderCharacterWorkflow()
+      },
+      'toggle-links': () => {
+        characterResourceViewState.hideLinks = !characterResourceViewState.hideLinks
+        renderCharacterWorkflow()
+      },
+      'toggle-node-collapse': () => {
+        const nodeId = target?.closest<HTMLElement>('[data-chat-workflow-node-id]')?.dataset.chatWorkflowNodeId || selectedWorkflowNodeId
+        if (!nodeId) {
+          return
+        }
+        if (characterResourceViewState.collapsedNodeIds.has(nodeId)) {
+          characterResourceViewState.collapsedNodeIds.delete(nodeId)
+        } else {
+          characterResourceViewState.collapsedNodeIds.add(nodeId)
+        }
+        selectedWorkflowNodeId = nodeId
+        renderCharacterWorkflow()
+      },
+      'duplicate-selection': () => {
+        const sourceId = selectedWorkflowNodeId
+        if (!sourceId || characterResourceViewState.deletedNodeIds.has(sourceId)) {
+          return
+        }
+        characterResourceDuplicateCount += 1
+        const duplicateId = `${sourceId}-copy-${characterResourceDuplicateCount}`
+        characterResourceViewState.duplicatedNodes.push({
+          id: duplicateId,
+          sourceId,
+          offsetX: 34 * characterResourceDuplicateCount,
+          offsetY: 28 * characterResourceDuplicateCount,
+        })
+        selectedWorkflowNodeId = duplicateId
+        renderCharacterWorkflow()
+      },
+      'delete-selection': () => {
+        if (!selectedWorkflowNodeId || selectedWorkflowNodeId === 'brief-input') {
+          showToast(options.getLanguage() === 'zh-CN' ? 'Brief 节点不能删除' : 'Brief node cannot be deleted')
+          return
+        }
+        characterResourceViewState.deletedNodeIds.add(selectedWorkflowNodeId)
+        selectedWorkflowNodeId = 'brief-input'
+        renderCharacterWorkflow()
+      },
+      'open-node-search': () => {
+        characterWorkflowEditorState.activePanel = 'nodes'
+        renderCharacterWorkflow()
+      },
+      'chat-test': () => showToast(options.getLanguage() === 'zh-CN' ? '聊天测试入口已准备，但不调用真实聊天' : 'Chat test entry is ready without calling real chat'),
+      'set-link-kind': () => showToast(options.getLanguage() === 'zh-CN' ? '请选择具体连线后修改类型' : 'Select a concrete link before changing kind'),
+    }
+    const command = commands[action]
+    if (!command) {
+      return false
+    }
+    command()
+    return true
   }
 
   async function runCharacterWorkflow(newRun: boolean): Promise<void> {
@@ -2271,7 +2356,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
     const workflowAction = eventTarget.closest<HTMLElement>('[data-chat-workflow-action]')
     if (workflowAction && panel.contains(workflowAction)) {
-      handleCharacterWorkflowAction(workflowAction.dataset.chatWorkflowAction || '')
+      handleCharacterWorkflowAction(workflowAction.dataset.chatWorkflowAction || '', workflowAction)
       return
     }
 

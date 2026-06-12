@@ -12660,6 +12660,17 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   border-color: rgba(162, 202, 188, 0.52);
 }
 
+.chat-resource-node.collapsed {
+  min-height: 40px;
+}
+
+.chat-resource-node.collapsed .chat-resource-node-slots,
+.chat-resource-node.collapsed .chat-resource-node-widgets,
+.chat-resource-node.collapsed .chat-resource-node-content,
+.chat-resource-node.collapsed .chat-resource-node-footer {
+  display: none;
+}
+
 .chat-resource-node-widgets {
   display: grid;
   gap: 6px;
@@ -12823,6 +12834,10 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
 }
 
 .chat-resource-workbench.is-resource-dragging .chat-resource-node-search-popover {
+  display: grid;
+}
+
+.chat-resource-context-menu.is-open {
   display: grid;
 }
 

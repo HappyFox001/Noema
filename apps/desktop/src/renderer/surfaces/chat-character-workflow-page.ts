@@ -21,6 +21,7 @@ export interface CharacterWorkflowPageOptions {
   activePanel: CharacterWorkflowSidePanel
   sidebarCollapsed: boolean
   inspectorCollapsed: boolean
+  viewState?: CharacterResourceViewState
 }
 
 export interface CharacterWorkflowFileTab {
@@ -31,6 +32,19 @@ export interface CharacterWorkflowFileTab {
 }
 
 export type CharacterWorkflowSidePanel = 'workflow' | 'assets' | 'nodes'
+
+export interface CharacterResourceViewState {
+  zoom?: number
+  hideLinks?: boolean
+  collapsedNodeIds?: string[]
+  deletedNodeIds?: string[]
+  duplicatedNodes?: Array<{
+    id: string
+    sourceId: string
+    offsetX: number
+    offsetY: number
+  }>
+}
 
 type CharacterResourceNodeStatus = 'idle' | 'dirty' | 'queued' | 'running' | 'done' | 'failed' | 'stale' | 'disabled'
 type CharacterResourcePreviewType = 'text-card' | 'image' | 'voice' | 'rule' | 'validation' | 'package'
@@ -458,6 +472,7 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
   })
 
   const canvas = root.querySelector<HTMLElement>('.chat-resource-canvas')
+  const contextMenu = root.querySelector<HTMLElement>('.chat-resource-context-menu')
   if (canvas) {
     cleanups.push(dropTargetForElements({
       element: canvas,
@@ -466,6 +481,22 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
       onDragLeave: () => canvas.classList.remove('is-drag-target'),
       onDrop: () => canvas.classList.remove('is-drag-target'),
     }))
+    const openContextMenu = (event: MouseEvent) => {
+      if (!contextMenu || !(event.target as HTMLElement | null)?.closest('.chat-resource-canvas')) {
+        return
+      }
+      event.preventDefault()
+      contextMenu.classList.add('is-open')
+      contextMenu.style.left = `${event.offsetX}px`
+      contextMenu.style.top = `${event.offsetY}px`
+    }
+    const closeContextMenu = () => contextMenu?.classList.remove('is-open')
+    canvas.addEventListener('contextmenu', openContextMenu)
+    root.addEventListener('click', closeContextMenu)
+    cleanups.push(() => {
+      canvas.removeEventListener('contextmenu', openContextMenu)
+      root.removeEventListener('click', closeContextMenu)
+    })
   }
 
   cleanups.push(monitorForElements({
@@ -504,6 +535,9 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
 
 function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): CharacterResourceGraph {
   const definitions = new Map(RESOURCE_NODE_DEFINITIONS.map((definition) => [definition.type, definition]))
+  const viewState = options.viewState ?? {}
+  const collapsedNodeIds = new Set(viewState.collapsedNodeIds ?? [])
+  const deletedNodeIds = new Set(viewState.deletedNodeIds ?? [])
   const nodes = DEFAULT_NODE_PLACEMENT.map((placement, index) => {
     const definition = definitions.get(placement.type)!
     return {
@@ -513,13 +547,35 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
       position: options.positionOverrides?.[placement.id] ?? { x: placement.x, y: placement.y },
       size: definition.defaultSize,
       status: placement.status ?? 'idle',
+      collapsed: collapsedNodeIds.has(placement.id),
       zIndex: index + 1,
       config: {
         ...Object.fromEntries(definition.parameters.map((parameterItem) => [parameterItem.id, parameterItem.defaultValue])),
         ...(options.configOverrides?.[placement.id] ?? {}),
       },
     } satisfies CharacterResourceNode
-  })
+  }).filter((node) => !deletedNodeIds.has(node.id))
+  for (const duplicate of viewState.duplicatedNodes ?? []) {
+    const sourceNode = nodes.find((node) => node.id === duplicate.sourceId)
+    if (!sourceNode || deletedNodeIds.has(duplicate.id)) {
+      continue
+    }
+    nodes.push({
+      ...sourceNode,
+      id: duplicate.id,
+      title: `${sourceNode.title} Copy`,
+      position: options.positionOverrides?.[duplicate.id] ?? {
+        x: sourceNode.position.x + duplicate.offsetX,
+        y: sourceNode.position.y + duplicate.offsetY,
+      },
+      collapsed: collapsedNodeIds.has(duplicate.id),
+      zIndex: nodes.length + 1,
+      config: {
+        ...sourceNode.config,
+        ...(options.configOverrides?.[duplicate.id] ?? {}),
+      },
+    })
+  }
   const runArtifacts = options.runState?.artifacts ?? []
   const mockOutputs = nodes.map((node) => {
     const definition = definitions.get(node.type)!
@@ -537,7 +593,9 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
     id: 'draft-character-resource-graph',
     title: 'Draft Character Resource Graph',
     nodes,
-    links: DEFAULT_LINKS.map((item) => ({ ...item, status: validateLink(item, nodes, definitions) ? 'valid' : 'invalid' })),
+    links: DEFAULT_LINKS
+      .filter((item) => !deletedNodeIds.has(item.sourceNodeId) && !deletedNodeIds.has(item.targetNodeId))
+      .map((item) => ({ ...item, status: validateLink(item, nodes, definitions) ? 'valid' : 'invalid' })),
     groups: [
       { id: 'core-character', title: 'Core Character', nodeIds: ['brief-input', 'identity-card', 'persona-engine', 'dialogue-style'], color: 'rgba(82, 168, 255, 0.16)' },
       { id: 'asset-pack', title: 'Resource Pack', nodeIds: ['visual-spec', 'image-assets', 'voice-profile'], color: 'rgba(219, 189, 130, 0.16)' },
@@ -548,7 +606,7 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
       { id: 'package-preview', title: 'Package Preview', kind: 'package-preview' },
       { id: 'run-draft', title: 'Run Draft', kind: 'run-draft' },
     ],
-    viewport: { x: 0, y: 0, zoom: 0.84 },
+    viewport: { x: 0, y: 0, zoom: viewState.zoom ?? 0.84 },
     selection: { nodeIds: [options.selectedNodeId || 'brief-input'], linkIds: [] },
     panels: {
       leftWidth: options.sidebarCollapsed ? 0 : 246,
@@ -699,7 +757,7 @@ function renderResourceCanvas(graph: CharacterResourceGraph, yjsSnapshot: string
         <div class="chat-workflow-canvas-plane chat-resource-graph-plane" style="--resource-zoom: ${graph.viewport.zoom}">
           <div class="chat-workflow-canvas-grid" aria-hidden="true"></div>
           ${graph.groups.map((group) => renderGroup(group, graph, options)).join('')}
-          ${renderLinkOverlay(graph, options)}
+          ${options.viewState?.hideLinks ? '' : renderLinkOverlay(graph, options)}
           ${graph.nodes.map((node) => renderResourceNode(node, graph, options)).join('')}
           ${renderSelectionRectangle(graph)}
         </div>
