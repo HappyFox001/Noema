@@ -5,7 +5,7 @@ import Fuse from 'fuse.js'
 import Split from 'split-grid'
 import { draggable, dropTargetForElements, monitorForElements } from '@atlaskit/pragmatic-drag-and-drop/dist/esm/adapter/element-adapter.js'
 import { computePosition, flip, offset, shift } from '@floating-ui/dom'
-import { LGraph, LiteGraph } from 'litegraph.js'
+import { LGraph, LGraphNode, LiteGraph } from 'litegraph.js'
 import { Download, Link2Off, Maximize, MessageCircle, Package, Play, RotateCcw, Save, Search, createIcons } from 'lucide'
 import * as Y from 'yjs'
 import type { CharacterResourceViewState, SerializedCharacterResourceLinkKind } from './chat-character-resource-graph-state'
@@ -928,7 +928,7 @@ function createLiteGraphSnapshot(graph: CharacterResourceGraph): unknown {
   const liteGraph = new LGraph()
   for (const definition of RESOURCE_NODE_DEFINITIONS) {
     if (!LiteGraph.registered_node_types?.[`noema/${definition.type}`]) {
-      LiteGraph.registerNodeType(`noema/${definition.type}`, class extends LGraph.LGraphNode {
+      LiteGraph.registerNodeType(`noema/${definition.type}`, class extends LGraphNode {
         constructor(title?: string) {
           super(title ?? definition.displayName)
           this.size = [definition.defaultSize.width, definition.defaultSize.height]
