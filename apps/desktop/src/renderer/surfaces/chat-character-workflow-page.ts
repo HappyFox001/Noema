@@ -415,7 +415,6 @@ export function renderCharacterWorkflowPage(options: CharacterWorkflowPageOption
       ${renderFileTabs(options)}
       <div class="chat-character-workflow-stage">
         <div class="chat-resource-workspace ${options.sidebarCollapsed ? 'sidebar-collapsed' : ''} ${options.inspectorCollapsed ? 'inspector-collapsed' : ''}" style="--resource-left-panel: ${graph.panels.leftWidth}px; --resource-right-panel: ${graph.panels.rightWidth}px; --resource-bottom-panel: ${graph.panels.bottomHeight}px">
-          ${renderSidebarToggle(options)}
           ${renderResourceLibrary(graph, options)}
           <div class="chat-resource-split-gutter left" data-resource-split-gutter="left" aria-hidden="true"></div>
           ${renderResourceCanvas(graph, yjsSnapshot, options)}
@@ -1075,6 +1074,7 @@ function renderResourceCanvas(graph: CharacterResourceGraph, yjsSnapshot: string
     <section class="chat-workflow-canvas chat-resource-canvas" tabindex="-1" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '角色资源图画布' : 'Character resource graph canvas')}">
       ${renderCanvasControls(graph, options)}
       <div class="chat-resource-tabs">
+        ${renderSidebarToggle(options)}
         ${graph.tabs.map((tab) => `<button class="${tab.id === activeTab ? 'active' : ''}" type="button" data-chat-workflow-tab="${options.escapeHtml(tab.id === 'package-preview' ? 'character-pack' : tab.id)}">${options.escapeHtml(tab.title)}</button>`).join('')}
       </div>
       ${activeTab === 'package-preview' ? renderPackagePreview(graph, options) : ''}
