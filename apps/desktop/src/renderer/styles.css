@@ -12434,6 +12434,28 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   grid-row: 1 / 3;
 }
 
+.chat-resource-workspace > .chat-workflow-sidebar-toggle {
+  top: 10px;
+  left: calc(var(--resource-left-panel, 246px) - 30px);
+  z-index: 20;
+}
+
+.chat-resource-workspace.sidebar-collapsed > .chat-workflow-sidebar-toggle {
+  left: 10px;
+}
+
+.chat-resource-workspace.sidebar-collapsed > .chat-workflow-sidebar-toggle span {
+  transform: rotate(45deg) translateX(-1px);
+}
+
+.chat-resource-workspace.inspector-collapsed .chat-workflow-inspector-toggle span {
+  transform: rotate(225deg) translate(-1px, -1px);
+}
+
+.chat-resource-workspace.sidebar-collapsed .chat-resource-library {
+  pointer-events: none;
+}
+
 .chat-resource-split-gutter {
   position: relative;
   z-index: 8;

@@ -415,6 +415,7 @@ export function renderCharacterWorkflowPage(options: CharacterWorkflowPageOption
       ${renderFileTabs(options)}
       <div class="chat-character-workflow-stage">
         <div class="chat-resource-workspace ${options.sidebarCollapsed ? 'sidebar-collapsed' : ''} ${options.inspectorCollapsed ? 'inspector-collapsed' : ''}" style="--resource-left-panel: ${graph.panels.leftWidth}px; --resource-right-panel: ${graph.panels.rightWidth}px; --resource-bottom-panel: ${graph.panels.bottomHeight}px">
+          ${renderSidebarToggle(options)}
           ${renderResourceLibrary(graph, options)}
           <div class="chat-resource-split-gutter left" data-resource-split-gutter="left" aria-hidden="true"></div>
           ${renderResourceCanvas(graph, yjsSnapshot, options)}
@@ -996,7 +997,6 @@ function renderResourceLibrary(graph: CharacterResourceGraph, options: Character
     .sort((a, b) => a.category.localeCompare(b.category) || a.displayName.localeCompare(b.displayName))
   return `
     <aside class="chat-workflow-sidebar chat-resource-library" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '资源节点库' : 'Resource node library')}">
-      ${renderSidebarToggle(options)}
       <div class="chat-workflow-sidebar-scroll">
         <section class="chat-workflow-sidebar-section">
           <strong>${options.escapeHtml(options.language === 'zh-CN' ? 'Resource Library' : 'Resource Library')}</strong>
