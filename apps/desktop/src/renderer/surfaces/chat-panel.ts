@@ -1592,7 +1592,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   function getCharacterWorkflowTabs(): CharacterWorkflowFileTab[] {
     const tabs: CharacterWorkflowFileTab[] = [{
       id: 'workflow',
-      title: 'Draft 01.resourcegraph',
+      title: options.getLanguage() === 'zh-CN' ? '草稿 01.resourcegraph' : 'Draft 01.resourcegraph',
       kind: 'workflow',
     }]
     if (characterWorkflowRunState) {
