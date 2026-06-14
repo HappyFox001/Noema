@@ -1497,10 +1497,16 @@ function renderInspectorParameter(
   value: unknown,
   options: CharacterWorkflowPageOptions
 ): string {
+  const dirty = !areParameterValuesEqual(value, parameterItem.defaultValue)
+  const validation = validateInspectorParameter(parameterItem, value ?? parameterItem.defaultValue, options)
   return `
-    <label class="chat-workflow-inspector-field">
-      <span>${options.escapeHtml(parameterItem.label)}</span>
-      ${renderParameterField(parameterItem, node, value ?? parameterItem.defaultValue, options)}
+    <label class="chat-workflow-inspector-field ${dirty ? 'is-dirty' : ''} ${validation ? 'is-invalid' : ''}">
+      <span>
+        <b>${options.escapeHtml(parameterItem.label)}</b>
+        ${dirty ? `<button class="chat-workflow-param-reset" type="button" data-chat-workflow-action="reset-parameter" data-chat-workflow-param-reset="${options.escapeHtml(parameterItem.id)}" data-chat-workflow-node="${options.escapeHtml(node.id)}">${options.escapeHtml(ui(options, '重置', 'Reset'))}</button>` : ''}
+      </span>
+      ${renderParameterField(parameterItem, node, value ?? parameterItem.defaultValue, options, Boolean(validation))}
+      ${validation ? `<em class="chat-workflow-field-error">${options.escapeHtml(validation)}</em>` : ''}
     </label>
   `
 }
@@ -1509,9 +1515,10 @@ function renderParameterField(
   parameterItem: CharacterResourceParameterDefinition,
   node: CharacterResourceNode,
   value: unknown,
-  options: CharacterWorkflowPageOptions
+  options: CharacterWorkflowPageOptions,
+  invalid = false
 ): string {
-  const baseAttrs = `data-chat-workflow-param="${options.escapeHtml(parameterItem.id)}" data-chat-workflow-node="${options.escapeHtml(node.id)}" data-chat-workflow-param-type="${options.escapeHtml(parameterItem.type)}"`
+  const baseAttrs = `data-chat-workflow-param="${options.escapeHtml(parameterItem.id)}" data-chat-workflow-node="${options.escapeHtml(node.id)}" data-chat-workflow-param-type="${options.escapeHtml(parameterItem.type)}" aria-invalid="${invalid ? 'true' : 'false'}"`
   if (parameterItem.type === 'boolean') {
     return `<input type="checkbox" ${baseAttrs} ${value ? 'checked' : ''} aria-label="${options.escapeHtml(parameterItem.label)}">`
   }
@@ -1532,6 +1539,32 @@ function renderParameterField(
     return `<textarea ${baseAttrs} rows="2" aria-label="${options.escapeHtml(parameterItem.label)}">${options.escapeHtml(formatParameterValue(value))}</textarea>`
   }
   return `<input type="text" ${baseAttrs} value="${options.escapeHtml(formatParameterValue(value))}" aria-label="${options.escapeHtml(parameterItem.label)}">`
+}
+
+function areParameterValuesEqual(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left ?? null) === JSON.stringify(right ?? null)
+}
+
+function validateInspectorParameter(parameterItem: CharacterResourceParameterDefinition, value: unknown, options: CharacterWorkflowPageOptions): string {
+  if (parameterItem.type === 'number' || parameterItem.type === 'integer') {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric)) {
+      return ui(options, '请输入有效数字', 'Enter a valid number')
+    }
+    if (parameterItem.type === 'integer' && !Number.isInteger(numeric)) {
+      return ui(options, '请输入整数', 'Enter an integer')
+    }
+    if (parameterItem.min !== undefined && numeric < parameterItem.min) {
+      return ui(options, `不能小于 ${parameterItem.min}`, `Must be at least ${parameterItem.min}`)
+    }
+    if (parameterItem.max !== undefined && numeric > parameterItem.max) {
+      return ui(options, `不能大于 ${parameterItem.max}`, `Must be at most ${parameterItem.max}`)
+    }
+  }
+  if ((parameterItem.type === 'text' || parameterItem.type === 'textarea') && String(value ?? '').trim() === '') {
+    return ui(options, '此字段不能为空', 'This field cannot be empty')
+  }
+  return ''
 }
 
 function renderBottomToolbar(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): string {

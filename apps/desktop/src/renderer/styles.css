@@ -12090,9 +12090,42 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
 }
 
 .chat-workflow-inspector-field span {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   color: rgba(248, 250, 250, 0.48);
   font-family: var(--font-ui);
   font-size: 10px;
+}
+
+.chat-workflow-inspector-field span b {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-workflow-param-reset {
+  height: 18px;
+  flex: 0 0 auto;
+  padding: 0 6px;
+  border: 1px solid rgba(82, 168, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(82, 168, 255, 0.06);
+  color: rgba(162, 202, 188, 0.76);
+  font-family: var(--font-ui);
+  font-size: 8.5px;
+  cursor: pointer;
+}
+
+.chat-workflow-param-reset:hover,
+.chat-workflow-param-reset:focus-visible {
+  border-color: rgba(82, 168, 255, 0.34);
+  background: rgba(82, 168, 255, 0.12);
+  color: rgba(248, 250, 250, 0.88);
 }
 
 .chat-workflow-inspector-field input,
@@ -12109,6 +12142,28 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   color: rgba(248, 250, 250, 0.76);
   font-family: var(--font-mono, monospace);
   font-size: 10px;
+}
+
+.chat-workflow-inspector-field.is-dirty input,
+.chat-workflow-inspector-field.is-dirty select,
+.chat-workflow-inspector-field.is-dirty textarea {
+  border-color: rgba(82, 168, 255, 0.22);
+  background: rgba(82, 168, 255, 0.045);
+}
+
+.chat-workflow-inspector-field.is-invalid input,
+.chat-workflow-inspector-field.is-invalid select,
+.chat-workflow-inspector-field.is-invalid textarea {
+  border-color: rgba(255, 104, 104, 0.34);
+  background: rgba(255, 104, 104, 0.055);
+}
+
+.chat-workflow-field-error {
+  color: rgba(255, 188, 188, 0.78);
+  font-family: var(--font-ui);
+  font-size: 9px;
+  font-style: normal;
+  line-height: 1.35;
 }
 
 .chat-workflow-inspector-field textarea {

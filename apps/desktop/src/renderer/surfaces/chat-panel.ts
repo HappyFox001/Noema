@@ -1764,6 +1764,19 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         characterWorkflowEditorState.nodeSearchOpen = true
         renderCharacterWorkflow()
       },
+      'reset-parameter': () => {
+        const nodeId = target?.dataset.chatWorkflowNode || ''
+        const paramId = target?.dataset.chatWorkflowParamReset || ''
+        if (!nodeId || !paramId || !characterWorkflowConfigOverrides[nodeId]) {
+          return
+        }
+        delete characterWorkflowConfigOverrides[nodeId][paramId]
+        if (Object.keys(characterWorkflowConfigOverrides[nodeId]).length === 0) {
+          delete characterWorkflowConfigOverrides[nodeId]
+        }
+        selectedWorkflowNodeId = nodeId
+        renderCharacterWorkflow()
+      },
       'chat-test': () => showToast(options.getLanguage() === 'zh-CN' ? '聊天测试入口已准备，但不调用真实聊天' : 'Chat test entry is ready without calling real chat'),
       'set-link-kind': () => {
         const kind = target?.dataset.resourceLinkKind || ''
