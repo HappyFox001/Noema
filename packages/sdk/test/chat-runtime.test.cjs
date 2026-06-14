@@ -159,6 +159,12 @@ describe('chat conversation runtime helpers', () => {
     expect(Object.prototype.hasOwnProperty.call(request.runtimeOptions, 'ignored')).toBe(false)
   })
 
+  test('normalizes chat runtime errors to display messages', () => {
+    expect(requestRuntime.normalizeChatRuntimeError(new Error(' failed '))).toBe('failed')
+    expect(requestRuntime.normalizeChatRuntimeError({ message: ' provider down ' })).toBe('provider down')
+    expect(requestRuntime.normalizeChatRuntimeError(' offline ')).toBe('offline')
+  })
+
   test('emits matching final content for streaming and non-streaming chat events', async () => {
     const session = new chat.ChatSession({
       llm: {

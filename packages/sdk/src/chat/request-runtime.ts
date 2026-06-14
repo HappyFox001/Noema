@@ -145,7 +145,7 @@ export async function *streamChatTurnEvents(
     }
     yield { type: 'message.completed', content: chunks.join('') }
   } catch (error: any) {
-    const message = error?.message || String(error)
+    const message = normalizeChatRuntimeError(error)
     yield { type: 'error', error: message }
     throw error
   }
@@ -164,9 +164,25 @@ export async function sendChatTurnEvents(
   } catch (error: any) {
     return [
       { type: 'message.started' },
-      { type: 'error', error: error?.message || String(error) },
+      { type: 'error', error: normalizeChatRuntimeError(error) },
     ]
   }
+}
+
+export function normalizeChatRuntimeError(error: unknown): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message.trim()
+  }
+  if (typeof error === 'string' && error.trim()) {
+    return error.trim()
+  }
+  if (error && typeof error === 'object' && 'message' in error) {
+    const message = String((error as { message?: unknown }).message ?? '').trim()
+    if (message) {
+      return message
+    }
+  }
+  return String(error || 'Chat runtime failed')
 }
 
 export function toChatModelConfig(config: ConfiguredChatModel | null): ChatModelConfig {

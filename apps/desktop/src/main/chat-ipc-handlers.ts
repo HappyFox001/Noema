@@ -8,6 +8,7 @@ import { basename, extname } from 'path'
 import { listChatModelsWithProvider } from '@noema/sdk/chat/model-list'
 import {
   ChatRuntime,
+  normalizeChatRuntimeError,
   type ChatRuntimeTurnRequest,
 } from '@noema/sdk/chat/request-runtime'
 import {
@@ -145,7 +146,7 @@ export function registerChatIpcHandlers(
       console.error('[Chat] Failed to send message:', error)
       return {
         success: false,
-        error: error?.message || String(error),
+        error: normalizeChatRuntimeError(error),
       }
     }
   })
@@ -187,7 +188,7 @@ export function registerChatIpcHandlers(
       console.error('[Chat] Failed to run character workflow:', error)
       return {
         success: false,
-        error: error?.message || String(error),
+        error: normalizeChatRuntimeError(error),
       }
     }
   })
