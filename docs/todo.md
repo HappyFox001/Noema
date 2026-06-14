@@ -38,11 +38,11 @@
 
 ## 5. 模型配置与 provider 执行
 
-- [ ] 保持 settings/env 加载在 desktop，但转换成 SDK config 后由 SDK 统一执行。
+- [x] 保持 settings/env 加载在 desktop，但转换成 SDK config 后由 SDK 统一执行。
 - [x] 将 chat model selection 的运行时解析放入 SDK，例如 active API、model name、provider、base URL。
 - [x] 评估 `chat:listModels` 是否应迁入 SDK model service。
-- [ ] 将 provider-specific request cleanup、proxy、reasoning defaults 保持在 SDK provider 层。
-- [ ] 避免 renderer 直接理解 provider runtime 差异。
+- [x] 将 provider-specific request cleanup、proxy、reasoning defaults 保持在 SDK provider 层。
+- [x] 避免 renderer 直接理解 provider runtime 差异。
 
 ## 6. 生图模型与 Artifact
 
@@ -58,13 +58,13 @@
 - [x] 将 `runCharacterAgentLLMTool`、模型查找、候选包生成、质量门、repair、export package 放入 SDK。
 - [x] desktop handler 只负责接收 workflow snapshot、调用 SDK、返回 run events/artifacts。
 - [ ] 将 workflow run 状态设计为 SDK event stream，便于 renderer 实时展示。
-- [ ] 保持 Electron 特有能力以 adapter 形式注入，而不是写进 SDK 核心。
+- [x] 保持 Electron 特有能力以 adapter 形式注入，而不是写进 SDK 核心。
 
 ## 8. Desktop Main 瘦身
 
 - [ ] 将 `apps/desktop/src/main/chat-ipc-handlers.ts` 改成薄 IPC adapter。
-- [ ] 保留 `selectMedia`、`requestCameraPermission` 等 Electron 必须逻辑在 main 层。
-- [ ] 保留 chat history 的本地存储路径 wiring，但评估是否通过 SDK storage adapter 执行。
+- [x] 保留 `selectMedia`、`requestCameraPermission` 等 Electron 必须逻辑在 main 层。
+- [x] 保留 chat history 的本地存储路径 wiring，但评估是否通过 SDK storage adapter 执行。
 - [x] 让 IPC handler 调用 SDK runtime，而不是自己拼 prompt、跑 agent 工具。
 - [x] 统一 `sendChatMessage` 和 `streamChatMessage` 的后端处理路径。
 
@@ -74,7 +74,7 @@
 - [x] 删除 renderer 中的 conversation context message 构建。
 - [x] 删除 renderer 中的 scene update markup 解析和合并。
 - [ ] 删除 renderer 中的摘要触发和摘要 prompt。
-- [ ] 保留 renderer 的 DOM 渲染、输入框、附件选择按钮、toast、面板状态、动画。
+- [x] 保留 renderer 的 DOM 渲染、输入框、附件选择按钮、toast、面板状态、动画。
 - [ ] 让 renderer 使用 SDK 返回的 conversation snapshot 刷新本地 UI。
 
 ## 10. Verification
@@ -82,6 +82,6 @@
 - [x] 为 SDK chat runtime 添加单元测试：prompt assembly、attachments、character context、summary selection、scene merge。
 - [x] 为 SDK stream event 协议添加测试，确保流式/非流式最终状态一致。
 - [ ] 为 character workflow SDK 迁移添加测试，覆盖 LLM tool、image artifact、quality gate。
-- [ ] 修改 SDK 后运行 `pnpm --filter @her-text/sdk build`。
-- [ ] 修改 desktop runtime 后运行 `pnpm --filter @her-text/desktop build`。
-- [ ] 对改动过的 `.mjs` runtime plugin 文件运行 `node --check`。
+- [x] 修改 SDK 后运行 `pnpm --filter @her-text/sdk build`。
+- [x] 修改 desktop runtime 后运行 `pnpm --filter @her-text/desktop build`。
+- [x] 对改动过的 `.mjs` runtime plugin 文件运行 `node --check`。
