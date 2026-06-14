@@ -16,6 +16,11 @@
       "import": "./dist/character-workflow/index.js",
       "default": "./dist/character-workflow/index.js"
     },
+    "./chat/conversation-runtime": {
+      "types": "./dist/chat/conversation-runtime.d.ts",
+      "import": "./dist/chat/conversation-runtime.js",
+      "default": "./dist/chat/conversation-runtime.js"
+    },
     "./image": {
       "types": "./dist/image/index.d.ts",
       "import": "./dist/image/index.js",

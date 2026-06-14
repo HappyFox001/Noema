@@ -3,6 +3,16 @@
  */
 import { getImageProviderCatalogEntry, getLLMProviderCatalogEntry } from '../../main/model-provider-catalog'
 import {
+  buildChatConversationContextMessages,
+  buildChatNarrativeSummaries,
+  extractChatSceneUpdate,
+  getChatMessageOrdinal,
+  mergeChatSceneState,
+  selectChatSummaryBatch,
+  stripChatSceneUpdateMarkup,
+  trimChatSummaries,
+} from '@noema/sdk/chat/conversation-runtime'
+import {
   CHAT_CONTEXT_TURNS_MAX,
   CHAT_CONTEXT_TURNS_MIN,
   CHAT_OUTPUT_TOKEN_MAX,
@@ -806,7 +816,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     let pendingReveal = ''
     let revealFrame = 0
     const renderVisibleReply = (): void => {
-      const displayReply = stripSceneUpdateMarkup(visibleReply)
+      const displayReply = stripChatSceneUpdateMarkup(visibleReply)
       message.text = { 'zh-CN': displayReply, 'en-US': displayReply }
       message.state = displayReply ? undefined : 'thinking'
       conversation.preview = { 'zh-CN': displayReply || '思考中...', 'en-US': displayReply || 'Thinking...' }
@@ -867,9 +877,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       const rawReply = response.success
         ? (response.response || completeReply || visibleReply || '')
         : (response.error || 'Chat model failed')
-      const parsedReply = response.success ? extractSceneUpdate(rawReply) : { text: rawReply, update: null }
+      const parsedReply = response.success ? extractChatSceneUpdate(rawReply) : { text: rawReply, update: null }
       if (parsedReply.update) {
-        conversation.sceneState = mergeSceneState(conversation.sceneState, parsedReply.update, language)
+        conversation.sceneState = mergeChatSceneState(conversation.sceneState, parsedReply.update, language)
       }
       const reply = parsedReply.text
       message.text = { 'zh-CN': reply, 'en-US': reply }
@@ -899,15 +909,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     draftMessageId: string,
     language: 'zh-CN' | 'en-US'
   ): Array<{ role: ChatMessage['role']; content: string }> {
-    const keepMessages = getShortTermMessageLimit()
-    const sourceMessages = conversation.messages
-      .filter((item) => item.id !== draftMessageId && item.state === undefined)
-      .slice(0, -1)
-    const recentMessages = sourceMessages.slice(-keepMessages)
-    return recentMessages.map((item) => ({
-        role: item.role,
-        content: localizeChatText(item.text, language),
-      }))
+    return buildChatConversationContextMessages(conversation, {
+      draftMessageId,
+      language,
+      shortTermMessageLimit: getShortTermMessageLimit(),
+    })
   }
 
   async function summarizeConversationOverflow(
@@ -915,26 +921,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     language: 'zh-CN' | 'en-US',
     force = false
   ): Promise<void> {
-    const keepMessages = getShortTermMessageLimit()
-    const summarizedIds = new Set(conversation.summaries.flatMap((summary) => summary.sourceMessageIds))
-    const stableMessages = conversation.messages.filter((messageItem) => messageItem.state === undefined)
-    const candidateMessages = stableMessages.filter((messageItem) => !summarizedIds.has(messageItem.id))
-    const overflowCount = candidateMessages.length - keepMessages
-    const batchSize = force ? Math.min(CHAT_SUMMARY_BATCH_MESSAGE_COUNT, Math.max(0, overflowCount)) : CHAT_SUMMARY_BATCH_MESSAGE_COUNT
-    if (overflowCount < batchSize || batchSize <= 0 || conversationSettings.summaryLimit <= 0) {
-      return
-    }
-
-    const messagesToSummarize = candidateMessages.slice(0, batchSize)
-    const startMessageIndex = getConversationMessageOrdinal(conversation, messagesToSummarize[0]?.id)
-    const endMessageIndex = getConversationMessageOrdinal(conversation, messagesToSummarize[messagesToSummarize.length - 1]?.id)
-    const transcript = messagesToSummarize
-      .map((messageItem) => {
-        const ordinal = getConversationMessageOrdinal(conversation, messageItem.id)
-        return `#${ordinal} ${formatChatHistoryRole(messageItem.role, language)}: ${localizeChatText(messageItem.text, language)}`
-      })
-      .join('\n\n')
-    if (!transcript.trim()) {
+    const batch = selectChatSummaryBatch(conversation, {
+      language,
+      shortTermMessageLimit: getShortTermMessageLimit(),
+      batchMessageCount: CHAT_SUMMARY_BATCH_MESSAGE_COUNT,
+      summaryLimit: conversationSettings.summaryLimit,
+      force,
+    })
+    if (!batch) {
       return
     }
 
@@ -944,17 +938,17 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         input: zh
           ? [
             '请把下面这段历史对话压缩成短期上下文摘要。',
-            `这是原始对话第 ${startMessageIndex} -> ${endMessageIndex} 条消息的摘要。`,
+            `这是原始对话第 ${batch.startMessageIndex} -> ${batch.endMessageIndex} 条消息的摘要。`,
             '要求：保留事实、关系变化、未完成承诺、用户偏好、角色状态和重要情绪；不要加入新剧情；用 3-6 条紧凑要点。',
             '',
-            transcript,
+            batch.transcript,
           ].join('\n')
           : [
             'Compress the following chat history into a short-term context summary.',
-            `This summary covers original conversation messages ${startMessageIndex} -> ${endMessageIndex}.`,
+            `This summary covers original conversation messages ${batch.startMessageIndex} -> ${batch.endMessageIndex}.`,
             'Keep facts, relationship changes, unresolved commitments, user preferences, character state, and important emotions. Do not invent new events. Use 3-6 compact bullets.',
             '',
-            transcript,
+            batch.transcript,
           ].join('\n'),
         language,
         options: {
@@ -971,10 +965,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         id: `summary-${Date.now()}-${Math.random().toString(16).slice(2)}`,
         text: { 'zh-CN': summaryText, 'en-US': summaryText },
         createdLabel: { 'zh-CN': getTimeLabel(), 'en-US': getTimeLabel() },
-        messageCount: messagesToSummarize.length,
-        startMessageIndex,
-        endMessageIndex,
-        sourceMessageIds: messagesToSummarize.map((messageItem) => messageItem.id),
+        messageCount: batch.messages.length,
+        startMessageIndex: batch.startMessageIndex,
+        endMessageIndex: batch.endMessageIndex,
+        sourceMessageIds: batch.messages.map((messageItem) => messageItem.id),
       }
       conversation.summaries = trimSummaries([...conversation.summaries, summary])
       await persistConversation(conversation)
@@ -991,11 +985,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   function getConversationMessageOrdinal(conversation: ChatConversationSummary, messageId: string | undefined): number {
-    if (!messageId) {
-      return 1
-    }
-    const index = conversation.messages.findIndex((messageItem) => messageItem.id === messageId)
-    return index >= 0 ? index + 1 : 1
+    return getChatMessageOrdinal(conversation, messageId)
   }
 
   function getRetainedSummaries(conversation: ChatConversationSummary): ChatMemorySummary[] {
@@ -1003,24 +993,18 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   function trimSummaries(summaries: ChatMemorySummary[]): ChatMemorySummary[] {
-    const limit = Math.round(conversationSettings.summaryLimit)
-    return limit <= 0 ? [] : summaries.slice(-limit)
+    return trimChatSummaries(summaries, conversationSettings.summaryLimit)
   }
 
   function buildNarrativeSummaries(
     conversation: ChatConversationSummary,
     language: 'zh-CN' | 'en-US'
   ): Array<{ startMessageIndex: number; endMessageIndex: number; text: string }> {
-    const keepMessages = getShortTermMessageLimit()
-    const recentIds = new Set(conversation.messages.filter((item) => item.state === undefined).slice(-keepMessages).map((item) => item.id))
-    return getRetainedSummaries(conversation)
-      .filter((summary) => !summary.sourceMessageIds.some((id) => recentIds.has(id)))
-      .map((summary) => ({
-        startMessageIndex: summary.startMessageIndex,
-        endMessageIndex: summary.endMessageIndex,
-        text: localizeChatText(summary.text, language),
-      }))
-      .filter((summary) => summary.text.trim())
+    return buildChatNarrativeSummaries(conversation, {
+      language,
+      shortTermMessageLimit: getShortTermMessageLimit(),
+      summaryLimit: conversationSettings.summaryLimit,
+    })
   }
 
   function ensureConversationSceneDefaults(
@@ -1071,68 +1055,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return localized
     }
     return value
-  }
-
-  function extractSceneUpdate(text: string): { text: string; update: Record<string, unknown> | null } {
-    const match = text.match(/<scene_update>\s*([\s\S]*?)\s*<\/scene_update>/i)
-    if (!match) {
-      return { text: stripSceneUpdateMarkup(text).trim(), update: null }
-    }
-    try {
-      const parsed = JSON.parse(match[1])
-      return {
-        text: text.replace(match[0], '').trim(),
-        update: parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null,
-      }
-    } catch {
-      return { text: text.replace(match[0], '').trim(), update: null }
-    }
-  }
-
-  function stripSceneUpdateMarkup(text: string): string {
-    return text
-      .replace(/<scene_update>\s*[\s\S]*?<\/scene_update>/gi, '')
-      .replace(/<scene_update[\s\S]*$/i, '')
-  }
-
-  function mergeSceneState(
-    current: ChatConversationSummary['sceneState'],
-    update: Record<string, unknown>,
-    language: 'zh-CN' | 'en-US'
-  ): ChatConversationSummary['sceneState'] {
-    const next = { ...(current ?? {}) }
-    for (const [key, value] of Object.entries(update)) {
-      if (key === 'objective' || key === 'items') {
-        continue
-      }
-      if (value === null || value === undefined || value === '') {
-        continue
-      }
-      next[key] = normalizeSceneUpdateValue(value, language, next[key])
-    }
-    return next
-  }
-
-  function normalizeSceneUpdateValue(value: unknown, language: 'zh-CN' | 'en-US', existing?: unknown): unknown {
-    if (Array.isArray(value)) {
-      return value.map((item) => normalizeSceneUpdateValue(item, language))
-    }
-    if (value && typeof value === 'object') {
-      const record = value as Record<string, unknown>
-      if (typeof record['zh-CN'] === 'string' || typeof record['en-US'] === 'string') {
-        return record
-      }
-      const normalized: Record<string, unknown> = {}
-      for (const [childKey, childValue] of Object.entries(record)) {
-        normalized[childKey] = normalizeSceneUpdateValue(childValue, language)
-      }
-      return normalized
-    }
-    const localized = existing && !Array.isArray(existing) && typeof existing === 'object'
-      ? { ...(existing as Record<string, string>) }
-      : { 'zh-CN': '', 'en-US': '' }
-    localized[language] = String(value)
-    return localized
   }
 
   async function loadChatModelConfig(): Promise<void> {
