@@ -757,8 +757,8 @@ export function createDefaultCharacterAgentToolRuntime(): CharacterAgentToolRunt
       name: 'interpret_resource_graph',
       description: 'Summarizes the resource graph as an agent task understanding.',
       kind: 'generation',
-      execute: ({ context }) => ({
-        callId: '',
+      execute: ({ callId, context }) => ({
+        callId,
         ok: true,
         summary: createFallbackUnderstanding(context),
         data: { text: createFallbackUnderstanding(context) },
@@ -768,8 +768,8 @@ export function createDefaultCharacterAgentToolRuntime(): CharacterAgentToolRunt
       name: 'create_generation_plan',
       description: 'Creates an agent-owned generation plan from graph constraints.',
       kind: 'generation',
-      execute: ({ context }) => ({
-        callId: '',
+      execute: ({ callId, context }) => ({
+        callId,
         ok: true,
         summary: 'Created an autonomous generation plan from the resource graph.',
         data: createDefaultAgentPlan(context),
@@ -779,8 +779,8 @@ export function createDefaultCharacterAgentToolRuntime(): CharacterAgentToolRunt
       name: 'generate_candidate_pack',
       description: 'Generates a candidate resource pack without requiring user-filled role fields.',
       kind: 'generation',
-      execute: ({ context }) => ({
-        callId: '',
+      execute: ({ callId, context }) => ({
+        callId,
         ok: true,
         summary: 'Generated a candidate resource pack from goal, style, constraints, and requested assets.',
         data: createDefaultCandidatePack(context, context.runId),
@@ -790,8 +790,8 @@ export function createDefaultCharacterAgentToolRuntime(): CharacterAgentToolRunt
       name: 'run_quality_gate',
       description: 'Runs agent-readable quality review and returns repair guidance.',
       kind: 'quality',
-      execute: ({ context }) => ({
-        callId: '',
+      execute: ({ callId, context }) => ({
+        callId,
         ok: true,
         summary: `Quality review prepared for ${context.qualityGate.requiredChecks.join(', ')}.`,
         data: {
@@ -811,8 +811,8 @@ export function createDefaultCharacterAgentToolRuntime(): CharacterAgentToolRunt
       name: 'repair_candidate_pack',
       description: 'Repairs a candidate pack from critique feedback.',
       kind: 'critique',
-      execute: ({ context }) => ({
-        callId: '',
+      execute: ({ callId, context }) => ({
+        callId,
         ok: true,
         summary: 'Prepared a repaired candidate pack revision.',
         data: createDefaultCandidatePack(context, context.runId, 'repaired'),
@@ -822,8 +822,8 @@ export function createDefaultCharacterAgentToolRuntime(): CharacterAgentToolRunt
       name: 'create_export_package',
       description: 'Packages the selected candidate into the requested export format.',
       kind: 'format',
-      execute: ({ context, input }) => ({
-        callId: '',
+      execute: ({ callId, context, input }) => ({
+        callId,
         ok: true,
         summary: `Packaged candidate for ${context.exportTarget.format}.`,
         data: {
