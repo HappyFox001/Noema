@@ -1,6 +1,8 @@
 /**
  * Defines the agentic RP resource graph, run session, and artifact contracts.
  */
+export * from './agent-runtime.js'
+
 export type CharacterWorkflowLanguage = 'zh-CN' | 'en-US'
 
 export type CharacterNodeType =
