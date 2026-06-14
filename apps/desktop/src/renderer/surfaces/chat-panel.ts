@@ -173,6 +173,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let selectedWorkflowNodeId = 'brief-input'
   let lastCharacterResourceGraphSnapshot = ''
   let characterResourceDuplicateCount = 0
+  let characterWorkflowClipboard: { sourceId: string } | null = null
+  const characterResourceUndoStack: CharacterResourceHistorySnapshot[] = []
+  const characterResourceRedoStack: CharacterResourceHistorySnapshot[] = []
   const characterResourceViewState = {
     zoom: 0.84,
     panX: 0,
@@ -195,6 +198,22 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     sidebarCollapsed: false,
     inspectorCollapsed: false,
     nodeSearchOpen: false,
+  }
+
+  interface CharacterResourceHistorySnapshot {
+    selectedWorkflowNodeId: string
+    selectedNodeIds: string[]
+    selectedLinkId: string
+    configOverrides: Record<string, Record<string, unknown>>
+    positionOverrides: Record<string, { x: number; y: number }>
+    duplicatedNodes: Array<{ id: string; sourceId: string; offsetX: number; offsetY: number }>
+    deletedNodeIds: string[]
+    collapsedNodeIds: string[]
+    nodeSizes: Record<string, { width: number; height: number }>
+    customLinks: SerializedCharacterResourceLink[]
+    deletedLinkIds: string[]
+    replacedTargetSlots: string[]
+    linkKinds: Record<string, SerializedCharacterResourceLinkKind>
   }
   let characterWorkflowDragging: {
     nodeId: string
@@ -1629,6 +1648,57 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     return tabs
   }
 
+  function cloneRecord<T>(record: Record<string, T>): Record<string, T> {
+    return JSON.parse(JSON.stringify(record)) as Record<string, T>
+  }
+
+  function createCharacterResourceHistorySnapshot(): CharacterResourceHistorySnapshot {
+    return {
+      selectedWorkflowNodeId,
+      selectedNodeIds: [...characterResourceViewState.selectedNodeIds],
+      selectedLinkId: characterResourceViewState.selectedLinkId,
+      configOverrides: cloneRecord(characterWorkflowConfigOverrides),
+      positionOverrides: cloneRecord(characterWorkflowPositionOverrides),
+      duplicatedNodes: JSON.parse(JSON.stringify(characterResourceViewState.duplicatedNodes)) as CharacterResourceHistorySnapshot['duplicatedNodes'],
+      deletedNodeIds: [...characterResourceViewState.deletedNodeIds],
+      collapsedNodeIds: [...characterResourceViewState.collapsedNodeIds],
+      nodeSizes: cloneRecord(characterResourceViewState.nodeSizes),
+      customLinks: JSON.parse(JSON.stringify(characterResourceViewState.customLinks)) as SerializedCharacterResourceLink[],
+      deletedLinkIds: [...characterResourceViewState.deletedLinkIds],
+      replacedTargetSlots: [...characterResourceViewState.replacedTargetSlots],
+      linkKinds: { ...characterResourceViewState.linkKinds },
+    }
+  }
+
+  function replaceRecord<T>(target: Record<string, T>, source: Record<string, T>): void {
+    Object.keys(target).forEach((key) => delete target[key])
+    Object.assign(target, source)
+  }
+
+  function restoreCharacterResourceHistorySnapshot(snapshot: CharacterResourceHistorySnapshot): void {
+    selectedWorkflowNodeId = snapshot.selectedWorkflowNodeId
+    characterResourceViewState.selectedNodeIds = [...snapshot.selectedNodeIds]
+    characterResourceViewState.selectedLinkId = snapshot.selectedLinkId
+    replaceRecord(characterWorkflowConfigOverrides, cloneRecord(snapshot.configOverrides))
+    replaceRecord(characterWorkflowPositionOverrides, cloneRecord(snapshot.positionOverrides))
+    characterResourceViewState.duplicatedNodes = JSON.parse(JSON.stringify(snapshot.duplicatedNodes)) as CharacterResourceHistorySnapshot['duplicatedNodes']
+    characterResourceViewState.deletedNodeIds = new Set(snapshot.deletedNodeIds)
+    characterResourceViewState.collapsedNodeIds = new Set(snapshot.collapsedNodeIds)
+    characterResourceViewState.nodeSizes = cloneRecord(snapshot.nodeSizes)
+    characterResourceViewState.customLinks = JSON.parse(JSON.stringify(snapshot.customLinks)) as SerializedCharacterResourceLink[]
+    characterResourceViewState.deletedLinkIds = new Set(snapshot.deletedLinkIds)
+    characterResourceViewState.replacedTargetSlots = new Set(snapshot.replacedTargetSlots)
+    characterResourceViewState.linkKinds = { ...snapshot.linkKinds }
+  }
+
+  function pushCharacterResourceUndoSnapshot(): void {
+    characterResourceUndoStack.push(createCharacterResourceHistorySnapshot())
+    if (characterResourceUndoStack.length > 80) {
+      characterResourceUndoStack.shift()
+    }
+    characterResourceRedoStack.length = 0
+  }
+
   function handleCharacterWorkflowAction(action: string, target?: HTMLElement): void {
     switch (action) {
       case 'run':
@@ -1701,18 +1771,21 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         showToast(options.getLanguage() === 'zh-CN' ? '资源图前端状态已保存到本地快照' : 'Resource graph frontend state saved to local snapshot')
       },
       'fit-view': () => {
+        pushCharacterResourceUndoSnapshot()
         characterResourceViewState.zoom = 0.72
         characterResourceViewState.panX = -42
         characterResourceViewState.panY = -24
         renderCharacterWorkflow()
       },
       'reset-view': () => {
+        pushCharacterResourceUndoSnapshot()
         characterResourceViewState.zoom = 0.84
         characterResourceViewState.panX = 0
         characterResourceViewState.panY = 0
         renderCharacterWorkflow()
       },
       'toggle-links': () => {
+        pushCharacterResourceUndoSnapshot()
         characterResourceViewState.hideLinks = !characterResourceViewState.hideLinks
         renderCharacterWorkflow()
       },
@@ -1721,6 +1794,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         if (!nodeId) {
           return
         }
+        pushCharacterResourceUndoSnapshot()
         if (characterResourceViewState.collapsedNodeIds.has(nodeId)) {
           characterResourceViewState.collapsedNodeIds.delete(nodeId)
         } else {
@@ -1734,6 +1808,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         if (!sourceId || characterResourceViewState.deletedNodeIds.has(sourceId)) {
           return
         }
+        pushCharacterResourceUndoSnapshot()
         characterResourceDuplicateCount += 1
         const duplicateId = `${sourceId}-copy-${characterResourceDuplicateCount}`
         characterResourceViewState.duplicatedNodes.push({
@@ -1754,6 +1829,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           showToast(options.getLanguage() === 'zh-CN' ? 'Brief 节点不能删除' : 'Brief node cannot be deleted')
           return
         }
+        pushCharacterResourceUndoSnapshot()
         characterResourceViewState.deletedNodeIds.add(selectedWorkflowNodeId)
         selectedWorkflowNodeId = 'brief-input'
         characterResourceViewState.selectedNodeIds = ['brief-input']
@@ -1764,12 +1840,57 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         characterWorkflowEditorState.nodeSearchOpen = true
         renderCharacterWorkflow()
       },
+      'copy-selection': () => {
+        if (!selectedWorkflowNodeId || characterResourceViewState.deletedNodeIds.has(selectedWorkflowNodeId)) {
+          return
+        }
+        characterWorkflowClipboard = { sourceId: selectedWorkflowNodeId }
+        showToast(options.getLanguage() === 'zh-CN' ? '已复制节点' : 'Node copied')
+      },
+      'paste-selection': () => {
+        const sourceId = characterWorkflowClipboard?.sourceId
+        if (!sourceId || characterResourceViewState.deletedNodeIds.has(sourceId)) {
+          showToast(options.getLanguage() === 'zh-CN' ? '没有可粘贴节点' : 'No node to paste')
+          return
+        }
+        pushCharacterResourceUndoSnapshot()
+        characterResourceDuplicateCount += 1
+        const duplicateId = `${sourceId}-paste-${characterResourceDuplicateCount}`
+        characterResourceViewState.duplicatedNodes.push({
+          id: duplicateId,
+          sourceId,
+          offsetX: 42 * characterResourceDuplicateCount,
+          offsetY: 32 * characterResourceDuplicateCount,
+        })
+        selectedWorkflowNodeId = duplicateId
+        characterResourceViewState.selectedNodeIds = [duplicateId]
+        renderCharacterWorkflow()
+      },
+      'undo-graph': () => {
+        const previous = characterResourceUndoStack.pop()
+        if (!previous) {
+          return
+        }
+        characterResourceRedoStack.push(createCharacterResourceHistorySnapshot())
+        restoreCharacterResourceHistorySnapshot(previous)
+        renderCharacterWorkflow()
+      },
+      'redo-graph': () => {
+        const next = characterResourceRedoStack.pop()
+        if (!next) {
+          return
+        }
+        characterResourceUndoStack.push(createCharacterResourceHistorySnapshot())
+        restoreCharacterResourceHistorySnapshot(next)
+        renderCharacterWorkflow()
+      },
       'reset-parameter': () => {
         const nodeId = target?.dataset.chatWorkflowNode || ''
         const paramId = target?.dataset.chatWorkflowParamReset || ''
         if (!nodeId || !paramId || !characterWorkflowConfigOverrides[nodeId]) {
           return
         }
+        pushCharacterResourceUndoSnapshot()
         delete characterWorkflowConfigOverrides[nodeId][paramId]
         if (Object.keys(characterWorkflowConfigOverrides[nodeId]).length === 0) {
           delete characterWorkflowConfigOverrides[nodeId]
@@ -1849,6 +1970,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
     selectedWorkflowNodeId = nodeId
+    pushCharacterResourceUndoSnapshot()
     characterWorkflowConfigOverrides[nodeId] ??= {}
     if (control instanceof HTMLInputElement && control.type === 'checkbox') {
       characterWorkflowConfigOverrides[nodeId][paramId] = control.checked
@@ -1909,6 +2031,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       showToast(options.getLanguage() === 'zh-CN' ? 'slot 类型不兼容，未创建连接' : 'Slot types are incompatible; no link was created')
       return
     }
+    pushCharacterResourceUndoSnapshot()
     const targetKey = `${input.nodeId}:${input.slotId}`
     const linkId = `${output.nodeId}:${output.slotId}->${input.nodeId}:${input.slotId}`
     const nextLink: SerializedCharacterResourceLink = {
@@ -1950,6 +2073,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!linkId) {
       return false
     }
+    pushCharacterResourceUndoSnapshot()
     const customIndex = characterResourceViewState.customLinks.findIndex((linkItem) => linkItem.id === linkId)
     if (customIndex >= 0) {
       characterResourceViewState.customLinks.splice(customIndex, 1)
@@ -2823,6 +2947,22 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   window.addEventListener('pointercancel', endCharacterResourceViewportDrag)
   window.addEventListener('pointercancel', endManualDrag)
   window.addEventListener('keydown', (event) => {
+    const resourceShortcut = panel.dataset.chatView === 'character-workflow' && !((event.target as HTMLElement | null)?.closest('input, textarea, select'))
+    if (resourceShortcut && (event.metaKey || event.ctrlKey) && event.key === 'z') {
+      event.preventDefault()
+      executeCharacterResourceCommand(event.shiftKey ? 'redo-graph' : 'undo-graph')
+      return
+    }
+    if (resourceShortcut && (event.metaKey || event.ctrlKey) && event.key === 'c') {
+      event.preventDefault()
+      executeCharacterResourceCommand('copy-selection')
+      return
+    }
+    if (resourceShortcut && (event.metaKey || event.ctrlKey) && event.key === 'v') {
+      event.preventDefault()
+      executeCharacterResourceCommand('paste-selection')
+      return
+    }
     if (event.key === 'Escape' && conversationSettingsPanel?.classList.contains('visible')) {
       closeConversationSettings()
     }

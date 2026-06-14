@@ -1669,7 +1669,11 @@ function renderCanvasContextMenu(options: CharacterWorkflowPageOptions): string 
     <div class="chat-resource-context-menu" role="menu" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '画布菜单' : 'Canvas menu')}">
       <button type="button" role="menuitem" data-chat-workflow-action="open-node-search">${options.escapeHtml(ui(options, '添加节点', 'Add Node'))}</button>
       <button type="button" role="menuitem" data-chat-workflow-action="fit-view">${options.escapeHtml(ui(options, '适配视图', 'Fit View'))}</button>
-      <button type="button" role="menuitem" data-chat-workflow-action="duplicate-selection">${options.escapeHtml(ui(options, '复制', 'Duplicate'))}</button>
+      <button type="button" role="menuitem" data-chat-workflow-action="copy-selection">${options.escapeHtml(ui(options, '复制', 'Copy'))}</button>
+      <button type="button" role="menuitem" data-chat-workflow-action="paste-selection">${options.escapeHtml(ui(options, '粘贴', 'Paste'))}</button>
+      <button type="button" role="menuitem" data-chat-workflow-action="duplicate-selection">${options.escapeHtml(ui(options, '复制副本', 'Duplicate'))}</button>
+      <button type="button" role="menuitem" data-chat-workflow-action="undo-graph">${options.escapeHtml(ui(options, '撤销', 'Undo'))}</button>
+      <button type="button" role="menuitem" data-chat-workflow-action="redo-graph">${options.escapeHtml(ui(options, '重做', 'Redo'))}</button>
       <button class="danger" type="button" role="menuitem" data-chat-workflow-action="delete-selection">${options.escapeHtml(ui(options, '删除', 'Delete'))}</button>
     </div>
   `
