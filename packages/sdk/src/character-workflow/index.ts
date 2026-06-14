@@ -18,7 +18,6 @@ export type CharacterNodeType =
   | 'quality-gate'
   | 'asset-builder'
   | 'output-adapter'
-  | 'chat-test'
 
 export type CharacterNodeStatus = 'idle' | 'queued' | 'running' | 'done' | 'failed' | 'skipped' | 'stale'
 export type WorkflowRunStatus = 'idle' | 'running' | 'paused' | 'done' | 'failed' | 'canceled'
@@ -93,6 +92,7 @@ export type CharacterWorkflowParameterType =
   | 'select'
   | 'multi-select'
   | 'string-list'
+  | 'model-select'
 
 export type CharacterWorkflowParameterValue = string | number | boolean | string[]
 
@@ -107,6 +107,7 @@ export interface CharacterWorkflowNodeParameter {
   max?: number
   step?: number
   options?: CharacterWorkflowParameterOption[]
+  modelKind?: 'llm' | 'image'
 }
 
 export interface CharacterWorkflowParameterOption {
@@ -179,7 +180,6 @@ export type CharacterArtifactType =
   | 'candidate-pack'
   | 'validation-report'
   | 'export-target'
-  | 'chat-test-result'
 
 export type CharacterArtifact =
   | GenerationGoalArtifact
@@ -198,7 +198,6 @@ export type CharacterArtifact =
   | CandidatePackArtifact
   | ValidationReportArtifact
   | ExportTargetArtifact
-  | ChatTestResultArtifact
 
 export interface CharacterArtifactBase {
   id: string
@@ -248,8 +247,9 @@ export interface SourceContextArtifact extends CharacterArtifactBase {
 export interface ModelCapabilityArtifact extends CharacterArtifactBase {
   type: 'model-capability'
   model: {
-    provider: string
-    model: string
+    apiId: string
+    modelName: string
+    modelRef: string
     temperature: number
     reasoningEffort: string
     contextBudget: number
@@ -259,8 +259,9 @@ export interface ModelCapabilityArtifact extends CharacterArtifactBase {
 export interface ImageCapabilityArtifact extends CharacterArtifactBase {
   type: 'image-capability'
   image: {
-    provider: string
-    model: string
+    apiId: string
+    modelName: string
+    modelRef: string
     assetCount: number
     referenceStrength: number
   }
@@ -356,16 +357,6 @@ export interface ExportTargetArtifact extends CharacterArtifactBase {
     format: string
     includeAssets: boolean
     path: string
-  }
-}
-
-export interface ChatTestResultArtifact extends CharacterArtifactBase {
-  type: 'chat-test-result'
-  result: {
-    turns: number
-    goalHitRate: number
-    oocRisk: number
-    repairSuggestions: string[]
   }
 }
 
@@ -538,8 +529,7 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     inputs: {},
     outputs: { model: port('model', 'Model', 'model-capability') },
     parameters: [
-      parameter('provider', 'Provider', 'text', 'default'),
-      parameter('model', 'Model', 'text', ''),
+      parameter('modelRef', 'Model', 'model-select', '', { modelKind: 'llm' }),
       parameter('temperature', 'Temperature', 'number', 0.72, { min: 0, max: 2, step: 0.01 }),
       parameter('reasoningEffort', 'Reasoning Effort', 'select', 'medium', undefined, [
         option('Low', 'low'),
@@ -558,8 +548,7 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     inputs: { style: port('style', 'Style', 'style-signal') },
     outputs: { image: port('image', 'Image', 'image-capability') },
     parameters: [
-      parameter('provider', 'Provider', 'text', 'manual'),
-      parameter('model', 'Model / Workflow', 'text', ''),
+      parameter('modelRef', 'Model / Workflow', 'model-select', '', { modelKind: 'image' }),
       parameter('assetCount', 'Asset Count', 'integer', 4, { min: 1, max: 16, step: 1 }),
       parameter('referenceStrength', 'Reference Strength', 'number', 0.55, { min: 0, max: 1, step: 0.01 }),
     ],
@@ -647,7 +636,6 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
         option('Role Card', 'role-card'),
         option('Opening', 'opening'),
         option('Image Pack', 'image-pack'),
-        option('Chat Test', 'chat-test'),
       ]),
       parameter('stopCondition', 'Stop Condition', 'text', 'quality gate passed'),
     ],
@@ -734,19 +722,6 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
       parameter('includeAssets', 'Include Assets', 'boolean', true),
     ],
   },
-  {
-    type: 'chat-test',
-    title: 'Chat Test',
-    category: 'evaluation',
-    executor: 'deterministic',
-    description: 'Runs a mock first-turn and durability check against the exported candidate.',
-    inputs: { export: port('export', 'Export', 'export-target', true) },
-    outputs: { result: port('result', 'Result', 'chat-test-result') },
-    parameters: [
-      parameter('turns', 'Turns', 'integer', 3, { min: 1, max: 12, step: 1 }),
-      parameter('stressPrompt', 'Stress Prompt', 'textarea', '测试角色是否保持主动性、边界和长期可聊性。'),
-    ],
-  },
 ]
 
 export function createCharacterWorkflowNodeRegistry(
@@ -792,8 +767,17 @@ export function createStandardCharacterWorkflow(
     node('critique-loop', 1220, 420),
     node('quality-gate', 1820, 220),
     node('output-adapter', 2120, 220),
-    node('chat-test', 2420, 220),
   ]
+  const llmModelRef = createModelRef(options.llmApiId, options.llmModelName)
+  const imageModelRef = createModelRef(options.imageApiId, options.imageModelName)
+  const llmNode = nodes.find((nodeItem) => nodeItem.type === 'llm-tool')
+  const imageNode = nodes.find((nodeItem) => nodeItem.type === 'image-tool')
+  if (llmNode && llmModelRef) {
+    llmNode.config.modelRef = llmModelRef
+  }
+  if (imageNode && imageModelRef) {
+    imageNode.config.modelRef = imageModelRef
+  }
 
   return {
     id,
@@ -819,7 +803,6 @@ export function createStandardCharacterWorkflow(
       ['quality-gate', 'report', 'generation-strategy', 'strategy', 'refines'],
       ['asset-builder', 'candidate', 'output-adapter', 'candidate', 'exports'],
       ['quality-gate', 'report', 'output-adapter', 'report', 'constrains'],
-      ['output-adapter', 'export', 'chat-test', 'export', 'routes'],
     ]),
     defaults: {
       language: options.language ?? 'zh-CN',
@@ -1186,8 +1169,7 @@ function createDefaultCharacterWorkflowExecutors(): Partial<Record<CharacterNode
       sourceNodeId: node.id,
       createdAt: timestamp,
       model: {
-        provider: stringConfig(config.provider, workflow.defaults.llmApiId ?? 'default'),
-        model: stringConfig(config.model, workflow.defaults.llmModelName ?? ''),
+        ...parseModelRef(nonEmptyStringConfig(config.modelRef, createModelRef(workflow.defaults.llmApiId, workflow.defaults.llmModelName))),
         temperature: numberConfig(config.temperature, 0.72),
         reasoningEffort: stringConfig(config.reasoningEffort, 'medium'),
         contextBudget: numberConfig(config.contextBudget, 16000),
@@ -1199,8 +1181,7 @@ function createDefaultCharacterWorkflowExecutors(): Partial<Record<CharacterNode
       sourceNodeId: node.id,
       createdAt: timestamp,
       image: {
-        provider: stringConfig(config.provider, workflow.defaults.imageApiId ?? 'manual'),
-        model: stringConfig(config.model, workflow.defaults.imageModelName ?? ''),
+        ...parseModelRef(nonEmptyStringConfig(config.modelRef, createModelRef(workflow.defaults.imageApiId, workflow.defaults.imageModelName))),
         assetCount: numberConfig(config.assetCount, 4),
         referenceStrength: numberConfig(config.referenceStrength, 0.55),
       },
@@ -1318,18 +1299,6 @@ function createDefaultCharacterWorkflowExecutors(): Partial<Record<CharacterNode
         format: stringConfig(config.format, 'noema-role-chat'),
         includeAssets: booleanConfig(config.includeAssets, true),
         path: `memory://agentic-resource-graph/${stringConfig(config.format, 'noema-role-chat')}`,
-      },
-    }],
-    'chat-test': ({ node, config, timestamp }) => [{
-      id: `${node.id}-result`,
-      type: 'chat-test-result',
-      sourceNodeId: node.id,
-      createdAt: timestamp,
-      result: {
-        turns: numberConfig(config.turns, 3),
-        goalHitRate: 0.84,
-        oocRisk: 0.12,
-        repairSuggestions: [],
       },
     }],
   }
@@ -1474,6 +1443,23 @@ function connectEdges(items: Array<[string, string, string, string, CharacterWor
 
 function stringConfig(value: unknown, fallback: string): string {
   return typeof value === 'string' ? value : fallback
+}
+
+function nonEmptyStringConfig(value: unknown, fallback: string): string {
+  return typeof value === 'string' && value.trim() ? value.trim() : fallback
+}
+
+function createModelRef(apiId: string | undefined, modelName: string | undefined): string {
+  return apiId && modelName ? `${apiId}::${modelName}` : ''
+}
+
+function parseModelRef(modelRef: string): { apiId: string; modelName: string; modelRef: string } {
+  const [apiId = '', ...modelNameParts] = modelRef.split('::')
+  return {
+    apiId,
+    modelName: modelNameParts.join('::'),
+    modelRef,
+  }
 }
 
 function stringListConfig(value: unknown, fallback: string[] = []): string[] {

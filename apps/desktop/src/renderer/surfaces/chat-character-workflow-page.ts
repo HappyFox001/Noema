@@ -13,6 +13,7 @@ import type { CharacterResourceViewState, SerializedCharacterResourceLinkKind } 
 export interface CharacterWorkflowPageOptions {
   language: 'zh-CN' | 'en-US'
   escapeHtml(value: string): string
+  modelChoices?: CharacterWorkflowModelChoice[]
   configOverrides?: Record<string, Record<string, unknown>>
   positionOverrides?: Record<string, { x: number; y: number }>
   runState?: CharacterResourceRunState | null
@@ -37,9 +38,19 @@ export type CharacterWorkflowSidePanel = 'workflow' | 'assets' | 'nodes'
 
 type CharacterResourceNodeStatus = 'idle' | 'dirty' | 'queued' | 'running' | 'done' | 'failed' | 'stale' | 'disabled'
 type CharacterResourcePreviewType = 'text-card' | 'image' | 'voice' | 'rule' | 'validation' | 'package'
-type CharacterResourceParameterType = 'text' | 'textarea' | 'number' | 'integer' | 'boolean' | 'select' | 'multi-select' | 'string-list'
+type CharacterResourceParameterType = 'text' | 'textarea' | 'number' | 'integer' | 'boolean' | 'select' | 'multi-select' | 'string-list' | 'model-select'
 type CharacterResourceLinkKind = SerializedCharacterResourceLinkKind
 type CharacterWorkflowLanguage = CharacterWorkflowPageOptions['language']
+
+export interface CharacterWorkflowModelChoice {
+  id: string
+  kind: 'llm' | 'image'
+  apiId: string
+  modelName: string
+  provider: string
+  providerLabel: string
+  logoHtml: string
+}
 
 interface CharacterResourceGraph {
   id: string
@@ -85,6 +96,7 @@ interface CharacterResourceParameterDefinition {
   max?: number
   step?: number
   options?: Array<{ label: string; value: string }>
+  modelKind?: CharacterWorkflowModelChoice['kind']
 }
 
 interface CharacterResourceNode {
@@ -188,7 +200,6 @@ export function completeCharacterResourceRunState(state: CharacterResourceRunSta
       { type: 'agent-plan', sourceNodeId: 'generation-strategy', title: 'Agent Plan', summary: 'Mock plan decomposes the free-form goal into candidates, tools, critique loops, and output targets.' },
       { type: 'candidate-pack', sourceNodeId: 'asset-targets', title: 'Candidate Pack', summary: 'Mock candidate pack reserves role card, opening, visual assets, memory policy, and generation report outputs.' },
       { type: 'validation-report', sourceNodeId: 'quality-gate', title: 'Quality Gate Report', summary: 'Mock quality gate checks goal match, long-term RP durability, style intensity, consistency, and export readiness.' },
-      { type: 'chat-test-result', sourceNodeId: 'chat-test', title: 'Chat Test Result', summary: 'Mock first-turn pressure test reports OOC risk, target hit rate, and repair suggestions.' },
       { type: 'export-target', sourceNodeId: 'output-adapter', title: 'Noema Role Chat Export', summary: 'Mock output adapter maps the accepted candidate pack to a Noema Role Chat package.' },
     ],
   }
@@ -293,12 +304,7 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
   createDefinition('llm-tool', 'LLM Tool', ['模型', 'llm', 'reasoning'], 'Tools', 'agent', 'Selects the LLM capability available to the backend agent.', [], [
     slot('model', 'Model', 'model-capability', 'LLM model capability.'),
   ], [
-    param('provider', 'Provider', 'select', 'default', undefined, undefined, undefined, [
-      { label: 'Default', value: 'default' },
-      { label: 'OpenAI Compatible', value: 'openai-compatible' },
-      { label: 'Local', value: 'local' },
-    ]),
-    param('model', 'Model', 'text', ''),
+    param('modelRef', 'Model', 'model-select', '', undefined, undefined, undefined, undefined, 'llm'),
     param('temperature', 'Temperature', 'number', 0.72, 0, 2, 0.01),
     param('reasoningEffort', 'Reasoning Effort', 'select', 'medium', undefined, undefined, undefined, [
       { label: 'Low', value: 'low' },
@@ -311,12 +317,7 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
   ], [
     slot('image', 'Image', 'image-capability', 'Image generation capability.'),
   ], [
-    param('provider', 'Provider', 'select', 'manual', undefined, undefined, undefined, [
-      { label: 'Manual', value: 'manual' },
-      { label: 'ComfyUI Workflow', value: 'comfyui-workflow' },
-      { label: 'Hosted API', value: 'hosted-api' },
-    ]),
-    param('model', 'Model / Workflow', 'text', ''),
+    param('modelRef', 'Model / Workflow', 'model-select', '', undefined, undefined, undefined, undefined, 'image'),
     param('assetCount', 'Asset Count', 'integer', 4, 1, 16, 1),
     param('referenceStrength', 'Reference Strength', 'number', 0.55, 0, 1, 0.01),
   ], 'image'),
@@ -379,7 +380,6 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'Role Card', value: 'role-card' },
       { label: 'Opening', value: 'opening' },
       { label: 'Image Pack', value: 'image-pack' },
-      { label: 'Chat Test', value: 'chat-test' },
     ]),
   ], 'rule'),
   createDefinition('critique-loop', 'Critique Loop', ['自评', 'repair', 'critic'], 'Evaluation', 'agent', 'Feeds critique and repair instructions back into candidate generation.', [
@@ -433,14 +433,6 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     ]),
     param('includeAssets', 'Include Assets', 'boolean', true),
   ], 'package'),
-  createDefinition('chat-test', 'Chat Test', ['试聊', 'chat', 'test'], 'Evaluation', 'agent', 'Runs a mock first-turn and durability check against the exported candidate.', [
-    slot('export', 'Export', 'export-target', 'Export target to test.', true),
-  ], [
-    slot('result', 'Result', 'chat-test-result', 'Chat test result and repair suggestions.'),
-  ], [
-    param('turns', 'Turns', 'integer', 3, 1, 12, 1),
-    param('stressPrompt', 'Stress Prompt', 'textarea', '测试角色是否保持主动性、边界和长期可聊性。'),
-  ], 'validation'),
 ]
 
 const DEFAULT_NODE_PLACEMENT: Array<{ id: string; type: string; title: string; x: number; y: number; status?: CharacterResourceNodeStatus }> = [
@@ -456,7 +448,6 @@ const DEFAULT_NODE_PLACEMENT: Array<{ id: string; type: string; title: string; x
   { id: 'critique-loop', type: 'critique-loop', title: 'Critique Loop', x: 1434, y: 404 },
   { id: 'quality-gate', type: 'quality-gate', title: 'Quality Gate', x: 2110, y: 230, status: 'stale' },
   { id: 'output-adapter', type: 'output-adapter', title: 'Output Adapter', x: 2448, y: 230 },
-  { id: 'chat-test', type: 'chat-test', title: 'Chat Test', x: 2786, y: 230 },
 ]
 
 const DEFAULT_LINKS: CharacterResourceLink[] = [
@@ -478,7 +469,6 @@ const DEFAULT_LINKS: CharacterResourceLink[] = [
   link('quality-gate', 'report', 'generation-strategy', 'strategy', 'refines'),
   link('asset-targets', 'candidate', 'output-adapter', 'candidate', 'exports'),
   link('quality-gate', 'report', 'output-adapter', 'report', 'constrains'),
-  link('output-adapter', 'export', 'chat-test', 'export', 'routes'),
 ]
 
 const definitionFuse = new Fuse(RESOURCE_NODE_DEFINITIONS, {
@@ -931,6 +921,10 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
   const deletedNodeIds = new Set(viewState.deletedNodeIds ?? [])
   const nodes = DEFAULT_NODE_PLACEMENT.map((placement, index) => {
     const definition = definitions.get(placement.type)!
+    const config = {
+      ...Object.fromEntries(definition.parameters.map((parameterItem) => [parameterItem.id, getParameterDefaultValue(parameterItem, options)])),
+      ...(options.configOverrides?.[placement.id] ?? {}),
+    }
     return {
       id: placement.id,
       type: placement.type,
@@ -940,10 +934,7 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
       status: placement.status ?? 'idle',
       collapsed: collapsedNodeIds.has(placement.id),
       zIndex: index + 1,
-      config: {
-        ...Object.fromEntries(definition.parameters.map((parameterItem) => [parameterItem.id, parameterItem.defaultValue])),
-        ...(options.configOverrides?.[placement.id] ?? {}),
-      },
+      config,
     } satisfies CharacterResourceNode
   }).filter((node) => !deletedNodeIds.has(node.id))
   for (const added of viewState.addedNodes ?? []) {
@@ -961,7 +952,7 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
       collapsed: collapsedNodeIds.has(added.id),
       zIndex: nodes.length + 1,
       config: {
-        ...Object.fromEntries(definition.parameters.map((parameterItem) => [parameterItem.id, parameterItem.defaultValue])),
+        ...Object.fromEntries(definition.parameters.map((parameterItem) => [parameterItem.id, getParameterDefaultValue(parameterItem, options)])),
         ...(options.configOverrides?.[added.id] ?? {}),
       },
     })
@@ -1030,7 +1021,7 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
     groups: [
       { id: 'intent-control', title: ui(options, '目标与口味', 'Goal and Taste'), nodeIds: ['generation-goal', 'style-pressure', 'hard-constraints', 'source-material'], color: 'rgba(82, 168, 255, 0.16)' },
       { id: 'tool-policy', title: ui(options, '工具与策略', 'Tools and Strategy'), nodeIds: ['llm-capability', 'image-capability', 'agent-policy', 'generation-strategy'], color: 'rgba(219, 189, 130, 0.16)' },
-      { id: 'evaluation-output', title: ui(options, '评估与输出', 'Evaluation and Output'), nodeIds: ['asset-targets', 'critique-loop', 'quality-gate', 'output-adapter', 'chat-test'], color: 'rgba(162, 202, 188, 0.16)' },
+      { id: 'evaluation-output', title: ui(options, '评估与输出', 'Evaluation and Output'), nodeIds: ['asset-targets', 'critique-loop', 'quality-gate', 'output-adapter'], color: 'rgba(162, 202, 188, 0.16)' },
     ],
     tabs: [
       { id: 'workflow', title: 'Draft 01.resourcegraph', kind: 'resource-graph' },
@@ -1616,14 +1607,14 @@ function renderInspectorParameter(
   const dirty = !areParameterValuesEqual(value, parameterItem.defaultValue)
   const validation = validateInspectorParameter(parameterItem, value ?? parameterItem.defaultValue, options)
   return `
-    <label class="chat-workflow-inspector-field ${dirty ? 'is-dirty' : ''} ${validation ? 'is-invalid' : ''}">
+    <div class="chat-workflow-inspector-field ${dirty ? 'is-dirty' : ''} ${validation ? 'is-invalid' : ''}">
       <span>
         <b>${options.escapeHtml(parameterItem.label)}</b>
         ${dirty ? `<button class="chat-workflow-param-reset" type="button" data-chat-workflow-action="reset-parameter" data-chat-workflow-param-reset="${options.escapeHtml(parameterItem.id)}" data-chat-workflow-node="${options.escapeHtml(node.id)}">${options.escapeHtml(ui(options, '重置', 'Reset'))}</button>` : ''}
       </span>
       ${renderParameterField(parameterItem, node, value ?? parameterItem.defaultValue, options, Boolean(validation))}
       ${validation ? `<em class="chat-workflow-field-error">${options.escapeHtml(validation)}</em>` : ''}
-    </label>
+    </div>
   `
 }
 
@@ -1641,6 +1632,9 @@ function renderParameterField(
   if (parameterItem.type === 'number' || parameterItem.type === 'integer') {
     return `<input type="number" ${baseAttrs} value="${options.escapeHtml(formatParameterValue(value))}" ${parameterItem.min === undefined ? '' : `min="${parameterItem.min}"`} ${parameterItem.max === undefined ? '' : `max="${parameterItem.max}"`} ${parameterItem.step === undefined ? '' : `step="${parameterItem.step}"`} aria-label="${options.escapeHtml(parameterItem.label)}">`
   }
+  if (parameterItem.type === 'model-select') {
+    return renderModelSelectField(parameterItem, node, value, options, baseAttrs)
+  }
   if (parameterItem.type === 'select') {
     return `
       <select ${baseAttrs} aria-label="${options.escapeHtml(parameterItem.label)}">
@@ -1657,11 +1651,61 @@ function renderParameterField(
   return `<input type="text" ${baseAttrs} value="${options.escapeHtml(formatParameterValue(value))}" aria-label="${options.escapeHtml(parameterItem.label)}">`
 }
 
+function renderModelSelectField(
+  parameterItem: CharacterResourceParameterDefinition,
+  node: CharacterResourceNode,
+  value: unknown,
+  options: CharacterWorkflowPageOptions,
+  baseAttrs: string
+): string {
+  const choices = getModelChoices(parameterItem, options)
+  const currentValue = formatParameterValue(value) || choices[0]?.id || ''
+  const selected = choices.find((choice) => choice.id === currentValue) ?? choices[0]
+  if (!choices.length) {
+    return `
+      <div class="chat-resource-model-select empty" ${baseAttrs}>
+        <span>${options.escapeHtml(ui(options, '请先在模型配置页添加可用模型', 'Add an available model in Models first'))}</span>
+      </div>
+    `
+  }
+  return `
+    <details class="chat-resource-model-select">
+      <summary aria-label="${options.escapeHtml(parameterItem.label)}">
+        <span class="chat-resource-model-choice-logo">${selected.logoHtml}</span>
+        <span class="chat-resource-model-choice-copy">
+          <strong>${options.escapeHtml(selected.modelName)}</strong>
+          <small>${options.escapeHtml(selected.providerLabel)}</small>
+        </span>
+      </summary>
+      <div class="chat-resource-model-select-menu">
+        ${choices.map((choice) => `
+          <button class="chat-resource-model-choice ${choice.id === currentValue ? 'selected' : ''}" type="button" ${baseAttrs} data-chat-workflow-model-choice data-chat-workflow-model-value="${options.escapeHtml(choice.id)}" data-chat-workflow-model-api="${options.escapeHtml(choice.apiId)}" data-chat-workflow-model-name="${options.escapeHtml(choice.modelName)}">
+            <span class="chat-resource-model-choice-logo">${choice.logoHtml}</span>
+            <span class="chat-resource-model-choice-copy">
+              <strong>${options.escapeHtml(choice.modelName)}</strong>
+              <small>${options.escapeHtml(choice.providerLabel)}</small>
+            </span>
+          </button>
+        `).join('')}
+      </div>
+    </details>
+  `
+}
+
 function areParameterValuesEqual(left: unknown, right: unknown): boolean {
   return JSON.stringify(left ?? null) === JSON.stringify(right ?? null)
 }
 
 function validateInspectorParameter(parameterItem: CharacterResourceParameterDefinition, value: unknown, options: CharacterWorkflowPageOptions): string {
+  if (parameterItem.type === 'model-select') {
+    const choices = getModelChoices(parameterItem, options)
+    if (!choices.length) {
+      return ui(options, '模型配置页暂无可用模型', 'No available model in Models')
+    }
+    if (!choices.some((choice) => choice.id === String(value ?? ''))) {
+      return ui(options, '请选择可用模型', 'Choose an available model')
+    }
+  }
   if (parameterItem.type === 'number' || parameterItem.type === 'integer') {
     const numeric = Number(value)
     if (!Number.isFinite(numeric)) {
@@ -1804,9 +1848,22 @@ function param(
   min?: number,
   max?: number,
   step?: number,
-  options?: Array<{ label: string; value: string }>
+  options?: Array<{ label: string; value: string }>,
+  modelKind?: CharacterWorkflowModelChoice['kind']
 ): CharacterResourceParameterDefinition {
-  return { id, label, type, defaultValue, min, max, step, options }
+  return { id, label, type, defaultValue, min, max, step, options, modelKind }
+}
+
+function getParameterDefaultValue(parameterItem: CharacterResourceParameterDefinition, options: CharacterWorkflowPageOptions): unknown {
+  if (parameterItem.type === 'model-select') {
+    return getModelChoices(parameterItem, options)[0]?.id ?? parameterItem.defaultValue
+  }
+  return Array.isArray(parameterItem.defaultValue) ? [...parameterItem.defaultValue] : parameterItem.defaultValue
+}
+
+function getModelChoices(parameterItem: CharacterResourceParameterDefinition, options: CharacterWorkflowPageOptions): CharacterWorkflowModelChoice[] {
+  const modelKind = parameterItem.modelKind
+  return (options.modelChoices ?? []).filter((choice) => !modelKind || choice.kind === modelKind)
 }
 
 function link(
@@ -1888,7 +1945,7 @@ function createMockOutputSummary(definition: CharacterResourceNodeDefinition, no
     return 'Mock quality gate checks goal match, style intensity, long-term RP durability, consistency, and export readiness.'
   }
   if (definition.previewType === 'package') {
-    return 'Mock candidate package preview combines agent plan, requested assets, quality gate report, output adapter, and chat-test entry.'
+    return 'Mock candidate package preview combines agent plan, requested assets, quality gate report, and output adapter.'
   }
   return `${definition.displayName} is configured by ${Object.keys(node.config).length} parameter fields and participates in the resource graph.`
 }

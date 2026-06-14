@@ -20,6 +20,7 @@ import {
   type ChatConversationSettings,
 } from './chat-conversation-settings'
 import type {
+  CharacterWorkflowModelChoice,
   CharacterResourceRunState,
   CharacterWorkflowFileTab,
   CharacterWorkflowSidePanel,
@@ -43,6 +44,7 @@ import {
   createDefaultChatModel,
   getActiveChatModelName,
   getAvailableModelNames,
+  getChatProviderEntry,
   getChatModelType,
   getEnabledModelNames,
   getLLMProviderEntry,
@@ -1154,6 +1156,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       })
       renderChatModelConfig()
       renderChatRuntimeModelPicker()
+      refreshCharacterWorkflowModelsIfVisible()
     } catch (error: any) {
       showToast(error?.message || String(error))
     }
@@ -1231,7 +1234,34 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   type ChatRuntimeModelOption = { api: ChatModelConfig; modelName: string }
+
   type ChatRuntimeModelGroup = { provider: ReturnType<typeof getLLMProviderEntry>; models: ChatRuntimeModelOption[] }
+
+  function getCharacterWorkflowModelChoices(): CharacterWorkflowModelChoice[] {
+    const config = chatSystemConfig
+    if (!config) {
+      return []
+    }
+    return config.chatModels.flatMap((model) => {
+      const kind = getChatModelType(model)
+      const provider = getChatProviderEntry(model)
+      return getEnabledModelNames(model).map((modelName) => ({
+        id: `${model.id}::${modelName}`,
+        kind,
+        apiId: model.id,
+        modelName,
+        provider: provider.value,
+        providerLabel: provider.label,
+        logoHtml: renderChatModelLogo(model),
+      }))
+    })
+  }
+
+  function refreshCharacterWorkflowModelsIfVisible(): void {
+    if (panel.dataset.chatView === 'character-workflow') {
+      renderCharacterWorkflow()
+    }
+  }
 
   function getUsableChatModelGroups(config: ChatSystemConfig): ChatRuntimeModelGroup[] {
     const grouped = new Map<string, ChatRuntimeModelGroup>()
@@ -1596,6 +1626,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     characterWorkflowRoot.innerHTML = workflowPage.renderCharacterWorkflowPage({
       language: options.getLanguage(),
       escapeHtml: options.escapeHtml,
+      modelChoices: getCharacterWorkflowModelChoices(),
       configOverrides: characterWorkflowConfigOverrides,
       positionOverrides: characterWorkflowPositionOverrides,
       runState: characterWorkflowRunState,
@@ -2044,6 +2075,22 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     renderCharacterWorkflow()
   }
 
+  function updateCharacterWorkflowModelChoice(choice: HTMLElement): void {
+    const nodeId = choice.dataset.chatWorkflowNode || ''
+    const paramId = choice.dataset.chatWorkflowParam || ''
+    const modelValue = choice.dataset.chatWorkflowModelValue || ''
+    if (!nodeId || !paramId || !modelValue) {
+      return
+    }
+    selectedWorkflowNodeId = nodeId
+    characterResourceViewState.selectedNodeIds = [nodeId]
+    characterResourceViewState.selectedLinkId = ''
+    pushCharacterResourceUndoSnapshot()
+    characterWorkflowConfigOverrides[nodeId] ??= {}
+    characterWorkflowConfigOverrides[nodeId][paramId] = modelValue
+    renderCharacterWorkflow()
+  }
+
   function selectCharacterWorkflowTab(tabId: string): void {
     if (!getCharacterWorkflowTabs().some((tab) => tab.id === tabId)) {
       return
@@ -2125,7 +2172,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (targetType === 'export-target') {
       return 'exports'
     }
-    if (sourceType === 'strategy-policy' || targetType === 'chat-test-result') {
+    if (sourceType === 'strategy-policy') {
       return 'routes'
     }
     return 'guides'
@@ -2489,6 +2536,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       activeChatModelName: settings.system.activeChatModelName,
     }
     renderChatRuntimeModelPicker()
+    refreshCharacterWorkflowModelsIfVisible()
   }
 
   async function selectRuntimeChatModel(id: string, modelName: string): Promise<void> {
@@ -2983,6 +3031,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const resourceLibraryCard = eventTarget.closest<HTMLElement>('[data-resource-library-card][data-resource-node-add-type]')
     if (resourceLibraryCard && panel.contains(resourceLibraryCard)) {
       addCharacterResourceNodeFromLibrary(resourceLibraryCard)
+      return
+    }
+
+    const workflowModelChoice = eventTarget.closest<HTMLElement>('[data-chat-workflow-model-choice]')
+    if (workflowModelChoice && panel.contains(workflowModelChoice)) {
+      updateCharacterWorkflowModelChoice(workflowModelChoice)
       return
     }
 
