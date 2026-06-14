@@ -14057,6 +14057,41 @@ body.chat-fullscreen .chat-nav-item span:not(.chat-language-mark):not(.chat-lang
   white-space: nowrap;
 }
 
+.chat-panel[data-chat-view='character-workflow'] .chat-shell,
+.chat-panel[data-chat-view='character-workflow'] .chat-shell.profile-collapsed,
+.chat-panel[data-chat-view='character-workflow'] .chat-shell.threads-collapsed,
+body.chat-fullscreen .chat-panel[data-chat-view='character-workflow'] .chat-shell,
+body.chat-fullscreen .chat-panel[data-chat-view='character-workflow'] .chat-shell.profile-collapsed,
+body.chat-fullscreen .chat-panel[data-chat-view='character-workflow'] .chat-shell.threads-collapsed {
+  grid-template-columns: 68px 0 minmax(0, 1fr) 0;
+}
+
+body.chat-fullscreen .chat-panel[data-chat-view='character-workflow'] .chat-nav {
+  align-items: center;
+  padding: 18px 10px 14px;
+}
+
+body.chat-fullscreen .chat-panel[data-chat-view='character-workflow'] .chat-nav-brand {
+  justify-self: center;
+  margin-left: 0;
+}
+
+body.chat-fullscreen .chat-panel[data-chat-view='character-workflow'] .chat-nav-item,
+body.chat-fullscreen .chat-panel[data-chat-view='character-workflow'] .chat-nav-item.language-toggle {
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  min-height: 42px;
+  grid-template-columns: 1fr;
+  justify-content: center;
+  gap: 0;
+  padding: 0;
+}
+
+body.chat-fullscreen .chat-panel[data-chat-view='character-workflow'] .chat-nav-item span:not(.chat-language-mark):not(.chat-language-card):not(.chat-language-bridge) {
+  display: none;
+}
+
 body.chat-fullscreen .chat-nav-item.language-toggle {
   width: 42px;
   grid-template-columns: 30px;
@@ -14174,6 +14209,11 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-model-page,
 body.chat-fullscreen .chat-shell.threads-collapsed .chat-character-workflow-page,
 body.chat-fullscreen .chat-shell.threads-collapsed .chat-conversation-settings-page {
   left: 154px;
+}
+
+body.chat-fullscreen .chat-panel[data-chat-view='character-workflow'] .chat-character-workflow-page,
+body.chat-fullscreen .chat-panel[data-chat-view='character-workflow'] .chat-shell.threads-collapsed .chat-character-workflow-page {
+  left: 68px;
 }
 
 .chat-model-logo img,
