@@ -224,7 +224,7 @@ export function registerChatIpcHandlers(
       console.error('[Chat] Failed to stream message:', error)
       return {
         success: false,
-        error: error?.message || String(error),
+        error: normalizeChatRuntimeError(error),
       }
     }
   })
