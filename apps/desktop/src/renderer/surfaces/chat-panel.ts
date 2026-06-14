@@ -791,13 +791,15 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       language,
       preferencePrompt: buildConversationPreferencePrompt(conversationSettings, language),
       options: buildConversationRequestOptions(conversationSettings),
+      runtimeOptions: {
+        shortTermMessageLimit: getShortTermMessageLimit(),
+        summaryLimit: conversationSettings.summaryLimit,
+      },
       attachments,
       conversation,
       draftMessageId: message.id,
       character,
       sceneImmersion: conversationSettings.sceneImmersion,
-      shortTermMessageLimit: getShortTermMessageLimit(),
-      summaryLimit: conversationSettings.summaryLimit,
     })
     let completeReply = ''
     let visibleReply = ''

@@ -164,6 +164,10 @@ describe('chat conversation runtime helpers', () => {
       language: 'en-US',
       preferencePrompt: 'Be concise.',
       options: { temperature: 0.4 },
+      runtimeOptions: {
+        shortTermMessageLimit: 2,
+        summaryLimit: 3,
+      },
       attachments: [{ kind: 'image', name: 'a.png', mimeType: 'image/png', dataUrl: 'data:image/png;base64,abc' }],
       conversation: {
         sceneState: { location: { 'zh-CN': '书房', 'en-US': 'Study' } },
@@ -192,8 +196,6 @@ describe('chat conversation runtime helpers', () => {
         tag: { 'zh-CN': ['悬疑'], 'en-US': ['Mystery'] },
       },
       sceneImmersion: true,
-      shortTermMessageLimit: 2,
-      summaryLimit: 3,
     })
 
     expect(request.input).toBe('Please respond to the attached media.')
@@ -204,6 +206,10 @@ describe('chat conversation runtime helpers', () => {
     expect(request.attachments).toEqual([
       { kind: 'image', name: 'a.png', mimeType: 'image/png', dataUrl: 'data:image/png;base64,abc', size: undefined },
     ])
+    expect(request.runtimeOptions).toMatchObject({
+      shortTermMessageLimit: 2,
+      summaryLimit: 3,
+    })
     expect(request.character).toMatchObject({
       displayName: 'Qianyu Chen',
       background: 'Rainy night',

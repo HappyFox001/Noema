@@ -63,13 +63,18 @@ export interface BuildChatRuntimeTurnRequestOptions {
   language: ChatRuntimeLanguage
   preferencePrompt?: string
   options?: Record<string, unknown>
+  runtimeOptions: ChatRuntimeConversationOptions
   attachments?: ChatRuntimeAttachmentInput[]
   conversation: ChatRuntimeConversation & { sceneState?: Record<string, unknown> }
   draftMessageId: string
   character?: ChatRuntimeCharacterResource
   sceneImmersion: boolean
+}
+
+export interface ChatRuntimeConversationOptions {
   shortTermMessageLimit: number
   summaryLimit: number
+  summaryBatchMessageCount?: number
 }
 
 export interface ChatRuntimeSummaryBatch {
@@ -206,6 +211,7 @@ export function buildChatCharacterContext(
 }
 
 export function buildChatRuntimeTurnRequest(options: BuildChatRuntimeTurnRequestOptions): ChatRuntimeTurnRequest {
+  const runtimeOptions = normalizeChatRuntimeConversationOptions(options.runtimeOptions)
   const characterContext = options.character
     ? buildChatCharacterContext(options.character, {
       language: options.language,
@@ -213,8 +219,8 @@ export function buildChatRuntimeTurnRequest(options: BuildChatRuntimeTurnRequest
       sceneState: options.conversation.sceneState,
       narrativeSummaries: buildChatNarrativeSummaries(options.conversation, {
         language: options.language,
-        shortTermMessageLimit: options.shortTermMessageLimit,
-        summaryLimit: options.summaryLimit,
+        shortTermMessageLimit: runtimeOptions.shortTermMessageLimit,
+        summaryLimit: runtimeOptions.summaryLimit,
       }),
     })
     : undefined
@@ -224,6 +230,7 @@ export function buildChatRuntimeTurnRequest(options: BuildChatRuntimeTurnRequest
     language: options.language,
     preferencePrompt: options.preferencePrompt,
     options: options.options,
+    runtimeOptions,
     attachments: (options.attachments ?? []).map((attachment) => ({
       kind: attachment.kind,
       name: attachment.name,
@@ -234,9 +241,17 @@ export function buildChatRuntimeTurnRequest(options: BuildChatRuntimeTurnRequest
     messages: buildChatConversationContextMessages(options.conversation, {
       draftMessageId: options.draftMessageId,
       language: options.language,
-      shortTermMessageLimit: options.shortTermMessageLimit,
+      shortTermMessageLimit: runtimeOptions.shortTermMessageLimit,
     }),
     character: characterContext,
+  }
+}
+
+export function normalizeChatRuntimeConversationOptions(options: ChatRuntimeConversationOptions): Required<ChatRuntimeConversationOptions> {
+  return {
+    shortTermMessageLimit: normalizeMessageLimit(options.shortTermMessageLimit),
+    summaryLimit: Math.max(0, Math.round(Number(options.summaryLimit) || 0)),
+    summaryBatchMessageCount: Math.max(0, Math.round(Number(options.summaryBatchMessageCount) || 0)),
   }
 }
 

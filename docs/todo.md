@@ -24,7 +24,7 @@
 - [x] 在 SDK 中定义 conversation state 类型，包括 messages、scene state、summaries、artifacts。
 - [x] 将 `summarizeConversationOverflow` 的触发条件移入 SDK。
 - [x] 将历史压缩 prompt 和摘要保留策略移入 SDK。
-- [ ] 将 summary limit、short-term turns 等配置变成 SDK runtime options。
+- [x] 将 summary limit、short-term turns 等配置变成 SDK runtime options。
 - [x] 将 scene update markup 解析移入 SDK，renderer 只接收 `scene.updated` patch。
 - [x] 将 scene state merge 规则移入 SDK，renderer 只渲染合并后的状态。
 
