@@ -12,6 +12,7 @@ import {
   type ChatTurnRequest,
   type ChatTurnResponse,
 } from './index.js'
+import { extractChatSceneUpdate } from './conversation-runtime.js'
 
 export interface ConfiguredChatModel {
   provider?: string
@@ -143,7 +144,9 @@ export async function *streamChatTurnEvents(
       chunks.push(delta)
       yield { type: 'message.delta', delta }
     }
-    yield { type: 'message.completed', content: chunks.join('') }
+    for (const event of createChatCompletionEvents(chunks.join(''))) {
+      yield event
+    }
   } catch (error: any) {
     const message = normalizeChatRuntimeError(error)
     yield { type: 'error', error: message }
@@ -159,7 +162,7 @@ export async function sendChatTurnEvents(
     const response = await session.send(request)
     return [
       { type: 'message.started' },
-      { type: 'message.completed', content: response.content },
+      ...createChatCompletionEvents(response.content),
     ]
   } catch (error: any) {
     return [
@@ -183,6 +186,14 @@ export function normalizeChatRuntimeError(error: unknown): string {
     }
   }
   return String(error || 'Chat runtime failed')
+}
+
+function createChatCompletionEvents(content: string): ChatRuntimeEvent[] {
+  const parsed = extractChatSceneUpdate(content)
+  return [
+    ...(parsed.update ? [{ type: 'scene.updated' as const, patch: parsed.update }] : []),
+    { type: 'message.completed' as const, content: parsed.text },
+  ]
 }
 
 export function toChatModelConfig(config: ConfiguredChatModel | null): ChatModelConfig {

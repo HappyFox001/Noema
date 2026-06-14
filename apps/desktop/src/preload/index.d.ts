@@ -669,6 +669,7 @@ declare global {
       }) => Promise<{
         success: boolean
         response?: string
+        sceneUpdate?: Record<string, unknown>
         error?: string
       }>
       runCharacterWorkflow: (request: {
@@ -725,12 +726,14 @@ declare global {
         onDone?: (result: {
           success: boolean
           response?: string
+          sceneUpdate?: Record<string, unknown>
           error?: string
         }) => void
         onError?: (error: string) => void
       }) => Promise<{
         success: boolean
         response?: string
+        sceneUpdate?: Record<string, unknown>
         error?: string
       }>
       listChatModels: (request: {

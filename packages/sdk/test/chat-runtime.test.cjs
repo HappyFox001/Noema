@@ -303,6 +303,36 @@ describe('chat conversation runtime helpers', () => {
     ])
     expect(finalContent(streamEvents)).toBe(finalContent(sendEvents))
   })
+
+  test('emits scene updates and stripped final content from chat events', async () => {
+    const session = new chat.ChatSession({
+      llm: {
+        chat: async () => ({ content: 'done<scene_update>{"location":"书房"}</scene_update>' }),
+        streamChat: async function *() {
+          yield 'done'
+          yield '<scene_update>{"location":"书房"}</scene_update>'
+        },
+      },
+    })
+    const request = { input: 'hi' }
+
+    const sendEvents = await requestRuntime.sendChatTurnEvents(session, request)
+    const streamEvents = []
+    for await (const event of requestRuntime.streamChatTurnEvents(session, request)) {
+      streamEvents.push(event)
+    }
+
+    expect(sendEvents).toEqual([
+      { type: 'message.started' },
+      { type: 'scene.updated', patch: { location: '书房' } },
+      { type: 'message.completed', content: 'done' },
+    ])
+    expect(streamEvents.slice(-2)).toEqual([
+      { type: 'scene.updated', patch: { location: '书房' } },
+      { type: 'message.completed', content: 'done' },
+    ])
+    expect(finalContent(streamEvents)).toBe(finalContent(sendEvents))
+  })
 })
 
 function message(id, role, text) {

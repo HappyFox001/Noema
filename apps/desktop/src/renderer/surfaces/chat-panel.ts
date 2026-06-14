@@ -5,7 +5,6 @@ import { getImageProviderCatalogEntry, getLLMProviderCatalogEntry } from '../../
 import {
   buildChatRuntimeTurnRequest,
   buildChatSummaryPrompt,
-  extractChatSceneUpdate,
   getChatMessageOrdinal,
   mergeChatSceneState,
   selectChatSummaryBatch,
@@ -863,14 +862,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         revealFrame = 0
       }
       await revealPendingReply()
-      const rawReply = response.success
+      const reply = response.success
         ? (response.response || completeReply || visibleReply || '')
         : (response.error || 'Chat model failed')
-      const parsedReply = response.success ? extractChatSceneUpdate(rawReply) : { text: rawReply, update: null }
-      if (parsedReply.update) {
-        conversation.sceneState = mergeChatSceneState(conversation.sceneState, parsedReply.update, language)
+      if (response.success && response.sceneUpdate) {
+        conversation.sceneState = mergeChatSceneState(conversation.sceneState, response.sceneUpdate, language)
       }
-      const reply = parsedReply.text
       message.text = { 'zh-CN': reply, 'en-US': reply }
       message.state = undefined
       conversation.preview = { 'zh-CN': reply, 'en-US': reply }

@@ -9,6 +9,7 @@ import { listChatModelsWithProvider } from '@noema/sdk/chat/model-list'
 import {
   ChatRuntime,
   normalizeChatRuntimeError,
+  type ChatRuntimeEvent,
   type ChatRuntimeTurnRequest,
 } from '@noema/sdk/chat/request-runtime'
 import {
@@ -45,6 +46,7 @@ export interface ChatSendMessageRequest extends ChatRuntimeTurnRequest {
 export interface ChatSendMessageResult {
   success: boolean
   response?: string
+  sceneUpdate?: Record<string, unknown>
   error?: string
 }
 
@@ -136,11 +138,12 @@ export function registerChatIpcHandlers(
 
   ipcMain.handle('chat:sendMessage', async (_, request: ChatSendMessageRequest): Promise<ChatSendMessageResult> => {
     try {
-      const response = await createRuntime().sendTurn(request)
+      const result = await collectChatRuntimeResult(createRuntime().runTurnEvents({ ...request, stream: false }))
 
       return {
         success: true,
-        response: response.content,
+        response: result.response,
+        sceneUpdate: result.sceneUpdate,
       }
     } catch (error: any) {
       console.error('[Chat] Failed to send message:', error)
@@ -196,21 +199,26 @@ export function registerChatIpcHandlers(
   ipcMain.handle('chat:streamMessage', async (event, request: ChatSendMessageRequest): Promise<ChatSendMessageResult> => {
     const streamId = typeof request?.streamId === 'string' ? request.streamId : ''
     try {
-      let response = ''
+      let result = {
+        response: '',
+        sceneUpdate: undefined as Record<string, unknown> | undefined,
+      }
       for await (const runtimeEvent of createRuntime().runTurnEvents({ ...request, stream: true })) {
         if (runtimeEvent.type === 'message.delta') {
-          response += runtimeEvent.delta
           if (streamId) {
             event.sender.send('chat:streamDelta', { streamId, delta: runtimeEvent.delta })
           }
         } else if (runtimeEvent.type === 'message.completed') {
-          response = runtimeEvent.content
+          result.response = runtimeEvent.content
+        } else if (runtimeEvent.type === 'scene.updated') {
+          result.sceneUpdate = runtimeEvent.patch
         }
       }
 
       return {
         success: true,
-        response,
+        response: result.response,
+        sceneUpdate: result.sceneUpdate,
       }
     } catch (error: any) {
       console.error('[Chat] Failed to stream message:', error)
@@ -334,6 +342,26 @@ export function registerChatIpcHandlers(
       return { success: false, error: error?.message || String(error) }
     }
   })
+}
+
+async function collectChatRuntimeResult(events: AsyncGenerator<ChatRuntimeEvent>): Promise<{
+  response: string
+  sceneUpdate?: Record<string, unknown>
+}> {
+  const result: {
+    response: string
+    sceneUpdate?: Record<string, unknown>
+  } = {
+    response: '',
+  }
+  for await (const runtimeEvent of events) {
+    if (runtimeEvent.type === 'message.completed') {
+      result.response = runtimeEvent.content
+    } else if (runtimeEvent.type === 'scene.updated') {
+      result.sceneUpdate = runtimeEvent.patch
+    }
+  }
+  return result
 }
 
 function mediaExtensionsForKind(kind: ChatSelectMediaRequest['kind']): string[] {

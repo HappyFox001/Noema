@@ -32,9 +32,9 @@
 
 - [x] 由 SDK 决定是否支持/执行流式输出，desktop 只透传 stream preference。
 - [ ] 将 stream delta、最终消息、场景更新、摘要生成、artifact 生成统一成 SDK events。
-- [ ] 保留 renderer 的逐字 reveal / animation，但输入必须来自 SDK event。
-- [ ] 删除 renderer 中对 raw model reply 的业务解析。
-- [ ] 确保非流式路径和流式路径产出同一组最终事件和 conversation state。
+- [x] 保留 renderer 的逐字 reveal / animation，但输入必须来自 SDK event。
+- [x] 删除 renderer 中对 raw model reply 的业务解析。
+- [x] 确保非流式路径和流式路径产出同一组最终事件和 conversation state。
 
 ## 5. 模型配置与 provider 执行
 
