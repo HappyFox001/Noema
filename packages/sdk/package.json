@@ -21,6 +21,11 @@
       "import": "./dist/chat/conversation-runtime.js",
       "default": "./dist/chat/conversation-runtime.js"
     },
+    "./chat/model-list": {
+      "types": "./dist/chat/model-list.d.ts",
+      "import": "./dist/chat/model-list.js",
+      "default": "./dist/chat/model-list.js"
+    },
     "./image": {
       "types": "./dist/image/index.d.ts",
       "import": "./dist/image/index.js",

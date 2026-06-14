@@ -40,7 +40,7 @@
 
 - [ ] 保持 settings/env 加载在 desktop，但转换成 SDK config 后由 SDK 统一执行。
 - [ ] 将 chat model selection 的运行时解析放入 SDK，例如 active API、model name、provider、base URL。
-- [ ] 评估 `chat:listModels` 是否应迁入 SDK model service。
+- [x] 评估 `chat:listModels` 是否应迁入 SDK model service。
 - [ ] 将 provider-specific request cleanup、proxy、reasoning defaults 保持在 SDK provider 层。
 - [ ] 避免 renderer 直接理解 provider runtime 差异。
 
