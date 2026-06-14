@@ -43,6 +43,27 @@ export interface ChatRuntimeSummaryBatch {
   transcript: string
 }
 
+export function buildChatSummaryPrompt(
+  batch: Pick<ChatRuntimeSummaryBatch, 'startMessageIndex' | 'endMessageIndex' | 'transcript'>,
+  language: ChatRuntimeLanguage
+): string {
+  return language === 'zh-CN'
+    ? [
+        '请把下面这段历史对话压缩成短期上下文摘要。',
+        `这是原始对话第 ${batch.startMessageIndex} -> ${batch.endMessageIndex} 条消息的摘要。`,
+        '要求：保留事实、关系变化、未完成承诺、用户偏好、角色状态和重要情绪；不要加入新剧情；用 3-6 条紧凑要点。',
+        '',
+        batch.transcript,
+      ].join('\n')
+    : [
+        'Compress the following chat history into a short-term context summary.',
+        `This summary covers original conversation messages ${batch.startMessageIndex} -> ${batch.endMessageIndex}.`,
+        'Keep facts, relationship changes, unresolved commitments, user preferences, character state, and important emotions. Do not invent new events. Use 3-6 compact bullets.',
+        '',
+        batch.transcript,
+      ].join('\n')
+}
+
 export function buildChatConversationContextMessages(
   conversation: Pick<ChatRuntimeConversation, 'messages'>,
   options: {
