@@ -7,9 +7,8 @@ import { readFile } from 'fs/promises'
 import { basename, extname } from 'path'
 import { listChatModelsWithProvider } from '@noema/sdk/chat/model-list'
 import {
-  sendChatTurnWithConfiguredModel,
+  ChatRuntime,
   type ChatRuntimeTurnRequest,
-  streamChatTurnEventsWithConfiguredModel,
 } from '@noema/sdk/chat/request-runtime'
 import {
   createCharacterAgentModelConfigs,
@@ -122,16 +121,21 @@ export function registerChatIpcHandlers(
     getChatHistoryStore(): ChatHistoryStore
   }
 ): void {
+  const createRuntime = (): ChatRuntime => new ChatRuntime({
+    modelConfig: options.getModelConfig(),
+    options: {
+      defaultOptions: {
+        max_tokens: 1024,
+      },
+      llmOptions: {
+        proxyUrl: options.getProxyUrl?.(),
+      },
+    },
+  })
+
   ipcMain.handle('chat:sendMessage', async (_, request: ChatSendMessageRequest): Promise<ChatSendMessageResult> => {
     try {
-      const response = await sendChatTurnWithConfiguredModel(options.getModelConfig(), request, {
-        defaultOptions: {
-          max_tokens: 1024,
-        },
-        llmOptions: {
-          proxyUrl: options.getProxyUrl?.(),
-        },
-      })
+      const response = await createRuntime().sendTurn(request)
 
       return {
         success: true,
@@ -192,14 +196,7 @@ export function registerChatIpcHandlers(
     const streamId = typeof request?.streamId === 'string' ? request.streamId : ''
     try {
       let response = ''
-      for await (const runtimeEvent of streamChatTurnEventsWithConfiguredModel(options.getModelConfig(), request, {
-        defaultOptions: {
-          max_tokens: 1024,
-        },
-        llmOptions: {
-          proxyUrl: options.getProxyUrl?.(),
-        },
-      })) {
+      for await (const runtimeEvent of createRuntime().runTurnEvents({ ...request, stream: true })) {
         if (runtimeEvent.type === 'message.delta') {
           response += runtimeEvent.delta
           if (streamId) {

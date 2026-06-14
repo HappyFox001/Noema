@@ -4,10 +4,10 @@
 
 ## 1. SDK Chat Runtime 边界
 
-- [ ] 在 `packages/sdk` 中定义 chat runtime 服务边界，例如 `ChatRuntime` / `ConversationRuntime`。
+- [x] 在 `packages/sdk` 中定义 chat runtime 服务边界，例如 `ChatRuntime` / `ConversationRuntime`。
 - [x] 定义稳定的 chat 请求类型：`conversationId`、`input`、`attachments`、`language`、`stream`、`runtimeOptions`。
 - [x] 定义稳定的 chat 事件协议：`message.started`、`message.delta`、`message.completed`、`scene.updated`、`summary.created`、`artifact.created`、`error`。
-- [ ] 将 `ChatSession` 从单轮模型调用扩展为可管理 conversation turn 的运行时能力，或在其上层新增 runtime。
+- [x] 将 `ChatSession` 从单轮模型调用扩展为可管理 conversation turn 的运行时能力，或在其上层新增 runtime。
 - [ ] 将 chat 错误归一化放入 SDK，desktop 只展示错误消息。
 
 ## 2. Conversation 组装下沉
@@ -30,7 +30,7 @@
 
 ## 4. 流式输出与渲染边界
 
-- [ ] 由 SDK 决定是否支持/执行流式输出，desktop 只透传 stream preference。
+- [x] 由 SDK 决定是否支持/执行流式输出，desktop 只透传 stream preference。
 - [ ] 将 stream delta、最终消息、场景更新、摘要生成、artifact 生成统一成 SDK events。
 - [ ] 保留 renderer 的逐字 reveal / animation，但输入必须来自 SDK event。
 - [ ] 删除 renderer 中对 raw model reply 的业务解析。

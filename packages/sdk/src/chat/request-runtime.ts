@@ -45,6 +45,11 @@ export interface NormalizedChatRuntimeTurnRequest extends ChatTurnRequest {
 
 export interface ConfiguredChatRuntimeOptions extends Omit<ChatSessionOptions, 'llm' | 'model'> {}
 
+export interface ChatRuntimeServiceOptions {
+  modelConfig: ConfiguredChatModel | null
+  options?: ConfiguredChatRuntimeOptions
+}
+
 export type ChatRuntimeEvent =
   | { type: 'message.started' }
   | { type: 'message.delta'; delta: string }
@@ -53,6 +58,28 @@ export type ChatRuntimeEvent =
   | { type: 'summary.created'; summary: unknown }
   | { type: 'artifact.created'; artifact: unknown }
   | { type: 'error'; error: string }
+
+export class ChatRuntime {
+  private modelConfig: ConfiguredChatModel | null
+  private options: ConfiguredChatRuntimeOptions
+
+  constructor(options: ChatRuntimeServiceOptions) {
+    this.modelConfig = options.modelConfig
+    this.options = options.options ?? {}
+  }
+
+  sendTurn(request: ChatRuntimeTurnRequest): Promise<ChatTurnResponse> {
+    return sendChatTurnWithConfiguredModel(this.modelConfig, request, this.options)
+  }
+
+  streamTurn(request: ChatRuntimeTurnRequest): AsyncGenerator<string> {
+    return streamChatTurnWithConfiguredModel(this.modelConfig, request, this.options)
+  }
+
+  runTurnEvents(request: ChatRuntimeTurnRequest): AsyncGenerator<ChatRuntimeEvent> {
+    return runChatTurnEventsWithConfiguredModel(this.modelConfig, request, this.options)
+  }
+}
 
 export async function sendChatTurnWithConfiguredModel(
   modelConfig: ConfiguredChatModel | null,
@@ -88,6 +115,21 @@ export async function sendChatTurnEventsWithConfiguredModel(
 ): Promise<ChatRuntimeEvent[]> {
   const session = createChatSessionFromModel(toChatModelConfig(modelConfig), options)
   return sendChatTurnEvents(session, normalizeConfiguredChatTurnRequest(request))
+}
+
+export async function *runChatTurnEventsWithConfiguredModel(
+  modelConfig: ConfiguredChatModel | null,
+  request: ChatRuntimeTurnRequest,
+  options: ConfiguredChatRuntimeOptions = {}
+): AsyncGenerator<ChatRuntimeEvent> {
+  const normalized = normalizeChatRuntimeTurnRequest(request)
+  if (normalized.stream) {
+    yield* streamChatTurnEventsWithConfiguredModel(modelConfig, normalized, options)
+    return
+  }
+  for (const event of await sendChatTurnEventsWithConfiguredModel(modelConfig, normalized, options)) {
+    yield event
+  }
 }
 
 export async function *streamChatTurnEvents(
