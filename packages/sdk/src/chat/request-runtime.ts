@@ -32,6 +32,15 @@ export interface ConfiguredChatTurnRequest {
 
 export interface ConfiguredChatRuntimeOptions extends Omit<ChatSessionOptions, 'llm' | 'model'> {}
 
+export type ChatRuntimeEvent =
+  | { type: 'message.started' }
+  | { type: 'message.delta'; delta: string }
+  | { type: 'message.completed'; content: string }
+  | { type: 'scene.updated'; patch: Record<string, unknown> }
+  | { type: 'summary.created'; summary: unknown }
+  | { type: 'artifact.created'; artifact: unknown }
+  | { type: 'error'; error: string }
+
 export async function sendChatTurnWithConfiguredModel(
   modelConfig: ConfiguredChatModel | null,
   request: ConfiguredChatTurnRequest,
@@ -48,6 +57,45 @@ export async function *streamChatTurnWithConfiguredModel(
 ): AsyncGenerator<string> {
   const session = createChatSessionFromModel(toChatModelConfig(modelConfig), options)
   yield* session.stream(normalizeConfiguredChatTurnRequest(request))
+}
+
+export async function *streamChatTurnEventsWithConfiguredModel(
+  modelConfig: ConfiguredChatModel | null,
+  request: ConfiguredChatTurnRequest,
+  options: ConfiguredChatRuntimeOptions = {}
+): AsyncGenerator<ChatRuntimeEvent> {
+  yield { type: 'message.started' }
+  const chunks: string[] = []
+  try {
+    for await (const delta of streamChatTurnWithConfiguredModel(modelConfig, request, options)) {
+      chunks.push(delta)
+      yield { type: 'message.delta', delta }
+    }
+    yield { type: 'message.completed', content: chunks.join('') }
+  } catch (error: any) {
+    const message = error?.message || String(error)
+    yield { type: 'error', error: message }
+    throw error
+  }
+}
+
+export async function sendChatTurnEventsWithConfiguredModel(
+  modelConfig: ConfiguredChatModel | null,
+  request: ConfiguredChatTurnRequest,
+  options: ConfiguredChatRuntimeOptions = {}
+): Promise<ChatRuntimeEvent[]> {
+  try {
+    const response = await sendChatTurnWithConfiguredModel(modelConfig, request, options)
+    return [
+      { type: 'message.started' },
+      { type: 'message.completed', content: response.content },
+    ]
+  } catch (error: any) {
+    return [
+      { type: 'message.started' },
+      { type: 'error', error: error?.message || String(error) },
+    ]
+  }
 }
 
 export function toChatModelConfig(config: ConfiguredChatModel | null): ChatModelConfig {

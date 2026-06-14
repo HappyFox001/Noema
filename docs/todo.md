@@ -6,7 +6,7 @@
 
 - [ ] 在 `packages/sdk` 中定义 chat runtime 服务边界，例如 `ChatRuntime` / `ConversationRuntime`。
 - [ ] 定义稳定的 chat 请求类型：`conversationId`、`input`、`attachments`、`language`、`stream`、`runtimeOptions`。
-- [ ] 定义稳定的 chat 事件协议：`message.started`、`message.delta`、`message.completed`、`scene.updated`、`summary.created`、`artifact.created`、`error`。
+- [x] 定义稳定的 chat 事件协议：`message.started`、`message.delta`、`message.completed`、`scene.updated`、`summary.created`、`artifact.created`、`error`。
 - [ ] 将 `ChatSession` 从单轮模型调用扩展为可管理 conversation turn 的运行时能力，或在其上层新增 runtime。
 - [ ] 将 chat 错误归一化放入 SDK，desktop 只展示错误消息。
 

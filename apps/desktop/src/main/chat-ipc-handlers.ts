@@ -12,7 +12,7 @@ import {
 import { listChatModelsWithProvider } from '@noema/sdk/chat/model-list'
 import {
   sendChatTurnWithConfiguredModel,
-  streamChatTurnWithConfiguredModel,
+  streamChatTurnEventsWithConfiguredModel,
 } from '@noema/sdk/chat/request-runtime'
 import {
   createCharacterAgentModelConfigs,
@@ -201,8 +201,8 @@ export function registerChatIpcHandlers(
   ipcMain.handle('chat:streamMessage', async (event, request: ChatSendMessageRequest): Promise<ChatSendMessageResult> => {
     const streamId = typeof request?.streamId === 'string' ? request.streamId : ''
     try {
-      const chunks: string[] = []
-      for await (const delta of streamChatTurnWithConfiguredModel(options.getModelConfig(), request, {
+      let response = ''
+      for await (const runtimeEvent of streamChatTurnEventsWithConfiguredModel(options.getModelConfig(), request, {
         defaultOptions: {
           max_tokens: 1024,
         },
@@ -210,15 +210,19 @@ export function registerChatIpcHandlers(
           proxyUrl: options.getProxyUrl?.(),
         },
       })) {
-        chunks.push(delta)
-        if (streamId) {
-          event.sender.send('chat:streamDelta', { streamId, delta })
+        if (runtimeEvent.type === 'message.delta') {
+          response += runtimeEvent.delta
+          if (streamId) {
+            event.sender.send('chat:streamDelta', { streamId, delta: runtimeEvent.delta })
+          }
+        } else if (runtimeEvent.type === 'message.completed') {
+          response = runtimeEvent.content
         }
       }
 
       return {
         success: true,
-        response: chunks.join(''),
+        response,
       }
     } catch (error: any) {
       console.error('[Chat] Failed to stream message:', error)
