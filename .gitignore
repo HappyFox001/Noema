@@ -34,6 +34,10 @@ Thumbs.db
 npm-debug.log*
 pnpm-debug.log*
 
+# Codex autoresearch run artifacts
+autoresearch-results/
+autoresearch-results.prev-*/
+
 # Turbo
 .turbo
 
