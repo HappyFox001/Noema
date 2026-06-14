@@ -20,15 +20,27 @@ export interface ConfiguredChatModel {
   baseUrl?: string
 }
 
-export interface ConfiguredChatTurnRequest {
+export interface ChatRuntimeTurnRequest {
+  conversationId?: string
   input?: string
+  stream?: boolean
   language?: string
   preferencePrompt?: string
+  runtimeOptions?: Record<string, unknown>
   options?: Record<string, unknown>
   messages?: ChatMessage[]
   attachments?: ChatAttachment[]
   character?: ChatCharacterContext
+}
+
+export interface ConfiguredChatTurnRequest extends ChatRuntimeTurnRequest {
   signal?: AbortSignal
+}
+
+export interface NormalizedChatRuntimeTurnRequest extends ChatTurnRequest {
+  conversationId?: string
+  stream: boolean
+  runtimeOptions?: Record<string, unknown>
 }
 
 export interface ConfiguredChatRuntimeOptions extends Omit<ChatSessionOptions, 'llm' | 'model'> {}
@@ -148,6 +160,18 @@ export function normalizeConfiguredChatTurnRequest(request: ConfiguredChatTurnRe
   }
 }
 
+export function normalizeChatRuntimeTurnRequest(request: ChatRuntimeTurnRequest): NormalizedChatRuntimeTurnRequest {
+  const normalized = normalizeConfiguredChatTurnRequest(request)
+  const conversationId = typeof request?.conversationId === 'string' ? request.conversationId.trim() : ''
+  const runtimeOptions = normalizeRuntimeOptions(request?.runtimeOptions)
+  return {
+    ...normalized,
+    ...(conversationId ? { conversationId } : {}),
+    stream: request?.stream === true,
+    ...(runtimeOptions ? { runtimeOptions } : {}),
+  }
+}
+
 export function normalizeChatMessages(messages: ChatMessage[] | undefined): ChatMessage[] {
   if (!Array.isArray(messages)) {
     return []
@@ -200,6 +224,15 @@ export function normalizeChatRequestOptions(options: Record<string, unknown> | u
 function normalizePreferencePrompt(prompt: string | undefined): string | undefined {
   const normalized = typeof prompt === 'string' ? prompt.trim() : ''
   return normalized || undefined
+}
+
+function normalizeRuntimeOptions(options: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+  if (!options || typeof options !== 'object') {
+    return undefined
+  }
+  return Object.fromEntries(
+    Object.entries(options).filter(([, value]) => value !== undefined)
+  )
 }
 
 function normalizeNumberOption(value: unknown, min: number, max: number): number | undefined {

@@ -137,6 +137,28 @@ describe('chat conversation runtime helpers', () => {
     })
   })
 
+  test('normalizes stable chat runtime turn request metadata', () => {
+    const request = requestRuntime.normalizeChatRuntimeTurnRequest({
+      conversationId: ' conversation-1 ',
+      input: ' hi ',
+      stream: true,
+      runtimeOptions: {
+        revealSpeed: 'fast',
+        ignored: undefined,
+      },
+    })
+
+    expect(request).toMatchObject({
+      conversationId: 'conversation-1',
+      input: 'hi',
+      stream: true,
+      runtimeOptions: {
+        revealSpeed: 'fast',
+      },
+    })
+    expect(Object.prototype.hasOwnProperty.call(request.runtimeOptions, 'ignored')).toBe(false)
+  })
+
   test('emits matching final content for streaming and non-streaming chat events', async () => {
     const session = new chat.ChatSession({
       llm: {

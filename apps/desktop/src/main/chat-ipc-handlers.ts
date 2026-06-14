@@ -5,13 +5,10 @@ import { type IpcMain } from 'electron'
 import { dialog, systemPreferences, shell, type BrowserWindow, type OpenDialogOptions } from 'electron'
 import { readFile } from 'fs/promises'
 import { basename, extname } from 'path'
-import {
-  type ChatCharacterContext,
-  type ChatMessage,
-} from '@noema/sdk'
 import { listChatModelsWithProvider } from '@noema/sdk/chat/model-list'
 import {
   sendChatTurnWithConfiguredModel,
+  type ChatRuntimeTurnRequest,
   streamChatTurnEventsWithConfiguredModel,
 } from '@noema/sdk/chat/request-runtime'
 import {
@@ -41,15 +38,8 @@ export interface ChatIpcConfiguredModel {
   baseUrl: string
 }
 
-export interface ChatSendMessageRequest {
-  input: string
+export interface ChatSendMessageRequest extends ChatRuntimeTurnRequest {
   streamId?: string
-  language?: string
-  preferencePrompt?: string
-  options?: Record<string, unknown>
-  messages?: ChatMessage[]
-  attachments?: ChatIpcAttachment[]
-  character?: ChatCharacterContext
 }
 
 export interface ChatSendMessageResult {
