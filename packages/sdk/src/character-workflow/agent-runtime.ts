@@ -198,6 +198,47 @@ export interface CharacterAgentRunContext {
   compilerWarnings: string[]
 }
 
+export type CharacterAgentProtocolIssueCode =
+  | 'invalid_snapshot'
+  | 'missing_workflow_id'
+  | 'duplicate_node_id'
+  | 'missing_edge_endpoint'
+  | 'missing_model_ref'
+  | 'unresolved_model_ref'
+
+export interface CharacterAgentProtocolIssue {
+  code: CharacterAgentProtocolIssueCode
+  severity: 'warning' | 'error'
+  path: string
+  message: string
+}
+
+export interface CharacterAgentWorkflowSnapshot {
+  workflow: CharacterWorkflow
+  issues: CharacterAgentProtocolIssue[]
+}
+
+export interface CharacterAgentModelConfig {
+  apiId: string
+  modelName: string
+  modelRef: string
+  kind: CharacterAgentModelKind
+  provider?: string
+  label?: string
+  baseUrl?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface CharacterAgentModelResolver {
+  resolve(modelRef: string, kind: CharacterAgentModelKind): CharacterAgentModelConfig | undefined | Promise<CharacterAgentModelConfig | undefined>
+}
+
+export interface ResolvedCharacterAgentCapabilities {
+  llmModels: CharacterAgentModelConfig[]
+  imageModels: CharacterAgentModelConfig[]
+  issues: CharacterAgentProtocolIssue[]
+}
+
 export interface CharacterAgentPlanStep {
   id: string
   title: string
@@ -358,6 +399,7 @@ export interface CharacterSuperAgentOptions {
   createRunId?: () => string
   tools?: CharacterAgentToolRuntime
   artifacts?: CharacterAgentArtifactStore
+  modelResolver?: CharacterAgentModelResolver
   onEvent?: CharacterAgentEventHandler
   signal?: AbortSignal
 }
@@ -492,6 +534,110 @@ export function compileCharacterAgentRunContext(
   }
 }
 
+export function loadCharacterAgentWorkflowSnapshot(input: unknown): CharacterAgentWorkflowSnapshot {
+  if (!isCharacterWorkflowLike(input)) {
+    return {
+      workflow: createEmptyWorkflow(),
+      issues: [{
+        code: 'invalid_snapshot',
+        severity: 'error',
+        path: '$',
+        message: 'Snapshot is not a character workflow object.',
+      }],
+    }
+  }
+  const workflow = input as CharacterWorkflow
+  return {
+    workflow,
+    issues: validateCharacterAgentWorkflowProtocol(workflow),
+  }
+}
+
+export function validateCharacterAgentWorkflowProtocol(workflow: CharacterWorkflow): CharacterAgentProtocolIssue[] {
+  const issues: CharacterAgentProtocolIssue[] = []
+  if (!workflow.id) {
+    issues.push({
+      code: 'missing_workflow_id',
+      severity: 'error',
+      path: 'id',
+      message: 'Workflow id is required for agent run persistence.',
+    })
+  }
+  const seenNodeIds = new Set<string>()
+  workflow.nodes.forEach((node, index) => {
+    if (seenNodeIds.has(node.id)) {
+      issues.push({
+        code: 'duplicate_node_id',
+        severity: 'error',
+        path: `nodes.${index}.id`,
+        message: `Duplicate node id: ${node.id}`,
+      })
+    }
+    seenNodeIds.add(node.id)
+    if ((node.type === 'llm-tool' || node.type === 'image-tool') && !stringValue(node.config.modelRef)) {
+      issues.push({
+        code: 'missing_model_ref',
+        severity: 'warning',
+        path: `nodes.${index}.config.modelRef`,
+        message: `${node.type} does not select a configured model.`,
+      })
+    }
+  })
+  workflow.edges.forEach((edge, index) => {
+    if (!seenNodeIds.has(edge.from.nodeId) || !seenNodeIds.has(edge.to.nodeId)) {
+      issues.push({
+        code: 'missing_edge_endpoint',
+        severity: 'error',
+        path: `edges.${index}`,
+        message: `Edge references a missing endpoint: ${edge.from.nodeId} -> ${edge.to.nodeId}`,
+      })
+    }
+  })
+  return issues
+}
+
+export function createStaticCharacterAgentModelResolver(
+  models: CharacterAgentModelConfig[]
+): CharacterAgentModelResolver {
+  const byRef = new Map(models.map((model) => [`${model.kind}:${model.modelRef}`, model]))
+  return {
+    resolve(modelRef, kind) {
+      return byRef.get(`${kind}:${modelRef}`)
+    },
+  }
+}
+
+export async function resolveCharacterAgentModelCapabilities(
+  context: CharacterAgentRunContext,
+  resolver: CharacterAgentModelResolver
+): Promise<ResolvedCharacterAgentCapabilities> {
+  const issues: CharacterAgentProtocolIssue[] = []
+  const resolve = async (capability: AgentModelCapability): Promise<CharacterAgentModelConfig | undefined> => {
+    if (!capability.modelRef) {
+      issues.push({
+        code: 'missing_model_ref',
+        severity: 'warning',
+        path: `nodes.${capability.nodeId}.config.modelRef`,
+        message: `${capability.kind} capability has no selected model.`,
+      })
+      return undefined
+    }
+    const resolved = await resolver.resolve(capability.modelRef, capability.kind)
+    if (!resolved) {
+      issues.push({
+        code: 'unresolved_model_ref',
+        severity: 'error',
+        path: `nodes.${capability.nodeId}.config.modelRef`,
+        message: `Configured model could not be resolved: ${capability.modelRef}`,
+      })
+    }
+    return resolved
+  }
+  const llmModels = (await Promise.all(context.capabilities.llmModels.map(resolve))).filter((model): model is CharacterAgentModelConfig => Boolean(model))
+  const imageModels = (await Promise.all(context.capabilities.imageModels.map(resolve))).filter((model): model is CharacterAgentModelConfig => Boolean(model))
+  return { llmModels, imageModels, issues }
+}
+
 export function createCharacterAgentToolRuntime(
   tools: AgentToolDefinition[] = []
 ): CharacterAgentToolRuntime {
@@ -581,6 +727,10 @@ export function createCharacterSuperAgent(
     async run(workflow) {
       const runId = createRunId()
       const context = compileCharacterAgentRunContext(workflow, { runId, now: now() })
+      if (options.modelResolver) {
+        const resolved = await resolveCharacterAgentModelCapabilities(context, options.modelResolver)
+        context.compilerWarnings.push(...resolved.issues.map((issue) => issue.message))
+      }
       let state = createInitialCharacterAgentState(context, now())
       const emit = async (event: CharacterAgentEvent) => {
         state = {
@@ -1022,4 +1172,33 @@ function stringListValue(value: unknown, fallback: string[] = []): string[] {
     return fallback
   }
   return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+}
+
+function isCharacterWorkflowLike(value: unknown): value is CharacterWorkflow {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+  const candidate = value as Partial<CharacterWorkflow>
+  return typeof candidate.id === 'string'
+    && typeof candidate.name === 'string'
+    && typeof candidate.version === 'string'
+    && Array.isArray(candidate.nodes)
+    && Array.isArray(candidate.edges)
+    && Boolean(candidate.defaults)
+}
+
+function createEmptyWorkflow(): CharacterWorkflow {
+  const now = Date.now()
+  return {
+    id: '',
+    name: 'Invalid Character Workflow',
+    version: '0.0',
+    nodes: [],
+    edges: [],
+    defaults: { language: 'zh-CN' },
+    metadata: {
+      createdAt: now,
+      updatedAt: now,
+    },
+  }
 }

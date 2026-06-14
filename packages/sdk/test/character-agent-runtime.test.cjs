@@ -125,4 +125,41 @@ describe('character resource super agent runtime', () => {
       'run.completed',
     ]))
   })
+
+  test('loads workflow snapshots and resolves model capabilities through model resolver', async () => {
+    const {
+      compileCharacterAgentRunContext,
+      createStandardCharacterWorkflow,
+      createStaticCharacterAgentModelResolver,
+      loadCharacterAgentWorkflowSnapshot,
+      resolveCharacterAgentModelCapabilities,
+    } = await import('../dist/character-workflow/index.js')
+
+    const workflow = createStandardCharacterWorkflow({
+      now: 1000,
+      llmApiId: 'llm-api',
+      llmModelName: 'role-writer',
+      imageApiId: 'image-api',
+      imageModelName: 'portrait-model',
+    })
+    const snapshot = loadCharacterAgentWorkflowSnapshot(workflow)
+    expect(snapshot.issues).toEqual([])
+
+    const context = compileCharacterAgentRunContext(snapshot.workflow, { runId: 'resolver-run', now: 1000 })
+    const resolver = createStaticCharacterAgentModelResolver([
+      { apiId: 'llm-api', modelName: 'role-writer', modelRef: 'llm-api::role-writer', kind: 'llm', provider: 'openai-compatible' },
+      { apiId: 'image-api', modelName: 'portrait-model', modelRef: 'image-api::portrait-model', kind: 'image', provider: 'comfyui' },
+    ])
+
+    const resolved = await resolveCharacterAgentModelCapabilities(context, resolver)
+    expect(resolved.issues).toEqual([])
+    expect(resolved.llmModels[0]).toEqual(expect.objectContaining({
+      provider: 'openai-compatible',
+      modelRef: 'llm-api::role-writer',
+    }))
+    expect(resolved.imageModels[0]).toEqual(expect.objectContaining({
+      provider: 'comfyui',
+      modelRef: 'image-api::portrait-model',
+    }))
+  })
 })
