@@ -13067,6 +13067,12 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   opacity: 0.16;
 }
 
+.chat-resource-link.collapsed-node-link path:not(.hit-area),
+.chat-resource-link.reroute-link path:not(.hit-area) {
+  stroke-dasharray: 3 4;
+  stroke-linecap: round;
+}
+
 .chat-resource-link.flowing path:not(.hit-area) {
   stroke-width: 2.5;
   stroke-dasharray: 10 7;
@@ -13628,7 +13634,8 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   gap: 5px;
 }
 
-.chat-resource-link-kind-list button {
+.chat-resource-link-kind-list button,
+.chat-resource-link-endpoint-actions button {
   height: 22px;
   padding: 0 6px;
   border: 1px solid rgba(255, 255, 255, 0.06);
@@ -13637,6 +13644,12 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   color: rgba(248, 250, 250, 0.58);
   font-family: var(--font-ui);
   font-size: 8.5px;
+}
+
+.chat-resource-link-endpoint-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
 }
 
 .chat-resource-link-kind-list button.active {

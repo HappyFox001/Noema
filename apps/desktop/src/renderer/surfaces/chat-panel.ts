@@ -172,6 +172,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let characterWorkflowPackTabOpen = false
   let selectedWorkflowNodeId = 'brief-input'
   let lastCharacterResourceGraphSnapshot = ''
+  let resourceViewStateSnapshot = ''
   let characterResourceDuplicateCount = 0
   let characterWorkflowClipboard: { sourceId: string } | null = null
   const characterResourceUndoStack: CharacterResourceHistorySnapshot[] = []
@@ -1743,6 +1744,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const commands: Record<string, () => void> = {
       'save-graph': () => {
         const yjsSnapshot = characterWorkflowRoot?.querySelector<HTMLElement>('.chat-resource-serializer')?.dataset.yjsSnapshot ?? '{}'
+        saveCharacterResourceViewStateSnapshot()
         lastCharacterResourceGraphSnapshot = serializeCharacterResourceGraph({
           graphId: 'draft-character-resource-graph',
           activeTabId: characterWorkflowActiveTabId,
@@ -1884,6 +1886,17 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         restoreCharacterResourceHistorySnapshot(next)
         renderCharacterWorkflow()
       },
+      'align-left': () => alignSelectedCharacterResourceNodes('left'),
+      'align-top': () => alignSelectedCharacterResourceNodes('top'),
+      'reconnect-link': () => {
+        if (!characterResourceViewState.selectedLinkId) {
+          return
+        }
+        characterWorkflowEditorState.activePanel = 'nodes'
+        characterWorkflowEditorState.nodeSearchOpen = true
+        showToast(options.getLanguage() === 'zh-CN' ? '选择兼容节点以重连端点' : 'Choose a compatible node to reconnect the endpoint')
+        renderCharacterWorkflow()
+      },
       'reset-parameter': () => {
         const nodeId = target?.dataset.chatWorkflowNode || ''
         const paramId = target?.dataset.chatWorkflowParamReset || ''
@@ -1923,6 +1936,44 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     command()
     return true
+  }
+
+  function saveCharacterResourceViewStateSnapshot(): void {
+    resourceViewStateSnapshot = JSON.stringify({
+      zoom: characterResourceViewState.zoom,
+      panX: characterResourceViewState.panX,
+      panY: characterResourceViewState.panY,
+      selectedNodeIds: characterResourceViewState.selectedNodeIds,
+      selectedLinkId: characterResourceViewState.selectedLinkId,
+      collapsedNodeIds: [...characterResourceViewState.collapsedNodeIds],
+    })
+  }
+
+  function alignSelectedCharacterResourceNodes(direction: 'left' | 'top'): void {
+    const selected = characterResourceViewState.selectedNodeIds.filter((nodeId) => !characterResourceViewState.deletedNodeIds.has(nodeId))
+    if (selected.length < 2) {
+      return
+    }
+    pushCharacterResourceUndoSnapshot()
+    const positions = selected.map((nodeId) => characterWorkflowPositionOverrides[nodeId] ?? getRenderedCharacterResourceNodePosition(nodeId))
+    const target = direction === 'left'
+      ? Math.min(...positions.map((position) => position.x))
+      : Math.min(...positions.map((position) => position.y))
+    selected.forEach((nodeId, index) => {
+      const current = positions[index]
+      characterWorkflowPositionOverrides[nodeId] = direction === 'left'
+        ? { ...current, x: target }
+        : { ...current, y: target }
+    })
+    renderCharacterWorkflow()
+  }
+
+  function getRenderedCharacterResourceNodePosition(nodeId: string): { x: number; y: number } {
+    const node = panel.querySelector<HTMLElement>(`[data-chat-workflow-node-id="${CSS.escape(nodeId)}"]`)
+    return {
+      x: Number.parseFloat(node?.style.getPropertyValue('--node-x') ?? '') || 0,
+      y: Number.parseFloat(node?.style.getPropertyValue('--node-y') ?? '') || 0,
+    }
   }
 
   async function runCharacterWorkflow(newRun: boolean): Promise<void> {
@@ -2258,6 +2309,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (characterResourceViewportDrag.mode === 'select') {
       characterResourceViewState.selectionBox = { x: event.offsetX, y: event.offsetY, width: 0, height: 0 }
       characterResourceViewState.selectedNodeIds = []
+    } else {
+      pushCharacterResourceUndoSnapshot()
     }
     viewport.setPointerCapture?.(event.pointerId)
     event.preventDefault()
@@ -2319,6 +2372,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       characterResourceViewState.selectionBox = null
       renderCharacterWorkflow()
     }
+    saveCharacterResourceViewStateSnapshot()
     characterResourceViewportDrag = null
   }
 
@@ -2330,6 +2384,23 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     event.preventDefault()
     const nextZoom = Math.min(1.4, Math.max(0.46, characterResourceViewState.zoom + (event.deltaY > 0 ? -0.05 : 0.05)))
     characterResourceViewState.zoom = Math.round(nextZoom * 100) / 100
+    saveCharacterResourceViewStateSnapshot()
+    renderCharacterWorkflow()
+  }
+
+  function beginCharacterResourceMinimapPointer(event: PointerEvent): void {
+    const minimap = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-resource-minimap]')
+    if (!minimap || !panel.contains(minimap) || event.button !== 0) {
+      return
+    }
+    event.preventDefault()
+    const minimapRect = minimap.getBoundingClientRect()
+    const localX = event.clientX - minimapRect.left
+    const localY = event.clientY - minimapRect.top
+    pushCharacterResourceUndoSnapshot()
+    characterResourceViewState.panX = Math.round(120 - localX * 24 * characterResourceViewState.zoom)
+    characterResourceViewState.panY = Math.round(86 - localY * 24 * characterResourceViewState.zoom)
+    saveCharacterResourceViewStateSnapshot()
     renderCharacterWorkflow()
   }
 
@@ -2929,6 +3000,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   panel.addEventListener('pointerdown', beginCharacterResourceNodeResize)
   panel.addEventListener('pointerdown', beginCharacterWorkflowNodeDrag)
   panel.addEventListener('pointerdown', beginCharacterResourceViewportDrag)
+  panel.addEventListener('pointerdown', beginCharacterResourceMinimapPointer)
   panel.addEventListener('wheel', updateCharacterResourceViewportZoom, { passive: false })
   panel.addEventListener('pointerdown', beginManualDrag)
   window.addEventListener('pointermove', updateChatResize)

@@ -1294,8 +1294,8 @@ function renderCanvasControls(graph: CharacterResourceGraph, options: CharacterW
       ${renderInspectorToggle(options)}
       <span class="chat-resource-zoom-label">${Math.round(graph.viewport.zoom * 100)}%</span>
     </div>
-    <div class="chat-resource-minimap" aria-label="${options.escapeHtml(ui(options, '图概览', 'Graph overview'))}">
-      ${graph.nodes.map((node) => `<i class="${graph.selection.nodeIds.includes(node.id) ? 'selected' : ''}" style="left:${Math.round(node.position.x / 24)}px;top:${Math.round(node.position.y / 24)}px;width:${Math.max(8, Math.round(node.size.width / 24))}px;height:${Math.max(6, Math.round(node.size.height / 24))}px"></i>`).join('')}
+    <div class="chat-resource-minimap" data-resource-minimap aria-label="${options.escapeHtml(ui(options, '图概览', 'Graph overview'))}">
+      ${graph.nodes.map((node) => `<i class="${graph.selection.nodeIds.includes(node.id) ? 'selected' : ''}" data-resource-minimap-node="${options.escapeHtml(node.id)}" style="left:${Math.round(node.position.x / 24)}px;top:${Math.round(node.position.y / 24)}px;width:${Math.max(8, Math.round(node.size.width / 24))}px;height:${Math.max(6, Math.round(node.size.height / 24))}px"></i>`).join('')}
     </div>
   `
 }
@@ -1353,8 +1353,9 @@ function renderLinkPath(linkItem: CharacterResourceLink, graph: CharacterResourc
   const mid = Math.max(80, Math.abs(x2 - x1) * 0.45)
   const path = `M ${x1} ${y1} C ${x1 + mid} ${y1}, ${x2 - mid} ${y2}, ${x2} ${y2}`
   const flowing = source.status === 'running' || source.status === 'queued' || target.status === 'running' || target.status === 'queued'
+  const collapsedNodeLinkReroute = Boolean(source.collapsed || target.collapsed)
   return `
-    <g class="chat-resource-link ${options.escapeHtml(linkItem.kind)} ${options.escapeHtml(linkItem.status)} ${flowing ? 'flowing' : ''} ${graph.selection.linkIds.includes(linkItem.id) ? 'selected' : ''}" data-chat-resource-link-id="${options.escapeHtml(linkItem.id)}" data-chat-workflow-link-select="${options.escapeHtml(linkItem.id)}">
+    <g class="chat-resource-link ${options.escapeHtml(linkItem.kind)} ${options.escapeHtml(linkItem.status)} ${flowing ? 'flowing' : ''} ${collapsedNodeLinkReroute ? 'collapsed-node-link reroute-link' : ''} ${graph.selection.linkIds.includes(linkItem.id) ? 'selected' : ''}" data-chat-resource-link-id="${options.escapeHtml(linkItem.id)}" data-chat-workflow-link-select="${options.escapeHtml(linkItem.id)}">
       <path d="${path}" marker-end="url(#chat-resource-arrow)"></path>
       <path class="hit-area" d="${path}"></path>
       <text x="${(x1 + x2) / 2}" y="${(y1 + y2) / 2 - 7}">${options.escapeHtml(LINK_KIND_LABELS[linkItem.kind])}</text>
@@ -1531,6 +1532,13 @@ function renderLinkInspector(graph: CharacterResourceGraph, linkItem: CharacterR
           </div>
         </section>
         <section class="chat-workflow-inspector-section">
+          <h4>${options.escapeHtml(ui(options, '端点', 'Endpoints'))}</h4>
+          <div class="chat-resource-link-endpoint-actions">
+            <button type="button" data-chat-workflow-action="reconnect-link" data-selected-link-endpoint="source">${options.escapeHtml(ui(options, '重连输出', 'Reconnect Output'))}</button>
+            <button type="button" data-chat-workflow-action="reconnect-link" data-selected-link-endpoint="target">${options.escapeHtml(ui(options, '重连输入', 'Reconnect Input'))}</button>
+          </div>
+        </section>
+        <section class="chat-workflow-inspector-section">
           <button class="chat-resource-danger-action" type="button" data-chat-workflow-action="delete-selection">${options.escapeHtml(ui(options, '断开连接', 'Disconnect'))}</button>
         </section>
       </div>
@@ -1674,6 +1682,8 @@ function renderCanvasContextMenu(options: CharacterWorkflowPageOptions): string 
       <button type="button" role="menuitem" data-chat-workflow-action="duplicate-selection">${options.escapeHtml(ui(options, '复制副本', 'Duplicate'))}</button>
       <button type="button" role="menuitem" data-chat-workflow-action="undo-graph">${options.escapeHtml(ui(options, '撤销', 'Undo'))}</button>
       <button type="button" role="menuitem" data-chat-workflow-action="redo-graph">${options.escapeHtml(ui(options, '重做', 'Redo'))}</button>
+      <button type="button" role="menuitem" data-chat-workflow-action="align-left">${options.escapeHtml(ui(options, '左对齐', 'Align Left'))}</button>
+      <button type="button" role="menuitem" data-chat-workflow-action="align-top">${options.escapeHtml(ui(options, '顶对齐', 'Align Top'))}</button>
       <button class="danger" type="button" role="menuitem" data-chat-workflow-action="delete-selection">${options.escapeHtml(ui(options, '删除', 'Delete'))}</button>
     </div>
   `
