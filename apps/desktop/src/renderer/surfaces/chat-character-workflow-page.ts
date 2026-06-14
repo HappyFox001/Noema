@@ -1586,7 +1586,7 @@ function renderCanvasContextMenu(options: CharacterWorkflowPageOptions): string 
       <button type="button" role="menuitem" data-chat-workflow-action="open-node-search">${options.escapeHtml(ui(options, '添加节点', 'Add Node'))}</button>
       <button type="button" role="menuitem" data-chat-workflow-action="fit-view">${options.escapeHtml(ui(options, '适配视图', 'Fit View'))}</button>
       <button type="button" role="menuitem" data-chat-workflow-action="duplicate-selection">${options.escapeHtml(ui(options, '复制', 'Duplicate'))}</button>
-      <button type="button" role="menuitem" data-chat-workflow-action="delete-selection">${options.escapeHtml(ui(options, '删除', 'Delete'))}</button>
+      <button class="danger" type="button" role="menuitem" data-chat-workflow-action="delete-selection">${options.escapeHtml(ui(options, '删除', 'Delete'))}</button>
     </div>
   `
 }
