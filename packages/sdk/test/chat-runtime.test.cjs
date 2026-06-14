@@ -106,6 +106,24 @@ describe('chat conversation runtime helpers', () => {
     expect(merged.location).toEqual({ 'zh-CN': '书房', 'en-US': 'Old place' })
   })
 
+  test('localizes scene state for prompt injection', () => {
+    const scene = conversationRuntime.localizeChatSceneState({
+      objective: 'hidden',
+      location: { 'zh-CN': '书房', 'en-US': 'Study' },
+      nested: {
+        mood: { 'zh-CN': '安静', 'en-US': 'Quiet' },
+      },
+      items: ['hidden'],
+    }, 'en-US')
+
+    expect(scene).toEqual({
+      location: 'Study',
+      nested: {
+        mood: 'Quiet',
+      },
+    })
+  })
+
   test('normalizes attachments and chat request options', () => {
     const request = requestRuntime.normalizeConfiguredChatTurnRequest({
       input: ' hello ',

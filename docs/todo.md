@@ -14,7 +14,7 @@
 
 - [ ] 将用户输入、历史消息、附件、角色信息、语言和偏好组装逻辑从 `apps/desktop/src/renderer/surfaces/chat-panel.ts` 移入 SDK。
 - [ ] 将 character context 构建策略放入 SDK，包括 `displayName`、`description`、`story`、`background`、`firstMessage`、`tags`。
-- [ ] 将 scene state 序列化和 prompt 注入规则放入 SDK。
+- [x] 将 scene state 序列化和 prompt 注入规则放入 SDK。
 - [x] 将 narrative summaries 的选择和注入规则放入 SDK。
 - [x] 将附件 normalization 放入 SDK，包括图片 data URL、多模态 message parts、视频附件描述。
 - [ ] 保留 renderer 中的附件选择 UI，但不要在 renderer 中决定附件如何进入模型 prompt。

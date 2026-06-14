@@ -8,6 +8,7 @@ import {
   buildChatSummaryPrompt,
   extractChatSceneUpdate,
   getChatMessageOrdinal,
+  localizeChatSceneState,
   mergeChatSceneState,
   selectChatSummaryBatch,
   stripChatSceneUpdateMarkup,
@@ -808,7 +809,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         background: conversationSettings.sceneImmersion ? localizeChatText(character.background, language) : '',
         firstMessage: conversationSettings.sceneImmersion ? localizeChatText(character.firstMessage, language) : '',
         tags: character.tag[language] ?? character.tag['zh-CN'],
-        sceneState: localizeSceneState(conversation.sceneState, language),
+        sceneState: localizeChatSceneState(conversation.sceneState, language),
         narrativeSummaries: buildNarrativeSummaries(conversation, language),
       } : undefined,
     }
@@ -1012,35 +1013,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       conversation.sceneState = scene
     }
     return changed
-  }
-
-  function localizeSceneState(sceneState: ChatConversationSummary['sceneState'], language: 'zh-CN' | 'en-US'): Record<string, unknown> {
-    const localized: Record<string, unknown> = {}
-    for (const [key, value] of Object.entries(sceneState ?? {})) {
-      if (key === 'objective' || key === 'items') {
-        continue
-      }
-      localized[key] = localizeSceneValue(value, language)
-    }
-    return localized
-  }
-
-  function localizeSceneValue(value: unknown, language: 'zh-CN' | 'en-US'): unknown {
-    if (Array.isArray(value)) {
-      return value.map((item) => localizeSceneValue(item, language))
-    }
-    if (value && typeof value === 'object') {
-      const record = value as Record<string, unknown>
-      if (typeof record['zh-CN'] === 'string' || typeof record['en-US'] === 'string') {
-        return localizeChatText(record as any, language)
-      }
-      const localized: Record<string, unknown> = {}
-      for (const [key, childValue] of Object.entries(record)) {
-        localized[key] = localizeSceneValue(childValue, language)
-      }
-      return localized
-    }
-    return value
   }
 
   async function loadChatModelConfig(): Promise<void> {

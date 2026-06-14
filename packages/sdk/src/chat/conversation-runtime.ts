@@ -203,6 +203,20 @@ export function mergeChatSceneState(
   return next
 }
 
+export function localizeChatSceneState(
+  sceneState: Record<string, unknown> | undefined,
+  language: ChatRuntimeLanguage
+): Record<string, unknown> {
+  const localized: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(sceneState ?? {})) {
+    if (key === 'objective' || key === 'items') {
+      continue
+    }
+    localized[key] = localizeChatSceneValue(value, language)
+  }
+  return localized
+}
+
 export function localizeRuntimeText(value: ChatRuntimeLocalizedText, language: ChatRuntimeLanguage): string {
   return value[language] ?? value['zh-CN'] ?? value['en-US'] ?? ''
 }
@@ -242,4 +256,22 @@ function normalizeSceneUpdateValue(value: unknown, language: ChatRuntimeLanguage
     : { 'zh-CN': '', 'en-US': '' }
   localized[language] = String(value)
   return localized
+}
+
+function localizeChatSceneValue(value: unknown, language: ChatRuntimeLanguage): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => localizeChatSceneValue(item, language))
+  }
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    if (typeof record['zh-CN'] === 'string' || typeof record['en-US'] === 'string') {
+      return localizeRuntimeText(record as ChatRuntimeLocalizedText, language)
+    }
+    const localized: Record<string, unknown> = {}
+    for (const [childKey, childValue] of Object.entries(record)) {
+      localized[childKey] = localizeChatSceneValue(childValue, language)
+    }
+    return localized
+  }
+  return value
 }
