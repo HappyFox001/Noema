@@ -16,7 +16,7 @@
 - [ ] 将 character context 构建策略放入 SDK，包括 `displayName`、`description`、`story`、`background`、`firstMessage`、`tags`。
 - [ ] 将 scene state 序列化和 prompt 注入规则放入 SDK。
 - [x] 将 narrative summaries 的选择和注入规则放入 SDK。
-- [ ] 将附件 normalization 放入 SDK，包括图片 data URL、多模态 message parts、视频附件描述。
+- [x] 将附件 normalization 放入 SDK，包括图片 data URL、多模态 message parts、视频附件描述。
 - [ ] 保留 renderer 中的附件选择 UI，但不要在 renderer 中决定附件如何进入模型 prompt。
 
 ## 3. 会话状态与摘要策略
@@ -39,7 +39,7 @@
 ## 5. 模型配置与 provider 执行
 
 - [ ] 保持 settings/env 加载在 desktop，但转换成 SDK config 后由 SDK 统一执行。
-- [ ] 将 chat model selection 的运行时解析放入 SDK，例如 active API、model name、provider、base URL。
+- [x] 将 chat model selection 的运行时解析放入 SDK，例如 active API、model name、provider、base URL。
 - [x] 评估 `chat:listModels` 是否应迁入 SDK model service。
 - [ ] 将 provider-specific request cleanup、proxy、reasoning defaults 保持在 SDK provider 层。
 - [ ] 避免 renderer 直接理解 provider runtime 差异。
@@ -66,7 +66,7 @@
 - [ ] 保留 `selectMedia`、`requestCameraPermission` 等 Electron 必须逻辑在 main 层。
 - [ ] 保留 chat history 的本地存储路径 wiring，但评估是否通过 SDK storage adapter 执行。
 - [x] 让 IPC handler 调用 SDK runtime，而不是自己拼 prompt、跑 agent 工具。
-- [ ] 统一 `sendChatMessage` 和 `streamChatMessage` 的后端处理路径。
+- [x] 统一 `sendChatMessage` 和 `streamChatMessage` 的后端处理路径。
 
 ## 9. Renderer 简化
 

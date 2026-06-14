@@ -6,12 +6,14 @@ import { dialog, systemPreferences, shell, type BrowserWindow, type OpenDialogOp
 import { readFile } from 'fs/promises'
 import { basename, extname } from 'path'
 import {
-  createChatSessionFromModel,
   type ChatCharacterContext,
   type ChatMessage,
-  type ChatModelConfig as SdkChatModelConfig,
 } from '@noema/sdk'
 import { listChatModelsWithProvider } from '@noema/sdk/chat/model-list'
+import {
+  sendChatTurnWithConfiguredModel,
+  streamChatTurnWithConfiguredModel,
+} from '@noema/sdk/chat/request-runtime'
 import {
   createCharacterAgentModelConfigs,
   createConfiguredCharacterAgentToolRuntime,
@@ -132,28 +134,13 @@ export function registerChatIpcHandlers(
 ): void {
   ipcMain.handle('chat:sendMessage', async (_, request: ChatSendMessageRequest): Promise<ChatSendMessageResult> => {
     try {
-      const input = typeof request?.input === 'string' ? request.input.trim() : ''
-      if (!input) {
-        throw new Error('Message is empty')
-      }
-
-      const model = toChatModelConfig(options.getModelConfig())
-      const session = createChatSessionFromModel(model, {
+      const response = await sendChatTurnWithConfiguredModel(options.getModelConfig(), request, {
         defaultOptions: {
           max_tokens: 1024,
         },
         llmOptions: {
           proxyUrl: options.getProxyUrl?.(),
         },
-      })
-      const response = await session.send({
-        input,
-        language: request.language,
-        messages: normalizeMessages(request.messages),
-        attachments: normalizeAttachments(request.attachments),
-        character: request.character,
-        preferencePrompt: normalizePreferencePrompt(request.preferencePrompt),
-        options: normalizeChatRequestOptions(request.options),
       })
 
       return {
@@ -214,31 +201,15 @@ export function registerChatIpcHandlers(
   ipcMain.handle('chat:streamMessage', async (event, request: ChatSendMessageRequest): Promise<ChatSendMessageResult> => {
     const streamId = typeof request?.streamId === 'string' ? request.streamId : ''
     try {
-      const input = typeof request?.input === 'string' ? request.input.trim() : ''
-      if (!input) {
-        throw new Error('Message is empty')
-      }
-
-      const model = toChatModelConfig(options.getModelConfig())
-      const session = createChatSessionFromModel(model, {
+      const chunks: string[] = []
+      for await (const delta of streamChatTurnWithConfiguredModel(options.getModelConfig(), request, {
         defaultOptions: {
           max_tokens: 1024,
         },
         llmOptions: {
           proxyUrl: options.getProxyUrl?.(),
         },
-      })
-      const turnRequest = {
-        input,
-        language: request.language,
-        messages: normalizeMessages(request.messages),
-        attachments: normalizeAttachments(request.attachments),
-        character: request.character,
-        preferencePrompt: normalizePreferencePrompt(request.preferencePrompt),
-        options: normalizeChatRequestOptions(request.options),
-      }
-      const chunks: string[] = []
-      for await (const delta of session.stream(turnRequest)) {
+      })) {
         chunks.push(delta)
         if (streamId) {
           event.sender.send('chat:streamDelta', { streamId, delta })
@@ -371,91 +342,6 @@ export function registerChatIpcHandlers(
       return { success: false, error: error?.message || String(error) }
     }
   })
-}
-
-function toChatModelConfig(config: ChatIpcModelConfig | null): SdkChatModelConfig {
-  if (!config) {
-    throw new Error('Chat model is not configured')
-  }
-  const model = config.modelName?.trim()
-  if (!model) {
-    throw new Error('Chat model name is empty')
-  }
-  return {
-    provider: config.provider,
-    apiKey: config.apiKey || '',
-    model,
-    baseURL: config.baseUrl?.trim() || undefined,
-  }
-}
-
-function normalizePreferencePrompt(prompt: string | undefined): string | undefined {
-  const normalized = typeof prompt === 'string' ? prompt.trim() : ''
-  return normalized || undefined
-}
-
-function normalizeChatRequestOptions(options: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
-  if (!options || typeof options !== 'object') {
-    return undefined
-  }
-  const normalized: Record<string, unknown> = {}
-  const temperature = normalizeNumberOption(options.temperature, 0, 2)
-  const topP = normalizeNumberOption(options.top_p, 0, 1)
-  const maxTokens = normalizeIntegerOption(options.max_tokens, 1, 5000)
-  if (temperature !== undefined) {
-    normalized.temperature = temperature
-  }
-  if (topP !== undefined) {
-    normalized.top_p = topP
-  }
-  if (maxTokens !== undefined) {
-    normalized.max_tokens = maxTokens
-  }
-  return Object.keys(normalized).length ? normalized : undefined
-}
-
-function normalizeNumberOption(value: unknown, min: number, max: number): number | undefined {
-  const number = typeof value === 'number' ? value : Number(value)
-  if (!Number.isFinite(number)) {
-    return undefined
-  }
-  return Math.min(max, Math.max(min, number))
-}
-
-function normalizeIntegerOption(value: unknown, min: number, max: number): number | undefined {
-  const number = normalizeNumberOption(value, min, max)
-  return number === undefined ? undefined : Math.round(number)
-}
-
-function normalizeMessages(messages: ChatMessage[] | undefined): ChatMessage[] {
-  if (!Array.isArray(messages)) {
-    return []
-  }
-  return messages
-    .map((message): ChatMessage => ({
-      role: normalizeRole(message.role),
-      content: String(message.content ?? '').trim(),
-    }))
-    .filter((message) => message.content)
-}
-
-function normalizeAttachments(attachments: ChatIpcAttachment[] | undefined): ChatIpcAttachment[] {
-  if (!Array.isArray(attachments)) {
-    return []
-  }
-  return attachments
-    .map((attachment): ChatIpcAttachment => ({
-      kind: attachment.kind === 'video' ? 'video' : 'image',
-      name: String(attachment.name || 'attachment'),
-      mimeType: String(attachment.mimeType || (attachment.kind === 'video' ? 'video/mp4' : 'image/png')),
-      dataUrl: typeof attachment.dataUrl === 'string' ? attachment.dataUrl : undefined,
-      size: typeof attachment.size === 'number' ? attachment.size : undefined,
-    }))
-    .filter((attachment) => Boolean(attachment.dataUrl))
-}
-
-function normalizeRole(role: ChatMessage['role']): ChatMessage['role'] {
-  return role === 'assistant' || role === 'system' ? role : 'user'
 }
 
 function mediaExtensionsForKind(kind: ChatSelectMediaRequest['kind']): string[] {
