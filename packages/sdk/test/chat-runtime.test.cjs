@@ -124,6 +124,39 @@ describe('chat conversation runtime helpers', () => {
     })
   })
 
+  test('builds localized character context for chat turns', () => {
+    const context = conversationRuntime.buildChatCharacterContext({
+      id: 'role-1',
+      displayName: { 'zh-CN': '陈千语', 'en-US': 'Qianyu Chen' },
+      description: { 'zh-CN': '记者', 'en-US': 'Reporter' },
+      story: { 'zh-CN': '旧城', 'en-US': 'Old city' },
+      background: { 'zh-CN': '雨夜', 'en-US': 'Rainy night' },
+      firstMessage: { 'zh-CN': '你好', 'en-US': 'Hi' },
+      tag: { 'zh-CN': ['悬疑'], 'en-US': ['Mystery'] },
+    }, {
+      language: 'en-US',
+      sceneImmersion: false,
+      sceneState: {
+        location: { 'zh-CN': '书房', 'en-US': 'Study' },
+      },
+      narrativeSummaries: [{ startMessageIndex: 1, endMessageIndex: 2, text: 'Met before.' }],
+    })
+
+    expect(context).toEqual({
+      id: 'role-1',
+      displayName: 'Qianyu Chen',
+      description: 'Reporter',
+      story: 'Old city',
+      background: '',
+      firstMessage: '',
+      tags: ['Mystery'],
+      sceneState: {
+        location: 'Study',
+      },
+      narrativeSummaries: [{ startMessageIndex: 1, endMessageIndex: 2, text: 'Met before.' }],
+    })
+  })
+
   test('normalizes attachments and chat request options', () => {
     const request = requestRuntime.normalizeConfiguredChatTurnRequest({
       input: ' hello ',

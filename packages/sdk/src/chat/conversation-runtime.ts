@@ -1,6 +1,8 @@
 /**
  * Shared pure helpers for chat conversation runtime state.
  */
+import type { ChatCharacterContext } from './index.js'
+
 export type ChatRuntimeRole = 'system' | 'user' | 'assistant'
 export type ChatRuntimeLanguage = 'zh-CN' | 'en-US'
 export type ChatRuntimeLocalizedText = Record<ChatRuntimeLanguage, string>
@@ -34,6 +36,16 @@ export interface ChatRuntimeNarrativeSummary {
   startMessageIndex: number
   endMessageIndex: number
   text: string
+}
+
+export interface ChatRuntimeCharacterResource {
+  id?: string
+  displayName: ChatRuntimeLocalizedText
+  description: ChatRuntimeLocalizedText
+  story: ChatRuntimeLocalizedText
+  background: ChatRuntimeLocalizedText
+  firstMessage: ChatRuntimeLocalizedText
+  tag?: Partial<Record<ChatRuntimeLanguage, string[]>>
 }
 
 export interface ChatRuntimeSummaryBatch {
@@ -145,6 +157,28 @@ export function buildChatNarrativeSummaries(
       text: localizeRuntimeText(summary.text, options.language),
     }))
     .filter((summary) => summary.text.trim())
+}
+
+export function buildChatCharacterContext(
+  character: ChatRuntimeCharacterResource,
+  options: {
+    language: ChatRuntimeLanguage
+    sceneImmersion: boolean
+    sceneState?: Record<string, unknown>
+    narrativeSummaries?: ChatRuntimeNarrativeSummary[]
+  }
+): ChatCharacterContext {
+  return {
+    id: character.id,
+    displayName: localizeRuntimeText(character.displayName, options.language),
+    description: localizeRuntimeText(character.description, options.language),
+    story: localizeRuntimeText(character.story, options.language),
+    background: options.sceneImmersion ? localizeRuntimeText(character.background, options.language) : '',
+    firstMessage: options.sceneImmersion ? localizeRuntimeText(character.firstMessage, options.language) : '',
+    tags: character.tag?.[options.language] ?? character.tag?.['zh-CN'],
+    sceneState: localizeChatSceneState(options.sceneState, options.language),
+    narrativeSummaries: options.narrativeSummaries,
+  }
 }
 
 export function trimChatSummaries<T>(summaries: T[], summaryLimit: number): T[] {

@@ -4,11 +4,11 @@
 import { getImageProviderCatalogEntry, getLLMProviderCatalogEntry } from '../../main/model-provider-catalog'
 import {
   buildChatConversationContextMessages,
+  buildChatCharacterContext,
   buildChatNarrativeSummaries,
   buildChatSummaryPrompt,
   extractChatSceneUpdate,
   getChatMessageOrdinal,
-  localizeChatSceneState,
   mergeChatSceneState,
   selectChatSummaryBatch,
   stripChatSceneUpdateMarkup,
@@ -801,17 +801,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         size: attachment.size,
       })),
       messages: buildConversationContextMessages(conversation, message.id, language),
-      character: character ? {
-        id: character.id,
-        displayName: localizeChatText(character.displayName, language),
-        description: localizeChatText(character.description, language),
-        story: localizeChatText(character.story, language),
-        background: conversationSettings.sceneImmersion ? localizeChatText(character.background, language) : '',
-        firstMessage: conversationSettings.sceneImmersion ? localizeChatText(character.firstMessage, language) : '',
-        tags: character.tag[language] ?? character.tag['zh-CN'],
-        sceneState: localizeChatSceneState(conversation.sceneState, language),
-        narrativeSummaries: buildNarrativeSummaries(conversation, language),
-      } : undefined,
+      character: character
+        ? buildChatCharacterContext(character, {
+          language,
+          sceneImmersion: conversationSettings.sceneImmersion,
+          sceneState: conversation.sceneState,
+          narrativeSummaries: buildNarrativeSummaries(conversation, language),
+        })
+        : undefined,
     }
     let completeReply = ''
     let visibleReply = ''
