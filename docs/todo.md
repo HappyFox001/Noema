@@ -75,7 +75,7 @@
 - [x] 删除 renderer 中的 scene update markup 解析和合并。
 - [x] 删除 renderer 中的摘要触发和摘要 prompt。
 - [x] 保留 renderer 的 DOM 渲染、输入框、附件选择按钮、toast、面板状态、动画。
-- [ ] 让 renderer 使用 SDK 返回的 conversation snapshot 刷新本地 UI。
+- [x] 让 renderer 使用 SDK 返回的 conversation snapshot 刷新本地 UI。
 
 ## 10. Verification
 

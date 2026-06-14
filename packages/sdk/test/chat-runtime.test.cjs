@@ -145,6 +145,33 @@ describe('chat conversation runtime helpers', () => {
     expect(merged.location).toEqual({ 'zh-CN': '书房', 'en-US': 'Old place' })
   })
 
+  test('applies chat runtime turn result as a conversation snapshot', () => {
+    const snapshot = conversationRuntime.applyChatRuntimeTurnResult({
+      sceneState: {
+        location: { 'zh-CN': '旧地点', 'en-US': 'Old place' },
+      },
+      preview: { 'zh-CN': '旧预览', 'en-US': 'Old preview' },
+      summaries: [],
+      messages: [
+        message('m1', 'user', 'hello'),
+        { ...message('draft', 'assistant', ''), state: 'thinking' },
+      ],
+    }, {
+      assistantMessageId: 'draft',
+      content: 'done',
+      language: 'zh-CN',
+      sceneUpdate: { location: '书房' },
+    })
+
+    expect(snapshot.preview).toEqual({ 'zh-CN': 'done', 'en-US': 'done' })
+    expect(snapshot.messages[1]).toMatchObject({
+      id: 'draft',
+      state: undefined,
+      text: { 'zh-CN': 'done', 'en-US': 'done' },
+    })
+    expect(snapshot.sceneState.location).toEqual({ 'zh-CN': '书房', 'en-US': 'Old place' })
+  })
+
   test('localizes scene state for prompt injection', () => {
     const scene = conversationRuntime.localizeChatSceneState({
       objective: 'hidden',

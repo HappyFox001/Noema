@@ -3,9 +3,9 @@
  */
 import { getImageProviderCatalogEntry, getLLMProviderCatalogEntry } from '../../main/model-provider-catalog'
 import {
+  applyChatRuntimeTurnResult,
   buildChatRuntimeTurnRequest,
   getChatMessageOrdinal,
-  mergeChatSceneState,
   summarizeChatConversationOverflow,
   stripChatSceneUpdateMarkup,
   trimChatSummaries,
@@ -866,12 +866,15 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       const reply = response.success
         ? (response.response || completeReply || visibleReply || '')
         : (response.error || 'Chat model failed')
-      if (response.success && response.sceneUpdate) {
-        conversation.sceneState = mergeChatSceneState(conversation.sceneState, response.sceneUpdate, language)
-      }
-      message.text = { 'zh-CN': reply, 'en-US': reply }
-      message.state = undefined
-      conversation.preview = { 'zh-CN': reply, 'en-US': reply }
+      const snapshot = applyChatRuntimeTurnResult(conversation, {
+        assistantMessageId: message.id,
+        content: reply,
+        language,
+        sceneUpdate: response.success ? response.sceneUpdate : undefined,
+      })
+      conversation.messages = snapshot.messages as ChatMessage[]
+      conversation.sceneState = snapshot.sceneState ?? conversation.sceneState
+      conversation.preview = snapshot.preview ?? conversation.preview
       renderer.renderMessages(conversation.messages)
       refreshConversationList()
       void persistConversation(conversation)

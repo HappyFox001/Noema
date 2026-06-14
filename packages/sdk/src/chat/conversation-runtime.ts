@@ -88,6 +88,13 @@ export interface SummarizeChatConversationOverflowOptions {
   summarize: (prompt: string) => Promise<string>
 }
 
+export interface ApplyChatRuntimeTurnResultOptions {
+  assistantMessageId: string
+  content: string
+  language: ChatRuntimeLanguage
+  sceneUpdate?: Record<string, unknown>
+}
+
 export interface ChatRuntimeSummaryBatch {
   messages: ChatRuntimeMessage[]
   startMessageIndex: number
@@ -295,6 +302,29 @@ export async function summarizeChatConversationOverflow(
     startMessageIndex: batch.startMessageIndex,
     endMessageIndex: batch.endMessageIndex,
     sourceMessageIds: batch.messages.map((messageItem) => messageItem.id),
+  }
+}
+
+export function applyChatRuntimeTurnResult<
+  T extends ChatRuntimeConversation & {
+    sceneState?: Record<string, unknown>
+    preview?: ChatRuntimeLocalizedText
+  }
+>(conversation: T, options: ApplyChatRuntimeTurnResultOptions): T {
+  const sceneState = options.sceneUpdate
+    ? mergeChatSceneState(conversation.sceneState, options.sceneUpdate, options.language)
+    : conversation.sceneState
+  return {
+    ...conversation,
+    ...(sceneState ? { sceneState } : {}),
+    preview: { 'zh-CN': options.content, 'en-US': options.content },
+    messages: conversation.messages.map((messageItem) => messageItem.id === options.assistantMessageId
+      ? {
+          ...messageItem,
+          text: { 'zh-CN': options.content, 'en-US': options.content },
+          state: undefined,
+        }
+      : messageItem),
   }
 }
 
