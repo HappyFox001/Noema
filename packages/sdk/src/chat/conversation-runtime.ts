@@ -18,6 +18,8 @@ export interface ChatRuntimeMessage {
 export interface ChatRuntimeSummary {
   id: string
   text: ChatRuntimeLocalizedText
+  createdLabel?: ChatRuntimeLocalizedText
+  messageCount?: number
   startMessageIndex: number
   endMessageIndex: number
   sourceMessageIds: string[]
@@ -75,6 +77,15 @@ export interface ChatRuntimeConversationOptions {
   shortTermMessageLimit: number
   summaryLimit: number
   summaryBatchMessageCount?: number
+}
+
+export interface SummarizeChatConversationOverflowOptions {
+  language: ChatRuntimeLanguage
+  runtimeOptions: ChatRuntimeConversationOptions
+  force?: boolean
+  createdLabel?: string
+  createSummaryId?: () => string
+  summarize: (prompt: string) => Promise<string>
 }
 
 export interface ChatRuntimeSummaryBatch {
@@ -252,6 +263,38 @@ export function normalizeChatRuntimeConversationOptions(options: ChatRuntimeConv
     shortTermMessageLimit: normalizeMessageLimit(options.shortTermMessageLimit),
     summaryLimit: Math.max(0, Math.round(Number(options.summaryLimit) || 0)),
     summaryBatchMessageCount: Math.max(0, Math.round(Number(options.summaryBatchMessageCount) || 0)),
+  }
+}
+
+export async function summarizeChatConversationOverflow(
+  conversation: ChatRuntimeConversation,
+  options: SummarizeChatConversationOverflowOptions
+): Promise<ChatRuntimeSummary | null> {
+  const runtimeOptions = normalizeChatRuntimeConversationOptions(options.runtimeOptions)
+  const batch = selectChatSummaryBatch(conversation, {
+    language: options.language,
+    shortTermMessageLimit: runtimeOptions.shortTermMessageLimit,
+    batchMessageCount: runtimeOptions.summaryBatchMessageCount,
+    summaryLimit: runtimeOptions.summaryLimit,
+    force: options.force,
+  })
+  if (!batch) {
+    return null
+  }
+
+  const summaryText = (await options.summarize(buildChatSummaryPrompt(batch, options.language))).trim()
+  if (!summaryText) {
+    return null
+  }
+  const createdLabel = options.createdLabel ?? ''
+  return {
+    id: options.createSummaryId?.() ?? `summary-${Date.now()}`,
+    text: { 'zh-CN': summaryText, 'en-US': summaryText },
+    ...(createdLabel ? { createdLabel: { 'zh-CN': createdLabel, 'en-US': createdLabel } } : {}),
+    messageCount: batch.messages.length,
+    startMessageIndex: batch.startMessageIndex,
+    endMessageIndex: batch.endMessageIndex,
+    sourceMessageIds: batch.messages.map((messageItem) => messageItem.id),
   }
 }
 

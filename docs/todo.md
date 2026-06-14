@@ -73,7 +73,7 @@
 - [ ] 将 `queueAssistantReply` 简化为创建用户 UI 状态、调用 IPC、订阅事件、渲染结果。
 - [x] 删除 renderer 中的 conversation context message 构建。
 - [x] 删除 renderer 中的 scene update markup 解析和合并。
-- [ ] 删除 renderer 中的摘要触发和摘要 prompt。
+- [x] 删除 renderer 中的摘要触发和摘要 prompt。
 - [x] 保留 renderer 的 DOM 渲染、输入框、附件选择按钮、toast、面板状态、动画。
 - [ ] 让 renderer 使用 SDK 返回的 conversation snapshot 刷新本地 UI。
 

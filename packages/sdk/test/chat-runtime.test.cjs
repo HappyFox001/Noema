@@ -72,6 +72,45 @@ describe('chat conversation runtime helpers', () => {
     expect(conversationRuntime.buildChatSummaryPrompt(batch, 'zh-CN')).toContain('请把下面这段历史对话压缩')
   })
 
+  test('summarizes conversation overflow through sdk policy', async () => {
+    const conversation = {
+      messages: [
+        message('m1', 'user', '第一条'),
+        message('m2', 'assistant', '第二条'),
+        message('m3', 'user', '第三条'),
+        message('m4', 'assistant', '第四条'),
+      ],
+      summaries: [],
+    }
+    const seenPrompts = []
+
+    const summary = await conversationRuntime.summarizeChatConversationOverflow(conversation, {
+      language: 'zh-CN',
+      runtimeOptions: {
+        shortTermMessageLimit: 2,
+        summaryLimit: 4,
+        summaryBatchMessageCount: 2,
+      },
+      createdLabel: '现在',
+      createSummaryId: () => 'summary-1',
+      summarize: async (prompt) => {
+        seenPrompts.push(prompt)
+        return '压缩摘要'
+      },
+    })
+
+    expect(seenPrompts[0]).toContain('#1 用户: 第一条')
+    expect(summary).toEqual({
+      id: 'summary-1',
+      text: { 'zh-CN': '压缩摘要', 'en-US': '压缩摘要' },
+      createdLabel: { 'zh-CN': '现在', 'en-US': '现在' },
+      messageCount: 2,
+      startMessageIndex: 1,
+      endMessageIndex: 2,
+      sourceMessageIds: ['m1', 'm2'],
+    })
+  })
+
   test('builds context messages without draft or pending messages', () => {
     const conversation = {
       messages: [

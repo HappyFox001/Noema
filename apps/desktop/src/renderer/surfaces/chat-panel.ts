@@ -4,10 +4,9 @@
 import { getImageProviderCatalogEntry, getLLMProviderCatalogEntry } from '../../main/model-provider-catalog'
 import {
   buildChatRuntimeTurnRequest,
-  buildChatSummaryPrompt,
   getChatMessageOrdinal,
   mergeChatSceneState,
-  selectChatSummaryBatch,
+  summarizeChatConversationOverflow,
   stripChatSceneUpdateMarkup,
   trimChatSummaries,
 } from '@noema/sdk/chat/conversation-runtime'
@@ -897,39 +896,32 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     language: 'zh-CN' | 'en-US',
     force = false
   ): Promise<void> {
-    const batch = selectChatSummaryBatch(conversation, {
-      language,
-      shortTermMessageLimit: getShortTermMessageLimit(),
-      batchMessageCount: CHAT_SUMMARY_BATCH_MESSAGE_COUNT,
-      summaryLimit: conversationSettings.summaryLimit,
-      force,
-    })
-    if (!batch) {
-      return
-    }
-
     try {
-      const response = await window.electronAPI.sendChatMessage({
-        input: buildChatSummaryPrompt(batch, language),
+      const summary = await summarizeChatConversationOverflow(conversation, {
         language,
-        options: {
-          temperature: 0.2,
-          top_p: 0.5,
-          max_tokens: 420,
+        runtimeOptions: {
+          shortTermMessageLimit: getShortTermMessageLimit(),
+          summaryLimit: conversationSettings.summaryLimit,
+          summaryBatchMessageCount: CHAT_SUMMARY_BATCH_MESSAGE_COUNT,
         },
-      })
-      const summaryText = response.success ? (response.response || '').trim() : ''
-      if (!summaryText) {
+        force,
+        createdLabel: getTimeLabel(),
+        createSummaryId: () => `summary-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        summarize: async (prompt) => {
+          const response = await window.electronAPI.sendChatMessage({
+            input: prompt,
+            language,
+            options: {
+              temperature: 0.2,
+              top_p: 0.5,
+              max_tokens: 420,
+            },
+          })
+          return response.success ? response.response || '' : ''
+        },
+      }) as ChatMemorySummary | null
+      if (!summary) {
         return
-      }
-      const summary: ChatMemorySummary = {
-        id: `summary-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-        text: { 'zh-CN': summaryText, 'en-US': summaryText },
-        createdLabel: { 'zh-CN': getTimeLabel(), 'en-US': getTimeLabel() },
-        messageCount: batch.messages.length,
-        startMessageIndex: batch.startMessageIndex,
-        endMessageIndex: batch.endMessageIndex,
-        sourceMessageIds: batch.messages.map((messageItem) => messageItem.id),
       }
       conversation.summaries = trimSummaries([...conversation.summaries, summary])
       await persistConversation(conversation)
