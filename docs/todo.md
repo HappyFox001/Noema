@@ -48,15 +48,15 @@
 
 - [ ] 将 image model 请求构建和 provider 调用统一放在 SDK。
 - [ ] 将生图结果标准化为 SDK artifact。
-- [ ] 将 character workflow 中的 image artifact 生成逻辑从 desktop handler 移入 SDK。
-- [ ] 定义 image model capability 和 LLM model capability 的统一 resolver。
+- [x] 将 character workflow 中的 image artifact 生成逻辑从 desktop handler 移入 SDK。
+- [x] 定义 image model capability 和 LLM model capability 的统一 resolver。
 - [ ] renderer 只展示 artifact，不直接处理生图执行细节。
 
 ## 7. Character Workflow 下沉
 
-- [ ] 将 `createDesktopCharacterAgentTools` 中的 agent 工具定义迁移到 SDK。
-- [ ] 将 `runCharacterAgentLLMTool`、模型查找、候选包生成、质量门、repair、export package 放入 SDK。
-- [ ] desktop handler 只负责接收 workflow snapshot、调用 SDK、返回 run events/artifacts。
+- [x] 将 `createDesktopCharacterAgentTools` 中的 agent 工具定义迁移到 SDK。
+- [x] 将 `runCharacterAgentLLMTool`、模型查找、候选包生成、质量门、repair、export package 放入 SDK。
+- [x] desktop handler 只负责接收 workflow snapshot、调用 SDK、返回 run events/artifacts。
 - [ ] 将 workflow run 状态设计为 SDK event stream，便于 renderer 实时展示。
 - [ ] 保持 Electron 特有能力以 adapter 形式注入，而不是写进 SDK 核心。
 
@@ -65,7 +65,7 @@
 - [ ] 将 `apps/desktop/src/main/chat-ipc-handlers.ts` 改成薄 IPC adapter。
 - [ ] 保留 `selectMedia`、`requestCameraPermission` 等 Electron 必须逻辑在 main 层。
 - [ ] 保留 chat history 的本地存储路径 wiring，但评估是否通过 SDK storage adapter 执行。
-- [ ] 让 IPC handler 调用 SDK runtime，而不是自己拼 prompt、跑 agent 工具。
+- [x] 让 IPC handler 调用 SDK runtime，而不是自己拼 prompt、跑 agent 工具。
 - [ ] 统一 `sendChatMessage` 和 `streamChatMessage` 的后端处理路径。
 
 ## 9. Renderer 简化
