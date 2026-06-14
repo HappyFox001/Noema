@@ -569,6 +569,15 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
     const searchScope = inputElement.closest<HTMLElement>('[data-resource-node-search-scope]') ?? root
     const preview = searchScope.querySelector<HTMLElement>('[data-resource-node-preview]')
     const filterTargets = () => Array.from(searchScope.querySelectorAll<HTMLButtonElement>('[data-resource-library-card]'))
+    const emptyState = searchScope.querySelector<HTMLElement>('[data-resource-node-search-empty]')
+    const setNodeSearchActive = (card: HTMLElement | null) => {
+      filterTargets().forEach((item) => item.classList.toggle('is-node-search-active', item === card))
+      if (card?.id) {
+        inputElement.setAttribute('aria-activedescendant', card.id)
+      } else {
+        inputElement.removeAttribute('aria-activedescendant')
+      }
+    }
     const updatePreview = (card: HTMLElement) => {
       if (!preview) {
         return
@@ -589,13 +598,24 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
         const matchesContext = !contextType || (compatibleTypes ?? '').split(' ').includes(contextType)
         card.hidden = (Boolean(query) && !searchable.includes(query)) || !matchesCategory || !matchesContext
       })
+      const firstVisible = filterTargets().find((card) => !card.hidden) ?? null
+      emptyState?.classList.toggle('is-visible', !firstVisible)
+      setNodeSearchActive(firstVisible)
+      if (firstVisible) {
+        updatePreview(firstVisible)
+      }
     }
     const focusNextCard = (direction: 1 | -1) => {
       const cards = filterTargets().filter((card) => !card.hidden)
+      if (!cards.length) {
+        setNodeSearchActive(null)
+        return
+      }
       const activeIndex = Math.max(0, cards.findIndex((card) => card === document.activeElement))
       const next = cards[(activeIndex + direction + cards.length) % cards.length]
       next?.focus()
       if (next) {
+        setNodeSearchActive(next)
         updatePreview(next)
       }
     }
@@ -624,6 +644,7 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
     const handleCardHover = (event: Event) => {
       const card = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-resource-library-card]')
       if (card && searchScope.contains(card)) {
+        setNodeSearchActive(card)
         updatePreview(card)
       }
     }
@@ -638,6 +659,7 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
       filterCards()
       const firstCard = filterTargets().find((card) => !card.hidden)
       if (firstCard) {
+        setNodeSearchActive(firstCard)
         updatePreview(firstCard)
       }
     }
@@ -1035,6 +1057,7 @@ function renderResourceLibrary(graph: CharacterResourceGraph, options: Character
   const searchResults = RESOURCE_NODE_DEFINITIONS
     .slice()
     .sort((a, b) => a.category.localeCompare(b.category) || a.displayName.localeCompare(b.displayName))
+  const recentNodes = getRecentNodeDefinitions(graph)
   return `
     <aside class="chat-workflow-sidebar chat-resource-library" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '资源节点库' : 'Resource node library')}">
       <div class="chat-workflow-sidebar-scroll">
@@ -1047,15 +1070,23 @@ function renderResourceLibrary(graph: CharacterResourceGraph, options: Character
         <section class="chat-resource-search-panel" data-resource-node-search-scope data-resource-node-search-category="all">
           <label>
             <span>${options.escapeHtml(options.language === 'zh-CN' ? '搜索节点' : 'Search nodes')}</span>
-            <input type="search" value="" placeholder="${options.escapeHtml(options.language === 'zh-CN' ? '名称 / 类型 / slot' : 'name / type / slot')}" data-chat-resource-node-search>
+            <input type="search" value="" role="combobox" aria-autocomplete="list" aria-expanded="true" placeholder="${options.escapeHtml(options.language === 'zh-CN' ? '名称 / 类型 / slot' : 'name / type / slot')}" data-chat-resource-node-search>
           </label>
           <div class="chat-resource-search-results">
-            ${searchResults.slice(0, 5).map((definition) => renderNodeLibraryCard(definition, graph, options)).join('')}
+            ${searchResults.slice(0, 5).map((definition, index) => renderNodeLibraryCard(definition, graph, options, `resource-library-search-${index}`)).join('')}
+            <div class="chat-resource-search-empty" data-resource-node-search-empty>
+              <strong>${options.escapeHtml(ui(options, '无匹配节点', 'No matching nodes'))}</strong>
+              <span>${options.escapeHtml(ui(options, '调整关键词或切换分类', 'Adjust the query or category'))}</span>
+            </div>
           </div>
           <div class="chat-resource-node-preview" data-resource-node-preview>
             <strong>${options.escapeHtml(searchResults[0]?.displayName ?? ui(options, '节点预览', 'Node Preview'))}</strong>
             <p>${options.escapeHtml(searchResults[0]?.description ?? '')}</p>
           </div>
+        </section>
+        <section class="chat-workflow-sidebar-section compact">
+          <strong>${options.escapeHtml(ui(options, '最近', 'Recent'))}</strong>
+          ${recentNodes.map((definition, index) => renderNodeLibraryCard(definition, graph, options, `resource-library-recent-${index}`)).join('')}
         </section>
         <section class="chat-workflow-sidebar-section">
           <strong>${options.escapeHtml(ui(options, '分类', 'Categories'))}</strong>
@@ -1067,14 +1098,14 @@ function renderResourceLibrary(graph: CharacterResourceGraph, options: Character
         </section>
         <section class="chat-workflow-sidebar-section compact">
           <strong>${options.escapeHtml(ui(options, '常用', 'Favorites'))}</strong>
-          ${RESOURCE_NODE_DEFINITIONS.filter((definition) => definition.source === 'core' || definition.source === 'agent').slice(0, 4).map((definition) => renderNodeLibraryCard(definition, graph, options)).join('')}
+          ${RESOURCE_NODE_DEFINITIONS.filter((definition) => definition.source === 'core' || definition.source === 'agent').slice(0, 4).map((definition, index) => renderNodeLibraryCard(definition, graph, options, `resource-library-favorite-${index}`)).join('')}
         </section>
       </div>
     </aside>
   `
 }
 
-function renderNodeLibraryCard(definition: CharacterResourceNodeDefinition, graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): string {
+function renderNodeLibraryCard(definition: CharacterResourceNodeDefinition, graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions, elementId = ''): string {
   const existing = graph.nodes.find((node) => node.type === definition.type)
   const searchText = [
     definition.type,
@@ -1088,7 +1119,7 @@ function renderNodeLibraryCard(definition: CharacterResourceNodeDefinition, grap
   const inputTypes = definition.inputs.map((slotItem) => slotItem.type).join(' ')
   const outputTypes = definition.outputs.map((slotItem) => slotItem.type).join(' ')
   return `
-    <button class="chat-resource-library-card" type="button" data-resource-library-card data-resource-category="${options.escapeHtml(definition.category)}" data-resource-input-types="${options.escapeHtml(inputTypes)}" data-resource-output-types="${options.escapeHtml(outputTypes)}" data-resource-search-text="${options.escapeHtml(searchText)}" data-resource-preview-title="${options.escapeHtml(definition.displayName)}" data-resource-preview-body="${options.escapeHtml(definition.description)}" data-chat-workflow-panel="nodes" ${existing ? `data-chat-workflow-node-select="${options.escapeHtml(existing.id)}"` : ''}>
+    <button class="chat-resource-library-card" ${elementId ? `id="${options.escapeHtml(elementId)}"` : ''} type="button" role="option" data-resource-library-card data-resource-category="${options.escapeHtml(definition.category)}" data-resource-input-types="${options.escapeHtml(inputTypes)}" data-resource-output-types="${options.escapeHtml(outputTypes)}" data-resource-search-text="${options.escapeHtml(searchText)}" data-resource-preview-title="${options.escapeHtml(definition.displayName)}" data-resource-preview-body="${options.escapeHtml(definition.description)}" data-chat-workflow-panel="nodes" ${existing ? `data-chat-workflow-node-select="${options.escapeHtml(existing.id)}"` : ''}>
       <span>
         <b>${options.escapeHtml(definition.displayName)}</b>
         <small>${options.escapeHtml(definition.category)} / ${options.escapeHtml(definition.source)}</small>
@@ -1096,6 +1127,22 @@ function renderNodeLibraryCard(definition: CharacterResourceNodeDefinition, grap
       <em>${options.escapeHtml(definition.outputs[0]?.type ?? '-')}</em>
     </button>
   `
+}
+
+function getRecentNodeDefinitions(graph: CharacterResourceGraph): CharacterResourceNodeDefinition[] {
+  const seen = new Set<string>()
+  return graph.nodes
+    .slice()
+    .sort((a, b) => b.zIndex - a.zIndex)
+    .map((node) => getDefinition(node.type))
+    .filter((definition) => {
+      if (seen.has(definition.type)) {
+        return false
+      }
+      seen.add(definition.type)
+      return true
+    })
+    .slice(0, 4)
 }
 
 function renderSidebarToggle(options: CharacterWorkflowPageOptions): string {
@@ -1596,14 +1643,18 @@ function renderNodeSearchPopover(graph: CharacterResourceGraph, options: Charact
       </header>
       <label class="chat-resource-node-search-field">
         <span>${options.escapeHtml(options.language === 'zh-CN' ? '搜索' : 'Search')}</span>
-        <input type="search" value="" placeholder="${options.escapeHtml(options.language === 'zh-CN' ? '名称 / 类型 / slot' : 'name / type / slot')}" data-chat-resource-node-search>
+        <input type="search" value="" role="combobox" aria-autocomplete="list" aria-expanded="true" placeholder="${options.escapeHtml(options.language === 'zh-CN' ? '名称 / 类型 / slot' : 'name / type / slot')}" data-chat-resource-node-search>
       </label>
       <div class="chat-resource-node-search-filters" role="toolbar" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '节点分类筛选' : 'Node category filters')}">
         <button class="active" type="button" data-resource-node-search-category="all">${options.escapeHtml(ui(options, '全部', 'All'))}</button>
         ${categories.map((category) => `<button type="button" data-resource-node-search-category="${options.escapeHtml(category)}">${options.escapeHtml(category)}</button>`).join('')}
       </div>
       <div class="chat-resource-node-search-results">
-      ${candidates.map((definition) => renderNodeLibraryCard(definition, graph, options)).join('')}
+      ${candidates.map((definition, index) => renderNodeLibraryCard(definition, graph, options, `resource-popover-search-${index}`)).join('')}
+        <div class="chat-resource-search-empty" data-resource-node-search-empty>
+          <strong>${options.escapeHtml(ui(options, '无可连接节点', 'No connectable nodes'))}</strong>
+          <span>${options.escapeHtml(ui(options, '尝试拖拽到兼容 slot 或清空搜索', 'Try a compatible slot or clear the query'))}</span>
+        </div>
       </div>
       <div class="chat-resource-node-preview" data-resource-node-preview>
         <strong>${options.escapeHtml(candidates[0]?.displayName ?? ui(options, '节点预览', 'Node Preview'))}</strong>

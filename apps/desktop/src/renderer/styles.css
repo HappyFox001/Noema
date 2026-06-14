@@ -12662,7 +12662,8 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
 }
 
 .chat-resource-library-card:hover,
-.chat-resource-library-card:focus-visible {
+.chat-resource-library-card:focus-visible,
+.chat-resource-library-card.is-node-search-active {
   border-color: rgba(82, 168, 255, 0.32);
   background:
     linear-gradient(180deg, rgba(82, 168, 255, 0.11), rgba(82, 168, 255, 0.045)),
@@ -12673,6 +12674,32 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
 
 .chat-resource-library-card:active {
   transform: translateY(0);
+}
+
+.chat-resource-search-empty {
+  display: none;
+  gap: 3px;
+  padding: 10px 8px;
+  border: 1px dashed rgba(248, 250, 250, 0.1);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.chat-resource-search-empty.is-visible {
+  display: grid;
+}
+
+.chat-resource-search-empty strong {
+  color: rgba(248, 250, 250, 0.68);
+  font-family: var(--font-ui);
+  font-size: 10.5px;
+}
+
+.chat-resource-search-empty span {
+  color: rgba(248, 250, 250, 0.38);
+  font-family: var(--font-ui);
+  font-size: 9.5px;
+  line-height: 1.35;
 }
 
 .chat-resource-library-card span {
