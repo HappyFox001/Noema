@@ -957,7 +957,7 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
     selection: { nodeIds: viewState.selectedNodeIds?.length ? viewState.selectedNodeIds : [options.selectedNodeId || 'brief-input'], linkIds: viewState.selectedLinkId ? [viewState.selectedLinkId] : [] },
     panels: {
       leftWidth: options.sidebarCollapsed ? 0 : 246,
-      rightWidth: options.inspectorCollapsed ? 0 : 312,
+      rightWidth: options.inspectorCollapsed ? 0 : 252,
       bottomHeight: 62,
       activePanel: options.activePanel,
     },

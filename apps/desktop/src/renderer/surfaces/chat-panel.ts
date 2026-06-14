@@ -19,14 +19,10 @@ import {
   saveConversationSettings,
   type ChatConversationSettings,
 } from './chat-conversation-settings'
-import {
-  completeCharacterResourceRunState,
-  createDraftCharacterResourceRunState,
-  initializeCharacterResourceWorkbench,
-  renderCharacterWorkflowPage,
-  type CharacterResourceRunState,
-  type CharacterWorkflowFileTab,
-  type CharacterWorkflowSidePanel,
+import type {
+  CharacterResourceRunState,
+  CharacterWorkflowFileTab,
+  CharacterWorkflowSidePanel,
 } from './chat-character-workflow-page'
 import { serializeCharacterResourceGraph, type SerializedCharacterResourceLink, type SerializedCharacterResourceLinkKind } from './chat-character-resource-graph-state'
 import {
@@ -63,6 +59,7 @@ import { createChatRenderer } from './chat-renderer'
 type ChatResizeEdge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
 
 type PendingChatAttachment = ChatMessageAttachment
+type CharacterWorkflowPageModule = typeof import('./chat-character-workflow-page')
 
 interface CharacterWorkflowEditorState {
   activePanel: CharacterWorkflowSidePanel
@@ -165,6 +162,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let conversationSettings = loadConversationSettings()
   let sceneStateCollapsed = false
   let characterWorkflowRenderToken = 0
+  let characterWorkflowLazyRenderToken = 0
+  let characterWorkflowPageModulePromise: Promise<CharacterWorkflowPageModule> | null = null
   const characterWorkflowConfigOverrides: Record<string, Record<string, unknown>> = {}
   const characterWorkflowPositionOverrides: Record<string, { x: number; y: number }> = {}
   let characterWorkflowRunState: CharacterResourceRunState | null = null
@@ -1551,11 +1550,28 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     })
   }
 
+  function loadCharacterWorkflowPageModule(): Promise<CharacterWorkflowPageModule> {
+    characterWorkflowPageModulePromise ??= import('./chat-character-workflow-page')
+    return characterWorkflowPageModulePromise
+  }
+
   function renderCharacterWorkflow(): void {
+    void renderCharacterWorkflowAsync()
+  }
+
+  async function renderCharacterWorkflowAsync(): Promise<void> {
     if (!characterWorkflowRoot) {
       return
     }
-    characterWorkflowRoot.innerHTML = renderCharacterWorkflowPage({
+    const renderToken = ++characterWorkflowLazyRenderToken
+    if (!characterWorkflowRoot.childElementCount) {
+      characterWorkflowRoot.innerHTML = `<div class="chat-workflow-loading"><span>${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '正在加载角色资源图...' : 'Loading character resource graph...')}</span></div>`
+    }
+    const workflowPage = await loadCharacterWorkflowPageModule()
+    if (renderToken !== characterWorkflowLazyRenderToken) {
+      return
+    }
+    characterWorkflowRoot.innerHTML = workflowPage.renderCharacterWorkflowPage({
       language: options.getLanguage(),
       escapeHtml: options.escapeHtml,
       configOverrides: characterWorkflowConfigOverrides,
@@ -1586,7 +1602,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         replacedTargetSlots: [...characterResourceViewState.replacedTargetSlots],
       },
     })
-    initializeCharacterResourceWorkbench(characterWorkflowRoot)
+    workflowPage.initializeCharacterResourceWorkbench(characterWorkflowRoot)
   }
 
   function getCharacterWorkflowTabs(): CharacterWorkflowFileTab[] {
@@ -1777,12 +1793,16 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   async function runCharacterWorkflow(newRun: boolean): Promise<void> {
     const renderToken = ++characterWorkflowRenderToken
+    const workflowPage = await loadCharacterWorkflowPageModule()
+    if (renderToken !== characterWorkflowRenderToken) {
+      return
+    }
     if (newRun) {
       characterWorkflowRunState = null
       characterWorkflowPackTabOpen = false
     }
     characterWorkflowRunCount += 1
-    const draftRunState = createDraftCharacterResourceRunState(characterWorkflowRunCount, 'running')
+    const draftRunState = workflowPage.createDraftCharacterResourceRunState(characterWorkflowRunCount, 'running')
     characterWorkflowRunState = draftRunState
     characterWorkflowActiveTabId = draftRunState.run?.id ?? 'run-draft'
     renderCharacterWorkflow()
@@ -1792,7 +1812,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         return
       }
       await new Promise<void>((resolve) => window.setTimeout(resolve, 180))
-      const nextState = completeCharacterResourceRunState(draftRunState)
+      const nextState = workflowPage.completeCharacterResourceRunState(draftRunState)
       characterWorkflowRunState = nextState
       characterWorkflowActiveTabId = nextState.run?.id ?? 'run-draft'
       renderCharacterWorkflow()
