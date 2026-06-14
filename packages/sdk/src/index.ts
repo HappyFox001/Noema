@@ -236,6 +236,7 @@ export class NoemaSDK {
 export * from './memory/index.js'
 export * from './config/types.js'
 export * from './llm/index.js'
+export * from './image/index.js'
 export * from './utils/index.js'
 export * from './personality/index.js'
 export * from './character-workflow/index.js'

@@ -200,6 +200,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   sendChatMessage: (request) =>
     ipcRenderer.invoke('chat:sendMessage', request),
 
+  runCharacterWorkflow: (request) =>
+    ipcRenderer.invoke('chat:runCharacterWorkflow', request),
+
   streamChatMessage: (request, handlers = {}) => {
     const streamId = `chat-stream-${Date.now()}-${Math.random().toString(16).slice(2)}`
     const onDelta = (_, event) => {

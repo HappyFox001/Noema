@@ -1691,6 +1691,7 @@ function getChatHistoryStore(): ChatHistoryStore {
 registerChatRoleResourceIpcHandlers(ipcMain)
 registerChatIpcHandlers(ipcMain, {
   getModelConfig: getChatModelConfig,
+  getChatModels: () => appSettings.system.chatModels,
   getProxyUrl: () => activeProxyUrl,
   getMainWindow: () => mainWindow,
   getChatHistoryStore,

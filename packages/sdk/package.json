@@ -16,6 +16,16 @@
       "import": "./dist/character-workflow/index.js",
       "default": "./dist/character-workflow/index.js"
     },
+    "./image": {
+      "types": "./dist/image/index.d.ts",
+      "import": "./dist/image/index.js",
+      "default": "./dist/image/index.js"
+    },
+    "./image/catalog": {
+      "types": "./dist/image/catalog.d.ts",
+      "import": "./dist/image/catalog.js",
+      "default": "./dist/image/catalog.js"
+    },
     "./config/personality-loader": {
       "types": "./dist/config/personality-loader.d.ts",
       "import": "./dist/config/personality-loader.js",

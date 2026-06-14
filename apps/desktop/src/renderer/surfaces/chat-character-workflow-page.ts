@@ -500,6 +500,60 @@ export function renderCharacterWorkflowPage(options: CharacterWorkflowPageOption
   `
 }
 
+export function createCharacterAgentWorkflowSnapshot(options: CharacterWorkflowPageOptions): Record<string, unknown> {
+  const graph = createCharacterResourceGraph(options)
+  const definitions = new Map(RESOURCE_NODE_DEFINITIONS.map((definition) => [definition.type, definition]))
+  const now = Date.now()
+  return {
+    id: graph.id,
+    name: graph.title,
+    version: '2.0',
+    description: 'Frontend-authored agentic RP resource graph.',
+    nodes: graph.nodes.map((node) => {
+      const definition = definitions.get(node.type)
+      return {
+        id: node.id,
+        type: node.type,
+        title: node.title,
+        position: node.position,
+        inputs: Object.fromEntries((definition?.inputs ?? []).map((slotItem) => [slotItem.id, {
+          id: slotItem.id,
+          label: slotItem.label,
+          artifactType: slotItem.type,
+          required: Boolean(slotItem.required),
+        }])),
+        outputs: Object.fromEntries((definition?.outputs ?? []).map((slotItem) => [slotItem.id, {
+          id: slotItem.id,
+          label: slotItem.label,
+          artifactType: slotItem.type,
+          required: Boolean(slotItem.required),
+        }])),
+        config: node.config,
+        state: { status: node.status === 'dirty' ? 'idle' : node.status },
+      }
+    }),
+    edges: graph.links.map((linkItem) => ({
+      id: linkItem.id,
+      from: {
+        nodeId: linkItem.sourceNodeId,
+        port: linkItem.sourceSlotId,
+      },
+      to: {
+        nodeId: linkItem.targetNodeId,
+        port: linkItem.targetSlotId,
+      },
+      kind: linkItem.kind,
+    })),
+    defaults: {
+      language: options.language,
+    },
+    metadata: {
+      createdAt: now,
+      updatedAt: now,
+    },
+  }
+}
+
 export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
   workbenchCleanups.get(root)?.forEach((cleanup) => cleanup())
   const cleanups: Array<() => void> = []

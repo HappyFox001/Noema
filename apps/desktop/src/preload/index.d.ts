@@ -671,6 +671,22 @@ declare global {
         response?: string
         error?: string
       }>
+      runCharacterWorkflow: (request: {
+        workflow: Record<string, unknown>
+        language?: 'zh-CN' | 'en-US'
+      }) => Promise<{
+        success: boolean
+        runId?: string
+        title?: string
+        artifacts?: Array<{
+          id: string
+          kind: string
+          title: string
+          summary: string
+          sourceNodeId?: string
+        }>
+        error?: string
+      }>
       streamChatMessage: (request: {
         input: string
         language?: string

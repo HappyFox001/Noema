@@ -2028,24 +2028,72 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     characterWorkflowRunState = draftRunState
     characterWorkflowActiveTabId = draftRunState.run?.id ?? 'run-draft'
     renderCharacterWorkflow()
-    showToast(options.getLanguage() === 'zh-CN' ? 'Agent mock trace 运行中' : 'Agent mock trace running')
+    showToast(options.getLanguage() === 'zh-CN' ? 'Agent 正在生成角色资源' : 'Agent generating character resources')
     try {
       if (renderToken !== characterWorkflowRenderToken) {
         return
       }
-      await new Promise<void>((resolve) => window.setTimeout(resolve, 180))
-      const nextState = workflowPage.completeCharacterResourceRunState(draftRunState)
-      characterWorkflowRunState = nextState
-      characterWorkflowActiveTabId = nextState.run?.id ?? 'run-draft'
+      const workflow = workflowPage.createCharacterAgentWorkflowSnapshot({
+        language: options.getLanguage(),
+        escapeHtml: options.escapeHtml,
+        modelChoices: getCharacterWorkflowModelChoices(),
+        configOverrides: characterWorkflowConfigOverrides,
+        positionOverrides: characterWorkflowPositionOverrides,
+        runState: characterWorkflowRunState,
+        tabs: getCharacterWorkflowTabs(),
+        activeTabId: characterWorkflowActiveTabId,
+        selectedNodeId: selectedWorkflowNodeId,
+        activePanel: characterWorkflowEditorState.activePanel,
+        sidebarCollapsed: characterWorkflowEditorState.sidebarCollapsed,
+        inspectorCollapsed: characterWorkflowEditorState.inspectorCollapsed,
+        nodeSearchOpen: characterWorkflowEditorState.nodeSearchOpen,
+        viewState: {
+          zoom: characterResourceViewState.zoom,
+          panX: characterResourceViewState.panX,
+          panY: characterResourceViewState.panY,
+          hideLinks: characterResourceViewState.hideLinks,
+          selectedNodeIds: characterResourceViewState.selectedNodeIds,
+          selectionBox: characterResourceViewState.selectionBox,
+          collapsedNodeIds: [...characterResourceViewState.collapsedNodeIds],
+          deletedNodeIds: [...characterResourceViewState.deletedNodeIds],
+          duplicatedNodes: characterResourceViewState.duplicatedNodes,
+          addedNodes: characterResourceViewState.addedNodes,
+          nodeSizes: characterResourceViewState.nodeSizes,
+          selectedLinkId: characterResourceViewState.selectedLinkId,
+          linkKinds: characterResourceViewState.linkKinds,
+          customLinks: characterResourceViewState.customLinks,
+          deletedLinkIds: [...characterResourceViewState.deletedLinkIds],
+          replacedTargetSlots: [...characterResourceViewState.replacedTargetSlots],
+        },
+      })
+      const response = await window.electronAPI.runCharacterWorkflow({ workflow, language: options.getLanguage() })
+      if (!response.success) {
+        throw new Error(response.error || 'Character workflow failed')
+      }
+      characterWorkflowRunState = {
+        run: {
+          id: response.runId || draftRunState.run?.id || `resource-run-${Date.now()}`,
+          title: response.title || draftRunState.run?.title || 'Resource Draft.run',
+          status: 'done',
+        },
+        artifacts: (response.artifacts ?? []).map((artifact) => ({
+          id: artifact.id,
+          type: artifact.kind,
+          sourceNodeId: artifact.sourceNodeId || 'agent-policy',
+          title: artifact.title,
+          summary: artifact.summary,
+        })),
+      }
+      characterWorkflowActiveTabId = characterWorkflowRunState.run?.id ?? 'run-draft'
       renderCharacterWorkflow()
-      showToast(options.getLanguage() === 'zh-CN' ? 'Agent mock trace 已完成' : 'Agent mock trace finished')
+      showToast(options.getLanguage() === 'zh-CN' ? '角色资源生成完成' : 'Character resources generated')
     } catch (error) {
-      console.warn('[CharacterResourceGraph] Failed to run mock lifecycle:', error)
+      console.warn('[CharacterResourceGraph] Failed to run agent lifecycle:', error)
       if (renderToken === characterWorkflowRenderToken) {
         characterWorkflowRunState = draftRunState.run
           ? { ...draftRunState, run: { ...draftRunState.run, status: 'failed' } }
           : draftRunState
-        showToast(options.getLanguage() === 'zh-CN' ? 'Agent mock trace 失败' : 'Agent mock trace failed')
+        showToast(error instanceof Error ? error.message : (options.getLanguage() === 'zh-CN' ? '角色资源生成失败' : 'Character resource generation failed'))
       }
     }
   }
