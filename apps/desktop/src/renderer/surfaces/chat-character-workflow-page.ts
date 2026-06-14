@@ -904,6 +904,26 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
       },
     } satisfies CharacterResourceNode
   }).filter((node) => !deletedNodeIds.has(node.id))
+  for (const added of viewState.addedNodes ?? []) {
+    const definition = definitions.get(added.type)
+    if (!definition || deletedNodeIds.has(added.id)) {
+      continue
+    }
+    nodes.push({
+      id: added.id,
+      type: added.type,
+      title: added.title || definition.displayName,
+      position: options.positionOverrides?.[added.id] ?? { x: added.x, y: added.y },
+      size: viewState.nodeSizes?.[added.id] ?? definition.defaultSize,
+      status: 'dirty',
+      collapsed: collapsedNodeIds.has(added.id),
+      zIndex: nodes.length + 1,
+      config: {
+        ...Object.fromEntries(definition.parameters.map((parameterItem) => [parameterItem.id, parameterItem.defaultValue])),
+        ...(options.configOverrides?.[added.id] ?? {}),
+      },
+    })
+  }
   for (const duplicate of viewState.duplicatedNodes ?? []) {
     const sourceNode = nodes.find((node) => node.id === duplicate.sourceId)
     if (!sourceNode || deletedNodeIds.has(duplicate.id)) {
@@ -1106,7 +1126,6 @@ function renderResourceLibrary(graph: CharacterResourceGraph, options: Character
 }
 
 function renderNodeLibraryCard(definition: CharacterResourceNodeDefinition, graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions, elementId = ''): string {
-  const existing = graph.nodes.find((node) => node.type === definition.type)
   const searchText = [
     definition.type,
     definition.displayName,
@@ -1119,7 +1138,7 @@ function renderNodeLibraryCard(definition: CharacterResourceNodeDefinition, grap
   const inputTypes = definition.inputs.map((slotItem) => slotItem.type).join(' ')
   const outputTypes = definition.outputs.map((slotItem) => slotItem.type).join(' ')
   return `
-    <button class="chat-resource-library-card" ${elementId ? `id="${options.escapeHtml(elementId)}"` : ''} type="button" role="option" data-resource-library-card data-resource-category="${options.escapeHtml(definition.category)}" data-resource-input-types="${options.escapeHtml(inputTypes)}" data-resource-output-types="${options.escapeHtml(outputTypes)}" data-resource-search-text="${options.escapeHtml(searchText)}" data-resource-preview-title="${options.escapeHtml(definition.displayName)}" data-resource-preview-body="${options.escapeHtml(definition.description)}" data-chat-workflow-panel="nodes" ${existing ? `data-chat-workflow-node-select="${options.escapeHtml(existing.id)}"` : ''}>
+    <button class="chat-resource-library-card" ${elementId ? `id="${options.escapeHtml(elementId)}"` : ''} type="button" role="option" data-resource-library-card data-resource-node-add-type="${options.escapeHtml(definition.type)}" data-resource-category="${options.escapeHtml(definition.category)}" data-resource-input-types="${options.escapeHtml(inputTypes)}" data-resource-output-types="${options.escapeHtml(outputTypes)}" data-resource-search-text="${options.escapeHtml(searchText)}" data-resource-preview-title="${options.escapeHtml(definition.displayName)}" data-resource-preview-body="${options.escapeHtml(definition.description)}" data-chat-workflow-panel="nodes">
       <span>
         <b>${options.escapeHtml(definition.displayName)}</b>
         <small>${options.escapeHtml(definition.category)} / ${options.escapeHtml(definition.source)}</small>

@@ -32,6 +32,13 @@ export interface CharacterResourceViewState {
     offsetX: number
     offsetY: number
   }>
+  addedNodes?: Array<{
+    id: string
+    type: string
+    title: string
+    x: number
+    y: number
+  }>
   nodeSizes?: Record<string, { width: number; height: number }>
   selectedLinkId?: string
   linkKinds?: Record<string, SerializedCharacterResourceLinkKind>

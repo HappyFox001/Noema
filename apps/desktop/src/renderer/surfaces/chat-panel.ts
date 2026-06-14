@@ -187,6 +187,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     collapsedNodeIds: new Set<string>(),
     deletedNodeIds: new Set<string>(),
     duplicatedNodes: [] as Array<{ id: string; sourceId: string; offsetX: number; offsetY: number }>,
+    addedNodes: [] as Array<{ id: string; type: string; title: string; x: number; y: number }>,
     nodeSizes: {} as Record<string, { width: number; height: number }>,
     selectedLinkId: '',
     linkKinds: {} as Record<string, SerializedCharacterResourceLinkKind>,
@@ -208,6 +209,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     configOverrides: Record<string, Record<string, unknown>>
     positionOverrides: Record<string, { x: number; y: number }>
     duplicatedNodes: Array<{ id: string; sourceId: string; offsetX: number; offsetY: number }>
+    addedNodes: Array<{ id: string; type: string; title: string; x: number; y: number }>
     deletedNodeIds: string[]
     collapsedNodeIds: string[]
     nodeSizes: Record<string, { width: number; height: number }>
@@ -1614,6 +1616,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         collapsedNodeIds: [...characterResourceViewState.collapsedNodeIds],
         deletedNodeIds: [...characterResourceViewState.deletedNodeIds],
         duplicatedNodes: characterResourceViewState.duplicatedNodes,
+        addedNodes: characterResourceViewState.addedNodes,
         nodeSizes: characterResourceViewState.nodeSizes,
         selectedLinkId: characterResourceViewState.selectedLinkId,
         linkKinds: characterResourceViewState.linkKinds,
@@ -1661,6 +1664,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       configOverrides: cloneRecord(characterWorkflowConfigOverrides),
       positionOverrides: cloneRecord(characterWorkflowPositionOverrides),
       duplicatedNodes: JSON.parse(JSON.stringify(characterResourceViewState.duplicatedNodes)) as CharacterResourceHistorySnapshot['duplicatedNodes'],
+      addedNodes: JSON.parse(JSON.stringify(characterResourceViewState.addedNodes)) as CharacterResourceHistorySnapshot['addedNodes'],
       deletedNodeIds: [...characterResourceViewState.deletedNodeIds],
       collapsedNodeIds: [...characterResourceViewState.collapsedNodeIds],
       nodeSizes: cloneRecord(characterResourceViewState.nodeSizes),
@@ -1683,6 +1687,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     replaceRecord(characterWorkflowConfigOverrides, cloneRecord(snapshot.configOverrides))
     replaceRecord(characterWorkflowPositionOverrides, cloneRecord(snapshot.positionOverrides))
     characterResourceViewState.duplicatedNodes = JSON.parse(JSON.stringify(snapshot.duplicatedNodes)) as CharacterResourceHistorySnapshot['duplicatedNodes']
+    characterResourceViewState.addedNodes = JSON.parse(JSON.stringify(snapshot.addedNodes)) as CharacterResourceHistorySnapshot['addedNodes']
     characterResourceViewState.deletedNodeIds = new Set(snapshot.deletedNodeIds)
     characterResourceViewState.collapsedNodeIds = new Set(snapshot.collapsedNodeIds)
     characterResourceViewState.nodeSizes = cloneRecord(snapshot.nodeSizes)
@@ -1759,6 +1764,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             collapsedNodeIds: [...characterResourceViewState.collapsedNodeIds],
             deletedNodeIds: [...characterResourceViewState.deletedNodeIds],
             duplicatedNodes: characterResourceViewState.duplicatedNodes,
+            addedNodes: characterResourceViewState.addedNodes,
             nodeSizes: characterResourceViewState.nodeSizes,
             selectedLinkId: characterResourceViewState.selectedLinkId,
             linkKinds: characterResourceViewState.linkKinds,
@@ -2064,6 +2070,33 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       characterResourceViewState.selectedNodeIds = [nodeId]
     }
     renderCharacterWorkflow()
+  }
+
+  function addCharacterResourceNodeFromLibrary(card: HTMLElement): void {
+    const type = card.dataset.resourceNodeAddType || ''
+    const title = card.dataset.resourcePreviewTitle || type
+    if (!type) {
+      return
+    }
+    pushCharacterResourceUndoSnapshot()
+    characterResourceDuplicateCount += 1
+    const nodeId = `${type}-${Date.now().toString(36)}-${characterResourceDuplicateCount}`
+    const visibleX = Math.max(48, Math.round((96 - characterResourceViewState.panX) / characterResourceViewState.zoom))
+    const visibleY = Math.max(70, Math.round((86 - characterResourceViewState.panY) / characterResourceViewState.zoom))
+    characterResourceViewState.addedNodes.push({
+      id: nodeId,
+      type,
+      title,
+      x: visibleX + characterResourceDuplicateCount * 18,
+      y: visibleY + characterResourceDuplicateCount * 18,
+    })
+    selectedWorkflowNodeId = nodeId
+    characterResourceViewState.selectedNodeIds = [nodeId]
+    characterResourceViewState.selectedLinkId = ''
+    characterWorkflowEditorState.nodeSearchOpen = false
+    characterWorkflowEditorState.activePanel = 'nodes'
+    renderCharacterWorkflow()
+    showToast(options.getLanguage() === 'zh-CN' ? '已添加节点' : 'Node added')
   }
 
   function getCharacterResourceTargetSlotKey(linkItem: Pick<SerializedCharacterResourceLink, 'targetNodeId' | 'targetSlotId'>): string {
@@ -2916,6 +2949,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       characterResourceViewState.selectedNodeIds = []
       characterWorkflowEditorState.nodeSearchOpen = false
       renderCharacterWorkflow()
+      return
+    }
+
+    const resourceLibraryCard = eventTarget.closest<HTMLElement>('[data-resource-library-card][data-resource-node-add-type]')
+    if (resourceLibraryCard && panel.contains(resourceLibraryCard)) {
+      addCharacterResourceNodeFromLibrary(resourceLibraryCard)
       return
     }
 
