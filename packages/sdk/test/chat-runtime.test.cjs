@@ -136,6 +136,39 @@ describe('chat conversation runtime helpers', () => {
       max_tokens: 100,
     })
   })
+
+  test('emits matching final content for streaming and non-streaming chat events', async () => {
+    const session = new chat.ChatSession({
+      llm: {
+        chat: async () => ({ content: 'hello world' }),
+        streamChat: async function *() {
+          yield 'hello'
+          yield ' '
+          yield 'world'
+        },
+      },
+    })
+    const request = { input: 'hi' }
+
+    const sendEvents = await requestRuntime.sendChatTurnEvents(session, request)
+    const streamEvents = []
+    for await (const event of requestRuntime.streamChatTurnEvents(session, request)) {
+      streamEvents.push(event)
+    }
+
+    expect(sendEvents).toEqual([
+      { type: 'message.started' },
+      { type: 'message.completed', content: 'hello world' },
+    ])
+    expect(streamEvents).toEqual([
+      { type: 'message.started' },
+      { type: 'message.delta', delta: 'hello' },
+      { type: 'message.delta', delta: ' ' },
+      { type: 'message.delta', delta: 'world' },
+      { type: 'message.completed', content: 'hello world' },
+    ])
+    expect(finalContent(streamEvents)).toBe(finalContent(sendEvents))
+  })
 })
 
 function message(id, role, text) {
@@ -147,4 +180,9 @@ function message(id, role, text) {
       'en-US': text,
     },
   }
+}
+
+function finalContent(events) {
+  const event = events.find((item) => item.type === 'message.completed')
+  return event && event.content
 }

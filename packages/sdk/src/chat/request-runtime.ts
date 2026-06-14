@@ -7,6 +7,7 @@ import {
   type ChatCharacterContext,
   type ChatMessage,
   type ChatModelConfig,
+  type ChatSession,
   type ChatSessionOptions,
   type ChatTurnRequest,
   type ChatTurnResponse,
@@ -64,10 +65,27 @@ export async function *streamChatTurnEventsWithConfiguredModel(
   request: ConfiguredChatTurnRequest,
   options: ConfiguredChatRuntimeOptions = {}
 ): AsyncGenerator<ChatRuntimeEvent> {
+  const session = createChatSessionFromModel(toChatModelConfig(modelConfig), options)
+  yield* streamChatTurnEvents(session, normalizeConfiguredChatTurnRequest(request))
+}
+
+export async function sendChatTurnEventsWithConfiguredModel(
+  modelConfig: ConfiguredChatModel | null,
+  request: ConfiguredChatTurnRequest,
+  options: ConfiguredChatRuntimeOptions = {}
+): Promise<ChatRuntimeEvent[]> {
+  const session = createChatSessionFromModel(toChatModelConfig(modelConfig), options)
+  return sendChatTurnEvents(session, normalizeConfiguredChatTurnRequest(request))
+}
+
+export async function *streamChatTurnEvents(
+  session: ChatSession,
+  request: ChatTurnRequest
+): AsyncGenerator<ChatRuntimeEvent> {
   yield { type: 'message.started' }
   const chunks: string[] = []
   try {
-    for await (const delta of streamChatTurnWithConfiguredModel(modelConfig, request, options)) {
+    for await (const delta of session.stream(request)) {
       chunks.push(delta)
       yield { type: 'message.delta', delta }
     }
@@ -79,13 +97,12 @@ export async function *streamChatTurnEventsWithConfiguredModel(
   }
 }
 
-export async function sendChatTurnEventsWithConfiguredModel(
-  modelConfig: ConfiguredChatModel | null,
-  request: ConfiguredChatTurnRequest,
-  options: ConfiguredChatRuntimeOptions = {}
+export async function sendChatTurnEvents(
+  session: ChatSession,
+  request: ChatTurnRequest
 ): Promise<ChatRuntimeEvent[]> {
   try {
-    const response = await sendChatTurnWithConfiguredModel(modelConfig, request, options)
+    const response = await session.send(request)
     return [
       { type: 'message.started' },
       { type: 'message.completed', content: response.content },

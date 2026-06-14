@@ -80,7 +80,7 @@
 ## 10. Verification
 
 - [x] 为 SDK chat runtime 添加单元测试：prompt assembly、attachments、character context、summary selection、scene merge。
-- [ ] 为 SDK stream event 协议添加测试，确保流式/非流式最终状态一致。
+- [x] 为 SDK stream event 协议添加测试，确保流式/非流式最终状态一致。
 - [ ] 为 character workflow SDK 迁移添加测试，覆盖 LLM tool、image artifact、quality gate。
 - [ ] 修改 SDK 后运行 `pnpm --filter @her-text/sdk build`。
 - [ ] 修改 desktop runtime 后运行 `pnpm --filter @her-text/desktop build`。
