@@ -185,23 +185,26 @@ export function completeCharacterResourceRunState(state: CharacterResourceRunSta
       status: 'done',
     },
     artifacts: [
-      { type: 'character-card', sourceNodeId: 'identity-card', title: 'Identity Card', summary: 'Mock identity resource assembled from the current resource graph.' },
-      { type: 'character-card', sourceNodeId: 'persona-engine', title: 'Persona Engine', summary: 'Mock persona resource assembled with constraints and contradictions.' },
-      { type: 'image-asset', sourceNodeId: 'image-assets', title: 'Image Asset Set', summary: 'Mock avatar, body image, expression sheet, and scene reference slots reserved.' },
-      { type: 'validation-report', sourceNodeId: 'consistency-critic', title: 'Consistency Report', summary: 'Mock validation report checks required resources, slot compatibility, and package gaps.' },
-      { type: 'agent-policy', sourceNodeId: 'agent-policy', title: 'Agent Policy', summary: 'Mock autonomous generation boundaries and revision budget are ready for backend execution.' },
-      { type: 'character-pack', sourceNodeId: 'character-package', title: 'Character Package', summary: 'Mock package manifest includes graph resources, runtime state, validation, and chat-test entry.' },
+      { type: 'agent-plan', sourceNodeId: 'generation-strategy', title: 'Agent Plan', summary: 'Mock plan decomposes the free-form goal into candidates, tools, critique loops, and output targets.' },
+      { type: 'candidate-pack', sourceNodeId: 'asset-targets', title: 'Candidate Pack', summary: 'Mock candidate pack reserves role card, opening, visual assets, memory policy, and generation report outputs.' },
+      { type: 'validation-report', sourceNodeId: 'quality-gate', title: 'Quality Gate Report', summary: 'Mock quality gate checks goal match, long-term RP durability, style intensity, consistency, and export readiness.' },
+      { type: 'chat-test-result', sourceNodeId: 'chat-test', title: 'Chat Test Result', summary: 'Mock first-turn pressure test reports OOC risk, target hit rate, and repair suggestions.' },
+      { type: 'export-target', sourceNodeId: 'output-adapter', title: 'Noema Role Chat Export', summary: 'Mock output adapter maps the accepted candidate pack to a Noema Role Chat package.' },
     ],
   }
 }
 
 const LINK_KIND_LABELS: Record<CharacterResourceLinkKind, string> = {
-  requires: 'requires',
+  guides: 'guides',
   constrains: 'constrains',
-  references: 'references',
-  validates: 'validates',
+  provides: 'provides',
+  enables: 'enables',
+  grounds: 'grounds',
+  weights: 'weights',
+  routes: 'routes',
+  evaluates: 'evaluates',
+  refines: 'refines',
   exports: 'exports',
-  suggests: 'suggests',
 }
 
 function ui(options: CharacterWorkflowPageOptions, zh: string, en: string): string {
@@ -245,198 +248,237 @@ function statusLabel(status: string, options: CharacterWorkflowPageOptions): str
 }
 
 const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
-  createDefinition('brief', 'Character Brief', ['需求', 'brief', 'goal'], 'brief', 'core', 'Defines generation intent, target interaction, audience, taboo zones, and acceptance boundaries.', [], [
-    slot('brief', 'Brief', 'brief', 'Generation brief and boundaries.'),
+  createDefinition('goal', 'Generation Goal', ['目标', 'brief', 'intent'], 'Goal', 'core', 'Captures the free-form RP generation target without asking the user to define final card fields.', [], [
+    slot('goal', 'Goal', 'generation-goal', 'Natural language generation goal and target audience.'),
   ], [
-    param('prompt', 'Prompt', 'textarea', 'A slow-burn agentic RP character with rich resources and explicit constraints.'),
-    param('audience', 'Audience', 'text', 'private roleplay'),
+    param('goalPrompt', 'Goal Prompt', 'textarea', '校园恋爱，长期 RP，角色要有主动性和暧昧拉扯，但不要模板化。'),
+    param('targetAudience', 'Target Audience', 'text', 'private long-form roleplay'),
+    param('allowExpansion', 'Allow Agent Expansion', 'boolean', true),
   ], 'text-card'),
-  createDefinition('identity', 'Identity Card', ['身份', 'name', 'profile'], 'identity', 'core', 'Stores name, address forms, public identity, age band, occupation, tags, and relationship anchor.', [
-    slot('brief', 'Brief', 'brief', 'Identity must satisfy this brief.', true),
+  createDefinition('style-pressure', 'Style Pressure', ['风格', 'taste', 'tone'], 'Taste', 'core', 'Applies weighted taste, genre, mood, intensity, and pacing pressure to the agent.', [
+    slot('goal', 'Goal', 'generation-goal', 'Goal being shaped by this taste profile.', true),
   ], [
-    slot('identity', 'Identity', 'identity', 'Structured identity resource.'),
+    slot('style', 'Style', 'style-signal', 'Weighted style signal.'),
   ], [
-    param('name', 'Name', 'text', 'Chen Qianyu'),
-    param('tags', 'Tags', 'string-list', ['reserved', 'strategic', 'slow-burn']),
-  ], 'text-card'),
-  createDefinition('persona', 'Persona Engine', ['性格', 'persona', 'motivation'], 'persona', 'core', 'Models values, flaws, secrets, desire, refusal rules, and emotional inertia.', [
-    slot('identity', 'Identity', 'identity', 'Identity anchor.', true),
-    slot('brief', 'Brief', 'brief', 'Intent boundary.', true),
-  ], [
-    slot('persona', 'Persona', 'persona', 'Character psychology resource.'),
-  ], [
-    param('coreDrive', 'Core Drive', 'textarea', 'Protect control while testing trust.'),
-    param('contradiction', 'Contradiction', 'textarea', 'Craves closeness but punishes rushed intimacy.'),
-  ], 'text-card'),
-  createDefinition('world', 'World Bible', ['世界观', 'setting', 'lore'], 'world', 'asset', 'Defines era, factions, locations, rules, social pressure, and plot affordances.', [
-    slot('brief', 'Brief', 'brief', 'World should support the brief.', true),
-  ], [
-    slot('world', 'World', 'world', 'World and lore resource.'),
-  ], [
-    param('era', 'Era', 'select', 'modern', undefined, undefined, undefined, [
-      { label: 'Modern', value: 'modern' },
-      { label: 'Near Future', value: 'near-future' },
-      { label: 'Fantasy', value: 'fantasy' },
+    param('preset', 'Preset', 'select', 'campus-romance', undefined, undefined, undefined, [
+      { label: 'Campus Romance', value: 'campus-romance' },
+      { label: 'Dark Adult', value: 'dark-adult' },
+      { label: 'Urban Suspense', value: 'urban-suspense' },
+      { label: 'Fantasy Companion', value: 'fantasy-companion' },
     ]),
-    param('locations', 'Locations', 'string-list', ['private study', 'rainy balcony', 'auction house']),
+    param('intensity', 'Intensity', 'number', 0.68, 0, 1, 0.01),
+    param('stylePrompt', 'Style Prompt', 'textarea', '克制、暧昧、有张力，避免说明书式自我介绍。'),
+  ], 'rule'),
+  createDefinition('constraint', 'Hard Constraint', ['约束', 'boundary', 'must not'], 'Constraints', 'safety', 'Sets hard and soft boundaries that limit agent freedom during generation and repair.', [
+    slot('goal', 'Goal', 'generation-goal', 'Goal constrained by these boundaries.'),
+  ], [
+    slot('constraint', 'Constraint', 'hard-constraint', 'Constraint signal.'),
+  ], [
+    param('mustHave', 'Must Have', 'string-list', ['长期可聊', '角色主动推进关系']),
+    param('mustNot', 'Must Not', 'string-list', ['模板化人格', 'OOC 解释设定', '瞬间顺从']),
+    param('hardBoundary', 'Hard Boundary', 'boolean', true),
+  ], 'rule'),
+  createDefinition('source-material', 'Source Material', ['素材', 'reference', 'context'], 'Sources', 'asset', 'Provides optional source context, references, existing cards, images, or user preference notes.', [], [
+    slot('source', 'Source', 'source-context', 'Reference context available to the agent.'),
+  ], [
+    param('sourceKind', 'Source Kind', 'select', 'notes', undefined, undefined, undefined, [
+      { label: 'Notes', value: 'notes' },
+      { label: 'Existing Card', value: 'existing-card' },
+      { label: 'Image Reference', value: 'image-reference' },
+      { label: 'User Preference', value: 'user-preference' },
+    ]),
+    param('notes', 'Notes', 'textarea', ''),
+    param('groundingStrength', 'Grounding Strength', 'number', 0.5, 0, 1, 0.01),
   ], 'text-card'),
-  createDefinition('scene', 'Opening Scene', ['场景', 'state', 'opening'], 'scene', 'asset', 'Builds initial place, state variables, props, relationship state, and opening pressure.', [
-    slot('persona', 'Persona', 'persona', 'Persona informs scene tension.', true),
-    slot('world', 'World', 'world', 'World context.', true),
+  createDefinition('llm-tool', 'LLM Tool', ['模型', 'llm', 'reasoning'], 'Tools', 'agent', 'Selects the LLM capability available to the backend agent.', [], [
+    slot('model', 'Model', 'model-capability', 'LLM model capability.'),
   ], [
-    slot('scene', 'Scene', 'scene', 'Initial runtime scene state.'),
-  ], [
-    param('place', 'Place', 'text', 'a private study after midnight'),
-    param('objective', 'Objective', 'textarea', 'Make the user negotiate access instead of receiving it.'),
-  ], 'rule'),
-  createDefinition('dialogue', 'Dialogue Style', ['对话', 'voice text', 'examples'], 'dialogue', 'core', 'Defines first message, speech habits, address rules, example dialogues, and taboo phrasing.', [
-    slot('persona', 'Persona', 'persona', 'Persona voice.', true),
-    slot('scene', 'Scene', 'scene', 'Opening context.', true),
-  ], [
-    slot('dialogue', 'Dialogue', 'dialogue', 'Dialogue and first-message resource.'),
-  ], [
-    param('firstMessage', 'First Message', 'textarea', 'You are late. I dislike waiting, but I dislike easy apologies more.'),
-    param('temperature', 'Variation', 'number', 0.72, 0, 1, 0.01),
-  ], 'text-card'),
-  createDefinition('visual', 'Visual Spec', ['视觉', 'appearance', 'outfit'], 'visual', 'asset', 'Defines body, face, hair, clothes, palette, negative visual traits, and image prompt constraints.', [
-    slot('identity', 'Identity', 'identity', 'Identity visual anchor.', true),
-    slot('persona', 'Persona', 'persona', 'Persona should influence visual tone.', true),
-  ], [
-    slot('visual', 'Visual', 'visual', 'Visual specification.'),
-  ], [
-    param('palette', 'Palette', 'string-list', ['black jade', 'warm ivory', 'muted gold']),
-    param('negative', 'Negative Traits', 'string-list', ['childlike', 'generic smile', 'overexposed']),
-  ], 'image'),
-  createDefinition('image', 'Image Asset Set', ['头像', '立绘', 'image'], 'image', 'asset', 'Defines avatar, body image, expression sheet, outfit variants, and scene reference outputs.', [
-    slot('visual', 'Visual', 'visual', 'Visual prompt input.', true),
-  ], [
-    slot('imageAsset', 'Images', 'image-asset', 'Image asset references.'),
-  ], [
-    param('count', 'Asset Count', 'integer', 4, 1, 12, 1),
-    param('styleLock', 'Style Lock', 'boolean', true),
-  ], 'image'),
-  createDefinition('voice', 'Voice Profile', ['语音', 'tts', 'tone'], 'voice', 'asset', 'Defines TTS profile, tempo, timbre, sample lines, and emotional delivery constraints.', [
-    slot('dialogue', 'Dialogue', 'dialogue', 'Dialogue samples.', true),
-  ], [
-    slot('voice', 'Voice', 'voice', 'Voice/TTS resource.'),
-  ], [
-    param('timbre', 'Timbre', 'text', 'low, controlled, slightly amused'),
-    param('speed', 'Speed', 'number', 0.92, 0.5, 1.5, 0.01),
-  ], 'voice'),
-  createDefinition('memory', 'Memory Rules', ['记忆', 'summary', 'state'], 'memory', 'agent', 'Configures long-term memory, summary thresholds, relationship variables, and state update rules.', [
-    slot('persona', 'Persona', 'persona', 'Persona memory rules.', true),
-    slot('scene', 'Scene', 'scene', 'Runtime state shape.', true),
-  ], [
-    slot('memory', 'Memory', 'memory', 'Memory policy.'),
-  ], [
-    param('shortTermTurns', 'Short-Term Turns', 'integer', 8, 2, 24, 1),
-    param('summaryPolicy', 'Summary Policy', 'textarea', 'Preserve promises, leverage, emotional shifts, and unresolved debts.'),
-  ], 'rule'),
-  createDefinition('rp-rule', 'RP Constraints', ['规则', 'boundary', 'policy'], 'rp-rule', 'safety', 'Defines roleplay boundaries, pacing rules, refusal strategy, continuity locks, and player agency limits.', [
-    slot('brief', 'Brief', 'brief', 'User boundaries.', true),
-    slot('persona', 'Persona', 'persona', 'Character behavior constraints.', true),
-  ], [
-    slot('rules', 'Rules', 'rp-rule', 'RP rule set.'),
-  ], [
-    param('slowBurn', 'Slow Burn', 'boolean', true),
-    param('forbiddenMoves', 'Forbidden Moves', 'string-list', ['instant compliance', 'breaking character', 'plot teleport']),
-  ], 'rule'),
-  createDefinition('critic', 'Consistency Critic', ['校验', 'critic', 'validation'], 'critic', 'safety', 'Checks identity, persona, world, scene, visual, dialogue, memory, and safety consistency.', [
-    slot('identity', 'Identity', 'identity', 'Identity input.', true),
-    slot('persona', 'Persona', 'persona', 'Persona input.', true),
-    slot('world', 'World', 'world', 'World input.'),
-    slot('dialogue', 'Dialogue', 'dialogue', 'Dialogue input.'),
-    slot('rules', 'Rules', 'rp-rule', 'Rule input.'),
-  ], [
-    slot('validation', 'Validation', 'validation-report', 'Validation report.'),
-  ], [
-    param('strictness', 'Strictness', 'select', 'high', undefined, undefined, undefined, [
+    param('provider', 'Provider', 'select', 'default', undefined, undefined, undefined, [
+      { label: 'Default', value: 'default' },
+      { label: 'OpenAI Compatible', value: 'openai-compatible' },
+      { label: 'Local', value: 'local' },
+    ]),
+    param('model', 'Model', 'text', ''),
+    param('temperature', 'Temperature', 'number', 0.72, 0, 2, 0.01),
+    param('reasoningEffort', 'Reasoning Effort', 'select', 'medium', undefined, undefined, undefined, [
+      { label: 'Low', value: 'low' },
       { label: 'Medium', value: 'medium' },
       { label: 'High', value: 'high' },
-      { label: 'Severe', value: 'severe' },
     ]),
-  ], 'validation'),
-  createDefinition('agent-policy', 'Agent Policy', ['agent', '自主', 'plan'], 'agent-policy', 'agent', 'Constrains backend agent autonomy, revision budget, model selection, and handoff rules.', [
-    slot('brief', 'Brief', 'brief', 'Primary goal.', true),
-    slot('validation', 'Validation', 'validation-report', 'Quality gate.'),
-  ], [
-    slot('policy', 'Policy', 'agent-policy', 'Agent execution policy.'),
-  ], [
-    param('revisionBudget', 'Revision Budget', 'integer', 4, 1, 12, 1),
-    param('allowAutonomy', 'Allow Autonomy', 'boolean', true),
   ], 'rule'),
-  createDefinition('export', 'Character Package', ['导出', 'manifest', 'package'], 'export', 'core', 'Assembles final manifest, resource list, runtime context, missing assets, and chat test entry.', [
-    slot('identity', 'Identity', 'identity', 'Identity resource.', true),
-    slot('persona', 'Persona', 'persona', 'Persona resource.', true),
-    slot('world', 'World', 'world', 'World resource.'),
-    slot('scene', 'Scene', 'scene', 'Scene resource.', true),
-    slot('dialogue', 'Dialogue', 'dialogue', 'Dialogue resource.', true),
-    slot('imageAsset', 'Images', 'image-asset'),
-    slot('voice', 'Voice', 'voice'),
-    slot('memory', 'Memory', 'memory'),
-    slot('rules', 'Rules', 'rp-rule', 'Runtime rules.', true),
-    slot('policy', 'Policy', 'agent-policy'),
+  createDefinition('image-tool', 'Image Tool', ['生图', 'image api', 'visual'], 'Tools', 'asset', 'Selects image generation or editing capability for avatar, body art, expressions, and scene references.', [
+    slot('style', 'Style', 'style-signal', 'Style pressure for generated image assets.'),
   ], [
-    slot('pack', 'Package', 'character-pack', 'Exportable character pack.'),
+    slot('image', 'Image', 'image-capability', 'Image generation capability.'),
+  ], [
+    param('provider', 'Provider', 'select', 'manual', undefined, undefined, undefined, [
+      { label: 'Manual', value: 'manual' },
+      { label: 'ComfyUI Workflow', value: 'comfyui-workflow' },
+      { label: 'Hosted API', value: 'hosted-api' },
+    ]),
+    param('model', 'Model / Workflow', 'text', ''),
+    param('assetCount', 'Asset Count', 'integer', 4, 1, 16, 1),
+    param('referenceStrength', 'Reference Strength', 'number', 0.55, 0, 1, 0.01),
+  ], 'image'),
+  createDefinition('retrieval-tool', 'Retrieval Tool', ['检索', 'search', 'knowledge'], 'Tools', 'agent', 'Allows the agent to read local context, vector sources, or web summaries when enabled.', [
+    slot('source', 'Source', 'source-context', 'Source context that can be indexed.'),
+  ], [
+    slot('retrieval', 'Retrieval', 'retrieval-capability', 'Retrieval capability.'),
+  ], [
+    param('enabled', 'Enabled', 'boolean', false),
+    param('mode', 'Mode', 'select', 'local-only', undefined, undefined, undefined, [
+      { label: 'Local Only', value: 'local-only' },
+      { label: 'Vector Index', value: 'vector-index' },
+      { label: 'Web Summary', value: 'web-summary' },
+    ]),
+    param('citationRequired', 'Citation Required', 'boolean', true),
+  ], 'rule'),
+  createDefinition('voice-tool', 'Voice Tool', ['语音', 'tts', 'voice'], 'Tools', 'asset', 'Selects voice or TTS capability for sample lines and voice profile assets.', [
+    slot('style', 'Style', 'style-signal', 'Tone and delivery style.'),
+  ], [
+    slot('voice', 'Voice', 'voice-capability', 'Voice generation capability.'),
+  ], [
+    param('provider', 'Provider', 'text', ''),
+    param('voice', 'Voice', 'text', ''),
+    param('speed', 'Speed', 'number', 1, 0.5, 1.5, 0.01),
+  ], 'voice'),
+  createDefinition('agent-policy', 'Agent Policy', ['agent', '自主', 'policy'], 'Agent', 'agent', 'Defines how much freedom the backend agent has to expand, revise, ask, and repair.', [
+    slot('goal', 'Goal', 'generation-goal', 'Primary target.', true),
+    slot('constraint', 'Constraint', 'hard-constraint', 'Hard autonomy limits.'),
+    slot('source', 'Source', 'source-context', 'Grounding source context.'),
+    slot('model', 'Model', 'model-capability', 'LLM capability used by the agent.', true),
+  ], [
+    slot('policy', 'Policy', 'agent-policy', 'Agent autonomy policy.'),
+  ], [
+    param('autonomyLevel', 'Autonomy Level', 'select', 'high', undefined, undefined, undefined, [
+      { label: 'Low', value: 'low' },
+      { label: 'Medium', value: 'medium' },
+      { label: 'High', value: 'high' },
+    ]),
+    param('revisionBudget', 'Revision Budget', 'integer', 4, 1, 12, 1),
+    param('askUserThreshold', 'Ask User Threshold', 'select', 'blocked-only', undefined, undefined, undefined, [
+      { label: 'Never During Run', value: 'never' },
+      { label: 'Blocked Only', value: 'blocked-only' },
+      { label: 'Low Confidence', value: 'low-confidence' },
+    ]),
+  ], 'rule'),
+  createDefinition('generation-strategy', 'Generation Strategy', ['策略', 'workflow', 'plan'], 'Strategy', 'agent', 'Controls how the agent branches, compares candidates, orders phases, and stops.', [
+    slot('goal', 'Goal', 'generation-goal', 'Goal to plan around.', true),
+    slot('style', 'Style', 'style-signal', 'Style pressure.'),
+    slot('policy', 'Policy', 'agent-policy', 'Agent autonomy policy.', true),
+  ], [
+    slot('strategy', 'Strategy', 'strategy-policy', 'Generation strategy.'),
+  ], [
+    param('mode', 'Mode', 'select', 'branch-and-refine', undefined, undefined, undefined, [
+      { label: 'Single Pass', value: 'single-pass' },
+      { label: 'Branch and Refine', value: 'branch-and-refine' },
+      { label: 'Explore then Converge', value: 'explore-then-converge' },
+    ]),
+    param('branchCount', 'Branch Count', 'integer', 3, 1, 8, 1),
+    param('priorityAssets', 'Priority Assets', 'multi-select', ['role-card', 'opening', 'image-pack'], undefined, undefined, undefined, [
+      { label: 'Role Card', value: 'role-card' },
+      { label: 'Opening', value: 'opening' },
+      { label: 'Image Pack', value: 'image-pack' },
+      { label: 'Chat Test', value: 'chat-test' },
+    ]),
+  ], 'rule'),
+  createDefinition('critique-loop', 'Critique Loop', ['自评', 'repair', 'critic'], 'Evaluation', 'agent', 'Feeds critique and repair instructions back into candidate generation.', [
+    slot('strategy', 'Strategy', 'strategy-policy', 'Strategy to refine.', true),
+  ], [
+    slot('critique', 'Critique', 'critique-policy', 'Critique and repair policy.'),
+  ], [
+    param('iterations', 'Iterations', 'integer', 2, 0, 8, 1),
+    param('dimensions', 'Dimensions', 'string-list', ['goal match', 'long-term RP', 'non-template', 'consistency']),
+    param('autoRepair', 'Auto Repair', 'boolean', true),
+  ], 'validation'),
+  createDefinition('quality-gate', 'Quality Gate', ['质量', 'validation', 'acceptance'], 'Evaluation', 'safety', 'Defines acceptance criteria that can block export or route candidates back for repair.', [
+    slot('goal', 'Goal', 'generation-goal', 'Original target.', true),
+    slot('candidate', 'Candidate', 'candidate-pack', 'Candidate pack to evaluate.', true),
+    slot('critique', 'Critique', 'critique-policy', 'Critique policy.'),
+  ], [
+    slot('report', 'Report', 'validation-report', 'Quality gate report.'),
+  ], [
+    param('minimumScore', 'Minimum Score', 'number', 0.82, 0, 1, 0.01),
+    param('blockExport', 'Block Export', 'boolean', true),
+    param('requiredChecks', 'Required Checks', 'string-list', ['goal match', 'style intensity', 'long-term RP', 'consistency']),
+  ], 'validation'),
+  createDefinition('asset-builder', 'Asset Builder', ['资源', 'outputs', 'package target'], 'Outputs', 'asset', 'Declares which final resources the agent should produce without forcing the user to write their contents.', [
+    slot('strategy', 'Strategy', 'strategy-policy', 'Generation strategy.', true),
+    slot('image', 'Image', 'image-capability', 'Optional image capability.'),
+    slot('voice', 'Voice', 'voice-capability', 'Optional voice capability.'),
+  ], [
+    slot('assets', 'Assets', 'asset-target', 'Requested resource targets.'),
+    slot('candidate', 'Candidate', 'candidate-pack', 'Candidate pack produced by the mock lifecycle.'),
+  ], [
+    param('targets', 'Targets', 'multi-select', ['role-card', 'opening', 'image-pack', 'generation-report'], undefined, undefined, undefined, [
+      { label: 'Role Card', value: 'role-card' },
+      { label: 'Opening', value: 'opening' },
+      { label: 'Image Pack', value: 'image-pack' },
+      { label: 'Voice Sample', value: 'voice-sample' },
+      { label: 'Generation Report', value: 'generation-report' },
+    ]),
+    param('includeAlternates', 'Include Alternates', 'boolean', true),
+  ], 'package'),
+  createDefinition('output-adapter', 'Output Adapter', ['导出', 'adapter', 'format'], 'Outputs', 'core', 'Maps an accepted candidate pack to a target format without changing generation goals.', [
+    slot('candidate', 'Candidate', 'candidate-pack', 'Accepted candidate pack.', true),
+    slot('report', 'Report', 'validation-report', 'Quality gate report.', true),
+  ], [
+    slot('export', 'Export', 'export-target', 'Export target.'),
   ], [
     param('format', 'Format', 'select', 'noema-role-chat', undefined, undefined, undefined, [
       { label: 'Noema Role Chat', value: 'noema-role-chat' },
+      { label: 'SillyTavern', value: 'sillytavern' },
       { label: 'Portable JSON', value: 'portable-json' },
+      { label: 'Markdown Dossier', value: 'markdown-dossier' },
     ]),
+    param('includeAssets', 'Include Assets', 'boolean', true),
   ], 'package'),
+  createDefinition('chat-test', 'Chat Test', ['试聊', 'chat', 'test'], 'Evaluation', 'agent', 'Runs a mock first-turn and durability check against the exported candidate.', [
+    slot('export', 'Export', 'export-target', 'Export target to test.', true),
+  ], [
+    slot('result', 'Result', 'chat-test-result', 'Chat test result and repair suggestions.'),
+  ], [
+    param('turns', 'Turns', 'integer', 3, 1, 12, 1),
+    param('stressPrompt', 'Stress Prompt', 'textarea', '测试角色是否保持主动性、边界和长期可聊性。'),
+  ], 'validation'),
 ]
 
 const DEFAULT_NODE_PLACEMENT: Array<{ id: string; type: string; title: string; x: number; y: number; status?: CharacterResourceNodeStatus }> = [
-  { id: 'brief-input', type: 'brief', title: 'Brief', x: 88, y: 96, status: 'dirty' },
-  { id: 'identity-card', type: 'identity', title: 'Identity Card', x: 402, y: 48 },
-  { id: 'persona-engine', type: 'persona', title: 'Persona Engine', x: 726, y: 72 },
-  { id: 'world-bible', type: 'world', title: 'World Bible', x: 402, y: 276 },
-  { id: 'opening-scene', type: 'scene', title: 'Opening Scene', x: 726, y: 320 },
-  { id: 'dialogue-style', type: 'dialogue', title: 'Dialogue Style', x: 1052, y: 180 },
-  { id: 'visual-spec', type: 'visual', title: 'Visual Spec', x: 724, y: 546 },
-  { id: 'image-assets', type: 'image', title: 'Image Asset Set', x: 1052, y: 528, status: 'queued' },
-  { id: 'voice-profile', type: 'voice', title: 'Voice Profile', x: 1378, y: 116 },
-  { id: 'memory-rules', type: 'memory', title: 'Memory Rules', x: 1378, y: 340 },
-  { id: 'rp-constraints', type: 'rp-rule', title: 'RP Constraints', x: 1052, y: 760 },
-  { id: 'consistency-critic', type: 'critic', title: 'Consistency Critic', x: 1706, y: 278, status: 'stale' },
-  { id: 'agent-policy', type: 'agent-policy', title: 'Agent Policy', x: 1706, y: 548 },
-  { id: 'character-package', type: 'export', title: 'Character Package', x: 2038, y: 392 },
+  { id: 'generation-goal', type: 'goal', title: 'Generation Goal', x: 88, y: 96, status: 'dirty' },
+  { id: 'style-pressure', type: 'style-pressure', title: 'Style Pressure', x: 420, y: 48 },
+  { id: 'hard-constraints', type: 'constraint', title: 'Hard Constraints', x: 420, y: 292 },
+  { id: 'source-material', type: 'source-material', title: 'Source Material', x: 88, y: 360 },
+  { id: 'llm-capability', type: 'llm-tool', title: 'LLM Tool', x: 760, y: 54 },
+  { id: 'image-capability', type: 'image-tool', title: 'Image Tool', x: 760, y: 300, status: 'queued' },
+  { id: 'agent-policy', type: 'agent-policy', title: 'Agent Policy', x: 1096, y: 104 },
+  { id: 'generation-strategy', type: 'generation-strategy', title: 'Generation Strategy', x: 1434, y: 104 },
+  { id: 'asset-targets', type: 'asset-builder', title: 'Asset Builder', x: 1772, y: 132 },
+  { id: 'critique-loop', type: 'critique-loop', title: 'Critique Loop', x: 1434, y: 404 },
+  { id: 'quality-gate', type: 'quality-gate', title: 'Quality Gate', x: 2110, y: 230, status: 'stale' },
+  { id: 'output-adapter', type: 'output-adapter', title: 'Output Adapter', x: 2448, y: 230 },
+  { id: 'chat-test', type: 'chat-test', title: 'Chat Test', x: 2786, y: 230 },
 ]
 
 const DEFAULT_LINKS: CharacterResourceLink[] = [
-  link('brief-input', 'brief', 'identity-card', 'brief', 'requires'),
-  link('brief-input', 'brief', 'persona-engine', 'brief', 'requires'),
-  link('brief-input', 'brief', 'world-bible', 'brief', 'suggests'),
-  link('identity-card', 'identity', 'persona-engine', 'identity', 'requires'),
-  link('persona-engine', 'persona', 'opening-scene', 'persona', 'requires'),
-  link('world-bible', 'world', 'opening-scene', 'world', 'requires'),
-  link('persona-engine', 'persona', 'dialogue-style', 'persona', 'requires'),
-  link('opening-scene', 'scene', 'dialogue-style', 'scene', 'requires'),
-  link('identity-card', 'identity', 'visual-spec', 'identity', 'references'),
-  link('persona-engine', 'persona', 'visual-spec', 'persona', 'constrains'),
-  link('visual-spec', 'visual', 'image-assets', 'visual', 'requires'),
-  link('dialogue-style', 'dialogue', 'voice-profile', 'dialogue', 'references'),
-  link('persona-engine', 'persona', 'memory-rules', 'persona', 'requires'),
-  link('opening-scene', 'scene', 'memory-rules', 'scene', 'requires'),
-  link('brief-input', 'brief', 'rp-constraints', 'brief', 'constrains'),
-  link('persona-engine', 'persona', 'rp-constraints', 'persona', 'constrains'),
-  link('identity-card', 'identity', 'consistency-critic', 'identity', 'validates'),
-  link('persona-engine', 'persona', 'consistency-critic', 'persona', 'validates'),
-  link('world-bible', 'world', 'consistency-critic', 'world', 'validates'),
-  link('dialogue-style', 'dialogue', 'consistency-critic', 'dialogue', 'validates'),
-  link('rp-constraints', 'rules', 'consistency-critic', 'rules', 'validates'),
-  link('brief-input', 'brief', 'agent-policy', 'brief', 'requires'),
-  link('consistency-critic', 'validation', 'agent-policy', 'validation', 'requires'),
-  link('identity-card', 'identity', 'character-package', 'identity', 'exports'),
-  link('persona-engine', 'persona', 'character-package', 'persona', 'exports'),
-  link('world-bible', 'world', 'character-package', 'world', 'exports'),
-  link('opening-scene', 'scene', 'character-package', 'scene', 'exports'),
-  link('dialogue-style', 'dialogue', 'character-package', 'dialogue', 'exports'),
-  link('image-assets', 'imageAsset', 'character-package', 'imageAsset', 'exports'),
-  link('voice-profile', 'voice', 'character-package', 'voice', 'exports'),
-  link('memory-rules', 'memory', 'character-package', 'memory', 'exports'),
-  link('rp-constraints', 'rules', 'character-package', 'rules', 'exports'),
-  link('agent-policy', 'policy', 'character-package', 'policy', 'exports'),
+  link('generation-goal', 'goal', 'style-pressure', 'goal', 'guides'),
+  link('generation-goal', 'goal', 'hard-constraints', 'goal', 'constrains'),
+  link('generation-goal', 'goal', 'agent-policy', 'goal', 'guides'),
+  link('style-pressure', 'style', 'generation-strategy', 'style', 'weights'),
+  link('hard-constraints', 'constraint', 'agent-policy', 'constraint', 'constrains'),
+  link('source-material', 'source', 'agent-policy', 'source', 'grounds'),
+  link('llm-capability', 'model', 'agent-policy', 'model', 'enables'),
+  link('style-pressure', 'style', 'image-capability', 'style', 'guides'),
+  link('image-capability', 'image', 'asset-targets', 'image', 'enables'),
+  link('agent-policy', 'policy', 'generation-strategy', 'policy', 'guides'),
+  link('generation-goal', 'goal', 'generation-strategy', 'goal', 'guides'),
+  link('generation-strategy', 'strategy', 'asset-targets', 'strategy', 'routes'),
+  link('generation-strategy', 'strategy', 'critique-loop', 'strategy', 'routes'),
+  link('critique-loop', 'critique', 'quality-gate', 'critique', 'evaluates'),
+  link('asset-targets', 'candidate', 'quality-gate', 'candidate', 'evaluates'),
+  link('quality-gate', 'report', 'generation-strategy', 'strategy', 'refines'),
+  link('asset-targets', 'candidate', 'output-adapter', 'candidate', 'exports'),
+  link('quality-gate', 'report', 'output-adapter', 'report', 'constrains'),
+  link('output-adapter', 'export', 'chat-test', 'export', 'routes'),
 ]
 
 const definitionFuse = new Fuse(RESOURCE_NODE_DEFINITIONS, {
@@ -986,9 +1028,9 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
         }
       }),
     groups: [
-      { id: 'core-character', title: ui(options, '角色核心', 'Core Character'), nodeIds: ['brief-input', 'identity-card', 'persona-engine', 'dialogue-style'], color: 'rgba(82, 168, 255, 0.16)' },
-      { id: 'asset-pack', title: ui(options, '资源包', 'Resource Pack'), nodeIds: ['visual-spec', 'image-assets', 'voice-profile'], color: 'rgba(219, 189, 130, 0.16)' },
-      { id: 'agent-boundary', title: ui(options, 'Agent 边界', 'Agent Boundary'), nodeIds: ['memory-rules', 'rp-constraints', 'consistency-critic', 'agent-policy'], color: 'rgba(162, 202, 188, 0.16)' },
+      { id: 'intent-control', title: ui(options, '目标与口味', 'Goal and Taste'), nodeIds: ['generation-goal', 'style-pressure', 'hard-constraints', 'source-material'], color: 'rgba(82, 168, 255, 0.16)' },
+      { id: 'tool-policy', title: ui(options, '工具与策略', 'Tools and Strategy'), nodeIds: ['llm-capability', 'image-capability', 'agent-policy', 'generation-strategy'], color: 'rgba(219, 189, 130, 0.16)' },
+      { id: 'evaluation-output', title: ui(options, '评估与输出', 'Evaluation and Output'), nodeIds: ['asset-targets', 'critique-loop', 'quality-gate', 'output-adapter', 'chat-test'], color: 'rgba(162, 202, 188, 0.16)' },
     ],
     tabs: [
       { id: 'workflow', title: 'Draft 01.resourcegraph', kind: 'resource-graph' },
@@ -996,7 +1038,7 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
       { id: 'run-draft', title: 'Run Draft', kind: 'run-draft' },
     ],
     viewport: { x: viewState.panX ?? 0, y: viewState.panY ?? 0, zoom: viewState.zoom ?? 0.84 },
-    selection: { nodeIds: viewState.selectedNodeIds?.length ? viewState.selectedNodeIds : [options.selectedNodeId || 'brief-input'], linkIds: viewState.selectedLinkId ? [viewState.selectedLinkId] : [] },
+    selection: { nodeIds: viewState.selectedNodeIds?.length ? viewState.selectedNodeIds : [options.selectedNodeId || 'generation-goal'], linkIds: viewState.selectedLinkId ? [viewState.selectedLinkId] : [] },
     panels: {
       leftWidth: options.sidebarCollapsed ? 0 : 246,
       rightWidth: options.inspectorCollapsed ? 0 : 252,
@@ -1182,7 +1224,7 @@ function renderResourceCanvas(graph: CharacterResourceGraph, yjsSnapshot: string
       ${renderCanvasControls(graph, options)}
       <div class="chat-resource-tabs">
         ${renderSidebarToggle(options)}
-        ${graph.tabs.map((tab) => `<button class="${tab.id === activeTab ? 'active' : ''}" type="button" data-chat-workflow-tab="${options.escapeHtml(tab.id === 'package-preview' ? 'character-pack' : tab.id)}">${options.escapeHtml(resourceGraphTabTitle(tab, options))}</button>`).join('')}
+        ${graph.tabs.map((tab) => `<button class="${tab.id === activeTab ? 'active' : ''}" type="button" data-chat-workflow-tab="${options.escapeHtml(tab.id)}">${options.escapeHtml(resourceGraphTabTitle(tab, options))}</button>`).join('')}
       </div>
       ${activeTab === 'package-preview' ? renderPackagePreview(graph, options) : ''}
       ${activeTab === 'run-draft' ? renderRunDraft(graph, options) : ''}
@@ -1204,7 +1246,7 @@ function renderResourceCanvas(graph: CharacterResourceGraph, yjsSnapshot: string
 }
 
 function renderPackagePreview(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): string {
-  const requiredTypes = ['identity', 'persona', 'scene', 'dialogue', 'rp-rule']
+  const requiredTypes = ['candidate', 'report', 'export']
   const outputTypes = new Set(graph.links.map((linkItem) => linkItem.targetSlotId))
   const missing = requiredTypes.filter((type) => !outputTypes.has(type))
   const manifest = {
@@ -1244,7 +1286,7 @@ function renderPackagePreview(graph: CharacterResourceGraph, options: CharacterW
 function renderValidationPanel(graph: CharacterResourceGraph, missing: string[], options: CharacterWorkflowPageOptions): string {
   const invalidLinks = graph.links.filter((linkItem) => linkItem.status !== 'valid')
   const warnings = [
-    ...missing.map((type) => ui(options, `缺少必需资源包输入：${type}`, `Missing required package input: ${type}`)),
+    ...missing.map((type) => ui(options, `缺少候选包预览输入：${type}`, `Missing candidate preview input: ${type}`)),
     ...invalidLinks.map((linkItem) => ui(options, `无效连线：${linkItem.sourceNodeId} -> ${linkItem.targetNodeId}`, `Invalid link: ${linkItem.sourceNodeId} -> ${linkItem.targetNodeId}`)),
   ]
   return `
@@ -1255,7 +1297,7 @@ function renderValidationPanel(graph: CharacterResourceGraph, missing: string[],
       </header>
       ${warnings.length
         ? warnings.map((warning) => `<p class="error">${options.escapeHtml(warning)}</p>`).join('')
-        : `<div class="chat-resource-panel-state empty"><strong>${options.escapeHtml(ui(options, '没有阻塞问题', 'No blocking issues'))}</strong><span>${options.escapeHtml(ui(options, '当前图快照中已包含所有必需资源连线。', 'All required resource links are present in the current graph snapshot.'))}</span></div>`}
+        : `<div class="chat-resource-panel-state empty"><strong>${options.escapeHtml(ui(options, '没有阻塞问题', 'No blocking issues'))}</strong><span>${options.escapeHtml(ui(options, '当前图快照中已包含候选包、质量报告和输出目标。', 'The current graph snapshot includes candidate, quality report, and export target links.'))}</span></div>`}
     </section>
   `
 }
@@ -1283,16 +1325,16 @@ function renderRunDraft(graph: CharacterResourceGraph, options: CharacterWorkflo
           <article>
             <b>${options.escapeHtml(artifact.title ?? artifact.type)}</b>
             <span>${options.escapeHtml(artifact.type)} / ${options.escapeHtml(artifact.sourceNodeId)}</span>
-            <p>${options.escapeHtml(artifact.summary ?? 'Mock artifact produced by the frontend lifecycle.')}</p>
+            <p>${options.escapeHtml(artifact.summary ?? 'Mock artifact produced by the agent trace lifecycle.')}</p>
           </article>
-        `).join('') || `<div class="chat-resource-panel-state empty"><strong>${options.escapeHtml(ui(options, '还没有产物', 'No artifacts yet'))}</strong><span>${options.escapeHtml(ui(options, '运行资源图前端生命周期后会填充这个草稿。', 'Run the resource graph frontend lifecycle to populate this draft.'))}</span></div>`}
+        `).join('') || `<div class="chat-resource-panel-state empty"><strong>${options.escapeHtml(ui(options, '还没有产物', 'No artifacts yet'))}</strong><span>${options.escapeHtml(ui(options, '运行 Agent mock trace 后会填充这个草稿。', 'Run the agent mock trace to populate this draft.'))}</span></div>`}
       </section>
       <section class="chat-resource-validation-panel">
         <header>
           <strong>${options.escapeHtml(ui(options, 'Agent 边界', 'Agent Boundary'))}</strong>
           <span>${options.escapeHtml(ui(options, `${graph.nodes.length} 个节点`, `${graph.nodes.length} nodes`))}</span>
         </header>
-        <p>${options.escapeHtml(ui(options, '这里不会调用后端 agent。这个草稿只映射排队、运行、完成、失败等前端生命周期状态。', 'Backend agents are not called here. This draft only mirrors queued/running/done/failed frontend lifecycle state.'))}</p>
+        <p>${options.escapeHtml(ui(options, '这里不会调用真实后端 Agent。这个草稿只映射规划、工具选择、候选生成、评估、修复和导出的前端 mock trace。', 'Real backend agents are not called here. This draft mirrors planning, tool selection, candidate generation, evaluation, repair, and export as a frontend mock trace.'))}</p>
       </section>
     </div>
   `
@@ -1642,7 +1684,7 @@ function validateInspectorParameter(parameterItem: CharacterResourceParameterDef
 }
 
 function renderBottomToolbar(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): string {
-  const packageNode = graph.nodes.find((node) => node.type === 'export')
+  const packageNode = graph.nodes.find((node) => node.type === 'output-adapter')
   const validationIssues = graph.links.filter((linkItem) => linkItem.status !== 'valid').length
   return `
     <footer class="chat-resource-bottom-toolbar">
@@ -1651,8 +1693,8 @@ function renderBottomToolbar(graph: CharacterResourceGraph, options: CharacterWo
         <span>${options.escapeHtml(ui(options, `${graph.nodes.length} 个节点 / ${graph.links.length} 条连线 / ${validationIssues} 个问题`, `${graph.nodes.length} nodes / ${graph.links.length} links / ${validationIssues} issues`))}</span>
       </div>
       <button type="button" data-chat-workflow-action="save-graph"><i icon-name="save" aria-hidden="true"></i><span>${options.escapeHtml(ui(options, '保存', 'Save'))}</span></button>
-      <button type="button" data-chat-workflow-tab="character-pack" ${packageNode ? `data-chat-workflow-node-select="${options.escapeHtml(packageNode.id)}"` : ''}><i icon-name="package" aria-hidden="true"></i><span>${options.escapeHtml(ui(options, '预览', 'Preview'))}</span></button>
-      <button type="button" data-chat-workflow-node-select="consistency-critic">${options.escapeHtml(ui(options, '校验', 'Validate'))}</button>
+      <button type="button" data-chat-workflow-tab="package-preview" ${packageNode ? `data-chat-workflow-node-select="${options.escapeHtml(packageNode.id)}"` : ''}><i icon-name="package" aria-hidden="true"></i><span>${options.escapeHtml(ui(options, '预览', 'Preview'))}</span></button>
+      <button type="button" data-chat-workflow-node-select="quality-gate">${options.escapeHtml(ui(options, '校验', 'Validate'))}</button>
       <button type="button" data-chat-workflow-action="chat-test"><i icon-name="message-circle" aria-hidden="true"></i><span>${options.escapeHtml(ui(options, '聊天测试', 'Chat Test'))}</span></button>
       <button type="button" data-chat-workflow-action="export"><i icon-name="download" aria-hidden="true"></i><span>${options.escapeHtml(ui(options, '导出', 'Export'))}</span></button>
     </footer>
@@ -1829,9 +1871,6 @@ function getSlotOffset(node: CharacterResourceNode, index: number, side: 'input'
 }
 
 function normalizeActiveTab(activeTabId: string): string {
-  if (activeTabId === 'character-pack') {
-    return 'package-preview'
-  }
   if (activeTabId.startsWith('run-') || activeTabId.startsWith('resource-run-')) {
     return 'run-draft'
   }
@@ -1846,10 +1885,10 @@ function createMockOutputSummary(definition: CharacterResourceNodeDefinition, no
     return 'Mock voice profile includes timbre, speed, and sample-line constraints for later TTS generation.'
   }
   if (definition.previewType === 'validation') {
-    return 'Mock validation checks required slots, incompatible links, missing outputs, and package completeness.'
+    return 'Mock quality gate checks goal match, style intensity, long-term RP durability, consistency, and export readiness.'
   }
   if (definition.previewType === 'package') {
-    return 'Mock package manifest combines character card, resources, runtime state, validation, and chat-test entry.'
+    return 'Mock candidate package preview combines agent plan, requested assets, quality gate report, output adapter, and chat-test entry.'
   }
   return `${definition.displayName} is configured by ${Object.keys(node.config).length} parameter fields and participates in the resource graph.`
 }

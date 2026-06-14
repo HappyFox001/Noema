@@ -1,7 +1,17 @@
 /**
  * Defines serializable state for the character resource graph workbench.
  */
-export type SerializedCharacterResourceLinkKind = 'requires' | 'constrains' | 'references' | 'validates' | 'exports' | 'suggests'
+export type SerializedCharacterResourceLinkKind =
+  | 'guides'
+  | 'constrains'
+  | 'provides'
+  | 'enables'
+  | 'grounds'
+  | 'weights'
+  | 'routes'
+  | 'evaluates'
+  | 'refines'
+  | 'exports'
 
 export interface SerializedCharacterResourceLink {
   id: string
@@ -48,7 +58,7 @@ export interface CharacterResourceViewState {
 }
 
 export interface SerializedCharacterResourceGraph {
-  schemaVersion: 1
+  schemaVersion: 2
   graphId: string
   activeTabId: string
   selectedNodeId: string
@@ -60,21 +70,21 @@ export interface SerializedCharacterResourceGraph {
 
 export function serializeCharacterResourceGraph(input: Omit<SerializedCharacterResourceGraph, 'schemaVersion'>): string {
   return JSON.stringify({
-    schemaVersion: 1,
+    schemaVersion: 2,
     ...input,
   } satisfies SerializedCharacterResourceGraph)
 }
 
 export function deserializeCharacterResourceGraph(serialized: string): SerializedCharacterResourceGraph {
   const parsed = JSON.parse(serialized) as Partial<SerializedCharacterResourceGraph>
-  if (parsed.schemaVersion !== 1 || !parsed.graphId) {
+  if (parsed.schemaVersion !== 2 || !parsed.graphId) {
     throw new Error('Unsupported character resource graph snapshot.')
   }
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     graphId: parsed.graphId,
     activeTabId: parsed.activeTabId ?? 'workflow',
-    selectedNodeId: parsed.selectedNodeId ?? 'brief-input',
+    selectedNodeId: parsed.selectedNodeId ?? 'generation-goal',
     viewState: parsed.viewState ?? {},
     configOverrides: parsed.configOverrides ?? {},
     positionOverrides: parsed.positionOverrides ?? {},

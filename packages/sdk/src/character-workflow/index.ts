@@ -1,29 +1,52 @@
 /**
- * Defines the character card workflow graph, run session, and artifact contracts.
+ * Defines the agentic RP resource graph, run session, and artifact contracts.
  */
 export type CharacterWorkflowLanguage = 'zh-CN' | 'en-US'
 
 export type CharacterNodeType =
-  | 'brief-input'
-  | 'reference-input'
-  | 'concept-generator'
-  | 'persona-generator'
-  | 'dialogue-generator'
-  | 'game-profile-generator'
-  | 'visual-spec-generator'
-  | 'image-prompt-composer'
-  | 'portrait-generator'
-  | 'expression-pack-generator'
-  | 'outfit-generator'
-  | 'scene-reference-generator'
-  | 'schema-validator'
-  | 'consistency-critic'
-  | 'safety-rights-check'
-  | 'character-pack-exporter'
+  | 'goal'
+  | 'style-pressure'
+  | 'constraint'
+  | 'source-material'
+  | 'llm-tool'
+  | 'image-tool'
+  | 'retrieval-tool'
+  | 'voice-tool'
+  | 'agent-policy'
+  | 'generation-strategy'
+  | 'critique-loop'
+  | 'quality-gate'
+  | 'asset-builder'
+  | 'output-adapter'
+  | 'chat-test'
 
 export type CharacterNodeStatus = 'idle' | 'queued' | 'running' | 'done' | 'failed' | 'skipped' | 'stale'
-
 export type WorkflowRunStatus = 'idle' | 'running' | 'paused' | 'done' | 'failed' | 'canceled'
+
+export type CharacterWorkflowNodeCategory =
+  | 'goal'
+  | 'taste'
+  | 'constraints'
+  | 'sources'
+  | 'tools'
+  | 'agent'
+  | 'strategy'
+  | 'evaluation'
+  | 'outputs'
+
+export type CharacterWorkflowExecutorKind = 'manual' | 'agent' | 'llm' | 'image' | 'retrieval' | 'voice' | 'deterministic'
+
+export type CharacterWorkflowLinkKind =
+  | 'guides'
+  | 'constrains'
+  | 'provides'
+  | 'enables'
+  | 'grounds'
+  | 'weights'
+  | 'routes'
+  | 'evaluates'
+  | 'refines'
+  | 'exports'
 
 export interface CharacterWorkflow {
   id: string
@@ -37,11 +60,11 @@ export interface CharacterWorkflow {
 }
 
 export interface CharacterWorkflowDefaults {
+  language: CharacterWorkflowLanguage
   llmApiId?: string
   llmModelName?: string
   imageApiId?: string
   imageModelName?: string
-  language: CharacterWorkflowLanguage
 }
 
 export interface CharacterWorkflowMetadata {
@@ -61,10 +84,6 @@ export interface CharacterWorkflowNode {
   state?: CharacterWorkflowNodeState
 }
 
-export type CharacterWorkflowNodeCategory = 'input' | 'llm' | 'image' | 'validation' | 'export'
-
-export type CharacterWorkflowExecutorKind = 'manual' | 'llm' | 'image' | 'deterministic'
-
 export type CharacterWorkflowParameterType =
   | 'text'
   | 'textarea'
@@ -74,6 +93,8 @@ export type CharacterWorkflowParameterType =
   | 'select'
   | 'multi-select'
   | 'string-list'
+
+export type CharacterWorkflowParameterValue = string | number | boolean | string[]
 
 export interface CharacterWorkflowNodeParameter {
   id: string
@@ -87,12 +108,6 @@ export interface CharacterWorkflowNodeParameter {
   step?: number
   options?: CharacterWorkflowParameterOption[]
 }
-
-export type CharacterWorkflowParameterValue =
-  | string
-  | number
-  | boolean
-  | string[]
 
 export interface CharacterWorkflowParameterOption {
   label: string
@@ -139,6 +154,7 @@ export interface CharacterWorkflowEdge {
   id: string
   from: CharacterWorkflowEndpoint
   to: CharacterWorkflowEndpoint
+  kind: CharacterWorkflowLinkKind
 }
 
 export interface CharacterWorkflowEndpoint {
@@ -147,26 +163,42 @@ export interface CharacterWorkflowEndpoint {
 }
 
 export type CharacterArtifactType =
-  | 'character-brief'
-  | 'reference'
-  | 'character-card'
-  | 'visual-spec'
-  | 'image-prompt'
-  | 'image-asset'
-  | 'game-profile'
+  | 'generation-goal'
+  | 'style-signal'
+  | 'hard-constraint'
+  | 'source-context'
+  | 'model-capability'
+  | 'image-capability'
+  | 'retrieval-capability'
+  | 'voice-capability'
+  | 'agent-policy'
+  | 'strategy-policy'
+  | 'critique-policy'
+  | 'quality-criteria'
+  | 'asset-target'
+  | 'candidate-pack'
   | 'validation-report'
-  | 'character-pack'
+  | 'export-target'
+  | 'chat-test-result'
 
 export type CharacterArtifact =
-  | CharacterBriefArtifact
-  | ReferenceArtifact
-  | CharacterCardArtifact
-  | VisualSpecArtifact
-  | ImagePromptArtifact
-  | ImageAssetArtifact
-  | GameProfileArtifact
+  | GenerationGoalArtifact
+  | StyleSignalArtifact
+  | HardConstraintArtifact
+  | SourceContextArtifact
+  | ModelCapabilityArtifact
+  | ImageCapabilityArtifact
+  | RetrievalCapabilityArtifact
+  | VoiceCapabilityArtifact
+  | AgentPolicyArtifact
+  | StrategyPolicyArtifact
+  | CritiquePolicyArtifact
+  | QualityCriteriaArtifact
+  | AssetTargetArtifact
+  | CandidatePackArtifact
   | ValidationReportArtifact
-  | CharacterPackArtifact
+  | ExportTargetArtifact
+  | ChatTestResultArtifact
 
 export interface CharacterArtifactBase {
   id: string
@@ -175,181 +207,166 @@ export interface CharacterArtifactBase {
   createdAt: number
 }
 
-export interface CharacterBriefArtifact extends CharacterArtifactBase {
-  type: 'character-brief'
-  brief: {
-    characterType: string
-    world: string
-    personalityKeywords: string[]
-    visualDirection: string
-    interactionGoal: string
-    forbiddenContent: string[]
+export interface GenerationGoalArtifact extends CharacterArtifactBase {
+  type: 'generation-goal'
+  goal: {
+    prompt: string
+    targetAudience: string
+    allowAgentExpansion: boolean
+    language: CharacterWorkflowLanguage
   }
 }
 
-export interface ReferenceArtifact extends CharacterArtifactBase {
-  type: 'reference'
-  references: Array<{
-    kind: 'text' | 'image'
+export interface StyleSignalArtifact extends CharacterArtifactBase {
+  type: 'style-signal'
+  style: {
+    preset: string
+    prompt: string
+    intensity: number
+    weights: Record<string, number>
+  }
+}
+
+export interface HardConstraintArtifact extends CharacterArtifactBase {
+  type: 'hard-constraint'
+  constraints: {
+    mustHave: string[]
+    mustNot: string[]
+    hardBoundary: boolean
+  }
+}
+
+export interface SourceContextArtifact extends CharacterArtifactBase {
+  type: 'source-context'
+  source: {
+    kind: string
+    notes: string
+    groundingStrength: number
+  }
+}
+
+export interface ModelCapabilityArtifact extends CharacterArtifactBase {
+  type: 'model-capability'
+  model: {
+    provider: string
+    model: string
+    temperature: number
+    reasoningEffort: string
+    contextBudget: number
+  }
+}
+
+export interface ImageCapabilityArtifact extends CharacterArtifactBase {
+  type: 'image-capability'
+  image: {
+    provider: string
+    model: string
+    assetCount: number
+    referenceStrength: number
+  }
+}
+
+export interface RetrievalCapabilityArtifact extends CharacterArtifactBase {
+  type: 'retrieval-capability'
+  retrieval: {
+    enabled: boolean
+    mode: string
+    citationRequired: boolean
+  }
+}
+
+export interface VoiceCapabilityArtifact extends CharacterArtifactBase {
+  type: 'voice-capability'
+  voice: {
+    provider: string
+    voice: string
+    speed: number
+  }
+}
+
+export interface AgentPolicyArtifact extends CharacterArtifactBase {
+  type: 'agent-policy'
+  policy: {
+    autonomyLevel: string
+    revisionBudget: number
+    askUserThreshold: string
+    canExpandMissingDetails: boolean
+  }
+}
+
+export interface StrategyPolicyArtifact extends CharacterArtifactBase {
+  type: 'strategy-policy'
+  strategy: {
+    mode: string
+    branchCount: number
+    priorityAssets: string[]
+    stopCondition: string
+  }
+}
+
+export interface CritiquePolicyArtifact extends CharacterArtifactBase {
+  type: 'critique-policy'
+  critique: {
+    iterations: number
+    dimensions: string[]
+    autoRepair: boolean
+  }
+}
+
+export interface QualityCriteriaArtifact extends CharacterArtifactBase {
+  type: 'quality-criteria'
+  criteria: {
+    minimumScore: number
+    blockExport: boolean
+    requiredChecks: string[]
+  }
+}
+
+export interface AssetTargetArtifact extends CharacterArtifactBase {
+  type: 'asset-target'
+  targets: {
+    requested: string[]
+    includeAlternates: boolean
+  }
+}
+
+export interface CandidatePackArtifact extends CharacterArtifactBase {
+  type: 'candidate-pack'
+  pack: {
     title: string
-    content: string
-    path?: string
-  }>
-}
-
-export interface CharacterCardArtifact extends CharacterArtifactBase {
-  type: 'character-card'
-  card: CharacterCard
-}
-
-export interface VisualSpecArtifact extends CharacterArtifactBase {
-  type: 'visual-spec'
-  spec: CharacterVisualSpec
-}
-
-export interface ImagePromptArtifact extends CharacterArtifactBase {
-  type: 'image-prompt'
-  prompts: CharacterImagePrompt[]
-}
-
-export interface ImageAssetArtifact extends CharacterArtifactBase {
-  type: 'image-asset'
-  assets: CharacterImageAsset[]
-}
-
-export interface GameProfileArtifact extends CharacterArtifactBase {
-  type: 'game-profile'
-  game: CharacterCard['game']
+    summary: string
+    resources: string[]
+    risks: string[]
+  }
 }
 
 export interface ValidationReportArtifact extends CharacterArtifactBase {
   type: 'validation-report'
   report: {
     passed: boolean
+    score: number
     issues: CharacterValidationIssue[]
+    repairTargets: string[]
   }
 }
 
-export interface CharacterPackArtifact extends CharacterArtifactBase {
-  type: 'character-pack'
-  pack: {
+export interface ExportTargetArtifact extends CharacterArtifactBase {
+  type: 'export-target'
+  export: {
+    format: string
+    includeAssets: boolean
     path: string
-    manifestPath: string
-    cardPath: string
-    assetPaths: string[]
   }
 }
 
-export interface CharacterCard {
-  schemaVersion: '1.0'
-  id: string
-  identity: {
-    name: string
-    displayName: string
-    ageBand?: string
-    gender?: string
-    species?: string
-    role: string
-    tags: string[]
+export interface ChatTestResultArtifact extends CharacterArtifactBase {
+  type: 'chat-test-result'
+  result: {
+    turns: number
+    goalHitRate: number
+    oocRisk: number
+    repairSuggestions: string[]
   }
-  world: {
-    genre: string
-    setting: string
-    era?: string
-    location?: string
-    rules?: string[]
-  }
-  persona: {
-    summary: string
-    traits: string[]
-    values: string[]
-    flaws: string[]
-    goals: string[]
-    secrets?: string[]
-    boundaries: string[]
-  }
-  dialogue: {
-    language: CharacterWorkflowLanguage | 'mixed'
-    style: string
-    firstMessage: string
-    userAddressing: string
-    examples: Array<{ user: string; assistant: string }>
-  }
-  visual: CharacterVisualSpec
-  game: {
-    stats: GameStat[]
-    skills: GameSkill[]
-    inventory: GameItem[]
-    relationshipRules: string[]
-    sceneHooks: string[]
-  }
-  generation: {
-    promptBase: string
-    negativePrompt: string
-    referenceAssets: string[]
-    preferredAspectRatios: string[]
-  }
-}
-
-export interface CharacterVisualSpec {
-  artStyle: string
-  appearance: string
-  hair: string
-  eyes: string
-  outfit: string
-  bodyShape?: string
-  signatureItems: string[]
-  colorPalette: string[]
-  negativeTraits: string[]
-}
-
-export interface GameStat {
-  id: string
-  label: string
-  value: number
-  min: number
-  max: number
-}
-
-export interface GameSkill {
-  id: string
-  name: string
-  description: string
-}
-
-export interface GameItem {
-  id: string
-  name: string
-  description: string
-  quantity: number
-}
-
-export type CharacterImageAssetKind =
-  | 'avatar'
-  | 'character-normal'
-  | 'character-detail-sheet'
-  | 'expression'
-  | 'outfit'
-  | 'scene'
-  | 'reference'
-
-export interface CharacterImagePrompt {
-  id: string
-  kind: CharacterImageAssetKind
-  prompt: string
-  negativePrompt?: string
-  aspectRatio?: string
-  count: number
-}
-
-export interface CharacterImageAsset {
-  id: string
-  kind: CharacterImageAssetKind
-  path: string
-  promptId?: string
-  seed?: number
-  modelName?: string
-  sourceNodeId: string
 }
 
 export interface CharacterValidationIssue {
@@ -448,277 +465,286 @@ export interface CreateStandardCharacterWorkflowOptions {
 
 export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNodeDefinition[] = [
   {
-    type: 'brief-input',
-    title: 'Brief Input',
-    category: 'input',
+    type: 'goal',
+    title: 'Generation Goal',
+    category: 'goal',
     executor: 'manual',
-    description: 'Collects the seed brief, boundaries, world direction, and target interaction goal.',
+    description: 'Collects the free-form RP generation target without asking the user to fill final card fields.',
     inputs: {},
-    outputs: { brief: port('brief', 'Brief', 'character-brief') },
+    outputs: { goal: port('goal', 'Goal', 'generation-goal') },
     parameters: [
-      parameter('characterType', 'Character Type', 'text', '原创陪伴角色'),
-      parameter('world', 'World', 'textarea', '近未来都市、轻奇幻、可长期互动'),
-      parameter('personalityKeywords', 'Personality Keywords', 'string-list', ['敏锐', '克制', '有好奇心']),
-      parameter('visualDirection', 'Visual Direction', 'textarea', '可用于头像、正常角色图和细节设定图的清晰视觉方向'),
-      parameter('interactionGoal', 'Interaction Goal', 'textarea', '长期聊天、角色扮演和游戏化成长'),
-      parameter('forbiddenContent', 'Forbidden Content', 'string-list', []),
+      parameter('goalPrompt', 'Goal Prompt', 'textarea', '校园恋爱，长期 RP，角色要有主动性和暧昧拉扯，但不要模板化。'),
+      parameter('targetAudience', 'Target Audience', 'text', 'private long-form roleplay'),
+      parameter('allowAgentExpansion', 'Allow Agent Expansion', 'boolean', true),
     ],
   },
   {
-    type: 'reference-input',
-    title: 'Reference Input',
-    category: 'input',
+    type: 'style-pressure',
+    title: 'Style Pressure',
+    category: 'taste',
     executor: 'manual',
-    description: 'Adds optional text or image references that constrain the generated card and image pack.',
-    inputs: {},
-    outputs: { references: port('references', 'References', 'reference') },
+    description: 'Applies weighted taste, genre, mood, intensity, and pacing pressure to the agent.',
+    inputs: { goal: port('goal', 'Goal', 'generation-goal') },
+    outputs: { style: port('style', 'Style', 'style-signal') },
     parameters: [
-      parameter('referenceMode', 'Reference Mode', 'select', 'optional', undefined, [
-        option('Optional', 'optional'),
-        option('Required', 'required'),
+      parameter('preset', 'Preset', 'select', 'campus-romance', undefined, [
+        option('Campus Romance', 'campus-romance'),
+        option('Dark Adult', 'dark-adult'),
+        option('Urban Suspense', 'urban-suspense'),
+      ]),
+      parameter('stylePrompt', 'Style Prompt', 'textarea', '克制、暧昧、有张力，避免说明书式自我介绍。'),
+      parameter('intensity', 'Intensity', 'number', 0.68, { min: 0, max: 1, step: 0.01 }),
+    ],
+  },
+  {
+    type: 'constraint',
+    title: 'Hard Constraint',
+    category: 'constraints',
+    executor: 'manual',
+    description: 'Sets hard and soft boundaries that limit agent freedom during generation and repair.',
+    inputs: { goal: port('goal', 'Goal', 'generation-goal') },
+    outputs: { constraint: port('constraint', 'Constraint', 'hard-constraint') },
+    parameters: [
+      parameter('mustHave', 'Must Have', 'string-list', ['长期可聊', '角色主动推进关系']),
+      parameter('mustNot', 'Must Not', 'string-list', ['模板化人格', 'OOC 解释设定', '瞬间顺从']),
+      parameter('hardBoundary', 'Hard Boundary', 'boolean', true),
+    ],
+  },
+  {
+    type: 'source-material',
+    title: 'Source Material',
+    category: 'sources',
+    executor: 'manual',
+    description: 'Provides optional source context, references, existing cards, images, or user preference notes.',
+    inputs: {},
+    outputs: { source: port('source', 'Source', 'source-context') },
+    parameters: [
+      parameter('sourceKind', 'Source Kind', 'select', 'notes', undefined, [
+        option('Notes', 'notes'),
+        option('Existing Card', 'existing-card'),
+        option('Image Reference', 'image-reference'),
+        option('User Preference', 'user-preference'),
       ]),
       parameter('notes', 'Notes', 'textarea', ''),
+      parameter('groundingStrength', 'Grounding Strength', 'number', 0.5, { min: 0, max: 1, step: 0.01 }),
     ],
   },
   {
-    type: 'concept-generator',
-    title: 'Concept Generator',
-    category: 'llm',
+    type: 'llm-tool',
+    title: 'LLM Tool',
+    category: 'tools',
     executor: 'llm',
-    description: 'Turns a brief into the first structured character concept.',
-    inputs: { brief: port('brief', 'Brief', 'character-brief', true) },
-    outputs: { card: port('card', 'Concept', 'character-card') },
+    description: 'Selects the LLM capability available to the backend agent.',
+    inputs: {},
+    outputs: { model: port('model', 'Model', 'model-capability') },
     parameters: [
+      parameter('provider', 'Provider', 'text', 'default'),
       parameter('model', 'Model', 'text', ''),
-      parameter('temperature', 'Temperature', 'number', 0.7, { min: 0, max: 2, step: 0.1 }),
-      parameter('maxTokens', 'Max Tokens', 'integer', 2400, { min: 512, max: 12000, step: 256 }),
-      parameter('systemPrompt', 'System Prompt', 'textarea', '你是专业角色卡设计师，输出完整、可执行、可延展的角色设定。'),
-      parameter('jsonMode', 'JSON Mode', 'boolean', true, { advanced: true }),
-    ],
-  },
-  {
-    type: 'persona-generator',
-    title: 'Persona Generator',
-    category: 'llm',
-    executor: 'llm',
-    description: 'Expands identity, persona, values, flaws, goals, and boundaries.',
-    inputs: { card: port('card', 'Concept', 'character-card', true) },
-    outputs: { card: port('card', 'Persona', 'character-card') },
-    parameters: [
-      parameter('depth', 'Depth', 'select', 'full', undefined, [
-        option('Compact', 'compact'),
-        option('Full', 'full'),
-        option('Deep', 'deep'),
+      parameter('temperature', 'Temperature', 'number', 0.72, { min: 0, max: 2, step: 0.01 }),
+      parameter('reasoningEffort', 'Reasoning Effort', 'select', 'medium', undefined, [
+        option('Low', 'low'),
+        option('Medium', 'medium'),
+        option('High', 'high'),
       ]),
-      parameter('lockCoreIdentity', 'Lock Core Identity', 'boolean', true),
-      parameter('temperature', 'Temperature', 'number', 0.65, { min: 0, max: 2, step: 0.1 }),
+      parameter('contextBudget', 'Context Budget', 'integer', 16000, { min: 1000, max: 200000, step: 1000 }),
     ],
   },
   {
-    type: 'dialogue-generator',
-    title: 'Dialogue Generator',
-    category: 'llm',
-    executor: 'llm',
-    description: 'Creates first message, speaking style, address rules, and examples.',
-    inputs: { card: port('card', 'Persona', 'character-card', true) },
-    outputs: { card: port('card', 'Dialogue', 'character-card') },
-    parameters: [
-      parameter('language', 'Language', 'select', 'zh-CN', undefined, [
-        option('中文', 'zh-CN'),
-        option('English', 'en-US'),
-        option('Mixed', 'mixed'),
-      ]),
-      parameter('exampleCount', 'Example Count', 'integer', 6, { min: 0, max: 24, step: 1 }),
-      parameter('styleGuide', 'Style Guide', 'textarea', '自然、稳定、有角色边界，不机械解释设定。'),
-    ],
-  },
-  {
-    type: 'game-profile-generator',
-    title: 'Game Profile Generator',
-    category: 'llm',
-    executor: 'llm',
-    description: 'Adds stats, skills, inventory, relationship rules, and scene hooks.',
-    inputs: { card: port('card', 'Dialogue', 'character-card', true) },
-    outputs: { game: port('game', 'Game', 'game-profile') },
-    parameters: [
-      parameter('statCount', 'Stat Count', 'integer', 6, { min: 3, max: 12, step: 1 }),
-      parameter('skillCount', 'Skill Count', 'integer', 5, { min: 0, max: 20, step: 1 }),
-      parameter('gameTone', 'Game Tone', 'select', 'light-rpg', undefined, [
-        option('Light RPG', 'light-rpg'),
-        option('Dating Sim', 'dating-sim'),
-        option('Adventure', 'adventure'),
-      ]),
-    ],
-  },
-  {
-    type: 'visual-spec-generator',
-    title: 'Visual Spec Generator',
-    category: 'llm',
-    executor: 'llm',
-    description: 'Produces stable visual anchors for image generation and later consistency checks.',
-    inputs: { card: port('card', 'Persona', 'character-card', true) },
-    outputs: { visual: port('visual', 'Visual', 'visual-spec') },
-    parameters: [
-      parameter('artStyle', 'Art Style', 'text', 'anime reference sheet'),
-      parameter('lockedTraits', 'Locked Traits', 'string-list', ['发型', '眼睛', '服装主色']),
-      parameter('negativeTraits', 'Negative Traits', 'string-list', ['extra fingers', 'bad anatomy']),
-      parameter('paletteSize', 'Palette Size', 'integer', 5, { min: 3, max: 12, step: 1 }),
-    ],
-  },
-  {
-    type: 'image-prompt-composer',
-    title: 'Image Prompt Composer',
-    category: 'llm',
-    executor: 'llm',
-    description: 'Composes provider-ready prompts for avatar, normal art, and detail reference sheet.',
-    inputs: { visual: port('visual', 'Visual', 'visual-spec', true) },
-    outputs: { prompts: port('prompts', 'Prompts', 'image-prompt') },
-    parameters: [
-      parameter('requiredAssets', 'Required Assets', 'multi-select', ['avatar', 'character-normal', 'character-detail-sheet'], undefined, [
-        option('Avatar', 'avatar'),
-        option('Normal character art', 'character-normal'),
-        option('Detail reference sheet', 'character-detail-sheet'),
-        option('Expression pack', 'expression'),
-        option('Outfit sheet', 'outfit'),
-      ]),
-      parameter('promptLanguage', 'Prompt Language', 'select', 'en-US', undefined, [
-        option('English', 'en-US'),
-        option('中文', 'zh-CN'),
-      ]),
-      parameter('negativePrompt', 'Negative Prompt', 'textarea', 'low quality, bad anatomy, extra fingers, missing limbs'),
-    ],
-  },
-  {
-    type: 'portrait-generator',
-    title: 'Core Image Pack',
-    category: 'image',
+    type: 'image-tool',
+    title: 'Image Tool',
+    category: 'tools',
     executor: 'image',
-    description: 'Generates the required avatar, normal character art, and detail reference sheet assets.',
-    inputs: { prompts: port('prompts', 'Prompts', 'image-prompt', true) },
-    outputs: { assets: port('assets', 'Assets', 'image-asset') },
+    description: 'Selects image generation or editing capability for visual assets.',
+    inputs: { style: port('style', 'Style', 'style-signal') },
+    outputs: { image: port('image', 'Image', 'image-capability') },
     parameters: [
-      parameter('imageApiId', 'Image API', 'text', ''),
-      parameter('imageModelName', 'Image Model', 'text', ''),
-      parameter('size', 'Size', 'select', '1024x1024', undefined, [
-        option('1024 x 1024', '1024x1024'),
-        option('1024 x 1536', '1024x1536'),
-        option('1536 x 1024', '1536x1024'),
+      parameter('provider', 'Provider', 'text', 'manual'),
+      parameter('model', 'Model / Workflow', 'text', ''),
+      parameter('assetCount', 'Asset Count', 'integer', 4, { min: 1, max: 16, step: 1 }),
+      parameter('referenceStrength', 'Reference Strength', 'number', 0.55, { min: 0, max: 1, step: 0.01 }),
+    ],
+  },
+  {
+    type: 'retrieval-tool',
+    title: 'Retrieval Tool',
+    category: 'tools',
+    executor: 'retrieval',
+    description: 'Allows the agent to read local context, vector sources, or web summaries when enabled.',
+    inputs: { source: port('source', 'Source', 'source-context') },
+    outputs: { retrieval: port('retrieval', 'Retrieval', 'retrieval-capability') },
+    parameters: [
+      parameter('enabled', 'Enabled', 'boolean', false),
+      parameter('mode', 'Mode', 'select', 'local-only', undefined, [
+        option('Local Only', 'local-only'),
+        option('Vector Index', 'vector-index'),
+        option('Web Summary', 'web-summary'),
       ]),
-      parameter('seed', 'Seed', 'integer', -1, { min: -1, max: 2147483647, step: 1 }),
-      parameter('count', 'Count Per Asset', 'integer', 1, { min: 1, max: 4, step: 1 }),
-      parameter('referenceStrength', 'Reference Strength', 'number', 0.65, { min: 0, max: 1, step: 0.05 }),
+      parameter('citationRequired', 'Citation Required', 'boolean', true),
     ],
   },
   {
-    type: 'expression-pack-generator',
-    title: 'Expression Pack Generator',
-    category: 'image',
-    executor: 'image',
-    description: 'Generates optional expression variations after core identity is stable.',
-    inputs: { prompts: port('prompts', 'Prompts', 'image-prompt', true) },
-    outputs: { assets: port('assets', 'Expressions', 'image-asset') },
+    type: 'voice-tool',
+    title: 'Voice Tool',
+    category: 'tools',
+    executor: 'voice',
+    description: 'Selects voice or TTS capability for sample lines and voice profile assets.',
+    inputs: { style: port('style', 'Style', 'style-signal') },
+    outputs: { voice: port('voice', 'Voice', 'voice-capability') },
     parameters: [
-      parameter('expressions', 'Expressions', 'string-list', ['neutral', 'smile', 'angry', 'sad']),
-      parameter('count', 'Count', 'integer', 4, { min: 1, max: 12, step: 1 }),
+      parameter('provider', 'Provider', 'text', ''),
+      parameter('voice', 'Voice', 'text', ''),
+      parameter('speed', 'Speed', 'number', 1, { min: 0.5, max: 1.5, step: 0.01 }),
     ],
   },
   {
-    type: 'outfit-generator',
-    title: 'Outfit Generator',
-    category: 'image',
-    executor: 'image',
-    description: 'Generates optional outfit variants while preserving locked character traits.',
-    inputs: { prompts: port('prompts', 'Prompts', 'image-prompt', true) },
-    outputs: { assets: port('assets', 'Outfits', 'image-asset') },
-    parameters: [
-      parameter('outfits', 'Outfits', 'string-list', ['default', 'casual', 'formal']),
-      parameter('preserveIdentity', 'Preserve Identity', 'boolean', true),
-    ],
-  },
-  {
-    type: 'scene-reference-generator',
-    title: 'Scene Reference Generator',
-    category: 'image',
-    executor: 'image',
-    description: 'Generates optional scene reference images for later roleplay or story cards.',
-    inputs: { prompts: port('prompts', 'Prompts', 'image-prompt', true) },
-    outputs: { assets: port('assets', 'Scenes', 'image-asset') },
-    parameters: [
-      parameter('sceneCount', 'Scene Count', 'integer', 3, { min: 1, max: 12, step: 1 }),
-      parameter('aspectRatio', 'Aspect Ratio', 'select', '16:9', undefined, [
-        option('1:1', '1:1'),
-        option('3:4', '3:4'),
-        option('16:9', '16:9'),
-      ]),
-    ],
-  },
-  {
-    type: 'schema-validator',
-    title: 'Schema Validator',
-    category: 'validation',
-    executor: 'deterministic',
-    description: 'Checks the character card against required schema fields.',
-    inputs: { card: port('card', 'Card', 'character-card', true) },
-    outputs: { report: port('report', 'Report', 'validation-report') },
-    parameters: [
-      parameter('strict', 'Strict', 'boolean', true),
-      parameter('requiredFields', 'Required Fields', 'string-list', ['identity', 'persona', 'dialogue', 'visual', 'game']),
-    ],
-  },
-  {
-    type: 'consistency-critic',
-    title: 'Consistency Critic',
-    category: 'validation',
-    executor: 'llm',
-    description: 'Reviews card and image assets for identity, visual, and safety consistency.',
+    type: 'agent-policy',
+    title: 'Agent Policy',
+    category: 'agent',
+    executor: 'agent',
+    description: 'Defines how much freedom the backend agent has to expand, revise, ask, and repair.',
     inputs: {
-      card: port('card', 'Card', 'character-card', true),
-      assets: port('assets', 'Assets', 'image-asset', true),
+      goal: port('goal', 'Goal', 'generation-goal', true),
+      constraint: port('constraint', 'Constraint', 'hard-constraint'),
+      source: port('source', 'Source', 'source-context'),
+      model: port('model', 'Model', 'model-capability', true),
     },
-    outputs: { report: port('report', 'Report', 'validation-report') },
+    outputs: { policy: port('policy', 'Policy', 'agent-policy') },
     parameters: [
-      parameter('strictness', 'Strictness', 'select', 'normal', undefined, [
-        option('Loose', 'loose'),
-        option('Normal', 'normal'),
-        option('Strict', 'strict'),
+      parameter('autonomyLevel', 'Autonomy Level', 'select', 'high', undefined, [
+        option('Low', 'low'),
+        option('Medium', 'medium'),
+        option('High', 'high'),
       ]),
-      parameter('checkImages', 'Check Images', 'boolean', true),
+      parameter('revisionBudget', 'Revision Budget', 'integer', 4, { min: 1, max: 12, step: 1 }),
+      parameter('askUserThreshold', 'Ask User Threshold', 'select', 'blocked-only', undefined, [
+        option('Never During Run', 'never'),
+        option('Blocked Only', 'blocked-only'),
+        option('Low Confidence', 'low-confidence'),
+      ]),
+      parameter('canExpandMissingDetails', 'Can Expand Missing Details', 'boolean', true),
     ],
   },
   {
-    type: 'safety-rights-check',
-    title: 'Safety & Rights Check',
-    category: 'validation',
-    executor: 'deterministic',
-    description: 'Checks forbidden content, rights notes, and export policy before packaging.',
-    inputs: { card: port('card', 'Card', 'character-card', true) },
-    outputs: { report: port('report', 'Report', 'validation-report') },
-    parameters: [
-      parameter('policy', 'Policy', 'select', 'standard', undefined, [
-        option('Standard', 'standard'),
-        option('Strict', 'strict'),
-      ]),
-    ],
-  },
-  {
-    type: 'character-pack-exporter',
-    title: 'Character Pack Exporter',
-    category: 'export',
-    executor: 'deterministic',
-    description: 'Packages card JSON, workflow metadata, and generated images into a character pack.',
+    type: 'generation-strategy',
+    title: 'Generation Strategy',
+    category: 'strategy',
+    executor: 'agent',
+    description: 'Controls how the agent branches, compares candidates, orders phases, and stops.',
     inputs: {
-      card: port('card', 'Card', 'character-card', true),
-      assets: port('assets', 'Assets', 'image-asset', true),
+      goal: port('goal', 'Goal', 'generation-goal', true),
+      style: port('style', 'Style', 'style-signal'),
+      policy: port('policy', 'Policy', 'agent-policy', true),
+    },
+    outputs: { strategy: port('strategy', 'Strategy', 'strategy-policy') },
+    parameters: [
+      parameter('mode', 'Mode', 'select', 'branch-and-refine', undefined, [
+        option('Single Pass', 'single-pass'),
+        option('Branch and Refine', 'branch-and-refine'),
+        option('Explore then Converge', 'explore-then-converge'),
+      ]),
+      parameter('branchCount', 'Branch Count', 'integer', 3, { min: 1, max: 8, step: 1 }),
+      parameter('priorityAssets', 'Priority Assets', 'multi-select', ['role-card', 'opening', 'image-pack'], undefined, [
+        option('Role Card', 'role-card'),
+        option('Opening', 'opening'),
+        option('Image Pack', 'image-pack'),
+        option('Chat Test', 'chat-test'),
+      ]),
+      parameter('stopCondition', 'Stop Condition', 'text', 'quality gate passed'),
+    ],
+  },
+  {
+    type: 'critique-loop',
+    title: 'Critique Loop',
+    category: 'evaluation',
+    executor: 'agent',
+    description: 'Feeds critique and repair instructions back into candidate generation.',
+    inputs: { strategy: port('strategy', 'Strategy', 'strategy-policy', true) },
+    outputs: { critique: port('critique', 'Critique', 'critique-policy') },
+    parameters: [
+      parameter('iterations', 'Iterations', 'integer', 2, { min: 0, max: 8, step: 1 }),
+      parameter('dimensions', 'Dimensions', 'string-list', ['goal match', 'long-term RP', 'non-template', 'consistency']),
+      parameter('autoRepair', 'Auto Repair', 'boolean', true),
+    ],
+  },
+  {
+    type: 'asset-builder',
+    title: 'Asset Builder',
+    category: 'outputs',
+    executor: 'agent',
+    description: 'Declares which final resources the agent should produce without forcing the user to write their contents.',
+    inputs: {
+      strategy: port('strategy', 'Strategy', 'strategy-policy', true),
+      image: port('image', 'Image', 'image-capability'),
+      voice: port('voice', 'Voice', 'voice-capability'),
+    },
+    outputs: {
+      assets: port('assets', 'Assets', 'asset-target'),
+      candidate: port('candidate', 'Candidate', 'candidate-pack'),
+    },
+    parameters: [
+      parameter('targets', 'Targets', 'multi-select', ['role-card', 'opening', 'image-pack', 'generation-report'], undefined, [
+        option('Role Card', 'role-card'),
+        option('Opening', 'opening'),
+        option('Image Pack', 'image-pack'),
+        option('Voice Sample', 'voice-sample'),
+        option('Generation Report', 'generation-report'),
+      ]),
+      parameter('includeAlternates', 'Include Alternates', 'boolean', true),
+    ],
+  },
+  {
+    type: 'quality-gate',
+    title: 'Quality Gate',
+    category: 'evaluation',
+    executor: 'agent',
+    description: 'Defines acceptance criteria that can block export or route candidates back for repair.',
+    inputs: {
+      goal: port('goal', 'Goal', 'generation-goal', true),
+      candidate: port('candidate', 'Candidate', 'candidate-pack', true),
+      critique: port('critique', 'Critique', 'critique-policy'),
+    },
+    outputs: {
+      criteria: port('criteria', 'Criteria', 'quality-criteria'),
+      report: port('report', 'Report', 'validation-report'),
+    },
+    parameters: [
+      parameter('minimumScore', 'Minimum Score', 'number', 0.82, { min: 0, max: 1, step: 0.01 }),
+      parameter('blockExport', 'Block Export', 'boolean', true),
+      parameter('requiredChecks', 'Required Checks', 'string-list', ['goal match', 'style intensity', 'long-term RP', 'consistency']),
+    ],
+  },
+  {
+    type: 'output-adapter',
+    title: 'Output Adapter',
+    category: 'outputs',
+    executor: 'deterministic',
+    description: 'Maps an accepted candidate pack to a target format without changing generation goals.',
+    inputs: {
+      candidate: port('candidate', 'Candidate', 'candidate-pack', true),
       report: port('report', 'Report', 'validation-report', true),
     },
-    outputs: { pack: port('pack', 'Pack', 'character-pack') },
+    outputs: { export: port('export', 'Export', 'export-target') },
     parameters: [
-      parameter('outputName', 'Output Name', 'text', 'character-pack'),
-      parameter('includeWorkflow', 'Include Workflow', 'boolean', true),
-      parameter('format', 'Format', 'select', 'directory', undefined, [
-        option('Directory', 'directory'),
-        option('Zip', 'zip'),
+      parameter('format', 'Format', 'select', 'noema-role-chat', undefined, [
+        option('Noema Role Chat', 'noema-role-chat'),
+        option('SillyTavern', 'sillytavern'),
+        option('Portable JSON', 'portable-json'),
+        option('Markdown Dossier', 'markdown-dossier'),
       ]),
+      parameter('includeAssets', 'Include Assets', 'boolean', true),
+    ],
+  },
+  {
+    type: 'chat-test',
+    title: 'Chat Test',
+    category: 'evaluation',
+    executor: 'deterministic',
+    description: 'Runs a mock first-turn and durability check against the exported candidate.',
+    inputs: { export: port('export', 'Export', 'export-target', true) },
+    outputs: { result: port('result', 'Result', 'chat-test-result') },
+    parameters: [
+      parameter('turns', 'Turns', 'integer', 3, { min: 1, max: 12, step: 1 }),
+      parameter('stressPrompt', 'Stress Prompt', 'textarea', '测试角色是否保持主动性、边界和长期可聊性。'),
     ],
   },
 ]
@@ -736,7 +762,7 @@ export function createCharacterWorkflowNodeRegistry(
     require: (type) => {
       const definition = byType.get(type)
       if (!definition) {
-        throw new Error(`Unknown character workflow node type: ${type}`)
+        throw new Error(`Unknown agentic resource node type: ${type}`)
       }
       return cloneNodeDefinition(definition)
     },
@@ -751,43 +777,49 @@ export function createStandardCharacterWorkflow(
   options: CreateStandardCharacterWorkflowOptions = {}
 ): CharacterWorkflow {
   const now = options.now ?? Date.now()
-  const id = options.id ?? `character-workflow-${now}`
+  const id = options.id ?? `agentic-resource-graph-${now}`
   const node = createWorkflowNodeFactory()
   const nodes = [
-    node('brief-input', 40, 120),
-    node('concept-generator', 300, 80),
-    node('persona-generator', 560, 80),
-    node('dialogue-generator', 820, 80),
-    node('game-profile-generator', 1080, 80),
-    node('visual-spec-generator', 560, 260),
-    node('image-prompt-composer', 820, 260),
-    node('portrait-generator', 1080, 260),
-    node('schema-validator', 1340, 150),
-    node('consistency-critic', 1600, 150),
-    node('character-pack-exporter', 1860, 150),
+    node('goal', 40, 120),
+    node('style-pressure', 320, 60),
+    node('constraint', 320, 300),
+    node('source-material', 40, 360),
+    node('llm-tool', 620, 80),
+    node('image-tool', 620, 320),
+    node('agent-policy', 920, 140),
+    node('generation-strategy', 1220, 140),
+    node('asset-builder', 1520, 160),
+    node('critique-loop', 1220, 420),
+    node('quality-gate', 1820, 220),
+    node('output-adapter', 2120, 220),
+    node('chat-test', 2420, 220),
   ]
 
   return {
     id,
-    name: options.name ?? 'Standard Character Workflow',
-    version: '1.0',
-    description: 'Generates a character card, required core image pack, validation report, and exportable Character Pack.',
+    name: options.name ?? 'Agentic RP Resource Graph',
+    version: '2.0',
+    description: 'Configures goals, taste, constraints, tools, agent autonomy, evaluation gates, and output adapters for autonomous RP resource generation.',
     nodes,
-    edges: connectSequential([
-      ['brief-input', 'brief', 'concept-generator', 'brief'],
-      ['concept-generator', 'card', 'persona-generator', 'card'],
-      ['persona-generator', 'card', 'dialogue-generator', 'card'],
-      ['dialogue-generator', 'card', 'game-profile-generator', 'card'],
-      ['persona-generator', 'card', 'visual-spec-generator', 'card'],
-      ['visual-spec-generator', 'visual', 'image-prompt-composer', 'visual'],
-      ['image-prompt-composer', 'prompts', 'portrait-generator', 'prompts'],
-      ['dialogue-generator', 'card', 'schema-validator', 'card'],
-      ['dialogue-generator', 'card', 'consistency-critic', 'card'],
-      ['schema-validator', 'report', 'consistency-critic', 'report'],
-      ['portrait-generator', 'assets', 'consistency-critic', 'assets'],
-      ['dialogue-generator', 'card', 'character-pack-exporter', 'card'],
-      ['portrait-generator', 'assets', 'character-pack-exporter', 'assets'],
-      ['consistency-critic', 'report', 'character-pack-exporter', 'report'],
+    edges: connectEdges([
+      ['goal', 'goal', 'style-pressure', 'goal', 'guides'],
+      ['goal', 'goal', 'constraint', 'goal', 'constrains'],
+      ['goal', 'goal', 'agent-policy', 'goal', 'guides'],
+      ['style-pressure', 'style', 'generation-strategy', 'style', 'weights'],
+      ['constraint', 'constraint', 'agent-policy', 'constraint', 'constrains'],
+      ['source-material', 'source', 'agent-policy', 'source', 'grounds'],
+      ['llm-tool', 'model', 'agent-policy', 'model', 'enables'],
+      ['style-pressure', 'style', 'image-tool', 'style', 'guides'],
+      ['image-tool', 'image', 'asset-builder', 'image', 'enables'],
+      ['agent-policy', 'policy', 'generation-strategy', 'policy', 'guides'],
+      ['generation-strategy', 'strategy', 'asset-builder', 'strategy', 'routes'],
+      ['generation-strategy', 'strategy', 'critique-loop', 'strategy', 'routes'],
+      ['critique-loop', 'critique', 'quality-gate', 'critique', 'evaluates'],
+      ['asset-builder', 'candidate', 'quality-gate', 'candidate', 'evaluates'],
+      ['quality-gate', 'report', 'generation-strategy', 'strategy', 'refines'],
+      ['asset-builder', 'candidate', 'output-adapter', 'candidate', 'exports'],
+      ['quality-gate', 'report', 'output-adapter', 'report', 'constrains'],
+      ['output-adapter', 'export', 'chat-test', 'export', 'routes'],
     ]),
     defaults: {
       language: options.language ?? 'zh-CN',
@@ -808,7 +840,7 @@ export function createWorkflowRunSession(
   now = Date.now()
 ): WorkflowRunSession {
   return {
-    id: `workflow-run-${now}`,
+    id: `agentic-resource-run-${now}`,
     workflowId: workflow.id,
     title: `${workflow.name}.run`,
     status: 'idle',
@@ -863,10 +895,7 @@ export function applyWorkflowRunEvent(
       next.run.status = 'running'
       break
     case 'node.queued':
-      updateWorkflowNode(next.workflow, event.nodeId, {
-        status: 'queued',
-        error: undefined,
-      })
+      updateWorkflowNode(next.workflow, event.nodeId, { status: 'queued', error: undefined })
       next.run.status = 'running'
       break
     case 'node.started':
@@ -935,12 +964,10 @@ export function createCharacterWorkflowRunner(
       }
 
       await emit({ type: 'run.started', runId: state.run.id, timestamp: now() })
-
       for (const nodeItem of getWorkflowExecutionOrder(state.workflow)) {
         if (options.signal?.aborted) {
           break
         }
-
         const definition = registry.require(nodeItem.type)
         const inputArtifacts = resolveNodeInputArtifacts(state.workflow, nodeItem, state.artifacts)
         const missingInput = findMissingRequiredInput(nodeItem, inputArtifacts)
@@ -1001,7 +1028,6 @@ export function createCharacterWorkflowRunner(
           break
         }
       }
-
       await emit({ type: 'run.finished', runId: state.run.id, timestamp: now() })
       return state
     },
@@ -1044,20 +1070,19 @@ export function collectWorkflowArtifacts<T extends CharacterArtifactType>(
 
 function createWorkflowNodeFactory() {
   const registry = createCharacterWorkflowNodeRegistry()
-  return (
-    type: CharacterNodeType,
-    x: number,
-    y: number
-  ): CharacterWorkflowNode => ({
-    id: type,
-    type,
-    title: registry.require(type).title,
-    position: { x, y },
-    inputs: clonePorts(registry.require(type).inputs),
-    outputs: clonePorts(registry.require(type).outputs),
-    config: createDefaultNodeConfig(registry.require(type)),
-    state: { status: 'idle' },
-  })
+  return (type: CharacterNodeType, x: number, y: number): CharacterWorkflowNode => {
+    const definition = registry.require(type)
+    return {
+      id: type,
+      type,
+      title: definition.title,
+      position: { x, y },
+      inputs: clonePorts(definition.inputs),
+      outputs: clonePorts(definition.outputs),
+      config: createDefaultNodeConfig(definition),
+      state: { status: 'idle' },
+    }
+  }
 }
 
 function cloneWorkflow(workflow: CharacterWorkflow): CharacterWorkflow {
@@ -1066,8 +1091,8 @@ function cloneWorkflow(workflow: CharacterWorkflow): CharacterWorkflow {
     nodes: workflow.nodes.map((nodeItem) => ({
       ...nodeItem,
       position: { ...nodeItem.position },
-      inputs: { ...nodeItem.inputs },
-      outputs: { ...nodeItem.outputs },
+      inputs: clonePorts(nodeItem.inputs),
+      outputs: clonePorts(nodeItem.outputs),
       config: { ...nodeItem.config },
       state: nodeItem.state ? { ...nodeItem.state } : undefined,
     })),
@@ -1095,9 +1120,7 @@ function cloneNodeDefinition(definition: CharacterWorkflowNodeDefinition): Chara
 }
 
 function clonePorts(ports: Record<string, CharacterNodePort>): Record<string, CharacterNodePort> {
-  return Object.fromEntries(
-    Object.entries(ports).map(([key, value]) => [key, { ...value }])
-  )
+  return Object.fromEntries(Object.entries(ports).map(([key, value]) => [key, { ...value }]))
 }
 
 function createDefaultNodeConfig(definition: CharacterWorkflowNodeDefinition): Record<string, unknown> {
@@ -1111,194 +1134,204 @@ function createDefaultNodeConfig(definition: CharacterWorkflowNodeDefinition): R
 
 function createDefaultCharacterWorkflowExecutors(): Partial<Record<CharacterNodeType, CharacterWorkflowNodeExecutor>> {
   return {
-    'brief-input': ({ node, config, timestamp }) => [{
-      id: `${node.id}-brief`,
-      type: 'character-brief',
+    goal: ({ node, config, workflow, timestamp }) => [{
+      id: `${node.id}-goal`,
+      type: 'generation-goal',
       sourceNodeId: node.id,
       createdAt: timestamp,
-      brief: {
-        characterType: stringConfig(config.characterType, '原创陪伴角色'),
-        world: stringConfig(config.world, '近未来都市、轻奇幻、可长期互动'),
-        personalityKeywords: stringListConfig(config.personalityKeywords),
-        visualDirection: stringConfig(config.visualDirection, '清晰、稳定、可重复生成的角色视觉方向'),
-        interactionGoal: stringConfig(config.interactionGoal, '长期聊天、角色扮演和游戏化成长'),
-        forbiddenContent: stringListConfig(config.forbiddenContent),
+      goal: {
+        prompt: stringConfig(config.goalPrompt, ''),
+        targetAudience: stringConfig(config.targetAudience, ''),
+        allowAgentExpansion: booleanConfig(config.allowAgentExpansion, true),
+        language: workflow.defaults.language,
       },
     }],
-    'concept-generator': (input) => [createCardArtifact(input, 'concept')],
-    'persona-generator': (input) => [createCardArtifact(input, 'persona')],
-    'dialogue-generator': (input) => [createCardArtifact(input, 'dialogue')],
-    'game-profile-generator': ({ node, timestamp }) => [{
-      id: `${node.id}-game`,
-      type: 'game-profile',
+    'style-pressure': ({ node, config, timestamp }) => [{
+      id: `${node.id}-style`,
+      type: 'style-signal',
       sourceNodeId: node.id,
       createdAt: timestamp,
-      game: createExecutableCharacterCard().game,
-    }],
-    'visual-spec-generator': ({ node, config, timestamp }) => [{
-      id: `${node.id}-visual`,
-      type: 'visual-spec',
-      sourceNodeId: node.id,
-      createdAt: timestamp,
-      spec: {
-        ...createExecutableCharacterCard().visual,
-        artStyle: stringConfig(config.artStyle, 'anime reference sheet'),
-        negativeTraits: stringListConfig(config.negativeTraits),
+      style: {
+        preset: stringConfig(config.preset, 'custom'),
+        prompt: stringConfig(config.stylePrompt, ''),
+        intensity: numberConfig(config.intensity, 0.5),
+        weights: { intensity: numberConfig(config.intensity, 0.5) },
       },
     }],
-    'image-prompt-composer': ({ node, config, timestamp }) => {
-      const requiredAssets = stringListConfig(config.requiredAssets, ['avatar', 'character-normal', 'character-detail-sheet'])
-      return [{
-        id: `${node.id}-prompts`,
-        type: 'image-prompt',
-        sourceNodeId: node.id,
-        createdAt: timestamp,
-        prompts: requiredAssets.map((kind) => ({
-          id: `${kind}-prompt`,
-          kind: kind as CharacterImageAssetKind,
-          prompt: `high quality ${kind} for a consistent original character, ${stringConfig(config.promptLanguage, 'en-US')}`,
-          negativePrompt: stringConfig(config.negativePrompt, 'low quality, bad anatomy'),
-          aspectRatio: kind === 'character-detail-sheet' ? '16:9' : '1:1',
-          count: 1,
-        })),
-      }]
-    },
-    'portrait-generator': ({ node, config, inputArtifacts, timestamp }) => {
-      const prompts = inputArtifacts.flatMap((artifact) => artifact.type === 'image-prompt' ? artifact.prompts : [])
-      return [{
-        id: `${node.id}-assets`,
-        type: 'image-asset',
-        sourceNodeId: node.id,
-        createdAt: timestamp,
-        assets: prompts.map((promptItem) => ({
-          id: `${promptItem.kind}-asset`,
-          kind: promptItem.kind,
-          path: `memory://character-workflow/${node.id}/${promptItem.kind}.png`,
-          promptId: promptItem.id,
-          seed: numberConfig(config.seed, -1),
-          modelName: stringConfig(config.imageModelName, ''),
-          sourceNodeId: node.id,
-        })),
-      }]
-    },
-    'schema-validator': ({ node, inputArtifacts, timestamp }) => [{
-      id: `${node.id}-report`,
-      type: 'validation-report',
+    constraint: ({ node, config, timestamp }) => [{
+      id: `${node.id}-constraint`,
+      type: 'hard-constraint',
       sourceNodeId: node.id,
       createdAt: timestamp,
-      report: {
-        passed: inputArtifacts.some((artifact) => artifact.type === 'character-card'),
-        issues: [],
+      constraints: {
+        mustHave: stringListConfig(config.mustHave),
+        mustNot: stringListConfig(config.mustNot),
+        hardBoundary: booleanConfig(config.hardBoundary, true),
       },
     }],
-    'consistency-critic': ({ node, inputArtifacts, timestamp }) => [{
-      id: `${node.id}-report`,
-      type: 'validation-report',
+    'source-material': ({ node, config, timestamp }) => [{
+      id: `${node.id}-source`,
+      type: 'source-context',
       sourceNodeId: node.id,
       createdAt: timestamp,
-      report: {
-        passed: inputArtifacts.some((artifact) => artifact.type === 'character-card')
-          && inputArtifacts.some((artifact) => artifact.type === 'image-asset'),
-        issues: [],
+      source: {
+        kind: stringConfig(config.sourceKind, 'notes'),
+        notes: stringConfig(config.notes, ''),
+        groundingStrength: numberConfig(config.groundingStrength, 0.5),
       },
     }],
-    'safety-rights-check': ({ node, timestamp }) => [{
-      id: `${node.id}-report`,
-      type: 'validation-report',
+    'llm-tool': ({ node, config, workflow, timestamp }) => [{
+      id: `${node.id}-model`,
+      type: 'model-capability',
       sourceNodeId: node.id,
       createdAt: timestamp,
-      report: { passed: true, issues: [] },
+      model: {
+        provider: stringConfig(config.provider, workflow.defaults.llmApiId ?? 'default'),
+        model: stringConfig(config.model, workflow.defaults.llmModelName ?? ''),
+        temperature: numberConfig(config.temperature, 0.72),
+        reasoningEffort: stringConfig(config.reasoningEffort, 'medium'),
+        contextBudget: numberConfig(config.contextBudget, 16000),
+      },
     }],
-    'character-pack-exporter': ({ node, timestamp }) => [{
-      id: `${node.id}-pack`,
-      type: 'character-pack',
+    'image-tool': ({ node, config, workflow, timestamp }) => [{
+      id: `${node.id}-image`,
+      type: 'image-capability',
+      sourceNodeId: node.id,
+      createdAt: timestamp,
+      image: {
+        provider: stringConfig(config.provider, workflow.defaults.imageApiId ?? 'manual'),
+        model: stringConfig(config.model, workflow.defaults.imageModelName ?? ''),
+        assetCount: numberConfig(config.assetCount, 4),
+        referenceStrength: numberConfig(config.referenceStrength, 0.55),
+      },
+    }],
+    'retrieval-tool': ({ node, config, timestamp }) => [{
+      id: `${node.id}-retrieval`,
+      type: 'retrieval-capability',
+      sourceNodeId: node.id,
+      createdAt: timestamp,
+      retrieval: {
+        enabled: booleanConfig(config.enabled, false),
+        mode: stringConfig(config.mode, 'local-only'),
+        citationRequired: booleanConfig(config.citationRequired, true),
+      },
+    }],
+    'voice-tool': ({ node, config, timestamp }) => [{
+      id: `${node.id}-voice`,
+      type: 'voice-capability',
+      sourceNodeId: node.id,
+      createdAt: timestamp,
+      voice: {
+        provider: stringConfig(config.provider, ''),
+        voice: stringConfig(config.voice, ''),
+        speed: numberConfig(config.speed, 1),
+      },
+    }],
+    'agent-policy': ({ node, config, timestamp }) => [{
+      id: `${node.id}-policy`,
+      type: 'agent-policy',
+      sourceNodeId: node.id,
+      createdAt: timestamp,
+      policy: {
+        autonomyLevel: stringConfig(config.autonomyLevel, 'high'),
+        revisionBudget: numberConfig(config.revisionBudget, 4),
+        askUserThreshold: stringConfig(config.askUserThreshold, 'blocked-only'),
+        canExpandMissingDetails: booleanConfig(config.canExpandMissingDetails, true),
+      },
+    }],
+    'generation-strategy': ({ node, config, timestamp }) => [{
+      id: `${node.id}-strategy`,
+      type: 'strategy-policy',
+      sourceNodeId: node.id,
+      createdAt: timestamp,
+      strategy: {
+        mode: stringConfig(config.mode, 'branch-and-refine'),
+        branchCount: numberConfig(config.branchCount, 3),
+        priorityAssets: stringListConfig(config.priorityAssets),
+        stopCondition: stringConfig(config.stopCondition, 'quality gate passed'),
+      },
+    }],
+    'critique-loop': ({ node, config, timestamp }) => [{
+      id: `${node.id}-critique`,
+      type: 'critique-policy',
+      sourceNodeId: node.id,
+      createdAt: timestamp,
+      critique: {
+        iterations: numberConfig(config.iterations, 2),
+        dimensions: stringListConfig(config.dimensions),
+        autoRepair: booleanConfig(config.autoRepair, true),
+      },
+    }],
+    'asset-builder': ({ node, config, timestamp }) => [{
+      id: `${node.id}-targets`,
+      type: 'asset-target',
+      sourceNodeId: node.id,
+      createdAt: timestamp,
+      targets: {
+        requested: stringListConfig(config.targets),
+        includeAlternates: booleanConfig(config.includeAlternates, true),
+      },
+    }, {
+      id: `${node.id}-candidate`,
+      type: 'candidate-pack',
       sourceNodeId: node.id,
       createdAt: timestamp,
       pack: {
-        path: 'memory://character-workflow/character-pack',
-        manifestPath: 'memory://character-workflow/character-pack/manifest.json',
-        cardPath: 'memory://character-workflow/character-pack/card.json',
-        assetPaths: [],
+        title: 'Agentic RP Candidate',
+        summary: 'Mock candidate assembled from goals, taste pressure, constraints, tool capabilities, and strategy policy.',
+        resources: stringListConfig(config.targets),
+        risks: [],
       },
     }],
-  }
-}
-
-function createCardArtifact(input: CharacterWorkflowNodeExecutionInput, stage: string): CharacterCardArtifact {
-  const previousCard = [...input.inputArtifacts, ...input.artifacts]
-    .reverse()
-    .find((artifact): artifact is CharacterCardArtifact => artifact.type === 'character-card')
-    ?.card
-  return {
-    id: `${input.node.id}-card`,
-    type: 'character-card',
-    sourceNodeId: input.node.id,
-    createdAt: input.timestamp,
-    card: {
-      ...(previousCard ?? createExecutableCharacterCard()),
-      generation: {
-        ...(previousCard ?? createExecutableCharacterCard()).generation,
-        promptBase: `Generated through ${stage} stage.`,
+    'quality-gate': ({ node, config, inputArtifacts, timestamp }) => {
+      const hasCandidate = inputArtifacts.some((artifact) => artifact.type === 'candidate-pack')
+      const score = hasCandidate ? 0.86 : 0.2
+      return [{
+        id: `${node.id}-criteria`,
+        type: 'quality-criteria',
+        sourceNodeId: node.id,
+        createdAt: timestamp,
+        criteria: {
+          minimumScore: numberConfig(config.minimumScore, 0.82),
+          blockExport: booleanConfig(config.blockExport, true),
+          requiredChecks: stringListConfig(config.requiredChecks),
+        },
+      }, {
+        id: `${node.id}-report`,
+        type: 'validation-report',
+        sourceNodeId: node.id,
+        createdAt: timestamp,
+        report: {
+          passed: score >= numberConfig(config.minimumScore, 0.82),
+          score,
+          issues: hasCandidate ? [] : [{ severity: 'error', path: 'candidate', message: 'Candidate pack is missing.' }],
+          repairTargets: hasCandidate ? [] : ['asset-builder'],
+        },
+      }]
+    },
+    'output-adapter': ({ node, config, timestamp }) => [{
+      id: `${node.id}-export`,
+      type: 'export-target',
+      sourceNodeId: node.id,
+      createdAt: timestamp,
+      export: {
+        format: stringConfig(config.format, 'noema-role-chat'),
+        includeAssets: booleanConfig(config.includeAssets, true),
+        path: `memory://agentic-resource-graph/${stringConfig(config.format, 'noema-role-chat')}`,
       },
-    },
-  }
-}
-
-function createExecutableCharacterCard(): CharacterCard {
-  return {
-    schemaVersion: '1.0',
-    id: 'workflow-draft',
-    identity: {
-      name: 'Workflow Draft',
-      displayName: 'Workflow Draft',
-      role: 'Companion character',
-      tags: ['workflow', 'draft'],
-    },
-    world: {
-      genre: 'original',
-      setting: 'Noema character workflow',
-    },
-    persona: {
-      summary: 'A structured character draft produced by the workflow runner.',
-      traits: ['consistent'],
-      values: ['coherence'],
-      flaws: [],
-      goals: ['become a complete character pack'],
-      boundaries: [],
-    },
-    dialogue: {
-      language: 'zh-CN',
-      style: '自然、稳定、角色一致',
-      firstMessage: '我的角色卡正在由工作流生成。',
-      userAddressing: '你',
-      examples: [],
-    },
-    visual: {
-      artStyle: 'anime reference sheet',
-      appearance: 'consistent original character',
-      hair: 'defined by visual spec',
-      eyes: 'defined by visual spec',
-      outfit: 'defined by visual spec',
-      signatureItems: [],
-      colorPalette: [],
-      negativeTraits: [],
-    },
-    game: {
-      stats: [
-        { id: 'focus', label: 'Focus', value: 70, min: 0, max: 100 },
-        { id: 'trust', label: 'Trust', value: 50, min: 0, max: 100 },
-      ],
-      skills: [],
-      inventory: [],
-      relationshipRules: [],
-      sceneHooks: [],
-    },
-    generation: {
-      promptBase: '',
-      negativePrompt: '',
-      referenceAssets: [],
-      preferredAspectRatios: ['1:1', '3:4', '16:9'],
-    },
+    }],
+    'chat-test': ({ node, config, timestamp }) => [{
+      id: `${node.id}-result`,
+      type: 'chat-test-result',
+      sourceNodeId: node.id,
+      createdAt: timestamp,
+      result: {
+        turns: numberConfig(config.turns, 3),
+        goalHitRate: 0.84,
+        oocRisk: 0.12,
+        repairSuggestions: [],
+      },
+    }],
   }
 }
 
@@ -1353,18 +1386,6 @@ function findMissingRequiredInput(
   return Object.values(node.inputs).find((input) => (
     input.required && !inputArtifacts.some((artifact) => artifact.type === input.artifactType)
   ))
-}
-
-function stringConfig(value: unknown, fallback: string): string {
-  return typeof value === 'string' ? value : fallback
-}
-
-function stringListConfig(value: unknown, fallback: string[] = []): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : fallback
-}
-
-function numberConfig(value: unknown, fallback: number): number {
-  return typeof value === 'number' ? value : fallback
 }
 
 function updateWorkflowNode(
@@ -1442,10 +1463,27 @@ function option(label: string, value: string): CharacterWorkflowParameterOption 
   return { label, value }
 }
 
-function connectSequential(items: Array<[string, string, string, string]>): CharacterWorkflowEdge[] {
-  return items.map(([fromNode, fromPort, toNode, toPort]) => ({
+function connectEdges(items: Array<[string, string, string, string, CharacterWorkflowLinkKind]>): CharacterWorkflowEdge[] {
+  return items.map(([fromNode, fromPort, toNode, toPort, kind]) => ({
     id: `${fromNode}.${fromPort}->${toNode}.${toPort}`,
     from: { nodeId: fromNode, port: fromPort },
     to: { nodeId: toNode, port: toPort },
+    kind,
   }))
+}
+
+function stringConfig(value: unknown, fallback: string): string {
+  return typeof value === 'string' ? value : fallback
+}
+
+function stringListConfig(value: unknown, fallback: string[] = []): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : fallback
+}
+
+function numberConfig(value: unknown, fallback: number): number {
+  return typeof value === 'number' ? value : fallback
+}
+
+function booleanConfig(value: unknown, fallback: boolean): boolean {
+  return typeof value === 'boolean' ? value : fallback
 }

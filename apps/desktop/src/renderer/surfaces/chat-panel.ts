@@ -170,7 +170,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let characterWorkflowRunCount = 0
   let characterWorkflowActiveTabId = 'workflow'
   let characterWorkflowPackTabOpen = false
-  let selectedWorkflowNodeId = 'brief-input'
+  let selectedWorkflowNodeId = 'generation-goal'
   let lastCharacterResourceGraphSnapshot = ''
   let resourceViewStateSnapshot = ''
   let characterResourceDuplicateCount = 0
@@ -182,7 +182,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     panX: 0,
     panY: 0,
     hideLinks: false,
-    selectedNodeIds: ['brief-input'] as string[],
+    selectedNodeIds: ['generation-goal'] as string[],
     selectionBox: null as { x: number; y: number; width: number; height: number } | null,
     collapsedNodeIds: new Set<string>(),
     deletedNodeIds: new Set<string>(),
@@ -1642,10 +1642,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         state: characterWorkflowRunState.run.status === 'running' ? 'running' : characterWorkflowRunState.run.status === 'failed' ? 'failed' : undefined,
       })
     }
-    if (characterWorkflowPackTabOpen && characterWorkflowRunState?.artifacts.some((artifact) => artifact.type === 'character-pack')) {
+    if (characterWorkflowPackTabOpen && characterWorkflowRunState?.artifacts.some((artifact) => artifact.type === 'export-target')) {
       tabs.push({
-        id: 'character-pack',
-        title: options.getLanguage() === 'zh-CN' ? '角色包.character' : 'Character Pack.character',
+        id: 'package-preview',
+        title: options.getLanguage() === 'zh-CN' ? '候选包.preview' : 'Candidate Pack.preview',
         kind: 'character',
       })
     }
@@ -1719,16 +1719,16 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           characterWorkflowRunState.run.status = 'idle'
           renderCharacterWorkflow()
         }
-        showToast(options.getLanguage() === 'zh-CN' ? '已停止资源图 mock lifecycle' : 'Stopped resource graph mock lifecycle')
+        showToast(options.getLanguage() === 'zh-CN' ? '已停止 Agent mock trace' : 'Stopped agent mock trace')
         break
       case 'export':
-        if (characterWorkflowRunState?.artifacts.some((artifact) => artifact.type === 'character-pack')) {
+        if (characterWorkflowRunState?.artifacts.some((artifact) => artifact.type === 'export-target')) {
           characterWorkflowPackTabOpen = true
-          characterWorkflowActiveTabId = 'character-pack'
+          characterWorkflowActiveTabId = 'package-preview'
           renderCharacterWorkflow()
-          showToast(options.getLanguage() === 'zh-CN' ? '已打开角色包文件' : 'Character pack file opened')
+          showToast(options.getLanguage() === 'zh-CN' ? '已打开候选包预览' : 'Candidate pack preview opened')
         } else {
-          showToast(options.getLanguage() === 'zh-CN' ? '请先运行资源图 mock lifecycle 生成角色包' : 'Run the resource graph mock lifecycle before export')
+          showToast(options.getLanguage() === 'zh-CN' ? '请先运行 Agent mock trace 生成导出目标' : 'Run the agent mock trace before export')
         }
         break
       case 'toggle-inspector':
@@ -1833,14 +1833,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         if (deleteSelectedCharacterResourceLink()) {
           return
         }
-        if (!selectedWorkflowNodeId || selectedWorkflowNodeId === 'brief-input') {
-          showToast(options.getLanguage() === 'zh-CN' ? 'Brief 节点不能删除' : 'Brief node cannot be deleted')
+        if (!selectedWorkflowNodeId || selectedWorkflowNodeId === 'generation-goal') {
+          showToast(options.getLanguage() === 'zh-CN' ? '目标节点不能删除' : 'Goal node cannot be deleted')
           return
         }
         pushCharacterResourceUndoSnapshot()
         characterResourceViewState.deletedNodeIds.add(selectedWorkflowNodeId)
-        selectedWorkflowNodeId = 'brief-input'
-        characterResourceViewState.selectedNodeIds = ['brief-input']
+        selectedWorkflowNodeId = 'generation-goal'
+        characterResourceViewState.selectedNodeIds = ['generation-goal']
         renderCharacterWorkflow()
       },
       'open-node-search': () => {
@@ -1920,7 +1920,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       'chat-test': () => showToast(options.getLanguage() === 'zh-CN' ? '聊天测试入口已准备，但不调用真实聊天' : 'Chat test entry is ready without calling real chat'),
       'set-link-kind': () => {
         const kind = target?.dataset.resourceLinkKind || ''
-        const allowedKinds = new Set(['requires', 'constrains', 'references', 'validates', 'exports', 'suggests'])
+        const allowedKinds = new Set(['guides', 'constrains', 'provides', 'enables', 'grounds', 'weights', 'routes', 'evaluates', 'refines', 'exports'])
         if (!characterResourceViewState.selectedLinkId || !kind) {
           showToast(options.getLanguage() === 'zh-CN' ? '请选择具体连线后修改类型' : 'Select a concrete link before changing kind')
           return
@@ -1997,7 +1997,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     characterWorkflowRunState = draftRunState
     characterWorkflowActiveTabId = draftRunState.run?.id ?? 'run-draft'
     renderCharacterWorkflow()
-    showToast(options.getLanguage() === 'zh-CN' ? '资源图 mock lifecycle 运行中' : 'Resource graph mock lifecycle running')
+    showToast(options.getLanguage() === 'zh-CN' ? 'Agent mock trace 运行中' : 'Agent mock trace running')
     try {
       if (renderToken !== characterWorkflowRenderToken) {
         return
@@ -2007,14 +2007,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       characterWorkflowRunState = nextState
       characterWorkflowActiveTabId = nextState.run?.id ?? 'run-draft'
       renderCharacterWorkflow()
-      showToast(options.getLanguage() === 'zh-CN' ? '资源图 mock lifecycle 已完成' : 'Resource graph mock lifecycle finished')
+      showToast(options.getLanguage() === 'zh-CN' ? 'Agent mock trace 已完成' : 'Agent mock trace finished')
     } catch (error) {
       console.warn('[CharacterResourceGraph] Failed to run mock lifecycle:', error)
       if (renderToken === characterWorkflowRenderToken) {
         characterWorkflowRunState = draftRunState.run
           ? { ...draftRunState, run: { ...draftRunState.run, status: 'failed' } }
           : draftRunState
-        showToast(options.getLanguage() === 'zh-CN' ? '资源图 mock lifecycle 失败' : 'Resource graph mock lifecycle failed')
+        showToast(options.getLanguage() === 'zh-CN' ? 'Agent mock trace 失败' : 'Agent mock trace failed')
       }
     }
   }
@@ -2103,6 +2103,34 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     return `${linkItem.targetNodeId}:${linkItem.targetSlotId}`
   }
 
+  function inferCharacterResourceLinkKind(sourceType: string, targetType: string): SerializedCharacterResourceLinkKind {
+    if (sourceType === 'model-capability' || sourceType === 'image-capability' || sourceType === 'retrieval-capability' || sourceType === 'voice-capability') {
+      return 'enables'
+    }
+    if (targetType === 'hard-constraint' || targetType === 'agent-policy') {
+      return sourceType === 'hard-constraint' ? 'constrains' : 'guides'
+    }
+    if (sourceType === 'source-context') {
+      return 'grounds'
+    }
+    if (sourceType === 'style-signal') {
+      return 'weights'
+    }
+    if (targetType === 'validation-report') {
+      return 'evaluates'
+    }
+    if (sourceType === 'validation-report' || sourceType === 'critique-policy') {
+      return 'refines'
+    }
+    if (targetType === 'export-target') {
+      return 'exports'
+    }
+    if (sourceType === 'strategy-policy' || targetType === 'chat-test-result') {
+      return 'routes'
+    }
+    return 'guides'
+  }
+
   function upsertCharacterResourceLink(detail: CharacterResourceSlotConnectDetail): void {
     const sourceIsOutput = detail.sourceSide === 'output'
     const output = sourceIsOutput
@@ -2124,7 +2152,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       sourceSlotId: output.slotId,
       targetNodeId: input.nodeId,
       targetSlotId: input.slotId,
-      kind: 'requires',
+      kind: inferCharacterResourceLinkKind(output.type, input.type),
     }
     const movingLinkId = characterResourceViewState.selectedLinkId
     if (movingLinkId && movingLinkId !== linkId) {
@@ -2199,7 +2227,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       characterWorkflowRunState = null
       characterWorkflowPackTabOpen = false
     }
-    if (tabId === 'character-pack') {
+    if (tabId === 'package-preview') {
       characterWorkflowPackTabOpen = false
       characterWorkflowActiveTabId = characterWorkflowRunState?.run.id ?? 'workflow'
     }
@@ -2400,8 +2428,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         const height = Number.parseFloat(node.style.getPropertyValue('--node-h')) || 226
         return x < box.x + box.width && x + width > box.x && y < box.y + box.height && y + height > box.y
       }).map((node) => node.dataset.chatWorkflowNodeId || '').filter(Boolean)
-      characterResourceViewState.selectedNodeIds = selected.length ? selected : ['brief-input']
-      selectedWorkflowNodeId = characterResourceViewState.selectedNodeIds[0] ?? 'brief-input'
+      characterResourceViewState.selectedNodeIds = selected.length ? selected : ['generation-goal']
+      selectedWorkflowNodeId = characterResourceViewState.selectedNodeIds[0] ?? 'generation-goal'
       characterResourceViewState.selectionBox = null
       renderCharacterWorkflow()
     }
