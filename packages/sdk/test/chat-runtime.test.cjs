@@ -157,6 +157,61 @@ describe('chat conversation runtime helpers', () => {
     })
   })
 
+  test('builds chat runtime turn request from conversation state', () => {
+    const request = conversationRuntime.buildChatRuntimeTurnRequest({
+      input: '',
+      mediaFallbackInput: 'Please respond to the attached media.',
+      language: 'en-US',
+      preferencePrompt: 'Be concise.',
+      options: { temperature: 0.4 },
+      attachments: [{ kind: 'image', name: 'a.png', mimeType: 'image/png', dataUrl: 'data:image/png;base64,abc' }],
+      conversation: {
+        sceneState: { location: { 'zh-CN': '书房', 'en-US': 'Study' } },
+        messages: [
+          message('m1', 'user', 'old'),
+          message('m2', 'assistant', 'kept'),
+          message('m3', 'user', 'latest'),
+          message('draft', 'assistant', 'draft'),
+        ],
+        summaries: [{
+          id: 'summary-1',
+          text: { 'zh-CN': '旧摘要', 'en-US': 'Old summary' },
+          startMessageIndex: 1,
+          endMessageIndex: 1,
+          sourceMessageIds: ['m1'],
+        }],
+      },
+      draftMessageId: 'draft',
+      character: {
+        id: 'role-1',
+        displayName: { 'zh-CN': '陈千语', 'en-US': 'Qianyu Chen' },
+        description: { 'zh-CN': '记者', 'en-US': 'Reporter' },
+        story: { 'zh-CN': '旧城', 'en-US': 'Old city' },
+        background: { 'zh-CN': '雨夜', 'en-US': 'Rainy night' },
+        firstMessage: { 'zh-CN': '你好', 'en-US': 'Hi' },
+        tag: { 'zh-CN': ['悬疑'], 'en-US': ['Mystery'] },
+      },
+      sceneImmersion: true,
+      shortTermMessageLimit: 2,
+      summaryLimit: 3,
+    })
+
+    expect(request.input).toBe('Please respond to the attached media.')
+    expect(request.messages).toEqual([
+      { role: 'user', content: 'old' },
+      { role: 'assistant', content: 'kept' },
+    ])
+    expect(request.attachments).toEqual([
+      { kind: 'image', name: 'a.png', mimeType: 'image/png', dataUrl: 'data:image/png;base64,abc', size: undefined },
+    ])
+    expect(request.character).toMatchObject({
+      displayName: 'Qianyu Chen',
+      background: 'Rainy night',
+      firstMessage: 'Hi',
+      sceneState: { location: 'Study' },
+    })
+  })
+
   test('normalizes attachments and chat request options', () => {
     const request = requestRuntime.normalizeConfiguredChatTurnRequest({
       input: ' hello ',

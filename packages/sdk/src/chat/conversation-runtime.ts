@@ -2,6 +2,7 @@
  * Shared pure helpers for chat conversation runtime state.
  */
 import type { ChatCharacterContext } from './index.js'
+import type { ChatRuntimeTurnRequest } from './request-runtime.js'
 
 export type ChatRuntimeRole = 'system' | 'user' | 'assistant'
 export type ChatRuntimeLanguage = 'zh-CN' | 'en-US'
@@ -46,6 +47,29 @@ export interface ChatRuntimeCharacterResource {
   background: ChatRuntimeLocalizedText
   firstMessage: ChatRuntimeLocalizedText
   tag?: Partial<Record<ChatRuntimeLanguage, string[]>>
+}
+
+export interface ChatRuntimeAttachmentInput {
+  kind: 'image' | 'video'
+  name: string
+  mimeType: string
+  dataUrl?: string
+  size?: number
+}
+
+export interface BuildChatRuntimeTurnRequestOptions {
+  input: string
+  mediaFallbackInput: string
+  language: ChatRuntimeLanguage
+  preferencePrompt?: string
+  options?: Record<string, unknown>
+  attachments?: ChatRuntimeAttachmentInput[]
+  conversation: ChatRuntimeConversation & { sceneState?: Record<string, unknown> }
+  draftMessageId: string
+  character?: ChatRuntimeCharacterResource
+  sceneImmersion: boolean
+  shortTermMessageLimit: number
+  summaryLimit: number
 }
 
 export interface ChatRuntimeSummaryBatch {
@@ -178,6 +202,41 @@ export function buildChatCharacterContext(
     tags: character.tag?.[options.language] ?? character.tag?.['zh-CN'],
     sceneState: localizeChatSceneState(options.sceneState, options.language),
     narrativeSummaries: options.narrativeSummaries,
+  }
+}
+
+export function buildChatRuntimeTurnRequest(options: BuildChatRuntimeTurnRequestOptions): ChatRuntimeTurnRequest {
+  const characterContext = options.character
+    ? buildChatCharacterContext(options.character, {
+      language: options.language,
+      sceneImmersion: options.sceneImmersion,
+      sceneState: options.conversation.sceneState,
+      narrativeSummaries: buildChatNarrativeSummaries(options.conversation, {
+        language: options.language,
+        shortTermMessageLimit: options.shortTermMessageLimit,
+        summaryLimit: options.summaryLimit,
+      }),
+    })
+    : undefined
+
+  return {
+    input: options.input || options.mediaFallbackInput,
+    language: options.language,
+    preferencePrompt: options.preferencePrompt,
+    options: options.options,
+    attachments: (options.attachments ?? []).map((attachment) => ({
+      kind: attachment.kind,
+      name: attachment.name,
+      mimeType: attachment.mimeType,
+      dataUrl: attachment.dataUrl,
+      size: attachment.size,
+    })),
+    messages: buildChatConversationContextMessages(options.conversation, {
+      draftMessageId: options.draftMessageId,
+      language: options.language,
+      shortTermMessageLimit: options.shortTermMessageLimit,
+    }),
+    character: characterContext,
   }
 }
 

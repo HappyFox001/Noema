@@ -3,9 +3,7 @@
  */
 import { getImageProviderCatalogEntry, getLLMProviderCatalogEntry } from '../../main/model-provider-catalog'
 import {
-  buildChatConversationContextMessages,
-  buildChatCharacterContext,
-  buildChatNarrativeSummaries,
+  buildChatRuntimeTurnRequest,
   buildChatSummaryPrompt,
   extractChatSceneUpdate,
   getChatMessageOrdinal,
@@ -788,28 +786,20 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     conversation.updatedLabel = { 'zh-CN': '现在', 'en-US': 'Now' }
     renderer.appendMessage(message)
     refreshConversationList()
-    const request = {
-      input: userText || (uiLanguage === 'zh-CN' ? '请根据附件进行回复。' : 'Please respond to the attached media.'),
+    const request = buildChatRuntimeTurnRequest({
+      input: userText,
+      mediaFallbackInput: uiLanguage === 'zh-CN' ? '请根据附件进行回复。' : 'Please respond to the attached media.',
       language,
       preferencePrompt: buildConversationPreferencePrompt(conversationSettings, language),
       options: buildConversationRequestOptions(conversationSettings),
-      attachments: attachments.map((attachment) => ({
-        kind: attachment.kind,
-        name: attachment.name,
-        mimeType: attachment.mimeType,
-        dataUrl: attachment.dataUrl,
-        size: attachment.size,
-      })),
-      messages: buildConversationContextMessages(conversation, message.id, language),
-      character: character
-        ? buildChatCharacterContext(character, {
-          language,
-          sceneImmersion: conversationSettings.sceneImmersion,
-          sceneState: conversation.sceneState,
-          narrativeSummaries: buildNarrativeSummaries(conversation, language),
-        })
-        : undefined,
-    }
+      attachments,
+      conversation,
+      draftMessageId: message.id,
+      character,
+      sceneImmersion: conversationSettings.sceneImmersion,
+      shortTermMessageLimit: getShortTermMessageLimit(),
+      summaryLimit: conversationSettings.summaryLimit,
+    })
     let completeReply = ''
     let visibleReply = ''
     let pendingReveal = ''
@@ -903,18 +893,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
   }
 
-  function buildConversationContextMessages(
-    conversation: ChatConversationSummary,
-    draftMessageId: string,
-    language: 'zh-CN' | 'en-US'
-  ): Array<{ role: ChatMessage['role']; content: string }> {
-    return buildChatConversationContextMessages(conversation, {
-      draftMessageId,
-      language,
-      shortTermMessageLimit: getShortTermMessageLimit(),
-    })
-  }
-
   async function summarizeConversationOverflow(
     conversation: ChatConversationSummary,
     language: 'zh-CN' | 'en-US',
@@ -978,17 +956,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function trimSummaries(summaries: ChatMemorySummary[]): ChatMemorySummary[] {
     return trimChatSummaries(summaries, conversationSettings.summaryLimit)
-  }
-
-  function buildNarrativeSummaries(
-    conversation: ChatConversationSummary,
-    language: 'zh-CN' | 'en-US'
-  ): Array<{ startMessageIndex: number; endMessageIndex: number; text: string }> {
-    return buildChatNarrativeSummaries(conversation, {
-      language,
-      shortTermMessageLimit: getShortTermMessageLimit(),
-      summaryLimit: conversationSettings.summaryLimit,
-    })
   }
 
   function ensureConversationSceneDefaults(
