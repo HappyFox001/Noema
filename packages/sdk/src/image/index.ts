@@ -15,6 +15,16 @@ export {
 } from './catalog.js'
 import { getImageProviderCatalogEntry, type ImageGenerationConfiguredModel, type ImageGenerationResult, type ImageProviderCatalogEntry } from './catalog.js'
 
+export interface ImageGenerationArtifact {
+  kind: 'image'
+  provider: string
+  model: string
+  prompt: string
+  mimeType?: string
+  dataUrl?: string
+  url?: string
+}
+
 export async function generateImageWithConfiguredProvider(options: {
   model: ImageGenerationConfiguredModel
   modelName: string
@@ -66,6 +76,18 @@ export async function generateImageWithConfiguredProvider(options: {
       return { ...base, ...(await callTencentHunyuan(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt)) }
     default:
       throw new Error(`Unsupported image provider API style: ${entry.apiStyle}`)
+  }
+}
+
+export function createImageGenerationArtifact(result: ImageGenerationResult): ImageGenerationArtifact {
+  return {
+    kind: 'image',
+    provider: result.provider,
+    model: result.model,
+    prompt: result.prompt,
+    ...(result.mimeType ? { mimeType: result.mimeType } : {}),
+    ...(result.dataUrl ? { dataUrl: result.dataUrl } : {}),
+    ...(result.url ? { url: result.url } : {}),
   }
 }
 

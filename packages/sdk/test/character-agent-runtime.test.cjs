@@ -162,4 +162,24 @@ describe('character resource super agent runtime', () => {
       modelRef: 'image-api::portrait-model',
     }))
   })
+
+  test('standardizes image generation results as SDK image artifacts', async () => {
+    const { createImageGenerationArtifact } = await import('../dist/image/index.js')
+
+    expect(createImageGenerationArtifact({
+      provider: 'openai-image',
+      model: 'gpt-image-2',
+      prompt: 'portrait',
+      mimeType: 'image/png',
+      dataUrl: 'data:image/png;base64,abc',
+      providerResponse: { ignored: true },
+    })).toEqual({
+      kind: 'image',
+      provider: 'openai-image',
+      model: 'gpt-image-2',
+      prompt: 'portrait',
+      mimeType: 'image/png',
+      dataUrl: 'data:image/png;base64,abc',
+    })
+  })
 })

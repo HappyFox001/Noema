@@ -46,8 +46,8 @@
 
 ## 6. 生图模型与 Artifact
 
-- [ ] 将 image model 请求构建和 provider 调用统一放在 SDK。
-- [ ] 将生图结果标准化为 SDK artifact。
+- [x] 将 image model 请求构建和 provider 调用统一放在 SDK。
+- [x] 将生图结果标准化为 SDK artifact。
 - [x] 将 character workflow 中的 image artifact 生成逻辑从 desktop handler 移入 SDK。
 - [x] 定义 image model capability 和 LLM model capability 的统一 resolver。
 - [ ] renderer 只展示 artifact，不直接处理生图执行细节。

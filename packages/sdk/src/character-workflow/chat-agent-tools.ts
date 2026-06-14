@@ -2,7 +2,7 @@
  * Chat-model backed tools for autonomous character resource generation.
  */
 import { createChatSessionFromModel } from '../chat/index.js'
-import { generateImageWithConfiguredProvider } from '../image/index.js'
+import { createImageGenerationArtifact, generateImageWithConfiguredProvider } from '../image/index.js'
 import {
   createCharacterAgentToolRuntime,
   type AgentToolDefinition,
@@ -332,7 +332,7 @@ async function maybeGenerateImageArtifact(
     candidateId,
     'image-asset',
     'Generated Image Asset',
-    generated,
+    createImageGenerationArtifact(generated),
     capability.nodeId
   )
 }
