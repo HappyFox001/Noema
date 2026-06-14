@@ -81,7 +81,7 @@
 
 - [x] 为 SDK chat runtime 添加单元测试：prompt assembly、attachments、character context、summary selection、scene merge。
 - [x] 为 SDK stream event 协议添加测试，确保流式/非流式最终状态一致。
-- [ ] 为 character workflow SDK 迁移添加测试，覆盖 LLM tool、image artifact、quality gate。
+- [x] 为 character workflow SDK 迁移添加测试，覆盖 LLM tool、image artifact、quality gate。
 - [x] 修改 SDK 后运行 `pnpm --filter @her-text/sdk build`。
 - [x] 修改 desktop runtime 后运行 `pnpm --filter @her-text/desktop build`。
 - [x] 对改动过的 `.mjs` runtime plugin 文件运行 `node --check`。
