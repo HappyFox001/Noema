@@ -31,6 +31,7 @@ interface ChatConversationRow {
 
 export class ChatHistoryStore {
   private initialized = false
+  private writeQueue: Promise<void> = Promise.resolve()
 
   constructor(private readonly dbPath: string) {}
 
@@ -55,7 +56,7 @@ export class ChatHistoryStore {
 
   async upsertConversation(conversation: StoredChatConversation): Promise<void> {
     await this.initialize()
-    await runSqlite(this.dbPath, `
+    await this.enqueueWrite(`
       INSERT INTO chat_conversations (
         id,
         character_id,
@@ -94,12 +95,18 @@ export class ChatHistoryStore {
 
   async deleteConversation(id: string): Promise<void> {
     await this.initialize()
-    await runSqlite(this.dbPath, `DELETE FROM chat_conversations WHERE id = ${sqlText(id)};`)
+    await this.enqueueWrite(`DELETE FROM chat_conversations WHERE id = ${sqlText(id)};`)
   }
 
   async clearConversations(): Promise<void> {
     await this.initialize()
-    await runSqlite(this.dbPath, 'DELETE FROM chat_conversations;')
+    await this.enqueueWrite('DELETE FROM chat_conversations;')
+  }
+
+  private enqueueWrite(sql: string): Promise<void> {
+    const write = this.writeQueue.then(() => runSqlite(this.dbPath, sql).then(() => undefined))
+    this.writeQueue = write.catch(() => undefined)
+    return write
   }
 }
 
@@ -132,6 +139,7 @@ async function ensureCurrentSchema(dbPath: string): Promise<void> {
 
 async function createCurrentSchema(dbPath: string): Promise<void> {
   await runSqlite(dbPath, `
+      PRAGMA journal_mode = WAL;
       CREATE TABLE IF NOT EXISTS chat_conversations (
         id TEXT PRIMARY KEY,
         character_id TEXT NOT NULL,
@@ -211,7 +219,9 @@ async function runSqliteJson<T>(dbPath: string, sql: string): Promise<T[]> {
 }
 
 async function runSqlite(dbPath: string, sql: string, json = false): Promise<string> {
-  const args = json ? ['-json', dbPath] : [dbPath]
+  const args = json
+    ? ['-json', '-cmd', 'PRAGMA busy_timeout = 5000;', dbPath]
+    : ['-cmd', 'PRAGMA busy_timeout = 5000;', dbPath]
   return new Promise((resolve, reject) => {
     const child = spawn('sqlite3', args, { stdio: ['pipe', 'pipe', 'pipe'] })
     let stdout = ''

@@ -12645,6 +12645,14 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   grid-template-columns: 0 0 minmax(420px, 1fr) 0 0;
 }
 
+.chat-resource-workspace.review-mode,
+.chat-resource-workspace.review-mode.sidebar-collapsed,
+.chat-resource-workspace.review-mode.inspector-collapsed,
+.chat-resource-workspace.review-mode.sidebar-collapsed.inspector-collapsed {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
 .chat-resource-workspace .chat-resource-library {
   grid-column: 1;
   grid-row: 1 / 3;

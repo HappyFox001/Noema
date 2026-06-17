@@ -188,6 +188,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let characterWorkflowRunCount = 0
   let characterWorkflowActiveTabId = 'workflow'
   let characterWorkflowPackTabOpen = false
+  let characterWorkflowPersistTimer: number | undefined
   let selectedWorkflowNodeId = 'generation-goal'
   let lastCharacterResourceGraphSnapshot = ''
   let resourceViewStateSnapshot = ''
@@ -1455,7 +1456,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   function renderCharacterWorkflow(): void {
-    persistActiveConversationWorkflowState()
+    scheduleActiveConversationWorkflowPersist()
     void renderCharacterWorkflowAsync()
   }
 
@@ -1592,12 +1593,31 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   function persistActiveConversationWorkflowState(): void {
+    if (characterWorkflowPersistTimer !== undefined) {
+      window.clearTimeout(characterWorkflowPersistTimer)
+      characterWorkflowPersistTimer = undefined
+    }
     const conversation = getActiveMutableConversation()
     if (!conversation) {
       return
     }
     conversation.characterWorkflow = createPersistedCharacterWorkflowState()
     void persistConversation(conversation)
+  }
+
+  function scheduleActiveConversationWorkflowPersist(): void {
+    const conversation = getActiveMutableConversation()
+    if (!conversation) {
+      return
+    }
+    conversation.characterWorkflow = createPersistedCharacterWorkflowState()
+    if (characterWorkflowPersistTimer !== undefined) {
+      window.clearTimeout(characterWorkflowPersistTimer)
+    }
+    characterWorkflowPersistTimer = window.setTimeout(() => {
+      characterWorkflowPersistTimer = undefined
+      persistActiveConversationWorkflowState()
+    }, 450)
   }
 
   function restoreCharacterWorkflowStateFromConversation(conversation: ChatConversationSummary | undefined): void {
