@@ -1509,27 +1509,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   function getCharacterWorkflowTabs(): CharacterWorkflowFileTab[] {
-    const tabs: CharacterWorkflowFileTab[] = [{
+    return [{
       id: 'workflow',
       title: options.getLanguage() === 'zh-CN' ? '草稿 01.resourcegraph' : 'Draft 01.resourcegraph',
       kind: 'workflow',
     }]
-    if (characterWorkflowRunState) {
-      tabs.push({
-        id: characterWorkflowRunState.run.id,
-        title: characterWorkflowRunState.run.title,
-        kind: 'run',
-        state: characterWorkflowRunState.run.status === 'running' ? 'running' : characterWorkflowRunState.run.status === 'failed' ? 'failed' : undefined,
-      })
-    }
-    if (characterWorkflowPackTabOpen && characterWorkflowRunState?.artifacts.some((artifact) => artifact.type === 'export-target')) {
-      tabs.push({
-        id: 'package-preview',
-        title: options.getLanguage() === 'zh-CN' ? '候选包.preview' : 'Candidate Pack.preview',
-        kind: 'character',
-      })
-    }
-    return tabs
   }
 
   function cloneRecord<T>(record: Record<string, T>): Record<string, T> {
@@ -1641,6 +1625,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     characterWorkflowActiveTabId = typeof record.activeTabId === 'string'
       ? record.activeTabId
       : characterWorkflowRunState?.run?.id ?? 'workflow'
+    if (characterWorkflowActiveTabId === characterWorkflowRunState?.run?.id) {
+      characterWorkflowActiveTabId = 'run-draft'
+    }
     characterWorkflowPackTabOpen = Boolean(record.packTabOpen)
     if (record.editorState && typeof record.editorState === 'object') {
       characterWorkflowEditorState.activePanel = record.editorState.activePanel === 'assets' || record.editorState.activePanel === 'nodes'
@@ -1650,8 +1637,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       characterWorkflowEditorState.inspectorCollapsed = Boolean(record.editorState.inspectorCollapsed)
       characterWorkflowEditorState.nodeSearchOpen = false
     }
-    if (characterWorkflowActiveTabId !== 'workflow' && characterWorkflowActiveTabId !== 'package-preview' && characterWorkflowActiveTabId !== characterWorkflowRunState?.run?.id) {
-      characterWorkflowActiveTabId = characterWorkflowRunState?.run?.id ?? 'workflow'
+    if (characterWorkflowActiveTabId !== 'workflow' && characterWorkflowActiveTabId !== 'package-preview' && characterWorkflowActiveTabId !== 'run-draft') {
+      characterWorkflowActiveTabId = characterWorkflowRunState ? 'run-draft' : 'workflow'
     }
   }
 
@@ -1689,7 +1676,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           }
           renderCharacterWorkflow()
         }
-        showToast(options.getLanguage() === 'zh-CN' ? '已停止 Agent mock trace' : 'Stopped agent mock trace')
+        showToast(options.getLanguage() === 'zh-CN' ? '已停止 Agent 运行' : 'Stopped agent run')
         break
       case 'export':
         if (characterWorkflowRunState?.artifacts.some((artifact) => artifact.type === 'export-target')) {
@@ -1698,7 +1685,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           renderCharacterWorkflow()
           showToast(options.getLanguage() === 'zh-CN' ? '已打开候选包预览' : 'Candidate pack preview opened')
         } else {
-          showToast(options.getLanguage() === 'zh-CN' ? '请先运行 Agent mock trace 生成导出目标' : 'Run the agent mock trace before export')
+          showToast(options.getLanguage() === 'zh-CN' ? '请先运行 Agent 生成导出目标' : 'Run the agent before export')
         }
         break
       case 'toggle-inspector':
@@ -1965,8 +1952,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     characterWorkflowRunCount += 1
     const draftRunState = workflowPage.createDraftCharacterResourceRunState(characterWorkflowRunCount, 'running', options.getLanguage())
     characterWorkflowRunState = draftRunState
-    characterWorkflowActiveTabId = draftRunState.run?.id ?? 'run-draft'
-    characterWorkflowEditorState.inspectorCollapsed = true
+    characterWorkflowActiveTabId = 'run-draft'
+    characterWorkflowEditorState.inspectorCollapsed = false
     const updateRunStep = (
       stepId: string,
       status: NonNullable<CharacterResourceRunState['steps']>[number]['status'],
@@ -2065,7 +2052,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           data: artifact.data,
         })),
       }
-      characterWorkflowActiveTabId = characterWorkflowRunState.run?.id ?? 'run-draft'
+      characterWorkflowActiveTabId = 'run-draft'
       renderCharacterWorkflow()
       showToast(options.getLanguage() === 'zh-CN' ? '角色资源生成完成' : 'Character resources generated')
     } catch (error) {
@@ -2230,10 +2217,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   function selectCharacterWorkflowTab(tabId: string): void {
-    if (!getCharacterWorkflowTabs().some((tab) => tab.id === tabId)) {
+    const normalizedTabId = tabId === characterWorkflowRunState?.run?.id ? 'run-draft' : tabId
+    if (normalizedTabId !== 'workflow' && normalizedTabId !== 'package-preview' && normalizedTabId !== 'run-draft') {
       return
     }
-    characterWorkflowActiveTabId = tabId
+    characterWorkflowActiveTabId = normalizedTabId
     renderCharacterWorkflow()
   }
 

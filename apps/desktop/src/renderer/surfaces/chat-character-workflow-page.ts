@@ -6,7 +6,7 @@ import Split from 'split-grid'
 import { draggable, dropTargetForElements, monitorForElements } from '@atlaskit/pragmatic-drag-and-drop/dist/esm/adapter/element-adapter.js'
 import { computePosition, flip, offset, shift } from '@floating-ui/dom'
 import { LGraph, LGraphNode, LiteGraph } from 'litegraph.js'
-import { Download, Link2Off, Maximize, MessageCircle, Package, Play, RotateCcw, Save, Search, createIcons } from 'lucide'
+import { Download, Link2Off, Maximize, MessageCircle, Package, Play, RotateCcw, Save, Search, Square, createIcons } from 'lucide'
 import * as Y from 'yjs'
 import type { CharacterResourceViewState, SerializedCharacterResourceLinkKind } from './chat-character-resource-graph-state'
 
@@ -621,16 +621,19 @@ export function renderCharacterWorkflowPage(options: CharacterWorkflowPageOption
   const yjsSnapshot = createYjsSnapshot(graph, liteGraphSnapshot)
   const activeTab = normalizeActiveTab(options.activeTabId)
   const isWorkflowTab = activeTab === 'workflow'
+  const isRunTab = activeTab === 'run-draft'
+  const hasRightPanel = isWorkflowTab || isRunTab
   return `
-    <div class="chat-character-workflow-shell chat-resource-workbench ${isWorkflowTab ? 'is-workflow-tab' : 'is-review-tab'} ${options.nodeSearchOpen ? 'is-node-search-open' : ''}" data-resource-graph-id="${options.escapeHtml(graph.id)}" data-resource-placement-label="${options.escapeHtml(ui(options, '放置位置', 'Placement'))}">
+    <div class="chat-character-workflow-shell chat-resource-workbench ${isWorkflowTab ? 'is-workflow-tab' : 'is-review-tab'} ${isRunTab ? 'is-run-tab' : ''} ${options.nodeSearchOpen ? 'is-node-search-open' : ''}" data-resource-graph-id="${options.escapeHtml(graph.id)}" data-resource-placement-label="${options.escapeHtml(ui(options, '放置位置', 'Placement'))}">
       ${renderFileTabs(options)}
       <div class="chat-character-workflow-stage">
-        <div class="chat-resource-workspace ${isWorkflowTab ? 'workflow-mode' : 'review-mode'} ${options.sidebarCollapsed ? 'sidebar-collapsed' : ''} ${options.inspectorCollapsed ? 'inspector-collapsed' : ''}" style="--resource-left-panel: ${graph.panels.leftWidth}px; --resource-right-panel: ${graph.panels.rightWidth}px; --resource-bottom-panel: ${graph.panels.bottomHeight}px">
+        <div class="chat-resource-workspace ${isWorkflowTab ? 'workflow-mode' : isRunTab ? 'run-mode' : 'review-mode'} ${options.sidebarCollapsed ? 'sidebar-collapsed' : ''} ${options.inspectorCollapsed ? 'inspector-collapsed' : ''}" style="--resource-left-panel: ${graph.panels.leftWidth}px; --resource-right-panel: ${graph.panels.rightWidth}px; --resource-bottom-panel: ${graph.panels.bottomHeight}px">
           ${isWorkflowTab ? renderResourceLibrary(graph, options) : ''}
           ${isWorkflowTab ? '<div class="chat-resource-split-gutter left" data-resource-split-gutter="left" aria-hidden="true"></div>' : ''}
           ${renderResourceCanvas(graph, yjsSnapshot, options)}
-          ${isWorkflowTab ? '<div class="chat-resource-split-gutter right" data-resource-split-gutter="right" aria-hidden="true"></div>' : ''}
+          ${hasRightPanel ? '<div class="chat-resource-split-gutter right" data-resource-split-gutter="right" aria-hidden="true"></div>' : ''}
           ${isWorkflowTab ? renderResourceInspector(graph, options) : ''}
+          ${isRunTab && !options.inspectorCollapsed ? renderRunCharacterInspector(options) : ''}
           ${isWorkflowTab ? renderBottomToolbar(graph, options) : ''}
         </div>
       </div>
@@ -698,12 +701,13 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
   const workspace = root.querySelector<HTMLElement>('.chat-resource-workspace')
   const leftGutter = root.querySelector<HTMLElement>('[data-resource-split-gutter="left"]')
   const rightGutter = root.querySelector<HTMLElement>('[data-resource-split-gutter="right"]')
-  if (workspace && leftGutter && rightGutter) {
+  if (workspace && (leftGutter || rightGutter)) {
+    const columnGutters = [
+      leftGutter ? { element: leftGutter, track: 1 } : undefined,
+      rightGutter ? { element: rightGutter, track: 3 } : undefined,
+    ].filter((gutter): gutter is { element: HTMLElement; track: number } => Boolean(gutter))
     const split = Split({
-      columnGutters: [
-        { element: leftGutter, track: 1 },
-        { element: rightGutter, track: 3 },
-      ],
+      columnGutters,
       columnMinSizes: { 0: 0, 2: 420, 4: 0 },
       snapOffset: 42,
     })
@@ -1100,6 +1104,7 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
       RotateCcw,
       Save,
       Search,
+      Square,
     },
     root,
   })
@@ -1109,6 +1114,7 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
 function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): CharacterResourceGraph {
   const definitions = new Map(RESOURCE_NODE_DEFINITIONS.map((definition) => [definition.type, definition]))
   const viewState = options.viewState ?? {}
+  const activeTab = normalizeActiveTab(options.activeTabId)
   const collapsedNodeIds = new Set(viewState.collapsedNodeIds ?? [])
   const deletedNodeIds = new Set(viewState.deletedNodeIds ?? [])
   const nodes = DEFAULT_NODE_PLACEMENT.map((placement, index) => {
@@ -1224,7 +1230,7 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
     selection: { nodeIds: viewState.selectedNodeIds?.length ? viewState.selectedNodeIds : [options.selectedNodeId || 'generation-goal'], linkIds: viewState.selectedLinkId ? [viewState.selectedLinkId] : [] },
     panels: {
       leftWidth: options.sidebarCollapsed ? 0 : 246,
-      rightWidth: options.inspectorCollapsed ? 0 : 252,
+      rightWidth: options.inspectorCollapsed ? 0 : activeTab === 'run-draft' ? 360 : 252,
       bottomHeight: 62,
       activePanel: options.activePanel,
     },
@@ -1273,15 +1279,14 @@ function createYjsSnapshot(graph: CharacterResourceGraph, liteGraphSnapshot: unk
 }
 
 function renderFileTabs(options: CharacterWorkflowPageOptions): string {
-  const tabs = options.tabs.length ? options.tabs : [{
+  const tab = options.tabs.find((item) => item.kind === 'workflow') ?? {
     id: 'workflow',
     title: ui(options, '草稿 01.resourcegraph', 'Draft 01.resourcegraph'),
     kind: 'workflow' as const,
-  }]
+  }
   return `
     <div class="chat-workflow-file-tabs" role="tablist" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '角色资源图文件' : 'Character resource graph files')}">
-      ${tabs.map((tab) => renderFileTab(tab, tab.id === options.activeTabId, options)).join('')}
-      <button class="chat-workflow-new-tab" type="button" data-chat-workflow-action="new-run" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '新建运行草稿' : 'New run draft')}">+</button>
+      ${renderFileTab(tab, true, options)}
     </div>
   `
 }
@@ -1292,7 +1297,6 @@ function renderFileTab(tab: CharacterWorkflowFileTab, active: boolean, options: 
       <span class="chat-workflow-file-icon ${tab.kind}" aria-hidden="true"></span>
       <strong>${options.escapeHtml(tab.title)}</strong>
       ${tab.state ? '<span class="chat-workflow-file-state" aria-hidden="true"></span>' : ''}
-      <span class="chat-workflow-file-close" data-chat-workflow-close-tab="${options.escapeHtml(tab.id)}" aria-hidden="true">×</span>
     </button>
   `
 }
@@ -1414,7 +1418,6 @@ function renderResourceCanvas(graph: CharacterResourceGraph, yjsSnapshot: string
       </div>
       ${activeTab === 'package-preview' ? renderPackagePreview(graph, options) : ''}
       ${activeTab === 'run-draft' ? renderRunDraft(graph, options) : ''}
-      ${isRunTab && !options.inspectorCollapsed ? renderRunCharacterInspector(options) : ''}
       ${isWorkflowTab ? `<div class="chat-workflow-canvas-viewport active" data-resource-viewport="${options.escapeHtml(JSON.stringify(graph.viewport))}">
         <div class="chat-workflow-canvas-plane chat-resource-graph-plane" style="--resource-zoom: ${graph.viewport.zoom}; --resource-pan-x: ${graph.viewport.x}px; --resource-pan-y: ${graph.viewport.y}px">
           <div class="chat-workflow-canvas-grid" aria-hidden="true"></div>
@@ -1433,8 +1436,15 @@ function renderResourceCanvas(graph: CharacterResourceGraph, yjsSnapshot: string
 }
 
 function renderRunCanvasControls(options: CharacterWorkflowPageOptions): string {
+  const running = options.runState?.run?.status === 'running'
+  const runLabel = running ? ui(options, '停止 Agent 运行', 'Stop agent run') : ui(options, '运行 Agent', 'Run agent')
+  const fitLabel = ui(options, '适配视图', 'Fit view')
+  const resetLabel = ui(options, '重置视图', 'Reset view')
   return `
     <div class="chat-workflow-canvas-controls chat-resource-canvas-controls chat-resource-run-controls" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '画布控制' : 'Canvas controls')}">
+      <button class="chat-workflow-run-toggle ${running ? 'is-running' : ''}" type="button" data-chat-workflow-action="${running ? 'stop' : 'run'}" aria-label="${options.escapeHtml(runLabel)}" title="${options.escapeHtml(runLabel)}"><i icon-name="${running ? 'square' : 'play'}" aria-hidden="true"></i></button>
+      <button type="button" data-chat-workflow-action="fit-view" title="${options.escapeHtml(fitLabel)}" aria-label="${options.escapeHtml(fitLabel)}"><i icon-name="maximize" aria-hidden="true"></i></button>
+      <button type="button" data-chat-workflow-action="reset-view" title="${options.escapeHtml(resetLabel)}" aria-label="${options.escapeHtml(resetLabel)}"><i icon-name="rotate-ccw" aria-hidden="true"></i></button>
       ${renderInspectorToggle(options)}
     </div>
   `
@@ -1733,7 +1743,11 @@ function createRunResourceGraph(graph: CharacterResourceGraph, options: Characte
       color: 'rgba(82, 168, 255, 0.13)',
     }],
     tabs: graph.tabs,
-    viewport: { x: 0, y: 0, zoom: 0.84 },
+    viewport: {
+      x: options.viewState?.panX ?? 0,
+      y: options.viewState?.panY ?? 0,
+      zoom: options.viewState?.zoom ?? 0.84,
+    },
     selection: { nodeIds: [nodes[nodes.length - 1]?.id ?? 'run-input-graph'], linkIds: [] },
     panels: graph.panels,
     mockOutputs: outputs,
@@ -1961,13 +1975,13 @@ function getArtifactText(data: unknown): string {
 
 function renderCanvasControls(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): string {
   const running = options.runState?.run?.status === 'running'
-  const runLabel = running ? ui(options, '停止前端模拟运行', 'Stop mock run') : ui(options, '运行前端模拟生命周期', 'Run mock lifecycle')
+  const runLabel = running ? ui(options, '停止 Agent 运行', 'Stop agent run') : ui(options, '运行 Agent', 'Run agent')
   const fitLabel = ui(options, '适配视图', 'Fit view')
   const resetLabel = ui(options, '重置视图', 'Reset view')
   const linksLabel = ui(options, '显示/隐藏连线', 'Toggle links')
   return `
     <div class="chat-workflow-canvas-controls chat-resource-canvas-controls" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '画布控制' : 'Canvas controls')}">
-      <button class="chat-workflow-run-toggle ${running ? 'is-running' : ''}" type="button" data-chat-workflow-action="${running ? 'stop' : 'run'}" aria-label="${options.escapeHtml(runLabel)}" title="${options.escapeHtml(runLabel)}"><i icon-name="play" aria-hidden="true"></i></button>
+      <button class="chat-workflow-run-toggle ${running ? 'is-running' : ''}" type="button" data-chat-workflow-action="${running ? 'stop' : 'run'}" aria-label="${options.escapeHtml(runLabel)}" title="${options.escapeHtml(runLabel)}"><i icon-name="${running ? 'square' : 'play'}" aria-hidden="true"></i></button>
       <button type="button" data-chat-workflow-action="fit-view" title="${options.escapeHtml(fitLabel)}" aria-label="${options.escapeHtml(fitLabel)}"><i icon-name="maximize" aria-hidden="true"></i></button>
       <button type="button" data-chat-workflow-action="reset-view" title="${options.escapeHtml(resetLabel)}" aria-label="${options.escapeHtml(resetLabel)}"><i icon-name="rotate-ccw" aria-hidden="true"></i></button>
       <button type="button" data-chat-workflow-action="toggle-links" title="${options.escapeHtml(linksLabel)}" aria-label="${options.escapeHtml(linksLabel)}"><i icon-name="link-2-off" aria-hidden="true"></i></button>
