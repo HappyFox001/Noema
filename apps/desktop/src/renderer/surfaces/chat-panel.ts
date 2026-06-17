@@ -78,6 +78,14 @@ interface CharacterWorkflowEditorState {
   nodeSearchOpen: boolean
 }
 
+interface PersistedCharacterWorkflowState {
+  runState: CharacterResourceRunState | null
+  runCount: number
+  activeTabId: string
+  packTabOpen: boolean
+  editorState: CharacterWorkflowEditorState
+}
+
 interface CharacterResourceSlotConnectDetail {
   sourceNodeId: string
   sourceSlotId: string
@@ -474,6 +482,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
     state.activeConversationId = conversationId
+    restoreCharacterWorkflowStateFromConversation(getActiveConversation(state))
     renderChat()
     const conversation = getActiveConversation(state)
     if (conversation) {
@@ -1446,6 +1455,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   function renderCharacterWorkflow(): void {
+    persistActiveConversationWorkflowState()
     void renderCharacterWorkflowAsync()
   }
 
@@ -1564,6 +1574,65 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     characterResourceViewState.deletedLinkIds = new Set(snapshot.deletedLinkIds)
     characterResourceViewState.replacedTargetSlots = new Set(snapshot.replacedTargetSlots)
     characterResourceViewState.linkKinds = { ...snapshot.linkKinds }
+  }
+
+  function createPersistedCharacterWorkflowState(): PersistedCharacterWorkflowState {
+    return {
+      runState: characterWorkflowRunState ? JSON.parse(JSON.stringify(characterWorkflowRunState)) as CharacterResourceRunState : null,
+      runCount: characterWorkflowRunCount,
+      activeTabId: characterWorkflowActiveTabId,
+      packTabOpen: characterWorkflowPackTabOpen,
+      editorState: {
+        activePanel: characterWorkflowEditorState.activePanel,
+        sidebarCollapsed: characterWorkflowEditorState.sidebarCollapsed,
+        inspectorCollapsed: characterWorkflowEditorState.inspectorCollapsed,
+        nodeSearchOpen: false,
+      },
+    }
+  }
+
+  function persistActiveConversationWorkflowState(): void {
+    const conversation = getActiveMutableConversation()
+    if (!conversation) {
+      return
+    }
+    conversation.characterWorkflow = createPersistedCharacterWorkflowState()
+    void persistConversation(conversation)
+  }
+
+  function restoreCharacterWorkflowStateFromConversation(conversation: ChatConversationSummary | undefined): void {
+    const persisted = conversation?.characterWorkflow
+    if (!persisted || typeof persisted !== 'object' || Array.isArray(persisted)) {
+      characterWorkflowRunState = null
+      characterWorkflowRunCount = 0
+      characterWorkflowActiveTabId = 'workflow'
+      characterWorkflowPackTabOpen = false
+      characterWorkflowEditorState.activePanel = 'workflow'
+      characterWorkflowEditorState.sidebarCollapsed = false
+      characterWorkflowEditorState.inspectorCollapsed = false
+      characterWorkflowEditorState.nodeSearchOpen = false
+      return
+    }
+    const record = persisted as Partial<PersistedCharacterWorkflowState>
+    characterWorkflowRunState = record.runState && typeof record.runState === 'object'
+      ? JSON.parse(JSON.stringify(record.runState)) as CharacterResourceRunState
+      : null
+    characterWorkflowRunCount = Math.max(0, Math.round(Number(record.runCount) || 0))
+    characterWorkflowActiveTabId = typeof record.activeTabId === 'string'
+      ? record.activeTabId
+      : characterWorkflowRunState?.run?.id ?? 'workflow'
+    characterWorkflowPackTabOpen = Boolean(record.packTabOpen)
+    if (record.editorState && typeof record.editorState === 'object') {
+      characterWorkflowEditorState.activePanel = record.editorState.activePanel === 'assets' || record.editorState.activePanel === 'nodes'
+        ? record.editorState.activePanel
+        : 'workflow'
+      characterWorkflowEditorState.sidebarCollapsed = Boolean(record.editorState.sidebarCollapsed)
+      characterWorkflowEditorState.inspectorCollapsed = Boolean(record.editorState.inspectorCollapsed)
+      characterWorkflowEditorState.nodeSearchOpen = false
+    }
+    if (characterWorkflowActiveTabId !== 'workflow' && characterWorkflowActiveTabId !== 'package-preview' && characterWorkflowActiveTabId !== characterWorkflowRunState?.run?.id) {
+      characterWorkflowActiveTabId = characterWorkflowRunState?.run?.id ?? 'workflow'
+    }
   }
 
   function pushCharacterResourceUndoSnapshot(): void {
@@ -1877,6 +1946,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const draftRunState = workflowPage.createDraftCharacterResourceRunState(characterWorkflowRunCount, 'running', options.getLanguage())
     characterWorkflowRunState = draftRunState
     characterWorkflowActiveTabId = draftRunState.run?.id ?? 'run-draft'
+    characterWorkflowEditorState.inspectorCollapsed = true
     const updateRunStep = (
       stepId: string,
       status: NonNullable<CharacterResourceRunState['steps']>[number]['status'],
@@ -3279,6 +3349,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   async function hydrateChatResources(): Promise<void> {
     try {
       applyChatResourceState(state, await loadChatResourceState())
+      restoreCharacterWorkflowStateFromConversation(getActiveConversation(state))
       renderChat()
       await Promise.all(state.conversations.map((conversation) => persistConversation(conversation)))
     } catch (error) {
@@ -3303,6 +3374,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         ...messageItem,
         state: undefined,
       })),
+      workflowState: conversation.characterWorkflow ?? createPersistedCharacterWorkflowState(),
     })
     if (!response.success) {
       console.warn('[ChatHistory] Failed to persist conversation:', response.error)

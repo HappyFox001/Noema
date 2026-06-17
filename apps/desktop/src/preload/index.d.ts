@@ -618,6 +618,7 @@ declare global {
             }>
             state?: 'idle' | 'thinking' | 'generating_image' | 'using_tool'
           }>
+          workflowState?: unknown
         }>
         error?: string
       }>
@@ -630,6 +631,7 @@ declare global {
         sceneState: unknown
         summaries?: unknown[]
         messages: unknown[]
+        workflowState?: unknown
       }) => Promise<{ success: boolean; error?: string }>
       deleteChatConversation: (id: string) => Promise<{ success: boolean; error?: string }>
       clearChatConversations: () => Promise<{ success: boolean; error?: string }>

@@ -1403,15 +1403,18 @@ function renderSidebarToggle(options: CharacterWorkflowPageOptions): string {
 function renderResourceCanvas(graph: CharacterResourceGraph, yjsSnapshot: string, options: CharacterWorkflowPageOptions): string {
   const activeTab = normalizeActiveTab(options.activeTabId)
   const isWorkflowTab = activeTab === 'workflow'
+  const isRunTab = activeTab === 'run-draft'
   return `
     <section class="chat-workflow-canvas chat-resource-canvas" tabindex="-1" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '角色资源图画布' : 'Character resource graph canvas')}">
       ${isWorkflowTab ? renderCanvasControls(graph, options) : ''}
+      ${isRunTab ? renderRunCanvasControls(options) : ''}
       <div class="chat-resource-tabs">
         ${isWorkflowTab ? renderSidebarToggle(options) : ''}
         ${graph.tabs.map((tab) => `<button class="${tab.id === activeTab ? 'active' : ''}" type="button" data-chat-workflow-tab="${options.escapeHtml(tab.id)}">${options.escapeHtml(resourceGraphTabTitle(tab, options))}</button>`).join('')}
       </div>
       ${activeTab === 'package-preview' ? renderPackagePreview(graph, options) : ''}
       ${activeTab === 'run-draft' ? renderRunDraft(graph, options) : ''}
+      ${isRunTab && !options.inspectorCollapsed ? renderRunCharacterInspector(options) : ''}
       ${isWorkflowTab ? `<div class="chat-workflow-canvas-viewport active" data-resource-viewport="${options.escapeHtml(JSON.stringify(graph.viewport))}">
         <div class="chat-workflow-canvas-plane chat-resource-graph-plane" style="--resource-zoom: ${graph.viewport.zoom}; --resource-pan-x: ${graph.viewport.x}px; --resource-pan-y: ${graph.viewport.y}px">
           <div class="chat-workflow-canvas-grid" aria-hidden="true"></div>
@@ -1426,6 +1429,14 @@ function renderResourceCanvas(graph: CharacterResourceGraph, yjsSnapshot: string
       ${isWorkflowTab ? renderNodeSearchPopover(graph, options) : ''}
       ${isWorkflowTab ? renderCanvasContextMenu(options) : ''}
     </section>
+  `
+}
+
+function renderRunCanvasControls(options: CharacterWorkflowPageOptions): string {
+  return `
+    <div class="chat-workflow-canvas-controls chat-resource-canvas-controls chat-resource-run-controls" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '画布控制' : 'Canvas controls')}">
+      ${renderInspectorToggle(options)}
+    </div>
   `
 }
 
@@ -1501,6 +1512,139 @@ function renderRunDraft(graph: CharacterResourceGraph, options: CharacterWorkflo
       <div class="chat-resource-serializer" aria-hidden="true" data-yjs-snapshot="${options.escapeHtml(runYjsSnapshot)}"></div>
     </div>
   `
+}
+
+function renderRunCharacterInspector(options: CharacterWorkflowPageOptions): string {
+  const artifacts = getRoleResourceArtifacts(options.runState?.artifacts ?? [])
+  const rows = createRunCharacterRows(artifacts, options)
+  const images = artifacts
+    .map((artifact) => ({ artifact, image: getArtifactImage(artifact.data) }))
+    .filter((item) => item.image)
+  return `
+    <aside class="chat-workflow-inspector chat-resource-inspector chat-run-character-inspector" aria-label="${options.escapeHtml(ui(options, '角色资源详情', 'Character resource details'))}">
+      <div class="chat-workflow-inspector-scroll chat-run-character-scroll">
+        <header class="chat-run-character-hero">
+          ${images[0]?.image ? `<img src="${options.escapeHtml(images[0].image)}" alt="${options.escapeHtml(ui(options, '角色图', 'Character image'))}">` : ''}
+          <span>${options.escapeHtml(ui(options, '角色资源', 'Character Resource'))}</span>
+          <strong>${options.escapeHtml(getRunCharacterTitle(rows, options))}</strong>
+        </header>
+        <section class="chat-run-character-fields">
+          ${rows.map((row) => `
+            <article>
+              <span>${options.escapeHtml(row.label)}</span>
+              <p>${options.escapeHtml(row.value)}</p>
+            </article>
+          `).join('')}
+        </section>
+        ${images.length ? `
+          <section class="chat-run-character-carousel" aria-label="${options.escapeHtml(ui(options, '角色图片', 'Character images'))}">
+            ${images.map((item, index) => `
+              <figure>
+                <img src="${options.escapeHtml(item.image)}" alt="${options.escapeHtml(item.artifact.title ?? `${ui(options, '角色图片', 'Character image')} ${index + 1}`)}">
+                <figcaption>${options.escapeHtml(item.artifact.title ?? `${index + 1} / ${images.length}`)}</figcaption>
+              </figure>
+            `).join('')}
+          </section>
+        ` : ''}
+      </div>
+    </aside>
+  `
+}
+
+function createRunCharacterRows(
+  artifacts: NonNullable<CharacterResourceRunState['artifacts']>,
+  options: CharacterWorkflowPageOptions
+): Array<{ label: string; value: string }> {
+  const rows: Array<{ label: string; value: string }> = []
+  const push = (label: string, value: string | undefined) => {
+    const normalized = normalizeRunCharacterFieldValue(value)
+    if (normalized && !rows.some((row) => row.label === label && row.value === normalized)) {
+      rows.push({ label, value: normalized })
+    }
+  }
+  const roleCard = artifacts.find((artifact) => artifact.type === 'character-card-final')
+  if (roleCard) {
+    push(ui(options, '名称', 'Name'), roleCard.title)
+    push(ui(options, '角色卡', 'Role Card'), getArtifactText(roleCard.data) || roleCard.summary)
+    const record = roleCard.data && typeof roleCard.data === 'object' && !Array.isArray(roleCard.data)
+      ? roleCard.data as Record<string, unknown>
+      : {}
+    for (const [key, value] of Object.entries(record)) {
+      if (key === 'image' || key === 'images' || key === 'avatar' || key === 'dataUrl' || key === 'url') {
+        continue
+      }
+      push(formatRunCharacterFieldLabel(key, options), formatRunCharacterFieldValue(value))
+    }
+  }
+  for (const artifact of artifacts) {
+    if (artifact.type === 'character-card-final' || artifact.type === 'image-asset') {
+      continue
+    }
+    push(getRunArtifactMeta(artifact, options), getArtifactText(artifact.data) || artifact.summary)
+  }
+  if (!rows.length) {
+    push(ui(options, '状态', 'Status'), options.runState?.run?.status === 'running'
+      ? ui(options, '角色资源生成中', 'Character resources are being generated')
+      : ui(options, '暂无角色资源', 'No character resources yet'))
+  }
+  return rows.slice(0, 24)
+}
+
+function getRunCharacterTitle(rows: Array<{ label: string; value: string }>, options: CharacterWorkflowPageOptions): string {
+  const nameLabel = ui(options, '名称', 'Name')
+  return rows.find((row) => row.label === nameLabel)?.value
+    ?? rows[0]?.value.split('\n')[0]?.slice(0, 30)
+    ?? ui(options, '生成角色', 'Generated Character')
+}
+
+function formatRunCharacterFieldLabel(key: string, options: CharacterWorkflowPageOptions): string {
+  const labels: Record<string, { zh: string; en: string }> = {
+    name: { zh: '名称', en: 'Name' },
+    displayName: { zh: '显示名称', en: 'Display Name' },
+    description: { zh: '简介', en: 'Description' },
+    personality: { zh: '性格', en: 'Personality' },
+    background: { zh: '背景', en: 'Background' },
+    story: { zh: '故事', en: 'Story' },
+    firstMessage: { zh: '开场白', en: 'First Message' },
+    scenario: { zh: '场景', en: 'Scenario' },
+    world: { zh: '世界观', en: 'World' },
+    memory: { zh: '记忆', en: 'Memory' },
+  }
+  const label = labels[key]
+  if (label) {
+    return ui(options, label.zh, label.en)
+  }
+  return key.replace(/[_-]+/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2')
+}
+
+function formatRunCharacterFieldValue(value: unknown): string | undefined {
+  if (value === null || value === undefined) {
+    return undefined
+  }
+  if (typeof value === 'string') {
+    return value
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value)
+  }
+  if (Array.isArray(value)) {
+    return value.map(formatRunCharacterFieldValue).filter(Boolean).join('\n')
+  }
+  if (typeof value === 'object') {
+    const localized = value as Record<string, unknown>
+    if (typeof localized['zh-CN'] === 'string') {
+      return localized['zh-CN']
+    }
+    if (typeof localized['en-US'] === 'string') {
+      return localized['en-US']
+    }
+    return JSON.stringify(value, null, 2)
+  }
+  return undefined
+}
+
+function normalizeRunCharacterFieldValue(value: string | undefined): string {
+  return String(value ?? '').replace(/\r\n/g, '\n').trim()
 }
 
 function createRunResourceGraph(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): CharacterResourceGraph {

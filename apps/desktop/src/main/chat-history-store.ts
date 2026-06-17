@@ -14,6 +14,7 @@ export interface StoredChatConversation {
   sceneState: unknown
   summaries: unknown[]
   messages: unknown[]
+  workflowState?: unknown
 }
 
 interface ChatConversationRow {
@@ -25,6 +26,7 @@ interface ChatConversationRow {
   scene_state_json: string
   summaries_json: string
   messages_json: string
+  workflow_state_json?: string
 }
 
 export class ChatHistoryStore {
@@ -44,7 +46,7 @@ export class ChatHistoryStore {
   async listConversations(): Promise<StoredChatConversation[]> {
     await this.initialize()
     const rows = await runSqliteJson<ChatConversationRow>(this.dbPath, `
-      SELECT id, character_id, title_json, preview_json, updated_label_json, scene_state_json, summaries_json, messages_json
+      SELECT id, character_id, title_json, preview_json, updated_label_json, scene_state_json, summaries_json, messages_json, workflow_state_json
       FROM chat_conversations
       ORDER BY updated_at DESC;
     `)
@@ -63,6 +65,7 @@ export class ChatHistoryStore {
         scene_state_json,
         summaries_json,
         messages_json,
+        workflow_state_json,
         updated_at
       ) VALUES (
         ${sqlText(conversation.id)},
@@ -73,6 +76,7 @@ export class ChatHistoryStore {
         ${sqlText(JSON.stringify(conversation.sceneState))},
         ${sqlText(JSON.stringify(conversation.summaries))},
         ${sqlText(JSON.stringify(conversation.messages ?? []))},
+        ${sqlText(JSON.stringify(conversation.workflowState ?? null))},
         ${Date.now()}
       )
       ON CONFLICT(id) DO UPDATE SET
@@ -83,6 +87,7 @@ export class ChatHistoryStore {
         scene_state_json = excluded.scene_state_json,
         summaries_json = excluded.summaries_json,
         messages_json = excluded.messages_json,
+        workflow_state_json = excluded.workflow_state_json,
         updated_at = excluded.updated_at;
     `)
   }
@@ -111,9 +116,14 @@ async function ensureCurrentSchema(dbPath: string): Promise<void> {
     'scene_state_json',
     'summaries_json',
     'messages_json',
+    'workflow_state_json',
     'updated_at',
     'created_at',
   ]
+  if (!columnNames.has('workflow_state_json')) {
+    await runSqlite(dbPath, 'ALTER TABLE chat_conversations ADD COLUMN workflow_state_json TEXT;')
+    columnNames.add('workflow_state_json')
+  }
   if (!requiredColumns.every((column) => columnNames.has(column))) {
     await runSqlite(dbPath, 'DROP TABLE IF EXISTS chat_conversations;')
     await createCurrentSchema(dbPath)
@@ -131,6 +141,7 @@ async function createCurrentSchema(dbPath: string): Promise<void> {
         scene_state_json TEXT NOT NULL,
         summaries_json TEXT NOT NULL,
         messages_json TEXT NOT NULL,
+        workflow_state_json TEXT,
         updated_at INTEGER NOT NULL,
         created_at INTEGER DEFAULT (strftime('%s', 'now'))
       );
@@ -148,6 +159,18 @@ function rowToConversation(row: ChatConversationRow): StoredChatConversation {
     sceneState: parseJsonObject(row.scene_state_json),
     summaries: parseJsonArray(row.summaries_json),
     messages: parseJsonArray(row.messages_json),
+    workflowState: parseJsonAny(row.workflow_state_json),
+  }
+}
+
+function parseJsonAny(value: string | undefined): unknown {
+  if (!value) {
+    return undefined
+  }
+  try {
+    return JSON.parse(value)
+  } catch {
+    return undefined
   }
 }
 

@@ -32,6 +32,7 @@ export interface ChatConversationSummary {
   sceneState: ChatSceneState
   summaries: ChatMemorySummary[]
   messages: ChatMessage[]
+  characterWorkflow?: unknown
 }
 
 export interface ChatSceneState {
@@ -172,6 +173,7 @@ function createSeedHistory(characterResources: ChatCharacterResource[]): ChatCon
           },
         },
       ],
+      characterWorkflow: null,
     }))
 }
 
@@ -195,8 +197,16 @@ function normalizeStoredConversations(
       messages: Array.isArray(conversation.messages)
         ? conversation.messages.map(normalizeStoredMessage).filter(Boolean) as ChatMessage[]
         : [],
+      characterWorkflow: normalizeWorkflowState((conversation as ChatConversationSummary & { workflowState?: unknown }).characterWorkflow ?? (conversation as ChatConversationSummary & { workflowState?: unknown }).workflowState),
     }))
     .filter((conversation) => conversation.messages.length > 0)
+}
+
+function normalizeWorkflowState(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null
+  }
+  return value
 }
 
 function getCharacterScene(characterResources: ChatCharacterResource[], characterId: string): ChatSceneState {
