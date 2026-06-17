@@ -24,6 +24,7 @@ import siliconCloudIconUrl from '@lobehub/icons-static-svg/icons/siliconcloud-co
 import stabilityIconUrl from '@lobehub/icons-static-svg/icons/stability-color.svg?url'
 import tencentCloudIconUrl from '@lobehub/icons-static-svg/icons/tencentcloud-color.svg?url'
 import volcengineIconUrl from '@lobehub/icons-static-svg/icons/volcengine-color.svg?url'
+import wavespeedLogoUrl from '../assets/wavespeed-dark-logo.png'
 import {
   IMAGE_PROVIDER_CATALOG,
   LLM_PROVIDER_CATALOG,
@@ -450,7 +451,7 @@ function getImageProviderLogo(provider: ImageProviderType): { src: string; alt: 
     case 'recraft':
       return { src: recraftIconUrl, alt: 'Recraft' }
     case 'wavespeed':
-      return { src: newAPIIconUrl, alt: 'WaveSpeedAI' }
+      return { src: wavespeedLogoUrl, alt: 'WaveSpeedAI' }
     case 'openai-image':
     default:
       return { src: openAIIconUrl, alt: 'OpenAI Images' }
