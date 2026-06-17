@@ -12892,6 +12892,11 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
 .chat-resource-workbench.is-review-tab .chat-resource-tabs {
   max-width: calc(100% - 24px);
   overflow-x: auto;
+  display: none;
+}
+
+.chat-resource-workbench.is-review-tab .chat-resource-tab-panel:not(.run-draft) {
+  inset: 12px;
 }
 
 .chat-resource-tabs button {
@@ -12948,6 +12953,12 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   grid-template-columns: minmax(260px, 0.92fr) minmax(320px, 1.3fr) minmax(260px, 0.86fr);
   gap: 10px;
   min-height: 0;
+}
+
+.chat-resource-run-viewport {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
 }
 
 .chat-resource-manifest-preview,
@@ -13093,32 +13104,6 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   font-family: var(--font-ui);
   font-size: 10px;
   line-height: 1.45;
-}
-
-.chat-resource-run-lifecycle {
-  display: grid;
-  align-content: start;
-  gap: 8px;
-}
-
-.chat-resource-run-lifecycle i {
-  min-height: 32px;
-  display: flex;
-  align-items: center;
-  padding: 0 10px;
-  border: 1px solid rgba(255, 255, 255, 0.055);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.026);
-  color: rgba(248, 250, 250, 0.48);
-  font-family: var(--font-ui);
-  font-size: 11px;
-  font-style: normal;
-}
-
-.chat-resource-run-lifecycle i.active {
-  border-color: rgba(82, 168, 255, 0.42);
-  background: rgba(82, 168, 255, 0.1);
-  color: rgba(248, 250, 250, 0.82);
 }
 
 .chat-resource-group {
@@ -13412,6 +13397,19 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   background:
     linear-gradient(135deg, rgba(219, 189, 130, 0.13), transparent),
     rgba(255, 255, 255, 0.025);
+}
+
+.chat-resource-node-content.has-image {
+  gap: 7px;
+}
+
+.chat-resource-node-content.has-image img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border: 1px solid rgba(248, 250, 250, 0.08);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .chat-resource-node-footer {

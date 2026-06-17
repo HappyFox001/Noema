@@ -203,6 +203,28 @@ contextBridge.exposeInMainWorld('electronAPI', {
   runCharacterWorkflow: (request) =>
     ipcRenderer.invoke('chat:runCharacterWorkflow', request),
 
+  streamCharacterWorkflow: (request, handlers = {}) => {
+    const streamId = `character-workflow-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    const onEvent = (_, payload) => {
+      if (payload?.streamId === streamId && payload.event) {
+        handlers.onEvent?.(payload.event)
+      }
+    }
+    ipcRenderer.on('chat:characterWorkflowEvent', onEvent)
+    return ipcRenderer.invoke('chat:runCharacterWorkflow', { ...request, streamId })
+      .then((result) => {
+        handlers.onDone?.(result)
+        return result
+      })
+      .catch((error) => {
+        handlers.onError?.(error?.message || String(error))
+        throw error
+      })
+      .finally(() => {
+        ipcRenderer.removeListener('chat:characterWorkflowEvent', onEvent)
+      })
+  },
+
   streamChatMessage: (request, handlers = {}) => {
     const streamId = `chat-stream-${Date.now()}-${Math.random().toString(16).slice(2)}`
     const onDelta = (_, event) => {

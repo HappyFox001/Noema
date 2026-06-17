@@ -1585,7 +1585,19 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       case 'stop':
         characterWorkflowRenderToken += 1
         if (characterWorkflowRunState?.run.status === 'running') {
+          const currentStepId = characterWorkflowRunState.run.currentStepId
           characterWorkflowRunState.run.status = 'idle'
+          if (currentStepId) {
+            characterWorkflowRunState.steps = characterWorkflowRunState.steps?.map((step) => (
+              step.id === currentStepId
+                ? {
+                    ...step,
+                    status: 'failed',
+                    detail: options.getLanguage() === 'zh-CN' ? '已手动停止。' : 'Stopped manually.',
+                  }
+                : step
+            ))
+          }
           renderCharacterWorkflow()
         }
         showToast(options.getLanguage() === 'zh-CN' ? '已停止 Agent mock trace' : 'Stopped agent mock trace')
@@ -1862,9 +1874,36 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       characterWorkflowPackTabOpen = false
     }
     characterWorkflowRunCount += 1
-    const draftRunState = workflowPage.createDraftCharacterResourceRunState(characterWorkflowRunCount, 'running')
+    const draftRunState = workflowPage.createDraftCharacterResourceRunState(characterWorkflowRunCount, 'running', options.getLanguage())
     characterWorkflowRunState = draftRunState
     characterWorkflowActiveTabId = draftRunState.run?.id ?? 'run-draft'
+    const updateRunStep = (
+      stepId: string,
+      status: NonNullable<CharacterResourceRunState['steps']>[number]['status'],
+      detail?: string
+    ) => {
+      if (!characterWorkflowRunState) {
+        return
+      }
+      const steps = characterWorkflowRunState.steps?.length
+        ? characterWorkflowRunState.steps
+        : workflowPage.createCharacterResourceRunSteps(options.getLanguage())
+      const targetIndex = steps.findIndex((step) => step.id === stepId)
+      characterWorkflowRunState.steps = steps.map((step, index) => {
+        if (index < targetIndex && step.status !== 'failed') {
+          return { ...step, status: 'done' }
+        }
+        if (step.id === stepId) {
+          return { ...step, status, ...(detail ? { detail } : {}) }
+        }
+        return step
+      })
+      if (characterWorkflowRunState.run) {
+        characterWorkflowRunState.run.currentStepId = stepId
+      }
+      renderCharacterWorkflow()
+    }
+    updateRunStep('snapshot', 'running')
     renderCharacterWorkflow()
     showToast(options.getLanguage() === 'zh-CN' ? 'Agent 正在生成角色资源' : 'Agent generating character resources')
     try {
@@ -1904,22 +1943,36 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           replacedTargetSlots: [...characterResourceViewState.replacedTargetSlots],
         },
       })
-      const response = await window.electronAPI.runCharacterWorkflow({ workflow, language: options.getLanguage() })
+      updateRunStep('dispatch', 'running')
+      updateRunStep('agent', 'running')
+      const response = typeof window.electronAPI.streamCharacterWorkflow === 'function'
+        ? await window.electronAPI.streamCharacterWorkflow({ workflow, language: options.getLanguage() }, {
+            onEvent: (event) => applyCharacterWorkflowAgentEvent(event),
+          })
+        : await window.electronAPI.runCharacterWorkflow({ workflow, language: options.getLanguage() })
       if (!response.success) {
         throw new Error(response.error || 'Character workflow failed')
       }
+      updateRunStep('collect', 'running')
       characterWorkflowRunState = {
         run: {
           id: response.runId || draftRunState.run?.id || `resource-run-${Date.now()}`,
-          title: response.title || draftRunState.run?.title || 'Resource Draft.run',
+          title: draftRunState.run?.title || 'Resource Draft.run',
           status: 'done',
+          currentStepId: 'finish',
         },
+        steps: (characterWorkflowRunState?.steps ?? workflowPage.createCharacterResourceRunSteps(options.getLanguage())).map((step) => ({
+          ...step,
+          status: 'done',
+        })),
+        events: characterWorkflowRunState?.events ?? [],
         artifacts: (response.artifacts ?? []).map((artifact) => ({
           id: artifact.id,
           type: artifact.kind,
           sourceNodeId: artifact.sourceNodeId || 'agent-policy',
           title: artifact.title,
           summary: artifact.summary,
+          data: artifact.data,
         })),
       }
       characterWorkflowActiveTabId = characterWorkflowRunState.run?.id ?? 'run-draft'
@@ -1929,11 +1982,120 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       console.warn('[CharacterResourceGraph] Failed to run agent lifecycle:', error)
       if (renderToken === characterWorkflowRenderToken) {
         characterWorkflowRunState = draftRunState.run
-          ? { ...draftRunState, run: { ...draftRunState.run, status: 'failed' } }
+          ? {
+              ...draftRunState,
+              run: { ...draftRunState.run, status: 'failed' },
+              steps: (characterWorkflowRunState?.steps ?? draftRunState.steps ?? workflowPage.createCharacterResourceRunSteps(options.getLanguage())).map((step) => (
+                step.id === (characterWorkflowRunState?.run?.currentStepId ?? draftRunState.run?.currentStepId)
+                  ? { ...step, status: 'failed' }
+                  : step
+              )),
+            }
           : draftRunState
+        renderCharacterWorkflow()
         showToast(error instanceof Error ? error.message : (options.getLanguage() === 'zh-CN' ? '角色资源生成失败' : 'Character resource generation failed'))
       }
     }
+  }
+
+  function applyCharacterWorkflowAgentEvent(event: Record<string, unknown>): void {
+    if (!characterWorkflowRunState) {
+      return
+    }
+    const type = typeof event.type === 'string' ? event.type : 'agent.event'
+    const timestamp = typeof event.timestamp === 'number' ? event.timestamp : Date.now()
+    const phase = typeof event.phase === 'string' ? event.phase : undefined
+    const artifact = event.artifact && typeof event.artifact === 'object'
+      ? event.artifact as Record<string, any>
+      : undefined
+    const record = event.record && typeof event.record === 'object'
+      ? event.record as Record<string, any>
+      : undefined
+    const result = event.result && typeof event.result === 'object'
+      ? event.result as Record<string, any>
+      : undefined
+    const toolName = typeof event.toolName === 'string'
+      ? event.toolName
+      : typeof record?.toolName === 'string'
+        ? record.toolName
+        : undefined
+    characterWorkflowRunState.events = [
+      ...(characterWorkflowRunState.events ?? []),
+      {
+        type,
+        timestamp,
+        phase,
+        toolName,
+        title: typeof artifact?.title === 'string' ? artifact.title : undefined,
+        summary: typeof artifact?.summary === 'string'
+          ? artifact.summary
+          : typeof result?.summary === 'string'
+            ? result.summary
+            : undefined,
+        status: type === 'run.failed'
+          ? 'failed'
+          : type === 'tool.call.started' || type === 'run.phase.changed'
+            ? 'running'
+            : 'done',
+        artifact: artifact
+          ? {
+              id: typeof artifact.id === 'string' ? artifact.id : undefined,
+              kind: typeof artifact.kind === 'string' ? artifact.kind : undefined,
+              title: typeof artifact.title === 'string' ? artifact.title : undefined,
+              summary: typeof artifact.summary === 'string' ? artifact.summary : undefined,
+              sourceNodeId: typeof artifact.sourceNodeId === 'string' ? artifact.sourceNodeId : undefined,
+              data: artifact.data,
+            }
+          : undefined,
+        raw: event,
+      },
+    ]
+    if (phase) {
+      const stepId = phaseToRunStepId(phase)
+      if (stepId) {
+        characterWorkflowRunState.run!.currentStepId = stepId
+        characterWorkflowRunState.steps = (characterWorkflowRunState.steps ?? []).map((step) => {
+          if (step.id === stepId) {
+            return { ...step, status: type === 'run.failed' ? 'failed' : 'running' }
+          }
+          return step
+        })
+      }
+    }
+    if (artifact) {
+      const artifactId = typeof artifact.id === 'string' ? artifact.id : ''
+      const existing = characterWorkflowRunState.artifacts ?? []
+      if (!artifactId || !existing.some((item) => item.id === artifactId)) {
+        characterWorkflowRunState.artifacts = [
+          ...existing,
+          {
+            id: artifactId,
+            type: typeof artifact.kind === 'string' ? artifact.kind : 'artifact',
+            sourceNodeId: typeof artifact.sourceNodeId === 'string' ? artifact.sourceNodeId : 'agent-policy',
+            title: typeof artifact.title === 'string' ? artifact.title : undefined,
+            summary: typeof artifact.summary === 'string' ? artifact.summary : undefined,
+            data: artifact.data,
+          },
+        ]
+      }
+    }
+    renderCharacterWorkflow()
+  }
+
+  function phaseToRunStepId(phase: string): string {
+    if (phase === 'interpret' || phase === 'plan') {
+      return 'dispatch'
+    }
+    if (phase === 'produce' || phase === 'inspect' || phase === 'repair') {
+      return 'agent'
+    }
+    if (phase === 'package' || phase === 'report') {
+      return 'collect'
+    }
+    if (phase === 'completed') {
+      return 'finish'
+    }
+    return ''
   }
 
   function updateCharacterWorkflowParameter(control: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement): void {

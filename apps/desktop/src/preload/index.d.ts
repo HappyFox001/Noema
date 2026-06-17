@@ -685,6 +685,41 @@ declare global {
           title: string
           summary: string
           sourceNodeId?: string
+          data?: unknown
+        }>
+        error?: string
+      }>
+      streamCharacterWorkflow?: (request: {
+        workflow: Record<string, unknown>
+        language?: 'zh-CN' | 'en-US'
+      }, handlers?: {
+        onEvent?: (event: Record<string, unknown>) => void
+        onDone?: (result: {
+          success: boolean
+          runId?: string
+          title?: string
+          artifacts?: Array<{
+            id: string
+            kind: string
+            title: string
+            summary: string
+            sourceNodeId?: string
+            data?: unknown
+          }>
+          error?: string
+        }) => void
+        onError?: (error: string) => void
+      }) => Promise<{
+        success: boolean
+        runId?: string
+        title?: string
+        artifacts?: Array<{
+          id: string
+          kind: string
+          title: string
+          summary: string
+          sourceNodeId?: string
+          data?: unknown
         }>
         error?: string
       }>

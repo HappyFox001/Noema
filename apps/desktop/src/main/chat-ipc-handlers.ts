@@ -13,6 +13,7 @@ import {
   type ChatRuntimeTurnRequest,
 } from '@noema/sdk/chat/request-runtime'
 import {
+  type CharacterAgentEvent,
   createCharacterAgentModelConfigs,
   createConfiguredCharacterAgentToolRuntime,
   createCharacterSuperAgent,
@@ -53,6 +54,7 @@ export interface ChatSendMessageResult {
 export interface ChatRunCharacterWorkflowRequest {
   workflow: unknown
   language?: 'zh-CN' | 'en-US'
+  streamId?: string
 }
 
 export interface ChatRunCharacterWorkflowResult {
@@ -65,6 +67,7 @@ export interface ChatRunCharacterWorkflowResult {
     title: string
     summary: string
     sourceNodeId?: string
+    data?: unknown
   }>
   error?: string
 }
@@ -154,7 +157,7 @@ export function registerChatIpcHandlers(
     }
   })
 
-  ipcMain.handle('chat:runCharacterWorkflow', async (_, request: ChatRunCharacterWorkflowRequest): Promise<ChatRunCharacterWorkflowResult> => {
+  ipcMain.handle('chat:runCharacterWorkflow', async (event, request: ChatRunCharacterWorkflowRequest): Promise<ChatRunCharacterWorkflowResult> => {
     try {
       const snapshot = loadCharacterAgentWorkflowSnapshot(request.workflow)
       const blockingIssue = snapshot.issues.find((issue) => issue.severity === 'error')
@@ -169,6 +172,11 @@ export function registerChatIpcHandlers(
         tools,
         artifacts,
         modelResolver,
+        onEvent: (agentEvent: CharacterAgentEvent) => {
+          if (request.streamId) {
+            event.sender.send('chat:characterWorkflowEvent', { streamId: request.streamId, event: agentEvent })
+          }
+        },
       })
       const state = await agent.run(snapshot.workflow)
       if (state.phase === 'failed') {
@@ -185,6 +193,7 @@ export function registerChatIpcHandlers(
           title: artifact.title,
           summary: artifact.summary,
           sourceNodeId: artifact.sourceNodeId,
+          data: artifact.data,
         })),
       }
     } catch (error: any) {

@@ -160,6 +160,9 @@ interface CharacterResourceMockOutput {
   title: string
   summary: string
   status: CharacterResourceNodeStatus
+  image?: string
+  text?: string
+  data?: unknown
 }
 
 export interface CharacterResourceRunState {
@@ -167,24 +170,97 @@ export interface CharacterResourceRunState {
     id: string
     title: string
     status: 'idle' | 'running' | 'failed' | 'done'
+    currentStepId?: string
   }
+  steps?: CharacterResourceRunStep[]
+  events?: CharacterResourceRunEvent[]
   artifacts?: Array<{
     id?: string
     type: string
     sourceNodeId: string
     title?: string
     summary?: string
+    data?: unknown
   }>
 }
 
-export function createDraftCharacterResourceRunState(runNumber: number, status: CharacterResourceRunState['run']['status'] = 'running'): CharacterResourceRunState {
+export interface CharacterResourceRunStep {
+  id: string
+  label: string
+  status: 'pending' | 'running' | 'done' | 'failed'
+  detail?: string
+}
+
+export interface CharacterResourceRunEvent {
+  type: string
+  timestamp?: number
+  phase?: string
+  toolName?: string
+  title?: string
+  summary?: string
+  status?: 'pending' | 'running' | 'done' | 'failed'
+  artifact?: {
+    id?: string
+    kind?: string
+    title?: string
+    summary?: string
+    sourceNodeId?: string
+    data?: unknown
+  }
+  raw?: unknown
+}
+
+export function createCharacterResourceRunSteps(language: CharacterWorkflowLanguage): CharacterResourceRunStep[] {
+  const zh = language === 'zh-CN'
+  return [
+    {
+      id: 'snapshot',
+      label: zh ? '生成资源图快照' : 'Create graph snapshot',
+      status: 'pending',
+      detail: zh ? '读取当前节点、连线、模型选择和参数。' : 'Read current nodes, links, model choices, and parameters.',
+    },
+    {
+      id: 'dispatch',
+      label: zh ? '提交 Agent 运行' : 'Dispatch agent run',
+      status: 'pending',
+      detail: zh ? '把资源图交给角色资源生成 runtime。' : 'Send the graph to the character resource runtime.',
+    },
+    {
+      id: 'agent',
+      label: zh ? 'Agent 生成候选资源' : 'Agent generates candidates',
+      status: 'pending',
+      detail: zh ? '等待规划、候选包、校验报告和导出目标返回。' : 'Wait for plan, candidate pack, validation report, and export target.',
+    },
+    {
+      id: 'collect',
+      label: zh ? '收集运行产物' : 'Collect artifacts',
+      status: 'pending',
+      detail: zh ? '整理后端返回的资源产物并写入运行草稿。' : 'Normalize returned artifacts into the run draft.',
+    },
+    {
+      id: 'finish',
+      label: zh ? '完成' : 'Finish',
+      status: 'pending',
+      detail: zh ? '运行草稿可以预览或导出。' : 'The run draft can be previewed or exported.',
+    },
+  ]
+}
+
+export function createDraftCharacterResourceRunState(
+  runNumber: number,
+  status: CharacterResourceRunState['run']['status'] = 'running',
+  language: CharacterWorkflowLanguage = 'zh-CN'
+): CharacterResourceRunState {
   const id = `resource-run-${Date.now()}-${Math.random().toString(16).slice(2)}`
   return {
     run: {
       id,
       title: `Resource Draft ${String(runNumber).padStart(2, '0')}.run`,
       status,
+      currentStepId: 'snapshot',
     },
+    steps: createCharacterResourceRunSteps(language),
+    events: [],
     artifacts: [],
   }
 }
@@ -195,7 +271,13 @@ export function completeCharacterResourceRunState(state: CharacterResourceRunSta
     run: {
       ...run,
       status: 'done',
+      currentStepId: 'finish',
     },
+    steps: (state.steps?.length ? state.steps : createCharacterResourceRunSteps('zh-CN')).map((step) => ({
+      ...step,
+      status: 'done',
+    })),
+    events: state.events ?? [],
     artifacts: [
       { type: 'agent-plan', sourceNodeId: 'generation-strategy', title: 'Agent Plan', summary: 'Mock plan decomposes the free-form goal into candidates, tools, critique loops, and output targets.' },
       { type: 'candidate-pack', sourceNodeId: 'asset-targets', title: 'Candidate Pack', summary: 'Mock candidate pack reserves role card, opening, visual assets, memory policy, and generation report outputs.' },
@@ -253,6 +335,7 @@ function statusLabel(status: string, options: CharacterWorkflowPageOptions): str
     warning: { zh: '警告', en: 'warning' },
     invalid: { zh: '无效', en: 'invalid' },
     hidden: { zh: '隐藏', en: 'hidden' },
+    pending: { zh: '等待中', en: 'pending' },
   }
   const label = labels[status]
   return label ? localizeByLanguage(options.language, label.zh, label.en) : status
@@ -433,6 +516,59 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     ]),
     param('includeAssets', 'Include Assets', 'boolean', true),
   ], 'package'),
+  createDefinition('run-input-resource', 'User Input Graph', ['运行输入', 'input graph', 'resource snapshot'], 'Run Resources', 'core', 'The graph snapshot supplied by the user before the agent starts filling role resources.', [], [
+    slot('resource', 'Resource', 'role-resource', 'Starting resource graph snapshot.'),
+  ], [], 'text-card', { width: 268, height: 188 }),
+  createDefinition('candidate-pack-resource', 'Candidate Pack', ['候选包', 'candidate', 'role resource pack'], 'Run Resources', 'asset', 'A generated package that reserves the role card, opening, context, visual prompts, and export resources.', [
+    slot('resource', 'Resource', 'role-resource', 'Previous generated role resource.'),
+  ], [
+    slot('resource', 'Resource', 'role-resource', 'Candidate package resource.'),
+  ], [], 'package', { width: 268, height: 188 }),
+  createDefinition('role-card-resource', 'Role Card', ['角色卡', 'character card', 'persona'], 'Run Resources', 'asset', 'The generated role card content.', [
+    slot('resource', 'Resource', 'role-resource', 'Previous generated role resource.'),
+  ], [
+    slot('resource', 'Resource', 'role-resource', 'Role card resource.'),
+  ], [], 'text-card', { width: 268, height: 188 }),
+  createDefinition('opening-resource', 'Opening Message', ['开场', 'first message', 'opening'], 'Run Resources', 'asset', 'The generated opening message used to start the role chat.', [
+    slot('resource', 'Resource', 'role-resource', 'Previous generated role resource.'),
+  ], [
+    slot('resource', 'Resource', 'role-resource', 'Opening message resource.'),
+  ], [], 'text-card', { width: 268, height: 188 }),
+  createDefinition('style-guide-resource', 'Dialogue Style', ['语气', 'style guide', 'dialogue'], 'Run Resources', 'asset', 'The generated dialogue style guide for the role.', [
+    slot('resource', 'Resource', 'role-resource', 'Previous generated role resource.'),
+  ], [
+    slot('resource', 'Resource', 'role-resource', 'Dialogue style resource.'),
+  ], [], 'rule', { width: 268, height: 188 }),
+  createDefinition('context-resource', 'Context Resource', ['上下文', 'world', 'scene'], 'Run Resources', 'asset', 'Generated world or scene context that supports the role.', [
+    slot('resource', 'Resource', 'role-resource', 'Previous generated role resource.'),
+  ], [
+    slot('resource', 'Resource', 'role-resource', 'Context resource.'),
+  ], [], 'text-card', { width: 268, height: 188 }),
+  createDefinition('memory-resource', 'Memory Policy', ['记忆', 'memory policy', 'long-term'], 'Run Resources', 'asset', 'Generated memory behavior for long-form roleplay.', [
+    slot('resource', 'Resource', 'role-resource', 'Previous generated role resource.'),
+  ], [
+    slot('resource', 'Resource', 'role-resource', 'Memory resource.'),
+  ], [], 'rule', { width: 268, height: 188 }),
+  createDefinition('image-prompt-resource', 'Image Prompt', ['生图提示', 'visual prompt', 'image prompt'], 'Run Resources', 'asset', 'Prompt material prepared for image generation.', [
+    slot('resource', 'Resource', 'role-resource', 'Previous generated role resource.'),
+  ], [
+    slot('resource', 'Resource', 'role-resource', 'Image prompt resource.'),
+  ], [], 'text-card', { width: 268, height: 188 }),
+  createDefinition('image-asset-resource', 'Generated Image', ['图片', 'image asset', 'visual'], 'Run Resources', 'asset', 'Generated visual asset for the role.', [
+    slot('resource', 'Resource', 'role-resource', 'Previous generated role resource.'),
+  ], [
+    slot('resource', 'Resource', 'role-resource', 'Generated image resource.'),
+  ], [], 'image', { width: 268, height: 292 }),
+  createDefinition('quality-report-resource', 'Quality Report', ['校验', 'quality', 'report'], 'Run Resources', 'safety', 'Generated quality report for the role resource package.', [
+    slot('resource', 'Resource', 'role-resource', 'Previous generated role resource.'),
+  ], [
+    slot('resource', 'Resource', 'role-resource', 'Quality report resource.'),
+  ], [], 'validation', { width: 268, height: 188 }),
+  createDefinition('export-package-resource', 'Export Package', ['导出包', 'export', 'package'], 'Run Resources', 'core', 'Final export package produced from the generated role resources.', [
+    slot('resource', 'Resource', 'role-resource', 'Previous generated role resource.'),
+  ], [
+    slot('resource', 'Resource', 'role-resource', 'Export package resource.'),
+  ], [], 'package', { width: 268, height: 188 }),
 ]
 
 const DEFAULT_NODE_PLACEMENT: Array<{ id: string; type: string; title: string; x: number; y: number; status?: CharacterResourceNodeStatus }> = [
@@ -1351,41 +1487,332 @@ function renderValidationPanel(graph: CharacterResourceGraph, missing: string[],
 }
 
 function renderRunDraft(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): string {
-  const runStatus = options.runState?.run?.status ?? 'idle'
-  const lifecycle = ['queued', 'running', 'done', 'failed'] as const
+  const runGraph = createRunResourceGraph(graph, options)
+  const runLiteGraphSnapshot = createLiteGraphSnapshot(runGraph)
+  const runYjsSnapshot = createYjsSnapshot(runGraph, runLiteGraphSnapshot)
   return `
-    <div class="chat-resource-tab-panel run-draft">
-      <section class="chat-resource-run-summary">
-        <header>
-          <span>${options.escapeHtml(options.runState?.run?.id ?? 'no-run')}</span>
-          <strong>${options.escapeHtml(options.runState?.run?.title ?? ui(options, '运行草稿', 'Run Draft'))}</strong>
-        </header>
-        <div class="chat-resource-run-lifecycle">
-          ${lifecycle.map((step) => `<i class="${runStatus === step || (runStatus === 'idle' && step === 'queued') ? 'active' : ''}">${options.escapeHtml(statusLabel(step, options))}</i>`).join('')}
-        </div>
-      </section>
-      <section class="chat-resource-package-list">
-        <header>
-          <strong>${options.escapeHtml(ui(options, '产物', 'Produced Artifacts'))}</strong>
-          <span>${options.escapeHtml(String(options.runState?.artifacts?.length ?? 0))}</span>
-        </header>
-        ${(options.runState?.artifacts ?? []).map((artifact) => `
-          <article>
-            <b>${options.escapeHtml(artifact.title ?? artifact.type)}</b>
-            <span>${options.escapeHtml(artifact.type)} / ${options.escapeHtml(artifact.sourceNodeId)}</span>
-            <p>${options.escapeHtml(artifact.summary ?? 'Mock artifact produced by the agent trace lifecycle.')}</p>
-          </article>
-        `).join('') || `<div class="chat-resource-panel-state empty"><strong>${options.escapeHtml(ui(options, '还没有产物', 'No artifacts yet'))}</strong><span>${options.escapeHtml(ui(options, '运行 Agent mock trace 后会填充这个草稿。', 'Run the agent mock trace to populate this draft.'))}</span></div>`}
-      </section>
-      <section class="chat-resource-validation-panel">
-        <header>
-          <strong>${options.escapeHtml(ui(options, 'Agent 边界', 'Agent Boundary'))}</strong>
-          <span>${options.escapeHtml(ui(options, `${graph.nodes.length} 个节点`, `${graph.nodes.length} nodes`))}</span>
-        </header>
-        <p>${options.escapeHtml(ui(options, '这里不会调用真实后端 Agent。这个草稿只映射规划、工具选择、候选生成、评估、修复和导出的前端 mock trace。', 'Real backend agents are not called here. This draft mirrors planning, tool selection, candidate generation, evaluation, repair, and export as a frontend mock trace.'))}</p>
-      </section>
+    <div class="chat-workflow-canvas-viewport active chat-resource-run-viewport" data-resource-viewport="${options.escapeHtml(JSON.stringify(runGraph.viewport))}" aria-label="${options.escapeHtml(ui(options, '角色资源运行图', 'Character resource run graph'))}">
+      <div class="chat-workflow-canvas-plane chat-resource-graph-plane chat-resource-run-plane" style="--resource-zoom: ${runGraph.viewport.zoom}; --resource-pan-x: ${runGraph.viewport.x}px; --resource-pan-y: ${runGraph.viewport.y}px">
+        <div class="chat-workflow-canvas-grid" aria-hidden="true"></div>
+        ${runGraph.groups.map((groupItem) => renderGroup(groupItem, runGraph, options)).join('')}
+        ${renderLinkOverlay(runGraph, options)}
+        ${runGraph.nodes.map((node) => renderResourceNode(node, runGraph, options)).join('')}
+      </div>
+      <div class="chat-resource-serializer" aria-hidden="true" data-yjs-snapshot="${options.escapeHtml(runYjsSnapshot)}"></div>
     </div>
   `
+}
+
+function createRunResourceGraph(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): CharacterResourceGraph {
+  const artifacts = options.runState?.artifacts ?? []
+  const nodes: CharacterResourceNode[] = [{
+    id: 'run-input-graph',
+    type: 'run-input-resource',
+    title: ui(options, '用户输入资源图', 'User Input Graph'),
+    position: { x: 88, y: 226 },
+    size: { width: 268, height: 188 },
+    status: 'done',
+    zIndex: 1,
+    config: {},
+  }]
+  const outputs: CharacterResourceMockOutput[] = [{
+    id: 'run-input-graph-output',
+    nodeId: 'run-input-graph',
+    type: 'resourcegraph',
+    title: ui(options, '用户输入资源图', 'User Input Graph'),
+    summary: ui(options, `${graph.nodes.length} 个节点 / ${graph.links.length} 条连线`, `${graph.nodes.length} nodes / ${graph.links.length} links`),
+    status: 'done',
+  }]
+  const links: CharacterResourceLink[] = []
+  getRoleResourceArtifacts(artifacts).forEach((artifact, index) => {
+    const image = getArtifactImage(artifact.data)
+    const nodeId = `run-artifact-${sanitizeResourceId(artifact.id || artifact.type || String(index))}`
+    const previousNodeId = nodes[nodes.length - 1]?.id ?? 'run-input-graph'
+    const nodeType = getRunArtifactNodeType(artifact.type)
+    nodes.push({
+      id: nodeId,
+      type: nodeType,
+      title: artifact.title ?? artifact.type,
+      position: {
+        x: 420 + index * 332,
+        y: 78 + (index % 3) * 202,
+      },
+      size: getDefinition(nodeType).defaultSize,
+      status: 'done',
+      zIndex: index + 2,
+      config: {},
+    })
+    outputs.push({
+      id: `${nodeId}-output`,
+      nodeId,
+      type: artifact.type,
+      title: artifact.title ?? artifact.type,
+      summary: artifact.summary || getArtifactText(artifact.data) || getRunArtifactMeta(artifact, options),
+      status: 'done',
+      image,
+      text: getArtifactText(artifact.data),
+      data: artifact.data,
+    })
+    links.push(createRunResourceLink(previousNodeId, nodeId, getRunExecutionLabel(artifact.type, options), index))
+  })
+  if (nodes.length === 1 && options.runState?.run?.status === 'running') {
+    const nodeId = 'run-generating-placeholder'
+    nodes.push({
+      id: nodeId,
+      type: 'candidate-pack-resource',
+      title: ui(options, '生成角色资源中', 'Generating character resources'),
+      position: { x: 420, y: 226 },
+      size: getDefinition('candidate-pack-resource').defaultSize,
+      status: 'running',
+      zIndex: 2,
+      config: {},
+    })
+    outputs.push({
+      id: `${nodeId}-output`,
+      nodeId,
+      type: 'role-resource',
+      title: ui(options, '生成角色资源中', 'Generating character resources'),
+      summary: ui(options, 'Agent 正在补全角色卡、开场、上下文和资源。', 'The agent is filling the role card, opening, context, and assets.'),
+      status: 'running',
+    })
+    links.push(createRunResourceLink('run-input-graph', nodeId, ui(options, '开始补充资源', 'start producing resources'), 0, 'routes'))
+  }
+  return {
+    id: `${graph.id}-run`,
+    title: ui(options, '角色资源运行图', 'Character Resource Run Graph'),
+    nodes,
+    links,
+    groups: [{
+      id: 'run-role-resources',
+      title: ui(options, '角色资源生成', 'Role Resource Generation'),
+      nodeIds: nodes.map((node) => node.id),
+      color: 'rgba(82, 168, 255, 0.13)',
+    }],
+    tabs: graph.tabs,
+    viewport: { x: 0, y: 0, zoom: 0.84 },
+    selection: { nodeIds: [nodes[nodes.length - 1]?.id ?? 'run-input-graph'], linkIds: [] },
+    panels: graph.panels,
+    mockOutputs: outputs,
+  }
+}
+
+function getRoleResourceArtifacts(artifacts: NonNullable<CharacterResourceRunState['artifacts']>): NonNullable<CharacterResourceRunState['artifacts']> {
+  const allowed = new Set([
+    'character-card-final',
+    'opening-message',
+    'dialogue-style-guide',
+    'world-context',
+    'scene-context',
+    'memory-policy',
+    'image-prompt',
+    'image-asset',
+    'candidate-pack',
+    'quality-report',
+    'export-package',
+    'generation-report',
+  ])
+  return artifacts
+    .filter((artifact) => allowed.has(artifact.type))
+    .sort((a, b) => getRunArtifactOrder(a.type) - getRunArtifactOrder(b.type))
+}
+
+function getRunArtifactOrder(type: string): number {
+  const order = [
+    'candidate-pack',
+    'character-card-final',
+    'opening-message',
+    'dialogue-style-guide',
+    'world-context',
+    'scene-context',
+    'memory-policy',
+    'image-prompt',
+    'image-asset',
+    'quality-report',
+    'generation-report',
+    'export-package',
+  ]
+  const index = order.indexOf(type)
+  return index === -1 ? 99 : index
+}
+
+function getRunArtifactMeta(artifact: NonNullable<CharacterResourceRunState['artifacts']>[number], options: CharacterWorkflowPageOptions): string {
+  const labels: Record<string, string> = {
+    'candidate-pack': ui(options, '候选包 / resource', 'candidate pack / resource'),
+    'character-card-final': ui(options, '角色卡 / role-card', 'role card / resource'),
+    'opening-message': ui(options, '开场 / opening', 'opening / resource'),
+    'dialogue-style-guide': ui(options, '语气 / style', 'style / resource'),
+    'world-context': ui(options, '世界观 / context', 'world / resource'),
+    'scene-context': ui(options, '场景 / context', 'scene / resource'),
+    'memory-policy': ui(options, '记忆 / memory', 'memory / resource'),
+    'image-prompt': ui(options, '生图提示 / image', 'image prompt / resource'),
+    'image-asset': ui(options, '图片 / image', 'image / resource'),
+    'quality-report': ui(options, '校验 / report', 'quality / report'),
+    'generation-report': ui(options, '生成报告 / report', 'generation / report'),
+    'export-package': ui(options, '导出包 / package', 'export / package'),
+  }
+  return labels[artifact.type] ?? `${artifact.type} / ${artifact.sourceNodeId}`
+}
+
+function getRunArtifactNodeType(type: string): string {
+  const nodeTypes: Record<string, string> = {
+    'candidate-pack': 'candidate-pack-resource',
+    'character-card-final': 'role-card-resource',
+    'opening-message': 'opening-resource',
+    'dialogue-style-guide': 'style-guide-resource',
+    'world-context': 'context-resource',
+    'scene-context': 'context-resource',
+    'memory-policy': 'memory-resource',
+    'image-prompt': 'image-prompt-resource',
+    'image-asset': 'image-asset-resource',
+    'quality-report': 'quality-report-resource',
+    'generation-report': 'quality-report-resource',
+    'export-package': 'export-package-resource',
+  }
+  return nodeTypes[type] ?? 'candidate-pack-resource'
+}
+
+function getRunExecutionLabel(type: string, options: CharacterWorkflowPageOptions): string {
+  if (type === 'image-asset') {
+    return ui(options, '生成图片', 'generate image')
+  }
+  if (type.includes('report') || type === 'quality-report') {
+    return ui(options, '校验与总结', 'inspect')
+  }
+  if (type === 'export-package') {
+    return ui(options, '打包导出', 'package')
+  }
+  if (type === 'character-card-final') {
+    return ui(options, '生成角色卡', 'generate role card')
+  }
+  if (type === 'opening-message') {
+    return ui(options, '生成开场', 'generate opening')
+  }
+  if (type === 'image-prompt') {
+    return ui(options, '准备生图提示', 'prepare image prompt')
+  }
+  return ui(options, '补充资源', 'produce resource')
+}
+
+function createRunResourceLink(
+  sourceNodeId: string,
+  targetNodeId: string,
+  label: string,
+  index: number,
+  kind: CharacterResourceLinkKind = 'provides'
+): CharacterResourceLink {
+  return {
+    id: `run-link-${index}-${sourceNodeId}->${targetNodeId}`,
+    sourceNodeId,
+    sourceSlotId: 'resource',
+    targetNodeId,
+    targetSlotId: 'resource',
+    kind,
+    label,
+    status: 'valid',
+  }
+}
+
+function sanitizeResourceId(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || `resource-${Date.now()}`
+}
+
+function normalizeRunEvents(runState: CharacterResourceRunState | null | undefined): CharacterResourceRunEvent[] {
+  const events = runState?.events?.length ? [...runState.events] : []
+  if (!events.length) {
+    return [
+      { type: 'user.input.graph', title: 'User Input Graph', summary: 'Current resource graph snapshot is the starting point.', status: 'done' },
+      ...(runState?.steps ?? []).map((step) => ({
+        type: `run.step.${step.id}`,
+        title: step.label,
+        summary: step.detail,
+        status: step.status,
+      } satisfies CharacterResourceRunEvent)),
+    ]
+  }
+  return [
+    { type: 'user.input.graph', title: 'User Input Graph', summary: 'Current resource graph snapshot is the starting point.', status: 'done' },
+    ...events,
+  ]
+}
+
+function inferEventStatus(type: string): CharacterResourceRunEvent['status'] {
+  if (type === 'run.failed') {
+    return 'failed'
+  }
+  if (type === 'tool.call.started' || type === 'run.phase.changed') {
+    return 'running'
+  }
+  return 'done'
+}
+
+function formatRunEventTitle(event: CharacterResourceRunEvent, options: CharacterWorkflowPageOptions): string {
+  if (event.type === 'run.started') {
+    return ui(options, '开始运行', 'Run started')
+  }
+  if (event.type === 'run.phase.changed') {
+    return ui(options, `进入阶段：${event.phase ?? '-'}`, `Phase: ${event.phase ?? '-'}`)
+  }
+  if (event.type === 'tool.call.started') {
+    return ui(options, `调用工具：${event.toolName ?? '-'}`, `Tool started: ${event.toolName ?? '-'}`)
+  }
+  if (event.type === 'tool.call.completed') {
+    return ui(options, `工具完成：${event.toolName ?? '-'}`, `Tool completed: ${event.toolName ?? '-'}`)
+  }
+  if (event.type === 'artifact.created') {
+    return event.artifact?.title ?? ui(options, '生成资源', 'Artifact created')
+  }
+  if (event.type === 'agent.plan.created') {
+    return ui(options, '生成执行计划', 'Plan created')
+  }
+  if (event.type === 'run.completed') {
+    return ui(options, '运行完成', 'Run completed')
+  }
+  if (event.type === 'run.failed') {
+    return ui(options, '运行失败', 'Run failed')
+  }
+  return event.type
+}
+
+function formatRunEventSummary(event: CharacterResourceRunEvent, options: CharacterWorkflowPageOptions): string {
+  if (event.artifact?.summary) {
+    return event.artifact.summary
+  }
+  if (event.summary) {
+    return event.summary
+  }
+  if (event.type === 'user.input.graph') {
+    return ui(options, '从当前用户输入资源图开始。', 'Starts from the current user input graph.')
+  }
+  return ''
+}
+
+function getArtifactImage(data: unknown): string {
+  if (!data || typeof data !== 'object') {
+    return ''
+  }
+  const item = data as Record<string, any>
+  if (typeof item.dataUrl === 'string') {
+    return item.dataUrl
+  }
+  if (typeof item.url === 'string') {
+    return item.url
+  }
+  return ''
+}
+
+function getArtifactText(data: unknown): string {
+  if (typeof data === 'string') {
+    return data
+  }
+  if (!data || typeof data !== 'object') {
+    return ''
+  }
+  const item = data as Record<string, any>
+  const text = item.text ?? item.summary ?? item.generationReport ?? item.prompt
+  if (typeof text === 'string') {
+    return text
+  }
+  return JSON.stringify(data).slice(0, 360)
 }
 
 function renderCanvasControls(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): string {
@@ -1467,7 +1894,7 @@ function renderLinkPath(linkItem: CharacterResourceLink, graph: CharacterResourc
     <g class="chat-resource-link ${options.escapeHtml(linkItem.kind)} ${options.escapeHtml(linkItem.status)} ${flowing ? 'flowing' : ''} ${collapsedNodeLinkReroute ? 'collapsed-node-link reroute-link' : ''} ${graph.selection.linkIds.includes(linkItem.id) ? 'selected' : ''}" data-chat-resource-link-id="${options.escapeHtml(linkItem.id)}" data-chat-workflow-link-select="${options.escapeHtml(linkItem.id)}">
       <path d="${path}" marker-end="url(#chat-resource-arrow)"></path>
       <path class="hit-area" d="${path}"></path>
-      <text x="${(x1 + x2) / 2}" y="${(y1 + y2) / 2 - 7}">${options.escapeHtml(LINK_KIND_LABELS[linkItem.kind])}</text>
+      <text x="${(x1 + x2) / 2}" y="${(y1 + y2) / 2 - 7}">${options.escapeHtml(linkItem.label || LINK_KIND_LABELS[linkItem.kind])}</text>
     </g>
   `
 }
@@ -1544,6 +1971,15 @@ function renderNodeContent(
   options: CharacterWorkflowPageOptions
 ): string {
   const previewClass = `preview-${definition.previewType}`
+  if (output?.image) {
+    return `
+      <div class="chat-resource-node-content ${previewClass} has-image">
+        <img src="${options.escapeHtml(output.image)}" alt="${options.escapeHtml(output.title)}">
+        <strong>${options.escapeHtml(output.title)}</strong>
+        <p>${options.escapeHtml(output.summary || output.text || definition.description)}</p>
+      </div>
+    `
+  }
   return `
     <div class="chat-resource-node-content ${previewClass}">
       <strong>${options.escapeHtml(output?.title ?? definition.displayName)}</strong>
@@ -1876,7 +2312,8 @@ function createDefinition(
   inputs: CharacterResourceSlotDefinition[],
   outputs: CharacterResourceSlotDefinition[],
   parameters: CharacterResourceParameterDefinition[],
-  previewType: CharacterResourcePreviewType
+  previewType: CharacterResourcePreviewType,
+  defaultSize: { width: number; height: number } = { width: 268, height: 226 }
 ): CharacterResourceNodeDefinition {
   return {
     type,
@@ -1888,7 +2325,7 @@ function createDefinition(
     inputs,
     outputs,
     parameters,
-    defaultSize: { width: 268, height: 226 },
+    defaultSize,
     previewType,
   }
 }
@@ -1985,7 +2422,12 @@ function getSlotOffset(node: CharacterResourceNode, index: number, side: 'input'
 }
 
 function normalizeActiveTab(activeTabId: string): string {
-  if (activeTabId.startsWith('run-') || activeTabId.startsWith('resource-run-')) {
+  if (
+    activeTabId.startsWith('run-') ||
+    activeTabId.startsWith('resource-run-') ||
+    activeTabId.startsWith('character-agent-run-') ||
+    activeTabId.toLowerCase().startsWith('generated ')
+  ) {
     return 'run-draft'
   }
   return activeTabId
