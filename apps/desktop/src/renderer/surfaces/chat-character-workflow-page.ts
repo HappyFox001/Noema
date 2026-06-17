@@ -483,17 +483,19 @@ export function renderCharacterWorkflowPage(options: CharacterWorkflowPageOption
   const graph = createCharacterResourceGraph(options)
   const liteGraphSnapshot = createLiteGraphSnapshot(graph)
   const yjsSnapshot = createYjsSnapshot(graph, liteGraphSnapshot)
+  const activeTab = normalizeActiveTab(options.activeTabId)
+  const isWorkflowTab = activeTab === 'workflow'
   return `
-    <div class="chat-character-workflow-shell chat-resource-workbench ${options.nodeSearchOpen ? 'is-node-search-open' : ''}" data-resource-graph-id="${options.escapeHtml(graph.id)}" data-resource-placement-label="${options.escapeHtml(ui(options, '放置位置', 'Placement'))}">
+    <div class="chat-character-workflow-shell chat-resource-workbench ${isWorkflowTab ? 'is-workflow-tab' : 'is-review-tab'} ${options.nodeSearchOpen ? 'is-node-search-open' : ''}" data-resource-graph-id="${options.escapeHtml(graph.id)}" data-resource-placement-label="${options.escapeHtml(ui(options, '放置位置', 'Placement'))}">
       ${renderFileTabs(options)}
       <div class="chat-character-workflow-stage">
-        <div class="chat-resource-workspace ${options.sidebarCollapsed ? 'sidebar-collapsed' : ''} ${options.inspectorCollapsed ? 'inspector-collapsed' : ''}" style="--resource-left-panel: ${graph.panels.leftWidth}px; --resource-right-panel: ${graph.panels.rightWidth}px; --resource-bottom-panel: ${graph.panels.bottomHeight}px">
-          ${renderResourceLibrary(graph, options)}
-          <div class="chat-resource-split-gutter left" data-resource-split-gutter="left" aria-hidden="true"></div>
+        <div class="chat-resource-workspace ${isWorkflowTab ? 'workflow-mode' : 'review-mode'} ${options.sidebarCollapsed ? 'sidebar-collapsed' : ''} ${options.inspectorCollapsed ? 'inspector-collapsed' : ''}" style="--resource-left-panel: ${graph.panels.leftWidth}px; --resource-right-panel: ${graph.panels.rightWidth}px; --resource-bottom-panel: ${graph.panels.bottomHeight}px">
+          ${isWorkflowTab ? renderResourceLibrary(graph, options) : ''}
+          ${isWorkflowTab ? '<div class="chat-resource-split-gutter left" data-resource-split-gutter="left" aria-hidden="true"></div>' : ''}
           ${renderResourceCanvas(graph, yjsSnapshot, options)}
-          <div class="chat-resource-split-gutter right" data-resource-split-gutter="right" aria-hidden="true"></div>
-          ${renderResourceInspector(graph, options)}
-          ${renderBottomToolbar(graph, options)}
+          ${isWorkflowTab ? '<div class="chat-resource-split-gutter right" data-resource-split-gutter="right" aria-hidden="true"></div>' : ''}
+          ${isWorkflowTab ? renderResourceInspector(graph, options) : ''}
+          ${isWorkflowTab ? renderBottomToolbar(graph, options) : ''}
         </div>
       </div>
     </div>
@@ -1264,16 +1266,17 @@ function renderSidebarToggle(options: CharacterWorkflowPageOptions): string {
 
 function renderResourceCanvas(graph: CharacterResourceGraph, yjsSnapshot: string, options: CharacterWorkflowPageOptions): string {
   const activeTab = normalizeActiveTab(options.activeTabId)
+  const isWorkflowTab = activeTab === 'workflow'
   return `
     <section class="chat-workflow-canvas chat-resource-canvas" tabindex="-1" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '角色资源图画布' : 'Character resource graph canvas')}">
-      ${renderCanvasControls(graph, options)}
+      ${isWorkflowTab ? renderCanvasControls(graph, options) : ''}
       <div class="chat-resource-tabs">
-        ${renderSidebarToggle(options)}
+        ${isWorkflowTab ? renderSidebarToggle(options) : ''}
         ${graph.tabs.map((tab) => `<button class="${tab.id === activeTab ? 'active' : ''}" type="button" data-chat-workflow-tab="${options.escapeHtml(tab.id)}">${options.escapeHtml(resourceGraphTabTitle(tab, options))}</button>`).join('')}
       </div>
       ${activeTab === 'package-preview' ? renderPackagePreview(graph, options) : ''}
       ${activeTab === 'run-draft' ? renderRunDraft(graph, options) : ''}
-      <div class="chat-workflow-canvas-viewport ${activeTab === 'workflow' ? 'active' : 'inactive'}" data-resource-viewport="${options.escapeHtml(JSON.stringify(graph.viewport))}">
+      ${isWorkflowTab ? `<div class="chat-workflow-canvas-viewport active" data-resource-viewport="${options.escapeHtml(JSON.stringify(graph.viewport))}">
         <div class="chat-workflow-canvas-plane chat-resource-graph-plane" style="--resource-zoom: ${graph.viewport.zoom}; --resource-pan-x: ${graph.viewport.x}px; --resource-pan-y: ${graph.viewport.y}px">
           <div class="chat-workflow-canvas-grid" aria-hidden="true"></div>
           ${graph.groups.map((group) => renderGroup(group, graph, options)).join('')}
@@ -1282,10 +1285,10 @@ function renderResourceCanvas(graph: CharacterResourceGraph, yjsSnapshot: string
           ${renderSelectionBox(options.viewState?.selectionBox)}
           ${renderSelectionRectangle(graph)}
         </div>
-      </div>
+      </div>` : ''}
       <div class="chat-resource-serializer" aria-hidden="true" data-yjs-snapshot="${options.escapeHtml(yjsSnapshot)}"></div>
-      ${renderNodeSearchPopover(graph, options)}
-      ${renderCanvasContextMenu(options)}
+      ${isWorkflowTab ? renderNodeSearchPopover(graph, options) : ''}
+      ${isWorkflowTab ? renderCanvasContextMenu(options) : ''}
     </section>
   `
 }

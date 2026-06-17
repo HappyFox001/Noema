@@ -72,6 +72,8 @@ export async function generateImageWithConfiguredProvider(options: {
       return { ...base, ...(await callAdobeFirefly(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt)) }
     case 'ideogram':
       return { ...base, ...(await callIdeogram(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt)) }
+    case 'wavespeed':
+      return { ...base, ...(await callWaveSpeed(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt)) }
     case 'tencent-cloud-action':
       return { ...base, ...(await callTencentHunyuan(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt)) }
     default:
@@ -401,6 +403,43 @@ async function callIdeogram(
   return imageFromProviderOutput((payload as any).data ?? payload, payload)
 }
 
+async function callWaveSpeed(
+  fetcher: typeof fetch,
+  entry: ImageProviderCatalogEntry,
+  baseUrl: string,
+  apiKey: string,
+  modelName: string,
+  prompt: string
+): Promise<Partial<ImageGenerationResult>> {
+  const response = await fetcher(`${baseUrl}${entry.generatePath.replace('{model}', modelName)}`, {
+    method: 'POST',
+    headers: jsonAuthHeaders(apiKey),
+    body: JSON.stringify({
+      prompt,
+      size: '1024*1024',
+      num_images: 1,
+      seed: -1,
+      enable_sync_mode: true,
+      enable_base64_output: false,
+    }),
+  })
+  const payload = await readResponsePayload(response)
+  assertOk(response, payload, 'WaveSpeed image generation failed')
+  const submitted = (payload as any).data ?? payload
+  const immediate = tryImageFromProviderOutput((submitted as any).outputs ?? submitted, payload)
+  if (immediate) {
+    return immediate
+  }
+  const taskId = (submitted as any).id
+  const getUrl = (submitted as any).urls?.get || (taskId ? `${baseUrl}/predictions/${encodeURIComponent(taskId)}` : '')
+  if (!getUrl) {
+    throw new Error('WaveSpeed response did not include an image or prediction id')
+  }
+  const task = await pollWaveSpeedPrediction(fetcher, baseUrl, getUrl, apiKey, taskId)
+  const output = (task as any).data?.outputs ?? (task as any).outputs ?? (task as any).data ?? task
+  return imageFromProviderOutput(output, task)
+}
+
 async function callTencentHunyuan(
   fetcher: typeof fetch,
   entry: ImageProviderCatalogEntry,
@@ -475,6 +514,14 @@ function imageFromProviderOutput(output: unknown, providerResponse: unknown): Pa
   throw new Error('Image provider response did not include an image result')
 }
 
+function tryImageFromProviderOutput(output: unknown, providerResponse: unknown): Partial<ImageGenerationResult> | null {
+  try {
+    return imageFromProviderOutput(output, providerResponse)
+  } catch {
+    return null
+  }
+}
+
 async function settlePrediction(fetcher: typeof fetch, payload: any, apiKey: string): Promise<any> {
   if (payload.status === 'succeeded' || payload.status === 'failed' || payload.status === 'canceled') {
     if (payload.status !== 'succeeded') {
@@ -495,6 +542,28 @@ async function settlePrediction(fetcher: typeof fetch, payload: any, apiKey: str
     }
     return body
   })
+}
+
+async function pollWaveSpeedPrediction(fetcher: typeof fetch, baseUrl: string, getUrl: string, apiKey: string, fallbackTaskId = ''): Promise<unknown> {
+  const task = await pollJson(fetcher, getUrl, { Authorization: `Bearer ${apiKey}` }, (body) => {
+    const status = (body as any).data?.status ?? (body as any).status
+    return status === 'completed' || status === 'failed' || status === 'canceled'
+  }, 180_000)
+  const status = (task as any).data?.status ?? (task as any).status
+  if (status !== 'completed') {
+    const error = (task as any).data?.error ?? (task as any).error
+    throw new Error(`WaveSpeed prediction ended with status ${status || 'unknown'}${error ? `: ${error}` : ''}`)
+  }
+  const taskId = (task as any).data?.id ?? (task as any).id ?? fallbackTaskId
+  if (!taskId) {
+    return task
+  }
+  const result = await fetcher(`${baseUrl}/predictions/${encodeURIComponent(taskId)}/result`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  })
+  const payload = await readResponsePayload(result)
+  assertOk(result, payload, 'WaveSpeed result fetch failed')
+  return payload
 }
 
 async function pollJson(

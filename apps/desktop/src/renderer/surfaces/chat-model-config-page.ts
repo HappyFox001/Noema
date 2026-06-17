@@ -449,6 +449,8 @@ function getImageProviderLogo(provider: ImageProviderType): { src: string; alt: 
       return { src: ideogramIconUrl, alt: 'Ideogram' }
     case 'recraft':
       return { src: recraftIconUrl, alt: 'Recraft' }
+    case 'wavespeed':
+      return { src: newAPIIconUrl, alt: 'WaveSpeedAI' }
     case 'openai-image':
     default:
       return { src: openAIIconUrl, alt: 'OpenAI Images' }

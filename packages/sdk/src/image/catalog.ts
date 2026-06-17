@@ -18,6 +18,7 @@ export type ImageProviderType =
   | 'adobe-firefly'
   | 'ideogram'
   | 'recraft'
+  | 'wavespeed'
 
 export type ImageProviderApiStyle =
   | 'openai-images'
@@ -35,6 +36,7 @@ export type ImageProviderApiStyle =
   | 'adobe-firefly'
   | 'ideogram'
   | 'recraft'
+  | 'wavespeed'
 
 export interface ImageProviderCatalogEntry {
   value: ImageProviderType
@@ -225,6 +227,16 @@ export const IMAGE_PROVIDER_CATALOG: ImageProviderCatalogEntry[] = [
     generatePath: '/images/generations',
     docsUrl: 'https://www.recraft.ai/docs',
     defaultApiKeyPlaceholder: 'API Key',
+  },
+  {
+    value: 'wavespeed',
+    label: 'WaveSpeedAI',
+    apiStyle: 'wavespeed',
+    defaultModel: 'wavespeed-ai/flux-dev',
+    defaultBaseUrl: 'https://api.wavespeed.ai/api/v3',
+    generatePath: '/{model}',
+    docsUrl: 'https://wavespeed.ai/docs/generate-image',
+    defaultApiKeyPlaceholder: 'WAVESPEED_API_KEY',
   },
 ]
 

@@ -79,13 +79,16 @@ function loadSystemConfigFromEnv(): SystemConfig | null {
     const modelName = env[`CHAT_${i}_MODEL`]
     const apiKey = env[`CHAT_${i}_API_KEY`]
     const baseUrl = env[`CHAT_${i}_BASE_URL`]
-    const provider = env[`CHAT_${i}_PROVIDER`] as LLMProviderType | undefined
+    const modelType = env[`CHAT_${i}_TYPE`] === 'image' ? 'image' : 'llm'
+    const provider = env[`CHAT_${i}_PROVIDER`]
 
     if (modelName || apiKey || baseUrl || provider) {
-      const providerEntry = getLLMProviderCatalogEntry(provider)
+      const providerEntry = modelType === 'image'
+        ? getImageProviderCatalogEntry(provider)
+        : getLLMProviderCatalogEntry(provider)
       chatModels.push({
         id: `env-chat-${i}`,
-        modelType: 'llm',
+        modelType,
         provider: providerEntry.value,
         modelName: modelName || providerEntry.defaultModel,
         enabledModels: [modelName || providerEntry.defaultModel].filter(Boolean),

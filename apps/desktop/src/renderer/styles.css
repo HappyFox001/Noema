@@ -12628,6 +12628,11 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   overflow: hidden;
 }
 
+.chat-resource-workspace.review-mode {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
 .chat-resource-workspace.sidebar-collapsed {
   grid-template-columns: 0 0 minmax(420px, 1fr) 6px var(--resource-right-panel, 252px);
 }
@@ -12647,6 +12652,11 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
 
 .chat-resource-workspace .chat-resource-canvas {
   grid-column: 3;
+  grid-row: 1;
+}
+
+.chat-resource-workspace.review-mode .chat-resource-canvas {
+  grid-column: 1;
   grid-row: 1;
 }
 
@@ -12877,6 +12887,11 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   border-radius: 8px;
   background: rgba(8, 9, 10, 0.74);
   backdrop-filter: blur(16px);
+}
+
+.chat-resource-workbench.is-review-tab .chat-resource-tabs {
+  max-width: calc(100% - 24px);
+  overflow-x: auto;
 }
 
 .chat-resource-tabs button {
