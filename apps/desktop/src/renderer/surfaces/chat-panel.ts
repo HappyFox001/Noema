@@ -1065,6 +1065,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function renderChatRuntimeModelPicker(): void {
     runtimeModelPicker.innerHTML = renderChatRuntimeModelPickerMarkup()
+    refreshWorkflowBuilderRuntimeModelPicker()
   }
 
   function renderChatRuntimeModelPickerMarkup(extraClass = ''): string {
@@ -1100,6 +1101,19 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         ${openChatRuntimeModelPicker ? renderChatRuntimeModelMenu(groups, activeProviderGroup, activeModel) : ''}
       </div>
     `
+  }
+
+  function refreshWorkflowBuilderRuntimeModelPicker(): void {
+    const shell = characterWorkflowRoot?.querySelector<HTMLElement>('.chat-runtime-model-shell.workflow-builder')
+    if (!shell) {
+      return
+    }
+    const wrapper = document.createElement('div')
+    wrapper.innerHTML = renderChatRuntimeModelPickerMarkup('workflow-builder')
+    const nextShell = wrapper.firstElementChild
+    if (nextShell) {
+      shell.replaceWith(nextShell)
+    }
   }
 
   function renderChatRuntimeModelMenu(
@@ -1163,7 +1177,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function refreshCharacterWorkflowModelsIfVisible(): void {
     if (panel.dataset.chatView === 'character-workflow') {
-      renderCharacterWorkflow()
+      if (activeCharacterWorkflowProjectId) {
+        renderCharacterWorkflow()
+      } else {
+        refreshWorkflowBuilderRuntimeModelPicker()
+      }
     }
   }
 
@@ -1714,14 +1732,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     return `
       <section class="chat-workflow-builder-main">
         <div class="chat-workflow-builder-card">
-          <span>${options.escapeHtml(zh ? 'RESOURCEGRAPH BUILDER' : 'RESOURCEGRAPH BUILDER')}</span>
-          <strong>${options.escapeHtml(zh ? '你想创建什么角色？' : 'What character do you want to create?')}</strong>
-          <p>${options.escapeHtml(zh ? '描述角色目标、风格、边界和素材。AI 会生成一个已配置好的资源图草稿。' : 'Describe the goal, style, boundaries, and references. AI will create a configured resource graph draft.')}</p>
+          <span>${options.escapeHtml(zh ? '新建草稿' : 'New draft')}</span>
+          <strong>${options.escapeHtml(zh ? '创建角色资源' : 'Create character resource')}</strong>
           <form class="chat-workflow-builder-box" data-chat-workflow-builder-form>
-            <textarea data-chat-workflow-builder-input rows="4" placeholder="${options.escapeHtml(zh ? '例如：校园恋爱长期 RP，角色要有主动性、暧昧拉扯，需要头像图和开场白...' : 'Example: campus romance long-form RP, proactive character, subtle tension, avatar image and opening message...')}" ${characterWorkflowBuilderBusy ? 'disabled' : ''}>${options.escapeHtml(characterWorkflowBuilderPrompt)}</textarea>
+            <textarea data-chat-workflow-builder-input rows="4" placeholder="${options.escapeHtml(zh ? '校园恋爱，长期 RP，克制暧昧，角色主动推进关系，需要头像图和开场白' : 'Campus romance, long-form RP, restrained tension, proactive character, avatar and opening message')}" ${characterWorkflowBuilderBusy ? 'disabled' : ''}>${options.escapeHtml(characterWorkflowBuilderPrompt)}</textarea>
             <div class="chat-workflow-builder-footer">
               ${renderChatRuntimeModelPickerMarkup('workflow-builder')}
-              <button type="submit" ${characterWorkflowBuilderBusy ? 'disabled' : ''}>${options.escapeHtml(characterWorkflowBuilderBusy ? (zh ? '创建中...' : 'Creating...') : (zh ? '创建资源图' : 'Create graph'))}</button>
+              <button type="submit" ${characterWorkflowBuilderBusy ? 'disabled' : ''}>${options.escapeHtml(characterWorkflowBuilderBusy ? (zh ? '创建中' : 'Creating') : (zh ? '创建' : 'Create'))}</button>
             </div>
           </form>
           ${characterWorkflowBuilderStatus ? `<small class="chat-workflow-builder-status">${options.escapeHtml(characterWorkflowBuilderStatus)}</small>` : ''}
@@ -3249,9 +3266,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     chatSystemConfig.activeChatModelName = modelName
     api.modelName = modelName
     openChatRuntimeModelPicker = false
-    await saveChatModelConfig()
     renderChatRuntimeModelPicker()
     refreshCharacterWorkflowModelsIfVisible()
+    await saveChatModelConfig()
   }
 
   async function addChatModel(modelType: 'llm' | 'image' = 'llm'): Promise<void> {
