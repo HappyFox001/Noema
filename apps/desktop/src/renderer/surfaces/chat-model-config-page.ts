@@ -59,6 +59,7 @@ export interface ChatModelConfigPageOptions {
   openTypePicker: boolean
   openModelDropdownId: string
   openProviderDropdownId: string
+  visibleApiKeyIds: ReadonlySet<string>
   loadingModelIds: ReadonlySet<string>
   modelOptions: ReadonlyMap<string, string[]>
 }
@@ -186,6 +187,10 @@ function renderChatModelCard(
 ): string {
   const canDelete = config.chatModels.length > 1
   const providerEntry = getChatProviderEntry(model)
+  const keyVisible = options.visibleApiKeyIds.has(model.id)
+  const keyToggleLabel = keyVisible
+    ? (options.language === 'zh-CN' ? '隐藏密钥' : 'Hide key')
+    : (options.language === 'zh-CN' ? '显示密钥' : 'Show key')
   return `
     <article class="chat-model-card" data-chat-model-id="${options.escapeHtml(model.id)}">
       <div class="chat-api-config">
@@ -199,7 +204,10 @@ function renderChatModelCard(
           <div class="chat-model-fields compact">
             <div class="chat-model-field">
               <label>${options.escapeHtml(options.language === 'zh-CN' ? '密钥' : 'Key')}</label>
-              <input class="chat-model-input" type="password" data-chat-model-field="apiKey" value="${options.escapeHtml(model.apiKey)}" placeholder="${options.escapeHtml(providerEntry.defaultApiKeyPlaceholder)}" />
+              <div class="chat-model-secret-field">
+                <input class="chat-model-input" type="${keyVisible ? 'text' : 'password'}" data-chat-model-field="apiKey" value="${options.escapeHtml(model.apiKey)}" placeholder="${options.escapeHtml(providerEntry.defaultApiKeyPlaceholder)}" />
+                <button class="chat-model-secret-toggle ${keyVisible ? 'active' : ''}" type="button" data-chat-model-action="toggle-api-key" aria-pressed="${keyVisible ? 'true' : 'false'}" aria-label="${options.escapeHtml(keyToggleLabel)}" title="${options.escapeHtml(keyToggleLabel)}">${options.escapeHtml(keyVisible ? 'ABC' : '***')}</button>
+              </div>
             </div>
             <div class="chat-model-field">
               <label>${options.escapeHtml(options.language === 'zh-CN' ? '地址' : 'URL')}</label>

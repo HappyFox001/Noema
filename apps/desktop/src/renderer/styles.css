@@ -12959,6 +12959,66 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   transform: translate(var(--resource-pan-x, 0), var(--resource-pan-y, 0)) scale(var(--resource-zoom, 1));
 }
 
+.chat-resource-run-plane {
+  min-width: 1220px;
+  min-height: 760px;
+}
+
+.chat-resource-run-plane .chat-resource-node {
+  border-radius: 7px;
+}
+
+.chat-resource-run-plane .chat-resource-node-header {
+  min-height: 38px;
+}
+
+.chat-resource-run-plane .chat-resource-node-header strong {
+  font-size: 13px;
+}
+
+.chat-resource-run-plane .chat-resource-node-widgets,
+.chat-resource-run-plane .chat-resource-node-footer {
+  display: none;
+}
+
+.chat-resource-run-plane .chat-resource-node-content {
+  min-height: 64px;
+  padding: 8px 10px;
+}
+
+.chat-resource-run-plane .chat-resource-node-content strong {
+  font-size: 12px;
+}
+
+.chat-resource-run-plane .chat-resource-node-content p {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  font-size: 11px;
+  line-height: 1.42;
+}
+
+.chat-resource-run-plane .chat-resource-node-content.has-image {
+  grid-template-columns: 76px minmax(0, 1fr);
+  align-items: start;
+}
+
+.chat-resource-run-plane .chat-resource-node-content.has-image img {
+  width: 76px;
+  height: 96px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.chat-resource-run-plane .chat-resource-link text {
+  font-size: 8px;
+}
+
+.chat-resource-run-plane .chat-resource-link path {
+  stroke-width: 1.6;
+}
+
 .chat-workflow-canvas-viewport.inactive {
   display: none;
 }
@@ -15267,6 +15327,41 @@ body.chat-fullscreen .chat-panel[data-chat-view='character-workflow'] .chat-shel
   font-family: var(--font-ui);
   font-size: 10px;
   line-height: 1;
+}
+
+.chat-model-secret-field {
+  position: relative;
+  min-width: 0;
+}
+
+.chat-model-secret-field .chat-model-input {
+  padding-right: 54px;
+}
+
+.chat-model-secret-toggle {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 42px;
+  height: 23px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+  color: rgba(248, 250, 250, 0.46);
+  font-family: var(--font-mono, monospace);
+  font-size: 9px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.chat-model-secret-toggle:hover,
+.chat-model-secret-toggle.active {
+  border-color: rgba(218, 232, 224, 0.22);
+  background: rgba(218, 232, 224, 0.075);
+  color: rgba(248, 250, 250, 0.82);
 }
 
 .chat-model-input {

@@ -176,6 +176,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let cameraOverlay: HTMLElement | null = null
   const chatModelOptions = new Map<string, string[]>()
   const chatModelLoading = new Set<string>()
+  const visibleChatApiKeys = new Set<string>()
   let conversationSettings = loadConversationSettings()
   let sceneStateCollapsed = false
   let characterWorkflowRenderToken = 0
@@ -1443,6 +1444,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       openTypePicker: openChatModelTypePicker,
       openModelDropdownId: openChatModelDropdownId,
       openProviderDropdownId: openChatProviderDropdownId,
+      visibleApiKeyIds: visibleChatApiKeys,
       loadingModelIds: chatModelLoading,
       modelOptions: chatModelOptions,
     })
@@ -2696,6 +2698,18 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     renderChatRuntimeModelPicker()
   }
 
+  function toggleChatApiKeyVisibility(id: string): void {
+    if (!id) {
+      return
+    }
+    if (visibleChatApiKeys.has(id)) {
+      visibleChatApiKeys.delete(id)
+    } else {
+      visibleChatApiKeys.add(id)
+    }
+    renderChatModelConfig()
+  }
+
   async function updateChatProvider(id: string, provider: string): Promise<void> {
     if (!chatSystemConfig) {
       return
@@ -2797,6 +2811,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
     chatSystemConfig.chatModels = chatSystemConfig.chatModels.filter((model) => model.id !== id)
+    visibleChatApiKeys.delete(id)
     if (chatSystemConfig.activeChatId === id) {
       chatSystemConfig.activeChatId = chatSystemConfig.chatModels[0]?.id || ''
       chatSystemConfig.activeChatModelName = chatSystemConfig.chatModels[0]?.enabledModels[0] || ''
@@ -3082,6 +3097,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         openChatProviderDropdownId = openChatProviderDropdownId === modelId ? '' : modelId
         openChatModelDropdownId = ''
         renderChatModelConfig()
+      }
+      if (modelId && modelAction.dataset.chatModelAction === 'toggle-api-key') {
+        toggleChatApiKeyVisibility(modelId)
       }
       if (modelId && modelAction.dataset.chatModelAction === 'get-models') {
         void fetchChatModels(modelId)

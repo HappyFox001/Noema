@@ -6,7 +6,6 @@ import { createImageGenerationArtifact, generateImageWithConfiguredProvider } fr
 import {
   createCharacterAgentToolRuntime,
   type AgentToolDefinition,
-  type CandidatePack,
   type CharacterAgentArtifact,
   type CharacterAgentArtifactKind,
   type CharacterAgentModelConfig,
@@ -51,105 +50,70 @@ export function createConfiguredCharacterAgentToolRuntime(
 ): ReturnType<typeof createCharacterAgentToolRuntime> {
   const tools: AgentToolDefinition[] = [
     {
-      name: 'interpret_resource_graph',
-      description: 'Uses the configured chat model to interpret the resource graph as an autonomous agent brief.',
-      kind: 'generation',
-      execute: async ({ callId, context }) => {
+      name: 'decide_character_card_next_step',
+      description: 'Uses the configured chat model to choose the next autonomous character-card edits.',
+      kind: 'decision',
+      execute: async ({ callId, context, input, state }) => {
         const text = await runCharacterAgentLLMTool(context, models, options.proxyUrl, [
-          'You are the backend planner for an agentic role-resource workflow.',
-          'Interpret this graph as constraints, goals, capabilities, and freedom boundaries for a character generation agent.',
-          'Do not ask for fixed persona fields. Infer only the task direction and agent operating rules.',
-          'Return a concise task understanding in the requested language.',
-          '',
-          JSON.stringify(createAgentPromptContext(context), null, 2),
-        ].join('\n'), { temperature: 0.35, max_tokens: 1400 })
-        return {
-          callId,
-          ok: true,
-          summary: text,
-          data: { text },
-        }
-      },
-    },
-    {
-      name: 'create_generation_plan',
-      description: 'Creates an agent-owned generation plan from the interpreted graph.',
-      kind: 'generation',
-      execute: async ({ callId, context, input }) => {
-        const text = await runCharacterAgentLLMTool(context, models, options.proxyUrl, [
-          'Create a production plan for generating a complete role-resource package.',
+          'You are an autonomous character-card agent. Your only goal is to complete a usable long-form roleplay character card and its supporting resources.',
+          'The resource graph is configuration: goal, style pressure, constraints, model capabilities, resources, and output adapter preferences. It is not a fixed pipeline.',
+          'Choose concrete next actions. Do not describe phases. Do not ask the user unless impossible; infer missing creative details within the configured boundaries.',
           'Return JSON only with this shape:',
-          '{"id":"plan-id","title":"...","strategy":"...","steps":[{"id":"...","title":"...","purpose":"...","phase":"interpret|plan|produce|inspect|repair|package","status":"pending"}]}',
+          '{"summary":"what changed","done":false,"confidence":0.0,"missing":[],"actions":[{"type":"merge_character_card","value":{"name":"...","description":"...","personality":"...","scenario":"...","firstMessage":"...","dialogueStyle":"...","worldContext":"...","memoryStrategy":"...","imagePrompt":"..."}}]}',
+          'Allowed action types:',
+          '- set_field: {"type":"set_field","field":"name","value":"...","reason":"..."}',
+          '- merge_character_card: {"type":"merge_character_card","value":{...},"reason":"..."}',
+          '- create_artifact: {"type":"create_artifact","kind":"opening-message|dialogue-style-guide|world-context|scene-context|memory-policy|image-prompt|generation-report","title":"...","data":"...","summary":"..."}',
+          '- request_image: {"type":"request_image","prompt":"...","title":"..."}',
+          '- finish: {"type":"finish","reason":"..."}',
+          'A visual image is a default required output for every character card. Always prepare a strong imagePrompt and use request_image when the prompt is ready.',
+          'Set done=true only when the card has name, description, personality, scenario, firstMessage, dialogueStyle, worldContext, memoryStrategy, and imagePrompt.',
           '',
-          JSON.stringify({ ...createAgentPromptContext(context), input }, null, 2),
-        ].join('\n'), { temperature: 0.3, max_tokens: 1600 })
-        const parsed = parseJsonObject(text)
-        const plan = parsed && Array.isArray(parsed.steps)
-          ? parsed
-          : {
-              id: `${context.runId}:plan`,
-              title: 'Character Resource Generation Plan',
-              strategy: text,
-              steps: [
-                { id: 'interpret', title: 'Interpret resource graph', purpose: 'Resolve user goals and constraints.', phase: 'interpret', status: 'pending' },
-                { id: 'produce', title: 'Generate candidate package', purpose: 'Create role resources with agent autonomy.', phase: 'produce', status: 'pending' },
-                { id: 'inspect', title: 'Inspect quality', purpose: 'Review coherence, style fit, and runtime readiness.', phase: 'inspect', status: 'pending' },
-                { id: 'package', title: 'Package resources', purpose: 'Prepare export payload.', phase: 'package', status: 'pending' },
-              ],
-            }
-        return {
-          callId,
-          ok: true,
-          summary: typeof plan.strategy === 'string' ? plan.strategy : 'Created an agent generation plan.',
-          data: plan,
-        }
-      },
-    },
-    {
-      name: 'generate_candidate_pack',
-      description: 'Generates a complete candidate role-resource package using agent freedom and graph constraints.',
-      kind: 'generation',
-      execute: async ({ callId, context, input }) => {
-        const candidateId = `${context.runId}:candidate:primary`
-        const text = await runCharacterAgentLLMTool(context, models, options.proxyUrl, [
-          'Generate a complete autonomous role-resource package.',
-          'Do not wait for mechanical schema fields. You own the creative choices within the graph constraints.',
-          'Return JSON only with keys: title, summary, characterCard, openingMessage, dialogueStyleGuide, worldContext, sceneContext, memoryPolicy, imagePrompt, generationReport, risks.',
-          'The characterCard should be complete enough for role-play runtime use.',
-          '',
-          JSON.stringify({ candidateId, ...createAgentPromptContext(context), input }, null, 2),
+          JSON.stringify({
+            ...createAgentPromptContext(context),
+            runtime: input,
+            currentDraft: state.draft,
+          }, null, 2),
         ].join('\n'), { temperature: 0.82, max_tokens: 4200 })
-        const parsed = parseJsonObject(text) ?? { generationReport: text }
-        const artifacts = createCandidateArtifacts(context.runId, candidateId, parsed, context)
-        const imageArtifact = await maybeGenerateImageArtifact(context, models, options.proxyUrl, candidateId, parsed.imagePrompt)
-        if (imageArtifact) {
-          artifacts.push(imageArtifact)
-        }
-        const candidate: CandidatePack = {
-          id: candidateId,
-          title: stringField(parsed.title, 'Character Resource Candidate'),
-          summary: stringField(parsed.summary, 'Generated an agent-owned character resource package.'),
-          requestedAssets: context.requestedAssets.flatMap((target) => target.requested),
-          artifactIds: artifacts.map((artifact) => artifact.id),
-          risks: arrayField(parsed.risks),
-        }
+        const parsed = parseJsonObject(text)
         return {
           callId,
-          ok: true,
-          summary: candidate.summary,
-          data: candidate,
-          artifacts,
+          ok: Boolean(parsed),
+          summary: stringField(parsed?.summary, text),
+          data: parsed ?? {
+            summary: text,
+            done: false,
+            confidence: 0.2,
+            missing: ['valid JSON actions'],
+            actions: [],
+          },
         }
       },
     },
     {
-      name: 'run_quality_gate',
-      description: 'Lets the configured model judge whether the candidate satisfies graph-level quality goals.',
+      name: 'generate_character_image',
+      description: 'Generates a character image from the current draft prompt.',
+      kind: 'image',
+      execute: async ({ callId, context, input }) => {
+        const source = input && typeof input === 'object' ? input as Record<string, any> : {}
+        const candidateId = typeof source.draft?.id === 'string' ? source.draft.id : `${context.runId}:candidate:primary`
+        const imageArtifact = await maybeGenerateImageArtifact(context, models, options.proxyUrl, candidateId, source.prompt)
+        return {
+          callId,
+          ok: Boolean(imageArtifact),
+          summary: imageArtifact ? 'Generated character image.' : 'Skipped image generation because image model or prompt is unavailable.',
+          artifacts: imageArtifact ? [imageArtifact] : [],
+        }
+      },
+    },
+    {
+      name: 'review_character_card',
+      description: 'Lets the configured model judge whether the character card is complete for roleplay runtime use.',
       kind: 'quality',
       execute: async ({ callId, context, input }) => {
         const text = await runCharacterAgentLLMTool(context, models, options.proxyUrl, [
-          'Evaluate this character resource package as an expert reviewer.',
-          'Do not perform brittle mechanical field validation. Judge quality, coherence, safety boundaries, style fit, and runtime usefulness.',
+          'Evaluate this character card as an expert roleplay runtime reviewer.',
+          'Judge coherence, field completeness, long-form roleplay usefulness, image readiness, style fit, and hard constraints.',
           'Return JSON only with keys: score (0-1), passed (boolean), summary, checks, blockingIssues, repairSuggestions.',
           '',
           JSON.stringify({ qualityGate: context.qualityGate, input }, null, 2),
@@ -173,49 +137,13 @@ export function createConfiguredCharacterAgentToolRuntime(
       },
     },
     {
-      name: 'repair_candidate_pack',
-      description: 'Repairs a candidate package according to model critique while preserving agent autonomy.',
-      kind: 'generation',
-      execute: async ({ callId, context, input }) => {
-        const candidateId = `${context.runId}:candidate:repaired`
-        const text = await runCharacterAgentLLMTool(context, models, options.proxyUrl, [
-          'Repair the candidate package according to the critique.',
-          'Preserve the original creative direction unless the critique requires a stronger choice.',
-          'Return JSON only with keys: title, summary, characterCard, openingMessage, dialogueStyleGuide, worldContext, sceneContext, memoryPolicy, imagePrompt, generationReport, risks.',
-          '',
-          JSON.stringify({ candidateId, ...createAgentPromptContext(context), input }, null, 2),
-        ].join('\n'), { temperature: 0.68, max_tokens: 4200 })
-        const parsed = parseJsonObject(text) ?? { generationReport: text }
-        const artifacts = createCandidateArtifacts(context.runId, candidateId, parsed, context)
-        const imageArtifact = await maybeGenerateImageArtifact(context, models, options.proxyUrl, candidateId, parsed.imagePrompt)
-        if (imageArtifact) {
-          artifacts.push(imageArtifact)
-        }
-        const candidate: CandidatePack = {
-          id: candidateId,
-          title: stringField(parsed.title, 'Repaired Character Resource Candidate'),
-          summary: stringField(parsed.summary, 'Repaired the character resource package.'),
-          requestedAssets: context.requestedAssets.flatMap((target) => target.requested),
-          artifactIds: artifacts.map((artifact) => artifact.id),
-          risks: arrayField(parsed.risks),
-        }
-        return {
-          callId,
-          ok: true,
-          summary: candidate.summary,
-          data: candidate,
-          artifacts,
-        }
-      },
-    },
-    {
-      name: 'create_export_package',
-      description: 'Creates the final export payload for the selected candidate package.',
+      name: 'create_output_adapter_package',
+      description: 'Applies Output Adapter runtime semantics to the completed character card.',
       kind: 'artifact',
       execute: ({ callId, context, input }) => ({
         callId,
         ok: true,
-        summary: `Prepared ${context.exportTarget.format} export package.`,
+        summary: `Prepared ${context.exportTarget.format} output adapter package.`,
         data: {
           format: context.exportTarget.format,
           includeAssets: context.exportTarget.includeAssets,
@@ -309,9 +237,8 @@ async function maybeGenerateImageArtifact(
   prompt: unknown
 ): Promise<CharacterAgentArtifact | null> {
   const promptText = typeof prompt === 'string' ? prompt.trim() : ''
-  const requestedImages = context.requestedAssets.some((target) => target.requested.some((asset) => asset.includes('image')))
   const capability = context.capabilities.imageModels[0]
-  if (!promptText || !requestedImages || !capability) {
+  if (!promptText || !capability) {
     return null
   }
   const configuredModel = models.find((model) => model.modelType === 'image' && model.id === capability.apiId)

@@ -1082,6 +1082,7 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
     },
     root,
   })
+  animateRunDraftCanvas(root, cleanups)
   workbenchCleanups.set(root, cleanups)
 }
 
@@ -1209,6 +1210,45 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
     },
     mockOutputs,
   }
+}
+
+function animateRunDraftCanvas(root: HTMLElement, cleanups: Array<() => void>): void {
+  const runViewport = root.querySelector<HTMLElement>('.chat-resource-run-viewport')
+  if (!runViewport) {
+    return
+  }
+  let reverted = false
+  import('gsap').then(({ gsap }) => {
+    if (reverted || !runViewport.isConnected) {
+      return
+    }
+    const ctx = gsap.context(() => {
+      const nodes = gsap.utils.toArray<HTMLElement>('.chat-resource-node')
+      const links = gsap.utils.toArray<SVGPathElement>('.chat-resource-link path')
+      gsap.set(nodes, { opacity: 0, y: 10, scale: 0.96, transformOrigin: '50% 50%' })
+      gsap.set(links, { opacity: 0 })
+      gsap.timeline({ defaults: { ease: 'power3.out' } })
+        .to(nodes, {
+          opacity: 1,
+          y: 0,
+          scale: 1,
+          duration: 0.34,
+          stagger: 0.045,
+          clearProps: 'transform',
+        })
+        .to(links, {
+          opacity: 1,
+          duration: 0.22,
+          stagger: 0.025,
+        }, 0.08)
+    }, runViewport)
+    cleanups.push(() => ctx.revert())
+  }).catch(() => {
+    // Animation is optional; rendering must not depend on GSAP availability.
+  })
+  cleanups.push(() => {
+    reverted = true
+  })
 }
 
 function createLiteGraphSnapshot(graph: CharacterResourceGraph): unknown {
@@ -1423,14 +1463,13 @@ function renderRunCanvasControls(options: CharacterWorkflowPageOptions): string 
 }
 
 function renderRunDraft(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): string {
-  const runGraph = createRunResourceGraph(graph, options)
+  const runGraph = createRunDraftCanvasGraph(graph, options)
   const runLiteGraphSnapshot = createLiteGraphSnapshot(runGraph)
   const runYjsSnapshot = createYjsSnapshot(runGraph, runLiteGraphSnapshot)
   return `
-    <div class="chat-workflow-canvas-viewport active chat-resource-run-viewport" data-resource-viewport="${options.escapeHtml(JSON.stringify(runGraph.viewport))}" aria-label="${options.escapeHtml(ui(options, '角色资源运行图', 'Character resource run graph'))}">
+    <div class="chat-workflow-canvas-viewport active chat-resource-run-viewport" data-resource-viewport="${options.escapeHtml(JSON.stringify(runGraph.viewport))}" aria-label="${options.escapeHtml(ui(options, '角色卡运行草稿', 'Character card run draft'))}">
       <div class="chat-workflow-canvas-plane chat-resource-graph-plane chat-resource-run-plane" style="--resource-zoom: ${runGraph.viewport.zoom}; --resource-pan-x: ${runGraph.viewport.x}px; --resource-pan-y: ${runGraph.viewport.y}px">
         <div class="chat-workflow-canvas-grid" aria-hidden="true"></div>
-        ${runGraph.groups.map((groupItem) => renderGroup(groupItem, runGraph, options)).join('')}
         ${renderLinkOverlay(runGraph, options)}
         ${runGraph.nodes.map((node) => renderResourceNode(node, runGraph, options)).join('')}
       </div>
@@ -1488,11 +1527,14 @@ function createRunCharacterRows(
     }
   }
   const roleCard = artifacts.find((artifact) => artifact.type === 'character-card-final')
+    ?? [...artifacts].reverse().find((artifact) => artifact.type === 'character-card-draft')
   if (roleCard) {
     push(ui(options, '名称', 'Name'), roleCard.title)
     push(ui(options, '角色卡', 'Role Card'), getArtifactText(roleCard.data) || roleCard.summary)
     const record = roleCard.data && typeof roleCard.data === 'object' && !Array.isArray(roleCard.data)
-      ? roleCard.data as Record<string, unknown>
+      ? (roleCard.data as Record<string, unknown>).fields && typeof (roleCard.data as Record<string, unknown>).fields === 'object'
+        ? (roleCard.data as Record<string, any>).fields as Record<string, unknown>
+        : roleCard.data as Record<string, unknown>
       : {}
     for (const [key, value] of Object.entries(record)) {
       if (key === 'image' || key === 'images' || key === 'avatar' || key === 'dataUrl' || key === 'url') {
@@ -1502,7 +1544,7 @@ function createRunCharacterRows(
     }
   }
   for (const artifact of artifacts) {
-    if (artifact.type === 'character-card-final' || artifact.type === 'image-asset') {
+    if (artifact.type === 'character-card-final' || artifact.type === 'character-card-draft' || artifact.type === 'image-asset') {
       continue
     }
     push(getRunArtifactMeta(artifact, options), getArtifactText(artifact.data) || artifact.summary)
@@ -1520,6 +1562,16 @@ function getRunCharacterTitle(rows: Array<{ label: string; value: string }>, opt
   return rows.find((row) => row.label === nameLabel)?.value
     ?? rows[0]?.value.split('\n')[0]?.slice(0, 30)
     ?? ui(options, '生成角色', 'Generated Character')
+}
+
+function formatRunStatus(status: NonNullable<CharacterResourceRunState['run']>['status'], options: CharacterWorkflowPageOptions): string {
+  const labels: Record<NonNullable<CharacterResourceRunState['run']>['status'], string> = {
+    idle: ui(options, 'IDLE', 'IDLE'),
+    running: ui(options, 'RUNNING', 'RUNNING'),
+    failed: ui(options, 'FAILED', 'FAILED'),
+    done: ui(options, 'COMPLETED', 'COMPLETED'),
+  }
+  return labels[status]
 }
 
 function formatRunCharacterFieldLabel(key: string, options: CharacterWorkflowPageOptions): string {
@@ -1572,42 +1624,58 @@ function normalizeRunCharacterFieldValue(value: string | undefined): string {
   return String(value ?? '').replace(/\r\n/g, '\n').trim()
 }
 
-function createRunResourceGraph(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): CharacterResourceGraph {
-  const artifacts = options.runState?.artifacts ?? []
+function createRunDraftCanvasGraph(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): CharacterResourceGraph {
+  const artifacts = getRoleResourceArtifacts(options.runState?.artifacts ?? [])
+  const status = options.runState?.run?.status ?? 'idle'
   const nodes: CharacterResourceNode[] = [{
-    id: 'run-input-graph',
-    type: 'run-input-resource',
-    title: ui(options, '用户输入资源图', 'User Input Graph'),
-    position: { x: 88, y: 226 },
-    size: { width: 268, height: 188 },
-    status: 'done',
+    id: 'run-agent-source',
+    type: 'agent-policy',
+    title: ui(options, 'Agent 运行', 'Agent Run'),
+    position: { x: 72, y: 112 },
+    size: { width: 210, height: 126 },
+    status: status === 'failed' ? 'failed' : status === 'done' ? 'done' : status === 'running' ? 'running' : 'idle',
     zIndex: 1,
     config: {},
   }]
   const outputs: CharacterResourceMockOutput[] = [{
-    id: 'run-input-graph-output',
-    nodeId: 'run-input-graph',
-    type: 'resourcegraph',
-    title: ui(options, '用户输入资源图', 'User Input Graph'),
-    summary: ui(options, `${graph.nodes.length} 个节点 / ${graph.links.length} 条连线`, `${graph.nodes.length} nodes / ${graph.links.length} links`),
-    status: 'done',
+    id: 'run-agent-source-output',
+    nodeId: 'run-agent-source',
+    type: 'agent-run',
+    title: ui(options, '自主生成角色卡', 'Autonomous character generation'),
+    summary: status === 'running'
+      ? ui(options, 'Agent 正在把配置转化为角色字段和资源。', 'The agent is turning config into character fields and assets.')
+      : ui(options, '运行后这里会串联新增字段、资源和图片。', 'New fields, resources, and images will be chained here after running.'),
+    status: nodes[0].status,
   }]
   const links: CharacterResourceLink[] = []
-  getRoleResourceArtifacts(artifacts).forEach((artifact, index) => {
-    const image = getArtifactImage(artifact.data)
+  const compactArtifacts = artifacts.length
+    ? artifacts
+    : options.runState?.run?.status === 'running'
+      ? [{
+          id: 'run-placeholder',
+          type: 'character-card-draft',
+          sourceNodeId: 'agent-policy',
+          title: ui(options, '等待新增字段', 'Waiting for fields'),
+          summary: ui(options, '生成中的字段和图片会作为小框出现在画布中。', 'Generated fields and images will appear as compact canvas boxes.'),
+          data: undefined,
+        }]
+      : []
+  compactArtifacts.forEach((artifact, index) => {
     const nodeId = `run-artifact-${sanitizeResourceId(artifact.id || artifact.type || String(index))}`
-    const previousNodeId = nodes[nodes.length - 1]?.id ?? 'run-input-graph'
     const nodeType = getRunArtifactNodeType(artifact.type)
+    const lane = index % 3
+    const row = Math.floor(index / 3)
+    const image = getArtifactImage(artifact.data)
     nodes.push({
       id: nodeId,
       type: nodeType,
-      title: artifact.title ?? artifact.type,
+      title: getRunArtifactNodeTitle(artifact, options),
       position: {
-        x: 420 + index * 332,
-        y: 78 + (index % 3) * 202,
+        x: 334 + lane * 268,
+        y: 72 + row * 172 + lane * 22,
       },
-      size: getDefinition(nodeType).defaultSize,
-      status: 'done',
+      size: image ? { width: 226, height: 178 } : { width: 238, height: 134 },
+      status: artifact.type === 'quality-report' && String(artifact.summary ?? '').toLowerCase().includes('missing') ? 'failed' : 'done',
       zIndex: index + 2,
       config: {},
     })
@@ -1622,55 +1690,36 @@ function createRunResourceGraph(graph: CharacterResourceGraph, options: Characte
       text: getArtifactText(artifact.data),
       data: artifact.data,
     })
+    const previousNodeId = index === 0 ? 'run-agent-source' : nodes[nodes.length - 2]?.id ?? 'run-agent-source'
     links.push(createRunResourceLink(previousNodeId, nodeId, getRunExecutionLabel(artifact.type, options), index))
   })
-  if (nodes.length === 1 && options.runState?.run?.status === 'running') {
-    const nodeId = 'run-generating-placeholder'
-    nodes.push({
-      id: nodeId,
-      type: 'candidate-pack-resource',
-      title: ui(options, '生成角色资源中', 'Generating character resources'),
-      position: { x: 420, y: 226 },
-      size: getDefinition('candidate-pack-resource').defaultSize,
-      status: 'running',
-      zIndex: 2,
-      config: {},
-    })
-    outputs.push({
-      id: `${nodeId}-output`,
-      nodeId,
-      type: 'role-resource',
-      title: ui(options, '生成角色资源中', 'Generating character resources'),
-      summary: ui(options, 'Agent 正在补全角色卡、开场、上下文和资源。', 'The agent is filling the role card, opening, context, and assets.'),
-      status: 'running',
-    })
-    links.push(createRunResourceLink('run-input-graph', nodeId, ui(options, '开始补充资源', 'start producing resources'), 0, 'routes'))
-  }
   return {
+    ...graph,
     id: `${graph.id}-run`,
-    title: ui(options, '角色资源运行图', 'Character Resource Run Graph'),
+    title: ui(options, '角色卡运行草稿', 'Character Card Run Draft'),
     nodes,
     links,
-    groups: [{
-      id: 'run-role-resources',
-      title: ui(options, '角色资源生成', 'Role Resource Generation'),
-      nodeIds: nodes.map((node) => node.id),
-      color: 'rgba(82, 168, 255, 0.13)',
-    }],
-    tabs: graph.tabs,
+    groups: [],
     viewport: {
       x: options.viewState?.panX ?? 0,
       y: options.viewState?.panY ?? 0,
-      zoom: options.viewState?.zoom ?? 0.84,
+      zoom: options.viewState?.zoom ?? 0.94,
     },
-    selection: { nodeIds: [nodes[nodes.length - 1]?.id ?? 'run-input-graph'], linkIds: [] },
-    panels: graph.panels,
+    selection: { nodeIds: [nodes[nodes.length - 1]?.id ?? 'run-agent-source'], linkIds: [] },
     mockOutputs: outputs,
   }
 }
 
+function getRunArtifactNodeTitle(artifact: NonNullable<CharacterResourceRunState['artifacts']>[number], options: CharacterWorkflowPageOptions): string {
+  if (artifact.type === 'character-card-draft') {
+    return ui(options, '字段草稿', 'Field Draft')
+  }
+  return artifact.title ?? getRunArtifactMeta(artifact, options)
+}
+
 function getRoleResourceArtifacts(artifacts: NonNullable<CharacterResourceRunState['artifacts']>): NonNullable<CharacterResourceRunState['artifacts']> {
   const allowed = new Set([
+    'character-card-draft',
     'character-card-final',
     'opening-message',
     'dialogue-style-guide',
@@ -1692,6 +1741,7 @@ function getRoleResourceArtifacts(artifacts: NonNullable<CharacterResourceRunSta
 function getRunArtifactOrder(type: string): number {
   const order = [
     'candidate-pack',
+    'character-card-draft',
     'character-card-final',
     'opening-message',
     'dialogue-style-guide',
@@ -1711,6 +1761,7 @@ function getRunArtifactOrder(type: string): number {
 function getRunArtifactMeta(artifact: NonNullable<CharacterResourceRunState['artifacts']>[number], options: CharacterWorkflowPageOptions): string {
   const labels: Record<string, string> = {
     'candidate-pack': ui(options, '候选包 / resource', 'candidate pack / resource'),
+    'character-card-draft': ui(options, '角色卡草稿 / draft', 'character draft / resource'),
     'character-card-final': ui(options, '角色卡 / role-card', 'role card / resource'),
     'opening-message': ui(options, '开场 / opening', 'opening / resource'),
     'dialogue-style-guide': ui(options, '语气 / style', 'style / resource'),
@@ -1729,6 +1780,7 @@ function getRunArtifactMeta(artifact: NonNullable<CharacterResourceRunState['art
 function getRunArtifactNodeType(type: string): string {
   const nodeTypes: Record<string, string> = {
     'candidate-pack': 'candidate-pack-resource',
+    'character-card-draft': 'role-card-resource',
     'character-card-final': 'role-card-resource',
     'opening-message': 'opening-resource',
     'dialogue-style-guide': 'style-guide-resource',
@@ -1745,25 +1797,19 @@ function getRunArtifactNodeType(type: string): string {
 }
 
 function getRunExecutionLabel(type: string, options: CharacterWorkflowPageOptions): string {
+  if (type === 'character-card-draft') {
+    return ui(options, '补字段', 'field')
+  }
   if (type === 'image-asset') {
-    return ui(options, '生成图片', 'generate image')
+    return ui(options, '生图', 'image')
   }
   if (type.includes('report') || type === 'quality-report') {
-    return ui(options, '校验与总结', 'inspect')
+    return ui(options, '检查', 'review')
   }
   if (type === 'export-package') {
-    return ui(options, '打包导出', 'package')
+    return ui(options, '输出', 'output')
   }
-  if (type === 'character-card-final') {
-    return ui(options, '生成角色卡', 'generate role card')
-  }
-  if (type === 'opening-message') {
-    return ui(options, '生成开场', 'generate opening')
-  }
-  if (type === 'image-prompt') {
-    return ui(options, '准备生图提示', 'prepare image prompt')
-  }
-  return ui(options, '补充资源', 'produce resource')
+  return ui(options, '新增', 'add')
 }
 
 function createRunResourceLink(
@@ -1935,8 +1981,10 @@ function renderGroup(group: CharacterResourceGroup, graph: CharacterResourceGrap
 }
 
 function renderLinkOverlay(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): string {
+  const width = Math.max(980, ...graph.nodes.map((node) => node.position.x + node.size.width + 120))
+  const height = Math.max(620, ...graph.nodes.map((node) => node.position.y + node.size.height + 120))
   return `
-    <svg class="chat-resource-link-overlay" width="2600" height="1180" viewBox="0 0 2600 1180" aria-hidden="true">
+    <svg class="chat-resource-link-overlay" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" aria-hidden="true">
       <defs>
         <marker id="chat-resource-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
           <path d="M0,0 L8,4 L0,8 Z"></path>
