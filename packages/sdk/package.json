@@ -16,6 +16,11 @@
       "import": "./dist/character-workflow/index.js",
       "default": "./dist/character-workflow/index.js"
     },
+    "./character-workflow/workflow-builder": {
+      "types": "./dist/character-workflow/workflow-builder.d.ts",
+      "import": "./dist/character-workflow/workflow-builder.js",
+      "default": "./dist/character-workflow/workflow-builder.js"
+    },
     "./chat/conversation-runtime": {
       "types": "./dist/chat/conversation-runtime.d.ts",
       "import": "./dist/chat/conversation-runtime.js",

@@ -200,6 +200,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   sendChatMessage: (request) =>
     ipcRenderer.invoke('chat:sendMessage', request),
 
+  buildCharacterWorkflow: (request) =>
+    ipcRenderer.invoke('chat:buildCharacterWorkflow', request),
+
   runCharacterWorkflow: (request) =>
     ipcRenderer.invoke('chat:runCharacterWorkflow', request),
 

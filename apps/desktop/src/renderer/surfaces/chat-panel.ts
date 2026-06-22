@@ -229,6 +229,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let characterWorkflowProjects: CharacterWorkflowProjectRecord[] = []
   let activeCharacterWorkflowProjectId = ''
   let characterWorkflowLibrarySearch = ''
+  let characterWorkflowBuilderPrompt = ''
+  let characterWorkflowBuilderStatus = ''
+  let characterWorkflowBuilderBusy = false
   let characterWorkflowRunState: CharacterResourceRunState | null = null
   let characterWorkflowRunCount = 0
   let characterWorkflowActiveTabId = 'workflow'
@@ -1061,10 +1064,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   function renderChatRuntimeModelPicker(): void {
+    runtimeModelPicker.innerHTML = renderChatRuntimeModelPickerMarkup()
+  }
+
+  function renderChatRuntimeModelPickerMarkup(extraClass = ''): string {
     const config = chatSystemConfig
     if (!config) {
-      runtimeModelPicker.innerHTML = ''
-      return
+      return ''
     }
     const groups = getUsableChatModelGroups(config)
     const activeModel = groups.flatMap((group) => group.models).find((model) => model.api.id === config.activeChatId && model.modelName === getActiveChatModelName(config))
@@ -1081,8 +1087,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       : getLLMProviderEntry(activeModel?.provider).value
     activeChatRuntimeProvider = activeProvider
     const activeProviderGroup = groups.find((group) => group.provider.value === activeProvider) ?? groups[0]
-    runtimeModelPicker.innerHTML = `
-      <div class="chat-runtime-model-shell ${openChatRuntimeModelPicker ? 'open' : ''}">
+    return `
+      <div class="chat-runtime-model-shell ${extraClass} ${openChatRuntimeModelPicker ? 'open' : ''}">
         <button class="chat-runtime-model-current" type="button" data-chat-runtime-action="toggle-model-picker" ${groups.length ? '' : 'disabled'}>
           <span class="chat-runtime-model-icon">${activeModel ? renderChatModelLogo(activeModel.api) : renderProviderLogo('openai-compatible')}</span>
           <span class="chat-runtime-model-copy">
@@ -1706,12 +1712,19 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   function renderCharacterWorkflowLibraryEmptyState(): string {
     const zh = options.getLanguage() === 'zh-CN'
     return `
-      <section class="chat-workflow-library-empty-main">
-        <div>
-          <span>${options.escapeHtml(zh ? 'RESOURCEGRAPH' : 'RESOURCEGRAPH')}</span>
-          <strong>${options.escapeHtml(zh ? '选择一个角色草稿' : 'Select a character draft')}</strong>
-          <p>${options.escapeHtml(zh ? '左侧保存的是工作流草稿，不是项目看板。新建后会直接打开资源图，运行记录和输出会跟随这个草稿保存。' : 'The left sidebar stores workflow drafts, not a project board. Create one to open the resource graph and keep runs with that draft.')}</p>
-          <button type="button" data-chat-workflow-library-action="create">${options.escapeHtml(zh ? '新建角色草稿' : 'New character draft')}</button>
+      <section class="chat-workflow-builder-main">
+        <div class="chat-workflow-builder-card">
+          <span>${options.escapeHtml(zh ? 'RESOURCEGRAPH BUILDER' : 'RESOURCEGRAPH BUILDER')}</span>
+          <strong>${options.escapeHtml(zh ? '你想创建什么角色？' : 'What character do you want to create?')}</strong>
+          <p>${options.escapeHtml(zh ? '描述角色目标、风格、边界和素材。AI 会生成一个已配置好的资源图草稿。' : 'Describe the goal, style, boundaries, and references. AI will create a configured resource graph draft.')}</p>
+          <form class="chat-workflow-builder-box" data-chat-workflow-builder-form>
+            <textarea data-chat-workflow-builder-input rows="4" placeholder="${options.escapeHtml(zh ? '例如：校园恋爱长期 RP，角色要有主动性、暧昧拉扯，需要头像图和开场白...' : 'Example: campus romance long-form RP, proactive character, subtle tension, avatar image and opening message...')}" ${characterWorkflowBuilderBusy ? 'disabled' : ''}>${options.escapeHtml(characterWorkflowBuilderPrompt)}</textarea>
+            <div class="chat-workflow-builder-footer">
+              ${renderChatRuntimeModelPickerMarkup('workflow-builder')}
+              <button type="submit" ${characterWorkflowBuilderBusy ? 'disabled' : ''}>${options.escapeHtml(characterWorkflowBuilderBusy ? (zh ? '创建中...' : 'Creating...') : (zh ? '创建资源图' : 'Create graph'))}</button>
+            </div>
+          </form>
+          ${characterWorkflowBuilderStatus ? `<small class="chat-workflow-builder-status">${options.escapeHtml(characterWorkflowBuilderStatus)}</small>` : ''}
         </div>
       </section>
     `
@@ -1831,13 +1844,55 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function createCharacterWorkflowDraft(): void {
     saveActiveWorkflowProjectSnapshot()
+    createCharacterWorkflowDraftFromSpec({})
+  }
+
+  function createCharacterWorkflowDraftFromSpec(spec: {
+    name?: string
+    goalPrompt?: string
+    targetAudience?: string
+    stylePrompt?: string
+    preset?: string
+    intensity?: number
+    mustHave?: string[]
+    mustNot?: string[]
+    sourceNotes?: string
+    configOverrides?: Record<string, Record<string, unknown>>
+  }): void {
     const now = Date.now()
+    const configOverrides: Record<string, Record<string, unknown>> = cloneRecord(spec.configOverrides ?? {})
+    if ((spec.goalPrompt || spec.targetAudience) && !configOverrides['generation-goal']) {
+      configOverrides['generation-goal'] = {
+        ...(spec.goalPrompt ? { goalPrompt: spec.goalPrompt } : {}),
+        ...(spec.targetAudience ? { targetAudience: spec.targetAudience } : {}),
+        allowExpansion: true,
+      }
+    }
+    if ((spec.stylePrompt || spec.preset || typeof spec.intensity === 'number') && !configOverrides['style-pressure']) {
+      configOverrides['style-pressure'] = {
+        ...(spec.preset ? { preset: spec.preset } : {}),
+        ...(typeof spec.intensity === 'number' ? { intensity: Math.max(0, Math.min(1, spec.intensity)) } : {}),
+        ...(spec.stylePrompt ? { stylePrompt: spec.stylePrompt } : {}),
+      }
+    }
+    if ((spec.mustHave?.length || spec.mustNot?.length) && !configOverrides['hard-constraints']) {
+      configOverrides['hard-constraints'] = {
+        ...(spec.mustHave?.length ? { mustHave: spec.mustHave } : {}),
+        ...(spec.mustNot?.length ? { mustNot: spec.mustNot } : {}),
+      }
+    }
+    if (spec.sourceNotes && !configOverrides['source-material']) {
+      configOverrides['source-material'] = {
+        sourceKind: 'notes',
+        notes: spec.sourceNotes,
+      }
+    }
     const project: CharacterWorkflowProjectRecord = {
       id: `workflow-draft-${now}-${Math.random().toString(16).slice(2)}`,
-      name: options.getLanguage() === 'zh-CN' ? `角色草稿 ${characterWorkflowProjects.length + 1}` : `Character Draft ${characterWorkflowProjects.length + 1}`,
+      name: spec.name || (options.getLanguage() === 'zh-CN' ? `角色草稿 ${characterWorkflowProjects.length + 1}` : `Character Draft ${characterWorkflowProjects.length + 1}`),
       createdAt: now,
       updatedAt: now,
-      configOverrides: {},
+      configOverrides,
       positionOverrides: {},
       viewState: {
         selectedWorkflowNodeId: 'generation-goal',
@@ -1862,6 +1917,48 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     characterWorkflowProjects = [project, ...characterWorkflowProjects]
     openCharacterWorkflowDraft(project.id)
+  }
+
+  async function buildCharacterWorkflowFromPrompt(): Promise<void> {
+    const prompt = characterWorkflowBuilderPrompt.trim()
+    if (!prompt || characterWorkflowBuilderBusy) {
+      return
+    }
+    characterWorkflowBuilderBusy = true
+    characterWorkflowBuilderStatus = options.getLanguage() === 'zh-CN' ? '正在让模型规划资源图...' : 'Planning resource graph with model...'
+    renderCharacterWorkflow()
+    try {
+      const zh = options.getLanguage() === 'zh-CN'
+      const response = await window.electronAPI.buildCharacterWorkflow({
+        prompt,
+        language: options.getLanguage(),
+      })
+      if (!response.success) {
+        throw new Error(response.error || 'Workflow builder failed')
+      }
+      createCharacterWorkflowDraftFromSpec({
+        name: response.spec?.name,
+        goalPrompt: response.spec?.goalPrompt || prompt,
+        targetAudience: response.spec?.targetAudience,
+        stylePrompt: response.spec?.stylePrompt,
+        preset: response.spec?.preset,
+        intensity: response.spec?.intensity,
+        mustHave: response.spec?.mustHave,
+        mustNot: response.spec?.mustNot,
+        sourceNotes: response.spec?.sourceNotes,
+        configOverrides: response.uiConfigOverrides,
+      })
+      characterWorkflowBuilderPrompt = ''
+      characterWorkflowBuilderStatus = ''
+      showToast(zh ? '已创建资源图草稿' : 'Resource graph draft created')
+    } catch (error: any) {
+      const message = error?.message || String(error)
+      characterWorkflowBuilderStatus = message
+      showToast(message)
+    } finally {
+      characterWorkflowBuilderBusy = false
+      renderCharacterWorkflow()
+    }
   }
 
   function openCharacterWorkflowDraft(projectId: string): void {
@@ -3154,6 +3251,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     openChatRuntimeModelPicker = false
     await saveChatModelConfig()
     renderChatRuntimeModelPicker()
+    refreshCharacterWorkflowModelsIfVisible()
   }
 
   async function addChatModel(modelType: 'llm' | 'image' = 'llm'): Promise<void> {
@@ -3462,6 +3560,15 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     void queueAssistantReply(text, attachments)
   })
 
+  panel.addEventListener('submit', (event) => {
+    const form = (event.target as HTMLElement | null)?.closest<HTMLFormElement>('[data-chat-workflow-builder-form]')
+    if (!form || !panel.contains(form)) {
+      return
+    }
+    event.preventDefault()
+    void buildCharacterWorkflowFromPrompt()
+  })
+
   navItems.forEach((button) => {
     button.addEventListener('click', () => setActiveNav(button))
   })
@@ -3759,6 +3866,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   })
 
   panel.addEventListener('input', (event) => {
+    const workflowBuilderInput = (event.target as HTMLElement | null)?.closest<HTMLTextAreaElement>('[data-chat-workflow-builder-input]')
+    if (workflowBuilderInput && panel.contains(workflowBuilderInput)) {
+      characterWorkflowBuilderPrompt = workflowBuilderInput.value
+      return
+    }
     const workflowLibrarySearch = (event.target as HTMLElement | null)?.closest<HTMLInputElement>('[data-chat-workflow-library-search]')
     if (workflowLibrarySearch && panel.contains(workflowLibrarySearch)) {
       characterWorkflowLibrarySearch = workflowLibrarySearch.value

@@ -19,7 +19,9 @@ import {
   createCharacterSuperAgent,
   createInMemoryCharacterArtifactStore,
   createStaticCharacterAgentModelResolver,
+  buildCharacterWorkflowFromPrompt,
   loadCharacterAgentWorkflowSnapshot,
+  type CharacterWorkflowBuilderSpec,
 } from '@noema/sdk/character-workflow'
 import { ChatHistoryStore, type StoredChatConversation } from './chat-history-store.js'
 
@@ -69,6 +71,19 @@ export interface ChatRunCharacterWorkflowResult {
     sourceNodeId?: string
     data?: unknown
   }>
+  error?: string
+}
+
+export interface ChatBuildCharacterWorkflowRequest {
+  prompt: string
+  language?: 'zh-CN' | 'en-US'
+}
+
+export interface ChatBuildCharacterWorkflowResult {
+  success: boolean
+  workflow?: Record<string, unknown>
+  spec?: CharacterWorkflowBuilderSpec
+  uiConfigOverrides?: Record<string, Record<string, unknown>>
   error?: string
 }
 
@@ -198,6 +213,34 @@ export function registerChatIpcHandlers(
       }
     } catch (error: any) {
       console.error('[Chat] Failed to run character workflow:', error)
+      return {
+        success: false,
+        error: normalizeChatRuntimeError(error),
+      }
+    }
+  })
+
+  ipcMain.handle('chat:buildCharacterWorkflow', async (_, request: ChatBuildCharacterWorkflowRequest): Promise<ChatBuildCharacterWorkflowResult> => {
+    try {
+      const configuredModels = options.getChatModels()
+      const firstImageModel = configuredModels.find((model) => model.modelType === 'image')
+      const result = await buildCharacterWorkflowFromPrompt({
+        prompt: request.prompt,
+        language: request.language,
+        modelConfig: options.getModelConfig(),
+        llmApiId: options.getModelConfig()?.provider,
+        llmModelName: options.getModelConfig()?.modelName,
+        imageApiId: firstImageModel?.id,
+        imageModelName: firstImageModel?.modelName,
+      })
+      return {
+        success: true,
+        workflow: result.workflow as unknown as Record<string, unknown>,
+        spec: result.spec,
+        uiConfigOverrides: result.uiConfigOverrides,
+      }
+    } catch (error: any) {
+      console.error('[Chat] Failed to build character workflow:', error)
       return {
         success: false,
         error: normalizeChatRuntimeError(error),

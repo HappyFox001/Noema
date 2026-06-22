@@ -674,6 +674,42 @@ declare global {
         sceneUpdate?: Record<string, unknown>
         error?: string
       }>
+      buildCharacterWorkflow: (request: {
+        prompt: string
+        language?: 'zh-CN' | 'en-US'
+      }) => Promise<{
+        success: boolean
+        workflow?: Record<string, unknown>
+        spec?: {
+          name: string
+          goalPrompt: string
+          targetAudience: string
+          stylePrompt: string
+          preset: string
+          intensity: number
+          mustHave: string[]
+          mustNot: string[]
+          sourceNotes: string
+          generationStrategy: {
+            mode: string
+            branchCount: number
+            priorityAssets: string[]
+          }
+          agentPolicy: {
+            autonomyLevel: string
+            revisionBudget: number
+            askUserThreshold: string
+          }
+          qualityGate: {
+            minimumScore: number
+            requiredChecks: string[]
+          }
+          assetTargets: string[]
+          outputFormat: string
+        }
+        uiConfigOverrides?: Record<string, Record<string, unknown>>
+        error?: string
+      }>
       runCharacterWorkflow: (request: {
         workflow: Record<string, unknown>
         language?: 'zh-CN' | 'en-US'
