@@ -832,7 +832,7 @@ export function createCharacterSuperAgent(
         }
         await writeArtifact(createDraftArtifact(context, state.draft))
 
-        const maxTurns = Math.max(2, Math.min(10, context.policy.revisionBudget + context.critique.iterations + 2))
+        const maxTurns = Math.max(getRequiredCharacterDraftFields(context).length + 3, Math.min(18, context.policy.revisionBudget + context.critique.iterations + getRequiredCharacterDraftFields(context).length + 2))
         for (let turn = 1; turn <= maxTurns; turn += 1) {
           const decisionResult = await callTool('decide_character_card_next_step', 'produce', {
             context,
@@ -847,7 +847,8 @@ export function createCharacterSuperAgent(
             })),
           })
           const decision = decisionFromToolResult(decisionResult, context, state.draft, turn === maxTurns)
-          for (const action of decision.actions) {
+          const progressiveAction = selectProgressiveAction(decision.actions, state.draft!, context)
+          for (const action of progressiveAction ? [progressiveAction] : []) {
             if (action.type === 'request_image') {
               const imageResult = await callTool('generate_character_image', 'produce', {
                 prompt: action.prompt,
@@ -893,13 +894,13 @@ export function createCharacterSuperAgent(
             ...state,
             draft: {
               ...state.draft!,
-              missing: decision.missing,
+              missing: getMissingCharacterDraftFields(state.draft, context),
               notes: appendUnique(state.draft!.notes, [decision.summary]),
               updatedAt: now(),
             },
           }
           await writeArtifact(createDraftArtifact(context, state.draft))
-          if ((decision.done || decision.actions.some((action) => action.type === 'finish')) && isCharacterDraftComplete(state.draft, context)) {
+          if (isCharacterDraftComplete(state.draft, context)) {
             break
           }
         }
@@ -1045,25 +1046,22 @@ export function createDefaultCharacterAgentToolRuntime(): CharacterAgentToolRunt
       execute: ({ callId, context, state }) => {
         const draft = state.draft ?? createInitialCharacterDraft(context, Date.now())
         const fields = createFallbackCharacterFields(context, draft)
+        const nextField = getNextMissingField(draft, context)
+        const nextAction: CharacterAgentAction = nextField
+          ? { type: 'set_field', field: nextField, value: fields[nextField], reason: `Generated ${nextField}.` }
+          : draft.imageArtifactIds.length
+            ? { type: 'finish', reason: 'All fields and image assets are ready.' }
+            : { type: 'request_image', prompt: stringValue(fields.imagePrompt), title: 'Character Image' }
         return {
           callId,
           ok: true,
-          summary: 'Filled the character card from goal, style, resources, and constraints.',
+          summary: nextField ? `Generated ${nextField}.` : 'Prepared the next character resource.',
           data: {
-            summary: 'Filled the character card from goal, style, resources, and constraints.',
-            done: true,
+            summary: nextField ? `Generated ${nextField}.` : 'Prepared the next character resource.',
+            done: !nextField && Boolean(draft.imageArtifactIds.length),
             confidence: 0.72,
-            missing: [],
-            actions: [
-              { type: 'merge_character_card', value: fields },
-              { type: 'create_artifact', kind: 'opening-message', title: 'Opening Message', data: fields.firstMessage },
-              { type: 'create_artifact', kind: 'dialogue-style-guide', title: 'Dialogue Style Guide', data: fields.dialogueStyle },
-              { type: 'create_artifact', kind: 'world-context', title: 'World Context', data: fields.worldContext },
-              { type: 'create_artifact', kind: 'memory-policy', title: 'Memory Policy', data: fields.memoryStrategy },
-              { type: 'create_artifact', kind: 'image-prompt', title: 'Image Prompt', data: fields.imagePrompt },
-              { type: 'request_image', prompt: stringValue(fields.imagePrompt), title: 'Character Image' },
-              { type: 'finish' },
-            ],
+            missing: getMissingCharacterDraftFields(draft, context),
+            actions: [nextAction],
           },
         }
       },
@@ -1263,21 +1261,50 @@ function decisionFromToolResult(
     summary: result.summary || 'Updated character card draft.',
     actions: (() => {
       const fields = createFallbackCharacterFields(context, fallbackDraft)
-      return [{
-        type: 'merge_character_card' as const,
-        value: fields,
-      }, {
-        type: 'request_image' as const,
-        prompt: stringValue(fields.imagePrompt),
-        title: 'Character Image',
-      }, {
-        type: 'finish' as const,
-      }]
+      const nextField = getNextMissingField(fallbackDraft, context)
+      return nextField
+        ? [{ type: 'set_field' as const, field: nextField, value: fields[nextField] }]
+        : [{ type: 'request_image' as const, prompt: stringValue(fields.imagePrompt), title: 'Character Image' }]
     })(),
     done: forceDone,
     confidence: 0.45,
     missing: getMissingCharacterDraftFields(fallbackDraft, context),
   }
+}
+
+function selectProgressiveAction(
+  actions: CharacterAgentAction[],
+  draft: CharacterCardDraft,
+  context: CharacterAgentRunContext
+): CharacterAgentAction | null {
+  const nextField = getNextMissingField(draft, context)
+  if (nextField) {
+    for (const action of actions) {
+      if (action.type === 'set_field' && normalizeDraftFieldName(action.field) === nextField) {
+        return action
+      }
+      if (action.type === 'merge_character_card') {
+        const fields = normalizeDraftFields(action.value)
+        if (fields[nextField] !== undefined && fields[nextField] !== null) {
+          return {
+            type: 'set_field',
+            field: nextField,
+            value: fields[nextField],
+            reason: action.reason,
+          }
+        }
+      }
+    }
+    const fallback = createFallbackCharacterFields(context, draft)
+    return { type: 'set_field', field: nextField, value: fallback[nextField], reason: `Generated ${nextField}.` }
+  }
+  if (!draft.imageArtifactIds.length) {
+    const imagePrompt = stringValue(draft.fields.imagePrompt)
+    if (imagePrompt) {
+      return actions.find((action) => action.type === 'request_image') ?? { type: 'request_image', prompt: imagePrompt, title: 'Character Image' }
+    }
+  }
+  return actions.find((action) => action.type === 'finish') ?? null
 }
 
 function normalizeAgentActions(value: unknown): CharacterAgentAction[] {
@@ -1331,6 +1358,11 @@ function getMissingCharacterDraftFields(draft: CharacterCardDraft | undefined, c
     missing.push('imageAsset')
   }
   return missing
+}
+
+function getNextMissingField(draft: CharacterCardDraft | undefined, context: CharacterAgentRunContext): string | null {
+  const fields = draft?.fields ?? {}
+  return getRequiredCharacterDraftFields(context).find((field) => !hasDraftField(fields, field)) ?? null
 }
 
 function getRequiredCharacterDraftFields(context: CharacterAgentRunContext): string[] {
