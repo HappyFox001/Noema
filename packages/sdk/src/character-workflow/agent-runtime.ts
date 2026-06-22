@@ -313,6 +313,23 @@ export interface CharacterAgentDecision {
   missing: string[]
 }
 
+export const CHARACTER_CARD_FIELD_SCHEMA = [
+  'name',
+  'description',
+  'appearance',
+  'personality',
+  'background',
+  'scenario',
+  'firstMessage',
+  'dialogueStyle',
+  'worldContext',
+] as const
+
+export const CHARACTER_SUPPORT_FIELD_SCHEMA = [
+  'memoryStrategy',
+  'imagePrompt',
+] as const
+
 export interface CharacterAgentState {
   runId: string
   phase: CharacterAgentPhase
@@ -962,7 +979,7 @@ export function createCharacterSuperAgent(
           candidateId: state.draft?.id,
           title: stringValue(state.draft?.fields.name, 'Character Card'),
           summary: summarizeDraft(state.draft),
-          data: state.draft?.fields ?? {},
+          data: pickCharacterCardFields(state.draft?.fields ?? {}),
         })
         const candidate: CandidatePack = {
           id: state.draft?.id ?? `${runId}:candidate:primary`,
@@ -1281,7 +1298,7 @@ function getMissingCharacterDraftFields(draft: CharacterCardDraft | undefined, c
 }
 
 function getRequiredCharacterDraftFields(context: CharacterAgentRunContext): string[] {
-  return ['name', 'description', 'personality', 'scenario', 'firstMessage', 'dialogueStyle', 'worldContext', 'memoryStrategy', 'imagePrompt']
+  return [...CHARACTER_CARD_FIELD_SCHEMA, ...CHARACTER_SUPPORT_FIELD_SCHEMA]
 }
 
 function hasDraftField(fields: Record<string, unknown>, field: string): boolean {
@@ -1305,7 +1322,9 @@ function createFallbackCharacterFields(context: CharacterAgentRunContext, draft:
     ...draft.fields,
     name: stringValue(draft.fields.name, 'Unnamed Role'),
     description: stringValue(draft.fields.description, goal),
+    appearance: stringValue(draft.fields.appearance, `符合目标氛围的角色视觉设定。Style: ${style}`),
     personality: stringValue(draft.fields.personality, `主动、稳定、有长期互动余量。风格压力：${style}`),
+    background: stringValue(draft.fields.background, source || `围绕目标建立可持续的长期关系背景：${goal}`),
     scenario: stringValue(draft.fields.scenario, source || goal),
     firstMessage: stringValue(draft.fields.firstMessage, '你终于来了。我已经把今天最重要的事留到现在，只等你亲自开口。'),
     dialogueStyle: stringValue(draft.fields.dialogueStyle, style),
@@ -1314,6 +1333,14 @@ function createFallbackCharacterFields(context: CharacterAgentRunContext, draft:
     imagePrompt: stringValue(draft.fields.imagePrompt, `Character portrait for: ${goal}. Style: ${style}. Must include: ${constraints}. Avoid: ${boundaries}.`),
     generationReport: stringValue(draft.fields.generationReport, createFallbackUnderstanding(context)),
   }
+}
+
+function pickCharacterCardFields(fields: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    CHARACTER_CARD_FIELD_SCHEMA
+      .filter((field) => fields[field] !== undefined && fields[field] !== null)
+      .map((field) => [field, fields[field]])
+  )
 }
 
 function normalizeDraftFields(fields: Record<string, unknown>): Record<string, unknown> {

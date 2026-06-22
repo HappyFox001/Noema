@@ -110,7 +110,12 @@ export function getEnabledModelNames(model: ChatModelConfig | undefined): string
   if (!model) {
     return []
   }
-  return normalizeModelNameList(model.enabledModels)
+  const enabled = normalizeModelNameList(model.enabledModels)
+  const current = model.modelName?.trim()
+  if (model.modelType === 'image' && current) {
+    return [current, ...enabled.filter((name) => name !== current)]
+  }
+  return enabled
 }
 
 export function getAvailableModelNames(model: ChatModelConfig): string[] {
