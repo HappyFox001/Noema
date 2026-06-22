@@ -29,6 +29,7 @@ export type CharacterAgentArtifactKind =
   | 'constraint-brief'
   | 'source-summary'
   | 'character-card-draft'
+  | 'character-card-field'
   | 'character-card-final'
   | 'opening-message'
   | 'dialogue-style-guide'
@@ -877,9 +878,13 @@ export function createCharacterSuperAgent(
                 },
               }
             } else {
+              const beforeFields = { ...(state.draft?.fields ?? {}) }
               state = {
                 ...state,
                 draft: applyCharacterAgentAction(state.draft!, action, now()),
+              }
+              for (const fieldArtifact of createFieldArtifactsForChangedFields(context, state.draft!, beforeFields)) {
+                await writeArtifact(fieldArtifact)
               }
             }
             await writeArtifact(createDraftArtifact(context, state.draft))
@@ -963,9 +968,13 @@ export function createCharacterSuperAgent(
             if (action.type === 'create_artifact') {
               await writeArtifact(createActionArtifact(context, state.draft!, action))
             } else {
+              const beforeFields = { ...(state.draft?.fields ?? {}) }
               state = {
                 ...state,
                 draft: applyCharacterAgentAction(state.draft!, action, now()),
+              }
+              for (const fieldArtifact of createFieldArtifactsForChangedFields(context, state.draft!, beforeFields)) {
+                await writeArtifact(fieldArtifact)
               }
             }
             await writeArtifact(createDraftArtifact(context, state.draft))
@@ -1168,6 +1177,33 @@ function createActionArtifact(
   }
 }
 
+function createFieldArtifactsForChangedFields(
+  context: CharacterAgentRunContext,
+  draft: CharacterCardDraft,
+  beforeFields: Record<string, unknown>
+): Array<Omit<CharacterAgentArtifact, 'version' | 'createdAt' | 'updatedAt'>> {
+  return Object.entries(draft.fields)
+    .filter(([field, value]) => isCharacterRunField(field) && JSON.stringify(beforeFields[field] ?? null) !== JSON.stringify(value ?? null))
+    .map(([field, value]) => {
+      const summary = summarizeValue(value)
+      return {
+        id: `${draft.id}:field:${field}:${draft.updatedAt}`,
+        kind: 'character-card-field',
+        runId: context.runId,
+        candidateId: draft.id,
+        title: characterRunFieldTitle(field),
+        summary,
+        data: {
+          field,
+          label: characterRunFieldTitle(field),
+          value,
+          support: CHARACTER_SUPPORT_FIELD_SCHEMA.includes(field as any),
+        },
+        sourceNodeId: context.goal.nodeId,
+      }
+    })
+}
+
 function applyCharacterAgentAction(draft: CharacterCardDraft, action: CharacterAgentAction, now: number): CharacterCardDraft {
   if (action.type === 'set_field') {
     const field = normalizeDraftFieldName(action.field)
@@ -1343,6 +1379,27 @@ function pickCharacterCardFields(fields: Record<string, unknown>): Record<string
   )
 }
 
+function isCharacterRunField(field: string): boolean {
+  return (CHARACTER_CARD_FIELD_SCHEMA as readonly string[]).includes(field) || (CHARACTER_SUPPORT_FIELD_SCHEMA as readonly string[]).includes(field)
+}
+
+function characterRunFieldTitle(field: string): string {
+  const titles: Record<string, string> = {
+    name: 'Name',
+    description: 'Description',
+    appearance: 'Appearance',
+    personality: 'Personality',
+    background: 'Background',
+    scenario: 'Scenario',
+    firstMessage: 'First Message',
+    dialogueStyle: 'Dialogue Style',
+    worldContext: 'World Context',
+    memoryStrategy: 'Memory Strategy',
+    imagePrompt: 'Image Prompt',
+  }
+  return titles[field] ?? field
+}
+
 function normalizeDraftFields(fields: Record<string, unknown>): Record<string, unknown> {
   const normalized: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(fields)) {
@@ -1410,6 +1467,7 @@ function artifactTitle(kind: CharacterAgentArtifactKind): string {
     'constraint-brief': 'Constraint Brief',
     'source-summary': 'Source Summary',
     'character-card-draft': 'Character Card Draft',
+    'character-card-field': 'Character Card Field',
     'character-card-final': 'Character Card',
     'opening-message': 'Opening Message',
     'dialogue-style-guide': 'Dialogue Style Guide',
@@ -1442,6 +1500,7 @@ function isArtifactKind(value: unknown): value is CharacterAgentArtifactKind {
     'constraint-brief',
     'source-summary',
     'character-card-draft',
+    'character-card-field',
     'character-card-final',
     'opening-message',
     'dialogue-style-guide',

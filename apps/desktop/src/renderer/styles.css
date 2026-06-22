@@ -13019,6 +13019,60 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   stroke-width: 1.6;
 }
 
+.chat-resource-run-plane .character-field-resource {
+  border-color: color-mix(in srgb, var(--run-field-accent, rgba(82, 168, 255, 0.56)) 48%, rgba(248, 250, 250, 0.08));
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--run-field-accent, rgba(82, 168, 255, 0.34)) 15%, rgba(7, 8, 9, 0.92)), rgba(7, 8, 9, 0.88)),
+    rgba(7, 8, 9, 0.9);
+  box-shadow:
+    inset 3px 0 0 var(--run-field-accent, rgba(82, 168, 255, 0.5)),
+    0 16px 34px rgba(0, 0, 0, 0.24);
+}
+
+.chat-resource-run-plane .character-field-resource .chat-resource-node-header span {
+  color: color-mix(in srgb, var(--run-field-accent, rgba(162, 202, 188, 0.8)) 78%, rgba(248, 250, 250, 0.38));
+}
+
+.chat-resource-run-plane .character-field-resource .chat-resource-node-header strong {
+  color: rgba(248, 250, 250, 0.9);
+}
+
+.chat-resource-run-plane .character-field-resource .chat-resource-node-content {
+  border-color: color-mix(in srgb, var(--run-field-accent, rgba(82, 168, 255, 0.3)) 24%, rgba(248, 250, 250, 0.055));
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.chat-resource-run-plane .character-field-resource.run-field-name,
+.chat-resource-run-plane .character-field-resource.run-field-description {
+  --run-field-accent: rgba(88, 181, 255, 0.72);
+}
+
+.chat-resource-run-plane .character-field-resource.run-field-appearance {
+  --run-field-accent: rgba(196, 153, 255, 0.72);
+}
+
+.chat-resource-run-plane .character-field-resource.run-field-personality,
+.chat-resource-run-plane .character-field-resource.run-field-dialoguestyle {
+  --run-field-accent: rgba(255, 196, 116, 0.72);
+}
+
+.chat-resource-run-plane .character-field-resource.run-field-background,
+.chat-resource-run-plane .character-field-resource.run-field-scenario,
+.chat-resource-run-plane .character-field-resource.run-field-worldcontext {
+  --run-field-accent: rgba(130, 214, 176, 0.72);
+}
+
+.chat-resource-run-plane .character-field-resource.run-field-firstmessage {
+  --run-field-accent: rgba(255, 135, 160, 0.72);
+}
+
+.chat-resource-run-plane .character-field-resource.run-field-support,
+.chat-resource-run-plane .character-field-resource.run-field-memorystrategy,
+.chat-resource-run-plane .character-field-resource.run-field-imageprompt {
+  --run-field-accent: rgba(158, 173, 190, 0.64);
+  opacity: 0.9;
+}
+
 .chat-workflow-canvas-viewport.inactive {
   display: none;
 }

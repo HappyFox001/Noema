@@ -506,6 +506,11 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
   ], [
     slot('resource', 'Resource', 'role-resource', 'Role card resource.'),
   ], [], 'text-card', { width: 268, height: 188 }),
+  createDefinition('character-field-resource', 'Character Field', ['字段', 'character field', 'field patch'], 'Run Fields', 'asset', 'A single generated or rerolled character field.', [
+    slot('resource', 'Resource', 'role-resource', 'Previous generated field or resource.'),
+  ], [
+    slot('resource', 'Resource', 'role-resource', 'Generated field resource.'),
+  ], [], 'text-card', { width: 238, height: 142 }),
   createDefinition('opening-resource', 'Opening Message', ['开场', 'first message', 'opening'], 'Run Resources', 'asset', 'The generated opening message used to start the role chat.', [
     slot('resource', 'Resource', 'role-resource', 'Previous generated role resource.'),
   ], [
@@ -1669,7 +1674,7 @@ function normalizeRunCharacterFieldValue(value: string | undefined): string {
 }
 
 function createRunDraftCanvasGraph(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): CharacterResourceGraph {
-  const artifacts = getRoleResourceArtifacts(options.runState?.artifacts ?? [])
+  const artifacts = getRunCanvasArtifacts(options.runState?.artifacts ?? [])
   const status = options.runState?.run?.status ?? 'idle'
   const nodes: CharacterResourceNode[] = [{
     id: 'run-agent-source',
@@ -1707,21 +1712,20 @@ function createRunDraftCanvasGraph(graph: CharacterResourceGraph, options: Chara
   compactArtifacts.forEach((artifact, index) => {
     const nodeId = `run-artifact-${sanitizeResourceId(artifact.id || artifact.type || String(index))}`
     const nodeType = getRunArtifactNodeType(artifact.type)
-    const lane = index % 3
-    const row = Math.floor(index / 3)
+    const placement = getRunArtifactPlacement(artifact, index)
     const image = getArtifactImage(artifact.data)
     nodes.push({
       id: nodeId,
       type: nodeType,
       title: getRunArtifactNodeTitle(artifact, options),
       position: {
-        x: 334 + lane * 268,
-        y: 72 + row * 172 + lane * 22,
+        x: placement.x,
+        y: placement.y,
       },
       size: image ? { width: 226, height: 178 } : { width: 238, height: 134 },
       status: artifact.type === 'quality-report' && String(artifact.summary ?? '').toLowerCase().includes('missing') ? 'failed' : 'done',
       zIndex: index + 2,
-      config: {},
+      config: getRunArtifactNodeConfig(artifact),
     })
     outputs.push({
       id: `${nodeId}-output`,
@@ -1754,16 +1758,67 @@ function createRunDraftCanvasGraph(graph: CharacterResourceGraph, options: Chara
   }
 }
 
+function getRunArtifactPlacement(artifact: NonNullable<CharacterResourceRunState['artifacts']>[number], index: number): { x: number; y: number } {
+  if (artifact.type === 'character-card-field') {
+    const data = artifact.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
+      ? artifact.data as Record<string, unknown>
+      : {}
+    const field = typeof data.field === 'string' ? data.field : ''
+    const order = ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'worldContext', 'firstMessage', 'dialogueStyle', 'memoryStrategy', 'imagePrompt']
+    const fieldIndex = Math.max(0, order.indexOf(field))
+    const lane = fieldIndex % 3
+    const row = Math.floor(fieldIndex / 3)
+    return { x: 334 + lane * 272, y: 54 + row * 166 }
+  }
+  const baseIndex = Math.max(0, index)
+  return {
+    x: 334 + (baseIndex % 3) * 272,
+    y: 54 + Math.floor(baseIndex / 3) * 166,
+  }
+}
+
 function getRunArtifactNodeTitle(artifact: NonNullable<CharacterResourceRunState['artifacts']>[number], options: CharacterWorkflowPageOptions): string {
+  if (artifact.type === 'character-card-field') {
+    return getCharacterFieldArtifactLabel(artifact, options)
+  }
   if (artifact.type === 'character-card-draft') {
     return ui(options, '字段草稿', 'Field Draft')
   }
   return artifact.title ?? getRunArtifactMeta(artifact, options)
 }
 
+function getRunArtifactNodeConfig(artifact: NonNullable<CharacterResourceRunState['artifacts']>[number]): Record<string, unknown> {
+  if (artifact.type !== 'character-card-field') {
+    return {}
+  }
+  const data = artifact.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
+    ? artifact.data as Record<string, unknown>
+    : {}
+  return {
+    runField: typeof data.field === 'string' ? data.field : '',
+    runFieldSupport: Boolean(data.support),
+  }
+}
+
+function getCharacterFieldArtifactLabel(artifact: NonNullable<CharacterResourceRunState['artifacts']>[number], options: CharacterWorkflowPageOptions): string {
+  const data = artifact.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
+    ? artifact.data as Record<string, unknown>
+    : {}
+  const field = typeof data.field === 'string' ? data.field : ''
+  return field ? formatRunCharacterFieldLabel(field, options) : artifact.title ?? getRunArtifactMeta(artifact, options)
+}
+
+function getRunCanvasArtifacts(artifacts: NonNullable<CharacterResourceRunState['artifacts']>): NonNullable<CharacterResourceRunState['artifacts']> {
+  const filtered = getRoleResourceArtifacts(artifacts).filter((artifact) => artifact.type !== 'character-card-draft')
+  return filtered.some((artifact) => artifact.type === 'character-card-field')
+    ? filtered.filter((artifact) => artifact.type !== 'character-card-final')
+    : filtered
+}
+
 function getRoleResourceArtifacts(artifacts: NonNullable<CharacterResourceRunState['artifacts']>): NonNullable<CharacterResourceRunState['artifacts']> {
   const allowed = new Set([
     'character-card-draft',
+    'character-card-field',
     'character-card-final',
     'opening-message',
     'dialogue-style-guide',
@@ -1786,6 +1841,7 @@ function getRunArtifactOrder(type: string): number {
   const order = [
     'candidate-pack',
     'character-card-draft',
+    'character-card-field',
     'character-card-final',
     'opening-message',
     'dialogue-style-guide',
@@ -1806,6 +1862,7 @@ function getRunArtifactMeta(artifact: NonNullable<CharacterResourceRunState['art
   const labels: Record<string, string> = {
     'candidate-pack': ui(options, '候选包 / resource', 'candidate pack / resource'),
     'character-card-draft': ui(options, '角色卡草稿 / draft', 'character draft / resource'),
+    'character-card-field': ui(options, '角色字段 / field', 'character field / resource'),
     'character-card-final': ui(options, '角色卡 / role-card', 'role card / resource'),
     'opening-message': ui(options, '开场 / opening', 'opening / resource'),
     'dialogue-style-guide': ui(options, '语气 / style', 'style / resource'),
@@ -1824,6 +1881,7 @@ function getRunArtifactMeta(artifact: NonNullable<CharacterResourceRunState['art
 function getRunArtifactNodeType(type: string): string {
   const nodeTypes: Record<string, string> = {
     'candidate-pack': 'candidate-pack-resource',
+    'character-card-field': 'character-field-resource',
     'character-card-draft': 'role-card-resource',
     'character-card-final': 'role-card-resource',
     'opening-message': 'opening-resource',
@@ -1843,6 +1901,9 @@ function getRunArtifactNodeType(type: string): string {
 function getRunExecutionLabel(type: string, options: CharacterWorkflowPageOptions): string {
   if (type === 'character-card-draft') {
     return ui(options, '补字段', 'field')
+  }
+  if (type === 'character-card-field') {
+    return ui(options, '字段', 'field')
   }
   if (type === 'image-asset') {
     return ui(options, '生图', 'image')
@@ -1971,6 +2032,9 @@ function getArtifactText(data: unknown): string {
     return ''
   }
   const item = data as Record<string, any>
+  if ('value' in item) {
+    return formatRunCharacterFieldValue(item.value) ?? ''
+  }
   const text = item.text ?? item.summary ?? item.generationReport ?? item.prompt
   if (typeof text === 'string') {
     return text
@@ -2068,8 +2132,10 @@ function renderResourceNode(node: CharacterResourceNode, graph: CharacterResourc
   const definition = getDefinition(node.type)
   const selected = graph.selection.nodeIds.includes(node.id)
   const output = graph.mockOutputs.find((item) => item.nodeId === node.id)
+  const runField = typeof node.config.runField === 'string' ? node.config.runField : ''
+  const runFieldClass = runField ? `run-field-${sanitizeResourceId(runField)} ${node.config.runFieldSupport ? 'run-field-support' : 'run-field-card'}` : ''
   return `
-    <article class="chat-workflow-node chat-resource-node ${node.status} ${definition.category} ${selected ? 'selected' : ''} ${node.collapsed ? 'collapsed' : ''}" style="--node-x: ${node.position.x}px; --node-y: ${node.position.y}px; --node-w: ${node.size.width}px; --node-h: ${node.size.height}px; z-index: ${node.zIndex}" data-chat-workflow-node-id="${options.escapeHtml(node.id)}" data-chat-workflow-node-select="${options.escapeHtml(node.id)}" data-resource-node-type="${options.escapeHtml(node.type)}">
+    <article class="chat-workflow-node chat-resource-node ${node.status} ${node.type} ${definition.category} ${runFieldClass} ${selected ? 'selected' : ''} ${node.collapsed ? 'collapsed' : ''}" style="--node-x: ${node.position.x}px; --node-y: ${node.position.y}px; --node-w: ${node.size.width}px; --node-h: ${node.size.height}px; z-index: ${node.zIndex}" data-chat-workflow-node-id="${options.escapeHtml(node.id)}" data-chat-workflow-node-select="${options.escapeHtml(node.id)}" data-resource-node-type="${options.escapeHtml(node.type)}" data-run-field="${options.escapeHtml(runField)}">
       ${renderNodeHeader(node, definition, options)}
       ${renderNodeSlots(node, definition, options)}
       ${renderNodeWidgets(node, definition, options)}
