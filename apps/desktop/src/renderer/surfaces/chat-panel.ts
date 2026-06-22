@@ -82,7 +82,6 @@ interface PersistedCharacterWorkflowState {
   runState: CharacterResourceRunState | null
   runCount: number
   activeTabId: string
-  packTabOpen: boolean
   editorState: CharacterWorkflowEditorState
 }
 
@@ -187,7 +186,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let characterWorkflowRunState: CharacterResourceRunState | null = null
   let characterWorkflowRunCount = 0
   let characterWorkflowActiveTabId = 'workflow'
-  let characterWorkflowPackTabOpen = false
   let characterWorkflowPersistTimer: number | undefined
   let selectedWorkflowNodeId = 'generation-goal'
   let lastCharacterResourceGraphSnapshot = ''
@@ -1566,7 +1564,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       runState: characterWorkflowRunState ? JSON.parse(JSON.stringify(characterWorkflowRunState)) as CharacterResourceRunState : null,
       runCount: characterWorkflowRunCount,
       activeTabId: characterWorkflowActiveTabId,
-      packTabOpen: characterWorkflowPackTabOpen,
       editorState: {
         activePanel: characterWorkflowEditorState.activePanel,
         sidebarCollapsed: characterWorkflowEditorState.sidebarCollapsed,
@@ -1610,7 +1607,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       characterWorkflowRunState = null
       characterWorkflowRunCount = 0
       characterWorkflowActiveTabId = 'workflow'
-      characterWorkflowPackTabOpen = false
       characterWorkflowEditorState.activePanel = 'workflow'
       characterWorkflowEditorState.sidebarCollapsed = false
       characterWorkflowEditorState.inspectorCollapsed = false
@@ -1628,7 +1624,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (characterWorkflowActiveTabId === characterWorkflowRunState?.run?.id) {
       characterWorkflowActiveTabId = 'run-draft'
     }
-    characterWorkflowPackTabOpen = Boolean(record.packTabOpen)
     if (record.editorState && typeof record.editorState === 'object') {
       characterWorkflowEditorState.activePanel = record.editorState.activePanel === 'assets' || record.editorState.activePanel === 'nodes'
         ? record.editorState.activePanel
@@ -1637,7 +1632,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       characterWorkflowEditorState.inspectorCollapsed = Boolean(record.editorState.inspectorCollapsed)
       characterWorkflowEditorState.nodeSearchOpen = false
     }
-    if (characterWorkflowActiveTabId !== 'workflow' && characterWorkflowActiveTabId !== 'package-preview' && characterWorkflowActiveTabId !== 'run-draft') {
+    if (characterWorkflowActiveTabId !== 'workflow' && characterWorkflowActiveTabId !== 'run-draft') {
       characterWorkflowActiveTabId = characterWorkflowRunState ? 'run-draft' : 'workflow'
     }
   }
@@ -1677,16 +1672,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           renderCharacterWorkflow()
         }
         showToast(options.getLanguage() === 'zh-CN' ? '已停止 Agent 运行' : 'Stopped agent run')
-        break
-      case 'export':
-        if (characterWorkflowRunState?.artifacts.some((artifact) => artifact.type === 'export-target')) {
-          characterWorkflowPackTabOpen = true
-          characterWorkflowActiveTabId = 'package-preview'
-          renderCharacterWorkflow()
-          showToast(options.getLanguage() === 'zh-CN' ? '已打开候选包预览' : 'Candidate pack preview opened')
-        } else {
-          showToast(options.getLanguage() === 'zh-CN' ? '请先运行 Agent 生成导出目标' : 'Run the agent before export')
-        }
         break
       case 'toggle-inspector':
         toggleCharacterWorkflowInspector()
@@ -1947,7 +1932,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     if (newRun) {
       characterWorkflowRunState = null
-      characterWorkflowPackTabOpen = false
     }
     characterWorkflowRunCount += 1
     const draftRunState = workflowPage.createDraftCharacterResourceRunState(characterWorkflowRunCount, 'running', options.getLanguage())
@@ -2218,7 +2202,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function selectCharacterWorkflowTab(tabId: string): void {
     const normalizedTabId = tabId === characterWorkflowRunState?.run?.id ? 'run-draft' : tabId
-    if (normalizedTabId !== 'workflow' && normalizedTabId !== 'package-preview' && normalizedTabId !== 'run-draft') {
+    if (normalizedTabId !== 'workflow' && normalizedTabId !== 'run-draft') {
       return
     }
     characterWorkflowActiveTabId = normalizedTabId
@@ -2398,11 +2382,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     if (tabId === characterWorkflowRunState?.run.id) {
       characterWorkflowRunState = null
-      characterWorkflowPackTabOpen = false
-    }
-    if (tabId === 'package-preview') {
-      characterWorkflowPackTabOpen = false
-      characterWorkflowActiveTabId = characterWorkflowRunState?.run.id ?? 'workflow'
     }
     if (!getCharacterWorkflowTabs().some((tab) => tab.id === characterWorkflowActiveTabId)) {
       characterWorkflowActiveTabId = 'workflow'

@@ -6,7 +6,7 @@ import Split from 'split-grid'
 import { draggable, dropTargetForElements, monitorForElements } from '@atlaskit/pragmatic-drag-and-drop/dist/esm/adapter/element-adapter.js'
 import { computePosition, flip, offset, shift } from '@floating-ui/dom'
 import { LGraph, LGraphNode, LiteGraph } from 'litegraph.js'
-import { Download, Link2Off, Maximize, MessageCircle, Package, Play, RotateCcw, Save, Search, Square, createIcons } from 'lucide'
+import { Link2Off, Maximize, MessageCircle, Play, RotateCcw, Save, Search, Square, createIcons } from 'lucide'
 import * as Y from 'yjs'
 import type { CharacterResourceViewState, SerializedCharacterResourceLinkKind } from './chat-character-resource-graph-state'
 
@@ -132,7 +132,7 @@ interface CharacterResourceGroup {
 interface CharacterResourceGraphTab {
   id: string
   title: string
-  kind: 'resource-graph' | 'package-preview' | 'run-draft'
+  kind: 'resource-graph' | 'run-draft'
 }
 
 interface CharacterResourceViewport {
@@ -312,33 +312,10 @@ function resourceGraphTabTitle(tab: CharacterResourceGraphTab, options: Characte
   if (tab.id === 'workflow') {
     return ui(options, '草稿 01.resourcegraph', 'Draft 01.resourcegraph')
   }
-  if (tab.id === 'package-preview') {
-    return ui(options, '资源包预览', 'Package Preview')
-  }
   if (tab.id === 'run-draft') {
     return ui(options, '运行草稿', 'Run Draft')
   }
   return tab.title
-}
-
-function statusLabel(status: string, options: CharacterWorkflowPageOptions): string {
-  const labels: Record<string, { zh: string; en: string }> = {
-    idle: { zh: '空闲', en: 'idle' },
-    dirty: { zh: '已修改', en: 'dirty' },
-    queued: { zh: '排队中', en: 'queued' },
-    running: { zh: '运行中', en: 'running' },
-    done: { zh: '完成', en: 'done' },
-    failed: { zh: '失败', en: 'failed' },
-    stale: { zh: '需刷新', en: 'stale' },
-    disabled: { zh: '禁用', en: 'disabled' },
-    valid: { zh: '有效', en: 'valid' },
-    warning: { zh: '警告', en: 'warning' },
-    invalid: { zh: '无效', en: 'invalid' },
-    hidden: { zh: '隐藏', en: 'hidden' },
-    pending: { zh: '等待中', en: 'pending' },
-  }
-  const label = labels[status]
-  return label ? localizeByLanguage(options.language, label.zh, label.en) : status
 }
 
 const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
@@ -602,7 +579,6 @@ const DEFAULT_LINKS: CharacterResourceLink[] = [
   link('generation-strategy', 'strategy', 'critique-loop', 'strategy', 'routes'),
   link('critique-loop', 'critique', 'quality-gate', 'critique', 'evaluates'),
   link('asset-targets', 'candidate', 'quality-gate', 'candidate', 'evaluates'),
-  link('quality-gate', 'report', 'generation-strategy', 'strategy', 'refines'),
   link('asset-targets', 'candidate', 'output-adapter', 'candidate', 'exports'),
   link('quality-gate', 'report', 'output-adapter', 'report', 'constrains'),
 ]
@@ -1095,11 +1071,9 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
 
   createIcons({
     icons: {
-      Download,
       Link2Off,
       Maximize,
       MessageCircle,
-      Package,
       Play,
       RotateCcw,
       Save,
@@ -1223,7 +1197,6 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
     ],
     tabs: [
       { id: 'workflow', title: 'Draft 01.resourcegraph', kind: 'resource-graph' },
-      { id: 'package-preview', title: 'Package Preview', kind: 'package-preview' },
       { id: 'run-draft', title: 'Run Draft', kind: 'run-draft' },
     ],
     viewport: { x: viewState.panX ?? 0, y: viewState.panY ?? 0, zoom: viewState.zoom ?? 0.84 },
@@ -1416,7 +1389,6 @@ function renderResourceCanvas(graph: CharacterResourceGraph, yjsSnapshot: string
         ${isWorkflowTab ? renderSidebarToggle(options) : ''}
         ${graph.tabs.map((tab) => `<button class="${tab.id === activeTab ? 'active' : ''}" type="button" data-chat-workflow-tab="${options.escapeHtml(tab.id)}">${options.escapeHtml(resourceGraphTabTitle(tab, options))}</button>`).join('')}
       </div>
-      ${activeTab === 'package-preview' ? renderPackagePreview(graph, options) : ''}
       ${activeTab === 'run-draft' ? renderRunDraft(graph, options) : ''}
       ${isWorkflowTab ? `<div class="chat-workflow-canvas-viewport active" data-resource-viewport="${options.escapeHtml(JSON.stringify(graph.viewport))}">
         <div class="chat-workflow-canvas-plane chat-resource-graph-plane" style="--resource-zoom: ${graph.viewport.zoom}; --resource-pan-x: ${graph.viewport.x}px; --resource-pan-y: ${graph.viewport.y}px">
@@ -1447,63 +1419,6 @@ function renderRunCanvasControls(options: CharacterWorkflowPageOptions): string 
       <button type="button" data-chat-workflow-action="reset-view" title="${options.escapeHtml(resetLabel)}" aria-label="${options.escapeHtml(resetLabel)}"><i icon-name="rotate-ccw" aria-hidden="true"></i></button>
       ${renderInspectorToggle(options)}
     </div>
-  `
-}
-
-function renderPackagePreview(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): string {
-  const requiredTypes = ['candidate', 'report', 'export']
-  const outputTypes = new Set(graph.links.map((linkItem) => linkItem.targetSlotId))
-  const missing = requiredTypes.filter((type) => !outputTypes.has(type))
-  const manifest = {
-    id: graph.id,
-    title: graph.title,
-    resources: graph.mockOutputs.length,
-    links: graph.links.length,
-    missing,
-  }
-  return `
-    <div class="chat-resource-tab-panel package-preview">
-      <section class="chat-resource-manifest-preview">
-        <header>
-          <span>manifest.json</span>
-          <strong>${options.escapeHtml(graph.title)}</strong>
-        </header>
-        <pre>${options.escapeHtml(JSON.stringify(manifest, null, 2))}</pre>
-      </section>
-      <section class="chat-resource-package-list">
-        <header>
-          <strong>${options.escapeHtml(ui(options, '资源', 'Resources'))}</strong>
-          <span>${graph.mockOutputs.length}</span>
-        </header>
-        ${graph.mockOutputs.map((output) => `
-          <article>
-            <b>${options.escapeHtml(output.title)}</b>
-            <span>${options.escapeHtml(output.type)} / ${options.escapeHtml(statusLabel(output.status, options))}</span>
-            <p>${options.escapeHtml(output.summary)}</p>
-          </article>
-        `).join('')}
-      </section>
-      ${renderValidationPanel(graph, missing, options)}
-    </div>
-  `
-}
-
-function renderValidationPanel(graph: CharacterResourceGraph, missing: string[], options: CharacterWorkflowPageOptions): string {
-  const invalidLinks = graph.links.filter((linkItem) => linkItem.status !== 'valid')
-  const warnings = [
-    ...missing.map((type) => ui(options, `缺少候选包预览输入：${type}`, `Missing candidate preview input: ${type}`)),
-    ...invalidLinks.map((linkItem) => ui(options, `无效连线：${linkItem.sourceNodeId} -> ${linkItem.targetNodeId}`, `Invalid link: ${linkItem.sourceNodeId} -> ${linkItem.targetNodeId}`)),
-  ]
-  return `
-    <section class="chat-resource-validation-panel ${warnings.length ? 'error' : 'empty'}">
-      <header>
-        <strong>${options.escapeHtml(ui(options, '校验', 'Validation'))}</strong>
-        <span>${options.escapeHtml(warnings.length ? ui(options, `${warnings.length} 个问题`, `${warnings.length} issues`) : ui(options, '通过', 'pass'))}</span>
-      </header>
-      ${warnings.length
-        ? warnings.map((warning) => `<p class="error">${options.escapeHtml(warning)}</p>`).join('')
-        : `<div class="chat-resource-panel-state empty"><strong>${options.escapeHtml(ui(options, '没有阻塞问题', 'No blocking issues'))}</strong><span>${options.escapeHtml(ui(options, '当前图快照中已包含候选包、质量报告和输出目标。', 'The current graph snapshot includes candidate, quality report, and export target links.'))}</span></div>`}
-    </section>
   `
 }
 
@@ -2379,7 +2294,6 @@ function validateInspectorParameter(parameterItem: CharacterResourceParameterDef
 }
 
 function renderBottomToolbar(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): string {
-  const packageNode = graph.nodes.find((node) => node.type === 'output-adapter')
   const validationIssues = graph.links.filter((linkItem) => linkItem.status !== 'valid').length
   return `
     <footer class="chat-resource-bottom-toolbar">
@@ -2388,10 +2302,8 @@ function renderBottomToolbar(graph: CharacterResourceGraph, options: CharacterWo
         <span>${options.escapeHtml(ui(options, `${graph.nodes.length} 个节点 / ${graph.links.length} 条连线 / ${validationIssues} 个问题`, `${graph.nodes.length} nodes / ${graph.links.length} links / ${validationIssues} issues`))}</span>
       </div>
       <button type="button" data-chat-workflow-action="save-graph"><i icon-name="save" aria-hidden="true"></i><span>${options.escapeHtml(ui(options, '保存', 'Save'))}</span></button>
-      <button type="button" data-chat-workflow-tab="package-preview" ${packageNode ? `data-chat-workflow-node-select="${options.escapeHtml(packageNode.id)}"` : ''}><i icon-name="package" aria-hidden="true"></i><span>${options.escapeHtml(ui(options, '预览', 'Preview'))}</span></button>
       <button type="button" data-chat-workflow-node-select="quality-gate">${options.escapeHtml(ui(options, '校验', 'Validate'))}</button>
       <button type="button" data-chat-workflow-action="chat-test"><i icon-name="message-circle" aria-hidden="true"></i><span>${options.escapeHtml(ui(options, '聊天测试', 'Chat Test'))}</span></button>
-      <button type="button" data-chat-workflow-action="export"><i icon-name="download" aria-hidden="true"></i><span>${options.escapeHtml(ui(options, '导出', 'Export'))}</span></button>
     </footer>
   `
 }

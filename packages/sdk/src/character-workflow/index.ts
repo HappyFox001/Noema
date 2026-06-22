@@ -803,7 +803,6 @@ export function createStandardCharacterWorkflow(
       ['generation-strategy', 'strategy', 'critique-loop', 'strategy', 'routes'],
       ['critique-loop', 'critique', 'quality-gate', 'critique', 'evaluates'],
       ['asset-builder', 'candidate', 'quality-gate', 'candidate', 'evaluates'],
-      ['quality-gate', 'report', 'generation-strategy', 'strategy', 'refines'],
       ['asset-builder', 'candidate', 'output-adapter', 'candidate', 'exports'],
       ['quality-gate', 'report', 'output-adapter', 'report', 'constrains'],
     ]),

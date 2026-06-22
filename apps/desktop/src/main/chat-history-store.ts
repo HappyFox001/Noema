@@ -215,13 +215,29 @@ function sqlText(value: string): string {
 
 async function runSqliteJson<T>(dbPath: string, sql: string): Promise<T[]> {
   const output = await runSqlite(dbPath, sql, true)
-  return output ? JSON.parse(output) as T[] : []
+  return output ? parseSqliteJsonRows<T>(output) : []
+}
+
+function parseSqliteJsonRows<T>(output: string): T[] {
+  const trimmed = output.trim()
+  if (!trimmed) {
+    return []
+  }
+  try {
+    return JSON.parse(trimmed) as T[]
+  } catch (error) {
+    const lastArrayStart = trimmed.lastIndexOf('\n[')
+    if (lastArrayStart >= 0) {
+      return JSON.parse(trimmed.slice(lastArrayStart + 1)) as T[]
+    }
+    throw error
+  }
 }
 
 async function runSqlite(dbPath: string, sql: string, json = false): Promise<string> {
   const args = json
-    ? ['-json', '-cmd', 'PRAGMA busy_timeout = 5000;', dbPath]
-    : ['-cmd', 'PRAGMA busy_timeout = 5000;', dbPath]
+    ? ['-json', '-cmd', '.timeout 5000', dbPath]
+    : ['-cmd', '.timeout 5000', dbPath]
   return new Promise((resolve, reject) => {
     const child = spawn('sqlite3', args, { stdio: ['pipe', 'pipe', 'pipe'] })
     let stdout = ''
