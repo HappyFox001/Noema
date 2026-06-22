@@ -1529,17 +1529,8 @@ function createRunCharacterRows(
   const roleCard = artifacts.find((artifact) => artifact.type === 'character-card-final')
     ?? [...artifacts].reverse().find((artifact) => artifact.type === 'character-card-draft')
   if (roleCard) {
-    push(ui(options, '名称', 'Name'), roleCard.title)
-    push(ui(options, '角色卡', 'Role Card'), getArtifactText(roleCard.data) || roleCard.summary)
-    const record = roleCard.data && typeof roleCard.data === 'object' && !Array.isArray(roleCard.data)
-      ? (roleCard.data as Record<string, unknown>).fields && typeof (roleCard.data as Record<string, unknown>).fields === 'object'
-        ? (roleCard.data as Record<string, any>).fields as Record<string, unknown>
-        : roleCard.data as Record<string, unknown>
-      : {}
+    const record = getRoleCardVisibleFields(roleCard.data)
     for (const [key, value] of Object.entries(record)) {
-      if (key === 'image' || key === 'images' || key === 'avatar' || key === 'dataUrl' || key === 'url') {
-        continue
-      }
       push(formatRunCharacterFieldLabel(key, options), formatRunCharacterFieldValue(value))
     }
   }
@@ -1547,7 +1538,10 @@ function createRunCharacterRows(
     if (artifact.type === 'character-card-final' || artifact.type === 'character-card-draft' || artifact.type === 'image-asset') {
       continue
     }
-    push(getRunArtifactMeta(artifact, options), getArtifactText(artifact.data) || artifact.summary)
+    const mapped = getCharacterFacingArtifactField(artifact)
+    if (mapped) {
+      push(formatRunCharacterFieldLabel(mapped.key, options), mapped.value)
+    }
   }
   if (!rows.length) {
     push(ui(options, '状态', 'Status'), options.runState?.run?.status === 'running'
@@ -1560,7 +1554,6 @@ function createRunCharacterRows(
 function getRunCharacterTitle(rows: Array<{ label: string; value: string }>, options: CharacterWorkflowPageOptions): string {
   const nameLabel = ui(options, '名称', 'Name')
   return rows.find((row) => row.label === nameLabel)?.value
-    ?? rows[0]?.value.split('\n')[0]?.slice(0, 30)
     ?? ui(options, '生成角色', 'Generated Character')
 }
 
@@ -1579,19 +1572,73 @@ function formatRunCharacterFieldLabel(key: string, options: CharacterWorkflowPag
     name: { zh: '名称', en: 'Name' },
     displayName: { zh: '显示名称', en: 'Display Name' },
     description: { zh: '简介', en: 'Description' },
+    appearance: { zh: '外貌', en: 'Appearance' },
     personality: { zh: '性格', en: 'Personality' },
     background: { zh: '背景', en: 'Background' },
     story: { zh: '故事', en: 'Story' },
     firstMessage: { zh: '开场白', en: 'First Message' },
     scenario: { zh: '场景', en: 'Scenario' },
     world: { zh: '世界观', en: 'World' },
-    memory: { zh: '记忆', en: 'Memory' },
+    worldContext: { zh: '世界观', en: 'World Context' },
+    sceneContext: { zh: '场景上下文', en: 'Scene Context' },
+    dialogueStyle: { zh: '对话风格', en: 'Dialogue Style' },
+    exampleDialogue: { zh: '示例对话', en: 'Example Dialogue' },
   }
   const label = labels[key]
   if (label) {
     return ui(options, label.zh, label.en)
   }
   return key.replace(/[_-]+/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2')
+}
+
+function getRoleCardVisibleFields(data: unknown): Record<string, unknown> {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return {}
+  }
+  const source = data as Record<string, unknown>
+  const fields = source.fields && typeof source.fields === 'object' && !Array.isArray(source.fields)
+    ? source.fields as Record<string, unknown>
+    : source
+  const visibleOrder = [
+    'name',
+    'displayName',
+    'description',
+    'appearance',
+    'personality',
+    'background',
+    'story',
+    'scenario',
+    'world',
+    'worldContext',
+    'sceneContext',
+    'firstMessage',
+    'dialogueStyle',
+    'exampleDialogue',
+  ]
+  return Object.fromEntries(
+    visibleOrder
+      .filter((key) => fields[key] !== undefined && fields[key] !== null)
+      .map((key) => [key, fields[key]])
+  )
+}
+
+function getCharacterFacingArtifactField(
+  artifact: NonNullable<CharacterResourceRunState['artifacts']>[number]
+): { key: string; value: string | undefined } | null {
+  const value = getArtifactText(artifact.data) || artifact.summary
+  if (artifact.type === 'opening-message') {
+    return { key: 'firstMessage', value }
+  }
+  if (artifact.type === 'dialogue-style-guide') {
+    return { key: 'dialogueStyle', value }
+  }
+  if (artifact.type === 'world-context') {
+    return { key: 'worldContext', value }
+  }
+  if (artifact.type === 'scene-context') {
+    return { key: 'sceneContext', value }
+  }
+  return null
 }
 
 function formatRunCharacterFieldValue(value: unknown): string | undefined {
