@@ -310,7 +310,7 @@ function localizeByLanguage(language: CharacterWorkflowLanguage, zh: string, en:
 
 function resourceGraphTabTitle(tab: CharacterResourceGraphTab, options: CharacterWorkflowPageOptions): string {
   if (tab.id === 'workflow') {
-    return ui(options, '草稿 01.resourcegraph', 'Draft 01.resourcegraph')
+    return ui(options, '资源图', 'Resource Graph')
   }
   if (tab.id === 'run-draft') {
     return ui(options, '运行草稿', 'Run Draft')
@@ -1311,11 +1311,14 @@ function renderFileTabs(options: CharacterWorkflowPageOptions): string {
 
 function renderFileTab(tab: CharacterWorkflowFileTab, active: boolean, options: CharacterWorkflowPageOptions): string {
   return `
-    <button class="chat-workflow-file-tab ${active ? 'active' : ''} ${tab.state ? `is-${tab.state}` : ''}" type="button" role="tab" aria-selected="${active ? 'true' : 'false'}" data-chat-workflow-tab="${options.escapeHtml(tab.id)}">
-      <span class="chat-workflow-file-icon ${tab.kind}" aria-hidden="true"></span>
-      <strong>${options.escapeHtml(tab.title)}</strong>
-      ${tab.state ? '<span class="chat-workflow-file-state" aria-hidden="true"></span>' : ''}
-    </button>
+    <div class="chat-workflow-file-tab ${active ? 'active' : ''} ${tab.state ? `is-${tab.state}` : ''}" role="tab" aria-selected="${active ? 'true' : 'false'}">
+      <button class="chat-workflow-file-open" type="button" data-chat-workflow-tab="${options.escapeHtml(tab.id)}">
+        <span class="chat-workflow-file-icon ${tab.kind}" aria-hidden="true"></span>
+        <strong>${options.escapeHtml(tab.title)}</strong>
+        ${tab.state ? '<span class="chat-workflow-file-state" aria-hidden="true"></span>' : ''}
+      </button>
+      <button class="chat-workflow-file-close" type="button" data-chat-workflow-close-tab="${options.escapeHtml(tab.id)}" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '关闭文件' : 'Close file')}">x</button>
+    </div>
   `
 }
 

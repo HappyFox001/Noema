@@ -76,13 +76,55 @@ interface CharacterWorkflowEditorState {
   sidebarCollapsed: boolean
   inspectorCollapsed: boolean
   nodeSearchOpen: boolean
+  workflowLibraryWidth: number
 }
 
 interface PersistedCharacterWorkflowState {
-  runState: CharacterResourceRunState | null
-  runCount: number
+  activeWorkflowId?: string
+  workflows?: CharacterWorkflowProjectRecord[]
   activeTabId: string
   editorState: CharacterWorkflowEditorState
+}
+
+interface CharacterWorkflowProjectRecord {
+  id: string
+  name: string
+  createdAt: number
+  updatedAt: number
+  configOverrides: Record<string, Record<string, unknown>>
+  positionOverrides: Record<string, { x: number; y: number }>
+  viewState: CharacterWorkflowProjectViewState
+  runCount: number
+  activeRunId?: string
+  runs: CharacterWorkflowProjectRunRecord[]
+}
+
+interface CharacterWorkflowProjectRunRecord {
+  id: string
+  title: string
+  status: NonNullable<CharacterResourceRunState['run']>['status']
+  createdAt: number
+  completedAt?: number
+  runState: CharacterResourceRunState
+}
+
+interface CharacterWorkflowProjectViewState {
+  selectedWorkflowNodeId: string
+  selectedNodeIds: string[]
+  selectedLinkId: string
+  zoom: number
+  panX: number
+  panY: number
+  hideLinks: boolean
+  collapsedNodeIds: string[]
+  deletedNodeIds: string[]
+  duplicatedNodes: Array<{ id: string; sourceId: string; offsetX: number; offsetY: number }>
+  addedNodes: Array<{ id: string; type: string; title: string; x: number; y: number }>
+  nodeSizes: Record<string, { width: number; height: number }>
+  linkKinds: Record<string, SerializedCharacterResourceLinkKind>
+  customLinks: SerializedCharacterResourceLink[]
+  deletedLinkIds: string[]
+  replacedTargetSlots: string[]
 }
 
 interface CharacterResourceSlotConnectDetail {
@@ -184,6 +226,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let characterWorkflowPageModulePromise: Promise<CharacterWorkflowPageModule> | null = null
   const characterWorkflowConfigOverrides: Record<string, Record<string, unknown>> = {}
   const characterWorkflowPositionOverrides: Record<string, { x: number; y: number }> = {}
+  let characterWorkflowProjects: CharacterWorkflowProjectRecord[] = []
+  let activeCharacterWorkflowProjectId = ''
+  let characterWorkflowLibrarySearch = ''
   let characterWorkflowRunState: CharacterResourceRunState | null = null
   let characterWorkflowRunCount = 0
   let characterWorkflowActiveTabId = 'workflow'
@@ -218,6 +263,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     sidebarCollapsed: false,
     inspectorCollapsed: false,
     nodeSearchOpen: false,
+    workflowLibraryWidth: 176,
   }
 
   interface CharacterResourceHistorySnapshot {
@@ -259,6 +305,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     startY: number
     originWidth: number
     originHeight: number
+  } | null = null
+  let characterWorkflowLibraryResize: {
+    pointerId: number
+    startX: number
+    originWidth: number
   } | null = null
 
   toast.className = 'chat-status-toast'
@@ -1468,11 +1519,21 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!characterWorkflowRoot.childElementCount) {
       characterWorkflowRoot.innerHTML = `<div class="chat-workflow-loading"><span>${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '正在加载角色资源图...' : 'Loading character resource graph...')}</span></div>`
     }
+    if (!activeCharacterWorkflowProjectId) {
+      characterWorkflowRoot.innerHTML = renderCharacterWorkflowLibraryShell(renderCharacterWorkflowLibraryEmptyState())
+      return
+    }
     const workflowPage = await loadCharacterWorkflowPageModule()
     if (renderToken !== characterWorkflowLazyRenderToken) {
       return
     }
-    characterWorkflowRoot.innerHTML = workflowPage.renderCharacterWorkflowPage({
+    const activeProject = characterWorkflowProjects.find((project) => project.id === activeCharacterWorkflowProjectId)
+    if (!activeProject) {
+      activeCharacterWorkflowProjectId = ''
+      characterWorkflowRoot.innerHTML = renderCharacterWorkflowLibraryShell(renderCharacterWorkflowLibraryEmptyState())
+      return
+    }
+    const workflowMarkup = workflowPage.renderCharacterWorkflowPage({
       language: options.getLanguage(),
       escapeHtml: options.escapeHtml,
       modelChoices: getCharacterWorkflowModelChoices(),
@@ -1505,15 +1566,167 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         replacedTargetSlots: [...characterResourceViewState.replacedTargetSlots],
       },
     })
+    characterWorkflowRoot.innerHTML = renderCharacterWorkflowLibraryShell(workflowMarkup, activeProject)
     workflowPage.initializeCharacterResourceWorkbench(characterWorkflowRoot)
   }
 
   function getCharacterWorkflowTabs(): CharacterWorkflowFileTab[] {
+    const activeWorkflow = characterWorkflowProjects.find((project) => project.id === activeCharacterWorkflowProjectId)
+    const runStatus = characterWorkflowRunState?.run?.status
+    const state = runStatus === 'running'
+      ? 'running'
+      : runStatus === 'failed'
+        ? 'failed'
+        : undefined
     return [{
       id: 'workflow',
-      title: options.getLanguage() === 'zh-CN' ? '草稿 01.resourcegraph' : 'Draft 01.resourcegraph',
+      title: formatCharacterWorkflowFileTitle(activeWorkflow),
       kind: 'workflow',
+      state,
     }]
+  }
+
+  function formatCharacterWorkflowFileTitle(workflow: CharacterWorkflowProjectRecord | undefined): string {
+    const fallback = options.getLanguage() === 'zh-CN' ? '未命名草稿' : 'Untitled Draft'
+    const name = (workflow?.name || fallback).trim()
+    return name.endsWith('.resourcegraph') ? name : `${name}.resourcegraph`
+  }
+
+  function renderCharacterWorkflowLibraryShell(content: string, activeProject?: CharacterWorkflowProjectRecord): string {
+    const libraryWidth = Math.max(148, Math.min(260, Math.round(characterWorkflowEditorState.workflowLibraryWidth || 176)))
+    return `
+      <section class="chat-workflow-library-shell" style="--workflow-library-width: ${libraryWidth}px">
+        ${renderCharacterWorkflowLibrarySidebar(activeProject)}
+        <div class="chat-workflow-library-gutter" data-chat-workflow-library-resize aria-hidden="true"></div>
+        <main class="chat-workflow-library-main">
+          ${content}
+        </main>
+      </section>
+    `
+  }
+
+  function renderCharacterWorkflowLibrarySidebar(activeProject?: CharacterWorkflowProjectRecord): string {
+    const zh = options.getLanguage() === 'zh-CN'
+    const sorted = [...characterWorkflowProjects].sort((a, b) => b.updatedAt - a.updatedAt)
+    const query = characterWorkflowLibrarySearch.trim().toLocaleLowerCase()
+    const filtered = query
+      ? sorted.filter((project) => `${project.name} ${project.runs.at(-1)?.title ?? ''}`.toLocaleLowerCase().includes(query))
+      : sorted
+    const totalRuns = sorted.reduce((sum, project) => sum + project.runs.length, 0)
+    return `
+      <aside class="chat-workflow-library-sidebar">
+        <header class="chat-workflow-library-head">
+          <div>
+            <span>${options.escapeHtml(zh ? 'Workflows' : 'Workflows')}</span>
+            <strong>${options.escapeHtml(zh ? '角色草稿' : 'Character drafts')}</strong>
+          </div>
+          <button type="button" data-chat-workflow-library-action="create" aria-label="${options.escapeHtml(zh ? '新建草稿' : 'New draft')}">+</button>
+        </header>
+        <div class="chat-workflow-library-search">
+          <input type="search" value="${options.escapeHtml(characterWorkflowLibrarySearch)}" placeholder="${options.escapeHtml(zh ? '搜索草稿' : 'Search drafts')}" data-chat-workflow-library-search />
+        </div>
+        <section class="chat-workflow-library-section">
+          <div class="chat-workflow-library-divider">
+            <span>${options.escapeHtml(zh ? '草稿' : 'Drafts')}</span>
+            <small>${sorted.length} / ${totalRuns}</small>
+          </div>
+          <div class="chat-workflow-library-list">
+            ${filtered.length ? filtered.map((project) => renderCharacterWorkflowLibraryRow(project, zh)).join('') : `
+              <div class="chat-workflow-library-empty-row">
+                ${options.escapeHtml(query ? (zh ? '没有匹配草稿' : 'No matching drafts') : (zh ? '还没有草稿' : 'No drafts yet'))}
+              </div>
+            `}
+          </div>
+        </section>
+        <section class="chat-workflow-library-section">
+          <div class="chat-workflow-library-divider">
+            <span>${options.escapeHtml(zh ? '当前工作流' : 'Current workflow')}</span>
+          </div>
+          <div class="chat-workflow-library-current">
+            ${activeProject ? `
+              <strong>${options.escapeHtml(activeProject.name)}</strong>
+              <span>${options.escapeHtml(formatWorkflowProjectTime(activeProject.updatedAt, zh))}</span>
+            ` : `
+              <strong>${options.escapeHtml(zh ? '未打开草稿' : 'No draft open')}</strong>
+              <span>${options.escapeHtml(zh ? '选择或新建一个角色草稿' : 'Select or create a character draft')}</span>
+            `}
+          </div>
+        </section>
+        ${activeProject ? `
+          <section class="chat-workflow-library-section run-history">
+            <div class="chat-workflow-library-divider">
+              <span>${options.escapeHtml(zh ? '运行历史' : 'Run history')}</span>
+              <small>${activeProject.runs.length}</small>
+            </div>
+            <div class="chat-workflow-library-run-list">
+              ${activeProject.runs.length ? activeProject.runs.slice().reverse().slice(0, 8).map((run) => renderCharacterWorkflowRunRow(activeProject.id, run, zh)).join('') : `
+                <div class="chat-workflow-library-empty-row">${options.escapeHtml(zh ? '暂无运行' : 'No runs yet')}</div>
+              `}
+            </div>
+          </section>
+        ` : ''}
+      </aside>
+    `
+  }
+
+  function renderCharacterWorkflowLibraryRow(project: CharacterWorkflowProjectRecord, zh: boolean): string {
+    const latestRun = project.runs[project.runs.length - 1]
+    const status = latestRun?.status ?? 'idle'
+    return `
+      <div class="chat-workflow-library-row ${project.id === activeCharacterWorkflowProjectId ? 'active' : ''}" data-chat-workflow-open="${options.escapeHtml(project.id)}">
+        <button class="chat-workflow-library-row-open" type="button" data-chat-workflow-open="${options.escapeHtml(project.id)}">
+        <span class="chat-workflow-library-dot ${options.escapeHtml(status)}"></span>
+        <span class="chat-workflow-library-row-body">
+          <strong>${options.escapeHtml(project.name)}</strong>
+          <small>${options.escapeHtml(latestRun ? `${latestRun.title} · ${latestRun.status}` : (zh ? '未运行' : 'Not run'))}</small>
+        </span>
+        <span class="chat-workflow-library-row-meta">${project.runs.length}</span>
+        </button>
+        <span class="chat-workflow-library-row-actions">
+          <button type="button" data-chat-workflow-library-action="rename" data-chat-workflow-id="${options.escapeHtml(project.id)}" aria-label="${options.escapeHtml(zh ? '重命名' : 'Rename')}">R</button>
+          <button type="button" data-chat-workflow-library-action="duplicate" data-chat-workflow-id="${options.escapeHtml(project.id)}" aria-label="${options.escapeHtml(zh ? '复制' : 'Duplicate')}">D</button>
+          <button type="button" data-chat-workflow-library-action="delete" data-chat-workflow-id="${options.escapeHtml(project.id)}" aria-label="${options.escapeHtml(zh ? '删除' : 'Delete')}">x</button>
+        </span>
+      </div>
+    `
+  }
+
+  function renderCharacterWorkflowRunRow(projectId: string, run: CharacterWorkflowProjectRunRecord, zh: boolean): string {
+    return `
+      <button class="chat-workflow-library-run-row ${run.id === characterWorkflowRunState?.run?.id ? 'active' : ''}" type="button" data-chat-workflow-run-open="${options.escapeHtml(projectId)}:${options.escapeHtml(run.id)}">
+        <span class="chat-workflow-library-run-status ${options.escapeHtml(run.status)}"></span>
+        <span>
+          <strong>${options.escapeHtml(run.title)}</strong>
+          <small>${options.escapeHtml(`${run.status} · ${formatWorkflowProjectTime(run.completedAt ?? run.createdAt, zh)}`)}</small>
+        </span>
+      </button>
+    `
+  }
+
+  function renderCharacterWorkflowLibraryEmptyState(): string {
+    const zh = options.getLanguage() === 'zh-CN'
+    return `
+      <section class="chat-workflow-library-empty-main">
+        <div>
+          <span>${options.escapeHtml(zh ? 'RESOURCEGRAPH' : 'RESOURCEGRAPH')}</span>
+          <strong>${options.escapeHtml(zh ? '选择一个角色草稿' : 'Select a character draft')}</strong>
+          <p>${options.escapeHtml(zh ? '左侧保存的是工作流草稿，不是项目看板。新建后会直接打开资源图，运行记录和输出会跟随这个草稿保存。' : 'The left sidebar stores workflow drafts, not a project board. Create one to open the resource graph and keep runs with that draft.')}</p>
+          <button type="button" data-chat-workflow-library-action="create">${options.escapeHtml(zh ? '新建角色草稿' : 'New character draft')}</button>
+        </div>
+      </section>
+    `
+  }
+
+  function formatWorkflowProjectTime(value: number | undefined, zh: boolean): string {
+    if (!value) {
+      return zh ? '无' : 'None'
+    }
+    return new Date(value).toLocaleString(zh ? 'zh-CN' : 'en-US', {
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
   }
 
   function cloneRecord<T>(record: Record<string, T>): Record<string, T> {
@@ -1539,6 +1752,219 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
   }
 
+  function createWorkflowProjectViewState(): CharacterWorkflowProjectViewState {
+    return {
+      selectedWorkflowNodeId,
+      selectedNodeIds: [...characterResourceViewState.selectedNodeIds],
+      selectedLinkId: characterResourceViewState.selectedLinkId,
+      zoom: characterResourceViewState.zoom,
+      panX: characterResourceViewState.panX,
+      panY: characterResourceViewState.panY,
+      hideLinks: characterResourceViewState.hideLinks,
+      collapsedNodeIds: [...characterResourceViewState.collapsedNodeIds],
+      deletedNodeIds: [...characterResourceViewState.deletedNodeIds],
+      duplicatedNodes: JSON.parse(JSON.stringify(characterResourceViewState.duplicatedNodes)) as CharacterWorkflowProjectViewState['duplicatedNodes'],
+      addedNodes: JSON.parse(JSON.stringify(characterResourceViewState.addedNodes)) as CharacterWorkflowProjectViewState['addedNodes'],
+      nodeSizes: cloneRecord(characterResourceViewState.nodeSizes),
+      linkKinds: { ...characterResourceViewState.linkKinds },
+      customLinks: JSON.parse(JSON.stringify(characterResourceViewState.customLinks)) as SerializedCharacterResourceLink[],
+      deletedLinkIds: [...characterResourceViewState.deletedLinkIds],
+      replacedTargetSlots: [...characterResourceViewState.replacedTargetSlots],
+    }
+  }
+
+  function applyWorkflowProjectViewState(viewState: Partial<CharacterWorkflowProjectViewState> | undefined): void {
+    selectedWorkflowNodeId = typeof viewState?.selectedWorkflowNodeId === 'string' ? viewState.selectedWorkflowNodeId : 'generation-goal'
+    characterResourceViewState.selectedNodeIds = Array.isArray(viewState?.selectedNodeIds) && viewState.selectedNodeIds.length ? [...viewState.selectedNodeIds] : ['generation-goal']
+    characterResourceViewState.selectedLinkId = typeof viewState?.selectedLinkId === 'string' ? viewState.selectedLinkId : ''
+    characterResourceViewState.zoom = Number(viewState?.zoom) || 0.84
+    characterResourceViewState.panX = Number(viewState?.panX) || 0
+    characterResourceViewState.panY = Number(viewState?.panY) || 0
+    characterResourceViewState.hideLinks = Boolean(viewState?.hideLinks)
+    characterResourceViewState.collapsedNodeIds = new Set(viewState?.collapsedNodeIds ?? [])
+    characterResourceViewState.deletedNodeIds = new Set(viewState?.deletedNodeIds ?? [])
+    characterResourceViewState.duplicatedNodes = JSON.parse(JSON.stringify(viewState?.duplicatedNodes ?? [])) as CharacterWorkflowProjectViewState['duplicatedNodes']
+    characterResourceViewState.addedNodes = JSON.parse(JSON.stringify(viewState?.addedNodes ?? [])) as CharacterWorkflowProjectViewState['addedNodes']
+    characterResourceViewState.nodeSizes = cloneRecord(viewState?.nodeSizes ?? {})
+    characterResourceViewState.linkKinds = { ...(viewState?.linkKinds ?? {}) }
+    characterResourceViewState.customLinks = JSON.parse(JSON.stringify(viewState?.customLinks ?? [])) as SerializedCharacterResourceLink[]
+    characterResourceViewState.deletedLinkIds = new Set(viewState?.deletedLinkIds ?? [])
+    characterResourceViewState.replacedTargetSlots = new Set(viewState?.replacedTargetSlots ?? [])
+  }
+
+  function saveActiveWorkflowProjectSnapshot(): void {
+    const project = characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)
+    if (!project) {
+      return
+    }
+    upsertWorkflowProjectRunSnapshot(project)
+    project.configOverrides = cloneRecord(characterWorkflowConfigOverrides)
+    project.positionOverrides = cloneRecord(characterWorkflowPositionOverrides)
+    project.viewState = createWorkflowProjectViewState()
+    project.runCount = characterWorkflowRunCount
+    project.activeRunId = characterWorkflowRunState?.run?.id
+    project.updatedAt = Date.now()
+  }
+
+  function upsertWorkflowProjectRunSnapshot(project: CharacterWorkflowProjectRecord): void {
+    if (!characterWorkflowRunState?.run) {
+      return
+    }
+    const run = characterWorkflowRunState.run
+    const existingIndex = project.runs.findIndex((item) => item.id === run.id)
+    const existing = existingIndex >= 0 ? project.runs[existingIndex] : undefined
+    const now = Date.now()
+    const runRecord: CharacterWorkflowProjectRunRecord = {
+      id: run.id,
+      title: run.title,
+      status: run.status,
+      createdAt: existing?.createdAt ?? now,
+      completedAt: run.status === 'done' || run.status === 'failed' ? existing?.completedAt ?? now : existing?.completedAt,
+      runState: JSON.parse(JSON.stringify(characterWorkflowRunState)) as CharacterResourceRunState,
+    }
+    if (existingIndex >= 0) {
+      project.runs[existingIndex] = runRecord
+    } else {
+      project.runs.push(runRecord)
+    }
+  }
+
+  function createCharacterWorkflowDraft(): void {
+    saveActiveWorkflowProjectSnapshot()
+    const now = Date.now()
+    const project: CharacterWorkflowProjectRecord = {
+      id: `workflow-draft-${now}-${Math.random().toString(16).slice(2)}`,
+      name: options.getLanguage() === 'zh-CN' ? `角色草稿 ${characterWorkflowProjects.length + 1}` : `Character Draft ${characterWorkflowProjects.length + 1}`,
+      createdAt: now,
+      updatedAt: now,
+      configOverrides: {},
+      positionOverrides: {},
+      viewState: {
+        selectedWorkflowNodeId: 'generation-goal',
+        selectedNodeIds: ['generation-goal'],
+        selectedLinkId: '',
+        zoom: 0.84,
+        panX: 0,
+        panY: 0,
+        hideLinks: false,
+        collapsedNodeIds: [],
+        deletedNodeIds: [],
+        duplicatedNodes: [],
+        addedNodes: [],
+        nodeSizes: {},
+        linkKinds: {},
+        customLinks: [],
+        deletedLinkIds: [],
+        replacedTargetSlots: [],
+      },
+      runCount: 0,
+      runs: [],
+    }
+    characterWorkflowProjects = [project, ...characterWorkflowProjects]
+    openCharacterWorkflowDraft(project.id)
+  }
+
+  function openCharacterWorkflowDraft(projectId: string): void {
+    saveActiveWorkflowProjectSnapshot()
+    const project = characterWorkflowProjects.find((item) => item.id === projectId)
+    if (!project) {
+      return
+    }
+    activeCharacterWorkflowProjectId = project.id
+    replaceRecord(characterWorkflowConfigOverrides, cloneRecord(project.configOverrides))
+    replaceRecord(characterWorkflowPositionOverrides, cloneRecord(project.positionOverrides))
+    applyWorkflowProjectViewState(project.viewState)
+    characterWorkflowRunCount = project.runCount
+    characterWorkflowRunState = project.runs.find((run) => run.id === project.activeRunId)?.runState
+      ?? project.runs[project.runs.length - 1]?.runState
+      ?? null
+    characterWorkflowActiveTabId = 'workflow'
+    renderCharacterWorkflow()
+  }
+
+  function openCharacterWorkflowRun(projectId: string, runId: string): void {
+    saveActiveWorkflowProjectSnapshot()
+    const project = characterWorkflowProjects.find((item) => item.id === projectId)
+    const run = project?.runs.find((item) => item.id === runId)
+    if (!project || !run) {
+      return
+    }
+    activeCharacterWorkflowProjectId = project.id
+    project.activeRunId = run.id
+    replaceRecord(characterWorkflowConfigOverrides, cloneRecord(project.configOverrides))
+    replaceRecord(characterWorkflowPositionOverrides, cloneRecord(project.positionOverrides))
+    applyWorkflowProjectViewState(project.viewState)
+    characterWorkflowRunCount = project.runCount
+    characterWorkflowRunState = JSON.parse(JSON.stringify(run.runState)) as CharacterResourceRunState
+    characterWorkflowActiveTabId = 'run-draft'
+    renderCharacterWorkflow()
+  }
+
+  function duplicateCharacterWorkflowDraft(projectId: string): void {
+    saveActiveWorkflowProjectSnapshot()
+    const source = characterWorkflowProjects.find((item) => item.id === projectId)
+    if (!source) {
+      return
+    }
+    const now = Date.now()
+    const copy: CharacterWorkflowProjectRecord = {
+      ...JSON.parse(JSON.stringify(source)) as CharacterWorkflowProjectRecord,
+      id: `workflow-draft-${now}-${Math.random().toString(16).slice(2)}`,
+      name: options.getLanguage() === 'zh-CN' ? `${source.name} 副本` : `${source.name} Copy`,
+      createdAt: now,
+      updatedAt: now,
+    }
+    characterWorkflowProjects = [copy, ...characterWorkflowProjects]
+    openCharacterWorkflowDraft(copy.id)
+  }
+
+  function renameCharacterWorkflowDraft(projectId: string): void {
+    const project = characterWorkflowProjects.find((item) => item.id === projectId)
+    if (!project) {
+      return
+    }
+    const nextName = window.prompt(options.getLanguage() === 'zh-CN' ? '重命名角色草稿' : 'Rename character draft', project.name)?.trim()
+    if (!nextName) {
+      return
+    }
+    project.name = nextName
+    project.updatedAt = Date.now()
+    renderCharacterWorkflow()
+  }
+
+  function deleteCharacterWorkflowDraft(projectId: string): void {
+    const project = characterWorkflowProjects.find((item) => item.id === projectId)
+    if (!project) {
+      return
+    }
+    const ok = window.confirm(options.getLanguage() === 'zh-CN' ? `删除“${project.name}”？` : `Delete "${project.name}"?`)
+    if (!ok) {
+      return
+    }
+    characterWorkflowProjects = characterWorkflowProjects.filter((item) => item.id !== projectId)
+    if (activeCharacterWorkflowProjectId === projectId) {
+      activeCharacterWorkflowProjectId = characterWorkflowProjects[0]?.id ?? ''
+      const next = characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)
+      if (next) {
+        replaceRecord(characterWorkflowConfigOverrides, cloneRecord(next.configOverrides))
+        replaceRecord(characterWorkflowPositionOverrides, cloneRecord(next.positionOverrides))
+        applyWorkflowProjectViewState(next.viewState)
+        characterWorkflowRunCount = next.runCount
+        characterWorkflowRunState = next.runs.find((run) => run.id === next.activeRunId)?.runState
+          ?? next.runs[next.runs.length - 1]?.runState
+          ?? null
+      } else {
+        replaceRecord(characterWorkflowConfigOverrides, {})
+        replaceRecord(characterWorkflowPositionOverrides, {})
+        applyWorkflowProjectViewState(undefined)
+        characterWorkflowRunCount = 0
+        characterWorkflowRunState = null
+      }
+    }
+    characterWorkflowActiveTabId = 'workflow'
+    renderCharacterWorkflow()
+  }
+
   function replaceRecord<T>(target: Record<string, T>, source: Record<string, T>): void {
     Object.keys(target).forEach((key) => delete target[key])
     Object.assign(target, source)
@@ -1562,15 +1988,17 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   function createPersistedCharacterWorkflowState(): PersistedCharacterWorkflowState {
+    saveActiveWorkflowProjectSnapshot()
     return {
-      runState: characterWorkflowRunState ? JSON.parse(JSON.stringify(characterWorkflowRunState)) as CharacterResourceRunState : null,
-      runCount: characterWorkflowRunCount,
+      activeWorkflowId: activeCharacterWorkflowProjectId,
+      workflows: JSON.parse(JSON.stringify(characterWorkflowProjects)) as CharacterWorkflowProjectRecord[],
       activeTabId: characterWorkflowActiveTabId,
       editorState: {
         activePanel: characterWorkflowEditorState.activePanel,
         sidebarCollapsed: characterWorkflowEditorState.sidebarCollapsed,
         inspectorCollapsed: characterWorkflowEditorState.inspectorCollapsed,
         nodeSearchOpen: false,
+        workflowLibraryWidth: characterWorkflowEditorState.workflowLibraryWidth,
       },
     }
   }
@@ -1606,6 +2034,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   function restoreCharacterWorkflowStateFromConversation(conversation: ChatConversationSummary | undefined): void {
     const persisted = conversation?.characterWorkflow
     if (!persisted || typeof persisted !== 'object' || Array.isArray(persisted)) {
+      activeCharacterWorkflowProjectId = ''
+      characterWorkflowProjects = []
       characterWorkflowRunState = null
       characterWorkflowRunCount = 0
       characterWorkflowActiveTabId = 'workflow'
@@ -1613,13 +2043,33 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       characterWorkflowEditorState.sidebarCollapsed = false
       characterWorkflowEditorState.inspectorCollapsed = false
       characterWorkflowEditorState.nodeSearchOpen = false
+      characterWorkflowEditorState.workflowLibraryWidth = 176
+      replaceRecord(characterWorkflowConfigOverrides, {})
+      replaceRecord(characterWorkflowPositionOverrides, {})
+      applyWorkflowProjectViewState(undefined)
       return
     }
     const record = persisted as Partial<PersistedCharacterWorkflowState>
-    characterWorkflowRunState = record.runState && typeof record.runState === 'object'
-      ? JSON.parse(JSON.stringify(record.runState)) as CharacterResourceRunState
-      : null
-    characterWorkflowRunCount = Math.max(0, Math.round(Number(record.runCount) || 0))
+    characterWorkflowProjects = Array.isArray(record.workflows)
+      ? JSON.parse(JSON.stringify(record.workflows)) as CharacterWorkflowProjectRecord[]
+      : []
+    activeCharacterWorkflowProjectId = typeof record.activeWorkflowId === 'string' ? record.activeWorkflowId : characterWorkflowProjects[0]?.id ?? ''
+    const activeProject = characterWorkflowProjects.find((project) => project.id === activeCharacterWorkflowProjectId)
+    if (activeProject) {
+      replaceRecord(characterWorkflowConfigOverrides, cloneRecord(activeProject.configOverrides ?? {}))
+      replaceRecord(characterWorkflowPositionOverrides, cloneRecord(activeProject.positionOverrides ?? {}))
+      applyWorkflowProjectViewState(activeProject.viewState)
+      characterWorkflowRunCount = Math.max(0, Math.round(Number(activeProject.runCount) || 0))
+      characterWorkflowRunState = activeProject.runs.find((run) => run.id === activeProject.activeRunId)?.runState
+        ?? activeProject.runs[activeProject.runs.length - 1]?.runState
+        ?? null
+    } else {
+      replaceRecord(characterWorkflowConfigOverrides, {})
+      replaceRecord(characterWorkflowPositionOverrides, {})
+      applyWorkflowProjectViewState(undefined)
+      characterWorkflowRunCount = 0
+      characterWorkflowRunState = null
+    }
     characterWorkflowActiveTabId = typeof record.activeTabId === 'string'
       ? record.activeTabId
       : characterWorkflowRunState?.run?.id ?? 'workflow'
@@ -1633,6 +2083,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       characterWorkflowEditorState.sidebarCollapsed = Boolean(record.editorState.sidebarCollapsed)
       characterWorkflowEditorState.inspectorCollapsed = Boolean(record.editorState.inspectorCollapsed)
       characterWorkflowEditorState.nodeSearchOpen = false
+      characterWorkflowEditorState.workflowLibraryWidth = Math.max(148, Math.min(260, Math.round(Number(record.editorState.workflowLibraryWidth) || 176)))
     }
     if (characterWorkflowActiveTabId !== 'workflow' && characterWorkflowActiveTabId !== 'run-draft') {
       characterWorkflowActiveTabId = characterWorkflowRunState ? 'run-draft' : 'workflow'
@@ -2380,6 +2831,15 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function closeCharacterWorkflowTab(tabId: string): void {
     if (tabId === 'workflow') {
+      saveActiveWorkflowProjectSnapshot()
+      activeCharacterWorkflowProjectId = ''
+      characterWorkflowRunState = null
+      characterWorkflowRunCount = 0
+      characterWorkflowActiveTabId = 'workflow'
+      replaceRecord(characterWorkflowConfigOverrides, {})
+      replaceRecord(characterWorkflowPositionOverrides, {})
+      applyWorkflowProjectViewState(undefined)
+      renderCharacterWorkflow()
       return
     }
     if (tabId === characterWorkflowRunState?.run.id) {
@@ -2502,6 +2962,43 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const node = panel.querySelector<HTMLElement>(`[data-chat-workflow-node-id="${CSS.escape(characterResourceNodeResize.nodeId)}"]`)
     node?.classList.remove('is-resizing')
     characterResourceNodeResize = null
+  }
+
+  function beginCharacterWorkflowLibraryResize(event: PointerEvent): void {
+    const handle = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-chat-workflow-library-resize]')
+    if (!handle || !panel.contains(handle) || event.button !== 0) {
+      return
+    }
+    characterWorkflowLibraryResize = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      originWidth: Math.max(148, Math.min(260, Math.round(characterWorkflowEditorState.workflowLibraryWidth || 176))),
+    }
+    handle.setPointerCapture?.(event.pointerId)
+    handle.classList.add('is-resizing')
+    document.body.classList.add('chat-workflow-library-resizing')
+    event.preventDefault()
+    event.stopPropagation()
+  }
+
+  function updateCharacterWorkflowLibraryResize(event: PointerEvent): void {
+    if (!characterWorkflowLibraryResize || characterWorkflowLibraryResize.pointerId !== event.pointerId) {
+      return
+    }
+    const nextWidth = Math.max(148, Math.min(260, Math.round(characterWorkflowLibraryResize.originWidth + event.clientX - characterWorkflowLibraryResize.startX)))
+    characterWorkflowEditorState.workflowLibraryWidth = nextWidth
+    const shell = panel.querySelector<HTMLElement>('.chat-workflow-library-shell')
+    shell?.style.setProperty('--workflow-library-width', `${nextWidth}px`)
+  }
+
+  function endCharacterWorkflowLibraryResize(event: PointerEvent): void {
+    if (!characterWorkflowLibraryResize || characterWorkflowLibraryResize.pointerId !== event.pointerId) {
+      return
+    }
+    panel.querySelector<HTMLElement>('[data-chat-workflow-library-resize]')?.classList.remove('is-resizing')
+    document.body.classList.remove('chat-workflow-library-resizing')
+    characterWorkflowLibraryResize = null
+    scheduleActiveConversationWorkflowPersist()
   }
 
   function beginCharacterResourceViewportDrag(event: PointerEvent): void {
@@ -3136,6 +3633,35 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
 
+    const workflowLibraryAction = eventTarget.closest<HTMLElement>('[data-chat-workflow-library-action]')
+    if (workflowLibraryAction && panel.contains(workflowLibraryAction)) {
+      const action = workflowLibraryAction.dataset.chatWorkflowLibraryAction || ''
+      const workflowId = workflowLibraryAction.dataset.chatWorkflowId || ''
+      if (action === 'create') {
+        createCharacterWorkflowDraft()
+      } else if (action === 'rename') {
+        renameCharacterWorkflowDraft(workflowId)
+      } else if (action === 'duplicate') {
+        duplicateCharacterWorkflowDraft(workflowId)
+      } else if (action === 'delete') {
+        deleteCharacterWorkflowDraft(workflowId)
+      }
+      return
+    }
+
+    const workflowOpen = eventTarget.closest<HTMLElement>('[data-chat-workflow-open]')
+    if (workflowOpen && panel.contains(workflowOpen)) {
+      openCharacterWorkflowDraft(workflowOpen.dataset.chatWorkflowOpen || '')
+      return
+    }
+
+    const workflowRunOpen = eventTarget.closest<HTMLElement>('[data-chat-workflow-run-open]')
+    if (workflowRunOpen && panel.contains(workflowRunOpen)) {
+      const [workflowId, runId] = (workflowRunOpen.dataset.chatWorkflowRunOpen || '').split(':')
+      openCharacterWorkflowRun(workflowId || '', runId || '')
+      return
+    }
+
     const workflowCloseTab = eventTarget.closest<HTMLElement>('[data-chat-workflow-close-tab]')
     if (workflowCloseTab && panel.contains(workflowCloseTab)) {
       closeCharacterWorkflowTab(workflowCloseTab.dataset.chatWorkflowCloseTab || '')
@@ -3233,6 +3759,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   })
 
   panel.addEventListener('input', (event) => {
+    const workflowLibrarySearch = (event.target as HTMLElement | null)?.closest<HTMLInputElement>('[data-chat-workflow-library-search]')
+    if (workflowLibrarySearch && panel.contains(workflowLibrarySearch)) {
+      characterWorkflowLibrarySearch = workflowLibrarySearch.value
+      renderCharacterWorkflow()
+      return
+    }
     const settingsControl = (event.target as HTMLElement | null)?.closest<HTMLInputElement>('[data-chat-setting]')
     if (!settingsControl || !panel.contains(settingsControl)) {
       return
@@ -3241,6 +3773,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   })
 
   panel.addEventListener('pointerdown', beginChatResize)
+  panel.addEventListener('pointerdown', beginCharacterWorkflowLibraryResize)
   panel.addEventListener('pointerdown', beginCharacterResourceNodeResize)
   panel.addEventListener('pointerdown', beginCharacterWorkflowNodeDrag)
   panel.addEventListener('pointerdown', beginCharacterResourceViewportDrag)
@@ -3248,16 +3781,19 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   panel.addEventListener('wheel', updateCharacterResourceViewportZoom, { passive: false })
   panel.addEventListener('pointerdown', beginManualDrag)
   window.addEventListener('pointermove', updateChatResize)
+  window.addEventListener('pointermove', updateCharacterWorkflowLibraryResize)
   window.addEventListener('pointermove', updateCharacterResourceNodeResize)
   window.addEventListener('pointermove', updateCharacterWorkflowNodeDrag)
   window.addEventListener('pointermove', updateCharacterResourceViewportDrag)
   window.addEventListener('pointermove', updateManualDrag)
   window.addEventListener('pointerup', endChatResize)
+  window.addEventListener('pointerup', endCharacterWorkflowLibraryResize)
   window.addEventListener('pointerup', endCharacterResourceNodeResize)
   window.addEventListener('pointerup', endCharacterWorkflowNodeDrag)
   window.addEventListener('pointerup', endCharacterResourceViewportDrag)
   window.addEventListener('pointerup', endManualDrag)
   window.addEventListener('pointercancel', endChatResize)
+  window.addEventListener('pointercancel', endCharacterWorkflowLibraryResize)
   window.addEventListener('pointercancel', endCharacterResourceNodeResize)
   window.addEventListener('pointercancel', endCharacterWorkflowNodeDrag)
   window.addEventListener('pointercancel', endCharacterResourceViewportDrag)

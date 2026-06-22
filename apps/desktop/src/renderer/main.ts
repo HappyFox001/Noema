@@ -7016,7 +7016,7 @@ const accountInputsPageCount = document.getElementById('account-inputs-page-coun
 const memoryOverviewPage = document.getElementById('memory-overview-page')!
 const memoryAccountPage = document.getElementById('memory-account-page')!
 const openAccountInputsBtn = document.getElementById('open-account-inputs-btn') as HTMLButtonElement
-const backMemoryOverviewBtn = document.getElementById('back-memory-overview-btn') as HTMLButtonElement
+const backMemoryOverviewBtn = document.getElementById('back-memory-overview-btn') as HTMLButtonElement | null
 const clearAccountInputsBtn = document.getElementById('clear-account-inputs-btn') as HTMLButtonElement
 
 type UserProfile = {
@@ -7612,7 +7612,7 @@ openAccountInputsBtn.addEventListener('click', () => {
   switchMemoryPage('accounts')
 })
 
-backMemoryOverviewBtn.addEventListener('click', () => {
+backMemoryOverviewBtn?.addEventListener('click', () => {
   switchMemoryPage('overview')
 })
 
@@ -7655,7 +7655,7 @@ const modelsManagerPage = document.getElementById('models-manager-page') as HTML
 const modelOverviewList = document.getElementById('model-overview-list')!
 const modelManagerTitle = document.getElementById('model-manager-title')!
 const modelManagerSubtitle = document.getElementById('model-manager-subtitle')!
-const backModelOverviewBtn = document.getElementById('back-model-overview-btn') as HTMLButtonElement
+const backModelOverviewBtn = document.getElementById('back-model-overview-btn') as HTMLButtonElement | null
 const llmModelsList = document.getElementById('llm-models-list')!
 const taskModelsList = document.getElementById('task-models-list')!
 const ttsModelsList = document.getElementById('tts-models-list')!
@@ -9235,7 +9235,7 @@ proxyInput.addEventListener('change', async () => {
 })
 
 // Add button handlers
-backModelOverviewBtn.addEventListener('click', closeModelManager)
+backModelOverviewBtn?.addEventListener('click', closeModelManager)
 modelOverviewList.addEventListener('click', (event) => {
   const card = (event.target as HTMLElement | null)?.closest<HTMLElement>('.model-overview-card')
   const kind = card?.dataset.modelKind as ModelManagerKind | undefined
