@@ -48,7 +48,15 @@ export interface CharacterWorkflowBuilderSpec {
   }
   assetTargets: string[]
   outputFormat: string
+  operations: CharacterWorkflowBuilderOperation[]
 }
+
+export type CharacterWorkflowBuilderOperation =
+  | { type: 'add-node'; nodeType: string; nodeId?: string; title?: string; x?: number; y?: number; config?: Record<string, unknown> }
+  | { type: 'update-node-config'; nodeId: string; config: Record<string, unknown> }
+  | { type: 'delete-node'; nodeId: string }
+  | { type: 'add-link'; sourceNodeId: string; sourceSlotId: string; targetNodeId: string; targetSlotId: string; kind?: string }
+  | { type: 'delete-link'; linkId?: string; sourceNodeId?: string; sourceSlotId?: string; targetNodeId?: string; targetSlotId?: string }
 
 export interface CharacterWorkflowBuilderResult {
   workflow: CharacterWorkflow
@@ -124,6 +132,7 @@ export function normalizeWorkflowBuilderSpec(
     qualityGate: normalizeQualityGate(recordValue(parsed, 'qualityGate')),
     assetTargets: stringList(parsed, 'assetTargets', DEFAULT_ASSET_TARGETS),
     outputFormat: normalizeOutputFormat(stringValue(parsed, 'outputFormat')),
+    operations: operationList(parsed?.operations),
   }
   if (!spec.assetTargets.includes('image-pack')) {
     spec.assetTargets = [...spec.assetTargets, 'image-pack']
@@ -225,7 +234,14 @@ function createWorkflowBuilderSystemPrompt(language: CharacterWorkflowLanguage):
     '  "agentPolicy": { "autonomyLevel": "high" | "medium" | "low", "revisionBudget": number, "askUserThreshold": "blocked-only" | "low-confidence" | "never" },',
     '  "qualityGate": { "minimumScore": number, "requiredChecks": string[] },',
     '  "assetTargets": string[],',
-    '  "outputFormat": "noema-role-chat" | "sillytavern" | "portable-json" | "markdown-dossier"',
+    '  "outputFormat": "noema-role-chat" | "sillytavern" | "portable-json" | "markdown-dossier",',
+    '  "operations": [',
+    '    { "type": "add-node", "nodeType": string, "nodeId"?: string, "title"?: string, "x"?: number, "y"?: number, "config"?: object },',
+    '    { "type": "update-node-config", "nodeId": string, "config": object },',
+    '    { "type": "delete-node", "nodeId": string },',
+    '    { "type": "add-link", "sourceNodeId": string, "sourceSlotId": string, "targetNodeId": string, "targetSlotId": string, "kind"?: string },',
+    '    { "type": "delete-link", "linkId"?: string, "sourceNodeId"?: string, "sourceSlotId"?: string, "targetNodeId"?: string, "targetSlotId"?: string }',
+    '  ]',
     '}',
   ].join('\n')
 }
@@ -326,6 +342,60 @@ function stringList(record: Record<string, unknown>, key: string, fallback: stri
     ? value.map((item) => String(item).trim()).filter(Boolean)
     : []
   return (list.length ? list : fallback).slice(0, 12)
+}
+
+function operationList(value: unknown): CharacterWorkflowBuilderOperation[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value.flatMap((item): CharacterWorkflowBuilderOperation[] => {
+    if (!item || typeof item !== 'object') {
+      return []
+    }
+    const record = item as Record<string, unknown>
+    const type = stringValue(record, 'type')
+    if (type === 'add-node') {
+      const nodeType = stringValue(record, 'nodeType')
+      if (!nodeType) return []
+      return [{
+        type,
+        nodeType,
+        nodeId: stringValue(record, 'nodeId') || undefined,
+        title: stringValue(record, 'title') || undefined,
+        x: typeof record.x === 'number' ? record.x : undefined,
+        y: typeof record.y === 'number' ? record.y : undefined,
+        config: recordValue(record, 'config'),
+      }]
+    }
+    if (type === 'update-node-config') {
+      const nodeId = stringValue(record, 'nodeId')
+      if (!nodeId) return []
+      return [{ type, nodeId, config: recordValue(record, 'config') }]
+    }
+    if (type === 'delete-node') {
+      const nodeId = stringValue(record, 'nodeId')
+      return nodeId ? [{ type, nodeId }] : []
+    }
+    if (type === 'add-link') {
+      const sourceNodeId = stringValue(record, 'sourceNodeId')
+      const sourceSlotId = stringValue(record, 'sourceSlotId')
+      const targetNodeId = stringValue(record, 'targetNodeId')
+      const targetSlotId = stringValue(record, 'targetSlotId')
+      if (!sourceNodeId || !sourceSlotId || !targetNodeId || !targetSlotId) return []
+      return [{ type, sourceNodeId, sourceSlotId, targetNodeId, targetSlotId, kind: stringValue(record, 'kind') || undefined }]
+    }
+    if (type === 'delete-link') {
+      return [{
+        type,
+        linkId: stringValue(record, 'linkId') || undefined,
+        sourceNodeId: stringValue(record, 'sourceNodeId') || undefined,
+        sourceSlotId: stringValue(record, 'sourceSlotId') || undefined,
+        targetNodeId: stringValue(record, 'targetNodeId') || undefined,
+        targetSlotId: stringValue(record, 'targetSlotId') || undefined,
+      }]
+    }
+    return []
+  }).slice(0, 24)
 }
 
 function normalizePreset(value: string): string {

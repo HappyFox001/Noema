@@ -26,6 +26,7 @@ export interface CharacterWorkflowPageOptions {
   workflowLibraryCollapsed?: boolean
   inspectorCollapsed: boolean
   nodeSearchOpen?: boolean
+  workflowAssistantHtml?: string
   viewState?: CharacterResourceViewState
 }
 
@@ -1748,6 +1749,7 @@ function renderResourceCanvas(graph: CharacterResourceGraph, yjsSnapshot: string
       <div class="chat-resource-serializer" aria-hidden="true" data-yjs-snapshot="${options.escapeHtml(yjsSnapshot)}"></div>
       ${isWorkflowTab ? renderNodeSearchPopover(graph, options) : ''}
       ${isWorkflowTab ? renderCanvasContextMenu(options) : ''}
+      ${isWorkflowTab ? options.workflowAssistantHtml ?? '' : ''}
     </section>
   `
 }

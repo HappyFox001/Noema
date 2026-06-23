@@ -237,6 +237,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let activeCharacterWorkflowProjectId = ''
   let characterWorkflowLibrarySearch = ''
   let characterWorkflowBuilderPrompt = ''
+  let characterWorkflowAssistantPrompt = ''
   let characterWorkflowBuilderStatus = ''
   let characterWorkflowBuilderBusy = false
   let characterWorkflowTemplateMenuOpen = false
@@ -1074,7 +1075,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function renderChatRuntimeModelPicker(): void {
     runtimeModelPicker.innerHTML = renderChatRuntimeModelPickerMarkup()
-    refreshWorkflowBuilderRuntimeModelPicker()
+    refreshCharacterWorkflowRuntimeModelPickers()
   }
 
   function renderChatRuntimeModelPickerMarkup(extraClass = ''): string {
@@ -1112,17 +1113,20 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     `
   }
 
-  function refreshWorkflowBuilderRuntimeModelPicker(): void {
-    const shell = characterWorkflowRoot?.querySelector<HTMLElement>('.chat-runtime-model-shell.workflow-builder')
-    if (!shell) {
+  function refreshCharacterWorkflowRuntimeModelPickers(): void {
+    const shells = characterWorkflowRoot?.querySelectorAll<HTMLElement>('.chat-runtime-model-shell.workflow-builder, .chat-runtime-model-shell.workflow-assistant')
+    if (!shells?.length) {
       return
     }
-    const wrapper = document.createElement('div')
-    wrapper.innerHTML = renderChatRuntimeModelPickerMarkup('workflow-builder')
-    const nextShell = wrapper.firstElementChild
-    if (nextShell) {
-      shell.replaceWith(nextShell)
-    }
+    shells.forEach((shell) => {
+      const extraClass = shell.classList.contains('workflow-assistant') ? 'workflow-assistant' : 'workflow-builder'
+      const wrapper = document.createElement('div')
+      wrapper.innerHTML = renderChatRuntimeModelPickerMarkup(extraClass)
+      const nextShell = wrapper.firstElementChild
+      if (nextShell) {
+        shell.replaceWith(nextShell)
+      }
+    })
   }
 
   function renderChatRuntimeModelMenu(
@@ -1189,7 +1193,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       if (activeCharacterWorkflowProjectId) {
         renderCharacterWorkflow()
       } else {
-        refreshWorkflowBuilderRuntimeModelPicker()
+        refreshCharacterWorkflowRuntimeModelPickers()
       }
     }
   }
@@ -1582,6 +1586,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       workflowLibraryCollapsed: characterWorkflowEditorState.workflowLibraryCollapsed,
       inspectorCollapsed: characterWorkflowEditorState.inspectorCollapsed,
       nodeSearchOpen: characterWorkflowEditorState.nodeSearchOpen,
+      workflowAssistantHtml: renderCharacterWorkflowAssistant(),
       viewState: {
         zoom: characterResourceViewState.zoom,
         panX: characterResourceViewState.panX,
@@ -1866,6 +1871,26 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     `
   }
 
+  function renderCharacterWorkflowAssistant(): string {
+    const zh = options.getLanguage() === 'zh-CN'
+    const label = zh ? '应用资源图修改' : 'Apply graph edits'
+    return `
+      <form class="chat-workflow-canvas-assistant ${characterWorkflowBuilderBusy ? 'is-busy' : ''}" data-chat-workflow-assistant-form>
+        <div class="chat-workflow-canvas-assistant-row">
+          ${renderChatRuntimeModelPickerMarkup('workflow-assistant')}
+          <textarea data-chat-workflow-assistant-input rows="1" aria-label="${options.escapeHtml(zh ? '资源图 Agent 输入' : 'Resource graph agent input')}" ${characterWorkflowBuilderBusy ? 'disabled' : ''}>${options.escapeHtml(characterWorkflowAssistantPrompt)}</textarea>
+          <button type="submit" aria-label="${options.escapeHtml(label)}" title="${options.escapeHtml(label)}" ${characterWorkflowBuilderBusy ? 'disabled' : ''}>
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M3.4 10H15.1"></path>
+              <path d="M10.7 5.6 15.1 10l-4.4 4.4"></path>
+            </svg>
+          </button>
+        </div>
+        ${characterWorkflowBuilderStatus ? `<small class="chat-workflow-canvas-assistant-status">${options.escapeHtml(characterWorkflowBuilderStatus)}</small>` : ''}
+      </form>
+    `
+  }
+
   function formatWorkflowProjectTime(value: number | undefined, zh: boolean): string {
     if (!value) {
       return zh ? '无' : 'None'
@@ -2121,6 +2146,216 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       characterWorkflowBuilderBusy = false
       renderCharacterWorkflow()
     }
+  }
+
+  async function applyCharacterWorkflowAssistantPrompt(): Promise<void> {
+    const userPrompt = characterWorkflowAssistantPrompt.trim()
+    if (!userPrompt || characterWorkflowBuilderBusy || !activeCharacterWorkflowProjectId) {
+      return
+    }
+    characterWorkflowBuilderBusy = true
+    characterWorkflowBuilderStatus = options.getLanguage() === 'zh-CN' ? 'Agent 正在调整当前资源图...' : 'Agent editing current resource graph...'
+    renderCharacterWorkflow()
+    try {
+      const workflowPage = await loadCharacterWorkflowPageModule()
+      const prompt = createCharacterWorkflowAssistantBuilderPrompt(userPrompt, workflowPage)
+      const response = await window.electronAPI.buildCharacterWorkflow({
+        prompt,
+        language: options.getLanguage(),
+      })
+      if (!response.success) {
+        throw new Error(response.error || 'Workflow agent failed')
+      }
+      pushCharacterResourceUndoSnapshot()
+      const changed = applyCharacterWorkflowAssistantResult(response)
+      if (!changed) {
+        characterWorkflowBuilderStatus = options.getLanguage() === 'zh-CN' ? 'Agent 没有返回可应用的修改' : 'Agent returned no applicable changes'
+      } else {
+        characterWorkflowAssistantPrompt = ''
+        characterWorkflowBuilderStatus = ''
+        showToast(options.getLanguage() === 'zh-CN' ? '已应用资源图修改' : 'Applied graph edits')
+      }
+    } catch (error: any) {
+      const message = error?.message || String(error)
+      characterWorkflowBuilderStatus = message
+      showToast(message)
+    } finally {
+      characterWorkflowBuilderBusy = false
+      renderCharacterWorkflow()
+    }
+  }
+
+  function createCharacterWorkflowAssistantBuilderPrompt(userPrompt: string, workflowPage: CharacterWorkflowPageModule): string {
+    const snapshot = workflowPage.createCharacterAgentWorkflowSnapshot({
+      language: options.getLanguage(),
+      escapeHtml: options.escapeHtml,
+      modelChoices: getCharacterWorkflowModelChoices(),
+      configOverrides: characterWorkflowConfigOverrides,
+      positionOverrides: characterWorkflowPositionOverrides,
+      runState: characterWorkflowRunState,
+      tabs: getCharacterWorkflowTabs(),
+      activeTabId: characterWorkflowActiveTabId,
+      selectedNodeId: selectedWorkflowNodeId,
+      activePanel: characterWorkflowEditorState.activePanel,
+      sidebarCollapsed: characterWorkflowEditorState.sidebarCollapsed,
+      inspectorCollapsed: characterWorkflowEditorState.inspectorCollapsed,
+      nodeSearchOpen: characterWorkflowEditorState.nodeSearchOpen,
+      viewState: {
+        zoom: characterResourceViewState.zoom,
+        panX: characterResourceViewState.panX,
+        panY: characterResourceViewState.panY,
+        hideLinks: characterResourceViewState.hideLinks,
+        selectedNodeIds: characterResourceViewState.selectedNodeIds,
+        selectionBox: characterResourceViewState.selectionBox,
+        collapsedNodeIds: [...characterResourceViewState.collapsedNodeIds],
+        deletedNodeIds: [...characterResourceViewState.deletedNodeIds],
+        duplicatedNodes: characterResourceViewState.duplicatedNodes,
+        addedNodes: characterResourceViewState.addedNodes,
+        nodeSizes: characterResourceViewState.nodeSizes,
+        selectedLinkId: characterResourceViewState.selectedLinkId,
+        linkKinds: characterResourceViewState.linkKinds,
+        customLinks: characterResourceViewState.customLinks,
+        deletedLinkIds: [...characterResourceViewState.deletedLinkIds],
+        replacedTargetSlots: [...characterResourceViewState.replacedTargetSlots],
+      },
+    }) as Record<string, any>
+    const graphSummary = {
+      selectedNodeId: selectedWorkflowNodeId,
+      nodes: (snapshot.nodes ?? []).map((node: any) => ({
+        id: node.id,
+        type: node.type,
+        title: node.title,
+        config: node.config,
+        inputs: Object.keys(node.inputs ?? {}),
+        outputs: Object.keys(node.outputs ?? {}),
+      })),
+      edges: snapshot.edges ?? [],
+    }
+    return [
+      'You are editing an existing character resource workflow graph.',
+      'Use the operations array for concrete edits. Prefer small, incremental edits over replacing the whole graph.',
+      'Allowed operation types: add-node, update-node-config, delete-node, add-link, delete-link.',
+      'When adding links, use exact node ids and slot ids from the graph. When adding nodes, use valid node types from existing node type patterns.',
+      'Do not delete generation-goal.',
+      'Current graph JSON:',
+      JSON.stringify(graphSummary),
+      'User request:',
+      userPrompt,
+    ].join('\n')
+  }
+
+  function applyCharacterWorkflowAssistantResult(response: {
+    spec?: {
+      operations?: Array<Record<string, unknown>>
+    }
+    uiConfigOverrides?: Record<string, Record<string, unknown>>
+  }): boolean {
+    let changed = false
+    for (const [nodeId, config] of Object.entries(response.uiConfigOverrides ?? {})) {
+      const entries = Object.entries(config).filter(([, value]) => {
+        if (Array.isArray(value)) return value.length > 0
+        return value !== '' && value !== undefined && value !== null
+      })
+      if (!entries.length) continue
+      characterWorkflowConfigOverrides[nodeId] ??= {}
+      Object.assign(characterWorkflowConfigOverrides[nodeId], Object.fromEntries(entries))
+      changed = true
+    }
+    const operations = Array.isArray(response.spec?.operations) ? response.spec.operations : []
+    for (const operation of operations) {
+      changed = applyCharacterWorkflowAssistantOperation(operation) || changed
+    }
+    saveActiveWorkflowProjectSnapshot()
+    return changed
+  }
+
+  function applyCharacterWorkflowAssistantOperation(operation: Record<string, unknown>): boolean {
+    const type = typeof operation.type === 'string' ? operation.type : ''
+    if (type === 'add-node') {
+      const nodeType = typeof operation.nodeType === 'string' ? operation.nodeType.trim() : ''
+      if (!nodeType) return false
+      characterResourceDuplicateCount += 1
+      const nodeId = typeof operation.nodeId === 'string' && operation.nodeId.trim()
+        ? sanitizeWorkflowResourceId(operation.nodeId.trim())
+        : `${nodeType}-${Date.now().toString(36)}-${characterResourceDuplicateCount}`
+      characterResourceViewState.deletedNodeIds.delete(nodeId)
+      if (!characterResourceViewState.addedNodes.some((node) => node.id === nodeId)) {
+        characterResourceViewState.addedNodes.push({
+          id: nodeId,
+          type: nodeType,
+          title: typeof operation.title === 'string' && operation.title.trim() ? operation.title.trim() : nodeType,
+          x: typeof operation.x === 'number' ? operation.x : 280 + characterResourceDuplicateCount * 24,
+          y: typeof operation.y === 'number' ? operation.y : 220 + characterResourceDuplicateCount * 24,
+        })
+      }
+      if (operation.config && typeof operation.config === 'object' && !Array.isArray(operation.config)) {
+        characterWorkflowConfigOverrides[nodeId] = {
+          ...(characterWorkflowConfigOverrides[nodeId] ?? {}),
+          ...(operation.config as Record<string, unknown>),
+        }
+      }
+      selectedWorkflowNodeId = nodeId
+      characterResourceViewState.selectedNodeIds = [nodeId]
+      return true
+    }
+    if (type === 'update-node-config') {
+      const nodeId = typeof operation.nodeId === 'string' ? operation.nodeId.trim() : ''
+      if (!nodeId || !operation.config || typeof operation.config !== 'object' || Array.isArray(operation.config)) return false
+      characterWorkflowConfigOverrides[nodeId] = {
+        ...(characterWorkflowConfigOverrides[nodeId] ?? {}),
+        ...(operation.config as Record<string, unknown>),
+      }
+      selectedWorkflowNodeId = nodeId
+      characterResourceViewState.selectedNodeIds = [nodeId]
+      return true
+    }
+    if (type === 'delete-node') {
+      const nodeId = typeof operation.nodeId === 'string' ? operation.nodeId.trim() : ''
+      if (!nodeId || nodeId === 'generation-goal') return false
+      characterResourceViewState.deletedNodeIds.add(nodeId)
+      if (selectedWorkflowNodeId === nodeId) {
+        selectedWorkflowNodeId = 'generation-goal'
+        characterResourceViewState.selectedNodeIds = ['generation-goal']
+      }
+      return true
+    }
+    if (type === 'add-link') {
+      const sourceNodeId = typeof operation.sourceNodeId === 'string' ? operation.sourceNodeId.trim() : ''
+      const sourceSlotId = typeof operation.sourceSlotId === 'string' ? operation.sourceSlotId.trim() : ''
+      const targetNodeId = typeof operation.targetNodeId === 'string' ? operation.targetNodeId.trim() : ''
+      const targetSlotId = typeof operation.targetSlotId === 'string' ? operation.targetSlotId.trim() : ''
+      if (!sourceNodeId || !sourceSlotId || !targetNodeId || !targetSlotId) return false
+      const linkId = `${sourceNodeId}:${sourceSlotId}->${targetNodeId}:${targetSlotId}`
+      const kind = isSerializedCharacterResourceLinkKind(operation.kind) ? operation.kind : 'guides'
+      const link = { id: linkId, sourceNodeId, sourceSlotId, targetNodeId, targetSlotId, kind } satisfies SerializedCharacterResourceLink
+      const existingIndex = characterResourceViewState.customLinks.findIndex((item) => item.id === linkId)
+      if (existingIndex >= 0) {
+        characterResourceViewState.customLinks[existingIndex] = link
+      } else {
+        characterResourceViewState.customLinks.push(link)
+      }
+      characterResourceViewState.deletedLinkIds.delete(linkId)
+      characterResourceViewState.selectedLinkId = linkId
+      characterResourceViewState.selectedNodeIds = []
+      return true
+    }
+    if (type === 'delete-link') {
+      const linkId = typeof operation.linkId === 'string' && operation.linkId.trim()
+        ? operation.linkId.trim()
+        : `${String(operation.sourceNodeId ?? '')}:${String(operation.sourceSlotId ?? '')}->${String(operation.targetNodeId ?? '')}:${String(operation.targetSlotId ?? '')}`
+      if (!linkId.includes('->')) return false
+      const customIndex = characterResourceViewState.customLinks.findIndex((item) => item.id === linkId)
+      if (customIndex >= 0) {
+        characterResourceViewState.customLinks.splice(customIndex, 1)
+      } else {
+        characterResourceViewState.deletedLinkIds.add(linkId)
+      }
+      if (characterResourceViewState.selectedLinkId === linkId) {
+        characterResourceViewState.selectedLinkId = ''
+      }
+      return true
+    }
+    return false
   }
 
   function openCharacterWorkflowDraft(projectId: string): void {
@@ -2976,6 +3211,25 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     return `${linkItem.targetNodeId}:${linkItem.targetSlotId}`
   }
 
+  function sanitizeWorkflowResourceId(value: string): string {
+    return value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || `node-${Date.now().toString(36)}`
+  }
+
+  function isSerializedCharacterResourceLinkKind(value: unknown): value is SerializedCharacterResourceLinkKind {
+    return typeof value === 'string' && [
+      'guides',
+      'constrains',
+      'provides',
+      'enables',
+      'grounds',
+      'weights',
+      'routes',
+      'evaluates',
+      'refines',
+      'exports',
+    ].includes(value)
+  }
+
   function allowsMultipleCharacterResourceIncomingLinks(inputType: string, inputSlotId: string): boolean {
     if (inputType === 'style-signal' || inputType === 'hard-constraint') {
       return true
@@ -3753,6 +4007,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   })
 
   panel.addEventListener('submit', (event) => {
+    const assistantForm = (event.target as HTMLElement | null)?.closest<HTMLFormElement>('[data-chat-workflow-assistant-form]')
+    if (assistantForm && panel.contains(assistantForm)) {
+      event.preventDefault()
+      void applyCharacterWorkflowAssistantPrompt()
+      return
+    }
     const form = (event.target as HTMLElement | null)?.closest<HTMLFormElement>('[data-chat-workflow-builder-form]')
     if (!form || !panel.contains(form)) {
       return
@@ -4068,6 +4328,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   })
 
   panel.addEventListener('input', (event) => {
+    const workflowAssistantInput = (event.target as HTMLElement | null)?.closest<HTMLTextAreaElement>('[data-chat-workflow-assistant-input]')
+    if (workflowAssistantInput && panel.contains(workflowAssistantInput)) {
+      characterWorkflowAssistantPrompt = workflowAssistantInput.value
+      return
+    }
     const workflowBuilderInput = (event.target as HTMLElement | null)?.closest<HTMLTextAreaElement>('[data-chat-workflow-builder-input]')
     if (workflowBuilderInput && panel.contains(workflowBuilderInput)) {
       characterWorkflowBuilderPrompt = workflowBuilderInput.value

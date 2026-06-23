@@ -13261,6 +13261,138 @@ body.chat-workflow-library-resizing * {
   bottom: calc(100% + 8px);
 }
 
+.chat-workflow-canvas-assistant {
+  position: absolute;
+  left: 50%;
+  bottom: 30px;
+  z-index: 22;
+  width: min(580px, calc(100% - 72px));
+  display: block;
+  padding: 5px;
+  border: 1px solid rgba(248, 250, 250, 0.1);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.048), rgba(255, 255, 255, 0.018)),
+    rgba(7, 8, 9, 0.72);
+  box-shadow:
+    0 18px 46px rgba(0, 0, 0, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  transform: translateX(-50%);
+}
+
+.chat-workflow-canvas-assistant-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chat-workflow-canvas-assistant textarea {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+  height: 32px;
+  min-height: 32px;
+  max-height: 62px;
+  resize: none;
+  border: 0;
+  border-radius: 9px;
+  padding: 8px 7px;
+  outline: 0;
+  background: transparent;
+  color: rgba(248, 250, 250, 0.86);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.chat-workflow-canvas-assistant textarea:focus {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.chat-runtime-model-shell.workflow-assistant {
+  z-index: 24;
+  flex: 0 0 auto;
+}
+
+.chat-runtime-model-shell.workflow-assistant .chat-runtime-model-current {
+  min-height: 32px;
+  max-width: 190px;
+  border-radius: 9px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.018)),
+    rgba(7, 8, 9, 0.42);
+}
+
+.chat-runtime-model-shell.workflow-assistant .chat-runtime-model-menu {
+  bottom: calc(100% + 8px);
+}
+
+.chat-workflow-canvas-assistant-row > button {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(132, 173, 159, 0.28);
+  border-radius: 9px;
+  padding: 0;
+  color: rgba(248, 250, 250, 0.86);
+  background: rgba(132, 173, 159, 0.13);
+  cursor: pointer;
+  transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+
+.chat-workflow-canvas-assistant-row > button svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.chat-workflow-canvas-assistant-row > button:hover {
+  border-color: rgba(132, 173, 159, 0.46);
+  background: rgba(132, 173, 159, 0.18);
+}
+
+.chat-workflow-canvas-assistant-row > button:active {
+  transform: translateY(1px);
+}
+
+.chat-workflow-canvas-assistant-status {
+  position: absolute;
+  left: 12px;
+  bottom: calc(100% + 6px);
+  max-width: calc(100% - 24px);
+  color: rgba(248, 250, 250, 0.46);
+  font-family: var(--font-ui);
+  font-size: 10.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-workflow-canvas-assistant.is-busy textarea,
+.chat-workflow-canvas-assistant.is-busy button {
+  opacity: 0.62;
+  cursor: default;
+}
+
+@media (max-width: 760px) {
+  .chat-workflow-canvas-assistant {
+    bottom: 18px;
+    width: calc(100% - 28px);
+  }
+
+  .chat-runtime-model-shell.workflow-assistant .chat-runtime-model-current {
+    max-width: 132px;
+  }
+}
+
 .chat-workflow-builder-footer > button {
   height: 30px;
   min-width: 58px;
