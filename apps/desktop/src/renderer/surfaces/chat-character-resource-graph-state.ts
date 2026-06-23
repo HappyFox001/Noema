@@ -55,6 +55,14 @@ export interface CharacterResourceViewState {
   customLinks?: SerializedCharacterResourceLink[]
   deletedLinkIds?: string[]
   replacedTargetSlots?: string[]
+  agentHighlights?: {
+    nodeIds?: string[]
+    linkIds?: string[]
+    deletedNodeIds?: string[]
+    deletedLinkIds?: string[]
+    nodeActions?: Record<string, string>
+    linkActions?: Record<string, string>
+  }
 }
 
 export interface SerializedCharacterResourceGraph {

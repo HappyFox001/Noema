@@ -1753,7 +1753,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             'opening-field-target': { field: 'firstMessage' },
             'opening-field-control': { lengthPolicy: 'medium' },
             'image-target': { imageRole: 'avatar' },
-            'image-control': { targetImageCount: 4, imageTypes: ['avatar', 'body', 'scene', 'expression'], composition: 'character-focused', consistencyMode: 'same-character' },
+            'image-control': { targetImageCount: 1, imageType: 'avatar', composition: 'upper-body-portrait', consistencyMode: 'same-character' },
             'generation-strategy': { mode: 'branch-and-refine', branchCount: 3, priorityAssets: ['role-card', 'opening', 'image-pack'] },
             'quality-gate': { minimumScore: 0.84 },
           },
@@ -1778,7 +1778,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             'continuity-control': { progressionPacing: 'slow-burn', forbidResettingFacts: true },
             'relationship-control': { relationshipMode: 'ambiguous-ally' },
             'image-target': { imageRole: 'scene' },
-            'image-control': { targetImageCount: 6, imageTypes: ['avatar', 'scene', 'reference'], composition: 'environmental-scene', consistencyMode: 'same-world' },
+            'image-control': { targetImageCount: 2, imageType: 'scene', composition: 'environmental-scene', consistencyMode: 'same-world' },
+            'world-reference-image-target': { imageRole: 'reference' },
+            'world-reference-image-control': { targetImageCount: 2, imageType: 'reference', composition: 'character-focused', consistencyMode: 'same-world' },
             'generation-strategy': { mode: 'explore-then-converge', branchCount: 4, priorityAssets: ['world-context', 'npc-pack', 'scene-context', 'image-pack'] },
             'quality-gate': { minimumScore: 0.86 },
           },
@@ -1790,6 +1792,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             { id: 'scene-card-target', type: 'scene-card-target', title: 'Scene Card Target', x: 1720, y: 760 },
             { id: 'continuity-control', type: 'continuity-control', title: 'Continuity Control', x: 1060, y: 860 },
             { id: 'relationship-control', type: 'relationship-control', title: 'Relationship Control', x: 730, y: 860 },
+            { id: 'world-reference-image-target', type: 'image-target', title: 'Reference Image Target', x: 730, y: 1080 },
+            { id: 'world-reference-image-control', type: 'image-generation-control', title: 'Reference Image Control', x: 1060, y: 1080 },
           ],
           customLinks: [
             { id: 'world-goal', sourceNodeId: 'generation-goal', sourceSlotId: 'goal', targetNodeId: 'world-card-target', targetSlotId: 'goal', kind: 'guides' },
@@ -1805,6 +1809,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             { id: 'continuity-plot', sourceNodeId: 'continuity-control', sourceSlotId: 'continuity', targetNodeId: 'plot-arc-target', targetSlotId: 'continuity', kind: 'guides' },
             { id: 'world-scene', sourceNodeId: 'world-card-target', sourceSlotId: 'world', targetNodeId: 'scene-card-target', targetSlotId: 'world', kind: 'guides' },
             { id: 'plot-scene', sourceNodeId: 'plot-arc-target', sourceSlotId: 'plot', targetNodeId: 'scene-card-target', targetSlotId: 'plot', kind: 'guides' },
+            { id: 'world-reference-card', sourceNodeId: 'character-card-target', sourceSlotId: 'target', targetNodeId: 'world-reference-image-target', targetSlotId: 'card', kind: 'guides' },
+            { id: 'world-reference-tool', sourceNodeId: 'image-capability', sourceSlotId: 'image', targetNodeId: 'world-reference-image-target', targetSlotId: 'image', kind: 'enables' },
+            { id: 'world-reference-control-target', sourceNodeId: 'world-reference-image-target', sourceSlotId: 'imageAsset', targetNodeId: 'world-reference-image-control', targetSlotId: 'imageTarget', kind: 'guides' },
+            { id: 'world-reference-control', sourceNodeId: 'world-reference-image-control', sourceSlotId: 'imageControl', targetNodeId: 'world-reference-image-target', targetSlotId: 'imageControl', kind: 'guides' },
+            { id: 'world-reference-style', sourceNodeId: 'style-pressure', sourceSlotId: 'style', targetNodeId: 'world-reference-image-target', targetSlotId: 'style', kind: 'weights' },
+            { id: 'world-reference-constraint', sourceNodeId: 'hard-constraints', sourceSlotId: 'constraint', targetNodeId: 'world-reference-image-target', targetSlotId: 'constraint', kind: 'constrains' },
           ],
         },
       },
@@ -1876,8 +1886,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const label = zh ? '应用资源图修改' : 'Apply graph edits'
     return `
       <form class="chat-workflow-canvas-assistant ${characterWorkflowBuilderBusy ? 'is-busy' : ''}" data-chat-workflow-assistant-form>
+        ${renderChatRuntimeModelPickerMarkup('workflow-assistant')}
         <div class="chat-workflow-canvas-assistant-row">
-          ${renderChatRuntimeModelPickerMarkup('workflow-assistant')}
           <textarea data-chat-workflow-assistant-input rows="1" aria-label="${options.escapeHtml(zh ? '资源图 Agent 输入' : 'Resource graph agent input')}" ${characterWorkflowBuilderBusy ? 'disabled' : ''}>${options.escapeHtml(characterWorkflowAssistantPrompt)}</textarea>
           <button type="submit" aria-label="${options.escapeHtml(label)}" title="${options.escapeHtml(label)}" ${characterWorkflowBuilderBusy ? 'disabled' : ''}>
             <svg viewBox="0 0 20 20" aria-hidden="true">
@@ -2045,9 +2055,17 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     configOverrides?: Record<string, Record<string, unknown>>
     addedNodes?: Array<{ id: string; type: string; title: string; x: number; y: number }>
     customLinks?: SerializedCharacterResourceLink[]
+    operations?: Array<Record<string, unknown>>
   }): void {
     const now = Date.now()
     const configOverrides: Record<string, Record<string, unknown>> = cloneRecord(spec.configOverrides ?? {})
+    const operationPatch = createInitialWorkflowPatchFromOperations(spec.operations ?? [])
+    for (const [nodeId, config] of Object.entries(operationPatch.configOverrides)) {
+      configOverrides[nodeId] = {
+        ...(configOverrides[nodeId] ?? {}),
+        ...config,
+      }
+    }
     if ((spec.goalPrompt || spec.targetAudience) && !configOverrides['generation-goal']) {
       configOverrides['generation-goal'] = {
         ...(spec.goalPrompt ? { goalPrompt: spec.goalPrompt } : {}),
@@ -2092,10 +2110,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         collapsedNodeIds: [],
         deletedNodeIds: [],
         duplicatedNodes: [],
-        addedNodes: JSON.parse(JSON.stringify(spec.addedNodes ?? [])) as CharacterWorkflowProjectViewState['addedNodes'],
+        addedNodes: JSON.parse(JSON.stringify([...(spec.addedNodes ?? []), ...operationPatch.addedNodes])) as CharacterWorkflowProjectViewState['addedNodes'],
         nodeSizes: {},
         linkKinds: {},
-        customLinks: JSON.parse(JSON.stringify(spec.customLinks ?? [])) as SerializedCharacterResourceLink[],
+        customLinks: JSON.parse(JSON.stringify([...(spec.customLinks ?? []), ...operationPatch.customLinks])) as SerializedCharacterResourceLink[],
         deletedLinkIds: [],
         replacedTargetSlots: [],
       },
@@ -2104,6 +2122,60 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     characterWorkflowProjects = [project, ...characterWorkflowProjects]
     openCharacterWorkflowDraft(project.id)
+  }
+
+  function createInitialWorkflowPatchFromOperations(operations: Array<Record<string, unknown>>): {
+    addedNodes: Array<{ id: string; type: string; title: string; x: number; y: number }>
+    customLinks: SerializedCharacterResourceLink[]
+    configOverrides: Record<string, Record<string, unknown>>
+  } {
+    const addedNodes: Array<{ id: string; type: string; title: string; x: number; y: number }> = []
+    const customLinks: SerializedCharacterResourceLink[] = []
+    const configOverrides: Record<string, Record<string, unknown>> = {}
+    for (const operation of operations) {
+      const type = typeof operation.type === 'string' ? operation.type : ''
+      if (type === 'add-node') {
+        const nodeType = typeof operation.nodeType === 'string' ? operation.nodeType.trim() : ''
+        if (!nodeType) continue
+        const nodeId = typeof operation.nodeId === 'string' && operation.nodeId.trim()
+          ? sanitizeWorkflowResourceId(operation.nodeId.trim())
+          : `${nodeType}-${Date.now().toString(36)}-${addedNodes.length + 1}`
+        if (!addedNodes.some((node) => node.id === nodeId)) {
+          addedNodes.push({
+            id: nodeId,
+            type: nodeType,
+            title: typeof operation.title === 'string' && operation.title.trim() ? operation.title.trim() : nodeType,
+            x: typeof operation.x === 'number' ? operation.x : 720 + addedNodes.length * 36,
+            y: typeof operation.y === 'number' ? operation.y : 420 + addedNodes.length * 220,
+          })
+        }
+        if (operation.config && typeof operation.config === 'object' && !Array.isArray(operation.config)) {
+          configOverrides[nodeId] = {
+            ...(configOverrides[nodeId] ?? {}),
+            ...(operation.config as Record<string, unknown>),
+          }
+        }
+      } else if (type === 'update-node-config') {
+        const nodeId = typeof operation.nodeId === 'string' ? operation.nodeId.trim() : ''
+        if (!nodeId || !operation.config || typeof operation.config !== 'object' || Array.isArray(operation.config)) continue
+        configOverrides[nodeId] = {
+          ...(configOverrides[nodeId] ?? {}),
+          ...(operation.config as Record<string, unknown>),
+        }
+      } else if (type === 'add-link') {
+        const sourceNodeId = typeof operation.sourceNodeId === 'string' ? operation.sourceNodeId.trim() : ''
+        const sourceSlotId = typeof operation.sourceSlotId === 'string' ? operation.sourceSlotId.trim() : ''
+        const targetNodeId = typeof operation.targetNodeId === 'string' ? operation.targetNodeId.trim() : ''
+        const targetSlotId = typeof operation.targetSlotId === 'string' ? operation.targetSlotId.trim() : ''
+        if (!sourceNodeId || !sourceSlotId || !targetNodeId || !targetSlotId) continue
+        const kind = isSerializedCharacterResourceLinkKind(operation.kind) ? operation.kind : 'guides'
+        const id = `${sourceNodeId}:${sourceSlotId}->${targetNodeId}:${targetSlotId}`
+        if (!customLinks.some((link) => link.id === id)) {
+          customLinks.push({ id, sourceNodeId, sourceSlotId, targetNodeId, targetSlotId, kind })
+        }
+      }
+    }
+    return { addedNodes, customLinks, configOverrides }
   }
 
   async function buildCharacterWorkflowFromPrompt(): Promise<void> {
@@ -2134,6 +2206,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         mustNot: response.spec?.mustNot,
         sourceNotes: response.spec?.sourceNotes,
         configOverrides: response.uiConfigOverrides,
+        operations: response.spec?.operations,
       })
       characterWorkflowBuilderPrompt = ''
       characterWorkflowBuilderStatus = ''
@@ -2158,10 +2231,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     renderCharacterWorkflow()
     try {
       const workflowPage = await loadCharacterWorkflowPageModule()
-      const prompt = createCharacterWorkflowAssistantBuilderPrompt(userPrompt, workflowPage)
       const response = await window.electronAPI.buildCharacterWorkflow({
-        prompt,
+        prompt: userPrompt,
         language: options.getLanguage(),
+        mode: 'edit',
+        graph: createCharacterWorkflowAssistantGraph(workflowPage),
       })
       if (!response.success) {
         throw new Error(response.error || 'Workflow agent failed')
@@ -2172,7 +2246,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         characterWorkflowBuilderStatus = options.getLanguage() === 'zh-CN' ? 'Agent 没有返回可应用的修改' : 'Agent returned no applicable changes'
       } else {
         characterWorkflowAssistantPrompt = ''
-        characterWorkflowBuilderStatus = ''
+        characterWorkflowBuilderStatus = typeof response.spec?.summary === 'string' && response.spec.summary.trim()
+          ? response.spec.summary.trim()
+          : ''
         showToast(options.getLanguage() === 'zh-CN' ? '已应用资源图修改' : 'Applied graph edits')
       }
     } catch (error: any) {
@@ -2185,7 +2261,23 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
   }
 
-  function createCharacterWorkflowAssistantBuilderPrompt(userPrompt: string, workflowPage: CharacterWorkflowPageModule): string {
+  function createCharacterWorkflowAssistantGraph(workflowPage: CharacterWorkflowPageModule): {
+    selectedNodeId: string
+    nodes: Array<{
+      id: string
+      type: string
+      title: string
+      config: Record<string, unknown>
+      inputs: string[]
+      outputs: string[]
+    }>
+    edges: Array<{
+      id?: string
+      from: { nodeId: string; port: string }
+      to: { nodeId: string; port: string }
+      kind?: string
+    }>
+  } {
     const snapshot = workflowPage.createCharacterAgentWorkflowSnapshot({
       language: options.getLanguage(),
       escapeHtml: options.escapeHtml,
@@ -2219,7 +2311,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         replacedTargetSlots: [...characterResourceViewState.replacedTargetSlots],
       },
     }) as Record<string, any>
-    const graphSummary = {
+    return {
       selectedNodeId: selectedWorkflowNodeId,
       nodes: (snapshot.nodes ?? []).map((node: any) => ({
         id: node.id,
@@ -2231,26 +2323,27 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       })),
       edges: snapshot.edges ?? [],
     }
-    return [
-      'You are editing an existing character resource workflow graph.',
-      'Use the operations array for concrete edits. Prefer small, incremental edits over replacing the whole graph.',
-      'Allowed operation types: add-node, update-node-config, delete-node, add-link, delete-link.',
-      'When adding links, use exact node ids and slot ids from the graph. When adding nodes, use valid node types from existing node type patterns.',
-      'Do not delete generation-goal.',
-      'Current graph JSON:',
-      JSON.stringify(graphSummary),
-      'User request:',
-      userPrompt,
-    ].join('\n')
   }
 
   function applyCharacterWorkflowAssistantResult(response: {
     spec?: {
+      summary?: string
+      plan?: string[]
+      confidence?: number
+      status?: string
       operations?: Array<Record<string, unknown>>
     }
     uiConfigOverrides?: Record<string, Record<string, unknown>>
   }): boolean {
     let changed = false
+    const feedback = {
+      nodeIds: new Set<string>(),
+      linkIds: new Set<string>(),
+      deletedNodeIds: new Set<string>(),
+      deletedLinkIds: new Set<string>(),
+      nodeActions: new Map<string, string>(),
+      linkActions: new Map<string, string>(),
+    }
     for (const [nodeId, config] of Object.entries(response.uiConfigOverrides ?? {})) {
       const entries = Object.entries(config).filter(([, value]) => {
         if (Array.isArray(value)) return value.length > 0
@@ -2259,17 +2352,51 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       if (!entries.length) continue
       characterWorkflowConfigOverrides[nodeId] ??= {}
       Object.assign(characterWorkflowConfigOverrides[nodeId], Object.fromEntries(entries))
+      feedback.nodeIds.add(nodeId)
+      feedback.nodeActions.set(nodeId, options.getLanguage() === 'zh-CN' ? '编辑' : 'Edited')
       changed = true
     }
     const operations = Array.isArray(response.spec?.operations) ? response.spec.operations : []
     for (const operation of operations) {
-      changed = applyCharacterWorkflowAssistantOperation(operation) || changed
+      changed = applyCharacterWorkflowAssistantOperation(operation, feedback) || changed
     }
     saveActiveWorkflowProjectSnapshot()
+    if (changed) {
+      characterResourceViewState.agentHighlights = {
+        nodeIds: [...feedback.nodeIds],
+        linkIds: [...feedback.linkIds],
+        deletedNodeIds: [...feedback.deletedNodeIds],
+        deletedLinkIds: [...feedback.deletedLinkIds],
+        nodeActions: Object.fromEntries(feedback.nodeActions),
+        linkActions: Object.fromEntries(feedback.linkActions),
+      }
+      const summary = typeof response.spec?.summary === 'string' ? response.spec.summary.trim() : ''
+      if (summary) {
+        characterWorkflowBuilderStatus = summary
+      }
+      window.setTimeout(() => {
+        if (!characterResourceViewState.agentHighlights) {
+          return
+        }
+        characterResourceViewState.agentHighlights = undefined
+        renderCharacterWorkflow()
+      }, 1900)
+    }
     return changed
   }
 
-  function applyCharacterWorkflowAssistantOperation(operation: Record<string, unknown>): boolean {
+  function applyCharacterWorkflowAssistantOperation(
+    operation: Record<string, unknown>,
+    feedback?: {
+      nodeIds: Set<string>
+      linkIds: Set<string>
+      deletedNodeIds: Set<string>
+      deletedLinkIds: Set<string>
+      nodeActions: Map<string, string>
+      linkActions: Map<string, string>
+    }
+  ): boolean {
+    const zh = options.getLanguage() === 'zh-CN'
     const type = typeof operation.type === 'string' ? operation.type : ''
     if (type === 'add-node') {
       const nodeType = typeof operation.nodeType === 'string' ? operation.nodeType.trim() : ''
@@ -2296,6 +2423,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       }
       selectedWorkflowNodeId = nodeId
       characterResourceViewState.selectedNodeIds = [nodeId]
+      feedback?.nodeIds.add(nodeId)
+      feedback?.nodeActions.set(nodeId, zh ? '创建' : 'Created')
       return true
     }
     if (type === 'update-node-config') {
@@ -2307,6 +2436,59 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       }
       selectedWorkflowNodeId = nodeId
       characterResourceViewState.selectedNodeIds = [nodeId]
+      feedback?.nodeIds.add(nodeId)
+      feedback?.nodeActions.set(nodeId, zh ? '编辑' : 'Edited')
+      return true
+    }
+    if (type === 'move-node') {
+      const nodeId = typeof operation.nodeId === 'string' ? operation.nodeId.trim() : ''
+      const x = typeof operation.x === 'number' ? operation.x : Number(operation.x)
+      const y = typeof operation.y === 'number' ? operation.y : Number(operation.y)
+      if (!nodeId || !Number.isFinite(x) || !Number.isFinite(y)) return false
+      characterWorkflowPositionOverrides[nodeId] = { x: Math.round(x), y: Math.round(y) }
+      selectedWorkflowNodeId = nodeId
+      characterResourceViewState.selectedNodeIds = [nodeId]
+      feedback?.nodeIds.add(nodeId)
+      feedback?.nodeActions.set(nodeId, zh ? '移动' : 'Moved')
+      return true
+    }
+    if (type === 'resize-node') {
+      const nodeId = typeof operation.nodeId === 'string' ? operation.nodeId.trim() : ''
+      const width = typeof operation.width === 'number' ? operation.width : Number(operation.width)
+      const height = typeof operation.height === 'number' ? operation.height : Number(operation.height)
+      if (!nodeId || !Number.isFinite(width) || !Number.isFinite(height)) return false
+      characterResourceViewState.nodeSizes ??= {}
+      characterResourceViewState.nodeSizes[nodeId] = {
+        width: Math.max(190, Math.min(520, Math.round(width))),
+        height: Math.max(120, Math.min(720, Math.round(height))),
+      }
+      selectedWorkflowNodeId = nodeId
+      characterResourceViewState.selectedNodeIds = [nodeId]
+      feedback?.nodeIds.add(nodeId)
+      feedback?.nodeActions.set(nodeId, zh ? '缩放' : 'Resized')
+      return true
+    }
+    if (type === 'select-node') {
+      const nodeId = typeof operation.nodeId === 'string' ? operation.nodeId.trim() : ''
+      if (!nodeId) return false
+      selectedWorkflowNodeId = nodeId
+      characterResourceViewState.selectedNodeIds = [nodeId]
+      feedback?.nodeIds.add(nodeId)
+      feedback?.nodeActions.set(nodeId, zh ? '选择' : 'Selected')
+      return true
+    }
+    if (type === 'set-node-collapsed') {
+      const nodeId = typeof operation.nodeId === 'string' ? operation.nodeId.trim() : ''
+      if (!nodeId || typeof operation.collapsed !== 'boolean') return false
+      const collapsed = new Set(characterResourceViewState.collapsedNodeIds)
+      if (operation.collapsed) {
+        collapsed.add(nodeId)
+      } else {
+        collapsed.delete(nodeId)
+      }
+      characterResourceViewState.collapsedNodeIds = collapsed
+      feedback?.nodeIds.add(nodeId)
+      feedback?.nodeActions.set(nodeId, operation.collapsed ? (zh ? '折叠' : 'Collapsed') : (zh ? '展开' : 'Expanded'))
       return true
     }
     if (type === 'delete-node') {
@@ -2317,6 +2499,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         selectedWorkflowNodeId = 'generation-goal'
         characterResourceViewState.selectedNodeIds = ['generation-goal']
       }
+      feedback?.deletedNodeIds.add(nodeId)
       return true
     }
     if (type === 'add-link') {
@@ -2337,6 +2520,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       characterResourceViewState.deletedLinkIds.delete(linkId)
       characterResourceViewState.selectedLinkId = linkId
       characterResourceViewState.selectedNodeIds = []
+      feedback?.linkIds.add(linkId)
+      feedback?.linkActions.set(linkId, zh ? '连线' : 'Linked')
       return true
     }
     if (type === 'delete-link') {
@@ -2353,6 +2538,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       if (characterResourceViewState.selectedLinkId === linkId) {
         characterResourceViewState.selectedLinkId = ''
       }
+      feedback?.deletedLinkIds.add(linkId)
       return true
     }
     return false

@@ -553,7 +553,7 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     title: 'Image Target',
     category: 'targets',
     executor: 'image',
-    description: 'Declares one or more image resources such as avatar, body, scene, expression, or reference images.',
+    description: 'Declares one image resource type such as avatar, body, scene, expression, or reference images.',
     inputs: {
       card: port('card', 'Card', 'asset-target'),
       image: port('image', 'Image', 'image-capability', true),
@@ -733,12 +733,12 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     title: 'Image Generation Control',
     category: 'controls',
     executor: 'manual',
-    description: 'Controls image quantity, image roles, composition, consistency, and negative prompts for connected image targets.',
+    description: 'Controls quantity, composition, consistency, and negative prompt for one connected image type.',
     inputs: { imageTarget: port('imageTarget', 'Image Target', 'asset-target') },
     outputs: { imageControl: port('imageControl', 'Image Control', 'asset-target') },
     parameters: [
-      parameter('targetImageCount', 'Image Count', 'integer', 4, { min: 1, max: 16, step: 1 }),
-      parameter('imageTypes', 'Image Types', 'multi-select', ['avatar', 'body', 'scene', 'expression'], undefined, [
+      parameter('targetImageCount', 'Image Count', 'integer', 1, { min: 1, max: 16, step: 1 }),
+      parameter('imageType', 'Image Type', 'select', 'avatar', undefined, [
         option('Avatar', 'avatar'),
         option('Body', 'body'),
         option('Scene', 'scene'),
@@ -1562,7 +1562,7 @@ function createDefaultCharacterWorkflowExecutors(): Partial<Record<CharacterNode
       sourceNodeId: node.id,
       createdAt: timestamp,
       targets: {
-        requested: ['image-control', ...stringListConfig(config.imageTypes)],
+        requested: ['image-control', `image:${stringConfig(config.imageType, stringListConfig(config.imageTypes, ['avatar'])[0] ?? 'avatar')}`],
         includeAlternates: true,
       },
     }],

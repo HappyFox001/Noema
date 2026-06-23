@@ -7,13 +7,17 @@ import {
 } from '../chat/request-runtime.js'
 import {
   createStandardCharacterWorkflow,
+  type CharacterNodeType,
   type CharacterWorkflow,
+  type CharacterWorkflowLinkKind,
   type CharacterWorkflowLanguage,
 } from './index.js'
 
 export interface CharacterWorkflowBuilderRequest {
   prompt: string
   language?: CharacterWorkflowLanguage
+  mode?: 'create' | 'edit'
+  graph?: CharacterWorkflowBuilderGraph
   modelConfig: ConfiguredChatModel | null
   llmApiId?: string
   llmModelName?: string
@@ -22,8 +26,34 @@ export interface CharacterWorkflowBuilderRequest {
   now?: number
 }
 
+export interface CharacterWorkflowBuilderGraph {
+  selectedNodeId?: string
+  nodes: CharacterWorkflowBuilderGraphNode[]
+  edges: CharacterWorkflowBuilderGraphEdge[]
+}
+
+export interface CharacterWorkflowBuilderGraphNode {
+  id: string
+  type: string
+  title?: string
+  config?: Record<string, unknown>
+  inputs?: string[]
+  outputs?: string[]
+}
+
+export interface CharacterWorkflowBuilderGraphEdge {
+  id?: string
+  from: { nodeId: string; port: string }
+  to: { nodeId: string; port: string }
+  kind?: string
+}
+
 export interface CharacterWorkflowBuilderSpec {
   name: string
+  plan: string[]
+  summary: string
+  confidence: number
+  status: 'applied' | 'needs-user' | 'blocked'
   goalPrompt: string
   targetAudience: string
   stylePrompt: string
@@ -54,12 +84,16 @@ export interface CharacterWorkflowBuilderSpec {
 export type CharacterWorkflowBuilderOperation =
   | { type: 'add-node'; nodeType: string; nodeId?: string; title?: string; x?: number; y?: number; config?: Record<string, unknown> }
   | { type: 'update-node-config'; nodeId: string; config: Record<string, unknown> }
+  | { type: 'move-node'; nodeId: string; x: number; y: number }
+  | { type: 'resize-node'; nodeId: string; width: number; height: number }
+  | { type: 'select-node'; nodeId: string }
+  | { type: 'set-node-collapsed'; nodeId: string; collapsed: boolean }
   | { type: 'delete-node'; nodeId: string }
   | { type: 'add-link'; sourceNodeId: string; sourceSlotId: string; targetNodeId: string; targetSlotId: string; kind?: string }
   | { type: 'delete-link'; linkId?: string; sourceNodeId?: string; sourceSlotId?: string; targetNodeId?: string; targetSlotId?: string }
 
 export interface CharacterWorkflowBuilderResult {
-  workflow: CharacterWorkflow
+  workflow?: CharacterWorkflow
   spec: CharacterWorkflowBuilderSpec
   uiConfigOverrides: Record<string, Record<string, unknown>>
 }
@@ -76,6 +110,14 @@ export async function buildCharacterWorkflowFromPrompt(
   }
 
   const language = request.language ?? 'zh-CN'
+  if (request.mode === 'edit') {
+    return editCharacterWorkflowFromPrompt({
+      ...request,
+      prompt,
+      language,
+    })
+  }
+
   const response = await sendChatTurnWithConfiguredModel(request.modelConfig, {
     input: prompt,
     language,
@@ -110,6 +152,37 @@ export async function buildCharacterWorkflowFromPrompt(
   }
 }
 
+async function editCharacterWorkflowFromPrompt(
+  request: CharacterWorkflowBuilderRequest & { prompt: string; language: CharacterWorkflowLanguage }
+): Promise<CharacterWorkflowBuilderResult> {
+  const graph = normalizeBuilderGraph(request.graph)
+  if (!graph.nodes.length) {
+    throw new Error('Workflow editor graph is empty')
+  }
+  const response = await sendChatTurnWithConfiguredModel(request.modelConfig, {
+    input: JSON.stringify({
+      userRequest: request.prompt,
+      graph,
+    }),
+    language: request.language,
+    options: { temperature: 0.24, top_p: 0.78, max_tokens: 2400 },
+    messages: [{
+      role: 'system',
+      content: createWorkflowEditorSystemPrompt(request.language),
+    }],
+  }, {
+    defaultOptions: {
+      max_tokens: 2400,
+    },
+  })
+
+  const spec = normalizeWorkflowEditorSpec(response.content, request.prompt, request.language, graph)
+  return {
+    spec,
+    uiConfigOverrides: createEditorUiConfigOverrides(spec, graph),
+  }
+}
+
 export function normalizeWorkflowBuilderSpec(
   rawContent: string,
   fallbackPrompt: string,
@@ -119,6 +192,10 @@ export function normalizeWorkflowBuilderSpec(
   const fallbackName = language === 'zh-CN' ? '角色草稿' : 'Character Draft'
   const spec: CharacterWorkflowBuilderSpec = {
     name: stringValue(parsed, 'name') || deriveName(fallbackPrompt, fallbackName),
+    plan: stringList(parsed, 'plan', []),
+    summary: stringValue(parsed, 'summary'),
+    confidence: numberValue(parsed, 'confidence', 0.74, 0, 1),
+    status: normalizeBuilderStatus(stringValue(parsed, 'status')),
     goalPrompt: stringValue(parsed, 'goalPrompt') || fallbackPrompt,
     targetAudience: stringValue(parsed, 'targetAudience'),
     stylePrompt: stringValue(parsed, 'stylePrompt'),
@@ -138,6 +215,55 @@ export function normalizeWorkflowBuilderSpec(
     spec.assetTargets = [...spec.assetTargets, 'image-pack']
   }
   return spec
+}
+
+export function normalizeWorkflowEditorSpec(
+  rawContent: string,
+  fallbackPrompt: string,
+  language: CharacterWorkflowLanguage = 'zh-CN',
+  graph?: CharacterWorkflowBuilderGraph
+): CharacterWorkflowBuilderSpec {
+  const parsed = parseJsonObject(rawContent)
+  const fallbackName = language === 'zh-CN' ? '资源图修改' : 'Workflow Edit'
+  const operations = operationList(parsed?.operations)
+  const directUpdates = recordMapValue(parsed, 'nodeConfigUpdates')
+  const normalizedGraph = normalizeBuilderGraph(graph)
+  const inferredUpdates = inferWorkflowEditorConfigUpdates(fallbackPrompt, normalizedGraph)
+  const inferredOperations = inferWorkflowEditorOperations(fallbackPrompt, normalizedGraph)
+  const mergedUpdates = {
+    ...inferredUpdates,
+    ...directUpdates,
+  }
+  const mergedOperations = [
+    ...Object.entries(mergedUpdates).map(([nodeId, config]) => ({
+      type: 'update-node-config' as const,
+      nodeId,
+      config,
+    })),
+    ...inferredOperations,
+    ...operations,
+  ]
+  return {
+    name: stringValue(parsed, 'name') || deriveName(fallbackPrompt, fallbackName),
+    plan: stringList(parsed, 'plan', []),
+    summary: stringValue(parsed, 'summary'),
+    confidence: numberValue(parsed, 'confidence', 0.78, 0, 1),
+    status: normalizeBuilderStatus(stringValue(parsed, 'status')),
+    goalPrompt: '',
+    targetAudience: '',
+    stylePrompt: '',
+    preset: 'custom',
+    intensity: 0.72,
+    mustHave: [],
+    mustNot: [],
+    sourceNotes: '',
+    generationStrategy: normalizeGenerationStrategy({}),
+    agentPolicy: normalizeAgentPolicy({}),
+    qualityGate: normalizeQualityGate({}),
+    assetTargets: DEFAULT_ASSET_TARGETS,
+    outputFormat: 'noema-role-chat',
+    operations: mergedOperations,
+  }
 }
 
 export function createUiConfigOverrides(spec: CharacterWorkflowBuilderSpec): Record<string, Record<string, unknown>> {
@@ -164,8 +290,8 @@ export function createUiConfigOverrides(spec: CharacterWorkflowBuilderSpec): Rec
       imageRole: 'avatar',
     },
     'image-control': {
-      targetImageCount: Math.max(1, spec.assetTargets.includes('image-pack') ? 4 : 1),
-      imageTypes: spec.assetTargets.includes('image-pack') ? ['avatar', 'body', 'scene', 'expression'] : ['avatar'],
+      targetImageCount: 1,
+      imageType: 'avatar',
       composition: 'character-focused',
       consistencyMode: 'same-character',
       negativePrompt: spec.mustNot.join(', '),
@@ -208,6 +334,28 @@ export function createUiConfigOverrides(spec: CharacterWorkflowBuilderSpec): Rec
   }
 }
 
+export function createEditorUiConfigOverrides(
+  spec: CharacterWorkflowBuilderSpec,
+  graph?: CharacterWorkflowBuilderGraph
+): Record<string, Record<string, unknown>> {
+  const normalizedGraph = normalizeBuilderGraph(graph)
+  const updates: Record<string, Record<string, unknown>> = {}
+  for (const operation of spec.operations) {
+    if (operation.type !== 'update-node-config') {
+      continue
+    }
+    const node = normalizedGraph.nodes.find((item) => item.id === operation.nodeId)
+    const config = sanitizeResourceConfigForNode(node?.type, operation.config)
+    if (Object.keys(config).length) {
+      updates[operation.nodeId] = {
+        ...(updates[operation.nodeId] ?? {}),
+        ...config,
+      }
+    }
+  }
+  return updates
+}
+
 function createWorkflowBuilderSystemPrompt(language: CharacterWorkflowLanguage): string {
   const localeRule = language === 'zh-CN'
     ? 'Write Chinese user-facing content. Keep internal enum values in English.'
@@ -218,10 +366,15 @@ function createWorkflowBuilderSystemPrompt(language: CharacterWorkflowLanguage):
     localeRule,
     'The final workflow must always generate a complete role card and at least one image asset.',
     'Do not write final character-card fields here. This is workflow configuration only.',
+    'For images, one image-target plus one image-generation-control represents exactly one image type and count. Do not use imageTypes arrays. If the brief needs avatar + body + scene + expression, return operations that create separate image target/control pairs for each type.',
     'Return only valid JSON. No markdown, comments, or surrounding prose.',
     'Schema:',
     '{',
     '  "name": string,',
+    '  "plan": string[],',
+    '  "summary": string,',
+    '  "confidence": number,',
+    '  "status": "applied" | "needs-user" | "blocked",',
     '  "goalPrompt": string,',
     '  "targetAudience": string,',
     '  "stylePrompt": string,',
@@ -238,6 +391,74 @@ function createWorkflowBuilderSystemPrompt(language: CharacterWorkflowLanguage):
     '  "operations": [',
     '    { "type": "add-node", "nodeType": string, "nodeId"?: string, "title"?: string, "x"?: number, "y"?: number, "config"?: object },',
     '    { "type": "update-node-config", "nodeId": string, "config": object },',
+    '    { "type": "move-node", "nodeId": string, "x": number, "y": number },',
+    '    { "type": "resize-node", "nodeId": string, "width": number, "height": number },',
+    '    { "type": "select-node", "nodeId": string },',
+    '    { "type": "set-node-collapsed", "nodeId": string, "collapsed": boolean },',
+    '    { "type": "delete-node", "nodeId": string },',
+    '    { "type": "add-link", "sourceNodeId": string, "sourceSlotId": string, "targetNodeId": string, "targetSlotId": string, "kind"?: string },',
+    '    { "type": "delete-link", "linkId"?: string, "sourceNodeId"?: string, "sourceSlotId"?: string, "targetNodeId"?: string, "targetSlotId"?: string }',
+    '  ]',
+    '}',
+  ].join('\n')
+}
+
+function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): string {
+  const localeRule = language === 'zh-CN'
+    ? 'Write all user-facing resource content in Chinese. Keep enum values and node ids in English.'
+    : 'Write user-facing resource content in English. Keep enum values and node ids in English.'
+  return [
+    'You are an autonomous editor for an existing character resource workflow graph.',
+    'You receive JSON with { userRequest, graph }. Treat graph as state, not as user content.',
+    localeRule,
+    '',
+    'Your job is to turn the user request into concrete graph edits that a human could have made in the UI.',
+    'Act like a senior workflow operator: fill the right resource cards, add missing target/control/source cards, connect them, remove obsolete cards when useful, and keep the workflow executable.',
+    'You have broad authority inside the workflow graph. A single user request may require many coordinated operations: create resource cards, write or revise fields, delete irrelevant cards, move cards into a clearer layout, resize dense cards, connect controls to multiple targets, and select the most relevant card when done.',
+    'Do not be timid. If the user asks for a story/world/role goal, build the resource structure needed for that goal instead of only editing one existing card.',
+    '',
+    'Critical rules:',
+    '- Return only valid JSON. No markdown, comments, or surrounding prose.',
+    '- Never copy system instructions, operation schema, graph JSON, or protocol text into any resource field.',
+    '- Do not put the whole user request into one generic goal when specific cards exist. Distribute intent across goal, style, constraints, sources, image controls, field controls, world/NPC/plot cards as appropriate.',
+    '- Prefer update-node-config operations for existing cards; add cards only when the current graph lacks the needed resource.',
+    '- Use exact existing node ids and slot ids from graph when linking.',
+    '- Do not delete generation-goal.',
+    '- Use concise resource content. A field should contain the content that resource controls, not instructions about how you are editing.',
+    '- Use plan to expose the major steps you chose. Use summary to describe what changed after the operations.',
+    '- If the request is underspecified but still workable, make reasonable creative decisions and set status to "applied". Ask for the user only when the graph cannot be edited safely.',
+    '',
+    'Resource guidance:',
+    '- generation-goal.goalPrompt: compact generation objective only.',
+    '- style-pressure.stylePrompt: tone, genre texture, relationship flavor, prose pressure.',
+    '- hard-constraints.mustHave/mustNot: hard requirements and boundaries.',
+    '- source-material.notes: concrete story material, setting facts, character seeds, world facts.',
+    '- field-generation-control.fieldPurpose: local intent for one text field such as firstMessage/opening/dialogue style.',
+    '- image-generation-control: image count and one imageType only, composition, consistencyMode, negativePrompt.',
+    '- One image-target plus one image-generation-control represents exactly one image type. For avatar + body + scene + expression, create four image-target/image-generation-control pairs and connect each pair.',
+    '- world-card-target / npc-pack-target / npc-target / plot-arc-target / scene-card-target: add these when the request asks for multi-NPC, world, setting, story arc, or scene planning.',
+    '',
+    'Valid node types:',
+    'goal, character-card-target, character-field-target, image-target, world-card-target, npc-pack-target, npc-target, plot-arc-target, scene-card-target, style-pressure, constraint, image-generation-control, field-generation-control, continuity-control, relationship-control, source-material, llm-tool, image-tool, retrieval-tool, voice-tool, agent-policy, generation-strategy, critique-loop, quality-gate, output-adapter.',
+    '',
+    'Valid link kinds:',
+    'guides, constrains, provides, enables, grounds, weights, routes, evaluates, refines, exports.',
+    '',
+    'Return schema:',
+    '{',
+    '  "name": string,',
+    '  "plan": string[],',
+    '  "summary": string,',
+    '  "confidence": number,',
+    '  "status": "applied" | "needs-user" | "blocked",',
+    '  "nodeConfigUpdates": { [nodeId: string]: object },',
+    '  "operations": [',
+    '    { "type": "add-node", "nodeType": string, "nodeId"?: string, "title"?: string, "x"?: number, "y"?: number, "config"?: object },',
+    '    { "type": "update-node-config", "nodeId": string, "config": object },',
+    '    { "type": "move-node", "nodeId": string, "x": number, "y": number },',
+    '    { "type": "resize-node", "nodeId": string, "width": number, "height": number },',
+    '    { "type": "select-node", "nodeId": string },',
+    '    { "type": "set-node-collapsed", "nodeId": string, "collapsed": boolean },',
     '    { "type": "delete-node", "nodeId": string },',
     '    { "type": "add-link", "sourceNodeId": string, "sourceSlotId": string, "targetNodeId": string, "targetSlotId": string, "kind"?: string },',
     '    { "type": "delete-link", "linkId"?: string, "sourceNodeId"?: string, "sourceSlotId"?: string, "targetNodeId"?: string, "targetSlotId"?: string }',
@@ -291,8 +512,8 @@ function applySpecToWorkflow(workflow: CharacterWorkflow, spec: CharacterWorkflo
     imageRole: 'avatar',
   })
   byType.get('image-generation-control')?.config && Object.assign(byType.get('image-generation-control')!.config, {
-    targetImageCount: Math.max(1, spec.assetTargets.includes('image-pack') ? 4 : 1),
-    imageTypes: spec.assetTargets.includes('image-pack') ? ['avatar', 'body', 'scene', 'expression'] : ['avatar'],
+    targetImageCount: 1,
+    imageType: 'avatar',
     composition: 'character-focused',
     consistencyMode: 'same-character',
     negativePrompt: spec.mustNot.join(', '),
@@ -320,6 +541,68 @@ function parseJsonObject(text: string): Record<string, unknown> {
   } catch {
     return {}
   }
+}
+
+function normalizeBuilderGraph(graph: CharacterWorkflowBuilderGraph | undefined): CharacterWorkflowBuilderGraph {
+  if (!graph || typeof graph !== 'object') {
+    return { nodes: [], edges: [] }
+  }
+  const nodes = Array.isArray(graph.nodes)
+    ? graph.nodes.flatMap((node): CharacterWorkflowBuilderGraphNode[] => {
+      if (!node || typeof node !== 'object') return []
+      const record = node as unknown as Record<string, unknown>
+      const id = typeof record.id === 'string' ? record.id.trim() : ''
+      const type = typeof record.type === 'string' ? record.type.trim() : ''
+      if (!id || !type) return []
+      return [{
+        id,
+        type,
+        title: typeof record.title === 'string' ? record.title : undefined,
+        config: recordValue(record, 'config'),
+        inputs: Array.isArray(record.inputs) ? record.inputs.map(String).filter(Boolean) : [],
+        outputs: Array.isArray(record.outputs) ? record.outputs.map(String).filter(Boolean) : [],
+      }]
+    })
+    : []
+  const edges = Array.isArray(graph.edges)
+    ? graph.edges.flatMap((edge): CharacterWorkflowBuilderGraphEdge[] => {
+      if (!edge || typeof edge !== 'object') return []
+      const record = edge as unknown as Record<string, unknown>
+      const from = recordValue(record, 'from')
+      const to = recordValue(record, 'to')
+      const sourceNodeId = stringValue(from, 'nodeId')
+      const sourcePort = stringValue(from, 'port')
+      const targetNodeId = stringValue(to, 'nodeId')
+      const targetPort = stringValue(to, 'port')
+      if (!sourceNodeId || !sourcePort || !targetNodeId || !targetPort) return []
+      return [{
+        id: stringValue(record, 'id') || undefined,
+        from: { nodeId: sourceNodeId, port: sourcePort },
+        to: { nodeId: targetNodeId, port: targetPort },
+        kind: stringValue(record, 'kind') || undefined,
+      }]
+    })
+    : []
+  return {
+    selectedNodeId: typeof graph.selectedNodeId === 'string' ? graph.selectedNodeId : undefined,
+    nodes,
+    edges,
+  }
+}
+
+function recordMapValue(record: Record<string, unknown>, key: string): Record<string, Record<string, unknown>> {
+  const value = record[key]
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {}
+  }
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).flatMap(([nodeId, config]) => {
+      if (!nodeId.trim() || !config || typeof config !== 'object' || Array.isArray(config)) {
+        return []
+      }
+      return [[nodeId, config as Record<string, unknown>]]
+    })
+  )
 }
 
 function recordValue(record: Record<string, unknown>, key: string): Record<string, unknown> {
@@ -356,7 +639,7 @@ function operationList(value: unknown): CharacterWorkflowBuilderOperation[] {
     const type = stringValue(record, 'type')
     if (type === 'add-node') {
       const nodeType = stringValue(record, 'nodeType')
-      if (!nodeType) return []
+      if (!isCharacterNodeType(nodeType)) return []
       return [{
         type,
         nodeType,
@@ -372,6 +655,29 @@ function operationList(value: unknown): CharacterWorkflowBuilderOperation[] {
       if (!nodeId) return []
       return [{ type, nodeId, config: recordValue(record, 'config') }]
     }
+    if (type === 'move-node') {
+      const nodeId = stringValue(record, 'nodeId')
+      const x = typeof record.x === 'number' ? record.x : Number(record.x)
+      const y = typeof record.y === 'number' ? record.y : Number(record.y)
+      if (!nodeId || !Number.isFinite(x) || !Number.isFinite(y)) return []
+      return [{ type, nodeId, x: Math.round(x), y: Math.round(y) }]
+    }
+    if (type === 'resize-node') {
+      const nodeId = stringValue(record, 'nodeId')
+      const width = typeof record.width === 'number' ? record.width : Number(record.width)
+      const height = typeof record.height === 'number' ? record.height : Number(record.height)
+      if (!nodeId || !Number.isFinite(width) || !Number.isFinite(height)) return []
+      return [{ type, nodeId, width: Math.round(width), height: Math.round(height) }]
+    }
+    if (type === 'select-node') {
+      const nodeId = stringValue(record, 'nodeId')
+      return nodeId ? [{ type, nodeId }] : []
+    }
+    if (type === 'set-node-collapsed') {
+      const nodeId = stringValue(record, 'nodeId')
+      if (!nodeId || typeof record.collapsed !== 'boolean') return []
+      return [{ type, nodeId, collapsed: record.collapsed }]
+    }
     if (type === 'delete-node') {
       const nodeId = stringValue(record, 'nodeId')
       return nodeId ? [{ type, nodeId }] : []
@@ -382,7 +688,8 @@ function operationList(value: unknown): CharacterWorkflowBuilderOperation[] {
       const targetNodeId = stringValue(record, 'targetNodeId')
       const targetSlotId = stringValue(record, 'targetSlotId')
       if (!sourceNodeId || !sourceSlotId || !targetNodeId || !targetSlotId) return []
-      return [{ type, sourceNodeId, sourceSlotId, targetNodeId, targetSlotId, kind: stringValue(record, 'kind') || undefined }]
+      const kind = stringValue(record, 'kind')
+      return [{ type, sourceNodeId, sourceSlotId, targetNodeId, targetSlotId, kind: isCharacterLinkKind(kind) ? kind : undefined }]
     }
     if (type === 'delete-link') {
       return [{
@@ -395,7 +702,300 @@ function operationList(value: unknown): CharacterWorkflowBuilderOperation[] {
       }]
     }
     return []
-  }).slice(0, 24)
+  }).slice(0, 80)
+}
+
+function normalizeBuilderStatus(value: string): CharacterWorkflowBuilderSpec['status'] {
+  return new Set(['applied', 'needs-user', 'blocked']).has(value) ? value as CharacterWorkflowBuilderSpec['status'] : 'applied'
+}
+
+function inferWorkflowEditorConfigUpdates(
+  prompt: string,
+  graph: CharacterWorkflowBuilderGraph
+): Record<string, Record<string, unknown>> {
+  const text = prompt.trim()
+  if (!text) return {}
+  const lower = text.toLowerCase()
+  const zh = /[\u3400-\u9fff]/.test(text)
+  const hasCampus = /校园|大学|高中|同桌|学姐|学妹|社团|课堂|图书馆|campus|school|college|university/.test(lower)
+  const hasRomance = /恋爱|爱情|暧昧|甜|情侣|告白|约会|romance|love|sweet|dating/.test(lower)
+  const hasFemaleLead = /女主|女生|女孩|少女|她|female|girl|heroine/.test(lower)
+  const hasSpicy = /偏肉|肉|亲密|身体|暧昧拉扯|成人|sensual|spicy|intimate/.test(lower)
+  const hasMultiNpc = /多npc|多个npc|群像|室友|同学们|社团成员|multi-npc|multiple npc/.test(lower)
+  const updates: Record<string, Record<string, unknown>> = {}
+  const nodeByType = (type: string) => graph.nodes.find((node) => node.type === type)
+  const goal = nodeByType('goal')
+  if (goal) {
+    updates[goal.id] = {
+      goalPrompt: zh
+        ? [
+          hasCampus ? '校园恋爱角色卡与长期 RP 故事框架' : '角色卡与长期 RP 故事框架',
+          hasFemaleLead ? '主角为女生' : '',
+          hasRomance ? '关系推进以甜蜜恋爱、暧昧拉扯和情感成长为核心' : '',
+          hasSpicy ? '允许适度成人向亲密氛围，但保持克制、同意与角色关系合理推进' : '',
+        ].filter(Boolean).join('；')
+        : [
+          hasCampus ? 'Campus romance character card and long-form RP story framework' : 'Character card and long-form RP story framework',
+          hasFemaleLead ? 'female protagonist' : '',
+          hasRomance ? 'sweet romance, romantic tension, and emotional growth' : '',
+          hasSpicy ? 'moderate sensual intimacy with consent and gradual relationship progression' : '',
+        ].filter(Boolean).join('; '),
+      targetAudience: zh ? '偏长期陪伴与剧情推进的中文 RP 用户' : 'Long-form RP users who want relationship-driven story progression',
+      allowAgentExpansion: true,
+    }
+  }
+  const style = nodeByType('style-pressure')
+  if (style) {
+    updates[style.id] = {
+      preset: hasCampus && hasRomance ? 'campus-romance' : 'custom',
+      intensity: hasSpicy ? 0.76 : 0.7,
+      stylePrompt: zh
+        ? [
+          hasCampus ? '清新的校园日常质感' : '',
+          hasRomance ? '甜甜的恋爱氛围、细腻暧昧、双向靠近' : '',
+          hasSpicy ? '亲密描写偏氛围和心理张力，避免突兀露骨' : '',
+          '对白自然，角色主动但不过度模板化',
+        ].filter(Boolean).join('；')
+        : [
+          hasCampus ? 'fresh campus slice-of-life texture' : '',
+          hasRomance ? 'sweet romance, delicate tension, mutual approach' : '',
+          hasSpicy ? 'intimacy focused on atmosphere and psychological tension, not abrupt explicitness' : '',
+          'natural dialogue and proactive but non-formulaic characterization',
+        ].filter(Boolean).join('; '),
+    }
+  }
+  const constraint = nodeByType('constraint')
+  if (constraint) {
+    updates[constraint.id] = {
+      mustHave: [
+        zh && hasFemaleLead ? '主角是女生' : hasFemaleLead ? 'female protagonist' : '',
+        zh && hasCampus ? '校园场景与日常事件能持续推动关系' : hasCampus ? 'campus scenes and daily events drive relationship progression' : '',
+        zh && hasRomance ? '甜蜜恋爱、暧昧拉扯、情感成长' : hasRomance ? 'sweet romance, romantic tension, emotional growth' : '',
+        zh && hasSpicy ? '成人向内容必须建立在自愿、关系铺垫和克制表达上' : hasSpicy ? 'adult intimacy must be consensual, gradual, and restrained' : '',
+      ].filter(Boolean),
+      mustNot: [
+        zh ? '未成年人露骨性内容' : 'explicit sexual content involving minors',
+        zh ? '强迫、无同意、羞辱式推进' : 'coercion, non-consent, humiliating progression',
+        zh ? '把设定写成空泛标签而没有可演事件' : 'generic labels without playable events',
+      ],
+      hardBoundary: true,
+    }
+  }
+  const source = nodeByType('source-material')
+  if (source) {
+    updates[source.id] = {
+      sourceKind: 'notes',
+      notes: zh
+        ? `用户需求：${text}\n可展开方向：校园日常、课后相处、社团/图书馆/雨天/考试周等事件；围绕女生主角的情绪、关系边界、主动选择与甜蜜互动展开。`
+        : `User request: ${text}\nExpansion direction: campus routines, after-class moments, club/library/rainy-day/exam-week events, centered on the female protagonist's emotions, boundaries, agency, and sweet interactions.`,
+    }
+  }
+  const fieldControl = nodeByType('field-generation-control')
+  if (fieldControl) {
+    updates[fieldControl.id] = {
+      fieldPurpose: zh
+        ? '开场白要直接进入可互动校园恋爱情境，展示女生主角的性格、关系张力和可继续推进的事件钩子。'
+        : 'Opening should enter an interactive campus-romance situation, showing the female protagonist, relational tension, and a playable hook.',
+      tone: hasSpicy ? 'warm' : 'sweet',
+      lengthPolicy: 'medium',
+      avoidPatterns: zh ? ['空泛旁白', '直接总结设定', '露骨开场'] : ['generic narration', 'summarizing the setting', 'explicit opening'],
+    }
+  }
+  const imageControl = nodeByType('image-generation-control')
+  if (imageControl) {
+    updates[imageControl.id] = {
+      targetImageCount: 1,
+      imageType: 'avatar',
+      composition: 'character-focused',
+      consistencyMode: 'same-character',
+      negativePrompt: zh
+        ? '未成年性暗示，露骨色情，低质手部，崩坏五官，过度暴露'
+        : 'minor sexualization, explicit pornography, poor hands, broken face, excessive exposure',
+    }
+  }
+  const strategy = nodeByType('generation-strategy')
+  if (strategy) {
+    updates[strategy.id] = {
+      mode: 'branch-and-refine',
+      branchCount: hasMultiNpc ? 4 : 3,
+      priorityAssets: hasMultiNpc ? ['role-card', 'opening', 'npc-pack', 'plot-arc', 'image-pack'] : ['role-card', 'opening', 'image-pack'],
+    }
+  }
+  return updates
+}
+
+function inferWorkflowEditorOperations(
+  prompt: string,
+  graph: CharacterWorkflowBuilderGraph
+): CharacterWorkflowBuilderOperation[] {
+  const text = prompt.trim().toLowerCase()
+  if (!text) return []
+  const requestedImageTypes = inferRequestedImageTypes(text)
+  if (requestedImageTypes.length <= 1) {
+    return []
+  }
+  const existingImageTypes = new Set(graph.nodes
+    .filter((node) => node.type === 'image-target')
+    .map((node) => stringValue(recordValue({ config: node.config ?? {} }, 'config'), 'imageRole'))
+    .filter(Boolean))
+  const characterTarget = graph.nodes.find((node) => node.type === 'character-card-target')
+  const imageTool = graph.nodes.find((node) => node.type === 'image-tool')
+  const style = graph.nodes.find((node) => node.type === 'style-pressure')
+  const constraint = graph.nodes.find((node) => node.type === 'constraint')
+  const operations: CharacterWorkflowBuilderOperation[] = []
+  requestedImageTypes.forEach((imageType, index) => {
+    if (existingImageTypes.has(imageType)) {
+      return
+    }
+    const targetId = `image-target-${imageType}`
+    const controlId = `image-control-${imageType}`
+    const x = 720 + index * 44
+    const y = 430 + index * 248
+    operations.push({
+      type: 'add-node',
+      nodeType: 'image-target',
+      nodeId: targetId,
+      title: imageTitleForType(imageType),
+      x,
+      y,
+      config: { imageRole: imageType },
+    })
+    operations.push({
+      type: 'add-node',
+      nodeType: 'image-generation-control',
+      nodeId: controlId,
+      title: `${imageTitleForType(imageType)} Control`,
+      x: x + 330,
+      y,
+      config: {
+        targetImageCount: 1,
+        imageType,
+        composition: compositionForImageType(imageType),
+        consistencyMode: imageType === 'scene' ? 'same-world' : 'same-character',
+        negativePrompt: 'text, caption, subtitle, watermark, logo, signature, UI text, prompt words, labels, typography',
+      },
+    })
+    if (characterTarget) {
+      operations.push({ type: 'add-link', sourceNodeId: characterTarget.id, sourceSlotId: 'target', targetNodeId: targetId, targetSlotId: 'card', kind: 'guides' })
+    }
+    if (imageTool) {
+      operations.push({ type: 'add-link', sourceNodeId: imageTool.id, sourceSlotId: 'image', targetNodeId: targetId, targetSlotId: 'image', kind: 'enables' })
+    }
+    operations.push({ type: 'add-link', sourceNodeId: targetId, sourceSlotId: 'imageAsset', targetNodeId: controlId, targetSlotId: 'imageTarget', kind: 'guides' })
+    operations.push({ type: 'add-link', sourceNodeId: controlId, sourceSlotId: 'imageControl', targetNodeId: targetId, targetSlotId: 'imageControl', kind: 'guides' })
+    if (style) {
+      operations.push({ type: 'add-link', sourceNodeId: style.id, sourceSlotId: 'style', targetNodeId: targetId, targetSlotId: 'style', kind: 'weights' })
+    }
+    if (constraint) {
+      operations.push({ type: 'add-link', sourceNodeId: constraint.id, sourceSlotId: 'constraint', targetNodeId: targetId, targetSlotId: 'constraint', kind: 'constrains' })
+    }
+  })
+  return operations
+}
+
+function inferRequestedImageTypes(text: string): string[] {
+  const requested = new Set<string>()
+  if (/头像|avatar|portrait|头图/.test(text)) requested.add('avatar')
+  if (/全身|立绘|body|full.?body/.test(text)) requested.add('body')
+  if (/场景|背景图|scene|environment/.test(text)) requested.add('scene')
+  if (/表情|差分|expression|emotion/.test(text)) requested.add('expression')
+  if (/参考|reference/.test(text)) requested.add('reference')
+  if (/图包|图片包|多图|image.?pack|avatar.*body.*scene|头像.*全身.*场景|头像.*全身.*表情/.test(text)) {
+    requested.add('avatar')
+    requested.add('body')
+    requested.add('scene')
+    requested.add('expression')
+  }
+  return [...requested]
+}
+
+function imageTitleForType(imageType: string): string {
+  const titles: Record<string, string> = {
+    avatar: 'Avatar Image Target',
+    body: 'Body Image Target',
+    scene: 'Scene Image Target',
+    expression: 'Expression Image Target',
+    reference: 'Reference Image Target',
+  }
+  return titles[imageType] ?? `${imageType} Image Target`
+}
+
+function compositionForImageType(imageType: string): string {
+  const compositions: Record<string, string> = {
+    avatar: 'upper-body-portrait',
+    body: 'full-body',
+    scene: 'environmental-scene',
+    expression: 'expression-sheet',
+    reference: 'character-focused',
+  }
+  return compositions[imageType] ?? 'character-focused'
+}
+
+function sanitizeResourceConfigForNode(type: string | undefined, config: Record<string, unknown>): Record<string, unknown> {
+  if (!type) return config
+  const allowedByType: Record<string, Set<string>> = {
+    goal: new Set(['goalPrompt', 'targetAudience', 'allowAgentExpansion']),
+    'style-pressure': new Set(['preset', 'intensity', 'stylePrompt']),
+    constraint: new Set(['mustHave', 'mustNot', 'hardBoundary']),
+    'source-material': new Set(['sourceKind', 'notes']),
+    'field-generation-control': new Set(['fieldPurpose', 'tone', 'lengthPolicy', 'avoidPatterns']),
+    'image-generation-control': new Set(['targetImageCount', 'imageType', 'composition', 'consistencyMode', 'negativePrompt']),
+    'generation-strategy': new Set(['mode', 'branchCount', 'priorityAssets']),
+    'agent-policy': new Set(['autonomyLevel', 'revisionBudget', 'askUserThreshold', 'canExpandMissingDetails']),
+    'quality-gate': new Set(['minimumScore', 'blockExport', 'requiredChecks']),
+    'output-adapter': new Set(['format', 'includeAssets']),
+    'character-card-target': new Set(['includeFields', 'includeSupportFields']),
+    'character-field-target': new Set(['field']),
+    'image-target': new Set(['imageRole']),
+  }
+  const allowed = allowedByType[type]
+  if (!allowed) return config
+  return Object.fromEntries(Object.entries(config).filter(([key]) => allowed.has(key)))
+}
+
+function isCharacterNodeType(value: string): value is CharacterNodeType {
+  return new Set<string>([
+    'goal',
+    'character-card-target',
+    'character-field-target',
+    'image-target',
+    'world-card-target',
+    'npc-pack-target',
+    'npc-target',
+    'plot-arc-target',
+    'scene-card-target',
+    'style-pressure',
+    'constraint',
+    'image-generation-control',
+    'field-generation-control',
+    'continuity-control',
+    'relationship-control',
+    'source-material',
+    'llm-tool',
+    'image-tool',
+    'retrieval-tool',
+    'voice-tool',
+    'agent-policy',
+    'generation-strategy',
+    'critique-loop',
+    'quality-gate',
+    'output-adapter',
+  ]).has(value)
+}
+
+function isCharacterLinkKind(value: string): value is CharacterWorkflowLinkKind {
+  return new Set<string>([
+    'guides',
+    'constrains',
+    'provides',
+    'enables',
+    'grounds',
+    'weights',
+    'routes',
+    'evaluates',
+    'refines',
+    'exports',
+  ]).has(value)
 }
 
 function normalizePreset(value: string): string {

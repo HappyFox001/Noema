@@ -408,7 +408,7 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'Image Prompt', value: 'imagePrompt' },
     ]),
   ], 'text-card'),
-  createDefinition('image-target', 'Image Target', ['图片目标', 'image target', 'visual target'], 'Targets', 'asset', 'Declares image resources such as avatar, body, scene, expression, or reference images.', [
+  createDefinition('image-target', 'Image Target', ['图片目标', 'image target', 'visual target'], 'Targets', 'asset', 'Declares one image resource type such as avatar, body, scene, expression, or reference images.', [
     slot('card', 'Card', 'asset-target', 'Character card target.'),
     slot('image', 'Image', 'image-capability', 'Image generation capability.', true),
     slot('imageControl', 'Image Control', 'asset-target', 'Image generation control.'),
@@ -536,13 +536,13 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     param('mustNot', 'Must Not', 'string-list', []),
     param('hardBoundary', 'Hard Boundary', 'boolean', true),
   ], 'rule'),
-  createDefinition('image-generation-control', 'Image Generation Control', ['图片控制', 'image control', 'visual control'], 'Controls', 'asset', 'Controls image quantity, image roles, composition, consistency, and negative prompts for connected image targets.', [
+  createDefinition('image-generation-control', 'Image Generation Control', ['图片控制', 'image control', 'visual control'], 'Controls', 'asset', 'Controls quantity, composition, consistency, and negative prompt for one connected image type.', [
     slot('imageTarget', 'Image Target', 'asset-target', 'Image target resource.'),
   ], [
     slot('imageControl', 'Image Control', 'asset-target', 'Image generation control.'),
   ], [
-    param('targetImageCount', 'Image Count', 'integer', 4, 1, 16, 1),
-    param('imageTypes', 'Image Types', 'multi-select', ['avatar', 'body', 'scene', 'expression'], undefined, undefined, undefined, [
+    param('targetImageCount', 'Image Count', 'integer', 1, 1, 16, 1),
+    param('imageType', 'Image Type', 'select', 'avatar', undefined, undefined, undefined, [
       { label: 'Avatar', value: 'avatar' },
       { label: 'Body', value: 'body' },
       { label: 'Scene', value: 'scene' },
@@ -1361,6 +1361,7 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
     root,
   })
   animateRunDraftCanvas(root, cleanups)
+  animateAgentOperationFeedback(root, cleanups)
   workbenchCleanups.set(root, cleanups)
 }
 
@@ -1527,6 +1528,61 @@ function animateRunDraftCanvas(root: HTMLElement, cleanups: Array<() => void>): 
           stagger: 0.025,
         }, 0.08)
     }, runViewport)
+    cleanups.push(() => ctx.revert())
+  }).catch(() => {
+    // Animation is optional; rendering must not depend on GSAP availability.
+  })
+  cleanups.push(() => {
+    reverted = true
+  })
+}
+
+function animateAgentOperationFeedback(root: HTMLElement, cleanups: Array<() => void>): void {
+  const viewport = root.querySelector<HTMLElement>('.chat-workflow-canvas-viewport.active')
+  if (!viewport) {
+    return
+  }
+  const hasHighlights = viewport.querySelector('.agent-highlight-node, .agent-highlight-link')
+  if (!hasHighlights) {
+    return
+  }
+  let reverted = false
+  import('gsap').then(({ gsap }) => {
+    if (reverted || !viewport.isConnected) {
+      return
+    }
+    const ctx = gsap.context(() => {
+      const nodes = gsap.utils.toArray<HTMLElement>('.agent-highlight-node')
+      const links = gsap.utils.toArray<SVGPathElement>('.agent-highlight-link path:not(.hit-area)')
+      const timeline = gsap.timeline({ defaults: { ease: 'power3.out' } })
+      if (nodes.length) {
+        timeline.fromTo(nodes, {
+          y: -6,
+          scale: 0.975,
+          filter: 'brightness(1.25)',
+        }, {
+          y: 0,
+          scale: 1,
+          filter: 'brightness(1)',
+          duration: 0.42,
+          stagger: 0.035,
+          clearProps: 'transform,filter',
+        }, 0)
+      }
+      if (links.length) {
+        timeline.fromTo(links, {
+          opacity: 0,
+          strokeDasharray: 18,
+          strokeDashoffset: 36,
+        }, {
+          opacity: 1,
+          strokeDashoffset: 0,
+          duration: 0.52,
+          stagger: 0.025,
+          clearProps: 'opacity,strokeDasharray,strokeDashoffset',
+        }, 0.08)
+      }
+    }, viewport)
     cleanups.push(() => ctx.revert())
   }).catch(() => {
     // Animation is optional; rendering must not depend on GSAP availability.
@@ -2421,11 +2477,13 @@ function renderLinkPath(linkItem: CharacterResourceLink, graph: CharacterResourc
   const path = `M ${x1} ${y1} C ${x1 + mid} ${y1}, ${x2 - mid} ${y2}, ${x2} ${y2}`
   const flowing = source.status === 'running' || source.status === 'queued' || target.status === 'running' || target.status === 'queued'
   const collapsedNodeLinkReroute = Boolean(source.collapsed || target.collapsed)
+  const highlighted = options.viewState?.agentHighlights?.linkIds?.includes(linkItem.id) ?? false
+  const actionLabel = options.viewState?.agentHighlights?.linkActions?.[linkItem.id] ?? ''
   return `
-    <g class="chat-resource-link ${options.escapeHtml(linkItem.kind)} ${options.escapeHtml(linkItem.status)} ${flowing ? 'flowing' : ''} ${collapsedNodeLinkReroute ? 'collapsed-node-link reroute-link' : ''} ${graph.selection.linkIds.includes(linkItem.id) ? 'selected' : ''}" data-chat-resource-link-id="${options.escapeHtml(linkItem.id)}" data-chat-workflow-link-select="${options.escapeHtml(linkItem.id)}">
+    <g class="chat-resource-link ${options.escapeHtml(linkItem.kind)} ${options.escapeHtml(linkItem.status)} ${flowing ? 'flowing' : ''} ${collapsedNodeLinkReroute ? 'collapsed-node-link reroute-link' : ''} ${highlighted ? 'agent-highlight-link' : ''} ${graph.selection.linkIds.includes(linkItem.id) ? 'selected' : ''}" data-chat-resource-link-id="${options.escapeHtml(linkItem.id)}" data-chat-workflow-link-select="${options.escapeHtml(linkItem.id)}" data-agent-op-label="${options.escapeHtml(actionLabel)}">
       <path d="${path}" marker-end="url(#chat-resource-arrow)"></path>
       <path class="hit-area" d="${path}"></path>
-      <text x="${(x1 + x2) / 2}" y="${(y1 + y2) / 2 - 7}">${options.escapeHtml(linkItem.label || LINK_KIND_LABELS[linkItem.kind])}</text>
+      <text x="${(x1 + x2) / 2}" y="${(y1 + y2) / 2 - 7}">${options.escapeHtml(actionLabel || linkItem.label || LINK_KIND_LABELS[linkItem.kind])}</text>
     </g>
   `
 }
@@ -2436,8 +2494,10 @@ function renderResourceNode(node: CharacterResourceNode, graph: CharacterResourc
   const output = graph.outputs.find((item) => item.nodeId === node.id)
   const runField = typeof node.config.runField === 'string' ? node.config.runField : ''
   const runFieldClass = runField ? `run-field-${sanitizeResourceId(runField)} ${node.config.runFieldSupport ? 'run-field-support' : 'run-field-card'}` : ''
+  const highlighted = options.viewState?.agentHighlights?.nodeIds?.includes(node.id) ?? false
+  const actionLabel = options.viewState?.agentHighlights?.nodeActions?.[node.id] ?? ''
   return `
-    <article class="chat-workflow-node chat-resource-node ${node.status} ${node.type} ${definition.category} ${runFieldClass} ${selected ? 'selected' : ''} ${node.collapsed ? 'collapsed' : ''}" style="--node-x: ${node.position.x}px; --node-y: ${node.position.y}px; --node-w: ${node.size.width}px; --node-h: ${node.size.height}px; z-index: ${node.zIndex}" data-chat-workflow-node-id="${options.escapeHtml(node.id)}" data-chat-workflow-node-select="${options.escapeHtml(node.id)}" data-resource-node-type="${options.escapeHtml(node.type)}" data-run-field="${options.escapeHtml(runField)}">
+    <article class="chat-workflow-node chat-resource-node ${node.status} ${node.type} ${definition.category} ${runFieldClass} ${highlighted ? 'agent-highlight-node' : ''} ${selected ? 'selected' : ''} ${node.collapsed ? 'collapsed' : ''}" style="--node-x: ${node.position.x}px; --node-y: ${node.position.y}px; --node-w: ${node.size.width}px; --node-h: ${node.size.height}px; z-index: ${node.zIndex}" data-chat-workflow-node-id="${options.escapeHtml(node.id)}" data-chat-workflow-node-select="${options.escapeHtml(node.id)}" data-resource-node-type="${options.escapeHtml(node.type)}" data-run-field="${options.escapeHtml(runField)}" data-agent-op-label="${options.escapeHtml(actionLabel)}">
       ${renderNodeHeader(node, definition, options)}
       ${renderNodeSlots(node, definition, options)}
       ${renderNodeWidgets(node, definition, options)}

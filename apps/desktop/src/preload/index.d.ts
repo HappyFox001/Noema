@@ -677,11 +677,33 @@ declare global {
       buildCharacterWorkflow: (request: {
         prompt: string
         language?: 'zh-CN' | 'en-US'
+        mode?: 'create' | 'edit'
+        graph?: {
+          selectedNodeId?: string
+          nodes: Array<{
+            id: string
+            type: string
+            title?: string
+            config?: Record<string, unknown>
+            inputs?: string[]
+            outputs?: string[]
+          }>
+          edges: Array<{
+            id?: string
+            from: { nodeId: string; port: string }
+            to: { nodeId: string; port: string }
+            kind?: string
+          }>
+        }
       }) => Promise<{
         success: boolean
         workflow?: Record<string, unknown>
         spec?: {
           name: string
+          plan?: string[]
+          summary?: string
+          confidence?: number
+          status?: 'applied' | 'needs-user' | 'blocked'
           goalPrompt: string
           targetAudience: string
           stylePrompt: string
@@ -706,6 +728,7 @@ declare global {
           }
           assetTargets: string[]
           outputFormat: string
+          operations?: Array<Record<string, unknown>>
         }
         uiConfigOverrides?: Record<string, Record<string, unknown>>
         error?: string

@@ -210,6 +210,9 @@ function createCharacterDecisionPrompt(
     '  <action_contract>',
     '    <output_format>Return JSON only. No markdown. No XML in the response.</output_format>',
     '    <shape>{"summary":"what changed in this single step","done":false,"confidence":0.0,"missing":[],"actions":[{"type":"set_field","field":"nextField","value":"..."}]}</shape>',
+    '    <field_content_rule>Every set_field value must be final character-card content, not a prompt, not a plan, and not a resource-control description.</field_content_rule>',
+    '    <field_content_rule>Never write labels such as "Style:", "Goal:", "Field purpose:", "target atmosphere", XML tag names, or operation instructions inside character fields.</field_content_rule>',
+    '    <field_content_rule>description must describe who the character is and why they are appealing for RP. appearance must describe visible body/outfit/expression cues. Do not describe the generation target itself.</field_content_rule>',
     '    <progressive_rule>Return exactly one action. Generate or reroll one field at a time. Do not fill the whole card in one response.</progressive_rule>',
     '    <progressive_rule>If a field target is missing, return set_field for the earliest missing field in fixed_schema order and obey that target local XML controls. Only request_image after imagePrompt exists.</progressive_rule>',
     '    <allowed_actions>',
@@ -282,7 +285,7 @@ function createResourceContextXml(context: CharacterAgentRunContext): string {
       ...target.fieldControls.map((item) => `          <field_control node="${xmlEscape(item.nodeId)}" tone="${xmlEscape(item.tone)}" length="${xmlEscape(item.lengthPolicy)}" avoid="${xmlEscape(item.avoidPatterns.join('; '))}">${xmlEscape(item.fieldPurpose)}</field_control>`),
       '        </field_controls>',
       '        <image_controls>',
-      ...target.imageControls.map((item) => `          <image_control node="${xmlEscape(item.nodeId)}" count="${item.targetImageCount}" types="${xmlEscape(item.imageTypes.join(', '))}" composition="${xmlEscape(item.composition)}" consistency="${xmlEscape(item.consistencyMode)}" negative="${xmlEscape(item.negativePrompt)}" />`),
+      ...target.imageControls.map((item) => `          <image_control node="${xmlEscape(item.nodeId)}" count="${item.targetImageCount}" type="${xmlEscape(item.imageType)}" composition="${xmlEscape(item.composition)}" consistency="${xmlEscape(item.consistencyMode)}" negative="${xmlEscape(item.negativePrompt)}" />`),
       '        </image_controls>',
       '        <continuity_controls>',
       ...target.continuityControls.map((item) => `          <continuity_control node="${xmlEscape(item.nodeId)}" pacing="${xmlEscape(item.progressionPacing)}" forbid_resetting_facts="${item.forbidResettingFacts}" anchors="${xmlEscape(item.memoryAnchors.join('; '))}" />`),
@@ -493,24 +496,65 @@ function createImageTargetPrompts(
   promptText: string
 ): Array<{ target: AgentTargetContext; targetIndex: number; imageType: string; prompt: string }> {
   const controls = target.imageControls
-  const imageTypes = controls.flatMap((control) => control.imageTypes).filter(Boolean)
   const requestedCount = getImageTargetRequestedCount(controls)
+  const targetRole = target.imageRole ?? controls[0]?.imageType ?? 'avatar'
   return Array.from({ length: requestedCount }, (_, index) => {
-    const imageType = imageTypes[index % Math.max(1, imageTypes.length)] ?? target.imageRole ?? 'avatar'
     const controlText = controls[index % Math.max(1, controls.length)]
+    const imageType = controlText?.imageType || targetRole
     return {
       target,
       targetIndex: index + 1,
       imageType,
-      prompt: [
-        `Target node: ${target.title} (${target.nodeId}).`,
-        `Target image role: ${target.imageRole ?? 'avatar'}.`,
-        `Image type: ${imageType}.`,
-        controlText ? `Composition: ${controlText.composition}. Consistency: ${controlText.consistencyMode}. Negative prompt: ${controlText.negativePrompt}.` : '',
-        promptText,
-      ].filter(Boolean).join('\n'),
+      prompt: buildImageGenerationPrompt(target, imageType, promptText, controlText),
     }
   })
+}
+
+function buildImageGenerationPrompt(
+  target: AgentTargetContext,
+  imageType: string,
+  promptText: string,
+  control: AgentImageGenerationControl | undefined
+): string {
+  const roleInstruction = imageRoleInstruction(imageType || target.imageRole || 'avatar')
+  const negative = [
+    control?.negativePrompt,
+    'text, caption, subtitle, watermark, logo, signature, UI text, prompt words, labels, typography, speech bubble',
+  ].filter(Boolean).join(', ')
+  return [
+    roleInstruction,
+    control ? naturalCompositionInstruction(control.composition, control.consistencyMode) : '',
+    'Generate visual content only, with no written words, letters, symbols, captions, interface elements, labels, logos, watermarks, or visible prompt text anywhere in the image.',
+    promptText,
+    `The image must avoid ${negative}.`,
+  ].filter(Boolean).join('\n')
+}
+
+function imageRoleInstruction(imageType: string): string {
+  const instructions: Record<string, string> = {
+    avatar: 'Create a single avatar portrait focused on the character face, hair, expression, and upper-body identity, with a clean background.',
+    body: 'Create a single full-body character reference showing the complete outfit, posture, proportions, and silhouette.',
+    scene: 'Create a single environmental scene showing the character within the story setting, with atmosphere and spatial context.',
+    expression: 'Create a single expression reference focused on one clear facial expression and emotional state, without label text or a labeled collage.',
+    reference: 'Create a single visual reference showing design details useful for consistent later generation.',
+  }
+  return instructions[imageType] ?? `Create a single coherent visual for the ${imageType} image role.`
+}
+
+function naturalCompositionInstruction(composition: string, consistencyMode: string): string {
+  const compositionText: Record<string, string> = {
+    'character-focused': 'Keep the composition centered on the character.',
+    'upper-body-portrait': 'Use an upper-body portrait composition.',
+    'full-body': 'Use a full-body composition with the whole figure visible.',
+    'environmental-scene': 'Use an environmental composition with clear setting context.',
+    'expression-sheet': 'Focus on a clear expression reference without written labels.',
+  }
+  const consistencyText: Record<string, string> = {
+    'same-character': 'Preserve the same character identity.',
+    'same-world': 'Preserve the same world and visual continuity.',
+    independent: 'This image may stand independently.',
+  }
+  return [compositionText[composition] ?? '', consistencyText[consistencyMode] ?? ''].filter(Boolean).join(' ')
 }
 
 function getImageTargetRequestedCount(controls: AgentImageGenerationControl[]): number {

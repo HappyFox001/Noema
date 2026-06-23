@@ -77,6 +77,24 @@ export interface ChatRunCharacterWorkflowResult {
 export interface ChatBuildCharacterWorkflowRequest {
   prompt: string
   language?: 'zh-CN' | 'en-US'
+  mode?: 'create' | 'edit'
+  graph?: {
+    selectedNodeId?: string
+    nodes: Array<{
+      id: string
+      type: string
+      title?: string
+      config?: Record<string, unknown>
+      inputs?: string[]
+      outputs?: string[]
+    }>
+    edges: Array<{
+      id?: string
+      from: { nodeId: string; port: string }
+      to: { nodeId: string; port: string }
+      kind?: string
+    }>
+  }
 }
 
 export interface ChatBuildCharacterWorkflowResult {
@@ -227,6 +245,8 @@ export function registerChatIpcHandlers(
       const result = await buildCharacterWorkflowFromPrompt({
         prompt: request.prompt,
         language: request.language,
+        mode: request.mode,
+        graph: request.graph,
         modelConfig: options.getModelConfig(),
         llmApiId: options.getModelConfig()?.provider,
         llmModelName: options.getModelConfig()?.modelName,
