@@ -70,6 +70,7 @@ type ChatResizeEdge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
 
 type PendingChatAttachment = ChatMessageAttachment
 type CharacterWorkflowPageModule = typeof import('./chat-character-workflow-page')
+type CharacterWorkflowTemplateId = 'character-card' | 'world-card'
 
 interface CharacterWorkflowEditorState {
   activePanel: CharacterWorkflowSidePanel
@@ -232,6 +233,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let characterWorkflowBuilderPrompt = ''
   let characterWorkflowBuilderStatus = ''
   let characterWorkflowBuilderBusy = false
+  let characterWorkflowTemplateMenuOpen = false
   let characterWorkflowRunState: CharacterResourceRunState | null = null
   let characterWorkflowRunCount = 0
   let characterWorkflowActiveTabId = 'workflow'
@@ -1644,7 +1646,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             <span>${options.escapeHtml(zh ? 'Workflows' : 'Workflows')}</span>
             <strong>${options.escapeHtml(zh ? '角色草稿' : 'Character drafts')}</strong>
           </div>
-          <button type="button" data-chat-workflow-library-action="create" aria-label="${options.escapeHtml(zh ? '新建草稿' : 'New draft')}">+</button>
+          <button type="button" data-chat-workflow-library-action="create-menu" aria-label="${options.escapeHtml(zh ? '新建草稿' : 'New draft')}">+</button>
+          ${characterWorkflowTemplateMenuOpen ? renderCharacterWorkflowTemplateMenu(zh) : ''}
         </header>
         <div class="chat-workflow-library-search">
           <input type="search" value="${options.escapeHtml(characterWorkflowLibrarySearch)}" placeholder="${options.escapeHtml(zh ? '搜索草稿' : 'Search drafts')}" data-chat-workflow-library-search />
@@ -1693,6 +1696,77 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     `
   }
 
+  function renderCharacterWorkflowTemplateMenu(zh: boolean): string {
+    return `
+      <div class="chat-workflow-template-menu">
+        <button type="button" data-chat-workflow-library-action="create" data-chat-workflow-template-id="blank">
+          <strong>${options.escapeHtml(zh ? '空白草稿' : 'Blank draft')}</strong>
+          <span>${options.escapeHtml(zh ? '只保留基础流图' : 'Base graph only')}</span>
+        </button>
+        ${getCharacterWorkflowTemplates(zh).map((template) => `
+          <button type="button" data-chat-workflow-library-action="create-template" data-chat-workflow-template-id="${options.escapeHtml(template.id)}">
+            <strong>${options.escapeHtml(template.name)}</strong>
+            <span>${options.escapeHtml(template.caption)}</span>
+          </button>
+        `).join('')}
+      </div>
+    `
+  }
+
+  function getCharacterWorkflowTemplates(zh: boolean): Array<{
+    id: CharacterWorkflowTemplateId
+    name: string
+    caption: string
+    category: string
+    label: string
+    spec: Parameters<typeof createCharacterWorkflowDraftFromSpec>[0]
+  }> {
+    return [
+      {
+        id: 'character-card',
+        name: zh ? '角色卡' : 'Character card',
+        caption: zh ? '角色卡、开场白、图片、报告' : 'Card, opening, image, report',
+        category: 'character',
+        label: zh ? '角色' : 'Character',
+        spec: {
+          name: zh ? '角色卡草稿' : 'Character Card Draft',
+          goalPrompt: '',
+          targetAudience: 'private long-form roleplay',
+          mustHave: zh ? ['完整角色卡字段', '开场白', '图片资源', '生成报告'] : ['complete character card fields', 'opening message', 'image asset', 'generation report'],
+          mustNot: zh ? ['空泛字段', '缺失图片提示词'] : ['empty fields', 'missing image prompt'],
+          configOverrides: {
+            'generation-strategy': { mode: 'branch-and-refine', branchCount: 3, priorityAssets: ['role-card', 'opening', 'image-pack'] },
+            'quality-gate': { minimumScore: 0.84, requiredChecks: ['field completeness', 'roleplay usability', 'visual identity', 'consistency'] },
+          },
+        },
+      },
+      {
+        id: 'world-card',
+        name: zh ? '世界卡' : 'World card',
+        caption: zh ? '主线、多个 NPC、场景资源' : 'Story arc, NPCs, scenes',
+        category: 'world',
+        label: zh ? '世界' : 'World',
+        spec: {
+          name: zh ? '世界卡草稿' : 'World Card Draft',
+          goalPrompt: '',
+          targetAudience: 'private long-form roleplay',
+          mustHave: zh ? ['世界/场景上下文', '主线推进目标', '多个 NPC 资源', '主要角色 NPC', '关系网', '场景图片提示'] : ['world/scene context', 'main story progression', 'multiple NPC resources', 'primary NPC', 'relationship network', 'scene image prompts'],
+          mustNot: zh ? ['设定名词堆砌', 'NPC 只有名字没有功能', '主线和角色脱节'] : ['lore dumping', 'NPCs with names only', 'story detached from characters'],
+          configOverrides: {
+            'source-material': {
+              sourceKind: 'notes',
+              notes: zh ? '世界卡结构：需要主线推进、多个 NPC、主要角色 NPC、关系网、场景上下文与可持续事件素材。' : 'World card structure: main story progression, multiple NPCs, primary NPC, relationship network, scene context, and durable event material.',
+              groundingStrength: 0.74,
+            },
+            'asset-targets': { targets: ['world-context', 'scene-context', 'npc-pack', 'image-pack', 'generation-report'], includeAlternates: true },
+            'generation-strategy': { mode: 'explore-then-converge', branchCount: 4, priorityAssets: ['world-context', 'npc-pack', 'scene-context', 'image-pack'] },
+            'quality-gate': { minimumScore: 0.86, requiredChecks: ['story progression', 'NPC utility', 'relationship network', 'scene usability', 'consistency'] },
+          },
+        },
+      },
+    ]
+  }
+
   function renderCharacterWorkflowLibraryRow(project: CharacterWorkflowProjectRecord, zh: boolean): string {
     const latestRun = project.runs[project.runs.length - 1]
     const status = latestRun?.status ?? 'idle'
@@ -1732,16 +1806,22 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     return `
       <section class="chat-workflow-builder-main">
         <div class="chat-workflow-builder-card">
-          <span>${options.escapeHtml(zh ? '新建草稿' : 'New draft')}</span>
-          <strong>${options.escapeHtml(zh ? '创建角色资源' : 'Create character resource')}</strong>
+          <div class="chat-workflow-builder-head">
+            <span>${options.escapeHtml(zh ? '新建资源图' : 'New resource graph')}</span>
+            <strong>${options.escapeHtml(zh ? '从设想开始' : 'Start from an idea')}</strong>
+          </div>
           <form class="chat-workflow-builder-box" data-chat-workflow-builder-form>
+            <div class="chat-workflow-builder-label">
+              <strong>${options.escapeHtml(zh ? '描述' : 'Describe')}</strong>
+              <span>${options.escapeHtml(zh ? '让模型规划初始流图' : 'Let the model draft the graph')}</span>
+            </div>
             <textarea data-chat-workflow-builder-input rows="4" placeholder="${options.escapeHtml(zh ? '校园恋爱，长期 RP，克制暧昧，角色主动推进关系，需要头像图和开场白' : 'Campus romance, long-form RP, restrained tension, proactive character, avatar and opening message')}" ${characterWorkflowBuilderBusy ? 'disabled' : ''}>${options.escapeHtml(characterWorkflowBuilderPrompt)}</textarea>
             <div class="chat-workflow-builder-footer">
               ${renderChatRuntimeModelPickerMarkup('workflow-builder')}
               <button type="submit" ${characterWorkflowBuilderBusy ? 'disabled' : ''}>${options.escapeHtml(characterWorkflowBuilderBusy ? (zh ? '创建中' : 'Creating') : (zh ? '创建' : 'Create'))}</button>
             </div>
+            ${characterWorkflowBuilderStatus ? `<small class="chat-workflow-builder-status">${options.escapeHtml(characterWorkflowBuilderStatus)}</small>` : ''}
           </form>
-          ${characterWorkflowBuilderStatus ? `<small class="chat-workflow-builder-status">${options.escapeHtml(characterWorkflowBuilderStatus)}</small>` : ''}
         </div>
       </section>
     `
@@ -1861,7 +1941,19 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function createCharacterWorkflowDraft(): void {
     saveActiveWorkflowProjectSnapshot()
+    characterWorkflowTemplateMenuOpen = false
     createCharacterWorkflowDraftFromSpec({})
+  }
+
+  function createCharacterWorkflowDraftFromTemplate(templateId: string): void {
+    const template = getCharacterWorkflowTemplates(options.getLanguage() === 'zh-CN')
+      .find((item) => item.id === templateId)
+    if (!template) {
+      return
+    }
+    saveActiveWorkflowProjectSnapshot()
+    characterWorkflowTemplateMenuOpen = false
+    createCharacterWorkflowDraftFromSpec(template.spec)
   }
 
   function createCharacterWorkflowDraftFromSpec(spec: {
@@ -3761,8 +3853,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (workflowLibraryAction && panel.contains(workflowLibraryAction)) {
       const action = workflowLibraryAction.dataset.chatWorkflowLibraryAction || ''
       const workflowId = workflowLibraryAction.dataset.chatWorkflowId || ''
-      if (action === 'create') {
+      if (action === 'create-menu') {
+        characterWorkflowTemplateMenuOpen = !characterWorkflowTemplateMenuOpen
+        renderCharacterWorkflow()
+      } else if (action === 'create') {
         createCharacterWorkflowDraft()
+      } else if (action === 'create-template') {
+        createCharacterWorkflowDraftFromTemplate(workflowLibraryAction.dataset.chatWorkflowTemplateId || '')
       } else if (action === 'rename') {
         renameCharacterWorkflowDraft(workflowId)
       } else if (action === 'duplicate') {
