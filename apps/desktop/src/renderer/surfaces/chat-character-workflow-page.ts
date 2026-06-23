@@ -64,7 +64,7 @@ interface CharacterResourceGraph {
   viewport: CharacterResourceViewport
   selection: CharacterResourceSelection
   panels: CharacterResourcePanels
-  mockOutputs: CharacterResourceMockOutput[]
+  outputs: CharacterResourceOutput[]
 }
 
 interface CharacterResourceNodeDefinition {
@@ -155,7 +155,7 @@ interface CharacterResourcePanels {
   activePanel: CharacterWorkflowSidePanel
 }
 
-interface CharacterResourceMockOutput {
+interface CharacterResourceOutput {
   id: string
   nodeId: string
   type: string
@@ -280,12 +280,7 @@ export function completeCharacterResourceRunState(state: CharacterResourceRunSta
       status: 'done',
     })),
     events: state.events ?? [],
-    artifacts: [
-      { type: 'agent-plan', sourceNodeId: 'generation-strategy', title: 'Agent Plan', summary: 'Mock plan decomposes the free-form goal into candidates, tools, critique loops, and output targets.' },
-      { type: 'candidate-pack', sourceNodeId: 'character-card-target', title: 'Candidate Pack', summary: 'Mock candidate pack reserves role card, opening, visual assets, memory policy, and generation report outputs.' },
-      { type: 'validation-report', sourceNodeId: 'quality-gate', title: 'Quality Gate Report', summary: 'Mock quality gate checks goal match, long-term RP durability, style intensity, consistency, and export readiness.' },
-      { type: 'export-target', sourceNodeId: 'output-adapter', title: 'Noema Role Chat Export', summary: 'Mock output adapter maps the accepted candidate pack to a Noema Role Chat package.' },
-    ],
+    artifacts: state.artifacts ?? [],
   }
 }
 
@@ -1406,17 +1401,23 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
     })
   }
   const runArtifacts = options.runState?.artifacts ?? []
-  const mockOutputs = nodes.map((node) => {
+  const outputs = runArtifacts.flatMap((artifact) => {
+    if (!artifact.sourceNodeId) {
+      return []
+    }
+    const node = nodes.find((item) => item.id === artifact.sourceNodeId)
+    if (!node) {
+      return []
+    }
     const definition = definitions.get(node.type)!
-    const artifact = runArtifacts.find((item) => item.sourceNodeId === node.id)
-    return {
-      id: `${node.id}-mock-output`,
+    return [{
+      id: artifact.id ?? `${node.id}-output`,
       nodeId: node.id,
-      type: artifact?.type ?? definition.outputs[0]?.type ?? definition.previewType,
-      title: artifact?.title ?? definition.displayName,
-      summary: artifact?.summary ?? createMockOutputSummary(definition, node),
-      status: artifact ? 'done' : node.status,
-    } satisfies CharacterResourceMockOutput
+      type: artifact.type ?? definition.outputs[0]?.type ?? definition.previewType,
+      title: artifact.title ?? definition.displayName,
+      summary: artifact.summary ?? '',
+      status: 'done',
+    } satisfies CharacterResourceOutput]
   })
   const deletedLinkIds = new Set(viewState.deletedLinkIds ?? [])
   const replacedTargetSlots = new Set(viewState.replacedTargetSlots ?? [])
@@ -1462,7 +1463,7 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
       bottomHeight: 62,
       activePanel: options.activePanel,
     },
-    mockOutputs,
+    outputs,
   }
 }
 
@@ -1583,7 +1584,7 @@ function renderResourceLibrary(graph: CharacterResourceGraph, options: Character
         <section class="chat-workflow-sidebar-section">
           <strong>${options.escapeHtml(ui(options, '资源库', 'Resource Library'))}</strong>
           <button class="${graph.panels.activePanel === 'workflow' ? 'active' : ''}" type="button" data-chat-workflow-panel="workflow"><span>${options.escapeHtml(ui(options, '图', 'Graph'))}</span><em>${graph.nodes.length}</em></button>
-          <button class="${graph.panels.activePanel === 'assets' ? 'active' : ''}" type="button" data-chat-workflow-panel="assets"><span>${options.escapeHtml(ui(options, '资源包', 'Package'))}</span><em>${graph.mockOutputs.length}</em></button>
+          <button class="${graph.panels.activePanel === 'assets' ? 'active' : ''}" type="button" data-chat-workflow-panel="assets"><span>${options.escapeHtml(ui(options, '资源包', 'Package'))}</span><em>${graph.outputs.length}</em></button>
           <button class="${graph.panels.activePanel === 'nodes' ? 'active' : ''}" type="button" data-chat-workflow-panel="nodes"><span>${options.escapeHtml(ui(options, '节点', 'Nodes'))}</span><em>${RESOURCE_NODE_DEFINITIONS.length}</em></button>
         </section>
         <section class="chat-resource-search-panel" data-resource-node-search-scope data-resource-node-search-category="all">
@@ -1956,7 +1957,7 @@ function createRunDraftCanvasGraph(graph: CharacterResourceGraph, options: Chara
     zIndex: 1,
     config: {},
   }]
-  const outputs: CharacterResourceMockOutput[] = [{
+  const outputs: CharacterResourceOutput[] = [{
     id: 'run-agent-source-output',
     nodeId: 'run-agent-source',
     type: 'agent-run',
@@ -2024,7 +2025,7 @@ function createRunDraftCanvasGraph(graph: CharacterResourceGraph, options: Chara
       zoom: options.viewState?.zoom ?? 0.94,
     },
     selection: { nodeIds: [nodes[nodes.length - 1]?.id ?? 'run-agent-source'], linkIds: [] },
-    mockOutputs: outputs,
+    outputs,
   }
 }
 
@@ -2401,7 +2402,7 @@ function renderLinkPath(linkItem: CharacterResourceLink, graph: CharacterResourc
 function renderResourceNode(node: CharacterResourceNode, graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): string {
   const definition = getDefinition(node.type)
   const selected = graph.selection.nodeIds.includes(node.id)
-  const output = graph.mockOutputs.find((item) => item.nodeId === node.id)
+  const output = graph.outputs.find((item) => item.nodeId === node.id)
   const runField = typeof node.config.runField === 'string' ? node.config.runField : ''
   const runFieldClass = runField ? `run-field-${sanitizeResourceId(runField)} ${node.config.runFieldSupport ? 'run-field-support' : 'run-field-card'}` : ''
   return `
@@ -2468,9 +2469,12 @@ function renderNodeWidgets(node: CharacterResourceNode, definition: CharacterRes
 function renderNodeContent(
   node: CharacterResourceNode,
   definition: CharacterResourceNodeDefinition,
-  output: CharacterResourceMockOutput | undefined,
+  output: CharacterResourceOutput | undefined,
   options: CharacterWorkflowPageOptions
 ): string {
+  if (!output) {
+    return ''
+  }
   const previewClass = `preview-${definition.previewType}`
   if (output?.image) {
     return `
@@ -2483,8 +2487,8 @@ function renderNodeContent(
   }
   return `
     <div class="chat-resource-node-content ${previewClass}">
-      <strong>${options.escapeHtml(output?.title ?? localizeNodeTitle(node, definition, options))}</strong>
-      <p>${options.escapeHtml(output?.summary ?? definition.description)}</p>
+      <strong>${options.escapeHtml(output.title)}</strong>
+      <p>${options.escapeHtml(output.summary)}</p>
     </div>
   `
 }
@@ -2512,7 +2516,7 @@ function renderResourceInspector(graph: CharacterResourceGraph, options: Charact
   }
   const selectedNode = graph.nodes.find((node) => graph.selection.nodeIds.includes(node.id)) ?? graph.nodes[0]
   const definition = getDefinition(selectedNode.type)
-  const output = graph.mockOutputs.find((item) => item.nodeId === selectedNode.id)
+  const output = graph.outputs.find((item) => item.nodeId === selectedNode.id)
   return `
     <aside class="chat-workflow-inspector chat-resource-inspector" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '资源 Inspector' : 'Resource inspector')}">
       <div class="chat-workflow-inspector-scroll">
@@ -2534,14 +2538,16 @@ function renderResourceInspector(graph: CharacterResourceGraph, options: Charact
             ${definition.outputs.map((slotItem) => `<span><b>OUT</b>${options.escapeHtml(localizeSlotLabel(slotItem, options))}<small>${options.escapeHtml(slotItem.type)}</small></span>`).join('')}
           </div>
         </section>
-        <section class="chat-workflow-inspector-section">
-          <h4>${options.escapeHtml(ui(options, '模拟输出', 'Mock Output'))}</h4>
-          <div class="chat-resource-output-card">
-            <strong>${options.escapeHtml(output?.title ?? localizeNodeTitle(selectedNode, definition, options))}</strong>
-            <p>${options.escapeHtml(output?.summary ?? '')}</p>
-            <span>${options.escapeHtml(output?.status ?? selectedNode.status)}</span>
-          </div>
-        </section>
+        ${output ? `
+          <section class="chat-workflow-inspector-section">
+            <h4>${options.escapeHtml(ui(options, '运行输出', 'Run Output'))}</h4>
+            <div class="chat-resource-output-card">
+              <strong>${options.escapeHtml(output.title)}</strong>
+              <p>${options.escapeHtml(output.summary)}</p>
+              <span>${options.escapeHtml(output.status)}</span>
+            </div>
+          </section>
+        ` : ''}
         <section class="chat-workflow-inspector-section">
           <h4>${options.escapeHtml(ui(options, '连线类型', 'Link Kinds'))}</h4>
           <div class="chat-resource-link-kind-list">
@@ -2930,22 +2936,6 @@ function normalizeActiveTab(activeTabId: string): string {
     return 'run-draft'
   }
   return activeTabId
-}
-
-function createMockOutputSummary(definition: CharacterResourceNodeDefinition, node: CharacterResourceNode): string {
-  if (definition.previewType === 'image') {
-    return 'Mock image resources are reserved in graph state; backend image generation is not called in this phase.'
-  }
-  if (definition.previewType === 'voice') {
-    return 'Mock voice profile includes timbre, speed, and sample-line constraints for later TTS generation.'
-  }
-  if (definition.previewType === 'validation') {
-    return 'Mock quality gate checks goal match, style intensity, long-term RP durability, consistency, and export readiness.'
-  }
-  if (definition.previewType === 'package') {
-    return 'Mock candidate package preview combines agent plan, requested assets, quality gate report, and output adapter.'
-  }
-  return `${definition.displayName} is configured by ${Object.keys(node.config).length} parameter fields and participates in the resource graph.`
 }
 
 function formatParameterValue(value: unknown): string {
