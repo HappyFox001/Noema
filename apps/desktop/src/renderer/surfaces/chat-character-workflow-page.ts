@@ -13,6 +13,7 @@ import type { CharacterResourceViewState, SerializedCharacterResourceLinkKind } 
 export interface CharacterWorkflowPageOptions {
   language: 'zh-CN' | 'en-US'
   escapeHtml(value: string): string
+  t?(key: string): string
   modelChoices?: CharacterWorkflowModelChoice[]
   configOverrides?: Record<string, Record<string, unknown>>
   positionOverrides?: Record<string, { x: number; y: number }>
@@ -318,11 +319,36 @@ function resourceGraphTabTitle(tab: CharacterResourceGraphTab, options: Characte
   return tab.title
 }
 
+function workflowText(options: CharacterWorkflowPageOptions, key: string, fallback: string): string {
+  const translated = options.t?.(key)
+  return translated && translated !== key ? translated : fallback
+}
+
+function localizeNodeTitle(node: CharacterResourceNode, definition: CharacterResourceNodeDefinition, options: CharacterWorkflowPageOptions): string {
+  return workflowText(options, `chat.workflow.node.${definition.type}`, node.title || definition.displayName)
+}
+
+function localizeParameterLabel(parameterItem: CharacterResourceParameterDefinition, options: CharacterWorkflowPageOptions): string {
+  return workflowText(options, `chat.workflow.param.${parameterItem.id}`, parameterItem.label)
+}
+
+function localizeSlotLabel(slotItem: CharacterResourceSlotDefinition, options: CharacterWorkflowPageOptions): string {
+  return workflowText(options, `chat.workflow.slot.${slotItem.id}`, slotItem.label)
+}
+
+function localizeCategory(category: string, options: CharacterWorkflowPageOptions): string {
+  return workflowText(options, `chat.workflow.category.${category}`, category)
+}
+
+function localizeSource(source: string, options: CharacterWorkflowPageOptions): string {
+  return workflowText(options, `chat.workflow.source.${source}`, source)
+}
+
 const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
   createDefinition('goal', 'Generation Goal', ['目标', 'brief', 'intent'], 'Goal', 'core', 'Captures the free-form RP generation target without asking the user to define final card fields.', [], [
     slot('goal', 'Goal', 'generation-goal', 'Natural language generation goal and target audience.'),
   ], [
-    param('goalPrompt', 'Goal Prompt', 'textarea', '校园恋爱，长期 RP，角色要有主动性和暧昧拉扯，但不要模板化。'),
+    param('goalPrompt', 'Goal Prompt', 'textarea', 'Long-form private roleplay. The character should be proactive, emotionally specific, and non-template.'),
     param('targetAudience', 'Target Audience', 'text', 'private long-form roleplay'),
     param('allowExpansion', 'Allow Agent Expansion', 'boolean', true),
   ], 'text-card'),
@@ -338,15 +364,15 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'Fantasy Companion', value: 'fantasy-companion' },
     ]),
     param('intensity', 'Intensity', 'number', 0.68, 0, 1, 0.01),
-    param('stylePrompt', 'Style Prompt', 'textarea', '克制、暧昧、有张力，避免说明书式自我介绍。'),
+    param('stylePrompt', 'Style Prompt', 'textarea', 'Restrained, emotionally tense, specific in behavior, and never written like a manual introduction.'),
   ], 'rule'),
   createDefinition('constraint', 'Hard Constraint', ['约束', 'boundary', 'must not'], 'Constraints', 'safety', 'Sets hard and soft boundaries that limit agent freedom during generation and repair.', [
     slot('goal', 'Goal', 'generation-goal', 'Goal constrained by these boundaries.'),
   ], [
     slot('constraint', 'Constraint', 'hard-constraint', 'Constraint signal.'),
   ], [
-    param('mustHave', 'Must Have', 'string-list', ['长期可聊', '角色主动推进关系']),
-    param('mustNot', 'Must Not', 'string-list', ['模板化人格', 'OOC 解释设定', '瞬间顺从']),
+    param('mustHave', 'Must Have', 'string-list', ['long-term chat durability', 'character agency']),
+    param('mustNot', 'Must Not', 'string-list', ['template personality', 'OOC setting explanation', 'instant compliance']),
     param('hardBoundary', 'Hard Boundary', 'boolean', true),
   ], 'rule'),
   createDefinition('source-material', 'Source Material', ['素材', 'reference', 'context'], 'Sources', 'asset', 'Provides optional source context, references, existing cards, images, or user preference notes.', [], [
@@ -1363,7 +1389,7 @@ function renderResourceLibrary(graph: CharacterResourceGraph, options: Character
           ${categories.map((category) => {
             const count = RESOURCE_NODE_DEFINITIONS.filter((definition) => definition.category === category).length
             const firstNode = graph.nodes.find((node) => node.type === category)
-            return `<button type="button" data-chat-workflow-panel="nodes" ${firstNode ? `data-chat-workflow-node-select="${options.escapeHtml(firstNode.id)}"` : ''}><span>${options.escapeHtml(category)}</span><em>${count}</em></button>`
+            return `<button type="button" data-chat-workflow-panel="nodes" ${firstNode ? `data-chat-workflow-node-select="${options.escapeHtml(firstNode.id)}"` : ''}><span>${options.escapeHtml(localizeCategory(category, options))}</span><em>${count}</em></button>`
           }).join('')}
         </section>
         <section class="chat-workflow-sidebar-section compact">
@@ -1376,11 +1402,17 @@ function renderResourceLibrary(graph: CharacterResourceGraph, options: Character
 }
 
 function renderNodeLibraryCard(definition: CharacterResourceNodeDefinition, graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions, elementId = ''): string {
+  const displayName = workflowText(options, `chat.workflow.node.${definition.type}`, definition.displayName)
+  const categoryLabel = localizeCategory(definition.category, options)
+  const sourceLabel = localizeSource(definition.source, options)
   const searchText = [
     definition.type,
     definition.displayName,
+    displayName,
     definition.category,
+    categoryLabel,
     definition.source,
+    sourceLabel,
     ...definition.aliases,
     ...definition.inputs.map((slotItem) => slotItem.type),
     ...definition.outputs.map((slotItem) => slotItem.type),
@@ -1388,10 +1420,10 @@ function renderNodeLibraryCard(definition: CharacterResourceNodeDefinition, grap
   const inputTypes = definition.inputs.map((slotItem) => slotItem.type).join(' ')
   const outputTypes = definition.outputs.map((slotItem) => slotItem.type).join(' ')
   return `
-    <button class="chat-resource-library-card" ${elementId ? `id="${options.escapeHtml(elementId)}"` : ''} type="button" role="option" data-resource-library-card data-resource-node-add-type="${options.escapeHtml(definition.type)}" data-resource-category="${options.escapeHtml(definition.category)}" data-resource-input-types="${options.escapeHtml(inputTypes)}" data-resource-output-types="${options.escapeHtml(outputTypes)}" data-resource-search-text="${options.escapeHtml(searchText)}" data-resource-preview-title="${options.escapeHtml(definition.displayName)}" data-resource-preview-body="${options.escapeHtml(definition.description)}" data-chat-workflow-panel="nodes">
+    <button class="chat-resource-library-card" ${elementId ? `id="${options.escapeHtml(elementId)}"` : ''} type="button" role="option" data-resource-library-card data-resource-node-add-type="${options.escapeHtml(definition.type)}" data-resource-category="${options.escapeHtml(definition.category)}" data-resource-input-types="${options.escapeHtml(inputTypes)}" data-resource-output-types="${options.escapeHtml(outputTypes)}" data-resource-search-text="${options.escapeHtml(searchText)}" data-resource-preview-title="${options.escapeHtml(displayName)}" data-resource-preview-body="${options.escapeHtml(definition.description)}" data-chat-workflow-panel="nodes">
       <span>
-        <b>${options.escapeHtml(definition.displayName)}</b>
-        <small>${options.escapeHtml(definition.category)} / ${options.escapeHtml(definition.source)}</small>
+        <b>${options.escapeHtml(displayName)}</b>
+        <small>${options.escapeHtml(categoryLabel)} / ${options.escapeHtml(sourceLabel)}</small>
       </span>
       <em>${options.escapeHtml(definition.outputs[0]?.type ?? '-')}</em>
     </button>
@@ -2153,8 +2185,8 @@ function renderNodeHeader(node: CharacterResourceNode, definition: CharacterReso
   return `
     <header class="chat-workflow-node-head chat-resource-node-header" data-chat-workflow-drag-handle>
       <button type="button" data-chat-workflow-action="toggle-node-collapse" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '折叠节点' : 'Collapse node')}"></button>
-      <span>${options.escapeHtml(definition.category)} / ${options.escapeHtml(definition.source)}</span>
-      <strong>${options.escapeHtml(node.title)}</strong>
+      <span>${options.escapeHtml(localizeCategory(definition.category, options))} / ${options.escapeHtml(localizeSource(definition.source, options))}</span>
+      <strong>${options.escapeHtml(localizeNodeTitle(node, definition, options))}</strong>
       <em>${options.escapeHtml(node.status)}</em>
     </header>
   `
@@ -2178,7 +2210,7 @@ function renderSlotList(node: CharacterResourceNode, slots: CharacterResourceSlo
       ${slots.map((slotItem) => `
         <span class="chat-workflow-node-port chat-resource-slot ${slotItem.required ? 'required' : ''}" data-resource-slot-node="${options.escapeHtml(node.id)}" data-resource-slot-id="${options.escapeHtml(slotItem.id)}" data-resource-slot-side="${side}" data-resource-slot-type="${options.escapeHtml(slotItem.type)}" title="${options.escapeHtml(slotItem.tooltip)}">
           <i class="chat-resource-slot-dot" aria-hidden="true"></i>
-          <b>${options.escapeHtml(slotItem.label)}</b>
+          <b>${options.escapeHtml(localizeSlotLabel(slotItem, options))}</b>
         </span>
       `).join('')}
     </div>
@@ -2190,7 +2222,7 @@ function renderNodeWidgets(node: CharacterResourceNode, definition: CharacterRes
     <div class="chat-resource-node-widgets">
       ${definition.parameters.slice(0, 3).map((parameterItem) => `
         <label>
-          <span>${options.escapeHtml(parameterItem.label)}</span>
+          <span>${options.escapeHtml(localizeParameterLabel(parameterItem, options))}</span>
           ${renderParameterField(parameterItem, node, node.config[parameterItem.id], options)}
         </label>
       `).join('')}
@@ -2216,7 +2248,7 @@ function renderNodeContent(
   }
   return `
     <div class="chat-resource-node-content ${previewClass}">
-      <strong>${options.escapeHtml(output?.title ?? definition.displayName)}</strong>
+      <strong>${options.escapeHtml(output?.title ?? localizeNodeTitle(node, definition, options))}</strong>
       <p>${options.escapeHtml(output?.summary ?? definition.description)}</p>
     </div>
   `
@@ -2250,8 +2282,8 @@ function renderResourceInspector(graph: CharacterResourceGraph, options: Charact
     <aside class="chat-workflow-inspector chat-resource-inspector" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '资源 Inspector' : 'Resource inspector')}">
       <div class="chat-workflow-inspector-scroll">
         <header class="chat-workflow-inspector-head">
-          <span>${options.escapeHtml(`${definition.category} / ${definition.source} / ${definition.previewType}`)}</span>
-          <strong>${options.escapeHtml(selectedNode.title)}</strong>
+          <span>${options.escapeHtml(`${localizeCategory(definition.category, options)} / ${localizeSource(definition.source, options)} / ${definition.previewType}`)}</span>
+          <strong>${options.escapeHtml(localizeNodeTitle(selectedNode, definition, options))}</strong>
           <small>${options.escapeHtml(definition.description)}</small>
         </header>
         <section class="chat-workflow-inspector-section">
@@ -2263,14 +2295,14 @@ function renderResourceInspector(graph: CharacterResourceGraph, options: Charact
         <section class="chat-workflow-inspector-section">
           <h4>${options.escapeHtml(ui(options, '插槽', 'Slots'))}</h4>
           <div class="chat-workflow-inspector-ports">
-            ${definition.inputs.map((slotItem) => `<span><b>IN</b>${options.escapeHtml(slotItem.label)}<small>${options.escapeHtml(slotItem.type)}</small></span>`).join('') || '<span><b>IN</b>-</span>'}
-            ${definition.outputs.map((slotItem) => `<span><b>OUT</b>${options.escapeHtml(slotItem.label)}<small>${options.escapeHtml(slotItem.type)}</small></span>`).join('')}
+            ${definition.inputs.map((slotItem) => `<span><b>IN</b>${options.escapeHtml(localizeSlotLabel(slotItem, options))}<small>${options.escapeHtml(slotItem.type)}</small></span>`).join('') || '<span><b>IN</b>-</span>'}
+            ${definition.outputs.map((slotItem) => `<span><b>OUT</b>${options.escapeHtml(localizeSlotLabel(slotItem, options))}<small>${options.escapeHtml(slotItem.type)}</small></span>`).join('')}
           </div>
         </section>
         <section class="chat-workflow-inspector-section">
           <h4>${options.escapeHtml(ui(options, '模拟输出', 'Mock Output'))}</h4>
           <div class="chat-resource-output-card">
-            <strong>${options.escapeHtml(output?.title ?? definition.displayName)}</strong>
+            <strong>${options.escapeHtml(output?.title ?? localizeNodeTitle(selectedNode, definition, options))}</strong>
             <p>${options.escapeHtml(output?.summary ?? '')}</p>
             <span>${options.escapeHtml(output?.status ?? selectedNode.status)}</span>
           </div>
@@ -2336,7 +2368,7 @@ function renderInspectorParameter(
   return `
     <div class="chat-workflow-inspector-field ${dirty ? 'is-dirty' : ''} ${validation ? 'is-invalid' : ''}">
       <span>
-        <b>${options.escapeHtml(parameterItem.label)}</b>
+        <b>${options.escapeHtml(localizeParameterLabel(parameterItem, options))}</b>
         ${dirty ? `<button class="chat-workflow-param-reset" type="button" data-chat-workflow-action="reset-parameter" data-chat-workflow-param-reset="${options.escapeHtml(parameterItem.id)}" data-chat-workflow-node="${options.escapeHtml(node.id)}">${options.escapeHtml(ui(options, '重置', 'Reset'))}</button>` : ''}
       </span>
       ${renderParameterField(parameterItem, node, value ?? parameterItem.defaultValue, options, Boolean(validation))}
@@ -2353,29 +2385,30 @@ function renderParameterField(
   invalid = false
 ): string {
   const baseAttrs = `data-chat-workflow-param="${options.escapeHtml(parameterItem.id)}" data-chat-workflow-node="${options.escapeHtml(node.id)}" data-chat-workflow-param-type="${options.escapeHtml(parameterItem.type)}" aria-invalid="${invalid ? 'true' : 'false'}"`
+  const label = localizeParameterLabel(parameterItem, options)
   if (parameterItem.type === 'boolean') {
-    return `<input type="checkbox" ${baseAttrs} ${value ? 'checked' : ''} aria-label="${options.escapeHtml(parameterItem.label)}">`
+    return `<input type="checkbox" ${baseAttrs} ${value ? 'checked' : ''} aria-label="${options.escapeHtml(label)}">`
   }
   if (parameterItem.type === 'number' || parameterItem.type === 'integer') {
-    return `<input type="number" ${baseAttrs} value="${options.escapeHtml(formatParameterValue(value))}" ${parameterItem.min === undefined ? '' : `min="${parameterItem.min}"`} ${parameterItem.max === undefined ? '' : `max="${parameterItem.max}"`} ${parameterItem.step === undefined ? '' : `step="${parameterItem.step}"`} aria-label="${options.escapeHtml(parameterItem.label)}">`
+    return `<input type="number" ${baseAttrs} value="${options.escapeHtml(formatParameterValue(value))}" ${parameterItem.min === undefined ? '' : `min="${parameterItem.min}"`} ${parameterItem.max === undefined ? '' : `max="${parameterItem.max}"`} ${parameterItem.step === undefined ? '' : `step="${parameterItem.step}"`} aria-label="${options.escapeHtml(label)}">`
   }
   if (parameterItem.type === 'model-select') {
     return renderModelSelectField(parameterItem, node, value, options, baseAttrs)
   }
   if (parameterItem.type === 'select') {
     return `
-      <select ${baseAttrs} aria-label="${options.escapeHtml(parameterItem.label)}">
+      <select ${baseAttrs} aria-label="${options.escapeHtml(label)}">
         ${(parameterItem.options ?? []).map((optionItem) => `<option value="${options.escapeHtml(optionItem.value)}" ${String(value) === optionItem.value ? 'selected' : ''}>${options.escapeHtml(optionItem.label)}</option>`).join('')}
       </select>
     `
   }
   if (parameterItem.type === 'multi-select' || parameterItem.type === 'string-list') {
-    return `<input type="text" ${baseAttrs} value="${options.escapeHtml(formatParameterValue(value))}" aria-label="${options.escapeHtml(parameterItem.label)}">`
+    return `<input type="text" ${baseAttrs} value="${options.escapeHtml(formatParameterValue(value))}" aria-label="${options.escapeHtml(label)}">`
   }
   if (parameterItem.type === 'textarea') {
-    return `<textarea ${baseAttrs} rows="2" aria-label="${options.escapeHtml(parameterItem.label)}">${options.escapeHtml(formatParameterValue(value))}</textarea>`
+    return `<textarea ${baseAttrs} rows="2" aria-label="${options.escapeHtml(label)}">${options.escapeHtml(formatParameterValue(value))}</textarea>`
   }
-  return `<input type="text" ${baseAttrs} value="${options.escapeHtml(formatParameterValue(value))}" aria-label="${options.escapeHtml(parameterItem.label)}">`
+  return `<input type="text" ${baseAttrs} value="${options.escapeHtml(formatParameterValue(value))}" aria-label="${options.escapeHtml(label)}">`
 }
 
 function renderModelSelectField(
@@ -2397,7 +2430,7 @@ function renderModelSelectField(
   }
   return `
     <details class="chat-resource-model-select">
-      <summary aria-label="${options.escapeHtml(parameterItem.label)}">
+      <summary aria-label="${options.escapeHtml(localizeParameterLabel(parameterItem, options))}">
         <span class="chat-resource-model-choice-logo">${selected.logoHtml}</span>
         <span class="chat-resource-model-choice-copy">
           <strong>${options.escapeHtml(selected.modelName)}</strong>
@@ -2484,7 +2517,7 @@ function renderNodeSearchPopover(graph: CharacterResourceGraph, options: Charact
       </label>
       <div class="chat-resource-node-search-filters" role="toolbar" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '节点分类筛选' : 'Node category filters')}">
         <button class="active" type="button" data-resource-node-search-category="all">${options.escapeHtml(ui(options, '全部', 'All'))}</button>
-        ${categories.map((category) => `<button type="button" data-resource-node-search-category="${options.escapeHtml(category)}">${options.escapeHtml(category)}</button>`).join('')}
+        ${categories.map((category) => `<button type="button" data-resource-node-search-category="${options.escapeHtml(category)}">${options.escapeHtml(localizeCategory(category, options))}</button>`).join('')}
       </div>
       <div class="chat-resource-node-search-results">
       ${candidates.map((definition, index) => renderNodeLibraryCard(definition, graph, options, `resource-popover-search-${index}`)).join('')}

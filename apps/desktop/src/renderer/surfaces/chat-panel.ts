@@ -155,6 +155,7 @@ export interface ChatPanelOptions {
   settingsPanel: HTMLElement
   getLanguage(): 'zh-CN' | 'en-US'
   setLanguage(language: 'zh-CN' | 'en-US'): Promise<void> | void
+  t?(key: string): string
   escapeHtml(value: string): string
   waitForNextPaint(): Promise<void>
   enterFullWindowMode(): Promise<void>
@@ -1562,6 +1563,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const workflowMarkup = workflowPage.renderCharacterWorkflowPage({
       language: options.getLanguage(),
       escapeHtml: options.escapeHtml,
+      t: options.t,
       modelChoices: getCharacterWorkflowModelChoices(),
       configOverrides: characterWorkflowConfigOverrides,
       positionOverrides: characterWorkflowPositionOverrides,
@@ -1729,11 +1731,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         category: 'character',
         label: zh ? '角色' : 'Character',
         spec: {
-          name: zh ? '角色卡草稿' : 'Character Card Draft',
+          name: 'Character Card Draft',
           goalPrompt: '',
           targetAudience: 'private long-form roleplay',
-          mustHave: zh ? ['完整角色卡字段', '开场白', '图片资源', '生成报告'] : ['complete character card fields', 'opening message', 'image asset', 'generation report'],
-          mustNot: zh ? ['空泛字段', '缺失图片提示词'] : ['empty fields', 'missing image prompt'],
+          mustHave: ['complete character card fields', 'opening message', 'image asset', 'generation report'],
+          mustNot: ['empty fields', 'missing image prompt'],
           configOverrides: {
             'generation-strategy': { mode: 'branch-and-refine', branchCount: 3, priorityAssets: ['role-card', 'opening', 'image-pack'] },
             'quality-gate': { minimumScore: 0.84, requiredChecks: ['field completeness', 'roleplay usability', 'visual identity', 'consistency'] },
@@ -1747,15 +1749,15 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         category: 'world',
         label: zh ? '世界' : 'World',
         spec: {
-          name: zh ? '世界卡草稿' : 'World Card Draft',
+          name: 'World Card Draft',
           goalPrompt: '',
           targetAudience: 'private long-form roleplay',
-          mustHave: zh ? ['世界/场景上下文', '主线推进目标', '多个 NPC 资源', '主要角色 NPC', '关系网', '场景图片提示'] : ['world/scene context', 'main story progression', 'multiple NPC resources', 'primary NPC', 'relationship network', 'scene image prompts'],
-          mustNot: zh ? ['设定名词堆砌', 'NPC 只有名字没有功能', '主线和角色脱节'] : ['lore dumping', 'NPCs with names only', 'story detached from characters'],
+          mustHave: ['world/scene context', 'main story progression', 'multiple NPC resources', 'primary NPC', 'relationship network', 'scene image prompts'],
+          mustNot: ['lore dumping', 'NPCs with names only', 'story detached from characters'],
           configOverrides: {
             'source-material': {
               sourceKind: 'notes',
-              notes: zh ? '世界卡结构：需要主线推进、多个 NPC、主要角色 NPC、关系网、场景上下文与可持续事件素材。' : 'World card structure: main story progression, multiple NPCs, primary NPC, relationship network, scene context, and durable event material.',
+              notes: 'World card structure: main story progression, multiple NPCs, primary NPC, relationship network, scene context, and durable event material.',
               groundingStrength: 0.74,
             },
             'asset-targets': { targets: ['world-context', 'scene-context', 'npc-pack', 'image-pack', 'generation-report'], includeAlternates: true },
