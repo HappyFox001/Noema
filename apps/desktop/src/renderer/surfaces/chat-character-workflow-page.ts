@@ -369,7 +369,6 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     slot('target', 'Target', 'asset-target', 'Character card target resource.'),
     slot('candidate', 'Candidate', 'candidate-pack', 'Candidate package produced for evaluation and export.'),
   ], [
-    param('targetKind', 'Target Kind', 'text', 'character-card'),
     param('includeFields', 'Include Fields', 'multi-select', ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'firstMessage', 'dialogueStyle', 'worldContext'], undefined, undefined, undefined, [
       { label: 'Name', value: 'name' },
       { label: 'Description', value: 'description' },
@@ -407,7 +406,6 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'Memory Strategy', value: 'memoryStrategy' },
       { label: 'Image Prompt', value: 'imagePrompt' },
     ]),
-    param('purpose', 'Purpose', 'textarea', ''),
   ], 'text-card'),
   createDefinition('image-target', 'Image Target', ['图片目标', 'image target', 'visual target'], 'Targets', 'asset', 'Declares image resources such as avatar, body, scene, expression, or reference images.', [
     slot('card', 'Card', 'asset-target', 'Character card target.'),
@@ -425,7 +423,6 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'Expression', value: 'expression' },
       { label: 'Reference', value: 'reference' },
     ]),
-    param('promptPurpose', 'Prompt Purpose', 'textarea', ''),
   ], 'image'),
   createDefinition('world-card-target', 'World Card Target', ['世界卡', 'world card', 'setting'], 'Targets', 'asset', 'Declares an overall world resource for NPCs, scenes, relationship network, and plot progression.', [
     slot('goal', 'Goal', 'generation-goal', 'Primary world goal.', true),
@@ -442,7 +439,6 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'Relationship Network', value: 'relationship-network' },
       { label: 'Plot Hooks', value: 'plot-hooks' },
     ]),
-    param('scopePrompt', 'Scope Prompt', 'textarea', ''),
   ], 'package'),
   createDefinition('npc-pack-target', 'NPC Pack Target', ['NPC包', 'npc pack', '多npc'], 'Targets', 'asset', 'Declares a pack of NPC resources connected to the world card and plot arc.', [
     slot('world', 'World', 'asset-target', 'World card resource.'),
@@ -453,7 +449,14 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     slot('npcPack', 'NPC Pack', 'asset-target', 'NPC pack resource.'),
   ], [
     param('npcCount', 'NPC Count', 'integer', 4, 1, 12, 1),
-    param('npcRoles', 'NPC Roles', 'string-list', []),
+    param('npcRoles', 'NPC Roles', 'multi-select', [], undefined, undefined, undefined, [
+      { label: 'Primary NPC', value: 'primary-npc' },
+      { label: 'Ally', value: 'ally' },
+      { label: 'Rival', value: 'rival' },
+      { label: 'Antagonist', value: 'antagonist' },
+      { label: 'Mentor', value: 'mentor' },
+      { label: 'Wildcard', value: 'wildcard' },
+    ]),
   ], 'package'),
   createDefinition('npc-target', 'NPC Target', ['NPC', 'single npc', '角色资源'], 'Targets', 'asset', 'Declares a single NPC as an independently controllable target resource.', [
     slot('npcPack', 'NPC Pack', 'asset-target', 'NPC pack resource.'),
@@ -463,7 +466,14 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
   ], [
     slot('npc', 'NPC', 'asset-target', 'NPC resource.'),
   ], [
-    param('npcRole', 'NPC Role', 'text', ''),
+    param('npcRole', 'NPC Role', 'select', 'primary-npc', undefined, undefined, undefined, [
+      { label: 'Primary NPC', value: 'primary-npc' },
+      { label: 'Ally', value: 'ally' },
+      { label: 'Rival', value: 'rival' },
+      { label: 'Antagonist', value: 'antagonist' },
+      { label: 'Mentor', value: 'mentor' },
+      { label: 'Wildcard', value: 'wildcard' },
+    ]),
     param('storyFunction', 'Story Function', 'textarea', ''),
   ], 'text-card'),
   createDefinition('plot-arc-target', 'Plot Arc Target', ['剧情', 'plot arc', 'story'], 'Targets', 'asset', 'Declares long-running story progression for the world card.', [
@@ -492,20 +502,19 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     slot('scene', 'Scene', 'asset-target', 'Scene resource.'),
   ], [
     param('sceneCount', 'Scene Count', 'integer', 3, 1, 12, 1),
-    param('sceneTypes', 'Scene Types', 'string-list', []),
+    param('sceneTypes', 'Scene Types', 'multi-select', [], undefined, undefined, undefined, [
+      { label: 'Opening Scene', value: 'opening-scene' },
+      { label: 'Private Conversation', value: 'private-conversation' },
+      { label: 'Conflict Scene', value: 'conflict-scene' },
+      { label: 'Reveal Scene', value: 'reveal-scene' },
+      { label: 'Downtime Scene', value: 'downtime-scene' },
+    ]),
   ], 'text-card'),
   createDefinition('style-pressure', 'Style Pressure', ['风格', 'taste', 'tone'], 'Taste', 'core', 'Applies weighted taste, genre, mood, intensity, and pacing pressure to connected targets.', [
     slot('target', 'Target', 'asset-target', 'Target being shaped by this taste profile.'),
   ], [
     slot('style', 'Style', 'style-signal', 'Weighted style signal.'),
   ], [
-    param('scope', 'Scope', 'select', 'connected-targets', undefined, undefined, undefined, [
-      { label: 'Connected Targets', value: 'connected-targets' },
-      { label: 'Global Goal', value: 'global' },
-      { label: 'Image Targets', value: 'image' },
-      { label: 'Field Targets', value: 'field' },
-      { label: 'World Targets', value: 'world' },
-    ]),
     param('preset', 'Preset', 'select', 'custom', undefined, undefined, undefined, [
       { label: 'Custom', value: 'custom' },
       { label: 'Campus Romance', value: 'campus-romance' },
@@ -522,13 +531,6 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
   ], [
     slot('constraint', 'Constraint', 'hard-constraint', 'Constraint signal.'),
   ], [
-    param('scope', 'Scope', 'select', 'connected-targets', undefined, undefined, undefined, [
-      { label: 'Connected Targets', value: 'connected-targets' },
-      { label: 'Global Goal', value: 'global' },
-      { label: 'Image Targets', value: 'image' },
-      { label: 'Field Targets', value: 'field' },
-      { label: 'World Targets', value: 'world' },
-    ]),
     param('mustHave', 'Must Have', 'string-list', []),
     param('mustNot', 'Must Not', 'string-list', []),
     param('hardBoundary', 'Hard Boundary', 'boolean', true),
@@ -566,20 +568,38 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     slot('fieldControl', 'Field Control', 'asset-target', 'Field generation control.'),
   ], [
     param('fieldPurpose', 'Field Purpose', 'textarea', ''),
-    param('tone', 'Tone', 'text', ''),
+    param('tone', 'Tone', 'select', 'neutral', undefined, undefined, undefined, [
+      { label: 'Neutral', value: 'neutral' },
+      { label: 'Warm', value: 'warm' },
+      { label: 'Restrained', value: 'restrained' },
+      { label: 'Sharp', value: 'sharp' },
+      { label: 'Dramatic', value: 'dramatic' },
+    ]),
     param('lengthPolicy', 'Length Policy', 'select', 'medium', undefined, undefined, undefined, [
       { label: 'Short', value: 'short' },
       { label: 'Medium', value: 'medium' },
       { label: 'Long', value: 'long' },
     ]),
-    param('avoidPatterns', 'Avoid Patterns', 'string-list', []),
+    param('avoidPatterns', 'Avoid Patterns', 'multi-select', [], undefined, undefined, undefined, [
+      { label: 'Self Introduction', value: 'self-introduction' },
+      { label: 'Lore Dump', value: 'lore-dump' },
+      { label: 'Asking User Intent', value: 'asking-user-intent' },
+      { label: 'OOC Explanation', value: 'ooc-explanation' },
+      { label: 'Instant Compliance', value: 'instant-compliance' },
+    ]),
   ], 'rule'),
   createDefinition('continuity-control', 'Continuity Control', ['连续性', 'memory', 'continuity'], 'Controls', 'agent', 'Controls long-form continuity, memory anchors, unresolved hooks, and progression pacing.', [
     slot('target', 'Target', 'asset-target', 'Target resource.'),
   ], [
     slot('continuity', 'Continuity', 'asset-target', 'Continuity control.'),
   ], [
-    param('memoryAnchors', 'Memory Anchors', 'string-list', []),
+    param('memoryAnchors', 'Memory Anchors', 'multi-select', [], undefined, undefined, undefined, [
+      { label: 'Relationship Changes', value: 'relationship-changes' },
+      { label: 'Unresolved Promises', value: 'unresolved-promises' },
+      { label: 'World Facts', value: 'world-facts' },
+      { label: 'Boundaries', value: 'boundaries' },
+      { label: 'Long Term Goals', value: 'long-term-goals' },
+    ]),
     param('progressionPacing', 'Progression Pacing', 'select', 'slow-burn', undefined, undefined, undefined, [
       { label: 'Slow Burn', value: 'slow-burn' },
       { label: 'Steady Escalation', value: 'steady-escalation' },
@@ -598,7 +618,12 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'Protective Companion', value: 'protective-companion' },
       { label: 'Ambiguous Ally', value: 'ambiguous-ally' },
     ]),
-    param('tensionRules', 'Tension Rules', 'string-list', []),
+    param('tensionRules', 'Tension Rules', 'multi-select', [], undefined, undefined, undefined, [
+      { label: 'Do Not Resolve Immediately', value: 'do-not-resolve-immediately' },
+      { label: 'Conflicting Motives', value: 'conflicting-motives' },
+      { label: 'Asymmetric Information', value: 'asymmetric-information' },
+      { label: 'Slow Trust', value: 'slow-trust-rule' },
+    ]),
   ], 'rule'),
   createDefinition('source-material', 'Source Material', ['素材', 'reference', 'context'], 'Sources', 'asset', 'Provides optional source context, references, existing cards, images, or user preference notes.', [], [
     slot('source', 'Source', 'source-context', 'Reference context available to the agent.'),
@@ -610,24 +635,16 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'User Preference', value: 'user-preference' },
     ]),
     param('notes', 'Notes', 'textarea', ''),
-    param('groundingStrength', 'Grounding Strength', 'number', 0.5, 0, 1, 0.01),
   ], 'text-card'),
   createDefinition('llm-tool', 'LLM Tool', ['模型', 'llm', 'reasoning'], 'Tools', 'agent', 'Selects the LLM capability available to the backend agent.', [], [
     slot('model', 'Model', 'model-capability', 'LLM model capability.'),
   ], [
     param('modelRef', 'Model', 'model-select', '', undefined, undefined, undefined, undefined, 'llm'),
-    param('temperature', 'Temperature', 'number', 0.72, 0, 2, 0.01),
-    param('reasoningEffort', 'Reasoning Effort', 'select', 'medium', undefined, undefined, undefined, [
-      { label: 'Low', value: 'low' },
-      { label: 'Medium', value: 'medium' },
-      { label: 'High', value: 'high' },
-    ]),
   ], 'rule'),
   createDefinition('image-tool', 'Image Tool', ['生图', 'image api', 'visual'], 'Tools', 'asset', 'Selects image generation or editing capability. Quantity and image role controls live in image-generation-control nodes.', [], [
     slot('image', 'Image', 'image-capability', 'Image generation capability.'),
   ], [
     param('modelRef', 'Model / Workflow', 'model-select', '', undefined, undefined, undefined, undefined, 'image'),
-    param('referenceStrength', 'Reference Strength', 'number', 0.55, 0, 1, 0.01),
   ], 'image'),
   createDefinition('retrieval-tool', 'Retrieval Tool', ['检索', 'search', 'knowledge'], 'Tools', 'agent', 'Allows the agent to read local context, vector sources, or web summaries when enabled.', [
     slot('source', 'Source', 'source-context', 'Source context that can be indexed.'),
@@ -695,7 +712,13 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     slot('critique', 'Critique', 'critique-policy', 'Critique and repair policy.'),
   ], [
     param('iterations', 'Iterations', 'integer', 2, 0, 8, 1),
-    param('dimensions', 'Dimensions', 'string-list', []),
+    param('dimensions', 'Dimensions', 'multi-select', [], undefined, undefined, undefined, [
+      { label: 'Goal Match', value: 'goal-match' },
+      { label: 'Field Completeness', value: 'field-completeness' },
+      { label: 'Roleplay Usability', value: 'roleplay-usability' },
+      { label: 'Visual Identity', value: 'visual-identity' },
+      { label: 'Consistency', value: 'consistency' },
+    ]),
     param('autoRepair', 'Auto Repair', 'boolean', true),
   ], 'validation'),
   createDefinition('quality-gate', 'Quality Gate', ['质量', 'validation', 'acceptance'], 'Evaluation', 'safety', 'Defines acceptance criteria that can block export or route candidates back for repair.', [
@@ -707,7 +730,13 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
   ], [
     param('minimumScore', 'Minimum Score', 'number', 0.82, 0, 1, 0.01),
     param('blockExport', 'Block Export', 'boolean', true),
-    param('requiredChecks', 'Required Checks', 'string-list', []),
+    param('requiredChecks', 'Required Checks', 'multi-select', [], undefined, undefined, undefined, [
+      { label: 'Goal Match', value: 'goal-match' },
+      { label: 'Field Completeness', value: 'field-completeness' },
+      { label: 'Roleplay Usability', value: 'roleplay-usability' },
+      { label: 'Visual Identity', value: 'visual-identity' },
+      { label: 'Consistency', value: 'consistency' },
+    ]),
   ], 'validation'),
   createDefinition('output-adapter', 'Output Adapter', ['导出', 'adapter', 'format'], 'Outputs', 'core', 'Maps an accepted candidate pack to a target format without changing generation goals.', [
     slot('candidate', 'Candidate', 'candidate-pack', 'Accepted candidate pack.', true),

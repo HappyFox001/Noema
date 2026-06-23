@@ -1831,7 +1831,7 @@ function requestedResourcesForTarget(node: CharacterWorkflowNode, kind: AgentTar
     return ['npc-pack', ...stringListValue(node.config.npcRoles)]
   }
   if (kind === 'npc') {
-    return [`npc:${stringValue(node.config.npcRole, 'primary NPC')}`]
+    return [`npc:${stringValue(node.config.npcRole, 'primary-npc')}`]
   }
   if (kind === 'plot-arc') {
     return [`plot-arc:${stringValue(node.config.arcShape, 'slow-burn')}`]

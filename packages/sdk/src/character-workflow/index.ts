@@ -502,7 +502,6 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
       candidate: port('candidate', 'Candidate', 'candidate-pack'),
     },
     parameters: [
-      parameter('targetKind', 'Target Kind', 'text', 'character-card'),
       parameter('includeFields', 'Include Fields', 'multi-select', ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'firstMessage', 'dialogueStyle', 'worldContext'], undefined, [
         option('Name', 'name'),
         option('Description', 'description'),
@@ -547,7 +546,6 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
         option('Memory Strategy', 'memoryStrategy'),
         option('Image Prompt', 'imagePrompt'),
       ]),
-      parameter('purpose', 'Purpose', 'textarea', ''),
     ],
   },
   {
@@ -572,7 +570,6 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
         option('Expression', 'expression'),
         option('Reference', 'reference'),
       ]),
-      parameter('promptPurpose', 'Prompt Purpose', 'textarea', ''),
     ],
   },
   {
@@ -596,7 +593,6 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
         option('Relationship Network', 'relationship-network'),
         option('Plot Hooks', 'plot-hooks'),
       ]),
-      parameter('scopePrompt', 'Scope Prompt', 'textarea', ''),
     ],
   },
   {
@@ -614,7 +610,14 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     outputs: { npcPack: port('npcPack', 'NPC Pack', 'asset-target') },
     parameters: [
       parameter('npcCount', 'NPC Count', 'integer', 4, { min: 1, max: 12, step: 1 }),
-      parameter('npcRoles', 'NPC Roles', 'string-list', []),
+      parameter('npcRoles', 'NPC Roles', 'multi-select', [], undefined, [
+        option('Primary NPC', 'primary-npc'),
+        option('Ally', 'ally'),
+        option('Rival', 'rival'),
+        option('Antagonist', 'antagonist'),
+        option('Mentor', 'mentor'),
+        option('Wildcard', 'wildcard'),
+      ]),
     ],
   },
   {
@@ -631,7 +634,14 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     },
     outputs: { npc: port('npc', 'NPC', 'asset-target') },
     parameters: [
-      parameter('npcRole', 'NPC Role', 'text', ''),
+      parameter('npcRole', 'NPC Role', 'select', 'primary-npc', undefined, [
+        option('Primary NPC', 'primary-npc'),
+        option('Ally', 'ally'),
+        option('Rival', 'rival'),
+        option('Antagonist', 'antagonist'),
+        option('Mentor', 'mentor'),
+        option('Wildcard', 'wildcard'),
+      ]),
       parameter('storyFunction', 'Story Function', 'textarea', ''),
     ],
   },
@@ -674,7 +684,13 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     outputs: { scene: port('scene', 'Scene', 'asset-target') },
     parameters: [
       parameter('sceneCount', 'Scene Count', 'integer', 3, { min: 1, max: 12, step: 1 }),
-      parameter('sceneTypes', 'Scene Types', 'string-list', []),
+      parameter('sceneTypes', 'Scene Types', 'multi-select', [], undefined, [
+        option('Opening Scene', 'opening-scene'),
+        option('Private Conversation', 'private-conversation'),
+        option('Conflict Scene', 'conflict-scene'),
+        option('Reveal Scene', 'reveal-scene'),
+        option('Downtime Scene', 'downtime-scene'),
+      ]),
     ],
   },
   {
@@ -686,13 +702,6 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     inputs: { target: port('target', 'Target', 'asset-target') },
     outputs: { style: port('style', 'Style', 'style-signal') },
     parameters: [
-      parameter('scope', 'Scope', 'select', 'connected-targets', undefined, [
-        option('Connected Targets', 'connected-targets'),
-        option('Global Goal', 'global'),
-        option('Image Targets', 'image'),
-        option('Field Targets', 'field'),
-        option('World Targets', 'world'),
-      ]),
       parameter('preset', 'Preset', 'select', 'custom', undefined, [
         option('Custom', 'custom'),
         option('Campus Romance', 'campus-romance'),
@@ -714,13 +723,6 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     inputs: { target: port('target', 'Target', 'asset-target') },
     outputs: { constraint: port('constraint', 'Constraint', 'hard-constraint') },
     parameters: [
-      parameter('scope', 'Scope', 'select', 'connected-targets', undefined, [
-        option('Connected Targets', 'connected-targets'),
-        option('Global Goal', 'global'),
-        option('Image Targets', 'image'),
-        option('Field Targets', 'field'),
-        option('World Targets', 'world'),
-      ]),
       parameter('mustHave', 'Must Have', 'string-list', []),
       parameter('mustNot', 'Must Not', 'string-list', []),
       parameter('hardBoundary', 'Hard Boundary', 'boolean', true),
@@ -768,13 +770,25 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     outputs: { fieldControl: port('fieldControl', 'Field Control', 'asset-target') },
     parameters: [
       parameter('fieldPurpose', 'Field Purpose', 'textarea', ''),
-      parameter('tone', 'Tone', 'text', ''),
+      parameter('tone', 'Tone', 'select', 'neutral', undefined, [
+        option('Neutral', 'neutral'),
+        option('Warm', 'warm'),
+        option('Restrained', 'restrained'),
+        option('Sharp', 'sharp'),
+        option('Dramatic', 'dramatic'),
+      ]),
       parameter('lengthPolicy', 'Length Policy', 'select', 'medium', undefined, [
         option('Short', 'short'),
         option('Medium', 'medium'),
         option('Long', 'long'),
       ]),
-      parameter('avoidPatterns', 'Avoid Patterns', 'string-list', []),
+      parameter('avoidPatterns', 'Avoid Patterns', 'multi-select', [], undefined, [
+        option('Self Introduction', 'self-introduction'),
+        option('Lore Dump', 'lore-dump'),
+        option('Asking User Intent', 'asking-user-intent'),
+        option('OOC Explanation', 'ooc-explanation'),
+        option('Instant Compliance', 'instant-compliance'),
+      ]),
     ],
   },
   {
@@ -786,7 +800,13 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     inputs: { target: port('target', 'Target', 'asset-target') },
     outputs: { continuity: port('continuity', 'Continuity', 'asset-target') },
     parameters: [
-      parameter('memoryAnchors', 'Memory Anchors', 'string-list', []),
+      parameter('memoryAnchors', 'Memory Anchors', 'multi-select', [], undefined, [
+        option('Relationship Changes', 'relationship-changes'),
+        option('Unresolved Promises', 'unresolved-promises'),
+        option('World Facts', 'world-facts'),
+        option('Boundaries', 'boundaries'),
+        option('Long Term Goals', 'long-term-goals'),
+      ]),
       parameter('progressionPacing', 'Progression Pacing', 'select', 'slow-burn', undefined, [
         option('Slow Burn', 'slow-burn'),
         option('Steady Escalation', 'steady-escalation'),
@@ -810,7 +830,12 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
         option('Protective Companion', 'protective-companion'),
         option('Ambiguous Ally', 'ambiguous-ally'),
       ]),
-      parameter('tensionRules', 'Tension Rules', 'string-list', []),
+      parameter('tensionRules', 'Tension Rules', 'multi-select', [], undefined, [
+        option('Do Not Resolve Immediately', 'do-not-resolve-immediately'),
+        option('Conflicting Motives', 'conflicting-motives'),
+        option('Asymmetric Information', 'asymmetric-information'),
+        option('Slow Trust', 'slow-trust-rule'),
+      ]),
     ],
   },
   {
@@ -829,7 +854,6 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
         option('User Preference', 'user-preference'),
       ]),
       parameter('notes', 'Notes', 'textarea', ''),
-      parameter('groundingStrength', 'Grounding Strength', 'number', 0.5, { min: 0, max: 1, step: 0.01 }),
     ],
   },
   {
@@ -842,13 +866,6 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     outputs: { model: port('model', 'Model', 'model-capability') },
     parameters: [
       parameter('modelRef', 'Model', 'model-select', '', { modelKind: 'llm' }),
-      parameter('temperature', 'Temperature', 'number', 0.72, { min: 0, max: 2, step: 0.01 }),
-      parameter('reasoningEffort', 'Reasoning Effort', 'select', 'medium', undefined, [
-        option('Low', 'low'),
-        option('Medium', 'medium'),
-        option('High', 'high'),
-      ]),
-      parameter('contextBudget', 'Context Budget', 'integer', 16000, { min: 1000, max: 200000, step: 1000 }),
     ],
   },
   {
@@ -861,7 +878,6 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     outputs: { image: port('image', 'Image', 'image-capability') },
     parameters: [
       parameter('modelRef', 'Model / Workflow', 'model-select', '', { modelKind: 'image' }),
-      parameter('referenceStrength', 'Reference Strength', 'number', 0.55, { min: 0, max: 1, step: 0.01 }),
     ],
   },
   {
@@ -960,7 +976,13 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     outputs: { critique: port('critique', 'Critique', 'critique-policy') },
     parameters: [
       parameter('iterations', 'Iterations', 'integer', 2, { min: 0, max: 8, step: 1 }),
-      parameter('dimensions', 'Dimensions', 'string-list', []),
+      parameter('dimensions', 'Dimensions', 'multi-select', [], undefined, [
+        option('Goal Match', 'goal-match'),
+        option('Field Completeness', 'field-completeness'),
+        option('Roleplay Usability', 'roleplay-usability'),
+        option('Visual Identity', 'visual-identity'),
+        option('Consistency', 'consistency'),
+      ]),
       parameter('autoRepair', 'Auto Repair', 'boolean', true),
     ],
   },
@@ -982,7 +1004,13 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     parameters: [
       parameter('minimumScore', 'Minimum Score', 'number', 0.82, { min: 0, max: 1, step: 0.01 }),
       parameter('blockExport', 'Block Export', 'boolean', true),
-      parameter('requiredChecks', 'Required Checks', 'string-list', []),
+      parameter('requiredChecks', 'Required Checks', 'multi-select', [], undefined, [
+        option('Goal Match', 'goal-match'),
+        option('Field Completeness', 'field-completeness'),
+        option('Roleplay Usability', 'roleplay-usability'),
+        option('Visual Identity', 'visual-identity'),
+        option('Consistency', 'consistency'),
+      ]),
     ],
   },
   {

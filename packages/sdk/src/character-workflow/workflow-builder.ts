@@ -144,7 +144,6 @@ export function createUiConfigOverrides(spec: CharacterWorkflowBuilderSpec): Rec
     },
     'opening-field-target': {
       field: 'firstMessage',
-      purpose: '',
     },
     'opening-field-control': {
       fieldPurpose: spec.stylePrompt,
@@ -154,7 +153,6 @@ export function createUiConfigOverrides(spec: CharacterWorkflowBuilderSpec): Rec
     },
     'image-target': {
       imageRole: 'avatar',
-      promptPurpose: spec.stylePrompt,
     },
     'image-control': {
       targetImageCount: Math.max(1, spec.assetTargets.includes('image-pack') ? 4 : 1),
@@ -164,13 +162,11 @@ export function createUiConfigOverrides(spec: CharacterWorkflowBuilderSpec): Rec
       negativePrompt: spec.mustNot.join(', '),
     },
     'style-pressure': {
-      scope: 'connected-targets',
       preset: spec.preset,
       intensity: spec.intensity,
       stylePrompt: spec.stylePrompt,
     },
     'hard-constraints': {
-      scope: 'connected-targets',
       mustHave: spec.mustHave,
       mustNot: spec.mustNot,
       hardBoundary: true,
@@ -178,7 +174,6 @@ export function createUiConfigOverrides(spec: CharacterWorkflowBuilderSpec): Rec
     'source-material': {
       sourceKind: 'notes',
       notes: spec.sourceNotes,
-      groundingStrength: 0.62,
     },
     'agent-policy': {
       autonomyLevel: spec.agentPolicy.autonomyLevel,
@@ -255,7 +250,6 @@ function applySpecToWorkflow(workflow: CharacterWorkflow, spec: CharacterWorkflo
   byType.get('source-material')?.config && Object.assign(byType.get('source-material')!.config, {
     sourceKind: 'notes',
     notes: spec.sourceNotes,
-    groundingStrength: 0.62,
   })
   byType.get('agent-policy')?.config && Object.assign(byType.get('agent-policy')!.config, {
     ...spec.agentPolicy,
@@ -271,7 +265,6 @@ function applySpecToWorkflow(workflow: CharacterWorkflow, spec: CharacterWorkflo
   })
   byType.get('character-field-target')?.config && Object.assign(byType.get('character-field-target')!.config, {
     field: 'firstMessage',
-    purpose: '',
   })
   byType.get('field-generation-control')?.config && Object.assign(byType.get('field-generation-control')!.config, {
     fieldPurpose: spec.stylePrompt,
@@ -280,7 +273,6 @@ function applySpecToWorkflow(workflow: CharacterWorkflow, spec: CharacterWorkflo
   })
   byType.get('image-target')?.config && Object.assign(byType.get('image-target')!.config, {
     imageRole: 'avatar',
-    promptPurpose: spec.stylePrompt,
   })
   byType.get('image-generation-control')?.config && Object.assign(byType.get('image-generation-control')!.config, {
     targetImageCount: Math.max(1, spec.assetTargets.includes('image-pack') ? 4 : 1),
