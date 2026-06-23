@@ -121,16 +121,13 @@ export async function buildCharacterWorkflowFromPrompt(
   const response = await sendChatTurnWithConfiguredModel(request.modelConfig, {
     input: prompt,
     language,
-    options: { temperature: 0.32, top_p: 0.82, max_tokens: 1400 },
+    options: { temperature: 0.32, top_p: 0.82 },
     messages: [{
       role: 'system',
       content: createWorkflowBuilderSystemPrompt(language),
     }],
-  }, {
-    defaultOptions: {
-      max_tokens: 1400,
-    },
   })
+  ensureUsefulWorkflowBuilderResponse(response.content, 'Workflow builder')
 
   const spec = normalizeWorkflowBuilderSpec(response.content, prompt, language)
   const workflow = createStandardCharacterWorkflow({
@@ -165,16 +162,13 @@ async function editCharacterWorkflowFromPrompt(
       graph,
     }),
     language: request.language,
-    options: { temperature: 0.24, top_p: 0.78, max_tokens: 2400 },
+    options: { temperature: 0.24, top_p: 0.78 },
     messages: [{
       role: 'system',
       content: createWorkflowEditorSystemPrompt(request.language),
     }],
-  }, {
-    defaultOptions: {
-      max_tokens: 2400,
-    },
   })
+  ensureUsefulWorkflowBuilderResponse(response.content, 'Workflow editor')
 
   const spec = normalizeWorkflowEditorSpec(response.content, request.prompt, request.language, graph)
   return {
@@ -196,7 +190,7 @@ export function normalizeWorkflowBuilderSpec(
     summary: stringValue(parsed, 'summary'),
     confidence: numberValue(parsed, 'confidence', 0.74, 0, 1),
     status: normalizeBuilderStatus(stringValue(parsed, 'status')),
-    goalPrompt: stringValue(parsed, 'goalPrompt') || fallbackPrompt,
+    goalPrompt: stringValue(parsed, 'goalPrompt'),
     targetAudience: stringValue(parsed, 'targetAudience'),
     stylePrompt: stringValue(parsed, 'stylePrompt'),
     preset: normalizePreset(stringValue(parsed, 'preset')),
@@ -228,19 +222,13 @@ export function normalizeWorkflowEditorSpec(
   const operations = operationList(parsed?.operations)
   const directUpdates = recordMapValue(parsed, 'nodeConfigUpdates')
   const normalizedGraph = normalizeBuilderGraph(graph)
-  const inferredUpdates = inferWorkflowEditorConfigUpdates(fallbackPrompt, normalizedGraph)
-  const inferredOperations = inferWorkflowEditorOperations(fallbackPrompt, normalizedGraph)
-  const mergedUpdates = {
-    ...inferredUpdates,
-    ...directUpdates,
-  }
+  const mergedUpdates = directUpdates
   const mergedOperations = [
     ...Object.entries(mergedUpdates).map(([nodeId, config]) => ({
       type: 'update-node-config' as const,
       nodeId,
       config,
     })),
-    ...inferredOperations,
     ...operations,
   ]
   return {
@@ -543,6 +531,16 @@ function parseJsonObject(text: string): Record<string, unknown> {
   }
 }
 
+function ensureUsefulWorkflowBuilderResponse(text: string, label: string): void {
+  const parsed = parseJsonObject(text)
+  if (!Object.keys(parsed).length) {
+    throw new Error(`${label} did not return valid editable JSON. Model response: ${text.trim().slice(0, 500)}`)
+  }
+  if (stringValue(parsed, 'status') === 'blocked') {
+    throw new Error(stringValue(parsed, 'summary') || `${label} reported that the request is blocked.`)
+  }
+}
+
 function normalizeBuilderGraph(graph: CharacterWorkflowBuilderGraph | undefined): CharacterWorkflowBuilderGraph {
   if (!graph || typeof graph !== 'object') {
     return { nodes: [], edges: [] }
@@ -707,228 +705,6 @@ function operationList(value: unknown): CharacterWorkflowBuilderOperation[] {
 
 function normalizeBuilderStatus(value: string): CharacterWorkflowBuilderSpec['status'] {
   return new Set(['applied', 'needs-user', 'blocked']).has(value) ? value as CharacterWorkflowBuilderSpec['status'] : 'applied'
-}
-
-function inferWorkflowEditorConfigUpdates(
-  prompt: string,
-  graph: CharacterWorkflowBuilderGraph
-): Record<string, Record<string, unknown>> {
-  const text = prompt.trim()
-  if (!text) return {}
-  const lower = text.toLowerCase()
-  const zh = /[\u3400-\u9fff]/.test(text)
-  const hasCampus = /校园|大学|高中|同桌|学姐|学妹|社团|课堂|图书馆|campus|school|college|university/.test(lower)
-  const hasRomance = /恋爱|爱情|暧昧|甜|情侣|告白|约会|romance|love|sweet|dating/.test(lower)
-  const hasFemaleLead = /女主|女生|女孩|少女|她|female|girl|heroine/.test(lower)
-  const hasSpicy = /偏肉|肉|亲密|身体|暧昧拉扯|成人|sensual|spicy|intimate/.test(lower)
-  const hasMultiNpc = /多npc|多个npc|群像|室友|同学们|社团成员|multi-npc|multiple npc/.test(lower)
-  const updates: Record<string, Record<string, unknown>> = {}
-  const nodeByType = (type: string) => graph.nodes.find((node) => node.type === type)
-  const goal = nodeByType('goal')
-  if (goal) {
-    updates[goal.id] = {
-      goalPrompt: zh
-        ? [
-          hasCampus ? '校园恋爱角色卡与长期 RP 故事框架' : '角色卡与长期 RP 故事框架',
-          hasFemaleLead ? '主角为女生' : '',
-          hasRomance ? '关系推进以甜蜜恋爱、暧昧拉扯和情感成长为核心' : '',
-          hasSpicy ? '允许适度成人向亲密氛围，但保持克制、同意与角色关系合理推进' : '',
-        ].filter(Boolean).join('；')
-        : [
-          hasCampus ? 'Campus romance character card and long-form RP story framework' : 'Character card and long-form RP story framework',
-          hasFemaleLead ? 'female protagonist' : '',
-          hasRomance ? 'sweet romance, romantic tension, and emotional growth' : '',
-          hasSpicy ? 'moderate sensual intimacy with consent and gradual relationship progression' : '',
-        ].filter(Boolean).join('; '),
-      targetAudience: zh ? '偏长期陪伴与剧情推进的中文 RP 用户' : 'Long-form RP users who want relationship-driven story progression',
-      allowAgentExpansion: true,
-    }
-  }
-  const style = nodeByType('style-pressure')
-  if (style) {
-    updates[style.id] = {
-      preset: hasCampus && hasRomance ? 'campus-romance' : 'custom',
-      intensity: hasSpicy ? 0.76 : 0.7,
-      stylePrompt: zh
-        ? [
-          hasCampus ? '清新的校园日常质感' : '',
-          hasRomance ? '甜甜的恋爱氛围、细腻暧昧、双向靠近' : '',
-          hasSpicy ? '亲密描写偏氛围和心理张力，避免突兀露骨' : '',
-          '对白自然，角色主动但不过度模板化',
-        ].filter(Boolean).join('；')
-        : [
-          hasCampus ? 'fresh campus slice-of-life texture' : '',
-          hasRomance ? 'sweet romance, delicate tension, mutual approach' : '',
-          hasSpicy ? 'intimacy focused on atmosphere and psychological tension, not abrupt explicitness' : '',
-          'natural dialogue and proactive but non-formulaic characterization',
-        ].filter(Boolean).join('; '),
-    }
-  }
-  const constraint = nodeByType('constraint')
-  if (constraint) {
-    updates[constraint.id] = {
-      mustHave: [
-        zh && hasFemaleLead ? '主角是女生' : hasFemaleLead ? 'female protagonist' : '',
-        zh && hasCampus ? '校园场景与日常事件能持续推动关系' : hasCampus ? 'campus scenes and daily events drive relationship progression' : '',
-        zh && hasRomance ? '甜蜜恋爱、暧昧拉扯、情感成长' : hasRomance ? 'sweet romance, romantic tension, emotional growth' : '',
-        zh && hasSpicy ? '成人向内容必须建立在自愿、关系铺垫和克制表达上' : hasSpicy ? 'adult intimacy must be consensual, gradual, and restrained' : '',
-      ].filter(Boolean),
-      mustNot: [
-        zh ? '未成年人露骨性内容' : 'explicit sexual content involving minors',
-        zh ? '强迫、无同意、羞辱式推进' : 'coercion, non-consent, humiliating progression',
-        zh ? '把设定写成空泛标签而没有可演事件' : 'generic labels without playable events',
-      ],
-      hardBoundary: true,
-    }
-  }
-  const source = nodeByType('source-material')
-  if (source) {
-    updates[source.id] = {
-      sourceKind: 'notes',
-      notes: zh
-        ? `用户需求：${text}\n可展开方向：校园日常、课后相处、社团/图书馆/雨天/考试周等事件；围绕女生主角的情绪、关系边界、主动选择与甜蜜互动展开。`
-        : `User request: ${text}\nExpansion direction: campus routines, after-class moments, club/library/rainy-day/exam-week events, centered on the female protagonist's emotions, boundaries, agency, and sweet interactions.`,
-    }
-  }
-  const fieldControl = nodeByType('field-generation-control')
-  if (fieldControl) {
-    updates[fieldControl.id] = {
-      fieldPurpose: zh
-        ? '开场白要直接进入可互动校园恋爱情境，展示女生主角的性格、关系张力和可继续推进的事件钩子。'
-        : 'Opening should enter an interactive campus-romance situation, showing the female protagonist, relational tension, and a playable hook.',
-      tone: hasSpicy ? 'warm' : 'sweet',
-      lengthPolicy: 'medium',
-      avoidPatterns: zh ? ['空泛旁白', '直接总结设定', '露骨开场'] : ['generic narration', 'summarizing the setting', 'explicit opening'],
-    }
-  }
-  const imageControl = nodeByType('image-generation-control')
-  if (imageControl) {
-    updates[imageControl.id] = {
-      targetImageCount: 1,
-      imageType: 'avatar',
-      composition: 'character-focused',
-      consistencyMode: 'same-character',
-      negativePrompt: zh
-        ? '未成年性暗示，露骨色情，低质手部，崩坏五官，过度暴露'
-        : 'minor sexualization, explicit pornography, poor hands, broken face, excessive exposure',
-    }
-  }
-  const strategy = nodeByType('generation-strategy')
-  if (strategy) {
-    updates[strategy.id] = {
-      mode: 'branch-and-refine',
-      branchCount: hasMultiNpc ? 4 : 3,
-      priorityAssets: hasMultiNpc ? ['role-card', 'opening', 'npc-pack', 'plot-arc', 'image-pack'] : ['role-card', 'opening', 'image-pack'],
-    }
-  }
-  return updates
-}
-
-function inferWorkflowEditorOperations(
-  prompt: string,
-  graph: CharacterWorkflowBuilderGraph
-): CharacterWorkflowBuilderOperation[] {
-  const text = prompt.trim().toLowerCase()
-  if (!text) return []
-  const requestedImageTypes = inferRequestedImageTypes(text)
-  if (requestedImageTypes.length <= 1) {
-    return []
-  }
-  const existingImageTypes = new Set(graph.nodes
-    .filter((node) => node.type === 'image-target')
-    .map((node) => stringValue(recordValue({ config: node.config ?? {} }, 'config'), 'imageRole'))
-    .filter(Boolean))
-  const characterTarget = graph.nodes.find((node) => node.type === 'character-card-target')
-  const imageTool = graph.nodes.find((node) => node.type === 'image-tool')
-  const style = graph.nodes.find((node) => node.type === 'style-pressure')
-  const constraint = graph.nodes.find((node) => node.type === 'constraint')
-  const operations: CharacterWorkflowBuilderOperation[] = []
-  requestedImageTypes.forEach((imageType, index) => {
-    if (existingImageTypes.has(imageType)) {
-      return
-    }
-    const targetId = `image-target-${imageType}`
-    const controlId = `image-control-${imageType}`
-    const x = 720 + index * 44
-    const y = 430 + index * 248
-    operations.push({
-      type: 'add-node',
-      nodeType: 'image-target',
-      nodeId: targetId,
-      title: imageTitleForType(imageType),
-      x,
-      y,
-      config: { imageRole: imageType },
-    })
-    operations.push({
-      type: 'add-node',
-      nodeType: 'image-generation-control',
-      nodeId: controlId,
-      title: `${imageTitleForType(imageType)} Control`,
-      x: x + 330,
-      y,
-      config: {
-        targetImageCount: 1,
-        imageType,
-        composition: compositionForImageType(imageType),
-        consistencyMode: imageType === 'scene' ? 'same-world' : 'same-character',
-        negativePrompt: 'text, caption, subtitle, watermark, logo, signature, UI text, prompt words, labels, typography',
-      },
-    })
-    if (characterTarget) {
-      operations.push({ type: 'add-link', sourceNodeId: characterTarget.id, sourceSlotId: 'target', targetNodeId: targetId, targetSlotId: 'card', kind: 'guides' })
-    }
-    if (imageTool) {
-      operations.push({ type: 'add-link', sourceNodeId: imageTool.id, sourceSlotId: 'image', targetNodeId: targetId, targetSlotId: 'image', kind: 'enables' })
-    }
-    operations.push({ type: 'add-link', sourceNodeId: targetId, sourceSlotId: 'imageAsset', targetNodeId: controlId, targetSlotId: 'imageTarget', kind: 'guides' })
-    operations.push({ type: 'add-link', sourceNodeId: controlId, sourceSlotId: 'imageControl', targetNodeId: targetId, targetSlotId: 'imageControl', kind: 'guides' })
-    if (style) {
-      operations.push({ type: 'add-link', sourceNodeId: style.id, sourceSlotId: 'style', targetNodeId: targetId, targetSlotId: 'style', kind: 'weights' })
-    }
-    if (constraint) {
-      operations.push({ type: 'add-link', sourceNodeId: constraint.id, sourceSlotId: 'constraint', targetNodeId: targetId, targetSlotId: 'constraint', kind: 'constrains' })
-    }
-  })
-  return operations
-}
-
-function inferRequestedImageTypes(text: string): string[] {
-  const requested = new Set<string>()
-  if (/头像|avatar|portrait|头图/.test(text)) requested.add('avatar')
-  if (/全身|立绘|body|full.?body/.test(text)) requested.add('body')
-  if (/场景|背景图|scene|environment/.test(text)) requested.add('scene')
-  if (/表情|差分|expression|emotion/.test(text)) requested.add('expression')
-  if (/参考|reference/.test(text)) requested.add('reference')
-  if (/图包|图片包|多图|image.?pack|avatar.*body.*scene|头像.*全身.*场景|头像.*全身.*表情/.test(text)) {
-    requested.add('avatar')
-    requested.add('body')
-    requested.add('scene')
-    requested.add('expression')
-  }
-  return [...requested]
-}
-
-function imageTitleForType(imageType: string): string {
-  const titles: Record<string, string> = {
-    avatar: 'Avatar Image Target',
-    body: 'Body Image Target',
-    scene: 'Scene Image Target',
-    expression: 'Expression Image Target',
-    reference: 'Reference Image Target',
-  }
-  return titles[imageType] ?? `${imageType} Image Target`
-}
-
-function compositionForImageType(imageType: string): string {
-  const compositions: Record<string, string> = {
-    avatar: 'upper-body-portrait',
-    body: 'full-body',
-    scene: 'environmental-scene',
-    expression: 'expression-sheet',
-    reference: 'character-focused',
-  }
-  return compositions[imageType] ?? 'character-focused'
 }
 
 function sanitizeResourceConfigForNode(type: string | undefined, config: Record<string, unknown>): Record<string, unknown> {

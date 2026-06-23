@@ -60,7 +60,7 @@ export function createConfiguredCharacterAgentToolRuntime(
       execute: async ({ callId, context, input, state }) => {
         const text = await runCharacterAgentLLMTool(context, models, options.proxyUrl, [
           createCharacterDecisionPrompt(context, input, state.draft),
-        ].join('\n'), { temperature: 0.82, max_tokens: 4600 })
+        ].join('\n'), { temperature: 0.82 })
         const parsed = parseJsonObject(text)
         return {
           callId,
@@ -128,7 +128,7 @@ export function createConfiguredCharacterAgentToolRuntime(
       execute: async ({ callId, context, input }) => {
         const text = await runCharacterAgentLLMTool(context, models, options.proxyUrl, [
           createCharacterReviewPrompt(context, input),
-        ].join('\n'), { temperature: 0.2, max_tokens: 2600 })
+        ].join('\n'), { temperature: 0.2 })
         const parsed = parseJsonObject(text) ?? {}
         const score = numberField(parsed.score, context.qualityGate.minimumScore)
         const passed = parsed.passed === false ? false : score >= context.qualityGate.minimumScore
@@ -386,7 +386,7 @@ async function runCharacterAgentLLMTool(
   models: CharacterAgentConfiguredModel[],
   proxyUrl: string | undefined,
   input: string,
-  options: { temperature?: number; max_tokens?: number } = {}
+  options: { temperature?: number } = {}
 ): Promise<string> {
   const { configuredModel, modelName } = findConfiguredLLMModel(models, context)
   const session = createChatSessionFromModel({
@@ -395,9 +395,6 @@ async function runCharacterAgentLLMTool(
     model: modelName,
     baseURL: configuredModel.baseUrl?.trim() || undefined,
   }, {
-    defaultOptions: {
-      max_tokens: options.max_tokens ?? 2400,
-    },
     llmOptions: {
       proxyUrl,
     },
@@ -407,7 +404,6 @@ async function runCharacterAgentLLMTool(
     language: context.language,
     options: {
       temperature: options.temperature ?? 0.5,
-      max_tokens: options.max_tokens ?? 2400,
     },
   })
   return response.content.trim()

@@ -239,6 +239,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let characterWorkflowBuilderPrompt = ''
   let characterWorkflowAssistantPrompt = ''
   let characterWorkflowBuilderStatus = ''
+  let characterWorkflowAssistantStatusExpanded = true
   let characterWorkflowBuilderBusy = false
   let characterWorkflowTemplateMenuOpen = false
   let characterWorkflowRunState: CharacterResourceRunState | null = null
@@ -1884,9 +1885,37 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   function renderCharacterWorkflowAssistant(): string {
     const zh = options.getLanguage() === 'zh-CN'
     const label = zh ? '应用资源图修改' : 'Apply graph edits'
+    const statusLabel = zh ? 'Agent 信息' : 'Agent message'
+    const copyLabel = zh ? '复制信息' : 'Copy message'
+    const toggleLabel = characterWorkflowAssistantStatusExpanded
+      ? (zh ? '收起信息' : 'Collapse message')
+      : (zh ? '展开信息' : 'Expand message')
     return `
       <form class="chat-workflow-canvas-assistant ${characterWorkflowBuilderBusy ? 'is-busy' : ''}" data-chat-workflow-assistant-form>
         ${renderChatRuntimeModelPickerMarkup('workflow-assistant')}
+        ${characterWorkflowBuilderStatus ? `
+          <section class="chat-workflow-canvas-assistant-status ${characterWorkflowAssistantStatusExpanded ? 'expanded' : ''}" aria-live="polite">
+            <div class="chat-workflow-canvas-assistant-status-head">
+              <span>${options.escapeHtml(statusLabel)}</span>
+              <div class="chat-workflow-canvas-assistant-status-actions">
+                <button type="button" data-chat-workflow-assistant-status-action="copy" aria-label="${options.escapeHtml(copyLabel)}" title="${options.escapeHtml(copyLabel)}">
+                  <svg viewBox="0 0 20 20" aria-hidden="true">
+                    <path d="M7 6.5V4.8c0-.9.6-1.5 1.5-1.5h5c.9 0 1.5.6 1.5 1.5v7c0 .9-.6 1.5-1.5 1.5H12"></path>
+                    <path d="M5.5 6.7h5c.9 0 1.5.6 1.5 1.5v7c0 .9-.6 1.5-1.5 1.5h-5c-.9 0-1.5-.6-1.5-1.5v-7c0-.9.6-1.5 1.5-1.5Z"></path>
+                  </svg>
+                </button>
+                <button type="button" data-chat-workflow-assistant-status-action="toggle" aria-label="${options.escapeHtml(toggleLabel)}" title="${options.escapeHtml(toggleLabel)}" aria-expanded="${characterWorkflowAssistantStatusExpanded ? 'true' : 'false'}">
+                  <svg viewBox="0 0 20 20" aria-hidden="true">
+                    ${characterWorkflowAssistantStatusExpanded
+                      ? '<path d="m5.5 12.2 4.5-4.4 4.5 4.4"></path>'
+                      : '<path d="m5.5 7.8 4.5 4.4 4.5-4.4"></path>'}
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <pre class="chat-workflow-canvas-assistant-status-body">${options.escapeHtml(characterWorkflowBuilderStatus)}</pre>
+          </section>
+        ` : ''}
         <div class="chat-workflow-canvas-assistant-row">
           <textarea data-chat-workflow-assistant-input rows="1" aria-label="${options.escapeHtml(zh ? '资源图 Agent 输入' : 'Resource graph agent input')}" ${characterWorkflowBuilderBusy ? 'disabled' : ''}>${options.escapeHtml(characterWorkflowAssistantPrompt)}</textarea>
           <button type="submit" aria-label="${options.escapeHtml(label)}" title="${options.escapeHtml(label)}" ${characterWorkflowBuilderBusy ? 'disabled' : ''}>
@@ -1896,7 +1925,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             </svg>
           </button>
         </div>
-        ${characterWorkflowBuilderStatus ? `<small class="chat-workflow-canvas-assistant-status">${options.escapeHtml(characterWorkflowBuilderStatus)}</small>` : ''}
       </form>
     `
   }
@@ -2197,7 +2225,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       }
       createCharacterWorkflowDraftFromSpec({
         name: response.spec?.name,
-        goalPrompt: response.spec?.goalPrompt || prompt,
+        goalPrompt: response.spec?.goalPrompt,
         targetAudience: response.spec?.targetAudience,
         stylePrompt: response.spec?.stylePrompt,
         preset: response.spec?.preset,
@@ -4228,6 +4256,21 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     if (eventTarget === chatHistoryPanel) {
       closeChatHistoryManager()
+      return
+    }
+
+    const workflowAssistantStatusAction = eventTarget.closest<HTMLElement>('[data-chat-workflow-assistant-status-action]')
+    if (workflowAssistantStatusAction && panel.contains(workflowAssistantStatusAction)) {
+      const action = workflowAssistantStatusAction.dataset.chatWorkflowAssistantStatusAction || ''
+      if (action === 'toggle') {
+        characterWorkflowAssistantStatusExpanded = !characterWorkflowAssistantStatusExpanded
+        renderCharacterWorkflow()
+      } else if (action === 'copy') {
+        void navigator.clipboard.writeText(characterWorkflowBuilderStatus).then(
+          () => showToast(options.getLanguage() === 'zh-CN' ? '已复制 Agent 信息' : 'Agent message copied'),
+          (error: unknown) => showToast(error instanceof Error ? error.message : String(error))
+        )
+      }
       return
     }
 

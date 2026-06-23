@@ -939,7 +939,7 @@ export function createCharacterSuperAgent(
         state = {
           ...state,
           draft: createInitialCharacterDraft(context, now()),
-          taskUnderstanding: createFallbackUnderstanding(context),
+          taskUnderstanding: '',
         }
         await writeArtifact(createDraftArtifact(context, state.draft))
 
@@ -1093,6 +1093,11 @@ export function createCharacterSuperAgent(
           }
         }
 
+        const finalMissing = getMissingCharacterDraftFields(state.draft, context)
+        if (finalMissing.length || !isCharacterDraftComplete(state.draft, context)) {
+          throw new Error(`Character workflow did not produce a complete character card. Missing: ${finalMissing.join(', ') || 'unknown fields'}. Last review: ${qualityResult.summary}`)
+        }
+
         const finalCard = await writeArtifact({
           id: `${runId}:character-card-final`,
           kind: 'character-card-final',
@@ -1154,28 +1159,18 @@ export function createDefaultCharacterAgentToolRuntime(): CharacterAgentToolRunt
       name: 'decide_character_card_next_step',
       description: 'Chooses the next autonomous edits needed to complete the character card.',
       kind: 'decision',
-      execute: ({ callId, context, state }) => {
-        const draft = state.draft ?? createInitialCharacterDraft(context, Date.now())
-        const fields = createFallbackCharacterFields(context, draft)
-        const nextField = getNextMissingField(draft, context)
-        const nextAction: CharacterAgentAction = nextField
-          ? { type: 'set_field', field: nextField, value: fields[nextField], reason: `Generated ${nextField}.` }
-          : draft.imageArtifactIds.length
-            ? { type: 'finish', reason: 'All fields and image assets are ready.' }
-            : { type: 'request_image', prompt: stringValue(fields.imagePrompt), title: 'Character Image' }
-        return {
-          callId,
-          ok: true,
-          summary: nextField ? `Generated ${nextField}.` : 'Prepared the next character resource.',
-          data: {
-            summary: nextField ? `Generated ${nextField}.` : 'Prepared the next character resource.',
-            done: !nextField && Boolean(draft.imageArtifactIds.length),
-            confidence: 0.72,
-            missing: getMissingCharacterDraftFields(draft, context),
-            actions: [nextAction],
-          },
-        }
-      },
+      execute: ({ callId, context, state }) => ({
+        callId,
+        ok: false,
+        summary: 'No configured LLM decision tool is available; character fields were not generated.',
+        data: {
+          summary: 'No configured LLM decision tool is available; character fields were not generated.',
+          done: false,
+          confidence: 0,
+          missing: getMissingCharacterDraftFields(state.draft, context),
+          actions: [],
+        },
+      }),
     },
     {
       name: 'generate_character_image',
@@ -1247,7 +1242,7 @@ function createInitialCharacterDraft(context: CharacterAgentRunContext, now: num
     fields: {},
     imagePrompts: [],
     imageArtifactIds: [],
-    notes: [createFallbackUnderstanding(context)],
+    notes: [],
     missing: getRequiredCharacterDraftFields(context),
     updatedAt: now,
   }
@@ -1325,6 +1320,13 @@ function applyCharacterAgentAction(
       return draft
     }
     const value = sanitizeCharacterDraftFieldValue(field, action.value, context, draft)
+    if (value === undefined) {
+      return {
+        ...draft,
+        notes: appendUnique(draft.notes, [`Rejected invalid generated value for ${field}.`]),
+        updatedAt: now,
+      }
+    }
     return {
       ...draft,
       fields: { ...draft.fields, [field]: value },
@@ -1335,10 +1337,10 @@ function applyCharacterAgentAction(
   if (action.type === 'merge_character_card') {
     const normalizedFields = normalizeDraftFields(action.value)
     const fields = Object.fromEntries(
-      Object.entries(normalizedFields).map(([field, value]) => [
-        field,
-        sanitizeCharacterDraftFieldValue(field, value, context, draft),
-      ])
+      Object.entries(normalizedFields).flatMap(([field, value]) => {
+        const sanitized = sanitizeCharacterDraftFieldValue(field, value, context, draft)
+        return sanitized === undefined ? [] : [[field, sanitized]]
+      })
     )
     return {
       ...draft,
@@ -1382,16 +1384,10 @@ function decisionFromToolResult(
   }
   const fallbackDraft = draft ?? createInitialCharacterDraft(context, Date.now())
   return {
-    summary: result.summary || 'Updated character card draft.',
-    actions: (() => {
-      const fields = createFallbackCharacterFields(context, fallbackDraft)
-      const nextField = getNextMissingField(fallbackDraft, context)
-      return nextField
-        ? [{ type: 'set_field' as const, field: nextField, value: fields[nextField] }]
-        : [{ type: 'request_image' as const, prompt: stringValue(fields.imagePrompt), title: 'Character Image' }]
-    })(),
+    summary: result.summary || 'The model did not return valid character-generation actions.',
+    actions: [],
     done: forceDone,
-    confidence: 0.45,
+    confidence: 0,
     missing: getMissingCharacterDraftFields(fallbackDraft, context),
   }
 }
@@ -1419,8 +1415,7 @@ function selectProgressiveAction(
         }
       }
     }
-    const fallback = createFallbackCharacterFields(context, draft)
-    return { type: 'set_field', field: nextField, value: fallback[nextField], reason: `Generated ${nextField}.` }
+    return null
   }
   if (!draft.imageArtifactIds.length) {
     const imagePrompt = stringValue(draft.fields.imagePrompt)
@@ -1513,46 +1508,6 @@ function hasDraftField(fields: Record<string, unknown>, field: string, context: 
   return value !== undefined && value !== null
 }
 
-function createFallbackCharacterFields(context: CharacterAgentRunContext, draft: CharacterCardDraft): Record<string, unknown> {
-  const goal = context.goal.prompt || 'A flexible long-form roleplay character.'
-  const style = context.stylePressures.map((item) => item.prompt || item.preset).filter(Boolean).join('; ') || summarizeTargetControls(context, 'style') || 'natural, vivid, emotionally grounded'
-  const constraints = context.hardConstraints.flatMap((item) => item.mustHave).join('; ') || summarizeTargetControls(context, 'mustHave')
-  const boundaries = context.hardConstraints.flatMap((item) => item.mustNot).join('; ') || summarizeTargetControls(context, 'mustNot')
-  const source = context.sourceMaterials.map((item) => item.notes).filter(Boolean).join('\n')
-  const zh = context.language === 'zh-CN'
-  const name = stringValue(draft.fields.name, zh ? '林夏' : 'Lin Xia')
-  const premise = createCharacterPremise(context)
-  return {
-    ...draft.fields,
-    name: stringValue(draft.fields.name, name),
-    description: stringValue(draft.fields.description, zh
-      ? `${name}是一个适合长期 RP 的校园恋爱女主，外表清爽，性格温柔但有自己的节奏，会在日常相处里主动靠近、试探边界，并把关系一点点推向更甜也更暧昧的方向。`
-      : `${name} is a long-form campus-romance heroine with a fresh presence, gentle confidence, and enough agency to move the relationship forward through everyday scenes, sweetness, and restrained tension.`),
-    appearance: stringValue(draft.fields.appearance, zh
-      ? `${name}有干净自然的少女感，发丝柔顺，眼神明亮，常穿简洁的校园日常搭配。她的表情容易泄露心情，靠近时会带着一点害羞和故作镇定，整体视觉适合清甜、细腻的恋爱氛围。`
-      : `${name} has a clean, natural campus look with soft hair, bright eyes, and understated everyday outfits. Her expressions reveal more than she says, mixing shyness with composure for a sweet, intimate visual tone.`),
-    personality: stringValue(draft.fields.personality, zh
-      ? '她温柔、敏感、会照顾对方感受，但并不被动；熟悉之后会主动制造独处机会，用玩笑、眼神和小动作推进关系。面对亲密氛围时，她会先确认安全感，再逐渐放下防备。'
-      : 'She is gentle, observant, and considerate without being passive; once comfortable, she creates small chances for closeness through jokes, glances, and subtle gestures. Intimacy develops through trust and emotional safety.'),
-    background: stringValue(draft.fields.background, source || (zh
-      ? `${name}的故事从校园日常展开：课程、社团、图书馆、雨天回宿舍、考试周互相陪伴，都可以成为关系升温的事件。她有自己的目标和不安，也希望在恋爱里被认真选择。`
-      : `${name}'s story grows from campus routines: classes, club activities, library evenings, rainy walks back to the dorm, and exam-week companionship. She has her own ambitions and insecurities, and wants to be chosen sincerely.`)),
-    scenario: stringValue(draft.fields.scenario, source || premise),
-    firstMessage: stringValue(draft.fields.firstMessage, zh
-      ? `林夏把书包抱在怀里，站在图书馆门口等你。雨水顺着伞沿落下，她抬眼看过来，声音比平时轻一点：“你再晚一点，我就要以为你故意让我一个人紧张了。”`
-      : `Lin Xia hugs her bag at the library entrance as rain taps along the umbrella edge. When she sees you, her voice softens. "If you were any later, I would start thinking you wanted me nervous on purpose."`),
-    dialogueStyle: stringValue(draft.fields.dialogueStyle, zh
-      ? '语气自然、轻甜、带一点试探。她常用半句玩笑掩饰真实心情，在关系升温时会变得更坦率，但亲密表达始终建立在同意、信任和渐进铺垫上。'
-      : 'Natural, lightly sweet, and exploratory. She often hides sincere feelings behind half-jokes, becomes more direct as trust grows, and keeps intimate expression consensual and gradual.'),
-    worldContext: stringValue(draft.fields.worldContext, source || (zh
-      ? '现代校园恋爱背景，重点是日常事件推动关系：课堂、社团、图书馆、宿舍楼下、雨天、考试周、节日约会。剧情允许甜蜜暧昧和适度成人氛围，但不跳过情感铺垫与边界确认。'
-      : 'Modern campus romance where daily events drive the relationship: classes, clubs, libraries, dorm entrances, rain, exam weeks, and seasonal dates. Sweet tension and moderate adult atmosphere are allowed with emotional buildup and consent.')),
-    memoryStrategy: stringValue(draft.fields.memoryStrategy, '持续记录关系变化、长期目标、未完成承诺、偏好和边界，不把一次性情绪当作永久设定。'),
-    imagePrompt: stringValue(draft.fields.imagePrompt, `Character portrait for: ${goal}. Style: ${style}. Must include: ${constraints}. Avoid: ${boundaries}.`),
-    generationReport: stringValue(draft.fields.generationReport, createFallbackUnderstanding(context)),
-  }
-}
-
 function sanitizeCharacterDraftFieldValue(
   field: string,
   value: unknown,
@@ -1566,8 +1521,7 @@ function sanitizeCharacterDraftFieldValue(
   if (!text || !isMetaPromptLeak(field, text, context)) {
     return value
   }
-  const fallback = createFallbackCharacterFields(context, draft)
-  return fallback[field] ?? ''
+  return undefined
 }
 
 function isMetaPromptLeak(field: string, value: string, context: CharacterAgentRunContext): boolean {
@@ -1598,28 +1552,6 @@ function isMetaPromptLeak(field: string, value: string, context: CharacterAgentR
     return true
   }
   return false
-}
-
-function createCharacterPremise(context: CharacterAgentRunContext): string {
-  const source = context.sourceMaterials.map((item) => item.notes).filter(Boolean).join('\n')
-  if (source) {
-    return source
-  }
-  return context.language === 'zh-CN'
-    ? '你们在校园日常中逐渐靠近：一起上课、复习、躲雨、参加社团活动，也在一次次暧昧的小事件里确认彼此的心意。'
-    : 'You grow closer through campus routines: classes, study sessions, rain shelter, club activities, and small romantic incidents that gradually confirm your feelings.'
-}
-
-function summarizeTargetControls(context: CharacterAgentRunContext, mode: 'style' | 'mustHave' | 'mustNot'): string {
-  return context.targets.map((target) => {
-    if (mode === 'style') {
-      return target.localStylePressures.map((item) => item.prompt || item.preset).join('; ')
-    }
-    if (mode === 'mustHave') {
-      return target.localConstraints.flatMap((item) => item.mustHave).join('; ')
-    }
-    return target.localConstraints.flatMap((item) => item.mustNot).join('; ')
-  }).filter(Boolean).join('; ')
 }
 
 function pickCharacterCardFields(fields: Record<string, unknown>): Record<string, unknown> {
@@ -1783,58 +1715,6 @@ function createDefaultAgentPlan(context: CharacterAgentRunContext): CharacterAge
       { id: 'package', title: 'Package export target', purpose: `Create ${context.exportTarget.format} output.`, phase: 'package', status: 'pending' },
     ],
   }
-}
-
-function createDefaultCandidatePack(context: CharacterAgentRunContext, runId: string, suffix = 'draft'): CandidatePack {
-  const requestedAssets = flattenRequestedAssets(context)
-  return {
-    id: `${runId}:candidate:${suffix}`,
-    title: `Character Resource Candidate ${suffix}`,
-    summary: `Candidate guided by "${context.goal.prompt || 'empty goal'}" for ${context.goal.targetAudience}.`,
-    requestedAssets,
-    artifactIds: [],
-    risks: context.compilerWarnings,
-  }
-}
-
-function createFallbackUnderstanding(context: CharacterAgentRunContext): string {
-  const styles = context.stylePressures.map((item) => item.preset).filter(Boolean).join(', ') || 'custom style'
-  const assets = flattenRequestedAssets(context).join(', ') || 'role resources'
-  return `Generate ${assets} for ${context.goal.targetAudience} from a free-form goal, with ${styles} pressure and agent autonomy ${context.policy.autonomyLevel}.`
-}
-
-function planFromToolResult(result: AgentToolResult, context: CharacterAgentRunContext): CharacterAgentPlan {
-  if (isAgentPlan(result.data)) {
-    return result.data
-  }
-  return createDefaultAgentPlan(context)
-}
-
-function candidateFromToolResult(
-  result: AgentToolResult,
-  context: CharacterAgentRunContext,
-  runId: string,
-  suffix = 'draft'
-): CandidatePack {
-  if (isCandidatePack(result.data)) {
-    return result.data
-  }
-  return createDefaultCandidatePack(context, runId, suffix)
-}
-
-function stringFromToolResult(result: AgentToolResult, fallback: string): string {
-  if (typeof result.data === 'object' && result.data && 'text' in result.data && typeof result.data.text === 'string') {
-    return result.data.text
-  }
-  return result.summary || fallback
-}
-
-function isAgentPlan(value: unknown): value is CharacterAgentPlan {
-  return Boolean(value && typeof value === 'object' && 'steps' in value && Array.isArray(value.steps))
-}
-
-function isCandidatePack(value: unknown): value is CandidatePack {
-  return Boolean(value && typeof value === 'object' && 'requestedAssets' in value && Array.isArray(value.requestedAssets))
 }
 
 function groupNodesByType(nodes: CharacterWorkflowNode[]): Map<string, CharacterWorkflowNode[]> {
