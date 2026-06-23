@@ -72,12 +72,17 @@ type PendingChatAttachment = ChatMessageAttachment
 type CharacterWorkflowPageModule = typeof import('./chat-character-workflow-page')
 type CharacterWorkflowTemplateId = 'character-card' | 'world-card'
 
+const CHARACTER_WORKFLOW_LIBRARY_MIN_WIDTH = 148
+const CHARACTER_WORKFLOW_LIBRARY_DEFAULT_WIDTH = 176
+const CHARACTER_WORKFLOW_LIBRARY_MAX_WIDTH = 260
+
 interface CharacterWorkflowEditorState {
   activePanel: CharacterWorkflowSidePanel
   sidebarCollapsed: boolean
   inspectorCollapsed: boolean
   nodeSearchOpen: boolean
   workflowLibraryWidth: number
+  workflowLibraryCollapsed: boolean
 }
 
 interface PersistedCharacterWorkflowState {
@@ -270,6 +275,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     inspectorCollapsed: false,
     nodeSearchOpen: false,
     workflowLibraryWidth: 176,
+    workflowLibraryCollapsed: false,
   }
 
   interface CharacterResourceHistorySnapshot {
@@ -1621,11 +1627,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   function renderCharacterWorkflowLibraryShell(content: string, activeProject?: CharacterWorkflowProjectRecord): string {
-    const libraryWidth = Math.max(148, Math.min(260, Math.round(characterWorkflowEditorState.workflowLibraryWidth || 176)))
+    const libraryWidth = clampCharacterWorkflowLibraryWidth(characterWorkflowEditorState.workflowLibraryWidth)
+    const collapsed = characterWorkflowEditorState.workflowLibraryCollapsed
+    const zh = options.getLanguage() === 'zh-CN'
     return `
-      <section class="chat-workflow-library-shell" style="--workflow-library-width: ${libraryWidth}px">
+      <section class="chat-workflow-library-shell ${collapsed ? 'library-collapsed' : ''}" style="--workflow-library-width: ${collapsed ? 0 : libraryWidth}px">
         ${renderCharacterWorkflowLibrarySidebar(activeProject)}
         <div class="chat-workflow-library-gutter" data-chat-workflow-library-resize aria-hidden="true"></div>
+        <button class="chat-workflow-library-canvas-toggle ${collapsed ? 'is-collapsed' : ''}" type="button" data-chat-workflow-library-action="toggle-width" aria-label="${options.escapeHtml(collapsed ? (zh ? '展开左栏' : 'Expand sidebar') : (zh ? '收起左栏' : 'Collapse sidebar'))}" title="${options.escapeHtml(collapsed ? (zh ? '展开左栏' : 'Expand sidebar') : (zh ? '收起左栏' : 'Collapse sidebar'))}"><span aria-hidden="true"></span></button>
         <main class="chat-workflow-library-main">
           ${content}
         </main>
@@ -1648,7 +1657,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             <span>${options.escapeHtml(zh ? 'Workflows' : 'Workflows')}</span>
             <strong>${options.escapeHtml(zh ? '角色草稿' : 'Character drafts')}</strong>
           </div>
-          <button type="button" data-chat-workflow-library-action="create-menu" aria-label="${options.escapeHtml(zh ? '新建草稿' : 'New draft')}">+</button>
+          <div class="chat-workflow-library-head-actions">
+            <button type="button" data-chat-workflow-library-action="create-menu" aria-label="${options.escapeHtml(zh ? '新建草稿' : 'New draft')}">+</button>
+          </div>
           ${characterWorkflowTemplateMenuOpen ? renderCharacterWorkflowTemplateMenu(zh) : ''}
         </header>
         <div class="chat-workflow-library-search">
@@ -1876,6 +1887,18 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       hour: '2-digit',
       minute: '2-digit',
     })
+  }
+
+  function clampCharacterWorkflowLibraryWidth(value: number | undefined): number {
+    return Math.max(
+      CHARACTER_WORKFLOW_LIBRARY_MIN_WIDTH,
+      Math.min(CHARACTER_WORKFLOW_LIBRARY_MAX_WIDTH, Math.round(Number(value) || CHARACTER_WORKFLOW_LIBRARY_DEFAULT_WIDTH))
+    )
+  }
+
+  function toggleCharacterWorkflowLibraryCollapsed(): void {
+    characterWorkflowEditorState.workflowLibraryCollapsed = !characterWorkflowEditorState.workflowLibraryCollapsed
+    renderCharacterWorkflow()
   }
 
   function cloneRecord<T>(record: Record<string, T>): Record<string, T> {
@@ -2246,6 +2269,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         inspectorCollapsed: characterWorkflowEditorState.inspectorCollapsed,
         nodeSearchOpen: false,
         workflowLibraryWidth: characterWorkflowEditorState.workflowLibraryWidth,
+        workflowLibraryCollapsed: characterWorkflowEditorState.workflowLibraryCollapsed,
       },
     }
   }
@@ -2290,7 +2314,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       characterWorkflowEditorState.sidebarCollapsed = false
       characterWorkflowEditorState.inspectorCollapsed = false
       characterWorkflowEditorState.nodeSearchOpen = false
-      characterWorkflowEditorState.workflowLibraryWidth = 176
+      characterWorkflowEditorState.workflowLibraryWidth = CHARACTER_WORKFLOW_LIBRARY_DEFAULT_WIDTH
+      characterWorkflowEditorState.workflowLibraryCollapsed = false
       replaceRecord(characterWorkflowConfigOverrides, {})
       replaceRecord(characterWorkflowPositionOverrides, {})
       applyWorkflowProjectViewState(undefined)
@@ -2330,7 +2355,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       characterWorkflowEditorState.sidebarCollapsed = Boolean(record.editorState.sidebarCollapsed)
       characterWorkflowEditorState.inspectorCollapsed = Boolean(record.editorState.inspectorCollapsed)
       characterWorkflowEditorState.nodeSearchOpen = false
-      characterWorkflowEditorState.workflowLibraryWidth = Math.max(148, Math.min(260, Math.round(Number(record.editorState.workflowLibraryWidth) || 176)))
+      characterWorkflowEditorState.workflowLibraryWidth = clampCharacterWorkflowLibraryWidth(record.editorState.workflowLibraryWidth)
+      characterWorkflowEditorState.workflowLibraryCollapsed = Boolean(record.editorState.workflowLibraryCollapsed)
     }
     if (characterWorkflowActiveTabId !== 'workflow' && characterWorkflowActiveTabId !== 'run-draft') {
       characterWorkflowActiveTabId = characterWorkflowRunState ? 'run-draft' : 'workflow'
@@ -2915,6 +2941,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     selectedWorkflowNodeId = nodeId
     characterResourceViewState.selectedLinkId = ''
+    characterWorkflowEditorState.inspectorCollapsed = false
     if (additive) {
       const current = new Set(characterResourceViewState.selectedNodeIds)
       if (current.has(nodeId)) {
@@ -3213,13 +3240,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function beginCharacterWorkflowLibraryResize(event: PointerEvent): void {
     const handle = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-chat-workflow-library-resize]')
-    if (!handle || !panel.contains(handle) || event.button !== 0) {
+    if (!handle || !panel.contains(handle) || event.button !== 0 || characterWorkflowEditorState.workflowLibraryCollapsed) {
       return
     }
     characterWorkflowLibraryResize = {
       pointerId: event.pointerId,
       startX: event.clientX,
-      originWidth: Math.max(148, Math.min(260, Math.round(characterWorkflowEditorState.workflowLibraryWidth || 176))),
+      originWidth: clampCharacterWorkflowLibraryWidth(characterWorkflowEditorState.workflowLibraryWidth),
     }
     handle.setPointerCapture?.(event.pointerId)
     handle.classList.add('is-resizing')
@@ -3232,8 +3259,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!characterWorkflowLibraryResize || characterWorkflowLibraryResize.pointerId !== event.pointerId) {
       return
     }
-    const nextWidth = Math.max(148, Math.min(260, Math.round(characterWorkflowLibraryResize.originWidth + event.clientX - characterWorkflowLibraryResize.startX)))
+    const nextWidth = clampCharacterWorkflowLibraryWidth(characterWorkflowLibraryResize.originWidth + event.clientX - characterWorkflowLibraryResize.startX)
     characterWorkflowEditorState.workflowLibraryWidth = nextWidth
+    characterWorkflowEditorState.workflowLibraryCollapsed = false
     const shell = panel.querySelector<HTMLElement>('.chat-workflow-library-shell')
     shell?.style.setProperty('--workflow-library-width', `${nextWidth}px`)
   }
@@ -3897,6 +3925,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       if (action === 'create-menu') {
         characterWorkflowTemplateMenuOpen = !characterWorkflowTemplateMenuOpen
         renderCharacterWorkflow()
+      } else if (action === 'toggle-width') {
+        toggleCharacterWorkflowLibraryCollapsed()
       } else if (action === 'create') {
         createCharacterWorkflowDraft()
       } else if (action === 'create-template') {
@@ -3959,8 +3989,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       if (panelId) {
         setCharacterWorkflowPanel(panelId)
       }
-      if (!eventTarget.closest('[data-chat-workflow-param]')) {
-        selectWorkflowNode(workflowNodeSelect.dataset.chatWorkflowNodeSelect || '', event.metaKey || event.ctrlKey || event.shiftKey)
+      const nodeId = workflowNodeSelect.dataset.chatWorkflowNodeSelect || ''
+      const editingSelectedNode = Boolean(eventTarget.closest('[data-chat-workflow-param]'))
+        && characterResourceViewState.selectedNodeIds.includes(nodeId)
+      if (!editingSelectedNode) {
+        selectWorkflowNode(nodeId, event.metaKey || event.ctrlKey || event.shiftKey)
       }
       return
     }
