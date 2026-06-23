@@ -480,8 +480,8 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     inputs: {},
     outputs: { goal: port('goal', 'Goal', 'generation-goal') },
     parameters: [
-      parameter('goalPrompt', 'Goal Prompt', 'textarea', '校园恋爱，长期 RP，角色要有主动性和暧昧拉扯，但不要模板化。'),
-      parameter('targetAudience', 'Target Audience', 'text', 'private long-form roleplay'),
+      parameter('goalPrompt', 'Goal Prompt', 'textarea', ''),
+      parameter('targetAudience', 'Target Audience', 'text', ''),
       parameter('allowAgentExpansion', 'Allow Agent Expansion', 'boolean', true),
     ],
   },
@@ -547,7 +547,7 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
         option('Memory Strategy', 'memoryStrategy'),
         option('Image Prompt', 'imagePrompt'),
       ]),
-      parameter('purpose', 'Purpose', 'textarea', 'Generate this field as a controlled local resource without user-written final content.'),
+      parameter('purpose', 'Purpose', 'textarea', ''),
     ],
   },
   {
@@ -572,7 +572,7 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
         option('Expression', 'expression'),
         option('Reference', 'reference'),
       ]),
-      parameter('promptPurpose', 'Prompt Purpose', 'textarea', 'Create a consistent character image for the generated role card.'),
+      parameter('promptPurpose', 'Prompt Purpose', 'textarea', ''),
     ],
   },
   {
@@ -596,7 +596,7 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
         option('Relationship Network', 'relationship-network'),
         option('Plot Hooks', 'plot-hooks'),
       ]),
-      parameter('scopePrompt', 'Scope Prompt', 'textarea', 'Generate a world card that supports durable multi-character roleplay.'),
+      parameter('scopePrompt', 'Scope Prompt', 'textarea', ''),
     ],
   },
   {
@@ -614,7 +614,7 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     outputs: { npcPack: port('npcPack', 'NPC Pack', 'asset-target') },
     parameters: [
       parameter('npcCount', 'NPC Count', 'integer', 4, { min: 1, max: 12, step: 1 }),
-      parameter('npcRoles', 'NPC Roles', 'string-list', ['primary NPC', 'ally', 'rival', 'wildcard']),
+      parameter('npcRoles', 'NPC Roles', 'string-list', []),
     ],
   },
   {
@@ -631,8 +631,8 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     },
     outputs: { npc: port('npc', 'NPC', 'asset-target') },
     parameters: [
-      parameter('npcRole', 'NPC Role', 'text', 'primary NPC'),
-      parameter('storyFunction', 'Story Function', 'textarea', 'This NPC should create durable story pressure and relationship movement.'),
+      parameter('npcRole', 'NPC Role', 'text', ''),
+      parameter('storyFunction', 'Story Function', 'textarea', ''),
     ],
   },
   {
@@ -674,7 +674,7 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     outputs: { scene: port('scene', 'Scene', 'asset-target') },
     parameters: [
       parameter('sceneCount', 'Scene Count', 'integer', 3, { min: 1, max: 12, step: 1 }),
-      parameter('sceneTypes', 'Scene Types', 'string-list', ['opening scene', 'private conversation', 'conflict scene']),
+      parameter('sceneTypes', 'Scene Types', 'string-list', []),
     ],
   },
   {
@@ -693,14 +693,15 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
         option('Field Targets', 'field'),
         option('World Targets', 'world'),
       ]),
-      parameter('preset', 'Preset', 'select', 'campus-romance', undefined, [
+      parameter('preset', 'Preset', 'select', 'custom', undefined, [
+        option('Custom', 'custom'),
         option('Campus Romance', 'campus-romance'),
         option('Dark Adult', 'dark-adult'),
         option('Urban Suspense', 'urban-suspense'),
         option('Fantasy Companion', 'fantasy-companion'),
         option('Slice of Life', 'slice-of-life'),
       ]),
-      parameter('stylePrompt', 'Style Prompt', 'textarea', '克制、暧昧、有张力，避免说明书式自我介绍。'),
+      parameter('stylePrompt', 'Style Prompt', 'textarea', ''),
       parameter('intensity', 'Intensity', 'number', 0.68, { min: 0, max: 1, step: 0.01 }),
     ],
   },
@@ -720,8 +721,8 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
         option('Field Targets', 'field'),
         option('World Targets', 'world'),
       ]),
-      parameter('mustHave', 'Must Have', 'string-list', ['长期可聊', '角色主动推进关系']),
-      parameter('mustNot', 'Must Not', 'string-list', ['模板化人格', 'OOC 解释设定', '瞬间顺从']),
+      parameter('mustHave', 'Must Have', 'string-list', []),
+      parameter('mustNot', 'Must Not', 'string-list', []),
       parameter('hardBoundary', 'Hard Boundary', 'boolean', true),
     ],
   },
@@ -754,7 +755,7 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
         option('Same World', 'same-world'),
         option('Independent Images', 'independent'),
       ]),
-      parameter('negativePrompt', 'Negative Prompt', 'textarea', 'bad anatomy, extra fingers, watermark, text, logo'),
+      parameter('negativePrompt', 'Negative Prompt', 'textarea', ''),
     ],
   },
   {
@@ -766,14 +767,14 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     inputs: { fieldTarget: port('fieldTarget', 'Field Target', 'asset-target') },
     outputs: { fieldControl: port('fieldControl', 'Field Control', 'asset-target') },
     parameters: [
-      parameter('fieldPurpose', 'Field Purpose', 'textarea', 'Create a concrete field that advances roleplay and does not explain the setting out of character.'),
-      parameter('tone', 'Tone', 'text', 'restrained tension'),
+      parameter('fieldPurpose', 'Field Purpose', 'textarea', ''),
+      parameter('tone', 'Tone', 'text', ''),
       parameter('lengthPolicy', 'Length Policy', 'select', 'medium', undefined, [
         option('Short', 'short'),
         option('Medium', 'medium'),
         option('Long', 'long'),
       ]),
-      parameter('avoidPatterns', 'Avoid Patterns', 'string-list', ['self-introduction', 'lore dump', 'asking what the user wants']),
+      parameter('avoidPatterns', 'Avoid Patterns', 'string-list', []),
     ],
   },
   {
@@ -785,7 +786,7 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     inputs: { target: port('target', 'Target', 'asset-target') },
     outputs: { continuity: port('continuity', 'Continuity', 'asset-target') },
     parameters: [
-      parameter('memoryAnchors', 'Memory Anchors', 'string-list', ['relationship changes', 'unresolved promises', 'boundaries', 'long-term goals']),
+      parameter('memoryAnchors', 'Memory Anchors', 'string-list', []),
       parameter('progressionPacing', 'Progression Pacing', 'select', 'slow-burn', undefined, [
         option('Slow Burn', 'slow-burn'),
         option('Steady Escalation', 'steady-escalation'),
@@ -809,7 +810,7 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
         option('Protective Companion', 'protective-companion'),
         option('Ambiguous Ally', 'ambiguous-ally'),
       ]),
-      parameter('tensionRules', 'Tension Rules', 'string-list', ['do not resolve tension immediately', 'make each NPC push a different pressure']),
+      parameter('tensionRules', 'Tension Rules', 'string-list', []),
     ],
   },
   {
@@ -959,7 +960,7 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     outputs: { critique: port('critique', 'Critique', 'critique-policy') },
     parameters: [
       parameter('iterations', 'Iterations', 'integer', 2, { min: 0, max: 8, step: 1 }),
-      parameter('dimensions', 'Dimensions', 'string-list', ['goal match', 'long-term RP', 'non-template', 'consistency']),
+      parameter('dimensions', 'Dimensions', 'string-list', []),
       parameter('autoRepair', 'Auto Repair', 'boolean', true),
     ],
   },
@@ -981,7 +982,7 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     parameters: [
       parameter('minimumScore', 'Minimum Score', 'number', 0.82, { min: 0, max: 1, step: 0.01 }),
       parameter('blockExport', 'Block Export', 'boolean', true),
-      parameter('requiredChecks', 'Required Checks', 'string-list', ['goal match', 'style intensity', 'long-term RP', 'consistency']),
+      parameter('requiredChecks', 'Required Checks', 'string-list', []),
     ],
   },
   {
@@ -1503,7 +1504,7 @@ function createDefaultCharacterWorkflowExecutors(): Partial<Record<CharacterNode
       sourceNodeId: node.id,
       createdAt: timestamp,
       targets: {
-        requested: [`npc:${stringConfig(config.npcRole, 'primary NPC')}`],
+        requested: [`npc:${stringConfig(config.npcRole, 'npc')}`],
         includeAlternates: true,
       },
     }],

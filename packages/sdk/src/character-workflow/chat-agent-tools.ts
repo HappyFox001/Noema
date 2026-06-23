@@ -8,6 +8,8 @@ import {
   CHARACTER_SUPPORT_FIELD_SCHEMA,
   createCharacterAgentToolRuntime,
   type AgentToolDefinition,
+  type AgentImageGenerationControl,
+  type AgentTargetContext,
   type CharacterAgentArtifact,
   type CharacterAgentArtifactKind,
   type CharacterAgentModelConfig,
@@ -455,26 +457,17 @@ async function maybeGenerateImageArtifacts(
   if (!modelName) {
     return []
   }
-  const controls = context.targets
-    .filter((target) => target.kind === 'image')
-    .flatMap((target) => target.imageControls)
-  const imageTypes = controls.flatMap((control) => control.imageTypes)
-  const requestedCount = Math.max(1, Math.min(16, controls.reduce((max, control) => Math.max(max, control.targetImageCount), 1)))
-  const prompts = Array.from({ length: requestedCount }, (_, index) => {
-    const imageType = imageTypes[index % Math.max(1, imageTypes.length)] ?? context.targets.find((target) => target.kind === 'image')?.imageRole ?? 'avatar'
-    const controlText = controls[index % Math.max(1, controls.length)]
-    return [
-      promptText,
-      `Image type: ${imageType}.`,
-      controlText ? `Composition: ${controlText.composition}. Consistency: ${controlText.consistencyMode}. Negative prompt: ${controlText.negativePrompt}.` : '',
-    ].filter(Boolean).join('\n')
-  })
+  const imageTargets = context.targets.filter((target) => target.kind === 'image')
+  const prompts = imageTargets.flatMap((target) => createImageTargetPrompts(target, promptText))
+  if (!prompts.length) {
+    return []
+  }
   const artifacts: CharacterAgentArtifact[] = []
   for (let index = 0; index < prompts.length; index += 1) {
     const generated = await generateImageWithConfiguredProvider({
       model: configuredModel,
       modelName,
-      prompt: prompts[index],
+      prompt: prompts[index].prompt,
       proxyUrl,
     })
     if (generated) {
@@ -482,17 +475,50 @@ async function maybeGenerateImageArtifacts(
         context.runId,
         candidateId,
         'image-asset',
-        `Generated Image Asset ${index + 1}`,
+        `${prompts[index].target.title} ${prompts[index].imageType} ${prompts[index].targetIndex}`,
         createImageGenerationArtifact(generated),
-        capability?.nodeId ?? 'image-capability'
+        prompts[index].target.nodeId
       )
       artifacts.push({
         ...artifact,
-        id: `${artifact.id}:${index + 1}`,
+        id: `${artifact.id}:${prompts[index].target.nodeId}:${prompts[index].targetIndex}`,
       })
     }
   }
   return artifacts
+}
+
+function createImageTargetPrompts(
+  target: AgentTargetContext,
+  promptText: string
+): Array<{ target: AgentTargetContext; targetIndex: number; imageType: string; prompt: string }> {
+  const controls = target.imageControls
+  const imageTypes = controls.flatMap((control) => control.imageTypes).filter(Boolean)
+  const requestedCount = getImageTargetRequestedCount(controls)
+  return Array.from({ length: requestedCount }, (_, index) => {
+    const imageType = imageTypes[index % Math.max(1, imageTypes.length)] ?? target.imageRole ?? 'avatar'
+    const controlText = controls[index % Math.max(1, controls.length)]
+    return {
+      target,
+      targetIndex: index + 1,
+      imageType,
+      prompt: [
+        `Target node: ${target.title} (${target.nodeId}).`,
+        `Target image role: ${target.imageRole ?? 'avatar'}.`,
+        `Image type: ${imageType}.`,
+        controlText ? `Composition: ${controlText.composition}. Consistency: ${controlText.consistencyMode}. Negative prompt: ${controlText.negativePrompt}.` : '',
+        promptText,
+      ].filter(Boolean).join('\n'),
+    }
+  })
+}
+
+function getImageTargetRequestedCount(controls: AgentImageGenerationControl[]): number {
+  if (!controls.length) {
+    return 1
+  }
+  const total = controls.reduce((sum, control) => sum + Math.max(0, Math.floor(control.targetImageCount)), 0)
+  return Math.max(1, Math.min(16, total))
 }
 
 function createCandidateArtifacts(

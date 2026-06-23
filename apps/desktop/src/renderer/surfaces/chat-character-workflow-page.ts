@@ -23,6 +23,7 @@ export interface CharacterWorkflowPageOptions {
   selectedNodeId: string
   activePanel: CharacterWorkflowSidePanel
   sidebarCollapsed: boolean
+  workflowLibraryCollapsed?: boolean
   inspectorCollapsed: boolean
   nodeSearchOpen?: boolean
   viewState?: CharacterResourceViewState
@@ -360,8 +361,8 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
   createDefinition('goal', 'Generation Goal', ['目标', 'brief', 'intent'], 'Goal', 'core', 'Captures the free-form RP generation target without asking the user to define final card fields.', [], [
     slot('goal', 'Goal', 'generation-goal', 'Natural language generation goal and target audience.'),
   ], [
-    param('goalPrompt', 'Goal Prompt', 'textarea', 'Long-form private roleplay. The character should be proactive, emotionally specific, and non-template.'),
-    param('targetAudience', 'Target Audience', 'text', 'private long-form roleplay'),
+    param('goalPrompt', 'Goal Prompt', 'textarea', ''),
+    param('targetAudience', 'Target Audience', 'text', ''),
     param('allowAgentExpansion', 'Allow Agent Expansion', 'boolean', true),
   ], 'text-card'),
   createDefinition('character-card-target', 'Character Card Target', ['角色卡', 'target', 'role card'], 'Targets', 'asset', 'Declares the complete role card as a target resource assembled from field targets and local controls.', [
@@ -411,7 +412,7 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'Memory Strategy', value: 'memoryStrategy' },
       { label: 'Image Prompt', value: 'imagePrompt' },
     ]),
-    param('purpose', 'Purpose', 'textarea', 'Generate this field as a controlled local resource without user-written final content.'),
+    param('purpose', 'Purpose', 'textarea', ''),
   ], 'text-card'),
   createDefinition('image-target', 'Image Target', ['图片目标', 'image target', 'visual target'], 'Targets', 'asset', 'Declares image resources such as avatar, body, scene, expression, or reference images.', [
     slot('card', 'Card', 'asset-target', 'Character card target.'),
@@ -429,7 +430,7 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'Expression', value: 'expression' },
       { label: 'Reference', value: 'reference' },
     ]),
-    param('promptPurpose', 'Prompt Purpose', 'textarea', 'Create consistent character images for the generated role card.'),
+    param('promptPurpose', 'Prompt Purpose', 'textarea', ''),
   ], 'image'),
   createDefinition('world-card-target', 'World Card Target', ['世界卡', 'world card', 'setting'], 'Targets', 'asset', 'Declares an overall world resource for NPCs, scenes, relationship network, and plot progression.', [
     slot('goal', 'Goal', 'generation-goal', 'Primary world goal.', true),
@@ -446,7 +447,7 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'Relationship Network', value: 'relationship-network' },
       { label: 'Plot Hooks', value: 'plot-hooks' },
     ]),
-    param('scopePrompt', 'Scope Prompt', 'textarea', 'Generate a world card that supports durable multi-character roleplay.'),
+    param('scopePrompt', 'Scope Prompt', 'textarea', ''),
   ], 'package'),
   createDefinition('npc-pack-target', 'NPC Pack Target', ['NPC包', 'npc pack', '多npc'], 'Targets', 'asset', 'Declares a pack of NPC resources connected to the world card and plot arc.', [
     slot('world', 'World', 'asset-target', 'World card resource.'),
@@ -457,7 +458,7 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     slot('npcPack', 'NPC Pack', 'asset-target', 'NPC pack resource.'),
   ], [
     param('npcCount', 'NPC Count', 'integer', 4, 1, 12, 1),
-    param('npcRoles', 'NPC Roles', 'string-list', ['primary NPC', 'ally', 'rival', 'wildcard']),
+    param('npcRoles', 'NPC Roles', 'string-list', []),
   ], 'package'),
   createDefinition('npc-target', 'NPC Target', ['NPC', 'single npc', '角色资源'], 'Targets', 'asset', 'Declares a single NPC as an independently controllable target resource.', [
     slot('npcPack', 'NPC Pack', 'asset-target', 'NPC pack resource.'),
@@ -467,8 +468,8 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
   ], [
     slot('npc', 'NPC', 'asset-target', 'NPC resource.'),
   ], [
-    param('npcRole', 'NPC Role', 'text', 'primary NPC'),
-    param('storyFunction', 'Story Function', 'textarea', 'This NPC should create durable story pressure and relationship movement.'),
+    param('npcRole', 'NPC Role', 'text', ''),
+    param('storyFunction', 'Story Function', 'textarea', ''),
   ], 'text-card'),
   createDefinition('plot-arc-target', 'Plot Arc Target', ['剧情', 'plot arc', 'story'], 'Targets', 'asset', 'Declares long-running story progression for the world card.', [
     slot('world', 'World', 'asset-target', 'World card resource.'),
@@ -496,7 +497,7 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     slot('scene', 'Scene', 'asset-target', 'Scene resource.'),
   ], [
     param('sceneCount', 'Scene Count', 'integer', 3, 1, 12, 1),
-    param('sceneTypes', 'Scene Types', 'string-list', ['opening scene', 'private conversation', 'conflict scene']),
+    param('sceneTypes', 'Scene Types', 'string-list', []),
   ], 'text-card'),
   createDefinition('style-pressure', 'Style Pressure', ['风格', 'taste', 'tone'], 'Taste', 'core', 'Applies weighted taste, genre, mood, intensity, and pacing pressure to connected targets.', [
     slot('target', 'Target', 'asset-target', 'Target being shaped by this taste profile.'),
@@ -510,7 +511,8 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'Field Targets', value: 'field' },
       { label: 'World Targets', value: 'world' },
     ]),
-    param('preset', 'Preset', 'select', 'campus-romance', undefined, undefined, undefined, [
+    param('preset', 'Preset', 'select', 'custom', undefined, undefined, undefined, [
+      { label: 'Custom', value: 'custom' },
       { label: 'Campus Romance', value: 'campus-romance' },
       { label: 'Dark Adult', value: 'dark-adult' },
       { label: 'Urban Suspense', value: 'urban-suspense' },
@@ -518,7 +520,7 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'Slice of Life', value: 'slice-of-life' },
     ]),
     param('intensity', 'Intensity', 'number', 0.68, 0, 1, 0.01),
-    param('stylePrompt', 'Style Prompt', 'textarea', 'Restrained, emotionally tense, specific in behavior, and never written like a manual introduction.'),
+    param('stylePrompt', 'Style Prompt', 'textarea', ''),
   ], 'rule'),
   createDefinition('constraint', 'Hard Constraint', ['约束', 'boundary', 'must not'], 'Constraints', 'safety', 'Sets hard and soft boundaries that limit connected target generation and repair.', [
     slot('target', 'Target', 'asset-target', 'Target constrained by these boundaries.'),
@@ -532,8 +534,8 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'Field Targets', value: 'field' },
       { label: 'World Targets', value: 'world' },
     ]),
-    param('mustHave', 'Must Have', 'string-list', ['long-term chat durability', 'character agency']),
-    param('mustNot', 'Must Not', 'string-list', ['template personality', 'OOC setting explanation', 'instant compliance']),
+    param('mustHave', 'Must Have', 'string-list', []),
+    param('mustNot', 'Must Not', 'string-list', []),
     param('hardBoundary', 'Hard Boundary', 'boolean', true),
   ], 'rule'),
   createDefinition('image-generation-control', 'Image Generation Control', ['图片控制', 'image control', 'visual control'], 'Controls', 'asset', 'Controls image quantity, image roles, composition, consistency, and negative prompts for connected image targets.', [
@@ -561,28 +563,28 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'Same World', value: 'same-world' },
       { label: 'Independent Images', value: 'independent' },
     ]),
-    param('negativePrompt', 'Negative Prompt', 'textarea', 'bad anatomy, extra fingers, watermark, text, logo'),
+    param('negativePrompt', 'Negative Prompt', 'textarea', ''),
   ], 'image'),
   createDefinition('field-generation-control', 'Field Generation Control', ['字段控制', 'field control', 'local control'], 'Controls', 'agent', 'Controls how a connected field target is generated without containing final field content.', [
     slot('fieldTarget', 'Field Target', 'asset-target', 'Field target resource.'),
   ], [
     slot('fieldControl', 'Field Control', 'asset-target', 'Field generation control.'),
   ], [
-    param('fieldPurpose', 'Field Purpose', 'textarea', 'Create a concrete field that advances roleplay and does not explain the setting out of character.'),
-    param('tone', 'Tone', 'text', 'restrained tension'),
+    param('fieldPurpose', 'Field Purpose', 'textarea', ''),
+    param('tone', 'Tone', 'text', ''),
     param('lengthPolicy', 'Length Policy', 'select', 'medium', undefined, undefined, undefined, [
       { label: 'Short', value: 'short' },
       { label: 'Medium', value: 'medium' },
       { label: 'Long', value: 'long' },
     ]),
-    param('avoidPatterns', 'Avoid Patterns', 'string-list', ['self-introduction', 'lore dump', 'asking what the user wants']),
+    param('avoidPatterns', 'Avoid Patterns', 'string-list', []),
   ], 'rule'),
   createDefinition('continuity-control', 'Continuity Control', ['连续性', 'memory', 'continuity'], 'Controls', 'agent', 'Controls long-form continuity, memory anchors, unresolved hooks, and progression pacing.', [
     slot('target', 'Target', 'asset-target', 'Target resource.'),
   ], [
     slot('continuity', 'Continuity', 'asset-target', 'Continuity control.'),
   ], [
-    param('memoryAnchors', 'Memory Anchors', 'string-list', ['relationship changes', 'unresolved promises', 'boundaries', 'long-term goals']),
+    param('memoryAnchors', 'Memory Anchors', 'string-list', []),
     param('progressionPacing', 'Progression Pacing', 'select', 'slow-burn', undefined, undefined, undefined, [
       { label: 'Slow Burn', value: 'slow-burn' },
       { label: 'Steady Escalation', value: 'steady-escalation' },
@@ -601,7 +603,7 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'Protective Companion', value: 'protective-companion' },
       { label: 'Ambiguous Ally', value: 'ambiguous-ally' },
     ]),
-    param('tensionRules', 'Tension Rules', 'string-list', ['do not resolve tension immediately', 'make each NPC push a different pressure']),
+    param('tensionRules', 'Tension Rules', 'string-list', []),
   ], 'rule'),
   createDefinition('source-material', 'Source Material', ['素材', 'reference', 'context'], 'Sources', 'asset', 'Provides optional source context, references, existing cards, images, or user preference notes.', [], [
     slot('source', 'Source', 'source-context', 'Reference context available to the agent.'),
@@ -698,7 +700,7 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     slot('critique', 'Critique', 'critique-policy', 'Critique and repair policy.'),
   ], [
     param('iterations', 'Iterations', 'integer', 2, 0, 8, 1),
-    param('dimensions', 'Dimensions', 'string-list', ['goal match', 'long-term RP', 'non-template', 'consistency']),
+    param('dimensions', 'Dimensions', 'string-list', []),
     param('autoRepair', 'Auto Repair', 'boolean', true),
   ], 'validation'),
   createDefinition('quality-gate', 'Quality Gate', ['质量', 'validation', 'acceptance'], 'Evaluation', 'safety', 'Defines acceptance criteria that can block export or route candidates back for repair.', [
@@ -710,7 +712,7 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
   ], [
     param('minimumScore', 'Minimum Score', 'number', 0.82, 0, 1, 0.01),
     param('blockExport', 'Block Export', 'boolean', true),
-    param('requiredChecks', 'Required Checks', 'string-list', ['goal match', 'style intensity', 'long-term RP', 'consistency']),
+    param('requiredChecks', 'Required Checks', 'string-list', []),
   ], 'validation'),
   createDefinition('output-adapter', 'Output Adapter', ['导出', 'adapter', 'format'], 'Outputs', 'core', 'Maps an accepted candidate pack to a target format without changing generation goals.', [
     slot('candidate', 'Candidate', 'candidate-pack', 'Accepted candidate pack.', true),
@@ -1678,6 +1680,18 @@ function renderSidebarToggle(options: CharacterWorkflowPageOptions): string {
   `
 }
 
+function renderWorkflowLibraryToggle(options: CharacterWorkflowPageOptions): string {
+  const collapsed = Boolean(options.workflowLibraryCollapsed)
+  const label = collapsed
+    ? (options.language === 'zh-CN' ? '展开左侧草稿库' : 'Expand drafts sidebar')
+    : (options.language === 'zh-CN' ? '收起左侧草稿库' : 'Collapse drafts sidebar')
+  return `
+    <button class="chat-workflow-sidebar-toggle chat-workflow-library-inline-toggle ${collapsed ? 'is-library-collapsed' : ''}" type="button" data-chat-workflow-library-action="toggle-width" aria-label="${options.escapeHtml(label)}" title="${options.escapeHtml(label)}">
+      <span aria-hidden="true"></span>
+    </button>
+  `
+}
+
 function renderResourceCanvas(graph: CharacterResourceGraph, yjsSnapshot: string, options: CharacterWorkflowPageOptions): string {
   const activeTab = normalizeActiveTab(options.activeTabId)
   const isWorkflowTab = activeTab === 'workflow'
@@ -1687,7 +1701,7 @@ function renderResourceCanvas(graph: CharacterResourceGraph, yjsSnapshot: string
       ${isWorkflowTab ? renderCanvasControls(graph, options) : ''}
       ${isRunTab ? renderRunCanvasControls(options) : ''}
       <div class="chat-resource-tabs">
-        ${isWorkflowTab ? renderSidebarToggle(options) : ''}
+        ${isWorkflowTab ? `${renderWorkflowLibraryToggle(options)}${renderSidebarToggle(options)}` : ''}
         ${graph.tabs.map((tab) => `<button class="${tab.id === activeTab ? 'active' : ''}" type="button" data-chat-workflow-tab="${options.escapeHtml(tab.id)}">${options.escapeHtml(resourceGraphTabTitle(tab, options))}</button>`).join('')}
       </div>
       ${activeTab === 'run-draft' ? renderRunDraft(graph, options) : ''}
@@ -2608,7 +2622,7 @@ function renderParameterField(
   const baseAttrs = `data-chat-workflow-param="${options.escapeHtml(parameterItem.id)}" data-chat-workflow-node="${options.escapeHtml(node.id)}" data-chat-workflow-param-type="${options.escapeHtml(parameterItem.type)}" aria-invalid="${invalid ? 'true' : 'false'}"`
   const label = localizeParameterLabel(parameterItem, options)
   if (parameterItem.type === 'boolean') {
-    return `<input type="checkbox" ${baseAttrs} ${value ? 'checked' : ''} aria-label="${options.escapeHtml(label)}">`
+    return `<input class="chat-workflow-boolean-field" type="checkbox" ${baseAttrs} ${value ? 'checked' : ''} aria-label="${options.escapeHtml(label)}">`
   }
   if (parameterItem.type === 'number' || parameterItem.type === 'integer') {
     return `<input type="number" ${baseAttrs} value="${options.escapeHtml(formatParameterValue(value))}" ${parameterItem.min === undefined ? '' : `min="${parameterItem.min}"`} ${parameterItem.max === undefined ? '' : `max="${parameterItem.max}"`} ${parameterItem.step === undefined ? '' : `step="${parameterItem.step}"`} aria-label="${options.escapeHtml(label)}">`

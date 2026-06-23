@@ -1579,6 +1579,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       selectedNodeId: selectedWorkflowNodeId,
       activePanel: characterWorkflowEditorState.activePanel,
       sidebarCollapsed: characterWorkflowEditorState.sidebarCollapsed,
+      workflowLibraryCollapsed: characterWorkflowEditorState.workflowLibraryCollapsed,
       inspectorCollapsed: characterWorkflowEditorState.inspectorCollapsed,
       nodeSearchOpen: characterWorkflowEditorState.nodeSearchOpen,
       viewState: {
@@ -1629,12 +1630,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   function renderCharacterWorkflowLibraryShell(content: string, activeProject?: CharacterWorkflowProjectRecord): string {
     const libraryWidth = clampCharacterWorkflowLibraryWidth(characterWorkflowEditorState.workflowLibraryWidth)
     const collapsed = characterWorkflowEditorState.workflowLibraryCollapsed
-    const zh = options.getLanguage() === 'zh-CN'
     return `
       <section class="chat-workflow-library-shell ${collapsed ? 'library-collapsed' : ''}" style="--workflow-library-width: ${collapsed ? 0 : libraryWidth}px">
         ${renderCharacterWorkflowLibrarySidebar(activeProject)}
         <div class="chat-workflow-library-gutter" data-chat-workflow-library-resize aria-hidden="true"></div>
-        <button class="chat-workflow-library-canvas-toggle ${collapsed ? 'is-collapsed' : ''}" type="button" data-chat-workflow-library-action="toggle-width" aria-label="${options.escapeHtml(collapsed ? (zh ? '展开左栏' : 'Expand sidebar') : (zh ? '收起左栏' : 'Collapse sidebar'))}" title="${options.escapeHtml(collapsed ? (zh ? '展开左栏' : 'Expand sidebar') : (zh ? '收起左栏' : 'Collapse sidebar'))}"><span aria-hidden="true"></span></button>
         <main class="chat-workflow-library-main">
           ${content}
         </main>
@@ -1744,17 +1743,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         spec: {
           name: 'Character Card Draft',
           goalPrompt: '',
-          targetAudience: 'private long-form roleplay',
-          mustHave: ['complete character card fields', 'opening message', 'image asset', 'generation report'],
-          mustNot: ['empty fields', 'missing image prompt'],
           configOverrides: {
             'character-card-target': { includeFields: ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'firstMessage', 'dialogueStyle', 'worldContext'], includeSupportFields: ['memoryStrategy', 'imagePrompt'] },
-            'opening-field-target': { field: 'firstMessage', purpose: 'Opening message with immediate roleplay momentum.' },
-            'opening-field-control': { fieldPurpose: 'Create an opening that makes the character act first without explaining the setting.', tone: 'restrained tension', lengthPolicy: 'medium', avoidPatterns: ['self-introduction', 'lore dump', 'asking what the user wants'] },
-            'image-target': { imageRole: 'avatar', promptPurpose: 'Generate consistent role visuals.' },
-            'image-control': { targetImageCount: 4, imageTypes: ['avatar', 'body', 'scene', 'expression'], composition: 'character-focused', consistencyMode: 'same-character', negativePrompt: 'bad anatomy, extra fingers, watermark, text, logo' },
+            'opening-field-target': { field: 'firstMessage' },
+            'opening-field-control': { lengthPolicy: 'medium' },
+            'image-target': { imageRole: 'avatar' },
+            'image-control': { targetImageCount: 4, imageTypes: ['avatar', 'body', 'scene', 'expression'], composition: 'character-focused', consistencyMode: 'same-character' },
             'generation-strategy': { mode: 'branch-and-refine', branchCount: 3, priorityAssets: ['role-card', 'opening', 'image-pack'] },
-            'quality-gate': { minimumScore: 0.84, requiredChecks: ['field completeness', 'roleplay usability', 'visual identity', 'consistency'] },
+            'quality-gate': { minimumScore: 0.84 },
           },
         },
       },
@@ -1767,26 +1763,19 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         spec: {
           name: 'World Card Draft',
           goalPrompt: '',
-          targetAudience: 'private long-form roleplay',
-          mustHave: ['world/scene context', 'main story progression', 'multiple NPC resources', 'primary NPC', 'relationship network', 'scene image prompts'],
-          mustNot: ['lore dumping', 'NPCs with names only', 'story detached from characters'],
           configOverrides: {
-            'source-material': {
-              sourceKind: 'notes',
-              notes: 'World card structure: main story progression, multiple NPCs, primary NPC, relationship network, scene context, and durable event material.',
-              groundingStrength: 0.74,
-            },
-            'world-card-target': { worldSections: ['setting', 'rules', 'factions', 'relationship-network', 'plot-hooks'], scopePrompt: 'Generate a world card that coordinates plot, NPCs, scenes, and relationship pressure.' },
-            'npc-pack-target': { npcCount: 4, npcRoles: ['primary NPC', 'ally', 'rival', 'wildcard'] },
-            'primary-npc-target': { npcRole: 'primary NPC', storyFunction: 'Carry the strongest recurring relationship pressure.' },
+            'source-material': { sourceKind: 'notes' },
+            'world-card-target': { worldSections: ['setting', 'rules', 'factions', 'relationship-network', 'plot-hooks'] },
+            'npc-pack-target': { npcCount: 4 },
+            'primary-npc-target': {},
             'plot-arc-target': { arcShape: 'slow-burn', milestoneCount: 8 },
-            'scene-card-target': { sceneCount: 4, sceneTypes: ['opening scene', 'private conversation', 'conflict scene', 'reveal scene'] },
-            'continuity-control': { memoryAnchors: ['relationship changes', 'unresolved promises', 'world facts', 'NPC agendas'], progressionPacing: 'slow-burn', forbidResettingFacts: true },
-            'relationship-control': { relationshipMode: 'ambiguous-ally', tensionRules: ['do not resolve trust immediately', 'each NPC must push a different pressure'] },
-            'image-target': { imageRole: 'scene', promptPurpose: 'Generate scene and NPC reference images for the world card.' },
-            'image-control': { targetImageCount: 6, imageTypes: ['avatar', 'scene', 'reference'], composition: 'environmental-scene', consistencyMode: 'same-world', negativePrompt: 'bad anatomy, watermark, text, logo' },
+            'scene-card-target': { sceneCount: 4 },
+            'continuity-control': { progressionPacing: 'slow-burn', forbidResettingFacts: true },
+            'relationship-control': { relationshipMode: 'ambiguous-ally' },
+            'image-target': { imageRole: 'scene' },
+            'image-control': { targetImageCount: 6, imageTypes: ['avatar', 'scene', 'reference'], composition: 'environmental-scene', consistencyMode: 'same-world' },
             'generation-strategy': { mode: 'explore-then-converge', branchCount: 4, priorityAssets: ['world-context', 'npc-pack', 'scene-context', 'image-pack'] },
-            'quality-gate': { minimumScore: 0.86, requiredChecks: ['story progression', 'NPC utility', 'relationship network', 'scene usability', 'consistency'] },
+            'quality-gate': { minimumScore: 0.86 },
           },
           addedNodes: [
             { id: 'world-card-target', type: 'world-card-target', title: 'World Card Target', x: 730, y: 640 },
@@ -2987,6 +2976,26 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     return `${linkItem.targetNodeId}:${linkItem.targetSlotId}`
   }
 
+  function allowsMultipleCharacterResourceIncomingLinks(inputType: string, inputSlotId: string): boolean {
+    if (inputType === 'style-signal' || inputType === 'hard-constraint') {
+      return true
+    }
+    if (inputType !== 'asset-target') {
+      return false
+    }
+    return [
+      'target',
+      'imageTarget',
+      'fieldTarget',
+      'imageControl',
+      'fieldControl',
+      'continuity',
+      'relationship',
+      'style',
+      'constraint',
+    ].includes(inputSlotId)
+  }
+
   function inferCharacterResourceLinkKind(sourceType: string, targetType: string): SerializedCharacterResourceLinkKind {
     if (sourceType === 'model-capability' || sourceType === 'image-capability' || sourceType === 'retrieval-capability' || sourceType === 'voice-capability') {
       return 'enables'
@@ -3038,6 +3047,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       targetSlotId: input.slotId,
       kind: inferCharacterResourceLinkKind(output.type, input.type),
     }
+    const multiInput = allowsMultipleCharacterResourceIncomingLinks(input.type, input.slotId)
     const movingLinkId = characterResourceViewState.selectedLinkId
     if (movingLinkId && movingLinkId !== linkId) {
       const movingCustomIndex = characterResourceViewState.customLinks.findIndex((linkItem) => linkItem.id === movingLinkId)
@@ -3048,9 +3058,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       }
       delete characterResourceViewState.linkKinds[movingLinkId]
     }
-    characterResourceViewState.replacedTargetSlots.add(targetKey)
     characterResourceViewState.deletedLinkIds.delete(linkId)
-    const existingIndex = characterResourceViewState.customLinks.findIndex((linkItem) => getCharacterResourceTargetSlotKey(linkItem) === targetKey)
+    if (!multiInput) {
+      characterResourceViewState.replacedTargetSlots.add(targetKey)
+    }
+    const existingIndex = characterResourceViewState.customLinks.findIndex((linkItem) => (
+      multiInput ? linkItem.id === linkId : getCharacterResourceTargetSlotKey(linkItem) === targetKey
+    ))
     if (existingIndex >= 0) {
       characterResourceViewState.customLinks[existingIndex] = {
         ...nextLink,

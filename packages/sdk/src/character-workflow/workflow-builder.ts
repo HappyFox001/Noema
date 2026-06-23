@@ -112,17 +112,13 @@ export function normalizeWorkflowBuilderSpec(
   const spec: CharacterWorkflowBuilderSpec = {
     name: stringValue(parsed, 'name') || deriveName(fallbackPrompt, fallbackName),
     goalPrompt: stringValue(parsed, 'goalPrompt') || fallbackPrompt,
-    targetAudience: stringValue(parsed, 'targetAudience') || 'private long-form roleplay',
-    stylePrompt: stringValue(parsed, 'stylePrompt') || fallbackPrompt,
+    targetAudience: stringValue(parsed, 'targetAudience'),
+    stylePrompt: stringValue(parsed, 'stylePrompt'),
     preset: normalizePreset(stringValue(parsed, 'preset')),
     intensity: numberValue(parsed, 'intensity', 0.72, 0, 1),
-    mustHave: stringList(parsed, 'mustHave', language === 'zh-CN'
-      ? ['完整角色卡字段', '明确视觉形象', '长期可聊', '角色主动推进关系']
-      : ['complete character card fields', 'clear visual identity', 'long-term chat durability', 'active relationship progression']),
-    mustNot: stringList(parsed, 'mustNot', language === 'zh-CN'
-      ? ['模板化人格', 'OOC 解释设定', '瞬间顺从', '空泛标签堆砌']
-      : ['template personality', 'OOC setting explanations', 'instant compliance', 'vague tag stacking']),
-    sourceNotes: stringValue(parsed, 'sourceNotes') || fallbackPrompt,
+    mustHave: stringList(parsed, 'mustHave', []),
+    mustNot: stringList(parsed, 'mustNot', []),
+    sourceNotes: stringValue(parsed, 'sourceNotes'),
     generationStrategy: normalizeGenerationStrategy(recordValue(parsed, 'generationStrategy')),
     agentPolicy: normalizeAgentPolicy(recordValue(parsed, 'agentPolicy')),
     qualityGate: normalizeQualityGate(recordValue(parsed, 'qualityGate')),
@@ -148,11 +144,11 @@ export function createUiConfigOverrides(spec: CharacterWorkflowBuilderSpec): Rec
     },
     'opening-field-target': {
       field: 'firstMessage',
-      purpose: spec.goalPrompt,
+      purpose: '',
     },
     'opening-field-control': {
       fieldPurpose: spec.stylePrompt,
-      tone: spec.preset,
+      tone: '',
       lengthPolicy: 'medium',
       avoidPatterns: spec.mustNot,
     },
@@ -225,7 +221,7 @@ function createWorkflowBuilderSystemPrompt(language: CharacterWorkflowLanguage):
     '  "goalPrompt": string,',
     '  "targetAudience": string,',
     '  "stylePrompt": string,',
-    '  "preset": "campus-romance" | "dark-adult" | "urban-suspense" | "fantasy-companion" | "slice-of-life",',
+    '  "preset": "custom" | "campus-romance" | "dark-adult" | "urban-suspense" | "fantasy-companion" | "slice-of-life",',
     '  "intensity": number,',
     '  "mustHave": string[],',
     '  "mustNot": string[],',
@@ -275,11 +271,11 @@ function applySpecToWorkflow(workflow: CharacterWorkflow, spec: CharacterWorkflo
   })
   byType.get('character-field-target')?.config && Object.assign(byType.get('character-field-target')!.config, {
     field: 'firstMessage',
-    purpose: spec.goalPrompt,
+    purpose: '',
   })
   byType.get('field-generation-control')?.config && Object.assign(byType.get('field-generation-control')!.config, {
     fieldPurpose: spec.stylePrompt,
-    tone: spec.preset,
+    tone: '',
     avoidPatterns: spec.mustNot,
   })
   byType.get('image-target')?.config && Object.assign(byType.get('image-target')!.config, {
@@ -341,8 +337,8 @@ function stringList(record: Record<string, unknown>, key: string, fallback: stri
 }
 
 function normalizePreset(value: string): string {
-  const allowed = new Set(['campus-romance', 'dark-adult', 'urban-suspense', 'fantasy-companion', 'slice-of-life'])
-  return allowed.has(value) ? value : 'campus-romance'
+  const allowed = new Set(['custom', 'campus-romance', 'dark-adult', 'urban-suspense', 'fantasy-companion', 'slice-of-life'])
+  return allowed.has(value) ? value : 'custom'
 }
 
 function normalizeOutputFormat(value: string): string {

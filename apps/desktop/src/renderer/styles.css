@@ -12720,43 +12720,6 @@ body.chat-workflow-library-resizing * {
   user-select: none !important;
 }
 
-.chat-workflow-library-canvas-toggle {
-  position: absolute;
-  left: calc(var(--workflow-library-width, 176px) + 17px);
-  top: 14px;
-  z-index: 45;
-  width: 26px;
-  height: 26px;
-  border: 1px solid rgba(82, 168, 255, 0.34);
-  border-radius: 6px;
-  background: rgba(9, 13, 16, 0.92);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.38);
-  cursor: pointer;
-}
-
-.chat-workflow-library-shell.library-collapsed .chat-workflow-library-canvas-toggle {
-  left: 17px;
-}
-
-.chat-workflow-library-canvas-toggle:hover {
-  border-color: rgba(82, 168, 255, 0.58);
-  background: rgba(82, 168, 255, 0.16);
-}
-
-.chat-workflow-library-canvas-toggle span {
-  position: absolute;
-  inset: 7px 8px;
-  border-top: 2px solid rgba(248, 250, 250, 0.84);
-  border-left: 2px solid rgba(248, 250, 250, 0.84);
-  transform: rotate(-45deg);
-}
-
-.chat-workflow-library-canvas-toggle.is-collapsed span {
-  border-left: 0;
-  border-right: 2px solid rgba(248, 250, 250, 0.84);
-  transform: rotate(45deg);
-}
-
 .chat-workflow-library-head {
   position: static;
   display: flex;
@@ -13859,7 +13822,36 @@ body.chat-workflow-library-resizing * {
   background: rgba(255, 255, 255, 0.035);
 }
 
-.chat-resource-workspace.sidebar-collapsed .chat-resource-tabs .chat-workflow-sidebar-toggle span {
+.chat-resource-tabs .chat-workflow-library-inline-toggle {
+  border-color: rgba(82, 168, 255, 0.24);
+  background: rgba(82, 168, 255, 0.08);
+}
+
+.chat-resource-tabs .chat-workflow-library-inline-toggle::before {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 6px;
+  width: 4px;
+  height: 12px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  opacity: 0.86;
+}
+
+.chat-resource-tabs .chat-workflow-library-inline-toggle span {
+  width: 5px;
+  height: 5px;
+  margin-left: 6px;
+  transform: rotate(225deg);
+}
+
+.chat-resource-workspace.sidebar-collapsed .chat-resource-tabs .chat-workflow-sidebar-toggle:not(.chat-workflow-library-inline-toggle) span,
+.chat-resource-tabs .chat-workflow-library-inline-toggle.is-library-collapsed span {
+  transform: rotate(45deg);
+}
+
+.chat-resource-workspace.sidebar-collapsed .chat-resource-tabs .chat-workflow-sidebar-toggle:not(.chat-workflow-library-inline-toggle) span {
   transform: rotate(45deg) translateX(-1px);
 }
 
@@ -14509,6 +14501,49 @@ body.chat-workflow-library-resizing * {
 .chat-resource-node-widgets textarea:focus {
   border-color: rgba(82, 168, 255, 0.36);
   background: rgba(82, 168, 255, 0.06);
+}
+
+.chat-resource-workbench .chat-workflow-boolean-field {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  width: 28px;
+  min-width: 28px;
+  height: 16px;
+  min-height: 16px;
+  justify-self: start;
+  padding: 0;
+  border: 1px solid rgba(248, 250, 250, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.055);
+  cursor: pointer;
+}
+
+.chat-resource-workbench .chat-workflow-boolean-field::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(248, 250, 250, 0.56);
+  transition: transform 120ms ease, background-color 120ms ease;
+}
+
+.chat-resource-workbench .chat-workflow-boolean-field:checked {
+  border-color: rgba(82, 168, 255, 0.58);
+  background: rgba(82, 168, 255, 0.32);
+}
+
+.chat-resource-workbench .chat-workflow-boolean-field:checked::after {
+  transform: translateX(12px);
+  background: rgba(248, 250, 250, 0.92);
+}
+
+.chat-resource-workbench .chat-workflow-boolean-field:focus-visible {
+  outline: 2px solid rgba(82, 168, 255, 0.28);
+  outline-offset: 2px;
 }
 
 .chat-resource-node-widgets textarea {
