@@ -281,7 +281,7 @@ export function completeCharacterResourceRunState(state: CharacterResourceRunSta
     events: state.events ?? [],
     artifacts: [
       { type: 'agent-plan', sourceNodeId: 'generation-strategy', title: 'Agent Plan', summary: 'Mock plan decomposes the free-form goal into candidates, tools, critique loops, and output targets.' },
-      { type: 'candidate-pack', sourceNodeId: 'asset-targets', title: 'Candidate Pack', summary: 'Mock candidate pack reserves role card, opening, visual assets, memory policy, and generation report outputs.' },
+      { type: 'candidate-pack', sourceNodeId: 'character-card-target', title: 'Candidate Pack', summary: 'Mock candidate pack reserves role card, opening, visual assets, memory policy, and generation report outputs.' },
       { type: 'validation-report', sourceNodeId: 'quality-gate', title: 'Quality Gate Report', summary: 'Mock quality gate checks goal match, long-term RP durability, style intensity, consistency, and export readiness.' },
       { type: 'export-target', sourceNodeId: 'output-adapter', title: 'Noema Role Chat Export', summary: 'Mock output adapter maps the accepted candidate pack to a Noema Role Chat package.' },
     ],
@@ -344,36 +344,264 @@ function localizeSource(source: string, options: CharacterWorkflowPageOptions): 
   return workflowText(options, `chat.workflow.source.${source}`, source)
 }
 
+function localizeParameterOptionLabel(
+  parameterItem: CharacterResourceParameterDefinition,
+  optionItem: { label: string; value: string },
+  options: CharacterWorkflowPageOptions
+): string {
+  return workflowText(
+    options,
+    `chat.workflow.option.${parameterItem.id}.${optionItem.value}`,
+    workflowText(options, `chat.workflow.option.${optionItem.value}`, optionItem.label)
+  )
+}
+
 const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
   createDefinition('goal', 'Generation Goal', ['目标', 'brief', 'intent'], 'Goal', 'core', 'Captures the free-form RP generation target without asking the user to define final card fields.', [], [
     slot('goal', 'Goal', 'generation-goal', 'Natural language generation goal and target audience.'),
   ], [
     param('goalPrompt', 'Goal Prompt', 'textarea', 'Long-form private roleplay. The character should be proactive, emotionally specific, and non-template.'),
     param('targetAudience', 'Target Audience', 'text', 'private long-form roleplay'),
-    param('allowExpansion', 'Allow Agent Expansion', 'boolean', true),
+    param('allowAgentExpansion', 'Allow Agent Expansion', 'boolean', true),
   ], 'text-card'),
-  createDefinition('style-pressure', 'Style Pressure', ['风格', 'taste', 'tone'], 'Taste', 'core', 'Applies weighted taste, genre, mood, intensity, and pacing pressure to the agent.', [
-    slot('goal', 'Goal', 'generation-goal', 'Goal being shaped by this taste profile.', true),
+  createDefinition('character-card-target', 'Character Card Target', ['角色卡', 'target', 'role card'], 'Targets', 'asset', 'Declares the complete role card as a target resource assembled from field targets and local controls.', [
+    slot('goal', 'Goal', 'generation-goal', 'Primary generation goal.', true),
+    slot('style', 'Style', 'style-signal', 'Local or global style pressure.'),
+    slot('constraint', 'Constraint', 'hard-constraint', 'Local or global hard constraints.'),
+    slot('source', 'Source', 'source-context', 'Grounding source material.'),
+  ], [
+    slot('target', 'Target', 'asset-target', 'Character card target resource.'),
+    slot('candidate', 'Candidate', 'candidate-pack', 'Candidate package produced for evaluation and export.'),
+  ], [
+    param('targetKind', 'Target Kind', 'text', 'character-card'),
+    param('includeFields', 'Include Fields', 'multi-select', ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'firstMessage', 'dialogueStyle', 'worldContext'], undefined, undefined, undefined, [
+      { label: 'Name', value: 'name' },
+      { label: 'Description', value: 'description' },
+      { label: 'Appearance', value: 'appearance' },
+      { label: 'Personality', value: 'personality' },
+      { label: 'Background', value: 'background' },
+      { label: 'Scenario', value: 'scenario' },
+      { label: 'First Message', value: 'firstMessage' },
+      { label: 'Dialogue Style', value: 'dialogueStyle' },
+      { label: 'World Context', value: 'worldContext' },
+    ]),
+    param('includeSupportFields', 'Support Fields', 'multi-select', ['memoryStrategy', 'imagePrompt'], undefined, undefined, undefined, [
+      { label: 'Memory Strategy', value: 'memoryStrategy' },
+      { label: 'Image Prompt', value: 'imagePrompt' },
+    ]),
+  ], 'package'),
+  createDefinition('character-field-target', 'Character Field Target', ['字段', 'field target', '局部字段'], 'Targets', 'asset', 'Declares a single card field as an independently controllable target resource.', [
+    slot('card', 'Card', 'asset-target', 'Character card target.'),
+    slot('style', 'Style', 'style-signal', 'Local field style pressure.'),
+    slot('constraint', 'Constraint', 'hard-constraint', 'Local field constraints.'),
+    slot('fieldControl', 'Field Control', 'asset-target', 'Field generation control.'),
+  ], [
+    slot('field', 'Field', 'asset-target', 'Field target resource.'),
+  ], [
+    param('field', 'Field', 'select', 'firstMessage', undefined, undefined, undefined, [
+      { label: 'Name', value: 'name' },
+      { label: 'Description', value: 'description' },
+      { label: 'Appearance', value: 'appearance' },
+      { label: 'Personality', value: 'personality' },
+      { label: 'Background', value: 'background' },
+      { label: 'Scenario', value: 'scenario' },
+      { label: 'First Message', value: 'firstMessage' },
+      { label: 'Dialogue Style', value: 'dialogueStyle' },
+      { label: 'World Context', value: 'worldContext' },
+      { label: 'Memory Strategy', value: 'memoryStrategy' },
+      { label: 'Image Prompt', value: 'imagePrompt' },
+    ]),
+    param('purpose', 'Purpose', 'textarea', 'Generate this field as a controlled local resource without user-written final content.'),
+  ], 'text-card'),
+  createDefinition('image-target', 'Image Target', ['图片目标', 'image target', 'visual target'], 'Targets', 'asset', 'Declares image resources such as avatar, body, scene, expression, or reference images.', [
+    slot('card', 'Card', 'asset-target', 'Character card target.'),
+    slot('image', 'Image', 'image-capability', 'Image generation capability.', true),
+    slot('imageControl', 'Image Control', 'asset-target', 'Image generation control.'),
+    slot('style', 'Style', 'style-signal', 'Local image style pressure.'),
+    slot('constraint', 'Constraint', 'hard-constraint', 'Local image constraints.'),
+  ], [
+    slot('imageAsset', 'Image Asset', 'asset-target', 'Image target resource.'),
+  ], [
+    param('imageRole', 'Image Role', 'select', 'avatar', undefined, undefined, undefined, [
+      { label: 'Avatar', value: 'avatar' },
+      { label: 'Body', value: 'body' },
+      { label: 'Scene', value: 'scene' },
+      { label: 'Expression', value: 'expression' },
+      { label: 'Reference', value: 'reference' },
+    ]),
+    param('promptPurpose', 'Prompt Purpose', 'textarea', 'Create consistent character images for the generated role card.'),
+  ], 'image'),
+  createDefinition('world-card-target', 'World Card Target', ['世界卡', 'world card', 'setting'], 'Targets', 'asset', 'Declares an overall world resource for NPCs, scenes, relationship network, and plot progression.', [
+    slot('goal', 'Goal', 'generation-goal', 'Primary world goal.', true),
+    slot('style', 'Style', 'style-signal', 'World style pressure.'),
+    slot('constraint', 'Constraint', 'hard-constraint', 'World constraints.'),
+    slot('source', 'Source', 'source-context', 'Grounding source material.'),
+  ], [
+    slot('world', 'World', 'asset-target', 'World card resource.'),
+  ], [
+    param('worldSections', 'World Sections', 'multi-select', ['setting', 'rules', 'factions', 'relationship-network', 'plot-hooks'], undefined, undefined, undefined, [
+      { label: 'Setting', value: 'setting' },
+      { label: 'Rules', value: 'rules' },
+      { label: 'Factions', value: 'factions' },
+      { label: 'Relationship Network', value: 'relationship-network' },
+      { label: 'Plot Hooks', value: 'plot-hooks' },
+    ]),
+    param('scopePrompt', 'Scope Prompt', 'textarea', 'Generate a world card that supports durable multi-character roleplay.'),
+  ], 'package'),
+  createDefinition('npc-pack-target', 'NPC Pack Target', ['NPC包', 'npc pack', '多npc'], 'Targets', 'asset', 'Declares a pack of NPC resources connected to the world card and plot arc.', [
+    slot('world', 'World', 'asset-target', 'World card resource.'),
+    slot('relationship', 'Relationship', 'asset-target', 'Relationship control.'),
+    slot('style', 'Style', 'style-signal', 'NPC pack style.'),
+    slot('constraint', 'Constraint', 'hard-constraint', 'NPC constraints.'),
+  ], [
+    slot('npcPack', 'NPC Pack', 'asset-target', 'NPC pack resource.'),
+  ], [
+    param('npcCount', 'NPC Count', 'integer', 4, 1, 12, 1),
+    param('npcRoles', 'NPC Roles', 'string-list', ['primary NPC', 'ally', 'rival', 'wildcard']),
+  ], 'package'),
+  createDefinition('npc-target', 'NPC Target', ['NPC', 'single npc', '角色资源'], 'Targets', 'asset', 'Declares a single NPC as an independently controllable target resource.', [
+    slot('npcPack', 'NPC Pack', 'asset-target', 'NPC pack resource.'),
+    slot('style', 'Style', 'style-signal', 'NPC style.'),
+    slot('constraint', 'Constraint', 'hard-constraint', 'NPC constraints.'),
+    slot('relationship', 'Relationship', 'asset-target', 'Relationship control.'),
+  ], [
+    slot('npc', 'NPC', 'asset-target', 'NPC resource.'),
+  ], [
+    param('npcRole', 'NPC Role', 'text', 'primary NPC'),
+    param('storyFunction', 'Story Function', 'textarea', 'This NPC should create durable story pressure and relationship movement.'),
+  ], 'text-card'),
+  createDefinition('plot-arc-target', 'Plot Arc Target', ['剧情', 'plot arc', 'story'], 'Targets', 'asset', 'Declares long-running story progression for the world card.', [
+    slot('world', 'World', 'asset-target', 'World card resource.'),
+    slot('npcPack', 'NPC Pack', 'asset-target', 'NPC pack resource.'),
+    slot('continuity', 'Continuity', 'asset-target', 'Continuity control.'),
+    slot('style', 'Style', 'style-signal', 'Plot style.'),
+    slot('constraint', 'Constraint', 'hard-constraint', 'Plot constraints.'),
+  ], [
+    slot('plot', 'Plot', 'asset-target', 'Plot arc resource.'),
+  ], [
+    param('arcShape', 'Arc Shape', 'select', 'slow-burn', undefined, undefined, undefined, [
+      { label: 'Slow Burn', value: 'slow-burn' },
+      { label: 'Mystery Escalation', value: 'mystery-escalation' },
+      { label: 'Relationship Drama', value: 'relationship-drama' },
+      { label: 'Adventure Campaign', value: 'adventure-campaign' },
+    ]),
+    param('milestoneCount', 'Milestone Count', 'integer', 6, 2, 20, 1),
+  ], 'text-card'),
+  createDefinition('scene-card-target', 'Scene Card Target', ['场景卡', 'scene card', 'scene'], 'Targets', 'asset', 'Declares reusable scene resources for the current world and plot arc.', [
+    slot('world', 'World', 'asset-target', 'World card resource.'),
+    slot('plot', 'Plot', 'asset-target', 'Plot arc resource.'),
+    slot('style', 'Style', 'style-signal', 'Scene style.'),
+    slot('constraint', 'Constraint', 'hard-constraint', 'Scene constraints.'),
+  ], [
+    slot('scene', 'Scene', 'asset-target', 'Scene resource.'),
+  ], [
+    param('sceneCount', 'Scene Count', 'integer', 3, 1, 12, 1),
+    param('sceneTypes', 'Scene Types', 'string-list', ['opening scene', 'private conversation', 'conflict scene']),
+  ], 'text-card'),
+  createDefinition('style-pressure', 'Style Pressure', ['风格', 'taste', 'tone'], 'Taste', 'core', 'Applies weighted taste, genre, mood, intensity, and pacing pressure to connected targets.', [
+    slot('target', 'Target', 'asset-target', 'Target being shaped by this taste profile.'),
   ], [
     slot('style', 'Style', 'style-signal', 'Weighted style signal.'),
   ], [
+    param('scope', 'Scope', 'select', 'connected-targets', undefined, undefined, undefined, [
+      { label: 'Connected Targets', value: 'connected-targets' },
+      { label: 'Global Goal', value: 'global' },
+      { label: 'Image Targets', value: 'image' },
+      { label: 'Field Targets', value: 'field' },
+      { label: 'World Targets', value: 'world' },
+    ]),
     param('preset', 'Preset', 'select', 'campus-romance', undefined, undefined, undefined, [
       { label: 'Campus Romance', value: 'campus-romance' },
       { label: 'Dark Adult', value: 'dark-adult' },
       { label: 'Urban Suspense', value: 'urban-suspense' },
       { label: 'Fantasy Companion', value: 'fantasy-companion' },
+      { label: 'Slice of Life', value: 'slice-of-life' },
     ]),
     param('intensity', 'Intensity', 'number', 0.68, 0, 1, 0.01),
     param('stylePrompt', 'Style Prompt', 'textarea', 'Restrained, emotionally tense, specific in behavior, and never written like a manual introduction.'),
   ], 'rule'),
-  createDefinition('constraint', 'Hard Constraint', ['约束', 'boundary', 'must not'], 'Constraints', 'safety', 'Sets hard and soft boundaries that limit agent freedom during generation and repair.', [
-    slot('goal', 'Goal', 'generation-goal', 'Goal constrained by these boundaries.'),
+  createDefinition('constraint', 'Hard Constraint', ['约束', 'boundary', 'must not'], 'Constraints', 'safety', 'Sets hard and soft boundaries that limit connected target generation and repair.', [
+    slot('target', 'Target', 'asset-target', 'Target constrained by these boundaries.'),
   ], [
     slot('constraint', 'Constraint', 'hard-constraint', 'Constraint signal.'),
   ], [
+    param('scope', 'Scope', 'select', 'connected-targets', undefined, undefined, undefined, [
+      { label: 'Connected Targets', value: 'connected-targets' },
+      { label: 'Global Goal', value: 'global' },
+      { label: 'Image Targets', value: 'image' },
+      { label: 'Field Targets', value: 'field' },
+      { label: 'World Targets', value: 'world' },
+    ]),
     param('mustHave', 'Must Have', 'string-list', ['long-term chat durability', 'character agency']),
     param('mustNot', 'Must Not', 'string-list', ['template personality', 'OOC setting explanation', 'instant compliance']),
     param('hardBoundary', 'Hard Boundary', 'boolean', true),
+  ], 'rule'),
+  createDefinition('image-generation-control', 'Image Generation Control', ['图片控制', 'image control', 'visual control'], 'Controls', 'asset', 'Controls image quantity, image roles, composition, consistency, and negative prompts for connected image targets.', [
+    slot('imageTarget', 'Image Target', 'asset-target', 'Image target resource.'),
+  ], [
+    slot('imageControl', 'Image Control', 'asset-target', 'Image generation control.'),
+  ], [
+    param('targetImageCount', 'Image Count', 'integer', 4, 1, 16, 1),
+    param('imageTypes', 'Image Types', 'multi-select', ['avatar', 'body', 'scene', 'expression'], undefined, undefined, undefined, [
+      { label: 'Avatar', value: 'avatar' },
+      { label: 'Body', value: 'body' },
+      { label: 'Scene', value: 'scene' },
+      { label: 'Expression', value: 'expression' },
+      { label: 'Reference', value: 'reference' },
+    ]),
+    param('composition', 'Composition', 'select', 'character-focused', undefined, undefined, undefined, [
+      { label: 'Character Focused', value: 'character-focused' },
+      { label: 'Upper Body Portrait', value: 'upper-body-portrait' },
+      { label: 'Full Body', value: 'full-body' },
+      { label: 'Environmental Scene', value: 'environmental-scene' },
+      { label: 'Expression Sheet', value: 'expression-sheet' },
+    ]),
+    param('consistencyMode', 'Consistency Mode', 'select', 'same-character', undefined, undefined, undefined, [
+      { label: 'Same Character', value: 'same-character' },
+      { label: 'Same World', value: 'same-world' },
+      { label: 'Independent Images', value: 'independent' },
+    ]),
+    param('negativePrompt', 'Negative Prompt', 'textarea', 'bad anatomy, extra fingers, watermark, text, logo'),
+  ], 'image'),
+  createDefinition('field-generation-control', 'Field Generation Control', ['字段控制', 'field control', 'local control'], 'Controls', 'agent', 'Controls how a connected field target is generated without containing final field content.', [
+    slot('fieldTarget', 'Field Target', 'asset-target', 'Field target resource.'),
+  ], [
+    slot('fieldControl', 'Field Control', 'asset-target', 'Field generation control.'),
+  ], [
+    param('fieldPurpose', 'Field Purpose', 'textarea', 'Create a concrete field that advances roleplay and does not explain the setting out of character.'),
+    param('tone', 'Tone', 'text', 'restrained tension'),
+    param('lengthPolicy', 'Length Policy', 'select', 'medium', undefined, undefined, undefined, [
+      { label: 'Short', value: 'short' },
+      { label: 'Medium', value: 'medium' },
+      { label: 'Long', value: 'long' },
+    ]),
+    param('avoidPatterns', 'Avoid Patterns', 'string-list', ['self-introduction', 'lore dump', 'asking what the user wants']),
+  ], 'rule'),
+  createDefinition('continuity-control', 'Continuity Control', ['连续性', 'memory', 'continuity'], 'Controls', 'agent', 'Controls long-form continuity, memory anchors, unresolved hooks, and progression pacing.', [
+    slot('target', 'Target', 'asset-target', 'Target resource.'),
+  ], [
+    slot('continuity', 'Continuity', 'asset-target', 'Continuity control.'),
+  ], [
+    param('memoryAnchors', 'Memory Anchors', 'string-list', ['relationship changes', 'unresolved promises', 'boundaries', 'long-term goals']),
+    param('progressionPacing', 'Progression Pacing', 'select', 'slow-burn', undefined, undefined, undefined, [
+      { label: 'Slow Burn', value: 'slow-burn' },
+      { label: 'Steady Escalation', value: 'steady-escalation' },
+      { label: 'Episodic', value: 'episodic' },
+    ]),
+    param('forbidResettingFacts', 'Forbid Resetting Facts', 'boolean', true),
+  ], 'rule'),
+  createDefinition('relationship-control', 'Relationship Control', ['关系', 'relationship', 'tension'], 'Controls', 'agent', 'Controls the relational function and tension between NPC, character, and user resources.', [
+    slot('target', 'Target', 'asset-target', 'Target resource.'),
+  ], [
+    slot('relationship', 'Relationship', 'asset-target', 'Relationship control.'),
+  ], [
+    param('relationshipMode', 'Relationship Mode', 'select', 'slow-trust', undefined, undefined, undefined, [
+      { label: 'Slow Trust', value: 'slow-trust' },
+      { label: 'Rival Tension', value: 'rival-tension' },
+      { label: 'Protective Companion', value: 'protective-companion' },
+      { label: 'Ambiguous Ally', value: 'ambiguous-ally' },
+    ]),
+    param('tensionRules', 'Tension Rules', 'string-list', ['do not resolve tension immediately', 'make each NPC push a different pressure']),
   ], 'rule'),
   createDefinition('source-material', 'Source Material', ['素材', 'reference', 'context'], 'Sources', 'asset', 'Provides optional source context, references, existing cards, images, or user preference notes.', [], [
     slot('source', 'Source', 'source-context', 'Reference context available to the agent.'),
@@ -398,13 +626,10 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'High', value: 'high' },
     ]),
   ], 'rule'),
-  createDefinition('image-tool', 'Image Tool', ['生图', 'image api', 'visual'], 'Tools', 'asset', 'Selects image generation or editing capability for avatar, body art, expressions, and scene references.', [
-    slot('style', 'Style', 'style-signal', 'Style pressure for generated image assets.'),
-  ], [
+  createDefinition('image-tool', 'Image Tool', ['生图', 'image api', 'visual'], 'Tools', 'asset', 'Selects image generation or editing capability. Quantity and image role controls live in image-generation-control nodes.', [], [
     slot('image', 'Image', 'image-capability', 'Image generation capability.'),
   ], [
     param('modelRef', 'Model / Workflow', 'model-select', '', undefined, undefined, undefined, undefined, 'image'),
-    param('assetCount', 'Asset Count', 'integer', 4, 1, 16, 1),
     param('referenceStrength', 'Reference Strength', 'number', 0.55, 0, 1, 0.01),
   ], 'image'),
   createDefinition('retrieval-tool', 'Retrieval Tool', ['检索', 'search', 'knowledge'], 'Tools', 'agent', 'Allows the agent to read local context, vector sources, or web summaries when enabled.', [
@@ -451,7 +676,6 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
   ], 'rule'),
   createDefinition('generation-strategy', 'Generation Strategy', ['策略', 'workflow', 'plan'], 'Strategy', 'agent', 'Controls how the agent branches, compares candidates, orders phases, and stops.', [
     slot('goal', 'Goal', 'generation-goal', 'Goal to plan around.', true),
-    slot('style', 'Style', 'style-signal', 'Style pressure.'),
     slot('policy', 'Policy', 'agent-policy', 'Agent autonomy policy.', true),
   ], [
     slot('strategy', 'Strategy', 'strategy-policy', 'Generation strategy.'),
@@ -488,23 +712,6 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     param('blockExport', 'Block Export', 'boolean', true),
     param('requiredChecks', 'Required Checks', 'string-list', ['goal match', 'style intensity', 'long-term RP', 'consistency']),
   ], 'validation'),
-  createDefinition('asset-builder', 'Asset Builder', ['资源', 'outputs', 'package target'], 'Outputs', 'asset', 'Declares which final resources the agent should produce without forcing the user to write their contents.', [
-    slot('strategy', 'Strategy', 'strategy-policy', 'Generation strategy.', true),
-    slot('image', 'Image', 'image-capability', 'Optional image capability.'),
-    slot('voice', 'Voice', 'voice-capability', 'Optional voice capability.'),
-  ], [
-    slot('assets', 'Assets', 'asset-target', 'Requested resource targets.'),
-    slot('candidate', 'Candidate', 'candidate-pack', 'Candidate pack produced by the mock lifecycle.'),
-  ], [
-    param('targets', 'Targets', 'multi-select', ['role-card', 'opening', 'image-pack', 'generation-report'], undefined, undefined, undefined, [
-      { label: 'Role Card', value: 'role-card' },
-      { label: 'Opening', value: 'opening' },
-      { label: 'Image Pack', value: 'image-pack' },
-      { label: 'Voice Sample', value: 'voice-sample' },
-      { label: 'Generation Report', value: 'generation-report' },
-    ]),
-    param('includeAlternates', 'Include Alternates', 'boolean', true),
-  ], 'package'),
   createDefinition('output-adapter', 'Output Adapter', ['导出', 'adapter', 'format'], 'Outputs', 'core', 'Maps an accepted candidate pack to a target format without changing generation goals.', [
     slot('candidate', 'Candidate', 'candidate-pack', 'Accepted candidate pack.', true),
     slot('report', 'Report', 'validation-report', 'Quality gate report.', true),
@@ -580,37 +787,50 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
 ]
 
 const DEFAULT_NODE_PLACEMENT: Array<{ id: string; type: string; title: string; x: number; y: number; status?: CharacterResourceNodeStatus }> = [
-  { id: 'generation-goal', type: 'goal', title: 'Generation Goal', x: 88, y: 96, status: 'dirty' },
-  { id: 'style-pressure', type: 'style-pressure', title: 'Style Pressure', x: 420, y: 48 },
-  { id: 'hard-constraints', type: 'constraint', title: 'Hard Constraints', x: 420, y: 292 },
-  { id: 'source-material', type: 'source-material', title: 'Source Material', x: 88, y: 360 },
-  { id: 'llm-capability', type: 'llm-tool', title: 'LLM Tool', x: 760, y: 54 },
-  { id: 'image-capability', type: 'image-tool', title: 'Image Tool', x: 760, y: 300, status: 'queued' },
-  { id: 'agent-policy', type: 'agent-policy', title: 'Agent Policy', x: 1096, y: 104 },
-  { id: 'generation-strategy', type: 'generation-strategy', title: 'Generation Strategy', x: 1434, y: 104 },
-  { id: 'asset-targets', type: 'asset-builder', title: 'Asset Builder', x: 1772, y: 132 },
-  { id: 'critique-loop', type: 'critique-loop', title: 'Critique Loop', x: 1434, y: 404 },
-  { id: 'quality-gate', type: 'quality-gate', title: 'Quality Gate', x: 2110, y: 230, status: 'stale' },
-  { id: 'output-adapter', type: 'output-adapter', title: 'Output Adapter', x: 2448, y: 230 },
+  { id: 'generation-goal', type: 'goal', title: 'Generation Goal', x: 80, y: 150, status: 'dirty' },
+  { id: 'character-card-target', type: 'character-card-target', title: 'Character Card Target', x: 390, y: 134 },
+  { id: 'opening-field-target', type: 'character-field-target', title: 'Opening Field Target', x: 730, y: 20 },
+  { id: 'opening-field-control', type: 'field-generation-control', title: 'Opening Field Control', x: 730, y: 226 },
+  { id: 'image-target', type: 'image-target', title: 'Image Target', x: 730, y: 432, status: 'queued' },
+  { id: 'image-control', type: 'image-generation-control', title: 'Image Generation Control', x: 1060, y: 432 },
+  { id: 'style-pressure', type: 'style-pressure', title: 'Style Pressure', x: 390, y: -86 },
+  { id: 'hard-constraints', type: 'constraint', title: 'Hard Constraints', x: 390, y: 370 },
+  { id: 'source-material', type: 'source-material', title: 'Source Material', x: 80, y: 412 },
+  { id: 'llm-capability', type: 'llm-tool', title: 'LLM Tool', x: 1060, y: 16 },
+  { id: 'image-capability', type: 'image-tool', title: 'Image Tool', x: 1060, y: 224 },
+  { id: 'agent-policy', type: 'agent-policy', title: 'Agent Policy', x: 1398, y: 70 },
+  { id: 'generation-strategy', type: 'generation-strategy', title: 'Generation Strategy', x: 1736, y: 70 },
+  { id: 'critique-loop', type: 'critique-loop', title: 'Critique Loop', x: 1736, y: 360 },
+  { id: 'quality-gate', type: 'quality-gate', title: 'Quality Gate', x: 2074, y: 206, status: 'stale' },
+  { id: 'output-adapter', type: 'output-adapter', title: 'Output Adapter', x: 2412, y: 206 },
 ]
 
 const DEFAULT_LINKS: CharacterResourceLink[] = [
-  link('generation-goal', 'goal', 'style-pressure', 'goal', 'guides'),
-  link('generation-goal', 'goal', 'hard-constraints', 'goal', 'constrains'),
+  link('generation-goal', 'goal', 'character-card-target', 'goal', 'guides'),
+  link('character-card-target', 'target', 'style-pressure', 'target', 'weights'),
+  link('character-card-target', 'target', 'hard-constraints', 'target', 'constrains'),
+  link('source-material', 'source', 'character-card-target', 'source', 'grounds'),
+  link('character-card-target', 'target', 'opening-field-target', 'card', 'guides'),
+  link('opening-field-target', 'field', 'opening-field-control', 'fieldTarget', 'guides'),
+  link('opening-field-control', 'fieldControl', 'opening-field-target', 'fieldControl', 'guides'),
+  link('style-pressure', 'style', 'opening-field-target', 'style', 'weights'),
+  link('hard-constraints', 'constraint', 'opening-field-target', 'constraint', 'constrains'),
+  link('character-card-target', 'target', 'image-target', 'card', 'guides'),
+  link('image-capability', 'image', 'image-target', 'image', 'enables'),
+  link('image-target', 'imageAsset', 'image-control', 'imageTarget', 'guides'),
+  link('image-control', 'imageControl', 'image-target', 'imageControl', 'guides'),
+  link('style-pressure', 'style', 'image-target', 'style', 'weights'),
+  link('hard-constraints', 'constraint', 'image-target', 'constraint', 'constrains'),
   link('generation-goal', 'goal', 'agent-policy', 'goal', 'guides'),
-  link('style-pressure', 'style', 'generation-strategy', 'style', 'weights'),
   link('hard-constraints', 'constraint', 'agent-policy', 'constraint', 'constrains'),
   link('source-material', 'source', 'agent-policy', 'source', 'grounds'),
   link('llm-capability', 'model', 'agent-policy', 'model', 'enables'),
-  link('style-pressure', 'style', 'image-capability', 'style', 'guides'),
-  link('image-capability', 'image', 'asset-targets', 'image', 'enables'),
   link('agent-policy', 'policy', 'generation-strategy', 'policy', 'guides'),
   link('generation-goal', 'goal', 'generation-strategy', 'goal', 'guides'),
-  link('generation-strategy', 'strategy', 'asset-targets', 'strategy', 'routes'),
   link('generation-strategy', 'strategy', 'critique-loop', 'strategy', 'routes'),
   link('critique-loop', 'critique', 'quality-gate', 'critique', 'evaluates'),
-  link('asset-targets', 'candidate', 'quality-gate', 'candidate', 'evaluates'),
-  link('asset-targets', 'candidate', 'output-adapter', 'candidate', 'exports'),
+  link('character-card-target', 'candidate', 'quality-gate', 'candidate', 'evaluates'),
+  link('character-card-target', 'candidate', 'output-adapter', 'candidate', 'exports'),
   link('quality-gate', 'report', 'output-adapter', 'report', 'constrains'),
 ]
 
@@ -1223,9 +1443,10 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
         }
       }),
     groups: [
-      { id: 'intent-control', title: ui(options, '目标与口味', 'Goal and Taste'), nodeIds: ['generation-goal', 'style-pressure', 'hard-constraints', 'source-material'], color: 'rgba(82, 168, 255, 0.16)' },
+      { id: 'intent-targets', title: ui(options, '目标资源', 'Target Resources'), nodeIds: ['generation-goal', 'character-card-target', 'opening-field-target', 'image-target', 'source-material'], color: 'rgba(82, 168, 255, 0.16)' },
+      { id: 'local-controls', title: ui(options, '局部控制', 'Local Controls'), nodeIds: ['style-pressure', 'hard-constraints', 'opening-field-control', 'image-control'], color: 'rgba(162, 202, 188, 0.16)' },
       { id: 'tool-policy', title: ui(options, '工具与策略', 'Tools and Strategy'), nodeIds: ['llm-capability', 'image-capability', 'agent-policy', 'generation-strategy'], color: 'rgba(219, 189, 130, 0.16)' },
-      { id: 'evaluation-output', title: ui(options, '评估与输出', 'Evaluation and Output'), nodeIds: ['asset-targets', 'critique-loop', 'quality-gate', 'output-adapter'], color: 'rgba(162, 202, 188, 0.16)' },
+      { id: 'evaluation-output', title: ui(options, '评估与输出', 'Evaluation and Output'), nodeIds: ['critique-loop', 'quality-gate', 'output-adapter'], color: 'rgba(206, 154, 118, 0.16)' },
     ],
     tabs: [
       { id: 'workflow', title: 'Draft 01.resourcegraph', kind: 'resource-graph' },
@@ -2398,7 +2619,7 @@ function renderParameterField(
   if (parameterItem.type === 'select') {
     return `
       <select ${baseAttrs} aria-label="${options.escapeHtml(label)}">
-        ${(parameterItem.options ?? []).map((optionItem) => `<option value="${options.escapeHtml(optionItem.value)}" ${String(value) === optionItem.value ? 'selected' : ''}>${options.escapeHtml(optionItem.label)}</option>`).join('')}
+        ${(parameterItem.options ?? []).map((optionItem) => `<option value="${options.escapeHtml(optionItem.value)}" ${String(value) === optionItem.value ? 'selected' : ''}>${options.escapeHtml(localizeParameterOptionLabel(parameterItem, optionItem, options))}</option>`).join('')}
       </select>
     `
   }

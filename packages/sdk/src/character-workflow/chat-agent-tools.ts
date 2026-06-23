@@ -81,14 +81,14 @@ export function createConfiguredCharacterAgentToolRuntime(
       execute: async ({ callId, context, input }) => {
         const source = input && typeof input === 'object' ? input as Record<string, any> : {}
         const candidateId = typeof source.draft?.id === 'string' ? source.draft.id : `${context.runId}:candidate:primary`
-        let imageArtifact: CharacterAgentArtifact | null = null
+        let imageArtifacts: CharacterAgentArtifact[] = []
         let errorMessage = ''
         try {
-          imageArtifact = await maybeGenerateImageArtifact(context, models, options.proxyUrl, candidateId, source.prompt)
+          imageArtifacts = await maybeGenerateImageArtifacts(context, models, options.proxyUrl, candidateId, source.prompt)
         } catch (error) {
           errorMessage = error instanceof Error ? error.message : String(error)
         }
-        const failureArtifact = imageArtifact ? null : createToolArtifact(
+        const failureArtifact = imageArtifacts.length ? null : createToolArtifact(
           context.runId,
           candidateId,
           'generation-report',
@@ -105,14 +105,17 @@ export function createConfiguredCharacterAgentToolRuntime(
               baseUrl: model.baseUrl,
             })),
             selectedCapability: context.capabilities.imageModels[0] ?? null,
+            imageControls: context.targets
+              .filter((target) => target.kind === 'image')
+              .flatMap((target) => target.imageControls),
           },
           context.capabilities.imageModels[0]?.nodeId ?? 'image-capability'
         )
         return {
           callId,
-          ok: Boolean(imageArtifact),
-          summary: imageArtifact ? 'Generated character image.' : errorMessage || 'Skipped image generation because image model or prompt is unavailable.',
-          artifacts: imageArtifact ? [imageArtifact] : failureArtifact ? [failureArtifact] : [],
+          ok: imageArtifacts.length > 0,
+          summary: imageArtifacts.length ? `Generated ${imageArtifacts.length} character image asset(s).` : errorMessage || 'Skipped image generation because image model or prompt is unavailable.',
+          artifacts: imageArtifacts.length ? imageArtifacts : failureArtifact ? [failureArtifact] : [],
         }
       },
     },
@@ -166,8 +169,13 @@ function createAgentPromptContext(context: CharacterAgentRunContext): Record<str
   return {
     language: context.language,
     goal: context.goal,
+    targets: context.targets,
     stylePressures: context.stylePressures,
     hardConstraints: context.hardConstraints,
+    imageGenerationControls: context.imageGenerationControls,
+    fieldGenerationControls: context.fieldGenerationControls,
+    continuityControls: context.continuityControls,
+    relationshipControls: context.relationshipControls,
     sourceMaterials: context.sourceMaterials,
     capabilities: context.capabilities,
     policy: context.policy,
@@ -189,7 +197,7 @@ function createCharacterDecisionPrompt(
   return [
     '<character_agent_prompt>',
     '  <role>You are an autonomous character-card agent. Your job is to complete the fixed character-card schema and required supporting resources.</role>',
-    '  <operating_model>The resource graph is not a pipeline. It is grouped context injected into your run. You choose actions; runtime executes them.</operating_model>',
+    '  <operating_model>The resource graph is a target/control graph, not a linear pipeline. Generate each target using its local controls first, then global controls.</operating_model>',
     `  <language>${xmlEscape(context.language)}</language>`,
     createSchemaXml(),
     createResourceContextXml(context),
@@ -201,7 +209,7 @@ function createCharacterDecisionPrompt(
     '    <output_format>Return JSON only. No markdown. No XML in the response.</output_format>',
     '    <shape>{"summary":"what changed in this single step","done":false,"confidence":0.0,"missing":[],"actions":[{"type":"set_field","field":"nextField","value":"..."}]}</shape>',
     '    <progressive_rule>Return exactly one action. Generate or reroll one field at a time. Do not fill the whole card in one response.</progressive_rule>',
-    '    <progressive_rule>If a field is missing, return set_field for the earliest missing field in fixed_schema order. Only request_image after imagePrompt exists.</progressive_rule>',
+    '    <progressive_rule>If a field target is missing, return set_field for the earliest missing field in fixed_schema order and obey that target local XML controls. Only request_image after imagePrompt exists.</progressive_rule>',
     '    <allowed_actions>',
     '      <action name="set_field">{"type":"set_field","field":"name","value":"...","reason":"..."}</action>',
     '      <action name="request_image">{"type":"request_image","prompt":"...","title":"Character Image"}</action>',
@@ -256,6 +264,33 @@ function createResourceContextXml(context: CharacterAgentRunContext): string {
     `      <target_audience>${xmlEscape(context.goal.targetAudience)}</target_audience>`,
     `      <allow_agent_expansion>${context.goal.allowAgentExpansion}</allow_agent_expansion>`,
     '    </goals>',
+    '    <targets injection="local_target_contexts">',
+    ...context.targets.map((target) => [
+      `      <target node="${xmlEscape(target.nodeId)}" kind="${xmlEscape(target.kind)}" field="${xmlEscape(target.field ?? '')}" image_role="${xmlEscape(target.imageRole ?? '')}">`,
+      `        <title>${xmlEscape(target.title)}</title>`,
+      `        <requested_resources>${xmlEscape(target.requestedResources.join(', '))}</requested_resources>`,
+      `        <config_json>${xmlEscape(JSON.stringify(target.config))}</config_json>`,
+      '        <local_style_pressures>',
+      ...target.localStylePressures.map((item) => `          <style node="${xmlEscape(item.nodeId)}" preset="${xmlEscape(item.preset)}" intensity="${item.intensity}">${xmlEscape(item.prompt)}</style>`),
+      '        </local_style_pressures>',
+      '        <local_hard_constraints>',
+      ...target.localConstraints.map((item) => `          <constraint node="${xmlEscape(item.nodeId)}" hard="${item.hardBoundary}" must_have="${xmlEscape(item.mustHave.join('; '))}" must_not="${xmlEscape(item.mustNot.join('; '))}" />`),
+      '        </local_hard_constraints>',
+      '        <field_controls>',
+      ...target.fieldControls.map((item) => `          <field_control node="${xmlEscape(item.nodeId)}" tone="${xmlEscape(item.tone)}" length="${xmlEscape(item.lengthPolicy)}" avoid="${xmlEscape(item.avoidPatterns.join('; '))}">${xmlEscape(item.fieldPurpose)}</field_control>`),
+      '        </field_controls>',
+      '        <image_controls>',
+      ...target.imageControls.map((item) => `          <image_control node="${xmlEscape(item.nodeId)}" count="${item.targetImageCount}" types="${xmlEscape(item.imageTypes.join(', '))}" composition="${xmlEscape(item.composition)}" consistency="${xmlEscape(item.consistencyMode)}" negative="${xmlEscape(item.negativePrompt)}" />`),
+      '        </image_controls>',
+      '        <continuity_controls>',
+      ...target.continuityControls.map((item) => `          <continuity_control node="${xmlEscape(item.nodeId)}" pacing="${xmlEscape(item.progressionPacing)}" forbid_resetting_facts="${item.forbidResettingFacts}" anchors="${xmlEscape(item.memoryAnchors.join('; '))}" />`),
+      '        </continuity_controls>',
+      '        <relationship_controls>',
+      ...target.relationshipControls.map((item) => `          <relationship_control node="${xmlEscape(item.nodeId)}" mode="${xmlEscape(item.relationshipMode)}" rules="${xmlEscape(item.tensionRules.join('; '))}" />`),
+      '        </relationship_controls>',
+      '      </target>',
+    ].join('\n')),
+    '    </targets>',
     '    <style injection="soft_pressure">',
     ...context.stylePressures.map((item) => [
       `      <style_pressure node="${xmlEscape(item.nodeId)}" preset="${xmlEscape(item.preset)}" intensity="${item.intensity}">`,
@@ -395,48 +430,69 @@ function findConfiguredLLMModel(
   return { configuredModel, modelName: modelName.trim() }
 }
 
-async function maybeGenerateImageArtifact(
+async function maybeGenerateImageArtifacts(
   context: CharacterAgentRunContext,
   models: CharacterAgentConfiguredModel[],
   proxyUrl: string | undefined,
   candidateId: string,
   prompt: unknown
-): Promise<CharacterAgentArtifact | null> {
+): Promise<CharacterAgentArtifact[]> {
   const promptText = typeof prompt === 'string' ? prompt.trim() : ''
   const capability = context.capabilities.imageModels[0]
   if (!promptText) {
-    return null
+    return []
   }
   const configuredModel = capability
     ? models.find((model) => model.modelType === 'image' && model.id === capability.apiId)
     : models.find((model) => model.modelType === 'image')
   if (!configuredModel) {
-    return null
+    return []
   }
   if (!configuredModel.apiKey?.trim()) {
-    return null
+    return []
   }
   const modelName = capability?.modelName?.trim() || configuredModel.modelName?.trim() || configuredModel.enabledModels?.[0]?.trim()
   if (!modelName) {
-    return null
+    return []
   }
-  const generated = await generateImageWithConfiguredProvider({
-    model: configuredModel,
-    modelName,
-    prompt: promptText,
-    proxyUrl,
+  const controls = context.targets
+    .filter((target) => target.kind === 'image')
+    .flatMap((target) => target.imageControls)
+  const imageTypes = controls.flatMap((control) => control.imageTypes)
+  const requestedCount = Math.max(1, Math.min(16, controls.reduce((max, control) => Math.max(max, control.targetImageCount), 1)))
+  const prompts = Array.from({ length: requestedCount }, (_, index) => {
+    const imageType = imageTypes[index % Math.max(1, imageTypes.length)] ?? context.targets.find((target) => target.kind === 'image')?.imageRole ?? 'avatar'
+    const controlText = controls[index % Math.max(1, controls.length)]
+    return [
+      promptText,
+      `Image type: ${imageType}.`,
+      controlText ? `Composition: ${controlText.composition}. Consistency: ${controlText.consistencyMode}. Negative prompt: ${controlText.negativePrompt}.` : '',
+    ].filter(Boolean).join('\n')
   })
-  if (!generated) {
-    return null
+  const artifacts: CharacterAgentArtifact[] = []
+  for (let index = 0; index < prompts.length; index += 1) {
+    const generated = await generateImageWithConfiguredProvider({
+      model: configuredModel,
+      modelName,
+      prompt: prompts[index],
+      proxyUrl,
+    })
+    if (generated) {
+      const artifact = createToolArtifact(
+        context.runId,
+        candidateId,
+        'image-asset',
+        `Generated Image Asset ${index + 1}`,
+        createImageGenerationArtifact(generated),
+        capability?.nodeId ?? 'image-capability'
+      )
+      artifacts.push({
+        ...artifact,
+        id: `${artifact.id}:${index + 1}`,
+      })
+    }
   }
-  return createToolArtifact(
-    context.runId,
-    candidateId,
-    'image-asset',
-    'Generated Image Asset',
-    createImageGenerationArtifact(generated),
-    capability?.nodeId ?? 'image-capability'
-  )
+  return artifacts
 }
 
 function createCandidateArtifacts(

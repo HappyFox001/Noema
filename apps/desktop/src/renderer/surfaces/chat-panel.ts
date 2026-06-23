@@ -1737,6 +1737,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           mustHave: ['complete character card fields', 'opening message', 'image asset', 'generation report'],
           mustNot: ['empty fields', 'missing image prompt'],
           configOverrides: {
+            'character-card-target': { includeFields: ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'firstMessage', 'dialogueStyle', 'worldContext'], includeSupportFields: ['memoryStrategy', 'imagePrompt'] },
+            'opening-field-target': { field: 'firstMessage', purpose: 'Opening message with immediate roleplay momentum.' },
+            'opening-field-control': { fieldPurpose: 'Create an opening that makes the character act first without explaining the setting.', tone: 'restrained tension', lengthPolicy: 'medium', avoidPatterns: ['self-introduction', 'lore dump', 'asking what the user wants'] },
+            'image-target': { imageRole: 'avatar', promptPurpose: 'Generate consistent role visuals.' },
+            'image-control': { targetImageCount: 4, imageTypes: ['avatar', 'body', 'scene', 'expression'], composition: 'character-focused', consistencyMode: 'same-character', negativePrompt: 'bad anatomy, extra fingers, watermark, text, logo' },
             'generation-strategy': { mode: 'branch-and-refine', branchCount: 3, priorityAssets: ['role-card', 'opening', 'image-pack'] },
             'quality-gate': { minimumScore: 0.84, requiredChecks: ['field completeness', 'roleplay usability', 'visual identity', 'consistency'] },
           },
@@ -1760,10 +1765,42 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
               notes: 'World card structure: main story progression, multiple NPCs, primary NPC, relationship network, scene context, and durable event material.',
               groundingStrength: 0.74,
             },
-            'asset-targets': { targets: ['world-context', 'scene-context', 'npc-pack', 'image-pack', 'generation-report'], includeAlternates: true },
+            'world-card-target': { worldSections: ['setting', 'rules', 'factions', 'relationship-network', 'plot-hooks'], scopePrompt: 'Generate a world card that coordinates plot, NPCs, scenes, and relationship pressure.' },
+            'npc-pack-target': { npcCount: 4, npcRoles: ['primary NPC', 'ally', 'rival', 'wildcard'] },
+            'primary-npc-target': { npcRole: 'primary NPC', storyFunction: 'Carry the strongest recurring relationship pressure.' },
+            'plot-arc-target': { arcShape: 'slow-burn', milestoneCount: 8 },
+            'scene-card-target': { sceneCount: 4, sceneTypes: ['opening scene', 'private conversation', 'conflict scene', 'reveal scene'] },
+            'continuity-control': { memoryAnchors: ['relationship changes', 'unresolved promises', 'world facts', 'NPC agendas'], progressionPacing: 'slow-burn', forbidResettingFacts: true },
+            'relationship-control': { relationshipMode: 'ambiguous-ally', tensionRules: ['do not resolve trust immediately', 'each NPC must push a different pressure'] },
+            'image-target': { imageRole: 'scene', promptPurpose: 'Generate scene and NPC reference images for the world card.' },
+            'image-control': { targetImageCount: 6, imageTypes: ['avatar', 'scene', 'reference'], composition: 'environmental-scene', consistencyMode: 'same-world', negativePrompt: 'bad anatomy, watermark, text, logo' },
             'generation-strategy': { mode: 'explore-then-converge', branchCount: 4, priorityAssets: ['world-context', 'npc-pack', 'scene-context', 'image-pack'] },
             'quality-gate': { minimumScore: 0.86, requiredChecks: ['story progression', 'NPC utility', 'relationship network', 'scene usability', 'consistency'] },
           },
+          addedNodes: [
+            { id: 'world-card-target', type: 'world-card-target', title: 'World Card Target', x: 730, y: 640 },
+            { id: 'npc-pack-target', type: 'npc-pack-target', title: 'NPC Pack Target', x: 1060, y: 640 },
+            { id: 'primary-npc-target', type: 'npc-target', title: 'Primary NPC Target', x: 1390, y: 640 },
+            { id: 'plot-arc-target', type: 'plot-arc-target', title: 'Plot Arc Target', x: 1390, y: 860 },
+            { id: 'scene-card-target', type: 'scene-card-target', title: 'Scene Card Target', x: 1720, y: 760 },
+            { id: 'continuity-control', type: 'continuity-control', title: 'Continuity Control', x: 1060, y: 860 },
+            { id: 'relationship-control', type: 'relationship-control', title: 'Relationship Control', x: 730, y: 860 },
+          ],
+          customLinks: [
+            { id: 'world-goal', sourceNodeId: 'generation-goal', sourceSlotId: 'goal', targetNodeId: 'world-card-target', targetSlotId: 'goal', kind: 'guides' },
+            { id: 'world-source', sourceNodeId: 'source-material', sourceSlotId: 'source', targetNodeId: 'world-card-target', targetSlotId: 'source', kind: 'grounds' },
+            { id: 'world-style', sourceNodeId: 'style-pressure', sourceSlotId: 'style', targetNodeId: 'world-card-target', targetSlotId: 'style', kind: 'weights' },
+            { id: 'world-constraint', sourceNodeId: 'hard-constraints', sourceSlotId: 'constraint', targetNodeId: 'world-card-target', targetSlotId: 'constraint', kind: 'constrains' },
+            { id: 'world-npc-pack', sourceNodeId: 'world-card-target', sourceSlotId: 'world', targetNodeId: 'npc-pack-target', targetSlotId: 'world', kind: 'guides' },
+            { id: 'relationship-npc-pack', sourceNodeId: 'relationship-control', sourceSlotId: 'relationship', targetNodeId: 'npc-pack-target', targetSlotId: 'relationship', kind: 'guides' },
+            { id: 'npc-pack-primary', sourceNodeId: 'npc-pack-target', sourceSlotId: 'npcPack', targetNodeId: 'primary-npc-target', targetSlotId: 'npcPack', kind: 'guides' },
+            { id: 'relationship-primary-npc', sourceNodeId: 'relationship-control', sourceSlotId: 'relationship', targetNodeId: 'primary-npc-target', targetSlotId: 'relationship', kind: 'guides' },
+            { id: 'world-plot', sourceNodeId: 'world-card-target', sourceSlotId: 'world', targetNodeId: 'plot-arc-target', targetSlotId: 'world', kind: 'guides' },
+            { id: 'npc-pack-plot', sourceNodeId: 'npc-pack-target', sourceSlotId: 'npcPack', targetNodeId: 'plot-arc-target', targetSlotId: 'npcPack', kind: 'guides' },
+            { id: 'continuity-plot', sourceNodeId: 'continuity-control', sourceSlotId: 'continuity', targetNodeId: 'plot-arc-target', targetSlotId: 'continuity', kind: 'guides' },
+            { id: 'world-scene', sourceNodeId: 'world-card-target', sourceSlotId: 'world', targetNodeId: 'scene-card-target', targetSlotId: 'world', kind: 'guides' },
+            { id: 'plot-scene', sourceNodeId: 'plot-arc-target', sourceSlotId: 'plot', targetNodeId: 'scene-card-target', targetSlotId: 'plot', kind: 'guides' },
+          ],
         },
       },
     ]
@@ -1969,6 +2006,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     mustNot?: string[]
     sourceNotes?: string
     configOverrides?: Record<string, Record<string, unknown>>
+    addedNodes?: Array<{ id: string; type: string; title: string; x: number; y: number }>
+    customLinks?: SerializedCharacterResourceLink[]
   }): void {
     const now = Date.now()
     const configOverrides: Record<string, Record<string, unknown>> = cloneRecord(spec.configOverrides ?? {})
@@ -1976,7 +2015,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       configOverrides['generation-goal'] = {
         ...(spec.goalPrompt ? { goalPrompt: spec.goalPrompt } : {}),
         ...(spec.targetAudience ? { targetAudience: spec.targetAudience } : {}),
-        allowExpansion: true,
+        allowAgentExpansion: true,
       }
     }
     if ((spec.stylePrompt || spec.preset || typeof spec.intensity === 'number') && !configOverrides['style-pressure']) {
@@ -2016,10 +2055,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         collapsedNodeIds: [],
         deletedNodeIds: [],
         duplicatedNodes: [],
-        addedNodes: [],
+        addedNodes: JSON.parse(JSON.stringify(spec.addedNodes ?? [])) as CharacterWorkflowProjectViewState['addedNodes'],
         nodeSizes: {},
         linkKinds: {},
-        customLinks: [],
+        customLinks: JSON.parse(JSON.stringify(spec.customLinks ?? [])) as SerializedCharacterResourceLink[],
         deletedLinkIds: [],
         replacedTargetSlots: [],
       },

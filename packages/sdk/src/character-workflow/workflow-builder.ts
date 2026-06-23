@@ -140,14 +140,41 @@ export function createUiConfigOverrides(spec: CharacterWorkflowBuilderSpec): Rec
     'generation-goal': {
       goalPrompt: spec.goalPrompt,
       targetAudience: spec.targetAudience,
-      allowExpansion: true,
+      allowAgentExpansion: true,
+    },
+    'character-card-target': {
+      includeFields: ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'firstMessage', 'dialogueStyle', 'worldContext'],
+      includeSupportFields: ['memoryStrategy', 'imagePrompt'],
+    },
+    'opening-field-target': {
+      field: 'firstMessage',
+      purpose: spec.goalPrompt,
+    },
+    'opening-field-control': {
+      fieldPurpose: spec.stylePrompt,
+      tone: spec.preset,
+      lengthPolicy: 'medium',
+      avoidPatterns: spec.mustNot,
+    },
+    'image-target': {
+      imageRole: 'avatar',
+      promptPurpose: spec.stylePrompt,
+    },
+    'image-control': {
+      targetImageCount: Math.max(1, spec.assetTargets.includes('image-pack') ? 4 : 1),
+      imageTypes: spec.assetTargets.includes('image-pack') ? ['avatar', 'body', 'scene', 'expression'] : ['avatar'],
+      composition: 'character-focused',
+      consistencyMode: 'same-character',
+      negativePrompt: spec.mustNot.join(', '),
     },
     'style-pressure': {
+      scope: 'connected-targets',
       preset: spec.preset,
       intensity: spec.intensity,
       stylePrompt: spec.stylePrompt,
     },
     'hard-constraints': {
+      scope: 'connected-targets',
       mustHave: spec.mustHave,
       mustNot: spec.mustNot,
       hardBoundary: true,
@@ -168,10 +195,6 @@ export function createUiConfigOverrides(spec: CharacterWorkflowBuilderSpec): Rec
       branchCount: spec.generationStrategy.branchCount,
       priorityAssets: spec.generationStrategy.priorityAssets,
       stopCondition: 'quality gate passed',
-    },
-    'asset-targets': {
-      targets: spec.assetTargets,
-      includeAlternates: true,
     },
     'quality-gate': {
       minimumScore: spec.qualityGate.minimumScore,
@@ -246,9 +269,29 @@ function applySpecToWorkflow(workflow: CharacterWorkflow, spec: CharacterWorkflo
     ...spec.generationStrategy,
     stopCondition: 'quality gate passed',
   })
-  byType.get('asset-builder')?.config && Object.assign(byType.get('asset-builder')!.config, {
-    targets: spec.assetTargets,
-    includeAlternates: true,
+  byType.get('character-card-target')?.config && Object.assign(byType.get('character-card-target')!.config, {
+    includeFields: ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'firstMessage', 'dialogueStyle', 'worldContext'],
+    includeSupportFields: ['memoryStrategy', 'imagePrompt'],
+  })
+  byType.get('character-field-target')?.config && Object.assign(byType.get('character-field-target')!.config, {
+    field: 'firstMessage',
+    purpose: spec.goalPrompt,
+  })
+  byType.get('field-generation-control')?.config && Object.assign(byType.get('field-generation-control')!.config, {
+    fieldPurpose: spec.stylePrompt,
+    tone: spec.preset,
+    avoidPatterns: spec.mustNot,
+  })
+  byType.get('image-target')?.config && Object.assign(byType.get('image-target')!.config, {
+    imageRole: 'avatar',
+    promptPurpose: spec.stylePrompt,
+  })
+  byType.get('image-generation-control')?.config && Object.assign(byType.get('image-generation-control')!.config, {
+    targetImageCount: Math.max(1, spec.assetTargets.includes('image-pack') ? 4 : 1),
+    imageTypes: spec.assetTargets.includes('image-pack') ? ['avatar', 'body', 'scene', 'expression'] : ['avatar'],
+    composition: 'character-focused',
+    consistencyMode: 'same-character',
+    negativePrompt: spec.mustNot.join(', '),
   })
   byType.get('quality-gate')?.config && Object.assign(byType.get('quality-gate')!.config, {
     ...spec.qualityGate,

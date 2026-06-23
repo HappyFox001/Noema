@@ -9,8 +9,20 @@ export type CharacterWorkflowLanguage = 'zh-CN' | 'en-US'
 
 export type CharacterNodeType =
   | 'goal'
+  | 'character-card-target'
+  | 'character-field-target'
+  | 'image-target'
+  | 'world-card-target'
+  | 'npc-pack-target'
+  | 'npc-target'
+  | 'plot-arc-target'
+  | 'scene-card-target'
   | 'style-pressure'
   | 'constraint'
+  | 'image-generation-control'
+  | 'field-generation-control'
+  | 'continuity-control'
+  | 'relationship-control'
   | 'source-material'
   | 'llm-tool'
   | 'image-tool'
@@ -20,7 +32,6 @@ export type CharacterNodeType =
   | 'generation-strategy'
   | 'critique-loop'
   | 'quality-gate'
-  | 'asset-builder'
   | 'output-adapter'
 
 export type CharacterNodeStatus = 'idle' | 'queued' | 'running' | 'done' | 'failed' | 'skipped' | 'stale'
@@ -28,8 +39,10 @@ export type WorkflowRunStatus = 'idle' | 'running' | 'paused' | 'done' | 'failed
 
 export type CharacterWorkflowNodeCategory =
   | 'goal'
+  | 'targets'
   | 'taste'
   | 'constraints'
+  | 'controls'
   | 'sources'
   | 'tools'
   | 'agent'
@@ -266,7 +279,6 @@ export interface ImageCapabilityArtifact extends CharacterArtifactBase {
     apiId: string
     modelName: string
     modelRef: string
-    assetCount: number
     referenceStrength: number
   }
 }
@@ -474,18 +486,219 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     ],
   },
   {
+    type: 'character-card-target',
+    title: 'Character Card Target',
+    category: 'targets',
+    executor: 'agent',
+    description: 'Declares the complete role card as a target resource assembled from field targets and controls.',
+    inputs: {
+      goal: port('goal', 'Goal', 'generation-goal', true),
+      style: port('style', 'Style', 'style-signal'),
+      constraint: port('constraint', 'Constraint', 'hard-constraint'),
+      source: port('source', 'Source', 'source-context'),
+    },
+    outputs: {
+      target: port('target', 'Target', 'asset-target'),
+      candidate: port('candidate', 'Candidate', 'candidate-pack'),
+    },
+    parameters: [
+      parameter('targetKind', 'Target Kind', 'text', 'character-card'),
+      parameter('includeFields', 'Include Fields', 'multi-select', ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'firstMessage', 'dialogueStyle', 'worldContext'], undefined, [
+        option('Name', 'name'),
+        option('Description', 'description'),
+        option('Appearance', 'appearance'),
+        option('Personality', 'personality'),
+        option('Background', 'background'),
+        option('Scenario', 'scenario'),
+        option('First Message', 'firstMessage'),
+        option('Dialogue Style', 'dialogueStyle'),
+        option('World Context', 'worldContext'),
+      ]),
+      parameter('includeSupportFields', 'Include Support Fields', 'multi-select', ['memoryStrategy', 'imagePrompt'], undefined, [
+        option('Memory Strategy', 'memoryStrategy'),
+        option('Image Prompt', 'imagePrompt'),
+      ]),
+    ],
+  },
+  {
+    type: 'character-field-target',
+    title: 'Character Field Target',
+    category: 'targets',
+    executor: 'agent',
+    description: 'Declares a single character-card field as an independently controllable target resource.',
+    inputs: {
+      card: port('card', 'Card', 'asset-target'),
+      style: port('style', 'Style', 'style-signal'),
+      constraint: port('constraint', 'Constraint', 'hard-constraint'),
+      fieldControl: port('fieldControl', 'Field Control', 'asset-target'),
+    },
+    outputs: { field: port('field', 'Field', 'asset-target') },
+    parameters: [
+      parameter('field', 'Field', 'select', 'firstMessage', undefined, [
+        option('Name', 'name'),
+        option('Description', 'description'),
+        option('Appearance', 'appearance'),
+        option('Personality', 'personality'),
+        option('Background', 'background'),
+        option('Scenario', 'scenario'),
+        option('First Message', 'firstMessage'),
+        option('Dialogue Style', 'dialogueStyle'),
+        option('World Context', 'worldContext'),
+        option('Memory Strategy', 'memoryStrategy'),
+        option('Image Prompt', 'imagePrompt'),
+      ]),
+      parameter('purpose', 'Purpose', 'textarea', 'Generate this field as a controlled local resource without user-written final content.'),
+    ],
+  },
+  {
+    type: 'image-target',
+    title: 'Image Target',
+    category: 'targets',
+    executor: 'image',
+    description: 'Declares one or more image resources such as avatar, body, scene, expression, or reference images.',
+    inputs: {
+      card: port('card', 'Card', 'asset-target'),
+      image: port('image', 'Image', 'image-capability', true),
+      imageControl: port('imageControl', 'Image Control', 'asset-target'),
+      style: port('style', 'Style', 'style-signal'),
+      constraint: port('constraint', 'Constraint', 'hard-constraint'),
+    },
+    outputs: { imageAsset: port('imageAsset', 'Image Asset', 'asset-target') },
+    parameters: [
+      parameter('imageRole', 'Image Role', 'select', 'avatar', undefined, [
+        option('Avatar', 'avatar'),
+        option('Body', 'body'),
+        option('Scene', 'scene'),
+        option('Expression', 'expression'),
+        option('Reference', 'reference'),
+      ]),
+      parameter('promptPurpose', 'Prompt Purpose', 'textarea', 'Create a consistent character image for the generated role card.'),
+    ],
+  },
+  {
+    type: 'world-card-target',
+    title: 'World Card Target',
+    category: 'targets',
+    executor: 'agent',
+    description: 'Declares an overall world resource that coordinates NPCs, scene cards, relationship network, and plot progression.',
+    inputs: {
+      goal: port('goal', 'Goal', 'generation-goal', true),
+      style: port('style', 'Style', 'style-signal'),
+      constraint: port('constraint', 'Constraint', 'hard-constraint'),
+      source: port('source', 'Source', 'source-context'),
+    },
+    outputs: { world: port('world', 'World', 'asset-target') },
+    parameters: [
+      parameter('worldSections', 'World Sections', 'multi-select', ['setting', 'rules', 'factions', 'relationship-network', 'plot-hooks'], undefined, [
+        option('Setting', 'setting'),
+        option('Rules', 'rules'),
+        option('Factions', 'factions'),
+        option('Relationship Network', 'relationship-network'),
+        option('Plot Hooks', 'plot-hooks'),
+      ]),
+      parameter('scopePrompt', 'Scope Prompt', 'textarea', 'Generate a world card that supports durable multi-character roleplay.'),
+    ],
+  },
+  {
+    type: 'npc-pack-target',
+    title: 'NPC Pack Target',
+    category: 'targets',
+    executor: 'agent',
+    description: 'Declares a pack of NPC resources connected to the world card and plot arc.',
+    inputs: {
+      world: port('world', 'World', 'asset-target'),
+      relationship: port('relationship', 'Relationship', 'asset-target'),
+      style: port('style', 'Style', 'style-signal'),
+      constraint: port('constraint', 'Constraint', 'hard-constraint'),
+    },
+    outputs: { npcPack: port('npcPack', 'NPC Pack', 'asset-target') },
+    parameters: [
+      parameter('npcCount', 'NPC Count', 'integer', 4, { min: 1, max: 12, step: 1 }),
+      parameter('npcRoles', 'NPC Roles', 'string-list', ['primary NPC', 'ally', 'rival', 'wildcard']),
+    ],
+  },
+  {
+    type: 'npc-target',
+    title: 'NPC Target',
+    category: 'targets',
+    executor: 'agent',
+    description: 'Declares a single NPC as an independently controllable target resource.',
+    inputs: {
+      npcPack: port('npcPack', 'NPC Pack', 'asset-target'),
+      style: port('style', 'Style', 'style-signal'),
+      constraint: port('constraint', 'Constraint', 'hard-constraint'),
+      relationship: port('relationship', 'Relationship', 'asset-target'),
+    },
+    outputs: { npc: port('npc', 'NPC', 'asset-target') },
+    parameters: [
+      parameter('npcRole', 'NPC Role', 'text', 'primary NPC'),
+      parameter('storyFunction', 'Story Function', 'textarea', 'This NPC should create durable story pressure and relationship movement.'),
+    ],
+  },
+  {
+    type: 'plot-arc-target',
+    title: 'Plot Arc Target',
+    category: 'targets',
+    executor: 'agent',
+    description: 'Declares the long-running story progression resource for the world card.',
+    inputs: {
+      world: port('world', 'World', 'asset-target'),
+      npcPack: port('npcPack', 'NPC Pack', 'asset-target'),
+      continuity: port('continuity', 'Continuity', 'asset-target'),
+      style: port('style', 'Style', 'style-signal'),
+      constraint: port('constraint', 'Constraint', 'hard-constraint'),
+    },
+    outputs: { plot: port('plot', 'Plot', 'asset-target') },
+    parameters: [
+      parameter('arcShape', 'Arc Shape', 'select', 'slow-burn', undefined, [
+        option('Slow Burn', 'slow-burn'),
+        option('Mystery Escalation', 'mystery-escalation'),
+        option('Relationship Drama', 'relationship-drama'),
+        option('Adventure Campaign', 'adventure-campaign'),
+      ]),
+      parameter('milestoneCount', 'Milestone Count', 'integer', 6, { min: 2, max: 20, step: 1 }),
+    ],
+  },
+  {
+    type: 'scene-card-target',
+    title: 'Scene Card Target',
+    category: 'targets',
+    executor: 'agent',
+    description: 'Declares reusable scene resources for the current world and plot arc.',
+    inputs: {
+      world: port('world', 'World', 'asset-target'),
+      plot: port('plot', 'Plot', 'asset-target'),
+      style: port('style', 'Style', 'style-signal'),
+      constraint: port('constraint', 'Constraint', 'hard-constraint'),
+    },
+    outputs: { scene: port('scene', 'Scene', 'asset-target') },
+    parameters: [
+      parameter('sceneCount', 'Scene Count', 'integer', 3, { min: 1, max: 12, step: 1 }),
+      parameter('sceneTypes', 'Scene Types', 'string-list', ['opening scene', 'private conversation', 'conflict scene']),
+    ],
+  },
+  {
     type: 'style-pressure',
     title: 'Style Pressure',
     category: 'taste',
     executor: 'manual',
-    description: 'Applies weighted taste, genre, mood, intensity, and pacing pressure to the agent.',
-    inputs: { goal: port('goal', 'Goal', 'generation-goal') },
+    description: 'Applies weighted taste, genre, mood, intensity, and pacing pressure to any connected target.',
+    inputs: { target: port('target', 'Target', 'asset-target') },
     outputs: { style: port('style', 'Style', 'style-signal') },
     parameters: [
+      parameter('scope', 'Scope', 'select', 'connected-targets', undefined, [
+        option('Connected Targets', 'connected-targets'),
+        option('Global Goal', 'global'),
+        option('Image Targets', 'image'),
+        option('Field Targets', 'field'),
+        option('World Targets', 'world'),
+      ]),
       parameter('preset', 'Preset', 'select', 'campus-romance', undefined, [
         option('Campus Romance', 'campus-romance'),
         option('Dark Adult', 'dark-adult'),
         option('Urban Suspense', 'urban-suspense'),
+        option('Fantasy Companion', 'fantasy-companion'),
+        option('Slice of Life', 'slice-of-life'),
       ]),
       parameter('stylePrompt', 'Style Prompt', 'textarea', '克制、暧昧、有张力，避免说明书式自我介绍。'),
       parameter('intensity', 'Intensity', 'number', 0.68, { min: 0, max: 1, step: 0.01 }),
@@ -496,13 +709,107 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     title: 'Hard Constraint',
     category: 'constraints',
     executor: 'manual',
-    description: 'Sets hard and soft boundaries that limit agent freedom during generation and repair.',
-    inputs: { goal: port('goal', 'Goal', 'generation-goal') },
+    description: 'Sets local or global hard boundaries that limit connected target generation and repair.',
+    inputs: { target: port('target', 'Target', 'asset-target') },
     outputs: { constraint: port('constraint', 'Constraint', 'hard-constraint') },
     parameters: [
+      parameter('scope', 'Scope', 'select', 'connected-targets', undefined, [
+        option('Connected Targets', 'connected-targets'),
+        option('Global Goal', 'global'),
+        option('Image Targets', 'image'),
+        option('Field Targets', 'field'),
+        option('World Targets', 'world'),
+      ]),
       parameter('mustHave', 'Must Have', 'string-list', ['长期可聊', '角色主动推进关系']),
       parameter('mustNot', 'Must Not', 'string-list', ['模板化人格', 'OOC 解释设定', '瞬间顺从']),
       parameter('hardBoundary', 'Hard Boundary', 'boolean', true),
+    ],
+  },
+  {
+    type: 'image-generation-control',
+    title: 'Image Generation Control',
+    category: 'controls',
+    executor: 'manual',
+    description: 'Controls image quantity, image roles, composition, consistency, and negative prompts for connected image targets.',
+    inputs: { imageTarget: port('imageTarget', 'Image Target', 'asset-target') },
+    outputs: { imageControl: port('imageControl', 'Image Control', 'asset-target') },
+    parameters: [
+      parameter('targetImageCount', 'Image Count', 'integer', 4, { min: 1, max: 16, step: 1 }),
+      parameter('imageTypes', 'Image Types', 'multi-select', ['avatar', 'body', 'scene', 'expression'], undefined, [
+        option('Avatar', 'avatar'),
+        option('Body', 'body'),
+        option('Scene', 'scene'),
+        option('Expression', 'expression'),
+        option('Reference', 'reference'),
+      ]),
+      parameter('composition', 'Composition', 'select', 'character-focused', undefined, [
+        option('Character Focused', 'character-focused'),
+        option('Upper Body Portrait', 'upper-body-portrait'),
+        option('Full Body', 'full-body'),
+        option('Environmental Scene', 'environmental-scene'),
+        option('Expression Sheet', 'expression-sheet'),
+      ]),
+      parameter('consistencyMode', 'Consistency Mode', 'select', 'same-character', undefined, [
+        option('Same Character', 'same-character'),
+        option('Same World', 'same-world'),
+        option('Independent Images', 'independent'),
+      ]),
+      parameter('negativePrompt', 'Negative Prompt', 'textarea', 'bad anatomy, extra fingers, watermark, text, logo'),
+    ],
+  },
+  {
+    type: 'field-generation-control',
+    title: 'Field Generation Control',
+    category: 'controls',
+    executor: 'manual',
+    description: 'Controls how a connected field target should be generated without containing final field content.',
+    inputs: { fieldTarget: port('fieldTarget', 'Field Target', 'asset-target') },
+    outputs: { fieldControl: port('fieldControl', 'Field Control', 'asset-target') },
+    parameters: [
+      parameter('fieldPurpose', 'Field Purpose', 'textarea', 'Create a concrete field that advances roleplay and does not explain the setting out of character.'),
+      parameter('tone', 'Tone', 'text', 'restrained tension'),
+      parameter('lengthPolicy', 'Length Policy', 'select', 'medium', undefined, [
+        option('Short', 'short'),
+        option('Medium', 'medium'),
+        option('Long', 'long'),
+      ]),
+      parameter('avoidPatterns', 'Avoid Patterns', 'string-list', ['self-introduction', 'lore dump', 'asking what the user wants']),
+    ],
+  },
+  {
+    type: 'continuity-control',
+    title: 'Continuity Control',
+    category: 'controls',
+    executor: 'manual',
+    description: 'Controls long-form continuity, memory anchors, unresolved hooks, and progression pacing.',
+    inputs: { target: port('target', 'Target', 'asset-target') },
+    outputs: { continuity: port('continuity', 'Continuity', 'asset-target') },
+    parameters: [
+      parameter('memoryAnchors', 'Memory Anchors', 'string-list', ['relationship changes', 'unresolved promises', 'boundaries', 'long-term goals']),
+      parameter('progressionPacing', 'Progression Pacing', 'select', 'slow-burn', undefined, [
+        option('Slow Burn', 'slow-burn'),
+        option('Steady Escalation', 'steady-escalation'),
+        option('Episodic', 'episodic'),
+      ]),
+      parameter('forbidResettingFacts', 'Forbid Resetting Facts', 'boolean', true),
+    ],
+  },
+  {
+    type: 'relationship-control',
+    title: 'Relationship Control',
+    category: 'controls',
+    executor: 'manual',
+    description: 'Controls the relational function and tension between generated NPC, character, and user resources.',
+    inputs: { target: port('target', 'Target', 'asset-target') },
+    outputs: { relationship: port('relationship', 'Relationship', 'asset-target') },
+    parameters: [
+      parameter('relationshipMode', 'Relationship Mode', 'select', 'slow-trust', undefined, [
+        option('Slow Trust', 'slow-trust'),
+        option('Rival Tension', 'rival-tension'),
+        option('Protective Companion', 'protective-companion'),
+        option('Ambiguous Ally', 'ambiguous-ally'),
+      ]),
+      parameter('tensionRules', 'Tension Rules', 'string-list', ['do not resolve tension immediately', 'make each NPC push a different pressure']),
     ],
   },
   {
@@ -548,12 +855,11 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     title: 'Image Tool',
     category: 'tools',
     executor: 'image',
-    description: 'Selects image generation or editing capability for visual assets.',
-    inputs: { style: port('style', 'Style', 'style-signal') },
+    description: 'Selects image generation or editing capability. Quantity and image role controls live in image-generation-control nodes.',
+    inputs: {},
     outputs: { image: port('image', 'Image', 'image-capability') },
     parameters: [
       parameter('modelRef', 'Model / Workflow', 'model-select', '', { modelKind: 'image' }),
-      parameter('assetCount', 'Asset Count', 'integer', 4, { min: 1, max: 16, step: 1 }),
       parameter('referenceStrength', 'Reference Strength', 'number', 0.55, { min: 0, max: 1, step: 0.01 }),
     ],
   },
@@ -625,7 +931,6 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     description: 'Controls how the agent branches, compares candidates, orders phases, and stops.',
     inputs: {
       goal: port('goal', 'Goal', 'generation-goal', true),
-      style: port('style', 'Style', 'style-signal'),
       policy: port('policy', 'Policy', 'agent-policy', true),
     },
     outputs: { strategy: port('strategy', 'Strategy', 'strategy-policy') },
@@ -656,32 +961,6 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
       parameter('iterations', 'Iterations', 'integer', 2, { min: 0, max: 8, step: 1 }),
       parameter('dimensions', 'Dimensions', 'string-list', ['goal match', 'long-term RP', 'non-template', 'consistency']),
       parameter('autoRepair', 'Auto Repair', 'boolean', true),
-    ],
-  },
-  {
-    type: 'asset-builder',
-    title: 'Asset Builder',
-    category: 'outputs',
-    executor: 'agent',
-    description: 'Declares which final resources the agent should produce without forcing the user to write their contents.',
-    inputs: {
-      strategy: port('strategy', 'Strategy', 'strategy-policy', true),
-      image: port('image', 'Image', 'image-capability'),
-      voice: port('voice', 'Voice', 'voice-capability'),
-    },
-    outputs: {
-      assets: port('assets', 'Assets', 'asset-target'),
-      candidate: port('candidate', 'Candidate', 'candidate-pack'),
-    },
-    parameters: [
-      parameter('targets', 'Targets', 'multi-select', ['role-card', 'opening', 'image-pack', 'generation-report'], undefined, [
-        option('Role Card', 'role-card'),
-        option('Opening', 'opening'),
-        option('Image Pack', 'image-pack'),
-        option('Voice Sample', 'voice-sample'),
-        option('Generation Report', 'generation-report'),
-      ]),
-      parameter('includeAlternates', 'Include Alternates', 'boolean', true),
     ],
   },
   {
@@ -759,18 +1038,22 @@ export function createStandardCharacterWorkflow(
   const id = options.id ?? `agentic-resource-graph-${now}`
   const node = createWorkflowNodeFactory()
   const nodes = [
-    node('goal', 40, 120),
-    node('style-pressure', 320, 60),
-    node('constraint', 320, 300),
-    node('source-material', 40, 360),
-    node('llm-tool', 620, 80),
-    node('image-tool', 620, 320),
-    node('agent-policy', 920, 140),
-    node('generation-strategy', 1220, 140),
-    node('asset-builder', 1520, 160),
-    node('critique-loop', 1220, 420),
-    node('quality-gate', 1820, 220),
-    node('output-adapter', 2120, 220),
+    node('goal', 40, 150),
+    node('character-card-target', 360, 140),
+    node('character-field-target', 690, 30),
+    node('field-generation-control', 690, 230),
+    node('image-target', 690, 430),
+    node('image-generation-control', 1010, 430),
+    node('style-pressure', 360, -70),
+    node('constraint', 360, 360),
+    node('source-material', 40, 410),
+    node('llm-tool', 1010, 30),
+    node('image-tool', 1010, 230),
+    node('agent-policy', 1340, 70),
+    node('generation-strategy', 1660, 70),
+    node('critique-loop', 1660, 340),
+    node('quality-gate', 1980, 180),
+    node('output-adapter', 2300, 180),
   ]
   const llmModelRef = createModelRef(options.llmApiId, options.llmModelName)
   const imageModelRef = createModelRef(options.imageApiId, options.imageModelName)
@@ -787,24 +1070,33 @@ export function createStandardCharacterWorkflow(
     id,
     name: options.name ?? 'Agentic RP Resource Graph',
     version: '2.0',
-    description: 'Configures goals, taste, constraints, tools, agent autonomy, evaluation gates, and output adapters for autonomous RP resource generation.',
+    description: 'Configures target resources, local controls, tools, agent autonomy, evaluation gates, and output adapters for autonomous RP resource generation.',
     nodes,
     edges: connectEdges([
-      ['goal', 'goal', 'style-pressure', 'goal', 'guides'],
-      ['goal', 'goal', 'constraint', 'goal', 'constrains'],
+      ['goal', 'goal', 'character-card-target', 'goal', 'guides'],
+      ['character-card-target', 'target', 'style-pressure', 'target', 'weights'],
+      ['character-card-target', 'target', 'constraint', 'target', 'constrains'],
+      ['source-material', 'source', 'character-card-target', 'source', 'grounds'],
+      ['character-card-target', 'target', 'character-field-target', 'card', 'guides'],
+      ['character-field-target', 'field', 'field-generation-control', 'fieldTarget', 'guides'],
+      ['field-generation-control', 'fieldControl', 'character-field-target', 'fieldControl', 'guides'],
+      ['style-pressure', 'style', 'character-field-target', 'style', 'weights'],
+      ['constraint', 'constraint', 'character-field-target', 'constraint', 'constrains'],
+      ['character-card-target', 'target', 'image-target', 'card', 'guides'],
+      ['image-tool', 'image', 'image-target', 'image', 'enables'],
+      ['image-target', 'imageAsset', 'image-generation-control', 'imageTarget', 'guides'],
+      ['image-generation-control', 'imageControl', 'image-target', 'imageControl', 'guides'],
+      ['style-pressure', 'style', 'image-target', 'style', 'weights'],
+      ['constraint', 'constraint', 'image-target', 'constraint', 'constrains'],
       ['goal', 'goal', 'agent-policy', 'goal', 'guides'],
-      ['style-pressure', 'style', 'generation-strategy', 'style', 'weights'],
       ['constraint', 'constraint', 'agent-policy', 'constraint', 'constrains'],
       ['source-material', 'source', 'agent-policy', 'source', 'grounds'],
       ['llm-tool', 'model', 'agent-policy', 'model', 'enables'],
-      ['style-pressure', 'style', 'image-tool', 'style', 'guides'],
-      ['image-tool', 'image', 'asset-builder', 'image', 'enables'],
       ['agent-policy', 'policy', 'generation-strategy', 'policy', 'guides'],
-      ['generation-strategy', 'strategy', 'asset-builder', 'strategy', 'routes'],
       ['generation-strategy', 'strategy', 'critique-loop', 'strategy', 'routes'],
       ['critique-loop', 'critique', 'quality-gate', 'critique', 'evaluates'],
-      ['asset-builder', 'candidate', 'quality-gate', 'candidate', 'evaluates'],
-      ['asset-builder', 'candidate', 'output-adapter', 'candidate', 'exports'],
+      ['character-card-target', 'candidate', 'quality-gate', 'candidate', 'evaluates'],
+      ['character-card-target', 'candidate', 'output-adapter', 'candidate', 'exports'],
       ['quality-gate', 'report', 'output-adapter', 'report', 'constrains'],
     ]),
     defaults: {
@@ -1144,6 +1436,137 @@ function createDefaultCharacterWorkflowExecutors(): Partial<Record<CharacterNode
         weights: { intensity: numberConfig(config.intensity, 0.5) },
       },
     }],
+    'character-card-target': ({ node, config, timestamp }) => [{
+      id: `${node.id}-target`,
+      type: 'asset-target',
+      sourceNodeId: node.id,
+      createdAt: timestamp,
+      targets: {
+        requested: ['character-card', ...stringListConfig(config.includeFields), ...stringListConfig(config.includeSupportFields)],
+        includeAlternates: true,
+      },
+    }, {
+      id: `${node.id}-candidate`,
+      type: 'candidate-pack',
+      sourceNodeId: node.id,
+      createdAt: timestamp,
+      pack: {
+        title: 'Character Card Candidate',
+        summary: 'Candidate assembled from target resources and local controls.',
+        resources: ['character-card', ...stringListConfig(config.includeFields), ...stringListConfig(config.includeSupportFields)],
+        risks: [],
+      },
+    }],
+    'character-field-target': ({ node, config, timestamp }) => [{
+      id: `${node.id}-field-target`,
+      type: 'asset-target',
+      sourceNodeId: node.id,
+      createdAt: timestamp,
+      targets: {
+        requested: [`field:${stringConfig(config.field, 'firstMessage')}`],
+        includeAlternates: false,
+      },
+    }],
+    'image-target': ({ node, config, timestamp }) => [{
+      id: `${node.id}-image-target`,
+      type: 'asset-target',
+      sourceNodeId: node.id,
+      createdAt: timestamp,
+      targets: {
+        requested: [`image:${stringConfig(config.imageRole, 'avatar')}`],
+        includeAlternates: true,
+      },
+    }],
+    'world-card-target': ({ node, config, timestamp }) => [{
+      id: `${node.id}-world-target`,
+      type: 'asset-target',
+      sourceNodeId: node.id,
+      createdAt: timestamp,
+      targets: {
+        requested: ['world-card', ...stringListConfig(config.worldSections)],
+        includeAlternates: true,
+      },
+    }],
+    'npc-pack-target': ({ node, config, timestamp }) => [{
+      id: `${node.id}-npc-pack-target`,
+      type: 'asset-target',
+      sourceNodeId: node.id,
+      createdAt: timestamp,
+      targets: {
+        requested: ['npc-pack', ...stringListConfig(config.npcRoles)],
+        includeAlternates: true,
+      },
+    }],
+    'npc-target': ({ node, config, timestamp }) => [{
+      id: `${node.id}-npc-target`,
+      type: 'asset-target',
+      sourceNodeId: node.id,
+      createdAt: timestamp,
+      targets: {
+        requested: [`npc:${stringConfig(config.npcRole, 'primary NPC')}`],
+        includeAlternates: true,
+      },
+    }],
+    'plot-arc-target': ({ node, config, timestamp }) => [{
+      id: `${node.id}-plot-target`,
+      type: 'asset-target',
+      sourceNodeId: node.id,
+      createdAt: timestamp,
+      targets: {
+        requested: [`plot-arc:${stringConfig(config.arcShape, 'slow-burn')}`],
+        includeAlternates: true,
+      },
+    }],
+    'scene-card-target': ({ node, config, timestamp }) => [{
+      id: `${node.id}-scene-target`,
+      type: 'asset-target',
+      sourceNodeId: node.id,
+      createdAt: timestamp,
+      targets: {
+        requested: ['scene-card', ...stringListConfig(config.sceneTypes)],
+        includeAlternates: true,
+      },
+    }],
+    'image-generation-control': ({ node, config, timestamp }) => [{
+      id: `${node.id}-image-control`,
+      type: 'asset-target',
+      sourceNodeId: node.id,
+      createdAt: timestamp,
+      targets: {
+        requested: ['image-control', ...stringListConfig(config.imageTypes)],
+        includeAlternates: true,
+      },
+    }],
+    'field-generation-control': ({ node, timestamp }) => [{
+      id: `${node.id}-field-control`,
+      type: 'asset-target',
+      sourceNodeId: node.id,
+      createdAt: timestamp,
+      targets: {
+        requested: ['field-control'],
+        includeAlternates: false,
+      },
+    }],
+    'continuity-control': ({ node, timestamp }) => [{
+      id: `${node.id}-continuity-control`,
+      type: 'asset-target',
+      sourceNodeId: node.id,
+      createdAt: timestamp,
+      targets: {
+        requested: ['continuity-control'],
+        includeAlternates: false,
+      },
+    }],
+    'relationship-control': ({ node, timestamp }) => [{
+      id: `${node.id}-relationship-control`,
+      type: 'asset-target',
+      sourceNodeId: node.id,
+      createdAt: timestamp,
+      targets: {
+        requested: ['relationship-control'],
+        includeAlternates: false,
+      },
+    }],
     constraint: ({ node, config, timestamp }) => [{
       id: `${node.id}-constraint`,
       type: 'hard-constraint',
@@ -1185,7 +1608,6 @@ function createDefaultCharacterWorkflowExecutors(): Partial<Record<CharacterNode
       createdAt: timestamp,
       image: {
         ...parseModelRef(nonEmptyStringConfig(config.modelRef, createModelRef(workflow.defaults.imageApiId, workflow.defaults.imageModelName))),
-        assetCount: numberConfig(config.assetCount, 4),
         referenceStrength: numberConfig(config.referenceStrength, 0.55),
       },
     }],
@@ -1246,27 +1668,6 @@ function createDefaultCharacterWorkflowExecutors(): Partial<Record<CharacterNode
         autoRepair: booleanConfig(config.autoRepair, true),
       },
     }],
-    'asset-builder': ({ node, config, timestamp }) => [{
-      id: `${node.id}-targets`,
-      type: 'asset-target',
-      sourceNodeId: node.id,
-      createdAt: timestamp,
-      targets: {
-        requested: stringListConfig(config.targets),
-        includeAlternates: booleanConfig(config.includeAlternates, true),
-      },
-    }, {
-      id: `${node.id}-candidate`,
-      type: 'candidate-pack',
-      sourceNodeId: node.id,
-      createdAt: timestamp,
-      pack: {
-        title: 'Agentic RP Candidate',
-        summary: 'Mock candidate assembled from goals, taste pressure, constraints, tool capabilities, and strategy policy.',
-        resources: stringListConfig(config.targets),
-        risks: [],
-      },
-    }],
     'quality-gate': ({ node, config, inputArtifacts, timestamp }) => {
       const hasCandidate = inputArtifacts.some((artifact) => artifact.type === 'candidate-pack')
       const score = hasCandidate ? 0.86 : 0.2
@@ -1289,7 +1690,7 @@ function createDefaultCharacterWorkflowExecutors(): Partial<Record<CharacterNode
           passed: score >= numberConfig(config.minimumScore, 0.82),
           score,
           issues: hasCandidate ? [] : [{ severity: 'error', path: 'candidate', message: 'Candidate pack is missing.' }],
-          repairTargets: hasCandidate ? [] : ['asset-builder'],
+          repairTargets: hasCandidate ? [] : ['character-card-target'],
         },
       }]
     },

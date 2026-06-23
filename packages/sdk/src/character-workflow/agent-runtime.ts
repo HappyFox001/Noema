@@ -95,6 +95,67 @@ export interface AgentConstraint {
   incomingRelations: CharacterAgentRelation[]
 }
 
+export type AgentTargetKind =
+  | 'character-card'
+  | 'character-field'
+  | 'image'
+  | 'world-card'
+  | 'npc-pack'
+  | 'npc'
+  | 'plot-arc'
+  | 'scene-card'
+
+export interface AgentImageGenerationControl {
+  nodeId: string
+  targetImageCount: number
+  imageTypes: string[]
+  composition: string
+  consistencyMode: string
+  negativePrompt: string
+  incomingRelations: CharacterAgentRelation[]
+}
+
+export interface AgentFieldGenerationControl {
+  nodeId: string
+  fieldPurpose: string
+  tone: string
+  lengthPolicy: string
+  avoidPatterns: string[]
+  incomingRelations: CharacterAgentRelation[]
+}
+
+export interface AgentContinuityControl {
+  nodeId: string
+  memoryAnchors: string[]
+  progressionPacing: string
+  forbidResettingFacts: boolean
+  incomingRelations: CharacterAgentRelation[]
+}
+
+export interface AgentRelationshipControl {
+  nodeId: string
+  relationshipMode: string
+  tensionRules: string[]
+  incomingRelations: CharacterAgentRelation[]
+}
+
+export interface AgentTargetContext {
+  nodeId: string
+  kind: AgentTargetKind
+  title: string
+  config: Record<string, unknown>
+  field?: string
+  imageRole?: string
+  requestedResources: string[]
+  incomingRelations: CharacterAgentRelation[]
+  localStylePressures: AgentStylePressure[]
+  localConstraints: AgentConstraint[]
+  imageControls: AgentImageGenerationControl[]
+  fieldControls: AgentFieldGenerationControl[]
+  continuityControls: AgentContinuityControl[]
+  relationshipControls: AgentRelationshipControl[]
+}
+
 export interface AgentSourceMaterial {
   nodeId: string
   kind: string
@@ -185,8 +246,13 @@ export interface CharacterAgentRunContext {
   runId: string
   language: CharacterWorkflowLanguage
   goal: AgentGoalContext
+  targets: AgentTargetContext[]
   stylePressures: AgentStylePressure[]
   hardConstraints: AgentConstraint[]
+  imageGenerationControls: AgentImageGenerationControl[]
+  fieldGenerationControls: AgentFieldGenerationControl[]
+  continuityControls: AgentContinuityControl[]
+  relationshipControls: AgentRelationshipControl[]
   sourceMaterials: AgentSourceMaterial[]
   capabilities: AgentCapabilitySet
   policy: AgentPolicyContext
@@ -472,6 +538,58 @@ export function compileCharacterAgentRunContext(
   if (!firstNode(nodesByType, 'llm-tool')) {
     warnings.push('LLM tool node is missing; language model capability must be supplied externally.')
   }
+  const stylePressures = (nodesByType.get('style-pressure') ?? []).map((node) => ({
+    nodeId: node.id,
+    preset: stringValue(node.config.preset, 'custom'),
+    prompt: stringValue(node.config.stylePrompt),
+    intensity: numberValue(node.config.intensity, 0.5),
+    incomingRelations: incomingRelations(relations, node.id),
+  }))
+  const hardConstraints = (nodesByType.get('constraint') ?? []).map((node) => ({
+    nodeId: node.id,
+    mustHave: stringListValue(node.config.mustHave),
+    mustNot: stringListValue(node.config.mustNot),
+    hardBoundary: booleanValue(node.config.hardBoundary, true),
+    incomingRelations: incomingRelations(relations, node.id),
+  }))
+  const imageGenerationControls = (nodesByType.get('image-generation-control') ?? []).map((node) => ({
+    nodeId: node.id,
+    targetImageCount: numberValue(node.config.targetImageCount, 1),
+    imageTypes: stringListValue(node.config.imageTypes, ['avatar']),
+    composition: stringValue(node.config.composition, 'character-focused'),
+    consistencyMode: stringValue(node.config.consistencyMode, 'same-character'),
+    negativePrompt: stringValue(node.config.negativePrompt),
+    incomingRelations: incomingRelations(relations, node.id),
+  }))
+  const fieldGenerationControls = (nodesByType.get('field-generation-control') ?? []).map((node) => ({
+    nodeId: node.id,
+    fieldPurpose: stringValue(node.config.fieldPurpose),
+    tone: stringValue(node.config.tone),
+    lengthPolicy: stringValue(node.config.lengthPolicy, 'medium'),
+    avoidPatterns: stringListValue(node.config.avoidPatterns),
+    incomingRelations: incomingRelations(relations, node.id),
+  }))
+  const continuityControls = (nodesByType.get('continuity-control') ?? []).map((node) => ({
+    nodeId: node.id,
+    memoryAnchors: stringListValue(node.config.memoryAnchors),
+    progressionPacing: stringValue(node.config.progressionPacing, 'slow-burn'),
+    forbidResettingFacts: booleanValue(node.config.forbidResettingFacts, true),
+    incomingRelations: incomingRelations(relations, node.id),
+  }))
+  const relationshipControls = (nodesByType.get('relationship-control') ?? []).map((node) => ({
+    nodeId: node.id,
+    relationshipMode: stringValue(node.config.relationshipMode, 'slow-trust'),
+    tensionRules: stringListValue(node.config.tensionRules),
+    incomingRelations: incomingRelations(relations, node.id),
+  }))
+  const targets = createAgentTargetContexts(workflow.nodes, relations, {
+    stylePressures,
+    hardConstraints,
+    imageGenerationControls,
+    fieldGenerationControls,
+    continuityControls,
+    relationshipControls,
+  })
 
   return {
     runId,
@@ -483,20 +601,13 @@ export function compileCharacterAgentRunContext(
       allowAgentExpansion: booleanValue(goalNode?.config.allowAgentExpansion, true),
       language: workflow.defaults.language,
     },
-    stylePressures: (nodesByType.get('style-pressure') ?? []).map((node) => ({
-      nodeId: node.id,
-      preset: stringValue(node.config.preset, 'custom'),
-      prompt: stringValue(node.config.stylePrompt),
-      intensity: numberValue(node.config.intensity, 0.5),
-      incomingRelations: incomingRelations(relations, node.id),
-    })),
-    hardConstraints: (nodesByType.get('constraint') ?? []).map((node) => ({
-      nodeId: node.id,
-      mustHave: stringListValue(node.config.mustHave),
-      mustNot: stringListValue(node.config.mustNot),
-      hardBoundary: booleanValue(node.config.hardBoundary, true),
-      incomingRelations: incomingRelations(relations, node.id),
-    })),
+    targets,
+    stylePressures,
+    hardConstraints,
+    imageGenerationControls,
+    fieldGenerationControls,
+    continuityControls,
+    relationshipControls,
     sourceMaterials: (nodesByType.get('source-material') ?? []).map((node) => ({
       nodeId: node.id,
       kind: stringValue(node.config.sourceKind, 'notes'),
@@ -543,11 +654,11 @@ export function compileCharacterAgentRunContext(
       autoRepair: booleanValue(critiqueNode?.config.autoRepair, true),
       incomingRelations: critiqueNode ? incomingRelations(relations, critiqueNode.id) : [],
     },
-    requestedAssets: (nodesByType.get('asset-builder') ?? []).map((node) => ({
-      nodeId: node.id,
-      requested: stringListValue(node.config.targets, ['role-card', 'opening', 'image-pack', 'generation-report']),
-      includeAlternates: booleanValue(node.config.includeAlternates, true),
-      incomingRelations: incomingRelations(relations, node.id),
+    requestedAssets: targets.map((target) => ({
+      nodeId: target.nodeId,
+      requested: target.requestedResources,
+      includeAlternates: true,
+      incomingRelations: target.incomingRelations,
     })),
     qualityGate: {
       nodeId: qualityNode?.id,
@@ -1354,7 +1465,7 @@ function isCharacterDraftComplete(draft: CharacterCardDraft | undefined, context
 function getMissingCharacterDraftFields(draft: CharacterCardDraft | undefined, context: CharacterAgentRunContext): string[] {
   const fields = draft?.fields ?? {}
   const missing = getRequiredCharacterDraftFields(context).filter((field) => !hasDraftField(fields, field))
-  if (context.capabilities.imageModels.length && !draft?.imageArtifactIds.length) {
+  if (context.targets.some((target) => target.kind === 'image') && context.capabilities.imageModels.length && !draft?.imageArtifactIds.length) {
     missing.push('imageAsset')
   }
   return missing
@@ -1366,7 +1477,16 @@ function getNextMissingField(draft: CharacterCardDraft | undefined, context: Cha
 }
 
 function getRequiredCharacterDraftFields(context: CharacterAgentRunContext): string[] {
-  return [...CHARACTER_CARD_FIELD_SCHEMA, ...CHARACTER_SUPPORT_FIELD_SCHEMA]
+  const fieldTargets = context.targets
+    .filter((target) => target.kind === 'character-field' && target.field)
+    .map((target) => target.field!)
+  const cardTargets = context.targets.filter((target) => target.kind === 'character-card')
+  const cardFields = cardTargets.flatMap((target) => [
+    ...stringListValue(target.config.includeFields, [...CHARACTER_CARD_FIELD_SCHEMA]),
+    ...stringListValue(target.config.includeSupportFields, [...CHARACTER_SUPPORT_FIELD_SCHEMA]),
+  ])
+  const required = [...new Set([...cardFields, ...fieldTargets])]
+  return required.length ? required : [...CHARACTER_CARD_FIELD_SCHEMA, ...CHARACTER_SUPPORT_FIELD_SCHEMA]
 }
 
 function hasDraftField(fields: Record<string, unknown>, field: string): boolean {
@@ -1382,9 +1502,9 @@ function hasDraftField(fields: Record<string, unknown>, field: string): boolean 
 
 function createFallbackCharacterFields(context: CharacterAgentRunContext, draft: CharacterCardDraft): Record<string, unknown> {
   const goal = context.goal.prompt || 'A flexible long-form roleplay character.'
-  const style = context.stylePressures.map((item) => item.prompt || item.preset).filter(Boolean).join('; ') || 'natural, vivid, emotionally grounded'
-  const constraints = context.hardConstraints.flatMap((item) => item.mustHave).join('; ')
-  const boundaries = context.hardConstraints.flatMap((item) => item.mustNot).join('; ')
+  const style = context.stylePressures.map((item) => item.prompt || item.preset).filter(Boolean).join('; ') || summarizeTargetControls(context, 'style') || 'natural, vivid, emotionally grounded'
+  const constraints = context.hardConstraints.flatMap((item) => item.mustHave).join('; ') || summarizeTargetControls(context, 'mustHave')
+  const boundaries = context.hardConstraints.flatMap((item) => item.mustNot).join('; ') || summarizeTargetControls(context, 'mustNot')
   const source = context.sourceMaterials.map((item) => item.notes).filter(Boolean).join('\n')
   return {
     ...draft.fields,
@@ -1401,6 +1521,18 @@ function createFallbackCharacterFields(context: CharacterAgentRunContext, draft:
     imagePrompt: stringValue(draft.fields.imagePrompt, `Character portrait for: ${goal}. Style: ${style}. Must include: ${constraints}. Avoid: ${boundaries}.`),
     generationReport: stringValue(draft.fields.generationReport, createFallbackUnderstanding(context)),
   }
+}
+
+function summarizeTargetControls(context: CharacterAgentRunContext, mode: 'style' | 'mustHave' | 'mustNot'): string {
+  return context.targets.map((target) => {
+    if (mode === 'style') {
+      return target.localStylePressures.map((item) => item.prompt || item.preset).join('; ')
+    }
+    if (mode === 'mustHave') {
+      return target.localConstraints.flatMap((item) => item.mustHave).join('; ')
+    }
+    return target.localConstraints.flatMap((item) => item.mustNot).join('; ')
+  }).filter(Boolean).join('; ')
 }
 
 function pickCharacterCardFields(fields: Record<string, unknown>): Record<string, unknown> {
@@ -1628,6 +1760,91 @@ function groupNodesByType(nodes: CharacterWorkflowNode[]): Map<string, Character
 
 function firstNode(grouped: Map<string, CharacterWorkflowNode[]>, type: string): CharacterWorkflowNode | undefined {
   return grouped.get(type)?.[0]
+}
+
+function createAgentTargetContexts(
+  nodes: CharacterWorkflowNode[],
+  relations: CharacterAgentRelation[],
+  controls: {
+    stylePressures: AgentStylePressure[]
+    hardConstraints: AgentConstraint[]
+    imageGenerationControls: AgentImageGenerationControl[]
+    fieldGenerationControls: AgentFieldGenerationControl[]
+    continuityControls: AgentContinuityControl[]
+    relationshipControls: AgentRelationshipControl[]
+  }
+): AgentTargetContext[] {
+  return nodes
+    .map((node): AgentTargetContext | null => {
+      const kind = targetKindForNodeType(node.type)
+      if (!kind) {
+        return null
+      }
+      return {
+        nodeId: node.id,
+        kind,
+        title: node.title,
+        config: { ...node.config },
+        field: kind === 'character-field' ? stringValue(node.config.field) : undefined,
+        imageRole: kind === 'image' ? stringValue(node.config.imageRole) : undefined,
+        requestedResources: requestedResourcesForTarget(node, kind),
+        incomingRelations: incomingRelations(relations, node.id),
+        localStylePressures: controls.stylePressures.filter((control) => isLocallyConnected(relations, node.id, control.nodeId)),
+        localConstraints: controls.hardConstraints.filter((control) => isLocallyConnected(relations, node.id, control.nodeId)),
+        imageControls: controls.imageGenerationControls.filter((control) => isLocallyConnected(relations, node.id, control.nodeId)),
+        fieldControls: controls.fieldGenerationControls.filter((control) => isLocallyConnected(relations, node.id, control.nodeId)),
+        continuityControls: controls.continuityControls.filter((control) => isLocallyConnected(relations, node.id, control.nodeId)),
+        relationshipControls: controls.relationshipControls.filter((control) => isLocallyConnected(relations, node.id, control.nodeId)),
+      }
+    })
+    .filter((target): target is AgentTargetContext => Boolean(target))
+}
+
+function targetKindForNodeType(type: string): AgentTargetKind | null {
+  const kinds: Record<string, AgentTargetKind> = {
+    'character-card-target': 'character-card',
+    'character-field-target': 'character-field',
+    'image-target': 'image',
+    'world-card-target': 'world-card',
+    'npc-pack-target': 'npc-pack',
+    'npc-target': 'npc',
+    'plot-arc-target': 'plot-arc',
+    'scene-card-target': 'scene-card',
+  }
+  return kinds[type] ?? null
+}
+
+function requestedResourcesForTarget(node: CharacterWorkflowNode, kind: AgentTargetKind): string[] {
+  if (kind === 'character-card') {
+    return ['character-card', ...stringListValue(node.config.includeFields), ...stringListValue(node.config.includeSupportFields)]
+  }
+  if (kind === 'character-field') {
+    return [`field:${stringValue(node.config.field, 'firstMessage')}`]
+  }
+  if (kind === 'image') {
+    return [`image:${stringValue(node.config.imageRole, 'avatar')}`]
+  }
+  if (kind === 'world-card') {
+    return ['world-card', ...stringListValue(node.config.worldSections)]
+  }
+  if (kind === 'npc-pack') {
+    return ['npc-pack', ...stringListValue(node.config.npcRoles)]
+  }
+  if (kind === 'npc') {
+    return [`npc:${stringValue(node.config.npcRole, 'primary NPC')}`]
+  }
+  if (kind === 'plot-arc') {
+    return [`plot-arc:${stringValue(node.config.arcShape, 'slow-burn')}`]
+  }
+  return ['scene-card', ...stringListValue(node.config.sceneTypes)]
+}
+
+function isLocallyConnected(relations: CharacterAgentRelation[], targetNodeId: string, controlNodeId: string): boolean {
+  return relations.some((relation) => (
+    relation.fromNodeId === targetNodeId && relation.toNodeId === controlNodeId
+  ) || (
+    relation.fromNodeId === controlNodeId && relation.toNodeId === targetNodeId
+  ))
 }
 
 function createAgentRelation(edge: CharacterWorkflowEdge): CharacterAgentRelation {
