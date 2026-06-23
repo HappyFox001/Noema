@@ -127,9 +127,16 @@ export async function buildCharacterWorkflowFromPrompt(
       content: createWorkflowBuilderSystemPrompt(language),
     }],
   })
-  ensureUsefulWorkflowBuilderResponse(response.content, 'Workflow builder')
+  const content = await ensureUsefulWorkflowBuilderResponse({
+    text: response.content,
+    label: 'Workflow builder',
+    request,
+    language,
+    systemPrompt: createWorkflowBuilderSystemPrompt(language),
+    sourceInput: prompt,
+  })
 
-  const spec = normalizeWorkflowBuilderSpec(response.content, prompt, language)
+  const spec = normalizeWorkflowBuilderSpec(content, prompt, language)
   const workflow = createStandardCharacterWorkflow({
     id: `character-workflow-${request.now ?? Date.now()}`,
     name: spec.name,
@@ -168,9 +175,20 @@ async function editCharacterWorkflowFromPrompt(
       content: createWorkflowEditorSystemPrompt(request.language),
     }],
   })
-  ensureUsefulWorkflowBuilderResponse(response.content, 'Workflow editor')
+  const content = await ensureUsefulWorkflowBuilderResponse({
+    text: response.content,
+    label: 'Workflow editor',
+    request,
+    language: request.language,
+    systemPrompt: createWorkflowEditorSystemPrompt(request.language),
+    sourceInput: JSON.stringify({
+      userRequest: request.prompt,
+      graph,
+    }),
+    requireEditableOperations: true,
+  })
 
-  const spec = normalizeWorkflowEditorSpec(response.content, request.prompt, request.language, graph)
+  const spec = normalizeWorkflowEditorSpec(content, request.prompt, request.language, graph)
   return {
     spec,
     uiConfigOverrides: createEditorUiConfigOverrides(spec, graph),
@@ -413,7 +431,7 @@ function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): 
     '- Use exact existing node ids and slot ids from graph when linking.',
     '- Do not delete generation-goal.',
     '- Use concise resource content. A field should contain the content that resource controls, not instructions about how you are editing.',
-    '- Use plan to expose the major steps you chose. Use summary to describe what changed after the operations.',
+    '- Keep the response compact. Use summary to describe what changed. Omit plan unless the user explicitly asks for planning detail.',
     '- If the request is underspecified but still workable, make reasonable creative decisions and set status to "applied". Ask for the user only when the graph cannot be edited safely.',
     '',
     'Resource guidance:',
@@ -432,14 +450,13 @@ function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): 
     'Valid link kinds:',
     'guides, constrains, provides, enables, grounds, weights, routes, evaluates, refines, exports.',
     '',
-    'Return schema:',
+    'Return the smallest valid JSON object that can perform the edit:',
     '{',
-    '  "name": string,',
-    '  "plan": string[],',
+    '  "name"?: string,',
     '  "summary": string,',
-    '  "confidence": number,',
+    '  "confidence"?: number,',
     '  "status": "applied" | "needs-user" | "blocked",',
-    '  "nodeConfigUpdates": { [nodeId: string]: object },',
+    '  "nodeConfigUpdates"?: { [nodeId: string]: object },',
     '  "operations": [',
     '    { "type": "add-node", "nodeType": string, "nodeId"?: string, "title"?: string, "x"?: number, "y"?: number, "config"?: object },',
     '    { "type": "update-node-config", "nodeId": string, "config": object },',
@@ -452,6 +469,8 @@ function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): 
     '    { "type": "delete-link", "linkId"?: string, "sourceNodeId"?: string, "sourceSlotId"?: string, "targetNodeId"?: string, "targetSlotId"?: string }',
     '  ]',
     '}',
+    '',
+    'For ordinary field edits, prefer nodeConfigUpdates to save tokens. Use operations for add/move/delete/select/link actions.',
   ].join('\n')
 }
 
@@ -517,28 +536,120 @@ function applySpecToWorkflow(workflow: CharacterWorkflow, spec: CharacterWorkflo
 }
 
 function parseJsonObject(text: string): Record<string, unknown> {
-  const trimmed = text.trim()
-  const start = trimmed.indexOf('{')
-  const end = trimmed.lastIndexOf('}')
-  if (start < 0 || end <= start) {
+  const jsonText = extractJsonObjectText(text)
+  if (!jsonText) {
     return {}
   }
   try {
-    const parsed = JSON.parse(trimmed.slice(start, end + 1))
+    const parsed = JSON.parse(jsonText)
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {}
   } catch {
     return {}
   }
 }
 
-function ensureUsefulWorkflowBuilderResponse(text: string, label: string): void {
-  const parsed = parseJsonObject(text)
+function extractJsonObjectText(text: string): string {
+  const trimmed = text.trim()
+  const start = trimmed.indexOf('{')
+  if (start < 0) {
+    return ''
+  }
+  let depth = 0
+  let inString = false
+  let escaped = false
+  for (let index = start; index < trimmed.length; index += 1) {
+    const char = trimmed[index]
+    if (escaped) {
+      escaped = false
+      continue
+    }
+    if (char === '\\') {
+      escaped = inString
+      continue
+    }
+    if (char === '"') {
+      inString = !inString
+      continue
+    }
+    if (inString) {
+      continue
+    }
+    if (char === '{') {
+      depth += 1
+    } else if (char === '}') {
+      depth -= 1
+      if (depth === 0) {
+        return trimmed.slice(start, index + 1)
+      }
+    }
+  }
+  return ''
+}
+
+async function ensureUsefulWorkflowBuilderResponse(options: {
+  text: string
+  label: string
+  request: Pick<CharacterWorkflowBuilderRequest, 'modelConfig' | 'prompt'>
+  language: CharacterWorkflowLanguage
+  systemPrompt: string
+  sourceInput: string
+  requireEditableOperations?: boolean
+}): Promise<string> {
+  let content = options.text
+  let parsed = parseJsonObject(content)
   if (!Object.keys(parsed).length) {
-    throw new Error(`${label} did not return valid editable JSON. Model response: ${text.trim().slice(0, 500)}`)
+    content = await repairWorkflowBuilderJson(options)
+    parsed = parseJsonObject(content)
+  }
+  if (!Object.keys(parsed).length) {
+    throw new Error(`${options.label} did not return valid editable JSON. Model response: ${options.text.trim().slice(0, 500)}`)
   }
   if (stringValue(parsed, 'status') === 'blocked') {
-    throw new Error(stringValue(parsed, 'summary') || `${label} reported that the request is blocked.`)
+    throw new Error(stringValue(parsed, 'summary') || `${options.label} reported that the request is blocked.`)
   }
+  if (options.requireEditableOperations && !hasWorkflowEditorEdits(parsed)) {
+    throw new Error(`${options.label} returned valid JSON but no editable graph operations.`)
+  }
+  return content
+}
+
+async function repairWorkflowBuilderJson(options: {
+  text: string
+  label: string
+  request: Pick<CharacterWorkflowBuilderRequest, 'modelConfig' | 'prompt'>
+  language: CharacterWorkflowLanguage
+  systemPrompt: string
+  sourceInput: string
+}): Promise<string> {
+  const response = await sendChatTurnWithConfiguredModel(options.request.modelConfig, {
+    input: [
+      'The previous response was not valid JSON and could not be parsed.',
+      'Rewrite it as one complete valid JSON object matching the required schema.',
+      'Preserve the intended edits. Do not add markdown, comments, explanations, or code fences.',
+      '',
+      '<original_input>',
+      options.sourceInput,
+      '</original_input>',
+      '',
+      '<invalid_response>',
+      options.text,
+      '</invalid_response>',
+    ].join('\n'),
+    language: options.language,
+    options: { temperature: 0 },
+    messages: [{
+      role: 'system',
+      content: options.systemPrompt,
+    }],
+  })
+  return response.content
+}
+
+function hasWorkflowEditorEdits(parsed: Record<string, unknown>): boolean {
+  if (operationList(parsed.operations).length > 0) {
+    return true
+  }
+  return Object.keys(recordMapValue(parsed, 'nodeConfigUpdates')).length > 0
 }
 
 function normalizeBuilderGraph(graph: CharacterWorkflowBuilderGraph | undefined): CharacterWorkflowBuilderGraph {

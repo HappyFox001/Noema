@@ -203,6 +203,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   buildCharacterWorkflow: (request) =>
     ipcRenderer.invoke('chat:buildCharacterWorkflow', request),
 
+  editCharacterWorkflowRunDraft: (request) =>
+    ipcRenderer.invoke('chat:editCharacterWorkflowRunDraft', request),
+
   runCharacterWorkflow: (request) =>
     ipcRenderer.invoke('chat:runCharacterWorkflow', request),
 

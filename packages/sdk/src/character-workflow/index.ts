@@ -3,6 +3,7 @@
  */
 export * from './agent-runtime.js'
 export * from './chat-agent-tools.js'
+export * from './run-draft-editor.js'
 export * from './workflow-builder.js'
 
 export type CharacterWorkflowLanguage = 'zh-CN' | 'en-US'

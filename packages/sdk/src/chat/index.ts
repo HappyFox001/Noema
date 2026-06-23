@@ -42,6 +42,7 @@ export interface ChatCharacterContext {
   story?: string
   background?: string
   firstMessage?: string
+  roleCard?: Record<string, unknown>
   tags?: string[]
   instructions?: string
   sceneState?: Record<string, unknown>
@@ -183,6 +184,9 @@ function formatCharacterContext(character: ChatCharacterContext): string {
   appendTag(lines, 'story', character.story)
   appendTag(lines, 'background', character.background)
   appendTag(lines, 'first_message', character.firstMessage)
+  if (character.roleCard && Object.keys(character.roleCard).length) {
+    appendTag(lines, 'role_card', JSON.stringify(character.roleCard))
+  }
   if (character.tags?.length) {
     appendTag(lines, 'tags', character.tags.join(', '))
   }

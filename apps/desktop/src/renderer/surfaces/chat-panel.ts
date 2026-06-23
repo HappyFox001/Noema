@@ -44,6 +44,8 @@ import {
   loadChatResourceState,
   localizeChatText,
   type ChatConversationSummary,
+  type ChatCharacterResource,
+  type ChatLocalizedText,
   type ChatMemorySummary,
   type ChatMessageAttachment,
   type ChatMessage,
@@ -1461,6 +1463,147 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     renderChatHistoryManager()
   }
 
+  async function openCharacterWorkflowRunDraftInChat(): Promise<void> {
+    if (!characterWorkflowRunState?.run) {
+      showToast(options.getLanguage() === 'zh-CN' ? '当前没有运行草稿' : 'No run draft is selected')
+      return
+    }
+    try {
+      const character = createChatCharacterFromRunDraft(characterWorkflowRunState)
+      const existingIndex = state.characterResources.findIndex((item) => item.id === character.id)
+      if (existingIndex >= 0) {
+        state.characterResources[existingIndex] = character
+      } else {
+        state.characterResources = [character, ...state.characterResources]
+      }
+      const now = getTimeLabel()
+      const conversation: ChatConversationSummary = {
+        id: `${character.id}-chat-${Date.now()}`,
+        characterId: character.id,
+        title: character.displayName,
+        preview: character.firstMessage,
+        updatedLabel: { 'zh-CN': '刚刚', 'en-US': 'Now' },
+        sceneState: character.scene,
+        summaries: [],
+        messages: [{
+          id: `${character.id}-welcome-${Date.now()}`,
+          role: 'assistant',
+          text: character.firstMessage,
+          createdLabel: { 'zh-CN': now, 'en-US': now },
+        }],
+        characterWorkflow: createPersistedCharacterWorkflowState(),
+      }
+      state.conversations = [conversation, ...state.conversations]
+      state.activeConversationId = conversation.id
+      await persistConversation(conversation)
+      const sessionButton = panel.querySelector<HTMLButtonElement>('[data-chat-nav="session"]')
+      if (sessionButton) {
+        setActiveNav(sessionButton)
+      } else {
+        panel.dataset.chatView = 'session'
+        syncChatView()
+      }
+      renderChat()
+      renderChatHistoryManager()
+      showToast(options.getLanguage() === 'zh-CN' ? '已进入聊天测试' : 'Opened chat test')
+    } catch (error: any) {
+      showToast(error?.message || String(error))
+    }
+  }
+
+  function createChatCharacterFromRunDraft(runState: CharacterResourceRunState): ChatCharacterResource {
+    const fields = extractCharacterCardFieldsFromRunDraft(runState)
+    const name = stringField(fields.name)
+    const firstMessage = stringField(fields.firstMessage)
+    if (!name || !firstMessage) {
+      throw new Error(options.getLanguage() === 'zh-CN'
+        ? '运行草稿缺少聊天必要字段：name / firstMessage'
+        : 'Run draft is missing required chat fields: name / firstMessage')
+    }
+    const description = stringField(fields.description)
+    const story = stringField(fields.story)
+    const background = stringField(fields.background)
+    const avatarImage = findRunDraftImage(runState, ['avatar', 'portrait', 'character'])
+    const bodyImage = findRunDraftImage(runState, ['body', 'full-body', 'character']) || avatarImage
+    const id = `workflow-run-${sanitizeChatResourceId(runState.run?.id ?? name)}`
+    return {
+      id,
+      roleCard: fields,
+      name: localizedText(name),
+      displayName: localizedText(name),
+      description: localizedText(description),
+      story: localizedText(story),
+      background: localizedText(background),
+      scene: {},
+      firstMessage: localizedText(firstMessage),
+      tag: {
+        'zh-CN': ['workflow', 'run-draft'],
+        'en-US': ['workflow', 'run-draft'],
+      },
+      avatarImage,
+      bodyImage,
+    }
+  }
+
+  function extractCharacterCardFieldsFromRunDraft(runState: CharacterResourceRunState): Record<string, unknown> {
+    const fields: Record<string, unknown> = {}
+    for (const artifact of runState.artifacts ?? []) {
+      if (artifact.type === 'character-card-final' && artifact.data && typeof artifact.data === 'object') {
+        Object.assign(fields, artifact.data as Record<string, unknown>)
+      }
+    }
+    for (const artifact of runState.artifacts ?? []) {
+      const data = artifact.data && typeof artifact.data === 'object' ? artifact.data as Record<string, unknown> : undefined
+      const field = typeof data?.field === 'string' ? data.field : ''
+      if (artifact.type === 'character-card-field' && field && data && 'value' in data && fields[field] === undefined) {
+        fields[field] = data.value
+      }
+    }
+    return fields
+  }
+
+  function findRunDraftImage(runState: CharacterResourceRunState, preferredTerms: string[]): string {
+    const imageArtifacts = (runState.artifacts ?? []).filter((artifact) => artifact.type.includes('image'))
+    for (const term of preferredTerms) {
+      const matched = imageArtifacts.find((artifact) => `${artifact.title ?? ''} ${artifact.summary ?? ''}`.toLowerCase().includes(term))
+      const image = matched ? getRunDraftImageUrl(matched.data) : ''
+      if (image) return image
+    }
+    for (const artifact of imageArtifacts) {
+      const image = getRunDraftImageUrl(artifact.data)
+      if (image) return image
+    }
+    return ''
+  }
+
+  function getRunDraftImageUrl(data: unknown): string {
+    if (!data || typeof data !== 'object') return ''
+    const record = data as Record<string, any>
+    const direct = record.url ?? record.imageUrl ?? record.dataUrl
+    if (typeof direct === 'string') return direct
+    const images = Array.isArray(record.images) ? record.images : []
+    for (const image of images) {
+      if (typeof image === 'string') return image
+      if (image && typeof image === 'object') {
+        const nested = (image as Record<string, any>).url ?? (image as Record<string, any>).imageUrl ?? (image as Record<string, any>).dataUrl
+        if (typeof nested === 'string') return nested
+      }
+    }
+    return ''
+  }
+
+  function localizedText(value: string): ChatLocalizedText {
+    return { 'zh-CN': value, 'en-US': value }
+  }
+
+  function stringField(value: unknown): string {
+    return typeof value === 'string' ? value.trim() : ''
+  }
+
+  function sanitizeChatResourceId(value: string): string {
+    return value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || `run-${Date.now()}`
+  }
+
   function syncSideActionState(activeAction: string): void {
     panel.querySelectorAll<HTMLElement>('[data-chat-side-action]').forEach((button) => {
       const active = button.dataset.chatSideAction === activeAction
@@ -1579,6 +1722,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       configOverrides: characterWorkflowConfigOverrides,
       positionOverrides: characterWorkflowPositionOverrides,
       runState: characterWorkflowRunState,
+      runDrafts: activeProject.runs.map((run) => ({
+        id: run.id,
+        title: run.title,
+        status: run.status,
+        createdAt: run.createdAt,
+        completedAt: run.completedAt,
+      })),
       tabs: getCharacterWorkflowTabs(),
       activeTabId: characterWorkflowActiveTabId,
       selectedNodeId: selectedWorkflowNodeId,
@@ -1613,18 +1763,28 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function getCharacterWorkflowTabs(): CharacterWorkflowFileTab[] {
     const activeWorkflow = characterWorkflowProjects.find((project) => project.id === activeCharacterWorkflowProjectId)
-    const runStatus = characterWorkflowRunState?.run?.status
-    const state = runStatus === 'running'
+    const activeRun = characterWorkflowRunState?.run
+    const runStatus = activeRun?.status
+    const workflowState = runStatus === 'running'
       ? 'running'
       : runStatus === 'failed'
         ? 'failed'
         : undefined
-    return [{
+    const tabs: CharacterWorkflowFileTab[] = [{
       id: 'workflow',
       title: formatCharacterWorkflowFileTitle(activeWorkflow),
       kind: 'workflow',
-      state,
+      state: workflowState,
     }]
+    if (activeRun) {
+      tabs.push({
+        id: 'run-draft',
+        title: activeRun.title,
+        kind: 'run',
+        state: runStatus === 'running' ? 'running' : runStatus === 'failed' ? 'failed' : undefined,
+      })
+    }
+    return tabs
   }
 
   function formatCharacterWorkflowFileTitle(workflow: CharacterWorkflowProjectRecord | undefined): string {
@@ -1700,7 +1860,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         ${activeProject ? `
           <section class="chat-workflow-library-section run-history">
             <div class="chat-workflow-library-divider">
-              <span>${options.escapeHtml(zh ? '运行历史' : 'Run history')}</span>
+              <span>${options.escapeHtml(zh ? '运行草稿' : 'Run drafts')}</span>
               <small>${activeProject.runs.length}</small>
             </div>
             <div class="chat-workflow-library-run-list">
@@ -1846,13 +2006,16 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function renderCharacterWorkflowRunRow(projectId: string, run: CharacterWorkflowProjectRunRecord, zh: boolean): string {
     return `
-      <button class="chat-workflow-library-run-row ${run.id === characterWorkflowRunState?.run?.id ? 'active' : ''}" type="button" data-chat-workflow-run-open="${options.escapeHtml(projectId)}:${options.escapeHtml(run.id)}">
-        <span class="chat-workflow-library-run-status ${options.escapeHtml(run.status)}"></span>
-        <span>
-          <strong>${options.escapeHtml(run.title)}</strong>
-          <small>${options.escapeHtml(`${run.status} · ${formatWorkflowProjectTime(run.completedAt ?? run.createdAt, zh)}`)}</small>
-        </span>
-      </button>
+      <div class="chat-workflow-library-run-row ${run.id === characterWorkflowRunState?.run?.id ? 'active' : ''}">
+        <button class="chat-workflow-library-run-open" type="button" data-chat-workflow-run-open="${options.escapeHtml(projectId)}:${options.escapeHtml(run.id)}">
+          <span class="chat-workflow-library-run-status ${options.escapeHtml(run.status)}"></span>
+          <span>
+            <strong>${options.escapeHtml(run.title)}</strong>
+            <small>${options.escapeHtml(`${run.status} · ${formatWorkflowProjectTime(run.completedAt ?? run.createdAt, zh)}`)}</small>
+          </span>
+        </button>
+        <button class="chat-workflow-library-run-delete" type="button" data-chat-workflow-run-delete="${options.escapeHtml(projectId)}:${options.escapeHtml(run.id)}" aria-label="${options.escapeHtml(zh ? '删除运行草稿' : 'Delete run draft')}">x</button>
+      </div>
     `
   }
 
@@ -2254,6 +2417,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!userPrompt || characterWorkflowBuilderBusy || !activeCharacterWorkflowProjectId) {
       return
     }
+    if (characterWorkflowActiveTabId === 'run-draft') {
+      await applyCharacterWorkflowRunDraftPrompt(userPrompt)
+      return
+    }
     characterWorkflowBuilderBusy = true
     characterWorkflowBuilderStatus = options.getLanguage() === 'zh-CN' ? 'Agent 正在调整当前资源图...' : 'Agent editing current resource graph...'
     renderCharacterWorkflow()
@@ -2279,6 +2446,73 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           : ''
         showToast(options.getLanguage() === 'zh-CN' ? '已应用资源图修改' : 'Applied graph edits')
       }
+    } catch (error: any) {
+      const message = error?.message || String(error)
+      characterWorkflowBuilderStatus = message
+      showToast(message)
+    } finally {
+      characterWorkflowBuilderBusy = false
+      renderCharacterWorkflow()
+    }
+  }
+
+  async function applyCharacterWorkflowRunDraftPrompt(userPrompt: string): Promise<void> {
+    if (!characterWorkflowRunState?.run) {
+      characterWorkflowBuilderStatus = options.getLanguage() === 'zh-CN' ? '当前没有运行草稿可调整' : 'No run draft is selected'
+      renderCharacterWorkflow()
+      return
+    }
+    characterWorkflowBuilderBusy = true
+    characterWorkflowBuilderStatus = options.getLanguage() === 'zh-CN' ? 'Agent 正在调整当前运行草稿...' : 'Agent editing current run draft...'
+    renderCharacterWorkflow()
+    try {
+      const response = await window.electronAPI.editCharacterWorkflowRunDraft({
+        prompt: userPrompt,
+        language: options.getLanguage(),
+        runTitle: characterWorkflowRunState.run.title,
+        artifacts: (characterWorkflowRunState.artifacts ?? []).map((artifact) => ({
+          id: artifact.id,
+          type: artifact.type,
+          sourceNodeId: artifact.sourceNodeId,
+          title: artifact.title,
+          summary: artifact.summary,
+          data: artifact.data,
+        })),
+      })
+      if (!response.success) {
+        throw new Error(response.error || 'Run draft agent failed')
+      }
+      characterWorkflowRunState = {
+        ...characterWorkflowRunState,
+        run: {
+          ...characterWorkflowRunState.run,
+          status: 'done',
+          currentStepId: 'finish',
+        },
+        events: [
+          ...(characterWorkflowRunState.events ?? []),
+          {
+            type: 'run-draft.edited',
+            timestamp: Date.now(),
+            phase: 'edit',
+            title: options.getLanguage() === 'zh-CN' ? '运行草稿调整' : 'Run draft edit',
+            summary: response.summary,
+            status: 'done',
+          },
+        ],
+        artifacts: (response.artifacts ?? []).map((artifact) => ({
+          id: artifact.id,
+          type: artifact.type,
+          sourceNodeId: artifact.sourceNodeId || 'agent-policy',
+          title: artifact.title,
+          summary: artifact.summary,
+          data: artifact.data,
+        })),
+      }
+      characterWorkflowAssistantPrompt = ''
+      characterWorkflowBuilderStatus = response.summary || ''
+      saveActiveWorkflowProjectSnapshot()
+      showToast(options.getLanguage() === 'zh-CN' ? '已调整运行草稿' : 'Run draft updated')
     } catch (error: any) {
       const message = error?.message || String(error)
       characterWorkflowBuilderStatus = message
@@ -2586,7 +2820,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     characterWorkflowRunState = project.runs.find((run) => run.id === project.activeRunId)?.runState
       ?? project.runs[project.runs.length - 1]?.runState
       ?? null
-    characterWorkflowActiveTabId = 'workflow'
+    project.activeRunId = characterWorkflowRunState?.run?.id
+    characterWorkflowActiveTabId = characterWorkflowRunState ? 'run-draft' : 'workflow'
     renderCharacterWorkflow()
   }
 
@@ -2606,6 +2841,28 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     characterWorkflowRunState = JSON.parse(JSON.stringify(run.runState)) as CharacterResourceRunState
     characterWorkflowActiveTabId = 'run-draft'
     renderCharacterWorkflow()
+  }
+
+  function deleteActiveCharacterWorkflowRunDraft(): void {
+    const project = characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)
+    const activeRunId = characterWorkflowRunState?.run?.id ?? project?.activeRunId ?? ''
+    if (!project || !activeRunId) {
+      return
+    }
+    const deletedIndex = project.runs.findIndex((run) => run.id === activeRunId)
+    if (deletedIndex < 0) {
+      return
+    }
+    project.runs.splice(deletedIndex, 1)
+    const nextRun = project.runs[Math.min(deletedIndex, project.runs.length - 1)] ?? project.runs[deletedIndex - 1]
+    project.activeRunId = nextRun?.id
+    characterWorkflowRunState = nextRun
+      ? JSON.parse(JSON.stringify(nextRun.runState)) as CharacterResourceRunState
+      : null
+    characterWorkflowActiveTabId = characterWorkflowRunState ? 'run-draft' : 'workflow'
+    project.updatedAt = Date.now()
+    renderCharacterWorkflow()
+    showToast(options.getLanguage() === 'zh-CN' ? '已删除运行草稿' : 'Run draft deleted')
   }
 
   function duplicateCharacterWorkflowDraft(projectId: string): void {
@@ -2812,10 +3069,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   function handleCharacterWorkflowAction(action: string, target?: HTMLElement): void {
     switch (action) {
       case 'run':
-        void runCharacterWorkflow(false)
+        void runCharacterWorkflow()
         break
-      case 'new-run':
-        void runCharacterWorkflow(true)
+      case 'delete-run-draft':
+        deleteActiveCharacterWorkflowRunDraft()
         break
       case 'stop':
         characterWorkflowRenderToken += 1
@@ -3023,7 +3280,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         selectedWorkflowNodeId = nodeId
         renderCharacterWorkflow()
       },
-      'chat-test': () => showToast(options.getLanguage() === 'zh-CN' ? '聊天测试入口已准备，但不调用真实聊天' : 'Chat test entry is ready without calling real chat'),
+      'chat-test': () => {
+        void openCharacterWorkflowRunDraftInChat()
+      },
       'set-link-kind': () => {
         const kind = target?.dataset.resourceLinkKind || ''
         const allowedKinds = new Set(['guides', 'constrains', 'provides', 'enables', 'grounds', 'weights', 'routes', 'evaluates', 'refines', 'exports'])
@@ -3088,18 +3347,16 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
   }
 
-  async function runCharacterWorkflow(newRun: boolean): Promise<void> {
+  async function runCharacterWorkflow(): Promise<void> {
     const renderToken = ++characterWorkflowRenderToken
     const workflowPage = await loadCharacterWorkflowPageModule()
     if (renderToken !== characterWorkflowRenderToken) {
       return
     }
-    if (newRun) {
-      characterWorkflowRunState = null
-    }
     characterWorkflowRunCount += 1
     const draftRunState = workflowPage.createDraftCharacterResourceRunState(characterWorkflowRunCount, 'running', options.getLanguage())
     characterWorkflowRunState = draftRunState
+    saveActiveWorkflowProjectSnapshot()
     characterWorkflowActiveTabId = 'run-draft'
     characterWorkflowEditorState.inspectorCollapsed = false
     const updateRunStep = (
@@ -3201,6 +3458,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         })),
       }
       characterWorkflowActiveTabId = 'run-draft'
+      saveActiveWorkflowProjectSnapshot()
       renderCharacterWorkflow()
       showToast(options.getLanguage() === 'zh-CN' ? '角色资源生成完成' : 'Character resources generated')
     } catch (error) {
@@ -3217,6 +3475,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
               )),
             }
           : draftRunState
+        saveActiveWorkflowProjectSnapshot()
         renderCharacterWorkflow()
         showToast(error instanceof Error ? error.message : (options.getLanguage() === 'zh-CN' ? '角色资源生成失败' : 'Character resource generation failed'))
       }
@@ -4457,6 +4716,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
 
+    const workflowRunDelete = eventTarget.closest<HTMLElement>('[data-chat-workflow-run-delete]')
+    if (workflowRunDelete && panel.contains(workflowRunDelete)) {
+      const [workflowId, runId] = (workflowRunDelete.dataset.chatWorkflowRunDelete || '').split(':')
+      openCharacterWorkflowRun(workflowId || '', runId || '')
+      deleteActiveCharacterWorkflowRunDraft()
+      return
+    }
+
     const workflowCloseTab = eventTarget.closest<HTMLElement>('[data-chat-workflow-close-tab]')
     if (workflowCloseTab && panel.contains(workflowCloseTab)) {
       closeCharacterWorkflowTab(workflowCloseTab.dataset.chatWorkflowCloseTab || '')
@@ -4533,6 +4800,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   })
 
   panel.addEventListener('change', (event) => {
+    const workflowRunSelect = (event.target as HTMLElement | null)?.closest<HTMLSelectElement>('[data-chat-workflow-run-select]')
+    if (workflowRunSelect && panel.contains(workflowRunSelect)) {
+      openCharacterWorkflowRun(activeCharacterWorkflowProjectId, workflowRunSelect.value)
+      return
+    }
     const workflowParam = (event.target as HTMLElement | null)?.closest<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('[data-chat-workflow-param]')
     if (workflowParam && panel.contains(workflowParam)) {
       updateCharacterWorkflowParameter(workflowParam)

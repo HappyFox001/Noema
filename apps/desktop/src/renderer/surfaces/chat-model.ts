@@ -11,6 +11,7 @@ export type ChatLocalizedText = Record<ChatLanguageCode, string>
 
 export interface ChatCharacterResource {
   id: string
+  roleCard?: Record<string, unknown>
   name: ChatLocalizedText
   displayName: ChatLocalizedText
   description: ChatLocalizedText

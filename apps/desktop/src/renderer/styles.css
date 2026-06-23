@@ -13070,22 +13070,53 @@ body.chat-workflow-library-resizing * {
   width: 100%;
   min-height: 32px;
   display: grid;
-  grid-template-columns: 8px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 24px;
   align-items: center;
-  gap: 7px;
+  gap: 4px;
   border: 1px solid transparent;
   border-radius: 6px;
-  padding: 4px 6px;
+  padding: 3px;
   color: rgba(248, 250, 250, 0.62);
   background: transparent;
-  text-align: left;
-  cursor: pointer;
 }
 
 .chat-workflow-library-run-row:hover,
 .chat-workflow-library-run-row.active {
   border-color: rgba(248, 250, 250, 0.08);
   background: rgba(255, 255, 255, 0.04);
+}
+
+.chat-workflow-library-run-open {
+  min-width: 0;
+  min-height: 26px;
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  padding: 0 3px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chat-workflow-library-run-delete {
+  width: 22px;
+  height: 22px;
+  border: 1px solid rgba(255, 104, 104, 0.12);
+  border-radius: 5px;
+  background: rgba(255, 104, 104, 0.04);
+  color: rgba(255, 188, 188, 0.5);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.chat-workflow-library-run-delete:hover {
+  border-color: rgba(255, 104, 104, 0.28);
+  background: rgba(255, 104, 104, 0.1);
+  color: rgba(255, 220, 220, 0.86);
 }
 
 .chat-workflow-library-run-status {
@@ -13095,7 +13126,7 @@ body.chat-workflow-library-resizing * {
   background: rgba(158, 173, 190, 0.56);
 }
 
-.chat-workflow-library-run-row span:last-child {
+.chat-workflow-library-run-open span:last-child {
   min-width: 0;
   display: grid;
   gap: 3px;
@@ -15326,6 +15357,33 @@ body.chat-workflow-library-resizing * {
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.035);
   color: rgba(248, 250, 250, 0.72);
+  font-family: var(--font-ui);
+  font-size: 11px;
+}
+
+.chat-resource-bottom-toolbar button:disabled {
+  opacity: 0.42;
+  cursor: default;
+}
+
+.chat-resource-run-bottom-toolbar {
+  grid-column: 2 / 4;
+}
+
+.chat-resource-run-draft-select {
+  min-width: 180px;
+  max-width: 280px;
+}
+
+.chat-resource-run-draft-select select {
+  width: 100%;
+  height: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 6px;
+  outline: 0;
+  padding: 0 8px;
+  background: rgba(255, 255, 255, 0.035);
+  color: rgba(248, 250, 250, 0.74);
   font-family: var(--font-ui);
   font-size: 11px;
 }

@@ -6,7 +6,7 @@ import Split from 'split-grid'
 import { draggable, dropTargetForElements, monitorForElements } from '@atlaskit/pragmatic-drag-and-drop/dist/esm/adapter/element-adapter.js'
 import { computePosition, flip, offset, shift } from '@floating-ui/dom'
 import { LGraph, LGraphNode, LiteGraph } from 'litegraph.js'
-import { Link2Off, Maximize, MessageCircle, Play, RotateCcw, Save, Search, Square, createIcons } from 'lucide'
+import { Link2Off, Maximize, MessageCircle, Play, RotateCcw, Save, Search, Square, Trash2, createIcons } from 'lucide'
 import * as Y from 'yjs'
 import type { CharacterResourceViewState, SerializedCharacterResourceLinkKind } from './chat-character-resource-graph-state'
 
@@ -18,6 +18,7 @@ export interface CharacterWorkflowPageOptions {
   configOverrides?: Record<string, Record<string, unknown>>
   positionOverrides?: Record<string, { x: number; y: number }>
   runState?: CharacterResourceRunState | null
+  runDrafts?: CharacterWorkflowRunDraftOption[]
   tabs: CharacterWorkflowFileTab[]
   activeTabId: string
   selectedNodeId: string
@@ -35,6 +36,14 @@ export interface CharacterWorkflowFileTab {
   title: string
   kind: 'workflow' | 'run' | 'character'
   state?: 'running' | 'failed' | 'dirty'
+}
+
+export interface CharacterWorkflowRunDraftOption {
+  id: string
+  title: string
+  status: 'idle' | 'running' | 'failed' | 'done'
+  createdAt: number
+  completedAt?: number
 }
 
 export type CharacterWorkflowSidePanel = 'workflow' | 'assets' | 'nodes'
@@ -888,7 +897,7 @@ export function renderCharacterWorkflowPage(options: CharacterWorkflowPageOption
           ${hasRightPanel ? '<div class="chat-resource-split-gutter right" data-resource-split-gutter="right" aria-hidden="true"></div>' : ''}
           ${isWorkflowTab ? renderResourceInspector(graph, options) : ''}
           ${isRunTab && !options.inspectorCollapsed ? renderRunCharacterInspector(options) : ''}
-          ${isWorkflowTab ? renderBottomToolbar(graph, options) : ''}
+          ${isWorkflowTab || isRunTab ? renderBottomToolbar(graph, options, activeTab) : ''}
         </div>
       </div>
     </div>
@@ -1357,6 +1366,7 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
       Save,
       Search,
       Square,
+      Trash2,
     },
     root,
   })
@@ -1805,7 +1815,7 @@ function renderResourceCanvas(graph: CharacterResourceGraph, yjsSnapshot: string
       <div class="chat-resource-serializer" aria-hidden="true" data-yjs-snapshot="${options.escapeHtml(yjsSnapshot)}"></div>
       ${isWorkflowTab ? renderNodeSearchPopover(graph, options) : ''}
       ${isWorkflowTab ? renderCanvasContextMenu(options) : ''}
-      ${isWorkflowTab ? options.workflowAssistantHtml ?? '' : ''}
+      ${isWorkflowTab || isRunTab ? options.workflowAssistantHtml ?? '' : ''}
     </section>
   `
 }
@@ -2819,8 +2829,28 @@ function validateInspectorParameter(parameterItem: CharacterResourceParameterDef
   return ''
 }
 
-function renderBottomToolbar(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): string {
+function renderBottomToolbar(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions, activeTab: 'workflow' | 'run-draft'): string {
   const validationIssues = graph.links.filter((linkItem) => linkItem.status !== 'valid').length
+  if (activeTab === 'run-draft') {
+    const activeRunId = options.runState?.run?.id ?? ''
+    const drafts = options.runDrafts ?? []
+    const activeDraft = drafts.find((draft) => draft.id === activeRunId)
+    return `
+    <footer class="chat-resource-bottom-toolbar chat-resource-run-bottom-toolbar">
+      <div>
+        <strong>${options.escapeHtml(activeDraft?.title ?? options.runState?.run?.title ?? ui(options, '运行草稿', 'Run Draft'))}</strong>
+        <span>${options.escapeHtml(ui(options, `${drafts.length} 个运行草稿`, `${drafts.length} run drafts`))}</span>
+      </div>
+      <label class="chat-resource-run-draft-select">
+        <select data-chat-workflow-run-select aria-label="${options.escapeHtml(ui(options, '选择运行草稿', 'Select run draft'))}">
+          ${drafts.map((draft) => `<option value="${options.escapeHtml(draft.id)}" ${draft.id === activeRunId ? 'selected' : ''}>${options.escapeHtml(`${draft.title} · ${draft.status}`)}</option>`).join('')}
+        </select>
+      </label>
+      <button type="button" data-chat-workflow-action="delete-run-draft" ${activeRunId ? '' : 'disabled'}><i icon-name="trash-2" aria-hidden="true"></i><span>${options.escapeHtml(ui(options, '删除草稿', 'Delete Draft'))}</span></button>
+      <button type="button" data-chat-workflow-action="chat-test" ${activeRunId ? '' : 'disabled'}><i icon-name="message-circle" aria-hidden="true"></i><span>${options.escapeHtml(ui(options, '聊天测试', 'Chat Test'))}</span></button>
+    </footer>
+  `
+  }
   return `
     <footer class="chat-resource-bottom-toolbar">
       <div>

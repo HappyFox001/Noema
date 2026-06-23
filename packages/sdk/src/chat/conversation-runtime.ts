@@ -43,6 +43,7 @@ export interface ChatRuntimeNarrativeSummary {
 
 export interface ChatRuntimeCharacterResource {
   id?: string
+  roleCard?: Record<string, unknown>
   displayName: ChatRuntimeLocalizedText
   description: ChatRuntimeLocalizedText
   story: ChatRuntimeLocalizedText
@@ -223,6 +224,7 @@ export function buildChatCharacterContext(
     background: options.sceneImmersion ? localizeRuntimeText(character.background, options.language) : '',
     firstMessage: options.sceneImmersion ? localizeRuntimeText(character.firstMessage, options.language) : '',
     tags: character.tag?.[options.language] ?? character.tag?.['zh-CN'],
+    roleCard: character.roleCard,
     sceneState: localizeChatSceneState(options.sceneState, options.language),
     narrativeSummaries: options.narrativeSummaries,
   }

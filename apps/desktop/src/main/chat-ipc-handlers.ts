@@ -20,6 +20,7 @@ import {
   createInMemoryCharacterArtifactStore,
   createStaticCharacterAgentModelResolver,
   buildCharacterWorkflowFromPrompt,
+  editCharacterWorkflowRunDraft,
   loadCharacterAgentWorkflowSnapshot,
   type CharacterWorkflowBuilderSpec,
 } from '@noema/sdk/character-workflow'
@@ -102,6 +103,34 @@ export interface ChatBuildCharacterWorkflowResult {
   workflow?: Record<string, unknown>
   spec?: CharacterWorkflowBuilderSpec
   uiConfigOverrides?: Record<string, Record<string, unknown>>
+  error?: string
+}
+
+export interface ChatEditCharacterWorkflowRunDraftRequest {
+  prompt: string
+  language?: 'zh-CN' | 'en-US'
+  runTitle?: string
+  artifacts: Array<{
+    id?: string
+    type: string
+    sourceNodeId?: string
+    title?: string
+    summary?: string
+    data?: unknown
+  }>
+}
+
+export interface ChatEditCharacterWorkflowRunDraftResult {
+  success: boolean
+  summary?: string
+  artifacts?: Array<{
+    id?: string
+    type: string
+    sourceNodeId?: string
+    title?: string
+    summary?: string
+    data?: unknown
+  }>
   error?: string
 }
 
@@ -261,6 +290,29 @@ export function registerChatIpcHandlers(
       }
     } catch (error: any) {
       console.error('[Chat] Failed to build character workflow:', error)
+      return {
+        success: false,
+        error: normalizeChatRuntimeError(error),
+      }
+    }
+  })
+
+  ipcMain.handle('chat:editCharacterWorkflowRunDraft', async (_, request: ChatEditCharacterWorkflowRunDraftRequest): Promise<ChatEditCharacterWorkflowRunDraftResult> => {
+    try {
+      const result = await editCharacterWorkflowRunDraft({
+        prompt: request.prompt,
+        language: request.language,
+        runTitle: request.runTitle,
+        artifacts: request.artifacts,
+        modelConfig: options.getModelConfig(),
+      })
+      return {
+        success: true,
+        summary: result.summary,
+        artifacts: result.artifacts,
+      }
+    } catch (error: any) {
+      console.error('[Chat] Failed to edit character workflow run draft:', error)
       return {
         success: false,
         error: normalizeChatRuntimeError(error),
