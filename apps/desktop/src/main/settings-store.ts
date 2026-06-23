@@ -10,8 +10,12 @@ import { existsSync } from 'fs'
 import { mkdir, readFile, writeFile } from 'fs/promises'
 import {
   getASRProviderCatalogEntry,
+  getImageProviderCatalogEntry,
+  getLLMProviderCatalogEntry,
   getTTSProviderCatalogEntry,
   type ASRProviderType,
+  type ImageProviderType,
+  type LLMProviderType,
   type TTSProviderType,
 } from './model-provider-catalog.js'
 
@@ -21,6 +25,7 @@ function loadSystemConfigFromEnv(): SystemConfig | null {
 
   const hasEnvConfig = Object.keys(env).some(key =>
     key.startsWith('LLM_') ||
+    key.startsWith('CHAT_') ||
     key.startsWith('TASK_') ||
     key.startsWith('TTS_') ||
     key.startsWith('ASR_') ||
@@ -36,13 +41,16 @@ function loadSystemConfigFromEnv(): SystemConfig | null {
     const modelName = env[`TASK_${i}_MODEL`]
     const apiKey = env[`TASK_${i}_API_KEY`] || env[`LLM_${i}_API_KEY`]
     const baseUrl = env[`TASK_${i}_BASE_URL`] || env[`LLM_${i}_BASE_URL`]
+    const provider = env[`TASK_${i}_PROVIDER`] as LLMProviderType | undefined
 
-    if (modelName || apiKey || baseUrl) {
+    if (modelName || apiKey || baseUrl || provider) {
+      const providerEntry = getLLMProviderCatalogEntry(provider)
       taskModels.push({
         id: `env-task-${i}`,
-        modelName: modelName || 'gemini-3.1-pro-preview',
+        provider: providerEntry.value,
+        modelName: modelName || providerEntry.defaultModel || 'gemini-3.1-pro-preview',
         apiKey: apiKey || '',
-        baseUrl: baseUrl || ''
+        baseUrl: baseUrl || providerEntry.defaultBaseUrl
       })
     }
   }
@@ -52,13 +60,41 @@ function loadSystemConfigFromEnv(): SystemConfig | null {
     const modelName = env[`LLM_${i}_MODEL`]
     const apiKey = env[`LLM_${i}_API_KEY`]
     const baseUrl = env[`LLM_${i}_BASE_URL`]
+    const provider = env[`LLM_${i}_PROVIDER`] as LLMProviderType | undefined
 
-    if (modelName || apiKey) {
+    if (modelName || apiKey || baseUrl || provider) {
+      const providerEntry = getLLMProviderCatalogEntry(provider)
       llmModels.push({
         id: `env-llm-${i}`,
-        modelName: modelName || '',
+        provider: providerEntry.value,
+        modelName: modelName || providerEntry.defaultModel,
         apiKey: apiKey || '',
-        baseUrl: baseUrl || ''
+        baseUrl: baseUrl || providerEntry.defaultBaseUrl
+      })
+    }
+  }
+
+  const chatModels: ChatModelConfig[] = []
+  for (let i = 1; i <= 10; i++) {
+    const modelName = env[`CHAT_${i}_MODEL`]
+    const apiKey = env[`CHAT_${i}_API_KEY`]
+    const baseUrl = env[`CHAT_${i}_BASE_URL`]
+    const modelType = env[`CHAT_${i}_TYPE`] === 'image' ? 'image' : 'llm'
+    const provider = env[`CHAT_${i}_PROVIDER`]
+
+    if (modelName || apiKey || baseUrl || provider) {
+      const providerEntry = modelType === 'image'
+        ? getImageProviderCatalogEntry(provider)
+        : getLLMProviderCatalogEntry(provider)
+      chatModels.push({
+        id: `env-chat-${i}`,
+        modelType,
+        provider: providerEntry.value,
+        modelName: modelName || providerEntry.defaultModel,
+        enabledModels: [modelName || providerEntry.defaultModel].filter(Boolean),
+        availableModels: [],
+        apiKey: apiKey || '',
+        baseUrl: baseUrl || providerEntry.defaultBaseUrl
       })
     }
   }
@@ -106,6 +142,7 @@ function loadSystemConfigFromEnv(): SystemConfig | null {
   }
 
   const llmActive = parseInt(env['LLM_ACTIVE'] || '1', 10) - 1
+  const chatActive = parseInt(env['CHAT_ACTIVE'] || '1', 10) - 1
   const taskActive = parseInt(env['TASK_ACTIVE'] || '1', 10) - 1
   const ttsActive = parseInt(env['TTS_ACTIVE'] || '1', 10) - 1
   const asrActive = parseInt(env['ASR_ACTIVE'] || '1', 10) - 1
@@ -114,6 +151,9 @@ function loadSystemConfigFromEnv(): SystemConfig | null {
     proxy: env['PROXY_URL'] || env['HTTPS_PROXY'] || env['HTTP_PROXY'] || '',
     llmModels: llmModels.length > 0 ? llmModels : [],
     activeLLMId: llmModels[llmActive]?.id || llmModels[0]?.id || '',
+    chatModels: chatModels.length > 0 ? chatModels : [],
+    activeChatId: chatModels[chatActive]?.id || chatModels[0]?.id || '',
+    activeChatModelName: chatModels[chatActive]?.enabledModels?.[0] || chatModels[0]?.enabledModels?.[0] || '',
     taskModels: taskModels.length > 0 ? taskModels : [],
     activeTaskId: taskModels[taskActive]?.id || taskModels[0]?.id || '',
     taskRuntime: DEFAULT_TASK_RUNTIME_SETTINGS,
@@ -127,12 +167,24 @@ function loadSystemConfigFromEnv(): SystemConfig | null {
 
 export interface LLMModelConfig {
   id: string
+  provider?: LLMProviderType
   transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'
   modelName: string
   apiKey: string
   baseUrl: string
 }
 
+export interface ChatModelConfig {
+  id: string
+  modelType: 'llm' | 'image'
+  provider?: LLMProviderType | ImageProviderType
+  modelName: string
+  enabledModels?: string[]
+  availableModels?: string[]
+  modelsFetchedAt?: number
+  apiKey: string
+  baseUrl: string
+}
 
 export interface TTSModelConfig {
   id: string
@@ -164,6 +216,9 @@ export interface SystemConfig {
   proxy: string
   llmModels: LLMModelConfig[]
   activeLLMId: string
+  chatModels: ChatModelConfig[]
+  activeChatId: string
+  activeChatModelName: string
   taskModels: LLMModelConfig[]
   activeTaskId: string
   taskRuntime: TaskRuntimeSettings
@@ -240,13 +295,27 @@ const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
   proxy: '',
   llmModels: [{
     id: 'default-llm',
+    provider: 'openai-compatible',
     modelName: '',
     apiKey: '',
     baseUrl: ''
   }],
   activeLLMId: 'default-llm',
+  chatModels: [{
+    id: 'default-chat',
+    modelType: 'llm',
+    provider: 'openai-compatible',
+    modelName: '',
+    enabledModels: [],
+    availableModels: [],
+    apiKey: '',
+    baseUrl: ''
+  }],
+  activeChatId: 'default-chat',
+  activeChatModelName: '',
   taskModels: [{
     id: 'default-task',
+    provider: 'gemini',
     modelName: 'gemini-3.1-pro-preview',
     apiKey: '',
     baseUrl: ''
@@ -327,6 +396,7 @@ export class SettingsStore {
         ...DEFAULT_SYSTEM_CONFIG,
         ...(parsed.system ?? {}),
         llmModels: parsed.system?.llmModels?.length ? parsed.system.llmModels : DEFAULT_SYSTEM_CONFIG.llmModels,
+        chatModels: parsed.system?.chatModels?.length ? parsed.system.chatModels : DEFAULT_SYSTEM_CONFIG.chatModels,
         taskModels: parsed.system?.taskModels?.length ? parsed.system.taskModels : DEFAULT_SYSTEM_CONFIG.taskModels,
         taskRuntime: normalizeTaskRuntimeSettings(parsed.system?.taskRuntime),
         ttsModels: parsed.system?.ttsModels?.length ? parsed.system.ttsModels : DEFAULT_SYSTEM_CONFIG.ttsModels,
@@ -374,10 +444,11 @@ export class SettingsStore {
   
   private hasEmptyApiKeys(config: SystemConfig): boolean {
     const llmEmpty = config.llmModels.some(m => !m.apiKey)
+    const chatEmpty = config.chatModels.some(m => !m.apiKey)
     const taskEmpty = config.taskModels.some(m => (m.transport ?? 'openai_compatible') === 'openai_compatible' && !m.apiKey)
     const ttsEmpty = config.ttsModels.some(m => !m.apiKey)
     const asrEmpty = config.asrModels.some(m => !m.apiKey)
-    return llmEmpty || taskEmpty || ttsEmpty || asrEmpty
+    return llmEmpty || chatEmpty || taskEmpty || ttsEmpty || asrEmpty
   }
 
   
@@ -398,6 +469,29 @@ export class SettingsStore {
       !base.llmModels[0].apiKey &&
       base.llmModels[0].id === 'default-llm' &&
       env.llmModels.length > 0
+
+    const chatModels = base.chatModels.map((model, index) => {
+      if (!model.apiKey && env.chatModels[index]?.apiKey) {
+        return {
+          ...model,
+          apiKey: env.chatModels[index].apiKey,
+          baseUrl: model.baseUrl || env.chatModels[index].baseUrl,
+        }
+      }
+      if (!model.apiKey && env.chatModels[0]?.apiKey) {
+        return {
+          ...model,
+          apiKey: env.chatModels[0].apiKey,
+          baseUrl: model.baseUrl || env.chatModels[0].baseUrl,
+        }
+      }
+      return model
+    })
+
+    const useEnvChat = base.chatModels.length === 1 &&
+      !base.chatModels[0].apiKey &&
+      base.chatModels[0].id === 'default-chat' &&
+      env.chatModels.length > 0
 
     const taskModels = base.taskModels.map((model, index) => {
       if (!model.apiKey && env.taskModels[index]?.apiKey) {
@@ -472,10 +566,16 @@ export class SettingsStore {
       base.asrModels[0].id === 'default-asr' &&
       env.asrModels.length > 0
 
+    const mergedChatModels = useEnvChat ? env.chatModels : chatModels
+    const mergedActiveChatId = useEnvChat ? env.activeChatId : base.activeChatId
+
     return {
       proxy,
       llmModels: useEnvLLM ? env.llmModels : llmModels,
       activeLLMId: useEnvLLM ? env.activeLLMId : base.activeLLMId,
+      chatModels: mergedChatModels,
+      activeChatId: mergedActiveChatId,
+      activeChatModelName: normalizeActiveChatModelName(base.activeChatModelName || env.activeChatModelName, mergedChatModels, mergedActiveChatId),
       taskModels: useEnvTask ? env.taskModels : taskModels,
       activeTaskId: useEnvTask ? env.activeTaskId : base.activeTaskId,
       taskRuntime: normalizeTaskRuntimeSettings(base.taskRuntime),
@@ -571,6 +671,7 @@ function cloneSystemConfig(config: SystemConfig): SystemConfig {
   return {
     ...config,
     llmModels: config.llmModels.map(model => ({ ...model })),
+    chatModels: config.chatModels.map(model => ({ ...model })),
     taskModels: config.taskModels.map(model => ({ ...model })),
     taskRuntime: {
       ...config.taskRuntime,
@@ -621,6 +722,9 @@ function normalizeSystemConfig(value: Partial<SystemConfig>, fallback: SystemCon
   const llmModels = Array.isArray(value.llmModels) && value.llmModels.length
     ? value.llmModels.map((model, index) => normalizeLLMModelConfig(model, fallback.llmModels[index] ?? fallback.llmModels[0], index))
     : fallback.llmModels.map((model, index) => normalizeLLMModelConfig(model, DEFAULT_SYSTEM_CONFIG.llmModels[index] ?? DEFAULT_SYSTEM_CONFIG.llmModels[0], index))
+  const chatModels = Array.isArray(value.chatModels) && value.chatModels.length
+    ? value.chatModels.map((model, index) => normalizeChatModelConfig(model, fallback.chatModels[index] ?? fallback.chatModels[0], index))
+    : fallback.chatModels.map((model, index) => normalizeChatModelConfig(model, DEFAULT_SYSTEM_CONFIG.chatModels[index] ?? DEFAULT_SYSTEM_CONFIG.chatModels[0], index))
   const taskModels = Array.isArray(value.taskModels) && value.taskModels.length
     ? value.taskModels.map((model, index) => normalizeTaskModelConfig(model, fallback.taskModels[index] ?? fallback.taskModels[0], index))
     : fallback.taskModels.map((model, index) => normalizeTaskModelConfig(model, DEFAULT_SYSTEM_CONFIG.taskModels[index] ?? DEFAULT_SYSTEM_CONFIG.taskModels[0], index))
@@ -630,6 +734,7 @@ function normalizeSystemConfig(value: Partial<SystemConfig>, fallback: SystemCon
   const asrModels = Array.isArray(value.asrModels) && value.asrModels.length
     ? value.asrModels.map((model, index) => normalizeASRModelConfig(model, fallback.asrModels[index] ?? fallback.asrModels[0], index))
     : fallback.asrModels.map((model, index) => normalizeASRModelConfig(model, DEFAULT_SYSTEM_CONFIG.asrModels[index] ?? DEFAULT_SYSTEM_CONFIG.asrModels[0], index))
+  const activeChatId = normalizeActiveModelId(value.activeChatId, fallback.activeChatId, chatModels)
 
   return {
     ...fallback,
@@ -637,6 +742,9 @@ function normalizeSystemConfig(value: Partial<SystemConfig>, fallback: SystemCon
     proxy: typeof value.proxy === 'string' ? value.proxy : fallback.proxy,
     llmModels,
     activeLLMId: normalizeActiveModelId(value.activeLLMId, fallback.activeLLMId, llmModels),
+    chatModels,
+    activeChatId,
+    activeChatModelName: normalizeActiveChatModelName(value.activeChatModelName, chatModels, activeChatId),
     taskModels,
     activeTaskId: normalizeActiveModelId(value.activeTaskId, fallback.activeTaskId, taskModels),
     taskRuntime: normalizeTaskRuntimeSettings(value.taskRuntime ?? fallback.taskRuntime),
@@ -658,12 +766,81 @@ function normalizeActiveModelId<T extends { id: string }>(
 
 function normalizeLLMModelConfig(value: unknown, fallback: LLMModelConfig, index: number): LLMModelConfig {
   const source = value && typeof value === 'object' ? value as Partial<LLMModelConfig> : {}
+  const provider = normalizeLLMProvider(source.provider, fallback?.provider)
+  const providerEntry = getLLMProviderCatalogEntry(provider)
   return {
     id: typeof source.id === 'string' && source.id ? source.id : fallback?.id || `llm-${index + 1}`,
-    modelName: typeof source.modelName === 'string' ? source.modelName : fallback?.modelName || '',
+    provider,
+    modelName: typeof source.modelName === 'string'
+      ? source.modelName
+      : fallback?.modelName || providerEntry.defaultModel,
     apiKey: typeof source.apiKey === 'string' ? source.apiKey : fallback?.apiKey || '',
-    baseUrl: typeof source.baseUrl === 'string' ? source.baseUrl : fallback?.baseUrl || ''
+    baseUrl: typeof source.baseUrl === 'string' ? source.baseUrl : fallback?.baseUrl || providerEntry.defaultBaseUrl
   }
+}
+
+function normalizeChatModelConfig(value: unknown, fallback: ChatModelConfig, index: number): ChatModelConfig {
+  const source = value && typeof value === 'object' ? value as Partial<ChatModelConfig> : {}
+  const modelType = source.modelType === 'image' ? 'image' : 'llm'
+  if (modelType === 'image') {
+    const provider = normalizeImageProvider(source.provider, fallback?.provider)
+    const providerEntry = getImageProviderCatalogEntry(provider)
+    return {
+      id: typeof source.id === 'string' && source.id ? source.id : fallback?.id || `chat-${index + 1}`,
+      modelType,
+      provider,
+      modelName: typeof source.modelName === 'string'
+        ? source.modelName
+        : fallback?.modelName || providerEntry.defaultModel,
+      enabledModels: normalizeStringList(source.enabledModels),
+      availableModels: normalizeStringList(source.availableModels),
+      modelsFetchedAt: normalizeTimestamp(source.modelsFetchedAt),
+      apiKey: typeof source.apiKey === 'string' ? source.apiKey : fallback?.apiKey || '',
+      baseUrl: typeof source.baseUrl === 'string' ? source.baseUrl : fallback?.baseUrl || providerEntry.defaultBaseUrl,
+    }
+  }
+
+  const provider = normalizeLLMProvider(source.provider, fallback?.provider)
+  const providerEntry = getLLMProviderCatalogEntry(provider)
+  return {
+    id: typeof source.id === 'string' && source.id ? source.id : fallback?.id || `chat-${index + 1}`,
+    modelType,
+    provider,
+    modelName: typeof source.modelName === 'string'
+      ? source.modelName
+      : fallback?.modelName || providerEntry.defaultModel,
+    enabledModels: normalizeStringList(source.enabledModels),
+    availableModels: normalizeStringList(source.availableModels),
+    modelsFetchedAt: normalizeTimestamp(source.modelsFetchedAt),
+    apiKey: typeof source.apiKey === 'string' ? source.apiKey : fallback?.apiKey || '',
+    baseUrl: typeof source.baseUrl === 'string' ? source.baseUrl : fallback?.baseUrl || providerEntry.defaultBaseUrl,
+  }
+}
+
+function normalizeStringList(value: unknown): string[] {
+  const list = Array.isArray(value)
+    ? value
+      .map(item => typeof item === 'string' ? item.trim() : '')
+      .filter(Boolean)
+    : []
+  const unique = [...new Set(list)]
+  if (unique.length > 0) {
+    return unique
+  }
+  return []
+}
+
+function normalizeActiveChatModelName(value: unknown, models: ChatModelConfig[], activeChatId: unknown): string {
+  const activeApiId = typeof activeChatId === 'string' ? activeChatId : ''
+  const activeApi = models.find(model => model.id === activeApiId) ?? models[0]
+  const enabledModels = normalizeStringList(activeApi?.enabledModels)
+  const preferred = typeof value === 'string' ? value.trim() : ''
+  return preferred && enabledModels.includes(preferred) ? preferred : enabledModels[0] ?? ''
+}
+
+function normalizeTimestamp(value: unknown): number | undefined {
+  const numeric = Number(value)
+  return Number.isFinite(numeric) && numeric > 0 ? Math.round(numeric) : undefined
 }
 
 function normalizeTaskModelConfig(value: unknown, fallback: LLMModelConfig, index: number): LLMModelConfig {
@@ -686,9 +863,7 @@ function normalizeTaskModelConfig(value: unknown, fallback: LLMModelConfig, inde
 
 function normalizeTTSModelConfig(value: unknown, fallback: TTSModelConfig, index: number): TTSModelConfig {
   const source = value && typeof value === 'object' ? value as Partial<TTSModelConfig> : {}
-  const provider = source.provider === 'openai' || source.provider === 'elevenlabs' || source.provider === 'fish'
-    ? source.provider
-    : fallback?.provider || 'fish'
+  const provider = normalizeTTSProvider(source.provider, fallback?.provider)
   const providerEntry = getTTSProviderCatalogEntry(provider)
   const baseUrl = normalizeTTSBaseUrl(provider, source.baseUrl)
 
@@ -714,9 +889,7 @@ function normalizeTTSModelConfig(value: unknown, fallback: TTSModelConfig, index
 
 function normalizeASRModelConfig(value: unknown, fallback: ASRModelConfig, index: number): ASRModelConfig {
   const source = value && typeof value === 'object' ? value as Partial<ASRModelConfig> : {}
-  const provider = source.provider === 'openai' || source.provider === 'groq' || source.provider === 'qwen'
-    ? source.provider
-    : fallback?.provider || 'qwen'
+  const provider = normalizeASRProvider(source.provider, fallback?.provider)
   const providerEntry = getASRProviderCatalogEntry(provider)
   const sourceBaseUrl = typeof source.baseUrl === 'string' && source.baseUrl.trim()
     ? source.baseUrl
@@ -739,6 +912,26 @@ function normalizeASRModelConfig(value: unknown, fallback: ASRModelConfig, index
   }
 }
 
+function normalizeLLMProvider(value: unknown, fallback: unknown): LLMProviderType {
+  const candidate = typeof value === 'string' ? value : fallback
+  return getLLMProviderCatalogEntry(typeof candidate === 'string' ? candidate : undefined).value
+}
+
+function normalizeImageProvider(value: unknown, fallback: unknown): ImageProviderType {
+  const candidate = typeof value === 'string' ? value : fallback
+  return getImageProviderCatalogEntry(typeof candidate === 'string' ? candidate : undefined).value
+}
+
+function normalizeTTSProvider(value: unknown, fallback: unknown): TTSProviderType {
+  const candidate = typeof value === 'string' ? value : fallback
+  return getTTSProviderCatalogEntry(typeof candidate === 'string' ? candidate : undefined).value
+}
+
+function normalizeASRProvider(value: unknown, fallback: unknown): ASRProviderType {
+  const candidate = typeof value === 'string' ? value : fallback
+  return getASRProviderCatalogEntry(typeof candidate === 'string' ? candidate : undefined).value
+}
+
 function normalizeTTSBaseUrl(provider: TTSProviderType, value: unknown): string {
   const providerEntry = getTTSProviderCatalogEntry(provider)
   const baseUrl = typeof value === 'string' ? value.trim() : ''
@@ -748,7 +941,7 @@ function normalizeTTSBaseUrl(provider: TTSProviderType, value: unknown): string 
   if (!baseUrl) {
     return providerEntry.defaultBaseUrl
   }
-  if (provider === 'openai' && baseUrl.includes('api.elevenlabs.io')) {
+  if ((provider === 'openai' || provider === 'openai-compatible') && baseUrl.includes('api.elevenlabs.io')) {
     return providerEntry.defaultBaseUrl
   }
   if (provider === 'elevenlabs' && baseUrl.includes('api.openai.com')) {
@@ -768,7 +961,7 @@ function normalizeASRBaseUrl(provider: ASRProviderType, value: unknown): string 
       ? baseUrl
       : providerEntry.defaultBaseUrl
   }
-  if (provider === 'openai' && baseUrl.startsWith('wss://')) {
+  if ((provider === 'openai' || provider === 'openai-compatible' || provider === 'azure-openai') && baseUrl.startsWith('wss://')) {
     return providerEntry.defaultBaseUrl
   }
   if (provider === 'groq' && (baseUrl.startsWith('wss://') || baseUrl.includes('api.openai.com'))) {

@@ -182,6 +182,89 @@ contextBridge.exposeInMainWorld('electronAPI', {
   addPersonalityFile: () =>
     ipcRenderer.invoke('personality:addFile'),
 
+  listChatRoleResources: () =>
+    ipcRenderer.invoke('chat-role-resources:list'),
+
+  listChatConversations: () =>
+    ipcRenderer.invoke('chat-history:list'),
+
+  getChatConversation: (id, request) =>
+    ipcRenderer.invoke('chat-history:get', id, request),
+
+  saveChatConversation: (conversation) =>
+    ipcRenderer.invoke('chat-history:upsert', conversation),
+
+  deleteChatConversation: (id) =>
+    ipcRenderer.invoke('chat-history:delete', id),
+
+  clearChatConversations: () =>
+    ipcRenderer.invoke('chat-history:clear'),
+
+  sendChatMessage: (request) =>
+    ipcRenderer.invoke('chat:sendMessage', request),
+
+  buildCharacterWorkflow: (request) =>
+    ipcRenderer.invoke('chat:buildCharacterWorkflow', request),
+
+  editCharacterWorkflowRunDraft: (request) =>
+    ipcRenderer.invoke('chat:editCharacterWorkflowRunDraft', request),
+
+  runCharacterWorkflow: (request) =>
+    ipcRenderer.invoke('chat:runCharacterWorkflow', request),
+
+  streamCharacterWorkflow: (request, handlers = {}) => {
+    const streamId = `character-workflow-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    const onEvent = (_, payload) => {
+      if (payload?.streamId === streamId && payload.event) {
+        handlers.onEvent?.(payload.event)
+      }
+    }
+    ipcRenderer.on('chat:characterWorkflowEvent', onEvent)
+    return ipcRenderer.invoke('chat:runCharacterWorkflow', { ...request, streamId })
+      .then((result) => {
+        handlers.onDone?.(result)
+        return result
+      })
+      .catch((error) => {
+        handlers.onError?.(error?.message || String(error))
+        throw error
+      })
+      .finally(() => {
+        ipcRenderer.removeListener('chat:characterWorkflowEvent', onEvent)
+      })
+  },
+
+  streamChatMessage: (request, handlers = {}) => {
+    const streamId = `chat-stream-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    const onDelta = (_, event) => {
+      if (event?.streamId === streamId && typeof event.delta === 'string') {
+        handlers.onDelta?.(event.delta)
+      }
+    }
+    ipcRenderer.on('chat:streamDelta', onDelta)
+    return ipcRenderer.invoke('chat:streamMessage', { ...request, streamId })
+      .then((result) => {
+        handlers.onDone?.(result)
+        return result
+      })
+      .catch((error) => {
+        handlers.onError?.(error?.message || String(error))
+        throw error
+      })
+      .finally(() => {
+        ipcRenderer.removeListener('chat:streamDelta', onDelta)
+      })
+  },
+
+  listChatModels: (request) =>
+    ipcRenderer.invoke('chat:listModels', request),
+
+  selectChatMedia: (request) =>
+    ipcRenderer.invoke('chat:selectMedia', request),
+
+  requestChatCameraPermission: () =>
+    ipcRenderer.invoke('chat:requestCameraPermission'),
+
   submitInteractiveInput: (requestId, response) =>
     ipcRenderer.invoke(`interactive-input:response:${requestId}`, response),
 
@@ -322,6 +405,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   setCompactWindowMode: (compact) => {
     return ipcRenderer.invoke('window:set-compact-mode', compact)
+  },
+
+  setChatWindowMode: (active, fullscreen = false) => {
+    return ipcRenderer.invoke('window:set-chat-mode', active, fullscreen)
+  },
+
+  resizeChatWindow: (edge, deltaX, deltaY) => {
+    return ipcRenderer.invoke('window:resize-chat', edge, deltaX, deltaY)
   },
 
   setTaskWindowMode: (active) => {

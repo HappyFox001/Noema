@@ -12,19 +12,28 @@ import { initializeOrbEntryMenu } from './surfaces/orb-entry-menu'
 import claudeCodeLogoUrl from './assets/claude_code_logo.png'
 import codexLogoUrl from './assets/codex_logo.png'
 import claudeIconUrl from '@lobehub/icons-static-svg/icons/claude-color.svg?url'
+import assemblyAIIconUrl from '@lobehub/icons-static-svg/icons/assemblyai-color.svg?url'
+import azureAIIconUrl from '@lobehub/icons-static-svg/icons/azureai-color.svg?url'
 import deepseekIconUrl from '@lobehub/icons-static-svg/icons/deepseek-color.svg?url'
 import elevenLabsIconUrl from '@lobehub/icons-static-svg/icons/elevenlabs.svg?url'
 import fishAudioIconUrl from '@lobehub/icons-static-svg/icons/fishaudio.svg?url'
 import geminiIconUrl from '@lobehub/icons-static-svg/icons/gemini-color.svg?url'
+import googleCloudIconUrl from '@lobehub/icons-static-svg/icons/googlecloud-color.svg?url'
 import groqIconUrl from '@lobehub/icons-static-svg/icons/groq.svg?url'
+import minimaxIconUrl from '@lobehub/icons-static-svg/icons/minimax-color.svg?url'
+import newAPIIconUrl from '@lobehub/icons-static-svg/icons/newapi-color.svg?url'
+import ollamaIconUrl from '@lobehub/icons-static-svg/icons/ollama.svg?url'
 import openAIIconUrl from '@lobehub/icons-static-svg/icons/openai.svg?url'
 import qwenIconUrl from '@lobehub/icons-static-svg/icons/qwen-color.svg?url'
 import {
   ASR_PROVIDER_CATALOG,
+  LLM_PROVIDER_CATALOG,
   TTS_PROVIDER_CATALOG,
   getASRProviderCatalogEntry,
+  getLLMProviderCatalogEntry,
   getTTSProviderCatalogEntry,
   type ASRProviderType,
+  type LLMProviderType,
   type TTSProviderType,
 } from '../main/model-provider-catalog'
 
@@ -633,14 +642,278 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'context.settings': '系统面板',
     'entry.chat': 'Chat',
     'entry.system': '系统页面',
-    'chat.identity': '陈知遥 · Companion Mode',
+    'chat.background': '背景',
+    'chat.characterProfile': '角色资料',
+    'chat.identity': '陈千语',
+    'chat.kicker': 'Noema chat',
+    'chat.navArchive': '归档',
+    'chat.navAssets': '资源',
+    'chat.navCharacters': '角色',
+    'chat.navConversations': '会话',
+    'chat.navRuntime': '运行时',
+    'chat.navSession': '当前会话',
+    'chat.navVoice': '语音',
+    'chat.new': '新建',
     'chat.placeholder': '输入消息...',
-    'chat.profileDesc': '自然、亲近、克制的桌面 AI 伴侣。当前只开放聊天、记忆和轻量角色体验。',
-    'chat.search': '搜索角色或对话',
-    'chat.subtitle': '角色对话',
-    'chat.threadEva': '嗯，我在。你慢慢说。',
-    'chat.threadRuntime': '任务、权限和上下文状态',
-    'chat.title': 'Chat',
+    'chat.profileDesc': '独立角色资源只描述角色本身，不包含 UI 状态或测试流程。',
+    'chat.profileTags': '标签',
+    'chat.resourceKicker': '角色资源',
+    'chat.workflow.category.Agent': 'Agent',
+    'chat.workflow.category.Assets': '资源',
+    'chat.workflow.category.Constraints': '约束',
+    'chat.workflow.category.Controls': '控制',
+    'chat.workflow.category.Evaluation': '评估',
+    'chat.workflow.category.Goal': '目标',
+    'chat.workflow.category.Model': '模型',
+    'chat.workflow.category.Outputs': '输出',
+    'chat.workflow.category.Sources': '素材',
+    'chat.workflow.category.Targets': '目标资源',
+    'chat.workflow.category.Taste': '风格',
+    'chat.workflow.node.agent-policy': 'Agent 策略',
+    'chat.workflow.node.character-card-target': '角色卡目标',
+    'chat.workflow.node.character-field-target': '字段目标',
+    'chat.workflow.node.continuity-control': '连续性控制',
+    'chat.workflow.node.constraint': '硬约束',
+    'chat.workflow.node.critique-loop': '自评修复',
+    'chat.workflow.node.field-generation-control': '字段生成控制',
+    'chat.workflow.node.generation-strategy': '生成策略',
+    'chat.workflow.node.goal': '生成目标',
+    'chat.workflow.node.image-generation-control': '图片生成控制',
+    'chat.workflow.node.image-target': '图片目标',
+    'chat.workflow.node.image-tool': '图像模型',
+    'chat.workflow.node.llm-tool': '语言模型',
+    'chat.workflow.node.npc-pack-target': 'NPC 包目标',
+    'chat.workflow.node.npc-target': 'NPC 目标',
+    'chat.workflow.node.output-adapter': '输出适配',
+    'chat.workflow.node.plot-arc-target': '剧情线目标',
+    'chat.workflow.node.quality-gate': '质量门槛',
+    'chat.workflow.node.relationship-control': '关系控制',
+    'chat.workflow.node.retrieval-tool': '检索工具',
+    'chat.workflow.node.scene-card-target': '场景卡目标',
+    'chat.workflow.node.source-material': '素材来源',
+    'chat.workflow.node.style-pressure': '风格压力',
+    'chat.workflow.node.voice-tool': '语音工具',
+    'chat.workflow.node.world-card-target': '世界卡目标',
+    'chat.workflow.param.allowAgentExpansion': '允许扩展',
+    'chat.workflow.param.arcShape': '剧情形状',
+    'chat.workflow.param.askUserThreshold': '询问阈值',
+    'chat.workflow.param.autoRepair': '自动修复',
+    'chat.workflow.param.avoidPatterns': '规避模式',
+    'chat.workflow.param.blockExport': '阻止导出',
+    'chat.workflow.param.branchCount': '分支数',
+    'chat.workflow.param.citationRequired': '需要引用',
+    'chat.workflow.param.composition': '构图',
+    'chat.workflow.param.consistencyMode': '一致性模式',
+    'chat.workflow.param.dimensions': '检查维度',
+    'chat.workflow.param.enabled': '启用',
+    'chat.workflow.param.field': '字段',
+    'chat.workflow.param.fieldPurpose': '字段目的',
+    'chat.workflow.param.format': '格式',
+    'chat.workflow.param.forbidResettingFacts': '禁止重置事实',
+    'chat.workflow.param.goalPrompt': '目标提示词',
+    'chat.workflow.param.groundingStrength': '参考强度',
+    'chat.workflow.param.hardBoundary': '硬边界',
+    'chat.workflow.param.imageRole': '图片角色',
+    'chat.workflow.param.imageType': '图片类型',
+    'chat.workflow.param.imageTypes': '图片类型',
+    'chat.workflow.param.includeAlternates': '包含备选',
+    'chat.workflow.param.includeAssets': '包含资源',
+    'chat.workflow.param.includeFields': '包含字段',
+    'chat.workflow.param.includeSupportFields': '支持字段',
+    'chat.workflow.param.intensity': '强度',
+    'chat.workflow.param.iterations': '迭代次数',
+    'chat.workflow.param.lengthPolicy': '长度策略',
+    'chat.workflow.param.memoryAnchors': '记忆锚点',
+    'chat.workflow.param.milestoneCount': '里程碑数',
+    'chat.workflow.param.minimumScore': '最低分',
+    'chat.workflow.param.modelRef': '模型',
+    'chat.workflow.param.mode': '模式',
+    'chat.workflow.param.mustHave': '必须包含',
+    'chat.workflow.param.mustNot': '禁止出现',
+    'chat.workflow.param.negativePrompt': '反向提示词',
+    'chat.workflow.param.notes': '备注',
+    'chat.workflow.param.npcCount': 'NPC 数量',
+    'chat.workflow.param.npcRole': 'NPC 职能',
+    'chat.workflow.param.npcRoles': 'NPC 职能组',
+    'chat.workflow.param.preset': '预设',
+    'chat.workflow.param.progressionPacing': '推进节奏',
+    'chat.workflow.param.promptPurpose': '提示词目的',
+    'chat.workflow.param.provider': '服务商',
+    'chat.workflow.param.purpose': '目的',
+    'chat.workflow.param.priorityAssets': '优先资源',
+    'chat.workflow.param.reasoningEffort': '推理强度',
+    'chat.workflow.param.referenceStrength': '参考权重',
+    'chat.workflow.param.relationshipMode': '关系模式',
+    'chat.workflow.param.requiredChecks': '必要检查',
+    'chat.workflow.param.revisionBudget': '修复预算',
+    'chat.workflow.param.sceneCount': '场景数量',
+    'chat.workflow.param.sceneTypes': '场景类型',
+    'chat.workflow.param.scope': '作用范围',
+    'chat.workflow.param.scopePrompt': '范围提示词',
+    'chat.workflow.param.sourceKind': '素材类型',
+    'chat.workflow.param.speed': '语速',
+    'chat.workflow.param.storyFunction': '剧情功能',
+    'chat.workflow.param.stylePrompt': '风格提示词',
+    'chat.workflow.param.targetAudience': '目标场景',
+    'chat.workflow.param.targetKind': '目标类型',
+    'chat.workflow.param.targets': '目标资源',
+    'chat.workflow.param.targetImageCount': '图片数量',
+    'chat.workflow.param.temperature': '温度',
+    'chat.workflow.param.tensionRules': '张力规则',
+    'chat.workflow.param.tone': '语气',
+    'chat.workflow.param.autonomyLevel': '自主级别',
+    'chat.workflow.param.voice': '音色',
+    'chat.workflow.param.worldSections': '世界卡章节',
+    'chat.workflow.option.adventure-campaign': '冒险战役',
+    'chat.workflow.option.ambiguous-ally': '暧昧盟友',
+    'chat.workflow.option.appearance': '外貌',
+    'chat.workflow.option.avatar': '头像',
+    'chat.workflow.option.background': '背景',
+    'chat.workflow.option.body': '全身图',
+    'chat.workflow.option.blocked-only': '仅阻塞时',
+    'chat.workflow.option.branch-and-refine': '分支并打磨',
+    'chat.workflow.option.campus-romance': '校园恋爱',
+    'chat.workflow.option.character-focused': '角色主体',
+    'chat.workflow.option.connected-targets': '连接目标',
+    'chat.workflow.option.ally': '盟友',
+    'chat.workflow.option.antagonist': '反派',
+    'chat.workflow.option.asymmetric-information': '信息不对称',
+    'chat.workflow.option.asking-user-intent': '询问用户意图',
+    'chat.workflow.option.boundaries': '边界',
+    'chat.workflow.option.conflict-scene': '冲突场景',
+    'chat.workflow.option.conflicting-motives': '动机冲突',
+    'chat.workflow.option.consistency': '一致性',
+    'chat.workflow.option.custom': '自定义',
+    'chat.workflow.option.dark-adult': '暗色成人',
+    'chat.workflow.option.description': '简介',
+    'chat.workflow.option.dialogueStyle': '对话风格',
+    'chat.workflow.option.do-not-resolve-immediately': '不要立即解决',
+    'chat.workflow.option.downtime-scene': '日常场景',
+    'chat.workflow.option.dramatic': '戏剧化',
+    'chat.workflow.option.environmental-scene': '环境场景',
+    'chat.workflow.option.episodic': '单元剧',
+    'chat.workflow.option.existing-card': '已有角色卡',
+    'chat.workflow.option.explore-then-converge': '探索后收束',
+    'chat.workflow.option.expression': '表情',
+    'chat.workflow.option.expression-sheet': '表情表',
+    'chat.workflow.option.factions': '势力',
+    'chat.workflow.option.fantasy-companion': '幻想陪伴',
+    'chat.workflow.option.field': '字段目标',
+    'chat.workflow.option.field-completeness': '字段完整度',
+    'chat.workflow.option.firstMessage': '开场白',
+    'chat.workflow.option.full-body': '全身构图',
+    'chat.workflow.option.global': '全局目标',
+    'chat.workflow.option.goal-match': '目标匹配',
+    'chat.workflow.option.high': '高',
+    'chat.workflow.option.image': '图片目标',
+    'chat.workflow.option.image-pack': '图片包',
+    'chat.workflow.option.image-reference': '图片参考',
+    'chat.workflow.option.imagePrompt': '生图提示词',
+    'chat.workflow.option.independent': '独立图片',
+    'chat.workflow.option.instant-compliance': '瞬间顺从',
+    'chat.workflow.option.lore-dump': '设定倾倒',
+    'chat.workflow.option.long-term-goals': '长期目标',
+    'chat.workflow.option.local-only': '仅本地',
+    'chat.workflow.option.low-confidence': '低置信度',
+    'chat.workflow.option.long': '长',
+    'chat.workflow.option.low': '低',
+    'chat.workflow.option.markdown-dossier': 'Markdown 档案',
+    'chat.workflow.option.medium': '中',
+    'chat.workflow.option.memoryStrategy': '记忆策略',
+    'chat.workflow.option.mentor': '导师',
+    'chat.workflow.option.mystery-escalation': '悬疑升级',
+    'chat.workflow.option.name': '名称',
+    'chat.workflow.option.never': '运行中不询问',
+    'chat.workflow.option.neutral': '中性',
+    'chat.workflow.option.noema-role-chat': 'Noema 角色聊天',
+    'chat.workflow.option.notes': '备注',
+    'chat.workflow.option.ooc-explanation': 'OOC 解释',
+    'chat.workflow.option.opening': '开场',
+    'chat.workflow.option.opening-scene': '开场场景',
+    'chat.workflow.option.personality': '性格',
+    'chat.workflow.option.plot-hooks': '剧情钩子',
+    'chat.workflow.option.portable-json': '通用 JSON',
+    'chat.workflow.option.protective-companion': '保护型陪伴',
+    'chat.workflow.option.private-conversation': '私密对话',
+    'chat.workflow.option.primary-npc': '主要 NPC',
+    'chat.workflow.option.reference': '参考图',
+    'chat.workflow.option.relationship-changes': '关系变化',
+    'chat.workflow.option.relationship-drama': '关系戏剧',
+    'chat.workflow.option.relationship-network': '关系网络',
+    'chat.workflow.option.restrained': '克制',
+    'chat.workflow.option.reveal-scene': '揭示场景',
+    'chat.workflow.option.rival-tension': '竞争张力',
+    'chat.workflow.option.rival': '竞争者',
+    'chat.workflow.option.roleplay-usability': '角色扮演可用性',
+    'chat.workflow.option.role-card': '角色卡',
+    'chat.workflow.option.rules': '规则',
+    'chat.workflow.option.same-character': '同一角色',
+    'chat.workflow.option.same-world': '同一世界',
+    'chat.workflow.option.scene': '场景',
+    'chat.workflow.option.scenario': '场景设定',
+    'chat.workflow.option.self-introduction': '自我介绍',
+    'chat.workflow.option.setting': '设定',
+    'chat.workflow.option.sharp': '锐利',
+    'chat.workflow.option.short': '短',
+    'chat.workflow.option.sillytavern': 'SillyTavern',
+    'chat.workflow.option.single-pass': '单轮生成',
+    'chat.workflow.option.slice-of-life': '日常切片',
+    'chat.workflow.option.slow-burn': '慢热推进',
+    'chat.workflow.option.slow-trust': '慢慢建立信任',
+    'chat.workflow.option.slow-trust-rule': '慢信任推进',
+    'chat.workflow.option.steady-escalation': '稳定升级',
+    'chat.workflow.option.unresolved-promises': '未兑现承诺',
+    'chat.workflow.option.upper-body-portrait': '半身肖像',
+    'chat.workflow.option.urban-suspense': '都市悬疑',
+    'chat.workflow.option.user-preference': '用户偏好',
+    'chat.workflow.option.vector-index': '向量索引',
+    'chat.workflow.option.web-summary': '网页摘要',
+    'chat.workflow.option.visual-identity': '视觉识别',
+    'chat.workflow.option.warm': '温和',
+    'chat.workflow.option.wildcard': '不稳定变量',
+    'chat.workflow.option.world': '世界目标',
+    'chat.workflow.option.worldContext': '世界观',
+    'chat.workflow.option.world-facts': '世界事实',
+    'chat.workflow.slot.assets': '资源',
+    'chat.workflow.slot.card': '角色卡',
+    'chat.workflow.slot.candidate': '候选',
+    'chat.workflow.slot.constraint': '约束',
+    'chat.workflow.slot.continuity': '连续性',
+    'chat.workflow.slot.critique': '自评',
+    'chat.workflow.slot.export': '导出',
+    'chat.workflow.slot.field': '字段',
+    'chat.workflow.slot.fieldControl': '字段控制',
+    'chat.workflow.slot.fieldTarget': '字段目标',
+    'chat.workflow.slot.goal': '目标',
+    'chat.workflow.slot.image': '图片',
+    'chat.workflow.slot.imageAsset': '图片资源',
+    'chat.workflow.slot.imageControl': '图片控制',
+    'chat.workflow.slot.imageTarget': '图片目标',
+    'chat.workflow.slot.model': '模型',
+    'chat.workflow.slot.policy': '策略',
+    'chat.workflow.slot.plot': '剧情',
+    'chat.workflow.slot.report': '报告',
+    'chat.workflow.slot.resource': '资源',
+    'chat.workflow.slot.retrieval': '检索',
+    'chat.workflow.slot.target': '目标',
+    'chat.workflow.slot.npc': 'NPC',
+    'chat.workflow.slot.npcPack': 'NPC 包',
+    'chat.workflow.slot.relationship': '关系',
+    'chat.workflow.slot.scene': '场景',
+    'chat.workflow.slot.source': '素材',
+    'chat.workflow.slot.strategy': '策略',
+    'chat.workflow.slot.style': '风格',
+    'chat.workflow.slot.voice': '语音',
+    'chat.workflow.slot.world': '世界',
+    'chat.workflow.source.agent': 'Agent',
+    'chat.workflow.source.asset': '资源',
+    'chat.workflow.source.core': '核心',
+    'chat.workflow.source.safety': '安全',
+    'chat.search': '搜索历史角色或对话',
+    'chat.subtitle': '历史角色对话',
+    'chat.threadEva': '陈千语基础资料已接入。',
+    'chat.threadRuntime': '流式文本、工具调用和本地任务状态',
+    'chat.title': '会话',
     'status.connectionFailed': 'Connection failed',
     'status.initializing': 'Initializing...',
     'status.listening': 'Listening...',
@@ -1048,13 +1321,277 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'context.settings': 'System Panel',
     'entry.chat': 'Chat',
     'entry.system': 'System',
-    'chat.identity': 'Chen Zhiyao · Companion Mode',
+    'chat.background': 'Background',
+    'chat.characterProfile': 'Character profile',
+    'chat.identity': 'Chen Qianyu',
+    'chat.kicker': 'Noema chat',
+    'chat.navArchive': 'Archive',
+    'chat.navAssets': 'Assets',
+    'chat.navCharacters': 'Characters',
+    'chat.navConversations': 'Conversations',
+    'chat.navRuntime': 'Runtime',
+    'chat.navSession': 'Session',
+    'chat.navVoice': 'Voice',
+    'chat.new': 'New',
     'chat.placeholder': 'Write a message...',
-    'chat.profileDesc': 'A natural, close, and restrained desktop AI companion. Chat, memory, and lightweight character experiences are enabled for now.',
-    'chat.search': 'Search characters or chats',
-    'chat.subtitle': 'Character chat',
-    'chat.threadEva': 'I am here. Take your time.',
-    'chat.threadRuntime': 'Task, permission, and context status',
+    'chat.profileDesc': 'Independent character resources describe the character itself, without UI state or test-flow fields.',
+    'chat.profileTags': 'Tags',
+    'chat.resourceKicker': 'Character resource',
+    'chat.workflow.category.Agent': 'Agent',
+    'chat.workflow.category.Assets': 'Assets',
+    'chat.workflow.category.Constraints': 'Constraints',
+    'chat.workflow.category.Controls': 'Controls',
+    'chat.workflow.category.Evaluation': 'Evaluation',
+    'chat.workflow.category.Goal': 'Goal',
+    'chat.workflow.category.Model': 'Model',
+    'chat.workflow.category.Outputs': 'Outputs',
+    'chat.workflow.category.Sources': 'Sources',
+    'chat.workflow.category.Targets': 'Targets',
+    'chat.workflow.category.Taste': 'Taste',
+    'chat.workflow.node.agent-policy': 'Agent Policy',
+    'chat.workflow.node.character-card-target': 'Character Card Target',
+    'chat.workflow.node.character-field-target': 'Character Field Target',
+    'chat.workflow.node.continuity-control': 'Continuity Control',
+    'chat.workflow.node.constraint': 'Hard Constraint',
+    'chat.workflow.node.critique-loop': 'Critique Loop',
+    'chat.workflow.node.field-generation-control': 'Field Generation Control',
+    'chat.workflow.node.generation-strategy': 'Generation Strategy',
+    'chat.workflow.node.goal': 'Generation Goal',
+    'chat.workflow.node.image-generation-control': 'Image Generation Control',
+    'chat.workflow.node.image-target': 'Image Target',
+    'chat.workflow.node.image-tool': 'Image Model',
+    'chat.workflow.node.llm-tool': 'Language Model',
+    'chat.workflow.node.npc-pack-target': 'NPC Pack Target',
+    'chat.workflow.node.npc-target': 'NPC Target',
+    'chat.workflow.node.output-adapter': 'Output Adapter',
+    'chat.workflow.node.plot-arc-target': 'Plot Arc Target',
+    'chat.workflow.node.quality-gate': 'Quality Gate',
+    'chat.workflow.node.relationship-control': 'Relationship Control',
+    'chat.workflow.node.retrieval-tool': 'Retrieval Tool',
+    'chat.workflow.node.scene-card-target': 'Scene Card Target',
+    'chat.workflow.node.source-material': 'Source Material',
+    'chat.workflow.node.style-pressure': 'Style Pressure',
+    'chat.workflow.node.voice-tool': 'Voice Tool',
+    'chat.workflow.node.world-card-target': 'World Card Target',
+    'chat.workflow.param.allowAgentExpansion': 'Allow Agent Expansion',
+    'chat.workflow.param.arcShape': 'Arc Shape',
+    'chat.workflow.param.askUserThreshold': 'Ask User Threshold',
+    'chat.workflow.param.autoRepair': 'Auto Repair',
+    'chat.workflow.param.avoidPatterns': 'Avoid Patterns',
+    'chat.workflow.param.blockExport': 'Block Export',
+    'chat.workflow.param.branchCount': 'Branch Count',
+    'chat.workflow.param.citationRequired': 'Citation Required',
+    'chat.workflow.param.composition': 'Composition',
+    'chat.workflow.param.consistencyMode': 'Consistency Mode',
+    'chat.workflow.param.dimensions': 'Dimensions',
+    'chat.workflow.param.enabled': 'Enabled',
+    'chat.workflow.param.field': 'Field',
+    'chat.workflow.param.fieldPurpose': 'Field Purpose',
+    'chat.workflow.param.format': 'Format',
+    'chat.workflow.param.forbidResettingFacts': 'Forbid Resetting Facts',
+    'chat.workflow.param.goalPrompt': 'Goal Prompt',
+    'chat.workflow.param.groundingStrength': 'Grounding Strength',
+    'chat.workflow.param.hardBoundary': 'Hard Boundary',
+    'chat.workflow.param.imageRole': 'Image Role',
+    'chat.workflow.param.imageType': 'Image Type',
+    'chat.workflow.param.imageTypes': 'Image Types',
+    'chat.workflow.param.includeAlternates': 'Include Alternates',
+    'chat.workflow.param.includeAssets': 'Include Assets',
+    'chat.workflow.param.includeFields': 'Include Fields',
+    'chat.workflow.param.includeSupportFields': 'Support Fields',
+    'chat.workflow.param.intensity': 'Intensity',
+    'chat.workflow.param.iterations': 'Iterations',
+    'chat.workflow.param.lengthPolicy': 'Length Policy',
+    'chat.workflow.param.memoryAnchors': 'Memory Anchors',
+    'chat.workflow.param.milestoneCount': 'Milestone Count',
+    'chat.workflow.param.minimumScore': 'Minimum Score',
+    'chat.workflow.param.modelRef': 'Model',
+    'chat.workflow.param.mode': 'Mode',
+    'chat.workflow.param.mustHave': 'Must Have',
+    'chat.workflow.param.mustNot': 'Must Not',
+    'chat.workflow.param.negativePrompt': 'Negative Prompt',
+    'chat.workflow.param.notes': 'Notes',
+    'chat.workflow.param.npcCount': 'NPC Count',
+    'chat.workflow.param.npcRole': 'NPC Role',
+    'chat.workflow.param.npcRoles': 'NPC Roles',
+    'chat.workflow.param.preset': 'Preset',
+    'chat.workflow.param.progressionPacing': 'Progression Pacing',
+    'chat.workflow.param.promptPurpose': 'Prompt Purpose',
+    'chat.workflow.param.provider': 'Provider',
+    'chat.workflow.param.purpose': 'Purpose',
+    'chat.workflow.param.priorityAssets': 'Priority Assets',
+    'chat.workflow.param.reasoningEffort': 'Reasoning Effort',
+    'chat.workflow.param.referenceStrength': 'Reference Strength',
+    'chat.workflow.param.relationshipMode': 'Relationship Mode',
+    'chat.workflow.param.requiredChecks': 'Required Checks',
+    'chat.workflow.param.revisionBudget': 'Revision Budget',
+    'chat.workflow.param.sceneCount': 'Scene Count',
+    'chat.workflow.param.sceneTypes': 'Scene Types',
+    'chat.workflow.param.scope': 'Scope',
+    'chat.workflow.param.scopePrompt': 'Scope Prompt',
+    'chat.workflow.param.sourceKind': 'Source Kind',
+    'chat.workflow.param.speed': 'Speed',
+    'chat.workflow.param.storyFunction': 'Story Function',
+    'chat.workflow.param.stylePrompt': 'Style Prompt',
+    'chat.workflow.param.targetAudience': 'Target Audience',
+    'chat.workflow.param.targetKind': 'Target Kind',
+    'chat.workflow.param.targets': 'Targets',
+    'chat.workflow.param.targetImageCount': 'Image Count',
+    'chat.workflow.param.temperature': 'Temperature',
+    'chat.workflow.param.tensionRules': 'Tension Rules',
+    'chat.workflow.param.tone': 'Tone',
+    'chat.workflow.param.autonomyLevel': 'Autonomy Level',
+    'chat.workflow.param.voice': 'Voice',
+    'chat.workflow.param.worldSections': 'World Sections',
+    'chat.workflow.option.adventure-campaign': 'Adventure Campaign',
+    'chat.workflow.option.ambiguous-ally': 'Ambiguous Ally',
+    'chat.workflow.option.ally': 'Ally',
+    'chat.workflow.option.antagonist': 'Antagonist',
+    'chat.workflow.option.appearance': 'Appearance',
+    'chat.workflow.option.asymmetric-information': 'Asymmetric Information',
+    'chat.workflow.option.asking-user-intent': 'Asking User Intent',
+    'chat.workflow.option.avatar': 'Avatar',
+    'chat.workflow.option.background': 'Background',
+    'chat.workflow.option.body': 'Body',
+    'chat.workflow.option.blocked-only': 'Blocked Only',
+    'chat.workflow.option.boundaries': 'Boundaries',
+    'chat.workflow.option.branch-and-refine': 'Branch and Refine',
+    'chat.workflow.option.campus-romance': 'Campus Romance',
+    'chat.workflow.option.character-focused': 'Character Focused',
+    'chat.workflow.option.connected-targets': 'Connected Targets',
+    'chat.workflow.option.conflict-scene': 'Conflict Scene',
+    'chat.workflow.option.conflicting-motives': 'Conflicting Motives',
+    'chat.workflow.option.consistency': 'Consistency',
+    'chat.workflow.option.custom': 'Custom',
+    'chat.workflow.option.dark-adult': 'Dark Adult',
+    'chat.workflow.option.description': 'Description',
+    'chat.workflow.option.dialogueStyle': 'Dialogue Style',
+    'chat.workflow.option.do-not-resolve-immediately': 'Do Not Resolve Immediately',
+    'chat.workflow.option.downtime-scene': 'Downtime Scene',
+    'chat.workflow.option.dramatic': 'Dramatic',
+    'chat.workflow.option.environmental-scene': 'Environmental Scene',
+    'chat.workflow.option.episodic': 'Episodic',
+    'chat.workflow.option.existing-card': 'Existing Card',
+    'chat.workflow.option.explore-then-converge': 'Explore then Converge',
+    'chat.workflow.option.expression': 'Expression',
+    'chat.workflow.option.expression-sheet': 'Expression Sheet',
+    'chat.workflow.option.factions': 'Factions',
+    'chat.workflow.option.fantasy-companion': 'Fantasy Companion',
+    'chat.workflow.option.field': 'Field Targets',
+    'chat.workflow.option.field-completeness': 'Field Completeness',
+    'chat.workflow.option.firstMessage': 'First Message',
+    'chat.workflow.option.full-body': 'Full Body',
+    'chat.workflow.option.global': 'Global Goal',
+    'chat.workflow.option.goal-match': 'Goal Match',
+    'chat.workflow.option.high': 'High',
+    'chat.workflow.option.image': 'Image Targets',
+    'chat.workflow.option.image-pack': 'Image Pack',
+    'chat.workflow.option.image-reference': 'Image Reference',
+    'chat.workflow.option.imagePrompt': 'Image Prompt',
+    'chat.workflow.option.independent': 'Independent Images',
+    'chat.workflow.option.instant-compliance': 'Instant Compliance',
+    'chat.workflow.option.local-only': 'Local Only',
+    'chat.workflow.option.low-confidence': 'Low Confidence',
+    'chat.workflow.option.lore-dump': 'Lore Dump',
+    'chat.workflow.option.long': 'Long',
+    'chat.workflow.option.long-term-goals': 'Long Term Goals',
+    'chat.workflow.option.low': 'Low',
+    'chat.workflow.option.markdown-dossier': 'Markdown Dossier',
+    'chat.workflow.option.medium': 'Medium',
+    'chat.workflow.option.memoryStrategy': 'Memory Strategy',
+    'chat.workflow.option.mentor': 'Mentor',
+    'chat.workflow.option.mystery-escalation': 'Mystery Escalation',
+    'chat.workflow.option.name': 'Name',
+    'chat.workflow.option.never': 'Never During Run',
+    'chat.workflow.option.neutral': 'Neutral',
+    'chat.workflow.option.noema-role-chat': 'Noema Role Chat',
+    'chat.workflow.option.notes': 'Notes',
+    'chat.workflow.option.ooc-explanation': 'OOC Explanation',
+    'chat.workflow.option.opening': 'Opening',
+    'chat.workflow.option.opening-scene': 'Opening Scene',
+    'chat.workflow.option.personality': 'Personality',
+    'chat.workflow.option.plot-hooks': 'Plot Hooks',
+    'chat.workflow.option.portable-json': 'Portable JSON',
+    'chat.workflow.option.protective-companion': 'Protective Companion',
+    'chat.workflow.option.private-conversation': 'Private Conversation',
+    'chat.workflow.option.primary-npc': 'Primary NPC',
+    'chat.workflow.option.reference': 'Reference',
+    'chat.workflow.option.relationship-changes': 'Relationship Changes',
+    'chat.workflow.option.relationship-drama': 'Relationship Drama',
+    'chat.workflow.option.relationship-network': 'Relationship Network',
+    'chat.workflow.option.restrained': 'Restrained',
+    'chat.workflow.option.reveal-scene': 'Reveal Scene',
+    'chat.workflow.option.rival-tension': 'Rival Tension',
+    'chat.workflow.option.rival': 'Rival',
+    'chat.workflow.option.roleplay-usability': 'Roleplay Usability',
+    'chat.workflow.option.role-card': 'Role Card',
+    'chat.workflow.option.rules': 'Rules',
+    'chat.workflow.option.same-character': 'Same Character',
+    'chat.workflow.option.same-world': 'Same World',
+    'chat.workflow.option.scene': 'Scene',
+    'chat.workflow.option.scenario': 'Scenario',
+    'chat.workflow.option.self-introduction': 'Self Introduction',
+    'chat.workflow.option.setting': 'Setting',
+    'chat.workflow.option.sharp': 'Sharp',
+    'chat.workflow.option.short': 'Short',
+    'chat.workflow.option.sillytavern': 'SillyTavern',
+    'chat.workflow.option.single-pass': 'Single Pass',
+    'chat.workflow.option.slice-of-life': 'Slice of Life',
+    'chat.workflow.option.slow-burn': 'Slow Burn',
+    'chat.workflow.option.slow-trust': 'Slow Trust',
+    'chat.workflow.option.slow-trust-rule': 'Slow Trust',
+    'chat.workflow.option.steady-escalation': 'Steady Escalation',
+    'chat.workflow.option.unresolved-promises': 'Unresolved Promises',
+    'chat.workflow.option.upper-body-portrait': 'Upper Body Portrait',
+    'chat.workflow.option.urban-suspense': 'Urban Suspense',
+    'chat.workflow.option.user-preference': 'User Preference',
+    'chat.workflow.option.vector-index': 'Vector Index',
+    'chat.workflow.option.web-summary': 'Web Summary',
+    'chat.workflow.option.visual-identity': 'Visual Identity',
+    'chat.workflow.option.warm': 'Warm',
+    'chat.workflow.option.wildcard': 'Wildcard',
+    'chat.workflow.option.world': 'World Targets',
+    'chat.workflow.option.worldContext': 'World Context',
+    'chat.workflow.option.world-facts': 'World Facts',
+    'chat.workflow.slot.assets': 'Assets',
+    'chat.workflow.slot.card': 'Card',
+    'chat.workflow.slot.candidate': 'Candidate',
+    'chat.workflow.slot.constraint': 'Constraint',
+    'chat.workflow.slot.continuity': 'Continuity',
+    'chat.workflow.slot.critique': 'Critique',
+    'chat.workflow.slot.export': 'Export',
+    'chat.workflow.slot.field': 'Field',
+    'chat.workflow.slot.fieldControl': 'Field Control',
+    'chat.workflow.slot.fieldTarget': 'Field Target',
+    'chat.workflow.slot.goal': 'Goal',
+    'chat.workflow.slot.image': 'Image',
+    'chat.workflow.slot.imageAsset': 'Image Asset',
+    'chat.workflow.slot.imageControl': 'Image Control',
+    'chat.workflow.slot.imageTarget': 'Image Target',
+    'chat.workflow.slot.model': 'Model',
+    'chat.workflow.slot.policy': 'Policy',
+    'chat.workflow.slot.plot': 'Plot',
+    'chat.workflow.slot.report': 'Report',
+    'chat.workflow.slot.resource': 'Resource',
+    'chat.workflow.slot.retrieval': 'Retrieval',
+    'chat.workflow.slot.target': 'Target',
+    'chat.workflow.slot.npc': 'NPC',
+    'chat.workflow.slot.npcPack': 'NPC Pack',
+    'chat.workflow.slot.relationship': 'Relationship',
+    'chat.workflow.slot.scene': 'Scene',
+    'chat.workflow.slot.source': 'Source',
+    'chat.workflow.slot.strategy': 'Strategy',
+    'chat.workflow.slot.style': 'Style',
+    'chat.workflow.slot.voice': 'Voice',
+    'chat.workflow.slot.world': 'World',
+    'chat.workflow.source.agent': 'agent',
+    'chat.workflow.source.asset': 'asset',
+    'chat.workflow.source.core': 'core',
+    'chat.workflow.source.safety': 'safety',
+    'chat.search': 'Search history characters or chats',
+    'chat.subtitle': 'History character chat',
+    'chat.threadEva': 'Chen Qianyu basic profile is connected.',
+    'chat.threadRuntime': 'Streaming text, tool calls, and local task status',
     'chat.title': 'Chat',
     'status.connectionFailed': 'Connection failed',
     'status.initializing': 'Initializing...',
@@ -1432,6 +1969,7 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
 }
 
 let currentLanguage: LanguageCode = 'zh-CN'
+let refreshChatLanguage: (() => void) | null = null
 
 function t(key: string): string {
   return I18N[currentLanguage][key] ?? I18N['zh-CN'][key] ?? key
@@ -1452,6 +1990,7 @@ function setLanguage(language: LanguageCode): void {
   renderSystemConfigIfReady()
   renderPluginsForCurrentLanguage()
   renderAppUpdateState()
+  refreshChatLanguage?.()
 }
 
 function applyI18n(): void {
@@ -1482,6 +2021,7 @@ function renderSystemConfigIfReady(): void {
 
 type LLMModelConfig = {
   id: string
+  provider?: LLMProviderType
   transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'
   modelName: string
   apiKey: string
@@ -1537,6 +2077,8 @@ type SystemConfig = {
   proxy: string
   llmModels: LLMModelConfig[]
   activeLLMId: string
+  chatModels: LLMModelConfig[]
+  activeChatId: string
   taskModels: LLMModelConfig[]
   activeTaskId: string
   taskRuntime: TaskRuntimeSettings
@@ -1571,6 +2113,7 @@ type AppLogEntry = {
 
 type SystemTelemetry = {
   success: boolean
+  cpuPercent: number
   memoryBytes: number
   activeNetworkInterfaces: number
   proxyActive: boolean
@@ -3609,9 +4152,11 @@ const mainView = document.getElementById('main-view')!
 const settingsNav = document.querySelector('.settings-nav') as HTMLElement
 const modelNavItem = document.querySelector('.nav-item[data-section="models"]') as HTMLElement | null
 const modelNavLabel = modelNavItem?.querySelector('.nav-label') as HTMLElement | null
-const telemetryMemory = document.getElementById('telemetry-memory') as HTMLElement
+const telemetryCpu = document.getElementById('telemetry-cpu') as HTMLElement
+const telemetryWifi = document.getElementById('telemetry-wifi') as HTMLElement
 const telemetryNetworkIcon = document.getElementById('telemetry-network-icon') as HTMLElement
 const telemetryNetwork = document.getElementById('telemetry-network') as HTMLElement
+const telemetryProxy = document.getElementById('telemetry-proxy') as HTMLElement
 const aboutVersion = document.getElementById('about-version') as HTMLElement
 const appUpdateButton = document.getElementById('app-update-button') as HTMLButtonElement
 const appUpdateLabel = document.getElementById('app-update-label') as HTMLElement
@@ -3874,7 +4419,7 @@ function openOrbStyleMenu(): void {
   menu.innerHTML = ORB_STYLE_OPTIONS.map(option => `
     <button class="config-provider-option appearance-provider-option ${option.value === currentOrbStyle ? 'selected' : ''}" type="button" role="option" aria-selected="${option.value === currentOrbStyle ? 'true' : 'false'}" data-orb-style="${option.value}">
       <span class="config-provider-option-check">${option.value === currentOrbStyle ? '✓' : ''}</span>
-      <span class="appearance-provider-option-spacer" aria-hidden="true"></span>
+      <span class="orb-style-glyph" data-orb-style="${option.value}" aria-hidden="true"></span>
       <span class="config-provider-option-label">${escapeHtml(t(option.labelKey))}</span>
     </button>
   `).join('')
@@ -4760,22 +5305,6 @@ contextMenu.addEventListener('click', (e) => {
   contextMenu.classList.remove('visible')
 })
 
-function getNetworkLabel(telemetry: SystemTelemetry): string {
-  if (!navigator.onLine || telemetry.activeNetworkInterfaces === 0) {
-    return 'OFFLINE'
-  }
-
-  const connection = (navigator as any).connection
-  const effectiveType = typeof connection?.effectiveType === 'string'
-    ? connection.effectiveType.toUpperCase()
-    : ''
-  const downlink = typeof connection?.downlink === 'number'
-    ? `${connection.downlink.toFixed(connection.downlink >= 10 ? 0 : 1)} MBPS`
-    : ''
-
-  return [effectiveType || 'ONLINE', downlink, telemetry.proxyActive ? 'PROXY' : ''].filter(Boolean).join(' / ')
-}
-
 function formatTelemetryBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) {
     return '--'
@@ -4787,20 +5316,50 @@ function formatTelemetryBytes(bytes: number): string {
   return `${mib.toFixed(1)}M`
 }
 
+function formatTelemetryPercent(value: number): string {
+  if (!Number.isFinite(value) || value < 0) {
+    return '--'
+  }
+  return `${Math.round(value)}%`
+}
+
+function getConnectionTelemetry(telemetry: SystemTelemetry): { wifi: string; cellular: string } {
+  if (!navigator.onLine || telemetry.activeNetworkInterfaces === 0) {
+    return { wifi: 'OFF', cellular: '--' }
+  }
+
+  const connection = (navigator as any).connection
+  const downlink = typeof connection?.downlink === 'number'
+    ? `${connection.downlink.toFixed(connection.downlink >= 10 ? 0 : 1)}M`
+    : '--'
+
+  return {
+    wifi: telemetry.activeNetworkInterfaces > 1 ? `${telemetry.activeNetworkInterfaces} NET` : 'ON',
+    cellular: downlink,
+  }
+}
+
 async function refreshSystemTelemetry(): Promise<void> {
   try {
     const telemetry = await window.electronAPI.getSystemTelemetry()
     if (!telemetry.success) {
       throw new Error(telemetry.error ?? 'telemetry unavailable')
     }
-    telemetryMemory.textContent = formatTelemetryBytes(telemetry.memoryBytes)
-    telemetryNetwork.textContent = getNetworkLabel(telemetry)
-    telemetryNetwork.title = telemetry.activeProxyUrl ? `Proxy: ${telemetry.activeProxyUrl}` : ''
+    const connection = getConnectionTelemetry(telemetry)
+    telemetryCpu.textContent = formatTelemetryPercent(telemetry.cpuPercent)
+    telemetryCpu.title = `Memory: ${formatTelemetryBytes(telemetry.memoryBytes)}`
+    telemetryWifi.textContent = connection.wifi
+    telemetryNetwork.textContent = connection.cellular
+    telemetryProxy.textContent = telemetry.proxyActive ? '已启用' : '未启用'
+    telemetryProxy.title = telemetry.activeProxyUrl ? `Proxy: ${telemetry.activeProxyUrl}` : ''
     telemetryNetworkIcon.classList.toggle('proxy-active', telemetry.proxyActive)
   } catch {
-    telemetryMemory.textContent = '--'
+    telemetryCpu.textContent = '--'
+    telemetryCpu.title = ''
+    telemetryWifi.textContent = '--'
     telemetryNetwork.textContent = 'UNKNOWN'
-    telemetryNetwork.title = ''
+    telemetryProxy.textContent = '--'
+    telemetryProxy.title = ''
     telemetryNetworkIcon.classList.remove('proxy-active')
   }
 }
@@ -5009,9 +5568,15 @@ const chatPanelController = initializeChatPanel({
   mainView,
   settingsPanel,
   getLanguage: () => currentLanguage,
+  setLanguage: async (language) => {
+    setLanguage(language)
+    languageSelect.value = language
+    await window.electronAPI.updateSettings({ language })
+  },
+  t,
   escapeHtml,
   waitForNextPaint,
-  enterFullWindowMode: () => window.electronAPI.setCompactWindowMode(false).catch((error) => {
+  enterFullWindowMode: () => window.electronAPI.setChatWindowMode(true).catch((error) => {
     console.warn('[Window] Failed to enter chat window mode:', error)
   }),
   restoreCompactWindowMode: async () => {
@@ -5030,6 +5595,7 @@ const chatPanelController = initializeChatPanel({
     startOrbAnimation()
   },
 })
+refreshChatLanguage = () => chatPanelController.refreshLanguage()
 
 initializeOrbEntryMenu({
   trigger: orbSettingsBtn,
@@ -6663,13 +7229,13 @@ function getTaskTransportLogo(transport: NonNullable<LLMModelConfig['transport']
   if (transport === 'claude_code_local') {
     return { src: claudeCodeLogoUrl, alt: 'Claude Code' }
   }
-  return { src: openAIIconUrl, alt: 'OpenAI', tone: 'light' }
+  return { src: newAPIIconUrl, alt: 'New API' }
 }
 
 function getTaskModelLogo(model: LLMModelConfig): ModelLogo {
   const transport = getTaskModelTransport(model)
   return transport === 'openai_compatible'
-    ? getLLMModelLogo(model)
+    ? getLLMProviderLogo(model.provider, model)
     : getTaskTransportLogo(transport)
 }
 
@@ -6953,7 +7519,7 @@ const accountInputsPageCount = document.getElementById('account-inputs-page-coun
 const memoryOverviewPage = document.getElementById('memory-overview-page')!
 const memoryAccountPage = document.getElementById('memory-account-page')!
 const openAccountInputsBtn = document.getElementById('open-account-inputs-btn') as HTMLButtonElement
-const backMemoryOverviewBtn = document.getElementById('back-memory-overview-btn') as HTMLButtonElement
+const backMemoryOverviewBtn = document.getElementById('back-memory-overview-btn') as HTMLButtonElement | null
 const clearAccountInputsBtn = document.getElementById('clear-account-inputs-btn') as HTMLButtonElement
 
 type UserProfile = {
@@ -7549,7 +8115,7 @@ openAccountInputsBtn.addEventListener('click', () => {
   switchMemoryPage('accounts')
 })
 
-backMemoryOverviewBtn.addEventListener('click', () => {
+backMemoryOverviewBtn?.addEventListener('click', () => {
   switchMemoryPage('overview')
 })
 
@@ -7592,7 +8158,7 @@ const modelsManagerPage = document.getElementById('models-manager-page') as HTML
 const modelOverviewList = document.getElementById('model-overview-list')!
 const modelManagerTitle = document.getElementById('model-manager-title')!
 const modelManagerSubtitle = document.getElementById('model-manager-subtitle')!
-const backModelOverviewBtn = document.getElementById('back-model-overview-btn') as HTMLButtonElement
+const backModelOverviewBtn = document.getElementById('back-model-overview-btn') as HTMLButtonElement | null
 const llmModelsList = document.getElementById('llm-models-list')!
 const taskModelsList = document.getElementById('task-models-list')!
 const ttsModelsList = document.getElementById('tts-models-list')!
@@ -8192,12 +8758,13 @@ function renderModelCard(kind: ModelListKind, model: LLMModelConfig | TTSModelCo
   if (kind === 'llm') {
     const item = model as LLMModelConfig
     const models = currentSystemConfig.llmModels
+    const providerEntry = getLLMProviderCatalogEntry(item.provider)
     return `
     <div class="config-model-card ${item.id === currentSystemConfig.activeLLMId ? 'active' : ''}" data-id="${escapeHtml(item.id)}">
       <div class="config-model-header">
         <div class="config-model-name">
-          ${renderModelLogo(getLLMModelLogo(item))}
-          <input type="text" value="${escapeHtml(item.modelName)}" data-field="modelName" placeholder="deepseek-chat" />
+          ${renderLLMProviderControl(item)}
+          <input type="text" value="${escapeHtml(item.modelName)}" data-field="modelName" placeholder="${escapeHtml(providerEntry.defaultModel || 'model-name')}" />
           ${item.id === currentSystemConfig.activeLLMId ? `<span class="config-model-active-badge">${escapeHtml(t('common.active'))}</span>` : ''}
         </div>
         <div class="config-model-actions">
@@ -8208,8 +8775,12 @@ function renderModelCard(kind: ModelListKind, model: LLMModelConfig | TTSModelCo
       </div>
       <div class="config-model-fields">
         <div class="config-field">
+          <span class="config-field-label">Provider</span>
+          ${renderLLMProviderControl(item)}
+        </div>
+        <div class="config-field">
           <span class="config-field-label">API Key</span>
-          <input type="text" class="config-field-input masked" value="${escapeHtml(item.apiKey)}" data-field="apiKey" placeholder="sk-..." />
+          <input type="text" class="config-field-input masked" value="${escapeHtml(item.apiKey)}" data-field="apiKey" placeholder="${escapeHtml(providerEntry.defaultApiKeyPlaceholder)}" />
         </div>
         <div class="config-field">
           <span class="config-field-label">Base URL</span>
@@ -8225,12 +8796,13 @@ function renderModelCard(kind: ModelListKind, model: LLMModelConfig | TTSModelCo
     const models = currentSystemConfig.taskModels
     const transport = getTaskModelTransport(item)
     const isCli = transport !== 'openai_compatible'
+    const providerEntry = getLLMProviderCatalogEntry(item.provider)
     const taskFields = isCli
       ? ''
       : `
         <div class="config-field">
           <span class="config-field-label">API Key</span>
-          <input type="text" class="config-field-input masked" value="${escapeHtml(item.apiKey)}" data-field="apiKey" placeholder="sk-..." />
+          <input type="text" class="config-field-input masked" value="${escapeHtml(item.apiKey)}" data-field="apiKey" placeholder="${escapeHtml(providerEntry.defaultApiKeyPlaceholder)}" />
         </div>
         <div class="config-field">
           <span class="config-field-label">Base URL</span>
@@ -8241,10 +8813,10 @@ function renderModelCard(kind: ModelListKind, model: LLMModelConfig | TTSModelCo
     <div class="config-model-card ${item.id === currentSystemConfig.activeTaskId ? 'active' : ''}" data-id="${escapeHtml(item.id)}">
       <div class="config-model-header">
         <div class="config-model-name">
-          ${renderTaskTransportControl(item)}
+          ${renderTaskProviderControl(item)}
           ${isCli
             ? '<span class="config-model-cli-default">CLI default</span>'
-            : `<input type="text" value="${escapeHtml(item.modelName)}" data-field="modelName" placeholder="gemini-3.1-pro-preview" />`
+            : `<input type="text" value="${escapeHtml(item.modelName)}" data-field="modelName" placeholder="${escapeHtml(providerEntry.defaultModel || 'model-name')}" />`
           }
           ${item.id === currentSystemConfig.activeTaskId ? `<span class="config-model-active-badge">${escapeHtml(t('common.active'))}</span>` : ''}
         </div>
@@ -8256,8 +8828,8 @@ function renderModelCard(kind: ModelListKind, model: LLMModelConfig | TTSModelCo
       </div>
       <div class="config-model-fields">
         <div class="config-field">
-          <span class="config-field-label">Transport</span>
-          ${renderTaskTransportControl(item)}
+          <span class="config-field-label">Provider</span>
+          ${renderTaskProviderControl(item)}
         </div>
         ${taskFields}
       </div>
@@ -8406,42 +8978,102 @@ function getLLMModelLogo(model: Pick<LLMModelConfig, 'modelName' | 'baseUrl'>): 
   return { src: openAIIconUrl, alt: 'OpenAI', tone: 'light' }
 }
 
+function getLLMProviderLogo(provider: LLMProviderType | undefined, model?: Pick<LLMModelConfig, 'modelName' | 'baseUrl'>): ModelLogo {
+  switch (provider) {
+    case 'gemini':
+      return { src: geminiIconUrl, alt: 'Gemini' }
+    case 'claude':
+      return { src: claudeIconUrl, alt: 'Claude' }
+    case 'deepseek':
+      return { src: deepseekIconUrl, alt: 'DeepSeek' }
+    case 'qwen':
+      return { src: qwenIconUrl, alt: 'Qwen' }
+    case 'groq':
+      return { src: groqIconUrl, alt: 'Groq', tone: 'light' }
+    case 'azure-openai':
+      return { src: azureAIIconUrl, alt: 'Azure OpenAI' }
+    case 'ollama':
+      return { src: ollamaIconUrl, alt: 'Ollama', tone: 'light' }
+    case 'openai-compatible':
+      return { src: newAPIIconUrl, alt: 'New API' }
+    case 'openai':
+      return { src: openAIIconUrl, alt: getLLMProviderCatalogEntry(provider).label, tone: 'light' }
+    default:
+      return model ? getLLMModelLogo(model) : { src: openAIIconUrl, alt: 'OpenAI', tone: 'light' }
+  }
+}
+
 function getTTSProviderLogo(provider: TTSProviderType): ModelLogo {
   switch (provider) {
     case 'fish':
       return { src: fishAudioIconUrl, alt: 'Fish Audio', tone: 'light' }
     case 'elevenlabs':
       return { src: elevenLabsIconUrl, alt: 'ElevenLabs', tone: 'light' }
+    case 'gemini':
+      return { src: geminiIconUrl, alt: getTTSProviderCatalogEntry(provider).label }
+    case 'google-cloud':
+      return { src: googleCloudIconUrl, alt: 'Google Cloud' }
+    case 'groq':
+      return { src: groqIconUrl, alt: 'Groq', tone: 'light' }
+    case 'azure-openai':
+    case 'azure-speech':
+      return { src: azureAIIconUrl, alt: getTTSProviderCatalogEntry(provider).label }
+    case 'minimax':
+      return { src: minimaxIconUrl, alt: 'MiniMax' }
+    case 'openai-compatible':
+      return { src: newAPIIconUrl, alt: getTTSProviderCatalogEntry(provider).label }
     case 'openai':
     default:
-      return { src: openAIIconUrl, alt: 'OpenAI', tone: 'light' }
+      return { src: openAIIconUrl, alt: getTTSProviderCatalogEntry(provider).label, tone: 'light' }
   }
 }
 
 function getASRProviderLogo(provider: ASRProviderType): ModelLogo {
   switch (provider) {
+    case 'fish':
+      return { src: fishAudioIconUrl, alt: 'Fish Audio', tone: 'light' }
+    case 'elevenlabs':
+      return { src: elevenLabsIconUrl, alt: 'ElevenLabs', tone: 'light' }
     case 'qwen':
       return { src: qwenIconUrl, alt: 'Qwen' }
     case 'groq':
       return { src: groqIconUrl, alt: 'Groq', tone: 'light' }
+    case 'assemblyai':
+      return { src: assemblyAIIconUrl, alt: 'AssemblyAI' }
+    case 'google-cloud':
+      return { src: googleCloudIconUrl, alt: 'Google Cloud' }
+    case 'azure-openai':
+    case 'azure-speech':
+      return { src: azureAIIconUrl, alt: getASRProviderCatalogEntry(provider).label }
+    case 'openai-compatible':
+      return { src: newAPIIconUrl, alt: getASRProviderCatalogEntry(provider).label }
     case 'openai':
     default:
-      return { src: openAIIconUrl, alt: 'OpenAI', tone: 'light' }
+      return { src: openAIIconUrl, alt: getASRProviderCatalogEntry(provider).label, tone: 'light' }
   }
 }
 
-const TTS_PROVIDERS = TTS_PROVIDER_CATALOG.filter(provider => provider.implemented)
+const TTS_PROVIDERS = TTS_PROVIDER_CATALOG
+const LLM_PROVIDERS = LLM_PROVIDER_CATALOG
 const TASK_MODEL_TRANSPORTS: Array<{ value: NonNullable<LLMModelConfig['transport']>; label: string }> = [
   { value: 'openai_compatible', label: 'API' },
   { value: 'codex_local', label: 'Codex' },
   { value: 'claude_code_local', label: 'Claude Code' },
 ]
+const TASK_PROVIDER_OPTIONS = [
+  ...LLM_PROVIDERS,
+  ...TASK_MODEL_TRANSPORTS.filter(provider => provider.value !== 'openai_compatible'),
+]
+
+function getLLMProviderLabel(provider: LLMProviderType | undefined): string {
+  return getLLMProviderCatalogEntry(provider).label
+}
 
 function getTTSProviderLabel(provider: TTSProviderType): string {
   return TTS_PROVIDERS.find(p => p.value === provider)?.label || provider
 }
 
-function renderProviderControl(kind: 'tts' | 'asr' | 'task-transport', value: string, label: string, logo?: ModelLogo): string {
+function renderProviderControl(kind: 'llm' | 'task-llm' | 'task-provider' | 'tts' | 'asr' | 'task-transport', value: string, label: string, logo?: ModelLogo): string {
   const field = kind === 'task-transport' ? 'transport' : 'provider'
   return `
     <span class="config-provider-control">
@@ -8453,6 +9085,21 @@ function renderProviderControl(kind: 'tts' | 'asr' | 'task-transport', value: st
       </button>
     </span>
   `
+}
+
+function renderLLMProviderControl(model: LLMModelConfig, kind: 'llm' | 'task-llm' = 'llm'): string {
+  const provider = getLLMProviderCatalogEntry(model.provider).value
+  return renderProviderControl(kind, provider, getLLMProviderLabel(provider), getLLMProviderLogo(provider, model))
+}
+
+function renderTaskProviderControl(model: LLMModelConfig): string {
+  const transport = getTaskModelTransport(model)
+  if (transport !== 'openai_compatible') {
+    return renderProviderControl('task-provider', transport, getTaskTransportLabel(transport), getTaskTransportLogo(transport))
+  }
+
+  const provider = getLLMProviderCatalogEntry(model.provider).value
+  return renderProviderControl('task-provider', provider, getLLMProviderLabel(provider), getLLMProviderLogo(provider, model))
 }
 
 function renderTTSProviderControl(provider: TTSProviderType): string {
@@ -8488,7 +9135,7 @@ function renderTTSModels(): void {
   renderModelList('tts')
 }
 
-const ASR_PROVIDERS = ASR_PROVIDER_CATALOG.filter(provider => provider.implemented)
+const ASR_PROVIDERS = ASR_PROVIDER_CATALOG
 
 function getASRProviderLabel(provider: ASRProviderType): string {
   return ASR_PROVIDERS.find(p => p.value === provider)?.label || provider
@@ -8522,10 +9169,14 @@ function closeProviderMenu(): void {
 }
 
 function openProviderMenu(button: HTMLButtonElement, id: string): void {
-  const kind = button.dataset.providerKind as 'tts' | 'asr' | 'task-transport' | undefined
+  const kind = button.dataset.providerKind as 'llm' | 'task-llm' | 'task-provider' | 'tts' | 'asr' | 'task-transport' | undefined
   if (!kind) return
 
-  const providers = kind === 'tts'
+  const providers = kind === 'llm' || kind === 'task-llm'
+    ? LLM_PROVIDERS
+    : kind === 'task-provider'
+      ? TASK_PROVIDER_OPTIONS
+    : kind === 'tts'
     ? TTS_PROVIDERS
     : kind === 'asr'
       ? ASR_PROVIDERS
@@ -8548,18 +9199,23 @@ function openProviderMenu(button: HTMLButtonElement, id: string): void {
   menu.style.left = `${Math.min(rect.left, window.innerWidth - menuWidth - 12)}px`
   menu.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - providers.length * optionHeight - 14)}px`
   menu.innerHTML = providers.map(provider => {
-    const logo = kind === 'tts'
+    const implemented = 'implemented' in provider ? provider.implemented : true
+    const logo = kind === 'llm' || kind === 'task-llm'
+      ? getLLMProviderLogo(provider.value as LLMProviderType)
+      : kind === 'task-provider'
+        ? provider.value === 'codex_local' || provider.value === 'claude_code_local'
+          ? getTaskTransportLogo(provider.value as NonNullable<LLMModelConfig['transport']>)
+          : getLLMProviderLogo(provider.value as LLMProviderType)
+      : kind === 'tts'
       ? getTTSProviderLogo(provider.value as TTSProviderType)
       : kind === 'asr'
         ? getASRProviderLogo(provider.value as ASRProviderType)
-        : provider.value === 'openai_compatible' && taskModel
-          ? getLLMModelLogo(taskModel)
-          : getTaskTransportLogo(provider.value as NonNullable<LLMModelConfig['transport']>)
+        : getTaskTransportLogo(provider.value as NonNullable<LLMModelConfig['transport']>)
     return `
-    <button class="config-provider-option ${provider.value === currentValue ? 'selected' : ''}" type="button" role="option" aria-selected="${provider.value === currentValue ? 'true' : 'false'}" data-provider-value="${escapeHtml(provider.value)}">
+    <button class="config-provider-option ${provider.value === currentValue ? 'selected' : ''} ${implemented ? '' : 'disabled'}" type="button" role="option" aria-selected="${provider.value === currentValue ? 'true' : 'false'}" data-provider-value="${escapeHtml(provider.value)}" ${implemented ? '' : 'disabled'}>
       <span class="config-provider-option-check">${provider.value === currentValue ? '✓' : ''}</span>
       ${logo ? renderModelLogo(logo, 'provider-option') : ''}
-      <span class="config-provider-option-label">${escapeHtml(provider.label)}</span>
+      <span class="config-provider-option-label">${escapeHtml(provider.label)}${implemented ? '' : ' · TODO'}</span>
     </button>
   `
   }).join('')
@@ -8572,7 +9228,17 @@ function openProviderMenu(button: HTMLButtonElement, id: string): void {
         return
       }
       closeProviderMenu()
-      if (kind === 'tts') {
+      if (kind === 'llm') {
+        await updateLLMProvider(id, provider as LLMProviderType)
+      } else if (kind === 'task-provider') {
+        if (provider === 'codex_local' || provider === 'claude_code_local') {
+          await updateTaskTransport(id, provider as NonNullable<LLMModelConfig['transport']>)
+        } else {
+          await updateTaskProvider(id, provider as LLMProviderType)
+        }
+      } else if (kind === 'task-llm') {
+        await updateTaskProvider(id, provider as LLMProviderType)
+      } else if (kind === 'tts') {
         await updateTTSProvider(id, provider as TTSProviderType)
       } else if (kind === 'asr') {
         await updateASRProvider(id, provider as ASRProviderType)
@@ -8786,6 +9452,25 @@ async function updateLLMModel(id: string, updates: Partial<LLMModelConfig>): Pro
   }
 }
 
+async function updateLLMProvider(id: string, provider: LLMProviderType): Promise<void> {
+  if (!currentSystemConfig) return
+  const model = currentSystemConfig.llmModels.find(m => m.id === id)
+  if (!model) return
+
+  const providerEntry = getLLMProviderCatalogEntry(provider)
+  const providerChanged = model.provider !== provider
+  model.provider = provider
+  if (providerChanged) {
+    model.modelName = providerEntry.defaultModel
+    model.baseUrl = providerEntry.defaultBaseUrl
+  } else {
+    model.modelName ||= providerEntry.defaultModel
+    model.baseUrl ||= providerEntry.defaultBaseUrl
+  }
+  await saveSystemConfigForModel('llm')
+  syncModelCard('llm', id)
+}
+
 async function activateLLMModel(id: string): Promise<void> {
   if (!currentSystemConfig) return
   const previousId = currentSystemConfig.activeLLMId
@@ -8810,9 +9495,10 @@ async function addLLMModel(): Promise<void> {
   if (!currentSystemConfig) return
   const newModel: LLMModelConfig = {
     id: generateId(),
-    modelName: '',
+    provider: 'openai-compatible',
+    modelName: getLLMProviderCatalogEntry('openai-compatible').defaultModel,
     apiKey: '',
-    baseUrl: ''
+    baseUrl: getLLMProviderCatalogEntry('openai-compatible').defaultBaseUrl
   }
   currentSystemConfig.llmModels.push(newModel)
   await saveSystemConfigForModel('llm')
@@ -8837,8 +9523,30 @@ async function updateTaskTransport(id: string, transport: NonNullable<LLMModelCo
   const transportChanged = getTaskModelTransport(model) !== transport
   model.transport = transport
   if (transportChanged && transport === 'openai_compatible') {
-    model.modelName ||= 'gemini-3.1-pro-preview'
-    model.baseUrl ||= 'https://generativelanguage.googleapis.com/v1beta/openai'
+    const providerEntry = getLLMProviderCatalogEntry(model.provider || 'gemini')
+    model.provider ||= providerEntry.value
+    model.modelName ||= providerEntry.defaultModel || 'gemini-3.1-pro-preview'
+    model.baseUrl ||= providerEntry.defaultBaseUrl
+  }
+  await saveSystemConfigForModel('task')
+  syncModelCard('task', id)
+}
+
+async function updateTaskProvider(id: string, provider: LLMProviderType): Promise<void> {
+  if (!currentSystemConfig) return
+  const model = currentSystemConfig.taskModels.find(m => m.id === id)
+  if (!model) return
+
+  const providerEntry = getLLMProviderCatalogEntry(provider)
+  const providerChanged = model.provider !== provider
+  model.provider = provider
+  model.transport = 'openai_compatible'
+  if (providerChanged) {
+    model.modelName = providerEntry.defaultModel
+    model.baseUrl = providerEntry.defaultBaseUrl
+  } else {
+    model.modelName ||= providerEntry.defaultModel
+    model.baseUrl ||= providerEntry.defaultBaseUrl
   }
   await saveSystemConfigForModel('task')
   syncModelCard('task', id)
@@ -8868,10 +9576,11 @@ async function addTaskModel(): Promise<void> {
   if (!currentSystemConfig) return
   const newModel: LLMModelConfig = {
     id: generateId(),
+    provider: 'gemini',
     transport: 'openai_compatible',
-    modelName: 'gemini-3.1-pro-preview',
+    modelName: getLLMProviderCatalogEntry('gemini').defaultModel,
     apiKey: '',
-    baseUrl: ''
+    baseUrl: getLLMProviderCatalogEntry('gemini').defaultBaseUrl
   }
   currentSystemConfig.taskModels.push(newModel)
   await saveSystemConfigForModel('task')
@@ -9029,7 +9738,7 @@ proxyInput.addEventListener('change', async () => {
 })
 
 // Add button handlers
-backModelOverviewBtn.addEventListener('click', closeModelManager)
+backModelOverviewBtn?.addEventListener('click', closeModelManager)
 modelOverviewList.addEventListener('click', (event) => {
   const card = (event.target as HTMLElement | null)?.closest<HTMLElement>('.model-overview-card')
   const kind = card?.dataset.modelKind as ModelManagerKind | undefined

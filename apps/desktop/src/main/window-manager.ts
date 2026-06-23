@@ -7,6 +7,7 @@ import { join } from 'path'
 export const COMPACT_WINDOW_SIZE = { width: 380, height: 380 }
 export const TASK_WINDOW_SIZE = { width: 600, height: 380 }
 export const SETTINGS_WINDOW_SIZE = { width: 500, height: 600 }
+export const CHAT_WINDOW_DESIGN_SIZE = { width: 2048, height: 1079 }
 
 export interface CreateMainWindowOptions {
   dirname: string

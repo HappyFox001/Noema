@@ -11,6 +11,41 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./character-workflow": {
+      "types": "./dist/character-workflow/index.d.ts",
+      "import": "./dist/character-workflow/index.js",
+      "default": "./dist/character-workflow/index.js"
+    },
+    "./character-workflow/workflow-builder": {
+      "types": "./dist/character-workflow/workflow-builder.d.ts",
+      "import": "./dist/character-workflow/workflow-builder.js",
+      "default": "./dist/character-workflow/workflow-builder.js"
+    },
+    "./chat/conversation-runtime": {
+      "types": "./dist/chat/conversation-runtime.d.ts",
+      "import": "./dist/chat/conversation-runtime.js",
+      "default": "./dist/chat/conversation-runtime.js"
+    },
+    "./chat/model-list": {
+      "types": "./dist/chat/model-list.d.ts",
+      "import": "./dist/chat/model-list.js",
+      "default": "./dist/chat/model-list.js"
+    },
+    "./chat/request-runtime": {
+      "types": "./dist/chat/request-runtime.d.ts",
+      "import": "./dist/chat/request-runtime.js",
+      "default": "./dist/chat/request-runtime.js"
+    },
+    "./image": {
+      "types": "./dist/image/index.d.ts",
+      "import": "./dist/image/index.js",
+      "default": "./dist/image/index.js"
+    },
+    "./image/catalog": {
+      "types": "./dist/image/catalog.d.ts",
+      "import": "./dist/image/catalog.js",
+      "default": "./dist/image/catalog.js"
+    },
     "./config/personality-loader": {
       "types": "./dist/config/personality-loader.d.ts",
       "import": "./dist/config/personality-loader.js",
@@ -27,6 +62,8 @@
     "fft.js": "^4.0.4",
     "fish-audio": "^0.1.0",
     "openai": "^4.28.0",
+    "proxy-agent": "^6.5.0",
+    "undici": "^6.22.0",
     "yaml": "^2.3.4"
   },
   "devDependencies": {

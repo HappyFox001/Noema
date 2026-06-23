@@ -225,6 +225,7 @@ declare global {
       setLogsStreaming: (streaming: boolean) => void
       getSystemTelemetry: () => Promise<{
         success: boolean
+        cpuPercent: number
         memoryBytes: number
         activeNetworkInterfaces: number
         proxyActive: boolean
@@ -243,14 +244,17 @@ declare global {
         pluginPathHistory: Record<string, { mode: 'file' | 'directory'; lastPath: string; recentPaths: string[] }>
         system: {
           proxy: string
-          llmModels: Array<{ id: string; modelName: string; apiKey: string; baseUrl: string }>
+          llmModels: Array<{ id: string; provider?: string; modelName: string; apiKey: string; baseUrl: string }>
           activeLLMId: string
-          taskModels: Array<{ id: string; transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'; modelName: string; apiKey: string; baseUrl: string }>
+          chatModels: Array<{ id: string; modelType: 'llm' | 'image'; provider?: string; modelName: string; enabledModels: string[]; availableModels: string[]; modelsFetchedAt?: number; apiKey: string; baseUrl: string }>
+          activeChatId: string
+          activeChatModelName: string
+          taskModels: Array<{ id: string; provider?: string; transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'; modelName: string; apiKey: string; baseUrl: string }>
           activeTaskId: string
           taskRuntime: any
-          ttsModels: Array<{ id: string; provider: 'fish'; modelName: string; apiKey: string; voiceId?: string }>
+          ttsModels: Array<{ id: string; provider: string; modelName: string; apiKey: string; voiceId?: string; baseUrl?: string; language?: string; format?: 'pcm' | 'mp3' | 'opus'; sampleRate?: number; extra?: Record<string, unknown> }>
           activeTTSId: string
-          asrModels: Array<{ id: string; provider: 'qwen'; modelName: string; apiKey: string }>
+          asrModels: Array<{ id: string; provider: string; modelName: string; apiKey: string; baseUrl?: string; language?: string; sampleRate?: number; extra?: Record<string, unknown> }>
           activeASRId: string
         }
       }>
@@ -266,14 +270,17 @@ declare global {
         pluginPathHistory: Record<string, { mode: 'file' | 'directory'; lastPath: string; recentPaths: string[] }>
         system: {
           proxy: string
-          llmModels: Array<{ id: string; modelName: string; apiKey: string; baseUrl: string }>
+          llmModels: Array<{ id: string; provider?: string; modelName: string; apiKey: string; baseUrl: string }>
           activeLLMId: string
-          taskModels: Array<{ id: string; transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'; modelName: string; apiKey: string; baseUrl: string }>
+          chatModels: Array<{ id: string; modelType: 'llm' | 'image'; provider?: string; modelName: string; enabledModels: string[]; availableModels: string[]; modelsFetchedAt?: number; apiKey: string; baseUrl: string }>
+          activeChatId: string
+          activeChatModelName: string
+          taskModels: Array<{ id: string; provider?: string; transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'; modelName: string; apiKey: string; baseUrl: string }>
           activeTaskId: string
           taskRuntime: any
-          ttsModels: Array<{ id: string; provider: 'fish'; modelName: string; apiKey: string; voiceId?: string }>
+          ttsModels: Array<{ id: string; provider: string; modelName: string; apiKey: string; voiceId?: string; baseUrl?: string; language?: string; format?: 'pcm' | 'mp3' | 'opus'; sampleRate?: number; extra?: Record<string, unknown> }>
           activeTTSId: string
-          asrModels: Array<{ id: string; provider: 'qwen'; modelName: string; apiKey: string }>
+          asrModels: Array<{ id: string; provider: string; modelName: string; apiKey: string; baseUrl?: string; language?: string; sampleRate?: number; extra?: Record<string, unknown> }>
           activeASRId: string
         }
       }>) => Promise<{
@@ -287,14 +294,17 @@ declare global {
         externalRolePaths: string[]
         system: {
           proxy: string
-          llmModels: Array<{ id: string; modelName: string; apiKey: string; baseUrl: string }>
+          llmModels: Array<{ id: string; provider?: string; modelName: string; apiKey: string; baseUrl: string }>
           activeLLMId: string
-          taskModels: Array<{ id: string; transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'; modelName: string; apiKey: string; baseUrl: string }>
+          chatModels: Array<{ id: string; modelType: 'llm' | 'image'; provider?: string; modelName: string; enabledModels: string[]; availableModels: string[]; modelsFetchedAt?: number; apiKey: string; baseUrl: string }>
+          activeChatId: string
+          activeChatModelName: string
+          taskModels: Array<{ id: string; provider?: string; transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'; modelName: string; apiKey: string; baseUrl: string }>
           activeTaskId: string
           taskRuntime: any
-          ttsModels: Array<{ id: string; provider: 'fish'; modelName: string; apiKey: string; voiceId?: string }>
+          ttsModels: Array<{ id: string; provider: string; modelName: string; apiKey: string; voiceId?: string; baseUrl?: string; language?: string; format?: 'pcm' | 'mp3' | 'opus'; sampleRate?: number; extra?: Record<string, unknown> }>
           activeTTSId: string
-          asrModels: Array<{ id: string; provider: 'qwen'; modelName: string; apiKey: string }>
+          asrModels: Array<{ id: string; provider: string; modelName: string; apiKey: string; baseUrl?: string; language?: string; sampleRate?: number; extra?: Record<string, unknown> }>
           activeASRId: string
         }
       }>
@@ -346,9 +356,9 @@ declare global {
       testApiModel: (
         kind: 'llm' | 'task' | 'tts' | 'asr',
         model:
-          | { id: string; transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'; modelName: string; apiKey: string; baseUrl: string }
-          | { id: string; provider: 'fish'; modelName: string; apiKey: string; voiceId?: string }
-          | { id: string; provider: 'qwen'; modelName: string; apiKey: string }
+          | { id: string; provider?: string; transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'; modelName: string; apiKey: string; baseUrl: string }
+          | { id: string; provider: string; modelName: string; apiKey: string; voiceId?: string; baseUrl?: string; language?: string; sampleRate?: number }
+          | { id: string; provider: string; modelName: string; apiKey: string; baseUrl?: string; language?: string; sampleRate?: number }
       ) => Promise<{
         success: boolean
         message?: string
@@ -559,6 +569,392 @@ declare global {
         }
         error?: string
       }>
+      listChatRoleResources: () => Promise<{
+        success: boolean
+        resources?: Array<{
+          id: string
+          name: Record<string, string>
+          displayName: Record<string, string>
+          description: Record<string, string>
+          story: Record<string, string>
+          background: Record<string, string>
+          scene: Record<string, unknown>
+          tag: Record<string, string[]>
+          avatarImage: string
+          bodyImage: string
+        }>
+        error?: string
+      }>
+      listChatConversations: () => Promise<{
+        success: boolean
+        conversations?: Array<{
+          id: string
+          characterId: string
+          title: Record<string, string>
+          preview: Record<string, string>
+          updatedLabel: Record<string, string>
+          sceneState?: Record<string, unknown>
+          summaries?: Array<{
+            id: string
+            text: Record<string, string>
+            createdLabel: Record<string, string>
+            messageCount: number
+            startMessageIndex: number
+            endMessageIndex: number
+            sourceMessageIds: string[]
+          }>
+          messages?: Array<{
+            id: string
+            role: 'system' | 'user' | 'assistant'
+            text: Record<string, string>
+            createdLabel: Record<string, string>
+            attachments?: Array<{
+              id: string
+              kind: 'image' | 'video'
+              name: string
+              mimeType: string
+              dataUrl?: string
+              size?: number
+            }>
+            state?: 'idle' | 'thinking' | 'generating_image' | 'using_tool'
+          }>
+          workflowState?: unknown
+          characterResource?: {
+            id: string
+            roleCard?: Record<string, unknown>
+            name: Record<string, string>
+            displayName: Record<string, string>
+            description: Record<string, string>
+            story: Record<string, string>
+            background: Record<string, string>
+            scene: Record<string, unknown>
+            firstMessage: Record<string, string>
+            tag: Record<string, string[]>
+            avatarImage: string
+            bodyImage: string
+          }
+          messageCount?: number
+          hasWorkflowState?: boolean
+        }>
+        error?: string
+      }>
+      getChatConversation: (id: string, request?: { includeWorkflowState?: boolean }) => Promise<{
+        success: boolean
+        conversation?: {
+          id: string
+          characterId: string
+          title: Record<string, string>
+          preview: Record<string, string>
+          updatedLabel: Record<string, string>
+          sceneState?: Record<string, unknown>
+          summaries?: Array<{
+            id: string
+            text: Record<string, string>
+            createdLabel: Record<string, string>
+            messageCount: number
+            startMessageIndex: number
+            endMessageIndex: number
+            sourceMessageIds: string[]
+          }>
+          messages: Array<{
+            id: string
+            role: 'system' | 'user' | 'assistant'
+            text: Record<string, string>
+            createdLabel: Record<string, string>
+            attachments?: Array<{
+              id: string
+              kind: 'image' | 'video'
+              name: string
+              mimeType: string
+              dataUrl?: string
+              size?: number
+            }>
+            state?: 'idle' | 'thinking' | 'generating_image' | 'using_tool'
+          }>
+          workflowState?: unknown
+          characterResource?: {
+            id: string
+            roleCard?: Record<string, unknown>
+            name: Record<string, string>
+            displayName: Record<string, string>
+            description: Record<string, string>
+            story: Record<string, string>
+            background: Record<string, string>
+            scene: Record<string, unknown>
+            firstMessage: Record<string, string>
+            tag: Record<string, string[]>
+            avatarImage: string
+            bodyImage: string
+          }
+        } | null
+        error?: string
+      }>
+      saveChatConversation: (conversation: {
+        id: string
+        characterId: string
+        title: Record<string, string>
+        preview: Record<string, string>
+        updatedLabel: Record<string, string>
+        sceneState: unknown
+        summaries?: unknown[]
+        messages: unknown[]
+        workflowState?: unknown
+        characterResource?: unknown
+      }) => Promise<{ success: boolean; error?: string }>
+      deleteChatConversation: (id: string) => Promise<{ success: boolean; error?: string }>
+      clearChatConversations: () => Promise<{ success: boolean; error?: string }>
+      sendChatMessage: (request: {
+        input: string
+        language?: string
+        preferencePrompt?: string
+        options?: Record<string, unknown>
+        messages?: Array<{
+          role: 'system' | 'user' | 'assistant'
+          content: string
+        }>
+        attachments?: Array<{
+          kind: 'image' | 'video'
+          name: string
+          mimeType: string
+          dataUrl?: string
+          size?: number
+        }>
+        character?: {
+          id?: string
+          displayName?: string
+          description?: string
+          story?: string
+          background?: string
+          firstMessage?: string
+          tags?: string[]
+          instructions?: string
+          sceneState?: Record<string, unknown>
+          canonMemory?: string[]
+          narrativeSummaries?: Array<{
+            startMessageIndex?: number
+            endMessageIndex?: number
+            text: string
+          }>
+        }
+      }) => Promise<{
+        success: boolean
+        response?: string
+        sceneUpdate?: Record<string, unknown>
+        error?: string
+      }>
+      buildCharacterWorkflow: (request: {
+        prompt: string
+        language?: 'zh-CN' | 'en-US'
+        mode?: 'create' | 'edit'
+        graph?: {
+          selectedNodeId?: string
+          nodes: Array<{
+            id: string
+            type: string
+            title?: string
+            config?: Record<string, unknown>
+            inputs?: string[]
+            outputs?: string[]
+          }>
+          edges: Array<{
+            id?: string
+            from: { nodeId: string; port: string }
+            to: { nodeId: string; port: string }
+            kind?: string
+          }>
+        }
+      }) => Promise<{
+        success: boolean
+        workflow?: Record<string, unknown>
+        spec?: {
+          name: string
+          plan?: string[]
+          summary?: string
+          confidence?: number
+          status?: 'applied' | 'needs-user' | 'blocked'
+          goalPrompt: string
+          targetAudience: string
+          stylePrompt: string
+          preset: string
+          intensity: number
+          mustHave: string[]
+          mustNot: string[]
+          sourceNotes: string
+          generationStrategy: {
+            mode: string
+            branchCount: number
+            priorityAssets: string[]
+          }
+          agentPolicy: {
+            autonomyLevel: string
+            revisionBudget: number
+            askUserThreshold: string
+          }
+          qualityGate: {
+            minimumScore: number
+            requiredChecks: string[]
+          }
+          assetTargets: string[]
+          outputFormat: string
+          operations?: Array<Record<string, unknown>>
+        }
+        uiConfigOverrides?: Record<string, Record<string, unknown>>
+        error?: string
+      }>
+      editCharacterWorkflowRunDraft: (request: {
+        prompt: string
+        language?: 'zh-CN' | 'en-US'
+        runTitle?: string
+        artifacts: Array<{
+          id?: string
+          type: string
+          sourceNodeId?: string
+          title?: string
+          summary?: string
+          data?: unknown
+        }>
+      }) => Promise<{
+        success: boolean
+        summary?: string
+        artifacts?: Array<{
+          id?: string
+          type: string
+          sourceNodeId?: string
+          title?: string
+          summary?: string
+          data?: unknown
+        }>
+        error?: string
+      }>
+      runCharacterWorkflow: (request: {
+        workflow: Record<string, unknown>
+        language?: 'zh-CN' | 'en-US'
+      }) => Promise<{
+        success: boolean
+        runId?: string
+        title?: string
+        artifacts?: Array<{
+          id: string
+          kind: string
+          title: string
+          summary: string
+          sourceNodeId?: string
+          data?: unknown
+        }>
+        error?: string
+      }>
+      streamCharacterWorkflow?: (request: {
+        workflow: Record<string, unknown>
+        language?: 'zh-CN' | 'en-US'
+      }, handlers?: {
+        onEvent?: (event: Record<string, unknown>) => void
+        onDone?: (result: {
+          success: boolean
+          runId?: string
+          title?: string
+          artifacts?: Array<{
+            id: string
+            kind: string
+            title: string
+            summary: string
+            sourceNodeId?: string
+            data?: unknown
+          }>
+          error?: string
+        }) => void
+        onError?: (error: string) => void
+      }) => Promise<{
+        success: boolean
+        runId?: string
+        title?: string
+        artifacts?: Array<{
+          id: string
+          kind: string
+          title: string
+          summary: string
+          sourceNodeId?: string
+          data?: unknown
+        }>
+        error?: string
+      }>
+      streamChatMessage: (request: {
+        input: string
+        language?: string
+        preferencePrompt?: string
+        options?: Record<string, unknown>
+        messages?: Array<{
+          role: 'system' | 'user' | 'assistant'
+          content: string
+        }>
+        attachments?: Array<{
+          kind: 'image' | 'video'
+          name: string
+          mimeType: string
+          dataUrl?: string
+          size?: number
+        }>
+        character?: {
+          id?: string
+          displayName?: string
+          description?: string
+          story?: string
+          background?: string
+          firstMessage?: string
+          tags?: string[]
+          instructions?: string
+          sceneState?: Record<string, unknown>
+          canonMemory?: string[]
+          narrativeSummaries?: Array<{
+            startMessageIndex?: number
+            endMessageIndex?: number
+            text: string
+          }>
+        }
+      }, handlers?: {
+        onDelta?: (delta: string) => void
+        onDone?: (result: {
+          success: boolean
+          response?: string
+          sceneUpdate?: Record<string, unknown>
+          error?: string
+        }) => void
+        onError?: (error: string) => void
+      }) => Promise<{
+        success: boolean
+        response?: string
+        sceneUpdate?: Record<string, unknown>
+        error?: string
+      }>
+      listChatModels: (request: {
+        provider?: string
+        apiKey?: string
+        baseUrl?: string
+      }) => Promise<{
+        success: boolean
+        models?: string[]
+        error?: string
+      }>
+      selectChatMedia: (request?: {
+        kind?: 'image' | 'video' | 'media'
+      }) => Promise<{
+        success: boolean
+        canceled?: boolean
+        attachments?: Array<{
+          kind: 'image' | 'video'
+          name: string
+          mimeType: string
+          dataUrl?: string
+          size?: number
+        }>
+        error?: string
+      }>
+      requestChatCameraPermission: () => Promise<{
+        success: boolean
+        granted?: boolean
+        status?: string
+        openedSettings?: boolean
+        error?: string
+      }>
       submitInteractiveInput: (requestId: string, response: {
         value: string
         remembered?: boolean
@@ -728,6 +1124,24 @@ declare global {
       endThemeTransitionCover: () => Promise<{ success: boolean; error?: string }>
       playThemeTransitionCover: (afterDataUrl: string) => Promise<{ success: boolean; error?: string }>
       setCompactWindowMode: (compact: boolean) => Promise<{ success: boolean; error?: string }>
+      setChatWindowMode: (active: boolean, fullscreen?: boolean) => Promise<{
+        success: boolean
+        fullscreen?: boolean
+        width?: number
+        height?: number
+        error?: string
+      }>
+      resizeChatWindow: (
+        edge: 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw',
+        deltaX: number,
+        deltaY: number
+      ) => Promise<{
+        success: boolean
+        fullscreen?: boolean
+        width?: number
+        height?: number
+        error?: string
+      }>
       setTaskWindowMode: (active: boolean) => Promise<{ success: boolean; error?: string }>
     }
   }

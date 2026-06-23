@@ -3,6 +3,7 @@
  */
 import OpenAI from 'openai'
 import type { SDKConfig } from '../config/types.js'
+import { createProxyFetch, createProxyHttpAgent, normalizeProxyUrl } from '../utils/proxy.js'
 
 export interface LLMResponse {
   content: string
@@ -23,6 +24,7 @@ export interface LLMProvider {
 export interface LLMProviderOptions {
   defaultReasoningMode?: 'minimal-or-none'
   geminiThinkingMode?: 'minimal-or-none'
+  proxyUrl?: string
 }
 
 export class OpenAIProvider implements LLMProvider {
@@ -38,6 +40,7 @@ export class OpenAIProvider implements LLMProvider {
       apiKey,
       baseURL,
       dangerouslyAllowBrowser: true,
+      httpAgent: createProxyHttpAgent(providerOptions.proxyUrl),
     })
   }
 
@@ -46,7 +49,7 @@ export class OpenAIProvider implements LLMProvider {
     const response = await this.client.chat.completions.create({
       model: this.model,
       messages,
-      ...this.withDefaultReasoning(requestOptions)
+      ...this.withDefaultReasoning(this.cleanOpenAICompatibleRequestOptions(requestOptions, false))
     } as any, signal ? { signal } : undefined)
 
     const message = response.choices[0]?.message
@@ -71,7 +74,7 @@ export class OpenAIProvider implements LLMProvider {
       model: this.model,
       messages,
       stream: true,
-      ...this.withDefaultReasoning(requestOptions)
+      ...this.withDefaultReasoning(this.cleanOpenAICompatibleRequestOptions(requestOptions, true))
     } as any, signal ? { signal } : undefined) as any
 
     for await (const chunk of stream) {
@@ -86,6 +89,10 @@ export class OpenAIProvider implements LLMProvider {
   }
 
   private withDefaultReasoning(requestOptions: any): any {
+    if (isOfficialGeminiOpenAIEndpoint(this.baseURL)) {
+      return requestOptions
+    }
+
     if (!this.shouldApplyMinimalReasoning(requestOptions)) {
       return requestOptions
     }
@@ -112,11 +119,314 @@ export class OpenAIProvider implements LLMProvider {
 
     return true
   }
+
+  private cleanOpenAICompatibleRequestOptions(requestOptions: any, streaming: boolean): any {
+    if (!isOfficialGeminiOpenAIEndpoint(this.baseURL)) {
+      return requestOptions
+    }
+
+    const {
+      signal,
+      messages,
+      model,
+      stream,
+      stream_options,
+      streamOptions,
+      max_tokens,
+      max_completion_tokens,
+      maxTokens,
+      reasoning_effort,
+      reasoning,
+      thinking,
+      tools,
+      tool_choice,
+      parallel_tool_calls,
+      response_format,
+      ...rest
+    } = requestOptions ?? {}
+
+    const cleaned: any = {}
+    for (const key of ['temperature', 'top_p', 'top_k', 'stop', 'presence_penalty', 'frequency_penalty', 'seed'] as const) {
+      if (rest[key] !== undefined) {
+        cleaned[key] = rest[key]
+      }
+    }
+
+    if (!streaming && (max_tokens ?? max_completion_tokens ?? maxTokens) !== undefined) {
+      cleaned.max_tokens = max_tokens ?? max_completion_tokens ?? maxTokens
+    }
+
+    return cleaned
+  }
+}
+
+export class AnthropicMessagesProvider implements LLMProvider {
+  constructor(
+    private apiKey: string,
+    private model: string,
+    private baseURL: string = 'https://api.anthropic.com/v1',
+    private providerOptions: LLMProviderOptions = {}
+  ) {}
+
+  async chat(messages: any[], options?: any): Promise<LLMResponse> {
+    const { signal, ...requestOptions } = options ?? {}
+    const response = await this.fetch(`${this.normalizedBaseURL()}/messages`, {
+      method: 'POST',
+      headers: this.headers(),
+      body: JSON.stringify({
+        model: this.model,
+        max_tokens: requestOptions.max_tokens ?? requestOptions.maxTokens ?? 1024,
+        ...this.convertMessages(messages),
+        ...this.cleanRequestOptions(requestOptions),
+      }),
+      signal,
+    })
+
+    const bodyText = await response.text()
+    const body = this.parseJson(bodyText)
+    if (!response.ok) {
+      throw new Error(body?.error?.message || bodyText.slice(0, 300) || `Anthropic request failed with HTTP ${response.status}`)
+    }
+
+    return {
+      content: this.extractContent(body),
+      finishReason: body?.stop_reason ?? null,
+      usage: body?.usage
+        ? {
+            inputTokens: body.usage.input_tokens,
+            outputTokens: body.usage.output_tokens,
+            totalTokens: (body.usage.input_tokens ?? 0) + (body.usage.output_tokens ?? 0),
+          }
+        : undefined,
+    }
+  }
+
+  async *streamChat(messages: any[], options?: any): AsyncGenerator<string> {
+    const { signal, ...requestOptions } = options ?? {}
+    const response = await this.fetch(`${this.normalizedBaseURL()}/messages`, {
+      method: 'POST',
+      headers: this.headers(),
+      body: JSON.stringify({
+        model: this.model,
+        max_tokens: requestOptions.max_tokens ?? requestOptions.maxTokens ?? 1024,
+        stream: true,
+        ...this.convertMessages(messages),
+        ...this.cleanRequestOptions(requestOptions),
+      }),
+      signal,
+    })
+
+    if (!response.ok) {
+      const bodyText = await response.text()
+      const body = this.parseJson(bodyText)
+      throw new Error(body?.error?.message || bodyText.slice(0, 300) || `Anthropic stream failed with HTTP ${response.status}`)
+    }
+
+    const reader = response.body?.getReader()
+    if (!reader) {
+      return
+    }
+
+    const decoder = new TextDecoder()
+    let buffer = ''
+    try {
+      while (true) {
+        if (signal?.aborted) {
+          return
+        }
+        const { done, value } = await reader.read()
+        if (done) {
+          break
+        }
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split(/\r?\n/)
+        buffer = lines.pop() ?? ''
+        for (const line of lines) {
+          const chunk = this.parseSSELine(line)
+          if (chunk) {
+            yield chunk
+          }
+        }
+      }
+      const tail = this.parseSSELine(buffer)
+      if (tail) {
+        yield tail
+      }
+    } finally {
+      reader.releaseLock()
+    }
+  }
+
+  private normalizedBaseURL(): string {
+    return this.baseURL.replace(/\/+$/, '')
+  }
+
+  private fetch(input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]): Promise<Response> {
+    return createProxyFetch(this.providerOptions.proxyUrl)(input, init)
+  }
+
+  private headers(): Record<string, string> {
+    return {
+      'content-type': 'application/json',
+      'x-api-key': this.apiKey,
+      'anthropic-version': '2023-06-01',
+    }
+  }
+
+  private convertMessages(messages: any[]): { system?: string; messages: any[] } {
+    const systemParts: string[] = []
+    const anthropicMessages: any[] = []
+
+    for (const message of messages) {
+      const role = message?.role
+      const content = this.normalizeContent(message?.content)
+      if (!content) {
+        continue
+      }
+      if (role === 'system' || role === 'developer') {
+        systemParts.push(this.contentToText(content))
+        continue
+      }
+      anthropicMessages.push({
+        role: role === 'assistant' ? 'assistant' : 'user',
+        content,
+      })
+    }
+
+    return {
+      ...(systemParts.length ? { system: systemParts.join('\n\n') } : {}),
+      messages: this.mergeAdjacentMessages(anthropicMessages),
+    }
+  }
+
+  private normalizeContent(content: any): string | any[] {
+    if (typeof content === 'string') {
+      return content
+    }
+    if (Array.isArray(content)) {
+      const parts = content
+        .map(part => this.normalizeContentPart(part))
+        .filter(Boolean)
+      return parts.length ? parts : ''
+    }
+    return content == null ? '' : String(content)
+  }
+
+  private normalizeContentPart(part: any): any {
+    if (typeof part === 'string') {
+      return { type: 'text', text: part }
+    }
+    if (part?.type === 'text' && part.text) {
+      return { type: 'text', text: String(part.text) }
+    }
+    if (part?.type === 'image_url' && part.image_url?.url) {
+      const source = this.parseDataUrl(part.image_url.url)
+      if (!source) {
+        return undefined
+      }
+      return {
+        type: 'image',
+        source,
+      }
+    }
+    return part?.text ? { type: 'text', text: String(part.text) } : undefined
+  }
+
+  private contentToText(content: string | any[]): string {
+    if (typeof content === 'string') {
+      return content
+    }
+    return content
+      .map(part => typeof part === 'string' ? part : part?.text)
+      .filter(Boolean)
+      .join('\n')
+  }
+
+  private parseDataUrl(value: string): { type: 'base64'; media_type: string; data: string } | null {
+    const match = /^data:([^;,]+);base64,(.+)$/s.exec(value)
+    if (!match) {
+      return null
+    }
+    return {
+      type: 'base64',
+      media_type: match[1],
+      data: match[2],
+    }
+  }
+
+  private mergeAdjacentMessages(messages: any[]): any[] {
+    const merged: any[] = []
+    for (const message of messages) {
+      const previous = merged[merged.length - 1]
+    if (previous?.role === message.role && typeof previous.content === 'string' && typeof message.content === 'string') {
+      previous.content = `${previous.content}\n\n${message.content}`
+    } else if (previous?.role === message.role && Array.isArray(previous.content) && Array.isArray(message.content)) {
+      previous.content = [...previous.content, ...message.content]
+    } else {
+      merged.push({ ...message })
+      }
+    }
+    return merged
+  }
+
+  private cleanRequestOptions(options: any): any {
+    const {
+      max_tokens,
+      maxTokens,
+      signal,
+      messages,
+      model,
+      stream,
+      reasoning_effort,
+      ...rest
+    } = options ?? {}
+    return rest
+  }
+
+  private parseSSELine(line: string): string {
+    if (!line.startsWith('data:')) {
+      return ''
+    }
+    const data = line.slice(5).trim()
+    if (!data || data === '[DONE]') {
+      return ''
+    }
+    const parsed = this.parseJson(data)
+    return parsed?.type === 'content_block_delta' && parsed?.delta?.type === 'text_delta'
+      ? parsed.delta.text || ''
+      : ''
+  }
+
+  private extractContent(body: any): string {
+    if (!Array.isArray(body?.content)) {
+      return ''
+    }
+    return body.content
+      .map((part: any) => part?.type === 'text' ? part.text : '')
+      .filter(Boolean)
+      .join('')
+  }
+
+  private parseJson(text: string): any {
+    try {
+      return JSON.parse(text)
+    } catch {
+      return null
+    }
+  }
 }
 
 export function createLLMProvider(config: SDKConfig['llm'], options: LLMProviderOptions = {}): LLMProvider {
   if (config.baseURL) {
     console.log(`[LLM] Using custom endpoint: ${config.baseURL}`)
+  }
+  const proxyUrl = normalizeProxyUrl(options.proxyUrl)
+  if (proxyUrl) {
+    console.log(`[LLM] Using proxy: ${proxyUrl}`)
+  }
+
+  if (config.provider === 'claude' || config.provider === 'anthropic') {
+    return new AnthropicMessagesProvider(config.apiKey, config.model, config.baseURL, options)
   }
 
   return new OpenAIProvider(config.apiKey, config.model, config.baseURL, options)

@@ -17,6 +17,8 @@ const require = createRequire(import.meta.url)
 let activeProxyUrl = ''
 let globalAgentBootstrapped = false
 let electronSessionProxyApplied = false
+let previousTelemetryCpu = process.cpuUsage()
+let previousTelemetryAt = process.hrtime.bigint()
 
 const possibleEnvPaths = [
   join(__dirname, '../.env'),           // apps/desktop/.env (from dist/)
@@ -107,6 +109,7 @@ import { TaskCommunicationSpeechScheduler } from './task-communication-speech.js
 import { initializeDesktopSDK } from './sdk-bootstrap.js'
 import { buildApplicationMenu } from './app-menu.js'
 import {
+  CHAT_WINDOW_DESIGN_SIZE,
   COMPACT_WINDOW_SIZE,
   SETTINGS_WINDOW_SIZE,
   TASK_WINDOW_SIZE,
@@ -122,6 +125,9 @@ import {
   registerSystemIpcHandlers,
   registerWindowIpcHandlers,
 } from './ipc-handlers.js'
+import { registerChatRoleResourceIpcHandlers, registerChatRoleResourceProtocol } from './chat-role-resource-ipc-handlers.js'
+import { registerChatIpcHandlers } from './chat-ipc-handlers.js'
+import { ChatHistoryStore } from './chat-history-store.js'
 import { registerConversationIpcHandlers } from './conversation-ipc-handlers.js'
 import { registerModelIpcHandlers } from './model-ipc-handlers.js'
 import { registerPersonalityIpcHandlers } from './personality-ipc-handlers.js'
@@ -1584,6 +1590,7 @@ registerSystemIpcHandlers(ipcMain, {
   isDevMode,
   getTelemetry: () => ({
     success: true,
+    cpuPercent: getRendererProcessCpuPercent(),
     memoryBytes: process.memoryUsage().rss,
     activeNetworkInterfaces: getActiveNetworkInterfaceCount(),
     proxyActive: Boolean(activeProxyUrl.trim()),
@@ -1607,6 +1614,7 @@ registerSettingsMutationIpcHandlers(ipcMain, {
   getRuntimeConfigSnapshot: () => ({
     proxy: appSettings.system.proxy.trim(),
     llm: getLLMConfigSignature(getActiveLLMConfig()),
+    chatLLM: getLLMConfigSignature(getChatModelConfig()),
     taskLLM: getLLMConfigSignature(getActiveTaskConfig()),
     taskRuntime: JSON.stringify(appSettings.system.taskRuntime),
     tts: getTTSConfigSignature(getActiveTTSConfig()),
@@ -1646,6 +1654,7 @@ registerSpeechIpcHandlers(ipcMain, {
   cancelCurrentTurn,
 })
 registerWindowIpcHandlers(ipcMain, {
+  chatWindowDesignSize: CHAT_WINDOW_DESIGN_SIZE,
   compactWindowSize: COMPACT_WINDOW_SIZE,
   settingsWindowSize: SETTINGS_WINDOW_SIZE,
   taskWindowSize: TASK_WINDOW_SIZE,
@@ -1672,6 +1681,20 @@ registerPersonalityIpcHandlers(ipcMain, {
     return appSettings
   },
   rebuildSdk: rebuildSDK,
+})
+let chatHistoryStore: ChatHistoryStore | null = null
+function getChatHistoryStore(): ChatHistoryStore {
+  chatHistoryStore ??= new ChatHistoryStore(join(getStorageDir(), 'chat-history.sqlite3'))
+  return chatHistoryStore
+}
+
+registerChatRoleResourceIpcHandlers(ipcMain)
+registerChatIpcHandlers(ipcMain, {
+  getModelConfig: getChatModelConfig,
+  getChatModels: () => appSettings.system.chatModels,
+  getProxyUrl: () => activeProxyUrl,
+  getMainWindow: () => mainWindow,
+  getChatHistoryStore,
 })
 registerPluginIpcHandlers(ipcMain, {
   getMainWindow: () => mainWindow,
@@ -1825,6 +1848,9 @@ let appSettings: AppSettings = {
     proxy: '',
     llmModels: [{ id: 'default-llm', modelName: '', apiKey: '', baseUrl: '' }],
     activeLLMId: 'default-llm',
+    chatModels: [{ id: 'default-chat', modelType: 'llm', modelName: '', enabledModels: [], availableModels: [], apiKey: '', baseUrl: '' }],
+    activeChatId: 'default-chat',
+    activeChatModelName: '',
     taskModels: [{ id: 'default-task', modelName: 'gemini-3.1-pro-preview', apiKey: '', baseUrl: '' }],
     activeTaskId: 'default-task',
     taskRuntime: {
@@ -1850,6 +1876,24 @@ let appSettings: AppSettings = {
 function getActiveLLMConfig(): LLMModelConfig | null {
   const { llmModels, activeLLMId } = appSettings.system
   return llmModels.find(m => m.id === activeLLMId) || llmModels[0] || null
+}
+
+function getChatModelConfig(): LLMModelConfig | null {
+  const { chatModels, activeChatId } = appSettings.system
+  const llmChatModels = chatModels.filter(model => model.modelType !== 'image')
+  const config = llmChatModels.find(m => m.id === activeChatId)
+    || llmChatModels[0]
+    || null
+  if (!config) {
+    return null
+  }
+  return {
+    id: config.id,
+    provider: config.provider as LLMModelConfig['provider'],
+    modelName: appSettings.system.activeChatModelName,
+    apiKey: config.apiKey,
+    baseUrl: config.baseUrl,
+  }
 }
 
 
@@ -2078,6 +2122,26 @@ function getActiveNetworkInterfaceCount(): number {
     }
     return count + 1
   }, 0)
+}
+
+function getRendererProcessCpuPercent(): number {
+  const now = process.hrtime.bigint()
+  const usage = process.cpuUsage()
+  const elapsedMicros = Number(now - previousTelemetryAt) / 1000
+  const cpuMicros =
+    usage.user +
+    usage.system -
+    previousTelemetryCpu.user -
+    previousTelemetryCpu.system
+
+  previousTelemetryAt = now
+  previousTelemetryCpu = usage
+
+  if (!Number.isFinite(elapsedMicros) || elapsedMicros <= 0 || cpuMicros < 0) {
+    return 0
+  }
+
+  return Math.max(0, Math.min(999, (cpuMicros / elapsedMicros) * 100))
 }
 
 function configureProxyFromEnv(): void {
@@ -2696,6 +2760,7 @@ app.whenReady().then(async () => {
     console.error('[App] Failed to initialize SDK at startup:', error)
   }
 
+  registerChatRoleResourceProtocol()
   void createWindow()
 
   app.on('activate', () => {

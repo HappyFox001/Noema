@@ -65,9 +65,10 @@ export class NoemaSDK {
 
   private constructor(config: SDKConfig, options: NoemaSDKInitializeOptions = {}) {
     this.selfLearningEnabled = options.selfLearningEnabled !== false
-    this.llm = createLLMProvider(config.llm, { defaultReasoningMode: 'minimal-or-none' })
+    const proxyUrl = config.network?.proxyUrl
+    this.llm = createLLMProvider(config.llm, { defaultReasoningMode: 'minimal-or-none', proxyUrl })
     this.taskLLm = wrapTaskLLMWithRuntimeTransport(
-      createLLMProvider(config.taskLLM ?? config.llm),
+      createLLMProvider(config.taskLLM ?? config.llm, { proxyUrl }),
       config.taskRuntime
     )
 
@@ -235,10 +236,13 @@ export class NoemaSDK {
 export * from './memory/index.js'
 export * from './config/types.js'
 export * from './llm/index.js'
+export * from './image/index.js'
 export * from './utils/index.js'
 export * from './personality/index.js'
+export * from './character-workflow/index.js'
 export * from './agent/index.js'
 export * from './dialogue/index.js'
+export * from './chat/index.js'
 export * from './context/index.js'
 export * from './prompt/index.js'
 export * from './tools/index.js'

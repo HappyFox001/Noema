@@ -44,6 +44,29 @@ export default defineConfig({
     outDir: resolve(__dirname, 'dist/renderer'),
     emptyOutDir: true,
     chunkSizeWarningLimit: 700,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) {
+            return
+          }
+          if (id.includes('node_modules/litegraph.js/')) {
+            return 'litegraph'
+          }
+          if (
+            id.includes('node_modules/@atlaskit/pragmatic-drag-and-drop/')
+            || id.includes('node_modules/@floating-ui/')
+            || id.includes('node_modules/fuse.js/')
+            || id.includes('node_modules/lucide/')
+            || id.includes('node_modules/split-grid/')
+            || id.includes('node_modules/yjs/')
+            || id.includes('node_modules/lib0/')
+          ) {
+            return 'resource-graph-vendor'
+          }
+        },
+      },
+    },
   },
   server: {
     host: '127.0.0.1',

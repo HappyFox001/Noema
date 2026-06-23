@@ -22,10 +22,11 @@
     "clean": "turbo run clean && rm -rf node_modules",
     "start": "cd apps/desktop && pnpm run start",
     "history:clear": "bash ./scripts/clear-history.sh",
-    "check:runtime-naming": "node ./scripts/check-runtime-naming.mjs"
+    "check:runtime-naming": "node ./scripts/check-runtime-naming.mjs",
+    "check:character-resource-frontend": "node ./scripts/check-character-resource-frontend.mjs"
   },
   "devDependencies": {
-    "turbo": "^2.9.15",
+    "turbo": "^2.9.16",
     "typescript": "^5.4.0"
   },
   "engines": {

@@ -642,6 +642,7 @@ export function registerSystemIpcHandlers(
     isDevMode(): boolean
     getTelemetry(): {
       success: true
+      cpuPercent: number
       memoryBytes: number
       activeNetworkInterfaces: number
       proxyActive: boolean
@@ -686,17 +687,109 @@ export function registerSettingsReadIpcHandlers(
 export function registerWindowIpcHandlers(
   ipcMain: IpcMain,
   options: {
+    chatWindowDesignSize: { width: number; height: number }
     compactWindowSize: { width: number; height: number }
     settingsWindowSize: { width: number; height: number }
     taskWindowSize: { width: number; height: number }
     resizeWindowAroundCenter(window: BrowserWindow, width: number, height: number): void
   }
 ): void {
+  type ChatResizeEdge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
+
+  function getChatWindowSize(win: BrowserWindow): { width: number; height: number } {
+    const bounds = win.getBounds()
+    const display = screen.getDisplayMatching(bounds)
+    const workArea = display.workArea
+    const aspect = options.chatWindowDesignSize.width / options.chatWindowDesignSize.height
+    const maxWidth = Math.floor(workArea.width * 0.86)
+    const maxHeight = Math.floor(workArea.height * 0.88)
+    const minWidth = Math.min(1280, Math.floor(workArea.width * 0.96))
+    const minHeight = Math.min(720, Math.floor(workArea.height * 0.96))
+    let width = Math.min(options.chatWindowDesignSize.width, Math.max(minWidth, maxWidth))
+    let height = Math.round(width / aspect)
+
+    if (height > maxHeight) {
+      height = Math.max(minHeight, maxHeight)
+      width = Math.round(height * aspect)
+    }
+
+    width = Math.min(width, workArea.width)
+    height = Math.min(height, workArea.height)
+    return { width, height }
+  }
+
+  function clamp(value: number, min: number, max: number): number {
+    return Math.max(min, Math.min(max, value))
+  }
+
+  function isChatResizeEdge(value: unknown): value is ChatResizeEdge {
+    return typeof value === 'string'
+      && /^[ns]?[ew]?$/.test(value)
+      && value.length > 0
+      && value.length <= 2
+  }
+
+  function resizeChatWindowByEdge(
+    win: BrowserWindow,
+    edge: ChatResizeEdge,
+    deltaX: number,
+    deltaY: number
+  ): { fullscreen: boolean; width: number; height: number } {
+    const bounds = win.getBounds()
+    const display = screen.getDisplayMatching(bounds)
+    const workArea = display.workArea
+    const minWidth = Math.min(1180, Math.floor(workArea.width * 0.94))
+    const minHeight = Math.min(720, Math.floor(workArea.height * 0.94))
+    const maxRight = workArea.x + workArea.width
+    const maxBottom = workArea.y + workArea.height
+    let left = bounds.x
+    let top = bounds.y
+    let right = bounds.x + bounds.width
+    let bottom = bounds.y + bounds.height
+
+    if (edge.includes('e')) {
+      right = clamp(right + deltaX, left + minWidth, maxRight)
+    }
+    if (edge.includes('s')) {
+      bottom = clamp(bottom + deltaY, top + minHeight, maxBottom)
+    }
+    if (edge.includes('w')) {
+      left = clamp(left + deltaX, workArea.x, right - minWidth)
+    }
+    if (edge.includes('n')) {
+      top = clamp(top + deltaY, workArea.y, bottom - minHeight)
+    }
+
+    const nextBounds = {
+      x: Math.round(left),
+      y: Math.round(top),
+      width: Math.round(right - left),
+      height: Math.round(bottom - top),
+    }
+    win.setBounds(nextBounds, false)
+
+    const fullscreen = nextBounds.x <= workArea.x
+      && nextBounds.y <= workArea.y
+      && nextBounds.width >= workArea.width
+      && nextBounds.height >= workArea.height
+
+    return {
+      fullscreen,
+      width: nextBounds.width,
+      height: nextBounds.height,
+    }
+  }
+
   ipcMain.on('window:move', (event, deltaX, deltaY) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (win) {
       const [x, y] = win.getPosition()
-      win.setPosition(x + deltaX, y + deltaY)
+      const nextDeltaX = Number(deltaX)
+      const nextDeltaY = Number(deltaY)
+      if (!Number.isFinite(nextDeltaX) || !Number.isFinite(nextDeltaY)) {
+        return
+      }
+      win.setPosition(Math.round(x + nextDeltaX), Math.round(y + nextDeltaY))
     }
   })
 
@@ -836,6 +929,52 @@ export function registerWindowIpcHandlers(
     options.resizeWindowAroundCenter(win, size.width, size.height)
     await new Promise(resolve => setTimeout(resolve, 0))
     return { success: true }
+  })
+
+  ipcMain.handle('window:set-chat-mode', async (event, active, fullscreen = false) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win) {
+      return { success: false, error: 'Window is not available' }
+    }
+
+    if (!active) {
+      options.resizeWindowAroundCenter(win, options.compactWindowSize.width, options.compactWindowSize.height)
+      await new Promise(resolve => setTimeout(resolve, 0))
+      return { success: true, fullscreen: false }
+    }
+
+    if (fullscreen) {
+      const display = screen.getDisplayMatching(win.getBounds())
+      win.setBounds(display.workArea, false)
+      await new Promise(resolve => setTimeout(resolve, 0))
+      return { success: true, fullscreen: true }
+    }
+
+    const size = getChatWindowSize(win)
+    options.resizeWindowAroundCenter(win, size.width, size.height)
+    await new Promise(resolve => setTimeout(resolve, 0))
+    return { success: true, fullscreen: false, width: size.width, height: size.height }
+  })
+
+  ipcMain.handle('window:resize-chat', async (event, edge, deltaX, deltaY) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win || win.isDestroyed()) {
+      return { success: false, error: 'Window is not available' }
+    }
+
+    if (!isChatResizeEdge(edge)) {
+      return { success: false, error: 'Invalid resize edge' }
+    }
+
+    const nextDeltaX = Number(deltaX)
+    const nextDeltaY = Number(deltaY)
+    if (!Number.isFinite(nextDeltaX) || !Number.isFinite(nextDeltaY)) {
+      return { success: false, error: 'Invalid resize delta' }
+    }
+
+    const result = resizeChatWindowByEdge(win, edge, nextDeltaX, nextDeltaY)
+    await new Promise(resolve => setTimeout(resolve, 0))
+    return { success: true, ...result }
   })
 
   ipcMain.handle('window:set-task-mode', async (event, active) => {

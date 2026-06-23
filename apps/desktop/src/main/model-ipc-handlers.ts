@@ -7,6 +7,7 @@ import { type IpcMain } from 'electron'
 import { createSTTProvider, type STTProvider } from '@noema/sdk'
 import { type ASRModelConfig, type LLMModelConfig, type TTSModelConfig } from './settings-store.js'
 import {
+  getLLMProviderCatalogEntry,
   getASRProviderCatalogEntry,
   getTTSProviderCatalogEntry,
 } from './model-provider-catalog.js'
@@ -101,6 +102,7 @@ function readTaskTransport(model: unknown): 'openai_compatible' | 'codex_local' 
 
 function readLLMTestConfig(model: unknown): LLMModelConfig {
   const value = model as Partial<LLMModelConfig>
+  const provider = getLLMProviderCatalogEntry(String(value.provider ?? 'openai-compatible')).value
   const modelName = String(value.modelName ?? '').trim()
   const apiKey = String(value.apiKey ?? '').trim()
   const baseUrl = String(value.baseUrl ?? '').trim().replace(/\/+$/, '')
@@ -117,6 +119,7 @@ function readLLMTestConfig(model: unknown): LLMModelConfig {
 
   return {
     id: String(value.id ?? 'test'),
+    provider,
     modelName,
     apiKey,
     baseUrl,
@@ -183,6 +186,10 @@ function createASRProviderForConfig(config: ASRModelConfig): STTProvider {
   }
 
   const providerEntry = getASRProviderCatalogEntry(config.provider)
+  if (!providerEntry.implemented) {
+    throw new Error(`${providerEntry.label} ASR is listed in the catalog but is not implemented in the runtime yet`)
+  }
+
   if (providerEntry.protocol === 'openai-transcription') {
     return createSTTProvider({
       kind: 'openai-transcription',
@@ -195,6 +202,10 @@ function createASRProviderForConfig(config: ASRModelConfig): STTProvider {
         receiveTimeoutMs: 20000,
       },
     })
+  }
+
+  if (providerEntry.protocol !== 'qwen-realtime') {
+    throw new Error(`Unsupported ASR provider protocol: ${providerEntry.protocol}`)
   }
 
   const baseTransport = new NodeRealtimeWebSocketTransport()
@@ -220,6 +231,15 @@ function createASRProviderForConfig(config: ASRModelConfig): STTProvider {
 }
 
 async function testOpenAICompatibleModel(model: LLMModelConfig): Promise<void> {
+  const providerEntry = getLLMProviderCatalogEntry(model.provider)
+  if (providerEntry.protocol === 'anthropic-messages') {
+    await testAnthropicMessagesModel(model)
+    return
+  }
+  if (providerEntry.protocol !== 'openai-chat-completions') {
+    throw new Error(`${providerEntry.label} LLM is listed in the catalog but is not implemented in API testing yet`)
+  }
+
   const response = await runWithTimeout(
     fetch(`${model.baseUrl}/chat/completions`, {
       method: 'POST',
@@ -254,6 +274,44 @@ async function testOpenAICompatibleModel(model: LLMModelConfig): Promise<void> {
   const content = body?.choices?.[0]?.message?.content
   if (typeof content !== 'string') {
     throw new Error('Model response did not contain a chat completion message')
+  }
+}
+
+async function testAnthropicMessagesModel(model: LLMModelConfig): Promise<void> {
+  const response = await runWithTimeout(
+    fetch(`${model.baseUrl}/messages`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': model.apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: model.modelName,
+        max_tokens: 8,
+        messages: [
+          { role: 'user', content: 'Reply with exactly: OK' },
+        ],
+      }),
+    }),
+    20000,
+    'LLM connection test timed out'
+  )
+
+  const bodyText = await response.text()
+  let body: any = null
+  try {
+    body = JSON.parse(bodyText)
+  } catch {
+    body = null
+  }
+
+  if (!response.ok) {
+    throw new Error(body?.error?.message || bodyText.slice(0, 300) || `HTTP ${response.status}`)
+  }
+
+  if (!Array.isArray(body?.content)) {
+    throw new Error('Model response did not contain an Anthropic message content block')
   }
 }
 

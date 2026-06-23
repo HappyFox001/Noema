@@ -24,6 +24,16 @@ Plugins should use generic hooks and runtime capabilities. Do not add plugin-spe
 
 Task runtime features should stay explicit: context providers contribute task context, tools execute actions, and UI management remains separate from runtime execution.
 
+## App and Package Boundaries
+
+Keep product runtime semantics in `packages/` whenever they can be shared, tested, or reasoned about outside a single UI surface. The SDK should own model/provider execution, prompt assembly, chat turn construction, tool and workflow execution, memory and summary policy, artifact generation, state transitions, event protocols, and normalized errors.
+
+Keep `apps/` focused on host integration and presentation. Desktop code may own Electron IPC, windows, menus, OS permissions, local file pickers, user settings persistence, environment loading, storage path wiring, and rendering. UI code should collect user actions and render SDK results, not duplicate runtime policy.
+
+For chat work specifically, prefer moving conversation assembly, attachments normalization, character context, scene state updates, narrative summaries, stream event shaping, image generation requests, and character workflow execution into SDK-level services. Renderer code should pass minimal user intent and render returned messages, events, patches, and artifacts. Main-process chat handlers should be thin adapters around SDK services plus unavoidable Electron capabilities.
+
+Only keep logic in `apps/` when it is inherently host-specific, UI-specific, or requires direct access to Electron/browser APIs. If logic would behave the same in another host, it belongs in `packages/`.
+
 ## Git Workflow
 
 Use `dev` as the long-running development branch. Do not make routine development changes directly on `main`.
@@ -42,3 +52,5 @@ pnpm --filter @her-text/desktop build
 ```
 
 For runtime plugin files, run `node --check` on changed `.mjs` files when practical.
+
+Do not run startup tests unless the user explicitly asks for them. This includes launching Electron, starting Vite/dev servers, or opening browser-based smoke tests for verification.
