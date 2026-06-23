@@ -1,13 +1,24 @@
 /**
  * IPC handlers for chat character resources stored under the role directory.
  */
-import { app, ipcMain, type IpcMain } from 'electron'
+import { app, ipcMain, protocol, type IpcMain } from 'electron'
 import { existsSync } from 'fs'
 import { readdir, readFile } from 'fs/promises'
-import { dirname, extname, join, resolve } from 'path'
+import { dirname, extname, join, relative, resolve, sep } from 'path'
 import { fileURLToPath } from 'url'
 
 const SOURCE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '../../..')
+const CHAT_ROLE_RESOURCE_PROTOCOL = 'noema-role-resource'
+
+protocol.registerSchemesAsPrivileged([{
+  scheme: CHAT_ROLE_RESOURCE_PROTOCOL,
+  privileges: {
+    secure: true,
+    standard: true,
+    supportFetchAPI: true,
+    corsEnabled: false,
+  },
+}])
 
 interface ChatRoleResourceManifest {
   id: string
@@ -40,6 +51,30 @@ export function registerChatRoleResourceIpcHandlers(ipc: IpcMain = ipcMain): voi
   })
 }
 
+export function registerChatRoleResourceProtocol(): void {
+  if (protocol.isProtocolHandled(CHAT_ROLE_RESOURCE_PROTOCOL)) {
+    return
+  }
+  protocol.handle(CHAT_ROLE_RESOURCE_PROTOCOL, async (request) => {
+    const url = new URL(request.url)
+    if (url.host && url.host !== 'chat') {
+      return new Response(null, { status: 404 })
+    }
+    const relativePath = decodeURIComponent(url.pathname.replace(/^\/+/, ''))
+    const absolutePath = resolve(getChatRoleResourceDir(), relativePath)
+    if (!relativePath || !isPathInside(getChatRoleResourceDir(), absolutePath) || !existsSync(absolutePath)) {
+      return new Response(null, { status: 404 })
+    }
+    const bytes = await readFile(absolutePath)
+    return new Response(bytes, {
+      headers: {
+        'Content-Type': mimeForPath(absolutePath),
+        'Cache-Control': 'no-store',
+      },
+    })
+  })
+}
+
 async function listChatRoleResources(): Promise<ChatRoleResourceManifest[]> {
   const chatRoleResourceDir = getChatRoleResourceDir()
   if (!existsSync(chatRoleResourceDir)) {
@@ -69,19 +104,25 @@ async function loadManifest(resourceDir: string): Promise<ChatRoleResourceManife
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as ChatRoleResourceManifest
   return {
     ...manifest,
-    avatarImage: await loadImageDataUrl(resourceDir, manifest.avatarImage),
-    bodyImage: await loadImageDataUrl(resourceDir, manifest.bodyImage),
+    avatarImage: resolveImageUrl(resourceDir, manifest.avatarImage),
+    bodyImage: resolveImageUrl(resourceDir, manifest.bodyImage),
   }
 }
 
-async function loadImageDataUrl(resourceDir: string, imagePath: string): Promise<string> {
+function resolveImageUrl(resourceDir: string, imagePath: string): string {
   const absolutePath = resolve(resourceDir, imagePath.replace(/^\/+/, ''))
   if (!isPathInside(resourceDir, absolutePath)) {
     throw new Error(`Chat role image escapes resource directory: ${imagePath}`)
   }
 
-  const bytes = await readFile(absolutePath)
-  return `data:${mimeForPath(absolutePath)};base64,${bytes.toString('base64')}`
+  if (!existsSync(absolutePath)) {
+    return ''
+  }
+  const relativePath = relative(getChatRoleResourceDir(), absolutePath)
+    .split(sep)
+    .map((part) => encodeURIComponent(part))
+    .join('/')
+  return `${CHAT_ROLE_RESOURCE_PROTOCOL}://chat/${relativePath}`
 }
 
 function isPathInside(parent: string, child: string): boolean {

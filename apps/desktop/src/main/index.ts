@@ -125,7 +125,7 @@ import {
   registerSystemIpcHandlers,
   registerWindowIpcHandlers,
 } from './ipc-handlers.js'
-import { registerChatRoleResourceIpcHandlers } from './chat-role-resource-ipc-handlers.js'
+import { registerChatRoleResourceIpcHandlers, registerChatRoleResourceProtocol } from './chat-role-resource-ipc-handlers.js'
 import { registerChatIpcHandlers } from './chat-ipc-handlers.js'
 import { ChatHistoryStore } from './chat-history-store.js'
 import { registerConversationIpcHandlers } from './conversation-ipc-handlers.js'
@@ -2760,6 +2760,7 @@ app.whenReady().then(async () => {
     console.error('[App] Failed to initialize SDK at startup:', error)
   }
 
+  registerChatRoleResourceProtocol()
   void createWindow()
 
   app.on('activate', () => {

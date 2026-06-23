@@ -41,6 +41,8 @@ import {
   createLocalUserMessage,
   getActiveConversation,
   getCharacterForConversation,
+  hydrateChatConversationDetail,
+  hydrateChatConversationWorkflowState,
   loadChatResourceState,
   localizeChatText,
   type ChatConversationSummary,
@@ -230,6 +232,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   const visibleChatApiKeys = new Set<string>()
   let conversationSettings = loadConversationSettings()
   let sceneStateCollapsed = false
+  let chatResourcesHydrated = false
+  let chatResourcesHydratePromise: Promise<void> | null = null
+  let chatModelConfigLoadPromise: Promise<void> | null = null
   let characterWorkflowRenderToken = 0
   let characterWorkflowLazyRenderToken = 0
   let characterWorkflowPageModulePromise: Promise<CharacterWorkflowPageModule> | null = null
@@ -247,6 +252,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let characterWorkflowRunState: CharacterResourceRunState | null = null
   let characterWorkflowRunCount = 0
   let characterWorkflowActiveTabId = 'workflow'
+  let characterWorkflowDirty = false
   let characterWorkflowPersistTimer: number | undefined
   let selectedWorkflowNodeId = 'generation-goal'
   let lastCharacterResourceGraphSnapshot = ''
@@ -387,10 +393,16 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     syncSideActionState('')
     syncChatView()
     if (button.dataset.chatNav === 'models') {
-      void loadChatModelConfig()
+      void ensureChatModelConfigLoaded()
     }
     if (button.dataset.chatNav === 'character-workflow') {
       renderCharacterWorkflow()
+      void Promise.all([
+        ensureChatResourcesHydrated(),
+        ensureChatModelConfigLoaded(),
+      ])
+        .then(() => ensureActiveConversationWorkflowStateLoaded())
+        .then(() => renderCharacterWorkflow())
     }
     const label = button.getAttribute('aria-label') || 'Section'
     showToast(`${label} view`)
@@ -544,18 +556,27 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     return getActiveConversation(state)
   }
 
-  function setActiveConversation(conversationId: string): void {
-    if (!state.conversations.some((conversation) => conversation.id === conversationId)) {
+  async function setActiveConversation(conversationId: string): Promise<void> {
+    const conversationIndex = state.conversations.findIndex((conversation) => conversation.id === conversationId)
+    if (conversationIndex < 0) {
       return
     }
     state.activeConversationId = conversationId
+    const selectedConversation = state.conversations[conversationIndex]
+    if (selectedConversation.messages.length === 0) {
+      try {
+        state.conversations[conversationIndex] = await hydrateChatConversationDetail(selectedConversation, state.characterResources)
+      } catch (error) {
+        console.warn('[ChatHistory] Failed to hydrate conversation:', error)
+        showToast(options.getLanguage() === 'zh-CN' ? '对话详情加载失败' : 'Failed to load conversation')
+      }
+    }
     restoreCharacterWorkflowStateFromConversation(getActiveConversation(state))
     renderChat()
     const conversation = getActiveConversation(state)
     if (conversation) {
       showToast(localizeChatText(conversation.title, options.getLanguage()))
     }
-    void persistConversation(conversation)
   }
 
   function handleAction(action: string, target: HTMLElement): void {
@@ -1687,8 +1708,44 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     return characterWorkflowPageModulePromise
   }
 
+  function ensureChatResourcesHydrated(): Promise<void> {
+    if (chatResourcesHydrated) {
+      return Promise.resolve()
+    }
+    chatResourcesHydratePromise ??= hydrateChatResources().finally(() => {
+      chatResourcesHydratePromise = null
+    })
+    return chatResourcesHydratePromise
+  }
+
+  function ensureChatModelConfigLoaded(): Promise<void> {
+    if (chatSystemConfig) {
+      return Promise.resolve()
+    }
+    chatModelConfigLoadPromise ??= loadChatModelConfig().finally(() => {
+      chatModelConfigLoadPromise = null
+    })
+    return chatModelConfigLoadPromise
+  }
+
+  async function ensureActiveConversationWorkflowStateLoaded(): Promise<void> {
+    const conversation = getActiveConversation(state)
+    if (!conversation) {
+      return
+    }
+    const conversationIndex = state.conversations.findIndex((item) => item.id === conversation.id)
+    if (conversationIndex < 0) {
+      return
+    }
+    state.conversations[conversationIndex] = await hydrateChatConversationWorkflowState(conversation, state.characterResources)
+    restoreCharacterWorkflowStateFromConversation(state.conversations[conversationIndex])
+  }
+
+  function renderCharacterWorkflowLoadingState(): string {
+    return `<div class="chat-workflow-loading"><span>${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '正在加载角色资源图...' : 'Loading character resource graph...')}</span></div>`
+  }
+
   function renderCharacterWorkflow(): void {
-    scheduleActiveConversationWorkflowPersist()
     void renderCharacterWorkflowAsync()
   }
 
@@ -1698,7 +1755,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     const renderToken = ++characterWorkflowLazyRenderToken
     if (!characterWorkflowRoot.childElementCount) {
-      characterWorkflowRoot.innerHTML = `<div class="chat-workflow-loading"><span>${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '正在加载角色资源图...' : 'Loading character resource graph...')}</span></div>`
+      characterWorkflowRoot.innerHTML = renderCharacterWorkflowLoadingState()
+    }
+    if (!chatResourcesHydrated) {
+      characterWorkflowRoot.innerHTML = renderCharacterWorkflowLoadingState()
+      return
     }
     if (!activeCharacterWorkflowProjectId) {
       characterWorkflowRoot.innerHTML = renderCharacterWorkflowLibraryShell(renderCharacterWorkflowLibraryEmptyState())
@@ -2179,7 +2240,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     characterResourceViewState.replacedTargetSlots = new Set(viewState?.replacedTargetSlots ?? [])
   }
 
-  function saveActiveWorkflowProjectSnapshot(): void {
+  function saveActiveWorkflowProjectSnapshot(markDirty = true): void {
     const project = characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)
     if (!project) {
       return
@@ -2191,6 +2252,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     project.runCount = characterWorkflowRunCount
     project.activeRunId = characterWorkflowRunState?.run?.id
     project.updatedAt = Date.now()
+    if (markDirty) {
+      markActiveWorkflowDirty()
+    }
   }
 
   function upsertWorkflowProjectRunSnapshot(project: CharacterWorkflowProjectRecord): void {
@@ -2953,7 +3017,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   function createPersistedCharacterWorkflowState(): PersistedCharacterWorkflowState {
-    saveActiveWorkflowProjectSnapshot()
+    saveActiveWorkflowProjectSnapshot(false)
     return {
       activeWorkflowId: activeCharacterWorkflowProjectId,
       workflows: JSON.parse(JSON.stringify(characterWorkflowProjects)) as CharacterWorkflowProjectRecord[],
@@ -2979,10 +3043,19 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
     conversation.characterWorkflow = createPersistedCharacterWorkflowState()
+    characterWorkflowDirty = false
     void persistConversation(conversation)
   }
 
+  function markActiveWorkflowDirty(): void {
+    characterWorkflowDirty = true
+    scheduleActiveConversationWorkflowPersist()
+  }
+
   function scheduleActiveConversationWorkflowPersist(): void {
+    if (!characterWorkflowDirty) {
+      return
+    }
     const conversation = getActiveMutableConversation()
     if (!conversation) {
       return
@@ -4014,7 +4087,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     panel.querySelector<HTMLElement>('[data-chat-workflow-library-resize]')?.classList.remove('is-resizing')
     document.body.classList.remove('chat-workflow-library-resizing')
     characterWorkflowLibraryResize = null
-    scheduleActiveConversationWorkflowPersist()
+    markActiveWorkflowDirty()
   }
 
   function beginCharacterResourceViewportDrag(event: PointerEvent): void {
@@ -4376,7 +4449,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       options.messageList.scrollTop = options.messageList.scrollHeight
       options.composeInput.focus()
     })
-    void loadChatModelConfig()
+    void Promise.all([
+      ensureChatResourcesHydrated(),
+      ensureChatModelConfigLoaded(),
+    ])
   }
 
   function close(): void {
@@ -4535,8 +4611,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
     const historyConversation = eventTarget.closest<HTMLElement>('[data-chat-history-conversation]')
     if (historyConversation && panel.contains(historyConversation)) {
-      setActiveConversation(historyConversation.dataset.chatHistoryConversation || '')
-      renderChatHistoryManager()
+      void setActiveConversation(historyConversation.dataset.chatHistoryConversation || '').then(() => renderChatHistoryManager())
       return
     }
 
@@ -4788,7 +4863,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
     const thread = eventTarget.closest<HTMLElement>('[data-conversation-id]')
     if (thread && panel.contains(thread)) {
-      setActiveConversation(thread.dataset.conversationId || '')
+      void setActiveConversation(thread.dataset.conversationId || '')
       return
     }
 
@@ -4908,8 +4983,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   })
 
   renderChat()
-  void hydrateChatResources()
-  void loadChatModelConfig()
 
   return { open, close, refreshLanguage: renderChat }
 
@@ -4971,11 +5044,18 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     try {
       applyChatResourceState(state, await loadChatResourceState())
       restoreCharacterWorkflowStateFromConversation(getActiveConversation(state))
+      chatResourcesHydrated = true
       renderChat()
-      await Promise.all(state.conversations.map((conversation) => persistConversation(conversation)))
+      if (panel.dataset.chatView === 'character-workflow') {
+        renderCharacterWorkflow()
+      }
     } catch (error) {
+      chatResourcesHydrated = true
       console.warn('[Chat] Failed to load chat resources:', error)
       showToast(options.getLanguage() === 'zh-CN' ? '角色资源加载失败' : 'Failed to load character resources')
+      if (panel.dataset.chatView === 'character-workflow') {
+        renderCharacterWorkflow()
+      }
     }
   }
 

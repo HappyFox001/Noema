@@ -188,6 +188,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   listChatConversations: () =>
     ipcRenderer.invoke('chat-history:list'),
 
+  getChatConversation: (id, request) =>
+    ipcRenderer.invoke('chat-history:get', id, request),
+
   saveChatConversation: (conversation) =>
     ipcRenderer.invoke('chat-history:upsert', conversation),
 

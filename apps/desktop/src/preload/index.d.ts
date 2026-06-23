@@ -603,6 +603,45 @@ declare global {
             endMessageIndex: number
             sourceMessageIds: string[]
           }>
+          messages?: Array<{
+            id: string
+            role: 'system' | 'user' | 'assistant'
+            text: Record<string, string>
+            createdLabel: Record<string, string>
+            attachments?: Array<{
+              id: string
+              kind: 'image' | 'video'
+              name: string
+              mimeType: string
+              dataUrl?: string
+              size?: number
+            }>
+            state?: 'idle' | 'thinking' | 'generating_image' | 'using_tool'
+          }>
+          workflowState?: unknown
+          messageCount?: number
+          hasWorkflowState?: boolean
+        }>
+        error?: string
+      }>
+      getChatConversation: (id: string, request?: { includeWorkflowState?: boolean }) => Promise<{
+        success: boolean
+        conversation?: {
+          id: string
+          characterId: string
+          title: Record<string, string>
+          preview: Record<string, string>
+          updatedLabel: Record<string, string>
+          sceneState?: Record<string, unknown>
+          summaries?: Array<{
+            id: string
+            text: Record<string, string>
+            createdLabel: Record<string, string>
+            messageCount: number
+            startMessageIndex: number
+            endMessageIndex: number
+            sourceMessageIds: string[]
+          }>
           messages: Array<{
             id: string
             role: 'system' | 'user' | 'assistant'
@@ -619,7 +658,7 @@ declare global {
             state?: 'idle' | 'thinking' | 'generating_image' | 'using_tool'
           }>
           workflowState?: unknown
-        }>
+        } | null
         error?: string
       }>
       saveChatConversation: (conversation: {

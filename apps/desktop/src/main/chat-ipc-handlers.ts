@@ -24,7 +24,7 @@ import {
   loadCharacterAgentWorkflowSnapshot,
   type CharacterWorkflowBuilderSpec,
 } from '@noema/sdk/character-workflow'
-import { ChatHistoryStore, type StoredChatConversation } from './chat-history-store.js'
+import { ChatHistoryStore, type StoredChatConversation, type StoredChatConversationListItem } from './chat-history-store.js'
 
 export interface ChatIpcModelConfig {
   provider?: string
@@ -175,8 +175,18 @@ export interface ChatCameraPermissionResult {
 
 export interface ChatHistoryResult {
   success: boolean
-  conversations?: StoredChatConversation[]
+  conversations?: StoredChatConversationListItem[]
   error?: string
+}
+
+export interface ChatHistoryGetResult {
+  success: boolean
+  conversation?: StoredChatConversation | null
+  error?: string
+}
+
+export interface ChatHistoryGetRequest {
+  includeWorkflowState?: boolean
 }
 
 export function registerChatIpcHandlers(
@@ -433,6 +443,18 @@ export function registerChatIpcHandlers(
       return { success: true, conversations }
     } catch (error: any) {
       console.error('[ChatHistory] Failed to list conversations:', error)
+      return { success: false, error: error?.message || String(error) }
+    }
+  })
+
+  ipcMain.handle('chat-history:get', async (_, id: string, request?: ChatHistoryGetRequest): Promise<ChatHistoryGetResult> => {
+    try {
+      const conversation = await options.getChatHistoryStore().getConversation(String(id || ''), {
+        includeWorkflowState: Boolean(request?.includeWorkflowState),
+      })
+      return { success: true, conversation }
+    } catch (error: any) {
+      console.error('[ChatHistory] Failed to get conversation:', error)
       return { success: false, error: error?.message || String(error) }
     }
   })

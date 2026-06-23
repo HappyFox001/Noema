@@ -78,6 +78,11 @@ export interface ChatState {
   conversations: ChatConversationSummary[]
 }
 
+type StoredChatConversationInput = Omit<ChatConversationSummary, 'messages'> & {
+  messages?: ChatMessage[]
+  workflowState?: unknown
+}
+
 export function createInitialChatState(): ChatState {
   return {
     activeConversationId: '',
@@ -97,12 +102,45 @@ export async function loadChatResourceState(): Promise<ChatState> {
 
   const characterResources = resourceResponse.resources ?? []
   const conversations = normalizeStoredConversations(historyResponse.conversations ?? [], characterResources)
+  if (conversations[0]) {
+    const detail = await loadStoredConversationDetail(conversations[0].id, characterResources)
+    if (detail) {
+      conversations[0] = detail
+    }
+  }
   const seededConversations = conversations.length ? conversations : createSeedHistory(characterResources)
 
   return {
     activeConversationId: seededConversations[0]?.id ?? '',
     characterResources,
     conversations: seededConversations,
+  }
+}
+
+export async function hydrateChatConversationDetail(
+  conversation: ChatConversationSummary,
+  characterResources: ChatCharacterResource[]
+): Promise<ChatConversationSummary> {
+  if (conversation.messages.length > 0) {
+    return conversation
+  }
+  return await loadStoredConversationDetail(conversation.id, characterResources) ?? conversation
+}
+
+export async function hydrateChatConversationWorkflowState(
+  conversation: ChatConversationSummary,
+  characterResources: ChatCharacterResource[]
+): Promise<ChatConversationSummary> {
+  const detail = await loadStoredConversationDetail(conversation.id, characterResources, { includeWorkflowState: true })
+  if (!detail) {
+    return conversation
+  }
+  return {
+    ...conversation,
+    sceneState: Object.keys(conversation.sceneState).length ? conversation.sceneState : detail.sceneState,
+    summaries: conversation.summaries.length ? conversation.summaries : detail.summaries,
+    messages: conversation.messages.length ? conversation.messages : detail.messages,
+    characterWorkflow: detail.characterWorkflow,
   }
 }
 
@@ -179,7 +217,7 @@ function createSeedHistory(characterResources: ChatCharacterResource[]): ChatCon
 }
 
 function normalizeStoredConversations(
-  conversations: ChatConversationSummary[],
+  conversations: StoredChatConversationInput[],
   characterResources: ChatCharacterResource[]
 ): ChatConversationSummary[] {
   const characterIds = new Set(characterResources.map((character) => character.id))
@@ -200,7 +238,21 @@ function normalizeStoredConversations(
         : [],
       characterWorkflow: normalizeWorkflowState((conversation as ChatConversationSummary & { workflowState?: unknown }).characterWorkflow ?? (conversation as ChatConversationSummary & { workflowState?: unknown }).workflowState),
     }))
-    .filter((conversation) => conversation.messages.length > 0)
+}
+
+async function loadStoredConversationDetail(
+  conversationId: string,
+  characterResources: ChatCharacterResource[],
+  options: { includeWorkflowState?: boolean } = {}
+): Promise<ChatConversationSummary | null> {
+  const response = await window.electronAPI.getChatConversation(conversationId, {
+    includeWorkflowState: Boolean(options.includeWorkflowState),
+  })
+  if (!response.success) {
+    throw new Error(response.error || 'Failed to load chat conversation')
+  }
+  const [conversation] = normalizeStoredConversations(response.conversation ? [response.conversation] : [], characterResources)
+  return conversation?.messages.length ? conversation : null
 }
 
 function normalizeWorkflowState(value: unknown): unknown {

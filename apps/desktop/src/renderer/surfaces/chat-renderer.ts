@@ -96,9 +96,10 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
       ].filter(Boolean).join('\n\n')
     }
     if (portrait) {
-      portrait.innerHTML = `
-        <img class="chat-character-image" src="${options.escapeHtml(character.bodyImage)}" alt="${options.escapeHtml(localizeChatText(character.displayName, language))}" />
-      `
+      const characterName = localizeChatText(character.displayName, language)
+      portrait.innerHTML = character.bodyImage
+        ? `<img class="chat-character-image" src="${options.escapeHtml(character.bodyImage)}" alt="${options.escapeHtml(characterName)}" onerror="this.replaceWith(document.createTextNode(this.alt || 'No image'))" />`
+        : options.escapeHtml(characterName)
     }
     if (configMeta) {
       configMeta.innerHTML = getCharacterTags(character, language)
@@ -486,7 +487,11 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
 
   function renderAvatarImage(character: ChatCharacterResource, language: ChatLanguageCode): string {
     const name = localizeChatText(character.displayName, language)
-    return `<img src="${options.escapeHtml(character.avatarImage)}" alt="${options.escapeHtml(name)}" />`
+    const fallback = options.escapeHtml(name.slice(0, 1).toUpperCase() || 'N')
+    if (!character.avatarImage) {
+      return fallback
+    }
+    return `<img src="${options.escapeHtml(character.avatarImage)}" alt="${options.escapeHtml(name)}" onerror="this.replaceWith(document.createTextNode('${fallback}'))" />`
   }
 
   function getCharacterTags(character: ChatCharacterResource, language: ChatLanguageCode): string[] {
