@@ -619,6 +619,20 @@ declare global {
             state?: 'idle' | 'thinking' | 'generating_image' | 'using_tool'
           }>
           workflowState?: unknown
+          characterResource?: {
+            id: string
+            roleCard?: Record<string, unknown>
+            name: Record<string, string>
+            displayName: Record<string, string>
+            description: Record<string, string>
+            story: Record<string, string>
+            background: Record<string, string>
+            scene: Record<string, unknown>
+            firstMessage: Record<string, string>
+            tag: Record<string, string[]>
+            avatarImage: string
+            bodyImage: string
+          }
           messageCount?: number
           hasWorkflowState?: boolean
         }>
@@ -658,6 +672,20 @@ declare global {
             state?: 'idle' | 'thinking' | 'generating_image' | 'using_tool'
           }>
           workflowState?: unknown
+          characterResource?: {
+            id: string
+            roleCard?: Record<string, unknown>
+            name: Record<string, string>
+            displayName: Record<string, string>
+            description: Record<string, string>
+            story: Record<string, string>
+            background: Record<string, string>
+            scene: Record<string, unknown>
+            firstMessage: Record<string, string>
+            tag: Record<string, string[]>
+            avatarImage: string
+            bodyImage: string
+          }
         } | null
         error?: string
       }>
@@ -671,6 +699,7 @@ declare global {
         summaries?: unknown[]
         messages: unknown[]
         workflowState?: unknown
+        characterResource?: unknown
       }) => Promise<{ success: boolean; error?: string }>
       deleteChatConversation: (id: string) => Promise<{ success: boolean; error?: string }>
       clearChatConversations: () => Promise<{ success: boolean; error?: string }>

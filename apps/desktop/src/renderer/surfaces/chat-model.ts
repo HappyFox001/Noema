@@ -34,6 +34,7 @@ export interface ChatConversationSummary {
   summaries: ChatMemorySummary[]
   messages: ChatMessage[]
   characterWorkflow?: unknown
+  characterResource?: ChatCharacterResource
 }
 
 export interface ChatSceneState {
@@ -100,7 +101,11 @@ export async function loadChatResourceState(): Promise<ChatState> {
     throw new Error(resourceResponse.error || 'Failed to load chat role resources')
   }
 
-  const characterResources = resourceResponse.resources ?? []
+  const baseCharacterResources = resourceResponse.resources ?? []
+  const characterResources = mergeChatCharacterResources(
+    baseCharacterResources,
+    extractStoredCharacterResources(historyResponse.conversations ?? [])
+  )
   const conversations = normalizeStoredConversations(historyResponse.conversations ?? [], characterResources)
   if (conversations[0]) {
     const detail = await loadStoredConversationDetail(conversations[0].id, characterResources)
@@ -216,6 +221,28 @@ function createSeedHistory(characterResources: ChatCharacterResource[]): ChatCon
     }))
 }
 
+function extractStoredCharacterResources(conversations: StoredChatConversationInput[]): ChatCharacterResource[] {
+  return conversations
+    .map((conversation) => normalizeStoredCharacterResource(conversation.characterResource))
+    .filter(Boolean) as ChatCharacterResource[]
+}
+
+function mergeChatCharacterResources(
+  baseResources: ChatCharacterResource[],
+  storedResources: ChatCharacterResource[]
+): ChatCharacterResource[] {
+  const merged = [...baseResources]
+  for (const resource of storedResources) {
+    const existingIndex = merged.findIndex((item) => item.id === resource.id)
+    if (existingIndex >= 0) {
+      merged[existingIndex] = resource
+    } else {
+      merged.push(resource)
+    }
+  }
+  return merged
+}
+
 function normalizeStoredConversations(
   conversations: StoredChatConversationInput[],
   characterResources: ChatCharacterResource[]
@@ -237,7 +264,32 @@ function normalizeStoredConversations(
         ? conversation.messages.map(normalizeStoredMessage).filter(Boolean) as ChatMessage[]
         : [],
       characterWorkflow: normalizeWorkflowState((conversation as ChatConversationSummary & { workflowState?: unknown }).characterWorkflow ?? (conversation as ChatConversationSummary & { workflowState?: unknown }).workflowState),
+      characterResource: normalizeStoredCharacterResource(conversation.characterResource),
     }))
+}
+
+function normalizeStoredCharacterResource(value: unknown): ChatCharacterResource | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null
+  }
+  const resource = value as Partial<ChatCharacterResource>
+  if (!resource.id) {
+    return null
+  }
+  return {
+    id: String(resource.id),
+    roleCard: resource.roleCard && typeof resource.roleCard === 'object' && !Array.isArray(resource.roleCard) ? resource.roleCard : undefined,
+    name: normalizeLocalizedText(resource.name),
+    displayName: normalizeLocalizedText(resource.displayName),
+    description: normalizeLocalizedText(resource.description),
+    story: normalizeLocalizedText(resource.story),
+    background: normalizeLocalizedText(resource.background),
+    scene: normalizeSceneState(resource.scene),
+    firstMessage: normalizeLocalizedText(resource.firstMessage),
+    tag: normalizeTagMap(resource.tag),
+    avatarImage: typeof resource.avatarImage === 'string' ? resource.avatarImage : '',
+    bodyImage: typeof resource.bodyImage === 'string' ? resource.bodyImage : '',
+  }
 }
 
 async function loadStoredConversationDetail(
@@ -334,6 +386,20 @@ function normalizeStoredMessage(message: ChatMessage): ChatMessage | null {
     createdLabel: normalizeLocalizedText(message.createdLabel),
     ...(Array.isArray(message.attachments) ? { attachments: message.attachments } : {}),
   }
+}
+
+function normalizeTagMap(value: unknown): Record<ChatLanguageCode, string[]> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return { 'zh-CN': [], 'en-US': [] }
+  }
+  const record = value as Record<string, unknown>
+  const zh = Array.isArray(record['zh-CN'])
+    ? record['zh-CN'].filter((item): item is string => typeof item === 'string')
+    : []
+  const en = Array.isArray(record['en-US'])
+    ? record['en-US'].filter((item): item is string => typeof item === 'string')
+    : zh
+  return { 'zh-CN': zh, 'en-US': en }
 }
 
 function normalizeLocalizedText(value: ChatLocalizedText | undefined): ChatLocalizedText {

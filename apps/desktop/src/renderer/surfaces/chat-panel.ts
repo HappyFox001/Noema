@@ -556,6 +556,19 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     return getActiveConversation(state)
   }
 
+  function upsertConversationCharacterResource(conversation: ChatConversationSummary): void {
+    const resource = conversation.characterResource
+    if (!resource) {
+      return
+    }
+    const existingIndex = state.characterResources.findIndex((item) => item.id === resource.id)
+    if (existingIndex >= 0) {
+      state.characterResources[existingIndex] = resource
+    } else {
+      state.characterResources = [resource, ...state.characterResources]
+    }
+  }
+
   async function setActiveConversation(conversationId: string): Promise<void> {
     const conversationIndex = state.conversations.findIndex((conversation) => conversation.id === conversationId)
     if (conversationIndex < 0) {
@@ -566,6 +579,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (selectedConversation.messages.length === 0) {
       try {
         state.conversations[conversationIndex] = await hydrateChatConversationDetail(selectedConversation, state.characterResources)
+        upsertConversationCharacterResource(state.conversations[conversationIndex])
       } catch (error) {
         console.warn('[ChatHistory] Failed to hydrate conversation:', error)
         showToast(options.getLanguage() === 'zh-CN' ? '对话详情加载失败' : 'Failed to load conversation')
@@ -1454,15 +1468,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     renderChatHistoryManager()
   }
 
-  async function createChatConversation(): Promise<void> {
-    const character = state.characterResources.find((item) => item.id === getActiveConversation(state)?.characterId)
-      ?? state.characterResources[0]
-    if (!character) {
-      showToast(options.getLanguage() === 'zh-CN' ? '角色资源尚未加载' : 'Character resources are not loaded')
-      return
-    }
+  function createConversationForCharacter(character: ChatCharacterResource): ChatConversationSummary {
     const now = getTimeLabel()
-    const conversation: ChatConversationSummary = {
+    return {
       id: `${character.id}-${Date.now()}`,
       characterId: character.id,
       title: character.displayName,
@@ -1477,6 +1485,32 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         createdLabel: { 'zh-CN': now, 'en-US': now },
       }],
     }
+  }
+
+  function ensureWorkflowConversation(): ChatConversationSummary | null {
+    const existing = getActiveMutableConversation()
+    if (existing) {
+      return existing
+    }
+    const character = state.characterResources[0]
+    if (!character) {
+      showToast(options.getLanguage() === 'zh-CN' ? '角色资源尚未加载' : 'Character resources are not loaded')
+      return null
+    }
+    const conversation = createConversationForCharacter(character)
+    state.conversations = [conversation, ...state.conversations]
+    state.activeConversationId = conversation.id
+    return conversation
+  }
+
+  async function createChatConversation(): Promise<void> {
+    const character = state.characterResources.find((item) => item.id === getActiveConversation(state)?.characterId)
+      ?? state.characterResources[0]
+    if (!character) {
+      showToast(options.getLanguage() === 'zh-CN' ? '角色资源尚未加载' : 'Character resources are not loaded')
+      return
+    }
+    const conversation = createConversationForCharacter(character)
     state.conversations = [conversation, ...state.conversations]
     state.activeConversationId = conversation.id
     await persistConversation(conversation)
@@ -1513,6 +1547,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           createdLabel: { 'zh-CN': now, 'en-US': now },
         }],
         characterWorkflow: createPersistedCharacterWorkflowState(),
+        characterResource: character,
       }
       state.conversations = [conversation, ...state.conversations]
       state.activeConversationId = conversation.id
@@ -1738,6 +1773,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
     state.conversations[conversationIndex] = await hydrateChatConversationWorkflowState(conversation, state.characterResources)
+    upsertConversationCharacterResource(state.conversations[conversationIndex])
     restoreCharacterWorkflowStateFromConversation(state.conversations[conversationIndex])
   }
 
@@ -2280,13 +2316,15 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
   }
 
-  function createCharacterWorkflowDraft(): void {
+  async function createCharacterWorkflowDraft(): Promise<void> {
+    await ensureChatResourcesHydrated()
     saveActiveWorkflowProjectSnapshot()
     characterWorkflowTemplateMenuOpen = false
     createCharacterWorkflowDraftFromSpec({})
   }
 
-  function createCharacterWorkflowDraftFromTemplate(templateId: string): void {
+  async function createCharacterWorkflowDraftFromTemplate(templateId: string): Promise<void> {
+    await ensureChatResourcesHydrated()
     const template = getCharacterWorkflowTemplates(options.getLanguage() === 'zh-CN')
       .find((item) => item.id === templateId)
     if (!template) {
@@ -2377,6 +2415,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     characterWorkflowProjects = [project, ...characterWorkflowProjects]
     openCharacterWorkflowDraft(project.id)
+    if (ensureWorkflowConversation()) {
+      characterWorkflowDirty = true
+      persistActiveConversationWorkflowState()
+    }
   }
 
   function createInitialWorkflowPatchFromOperations(operations: Array<Record<string, unknown>>): {
@@ -4765,9 +4807,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       } else if (action === 'toggle-width') {
         toggleCharacterWorkflowLibraryCollapsed()
       } else if (action === 'create') {
-        createCharacterWorkflowDraft()
+        void createCharacterWorkflowDraft()
       } else if (action === 'create-template') {
-        createCharacterWorkflowDraftFromTemplate(workflowLibraryAction.dataset.chatWorkflowTemplateId || '')
+        void createCharacterWorkflowDraftFromTemplate(workflowLibraryAction.dataset.chatWorkflowTemplateId || '')
       } else if (action === 'rename') {
         renameCharacterWorkflowDraft(workflowId)
       } else if (action === 'duplicate') {
@@ -5076,6 +5118,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         state: undefined,
       })),
       workflowState: conversation.characterWorkflow ?? createPersistedCharacterWorkflowState(),
+      characterResource: conversation.characterResource,
     })
     if (!response.success) {
       console.warn('[ChatHistory] Failed to persist conversation:', response.error)

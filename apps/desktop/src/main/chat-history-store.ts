@@ -5,7 +5,7 @@ import { spawn } from 'node:child_process'
 import { mkdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
-const CHAT_HISTORY_SCHEMA_VERSION = 2
+const CHAT_HISTORY_SCHEMA_VERSION = 3
 
 export interface StoredChatConversation {
   id: string
@@ -17,6 +17,7 @@ export interface StoredChatConversation {
   summaries: unknown[]
   messages: unknown[]
   workflowState?: unknown
+  characterResource?: unknown
 }
 
 export interface StoredChatConversationListItem {
@@ -29,6 +30,7 @@ export interface StoredChatConversationListItem {
   summaries: unknown[]
   messages?: unknown[]
   workflowState?: unknown
+  characterResource?: unknown
   messageCount: number
   hasWorkflowState: boolean
 }
@@ -40,6 +42,7 @@ interface ChatConversationRow {
   preview_json: string
   updated_label_json: string
   scene_state_json: string
+  character_resource_json: string | null
 }
 
 interface ChatConversationListRow {
@@ -48,6 +51,7 @@ interface ChatConversationListRow {
   title_json: string
   preview_json: string
   updated_label_json: string
+  character_resource_json: string | null
   message_count: number
   has_workflow_state: number
 }
@@ -99,6 +103,7 @@ export class ChatHistoryStore {
         c.title_json,
         c.preview_json,
         c.updated_label_json,
+        c.character_resource_json,
         COUNT(m.id) AS message_count,
         CASE WHEN w.conversation_id IS NULL THEN 0 ELSE 1 END AS has_workflow_state
       FROM chat_conversations c
@@ -113,7 +118,7 @@ export class ChatHistoryStore {
   async getConversation(id: string, options: { includeWorkflowState?: boolean } = {}): Promise<StoredChatConversation | null> {
     await this.initialize()
     const rows = await runSqliteJson<ChatConversationRow>(this.dbPath, `
-      SELECT id, character_id, title_json, preview_json, updated_label_json, scene_state_json
+      SELECT id, character_id, title_json, preview_json, updated_label_json, scene_state_json, character_resource_json
       FROM chat_conversations
       WHERE id = ${sqlText(id)}
       LIMIT 1;
@@ -156,6 +161,7 @@ export class ChatHistoryStore {
       summaries: summaries.map(rowToSummary),
       messages: messages.map(rowToMessage),
       workflowState: parseJsonAny(workflowRows[0]?.workflow_state_json),
+      characterResource: parseJsonAny(conversation.character_resource_json ?? undefined),
     }
   }
 
@@ -228,6 +234,7 @@ async function createCurrentSchema(dbPath: string): Promise<void> {
       preview_json TEXT NOT NULL,
       updated_label_json TEXT NOT NULL,
       scene_state_json TEXT NOT NULL,
+      character_resource_json TEXT,
       updated_at INTEGER NOT NULL,
       created_at INTEGER NOT NULL
     );
@@ -298,6 +305,7 @@ function buildUpsertConversationSql(conversation: StoredChatConversation): strin
       preview_json,
       updated_label_json,
       scene_state_json,
+      character_resource_json,
       updated_at,
       created_at
     ) VALUES (
@@ -307,6 +315,7 @@ function buildUpsertConversationSql(conversation: StoredChatConversation): strin
       ${sqlText(JSON.stringify(conversation.preview ?? {}))},
       ${sqlText(JSON.stringify(conversation.updatedLabel ?? {}))},
       ${sqlText(JSON.stringify(conversation.sceneState ?? {}))},
+      ${conversation.characterResource ? sqlText(JSON.stringify(conversation.characterResource)) : 'NULL'},
       ${now},
       ${now}
     )
@@ -316,6 +325,7 @@ function buildUpsertConversationSql(conversation: StoredChatConversation): strin
       preview_json = excluded.preview_json,
       updated_label_json = excluded.updated_label_json,
       scene_state_json = excluded.scene_state_json,
+      character_resource_json = excluded.character_resource_json,
       updated_at = excluded.updated_at;
     DELETE FROM chat_messages WHERE conversation_id = ${sqlText(conversation.id)};
     ${messageValues.length
@@ -341,6 +351,7 @@ function rowToConversationListItem(row: ChatConversationListRow): StoredChatConv
     summaries: [],
     messages: undefined,
     workflowState: undefined,
+    characterResource: parseJsonAny(row.character_resource_json ?? undefined),
     messageCount: Math.max(0, Math.round(Number(row.message_count) || 0)),
     hasWorkflowState: Number(row.has_workflow_state) === 1,
   }
