@@ -252,6 +252,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let characterWorkflowRunState: CharacterResourceRunState | null = null
   let characterWorkflowRunCount = 0
   let characterWorkflowActiveTabId = 'workflow'
+  let characterWorkflowContentLoaded = false
   let characterWorkflowDirty = false
   let characterWorkflowPersistTimer: number | undefined
   let selectedWorkflowNodeId = 'generation-goal'
@@ -396,13 +397,17 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       void ensureChatModelConfigLoaded()
     }
     if (button.dataset.chatNav === 'character-workflow') {
+      characterWorkflowContentLoaded = false
       renderCharacterWorkflow()
       void Promise.all([
         ensureChatResourcesHydrated(),
         ensureChatModelConfigLoaded(),
       ])
         .then(() => ensureActiveConversationWorkflowStateLoaded())
-        .then(() => renderCharacterWorkflow())
+        .then(() => {
+          characterWorkflowContentLoaded = false
+          renderCharacterWorkflow()
+        })
     }
     const label = button.getAttribute('aria-label') || 'Section'
     showToast(`${label} view`)
@@ -1801,14 +1806,18 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       characterWorkflowRoot.innerHTML = renderCharacterWorkflowLibraryShell(renderCharacterWorkflowLibraryEmptyState())
       return
     }
-    const workflowPage = await loadCharacterWorkflowPageModule()
-    if (renderToken !== characterWorkflowLazyRenderToken) {
-      return
-    }
     const activeProject = characterWorkflowProjects.find((project) => project.id === activeCharacterWorkflowProjectId)
     if (!activeProject) {
       activeCharacterWorkflowProjectId = ''
       characterWorkflowRoot.innerHTML = renderCharacterWorkflowLibraryShell(renderCharacterWorkflowLibraryEmptyState())
+      return
+    }
+    if (!characterWorkflowContentLoaded) {
+      characterWorkflowRoot.innerHTML = renderCharacterWorkflowLibraryShell(renderCharacterWorkflowOverview(activeProject), activeProject)
+      return
+    }
+    const workflowPage = await loadCharacterWorkflowPageModule()
+    if (renderToken !== characterWorkflowLazyRenderToken) {
       return
     }
     const workflowMarkup = workflowPage.renderCharacterWorkflowPage({
@@ -2138,6 +2147,36 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             ${characterWorkflowBuilderStatus ? `<small class="chat-workflow-builder-status">${options.escapeHtml(characterWorkflowBuilderStatus)}</small>` : ''}
           </form>
         </div>
+      </section>
+    `
+  }
+
+  function renderCharacterWorkflowOverview(project: CharacterWorkflowProjectRecord): string {
+    const zh = options.getLanguage() === 'zh-CN'
+    const latestRun = project.runs[project.runs.length - 1]
+    return `
+      <section class="chat-workflow-builder-main">
+        <div class="chat-workflow-builder-card">
+          <div class="chat-workflow-builder-head">
+            <span>${options.escapeHtml(zh ? '资源图概览' : 'Resource graph overview')}</span>
+            <strong>${options.escapeHtml(project.name)}</strong>
+          </div>
+          <div class="chat-workflow-library-current">
+            <strong>${options.escapeHtml(formatCharacterWorkflowFileTitle(project))}</strong>
+            <span>${options.escapeHtml(formatWorkflowProjectTime(project.updatedAt, zh))}</span>
+          </div>
+          <div class="chat-context-metrics">
+            <span><b>${options.escapeHtml(String(project.runs.length))}</b>${options.escapeHtml(zh ? '运行草稿' : 'runs')}</span>
+            <span><b>${options.escapeHtml(String(Object.keys(project.configOverrides).length))}</b>${options.escapeHtml(zh ? '参数覆盖' : 'overrides')}</span>
+            <span><b>${options.escapeHtml(String(project.viewState.addedNodes.length))}</b>${options.escapeHtml(zh ? '新增节点' : 'added nodes')}</span>
+            <span><b>${options.escapeHtml(latestRun?.status ?? 'idle')}</b>${options.escapeHtml(zh ? '状态' : 'status')}</span>
+          </div>
+          <div class="chat-workflow-builder-footer">
+            <button type="button" data-chat-workflow-action="load-workflow-content">${options.escapeHtml(zh ? '打开资源图' : 'Open graph')}</button>
+            ${latestRun ? `<button type="button" data-chat-workflow-run-open="${options.escapeHtml(project.id)}:${options.escapeHtml(latestRun.id)}">${options.escapeHtml(zh ? '打开最近运行' : 'Open latest run')}</button>` : ''}
+          </div>
+        </div>
+        ${renderCharacterWorkflowAssistant()}
       </section>
     `
   }
@@ -2918,6 +2957,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!project) {
       return
     }
+    characterWorkflowContentLoaded = true
     activeCharacterWorkflowProjectId = project.id
     replaceRecord(characterWorkflowConfigOverrides, cloneRecord(project.configOverrides))
     replaceRecord(characterWorkflowPositionOverrides, cloneRecord(project.positionOverrides))
@@ -2938,6 +2978,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!project || !run) {
       return
     }
+    characterWorkflowContentLoaded = true
     activeCharacterWorkflowProjectId = project.id
     project.activeRunId = run.id
     replaceRecord(characterWorkflowConfigOverrides, cloneRecord(project.configOverrides))
@@ -3183,6 +3224,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function handleCharacterWorkflowAction(action: string, target?: HTMLElement): void {
     switch (action) {
+      case 'load-workflow-content':
+        loadActiveCharacterWorkflowContent()
+        break
       case 'run':
         void runCharacterWorkflow()
         break
@@ -3221,6 +3265,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         }
         break
     }
+  }
+
+  function loadActiveCharacterWorkflowContent(): void {
+    if (!activeCharacterWorkflowProjectId) {
+      return
+    }
+    characterWorkflowContentLoaded = true
+    renderCharacterWorkflow()
   }
 
   function executeCharacterResourceCommand(action: string, target?: HTMLElement): boolean {
