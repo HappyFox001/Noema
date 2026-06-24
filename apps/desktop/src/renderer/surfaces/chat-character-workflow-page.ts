@@ -2231,7 +2231,7 @@ function renderWorkflowLibraryToggle(options: CharacterWorkflowPageOptions): str
   `
 }
 
-function renderResourceCanvas(graph: CharacterResourceGraph, yjsSnapshot: string, options: CharacterWorkflowPageOptions): string {
+function renderResourceCanvas(graph: CharacterResourceGraph, graphSnapshot: string, options: CharacterWorkflowPageOptions): string {
   const activeTab = normalizeActiveTab(options.activeTabId)
   const isWorkflowTab = activeTab === 'workflow'
   const isRunTab = activeTab === 'run-draft'
@@ -2254,7 +2254,7 @@ function renderResourceCanvas(graph: CharacterResourceGraph, yjsSnapshot: string
           ${renderSelectionRectangle(graph)}
         </div>
       </div>` : ''}
-      <div class="chat-resource-serializer" aria-hidden="true" data-yjs-snapshot="${options.escapeHtml(yjsSnapshot)}"></div>
+      <div class="chat-resource-serializer" aria-hidden="true" data-graph-snapshot="${options.escapeHtml(graphSnapshot)}"></div>
       ${isWorkflowTab ? renderNodeSearchPopover(graph, options) : ''}
       ${isWorkflowTab ? renderCanvasContextMenu(options) : ''}
       ${isWorkflowTab || isRunTab ? options.workflowAssistantHtml ?? '' : ''}
@@ -2305,7 +2305,7 @@ function renderRunDraft(graph: CharacterResourceGraph, options: CharacterWorkflo
         ${renderLinkOverlay(runGraph, options)}
         ${runGraph.nodes.map((node) => renderResourceNode(node, runGraph, options)).join('')}
       </div>
-      <div class="chat-resource-serializer" aria-hidden="true" data-yjs-snapshot="${options.escapeHtml(runGraphSnapshot)}"></div>
+      <div class="chat-resource-serializer" aria-hidden="true" data-graph-snapshot="${options.escapeHtml(runGraphSnapshot)}"></div>
     </div>
   `
 }

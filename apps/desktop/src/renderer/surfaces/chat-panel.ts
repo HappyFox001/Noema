@@ -4199,7 +4199,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   function executeCharacterResourceCommand(action: string, target?: HTMLElement): boolean {
     const commands: Record<string, () => void> = {
       'save-graph': () => {
-        const yjsSnapshot = characterWorkflowRoot?.querySelector<HTMLElement>('.chat-resource-serializer')?.dataset.yjsSnapshot ?? '{}'
+        const graphSnapshot = characterWorkflowRoot?.querySelector<HTMLElement>('.chat-resource-serializer')?.dataset.graphSnapshot ?? '{}'
         saveCharacterResourceViewStateSnapshot()
         lastCharacterResourceGraphSnapshot = serializeCharacterResourceGraph({
           graphId: 'draft-character-resource-graph',
@@ -4225,7 +4225,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           },
           configOverrides: characterWorkflowConfigOverrides,
           positionOverrides: characterWorkflowPositionOverrides,
-          yjsSnapshot,
+          graphSnapshot,
         })
         showToast(options.getLanguage() === 'zh-CN' ? '资源图前端状态已保存到本地快照' : 'Resource graph frontend state saved to local snapshot')
       },
