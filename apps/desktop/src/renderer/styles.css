@@ -14403,6 +14403,7 @@ body.chat-workflow-library-resizing * {
 
 .chat-resource-run-progress div {
   min-width: 0;
+  overflow: hidden;
 }
 
 .chat-resource-run-progress span {
@@ -14415,6 +14416,9 @@ body.chat-workflow-library-resizing * {
 
 .chat-resource-run-progress strong,
 .chat-resource-run-progress p {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   color: rgba(248, 250, 250, 0.78);
   font-family: var(--font-mono);

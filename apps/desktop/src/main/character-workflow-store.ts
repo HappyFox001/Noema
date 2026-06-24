@@ -321,7 +321,13 @@ function createRunUpsertSql(projectId: string, run: any): string {
       ${Math.round(Number(summary.createdAt) || Date.now())},
       ${summary.completedAt ? Math.round(Number(summary.completedAt)) : 'NULL'},
       ${sqlText(JSON.stringify(run))}
-    );
+    )
+    ON CONFLICT(project_id, id) DO UPDATE SET
+      title = excluded.title,
+      status = excluded.status,
+      created_at = excluded.created_at,
+      completed_at = excluded.completed_at,
+      payload_json = excluded.payload_json;
   `
 }
 
