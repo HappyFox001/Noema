@@ -2016,7 +2016,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           name: 'Character Card Draft',
           goalPrompt: '',
           configOverrides: {
-            'character-card-target': { includeFields: ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'firstMessage', 'dialogueStyle', 'worldContext'], includeSupportFields: ['memoryStrategy', 'imagePrompt'] },
+            'character-card-target': { includeFields: ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'firstMessage', 'dialogueStyle', 'worldContext'], includeSupportFields: ['imagePrompt'] },
             'opening-field-target': { field: 'firstMessage' },
             'opening-field-control': { lengthPolicy: 'medium' },
             'image-target': { imageRole: 'hero-cover', assetPurpose: 'Primary attractive character image for the role card cover; preserve identity and include a story-relevant background.' },

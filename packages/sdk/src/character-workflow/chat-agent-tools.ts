@@ -216,6 +216,7 @@ function createCharacterDecisionPrompt(
     '    <field_content_rule>description must describe who the character is and why they are appealing for RP. appearance must describe visible body/outfit/expression cues. Do not describe the generation target itself.</field_content_rule>',
     '    <progressive_rule>Return exactly one action. Generate or reroll one field at a time. Do not fill the whole card in one response.</progressive_rule>',
     '    <progressive_rule>If a field target is missing, return set_field for the earliest missing field in fixed_schema order and obey that target local XML controls. Only request_image after imagePrompt exists.</progressive_rule>',
+    '    <progressive_rule>If turn_context_json.forceImageRequest is true, return exactly one request_image action and no set_field, merge_character_card, create_artifact, or finish action.</progressive_rule>',
     '    <image_rule>When requesting images, create one targetPrompts item per final image, not just per image target. If an image target requests multiple images through image_control count, return multiple distinct prompts for the same targetNodeId.</image_rule>',
     '    <image_rule>All images for the same role card must share a clear identity anchor: face structure, hair, eyes, age impression, body type, signature accessories, and outfit language. Vary pose, shot, background, mood, lighting, and story function.</image_rule>',
     '    <image_rule>Each targetPrompts prompt must be specific to that exact image slot, image_role, local image_control, and the text field or story beat it supports. Do not rely on the image tool to duplicate or vary one generic prompt.</image_rule>',
@@ -242,7 +243,7 @@ function createCharacterReviewPrompt(context: CharacterAgentRunContext, input: u
     `    <block_export>${context.qualityGate.blockExport}</block_export>`,
     `    <required_checks>${xmlEscape(context.qualityGate.requiredChecks.join(', '))}</required_checks>`,
     '    <must_check>All fixed character fields are present, concrete, and belong to the character rather than the agent.</must_check>',
-    '    <must_check>Supporting resources include memoryStrategy and imagePrompt; if an image model is configured, image readiness must be judged.</must_check>',
+    '    <must_check>Supporting resources include imagePrompt; if an image model is configured, image readiness must be judged.</must_check>',
     '    <must_check>Hard constraints are respected. Style pressures are visible but not copied mechanically.</must_check>',
     '    <output_format>Return JSON only with keys: score, passed, summary, checks, blockingIssues, repairSuggestions.</output_format>',
     '  </review_contract>',
@@ -378,7 +379,6 @@ function characterFieldDescription(field: string): string {
 
 function supportFieldDescription(field: string): string {
   const descriptions: Record<string, string> = {
-    memoryStrategy: 'Runtime memory behavior for long-form roleplay continuity.',
     imagePrompt: 'Prompt for the image model; this is not shown as a character-card field.',
   }
   return descriptions[field] ?? field
@@ -648,7 +648,6 @@ function createCandidateArtifacts(
     createToolArtifact(runId, candidateId, 'dialogue-style-guide', 'Dialogue Style Guide', data.dialogueStyleGuide, defaultSourceNodeId),
     createToolArtifact(runId, candidateId, 'world-context', 'World Context', data.worldContext, defaultSourceNodeId),
     createToolArtifact(runId, candidateId, 'scene-context', 'Scene Context', data.sceneContext, defaultSourceNodeId),
-    createToolArtifact(runId, candidateId, 'memory-policy', 'Memory Policy', data.memoryPolicy, defaultSourceNodeId),
     createToolArtifact(runId, candidateId, 'image-prompt', 'Image Prompt', data.imagePrompt, context.capabilities.imageModels[0]?.nodeId ?? defaultSourceNodeId),
     createToolArtifact(runId, candidateId, 'generation-report', 'Generation Report', data.generationReport ?? data.summary ?? data, defaultSourceNodeId),
   ].filter((artifact) => artifact.data !== undefined && artifact.data !== null && String(artifact.data).trim?.() !== '')

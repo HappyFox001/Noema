@@ -36,7 +36,6 @@ export type CharacterAgentArtifactKind =
   | 'dialogue-style-guide'
   | 'world-context'
   | 'scene-context'
-  | 'memory-policy'
   | 'image-prompt'
   | 'image-asset'
   | 'voice-direction'
@@ -405,7 +404,6 @@ export const CHARACTER_CARD_FIELD_SCHEMA = [
 ] as const
 
 export const CHARACTER_SUPPORT_FIELD_SCHEMA = [
-  'memoryStrategy',
   'imagePrompt',
 ] as const
 
@@ -947,6 +945,29 @@ export function createCharacterSuperAgent(
         await emit({ type: 'tool.call.completed', runId, record, result, timestamp: finishedAt })
         return result
       }
+      const executeImageRequestAction = async (action: Extract<CharacterAgentAction, { type: 'request_image' }>, phase: CharacterAgentPhase) => {
+        const imageResult = await callTool('generate_character_image', phase, {
+          targetPrompts: action.targetPrompts,
+          draft: state.draft,
+        })
+        const promptTexts = getRequestImagePromptTexts(action)
+        const imageIds = (imageResult.artifacts ?? [])
+          .filter((artifact) => artifact.kind === 'image-asset')
+          .map((artifact) => artifact.id)
+        if (!imageIds.length) {
+          throw new Error('Image generation request completed without producing image assets')
+        }
+        state = {
+          ...state,
+          draft: {
+            ...state.draft!,
+            imagePrompts: appendUnique(state.draft!.imagePrompts, promptTexts),
+            imageArtifactIds: appendUnique(state.draft!.imageArtifactIds, imageIds),
+            notes: appendUnique(state.draft!.notes, [action.reason ?? imageResult.summary]),
+            updatedAt: now(),
+          },
+        }
+      }
 
       try {
         await emit({ type: 'run.started', runId, timestamp: now() })
@@ -976,24 +997,7 @@ export function createCharacterSuperAgent(
           const progressiveAction = selectProgressiveAction(decision.actions, state.draft!, context)
           for (const action of progressiveAction ? [progressiveAction] : []) {
             if (action.type === 'request_image') {
-              const imageResult = await callTool('generate_character_image', 'produce', {
-                targetPrompts: action.targetPrompts,
-                draft: state.draft,
-              })
-              const promptTexts = getRequestImagePromptTexts(action)
-              const imageIds = (imageResult.artifacts ?? [])
-                .filter((artifact) => artifact.kind === 'image-asset')
-                .map((artifact) => artifact.id)
-              state = {
-                ...state,
-                draft: {
-                  ...state.draft!,
-                  imagePrompts: appendUnique(state.draft!.imagePrompts, promptTexts),
-                  imageArtifactIds: appendUnique(state.draft!.imageArtifactIds, imageIds),
-                  notes: appendUnique(state.draft!.notes, [action.reason ?? imageResult.summary]),
-                  updatedAt: now(),
-                },
-              }
+              await executeImageRequestAction(action, 'produce')
             } else if (action.type === 'create_artifact') {
               const artifact = await writeArtifact(createActionArtifact(context, state.draft!, action))
               state = {
@@ -1031,6 +1035,26 @@ export function createCharacterSuperAgent(
           }
         }
 
+        if (getMissingCharacterDraftFields(state.draft, context).includes('imageAsset')) {
+          const imageDecisionResult = await callTool('decide_character_card_next_step', 'produce', {
+            context,
+            draft: state.draft,
+            forceImageRequest: true,
+            artifacts: state.artifacts.map((artifact) => ({
+              id: artifact.id,
+              kind: artifact.kind,
+              title: artifact.title,
+              summary: artifact.summary,
+            })),
+          })
+          const imageDecision = decisionFromToolResult(imageDecisionResult, context, state.draft, true)
+          const imageAction = imageDecision.actions.find((action) => action.type === 'request_image')
+          if (!imageAction) {
+            throw new Error(`Character workflow needs imageAsset, but the agent did not return request_image.targetPrompts. Last agent summary: ${imageDecision.summary}`)
+          }
+          await executeImageRequestAction(imageAction, 'produce')
+        }
+
         await changePhase('inspect')
         const qualityResult = await callTool('review_character_card', 'inspect', {
           context,
@@ -1066,8 +1090,10 @@ export function createCharacterSuperAgent(
             forceRepair: true,
           })
           const repairDecision = decisionFromToolResult(repairResult, context, state.draft, true)
-          for (const action of repairDecision.actions.filter((action) => action.type !== 'request_image')) {
-            if (action.type === 'create_artifact') {
+          for (const action of repairDecision.actions) {
+            if (action.type === 'request_image') {
+              await executeImageRequestAction(action, 'repair')
+            } else if (action.type === 'create_artifact') {
               await writeArtifact(createActionArtifact(context, state.draft!, action))
             } else {
               const beforeFields = { ...(state.draft?.fields ?? {}) }
@@ -1591,7 +1617,6 @@ function characterRunFieldTitle(field: string): string {
     firstMessage: 'First Message',
     dialogueStyle: 'Dialogue Style',
     worldContext: 'World Context',
-    memoryStrategy: 'Memory Strategy',
     imagePrompt: 'Image Prompt',
   }
   return titles[field] ?? field
@@ -1618,8 +1643,6 @@ function normalizeDraftFieldName(field: string): string {
     styleGuide: 'dialogueStyle',
     dialogueStyleGuide: 'dialogueStyle',
     world: 'worldContext',
-    memory: 'memoryStrategy',
-    memoryPolicy: 'memoryStrategy',
   }
   return aliases[trimmed] ?? trimmed
 }
@@ -1671,7 +1694,6 @@ function artifactTitle(kind: CharacterAgentArtifactKind): string {
     'dialogue-style-guide': 'Dialogue Style Guide',
     'world-context': 'World Context',
     'scene-context': 'Scene Context',
-    'memory-policy': 'Memory Policy',
     'image-prompt': 'Image Prompt',
     'image-asset': 'Image Asset',
     'voice-direction': 'Voice Direction',
@@ -1705,7 +1727,6 @@ function isArtifactKind(value: unknown): value is CharacterAgentArtifactKind {
     'dialogue-style-guide',
     'world-context',
     'scene-context',
-    'memory-policy',
     'image-prompt',
     'image-asset',
     'voice-direction',

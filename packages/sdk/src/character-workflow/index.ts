@@ -762,8 +762,7 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
         option('Dialogue Style', 'dialogueStyle'),
         option('World Context', 'worldContext'),
       ]),
-      parameter('includeSupportFields', 'Include Support Fields', 'multi-select', ['memoryStrategy', 'imagePrompt'], undefined, [
-        option('Memory Strategy', 'memoryStrategy'),
+      parameter('includeSupportFields', 'Include Support Fields', 'multi-select', ['imagePrompt'], undefined, [
         option('Image Prompt', 'imagePrompt'),
       ]),
     ],
@@ -792,7 +791,6 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
         option('First Message', 'firstMessage'),
         option('Dialogue Style', 'dialogueStyle'),
         option('World Context', 'worldContext'),
-        option('Memory Strategy', 'memoryStrategy'),
         option('Image Prompt', 'imagePrompt'),
       ]),
     ],

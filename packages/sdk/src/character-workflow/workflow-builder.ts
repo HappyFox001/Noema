@@ -283,7 +283,7 @@ export function createUiConfigOverrides(spec: CharacterWorkflowBuilderSpec): Rec
     },
     'character-card-target': {
       includeFields: ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'firstMessage', 'dialogueStyle', 'worldContext'],
-      includeSupportFields: ['memoryStrategy', 'imagePrompt'],
+      includeSupportFields: ['imagePrompt'],
     },
     'opening-field-target': {
       field: 'firstMessage',
@@ -522,7 +522,7 @@ function applySpecToWorkflow(workflow: CharacterWorkflow, spec: CharacterWorkflo
   })
   byType.get('character-card-target')?.config && Object.assign(byType.get('character-card-target')!.config, {
     includeFields: ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'firstMessage', 'dialogueStyle', 'worldContext'],
-    includeSupportFields: ['memoryStrategy', 'imagePrompt'],
+    includeSupportFields: ['imagePrompt'],
   })
   byType.get('character-field-target')?.config && Object.assign(byType.get('character-field-target')!.config, {
     field: 'firstMessage',

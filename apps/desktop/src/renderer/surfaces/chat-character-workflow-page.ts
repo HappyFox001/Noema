@@ -643,8 +643,7 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'Dialogue Style', value: 'dialogueStyle' },
       { label: 'World Context', value: 'worldContext' },
     ]),
-    param('includeSupportFields', 'Support Fields', 'multi-select', ['memoryStrategy', 'imagePrompt'], undefined, undefined, undefined, [
-      { label: 'Memory Strategy', value: 'memoryStrategy' },
+    param('includeSupportFields', 'Support Fields', 'multi-select', ['imagePrompt'], undefined, undefined, undefined, [
       { label: 'Image Prompt', value: 'imagePrompt' },
     ]),
   ], 'package'),
@@ -666,7 +665,6 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'First Message', value: 'firstMessage' },
       { label: 'Dialogue Style', value: 'dialogueStyle' },
       { label: 'World Context', value: 'worldContext' },
-      { label: 'Memory Strategy', value: 'memoryStrategy' },
       { label: 'Image Prompt', value: 'imagePrompt' },
     ]),
   ], 'text-card'),
@@ -1077,11 +1075,6 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
   ], [
     slot('resource', 'Resource', 'role-resource', 'Context resource.'),
   ], [], 'text-card', { width: 268, height: 188 }),
-  createDefinition('memory-resource', 'Memory Policy', ['记忆', 'memory policy', 'long-term'], 'Run Resources', 'asset', 'Generated memory behavior for long-form roleplay.', [
-    slot('resource', 'Resource', 'role-resource', 'Previous generated role resource.'),
-  ], [
-    slot('resource', 'Resource', 'role-resource', 'Memory resource.'),
-  ], [], 'rule', { width: 268, height: 188 }),
   createDefinition('image-prompt-resource', 'Image Prompt', ['生图提示', 'visual prompt', 'image prompt'], 'Run Resources', 'asset', 'Prompt material prepared for image generation.', [
     slot('resource', 'Resource', 'role-resource', 'Previous generated role resource.'),
   ], [
@@ -2595,7 +2588,7 @@ function getRunArtifactPlacement(artifact: NonNullable<CharacterResourceRunState
       ? artifact.data as Record<string, unknown>
       : {}
     const field = typeof data.field === 'string' ? data.field : ''
-    const order = ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'worldContext', 'firstMessage', 'dialogueStyle', 'memoryStrategy', 'imagePrompt']
+    const order = ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'worldContext', 'firstMessage', 'dialogueStyle']
     const fieldIndex = Math.max(0, order.indexOf(field))
     const lane = fieldIndex % 3
     const row = Math.floor(fieldIndex / 3)
@@ -2640,10 +2633,23 @@ function getCharacterFieldArtifactLabel(artifact: NonNullable<CharacterResourceR
 }
 
 function getRunCanvasArtifacts(artifacts: NonNullable<CharacterResourceRunState['artifacts']>): NonNullable<CharacterResourceRunState['artifacts']> {
-  const filtered = getRoleResourceArtifacts(artifacts).filter((artifact) => artifact.type !== 'character-card-draft')
+  const filtered = getRoleResourceArtifacts(artifacts)
+    .filter((artifact) => artifact.type !== 'character-card-draft')
+    .filter((artifact) => artifact.type !== 'image-prompt')
+    .filter((artifact) => !isHiddenRunCanvasFieldArtifact(artifact))
   return filtered.some((artifact) => artifact.type === 'character-card-field')
     ? filtered.filter((artifact) => artifact.type !== 'character-card-final')
     : filtered
+}
+
+function isHiddenRunCanvasFieldArtifact(artifact: NonNullable<CharacterResourceRunState['artifacts']>[number]): boolean {
+  if (artifact.type !== 'character-card-field') {
+    return false
+  }
+  const data = artifact.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
+    ? artifact.data as Record<string, unknown>
+    : {}
+  return data.field === 'imagePrompt'
 }
 
 function getRoleResourceArtifacts(artifacts: NonNullable<CharacterResourceRunState['artifacts']>): NonNullable<CharacterResourceRunState['artifacts']> {
@@ -2655,7 +2661,6 @@ function getRoleResourceArtifacts(artifacts: NonNullable<CharacterResourceRunSta
     'dialogue-style-guide',
     'world-context',
     'scene-context',
-    'memory-policy',
     'image-prompt',
     'image-asset',
     'candidate-pack',
@@ -2678,7 +2683,6 @@ function getRunArtifactOrder(type: string): number {
     'dialogue-style-guide',
     'world-context',
     'scene-context',
-    'memory-policy',
     'image-prompt',
     'image-asset',
     'quality-report',
@@ -2699,7 +2703,6 @@ function getRunArtifactMeta(artifact: NonNullable<CharacterResourceRunState['art
     'dialogue-style-guide': ui(options, '语气 / style', 'style / resource'),
     'world-context': ui(options, '世界观 / context', 'world / resource'),
     'scene-context': ui(options, '场景 / context', 'scene / resource'),
-    'memory-policy': ui(options, '记忆 / memory', 'memory / resource'),
     'image-prompt': ui(options, '生图提示 / image', 'image prompt / resource'),
     'image-asset': ui(options, '图片 / image', 'image / resource'),
     'quality-report': ui(options, '校验 / report', 'quality / report'),
@@ -2719,7 +2722,6 @@ function getRunArtifactNodeType(type: string): string {
     'dialogue-style-guide': 'style-guide-resource',
     'world-context': 'context-resource',
     'scene-context': 'context-resource',
-    'memory-policy': 'memory-resource',
     'image-prompt': 'image-prompt-resource',
     'image-asset': 'image-asset-resource',
     'quality-report': 'quality-report-resource',
