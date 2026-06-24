@@ -526,6 +526,95 @@ const IMAGE_STYLE_PRESET_OPTIONS = IMAGE_STYLE_PRESET_VALUES.map((value) => ({
   value,
 }))
 
+const PROSE_STYLE_PRESET_VALUES = [
+  'custom',
+  'plain-natural-rp',
+  'immersive-second-person',
+  'close-third-person',
+  'first-person-confessional',
+  'dialogue-forward',
+  'cinematic-scene-prose',
+  'sensory-rich-prose',
+  'minimalist-prose',
+  'precise-literary-prose',
+  'lush-poetic-prose',
+  'noir-detective-voice',
+  'gothic-romance-prose',
+  'dark-fantasy-prose',
+  'urban-fantasy-prose',
+  'grimdark-prose',
+  'cozy-fantasy-prose',
+  'high-fantasy-epic',
+  'sword-and-sorcery',
+  'wuxia-xianxia-prose',
+  'isekai-adventure',
+  'space-opera-prose',
+  'cyberpunk-noir',
+  'post-apocalyptic-survival',
+  'dystopian-drama',
+  'occult-mystery',
+  'cosmic-horror-prose',
+  'psychological-thriller',
+  'cozy-mystery',
+  'crime-drama',
+  'medical-drama',
+  'legal-drama',
+  'political-intrigue',
+  'military-sci-fi',
+  'slice-of-life',
+  'slow-burn-romance',
+  'campus-romance',
+  'office-romance',
+  'forbidden-romance',
+  'rivals-to-lovers',
+  'enemies-to-lovers',
+  'childhood-friends',
+  'found-family',
+  'hurt-comfort',
+  'angst-with-comfort',
+  'protective-companion',
+  'mentor-student-tension',
+  'arranged-marriage-drama',
+  'royal-court-romance',
+  'monster-romance',
+  'paranormal-romance',
+  'yandere-tension',
+  'obsessive-devotion',
+  'toxic-romance-drama',
+  'dark-adult-drama',
+  'power-imbalance-drama',
+  'mature-psychological-romance',
+  'taboo-tension-drama',
+  'jealousy-and-possession',
+  'betrayal-and-reconciliation',
+  'domestic-suspense',
+  'melodrama',
+  'soap-opera',
+  'comedic-banter',
+  'dry-wit',
+  'satirical-prose',
+  'wholesome-comfort',
+  'healing-slow-life',
+  'dreamlike-surreal',
+  'liminal-horror',
+  'fairytale-retelling',
+  'mythic-legendary',
+  'picaresque-adventure',
+  'journal-entry-style',
+  'epistolary-style',
+  'chat-log-style',
+  'scenario-card-direct',
+  'sillytavern-natural-card',
+  'ali-chat-dialogue-samples',
+  'w-plus-plus-structured',
+  'longform-novelistic-rp',
+]
+
+const PROSE_STYLE_PRESET_OPTIONS = PROSE_STYLE_PRESET_VALUES.map((value) => ({
+  label: value.split('-').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' '),
+  value,
+}))
+
 const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
   createDefinition('goal', 'Generation Goal', ['目标', 'brief', 'intent'], 'Goal', 'core', 'Captures the free-form RP generation target without asking the user to define final card fields.', [], [
     slot('goal', 'Goal', 'generation-goal', 'Natural language generation goal and target audience.'),
@@ -688,14 +777,7 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
   ], [
     slot('style', 'Style', 'style-signal', 'Weighted style signal.'),
   ], [
-    param('preset', 'Preset', 'select', 'custom', undefined, undefined, undefined, [
-      { label: 'Custom', value: 'custom' },
-      { label: 'Campus Romance', value: 'campus-romance' },
-      { label: 'Dark Adult', value: 'dark-adult' },
-      { label: 'Urban Suspense', value: 'urban-suspense' },
-      { label: 'Fantasy Companion', value: 'fantasy-companion' },
-      { label: 'Slice of Life', value: 'slice-of-life' },
-    ]),
+    param('preset', 'Preset', 'select', 'custom', undefined, undefined, undefined, PROSE_STYLE_PRESET_OPTIONS),
     param('intensity', 'Intensity', 'number', 0.68, 0, 1, 0.01),
     param('stylePrompt', 'Style Prompt', 'textarea', ''),
   ], 'rule'),
@@ -1044,6 +1126,12 @@ const definitionFuse = new Fuse(RESOURCE_NODE_DEFINITIONS, {
 })
 
 const workbenchCleanups = new WeakMap<HTMLElement, Array<() => void>>()
+const workflowMotionSnapshots = new WeakMap<HTMLElement, WorkflowMotionSnapshot>()
+
+interface WorkflowMotionSnapshot {
+  nodes: Map<string, { x: number; y: number; status: string; selected: boolean; configHash: string }>
+  links: Set<string>
+}
 
 export function renderCharacterWorkflowPage(options: CharacterWorkflowPageOptions): string {
   const graph = createCharacterResourceGraph(options)
@@ -1099,6 +1187,16 @@ export function createCharacterAgentWorkflowSnapshot(options: CharacterWorkflowP
           artifactType: slotItem.type,
           required: Boolean(slotItem.required),
         }])),
+        parameters: (definition?.parameters ?? []).map((parameterItem) => ({
+          id: parameterItem.id,
+          label: parameterItem.label,
+          type: parameterItem.type,
+          defaultValue: parameterItem.defaultValue,
+          options: parameterItem.options?.map((optionItem) => ({
+            label: optionItem.label,
+            value: optionItem.value,
+          })),
+        })),
         config: node.config,
         state: { status: node.status === 'dirty' ? 'idle' : node.status },
       }
@@ -1538,6 +1636,7 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
     root,
   })
   animateRunDraftCanvas(root, cleanups)
+  animateWorkflowCanvasChanges(root, cleanups)
   animateAgentOperationFeedback(root, cleanups)
   workbenchCleanups.set(root, cleanups)
 }
@@ -1712,6 +1811,168 @@ function animateRunDraftCanvas(root: HTMLElement, cleanups: Array<() => void>): 
   cleanups.push(() => {
     reverted = true
   })
+}
+
+function animateWorkflowCanvasChanges(root: HTMLElement, cleanups: Array<() => void>): void {
+  const viewport = root.querySelector<HTMLElement>('.chat-workflow-canvas-viewport.active')
+  if (!viewport || viewport.classList.contains('chat-resource-run-viewport')) {
+    return
+  }
+  const snapshot = captureWorkflowMotionSnapshot(viewport)
+  const previous = workflowMotionSnapshots.get(root)
+  workflowMotionSnapshots.set(root, snapshot)
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    return
+  }
+  let reverted = false
+  import('gsap').then(({ gsap }) => {
+    if (reverted || !viewport.isConnected) {
+      return
+    }
+    const ctx = gsap.context(() => {
+      const nodes = gsap.utils.toArray<HTMLElement>('.chat-resource-node')
+      const newNodes = nodes.filter((node) => !previous?.nodes.has(node.dataset.chatWorkflowNodeId ?? ''))
+      const movedNodes = nodes.flatMap((node) => {
+        const nodeId = node.dataset.chatWorkflowNodeId ?? ''
+        const before = previous?.nodes.get(nodeId)
+        const after = snapshot.nodes.get(nodeId)
+        if (!before || !after) return []
+        const dx = before.x - after.x
+        const dy = before.y - after.y
+        return Math.abs(dx) > 1 || Math.abs(dy) > 1 ? [{ node, dx, dy }] : []
+      })
+      const changedNodes = nodes.filter((node) => {
+        const nodeId = node.dataset.chatWorkflowNodeId ?? ''
+        const before = previous?.nodes.get(nodeId)
+        const after = snapshot.nodes.get(nodeId)
+        return Boolean(before && after && (before.status !== after.status || before.configHash !== after.configHash || before.selected !== after.selected))
+      })
+      const newLinks = gsap.utils.toArray<SVGPathElement>('.chat-resource-link')
+        .filter((link) => !previous?.links.has(link.getAttribute('data-chat-resource-link-id') ?? ''))
+        .flatMap((link) => gsap.utils.toArray<SVGPathElement>('path:not(.hit-area)', link))
+      gsap.killTweensOf([...nodes, ...newLinks])
+      if (!previous) {
+        gsap.from(nodes, {
+          opacity: 0,
+          y: 12,
+          scale: 0.965,
+          duration: 0.32,
+          stagger: 0.018,
+          ease: 'power3.out',
+          clearProps: 'opacity,transform',
+        })
+        return
+      }
+      if (movedNodes.length) {
+        for (const item of movedNodes) {
+          gsap.fromTo(item.node, {
+            x: item.dx,
+            y: item.dy,
+            scale: 0.992,
+          }, {
+            x: 0,
+            y: 0,
+            scale: 1,
+            duration: 0.48,
+            ease: 'expo.out',
+            clearProps: 'transform',
+          })
+        }
+      }
+      if (newNodes.length) {
+        gsap.fromTo(newNodes, {
+          opacity: 0,
+          y: 18,
+          scale: 0.92,
+          filter: 'brightness(1.25) saturate(1.18)',
+        }, {
+          opacity: 1,
+          y: 0,
+          scale: 1,
+          filter: 'brightness(1) saturate(1)',
+          duration: 0.46,
+          stagger: 0.045,
+          ease: 'back.out(1.35)',
+          clearProps: 'opacity,transform,filter',
+        })
+      }
+      if (changedNodes.length) {
+        gsap.fromTo(changedNodes, {
+          boxShadow: '0 0 0 1px rgba(132, 173, 159, 0.48), 0 0 0 0 rgba(132, 173, 159, 0)',
+          filter: 'brightness(1.18)',
+        }, {
+          boxShadow: '0 0 0 1px rgba(132, 173, 159, 0), 0 0 0 12px rgba(132, 173, 159, 0)',
+          filter: 'brightness(1)',
+          duration: 0.58,
+          stagger: 0.025,
+          ease: 'power3.out',
+          clearProps: 'boxShadow,filter',
+        })
+      }
+      if (newLinks.length) {
+        gsap.fromTo(newLinks, {
+          opacity: 0,
+          strokeDasharray: 20,
+          strokeDashoffset: 42,
+        }, {
+          opacity: 1,
+          strokeDashoffset: 0,
+          duration: 0.54,
+          stagger: 0.025,
+          ease: 'power2.out',
+          clearProps: 'opacity,strokeDasharray,strokeDashoffset',
+        })
+      }
+    }, viewport)
+    cleanups.push(() => ctx.revert())
+  }).catch(() => {
+    // Animation is optional; rendering must not depend on GSAP availability.
+  })
+  cleanups.push(() => {
+    reverted = true
+  })
+}
+
+function captureWorkflowMotionSnapshot(viewport: HTMLElement): WorkflowMotionSnapshot {
+  const nodes = new Map<string, { x: number; y: number; status: string; selected: boolean; configHash: string }>()
+  viewport.querySelectorAll<HTMLElement>('.chat-resource-node').forEach((node) => {
+    const nodeId = node.dataset.chatWorkflowNodeId ?? ''
+    if (!nodeId) return
+    nodes.set(nodeId, {
+      x: readPixelCssVariable(node, '--node-x'),
+      y: readPixelCssVariable(node, '--node-y'),
+      status: readWorkflowNodeStatus(node),
+      selected: node.classList.contains('selected'),
+      configHash: readWorkflowNodeConfigHash(node),
+    })
+  })
+  const links = new Set<string>()
+  viewport.querySelectorAll<SVGGElement>('.chat-resource-link').forEach((link) => {
+    const linkId = link.getAttribute('data-chat-resource-link-id') ?? ''
+    if (linkId) links.add(linkId)
+  })
+  return { nodes, links }
+}
+
+function readPixelCssVariable(element: HTMLElement, name: string): number {
+  const value = element.style.getPropertyValue(name) || getComputedStyle(element).getPropertyValue(name)
+  const number = Number.parseFloat(value)
+  return Number.isFinite(number) ? number : 0
+}
+
+function readWorkflowNodeStatus(node: HTMLElement): string {
+  return ['running', 'queued', 'done', 'failed', 'stale', 'dirty', 'idle']
+    .find((status) => node.classList.contains(status)) ?? ''
+}
+
+function readWorkflowNodeConfigHash(node: HTMLElement): string {
+  const fields = Array.from(node.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>('[data-chat-workflow-param]'))
+  return fields.map((field) => {
+    if (field instanceof HTMLInputElement && field.type === 'checkbox') {
+      return `${field.dataset.chatWorkflowParam}:${field.checked ? '1' : '0'}`
+    }
+    return `${field.dataset.chatWorkflowParam}:${field.value}`
+  }).join('|')
 }
 
 function animateAgentOperationFeedback(root: HTMLElement, cleanups: Array<() => void>): void {

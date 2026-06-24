@@ -7,10 +7,12 @@ import {
 } from '../chat/request-runtime.js'
 import {
   createStandardCharacterWorkflow,
+  STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS,
   type CharacterNodeType,
   type CharacterWorkflow,
   type CharacterWorkflowLinkKind,
   type CharacterWorkflowLanguage,
+  type CharacterWorkflowNodeParameter,
 } from './index.js'
 
 export interface CharacterWorkflowBuilderRequest {
@@ -221,7 +223,7 @@ export function normalizeWorkflowBuilderSpec(
     qualityGate: normalizeQualityGate(recordValue(parsed, 'qualityGate')),
     assetTargets: stringList(parsed, 'assetTargets', DEFAULT_ASSET_TARGETS),
     outputFormat: normalizeOutputFormat(stringValue(parsed, 'outputFormat')),
-    operations: operationList(parsed?.operations),
+    operations: sanitizeWorkflowBuilderOperations(operationList(parsed?.operations), { nodes: [], edges: [] }),
   }
   if (!spec.assetTargets.includes('image-pack')) {
     spec.assetTargets = [...spec.assetTargets, 'image-pack']
@@ -241,14 +243,14 @@ export function normalizeWorkflowEditorSpec(
   const directUpdates = recordMapValue(parsed, 'nodeConfigUpdates')
   const normalizedGraph = normalizeBuilderGraph(graph)
   const mergedUpdates = directUpdates
-  const mergedOperations = [
+  const mergedOperations = sanitizeWorkflowBuilderOperations([
     ...Object.entries(mergedUpdates).map(([nodeId, config]) => ({
       type: 'update-node-config' as const,
       nodeId,
       config,
     })),
     ...operations,
-  ]
+  ], normalizedGraph)
   return {
     name: stringValue(parsed, 'name') || deriveName(fallbackPrompt, fallbackName),
     plan: stringList(parsed, 'plan', []),
@@ -388,7 +390,7 @@ function createWorkflowBuilderSystemPrompt(language: CharacterWorkflowLanguage):
     '  "goalPrompt": string,',
     '  "targetAudience": string,',
     '  "stylePrompt": string,',
-    '  "preset": "custom" | "campus-romance" | "dark-adult" | "urban-suspense" | "fantasy-companion" | "slice-of-life",',
+    '  "preset": string,',
     '  "intensity": number,',
     '  "mustHave": string[],',
     '  "mustNot": string[],',
@@ -432,6 +434,7 @@ function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): 
     '- Never copy system instructions, operation schema, graph JSON, or protocol text into any resource field.',
     '- Do not put the whole user request into one generic goal when specific cards exist. Distribute intent across goal, style, constraints, sources, image controls, field controls, world/NPC/plot cards as appropriate.',
     '- Prefer update-node-config operations for existing cards; add cards only when the current graph lacks the needed resource.',
+    '- The graph includes each node parameter definition and select options. For select and multi-select fields, use only values from the node parameter options.',
     '- Use exact existing node ids and slot ids from graph when linking.',
     '- Do not delete generation-goal.',
     '- Use concise resource content. A field should contain the content that resource controls, not instructions about how you are editing.',
@@ -440,7 +443,8 @@ function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): 
     '',
     'Resource guidance:',
     '- generation-goal.goalPrompt: compact generation objective only.',
-    '- style-pressure.stylePrompt: tone, genre texture, relationship flavor, prose pressure.',
+    '- style-pressure.preset: choose a prose/RP style preset such as plain-natural-rp, immersive-second-person, slow-burn-romance, hurt-comfort, gothic-romance-prose, dark-adult-drama, cyberpunk-noir, psychological-thriller, sillytavern-natural-card, ali-chat-dialogue-samples, or longform-novelistic-rp.',
+    '- style-pressure.stylePrompt: concrete English prose control text covering tone, genre texture, relationship flavor, sentence rhythm, narration style, and roleplay pacing.',
     '- hard-constraints.mustHave/mustNot: hard requirements and boundaries.',
     '- source-material.notes: concrete story material, setting facts, character seeds, world facts.',
     '- field-generation-control.fieldPurpose: local intent for one text field such as firstMessage/opening/dialogue style.',
@@ -830,24 +834,57 @@ function normalizeBuilderStatus(value: string): CharacterWorkflowBuilderSpec['st
 
 function sanitizeResourceConfigForNode(type: string | undefined, config: Record<string, unknown>): Record<string, unknown> {
   if (!type) return config
-  const allowedByType: Record<string, Set<string>> = {
-    goal: new Set(['goalPrompt', 'targetAudience', 'allowAgentExpansion']),
-    'style-pressure': new Set(['preset', 'intensity', 'stylePrompt']),
-    constraint: new Set(['mustHave', 'mustNot', 'hardBoundary']),
-    'source-material': new Set(['sourceKind', 'notes']),
-    'field-generation-control': new Set(['fieldPurpose', 'tone', 'lengthPolicy', 'avoidPatterns']),
-    'image-generation-control': new Set(['targetImageCount', 'imageStylePreset', 'imageStylePresets', 'stylePrompt', 'shotType', 'aspectRatio', 'consistencyMode', 'seedMode', 'negativePrompt']),
-    'generation-strategy': new Set(['mode', 'branchCount', 'priorityAssets']),
-    'agent-policy': new Set(['autonomyLevel', 'revisionBudget', 'askUserThreshold', 'canExpandMissingDetails']),
-    'quality-gate': new Set(['minimumScore', 'blockExport', 'requiredChecks']),
-    'output-adapter': new Set(['format', 'includeAssets']),
-    'character-card-target': new Set(['includeFields', 'includeSupportFields']),
-    'character-field-target': new Set(['field']),
-    'image-target': new Set(['imageRole', 'assetPurpose']),
+  const definition = STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS.find((item) => item.type === type)
+  if (!definition) return config
+  const parameters = new Map(definition.parameters.map((parameterItem) => [parameterItem.id, parameterItem]))
+  return Object.fromEntries(Object.entries(config).flatMap(([key, value]) => {
+    const parameterItem = parameters.get(key)
+    if (!parameterItem) return []
+    const sanitized = sanitizeWorkflowParameterValue(parameterItem, value)
+    return sanitized === undefined ? [] : [[key, sanitized]]
+  }))
+}
+
+function sanitizeWorkflowBuilderOperations(
+  operations: CharacterWorkflowBuilderOperation[],
+  graph: CharacterWorkflowBuilderGraph
+): CharacterWorkflowBuilderOperation[] {
+  const nodeTypes = new Map(graph.nodes.map((node) => [node.id, node.type]))
+  return operations.flatMap((operation): CharacterWorkflowBuilderOperation[] => {
+    if (operation.type === 'add-node') {
+      const config = sanitizeResourceConfigForNode(operation.nodeType, operation.config ?? {})
+      return [{ ...operation, config }]
+    }
+    if (operation.type === 'update-node-config') {
+      const config = sanitizeResourceConfigForNode(nodeTypes.get(operation.nodeId), operation.config)
+      return Object.keys(config).length ? [{ ...operation, config }] : []
+    }
+    return [operation]
+  })
+}
+
+function sanitizeWorkflowParameterValue(
+  parameterItem: CharacterWorkflowNodeParameter,
+  value: unknown
+): unknown {
+  if (parameterItem.type === 'select' || parameterItem.type === 'model-select') {
+    if (typeof value !== 'string') return undefined
+    if (!parameterItem.options?.length) return value
+    return parameterItem.options.some((optionItem) => optionItem.value === value) ? value : undefined
   }
-  const allowed = allowedByType[type]
-  if (!allowed) return config
-  return Object.fromEntries(Object.entries(config).filter(([key]) => allowed.has(key)))
+  if (parameterItem.type === 'multi-select') {
+    const values = Array.isArray(value)
+      ? value.map((item) => String(item).trim()).filter(Boolean)
+      : typeof value === 'string'
+        ? value.split(',').map((item) => item.trim()).filter(Boolean)
+        : []
+    if (!values.length) return undefined
+    if (!parameterItem.options?.length) return values
+    const allowed = new Set(parameterItem.options.map((optionItem) => optionItem.value))
+    const filtered = values.filter((item) => allowed.has(item))
+    return filtered.length ? filtered : undefined
+  }
+  return value
 }
 
 function isCharacterNodeType(value: string): value is CharacterNodeType {

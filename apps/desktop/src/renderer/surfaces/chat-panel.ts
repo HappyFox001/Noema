@@ -2360,12 +2360,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     operations?: Array<Record<string, unknown>>
   }): void {
     const now = Date.now()
-    const configOverrides: Record<string, Record<string, unknown>> = cloneRecord(spec.configOverrides ?? {})
+    const configOverrides: Record<string, Record<string, unknown>> = Object.fromEntries(
+      Object.entries(cloneRecord(spec.configOverrides ?? {})).map(([nodeId, config]) => [nodeId, deriveCharacterWorkflowConfig(config)])
+    )
     const operationPatch = createInitialWorkflowPatchFromOperations(spec.operations ?? [])
     for (const [nodeId, config] of Object.entries(operationPatch.configOverrides)) {
       configOverrides[nodeId] = {
         ...(configOverrides[nodeId] ?? {}),
-        ...config,
+        ...deriveCharacterWorkflowConfig(config),
       }
     }
     if ((spec.goalPrompt || spec.targetAudience) && !configOverrides['generation-goal']) {
@@ -2458,7 +2460,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         if (operation.config && typeof operation.config === 'object' && !Array.isArray(operation.config)) {
           configOverrides[nodeId] = {
             ...(configOverrides[nodeId] ?? {}),
-            ...(operation.config as Record<string, unknown>),
+            ...deriveCharacterWorkflowConfig(operation.config as Record<string, unknown>),
           }
         }
       } else if (type === 'update-node-config') {
@@ -2466,7 +2468,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         if (!nodeId || !operation.config || typeof operation.config !== 'object' || Array.isArray(operation.config)) continue
         configOverrides[nodeId] = {
           ...(configOverrides[nodeId] ?? {}),
-          ...(operation.config as Record<string, unknown>),
+          ...deriveCharacterWorkflowConfig(operation.config as Record<string, unknown>),
         }
       } else if (type === 'add-link') {
         const sourceNodeId = typeof operation.sourceNodeId === 'string' ? operation.sourceNodeId.trim() : ''
@@ -2647,6 +2649,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       config: Record<string, unknown>
       inputs: string[]
       outputs: string[]
+      parameters: Array<{
+        id: string
+        type: string
+        defaultValue?: unknown
+        options?: Array<{ value: string; label: string }>
+      }>
     }>
     edges: Array<{
       id?: string
@@ -2697,6 +2705,19 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         config: node.config,
         inputs: Object.keys(node.inputs ?? {}),
         outputs: Object.keys(node.outputs ?? {}),
+        parameters: Array.isArray(node.parameters)
+          ? node.parameters.map((parameterItem: any) => ({
+            id: String(parameterItem.id || ''),
+            type: String(parameterItem.type || ''),
+            defaultValue: parameterItem.defaultValue,
+            ...(Array.isArray(parameterItem.options)
+              ? { options: parameterItem.options.map((optionItem: any) => ({
+                value: String(optionItem.value || ''),
+                label: String(optionItem.label || optionItem.value || ''),
+              })) }
+              : {}),
+          })).filter((parameterItem: any) => parameterItem.id)
+          : [],
       })),
       edges: snapshot.edges ?? [],
     }
@@ -2722,8 +2743,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       linkActions: new Map<string, string>(),
     }
     for (const [nodeId, config] of Object.entries(response.uiConfigOverrides ?? {})) {
-      const entries = Object.entries(config).filter(([, value]) => {
+      const nextConfig = deriveCharacterWorkflowConfig(config)
+      const entries = Object.entries(nextConfig).filter(([key, value]) => {
         if (Array.isArray(value)) return value.length > 0
+        if (value === '' && key === 'stylePrompt' && typeof nextConfig.preset === 'string') return true
         return value !== '' && value !== undefined && value !== null
       })
       if (!entries.length) continue
@@ -2795,7 +2818,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       if (operation.config && typeof operation.config === 'object' && !Array.isArray(operation.config)) {
         characterWorkflowConfigOverrides[nodeId] = {
           ...(characterWorkflowConfigOverrides[nodeId] ?? {}),
-          ...(operation.config as Record<string, unknown>),
+          ...deriveCharacterWorkflowConfig(operation.config as Record<string, unknown>),
         }
       }
       selectedWorkflowNodeId = nodeId
@@ -2809,7 +2832,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       if (!nodeId || !operation.config || typeof operation.config !== 'object' || Array.isArray(operation.config)) return false
       characterWorkflowConfigOverrides[nodeId] = {
         ...(characterWorkflowConfigOverrides[nodeId] ?? {}),
-        ...(operation.config as Record<string, unknown>),
+        ...deriveCharacterWorkflowConfig(operation.config as Record<string, unknown>),
       }
       selectedWorkflowNodeId = nodeId
       characterResourceViewState.selectedNodeIds = [nodeId]
@@ -3735,7 +3758,27 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       characterWorkflowConfigOverrides[nodeId].stylePrompt = preset.prompt
       characterWorkflowConfigOverrides[nodeId].negativePrompt = preset.negativePrompt
     }
+    if (paramId === 'preset') {
+      characterWorkflowConfigOverrides[nodeId].stylePrompt = createProseStylePresetPrompt(control.value)
+    }
     renderCharacterWorkflow()
+  }
+
+  function deriveCharacterWorkflowConfig(config: Record<string, unknown>): Record<string, unknown> {
+    const nextConfig = { ...config }
+    if (typeof nextConfig.imageStylePreset === 'string') {
+      const preset = createImageStylePresetPrompt(nextConfig.imageStylePreset)
+      if (!Object.prototype.hasOwnProperty.call(nextConfig, 'stylePrompt')) {
+        nextConfig.stylePrompt = preset.prompt
+      }
+      if (!Object.prototype.hasOwnProperty.call(nextConfig, 'negativePrompt')) {
+        nextConfig.negativePrompt = preset.negativePrompt
+      }
+    }
+    if (typeof nextConfig.preset === 'string' && !Object.prototype.hasOwnProperty.call(nextConfig, 'stylePrompt')) {
+      nextConfig.stylePrompt = createProseStylePresetPrompt(nextConfig.preset)
+    }
+    return nextConfig
   }
 
   function createImageStylePresetPrompt(value: string): { prompt: string; negativePrompt: string } {
@@ -3790,6 +3833,39 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       .filter(Boolean)
       .map((part) => /^[0-9]+$/.test(part) ? part : part.charAt(0).toUpperCase() + part.slice(1))
       .join(' ')
+  }
+
+  function createProseStylePresetPrompt(value: string): string {
+    if (!value || value === 'custom') {
+      return ''
+    }
+    const label = formatImageStylePresetLabel(value)
+    const lower = value.toLowerCase()
+    if (/(plain-natural|sillytavern|scenario-card|ali-chat|w-plus-plus|chat-log)/.test(lower)) {
+      return `${label}: write clean natural roleplay card prose, prioritize usable character behavior, speech patterns, scenario hooks, and model-readable details over decorative literary flourish.`
+    }
+    if (/(second-person|third-person|first-person|journal|epistolary|dialogue-forward)/.test(lower)) {
+      return `${label}: control narration perspective and format tightly, keep voice consistent, make dialogue and action beats easy to continue in chat.`
+    }
+    if (/(romance|lovers|devotion|jealousy|marriage|companion|hurt|comfort|family|mentor|monster|paranormal|yandere|toxic|taboo|adult|power-imbalance)/.test(lower)) {
+      return `${label}: emphasize relationship tension, emotional stakes, boundaries, attraction, trust shifts, vulnerability, and long-form roleplay hooks without becoming explicit or instruction-like.`
+    }
+    if (/(fantasy|wuxia|xianxia|isekai|sorcery|mythic|fairytale|occult|gothic|grimdark|horror|liminal|cosmic)/.test(lower)) {
+      return `${label}: use genre-rich atmosphere, mythic or supernatural texture, sensory scene detail, and conflict-ready world pressure while keeping character-card fields concrete.`
+    }
+    if (/(sci-fi|cyberpunk|space|dystopian|post-apocalyptic|military)/.test(lower)) {
+      return `${label}: use speculative setting texture, social pressure, technology or survival stakes, and sharp environmental details that support roleplay continuity.`
+    }
+    if (/(mystery|thriller|crime|legal|medical|political|suspense|noir|domestic)/.test(lower)) {
+      return `${label}: use controlled suspense, secrets, investigative hooks, moral ambiguity, and grounded dramatic tension with precise cause-and-effect.`
+    }
+    if (/(slice|healing|wholesome|cozy|slow-life|comedic|dry-wit|satirical|soap|melodrama)/.test(lower)) {
+      return `${label}: shape the prose around everyday scene momentum, readable emotional beats, recurring interaction loops, and a clear conversational rhythm.`
+    }
+    if (/(minimalist|precise|lush|poetic|sensory|cinematic|novelistic|surreal|picaresque)/.test(lower)) {
+      return `${label}: apply this prose texture consistently through sentence rhythm, imagery density, pacing, and scene framing without copying the style label into final fields.`
+    }
+    return `${label}: apply a consistent prose voice, genre texture, pacing pressure, and relationship flavor to all connected target fields.`
   }
 
   function updateCharacterWorkflowModelChoice(choice: HTMLElement): void {
