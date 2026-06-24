@@ -361,6 +361,7 @@ function localizeParameterOptionLabel(
 }
 
 const IMAGE_STYLE_PRESET_VALUES = [
+  'roleplay-character-avatar',
   'photoreal-portrait',
   'cinematic-realism',
   'editorial-photography',
@@ -822,7 +823,14 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     slot('imageControl', 'Image Control', 'asset-target', 'Image generation control.'),
   ], [
     param('targetImageCount', 'Image Count', 'integer', 1, 1, 16, 1),
-    param('imageStylePreset', 'Style Preset', 'select', 'semi-realistic-anime', undefined, undefined, undefined, IMAGE_STYLE_PRESET_OPTIONS),
+    param('imageStyleDomain', 'Style Domain', 'select', 'auto', undefined, undefined, undefined, [
+      { label: 'Auto', value: 'auto' },
+      { label: 'Photoreal', value: 'photoreal' },
+      { label: 'Anime', value: 'anime' },
+      { label: 'Illustration', value: 'illustration' },
+      { label: 'Stylized', value: 'stylized' },
+    ]),
+    param('imageStylePreset', 'Style Preset', 'select', 'roleplay-character-avatar', undefined, undefined, undefined, IMAGE_STYLE_PRESET_OPTIONS),
     param('stylePrompt', 'Style Prompt', 'textarea', ''),
     param('shotType', 'Shot Type', 'select', 'auto', undefined, undefined, undefined, [
       { label: 'Auto', value: 'auto' },

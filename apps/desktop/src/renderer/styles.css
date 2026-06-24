@@ -13055,27 +13055,32 @@ body.chat-workflow-library-resizing * {
 }
 
 .chat-workflow-library-section.run-history {
-  max-height: 190px;
+  max-height: 150px;
   overflow: hidden;
 }
 
 .chat-workflow-library-run-list {
-  max-height: 146px;
-  overflow: auto;
+  --workflow-run-row-height: 52px;
+  max-height: calc(var(--workflow-run-row-height) * 2 + 2px);
+  overflow-x: hidden;
+  overflow-y: auto;
   display: grid;
   gap: 2px;
+  padding-right: 2px;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
 }
 
 .chat-workflow-library-run-row {
   width: 100%;
-  min-height: 32px;
+  min-height: var(--workflow-run-row-height);
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 24px;
+  grid-template-columns: minmax(0, 1fr) 34px;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   border: 1px solid transparent;
-  border-radius: 6px;
-  padding: 3px;
+  border-radius: 7px;
+  padding: 5px;
   color: rgba(248, 250, 250, 0.62);
   background: transparent;
 }
@@ -13088,7 +13093,7 @@ body.chat-workflow-library-resizing * {
 
 .chat-workflow-library-run-open {
   min-width: 0;
-  min-height: 26px;
+  min-height: 40px;
   display: grid;
   grid-template-columns: 8px minmax(0, 1fr);
   align-items: center;
@@ -13102,14 +13107,15 @@ body.chat-workflow-library-resizing * {
 }
 
 .chat-workflow-library-run-delete {
-  width: 22px;
-  height: 22px;
-  border: 1px solid rgba(255, 104, 104, 0.12);
-  border-radius: 5px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(255, 104, 104, 0.18);
+  border-radius: 8px;
   background: rgba(255, 104, 104, 0.04);
   color: rgba(255, 188, 188, 0.5);
   font-family: var(--font-ui);
-  font-size: 11px;
+  font-size: 15px;
+  line-height: 1;
   cursor: pointer;
 }
 
@@ -14403,6 +14409,7 @@ body.chat-workflow-library-resizing * {
 
 .chat-resource-run-progress div {
   min-width: 0;
+  overflow: hidden;
 }
 
 .chat-resource-run-progress span {
@@ -14415,6 +14422,9 @@ body.chat-workflow-library-resizing * {
 
 .chat-resource-run-progress strong,
 .chat-resource-run-progress p {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   color: rgba(248, 250, 250, 0.78);
   font-family: var(--font-mono);

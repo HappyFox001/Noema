@@ -473,6 +473,7 @@ export interface CreateStandardCharacterWorkflowOptions {
 }
 
 const IMAGE_STYLE_PRESET_OPTIONS: CharacterWorkflowParameterOption[] = [
+  option('Roleplay Character Avatar', 'roleplay-character-avatar'),
   option('Photoreal Portrait', 'photoreal-portrait'),
   option('Cinematic Realism', 'cinematic-realism'),
   option('Editorial Photography', 'editorial-photography'),
@@ -1015,7 +1016,14 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     outputs: { imageControl: port('imageControl', 'Image Control', 'asset-target') },
     parameters: [
       parameter('targetImageCount', 'Image Count', 'integer', 1, { min: 1, max: 16, step: 1 }),
-      parameter('imageStylePreset', 'Style Preset', 'select', 'semi-realistic-anime', IMAGE_STYLE_PRESET_OPTIONS),
+      parameter('imageStyleDomain', 'Style Domain', 'select', 'auto', undefined, [
+        option('Auto', 'auto'),
+        option('Photoreal', 'photoreal'),
+        option('Anime', 'anime'),
+        option('Illustration', 'illustration'),
+        option('Stylized', 'stylized'),
+      ]),
+      parameter('imageStylePreset', 'Style Preset', 'select', 'roleplay-character-avatar', IMAGE_STYLE_PRESET_OPTIONS),
       parameter('stylePrompt', 'Style Prompt', 'textarea', ''),
       parameter('shotType', 'Shot Type', 'select', 'auto', undefined, [
         option('Auto', 'auto'),
@@ -1395,7 +1403,8 @@ export function createStandardCharacterWorkflow(
   if (avatarControl) {
     Object.assign(avatarControl.config, {
       targetImageCount: 1,
-      imageStylePreset: 'semi-realistic-anime',
+      imageStyleDomain: 'auto',
+      imageStylePreset: 'roleplay-character-avatar',
       shotType: 'bust',
       aspectRatio: '1:1',
       consistencyMode: 'same-character',
@@ -1413,6 +1422,7 @@ export function createStandardCharacterWorkflow(
   if (overviewControl) {
     Object.assign(overviewControl.config, {
       targetImageCount: 1,
+      imageStyleDomain: 'auto',
       imageStylePreset: 'character-sheet',
       shotType: 'full-body',
       aspectRatio: '16:9',

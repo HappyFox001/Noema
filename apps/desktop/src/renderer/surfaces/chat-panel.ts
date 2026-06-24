@@ -2163,7 +2163,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
               <small>${activeProject.runs.length}</small>
             </div>
             <div class="chat-workflow-library-run-list">
-              ${activeProject.runs.length ? activeProject.runs.slice().reverse().slice(0, 8).map((run) => renderCharacterWorkflowRunRow(activeProject.id, run, zh)).join('') : `
+              ${activeProject.runs.length ? activeProject.runs.slice().reverse().map((run) => renderCharacterWorkflowRunRow(activeProject.id, run, zh)).join('') : `
                 <div class="chat-workflow-library-empty-row">${options.escapeHtml(zh ? '暂无运行' : 'No runs yet')}</div>
               `}
             </div>
@@ -2213,9 +2213,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             'opening-field-target': { field: 'firstMessage' },
             'opening-field-control': { lengthPolicy: 'medium' },
             'avatar-image-target': { imageRole: 'avatar', assetPurpose: 'Generate avatar.jpg first as the canonical identity-lock portrait. It should be a polished production avatar with clear face, strong appeal, stable visual identity cues, and no collage layout.' },
-            'avatar-image-control': { targetImageCount: 1, imageStylePreset: 'semi-realistic-anime', shotType: 'bust', aspectRatio: '1:1', consistencyMode: 'same-character', seedMode: 'lock-character' },
+            'avatar-image-control': { targetImageCount: 1, imageStyleDomain: 'auto', imageStylePreset: 'roleplay-character-avatar', shotType: 'bust', aspectRatio: '1:1', consistencyMode: 'same-character', seedMode: 'lock-character' },
             'overview-sheet-image-target': { imageRole: 'character-overview-sheet', assetPurpose: 'Generate one large character asset overview sheet after avatar.jpg. Use the avatar as identity reference and show front view, back view, side or three-quarter view, hairstyle, hands, legs, feet or shoes, outfit details, and expression callouts.' },
-            'overview-sheet-image-control': { targetImageCount: 1, imageStylePreset: 'character-sheet', shotType: 'full-body', aspectRatio: '16:9', consistencyMode: 'same-character', seedMode: 'lock-character', negativePrompt: 'text, labels, watermark, logo, inconsistent face, deformed hands, extra fingers, missing fingers, bad feet, malformed legs, duplicate limbs' },
+            'overview-sheet-image-control': { targetImageCount: 1, imageStyleDomain: 'auto', imageStylePreset: 'character-sheet', shotType: 'full-body', aspectRatio: '16:9', consistencyMode: 'same-character', seedMode: 'lock-character', negativePrompt: 'text, labels, watermark, logo, inconsistent face, deformed hands, extra fingers, missing fingers, bad feet, malformed legs, duplicate limbs' },
             'opening-layout-target': { layoutKind: 'immersive-card-css', includeSections: ['title', 'tags', 'opening', 'coverImage', 'supportImages'], layoutPrompt: 'Create an immersive CSS-style opening card layout that combines the character title, tags, opening text, and generated images into one readable role-card presentation.' },
             'generation-strategy': { mode: 'branch-and-refine', branchCount: 3, priorityAssets: ['role-card', 'opening', 'opening-layout', 'image-pack'] },
             'quality-gate': { minimumScore: 0.84 },
@@ -2241,11 +2241,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             'continuity-control': { progressionPacing: 'slow-burn', forbidResettingFacts: true },
             'relationship-control': { relationshipMode: 'ambiguous-ally' },
             'avatar-image-target': { imageRole: 'avatar', assetPurpose: 'Generate avatar.jpg first as the canonical identity-lock portrait before any world or story reference images.' },
-            'avatar-image-control': { targetImageCount: 1, imageStylePreset: 'semi-realistic-anime', shotType: 'bust', aspectRatio: '1:1', consistencyMode: 'same-character', seedMode: 'lock-character' },
+            'avatar-image-control': { targetImageCount: 1, imageStyleDomain: 'auto', imageStylePreset: 'roleplay-character-avatar', shotType: 'bust', aspectRatio: '1:1', consistencyMode: 'same-character', seedMode: 'lock-character' },
             'overview-sheet-image-target': { imageRole: 'character-overview-sheet', assetPurpose: 'Generate one large character asset overview sheet after avatar.jpg, then use that stable identity for world and NPC reference images.' },
-            'overview-sheet-image-control': { targetImageCount: 1, imageStylePreset: 'character-sheet', shotType: 'full-body', aspectRatio: '16:9', consistencyMode: 'same-character', seedMode: 'lock-character', negativePrompt: 'text, labels, watermark, logo, inconsistent face, deformed hands, extra fingers, missing fingers, bad feet, malformed legs, duplicate limbs' },
+            'overview-sheet-image-control': { targetImageCount: 1, imageStyleDomain: 'auto', imageStylePreset: 'character-sheet', shotType: 'full-body', aspectRatio: '16:9', consistencyMode: 'same-character', seedMode: 'lock-character', negativePrompt: 'text, labels, watermark, logo, inconsistent face, deformed hands, extra fingers, missing fingers, bad feet, malformed legs, duplicate limbs' },
             'world-reference-image-target': { imageRole: 'world-context', assetPurpose: 'A world-context image that still includes the central character or visible character-linked motifs.' },
-            'world-reference-image-control': { targetImageCount: 2, imageStylePreset: 'semi-realistic-anime', shotType: 'auto', aspectRatio: '16:9', consistencyMode: 'same-world', seedMode: 'vary-slightly' },
+            'world-reference-image-control': { targetImageCount: 2, imageStyleDomain: 'auto', imageStylePreset: 'cinematic-realism', shotType: 'auto', aspectRatio: '16:9', consistencyMode: 'same-world', seedMode: 'vary-slightly' },
             'generation-strategy': { mode: 'explore-then-converge', branchCount: 4, priorityAssets: ['world-context', 'npc-pack', 'scene-context', 'image-pack'] },
             'quality-gate': { minimumScore: 0.86 },
           },
@@ -2523,6 +2523,27 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
   }
 
+  function createDefaultWorkflowProjectViewState(): CharacterWorkflowProjectViewState {
+    return {
+      selectedWorkflowNodeId: 'generation-goal',
+      selectedNodeIds: ['generation-goal'],
+      selectedLinkId: '',
+      zoom: 0.84,
+      panX: 0,
+      panY: 0,
+      hideLinks: false,
+      collapsedNodeIds: [],
+      deletedNodeIds: [],
+      duplicatedNodes: [],
+      addedNodes: [],
+      nodeSizes: {},
+      linkKinds: {},
+      customLinks: [],
+      deletedLinkIds: [],
+      replacedTargetSlots: [],
+    }
+  }
+
   function applyWorkflowProjectViewState(viewState: Partial<CharacterWorkflowProjectViewState> | undefined): void {
     selectedWorkflowNodeId = typeof viewState?.selectedWorkflowNodeId === 'string' ? viewState.selectedWorkflowNodeId : 'generation-goal'
     characterResourceViewState.selectedNodeIds = Array.isArray(viewState?.selectedNodeIds) && viewState.selectedNodeIds.length ? [...viewState.selectedNodeIds] : ['generation-goal']
@@ -2540,6 +2561,20 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     characterResourceViewState.customLinks = JSON.parse(JSON.stringify(viewState?.customLinks ?? [])) as SerializedCharacterResourceLink[]
     characterResourceViewState.deletedLinkIds = new Set(viewState?.deletedLinkIds ?? [])
     characterResourceViewState.replacedTargetSlots = new Set(viewState?.replacedTargetSlots ?? [])
+  }
+
+  function applyCharacterWorkflowProjectState(project: CharacterWorkflowProjectRecord, options: { includeRunState?: boolean } = {}): void {
+    replaceRecord(characterWorkflowConfigOverrides, cloneRecord(project.configOverrides ?? {}))
+    replaceRecord(characterWorkflowPositionOverrides, cloneRecord(project.positionOverrides ?? {}))
+    applyWorkflowProjectViewState(project.viewState)
+    characterWorkflowRunCount = Math.max(0, Math.round(Number(project.runCount) || 0))
+    characterWorkflowRunState = options.includeRunState
+      ? normalizePersistedCharacterWorkflowRunState(
+        project.runs.find((run) => run.id === project.activeRunId)?.runState
+          ?? project.runs[project.runs.length - 1]?.runState
+          ?? null
+      )
+      : null
   }
 
   function saveActiveWorkflowProjectSnapshot(markDirty = true): void {
@@ -2656,7 +2691,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       loadState: 'ready',
       configOverrides: cloneRecord(project.configOverrides ?? {}),
       positionOverrides: cloneRecord(project.positionOverrides ?? {}),
-      viewState: project.viewState ?? createWorkflowProjectViewState(),
+      viewState: project.viewState ?? createDefaultWorkflowProjectViewState(),
       runCount: Math.max(Number(project.runCount) || 0, runs.length),
       activeRunId,
       runs,
@@ -2682,7 +2717,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       loadState: 'index',
       configOverrides: {},
       positionOverrides: {},
-      viewState: createWorkflowProjectViewState(),
+      viewState: createDefaultWorkflowProjectViewState(),
       runCount: item.runCount,
       activeRunId: item.activeRunId,
       runs: [],
@@ -2907,8 +2942,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       goalSession: spec.agentWork ? createWorkflowGoalSessionFromAgentWork(spec.agentWork, spec.name || '') : undefined,
     }
     characterWorkflowProjects = [project, ...characterWorkflowProjects]
+    activeCharacterWorkflowProjectId = project.id
+    characterWorkflowActiveTabId = 'workflow'
+    applyCharacterWorkflowProjectState(project)
     persistCharacterWorkflowProject(project)
-    void openCharacterWorkflowDraft(project.id)
+    renderCharacterWorkflow()
     if (ensureWorkflowConversation()) {
       characterWorkflowDirty = true
       persistActiveConversationWorkflowState()
@@ -3790,6 +3828,16 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     activeCharacterWorkflowProjectId = projectId
     characterWorkflowContentLoaded = true
     characterWorkflowActiveTabId = 'workflow'
+    const indexedProject = characterWorkflowProjects[projectIndex]
+    if (indexedProject.loadState === 'ready' || indexedProject.loadState === 'ready-overview') {
+      applyCharacterWorkflowProjectState(indexedProject)
+    } else {
+      replaceRecord(characterWorkflowConfigOverrides, {})
+      replaceRecord(characterWorkflowPositionOverrides, {})
+      applyWorkflowProjectViewState(undefined)
+      characterWorkflowRunCount = 0
+      characterWorkflowRunState = null
+    }
     renderCharacterWorkflow()
     markCharacterWorkflowPerf(perfId, 'loading render scheduled')
     const project = await ensureCharacterWorkflowProjectDetailLoaded(projectId).catch((error) => {
@@ -3804,11 +3852,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     activeCharacterWorkflowProjectId = project.id
     markCharacterWorkflowPerf(perfId, 'before apply project state')
-    replaceRecord(characterWorkflowConfigOverrides, cloneRecord(project.configOverrides))
-    replaceRecord(characterWorkflowPositionOverrides, cloneRecord(project.positionOverrides))
-    applyWorkflowProjectViewState(project.viewState)
-    characterWorkflowRunCount = project.runCount
-    characterWorkflowRunState = null
+    applyCharacterWorkflowProjectState(project)
     characterWorkflowActiveTabId = 'workflow'
     markCharacterWorkflowPerf(perfId, 'project state applied')
     renderCharacterWorkflow()
@@ -3859,10 +3903,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       project.runs.push(run)
     }
     markCharacterWorkflowPerf(perfId, 'before apply run state')
-    replaceRecord(characterWorkflowConfigOverrides, cloneRecord(project.configOverrides))
-    replaceRecord(characterWorkflowPositionOverrides, cloneRecord(project.positionOverrides))
-    applyWorkflowProjectViewState(project.viewState)
-    characterWorkflowRunCount = project.runCount
+    applyCharacterWorkflowProjectState(project)
     characterWorkflowRunState = normalizePersistedCharacterWorkflowRunState(run.runState)
     characterWorkflowActiveTabId = 'run-draft'
     markCharacterWorkflowPerf(perfId, 'run state applied')
@@ -4076,15 +4117,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       : ''
     const activeProject = characterWorkflowProjects.find((project) => project.id === activeCharacterWorkflowProjectId)
     if (activeProject) {
-      replaceRecord(characterWorkflowConfigOverrides, cloneRecord(activeProject.configOverrides ?? {}))
-      replaceRecord(characterWorkflowPositionOverrides, cloneRecord(activeProject.positionOverrides ?? {}))
-      applyWorkflowProjectViewState(activeProject.viewState)
-      characterWorkflowRunCount = Math.max(0, Math.round(Number(activeProject.runCount) || 0))
-      characterWorkflowRunState = normalizePersistedCharacterWorkflowRunState(
-        activeProject.runs.find((run) => run.id === activeProject.activeRunId)?.runState
-          ?? activeProject.runs[activeProject.runs.length - 1]?.runState
-          ?? null
-      )
+      applyCharacterWorkflowProjectState(activeProject, { includeRunState: true })
     } else {
       replaceRecord(characterWorkflowConfigOverrides, {})
       replaceRecord(characterWorkflowPositionOverrides, {})
@@ -4752,16 +4785,22 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const label = formatImageStylePresetLabel(value)
     const lower = value.toLowerCase()
     const commonNegative = 'low quality, blurry, deformed, bad anatomy, text, watermark, logo, signature, UI, caption'
+    if (lower === 'roleplay-character-avatar') {
+      return {
+        prompt: 'Roleplay character avatar, identity-first portrait language, clear face, stable hair and eye cues, attractive readable silhouette, polished AI companion card finish',
+        negativePrompt: `${commonNegative}, collage, reference sheet, multiple poses, generic template face, hidden face`,
+      }
+    }
     if (/(photoreal|cinematic|editorial|fashion|film|photo|polaroid|camera|bokeh|infrared|plate)/.test(lower)) {
       return {
-        prompt: `${label}, realistic lighting, natural materials, detailed skin and fabric, camera-based image language`,
-        negativePrompt: `${commonNegative}, cartoon, anime, manga, painterly, vector art, plastic CGI`,
+        prompt: `${label}, premium AI companion portrait language, natural facial detail, detailed eyes, believable skin texture, flattering 50-85mm lens feel, controlled studio or cinematic light, attractive role-card finish`,
+        negativePrompt: `${commonNegative}, cartoon, anime, manga, painterly, vector art, plastic CGI, over-smoothed skin, uncanny face, generic stock-photo expression`,
       }
     }
     if (/(anime|manga|moe|chibi|mecha|magical|webtoon|manhwa|visual-novel|light-novel)/.test(lower)) {
       return {
-        prompt: `${label}, clean linework, expressive character design, polished anime illustration, coherent cel color`,
-        negativePrompt: `${commonNegative}, photorealistic, live action, 3d render, western comic anatomy`,
+        prompt: `${label}, polished visual-novel character avatar language, clean linework, expressive eye design, memorable hair silhouette, tasteful cel shading, premium mobile role-card finish`,
+        negativePrompt: `${commonNegative}, photorealistic, live action, 3d render, western comic anatomy, muddy linework, generic template face`,
       }
     }
     if (/(oil|painting|watercolor|gouache|acrylic|pastel|charcoal|graphite|pencil|ink|sumi|ukiyo|woodblock|linocut|etching|lithograph|risograph|screen-print)/.test(lower)) {

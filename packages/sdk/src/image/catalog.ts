@@ -47,6 +47,16 @@ export interface ImageProviderCatalogEntry {
   generatePath: string
   docsUrl: string
   defaultApiKeyPlaceholder: string
+  capabilities?: ImageProviderCapabilities
+}
+
+export interface ImageProviderCapabilities {
+  referenceImages?: {
+    supported: boolean
+    maxImages: number
+    mode: 'json-images' | 'json-image-urls' | 'multipart-edit'
+  }
+  sizeFormat?: 'x' | 'asterisk' | 'width-height' | 'provider-enum'
 }
 
 export interface ImageGenerationConfiguredModel {
@@ -78,6 +88,10 @@ export const IMAGE_PROVIDER_CATALOG: ImageProviderCatalogEntry[] = [
     generatePath: '/images/generations',
     docsUrl: 'https://platform.openai.com/docs/guides/image-generation',
     defaultApiKeyPlaceholder: 'sk-...',
+    capabilities: {
+      referenceImages: { supported: true, maxImages: 10, mode: 'multipart-edit' },
+      sizeFormat: 'x',
+    },
   },
   {
     value: 'google-imagen',
@@ -88,6 +102,9 @@ export const IMAGE_PROVIDER_CATALOG: ImageProviderCatalogEntry[] = [
     generatePath: '/models/{model}:predict',
     docsUrl: 'https://ai.google.dev/gemini-api/docs/imagen',
     defaultApiKeyPlaceholder: 'AIza...',
+    capabilities: {
+      sizeFormat: 'provider-enum',
+    },
   },
   {
     value: 'stability',
@@ -98,6 +115,10 @@ export const IMAGE_PROVIDER_CATALOG: ImageProviderCatalogEntry[] = [
     generatePath: '/v2beta/stable-image/generate/core',
     docsUrl: 'https://platform.stability.ai/docs/api-reference',
     defaultApiKeyPlaceholder: 'sk-...',
+    capabilities: {
+      referenceImages: { supported: true, maxImages: 1, mode: 'multipart-edit' },
+      sizeFormat: 'provider-enum',
+    },
   },
   {
     value: 'replicate',
@@ -108,6 +129,10 @@ export const IMAGE_PROVIDER_CATALOG: ImageProviderCatalogEntry[] = [
     generatePath: '/predictions',
     docsUrl: 'https://replicate.com/docs/reference/http',
     defaultApiKeyPlaceholder: 'r8_...',
+    capabilities: {
+      referenceImages: { supported: true, maxImages: 10, mode: 'json-images' },
+      sizeFormat: 'width-height',
+    },
   },
   {
     value: 'fal',
@@ -118,6 +143,10 @@ export const IMAGE_PROVIDER_CATALOG: ImageProviderCatalogEntry[] = [
     generatePath: '/{model}',
     docsUrl: 'https://fal.ai/docs/model-endpoints',
     defaultApiKeyPlaceholder: 'fal_...',
+    capabilities: {
+      referenceImages: { supported: true, maxImages: 10, mode: 'json-image-urls' },
+      sizeFormat: 'provider-enum',
+    },
   },
   {
     value: 'comfyui',
@@ -128,6 +157,10 @@ export const IMAGE_PROVIDER_CATALOG: ImageProviderCatalogEntry[] = [
     generatePath: '/prompt',
     docsUrl: 'https://github.com/comfyanonymous/ComfyUI/blob/master/script_examples/websockets_api_example.py',
     defaultApiKeyPlaceholder: 'optional',
+    capabilities: {
+      referenceImages: { supported: true, maxImages: 10, mode: 'json-images' },
+      sizeFormat: 'width-height',
+    },
   },
   {
     value: 'automatic1111',
@@ -138,6 +171,10 @@ export const IMAGE_PROVIDER_CATALOG: ImageProviderCatalogEntry[] = [
     generatePath: '/sdapi/v1/txt2img',
     docsUrl: 'https://github.com/AUTOMATIC1111/stable-diffusion-webui/wiki/API',
     defaultApiKeyPlaceholder: 'optional',
+    capabilities: {
+      referenceImages: { supported: true, maxImages: 1, mode: 'json-images' },
+      sizeFormat: 'width-height',
+    },
   },
   {
     value: 'aliyun-bailian',
@@ -148,6 +185,9 @@ export const IMAGE_PROVIDER_CATALOG: ImageProviderCatalogEntry[] = [
     generatePath: '/api/v1/services/aigc/text2image/image-synthesis',
     docsUrl: 'https://help.aliyun.com/zh/model-studio/text-to-image',
     defaultApiKeyPlaceholder: 'sk-...',
+    capabilities: {
+      sizeFormat: 'asterisk',
+    },
   },
   {
     value: 'volcengine-ark',
@@ -158,6 +198,10 @@ export const IMAGE_PROVIDER_CATALOG: ImageProviderCatalogEntry[] = [
     generatePath: '/images/generations',
     docsUrl: 'https://www.volcengine.com/docs/82379/1541523',
     defaultApiKeyPlaceholder: 'API Key',
+    capabilities: {
+      referenceImages: { supported: true, maxImages: 10, mode: 'json-images' },
+      sizeFormat: 'x',
+    },
   },
   {
     value: 'tencent-hunyuan',
@@ -168,6 +212,9 @@ export const IMAGE_PROVIDER_CATALOG: ImageProviderCatalogEntry[] = [
     generatePath: '/?Action=TextToImage',
     docsUrl: 'https://cloud.tencent.com/document/product/1729/101842',
     defaultApiKeyPlaceholder: 'SecretId / SecretKey',
+    capabilities: {
+      sizeFormat: 'width-height',
+    },
   },
   {
     value: 'baidu-qianfan',
@@ -198,6 +245,10 @@ export const IMAGE_PROVIDER_CATALOG: ImageProviderCatalogEntry[] = [
     generatePath: '/{model}',
     docsUrl: 'https://huggingface.co/docs/api-inference/tasks/text-to-image',
     defaultApiKeyPlaceholder: 'hf_...',
+    capabilities: {
+      referenceImages: { supported: true, maxImages: 1, mode: 'json-images' },
+      sizeFormat: 'width-height',
+    },
   },
   {
     value: 'adobe-firefly',
@@ -208,6 +259,9 @@ export const IMAGE_PROVIDER_CATALOG: ImageProviderCatalogEntry[] = [
     generatePath: '/v3/images/generate',
     docsUrl: 'https://developer.adobe.com/firefly-services/docs/firefly-api/api/',
     defaultApiKeyPlaceholder: 'API Key',
+    capabilities: {
+      sizeFormat: 'width-height',
+    },
   },
   {
     value: 'ideogram',
@@ -218,6 +272,10 @@ export const IMAGE_PROVIDER_CATALOG: ImageProviderCatalogEntry[] = [
     generatePath: '/ideogram-v3/generate',
     docsUrl: 'https://developer.ideogram.ai/api-reference/api-reference/generate-v3',
     defaultApiKeyPlaceholder: 'API Key',
+    capabilities: {
+      referenceImages: { supported: true, maxImages: 1, mode: 'multipart-edit' },
+      sizeFormat: 'provider-enum',
+    },
   },
   {
     value: 'recraft',
@@ -228,6 +286,10 @@ export const IMAGE_PROVIDER_CATALOG: ImageProviderCatalogEntry[] = [
     generatePath: '/images/generations',
     docsUrl: 'https://www.recraft.ai/docs',
     defaultApiKeyPlaceholder: 'API Key',
+    capabilities: {
+      referenceImages: { supported: true, maxImages: 1, mode: 'multipart-edit' },
+      sizeFormat: 'x',
+    },
   },
   {
     value: 'wavespeed',
@@ -238,6 +300,10 @@ export const IMAGE_PROVIDER_CATALOG: ImageProviderCatalogEntry[] = [
     generatePath: '/{model}',
     docsUrl: 'https://wavespeed.ai/docs/generate-image',
     defaultApiKeyPlaceholder: 'WAVESPEED_API_KEY',
+    capabilities: {
+      referenceImages: { supported: true, maxImages: 10, mode: 'json-images' },
+      sizeFormat: 'asterisk',
+    },
   },
 ]
 
