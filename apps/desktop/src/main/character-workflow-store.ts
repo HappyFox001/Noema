@@ -16,6 +16,16 @@ export interface StoredCharacterWorkflowProject {
   payload: unknown
 }
 
+export interface StoredCharacterWorkflowRun {
+  projectId: string
+  id: string
+  title: string
+  status: string
+  createdAt: number
+  completedAt?: number
+  payload: unknown
+}
+
 interface CharacterWorkflowProjectRow {
   id: string
   name: string
@@ -24,6 +34,16 @@ interface CharacterWorkflowProjectRow {
   updated_at: number
   active_run_id: string | null
   run_count: number
+  payload_json?: string
+}
+
+interface CharacterWorkflowRunRow {
+  project_id: string
+  id: string
+  title: string
+  status: string
+  created_at: number
+  completed_at: number | null
   payload_json?: string
 }
 
@@ -41,6 +61,21 @@ CREATE TABLE IF NOT EXISTS character_workflow_projects (
 
 CREATE INDEX IF NOT EXISTS idx_character_workflow_projects_updated
 ON character_workflow_projects(updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS character_workflow_runs (
+  project_id TEXT NOT NULL,
+  id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  status TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  completed_at INTEGER,
+  payload_json TEXT NOT NULL,
+  PRIMARY KEY(project_id, id),
+  FOREIGN KEY(project_id) REFERENCES character_workflow_projects(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_character_workflow_runs_project
+ON character_workflow_runs(project_id, created_at DESC);
 `
 
 export class CharacterWorkflowStore {
@@ -55,13 +90,12 @@ export class CharacterWorkflowStore {
     }
     await mkdir(dirname(this.dbPath), { recursive: true })
     await runSqlite(this.dbPath, CHARACTER_WORKFLOW_SCHEMA_SQL)
-    await runSqliteIgnoreDuplicateColumn(this.dbPath, 'ALTER TABLE character_workflow_projects ADD COLUMN schema_version INTEGER NOT NULL DEFAULT 1;')
     this.initialized = true
   }
 
   async listProjects(): Promise<StoredCharacterWorkflowProject[]> {
-    await this.initialize()
-    const rows = await runSqliteJson<CharacterWorkflowProjectRow>(this.dbPath, `
+    await this.writeQueue
+    const rows = await this.runJson<CharacterWorkflowProjectRow>(`
       SELECT id, name, schema_version, created_at, updated_at, active_run_id, run_count
       FROM character_workflow_projects
       ORDER BY updated_at DESC;
@@ -70,8 +104,8 @@ export class CharacterWorkflowStore {
   }
 
   async getProject(id: string): Promise<StoredCharacterWorkflowProject | null> {
-    await this.initialize()
-    const rows = await runSqliteJson<CharacterWorkflowProjectRow>(this.dbPath, `
+    await this.writeQueue
+    const rows = await this.runJson<CharacterWorkflowProjectRow>(`
       SELECT id, name, schema_version, created_at, updated_at, active_run_id, run_count, payload_json
       FROM character_workflow_projects
       WHERE id = ${sqlText(id)}
@@ -80,10 +114,81 @@ export class CharacterWorkflowStore {
     return rows[0] ? rowToProject(rows[0], true) : null
   }
 
+  async getProjectOverview(id: string): Promise<StoredCharacterWorkflowProject | null> {
+    await this.writeQueue
+    const rows = await this.runJson<CharacterWorkflowProjectRow & {
+      runs_json?: string
+    }>(`
+      SELECT
+        p.id,
+        p.name,
+        p.schema_version,
+        p.created_at,
+        p.updated_at,
+        p.active_run_id,
+        p.run_count,
+        json_remove(p.payload_json, '$.runs') AS payload_json,
+        COALESCE((
+          SELECT json_group_array(json_object(
+            'id', r.id,
+            'title', r.title,
+            'status', r.status,
+            'createdAt', r.created_at,
+            'completedAt', r.completed_at
+          ))
+          FROM character_workflow_runs r
+          WHERE r.project_id = p.id
+          ORDER BY r.created_at ASC
+        ), '[]') AS runs_json
+      FROM character_workflow_projects p
+      WHERE p.id = ${sqlText(id)}
+      LIMIT 1;
+    `)
+    const row = rows[0]
+    const project = row ? rowToProject(row, true) : null
+    if (!project?.payload || typeof project.payload !== 'object' || Array.isArray(project.payload)) {
+      return project
+    }
+    const runSummaries = parseJsonValue(row.runs_json ?? '[]')
+    return {
+      ...project,
+      payload: {
+        ...(project.payload as Record<string, unknown>),
+        runs: Array.isArray(runSummaries)
+          ? runSummaries.map((run) => normalizeRunSummary(run))
+          : [],
+      },
+    }
+  }
+
+  async getProjectRun(projectId: string, runId: string): Promise<StoredCharacterWorkflowRun | null> {
+    await this.writeQueue
+    const rows = await this.runJson<CharacterWorkflowRunRow>(`
+      SELECT project_id, id, title, status, created_at, completed_at, payload_json
+      FROM character_workflow_runs
+      WHERE project_id = ${sqlText(projectId)} AND id = ${sqlText(runId)}
+      LIMIT 1;
+    `)
+    if (rows[0]) {
+      return rowToRun(rows[0], true)
+    }
+    return null
+  }
+
   async upsertProject(project: StoredCharacterWorkflowProject): Promise<void> {
-    await this.initialize()
-    const payloadJson = JSON.stringify(project.payload ?? {})
+    const payloadRecord = project.payload && typeof project.payload === 'object' && !Array.isArray(project.payload)
+      ? project.payload as Record<string, any>
+      : {}
+    const runs = Array.isArray(payloadRecord.runs) ? payloadRecord.runs : []
+    const projectPayload = {
+      ...payloadRecord,
+      runs: runs.map((run) => normalizeRunSummary(run)),
+    }
+    const payloadJson = JSON.stringify(projectPayload)
+    const runSql = runs.map((run) => createRunUpsertSql(project.id, run)).join('\n')
     const sql = `
+      PRAGMA foreign_keys = ON;
+      BEGIN IMMEDIATE;
       INSERT INTO character_workflow_projects (
         id, name, schema_version, created_at, updated_at, active_run_id, run_count, payload_json
       ) VALUES (
@@ -103,25 +208,45 @@ export class CharacterWorkflowStore {
         active_run_id = excluded.active_run_id,
         run_count = excluded.run_count,
         payload_json = excluded.payload_json;
+      ${runSql}
+      COMMIT;
     `
     await this.enqueueWrite(sql)
   }
 
   async deleteProject(id: string): Promise<void> {
-    await this.initialize()
     await this.enqueueWrite(`DELETE FROM character_workflow_projects WHERE id = ${sqlText(id)};`)
   }
 
+  async deleteProjectRun(projectId: string, runId: string): Promise<void> {
+    await this.enqueueWrite(`DELETE FROM character_workflow_runs WHERE project_id = ${sqlText(projectId)} AND id = ${sqlText(runId)};`)
+  }
+
   async clearProjects(): Promise<void> {
-    await this.initialize()
     await this.enqueueWrite('DELETE FROM character_workflow_projects;')
   }
 
   private enqueueWrite(sql: string): Promise<void> {
     this.writeQueue = this.writeQueue.then(async () => {
-      await runSqlite(this.dbPath, sql)
+      await this.run(sql)
     })
     return this.writeQueue
+  }
+
+  private async run(sql: string): Promise<string> {
+    await mkdir(dirname(this.dbPath), { recursive: true })
+    const script = this.initialized ? sql : `${CHARACTER_WORKFLOW_SCHEMA_SQL}\n${sql}`
+    const output = await runSqlite(this.dbPath, script)
+    this.initialized = true
+    return output
+  }
+
+  private async runJson<T>(sql: string): Promise<T[]> {
+    await mkdir(dirname(this.dbPath), { recursive: true })
+    const script = this.initialized ? sql : `${CHARACTER_WORKFLOW_SCHEMA_SQL}\n${sql}`
+    const rows = await runSqliteJson<T>(this.dbPath, script)
+    this.initialized = true
+    return rows
   }
 }
 
@@ -136,6 +261,68 @@ function rowToProject(row: CharacterWorkflowProjectRow, includePayload: boolean)
     runCount: Number(row.run_count) || 0,
     payload: includePayload && row.payload_json ? parseJsonValue(row.payload_json) : undefined,
   }
+}
+
+function rowToRun(row: CharacterWorkflowRunRow, includePayload: boolean): StoredCharacterWorkflowRun {
+  return {
+    projectId: row.project_id,
+    id: row.id,
+    title: row.title,
+    status: row.status,
+    createdAt: Number(row.created_at) || Date.now(),
+    completedAt: row.completed_at === null ? undefined : Number(row.completed_at) || undefined,
+    payload: includePayload && row.payload_json ? parseJsonValue(row.payload_json) : undefined,
+  }
+}
+
+function normalizeRunSummary(run: any): Record<string, unknown> {
+  const stateRun = run?.runState?.run && typeof run.runState.run === 'object'
+    ? run.runState.run
+    : undefined
+  const id = String(run?.id ?? stateRun?.id ?? '')
+  const title = String(run?.title ?? stateRun?.title ?? id)
+  const status = String(run?.status ?? stateRun?.status ?? 'idle')
+  const createdAt = Number(run?.createdAt) || Date.now()
+  const completedAt = Number(run?.completedAt) || undefined
+  return {
+    id,
+    title,
+    status,
+    createdAt,
+    ...(completedAt ? { completedAt } : {}),
+    runState: {
+      run: {
+        ...(stateRun ?? {}),
+        id,
+        title,
+        status,
+      },
+      steps: [],
+      events: [],
+      artifacts: [],
+    },
+  }
+}
+
+function createRunUpsertSql(projectId: string, run: any): string {
+  const summary = normalizeRunSummary(run)
+  const id = String(summary.id || '')
+  if (!id) {
+    return ''
+  }
+  return `
+    INSERT INTO character_workflow_runs (
+      project_id, id, title, status, created_at, completed_at, payload_json
+    ) VALUES (
+      ${sqlText(projectId)},
+      ${sqlText(id)},
+      ${sqlText(String(summary.title ?? id))},
+      ${sqlText(String(summary.status ?? 'idle'))},
+      ${Math.round(Number(summary.createdAt) || Date.now())},
+      ${summary.completedAt ? Math.round(Number(summary.completedAt)) : 'NULL'},
+      ${sqlText(JSON.stringify(run))}
+    );
+  `
 }
 
 function parseJsonValue(value: string): unknown {
@@ -153,17 +340,6 @@ function sqlText(value: string): string {
 async function runSqliteJson<T>(dbPath: string, sql: string): Promise<T[]> {
   const output = await runSqlite(dbPath, sql, true)
   return output ? parseSqliteJsonRows<T>(output) : []
-}
-
-async function runSqliteIgnoreDuplicateColumn(dbPath: string, sql: string): Promise<void> {
-  try {
-    await runSqlite(dbPath, sql)
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    if (!/duplicate column name/i.test(message)) {
-      throw error
-    }
-  }
 }
 
 function parseSqliteJsonRows<T>(output: string): T[] {

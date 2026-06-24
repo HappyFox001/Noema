@@ -731,6 +731,26 @@ declare global {
         } | null
         error?: string
       }>
+      getCharacterWorkflowProjectOverview: (id: string) => Promise<{
+        success: boolean
+        project?: {
+          id: string
+          name: string
+          schemaVersion: number
+          createdAt: number
+          updatedAt: number
+          activeRunId?: string
+          runCount: number
+          payload?: unknown
+        } | null
+        error?: string
+      }>
+      getCharacterWorkflowRun: (projectId: string, runId: string) => Promise<{
+        success: boolean
+        run?: unknown
+        error?: string
+      }>
+      deleteCharacterWorkflowRun: (projectId: string, runId: string) => Promise<{ success: boolean; error?: string }>
       saveCharacterWorkflowProject: (project: {
         id: string
         name: string

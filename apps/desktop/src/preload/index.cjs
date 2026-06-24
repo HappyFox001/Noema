@@ -206,6 +206,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getCharacterWorkflowProject: (id) =>
     ipcRenderer.invoke('character-workflows:get', id),
 
+  getCharacterWorkflowProjectOverview: (id) =>
+    ipcRenderer.invoke('character-workflows:getOverview', id),
+
+  getCharacterWorkflowRun: (projectId, runId) =>
+    ipcRenderer.invoke('character-workflows:getRun', { projectId, runId }),
+
+  deleteCharacterWorkflowRun: (projectId, runId) =>
+    ipcRenderer.invoke('character-workflows:deleteRun', { projectId, runId }),
+
   saveCharacterWorkflowProject: (project) =>
     ipcRenderer.invoke('character-workflows:upsert', project),
 

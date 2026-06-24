@@ -544,6 +544,36 @@ export function registerChatIpcHandlers(
     }
   })
 
+  ipcMain.handle('character-workflows:getOverview', async (_, id: string): Promise<CharacterWorkflowProjectResult> => {
+    try {
+      const project = await options.getCharacterWorkflowStore().getProjectOverview(String(id || ''))
+      return { success: true, project }
+    } catch (error: any) {
+      console.error('[CharacterWorkflowStore] Failed to get project overview:', error)
+      return { success: false, error: error?.message || String(error) }
+    }
+  })
+
+  ipcMain.handle('character-workflows:getRun', async (_, request: { projectId?: string; runId?: string }): Promise<{ success: boolean; run?: unknown; error?: string }> => {
+    try {
+      const run = await options.getCharacterWorkflowStore().getProjectRun(String(request?.projectId || ''), String(request?.runId || ''))
+      return { success: true, run }
+    } catch (error: any) {
+      console.error('[CharacterWorkflowStore] Failed to get workflow run:', error)
+      return { success: false, error: error?.message || String(error) }
+    }
+  })
+
+  ipcMain.handle('character-workflows:deleteRun', async (_, request: { projectId?: string; runId?: string }): Promise<{ success: boolean; error?: string }> => {
+    try {
+      await options.getCharacterWorkflowStore().deleteProjectRun(String(request?.projectId || ''), String(request?.runId || ''))
+      return { success: true }
+    } catch (error: any) {
+      console.error('[CharacterWorkflowStore] Failed to delete workflow run:', error)
+      return { success: false, error: error?.message || String(error) }
+    }
+  })
+
   ipcMain.handle('character-workflows:upsert', async (_, project: StoredCharacterWorkflowProject): Promise<{ success: boolean; error?: string }> => {
     try {
       await options.getCharacterWorkflowStore().upsertProject(project)

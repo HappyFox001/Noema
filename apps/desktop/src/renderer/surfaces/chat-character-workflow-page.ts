@@ -5,9 +5,7 @@ import Fuse from 'fuse.js'
 import Split from 'split-grid'
 import { draggable, dropTargetForElements, monitorForElements } from '@atlaskit/pragmatic-drag-and-drop/dist/esm/adapter/element-adapter.js'
 import { computePosition, flip, offset, shift } from '@floating-ui/dom'
-import { LGraph, LGraphNode, LiteGraph } from 'litegraph.js'
 import { Link2Off, Maximize, MessageCircle, Play, RotateCcw, Save, Search, Square, Trash2, createIcons } from 'lucide'
-import * as Y from 'yjs'
 import type { CharacterResourceViewState, SerializedCharacterResourceLinkKind } from './chat-character-resource-graph-state'
 
 export interface CharacterWorkflowPageOptions {
@@ -1172,8 +1170,7 @@ interface WorkflowMotionSnapshot {
 
 export function renderCharacterWorkflowPage(options: CharacterWorkflowPageOptions): string {
   const graph = createCharacterResourceGraph(options)
-  const liteGraphSnapshot = createLiteGraphSnapshot(graph)
-  const yjsSnapshot = createYjsSnapshot(graph, liteGraphSnapshot)
+  const graphSnapshot = createGraphSerializerSnapshot(graph)
   const activeTab = normalizeActiveTab(options.activeTabId)
   const isWorkflowTab = activeTab === 'workflow'
   const isRunTab = activeTab === 'run-draft'
@@ -1185,7 +1182,7 @@ export function renderCharacterWorkflowPage(options: CharacterWorkflowPageOption
         <div class="chat-resource-workspace ${isWorkflowTab ? 'workflow-mode' : isRunTab ? 'run-mode' : 'review-mode'} ${options.sidebarCollapsed ? 'sidebar-collapsed' : ''} ${options.inspectorCollapsed ? 'inspector-collapsed' : ''}" style="--resource-left-panel: ${graph.panels.leftWidth}px; --resource-right-panel: ${graph.panels.rightWidth}px; --resource-bottom-panel: ${graph.panels.bottomHeight}px">
           ${isWorkflowTab ? renderResourceLibrary(graph, options) : ''}
           ${isWorkflowTab ? '<div class="chat-resource-split-gutter left" data-resource-split-gutter="left" aria-hidden="true"></div>' : ''}
-          ${renderResourceCanvas(graph, yjsSnapshot, options)}
+          ${renderResourceCanvas(graph, graphSnapshot, options)}
           ${hasRightPanel ? '<div class="chat-resource-split-gutter right" data-resource-split-gutter="right" aria-hidden="true"></div>' : ''}
           ${isWorkflowTab ? renderResourceInspector(graph, options) : ''}
           ${isRunTab && !options.inspectorCollapsed ? renderRunCharacterInspector(options) : ''}
@@ -2051,44 +2048,32 @@ function animateAgentOperationFeedback(root: HTMLElement, cleanups: Array<() => 
   })
 }
 
-function createLiteGraphSnapshot(graph: CharacterResourceGraph): unknown {
-  const liteGraph = new LGraph()
-  for (const definition of RESOURCE_NODE_DEFINITIONS) {
-    if (!LiteGraph.registered_node_types?.[`noema/${definition.type}`]) {
-      LiteGraph.registerNodeType(`noema/${definition.type}`, class extends LGraphNode {
-        constructor(title?: string) {
-          super(title ?? definition.displayName)
-          this.size = [definition.defaultSize.width, definition.defaultSize.height]
-          definition.inputs.forEach((input) => this.addInput(input.label, input.type))
-          definition.outputs.forEach((output) => this.addOutput(output.label, output.type))
-        }
-      })
-    }
-  }
-  for (const node of graph.nodes) {
-    const liteNode = LiteGraph.createNode(`noema/${node.type}`, node.title)
-    if (!liteNode) {
-      continue
-    }
-    liteNode.id = Number(node.zIndex)
-    liteNode.pos = [node.position.x, node.position.y]
-    liteNode.size = [node.size.width, node.size.height]
-    liteNode.properties = { ...node.config, noemaNodeId: node.id, status: node.status }
-    liteGraph.add(liteNode)
-  }
-  return liteGraph.serialize()
-}
-
-function createYjsSnapshot(graph: CharacterResourceGraph, liteGraphSnapshot: unknown): string {
-  const document = new Y.Doc()
-  const meta = document.getMap<unknown>('characterResourceGraph')
-  meta.set('id', graph.id)
-  meta.set('viewport', graph.viewport)
-  meta.set('panels', graph.panels)
-  meta.set('selection', graph.selection)
-  meta.set('liteGraph', liteGraphSnapshot)
-  meta.set('serializedAt', new Date(0).toISOString())
-  return JSON.stringify(meta.toJSON())
+function createGraphSerializerSnapshot(graph: CharacterResourceGraph): string {
+  return JSON.stringify({
+    id: graph.id,
+    viewport: graph.viewport,
+    panels: graph.panels,
+    selection: graph.selection,
+    nodes: graph.nodes.map((node) => ({
+      id: node.id,
+      type: node.type,
+      title: node.title,
+      position: node.position,
+      size: node.size,
+      status: node.status,
+      collapsed: Boolean(node.collapsed),
+      config: node.config,
+    })),
+    links: graph.links,
+    outputs: graph.outputs.map((output) => ({
+      id: output.id,
+      nodeId: output.nodeId,
+      type: output.type,
+      title: output.title,
+      status: output.status,
+    })),
+    serializedAt: 0,
+  })
 }
 
 function renderFileTabs(options: CharacterWorkflowPageOptions): string {
@@ -2286,8 +2271,7 @@ function renderRunCanvasControls(options: CharacterWorkflowPageOptions): string 
 
 function renderRunDraft(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): string {
   const runGraph = createRunDraftCanvasGraph(graph, options)
-  const runLiteGraphSnapshot = createLiteGraphSnapshot(runGraph)
-  const runYjsSnapshot = createYjsSnapshot(runGraph, runLiteGraphSnapshot)
+  const runGraphSnapshot = createGraphSerializerSnapshot(runGraph)
   const status = options.runState?.run?.status ?? 'idle'
   return `
     <div class="chat-workflow-canvas-viewport active chat-resource-run-viewport run-status-${options.escapeHtml(status)}" data-resource-viewport="${options.escapeHtml(JSON.stringify(runGraph.viewport))}" aria-label="${options.escapeHtml(ui(options, '角色卡运行草稿', 'Character card run draft'))}">
@@ -2297,7 +2281,7 @@ function renderRunDraft(graph: CharacterResourceGraph, options: CharacterWorkflo
         ${renderLinkOverlay(runGraph, options)}
         ${runGraph.nodes.map((node) => renderResourceNode(node, runGraph, options)).join('')}
       </div>
-      <div class="chat-resource-serializer" aria-hidden="true" data-yjs-snapshot="${options.escapeHtml(runYjsSnapshot)}"></div>
+      <div class="chat-resource-serializer" aria-hidden="true" data-yjs-snapshot="${options.escapeHtml(runGraphSnapshot)}"></div>
     </div>
   `
 }
