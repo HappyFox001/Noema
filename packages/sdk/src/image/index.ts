@@ -23,6 +23,7 @@ export interface ImageGenerationArtifact {
   mimeType?: string
   dataUrl?: string
   url?: string
+  referenceImages?: string[]
 }
 
 export async function generateImageWithConfiguredProvider(options: {
@@ -30,12 +31,15 @@ export async function generateImageWithConfiguredProvider(options: {
   modelName: string
   prompt: string
   proxyUrl?: string
+  referenceImages?: string[]
+  size?: string
 }): Promise<ImageGenerationResult> {
   const provider = String(options.model.provider || '').trim()
   const entry = getImageProviderCatalogEntry(provider as any)
   const baseUrl = normalizeBaseUrl(options.model.baseUrl || entry.defaultBaseUrl)
   const modelName = String(options.modelName || options.model.modelName || entry.defaultModel).trim()
   const prompt = options.prompt.trim()
+  const referenceImages = (options.referenceImages ?? []).map((item) => item.trim()).filter(Boolean)
   if (!baseUrl) {
     throw new Error(`Image provider ${provider || options.model.id} has no base URL`)
   }
@@ -73,7 +77,10 @@ export async function generateImageWithConfiguredProvider(options: {
     case 'ideogram':
       return { ...base, ...(await callIdeogram(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt)) }
     case 'wavespeed':
-      return { ...base, ...(await callWaveSpeed(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt)) }
+      return { ...base, ...(await callWaveSpeed(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt, {
+        referenceImages,
+        size: options.size,
+      })) }
     case 'tencent-cloud-action':
       return { ...base, ...(await callTencentHunyuan(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt)) }
     default:
@@ -90,6 +97,7 @@ export function createImageGenerationArtifact(result: ImageGenerationResult): Im
     ...(result.mimeType ? { mimeType: result.mimeType } : {}),
     ...(result.dataUrl ? { dataUrl: result.dataUrl } : {}),
     ...(result.url ? { url: result.url } : {}),
+    ...(result.referenceImages?.length ? { referenceImages: result.referenceImages } : {}),
   }
 }
 
@@ -409,16 +417,21 @@ async function callWaveSpeed(
   baseUrl: string,
   apiKey: string,
   modelName: string,
-  prompt: string
+  prompt: string,
+  options: { referenceImages?: string[]; size?: string } = {}
 ): Promise<Partial<ImageGenerationResult>> {
-  const response = await fetcher(`${baseUrl}${entry.generatePath.replace('{model}', modelName)}`, {
+  const referenceImages = (options.referenceImages ?? []).filter(Boolean)
+  const isEdit = referenceImages.length > 0
+  const path = isEdit
+    ? `${baseUrl}/${modelName.replace(/^\/+|\/+$/g, '')}/edit`
+    : `${baseUrl}${entry.generatePath.replace('{model}', modelName)}`
+  const response = await fetcher(path, {
     method: 'POST',
     headers: jsonAuthHeaders(apiKey),
     body: JSON.stringify({
+      ...(isEdit ? { images: referenceImages.slice(0, 3) } : {}),
       prompt,
-      size: '1024*1024',
-      num_images: 1,
-      seed: -1,
+      size: options.size || '1024*1024',
       enable_sync_mode: true,
       enable_base64_output: false,
     }),
@@ -428,7 +441,10 @@ async function callWaveSpeed(
   const submitted = (payload as any).data ?? payload
   const immediate = tryImageFromProviderOutput((submitted as any).outputs ?? submitted, payload)
   if (immediate) {
-    return immediate
+    return {
+      ...immediate,
+      ...(referenceImages.length ? { referenceImages } : {}),
+    }
   }
   const taskId = (submitted as any).id
   const getUrl = (submitted as any).urls?.get || (taskId ? `${baseUrl}/predictions/${encodeURIComponent(taskId)}` : '')
@@ -437,7 +453,10 @@ async function callWaveSpeed(
   }
   const task = await pollWaveSpeedPrediction(fetcher, baseUrl, getUrl, apiKey, taskId)
   const output = (task as any).data?.outputs ?? (task as any).outputs ?? (task as any).data ?? task
-  return imageFromProviderOutput(output, task)
+  return {
+    ...imageFromProviderOutput(output, task),
+    ...(referenceImages.length ? { referenceImages } : {}),
+  }
 }
 
 async function callTencentHunyuan(

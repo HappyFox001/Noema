@@ -404,6 +404,7 @@ export const CHARACTER_CARD_FIELD_SCHEMA = [
 ] as const
 
 export const CHARACTER_SUPPORT_FIELD_SCHEMA = [
+  'visualIdentity',
   'imagePrompt',
 ] as const
 
@@ -955,7 +956,11 @@ export function createCharacterSuperAgent(
           .filter((artifact) => artifact.kind === 'image-asset')
           .map((artifact) => artifact.id)
         if (!imageIds.length) {
-          throw new Error('Image generation request completed without producing image assets')
+          const diagnostic = (imageResult.artifacts ?? [])
+            .map((artifact) => [artifact.title, artifact.summary].filter(Boolean).join(': '))
+            .filter(Boolean)
+            .join(' | ')
+          throw new Error(diagnostic || imageResult.summary || 'Image generation request completed without producing image assets')
         }
         state = {
           ...state,
@@ -1617,6 +1622,7 @@ function characterRunFieldTitle(field: string): string {
     firstMessage: 'First Message',
     dialogueStyle: 'Dialogue Style',
     worldContext: 'World Context',
+    visualIdentity: 'Visual Identity',
     imagePrompt: 'Image Prompt',
   }
   return titles[field] ?? field

@@ -215,18 +215,22 @@ function createCharacterDecisionPrompt(
     '    <field_content_rule>Never write labels such as "Style:", "Goal:", "Field purpose:", "target atmosphere", XML tag names, or operation instructions inside character fields.</field_content_rule>',
     '    <field_content_rule>description must describe who the character is and why they are appealing for RP. appearance must describe visible body/outfit/expression cues. Do not describe the generation target itself.</field_content_rule>',
     '    <progressive_rule>Return exactly one action. Generate or reroll one field at a time. Do not fill the whole card in one response.</progressive_rule>',
-    '    <progressive_rule>If a field target is missing, return set_field for the earliest missing field in fixed_schema order and obey that target local XML controls. Only request_image after imagePrompt exists.</progressive_rule>',
+    '    <progressive_rule>If a field target is missing, return set_field for the earliest missing field in fixed_schema order and obey that target local XML controls. Only request_image after visualIdentity and imagePrompt exist.</progressive_rule>',
     '    <progressive_rule>If turn_context_json.forceImageRequest is true, return exactly one request_image action and no set_field, merge_character_card, create_artifact, or finish action.</progressive_rule>',
+    '    <image_rule>For character resource images, request avatar first and character-overview-sheet second. The runtime will use the generated avatar as the reference image for the overview sheet when the provider supports image editing/reference generation.</image_rule>',
+    '    <image_rule>The avatar prompt must be production-grade: one character only, clear face, strong appeal, stable hair/eye/body identity cues, polished avatar.jpg quality, no collage, no labels, no full reference sheet.</image_rule>',
+    '    <image_rule>The character-overview-sheet prompt must be a very large model/reference sheet: front view, back view, side or three-quarter view, hairstyle detail, hands, legs, feet/shoes, outfit/material details, and expression callouts. Do not ask for written labels; use clean visual panels only.</image_rule>',
+    '    <image_rule>Every targetPrompts prompt must begin with the same compact visual identity bible: age impression, face shape, eye shape/color, nose/lips, hairstyle/color/length, body type/proportions, skin tone, signature accessory or motif, and style domain (photoreal/anime/etc.).</image_rule>',
     '    <image_rule>When requesting images, create one targetPrompts item per final image, not just per image target. If an image target requests multiple images through image_control count, return multiple distinct prompts for the same targetNodeId.</image_rule>',
     '    <image_rule>All images for the same role card must share a clear identity anchor: face structure, hair, eyes, age impression, body type, signature accessories, and outfit language. Vary pose, shot, background, mood, lighting, and story function.</image_rule>',
     '    <image_rule>Each targetPrompts prompt must be specific to that exact image slot, image_role, local image_control, and the text field or story beat it supports. Do not rely on the image tool to duplicate or vary one generic prompt.</image_rule>',
     '    <image_rule>Do not request pure empty scene images. Every image should contain the character or unmistakable character-linked visual motifs, and should support the role card text, opening, story, relationship, or layout.</image_rule>',
     '    <allowed_actions>',
     '      <action name="set_field">{"type":"set_field","field":"name","value":"...","reason":"..."}</action>',
-    '      <action name="request_image">{"type":"request_image","targetPrompts":[{"targetNodeId":"image-target-node-id","title":"Avatar Image","prompt":"target-specific English image prompt"}]}</action>',
+    '      <action name="request_image">{"type":"request_image","targetPrompts":[{"targetNodeId":"avatar-image-target","title":"avatar.jpg","prompt":"target-specific English image prompt"},{"targetNodeId":"overview-sheet-image-target","title":"character overview sheet","prompt":"target-specific English image prompt"}]}</action>',
     '      <action name="finish">{"type":"finish","reason":"..."}</action>',
     '    </allowed_actions>',
-    '    <completion_rule>Set done=true only after all fixed character fields and support fields are filled. Always produce imagePrompt and request_image.</completion_rule>',
+    '    <completion_rule>Set done=true only after all fixed character fields and support fields are filled. Always produce visualIdentity, imagePrompt, and request_image.</completion_rule>',
     '  </action_contract>',
     '</character_agent_prompt>',
   ].join('\n')
@@ -262,7 +266,8 @@ function createSchemaXml(): string {
     ...CHARACTER_SUPPORT_FIELD_SCHEMA.map((field) => `      <field name="${field}" required="true">${xmlEscape(supportFieldDescription(field))}</field>`),
     '    </support_fields>',
     '    <rule>Do not invent new top-level required fields. Use extra details inside the fixed fields when needed.</rule>',
-    '    <rule>imagePrompt is for the image model, not a visible character-card field.</rule>',
+    '    <rule>visualIdentity is the stable visual bible for all character images: age impression, face, eyes, hair, body proportions, skin tone, outfit language, signature motifs, and hard visual negatives.</rule>',
+    '    <rule>imagePrompt is for the image model, not a visible character-card field. It must be derived from visualIdentity and the concrete image targets.</rule>',
     '  </fixed_schema>',
   ].join('\n')
 }
@@ -379,6 +384,7 @@ function characterFieldDescription(field: string): string {
 
 function supportFieldDescription(field: string): string {
   const descriptions: Record<string, string> = {
+    visualIdentity: 'Stable visual bible for all generated character images; include face, hair, eyes, proportions, skin tone, signature motifs, style domain, and visual negatives.',
     imagePrompt: 'Prompt for the image model; this is not shown as a character-card field.',
   }
   return descriptions[field] ?? field
@@ -470,12 +476,16 @@ async function maybeGenerateImageArtifacts(
     throw new Error('request_image.targetPrompts must include at least one image prompt')
   }
   const artifacts: CharacterAgentArtifact[] = []
+  const generatedReferences = new Map<string, string[]>()
   for (let index = 0; index < prompts.length; index += 1) {
+    const referenceImages = resolveReferenceImagesForPrompt(prompts[index], generatedReferences)
     const generated = await generateImageWithConfiguredProvider({
       model: configuredModel,
       modelName,
       prompt: prompts[index].prompt,
       proxyUrl,
+      referenceImages,
+      size: imageSizeForPrompt(prompts[index]),
     })
     if (generated) {
       const artifact = createToolArtifact(
@@ -490,6 +500,11 @@ async function maybeGenerateImageArtifacts(
         ...artifact,
         id: `${artifact.id}:${prompts[index].target.nodeId}:${prompts[index].targetIndex}`,
       })
+      const imageRef = imageReferenceFromArtifactData(artifact.data)
+      if (imageRef) {
+        const existing = generatedReferences.get(prompts[index].imageRole) ?? []
+        generatedReferences.set(prompts[index].imageRole, [...existing, imageRef])
+      }
     }
   }
   return artifacts
@@ -527,7 +542,60 @@ function createImageGenerationPromptRequests(
       imageRole: targetRole,
       prompt: buildImageGenerationPrompt(request.target, targetRole, request.prompt, control),
     }
-  })
+  }).sort((left, right) => imageRolePriority(left.imageRole) - imageRolePriority(right.imageRole))
+}
+
+function imageRolePriority(imageRole: string): number {
+  const priorities: Record<string, number> = {
+    avatar: 0,
+    'character-overview-sheet': 1,
+  }
+  return priorities[imageRole] ?? 10
+}
+
+function resolveReferenceImagesForPrompt(
+  prompt: { imageRole: string },
+  generatedReferences: Map<string, string[]>
+): string[] {
+  if (prompt.imageRole === 'character-overview-sheet') {
+    return generatedReferences.get('avatar')?.slice(0, 1) ?? []
+  }
+  return []
+}
+
+function imageReferenceFromArtifactData(data: unknown): string | null {
+  if (!data || typeof data !== 'object') {
+    return null
+  }
+  const source = data as Record<string, any>
+  const dataUrl = typeof source.dataUrl === 'string' ? source.dataUrl : ''
+  const url = typeof source.url === 'string' ? source.url : ''
+  return dataUrl || url || null
+}
+
+function imageSizeForPrompt(prompt: {
+  target: AgentTargetContext
+  imageRole: string
+  targetIndex: number
+}): string | undefined {
+  const control = getImageControlForPromptIndex(prompt.target.imageControls, prompt.targetIndex)
+  const aspectRatio = control?.aspectRatio || ''
+  if (prompt.imageRole === 'avatar') {
+    return aspectRatio === '1:1' ? '1024*1024' : '1440*1920'
+  }
+  if (prompt.imageRole === 'character-overview-sheet') {
+    return aspectRatio === '9:16' ? '1440*2560' : '2560*1440'
+  }
+  if (aspectRatio === '9:16') {
+    return '1440*2560'
+  }
+  if (aspectRatio === '16:9') {
+    return '2560*1440'
+  }
+  if (aspectRatio === '3:4') {
+    return '1440*1920'
+  }
+  return undefined
 }
 
 function getImageControlForPromptIndex(
@@ -588,6 +656,9 @@ function buildImageGenerationPrompt(
   return [
     roleInstruction,
     target.imageAssetPurpose ? `Asset purpose: ${target.imageAssetPurpose}.` : '',
+    resolvedRole === 'character-overview-sheet'
+      ? 'Use the provided avatar reference as the identity lock when reference images are available. Preserve the exact face family, hairstyle, age impression, body proportions, and signature motifs from that avatar while expanding into the full reference sheet.'
+      : '',
     control?.imageStylePreset ? `Style preset: ${formatImageStylePreset(control.imageStylePreset)}.` : '',
     control?.stylePrompt ? `Visual style: ${control.stylePrompt}.` : '',
     control ? naturalImageControlInstruction(control) : '',
@@ -608,6 +679,7 @@ function formatImageStylePreset(value: string): string {
 function imageRoleInstruction(imageRole: string): string {
   const instructions: Record<string, string> = {
     avatar: 'Create a single avatar portrait focused on the character face, hair, expression, and upper-body identity, with a simple but story-relevant background.',
+    'character-overview-sheet': 'Create one very large character asset overview sheet for production reference. Use a clean model-sheet composition with the same character shown from front, back, side or three-quarter angle, plus close visual detail panels for hairstyle, hands, legs, feet or shoes, outfit materials, and expressions. Do not add written labels or typography.',
     'hero-cover': 'Create a polished role-card cover image: attractive character-first composition, clear identity, strong background atmosphere, and a visual hook for the card premise.',
     'full-body': 'Create a single full-body character image showing the complete outfit, posture, proportions, and silhouette while preserving the same face and identity.',
     'opening-moment': 'Create a story image for the opening message: the character is visibly present in the first-scene situation with background, props, mood, and narrative hook.',

@@ -762,7 +762,8 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
         option('Dialogue Style', 'dialogueStyle'),
         option('World Context', 'worldContext'),
       ]),
-      parameter('includeSupportFields', 'Include Support Fields', 'multi-select', ['imagePrompt'], undefined, [
+      parameter('includeSupportFields', 'Include Support Fields', 'multi-select', ['visualIdentity', 'imagePrompt'], undefined, [
+        option('Visual Identity', 'visualIdentity'),
         option('Image Prompt', 'imagePrompt'),
       ]),
     ],
@@ -842,6 +843,7 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     parameters: [
       parameter('imageRole', 'Image Role', 'select', 'hero-cover', undefined, [
         option('Avatar', 'avatar'),
+        option('Character Overview Sheet', 'character-overview-sheet'),
         option('Hero Cover', 'hero-cover'),
         option('Full Body', 'full-body'),
         option('Opening Moment', 'opening-moment'),
@@ -1356,8 +1358,10 @@ export function createStandardCharacterWorkflow(
     node('character-card-target', 360, 140),
     node('character-field-target', 690, 30),
     node('field-generation-control', 690, 230),
-    node('image-target', 690, 430),
-    node('image-generation-control', 1010, 430),
+    node('image-target', 690, 400, 'avatar-image-target', 'Avatar Image Target'),
+    node('image-generation-control', 1010, 360, 'avatar-image-control', 'Avatar Image Control'),
+    node('image-target', 690, 600, 'overview-sheet-image-target', 'Overview Sheet Image Target'),
+    node('image-generation-control', 1010, 580, 'overview-sheet-image-control', 'Overview Sheet Image Control'),
     node('opening-layout-target', 1010, 640),
     node('style-pressure', 360, -70),
     node('constraint', 360, 360),
@@ -1380,6 +1384,43 @@ export function createStandardCharacterWorkflow(
   if (imageNode && imageModelRef) {
     imageNode.config.modelRef = imageModelRef
   }
+  const avatarTarget = nodes.find((nodeItem) => nodeItem.id === 'avatar-image-target')
+  if (avatarTarget) {
+    Object.assign(avatarTarget.config, {
+      imageRole: 'avatar',
+      assetPurpose: 'Identity-lock avatar.jpg: the first generated canonical portrait for the character. It must be high quality, face-forward, visually appealing, and reusable as the reference image for every later character asset.',
+    })
+  }
+  const avatarControl = nodes.find((nodeItem) => nodeItem.id === 'avatar-image-control')
+  if (avatarControl) {
+    Object.assign(avatarControl.config, {
+      targetImageCount: 1,
+      imageStylePreset: 'semi-realistic-anime',
+      shotType: 'bust',
+      aspectRatio: '3:4',
+      consistencyMode: 'same-character',
+      seedMode: 'lock-character',
+    })
+  }
+  const overviewTarget = nodes.find((nodeItem) => nodeItem.id === 'overview-sheet-image-target')
+  if (overviewTarget) {
+    Object.assign(overviewTarget.config, {
+      imageRole: 'character-overview-sheet',
+      assetPurpose: 'Large character asset overview sheet generated after avatar.jpg. It should use the avatar as identity reference and show front view, back view, side/three-quarter view, hairstyle, hands, legs, feet/shoes, outfit/material details, and expression callouts in one clean unlabeled model-sheet style composition.',
+    })
+  }
+  const overviewControl = nodes.find((nodeItem) => nodeItem.id === 'overview-sheet-image-control')
+  if (overviewControl) {
+    Object.assign(overviewControl.config, {
+      targetImageCount: 1,
+      imageStylePreset: 'character-sheet',
+      shotType: 'full-body',
+      aspectRatio: '16:9',
+      consistencyMode: 'same-character',
+      seedMode: 'lock-character',
+      negativePrompt: 'text, labels, watermark, logo, distorted face, inconsistent face, deformed hands, extra fingers, missing fingers, bad feet, malformed legs, duplicate limbs',
+    })
+  }
 
   return {
     id,
@@ -1397,12 +1438,16 @@ export function createStandardCharacterWorkflow(
       ['field-generation-control', 'fieldControl', 'character-field-target', 'fieldControl', 'guides'],
       ['style-pressure', 'style', 'character-field-target', 'style', 'weights'],
       ['constraint', 'constraint', 'character-field-target', 'constraint', 'constrains'],
-      ['character-card-target', 'target', 'image-target', 'card', 'guides'],
-      ['image-tool', 'image', 'image-target', 'image', 'enables'],
-      ['image-generation-control', 'imageControl', 'image-target', 'imageControl', 'guides'],
+      ['character-card-target', 'target', 'avatar-image-target', 'card', 'guides'],
+      ['image-tool', 'image', 'avatar-image-target', 'image', 'enables'],
+      ['avatar-image-control', 'imageControl', 'avatar-image-target', 'imageControl', 'guides'],
+      ['character-card-target', 'target', 'overview-sheet-image-target', 'card', 'guides'],
+      ['image-tool', 'image', 'overview-sheet-image-target', 'image', 'enables'],
+      ['overview-sheet-image-control', 'imageControl', 'overview-sheet-image-target', 'imageControl', 'guides'],
       ['character-card-target', 'target', 'opening-layout-target', 'card', 'guides'],
       ['character-field-target', 'field', 'opening-layout-target', 'field', 'guides'],
-      ['image-target', 'imageAsset', 'opening-layout-target', 'imageAsset', 'guides'],
+      ['avatar-image-target', 'imageAsset', 'opening-layout-target', 'imageAsset', 'guides'],
+      ['overview-sheet-image-target', 'imageAsset', 'opening-layout-target', 'imageAsset', 'guides'],
       ['style-pressure', 'style', 'opening-layout-target', 'style', 'weights'],
       ['goal', 'goal', 'agent-policy', 'goal', 'guides'],
       ['constraint', 'constraint', 'agent-policy', 'constraint', 'constrains'],
@@ -1664,12 +1709,12 @@ export function collectWorkflowArtifacts<T extends CharacterArtifactType>(
 
 function createWorkflowNodeFactory() {
   const registry = createCharacterWorkflowNodeRegistry()
-  return (type: CharacterNodeType, x: number, y: number): CharacterWorkflowNode => {
+  return (type: CharacterNodeType, x: number, y: number, id?: string, title?: string): CharacterWorkflowNode => {
     const definition = registry.require(type)
     return {
-      id: type,
+      id: id ?? type,
       type,
-      title: definition.title,
+      title: title ?? definition.title,
       position: { x, y },
       inputs: clonePorts(definition.inputs),
       outputs: clonePorts(definition.outputs),
