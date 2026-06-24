@@ -1196,6 +1196,18 @@ export function renderCharacterWorkflowPage(options: CharacterWorkflowPageOption
   `
 }
 
+export function renderCharacterWorkflowRunDraftViewport(options: CharacterWorkflowPageOptions): string {
+  return renderRunDraft(createCharacterResourceGraph(options), options)
+}
+
+export function renderCharacterWorkflowRunDraftControls(options: CharacterWorkflowPageOptions): string {
+  return renderRunCanvasControls(options)
+}
+
+export function renderCharacterWorkflowRunDraftInspector(options: CharacterWorkflowPageOptions): string {
+  return renderRunCharacterInspector(options)
+}
+
 export function createCharacterAgentWorkflowSnapshot(options: CharacterWorkflowPageOptions): Record<string, unknown> {
   const graph = createCharacterResourceGraph(options)
   const definitions = new Map(RESOURCE_NODE_DEFINITIONS.map((definition) => [definition.type, definition]))
@@ -1816,37 +1828,9 @@ function animateRunDraftCanvas(root: HTMLElement, cleanups: Array<() => void>): 
   if (!runViewport) {
     return
   }
-  let reverted = false
-  import('gsap').then(({ gsap }) => {
-    if (reverted || !runViewport.isConnected) {
-      return
-    }
-    const ctx = gsap.context(() => {
-      const nodes = gsap.utils.toArray<HTMLElement>('.chat-resource-node')
-      const links = gsap.utils.toArray<SVGPathElement>('.chat-resource-link path')
-      gsap.set(nodes, { opacity: 0, y: 10, scale: 0.96, transformOrigin: '50% 50%' })
-      gsap.set(links, { opacity: 0 })
-      gsap.timeline({ defaults: { ease: 'power3.out' } })
-        .to(nodes, {
-          opacity: 1,
-          y: 0,
-          scale: 1,
-          duration: 0.34,
-          stagger: 0.045,
-          clearProps: 'transform',
-        })
-        .to(links, {
-          opacity: 1,
-          duration: 0.22,
-          stagger: 0.025,
-        }, 0.08)
-    }, runViewport)
-    cleanups.push(() => ctx.revert())
-  }).catch(() => {
-    // Animation is optional; rendering must not depend on GSAP availability.
-  })
+  runViewport.dataset.runDraftInitialized = 'true'
   cleanups.push(() => {
-    reverted = true
+    delete runViewport.dataset.runDraftInitialized
   })
 }
 
@@ -2304,8 +2288,10 @@ function renderRunDraft(graph: CharacterResourceGraph, options: CharacterWorkflo
   const runGraph = createRunDraftCanvasGraph(graph, options)
   const runLiteGraphSnapshot = createLiteGraphSnapshot(runGraph)
   const runYjsSnapshot = createYjsSnapshot(runGraph, runLiteGraphSnapshot)
+  const status = options.runState?.run?.status ?? 'idle'
   return `
-    <div class="chat-workflow-canvas-viewport active chat-resource-run-viewport" data-resource-viewport="${options.escapeHtml(JSON.stringify(runGraph.viewport))}" aria-label="${options.escapeHtml(ui(options, '角色卡运行草稿', 'Character card run draft'))}">
+    <div class="chat-workflow-canvas-viewport active chat-resource-run-viewport run-status-${options.escapeHtml(status)}" data-resource-viewport="${options.escapeHtml(JSON.stringify(runGraph.viewport))}" aria-label="${options.escapeHtml(ui(options, '角色卡运行草稿', 'Character card run draft'))}">
+      ${renderRunProgressOverlay(options)}
       <div class="chat-workflow-canvas-plane chat-resource-graph-plane chat-resource-run-plane" style="--resource-zoom: ${runGraph.viewport.zoom}; --resource-pan-x: ${runGraph.viewport.x}px; --resource-pan-y: ${runGraph.viewport.y}px">
         <div class="chat-workflow-canvas-grid" aria-hidden="true"></div>
         ${renderLinkOverlay(runGraph, options)}
@@ -2313,6 +2299,38 @@ function renderRunDraft(graph: CharacterResourceGraph, options: CharacterWorkflo
       </div>
       <div class="chat-resource-serializer" aria-hidden="true" data-yjs-snapshot="${options.escapeHtml(runYjsSnapshot)}"></div>
     </div>
+  `
+}
+
+function renderRunProgressOverlay(options: CharacterWorkflowPageOptions): string {
+  const runState = options.runState
+  const events = normalizeRunEvents(runState)
+  const latest = [...events].reverse().find((event) => event.type !== 'user.input.graph')
+  const latestArtifact = [...events].reverse().find((event) => event.artifact)?.artifact
+  const phase = latest?.phase ?? runState?.run?.currentStepId ?? '-'
+  const tool = latest?.toolName ?? '-'
+  const status = runState?.run?.status ?? 'idle'
+  const statusLabel = formatRunStatus(status, options)
+  return `
+    <section class="chat-resource-run-progress" aria-label="${options.escapeHtml(ui(options, '运行进度', 'Run progress'))}">
+      <div>
+        <span>${options.escapeHtml(ui(options, '状态', 'Status'))}</span>
+        <strong data-run-progress-status>${options.escapeHtml(statusLabel)}</strong>
+      </div>
+      <div>
+        <span>${options.escapeHtml(ui(options, '阶段', 'Phase'))}</span>
+        <strong data-run-progress-phase>${options.escapeHtml(String(phase))}</strong>
+      </div>
+      <div>
+        <span>${options.escapeHtml(ui(options, '工具', 'Tool'))}</span>
+        <strong data-run-progress-tool>${options.escapeHtml(String(tool))}</strong>
+      </div>
+      <div>
+        <span>${options.escapeHtml(ui(options, '产物', 'Artifact'))}</span>
+        <strong data-run-progress-artifact>${options.escapeHtml(latestArtifact?.title ?? latestArtifact?.kind ?? '-')}</strong>
+      </div>
+      <p data-run-progress-summary>${options.escapeHtml(latest ? formatRunEventSummary(latest, options) || formatRunEventTitle(latest, options) : ui(options, '等待运行开始', 'Waiting for run to start'))}</p>
+    </section>
   `
 }
 

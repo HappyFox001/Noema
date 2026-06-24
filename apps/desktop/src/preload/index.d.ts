@@ -703,6 +703,45 @@ declare global {
       }) => Promise<{ success: boolean; error?: string }>
       deleteChatConversation: (id: string) => Promise<{ success: boolean; error?: string }>
       clearChatConversations: () => Promise<{ success: boolean; error?: string }>
+      listCharacterWorkflowProjects: () => Promise<{
+        success: boolean
+        projects?: Array<{
+          id: string
+          name: string
+          schemaVersion: number
+          createdAt: number
+          updatedAt: number
+          activeRunId?: string
+          runCount: number
+          payload?: unknown
+        }>
+        error?: string
+      }>
+      getCharacterWorkflowProject: (id: string) => Promise<{
+        success: boolean
+        project?: {
+          id: string
+          name: string
+          schemaVersion: number
+          createdAt: number
+          updatedAt: number
+          activeRunId?: string
+          runCount: number
+          payload?: unknown
+        } | null
+        error?: string
+      }>
+      saveCharacterWorkflowProject: (project: {
+        id: string
+        name: string
+        schemaVersion: number
+        createdAt: number
+        updatedAt: number
+        activeRunId?: string
+        runCount: number
+        payload?: unknown
+      }) => Promise<{ success: boolean; error?: string }>
+      deleteCharacterWorkflowProject: (id: string) => Promise<{ success: boolean; error?: string }>
       sendChatMessage: (request: {
         input: string
         language?: string
@@ -811,8 +850,74 @@ declare global {
           operations?: Array<Record<string, unknown>>
         }
         uiConfigOverrides?: Record<string, Record<string, unknown>>
+        agentWork?: {
+          id: string
+          mode: 'create' | 'edit'
+          objective: string
+          status: 'active' | 'needs-user' | 'blocked' | 'complete'
+          plan: string[]
+          completedSteps: string[]
+          currentStep?: string
+          nextStep?: string
+          createdAt: number
+          updatedAt: number
+          steps: Array<{
+            id: string
+            index: number
+            tool: 'inspect_graph' | 'edit_graph' | 'validate_graph' | 'ask_user' | 'finish'
+            userRequest: string
+            summary: string
+            status: 'applied' | 'needs-user' | 'blocked'
+            plan: string[]
+            completedSteps: string[]
+            currentStep?: string
+            nextStep?: string
+            operations: Array<Record<string, unknown>>
+            uiConfigOverrides: Record<string, Record<string, unknown>>
+            createdAt: number
+          }>
+        }
         error?: string
       }>
+      streamBuildCharacterWorkflow?: (
+        request: Parameters<Window['electronAPI']['buildCharacterWorkflow']>[0],
+        handlers?: {
+          onEvent?: (event: {
+            type: string
+            mode?: 'create' | 'edit'
+            workId?: string
+            timestamp?: number
+            step?: {
+              id: string
+              index: number
+              tool?: string
+              userRequest?: string
+              summary?: string
+              status?: string
+              plan?: string[]
+              completedSteps?: string[]
+              currentStep?: string
+              nextStep?: string
+              operations?: Array<Record<string, unknown>>
+              uiConfigOverrides?: Record<string, Record<string, unknown>>
+              createdAt?: number
+            }
+            work?: {
+              id: string
+              mode: 'create' | 'edit'
+              objective: string
+              status: 'active' | 'needs-user' | 'blocked' | 'complete'
+              plan: string[]
+              completedSteps: string[]
+              currentStep?: string
+              nextStep?: string
+              updatedAt: number
+            }
+          }) => void
+          onDone?: (result: Awaited<ReturnType<Window['electronAPI']['buildCharacterWorkflow']>>) => void
+          onError?: (error: string) => void
+        }
+      ) => ReturnType<Window['electronAPI']['buildCharacterWorkflow']>
       editCharacterWorkflowRunDraft: (request: {
         prompt: string
         language?: 'zh-CN' | 'en-US'

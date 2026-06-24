@@ -1130,6 +1130,29 @@ export function createCharacterSuperAgent(
           throw new Error(`Character workflow did not produce a complete character card. Missing: ${finalMissing.join(', ') || 'unknown fields'}. Last review: ${qualityResult.summary}`)
         }
 
+        const formatIssues = validateCharacterOutputFormat(state.draft)
+        if (formatIssues.length) {
+          await changePhase('repair')
+          state = {
+            ...state,
+            draft: repairCharacterOutputFormat(state.draft!, now()),
+          }
+          await writeArtifact(createDraftArtifact(context, state.draft))
+          await writeArtifact({
+            id: `${runId}:format-repair-report`,
+            kind: 'quality-report',
+            runId,
+            candidateId: state.draft?.id,
+            title: 'Format Repair Report',
+            summary: `Repaired output format: ${formatIssues.join(', ')}`,
+            data: {
+              repaired: true,
+              issues: formatIssues,
+              protocol: 'noema-role-chat',
+            },
+          })
+        }
+
         const finalCard = await writeArtifact({
           id: `${runId}:character-card-final`,
           kind: 'character-card-final',
@@ -1587,9 +1610,55 @@ function sanitizeCharacterDraftFieldValue(
   }
   const text = value.trim()
   if (!text || !isMetaPromptLeak(field, text, context)) {
-    return value
+    return field === 'firstMessage' ? normalizeRoleChatOpening(text) : value
   }
   return undefined
+}
+
+function normalizeRoleChatOpening(value: string): string {
+  const text = value.trim()
+  if (!text) {
+    return text
+  }
+  const match = text.match(/<chat>([\s\S]*?)<\/chat>/i)
+  if (match) {
+    return `<chat>${match[1].trim()}</chat>`
+  }
+  return `<chat>${text.replace(/<\/?chat>/gi, '').trim()}</chat>`
+}
+
+function validateCharacterOutputFormat(draft: CharacterCardDraft | undefined): string[] {
+  const issues: string[] = []
+  const firstMessage = typeof draft?.fields.firstMessage === 'string' ? draft.fields.firstMessage.trim() : ''
+  if (!firstMessage) {
+    issues.push('firstMessage is empty')
+  } else if (!/^<chat>[\s\S]+<\/chat>$/.test(firstMessage)) {
+    issues.push('firstMessage missing <chat> wrapper')
+  } else {
+    const inner = firstMessage.replace(/^<chat>/i, '').replace(/<\/chat>$/i, '').trim()
+    if (!inner) {
+      issues.push('firstMessage <chat> body is empty')
+    }
+    if (/<\/?(narration|metadata|style|goal|field)[^>]*>/i.test(inner)) {
+      issues.push('firstMessage contains non-chat protocol tags')
+    }
+  }
+  return issues
+}
+
+function repairCharacterOutputFormat(draft: CharacterCardDraft, now: number): CharacterCardDraft {
+  const firstMessage = typeof draft.fields.firstMessage === 'string'
+    ? normalizeRoleChatOpening(draft.fields.firstMessage)
+    : ''
+  return {
+    ...draft,
+    fields: {
+      ...draft.fields,
+      ...(firstMessage ? { firstMessage } : {}),
+    },
+    notes: appendUnique(draft.notes, ['Repaired role-chat output format before export.']),
+    updatedAt: now,
+  }
 }
 
 function isMetaPromptLeak(field: string, value: string, context: CharacterAgentRunContext): boolean {

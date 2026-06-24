@@ -27,7 +27,13 @@ export interface CharacterWorkflowBuilderRequest {
   imageApiId?: string
   imageModelName?: string
   now?: number
+  onEvent?: (event: CharacterWorkflowBuilderEvent) => void | Promise<void>
 }
+
+export type CharacterWorkflowBuilderEvent =
+  | { type: 'workflow-agent.started'; mode: 'create' | 'edit'; workId: string; objective: string; timestamp: number }
+  | { type: 'workflow-agent.step'; mode: 'create' | 'edit'; workId: string; step: CharacterWorkflowEditorAgentStep; timestamp: number }
+  | { type: 'workflow-agent.completed'; mode: 'create' | 'edit'; work: CharacterWorkflowEditorAgentWork; timestamp: number }
 
 export interface CharacterWorkflowEditorSession {
   objective?: string
@@ -115,7 +121,45 @@ export interface CharacterWorkflowBuilderResult {
   workflow?: CharacterWorkflow
   spec: CharacterWorkflowBuilderSpec
   uiConfigOverrides: Record<string, Record<string, unknown>>
+  agentWork?: CharacterWorkflowEditorAgentWork
 }
+
+export interface CharacterWorkflowEditorAgentWork {
+  id: string
+  mode: 'create' | 'edit'
+  objective: string
+  status: 'active' | 'needs-user' | 'blocked' | 'complete'
+  plan: string[]
+  completedSteps: string[]
+  currentStep?: string
+  nextStep?: string
+  steps: CharacterWorkflowEditorAgentStep[]
+  createdAt: number
+  updatedAt: number
+}
+
+export interface CharacterWorkflowEditorAgentStep {
+  id: string
+  index: number
+  tool: CharacterWorkflowAgentToolAction
+  userRequest: string
+  summary: string
+  status: 'applied' | 'needs-user' | 'blocked'
+  plan: string[]
+  completedSteps: string[]
+  currentStep?: string
+  nextStep?: string
+  operations: CharacterWorkflowBuilderOperation[]
+  uiConfigOverrides: Record<string, Record<string, unknown>>
+  createdAt: number
+}
+
+export type CharacterWorkflowAgentToolAction =
+  | 'inspect_graph'
+  | 'edit_graph'
+  | 'validate_graph'
+  | 'ask_user'
+  | 'finish'
 
 const DEFAULT_REQUIRED_CHECKS = ['goal match', 'long-term RP', 'visual identity', 'field completeness', 'consistency']
 const DEFAULT_ASSET_TARGETS = ['role-card', 'opening', 'opening-layout', 'image-pack', 'generation-report']
@@ -137,29 +181,42 @@ export async function buildCharacterWorkflowFromPrompt(
     })
   }
 
-  const response = await sendChatTurnWithConfiguredModel(request.modelConfig, {
-    input: prompt,
+  return createCharacterWorkflowFromPrompt({
+    ...request,
+    prompt,
     language,
+  })
+}
+
+async function createCharacterWorkflowFromPrompt(
+  request: CharacterWorkflowBuilderRequest & { prompt: string; language: CharacterWorkflowLanguage }
+): Promise<CharacterWorkflowBuilderResult> {
+  const now = request.now ?? Date.now()
+  const workId = `workflow-create-work-${now}`
+  await request.onEvent?.({ type: 'workflow-agent.started', mode: 'create', workId, objective: request.prompt, timestamp: now })
+  const response = await sendChatTurnWithConfiguredModel(request.modelConfig, {
+    input: request.prompt,
+    language: request.language,
     options: { temperature: 0.32, top_p: 0.82 },
     messages: [{
       role: 'system',
-      content: createWorkflowBuilderSystemPrompt(language),
+      content: createWorkflowBuilderSystemPrompt(request.language),
     }],
   })
   const content = await ensureUsefulWorkflowBuilderResponse({
     text: response.content,
     label: 'Workflow builder',
     request,
-    language,
-    systemPrompt: createWorkflowBuilderSystemPrompt(language),
-    sourceInput: prompt,
+    language: request.language,
+    systemPrompt: createWorkflowBuilderSystemPrompt(request.language),
+    sourceInput: request.prompt,
   })
 
-  const spec = normalizeWorkflowBuilderSpec(content, prompt, language)
+  const spec = normalizeWorkflowBuilderSpec(content, request.prompt, request.language)
   const workflow = createStandardCharacterWorkflow({
-    id: `character-workflow-${request.now ?? Date.now()}`,
+    id: `character-workflow-${now}`,
     name: spec.name,
-    language,
+    language: request.language,
     llmApiId: request.llmApiId,
     llmModelName: request.llmModelName,
     imageApiId: request.imageApiId,
@@ -167,11 +224,86 @@ export async function buildCharacterWorkflowFromPrompt(
     now: request.now,
   })
   applySpecToWorkflow(workflow, spec)
+  const validationSummary = validateCreatedCharacterWorkflow(workflow, spec, request.language)
+  const agentWork: CharacterWorkflowEditorAgentWork = {
+    id: workId,
+    mode: 'create',
+    objective: request.prompt,
+    status: spec.status === 'blocked' ? 'blocked' : spec.status === 'needs-user' ? 'needs-user' : 'complete',
+    plan: spec.plan,
+    completedSteps: [
+      request.language === 'zh-CN' ? '理解用户目标' : 'Understand user goal',
+      request.language === 'zh-CN' ? '生成标准角色资源图配置' : 'Generate standard character workflow configuration',
+      request.language === 'zh-CN' ? '校验必需资源链路' : 'Validate required resource links',
+    ],
+    currentStep: request.language === 'zh-CN' ? '完成初始资源图' : 'Finish initial resource graph',
+    nextStep: spec.status === 'needs-user' ? spec.summary : undefined,
+    steps: [
+      createWorkflowAgentStep({
+        now,
+        index: 1,
+        tool: 'inspect_graph',
+        userRequest: request.prompt,
+        summary: request.language === 'zh-CN' ? '已解析用户目标并确定角色资源图必须包含角色卡、开场、头像和总览图。' : 'Parsed the user goal and identified required role card, opening, avatar, and overview sheet resources.',
+        status: 'applied',
+        plan: spec.plan,
+        completedSteps: [],
+        currentStep: request.language === 'zh-CN' ? '理解用户目标' : 'Understand user goal',
+        nextStep: request.language === 'zh-CN' ? '生成资源图配置' : 'Generate workflow configuration',
+      }),
+      createWorkflowAgentStep({
+        now,
+        index: 2,
+        tool: 'edit_graph',
+        userRequest: request.prompt,
+        summary: spec.summary,
+        status: spec.status,
+        plan: spec.plan,
+        completedSteps: spec.plan.slice(0, 1),
+        currentStep: request.language === 'zh-CN' ? '生成资源图配置' : 'Generate workflow configuration',
+        nextStep: request.language === 'zh-CN' ? '校验资源图结构' : 'Validate workflow structure',
+        operations: spec.operations,
+        uiConfigOverrides: createUiConfigOverrides(spec),
+      }),
+      createWorkflowAgentStep({
+        now,
+        index: 3,
+        tool: spec.status === 'needs-user' ? 'ask_user' : 'validate_graph',
+        userRequest: request.prompt,
+        summary: validationSummary,
+        status: spec.status,
+        plan: spec.plan,
+        completedSteps: spec.plan,
+        currentStep: request.language === 'zh-CN' ? '校验资源图结构' : 'Validate workflow structure',
+        nextStep: spec.status === 'needs-user' ? spec.summary : undefined,
+      }),
+      createWorkflowAgentStep({
+        now,
+        index: 4,
+        tool: spec.status === 'needs-user' ? 'ask_user' : 'finish',
+        userRequest: request.prompt,
+        summary: spec.status === 'needs-user'
+          ? spec.summary
+          : request.language === 'zh-CN' ? '初始角色资源图已准备好，可以继续编辑或运行生成。' : 'Initial character workflow is ready to edit or run.',
+        status: spec.status,
+        plan: spec.plan,
+        completedSteps: spec.plan,
+        currentStep: request.language === 'zh-CN' ? '完成初始资源图' : 'Finish initial resource graph',
+      }),
+    ],
+    createdAt: now,
+    updatedAt: now,
+  }
+  for (const step of agentWork.steps) {
+    await request.onEvent?.({ type: 'workflow-agent.step', mode: 'create', workId, step, timestamp: step.createdAt })
+  }
+  await request.onEvent?.({ type: 'workflow-agent.completed', mode: 'create', work: agentWork, timestamp: agentWork.updatedAt })
 
   return {
     workflow,
     spec,
     uiConfigOverrides: createUiConfigOverrides(spec),
+    agentWork,
   }
 }
 
@@ -182,10 +314,161 @@ async function editCharacterWorkflowFromPrompt(
   if (!graph.nodes.length) {
     throw new Error('Workflow editor graph is empty')
   }
+  const agentWork = await runCharacterWorkflowEditorAgent(request, graph)
+  const lastStep = agentWork.steps[agentWork.steps.length - 1]
+  const aggregateOperations = agentWork.steps.flatMap((step) => step.operations)
+  const spec: CharacterWorkflowBuilderSpec = {
+    name: lastStep?.currentStep || deriveName(request.prompt, request.language === 'zh-CN' ? '资源图修改' : 'Workflow Edit'),
+    plan: agentWork.plan,
+    completedSteps: agentWork.completedSteps,
+    currentStep: agentWork.currentStep,
+    nextStep: agentWork.nextStep,
+    summary: summarizeEditorAgentWork(agentWork, request.language),
+    confidence: agentWork.status === 'blocked' ? 0.3 : agentWork.status === 'needs-user' ? 0.55 : 0.82,
+    status: agentWork.status === 'blocked' ? 'blocked' : agentWork.status === 'needs-user' ? 'needs-user' : 'applied',
+    goalPrompt: '',
+    targetAudience: '',
+    stylePrompt: '',
+    preset: 'custom',
+    intensity: 0.72,
+    mustHave: [],
+    mustNot: [],
+    sourceNotes: '',
+    generationStrategy: normalizeGenerationStrategy({}),
+    agentPolicy: normalizeAgentPolicy({}),
+    qualityGate: normalizeQualityGate({}),
+    assetTargets: DEFAULT_ASSET_TARGETS,
+    outputFormat: 'noema-role-chat',
+    operations: aggregateOperations,
+  }
+  return {
+    spec,
+    uiConfigOverrides: mergeEditorStepOverrides(agentWork.steps),
+    agentWork,
+  }
+}
+
+async function runCharacterWorkflowEditorAgent(
+  request: CharacterWorkflowBuilderRequest & { prompt: string; language: CharacterWorkflowLanguage },
+  initialGraph: CharacterWorkflowBuilderGraph
+): Promise<CharacterWorkflowEditorAgentWork> {
+  const now = request.now ?? Date.now()
+  const workId = `workflow-editor-work-${now}`
+  const session = request.editorSession
+  const objective = session?.objective?.trim() || request.prompt
+  await request.onEvent?.({ type: 'workflow-agent.started', mode: 'edit', workId, objective, timestamp: now })
+  let graph = initialGraph
+  let plan = [...(session?.plan ?? [])]
+  let completedSteps = [...(session?.completedSteps ?? [])]
+  let currentStep = session?.currentStep
+  let nextStep: string | undefined
+  const steps: CharacterWorkflowEditorAgentStep[] = []
+  const maxSteps = 4
+
+  for (let index = 0; index < maxSteps; index += 1) {
+    const stepSession: CharacterWorkflowEditorSession = {
+      objective,
+      plan,
+      completedSteps,
+      currentStep,
+      history: [
+        ...(session?.history ?? []),
+        ...steps.map((step) => ({
+          userRequest: step.userRequest,
+          summary: step.summary,
+          status: step.status,
+          operations: step.operations.length,
+        })),
+      ],
+    }
+    const spec = await executeCharacterWorkflowEditorStep({
+      ...request,
+      prompt: index === 0 ? request.prompt : nextStep || request.prompt,
+      editorSession: stepSession,
+      graph,
+    }, {
+      stepIndex: index,
+      maxSteps,
+      objective,
+    })
+    const uiConfigOverrides = createEditorUiConfigOverrides(spec, graph)
+    const step: CharacterWorkflowEditorAgentStep = {
+      id: `workflow-editor-step-${now}-${index + 1}`,
+      index: index + 1,
+      tool: spec.status === 'needs-user' ? 'ask_user' : spec.status === 'blocked' ? 'validate_graph' : 'edit_graph',
+      userRequest: index === 0 ? request.prompt : nextStep || request.prompt,
+      summary: spec.summary,
+      status: spec.status,
+      plan: spec.plan,
+      completedSteps: spec.completedSteps ?? [],
+      currentStep: spec.currentStep,
+      nextStep: spec.nextStep,
+      operations: spec.operations,
+      uiConfigOverrides,
+      createdAt: now + index,
+    }
+    steps.push(step)
+    await request.onEvent?.({ type: 'workflow-agent.step', mode: 'edit', workId, step, timestamp: step.createdAt })
+    plan = step.plan.length ? step.plan : plan
+    completedSteps = step.completedSteps.length ? step.completedSteps : completedSteps
+    currentStep = step.currentStep
+    nextStep = step.nextStep
+    graph = applyEditorOperationsToGraph(graph, step.operations)
+
+    if (step.status === 'blocked' || step.status === 'needs-user') {
+      break
+    }
+    if (!step.operations.length || !step.nextStep?.trim()) {
+      break
+    }
+  }
+
+  const lastStep = steps[steps.length - 1]
+  const exhausted = steps.length >= maxSteps && Boolean(lastStep?.nextStep?.trim())
+  const status: CharacterWorkflowEditorAgentWork['status'] = lastStep?.status === 'blocked'
+    ? 'blocked'
+    : lastStep?.status === 'needs-user'
+      ? 'needs-user'
+      : exhausted
+        ? 'needs-user'
+      : lastStep?.nextStep?.trim()
+        ? 'active'
+        : 'complete'
+  const work: CharacterWorkflowEditorAgentWork = {
+    id: workId,
+    mode: 'edit',
+    objective,
+    status,
+    plan,
+    completedSteps,
+    currentStep,
+    nextStep: status === 'complete' ? undefined : nextStep,
+    steps,
+    createdAt: now,
+    updatedAt: Date.now(),
+  }
+  await request.onEvent?.({ type: 'workflow-agent.completed', mode: 'edit', work, timestamp: work.updatedAt })
+  return work
+}
+
+async function executeCharacterWorkflowEditorStep(
+  request: CharacterWorkflowBuilderRequest & { prompt: string; language: CharacterWorkflowLanguage },
+  runtime: { stepIndex: number; maxSteps: number; objective: string }
+): Promise<CharacterWorkflowBuilderSpec> {
+  const graph = normalizeBuilderGraph(request.graph)
+  if (!graph.nodes.length) {
+    throw new Error('Workflow editor graph is empty')
+  }
   const response = await sendChatTurnWithConfiguredModel(request.modelConfig, {
     input: JSON.stringify({
+      objective: runtime.objective,
       userRequest: request.prompt,
       editorSession: request.editorSession ?? null,
+      runtime: {
+        stepIndex: runtime.stepIndex + 1,
+        maxSteps: runtime.maxSteps,
+        remainingSteps: Math.max(0, runtime.maxSteps - runtime.stepIndex - 1),
+      },
       graph,
     }),
     language: request.language,
@@ -202,18 +485,19 @@ async function editCharacterWorkflowFromPrompt(
     language: request.language,
     systemPrompt: createWorkflowEditorSystemPrompt(request.language),
     sourceInput: JSON.stringify({
+      objective: runtime.objective,
       userRequest: request.prompt,
       editorSession: request.editorSession ?? null,
+      runtime: {
+        stepIndex: runtime.stepIndex + 1,
+        maxSteps: runtime.maxSteps,
+      },
       graph,
     }),
     requireEditableOperations: true,
   })
 
-  const spec = normalizeWorkflowEditorSpec(content, request.prompt, request.language, graph)
-  return {
-    spec,
-    uiConfigOverrides: createEditorUiConfigOverrides(spec, graph),
-  }
+  return normalizeWorkflowEditorSpec(content, request.prompt, request.language, graph)
 }
 
 export function normalizeWorkflowBuilderSpec(
@@ -465,7 +749,7 @@ function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): 
     : 'Write user-facing resource content in English. Keep enum values and node ids in English.'
   return [
     'You are an autonomous Codex-style editor for an existing character resource workflow graph.',
-    'You receive JSON with { userRequest, editorSession, graph }. Treat graph and editorSession as state, not as user content.',
+    'You receive JSON with { objective, userRequest, editorSession, runtime, graph }. Treat graph, runtime, and editorSession as state, not as user content.',
     localeRule,
     '',
     'Your job is not to finish every possible edit in one response. Your job is to steadily pursue the workflow engineering goal over multiple turns.',
@@ -486,6 +770,8 @@ function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): 
     '- Use concise resource content. A field should contain the content that resource controls, not instructions about how you are editing.',
     '- Always return plan. Keep it short, concrete, and update it to reflect progress. Mark completed work in completedSteps.',
     '- Use currentStep to name the step you are applying now. Use nextStep to name what should happen next.',
+    '- If the objective is now adequately reflected in the graph, leave nextStep empty. If more work remains, nextStep must be the next concrete graph-editing step, not a vague reminder.',
+    '- Respect runtime.remainingSteps. When it is 0, apply the most important remaining patch and leave nextStep empty unless user input is truly required.',
     '- If the request is underspecified but still workable, make reasonable creative decisions and set status to "applied". Ask for the user only when the next graph edit cannot be chosen safely.',
     '',
     'Resource guidance:',
@@ -535,6 +821,182 @@ function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): 
     '',
     'For ordinary field edits, prefer nodeConfigUpdates to save tokens. Use operations for add/move/delete/select/link actions.',
   ].join('\n')
+}
+
+function summarizeEditorAgentWork(
+  work: CharacterWorkflowEditorAgentWork,
+  language: CharacterWorkflowLanguage
+): string {
+  const zh = language === 'zh-CN'
+  const summaries = work.steps.map((step) => step.summary).filter(Boolean)
+  const editCount = work.steps.reduce((total, step) => total + step.operations.length + Object.keys(step.uiConfigOverrides).length, 0)
+  const prefix = zh
+    ? `Agent 已执行 ${work.steps.length} 个步骤，应用 ${editCount} 项资源图修改。`
+    : `Agent ran ${work.steps.length} steps and applied ${editCount} workflow edits.`
+  return [prefix, ...summaries.slice(-3)].join(zh ? '\n' : '\n')
+}
+
+function createWorkflowAgentStep(options: {
+  now: number
+  index: number
+  tool: CharacterWorkflowAgentToolAction
+  userRequest: string
+  summary: string
+  status: CharacterWorkflowBuilderSpec['status']
+  plan: string[]
+  completedSteps: string[]
+  currentStep?: string
+  nextStep?: string
+  operations?: CharacterWorkflowBuilderOperation[]
+  uiConfigOverrides?: Record<string, Record<string, unknown>>
+}): CharacterWorkflowEditorAgentStep {
+  return {
+    id: `workflow-agent-step-${options.now}-${options.index}`,
+    index: options.index,
+    tool: options.tool,
+    userRequest: options.userRequest,
+    summary: options.summary,
+    status: options.status,
+    plan: options.plan,
+    completedSteps: options.completedSteps,
+    currentStep: options.currentStep,
+    nextStep: options.nextStep,
+    operations: options.operations ?? [],
+    uiConfigOverrides: options.uiConfigOverrides ?? {},
+    createdAt: options.now + options.index,
+  }
+}
+
+function validateCreatedCharacterWorkflow(
+  workflow: CharacterWorkflow,
+  spec: CharacterWorkflowBuilderSpec,
+  language: CharacterWorkflowLanguage
+): string {
+  const requiredNodeIds = [
+    'generation-goal',
+    'character-card-target',
+    'opening-field-target',
+    'avatar-image-target',
+    'avatar-image-control',
+    'overview-sheet-image-target',
+    'overview-sheet-image-control',
+    'opening-layout-target',
+    'quality-gate',
+    'output-adapter',
+  ]
+  const missing = requiredNodeIds.filter((id) => !workflow.nodes.some((node) => node.id === id))
+  const hasAvatarLink = workflow.edges.some((edge) => edge.from.nodeId === 'avatar-image-target' || edge.to.nodeId === 'avatar-image-target')
+  const hasOverviewLink = workflow.edges.some((edge) => edge.from.nodeId === 'overview-sheet-image-target' || edge.to.nodeId === 'overview-sheet-image-target')
+  const issues = [
+    ...missing.map((id) => `missing node ${id}`),
+    ...(hasAvatarLink ? [] : ['avatar image target is not linked']),
+    ...(hasOverviewLink ? [] : ['overview sheet image target is not linked']),
+    ...(spec.outputFormat === 'noema-role-chat' ? [] : ['output format is not noema-role-chat']),
+  ]
+  if (!issues.length) {
+    return language === 'zh-CN'
+      ? '资源图结构校验通过：角色卡、开场白、avatar.jpg、overview sheet、质量门和导出链路均已配置。'
+      : 'Workflow structure validated: role card, opening, avatar.jpg, overview sheet, quality gate, and export path are configured.'
+  }
+  return language === 'zh-CN'
+    ? `资源图结构存在问题：${issues.join('；')}`
+    : `Workflow structure has issues: ${issues.join('; ')}`
+}
+
+function mergeEditorStepOverrides(
+  steps: CharacterWorkflowEditorAgentStep[]
+): Record<string, Record<string, unknown>> {
+  const merged: Record<string, Record<string, unknown>> = {}
+  for (const step of steps) {
+    for (const [nodeId, config] of Object.entries(step.uiConfigOverrides)) {
+      merged[nodeId] = {
+        ...(merged[nodeId] ?? {}),
+        ...config,
+      }
+    }
+  }
+  return merged
+}
+
+function applyEditorOperationsToGraph(
+  graph: CharacterWorkflowBuilderGraph,
+  operations: CharacterWorkflowBuilderOperation[]
+): CharacterWorkflowBuilderGraph {
+  let next = normalizeBuilderGraph(graph)
+  for (const operation of operations) {
+    if (operation.type === 'add-node') {
+      const nodeId = operation.nodeId?.trim() || `${operation.nodeType}-${next.nodes.length + 1}`
+      if (!next.nodes.some((node) => node.id === nodeId)) {
+        const definition = STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS.find((item) => item.type === operation.nodeType)
+        next = {
+          ...next,
+          selectedNodeId: nodeId,
+          nodes: [
+            ...next.nodes,
+            {
+              id: nodeId,
+              type: operation.nodeType,
+              title: operation.title || definition?.title || operation.nodeType,
+              config: sanitizeResourceConfigForNode(operation.nodeType, operation.config ?? {}),
+              inputs: Object.keys(definition?.inputs ?? {}),
+              outputs: Object.keys(definition?.outputs ?? {}),
+            },
+          ],
+        }
+      }
+    } else if (operation.type === 'update-node-config') {
+      next = {
+        ...next,
+        selectedNodeId: operation.nodeId,
+        nodes: next.nodes.map((node) => (
+          node.id === operation.nodeId
+            ? {
+                ...node,
+                config: {
+                  ...(node.config ?? {}),
+                  ...sanitizeResourceConfigForNode(node.type, operation.config),
+                },
+              }
+            : node
+        )),
+      }
+    } else if (operation.type === 'delete-node') {
+      if (operation.nodeId === 'generation-goal') {
+        continue
+      }
+      next = {
+        ...next,
+        selectedNodeId: next.selectedNodeId === operation.nodeId ? 'generation-goal' : next.selectedNodeId,
+        nodes: next.nodes.filter((node) => node.id !== operation.nodeId),
+        edges: next.edges.filter((edge) => edge.from.nodeId !== operation.nodeId && edge.to.nodeId !== operation.nodeId),
+      }
+    } else if (operation.type === 'select-node') {
+      next = { ...next, selectedNodeId: operation.nodeId }
+    } else if (operation.type === 'add-link') {
+      const linkId = `${operation.sourceNodeId}:${operation.sourceSlotId}->${operation.targetNodeId}:${operation.targetSlotId}`
+      if (!next.edges.some((edge) => edge.id === linkId)) {
+        next = {
+          ...next,
+          edges: [
+            ...next.edges,
+            {
+              id: linkId,
+              from: { nodeId: operation.sourceNodeId, port: operation.sourceSlotId },
+              to: { nodeId: operation.targetNodeId, port: operation.targetSlotId },
+              kind: operation.kind ?? 'guides',
+            },
+          ],
+        }
+      }
+    } else if (operation.type === 'delete-link') {
+      const linkId = operation.linkId || `${operation.sourceNodeId ?? ''}:${operation.sourceSlotId ?? ''}->${operation.targetNodeId ?? ''}:${operation.targetSlotId ?? ''}`
+      next = {
+        ...next,
+        edges: next.edges.filter((edge) => edge.id !== linkId),
+      }
+    }
+  }
+  return next
 }
 
 function applySpecToWorkflow(workflow: CharacterWorkflow, spec: CharacterWorkflowBuilderSpec): void {
