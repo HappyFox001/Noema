@@ -632,23 +632,20 @@ function imageSizeForPrompt(prompt: {
   targetIndex: number
 }): string | undefined {
   const control = getImageControlForPromptIndex(prompt.target.imageControls, prompt.targetIndex)
-  const aspectRatio = control?.aspectRatio || ''
-  if (prompt.imageRole === 'avatar') {
-    return '2048x2048'
+  const aspectRatio = control?.aspectRatio || (prompt.imageRole === 'character-overview-sheet' ? '16:9' : '1:1')
+  return imageSizeFromAspectRatio(aspectRatio)
+}
+
+function imageSizeFromAspectRatio(aspectRatio: string): string {
+  const sizes: Record<string, string> = {
+    '1:1': '2048x2048',
+    '2:3': '1365x2048',
+    '3:4': '1536x2048',
+    '4:5': '1638x2048',
+    '16:9': '2560x1440',
+    '9:16': '1440x2560',
   }
-  if (prompt.imageRole === 'character-overview-sheet') {
-    return aspectRatio === '9:16' ? '1440x2560' : '2560x1440'
-  }
-  if (aspectRatio === '9:16') {
-    return '1440x2560'
-  }
-  if (aspectRatio === '16:9') {
-    return '2560x1440'
-  }
-  if (aspectRatio === '3:4') {
-    return '1024x1024'
-  }
-  return undefined
+  return sizes[aspectRatio] ?? '2048x2048'
 }
 
 function getImageControlForPromptIndex(

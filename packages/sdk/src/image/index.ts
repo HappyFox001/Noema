@@ -26,6 +26,11 @@ export interface ImageGenerationArtifact {
   referenceImages?: string[]
 }
 
+interface ImageProviderRequestOptions {
+  referenceImages: string[]
+  size?: string
+}
+
 export async function generateImageWithConfiguredProvider(options: {
   model: ImageGenerationConfiguredModel
   modelName: string
@@ -51,38 +56,41 @@ export async function generateImageWithConfiguredProvider(options: {
   }
   const fetcher = createProxyFetch(options.proxyUrl)
   const base = { provider: entry.value, model: modelName, prompt }
+  const requestOptions: ImageProviderRequestOptions = {
+    referenceImages,
+    size: options.size,
+  }
   switch (entry.apiStyle) {
     case 'openai-images':
     case 'volcengine-ark-images':
     case 'baidu-qianfan-images':
-      return { ...base, ...(await callOpenAIImages(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt)) }
+      return { ...base, ...(await callOpenAIImages(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt, requestOptions)) }
     case 'recraft':
-      return { ...base, ...(await callRecraft(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt)) }
+      return { ...base, ...(await callRecraft(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt, requestOptions)) }
     case 'google-imagen':
-      return { ...base, ...(await callGoogleImagen(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt)) }
+      return { ...base, ...(await callGoogleImagen(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt, requestOptions)) }
     case 'stability-v2':
-      return { ...base, ...(await callStabilityCore(fetcher, entry, baseUrl, options.model.apiKey, prompt)) }
+      return { ...base, ...(await callStabilityCore(fetcher, entry, baseUrl, options.model.apiKey, prompt, requestOptions)) }
     case 'replicate-predictions':
-      return { ...base, ...(await callReplicate(fetcher, baseUrl, options.model.apiKey, modelName, prompt)) }
+      return { ...base, ...(await callReplicate(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt, requestOptions)) }
     case 'fal-run':
-      return { ...base, ...(await callFal(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt)) }
+      return { ...base, ...(await callFal(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt, requestOptions)) }
     case 'comfyui-workflow':
-      return { ...base, ...(await callComfyUI(fetcher, entry, baseUrl, modelName, prompt)) }
+      return { ...base, ...(await callComfyUI(fetcher, entry, baseUrl, modelName, prompt, requestOptions)) }
     case 'automatic1111-sdapi':
-      return { ...base, ...(await callAutomatic1111(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt)) }
+      return { ...base, ...(await callAutomatic1111(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt, requestOptions)) }
     case 'dashscope-wanx':
-      return { ...base, ...(await callDashScopeWanx(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt)) }
+      return { ...base, ...(await callDashScopeWanx(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt, requestOptions)) }
     case 'adobe-firefly':
-      return { ...base, ...(await callAdobeFirefly(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt)) }
+      return { ...base, ...(await callAdobeFirefly(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt, requestOptions)) }
     case 'ideogram':
-      return { ...base, ...(await callIdeogram(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt)) }
+      return { ...base, ...(await callIdeogram(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt, requestOptions)) }
     case 'wavespeed':
-      return { ...base, ...(await callWaveSpeed(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt, {
-        referenceImages,
-        size: options.size,
-      })) }
+      return { ...base, ...(await callWaveSpeed(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt, requestOptions)) }
     case 'tencent-cloud-action':
-      return { ...base, ...(await callTencentHunyuan(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt)) }
+      return { ...base, ...(await callTencentHunyuan(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt, requestOptions)) }
+    case 'huggingface-inference':
+      return { ...base, ...(await callHuggingFaceInference(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt, requestOptions)) }
     default:
       throw new Error(`Unsupported image provider API style: ${entry.apiStyle}`)
   }
@@ -107,14 +115,28 @@ async function callOpenAIImages(
   baseUrl: string,
   apiKey: string,
   modelName: string,
-  prompt: string
+  prompt: string,
+  options: ImageProviderRequestOptions
 ): Promise<Partial<ImageGenerationResult>> {
+  const referenceImages = limitReferenceImages(entry, options.referenceImages)
+  if (referenceImages.length && entry.capabilities?.referenceImages?.mode === 'multipart-edit') {
+    return callOpenAIImageEdit(fetcher, entry, baseUrl, apiKey, modelName, prompt, {
+      ...options,
+      referenceImages,
+    })
+  }
+  const jsonReferenceImages = entry.capabilities?.referenceImages?.mode === 'json-images'
+    ? referenceImages
+    : []
   const gptImage = /^gpt-image/i.test(modelName)
   const body: Record<string, unknown> = {
     model: modelName,
     prompt,
     n: 1,
-    size: '1024x1024',
+    size: entry.value === 'openai-image'
+      ? normalizeOpenAIImageSize(modelName, options.size)
+      : formatProviderImageSize(options.size, 'x', '1024x1024'),
+    ...(jsonReferenceImages.length ? { image: jsonReferenceImages.length === 1 ? jsonReferenceImages[0] : jsonReferenceImages } : {}),
     ...(gptImage ? { output_format: 'png' } : { response_format: 'b64_json' }),
   }
   const response = await fetcher(`${baseUrl}${entry.generatePath}`, {
@@ -124,7 +146,47 @@ async function callOpenAIImages(
   })
   const payload = await readResponsePayload(response)
   assertOk(response, payload, 'Image generation failed')
-  return imageFromOpenAIShape(payload)
+  return {
+    ...imageFromOpenAIShape(payload),
+    ...(jsonReferenceImages.length ? { referenceImages: jsonReferenceImages } : {}),
+  }
+}
+
+async function callOpenAIImageEdit(
+  fetcher: typeof fetch,
+  entry: ImageProviderCatalogEntry,
+  baseUrl: string,
+  apiKey: string,
+  modelName: string,
+  prompt: string,
+  options: ImageProviderRequestOptions
+): Promise<Partial<ImageGenerationResult>> {
+  const form = new FormData()
+  form.set('model', modelName)
+  form.set('prompt', prompt)
+  form.set('n', '1')
+  form.set('size', normalizeOpenAIImageSize(modelName, options.size))
+  if (/^gpt-image/i.test(modelName)) {
+    form.set('output_format', 'png')
+  }
+  const referenceImages = limitReferenceImages(entry, options.referenceImages)
+  for (let index = 0; index < referenceImages.length; index += 1) {
+    const image = await loadReferenceImageBlob(fetcher, referenceImages[index], index)
+    form.append('image[]', image.blob, image.filename)
+  }
+  const response = await fetcher(`${baseUrl}/images/edits`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: form,
+  })
+  const payload = await readResponsePayload(response)
+  assertOk(response, payload, 'Image edit failed')
+  return {
+    ...imageFromOpenAIShape(payload),
+    referenceImages,
+  }
 }
 
 async function callRecraft(
@@ -133,8 +195,32 @@ async function callRecraft(
   baseUrl: string,
   apiKey: string,
   modelName: string,
-  prompt: string
+  prompt: string,
+  options: ImageProviderRequestOptions
 ): Promise<Partial<ImageGenerationResult>> {
+  const referenceImages = limitReferenceImages(entry, options.referenceImages)
+  if (referenceImages.length) {
+    const form = new FormData()
+    form.set('model', modelName)
+    form.set('prompt', prompt)
+    form.set('n', '1')
+    form.set('size', formatProviderImageSize(options.size, 'x', '1024x1024'))
+    const image = await loadReferenceImageBlob(fetcher, referenceImages[0], 0)
+    form.append('image', image.blob, image.filename)
+    const response = await fetcher(`${baseUrl}/images/edits`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: form,
+    })
+    const payload = await readResponsePayload(response)
+    assertOk(response, payload, 'Recraft image edit failed')
+    return {
+      ...imageFromOpenAIShape(payload),
+      referenceImages,
+    }
+  }
   const response = await fetcher(`${baseUrl}${entry.generatePath}`, {
     method: 'POST',
     headers: jsonAuthHeaders(apiKey),
@@ -142,7 +228,7 @@ async function callRecraft(
       model: modelName,
       prompt,
       n: 1,
-      size: '1024x1024',
+      size: formatProviderImageSize(options.size, 'x', '1024x1024'),
       response_format: 'b64_json',
     }),
   })
@@ -157,15 +243,20 @@ async function callGoogleImagen(
   baseUrl: string,
   apiKey: string,
   modelName: string,
-  prompt: string
+  prompt: string,
+  options: ImageProviderRequestOptions
 ): Promise<Partial<ImageGenerationResult>> {
+  const aspectRatio = aspectRatioForProvider(options.size)
   const path = entry.generatePath.replace('{model}', encodeURIComponent(modelName))
   const response = await fetcher(`${baseUrl}${path}?key=${encodeURIComponent(apiKey)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       instances: [{ prompt }],
-      parameters: { sampleCount: 1 },
+      parameters: {
+        sampleCount: 1,
+        ...(aspectRatio ? { aspectRatio } : {}),
+      },
     }),
   })
   const payload = await readResponsePayload(response)
@@ -183,11 +274,21 @@ async function callStabilityCore(
   entry: ImageProviderCatalogEntry,
   baseUrl: string,
   apiKey: string,
-  prompt: string
+  prompt: string,
+  options: ImageProviderRequestOptions
 ): Promise<Partial<ImageGenerationResult>> {
   const form = new FormData()
   form.set('prompt', prompt)
   form.set('output_format', 'png')
+  const aspectRatio = aspectRatioForProvider(options.size)
+  if (aspectRatio) {
+    form.set('aspect_ratio', aspectRatio)
+  }
+  const referenceImages = limitReferenceImages(entry, options.referenceImages)
+  for (let index = 0; index < referenceImages.length; index += 1) {
+    const image = await loadReferenceImageBlob(fetcher, referenceImages[index], index)
+    form.append(index === 0 ? 'image' : `image_${index + 1}`, image.blob, image.filename)
+  }
   const response = await fetcher(`${baseUrl}${entry.generatePath}`, {
     method: 'POST',
     headers: {
@@ -202,16 +303,34 @@ async function callStabilityCore(
   }
   const mimeType = response.headers.get('content-type')?.split(';')[0] || 'image/png'
   const buffer = Buffer.from(await response.arrayBuffer())
-  return { mimeType, dataUrl: `data:${mimeType};base64,${buffer.toString('base64')}` }
+  return {
+    mimeType,
+    dataUrl: `data:${mimeType};base64,${buffer.toString('base64')}`,
+    ...(referenceImages.length ? { referenceImages } : {}),
+  }
 }
 
 async function callReplicate(
   fetcher: typeof fetch,
+  entry: ImageProviderCatalogEntry,
   baseUrl: string,
   apiKey: string,
   modelName: string,
-  prompt: string
+  prompt: string,
+  options: ImageProviderRequestOptions
 ): Promise<Partial<ImageGenerationResult>> {
+  const size = parseImageSize(options.size)
+  const referenceImages = limitReferenceImages(entry, options.referenceImages)
+  const input: Record<string, unknown> = {
+    prompt,
+    ...(size ? { width: size.width, height: size.height, image_size: `${size.width}x${size.height}` } : {}),
+    ...(referenceImages[0] ? {
+      image: referenceImages[0],
+      input_image: referenceImages[0],
+      reference_image: referenceImages[0],
+      reference_images: referenceImages,
+    } : {}),
+  }
   const path = modelName.split('/').length >= 2
     ? `/models/${modelName}/predictions`
     : '/predictions'
@@ -221,12 +340,15 @@ async function callReplicate(
       ...jsonAuthHeaders(apiKey),
       Prefer: 'wait=60',
     },
-    body: JSON.stringify({ input: { prompt } }),
+    body: JSON.stringify({ input }),
   })
   const payload = await readResponsePayload(response)
   assertOk(response, payload, 'Replicate prediction failed')
   const result = await settlePrediction(fetcher, payload, apiKey)
-  return imageFromProviderOutput(result.output ?? result, result)
+  return {
+    ...imageFromProviderOutput(result.output ?? result, result),
+    ...(referenceImages.length ? { referenceImages } : {}),
+  }
 }
 
 async function callFal(
@@ -235,19 +357,31 @@ async function callFal(
   baseUrl: string,
   apiKey: string,
   modelName: string,
-  prompt: string
+  prompt: string,
+  options: ImageProviderRequestOptions
 ): Promise<Partial<ImageGenerationResult>> {
-  const response = await fetcher(`${baseUrl}${entry.generatePath.replace('{model}', modelName)}`, {
+  const referenceImages = resolveFalReferenceImages(modelName, options.referenceImages)
+  const resolvedModelName = resolveFalModelName(modelName, referenceImages.length > 0)
+  const body: Record<string, unknown> = {
+    prompt,
+    image_size: formatFalImageSize(options.size),
+    num_images: 1,
+    ...(referenceImages.length ? { image_urls: referenceImages } : {}),
+  }
+  const response = await fetcher(`${baseUrl}${entry.generatePath.replace('{model}', resolvedModelName)}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Key ${apiKey}`,
     },
-    body: JSON.stringify({ prompt, image_size: 'square_hd', num_images: 1 }),
+    body: JSON.stringify(body),
   })
   const payload = await readResponsePayload(response)
   assertOk(response, payload, 'fal image generation failed')
-  return imageFromProviderOutput((payload as any).images ?? payload, payload)
+  return {
+    ...imageFromProviderOutput((payload as any).images ?? payload, payload),
+    ...(referenceImages.length ? { referenceImages } : {}),
+  }
 }
 
 async function callComfyUI(
@@ -255,9 +389,10 @@ async function callComfyUI(
   entry: ImageProviderCatalogEntry,
   baseUrl: string,
   modelName: string,
-  prompt: string
+  prompt: string,
+  options: ImageProviderRequestOptions
 ): Promise<Partial<ImageGenerationResult>> {
-  const workflow = parseComfyWorkflow(modelName, prompt)
+  const workflow = parseComfyWorkflow(modelName, prompt, options)
   const clientId = `noema-${Date.now()}`
   const submit = await fetcher(`${baseUrl}${entry.generatePath}`, {
     method: 'POST',
@@ -293,30 +428,44 @@ async function callAutomatic1111(
   baseUrl: string,
   apiKey: string,
   modelName: string,
-  prompt: string
+  prompt: string,
+  options: ImageProviderRequestOptions
 ): Promise<Partial<ImageGenerationResult>> {
-  const response = await fetcher(`${baseUrl}${entry.generatePath}`, {
+  const size = parseImageSize(options.size)
+  const referenceImages = limitReferenceImages(entry, options.referenceImages)
+  const isImg2Img = referenceImages.length > 0
+  const body: Record<string, unknown> = {
+    prompt,
+    steps: 24,
+    width: size?.width ?? 1024,
+    height: size?.height ?? 1024,
+    batch_size: 1,
+    override_settings: modelName ? { sd_model_checkpoint: modelName } : undefined,
+  }
+  if (isImg2Img) {
+    body.init_images = [await loadReferenceImageBase64(fetcher, referenceImages[0])]
+    body.denoising_strength = 0.55
+  }
+  const response = await fetcher(`${baseUrl}${isImg2Img ? '/sdapi/v1/img2img' : entry.generatePath}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
     },
-    body: JSON.stringify({
-      prompt,
-      steps: 24,
-      width: 1024,
-      height: 1024,
-      batch_size: 1,
-      override_settings: modelName ? { sd_model_checkpoint: modelName } : undefined,
-    }),
+    body: JSON.stringify(body),
   })
   const payload = await readResponsePayload(response)
-  assertOk(response, payload, 'AUTOMATIC1111 txt2img failed')
+  assertOk(response, payload, `AUTOMATIC1111 ${isImg2Img ? 'img2img' : 'txt2img'} failed`)
   const b64 = firstArrayItem((payload as any).images)
   if (!b64) {
     throw new Error('AUTOMATIC1111 response did not include images')
   }
-  return { mimeType: 'image/png', dataUrl: `data:image/png;base64,${String(b64).replace(/^data:image\/\w+;base64,/, '')}`, providerResponse: payload }
+  return {
+    mimeType: 'image/png',
+    dataUrl: `data:image/png;base64,${String(b64).replace(/^data:image\/\w+;base64,/, '')}`,
+    providerResponse: payload,
+    ...(referenceImages.length ? { referenceImages } : {}),
+  }
 }
 
 async function callDashScopeWanx(
@@ -325,7 +474,8 @@ async function callDashScopeWanx(
   baseUrl: string,
   apiKey: string,
   modelName: string,
-  prompt: string
+  prompt: string,
+  options: ImageProviderRequestOptions
 ): Promise<Partial<ImageGenerationResult>> {
   const response = await fetcher(`${baseUrl}${entry.generatePath}`, {
     method: 'POST',
@@ -336,7 +486,7 @@ async function callDashScopeWanx(
     body: JSON.stringify({
       model: modelName,
       input: { prompt },
-      parameters: { size: '1024*1024', n: 1 },
+      parameters: { size: formatProviderImageSize(options.size, 'asterisk', '1024*1024'), n: 1 },
     }),
   })
   const payload = await readResponsePayload(response)
@@ -364,9 +514,11 @@ async function callAdobeFirefly(
   baseUrl: string,
   apiKey: string,
   modelName: string,
-  prompt: string
+  prompt: string,
+  options: ImageProviderRequestOptions
 ): Promise<Partial<ImageGenerationResult>> {
   const credentials = parseAdobeCredentials(apiKey)
+  const size = parseImageSize(options.size)
   const response = await fetcher(`${baseUrl}${entry.generatePath}`, {
     method: 'POST',
     headers: {
@@ -379,7 +531,7 @@ async function callAdobeFirefly(
       prompt,
       modelVersion: modelName,
       numVariations: 1,
-      size: { width: 1024, height: 1024 },
+      size: { width: size?.width ?? 1024, height: size?.height ?? 1024 },
     }),
   })
   const payload = await readResponsePayload(response)
@@ -393,12 +545,22 @@ async function callIdeogram(
   baseUrl: string,
   apiKey: string,
   modelName: string,
-  prompt: string
+  prompt: string,
+  options: ImageProviderRequestOptions
 ): Promise<Partial<ImageGenerationResult>> {
+  const referenceImages = limitReferenceImages(entry, options.referenceImages)
   const form = new FormData()
   form.set('prompt', prompt)
   form.set('rendering_speed', 'DEFAULT')
   form.set('num_images', '1')
+  const aspectRatio = aspectRatioForProvider(options.size)
+  if (aspectRatio) {
+    form.set('aspect_ratio', aspectRatio)
+  }
+  for (let index = 0; index < referenceImages.length; index += 1) {
+    const image = await loadReferenceImageBlob(fetcher, referenceImages[index], index)
+    form.append(index === 0 ? 'image' : `image_${index + 1}`, image.blob, image.filename)
+  }
   const response = await fetcher(`${baseUrl}${entry.generatePath}`, {
     method: 'POST',
     headers: {
@@ -408,7 +570,10 @@ async function callIdeogram(
   })
   const payload = await readResponsePayload(response)
   assertOk(response, payload, 'Ideogram generation failed')
-  return imageFromProviderOutput((payload as any).data ?? payload, payload)
+  return {
+    ...imageFromProviderOutput((payload as any).data ?? payload, payload),
+    ...(referenceImages.length ? { referenceImages } : {}),
+  }
 }
 
 async function callWaveSpeed(
@@ -420,21 +585,18 @@ async function callWaveSpeed(
   prompt: string,
   options: { referenceImages?: string[]; size?: string } = {}
 ): Promise<Partial<ImageGenerationResult>> {
-  const referenceImages = (options.referenceImages ?? []).filter(Boolean)
+  const referenceImages = limitReferenceImages(entry, options.referenceImages)
   const isEdit = referenceImages.length > 0
   const normalizedModelName = modelName.replace(/^\/+|\/+$/g, '')
-  const textModelName = normalizedModelName.replace(/\/edit$/, '')
-  const editModelName = normalizedModelName.endsWith('/edit') ? normalizedModelName : `${normalizedModelName}/edit`
-  const path = isEdit
-    ? `${baseUrl}/${editModelName}`
-    : `${baseUrl}${entry.generatePath.replace('{model}', textModelName)}`
+  const resolvedModelName = resolveWaveSpeedModelName(normalizedModelName, isEdit)
+  const path = `${baseUrl}${entry.generatePath.replace('{model}', resolvedModelName)}`
   const response = await fetcher(path, {
     method: 'POST',
     headers: jsonAuthHeaders(apiKey),
     body: JSON.stringify({
-      ...(isEdit ? { images: referenceImages.slice(0, 3) } : {}),
+      ...(isEdit ? { images: referenceImages } : {}),
       prompt,
-      size: options.size || '1024x1024',
+      size: formatProviderImageSize(options.size, 'asterisk', '1024*1024'),
       enable_sync_mode: true,
       enable_base64_output: false,
     }),
@@ -468,13 +630,15 @@ async function callTencentHunyuan(
   baseUrl: string,
   apiKey: string,
   modelName: string,
-  prompt: string
+  prompt: string,
+  options: ImageProviderRequestOptions
 ): Promise<Partial<ImageGenerationResult>> {
   const credentials = parseTencentCredentials(apiKey)
+  const size = parseImageSize(options.size)
   const body = JSON.stringify({
     Prompt: prompt,
     Model: modelName,
-    Resolution: '1024:1024',
+    Resolution: `${size?.width ?? 1024}:${size?.height ?? 1024}`,
     Num: 1,
   })
   const headers = createTencentTC3Headers({
@@ -498,6 +662,240 @@ async function callTencentHunyuan(
   const payload = await readResponsePayload(response)
   assertOk(response, payload, 'Tencent Hunyuan image generation failed')
   return imageFromProviderOutput((payload as any).Response, payload)
+}
+
+async function callHuggingFaceInference(
+  fetcher: typeof fetch,
+  entry: ImageProviderCatalogEntry,
+  baseUrl: string,
+  apiKey: string,
+  modelName: string,
+  prompt: string,
+  options: ImageProviderRequestOptions
+): Promise<Partial<ImageGenerationResult>> {
+  const size = parseImageSize(options.size)
+  const referenceImages = limitReferenceImages(entry, options.referenceImages)
+  const parameters: Record<string, unknown> = {
+    ...(size ? { width: size.width, height: size.height } : {}),
+    ...(referenceImages[0] ? {
+      image: referenceImages[0],
+      input_image: referenceImages[0],
+      reference_image: referenceImages[0],
+    } : {}),
+  }
+  const pathModelName = modelName.split('/').map((part) => encodeURIComponent(part)).join('/')
+  const path = entry.generatePath.replace('{model}', pathModelName)
+  const response = await fetcher(`${baseUrl}${path}`, {
+    method: 'POST',
+    headers: {
+      ...jsonAuthHeaders(apiKey),
+      Accept: 'image/*, application/json',
+    },
+    body: JSON.stringify({
+      inputs: prompt,
+      parameters,
+    }),
+  })
+  const contentType = response.headers.get('content-type')?.split(';')[0] || ''
+  if (response.ok && contentType.startsWith('image/')) {
+    const buffer = Buffer.from(await response.arrayBuffer())
+    return {
+      mimeType: contentType,
+      dataUrl: `data:${contentType};base64,${buffer.toString('base64')}`,
+      ...(referenceImages.length ? { referenceImages } : {}),
+    }
+  }
+  const payload = await readResponsePayload(response)
+  assertOk(response, payload, 'Hugging Face image generation failed')
+  return {
+    ...imageFromProviderOutput((payload as any).images ?? (payload as any).output ?? payload, payload),
+    ...(referenceImages.length ? { referenceImages } : {}),
+  }
+}
+
+function limitReferenceImages(entry: ImageProviderCatalogEntry, referenceImages: string[] = []): string[] {
+  const referenceCapability = entry.capabilities?.referenceImages
+  if (!referenceCapability?.supported) {
+    return []
+  }
+  return referenceImages.map((item) => item.trim()).filter(Boolean).slice(0, Math.max(1, referenceCapability.maxImages))
+}
+
+function resolveWaveSpeedModelName(modelName: string, hasReferenceImages: boolean): string {
+  const normalized = modelName.replace(/^\/+|\/+$/g, '')
+  if (hasReferenceImages) {
+    if (normalized.endsWith('/edit') || normalized.endsWith('/edit-sequential')) {
+      return normalized
+    }
+    if (normalized.endsWith('/sequential')) {
+      return `${normalized.replace(/\/sequential$/, '')}/edit-sequential`
+    }
+    return `${normalized}/edit`
+  }
+  if (normalized.endsWith('/edit')) {
+    return normalized.replace(/\/edit$/, '')
+  }
+  if (normalized.endsWith('/edit-sequential')) {
+    return `${normalized.replace(/\/edit-sequential$/, '')}/sequential`
+  }
+  return normalized
+}
+
+function resolveFalModelName(modelName: string, hasReferenceImages: boolean): string {
+  const normalized = modelName.replace(/^\/+|\/+$/g, '')
+  if (!hasReferenceImages || /\/edit(?:\/|$)/i.test(normalized)) {
+    return normalized
+  }
+  if (/fal-ai\/bytedance\/seedream\/v\d+(?:\.\d+)?$/i.test(normalized)) {
+    return `${normalized}/edit`
+  }
+  return normalized
+}
+
+function resolveFalReferenceImages(modelName: string, referenceImages: string[]): string[] {
+  if (!referenceImages.length) {
+    return []
+  }
+  const normalized = modelName.toLowerCase()
+  const supportsReferences = /\/edit(?:\/|$)|image-to-image|img2img|kontext|seedream/.test(normalized)
+  return supportsReferences ? referenceImages.slice(0, 10) : []
+}
+
+function normalizeOpenAIImageSize(modelName: string, size: string | undefined): string {
+  const parsed = parseImageSize(size)
+  if (!parsed) {
+    return '1024x1024'
+  }
+  const landscape = parsed.width > parsed.height
+  const portrait = parsed.height > parsed.width
+  if (/^dall-e-3/i.test(modelName)) {
+    return landscape ? '1792x1024' : portrait ? '1024x1792' : '1024x1024'
+  }
+  if (/^gpt-image/i.test(modelName)) {
+    return landscape ? '1536x1024' : portrait ? '1024x1536' : '1024x1024'
+  }
+  return '1024x1024'
+}
+
+function formatFalImageSize(size: string | undefined): string | { width: number; height: number } {
+  const parsed = parseImageSize(size)
+  if (!parsed) {
+    return 'square_hd'
+  }
+  const ratio = parsed.width / parsed.height
+  if (Math.abs(ratio - 1) < 0.08) {
+    return 'square_hd'
+  }
+  if (ratio > 1) {
+    return ratio >= 1.55 ? 'landscape_16_9' : 'landscape_4_3'
+  }
+  return ratio <= 0.65 ? 'portrait_16_9' : 'portrait_4_3'
+}
+
+function aspectRatioForProvider(size: string | undefined): string | null {
+  const parsed = parseImageSize(size)
+  if (!parsed) {
+    return null
+  }
+  const ratio = parsed.width / parsed.height
+  const known: Array<[string, number]> = [
+    ['1:1', 1],
+    ['16:9', 16 / 9],
+    ['9:16', 9 / 16],
+    ['4:3', 4 / 3],
+    ['3:4', 3 / 4],
+    ['3:2', 3 / 2],
+    ['2:3', 2 / 3],
+    ['4:5', 4 / 5],
+    ['5:4', 5 / 4],
+  ]
+  return known.reduce((best, item) => (
+    Math.abs(item[1] - ratio) < Math.abs(best[1] - ratio) ? item : best
+  ))[0]
+}
+
+function formatProviderImageSize(
+  size: string | undefined,
+  format: 'x' | 'asterisk',
+  fallback: string
+): string {
+  const parsed = parseImageSize(size)
+  if (!parsed) {
+    return fallback
+  }
+  const separator = format === 'asterisk' ? '*' : 'x'
+  return `${parsed.width}${separator}${parsed.height}`
+}
+
+function parseImageSize(size: string | undefined): { width: number; height: number } | null {
+  const match = String(size ?? '').trim().match(/^(\d{2,5})\s*[x*]\s*(\d{2,5})$/i)
+  if (!match) {
+    return null
+  }
+  const width = Number(match[1])
+  const height = Number(match[2])
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return null
+  }
+  return { width: Math.round(width), height: Math.round(height) }
+}
+
+async function loadReferenceImageBlob(
+  fetcher: typeof fetch,
+  referenceImage: string,
+  index: number
+): Promise<{ blob: Blob; filename: string }> {
+  const dataUrl = parseDataUrl(referenceImage)
+  if (dataUrl) {
+    return {
+      blob: new Blob([dataUrl.bytes], { type: dataUrl.mimeType }),
+      filename: `reference-${index + 1}.${extensionForMimeType(dataUrl.mimeType)}`,
+    }
+  }
+  const response = await fetcher(referenceImage)
+  const payloadForError = response.ok ? null : await clonePayloadForError(response)
+  assertOk(response, payloadForError, 'Reference image fetch failed')
+  const mimeType = response.headers.get('content-type')?.split(';')[0] || 'image/png'
+  const bytes = Buffer.from(await response.arrayBuffer())
+  return {
+    blob: new Blob([bytes], { type: mimeType }),
+    filename: `reference-${index + 1}.${extensionForMimeType(mimeType)}`,
+  }
+}
+
+async function loadReferenceImageBase64(fetcher: typeof fetch, referenceImage: string): Promise<string> {
+  const dataUrl = parseDataUrl(referenceImage)
+  if (dataUrl) {
+    return dataUrl.bytes.toString('base64')
+  }
+  const response = await fetcher(referenceImage)
+  const payloadForError = response.ok ? null : await clonePayloadForError(response)
+  assertOk(response, payloadForError, 'Reference image fetch failed')
+  const bytes = Buffer.from(await response.arrayBuffer())
+  return bytes.toString('base64')
+}
+
+function parseDataUrl(value: string): { mimeType: string; bytes: Buffer } | null {
+  const match = value.match(/^data:([^;,]+)?(;base64)?,([\s\S]*)$/)
+  if (!match) {
+    return null
+  }
+  const mimeType = match[1] || 'image/png'
+  const encoded = match[3] || ''
+  const bytes = match[2]
+    ? Buffer.from(encoded, 'base64')
+    : Buffer.from(decodeURIComponent(encoded))
+  return { mimeType, bytes }
+}
+
+function extensionForMimeType(mimeType: string): string {
+  if (/jpe?g/i.test(mimeType)) {
+    return 'jpg'
+  }
+  if (/webp/i.test(mimeType)) {
+    return 'webp'
+  }
+  return 'png'
 }
 
 function imageFromOpenAIShape(payload: unknown): Partial<ImageGenerationResult> {
@@ -610,16 +1008,55 @@ async function pollJson(
   throw new Error(`Image provider polling timed out: ${JSON.stringify(lastBody).slice(0, 300)}`)
 }
 
-function parseComfyWorkflow(modelName: string, prompt: string): Record<string, unknown> {
+function parseComfyWorkflow(modelName: string, prompt: string, options: ImageProviderRequestOptions): Record<string, unknown> {
   const source = modelName.trim()
   if (!source.startsWith('{')) {
     throw new Error('ComfyUI image model must be a workflow API JSON object with prompt placeholders')
   }
-  const parsed = JSON.parse(source.replace(/\{\{\s*prompt\s*\}\}/g, prompt.replace(/"/g, '\\"')))
+  const parsed = JSON.parse(source)
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw new Error('ComfyUI workflow JSON must be an object')
   }
-  return parsed as Record<string, unknown>
+  const size = parseImageSize(options.size)
+  const referenceImages = limitReferenceImages(getImageProviderCatalogEntry('comfyui'), options.referenceImages)
+  const replacements: Record<string, unknown> = {
+    prompt,
+    PROMPT: prompt,
+    width: size?.width ?? 1024,
+    WIDTH: size?.width ?? 1024,
+    height: size?.height ?? 1024,
+    HEIGHT: size?.height ?? 1024,
+    referenceImage: referenceImages[0] ?? '',
+    reference_image: referenceImages[0] ?? '',
+    REFERENCE_IMAGE: referenceImages[0] ?? '',
+    referenceImages,
+    reference_images: referenceImages,
+    REFERENCE_IMAGES: referenceImages,
+  }
+  return replaceComfyPlaceholders(parsed, replacements) as Record<string, unknown>
+}
+
+function replaceComfyPlaceholders(value: unknown, replacements: Record<string, unknown>): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => replaceComfyPlaceholders(item, replacements))
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, replaceComfyPlaceholders(item, replacements)]))
+  }
+  if (typeof value !== 'string') {
+    return value
+  }
+  const exact = value.match(/^\{\{\s*([A-Za-z_]+)\s*\}\}$/)
+  if (exact && Object.prototype.hasOwnProperty.call(replacements, exact[1])) {
+    return replacements[exact[1]]
+  }
+  return value.replace(/\{\{\s*([A-Za-z_]+)\s*\}\}/g, (match, key: string) => {
+    const replacement = replacements[key]
+    if (replacement === undefined) {
+      return match
+    }
+    return Array.isArray(replacement) ? replacement.join('\n') : String(replacement)
+  })
 }
 
 function findComfyImage(history: any): any | null {

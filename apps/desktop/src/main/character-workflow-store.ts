@@ -1,9 +1,9 @@
 /**
  * Persists character workflow projects independently from chat history.
  */
-import { spawn } from 'node:child_process'
 import { mkdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import Database, { type Database as BetterSqliteDatabase } from 'better-sqlite3'
 
 export interface StoredCharacterWorkflowProject {
   id: string
@@ -80,6 +80,8 @@ ON character_workflow_runs(project_id, created_at DESC);
 
 export class CharacterWorkflowStore {
   private initialized = false
+  private initializePromise: Promise<void> | null = null
+  private db: BetterSqliteDatabase | null = null
   private writeQueue: Promise<void> = Promise.resolve()
 
   constructor(private readonly dbPath: string) {}
@@ -88,8 +90,23 @@ export class CharacterWorkflowStore {
     if (this.initialized) {
       return
     }
+    if (this.initializePromise) {
+      await this.initializePromise
+      return
+    }
+    this.initializePromise = this.open()
+    await this.initializePromise
+  }
+
+  private async open(): Promise<void> {
     await mkdir(dirname(this.dbPath), { recursive: true })
-    await runSqlite(this.dbPath, CHARACTER_WORKFLOW_SCHEMA_SQL)
+    const db = new Database(this.dbPath)
+    db.pragma('journal_mode = WAL')
+    db.pragma('synchronous = NORMAL')
+    db.pragma('busy_timeout = 10000')
+    db.pragma('foreign_keys = ON')
+    db.exec(CHARACTER_WORKFLOW_SCHEMA_SQL)
+    this.db = db
     this.initialized = true
   }
 
@@ -227,26 +244,22 @@ export class CharacterWorkflowStore {
   }
 
   private enqueueWrite(sql: string): Promise<void> {
-    this.writeQueue = this.writeQueue.then(async () => {
+    const nextWrite = this.writeQueue.catch(() => undefined).then(async () => {
       await this.run(sql)
     })
-    return this.writeQueue
+    this.writeQueue = nextWrite
+    return nextWrite
   }
 
   private async run(sql: string): Promise<string> {
-    await mkdir(dirname(this.dbPath), { recursive: true })
-    const script = this.initialized ? sql : `${CHARACTER_WORKFLOW_SCHEMA_SQL}\n${sql}`
-    const output = await runSqlite(this.dbPath, script)
-    this.initialized = true
-    return output
+    await this.initialize()
+    this.db!.exec(sql)
+    return ''
   }
 
   private async runJson<T>(sql: string): Promise<T[]> {
-    await mkdir(dirname(this.dbPath), { recursive: true })
-    const script = this.initialized ? sql : `${CHARACTER_WORKFLOW_SCHEMA_SQL}\n${sql}`
-    const rows = await runSqliteJson<T>(this.dbPath, script)
-    this.initialized = true
-    return rows
+    await this.initialize()
+    return this.db!.prepare(sql).all() as T[]
   }
 }
 
@@ -341,52 +354,4 @@ function parseJsonValue(value: string): unknown {
 
 function sqlText(value: string): string {
   return `'${value.replace(/'/g, "''")}'`
-}
-
-async function runSqliteJson<T>(dbPath: string, sql: string): Promise<T[]> {
-  const output = await runSqlite(dbPath, sql, true)
-  return output ? parseSqliteJsonRows<T>(output) : []
-}
-
-function parseSqliteJsonRows<T>(output: string): T[] {
-  const trimmed = output.trim()
-  if (!trimmed) {
-    return []
-  }
-  try {
-    return JSON.parse(trimmed) as T[]
-  } catch (error) {
-    const lastArrayStart = trimmed.lastIndexOf('\n[')
-    if (lastArrayStart >= 0) {
-      return JSON.parse(trimmed.slice(lastArrayStart + 1)) as T[]
-    }
-    throw error
-  }
-}
-
-async function runSqlite(dbPath: string, sql: string, json = false): Promise<string> {
-  const args = json
-    ? ['-json', '-cmd', '.timeout 5000', dbPath]
-    : ['-cmd', '.timeout 5000', dbPath]
-  return new Promise((resolve, reject) => {
-    const child = spawn('sqlite3', args, { stdio: ['pipe', 'pipe', 'pipe'] })
-    let stdout = ''
-    let stderr = ''
-    child.stdout.on('data', chunk => {
-      stdout += chunk.toString()
-    })
-    child.stderr.on('data', chunk => {
-      stderr += chunk.toString()
-    })
-    child.on('error', reject)
-    child.on('close', code => {
-      if (code === 0) {
-        resolve(stdout.trim())
-        return
-      }
-      reject(new Error(stderr.trim() || `sqlite3 exited with code ${code}`))
-    })
-    child.stdin.write(sql)
-    child.stdin.end()
-  })
 }

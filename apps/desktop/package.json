@@ -12,6 +12,7 @@
     "build": "pnpm run build:main && pnpm run build:renderer",
     "build:main": "tsc -p tsconfig.main.json && node ./scripts/copy-preload.mjs",
     "build:renderer": "vite build",
+    "rebuild:native": "electron-rebuild -f -w better-sqlite3",
     "start": "pnpm run build && cross-env NODE_ENV=production electron .",
     "package": "electron-builder",
     "install:mac:local": "node ./scripts/install-mac-local.mjs"
@@ -21,6 +22,7 @@
     "@floating-ui/dom": "^1.7.6",
     "@lobehub/icons-static-svg": "^1.90.0",
     "@noema/sdk": "workspace:*",
+    "better-sqlite3": "^12.11.1",
     "chokidar": "^3.5.3",
     "dotenv": "^17.4.2",
     "fuse.js": "^7.4.2",
@@ -37,6 +39,8 @@
     "yjs": "^13.6.31"
   },
   "devDependencies": {
+    "@electron/rebuild": "^3.7.2",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.0.0",
     "@types/ws": "^8.5.12",
     "concurrently": "^8.2.2",

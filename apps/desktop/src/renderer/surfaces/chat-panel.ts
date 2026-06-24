@@ -2163,7 +2163,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
               <small>${activeProject.runs.length}</small>
             </div>
             <div class="chat-workflow-library-run-list">
-              ${activeProject.runs.length ? activeProject.runs.slice().reverse().slice(0, 8).map((run) => renderCharacterWorkflowRunRow(activeProject.id, run, zh)).join('') : `
+              ${activeProject.runs.length ? activeProject.runs.slice().reverse().map((run) => renderCharacterWorkflowRunRow(activeProject.id, run, zh)).join('') : `
                 <div class="chat-workflow-library-empty-row">${options.escapeHtml(zh ? '暂无运行' : 'No runs yet')}</div>
               `}
             </div>
@@ -2523,6 +2523,27 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
   }
 
+  function createDefaultWorkflowProjectViewState(): CharacterWorkflowProjectViewState {
+    return {
+      selectedWorkflowNodeId: 'generation-goal',
+      selectedNodeIds: ['generation-goal'],
+      selectedLinkId: '',
+      zoom: 0.84,
+      panX: 0,
+      panY: 0,
+      hideLinks: false,
+      collapsedNodeIds: [],
+      deletedNodeIds: [],
+      duplicatedNodes: [],
+      addedNodes: [],
+      nodeSizes: {},
+      linkKinds: {},
+      customLinks: [],
+      deletedLinkIds: [],
+      replacedTargetSlots: [],
+    }
+  }
+
   function applyWorkflowProjectViewState(viewState: Partial<CharacterWorkflowProjectViewState> | undefined): void {
     selectedWorkflowNodeId = typeof viewState?.selectedWorkflowNodeId === 'string' ? viewState.selectedWorkflowNodeId : 'generation-goal'
     characterResourceViewState.selectedNodeIds = Array.isArray(viewState?.selectedNodeIds) && viewState.selectedNodeIds.length ? [...viewState.selectedNodeIds] : ['generation-goal']
@@ -2540,6 +2561,20 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     characterResourceViewState.customLinks = JSON.parse(JSON.stringify(viewState?.customLinks ?? [])) as SerializedCharacterResourceLink[]
     characterResourceViewState.deletedLinkIds = new Set(viewState?.deletedLinkIds ?? [])
     characterResourceViewState.replacedTargetSlots = new Set(viewState?.replacedTargetSlots ?? [])
+  }
+
+  function applyCharacterWorkflowProjectState(project: CharacterWorkflowProjectRecord, options: { includeRunState?: boolean } = {}): void {
+    replaceRecord(characterWorkflowConfigOverrides, cloneRecord(project.configOverrides ?? {}))
+    replaceRecord(characterWorkflowPositionOverrides, cloneRecord(project.positionOverrides ?? {}))
+    applyWorkflowProjectViewState(project.viewState)
+    characterWorkflowRunCount = Math.max(0, Math.round(Number(project.runCount) || 0))
+    characterWorkflowRunState = options.includeRunState
+      ? normalizePersistedCharacterWorkflowRunState(
+        project.runs.find((run) => run.id === project.activeRunId)?.runState
+          ?? project.runs[project.runs.length - 1]?.runState
+          ?? null
+      )
+      : null
   }
 
   function saveActiveWorkflowProjectSnapshot(markDirty = true): void {
@@ -2656,7 +2691,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       loadState: 'ready',
       configOverrides: cloneRecord(project.configOverrides ?? {}),
       positionOverrides: cloneRecord(project.positionOverrides ?? {}),
-      viewState: project.viewState ?? createWorkflowProjectViewState(),
+      viewState: project.viewState ?? createDefaultWorkflowProjectViewState(),
       runCount: Math.max(Number(project.runCount) || 0, runs.length),
       activeRunId,
       runs,
@@ -2682,7 +2717,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       loadState: 'index',
       configOverrides: {},
       positionOverrides: {},
-      viewState: createWorkflowProjectViewState(),
+      viewState: createDefaultWorkflowProjectViewState(),
       runCount: item.runCount,
       activeRunId: item.activeRunId,
       runs: [],
@@ -2907,8 +2942,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       goalSession: spec.agentWork ? createWorkflowGoalSessionFromAgentWork(spec.agentWork, spec.name || '') : undefined,
     }
     characterWorkflowProjects = [project, ...characterWorkflowProjects]
+    activeCharacterWorkflowProjectId = project.id
+    characterWorkflowActiveTabId = 'workflow'
+    applyCharacterWorkflowProjectState(project)
     persistCharacterWorkflowProject(project)
-    void openCharacterWorkflowDraft(project.id)
+    renderCharacterWorkflow()
     if (ensureWorkflowConversation()) {
       characterWorkflowDirty = true
       persistActiveConversationWorkflowState()
@@ -3790,6 +3828,16 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     activeCharacterWorkflowProjectId = projectId
     characterWorkflowContentLoaded = true
     characterWorkflowActiveTabId = 'workflow'
+    const indexedProject = characterWorkflowProjects[projectIndex]
+    if (indexedProject.loadState === 'ready' || indexedProject.loadState === 'ready-overview') {
+      applyCharacterWorkflowProjectState(indexedProject)
+    } else {
+      replaceRecord(characterWorkflowConfigOverrides, {})
+      replaceRecord(characterWorkflowPositionOverrides, {})
+      applyWorkflowProjectViewState(undefined)
+      characterWorkflowRunCount = 0
+      characterWorkflowRunState = null
+    }
     renderCharacterWorkflow()
     markCharacterWorkflowPerf(perfId, 'loading render scheduled')
     const project = await ensureCharacterWorkflowProjectDetailLoaded(projectId).catch((error) => {
@@ -3804,11 +3852,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     activeCharacterWorkflowProjectId = project.id
     markCharacterWorkflowPerf(perfId, 'before apply project state')
-    replaceRecord(characterWorkflowConfigOverrides, cloneRecord(project.configOverrides))
-    replaceRecord(characterWorkflowPositionOverrides, cloneRecord(project.positionOverrides))
-    applyWorkflowProjectViewState(project.viewState)
-    characterWorkflowRunCount = project.runCount
-    characterWorkflowRunState = null
+    applyCharacterWorkflowProjectState(project)
     characterWorkflowActiveTabId = 'workflow'
     markCharacterWorkflowPerf(perfId, 'project state applied')
     renderCharacterWorkflow()
@@ -3859,10 +3903,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       project.runs.push(run)
     }
     markCharacterWorkflowPerf(perfId, 'before apply run state')
-    replaceRecord(characterWorkflowConfigOverrides, cloneRecord(project.configOverrides))
-    replaceRecord(characterWorkflowPositionOverrides, cloneRecord(project.positionOverrides))
-    applyWorkflowProjectViewState(project.viewState)
-    characterWorkflowRunCount = project.runCount
+    applyCharacterWorkflowProjectState(project)
     characterWorkflowRunState = normalizePersistedCharacterWorkflowRunState(run.runState)
     characterWorkflowActiveTabId = 'run-draft'
     markCharacterWorkflowPerf(perfId, 'run state applied')
@@ -4076,15 +4117,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       : ''
     const activeProject = characterWorkflowProjects.find((project) => project.id === activeCharacterWorkflowProjectId)
     if (activeProject) {
-      replaceRecord(characterWorkflowConfigOverrides, cloneRecord(activeProject.configOverrides ?? {}))
-      replaceRecord(characterWorkflowPositionOverrides, cloneRecord(activeProject.positionOverrides ?? {}))
-      applyWorkflowProjectViewState(activeProject.viewState)
-      characterWorkflowRunCount = Math.max(0, Math.round(Number(activeProject.runCount) || 0))
-      characterWorkflowRunState = normalizePersistedCharacterWorkflowRunState(
-        activeProject.runs.find((run) => run.id === activeProject.activeRunId)?.runState
-          ?? activeProject.runs[activeProject.runs.length - 1]?.runState
-          ?? null
-      )
+      applyCharacterWorkflowProjectState(activeProject, { includeRunState: true })
     } else {
       replaceRecord(characterWorkflowConfigOverrides, {})
       replaceRecord(characterWorkflowPositionOverrides, {})
