@@ -107,6 +107,24 @@ interface CharacterWorkflowProjectRecord {
   runCount: number
   activeRunId?: string
   runs: CharacterWorkflowProjectRunRecord[]
+  goalSession?: CharacterWorkflowGoalSession
+}
+
+interface CharacterWorkflowGoalSession {
+  objective: string
+  plan: string[]
+  completedSteps: string[]
+  currentStep?: string
+  nextStep?: string
+  status: 'active' | 'needs-user' | 'blocked' | 'complete'
+  history: Array<{
+    userRequest: string
+    summary: string
+    status: string
+    operations: number
+    createdAt: number
+  }>
+  updatedAt: number
 }
 
 interface CharacterWorkflowProjectRunRecord {
@@ -247,6 +265,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let characterWorkflowAssistantPrompt = ''
   let characterWorkflowBuilderStatus = ''
   let characterWorkflowAssistantStatusExpanded = true
+  let characterWorkflowAssistantStatusHidden = false
   let characterWorkflowBuilderBusy = false
   let characterWorkflowTemplateMenuOpen = false
   let characterWorkflowRunState: CharacterResourceRunState | null = null
@@ -2159,18 +2178,21 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   function renderCharacterWorkflowAssistant(): string {
     const zh = options.getLanguage() === 'zh-CN'
     const label = zh ? '应用资源图修改' : 'Apply graph edits'
-    const statusLabel = zh ? 'Agent 信息' : 'Agent message'
-    const copyLabel = zh ? '复制信息' : 'Copy message'
+    const statusLabel = zh ? 'Agent 记录' : 'Agent records'
+    const copyLabel = zh ? '复制记录' : 'Copy records'
     const toggleLabel = characterWorkflowAssistantStatusExpanded
-      ? (zh ? '收起信息' : 'Collapse message')
-      : (zh ? '展开信息' : 'Expand message')
+      ? (zh ? '收起记录' : 'Collapse records')
+      : (zh ? '展开记录' : 'Expand records')
+    const closeLabel = zh ? '关闭记录' : 'Close records'
+    const records = getWorkflowAssistantStatusRecords()
+    const hasRecords = records.length > 0 && !characterWorkflowAssistantStatusHidden
     return `
       <form class="chat-workflow-canvas-assistant ${characterWorkflowBuilderBusy ? 'is-busy' : ''}" data-chat-workflow-assistant-form>
         ${renderChatRuntimeModelPickerMarkup('workflow-assistant')}
-        ${characterWorkflowBuilderStatus ? `
+        ${hasRecords ? `
           <section class="chat-workflow-canvas-assistant-status ${characterWorkflowAssistantStatusExpanded ? 'expanded' : ''}" aria-live="polite">
             <div class="chat-workflow-canvas-assistant-status-head">
-              <span>${options.escapeHtml(statusLabel)}</span>
+              <span>${options.escapeHtml(`${statusLabel} · ${records.length}`)}</span>
               <div class="chat-workflow-canvas-assistant-status-actions">
                 <button type="button" data-chat-workflow-assistant-status-action="copy" aria-label="${options.escapeHtml(copyLabel)}" title="${options.escapeHtml(copyLabel)}">
                   <svg viewBox="0 0 20 20" aria-hidden="true">
@@ -2185,9 +2207,25 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
                       : '<path d="m5.5 7.8 4.5 4.4 4.5-4.4"></path>'}
                   </svg>
                 </button>
+                <button type="button" data-chat-workflow-assistant-status-action="close" aria-label="${options.escapeHtml(closeLabel)}" title="${options.escapeHtml(closeLabel)}">
+                  <svg viewBox="0 0 20 20" aria-hidden="true">
+                    <path d="M6.2 6.2 13.8 13.8"></path>
+                    <path d="M13.8 6.2 6.2 13.8"></path>
+                  </svg>
+                </button>
               </div>
             </div>
-            <pre class="chat-workflow-canvas-assistant-status-body">${options.escapeHtml(characterWorkflowBuilderStatus)}</pre>
+            <div class="chat-workflow-canvas-assistant-status-body">
+              ${records.map((record, index) => `
+                <article class="chat-workflow-canvas-assistant-record ${index === records.length - 1 ? 'latest' : ''}">
+                  <header>
+                    <strong>${options.escapeHtml(record.title)}</strong>
+                    <span>${options.escapeHtml(record.meta)}</span>
+                  </header>
+                  <p>${options.escapeHtml(record.body)}</p>
+                </article>
+              `).join('')}
+            </div>
           </section>
         ` : ''}
         <div class="chat-workflow-canvas-assistant-row">
@@ -2201,6 +2239,36 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         </div>
       </form>
     `
+  }
+
+  function getWorkflowAssistantStatusRecords(): Array<{ title: string; meta: string; body: string }> {
+    const zh = options.getLanguage() === 'zh-CN'
+    const project = characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)
+    const session = normalizeCharacterWorkflowGoalSession(project?.goalSession)
+    const records = (session?.history ?? []).map((item, index) => ({
+      title: `${zh ? '交互' : 'Turn'} ${index + 1}`,
+      meta: [
+        item.status || 'applied',
+        item.operations ? `${item.operations} ${zh ? '项修改' : 'edits'}` : '',
+        formatWorkflowProjectTime(item.createdAt, zh),
+      ].filter(Boolean).join(' · '),
+      body: item.summary || item.userRequest,
+    })).filter((item) => item.body.trim())
+    const current = characterWorkflowBuilderStatus.trim()
+    if (current && !records.some((item) => item.body === current)) {
+      records.push({
+        title: zh ? '当前状态' : 'Current status',
+        meta: characterWorkflowBuilderBusy ? (zh ? '运行中' : 'running') : (zh ? '最新' : 'latest'),
+        body: current,
+      })
+    }
+    return records.slice(-8)
+  }
+
+  function getWorkflowAssistantStatusText(): string {
+    return getWorkflowAssistantStatusRecords()
+      .map((record) => [`${record.title} · ${record.meta}`, record.body].filter(Boolean).join('\n'))
+      .join('\n\n')
   }
 
   function formatWorkflowProjectTime(value: number | undefined, zh: boolean): string {
@@ -2402,6 +2470,38 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       runCount: Math.max(Number(project.runCount) || 0, runs.length),
       activeRunId,
       runs,
+      goalSession: normalizeCharacterWorkflowGoalSession(project.goalSession),
+    }
+  }
+
+  function normalizeCharacterWorkflowGoalSession(session: CharacterWorkflowGoalSession | undefined): CharacterWorkflowGoalSession | undefined {
+    if (!session || typeof session !== 'object') {
+      return undefined
+    }
+    const status = session.status === 'needs-user' || session.status === 'blocked' || session.status === 'complete'
+      ? session.status
+      : 'active'
+    return {
+      objective: typeof session.objective === 'string' ? session.objective : '',
+      plan: Array.isArray(session.plan) ? session.plan.filter((item): item is string => typeof item === 'string') : [],
+      completedSteps: Array.isArray(session.completedSteps) ? session.completedSteps.filter((item): item is string => typeof item === 'string') : [],
+      currentStep: typeof session.currentStep === 'string' ? session.currentStep : undefined,
+      nextStep: typeof session.nextStep === 'string' ? session.nextStep : undefined,
+      status,
+      history: Array.isArray(session.history)
+        ? session.history.flatMap((item): CharacterWorkflowGoalSession['history'] => {
+          if (!item || typeof item !== 'object') return []
+          const record = item as CharacterWorkflowGoalSession['history'][number]
+          return [{
+            userRequest: typeof record.userRequest === 'string' ? record.userRequest : '',
+            summary: typeof record.summary === 'string' ? record.summary : '',
+            status: typeof record.status === 'string' ? record.status : 'applied',
+            operations: Math.max(0, Math.round(Number(record.operations) || 0)),
+            createdAt: Math.max(0, Math.round(Number(record.createdAt) || Date.now())),
+          }]
+        }).slice(-12)
+        : [],
+      updatedAt: Math.max(0, Math.round(Number(session.updatedAt) || Date.now())),
     }
   }
 
@@ -2566,6 +2666,94 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     return { addedNodes, customLinks, configOverrides }
   }
 
+  function getActiveWorkflowGoalSession(userPrompt: string): CharacterWorkflowGoalSession | undefined {
+    const project = characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)
+    if (!project) {
+      return undefined
+    }
+    const existing = normalizeCharacterWorkflowGoalSession(project.goalSession)
+    if (existing?.objective) {
+      project.goalSession = existing
+      return existing
+    }
+    const now = Date.now()
+    const created: CharacterWorkflowGoalSession = {
+      objective: userPrompt,
+      plan: [],
+      completedSteps: [],
+      status: 'active',
+      history: [],
+      updatedAt: now,
+    }
+    project.goalSession = created
+    return created
+  }
+
+  function updateActiveWorkflowGoalSession(
+    userPrompt: string,
+    response: {
+      spec?: {
+        summary?: string
+        plan?: string[]
+        completedSteps?: string[]
+        currentStep?: string
+        nextStep?: string
+        status?: string
+        operations?: Array<Record<string, unknown>>
+      }
+      uiConfigOverrides?: Record<string, Record<string, unknown>>
+    }
+  ): void {
+    const project = characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)
+    if (!project) {
+      return
+    }
+    const current = getActiveWorkflowGoalSession(userPrompt)
+    if (!current) {
+      return
+    }
+    const spec = response.spec ?? {}
+    const status = spec.status === 'needs-user'
+      ? 'needs-user'
+      : spec.status === 'blocked'
+        ? 'blocked'
+        : 'active'
+    const operationCount = (Array.isArray(spec.operations) ? spec.operations.length : 0)
+      + Object.keys(response.uiConfigOverrides ?? {}).length
+    project.goalSession = {
+      ...current,
+      plan: Array.isArray(spec.plan) && spec.plan.length ? spec.plan.filter((item): item is string => typeof item === 'string') : current.plan,
+      completedSteps: Array.isArray(spec.completedSteps) ? spec.completedSteps.filter((item): item is string => typeof item === 'string') : current.completedSteps,
+      currentStep: typeof spec.currentStep === 'string' && spec.currentStep.trim() ? spec.currentStep.trim() : current.currentStep,
+      nextStep: typeof spec.nextStep === 'string' && spec.nextStep.trim() ? spec.nextStep.trim() : current.nextStep,
+      status,
+      history: [
+        ...current.history,
+        {
+          userRequest: userPrompt,
+          summary: typeof spec.summary === 'string' ? spec.summary : '',
+          status: typeof spec.status === 'string' ? spec.status : 'applied',
+          operations: operationCount,
+          createdAt: Date.now(),
+        },
+      ].slice(-12),
+      updatedAt: Date.now(),
+    }
+  }
+
+  function formatWorkflowGoalSessionStatus(session: CharacterWorkflowGoalSession | undefined, fallbackSummary?: string): string {
+    const parts = [
+      typeof fallbackSummary === 'string' && fallbackSummary.trim() ? fallbackSummary.trim() : '',
+      session?.currentStep ? `${options.getLanguage() === 'zh-CN' ? '当前步骤' : 'Current step'}: ${session.currentStep}` : '',
+      session?.nextStep ? `${options.getLanguage() === 'zh-CN' ? '下一步' : 'Next step'}: ${session.nextStep}` : '',
+    ].filter(Boolean)
+    if (session?.plan?.length) {
+      const title = options.getLanguage() === 'zh-CN' ? '计划' : 'Plan'
+      parts.push(`${title}:\n${session.plan.map((item, index) => `${index + 1}. ${item}`).join('\n')}`)
+    }
+    return parts.join('\n\n')
+  }
+
   async function buildCharacterWorkflowFromPrompt(): Promise<void> {
     const prompt = characterWorkflowBuilderPrompt.trim()
     if (!prompt || characterWorkflowBuilderBusy) {
@@ -2620,13 +2808,27 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     characterWorkflowBuilderBusy = true
     characterWorkflowBuilderStatus = options.getLanguage() === 'zh-CN' ? 'Agent 正在调整当前资源图...' : 'Agent editing current resource graph...'
+    characterWorkflowAssistantStatusHidden = false
     renderCharacterWorkflow()
     try {
       const workflowPage = await loadCharacterWorkflowPageModule()
+      const goalSession = getActiveWorkflowGoalSession(userPrompt)
       const response = await window.electronAPI.buildCharacterWorkflow({
         prompt: userPrompt,
         language: options.getLanguage(),
         mode: 'edit',
+        editorSession: goalSession ? {
+          objective: goalSession.objective,
+          plan: goalSession.plan,
+          completedSteps: goalSession.completedSteps,
+          currentStep: goalSession.currentStep,
+          history: goalSession.history.map((item) => ({
+            userRequest: item.userRequest,
+            summary: item.summary,
+            status: item.status,
+            operations: item.operations,
+          })),
+        } : undefined,
         graph: createCharacterWorkflowAssistantGraph(workflowPage),
       })
       if (!response.success) {
@@ -2634,13 +2836,16 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       }
       pushCharacterResourceUndoSnapshot()
       const changed = applyCharacterWorkflowAssistantResult(response)
+      updateActiveWorkflowGoalSession(userPrompt, response)
+      saveActiveWorkflowProjectSnapshot()
+      characterWorkflowAssistantStatusHidden = false
       if (!changed) {
-        characterWorkflowBuilderStatus = options.getLanguage() === 'zh-CN' ? 'Agent 没有返回可应用的修改' : 'Agent returned no applicable changes'
-      } else {
-        characterWorkflowAssistantPrompt = ''
         characterWorkflowBuilderStatus = typeof response.spec?.summary === 'string' && response.spec.summary.trim()
           ? response.spec.summary.trim()
-          : ''
+          : options.getLanguage() === 'zh-CN' ? 'Agent 没有返回可应用的修改' : 'Agent returned no applicable changes'
+      } else {
+        characterWorkflowAssistantPrompt = ''
+        characterWorkflowBuilderStatus = formatWorkflowGoalSessionStatus(characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)?.goalSession, response.spec?.summary)
         showToast(options.getLanguage() === 'zh-CN' ? '已应用资源图修改' : 'Applied graph edits')
       }
     } catch (error: any) {
@@ -2661,6 +2866,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     characterWorkflowBuilderBusy = true
     characterWorkflowBuilderStatus = options.getLanguage() === 'zh-CN' ? 'Agent 正在调整当前运行草稿...' : 'Agent editing current run draft...'
+    characterWorkflowAssistantStatusHidden = false
     renderCharacterWorkflow()
     try {
       const response = await window.electronAPI.editCharacterWorkflowRunDraft({
@@ -4889,9 +5095,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       if (action === 'toggle') {
         characterWorkflowAssistantStatusExpanded = !characterWorkflowAssistantStatusExpanded
         renderCharacterWorkflow()
+      } else if (action === 'close') {
+        characterWorkflowAssistantStatusHidden = true
+        renderCharacterWorkflow()
       } else if (action === 'copy') {
-        void navigator.clipboard.writeText(characterWorkflowBuilderStatus).then(
-          () => showToast(options.getLanguage() === 'zh-CN' ? '已复制 Agent 信息' : 'Agent message copied'),
+        void navigator.clipboard.writeText(getWorkflowAssistantStatusText()).then(
+          () => showToast(options.getLanguage() === 'zh-CN' ? '已复制 Agent 记录' : 'Agent records copied'),
           (error: unknown) => showToast(error instanceof Error ? error.message : String(error))
         )
       }

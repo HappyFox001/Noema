@@ -79,6 +79,18 @@ export interface ChatBuildCharacterWorkflowRequest {
   prompt: string
   language?: 'zh-CN' | 'en-US'
   mode?: 'create' | 'edit'
+  editorSession?: {
+    objective?: string
+    plan?: string[]
+    completedSteps?: string[]
+    currentStep?: string
+    history?: Array<{
+      userRequest?: string
+      summary?: string
+      status?: string
+      operations?: number
+    }>
+  }
   graph?: {
     selectedNodeId?: string
     nodes: Array<{
@@ -286,6 +298,7 @@ export function registerChatIpcHandlers(
         language: request.language,
         mode: request.mode,
         graph: request.graph,
+        editorSession: request.editorSession,
         modelConfig: options.getModelConfig(),
         llmApiId: options.getModelConfig()?.provider,
         llmModelName: options.getModelConfig()?.modelName,

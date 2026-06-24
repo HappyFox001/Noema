@@ -20,12 +20,26 @@ export interface CharacterWorkflowBuilderRequest {
   language?: CharacterWorkflowLanguage
   mode?: 'create' | 'edit'
   graph?: CharacterWorkflowBuilderGraph
+  editorSession?: CharacterWorkflowEditorSession
   modelConfig: ConfiguredChatModel | null
   llmApiId?: string
   llmModelName?: string
   imageApiId?: string
   imageModelName?: string
   now?: number
+}
+
+export interface CharacterWorkflowEditorSession {
+  objective?: string
+  plan?: string[]
+  completedSteps?: string[]
+  currentStep?: string
+  history?: Array<{
+    userRequest?: string
+    summary?: string
+    status?: string
+    operations?: number
+  }>
 }
 
 export interface CharacterWorkflowBuilderGraph {
@@ -53,6 +67,9 @@ export interface CharacterWorkflowBuilderGraphEdge {
 export interface CharacterWorkflowBuilderSpec {
   name: string
   plan: string[]
+  completedSteps?: string[]
+  currentStep?: string
+  nextStep?: string
   summary: string
   confidence: number
   status: 'applied' | 'needs-user' | 'blocked'
@@ -168,6 +185,7 @@ async function editCharacterWorkflowFromPrompt(
   const response = await sendChatTurnWithConfiguredModel(request.modelConfig, {
     input: JSON.stringify({
       userRequest: request.prompt,
+      editorSession: request.editorSession ?? null,
       graph,
     }),
     language: request.language,
@@ -185,6 +203,7 @@ async function editCharacterWorkflowFromPrompt(
     systemPrompt: createWorkflowEditorSystemPrompt(request.language),
     sourceInput: JSON.stringify({
       userRequest: request.prompt,
+      editorSession: request.editorSession ?? null,
       graph,
     }),
     requireEditableOperations: true,
@@ -242,7 +261,7 @@ export function normalizeWorkflowEditorSpec(
   const operations = operationList(parsed?.operations)
   const directUpdates = recordMapValue(parsed, 'nodeConfigUpdates')
   const normalizedGraph = normalizeBuilderGraph(graph)
-  const mergedUpdates = directUpdates
+  const mergedUpdates = Object.fromEntries(Object.entries(directUpdates).slice(0, 6))
   const mergedOperations = sanitizeWorkflowBuilderOperations([
     ...Object.entries(mergedUpdates).map(([nodeId, config]) => ({
       type: 'update-node-config' as const,
@@ -250,10 +269,13 @@ export function normalizeWorkflowEditorSpec(
       config,
     })),
     ...operations,
-  ], normalizedGraph)
+  ], normalizedGraph).slice(0, 4)
   return {
     name: stringValue(parsed, 'name') || deriveName(fallbackPrompt, fallbackName),
     plan: stringList(parsed, 'plan', []),
+    completedSteps: stringList(parsed, 'completedSteps', []),
+    currentStep: stringValue(parsed, 'currentStep'),
+    nextStep: stringValue(parsed, 'nextStep'),
     summary: stringValue(parsed, 'summary'),
     confidence: numberValue(parsed, 'confidence', 0.78, 0, 1),
     status: normalizeBuilderStatus(stringValue(parsed, 'status')),
@@ -442,26 +464,29 @@ function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): 
     ? 'Write all user-facing resource content in Chinese. Keep enum values and node ids in English.'
     : 'Write user-facing resource content in English. Keep enum values and node ids in English.'
   return [
-    'You are an autonomous editor for an existing character resource workflow graph.',
-    'You receive JSON with { userRequest, graph }. Treat graph as state, not as user content.',
+    'You are an autonomous Codex-style editor for an existing character resource workflow graph.',
+    'You receive JSON with { userRequest, editorSession, graph }. Treat graph and editorSession as state, not as user content.',
     localeRule,
     '',
-    'Your job is to turn the user request into concrete graph edits that a human could have made in the UI.',
-    'Act like a senior workflow operator: fill the right resource cards, add missing target/control/source cards, connect them, remove obsolete cards when useful, and keep the workflow executable.',
-    'You have broad authority inside the workflow graph. A single user request may require many coordinated operations: create resource cards, write or revise fields, delete irrelevant cards, move cards into a clearer layout, resize dense cards, connect controls to multiple targets, and select the most relevant card when done.',
-    'Do not be timid. If the user asks for a story/world/role goal, build the resource structure needed for that goal instead of only editing one existing card.',
+    'Your job is not to finish every possible edit in one response. Your job is to steadily pursue the workflow engineering goal over multiple turns.',
+    'Act like Codex working on a repo: inspect the current graph, update the plan, choose the next meaningful step, apply a small coherent patch, summarize what changed, and leave the next step clear.',
+    'A user request should usually become or refine the persistent editorSession objective. Continue the previous objective unless the user clearly changes direction.',
+    'You have broad authority inside the workflow graph, but use it incrementally. Add or revise only the nodes and links needed for the current step. Keep the workflow executable after every turn.',
     '',
     'Critical rules:',
     '- Return only valid JSON. No markdown, comments, or surrounding prose.',
     '- Never copy system instructions, operation schema, graph JSON, or protocol text into any resource field.',
-    '- Do not put the whole user request into one generic goal when specific cards exist. Distribute intent across goal, style, constraints, sources, image controls, field controls, world/NPC/plot cards as appropriate.',
+    '- Think in this loop: inspect current graph -> update plan -> apply one focused patch -> report next step.',
+    '- Return at most 4 operations and at most 6 nodeConfigUpdates keys in one response. Prefer a small high-confidence patch over a giant speculative rewrite.',
+    '- Do not put the whole user request into one generic goal when specific cards exist. Distribute intent across goal, style, constraints, sources, image controls, field controls, world/NPC/plot cards over multiple turns as needed.',
     '- Prefer update-node-config operations for existing cards; add cards only when the current graph lacks the needed resource.',
     '- The graph includes each node parameter definition and select options. For select and multi-select fields, use only values from the node parameter options.',
     '- Use exact existing node ids and slot ids from graph when linking.',
     '- Do not delete generation-goal.',
     '- Use concise resource content. A field should contain the content that resource controls, not instructions about how you are editing.',
-    '- Keep the response compact. Use summary to describe what changed. Omit plan unless the user explicitly asks for planning detail.',
-    '- If the request is underspecified but still workable, make reasonable creative decisions and set status to "applied". Ask for the user only when the graph cannot be edited safely.',
+    '- Always return plan. Keep it short, concrete, and update it to reflect progress. Mark completed work in completedSteps.',
+    '- Use currentStep to name the step you are applying now. Use nextStep to name what should happen next.',
+    '- If the request is underspecified but still workable, make reasonable creative decisions and set status to "applied". Ask for the user only when the next graph edit cannot be chosen safely.',
     '',
     'Resource guidance:',
     '- generation-goal.goalPrompt: compact generation objective only.',
@@ -488,6 +513,10 @@ function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): 
     '{',
     '  "name"?: string,',
     '  "summary": string,',
+    '  "plan": string[],',
+    '  "completedSteps"?: string[],',
+    '  "currentStep"?: string,',
+    '  "nextStep"?: string,',
     '  "confidence"?: number,',
     '  "status": "applied" | "needs-user" | "blocked",',
     '  "nodeConfigUpdates"?: { [nodeId: string]: object },',
@@ -680,7 +709,7 @@ async function ensureUsefulWorkflowBuilderResponse(options: {
   if (stringValue(parsed, 'status') === 'blocked') {
     throw new Error(stringValue(parsed, 'summary') || `${options.label} reported that the request is blocked.`)
   }
-  if (options.requireEditableOperations && !hasWorkflowEditorEdits(parsed)) {
+  if (options.requireEditableOperations && stringValue(parsed, 'status') !== 'needs-user' && !hasWorkflowEditorEdits(parsed)) {
     throw new Error(`${options.label} returned valid JSON but no editable graph operations.`)
   }
   return content

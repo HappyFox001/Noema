@@ -13492,21 +13492,66 @@ body.chat-workflow-library-resizing * {
 
 .chat-workflow-canvas-assistant-status-body {
   min-height: 0;
-  margin: 0;
-  padding: 1px 12px 12px;
+  padding: 1px 10px 12px;
   color: rgba(248, 250, 250, 0.58);
   font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.52;
   letter-spacing: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
   overflow: auto;
 }
 
 .chat-workflow-canvas-assistant-status:not(.expanded) .chat-workflow-canvas-assistant-status-body {
   max-height: 70px;
   overflow: hidden;
+}
+
+.chat-workflow-canvas-assistant-status:not(.expanded) .chat-workflow-canvas-assistant-record:not(:last-child) {
+  display: none;
+}
+
+.chat-workflow-canvas-assistant-record {
+  padding: 7px 7px 8px;
+  border: 1px solid rgba(248, 250, 250, 0.055);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.022);
+}
+
+.chat-workflow-canvas-assistant-record + .chat-workflow-canvas-assistant-record {
+  margin-top: 7px;
+}
+
+.chat-workflow-canvas-assistant-record.latest {
+  border-color: rgba(132, 173, 159, 0.18);
+  background: rgba(132, 173, 159, 0.045);
+}
+
+.chat-workflow-canvas-assistant-record header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-family: var(--font-ui);
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.chat-workflow-canvas-assistant-record strong {
+  color: rgba(248, 250, 250, 0.74);
+  font-weight: 700;
+}
+
+.chat-workflow-canvas-assistant-record span {
+  color: rgba(248, 250, 250, 0.38);
+  white-space: nowrap;
+}
+
+.chat-workflow-canvas-assistant-record p {
+  margin: 0;
+  color: rgba(248, 250, 250, 0.58);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .chat-workflow-canvas-assistant.is-busy textarea,

@@ -746,6 +746,18 @@ declare global {
         prompt: string
         language?: 'zh-CN' | 'en-US'
         mode?: 'create' | 'edit'
+        editorSession?: {
+          objective?: string
+          plan?: string[]
+          completedSteps?: string[]
+          currentStep?: string
+          history?: Array<{
+            userRequest?: string
+            summary?: string
+            status?: string
+            operations?: number
+          }>
+        }
         graph?: {
           selectedNodeId?: string
           nodes: Array<{
