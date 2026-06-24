@@ -294,12 +294,16 @@ export function createUiConfigOverrides(spec: CharacterWorkflowBuilderSpec): Rec
     },
     'image-target': {
       imageRole: 'avatar',
+      assetPurpose: spec.stylePrompt,
     },
     'image-control': {
       targetImageCount: 1,
-      imageType: 'avatar',
-      composition: 'character-focused',
+      imageStylePreset: 'semi-realistic-anime',
+      stylePrompt: spec.stylePrompt,
+      shotType: 'auto',
+      aspectRatio: '1:1',
       consistencyMode: 'same-character',
+      seedMode: 'lock-character',
       negativePrompt: spec.mustNot.join(', '),
     },
     'style-pressure': {
@@ -372,7 +376,7 @@ function createWorkflowBuilderSystemPrompt(language: CharacterWorkflowLanguage):
     localeRule,
     'The final workflow must always generate a complete role card and at least one image asset.',
     'Do not write final character-card fields here. This is workflow configuration only.',
-    'For images, one image-target plus one image-generation-control represents exactly one image type and count. Do not use imageTypes arrays. If the brief needs avatar + body + scene + expression, return operations that create separate image target/control pairs for each type.',
+    'For images, image-target declares the asset type and image-generation-control declares count, lightweight style text, shot, aspect ratio, seed, consistency, and negative prompt. Do not create external adapter or style-profile compatibility nodes.',
     'Return only valid JSON. No markdown, comments, or surrounding prose.',
     'Schema:',
     '{',
@@ -440,8 +444,10 @@ function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): 
     '- hard-constraints.mustHave/mustNot: hard requirements and boundaries.',
     '- source-material.notes: concrete story material, setting facts, character seeds, world facts.',
     '- field-generation-control.fieldPurpose: local intent for one text field such as firstMessage/opening/dialogue style.',
-    '- image-generation-control: image count and one imageType only, composition, consistencyMode, negativePrompt.',
-    '- One image-target plus one image-generation-control represents exactly one image type. For avatar + body + scene + expression, create four image-target/image-generation-control pairs and connect each pair.',
+    '- image-target.imageRole: the asset type only, such as avatar/body/scene/expression/reference. image-target.assetPurpose: what this asset should communicate.',
+    '- image-generation-control: image count, imageStylePreset, concise stylePrompt, shotType, aspectRatio, consistencyMode, seedMode, negativePrompt. Never put imageType or composition here.',
+    '- For avatar + body + scene + expression, create separate image-target nodes and connect image-generation-control.imageControl into image-target.imageControl as needed. Do not connect image-target back into image-generation-control.',
+    '- Do not connect hard-constraint nodes directly into image-target. Put image-specific exclusions in image-generation-control.negativePrompt.',
     '- world-card-target / npc-pack-target / npc-target / plot-arc-target / scene-card-target: add these when the request asks for multi-NPC, world, setting, story arc, or scene planning.',
     '',
     'Valid node types:',
@@ -517,12 +523,16 @@ function applySpecToWorkflow(workflow: CharacterWorkflow, spec: CharacterWorkflo
   })
   byType.get('image-target')?.config && Object.assign(byType.get('image-target')!.config, {
     imageRole: 'avatar',
+    assetPurpose: spec.stylePrompt,
   })
   byType.get('image-generation-control')?.config && Object.assign(byType.get('image-generation-control')!.config, {
     targetImageCount: 1,
-    imageType: 'avatar',
-    composition: 'character-focused',
+    imageStylePreset: 'semi-realistic-anime',
+    stylePrompt: spec.stylePrompt,
+    shotType: 'auto',
+    aspectRatio: '1:1',
     consistencyMode: 'same-character',
+    seedMode: 'lock-character',
     negativePrompt: spec.mustNot.join(', '),
   })
   byType.get('quality-gate')?.config && Object.assign(byType.get('quality-gate')!.config, {
@@ -826,14 +836,14 @@ function sanitizeResourceConfigForNode(type: string | undefined, config: Record<
     constraint: new Set(['mustHave', 'mustNot', 'hardBoundary']),
     'source-material': new Set(['sourceKind', 'notes']),
     'field-generation-control': new Set(['fieldPurpose', 'tone', 'lengthPolicy', 'avoidPatterns']),
-    'image-generation-control': new Set(['targetImageCount', 'imageType', 'composition', 'consistencyMode', 'negativePrompt']),
+    'image-generation-control': new Set(['targetImageCount', 'imageStylePreset', 'imageStylePresets', 'stylePrompt', 'shotType', 'aspectRatio', 'consistencyMode', 'seedMode', 'negativePrompt']),
     'generation-strategy': new Set(['mode', 'branchCount', 'priorityAssets']),
     'agent-policy': new Set(['autonomyLevel', 'revisionBudget', 'askUserThreshold', 'canExpandMissingDetails']),
     'quality-gate': new Set(['minimumScore', 'blockExport', 'requiredChecks']),
     'output-adapter': new Set(['format', 'includeAssets']),
     'character-card-target': new Set(['includeFields', 'includeSupportFields']),
     'character-field-target': new Set(['field']),
-    'image-target': new Set(['imageRole']),
+    'image-target': new Set(['imageRole', 'assetPurpose']),
   }
   const allowed = allowedByType[type]
   if (!allowed) return config

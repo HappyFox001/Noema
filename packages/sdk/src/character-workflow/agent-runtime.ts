@@ -108,9 +108,12 @@ export type AgentTargetKind =
 export interface AgentImageGenerationControl {
   nodeId: string
   targetImageCount: number
-  imageType: string
-  composition: string
+  imageStylePreset: string
+  stylePrompt: string
+  shotType: string
+  aspectRatio: string
   consistencyMode: string
+  seedMode: string
   negativePrompt: string
   incomingRelations: CharacterAgentRelation[]
 }
@@ -146,6 +149,7 @@ export interface AgentTargetContext {
   config: Record<string, unknown>
   field?: string
   imageRole?: string
+  imageAssetPurpose?: string
   requestedResources: string[]
   incomingRelations: CharacterAgentRelation[]
   localStylePressures: AgentStylePressure[]
@@ -555,9 +559,12 @@ export function compileCharacterAgentRunContext(
   const imageGenerationControls = (nodesByType.get('image-generation-control') ?? []).map((node) => ({
     nodeId: node.id,
     targetImageCount: numberValue(node.config.targetImageCount, 1),
-    imageType: imageTypeValue(node.config.imageType, node.config.imageTypes, 'avatar'),
-    composition: stringValue(node.config.composition, 'character-focused'),
+    imageStylePreset: stringValue(node.config.imageStylePreset, stringListValue(node.config.imageStylePresets)[0] ?? ''),
+    stylePrompt: stringValue(node.config.stylePrompt),
+    shotType: stringValue(node.config.shotType, 'auto'),
+    aspectRatio: stringValue(node.config.aspectRatio, '1:1'),
     consistencyMode: stringValue(node.config.consistencyMode, 'same-character'),
+    seedMode: stringValue(node.config.seedMode, 'lock-character'),
     negativePrompt: stringValue(node.config.negativePrompt),
     incomingRelations: incomingRelations(relations, node.id),
   }))
@@ -1754,6 +1761,7 @@ function createAgentTargetContexts(
         config: { ...node.config },
         field: kind === 'character-field' ? stringValue(node.config.field) : undefined,
         imageRole: kind === 'image' ? stringValue(node.config.imageRole) : undefined,
+        imageAssetPurpose: kind === 'image' ? stringValue(node.config.assetPurpose) : undefined,
         requestedResources: requestedResourcesForTarget(node, kind),
         incomingRelations: incomingRelations(relations, node.id),
         localStylePressures: controls.stylePressures.filter((control) => isLocallyConnected(relations, node.id, control.nodeId)),
@@ -1906,14 +1914,6 @@ function stringListValue(value: unknown, fallback: string[] = []): string[] {
     return fallback
   }
   return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
-}
-
-function imageTypeValue(value: unknown, legacyValue: unknown, fallback: string): string {
-  const direct = stringValue(value)
-  if (direct) {
-    return direct
-  }
-  return stringListValue(legacyValue, [fallback])[0] ?? fallback
 }
 
 function isCharacterWorkflowLike(value: unknown): value is CharacterWorkflow {

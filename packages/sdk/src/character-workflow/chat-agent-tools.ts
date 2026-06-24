@@ -285,7 +285,7 @@ function createResourceContextXml(context: CharacterAgentRunContext): string {
       ...target.fieldControls.map((item) => `          <field_control node="${xmlEscape(item.nodeId)}" tone="${xmlEscape(item.tone)}" length="${xmlEscape(item.lengthPolicy)}" avoid="${xmlEscape(item.avoidPatterns.join('; '))}">${xmlEscape(item.fieldPurpose)}</field_control>`),
       '        </field_controls>',
       '        <image_controls>',
-      ...target.imageControls.map((item) => `          <image_control node="${xmlEscape(item.nodeId)}" count="${item.targetImageCount}" type="${xmlEscape(item.imageType)}" composition="${xmlEscape(item.composition)}" consistency="${xmlEscape(item.consistencyMode)}" negative="${xmlEscape(item.negativePrompt)}" />`),
+      ...target.imageControls.flatMap(renderImageControlContextXml),
       '        </image_controls>',
       '        <continuity_controls>',
       ...target.continuityControls.map((item) => `          <continuity_control node="${xmlEscape(item.nodeId)}" pacing="${xmlEscape(item.progressionPacing)}" forbid_resetting_facts="${item.forbidResettingFacts}" anchors="${xmlEscape(item.memoryAnchors.join('; '))}" />`),
@@ -348,6 +348,12 @@ function createResourceContextXml(context: CharacterAgentRunContext): string {
     '    </output_adapter>',
     '  </resource_context>',
   ].join('\n')
+}
+
+function renderImageControlContextXml(control: AgentImageGenerationControl): string[] {
+  return [
+    `          <image_control node="${xmlEscape(control.nodeId)}" count="${control.targetImageCount}" preset="${xmlEscape(control.imageStylePreset)}" style="${xmlEscape(control.stylePrompt)}" shot="${xmlEscape(control.shotType)}" aspect_ratio="${xmlEscape(control.aspectRatio)}" consistency="${xmlEscape(control.consistencyMode)}" seed="${xmlEscape(control.seedMode)}" negative="${xmlEscape(control.negativePrompt)}" />`,
+  ]
 }
 
 function characterFieldDescription(field: string): string {
@@ -474,7 +480,7 @@ async function maybeGenerateImageArtifacts(
         context.runId,
         candidateId,
         'image-asset',
-        `${prompts[index].target.title} ${prompts[index].imageType} ${prompts[index].targetIndex}`,
+        `${prompts[index].target.title} ${prompts[index].imageRole} ${prompts[index].targetIndex}`,
         createImageGenerationArtifact(generated),
         prompts[index].target.nodeId
       )
@@ -490,43 +496,53 @@ async function maybeGenerateImageArtifacts(
 function createImageTargetPrompts(
   target: AgentTargetContext,
   promptText: string
-): Array<{ target: AgentTargetContext; targetIndex: number; imageType: string; prompt: string }> {
+): Array<{ target: AgentTargetContext; targetIndex: number; imageRole: string; prompt: string }> {
   const controls = target.imageControls
   const requestedCount = getImageTargetRequestedCount(controls)
-  const targetRole = target.imageRole ?? controls[0]?.imageType ?? 'avatar'
+  const targetRole = target.imageRole ?? 'avatar'
   return Array.from({ length: requestedCount }, (_, index) => {
     const controlText = controls[index % Math.max(1, controls.length)]
-    const imageType = controlText?.imageType || targetRole
     return {
       target,
       targetIndex: index + 1,
-      imageType,
-      prompt: buildImageGenerationPrompt(target, imageType, promptText, controlText),
+      imageRole: targetRole,
+      prompt: buildImageGenerationPrompt(target, targetRole, promptText, controlText),
     }
   })
 }
 
 function buildImageGenerationPrompt(
   target: AgentTargetContext,
-  imageType: string,
+  imageRole: string,
   promptText: string,
   control: AgentImageGenerationControl | undefined
 ): string {
-  const roleInstruction = imageRoleInstruction(imageType || target.imageRole || 'avatar')
+  const roleInstruction = imageRoleInstruction(imageRole || target.imageRole || 'avatar')
   const negative = [
     control?.negativePrompt,
     'text, caption, subtitle, watermark, logo, signature, UI text, prompt words, labels, typography, speech bubble',
   ].filter(Boolean).join(', ')
   return [
     roleInstruction,
-    control ? naturalCompositionInstruction(control.composition, control.consistencyMode) : '',
+    target.imageAssetPurpose ? `Asset purpose: ${target.imageAssetPurpose}.` : '',
+    control?.imageStylePreset ? `Style preset: ${formatImageStylePreset(control.imageStylePreset)}.` : '',
+    control?.stylePrompt ? `Visual style: ${control.stylePrompt}.` : '',
+    control ? naturalImageControlInstruction(control) : '',
     'Generate visual content only, with no written words, letters, symbols, captions, interface elements, labels, logos, watermarks, or visible prompt text anywhere in the image.',
     promptText,
     `The image must avoid ${negative}.`,
   ].filter(Boolean).join('\n')
 }
 
-function imageRoleInstruction(imageType: string): string {
+function formatImageStylePreset(value: string): string {
+  return value
+    .split('-')
+    .filter(Boolean)
+    .map((part) => /^[0-9]+$/.test(part) ? part : part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+function imageRoleInstruction(imageRole: string): string {
   const instructions: Record<string, string> = {
     avatar: 'Create a single avatar portrait focused on the character face, hair, expression, and upper-body identity, with a clean background.',
     body: 'Create a single full-body character reference showing the complete outfit, posture, proportions, and silhouette.',
@@ -534,23 +550,22 @@ function imageRoleInstruction(imageType: string): string {
     expression: 'Create a single expression reference focused on one clear facial expression and emotional state, without label text or a labeled collage.',
     reference: 'Create a single visual reference showing design details useful for consistent later generation.',
   }
-  return instructions[imageType] ?? `Create a single coherent visual for the ${imageType} image role.`
+  return instructions[imageRole] ?? `Create a single coherent visual for the ${imageRole} image role.`
 }
 
-function naturalCompositionInstruction(composition: string, consistencyMode: string): string {
-  const compositionText: Record<string, string> = {
-    'character-focused': 'Keep the composition centered on the character.',
-    'upper-body-portrait': 'Use an upper-body portrait composition.',
-    'full-body': 'Use a full-body composition with the whole figure visible.',
-    'environmental-scene': 'Use an environmental composition with clear setting context.',
-    'expression-sheet': 'Focus on a clear expression reference without written labels.',
-  }
+function naturalImageControlInstruction(control: AgentImageGenerationControl): string {
+  const consistencyMode = control.consistencyMode
   const consistencyText: Record<string, string> = {
     'same-character': 'Preserve the same character identity.',
     'same-world': 'Preserve the same world and visual continuity.',
     independent: 'This image may stand independently.',
   }
-  return [compositionText[composition] ?? '', consistencyText[consistencyMode] ?? ''].filter(Boolean).join(' ')
+  return [
+    consistencyText[consistencyMode] ?? '',
+    control.shotType && control.shotType !== 'auto' ? `Shot type: ${control.shotType}.` : '',
+    control.aspectRatio ? `Aspect ratio target: ${control.aspectRatio}.` : '',
+    control.seedMode ? `Seed strategy: ${control.seedMode}.` : '',
+  ].filter(Boolean).join(' ')
 }
 
 function getImageTargetRequestedCount(controls: AgentImageGenerationControl[]): number {

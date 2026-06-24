@@ -47,8 +47,8 @@ Merge `dev` into `main` only through a pull request when the development branch 
 After changing SDK or desktop runtime code, run the relevant build:
 
 ```bash
-pnpm --filter @her-text/sdk build
-pnpm --filter @her-text/desktop build
+pnpm --filter @noema/sdk build
+pnpm --filter @noema/desktop build
 ```
 
 For runtime plugin files, run `node --check` on changed `.mjs` files when practical.

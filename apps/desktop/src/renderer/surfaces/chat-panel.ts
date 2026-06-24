@@ -3730,7 +3730,66 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     } else {
       characterWorkflowConfigOverrides[nodeId][paramId] = control.value
     }
+    if (paramId === 'imageStylePreset') {
+      const preset = createImageStylePresetPrompt(control.value)
+      characterWorkflowConfigOverrides[nodeId].stylePrompt = preset.prompt
+      characterWorkflowConfigOverrides[nodeId].negativePrompt = preset.negativePrompt
+    }
     renderCharacterWorkflow()
+  }
+
+  function createImageStylePresetPrompt(value: string): { prompt: string; negativePrompt: string } {
+    const label = formatImageStylePresetLabel(value)
+    const lower = value.toLowerCase()
+    const commonNegative = 'low quality, blurry, deformed, bad anatomy, text, watermark, logo, signature, UI, caption'
+    if (/(photoreal|cinematic|editorial|fashion|film|photo|polaroid|camera|bokeh|infrared|plate)/.test(lower)) {
+      return {
+        prompt: `${label}, realistic lighting, natural materials, detailed skin and fabric, camera-based image language`,
+        negativePrompt: `${commonNegative}, cartoon, anime, manga, painterly, vector art, plastic CGI`,
+      }
+    }
+    if (/(anime|manga|moe|chibi|mecha|magical|webtoon|manhwa|visual-novel|light-novel)/.test(lower)) {
+      return {
+        prompt: `${label}, clean linework, expressive character design, polished anime illustration, coherent cel color`,
+        negativePrompt: `${commonNegative}, photorealistic, live action, 3d render, western comic anatomy`,
+      }
+    }
+    if (/(oil|painting|watercolor|gouache|acrylic|pastel|charcoal|graphite|pencil|ink|sumi|ukiyo|woodblock|linocut|etching|lithograph|risograph|screen-print)/.test(lower)) {
+      return {
+        prompt: `${label}, visible traditional media texture, intentional brushwork or mark making, artful color handling`,
+        negativePrompt: `${commonNegative}, photorealistic, 3d render, flat vector, sterile digital finish`,
+      }
+    }
+    if (/(pixel|8-bit|16-bit|voxel|ps1|low-poly)/.test(lower)) {
+      return {
+        prompt: `${label}, crisp stylized game-art readability, deliberate simplified forms, strong silhouette`,
+        negativePrompt: `${commonNegative}, photorealistic, smooth airbrushed rendering, excessive tiny detail`,
+      }
+    }
+    if (/(3d|render|clay|claymation|stop-motion|toy|vinyl|product|architectural)/.test(lower)) {
+      return {
+        prompt: `${label}, tangible volume, controlled studio lighting, readable material surfaces, clean render quality`,
+        negativePrompt: `${commonNegative}, flat 2d drawing, messy sketch, painterly smear, broken geometry`,
+      }
+    }
+    if (/(greasy|oily|dewy|gloss|latex|plastic)/.test(lower)) {
+      return {
+        prompt: `${label}, glossy highlights, slick reflective surface treatment, high specular detail`,
+        negativePrompt: `${commonNegative}, dry matte surface, dusty texture, flat lighting`,
+      }
+    }
+    return {
+      prompt: `${label}, coherent art direction, clear visual identity, polished image style`,
+      negativePrompt: commonNegative,
+    }
+  }
+
+  function formatImageStylePresetLabel(value: string): string {
+    return value
+      .split('-')
+      .filter(Boolean)
+      .map((part) => /^[0-9]+$/.test(part) ? part : part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ')
   }
 
   function updateCharacterWorkflowModelChoice(choice: HTMLElement): void {
