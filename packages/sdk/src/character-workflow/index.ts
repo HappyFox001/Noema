@@ -548,6 +548,7 @@ const IMAGE_STYLE_PRESET_OPTIONS: CharacterWorkflowParameterOption[] = [
   option('Anime Key Visual', 'anime-key-visual'),
   option('Anime Screenshot', 'anime-screenshot'),
   option('Cel Shaded Anime', 'cel-shaded-anime'),
+  option('Semi Realistic Anime', 'semi-realistic-anime'),
   option('90s Anime', '90s-anime'),
   option('Retro Anime', 'retro-anime'),
   option('Shoujo Manga', 'shoujo-manga'),

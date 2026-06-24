@@ -439,6 +439,7 @@ const IMAGE_STYLE_PRESET_VALUES = [
   'anime-key-visual',
   'anime-screenshot',
   'cel-shaded-anime',
+  'semi-realistic-anime',
   '90s-anime',
   'retro-anime',
   'shoujo-manga',
