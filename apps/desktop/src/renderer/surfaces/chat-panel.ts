@@ -4895,6 +4895,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (normalizedTabId !== 'workflow' && normalizedTabId !== 'run-draft') {
       return
     }
+    if (normalizedTabId === 'run-draft' && !characterWorkflowRunState?.run) {
+      const project = characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)
+      const run = project?.runs.find((item) => item.id === project.activeRunId) ?? project?.runs[project.runs.length - 1]
+      if (project && run) {
+        void openCharacterWorkflowRun(project.id, run.id)
+      }
+      return
+    }
     characterWorkflowActiveTabId = normalizedTabId
     renderCharacterWorkflow()
   }
@@ -6079,7 +6087,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   panel.addEventListener('change', (event) => {
     const workflowRunSelect = (event.target as HTMLElement | null)?.closest<HTMLSelectElement>('[data-chat-workflow-run-select]')
     if (workflowRunSelect && panel.contains(workflowRunSelect)) {
-      void openCharacterWorkflowRun(activeCharacterWorkflowProjectId, workflowRunSelect.value)
+      if (workflowRunSelect.value) {
+        void openCharacterWorkflowRun(activeCharacterWorkflowProjectId, workflowRunSelect.value)
+      }
       return
     }
     const workflowParam = (event.target as HTMLElement | null)?.closest<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('[data-chat-workflow-param]')

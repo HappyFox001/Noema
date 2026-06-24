@@ -2241,7 +2241,7 @@ function renderResourceCanvas(graph: CharacterResourceGraph, yjsSnapshot: string
       ${isRunTab ? renderRunCanvasControls(options) : ''}
       <div class="chat-resource-tabs">
         ${isWorkflowTab ? `${renderWorkflowLibraryToggle(options)}${renderSidebarToggle(options)}` : ''}
-        ${graph.tabs.map((tab) => `<button class="${tab.id === activeTab ? 'active' : ''}" type="button" data-chat-workflow-tab="${options.escapeHtml(tab.id)}">${options.escapeHtml(resourceGraphTabTitle(tab, options))}</button>`).join('')}
+        ${graph.tabs.map((tab) => renderResourceTabControl(tab, activeTab, options)).join('')}
       </div>
       ${activeTab === 'run-draft' ? renderRunDraft(graph, options) : ''}
       ${isWorkflowTab ? `<div class="chat-workflow-canvas-viewport active" data-resource-viewport="${options.escapeHtml(JSON.stringify(graph.viewport))}">
@@ -2274,6 +2274,22 @@ function renderRunCanvasControls(options: CharacterWorkflowPageOptions): string 
       <button type="button" data-chat-workflow-action="reset-view" title="${options.escapeHtml(resetLabel)}" aria-label="${options.escapeHtml(resetLabel)}"><i icon-name="rotate-ccw" aria-hidden="true"></i></button>
       ${renderInspectorToggle(options)}
     </div>
+  `
+}
+
+function renderResourceTabControl(tab: CharacterResourceGraph['tabs'][number], activeTab: 'workflow' | 'run-draft', options: CharacterWorkflowPageOptions): string {
+  if (tab.id !== 'run-draft') {
+    return `<button class="${tab.id === activeTab ? 'active' : ''}" type="button" data-chat-workflow-tab="${options.escapeHtml(tab.id)}">${options.escapeHtml(resourceGraphTabTitle(tab, options))}</button>`
+  }
+  const drafts = options.runDrafts ?? []
+  const activeRunId = activeTab === 'run-draft' ? options.runState?.run?.id ?? '' : ''
+  return `
+    <label class="chat-resource-run-tab-select ${activeTab === 'run-draft' ? 'active' : ''} ${drafts.length ? '' : 'disabled'}">
+      <select data-chat-workflow-run-select aria-label="${options.escapeHtml(ui(options, '选择运行草稿', 'Select run draft'))}" ${drafts.length ? '' : 'disabled'}>
+        <option value="" ${activeRunId ? '' : 'selected'}>${options.escapeHtml(ui(options, '运行草稿', 'Run Draft'))}</option>
+        ${drafts.map((draft) => `<option value="${options.escapeHtml(draft.id)}" ${draft.id === activeRunId ? 'selected' : ''}>${options.escapeHtml(`${draft.title} · ${draft.status}`)}</option>`).join('')}
+      </select>
+    </label>
   `
 }
 
