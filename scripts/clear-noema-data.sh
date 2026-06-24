@@ -14,7 +14,7 @@ if [ ! -d "${DATA_DIR}" ]; then
   exit 0
 fi
 
-mapfile -d '' database_files < <(
+database_file_count="$(
   find "${DATA_DIR}" -maxdepth 2 -type f \( \
     -name '*.sqlite3' -o \
     -name '*.sqlite3-wal' -o \
@@ -28,17 +28,27 @@ mapfile -d '' database_files < <(
     -name '*.db-wal' -o \
     -name '*.db-shm' -o \
     -name '*.db-journal' \
-  \) -print0
-)
+  \) -print | wc -l | tr -d ' '
+)"
 
-if [ "${#database_files[@]}" -eq 0 ]; then
+if [ "${database_file_count}" -eq 0 ]; then
   echo "No database files found."
   exit 0
 fi
 
-for file in "${database_files[@]}"; do
-  echo "Removing: ${file}"
-  rm -f "${file}"
-done
+find "${DATA_DIR}" -maxdepth 2 -type f \( \
+  -name '*.sqlite3' -o \
+  -name '*.sqlite3-wal' -o \
+  -name '*.sqlite3-shm' -o \
+  -name '*.sqlite3-journal' -o \
+  -name '*.sqlite' -o \
+  -name '*.sqlite-wal' -o \
+  -name '*.sqlite-shm' -o \
+  -name '*.sqlite-journal' -o \
+  -name '*.db' -o \
+  -name '*.db-wal' -o \
+  -name '*.db-shm' -o \
+  -name '*.db-journal' \
+\) -print -delete
 
 echo "Noema local database files cleared."
