@@ -2608,7 +2608,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (project.loadState !== 'ready' && project.loadState !== 'ready-overview') {
       return
     }
-    upsertWorkflowProjectRunSnapshot(project)
+    if (characterWorkflowRunState) {
+      upsertWorkflowProjectRunState(project, characterWorkflowRunState)
+    }
     project.configOverrides = cloneRecord(characterWorkflowConfigOverrides)
     project.positionOverrides = cloneRecord(characterWorkflowPositionOverrides)
     project.viewState = createWorkflowProjectViewState()
@@ -2619,13 +2621,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (markDirty) {
       markActiveWorkflowDirty()
     }
-  }
-
-  function upsertWorkflowProjectRunSnapshot(project: CharacterWorkflowProjectRecord): void {
-    if (!characterWorkflowRunState) {
-      return
-    }
-    upsertWorkflowProjectRunState(project, characterWorkflowRunState)
   }
 
   function upsertWorkflowProjectRunState(project: CharacterWorkflowProjectRecord, runState: CharacterResourceRunState): void {
@@ -4248,12 +4243,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       characterWorkflowRunCount = 0
       characterWorkflowRunState = null
     }
-    characterWorkflowActiveTabId = typeof record.activeTabId === 'string'
-      ? record.activeTabId
-      : characterWorkflowRunState?.run?.id ?? 'workflow'
-    if (characterWorkflowActiveTabId === characterWorkflowRunState?.run?.id) {
-      characterWorkflowActiveTabId = 'run-draft'
-    }
+    characterWorkflowActiveTabId = record.activeTabId === 'run-draft' ? 'run-draft' : 'workflow'
     if (record.editorState && typeof record.editorState === 'object') {
       characterWorkflowEditorState.activePanel = record.editorState.activePanel === 'assets' || record.editorState.activePanel === 'nodes'
         ? record.editorState.activePanel
@@ -4263,9 +4253,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       characterWorkflowEditorState.nodeSearchOpen = false
       characterWorkflowEditorState.workflowLibraryWidth = clampCharacterWorkflowLibraryWidth(record.editorState.workflowLibraryWidth)
       characterWorkflowEditorState.workflowLibraryCollapsed = Boolean(record.editorState.workflowLibraryCollapsed)
-    }
-    if (characterWorkflowActiveTabId !== 'workflow' && characterWorkflowActiveTabId !== 'run-draft') {
-      characterWorkflowActiveTabId = characterWorkflowRunState ? 'run-draft' : 'workflow'
     }
   }
 
@@ -4822,7 +4809,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     toolName: string | undefined,
     artifact: Record<string, any> | undefined,
     result: Record<string, any> | undefined,
-    runState: CharacterResourceRunState = characterWorkflowRunState!
+    runState: CharacterResourceRunState
   ): boolean {
     if (type === 'artifact.created' || type === 'run.completed' || type === 'run.failed') {
       return false
@@ -5041,11 +5028,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   function selectCharacterWorkflowTab(tabId: string): void {
-    const normalizedTabId = tabId === characterWorkflowRunState?.run?.id ? 'run-draft' : tabId
-    if (normalizedTabId !== 'workflow' && normalizedTabId !== 'run-draft') {
+    if (tabId !== 'workflow' && tabId !== 'run-draft') {
       return
     }
-    if (normalizedTabId === 'run-draft' && !characterWorkflowRunState?.run) {
+    if (tabId === 'run-draft' && !characterWorkflowRunState?.run) {
       const project = characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)
       const run = project?.runs.find((item) => item.id === project.activeRunId) ?? project?.runs[project.runs.length - 1]
       if (project && run) {
@@ -5053,7 +5039,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       }
       return
     }
-    characterWorkflowActiveTabId = normalizedTabId
+    characterWorkflowActiveTabId = tabId
     renderCharacterWorkflow()
   }
 
@@ -5288,7 +5274,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       renderCharacterWorkflow()
       return
     }
-    if (tabId === characterWorkflowRunState?.run.id) {
+    if (tabId === 'run-draft') {
       characterWorkflowRunState = null
     }
     if (!getCharacterWorkflowTabs().some((tab) => tab.id === characterWorkflowActiveTabId)) {
