@@ -22,9 +22,12 @@ import {
   buildCharacterWorkflowFromPrompt,
   editCharacterWorkflowRunDraft,
   loadCharacterAgentWorkflowSnapshot,
+  type CharacterWorkflowBuilderEvent,
+  type CharacterWorkflowEditorAgentWork,
   type CharacterWorkflowBuilderSpec,
 } from '@noema/sdk/character-workflow'
 import { ChatHistoryStore, type StoredChatConversation, type StoredChatConversationListItem } from './chat-history-store.js'
+import { CharacterWorkflowStore, type StoredCharacterWorkflowProject } from './character-workflow-store.js'
 
 export interface ChatIpcModelConfig {
   provider?: string
@@ -77,8 +80,21 @@ export interface ChatRunCharacterWorkflowResult {
 
 export interface ChatBuildCharacterWorkflowRequest {
   prompt: string
+  streamId?: string
   language?: 'zh-CN' | 'en-US'
   mode?: 'create' | 'edit'
+  editorSession?: {
+    objective?: string
+    plan?: string[]
+    completedSteps?: string[]
+    currentStep?: string
+    history?: Array<{
+      userRequest?: string
+      summary?: string
+      status?: string
+      operations?: number
+    }>
+  }
   graph?: {
     selectedNodeId?: string
     nodes: Array<{
@@ -103,6 +119,7 @@ export interface ChatBuildCharacterWorkflowResult {
   workflow?: Record<string, unknown>
   spec?: CharacterWorkflowBuilderSpec
   uiConfigOverrides?: Record<string, Record<string, unknown>>
+  agentWork?: CharacterWorkflowEditorAgentWork
   error?: string
 }
 
@@ -189,6 +206,13 @@ export interface ChatHistoryGetRequest {
   includeWorkflowState?: boolean
 }
 
+export interface CharacterWorkflowProjectResult {
+  success: boolean
+  projects?: StoredCharacterWorkflowProject[]
+  project?: StoredCharacterWorkflowProject | null
+  error?: string
+}
+
 export function registerChatIpcHandlers(
   ipcMain: IpcMain,
   options: {
@@ -197,6 +221,7 @@ export function registerChatIpcHandlers(
     getProxyUrl?(): string
     getMainWindow?(): BrowserWindow | null
     getChatHistoryStore(): ChatHistoryStore
+    getCharacterWorkflowStore(): CharacterWorkflowStore
   }
 ): void {
   const createRuntime = (): ChatRuntime => new ChatRuntime({
@@ -277,7 +302,7 @@ export function registerChatIpcHandlers(
     }
   })
 
-  ipcMain.handle('chat:buildCharacterWorkflow', async (_, request: ChatBuildCharacterWorkflowRequest): Promise<ChatBuildCharacterWorkflowResult> => {
+  ipcMain.handle('chat:buildCharacterWorkflow', async (event, request: ChatBuildCharacterWorkflowRequest): Promise<ChatBuildCharacterWorkflowResult> => {
     try {
       const configuredModels = options.getChatModels()
       const firstImageModel = configuredModels.find((model) => model.modelType === 'image')
@@ -286,17 +311,27 @@ export function registerChatIpcHandlers(
         language: request.language,
         mode: request.mode,
         graph: request.graph,
+        editorSession: request.editorSession,
         modelConfig: options.getModelConfig(),
         llmApiId: options.getModelConfig()?.provider,
         llmModelName: options.getModelConfig()?.modelName,
         imageApiId: firstImageModel?.id,
         imageModelName: firstImageModel?.modelName,
+        onEvent: request.streamId
+          ? (builderEvent: CharacterWorkflowBuilderEvent) => {
+              event.sender.send('chat:characterWorkflowBuildEvent', {
+                streamId: request.streamId,
+                event: builderEvent,
+              })
+            }
+          : undefined,
       })
       return {
         success: true,
         workflow: result.workflow as unknown as Record<string, unknown>,
         spec: result.spec,
         uiConfigOverrides: result.uiConfigOverrides,
+        agentWork: result.agentWork,
       }
     } catch (error: any) {
       console.error('[Chat] Failed to build character workflow:', error)
@@ -485,6 +520,76 @@ export function registerChatIpcHandlers(
       return { success: true }
     } catch (error: any) {
       console.error('[ChatHistory] Failed to clear conversations:', error)
+      return { success: false, error: error?.message || String(error) }
+    }
+  })
+
+  ipcMain.handle('character-workflows:list', async (): Promise<CharacterWorkflowProjectResult> => {
+    try {
+      const projects = await options.getCharacterWorkflowStore().listProjects()
+      return { success: true, projects }
+    } catch (error: any) {
+      console.error('[CharacterWorkflowStore] Failed to list projects:', error)
+      return { success: false, error: error?.message || String(error) }
+    }
+  })
+
+  ipcMain.handle('character-workflows:get', async (_, id: string): Promise<CharacterWorkflowProjectResult> => {
+    try {
+      const project = await options.getCharacterWorkflowStore().getProject(String(id || ''))
+      return { success: true, project }
+    } catch (error: any) {
+      console.error('[CharacterWorkflowStore] Failed to get project:', error)
+      return { success: false, error: error?.message || String(error) }
+    }
+  })
+
+  ipcMain.handle('character-workflows:getOverview', async (_, id: string): Promise<CharacterWorkflowProjectResult> => {
+    try {
+      const project = await options.getCharacterWorkflowStore().getProjectOverview(String(id || ''))
+      return { success: true, project }
+    } catch (error: any) {
+      console.error('[CharacterWorkflowStore] Failed to get project overview:', error)
+      return { success: false, error: error?.message || String(error) }
+    }
+  })
+
+  ipcMain.handle('character-workflows:getRun', async (_, request: { projectId?: string; runId?: string }): Promise<{ success: boolean; run?: unknown; error?: string }> => {
+    try {
+      const run = await options.getCharacterWorkflowStore().getProjectRun(String(request?.projectId || ''), String(request?.runId || ''))
+      return { success: true, run }
+    } catch (error: any) {
+      console.error('[CharacterWorkflowStore] Failed to get workflow run:', error)
+      return { success: false, error: error?.message || String(error) }
+    }
+  })
+
+  ipcMain.handle('character-workflows:deleteRun', async (_, request: { projectId?: string; runId?: string }): Promise<{ success: boolean; error?: string }> => {
+    try {
+      await options.getCharacterWorkflowStore().deleteProjectRun(String(request?.projectId || ''), String(request?.runId || ''))
+      return { success: true }
+    } catch (error: any) {
+      console.error('[CharacterWorkflowStore] Failed to delete workflow run:', error)
+      return { success: false, error: error?.message || String(error) }
+    }
+  })
+
+  ipcMain.handle('character-workflows:upsert', async (_, project: StoredCharacterWorkflowProject): Promise<{ success: boolean; error?: string }> => {
+    try {
+      await options.getCharacterWorkflowStore().upsertProject(project)
+      return { success: true }
+    } catch (error: any) {
+      console.error('[CharacterWorkflowStore] Failed to save project:', error)
+      return { success: false, error: error?.message || String(error) }
+    }
+  })
+
+  ipcMain.handle('character-workflows:delete', async (_, id: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      await options.getCharacterWorkflowStore().deleteProject(String(id || ''))
+      return { success: true }
+    } catch (error: any) {
+      console.error('[CharacterWorkflowStore] Failed to delete project:', error)
       return { success: false, error: error?.message || String(error) }
     }
   })

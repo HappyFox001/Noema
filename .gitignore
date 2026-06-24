@@ -49,6 +49,9 @@ other/**
 lanuch/
 tmp/
 scripts/
+!scripts/
+scripts/*
+!scripts/clear-noema-data.sh
 !apps/desktop/scripts/
 !apps/desktop/scripts/prune-package.cjs
 test/

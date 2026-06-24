@@ -7,10 +7,12 @@ import {
 } from '../chat/request-runtime.js'
 import {
   createStandardCharacterWorkflow,
+  STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS,
   type CharacterNodeType,
   type CharacterWorkflow,
   type CharacterWorkflowLinkKind,
   type CharacterWorkflowLanguage,
+  type CharacterWorkflowNodeParameter,
 } from './index.js'
 
 export interface CharacterWorkflowBuilderRequest {
@@ -18,12 +20,32 @@ export interface CharacterWorkflowBuilderRequest {
   language?: CharacterWorkflowLanguage
   mode?: 'create' | 'edit'
   graph?: CharacterWorkflowBuilderGraph
+  editorSession?: CharacterWorkflowEditorSession
   modelConfig: ConfiguredChatModel | null
   llmApiId?: string
   llmModelName?: string
   imageApiId?: string
   imageModelName?: string
   now?: number
+  onEvent?: (event: CharacterWorkflowBuilderEvent) => void | Promise<void>
+}
+
+export type CharacterWorkflowBuilderEvent =
+  | { type: 'workflow-agent.started'; mode: 'create' | 'edit'; workId: string; objective: string; timestamp: number }
+  | { type: 'workflow-agent.step'; mode: 'create' | 'edit'; workId: string; step: CharacterWorkflowEditorAgentStep; timestamp: number }
+  | { type: 'workflow-agent.completed'; mode: 'create' | 'edit'; work: CharacterWorkflowEditorAgentWork; timestamp: number }
+
+export interface CharacterWorkflowEditorSession {
+  objective?: string
+  plan?: string[]
+  completedSteps?: string[]
+  currentStep?: string
+  history?: Array<{
+    userRequest?: string
+    summary?: string
+    status?: string
+    operations?: number
+  }>
 }
 
 export interface CharacterWorkflowBuilderGraph {
@@ -51,6 +73,9 @@ export interface CharacterWorkflowBuilderGraphEdge {
 export interface CharacterWorkflowBuilderSpec {
   name: string
   plan: string[]
+  completedSteps?: string[]
+  currentStep?: string
+  nextStep?: string
   summary: string
   confidence: number
   status: 'applied' | 'needs-user' | 'blocked'
@@ -96,10 +121,48 @@ export interface CharacterWorkflowBuilderResult {
   workflow?: CharacterWorkflow
   spec: CharacterWorkflowBuilderSpec
   uiConfigOverrides: Record<string, Record<string, unknown>>
+  agentWork?: CharacterWorkflowEditorAgentWork
 }
 
+export interface CharacterWorkflowEditorAgentWork {
+  id: string
+  mode: 'create' | 'edit'
+  objective: string
+  status: 'active' | 'needs-user' | 'blocked' | 'complete'
+  plan: string[]
+  completedSteps: string[]
+  currentStep?: string
+  nextStep?: string
+  steps: CharacterWorkflowEditorAgentStep[]
+  createdAt: number
+  updatedAt: number
+}
+
+export interface CharacterWorkflowEditorAgentStep {
+  id: string
+  index: number
+  tool: CharacterWorkflowAgentToolAction
+  userRequest: string
+  summary: string
+  status: 'applied' | 'needs-user' | 'blocked'
+  plan: string[]
+  completedSteps: string[]
+  currentStep?: string
+  nextStep?: string
+  operations: CharacterWorkflowBuilderOperation[]
+  uiConfigOverrides: Record<string, Record<string, unknown>>
+  createdAt: number
+}
+
+export type CharacterWorkflowAgentToolAction =
+  | 'inspect_graph'
+  | 'edit_graph'
+  | 'validate_graph'
+  | 'ask_user'
+  | 'finish'
+
 const DEFAULT_REQUIRED_CHECKS = ['goal match', 'long-term RP', 'visual identity', 'field completeness', 'consistency']
-const DEFAULT_ASSET_TARGETS = ['role-card', 'opening', 'image-pack', 'generation-report']
+const DEFAULT_ASSET_TARGETS = ['role-card', 'opening', 'opening-layout', 'image-pack', 'generation-report']
 
 export async function buildCharacterWorkflowFromPrompt(
   request: CharacterWorkflowBuilderRequest
@@ -118,29 +181,42 @@ export async function buildCharacterWorkflowFromPrompt(
     })
   }
 
-  const response = await sendChatTurnWithConfiguredModel(request.modelConfig, {
-    input: prompt,
+  return createCharacterWorkflowFromPrompt({
+    ...request,
+    prompt,
     language,
+  })
+}
+
+async function createCharacterWorkflowFromPrompt(
+  request: CharacterWorkflowBuilderRequest & { prompt: string; language: CharacterWorkflowLanguage }
+): Promise<CharacterWorkflowBuilderResult> {
+  const now = request.now ?? Date.now()
+  const workId = `workflow-create-work-${now}`
+  await request.onEvent?.({ type: 'workflow-agent.started', mode: 'create', workId, objective: request.prompt, timestamp: now })
+  const response = await sendChatTurnWithConfiguredModel(request.modelConfig, {
+    input: request.prompt,
+    language: request.language,
     options: { temperature: 0.32, top_p: 0.82 },
     messages: [{
       role: 'system',
-      content: createWorkflowBuilderSystemPrompt(language),
+      content: createWorkflowBuilderSystemPrompt(request.language),
     }],
   })
   const content = await ensureUsefulWorkflowBuilderResponse({
     text: response.content,
     label: 'Workflow builder',
     request,
-    language,
-    systemPrompt: createWorkflowBuilderSystemPrompt(language),
-    sourceInput: prompt,
+    language: request.language,
+    systemPrompt: createWorkflowBuilderSystemPrompt(request.language),
+    sourceInput: request.prompt,
   })
 
-  const spec = normalizeWorkflowBuilderSpec(content, prompt, language)
+  const spec = normalizeWorkflowBuilderSpec(content, request.prompt, request.language)
   const workflow = createStandardCharacterWorkflow({
-    id: `character-workflow-${request.now ?? Date.now()}`,
+    id: `character-workflow-${now}`,
     name: spec.name,
-    language,
+    language: request.language,
     llmApiId: request.llmApiId,
     llmModelName: request.llmModelName,
     imageApiId: request.imageApiId,
@@ -148,11 +224,86 @@ export async function buildCharacterWorkflowFromPrompt(
     now: request.now,
   })
   applySpecToWorkflow(workflow, spec)
+  const validationSummary = validateCreatedCharacterWorkflow(workflow, spec, request.language)
+  const agentWork: CharacterWorkflowEditorAgentWork = {
+    id: workId,
+    mode: 'create',
+    objective: request.prompt,
+    status: spec.status === 'blocked' ? 'blocked' : spec.status === 'needs-user' ? 'needs-user' : 'complete',
+    plan: spec.plan,
+    completedSteps: [
+      request.language === 'zh-CN' ? '理解用户目标' : 'Understand user goal',
+      request.language === 'zh-CN' ? '生成标准角色资源图配置' : 'Generate standard character workflow configuration',
+      request.language === 'zh-CN' ? '校验必需资源链路' : 'Validate required resource links',
+    ],
+    currentStep: request.language === 'zh-CN' ? '完成初始资源图' : 'Finish initial resource graph',
+    nextStep: spec.status === 'needs-user' ? spec.summary : undefined,
+    steps: [
+      createWorkflowAgentStep({
+        now,
+        index: 1,
+        tool: 'inspect_graph',
+        userRequest: request.prompt,
+        summary: request.language === 'zh-CN' ? '已解析用户目标并确定角色资源图必须包含角色卡、开场、头像和总览图。' : 'Parsed the user goal and identified required role card, opening, avatar, and overview sheet resources.',
+        status: 'applied',
+        plan: spec.plan,
+        completedSteps: [],
+        currentStep: request.language === 'zh-CN' ? '理解用户目标' : 'Understand user goal',
+        nextStep: request.language === 'zh-CN' ? '生成资源图配置' : 'Generate workflow configuration',
+      }),
+      createWorkflowAgentStep({
+        now,
+        index: 2,
+        tool: 'edit_graph',
+        userRequest: request.prompt,
+        summary: spec.summary,
+        status: spec.status,
+        plan: spec.plan,
+        completedSteps: spec.plan.slice(0, 1),
+        currentStep: request.language === 'zh-CN' ? '生成资源图配置' : 'Generate workflow configuration',
+        nextStep: request.language === 'zh-CN' ? '校验资源图结构' : 'Validate workflow structure',
+        operations: spec.operations,
+        uiConfigOverrides: createUiConfigOverrides(spec),
+      }),
+      createWorkflowAgentStep({
+        now,
+        index: 3,
+        tool: spec.status === 'needs-user' ? 'ask_user' : 'validate_graph',
+        userRequest: request.prompt,
+        summary: validationSummary,
+        status: spec.status,
+        plan: spec.plan,
+        completedSteps: spec.plan,
+        currentStep: request.language === 'zh-CN' ? '校验资源图结构' : 'Validate workflow structure',
+        nextStep: spec.status === 'needs-user' ? spec.summary : undefined,
+      }),
+      createWorkflowAgentStep({
+        now,
+        index: 4,
+        tool: spec.status === 'needs-user' ? 'ask_user' : 'finish',
+        userRequest: request.prompt,
+        summary: spec.status === 'needs-user'
+          ? spec.summary
+          : request.language === 'zh-CN' ? '初始角色资源图已准备好，可以继续编辑或运行生成。' : 'Initial character workflow is ready to edit or run.',
+        status: spec.status,
+        plan: spec.plan,
+        completedSteps: spec.plan,
+        currentStep: request.language === 'zh-CN' ? '完成初始资源图' : 'Finish initial resource graph',
+      }),
+    ],
+    createdAt: now,
+    updatedAt: now,
+  }
+  for (const step of agentWork.steps) {
+    await request.onEvent?.({ type: 'workflow-agent.step', mode: 'create', workId, step, timestamp: step.createdAt })
+  }
+  await request.onEvent?.({ type: 'workflow-agent.completed', mode: 'create', work: agentWork, timestamp: agentWork.updatedAt })
 
   return {
     workflow,
     spec,
     uiConfigOverrides: createUiConfigOverrides(spec),
+    agentWork,
   }
 }
 
@@ -163,9 +314,161 @@ async function editCharacterWorkflowFromPrompt(
   if (!graph.nodes.length) {
     throw new Error('Workflow editor graph is empty')
   }
+  const agentWork = await runCharacterWorkflowEditorAgent(request, graph)
+  const lastStep = agentWork.steps[agentWork.steps.length - 1]
+  const aggregateOperations = agentWork.steps.flatMap((step) => step.operations)
+  const spec: CharacterWorkflowBuilderSpec = {
+    name: lastStep?.currentStep || deriveName(request.prompt, request.language === 'zh-CN' ? '资源图修改' : 'Workflow Edit'),
+    plan: agentWork.plan,
+    completedSteps: agentWork.completedSteps,
+    currentStep: agentWork.currentStep,
+    nextStep: agentWork.nextStep,
+    summary: summarizeEditorAgentWork(agentWork, request.language),
+    confidence: agentWork.status === 'blocked' ? 0.3 : agentWork.status === 'needs-user' ? 0.55 : 0.82,
+    status: agentWork.status === 'blocked' ? 'blocked' : agentWork.status === 'needs-user' ? 'needs-user' : 'applied',
+    goalPrompt: '',
+    targetAudience: '',
+    stylePrompt: '',
+    preset: 'custom',
+    intensity: 0.72,
+    mustHave: [],
+    mustNot: [],
+    sourceNotes: '',
+    generationStrategy: normalizeGenerationStrategy({}),
+    agentPolicy: normalizeAgentPolicy({}),
+    qualityGate: normalizeQualityGate({}),
+    assetTargets: DEFAULT_ASSET_TARGETS,
+    outputFormat: 'noema-role-chat',
+    operations: aggregateOperations,
+  }
+  return {
+    spec,
+    uiConfigOverrides: mergeEditorStepOverrides(agentWork.steps),
+    agentWork,
+  }
+}
+
+async function runCharacterWorkflowEditorAgent(
+  request: CharacterWorkflowBuilderRequest & { prompt: string; language: CharacterWorkflowLanguage },
+  initialGraph: CharacterWorkflowBuilderGraph
+): Promise<CharacterWorkflowEditorAgentWork> {
+  const now = request.now ?? Date.now()
+  const workId = `workflow-editor-work-${now}`
+  const session = request.editorSession
+  const objective = session?.objective?.trim() || request.prompt
+  await request.onEvent?.({ type: 'workflow-agent.started', mode: 'edit', workId, objective, timestamp: now })
+  let graph = initialGraph
+  let plan = [...(session?.plan ?? [])]
+  let completedSteps = [...(session?.completedSteps ?? [])]
+  let currentStep = session?.currentStep
+  let nextStep: string | undefined
+  const steps: CharacterWorkflowEditorAgentStep[] = []
+  const maxSteps = 4
+
+  for (let index = 0; index < maxSteps; index += 1) {
+    const stepSession: CharacterWorkflowEditorSession = {
+      objective,
+      plan,
+      completedSteps,
+      currentStep,
+      history: [
+        ...(session?.history ?? []),
+        ...steps.map((step) => ({
+          userRequest: step.userRequest,
+          summary: step.summary,
+          status: step.status,
+          operations: step.operations.length,
+        })),
+      ],
+    }
+    const spec = await executeCharacterWorkflowEditorStep({
+      ...request,
+      prompt: index === 0 ? request.prompt : nextStep || request.prompt,
+      editorSession: stepSession,
+      graph,
+    }, {
+      stepIndex: index,
+      maxSteps,
+      objective,
+    })
+    const uiConfigOverrides = createEditorUiConfigOverrides(spec, graph)
+    const step: CharacterWorkflowEditorAgentStep = {
+      id: `workflow-editor-step-${now}-${index + 1}`,
+      index: index + 1,
+      tool: spec.status === 'needs-user' ? 'ask_user' : spec.status === 'blocked' ? 'validate_graph' : 'edit_graph',
+      userRequest: index === 0 ? request.prompt : nextStep || request.prompt,
+      summary: spec.summary,
+      status: spec.status,
+      plan: spec.plan,
+      completedSteps: spec.completedSteps ?? [],
+      currentStep: spec.currentStep,
+      nextStep: spec.nextStep,
+      operations: spec.operations,
+      uiConfigOverrides,
+      createdAt: now + index,
+    }
+    steps.push(step)
+    await request.onEvent?.({ type: 'workflow-agent.step', mode: 'edit', workId, step, timestamp: step.createdAt })
+    plan = step.plan.length ? step.plan : plan
+    completedSteps = step.completedSteps.length ? step.completedSteps : completedSteps
+    currentStep = step.currentStep
+    nextStep = step.nextStep
+    graph = applyEditorOperationsToGraph(graph, step.operations)
+
+    if (step.status === 'blocked' || step.status === 'needs-user') {
+      break
+    }
+    if (!step.operations.length || !step.nextStep?.trim()) {
+      break
+    }
+  }
+
+  const lastStep = steps[steps.length - 1]
+  const exhausted = steps.length >= maxSteps && Boolean(lastStep?.nextStep?.trim())
+  const status: CharacterWorkflowEditorAgentWork['status'] = lastStep?.status === 'blocked'
+    ? 'blocked'
+    : lastStep?.status === 'needs-user'
+      ? 'needs-user'
+      : exhausted
+        ? 'needs-user'
+      : lastStep?.nextStep?.trim()
+        ? 'active'
+        : 'complete'
+  const work: CharacterWorkflowEditorAgentWork = {
+    id: workId,
+    mode: 'edit',
+    objective,
+    status,
+    plan,
+    completedSteps,
+    currentStep,
+    nextStep: status === 'complete' ? undefined : nextStep,
+    steps,
+    createdAt: now,
+    updatedAt: Date.now(),
+  }
+  await request.onEvent?.({ type: 'workflow-agent.completed', mode: 'edit', work, timestamp: work.updatedAt })
+  return work
+}
+
+async function executeCharacterWorkflowEditorStep(
+  request: CharacterWorkflowBuilderRequest & { prompt: string; language: CharacterWorkflowLanguage },
+  runtime: { stepIndex: number; maxSteps: number; objective: string }
+): Promise<CharacterWorkflowBuilderSpec> {
+  const graph = normalizeBuilderGraph(request.graph)
+  if (!graph.nodes.length) {
+    throw new Error('Workflow editor graph is empty')
+  }
   const response = await sendChatTurnWithConfiguredModel(request.modelConfig, {
     input: JSON.stringify({
+      objective: runtime.objective,
       userRequest: request.prompt,
+      editorSession: request.editorSession ?? null,
+      runtime: {
+        stepIndex: runtime.stepIndex + 1,
+        maxSteps: runtime.maxSteps,
+        remainingSteps: Math.max(0, runtime.maxSteps - runtime.stepIndex - 1),
+      },
       graph,
     }),
     language: request.language,
@@ -182,17 +485,19 @@ async function editCharacterWorkflowFromPrompt(
     language: request.language,
     systemPrompt: createWorkflowEditorSystemPrompt(request.language),
     sourceInput: JSON.stringify({
+      objective: runtime.objective,
       userRequest: request.prompt,
+      editorSession: request.editorSession ?? null,
+      runtime: {
+        stepIndex: runtime.stepIndex + 1,
+        maxSteps: runtime.maxSteps,
+      },
       graph,
     }),
     requireEditableOperations: true,
   })
 
-  const spec = normalizeWorkflowEditorSpec(content, request.prompt, request.language, graph)
-  return {
-    spec,
-    uiConfigOverrides: createEditorUiConfigOverrides(spec, graph),
-  }
+  return normalizeWorkflowEditorSpec(content, request.prompt, request.language, graph)
 }
 
 export function normalizeWorkflowBuilderSpec(
@@ -221,7 +526,7 @@ export function normalizeWorkflowBuilderSpec(
     qualityGate: normalizeQualityGate(recordValue(parsed, 'qualityGate')),
     assetTargets: stringList(parsed, 'assetTargets', DEFAULT_ASSET_TARGETS),
     outputFormat: normalizeOutputFormat(stringValue(parsed, 'outputFormat')),
-    operations: operationList(parsed?.operations),
+    operations: sanitizeWorkflowBuilderOperations(operationList(parsed?.operations), { nodes: [], edges: [] }),
   }
   if (!spec.assetTargets.includes('image-pack')) {
     spec.assetTargets = [...spec.assetTargets, 'image-pack']
@@ -240,18 +545,21 @@ export function normalizeWorkflowEditorSpec(
   const operations = operationList(parsed?.operations)
   const directUpdates = recordMapValue(parsed, 'nodeConfigUpdates')
   const normalizedGraph = normalizeBuilderGraph(graph)
-  const mergedUpdates = directUpdates
-  const mergedOperations = [
+  const mergedUpdates = Object.fromEntries(Object.entries(directUpdates).slice(0, 6))
+  const mergedOperations = sanitizeWorkflowBuilderOperations([
     ...Object.entries(mergedUpdates).map(([nodeId, config]) => ({
       type: 'update-node-config' as const,
       nodeId,
       config,
     })),
     ...operations,
-  ]
+  ], normalizedGraph).slice(0, 4)
   return {
     name: stringValue(parsed, 'name') || deriveName(fallbackPrompt, fallbackName),
     plan: stringList(parsed, 'plan', []),
+    completedSteps: stringList(parsed, 'completedSteps', []),
+    currentStep: stringValue(parsed, 'currentStep'),
+    nextStep: stringValue(parsed, 'nextStep'),
     summary: stringValue(parsed, 'summary'),
     confidence: numberValue(parsed, 'confidence', 0.78, 0, 1),
     status: normalizeBuilderStatus(stringValue(parsed, 'status')),
@@ -281,7 +589,7 @@ export function createUiConfigOverrides(spec: CharacterWorkflowBuilderSpec): Rec
     },
     'character-card-target': {
       includeFields: ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'firstMessage', 'dialogueStyle', 'worldContext'],
-      includeSupportFields: ['memoryStrategy', 'imagePrompt'],
+      includeSupportFields: ['visualIdentity', 'imagePrompt'],
     },
     'opening-field-target': {
       field: 'firstMessage',
@@ -292,15 +600,41 @@ export function createUiConfigOverrides(spec: CharacterWorkflowBuilderSpec): Rec
       lengthPolicy: 'medium',
       avoidPatterns: spec.mustNot,
     },
-    'image-target': {
+    'avatar-image-target': {
       imageRole: 'avatar',
+      assetPurpose: 'Identity-lock avatar.jpg: first generate one polished canonical portrait that later assets use as the character reference.',
     },
-    'image-control': {
+    'avatar-image-control': {
       targetImageCount: 1,
-      imageType: 'avatar',
-      composition: 'character-focused',
+      imageStylePreset: 'semi-realistic-anime',
+      stylePrompt: spec.stylePrompt,
+      shotType: 'bust',
+      aspectRatio: '1:1',
       consistencyMode: 'same-character',
+      seedMode: 'lock-character',
       negativePrompt: spec.mustNot.join(', '),
+    },
+    'overview-sheet-image-target': {
+      imageRole: 'character-overview-sheet',
+      assetPurpose: 'Large character asset overview sheet generated after avatar.jpg, using the avatar as identity reference and showing front/back/side, hairstyle, hands, legs, feet, outfit details, and expressions.',
+    },
+    'overview-sheet-image-control': {
+      targetImageCount: 1,
+      imageStylePreset: 'character-sheet',
+      stylePrompt: spec.stylePrompt,
+      shotType: 'full-body',
+      aspectRatio: '16:9',
+      consistencyMode: 'same-character',
+      seedMode: 'lock-character',
+      negativePrompt: [
+        spec.mustNot.join(', '),
+        'text, labels, watermark, logo, inconsistent face, deformed hands, extra fingers, missing fingers, bad feet, malformed legs, duplicate limbs',
+      ].filter(Boolean).join(', '),
+    },
+    'opening-layout-target': {
+      layoutKind: 'immersive-card-css',
+      includeSections: ['title', 'tags', 'opening', 'coverImage', 'supportImages'],
+      layoutPrompt: 'Create an immersive CSS-style opening card layout that combines the character title, tags, opening text, and generated images into one readable role-card presentation.',
     },
     'style-pressure': {
       preset: spec.preset,
@@ -370,9 +704,9 @@ function createWorkflowBuilderSystemPrompt(language: CharacterWorkflowLanguage):
     'You are the backend planner for a character resource graph builder.',
     'Convert the user brief into configuration for an autonomous character-card generation workflow.',
     localeRule,
-    'The final workflow must always generate a complete role card and at least one image asset.',
+    'The final workflow must always generate a complete role card, an opening layout target, and a two-stage character image workflow: first avatar.jpg identity lock, then a large character overview sheet using that avatar as reference.',
     'Do not write final character-card fields here. This is workflow configuration only.',
-    'For images, one image-target plus one image-generation-control represents exactly one image type and count. Do not use imageTypes arrays. If the brief needs avatar + body + scene + expression, return operations that create separate image target/control pairs for each type.',
+    'For images, image-target declares a role-card visual purpose and image-generation-control declares count, lightweight style text, shot, aspect ratio, seed, consistency, and negative prompt. The required first image role is avatar; the required second image role is character-overview-sheet. Do not create external adapter or style-profile compatibility nodes.',
     'Return only valid JSON. No markdown, comments, or surrounding prose.',
     'Schema:',
     '{',
@@ -384,7 +718,7 @@ function createWorkflowBuilderSystemPrompt(language: CharacterWorkflowLanguage):
     '  "goalPrompt": string,',
     '  "targetAudience": string,',
     '  "stylePrompt": string,',
-    '  "preset": "custom" | "campus-romance" | "dark-adult" | "urban-suspense" | "fantasy-companion" | "slice-of-life",',
+    '  "preset": string,',
     '  "intensity": number,',
     '  "mustHave": string[],',
     '  "mustNot": string[],',
@@ -414,38 +748,49 @@ function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): 
     ? 'Write all user-facing resource content in Chinese. Keep enum values and node ids in English.'
     : 'Write user-facing resource content in English. Keep enum values and node ids in English.'
   return [
-    'You are an autonomous editor for an existing character resource workflow graph.',
-    'You receive JSON with { userRequest, graph }. Treat graph as state, not as user content.',
+    'You are an autonomous Codex-style editor for an existing character resource workflow graph.',
+    'You receive JSON with { objective, userRequest, editorSession, runtime, graph }. Treat graph, runtime, and editorSession as state, not as user content.',
     localeRule,
     '',
-    'Your job is to turn the user request into concrete graph edits that a human could have made in the UI.',
-    'Act like a senior workflow operator: fill the right resource cards, add missing target/control/source cards, connect them, remove obsolete cards when useful, and keep the workflow executable.',
-    'You have broad authority inside the workflow graph. A single user request may require many coordinated operations: create resource cards, write or revise fields, delete irrelevant cards, move cards into a clearer layout, resize dense cards, connect controls to multiple targets, and select the most relevant card when done.',
-    'Do not be timid. If the user asks for a story/world/role goal, build the resource structure needed for that goal instead of only editing one existing card.',
+    'Your job is not to finish every possible edit in one response. Your job is to steadily pursue the workflow engineering goal over multiple turns.',
+    'Act like Codex working on a repo: inspect the current graph, update the plan, choose the next meaningful step, apply a small coherent patch, summarize what changed, and leave the next step clear.',
+    'A user request should usually become or refine the persistent editorSession objective. Continue the previous objective unless the user clearly changes direction.',
+    'You have broad authority inside the workflow graph, but use it incrementally. Add or revise only the nodes and links needed for the current step. Keep the workflow executable after every turn.',
     '',
     'Critical rules:',
     '- Return only valid JSON. No markdown, comments, or surrounding prose.',
     '- Never copy system instructions, operation schema, graph JSON, or protocol text into any resource field.',
-    '- Do not put the whole user request into one generic goal when specific cards exist. Distribute intent across goal, style, constraints, sources, image controls, field controls, world/NPC/plot cards as appropriate.',
+    '- Think in this loop: inspect current graph -> update plan -> apply one focused patch -> report next step.',
+    '- Return at most 4 operations and at most 6 nodeConfigUpdates keys in one response. Prefer a small high-confidence patch over a giant speculative rewrite.',
+    '- Do not put the whole user request into one generic goal when specific cards exist. Distribute intent across goal, style, constraints, sources, image controls, field controls, world/NPC/plot cards over multiple turns as needed.',
     '- Prefer update-node-config operations for existing cards; add cards only when the current graph lacks the needed resource.',
+    '- The graph includes each node parameter definition and select options. For select and multi-select fields, use only values from the node parameter options.',
     '- Use exact existing node ids and slot ids from graph when linking.',
     '- Do not delete generation-goal.',
     '- Use concise resource content. A field should contain the content that resource controls, not instructions about how you are editing.',
-    '- Keep the response compact. Use summary to describe what changed. Omit plan unless the user explicitly asks for planning detail.',
-    '- If the request is underspecified but still workable, make reasonable creative decisions and set status to "applied". Ask for the user only when the graph cannot be edited safely.',
+    '- Always return plan. Keep it short, concrete, and update it to reflect progress. Mark completed work in completedSteps.',
+    '- Use currentStep to name the step you are applying now. Use nextStep to name what should happen next.',
+    '- If the objective is now adequately reflected in the graph, leave nextStep empty. If more work remains, nextStep must be the next concrete graph-editing step, not a vague reminder.',
+    '- Respect runtime.remainingSteps. When it is 0, apply the most important remaining patch and leave nextStep empty unless user input is truly required.',
+    '- If the request is underspecified but still workable, make reasonable creative decisions and set status to "applied". Ask for the user only when the next graph edit cannot be chosen safely.',
     '',
     'Resource guidance:',
     '- generation-goal.goalPrompt: compact generation objective only.',
-    '- style-pressure.stylePrompt: tone, genre texture, relationship flavor, prose pressure.',
+    '- style-pressure.preset: choose a prose/RP style preset such as plain-natural-rp, immersive-second-person, slow-burn-romance, hurt-comfort, gothic-romance-prose, dark-adult-drama, cyberpunk-noir, psychological-thriller, sillytavern-natural-card, ali-chat-dialogue-samples, or longform-novelistic-rp.',
+    '- style-pressure.stylePrompt: concrete English prose control text covering tone, genre texture, relationship flavor, sentence rhythm, narration style, and roleplay pacing.',
     '- hard-constraints.mustHave/mustNot: hard requirements and boundaries.',
     '- source-material.notes: concrete story material, setting facts, character seeds, world facts.',
     '- field-generation-control.fieldPurpose: local intent for one text field such as firstMessage/opening/dialogue style.',
-    '- image-generation-control: image count and one imageType only, composition, consistencyMode, negativePrompt.',
-    '- One image-target plus one image-generation-control represents exactly one image type. For avatar + body + scene + expression, create four image-target/image-generation-control pairs and connect each pair.',
+    '- opening-layout-target: use this for the CSS/HTML-style role-card opening presentation that combines title, tags, opening text, and generated images.',
+    '- image-target.imageRole: choose the role-card visual purpose from options such as avatar, character-overview-sheet, hero-cover, full-body, opening-moment, story-moment, expression, outfit-detail, relationship-moment, or world-context. Do not use scene as a standalone image type.',
+    '- image-target.assetPurpose: what this exact image should communicate and which story/text field it supports.',
+    '- image-generation-control: image count, imageStylePreset, concise stylePrompt, shotType, aspectRatio, consistencyMode, seedMode, negativePrompt. Never put imageType or composition here.',
+    '- For character resources, prefer the staged asset workflow: avatar first as identity lock, character-overview-sheet second as a large model/reference sheet using the avatar identity. Additional pictures should be separate image-target nodes when they serve different card/story purposes, and/or image-generation-control.targetImageCount for variants.',
+    '- Do not connect hard-constraint nodes directly into image-target. Put image-specific exclusions in image-generation-control.negativePrompt.',
     '- world-card-target / npc-pack-target / npc-target / plot-arc-target / scene-card-target: add these when the request asks for multi-NPC, world, setting, story arc, or scene planning.',
     '',
     'Valid node types:',
-    'goal, character-card-target, character-field-target, image-target, world-card-target, npc-pack-target, npc-target, plot-arc-target, scene-card-target, style-pressure, constraint, image-generation-control, field-generation-control, continuity-control, relationship-control, source-material, llm-tool, image-tool, retrieval-tool, voice-tool, agent-policy, generation-strategy, critique-loop, quality-gate, output-adapter.',
+    'goal, character-card-target, character-field-target, opening-layout-target, image-target, world-card-target, npc-pack-target, npc-target, plot-arc-target, scene-card-target, style-pressure, constraint, image-generation-control, field-generation-control, continuity-control, relationship-control, source-material, llm-tool, image-tool, retrieval-tool, voice-tool, agent-policy, generation-strategy, critique-loop, quality-gate, output-adapter.',
     '',
     'Valid link kinds:',
     'guides, constrains, provides, enables, grounds, weights, routes, evaluates, refines, exports.',
@@ -454,6 +799,10 @@ function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): 
     '{',
     '  "name"?: string,',
     '  "summary": string,',
+    '  "plan": string[],',
+    '  "completedSteps"?: string[],',
+    '  "currentStep"?: string,',
+    '  "nextStep"?: string,',
     '  "confidence"?: number,',
     '  "status": "applied" | "needs-user" | "blocked",',
     '  "nodeConfigUpdates"?: { [nodeId: string]: object },',
@@ -472,6 +821,182 @@ function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): 
     '',
     'For ordinary field edits, prefer nodeConfigUpdates to save tokens. Use operations for add/move/delete/select/link actions.',
   ].join('\n')
+}
+
+function summarizeEditorAgentWork(
+  work: CharacterWorkflowEditorAgentWork,
+  language: CharacterWorkflowLanguage
+): string {
+  const zh = language === 'zh-CN'
+  const summaries = work.steps.map((step) => step.summary).filter(Boolean)
+  const editCount = work.steps.reduce((total, step) => total + step.operations.length + Object.keys(step.uiConfigOverrides).length, 0)
+  const prefix = zh
+    ? `Agent 已执行 ${work.steps.length} 个步骤，应用 ${editCount} 项资源图修改。`
+    : `Agent ran ${work.steps.length} steps and applied ${editCount} workflow edits.`
+  return [prefix, ...summaries.slice(-3)].join(zh ? '\n' : '\n')
+}
+
+function createWorkflowAgentStep(options: {
+  now: number
+  index: number
+  tool: CharacterWorkflowAgentToolAction
+  userRequest: string
+  summary: string
+  status: CharacterWorkflowBuilderSpec['status']
+  plan: string[]
+  completedSteps: string[]
+  currentStep?: string
+  nextStep?: string
+  operations?: CharacterWorkflowBuilderOperation[]
+  uiConfigOverrides?: Record<string, Record<string, unknown>>
+}): CharacterWorkflowEditorAgentStep {
+  return {
+    id: `workflow-agent-step-${options.now}-${options.index}`,
+    index: options.index,
+    tool: options.tool,
+    userRequest: options.userRequest,
+    summary: options.summary,
+    status: options.status,
+    plan: options.plan,
+    completedSteps: options.completedSteps,
+    currentStep: options.currentStep,
+    nextStep: options.nextStep,
+    operations: options.operations ?? [],
+    uiConfigOverrides: options.uiConfigOverrides ?? {},
+    createdAt: options.now + options.index,
+  }
+}
+
+function validateCreatedCharacterWorkflow(
+  workflow: CharacterWorkflow,
+  spec: CharacterWorkflowBuilderSpec,
+  language: CharacterWorkflowLanguage
+): string {
+  const requiredNodeIds = [
+    'generation-goal',
+    'character-card-target',
+    'opening-field-target',
+    'avatar-image-target',
+    'avatar-image-control',
+    'overview-sheet-image-target',
+    'overview-sheet-image-control',
+    'opening-layout-target',
+    'quality-gate',
+    'output-adapter',
+  ]
+  const missing = requiredNodeIds.filter((id) => !workflow.nodes.some((node) => node.id === id))
+  const hasAvatarLink = workflow.edges.some((edge) => edge.from.nodeId === 'avatar-image-target' || edge.to.nodeId === 'avatar-image-target')
+  const hasOverviewLink = workflow.edges.some((edge) => edge.from.nodeId === 'overview-sheet-image-target' || edge.to.nodeId === 'overview-sheet-image-target')
+  const issues = [
+    ...missing.map((id) => `missing node ${id}`),
+    ...(hasAvatarLink ? [] : ['avatar image target is not linked']),
+    ...(hasOverviewLink ? [] : ['overview sheet image target is not linked']),
+    ...(spec.outputFormat === 'noema-role-chat' ? [] : ['output format is not noema-role-chat']),
+  ]
+  if (!issues.length) {
+    return language === 'zh-CN'
+      ? '资源图结构校验通过：角色卡、开场白、avatar.jpg、overview sheet、质量门和导出链路均已配置。'
+      : 'Workflow structure validated: role card, opening, avatar.jpg, overview sheet, quality gate, and export path are configured.'
+  }
+  return language === 'zh-CN'
+    ? `资源图结构存在问题：${issues.join('；')}`
+    : `Workflow structure has issues: ${issues.join('; ')}`
+}
+
+function mergeEditorStepOverrides(
+  steps: CharacterWorkflowEditorAgentStep[]
+): Record<string, Record<string, unknown>> {
+  const merged: Record<string, Record<string, unknown>> = {}
+  for (const step of steps) {
+    for (const [nodeId, config] of Object.entries(step.uiConfigOverrides)) {
+      merged[nodeId] = {
+        ...(merged[nodeId] ?? {}),
+        ...config,
+      }
+    }
+  }
+  return merged
+}
+
+function applyEditorOperationsToGraph(
+  graph: CharacterWorkflowBuilderGraph,
+  operations: CharacterWorkflowBuilderOperation[]
+): CharacterWorkflowBuilderGraph {
+  let next = normalizeBuilderGraph(graph)
+  for (const operation of operations) {
+    if (operation.type === 'add-node') {
+      const nodeId = operation.nodeId?.trim() || `${operation.nodeType}-${next.nodes.length + 1}`
+      if (!next.nodes.some((node) => node.id === nodeId)) {
+        const definition = STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS.find((item) => item.type === operation.nodeType)
+        next = {
+          ...next,
+          selectedNodeId: nodeId,
+          nodes: [
+            ...next.nodes,
+            {
+              id: nodeId,
+              type: operation.nodeType,
+              title: operation.title || definition?.title || operation.nodeType,
+              config: sanitizeResourceConfigForNode(operation.nodeType, operation.config ?? {}),
+              inputs: Object.keys(definition?.inputs ?? {}),
+              outputs: Object.keys(definition?.outputs ?? {}),
+            },
+          ],
+        }
+      }
+    } else if (operation.type === 'update-node-config') {
+      next = {
+        ...next,
+        selectedNodeId: operation.nodeId,
+        nodes: next.nodes.map((node) => (
+          node.id === operation.nodeId
+            ? {
+                ...node,
+                config: {
+                  ...(node.config ?? {}),
+                  ...sanitizeResourceConfigForNode(node.type, operation.config),
+                },
+              }
+            : node
+        )),
+      }
+    } else if (operation.type === 'delete-node') {
+      if (operation.nodeId === 'generation-goal') {
+        continue
+      }
+      next = {
+        ...next,
+        selectedNodeId: next.selectedNodeId === operation.nodeId ? 'generation-goal' : next.selectedNodeId,
+        nodes: next.nodes.filter((node) => node.id !== operation.nodeId),
+        edges: next.edges.filter((edge) => edge.from.nodeId !== operation.nodeId && edge.to.nodeId !== operation.nodeId),
+      }
+    } else if (operation.type === 'select-node') {
+      next = { ...next, selectedNodeId: operation.nodeId }
+    } else if (operation.type === 'add-link') {
+      const linkId = `${operation.sourceNodeId}:${operation.sourceSlotId}->${operation.targetNodeId}:${operation.targetSlotId}`
+      if (!next.edges.some((edge) => edge.id === linkId)) {
+        next = {
+          ...next,
+          edges: [
+            ...next.edges,
+            {
+              id: linkId,
+              from: { nodeId: operation.sourceNodeId, port: operation.sourceSlotId },
+              to: { nodeId: operation.targetNodeId, port: operation.targetSlotId },
+              kind: operation.kind ?? 'guides',
+            },
+          ],
+        }
+      }
+    } else if (operation.type === 'delete-link') {
+      const linkId = operation.linkId || `${operation.sourceNodeId ?? ''}:${operation.sourceSlotId ?? ''}->${operation.targetNodeId ?? ''}:${operation.targetSlotId ?? ''}`
+      next = {
+        ...next,
+        edges: next.edges.filter((edge) => edge.id !== linkId),
+      }
+    }
+  }
+  return next
 }
 
 function applySpecToWorkflow(workflow: CharacterWorkflow, spec: CharacterWorkflowBuilderSpec): void {
@@ -505,7 +1030,7 @@ function applySpecToWorkflow(workflow: CharacterWorkflow, spec: CharacterWorkflo
   })
   byType.get('character-card-target')?.config && Object.assign(byType.get('character-card-target')!.config, {
     includeFields: ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'firstMessage', 'dialogueStyle', 'worldContext'],
-    includeSupportFields: ['memoryStrategy', 'imagePrompt'],
+    includeSupportFields: ['visualIdentity', 'imagePrompt'],
   })
   byType.get('character-field-target')?.config && Object.assign(byType.get('character-field-target')!.config, {
     field: 'firstMessage',
@@ -515,15 +1040,54 @@ function applySpecToWorkflow(workflow: CharacterWorkflow, spec: CharacterWorkflo
     tone: '',
     avoidPatterns: spec.mustNot,
   })
-  byType.get('image-target')?.config && Object.assign(byType.get('image-target')!.config, {
+  const avatarTarget = workflow.nodes.find((node) => node.id === 'avatar-image-target')
+  avatarTarget?.config && Object.assign(avatarTarget.config, {
     imageRole: 'avatar',
+    assetPurpose: [
+      'Generate avatar.jpg first as the canonical identity-lock portrait.',
+      'Quality should match a polished production character avatar: clear face, strong appeal, stable hair/eye/body identity cues, and no collage layout.',
+      'This image becomes the reference for later character assets.',
+    ].join(' '),
   })
-  byType.get('image-generation-control')?.config && Object.assign(byType.get('image-generation-control')!.config, {
+  const avatarControl = workflow.nodes.find((node) => node.id === 'avatar-image-control')
+  avatarControl?.config && Object.assign(avatarControl.config, {
     targetImageCount: 1,
-    imageType: 'avatar',
-    composition: 'character-focused',
+    imageStylePreset: 'semi-realistic-anime',
+    stylePrompt: spec.stylePrompt,
+    shotType: 'bust',
+    aspectRatio: '1:1',
     consistencyMode: 'same-character',
+    seedMode: 'lock-character',
     negativePrompt: spec.mustNot.join(', '),
+  })
+  const overviewTarget = workflow.nodes.find((node) => node.id === 'overview-sheet-image-target')
+  overviewTarget?.config && Object.assign(overviewTarget.config, {
+    imageRole: 'character-overview-sheet',
+    assetPurpose: [
+      'Generate one very large character asset overview sheet after avatar.jpg.',
+      'Use the avatar as the identity reference.',
+      'Show a clean model-sheet composition with front view, back view, side or three-quarter view, hairstyle detail, hands, legs, feet or shoes, outfit/material details, and expression callouts.',
+      'The sheet is for production reference, not a social cover.',
+    ].join(' '),
+  })
+  const overviewControl = workflow.nodes.find((node) => node.id === 'overview-sheet-image-control')
+  overviewControl?.config && Object.assign(overviewControl.config, {
+    targetImageCount: 1,
+    imageStylePreset: 'character-sheet',
+    stylePrompt: spec.stylePrompt,
+    shotType: 'full-body',
+    aspectRatio: '16:9',
+    consistencyMode: 'same-character',
+    seedMode: 'lock-character',
+    negativePrompt: [
+      spec.mustNot.join(', '),
+      'text, labels, watermark, logo, inconsistent face, duplicate character identity, deformed hands, extra fingers, missing fingers, bad feet, malformed legs, duplicate limbs',
+    ].filter(Boolean).join(', '),
+  })
+  byType.get('opening-layout-target')?.config && Object.assign(byType.get('opening-layout-target')!.config, {
+    layoutKind: 'immersive-card-css',
+    includeSections: ['title', 'tags', 'opening', 'coverImage', 'supportImages'],
+    layoutPrompt: 'Create an immersive CSS-style opening card layout that combines the character title, tags, opening text, and generated images into one readable role-card presentation.',
   })
   byType.get('quality-gate')?.config && Object.assign(byType.get('quality-gate')!.config, {
     ...spec.qualityGate,
@@ -607,7 +1171,7 @@ async function ensureUsefulWorkflowBuilderResponse(options: {
   if (stringValue(parsed, 'status') === 'blocked') {
     throw new Error(stringValue(parsed, 'summary') || `${options.label} reported that the request is blocked.`)
   }
-  if (options.requireEditableOperations && !hasWorkflowEditorEdits(parsed)) {
+  if (options.requireEditableOperations && stringValue(parsed, 'status') !== 'needs-user' && !hasWorkflowEditorEdits(parsed)) {
     throw new Error(`${options.label} returned valid JSON but no editable graph operations.`)
   }
   return content
@@ -820,24 +1384,57 @@ function normalizeBuilderStatus(value: string): CharacterWorkflowBuilderSpec['st
 
 function sanitizeResourceConfigForNode(type: string | undefined, config: Record<string, unknown>): Record<string, unknown> {
   if (!type) return config
-  const allowedByType: Record<string, Set<string>> = {
-    goal: new Set(['goalPrompt', 'targetAudience', 'allowAgentExpansion']),
-    'style-pressure': new Set(['preset', 'intensity', 'stylePrompt']),
-    constraint: new Set(['mustHave', 'mustNot', 'hardBoundary']),
-    'source-material': new Set(['sourceKind', 'notes']),
-    'field-generation-control': new Set(['fieldPurpose', 'tone', 'lengthPolicy', 'avoidPatterns']),
-    'image-generation-control': new Set(['targetImageCount', 'imageType', 'composition', 'consistencyMode', 'negativePrompt']),
-    'generation-strategy': new Set(['mode', 'branchCount', 'priorityAssets']),
-    'agent-policy': new Set(['autonomyLevel', 'revisionBudget', 'askUserThreshold', 'canExpandMissingDetails']),
-    'quality-gate': new Set(['minimumScore', 'blockExport', 'requiredChecks']),
-    'output-adapter': new Set(['format', 'includeAssets']),
-    'character-card-target': new Set(['includeFields', 'includeSupportFields']),
-    'character-field-target': new Set(['field']),
-    'image-target': new Set(['imageRole']),
+  const definition = STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS.find((item) => item.type === type)
+  if (!definition) return config
+  const parameters = new Map(definition.parameters.map((parameterItem) => [parameterItem.id, parameterItem]))
+  return Object.fromEntries(Object.entries(config).flatMap(([key, value]) => {
+    const parameterItem = parameters.get(key)
+    if (!parameterItem) return []
+    const sanitized = sanitizeWorkflowParameterValue(parameterItem, value)
+    return sanitized === undefined ? [] : [[key, sanitized]]
+  }))
+}
+
+function sanitizeWorkflowBuilderOperations(
+  operations: CharacterWorkflowBuilderOperation[],
+  graph: CharacterWorkflowBuilderGraph
+): CharacterWorkflowBuilderOperation[] {
+  const nodeTypes = new Map(graph.nodes.map((node) => [node.id, node.type]))
+  return operations.flatMap((operation): CharacterWorkflowBuilderOperation[] => {
+    if (operation.type === 'add-node') {
+      const config = sanitizeResourceConfigForNode(operation.nodeType, operation.config ?? {})
+      return [{ ...operation, config }]
+    }
+    if (operation.type === 'update-node-config') {
+      const config = sanitizeResourceConfigForNode(nodeTypes.get(operation.nodeId), operation.config)
+      return Object.keys(config).length ? [{ ...operation, config }] : []
+    }
+    return [operation]
+  })
+}
+
+function sanitizeWorkflowParameterValue(
+  parameterItem: CharacterWorkflowNodeParameter,
+  value: unknown
+): unknown {
+  if (parameterItem.type === 'select' || parameterItem.type === 'model-select') {
+    if (typeof value !== 'string') return undefined
+    if (!parameterItem.options?.length) return value
+    return parameterItem.options.some((optionItem) => optionItem.value === value) ? value : undefined
   }
-  const allowed = allowedByType[type]
-  if (!allowed) return config
-  return Object.fromEntries(Object.entries(config).filter(([key]) => allowed.has(key)))
+  if (parameterItem.type === 'multi-select') {
+    const values = Array.isArray(value)
+      ? value.map((item) => String(item).trim()).filter(Boolean)
+      : typeof value === 'string'
+        ? value.split(',').map((item) => item.trim()).filter(Boolean)
+        : []
+    if (!values.length) return undefined
+    if (!parameterItem.options?.length) return values
+    const allowed = new Set(parameterItem.options.map((optionItem) => optionItem.value))
+    const filtered = values.filter((item) => allowed.has(item))
+    return filtered.length ? filtered : undefined
+  }
+  return value
 }
 
 function isCharacterNodeType(value: string): value is CharacterNodeType {
@@ -845,6 +1442,7 @@ function isCharacterNodeType(value: string): value is CharacterNodeType {
     'goal',
     'character-card-target',
     'character-field-target',
+    'opening-layout-target',
     'image-target',
     'world-card-target',
     'npc-pack-target',
@@ -902,7 +1500,10 @@ function normalizeGenerationStrategy(record: Record<string, unknown>): Character
   return {
     mode: allowedMode.has(mode) ? mode : 'branch-and-refine',
     branchCount: Math.round(numberValue(record, 'branchCount', 3, 1, 8)),
-    priorityAssets: priorityAssets.includes('image-pack') ? priorityAssets : [...priorityAssets, 'image-pack'],
+    priorityAssets: ['opening-layout', 'image-pack'].reduce(
+      (assets, asset) => assets.includes(asset) ? assets : [...assets, asset],
+      priorityAssets
+    ),
   }
 }
 

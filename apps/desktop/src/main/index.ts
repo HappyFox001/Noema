@@ -128,6 +128,7 @@ import {
 import { registerChatRoleResourceIpcHandlers, registerChatRoleResourceProtocol } from './chat-role-resource-ipc-handlers.js'
 import { registerChatIpcHandlers } from './chat-ipc-handlers.js'
 import { ChatHistoryStore } from './chat-history-store.js'
+import { CharacterWorkflowStore } from './character-workflow-store.js'
 import { registerConversationIpcHandlers } from './conversation-ipc-handlers.js'
 import { registerModelIpcHandlers } from './model-ipc-handlers.js'
 import { registerPersonalityIpcHandlers } from './personality-ipc-handlers.js'
@@ -1688,6 +1689,12 @@ function getChatHistoryStore(): ChatHistoryStore {
   return chatHistoryStore
 }
 
+let characterWorkflowStore: CharacterWorkflowStore | null = null
+function getCharacterWorkflowStore(): CharacterWorkflowStore {
+  characterWorkflowStore ??= new CharacterWorkflowStore(join(getStorageDir(), 'character-workflows.sqlite3'))
+  return characterWorkflowStore
+}
+
 registerChatRoleResourceIpcHandlers(ipcMain)
 registerChatIpcHandlers(ipcMain, {
   getModelConfig: getChatModelConfig,
@@ -1695,6 +1702,7 @@ registerChatIpcHandlers(ipcMain, {
   getProxyUrl: () => activeProxyUrl,
   getMainWindow: () => mainWindow,
   getChatHistoryStore,
+  getCharacterWorkflowStore,
 })
 registerPluginIpcHandlers(ipcMain, {
   getMainWindow: () => mainWindow,

@@ -8,8 +8,10 @@ import {
   CHARACTER_SUPPORT_FIELD_SCHEMA,
   createCharacterAgentToolRuntime,
   type AgentToolDefinition,
+  type CharacterAgentImageTargetPrompt,
   type AgentImageGenerationControl,
   type AgentTargetContext,
+  type CharacterCardDraft,
   type CharacterAgentArtifact,
   type CharacterAgentArtifactKind,
   type CharacterAgentModelConfig,
@@ -86,7 +88,7 @@ export function createConfiguredCharacterAgentToolRuntime(
         let imageArtifacts: CharacterAgentArtifact[] = []
         let errorMessage = ''
         try {
-          imageArtifacts = await maybeGenerateImageArtifacts(context, models, options.proxyUrl, candidateId, source.prompt)
+          imageArtifacts = await maybeGenerateImageArtifacts(context, models, options.proxyUrl, candidateId, source)
         } catch (error) {
           errorMessage = error instanceof Error ? error.message : String(error)
         }
@@ -97,7 +99,7 @@ export function createConfiguredCharacterAgentToolRuntime(
           errorMessage ? 'Image Generation Failed' : 'Image Generation Skipped',
           {
             summary: errorMessage || 'Image generation did not run. Check that an image model is configured, enabled, and selected.',
-            prompt: source.prompt,
+            targetPrompts: source.targetPrompts,
             imageModels: models.filter((model) => model.modelType === 'image').map((model) => ({
               id: model.id,
               provider: model.provider,
@@ -213,14 +215,25 @@ function createCharacterDecisionPrompt(
     '    <field_content_rule>Every set_field value must be final character-card content, not a prompt, not a plan, and not a resource-control description.</field_content_rule>',
     '    <field_content_rule>Never write labels such as "Style:", "Goal:", "Field purpose:", "target atmosphere", XML tag names, or operation instructions inside character fields.</field_content_rule>',
     '    <field_content_rule>description must describe who the character is and why they are appealing for RP. appearance must describe visible body/outfit/expression cues. Do not describe the generation target itself.</field_content_rule>',
+    '    <role_chat_format_rule>firstMessage is the runnable opening turn for the role chat. It must be final in-character scene text wrapped exactly once as <chat>...</chat>.</role_chat_format_rule>',
+    '    <role_chat_format_rule>Inside <chat>, write the opening scene as immersive RP prose with the character present, a concrete situation, sensory details, and a clear hook for the user to respond. Do not include analysis, labels, markdown, or setup notes.</role_chat_format_rule>',
+    '    <role_chat_format_rule>dialogueStyle must describe how the character speaks during chat, not the opening scene. scenario must define the persistent RP situation. worldContext must carry stable world facts.</role_chat_format_rule>',
     '    <progressive_rule>Return exactly one action. Generate or reroll one field at a time. Do not fill the whole card in one response.</progressive_rule>',
-    '    <progressive_rule>If a field target is missing, return set_field for the earliest missing field in fixed_schema order and obey that target local XML controls. Only request_image after imagePrompt exists.</progressive_rule>',
+    '    <progressive_rule>If a field target is missing, return set_field for the earliest missing field in fixed_schema order and obey that target local XML controls. Only request_image after visualIdentity and imagePrompt exist.</progressive_rule>',
+    '    <image_rule>For character resource images, request avatar first and character-overview-sheet second. The runtime will use the generated avatar as the reference image for the overview sheet when the provider supports image editing/reference generation.</image_rule>',
+    '    <image_rule>The avatar prompt must be production-grade: one character only, clear face, strong appeal, stable hair/eye/body identity cues, polished avatar.jpg quality, no collage, no labels, no full reference sheet.</image_rule>',
+    '    <image_rule>The character-overview-sheet prompt must be a very large model/reference sheet: front view, back view, side or three-quarter view, hairstyle detail, hands, legs, feet/shoes, outfit/material details, and expression callouts. Do not ask for written labels; use clean visual panels only.</image_rule>',
+    '    <image_rule>Every targetPrompts prompt must begin with the same compact visual identity bible: age impression, face shape, eye shape/color, nose/lips, hairstyle/color/length, body type/proportions, skin tone, signature accessory or motif, and style domain (photoreal/anime/etc.).</image_rule>',
+    '    <image_rule>When requesting images, create one targetPrompts item per final image, not just per image target. If an image target requests multiple images through image_control count, return multiple distinct prompts for the same targetNodeId.</image_rule>',
+    '    <image_rule>All images for the same role card must share a clear identity anchor: face structure, hair, eyes, age impression, body type, signature accessories, and outfit language. Vary pose, shot, background, mood, lighting, and story function.</image_rule>',
+    '    <image_rule>Each targetPrompts prompt must be specific to that exact image slot, image_role, local image_control, and the text field or story beat it supports. Do not rely on the image tool to duplicate or vary one generic prompt.</image_rule>',
+    '    <image_rule>Do not request pure empty scene images. Every image should contain the character or unmistakable character-linked visual motifs, and should support the role card text, opening, story, relationship, or layout.</image_rule>',
     '    <allowed_actions>',
     '      <action name="set_field">{"type":"set_field","field":"name","value":"...","reason":"..."}</action>',
-    '      <action name="request_image">{"type":"request_image","prompt":"...","title":"Character Image"}</action>',
+    '      <action name="request_image">{"type":"request_image","targetPrompts":[{"targetNodeId":"avatar-image-target","title":"avatar.jpg","prompt":"target-specific English image prompt"},{"targetNodeId":"overview-sheet-image-target","title":"character overview sheet","prompt":"target-specific English image prompt"}]}</action>',
     '      <action name="finish">{"type":"finish","reason":"..."}</action>',
     '    </allowed_actions>',
-    '    <completion_rule>Set done=true only after all fixed character fields and support fields are filled. Always produce imagePrompt and request_image.</completion_rule>',
+    '    <completion_rule>Set done=true only after all fixed character fields and support fields are filled. Always produce visualIdentity, imagePrompt, and request_image.</completion_rule>',
     '  </action_contract>',
     '</character_agent_prompt>',
   ].join('\n')
@@ -237,7 +250,7 @@ function createCharacterReviewPrompt(context: CharacterAgentRunContext, input: u
     `    <block_export>${context.qualityGate.blockExport}</block_export>`,
     `    <required_checks>${xmlEscape(context.qualityGate.requiredChecks.join(', '))}</required_checks>`,
     '    <must_check>All fixed character fields are present, concrete, and belong to the character rather than the agent.</must_check>',
-    '    <must_check>Supporting resources include memoryStrategy and imagePrompt; if an image model is configured, image readiness must be judged.</must_check>',
+    '    <must_check>Supporting resources include imagePrompt; if an image model is configured, image readiness must be judged.</must_check>',
     '    <must_check>Hard constraints are respected. Style pressures are visible but not copied mechanically.</must_check>',
     '    <output_format>Return JSON only with keys: score, passed, summary, checks, blockingIssues, repairSuggestions.</output_format>',
     '  </review_contract>',
@@ -256,7 +269,8 @@ function createSchemaXml(): string {
     ...CHARACTER_SUPPORT_FIELD_SCHEMA.map((field) => `      <field name="${field}" required="true">${xmlEscape(supportFieldDescription(field))}</field>`),
     '    </support_fields>',
     '    <rule>Do not invent new top-level required fields. Use extra details inside the fixed fields when needed.</rule>',
-    '    <rule>imagePrompt is for the image model, not a visible character-card field.</rule>',
+    '    <rule>visualIdentity is the stable visual bible for all character images: age impression, face, eyes, hair, body proportions, skin tone, outfit language, signature motifs, and hard visual negatives.</rule>',
+    '    <rule>imagePrompt is for the image model, not a visible character-card field. It must be derived from visualIdentity and the concrete image targets.</rule>',
     '  </fixed_schema>',
   ].join('\n')
 }
@@ -285,7 +299,7 @@ function createResourceContextXml(context: CharacterAgentRunContext): string {
       ...target.fieldControls.map((item) => `          <field_control node="${xmlEscape(item.nodeId)}" tone="${xmlEscape(item.tone)}" length="${xmlEscape(item.lengthPolicy)}" avoid="${xmlEscape(item.avoidPatterns.join('; '))}">${xmlEscape(item.fieldPurpose)}</field_control>`),
       '        </field_controls>',
       '        <image_controls>',
-      ...target.imageControls.map((item) => `          <image_control node="${xmlEscape(item.nodeId)}" count="${item.targetImageCount}" type="${xmlEscape(item.imageType)}" composition="${xmlEscape(item.composition)}" consistency="${xmlEscape(item.consistencyMode)}" negative="${xmlEscape(item.negativePrompt)}" />`),
+      ...target.imageControls.flatMap(renderImageControlContextXml),
       '        </image_controls>',
       '        <continuity_controls>',
       ...target.continuityControls.map((item) => `          <continuity_control node="${xmlEscape(item.nodeId)}" pacing="${xmlEscape(item.progressionPacing)}" forbid_resetting_facts="${item.forbidResettingFacts}" anchors="${xmlEscape(item.memoryAnchors.join('; '))}" />`),
@@ -350,6 +364,12 @@ function createResourceContextXml(context: CharacterAgentRunContext): string {
   ].join('\n')
 }
 
+function renderImageControlContextXml(control: AgentImageGenerationControl): string[] {
+  return [
+    `          <image_control node="${xmlEscape(control.nodeId)}" count="${control.targetImageCount}" preset="${xmlEscape(control.imageStylePreset)}" style="${xmlEscape(control.stylePrompt)}" shot="${xmlEscape(control.shotType)}" aspect_ratio="${xmlEscape(control.aspectRatio)}" consistency="${xmlEscape(control.consistencyMode)}" seed="${xmlEscape(control.seedMode)}" negative="${xmlEscape(control.negativePrompt)}" />`,
+  ]
+}
+
 function characterFieldDescription(field: string): string {
   const descriptions: Record<string, string> = {
     name: 'Character name shown to the user.',
@@ -367,7 +387,7 @@ function characterFieldDescription(field: string): string {
 
 function supportFieldDescription(field: string): string {
   const descriptions: Record<string, string> = {
-    memoryStrategy: 'Runtime memory behavior for long-form roleplay continuity.',
+    visualIdentity: 'Stable visual bible for all generated character images; include face, hair, eyes, proportions, skin tone, signature motifs, style domain, and visual negatives.',
     imagePrompt: 'Prompt for the image model; this is not shown as a character-card field.',
   }
   return descriptions[field] ?? field
@@ -436,45 +456,46 @@ async function maybeGenerateImageArtifacts(
   models: CharacterAgentConfiguredModel[],
   proxyUrl: string | undefined,
   candidateId: string,
-  prompt: unknown
+  input: unknown
 ): Promise<CharacterAgentArtifact[]> {
-  const promptText = typeof prompt === 'string' ? prompt.trim() : ''
+  const source = input && typeof input === 'object' ? input as Record<string, unknown> : {}
   const capability = context.capabilities.imageModels[0]
-  if (!promptText) {
-    return []
-  }
   const configuredModel = capability
     ? models.find((model) => model.modelType === 'image' && model.id === capability.apiId)
     : models.find((model) => model.modelType === 'image')
   if (!configuredModel) {
-    return []
+    throw new Error('No image model is configured for character workflow image generation')
   }
   if (!configuredModel.apiKey?.trim()) {
-    return []
+    throw new Error(`Character workflow image API key is empty for ${configuredModel.id}`)
   }
   const modelName = capability?.modelName?.trim() || configuredModel.modelName?.trim() || configuredModel.enabledModels?.[0]?.trim()
   if (!modelName) {
-    return []
+    throw new Error(`Character workflow image model name is empty for ${configuredModel.id}`)
   }
   const imageTargets = context.targets.filter((target) => target.kind === 'image')
-  const prompts = imageTargets.flatMap((target) => createImageTargetPrompts(target, promptText))
+  const prompts = createImageGenerationPromptRequests(resolveImageTargetPromptRequests(source, imageTargets))
   if (!prompts.length) {
-    return []
+    throw new Error('request_image.targetPrompts must include at least one image prompt')
   }
   const artifacts: CharacterAgentArtifact[] = []
+  const generatedReferences = new Map<string, string[]>()
   for (let index = 0; index < prompts.length; index += 1) {
+    const referenceImages = resolveReferenceImagesForPrompt(prompts[index], generatedReferences)
     const generated = await generateImageWithConfiguredProvider({
       model: configuredModel,
       modelName,
       prompt: prompts[index].prompt,
       proxyUrl,
+      referenceImages,
+      size: imageSizeForPrompt(prompts[index]),
     })
     if (generated) {
       const artifact = createToolArtifact(
         context.runId,
         candidateId,
         'image-asset',
-        `${prompts[index].target.title} ${prompts[index].imageType} ${prompts[index].targetIndex}`,
+        `${prompts[index].target.title} ${prompts[index].imageRole} ${prompts[index].targetIndex}`,
         createImageGenerationArtifact(generated),
         prompts[index].target.nodeId
       )
@@ -482,83 +503,292 @@ async function maybeGenerateImageArtifacts(
         ...artifact,
         id: `${artifact.id}:${prompts[index].target.nodeId}:${prompts[index].targetIndex}`,
       })
+      const imageRef = imageReferenceFromArtifactData(artifact.data)
+      if (imageRef) {
+        const existing = generatedReferences.get(prompts[index].imageRole) ?? []
+        generatedReferences.set(prompts[index].imageRole, [...existing, imageRef])
+      }
     }
   }
   return artifacts
 }
 
-function createImageTargetPrompts(
+function resolveImageTargetPromptRequests(
+  source: Record<string, unknown>,
+  imageTargets: AgentTargetContext[]
+): Array<{ target: AgentTargetContext; prompt: string }> {
+  const explicitTargetPrompts = Array.isArray(source.targetPrompts) && source.targetPrompts.length > 0
+  if (!explicitTargetPrompts || source.autoGenerateTargetPrompts === true) {
+    return createAutomaticImageTargetPromptRequests(source.draft, imageTargets)
+  }
+  const targetById = new Map(imageTargets.map((target) => [target.nodeId, target]))
+  return normalizeImageTargetPromptInputs(source.targetPrompts).map((item) => {
+    const target = targetById.get(item.targetNodeId)
+    if (!target) {
+      throw new Error(`Image request references unknown image target: ${item.targetNodeId}`)
+    }
+    return { target, prompt: item.prompt.trim() }
+  })
+}
+
+function createAutomaticImageTargetPromptRequests(
+  draftInput: unknown,
+  imageTargets: AgentTargetContext[]
+): Array<{ target: AgentTargetContext; prompt: string }> {
+  const draft = normalizeDraftInput(draftInput)
+  const visualIdentity = stringField(draft.fields.visualIdentity, '')
+  const imagePrompt = stringField(draft.fields.imagePrompt, '')
+  const characterName = stringField(draft.fields.name, '')
+  const appearance = stringField(draft.fields.appearance, '')
+  const description = stringField(draft.fields.description, '')
+  const scenario = stringField(draft.fields.scenario, '')
+  const worldContext = stringField(draft.fields.worldContext, '')
+  const baseIdentity = [
+    visualIdentity ? `Stable visual identity bible: ${visualIdentity}` : '',
+    imagePrompt ? `Base image prompt: ${imagePrompt}` : '',
+    characterName ? `Character name: ${characterName}` : '',
+    appearance ? `Appearance: ${appearance}` : '',
+    description ? `Character summary: ${description}` : '',
+    scenario ? `Scenario: ${scenario}` : '',
+    worldContext ? `World context: ${worldContext}` : '',
+  ].filter(Boolean).join('\n')
+  if (!baseIdentity.trim()) {
+    throw new Error('Character image generation needs visualIdentity, imagePrompt, or character appearance fields before automatic prompt generation')
+  }
+  return imageTargets.flatMap((target) => {
+    const controls = target.imageControls.length ? target.imageControls : [undefined]
+    return controls.flatMap((control) => {
+      const count = Math.max(1, Math.floor(control?.targetImageCount ?? 1))
+      return Array.from({ length: count }, (_, index) => ({
+        target,
+        prompt: createAutomaticPromptForImageTarget(target, baseIdentity, index + 1, count),
+      }))
+    })
+  })
+}
+
+function normalizeDraftInput(input: unknown): CharacterCardDraft {
+  const source = input && typeof input === 'object' && !Array.isArray(input)
+    ? input as Partial<CharacterCardDraft>
+    : {}
+  const fields = source.fields && typeof source.fields === 'object' && !Array.isArray(source.fields)
+    ? source.fields as Record<string, unknown>
+    : {}
+  return {
+    id: typeof source.id === 'string' ? source.id : 'auto-draft',
+    fields,
+    imagePrompts: Array.isArray(source.imagePrompts) ? source.imagePrompts.filter((item): item is string => typeof item === 'string') : [],
+    imageArtifactIds: Array.isArray(source.imageArtifactIds) ? source.imageArtifactIds.filter((item): item is string => typeof item === 'string') : [],
+    notes: Array.isArray(source.notes) ? source.notes.filter((item): item is string => typeof item === 'string') : [],
+    missing: Array.isArray(source.missing) ? source.missing.filter((item): item is string => typeof item === 'string') : [],
+    updatedAt: typeof source.updatedAt === 'number' ? source.updatedAt : Date.now(),
+  }
+}
+
+function createAutomaticPromptForImageTarget(
   target: AgentTargetContext,
-  promptText: string
-): Array<{ target: AgentTargetContext; targetIndex: number; imageType: string; prompt: string }> {
-  const controls = target.imageControls
-  const requestedCount = getImageTargetRequestedCount(controls)
-  const targetRole = target.imageRole ?? controls[0]?.imageType ?? 'avatar'
-  return Array.from({ length: requestedCount }, (_, index) => {
-    const controlText = controls[index % Math.max(1, controls.length)]
-    const imageType = controlText?.imageType || targetRole
+  baseIdentity: string,
+  index: number,
+  count: number
+): string {
+  const role = target.imageRole || 'character-image'
+  const variant = count > 1 ? `Image variant ${index} of ${count}; keep identity stable while varying pose, framing, lighting, or background details only when useful.` : ''
+  const roleSpecific: Record<string, string> = {
+    avatar: 'Create avatar.jpg quality: one polished canonical portrait, face and upper body clear, attractive readable silhouette, no collage, no reference sheet, no multiple poses.',
+    'character-overview-sheet': 'Create the large production overview sheet after avatar.jpg: same character identity, full-body front view, back view, side or three-quarter view, hairstyle detail, hands, legs, feet or shoes, outfit/material details, and expression callouts as clean visual panels with no text.',
+    'world-context': 'Create a world-context reference image that still visibly preserves the central character identity or unmistakable character-linked motifs.',
+    'story-moment': 'Create a concrete story moment image with the character present in a believable environment connected to the role card premise.',
+  }
+  return [
+    baseIdentity,
+    `Target node: ${target.title}. Image role: ${role}.`,
+    target.imageAssetPurpose ? `Asset purpose: ${target.imageAssetPurpose}` : '',
+    roleSpecific[role] ?? 'Create a coherent character image for this target while preserving the stable visual identity.',
+    variant,
+  ].filter(Boolean).join('\n')
+}
+
+function createImageGenerationPromptRequests(
+  requests: Array<{ target: AgentTargetContext; prompt: string }>
+): Array<{ target: AgentTargetContext; targetIndex: number; imageRole: string; prompt: string }> {
+  const targetPromptCounts = new Map<string, number>()
+  return requests.map((request) => {
+    const targetRole = request.target.imageRole
+    if (!targetRole) {
+      throw new Error(`Image target ${request.target.nodeId} is missing imageRole`)
+    }
+    const targetIndex = (targetPromptCounts.get(request.target.nodeId) ?? 0) + 1
+    targetPromptCounts.set(request.target.nodeId, targetIndex)
+    const control = getImageControlForPromptIndex(request.target.imageControls, targetIndex)
     return {
-      target,
-      targetIndex: index + 1,
-      imageType,
-      prompt: buildImageGenerationPrompt(target, imageType, promptText, controlText),
+      target: request.target,
+      targetIndex,
+      imageRole: targetRole,
+      prompt: buildImageGenerationPrompt(request.target, targetRole, request.prompt, control),
+    }
+  }).sort((left, right) => imageRolePriority(left.imageRole) - imageRolePriority(right.imageRole))
+}
+
+function imageRolePriority(imageRole: string): number {
+  const priorities: Record<string, number> = {
+    avatar: 0,
+    'character-overview-sheet': 1,
+  }
+  return priorities[imageRole] ?? 10
+}
+
+function resolveReferenceImagesForPrompt(
+  prompt: { imageRole: string },
+  generatedReferences: Map<string, string[]>
+): string[] {
+  if (prompt.imageRole === 'character-overview-sheet') {
+    return generatedReferences.get('avatar')?.slice(0, 1) ?? []
+  }
+  return []
+}
+
+function imageReferenceFromArtifactData(data: unknown): string | null {
+  if (!data || typeof data !== 'object') {
+    return null
+  }
+  const source = data as Record<string, any>
+  const dataUrl = typeof source.dataUrl === 'string' ? source.dataUrl : ''
+  const url = typeof source.url === 'string' ? source.url : ''
+  return dataUrl || url || null
+}
+
+function imageSizeForPrompt(prompt: {
+  target: AgentTargetContext
+  imageRole: string
+  targetIndex: number
+}): string | undefined {
+  const control = getImageControlForPromptIndex(prompt.target.imageControls, prompt.targetIndex)
+  const aspectRatio = control?.aspectRatio || ''
+  if (prompt.imageRole === 'avatar') {
+    return '2048x2048'
+  }
+  if (prompt.imageRole === 'character-overview-sheet') {
+    return aspectRatio === '9:16' ? '1440x2560' : '2560x1440'
+  }
+  if (aspectRatio === '9:16') {
+    return '1440x2560'
+  }
+  if (aspectRatio === '16:9') {
+    return '2560x1440'
+  }
+  if (aspectRatio === '3:4') {
+    return '1024x1024'
+  }
+  return undefined
+}
+
+function getImageControlForPromptIndex(
+  controls: AgentImageGenerationControl[],
+  targetIndex: number
+): AgentImageGenerationControl | undefined {
+  if (!controls.length) {
+    return undefined
+  }
+  let cursor = 0
+  for (const control of controls) {
+    const count = Math.max(1, Math.floor(control.targetImageCount))
+    cursor += count
+    if (targetIndex <= cursor) {
+      return control
+    }
+  }
+  return controls[controls.length - 1]
+}
+
+function normalizeImageTargetPromptInputs(value: unknown): CharacterAgentImageTargetPrompt[] {
+  if (!Array.isArray(value)) {
+    throw new Error('request_image.targetPrompts must be an array')
+  }
+  return value.map((item, index): CharacterAgentImageTargetPrompt => {
+    if (!item || typeof item !== 'object') {
+      throw new Error(`request_image.targetPrompts[${index}] must be an object`)
+    }
+    const record = item as Record<string, unknown>
+    const targetNodeId = stringField(record.targetNodeId, '')
+    const prompt = stringField(record.prompt, '')
+    if (!targetNodeId || !prompt) {
+      throw new Error(`request_image.targetPrompts[${index}] must include targetNodeId and prompt`)
+    }
+    return {
+      targetNodeId,
+      prompt,
+      title: stringField(record.title, ''),
     }
   })
 }
 
 function buildImageGenerationPrompt(
   target: AgentTargetContext,
-  imageType: string,
+  imageRole: string,
   promptText: string,
   control: AgentImageGenerationControl | undefined
 ): string {
-  const roleInstruction = imageRoleInstruction(imageType || target.imageRole || 'avatar')
+  const resolvedRole = imageRole || target.imageRole
+  if (!resolvedRole) {
+    throw new Error(`Image target ${target.nodeId} is missing imageRole`)
+  }
+  const roleInstruction = imageRoleInstruction(resolvedRole)
   const negative = [
     control?.negativePrompt,
     'text, caption, subtitle, watermark, logo, signature, UI text, prompt words, labels, typography, speech bubble',
   ].filter(Boolean).join(', ')
   return [
     roleInstruction,
-    control ? naturalCompositionInstruction(control.composition, control.consistencyMode) : '',
+    target.imageAssetPurpose ? `Asset purpose: ${target.imageAssetPurpose}.` : '',
+    resolvedRole === 'character-overview-sheet'
+      ? 'Use the provided avatar reference as the identity lock when reference images are available. Preserve the exact face family, hairstyle, age impression, body proportions, and signature motifs from that avatar while expanding into the full reference sheet.'
+      : '',
+    control?.imageStylePreset ? `Style preset: ${formatImageStylePreset(control.imageStylePreset)}.` : '',
+    control?.stylePrompt ? `Visual style: ${control.stylePrompt}.` : '',
+    control ? naturalImageControlInstruction(control) : '',
     'Generate visual content only, with no written words, letters, symbols, captions, interface elements, labels, logos, watermarks, or visible prompt text anywhere in the image.',
     promptText,
     `The image must avoid ${negative}.`,
   ].filter(Boolean).join('\n')
 }
 
-function imageRoleInstruction(imageType: string): string {
-  const instructions: Record<string, string> = {
-    avatar: 'Create a single avatar portrait focused on the character face, hair, expression, and upper-body identity, with a clean background.',
-    body: 'Create a single full-body character reference showing the complete outfit, posture, proportions, and silhouette.',
-    scene: 'Create a single environmental scene showing the character within the story setting, with atmosphere and spatial context.',
-    expression: 'Create a single expression reference focused on one clear facial expression and emotional state, without label text or a labeled collage.',
-    reference: 'Create a single visual reference showing design details useful for consistent later generation.',
-  }
-  return instructions[imageType] ?? `Create a single coherent visual for the ${imageType} image role.`
+function formatImageStylePreset(value: string): string {
+  return value
+    .split('-')
+    .filter(Boolean)
+    .map((part) => /^[0-9]+$/.test(part) ? part : part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
 }
 
-function naturalCompositionInstruction(composition: string, consistencyMode: string): string {
-  const compositionText: Record<string, string> = {
-    'character-focused': 'Keep the composition centered on the character.',
-    'upper-body-portrait': 'Use an upper-body portrait composition.',
-    'full-body': 'Use a full-body composition with the whole figure visible.',
-    'environmental-scene': 'Use an environmental composition with clear setting context.',
-    'expression-sheet': 'Focus on a clear expression reference without written labels.',
+function imageRoleInstruction(imageRole: string): string {
+  const instructions: Record<string, string> = {
+    avatar: 'Create a single avatar portrait focused on the character face, hair, expression, and upper-body identity, with a simple but story-relevant background.',
+    'character-overview-sheet': 'Create one very large character asset overview sheet for production reference. Use a clean model-sheet composition with the same character shown from front, back, side or three-quarter angle, plus close visual detail panels for hairstyle, hands, legs, feet or shoes, outfit materials, and expressions. Do not add written labels or typography.',
+    'hero-cover': 'Create a polished role-card cover image: attractive character-first composition, clear identity, strong background atmosphere, and a visual hook for the card premise.',
+    'full-body': 'Create a single full-body character image showing the complete outfit, posture, proportions, and silhouette while preserving the same face and identity.',
+    'opening-moment': 'Create a story image for the opening message: the character is visibly present in the first-scene situation with background, props, mood, and narrative hook.',
+    'story-moment': 'Create a plot-supporting character image tied to a specific card field or story beat, with the character grounded in a concrete background.',
+    expression: 'Create a single expression reference focused on one clear facial expression and emotional state, without label text or a labeled collage.',
+    'outfit-detail': 'Create a design-detail image emphasizing outfit materials, accessories, motifs, and palette while keeping the character identity recognizable.',
+    'relationship-moment': 'Create a character-focused relationship beat with another person implied or partially present, emphasizing body language, tension, and emotional context.',
+    'world-context': 'Create a world-context image that still includes the character or unmistakable character-linked motifs, not an empty environment-only scene.',
   }
+  return instructions[imageRole] ?? `Create a single coherent visual for the ${imageRole} image role.`
+}
+
+function naturalImageControlInstruction(control: AgentImageGenerationControl): string {
+  const consistencyMode = control.consistencyMode
   const consistencyText: Record<string, string> = {
     'same-character': 'Preserve the same character identity.',
     'same-world': 'Preserve the same world and visual continuity.',
     independent: 'This image may stand independently.',
   }
-  return [compositionText[composition] ?? '', consistencyText[consistencyMode] ?? ''].filter(Boolean).join(' ')
-}
-
-function getImageTargetRequestedCount(controls: AgentImageGenerationControl[]): number {
-  if (!controls.length) {
-    return 1
-  }
-  const total = controls.reduce((sum, control) => sum + Math.max(0, Math.floor(control.targetImageCount)), 0)
-  return Math.max(1, Math.min(16, total))
+  return [
+    consistencyText[consistencyMode] ?? '',
+    control.shotType && control.shotType !== 'auto' ? `Shot type: ${control.shotType}.` : '',
+    control.aspectRatio ? `Aspect ratio target: ${control.aspectRatio}.` : '',
+    control.seedMode ? `Seed strategy: ${control.seedMode}.` : '',
+  ].filter(Boolean).join(' ')
 }
 
 function createCandidateArtifacts(
@@ -574,7 +804,6 @@ function createCandidateArtifacts(
     createToolArtifact(runId, candidateId, 'dialogue-style-guide', 'Dialogue Style Guide', data.dialogueStyleGuide, defaultSourceNodeId),
     createToolArtifact(runId, candidateId, 'world-context', 'World Context', data.worldContext, defaultSourceNodeId),
     createToolArtifact(runId, candidateId, 'scene-context', 'Scene Context', data.sceneContext, defaultSourceNodeId),
-    createToolArtifact(runId, candidateId, 'memory-policy', 'Memory Policy', data.memoryPolicy, defaultSourceNodeId),
     createToolArtifact(runId, candidateId, 'image-prompt', 'Image Prompt', data.imagePrompt, context.capabilities.imageModels[0]?.nodeId ?? defaultSourceNodeId),
     createToolArtifact(runId, candidateId, 'generation-report', 'Generation Report', data.generationReport ?? data.summary ?? data, defaultSourceNodeId),
   ].filter((artifact) => artifact.data !== undefined && artifact.data !== null && String(artifact.data).trim?.() !== '')

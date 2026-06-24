@@ -32,10 +32,10 @@ export type CharacterAgentArtifactKind =
   | 'character-card-field'
   | 'character-card-final'
   | 'opening-message'
+  | 'opening-layout'
   | 'dialogue-style-guide'
   | 'world-context'
   | 'scene-context'
-  | 'memory-policy'
   | 'image-prompt'
   | 'image-asset'
   | 'voice-direction'
@@ -98,6 +98,7 @@ export interface AgentConstraint {
 export type AgentTargetKind =
   | 'character-card'
   | 'character-field'
+  | 'opening-layout'
   | 'image'
   | 'world-card'
   | 'npc-pack'
@@ -108,9 +109,12 @@ export type AgentTargetKind =
 export interface AgentImageGenerationControl {
   nodeId: string
   targetImageCount: number
-  imageType: string
-  composition: string
+  imageStylePreset: string
+  stylePrompt: string
+  shotType: string
+  aspectRatio: string
   consistencyMode: string
+  seedMode: string
   negativePrompt: string
   incomingRelations: CharacterAgentRelation[]
 }
@@ -146,6 +150,7 @@ export interface AgentTargetContext {
   config: Record<string, unknown>
   field?: string
   imageRole?: string
+  imageAssetPurpose?: string
   requestedResources: string[]
   incomingRelations: CharacterAgentRelation[]
   localStylePressures: AgentStylePressure[]
@@ -365,11 +370,17 @@ export interface CharacterCardDraft {
   updatedAt: number
 }
 
+export interface CharacterAgentImageTargetPrompt {
+  targetNodeId: string
+  prompt: string
+  title?: string
+}
+
 export type CharacterAgentAction =
   | { type: 'set_field'; field: string; value: unknown; reason?: string }
   | { type: 'merge_character_card'; value: Record<string, unknown>; reason?: string }
   | { type: 'create_artifact'; kind?: CharacterAgentArtifactKind; title?: string; data: unknown; summary?: string; reason?: string }
-  | { type: 'request_image'; prompt: string; title?: string; reason?: string }
+  | { type: 'request_image'; targetPrompts: CharacterAgentImageTargetPrompt[]; reason?: string }
   | { type: 'finish'; reason?: string }
 
 export interface CharacterAgentDecision {
@@ -393,7 +404,7 @@ export const CHARACTER_CARD_FIELD_SCHEMA = [
 ] as const
 
 export const CHARACTER_SUPPORT_FIELD_SCHEMA = [
-  'memoryStrategy',
+  'visualIdentity',
   'imagePrompt',
 ] as const
 
@@ -555,9 +566,12 @@ export function compileCharacterAgentRunContext(
   const imageGenerationControls = (nodesByType.get('image-generation-control') ?? []).map((node) => ({
     nodeId: node.id,
     targetImageCount: numberValue(node.config.targetImageCount, 1),
-    imageType: imageTypeValue(node.config.imageType, node.config.imageTypes, 'avatar'),
-    composition: stringValue(node.config.composition, 'character-focused'),
+    imageStylePreset: stringValue(node.config.imageStylePreset, stringListValue(node.config.imageStylePresets)[0] ?? ''),
+    stylePrompt: stringValue(node.config.stylePrompt),
+    shotType: stringValue(node.config.shotType, 'auto'),
+    aspectRatio: stringValue(node.config.aspectRatio, '1:1'),
     consistencyMode: stringValue(node.config.consistencyMode, 'same-character'),
+    seedMode: stringValue(node.config.seedMode, 'lock-character'),
     negativePrompt: stringValue(node.config.negativePrompt),
     incomingRelations: incomingRelations(relations, node.id),
   }))
@@ -643,7 +657,7 @@ export function compileCharacterAgentRunContext(
       nodeId: strategyNode?.id,
       mode: stringValue(strategyNode?.config.mode, 'branch-and-refine'),
       branchCount: numberValue(strategyNode?.config.branchCount, 3),
-      priorityAssets: stringListValue(strategyNode?.config.priorityAssets, ['role-card', 'opening', 'image-pack']),
+      priorityAssets: stringListValue(strategyNode?.config.priorityAssets, ['role-card', 'opening', 'opening-layout', 'image-pack']),
       stopCondition: stringValue(strategyNode?.config.stopCondition, 'quality gate passed'),
       incomingRelations: strategyNode ? incomingRelations(relations, strategyNode.id) : [],
     },
@@ -932,6 +946,60 @@ export function createCharacterSuperAgent(
         await emit({ type: 'tool.call.completed', runId, record, result, timestamp: finishedAt })
         return result
       }
+      const executeImageRequestAction = async (action: Extract<CharacterAgentAction, { type: 'request_image' }>, phase: CharacterAgentPhase) => {
+        const imageResult = await callTool('generate_character_image', phase, {
+          targetPrompts: action.targetPrompts,
+          draft: state.draft,
+        })
+        const promptTexts = getRequestImagePromptTexts(action)
+        const imageIds = (imageResult.artifacts ?? [])
+          .filter((artifact) => artifact.kind === 'image-asset')
+          .map((artifact) => artifact.id)
+        if (!imageIds.length) {
+          const diagnostic = (imageResult.artifacts ?? [])
+            .map((artifact) => [artifact.title, artifact.summary].filter(Boolean).join(': '))
+            .filter(Boolean)
+            .join(' | ')
+          throw new Error(diagnostic || imageResult.summary || 'Image generation request completed without producing image assets')
+        }
+        state = {
+          ...state,
+          draft: {
+            ...state.draft!,
+            imagePrompts: appendUnique(state.draft!.imagePrompts, promptTexts),
+            imageArtifactIds: appendUnique(state.draft!.imageArtifactIds, imageIds),
+            notes: appendUnique(state.draft!.notes, [action.reason ?? imageResult.summary]),
+            updatedAt: now(),
+          },
+        }
+      }
+      const executeRequiredImageGeneration = async (phase: CharacterAgentPhase) => {
+        const imageResult = await callTool('generate_character_image', phase, {
+          draft: state.draft,
+          autoGenerateTargetPrompts: true,
+        })
+        const imageIds = (imageResult.artifacts ?? [])
+          .filter((artifact) => artifact.kind === 'image-asset')
+          .map((artifact) => artifact.id)
+        if (!imageIds.length) {
+          const diagnostic = (imageResult.artifacts ?? [])
+            .map((artifact) => [artifact.title, artifact.summary].filter(Boolean).join(': '))
+            .filter(Boolean)
+            .join(' | ')
+          throw new Error(diagnostic || imageResult.summary || 'Image generation request completed without producing image assets')
+        }
+        state = {
+          ...state,
+          draft: {
+            ...state.draft!,
+            imagePrompts: appendUnique(state.draft!.imagePrompts, getGeneratedImagePromptTexts(imageResult.artifacts ?? [])),
+            imageArtifactIds: appendUnique(state.draft!.imageArtifactIds, imageIds),
+            notes: appendUnique(state.draft!.notes, [imageResult.summary]),
+            updatedAt: now(),
+          },
+        }
+        await writeArtifact(createDraftArtifact(context, state.draft))
+      }
 
       try {
         await emit({ type: 'run.started', runId, timestamp: now() })
@@ -961,24 +1029,7 @@ export function createCharacterSuperAgent(
           const progressiveAction = selectProgressiveAction(decision.actions, state.draft!, context)
           for (const action of progressiveAction ? [progressiveAction] : []) {
             if (action.type === 'request_image') {
-              const imageResult = await callTool('generate_character_image', 'produce', {
-                prompt: action.prompt,
-                title: action.title,
-                draft: state.draft,
-              })
-              const imageIds = (imageResult.artifacts ?? [])
-                .filter((artifact) => artifact.kind === 'image-asset')
-                .map((artifact) => artifact.id)
-              state = {
-                ...state,
-                draft: {
-                  ...state.draft!,
-                  imagePrompts: appendUnique(state.draft!.imagePrompts, [action.prompt]),
-                  imageArtifactIds: appendUnique(state.draft!.imageArtifactIds, imageIds),
-                  notes: appendUnique(state.draft!.notes, [action.reason ?? imageResult.summary]),
-                  updatedAt: now(),
-                },
-              }
+              await executeImageRequestAction(action, 'produce')
             } else if (action.type === 'create_artifact') {
               const artifact = await writeArtifact(createActionArtifact(context, state.draft!, action))
               state = {
@@ -1016,29 +1067,8 @@ export function createCharacterSuperAgent(
           }
         }
 
-        if (!state.draft?.imageArtifactIds.length) {
-          const imagePrompt = stringValue(state.draft?.fields.imagePrompt)
-          if (imagePrompt) {
-            const imageResult = await callTool('generate_character_image', 'produce', {
-              prompt: imagePrompt,
-              title: 'Character Image',
-              draft: state.draft,
-            })
-            const imageIds = (imageResult.artifacts ?? [])
-              .filter((artifact) => artifact.kind === 'image-asset')
-              .map((artifact) => artifact.id)
-            state = {
-              ...state,
-              draft: {
-                ...state.draft!,
-                imagePrompts: appendUnique(state.draft!.imagePrompts, [imagePrompt]),
-                imageArtifactIds: appendUnique(state.draft!.imageArtifactIds, imageIds),
-                notes: appendUnique(state.draft!.notes, [imageResult.summary]),
-                updatedAt: now(),
-              },
-            }
-            await writeArtifact(createDraftArtifact(context, state.draft))
-          }
+        if (getMissingCharacterDraftFields(state.draft, context).includes('imageAsset')) {
+          await executeRequiredImageGeneration('produce')
         }
 
         await changePhase('inspect')
@@ -1076,8 +1106,10 @@ export function createCharacterSuperAgent(
             forceRepair: true,
           })
           const repairDecision = decisionFromToolResult(repairResult, context, state.draft, true)
-          for (const action of repairDecision.actions.filter((action) => action.type !== 'request_image')) {
-            if (action.type === 'create_artifact') {
+          for (const action of repairDecision.actions) {
+            if (action.type === 'request_image') {
+              await executeImageRequestAction(action, 'repair')
+            } else if (action.type === 'create_artifact') {
               await writeArtifact(createActionArtifact(context, state.draft!, action))
             } else {
               const beforeFields = { ...(state.draft?.fields ?? {}) }
@@ -1096,6 +1128,29 @@ export function createCharacterSuperAgent(
         const finalMissing = getMissingCharacterDraftFields(state.draft, context)
         if (finalMissing.length || !isCharacterDraftComplete(state.draft, context)) {
           throw new Error(`Character workflow did not produce a complete character card. Missing: ${finalMissing.join(', ') || 'unknown fields'}. Last review: ${qualityResult.summary}`)
+        }
+
+        const formatIssues = validateCharacterOutputFormat(state.draft)
+        if (formatIssues.length) {
+          await changePhase('repair')
+          state = {
+            ...state,
+            draft: repairCharacterOutputFormat(state.draft!, now()),
+          }
+          await writeArtifact(createDraftArtifact(context, state.draft))
+          await writeArtifact({
+            id: `${runId}:format-repair-report`,
+            kind: 'quality-report',
+            runId,
+            candidateId: state.draft?.id,
+            title: 'Format Repair Report',
+            summary: `Repaired output format: ${formatIssues.join(', ')}`,
+            data: {
+              repaired: true,
+              issues: formatIssues,
+              protocol: 'noema-role-chat',
+            },
+          })
         }
 
         const finalCard = await writeArtifact({
@@ -1352,7 +1407,7 @@ function applyCharacterAgentAction(
   if (action.type === 'request_image') {
     return {
       ...draft,
-      imagePrompts: appendUnique(draft.imagePrompts, [action.prompt]),
+      imagePrompts: appendUnique(draft.imagePrompts, getRequestImagePromptTexts(action)),
       notes: appendUnique(draft.notes, action.reason ? [action.reason] : []),
       updatedAt: now,
     }
@@ -1418,10 +1473,7 @@ function selectProgressiveAction(
     return null
   }
   if (!draft.imageArtifactIds.length) {
-    const imagePrompt = stringValue(draft.fields.imagePrompt)
-    if (imagePrompt) {
-      return actions.find((action) => action.type === 'request_image') ?? { type: 'request_image', prompt: imagePrompt, title: 'Character Image' }
-    }
+    return actions.find((action) => action.type === 'request_image') ?? null
   }
   return actions.find((action) => action.type === 'finish') ?? null
 }
@@ -1454,7 +1506,8 @@ function normalizeAgentActions(value: unknown): CharacterAgentAction[] {
         }
       }
       if (type === 'request_image') {
-        return { type, prompt: stringValue(action.prompt), title: stringValue(action.title), reason: stringValue(action.reason) }
+        const targetPrompts = normalizeImageTargetPrompts(action.targetPrompts)
+        return { type, targetPrompts, reason: stringValue(action.reason) }
       }
       if (type === 'finish') {
         return { type, reason: stringValue(action.reason) }
@@ -1462,7 +1515,45 @@ function normalizeAgentActions(value: unknown): CharacterAgentAction[] {
       return null
     })
     .filter((action): action is CharacterAgentAction => Boolean(action))
-    .filter((action) => action.type !== 'request_image' || Boolean(action.prompt.trim()))
+    .filter((action) => action.type !== 'request_image' || action.targetPrompts.length > 0)
+}
+
+function normalizeImageTargetPrompts(value: unknown): CharacterAgentImageTargetPrompt[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value.flatMap((item): CharacterAgentImageTargetPrompt[] => {
+    if (!item || typeof item !== 'object') {
+      return []
+    }
+    const record = item as Record<string, unknown>
+    const targetNodeId = stringValue(record.targetNodeId)
+    const prompt = stringValue(record.prompt)
+    if (!targetNodeId || !prompt) {
+      return []
+    }
+    return [{
+      targetNodeId,
+      prompt,
+      title: stringValue(record.title),
+    }]
+  })
+}
+
+function getRequestImagePromptTexts(action: Extract<CharacterAgentAction, { type: 'request_image' }>): string[] {
+  return action.targetPrompts.map((item) => item.prompt.trim()).filter(Boolean)
+}
+
+function getGeneratedImagePromptTexts(artifacts: CharacterAgentArtifact[]): string[] {
+  return artifacts
+    .filter((artifact) => artifact.kind === 'image-asset')
+    .map((artifact) => {
+      const data = artifact.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
+        ? artifact.data as Record<string, unknown>
+        : {}
+      return stringValue(data.prompt).trim()
+    })
+    .filter(Boolean)
 }
 
 function isCharacterDraftComplete(draft: CharacterCardDraft | undefined, context: CharacterAgentRunContext): boolean {
@@ -1519,9 +1610,55 @@ function sanitizeCharacterDraftFieldValue(
   }
   const text = value.trim()
   if (!text || !isMetaPromptLeak(field, text, context)) {
-    return value
+    return field === 'firstMessage' ? normalizeRoleChatOpening(text) : value
   }
   return undefined
+}
+
+function normalizeRoleChatOpening(value: string): string {
+  const text = value.trim()
+  if (!text) {
+    return text
+  }
+  const match = text.match(/<chat>([\s\S]*?)<\/chat>/i)
+  if (match) {
+    return `<chat>${match[1].trim()}</chat>`
+  }
+  return `<chat>${text.replace(/<\/?chat>/gi, '').trim()}</chat>`
+}
+
+function validateCharacterOutputFormat(draft: CharacterCardDraft | undefined): string[] {
+  const issues: string[] = []
+  const firstMessage = typeof draft?.fields.firstMessage === 'string' ? draft.fields.firstMessage.trim() : ''
+  if (!firstMessage) {
+    issues.push('firstMessage is empty')
+  } else if (!/^<chat>[\s\S]+<\/chat>$/.test(firstMessage)) {
+    issues.push('firstMessage missing <chat> wrapper')
+  } else {
+    const inner = firstMessage.replace(/^<chat>/i, '').replace(/<\/chat>$/i, '').trim()
+    if (!inner) {
+      issues.push('firstMessage <chat> body is empty')
+    }
+    if (/<\/?(narration|metadata|style|goal|field)[^>]*>/i.test(inner)) {
+      issues.push('firstMessage contains non-chat protocol tags')
+    }
+  }
+  return issues
+}
+
+function repairCharacterOutputFormat(draft: CharacterCardDraft, now: number): CharacterCardDraft {
+  const firstMessage = typeof draft.fields.firstMessage === 'string'
+    ? normalizeRoleChatOpening(draft.fields.firstMessage)
+    : ''
+  return {
+    ...draft,
+    fields: {
+      ...draft.fields,
+      ...(firstMessage ? { firstMessage } : {}),
+    },
+    notes: appendUnique(draft.notes, ['Repaired role-chat output format before export.']),
+    updatedAt: now,
+  }
 }
 
 function isMetaPromptLeak(field: string, value: string, context: CharacterAgentRunContext): boolean {
@@ -1577,7 +1714,7 @@ function characterRunFieldTitle(field: string): string {
     firstMessage: 'First Message',
     dialogueStyle: 'Dialogue Style',
     worldContext: 'World Context',
-    memoryStrategy: 'Memory Strategy',
+    visualIdentity: 'Visual Identity',
     imagePrompt: 'Image Prompt',
   }
   return titles[field] ?? field
@@ -1604,8 +1741,6 @@ function normalizeDraftFieldName(field: string): string {
     styleGuide: 'dialogueStyle',
     dialogueStyleGuide: 'dialogueStyle',
     world: 'worldContext',
-    memory: 'memoryStrategy',
-    memoryPolicy: 'memoryStrategy',
   }
   return aliases[trimmed] ?? trimmed
 }
@@ -1653,10 +1788,10 @@ function artifactTitle(kind: CharacterAgentArtifactKind): string {
     'character-card-field': 'Character Card Field',
     'character-card-final': 'Character Card',
     'opening-message': 'Opening Message',
+    'opening-layout': 'Opening Layout',
     'dialogue-style-guide': 'Dialogue Style Guide',
     'world-context': 'World Context',
     'scene-context': 'Scene Context',
-    'memory-policy': 'Memory Policy',
     'image-prompt': 'Image Prompt',
     'image-asset': 'Image Asset',
     'voice-direction': 'Voice Direction',
@@ -1686,10 +1821,10 @@ function isArtifactKind(value: unknown): value is CharacterAgentArtifactKind {
     'character-card-field',
     'character-card-final',
     'opening-message',
+    'opening-layout',
     'dialogue-style-guide',
     'world-context',
     'scene-context',
-    'memory-policy',
     'image-prompt',
     'image-asset',
     'voice-direction',
@@ -1754,6 +1889,7 @@ function createAgentTargetContexts(
         config: { ...node.config },
         field: kind === 'character-field' ? stringValue(node.config.field) : undefined,
         imageRole: kind === 'image' ? stringValue(node.config.imageRole) : undefined,
+        imageAssetPurpose: kind === 'image' ? stringValue(node.config.assetPurpose) : undefined,
         requestedResources: requestedResourcesForTarget(node, kind),
         incomingRelations: incomingRelations(relations, node.id),
         localStylePressures: controls.stylePressures.filter((control) => isLocallyConnected(relations, node.id, control.nodeId)),
@@ -1771,6 +1907,7 @@ function targetKindForNodeType(type: string): AgentTargetKind | null {
   const kinds: Record<string, AgentTargetKind> = {
     'character-card-target': 'character-card',
     'character-field-target': 'character-field',
+    'opening-layout-target': 'opening-layout',
     'image-target': 'image',
     'world-card-target': 'world-card',
     'npc-pack-target': 'npc-pack',
@@ -1788,8 +1925,15 @@ function requestedResourcesForTarget(node: CharacterWorkflowNode, kind: AgentTar
   if (kind === 'character-field') {
     return [`field:${stringValue(node.config.field, 'firstMessage')}`]
   }
+  if (kind === 'opening-layout') {
+    return ['opening-layout', ...stringListValue(node.config.includeSections)]
+  }
   if (kind === 'image') {
-    return [`image:${stringValue(node.config.imageRole, 'avatar')}`]
+    const imageRole = stringValue(node.config.imageRole)
+    if (!imageRole) {
+      throw new Error(`Image target ${node.id} is missing imageRole`)
+    }
+    return [`image:${imageRole}`]
   }
   if (kind === 'world-card') {
     return ['world-card', ...stringListValue(node.config.worldSections)]
@@ -1906,14 +2050,6 @@ function stringListValue(value: unknown, fallback: string[] = []): string[] {
     return fallback
   }
   return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
-}
-
-function imageTypeValue(value: unknown, legacyValue: unknown, fallback: string): string {
-  const direct = stringValue(value)
-  if (direct) {
-    return direct
-  }
-  return stringListValue(legacyValue, [fallback])[0] ?? fallback
 }
 
 function isCharacterWorkflowLike(value: unknown): value is CharacterWorkflow {

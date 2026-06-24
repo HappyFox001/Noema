@@ -99,14 +99,39 @@ interface PersistedCharacterWorkflowState {
 interface CharacterWorkflowProjectRecord {
   id: string
   name: string
+  schemaVersion?: number
   createdAt: number
   updatedAt: number
+  loadState?: 'index' | 'loading-detail' | 'ready-overview' | 'ready' | 'error'
   configOverrides: Record<string, Record<string, unknown>>
   positionOverrides: Record<string, { x: number; y: number }>
   viewState: CharacterWorkflowProjectViewState
   runCount: number
   activeRunId?: string
   runs: CharacterWorkflowProjectRunRecord[]
+  goalSession?: CharacterWorkflowGoalSession
+}
+
+interface CharacterWorkflowGoalSession {
+  objective: string
+  plan: string[]
+  completedSteps: string[]
+  currentStep?: string
+  nextStep?: string
+  status: 'active' | 'paused' | 'needs-user' | 'blocked' | 'complete'
+  history: Array<{
+    id?: string
+    stepIndex?: number
+    tool?: string
+    userRequest: string
+    summary: string
+    status: string
+    operations: number
+    currentStep?: string
+    nextStep?: string
+    createdAt: number
+  }>
+  updatedAt: number
 }
 
 interface CharacterWorkflowProjectRunRecord {
@@ -253,8 +278,15 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let characterWorkflowRunCount = 0
   let characterWorkflowActiveTabId = 'workflow'
   let characterWorkflowContentLoaded = false
+  let characterWorkflowProjectsHydrated = false
+  let characterWorkflowProjectsHydratePromise: Promise<void> | null = null
+  const characterWorkflowProjectDetailPromises = new Map<string, Promise<CharacterWorkflowProjectRecord | null>>()
+  const characterWorkflowProjectPersistTimers = new Map<string, number>()
+  const characterWorkflowPerfMarks = new Map<string, { label: string; startedAt: number; lastAt: number }>()
+  let activeCharacterWorkflowPerfId = ''
   let characterWorkflowDirty = false
   let characterWorkflowPersistTimer: number | undefined
+  let characterWorkflowRunRenderFrame: number | undefined
   let selectedWorkflowNodeId = 'generation-goal'
   let lastCharacterResourceGraphSnapshot = ''
   let resourceViewStateSnapshot = ''
@@ -397,17 +429,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       void ensureChatModelConfigLoaded()
     }
     if (button.dataset.chatNav === 'character-workflow') {
-      characterWorkflowContentLoaded = false
+      characterWorkflowContentLoaded = true
       renderCharacterWorkflow()
-      void Promise.all([
-        ensureChatResourcesHydrated(),
-        ensureChatModelConfigLoaded(),
-      ])
-        .then(() => ensureActiveConversationWorkflowStateLoaded())
-        .then(() => {
-          characterWorkflowContentLoaded = false
-          renderCharacterWorkflow()
-        })
+      void ensureCharacterWorkflowProjectsHydrated()
+        .then(() => renderCharacterWorkflow())
+      void ensureChatModelConfigLoaded()
+      void ensureChatResourcesHydrated()
     }
     const label = button.getAttribute('aria-label') || 'Section'
     showToast(`${label} view`)
@@ -1537,18 +1564,19 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         state.characterResources = [character, ...state.characterResources]
       }
       const now = getTimeLabel()
+      const openingText = getRoleChatOpeningText(character.firstMessage)
       const conversation: ChatConversationSummary = {
         id: `${character.id}-chat-${Date.now()}`,
         characterId: character.id,
         title: character.displayName,
-        preview: character.firstMessage,
+        preview: openingText,
         updatedLabel: { 'zh-CN': '刚刚', 'en-US': 'Now' },
         sceneState: character.scene,
         summaries: [],
         messages: [{
           id: `${character.id}-welcome-${Date.now()}`,
           role: 'assistant',
-          text: character.firstMessage,
+          text: openingText,
           createdLabel: { 'zh-CN': now, 'en-US': now },
         }],
         characterWorkflow: createPersistedCharacterWorkflowState(),
@@ -1575,7 +1603,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   function createChatCharacterFromRunDraft(runState: CharacterResourceRunState): ChatCharacterResource {
     const fields = extractCharacterCardFieldsFromRunDraft(runState)
     const name = stringField(fields.name)
-    const firstMessage = stringField(fields.firstMessage)
+    const firstMessage = normalizeRoleChatMarkup(stringField(fields.firstMessage))
     if (!name || !firstMessage) {
       throw new Error(options.getLanguage() === 'zh-CN'
         ? '运行草稿缺少聊天必要字段：name / firstMessage'
@@ -1589,7 +1617,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const id = `workflow-run-${sanitizeChatResourceId(runState.run?.id ?? name)}`
     return {
       id,
-      roleCard: fields,
+      roleCard: {
+        ...fields,
+        firstMessage,
+      },
       name: localizedText(name),
       displayName: localizedText(name),
       description: localizedText(description),
@@ -1604,6 +1635,27 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       avatarImage,
       bodyImage,
     }
+  }
+
+  function normalizeRoleChatMarkup(value: string): string {
+    const text = value.trim()
+    const match = text.match(/<chat>([\s\S]*?)<\/chat>/i)
+    if (match) {
+      return `<chat>${match[1].trim()}</chat>`
+    }
+    return `<chat>${text.replace(/<\/?chat>/gi, '').trim()}</chat>`
+  }
+
+  function getRoleChatOpeningText(value: ChatLocalizedText): ChatLocalizedText {
+    return {
+      'zh-CN': extractRoleChatOpeningText(value['zh-CN']),
+      'en-US': extractRoleChatOpeningText(value['en-US']),
+    }
+  }
+
+  function extractRoleChatOpeningText(value: string): string {
+    const match = value.match(/<chat>([\s\S]*?)<\/chat>/i)
+    return (match ? match[1] : value).trim()
   }
 
   function extractCharacterCardFieldsFromRunDraft(runState: CharacterResourceRunState): Record<string, unknown> {
@@ -1758,6 +1810,16 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     return chatResourcesHydratePromise
   }
 
+  function ensureCharacterWorkflowProjectsHydrated(): Promise<void> {
+    if (characterWorkflowProjectsHydrated) {
+      return Promise.resolve()
+    }
+    characterWorkflowProjectsHydratePromise ??= hydrateCharacterWorkflowProjects().finally(() => {
+      characterWorkflowProjectsHydratePromise = null
+    })
+    return characterWorkflowProjectsHydratePromise
+  }
+
   function ensureChatModelConfigLoaded(): Promise<void> {
     if (chatSystemConfig) {
       return Promise.resolve()
@@ -1777,9 +1839,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (conversationIndex < 0) {
       return
     }
+    await ensureCharacterWorkflowProjectsHydrated()
     state.conversations[conversationIndex] = await hydrateChatConversationWorkflowState(conversation, state.characterResources)
     upsertConversationCharacterResource(state.conversations[conversationIndex])
     restoreCharacterWorkflowStateFromConversation(state.conversations[conversationIndex])
+    if (activeCharacterWorkflowProjectId) {
+      await ensureCharacterWorkflowProjectDetailLoaded(activeCharacterWorkflowProjectId).catch(() => null)
+      restoreCharacterWorkflowStateFromConversation(state.conversations[conversationIndex])
+    }
   }
 
   function renderCharacterWorkflowLoadingState(): string {
@@ -1790,16 +1857,105 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     void renderCharacterWorkflowAsync()
   }
 
+  function startCharacterWorkflowPerf(label: string): string {
+    const now = performance.now()
+    const id = `workflow-perf-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    characterWorkflowPerfMarks.set(id, { label, startedAt: now, lastAt: now })
+    activeCharacterWorkflowPerfId = id
+    console.info(`[WorkflowPerf] ${label} start`)
+    return id
+  }
+
+  function markCharacterWorkflowPerf(id: string, step: string): void {
+    const trace = characterWorkflowPerfMarks.get(id)
+    if (!trace) {
+      return
+    }
+    const now = performance.now()
+    console.info(`[WorkflowPerf] ${trace.label} ${step}: +${Math.round(now - trace.lastAt)}ms (${Math.round(now - trace.startedAt)}ms total)`)
+    trace.lastAt = now
+  }
+
+  function finishCharacterWorkflowPerf(id: string, step = 'done'): void {
+    markCharacterWorkflowPerf(id, step)
+    characterWorkflowPerfMarks.delete(id)
+    if (activeCharacterWorkflowPerfId === id) {
+      activeCharacterWorkflowPerfId = ''
+    }
+  }
+
+  function scheduleCharacterWorkflowRunRender(): void {
+    if (characterWorkflowRunRenderFrame !== undefined) {
+      return
+    }
+    characterWorkflowRunRenderFrame = window.requestAnimationFrame(() => {
+      characterWorkflowRunRenderFrame = undefined
+      void patchCharacterWorkflowRunDraft()
+    })
+  }
+
+  async function patchCharacterWorkflowRunDraft(): Promise<void> {
+    if (!characterWorkflowRoot || characterWorkflowActiveTabId !== 'run-draft') {
+      renderCharacterWorkflow()
+      return
+    }
+    const activeProject = characterWorkflowProjects.find((project) => project.id === activeCharacterWorkflowProjectId)
+    const runViewport = characterWorkflowRoot.querySelector<HTMLElement>('.chat-resource-run-viewport')
+    if (!activeProject || !runViewport) {
+      renderCharacterWorkflow()
+      return
+    }
+    const renderToken = ++characterWorkflowLazyRenderToken
+    const workflowPage = await loadCharacterWorkflowPageModule()
+    if (renderToken !== characterWorkflowLazyRenderToken || !characterWorkflowRoot?.isConnected) {
+      return
+    }
+    const pageOptions = createCharacterWorkflowPageOptions(activeProject)
+    const nextViewportHtml = workflowPage.renderCharacterWorkflowRunDraftViewport(pageOptions)
+    runViewport.outerHTML = nextViewportHtml
+
+    const controls = characterWorkflowRoot.querySelector<HTMLElement>('.chat-resource-run-controls')
+    if (controls) {
+      controls.outerHTML = workflowPage.renderCharacterWorkflowRunDraftControls(pageOptions)
+    }
+
+    const inspector = characterWorkflowRoot.querySelector<HTMLElement>('.chat-run-character-inspector')
+    if (inspector && !characterWorkflowEditorState.inspectorCollapsed) {
+      inspector.outerHTML = workflowPage.renderCharacterWorkflowRunDraftInspector(pageOptions)
+    }
+
+    workflowPage.initializeCharacterResourceWorkbench(characterWorkflowRoot)
+  }
+
+  function updateCharacterWorkflowViewportDom(): void {
+    const viewport = panel.querySelector<HTMLElement>('.chat-workflow-canvas-viewport.active')
+    if (!viewport) {
+      return
+    }
+    const plane = viewport.querySelector<HTMLElement>('.chat-resource-graph-plane')
+    plane?.style.setProperty('--resource-zoom', String(characterResourceViewState.zoom))
+    plane?.style.setProperty('--resource-pan-x', `${characterResourceViewState.panX}px`)
+    plane?.style.setProperty('--resource-pan-y', `${characterResourceViewState.panY}px`)
+    viewport.dataset.resourceViewport = JSON.stringify({
+      x: characterResourceViewState.panX,
+      y: characterResourceViewState.panY,
+      zoom: characterResourceViewState.zoom,
+    })
+    panel.querySelectorAll<HTMLElement>('.chat-resource-zoom-label').forEach((label) => {
+      label.textContent = `${Math.round(characterResourceViewState.zoom * 100)}%`
+    })
+  }
+
   async function renderCharacterWorkflowAsync(): Promise<void> {
     if (!characterWorkflowRoot) {
       return
     }
     const renderToken = ++characterWorkflowLazyRenderToken
     if (!characterWorkflowRoot.childElementCount) {
-      characterWorkflowRoot.innerHTML = renderCharacterWorkflowLoadingState()
+      characterWorkflowRoot.innerHTML = renderCharacterWorkflowLibraryShell(renderCharacterWorkflowLibraryEmptyState())
     }
-    if (!chatResourcesHydrated) {
-      characterWorkflowRoot.innerHTML = renderCharacterWorkflowLoadingState()
+    if (!characterWorkflowProjectsHydrated) {
+      characterWorkflowRoot.innerHTML = renderCharacterWorkflowLibraryShell(renderCharacterWorkflowLibraryEmptyState())
       return
     }
     if (!activeCharacterWorkflowProjectId) {
@@ -1812,15 +1968,54 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       characterWorkflowRoot.innerHTML = renderCharacterWorkflowLibraryShell(renderCharacterWorkflowLibraryEmptyState())
       return
     }
+    const canRenderActiveProject = activeProject.loadState === 'ready' || (activeProject.loadState === 'ready-overview' && characterWorkflowActiveTabId !== 'run-draft')
+    if (!canRenderActiveProject) {
+      characterWorkflowRoot.innerHTML = renderCharacterWorkflowLibraryShell(renderCharacterWorkflowProjectLoadingState(activeProject), activeProject)
+      return
+    }
     if (!characterWorkflowContentLoaded) {
       characterWorkflowRoot.innerHTML = renderCharacterWorkflowLibraryShell(renderCharacterWorkflowLibraryEmptyState(), activeProject)
       return
     }
+    const perfId = activeCharacterWorkflowPerfId
+    if (perfId) markCharacterWorkflowPerf(perfId, 'before dynamic import')
     const workflowPage = await loadCharacterWorkflowPageModule()
+    if (perfId) markCharacterWorkflowPerf(perfId, 'dynamic import complete')
     if (renderToken !== characterWorkflowLazyRenderToken) {
       return
     }
-    const workflowMarkup = workflowPage.renderCharacterWorkflowPage({
+    if (perfId) markCharacterWorkflowPerf(perfId, 'before render markup')
+    const workflowMarkup = workflowPage.renderCharacterWorkflowPage(createCharacterWorkflowPageOptions(activeProject))
+    if (perfId) markCharacterWorkflowPerf(perfId, 'render markup complete')
+    characterWorkflowRoot.innerHTML = renderCharacterWorkflowLibraryShell(workflowMarkup, activeProject)
+    if (perfId) markCharacterWorkflowPerf(perfId, 'dom commit complete')
+    workflowPage.initializeCharacterResourceWorkbench(characterWorkflowRoot)
+    if (perfId) finishCharacterWorkflowPerf(perfId, 'workbench init complete')
+  }
+
+  function renderCharacterWorkflowProjectLoadingState(project: CharacterWorkflowProjectRecord): string {
+    const zh = options.getLanguage() === 'zh-CN'
+    const failed = project.loadState === 'error'
+    return `
+      <section class="chat-workflow-builder-main">
+        <div class="chat-workflow-builder-card">
+          <div class="chat-workflow-builder-head">
+            <span>${options.escapeHtml(zh ? 'Workflow' : 'Workflow')}</span>
+            <strong>${options.escapeHtml(project.name)}</strong>
+          </div>
+          <div class="chat-workflow-builder-box">
+            <div class="chat-workflow-builder-label">
+              <strong>${options.escapeHtml(failed ? (zh ? '加载失败' : 'Failed to load') : (zh ? '正在加载项目内容' : 'Loading project detail'))}</strong>
+              <span>${options.escapeHtml(failed ? (zh ? '请重新选择该资源图。' : 'Select this workflow again to retry.') : (zh ? '侧边栏已就绪，画布内容按需加载。' : 'Sidebar is ready. Canvas detail loads on demand.'))}</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    `
+  }
+
+  function createCharacterWorkflowPageOptions(activeProject: CharacterWorkflowProjectRecord): Parameters<CharacterWorkflowPageModule['renderCharacterWorkflowPage']>[0] {
+    return {
       language: options.getLanguage(),
       escapeHtml: options.escapeHtml,
       t: options.t,
@@ -1862,9 +2057,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         deletedLinkIds: [...characterResourceViewState.deletedLinkIds],
         replacedTargetSlots: [...characterResourceViewState.replacedTargetSlots],
       },
-    })
-    characterWorkflowRoot.innerHTML = renderCharacterWorkflowLibraryShell(workflowMarkup, activeProject)
-    workflowPage.initializeCharacterResourceWorkbench(characterWorkflowRoot)
+    }
   }
 
   function getCharacterWorkflowTabs(): CharacterWorkflowFileTab[] {
@@ -2016,12 +2209,15 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           name: 'Character Card Draft',
           goalPrompt: '',
           configOverrides: {
-            'character-card-target': { includeFields: ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'firstMessage', 'dialogueStyle', 'worldContext'], includeSupportFields: ['memoryStrategy', 'imagePrompt'] },
+            'character-card-target': { includeFields: ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'firstMessage', 'dialogueStyle', 'worldContext'], includeSupportFields: ['visualIdentity', 'imagePrompt'] },
             'opening-field-target': { field: 'firstMessage' },
             'opening-field-control': { lengthPolicy: 'medium' },
-            'image-target': { imageRole: 'avatar' },
-            'image-control': { targetImageCount: 1, imageType: 'avatar', composition: 'upper-body-portrait', consistencyMode: 'same-character' },
-            'generation-strategy': { mode: 'branch-and-refine', branchCount: 3, priorityAssets: ['role-card', 'opening', 'image-pack'] },
+            'avatar-image-target': { imageRole: 'avatar', assetPurpose: 'Generate avatar.jpg first as the canonical identity-lock portrait. It should be a polished production avatar with clear face, strong appeal, stable visual identity cues, and no collage layout.' },
+            'avatar-image-control': { targetImageCount: 1, imageStylePreset: 'semi-realistic-anime', shotType: 'bust', aspectRatio: '1:1', consistencyMode: 'same-character', seedMode: 'lock-character' },
+            'overview-sheet-image-target': { imageRole: 'character-overview-sheet', assetPurpose: 'Generate one large character asset overview sheet after avatar.jpg. Use the avatar as identity reference and show front view, back view, side or three-quarter view, hairstyle, hands, legs, feet or shoes, outfit details, and expression callouts.' },
+            'overview-sheet-image-control': { targetImageCount: 1, imageStylePreset: 'character-sheet', shotType: 'full-body', aspectRatio: '16:9', consistencyMode: 'same-character', seedMode: 'lock-character', negativePrompt: 'text, labels, watermark, logo, inconsistent face, deformed hands, extra fingers, missing fingers, bad feet, malformed legs, duplicate limbs' },
+            'opening-layout-target': { layoutKind: 'immersive-card-css', includeSections: ['title', 'tags', 'opening', 'coverImage', 'supportImages'], layoutPrompt: 'Create an immersive CSS-style opening card layout that combines the character title, tags, opening text, and generated images into one readable role-card presentation.' },
+            'generation-strategy': { mode: 'branch-and-refine', branchCount: 3, priorityAssets: ['role-card', 'opening', 'opening-layout', 'image-pack'] },
             'quality-gate': { minimumScore: 0.84 },
           },
         },
@@ -2044,10 +2240,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             'scene-card-target': { sceneCount: 4 },
             'continuity-control': { progressionPacing: 'slow-burn', forbidResettingFacts: true },
             'relationship-control': { relationshipMode: 'ambiguous-ally' },
-            'image-target': { imageRole: 'scene' },
-            'image-control': { targetImageCount: 2, imageType: 'scene', composition: 'environmental-scene', consistencyMode: 'same-world' },
-            'world-reference-image-target': { imageRole: 'reference' },
-            'world-reference-image-control': { targetImageCount: 2, imageType: 'reference', composition: 'character-focused', consistencyMode: 'same-world' },
+            'avatar-image-target': { imageRole: 'avatar', assetPurpose: 'Generate avatar.jpg first as the canonical identity-lock portrait before any world or story reference images.' },
+            'avatar-image-control': { targetImageCount: 1, imageStylePreset: 'semi-realistic-anime', shotType: 'bust', aspectRatio: '1:1', consistencyMode: 'same-character', seedMode: 'lock-character' },
+            'overview-sheet-image-target': { imageRole: 'character-overview-sheet', assetPurpose: 'Generate one large character asset overview sheet after avatar.jpg, then use that stable identity for world and NPC reference images.' },
+            'overview-sheet-image-control': { targetImageCount: 1, imageStylePreset: 'character-sheet', shotType: 'full-body', aspectRatio: '16:9', consistencyMode: 'same-character', seedMode: 'lock-character', negativePrompt: 'text, labels, watermark, logo, inconsistent face, deformed hands, extra fingers, missing fingers, bad feet, malformed legs, duplicate limbs' },
+            'world-reference-image-target': { imageRole: 'world-context', assetPurpose: 'A world-context image that still includes the central character or visible character-linked motifs.' },
+            'world-reference-image-control': { targetImageCount: 2, imageStylePreset: 'semi-realistic-anime', shotType: 'auto', aspectRatio: '16:9', consistencyMode: 'same-world', seedMode: 'vary-slightly' },
             'generation-strategy': { mode: 'explore-then-converge', branchCount: 4, priorityAssets: ['world-context', 'npc-pack', 'scene-context', 'image-pack'] },
             'quality-gate': { minimumScore: 0.86 },
           },
@@ -2154,19 +2352,31 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   function renderCharacterWorkflowAssistant(): string {
     const zh = options.getLanguage() === 'zh-CN'
     const label = zh ? '应用资源图修改' : 'Apply graph edits'
-    const statusLabel = zh ? 'Agent 信息' : 'Agent message'
-    const copyLabel = zh ? '复制信息' : 'Copy message'
+    const statusLabel = zh ? 'Agent 记录' : 'Agent records'
+    const copyLabel = zh ? '复制记录' : 'Copy records'
     const toggleLabel = characterWorkflowAssistantStatusExpanded
-      ? (zh ? '收起信息' : 'Collapse message')
-      : (zh ? '展开信息' : 'Expand message')
+      ? (zh ? '收起记录' : 'Collapse records')
+      : (zh ? '展开记录' : 'Expand records')
+    const records = getWorkflowAssistantStatusRecords()
+    const project = characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)
+    const session = normalizeCharacterWorkflowGoalSession(project?.goalSession)
+    const hasRecords = records.length > 0
+    const canContinue = Boolean(session?.nextStep && session.status !== 'paused' && session.status !== 'blocked' && session.status !== 'complete' && !characterWorkflowBuilderBusy)
+    const canPause = Boolean(session && session.status === 'active' && !characterWorkflowBuilderBusy)
+    const canResume = Boolean(session && session.status === 'paused' && !characterWorkflowBuilderBusy)
+    const canStop = Boolean(session && session.status !== 'complete' && !characterWorkflowBuilderBusy)
     return `
       <form class="chat-workflow-canvas-assistant ${characterWorkflowBuilderBusy ? 'is-busy' : ''}" data-chat-workflow-assistant-form>
         ${renderChatRuntimeModelPickerMarkup('workflow-assistant')}
-        ${characterWorkflowBuilderStatus ? `
+        ${hasRecords ? `
           <section class="chat-workflow-canvas-assistant-status ${characterWorkflowAssistantStatusExpanded ? 'expanded' : ''}" aria-live="polite">
             <div class="chat-workflow-canvas-assistant-status-head">
-              <span>${options.escapeHtml(statusLabel)}</span>
+              <span>${options.escapeHtml(`${statusLabel} · ${records.length}`)}</span>
               <div class="chat-workflow-canvas-assistant-status-actions">
+                <button type="button" data-chat-workflow-assistant-status-action="continue" aria-label="${options.escapeHtml(zh ? '继续下一步' : 'Continue next step')}" title="${options.escapeHtml(zh ? '继续下一步' : 'Continue next step')}" ${canContinue ? '' : 'disabled'}>${options.escapeHtml(zh ? '继续' : 'Next')}</button>
+                <button type="button" data-chat-workflow-assistant-status-action="pause" aria-label="${options.escapeHtml(zh ? '暂停目标' : 'Pause goal')}" title="${options.escapeHtml(zh ? '暂停目标' : 'Pause goal')}" ${canPause ? '' : 'disabled'}>${options.escapeHtml(zh ? '暂停' : 'Pause')}</button>
+                <button type="button" data-chat-workflow-assistant-status-action="resume" aria-label="${options.escapeHtml(zh ? '恢复目标' : 'Resume goal')}" title="${options.escapeHtml(zh ? '恢复目标' : 'Resume goal')}" ${canResume ? '' : 'disabled'}>${options.escapeHtml(zh ? '恢复' : 'Resume')}</button>
+                <button type="button" data-chat-workflow-assistant-status-action="stop" aria-label="${options.escapeHtml(zh ? '停止目标' : 'Stop goal')}" title="${options.escapeHtml(zh ? '停止目标' : 'Stop goal')}" ${canStop ? '' : 'disabled'}>${options.escapeHtml(zh ? '停止' : 'Stop')}</button>
                 <button type="button" data-chat-workflow-assistant-status-action="copy" aria-label="${options.escapeHtml(copyLabel)}" title="${options.escapeHtml(copyLabel)}">
                   <svg viewBox="0 0 20 20" aria-hidden="true">
                     <path d="M7 6.5V4.8c0-.9.6-1.5 1.5-1.5h5c.9 0 1.5.6 1.5 1.5v7c0 .9-.6 1.5-1.5 1.5H12"></path>
@@ -2182,7 +2392,17 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
                 </button>
               </div>
             </div>
-            <pre class="chat-workflow-canvas-assistant-status-body">${options.escapeHtml(characterWorkflowBuilderStatus)}</pre>
+            <div class="chat-workflow-canvas-assistant-status-body">
+              ${records.map((record, index) => `
+                <article class="chat-workflow-canvas-assistant-record ${index === records.length - 1 ? 'latest' : ''}">
+                  <header>
+                    <strong>${options.escapeHtml(record.title)}</strong>
+                    <span>${options.escapeHtml(record.meta)}</span>
+                  </header>
+                  <p>${options.escapeHtml(record.body)}</p>
+                </article>
+              `).join('')}
+            </div>
           </section>
         ` : ''}
         <div class="chat-workflow-canvas-assistant-row">
@@ -2196,6 +2416,43 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         </div>
       </form>
     `
+  }
+
+  function getWorkflowAssistantStatusRecords(): Array<{ title: string; meta: string; body: string }> {
+    const zh = options.getLanguage() === 'zh-CN'
+    const project = characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)
+    const session = normalizeCharacterWorkflowGoalSession(project?.goalSession)
+    const records = (session?.history ?? []).map((item, index) => ({
+      title: item.stepIndex
+        ? `${zh ? '步骤' : 'Step'} ${item.stepIndex}`
+        : `${zh ? '交互' : 'Turn'} ${index + 1}`,
+      meta: [
+        item.status || 'applied',
+        item.tool || '',
+        item.operations ? `${item.operations} ${zh ? '项修改' : 'edits'}` : '',
+        formatWorkflowProjectTime(item.createdAt, zh),
+      ].filter(Boolean).join(' · '),
+      body: [
+        item.currentStep ? `${zh ? '当前' : 'Current'}: ${item.currentStep}` : '',
+        item.summary || item.userRequest,
+        item.nextStep ? `${zh ? '下一步' : 'Next'}: ${item.nextStep}` : '',
+      ].filter(Boolean).join('\n'),
+    })).filter((item) => item.body.trim())
+    const current = characterWorkflowBuilderStatus.trim()
+    if (current && !records.some((item) => item.body === current)) {
+      records.push({
+        title: zh ? '当前状态' : 'Current status',
+        meta: characterWorkflowBuilderBusy ? (zh ? '运行中' : 'running') : (zh ? '最新' : 'latest'),
+        body: current,
+      })
+    }
+    return records.slice(-8)
+  }
+
+  function getWorkflowAssistantStatusText(): string {
+    return getWorkflowAssistantStatusRecords()
+      .map((record) => [`${record.title} · ${record.meta}`, record.body].filter(Boolean).join('\n'))
+      .join('\n\n')
   }
 
   function formatWorkflowProjectTime(value: number | undefined, zh: boolean): string {
@@ -2290,6 +2547,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!project) {
       return
     }
+    if (project.loadState !== 'ready' && project.loadState !== 'ready-overview') {
+      return
+    }
     upsertWorkflowProjectRunSnapshot(project)
     project.configOverrides = cloneRecord(characterWorkflowConfigOverrides)
     project.positionOverrides = cloneRecord(characterWorkflowPositionOverrides)
@@ -2297,6 +2557,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     project.runCount = characterWorkflowRunCount
     project.activeRunId = characterWorkflowRunState?.run?.id
     project.updatedAt = Date.now()
+    persistCharacterWorkflowProject(project)
     if (markDirty) {
       markActiveWorkflowDirty()
     }
@@ -2306,7 +2567,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!characterWorkflowRunState?.run) {
       return
     }
-    const run = characterWorkflowRunState.run
+    const normalizedRunState = normalizePersistedCharacterWorkflowRunState(characterWorkflowRunState, false)
+    const run = normalizedRunState.run
+    if (!run) {
+      return
+    }
     const existingIndex = project.runs.findIndex((item) => item.id === run.id)
     const existing = existingIndex >= 0 ? project.runs[existingIndex] : undefined
     const now = Date.now()
@@ -2316,12 +2581,204 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       status: run.status,
       createdAt: existing?.createdAt ?? now,
       completedAt: run.status === 'done' || run.status === 'failed' ? existing?.completedAt ?? now : existing?.completedAt,
-      runState: JSON.parse(JSON.stringify(characterWorkflowRunState)) as CharacterResourceRunState,
+      runState: JSON.parse(JSON.stringify(normalizedRunState)) as CharacterResourceRunState,
     }
     if (existingIndex >= 0) {
       project.runs[existingIndex] = runRecord
     } else {
       project.runs.push(runRecord)
+    }
+  }
+
+  function normalizePersistedCharacterWorkflowRunState(
+    runState: CharacterResourceRunState | undefined | null,
+    finalizeRunning = true
+  ): CharacterResourceRunState | null {
+    if (!runState || typeof runState !== 'object') {
+      return null
+    }
+    const normalized = JSON.parse(JSON.stringify(runState)) as CharacterResourceRunState
+    if (finalizeRunning && normalized.run?.status === 'running') {
+      const interruptedSummary = options.getLanguage() === 'zh-CN'
+        ? '上次运行在完成前中断，已自动标记为失败。'
+        : 'The previous run was interrupted before completion and was marked failed.'
+      normalized.run = {
+        ...normalized.run,
+        status: 'failed',
+      }
+      const currentStepId = normalized.run.currentStepId
+      normalized.steps = (normalized.steps ?? []).map((step) => {
+        if (step.status === 'running' || step.id === currentStepId) {
+          return {
+            ...step,
+            status: 'failed',
+            detail: step.detail || interruptedSummary,
+          }
+        }
+        return step
+      })
+      normalized.events = [
+        ...(normalized.events ?? []),
+        {
+          type: 'run.interrupted',
+          timestamp: Date.now(),
+          status: 'failed',
+          summary: interruptedSummary,
+        },
+      ]
+    }
+    return normalized
+  }
+
+  function normalizePersistedCharacterWorkflowProject(project: CharacterWorkflowProjectRecord): CharacterWorkflowProjectRecord {
+    const runs = (Array.isArray(project.runs) ? project.runs : []).flatMap((run): CharacterWorkflowProjectRunRecord[] => {
+      const runState = normalizePersistedCharacterWorkflowRunState(run.runState)
+      const stateRun = runState?.run
+      if (!stateRun) {
+        return []
+      }
+      const status = stateRun.status
+      return [{
+        ...run,
+        id: stateRun.id || run.id,
+        title: stateRun.title || run.title,
+        status,
+        completedAt: status === 'done' || status === 'failed' ? run.completedAt ?? Date.now() : run.completedAt,
+        runState,
+      }]
+    })
+    const activeRunId = runs.some((run) => run.id === project.activeRunId)
+      ? project.activeRunId
+      : runs[runs.length - 1]?.id
+    return {
+      ...project,
+      schemaVersion: Math.max(1, Math.round(Number(project.schemaVersion) || 1)),
+      loadState: 'ready',
+      configOverrides: cloneRecord(project.configOverrides ?? {}),
+      positionOverrides: cloneRecord(project.positionOverrides ?? {}),
+      viewState: project.viewState ?? createWorkflowProjectViewState(),
+      runCount: Math.max(Number(project.runCount) || 0, runs.length),
+      activeRunId,
+      runs,
+      goalSession: normalizeCharacterWorkflowGoalSession(project.goalSession),
+    }
+  }
+
+  function createIndexedCharacterWorkflowProject(item: {
+    id: string
+    name: string
+    schemaVersion?: number
+    createdAt: number
+    updatedAt: number
+    activeRunId?: string
+    runCount: number
+  }): CharacterWorkflowProjectRecord {
+    return {
+      id: item.id,
+      name: item.name,
+      schemaVersion: item.schemaVersion,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+      loadState: 'index',
+      configOverrides: {},
+      positionOverrides: {},
+      viewState: createWorkflowProjectViewState(),
+      runCount: item.runCount,
+      activeRunId: item.activeRunId,
+      runs: [],
+    }
+  }
+
+  async function ensureCharacterWorkflowProjectDetailLoaded(projectId: string, options: { includeRuns?: boolean } = {}): Promise<CharacterWorkflowProjectRecord | null> {
+    const includeRuns = Boolean(options.includeRuns)
+    const perfId = activeCharacterWorkflowPerfId
+    const existing = characterWorkflowProjects.find((project) => project.id === projectId)
+    if (!existing) {
+      return null
+    }
+    if (existing.loadState === 'ready' || (!includeRuns && existing.loadState === 'ready-overview')) {
+      if (perfId) markCharacterWorkflowPerf(perfId, 'project detail already ready')
+      return existing
+    }
+    const promiseKey = `${projectId}:${includeRuns ? 'full' : 'overview'}`
+    const currentPromise = characterWorkflowProjectDetailPromises.get(promiseKey)
+    if (currentPromise) {
+      if (perfId) markCharacterWorkflowPerf(perfId, 'reuse project detail promise')
+      return currentPromise
+    }
+    existing.loadState = 'loading-detail'
+    if (perfId) markCharacterWorkflowPerf(perfId, 'before getProject IPC')
+    const promise = (includeRuns
+      ? window.electronAPI.getCharacterWorkflowProject(projectId)
+      : window.electronAPI.getCharacterWorkflowProjectOverview(projectId))
+      .then((detailResponse) => {
+        if (perfId) markCharacterWorkflowPerf(perfId, includeRuns ? 'getProject IPC complete' : 'getProjectOverview IPC complete')
+        if (!detailResponse.success) {
+          throw new Error(detailResponse.error || 'Failed to load character workflow project')
+        }
+        const payload = detailResponse.project?.payload
+        if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+          throw new Error('Character workflow project payload is missing')
+        }
+        if (perfId) markCharacterWorkflowPerf(perfId, 'before normalize project')
+        const normalized = normalizePersistedCharacterWorkflowProject(payload as CharacterWorkflowProjectRecord)
+        normalized.loadState = includeRuns ? 'ready' : 'ready-overview'
+        if (perfId) markCharacterWorkflowPerf(perfId, 'normalize project complete')
+        const index = characterWorkflowProjects.findIndex((project) => project.id === projectId)
+        if (index >= 0) {
+          characterWorkflowProjects[index] = normalized
+        }
+        if (perfId) markCharacterWorkflowPerf(perfId, 'project state replaced')
+        return normalized
+      })
+      .catch((error) => {
+        const project = characterWorkflowProjects.find((item) => item.id === projectId)
+        if (project) {
+          project.loadState = 'error'
+        }
+        console.warn('[CharacterWorkflowStore] Failed to load workflow project detail:', error)
+        throw error
+      })
+      .finally(() => {
+        characterWorkflowProjectDetailPromises.delete(promiseKey)
+      })
+    characterWorkflowProjectDetailPromises.set(promiseKey, promise)
+    return promise
+  }
+
+  function normalizeCharacterWorkflowGoalSession(session: CharacterWorkflowGoalSession | undefined): CharacterWorkflowGoalSession | undefined {
+    if (!session || typeof session !== 'object') {
+      return undefined
+    }
+    const status = session.status === 'paused' || session.status === 'needs-user' || session.status === 'blocked' || session.status === 'complete'
+      ? session.status
+      : 'active'
+    return {
+      objective: typeof session.objective === 'string' ? session.objective : '',
+      plan: Array.isArray(session.plan) ? session.plan.filter((item): item is string => typeof item === 'string') : [],
+      completedSteps: Array.isArray(session.completedSteps) ? session.completedSteps.filter((item): item is string => typeof item === 'string') : [],
+      currentStep: typeof session.currentStep === 'string' ? session.currentStep : undefined,
+      nextStep: typeof session.nextStep === 'string' ? session.nextStep : undefined,
+      status,
+      history: Array.isArray(session.history)
+        ? session.history.flatMap((item): CharacterWorkflowGoalSession['history'] => {
+          if (!item || typeof item !== 'object') return []
+          const record = item as CharacterWorkflowGoalSession['history'][number]
+          return [{
+            id: typeof record.id === 'string' ? record.id : undefined,
+            stepIndex: Math.max(0, Math.round(Number(record.stepIndex) || 0)) || undefined,
+            tool: typeof record.tool === 'string' ? record.tool : undefined,
+            userRequest: typeof record.userRequest === 'string' ? record.userRequest : '',
+            summary: typeof record.summary === 'string' ? record.summary : '',
+            status: typeof record.status === 'string' ? record.status : 'applied',
+            operations: Math.max(0, Math.round(Number(record.operations) || 0)),
+            currentStep: typeof record.currentStep === 'string' ? record.currentStep : undefined,
+            nextStep: typeof record.nextStep === 'string' ? record.nextStep : undefined,
+            createdAt: Math.max(0, Math.round(Number(record.createdAt) || Date.now())),
+          }]
+        }).slice(-12)
+        : [],
+      updatedAt: Math.max(0, Math.round(Number(session.updatedAt) || Date.now())),
     }
   }
 
@@ -2358,14 +2815,38 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     addedNodes?: Array<{ id: string; type: string; title: string; x: number; y: number }>
     customLinks?: SerializedCharacterResourceLink[]
     operations?: Array<Record<string, unknown>>
+    agentWork?: {
+      objective: string
+      status: 'active' | 'needs-user' | 'blocked' | 'complete'
+      plan: string[]
+      completedSteps: string[]
+      currentStep?: string
+      nextStep?: string
+      updatedAt: number
+      steps: Array<{
+        id: string
+        index: number
+        tool?: string
+        userRequest: string
+        summary: string
+        status: string
+        operations: Array<Record<string, unknown>>
+        uiConfigOverrides: Record<string, Record<string, unknown>>
+        currentStep?: string
+        nextStep?: string
+        createdAt: number
+      }>
+    }
   }): void {
     const now = Date.now()
-    const configOverrides: Record<string, Record<string, unknown>> = cloneRecord(spec.configOverrides ?? {})
+    const configOverrides: Record<string, Record<string, unknown>> = Object.fromEntries(
+      Object.entries(cloneRecord(spec.configOverrides ?? {})).map(([nodeId, config]) => [nodeId, deriveCharacterWorkflowConfig(config)])
+    )
     const operationPatch = createInitialWorkflowPatchFromOperations(spec.operations ?? [])
     for (const [nodeId, config] of Object.entries(operationPatch.configOverrides)) {
       configOverrides[nodeId] = {
         ...(configOverrides[nodeId] ?? {}),
-        ...config,
+        ...deriveCharacterWorkflowConfig(config),
       }
     }
     if ((spec.goalPrompt || spec.targetAudience) && !configOverrides['generation-goal']) {
@@ -2397,8 +2878,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const project: CharacterWorkflowProjectRecord = {
       id: `workflow-draft-${now}-${Math.random().toString(16).slice(2)}`,
       name: spec.name || (options.getLanguage() === 'zh-CN' ? `角色草稿 ${characterWorkflowProjects.length + 1}` : `Character Draft ${characterWorkflowProjects.length + 1}`),
+      schemaVersion: 1,
       createdAt: now,
       updatedAt: now,
+      loadState: 'ready',
       configOverrides,
       positionOverrides: {},
       viewState: {
@@ -2421,12 +2904,59 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       },
       runCount: 0,
       runs: [],
+      goalSession: spec.agentWork ? createWorkflowGoalSessionFromAgentWork(spec.agentWork, spec.name || '') : undefined,
     }
     characterWorkflowProjects = [project, ...characterWorkflowProjects]
-    openCharacterWorkflowDraft(project.id)
+    persistCharacterWorkflowProject(project)
+    void openCharacterWorkflowDraft(project.id)
     if (ensureWorkflowConversation()) {
       characterWorkflowDirty = true
       persistActiveConversationWorkflowState()
+    }
+  }
+
+  function createWorkflowGoalSessionFromAgentWork(agentWork: {
+    objective: string
+    status: 'active' | 'needs-user' | 'blocked' | 'complete'
+    plan: string[]
+    completedSteps: string[]
+    currentStep?: string
+    nextStep?: string
+    updatedAt: number
+    steps: Array<{
+      id: string
+      index: number
+      tool?: string
+      userRequest: string
+      summary: string
+      status: string
+      operations: Array<Record<string, unknown>>
+      uiConfigOverrides: Record<string, Record<string, unknown>>
+      currentStep?: string
+      nextStep?: string
+      createdAt: number
+    }>
+  }, fallbackObjective: string): CharacterWorkflowGoalSession {
+    return {
+      objective: agentWork.objective || fallbackObjective,
+      plan: Array.isArray(agentWork.plan) ? agentWork.plan.filter((item): item is string => typeof item === 'string') : [],
+      completedSteps: Array.isArray(agentWork.completedSteps) ? agentWork.completedSteps.filter((item): item is string => typeof item === 'string') : [],
+      currentStep: agentWork.currentStep,
+      nextStep: agentWork.nextStep,
+      status: agentWork.status,
+      history: agentWork.steps.map((step) => ({
+        id: step.id,
+        stepIndex: step.index,
+        tool: step.tool,
+        userRequest: step.userRequest,
+        summary: step.summary,
+        status: step.status,
+        operations: step.operations.length + Object.keys(step.uiConfigOverrides ?? {}).length,
+        currentStep: step.currentStep,
+        nextStep: step.nextStep,
+        createdAt: step.createdAt || Date.now(),
+      })).slice(-16),
+      updatedAt: Math.max(0, Math.round(Number(agentWork.updatedAt) || Date.now())),
     }
   }
 
@@ -2458,7 +2988,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         if (operation.config && typeof operation.config === 'object' && !Array.isArray(operation.config)) {
           configOverrides[nodeId] = {
             ...(configOverrides[nodeId] ?? {}),
-            ...(operation.config as Record<string, unknown>),
+            ...deriveCharacterWorkflowConfig(operation.config as Record<string, unknown>),
           }
         }
       } else if (type === 'update-node-config') {
@@ -2466,7 +2996,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         if (!nodeId || !operation.config || typeof operation.config !== 'object' || Array.isArray(operation.config)) continue
         configOverrides[nodeId] = {
           ...(configOverrides[nodeId] ?? {}),
-          ...(operation.config as Record<string, unknown>),
+          ...deriveCharacterWorkflowConfig(operation.config as Record<string, unknown>),
         }
       } else if (type === 'add-link') {
         const sourceNodeId = typeof operation.sourceNodeId === 'string' ? operation.sourceNodeId.trim() : ''
@@ -2482,6 +3012,280 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       }
     }
     return { addedNodes, customLinks, configOverrides }
+  }
+
+  function getActiveWorkflowGoalSession(userPrompt: string): CharacterWorkflowGoalSession | undefined {
+    const project = characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)
+    if (!project) {
+      return undefined
+    }
+    const existing = normalizeCharacterWorkflowGoalSession(project.goalSession)
+    if (existing?.objective) {
+      project.goalSession = existing
+      return existing
+    }
+    const now = Date.now()
+    const created: CharacterWorkflowGoalSession = {
+      objective: userPrompt,
+      plan: [],
+      completedSteps: [],
+      status: 'active',
+      history: [],
+      updatedAt: now,
+    }
+    project.goalSession = created
+    return created
+  }
+
+  function updateActiveWorkflowGoalSession(
+    userPrompt: string,
+    response: {
+      spec?: {
+        summary?: string
+        plan?: string[]
+        completedSteps?: string[]
+        currentStep?: string
+        nextStep?: string
+        status?: string
+        operations?: Array<Record<string, unknown>>
+      }
+      uiConfigOverrides?: Record<string, Record<string, unknown>>
+      agentWork?: {
+        id: string
+        mode?: 'create' | 'edit'
+        objective: string
+        status: 'active' | 'needs-user' | 'blocked' | 'complete'
+        plan: string[]
+        completedSteps: string[]
+        currentStep?: string
+        nextStep?: string
+        updatedAt: number
+        steps: Array<{
+          id: string
+          index: number
+          tool?: string
+          userRequest: string
+          summary: string
+          status: string
+          operations: Array<Record<string, unknown>>
+          uiConfigOverrides: Record<string, Record<string, unknown>>
+          currentStep?: string
+          nextStep?: string
+          createdAt: number
+        }>
+      }
+    }
+  ): void {
+    const project = characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)
+    if (!project) {
+      return
+    }
+    const current = getActiveWorkflowGoalSession(userPrompt)
+    if (!current) {
+      return
+    }
+    const spec = response.spec ?? {}
+    const agentWork = response.agentWork
+    if (agentWork) {
+      const status = agentWork.status === 'complete' ? 'complete' : agentWork.status
+      project.goalSession = {
+        ...current,
+        objective: agentWork.objective || current.objective,
+        plan: Array.isArray(agentWork.plan) ? agentWork.plan.filter((item): item is string => typeof item === 'string') : current.plan,
+        completedSteps: Array.isArray(agentWork.completedSteps) ? agentWork.completedSteps.filter((item): item is string => typeof item === 'string') : current.completedSteps,
+        currentStep: typeof agentWork.currentStep === 'string' && agentWork.currentStep.trim() ? agentWork.currentStep.trim() : current.currentStep,
+        nextStep: typeof agentWork.nextStep === 'string' && agentWork.nextStep.trim() ? agentWork.nextStep.trim() : undefined,
+        status,
+        history: [
+          ...dedupeWorkflowGoalHistory([
+            ...current.history,
+            ...agentWork.steps.map((step) => ({
+            id: step.id,
+            stepIndex: step.index,
+            tool: step.tool,
+            userRequest: step.userRequest || userPrompt,
+            summary: step.summary,
+            status: step.status,
+            operations: step.operations.length + Object.keys(step.uiConfigOverrides ?? {}).length,
+            currentStep: step.currentStep,
+            nextStep: step.nextStep,
+            createdAt: step.createdAt || Date.now(),
+          })),
+          ]),
+        ].slice(-16),
+        updatedAt: Math.max(0, Math.round(Number(agentWork.updatedAt) || Date.now())),
+      }
+      return
+    }
+    const status = spec.status === 'needs-user'
+      ? 'needs-user'
+      : spec.status === 'blocked'
+        ? 'blocked'
+        : 'active'
+    const operationCount = (Array.isArray(spec.operations) ? spec.operations.length : 0)
+      + Object.keys(response.uiConfigOverrides ?? {}).length
+    project.goalSession = {
+      ...current,
+      plan: Array.isArray(spec.plan) && spec.plan.length ? spec.plan.filter((item): item is string => typeof item === 'string') : current.plan,
+      completedSteps: Array.isArray(spec.completedSteps) ? spec.completedSteps.filter((item): item is string => typeof item === 'string') : current.completedSteps,
+      currentStep: typeof spec.currentStep === 'string' && spec.currentStep.trim() ? spec.currentStep.trim() : current.currentStep,
+      nextStep: typeof spec.nextStep === 'string' && spec.nextStep.trim() ? spec.nextStep.trim() : current.nextStep,
+      status,
+      history: [
+        ...current.history,
+        {
+          userRequest: userPrompt,
+          summary: typeof spec.summary === 'string' ? spec.summary : '',
+          status: typeof spec.status === 'string' ? spec.status : 'applied',
+          operations: operationCount,
+          currentStep: typeof spec.currentStep === 'string' ? spec.currentStep : undefined,
+          nextStep: typeof spec.nextStep === 'string' ? spec.nextStep : undefined,
+          createdAt: Date.now(),
+        },
+      ].slice(-12),
+      updatedAt: Date.now(),
+    }
+  }
+
+  function applyWorkflowAgentStepEvent(userPrompt: string, event: {
+    type: string
+    mode?: 'create' | 'edit'
+    step?: {
+      id: string
+      index: number
+      tool?: string
+      userRequest?: string
+      summary?: string
+      status?: string
+      plan?: string[]
+      completedSteps?: string[]
+      currentStep?: string
+      nextStep?: string
+      operations?: Array<Record<string, unknown>>
+      uiConfigOverrides?: Record<string, Record<string, unknown>>
+      createdAt?: number
+    }
+  }): boolean {
+    if (event.type !== 'workflow-agent.step' || !event.step || event.mode !== 'edit') {
+      return false
+    }
+    const project = characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)
+    const current = getActiveWorkflowGoalSession(userPrompt)
+    if (!project || !current) {
+      return false
+    }
+    const step = event.step
+    const fakeSpec = {
+      summary: step.summary,
+      plan: step.plan,
+      completedSteps: step.completedSteps,
+      currentStep: step.currentStep,
+      nextStep: step.nextStep,
+      status: step.status,
+      operations: step.operations,
+    }
+    const changed = applyCharacterWorkflowAssistantResult({
+      spec: fakeSpec,
+      uiConfigOverrides: step.uiConfigOverrides,
+    })
+    const status = step.status === 'needs-user'
+      ? 'needs-user'
+      : step.status === 'blocked'
+        ? 'blocked'
+        : 'active'
+    project.goalSession = {
+      ...current,
+      plan: Array.isArray(step.plan) && step.plan.length ? step.plan.filter((item): item is string => typeof item === 'string') : current.plan,
+      completedSteps: Array.isArray(step.completedSteps) ? step.completedSteps.filter((item): item is string => typeof item === 'string') : current.completedSteps,
+      currentStep: typeof step.currentStep === 'string' && step.currentStep.trim() ? step.currentStep.trim() : current.currentStep,
+      nextStep: typeof step.nextStep === 'string' && step.nextStep.trim() ? step.nextStep.trim() : current.nextStep,
+      status,
+      history: dedupeWorkflowGoalHistory([
+        ...current.history,
+        {
+          id: step.id,
+          stepIndex: step.index,
+          tool: step.tool,
+          userRequest: step.userRequest || userPrompt,
+          summary: step.summary || '',
+          status: step.status || 'applied',
+          operations: (step.operations ?? []).length + Object.keys(step.uiConfigOverrides ?? {}).length,
+          currentStep: step.currentStep,
+          nextStep: step.nextStep,
+          createdAt: step.createdAt || Date.now(),
+        },
+      ]).slice(-16),
+      updatedAt: Date.now(),
+    }
+    characterWorkflowBuilderStatus = formatWorkflowGoalSessionStatus(project.goalSession, step.summary)
+    saveActiveWorkflowProjectSnapshot()
+    renderCharacterWorkflow()
+    return changed
+  }
+
+  function dedupeWorkflowGoalHistory(history: CharacterWorkflowGoalSession['history']): CharacterWorkflowGoalSession['history'] {
+    const seen = new Set<string>()
+    const deduped: CharacterWorkflowGoalSession['history'] = []
+    for (const item of history) {
+      const key = item.id || `${item.stepIndex ?? ''}:${item.tool ?? ''}:${item.createdAt}:${item.summary}`
+      if (seen.has(key)) {
+        continue
+      }
+      seen.add(key)
+      deduped.push(item)
+    }
+    return deduped
+  }
+
+  function formatWorkflowGoalSessionStatus(session: CharacterWorkflowGoalSession | undefined, fallbackSummary?: string): string {
+    const parts = [
+      typeof fallbackSummary === 'string' && fallbackSummary.trim() ? fallbackSummary.trim() : '',
+      session?.currentStep ? `${options.getLanguage() === 'zh-CN' ? '当前步骤' : 'Current step'}: ${session.currentStep}` : '',
+      session?.nextStep ? `${options.getLanguage() === 'zh-CN' ? '下一步' : 'Next step'}: ${session.nextStep}` : '',
+    ].filter(Boolean)
+    if (session?.plan?.length) {
+      const title = options.getLanguage() === 'zh-CN' ? '计划' : 'Plan'
+      parts.push(`${title}:\n${session.plan.map((item, index) => `${index + 1}. ${item}`).join('\n')}`)
+    }
+    return parts.join('\n\n')
+  }
+
+  function setActiveWorkflowGoalSessionStatus(status: CharacterWorkflowGoalSession['status']): void {
+    const project = characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)
+    const session = normalizeCharacterWorkflowGoalSession(project?.goalSession)
+    if (!project || !session) {
+      return
+    }
+    project.goalSession = {
+      ...session,
+      status,
+      nextStep: status === 'complete' ? undefined : session.nextStep,
+      history: [
+        ...session.history,
+        {
+          userRequest: status,
+          summary: options.getLanguage() === 'zh-CN'
+            ? `Workflow Agent 目标已${status === 'paused' ? '暂停' : status === 'active' ? '恢复' : '停止'}。`
+            : `Workflow Agent goal ${status === 'paused' ? 'paused' : status === 'active' ? 'resumed' : 'stopped'}.`,
+          status,
+          operations: 0,
+          createdAt: Date.now(),
+        },
+      ].slice(-16),
+      updatedAt: Date.now(),
+    }
+    saveActiveWorkflowProjectSnapshot()
+    renderCharacterWorkflow()
+  }
+
+  function continueActiveWorkflowGoalSession(): void {
+    const project = characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)
+    const session = normalizeCharacterWorkflowGoalSession(project?.goalSession)
+    if (!session?.nextStep || session.status === 'paused' || session.status === 'blocked' || session.status === 'complete') {
+      return
+    }
+    characterWorkflowAssistantPrompt = session.nextStep
+    void applyCharacterWorkflowAssistantPrompt()
   }
 
   async function buildCharacterWorkflowFromPrompt(): Promise<void> {
@@ -2513,6 +3317,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         sourceNotes: response.spec?.sourceNotes,
         configOverrides: response.uiConfigOverrides,
         operations: response.spec?.operations,
+        agentWork: response.agentWork,
       })
       characterWorkflowBuilderPrompt = ''
       characterWorkflowBuilderStatus = ''
@@ -2541,24 +3346,55 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     renderCharacterWorkflow()
     try {
       const workflowPage = await loadCharacterWorkflowPageModule()
-      const response = await window.electronAPI.buildCharacterWorkflow({
+      const goalSession = getActiveWorkflowGoalSession(userPrompt)
+      const buildRequest = {
         prompt: userPrompt,
         language: options.getLanguage(),
         mode: 'edit',
+        editorSession: goalSession ? {
+          objective: goalSession.objective,
+          plan: goalSession.plan,
+          completedSteps: goalSession.completedSteps,
+          currentStep: goalSession.currentStep,
+          history: goalSession.history.map((item) => ({
+            userRequest: item.userRequest,
+            summary: item.summary,
+            status: item.status,
+            operations: item.operations,
+          })),
+        } : undefined,
         graph: createCharacterWorkflowAssistantGraph(workflowPage),
-      })
+      } as const
+      pushCharacterResourceUndoSnapshot()
+      let streamedChanged = false
+      let streamedSteps = 0
+      const response = typeof window.electronAPI.streamBuildCharacterWorkflow === 'function'
+        ? await window.electronAPI.streamBuildCharacterWorkflow(buildRequest, {
+            onEvent: (event) => {
+              if (applyWorkflowAgentStepEvent(userPrompt, event)) {
+                streamedChanged = true
+              }
+              if (event.type === 'workflow-agent.step') {
+                streamedSteps += 1
+              }
+            },
+          })
+        : await window.electronAPI.buildCharacterWorkflow(buildRequest)
       if (!response.success) {
         throw new Error(response.error || 'Workflow agent failed')
       }
-      pushCharacterResourceUndoSnapshot()
-      const changed = applyCharacterWorkflowAssistantResult(response)
+      const changed = streamedSteps > 0
+        ? streamedChanged
+        : applyCharacterWorkflowAssistantResult(response)
+      updateActiveWorkflowGoalSession(userPrompt, response)
+      saveActiveWorkflowProjectSnapshot()
       if (!changed) {
-        characterWorkflowBuilderStatus = options.getLanguage() === 'zh-CN' ? 'Agent 没有返回可应用的修改' : 'Agent returned no applicable changes'
-      } else {
-        characterWorkflowAssistantPrompt = ''
         characterWorkflowBuilderStatus = typeof response.spec?.summary === 'string' && response.spec.summary.trim()
           ? response.spec.summary.trim()
-          : ''
+          : options.getLanguage() === 'zh-CN' ? 'Agent 没有返回可应用的修改' : 'Agent returned no applicable changes'
+      } else {
+        characterWorkflowAssistantPrompt = ''
+        characterWorkflowBuilderStatus = formatWorkflowGoalSessionStatus(characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)?.goalSession, response.spec?.summary)
         showToast(options.getLanguage() === 'zh-CN' ? '已应用资源图修改' : 'Applied graph edits')
       }
     } catch (error: any) {
@@ -2647,6 +3483,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       config: Record<string, unknown>
       inputs: string[]
       outputs: string[]
+      parameters: Array<{
+        id: string
+        type: string
+        defaultValue?: unknown
+        options?: Array<{ value: string; label: string }>
+      }>
     }>
     edges: Array<{
       id?: string
@@ -2697,6 +3539,19 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         config: node.config,
         inputs: Object.keys(node.inputs ?? {}),
         outputs: Object.keys(node.outputs ?? {}),
+        parameters: Array.isArray(node.parameters)
+          ? node.parameters.map((parameterItem: any) => ({
+            id: String(parameterItem.id || ''),
+            type: String(parameterItem.type || ''),
+            defaultValue: parameterItem.defaultValue,
+            ...(Array.isArray(parameterItem.options)
+              ? { options: parameterItem.options.map((optionItem: any) => ({
+                value: String(optionItem.value || ''),
+                label: String(optionItem.label || optionItem.value || ''),
+              })) }
+              : {}),
+          })).filter((parameterItem: any) => parameterItem.id)
+          : [],
       })),
       edges: snapshot.edges ?? [],
     }
@@ -2722,8 +3577,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       linkActions: new Map<string, string>(),
     }
     for (const [nodeId, config] of Object.entries(response.uiConfigOverrides ?? {})) {
-      const entries = Object.entries(config).filter(([, value]) => {
+      const nextConfig = deriveCharacterWorkflowConfig(config)
+      const entries = Object.entries(nextConfig).filter(([key, value]) => {
         if (Array.isArray(value)) return value.length > 0
+        if (value === '' && key === 'stylePrompt' && typeof nextConfig.preset === 'string') return true
         return value !== '' && value !== undefined && value !== null
       })
       if (!entries.length) continue
@@ -2795,7 +3652,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       if (operation.config && typeof operation.config === 'object' && !Array.isArray(operation.config)) {
         characterWorkflowConfigOverrides[nodeId] = {
           ...(characterWorkflowConfigOverrides[nodeId] ?? {}),
-          ...(operation.config as Record<string, unknown>),
+          ...deriveCharacterWorkflowConfig(operation.config as Record<string, unknown>),
         }
       }
       selectedWorkflowNodeId = nodeId
@@ -2809,7 +3666,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       if (!nodeId || !operation.config || typeof operation.config !== 'object' || Array.isArray(operation.config)) return false
       characterWorkflowConfigOverrides[nodeId] = {
         ...(characterWorkflowConfigOverrides[nodeId] ?? {}),
-        ...(operation.config as Record<string, unknown>),
+        ...deriveCharacterWorkflowConfig(operation.config as Record<string, unknown>),
       }
       selectedWorkflowNodeId = nodeId
       characterResourceViewState.selectedNodeIds = [nodeId]
@@ -2921,70 +3778,142 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     return false
   }
 
-  function openCharacterWorkflowDraft(projectId: string): void {
+  async function openCharacterWorkflowDraft(projectId: string): Promise<void> {
+    const perfId = startCharacterWorkflowPerf(`open project ${projectId}`)
     saveActiveWorkflowProjectSnapshot()
-    const project = characterWorkflowProjects.find((item) => item.id === projectId)
-    if (!project) {
+    markCharacterWorkflowPerf(perfId, 'save current snapshot scheduled')
+    const projectIndex = characterWorkflowProjects.findIndex((item) => item.id === projectId)
+    if (projectIndex < 0) {
+      finishCharacterWorkflowPerf(perfId, 'project missing')
       return
     }
+    activeCharacterWorkflowProjectId = projectId
     characterWorkflowContentLoaded = true
+    characterWorkflowActiveTabId = 'workflow'
+    renderCharacterWorkflow()
+    markCharacterWorkflowPerf(perfId, 'loading render scheduled')
+    const project = await ensureCharacterWorkflowProjectDetailLoaded(projectId).catch((error) => {
+      showToast(error instanceof Error ? error.message : String(error))
+      return null
+    })
+    markCharacterWorkflowPerf(perfId, 'detail await complete')
+    if (!project || activeCharacterWorkflowProjectId !== projectId) {
+      renderCharacterWorkflow()
+      finishCharacterWorkflowPerf(perfId, 'detail unavailable or stale')
+      return
+    }
     activeCharacterWorkflowProjectId = project.id
+    markCharacterWorkflowPerf(perfId, 'before apply project state')
     replaceRecord(characterWorkflowConfigOverrides, cloneRecord(project.configOverrides))
     replaceRecord(characterWorkflowPositionOverrides, cloneRecord(project.positionOverrides))
     applyWorkflowProjectViewState(project.viewState)
     characterWorkflowRunCount = project.runCount
-    characterWorkflowRunState = project.runs.find((run) => run.id === project.activeRunId)?.runState
-      ?? project.runs[project.runs.length - 1]?.runState
-      ?? null
-    project.activeRunId = characterWorkflowRunState?.run?.id
-    characterWorkflowActiveTabId = characterWorkflowRunState ? 'run-draft' : 'workflow'
+    characterWorkflowRunState = null
+    characterWorkflowActiveTabId = 'workflow'
+    markCharacterWorkflowPerf(perfId, 'project state applied')
     renderCharacterWorkflow()
+    void ensureCharacterWorkflowProjectDetailLoaded(projectId, { includeRuns: true }).catch((error) => {
+      console.warn('[CharacterWorkflowStore] Failed to preload full workflow project:', error)
+    })
   }
 
-  function openCharacterWorkflowRun(projectId: string, runId: string): void {
+  async function openCharacterWorkflowRun(projectId: string, runId: string): Promise<void> {
+    const perfId = startCharacterWorkflowPerf(`open run ${projectId}:${runId}`)
     saveActiveWorkflowProjectSnapshot()
-    const project = characterWorkflowProjects.find((item) => item.id === projectId)
-    const run = project?.runs.find((item) => item.id === runId)
-    if (!project || !run) {
+    markCharacterWorkflowPerf(perfId, 'save current snapshot scheduled')
+    activeCharacterWorkflowProjectId = projectId
+    characterWorkflowContentLoaded = true
+    characterWorkflowActiveTabId = 'run-draft'
+    renderCharacterWorkflow()
+    markCharacterWorkflowPerf(perfId, 'loading render scheduled')
+    const project = await ensureCharacterWorkflowProjectDetailLoaded(projectId).catch((error) => {
+      showToast(error instanceof Error ? error.message : String(error))
+      return null
+    })
+    markCharacterWorkflowPerf(perfId, 'project overview await complete')
+    markCharacterWorkflowPerf(perfId, 'before getRun IPC')
+    const runResponse = project
+      ? await window.electronAPI.getCharacterWorkflowRun(projectId, runId)
+      : { success: false, error: 'Project not loaded' }
+    markCharacterWorkflowPerf(perfId, 'getRun IPC complete')
+    if (!runResponse.success) {
+      showToast(runResponse.error || 'Failed to load run draft')
+    }
+    const storedRun = runResponse.success && runResponse.run && typeof runResponse.run === 'object'
+      ? runResponse.run as { payload?: unknown }
+      : undefined
+    const run = storedRun?.payload && typeof storedRun.payload === 'object'
+      ? storedRun.payload as CharacterWorkflowProjectRunRecord
+      : project?.runs.find((item) => item.id === runId)
+    if (!project || !run || activeCharacterWorkflowProjectId !== projectId) {
+      renderCharacterWorkflow()
+      finishCharacterWorkflowPerf(perfId, 'run unavailable or stale')
       return
     }
-    characterWorkflowContentLoaded = true
-    activeCharacterWorkflowProjectId = project.id
+    project.loadState = 'ready'
     project.activeRunId = run.id
+    const runIndex = project.runs.findIndex((item) => item.id === run.id)
+    if (runIndex >= 0) {
+      project.runs[runIndex] = run
+    } else {
+      project.runs.push(run)
+    }
+    markCharacterWorkflowPerf(perfId, 'before apply run state')
     replaceRecord(characterWorkflowConfigOverrides, cloneRecord(project.configOverrides))
     replaceRecord(characterWorkflowPositionOverrides, cloneRecord(project.positionOverrides))
     applyWorkflowProjectViewState(project.viewState)
     characterWorkflowRunCount = project.runCount
-    characterWorkflowRunState = JSON.parse(JSON.stringify(run.runState)) as CharacterResourceRunState
+    characterWorkflowRunState = normalizePersistedCharacterWorkflowRunState(run.runState)
     characterWorkflowActiveTabId = 'run-draft'
+    markCharacterWorkflowPerf(perfId, 'run state applied')
     renderCharacterWorkflow()
   }
 
   function deleteActiveCharacterWorkflowRunDraft(): void {
     const project = characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)
     const activeRunId = characterWorkflowRunState?.run?.id ?? project?.activeRunId ?? ''
-    if (!project || !activeRunId) {
+    if (project && activeRunId) {
+      deleteCharacterWorkflowRunDraft(project.id, activeRunId)
+    }
+  }
+
+  function deleteCharacterWorkflowRunDraft(projectId: string, runId: string): void {
+    const project = characterWorkflowProjects.find((item) => item.id === projectId)
+    if (!project || !runId) {
       return
     }
-    const deletedIndex = project.runs.findIndex((run) => run.id === activeRunId)
+    const deletedIndex = project.runs.findIndex((run) => run.id === runId)
     if (deletedIndex < 0) {
       return
     }
+    const wasActiveProject = activeCharacterWorkflowProjectId === project.id
+    const wasActiveRun = project.activeRunId === runId || (wasActiveProject && characterWorkflowRunState?.run?.id === runId)
     project.runs.splice(deletedIndex, 1)
-    const nextRun = project.runs[Math.min(deletedIndex, project.runs.length - 1)] ?? project.runs[deletedIndex - 1]
-    project.activeRunId = nextRun?.id
-    characterWorkflowRunState = nextRun
-      ? JSON.parse(JSON.stringify(nextRun.runState)) as CharacterResourceRunState
-      : null
-    characterWorkflowActiveTabId = characterWorkflowRunState ? 'run-draft' : 'workflow'
+    void window.electronAPI.deleteCharacterWorkflowRun(project.id, runId).catch((error) => {
+      console.warn('[CharacterWorkflowStore] Failed to delete workflow run:', error)
+    })
+    if (wasActiveRun) {
+      const nextRun = project.runs[Math.min(deletedIndex, project.runs.length - 1)] ?? project.runs[deletedIndex - 1]
+      project.activeRunId = nextRun?.id
+      if (wasActiveProject) {
+        characterWorkflowRunState = nextRun
+          ? normalizePersistedCharacterWorkflowRunState(nextRun.runState)
+          : null
+        characterWorkflowActiveTabId = characterWorkflowRunState ? 'run-draft' : 'workflow'
+      }
+    } else if (!project.runs.some((run) => run.id === project.activeRunId)) {
+      project.activeRunId = project.runs[project.runs.length - 1]?.id
+    }
     project.updatedAt = Date.now()
+    persistCharacterWorkflowProject(project)
+    markActiveWorkflowDirty()
     renderCharacterWorkflow()
     showToast(options.getLanguage() === 'zh-CN' ? '已删除运行草稿' : 'Run draft deleted')
   }
 
-  function duplicateCharacterWorkflowDraft(projectId: string): void {
+  async function duplicateCharacterWorkflowDraft(projectId: string): Promise<void> {
     saveActiveWorkflowProjectSnapshot()
-    const source = characterWorkflowProjects.find((item) => item.id === projectId)
+    const source = await ensureCharacterWorkflowProjectDetailLoaded(projectId)
     if (!source) {
       return
     }
@@ -2995,13 +3924,15 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       name: options.getLanguage() === 'zh-CN' ? `${source.name} 副本` : `${source.name} Copy`,
       createdAt: now,
       updatedAt: now,
+      loadState: 'ready',
     }
     characterWorkflowProjects = [copy, ...characterWorkflowProjects]
-    openCharacterWorkflowDraft(copy.id)
+    persistCharacterWorkflowProject(copy)
+    void openCharacterWorkflowDraft(copy.id)
   }
 
-  function renameCharacterWorkflowDraft(projectId: string): void {
-    const project = characterWorkflowProjects.find((item) => item.id === projectId)
+  async function renameCharacterWorkflowDraft(projectId: string): Promise<void> {
+    const project = await ensureCharacterWorkflowProjectDetailLoaded(projectId)
     if (!project) {
       return
     }
@@ -3011,6 +3942,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     project.name = nextName
     project.updatedAt = Date.now()
+    persistCharacterWorkflowProject(project)
     renderCharacterWorkflow()
   }
 
@@ -3023,25 +3955,22 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!ok) {
       return
     }
+    const pendingPersist = characterWorkflowProjectPersistTimers.get(projectId)
+    if (pendingPersist !== undefined) {
+      window.clearTimeout(pendingPersist)
+      characterWorkflowProjectPersistTimers.delete(projectId)
+    }
     characterWorkflowProjects = characterWorkflowProjects.filter((item) => item.id !== projectId)
+    void window.electronAPI.deleteCharacterWorkflowProject(projectId).catch((error) => {
+      console.warn('[CharacterWorkflowStore] Failed to delete workflow project:', error)
+    })
     if (activeCharacterWorkflowProjectId === projectId) {
-      activeCharacterWorkflowProjectId = characterWorkflowProjects[0]?.id ?? ''
-      const next = characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)
-      if (next) {
-        replaceRecord(characterWorkflowConfigOverrides, cloneRecord(next.configOverrides))
-        replaceRecord(characterWorkflowPositionOverrides, cloneRecord(next.positionOverrides))
-        applyWorkflowProjectViewState(next.viewState)
-        characterWorkflowRunCount = next.runCount
-        characterWorkflowRunState = next.runs.find((run) => run.id === next.activeRunId)?.runState
-          ?? next.runs[next.runs.length - 1]?.runState
-          ?? null
-      } else {
-        replaceRecord(characterWorkflowConfigOverrides, {})
-        replaceRecord(characterWorkflowPositionOverrides, {})
-        applyWorkflowProjectViewState(undefined)
-        characterWorkflowRunCount = 0
-        characterWorkflowRunState = null
-      }
+      activeCharacterWorkflowProjectId = ''
+      replaceRecord(characterWorkflowConfigOverrides, {})
+      replaceRecord(characterWorkflowPositionOverrides, {})
+      applyWorkflowProjectViewState(undefined)
+      characterWorkflowRunCount = 0
+      characterWorkflowRunState = null
     }
     characterWorkflowActiveTabId = 'workflow'
     renderCharacterWorkflow()
@@ -3073,7 +4002,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     saveActiveWorkflowProjectSnapshot(false)
     return {
       activeWorkflowId: activeCharacterWorkflowProjectId,
-      workflows: JSON.parse(JSON.stringify(characterWorkflowProjects)) as CharacterWorkflowProjectRecord[],
+      workflows: [],
       activeTabId: characterWorkflowActiveTabId,
       editorState: {
         activePanel: characterWorkflowEditorState.activePanel,
@@ -3127,7 +4056,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const persisted = conversation?.characterWorkflow
     if (!persisted || typeof persisted !== 'object' || Array.isArray(persisted)) {
       activeCharacterWorkflowProjectId = ''
-      characterWorkflowProjects = []
       characterWorkflowRunState = null
       characterWorkflowRunCount = 0
       characterWorkflowActiveTabId = 'workflow'
@@ -3143,19 +4071,20 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
     const record = persisted as Partial<PersistedCharacterWorkflowState>
-    characterWorkflowProjects = Array.isArray(record.workflows)
-      ? JSON.parse(JSON.stringify(record.workflows)) as CharacterWorkflowProjectRecord[]
-      : []
-    activeCharacterWorkflowProjectId = typeof record.activeWorkflowId === 'string' ? record.activeWorkflowId : characterWorkflowProjects[0]?.id ?? ''
+    activeCharacterWorkflowProjectId = typeof record.activeWorkflowId === 'string' && characterWorkflowProjects.some((project) => project.id === record.activeWorkflowId)
+      ? record.activeWorkflowId
+      : ''
     const activeProject = characterWorkflowProjects.find((project) => project.id === activeCharacterWorkflowProjectId)
     if (activeProject) {
       replaceRecord(characterWorkflowConfigOverrides, cloneRecord(activeProject.configOverrides ?? {}))
       replaceRecord(characterWorkflowPositionOverrides, cloneRecord(activeProject.positionOverrides ?? {}))
       applyWorkflowProjectViewState(activeProject.viewState)
       characterWorkflowRunCount = Math.max(0, Math.round(Number(activeProject.runCount) || 0))
-      characterWorkflowRunState = activeProject.runs.find((run) => run.id === activeProject.activeRunId)?.runState
-        ?? activeProject.runs[activeProject.runs.length - 1]?.runState
-        ?? null
+      characterWorkflowRunState = normalizePersistedCharacterWorkflowRunState(
+        activeProject.runs.find((run) => run.id === activeProject.activeRunId)?.runState
+          ?? activeProject.runs[activeProject.runs.length - 1]?.runState
+          ?? null
+      )
     } else {
       replaceRecord(characterWorkflowConfigOverrides, {})
       replaceRecord(characterWorkflowPositionOverrides, {})
@@ -3272,14 +4201,16 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         characterResourceViewState.zoom = 0.72
         characterResourceViewState.panX = -42
         characterResourceViewState.panY = -24
-        renderCharacterWorkflow()
+        updateCharacterWorkflowViewportDom()
+        saveCharacterResourceViewStateSnapshot()
       },
       'reset-view': () => {
         pushCharacterResourceUndoSnapshot()
         characterResourceViewState.zoom = 0.84
         characterResourceViewState.panX = 0
         characterResourceViewState.panY = 0
-        renderCharacterWorkflow()
+        updateCharacterWorkflowViewportDom()
+        saveCharacterResourceViewStateSnapshot()
       },
       'toggle-links': () => {
         pushCharacterResourceUndoSnapshot()
@@ -3509,7 +4440,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       if (characterWorkflowRunState.run) {
         characterWorkflowRunState.run.currentStepId = stepId
       }
-      renderCharacterWorkflow()
+      scheduleCharacterWorkflowRunRender()
     }
     updateRunStep('snapshot', 'running')
     renderCharacterWorkflow()
@@ -3585,7 +4516,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       }
       characterWorkflowActiveTabId = 'run-draft'
       saveActiveWorkflowProjectSnapshot()
-      renderCharacterWorkflow()
+      scheduleCharacterWorkflowRunRender()
       showToast(options.getLanguage() === 'zh-CN' ? '角色资源生成完成' : 'Character resources generated')
     } catch (error) {
       console.warn('[CharacterResourceGraph] Failed to run agent lifecycle:', error)
@@ -3602,7 +4533,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             }
           : draftRunState
         saveActiveWorkflowProjectSnapshot()
-        renderCharacterWorkflow()
+        scheduleCharacterWorkflowRunRender()
         showToast(error instanceof Error ? error.message : (options.getLanguage() === 'zh-CN' ? '角色资源生成失败' : 'Character resource generation failed'))
       }
     }
@@ -3672,6 +4603,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         })
       }
     }
+    if (characterWorkflowRunState.run) {
+      if (type === 'run.failed') {
+        characterWorkflowRunState.run.status = 'failed'
+      } else if (type === 'run.completed') {
+        characterWorkflowRunState.run.status = 'done'
+        characterWorkflowRunState.run.currentStepId = 'finish'
+      }
+    }
     if (artifact) {
       const artifactId = typeof artifact.id === 'string' ? artifact.id : ''
       const existing = characterWorkflowRunState.artifacts ?? []
@@ -3689,7 +4628,58 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         ]
       }
     }
-    renderCharacterWorkflow()
+    if (!patchCharacterWorkflowRunProgress(type, phase, toolName, artifact, result)) {
+      scheduleCharacterWorkflowRunRender()
+    }
+    markActiveWorkflowDirty()
+  }
+
+  function patchCharacterWorkflowRunProgress(
+    type: string,
+    phase: string | undefined,
+    toolName: string | undefined,
+    artifact: Record<string, any> | undefined,
+    result: Record<string, any> | undefined
+  ): boolean {
+    if (type === 'artifact.created' || type === 'run.completed' || type === 'run.failed') {
+      return false
+    }
+    const root = characterWorkflowRoot?.querySelector<HTMLElement>('.chat-resource-run-progress')
+    if (!root || !characterWorkflowRunState?.run) {
+      return false
+    }
+    const zh = options.getLanguage() === 'zh-CN'
+    const setText = (selector: string, value: string) => {
+      const target = root.querySelector<HTMLElement>(selector)
+      if (target) {
+        target.textContent = value
+      }
+    }
+    setText('[data-run-progress-status]', formatRuntimeRunStatus(characterWorkflowRunState.run.status, zh))
+    setText('[data-run-progress-phase]', phase || characterWorkflowRunState.run.currentStepId || '-')
+    setText('[data-run-progress-tool]', toolName || '-')
+    setText('[data-run-progress-artifact]', typeof artifact?.title === 'string' ? artifact.title : typeof artifact?.kind === 'string' ? artifact.kind : '-')
+    setText('[data-run-progress-summary]', typeof result?.summary === 'string'
+      ? result.summary
+      : type === 'tool.call.started'
+        ? (zh ? `正在调用工具：${toolName || '-'}` : `Calling tool: ${toolName || '-'}`)
+        : type === 'run.phase.changed'
+          ? (zh ? `进入阶段：${phase || '-'}` : `Phase: ${phase || '-'}`)
+          : type)
+    return true
+  }
+
+  function formatRuntimeRunStatus(status: NonNullable<CharacterResourceRunState['run']>['status'], zh: boolean): string {
+    const labels: Record<string, [string, string]> = {
+      idle: ['待运行', 'Idle'],
+      running: ['运行中', 'Running'],
+      paused: ['已暂停', 'Paused'],
+      done: ['已完成', 'Done'],
+      failed: ['失败', 'Failed'],
+      canceled: ['已取消', 'Canceled'],
+    }
+    const label = labels[status] ?? [status, status]
+    return zh ? label[0] : label[1]
   }
 
   function phaseToRunStepId(phase: string): string {
@@ -3730,7 +4720,119 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     } else {
       characterWorkflowConfigOverrides[nodeId][paramId] = control.value
     }
+    if (paramId === 'imageStylePreset') {
+      const preset = createImageStylePresetPrompt(control.value)
+      characterWorkflowConfigOverrides[nodeId].stylePrompt = preset.prompt
+      characterWorkflowConfigOverrides[nodeId].negativePrompt = preset.negativePrompt
+    }
+    if (paramId === 'preset') {
+      characterWorkflowConfigOverrides[nodeId].stylePrompt = createProseStylePresetPrompt(control.value)
+    }
     renderCharacterWorkflow()
+  }
+
+  function deriveCharacterWorkflowConfig(config: Record<string, unknown>): Record<string, unknown> {
+    const nextConfig = { ...config }
+    if (typeof nextConfig.imageStylePreset === 'string') {
+      const preset = createImageStylePresetPrompt(nextConfig.imageStylePreset)
+      if (!Object.prototype.hasOwnProperty.call(nextConfig, 'stylePrompt')) {
+        nextConfig.stylePrompt = preset.prompt
+      }
+      if (!Object.prototype.hasOwnProperty.call(nextConfig, 'negativePrompt')) {
+        nextConfig.negativePrompt = preset.negativePrompt
+      }
+    }
+    if (typeof nextConfig.preset === 'string' && !Object.prototype.hasOwnProperty.call(nextConfig, 'stylePrompt')) {
+      nextConfig.stylePrompt = createProseStylePresetPrompt(nextConfig.preset)
+    }
+    return nextConfig
+  }
+
+  function createImageStylePresetPrompt(value: string): { prompt: string; negativePrompt: string } {
+    const label = formatImageStylePresetLabel(value)
+    const lower = value.toLowerCase()
+    const commonNegative = 'low quality, blurry, deformed, bad anatomy, text, watermark, logo, signature, UI, caption'
+    if (/(photoreal|cinematic|editorial|fashion|film|photo|polaroid|camera|bokeh|infrared|plate)/.test(lower)) {
+      return {
+        prompt: `${label}, realistic lighting, natural materials, detailed skin and fabric, camera-based image language`,
+        negativePrompt: `${commonNegative}, cartoon, anime, manga, painterly, vector art, plastic CGI`,
+      }
+    }
+    if (/(anime|manga|moe|chibi|mecha|magical|webtoon|manhwa|visual-novel|light-novel)/.test(lower)) {
+      return {
+        prompt: `${label}, clean linework, expressive character design, polished anime illustration, coherent cel color`,
+        negativePrompt: `${commonNegative}, photorealistic, live action, 3d render, western comic anatomy`,
+      }
+    }
+    if (/(oil|painting|watercolor|gouache|acrylic|pastel|charcoal|graphite|pencil|ink|sumi|ukiyo|woodblock|linocut|etching|lithograph|risograph|screen-print)/.test(lower)) {
+      return {
+        prompt: `${label}, visible traditional media texture, intentional brushwork or mark making, artful color handling`,
+        negativePrompt: `${commonNegative}, photorealistic, 3d render, flat vector, sterile digital finish`,
+      }
+    }
+    if (/(pixel|8-bit|16-bit|voxel|ps1|low-poly)/.test(lower)) {
+      return {
+        prompt: `${label}, crisp stylized game-art readability, deliberate simplified forms, strong silhouette`,
+        negativePrompt: `${commonNegative}, photorealistic, smooth airbrushed rendering, excessive tiny detail`,
+      }
+    }
+    if (/(3d|render|clay|claymation|stop-motion|toy|vinyl|product|architectural)/.test(lower)) {
+      return {
+        prompt: `${label}, tangible volume, controlled studio lighting, readable material surfaces, clean render quality`,
+        negativePrompt: `${commonNegative}, flat 2d drawing, messy sketch, painterly smear, broken geometry`,
+      }
+    }
+    if (/(greasy|oily|dewy|gloss|latex|plastic)/.test(lower)) {
+      return {
+        prompt: `${label}, glossy highlights, slick reflective surface treatment, high specular detail`,
+        negativePrompt: `${commonNegative}, dry matte surface, dusty texture, flat lighting`,
+      }
+    }
+    return {
+      prompt: `${label}, coherent art direction, clear visual identity, polished image style`,
+      negativePrompt: commonNegative,
+    }
+  }
+
+  function formatImageStylePresetLabel(value: string): string {
+    return value
+      .split('-')
+      .filter(Boolean)
+      .map((part) => /^[0-9]+$/.test(part) ? part : part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ')
+  }
+
+  function createProseStylePresetPrompt(value: string): string {
+    if (!value || value === 'custom') {
+      return ''
+    }
+    const label = formatImageStylePresetLabel(value)
+    const lower = value.toLowerCase()
+    if (/(plain-natural|sillytavern|scenario-card|ali-chat|w-plus-plus|chat-log)/.test(lower)) {
+      return `${label}: write clean natural roleplay card prose, prioritize usable character behavior, speech patterns, scenario hooks, and model-readable details over decorative literary flourish.`
+    }
+    if (/(second-person|third-person|first-person|journal|epistolary|dialogue-forward)/.test(lower)) {
+      return `${label}: control narration perspective and format tightly, keep voice consistent, make dialogue and action beats easy to continue in chat.`
+    }
+    if (/(romance|lovers|devotion|jealousy|marriage|companion|hurt|comfort|family|mentor|monster|paranormal|yandere|toxic|taboo|adult|power-imbalance)/.test(lower)) {
+      return `${label}: emphasize relationship tension, emotional stakes, boundaries, attraction, trust shifts, vulnerability, and long-form roleplay hooks without becoming explicit or instruction-like.`
+    }
+    if (/(fantasy|wuxia|xianxia|isekai|sorcery|mythic|fairytale|occult|gothic|grimdark|horror|liminal|cosmic)/.test(lower)) {
+      return `${label}: use genre-rich atmosphere, mythic or supernatural texture, sensory scene detail, and conflict-ready world pressure while keeping character-card fields concrete.`
+    }
+    if (/(sci-fi|cyberpunk|space|dystopian|post-apocalyptic|military)/.test(lower)) {
+      return `${label}: use speculative setting texture, social pressure, technology or survival stakes, and sharp environmental details that support roleplay continuity.`
+    }
+    if (/(mystery|thriller|crime|legal|medical|political|suspense|noir|domestic)/.test(lower)) {
+      return `${label}: use controlled suspense, secrets, investigative hooks, moral ambiguity, and grounded dramatic tension with precise cause-and-effect.`
+    }
+    if (/(slice|healing|wholesome|cozy|slow-life|comedic|dry-wit|satirical|soap|melodrama)/.test(lower)) {
+      return `${label}: shape the prose around everyday scene momentum, readable emotional beats, recurring interaction loops, and a clear conversational rhythm.`
+    }
+    if (/(minimalist|precise|lush|poetic|sensory|cinematic|novelistic|surreal|picaresque)/.test(lower)) {
+      return `${label}: apply this prose texture consistently through sentence rhythm, imagery density, pacing, and scene framing without copying the style label into final fields.`
+    }
+    return `${label}: apply a consistent prose voice, genre texture, pacing pressure, and relationship flavor to all connected target fields.`
   }
 
   function updateCharacterWorkflowModelChoice(choice: HTMLElement): void {
@@ -4238,8 +5340,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     event.preventDefault()
     const nextZoom = Math.min(1.4, Math.max(0.46, characterResourceViewState.zoom + (event.deltaY > 0 ? -0.05 : 0.05)))
     characterResourceViewState.zoom = Math.round(nextZoom * 100) / 100
+    updateCharacterWorkflowViewportDom()
     saveCharacterResourceViewStateSnapshot()
-    renderCharacterWorkflow()
   }
 
   function beginCharacterResourceMinimapPointer(event: PointerEvent): void {
@@ -4254,8 +5356,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     pushCharacterResourceUndoSnapshot()
     characterResourceViewState.panX = Math.round(120 - localX * 24 * characterResourceViewState.zoom)
     characterResourceViewState.panY = Math.round(86 - localY * 24 * characterResourceViewState.zoom)
+    updateCharacterWorkflowViewportDom()
     saveCharacterResourceViewStateSnapshot()
-    renderCharacterWorkflow()
   }
 
   function getChatModelCard(modelId: string): HTMLElement | null {
@@ -4504,6 +5606,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     })
     void Promise.all([
       ensureChatResourcesHydrated(),
+      ensureCharacterWorkflowProjectsHydrated(),
       ensureChatModelConfigLoaded(),
     ])
   }
@@ -4654,10 +5757,18 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         characterWorkflowAssistantStatusExpanded = !characterWorkflowAssistantStatusExpanded
         renderCharacterWorkflow()
       } else if (action === 'copy') {
-        void navigator.clipboard.writeText(characterWorkflowBuilderStatus).then(
-          () => showToast(options.getLanguage() === 'zh-CN' ? '已复制 Agent 信息' : 'Agent message copied'),
+        void navigator.clipboard.writeText(getWorkflowAssistantStatusText()).then(
+          () => showToast(options.getLanguage() === 'zh-CN' ? '已复制 Agent 记录' : 'Agent records copied'),
           (error: unknown) => showToast(error instanceof Error ? error.message : String(error))
         )
+      } else if (action === 'continue') {
+        continueActiveWorkflowGoalSession()
+      } else if (action === 'pause') {
+        setActiveWorkflowGoalSessionStatus('paused')
+      } else if (action === 'resume') {
+        setActiveWorkflowGoalSessionStatus('active')
+      } else if (action === 'stop') {
+        setActiveWorkflowGoalSessionStatus('complete')
       }
       return
     }
@@ -4822,9 +5933,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       } else if (action === 'create-template') {
         void createCharacterWorkflowDraftFromTemplate(workflowLibraryAction.dataset.chatWorkflowTemplateId || '')
       } else if (action === 'rename') {
-        renameCharacterWorkflowDraft(workflowId)
+        void renameCharacterWorkflowDraft(workflowId)
       } else if (action === 'duplicate') {
-        duplicateCharacterWorkflowDraft(workflowId)
+        void duplicateCharacterWorkflowDraft(workflowId)
       } else if (action === 'delete') {
         deleteCharacterWorkflowDraft(workflowId)
       }
@@ -4833,22 +5944,21 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
     const workflowOpen = eventTarget.closest<HTMLElement>('[data-chat-workflow-open]')
     if (workflowOpen && panel.contains(workflowOpen)) {
-      openCharacterWorkflowDraft(workflowOpen.dataset.chatWorkflowOpen || '')
+      void openCharacterWorkflowDraft(workflowOpen.dataset.chatWorkflowOpen || '')
       return
     }
 
     const workflowRunOpen = eventTarget.closest<HTMLElement>('[data-chat-workflow-run-open]')
     if (workflowRunOpen && panel.contains(workflowRunOpen)) {
       const [workflowId, runId] = (workflowRunOpen.dataset.chatWorkflowRunOpen || '').split(':')
-      openCharacterWorkflowRun(workflowId || '', runId || '')
+      void openCharacterWorkflowRun(workflowId || '', runId || '')
       return
     }
 
     const workflowRunDelete = eventTarget.closest<HTMLElement>('[data-chat-workflow-run-delete]')
     if (workflowRunDelete && panel.contains(workflowRunDelete)) {
       const [workflowId, runId] = (workflowRunDelete.dataset.chatWorkflowRunDelete || '').split(':')
-      openCharacterWorkflowRun(workflowId || '', runId || '')
-      deleteActiveCharacterWorkflowRunDraft()
+      deleteCharacterWorkflowRunDraft(workflowId || '', runId || '')
       return
     }
 
@@ -4930,7 +6040,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   panel.addEventListener('change', (event) => {
     const workflowRunSelect = (event.target as HTMLElement | null)?.closest<HTMLSelectElement>('[data-chat-workflow-run-select]')
     if (workflowRunSelect && panel.contains(workflowRunSelect)) {
-      openCharacterWorkflowRun(activeCharacterWorkflowProjectId, workflowRunSelect.value)
+      void openCharacterWorkflowRun(activeCharacterWorkflowProjectId, workflowRunSelect.value)
       return
     }
     const workflowParam = (event.target as HTMLElement | null)?.closest<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('[data-chat-workflow-param]')
@@ -5096,7 +6206,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   async function hydrateChatResources(): Promise<void> {
     try {
       applyChatResourceState(state, await loadChatResourceState())
-      restoreCharacterWorkflowStateFromConversation(getActiveConversation(state))
       chatResourcesHydrated = true
       renderChat()
       if (panel.dataset.chatView === 'character-workflow') {
@@ -5110,6 +6219,72 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         renderCharacterWorkflow()
       }
     }
+  }
+
+  async function hydrateCharacterWorkflowProjects(): Promise<void> {
+    try {
+      const listResponse = await window.electronAPI.listCharacterWorkflowProjects()
+      if (!listResponse.success) {
+        throw new Error(listResponse.error || 'Failed to list character workflow projects')
+      }
+      characterWorkflowProjects = (listResponse.projects ?? [])
+        .map((item) => createIndexedCharacterWorkflowProject(item))
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+      restoreCharacterWorkflowStateFromConversation(getActiveConversation(state))
+      characterWorkflowProjectsHydrated = true
+      if (panel.dataset.chatView === 'character-workflow') {
+        renderCharacterWorkflow()
+      }
+      if (activeCharacterWorkflowProjectId) {
+        try {
+          await ensureCharacterWorkflowProjectDetailLoaded(activeCharacterWorkflowProjectId)
+          restoreCharacterWorkflowStateFromConversation(getActiveConversation(state))
+        } catch {
+          // Detail errors are reflected on the project row and the main loading state.
+        }
+        if (panel.dataset.chatView === 'character-workflow') {
+          renderCharacterWorkflow()
+        }
+      }
+    } catch (error) {
+      characterWorkflowProjectsHydrated = true
+      console.warn('[CharacterWorkflowStore] Failed to load workflow projects:', error)
+      showToast(options.getLanguage() === 'zh-CN' ? '角色资源图加载失败' : 'Failed to load workflow projects')
+      if (panel.dataset.chatView === 'character-workflow') {
+        renderCharacterWorkflow()
+      }
+    }
+  }
+
+  function persistCharacterWorkflowProject(project: CharacterWorkflowProjectRecord): void {
+    if (project.loadState !== 'ready' && project.loadState !== 'ready-overview') {
+      return
+    }
+    const existingTimer = characterWorkflowProjectPersistTimers.get(project.id)
+    if (existingTimer !== undefined) {
+      window.clearTimeout(existingTimer)
+    }
+    const snapshot = {
+      id: project.id,
+      name: project.name,
+      schemaVersion: Math.max(1, Math.round(Number(project.schemaVersion) || 1)),
+      createdAt: project.createdAt,
+      updatedAt: project.updatedAt,
+      activeRunId: project.activeRunId,
+      runCount: project.runCount,
+      payload: JSON.parse(JSON.stringify(project)) as CharacterWorkflowProjectRecord,
+    }
+    const timer = window.setTimeout(() => {
+      characterWorkflowProjectPersistTimers.delete(project.id)
+      void window.electronAPI.saveCharacterWorkflowProject(snapshot).then((response) => {
+        if (!response.success) {
+          console.warn('[CharacterWorkflowStore] Failed to save workflow project:', response.error)
+        }
+      }).catch((error) => {
+        console.warn('[CharacterWorkflowStore] Failed to save workflow project:', error)
+      })
+    }, 650)
+    characterWorkflowProjectPersistTimers.set(project.id, timer)
   }
 
   async function persistConversation(conversation: ChatConversationSummary | undefined): Promise<void> {

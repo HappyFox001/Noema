@@ -200,11 +200,54 @@ contextBridge.exposeInMainWorld('electronAPI', {
   clearChatConversations: () =>
     ipcRenderer.invoke('chat-history:clear'),
 
+  listCharacterWorkflowProjects: () =>
+    ipcRenderer.invoke('character-workflows:list'),
+
+  getCharacterWorkflowProject: (id) =>
+    ipcRenderer.invoke('character-workflows:get', id),
+
+  getCharacterWorkflowProjectOverview: (id) =>
+    ipcRenderer.invoke('character-workflows:getOverview', id),
+
+  getCharacterWorkflowRun: (projectId, runId) =>
+    ipcRenderer.invoke('character-workflows:getRun', { projectId, runId }),
+
+  deleteCharacterWorkflowRun: (projectId, runId) =>
+    ipcRenderer.invoke('character-workflows:deleteRun', { projectId, runId }),
+
+  saveCharacterWorkflowProject: (project) =>
+    ipcRenderer.invoke('character-workflows:upsert', project),
+
+  deleteCharacterWorkflowProject: (id) =>
+    ipcRenderer.invoke('character-workflows:delete', id),
+
   sendChatMessage: (request) =>
     ipcRenderer.invoke('chat:sendMessage', request),
 
   buildCharacterWorkflow: (request) =>
     ipcRenderer.invoke('chat:buildCharacterWorkflow', request),
+
+  streamBuildCharacterWorkflow: (request, handlers = {}) => {
+    const streamId = `character-workflow-build-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    const onEvent = (_, payload) => {
+      if (payload?.streamId === streamId && payload.event) {
+        handlers.onEvent?.(payload.event)
+      }
+    }
+    ipcRenderer.on('chat:characterWorkflowBuildEvent', onEvent)
+    return ipcRenderer.invoke('chat:buildCharacterWorkflow', { ...request, streamId })
+      .then((result) => {
+        handlers.onDone?.(result)
+        return result
+      })
+      .catch((error) => {
+        handlers.onError?.(error?.message || String(error))
+        throw error
+      })
+      .finally(() => {
+        ipcRenderer.removeListener('chat:characterWorkflowBuildEvent', onEvent)
+      })
+  },
 
   editCharacterWorkflowRunDraft: (request) =>
     ipcRenderer.invoke('chat:editCharacterWorkflowRunDraft', request),

@@ -64,6 +64,7 @@ export interface ImageGenerationResult {
   mimeType?: string
   dataUrl?: string
   url?: string
+  referenceImages?: string[]
   providerResponse?: unknown
 }
 
@@ -232,7 +233,7 @@ export const IMAGE_PROVIDER_CATALOG: ImageProviderCatalogEntry[] = [
     value: 'wavespeed',
     label: 'WaveSpeedAI',
     apiStyle: 'wavespeed',
-    defaultModel: 'wavespeed-ai/flux-dev',
+    defaultModel: 'bytedance/seedream-v4.5',
     defaultBaseUrl: 'https://api.wavespeed.ai/api/v3',
     generatePath: '/{model}',
     docsUrl: 'https://wavespeed.ai/docs/generate-image',
