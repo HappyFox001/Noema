@@ -8,6 +8,7 @@ import {
   CHARACTER_SUPPORT_FIELD_SCHEMA,
   createCharacterAgentToolRuntime,
   type AgentToolDefinition,
+  type CharacterAgentImageTargetPrompt,
   type AgentImageGenerationControl,
   type AgentTargetContext,
   type CharacterAgentArtifact,
@@ -86,7 +87,7 @@ export function createConfiguredCharacterAgentToolRuntime(
         let imageArtifacts: CharacterAgentArtifact[] = []
         let errorMessage = ''
         try {
-          imageArtifacts = await maybeGenerateImageArtifacts(context, models, options.proxyUrl, candidateId, source.prompt)
+          imageArtifacts = await maybeGenerateImageArtifacts(context, models, options.proxyUrl, candidateId, source)
         } catch (error) {
           errorMessage = error instanceof Error ? error.message : String(error)
         }
@@ -97,7 +98,7 @@ export function createConfiguredCharacterAgentToolRuntime(
           errorMessage ? 'Image Generation Failed' : 'Image Generation Skipped',
           {
             summary: errorMessage || 'Image generation did not run. Check that an image model is configured, enabled, and selected.',
-            prompt: source.prompt,
+            targetPrompts: source.targetPrompts,
             imageModels: models.filter((model) => model.modelType === 'image').map((model) => ({
               id: model.id,
               provider: model.provider,
@@ -215,9 +216,11 @@ function createCharacterDecisionPrompt(
     '    <field_content_rule>description must describe who the character is and why they are appealing for RP. appearance must describe visible body/outfit/expression cues. Do not describe the generation target itself.</field_content_rule>',
     '    <progressive_rule>Return exactly one action. Generate or reroll one field at a time. Do not fill the whole card in one response.</progressive_rule>',
     '    <progressive_rule>If a field target is missing, return set_field for the earliest missing field in fixed_schema order and obey that target local XML controls. Only request_image after imagePrompt exists.</progressive_rule>',
+    '    <image_rule>When requesting images, create one targetPrompts item per final image, not just per image target. If an image target requests multiple images through image_control count, return multiple distinct prompts for the same targetNodeId.</image_rule>',
+    '    <image_rule>Each targetPrompts prompt must be specific to that exact image slot, image_role, and local image_control. Do not rely on the image tool to duplicate or vary one generic prompt.</image_rule>',
     '    <allowed_actions>',
     '      <action name="set_field">{"type":"set_field","field":"name","value":"...","reason":"..."}</action>',
-    '      <action name="request_image">{"type":"request_image","prompt":"...","title":"Character Image"}</action>',
+    '      <action name="request_image">{"type":"request_image","targetPrompts":[{"targetNodeId":"image-target-node-id","title":"Avatar Image","prompt":"target-specific English image prompt"}]}</action>',
     '      <action name="finish">{"type":"finish","reason":"..."}</action>',
     '    </allowed_actions>',
     '    <completion_rule>Set done=true only after all fixed character fields and support fields are filled. Always produce imagePrompt and request_image.</completion_rule>',
@@ -442,13 +445,10 @@ async function maybeGenerateImageArtifacts(
   models: CharacterAgentConfiguredModel[],
   proxyUrl: string | undefined,
   candidateId: string,
-  prompt: unknown
+  input: unknown
 ): Promise<CharacterAgentArtifact[]> {
-  const promptText = typeof prompt === 'string' ? prompt.trim() : ''
+  const source = input && typeof input === 'object' ? input as Record<string, unknown> : {}
   const capability = context.capabilities.imageModels[0]
-  if (!promptText) {
-    return []
-  }
   const configuredModel = capability
     ? models.find((model) => model.modelType === 'image' && model.id === capability.apiId)
     : models.find((model) => model.modelType === 'image')
@@ -463,7 +463,7 @@ async function maybeGenerateImageArtifacts(
     return []
   }
   const imageTargets = context.targets.filter((target) => target.kind === 'image')
-  const prompts = imageTargets.flatMap((target) => createImageTargetPrompts(target, promptText))
+  const prompts = createImageGenerationPromptRequests(resolveImageTargetPromptRequests(source, imageTargets))
   if (!prompts.length) {
     return []
   }
@@ -493,21 +493,74 @@ async function maybeGenerateImageArtifacts(
   return artifacts
 }
 
-function createImageTargetPrompts(
-  target: AgentTargetContext,
-  promptText: string
+function resolveImageTargetPromptRequests(
+  source: Record<string, unknown>,
+  imageTargets: AgentTargetContext[]
+): Array<{ target: AgentTargetContext; prompt: string }> {
+  const targetById = new Map(imageTargets.map((target) => [target.nodeId, target]))
+  return normalizeImageTargetPromptInputs(source.targetPrompts).flatMap((item) => {
+    const target = targetById.get(item.targetNodeId)
+    return target && item.prompt.trim()
+      ? [{ target, prompt: item.prompt.trim() }]
+      : []
+  })
+}
+
+function createImageGenerationPromptRequests(
+  requests: Array<{ target: AgentTargetContext; prompt: string }>
 ): Array<{ target: AgentTargetContext; targetIndex: number; imageRole: string; prompt: string }> {
-  const controls = target.imageControls
-  const requestedCount = getImageTargetRequestedCount(controls)
-  const targetRole = target.imageRole ?? 'avatar'
-  return Array.from({ length: requestedCount }, (_, index) => {
-    const controlText = controls[index % Math.max(1, controls.length)]
+  const targetPromptCounts = new Map<string, number>()
+  return requests.map((request) => {
+    const targetRole = request.target.imageRole ?? 'avatar'
+    const targetIndex = (targetPromptCounts.get(request.target.nodeId) ?? 0) + 1
+    targetPromptCounts.set(request.target.nodeId, targetIndex)
+    const control = getImageControlForPromptIndex(request.target.imageControls, targetIndex)
     return {
-      target,
-      targetIndex: index + 1,
+      target: request.target,
+      targetIndex,
       imageRole: targetRole,
-      prompt: buildImageGenerationPrompt(target, targetRole, promptText, controlText),
+      prompt: buildImageGenerationPrompt(request.target, targetRole, request.prompt, control),
     }
+  })
+}
+
+function getImageControlForPromptIndex(
+  controls: AgentImageGenerationControl[],
+  targetIndex: number
+): AgentImageGenerationControl | undefined {
+  if (!controls.length) {
+    return undefined
+  }
+  let cursor = 0
+  for (const control of controls) {
+    const count = Math.max(1, Math.floor(control.targetImageCount))
+    cursor += count
+    if (targetIndex <= cursor) {
+      return control
+    }
+  }
+  return controls[controls.length - 1]
+}
+
+function normalizeImageTargetPromptInputs(value: unknown): CharacterAgentImageTargetPrompt[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value.flatMap((item): CharacterAgentImageTargetPrompt[] => {
+    if (!item || typeof item !== 'object') {
+      return []
+    }
+    const record = item as Record<string, unknown>
+    const targetNodeId = stringField(record.targetNodeId, '')
+    const prompt = stringField(record.prompt, '')
+    if (!targetNodeId || !prompt) {
+      return []
+    }
+    return [{
+      targetNodeId,
+      prompt,
+      title: stringField(record.title, ''),
+    }]
   })
 }
 
@@ -566,14 +619,6 @@ function naturalImageControlInstruction(control: AgentImageGenerationControl): s
     control.aspectRatio ? `Aspect ratio target: ${control.aspectRatio}.` : '',
     control.seedMode ? `Seed strategy: ${control.seedMode}.` : '',
   ].filter(Boolean).join(' ')
-}
-
-function getImageTargetRequestedCount(controls: AgentImageGenerationControl[]): number {
-  if (!controls.length) {
-    return 1
-  }
-  const total = controls.reduce((sum, control) => sum + Math.max(0, Math.floor(control.targetImageCount)), 0)
-  return Math.max(1, Math.min(16, total))
 }
 
 function createCandidateArtifacts(

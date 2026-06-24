@@ -369,11 +369,17 @@ export interface CharacterCardDraft {
   updatedAt: number
 }
 
+export interface CharacterAgentImageTargetPrompt {
+  targetNodeId: string
+  prompt: string
+  title?: string
+}
+
 export type CharacterAgentAction =
   | { type: 'set_field'; field: string; value: unknown; reason?: string }
   | { type: 'merge_character_card'; value: Record<string, unknown>; reason?: string }
   | { type: 'create_artifact'; kind?: CharacterAgentArtifactKind; title?: string; data: unknown; summary?: string; reason?: string }
-  | { type: 'request_image'; prompt: string; title?: string; reason?: string }
+  | { type: 'request_image'; targetPrompts: CharacterAgentImageTargetPrompt[]; reason?: string }
   | { type: 'finish'; reason?: string }
 
 export interface CharacterAgentDecision {
@@ -969,10 +975,10 @@ export function createCharacterSuperAgent(
           for (const action of progressiveAction ? [progressiveAction] : []) {
             if (action.type === 'request_image') {
               const imageResult = await callTool('generate_character_image', 'produce', {
-                prompt: action.prompt,
-                title: action.title,
+                targetPrompts: action.targetPrompts,
                 draft: state.draft,
               })
+              const promptTexts = getRequestImagePromptTexts(action)
               const imageIds = (imageResult.artifacts ?? [])
                 .filter((artifact) => artifact.kind === 'image-asset')
                 .map((artifact) => artifact.id)
@@ -980,7 +986,7 @@ export function createCharacterSuperAgent(
                 ...state,
                 draft: {
                   ...state.draft!,
-                  imagePrompts: appendUnique(state.draft!.imagePrompts, [action.prompt]),
+                  imagePrompts: appendUnique(state.draft!.imagePrompts, promptTexts),
                   imageArtifactIds: appendUnique(state.draft!.imageArtifactIds, imageIds),
                   notes: appendUnique(state.draft!.notes, [action.reason ?? imageResult.summary]),
                   updatedAt: now(),
@@ -1026,9 +1032,9 @@ export function createCharacterSuperAgent(
         if (!state.draft?.imageArtifactIds.length) {
           const imagePrompt = stringValue(state.draft?.fields.imagePrompt)
           if (imagePrompt) {
+            const imageAction = createRequestImageAction(context, imagePrompt)
             const imageResult = await callTool('generate_character_image', 'produce', {
-              prompt: imagePrompt,
-              title: 'Character Image',
+              targetPrompts: imageAction.targetPrompts,
               draft: state.draft,
             })
             const imageIds = (imageResult.artifacts ?? [])
@@ -1038,7 +1044,7 @@ export function createCharacterSuperAgent(
               ...state,
               draft: {
                 ...state.draft!,
-                imagePrompts: appendUnique(state.draft!.imagePrompts, [imagePrompt]),
+                imagePrompts: appendUnique(state.draft!.imagePrompts, getRequestImagePromptTexts(imageAction)),
                 imageArtifactIds: appendUnique(state.draft!.imageArtifactIds, imageIds),
                 notes: appendUnique(state.draft!.notes, [imageResult.summary]),
                 updatedAt: now(),
@@ -1359,7 +1365,7 @@ function applyCharacterAgentAction(
   if (action.type === 'request_image') {
     return {
       ...draft,
-      imagePrompts: appendUnique(draft.imagePrompts, [action.prompt]),
+      imagePrompts: appendUnique(draft.imagePrompts, getRequestImagePromptTexts(action)),
       notes: appendUnique(draft.notes, action.reason ? [action.reason] : []),
       updatedAt: now,
     }
@@ -1427,7 +1433,7 @@ function selectProgressiveAction(
   if (!draft.imageArtifactIds.length) {
     const imagePrompt = stringValue(draft.fields.imagePrompt)
     if (imagePrompt) {
-      return actions.find((action) => action.type === 'request_image') ?? { type: 'request_image', prompt: imagePrompt, title: 'Character Image' }
+      return actions.find((action) => action.type === 'request_image') ?? createRequestImageAction(context, imagePrompt)
     }
   }
   return actions.find((action) => action.type === 'finish') ?? null
@@ -1461,7 +1467,8 @@ function normalizeAgentActions(value: unknown): CharacterAgentAction[] {
         }
       }
       if (type === 'request_image') {
-        return { type, prompt: stringValue(action.prompt), title: stringValue(action.title), reason: stringValue(action.reason) }
+        const targetPrompts = normalizeImageTargetPrompts(action.targetPrompts)
+        return { type, targetPrompts, reason: stringValue(action.reason) }
       }
       if (type === 'finish') {
         return { type, reason: stringValue(action.reason) }
@@ -1469,7 +1476,115 @@ function normalizeAgentActions(value: unknown): CharacterAgentAction[] {
       return null
     })
     .filter((action): action is CharacterAgentAction => Boolean(action))
-    .filter((action) => action.type !== 'request_image' || Boolean(action.prompt.trim()))
+    .filter((action) => action.type !== 'request_image' || action.targetPrompts.length > 0)
+}
+
+function normalizeImageTargetPrompts(value: unknown): CharacterAgentImageTargetPrompt[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value.flatMap((item): CharacterAgentImageTargetPrompt[] => {
+    if (!item || typeof item !== 'object') {
+      return []
+    }
+    const record = item as Record<string, unknown>
+    const targetNodeId = stringValue(record.targetNodeId)
+    const prompt = stringValue(record.prompt)
+    if (!targetNodeId || !prompt) {
+      return []
+    }
+    return [{
+      targetNodeId,
+      prompt,
+      title: stringValue(record.title),
+    }]
+  })
+}
+
+function getRequestImagePromptTexts(action: Extract<CharacterAgentAction, { type: 'request_image' }>): string[] {
+  return action.targetPrompts.map((item) => item.prompt.trim()).filter(Boolean)
+}
+
+function createRequestImageAction(
+  context: CharacterAgentRunContext,
+  imagePrompt: string
+): Extract<CharacterAgentAction, { type: 'request_image' }> {
+  const imageTargets = context.targets.filter((target) => target.kind === 'image')
+  return {
+    type: 'request_image',
+    targetPrompts: imageTargets.flatMap((target) => {
+      const count = getImageTargetPromptCount(target)
+      return Array.from({ length: count }, (_, index) => ({
+        targetNodeId: target.nodeId,
+        title: count > 1 ? `${target.title} ${index + 1}` : target.title,
+        prompt: createTargetImagePromptVariant(imagePrompt, target, index, count),
+      }))
+    }),
+  }
+}
+
+function getImageTargetPromptCount(target: AgentTargetContext): number {
+  if (!target.imageControls.length) {
+    return 1
+  }
+  const total = target.imageControls.reduce((sum, control) => sum + Math.max(1, Math.floor(control.targetImageCount)), 0)
+  return Math.max(1, Math.min(16, total))
+}
+
+function createTargetImagePromptVariant(
+  imagePrompt: string,
+  target: AgentTargetContext,
+  index: number,
+  count: number
+): string {
+  const variantHints = getImageRoleVariantHints(target.imageRole || 'image')
+  return [
+    imagePrompt,
+    `Target image role: ${target.imageRole || 'image'}.`,
+    target.imageAssetPurpose ? `Target asset purpose: ${target.imageAssetPurpose}.` : '',
+    count > 1 ? `Image variant ${index + 1} of ${count}: ${variantHints[index % variantHints.length]}.` : '',
+  ].filter(Boolean).join('\n')
+}
+
+function getImageRoleVariantHints(imageRole: string): string[] {
+  const hints: Record<string, string[]> = {
+    avatar: [
+      'front-facing portrait with a clear identity read',
+      'three-quarter portrait with a different expression and lighting emphasis',
+      'closer crop focused on face, hair, and eye detail',
+      'upper-body portrait emphasizing outfit accents and posture',
+    ],
+    body: [
+      'neutral full-body standing reference with readable silhouette',
+      'dynamic full-body pose showing motion and personality',
+      'rear or three-quarter outfit reference showing construction details',
+      'alternate full-body stance emphasizing proportions and accessories',
+    ],
+    scene: [
+      'wide establishing scene with the character grounded in the environment',
+      'mid-distance story moment with stronger atmosphere and interaction cues',
+      'detail-focused scene vignette emphasizing props, lighting, and mood',
+      'alternate composition from a different camera angle',
+    ],
+    expression: [
+      'soft neutral expression with subtle emotional restraint',
+      'strong emotional expression with clear facial readability',
+      'side-glance expression showing tension or curiosity',
+      'quiet intimate expression with softer lighting',
+    ],
+    reference: [
+      'design-detail reference emphasizing materials and accessories',
+      'color and shape reference emphasizing palette consistency',
+      'close detail reference emphasizing signature visual motifs',
+      'alternate reference angle clarifying construction details',
+    ],
+  }
+  return hints[imageRole] ?? [
+    'primary composition with clear subject readability',
+    'alternate composition with different camera distance and emphasis',
+    'detail-focused variation emphasizing material and mood',
+    'dynamic variation with a changed pose or viewpoint',
+  ]
 }
 
 function isCharacterDraftComplete(draft: CharacterCardDraft | undefined, context: CharacterAgentRunContext): boolean {
