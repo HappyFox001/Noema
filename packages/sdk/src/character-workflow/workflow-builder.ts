@@ -606,7 +606,8 @@ export function createUiConfigOverrides(spec: CharacterWorkflowBuilderSpec): Rec
     },
     'avatar-image-control': {
       targetImageCount: 1,
-      imageStylePreset: 'semi-realistic-anime',
+      imageStyleDomain: 'auto',
+      imageStylePreset: 'roleplay-character-avatar',
       stylePrompt: spec.stylePrompt,
       shotType: 'bust',
       aspectRatio: '1:1',
@@ -620,6 +621,7 @@ export function createUiConfigOverrides(spec: CharacterWorkflowBuilderSpec): Rec
     },
     'overview-sheet-image-control': {
       targetImageCount: 1,
+      imageStyleDomain: 'auto',
       imageStylePreset: 'character-sheet',
       stylePrompt: spec.stylePrompt,
       shotType: 'full-body',
@@ -706,7 +708,7 @@ function createWorkflowBuilderSystemPrompt(language: CharacterWorkflowLanguage):
     localeRule,
     'The final workflow must always generate a complete role card, an opening layout target, and a two-stage character image workflow: first avatar.jpg identity lock, then a large character overview sheet using that avatar as reference.',
     'Do not write final character-card fields here. This is workflow configuration only.',
-    'For images, image-target declares a role-card visual purpose and image-generation-control declares count, lightweight style text, shot, aspect ratio, seed, consistency, and negative prompt. The required first image role is avatar; the required second image role is character-overview-sheet. Do not create external adapter or style-profile compatibility nodes.',
+    'For images, image-target declares a role-card visual purpose and image-generation-control declares count, imageStyleDomain, lightweight style text, shot, aspect ratio, seed, consistency, and negative prompt. The required first image role is avatar; the required second image role is character-overview-sheet. Use imageStyleDomain for photoreal/anime/illustration/stylized routing; leave it auto when the character visual identity should decide.',
     'Return only valid JSON. No markdown, comments, or surrounding prose.',
     'Schema:',
     '{',
@@ -784,7 +786,7 @@ function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): 
     '- opening-layout-target: use this for the CSS/HTML-style role-card opening presentation that combines title, tags, opening text, and generated images.',
     '- image-target.imageRole: choose the role-card visual purpose from options such as avatar, character-overview-sheet, hero-cover, full-body, opening-moment, story-moment, expression, outfit-detail, relationship-moment, or world-context. Do not use scene as a standalone image type.',
     '- image-target.assetPurpose: what this exact image should communicate and which story/text field it supports.',
-    '- image-generation-control: image count, imageStylePreset, concise stylePrompt, shotType, aspectRatio, consistencyMode, seedMode, negativePrompt. Never put imageType or composition here.',
+    '- image-generation-control: image count, imageStyleDomain, imageStylePreset, concise stylePrompt, shotType, aspectRatio, consistencyMode, seedMode, negativePrompt. Use imageStyleDomain for photoreal/anime/illustration/stylized routing; use auto when the character visual identity should decide. Never put imageType or composition here.',
     '- For character resources, prefer the staged asset workflow: avatar first as identity lock, character-overview-sheet second as a large model/reference sheet using the avatar identity. Additional pictures should be separate image-target nodes when they serve different card/story purposes, and/or image-generation-control.targetImageCount for variants.',
     '- Do not connect hard-constraint nodes directly into image-target. Put image-specific exclusions in image-generation-control.negativePrompt.',
     '- world-card-target / npc-pack-target / npc-target / plot-arc-target / scene-card-target: add these when the request asks for multi-NPC, world, setting, story arc, or scene planning.',
@@ -1052,7 +1054,8 @@ function applySpecToWorkflow(workflow: CharacterWorkflow, spec: CharacterWorkflo
   const avatarControl = workflow.nodes.find((node) => node.id === 'avatar-image-control')
   avatarControl?.config && Object.assign(avatarControl.config, {
     targetImageCount: 1,
-    imageStylePreset: 'semi-realistic-anime',
+    imageStyleDomain: 'auto',
+    imageStylePreset: 'roleplay-character-avatar',
     stylePrompt: spec.stylePrompt,
     shotType: 'bust',
     aspectRatio: '1:1',
@@ -1073,6 +1076,7 @@ function applySpecToWorkflow(workflow: CharacterWorkflow, spec: CharacterWorkflo
   const overviewControl = workflow.nodes.find((node) => node.id === 'overview-sheet-image-control')
   overviewControl?.config && Object.assign(overviewControl.config, {
     targetImageCount: 1,
+    imageStyleDomain: 'auto',
     imageStylePreset: 'character-sheet',
     stylePrompt: spec.stylePrompt,
     shotType: 'full-body',

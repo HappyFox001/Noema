@@ -109,6 +109,7 @@ export type AgentTargetKind =
 export interface AgentImageGenerationControl {
   nodeId: string
   targetImageCount: number
+  imageStyleDomain: string
   imageStylePreset: string
   stylePrompt: string
   shotType: string
@@ -566,6 +567,7 @@ export function compileCharacterAgentRunContext(
   const imageGenerationControls = (nodesByType.get('image-generation-control') ?? []).map((node) => ({
     nodeId: node.id,
     targetImageCount: numberValue(node.config.targetImageCount, 1),
+    imageStyleDomain: stringValue(node.config.imageStyleDomain, 'auto'),
     imageStylePreset: stringValue(node.config.imageStylePreset, stringListValue(node.config.imageStylePresets)[0] ?? ''),
     stylePrompt: stringValue(node.config.stylePrompt),
     shotType: stringValue(node.config.shotType, 'auto'),
