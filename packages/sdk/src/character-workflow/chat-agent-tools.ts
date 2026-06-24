@@ -217,7 +217,9 @@ function createCharacterDecisionPrompt(
     '    <progressive_rule>Return exactly one action. Generate or reroll one field at a time. Do not fill the whole card in one response.</progressive_rule>',
     '    <progressive_rule>If a field target is missing, return set_field for the earliest missing field in fixed_schema order and obey that target local XML controls. Only request_image after imagePrompt exists.</progressive_rule>',
     '    <image_rule>When requesting images, create one targetPrompts item per final image, not just per image target. If an image target requests multiple images through image_control count, return multiple distinct prompts for the same targetNodeId.</image_rule>',
-    '    <image_rule>Each targetPrompts prompt must be specific to that exact image slot, image_role, and local image_control. Do not rely on the image tool to duplicate or vary one generic prompt.</image_rule>',
+    '    <image_rule>All images for the same role card must share a clear identity anchor: face structure, hair, eyes, age impression, body type, signature accessories, and outfit language. Vary pose, shot, background, mood, lighting, and story function.</image_rule>',
+    '    <image_rule>Each targetPrompts prompt must be specific to that exact image slot, image_role, local image_control, and the text field or story beat it supports. Do not rely on the image tool to duplicate or vary one generic prompt.</image_rule>',
+    '    <image_rule>Do not request pure empty scene images. Every image should contain the character or unmistakable character-linked visual motifs, and should support the role card text, opening, story, relationship, or layout.</image_rule>',
     '    <allowed_actions>',
     '      <action name="set_field">{"type":"set_field","field":"name","value":"...","reason":"..."}</action>',
     '      <action name="request_image">{"type":"request_image","targetPrompts":[{"targetNodeId":"image-target-node-id","title":"Avatar Image","prompt":"target-specific English image prompt"}]}</action>',
@@ -453,19 +455,19 @@ async function maybeGenerateImageArtifacts(
     ? models.find((model) => model.modelType === 'image' && model.id === capability.apiId)
     : models.find((model) => model.modelType === 'image')
   if (!configuredModel) {
-    return []
+    throw new Error('No image model is configured for character workflow image generation')
   }
   if (!configuredModel.apiKey?.trim()) {
-    return []
+    throw new Error(`Character workflow image API key is empty for ${configuredModel.id}`)
   }
   const modelName = capability?.modelName?.trim() || configuredModel.modelName?.trim() || configuredModel.enabledModels?.[0]?.trim()
   if (!modelName) {
-    return []
+    throw new Error(`Character workflow image model name is empty for ${configuredModel.id}`)
   }
   const imageTargets = context.targets.filter((target) => target.kind === 'image')
   const prompts = createImageGenerationPromptRequests(resolveImageTargetPromptRequests(source, imageTargets))
   if (!prompts.length) {
-    return []
+    throw new Error('request_image.targetPrompts must include at least one image prompt')
   }
   const artifacts: CharacterAgentArtifact[] = []
   for (let index = 0; index < prompts.length; index += 1) {
@@ -498,11 +500,12 @@ function resolveImageTargetPromptRequests(
   imageTargets: AgentTargetContext[]
 ): Array<{ target: AgentTargetContext; prompt: string }> {
   const targetById = new Map(imageTargets.map((target) => [target.nodeId, target]))
-  return normalizeImageTargetPromptInputs(source.targetPrompts).flatMap((item) => {
+  return normalizeImageTargetPromptInputs(source.targetPrompts).map((item) => {
     const target = targetById.get(item.targetNodeId)
-    return target && item.prompt.trim()
-      ? [{ target, prompt: item.prompt.trim() }]
-      : []
+    if (!target) {
+      throw new Error(`Image request references unknown image target: ${item.targetNodeId}`)
+    }
+    return { target, prompt: item.prompt.trim() }
   })
 }
 
@@ -511,7 +514,10 @@ function createImageGenerationPromptRequests(
 ): Array<{ target: AgentTargetContext; targetIndex: number; imageRole: string; prompt: string }> {
   const targetPromptCounts = new Map<string, number>()
   return requests.map((request) => {
-    const targetRole = request.target.imageRole ?? 'avatar'
+    const targetRole = request.target.imageRole
+    if (!targetRole) {
+      throw new Error(`Image target ${request.target.nodeId} is missing imageRole`)
+    }
     const targetIndex = (targetPromptCounts.get(request.target.nodeId) ?? 0) + 1
     targetPromptCounts.set(request.target.nodeId, targetIndex)
     const control = getImageControlForPromptIndex(request.target.imageControls, targetIndex)
@@ -544,23 +550,23 @@ function getImageControlForPromptIndex(
 
 function normalizeImageTargetPromptInputs(value: unknown): CharacterAgentImageTargetPrompt[] {
   if (!Array.isArray(value)) {
-    return []
+    throw new Error('request_image.targetPrompts must be an array')
   }
-  return value.flatMap((item): CharacterAgentImageTargetPrompt[] => {
+  return value.map((item, index): CharacterAgentImageTargetPrompt => {
     if (!item || typeof item !== 'object') {
-      return []
+      throw new Error(`request_image.targetPrompts[${index}] must be an object`)
     }
     const record = item as Record<string, unknown>
     const targetNodeId = stringField(record.targetNodeId, '')
     const prompt = stringField(record.prompt, '')
     if (!targetNodeId || !prompt) {
-      return []
+      throw new Error(`request_image.targetPrompts[${index}] must include targetNodeId and prompt`)
     }
-    return [{
+    return {
       targetNodeId,
       prompt,
       title: stringField(record.title, ''),
-    }]
+    }
   })
 }
 
@@ -570,7 +576,11 @@ function buildImageGenerationPrompt(
   promptText: string,
   control: AgentImageGenerationControl | undefined
 ): string {
-  const roleInstruction = imageRoleInstruction(imageRole || target.imageRole || 'avatar')
+  const resolvedRole = imageRole || target.imageRole
+  if (!resolvedRole) {
+    throw new Error(`Image target ${target.nodeId} is missing imageRole`)
+  }
+  const roleInstruction = imageRoleInstruction(resolvedRole)
   const negative = [
     control?.negativePrompt,
     'text, caption, subtitle, watermark, logo, signature, UI text, prompt words, labels, typography, speech bubble',
@@ -597,11 +607,15 @@ function formatImageStylePreset(value: string): string {
 
 function imageRoleInstruction(imageRole: string): string {
   const instructions: Record<string, string> = {
-    avatar: 'Create a single avatar portrait focused on the character face, hair, expression, and upper-body identity, with a clean background.',
-    body: 'Create a single full-body character reference showing the complete outfit, posture, proportions, and silhouette.',
-    scene: 'Create a single environmental scene showing the character within the story setting, with atmosphere and spatial context.',
+    avatar: 'Create a single avatar portrait focused on the character face, hair, expression, and upper-body identity, with a simple but story-relevant background.',
+    'hero-cover': 'Create a polished role-card cover image: attractive character-first composition, clear identity, strong background atmosphere, and a visual hook for the card premise.',
+    'full-body': 'Create a single full-body character image showing the complete outfit, posture, proportions, and silhouette while preserving the same face and identity.',
+    'opening-moment': 'Create a story image for the opening message: the character is visibly present in the first-scene situation with background, props, mood, and narrative hook.',
+    'story-moment': 'Create a plot-supporting character image tied to a specific card field or story beat, with the character grounded in a concrete background.',
     expression: 'Create a single expression reference focused on one clear facial expression and emotional state, without label text or a labeled collage.',
-    reference: 'Create a single visual reference showing design details useful for consistent later generation.',
+    'outfit-detail': 'Create a design-detail image emphasizing outfit materials, accessories, motifs, and palette while keeping the character identity recognizable.',
+    'relationship-moment': 'Create a character-focused relationship beat with another person implied or partially present, emphasizing body language, tension, and emotional context.',
+    'world-context': 'Create a world-context image that still includes the character or unmistakable character-linked motifs, not an empty environment-only scene.',
   }
   return instructions[imageRole] ?? `Create a single coherent visual for the ${imageRole} image role.`
 }

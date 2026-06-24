@@ -32,6 +32,7 @@ export type CharacterAgentArtifactKind =
   | 'character-card-field'
   | 'character-card-final'
   | 'opening-message'
+  | 'opening-layout'
   | 'dialogue-style-guide'
   | 'world-context'
   | 'scene-context'
@@ -98,6 +99,7 @@ export interface AgentConstraint {
 export type AgentTargetKind =
   | 'character-card'
   | 'character-field'
+  | 'opening-layout'
   | 'image'
   | 'world-card'
   | 'npc-pack'
@@ -656,7 +658,7 @@ export function compileCharacterAgentRunContext(
       nodeId: strategyNode?.id,
       mode: stringValue(strategyNode?.config.mode, 'branch-and-refine'),
       branchCount: numberValue(strategyNode?.config.branchCount, 3),
-      priorityAssets: stringListValue(strategyNode?.config.priorityAssets, ['role-card', 'opening', 'image-pack']),
+      priorityAssets: stringListValue(strategyNode?.config.priorityAssets, ['role-card', 'opening', 'opening-layout', 'image-pack']),
       stopCondition: stringValue(strategyNode?.config.stopCondition, 'quality gate passed'),
       incomingRelations: strategyNode ? incomingRelations(relations, strategyNode.id) : [],
     },
@@ -1026,31 +1028,6 @@ export function createCharacterSuperAgent(
           await writeArtifact(createDraftArtifact(context, state.draft))
           if (isCharacterDraftComplete(state.draft, context)) {
             break
-          }
-        }
-
-        if (!state.draft?.imageArtifactIds.length) {
-          const imagePrompt = stringValue(state.draft?.fields.imagePrompt)
-          if (imagePrompt) {
-            const imageAction = createRequestImageAction(context, imagePrompt)
-            const imageResult = await callTool('generate_character_image', 'produce', {
-              targetPrompts: imageAction.targetPrompts,
-              draft: state.draft,
-            })
-            const imageIds = (imageResult.artifacts ?? [])
-              .filter((artifact) => artifact.kind === 'image-asset')
-              .map((artifact) => artifact.id)
-            state = {
-              ...state,
-              draft: {
-                ...state.draft!,
-                imagePrompts: appendUnique(state.draft!.imagePrompts, getRequestImagePromptTexts(imageAction)),
-                imageArtifactIds: appendUnique(state.draft!.imageArtifactIds, imageIds),
-                notes: appendUnique(state.draft!.notes, [imageResult.summary]),
-                updatedAt: now(),
-              },
-            }
-            await writeArtifact(createDraftArtifact(context, state.draft))
           }
         }
 
@@ -1431,10 +1408,7 @@ function selectProgressiveAction(
     return null
   }
   if (!draft.imageArtifactIds.length) {
-    const imagePrompt = stringValue(draft.fields.imagePrompt)
-    if (imagePrompt) {
-      return actions.find((action) => action.type === 'request_image') ?? createRequestImageAction(context, imagePrompt)
-    }
+    return actions.find((action) => action.type === 'request_image') ?? null
   }
   return actions.find((action) => action.type === 'finish') ?? null
 }
@@ -1503,88 +1477,6 @@ function normalizeImageTargetPrompts(value: unknown): CharacterAgentImageTargetP
 
 function getRequestImagePromptTexts(action: Extract<CharacterAgentAction, { type: 'request_image' }>): string[] {
   return action.targetPrompts.map((item) => item.prompt.trim()).filter(Boolean)
-}
-
-function createRequestImageAction(
-  context: CharacterAgentRunContext,
-  imagePrompt: string
-): Extract<CharacterAgentAction, { type: 'request_image' }> {
-  const imageTargets = context.targets.filter((target) => target.kind === 'image')
-  return {
-    type: 'request_image',
-    targetPrompts: imageTargets.flatMap((target) => {
-      const count = getImageTargetPromptCount(target)
-      return Array.from({ length: count }, (_, index) => ({
-        targetNodeId: target.nodeId,
-        title: count > 1 ? `${target.title} ${index + 1}` : target.title,
-        prompt: createTargetImagePromptVariant(imagePrompt, target, index, count),
-      }))
-    }),
-  }
-}
-
-function getImageTargetPromptCount(target: AgentTargetContext): number {
-  if (!target.imageControls.length) {
-    return 1
-  }
-  const total = target.imageControls.reduce((sum, control) => sum + Math.max(1, Math.floor(control.targetImageCount)), 0)
-  return Math.max(1, Math.min(16, total))
-}
-
-function createTargetImagePromptVariant(
-  imagePrompt: string,
-  target: AgentTargetContext,
-  index: number,
-  count: number
-): string {
-  const variantHints = getImageRoleVariantHints(target.imageRole || 'image')
-  return [
-    imagePrompt,
-    `Target image role: ${target.imageRole || 'image'}.`,
-    target.imageAssetPurpose ? `Target asset purpose: ${target.imageAssetPurpose}.` : '',
-    count > 1 ? `Image variant ${index + 1} of ${count}: ${variantHints[index % variantHints.length]}.` : '',
-  ].filter(Boolean).join('\n')
-}
-
-function getImageRoleVariantHints(imageRole: string): string[] {
-  const hints: Record<string, string[]> = {
-    avatar: [
-      'front-facing portrait with a clear identity read',
-      'three-quarter portrait with a different expression and lighting emphasis',
-      'closer crop focused on face, hair, and eye detail',
-      'upper-body portrait emphasizing outfit accents and posture',
-    ],
-    body: [
-      'neutral full-body standing reference with readable silhouette',
-      'dynamic full-body pose showing motion and personality',
-      'rear or three-quarter outfit reference showing construction details',
-      'alternate full-body stance emphasizing proportions and accessories',
-    ],
-    scene: [
-      'wide establishing scene with the character grounded in the environment',
-      'mid-distance story moment with stronger atmosphere and interaction cues',
-      'detail-focused scene vignette emphasizing props, lighting, and mood',
-      'alternate composition from a different camera angle',
-    ],
-    expression: [
-      'soft neutral expression with subtle emotional restraint',
-      'strong emotional expression with clear facial readability',
-      'side-glance expression showing tension or curiosity',
-      'quiet intimate expression with softer lighting',
-    ],
-    reference: [
-      'design-detail reference emphasizing materials and accessories',
-      'color and shape reference emphasizing palette consistency',
-      'close detail reference emphasizing signature visual motifs',
-      'alternate reference angle clarifying construction details',
-    ],
-  }
-  return hints[imageRole] ?? [
-    'primary composition with clear subject readability',
-    'alternate composition with different camera distance and emphasis',
-    'detail-focused variation emphasizing material and mood',
-    'dynamic variation with a changed pose or viewpoint',
-  ]
 }
 
 function isCharacterDraftComplete(draft: CharacterCardDraft | undefined, context: CharacterAgentRunContext): boolean {
@@ -1775,6 +1667,7 @@ function artifactTitle(kind: CharacterAgentArtifactKind): string {
     'character-card-field': 'Character Card Field',
     'character-card-final': 'Character Card',
     'opening-message': 'Opening Message',
+    'opening-layout': 'Opening Layout',
     'dialogue-style-guide': 'Dialogue Style Guide',
     'world-context': 'World Context',
     'scene-context': 'Scene Context',
@@ -1808,6 +1701,7 @@ function isArtifactKind(value: unknown): value is CharacterAgentArtifactKind {
     'character-card-field',
     'character-card-final',
     'opening-message',
+    'opening-layout',
     'dialogue-style-guide',
     'world-context',
     'scene-context',
@@ -1894,6 +1788,7 @@ function targetKindForNodeType(type: string): AgentTargetKind | null {
   const kinds: Record<string, AgentTargetKind> = {
     'character-card-target': 'character-card',
     'character-field-target': 'character-field',
+    'opening-layout-target': 'opening-layout',
     'image-target': 'image',
     'world-card-target': 'world-card',
     'npc-pack-target': 'npc-pack',
@@ -1911,8 +1806,15 @@ function requestedResourcesForTarget(node: CharacterWorkflowNode, kind: AgentTar
   if (kind === 'character-field') {
     return [`field:${stringValue(node.config.field, 'firstMessage')}`]
   }
+  if (kind === 'opening-layout') {
+    return ['opening-layout', ...stringListValue(node.config.includeSections)]
+  }
   if (kind === 'image') {
-    return [`image:${stringValue(node.config.imageRole, 'avatar')}`]
+    const imageRole = stringValue(node.config.imageRole)
+    if (!imageRole) {
+      throw new Error(`Image target ${node.id} is missing imageRole`)
+    }
+    return [`image:${imageRole}`]
   }
   if (kind === 'world-card') {
     return ['world-card', ...stringListValue(node.config.worldSections)]

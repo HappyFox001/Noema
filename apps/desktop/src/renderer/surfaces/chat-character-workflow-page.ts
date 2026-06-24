@@ -670,19 +670,48 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'Image Prompt', value: 'imagePrompt' },
     ]),
   ], 'text-card'),
-  createDefinition('image-target', 'Image Target', ['图片目标', 'image target', 'visual target'], 'Targets', 'asset', 'Declares the image asset to produce. Batch count, style, seed behavior, and runtime controls live in connected image control nodes.', [
+  createDefinition('opening-layout-target', 'Opening Layout Target', ['开幕版面', 'opening layout', 'css card'], 'Targets', 'asset', 'Declares the CSS/HTML-style opening presentation for the role card, combining opening text, visual assets, title, tags, and card surface layout.', [
+    slot('card', 'Card', 'asset-target', 'Character card target.', true),
+    slot('field', 'Field', 'asset-target', 'Opening or supporting text field.'),
+    slot('imageAsset', 'Image Asset', 'asset-target', 'Images used by the opening presentation.'),
+    slot('style', 'Style', 'style-signal', 'Layout and prose style pressure.'),
+    slot('constraint', 'Constraint', 'hard-constraint', 'Layout constraints.'),
+  ], [
+    slot('layout', 'Layout', 'asset-target', 'Opening layout target resource.'),
+  ], [
+    param('layoutKind', 'Layout Kind', 'select', 'immersive-card-css', undefined, undefined, undefined, [
+      { label: 'Immersive Card CSS', value: 'immersive-card-css' },
+      { label: 'Forum Post Card', value: 'forum-post-card' },
+      { label: 'Mobile Chat Intro', value: 'mobile-chat-intro' },
+      { label: 'SillyTavern Description Block', value: 'sillytavern-description-block' },
+    ]),
+    param('includeSections', 'Include Sections', 'multi-select', ['title', 'tags', 'opening', 'coverImage', 'supportImages'], undefined, undefined, undefined, [
+      { label: 'Title', value: 'title' },
+      { label: 'Tags', value: 'tags' },
+      { label: 'Opening', value: 'opening' },
+      { label: 'Cover Image', value: 'coverImage' },
+      { label: 'Support Images', value: 'supportImages' },
+      { label: 'Character Summary', value: 'characterSummary' },
+    ]),
+    param('layoutPrompt', 'Layout Prompt', 'textarea', ''),
+  ], 'package'),
+  createDefinition('image-target', 'Image Target', ['图片目标', 'image target', 'visual target'], 'Targets', 'asset', 'Declares a role-card visual asset. Each image should preserve character identity while supporting a distinct story, field, or presentation purpose.', [
     slot('card', 'Card', 'asset-target', 'Character card target.'),
     slot('image', 'Image', 'image-capability', 'Image generation capability.', true),
     slot('imageControl', 'Image Control', 'asset-target', 'Image generation control.'),
   ], [
     slot('imageAsset', 'Image Asset', 'asset-target', 'Image target resource.'),
   ], [
-    param('imageRole', 'Image Role', 'select', 'avatar', undefined, undefined, undefined, [
+    param('imageRole', 'Image Role', 'select', 'hero-cover', undefined, undefined, undefined, [
       { label: 'Avatar', value: 'avatar' },
-      { label: 'Body', value: 'body' },
-      { label: 'Scene', value: 'scene' },
+      { label: 'Hero Cover', value: 'hero-cover' },
+      { label: 'Full Body', value: 'full-body' },
+      { label: 'Opening Moment', value: 'opening-moment' },
+      { label: 'Story Moment', value: 'story-moment' },
       { label: 'Expression', value: 'expression' },
-      { label: 'Reference', value: 'reference' },
+      { label: 'Outfit Detail', value: 'outfit-detail' },
+      { label: 'Relationship Moment', value: 'relationship-moment' },
+      { label: 'World Context', value: 'world-context' },
     ]),
     param('assetPurpose', 'Asset Purpose', 'textarea', ''),
   ], 'image'),
@@ -962,9 +991,10 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'Explore then Converge', value: 'explore-then-converge' },
     ]),
     param('branchCount', 'Branch Count', 'integer', 3, 1, 8, 1),
-    param('priorityAssets', 'Priority Assets', 'multi-select', ['role-card', 'opening', 'image-pack'], undefined, undefined, undefined, [
+    param('priorityAssets', 'Priority Assets', 'multi-select', ['role-card', 'opening', 'opening-layout', 'image-pack'], undefined, undefined, undefined, [
       { label: 'Role Card', value: 'role-card' },
       { label: 'Opening', value: 'opening' },
+      { label: 'Opening Layout', value: 'opening-layout' },
       { label: 'Image Pack', value: 'image-pack' },
     ]),
   ], 'rule'),
@@ -1081,6 +1111,7 @@ const DEFAULT_NODE_PLACEMENT: Array<{ id: string; type: string; title: string; x
   { id: 'opening-field-control', type: 'field-generation-control', title: 'Opening Field Control', x: 730, y: 226 },
   { id: 'image-target', type: 'image-target', title: 'Image Target', x: 730, y: 432, status: 'queued' },
   { id: 'image-control', type: 'image-generation-control', title: 'Image Generation Control', x: 1060, y: 432 },
+  { id: 'opening-layout-target', type: 'opening-layout-target', title: 'Opening Layout Target', x: 1060, y: 638 },
   { id: 'style-pressure', type: 'style-pressure', title: 'Style Pressure', x: 390, y: -86 },
   { id: 'hard-constraints', type: 'constraint', title: 'Hard Constraints', x: 390, y: 370 },
   { id: 'source-material', type: 'source-material', title: 'Source Material', x: 80, y: 412 },
@@ -1106,6 +1137,10 @@ const DEFAULT_LINKS: CharacterResourceLink[] = [
   link('character-card-target', 'target', 'image-target', 'card', 'guides'),
   link('image-capability', 'image', 'image-target', 'image', 'enables'),
   link('image-control', 'imageControl', 'image-target', 'imageControl', 'guides'),
+  link('character-card-target', 'target', 'opening-layout-target', 'card', 'guides'),
+  link('opening-field-target', 'field', 'opening-layout-target', 'field', 'guides'),
+  link('image-target', 'imageAsset', 'opening-layout-target', 'imageAsset', 'guides'),
+  link('style-pressure', 'style', 'opening-layout-target', 'style', 'weights'),
   link('generation-goal', 'goal', 'agent-policy', 'goal', 'guides'),
   link('hard-constraints', 'constraint', 'agent-policy', 'constraint', 'constrains'),
   link('source-material', 'source', 'agent-policy', 'source', 'grounds'),
@@ -1753,7 +1788,7 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
         }
       }),
     groups: [
-      { id: 'intent-targets', title: ui(options, '目标资源', 'Target Resources'), nodeIds: ['generation-goal', 'character-card-target', 'opening-field-target', 'image-target', 'source-material'], color: 'rgba(82, 168, 255, 0.16)' },
+      { id: 'intent-targets', title: ui(options, '目标资源', 'Target Resources'), nodeIds: ['generation-goal', 'character-card-target', 'opening-field-target', 'image-target', 'opening-layout-target', 'source-material'], color: 'rgba(82, 168, 255, 0.16)' },
       { id: 'local-controls', title: ui(options, '局部控制', 'Local Controls'), nodeIds: ['style-pressure', 'hard-constraints', 'opening-field-control', 'image-control'], color: 'rgba(162, 202, 188, 0.16)' },
       { id: 'tool-policy', title: ui(options, '工具与策略', 'Tools and Strategy'), nodeIds: ['llm-capability', 'image-capability', 'agent-policy', 'generation-strategy'], color: 'rgba(219, 189, 130, 0.16)' },
       { id: 'evaluation-output', title: ui(options, '评估与输出', 'Evaluation and Output'), nodeIds: ['critique-loop', 'quality-gate', 'output-adapter'], color: 'rgba(206, 154, 118, 0.16)' },

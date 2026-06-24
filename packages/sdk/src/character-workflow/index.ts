@@ -12,6 +12,7 @@ export type CharacterNodeType =
   | 'goal'
   | 'character-card-target'
   | 'character-field-target'
+  | 'opening-layout-target'
   | 'image-target'
   | 'world-card-target'
   | 'npc-pack-target'
@@ -797,11 +798,43 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     ],
   },
   {
+    type: 'opening-layout-target',
+    title: 'Opening Layout Target',
+    category: 'targets',
+    executor: 'agent',
+    description: 'Declares the CSS/HTML-style opening presentation for the role card, combining the opening text, visual assets, title, tags, and card surface layout.',
+    inputs: {
+      card: port('card', 'Card', 'asset-target', true),
+      field: port('field', 'Field', 'asset-target'),
+      imageAsset: port('imageAsset', 'Image Asset', 'asset-target'),
+      style: port('style', 'Style', 'style-signal'),
+      constraint: port('constraint', 'Constraint', 'hard-constraint'),
+    },
+    outputs: { layout: port('layout', 'Layout', 'asset-target') },
+    parameters: [
+      parameter('layoutKind', 'Layout Kind', 'select', 'immersive-card-css', undefined, [
+        option('Immersive Card CSS', 'immersive-card-css'),
+        option('Forum Post Card', 'forum-post-card'),
+        option('Mobile Chat Intro', 'mobile-chat-intro'),
+        option('SillyTavern Description Block', 'sillytavern-description-block'),
+      ]),
+      parameter('includeSections', 'Include Sections', 'multi-select', ['title', 'tags', 'opening', 'coverImage', 'supportImages'], undefined, [
+        option('Title', 'title'),
+        option('Tags', 'tags'),
+        option('Opening', 'opening'),
+        option('Cover Image', 'coverImage'),
+        option('Support Images', 'supportImages'),
+        option('Character Summary', 'characterSummary'),
+      ]),
+      parameter('layoutPrompt', 'Layout Prompt', 'textarea', ''),
+    ],
+  },
+  {
     type: 'image-target',
     title: 'Image Target',
     category: 'targets',
     executor: 'image',
-    description: 'Declares the image asset to produce. Generation count, style, and runtime controls live in connected image control nodes.',
+    description: 'Declares a role-card visual asset. Each image should preserve character identity while supporting a distinct story, field, or presentation purpose.',
     inputs: {
       card: port('card', 'Card', 'asset-target'),
       image: port('image', 'Image', 'image-capability', true),
@@ -809,12 +842,16 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     },
     outputs: { imageAsset: port('imageAsset', 'Image Asset', 'asset-target') },
     parameters: [
-      parameter('imageRole', 'Image Role', 'select', 'avatar', undefined, [
+      parameter('imageRole', 'Image Role', 'select', 'hero-cover', undefined, [
         option('Avatar', 'avatar'),
-        option('Body', 'body'),
-        option('Scene', 'scene'),
+        option('Hero Cover', 'hero-cover'),
+        option('Full Body', 'full-body'),
+        option('Opening Moment', 'opening-moment'),
+        option('Story Moment', 'story-moment'),
         option('Expression', 'expression'),
-        option('Reference', 'reference'),
+        option('Outfit Detail', 'outfit-detail'),
+        option('Relationship Moment', 'relationship-moment'),
+        option('World Context', 'world-context'),
       ]),
       parameter('assetPurpose', 'Asset Purpose', 'textarea', ''),
     ],
@@ -1207,9 +1244,10 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
         option('Explore then Converge', 'explore-then-converge'),
       ]),
       parameter('branchCount', 'Branch Count', 'integer', 3, { min: 1, max: 8, step: 1 }),
-      parameter('priorityAssets', 'Priority Assets', 'multi-select', ['role-card', 'opening', 'image-pack'], undefined, [
+      parameter('priorityAssets', 'Priority Assets', 'multi-select', ['role-card', 'opening', 'opening-layout', 'image-pack'], undefined, [
         option('Role Card', 'role-card'),
         option('Opening', 'opening'),
+        option('Opening Layout', 'opening-layout'),
         option('Image Pack', 'image-pack'),
       ]),
       parameter('stopCondition', 'Stop Condition', 'text', 'quality gate passed'),
@@ -1322,6 +1360,7 @@ export function createStandardCharacterWorkflow(
     node('field-generation-control', 690, 230),
     node('image-target', 690, 430),
     node('image-generation-control', 1010, 430),
+    node('opening-layout-target', 1010, 640),
     node('style-pressure', 360, -70),
     node('constraint', 360, 360),
     node('source-material', 40, 410),
@@ -1363,6 +1402,10 @@ export function createStandardCharacterWorkflow(
       ['character-card-target', 'target', 'image-target', 'card', 'guides'],
       ['image-tool', 'image', 'image-target', 'image', 'enables'],
       ['image-generation-control', 'imageControl', 'image-target', 'imageControl', 'guides'],
+      ['character-card-target', 'target', 'opening-layout-target', 'card', 'guides'],
+      ['character-field-target', 'field', 'opening-layout-target', 'field', 'guides'],
+      ['image-target', 'imageAsset', 'opening-layout-target', 'imageAsset', 'guides'],
+      ['style-pressure', 'style', 'opening-layout-target', 'style', 'weights'],
       ['goal', 'goal', 'agent-policy', 'goal', 'guides'],
       ['constraint', 'constraint', 'agent-policy', 'constraint', 'constrains'],
       ['source-material', 'source', 'agent-policy', 'source', 'grounds'],
@@ -1742,13 +1785,23 @@ function createDefaultCharacterWorkflowExecutors(): Partial<Record<CharacterNode
         includeAlternates: false,
       },
     }],
+    'opening-layout-target': ({ node, config, timestamp }) => [{
+      id: `${node.id}-layout-target`,
+      type: 'asset-target',
+      sourceNodeId: node.id,
+      createdAt: timestamp,
+      targets: {
+        requested: ['opening-layout', ...stringListConfig(config.includeSections)],
+        includeAlternates: false,
+      },
+    }],
     'image-target': ({ node, config, timestamp }) => [{
       id: `${node.id}-image-target`,
       type: 'asset-target',
       sourceNodeId: node.id,
       createdAt: timestamp,
       targets: {
-        requested: [`image:${stringConfig(config.imageRole, 'avatar')}`],
+        requested: [`image:${requireStringConfig(config.imageRole, `${node.id}.imageRole`)}`],
         includeAlternates: true,
       },
     }],
@@ -2122,6 +2175,13 @@ function connectEdges(items: Array<[string, string, string, string, CharacterWor
 
 function stringConfig(value: unknown, fallback: string): string {
   return typeof value === 'string' ? value : fallback
+}
+
+function requireStringConfig(value: unknown, path: string): string {
+  if (typeof value === 'string' && value.trim()) {
+    return value.trim()
+  }
+  throw new Error(`Missing required workflow config: ${path}`)
 }
 
 function nonEmptyStringConfig(value: unknown, fallback: string): string {

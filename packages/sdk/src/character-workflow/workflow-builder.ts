@@ -101,7 +101,7 @@ export interface CharacterWorkflowBuilderResult {
 }
 
 const DEFAULT_REQUIRED_CHECKS = ['goal match', 'long-term RP', 'visual identity', 'field completeness', 'consistency']
-const DEFAULT_ASSET_TARGETS = ['role-card', 'opening', 'image-pack', 'generation-report']
+const DEFAULT_ASSET_TARGETS = ['role-card', 'opening', 'opening-layout', 'image-pack', 'generation-report']
 
 export async function buildCharacterWorkflowFromPrompt(
   request: CharacterWorkflowBuilderRequest
@@ -295,18 +295,23 @@ export function createUiConfigOverrides(spec: CharacterWorkflowBuilderSpec): Rec
       avoidPatterns: spec.mustNot,
     },
     'image-target': {
-      imageRole: 'avatar',
-      assetPurpose: spec.stylePrompt,
+      imageRole: 'hero-cover',
+      assetPurpose: 'Primary attractive character image for the role card cover; preserve identity and include a story-relevant background.',
     },
     'image-control': {
-      targetImageCount: 1,
+      targetImageCount: 4,
       imageStylePreset: 'semi-realistic-anime',
       stylePrompt: spec.stylePrompt,
       shotType: 'auto',
-      aspectRatio: '1:1',
+      aspectRatio: '3:4',
       consistencyMode: 'same-character',
       seedMode: 'lock-character',
       negativePrompt: spec.mustNot.join(', '),
+    },
+    'opening-layout-target': {
+      layoutKind: 'immersive-card-css',
+      includeSections: ['title', 'tags', 'opening', 'coverImage', 'supportImages'],
+      layoutPrompt: 'Create an immersive CSS-style opening card layout that combines the character title, tags, opening text, and generated images into one readable role-card presentation.',
     },
     'style-pressure': {
       preset: spec.preset,
@@ -376,9 +381,9 @@ function createWorkflowBuilderSystemPrompt(language: CharacterWorkflowLanguage):
     'You are the backend planner for a character resource graph builder.',
     'Convert the user brief into configuration for an autonomous character-card generation workflow.',
     localeRule,
-    'The final workflow must always generate a complete role card and at least one image asset.',
+    'The final workflow must always generate a complete role card, an opening layout target, and multiple character-consistent image assets.',
     'Do not write final character-card fields here. This is workflow configuration only.',
-    'For images, image-target declares the asset type and image-generation-control declares count, lightweight style text, shot, aspect ratio, seed, consistency, and negative prompt. Do not create external adapter or style-profile compatibility nodes.',
+    'For images, image-target declares a role-card visual purpose and image-generation-control declares count, lightweight style text, shot, aspect ratio, seed, consistency, and negative prompt. Do not create external adapter or style-profile compatibility nodes.',
     'Return only valid JSON. No markdown, comments, or surrounding prose.',
     'Schema:',
     '{',
@@ -448,14 +453,16 @@ function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): 
     '- hard-constraints.mustHave/mustNot: hard requirements and boundaries.',
     '- source-material.notes: concrete story material, setting facts, character seeds, world facts.',
     '- field-generation-control.fieldPurpose: local intent for one text field such as firstMessage/opening/dialogue style.',
-    '- image-target.imageRole: the asset type only, such as avatar/body/scene/expression/reference. image-target.assetPurpose: what this asset should communicate.',
+    '- opening-layout-target: use this for the CSS/HTML-style role-card opening presentation that combines title, tags, opening text, and generated images.',
+    '- image-target.imageRole: choose the role-card visual purpose from options such as avatar, hero-cover, full-body, opening-moment, story-moment, expression, outfit-detail, relationship-moment, or world-context. Do not use scene as a standalone image type.',
+    '- image-target.assetPurpose: what this exact image should communicate and which story/text field it supports.',
     '- image-generation-control: image count, imageStylePreset, concise stylePrompt, shotType, aspectRatio, consistencyMode, seedMode, negativePrompt. Never put imageType or composition here.',
-    '- For avatar + body + scene + expression, create separate image-target nodes and connect image-generation-control.imageControl into image-target.imageControl as needed. Do not connect image-target back into image-generation-control.',
+    '- For multiple pictures, create separate image-target nodes when they serve different card/story purposes, and/or set image-generation-control.targetImageCount for variants. All character images should preserve the same identity anchor while changing pose, framing, mood, background, and story function.',
     '- Do not connect hard-constraint nodes directly into image-target. Put image-specific exclusions in image-generation-control.negativePrompt.',
     '- world-card-target / npc-pack-target / npc-target / plot-arc-target / scene-card-target: add these when the request asks for multi-NPC, world, setting, story arc, or scene planning.',
     '',
     'Valid node types:',
-    'goal, character-card-target, character-field-target, image-target, world-card-target, npc-pack-target, npc-target, plot-arc-target, scene-card-target, style-pressure, constraint, image-generation-control, field-generation-control, continuity-control, relationship-control, source-material, llm-tool, image-tool, retrieval-tool, voice-tool, agent-policy, generation-strategy, critique-loop, quality-gate, output-adapter.',
+    'goal, character-card-target, character-field-target, opening-layout-target, image-target, world-card-target, npc-pack-target, npc-target, plot-arc-target, scene-card-target, style-pressure, constraint, image-generation-control, field-generation-control, continuity-control, relationship-control, source-material, llm-tool, image-tool, retrieval-tool, voice-tool, agent-policy, generation-strategy, critique-loop, quality-gate, output-adapter.',
     '',
     'Valid link kinds:',
     'guides, constrains, provides, enables, grounds, weights, routes, evaluates, refines, exports.',
@@ -526,18 +533,23 @@ function applySpecToWorkflow(workflow: CharacterWorkflow, spec: CharacterWorkflo
     avoidPatterns: spec.mustNot,
   })
   byType.get('image-target')?.config && Object.assign(byType.get('image-target')!.config, {
-    imageRole: 'avatar',
-    assetPurpose: spec.stylePrompt,
+    imageRole: 'hero-cover',
+    assetPurpose: 'Primary attractive character image for the role card cover; preserve identity and include a story-relevant background.',
   })
   byType.get('image-generation-control')?.config && Object.assign(byType.get('image-generation-control')!.config, {
-    targetImageCount: 1,
+    targetImageCount: 4,
     imageStylePreset: 'semi-realistic-anime',
     stylePrompt: spec.stylePrompt,
     shotType: 'auto',
-    aspectRatio: '1:1',
+    aspectRatio: '3:4',
     consistencyMode: 'same-character',
     seedMode: 'lock-character',
     negativePrompt: spec.mustNot.join(', '),
+  })
+  byType.get('opening-layout-target')?.config && Object.assign(byType.get('opening-layout-target')!.config, {
+    layoutKind: 'immersive-card-css',
+    includeSections: ['title', 'tags', 'opening', 'coverImage', 'supportImages'],
+    layoutPrompt: 'Create an immersive CSS-style opening card layout that combines the character title, tags, opening text, and generated images into one readable role-card presentation.',
   })
   byType.get('quality-gate')?.config && Object.assign(byType.get('quality-gate')!.config, {
     ...spec.qualityGate,
@@ -892,6 +904,7 @@ function isCharacterNodeType(value: string): value is CharacterNodeType {
     'goal',
     'character-card-target',
     'character-field-target',
+    'opening-layout-target',
     'image-target',
     'world-card-target',
     'npc-pack-target',
@@ -949,7 +962,10 @@ function normalizeGenerationStrategy(record: Record<string, unknown>): Character
   return {
     mode: allowedMode.has(mode) ? mode : 'branch-and-refine',
     branchCount: Math.round(numberValue(record, 'branchCount', 3, 1, 8)),
-    priorityAssets: priorityAssets.includes('image-pack') ? priorityAssets : [...priorityAssets, 'image-pack'],
+    priorityAssets: ['opening-layout', 'image-pack'].reduce(
+      (assets, asset) => assets.includes(asset) ? assets : [...assets, asset],
+      priorityAssets
+    ),
   }
 }
 
