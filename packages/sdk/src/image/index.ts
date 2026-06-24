@@ -585,21 +585,23 @@ async function callWaveSpeed(
   prompt: string,
   options: { referenceImages?: string[]; size?: string } = {}
 ): Promise<Partial<ImageGenerationResult>> {
-  const referenceImages = limitReferenceImages(entry, options.referenceImages)
-  const isEdit = referenceImages.length > 0
-  const normalizedModelName = modelName.replace(/^\/+|\/+$/g, '')
-  const resolvedModelName = resolveWaveSpeedModelName(normalizedModelName, isEdit)
-  const path = `${baseUrl}${entry.generatePath.replace('{model}', resolvedModelName)}`
+  const waveSpeedRequest = resolveWaveSpeedRequest(entry, modelName, options)
+  const path = `${baseUrl}${entry.generatePath.replace('{model}', waveSpeedRequest.modelName)}`
+  const body: Record<string, unknown> = {
+    prompt,
+    size: formatWaveSpeedImageSize(options.size, waveSpeedRequest),
+    enable_sync_mode: true,
+    enable_base64_output: false,
+  }
+  if (waveSpeedRequest.referenceField === 'images') {
+    body.images = waveSpeedRequest.referenceImages
+  } else if (waveSpeedRequest.referenceField === 'image' && waveSpeedRequest.referenceImages[0]) {
+    body.image = waveSpeedRequest.referenceImages[0]
+  }
   const response = await fetcher(path, {
     method: 'POST',
     headers: jsonAuthHeaders(apiKey),
-    body: JSON.stringify({
-      ...(isEdit ? { images: referenceImages } : {}),
-      prompt,
-      size: formatProviderImageSize(options.size, 'asterisk', '1024*1024'),
-      enable_sync_mode: true,
-      enable_base64_output: false,
-    }),
+    body: JSON.stringify(body),
   })
   const payload = await readResponsePayload(response)
   assertOk(response, payload, 'WaveSpeed image generation failed')
@@ -608,7 +610,7 @@ async function callWaveSpeed(
   if (immediate) {
     return {
       ...immediate,
-      ...(referenceImages.length ? { referenceImages } : {}),
+      ...(waveSpeedRequest.referenceImages.length ? { referenceImages: waveSpeedRequest.referenceImages } : {}),
     }
   }
   const taskId = (submitted as any).id
@@ -620,7 +622,7 @@ async function callWaveSpeed(
   const output = (task as any).data?.outputs ?? (task as any).outputs ?? (task as any).data ?? task
   return {
     ...imageFromProviderOutput(output, task),
-    ...(referenceImages.length ? { referenceImages } : {}),
+    ...(waveSpeedRequest.referenceImages.length ? { referenceImages: waveSpeedRequest.referenceImages } : {}),
   }
 }
 
@@ -721,6 +723,45 @@ function limitReferenceImages(entry: ImageProviderCatalogEntry, referenceImages:
   return referenceImages.map((item) => item.trim()).filter(Boolean).slice(0, Math.max(1, referenceCapability.maxImages))
 }
 
+interface WaveSpeedRequestShape {
+  modelName: string
+  referenceField: 'image' | 'images' | null
+  referenceImages: string[]
+  maxSize?: number
+}
+
+function resolveWaveSpeedRequest(
+  entry: ImageProviderCatalogEntry,
+  modelName: string,
+  options: { referenceImages?: string[] }
+): WaveSpeedRequestShape {
+  const normalized = modelName.replace(/^\/+|\/+$/g, '')
+  const referenceImages = limitReferenceImages(entry, options.referenceImages)
+  const hasReferenceImages = referenceImages.length > 0
+  const lower = normalized.toLowerCase()
+  const zImage = lower === 'wavespeed-ai/z-image/turbo' || lower.startsWith('wavespeed-ai/z-image/turbo/')
+  if (zImage) {
+    return {
+      modelName: normalized,
+      referenceField: hasReferenceImages ? 'image' : null,
+      referenceImages: referenceImages.slice(0, 1),
+      maxSize: 1536,
+    }
+  }
+  if (hasReferenceImages && /\/image-to-image$|\/img2img$/i.test(normalized)) {
+    return {
+      modelName: normalized,
+      referenceField: 'image',
+      referenceImages: referenceImages.slice(0, 1),
+    }
+  }
+  return {
+    modelName: resolveWaveSpeedModelName(normalized, hasReferenceImages),
+    referenceField: hasReferenceImages ? 'images' : null,
+    referenceImages,
+  }
+}
+
 function resolveWaveSpeedModelName(modelName: string, hasReferenceImages: boolean): string {
   const normalized = modelName.replace(/^\/+|\/+$/g, '')
   if (hasReferenceImages) {
@@ -812,6 +853,21 @@ function aspectRatioForProvider(size: string | undefined): string | null {
   return known.reduce((best, item) => (
     Math.abs(item[1] - ratio) < Math.abs(best[1] - ratio) ? item : best
   ))[0]
+}
+
+function formatWaveSpeedImageSize(size: string | undefined, request: WaveSpeedRequestShape): string {
+  const parsed = parseImageSize(size)
+  if (!parsed) {
+    return request.maxSize ? `${Math.min(1024, request.maxSize)}*${Math.min(1024, request.maxSize)}` : '1024*1024'
+  }
+  const maxSize = request.maxSize
+  if (!maxSize || (parsed.width <= maxSize && parsed.height <= maxSize)) {
+    return `${parsed.width}*${parsed.height}`
+  }
+  const scale = maxSize / Math.max(parsed.width, parsed.height)
+  const width = Math.max(256, Math.round(parsed.width * scale))
+  const height = Math.max(256, Math.round(parsed.height * scale))
+  return `${width}*${height}`
 }
 
 function formatProviderImageSize(
