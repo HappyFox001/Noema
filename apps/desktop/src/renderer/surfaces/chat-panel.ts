@@ -2016,11 +2016,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           name: 'Character Card Draft',
           goalPrompt: '',
           configOverrides: {
-            'character-card-target': { includeFields: ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'firstMessage', 'dialogueStyle', 'worldContext'], includeSupportFields: ['imagePrompt'] },
+            'character-card-target': { includeFields: ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'firstMessage', 'dialogueStyle', 'worldContext'], includeSupportFields: ['visualIdentity', 'imagePrompt'] },
             'opening-field-target': { field: 'firstMessage' },
             'opening-field-control': { lengthPolicy: 'medium' },
-            'image-target': { imageRole: 'hero-cover', assetPurpose: 'Primary attractive character image for the role card cover; preserve identity and include a story-relevant background.' },
-            'image-control': { targetImageCount: 4, imageStylePreset: 'semi-realistic-anime', shotType: 'auto', aspectRatio: '3:4', consistencyMode: 'same-character', seedMode: 'lock-character' },
+            'avatar-image-target': { imageRole: 'avatar', assetPurpose: 'Generate avatar.jpg first as the canonical identity-lock portrait. It should be a polished production avatar with clear face, strong appeal, stable visual identity cues, and no collage layout.' },
+            'avatar-image-control': { targetImageCount: 1, imageStylePreset: 'semi-realistic-anime', shotType: 'bust', aspectRatio: '1:1', consistencyMode: 'same-character', seedMode: 'lock-character' },
+            'overview-sheet-image-target': { imageRole: 'character-overview-sheet', assetPurpose: 'Generate one large character asset overview sheet after avatar.jpg. Use the avatar as identity reference and show front view, back view, side or three-quarter view, hairstyle, hands, legs, feet or shoes, outfit details, and expression callouts.' },
+            'overview-sheet-image-control': { targetImageCount: 1, imageStylePreset: 'character-sheet', shotType: 'full-body', aspectRatio: '16:9', consistencyMode: 'same-character', seedMode: 'lock-character', negativePrompt: 'text, labels, watermark, logo, inconsistent face, deformed hands, extra fingers, missing fingers, bad feet, malformed legs, duplicate limbs' },
             'opening-layout-target': { layoutKind: 'immersive-card-css', includeSections: ['title', 'tags', 'opening', 'coverImage', 'supportImages'], layoutPrompt: 'Create an immersive CSS-style opening card layout that combines the character title, tags, opening text, and generated images into one readable role-card presentation.' },
             'generation-strategy': { mode: 'branch-and-refine', branchCount: 3, priorityAssets: ['role-card', 'opening', 'opening-layout', 'image-pack'] },
             'quality-gate': { minimumScore: 0.84 },
@@ -2045,8 +2047,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             'scene-card-target': { sceneCount: 4 },
             'continuity-control': { progressionPacing: 'slow-burn', forbidResettingFacts: true },
             'relationship-control': { relationshipMode: 'ambiguous-ally' },
-            'image-target': { imageRole: 'story-moment', assetPurpose: 'A story-supporting character image with a concrete background from the world, not an empty environment-only scene.' },
-            'image-control': { targetImageCount: 3, imageStylePreset: 'semi-realistic-anime', shotType: 'auto', aspectRatio: '16:9', consistencyMode: 'same-character', seedMode: 'lock-character' },
+            'avatar-image-target': { imageRole: 'avatar', assetPurpose: 'Generate avatar.jpg first as the canonical identity-lock portrait before any world or story reference images.' },
+            'avatar-image-control': { targetImageCount: 1, imageStylePreset: 'semi-realistic-anime', shotType: 'bust', aspectRatio: '1:1', consistencyMode: 'same-character', seedMode: 'lock-character' },
+            'overview-sheet-image-target': { imageRole: 'character-overview-sheet', assetPurpose: 'Generate one large character asset overview sheet after avatar.jpg, then use that stable identity for world and NPC reference images.' },
+            'overview-sheet-image-control': { targetImageCount: 1, imageStylePreset: 'character-sheet', shotType: 'full-body', aspectRatio: '16:9', consistencyMode: 'same-character', seedMode: 'lock-character', negativePrompt: 'text, labels, watermark, logo, inconsistent face, deformed hands, extra fingers, missing fingers, bad feet, malformed legs, duplicate limbs' },
             'world-reference-image-target': { imageRole: 'world-context', assetPurpose: 'A world-context image that still includes the central character or visible character-linked motifs.' },
             'world-reference-image-control': { targetImageCount: 2, imageStylePreset: 'semi-realistic-anime', shotType: 'auto', aspectRatio: '16:9', consistencyMode: 'same-world', seedMode: 'vary-slightly' },
             'generation-strategy': { mode: 'explore-then-converge', branchCount: 4, priorityAssets: ['world-context', 'npc-pack', 'scene-context', 'image-pack'] },
@@ -2307,7 +2311,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!characterWorkflowRunState?.run) {
       return
     }
-    const run = characterWorkflowRunState.run
+    const normalizedRunState = normalizePersistedCharacterWorkflowRunState(characterWorkflowRunState, false)
+    const run = normalizedRunState.run
+    if (!run) {
+      return
+    }
     const existingIndex = project.runs.findIndex((item) => item.id === run.id)
     const existing = existingIndex >= 0 ? project.runs[existingIndex] : undefined
     const now = Date.now()
@@ -2317,12 +2325,83 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       status: run.status,
       createdAt: existing?.createdAt ?? now,
       completedAt: run.status === 'done' || run.status === 'failed' ? existing?.completedAt ?? now : existing?.completedAt,
-      runState: JSON.parse(JSON.stringify(characterWorkflowRunState)) as CharacterResourceRunState,
+      runState: JSON.parse(JSON.stringify(normalizedRunState)) as CharacterResourceRunState,
     }
     if (existingIndex >= 0) {
       project.runs[existingIndex] = runRecord
     } else {
       project.runs.push(runRecord)
+    }
+  }
+
+  function normalizePersistedCharacterWorkflowRunState(
+    runState: CharacterResourceRunState | undefined | null,
+    finalizeRunning = true
+  ): CharacterResourceRunState | null {
+    if (!runState || typeof runState !== 'object') {
+      return null
+    }
+    const normalized = JSON.parse(JSON.stringify(runState)) as CharacterResourceRunState
+    if (finalizeRunning && normalized.run?.status === 'running') {
+      const interruptedSummary = options.getLanguage() === 'zh-CN'
+        ? '上次运行在完成前中断，已自动标记为失败。'
+        : 'The previous run was interrupted before completion and was marked failed.'
+      normalized.run = {
+        ...normalized.run,
+        status: 'failed',
+      }
+      const currentStepId = normalized.run.currentStepId
+      normalized.steps = (normalized.steps ?? []).map((step) => {
+        if (step.status === 'running' || step.id === currentStepId) {
+          return {
+            ...step,
+            status: 'failed',
+            detail: step.detail || interruptedSummary,
+          }
+        }
+        return step
+      })
+      normalized.events = [
+        ...(normalized.events ?? []),
+        {
+          type: 'run.interrupted',
+          timestamp: Date.now(),
+          status: 'failed',
+          summary: interruptedSummary,
+        },
+      ]
+    }
+    return normalized
+  }
+
+  function normalizePersistedCharacterWorkflowProject(project: CharacterWorkflowProjectRecord): CharacterWorkflowProjectRecord {
+    const runs = (Array.isArray(project.runs) ? project.runs : []).flatMap((run): CharacterWorkflowProjectRunRecord[] => {
+      const runState = normalizePersistedCharacterWorkflowRunState(run.runState)
+      const stateRun = runState?.run
+      if (!stateRun) {
+        return []
+      }
+      const status = stateRun.status
+      return [{
+        ...run,
+        id: stateRun.id || run.id,
+        title: stateRun.title || run.title,
+        status,
+        completedAt: status === 'done' || status === 'failed' ? run.completedAt ?? Date.now() : run.completedAt,
+        runState,
+      }]
+    })
+    const activeRunId = runs.some((run) => run.id === project.activeRunId)
+      ? project.activeRunId
+      : runs[runs.length - 1]?.id
+    return {
+      ...project,
+      configOverrides: cloneRecord(project.configOverrides ?? {}),
+      positionOverrides: cloneRecord(project.positionOverrides ?? {}),
+      viewState: project.viewState ?? createWorkflowProjectViewState(),
+      runCount: Math.max(Number(project.runCount) || 0, runs.length),
+      activeRunId,
+      runs,
     }
   }
 
@@ -2947,19 +3026,23 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function openCharacterWorkflowDraft(projectId: string): void {
     saveActiveWorkflowProjectSnapshot()
-    const project = characterWorkflowProjects.find((item) => item.id === projectId)
-    if (!project) {
+    const projectIndex = characterWorkflowProjects.findIndex((item) => item.id === projectId)
+    if (projectIndex < 0) {
       return
     }
+    const project = normalizePersistedCharacterWorkflowProject(characterWorkflowProjects[projectIndex])
+    characterWorkflowProjects[projectIndex] = project
     characterWorkflowContentLoaded = true
     activeCharacterWorkflowProjectId = project.id
     replaceRecord(characterWorkflowConfigOverrides, cloneRecord(project.configOverrides))
     replaceRecord(characterWorkflowPositionOverrides, cloneRecord(project.positionOverrides))
     applyWorkflowProjectViewState(project.viewState)
     characterWorkflowRunCount = project.runCount
-    characterWorkflowRunState = project.runs.find((run) => run.id === project.activeRunId)?.runState
-      ?? project.runs[project.runs.length - 1]?.runState
-      ?? null
+    characterWorkflowRunState = normalizePersistedCharacterWorkflowRunState(
+      project.runs.find((run) => run.id === project.activeRunId)?.runState
+        ?? project.runs[project.runs.length - 1]?.runState
+        ?? null
+    )
     project.activeRunId = characterWorkflowRunState?.run?.id
     characterWorkflowActiveTabId = characterWorkflowRunState ? 'run-draft' : 'workflow'
     renderCharacterWorkflow()
@@ -2967,7 +3050,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function openCharacterWorkflowRun(projectId: string, runId: string): void {
     saveActiveWorkflowProjectSnapshot()
-    const project = characterWorkflowProjects.find((item) => item.id === projectId)
+    const projectIndex = characterWorkflowProjects.findIndex((item) => item.id === projectId)
+    const project = projectIndex >= 0 ? normalizePersistedCharacterWorkflowProject(characterWorkflowProjects[projectIndex]) : undefined
+    if (project && projectIndex >= 0) {
+      characterWorkflowProjects[projectIndex] = project
+    }
     const run = project?.runs.find((item) => item.id === runId)
     if (!project || !run) {
       return
@@ -2979,7 +3066,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     replaceRecord(characterWorkflowPositionOverrides, cloneRecord(project.positionOverrides))
     applyWorkflowProjectViewState(project.viewState)
     characterWorkflowRunCount = project.runCount
-    characterWorkflowRunState = JSON.parse(JSON.stringify(run.runState)) as CharacterResourceRunState
+    characterWorkflowRunState = normalizePersistedCharacterWorkflowRunState(run.runState)
     characterWorkflowActiveTabId = 'run-draft'
     renderCharacterWorkflow()
   }
@@ -2998,7 +3085,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const nextRun = project.runs[Math.min(deletedIndex, project.runs.length - 1)] ?? project.runs[deletedIndex - 1]
     project.activeRunId = nextRun?.id
     characterWorkflowRunState = nextRun
-      ? JSON.parse(JSON.stringify(nextRun.runState)) as CharacterResourceRunState
+      ? normalizePersistedCharacterWorkflowRunState(nextRun.runState)
       : null
     characterWorkflowActiveTabId = characterWorkflowRunState ? 'run-draft' : 'workflow'
     project.updatedAt = Date.now()
@@ -3056,9 +3143,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         replaceRecord(characterWorkflowPositionOverrides, cloneRecord(next.positionOverrides))
         applyWorkflowProjectViewState(next.viewState)
         characterWorkflowRunCount = next.runCount
-        characterWorkflowRunState = next.runs.find((run) => run.id === next.activeRunId)?.runState
-          ?? next.runs[next.runs.length - 1]?.runState
-          ?? null
+        characterWorkflowRunState = normalizePersistedCharacterWorkflowRunState(
+          next.runs.find((run) => run.id === next.activeRunId)?.runState
+            ?? next.runs[next.runs.length - 1]?.runState
+            ?? null
+        )
       } else {
         replaceRecord(characterWorkflowConfigOverrides, {})
         replaceRecord(characterWorkflowPositionOverrides, {})
@@ -3168,7 +3257,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     const record = persisted as Partial<PersistedCharacterWorkflowState>
     characterWorkflowProjects = Array.isArray(record.workflows)
-      ? JSON.parse(JSON.stringify(record.workflows)) as CharacterWorkflowProjectRecord[]
+      ? (JSON.parse(JSON.stringify(record.workflows)) as CharacterWorkflowProjectRecord[]).map(normalizePersistedCharacterWorkflowProject)
       : []
     activeCharacterWorkflowProjectId = typeof record.activeWorkflowId === 'string' ? record.activeWorkflowId : characterWorkflowProjects[0]?.id ?? ''
     const activeProject = characterWorkflowProjects.find((project) => project.id === activeCharacterWorkflowProjectId)
@@ -3177,9 +3266,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       replaceRecord(characterWorkflowPositionOverrides, cloneRecord(activeProject.positionOverrides ?? {}))
       applyWorkflowProjectViewState(activeProject.viewState)
       characterWorkflowRunCount = Math.max(0, Math.round(Number(activeProject.runCount) || 0))
-      characterWorkflowRunState = activeProject.runs.find((run) => run.id === activeProject.activeRunId)?.runState
-        ?? activeProject.runs[activeProject.runs.length - 1]?.runState
-        ?? null
+      characterWorkflowRunState = normalizePersistedCharacterWorkflowRunState(
+        activeProject.runs.find((run) => run.id === activeProject.activeRunId)?.runState
+          ?? activeProject.runs[activeProject.runs.length - 1]?.runState
+          ?? null
+      )
     } else {
       replaceRecord(characterWorkflowConfigOverrides, {})
       replaceRecord(characterWorkflowPositionOverrides, {})
@@ -3696,6 +3787,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         })
       }
     }
+    if (characterWorkflowRunState.run) {
+      if (type === 'run.failed') {
+        characterWorkflowRunState.run.status = 'failed'
+      } else if (type === 'run.completed') {
+        characterWorkflowRunState.run.status = 'done'
+        characterWorkflowRunState.run.currentStepId = 'finish'
+      }
+    }
     if (artifact) {
       const artifactId = typeof artifact.id === 'string' ? artifact.id : ''
       const existing = characterWorkflowRunState.artifacts ?? []
@@ -3714,6 +3813,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       }
     }
     renderCharacterWorkflow()
+    markActiveWorkflowDirty()
   }
 
   function phaseToRunStepId(phase: string): string {

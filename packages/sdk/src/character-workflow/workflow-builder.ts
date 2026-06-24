@@ -283,7 +283,7 @@ export function createUiConfigOverrides(spec: CharacterWorkflowBuilderSpec): Rec
     },
     'character-card-target': {
       includeFields: ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'firstMessage', 'dialogueStyle', 'worldContext'],
-      includeSupportFields: ['imagePrompt'],
+      includeSupportFields: ['visualIdentity', 'imagePrompt'],
     },
     'opening-field-target': {
       field: 'firstMessage',
@@ -294,19 +294,36 @@ export function createUiConfigOverrides(spec: CharacterWorkflowBuilderSpec): Rec
       lengthPolicy: 'medium',
       avoidPatterns: spec.mustNot,
     },
-    'image-target': {
-      imageRole: 'hero-cover',
-      assetPurpose: 'Primary attractive character image for the role card cover; preserve identity and include a story-relevant background.',
+    'avatar-image-target': {
+      imageRole: 'avatar',
+      assetPurpose: 'Identity-lock avatar.jpg: first generate one polished canonical portrait that later assets use as the character reference.',
     },
-    'image-control': {
-      targetImageCount: 4,
+    'avatar-image-control': {
+      targetImageCount: 1,
       imageStylePreset: 'semi-realistic-anime',
       stylePrompt: spec.stylePrompt,
-      shotType: 'auto',
-      aspectRatio: '3:4',
+      shotType: 'bust',
+      aspectRatio: '1:1',
       consistencyMode: 'same-character',
       seedMode: 'lock-character',
       negativePrompt: spec.mustNot.join(', '),
+    },
+    'overview-sheet-image-target': {
+      imageRole: 'character-overview-sheet',
+      assetPurpose: 'Large character asset overview sheet generated after avatar.jpg, using the avatar as identity reference and showing front/back/side, hairstyle, hands, legs, feet, outfit details, and expressions.',
+    },
+    'overview-sheet-image-control': {
+      targetImageCount: 1,
+      imageStylePreset: 'character-sheet',
+      stylePrompt: spec.stylePrompt,
+      shotType: 'full-body',
+      aspectRatio: '16:9',
+      consistencyMode: 'same-character',
+      seedMode: 'lock-character',
+      negativePrompt: [
+        spec.mustNot.join(', '),
+        'text, labels, watermark, logo, inconsistent face, deformed hands, extra fingers, missing fingers, bad feet, malformed legs, duplicate limbs',
+      ].filter(Boolean).join(', '),
     },
     'opening-layout-target': {
       layoutKind: 'immersive-card-css',
@@ -532,7 +549,7 @@ function applySpecToWorkflow(workflow: CharacterWorkflow, spec: CharacterWorkflo
     tone: '',
     avoidPatterns: spec.mustNot,
   })
-  const avatarTarget = workflow.nodes.find((node) => node.id === 'avatar-image-target') ?? byType.get('image-target')
+  const avatarTarget = workflow.nodes.find((node) => node.id === 'avatar-image-target')
   avatarTarget?.config && Object.assign(avatarTarget.config, {
     imageRole: 'avatar',
     assetPurpose: [
@@ -541,13 +558,13 @@ function applySpecToWorkflow(workflow: CharacterWorkflow, spec: CharacterWorkflo
       'This image becomes the reference for later character assets.',
     ].join(' '),
   })
-  const avatarControl = workflow.nodes.find((node) => node.id === 'avatar-image-control') ?? byType.get('image-generation-control')
+  const avatarControl = workflow.nodes.find((node) => node.id === 'avatar-image-control')
   avatarControl?.config && Object.assign(avatarControl.config, {
     targetImageCount: 1,
     imageStylePreset: 'semi-realistic-anime',
     stylePrompt: spec.stylePrompt,
     shotType: 'bust',
-    aspectRatio: '3:4',
+    aspectRatio: '1:1',
     consistencyMode: 'same-character',
     seedMode: 'lock-character',
     negativePrompt: spec.mustNot.join(', '),

@@ -1397,7 +1397,7 @@ export function createStandardCharacterWorkflow(
       targetImageCount: 1,
       imageStylePreset: 'semi-realistic-anime',
       shotType: 'bust',
-      aspectRatio: '3:4',
+      aspectRatio: '1:1',
       consistencyMode: 'same-character',
       seedMode: 'lock-character',
     })

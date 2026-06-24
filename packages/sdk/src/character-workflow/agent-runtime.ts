@@ -973,6 +973,33 @@ export function createCharacterSuperAgent(
           },
         }
       }
+      const executeRequiredImageGeneration = async (phase: CharacterAgentPhase) => {
+        const imageResult = await callTool('generate_character_image', phase, {
+          draft: state.draft,
+          autoGenerateTargetPrompts: true,
+        })
+        const imageIds = (imageResult.artifacts ?? [])
+          .filter((artifact) => artifact.kind === 'image-asset')
+          .map((artifact) => artifact.id)
+        if (!imageIds.length) {
+          const diagnostic = (imageResult.artifacts ?? [])
+            .map((artifact) => [artifact.title, artifact.summary].filter(Boolean).join(': '))
+            .filter(Boolean)
+            .join(' | ')
+          throw new Error(diagnostic || imageResult.summary || 'Image generation request completed without producing image assets')
+        }
+        state = {
+          ...state,
+          draft: {
+            ...state.draft!,
+            imagePrompts: appendUnique(state.draft!.imagePrompts, getGeneratedImagePromptTexts(imageResult.artifacts ?? [])),
+            imageArtifactIds: appendUnique(state.draft!.imageArtifactIds, imageIds),
+            notes: appendUnique(state.draft!.notes, [imageResult.summary]),
+            updatedAt: now(),
+          },
+        }
+        await writeArtifact(createDraftArtifact(context, state.draft))
+      }
 
       try {
         await emit({ type: 'run.started', runId, timestamp: now() })
@@ -1041,23 +1068,7 @@ export function createCharacterSuperAgent(
         }
 
         if (getMissingCharacterDraftFields(state.draft, context).includes('imageAsset')) {
-          const imageDecisionResult = await callTool('decide_character_card_next_step', 'produce', {
-            context,
-            draft: state.draft,
-            forceImageRequest: true,
-            artifacts: state.artifacts.map((artifact) => ({
-              id: artifact.id,
-              kind: artifact.kind,
-              title: artifact.title,
-              summary: artifact.summary,
-            })),
-          })
-          const imageDecision = decisionFromToolResult(imageDecisionResult, context, state.draft, true)
-          const imageAction = imageDecision.actions.find((action) => action.type === 'request_image')
-          if (!imageAction) {
-            throw new Error(`Character workflow needs imageAsset, but the agent did not return request_image.targetPrompts. Last agent summary: ${imageDecision.summary}`)
-          }
-          await executeImageRequestAction(imageAction, 'produce')
+          await executeRequiredImageGeneration('produce')
         }
 
         await changePhase('inspect')
@@ -1508,6 +1519,18 @@ function normalizeImageTargetPrompts(value: unknown): CharacterAgentImageTargetP
 
 function getRequestImagePromptTexts(action: Extract<CharacterAgentAction, { type: 'request_image' }>): string[] {
   return action.targetPrompts.map((item) => item.prompt.trim()).filter(Boolean)
+}
+
+function getGeneratedImagePromptTexts(artifacts: CharacterAgentArtifact[]): string[] {
+  return artifacts
+    .filter((artifact) => artifact.kind === 'image-asset')
+    .map((artifact) => {
+      const data = artifact.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
+        ? artifact.data as Record<string, unknown>
+        : {}
+      return stringValue(data.prompt).trim()
+    })
+    .filter(Boolean)
 }
 
 function isCharacterDraftComplete(draft: CharacterCardDraft | undefined, context: CharacterAgentRunContext): boolean {

@@ -422,16 +422,19 @@ async function callWaveSpeed(
 ): Promise<Partial<ImageGenerationResult>> {
   const referenceImages = (options.referenceImages ?? []).filter(Boolean)
   const isEdit = referenceImages.length > 0
+  const normalizedModelName = modelName.replace(/^\/+|\/+$/g, '')
+  const textModelName = normalizedModelName.replace(/\/edit$/, '')
+  const editModelName = normalizedModelName.endsWith('/edit') ? normalizedModelName : `${normalizedModelName}/edit`
   const path = isEdit
-    ? `${baseUrl}/${modelName.replace(/^\/+|\/+$/g, '')}/edit`
-    : `${baseUrl}${entry.generatePath.replace('{model}', modelName)}`
+    ? `${baseUrl}/${editModelName}`
+    : `${baseUrl}${entry.generatePath.replace('{model}', textModelName)}`
   const response = await fetcher(path, {
     method: 'POST',
     headers: jsonAuthHeaders(apiKey),
     body: JSON.stringify({
       ...(isEdit ? { images: referenceImages.slice(0, 3) } : {}),
       prompt,
-      size: options.size || '1024*1024',
+      size: options.size || '1024x1024',
       enable_sync_mode: true,
       enable_base64_output: false,
     }),

@@ -643,7 +643,8 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'Dialogue Style', value: 'dialogueStyle' },
       { label: 'World Context', value: 'worldContext' },
     ]),
-    param('includeSupportFields', 'Support Fields', 'multi-select', ['imagePrompt'], undefined, undefined, undefined, [
+    param('includeSupportFields', 'Support Fields', 'multi-select', ['visualIdentity', 'imagePrompt'], undefined, undefined, undefined, [
+      { label: 'Visual Identity', value: 'visualIdentity' },
       { label: 'Image Prompt', value: 'imagePrompt' },
     ]),
   ], 'package'),
@@ -665,6 +666,7 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'First Message', value: 'firstMessage' },
       { label: 'Dialogue Style', value: 'dialogueStyle' },
       { label: 'World Context', value: 'worldContext' },
+      { label: 'Visual Identity', value: 'visualIdentity' },
       { label: 'Image Prompt', value: 'imagePrompt' },
     ]),
   ], 'text-card'),
@@ -702,6 +704,7 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
   ], [
     param('imageRole', 'Image Role', 'select', 'hero-cover', undefined, undefined, undefined, [
       { label: 'Avatar', value: 'avatar' },
+      { label: 'Character Overview Sheet', value: 'character-overview-sheet' },
       { label: 'Hero Cover', value: 'hero-cover' },
       { label: 'Full Body', value: 'full-body' },
       { label: 'Opening Moment', value: 'opening-moment' },
@@ -1102,8 +1105,10 @@ const DEFAULT_NODE_PLACEMENT: Array<{ id: string; type: string; title: string; x
   { id: 'character-card-target', type: 'character-card-target', title: 'Character Card Target', x: 390, y: 134 },
   { id: 'opening-field-target', type: 'character-field-target', title: 'Opening Field Target', x: 730, y: 20 },
   { id: 'opening-field-control', type: 'field-generation-control', title: 'Opening Field Control', x: 730, y: 226 },
-  { id: 'image-target', type: 'image-target', title: 'Image Target', x: 730, y: 432, status: 'queued' },
-  { id: 'image-control', type: 'image-generation-control', title: 'Image Generation Control', x: 1060, y: 432 },
+  { id: 'avatar-image-target', type: 'image-target', title: 'Avatar Image Target', x: 730, y: 400, status: 'queued' },
+  { id: 'avatar-image-control', type: 'image-generation-control', title: 'Avatar Image Control', x: 1060, y: 360 },
+  { id: 'overview-sheet-image-target', type: 'image-target', title: 'Overview Sheet Image Target', x: 730, y: 600, status: 'queued' },
+  { id: 'overview-sheet-image-control', type: 'image-generation-control', title: 'Overview Sheet Image Control', x: 1060, y: 580 },
   { id: 'opening-layout-target', type: 'opening-layout-target', title: 'Opening Layout Target', x: 1060, y: 638 },
   { id: 'style-pressure', type: 'style-pressure', title: 'Style Pressure', x: 390, y: -86 },
   { id: 'hard-constraints', type: 'constraint', title: 'Hard Constraints', x: 390, y: 370 },
@@ -1127,12 +1132,16 @@ const DEFAULT_LINKS: CharacterResourceLink[] = [
   link('opening-field-control', 'fieldControl', 'opening-field-target', 'fieldControl', 'guides'),
   link('style-pressure', 'style', 'opening-field-target', 'style', 'weights'),
   link('hard-constraints', 'constraint', 'opening-field-target', 'constraint', 'constrains'),
-  link('character-card-target', 'target', 'image-target', 'card', 'guides'),
-  link('image-capability', 'image', 'image-target', 'image', 'enables'),
-  link('image-control', 'imageControl', 'image-target', 'imageControl', 'guides'),
+  link('character-card-target', 'target', 'avatar-image-target', 'card', 'guides'),
+  link('image-capability', 'image', 'avatar-image-target', 'image', 'enables'),
+  link('avatar-image-control', 'imageControl', 'avatar-image-target', 'imageControl', 'guides'),
+  link('character-card-target', 'target', 'overview-sheet-image-target', 'card', 'guides'),
+  link('image-capability', 'image', 'overview-sheet-image-target', 'image', 'enables'),
+  link('overview-sheet-image-control', 'imageControl', 'overview-sheet-image-target', 'imageControl', 'guides'),
   link('character-card-target', 'target', 'opening-layout-target', 'card', 'guides'),
   link('opening-field-target', 'field', 'opening-layout-target', 'field', 'guides'),
-  link('image-target', 'imageAsset', 'opening-layout-target', 'imageAsset', 'guides'),
+  link('avatar-image-target', 'imageAsset', 'opening-layout-target', 'imageAsset', 'guides'),
+  link('overview-sheet-image-target', 'imageAsset', 'opening-layout-target', 'imageAsset', 'guides'),
   link('style-pressure', 'style', 'opening-layout-target', 'style', 'weights'),
   link('generation-goal', 'goal', 'agent-policy', 'goal', 'guides'),
   link('hard-constraints', 'constraint', 'agent-policy', 'constraint', 'constrains'),
@@ -1781,8 +1790,8 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
         }
       }),
     groups: [
-      { id: 'intent-targets', title: ui(options, '目标资源', 'Target Resources'), nodeIds: ['generation-goal', 'character-card-target', 'opening-field-target', 'image-target', 'opening-layout-target', 'source-material'], color: 'rgba(82, 168, 255, 0.16)' },
-      { id: 'local-controls', title: ui(options, '局部控制', 'Local Controls'), nodeIds: ['style-pressure', 'hard-constraints', 'opening-field-control', 'image-control'], color: 'rgba(162, 202, 188, 0.16)' },
+      { id: 'intent-targets', title: ui(options, '目标资源', 'Target Resources'), nodeIds: ['generation-goal', 'character-card-target', 'opening-field-target', 'avatar-image-target', 'overview-sheet-image-target', 'opening-layout-target', 'source-material'], color: 'rgba(82, 168, 255, 0.16)' },
+      { id: 'local-controls', title: ui(options, '局部控制', 'Local Controls'), nodeIds: ['style-pressure', 'hard-constraints', 'opening-field-control', 'avatar-image-control', 'overview-sheet-image-control'], color: 'rgba(162, 202, 188, 0.16)' },
       { id: 'tool-policy', title: ui(options, '工具与策略', 'Tools and Strategy'), nodeIds: ['llm-capability', 'image-capability', 'agent-policy', 'generation-strategy'], color: 'rgba(219, 189, 130, 0.16)' },
       { id: 'evaluation-output', title: ui(options, '评估与输出', 'Evaluation and Output'), nodeIds: ['critique-loop', 'quality-gate', 'output-adapter'], color: 'rgba(206, 154, 118, 0.16)' },
     ],
@@ -2649,7 +2658,7 @@ function isHiddenRunCanvasFieldArtifact(artifact: NonNullable<CharacterResourceR
   const data = artifact.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
     ? artifact.data as Record<string, unknown>
     : {}
-  return data.field === 'imagePrompt'
+  return data.field === 'imagePrompt' || data.field === 'visualIdentity'
 }
 
 function getRoleResourceArtifacts(artifacts: NonNullable<CharacterResourceRunState['artifacts']>): NonNullable<CharacterResourceRunState['artifacts']> {
