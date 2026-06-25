@@ -98,6 +98,8 @@ export function createConfiguredCharacterAgentToolRuntime(
         } catch (error) {
           errorMessage = error instanceof Error ? error.message : String(error)
         }
+        const imageAssetCount = imageArtifacts.filter((artifact) => artifact.kind === 'image-asset').length
+        const failedAttemptCount = imageArtifacts.filter((artifact) => artifact.kind === 'image-attempt').length - imageAssetCount
         const failureArtifact = imageArtifacts.length ? null : createToolArtifact(
           context.runId,
           candidateId,
@@ -123,8 +125,12 @@ export function createConfiguredCharacterAgentToolRuntime(
         )
         return {
           callId,
-          ok: imageArtifacts.length > 0,
-          summary: imageArtifacts.length ? `Generated ${imageArtifacts.length} character image asset(s).` : errorMessage || 'Skipped image generation because image model or prompt is unavailable.',
+          ok: imageAssetCount > 0,
+          summary: imageAssetCount
+            ? `Generated ${imageAssetCount} character image asset(s).`
+            : failedAttemptCount
+              ? `Image generation needs action: ${failedAttemptCount} failed attempt(s).`
+              : errorMessage || 'Skipped image generation because image model or prompt is unavailable.',
           artifacts: imageArtifacts.length ? imageArtifacts : failureArtifact ? [failureArtifact] : [],
         }
       },
@@ -501,27 +507,65 @@ async function maybeGenerateImageArtifacts(
   const referenceImagesByTarget = normalizeReferenceImagesByTarget(source.referenceImagesByTarget)
   for (let index = 0; index < prompts.length; index += 1) {
     const referenceImages = resolveReferenceImagesForPrompt(prompts[index], referenceImagesByTarget)
-    const generated = await generateImageWithConfiguredProvider({
-      model: configuredModel,
-      modelName,
-      prompt: prompts[index].prompt,
-      proxyUrl,
+    const size = imageSizeForPrompt(prompts[index])
+    const prompt = appendRerollInstruction(prompts[index].prompt, source.rerollInstruction)
+    const attemptId = `${context.runId}:image-attempt:${prompts[index].target.nodeId}:${prompts[index].targetIndex}:${Date.now()}:${index}`
+    const attemptBase = {
+      attemptId,
+      targetNodeId: prompts[index].target.nodeId,
+      targetTitle: prompts[index].target.title,
+      imageRole: prompts[index].imageRole,
+      targetIndex: prompts[index].targetIndex,
+      prompt,
       referenceImages,
-      size: imageSizeForPrompt(prompts[index]),
-    })
-    if (generated) {
+      model: {
+        provider: configuredModel.provider,
+        modelName,
+        apiId: configuredModel.id,
+      },
+      size,
+      action: typeof source.rerollAction === 'string' ? source.rerollAction : undefined,
+      instruction: typeof source.rerollInstruction === 'string' ? source.rerollInstruction : undefined,
+      parentAttemptId: typeof source.parentAttemptId === 'string' ? source.parentAttemptId : undefined,
+    }
+    try {
+      const generated = await generateImageWithConfiguredProvider({
+        model: configuredModel,
+        modelName,
+        prompt,
+        proxyUrl,
+        referenceImages,
+        size,
+      })
       const artifact = createToolArtifact(
         context.runId,
         candidateId,
         'image-asset',
         `${prompts[index].target.title} ${prompts[index].imageRole} ${prompts[index].targetIndex}`,
-        createImageGenerationArtifact(generated),
+        {
+          ...createImageGenerationArtifact(generated),
+          ...attemptBase,
+          status: 'succeeded',
+          accepted: true,
+        },
         prompts[index].target.nodeId
       )
       artifacts.push({
         ...artifact,
         id: `${artifact.id}:${prompts[index].target.nodeId}:${prompts[index].targetIndex}`,
       })
+      artifacts.push(createImageAttemptArtifact(context.runId, candidateId, prompts[index].target.nodeId, attemptBase, {
+        status: 'succeeded',
+        imageArtifactId: `${artifact.id}:${prompts[index].target.nodeId}:${prompts[index].targetIndex}`,
+        summary: 'Image generated successfully.',
+      }))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      artifacts.push(createImageAttemptArtifact(context.runId, candidateId, prompts[index].target.nodeId, attemptBase, {
+        status: 'failed',
+        error: message,
+        summary: message,
+      }))
     }
   }
   return artifacts
@@ -638,6 +682,19 @@ function resolveReferenceImagesForPrompt(
   return referenceImagesByTarget.get(prompt.target.nodeId) ?? []
 }
 
+function appendRerollInstruction(prompt: string, value: unknown): string {
+  const instruction = typeof value === 'string' ? value.trim() : ''
+  if (!instruction) {
+    return prompt
+  }
+  return [
+    prompt,
+    'Scoped reroll instruction:',
+    instruction,
+    'Keep the workflow target, image role, reference-image dependencies, and stable character identity intact while applying this instruction.',
+  ].join('\n\n')
+}
+
 function imageSizeForPrompt(prompt: {
   target: AgentTargetContext
   imageRole: string
@@ -700,6 +757,28 @@ function normalizeImageTargetPromptInputs(value: unknown): CharacterAgentImageTa
   })
 }
 
+function createImageAttemptArtifact(
+  runId: string,
+  candidateId: string,
+  sourceNodeId: string,
+  base: Record<string, unknown>,
+  result: Record<string, unknown>
+): CharacterAgentArtifact {
+  const status = typeof result.status === 'string' ? result.status : 'unknown'
+  return createToolArtifact(
+    runId,
+    candidateId,
+    'image-attempt',
+    status === 'failed' ? 'Image Attempt Failed' : 'Image Attempt',
+    {
+      ...base,
+      ...result,
+      status,
+    },
+    sourceNodeId
+  )
+}
+
 function createCandidateArtifacts(
   runId: string,
   candidateId: string,
@@ -727,8 +806,12 @@ function createToolArtifact(
   sourceNodeId?: string
 ): CharacterAgentArtifact {
   const summary = summarizeArtifactData(data)
+  const dataRecord = data && typeof data === 'object' && !Array.isArray(data) ? data as Record<string, unknown> : {}
+  const explicitId = typeof dataRecord.attemptId === 'string'
+    ? dataRecord.attemptId
+    : ''
   return {
-    id: `${candidateId}:${kind}`,
+    id: explicitId || `${candidateId}:${kind}`,
     kind,
     runId,
     version: 0,

@@ -22,6 +22,8 @@ import {
   buildCharacterWorkflowFromPrompt,
   editCharacterWorkflowRunDraft,
   loadCharacterAgentWorkflowSnapshot,
+  type CharacterAgentArtifact,
+  type CharacterAgentScopedRun,
   type CharacterWorkflowBuilderEvent,
   type CharacterWorkflowEditorAgentWork,
   type CharacterWorkflowBuilderSpec,
@@ -61,12 +63,31 @@ export interface ChatRunCharacterWorkflowRequest {
   workflow: unknown
   language?: 'zh-CN' | 'en-US'
   streamId?: string
+  scopedRun?: {
+    instruction?: string
+    action?: 'retry' | 'reroll' | 'resume' | 'repair'
+    scope: {
+      targetNodeIds?: string[]
+      requirementIds?: string[]
+      artifactIds?: string[]
+      parentAttemptId?: string
+    }
+    seedArtifacts?: Array<{
+      id?: string
+      type: string
+      sourceNodeId?: string
+      title?: string
+      summary?: string
+      data?: unknown
+    }>
+  }
 }
 
 export interface ChatRunCharacterWorkflowResult {
   success: boolean
   runId?: string
   title?: string
+  status?: 'done' | 'needs_action'
   artifacts?: Array<{
     id: string
     kind: string
@@ -162,6 +183,27 @@ export interface ChatListModelsResult {
   success: boolean
   models?: string[]
   error?: string
+}
+
+function normalizeCharacterAgentSeedArtifacts(
+  artifacts: NonNullable<ChatRunCharacterWorkflowRequest['scopedRun']>['seedArtifacts'] | undefined
+): CharacterAgentArtifact[] {
+  const now = Date.now()
+  return (Array.isArray(artifacts) ? artifacts : [])
+    .filter((artifact) => artifact && typeof artifact === 'object' && typeof artifact.type === 'string')
+    .map((artifact, index) => ({
+      id: artifact.id || `seed-artifact-${now}-${index}`,
+      kind: artifact.type as CharacterAgentArtifact['kind'],
+      runId: 'seed-run',
+      candidateId: 'seed-candidate',
+      sourceNodeId: artifact.sourceNodeId,
+      title: artifact.title || artifact.type,
+      summary: artifact.summary || '',
+      data: artifact.data,
+      version: 0,
+      createdAt: now,
+      updatedAt: now,
+    }))
 }
 
 export interface ChatIpcAttachment {
@@ -264,7 +306,8 @@ export function registerChatIpcHandlers(
       }
       const configuredModels = options.getChatModels()
       const modelResolver = createStaticCharacterAgentModelResolver(createCharacterAgentModelConfigs(configuredModels))
-      const artifacts = createInMemoryCharacterArtifactStore()
+      const seedArtifacts = normalizeCharacterAgentSeedArtifacts(request.scopedRun?.seedArtifacts)
+      const artifacts = createInMemoryCharacterArtifactStore(seedArtifacts)
       const tools = createConfiguredCharacterAgentToolRuntime(configuredModels, { proxyUrl: options.getProxyUrl?.() })
       const agent = createCharacterSuperAgent({
         tools,
@@ -276,7 +319,16 @@ export function registerChatIpcHandlers(
           }
         },
       })
-      const state = await agent.run(snapshot.workflow)
+      const scopedRun: CharacterAgentScopedRun | undefined = request.scopedRun
+        ? {
+            mode: 'scoped-run',
+            instruction: request.scopedRun.instruction,
+            action: request.scopedRun.action,
+            scope: request.scopedRun.scope,
+            seedArtifacts,
+          }
+        : undefined
+      const state = await agent.run(snapshot.workflow, scopedRun ? { scopedRun } : undefined)
       if (state.phase === 'failed') {
         const failed = state.events.find((event) => event.type === 'run.failed')
         throw new Error(failed && 'error' in failed ? failed.error : 'Character agent failed')
@@ -285,6 +337,7 @@ export function registerChatIpcHandlers(
         success: true,
         runId: state.runId,
         title: state.finalReport?.summary ?? `${snapshot.workflow.name}.run`,
+        status: state.phase === 'needs_action' ? 'needs_action' : 'done',
         artifacts: state.artifacts.map((artifact) => ({
           id: artifact.id,
           kind: artifact.kind,

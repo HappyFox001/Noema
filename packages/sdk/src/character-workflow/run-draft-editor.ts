@@ -40,22 +40,33 @@ export async function editCharacterWorkflowRunDraft(
     throw new Error('Run draft has no artifacts to edit')
   }
   const language = request.language ?? 'zh-CN'
+  const sourceInput = JSON.stringify({
+    userRequest: prompt,
+    runTitle: request.runTitle,
+    artifacts: compactRunDraftArtifactsForEditor(request.artifacts),
+  })
   const response = await sendChatTurnWithConfiguredModel(request.modelConfig, {
-    input: JSON.stringify({
-      userRequest: prompt,
-      runTitle: request.runTitle,
-      artifacts: request.artifacts,
-    }),
+    input: sourceInput,
     language,
-    options: { temperature: 0.28, top_p: 0.82 },
+    options: { temperature: 0.18, top_p: 0.72, response_format: { type: 'json_object' } },
     messages: [{
       role: 'system',
       content: createRunDraftEditorSystemPrompt(language),
     }],
   })
-  const parsed = parseJsonObject(response.content)
+  let parsed = parseJsonObject(response.content)
   if (!Object.keys(parsed).length) {
-    throw new Error(`Run draft editor did not return valid JSON. Model response: ${response.content.trim().slice(0, 500)}`)
+    const repaired = await repairRunDraftEditorJson({
+      text: response.content,
+      sourceInput,
+      request,
+      language,
+      systemPrompt: createRunDraftEditorSystemPrompt(language),
+    })
+    parsed = parseJsonObject(repaired)
+  }
+  if (!Object.keys(parsed).length) {
+    return createUnchangedRunDraftEditResult(language, request.artifacts)
   }
   if (parsed.status === 'blocked') {
     throw new Error(typeof parsed.summary === 'string' ? parsed.summary : 'Run draft editor blocked the request.')
@@ -77,12 +88,25 @@ export async function editCharacterWorkflowRunDraft(
     })
     : []
   if (!artifacts.length) {
-    throw new Error('Run draft editor returned no artifacts.')
+    return createUnchangedRunDraftEditResult(language, request.artifacts)
   }
+  const mergedArtifacts = mergeEditedRunDraftArtifacts(request.artifacts, artifacts)
   return {
     summary: typeof parsed.summary === 'string' && parsed.summary.trim()
       ? parsed.summary.trim()
       : (language === 'zh-CN' ? '已调整运行草稿。' : 'Updated run draft.'),
+    artifacts: mergedArtifacts,
+  }
+}
+
+function createUnchangedRunDraftEditResult(
+  language: CharacterWorkflowLanguage,
+  artifacts: CharacterWorkflowRunDraftArtifact[]
+): CharacterWorkflowRunDraftEditResult {
+  return {
+    summary: language === 'zh-CN'
+      ? '模型没有返回可解析的运行草稿编辑结果，已保留当前运行草稿。'
+      : 'The model did not return a parseable run draft edit, so the current run draft was preserved.',
     artifacts,
   }
 }
@@ -111,6 +135,101 @@ function createRunDraftEditorSystemPrompt(language: CharacterWorkflowLanguage): 
     '  ]',
     '}',
   ].join('\n')
+}
+
+async function repairRunDraftEditorJson(options: {
+  text: string
+  sourceInput: string
+  request: CharacterWorkflowRunDraftEditRequest
+  language: CharacterWorkflowLanguage
+  systemPrompt: string
+}): Promise<string> {
+  const response = await sendChatTurnWithConfiguredModel(options.request.modelConfig, {
+    input: [
+      'The previous response was not valid JSON and could not be parsed.',
+      'Rewrite it as one complete valid JSON object matching the required schema.',
+      'Do not add markdown, comments, explanations, or code fences.',
+      'If the prior response was empty, apply the original user request conservatively to the provided artifacts.',
+      '',
+      '<original_input>',
+      options.sourceInput,
+      '</original_input>',
+      '',
+      '<invalid_response>',
+      options.text,
+      '</invalid_response>',
+    ].join('\n'),
+    language: options.language,
+    options: { temperature: 0, response_format: { type: 'json_object' } },
+    messages: [{
+      role: 'system',
+      content: options.systemPrompt,
+    }],
+  })
+  return response.content
+}
+
+function compactRunDraftArtifactsForEditor(artifacts: CharacterWorkflowRunDraftArtifact[]): CharacterWorkflowRunDraftArtifact[] {
+  return artifacts.map((artifact) => ({
+    ...artifact,
+    data: compactRunDraftArtifactData(artifact.data),
+  }))
+}
+
+function compactRunDraftArtifactData(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return value
+  }
+  const record = value as Record<string, unknown>
+  const compact: Record<string, unknown> = {}
+  for (const [key, item] of Object.entries(record)) {
+    if ((key === 'dataUrl' || key === 'url') && typeof item === 'string') {
+      compact[key] = `[preserved ${key}: ${item.slice(0, 80)}]`
+      continue
+    }
+    if (typeof item === 'string' && item.length > 1200) {
+      compact[key] = `${item.slice(0, 1200)}...`
+      continue
+    }
+    compact[key] = item
+  }
+  return compact
+}
+
+function mergeEditedRunDraftArtifacts(
+  originalArtifacts: CharacterWorkflowRunDraftArtifact[],
+  editedArtifacts: CharacterWorkflowRunDraftArtifact[]
+): CharacterWorkflowRunDraftArtifact[] {
+  return editedArtifacts.map((artifact) => {
+    const original = originalArtifacts.find((item) => item.id && item.id === artifact.id)
+      ?? originalArtifacts.find((item) => item.type === artifact.type && item.sourceNodeId === artifact.sourceNodeId)
+    if (!original || !original.data || !artifact.data || typeof original.data !== 'object' || typeof artifact.data !== 'object' || Array.isArray(original.data) || Array.isArray(artifact.data)) {
+      return artifact
+    }
+    const originalData = original.data as Record<string, unknown>
+    const editedData = artifact.data as Record<string, unknown>
+    return {
+      ...artifact,
+      data: {
+        ...editedData,
+        ...preservedImageData(originalData, editedData),
+      },
+    }
+  })
+}
+
+function preservedImageData(originalData: Record<string, unknown>, editedData: Record<string, unknown>): Record<string, unknown> {
+  const preserved: Record<string, unknown> = {}
+  for (const key of ['dataUrl', 'url', 'mimeType', 'storagePath', 'filePath']) {
+    const edited = editedData[key]
+    if (typeof edited === 'string' && !edited.startsWith('[preserved ')) {
+      continue
+    }
+    if (originalData[key] !== undefined) {
+      preserved[key] = originalData[key]
+    }
+  }
+  return preserved
 }
 
 function parseJsonObject(text: string): Record<string, unknown> {

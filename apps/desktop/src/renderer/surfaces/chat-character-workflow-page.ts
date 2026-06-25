@@ -39,7 +39,7 @@ export interface CharacterWorkflowFileTab {
 export interface CharacterWorkflowRunDraftOption {
   id: string
   title: string
-  status: 'idle' | 'running' | 'failed' | 'done'
+  status: 'idle' | 'running' | 'failed' | 'done' | 'needs_action'
   createdAt: number
   completedAt?: number
 }
@@ -166,6 +166,8 @@ interface CharacterResourcePanels {
 interface CharacterResourceOutput {
   id: string
   nodeId: string
+  artifactId?: string
+  sourceNodeId?: string
   type: string
   title: string
   summary: string
@@ -179,7 +181,7 @@ export interface CharacterResourceRunState {
   run?: {
     id: string
     title: string
-    status: 'idle' | 'running' | 'failed' | 'done'
+    status: 'idle' | 'running' | 'failed' | 'done' | 'needs_action'
     currentStepId?: string
   }
   steps?: CharacterResourceRunStep[]
@@ -2430,6 +2432,7 @@ function formatRunStatus(status: NonNullable<CharacterResourceRunState['run']>['
     idle: ui(options, 'IDLE', 'IDLE'),
     running: ui(options, 'RUNNING', 'RUNNING'),
     failed: ui(options, 'FAILED', 'FAILED'),
+    needs_action: ui(options, 'NEEDS ACTION', 'NEEDS ACTION'),
     done: ui(options, 'COMPLETED', 'COMPLETED'),
   }
   return labels[status]
@@ -2545,7 +2548,7 @@ function createRunDraftCanvasGraph(graph: CharacterResourceGraph, options: Chara
     title: ui(options, 'Agent 运行', 'Agent Run'),
     position: { x: 72, y: 112 },
     size: { width: 210, height: 126 },
-    status: status === 'failed' ? 'failed' : status === 'done' ? 'done' : status === 'running' ? 'running' : 'idle',
+    status: status === 'failed' || status === 'needs_action' ? 'failed' : status === 'done' ? 'done' : status === 'running' ? 'running' : 'idle',
     zIndex: 1,
     config: {},
   }]
@@ -2577,6 +2580,7 @@ function createRunDraftCanvasGraph(graph: CharacterResourceGraph, options: Chara
     const nodeType = getRunArtifactNodeType(artifact.type)
     const placement = getRunArtifactPlacement(artifact, index)
     const image = getArtifactImage(artifact.data)
+    const artifactStatus = getRunArtifactNodeStatus(artifact)
     nodes.push({
       id: nodeId,
       type: nodeType,
@@ -2586,24 +2590,26 @@ function createRunDraftCanvasGraph(graph: CharacterResourceGraph, options: Chara
         y: placement.y,
       },
       size: image ? { width: 226, height: 178 } : { width: 238, height: 134 },
-      status: artifact.type === 'quality-report' && String(artifact.summary ?? '').toLowerCase().includes('missing') ? 'failed' : 'done',
+      status: artifactStatus,
       zIndex: index + 2,
       config: getRunArtifactNodeConfig(artifact),
     })
     outputs.push({
       id: `${nodeId}-output`,
       nodeId,
+      artifactId: artifact.id,
+      sourceNodeId: artifact.sourceNodeId,
       type: artifact.type,
       title: artifact.title ?? artifact.type,
       summary: artifact.summary || getArtifactText(artifact.data) || getRunArtifactMeta(artifact, options),
-      status: 'done',
+      status: artifactStatus,
       image,
       text: getArtifactText(artifact.data),
       data: artifact.data,
     })
-    const previousNodeId = index === 0 ? 'run-agent-source' : nodes[nodes.length - 2]?.id ?? 'run-agent-source'
-    links.push(createRunResourceLink(previousNodeId, nodeId, getRunExecutionLabel(artifact.type, options), index))
+    links.push(createRunResourceLink('run-agent-source', nodeId, getRunExecutionLabel(artifact.type, options), index))
   })
+  const selectedNodeId = resolveRunDraftSelectedNodeId(nodes, artifacts, options)
   return {
     ...graph,
     id: `${graph.id}-run`,
@@ -2616,9 +2622,29 @@ function createRunDraftCanvasGraph(graph: CharacterResourceGraph, options: Chara
       y: options.viewState?.panY ?? 0,
       zoom: options.viewState?.zoom ?? 0.94,
     },
-    selection: { nodeIds: [nodes[nodes.length - 1]?.id ?? 'run-agent-source'], linkIds: [] },
+    selection: { nodeIds: [selectedNodeId], linkIds: [] },
     outputs,
   }
+}
+
+function resolveRunDraftSelectedNodeId(
+  nodes: CharacterResourceNode[],
+  artifacts: NonNullable<CharacterResourceRunState['artifacts']>,
+  options: CharacterWorkflowPageOptions
+): string {
+  const nodeIds = new Set(nodes.map((node) => node.id))
+  const selected = options.viewState?.selectedNodeIds?.find((nodeId) => nodeIds.has(nodeId))
+  if (selected) {
+    return selected
+  }
+  const latestImageArtifact = [...artifacts].reverse().find((artifact) => artifact.type === 'image-asset')
+  if (latestImageArtifact?.id) {
+    const imageNodeId = `run-artifact-${sanitizeResourceId(latestImageArtifact.id)}`
+    if (nodeIds.has(imageNodeId)) {
+      return imageNodeId
+    }
+  }
+  return nodes[nodes.length - 1]?.id ?? 'run-agent-source'
 }
 
 function getRunArtifactPlacement(artifact: NonNullable<CharacterResourceRunState['artifacts']>[number], index: number): { x: number; y: number } {
@@ -2633,11 +2659,34 @@ function getRunArtifactPlacement(artifact: NonNullable<CharacterResourceRunState
     const row = Math.floor(fieldIndex / 3)
     return { x: 334 + lane * 272, y: 54 + row * 166 }
   }
+  if (artifact.type === 'opening-message' || artifact.type === 'dialogue-style-guide' || artifact.type === 'world-context' || artifact.type === 'scene-context') {
+    const order = ['world-context', 'scene-context', 'opening-message', 'dialogue-style-guide']
+    const row = Math.max(0, order.indexOf(artifact.type))
+    return { x: 612, y: 608 + row * 148 }
+  }
+  if (artifact.type === 'image-asset' || artifact.type === 'image-attempt' || artifact.type === 'stale-marker') {
+    const targetKey = getRunArtifactTargetNodeId(artifact) || artifact.sourceNodeId || artifact.id || String(index)
+    const imageIndex = Math.max(0, getStableRunLaneIndex(targetKey, 5))
+    const lane = artifact.type === 'image-asset' ? 0 : artifact.type === 'image-attempt' ? 1 : 2
+    return { x: 910 + lane * 258, y: 54 + imageIndex * 198 }
+  }
+  if (artifact.type === 'quality-report' || artifact.type === 'generation-report' || artifact.type === 'export-package' || artifact.type === 'candidate-pack') {
+    const reportIndex = Math.max(0, index)
+    return { x: 1448, y: 80 + (reportIndex % 5) * 158 }
+  }
   const baseIndex = Math.max(0, index)
   return {
-    x: 334 + (baseIndex % 3) * 272,
-    y: 54 + Math.floor(baseIndex / 3) * 166,
+    x: 640 + (baseIndex % 2) * 272,
+    y: 54 + Math.floor(baseIndex / 2) * 166,
   }
+}
+
+function getStableRunLaneIndex(value: string, modulo: number): number {
+  let hash = 0
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0
+  }
+  return hash % Math.max(1, modulo)
 }
 
 function getRunArtifactNodeTitle(artifact: NonNullable<CharacterResourceRunState['artifacts']>[number], options: CharacterWorkflowPageOptions): string {
@@ -2661,6 +2710,36 @@ function getRunArtifactNodeConfig(artifact: NonNullable<CharacterResourceRunStat
     runField: typeof data.field === 'string' ? data.field : '',
     runFieldSupport: Boolean(data.support),
   }
+}
+
+function getRunArtifactNodeStatus(artifact: NonNullable<CharacterResourceRunState['artifacts']>[number]): CharacterResourceNodeStatus {
+  const data = getRunArtifactDataRecord(artifact)
+  const status = typeof data.status === 'string' ? data.status : ''
+  if (artifact.type === 'image-attempt' && status === 'failed') {
+    return 'failed'
+  }
+  if (artifact.type === 'stale-marker') {
+    return 'queued'
+  }
+  if (artifact.type === 'quality-report' && String(artifact.summary ?? '').toLowerCase().includes('missing')) {
+    return 'failed'
+  }
+  return 'done'
+}
+
+function getRunArtifactDataRecord(artifact: NonNullable<CharacterResourceRunState['artifacts']>[number]): Record<string, unknown> {
+  return artifact.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
+    ? artifact.data as Record<string, unknown>
+    : {}
+}
+
+function getRunArtifactTargetNodeId(artifact: NonNullable<CharacterResourceRunState['artifacts']>[number]): string {
+  const data = getRunArtifactDataRecord(artifact)
+  return typeof data.targetNodeId === 'string'
+    ? data.targetNodeId
+    : typeof data.staleTargetNodeId === 'string'
+      ? data.staleTargetNodeId
+      : artifact.sourceNodeId
 }
 
 function getCharacterFieldArtifactLabel(artifact: NonNullable<CharacterResourceRunState['artifacts']>[number], options: CharacterWorkflowPageOptions): string {
@@ -2701,7 +2780,9 @@ function getRoleResourceArtifacts(artifacts: NonNullable<CharacterResourceRunSta
     'world-context',
     'scene-context',
     'image-prompt',
+    'image-attempt',
     'image-asset',
+    'stale-marker',
     'candidate-pack',
     'quality-report',
     'export-package',
@@ -2723,7 +2804,9 @@ function getRunArtifactOrder(type: string): number {
     'world-context',
     'scene-context',
     'image-prompt',
+    'image-attempt',
     'image-asset',
+    'stale-marker',
     'quality-report',
     'generation-report',
     'export-package',
@@ -2743,7 +2826,9 @@ function getRunArtifactMeta(artifact: NonNullable<CharacterResourceRunState['art
     'world-context': ui(options, '世界观 / context', 'world / resource'),
     'scene-context': ui(options, '场景 / context', 'scene / resource'),
     'image-prompt': ui(options, '生图提示 / image', 'image prompt / resource'),
+    'image-attempt': ui(options, '生图尝试 / attempt', 'image attempt / resource'),
     'image-asset': ui(options, '图片 / image', 'image / resource'),
+    'stale-marker': ui(options, '需刷新 / stale', 'stale / marker'),
     'quality-report': ui(options, '校验 / report', 'quality / report'),
     'generation-report': ui(options, '生成报告 / report', 'generation / report'),
     'export-package': ui(options, '导出包 / package', 'export / package'),
@@ -2762,7 +2847,9 @@ function getRunArtifactNodeType(type: string): string {
     'world-context': 'context-resource',
     'scene-context': 'context-resource',
     'image-prompt': 'image-prompt-resource',
+    'image-attempt': 'image-asset-resource',
     'image-asset': 'image-asset-resource',
+    'stale-marker': 'quality-report-resource',
     'quality-report': 'quality-report-resource',
     'generation-report': 'quality-report-resource',
     'export-package': 'export-package-resource',
@@ -2777,8 +2864,11 @@ function getRunExecutionLabel(type: string, options: CharacterWorkflowPageOption
   if (type === 'character-card-field') {
     return ui(options, '字段', 'field')
   }
-  if (type === 'image-asset') {
+  if (type === 'image-asset' || type === 'image-attempt') {
     return ui(options, '生图', 'image')
+  }
+  if (type === 'stale-marker') {
+    return ui(options, '依赖变化', 'stale')
   }
   if (type.includes('report') || type === 'quality-report') {
     return ui(options, '检查', 'review')
@@ -2832,7 +2922,7 @@ function normalizeRunEvents(runState: CharacterResourceRunState | null | undefin
 }
 
 function inferEventStatus(type: string): CharacterResourceRunEvent['status'] {
-  if (type === 'run.failed') {
+  if (type === 'run.failed' || type === 'run.needs_action') {
     return 'failed'
   }
   if (type === 'tool.call.started' || type === 'run.phase.changed') {
@@ -2862,6 +2952,9 @@ function formatRunEventTitle(event: CharacterResourceRunEvent, options: Characte
   }
   if (event.type === 'run.completed') {
     return ui(options, '运行完成', 'Run completed')
+  }
+  if (event.type === 'run.needs_action') {
+    return ui(options, '需要处理', 'Needs action')
   }
   if (event.type === 'run.failed') {
     return ui(options, '运行失败', 'Run failed')
@@ -3081,12 +3174,14 @@ function renderNodeContent(
     return ''
   }
   const previewClass = `preview-${definition.previewType}`
+  const runImageActions = renderRunImageActions(output, options)
   if (output?.image) {
     return `
       <div class="chat-resource-node-content ${previewClass} has-image">
         <img src="${options.escapeHtml(output.image)}" alt="${options.escapeHtml(output.title)}">
         <strong>${options.escapeHtml(output.title)}</strong>
         <p>${options.escapeHtml(output.summary || output.text || definition.description)}</p>
+        ${runImageActions}
       </div>
     `
   }
@@ -3094,6 +3189,41 @@ function renderNodeContent(
     <div class="chat-resource-node-content ${previewClass}">
       <strong>${options.escapeHtml(output.title)}</strong>
       <p>${options.escapeHtml(output.summary)}</p>
+      ${runImageActions}
+    </div>
+  `
+}
+
+function renderRunImageActions(output: CharacterResourceOutput, options: CharacterWorkflowPageOptions): string {
+  if (output.type !== 'image-asset' && output.type !== 'image-attempt' && output.type !== 'stale-marker') {
+    return ''
+  }
+  const data = output.data && typeof output.data === 'object' && !Array.isArray(output.data)
+    ? output.data as Record<string, unknown>
+    : {}
+  const targetNodeId = typeof data.targetNodeId === 'string'
+    ? data.targetNodeId
+    : typeof data.staleTargetNodeId === 'string'
+      ? data.staleTargetNodeId
+      : output.sourceNodeId ?? ''
+  const attemptId = typeof data.attemptId === 'string'
+    ? data.attemptId
+    : output.type === 'image-attempt'
+      ? output.artifactId ?? ''
+      : typeof data.parentAttemptId === 'string'
+        ? data.parentAttemptId
+        : ''
+  const artifactId = output.artifactId ?? ''
+  const accepted = data.accepted !== false && output.type === 'image-asset'
+  const canAccept = output.type === 'image-asset'
+  const retryLabel = ui(options, '按同一目标重试', 'Retry same target')
+  const rerollLabel = ui(options, '追加指令重炼', 'Reroll with instruction')
+  const acceptLabel = accepted ? ui(options, '已选中', 'Accepted') : ui(options, '选中这张图', 'Accept this image')
+  return `
+    <div class="chat-resource-image-actions" data-run-image-actions>
+      ${canAccept ? `<button class="${accepted ? 'active' : ''}" type="button" data-chat-workflow-run-image-action="accept" data-run-artifact-id="${options.escapeHtml(artifactId)}" data-run-target-node-id="${options.escapeHtml(targetNodeId)}" data-run-attempt-id="${options.escapeHtml(attemptId)}" aria-label="${options.escapeHtml(acceptLabel)}" title="${options.escapeHtml(acceptLabel)}"><i icon-name="check" aria-hidden="true"></i></button>` : ''}
+      <button type="button" data-chat-workflow-run-image-action="retry" data-run-artifact-id="${options.escapeHtml(artifactId)}" data-run-target-node-id="${options.escapeHtml(targetNodeId)}" data-run-attempt-id="${options.escapeHtml(attemptId)}" aria-label="${options.escapeHtml(retryLabel)}" title="${options.escapeHtml(retryLabel)}"><i icon-name="rotate-ccw" aria-hidden="true"></i></button>
+      <button type="button" data-chat-workflow-run-image-action="reroll" data-run-artifact-id="${options.escapeHtml(artifactId)}" data-run-target-node-id="${options.escapeHtml(targetNodeId)}" data-run-attempt-id="${options.escapeHtml(attemptId)}" aria-label="${options.escapeHtml(rerollLabel)}" title="${options.escapeHtml(rerollLabel)}"><i icon-name="shuffle" aria-hidden="true"></i></button>
     </div>
   `
 }
@@ -3146,7 +3276,8 @@ function renderResourceInspector(graph: CharacterResourceGraph, options: Charact
         ${output ? `
           <section class="chat-workflow-inspector-section">
             <h4>${options.escapeHtml(ui(options, '运行输出', 'Run Output'))}</h4>
-            <div class="chat-resource-output-card">
+            <div class="chat-resource-output-card ${output.image ? 'has-image' : ''}">
+              ${output.image ? `<img src="${options.escapeHtml(output.image)}" alt="${options.escapeHtml(output.title)}">` : ''}
               <strong>${options.escapeHtml(output.title)}</strong>
               <p>${options.escapeHtml(output.summary)}</p>
               <span>${options.escapeHtml(output.status)}</span>

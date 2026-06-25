@@ -143,6 +143,19 @@ interface CharacterWorkflowProjectRunRecord {
   runState: CharacterResourceRunState
 }
 
+type CharacterWorkflowScopedRunAction = 'retry' | 'reroll' | 'resume' | 'repair'
+
+interface CharacterWorkflowScopedRunRequest {
+  instruction?: string
+  action: CharacterWorkflowScopedRunAction
+  scope: {
+    targetNodeIds?: string[]
+    requirementIds?: string[]
+    artifactIds?: string[]
+    parentAttemptId?: string
+  }
+}
+
 interface CharacterWorkflowProjectViewState {
   selectedWorkflowNodeId: string
   selectedNodeIds: string[]
@@ -2072,7 +2085,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const runStatus = activeRun?.status
     const workflowState = runStatus === 'running'
       ? 'running'
-      : runStatus === 'failed'
+      : runStatus === 'failed' || runStatus === 'needs_action'
         ? 'failed'
         : undefined
     const tabs: CharacterWorkflowFileTab[] = [{
@@ -2086,7 +2099,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         id: 'run-draft',
         title: activeRun.title,
         kind: 'run',
-        state: runStatus === 'running' ? 'running' : runStatus === 'failed' ? 'failed' : undefined,
+        state: runStatus === 'running' ? 'running' : runStatus === 'failed' || runStatus === 'needs_action' ? 'failed' : undefined,
       })
     }
     return tabs
@@ -2401,7 +2414,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             </div>
             <div class="chat-workflow-canvas-assistant-status-body">
               ${records.map((record, index) => `
-                <article class="chat-workflow-canvas-assistant-record ${index === records.length - 1 ? 'latest' : ''}">
+                <article class="chat-workflow-canvas-assistant-record ${index === 0 ? 'latest' : ''}">
                   <header>
                     <strong>${options.escapeHtml(record.title)}</strong>
                     <span>${options.escapeHtml(record.meta)}</span>
@@ -2453,7 +2466,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         body: current,
       })
     }
-    return records.slice(-8)
+    return records.slice(-8).reverse()
   }
 
   function getWorkflowAssistantStatusText(): string {
@@ -2496,10 +2509,37 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function mergeCharacterWorkflowRunArtifacts(
     existing: NonNullable<CharacterResourceRunState['artifacts']>,
-    incoming: NonNullable<CharacterResourceRunState['artifacts']>
+    incoming: NonNullable<CharacterResourceRunState['artifacts']>,
+    scopedRun?: CharacterWorkflowScopedRunRequest
   ): NonNullable<CharacterResourceRunState['artifacts']> {
-    const merged = existing.map((artifact) => ({ ...artifact }))
+    const existingIds = new Set(existing.map((artifact) => artifact.id || '').filter(Boolean))
+    const newIncoming = incoming.filter((artifact) => !artifact.id || !existingIds.has(artifact.id))
+    const successfulScopedTargetIds = scopedRun
+      ? new Set(newIncoming
+        .filter((artifact) => artifact.type === 'image-asset')
+        .map(getRunImageArtifactTargetNodeId)
+        .filter(Boolean))
+      : new Set<string>()
+    const merged = existing
+      .filter((artifact) => {
+        if (!successfulScopedTargetIds.size) {
+          return true
+        }
+        if (artifact.type !== 'image-asset' && artifact.type !== 'image-attempt') {
+          return true
+        }
+        return !successfulScopedTargetIds.has(getRunImageArtifactTargetNodeId(artifact))
+      })
+      .map((artifact) => ({ ...artifact }))
     for (const artifact of incoming) {
+      if (
+        successfulScopedTargetIds.size
+        && existingIds.has(artifact.id || '')
+        && (artifact.type === 'image-asset' || artifact.type === 'image-attempt')
+        && successfulScopedTargetIds.has(getRunImageArtifactTargetNodeId(artifact))
+      ) {
+        continue
+      }
       const index = artifact.id ? merged.findIndex((item) => item.id === artifact.id) : -1
       if (index >= 0) {
         merged[index] = artifact
@@ -2508,6 +2548,25 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       }
     }
     return merged
+  }
+
+  function getLatestScopedImageArtifactNodeId(
+    artifacts: NonNullable<CharacterResourceRunState['artifacts']>,
+    scopedRun: CharacterWorkflowScopedRunRequest | undefined
+  ): string {
+    if (!scopedRun) {
+      return ''
+    }
+    const targetIds = new Set(scopedRun.scope.targetNodeIds ?? [])
+    const latest = [...artifacts].reverse().find((artifact) => (
+      artifact.type === 'image-asset'
+      && (!targetIds.size || targetIds.has(getRunImageArtifactTargetNodeId(artifact)))
+    ))
+    return latest?.id ? `run-artifact-${sanitizeRunResourceId(latest.id)}` : ''
+  }
+
+  function sanitizeRunResourceId(value: string): string {
+    return value.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || `resource-${Date.now()}`
   }
 
   function createCharacterResourceHistorySnapshot(): CharacterResourceHistorySnapshot {
@@ -2649,7 +2708,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       title: run.title,
       status: run.status,
       createdAt: existing?.createdAt ?? now,
-      completedAt: run.status === 'done' || run.status === 'failed' ? existing?.completedAt ?? now : existing?.completedAt,
+      completedAt: run.status === 'done' || run.status === 'failed' || run.status === 'needs_action' ? existing?.completedAt ?? now : existing?.completedAt,
       runState: cloneCharacterWorkflowRunState(normalizedRunState),
     }
     if (existingIndex >= 0) {
@@ -2801,7 +2860,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         id: stateRun.id || run.id,
         title: stateRun.title || run.title,
         status,
-        completedAt: status === 'done' || status === 'failed' ? run.completedAt ?? Date.now() : run.completedAt,
+        completedAt: status === 'done' || status === 'failed' || status === 'needs_action' ? run.completedAt ?? Date.now() : run.completedAt,
         runState,
       }]
     })
@@ -3572,6 +3631,19 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!characterWorkflowRunState?.run) {
       characterWorkflowBuilderStatus = options.getLanguage() === 'zh-CN' ? '当前没有运行草稿可调整' : 'No run draft is selected'
       renderCharacterWorkflow()
+      return
+    }
+    const imageScope = createRunDraftImageEditScope(userPrompt)
+    if (imageScope) {
+      characterWorkflowAssistantPrompt = ''
+      characterWorkflowBuilderStatus = options.getLanguage() === 'zh-CN' ? 'Agent 正在根据你的要求重炼图片...' : 'Agent rerolling images from your instruction...'
+      characterWorkflowBuilderBusy = false
+      renderCharacterWorkflow()
+      await runCharacterWorkflow({
+        action: 'reroll',
+        instruction: userPrompt,
+        scope: imageScope,
+      })
       return
     }
     characterWorkflowBuilderBusy = true
@@ -4572,9 +4644,15 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
   }
 
-  async function runCharacterWorkflow(): Promise<void> {
+  async function runCharacterWorkflow(scopedRun?: CharacterWorkflowScopedRunRequest): Promise<void> {
     if (characterWorkflowExecutingRunState?.run?.status === 'running') {
       showToast(options.getLanguage() === 'zh-CN' ? '已有运行草稿正在执行' : 'A run draft is already running')
+      return
+    }
+    const scoped = Boolean(scopedRun)
+    const scopedBaseRunState = scoped ? characterWorkflowRunState : null
+    if (scoped && !scopedBaseRunState?.run) {
+      showToast(options.getLanguage() === 'zh-CN' ? '当前没有可局部重跑的运行草稿' : 'No run draft is available for scoped rerun')
       return
     }
     characterWorkflowRunOpenToken += 1
@@ -4583,8 +4661,22 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (renderToken !== characterWorkflowRenderToken) {
       return
     }
-    characterWorkflowRunCount += 1
-    const draftRunState = workflowPage.createDraftCharacterResourceRunState(characterWorkflowRunCount, 'running', options.getLanguage())
+    if (!scoped) {
+      characterWorkflowRunCount += 1
+    }
+    const draftRunState = scoped && scopedBaseRunState?.run
+      ? {
+          ...cloneCharacterWorkflowRunState(scopedBaseRunState),
+          run: {
+            ...scopedBaseRunState.run,
+            status: 'running' as const,
+            currentStepId: 'agent',
+          },
+          steps: scopedBaseRunState.steps?.length
+            ? scopedBaseRunState.steps.map((step) => step.id === 'agent' ? { ...step, status: 'running' as const, detail: scopedRun?.instruction || step.detail } : step)
+            : workflowPage.createCharacterResourceRunSteps(options.getLanguage()),
+        }
+      : workflowPage.createDraftCharacterResourceRunState(characterWorkflowRunCount, 'running', options.getLanguage())
     characterWorkflowExecutingProjectId = activeCharacterWorkflowProjectId
     characterWorkflowExecutingRunState = cloneCharacterWorkflowRunState(draftRunState)
     characterWorkflowRunState = cloneCharacterWorkflowRunState(draftRunState)
@@ -4623,7 +4715,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     updateRunStep('snapshot', 'running')
     renderCharacterWorkflow()
-    showToast(options.getLanguage() === 'zh-CN' ? 'Agent 正在生成角色资源' : 'Agent generating character resources')
+    showToast(scoped
+      ? (options.getLanguage() === 'zh-CN' ? 'Agent 正在局部重跑运行草稿' : 'Agent rerunning scoped draft target')
+      : (options.getLanguage() === 'zh-CN' ? 'Agent 正在生成角色资源' : 'Agent generating character resources'))
     try {
       if (renderToken !== characterWorkflowRenderToken) {
         return
@@ -4663,15 +4757,26 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       })
       updateRunStep('dispatch', 'running')
       updateRunStep('agent', 'running')
+      const workflowRunRequest = {
+        workflow,
+        language: options.getLanguage(),
+        ...(scopedRun ? {
+          scopedRun: {
+            ...scopedRun,
+            seedArtifacts: scopedBaseRunState?.artifacts ?? [],
+          },
+        } : {}),
+      }
       const response = typeof window.electronAPI.streamCharacterWorkflow === 'function'
-        ? await window.electronAPI.streamCharacterWorkflow({ workflow, language: options.getLanguage() }, {
+        ? await window.electronAPI.streamCharacterWorkflow(workflowRunRequest, {
             onEvent: (event) => applyCharacterWorkflowAgentEvent(event),
           })
-        : await window.electronAPI.runCharacterWorkflow({ workflow, language: options.getLanguage() })
+        : await window.electronAPI.runCharacterWorkflow(workflowRunRequest)
       if (!response.success) {
         throw new Error(response.error || 'Character workflow failed')
       }
       updateRunStep('collect', 'running')
+      const finalStatus = response.status === 'needs_action' ? 'needs_action' : 'done'
       const currentRunState = characterWorkflowExecutingRunState
         ? cloneCharacterWorkflowRunState(characterWorkflowExecutingRunState)
         : cloneCharacterWorkflowRunState(draftRunState)
@@ -4684,18 +4789,27 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         summary: artifact.summary,
         data: artifact.data,
       }))
-      const mergedArtifacts = mergeCharacterWorkflowRunArtifacts(currentRunState.artifacts ?? [], responseArtifacts)
+      const mergedArtifacts = mergeCharacterWorkflowRunArtifacts(currentRunState.artifacts ?? [], responseArtifacts, scopedRun)
+      const selectedScopedImageNodeId = getLatestScopedImageArtifactNodeId(mergedArtifacts, scopedRun)
+      if (selectedScopedImageNodeId) {
+        characterResourceViewState.selectedNodeIds = [selectedScopedImageNodeId]
+        selectedWorkflowNodeId = selectedScopedImageNodeId
+      }
+      const finalSteps = (currentRunState.steps ?? workflowPage.createCharacterResourceRunSteps(options.getLanguage())).map((step) => ({
+        ...step,
+        status: finalStatus === 'needs_action' && (step.id === 'agent' || step.id === 'collect') ? 'failed' as const : 'done' as const,
+        ...(finalStatus === 'needs_action' && step.id === 'agent'
+          ? { detail: response.title || (options.getLanguage() === 'zh-CN' ? '图片生成需要处理' : 'Image generation needs action') }
+          : {}),
+      }))
       characterWorkflowExecutingRunState = {
         run: {
-          id: draftRunState.run?.id || currentRun?.id || response.runId || `resource-run-${Date.now()}`,
-          title: response.title || currentRun?.title || draftRunState.run?.title || 'Resource Draft.run',
-          status: 'done',
-          currentStepId: 'finish',
+          id: scoped ? currentRun?.id || draftRunState.run?.id || response.runId || `resource-run-${Date.now()}` : draftRunState.run?.id || currentRun?.id || response.runId || `resource-run-${Date.now()}`,
+          title: scoped ? currentRun?.title || draftRunState.run?.title || response.title || 'Resource Draft.run' : response.title || currentRun?.title || draftRunState.run?.title || 'Resource Draft.run',
+          status: finalStatus,
+          currentStepId: finalStatus === 'needs_action' ? 'agent' : 'finish',
         },
-        steps: (currentRunState.steps ?? workflowPage.createCharacterResourceRunSteps(options.getLanguage())).map((step) => ({
-          ...step,
-          status: 'done',
-        })),
+        steps: finalSteps,
         events: currentRunState.events ?? [],
         artifacts: mergedArtifacts,
       }
@@ -4709,7 +4823,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       if (wasViewingCompletedRun) {
         scheduleCharacterWorkflowRunRender()
       }
-      showToast(options.getLanguage() === 'zh-CN' ? '角色资源生成完成' : 'Character resources generated')
+      showToast(finalStatus === 'needs_action'
+        ? (options.getLanguage() === 'zh-CN' ? '运行草稿需要处理：图片生成失败' : 'Run draft needs action: image generation failed')
+        : scoped
+          ? (options.getLanguage() === 'zh-CN' ? '局部重跑完成' : 'Scoped rerun completed')
+          : (options.getLanguage() === 'zh-CN' ? '角色资源生成完成' : 'Character resources generated'))
     } catch (error) {
       console.warn('[CharacterResourceGraph] Failed to run agent lifecycle:', error)
       if (renderToken === characterWorkflowRenderToken) {
@@ -4744,6 +4862,156 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
   }
 
+  function handleCharacterWorkflowRunImageAction(target: HTMLElement): void {
+    const action = target.dataset.chatWorkflowRunImageAction || ''
+    const artifactId = target.dataset.runArtifactId || ''
+    const targetNodeId = target.dataset.runTargetNodeId || findRunImageArtifactTargetNodeId(artifactId)
+    const attemptId = target.dataset.runAttemptId || findRunImageArtifactAttemptId(artifactId)
+    if (!artifactId && !targetNodeId) {
+      return
+    }
+    if (action === 'accept') {
+      acceptCharacterWorkflowRunImageArtifact(artifactId, targetNodeId)
+      return
+    }
+    if (action !== 'retry' && action !== 'reroll') {
+      return
+    }
+    if (!targetNodeId) {
+      showToast(options.getLanguage() === 'zh-CN' ? '找不到图片目标节点，无法局部重跑' : 'Missing image target node for scoped rerun')
+      return
+    }
+    const zh = options.getLanguage() === 'zh-CN'
+    const promptValue = action === 'reroll'
+      ? window.prompt(zh ? '这次 reroll 要调整什么？' : 'What should this reroll change?', '')
+      : ''
+    if (action === 'reroll' && promptValue === null) {
+      return
+    }
+    const instruction = action === 'reroll'
+      ? (promptValue || '').trim() || (zh ? '重新生成一版，保持 workflow 目标、参考图依赖和角色身份一致。' : 'Generate another version while preserving the workflow target, reference-image dependencies, and character identity.')
+      : (zh ? '按同一 workflow 目标、提示词、参考图和模型重试失败或已选图片。' : 'Retry this image target with the same workflow target, prompt, reference images, and model.')
+    void runCharacterWorkflow({
+      action,
+      instruction,
+      scope: {
+        targetNodeIds: [targetNodeId],
+        artifactIds: artifactId ? [artifactId] : [],
+        parentAttemptId: attemptId || undefined,
+      },
+    })
+  }
+
+  function acceptCharacterWorkflowRunImageArtifact(artifactId: string, targetNodeId: string): void {
+    if (!characterWorkflowRunState?.artifacts?.length || !artifactId) {
+      return
+    }
+    const selectedTargetNodeId = targetNodeId || findRunImageArtifactTargetNodeId(artifactId)
+    characterWorkflowRunState = {
+      ...characterWorkflowRunState,
+      artifacts: characterWorkflowRunState.artifacts.map((artifact) => {
+        if (artifact.type !== 'image-asset') {
+          return artifact
+        }
+        const sameTarget = selectedTargetNodeId
+          ? findRunImageArtifactTargetNodeId(artifact.id || '') === selectedTargetNodeId || getRunImageArtifactTargetNodeId(artifact) === selectedTargetNodeId
+          : artifact.id === artifactId
+        if (!sameTarget && artifact.id !== artifactId) {
+          return artifact
+        }
+        const data = artifact.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
+          ? { ...(artifact.data as Record<string, unknown>) }
+          : {}
+        return {
+          ...artifact,
+          data: {
+            ...data,
+            accepted: artifact.id === artifactId,
+          },
+        }
+      }),
+    }
+    saveActiveWorkflowProjectSnapshot()
+    renderCharacterWorkflow()
+    showToast(options.getLanguage() === 'zh-CN' ? '已选中这张运行草稿图片' : 'Selected this run draft image')
+  }
+
+  function findRunImageArtifactTargetNodeId(artifactId: string): string {
+    const artifact = characterWorkflowRunState?.artifacts?.find((item) => item.id === artifactId)
+    return artifact ? getRunImageArtifactTargetNodeId(artifact) : ''
+  }
+
+  function findRunImageArtifactAttemptId(artifactId: string): string {
+    const artifact = characterWorkflowRunState?.artifacts?.find((item) => item.id === artifactId)
+    if (!artifact) {
+      return ''
+    }
+    const data = artifact.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
+      ? artifact.data as Record<string, unknown>
+      : {}
+    return typeof data.attemptId === 'string'
+      ? data.attemptId
+      : artifact.type === 'image-attempt'
+        ? artifact.id || ''
+        : typeof data.parentAttemptId === 'string'
+          ? data.parentAttemptId
+          : ''
+  }
+
+  function getRunImageArtifactTargetNodeId(artifact: NonNullable<CharacterResourceRunState['artifacts']>[number]): string {
+    const data = artifact.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
+      ? artifact.data as Record<string, unknown>
+      : {}
+    return typeof data.targetNodeId === 'string'
+      ? data.targetNodeId
+      : typeof data.staleTargetNodeId === 'string'
+        ? data.staleTargetNodeId
+        : artifact.sourceNodeId
+  }
+
+  function createRunDraftImageEditScope(prompt: string): CharacterWorkflowScopedRunRequest['scope'] | null {
+    const artifacts = characterWorkflowRunState?.artifacts ?? []
+    const imageArtifacts = artifacts.filter((artifact) => artifact.type === 'image-asset' || artifact.type === 'image-attempt')
+    if (!imageArtifacts.length) {
+      return null
+    }
+    if (!isRunDraftImageEditPrompt(prompt, imageArtifacts.length > 0)) {
+      return null
+    }
+    const acceptedImageArtifacts = imageArtifacts.filter((artifact) => artifact.type === 'image-asset' && isAcceptedRunImageArtifact(artifact))
+    const scopedArtifacts = acceptedImageArtifacts.length ? acceptedImageArtifacts : imageArtifacts
+    const targetNodeIds = [...new Set(scopedArtifacts.map(getRunImageArtifactTargetNodeId).filter(Boolean))]
+    if (!targetNodeIds.length) {
+      return null
+    }
+    const artifactIds = scopedArtifacts.map((artifact) => artifact.id || '').filter(Boolean)
+    const parentAttemptIds = [...new Set(scopedArtifacts.map((artifact) => findRunImageArtifactAttemptId(artifact.id || '')).filter(Boolean))]
+    return {
+      targetNodeIds,
+      artifactIds,
+      parentAttemptId: parentAttemptIds.length === 1 ? parentAttemptIds[0] : undefined,
+    }
+  }
+
+  function isRunDraftImageEditPrompt(prompt: string, hasRunImages: boolean): boolean {
+    const normalized = prompt.trim().toLowerCase()
+    if (!normalized) {
+      return false
+    }
+    const imageWords = ['图', '图片', '照片', '画面', '生图', '头像', '立绘', 'avatar', 'image', 'picture', 'visual', 'art']
+    const editWords = ['丑', '难看', '不好看', '好看', '更好看', '精致', '细腻', '高级', '二次元', '动漫', '日系', 'anime', 'manga', 'style', '风格', '重画', '重炼', 'reroll', '重新生成', '优化', '漂亮', '美型']
+    const hasImageWord = imageWords.some((word) => normalized.includes(word))
+    const hasEditWord = editWords.some((word) => normalized.includes(word))
+    return hasEditWord && (hasImageWord || hasRunImages)
+  }
+
+  function isAcceptedRunImageArtifact(artifact: NonNullable<CharacterResourceRunState['artifacts']>[number]): boolean {
+    const data = artifact.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
+      ? artifact.data as Record<string, unknown>
+      : {}
+    return data.accepted !== false
+  }
+
   function applyCharacterWorkflowAgentEvent(event: Record<string, unknown>): void {
     if (!characterWorkflowExecutingRunState) {
       return
@@ -4761,6 +5029,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       ? event.result as Record<string, any>
       : undefined
     const errorMessage = typeof event.error === 'string' ? event.error : undefined
+    const eventSummary = typeof event.summary === 'string' ? event.summary : undefined
     const toolName = typeof event.toolName === 'string'
       ? event.toolName
       : typeof record?.toolName === 'string'
@@ -4776,8 +5045,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         title: typeof artifact?.title === 'string' ? artifact.title : undefined,
         summary: typeof artifact?.summary === 'string'
           ? artifact.summary
-          : errorMessage || (typeof result?.summary === 'string' ? result.summary : undefined),
-        status: type === 'run.failed'
+          : errorMessage || eventSummary || (typeof result?.summary === 'string' ? result.summary : undefined),
+        status: type === 'run.failed' || type === 'run.needs_action'
           ? 'failed'
           : type === 'tool.call.started' || type === 'run.phase.changed'
             ? 'running'
@@ -4801,7 +5070,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         characterWorkflowExecutingRunState.run.currentStepId = stepId
         characterWorkflowExecutingRunState.steps = (characterWorkflowExecutingRunState.steps ?? []).map((step) => {
           if (step.id === stepId) {
-            return { ...step, status: type === 'run.failed' ? 'failed' : 'running', ...(type === 'run.failed' && errorMessage ? { detail: errorMessage } : {}) }
+            const failed = type === 'run.failed' || type === 'run.needs_action'
+            return { ...step, status: failed ? 'failed' : 'running', ...(failed && (errorMessage || eventSummary) ? { detail: errorMessage || eventSummary } : {}) }
           }
           return step
         })
@@ -4810,6 +5080,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (characterWorkflowExecutingRunState.run) {
       if (type === 'run.failed') {
         characterWorkflowExecutingRunState.run.status = 'failed'
+      } else if (type === 'run.needs_action') {
+        characterWorkflowExecutingRunState.run.status = 'needs_action'
+        characterWorkflowExecutingRunState.run.currentStepId = 'agent'
       } else if (type === 'run.completed') {
         characterWorkflowExecutingRunState.run.status = 'done'
         characterWorkflowExecutingRunState.run.currentStepId = 'finish'
@@ -4849,7 +5122,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     result: Record<string, any> | undefined,
     runState: CharacterResourceRunState
   ): boolean {
-    if (type === 'artifact.created' || type === 'run.completed' || type === 'run.failed') {
+    if (type === 'artifact.created' || type === 'run.completed' || type === 'run.failed' || type === 'run.needs_action') {
       return false
     }
     const root = characterWorkflowRoot?.querySelector<HTMLElement>('.chat-resource-run-progress')
@@ -4883,6 +5156,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       running: ['运行中', 'Running'],
       paused: ['已暂停', 'Paused'],
       done: ['已完成', 'Done'],
+      needs_action: ['需要处理', 'Needs action'],
       failed: ['失败', 'Failed'],
       canceled: ['已取消', 'Canceled'],
     }
@@ -6277,6 +6551,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const workflowModelChoice = eventTarget.closest<HTMLElement>('[data-chat-workflow-model-choice]')
     if (workflowModelChoice && panel.contains(workflowModelChoice)) {
       updateCharacterWorkflowModelChoice(workflowModelChoice)
+      return
+    }
+
+    const runImageAction = eventTarget.closest<HTMLElement>('[data-chat-workflow-run-image-action]')
+    if (runImageAction && panel.contains(runImageAction)) {
+      handleCharacterWorkflowRunImageAction(runImageAction)
       return
     }
 

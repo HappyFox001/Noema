@@ -966,10 +966,29 @@ declare global {
       runCharacterWorkflow: (request: {
         workflow: Record<string, unknown>
         language?: 'zh-CN' | 'en-US'
+        scopedRun?: {
+          instruction?: string
+          action?: 'retry' | 'reroll' | 'resume' | 'repair'
+          scope: {
+            targetNodeIds?: string[]
+            requirementIds?: string[]
+            artifactIds?: string[]
+            parentAttemptId?: string
+          }
+          seedArtifacts?: Array<{
+            id?: string
+            type: string
+            sourceNodeId?: string
+            title?: string
+            summary?: string
+            data?: unknown
+          }>
+        }
       }) => Promise<{
         success: boolean
         runId?: string
         title?: string
+        status?: 'done' | 'needs_action'
         artifacts?: Array<{
           id: string
           kind: string
@@ -983,12 +1002,14 @@ declare global {
       streamCharacterWorkflow?: (request: {
         workflow: Record<string, unknown>
         language?: 'zh-CN' | 'en-US'
+        scopedRun?: Parameters<Window['electronAPI']['runCharacterWorkflow']>[0]['scopedRun']
       }, handlers?: {
         onEvent?: (event: Record<string, unknown>) => void
         onDone?: (result: {
           success: boolean
           runId?: string
           title?: string
+          status?: 'done' | 'needs_action'
           artifacts?: Array<{
             id: string
             kind: string

@@ -19,6 +19,7 @@ export type CharacterAgentPhase =
   | 'package'
   | 'report'
   | 'completed'
+  | 'needs_action'
   | 'failed'
 
 export type CharacterAgentModelKind = 'llm' | 'image'
@@ -37,7 +38,9 @@ export type CharacterAgentArtifactKind =
   | 'world-context'
   | 'scene-context'
   | 'image-prompt'
+  | 'image-attempt'
   | 'image-asset'
+  | 'stale-marker'
   | 'voice-direction'
   | 'voice-asset'
   | 'candidate-pack'
@@ -540,6 +543,7 @@ export type CharacterAgentEvent =
   | { type: 'artifact.created'; runId: string; artifact: CharacterAgentArtifact; timestamp: number }
   | { type: 'critique.created'; runId: string; critique: AgentCritiqueRecord; timestamp: number }
   | { type: 'run.needs_user_input'; runId: string; question: AgentQuestion; timestamp: number }
+  | { type: 'run.needs_action'; runId: string; summary: string; timestamp: number }
   | { type: 'run.completed'; runId: string; report: AgentFinalReport; timestamp: number }
   | { type: 'run.failed'; runId: string; error: string; timestamp: number }
 
@@ -555,8 +559,25 @@ export interface CharacterSuperAgentOptions {
   signal?: AbortSignal
 }
 
+export interface CharacterAgentScopedRun {
+  mode: 'scoped-run'
+  instruction?: string
+  action?: 'retry' | 'reroll' | 'resume' | 'repair'
+  scope: {
+    targetNodeIds?: string[]
+    requirementIds?: string[]
+    artifactIds?: string[]
+    parentAttemptId?: string
+  }
+  seedArtifacts?: CharacterAgentArtifact[]
+}
+
+export interface CharacterAgentRunOptions {
+  scopedRun?: CharacterAgentScopedRun
+}
+
 export interface CharacterSuperAgent {
-  run(workflow: CharacterWorkflow): Promise<CharacterAgentState>
+  run(workflow: CharacterWorkflow, options?: CharacterAgentRunOptions): Promise<CharacterAgentState>
 }
 
 export function compileCharacterAgentRunContext(
@@ -933,14 +954,14 @@ export function createCharacterSuperAgent(
   const tools = options.tools ?? createDefaultCharacterAgentToolRuntime()
   const artifacts = options.artifacts ?? createInMemoryCharacterArtifactStore()
   return {
-    async run(workflow) {
+    async run(workflow, runOptions = {}) {
       const runId = createRunId()
       const context = compileCharacterAgentRunContext(workflow, { runId, now: now() })
       if (options.modelResolver) {
         const resolved = await resolveCharacterAgentModelCapabilities(context, options.modelResolver)
         context.compilerWarnings.push(...resolved.issues.map((issue) => issue.message))
       }
-      let state = createInitialCharacterAgentState(context, now())
+      let state = createInitialCharacterAgentState(context, now(), runOptions.scopedRun?.seedArtifacts ?? artifacts.list())
       const emit = async (event: CharacterAgentEvent) => {
         state = {
           ...state,
@@ -1030,22 +1051,32 @@ export function createCharacterSuperAgent(
         }
         refreshRequirements()
       }
-      const executeReadyImageRequirements = async (phase: CharacterAgentPhase) => {
-        const readyImageRequirements = getReadyMissingImageRequirements(refreshRequirements())
-        if (!readyImageRequirements.length) {
-          return false
+      const executeImageTargets = async (
+        phase: CharacterAgentPhase,
+        targetNodeIds: string[],
+        options: { instruction?: string; action?: string; parentAttemptId?: string; scoped?: boolean } = {}
+      ): Promise<{ ran: boolean; imageIds: string[]; failedAttemptIds: string[] }> => {
+        const uniqueTargetNodeIds = [...new Set(targetNodeIds.map((item) => item.trim()).filter(Boolean))]
+        if (!uniqueTargetNodeIds.length) {
+          return { ran: false, imageIds: [], failedAttemptIds: [] }
         }
         const imageResult = await callTool('generate_character_image', phase, {
           draft: state.draft,
           autoGenerateTargetPrompts: true,
-          targetNodeIds: readyImageRequirements.map((requirement) => requirement.targetNodeId),
+          targetNodeIds: uniqueTargetNodeIds,
+          rerollInstruction: options.instruction,
+          rerollAction: options.action,
+          parentAttemptId: options.parentAttemptId,
           referenceImagesByTarget: resolveReferenceImagesByTarget(context, state.artifacts),
         })
         const imageIds = (imageResult.artifacts ?? [])
           .filter((artifact) => artifact.kind === 'image-asset')
           .map((artifact) => artifact.id)
+        const failedAttemptIds = (imageResult.artifacts ?? [])
+          .filter((artifact) => artifact.kind === 'image-attempt' && imageAttemptStatus(artifact) === 'failed')
+          .map((artifact) => artifact.id)
         const imageTargetArtifactIds = collectImageTargetArtifactIds(state.draft?.imageTargetArtifactIds ?? {}, imageResult.artifacts ?? [])
-        if (!imageIds.length) {
+        if (!imageIds.length && !failedAttemptIds.length) {
           const diagnostic = (imageResult.artifacts ?? [])
             .map((artifact) => [artifact.title, artifact.summary].filter(Boolean).join(': '))
             .filter(Boolean)
@@ -1064,8 +1095,21 @@ export function createCharacterSuperAgent(
           },
         }
         refreshRequirements()
+        if (options.scoped && imageIds.length) {
+          for (const staleMarker of createStaleMarkersForScopedImageTargets(context, state.artifacts, uniqueTargetNodeIds, imageIds, runId)) {
+            await writeArtifact(staleMarker)
+          }
+        }
         await writeArtifact(createDraftArtifact(context, state.draft))
-        return true
+        return { ran: true, imageIds, failedAttemptIds }
+      }
+      const executeReadyImageRequirements = async (phase: CharacterAgentPhase) => {
+        const readyImageRequirements = getReadyMissingImageRequirements(refreshRequirements())
+        if (!readyImageRequirements.length) {
+          return false
+        }
+        const result = await executeImageTargets(phase, readyImageRequirements.map((requirement) => requirement.targetNodeId))
+        return result.ran
       }
 
       try {
@@ -1073,11 +1117,50 @@ export function createCharacterSuperAgent(
         await changePhase('produce')
         state = {
           ...state,
-          draft: createInitialCharacterDraft(context, now()),
+          draft: hydrateCharacterDraftFromArtifacts(context, state.artifacts, now()) ?? createInitialCharacterDraft(context, now()),
           taskUnderstanding: '',
         }
         refreshRequirements()
         await writeArtifact(createDraftArtifact(context, state.draft))
+
+        if (runOptions.scopedRun?.mode === 'scoped-run') {
+          const targetNodeIds = resolveScopedImageTargetNodeIds(context, runOptions.scopedRun)
+          const scopedResult = await executeImageTargets('produce', targetNodeIds, {
+            instruction: runOptions.scopedRun.instruction,
+            action: runOptions.scopedRun.action,
+            parentAttemptId: runOptions.scopedRun.scope.parentAttemptId,
+            scoped: true,
+          })
+          const summary = scopedResult.failedAttemptIds.length
+            ? `Scoped image run needs action: ${scopedResult.failedAttemptIds.length} failed attempt(s).`
+            : `Scoped image run completed for ${targetNodeIds.join(', ')}.`
+          if (scopedResult.failedAttemptIds.length && !scopedResult.imageIds.length) {
+            state = {
+              ...state,
+              phase: 'needs_action',
+              finalReport: {
+                summary,
+                selectedCandidateId: state.draft?.id,
+                risks: scopedResult.failedAttemptIds.map((id) => `Failed image attempt: ${id}`),
+                assumptions: context.compilerWarnings,
+              },
+            }
+            await emit({ type: 'run.needs_action', runId, summary, timestamp: now() })
+            return state
+          }
+          state = {
+            ...state,
+            phase: 'completed',
+            finalReport: {
+              summary,
+              selectedCandidateId: state.draft?.id,
+              risks: scopedResult.failedAttemptIds.map((id) => `Failed image attempt: ${id}`),
+              assumptions: context.compilerWarnings,
+            },
+          }
+          await emit({ type: 'run.completed', runId, report: state.finalReport!, timestamp: now() })
+          return state
+        }
 
         const maxTurns = Math.max(context.requirements.length + 4, Math.min(24, context.policy.revisionBudget + context.critique.iterations + context.requirements.length + 4))
         for (let turn = 1; turn <= maxTurns; turn += 1) {
@@ -1212,6 +1295,22 @@ export function createCharacterSuperAgent(
         const finalRequirements = refreshRequirements()
         const finalMissing = requirementMissingLabels(finalRequirements)
         if (finalMissing.length || !areAllRequiredRequirementsDone(finalRequirements)) {
+          const failedImageRequirements = finalRequirements.filter((requirement) => requirement.kind === 'image' && requirement.status === 'failed')
+          if (failedImageRequirements.length) {
+            const summary = `Character workflow needs action for failed image target(s): ${failedImageRequirements.map((requirement) => requirement.title).join(', ')}.`
+            state = {
+              ...state,
+              phase: 'needs_action',
+              finalReport: {
+                summary,
+                selectedCandidateId: state.draft?.id,
+                risks: finalMissing,
+                assumptions: context.compilerWarnings,
+              },
+            }
+            await emit({ type: 'run.needs_action', runId, summary, timestamp: now() })
+            return state
+          }
           throw new Error(`Character workflow did not produce a complete character card. Missing: ${finalMissing.join(', ') || 'unknown fields'}. Last review: ${qualityResult.summary}`)
         }
 
@@ -1361,7 +1460,11 @@ export function createDefaultCharacterAgentToolRuntime(): CharacterAgentToolRunt
   ])
 }
 
-function createInitialCharacterAgentState(context: CharacterAgentRunContext, now: number): CharacterAgentState {
+function createInitialCharacterAgentState(
+  context: CharacterAgentRunContext,
+  now: number,
+  seedArtifacts: CharacterAgentArtifact[] = []
+): CharacterAgentState {
   return {
     runId: context.runId,
     phase: 'ingest',
@@ -1371,8 +1474,8 @@ function createInitialCharacterAgentState(context: CharacterAgentRunContext, now
     candidatePacks: [],
     critiqueHistory: [],
     toolCalls: [],
-    artifacts: [],
-    requirements: evaluateCharacterWorkflowRequirements(context, undefined, []),
+    artifacts: seedArtifacts,
+    requirements: evaluateCharacterWorkflowRequirements(context, hydrateCharacterDraftFromArtifacts(context, seedArtifacts, now) ?? undefined, seedArtifacts),
     unresolvedQuestions: [],
     events: [],
   }
@@ -1385,6 +1488,47 @@ function createInitialCharacterDraft(context: CharacterAgentRunContext, now: num
     imagePrompts: [],
     imageArtifactIds: [],
     imageTargetArtifactIds: {},
+    notes: [],
+    missing: getRequiredCharacterDraftFields(context),
+    updatedAt: now,
+  }
+}
+
+function hydrateCharacterDraftFromArtifacts(
+  context: CharacterAgentRunContext,
+  artifacts: CharacterAgentArtifact[],
+  now: number
+): CharacterCardDraft | null {
+  const draftArtifact = [...artifacts].reverse().find((artifact) => artifact.kind === 'character-card-draft')
+  const draftData = draftArtifact?.data
+  if (draftData && typeof draftData === 'object' && !Array.isArray(draftData)) {
+    const draft = draftData as Partial<CharacterCardDraft>
+    return {
+      id: typeof draft.id === 'string' ? draft.id : `${context.runId}:candidate:primary`,
+      fields: draft.fields && typeof draft.fields === 'object' && !Array.isArray(draft.fields) ? draft.fields as Record<string, unknown> : {},
+      imagePrompts: Array.isArray(draft.imagePrompts) ? draft.imagePrompts.filter((item): item is string => typeof item === 'string') : [],
+      imageArtifactIds: Array.isArray(draft.imageArtifactIds) ? draft.imageArtifactIds.filter((item): item is string => typeof item === 'string') : [],
+      imageTargetArtifactIds: draft.imageTargetArtifactIds && typeof draft.imageTargetArtifactIds === 'object' && !Array.isArray(draft.imageTargetArtifactIds)
+        ? Object.fromEntries(Object.entries(draft.imageTargetArtifactIds).map(([key, value]) => [key, Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []]))
+        : collectImageTargetArtifactIds({}, artifacts),
+      notes: Array.isArray(draft.notes) ? draft.notes.filter((item): item is string => typeof item === 'string') : [],
+      missing: Array.isArray(draft.missing) ? draft.missing.filter((item): item is string => typeof item === 'string') : getRequiredCharacterDraftFields(context),
+      updatedAt: typeof draft.updatedAt === 'number' ? draft.updatedAt : now,
+    }
+  }
+  const finalCard = [...artifacts].reverse().find((artifact) => artifact.kind === 'character-card-final')
+  const fields = finalCard?.data && typeof finalCard.data === 'object' && !Array.isArray(finalCard.data)
+    ? finalCard.data as Record<string, unknown>
+    : {}
+  if (!Object.keys(fields).length && !artifacts.some((artifact) => artifact.kind === 'image-asset')) {
+    return null
+  }
+  return {
+    id: `${context.runId}:candidate:primary`,
+    fields,
+    imagePrompts: [],
+    imageArtifactIds: artifacts.filter((artifact) => artifact.kind === 'image-asset').map((artifact) => artifact.id),
+    imageTargetArtifactIds: collectImageTargetArtifactIds({}, artifacts),
     notes: [],
     missing: getRequiredCharacterDraftFields(context),
     updatedAt: now,
@@ -1671,6 +1815,66 @@ function getReadyMissingImageRequirements(requirements: CharacterWorkflowRequire
   return requirements.filter((requirement) => requirement.kind === 'image' && requirement.status === 'missing')
 }
 
+function imageAttemptStatus(artifact: CharacterAgentArtifact): string {
+  const data = artifact.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
+    ? artifact.data as Record<string, unknown>
+    : {}
+  return typeof data.status === 'string' ? data.status : ''
+}
+
+function resolveScopedImageTargetNodeIds(context: CharacterAgentRunContext, scopedRun: CharacterAgentScopedRun): string[] {
+  const explicitTargets = scopedRun.scope.targetNodeIds?.filter(Boolean) ?? []
+  if (explicitTargets.length) {
+    return explicitTargets
+  }
+  const requirementTargets = new Set(scopedRun.scope.requirementIds ?? [])
+  const fromRequirements = context.requirements
+    .filter((requirement) => requirement.kind === 'image' && requirementTargets.has(requirement.id))
+    .map((requirement) => requirement.targetNodeId)
+  if (fromRequirements.length) {
+    return fromRequirements
+  }
+  return context.requirements
+    .filter((requirement) => requirement.kind === 'image')
+    .map((requirement) => requirement.targetNodeId)
+    .slice(0, 1)
+}
+
+function createStaleMarkersForScopedImageTargets(
+  context: CharacterAgentRunContext,
+  artifacts: CharacterAgentArtifact[],
+  regeneratedTargetNodeIds: string[],
+  newImageArtifactIds: string[],
+  runId: string
+): Array<Omit<CharacterAgentArtifact, 'version' | 'createdAt' | 'updatedAt'>> {
+  const regenerated = new Set(regeneratedTargetNodeIds)
+  const downstreamTargetIds = new Set(context.requirements
+    .filter((requirement) => requirement.kind === 'image')
+    .filter((requirement) => requirement.referenceSourceNodeIds.some((sourceNodeId) => regenerated.has(sourceNodeId)))
+    .map((requirement) => requirement.targetNodeId))
+  if (!downstreamTargetIds.size) {
+    return []
+  }
+  return artifacts
+    .filter((artifact) => artifact.kind === 'image-asset' && artifact.sourceNodeId && downstreamTargetIds.has(artifact.sourceNodeId))
+    .map((artifact) => ({
+      id: `${runId}:stale:${artifact.id}`,
+      kind: 'stale-marker' as const,
+      runId,
+      candidateId: artifact.candidateId,
+      sourceNodeId: artifact.sourceNodeId,
+      title: `Stale: ${artifact.title}`,
+      summary: `This image may be stale because ${regeneratedTargetNodeIds.join(', ')} was regenerated.`,
+      data: {
+        staleArtifactId: artifact.id,
+        staleTargetNodeId: artifact.sourceNodeId,
+        changedTargetNodeIds: regeneratedTargetNodeIds,
+        newImageArtifactIds,
+        reason: 'reference-source-rerolled',
+      },
+    }))
+}
+
 function areAllRequiredRequirementsDone(requirements: CharacterWorkflowRequirementState[]): boolean {
   return requirements.every((requirement) => !requirement.required || requirement.status === 'done')
 }
@@ -1722,11 +1926,14 @@ export function evaluateCharacterWorkflowRequirements(
   const fields = draft?.fields ?? {}
   const doneNodeIds = new Set<string>()
   const imageArtifactsByTarget = new Map<string, CharacterAgentArtifact[]>()
+  const failedImageAttemptsByTarget = new Map<string, CharacterAgentArtifact[]>()
   for (const artifact of artifacts) {
-    if (artifact.kind !== 'image-asset' || !artifact.sourceNodeId) {
-      continue
+    if (artifact.kind === 'image-asset' && artifact.sourceNodeId) {
+      imageArtifactsByTarget.set(artifact.sourceNodeId, [...(imageArtifactsByTarget.get(artifact.sourceNodeId) ?? []), artifact])
     }
-    imageArtifactsByTarget.set(artifact.sourceNodeId, [...(imageArtifactsByTarget.get(artifact.sourceNodeId) ?? []), artifact])
+    if (artifact.kind === 'image-attempt' && artifact.sourceNodeId && imageAttemptStatus(artifact) === 'failed') {
+      failedImageAttemptsByTarget.set(artifact.sourceNodeId, [...(failedImageAttemptsByTarget.get(artifact.sourceNodeId) ?? []), artifact])
+    }
   }
 
   const provisional = context.requirements.map((requirement): CharacterWorkflowRequirementState => {
@@ -1745,6 +1952,7 @@ export function evaluateCharacterWorkflowRequirements(
     }
 
     const imageArtifacts = imageArtifactsByTarget.get(requirement.targetNodeId) ?? []
+    const failedAttempts = failedImageAttemptsByTarget.get(requirement.targetNodeId) ?? []
     const requiredCount = Math.max(1, Math.floor(requirement.requiredCount ?? 1))
     const complete = imageArtifacts.length >= requiredCount
     if (complete) {
@@ -1752,10 +1960,14 @@ export function evaluateCharacterWorkflowRequirements(
     }
     return {
       ...requirement,
-      status: complete ? 'done' : 'missing',
+      status: complete ? 'done' : failedAttempts.length ? 'failed' : 'missing',
       completedCount: imageArtifacts.length,
-      artifactIds: imageArtifacts.map((artifact) => artifact.id),
-      missingReason: complete ? undefined : `Missing image target ${requirement.title}: ${imageArtifacts.length}/${requiredCount}`,
+      artifactIds: [...imageArtifacts, ...failedAttempts].map((artifact) => artifact.id),
+      missingReason: complete
+        ? undefined
+        : failedAttempts.length
+          ? `Image target ${requirement.title} has ${failedAttempts.length} failed attempt(s).`
+          : `Missing image target ${requirement.title}: ${imageArtifacts.length}/${requiredCount}`,
     }
   })
 
@@ -2087,7 +2299,9 @@ function artifactTitle(kind: CharacterAgentArtifactKind): string {
     'world-context': 'World Context',
     'scene-context': 'Scene Context',
     'image-prompt': 'Image Prompt',
+    'image-attempt': 'Image Attempt',
     'image-asset': 'Image Asset',
+    'stale-marker': 'Stale Marker',
     'voice-direction': 'Voice Direction',
     'voice-asset': 'Voice Asset',
     'candidate-pack': 'Candidate Pack',
@@ -2120,7 +2334,9 @@ function isArtifactKind(value: unknown): value is CharacterAgentArtifactKind {
     'world-context',
     'scene-context',
     'image-prompt',
+    'image-attempt',
     'image-asset',
+    'stale-marker',
     'voice-direction',
     'voice-asset',
     'candidate-pack',

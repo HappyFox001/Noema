@@ -13379,11 +13379,11 @@ body.chat-workflow-library-resizing * {
   flex: 0 0 32px;
   display: grid;
   place-items: center;
-  border: 1px solid rgba(132, 173, 159, 0.28);
+  border: 1px solid rgba(150, 162, 184, 0.28);
   border-radius: 9px;
   padding: 0;
   color: rgba(248, 250, 250, 0.86);
-  background: rgba(132, 173, 159, 0.13);
+  background: rgba(150, 162, 184, 0.12);
   cursor: pointer;
   transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
 }
@@ -13399,8 +13399,8 @@ body.chat-workflow-library-resizing * {
 }
 
 .chat-workflow-canvas-assistant-row > button:hover {
-  border-color: rgba(132, 173, 159, 0.46);
-  background: rgba(132, 173, 159, 0.18);
+  border-color: rgba(185, 196, 214, 0.42);
+  background: rgba(150, 162, 184, 0.17);
 }
 
 .chat-workflow-canvas-assistant-row > button:active {
@@ -13416,7 +13416,7 @@ body.chat-workflow-library-resizing * {
   grid-template-rows: auto;
   min-height: 0;
   max-height: 42px;
-  border: 1px solid rgba(132, 173, 159, 0.16);
+  border: 1px solid rgba(150, 162, 184, 0.16);
   border-radius: 13px;
   background:
     linear-gradient(180deg, rgba(14, 18, 20, 0.78), rgba(8, 10, 11, 0.68)),
@@ -13432,7 +13432,7 @@ body.chat-workflow-library-resizing * {
   height: 156px;
   max-height: min(42vh, 360px);
   resize: vertical;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .chat-workflow-canvas-assistant-status.expanded::after {
@@ -13454,7 +13454,7 @@ body.chat-workflow-library-resizing * {
   justify-content: space-between;
   gap: 10px;
   padding: 8px 9px 4px 11px;
-  color: rgba(132, 173, 159, 0.66);
+  color: rgba(185, 196, 214, 0.68);
   font-family: var(--font-ui);
   font-size: 10px;
   font-weight: 700;
@@ -13499,9 +13499,9 @@ body.chat-workflow-library-resizing * {
 }
 
 .chat-workflow-canvas-assistant-status-actions > button:hover {
-  border-color: rgba(132, 173, 159, 0.28);
+  border-color: rgba(185, 196, 214, 0.28);
   color: rgba(248, 250, 250, 0.84);
-  background: rgba(132, 173, 159, 0.1);
+  background: rgba(150, 162, 184, 0.1);
 }
 
 .chat-workflow-canvas-assistant-status-actions svg {
@@ -13541,8 +13541,8 @@ body.chat-workflow-library-resizing * {
 }
 
 .chat-workflow-canvas-assistant-record.latest {
-  border-color: rgba(132, 173, 159, 0.18);
-  background: rgba(132, 173, 159, 0.045);
+  border-color: rgba(185, 196, 214, 0.2);
+  background: rgba(150, 162, 184, 0.055);
 }
 
 .chat-workflow-canvas-assistant-record header {
@@ -14331,8 +14331,13 @@ body.chat-workflow-library-resizing * {
   animation: chat-resource-run-complete 420ms ease-out both;
 }
 
-.chat-resource-run-viewport.run-status-failed .chat-resource-run-plane {
+.chat-resource-run-viewport.run-status-failed .chat-resource-run-plane,
+.chat-resource-run-viewport.run-status-needs_action .chat-resource-run-plane {
   animation: chat-resource-run-failed 360ms ease-out both;
+}
+
+.chat-resource-run-plane .chat-resource-image-actions {
+  grid-column: 1 / -1;
 }
 
 @keyframes chat-resource-run-node-enter {
@@ -15146,6 +15151,38 @@ body.chat-workflow-library-resizing * {
   background: rgba(255, 255, 255, 0.03);
 }
 
+.chat-resource-image-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+}
+
+.chat-resource-image-actions button {
+  width: 26px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border: 1px solid rgba(248, 250, 250, 0.1);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(248, 250, 250, 0.62);
+}
+
+.chat-resource-image-actions button:hover,
+.chat-resource-image-actions button.active {
+  border-color: rgba(126, 177, 255, 0.42);
+  background: rgba(126, 177, 255, 0.16);
+  color: rgba(248, 250, 250, 0.92);
+}
+
+.chat-resource-image-actions i {
+  width: 14px;
+  height: 14px;
+}
+
 .chat-resource-node-footer {
   min-height: 26px;
   display: flex;
@@ -15475,6 +15512,19 @@ body.chat-workflow-library-resizing * {
   border: 1px solid rgba(255, 255, 255, 0.055);
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.026);
+}
+
+.chat-resource-output-card.has-image {
+  gap: 8px;
+}
+
+.chat-resource-output-card.has-image img {
+  width: 100%;
+  max-height: 360px;
+  object-fit: contain;
+  border: 1px solid rgba(248, 250, 250, 0.08);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.025);
 }
 
 .chat-resource-output-card strong {
