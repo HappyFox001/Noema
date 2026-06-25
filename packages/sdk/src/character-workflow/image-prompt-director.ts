@@ -100,7 +100,7 @@ export function getDirectedImageRolePriority(imageRole: string): number {
 
 function automaticRolePrompt(role: string, profile: CharacterImageProfile): string {
   const prompts: Record<string, string> = {
-    avatar: 'solo character card portrait, one clear face, face and body visible, dynamic attractive pose, simple clean background',
+    avatar: 'canonical avatar master portrait, single subject, one clear unobstructed face, upper-body or half-body framing, looking at viewer, calm natural expression, simple clean background, identity reference image for later assets',
     'character-overview-sheet': 'same character as avatar reference, complete production character overview sheet, full-body front view, full-body back view, side or three-quarter view, main portrait crop, expression callouts, eye close-up, nose and mouth close-up, hairstyle detail, hands, legs, hips and rear silhouette, feet or shoes, outfit material and accessory close-ups, no text labels',
     'hero-cover': 'polished role-card cover image, character dominant in frame, beautiful readable face, strong mood, cinematic background',
     'opening-moment': 'opening scene image, character visibly present, expressive pose, readable setting, roleplay hook',
@@ -125,15 +125,26 @@ function rolePromptForImage(
   const slot = sanitizeSlotPrompt(promptText, role)
   const indexed = targetIndex > 1 ? `image variant ${targetIndex}, same identity` : ''
   if (role === 'avatar') {
-    const base = domain === 'anime'
-      ? 'solo anime character, character-card portrait, clear detailed eyes, face and body visible, dynamic three-quarter or high-angle composition, simple background'
-      : 'solo person, premium character-card portrait, clear facial features, face and body visible, flattering three-quarter composition, natural simple background'
-    return compactJoin([base, shot, slot, indexed])
+    return compactJoin([avatarRolePromptForImage(), shot, slot, indexed])
   }
   if (role === 'character-overview-sheet') {
     return overviewSheetRolePrompt(domain, slot, indexed)
   }
   return compactJoin(['same character as supplied reference image', automaticRolePrompt(role, profile), shot, slot, indexed])
+}
+
+function avatarRolePromptForImage(): string {
+  return compactJoin([
+    'canonical avatar master image for avatar.jpg',
+    'single visible character only',
+    'one clear unobstructed face',
+    'upper-body or half-body portrait framing',
+    'looking at viewer',
+    'calm natural expression',
+    'face, hair, default outfit, and body silhouette readable',
+    'simple uncluttered background',
+    'no model sheet, no collage, no split screen, no alternate forms',
+  ])
 }
 
 function overviewSheetRolePrompt(
@@ -161,6 +172,18 @@ function stylePromptForImage(
   domain: CharacterImageStyleDomain,
   control?: AgentImageGenerationControl
 ): string {
+  if (role === 'avatar') {
+    const avatarDomainPrompts: Record<CharacterImageStyleDomain, string> = {
+      anime: 'anime style illustration, polished visual novel character portrait, clean linework, expressive detailed eyes, soft light, simple background, high quality anime art',
+      photoreal: 'realistic portrait photography, warm natural light, shallow depth of field, natural skin tone and texture, clean lens rendering, high quality photo',
+      illustration: 'polished character portrait illustration, refined facial structure, clean silhouette, soft light, simple background, high quality artwork',
+      stylized: 'stylized character portrait, clear facial design, refined shape language, soft light, clean background, polished high quality finish',
+    }
+    return compactJoin([
+      avatarDomainPrompts[domain],
+      control?.stylePrompt,
+    ])
+  }
   if (role === 'character-overview-sheet') {
     const overviewDomainPrompts: Record<CharacterImageStyleDomain, string> = {
       anime: 'anime character design sheet, clean linework, consistent face across views, high quality anime art',
@@ -188,8 +211,8 @@ function stylePromptForImage(
 function qualityPromptForImage(role: string, domain: CharacterImageStyleDomain): string {
   if (role === 'avatar') {
     return domain === 'anime'
-      ? 'beautiful specific face, luminous eyes, crisp hair silhouette, refined outfit details, appealing body silhouette, clean high-resolution finish'
-      : 'flattering face light, precise eye catchlights, realistic hair, refined styling, appealing body silhouette, clean high-resolution finish'
+      ? 'beautiful specific face, luminous eyes, crisp hair silhouette, refined outfit details, stable recognizable identity, clean high-resolution finish'
+      : 'flattering face light, precise eye catchlights, realistic hair, refined styling, stable recognizable identity, clean high-resolution finish'
   }
   if (role === 'character-overview-sheet') {
     return 'consistent same-character face across every view, complete uncropped full bodies, readable proportions, clean spacing, readable small detail callouts, consistent costume construction, high-resolution production reference art'
@@ -221,7 +244,7 @@ function sanitizeSlotPrompt(promptText: string, role: string): string {
   if (role !== 'avatar') {
     return normalized
   }
-  const blocked = /(reference|model|character|expression|variant|turnaround)\s*sheet|panel|split[- ]?screen|collage|inset|duplicate|same character twice|two (poses|forms|faces|characters)|multiple (poses|faces|characters)|before and after|alternate/i
+  const blocked = /(reference|model|character|expression|variant|turnaround)\s*sheet|full[- ]?body|wide canvas|panel|split[- ]?screen|collage|inset|duplicate|same character twice|two (poses|forms|faces|characters)|multiple (poses|faces|characters)|before and after|alternate/i
   return normalized
     .split(/(?<=[.!?。！？；;])\s+|[,，]\s*/)
     .map((part) => part.trim())
