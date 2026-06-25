@@ -620,7 +620,7 @@ export function createUiConfigOverrides(spec: CharacterWorkflowBuilderSpec): Rec
     },
     'overview-sheet-image-target': {
       imageRole: 'character-overview-sheet',
-      assetPurpose: 'Large character asset overview sheet using linked reference image inputs for identity preservation and showing front/back/side, hairstyle, hands, legs, feet, outfit details, and expressions.',
+      assetPurpose: 'Large production character overview sheet using linked avatar reference image inputs. Required contents: full-body front view, full-body back view, side or three-quarter view, one main portrait or half-body crop, 3 expression callouts, hairstyle detail, hand pose detail, feet or shoes detail, outfit fabric, accessory, and silhouette details. Preserve avatar outfit construction unless explicitly requesting outfit variants. No written labels.',
     },
     'overview-sheet-image-control': {
       targetImageCount: 1,
@@ -1072,9 +1072,10 @@ function applySpecToWorkflow(workflow: CharacterWorkflow, spec: CharacterWorkflo
   overviewTarget?.config && Object.assign(overviewTarget.config, {
     imageRole: 'character-overview-sheet',
     assetPurpose: [
-      'Generate one very large character asset overview sheet using linked reference image inputs for identity preservation.',
-      'Show a clean model-sheet composition with front view, back view, side or three-quarter view, hairstyle detail, hands, legs, feet or shoes, outfit/material details, and expression callouts.',
-      'The sheet is for production reference, not a social cover.',
+      'Generate one very large production character overview sheet using linked avatar reference image inputs for identity preservation.',
+      'Required contents: full-body front view, full-body back view, side or three-quarter view, one main portrait or half-body crop, 3 expression callouts, hairstyle detail, hand pose detail, feet or shoes detail, outfit fabric, accessory, and silhouette details.',
+      'Preserve the avatar outfit construction unless this target explicitly requests outfit variants.',
+      'The sheet is for production reference, not a social cover, and must not contain written labels.',
     ].join(' '),
   })
   const overviewControl = workflow.nodes.find((node) => node.id === 'overview-sheet-image-control')

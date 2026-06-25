@@ -102,7 +102,7 @@ export function getDirectedImageRolePriority(imageRole: string): number {
 function automaticRolePrompt(role: string, profile: CharacterImageProfile): string {
   const prompts: Record<string, string> = {
     avatar: 'solo character card portrait, one clear face, face and body visible, dynamic attractive pose, simple clean background',
-    'character-overview-sheet': 'same character full-body design sheet, wide clean canvas, front view, back view, side view, hairstyle, hands, feet, outfit details, expression callouts, no text labels',
+    'character-overview-sheet': 'same character as avatar reference, complete production character overview sheet, full-body front view, full-body back view, side or three-quarter view, main portrait crop, expression callouts, hairstyle detail, hands, feet or shoes, outfit material and accessory close-ups, no text labels',
     'hero-cover': 'polished role-card cover image, character dominant in frame, beautiful readable face, strong mood, cinematic background',
     'opening-moment': 'opening scene image, character visibly present, expressive pose, readable setting, roleplay hook',
     'story-moment': 'character-first story moment, expressive pose, believable setting, clear mood',
@@ -132,14 +132,29 @@ function rolePromptForImage(
     return compactJoin([base, shot, slot, indexed])
   }
   if (role === 'character-overview-sheet') {
-    return compactJoin([
-      'same character as reference image, full-body character design sheet, wide composition, clean light background',
-      'front view, back view, side view, hairstyle detail, hand and foot detail, outfit material details, expression callouts, no written labels',
-      slot,
-      indexed,
-    ])
+    return overviewSheetRolePrompt(domain, slot, indexed)
   }
   return compactJoin(['same character as supplied reference image', automaticRolePrompt(role, profile), shot, slot, indexed])
+}
+
+function overviewSheetRolePrompt(
+  domain: CharacterImageStyleDomain,
+  slot: string,
+  indexed: string
+): string {
+  const medium = domain === 'photoreal'
+    ? 'realistic production wardrobe and character reference board'
+    : 'production character design sheet'
+  return compactJoin([
+    'same character as supplied avatar reference image, preserve the same face, hair, body proportions, signature motifs, and outfit construction',
+    `${medium}, one large clean 16:9 canvas, simple light background, organized model-sheet layout, even spacing`,
+    'required contents: full-body front view, full-body back view, full-body side or three-quarter view, polished main portrait or half-body crop',
+    'required detail callouts: 3 facial expressions, hairstyle close-up, hand pose close-up, feet or shoes close-up, outfit fabric, accessory, and silhouette details',
+    'keep the avatar outfit and material logic unless this target prompt explicitly requests an outfit variation',
+    'visual reference only, no written labels, no UI text, no speech bubbles',
+    slot,
+    indexed,
+  ])
 }
 
 function stylePromptForImage(
@@ -180,7 +195,7 @@ function qualityPromptForImage(role: string, domain: CharacterImageStyleDomain):
       : 'flattering face light, precise eye catchlights, realistic hair, refined styling, appealing body silhouette, clean high-resolution finish'
   }
   if (role === 'character-overview-sheet') {
-    return 'consistent same-character face across views, readable proportions, clean spacing, high-resolution production art'
+    return 'consistent same-character face across every view, complete uncropped full bodies, readable proportions, clean spacing, readable small detail callouts, consistent costume construction, high-resolution production reference art'
   }
   if (role === 'hero-cover') {
     return 'cinematic composition, beautiful readable face, strong silhouette, premium role-card cover quality'
@@ -274,7 +289,7 @@ function avoidPromptForImage(
   ])
   const roleNegatives: Record<string, string[]> = {
     avatar: ['multiple people', 'two characters', 'duplicate face', 'second face', 'collage', 'panel layout', 'inset portrait'],
-    'character-overview-sheet': ['written labels', 'different faces between views', 'cropped feet', 'cropped hands'],
+    'character-overview-sheet': ['written labels', 'speech bubbles', 'UI text', 'single portrait only', 'social media cover', 'random extra character', 'different faces between views', 'changed hairstyle', 'changed outfit without prompt', 'cropped full body', 'cropped feet', 'cropped hands', 'messy collage', 'overlapping bodies'],
     'hero-cover': ['face hidden', 'tiny character', 'empty landscape'],
     'opening-moment': ['empty room', 'character hidden'],
   }
