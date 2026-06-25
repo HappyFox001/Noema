@@ -938,31 +938,6 @@ declare global {
           onError?: (error: string) => void
         }
       ) => ReturnType<Window['electronAPI']['buildCharacterWorkflow']>
-      editCharacterWorkflowRunDraft: (request: {
-        prompt: string
-        language?: 'zh-CN' | 'en-US'
-        runTitle?: string
-        artifacts: Array<{
-          id?: string
-          type: string
-          sourceNodeId?: string
-          title?: string
-          summary?: string
-          data?: unknown
-        }>
-      }) => Promise<{
-        success: boolean
-        summary?: string
-        artifacts?: Array<{
-          id?: string
-          type: string
-          sourceNodeId?: string
-          title?: string
-          summary?: string
-          data?: unknown
-        }>
-        error?: string
-      }>
       runCharacterWorkflow: (request: {
         workflow: Record<string, unknown>
         language?: 'zh-CN' | 'en-US'

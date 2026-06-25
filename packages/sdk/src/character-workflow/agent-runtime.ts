@@ -1111,6 +1111,65 @@ export function createCharacterSuperAgent(
         const result = await executeImageTargets(phase, readyImageRequirements.map((requirement) => requirement.targetNodeId))
         return result.ran
       }
+      const executeScopedArtifactRepair = async (scopedRun: CharacterAgentScopedRun): Promise<{ artifactIds: string[]; summary: string }> => {
+        const selectedArtifacts = resolveScopedArtifacts(state.artifacts, scopedRun)
+        const decisionResult = await callTool('decide_character_card_next_step', 'repair', {
+          context,
+          draft: state.draft,
+          requirements: refreshRequirements(),
+          scopedRun: {
+            instruction: scopedRun.instruction,
+            action: scopedRun.action,
+            scope: scopedRun.scope,
+          },
+          selectedArtifacts: selectedArtifacts.map((artifact) => ({
+            id: artifact.id,
+            kind: artifact.kind,
+            title: artifact.title,
+            summary: artifact.summary,
+            sourceNodeId: artifact.sourceNodeId,
+            data: compactScopedArtifactData(artifact.data),
+          })),
+          artifacts: state.artifacts.map((artifact) => ({
+            id: artifact.id,
+            kind: artifact.kind,
+            title: artifact.title,
+            summary: artifact.summary,
+            sourceNodeId: artifact.sourceNodeId,
+          })),
+          turn: 'scoped-repair',
+          maxTurns: 1,
+        })
+        const decision = decisionFromToolResult(decisionResult, context, state.draft, true)
+        const action = decision.actions[0]
+        const written: string[] = []
+        if (!action || action.type === 'finish') {
+          const report = await writeArtifact(createScopedRepairReportArtifact(context, state.draft!, scopedRun, selectedArtifacts, decision.summary || decisionResult.summary))
+          written.push(report.id)
+          return { artifactIds: written, summary: decision.summary || decisionResult.summary || 'Scoped run feedback recorded.' }
+        }
+        if (action.type === 'request_image') {
+          await executeImageRequestAction(action, 'repair')
+          return { artifactIds: [], summary: decision.summary || decisionResult.summary || 'Scoped repair requested image generation.' }
+        }
+        if (action.type === 'create_artifact') {
+          const artifact = await writeArtifact(createScopedActionArtifact(context, state.draft!, scopedRun, selectedArtifacts, action))
+          written.push(artifact.id)
+        } else {
+          const beforeFields = { ...(state.draft?.fields ?? {}) }
+          state = {
+            ...state,
+            draft: applyCharacterAgentAction(state.draft!, action, context, now()),
+          }
+          for (const fieldArtifact of createFieldArtifactsForChangedFields(context, state.draft!, beforeFields)) {
+            const artifact = await writeArtifact(createScopedFieldArtifact(fieldArtifact, scopedRun, selectedArtifacts))
+            written.push(artifact.id)
+          }
+        }
+        await writeArtifact(createDraftArtifact(context, state.draft))
+        refreshRequirements()
+        return { artifactIds: written, summary: decision.summary || decisionResult.summary || 'Scoped artifact repair completed.' }
+      }
 
       try {
         await emit({ type: 'run.started', runId, timestamp: now() })
@@ -1124,6 +1183,22 @@ export function createCharacterSuperAgent(
         await writeArtifact(createDraftArtifact(context, state.draft))
 
         if (runOptions.scopedRun?.mode === 'scoped-run') {
+          if (!shouldRunScopedImageTargets(state.artifacts, runOptions.scopedRun)) {
+            const repairResult = await executeScopedArtifactRepair(runOptions.scopedRun)
+            const summary = repairResult.summary
+            state = {
+              ...state,
+              phase: 'completed',
+              finalReport: {
+                summary,
+                selectedCandidateId: state.draft?.id,
+                risks: [],
+                assumptions: context.compilerWarnings,
+              },
+            }
+            await emit({ type: 'run.completed', runId, report: state.finalReport!, timestamp: now() })
+            return state
+          }
           const targetNodeIds = resolveScopedImageTargetNodeIds(context, runOptions.scopedRun)
           const scopedResult = await executeImageTargets('produce', targetNodeIds, {
             instruction: runOptions.scopedRun.instruction,
@@ -1568,6 +1643,62 @@ function createActionArtifact(
   }
 }
 
+function createScopedActionArtifact(
+  context: CharacterAgentRunContext,
+  draft: CharacterCardDraft,
+  scopedRun: CharacterAgentScopedRun,
+  selectedArtifacts: CharacterAgentArtifact[],
+  action: Extract<CharacterAgentAction, { type: 'create_artifact' }>
+): Omit<CharacterAgentArtifact, 'version' | 'createdAt' | 'updatedAt'> {
+  const base = createActionArtifact(context, draft, action)
+  const selected = selectedArtifacts[0]
+  return {
+    ...base,
+    id: selected?.id ?? base.id,
+    kind: selected?.kind ?? base.kind,
+    sourceNodeId: selected?.sourceNodeId ?? base.sourceNodeId,
+    summary: action.summary ?? scopedRun.instruction ?? base.summary,
+  }
+}
+
+function createScopedFieldArtifact(
+  artifact: Omit<CharacterAgentArtifact, 'version' | 'createdAt' | 'updatedAt'>,
+  scopedRun: CharacterAgentScopedRun,
+  selectedArtifacts: CharacterAgentArtifact[]
+): Omit<CharacterAgentArtifact, 'version' | 'createdAt' | 'updatedAt'> {
+  const selected = selectedArtifacts.find((item) => item.kind === 'character-card-field')
+  return {
+    ...artifact,
+    id: selected?.id ?? artifact.id,
+    sourceNodeId: selected?.sourceNodeId ?? artifact.sourceNodeId,
+    summary: scopedRun.instruction ? `${artifact.summary}\nFeedback: ${scopedRun.instruction}` : artifact.summary,
+  }
+}
+
+function createScopedRepairReportArtifact(
+  context: CharacterAgentRunContext,
+  draft: CharacterCardDraft,
+  scopedRun: CharacterAgentScopedRun,
+  selectedArtifacts: CharacterAgentArtifact[],
+  summary: string
+): Omit<CharacterAgentArtifact, 'version' | 'createdAt' | 'updatedAt'> {
+  const selected = selectedArtifacts[0]
+  return {
+    id: `${context.runId}:scoped-repair-report:${Date.now()}`,
+    kind: 'generation-report',
+    runId: context.runId,
+    candidateId: draft.id,
+    title: 'Scoped Repair Feedback',
+    summary,
+    data: {
+      instruction: scopedRun.instruction,
+      selectedArtifactIds: selectedArtifacts.map((artifact) => artifact.id),
+      selectedArtifactTitle: selected?.title,
+    },
+    sourceNodeId: selected?.sourceNodeId ?? context.goal.nodeId,
+  }
+}
+
 function createFieldArtifactsForChangedFields(
   context: CharacterAgentRunContext,
   draft: CharacterCardDraft,
@@ -1838,6 +1969,44 @@ function resolveScopedImageTargetNodeIds(context: CharacterAgentRunContext, scop
     .filter((requirement) => requirement.kind === 'image')
     .map((requirement) => requirement.targetNodeId)
     .slice(0, 1)
+}
+
+function shouldRunScopedImageTargets(artifacts: CharacterAgentArtifact[], scopedRun: CharacterAgentScopedRun): boolean {
+  if (scopedRun.scope.targetNodeIds?.some(Boolean) || scopedRun.scope.requirementIds?.some(Boolean)) {
+    return true
+  }
+  const artifactIds = new Set(scopedRun.scope.artifactIds ?? [])
+  if (!artifactIds.size) {
+    return false
+  }
+  return artifacts.some((artifact) => (
+    artifactIds.has(artifact.id)
+    && (artifact.kind === 'image-asset' || artifact.kind === 'image-attempt' || artifact.kind === 'stale-marker')
+  ))
+}
+
+function resolveScopedArtifacts(artifacts: CharacterAgentArtifact[], scopedRun: CharacterAgentScopedRun): CharacterAgentArtifact[] {
+  const artifactIds = new Set(scopedRun.scope.artifactIds ?? [])
+  if (!artifactIds.size) {
+    return []
+  }
+  return artifacts.filter((artifact) => artifactIds.has(artifact.id))
+}
+
+function compactScopedArtifactData(data: unknown): unknown {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return data
+  }
+  const record = data as Record<string, unknown>
+  return Object.fromEntries(Object.entries(record).map(([key, value]) => {
+    if ((key === 'dataUrl' || key === 'url') && typeof value === 'string') {
+      return [key, `[preserved ${key}: ${value.slice(0, 80)}]`]
+    }
+    if (typeof value === 'string' && value.length > 1400) {
+      return [key, `${value.slice(0, 1400)}...`]
+    }
+    return [key, value]
+  }))
 }
 
 function createStaleMarkersForScopedImageTargets(

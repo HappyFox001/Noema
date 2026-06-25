@@ -2057,7 +2057,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       workflowLibraryCollapsed: characterWorkflowEditorState.workflowLibraryCollapsed,
       inspectorCollapsed: characterWorkflowEditorState.inspectorCollapsed,
       nodeSearchOpen: characterWorkflowEditorState.nodeSearchOpen,
-      workflowAssistantHtml: renderCharacterWorkflowAssistant(),
+      workflowAssistantHtml: characterWorkflowActiveTabId === 'workflow' ? renderCharacterWorkflowAssistant() : '',
       viewState: {
         zoom: characterResourceViewState.zoom,
         panX: characterResourceViewState.panX,
@@ -3557,10 +3557,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!userPrompt || characterWorkflowBuilderBusy || !activeCharacterWorkflowProjectId) {
       return
     }
-    if (characterWorkflowActiveTabId === 'run-draft') {
-      await applyCharacterWorkflowRunDraftPrompt(userPrompt)
-      return
-    }
     characterWorkflowBuilderBusy = true
     characterWorkflowBuilderStatus = options.getLanguage() === 'zh-CN' ? 'Agent 正在调整当前资源图...' : 'Agent editing current resource graph...'
     renderCharacterWorkflow()
@@ -3617,86 +3613,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         characterWorkflowBuilderStatus = formatWorkflowGoalSessionStatus(characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)?.goalSession, response.spec?.summary)
         showToast(options.getLanguage() === 'zh-CN' ? '已应用资源图修改' : 'Applied graph edits')
       }
-    } catch (error: any) {
-      const message = error?.message || String(error)
-      characterWorkflowBuilderStatus = message
-      showToast(message)
-    } finally {
-      characterWorkflowBuilderBusy = false
-      renderCharacterWorkflow()
-    }
-  }
-
-  async function applyCharacterWorkflowRunDraftPrompt(userPrompt: string): Promise<void> {
-    if (!characterWorkflowRunState?.run) {
-      characterWorkflowBuilderStatus = options.getLanguage() === 'zh-CN' ? '当前没有运行草稿可调整' : 'No run draft is selected'
-      renderCharacterWorkflow()
-      return
-    }
-    const imageScope = createRunDraftImageEditScope(userPrompt)
-    if (imageScope) {
-      characterWorkflowAssistantPrompt = ''
-      characterWorkflowBuilderStatus = options.getLanguage() === 'zh-CN' ? 'Agent 正在根据你的要求重炼图片...' : 'Agent rerolling images from your instruction...'
-      characterWorkflowBuilderBusy = false
-      renderCharacterWorkflow()
-      await runCharacterWorkflow({
-        action: 'reroll',
-        instruction: userPrompt,
-        scope: imageScope,
-      })
-      return
-    }
-    characterWorkflowBuilderBusy = true
-    characterWorkflowBuilderStatus = options.getLanguage() === 'zh-CN' ? 'Agent 正在调整当前运行草稿...' : 'Agent editing current run draft...'
-    renderCharacterWorkflow()
-    try {
-      const response = await window.electronAPI.editCharacterWorkflowRunDraft({
-        prompt: userPrompt,
-        language: options.getLanguage(),
-        runTitle: characterWorkflowRunState.run.title,
-        artifacts: (characterWorkflowRunState.artifacts ?? []).map((artifact) => ({
-          id: artifact.id,
-          type: artifact.type,
-          sourceNodeId: artifact.sourceNodeId,
-          title: artifact.title,
-          summary: artifact.summary,
-          data: artifact.data,
-        })),
-      })
-      if (!response.success) {
-        throw new Error(response.error || 'Run draft agent failed')
-      }
-      characterWorkflowRunState = {
-        ...characterWorkflowRunState,
-        run: {
-          ...characterWorkflowRunState.run,
-          status: 'done',
-          currentStepId: 'finish',
-        },
-        events: [
-          ...(characterWorkflowRunState.events ?? []),
-          {
-            type: 'run-draft.edited',
-            timestamp: Date.now(),
-            phase: 'edit',
-            title: options.getLanguage() === 'zh-CN' ? '运行草稿调整' : 'Run draft edit',
-            summary: response.summary,
-            status: 'done',
-          },
-        ],
-        artifacts: (response.artifacts ?? []).map((artifact) => ({
-          id: artifact.id,
-          type: artifact.type,
-          sourceNodeId: artifact.sourceNodeId || 'agent-policy',
-          title: artifact.title,
-          summary: artifact.summary,
-          data: artifact.data,
-        })),
-      }
-      characterWorkflowAssistantPrompt = ''
-      characterWorkflowBuilderStatus = response.summary || ''
-      saveActiveWorkflowProjectSnapshot()
-      showToast(options.getLanguage() === 'zh-CN' ? '已调整运行草稿' : 'Run draft updated')
     } catch (error: any) {
       const message = error?.message || String(error)
       characterWorkflowBuilderStatus = message
@@ -4898,6 +4814,40 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         targetNodeIds: [targetNodeId],
         artifactIds: artifactId ? [artifactId] : [],
         parentAttemptId: attemptId || undefined,
+      },
+    })
+  }
+
+  function handleRunDraftArtifactContextRequest(node: HTMLElement): void {
+    if (!characterWorkflowRunState?.run) {
+      return
+    }
+    const artifactId = node.dataset.runArtifactId || ''
+    const artifact = characterWorkflowRunState.artifacts?.find((item) => item.id === artifactId)
+    if (!artifact) {
+      return
+    }
+    const zh = options.getLanguage() === 'zh-CN'
+    const message = window.prompt(
+      zh ? '你想如何修改这个运行结果？' : 'How should this run result change?',
+      ''
+    )
+    if (message === null) {
+      return
+    }
+    const instruction = message.trim()
+    if (!instruction) {
+      return
+    }
+    const targetNodeId = getRunImageArtifactTargetNodeId(artifact)
+    const isImageArtifact = artifact.type === 'image-asset' || artifact.type === 'image-attempt' || artifact.type === 'stale-marker'
+    void runCharacterWorkflow({
+      action: isImageArtifact ? 'reroll' : 'repair',
+      instruction,
+      scope: {
+        targetNodeIds: isImageArtifact && targetNodeId ? [targetNodeId] : [],
+        artifactIds: artifactId ? [artifactId] : [],
+        parentAttemptId: isImageArtifact ? findRunImageArtifactAttemptId(artifactId) || undefined : undefined,
       },
     })
   }
@@ -6281,6 +6231,27 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     event.preventDefault()
     void buildCharacterWorkflowFromPrompt()
   })
+
+  panel.addEventListener('contextmenu', (event) => {
+    const target = event.target as HTMLElement | null
+    const node = target?.closest<HTMLElement>('.chat-resource-node[data-run-artifact-id]')
+    if (!node || !panel.contains(node) || characterWorkflowActiveTabId !== 'run-draft') {
+      return
+    }
+    const artifactId = node.dataset.runArtifactId || ''
+    if (!artifactId) {
+      return
+    }
+    event.preventDefault()
+    event.stopPropagation()
+    const nodeId = node.dataset.chatWorkflowNodeId || ''
+    if (nodeId) {
+      characterResourceViewState.selectedNodeIds = [nodeId]
+      selectedWorkflowNodeId = nodeId
+      renderCharacterWorkflow()
+    }
+    handleRunDraftArtifactContextRequest(node)
+  }, true)
 
   navItems.forEach((button) => {
     button.addEventListener('click', () => setActiveNav(button))

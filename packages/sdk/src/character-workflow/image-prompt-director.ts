@@ -95,7 +95,6 @@ export function buildDirectedImageGenerationPrompt(input: DirectedImagePromptInp
     identityLock(input.profile),
     compositionStrategy(role, domain, input.control),
     styleStrategy(role, domain, input.control),
-    storyContext(role, input.profile),
     slotPromptForRole(role, input.promptText),
     globalVisualRules(role),
     negativeConstraints(role, domain, input.control),
@@ -207,7 +206,7 @@ function styleStrategy(
   domain: CharacterImageStyleDomain,
   control?: AgentImageGenerationControl
 ): string {
-  const preset = control?.imageStylePreset ? `Preset intent: ${formatPreset(control.imageStylePreset)}.` : ''
+  const preset = presetStyleStrategy(control?.imageStylePreset, role, domain)
   const localStyle = control?.stylePrompt ? `Local style pressure: ${control.stylePrompt}.` : ''
   const domainStyle: Record<CharacterImageStyleDomain, string> = {
     photoreal: [
@@ -224,15 +223,41 @@ function styleStrategy(
   return [domainStyle[domain], preset, localStyle].filter(Boolean).join('\n')
 }
 
-function storyContext(role: string, profile: CharacterImageProfile): string {
-  if (role === 'avatar' || role === 'character-overview-sheet') {
+function presetStyleStrategy(
+  preset: string | undefined,
+  role: string,
+  domain: CharacterImageStyleDomain
+): string {
+  const value = preset?.trim()
+  if (!value) {
     return ''
   }
-  const lines = [
-    profile.scenario ? `Scenario context: ${profile.scenario}` : '',
-    profile.worldContext ? `World context: ${profile.worldContext}` : '',
-  ].filter(Boolean)
-  return lines.length ? ['Story context:', ...lines].join('\n') : ''
+  const strategies: Record<string, string> = {
+    'roleplay-character-avatar': [
+      'Preset style: premium roleplay character avatar.',
+      domain === 'anime'
+        ? 'Use refined visual-novel/mobile-game character rendering: elegant face design, expressive eyes, clean line hierarchy, polished cel shading, soft gradient accents, crisp hair silhouette, tasteful highlights, and a finished profile-card feel.'
+        : 'Use high-appeal companion portrait rendering: flattering face light, readable eyes, intentional styling, premium profile-card finish, and a distinct non-generic identity.',
+      role === 'avatar' ? 'Prioritize face beauty, recognizability, subtle expression, and a clean bust composition over background complexity.' : '',
+    ].filter(Boolean).join(' '),
+    'character-sheet': 'Preset style: professional character design sheet. Use clean production-art presentation, consistent face family across views, readable outfit construction, controlled panel spacing, visual-only detail callouts, and no text labels.',
+    'photoreal-portrait': 'Preset style: polished photoreal portrait with natural skin texture, realistic hair, detailed eyes, flattering portrait light, and believable camera perspective.',
+    'cinematic-realism': 'Preset style: cinematic realism with filmic color, controlled contrast, motivated lighting, atmospheric depth, realistic materials, and grounded anatomy.',
+    'editorial-photography': 'Preset style: refined editorial photography with intentional styling, premium wardrobe language, clean composition, magazine-grade lighting, and confident pose direction.',
+    'high-fashion-editorial': 'Preset style: high-fashion editorial with sculptural silhouette, deliberate styling, luxurious material detail, poised expression, and bold but controlled art direction.',
+    'magazine-cover-gloss': 'Preset style: glossy magazine-cover finish with polished skin/hair, punchy lighting, clean background separation, strong eye contact, and premium color grading.',
+    'anime-visual-novel': 'Preset style: polished anime visual-novel key art with clean linework, expressive eyes, elegant face proportions, controlled cel shading, soft bloom, delicate highlights, and refined character appeal.',
+    'anime-mobile-game': 'Preset style: premium anime mobile-game character art with crisp silhouette, detailed eyes, polished hair shapes, readable costume layers, controlled effects, and high production value.',
+    'soft-anime-portrait': 'Preset style: soft anime portrait with gentle lighting, delicate facial rendering, translucent eye highlights, smooth cel shading, tasteful blush, and calm emotional tone.',
+    'oil-painting': 'Preset style: polished oil-painting character illustration with intentional brushwork, clear facial structure, rich color layering, and painterly depth without muddy details.',
+    'classical-portrait-painting': 'Preset style: classical portrait painting with dignified pose, controlled chiaroscuro, refined facial modeling, rich fabric handling, and timeless composition.',
+    'dreamy-soft-focus': 'Preset style: dreamy soft-focus character image with gentle bloom, low harshness, airy color, soft background separation, and clear face readability.',
+    'bokeh-portrait': 'Preset style: portrait with creamy bokeh, subject separation, expressive eyes, soft lens depth, and uncluttered background lights.',
+  }
+  if (strategies[value]) {
+    return strategies[value]
+  }
+  return `Preset style: ${formatPreset(value)}. Translate this preset into concrete visual choices for lighting, rendering finish, palette, texture, camera/composition discipline, and character appeal; do not treat it as a vague label.`
 }
 
 function slotPrompt(promptText: string): string {
