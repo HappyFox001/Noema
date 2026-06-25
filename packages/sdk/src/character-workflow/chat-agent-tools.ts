@@ -584,7 +584,7 @@ async function maybeGenerateImageArtifacts(
         summary: 'Image generated successfully.',
       }))
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      const message = formatImageGenerationError(error)
       artifacts.push(createImageAttemptArtifact(context.runId, candidateId, prompts[index].target.nodeId, attemptBase, {
         status: 'failed',
         error: message,
@@ -893,6 +893,32 @@ function parseJsonObject(text: string): Record<string, any> | null {
 
 function stringField(value: unknown, fallback: string): string {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback
+}
+
+function formatImageGenerationError(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return String(error)
+  }
+  const details = collectErrorDetails((error as Error & { cause?: unknown }).cause)
+  return [error.message, details].filter(Boolean).join(': ')
+}
+
+function collectErrorDetails(value: unknown): string {
+  if (!value) {
+    return ''
+  }
+  if (value instanceof Error) {
+    return [value.name, value.message, collectErrorDetails((value as Error & { cause?: unknown }).cause)].filter(Boolean).join(': ')
+  }
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    return [
+      typeof record.code === 'string' ? record.code : '',
+      typeof record.reason === 'string' ? record.reason : '',
+      typeof record.message === 'string' ? record.message : '',
+    ].filter(Boolean).join(': ')
+  }
+  return String(value)
 }
 
 function arrayField(value: unknown): string[] {

@@ -1028,8 +1028,11 @@ export function createCharacterSuperAgent(
         const imageIds = (imageResult.artifacts ?? [])
           .filter((artifact) => artifact.kind === 'image-asset')
           .map((artifact) => artifact.id)
+        const failedAttemptIds = (imageResult.artifacts ?? [])
+          .filter((artifact) => artifact.kind === 'image-attempt' && imageAttemptStatus(artifact) === 'failed')
+          .map((artifact) => artifact.id)
         const imageTargetArtifactIds = collectImageTargetArtifactIds(state.draft?.imageTargetArtifactIds ?? {}, imageResult.artifacts ?? [])
-        if (!imageIds.length) {
+        if (!imageIds.length && !failedAttemptIds.length) {
           const diagnostic = (imageResult.artifacts ?? [])
             .map((artifact) => [artifact.title, artifact.summary].filter(Boolean).join(': '))
             .filter(Boolean)

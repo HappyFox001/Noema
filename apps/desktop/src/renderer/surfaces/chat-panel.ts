@@ -4985,6 +4985,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       : typeof record?.toolName === 'string'
         ? record.toolName
         : undefined
+    logCharacterWorkflowImageAttemptFailure(type, artifact)
     characterWorkflowExecutingRunState.events = [
       ...(characterWorkflowExecutingRunState.events ?? []),
       {
@@ -5062,6 +5063,30 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         scheduleCharacterWorkflowRunRender()
       }
     }
+  }
+
+  function logCharacterWorkflowImageAttemptFailure(type: string, artifact: Record<string, any> | undefined): void {
+    if (type !== 'artifact.created' || !artifact || artifact.kind !== 'image-attempt') {
+      return
+    }
+    const data = artifact.data && typeof artifact.data === 'object' ? artifact.data as Record<string, any> : {}
+    if (data.status !== 'failed') {
+      return
+    }
+    const model = data.model && typeof data.model === 'object' ? data.model as Record<string, unknown> : {}
+    console.warn('[CharacterWorkflow] Image attempt failed:', {
+      artifactId: typeof artifact.id === 'string' ? artifact.id : undefined,
+      targetNodeId: data.targetNodeId,
+      targetTitle: data.targetTitle,
+      imageRole: data.imageRole,
+      provider: model.provider,
+      modelName: model.modelName,
+      apiId: model.apiId,
+      size: data.size,
+      action: data.action,
+      parentAttemptId: data.parentAttemptId,
+      error: data.error || artifact.summary,
+    })
   }
 
   function patchCharacterWorkflowRunProgress(

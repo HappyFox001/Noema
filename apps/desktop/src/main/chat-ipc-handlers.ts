@@ -47,6 +47,33 @@ export interface ChatIpcConfiguredModel {
   baseUrl: string
 }
 
+function logCharacterWorkflowImageAttemptFailure(event: CharacterAgentEvent): void {
+  if (event.type !== 'artifact.created' || event.artifact.kind !== 'image-attempt') {
+    return
+  }
+  const data = event.artifact.data && typeof event.artifact.data === 'object'
+    ? event.artifact.data as Record<string, any>
+    : {}
+  if (data.status !== 'failed') {
+    return
+  }
+  const model = data.model && typeof data.model === 'object' ? data.model as Record<string, unknown> : {}
+  console.warn('[CharacterWorkflow] Image attempt failed:', {
+    runId: event.runId,
+    artifactId: event.artifact.id,
+    targetNodeId: data.targetNodeId,
+    targetTitle: data.targetTitle,
+    imageRole: data.imageRole,
+    provider: model.provider,
+    modelName: model.modelName,
+    apiId: model.apiId,
+    size: data.size,
+    action: data.action,
+    parentAttemptId: data.parentAttemptId,
+    error: data.error || event.artifact.summary,
+  })
+}
+
 export interface ChatSendMessageRequest extends ChatRuntimeTurnRequest {
   streamId?: string
 }
@@ -285,6 +312,7 @@ export function registerChatIpcHandlers(
         artifacts,
         modelResolver,
         onEvent: (agentEvent: CharacterAgentEvent) => {
+          logCharacterWorkflowImageAttemptFailure(agentEvent)
           if (request.streamId) {
             event.sender.send('chat:characterWorkflowEvent', { streamId: request.streamId, event: agentEvent })
           }
