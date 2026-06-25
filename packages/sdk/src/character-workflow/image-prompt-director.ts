@@ -76,7 +76,7 @@ export function createDirectedAutomaticImagePrompt(
   const rolePrompt = roleAutomaticPrompt(role, profile)
   return [
     rolePrompt,
-    target.imageAssetPurpose ? `Asset purpose: ${target.imageAssetPurpose}` : '',
+    targetPurpose(role, target.imageAssetPurpose),
     variant,
   ].filter(Boolean).join('\n')
 }
@@ -90,13 +90,13 @@ export function buildDirectedImageGenerationPrompt(input: DirectedImagePromptInp
   const sections = [
     `Asset role: ${role}.`,
     primaryObjective(role, domain),
-    input.target.imageAssetPurpose ? `Target purpose: ${input.target.imageAssetPurpose}.` : '',
+    targetPurpose(role, input.target.imageAssetPurpose),
     input.targetIndex > 1 ? `Image slot: ${input.targetIndex}. Keep identity stable while making this slot visually distinct from earlier slots.` : '',
     identityLock(input.profile),
     compositionStrategy(role, domain, input.control),
     styleStrategy(role, domain, input.control),
     storyContext(role, input.profile),
-    slotPrompt(input.promptText),
+    slotPromptForRole(role, input.promptText),
     globalVisualRules(role),
     negativeConstraints(role, domain, input.control),
   ]
@@ -122,9 +122,10 @@ function roleAutomaticPrompt(role: string, profile: CharacterImageProfile): stri
   const prompts: Record<string, string> = {
     avatar: [
       'Canonical identity avatar for an AI roleplay character.',
-      'One character only, bust or upper-body portrait, clear face, direct eye contact or slightly off-camera gaze, attractive readable silhouette, confident inviting expression, subtle mature companion appeal.',
+      'Generate exactly one depiction of exactly one character in one continuous portrait image.',
+      'Bust or upper-body portrait, clear face, direct eye contact or slightly off-camera gaze, attractive readable silhouette, confident inviting expression, subtle mature companion appeal.',
       'Prioritize exact face structure, eye shape, brows, nose, lips, hairstyle, body frame, skin tone, signature accessory or motif, and default outfit language.',
-      'Use a simple background that does not compete with the face.',
+      'Use a simple background that does not compete with the face. No alternate version, no duplicate face, no side-by-side comparison, no model sheet.',
     ].join(' '),
     'character-overview-sheet': [
       'Large production model sheet for the same character using any supplied reference image inputs as the identity lock.',
@@ -145,13 +146,24 @@ function roleAutomaticPrompt(role: string, profile: CharacterImageProfile): stri
 function primaryObjective(role: string, domain: CharacterImageStyleDomain): string {
   if (role === 'avatar') {
     return domain === 'anime'
-      ? 'Primary objective: create a premium mobile/visual-novel character avatar with memorable eyes, hair silhouette, clean upper-body framing, and immediate roleplay appeal.'
-      : 'Primary objective: create a premium AI companion profile portrait with natural facial detail, flattering light, strong eye contact, and immediate roleplay appeal.'
+      ? 'Primary objective: create one finished single-subject mobile/visual-novel character avatar with memorable eyes, hair silhouette, clean upper-body framing, and immediate roleplay appeal. The output must not be a reference sheet, character sheet, variant sheet, or two-pose layout.'
+      : 'Primary objective: create one finished single-subject AI companion profile portrait with natural facial detail, flattering light, strong eye contact, and immediate roleplay appeal. The output must not be a reference sheet, character sheet, variant sheet, or two-pose layout.'
   }
   if (role === 'character-overview-sheet') {
     return 'Primary objective: expand the supplied character identity into a production reference sheet without changing the face family, age impression, hairstyle, proportions, or outfit language.'
   }
   return 'Primary objective: create a character-first role-card image that supports the story while preserving the stable identity.'
+}
+
+function targetPurpose(role: string, purpose: string | undefined): string {
+  if (role === 'avatar') {
+    return [
+      'Target purpose: final avatar image for the role card.',
+      purpose ? `Internal intent: ${purpose}` : '',
+      'Render it as a single finished portrait only; do not visualize reference-link, identity-lock, or production-planning concepts as panels, duplicates, comparison views, or extra faces.',
+    ].filter(Boolean).join(' ')
+  }
+  return purpose ? `Target purpose: ${purpose}.` : ''
 }
 
 function identityLock(profile: CharacterImageProfile): string {
@@ -174,7 +186,7 @@ function compositionStrategy(
     control?.seedMode ? `Seed strategy: ${control.seedMode}.` : '',
   ].filter(Boolean).join(' ')
   const roleLines: Record<string, string> = {
-    avatar: 'Composition: one subject only; bust to half-body crop; face large enough to read; no full-body sheet; no collage; no multiple poses; simple depth-separated background.',
+    avatar: 'Composition: one subject only; exactly one face and one body depiction; bust to half-body crop; face large enough to read; no full-body sheet; no collage; no panels; no split-screen; no inset closeups; no mirrored duplicate; no same character twice; no multiple poses; simple depth-separated background.',
     'character-overview-sheet': 'Composition: clean model-sheet layout with visual panels only; include full-body front, back, side or three-quarter view, plus close details for face, hair, hands, legs, shoes, outfit materials, and 2-4 expressions; no written labels.',
     'hero-cover': 'Composition: cover-quality character-first framing; readable silhouette; environment supports the premise without hiding the body or face.',
     'opening-moment': 'Composition: concrete scene staging with the character in the foreground, expressive pose, readable setting, and clear entry point for roleplay.',
@@ -230,6 +242,21 @@ function slotPrompt(promptText: string): string {
   ].join('\n')
 }
 
+function slotPromptForRole(role: string, promptText: string): string {
+  const avatarContract = role === 'avatar'
+    ? [
+      'Avatar slot contract:',
+      'This image is not a concept board. Generate one final role-card avatar portrait only.',
+      'Exactly one visible depiction of the character: one head, one face, one bust/upper body, one continuous camera frame.',
+      'Do not include alternate designs, second expressions, extra heads, face closeup insets, comparison panels, model-sheet panels, or a second copy of the same character.',
+    ].join('\n')
+    : ''
+  return [
+    avatarContract,
+    slotPrompt(promptText),
+  ].filter(Boolean).join('\n')
+}
+
 function globalVisualRules(role: string): string {
   return [
     'Global visual rules:',
@@ -267,7 +294,7 @@ function negativeConstraints(
     'speech bubble',
   ]
   const roleNegatives: Record<string, string[]> = {
-    avatar: ['multiple people', 'collage', 'reference sheet', 'full-body turnaround', 'side profile only', 'covered face', 'mask hiding face', 'generic face', 'age ambiguity'],
+    avatar: ['multiple people', 'two characters', 'duplicate character', 'same character twice', 'multiple faces', 'two faces', 'extra face', 'face inset', 'portrait inset', 'split screen', 'diptych', 'triptych', 'before and after', 'alternate version', 'variant sheet', 'collage', 'reference sheet', 'character sheet', 'model sheet', 'full-body turnaround', 'multiple poses', 'side profile only', 'covered face', 'mask hiding face', 'generic face', 'age ambiguity'],
     'character-overview-sheet': ['written labels', 'text labels', 'different faces between panels', 'different hairstyles between panels', 'random outfit swaps', 'cropped feet', 'cropped hands'],
     'hero-cover': ['face hidden', 'tiny character', 'empty landscape', 'busy unreadable background'],
     'opening-moment': ['empty room', 'environment-only image', 'character hidden'],

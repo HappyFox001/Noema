@@ -1398,7 +1398,7 @@ export function createStandardCharacterWorkflow(
   if (avatarTarget) {
     Object.assign(avatarTarget.config, {
       imageRole: 'avatar',
-      assetPurpose: 'Identity-lock avatar.jpg: the canonical portrait for the character. It must be high quality, face-forward, visually appealing, and reusable through graph reference links for later character assets.',
+      assetPurpose: 'Final avatar.jpg for the role card: one single-subject bust portrait with one clear face, strong appeal, stable identity cues, and no panels, variants, duplicate faces, or reference-sheet layout.',
     })
   }
   const avatarControl = nodes.find((nodeItem) => nodeItem.id === 'avatar-image-control')

@@ -602,7 +602,7 @@ export function createUiConfigOverrides(spec: CharacterWorkflowBuilderSpec): Rec
     },
     'avatar-image-target': {
       imageRole: 'avatar',
-      assetPurpose: 'Identity-lock avatar.jpg: first generate one polished canonical portrait that later assets use as the character reference.',
+      assetPurpose: 'Final avatar.jpg for the role card: one single-subject bust portrait with one clear face, stable identity cues, and no panels, variants, duplicate faces, or reference-sheet layout.',
     },
     'avatar-image-control': {
       targetImageCount: 1,
@@ -1046,9 +1046,8 @@ function applySpecToWorkflow(workflow: CharacterWorkflow, spec: CharacterWorkflo
   avatarTarget?.config && Object.assign(avatarTarget.config, {
     imageRole: 'avatar',
     assetPurpose: [
-      'Generate the canonical identity-lock portrait for this character.',
-      'Quality should match a polished production character avatar: clear face, strong appeal, stable hair/eye/body identity cues, and no collage layout.',
-      'Later character assets can use this image through explicit workflow reference links.',
+      'Generate one final avatar.jpg for the role card.',
+      'Quality should match a polished production character avatar: one single-subject bust portrait, one clear face, strong appeal, stable hair/eye/body identity cues, and no panels, variants, duplicate faces, or reference-sheet layout.',
     ].join(' '),
   })
   const avatarControl = workflow.nodes.find((node) => node.id === 'avatar-image-control')
