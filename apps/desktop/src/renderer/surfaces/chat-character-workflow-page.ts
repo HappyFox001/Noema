@@ -2584,7 +2584,6 @@ function getCharacterFieldArtifactLabel(artifact: NonNullable<CharacterResourceR
 function getRunCanvasArtifacts(artifacts: NonNullable<CharacterResourceRunState['artifacts']>): NonNullable<CharacterResourceRunState['artifacts']> {
   const filtered = getRoleResourceArtifacts(artifacts)
     .filter((artifact) => artifact.type !== 'character-card-draft')
-    .filter((artifact) => artifact.type !== 'image-prompt')
     .filter((artifact) => !isHiddenRunCanvasFieldArtifact(artifact))
   return filtered.some((artifact) => artifact.type === 'character-card-field')
     ? filtered.filter((artifact) => artifact.type !== 'character-card-final')

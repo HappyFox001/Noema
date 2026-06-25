@@ -911,12 +911,24 @@ function resolveWaveSpeedRequest(
     }
   }
   if (lower === 'openai/gpt-image-2/text-to-image') {
+    return {
+      modelName: hasReferenceImages ? 'openai/gpt-image-2/edit' : normalized,
+      referenceField: hasReferenceImages ? 'images' : null,
+      referenceImages,
+    }
+  }
+  if (lower === 'openai/gpt-image-2/edit') {
     assertReferenceModel(
       entry,
       modelName,
-      !hasReferenceImages,
-      'Use openai/gpt-image-2/edit for reference-image requests; the text-to-image endpoint only accepts text prompts.'
+      hasReferenceImages,
+      'Use openai/gpt-image-2/text-to-image for prompt-only requests; the edit endpoint requires reference images.'
     )
+    return {
+      modelName: normalized,
+      referenceField: 'images',
+      referenceImages,
+    }
   }
   if (hasReferenceImages && /\/image-to-image$|\/img2img$/i.test(normalized)) {
     return {
@@ -1032,7 +1044,7 @@ function formatWaveSpeedImageSize(size: string | undefined, request: WaveSpeedRe
 }
 
 function buildWaveSpeedRequestBody(prompt: string, size: string | undefined, request: WaveSpeedRequestShape): Record<string, unknown> {
-  if (request.modelName.toLowerCase() === 'openai/gpt-image-2/text-to-image') {
+  if (/^openai\/gpt-image-2\/(?:text-to-image|edit)$/i.test(request.modelName)) {
     return {
       prompt,
       aspect_ratio: aspectRatioForProvider(size) ?? '1:1',
