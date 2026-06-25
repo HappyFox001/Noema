@@ -1243,7 +1243,6 @@ export function createStandardCharacterWorkflow(
       targetImageCount: 1,
       imageStyleDomain: 'auto',
       shotType: 'knee-up',
-      aspectRatio: '1:1',
       consistencyMode: 'same-character',
       seedMode: 'lock-character',
     })

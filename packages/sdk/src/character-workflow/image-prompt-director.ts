@@ -177,10 +177,10 @@ function stylePromptForImage(
 ): string {
   if (role === 'avatar') {
     const avatarDomainPrompts: Record<CharacterImageStyleDomain, string> = {
-      anime: 'anime style illustration, polished visual novel character portrait, clean linework, expressive detailed eyes, soft light, simple background, high quality anime art',
-      photoreal: 'realistic portrait photography, warm natural light, shallow depth of field, natural skin tone and texture, clean lens rendering, high quality photo',
-      illustration: 'polished character portrait illustration, refined facial structure, clean silhouette, soft light, simple background, high quality artwork',
-      stylized: 'stylized character portrait, clear facial design, refined shape language, soft light, clean background, polished high quality finish',
+      anime: 'anime style illustration, mature visual novel character portrait, clean linework, expressive detailed eyes, confident alluring expression, elegant body silhouette, tasteful stylish outfit, soft light, simple background, high quality anime art',
+      photoreal: 'realistic glamour portrait photography, mature confident presence, refined makeup, elegant body silhouette, tasteful wardrobe styling, warm natural light, shallow depth of field, natural skin tone and texture, clean lens rendering, high quality photo',
+      illustration: 'polished mature character portrait illustration, refined facial structure, expressive gaze, elegant body silhouette, tasteful wardrobe styling, clean silhouette, soft light, simple background, high quality artwork',
+      stylized: 'stylized mature character portrait, clear facial design, confident alluring presence, elegant body silhouette, tasteful fashion styling, refined shape language, soft light, clean background, polished high quality finish',
     }
     return compactJoin([
       avatarDomainPrompts[domain],
@@ -189,10 +189,10 @@ function stylePromptForImage(
   }
   if (role === 'character-overview-sheet') {
     const overviewDomainPrompts: Record<CharacterImageStyleDomain, string> = {
-      anime: 'anime character design sheet, clean linework, consistent face across views, high quality anime art',
-      photoreal: 'realistic character reference sheet, studio lighting, full-body views, high detail',
-      illustration: 'professional character illustration sheet, clean silhouettes, readable costume construction',
-      stylized: 'stylized character design sheet, clean shapes, consistent identity, polished color',
+      anime: 'mature anime character design sheet, clean linework, elegant body silhouette, consistent face across views, tasteful outfit construction, high quality anime art',
+      photoreal: 'realistic mature character reference sheet, studio lighting, full-body views, elegant body silhouette, tasteful wardrobe construction, high detail',
+      illustration: 'professional mature character illustration sheet, clean silhouettes, elegant body silhouette, readable costume construction, refined visual appeal',
+      stylized: 'stylized mature character design sheet, clean shapes, elegant body silhouette, consistent identity, tasteful fashion styling, polished color',
     }
     return compactJoin([
       overviewDomainPrompts[domain],
@@ -200,10 +200,10 @@ function stylePromptForImage(
     ])
   }
   const domainPrompts: Record<CharacterImageStyleDomain, string> = {
-    anime: 'anime style illustration, polished visual novel character art, clean linework, expressive detailed eyes, pixiv style, soft lighting, high quality anime art',
-    photoreal: 'realistic photography, portrait, natural skin texture, detailed eyes, soft natural light, shallow depth of field, high quality photo',
-    illustration: 'polished character illustration, refined facial structure, clean silhouette, detailed costume, high quality artwork',
-    stylized: 'stylized character art, clear silhouette, refined face, polished color, high quality role-card finish',
+    anime: 'anime style illustration, mature visual novel character art, clean linework, expressive detailed eyes, confident alluring expression, elegant body silhouette, pixiv style, soft lighting, high quality anime art',
+    photoreal: 'realistic glamour photography, mature confident presence, natural skin texture, detailed eyes, refined makeup, elegant body silhouette, soft natural light, shallow depth of field, high quality photo',
+    illustration: 'polished mature character illustration, refined facial structure, expressive gaze, elegant body silhouette, clean silhouette, detailed tasteful costume, high quality artwork',
+    stylized: 'stylized mature character art, clear silhouette, refined face, confident alluring presence, elegant body silhouette, polished color, high quality role-card finish',
   }
   return compactJoin([
     domainPrompts[domain],
