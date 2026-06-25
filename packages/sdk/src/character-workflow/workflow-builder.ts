@@ -197,7 +197,7 @@ async function createCharacterWorkflowFromPrompt(
   const response = await sendChatTurnWithConfiguredModel(request.modelConfig, {
     input: request.prompt,
     language: request.language,
-    options: { temperature: 0.32, top_p: 0.82 },
+    options: { temperature: 0.32 },
     messages: [{
       role: 'system',
       content: createWorkflowBuilderSystemPrompt(request.language),
@@ -472,7 +472,7 @@ async function executeCharacterWorkflowEditorStep(
       graph,
     }),
     language: request.language,
-    options: { temperature: 0.24, top_p: 0.78 },
+    options: { temperature: 0.24 },
     messages: [{
       role: 'system',
       content: createWorkflowEditorSystemPrompt(request.language),
@@ -607,16 +607,10 @@ export function createUiConfigOverrides(spec: CharacterWorkflowBuilderSpec): Rec
     'avatar-image-control': {
       targetImageCount: 1,
       imageStyleDomain: 'auto',
-      imageStylePreset: 'roleplay-character-avatar',
       stylePrompt: spec.stylePrompt,
       shotType: 'knee-up',
-      aspectRatio: '1:1',
       consistencyMode: 'same-character',
       seedMode: 'lock-character',
-      negativePrompt: [
-        spec.mustNot.join(', '),
-        'text, watermark, logo, low quality, blurry, bad anatomy, deformed face, multiple people, duplicate face',
-      ].filter(Boolean).join(', '),
     },
     'overview-sheet-image-target': {
       imageRole: 'character-overview-sheet',
@@ -625,16 +619,11 @@ export function createUiConfigOverrides(spec: CharacterWorkflowBuilderSpec): Rec
     'overview-sheet-image-control': {
       targetImageCount: 1,
       imageStyleDomain: 'auto',
-      imageStylePreset: 'character-sheet',
       stylePrompt: spec.stylePrompt,
       shotType: 'full-body',
       aspectRatio: '16:9',
       consistencyMode: 'same-character',
       seedMode: 'lock-character',
-      negativePrompt: [
-        spec.mustNot.join(', '),
-        'text, labels, watermark, logo, inconsistent face, deformed hands, extra fingers, missing fingers, bad feet, malformed legs, duplicate limbs',
-      ].filter(Boolean).join(', '),
     },
     'opening-layout-target': {
       layoutKind: 'immersive-card-css',
@@ -711,7 +700,7 @@ function createWorkflowBuilderSystemPrompt(language: CharacterWorkflowLanguage):
     localeRule,
     'The final workflow must always generate a complete role card, an opening layout target, and a graph-declared character image workflow. Express image dependencies with links; for the standard character sheet, generate avatar first and connect avatar-image-target.imageAsset to overview-sheet-image-target.referenceImage.',
     'Do not write final character-card fields here. This is workflow configuration only.',
-    'For images, image-target declares a role-card visual purpose and image-generation-control declares count, imageStyleDomain, lightweight style text, shot, aspect ratio, seed, consistency, and negative prompt. Use graph links to declare reference-image dependencies instead of relying on prompt-only ordering. Use imageStyleDomain for photoreal/anime/illustration/stylized routing; leave it auto when appearancePrompt and image control should decide.',
+    'For images, image-target declares a role-card visual purpose and image-generation-control declares count, imageStyleDomain, lightweight style text, shot, aspect ratio, seed, and consistency. Use graph links to declare reference-image dependencies instead of relying on prompt-only ordering. Use imageStyleDomain only for photoreal/anime/illustration/stylized routing; leave it auto when appearancePrompt and image control should decide. Adult or sensual visual tone is already folded into the runtime domain defaults; do not create a separate adult/sensual style domain.',
     'Return only valid JSON. No markdown, comments, or surrounding prose.',
     'Schema:',
     '{',
@@ -789,9 +778,9 @@ function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): 
     '- opening-layout-target: use this for the CSS/HTML-style role-card opening presentation that combines title, tags, opening text, and generated images.',
     '- image-target.imageRole: choose the role-card visual purpose from options such as avatar, character-overview-sheet, hero-cover, full-body, opening-moment, story-moment, expression, outfit-detail, relationship-moment, or world-context. Do not use scene as a standalone image type.',
     '- image-target.assetPurpose: what this exact image should communicate and which story/text field it supports.',
-    '- image-generation-control: image count, imageStyleDomain, imageStylePreset, concise stylePrompt, shotType, aspectRatio, consistencyMode, seedMode, negativePrompt. Use imageStyleDomain for photoreal/anime/illustration/stylized routing; use auto when appearancePrompt and image control should decide. Never put imageType or composition here.',
+    '- image-generation-control: image count, imageStyleDomain, concise stylePrompt, shotType, aspectRatio, consistencyMode, seedMode. Use imageStyleDomain only for photoreal/anime/illustration/stylized routing; use auto when appearancePrompt and image control should decide. Adult or sensual visual tone is part of the runtime domain defaults. Never create a new sensual style domain, never infer additional sensual styling from unrelated role text, and never put imageType or composition here.',
     '- For character resources, prefer graph-declared asset dependencies: link avatar-image-target.imageAsset into overview-sheet-image-target.referenceImage when the overview should preserve the avatar identity. Additional pictures should be separate image-target nodes when they serve different card/story purposes, and/or image-generation-control.targetImageCount for variants.',
-    '- Do not connect hard-constraint nodes directly into image-target. Put image-specific exclusions in image-generation-control.negativePrompt.',
+    '- Do not connect hard-constraint nodes directly into image-target. Keep image-specific exclusions in the constraint node or the target purpose; image controls should stay lightweight.',
     '- world-card-target / npc-pack-target / npc-target / plot-arc-target / scene-card-target: add these when the request asks for multi-NPC, world, setting, story arc, or scene planning.',
     '',
     'Valid node types:',
@@ -1057,16 +1046,10 @@ function applySpecToWorkflow(workflow: CharacterWorkflow, spec: CharacterWorkflo
   avatarControl?.config && Object.assign(avatarControl.config, {
     targetImageCount: 1,
     imageStyleDomain: 'auto',
-    imageStylePreset: 'roleplay-character-avatar',
     stylePrompt: spec.stylePrompt,
     shotType: 'knee-up',
-    aspectRatio: '1:1',
     consistencyMode: 'same-character',
     seedMode: 'lock-character',
-    negativePrompt: [
-      spec.mustNot.join(', '),
-      'text, watermark, logo, low quality, blurry, bad anatomy, deformed face, multiple people, duplicate face',
-    ].filter(Boolean).join(', '),
   })
   const overviewTarget = workflow.nodes.find((node) => node.id === 'overview-sheet-image-target')
   overviewTarget?.config && Object.assign(overviewTarget.config, {
@@ -1082,16 +1065,11 @@ function applySpecToWorkflow(workflow: CharacterWorkflow, spec: CharacterWorkflo
   overviewControl?.config && Object.assign(overviewControl.config, {
     targetImageCount: 1,
     imageStyleDomain: 'auto',
-    imageStylePreset: 'character-sheet',
     stylePrompt: spec.stylePrompt,
     shotType: 'full-body',
     aspectRatio: '16:9',
     consistencyMode: 'same-character',
     seedMode: 'lock-character',
-    negativePrompt: [
-      spec.mustNot.join(', '),
-      'text, labels, watermark, logo, inconsistent face, duplicate character identity, deformed hands, extra fingers, missing fingers, bad feet, malformed legs, duplicate limbs',
-    ].filter(Boolean).join(', '),
   })
   byType.get('opening-layout-target')?.config && Object.assign(byType.get('opening-layout-target')!.config, {
     layoutKind: 'immersive-card-css',

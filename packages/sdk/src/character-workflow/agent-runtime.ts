@@ -113,13 +113,11 @@ export interface AgentImageGenerationControl {
   nodeId: string
   targetImageCount: number
   imageStyleDomain: string
-  imageStylePreset: string
   stylePrompt: string
   shotType: string
   aspectRatio: string
   consistencyMode: string
   seedMode: string
-  negativePrompt: string
   incomingRelations: CharacterAgentRelation[]
 }
 
@@ -617,13 +615,11 @@ export function compileCharacterAgentRunContext(
     nodeId: node.id,
     targetImageCount: numberValue(node.config.targetImageCount, 1),
     imageStyleDomain: stringValue(node.config.imageStyleDomain, 'auto'),
-    imageStylePreset: stringValue(node.config.imageStylePreset, stringListValue(node.config.imageStylePresets)[0] ?? ''),
     stylePrompt: stringValue(node.config.stylePrompt),
     shotType: stringValue(node.config.shotType, 'auto'),
     aspectRatio: stringValue(node.config.aspectRatio, '1:1'),
     consistencyMode: stringValue(node.config.consistencyMode, 'same-character'),
     seedMode: stringValue(node.config.seedMode, 'lock-character'),
-    negativePrompt: stringValue(node.config.negativePrompt),
     incomingRelations: incomingRelations(relations, node.id),
   }))
   const fieldGenerationControls = (nodesByType.get('field-generation-control') ?? []).map((node) => ({
@@ -1032,8 +1028,11 @@ export function createCharacterSuperAgent(
         const imageIds = (imageResult.artifacts ?? [])
           .filter((artifact) => artifact.kind === 'image-asset')
           .map((artifact) => artifact.id)
+        const failedAttemptIds = (imageResult.artifacts ?? [])
+          .filter((artifact) => artifact.kind === 'image-attempt' && imageAttemptStatus(artifact) === 'failed')
+          .map((artifact) => artifact.id)
         const imageTargetArtifactIds = collectImageTargetArtifactIds(state.draft?.imageTargetArtifactIds ?? {}, imageResult.artifacts ?? [])
-        if (!imageIds.length) {
+        if (!imageIds.length && !failedAttemptIds.length) {
           const diagnostic = (imageResult.artifacts ?? [])
             .map((artifact) => [artifact.title, artifact.summary].filter(Boolean).join(': '))
             .filter(Boolean)
@@ -1116,6 +1115,65 @@ export function createCharacterSuperAgent(
         const result = await executeImageTargets(phase, readyImageRequirements.map((requirement) => requirement.targetNodeId))
         return result.ran
       }
+      const applyFieldActionAndWriteArtifacts = async (action: CharacterAgentAction, summary?: string, writeDraft = true) => {
+        const beforeFields = { ...(state.draft?.fields ?? {}) }
+        state = {
+          ...state,
+          draft: applyCharacterAgentAction(state.draft!, action, context, now()),
+        }
+        for (const fieldArtifact of createFieldArtifactsForChangedFields(context, state.draft!, beforeFields)) {
+          await writeArtifact(fieldArtifact)
+        }
+        state = {
+          ...state,
+          draft: {
+            ...state.draft!,
+            notes: appendUnique(state.draft!.notes, summary ? [summary] : []),
+            updatedAt: now(),
+          },
+        }
+        if (writeDraft) {
+          await writeArtifact(createDraftArtifact(context, state.draft))
+        }
+      }
+      const completeMissingRequiredFields = async (phase: CharacterAgentPhase, reason: string): Promise<boolean> => {
+        let missingFields = getMissingCharacterDraftFields(state.draft, context)
+        if (!missingFields.length) {
+          return true
+        }
+        const maxTurns = missingFields.length + 4
+        for (let turn = 1; turn <= maxTurns && missingFields.length; turn += 1) {
+          const requiredField = missingFields[0]
+          const requirements = refreshRequirements()
+          const decisionResult = await callTool('decide_character_card_next_step', phase, {
+            context,
+            draft: state.draft,
+            requirements,
+            completionPass: {
+              reason,
+              requiredField,
+              missingFields,
+            },
+            turn: `completion-${turn}`,
+            maxTurns,
+            artifacts: state.artifacts.map((artifact) => ({
+              id: artifact.id,
+              kind: artifact.kind,
+              title: artifact.title,
+              summary: artifact.summary,
+            })),
+          })
+          const decision = decisionFromToolResult(decisionResult, context, state.draft, turn === maxTurns)
+          const action = selectMissingFieldAction(decision.actions, requiredField)
+          if (!action) {
+            break
+          }
+          await applyFieldActionAndWriteArtifacts(action, decision.summary)
+          missingFields = getMissingCharacterDraftFields(state.draft, context)
+        }
+        refreshRequirements()
+        return missingFields.length === 0
+      }
       const ensureImagePrerequisites = async (phase: CharacterAgentPhase): Promise<boolean> => {
         let missingFields = getMissingImagePrerequisiteFields(state.draft, context)
         if (!missingFields.length) {
@@ -1142,23 +1200,7 @@ export function createCharacterSuperAgent(
           if (!action) {
             break
           }
-          const beforeFields = { ...(state.draft?.fields ?? {}) }
-          state = {
-            ...state,
-            draft: applyCharacterAgentAction(state.draft!, action, context, now()),
-          }
-          for (const fieldArtifact of createFieldArtifactsForChangedFields(context, state.draft!, beforeFields)) {
-            await writeArtifact(fieldArtifact)
-          }
-          state = {
-            ...state,
-            draft: {
-              ...state.draft!,
-              notes: appendUnique(state.draft!.notes, [decision.summary]),
-              updatedAt: now(),
-            },
-          }
-          await writeArtifact(createDraftArtifact(context, state.draft))
+          await applyFieldActionAndWriteArtifacts(action, decision.summary)
           missingFields = getMissingImagePrerequisiteFields(state.draft, context)
         }
         refreshRequirements()
@@ -1325,14 +1367,7 @@ export function createCharacterSuperAgent(
                 },
               }
             } else {
-              const beforeFields = { ...(state.draft?.fields ?? {}) }
-              state = {
-                ...state,
-                draft: applyCharacterAgentAction(state.draft!, action, context, now()),
-              }
-              for (const fieldArtifact of createFieldArtifactsForChangedFields(context, state.draft!, beforeFields)) {
-                await writeArtifact(fieldArtifact)
-              }
+              await applyFieldActionAndWriteArtifacts(action, undefined, false)
             }
             await writeArtifact(createDraftArtifact(context, state.draft))
           }
@@ -1355,6 +1390,8 @@ export function createCharacterSuperAgent(
             }
           }
         }
+
+        await completeMissingRequiredFields('produce', 'complete required character-card fields before inspection and image generation')
 
         for (let attempt = 0; attempt < context.requirements.length; attempt += 1) {
           if (!await executeReadyImageRequirements('produce')) {
@@ -1406,18 +1443,21 @@ export function createCharacterSuperAgent(
             } else if (action.type === 'create_artifact') {
               await writeArtifact(createActionArtifact(context, state.draft!, action))
             } else {
-              const beforeFields = { ...(state.draft?.fields ?? {}) }
-              state = {
-                ...state,
-                draft: applyCharacterAgentAction(state.draft!, action, context, now()),
-              }
-              for (const fieldArtifact of createFieldArtifactsForChangedFields(context, state.draft!, beforeFields)) {
-                await writeArtifact(fieldArtifact)
-              }
+              await applyFieldActionAndWriteArtifacts(action, undefined, false)
             }
             await writeArtifact(createDraftArtifact(context, state.draft))
           }
           refreshRequirements()
+        }
+
+        await completeMissingRequiredFields('repair', 'complete required character-card fields after quality repair')
+        for (let attempt = 0; attempt < context.requirements.length; attempt += 1) {
+          if (!await executeReadyImageRequirements('repair')) {
+            break
+          }
+          if (areAllRequiredRequirementsDone(refreshRequirements())) {
+            break
+          }
         }
 
         const finalRequirements = refreshRequirements()

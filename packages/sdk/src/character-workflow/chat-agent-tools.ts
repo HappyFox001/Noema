@@ -24,10 +24,15 @@ import {
   getDirectedImageRolePriority,
 } from './image-prompt-director.js'
 
+const AVATAR_IMAGE_ASPECT_RATIO = '3:4'
+const OVERVIEW_SHEET_ASPECT_RATIO = '16:9'
+const LOCAL_CLI_DEFAULT_MODEL_REF = '__default__'
+
 export interface CharacterAgentConfiguredModel {
   id: string
   modelType: 'llm' | 'image'
   provider?: string
+  transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'
   modelName: string
   enabledModels?: string[]
   apiKey: string
@@ -38,16 +43,14 @@ export function createCharacterAgentModelConfigs(
   models: CharacterAgentConfiguredModel[]
 ): CharacterAgentModelConfig[] {
   return models.flatMap((model) => {
-    const names = (model.enabledModels?.length ? model.enabledModels : [model.modelName])
-      .map((name) => String(name || '').trim())
-      .filter(Boolean)
+    const names = getConfiguredModelNames(model)
     return names.map((modelName) => ({
       apiId: model.id,
-      modelName,
+      modelName: displayConfiguredModelName(model, modelName),
       modelRef: `${model.id}::${modelName}`,
       kind: model.modelType,
       provider: model.provider,
-      label: modelName,
+      label: displayConfiguredModelName(model, modelName),
       baseUrl: model.baseUrl,
       metadata: {
         configuredModelId: model.id,
@@ -222,43 +225,44 @@ function createCharacterDecisionPrompt(
     `    <current_draft_json>${xmlEscape(JSON.stringify(currentDraft ?? {}, null, 2))}</current_draft_json>`,
     `    <turn_context_json>${xmlEscape(JSON.stringify(runtime ?? {}, null, 2))}</turn_context_json>`,
     '  </runtime_state>',
-    '  <sugar_image_prompt_doctrine>',
-    '    <rule>For image-facing content, write prompt text like Sugar: dense comma-separated visual phrases that can be sent directly to an image model. Do not write policy prose, requirement prose, analysis, or instruction manuals.</rule>',
-    '    <rule>appearancePrompt is the avatar identity prompt. It should already feel drawable before runtime wrapping, and it is used only for the first avatar image. Later images inherit identity from graph-linked reference images instead of reusing appearancePrompt text.</rule>',
-    '    <rule>When writing appearancePrompt, read the connected image control style domain, imageStylePreset, and stylePrompt as style direction. Include stable appearance, default outfit, body silhouette, temperament, base rendering style, and quality cues, but do not include target-specific composition.</rule>',
-    '    <rule>Anime appearancePrompt pattern: anime style illustration, archetype and age impression, hair color/style, eye design, face shape, outfit/material, body silhouette, signature motif, character-card portrait, pixiv style, high quality anime art, detailed expressive eyes.</rule>',
-    '    <rule>Photoreal appearancePrompt pattern: age + ethnicity/gender, temperament, hair, facial features, makeup, outfit, body shape, skin tone, realistic portrait photography, natural skin texture, soft natural light, shallow depth of field, high quality photo. Chinese prompt phrases are acceptable for photoreal characters.</rule>',
-    '    <rule>Adult/sensual cues are normal explicit style controls that can combine with any style domain. Put them in imageStylePreset or stylePrompt, or mirror them in appearancePrompt only when those style controls explicitly ask for them. Do not infer them secretly from unrelated role text.</rule>',
-    '    <rule>Adult/sensual style pattern: mature sensual allure, alluring gaze, elegant body curves, lace, silk, sheer fabric, deep V neckline, cleavage, waistline, hip curve, thigh slit, warm intimate lighting, seductive but tasteful character-card pose.</rule>',
-    '    <rule>Avatar targetPrompts should only add the avatar composition: dynamic high-angle view, looking up at viewer, alluring smile, knee-up framing, body silhouette visible, simple light background, magical glow around hands. Do not restate the full appearancePrompt.</rule>',
+    '  <compact_image_prompt_rules>',
+    '    <rule>For image-facing content, write dense comma-separated visual phrases that can be sent directly to an image model. Do not write policy prose, requirement prose, analysis, or instruction manuals.</rule>',
+    '    <rule>appearancePrompt is the avatar identity seed prompt. It must already be drawable before runtime wrapping, and it is used only for the first avatar image. Later images inherit identity from graph-linked reference images instead of reusing appearancePrompt text.</rule>',
+    '    <rule>When writing appearancePrompt, read the connected image control style domain and stylePrompt as style direction, then write one compact comma-separated visual phrase using this fixed checklist: age or age impression, nationality/ethnicity/species, gender presentation, temperament/archetype, hair style/color/length/texture, face shape, eyes, eyebrows, nose, lips, makeup or natural face treatment, skin tone and texture, body type and silhouette, default outfit and material, signature accessory or motif, base rendering style, quality cue.</rule>',
+    '    <rule>There are only four image style domains: photoreal, anime, illustration, and stylized. Adult or sensual visual tone is already folded into those runtime domain defaults; it is not a separate domain, preset, or agent decision.</rule>',
+    '    <rule>Anime appearancePrompt pattern: anime style illustration, age impression and archetype, hair color/style/length, eye design and highlights, face shape, brows, nose and mouth style, outfit/material, body silhouette, signature motif, pixiv style, high quality anime art, detailed expressive eyes.</rule>',
+    '    <rule>Photoreal appearancePrompt pattern: age + ethnicity/gender, temperament, hair style/color/length, face shape, eyes, brows, nose, lips, makeup, skin tone and texture, body shape, default clothing/material, accessory, realistic portrait photography, natural skin texture, high quality photo. Chinese prompt phrases are acceptable for photoreal characters.</rule>',
+    '    <rule>Do not independently decide or expand sexy, sensual, revealing, or adult-styled wording. Preserve concrete visual details already present in the user goal, source material, or completed character fields; style-level adult/sensual tone is handled by runtime domain defaults.</rule>',
+    '    <rule>Avatar targetPrompts are bound to imageRole=avatar and should only add the canonical avatar.jpg composition: single visible character, fixed 3:4 portrait asset framing, upper-body or half-body portrait, one clear unobstructed face, looking at camera, calm natural expression, simple uncluttered background, soft light. Do not restate the full appearancePrompt or request another aspect ratio.</rule>',
     '    <rule>Non-avatar targetPrompts should describe image purpose and composition only: pose, camera angle, scene, outfit change, background, expression, sheet layout, mood, props, and rendering function. Identity should come from supplied reference images.</rule>',
-    '    <rule>Overview is a special built-in image role, like avatar. Its imageRole already requires a complete production reference sheet: full-body front view, full-body back view, side or three-quarter view, main portrait or half-body crop, 3 expression callouts, eye close-up, nose and mouth close-up, hairstyle detail, hand pose detail, leg shape close-up, hip and rear silhouette close-up, feet or shoes detail, outfit fabric/accessory/hemline/silhouette details, same character as avatar reference, no written labels.</rule>',
-    '    <rule>Overview targetPrompts should only add slot-specific sheet emphasis such as clean 16:9 canvas, pose neutrality, costume continuity, specific outfit variation, or which details to emphasize. Do not turn overview into a scene, cover, poster, or single portrait.</rule>',
-    '    <example field="appearancePrompt" style="anime">anime style illustration, seductive red-haired witch, long flowing crimson hair, large midnight-blue witch hat, sharp beautiful face, glowing pink eyes, off-shoulder dark lace dress with deep neckline and thigh slit, elegant body curves, small flame magic around fingertips, character-card portrait, pixiv style, high quality anime art, detailed expressive eyes</example>',
-    '    <example field="appearancePrompt" style="photoreal">28岁中国女性，成熟御姐气质，深棕色大波浪长发，五官立体精致，眉眼锐利但嘴唇柔和，淡妆冷调，黑色丝绸吊带裙，身材高挑丰满，腰线明显，肤色白皙自然，真实肖像摄影，自然皮肤质感，柔和暖光，浅景深，高质量摄影</example>',
-    '    <example action="request_image" target="avatar-image-target">dynamic high-angle view, looking up at viewer, alluring confident smile, knee-up character-card framing, face and body silhouette visible, simple pale gray background, soft magical glow around hands</example>',
-    '    <example action="request_image" target="overview-sheet-image-target">wide clean 16:9 production sheet, neutral full-body model views, preserve avatar outfit construction, emphasize eye close-up, nose and mouth close-up, hat silhouette, hair flow, hand gesture, leg shape, hip and rear silhouette, feet, dress fabric and slit detail, no written labels</example>',
-    '  </sugar_image_prompt_doctrine>',
+    '    <rule>Overview is a special built-in image role, like avatar. Its imageRole already requires a complete fixed 16:9 production overview sheet: left third large front full-body reference plus smaller half-body portrait crop, center third back view and side or three-quarter neutral model references, right third and bottom strip compact visual detail tiles, same character as avatar reference, no written labels.</rule>',
+    '    <rule>Overview targetPrompts should only add slot-specific sheet emphasis such as pose neutrality, costume continuity, specific outfit variation, or which details to emphasize. Do not turn overview into a scene, cover, poster, single portrait, or non-16:9 canvas.</rule>',
+    '    <example field="appearancePrompt" style="anime">anime style illustration, young adult fox-spirit woman, playful elegant temperament, long flowing crimson hair with soft waves, amber eyes with bright highlights, delicate oval face, slim brows, small nose, soft lips, pale luminous skin, graceful hourglass silhouette, layered red silk kimono with gold trim, small fox-ear hair ornament, pixiv style, high quality anime art, detailed expressive eyes</example>',
+    '    <example field="appearancePrompt" style="photoreal">28岁中国女性，成熟温柔气质，深棕色大波浪长发自然垂落，鹅蛋脸，眉眼柔和但有神，高鼻梁，唇形饱满，精致淡妆，肤色白皙自然可见真实皮肤质感，身材高挑匀称腰线清晰，黑色丝绸长裙，细珍珠耳环，真实肖像摄影，高质量摄影</example>',
+    '    <example action="request_image" target="avatar-image-target">canonical 3:4 avatar.jpg portrait, single visible character, upper-body framing, one clear unobstructed face, looking at camera, calm natural expression, simple pale background, soft light</example>',
+    '    <example action="request_image" target="overview-sheet-image-target">fixed 16:9 production overview sheet, left large front full-body view plus half-body portrait crop, center back and three-quarter model views, right and bottom detail tiles for eyes, nose and mouth, hairstyle, hand pose, shoes, fabric and accessories, preserve avatar outfit construction, no written labels</example>',
+    '  </compact_image_prompt_rules>',
     '  <action_contract>',
     '    <output_format>Return JSON only. No markdown. No XML in the response.</output_format>',
     '    <shape>{"summary":"what changed in this single step","done":false,"confidence":0.0,"missing":[],"actions":[{"type":"set_field","field":"nextField","value":"..."}]}</shape>',
     '    <field_content_rule>Every set_field value must be final character-card content, not a prompt, not a plan, and not a resource-control description.</field_content_rule>',
     '    <field_content_rule>Never write labels such as "Style:", "Goal:", "Field purpose:", "target atmosphere", XML tag names, or operation instructions inside character fields.</field_content_rule>',
     '    <field_content_rule>description must describe who the character is and why they are appealing for RP. appearance must describe visible body/outfit/expression cues. Do not describe the generation target itself.</field_content_rule>',
-    '    <field_content_rule>appearancePrompt must follow the Sugar-style avatar identity prompt role: after the visible character-card fields exist, derive a compact image-model prompt from name, description, appearance, personality, background, scenario, worldContext, and connected image style controls. Include stable appearance, default outfit language, body silhouette, temperament, and a lightweight base rendering style. For anime characters, include cues like anime style illustration, expressive detailed eyes, character-card portrait, pixiv style, high quality anime art. For photoreal characters, include cues like realistic portrait photography, natural skin texture, soft natural light, shallow depth of field. Include adult/sensual cues only when imageStylePreset or stylePrompt explicitly asks for that direction. Do not include story scene actions, workflow terms, reference links, multi-image layouts, panels, negative prompts, or target-specific asset instructions.</field_content_rule>',
+    '    <field_content_rule>appearancePrompt is the avatar identity seed prompt: after the visible character-card fields exist, derive one compact image-model phrase from name, description, appearance, personality, background, scenario, worldContext, and connected image style controls. Follow the fixed visual checklist: age or age impression, nationality/ethnicity/species, gender presentation, temperament/archetype, hair style/color/length/texture, face shape, eyes, eyebrows, nose, lips, makeup or natural face treatment, skin tone and texture, body type and silhouette, default outfit and material, signature accessory or motif, base rendering style, quality cue. Do not decide or expand adult/sensual styling inside appearancePrompt; runtime domain defaults already carry that visual tone, while concrete user/source/card visual details may be preserved. Do not include avatar-only wrapping such as half-body portrait, looking at camera, simple background, or soft light unless it belongs to the style domain itself; do not include story scene actions, workflow terms, reference links, multi-image layouts, panels, negative prompts, or target-specific asset instructions.</field_content_rule>',
     '    <role_chat_format_rule>firstMessage is the runnable opening turn for the role chat. It must be final in-character scene text wrapped exactly once as <chat>...</chat>.</role_chat_format_rule>',
     '    <role_chat_format_rule>Inside <chat>, write the opening scene as immersive RP prose with the character present, a concrete situation, sensory details, and a clear hook for the user to respond. Do not include analysis, labels, markdown, or setup notes.</role_chat_format_rule>',
     '    <role_chat_format_rule>dialogueStyle must describe how the character speaks during chat, not the opening scene. scenario must define the persistent RP situation. worldContext must carry stable world facts.</role_chat_format_rule>',
     '    <progressive_rule>Return exactly one action. Generate or reroll one field at a time. Do not fill the whole card in one response.</progressive_rule>',
     '    <progressive_rule>If a field requirement is missing, return set_field for the earliest missing field in fixed_schema order and obey that target local XML controls. Only request_image after appearancePrompt exists.</progressive_rule>',
+    '    <progressive_rule>If runtime_state.turn_context_json contains completionPass.requiredField, return exactly one set_field action for that exact field. Do not return request_image, finish, or another field until the requested field is complete.</progressive_rule>',
     '    <workflow_rule>The runtime_state includes workflow requirements. Complete only requirements that are missing and unblocked. Never request an image target whose dependency source is still blocked or missing.</workflow_rule>',
     '    <workflow_rule>Reference-image ordering is defined by graph edges and requirement dependencies, not by a hardcoded role sequence. If a target has reference inputs, write the prompt for that target assuming the runtime supplies those reference images.</workflow_rule>',
     '    <scoped_repair_rule>If runtime_state.turn_context_json contains scopedRun and selectedArtifacts, treat the user instruction as external feedback for those selected run artifacts only.</scoped_repair_rule>',
     '    <scoped_repair_rule>For selected character-card-field artifacts, return one set_field action for that exact field with revised final content. Do not edit unrelated fields.</scoped_repair_rule>',
     '    <scoped_repair_rule>For selected non-field textual artifacts, return create_artifact preserving the artifact purpose and applying the instruction. Do not run a full workflow plan.</scoped_repair_rule>',
     '    <image_rule>Use the graph-declared image pipeline. Avatar is the first identity image. Overview images must use linked avatar references to preserve the same face, hair, proportions, and outfit language.</image_rule>',
-    '    <image_rule>The avatar prompt must be a compact positive role-card image direction for one final avatar.jpg: one visible character, one face, face and body visible, dynamic attractive pose, clear eyes, simple background, polished finish.</image_rule>',
-    '    <image_rule>The character-overview-sheet prompt must stay bound to the overview image role: same avatar reference identity, wide clean 16:9 production sheet, full-body front/back/side or three-quarter views, main portrait crop, 3 expression callouts, eye close-up, nose and mouth close-up, hairstyle, hand pose, leg shape, hip and rear silhouette, feet/shoes, outfit fabric/accessory/hemline/silhouette details, no written labels.</image_rule>',
+    '    <image_rule>The avatar prompt must be a compact positive direction for one final avatar.jpg identity master image: fixed 3:4 portrait asset, one visible character only, one clear unobstructed face, upper-body or half-body portrait, looking at camera, calm natural expression, readable face/hair/default outfit/body silhouette, simple uncluttered background, polished finish. Do not request a poster, cover, scene moment, model sheet, collage, split-screen, multiple poses, or any non-3:4 aspect ratio for avatar.</image_rule>',
+    '    <image_rule>The character-overview-sheet prompt must stay bound to the overview image role: same avatar reference identity, fixed 16:9 production overview sheet, left third large front full-body reference plus half-body portrait crop, center third back view and side or three-quarter neutral model references, right third and bottom strip detail tiles for expressions, eyes, nose and mouth, hairstyle, hands, feet/shoes, outfit fabric/accessory/hemline/silhouette details, no written labels.</image_rule>',
     '    <image_rule>If an image attempt failed, is stale because its reference changed, or selected artifact feedback says the image is ugly, duplicated, off-style, multi-face, not matching appearancePrompt, or otherwise unacceptable, request_image for the same targetNodeId with a sharper corrected targetPrompts.prompt. Do not edit the workflow graph for a local image reroll.</image_rule>',
     '    <image_rule>The runtime wraps avatar targetPrompts.prompt with appearancePrompt, role-specific positive visual direction, style suffix, quality suffix, and a short avoid list. For non-avatar images, the runtime omits appearancePrompt and relies on graph-linked reference images plus role/style/quality wrapping. Do not repeat the full appearancePrompt inside targetPrompts.prompt.</image_rule>',
     '    <image_rule>When requesting images, create one targetPrompts item per final image, not just per image target. If an image target requests multiple images through image_control count, return multiple distinct prompts for the same targetNodeId.</image_rule>',
@@ -307,7 +311,7 @@ function createSchemaXml(): string {
     ...CHARACTER_SUPPORT_FIELD_SCHEMA.map((field) => `      <field name="${field}" required="true">${xmlEscape(supportFieldDescription(field))}</field>`),
     '    </support_fields>',
     '    <rule>Do not invent new top-level required fields. Use extra details inside the fixed fields when needed.</rule>',
-    '    <rule>appearancePrompt is the hidden avatar identity prompt for the image model. It is derived from the completed character-card fields and connected image style controls, and should be a drawable Sugar-style comma phrase: stable appearance, default outfit, body silhouette, temperament, base style, and quality/rendering cues. It is used for avatar generation; later images should use graph-linked reference images for identity. It must not carry workflow terms, reference links, multi-image layouts, panels, negative prompts, or target-specific asset instructions.</rule>',
+    '    <rule>appearancePrompt is the visible avatar identity seed prompt for the image model. It is derived from the completed character-card fields and connected image style controls, and must be one drawable comma-separated visual phrase following this checklist: age or age impression, nationality/ethnicity/species, gender presentation, temperament/archetype, hair style/color/length/texture, face shape, eyes, eyebrows, nose, lips, makeup or natural face treatment, skin tone and texture, body type and silhouette, default outfit and material, signature accessory or motif, base rendering style, quality cue. It is used for avatar generation and emitted as an image-prompt artifact; later images should use graph-linked reference images for identity. It must not carry workflow terms, reference links, multi-image layouts, panels, negative prompts, or target-specific asset instructions.</rule>',
     '  </fixed_schema>',
   ].join('\n')
 }
@@ -408,7 +412,7 @@ function createResourceContextXml(context: CharacterAgentRunContext): string {
 
 function renderImageControlContextXml(control: AgentImageGenerationControl): string[] {
   return [
-    `          <image_control node="${xmlEscape(control.nodeId)}" count="${control.targetImageCount}" style_domain="${xmlEscape(control.imageStyleDomain)}" preset="${xmlEscape(control.imageStylePreset)}" style="${xmlEscape(control.stylePrompt)}" shot="${xmlEscape(control.shotType)}" aspect_ratio="${xmlEscape(control.aspectRatio)}" consistency="${xmlEscape(control.consistencyMode)}" seed="${xmlEscape(control.seedMode)}" negative="${xmlEscape(control.negativePrompt)}" />`,
+      `          <image_control node="${xmlEscape(control.nodeId)}" count="${control.targetImageCount}" style_domain="${xmlEscape(control.imageStyleDomain)}" style="${xmlEscape(control.stylePrompt)}" shot="${xmlEscape(control.shotType)}" aspect_ratio="${xmlEscape(control.aspectRatio)}" consistency="${xmlEscape(control.consistencyMode)}" seed="${xmlEscape(control.seedMode)}" />`,
   ]
 }
 
@@ -429,7 +433,7 @@ function characterFieldDescription(field: string): string {
 
 function supportFieldDescription(field: string): string {
   const descriptions: Record<string, string> = {
-    appearancePrompt: 'Compact Sugar-style avatar identity prompt derived from completed character-card fields and connected image style controls; stable appearance, default outfit, body silhouette, temperament, base style, and quality/rendering cues are allowed, but no workflow terms, reference links, panels, negative prompts, or target-specific asset instructions.',
+    appearancePrompt: 'Visible avatar identity seed prompt derived from completed character-card fields and connected image style controls. It must be one drawable comma-separated phrase with age or age impression, nationality/ethnicity/species, gender presentation, temperament/archetype, hair, facial features, makeup or natural face treatment, skin tone and texture, body silhouette, default outfit/material, signature accessory or motif, base rendering style, and quality cue. No workflow terms, reference links, panels, negative prompts, or target-specific asset instructions.',
   }
   return descriptions[field] ?? field
 }
@@ -452,6 +456,7 @@ async function runCharacterAgentLLMTool(
   const { configuredModel, modelName } = findConfiguredLLMModel(models, context)
   const session = createChatSessionFromModel({
     provider: configuredModel.provider,
+    transport: configuredModel.transport,
     apiKey: configuredModel.apiKey,
     model: modelName,
     baseURL: configuredModel.baseUrl?.trim() || undefined,
@@ -466,6 +471,12 @@ async function runCharacterAgentLLMTool(
     options: {
       temperature: options.temperature ?? 0.5,
     },
+  })
+  console.log('[CharacterWorkflow] LLM raw response:', {
+    runId: context.runId,
+    modelName,
+    apiId: configuredModel.id,
+    content: response.content,
   })
   return response.content.trim()
 }
@@ -482,14 +493,47 @@ function findConfiguredLLMModel(
   if (!configuredModel) {
     throw new Error('No LLM model is configured for character workflow generation')
   }
-  const modelName = requested?.modelName || configuredModel.enabledModels?.[0] || configuredModel.modelName
-  if (!modelName?.trim()) {
+  const requestedModelName = requested?.modelRef?.startsWith(`${configuredModel.id}::`)
+    ? requested.modelRef.slice(`${configuredModel.id}::`.length)
+    : requested?.modelName
+  const modelName = requestedModelName || configuredModel.enabledModels?.[0] || configuredModel.modelName
+  const normalizedModelName = normalizeConfiguredModelNameForCall(configuredModel, modelName)
+  if (!normalizedModelName && !isLocalCLIModel(configuredModel)) {
     throw new Error('Character workflow LLM model name is empty')
   }
-  if (!configuredModel.apiKey?.trim()) {
+  if (!configuredModel.apiKey?.trim() && !isLocalCLIModel(configuredModel)) {
     throw new Error(`Character workflow LLM API key is empty for ${configuredModel.id}`)
   }
-  return { configuredModel, modelName: modelName.trim() }
+  return { configuredModel, modelName: normalizedModelName }
+}
+
+function getConfiguredModelNames(model: CharacterAgentConfiguredModel): string[] {
+  const names = (model.enabledModels?.length ? model.enabledModels : [model.modelName])
+    .map((name) => String(name || '').trim())
+    .filter(Boolean)
+  if (names.length > 0) {
+    return names
+  }
+  return isLocalCLIModel(model) ? [LOCAL_CLI_DEFAULT_MODEL_REF] : []
+}
+
+function isLocalCLIModel(model: CharacterAgentConfiguredModel): boolean {
+  return model.transport === 'codex_local' || model.transport === 'claude_code_local'
+}
+
+function displayConfiguredModelName(model: CharacterAgentConfiguredModel, modelName: string): string {
+  if (modelName !== LOCAL_CLI_DEFAULT_MODEL_REF || !isLocalCLIModel(model)) {
+    return modelName
+  }
+  return model.transport === 'claude_code_local' ? 'Claude Code default' : 'Codex default'
+}
+
+function normalizeConfiguredModelNameForCall(model: CharacterAgentConfiguredModel, modelName: string | undefined): string {
+  const trimmed = String(modelName || '').trim()
+  if (isLocalCLIModel(model) && trimmed === LOCAL_CLI_DEFAULT_MODEL_REF) {
+    return ''
+  }
+  return trimmed
 }
 
 async function maybeGenerateImageArtifacts(
@@ -580,7 +624,7 @@ async function maybeGenerateImageArtifacts(
         summary: 'Image generated successfully.',
       }))
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      const message = formatImageGenerationError(error)
       artifacts.push(createImageAttemptArtifact(context.runId, candidateId, prompts[index].target.nodeId, attemptBase, {
         status: 'failed',
         error: message,
@@ -720,8 +764,14 @@ function imageSizeForPrompt(prompt: {
   imageRole: string
   targetIndex: number
 }): string | undefined {
+  if (prompt.imageRole === 'avatar') {
+    return imageSizeFromAspectRatio(AVATAR_IMAGE_ASPECT_RATIO)
+  }
+  if (prompt.imageRole === 'character-overview-sheet') {
+    return imageSizeFromAspectRatio(OVERVIEW_SHEET_ASPECT_RATIO)
+  }
   const control = getImageControlForPromptIndex(prompt.target.imageControls, prompt.targetIndex)
-  const aspectRatio = control?.aspectRatio || (prompt.imageRole === 'character-overview-sheet' ? '16:9' : '1:1')
+  const aspectRatio = control?.aspectRatio || '1:1'
   return imageSizeFromAspectRatio(aspectRatio)
 }
 
@@ -731,7 +781,7 @@ function imageSizeFromAspectRatio(aspectRatio: string): string {
     '2:3': '1365x2048',
     '3:4': '1536x2048',
     '4:5': '1638x2048',
-    '16:9': '2560x1440',
+    '16:9': '1920x1088',
     '9:16': '1440x2560',
   }
   return sizes[aspectRatio] ?? '2048x2048'
@@ -883,6 +933,32 @@ function parseJsonObject(text: string): Record<string, any> | null {
 
 function stringField(value: unknown, fallback: string): string {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback
+}
+
+function formatImageGenerationError(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return String(error)
+  }
+  const details = collectErrorDetails((error as Error & { cause?: unknown }).cause)
+  return [error.message, details].filter(Boolean).join(': ')
+}
+
+function collectErrorDetails(value: unknown): string {
+  if (!value) {
+    return ''
+  }
+  if (value instanceof Error) {
+    return [value.name, value.message, collectErrorDetails((value as Error & { cause?: unknown }).cause)].filter(Boolean).join(': ')
+  }
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    return [
+      typeof record.code === 'string' ? record.code : '',
+      typeof record.reason === 'string' ? record.reason : '',
+      typeof record.message === 'string' ? record.message : '',
+    ].filter(Boolean).join(': ')
+  }
+  return String(value)
 }
 
 function arrayField(value: unknown): string[] {

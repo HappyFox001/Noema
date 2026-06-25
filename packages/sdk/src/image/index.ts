@@ -657,12 +657,7 @@ async function callWaveSpeed(
 ): Promise<Partial<ImageGenerationResult>> {
   const waveSpeedRequest = resolveWaveSpeedRequest(entry, modelName, options)
   const path = `${baseUrl}${entry.generatePath.replace('{model}', waveSpeedRequest.modelName)}`
-  const body: Record<string, unknown> = {
-    prompt,
-    size: formatWaveSpeedImageSize(options.size, waveSpeedRequest),
-    enable_sync_mode: true,
-    enable_base64_output: false,
-  }
+  const body = buildWaveSpeedRequestBody(prompt, options.size, waveSpeedRequest)
   if (waveSpeedRequest.defaultStrength !== undefined) {
     body.strength = waveSpeedRequest.defaultStrength
   }
@@ -891,6 +886,8 @@ interface WaveSpeedRequestShape {
   referenceField: 'image' | 'images' | null
   referenceImages: string[]
   maxSize?: number
+  minPixels?: number
+  sizeMultiple?: number
   defaultStrength?: number
 }
 
@@ -913,6 +910,26 @@ function resolveWaveSpeedRequest(
       ...(hasReferenceImages ? { defaultStrength: 0.6 } : {}),
     }
   }
+  if (lower === 'openai/gpt-image-2/text-to-image') {
+    return {
+      modelName: hasReferenceImages ? 'openai/gpt-image-2/edit' : normalized,
+      referenceField: hasReferenceImages ? 'images' : null,
+      referenceImages,
+    }
+  }
+  if (lower === 'openai/gpt-image-2/edit') {
+    assertReferenceModel(
+      entry,
+      modelName,
+      hasReferenceImages,
+      'Use openai/gpt-image-2/text-to-image for prompt-only requests; the edit endpoint requires reference images.'
+    )
+    return {
+      modelName: normalized,
+      referenceField: 'images',
+      referenceImages,
+    }
+  }
   if (hasReferenceImages && /\/image-to-image$|\/img2img$/i.test(normalized)) {
     return {
       modelName: normalized,
@@ -924,6 +941,7 @@ function resolveWaveSpeedRequest(
     modelName: normalized,
     referenceField: hasReferenceImages ? resolveWaveSpeedReferenceField(normalized, referenceImages.length) : null,
     referenceImages,
+    ...(lower === 'bytedance/seedream-v4.5' ? { minPixels: 2560 * 1440, sizeMultiple: 64 } : {}),
   }
 }
 
@@ -1009,17 +1027,59 @@ function aspectRatioForProvider(size: string | undefined): string | null {
 
 function formatWaveSpeedImageSize(size: string | undefined, request: WaveSpeedRequestShape): string {
   const parsed = parseImageSize(size)
-  if (!parsed) {
-    return request.maxSize ? `${Math.min(1024, request.maxSize)}*${Math.min(1024, request.maxSize)}` : '1024*1024'
-  }
+  let width = parsed?.width ?? 1024
+  let height = parsed?.height ?? 1024
   const maxSize = request.maxSize
-  if (!maxSize || (parsed.width <= maxSize && parsed.height <= maxSize)) {
-    return `${parsed.width}*${parsed.height}`
+  if (maxSize && (width > maxSize || height > maxSize)) {
+    const scale = maxSize / Math.max(width, height)
+    width = Math.max(256, Math.round(width * scale))
+    height = Math.max(256, Math.round(height * scale))
   }
-  const scale = maxSize / Math.max(parsed.width, parsed.height)
-  const width = Math.max(256, Math.round(parsed.width * scale))
-  const height = Math.max(256, Math.round(parsed.height * scale))
+  if (request.minPixels && width * height < request.minPixels) {
+    const scale = Math.sqrt(request.minPixels / (width * height))
+    width = roundWaveSpeedDimension(width * scale, request.sizeMultiple)
+    height = roundWaveSpeedDimension(height * scale, request.sizeMultiple)
+  }
   return `${width}*${height}`
+}
+
+function buildWaveSpeedRequestBody(prompt: string, size: string | undefined, request: WaveSpeedRequestShape): Record<string, unknown> {
+  if (/^openai\/gpt-image-2\/(?:text-to-image|edit)$/i.test(request.modelName)) {
+    return {
+      prompt,
+      aspect_ratio: aspectRatioForProvider(size) ?? '1:1',
+      resolution: waveSpeedGptImage2Resolution(size),
+      quality: 'medium',
+      output_format: 'png',
+      enable_sync_mode: false,
+      enable_base64_output: false,
+    }
+  }
+  return {
+    prompt,
+    size: formatWaveSpeedImageSize(size, request),
+    enable_sync_mode: true,
+    enable_base64_output: false,
+  }
+}
+
+function waveSpeedGptImage2Resolution(size: string | undefined): '1k' | '2k' | '4k' {
+  const parsed = parseImageSize(size)
+  const maxDimension = Math.max(parsed?.width ?? 1024, parsed?.height ?? 1024)
+  if (maxDimension <= 1024) {
+    return '1k'
+  }
+  if (maxDimension <= 2048) {
+    return '2k'
+  }
+  return '4k'
+}
+
+function roundWaveSpeedDimension(value: number, multiple = 1): number {
+  const rounded = multiple > 1
+    ? Math.ceil(value / multiple) * multiple
+    : Math.ceil(value)
+  return Math.min(8192, Math.max(512, rounded))
 }
 
 function formatProviderImageSize(

@@ -11,6 +11,7 @@ export type ChatRole = 'system' | 'user' | 'assistant'
 
 export interface ChatModelConfig {
   provider?: string
+  transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'
   apiKey: string
   model: string
   baseURL?: string

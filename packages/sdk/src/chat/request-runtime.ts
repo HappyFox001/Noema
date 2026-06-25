@@ -16,6 +16,7 @@ import { extractChatSceneUpdate } from './conversation-runtime.js'
 
 export interface ConfiguredChatModel {
   provider?: string
+  transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'
   modelName: string
   apiKey: string
   baseUrl?: string
@@ -200,12 +201,14 @@ export function toChatModelConfig(config: ConfiguredChatModel | null): ChatModel
   if (!config) {
     throw new Error('Chat model is not configured')
   }
-  const model = config.modelName?.trim()
-  if (!model) {
+  const transport = config.transport ?? 'openai_compatible'
+  const model = config.modelName?.trim() ?? ''
+  if (!model && transport === 'openai_compatible') {
     throw new Error('Chat model name is empty')
   }
   return {
     provider: config.provider,
+    transport,
     apiKey: config.apiKey || '',
     model,
     baseURL: config.baseUrl?.trim() || undefined,

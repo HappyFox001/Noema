@@ -17,6 +17,8 @@ export type LLMProviderType =
   | 'openai'
   | 'gemini'
   | 'claude'
+  | 'claude-code'
+  | 'codex'
   | 'qwen'
   | 'deepseek'
   | 'groq'
@@ -55,6 +57,7 @@ export type ProviderProtocol =
   | 'elevenlabs-http'
   | 'openai-transcription'
   | 'openai-chat-completions'
+  | 'local-cli-chat'
   | 'anthropic-messages'
   | 'ollama-chat'
   | 'azure-openai-audio'
@@ -85,6 +88,7 @@ export interface LLMProviderCatalogEntry {
   label: string
   protocol: ProviderProtocol
   implemented: boolean
+  transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'
   defaultModel: string
   defaultBaseUrl: string
   defaultApiKeyPlaceholder: string
@@ -139,6 +143,26 @@ export const LLM_PROVIDER_CATALOG: LLMProviderCatalogEntry[] = [
     defaultModel: 'claude-sonnet-4-5',
     defaultBaseUrl: 'https://api.anthropic.com/v1',
     defaultApiKeyPlaceholder: 'sk-ant-...',
+  },
+  {
+    value: 'codex',
+    label: 'Codex',
+    protocol: 'local-cli-chat',
+    implemented: true,
+    transport: 'codex_local',
+    defaultModel: '',
+    defaultBaseUrl: '',
+    defaultApiKeyPlaceholder: 'Local CLI',
+  },
+  {
+    value: 'claude-code',
+    label: 'Claude Code',
+    protocol: 'local-cli-chat',
+    implemented: true,
+    transport: 'claude_code_local',
+    defaultModel: '',
+    defaultBaseUrl: '',
+    defaultApiKeyPlaceholder: 'Local CLI',
   },
   {
     value: 'qwen',
