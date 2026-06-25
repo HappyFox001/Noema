@@ -1,5 +1,5 @@
 /**
- * Builds compact Sugar-style prompts for character image assets.
+ * Builds compact visual prompts for character image assets.
  */
 import type {
   AgentImageGenerationControl,
@@ -80,7 +80,6 @@ export function buildDirectedImageGenerationPrompt(input: DirectedImagePromptInp
     rolePromptForImage(role, domain, input.promptText, input.control, input.profile, input.targetIndex),
     stylePromptForImage(role, domain, input.control),
     qualityPromptForImage(role, domain),
-    avoidPromptForImage(role, domain, input.control),
   ])
 }
 
@@ -171,7 +170,6 @@ function stylePromptForImage(
     }
     return compactJoin([
       overviewDomainPrompts[domain],
-      presetStylePrompt(control?.imageStylePreset, role, domain),
       control?.stylePrompt,
     ])
   }
@@ -183,7 +181,6 @@ function stylePromptForImage(
   }
   return compactJoin([
     domainPrompts[domain],
-    presetStylePrompt(control?.imageStylePreset, role, domain),
     control?.stylePrompt,
   ])
 }
@@ -201,43 +198,6 @@ function qualityPromptForImage(role: string, domain: CharacterImageStyleDomain):
     return 'cinematic composition, beautiful readable face, strong silhouette, premium role-card cover quality'
   }
   return 'clear face, refined styling, clean composition, high quality, high resolution'
-}
-
-function presetStylePrompt(
-  preset: string | undefined,
-  role: string,
-  domain: CharacterImageStyleDomain
-): string {
-  const value = preset?.trim()
-  if (!value) {
-    return ''
-  }
-  const strategies: Record<string, string> = {
-    'roleplay-character-avatar': domain === 'anime'
-      ? 'premium mobile game role-card art, dynamic high-angle or three-quarter framing, elegant face design, polished cel shading, soft glow'
-      : 'premium companion role-card portrait, flattering high-angle or three-quarter framing, readable eyes, profile-card finish',
-    'character-sheet': 'professional character design sheet, visual-only details, clean panel spacing',
-    'model-sheet': 'professional model sheet, consistent views, clean neutral presentation',
-    'turnaround-reference': 'turnaround reference, front side and back views, stable outfit construction',
-    'trading-card-art': 'premium role-card cover art, dominant character silhouette, dramatic background',
-    'photoreal-portrait': 'polished photoreal portrait, natural skin texture, realistic hair, detailed eyes',
-    'cinematic-realism': 'cinematic realism, filmic color, controlled contrast, motivated lighting',
-    'editorial-photography': 'editorial photography, intentional styling, magazine-grade lighting',
-    'high-fashion-editorial': 'high-fashion editorial, sculptural silhouette, luxurious material detail',
-    'magazine-cover-gloss': 'glossy magazine cover finish, polished skin and hair, clean background separation',
-    'adult-sensual': 'mature sensual allure, alluring gaze, elegant body curves, lace, silk, sheer fabric, deep V neckline, cleavage, waistline, hip curve, thigh slit, warm intimate lighting, seductive but tasteful character-card pose',
-    'anime-sensual-companion': 'mature anime sensual charm, alluring gaze, elegant body curves, tasteful skin exposure, lace or silk outfit details, delicate blush, warm intimate lighting, seductive character-card pose, premium anime companion art',
-    'glamour-lingerie': 'glamour lingerie styling, lace, silk, sheer fabric, elegant cleavage, defined waistline, hip curve, thigh slit, warm intimate lighting, polished adult companion portrait finish',
-    'mature-companion': 'mature companion allure, refined adult styling, elegant body curves, confident gaze, intimate warm light, premium role-card finish',
-    'anime-visual-novel': 'polished anime visual novel key art, expressive eyes, clean cel shading',
-    'anime-mobile-game': 'premium anime mobile game character art, crisp silhouette, detailed eyes',
-    'soft-anime-portrait': 'soft anime portrait, gentle lighting, translucent eye highlights, tasteful blush',
-    'oil-painting': 'polished oil painting character illustration, rich color layering, painterly depth',
-    'classical-portrait-painting': 'classical portrait painting, refined facial modeling, rich fabric handling',
-    'dreamy-soft-focus': 'dreamy soft focus, gentle bloom, airy color, clear face readability',
-    'bokeh-portrait': 'creamy bokeh portrait, subject separation, expressive eyes',
-  }
-  return strategies[value] ?? formatPreset(value)
 }
 
 function compactShot(control?: AgentImageGenerationControl): string {
@@ -267,44 +227,6 @@ function sanitizeSlotPrompt(promptText: string, role: string): string {
     .map((part) => part.trim())
     .filter((part) => part && !blocked.test(part))
     .join(', ')
-}
-
-function avoidPromptForImage(
-  role: string,
-  domain: CharacterImageStyleDomain,
-  control?: AgentImageGenerationControl
-): string {
-  const controlNegatives = control?.negativePrompt
-    ? control.negativePrompt.split(',').map((item) => item.trim())
-    : []
-  const common = compactList([
-    ...controlNegatives,
-    'low quality',
-    'blurry',
-    'bad anatomy',
-    'deformed face',
-    'text',
-    'watermark',
-    'logo',
-  ])
-  const roleNegatives: Record<string, string[]> = {
-    avatar: ['multiple people', 'two characters', 'duplicate face', 'second face', 'collage', 'panel layout', 'inset portrait'],
-    'character-overview-sheet': ['written labels', 'speech bubbles', 'UI text', 'single portrait only', 'social media cover', 'random extra character', 'different faces between views', 'changed hairstyle', 'changed outfit without prompt', 'cropped full body', 'cropped feet', 'cropped hands', 'messy collage', 'overlapping bodies'],
-    'hero-cover': ['face hidden', 'tiny character', 'empty landscape'],
-    'opening-moment': ['empty room', 'character hidden'],
-  }
-  const domainNegatives: Record<CharacterImageStyleDomain, string[]> = {
-    photoreal: ['anime', 'cartoon', 'plastic skin'],
-    anime: ['photorealistic', 'live action', '3d render'],
-    illustration: ['cheap clipart', 'stock photo'],
-    stylized: ['style clash'],
-  }
-  const negatives = dedupe([
-    ...common,
-    ...(roleNegatives[role] ?? []),
-    ...domainNegatives[domain],
-  ])
-  return negatives.length ? `avoid ${negatives.join(', ')}` : ''
 }
 
 function inferStyleDomain(value: string): CharacterImageStyleDomain {
@@ -355,26 +277,4 @@ function compactList(values: Array<string | undefined>): string[] {
   return values
     .map((value) => value?.trim())
     .filter((value): value is string => Boolean(value))
-}
-
-function formatPreset(value: string): string {
-  return value
-    .split('-')
-    .filter(Boolean)
-    .map((part) => /^[0-9]+$/.test(part) ? part : part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ')
-}
-
-function dedupe(values: Array<string | undefined>): string[] {
-  const seen = new Set<string>()
-  const result: string[] = []
-  for (const value of values) {
-    const normalized = value?.trim()
-    if (!normalized || seen.has(normalized.toLowerCase())) {
-      continue
-    }
-    seen.add(normalized.toLowerCase())
-    result.push(normalized)
-  }
-  return result
 }

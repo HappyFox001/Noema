@@ -113,13 +113,11 @@ export interface AgentImageGenerationControl {
   nodeId: string
   targetImageCount: number
   imageStyleDomain: string
-  imageStylePreset: string
   stylePrompt: string
   shotType: string
   aspectRatio: string
   consistencyMode: string
   seedMode: string
-  negativePrompt: string
   incomingRelations: CharacterAgentRelation[]
 }
 
@@ -617,13 +615,11 @@ export function compileCharacterAgentRunContext(
     nodeId: node.id,
     targetImageCount: numberValue(node.config.targetImageCount, 1),
     imageStyleDomain: stringValue(node.config.imageStyleDomain, 'auto'),
-    imageStylePreset: stringValue(node.config.imageStylePreset, stringListValue(node.config.imageStylePresets)[0] ?? ''),
     stylePrompt: stringValue(node.config.stylePrompt),
     shotType: stringValue(node.config.shotType, 'auto'),
     aspectRatio: stringValue(node.config.aspectRatio, '1:1'),
     consistencyMode: stringValue(node.config.consistencyMode, 'same-character'),
     seedMode: stringValue(node.config.seedMode, 'lock-character'),
-    negativePrompt: stringValue(node.config.negativePrompt),
     incomingRelations: incomingRelations(relations, node.id),
   }))
   const fieldGenerationControls = (nodesByType.get('field-generation-control') ?? []).map((node) => ({

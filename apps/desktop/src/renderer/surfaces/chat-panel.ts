@@ -2232,9 +2232,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             'opening-field-target': { field: 'firstMessage' },
             'opening-field-control': { lengthPolicy: 'medium' },
             'avatar-image-target': { imageRole: 'avatar', assetPurpose: 'Final avatar.jpg for the role card: one polished single-character role-card portrait with one clear face, visible body silhouette, strong appeal, and stable identity cues.' },
-            'avatar-image-control': { targetImageCount: 1, imageStyleDomain: 'auto', imageStylePreset: 'roleplay-character-avatar', shotType: 'knee-up', aspectRatio: '1:1', consistencyMode: 'same-character', seedMode: 'lock-character', negativePrompt: 'text, watermark, logo, low quality, blurry, bad anatomy, deformed face, multiple people, duplicate face' },
+            'avatar-image-control': { targetImageCount: 1, imageStyleDomain: 'auto', shotType: 'knee-up', aspectRatio: '1:1', consistencyMode: 'same-character', seedMode: 'lock-character' },
             'overview-sheet-image-target': { imageRole: 'character-overview-sheet', assetPurpose: 'Generate one large production character overview sheet using linked avatar reference image inputs. Required contents: full-body front view, full-body back view, side or three-quarter view, one main portrait or half-body crop, 3 expression callouts, eye close-up, nose and mouth close-up, hairstyle detail, hand pose detail, leg shape close-up, hip and rear silhouette close-up, feet or shoes detail, outfit fabric, accessory, hemline, and silhouette details. Preserve avatar outfit construction unless explicitly requesting outfit variants. No written labels.' },
-            'overview-sheet-image-control': { targetImageCount: 1, imageStyleDomain: 'auto', imageStylePreset: 'character-sheet', shotType: 'full-body', aspectRatio: '16:9', consistencyMode: 'same-character', seedMode: 'lock-character', negativePrompt: 'text, labels, watermark, logo, inconsistent face, deformed hands, extra fingers, missing fingers, bad feet, malformed legs, duplicate limbs' },
+            'overview-sheet-image-control': { targetImageCount: 1, imageStyleDomain: 'auto', shotType: 'full-body', aspectRatio: '16:9', consistencyMode: 'same-character', seedMode: 'lock-character' },
             'opening-layout-target': { layoutKind: 'immersive-card-css', includeSections: ['title', 'tags', 'opening', 'coverImage', 'supportImages'], layoutPrompt: 'Create an immersive CSS-style opening card layout that combines the character title, tags, opening text, and generated images into one readable role-card presentation.' },
             'generation-strategy': { mode: 'branch-and-refine', branchCount: 3, priorityAssets: ['role-card', 'opening', 'opening-layout', 'image-pack'] },
             'quality-gate': { minimumScore: 0.84 },
@@ -2260,11 +2260,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             'continuity-control': { progressionPacing: 'slow-burn', forbidResettingFacts: true },
             'relationship-control': { relationshipMode: 'ambiguous-ally' },
             'avatar-image-target': { imageRole: 'avatar', assetPurpose: 'Final avatar.jpg for the role card: one polished single-character role-card portrait with one clear face, visible body silhouette, strong appeal, and stable identity cues.' },
-            'avatar-image-control': { targetImageCount: 1, imageStyleDomain: 'auto', imageStylePreset: 'roleplay-character-avatar', shotType: 'knee-up', aspectRatio: '1:1', consistencyMode: 'same-character', seedMode: 'lock-character', negativePrompt: 'text, watermark, logo, low quality, blurry, bad anatomy, deformed face, multiple people, duplicate face' },
+            'avatar-image-control': { targetImageCount: 1, imageStyleDomain: 'auto', shotType: 'knee-up', aspectRatio: '1:1', consistencyMode: 'same-character', seedMode: 'lock-character' },
             'overview-sheet-image-target': { imageRole: 'character-overview-sheet', assetPurpose: 'Generate one large production character overview sheet using linked avatar reference image inputs, then route that stable identity to world and NPC reference images through graph links. Required contents: full-body front view, full-body back view, side or three-quarter view, one main portrait or half-body crop, 3 expression callouts, eye close-up, nose and mouth close-up, hairstyle detail, hand pose detail, leg shape close-up, hip and rear silhouette close-up, feet or shoes detail, outfit fabric, accessory, hemline, and silhouette details. Preserve avatar outfit construction unless explicitly requesting outfit variants. No written labels.' },
-            'overview-sheet-image-control': { targetImageCount: 1, imageStyleDomain: 'auto', imageStylePreset: 'character-sheet', shotType: 'full-body', aspectRatio: '16:9', consistencyMode: 'same-character', seedMode: 'lock-character', negativePrompt: 'text, labels, watermark, logo, inconsistent face, deformed hands, extra fingers, missing fingers, bad feet, malformed legs, duplicate limbs' },
+            'overview-sheet-image-control': { targetImageCount: 1, imageStyleDomain: 'auto', shotType: 'full-body', aspectRatio: '16:9', consistencyMode: 'same-character', seedMode: 'lock-character' },
             'world-reference-image-target': { imageRole: 'world-context', assetPurpose: 'A world-context image that still includes the central character or visible character-linked motifs.' },
-            'world-reference-image-control': { targetImageCount: 2, imageStyleDomain: 'auto', imageStylePreset: 'cinematic-realism', shotType: 'auto', aspectRatio: '16:9', consistencyMode: 'same-world', seedMode: 'vary-slightly' },
+            'world-reference-image-control': { targetImageCount: 2, imageStyleDomain: 'auto', shotType: 'auto', aspectRatio: '16:9', consistencyMode: 'same-world', seedMode: 'vary-slightly' },
             'generation-strategy': { mode: 'explore-then-converge', branchCount: 4, priorityAssets: ['world-context', 'npc-pack', 'scene-context', 'image-pack'] },
             'quality-gate': { minimumScore: 0.86 },
           },
@@ -5152,11 +5152,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     } else {
       characterWorkflowConfigOverrides[nodeId][paramId] = control.value
     }
-    if (paramId === 'imageStylePreset') {
-      const preset = createImageStylePresetPrompt(control.value)
-      characterWorkflowConfigOverrides[nodeId].stylePrompt = preset.prompt
-      characterWorkflowConfigOverrides[nodeId].negativePrompt = preset.negativePrompt
-    }
     if (paramId === 'preset') {
       characterWorkflowConfigOverrides[nodeId].stylePrompt = createProseStylePresetPrompt(control.value)
     }
@@ -5165,77 +5160,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function deriveCharacterWorkflowConfig(config: Record<string, unknown>): Record<string, unknown> {
     const nextConfig = { ...config }
-    if (typeof nextConfig.imageStylePreset === 'string') {
-      const preset = createImageStylePresetPrompt(nextConfig.imageStylePreset)
-      if (!Object.prototype.hasOwnProperty.call(nextConfig, 'stylePrompt')) {
-        nextConfig.stylePrompt = preset.prompt
-      }
-      if (!Object.prototype.hasOwnProperty.call(nextConfig, 'negativePrompt')) {
-        nextConfig.negativePrompt = preset.negativePrompt
-      }
-    }
     if (typeof nextConfig.preset === 'string' && !Object.prototype.hasOwnProperty.call(nextConfig, 'stylePrompt')) {
       nextConfig.stylePrompt = createProseStylePresetPrompt(nextConfig.preset)
     }
     return nextConfig
-  }
-
-  function createImageStylePresetPrompt(value: string): { prompt: string; negativePrompt: string } {
-    const label = formatImageStylePresetLabel(value)
-    const lower = value.toLowerCase()
-    const commonNegative = 'low quality, blurry, deformed, bad anatomy, text, watermark, logo, signature, UI, caption'
-    if (lower === 'roleplay-character-avatar') {
-      return {
-        prompt: 'Roleplay character avatar, identity-first portrait language, clear face, stable hair and eye cues, attractive readable silhouette, polished AI companion card finish',
-        negativePrompt: `${commonNegative}, multiple people, duplicate face, generic template face, hidden face`,
-      }
-    }
-    if (/(adult-sensual|anime-sensual-companion|glamour-lingerie|mature-companion)/.test(lower)) {
-      return {
-        prompt: `${label}, mature sensual allure, alluring gaze, elegant body curves, lace, silk, sheer fabric, deep V neckline, cleavage, waistline, hip curve, thigh slit, warm intimate lighting, seductive but tasteful character-card pose, premium companion image finish`,
-        negativePrompt: `${commonNegative}, childish appearance, school uniform, minor, childish body, crude explicit framing, cheap pinup, generic template face, duplicate face`,
-      }
-    }
-    if (/(photoreal|cinematic|editorial|fashion|film|photo|polaroid|camera|bokeh|infrared|plate)/.test(lower)) {
-      return {
-        prompt: `${label}, premium AI companion portrait language, natural facial detail, detailed eyes, believable skin texture, flattering 50-85mm lens feel, controlled studio or cinematic light, attractive role-card finish`,
-        negativePrompt: `${commonNegative}, cartoon, anime, manga, painterly, vector art, plastic CGI, over-smoothed skin, uncanny face, generic stock-photo expression`,
-      }
-    }
-    if (/(anime|manga|moe|chibi|mecha|magical|webtoon|manhwa|visual-novel|light-novel)/.test(lower)) {
-      return {
-        prompt: `${label}, polished visual-novel character avatar language, clean linework, expressive eye design, memorable hair silhouette, tasteful cel shading, premium mobile role-card finish`,
-        negativePrompt: `${commonNegative}, photorealistic, live action, 3d render, western comic anatomy, muddy linework, generic template face`,
-      }
-    }
-    if (/(oil|painting|watercolor|gouache|acrylic|pastel|charcoal|graphite|pencil|ink|sumi|ukiyo|woodblock|linocut|etching|lithograph|risograph|screen-print)/.test(lower)) {
-      return {
-        prompt: `${label}, visible traditional media texture, intentional brushwork or mark making, artful color handling`,
-        negativePrompt: `${commonNegative}, photorealistic, 3d render, flat vector, sterile digital finish`,
-      }
-    }
-    if (/(pixel|8-bit|16-bit|voxel|ps1|low-poly)/.test(lower)) {
-      return {
-        prompt: `${label}, crisp stylized game-art readability, deliberate simplified forms, strong silhouette`,
-        negativePrompt: `${commonNegative}, photorealistic, smooth airbrushed rendering, excessive tiny detail`,
-      }
-    }
-    if (/(3d|render|clay|claymation|stop-motion|toy|vinyl|product|architectural)/.test(lower)) {
-      return {
-        prompt: `${label}, tangible volume, controlled studio lighting, readable material surfaces, clean render quality`,
-        negativePrompt: `${commonNegative}, flat 2d drawing, messy sketch, painterly smear, broken geometry`,
-      }
-    }
-    if (/(greasy|oily|dewy|gloss|latex|plastic)/.test(lower)) {
-      return {
-        prompt: `${label}, glossy highlights, slick reflective surface treatment, high specular detail`,
-        negativePrompt: `${commonNegative}, dry matte surface, dusty texture, flat lighting`,
-      }
-    }
-    return {
-      prompt: `${label}, coherent art direction, clear visual identity, polished image style`,
-      negativePrompt: commonNegative,
-    }
   }
 
   function formatImageStylePresetLabel(value: string): string {
