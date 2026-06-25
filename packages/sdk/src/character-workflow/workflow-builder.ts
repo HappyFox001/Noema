@@ -197,7 +197,7 @@ async function createCharacterWorkflowFromPrompt(
   const response = await sendChatTurnWithConfiguredModel(request.modelConfig, {
     input: request.prompt,
     language: request.language,
-    options: { temperature: 0.32, top_p: 0.82 },
+    options: { temperature: 0.32 },
     messages: [{
       role: 'system',
       content: createWorkflowBuilderSystemPrompt(request.language),
@@ -472,7 +472,7 @@ async function executeCharacterWorkflowEditorStep(
       graph,
     }),
     language: request.language,
-    options: { temperature: 0.24, top_p: 0.78 },
+    options: { temperature: 0.24 },
     messages: [{
       role: 'system',
       content: createWorkflowEditorSystemPrompt(request.language),

@@ -471,6 +471,12 @@ async function runCharacterAgentLLMTool(
       temperature: options.temperature ?? 0.5,
     },
   })
+  console.log('[CharacterWorkflow] LLM raw response:', {
+    runId: context.runId,
+    modelName,
+    apiId: configuredModel.id,
+    content: response.content,
+  })
   return response.content.trim()
 }
 
