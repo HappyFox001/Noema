@@ -136,6 +136,7 @@ function rolePromptForImage(
 function avatarRolePromptForImage(): string {
   return compactJoin([
     'canonical avatar master image for avatar.jpg',
+    'fixed 3:4 portrait asset framing',
     'single visible character only',
     'one clear unobstructed face',
     'upper-body or half-body portrait framing',
@@ -157,11 +158,13 @@ function overviewSheetRolePrompt(
     : 'production character design sheet'
   return compactJoin([
     'same character as supplied avatar reference image, preserve the same face, hair, body proportions, signature motifs, and outfit construction',
-    `${medium}, one large clean 16:9 canvas, simple light background, organized model-sheet layout, even spacing`,
-    'required contents: full-body front view, full-body back view, full-body side or three-quarter view, polished main portrait or half-body crop',
-    'required detail callouts: 3 facial expressions, eye close-up, nose and mouth close-up, hairstyle close-up, hand pose close-up, leg shape close-up, hip and rear silhouette close-up, feet or shoes close-up, outfit fabric, accessory, hemline, and silhouette details',
+    `${medium}, one fixed 16:9 overview canvas, simple light background, clean single-page layout, even spacing`,
+    'composition layout: left third contains one large polished front full-body reference plus a smaller half-body portrait crop above or beside it',
+    'composition layout: center third contains back view and side or three-quarter view as neutral standing model references, aligned on the same ground line',
+    'composition layout: right third and bottom strip contain compact visual detail tiles, no written labels',
+    'required detail tiles: 3 facial expressions, eye close-up, nose and mouth close-up, hairstyle close-up, hand pose close-up, feet or shoes close-up, outfit fabric, accessory, hemline, silhouette details',
     'keep the avatar outfit and material logic unless this target prompt explicitly requests an outfit variation',
-    'visual reference only, no written labels, no UI text, no speech bubbles',
+    'visual reference only, no written labels, no UI text, no speech bubbles, no poster composition, no scene background',
     slot,
     indexed,
   ])

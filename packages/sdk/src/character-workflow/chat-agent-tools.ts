@@ -24,6 +24,9 @@ import {
   getDirectedImageRolePriority,
 } from './image-prompt-director.js'
 
+const AVATAR_IMAGE_ASPECT_RATIO = '3:4'
+const OVERVIEW_SHEET_ASPECT_RATIO = '16:9'
+
 export interface CharacterAgentConfiguredModel {
   id: string
   modelType: 'llm' | 'image'
@@ -230,14 +233,14 @@ function createCharacterDecisionPrompt(
     '    <rule>Anime appearancePrompt pattern: anime style illustration, archetype and age impression, hair color/style, eye design, face shape, outfit/material, body silhouette, signature motif, character-card portrait, pixiv style, high quality anime art, detailed expressive eyes.</rule>',
     '    <rule>Photoreal appearancePrompt pattern: age + ethnicity/gender, temperament, hair, facial features, makeup, outfit, body shape, skin tone, realistic portrait photography, natural skin texture, soft natural light, shallow depth of field, high quality photo. Chinese prompt phrases are acceptable for photoreal characters.</rule>',
     '    <rule>Do not independently decide that a character should be sexy, sensual, revealing, or adult-styled. Use that direction only when it is explicit in stylePrompt, the user goal, or concrete source material, and express it as ordinary visual details inside the current style domain.</rule>',
-    '    <rule>Avatar targetPrompts are bound to imageRole=avatar and should only add the canonical avatar.jpg composition: single visible character, upper-body or half-body portrait, one clear unobstructed face, looking at camera, calm natural expression, simple uncluttered background, soft light. Do not restate the full appearancePrompt.</rule>',
+    '    <rule>Avatar targetPrompts are bound to imageRole=avatar and should only add the canonical avatar.jpg composition: single visible character, fixed 3:4 portrait asset framing, upper-body or half-body portrait, one clear unobstructed face, looking at camera, calm natural expression, simple uncluttered background, soft light. Do not restate the full appearancePrompt or request another aspect ratio.</rule>',
     '    <rule>Non-avatar targetPrompts should describe image purpose and composition only: pose, camera angle, scene, outfit change, background, expression, sheet layout, mood, props, and rendering function. Identity should come from supplied reference images.</rule>',
-    '    <rule>Overview is a special built-in image role, like avatar. Its imageRole already requires a complete production reference sheet: full-body front view, full-body back view, side or three-quarter view, main portrait or half-body crop, 3 expression callouts, eye close-up, nose and mouth close-up, hairstyle detail, hand pose detail, leg shape close-up, hip and rear silhouette close-up, feet or shoes detail, outfit fabric/accessory/hemline/silhouette details, same character as avatar reference, no written labels.</rule>',
-    '    <rule>Overview targetPrompts should only add slot-specific sheet emphasis such as clean 16:9 canvas, pose neutrality, costume continuity, specific outfit variation, or which details to emphasize. Do not turn overview into a scene, cover, poster, or single portrait.</rule>',
+    '    <rule>Overview is a special built-in image role, like avatar. Its imageRole already requires a complete fixed 16:9 production overview sheet: left third large front full-body reference plus smaller half-body portrait crop, center third back view and side or three-quarter neutral model references, right third and bottom strip compact visual detail tiles, same character as avatar reference, no written labels.</rule>',
+    '    <rule>Overview targetPrompts should only add slot-specific sheet emphasis such as pose neutrality, costume continuity, specific outfit variation, or which details to emphasize. Do not turn overview into a scene, cover, poster, single portrait, or non-16:9 canvas.</rule>',
     '    <example field="appearancePrompt" style="anime">anime style illustration, red-haired witch, long flowing crimson hair, large midnight-blue witch hat, sharp memorable face, glowing pink eyes, dark layered dress, slim graceful silhouette, small flame magic around fingertips, character-card portrait, pixiv style, high quality anime art, detailed expressive eyes</example>',
     '    <example field="appearancePrompt" style="photoreal">28岁中国女性，成熟沉稳气质，深棕色大波浪长发，五官立体精致，眉眼锐利但嘴唇柔和，淡妆冷调，黑色丝绸长裙，身材高挑，腰线清晰，肤色白皙自然，真实肖像摄影，自然皮肤质感，柔和暖光，浅景深，高质量摄影</example>',
-    '    <example action="request_image" target="avatar-image-target">canonical avatar.jpg portrait, single visible character, upper-body framing, one clear unobstructed face, looking at camera, calm natural expression, simple pale background, soft light</example>',
-    '    <example action="request_image" target="overview-sheet-image-target">wide clean 16:9 production sheet, neutral full-body model views, preserve avatar outfit construction, emphasize eye close-up, nose and mouth close-up, hat silhouette, hair flow, hand gesture, leg shape, hip and rear silhouette, feet, dress fabric and slit detail, no written labels</example>',
+    '    <example action="request_image" target="avatar-image-target">canonical 3:4 avatar.jpg portrait, single visible character, upper-body framing, one clear unobstructed face, looking at camera, calm natural expression, simple pale background, soft light</example>',
+    '    <example action="request_image" target="overview-sheet-image-target">fixed 16:9 production overview sheet, left large front full-body view plus half-body portrait crop, center back and three-quarter model views, right and bottom detail tiles for eyes, nose and mouth, hairstyle, hand pose, shoes, fabric and accessories, preserve avatar outfit construction, no written labels</example>',
     '  </compact_image_prompt_rules>',
     '  <action_contract>',
     '    <output_format>Return JSON only. No markdown. No XML in the response.</output_format>',
@@ -251,14 +254,15 @@ function createCharacterDecisionPrompt(
     '    <role_chat_format_rule>dialogueStyle must describe how the character speaks during chat, not the opening scene. scenario must define the persistent RP situation. worldContext must carry stable world facts.</role_chat_format_rule>',
     '    <progressive_rule>Return exactly one action. Generate or reroll one field at a time. Do not fill the whole card in one response.</progressive_rule>',
     '    <progressive_rule>If a field requirement is missing, return set_field for the earliest missing field in fixed_schema order and obey that target local XML controls. Only request_image after appearancePrompt exists.</progressive_rule>',
+    '    <progressive_rule>If runtime_state.turn_context_json contains completionPass.requiredField, return exactly one set_field action for that exact field. Do not return request_image, finish, or another field until the requested field is complete.</progressive_rule>',
     '    <workflow_rule>The runtime_state includes workflow requirements. Complete only requirements that are missing and unblocked. Never request an image target whose dependency source is still blocked or missing.</workflow_rule>',
     '    <workflow_rule>Reference-image ordering is defined by graph edges and requirement dependencies, not by a hardcoded role sequence. If a target has reference inputs, write the prompt for that target assuming the runtime supplies those reference images.</workflow_rule>',
     '    <scoped_repair_rule>If runtime_state.turn_context_json contains scopedRun and selectedArtifacts, treat the user instruction as external feedback for those selected run artifacts only.</scoped_repair_rule>',
     '    <scoped_repair_rule>For selected character-card-field artifacts, return one set_field action for that exact field with revised final content. Do not edit unrelated fields.</scoped_repair_rule>',
     '    <scoped_repair_rule>For selected non-field textual artifacts, return create_artifact preserving the artifact purpose and applying the instruction. Do not run a full workflow plan.</scoped_repair_rule>',
     '    <image_rule>Use the graph-declared image pipeline. Avatar is the first identity image. Overview images must use linked avatar references to preserve the same face, hair, proportions, and outfit language.</image_rule>',
-    '    <image_rule>The avatar prompt must be a compact positive direction for one final avatar.jpg identity master image: one visible character only, one clear unobstructed face, upper-body or half-body portrait, looking at camera, calm natural expression, readable face/hair/default outfit/body silhouette, simple uncluttered background, polished finish. Do not request a poster, cover, scene moment, model sheet, collage, split-screen, or multiple poses for avatar.</image_rule>',
-    '    <image_rule>The character-overview-sheet prompt must stay bound to the overview image role: same avatar reference identity, wide clean 16:9 production sheet, full-body front/back/side or three-quarter views, main portrait crop, 3 expression callouts, eye close-up, nose and mouth close-up, hairstyle, hand pose, leg shape, hip and rear silhouette, feet/shoes, outfit fabric/accessory/hemline/silhouette details, no written labels.</image_rule>',
+    '    <image_rule>The avatar prompt must be a compact positive direction for one final avatar.jpg identity master image: fixed 3:4 portrait asset, one visible character only, one clear unobstructed face, upper-body or half-body portrait, looking at camera, calm natural expression, readable face/hair/default outfit/body silhouette, simple uncluttered background, polished finish. Do not request a poster, cover, scene moment, model sheet, collage, split-screen, multiple poses, or any non-3:4 aspect ratio for avatar.</image_rule>',
+    '    <image_rule>The character-overview-sheet prompt must stay bound to the overview image role: same avatar reference identity, fixed 16:9 production overview sheet, left third large front full-body reference plus half-body portrait crop, center third back view and side or three-quarter neutral model references, right third and bottom strip detail tiles for expressions, eyes, nose and mouth, hairstyle, hands, feet/shoes, outfit fabric/accessory/hemline/silhouette details, no written labels.</image_rule>',
     '    <image_rule>If an image attempt failed, is stale because its reference changed, or selected artifact feedback says the image is ugly, duplicated, off-style, multi-face, not matching appearancePrompt, or otherwise unacceptable, request_image for the same targetNodeId with a sharper corrected targetPrompts.prompt. Do not edit the workflow graph for a local image reroll.</image_rule>',
     '    <image_rule>The runtime wraps avatar targetPrompts.prompt with appearancePrompt, role-specific positive visual direction, style suffix, quality suffix, and a short avoid list. For non-avatar images, the runtime omits appearancePrompt and relies on graph-linked reference images plus role/style/quality wrapping. Do not repeat the full appearancePrompt inside targetPrompts.prompt.</image_rule>',
     '    <image_rule>When requesting images, create one targetPrompts item per final image, not just per image target. If an image target requests multiple images through image_control count, return multiple distinct prompts for the same targetNodeId.</image_rule>',
@@ -720,8 +724,14 @@ function imageSizeForPrompt(prompt: {
   imageRole: string
   targetIndex: number
 }): string | undefined {
+  if (prompt.imageRole === 'avatar') {
+    return imageSizeFromAspectRatio(AVATAR_IMAGE_ASPECT_RATIO)
+  }
+  if (prompt.imageRole === 'character-overview-sheet') {
+    return imageSizeFromAspectRatio(OVERVIEW_SHEET_ASPECT_RATIO)
+  }
   const control = getImageControlForPromptIndex(prompt.target.imageControls, prompt.targetIndex)
-  const aspectRatio = control?.aspectRatio || (prompt.imageRole === 'character-overview-sheet' ? '16:9' : '1:1')
+  const aspectRatio = control?.aspectRatio || '1:1'
   return imageSizeFromAspectRatio(aspectRatio)
 }
 
@@ -731,7 +741,7 @@ function imageSizeFromAspectRatio(aspectRatio: string): string {
     '2:3': '1365x2048',
     '3:4': '1536x2048',
     '4:5': '1638x2048',
-    '16:9': '2560x1440',
+    '16:9': '1920x1088',
     '9:16': '1440x2560',
   }
   return sizes[aspectRatio] ?? '2048x2048'
