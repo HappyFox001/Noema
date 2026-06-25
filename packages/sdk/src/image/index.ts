@@ -70,7 +70,7 @@ export async function generateImageWithConfiguredProvider(options: {
     case 'google-imagen':
       return { ...base, ...(await callGoogleImagen(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt, requestOptions)) }
     case 'stability-v2':
-      return { ...base, ...(await callStabilityCore(fetcher, entry, baseUrl, options.model.apiKey, prompt, requestOptions)) }
+      return { ...base, ...(await callStabilityCore(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt, requestOptions)) }
     case 'replicate-predictions':
       return { ...base, ...(await callReplicate(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt, requestOptions)) }
     case 'fal-run':
@@ -120,10 +120,26 @@ async function callOpenAIImages(
 ): Promise<Partial<ImageGenerationResult>> {
   const referenceImages = limitReferenceImages(entry, options.referenceImages)
   if (referenceImages.length && entry.capabilities?.referenceImages?.mode === 'multipart-edit') {
+    if (entry.value === 'openai-image') {
+      assertReferenceModel(
+        entry,
+        modelName,
+        isOpenAIImageEditModel(modelName),
+        'Reference images require an OpenAI edit-capable image model such as gpt-image-* or dall-e-2.'
+      )
+    }
     return callOpenAIImageEdit(fetcher, entry, baseUrl, apiKey, modelName, prompt, {
       ...options,
       referenceImages,
     })
+  }
+  if (referenceImages.length && entry.value === 'volcengine-ark') {
+    assertReferenceModel(
+      entry,
+      modelName,
+      isVolcengineReferenceModel(modelName),
+      'Reference images require a Volcengine image model/endpoint that explicitly supports image-to-image or visual reference input.'
+    )
   }
   const jsonReferenceImages = entry.capabilities?.referenceImages?.mode === 'json-images'
     ? referenceImages
@@ -136,7 +152,7 @@ async function callOpenAIImages(
     size: entry.value === 'openai-image'
       ? normalizeOpenAIImageSize(modelName, options.size)
       : formatProviderImageSize(options.size, 'x', '1024x1024'),
-    ...(jsonReferenceImages.length ? { image: jsonReferenceImages.length === 1 ? jsonReferenceImages[0] : jsonReferenceImages } : {}),
+    ...(jsonReferenceImages.length ? openAICompatibleReferencePayload(entry, jsonReferenceImages) : {}),
     ...(gptImage ? { output_format: 'png' } : { response_format: 'b64_json' }),
   }
   const response = await fetcher(`${baseUrl}${entry.generatePath}`, {
@@ -246,6 +262,7 @@ async function callGoogleImagen(
   prompt: string,
   options: ImageProviderRequestOptions
 ): Promise<Partial<ImageGenerationResult>> {
+  rejectReferenceImages(entry, modelName, options.referenceImages, 'Google Imagen adapter currently exposes text-to-image generation only. Use a Gemini/Nano Banana style reference-capable adapter for image references.')
   const aspectRatio = aspectRatioForProvider(options.size)
   const path = entry.generatePath.replace('{model}', encodeURIComponent(modelName))
   const response = await fetcher(`${baseUrl}${path}?key=${encodeURIComponent(apiKey)}`, {
@@ -274,6 +291,7 @@ async function callStabilityCore(
   entry: ImageProviderCatalogEntry,
   baseUrl: string,
   apiKey: string,
+  modelName: string,
   prompt: string,
   options: ImageProviderRequestOptions
 ): Promise<Partial<ImageGenerationResult>> {
@@ -285,11 +303,12 @@ async function callStabilityCore(
     form.set('aspect_ratio', aspectRatio)
   }
   const referenceImages = limitReferenceImages(entry, options.referenceImages)
+  const path = resolveStabilityPath(entry, modelName, referenceImages.length > 0)
   for (let index = 0; index < referenceImages.length; index += 1) {
     const image = await loadReferenceImageBlob(fetcher, referenceImages[index], index)
     form.append(index === 0 ? 'image' : `image_${index + 1}`, image.blob, image.filename)
   }
-  const response = await fetcher(`${baseUrl}${entry.generatePath}`, {
+  const response = await fetcher(`${baseUrl}${path}`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -360,13 +379,13 @@ async function callFal(
   prompt: string,
   options: ImageProviderRequestOptions
 ): Promise<Partial<ImageGenerationResult>> {
-  const referenceImages = resolveFalReferenceImages(modelName, options.referenceImages)
-  const resolvedModelName = resolveFalModelName(modelName, referenceImages.length > 0)
+  const referenceImages = resolveFalReferenceImages(entry, modelName, options.referenceImages)
+  const resolvedModelName = resolveFalModelName(modelName)
   const body: Record<string, unknown> = {
     prompt,
     image_size: formatFalImageSize(options.size),
     num_images: 1,
-    ...(referenceImages.length ? { image_urls: referenceImages } : {}),
+    ...(referenceImages.length ? falReferencePayload(modelName, referenceImages) : {}),
   }
   const response = await fetcher(`${baseUrl}${entry.generatePath.replace('{model}', resolvedModelName)}`, {
     method: 'POST',
@@ -477,6 +496,10 @@ async function callDashScopeWanx(
   prompt: string,
   options: ImageProviderRequestOptions
 ): Promise<Partial<ImageGenerationResult>> {
+  const referenceImages = limitReferenceImages(entry, options.referenceImages)
+  if (referenceImages.length) {
+    return callDashScopeMultimodalImageEdit(fetcher, entry, baseUrl, apiKey, modelName, prompt, options, referenceImages)
+  }
   const response = await fetcher(`${baseUrl}${entry.generatePath}`, {
     method: 'POST',
     headers: {
@@ -508,6 +531,52 @@ async function callDashScopeWanx(
   return imageFromProviderOutput((task as any).output?.results, task)
 }
 
+async function callDashScopeMultimodalImageEdit(
+  fetcher: typeof fetch,
+  entry: ImageProviderCatalogEntry,
+  baseUrl: string,
+  apiKey: string,
+  modelName: string,
+  prompt: string,
+  options: ImageProviderRequestOptions,
+  referenceImages: string[]
+): Promise<Partial<ImageGenerationResult>> {
+  assertReferenceModel(
+    entry,
+    modelName,
+    isDashScopeReferenceModel(modelName),
+    'Reference images require a Qwen Image 2.0 or Qwen Image Edit model.'
+  )
+  assertDashScopeReferenceBaseUrl(baseUrl)
+  const content = [
+    ...referenceImages.map((image) => ({ image })),
+    { text: prompt },
+  ]
+  const response = await fetcher(`${baseUrl}${dashScopeMultimodalGenerationPath(baseUrl)}`, {
+    method: 'POST',
+    headers: jsonAuthHeaders(apiKey),
+    body: JSON.stringify({
+      model: modelName,
+      input: {
+        messages: [{ role: 'user', content }],
+      },
+      parameters: {
+        n: 1,
+        prompt_extend: true,
+        watermark: false,
+        size: formatProviderImageSize(options.size, 'asterisk', '1024*1024'),
+      },
+    }),
+  })
+  const payload = await readResponsePayload(response)
+  assertOk(response, payload, 'DashScope Qwen image edit failed')
+  const output = (payload as any).output
+  return {
+    ...imageFromProviderOutput(output?.choices?.[0]?.message?.content ?? output?.results ?? output ?? payload, payload),
+    referenceImages,
+  }
+}
+
 async function callAdobeFirefly(
   fetcher: typeof fetch,
   entry: ImageProviderCatalogEntry,
@@ -517,6 +586,7 @@ async function callAdobeFirefly(
   prompt: string,
   options: ImageProviderRequestOptions
 ): Promise<Partial<ImageGenerationResult>> {
+  rejectReferenceImages(entry, modelName, options.referenceImages, 'Adobe Firefly references require the Firefly upload/reference-image flow, which is not represented by this text-to-image adapter yet.')
   const credentials = parseAdobeCredentials(apiKey)
   const size = parseImageSize(options.size)
   const response = await fetcher(`${baseUrl}${entry.generatePath}`, {
@@ -559,7 +629,7 @@ async function callIdeogram(
   }
   for (let index = 0; index < referenceImages.length; index += 1) {
     const image = await loadReferenceImageBlob(fetcher, referenceImages[index], index)
-    form.append(index === 0 ? 'image' : `image_${index + 1}`, image.blob, image.filename)
+    form.append('character_reference_images', image.blob, image.filename)
   }
   const response = await fetcher(`${baseUrl}${entry.generatePath}`, {
     method: 'POST',
@@ -592,6 +662,9 @@ async function callWaveSpeed(
     size: formatWaveSpeedImageSize(options.size, waveSpeedRequest),
     enable_sync_mode: true,
     enable_base64_output: false,
+  }
+  if (waveSpeedRequest.defaultStrength !== undefined) {
+    body.strength = waveSpeedRequest.defaultStrength
   }
   if (waveSpeedRequest.referenceField === 'images') {
     body.images = waveSpeedRequest.referenceImages
@@ -635,6 +708,7 @@ async function callTencentHunyuan(
   prompt: string,
   options: ImageProviderRequestOptions
 ): Promise<Partial<ImageGenerationResult>> {
+  rejectReferenceImages(entry, modelName, options.referenceImages, 'Tencent Hunyuan TextToImage does not accept reference images through this action.')
   const credentials = parseTencentCredentials(apiKey)
   const size = parseImageSize(options.size)
   const body = JSON.stringify({
@@ -677,6 +751,14 @@ async function callHuggingFaceInference(
 ): Promise<Partial<ImageGenerationResult>> {
   const size = parseImageSize(options.size)
   const referenceImages = limitReferenceImages(entry, options.referenceImages)
+  if (referenceImages.length) {
+    assertReferenceModel(
+      entry,
+      modelName,
+      isHuggingFaceReferenceModel(modelName),
+      'Reference images require a Hugging Face image-to-image/edit/control model endpoint.'
+    )
+  }
   const parameters: Record<string, unknown> = {
     ...(size ? { width: size.width, height: size.height } : {}),
     ...(referenceImages[0] ? {
@@ -716,11 +798,92 @@ async function callHuggingFaceInference(
 }
 
 function limitReferenceImages(entry: ImageProviderCatalogEntry, referenceImages: string[] = []): string[] {
-  const referenceCapability = entry.capabilities?.referenceImages
-  if (!referenceCapability?.supported) {
+  const normalized = referenceImages.map((item) => item.trim()).filter(Boolean)
+  if (!normalized.length) {
     return []
   }
-  return referenceImages.map((item) => item.trim()).filter(Boolean).slice(0, Math.max(1, referenceCapability.maxImages))
+  const referenceCapability = entry.capabilities?.referenceImages
+  if (!referenceCapability?.supported) {
+    throw new Error(`${entry.label} does not support reference images through this adapter`)
+  }
+  return normalized.slice(0, Math.max(1, referenceCapability.maxImages))
+}
+
+function rejectReferenceImages(entry: ImageProviderCatalogEntry, modelName: string, referenceImages: string[] = [], reason: string): void {
+  if (referenceImages.map((item) => item.trim()).filter(Boolean).length) {
+    throw new Error(`${entry.label} model "${modelName}" cannot use reference images. ${reason}`)
+  }
+}
+
+function assertReferenceModel(entry: ImageProviderCatalogEntry, modelName: string, supported: boolean, reason: string): void {
+  if (!supported) {
+    throw new Error(`${entry.label} model "${modelName}" cannot use reference images. ${reason}`)
+  }
+}
+
+function openAICompatibleReferencePayload(entry: ImageProviderCatalogEntry, referenceImages: string[]): Record<string, unknown> {
+  if (entry.value === 'volcengine-ark') {
+    return {
+      image: referenceImages.length === 1 ? referenceImages[0] : referenceImages,
+      images: referenceImages,
+    }
+  }
+  return {
+    image: referenceImages.length === 1 ? referenceImages[0] : referenceImages,
+  }
+}
+
+function isOpenAIImageEditModel(modelName: string): boolean {
+  return /^(gpt-image|chatgpt-image|dall-e-2)/i.test(modelName.trim())
+}
+
+function isVolcengineReferenceModel(modelName: string): boolean {
+  return /seedream|dreamina|image-to-image|img2img|i2i|edit|reference/i.test(modelName)
+}
+
+function isDashScopeReferenceModel(modelName: string): boolean {
+  return /qwen-image(?:-2\.0|-edit|-\d|$)|image-edit|image-to-image|img2img/i.test(modelName)
+}
+
+function isHuggingFaceReferenceModel(modelName: string): boolean {
+  return /image-to-image|img2img|i2i|kontext|edit|instruct-pix2pix|controlnet|ip-adapter|adapter/i.test(modelName)
+}
+
+function resolveStabilityPath(entry: ImageProviderCatalogEntry, modelName: string, hasReferenceImages: boolean): string {
+  if (!hasReferenceImages) {
+    return entry.generatePath
+  }
+  const normalized = modelName.trim().replace(/^\/+/, '')
+  if (/^v2beta\/stable-image\/(edit|control)\//i.test(normalized)) {
+    return `/${normalized}`
+  }
+  if (/^stable-image\/(edit|control)\//i.test(normalized)) {
+    return `/v2beta/${normalized}`
+  }
+  throw new Error(`${entry.label} model "${modelName}" cannot use reference images. Select an explicit Stability edit/control endpoint path such as v2beta/stable-image/control/sketch.`)
+}
+
+function dashScopeMultimodalGenerationPath(baseUrl: string): string {
+  return /\/api\/v1\/services\/aigc\/multimodal-generation\/generation\/?$/i.test(new URL(baseUrl).pathname)
+    ? ''
+    : '/api/v1/services/aigc/multimodal-generation/generation'
+}
+
+function assertDashScopeReferenceBaseUrl(baseUrl: string): void {
+  const url = new URL(baseUrl)
+  const multimodalPath = /\/api\/v1\/services\/aigc\/multimodal-generation\/generation\/?$/i.test(url.pathname)
+  if (/\.maas\.aliyuncs\.com$/i.test(url.hostname) || multimodalPath) {
+    return
+  }
+  throw new Error('Aliyun Qwen image references require a WorkspaceId maas base URL, for example https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com')
+}
+
+function falReferencePayload(modelName: string, referenceImages: string[]): Record<string, unknown> {
+  const normalized = modelName.toLowerCase()
+  if (referenceImages.length > 1 || /\/multi(?:\/|$)|edit|kontext/i.test(normalized)) {
+    return { image_urls: referenceImages }
+  }
+  return { image_url: referenceImages[0] }
 }
 
 interface WaveSpeedRequestShape {
@@ -728,6 +891,7 @@ interface WaveSpeedRequestShape {
   referenceField: 'image' | 'images' | null
   referenceImages: string[]
   maxSize?: number
+  defaultStrength?: number
 }
 
 function resolveWaveSpeedRequest(
@@ -746,6 +910,7 @@ function resolveWaveSpeedRequest(
       referenceField: hasReferenceImages ? 'image' : null,
       referenceImages: referenceImages.slice(0, 1),
       maxSize: 1536,
+      ...(hasReferenceImages ? { defaultStrength: 0.6 } : {}),
     }
   }
   if (hasReferenceImages && /\/image-to-image$|\/img2img$/i.test(normalized)) {
@@ -756,50 +921,37 @@ function resolveWaveSpeedRequest(
     }
   }
   return {
-    modelName: resolveWaveSpeedModelName(normalized, hasReferenceImages),
-    referenceField: hasReferenceImages ? 'images' : null,
+    modelName: normalized,
+    referenceField: hasReferenceImages ? resolveWaveSpeedReferenceField(normalized, referenceImages.length) : null,
     referenceImages,
   }
 }
 
-function resolveWaveSpeedModelName(modelName: string, hasReferenceImages: boolean): string {
-  const normalized = modelName.replace(/^\/+|\/+$/g, '')
-  if (hasReferenceImages) {
-    if (normalized.endsWith('/edit') || normalized.endsWith('/edit-sequential')) {
-      return normalized
-    }
-    if (normalized.endsWith('/sequential')) {
-      return `${normalized.replace(/\/sequential$/, '')}/edit-sequential`
-    }
-    return `${normalized}/edit`
+function resolveWaveSpeedReferenceField(modelName: string, referenceImageCount: number): 'image' | 'images' {
+  if (referenceImageCount <= 1 && !/\/multi$|ideogram-character|character-reference|reference-images/i.test(modelName)) {
+    return 'image'
   }
-  if (normalized.endsWith('/edit')) {
-    return normalized.replace(/\/edit$/, '')
-  }
-  if (normalized.endsWith('/edit-sequential')) {
-    return `${normalized.replace(/\/edit-sequential$/, '')}/sequential`
-  }
-  return normalized
+  return 'images'
 }
 
-function resolveFalModelName(modelName: string, hasReferenceImages: boolean): string {
-  const normalized = modelName.replace(/^\/+|\/+$/g, '')
-  if (!hasReferenceImages || /\/edit(?:\/|$)/i.test(normalized)) {
-    return normalized
-  }
-  if (/fal-ai\/bytedance\/seedream\/v\d+(?:\.\d+)?$/i.test(normalized)) {
-    return `${normalized}/edit`
-  }
-  return normalized
+function resolveFalModelName(modelName: string): string {
+  return modelName.replace(/^\/+|\/+$/g, '')
 }
 
-function resolveFalReferenceImages(modelName: string, referenceImages: string[]): string[] {
-  if (!referenceImages.length) {
-    return []
+function resolveFalReferenceImages(entry: ImageProviderCatalogEntry, modelName: string, referenceImages: string[]): string[] {
+  const limited = limitReferenceImages(entry, referenceImages)
+  if (!limited.length) {
+    return limited
   }
   const normalized = modelName.toLowerCase()
-  const supportsReferences = /\/edit(?:\/|$)|image-to-image|img2img|kontext|seedream/.test(normalized)
-  return supportsReferences ? referenceImages.slice(0, 10) : []
+  const supportsReferences = /\/edit(?:\/|$)|image-to-image|img2img|kontext/.test(normalized)
+  assertReferenceModel(
+    entry,
+    modelName,
+    supportsReferences,
+    'Reference images require an explicit fal edit, image-to-image, img2img, or kontext endpoint.'
+  )
+  return limited
 }
 
 function normalizeOpenAIImageSize(modelName: string, size: string | undefined): string {
@@ -977,8 +1129,9 @@ function imageFromProviderOutput(output: unknown, providerResponse: unknown): Pa
   }
   if (first && typeof first === 'object') {
     const item = first as Record<string, any>
-    const url = item.url || item.image_url || item.imageUrl || item.download_url
-    const b64 = item.b64_json || item.base64 || item.image || item.data
+    const imageValue = item.image
+    const url = item.url || item.image_url || item.imageUrl || item.download_url || (typeof imageValue === 'string' && /^https?:\/\//.test(imageValue) ? imageValue : undefined)
+    const b64 = item.b64_json || item.base64 || (typeof imageValue === 'string' && !/^https?:\/\//.test(imageValue) ? imageValue : undefined) || item.data
     if (url) {
       return { url: String(url), providerResponse }
     }
