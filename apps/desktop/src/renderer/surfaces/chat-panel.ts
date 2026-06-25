@@ -244,7 +244,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   const runtimeModelPicker = document.createElement('div')
   const attachmentTray = document.createElement('div')
   let chatSystemConfig: ChatSystemConfig | null = null
-  let openChatModelDropdownId = ''
+  let openChatModelLibraryId = ''
+  let chatModelLibrarySearch = ''
   let openChatProviderDropdownId = ''
   let openChatRuntimeModelPicker = false
   let openChatModelTypePicker = false
@@ -643,7 +644,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         break
       case 'add-chat-model':
         openChatModelTypePicker = !openChatModelTypePicker
-        openChatModelDropdownId = ''
+        openChatModelLibraryId = ''
+        chatModelLibrarySearch = ''
         openChatProviderDropdownId = ''
         renderChatModelConfig()
         break
@@ -1790,7 +1792,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       language: options.getLanguage(),
       escapeHtml: options.escapeHtml,
       openTypePicker: openChatModelTypePicker,
-      openModelDropdownId: openChatModelDropdownId,
+      openModelLibraryId: openChatModelLibraryId,
+      modelLibrarySearch: chatModelLibrarySearch,
       openProviderDropdownId: openChatProviderDropdownId,
       visibleApiKeyIds: visibleChatApiKeys,
       loadingModelIds: chatModelLoading,
@@ -5649,14 +5652,23 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!model) {
       return
     }
+    const previousProvider = getChatProviderEntry(model).value
     const entry = getChatModelType(model) === 'image'
       ? getImageProviderCatalogEntry(provider)
       : getLLMProviderCatalogEntry(provider)
+    const providerChanged = previousProvider !== entry.value
     model.provider = entry.value
-    model.modelName = model.modelName.trim() || entry.defaultModel
-    model.enabledModels = [model.modelName]
-    model.availableModels = []
-    model.modelsFetchedAt = undefined
+    if (providerChanged) {
+      model.modelName = entry.defaultModel
+      model.enabledModels = entry.defaultModel ? [entry.defaultModel] : []
+      model.availableModels = []
+      model.modelsFetchedAt = undefined
+    } else {
+      model.modelName = model.modelName.trim() || entry.defaultModel
+      model.enabledModels = getEnabledModelNames(model).length
+        ? getEnabledModelNames(model)
+        : [model.modelName].filter(Boolean)
+    }
     model.baseUrl = entry.defaultBaseUrl
     openChatProviderDropdownId = ''
     await saveChatModelConfig()
@@ -5672,16 +5684,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!model || chatModelLoading.has(id)) {
       return
     }
-    if (getChatModelType(model) === 'image') {
-      showToast(options.getLanguage() === 'zh-CN' ? '生图模型请手动填写模型名或工作流名称' : 'Enter image model or workflow names manually')
-      return
-    }
-    openChatModelDropdownId = id
+    openChatModelLibraryId = id
     chatModelLoading.add(id)
     renderChatModelConfig()
     try {
       const response = await window.electronAPI.listChatModels({
         provider: model.provider,
+        modelType: getChatModelType(model),
         apiKey: model.apiKey,
         baseUrl: model.baseUrl,
       })
@@ -5692,7 +5701,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       chatModelOptions.set(id, models)
       model.availableModels = models
       model.modelsFetchedAt = Date.now()
-      model.enabledModels = mergeModelNames(model.enabledModels, getEnabledModelNames(model).length ? [] : models.slice(0, 1))
       if (!models.length) {
         showToast(options.getLanguage() === 'zh-CN' ? '没有返回可用模型' : 'No models returned')
       }
@@ -5706,7 +5714,36 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
   }
 
+  async function addManualChatModel(id: string): Promise<void> {
+    if (!chatSystemConfig) {
+      return
+    }
+    const card = getChatModelCard(id)
+    const input = card?.querySelector<HTMLInputElement>('[data-chat-manual-model-input]')
+    const name = input?.value.trim() || ''
+    if (!name) {
+      return
+    }
+    await setChatApiModelEnabled(id, name, true)
+  }
+
+  async function removeChatApiEnabledModel(id: string, modelName: string): Promise<void> {
+    await setChatApiModelEnabled(id, modelName, false)
+  }
+
   async function toggleChatApiEnabledModel(id: string, modelName: string): Promise<void> {
+    if (!chatSystemConfig) {
+      return
+    }
+    const model = chatSystemConfig.chatModels.find((item) => item.id === id)
+    const name = modelName.trim()
+    if (!model || !name) {
+      return
+    }
+    await setChatApiModelEnabled(id, name, !getEnabledModelNames(model).includes(name))
+  }
+
+  async function setChatApiModelEnabled(id: string, modelName: string, enabled: boolean): Promise<void> {
     if (!chatSystemConfig) {
       return
     }
@@ -5717,10 +5754,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
     const current = getEnabledModelNames(model)
-    const next = current.includes(name)
-      ? current.filter((item) => item !== name)
-      : [...current, name]
-    model.enabledModels = next.length ? next : [name]
+    const next = enabled
+      ? mergeModelNames(current, [name])
+      : current.filter((item) => item !== name)
+    model.enabledModels = next
     model.availableModels = mergeModelNames(model.availableModels, [name])
     if (!model.enabledModels.includes(model.modelName)) {
       model.modelName = model.enabledModels[0] || ''
@@ -5737,6 +5774,19 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     renderChatRuntimeModelPicker()
   }
 
+  function openChatModelLibrary(id: string): void {
+    openChatModelLibraryId = id
+    openChatProviderDropdownId = ''
+    chatModelLibrarySearch = ''
+    renderChatModelConfig()
+  }
+
+  function closeChatModelLibrary(): void {
+    openChatModelLibraryId = ''
+    chatModelLibrarySearch = ''
+    renderChatModelConfig()
+  }
+
   async function deleteChatModel(id: string): Promise<void> {
     if (!chatSystemConfig || chatSystemConfig.chatModels.length <= 1) {
       return
@@ -5748,8 +5798,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       chatSystemConfig.activeChatModelName = chatSystemConfig.chatModels[0]?.enabledModels[0] || ''
     }
     chatModelOptions.delete(id)
-    if (openChatModelDropdownId === id) {
-      openChatModelDropdownId = ''
+    if (openChatModelLibraryId === id) {
+      openChatModelLibraryId = ''
+      chatModelLibrarySearch = ''
     }
     if (openChatProviderDropdownId === id) {
       openChatProviderDropdownId = ''
@@ -6058,29 +6109,38 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
     const modelAction = eventTarget.closest<HTMLElement>('[data-chat-model-action]')
     if (modelAction && panel.contains(modelAction)) {
+      if (modelAction.dataset.chatModelAction === 'close-model-library') {
+        if (eventTarget.closest('.chat-model-library') && !eventTarget.closest('.chat-model-library-close')) {
+          return
+        }
+        closeChatModelLibrary()
+        return
+      }
       const card = modelAction.closest<HTMLElement>('[data-chat-model-id]')
       const modelId = card?.dataset.chatModelId || ''
-      if (modelId && modelAction.dataset.chatModelAction === 'toggle-models') {
-        openChatModelDropdownId = openChatModelDropdownId === modelId ? '' : modelId
-        openChatProviderDropdownId = ''
-        renderChatModelConfig()
-      }
       if (modelId && modelAction.dataset.chatModelAction === 'toggle-providers') {
         openChatProviderDropdownId = openChatProviderDropdownId === modelId ? '' : modelId
-        openChatModelDropdownId = ''
+        openChatModelLibraryId = ''
+        chatModelLibrarySearch = ''
         renderChatModelConfig()
       }
       if (modelId && modelAction.dataset.chatModelAction === 'toggle-api-key') {
         toggleChatApiKeyVisibility(modelId)
       }
+      if (modelId && modelAction.dataset.chatModelAction === 'open-model-library') {
+        openChatModelLibrary(modelId)
+      }
       if (modelId && modelAction.dataset.chatModelAction === 'get-models') {
         void fetchChatModels(modelId)
       }
-      if (modelId && modelAction.dataset.chatModelAction === 'choose-model') {
-        void updateChatModel(modelId, 'modelName', modelAction.dataset.chatModelName || '')
+      if (modelId && modelAction.dataset.chatModelAction === 'add-manual-model') {
+        void addManualChatModel(modelId)
       }
       if (modelId && modelAction.dataset.chatModelAction === 'toggle-enabled-model') {
         void toggleChatApiEnabledModel(modelId, modelAction.dataset.chatModelName || '')
+      }
+      if (modelId && modelAction.dataset.chatModelAction === 'remove-enabled-model') {
+        void removeChatApiEnabledModel(modelId, modelAction.dataset.chatModelName || '')
       }
       if (modelId && modelAction.dataset.chatModelAction === 'delete') {
         void deleteChatModel(modelId)
@@ -6274,6 +6334,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       renderCharacterWorkflow()
       return
     }
+    const modelLibrarySearch = (event.target as HTMLElement | null)?.closest<HTMLInputElement>('[data-chat-model-library-search]')
+    if (modelLibrarySearch && panel.contains(modelLibrarySearch)) {
+      chatModelLibrarySearch = modelLibrarySearch.value
+      renderChatModelConfig()
+      return
+    }
     const settingsControl = (event.target as HTMLElement | null)?.closest<HTMLInputElement>('[data-chat-setting]')
     if (!settingsControl || !panel.contains(settingsControl)) {
       return
@@ -6308,6 +6374,15 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   window.addEventListener('pointercancel', endCharacterResourceViewportDrag)
   window.addEventListener('pointercancel', endManualDrag)
   window.addEventListener('keydown', (event) => {
+    const manualModelInput = (event.target as HTMLElement | null)?.closest<HTMLInputElement>('[data-chat-manual-model-input]')
+    if (manualModelInput && panel.contains(manualModelInput) && event.key === 'Enter') {
+      const modelId = manualModelInput.closest<HTMLElement>('[data-chat-model-id]')?.dataset.chatModelId || ''
+      if (modelId) {
+        event.preventDefault()
+        void addManualChatModel(modelId)
+      }
+      return
+    }
     const resourceShortcut = panel.dataset.chatView === 'character-workflow' && !((event.target as HTMLElement | null)?.closest('input, textarea, select'))
     if (resourceShortcut && (event.metaKey || event.ctrlKey) && event.key === 'z') {
       event.preventDefault()
@@ -6329,6 +6404,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     if (event.key === 'Escape' && chatHistoryPanel?.classList.contains('visible')) {
       closeChatHistoryManager()
+    }
+    if (event.key === 'Escape' && openChatModelLibraryId) {
+      closeChatModelLibrary()
     }
     if (event.key === 'Escape' && characterWorkflowEditorState.nodeSearchOpen) {
       characterWorkflowEditorState.nodeSearchOpen = false

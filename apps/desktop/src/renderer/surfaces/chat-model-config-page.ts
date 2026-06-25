@@ -57,7 +57,8 @@ export interface ChatModelConfigPageOptions {
   language: 'zh-CN' | 'en-US'
   escapeHtml(value: string): string
   openTypePicker: boolean
-  openModelDropdownId: string
+  openModelLibraryId: string
+  modelLibrarySearch: string
   openProviderDropdownId: string
   visibleApiKeyIds: ReadonlySet<string>
   loadingModelIds: ReadonlySet<string>
@@ -95,6 +96,7 @@ export function renderChatModelConfigPage(
     </div>
     ${options.openTypePicker ? renderChatModelTypePicker(options) : ''}
     ${config.chatModels.map((model) => renderChatModelCard(model, config, options)).join('')}
+    ${renderChatModelLibraryModal(config, options)}
   `
 }
 
@@ -231,49 +233,92 @@ function renderChatModelCard(
 }
 
 function renderChatApiModelSelector(model: ChatModelConfig, options: ChatModelConfigPageOptions): string {
-  const type = getChatModelType(model)
-  if (type === 'image') {
-    return `
-      <div class="chat-api-models">
-        <div class="chat-api-models-head">
-          <strong>${options.escapeHtml(options.language === 'zh-CN' ? '模型' : 'Model')}</strong>
-        </div>
-        ${renderChatModelCombobox(model, getChatProviderEntry(model).defaultModel || 'model-name', options)}
-      </div>
-    `
-  }
-
   const availableModels = getAvailableModelNames(model)
   const enabledModels = getEnabledModelNames(model)
   const fetchedLabel = model.modelsFetchedAt
     ? formatModelCacheTime(model.modelsFetchedAt, options.language)
     : (options.language === 'zh-CN' ? '未缓存' : 'No cache')
-  const manualName = model.modelName.trim()
+  const modelCountLabel = options.language === 'zh-CN'
+    ? `${enabledModels.length} 个已启用`
+    : `${enabledModels.length} enabled`
   return `
     <div class="chat-api-models">
       <div class="chat-api-models-head">
         <strong>${options.escapeHtml(options.language === 'zh-CN' ? '模型' : 'Models')}</strong>
-        <span>${options.escapeHtml(fetchedLabel)}</span>
+        <span>${options.escapeHtml(`${modelCountLabel} · ${fetchedLabel}`)}</span>
+        <button class="chat-model-fetch inline" type="button" data-chat-model-action="open-model-library">
+          ${options.escapeHtml(options.language === 'zh-CN' ? '模型库' : 'Library')}
+        </button>
         <button class="chat-model-fetch inline" type="button" data-chat-model-action="get-models">
           ${options.escapeHtml(options.loadingModelIds.has(model.id) ? (options.language === 'zh-CN' ? '刷新中...' : 'Refreshing...') : (availableModels.length ? (options.language === 'zh-CN' ? '刷新' : 'Refresh') : 'Get models'))}
         </button>
       </div>
-      ${availableModels.length
-        ? `<div class="chat-api-model-options">
-            ${availableModels.map((name) => `
-              <button class="${enabledModels.includes(name) ? 'selected' : ''}" type="button" data-chat-model-action="toggle-enabled-model" data-chat-model-name="${options.escapeHtml(name)}">
-                <span>${enabledModels.includes(name) ? '✓' : ''}</span>
+      ${enabledModels.length
+        ? `<div class="chat-enabled-models">
+            ${enabledModels.map((name) => `
+              <span class="chat-enabled-model-chip">
                 <strong>${options.escapeHtml(name)}</strong>
-              </button>
+                <button type="button" data-chat-model-action="remove-enabled-model" data-chat-model-name="${options.escapeHtml(name)}" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? `移除 ${name}` : `Remove ${name}`)}">×</button>
+              </span>
             `).join('')}
           </div>`
-        : `<div class="chat-api-model-manual">
-            ${renderChatModelCombobox(model, getChatProviderEntry(model).defaultModel || 'model-name', options)}
-            <small>${options.escapeHtml(options.language === 'zh-CN' ? '可手动输入一个模型，或点击 Get models 获取并缓存列表。' : 'Enter one model manually, or click Get models to fetch and cache the list.')}</small>
-          </div>`}
-      ${manualName && availableModels.length && !availableModels.includes(manualName)
-        ? `<button class="chat-api-model-add-manual" type="button" data-chat-model-action="toggle-enabled-model" data-chat-model-name="${options.escapeHtml(manualName)}">${options.escapeHtml(options.language === 'zh-CN' ? `添加手动模型：${manualName}` : `Add manual model: ${manualName}`)}</button>`
-        : ''}
+        : `<div class="chat-enabled-models empty">${options.escapeHtml(options.language === 'zh-CN' ? '还没有启用模型' : 'No enabled models')}</div>`}
+      <div class="chat-api-model-manual">
+        <input class="chat-model-input" type="text" data-chat-manual-model-input value="" placeholder="${options.escapeHtml(getChatProviderEntry(model).defaultModel || 'model-name')}" autocomplete="off" />
+        <button class="chat-api-model-add-manual" type="button" data-chat-model-action="add-manual-model">${options.escapeHtml(options.language === 'zh-CN' ? '添加' : 'Add')}</button>
+      </div>
+    </div>
+  `
+}
+
+function renderChatModelLibraryModal(config: ChatSystemConfig, options: ChatModelConfigPageOptions): string {
+  const model = config.chatModels.find((item) => item.id === options.openModelLibraryId)
+  if (!model) {
+    return ''
+  }
+  const availableModels = mergeModelNames(getAvailableModelNames(model), options.modelOptions.get(model.id) || [])
+  const enabledModels = getEnabledModelNames(model)
+  const query = options.modelLibrarySearch.trim().toLowerCase()
+  const filteredModels = query
+    ? availableModels.filter((name) => name.toLowerCase().includes(query))
+    : availableModels
+  const loading = options.loadingModelIds.has(model.id)
+  const provider = getChatProviderEntry(model)
+  const title = options.language === 'zh-CN' ? '选择模型' : 'Choose models'
+  const emptyText = availableModels.length
+    ? (options.language === 'zh-CN' ? '没有匹配的模型' : 'No matching models')
+    : (options.language === 'zh-CN' ? '还没有缓存模型列表，可以刷新后搜索选择。' : 'No cached model list yet. Refresh, then search and choose.')
+  return `
+    <div class="chat-model-library-backdrop" data-chat-model-action="close-model-library">
+      <section class="chat-model-library" role="dialog" aria-modal="true" aria-label="${options.escapeHtml(title)}" data-chat-model-id="${options.escapeHtml(model.id)}">
+        <div class="chat-model-library-head">
+          <span class="chat-model-logo small">${renderChatModelLogo(model)}</span>
+          <span class="chat-model-library-title">
+            <strong>${options.escapeHtml(title)}</strong>
+            <small>${options.escapeHtml(`${provider.label} · ${enabledModels.length}/${availableModels.length}`)}</small>
+          </span>
+          <button class="chat-model-library-close" type="button" data-chat-model-action="close-model-library" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '关闭' : 'Close')}">×</button>
+        </div>
+        <div class="chat-model-library-tools">
+          <input class="chat-model-input" type="search" data-chat-model-library-search value="${options.escapeHtml(options.modelLibrarySearch)}" placeholder="${options.escapeHtml(options.language === 'zh-CN' ? '搜索模型...' : 'Search models...')}" autocomplete="off" />
+          <button class="chat-model-fetch" type="button" data-chat-model-action="get-models">
+            ${options.escapeHtml(loading ? (options.language === 'zh-CN' ? '刷新中...' : 'Refreshing...') : (options.language === 'zh-CN' ? '刷新列表' : 'Refresh'))}
+          </button>
+        </div>
+        ${filteredModels.length
+          ? `<div class="chat-model-library-list">
+              ${filteredModels.map((name) => `
+                <button class="${enabledModels.includes(name) ? 'selected' : ''}" type="button" data-chat-model-action="toggle-enabled-model" data-chat-model-name="${options.escapeHtml(name)}">
+                  <span>${enabledModels.includes(name) ? '✓' : ''}</span>
+                  <strong>${options.escapeHtml(name)}</strong>
+                </button>
+              `).join('')}
+            </div>`
+          : `<div class="chat-model-library-empty">
+              <span>${options.escapeHtml(emptyText)}</span>
+              ${availableModels.length ? '' : `<button class="chat-model-fetch" type="button" data-chat-model-action="get-models">${options.escapeHtml(options.language === 'zh-CN' ? '获取模型列表' : 'Get models')}</button>`}
+            </div>`}
+      </section>
     </div>
   `
 }
@@ -287,52 +332,6 @@ function renderChatModelTypeBadge(model: ChatModelConfig, options: ChatModelConf
     <div class="chat-model-type-badge" aria-label="Model type">
       <span class="chat-model-type-dot ${type}"></span>
       <strong>${options.escapeHtml(label)}</strong>
-    </div>
-  `
-}
-
-function renderChatModelCombobox(
-  model: ChatModelConfig,
-  placeholder: string,
-  options: ChatModelConfigPageOptions
-): string {
-  const open = options.openModelDropdownId === model.id
-  return `
-    <div class="chat-model-combo ${open ? 'open' : ''}">
-      <input class="chat-model-input" type="text" data-chat-model-field="modelName" value="${options.escapeHtml(model.modelName)}" placeholder="${options.escapeHtml(placeholder)}" autocomplete="off" />
-      <button class="chat-model-combo-trigger" type="button" data-chat-model-action="toggle-models" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '选择模型' : 'Choose model')}"></button>
-      ${open ? renderChatModelDropdown(model, options) : ''}
-    </div>
-  `
-}
-
-function renderChatModelDropdown(model: ChatModelConfig, options: ChatModelConfigPageOptions): string {
-  if (getChatModelType(model) === 'image') {
-    return `
-      <div class="chat-model-dropdown">
-        <span class="chat-model-dropdown-empty">${options.escapeHtml(options.language === 'zh-CN' ? '生图模型请按厂商文档手动填写模型名或工作流名称。' : 'For image models, enter the model or workflow name manually.')}</span>
-      </div>
-    `
-  }
-  const loading = options.loadingModelIds.has(model.id)
-  const models = options.modelOptions.get(model.id) || []
-  const emptyText = options.language === 'zh-CN'
-    ? '可手动输入，或从接口拉取模型列表。'
-    : 'Type manually, or fetch available models.'
-  return `
-    <div class="chat-model-dropdown">
-      <button class="chat-model-fetch" type="button" data-chat-model-action="get-models">
-        ${options.escapeHtml(loading ? (options.language === 'zh-CN' ? '获取中...' : 'Loading...') : 'Get models')}
-      </button>
-      ${models.length
-        ? `<div class="chat-model-options">
-            ${models.map((name) => `
-              <button type="button" data-chat-model-action="choose-model" data-chat-model-name="${options.escapeHtml(name)}">
-                ${options.escapeHtml(name)}
-              </button>
-            `).join('')}
-          </div>`
-        : `<span class="chat-model-dropdown-empty">${options.escapeHtml(emptyText)}</span>`}
     </div>
   `
 }

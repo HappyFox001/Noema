@@ -785,14 +785,15 @@ function normalizeChatModelConfig(value: unknown, fallback: ChatModelConfig, ind
   if (modelType === 'image') {
     const provider = normalizeImageProvider(source.provider, fallback?.provider)
     const providerEntry = getImageProviderCatalogEntry(provider)
+    const modelName = typeof source.modelName === 'string'
+      ? source.modelName
+      : fallback?.modelName || providerEntry.defaultModel
     return {
       id: typeof source.id === 'string' && source.id ? source.id : fallback?.id || `chat-${index + 1}`,
       modelType,
       provider,
-      modelName: typeof source.modelName === 'string'
-        ? source.modelName
-        : fallback?.modelName || providerEntry.defaultModel,
-      enabledModels: normalizeStringList(source.enabledModels),
+      modelName,
+      enabledModels: normalizeChatEnabledModels(source.enabledModels, modelName),
       availableModels: normalizeStringList(source.availableModels),
       modelsFetchedAt: normalizeTimestamp(source.modelsFetchedAt),
       apiKey: typeof source.apiKey === 'string' ? source.apiKey : fallback?.apiKey || '',
@@ -802,14 +803,15 @@ function normalizeChatModelConfig(value: unknown, fallback: ChatModelConfig, ind
 
   const provider = normalizeLLMProvider(source.provider, fallback?.provider)
   const providerEntry = getLLMProviderCatalogEntry(provider)
+  const modelName = typeof source.modelName === 'string'
+    ? source.modelName
+    : fallback?.modelName || providerEntry.defaultModel
   return {
     id: typeof source.id === 'string' && source.id ? source.id : fallback?.id || `chat-${index + 1}`,
     modelType,
     provider,
-    modelName: typeof source.modelName === 'string'
-      ? source.modelName
-      : fallback?.modelName || providerEntry.defaultModel,
-    enabledModels: normalizeStringList(source.enabledModels),
+    modelName,
+    enabledModels: normalizeChatEnabledModels(source.enabledModels, modelName),
     availableModels: normalizeStringList(source.availableModels),
     modelsFetchedAt: normalizeTimestamp(source.modelsFetchedAt),
     apiKey: typeof source.apiKey === 'string' ? source.apiKey : fallback?.apiKey || '',
@@ -828,6 +830,15 @@ function normalizeStringList(value: unknown): string[] {
     return unique
   }
   return []
+}
+
+function normalizeChatEnabledModels(value: unknown, modelName: string): string[] {
+  const enabledModels = normalizeStringList(value)
+  if (enabledModels.length > 0) {
+    return enabledModels
+  }
+  const current = modelName.trim()
+  return current ? [current] : []
 }
 
 function normalizeActiveChatModelName(value: unknown, models: ChatModelConfig[], activeChatId: unknown): string {

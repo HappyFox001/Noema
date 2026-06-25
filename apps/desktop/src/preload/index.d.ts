@@ -1064,6 +1064,7 @@ declare global {
       }>
       listChatModels: (request: {
         provider?: string
+        modelType?: 'llm' | 'image'
         apiKey?: string
         baseUrl?: string
       }) => Promise<{

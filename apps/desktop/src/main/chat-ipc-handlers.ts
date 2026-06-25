@@ -153,6 +153,7 @@ export interface ChatEditCharacterWorkflowRunDraftResult {
 
 export interface ChatListModelsRequest {
   provider?: string
+  modelType?: 'llm' | 'image'
   apiKey?: string
   baseUrl?: string
 }

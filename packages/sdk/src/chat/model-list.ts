@@ -5,6 +5,7 @@ import { createProxyFetch } from '../utils/proxy.js'
 
 export interface ChatModelListRequest {
   provider?: string
+  modelType?: 'llm' | 'image'
   apiKey?: string
   baseUrl?: string
 }
@@ -19,7 +20,7 @@ export async function listChatModelsWithProvider(
   options: { proxyUrl?: string } = {}
 ): Promise<string[]> {
   const body = await fetchChatModelList(request, options.proxyUrl)
-  return normalizeChatModelNames(body)
+  return normalizeChatModelNames(body, request)
 }
 
 export async function fetchChatModelList(
@@ -37,7 +38,7 @@ export async function fetchChatModelList(
       if (!response.ok) {
         throw new Error(readModelListError(body, text, response.status))
       }
-      if (normalizeChatModelNames(body).length > 0 || candidates.length === 1) {
+      if (normalizeChatModelNames(body, request).length > 0 || candidates.length === 1) {
         return body
       }
       lastError = new Error('Models response did not include model names')
@@ -53,8 +54,9 @@ export function buildChatModelListCandidates(request: ChatModelListRequest): Cha
   const apiKey = typeof request?.apiKey === 'string' ? request.apiKey.trim() : ''
   const baseUrl = normalizeModelListBaseUrl(request?.baseUrl)
   const candidates: ChatModelListCandidate[] = []
+  const imageModels = request.modelType === 'image'
 
-  if (provider === 'gemini') {
+  if (provider === 'gemini' || provider === 'google-imagen') {
     const nativeGeminiBase = getGeminiNativeBaseUrl(baseUrl)
     if (apiKey && nativeGeminiBase) {
       candidates.push({
@@ -69,6 +71,10 @@ export function buildChatModelListCandidates(request: ChatModelListRequest): Cha
       url: `${getOllamaNativeBaseUrl(baseUrl)}/api/tags`,
       headers: {},
     })
+  }
+
+  if (imageModels) {
+    candidates.push(...buildImageModelListCandidates(provider, baseUrl, request))
   }
 
   if (provider === 'deepseek' && baseUrl) {
@@ -101,13 +107,114 @@ export function buildChatModelListCandidates(request: ChatModelListRequest): Cha
   return [...unique.values()]
 }
 
-export function normalizeChatModelNames(body: unknown): string[] {
+function buildImageModelListCandidates(
+  provider: string,
+  baseUrl: string,
+  request: ChatModelListRequest
+): ChatModelListCandidate[] {
+  const candidates: ChatModelListCandidate[] = []
+  const headers = buildModelsRequestHeaders(request)
+
+  if (provider === 'fal') {
+    candidates.push({
+      url: 'https://api.fal.ai/v1/models?category=text-to-image&status=active&limit=100',
+      headers: buildFalModelRequestHeaders(request),
+    })
+  }
+
+  if (provider === 'huggingface') {
+    candidates.push({
+      url: 'https://huggingface.co/api/models?pipeline_tag=text-to-image&sort=downloads&direction=-1&limit=100',
+      headers,
+    })
+  }
+
+  if (provider === 'automatic1111' && baseUrl) {
+    candidates.push({
+      url: `${baseUrl}/sdapi/v1/sd-models`,
+      headers: {},
+    })
+  }
+
+  if (provider === 'comfyui' && baseUrl) {
+    candidates.push({
+      url: `${baseUrl}/object_info`,
+      headers: {},
+    })
+  }
+
+  if (provider === 'stability' && baseUrl) {
+    candidates.push({
+      url: `${getStabilityV1BaseUrl(baseUrl)}/engines/list`,
+      headers,
+    })
+  }
+
+  if (provider === 'siliconflow' && baseUrl) {
+    candidates.push({
+      url: `${baseUrl}/models?type=image`,
+      headers,
+    })
+  }
+
+  if (provider === 'wavespeed' && baseUrl) {
+    candidates.push({
+      url: `${baseUrl}/models`,
+      headers,
+    })
+  }
+
+  if (provider === 'replicate' && baseUrl) {
+    candidates.push({
+      url: `${baseUrl}/models`,
+      headers,
+    })
+  }
+
+  return candidates
+}
+
+export function normalizeChatModelNames(body: unknown, request: ChatModelListRequest = {}): string[] {
   const items = collectModelListItems(body)
   const names = items
-    .map((item: any) => typeof item === 'string' ? item : item?.id || item?.name || item?.model)
+    .filter((item) => matchesRequestedModelType(item, request))
+    .map(readModelListItemName)
     .filter((name: unknown): name is string => typeof name === 'string' && name.trim().length > 0)
     .map((name) => name.trim().replace(/^models\//, ''))
   return [...new Set(names)].sort((a, b) => a.localeCompare(b))
+}
+
+function matchesRequestedModelType(item: unknown, request: ChatModelListRequest): boolean {
+  if (request.modelType !== 'image') {
+    return true
+  }
+  if (typeof item === 'string') {
+    return matchesImageModelName(item, request.provider)
+  }
+  const source = item && typeof item === 'object' ? item as Record<string, unknown> : {}
+  const descriptors = [
+    source.type,
+    source.model_type,
+    source.task,
+    source.category,
+    source.pipeline_tag,
+    source.modality,
+    source.metadata && typeof source.metadata === 'object' ? (source.metadata as Record<string, unknown>).category : '',
+    source.metadata && typeof source.metadata === 'object' ? (source.metadata as Record<string, unknown>).status : '',
+    source.tags,
+    source.metadata && typeof source.metadata === 'object' ? (source.metadata as Record<string, unknown>).tags : '',
+  ]
+    .flatMap((value) => Array.isArray(value) ? value : [value])
+    .map((value) => typeof value === 'string' ? value.toLowerCase() : '')
+    .filter(Boolean)
+
+  if (descriptors.some((value) => value.includes('image'))) {
+    return true
+  }
+  if (descriptors.length > 0) {
+    return false
+  }
+  return matchesImageModelName(readModelListItemName(item), request.provider)
 }
 
 function buildModelsRequestHeaders(request: ChatModelListRequest): Record<string, string> {
@@ -120,6 +227,11 @@ function buildModelsRequestHeaders(request: ChatModelListRequest): Record<string
     }
   }
   return apiKey ? { Authorization: `Bearer ${apiKey}` } : {}
+}
+
+function buildFalModelRequestHeaders(request: ChatModelListRequest): Record<string, string> {
+  const apiKey = typeof request?.apiKey === 'string' ? request.apiKey.trim() : ''
+  return apiKey ? { Authorization: `Key ${apiKey}` } : {}
 }
 
 function normalizeModelListBaseUrl(value: string | undefined): string {
@@ -145,6 +257,22 @@ function normalizeModelListBaseUrl(value: string | undefined): string {
       .replace(/[?#].*$/, '')
       .replace(/\/(?:models|messages|chat\/completions|completions)\/?$/i, '')
       .replace(/\/+$/, '')
+  }
+}
+
+function getStabilityV1BaseUrl(baseUrl: string): string {
+  try {
+    const url = new URL(baseUrl)
+    const parts = url.pathname.split('/').filter(Boolean)
+    while (parts.length && /^v\d+(?:beta)?$/i.test(parts[parts.length - 1])) {
+      parts.pop()
+    }
+    url.pathname = parts.length ? `/${parts.join('/')}/v1` : '/v1'
+    url.search = ''
+    url.hash = ''
+    return url.toString().replace(/\/+$/, '')
+  } catch {
+    return `${baseUrl.replace(/\/v\d+(?:beta)?\/?$/i, '').replace(/\/+$/, '')}/v1`
   }
 }
 
@@ -212,6 +340,9 @@ function shouldTryOpenAIV1ModelList(baseUrl: string, provider: string): boolean 
 }
 
 function collectModelListItems(body: unknown): any[] {
+  if (Array.isArray(body)) {
+    return body
+  }
   const source = body && typeof body === 'object' ? body as Record<string, any> : {}
   if (Array.isArray(source.data)) {
     return source.data
@@ -219,10 +350,73 @@ function collectModelListItems(body: unknown): any[] {
   if (Array.isArray(source.models)) {
     return source.models
   }
+  if (Array.isArray(source.results)) {
+    return source.results
+  }
+  if (Array.isArray(source.items)) {
+    return source.items
+  }
   if (source.data && typeof source.data === 'object') {
     return Object.values(source.data).flatMap((value) => Array.isArray(value) ? value : [])
   }
+  const comfyCheckpoints = source.CheckpointLoaderSimple?.input?.required?.ckpt_name?.[0]
+  if (Array.isArray(comfyCheckpoints)) {
+    return comfyCheckpoints
+  }
   return []
+}
+
+function readModelListItemName(item: unknown): string {
+  if (typeof item === 'string') {
+    return item
+  }
+  const source = item && typeof item === 'object' ? item as Record<string, any> : {}
+  if (typeof source.endpoint_id === 'string') {
+    return source.endpoint_id
+  }
+  if (typeof source.id === 'string') {
+    return source.id
+  }
+  if (typeof source.model_id === 'string') {
+    return source.model_id
+  }
+  if (typeof source.model === 'string') {
+    return source.model
+  }
+  if (typeof source.title === 'string') {
+    return source.title
+  }
+  if (typeof source.model_name === 'string') {
+    return source.model_name
+  }
+  if (typeof source.name === 'string') {
+    if (typeof source.owner === 'string' && !source.name.includes('/')) {
+      return `${source.owner}/${source.name}`
+    }
+    return source.name
+  }
+  if (typeof source.repo_id === 'string') {
+    return source.repo_id
+  }
+  return ''
+}
+
+function matchesImageModelName(name: string, provider: string | undefined): boolean {
+  const normalizedProvider = String(provider || '').toLowerCase()
+  const normalized = name.toLowerCase()
+  if (!normalized) {
+    return false
+  }
+  if (['automatic1111', 'comfyui', 'fal', 'huggingface', 'siliconflow', 'stability', 'wavespeed'].includes(normalizedProvider)) {
+    return true
+  }
+  if (normalizedProvider === 'openai-image') {
+    return /^(gpt-image|dall-e)/i.test(name)
+  }
+  if (normalizedProvider === 'google-imagen') {
+    return /(imagen|image)/i.test(name)
+  }
+  return true
 }
 
 function parseJson(text: string): unknown {
