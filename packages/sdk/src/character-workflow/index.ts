@@ -479,6 +479,10 @@ const IMAGE_STYLE_PRESET_OPTIONS: CharacterWorkflowParameterOption[] = [
   option('Editorial Photography', 'editorial-photography'),
   option('High Fashion Editorial', 'high-fashion-editorial'),
   option('Magazine Cover Gloss', 'magazine-cover-gloss'),
+  option('Adult Sensual', 'adult-sensual'),
+  option('Anime Sensual Companion', 'anime-sensual-companion'),
+  option('Glamour Lingerie', 'glamour-lingerie'),
+  option('Mature Companion', 'mature-companion'),
   option('Analog Film', 'analog-film'),
   option('35mm Film Still', '35mm-film-still'),
   option('Polaroid', 'polaroid'),
@@ -1396,7 +1400,7 @@ export function createStandardCharacterWorkflow(
   if (avatarTarget) {
     Object.assign(avatarTarget.config, {
       imageRole: 'avatar',
-      assetPurpose: 'Final avatar.jpg for the role card: one polished single-character bust portrait with one clear face, strong appeal, and stable appearancePrompt identity.',
+      assetPurpose: 'Final avatar.jpg for the role card: one polished single-character role-card portrait with one clear face, visible body silhouette, strong appeal, and stable appearancePrompt identity.',
     })
   }
   const avatarControl = nodes.find((nodeItem) => nodeItem.id === 'avatar-image-control')
@@ -1405,7 +1409,7 @@ export function createStandardCharacterWorkflow(
       targetImageCount: 1,
       imageStyleDomain: 'auto',
       imageStylePreset: 'roleplay-character-avatar',
-      shotType: 'bust',
+      shotType: 'knee-up',
       aspectRatio: '1:1',
       consistencyMode: 'same-character',
       seedMode: 'lock-character',

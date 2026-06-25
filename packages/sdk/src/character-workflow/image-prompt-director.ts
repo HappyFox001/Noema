@@ -76,25 +76,12 @@ export function buildDirectedImageGenerationPrompt(input: DirectedImagePromptInp
   }
   const domain = resolveStyleDomain(input.control, input.profile)
   return compactJoin([
-    appearancePromptForRole(input.profile.appearancePrompt, role),
+    role === 'avatar' ? input.profile.appearancePrompt : '',
     rolePromptForImage(role, domain, input.promptText, input.control, input.profile, input.targetIndex),
-    stylePromptForImage(role, domain, input.profile, input.control),
+    stylePromptForImage(role, domain, input.control),
     qualityPromptForImage(role, domain),
     avoidPromptForImage(role, domain, input.control),
   ])
-}
-
-function appearancePromptForRole(appearancePrompt: string, role: string): string {
-  if (role !== 'character-overview-sheet') {
-    return appearancePrompt
-  }
-  return appearancePrompt
-    .replace(/\b(upper[- ]body|half[- ]body|bust|close[- ]up|headshot|profile|avatar)\s+(portrait|shot|image)\b/gi, '')
-    .replace(/\b(portrait|headshot|avatar)\b/gi, '')
-    .replace(/\b(1:1|3:4|4:5|9:16)\b/g, '')
-    .replace(/\s*,\s*,+/g, ', ')
-    .replace(/\s+/g, ' ')
-    .trim()
 }
 
 export function getDirectedImageRolePriority(imageRole: string): number {
@@ -114,7 +101,7 @@ export function getDirectedImageRolePriority(imageRole: string): number {
 
 function automaticRolePrompt(role: string, profile: CharacterImageProfile): string {
   const prompts: Record<string, string> = {
-    avatar: 'single character upper-body portrait, one person only, one clear face, direct gaze, simple clean background',
+    avatar: 'solo character card portrait, one clear face, face and body visible, dynamic attractive pose, simple clean background',
     'character-overview-sheet': 'same character full-body design sheet, wide clean canvas, front view, back view, side view, hairstyle, hands, feet, outfit details, expression callouts, no text labels',
     'hero-cover': 'polished role-card cover image, character dominant in frame, beautiful readable face, strong mood, cinematic background',
     'opening-moment': 'opening scene image, character visibly present, expressive pose, readable setting, roleplay hook',
@@ -140,8 +127,8 @@ function rolePromptForImage(
   const indexed = targetIndex > 1 ? `image variant ${targetIndex}, same identity` : ''
   if (role === 'avatar') {
     const base = domain === 'anime'
-      ? 'one anime character only, upper-body avatar portrait, one head, one face, clear detailed eyes, simple background'
-      : 'one person only, upper-body profile portrait, one face, clear facial features, natural simple background'
+      ? 'solo anime character, character-card portrait, clear detailed eyes, face and body visible, dynamic three-quarter or high-angle composition, simple background'
+      : 'solo person, premium character-card portrait, clear facial features, face and body visible, flattering three-quarter composition, natural simple background'
     return compactJoin([base, shot, slot, indexed])
   }
   if (role === 'character-overview-sheet') {
@@ -152,13 +139,12 @@ function rolePromptForImage(
       indexed,
     ])
   }
-  return compactJoin([automaticRolePrompt(role, profile), shot, slot, indexed])
+  return compactJoin(['same character as supplied reference image', automaticRolePrompt(role, profile), shot, slot, indexed])
 }
 
 function stylePromptForImage(
   role: string,
   domain: CharacterImageStyleDomain,
-  profile: CharacterImageProfile,
   control?: AgentImageGenerationControl
 ): string {
   if (role === 'character-overview-sheet') {
@@ -171,12 +157,11 @@ function stylePromptForImage(
     return compactJoin([
       overviewDomainPrompts[domain],
       presetStylePrompt(control?.imageStylePreset, role, domain),
-      adultSensualPrompt(role, domain, profile, control),
       control?.stylePrompt,
     ])
   }
   const domainPrompts: Record<CharacterImageStyleDomain, string> = {
-    anime: 'anime style illustration, polished visual novel character art, clean linework, expressive detailed eyes, soft lighting, high quality anime art',
+    anime: 'anime style illustration, polished visual novel character art, clean linework, expressive detailed eyes, pixiv style, soft lighting, high quality anime art',
     photoreal: 'realistic photography, portrait, natural skin texture, detailed eyes, soft natural light, shallow depth of field, high quality photo',
     illustration: 'polished character illustration, refined facial structure, clean silhouette, detailed costume, high quality artwork',
     stylized: 'stylized character art, clear silhouette, refined face, polished color, high quality role-card finish',
@@ -184,52 +169,15 @@ function stylePromptForImage(
   return compactJoin([
     domainPrompts[domain],
     presetStylePrompt(control?.imageStylePreset, role, domain),
-    adultSensualPrompt(role, domain, profile, control),
     control?.stylePrompt,
   ])
-}
-
-function adultSensualPrompt(
-  role: string,
-  domain: CharacterImageStyleDomain,
-  profile: CharacterImageProfile,
-  control?: AgentImageGenerationControl
-): string {
-  if (!shouldUseAdultSensualCues(profile, control)) {
-    return ''
-  }
-  if (role === 'character-overview-sheet') {
-    return domain === 'anime'
-      ? 'mature anime charm, elegant body curves, tasteful outfit detail, refined sensual costume design'
-      : 'mature sensual character design, elegant body curves, tasteful outfit detail, refined adult styling'
-  }
-  if (domain === 'anime') {
-    return 'mature anime sensual charm, alluring gaze, elegant body curves, tasteful skin exposure, lace or silk outfit details, delicate blush, warm intimate lighting'
-  }
-  return 'mature sensual allure, seductive but tasteful pose, alluring gaze, elegant cleavage, defined waistline and hip curve, lace, silk, sheer fabric, deep V neckline, warm intimate lighting'
-}
-
-function shouldUseAdultSensualCues(
-  profile: CharacterImageProfile,
-  control?: AgentImageGenerationControl
-): boolean {
-  const source = [
-    profile.appearancePrompt,
-    profile.appearance,
-    profile.description,
-    profile.scenario,
-    profile.worldContext,
-    control?.stylePrompt,
-    control?.imageStylePreset,
-  ].join(' ').toLowerCase()
-  return /(adult|mature|nsfw|sensual|seductive|sexy|glamour|lingerie|cleavage|curvy|voluptuous|erotic|intimate|御姐|成熟|性感|诱惑|撩人|暧昧|身材|丰满|胸|乳沟|腰线|臀|大腿|蕾丝|丝绸|透视|吊带|开叉|深v|主播|少妇|人妻|风情|妩媚)/i.test(source)
 }
 
 function qualityPromptForImage(role: string, domain: CharacterImageStyleDomain): string {
   if (role === 'avatar') {
     return domain === 'anime'
-      ? 'beautiful specific face, luminous eyes, crisp hair silhouette, refined outfit details, clean high-resolution finish'
-      : 'flattering face light, precise eye catchlights, realistic hair, refined styling, clean high-resolution finish'
+      ? 'beautiful specific face, luminous eyes, crisp hair silhouette, refined outfit details, appealing body silhouette, clean high-resolution finish'
+      : 'flattering face light, precise eye catchlights, realistic hair, refined styling, appealing body silhouette, clean high-resolution finish'
   }
   if (role === 'character-overview-sheet') {
     return 'consistent same-character face across views, readable proportions, clean spacing, high-resolution production art'
@@ -251,8 +199,8 @@ function presetStylePrompt(
   }
   const strategies: Record<string, string> = {
     'roleplay-character-avatar': domain === 'anime'
-      ? 'premium mobile game avatar, elegant face design, polished cel shading, soft glow'
-      : 'premium companion portrait, flattering light, readable eyes, profile-card finish',
+      ? 'premium mobile game role-card art, dynamic high-angle or three-quarter framing, elegant face design, polished cel shading, soft glow'
+      : 'premium companion role-card portrait, flattering high-angle or three-quarter framing, readable eyes, profile-card finish',
     'character-sheet': 'professional character design sheet, visual-only details, clean panel spacing',
     'model-sheet': 'professional model sheet, consistent views, clean neutral presentation',
     'turnaround-reference': 'turnaround reference, front side and back views, stable outfit construction',
@@ -262,6 +210,10 @@ function presetStylePrompt(
     'editorial-photography': 'editorial photography, intentional styling, magazine-grade lighting',
     'high-fashion-editorial': 'high-fashion editorial, sculptural silhouette, luxurious material detail',
     'magazine-cover-gloss': 'glossy magazine cover finish, polished skin and hair, clean background separation',
+    'adult-sensual': 'mature sensual allure, alluring gaze, elegant body curves, lace, silk, sheer fabric, deep V neckline, cleavage, waistline, hip curve, thigh slit, warm intimate lighting, seductive but tasteful character-card pose',
+    'anime-sensual-companion': 'mature anime sensual charm, alluring gaze, elegant body curves, tasteful skin exposure, lace or silk outfit details, delicate blush, warm intimate lighting, seductive character-card pose, premium anime companion art',
+    'glamour-lingerie': 'glamour lingerie styling, lace, silk, sheer fabric, elegant cleavage, defined waistline, hip curve, thigh slit, warm intimate lighting, polished adult companion portrait finish',
+    'mature-companion': 'mature companion allure, refined adult styling, elegant body curves, confident gaze, intimate warm light, premium role-card finish',
     'anime-visual-novel': 'polished anime visual novel key art, expressive eyes, clean cel shading',
     'anime-mobile-game': 'premium anime mobile game character art, crisp silhouette, detailed eyes',
     'soft-anime-portrait': 'soft anime portrait, gentle lighting, translucent eye highlights, tasteful blush',
@@ -276,6 +228,9 @@ function presetStylePrompt(
 function compactShot(control?: AgentImageGenerationControl): string {
   const shot = control?.shotType && control.shotType !== 'auto' ? control.shotType : ''
   const aspect = control?.aspectRatio ? `${control.aspectRatio} composition` : ''
+  if (shot === 'bust') {
+    return compactJoin(['knee-up or three-quarter character-card framing', aspect])
+  }
   return compactJoin([shot, aspect])
 }
 
@@ -304,8 +259,11 @@ function avoidPromptForImage(
   domain: CharacterImageStyleDomain,
   control?: AgentImageGenerationControl
 ): string {
+  const controlNegatives = control?.negativePrompt
+    ? control.negativePrompt.split(',').map((item) => item.trim())
+    : []
   const common = compactList([
-    control?.negativePrompt,
+    ...controlNegatives,
     'low quality',
     'blurry',
     'bad anatomy',

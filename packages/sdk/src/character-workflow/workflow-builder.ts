@@ -602,14 +602,14 @@ export function createUiConfigOverrides(spec: CharacterWorkflowBuilderSpec): Rec
     },
     'avatar-image-target': {
       imageRole: 'avatar',
-      assetPurpose: 'Final avatar.jpg for the role card: one polished single-character bust portrait with one clear face, strong appeal, and stable appearancePrompt identity.',
+      assetPurpose: 'Final avatar.jpg for the role card: one polished single-character role-card portrait with one clear face, visible body silhouette, strong appeal, and stable appearancePrompt identity.',
     },
     'avatar-image-control': {
       targetImageCount: 1,
       imageStyleDomain: 'auto',
       imageStylePreset: 'roleplay-character-avatar',
       stylePrompt: spec.stylePrompt,
-      shotType: 'bust',
+      shotType: 'knee-up',
       aspectRatio: '1:1',
       consistencyMode: 'same-character',
       seedMode: 'lock-character',
@@ -1050,7 +1050,7 @@ function applySpecToWorkflow(workflow: CharacterWorkflow, spec: CharacterWorkflo
     imageRole: 'avatar',
     assetPurpose: [
       'Generate one final avatar.jpg for the role card.',
-      'Quality should match a polished production character avatar: one single-character bust portrait, one clear face, strong appeal, and stable appearancePrompt identity.',
+      'Quality should match a polished production character avatar: one single-character role-card portrait, one clear face, visible body silhouette, strong appeal, and stable appearancePrompt identity.',
     ].join(' '),
   })
   const avatarControl = workflow.nodes.find((node) => node.id === 'avatar-image-control')
@@ -1059,7 +1059,7 @@ function applySpecToWorkflow(workflow: CharacterWorkflow, spec: CharacterWorkflo
     imageStyleDomain: 'auto',
     imageStylePreset: 'roleplay-character-avatar',
     stylePrompt: spec.stylePrompt,
-    shotType: 'bust',
+    shotType: 'knee-up',
     aspectRatio: '1:1',
     consistencyMode: 'same-character',
     seedMode: 'lock-character',
