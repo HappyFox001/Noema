@@ -2595,13 +2595,18 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     replaceRecord(characterWorkflowPositionOverrides, cloneRecord(project.positionOverrides ?? {}))
     applyWorkflowProjectViewState(project.viewState)
     characterWorkflowRunCount = Math.max(0, Math.round(Number(project.runCount) || 0))
-    characterWorkflowRunState = options.includeRunState
-      ? normalizePersistedCharacterWorkflowRunState(
-        project.runs.find((run) => run.id === project.activeRunId)?.runState
-          ?? project.runs[project.runs.length - 1]?.runState
-          ?? null
-      )
-      : null
+    const selectedRunState = project.runs.find((run) => run.id === project.activeRunId)?.runState
+      ?? project.runs[project.runs.length - 1]?.runState
+      ?? null
+    const selectedRunId = selectedRunState?.run?.id ?? project.activeRunId ?? project.runs[project.runs.length - 1]?.id ?? ''
+    if (options.includeRunState) {
+      const liveRunState = getExecutingWorkflowRunState(project.id, selectedRunId)
+      characterWorkflowRunState = liveRunState
+        ? cloneCharacterWorkflowRunState(liveRunState)
+        : normalizePersistedCharacterWorkflowRunState(selectedRunState, true, project.id)
+    } else {
+      characterWorkflowRunState = null
+    }
   }
 
   function saveActiveWorkflowProjectSnapshot(markDirty = true): void {
@@ -2723,15 +2728,31 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     characterWorkflowRunState = cloneCharacterWorkflowRunState(runState)
   }
 
+  function isExecutingWorkflowRun(projectId: string, runId: string): boolean {
+    if (!runId || !characterWorkflowExecutingRunState?.run) {
+      return false
+    }
+    return characterWorkflowExecutingRunState.run.id === runId
+      && (!projectId || !characterWorkflowExecutingProjectId || characterWorkflowExecutingProjectId === projectId)
+  }
+
+  function getExecutingWorkflowRunState(projectId: string, runId: string): CharacterResourceRunState | null {
+    return isExecutingWorkflowRun(projectId, runId) && characterWorkflowExecutingRunState
+      ? characterWorkflowExecutingRunState
+      : null
+  }
+
   function normalizePersistedCharacterWorkflowRunState(
     runState: CharacterResourceRunState | undefined | null,
-    finalizeRunning = true
+    finalizeRunning = true,
+    projectId = ''
   ): CharacterResourceRunState | null {
     if (!runState || typeof runState !== 'object') {
       return null
     }
     const normalized = cloneCharacterWorkflowRunState(runState)
-    if (finalizeRunning && normalized.run?.status === 'running') {
+    const isCurrentlyExecutingRun = isExecutingWorkflowRun(projectId, normalized.run?.id ?? '')
+    if (finalizeRunning && normalized.run?.status === 'running' && !isCurrentlyExecutingRun) {
       const interruptedSummary = options.getLanguage() === 'zh-CN'
         ? '上次运行在完成前中断，已自动标记为失败。'
         : 'The previous run was interrupted before completion and was marked failed.'
@@ -2765,7 +2786,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function normalizePersistedCharacterWorkflowProject(project: CharacterWorkflowProjectRecord): CharacterWorkflowProjectRecord {
     const runs = (Array.isArray(project.runs) ? project.runs : []).flatMap((run): CharacterWorkflowProjectRunRecord[] => {
-      const runState = normalizePersistedCharacterWorkflowRunState(run.runState)
+      const runId = run.runState?.run?.id ?? run.id
+      const liveRunState = getExecutingWorkflowRunState(project.id, runId)
+      const runState = liveRunState
+        ? cloneCharacterWorkflowRunState(liveRunState)
+        : normalizePersistedCharacterWorkflowRunState(run.runState, true, project.id)
       const stateRun = runState?.run
       if (!stateRun) {
         return []
@@ -3962,6 +3987,16 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   async function openCharacterWorkflowRun(projectId: string, runId: string): Promise<void> {
     const perfId = startCharacterWorkflowPerf(`open run ${projectId}:${runId}`)
+    const liveRunState = getExecutingWorkflowRunState(projectId, runId)
+    if (liveRunState) {
+      activeCharacterWorkflowProjectId = projectId
+      characterWorkflowContentLoaded = true
+      characterWorkflowActiveTabId = 'run-draft'
+      characterWorkflowRunState = cloneCharacterWorkflowRunState(liveRunState)
+      renderCharacterWorkflow()
+      finishCharacterWorkflowPerf(perfId, 'opened live executing run')
+      return
+    }
     const openToken = ++characterWorkflowRunOpenToken
     saveActiveWorkflowProjectSnapshot()
     markCharacterWorkflowPerf(perfId, 'save current snapshot scheduled')
@@ -3971,7 +4006,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const cachedProject = characterWorkflowProjects.find((item) => item.id === projectId)
     const cachedRun = cachedProject?.runs.find((item) => item.id === runId)
     characterWorkflowRunState = cachedRun?.runState
-      ? normalizePersistedCharacterWorkflowRunState(cachedRun.runState)
+      ? normalizePersistedCharacterWorkflowRunState(cachedRun.runState, true, projectId)
       : null
     renderCharacterWorkflow()
     markCharacterWorkflowPerf(perfId, 'loading render scheduled')
@@ -4013,7 +4048,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     markCharacterWorkflowPerf(perfId, 'before apply run state')
     applyCharacterWorkflowProjectState(project)
-    characterWorkflowRunState = normalizePersistedCharacterWorkflowRunState(run.runState)
+    characterWorkflowRunState = normalizePersistedCharacterWorkflowRunState(run.runState, true, projectId)
     characterWorkflowActiveTabId = 'run-draft'
     markCharacterWorkflowPerf(perfId, 'run state applied')
     renderCharacterWorkflow()
@@ -4054,7 +4089,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       project.activeRunId = nextRun?.id
       if (wasActiveProject) {
         characterWorkflowRunState = nextRun
-          ? normalizePersistedCharacterWorkflowRunState(nextRun.runState)
+          ? normalizePersistedCharacterWorkflowRunState(nextRun.runState, true, project.id)
           : null
         characterWorkflowActiveTabId = characterWorkflowRunState ? 'run-draft' : 'workflow'
       }
@@ -4725,6 +4760,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const result = event.result && typeof event.result === 'object'
       ? event.result as Record<string, any>
       : undefined
+    const errorMessage = typeof event.error === 'string' ? event.error : undefined
     const toolName = typeof event.toolName === 'string'
       ? event.toolName
       : typeof record?.toolName === 'string'
@@ -4740,9 +4776,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         title: typeof artifact?.title === 'string' ? artifact.title : undefined,
         summary: typeof artifact?.summary === 'string'
           ? artifact.summary
-          : typeof result?.summary === 'string'
-            ? result.summary
-            : undefined,
+          : errorMessage || (typeof result?.summary === 'string' ? result.summary : undefined),
         status: type === 'run.failed'
           ? 'failed'
           : type === 'tool.call.started' || type === 'run.phase.changed'
@@ -4767,7 +4801,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         characterWorkflowExecutingRunState.run.currentStepId = stepId
         characterWorkflowExecutingRunState.steps = (characterWorkflowExecutingRunState.steps ?? []).map((step) => {
           if (step.id === stepId) {
-            return { ...step, status: type === 'run.failed' ? 'failed' : 'running' }
+            return { ...step, status: type === 'run.failed' ? 'failed' : 'running', ...(type === 'run.failed' && errorMessage ? { detail: errorMessage } : {}) }
           }
           return step
         })
@@ -5034,6 +5068,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   function selectCharacterWorkflowTab(tabId: string): void {
     if (tabId !== 'workflow' && tabId !== 'run-draft') {
       return
+    }
+    if (tabId === 'run-draft') {
+      const liveRunState = getExecutingWorkflowRunState(activeCharacterWorkflowProjectId, characterWorkflowRunState?.run?.id ?? '')
+        ?? (characterWorkflowExecutingProjectId === activeCharacterWorkflowProjectId ? characterWorkflowExecutingRunState : null)
+      if (liveRunState?.run) {
+        characterWorkflowRunState = cloneCharacterWorkflowRunState(liveRunState)
+      }
     }
     if (tabId === 'run-draft' && !characterWorkflowRunState?.run) {
       const project = characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)
