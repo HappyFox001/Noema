@@ -2285,8 +2285,10 @@ function renderResourceTabControl(tab: CharacterResourceGraph['tabs'][number], a
   }
   const drafts = options.runDrafts ?? []
   const activeRunId = activeTab === 'run-draft' ? options.runState?.run?.id ?? '' : ''
+  const activeDraft = drafts.find((draft) => draft.id === activeRunId)
+  const selectTitle = activeDraft ? `${activeDraft.title} · ${activeDraft.status}` : ui(options, '运行草稿', 'Run Draft')
   return `
-    <label class="chat-resource-run-tab-select ${activeTab === 'run-draft' ? 'active' : ''} ${drafts.length ? '' : 'disabled'}">
+    <label class="chat-resource-run-tab-select ${activeTab === 'run-draft' ? 'active' : ''} ${drafts.length ? '' : 'disabled'}" title="${options.escapeHtml(selectTitle)}">
       <select data-chat-workflow-run-select aria-label="${options.escapeHtml(ui(options, '选择运行草稿', 'Select run draft'))}" ${drafts.length ? '' : 'disabled'}>
         <option value="" ${activeRunId ? '' : 'selected'}>${options.escapeHtml(ui(options, '运行草稿', 'Run Draft'))}</option>
         ${drafts.map((draft) => `<option value="${options.escapeHtml(draft.id)}" ${draft.id === activeRunId ? 'selected' : ''}>${options.escapeHtml(`${draft.title} · ${draft.status}`)}</option>`).join('')}
