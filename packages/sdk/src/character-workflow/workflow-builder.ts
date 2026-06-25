@@ -620,7 +620,7 @@ export function createUiConfigOverrides(spec: CharacterWorkflowBuilderSpec): Rec
     },
     'overview-sheet-image-target': {
       imageRole: 'character-overview-sheet',
-      assetPurpose: 'Large production character overview sheet using linked avatar reference image inputs. Required contents: full-body front view, full-body back view, side or three-quarter view, one main portrait or half-body crop, 3 expression callouts, hairstyle detail, hand pose detail, feet or shoes detail, outfit fabric, accessory, and silhouette details. Preserve avatar outfit construction unless explicitly requesting outfit variants. No written labels.',
+      assetPurpose: 'Large production character overview sheet using linked avatar reference image inputs. Required contents: full-body front view, full-body back view, side or three-quarter view, one main portrait or half-body crop, 3 expression callouts, eye close-up, nose and mouth close-up, hairstyle detail, hand pose detail, leg shape close-up, hip and rear silhouette close-up, feet or shoes detail, outfit fabric, accessory, hemline, and silhouette details. Preserve avatar outfit construction unless explicitly requesting outfit variants. No written labels.',
     },
     'overview-sheet-image-control': {
       targetImageCount: 1,
@@ -1073,7 +1073,7 @@ function applySpecToWorkflow(workflow: CharacterWorkflow, spec: CharacterWorkflo
     imageRole: 'character-overview-sheet',
     assetPurpose: [
       'Generate one very large production character overview sheet using linked avatar reference image inputs for identity preservation.',
-      'Required contents: full-body front view, full-body back view, side or three-quarter view, one main portrait or half-body crop, 3 expression callouts, hairstyle detail, hand pose detail, feet or shoes detail, outfit fabric, accessory, and silhouette details.',
+      'Required contents: full-body front view, full-body back view, side or three-quarter view, one main portrait or half-body crop, 3 expression callouts, eye close-up, nose and mouth close-up, hairstyle detail, hand pose detail, leg shape close-up, hip and rear silhouette close-up, feet or shoes detail, outfit fabric, accessory, hemline, and silhouette details.',
       'Preserve the avatar outfit construction unless this target explicitly requests outfit variants.',
       'The sheet is for production reference, not a social cover, and must not contain written labels.',
     ].join(' '),

@@ -1420,7 +1420,7 @@ export function createStandardCharacterWorkflow(
   if (overviewTarget) {
     Object.assign(overviewTarget.config, {
       imageRole: 'character-overview-sheet',
-      assetPurpose: 'Large production character overview sheet using linked avatar reference inputs for identity preservation. It must show full-body front view, full-body back view, side/three-quarter view, a main portrait or half-body crop, 3 expression callouts, hairstyle detail, hand pose detail, feet/shoes detail, and outfit fabric/accessory/silhouette details in one clean unlabeled model-sheet composition. Preserve the avatar outfit construction unless this target explicitly requests outfit variants.',
+      assetPurpose: 'Large production character overview sheet using linked avatar reference inputs for identity preservation. It must show full-body front view, full-body back view, side/three-quarter view, a main portrait or half-body crop, 3 expression callouts, eye close-up, nose and mouth close-up, hairstyle detail, hand pose detail, leg shape close-up, hip/rear silhouette close-up, feet/shoes detail, and outfit fabric/accessory/hemline/silhouette details in one clean unlabeled model-sheet composition. Preserve the avatar outfit construction unless this target explicitly requests outfit variants.',
     })
   }
   const overviewControl = nodes.find((nodeItem) => nodeItem.id === 'overview-sheet-image-control')

@@ -102,7 +102,7 @@ export function getDirectedImageRolePriority(imageRole: string): number {
 function automaticRolePrompt(role: string, profile: CharacterImageProfile): string {
   const prompts: Record<string, string> = {
     avatar: 'solo character card portrait, one clear face, face and body visible, dynamic attractive pose, simple clean background',
-    'character-overview-sheet': 'same character as avatar reference, complete production character overview sheet, full-body front view, full-body back view, side or three-quarter view, main portrait crop, expression callouts, hairstyle detail, hands, feet or shoes, outfit material and accessory close-ups, no text labels',
+    'character-overview-sheet': 'same character as avatar reference, complete production character overview sheet, full-body front view, full-body back view, side or three-quarter view, main portrait crop, expression callouts, eye close-up, nose and mouth close-up, hairstyle detail, hands, legs, hips and rear silhouette, feet or shoes, outfit material and accessory close-ups, no text labels',
     'hero-cover': 'polished role-card cover image, character dominant in frame, beautiful readable face, strong mood, cinematic background',
     'opening-moment': 'opening scene image, character visibly present, expressive pose, readable setting, roleplay hook',
     'story-moment': 'character-first story moment, expressive pose, believable setting, clear mood',
@@ -149,7 +149,7 @@ function overviewSheetRolePrompt(
     'same character as supplied avatar reference image, preserve the same face, hair, body proportions, signature motifs, and outfit construction',
     `${medium}, one large clean 16:9 canvas, simple light background, organized model-sheet layout, even spacing`,
     'required contents: full-body front view, full-body back view, full-body side or three-quarter view, polished main portrait or half-body crop',
-    'required detail callouts: 3 facial expressions, hairstyle close-up, hand pose close-up, feet or shoes close-up, outfit fabric, accessory, and silhouette details',
+    'required detail callouts: 3 facial expressions, eye close-up, nose and mouth close-up, hairstyle close-up, hand pose close-up, leg shape close-up, hip and rear silhouette close-up, feet or shoes close-up, outfit fabric, accessory, hemline, and silhouette details',
     'keep the avatar outfit and material logic unless this target prompt explicitly requests an outfit variation',
     'visual reference only, no written labels, no UI text, no speech bubbles',
     slot,
