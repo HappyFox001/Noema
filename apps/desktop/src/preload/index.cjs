@@ -249,9 +249,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       })
   },
 
-  editCharacterWorkflowRunDraft: (request) =>
-    ipcRenderer.invoke('chat:editCharacterWorkflowRunDraft', request),
-
   runCharacterWorkflow: (request) =>
     ipcRenderer.invoke('chat:runCharacterWorkflow', request),
 

@@ -50,17 +50,12 @@ export default defineConfig({
           if (!id.includes('node_modules')) {
             return
           }
-          if (id.includes('node_modules/litegraph.js/')) {
-            return 'litegraph'
-          }
           if (
             id.includes('node_modules/@atlaskit/pragmatic-drag-and-drop/')
             || id.includes('node_modules/@floating-ui/')
             || id.includes('node_modules/fuse.js/')
             || id.includes('node_modules/lucide/')
             || id.includes('node_modules/split-grid/')
-            || id.includes('node_modules/yjs/')
-            || id.includes('node_modules/lib0/')
           ) {
             return 'resource-graph-vendor'
           }

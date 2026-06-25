@@ -1,5 +1,5 @@
 /**
- * Directs character image prompts from stable role-card identity into image-model ready assets.
+ * Builds compact Sugar-style prompts for character image assets.
  */
 import type {
   AgentImageGenerationControl,
@@ -11,8 +11,7 @@ export type CharacterImageStyleDomain = 'photoreal' | 'anime' | 'illustration' |
 
 export interface CharacterImageProfile {
   name: string
-  visualIdentity: string
-  imagePrompt: string
+  appearancePrompt: string
   appearance: string
   description: string
   scenario: string
@@ -33,33 +32,27 @@ export interface DirectedImagePromptInput {
 export function createCharacterImageProfile(draft: CharacterCardDraft): CharacterImageProfile {
   const fields = draft.fields ?? {}
   const name = text(fields.name)
-  const visualIdentity = text(fields.visualIdentity)
-  const imagePrompt = text(fields.imagePrompt)
+  const appearancePrompt = text(fields.appearancePrompt)
   const appearance = text(fields.appearance)
   const description = text(fields.description)
   const scenario = text(fields.scenario)
   const worldContext = text(fields.worldContext)
-  const source = [
-    visualIdentity ? `Stable visual identity: ${visualIdentity}` : '',
-    imagePrompt ? `Reusable image prompt: ${imagePrompt}` : '',
-    name ? `Character name: ${name}` : '',
-    appearance ? `Visible appearance: ${appearance}` : '',
-    description ? `Role appeal: ${description}` : '',
-  ].filter(Boolean)
-  const identityBible = source.join('\n')
-  if (!identityBible.trim()) {
-    throw new Error('Character image generation needs visualIdentity, imagePrompt, or appearance before prompt direction')
+  const identityBible = compactJoin([
+    appearancePrompt,
+    name ? `character name ${name}` : '',
+  ])
+  if (!appearancePrompt) {
+    throw new Error('Character image generation needs appearancePrompt before prompt direction')
   }
   return {
     name,
-    visualIdentity,
-    imagePrompt,
+    appearancePrompt,
     appearance,
     description,
     scenario,
     worldContext,
     identityBible,
-    styleDomain: inferStyleDomain([visualIdentity, imagePrompt, appearance, description].join(' ')),
+    styleDomain: inferStyleDomain(appearancePrompt),
   }
 }
 
@@ -71,14 +64,9 @@ export function createDirectedAutomaticImagePrompt(
 ): string {
   const role = target.imageRole || 'character-image'
   const variant = count > 1
-    ? `Variant ${index} of ${count}: keep the same face, hair, age impression, body type, and signature motifs; vary only pose, framing, lighting, background, expression, or scene function.`
+    ? `variant ${index} of ${count}, same character identity, vary only expression, pose, framing, lighting, or scene detail`
     : ''
-  const rolePrompt = roleAutomaticPrompt(role, profile)
-  return [
-    rolePrompt,
-    target.imageAssetPurpose ? `Asset purpose: ${target.imageAssetPurpose}` : '',
-    variant,
-  ].filter(Boolean).join('\n')
+  return compactJoin([automaticRolePrompt(role, profile), variant])
 }
 
 export function buildDirectedImageGenerationPrompt(input: DirectedImagePromptInput): string {
@@ -87,20 +75,13 @@ export function buildDirectedImageGenerationPrompt(input: DirectedImagePromptInp
     throw new Error(`Image target ${input.target.nodeId} is missing imageRole`)
   }
   const domain = resolveStyleDomain(input.control, input.profile)
-  const sections = [
-    `Asset role: ${role}.`,
-    primaryObjective(role, domain),
-    input.target.imageAssetPurpose ? `Target purpose: ${input.target.imageAssetPurpose}.` : '',
-    input.targetIndex > 1 ? `Image slot: ${input.targetIndex}. Keep identity stable while making this slot visually distinct from earlier slots.` : '',
-    identityLock(input.profile),
-    compositionStrategy(role, domain, input.control),
-    styleStrategy(role, domain, input.control),
-    storyContext(role, input.profile),
-    slotPrompt(input.promptText),
-    globalVisualRules(role),
-    negativeConstraints(role, domain, input.control),
-  ]
-  return sections.filter(Boolean).join('\n\n')
+  return compactJoin([
+    role === 'avatar' ? input.profile.appearancePrompt : '',
+    rolePromptForImage(role, domain, input.promptText, input.control, input.profile, input.targetIndex),
+    stylePromptForImage(role, domain, input.control),
+    qualityPromptForImage(role, domain),
+    avoidPromptForImage(role, domain, input.control),
+  ])
 }
 
 export function getDirectedImageRolePriority(imageRole: string): number {
@@ -118,171 +99,212 @@ export function getDirectedImageRolePriority(imageRole: string): number {
   return priorities[imageRole] ?? 20
 }
 
-function roleAutomaticPrompt(role: string, profile: CharacterImageProfile): string {
+function automaticRolePrompt(role: string, profile: CharacterImageProfile): string {
   const prompts: Record<string, string> = {
-    avatar: [
-      'Canonical identity avatar for an AI roleplay character.',
-      'One character only, bust or upper-body portrait, clear face, direct eye contact or slightly off-camera gaze, attractive readable silhouette, confident inviting expression, subtle mature companion appeal.',
-      'Prioritize exact face structure, eye shape, brows, nose, lips, hairstyle, body frame, skin tone, signature accessory or motif, and default outfit language.',
-      'Use a simple background that does not compete with the face.',
-    ].join(' '),
-    'character-overview-sheet': [
-      'Large production model sheet for the same character after the avatar identity pass.',
-      'Show full-body front view, back view, side or three-quarter view, hairstyle detail, hands, legs, feet or shoes, outfit material details, and expression closeups as clean visual panels.',
-      'Use the avatar reference as the identity lock when available.',
-    ].join(' '),
-    'hero-cover': 'Polished role-card cover image with the character dominant in frame, strong mood, clear identity, and a readable hook for the premise.',
-    'opening-moment': 'Opening-scene image with the character visibly present in the first RP situation, grounded setting details, expressive body language, and a concrete invitation into the scene.',
-    'story-moment': 'Character-first story beat image with believable environment, pose, expression, props, and mood tied to the role card premise.',
-    'relationship-moment': 'Relationship beat focused on chemistry, tension, distance, gaze, posture, and emotional context; another person may be implied or partially framed.',
-    expression: 'Single expression reference image focused on one clean facial expression and emotional state, no labeled collage.',
-    'outfit-detail': 'Character outfit and accessory detail image that preserves face identity while emphasizing fabric, materials, palette, and signature motifs.',
-    'world-context': 'World-context visual that includes the character or unmistakable character-linked motifs, not an empty environment-only scene.',
+    avatar: 'solo character card portrait, one clear face, face and body visible, dynamic attractive pose, simple clean background',
+    'character-overview-sheet': 'same character as avatar reference, complete production character overview sheet, full-body front view, full-body back view, side or three-quarter view, main portrait crop, expression callouts, eye close-up, nose and mouth close-up, hairstyle detail, hands, legs, hips and rear silhouette, feet or shoes, outfit material and accessory close-ups, no text labels',
+    'hero-cover': 'polished role-card cover image, character dominant in frame, beautiful readable face, strong mood, cinematic background',
+    'opening-moment': 'opening scene image, character visibly present, expressive pose, readable setting, roleplay hook',
+    'story-moment': 'character-first story moment, expressive pose, believable setting, clear mood',
+    'relationship-moment': 'intimate relationship moment, readable gaze and posture, emotional tension, character face clear',
+    expression: 'single facial expression reference, one face, clean close portrait',
+    'outfit-detail': 'character outfit and accessory detail image, same face identity, readable fabric and signature motifs',
+    'world-context': 'world-context visual with the character visible or clear character-linked motifs',
   }
-  return prompts[role] ?? `Coherent character image for ${role}, preserving the same identity and role-card appeal from ${profile.name || 'the character'}.`
+  return prompts[role] ?? `coherent character image for ${profile.name || 'the character'}, same identity`
 }
 
-function primaryObjective(role: string, domain: CharacterImageStyleDomain): string {
+function rolePromptForImage(
+  role: string,
+  domain: CharacterImageStyleDomain,
+  promptText: string,
+  control: AgentImageGenerationControl | undefined,
+  profile: CharacterImageProfile,
+  targetIndex: number
+): string {
+  const shot = compactShot(control)
+  const slot = sanitizeSlotPrompt(promptText, role)
+  const indexed = targetIndex > 1 ? `image variant ${targetIndex}, same identity` : ''
   if (role === 'avatar') {
-    return domain === 'anime'
-      ? 'Primary objective: create a premium mobile/visual-novel character avatar with memorable eyes, hair silhouette, clean upper-body framing, and immediate roleplay appeal.'
-      : 'Primary objective: create a premium AI companion profile portrait with natural facial detail, flattering light, strong eye contact, and immediate roleplay appeal.'
+    const base = domain === 'anime'
+      ? 'solo anime character, character-card portrait, clear detailed eyes, face and body visible, dynamic three-quarter or high-angle composition, simple background'
+      : 'solo person, premium character-card portrait, clear facial features, face and body visible, flattering three-quarter composition, natural simple background'
+    return compactJoin([base, shot, slot, indexed])
   }
   if (role === 'character-overview-sheet') {
-    return 'Primary objective: expand the avatar identity into a production reference sheet without changing the face family, age impression, hairstyle, proportions, or outfit language.'
+    return overviewSheetRolePrompt(domain, slot, indexed)
   }
-  return 'Primary objective: create a character-first role-card image that supports the story while preserving the stable identity.'
+  return compactJoin(['same character as supplied reference image', automaticRolePrompt(role, profile), shot, slot, indexed])
 }
 
-function identityLock(profile: CharacterImageProfile): string {
-  return [
-    'Identity lock:',
-    profile.identityBible,
-    'Keep these traits stable across all images: face shape, eye shape and color, eyebrow style, nose and lips, hair color and silhouette, age impression, skin tone, body type and proportions, signature accessory or motif, and outfit language.',
-  ].join('\n')
+function overviewSheetRolePrompt(
+  domain: CharacterImageStyleDomain,
+  slot: string,
+  indexed: string
+): string {
+  const medium = domain === 'photoreal'
+    ? 'realistic production wardrobe and character reference board'
+    : 'production character design sheet'
+  return compactJoin([
+    'same character as supplied avatar reference image, preserve the same face, hair, body proportions, signature motifs, and outfit construction',
+    `${medium}, one large clean 16:9 canvas, simple light background, organized model-sheet layout, even spacing`,
+    'required contents: full-body front view, full-body back view, full-body side or three-quarter view, polished main portrait or half-body crop',
+    'required detail callouts: 3 facial expressions, eye close-up, nose and mouth close-up, hairstyle close-up, hand pose close-up, leg shape close-up, hip and rear silhouette close-up, feet or shoes close-up, outfit fabric, accessory, hemline, and silhouette details',
+    'keep the avatar outfit and material logic unless this target prompt explicitly requests an outfit variation',
+    'visual reference only, no written labels, no UI text, no speech bubbles',
+    slot,
+    indexed,
+  ])
 }
 
-function compositionStrategy(
+function stylePromptForImage(
   role: string,
   domain: CharacterImageStyleDomain,
   control?: AgentImageGenerationControl
 ): string {
-  const controlLines = [
-    control?.shotType && control.shotType !== 'auto' ? `Requested shot: ${control.shotType}.` : '',
-    control?.aspectRatio ? `Aspect ratio target: ${control.aspectRatio}.` : '',
-    control?.consistencyMode ? `Consistency mode: ${control.consistencyMode}.` : '',
-    control?.seedMode ? `Seed strategy: ${control.seedMode}.` : '',
-  ].filter(Boolean).join(' ')
-  const roleLines: Record<string, string> = {
-    avatar: 'Composition: one subject only; bust to half-body crop; face large enough to read; no full-body sheet; no collage; no multiple poses; simple depth-separated background.',
-    'character-overview-sheet': 'Composition: clean model-sheet layout with visual panels only; include full-body front, back, side or three-quarter view, plus close details for face, hair, hands, legs, shoes, outfit materials, and 2-4 expressions; no written labels.',
-    'hero-cover': 'Composition: cover-quality character-first framing; readable silhouette; environment supports the premise without hiding the body or face.',
-    'opening-moment': 'Composition: concrete scene staging with the character in the foreground, expressive pose, readable setting, and clear entry point for roleplay.',
-    'relationship-moment': 'Composition: intimate camera distance, readable gaze and posture, strong emotional spacing; keep the main character face unobstructed.',
+  if (role === 'character-overview-sheet') {
+    const overviewDomainPrompts: Record<CharacterImageStyleDomain, string> = {
+      anime: 'anime character design sheet, clean linework, consistent face across views, high quality anime art',
+      photoreal: 'realistic character reference sheet, studio lighting, full-body views, high detail',
+      illustration: 'professional character illustration sheet, clean silhouettes, readable costume construction',
+      stylized: 'stylized character design sheet, clean shapes, consistent identity, polished color',
+    }
+    return compactJoin([
+      overviewDomainPrompts[domain],
+      presetStylePrompt(control?.imageStylePreset, role, domain),
+      control?.stylePrompt,
+    ])
   }
-  const domainLine = domain === 'anime'
-    ? 'Use character-art composition discipline: clean silhouette, expressive eyes, controlled shapes, no noisy over-detail.'
-    : 'Use portrait/commercial composition discipline: flattering perspective, believable lens language, natural anatomy, controlled background separation.'
-  return [
-    roleLines[role] ?? 'Composition: single coherent character image with the character clearly visible and recognizable.',
-    domainLine,
-    controlLines,
-  ].filter(Boolean).join('\n')
+  const domainPrompts: Record<CharacterImageStyleDomain, string> = {
+    anime: 'anime style illustration, polished visual novel character art, clean linework, expressive detailed eyes, pixiv style, soft lighting, high quality anime art',
+    photoreal: 'realistic photography, portrait, natural skin texture, detailed eyes, soft natural light, shallow depth of field, high quality photo',
+    illustration: 'polished character illustration, refined facial structure, clean silhouette, detailed costume, high quality artwork',
+    stylized: 'stylized character art, clear silhouette, refined face, polished color, high quality role-card finish',
+  }
+  return compactJoin([
+    domainPrompts[domain],
+    presetStylePrompt(control?.imageStylePreset, role, domain),
+    control?.stylePrompt,
+  ])
 }
 
-function styleStrategy(
+function qualityPromptForImage(role: string, domain: CharacterImageStyleDomain): string {
+  if (role === 'avatar') {
+    return domain === 'anime'
+      ? 'beautiful specific face, luminous eyes, crisp hair silhouette, refined outfit details, appealing body silhouette, clean high-resolution finish'
+      : 'flattering face light, precise eye catchlights, realistic hair, refined styling, appealing body silhouette, clean high-resolution finish'
+  }
+  if (role === 'character-overview-sheet') {
+    return 'consistent same-character face across every view, complete uncropped full bodies, readable proportions, clean spacing, readable small detail callouts, consistent costume construction, high-resolution production reference art'
+  }
+  if (role === 'hero-cover') {
+    return 'cinematic composition, beautiful readable face, strong silhouette, premium role-card cover quality'
+  }
+  return 'clear face, refined styling, clean composition, high quality, high resolution'
+}
+
+function presetStylePrompt(
+  preset: string | undefined,
   role: string,
-  domain: CharacterImageStyleDomain,
-  control?: AgentImageGenerationControl
+  domain: CharacterImageStyleDomain
 ): string {
-  const preset = control?.imageStylePreset ? `Preset intent: ${formatPreset(control.imageStylePreset)}.` : ''
-  const localStyle = control?.stylePrompt ? `Local style pressure: ${control.stylePrompt}.` : ''
-  const domainStyle: Record<CharacterImageStyleDomain, string> = {
-    photoreal: [
-      'Style strategy: photoreal portrait language, natural skin texture, detailed eyes, realistic hair strands, believable fabric, soft cinematic or studio light, 50-85mm lens feel, shallow depth of field when appropriate.',
-      role === 'avatar' ? 'Avoid generic stock-photo neutrality; give the portrait clear companion-card charm and mature attractiveness without losing identity specificity.' : '',
-    ].filter(Boolean).join(' '),
-    anime: [
-      'Style strategy: polished anime/visual-novel character art, clean linework, controlled cel shading, expressive eyes, appealing hair silhouette, tasteful highlights, mobile game avatar finish.',
-      role === 'avatar' ? 'Avoid generic template face; make the eye design, bangs, accessories, and expression distinctive.' : '',
-    ].filter(Boolean).join(' '),
-    illustration: 'Style strategy: polished character illustration with intentional brushwork, clear facial structure, readable costume design, and refined color handling.',
-    stylized: 'Style strategy: cohesive stylized character design with strong silhouette, clear material logic, readable expression, and premium role-card finish.',
-  }
-  return [domainStyle[domain], preset, localStyle].filter(Boolean).join('\n')
-}
-
-function storyContext(role: string, profile: CharacterImageProfile): string {
-  if (role === 'avatar' || role === 'character-overview-sheet') {
+  const value = preset?.trim()
+  if (!value) {
     return ''
   }
-  const lines = [
-    profile.scenario ? `Scenario context: ${profile.scenario}` : '',
-    profile.worldContext ? `World context: ${profile.worldContext}` : '',
-  ].filter(Boolean)
-  return lines.length ? ['Story context:', ...lines].join('\n') : ''
+  const strategies: Record<string, string> = {
+    'roleplay-character-avatar': domain === 'anime'
+      ? 'premium mobile game role-card art, dynamic high-angle or three-quarter framing, elegant face design, polished cel shading, soft glow'
+      : 'premium companion role-card portrait, flattering high-angle or three-quarter framing, readable eyes, profile-card finish',
+    'character-sheet': 'professional character design sheet, visual-only details, clean panel spacing',
+    'model-sheet': 'professional model sheet, consistent views, clean neutral presentation',
+    'turnaround-reference': 'turnaround reference, front side and back views, stable outfit construction',
+    'trading-card-art': 'premium role-card cover art, dominant character silhouette, dramatic background',
+    'photoreal-portrait': 'polished photoreal portrait, natural skin texture, realistic hair, detailed eyes',
+    'cinematic-realism': 'cinematic realism, filmic color, controlled contrast, motivated lighting',
+    'editorial-photography': 'editorial photography, intentional styling, magazine-grade lighting',
+    'high-fashion-editorial': 'high-fashion editorial, sculptural silhouette, luxurious material detail',
+    'magazine-cover-gloss': 'glossy magazine cover finish, polished skin and hair, clean background separation',
+    'adult-sensual': 'mature sensual allure, alluring gaze, elegant body curves, lace, silk, sheer fabric, deep V neckline, cleavage, waistline, hip curve, thigh slit, warm intimate lighting, seductive but tasteful character-card pose',
+    'anime-sensual-companion': 'mature anime sensual charm, alluring gaze, elegant body curves, tasteful skin exposure, lace or silk outfit details, delicate blush, warm intimate lighting, seductive character-card pose, premium anime companion art',
+    'glamour-lingerie': 'glamour lingerie styling, lace, silk, sheer fabric, elegant cleavage, defined waistline, hip curve, thigh slit, warm intimate lighting, polished adult companion portrait finish',
+    'mature-companion': 'mature companion allure, refined adult styling, elegant body curves, confident gaze, intimate warm light, premium role-card finish',
+    'anime-visual-novel': 'polished anime visual novel key art, expressive eyes, clean cel shading',
+    'anime-mobile-game': 'premium anime mobile game character art, crisp silhouette, detailed eyes',
+    'soft-anime-portrait': 'soft anime portrait, gentle lighting, translucent eye highlights, tasteful blush',
+    'oil-painting': 'polished oil painting character illustration, rich color layering, painterly depth',
+    'classical-portrait-painting': 'classical portrait painting, refined facial modeling, rich fabric handling',
+    'dreamy-soft-focus': 'dreamy soft focus, gentle bloom, airy color, clear face readability',
+    'bokeh-portrait': 'creamy bokeh portrait, subject separation, expressive eyes',
+  }
+  return strategies[value] ?? formatPreset(value)
 }
 
-function slotPrompt(promptText: string): string {
-  return [
-    'Slot-specific prompt:',
-    promptText.trim(),
-  ].join('\n')
+function compactShot(control?: AgentImageGenerationControl): string {
+  const shot = control?.shotType && control.shotType !== 'auto' ? control.shotType : ''
+  const aspect = control?.aspectRatio ? `${control.aspectRatio} composition` : ''
+  if (shot === 'bust') {
+    return compactJoin(['knee-up or three-quarter character-card framing', aspect])
+  }
+  return compactJoin([shot, aspect])
 }
 
-function globalVisualRules(role: string): string {
-  return [
-    'Global visual rules:',
-    'Generate visual content only. No written words, captions, subtitles, UI, labels, logos, signatures, watermark, prompt text, or typographic elements anywhere in the image.',
-    role === 'character-overview-sheet'
-      ? 'Overview sheet may use panel separation, but every panel must be visual-only and preserve the same identity.'
-      : 'The image must read as a finished role-card asset, not a prompt study or loose concept sketch.',
-  ].join('\n')
+function sanitizeSlotPrompt(promptText: string, role: string): string {
+  const prompt = promptText.trim()
+  if (!prompt) {
+    return ''
+  }
+  const normalized = prompt
+    .replace(/\b(asset role|primary objective|identity lock|composition strategy|style strategy|negative constraints|slot-specific prompt)\s*:\s*/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (role !== 'avatar') {
+    return normalized
+  }
+  const blocked = /(reference|model|character|expression|variant|turnaround)\s*sheet|panel|split[- ]?screen|collage|inset|duplicate|same character twice|two (poses|forms|faces|characters)|multiple (poses|faces|characters)|before and after|alternate/i
+  return normalized
+    .split(/(?<=[.!?。！？；;])\s+|[,，]\s*/)
+    .map((part) => part.trim())
+    .filter((part) => part && !blocked.test(part))
+    .join(', ')
 }
 
-function negativeConstraints(
+function avoidPromptForImage(
   role: string,
   domain: CharacterImageStyleDomain,
   control?: AgentImageGenerationControl
 ): string {
-  const common = [
-    control?.negativePrompt,
+  const controlNegatives = control?.negativePrompt
+    ? control.negativePrompt.split(',').map((item) => item.trim())
+    : []
+  const common = compactList([
+    ...controlNegatives,
     'low quality',
     'blurry',
     'bad anatomy',
     'deformed face',
-    'asymmetrical eyes',
-    'extra fingers',
-    'missing fingers',
-    'broken hands',
-    'malformed legs',
-    'duplicate limbs',
     'text',
-    'caption',
-    'subtitle',
     'watermark',
     'logo',
-    'signature',
-    'UI text',
-    'speech bubble',
-  ]
+  ])
   const roleNegatives: Record<string, string[]> = {
-    avatar: ['multiple people', 'collage', 'reference sheet', 'full-body turnaround', 'side profile only', 'covered face', 'mask hiding face', 'generic face', 'age ambiguity'],
-    'character-overview-sheet': ['written labels', 'text labels', 'different faces between panels', 'different hairstyles between panels', 'random outfit swaps', 'cropped feet', 'cropped hands'],
-    'hero-cover': ['face hidden', 'tiny character', 'empty landscape', 'busy unreadable background'],
-    'opening-moment': ['empty room', 'environment-only image', 'character hidden'],
+    avatar: ['multiple people', 'two characters', 'duplicate face', 'second face', 'collage', 'panel layout', 'inset portrait'],
+    'character-overview-sheet': ['written labels', 'speech bubbles', 'UI text', 'single portrait only', 'social media cover', 'random extra character', 'different faces between views', 'changed hairstyle', 'changed outfit without prompt', 'cropped full body', 'cropped feet', 'cropped hands', 'messy collage', 'overlapping bodies'],
+    'hero-cover': ['face hidden', 'tiny character', 'empty landscape'],
+    'opening-moment': ['empty room', 'character hidden'],
   }
   const domainNegatives: Record<CharacterImageStyleDomain, string[]> = {
-    photoreal: ['anime', 'manga', 'cartoon', '3d render', 'plastic skin', 'over-smoothed skin', 'uncanny CGI'],
-    anime: ['photorealistic', 'live action', '3d render', 'western comic anatomy', 'muddy linework', 'over-rendered skin pores'],
-    illustration: ['flat vector', 'cheap clipart', 'stock photo', 'plastic CGI'],
-    stylized: ['style clash', 'uncontrolled rendering', 'muddy forms'],
+    photoreal: ['anime', 'cartoon', 'plastic skin'],
+    anime: ['photorealistic', 'live action', '3d render'],
+    illustration: ['cheap clipart', 'stock photo'],
+    stylized: ['style clash'],
   }
-  return `Negative constraints: ${dedupe([
+  const negatives = dedupe([
     ...common,
     ...(roleNegatives[role] ?? []),
     ...domainNegatives[domain],
-  ]).join(', ')}.`
+  ])
+  return negatives.length ? `avoid ${negatives.join(', ')}` : ''
 }
 
 function inferStyleDomain(value: string): CharacterImageStyleDomain {
@@ -325,6 +347,16 @@ function text(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
 }
 
+function compactJoin(values: Array<string | undefined>): string {
+  return compactList(values).join('，')
+}
+
+function compactList(values: Array<string | undefined>): string[] {
+  return values
+    .map((value) => value?.trim())
+    .filter((value): value is string => Boolean(value))
+}
+
 function formatPreset(value: string): string {
   return value
     .split('-')
@@ -337,15 +369,12 @@ function dedupe(values: Array<string | undefined>): string[] {
   const seen = new Set<string>()
   const result: string[] = []
   for (const value of values) {
-    const item = value?.trim()
-    if (!item) {
+    const normalized = value?.trim()
+    if (!normalized || seen.has(normalized.toLowerCase())) {
       continue
     }
-    const key = item.toLowerCase()
-    if (!seen.has(key)) {
-      seen.add(key)
-      result.push(item)
-    }
+    seen.add(normalized.toLowerCase())
+    result.push(normalized)
   }
   return result
 }

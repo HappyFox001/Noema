@@ -28,15 +28,13 @@
     "fuse.js": "^7.4.2",
     "global-agent": "^3.0.0",
     "gsap": "^3.15.0",
-    "litegraph.js": "^0.7.18",
     "lucide": "^1.17.0",
     "onnxruntime-node": "^1.24.3",
     "openai": "^4.28.0",
     "split-grid": "^1.0.11",
     "three": "^0.184.0",
     "ws": "^8.18.0",
-    "yaml": "^2.3.4",
-    "yjs": "^13.6.31"
+    "yaml": "^2.3.4"
   },
   "devDependencies": {
     "@electron/rebuild": "^3.7.2",

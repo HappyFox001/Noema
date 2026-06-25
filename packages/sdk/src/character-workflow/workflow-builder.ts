@@ -244,7 +244,7 @@ async function createCharacterWorkflowFromPrompt(
         index: 1,
         tool: 'inspect_graph',
         userRequest: request.prompt,
-        summary: request.language === 'zh-CN' ? '已解析用户目标并确定角色资源图必须包含角色卡、开场、头像和总览图。' : 'Parsed the user goal and identified required role card, opening, avatar, and overview sheet resources.',
+        summary: request.language === 'zh-CN' ? '已解析用户目标并确定角色资源图必须包含角色卡、开场、avatar 和 overview sheet。' : 'Parsed the user goal and identified required role card, opening, avatar, and overview sheet resources.',
         status: 'applied',
         plan: spec.plan,
         completedSteps: [],
@@ -589,7 +589,7 @@ export function createUiConfigOverrides(spec: CharacterWorkflowBuilderSpec): Rec
     },
     'character-card-target': {
       includeFields: ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'firstMessage', 'dialogueStyle', 'worldContext'],
-      includeSupportFields: ['visualIdentity', 'imagePrompt'],
+      includeSupportFields: ['appearancePrompt'],
     },
     'opening-field-target': {
       field: 'firstMessage',
@@ -602,22 +602,25 @@ export function createUiConfigOverrides(spec: CharacterWorkflowBuilderSpec): Rec
     },
     'avatar-image-target': {
       imageRole: 'avatar',
-      assetPurpose: 'Identity-lock avatar.jpg: first generate one polished canonical portrait that later assets use as the character reference.',
+      assetPurpose: 'Final avatar.jpg for the role card: one polished single-character role-card portrait with one clear face, visible body silhouette, strong appeal, and stable appearancePrompt identity.',
     },
     'avatar-image-control': {
       targetImageCount: 1,
       imageStyleDomain: 'auto',
       imageStylePreset: 'roleplay-character-avatar',
       stylePrompt: spec.stylePrompt,
-      shotType: 'bust',
+      shotType: 'knee-up',
       aspectRatio: '1:1',
       consistencyMode: 'same-character',
       seedMode: 'lock-character',
-      negativePrompt: spec.mustNot.join(', '),
+      negativePrompt: [
+        spec.mustNot.join(', '),
+        'text, watermark, logo, low quality, blurry, bad anatomy, deformed face, multiple people, duplicate face',
+      ].filter(Boolean).join(', '),
     },
     'overview-sheet-image-target': {
       imageRole: 'character-overview-sheet',
-      assetPurpose: 'Large character asset overview sheet generated after avatar.jpg, using the avatar as identity reference and showing front/back/side, hairstyle, hands, legs, feet, outfit details, and expressions.',
+      assetPurpose: 'Large production character overview sheet using linked avatar reference image inputs. Required contents: full-body front view, full-body back view, side or three-quarter view, one main portrait or half-body crop, 3 expression callouts, eye close-up, nose and mouth close-up, hairstyle detail, hand pose detail, leg shape close-up, hip and rear silhouette close-up, feet or shoes detail, outfit fabric, accessory, hemline, and silhouette details. Preserve avatar outfit construction unless explicitly requesting outfit variants. No written labels.',
     },
     'overview-sheet-image-control': {
       targetImageCount: 1,
@@ -706,9 +709,9 @@ function createWorkflowBuilderSystemPrompt(language: CharacterWorkflowLanguage):
     'You are the backend planner for a character resource graph builder.',
     'Convert the user brief into configuration for an autonomous character-card generation workflow.',
     localeRule,
-    'The final workflow must always generate a complete role card, an opening layout target, and a two-stage character image workflow: first avatar.jpg identity lock, then a large character overview sheet using that avatar as reference.',
+    'The final workflow must always generate a complete role card, an opening layout target, and a graph-declared character image workflow. Express image dependencies with links; for the standard character sheet, generate avatar first and connect avatar-image-target.imageAsset to overview-sheet-image-target.referenceImage.',
     'Do not write final character-card fields here. This is workflow configuration only.',
-    'For images, image-target declares a role-card visual purpose and image-generation-control declares count, imageStyleDomain, lightweight style text, shot, aspect ratio, seed, consistency, and negative prompt. The required first image role is avatar; the required second image role is character-overview-sheet. Use imageStyleDomain for photoreal/anime/illustration/stylized routing; leave it auto when the character visual identity should decide.',
+    'For images, image-target declares a role-card visual purpose and image-generation-control declares count, imageStyleDomain, lightweight style text, shot, aspect ratio, seed, consistency, and negative prompt. Use graph links to declare reference-image dependencies instead of relying on prompt-only ordering. Use imageStyleDomain for photoreal/anime/illustration/stylized routing; leave it auto when appearancePrompt and image control should decide.',
     'Return only valid JSON. No markdown, comments, or surrounding prose.',
     'Schema:',
     '{',
@@ -786,8 +789,8 @@ function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): 
     '- opening-layout-target: use this for the CSS/HTML-style role-card opening presentation that combines title, tags, opening text, and generated images.',
     '- image-target.imageRole: choose the role-card visual purpose from options such as avatar, character-overview-sheet, hero-cover, full-body, opening-moment, story-moment, expression, outfit-detail, relationship-moment, or world-context. Do not use scene as a standalone image type.',
     '- image-target.assetPurpose: what this exact image should communicate and which story/text field it supports.',
-    '- image-generation-control: image count, imageStyleDomain, imageStylePreset, concise stylePrompt, shotType, aspectRatio, consistencyMode, seedMode, negativePrompt. Use imageStyleDomain for photoreal/anime/illustration/stylized routing; use auto when the character visual identity should decide. Never put imageType or composition here.',
-    '- For character resources, prefer the staged asset workflow: avatar first as identity lock, character-overview-sheet second as a large model/reference sheet using the avatar identity. Additional pictures should be separate image-target nodes when they serve different card/story purposes, and/or image-generation-control.targetImageCount for variants.',
+    '- image-generation-control: image count, imageStyleDomain, imageStylePreset, concise stylePrompt, shotType, aspectRatio, consistencyMode, seedMode, negativePrompt. Use imageStyleDomain for photoreal/anime/illustration/stylized routing; use auto when appearancePrompt and image control should decide. Never put imageType or composition here.',
+    '- For character resources, prefer graph-declared asset dependencies: link avatar-image-target.imageAsset into overview-sheet-image-target.referenceImage when the overview should preserve the avatar identity. Additional pictures should be separate image-target nodes when they serve different card/story purposes, and/or image-generation-control.targetImageCount for variants.',
     '- Do not connect hard-constraint nodes directly into image-target. Put image-specific exclusions in image-generation-control.negativePrompt.',
     '- world-card-target / npc-pack-target / npc-target / plot-arc-target / scene-card-target: add these when the request asks for multi-NPC, world, setting, story arc, or scene planning.',
     '',
@@ -1032,7 +1035,7 @@ function applySpecToWorkflow(workflow: CharacterWorkflow, spec: CharacterWorkflo
   })
   byType.get('character-card-target')?.config && Object.assign(byType.get('character-card-target')!.config, {
     includeFields: ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'firstMessage', 'dialogueStyle', 'worldContext'],
-    includeSupportFields: ['visualIdentity', 'imagePrompt'],
+    includeSupportFields: ['appearancePrompt'],
   })
   byType.get('character-field-target')?.config && Object.assign(byType.get('character-field-target')!.config, {
     field: 'firstMessage',
@@ -1046,9 +1049,8 @@ function applySpecToWorkflow(workflow: CharacterWorkflow, spec: CharacterWorkflo
   avatarTarget?.config && Object.assign(avatarTarget.config, {
     imageRole: 'avatar',
     assetPurpose: [
-      'Generate avatar.jpg first as the canonical identity-lock portrait.',
-      'Quality should match a polished production character avatar: clear face, strong appeal, stable hair/eye/body identity cues, and no collage layout.',
-      'This image becomes the reference for later character assets.',
+      'Generate one final avatar.jpg for the role card.',
+      'Quality should match a polished production character avatar: one single-character role-card portrait, one clear face, visible body silhouette, strong appeal, and stable appearancePrompt identity.',
     ].join(' '),
   })
   const avatarControl = workflow.nodes.find((node) => node.id === 'avatar-image-control')
@@ -1057,20 +1059,23 @@ function applySpecToWorkflow(workflow: CharacterWorkflow, spec: CharacterWorkflo
     imageStyleDomain: 'auto',
     imageStylePreset: 'roleplay-character-avatar',
     stylePrompt: spec.stylePrompt,
-    shotType: 'bust',
+    shotType: 'knee-up',
     aspectRatio: '1:1',
     consistencyMode: 'same-character',
     seedMode: 'lock-character',
-    negativePrompt: spec.mustNot.join(', '),
+    negativePrompt: [
+      spec.mustNot.join(', '),
+      'text, watermark, logo, low quality, blurry, bad anatomy, deformed face, multiple people, duplicate face',
+    ].filter(Boolean).join(', '),
   })
   const overviewTarget = workflow.nodes.find((node) => node.id === 'overview-sheet-image-target')
   overviewTarget?.config && Object.assign(overviewTarget.config, {
     imageRole: 'character-overview-sheet',
     assetPurpose: [
-      'Generate one very large character asset overview sheet after avatar.jpg.',
-      'Use the avatar as the identity reference.',
-      'Show a clean model-sheet composition with front view, back view, side or three-quarter view, hairstyle detail, hands, legs, feet or shoes, outfit/material details, and expression callouts.',
-      'The sheet is for production reference, not a social cover.',
+      'Generate one very large production character overview sheet using linked avatar reference image inputs for identity preservation.',
+      'Required contents: full-body front view, full-body back view, side or three-quarter view, one main portrait or half-body crop, 3 expression callouts, eye close-up, nose and mouth close-up, hairstyle detail, hand pose detail, leg shape close-up, hip and rear silhouette close-up, feet or shoes detail, outfit fabric, accessory, hemline, and silhouette details.',
+      'Preserve the avatar outfit construction unless this target explicitly requests outfit variants.',
+      'The sheet is for production reference, not a social cover, and must not contain written labels.',
     ].join(' '),
   })
   const overviewControl = workflow.nodes.find((node) => node.id === 'overview-sheet-image-control')

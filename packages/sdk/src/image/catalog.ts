@@ -186,6 +186,7 @@ export const IMAGE_PROVIDER_CATALOG: ImageProviderCatalogEntry[] = [
     docsUrl: 'https://help.aliyun.com/zh/model-studio/text-to-image',
     defaultApiKeyPlaceholder: 'sk-...',
     capabilities: {
+      referenceImages: { supported: true, maxImages: 6, mode: 'json-images' },
       sizeFormat: 'asterisk',
     },
   },

@@ -73,7 +73,7 @@ export interface SerializedCharacterResourceGraph {
   viewState: CharacterResourceViewState
   configOverrides: Record<string, Record<string, unknown>>
   positionOverrides: Record<string, { x: number; y: number }>
-  yjsSnapshot: string
+  graphSnapshot: string
 }
 
 export function serializeCharacterResourceGraph(input: Omit<SerializedCharacterResourceGraph, 'schemaVersion'>): string {
@@ -96,6 +96,6 @@ export function deserializeCharacterResourceGraph(serialized: string): Serialize
     viewState: parsed.viewState ?? {},
     configOverrides: parsed.configOverrides ?? {},
     positionOverrides: parsed.positionOverrides ?? {},
-    yjsSnapshot: parsed.yjsSnapshot ?? '{}',
+    graphSnapshot: parsed.graphSnapshot ?? '{}',
   }
 }

@@ -3,8 +3,8 @@
  */
 export * from './agent-runtime.js'
 export * from './chat-agent-tools.js'
-export * from './run-draft-editor.js'
 export * from './workflow-builder.js'
+import { CURRENT_CHARACTER_WORKFLOW_VERSION } from './agent-runtime.js'
 
 export type CharacterWorkflowLanguage = 'zh-CN' | 'en-US'
 
@@ -479,6 +479,10 @@ const IMAGE_STYLE_PRESET_OPTIONS: CharacterWorkflowParameterOption[] = [
   option('Editorial Photography', 'editorial-photography'),
   option('High Fashion Editorial', 'high-fashion-editorial'),
   option('Magazine Cover Gloss', 'magazine-cover-gloss'),
+  option('Adult Sensual', 'adult-sensual'),
+  option('Anime Sensual Companion', 'anime-sensual-companion'),
+  option('Glamour Lingerie', 'glamour-lingerie'),
+  option('Mature Companion', 'mature-companion'),
   option('Analog Film', 'analog-film'),
   option('35mm Film Still', '35mm-film-still'),
   option('Polaroid', 'polaroid'),
@@ -763,9 +767,8 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
         option('Dialogue Style', 'dialogueStyle'),
         option('World Context', 'worldContext'),
       ]),
-      parameter('includeSupportFields', 'Include Support Fields', 'multi-select', ['visualIdentity', 'imagePrompt'], undefined, [
-        option('Visual Identity', 'visualIdentity'),
-        option('Image Prompt', 'imagePrompt'),
+      parameter('includeSupportFields', 'Include Support Fields', 'multi-select', ['appearancePrompt'], undefined, [
+        option('Appearance Prompt', 'appearancePrompt'),
       ]),
     ],
   },
@@ -793,7 +796,7 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
         option('First Message', 'firstMessage'),
         option('Dialogue Style', 'dialogueStyle'),
         option('World Context', 'worldContext'),
-        option('Image Prompt', 'imagePrompt'),
+        option('Appearance Prompt', 'appearancePrompt'),
       ]),
     ],
   },
@@ -839,6 +842,7 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
       card: port('card', 'Card', 'asset-target'),
       image: port('image', 'Image', 'image-capability', true),
       imageControl: port('imageControl', 'Image Control', 'asset-target'),
+      referenceImage: port('referenceImage', 'Reference Image', 'asset-target'),
     },
     outputs: { imageAsset: port('imageAsset', 'Image Asset', 'asset-target') },
     parameters: [
@@ -1275,7 +1279,7 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
         option('Goal Match', 'goal-match'),
         option('Field Completeness', 'field-completeness'),
         option('Roleplay Usability', 'roleplay-usability'),
-        option('Visual Identity', 'visual-identity'),
+        option('Appearance Prompt', 'appearance-prompt'),
         option('Consistency', 'consistency'),
       ]),
       parameter('autoRepair', 'Auto Repair', 'boolean', true),
@@ -1303,7 +1307,7 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
         option('Goal Match', 'goal-match'),
         option('Field Completeness', 'field-completeness'),
         option('Roleplay Usability', 'roleplay-usability'),
-        option('Visual Identity', 'visual-identity'),
+        option('Appearance Prompt', 'appearance-prompt'),
         option('Consistency', 'consistency'),
       ]),
     ],
@@ -1396,7 +1400,7 @@ export function createStandardCharacterWorkflow(
   if (avatarTarget) {
     Object.assign(avatarTarget.config, {
       imageRole: 'avatar',
-      assetPurpose: 'Identity-lock avatar.jpg: the first generated canonical portrait for the character. It must be high quality, face-forward, visually appealing, and reusable as the reference image for every later character asset.',
+      assetPurpose: 'Final avatar.jpg for the role card: one polished single-character role-card portrait with one clear face, visible body silhouette, strong appeal, and stable appearancePrompt identity.',
     })
   }
   const avatarControl = nodes.find((nodeItem) => nodeItem.id === 'avatar-image-control')
@@ -1405,17 +1409,18 @@ export function createStandardCharacterWorkflow(
       targetImageCount: 1,
       imageStyleDomain: 'auto',
       imageStylePreset: 'roleplay-character-avatar',
-      shotType: 'bust',
+      shotType: 'knee-up',
       aspectRatio: '1:1',
       consistencyMode: 'same-character',
       seedMode: 'lock-character',
+      negativePrompt: 'text, watermark, logo, low quality, blurry, bad anatomy, deformed face, multiple people, duplicate face',
     })
   }
   const overviewTarget = nodes.find((nodeItem) => nodeItem.id === 'overview-sheet-image-target')
   if (overviewTarget) {
     Object.assign(overviewTarget.config, {
       imageRole: 'character-overview-sheet',
-      assetPurpose: 'Large character asset overview sheet generated after avatar.jpg. It should use the avatar as identity reference and show front view, back view, side/three-quarter view, hairstyle, hands, legs, feet/shoes, outfit/material details, and expression callouts in one clean unlabeled model-sheet style composition.',
+      assetPurpose: 'Large production character overview sheet using linked avatar reference inputs for identity preservation. It must show full-body front view, full-body back view, side/three-quarter view, a main portrait or half-body crop, 3 expression callouts, eye close-up, nose and mouth close-up, hairstyle detail, hand pose detail, leg shape close-up, hip/rear silhouette close-up, feet/shoes detail, and outfit fabric/accessory/hemline/silhouette details in one clean unlabeled model-sheet composition. Preserve the avatar outfit construction unless this target explicitly requests outfit variants.',
     })
   }
   const overviewControl = nodes.find((nodeItem) => nodeItem.id === 'overview-sheet-image-control')
@@ -1435,7 +1440,7 @@ export function createStandardCharacterWorkflow(
   return {
     id,
     name: options.name ?? 'Agentic RP Resource Graph',
-    version: '2.0',
+    version: CURRENT_CHARACTER_WORKFLOW_VERSION,
     description: 'Configures target resources, local controls, tools, agent autonomy, evaluation gates, and output adapters for autonomous RP resource generation.',
     nodes,
     edges: connectEdges([
@@ -1452,6 +1457,7 @@ export function createStandardCharacterWorkflow(
       ['image-tool', 'image', 'avatar-image-target', 'image', 'enables'],
       ['avatar-image-control', 'imageControl', 'avatar-image-target', 'imageControl', 'guides'],
       ['character-card-target', 'target', 'overview-sheet-image-target', 'card', 'guides'],
+      ['avatar-image-target', 'imageAsset', 'overview-sheet-image-target', 'referenceImage', 'provides'],
       ['image-tool', 'image', 'overview-sheet-image-target', 'image', 'enables'],
       ['overview-sheet-image-control', 'imageControl', 'overview-sheet-image-target', 'imageControl', 'guides'],
       ['character-card-target', 'target', 'opening-layout-target', 'card', 'guides'],
