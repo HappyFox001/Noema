@@ -436,8 +436,7 @@ export const CHARACTER_CARD_FIELD_SCHEMA = [
 ] as const
 
 export const CHARACTER_SUPPORT_FIELD_SCHEMA = [
-  'visualIdentity',
-  'imagePrompt',
+  'appearancePrompt',
 ] as const
 
 export interface CharacterAgentState {
@@ -2389,8 +2388,7 @@ function characterRunFieldTitle(field: string): string {
     firstMessage: 'First Message',
     dialogueStyle: 'Dialogue Style',
     worldContext: 'World Context',
-    visualIdentity: 'Visual Identity',
-    imagePrompt: 'Image Prompt',
+    appearancePrompt: 'Appearance Prompt',
   }
   return titles[field] ?? field
 }

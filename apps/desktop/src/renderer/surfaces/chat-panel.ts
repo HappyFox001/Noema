@@ -2228,7 +2228,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           name: 'Character Card Draft',
           goalPrompt: '',
           configOverrides: {
-            'character-card-target': { includeFields: ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'firstMessage', 'dialogueStyle', 'worldContext'], includeSupportFields: ['visualIdentity', 'imagePrompt'] },
+            'character-card-target': { includeFields: ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'firstMessage', 'dialogueStyle', 'worldContext'], includeSupportFields: ['appearancePrompt'] },
             'opening-field-target': { field: 'firstMessage' },
             'opening-field-control': { lengthPolicy: 'medium' },
             'avatar-image-target': { imageRole: 'avatar', assetPurpose: 'Final avatar.jpg for the role card: one single-subject bust portrait with one clear face, strong appeal, stable identity cues, and no panels, variants, duplicate faces, or reference-sheet layout.' },

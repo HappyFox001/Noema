@@ -763,9 +763,8 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
         option('Dialogue Style', 'dialogueStyle'),
         option('World Context', 'worldContext'),
       ]),
-      parameter('includeSupportFields', 'Include Support Fields', 'multi-select', ['visualIdentity', 'imagePrompt'], undefined, [
-        option('Visual Identity', 'visualIdentity'),
-        option('Image Prompt', 'imagePrompt'),
+      parameter('includeSupportFields', 'Include Support Fields', 'multi-select', ['appearancePrompt'], undefined, [
+        option('Appearance Prompt', 'appearancePrompt'),
       ]),
     ],
   },
@@ -793,7 +792,7 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
         option('First Message', 'firstMessage'),
         option('Dialogue Style', 'dialogueStyle'),
         option('World Context', 'worldContext'),
-        option('Image Prompt', 'imagePrompt'),
+        option('Appearance Prompt', 'appearancePrompt'),
       ]),
     ],
   },
@@ -1276,7 +1275,7 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
         option('Goal Match', 'goal-match'),
         option('Field Completeness', 'field-completeness'),
         option('Roleplay Usability', 'roleplay-usability'),
-        option('Visual Identity', 'visual-identity'),
+        option('Appearance Prompt', 'appearance-prompt'),
         option('Consistency', 'consistency'),
       ]),
       parameter('autoRepair', 'Auto Repair', 'boolean', true),
@@ -1304,7 +1303,7 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
         option('Goal Match', 'goal-match'),
         option('Field Completeness', 'field-completeness'),
         option('Roleplay Usability', 'roleplay-usability'),
-        option('Visual Identity', 'visual-identity'),
+        option('Appearance Prompt', 'appearance-prompt'),
         option('Consistency', 'consistency'),
       ]),
     ],
@@ -1397,7 +1396,7 @@ export function createStandardCharacterWorkflow(
   if (avatarTarget) {
     Object.assign(avatarTarget.config, {
       imageRole: 'avatar',
-      assetPurpose: 'Final avatar.jpg for the role card: one single-subject bust portrait with one clear face, strong appeal, stable identity cues, and no panels, variants, duplicate faces, or reference-sheet layout.',
+      assetPurpose: 'Final avatar.jpg for the role card and first identity reference for later images. Produce one polished single-subject bust portrait with one clear face, strong appeal, stable appearancePrompt identity, and no panels, variants, duplicate faces, or reference-sheet layout.',
     })
   }
   const avatarControl = nodes.find((nodeItem) => nodeItem.id === 'avatar-image-control')
@@ -1410,6 +1409,7 @@ export function createStandardCharacterWorkflow(
       aspectRatio: '1:1',
       consistencyMode: 'same-character',
       seedMode: 'lock-character',
+      negativePrompt: 'text, labels, watermark, logo, multiple faces, duplicate character, same character twice, split screen, contact sheet, model sheet, reference sheet, collage',
     })
   }
   const overviewTarget = nodes.find((nodeItem) => nodeItem.id === 'overview-sheet-image-target')

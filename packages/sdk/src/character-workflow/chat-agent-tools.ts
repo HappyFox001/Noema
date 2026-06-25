@@ -228,21 +228,22 @@ function createCharacterDecisionPrompt(
     '    <field_content_rule>Every set_field value must be final character-card content, not a prompt, not a plan, and not a resource-control description.</field_content_rule>',
     '    <field_content_rule>Never write labels such as "Style:", "Goal:", "Field purpose:", "target atmosphere", XML tag names, or operation instructions inside character fields.</field_content_rule>',
     '    <field_content_rule>description must describe who the character is and why they are appealing for RP. appearance must describe visible body/outfit/expression cues. Do not describe the generation target itself.</field_content_rule>',
-    '    <field_content_rule>visualIdentity must be a stable image identity bible, not prose marketing copy: age impression, nationality or ethnicity when relevant, face shape, eyes, brows, nose, lips, skin tone, hair length/style/color, body type/proportions, signature accessory or motif, outfit language, style domain, and hard visual negatives.</field_content_rule>',
-    '    <field_content_rule>imagePrompt must be a reusable image-model prefix for the canonical avatar identity. It should be compact, English, appearance-focused, and avoid scene/background instructions except simple portrait quality language.</field_content_rule>',
+    '    <field_content_rule>appearancePrompt must follow the Sugar-style appearance prompt role: after the visible character-card fields exist, derive a compact English reusable image-model appearance prompt from name, description, appearance, personality, background, scenario, and worldContext. Include only stable character appearance: age impression, face shape, eyes, brows, nose, lips, skin tone, hair, body proportions, signature motifs, and default outfit language. Do not include scene, camera angle, lighting setup, mood, pose, background, target role, quality boosters, negative prompts, or style-control instructions.</field_content_rule>',
     '    <role_chat_format_rule>firstMessage is the runnable opening turn for the role chat. It must be final in-character scene text wrapped exactly once as <chat>...</chat>.</role_chat_format_rule>',
     '    <role_chat_format_rule>Inside <chat>, write the opening scene as immersive RP prose with the character present, a concrete situation, sensory details, and a clear hook for the user to respond. Do not include analysis, labels, markdown, or setup notes.</role_chat_format_rule>',
     '    <role_chat_format_rule>dialogueStyle must describe how the character speaks during chat, not the opening scene. scenario must define the persistent RP situation. worldContext must carry stable world facts.</role_chat_format_rule>',
     '    <progressive_rule>Return exactly one action. Generate or reroll one field at a time. Do not fill the whole card in one response.</progressive_rule>',
-    '    <progressive_rule>If a field requirement is missing, return set_field for the earliest missing field in fixed_schema order and obey that target local XML controls. Only request_image after visualIdentity and imagePrompt exist.</progressive_rule>',
+    '    <progressive_rule>If a field requirement is missing, return set_field for the earliest missing field in fixed_schema order and obey that target local XML controls. Only request_image after appearancePrompt exists.</progressive_rule>',
     '    <workflow_rule>The runtime_state includes workflow requirements. Complete only requirements that are missing and unblocked. Never request an image target whose dependency source is still blocked or missing.</workflow_rule>',
     '    <workflow_rule>Reference-image ordering is defined by graph edges and requirement dependencies, not by a hardcoded role sequence. If a target has reference inputs, write the prompt for that target assuming the runtime supplies those reference images.</workflow_rule>',
     '    <scoped_repair_rule>If runtime_state.turn_context_json contains scopedRun and selectedArtifacts, treat the user instruction as external feedback for those selected run artifacts only.</scoped_repair_rule>',
     '    <scoped_repair_rule>For selected character-card-field artifacts, return one set_field action for that exact field with revised final content. Do not edit unrelated fields.</scoped_repair_rule>',
     '    <scoped_repair_rule>For selected non-field textual artifacts, return create_artifact preserving the artifact purpose and applying the instruction. Do not run a full workflow plan.</scoped_repair_rule>',
+    '    <image_rule>Use the graph-declared image pipeline. Avatar is the first identity image. Overview/reference-sheet images must assume linked avatar reference images and preserve the same face, hair, proportions, and outfit language.</image_rule>',
     '    <image_rule>The avatar prompt must describe one final avatar.jpg only: exactly one visible depiction of the character, one head, one face, one bust or upper body in a continuous frame. For avatar, never ask for alternate versions, two forms, before/after, split-screen, face insets, expression panels, multiple poses, duplicate faces, model sheet, reference sheet, or character sheet.</image_rule>',
     '    <image_rule>The character-overview-sheet prompt must be a very large model/reference sheet: front view, back view, side or three-quarter view, hairstyle detail, hands, legs, feet/shoes, outfit/material details, and expression callouts. Do not ask for written labels; use clean visual panels only.</image_rule>',
-    '    <image_rule>The runtime will wrap every targetPrompts.prompt with the stable identity bible, composition strategy, style strategy, and negative constraints. Do not repeat the full identity bible inside targetPrompts.prompt.</image_rule>',
+    '    <image_rule>If an image attempt failed, is stale because its reference changed, or selected artifact feedback says the image is ugly, duplicated, off-style, multi-face, not matching appearancePrompt, or otherwise unacceptable, request_image for the same targetNodeId with a sharper corrected targetPrompts.prompt. Do not edit the workflow graph for a local image reroll.</image_rule>',
+    '    <image_rule>The runtime will wrap every targetPrompts.prompt with appearancePrompt, composition strategy, style strategy, quality direction, and negative constraints. Do not repeat the full appearancePrompt inside targetPrompts.prompt.</image_rule>',
     '    <image_rule>When requesting images, create one targetPrompts item per final image, not just per image target. If an image target requests multiple images through image_control count, return multiple distinct prompts for the same targetNodeId.</image_rule>',
     '    <image_rule>All images for the same role card must share a clear identity anchor: face structure, hair, eyes, age impression, body type, signature accessories, and outfit language. Vary pose, shot, background, mood, lighting, and story function.</image_rule>',
     '    <image_rule>Each targetPrompts.prompt should be a compact slot-specific visual direction: pose, expression, framing, camera angle, background simplicity, prop/motif, mood, and image function. Include only identity details that are unique to this slot.</image_rule>',
@@ -253,7 +254,7 @@ function createCharacterDecisionPrompt(
     '      <action name="request_image">{"type":"request_image","targetPrompts":[{"targetNodeId":"avatar-image-target","title":"avatar.jpg","prompt":"target-specific English image prompt"},{"targetNodeId":"overview-sheet-image-target","title":"character overview sheet","prompt":"target-specific English image prompt"}]}</action>',
     '      <action name="finish">{"type":"finish","reason":"..."}</action>',
     '    </allowed_actions>',
-    '    <completion_rule>Set done=true only after every required workflow requirement is complete. Always produce visualIdentity, imagePrompt, and every unblocked required image target.</completion_rule>',
+    '    <completion_rule>Set done=true only after every required workflow requirement is complete. Always produce appearancePrompt and every unblocked required image target.</completion_rule>',
     '  </action_contract>',
     '</character_agent_prompt>',
   ].join('\n')
@@ -270,7 +271,7 @@ function createCharacterReviewPrompt(context: CharacterAgentRunContext, input: u
     `    <block_export>${context.qualityGate.blockExport}</block_export>`,
     `    <required_checks>${xmlEscape(context.qualityGate.requiredChecks.join(', '))}</required_checks>`,
     '    <must_check>All fixed character fields are present, concrete, and belong to the character rather than the agent.</must_check>',
-    '    <must_check>Supporting resources include imagePrompt; if an image model is configured, image readiness must be judged.</must_check>',
+    '    <must_check>Supporting resources include appearancePrompt; if an image model is configured, image readiness must be judged.</must_check>',
     '    <must_check>Hard constraints are respected. Style pressures are visible but not copied mechanically.</must_check>',
     '    <output_format>Return JSON only with keys: score, passed, summary, checks, blockingIssues, repairSuggestions.</output_format>',
     '  </review_contract>',
@@ -289,8 +290,7 @@ function createSchemaXml(): string {
     ...CHARACTER_SUPPORT_FIELD_SCHEMA.map((field) => `      <field name="${field}" required="true">${xmlEscape(supportFieldDescription(field))}</field>`),
     '    </support_fields>',
     '    <rule>Do not invent new top-level required fields. Use extra details inside the fixed fields when needed.</rule>',
-    '    <rule>visualIdentity is the stable visual bible for all character images: age impression, face shape, eyes, brows, nose, lips, hair, body proportions, skin tone, outfit language, signature motifs, style domain, and hard visual negatives.</rule>',
-    '    <rule>imagePrompt is for the image model, not a visible character-card field. It is a compact English avatar identity prefix derived from visualIdentity, not a scene prompt.</rule>',
+    '    <rule>appearancePrompt is the only hidden reusable appearance prompt for the image model. It is derived from the completed character-card fields, describes only stable character appearance, and never carries scene, camera, lighting, mood, pose, quality, negative prompts, or image-control instructions.</rule>',
     '  </fixed_schema>',
   ].join('\n')
 }
@@ -412,8 +412,7 @@ function characterFieldDescription(field: string): string {
 
 function supportFieldDescription(field: string): string {
   const descriptions: Record<string, string> = {
-    visualIdentity: 'Stable visual bible for all generated character images; include age impression, face shape, eyes, brows, nose, lips, hair, proportions, skin tone, outfit language, signature motifs, style domain, and hard visual negatives.',
-    imagePrompt: 'Compact English image-model prefix for the canonical avatar identity; appearance-focused, reusable, and not shown as a character-card field.',
+    appearancePrompt: 'Compact English reusable appearance prompt derived from completed character-card fields; stable character appearance only, with no scene, camera, lighting, mood, pose, quality, negative prompts, or image-control instructions.',
   }
   return descriptions[field] ?? field
 }
@@ -796,7 +795,7 @@ function createCandidateArtifacts(
     createToolArtifact(runId, candidateId, 'dialogue-style-guide', 'Dialogue Style Guide', data.dialogueStyleGuide, defaultSourceNodeId),
     createToolArtifact(runId, candidateId, 'world-context', 'World Context', data.worldContext, defaultSourceNodeId),
     createToolArtifact(runId, candidateId, 'scene-context', 'Scene Context', data.sceneContext, defaultSourceNodeId),
-    createToolArtifact(runId, candidateId, 'image-prompt', 'Image Prompt', data.imagePrompt, context.capabilities.imageModels[0]?.nodeId ?? defaultSourceNodeId),
+    createToolArtifact(runId, candidateId, 'image-prompt', 'Appearance Prompt', data.appearancePrompt, context.capabilities.imageModels[0]?.nodeId ?? defaultSourceNodeId),
     createToolArtifact(runId, candidateId, 'generation-report', 'Generation Report', data.generationReport ?? data.summary ?? data, defaultSourceNodeId),
   ].filter((artifact) => artifact.data !== undefined && artifact.data !== null && String(artifact.data).trim?.() !== '')
 }

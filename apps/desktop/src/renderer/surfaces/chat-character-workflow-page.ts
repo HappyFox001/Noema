@@ -644,9 +644,8 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'Dialogue Style', value: 'dialogueStyle' },
       { label: 'World Context', value: 'worldContext' },
     ]),
-    param('includeSupportFields', 'Support Fields', 'multi-select', ['visualIdentity', 'imagePrompt'], undefined, undefined, undefined, [
-      { label: 'Visual Identity', value: 'visualIdentity' },
-      { label: 'Image Prompt', value: 'imagePrompt' },
+    param('includeSupportFields', 'Support Fields', 'multi-select', ['appearancePrompt'], undefined, undefined, undefined, [
+      { label: 'Appearance Prompt', value: 'appearancePrompt' },
     ]),
   ], 'package'),
   createDefinition('character-field-target', 'Character Field Target', ['字段', 'field target', '局部字段'], 'Targets', 'asset', 'Declares a single card field as an independently controllable target resource.', [
@@ -667,8 +666,7 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'First Message', value: 'firstMessage' },
       { label: 'Dialogue Style', value: 'dialogueStyle' },
       { label: 'World Context', value: 'worldContext' },
-      { label: 'Visual Identity', value: 'visualIdentity' },
-      { label: 'Image Prompt', value: 'imagePrompt' },
+      { label: 'Appearance Prompt', value: 'appearancePrompt' },
     ]),
   ], 'text-card'),
   createDefinition('opening-layout-target', 'Opening Layout Target', ['开幕版面', 'opening layout', 'css card'], 'Targets', 'asset', 'Declares the CSS/HTML-style opening presentation for the role card, combining opening text, visual assets, title, tags, and card surface layout.', [
@@ -1018,7 +1016,7 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'Goal Match', value: 'goal-match' },
       { label: 'Field Completeness', value: 'field-completeness' },
       { label: 'Roleplay Usability', value: 'roleplay-usability' },
-      { label: 'Visual Identity', value: 'visual-identity' },
+      { label: 'Appearance Prompt', value: 'appearance-prompt' },
       { label: 'Consistency', value: 'consistency' },
     ]),
     param('autoRepair', 'Auto Repair', 'boolean', true),
@@ -1036,7 +1034,7 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'Goal Match', value: 'goal-match' },
       { label: 'Field Completeness', value: 'field-completeness' },
       { label: 'Roleplay Usability', value: 'roleplay-usability' },
-      { label: 'Visual Identity', value: 'visual-identity' },
+      { label: 'Appearance Prompt', value: 'appearance-prompt' },
       { label: 'Consistency', value: 'consistency' },
     ]),
   ], 'validation'),
@@ -2767,7 +2765,7 @@ function isHiddenRunCanvasFieldArtifact(artifact: NonNullable<CharacterResourceR
   const data = artifact.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
     ? artifact.data as Record<string, unknown>
     : {}
-  return data.field === 'imagePrompt' || data.field === 'visualIdentity'
+  return data.field === 'appearancePrompt'
 }
 
 function getRoleResourceArtifacts(artifacts: NonNullable<CharacterResourceRunState['artifacts']>): NonNullable<CharacterResourceRunState['artifacts']> {

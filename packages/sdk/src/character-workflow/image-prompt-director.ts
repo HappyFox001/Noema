@@ -11,8 +11,7 @@ export type CharacterImageStyleDomain = 'photoreal' | 'anime' | 'illustration' |
 
 export interface CharacterImageProfile {
   name: string
-  visualIdentity: string
-  imagePrompt: string
+  appearancePrompt: string
   appearance: string
   description: string
   scenario: string
@@ -33,33 +32,28 @@ export interface DirectedImagePromptInput {
 export function createCharacterImageProfile(draft: CharacterCardDraft): CharacterImageProfile {
   const fields = draft.fields ?? {}
   const name = text(fields.name)
-  const visualIdentity = text(fields.visualIdentity)
-  const imagePrompt = text(fields.imagePrompt)
+  const appearancePrompt = text(fields.appearancePrompt)
   const appearance = text(fields.appearance)
   const description = text(fields.description)
   const scenario = text(fields.scenario)
   const worldContext = text(fields.worldContext)
   const source = [
-    visualIdentity ? `Stable visual identity: ${visualIdentity}` : '',
-    imagePrompt ? `Reusable image prompt: ${imagePrompt}` : '',
+    appearancePrompt ? `Reusable appearance prompt: ${appearancePrompt}` : '',
     name ? `Character name: ${name}` : '',
-    appearance ? `Visible appearance: ${appearance}` : '',
-    description ? `Role appeal: ${description}` : '',
   ].filter(Boolean)
   const identityBible = source.join('\n')
-  if (!identityBible.trim()) {
-    throw new Error('Character image generation needs visualIdentity, imagePrompt, or appearance before prompt direction')
+  if (!appearancePrompt) {
+    throw new Error('Character image generation needs appearancePrompt before prompt direction')
   }
   return {
     name,
-    visualIdentity,
-    imagePrompt,
+    appearancePrompt,
     appearance,
     description,
     scenario,
     worldContext,
     identityBible,
-    styleDomain: inferStyleDomain([visualIdentity, imagePrompt, appearance, description].join(' ')),
+    styleDomain: inferStyleDomain(appearancePrompt),
   }
 }
 
@@ -95,6 +89,7 @@ export function buildDirectedImageGenerationPrompt(input: DirectedImagePromptInp
     identityLock(input.profile),
     compositionStrategy(role, domain, input.control),
     styleStrategy(role, domain, input.control),
+    qualityStrategy(role, domain),
     slotPromptForRole(role, input.promptText),
     globalVisualRules(role),
     negativeConstraints(role, domain, input.control),
@@ -124,6 +119,7 @@ function roleAutomaticPrompt(role: string, profile: CharacterImageProfile): stri
       'Generate exactly one depiction of exactly one character in one continuous portrait image.',
       'Bust or upper-body portrait, clear face, direct eye contact or slightly off-camera gaze, attractive readable silhouette, confident inviting expression, subtle mature companion appeal.',
       'Prioritize exact face structure, eye shape, brows, nose, lips, hairstyle, body frame, skin tone, signature accessory or motif, and default outfit language.',
+      'Make it feel like the final selected profile image from a professional character asset pipeline: polished face design, premium lighting, precise hair shape, refined styling, and strong thumbnail readability.',
       'Use a simple background that does not compete with the face. No alternate version, no duplicate face, no side-by-side comparison, no model sheet.',
     ].join(' '),
     'character-overview-sheet': [
@@ -131,7 +127,7 @@ function roleAutomaticPrompt(role: string, profile: CharacterImageProfile): stri
       'Show full-body front view, back view, side or three-quarter view, hairstyle detail, hands, legs, feet or shoes, outfit material details, and expression closeups as clean visual panels.',
       'Preserve the supplied reference identity exactly when reference images are available.',
     ].join(' '),
-    'hero-cover': 'Polished role-card cover image with the character dominant in frame, strong mood, clear identity, and a readable hook for the premise.',
+    'hero-cover': 'Polished role-card hero cover using supplied reference images as identity lock, with the character dominant in frame, strong mood, clear identity, and a readable hook for the premise.',
     'opening-moment': 'Opening-scene image with the character visibly present in the first RP situation, grounded setting details, expressive body language, and a concrete invitation into the scene.',
     'story-moment': 'Character-first story beat image with believable environment, pose, expression, props, and mood tied to the role card premise.',
     'relationship-moment': 'Relationship beat focused on chemistry, tension, distance, gaze, posture, and emotional context; another person may be implied or partially framed.',
@@ -185,9 +181,9 @@ function compositionStrategy(
     control?.seedMode ? `Seed strategy: ${control.seedMode}.` : '',
   ].filter(Boolean).join(' ')
   const roleLines: Record<string, string> = {
-    avatar: 'Composition: one subject only; exactly one face and one body depiction; bust to half-body crop; face large enough to read; no full-body sheet; no collage; no panels; no split-screen; no inset closeups; no mirrored duplicate; no same character twice; no multiple poses; simple depth-separated background.',
+    avatar: 'Composition: one subject only; exactly one face and one body depiction; bust to half-body crop; face large enough to read; centered or subtly off-center portrait framing; no full-body sheet; no collage; no panels; no split-screen; no inset closeups; no mirrored duplicate; no same character twice; no multiple poses; simple depth-separated background.',
     'character-overview-sheet': 'Composition: clean model-sheet layout with visual panels only; include full-body front, back, side or three-quarter view, plus close details for face, hair, hands, legs, shoes, outfit materials, and 2-4 expressions; no written labels.',
-    'hero-cover': 'Composition: cover-quality character-first framing; readable silhouette; environment supports the premise without hiding the body or face.',
+    'hero-cover': 'Composition: cover-quality character-first framing; readable silhouette; character dominant; face unobstructed; environment supports the premise without hiding the body or face; strong thumbnail readability.',
     'opening-moment': 'Composition: concrete scene staging with the character in the foreground, expressive pose, readable setting, and clear entry point for roleplay.',
     'relationship-moment': 'Composition: intimate camera distance, readable gaze and posture, strong emotional spacing; keep the main character face unobstructed.',
   }
@@ -223,6 +219,48 @@ function styleStrategy(
   return [domainStyle[domain], preset, localStyle].filter(Boolean).join('\n')
 }
 
+function qualityStrategy(role: string, domain: CharacterImageStyleDomain): string {
+  if (role === 'character-overview-sheet') {
+    return [
+      'Reference-sheet quality direction:',
+      'Prioritize same-character consistency across all panels: same face family, eyes, brows, hair silhouette, age impression, proportions, outfit language, and signature motifs.',
+      'Use crisp panel spacing, clean silhouettes, readable hands/feet/outfit materials, and visual-only detail views without written labels.',
+    ].join(' ')
+  }
+  if (role === 'hero-cover') {
+    return [
+      'Hero-cover quality direction:',
+      'Prioritize premium role-card appeal: beautiful readable face, strong silhouette, refined styling, controlled background, cinematic/story-rich atmosphere, and thumbnail clarity.',
+      'Preserve the reference identity even while making the cover more expressive and dramatic.',
+    ].join(' ')
+  }
+  if (role !== 'avatar') {
+    return ''
+  }
+  if (domain === 'anime') {
+    return [
+      'Avatar quality direction:',
+      'Treat this as a final commercial anime character portrait, not a rough concept.',
+      'Use a beautiful but specific face design, luminous detailed eyes, clean eyelash and eyebrow shapes, attractive mouth shape, graceful neck and shoulder line, crisp bangs and hair silhouette, subtle layered hair highlights, refined outfit material accents, soft rim light, gentle bloom, balanced color grading, and clean high-resolution finish.',
+      'The face should be the strongest focal point; background, props, effects, and accessories must support the portrait without competing with the eyes.',
+    ].join(' ')
+  }
+  if (domain === 'photoreal') {
+    return [
+      'Avatar quality direction:',
+      'Treat this as a final premium profile portrait from a professional shoot, not a casual snapshot.',
+      'Use flattering but believable facial light, precise eye catchlights, natural skin texture, detailed hair strands, intentional grooming, refined wardrobe material, shallow background separation, elegant color grading, and a clean high-resolution finish.',
+      'The face should be the strongest focal point; background and props must remain restrained.',
+    ].join(' ')
+  }
+  return [
+    'Avatar quality direction:',
+    'Treat this as a final premium character portrait, not a sketch, study, or layout exploration.',
+    'Use a distinctive beautiful face, refined eyes, clean silhouette, intentional styling, polished material detail, controlled lighting, balanced color, and high-resolution finish.',
+    'The face should be the strongest focal point; background, props, and effects must not compete with identity readability.',
+  ].join(' ')
+}
+
 function presetStyleStrategy(
   preset: string | undefined,
   role: string,
@@ -241,6 +279,9 @@ function presetStyleStrategy(
       role === 'avatar' ? 'Prioritize face beauty, recognizability, subtle expression, and a clean bust composition over background complexity.' : '',
     ].filter(Boolean).join(' '),
     'character-sheet': 'Preset style: professional character design sheet. Use clean production-art presentation, consistent face family across views, readable outfit construction, controlled panel spacing, visual-only detail callouts, and no text labels.',
+    'model-sheet': 'Preset style: professional model sheet. Use consistent same-character views, clean orthographic or near-orthographic presentation, readable proportions, controlled panel spacing, visual-only detail callouts, and no text labels.',
+    'turnaround-reference': 'Preset style: turnaround reference. Use front, three-quarter, side, and back views with strict same-character identity, stable outfit construction, readable hair silhouette, clean neutral presentation, and no text labels.',
+    'trading-card-art': 'Preset style: premium role-card/trading-card art. Use a dominant character silhouette, refined face appeal, controlled dramatic background, polished material detail, strong value grouping, and thumbnail-readable cover composition.',
     'photoreal-portrait': 'Preset style: polished photoreal portrait with natural skin texture, realistic hair, detailed eyes, flattering portrait light, and believable camera perspective.',
     'cinematic-realism': 'Preset style: cinematic realism with filmic color, controlled contrast, motivated lighting, atmospheric depth, realistic materials, and grounded anatomy.',
     'editorial-photography': 'Preset style: refined editorial photography with intentional styling, premium wardrobe language, clean composition, magazine-grade lighting, and confident pose direction.',
@@ -268,7 +309,7 @@ function slotPrompt(promptText: string): string {
 }
 
 function slotPromptForRole(role: string, promptText: string): string {
-  const avatarContract = role === 'avatar'
+  const roleContract = role === 'avatar'
     ? [
       'Avatar slot contract:',
       'This image is not a concept board. Generate one final role-card avatar portrait only.',
@@ -277,7 +318,7 @@ function slotPromptForRole(role: string, promptText: string): string {
     ].join('\n')
     : ''
   return [
-    avatarContract,
+    roleContract,
     slotPrompt(promptText),
   ].filter(Boolean).join('\n')
 }
@@ -319,7 +360,7 @@ function negativeConstraints(
     'speech bubble',
   ]
   const roleNegatives: Record<string, string[]> = {
-    avatar: ['multiple people', 'two characters', 'duplicate character', 'same character twice', 'multiple faces', 'two faces', 'extra face', 'face inset', 'portrait inset', 'split screen', 'diptych', 'triptych', 'before and after', 'alternate version', 'variant sheet', 'collage', 'reference sheet', 'character sheet', 'model sheet', 'full-body turnaround', 'multiple poses', 'side profile only', 'covered face', 'mask hiding face', 'generic face', 'age ambiguity'],
+    avatar: ['multiple people', 'two characters', 'duplicate character', 'same character twice', 'multiple faces', 'two faces', 'extra face', 'face inset', 'portrait inset', 'second portrait', 'dual portrait', 'two busts', 'split screen', 'diptych', 'triptych', 'contact sheet', 'before and after', 'alternate version', 'variant sheet', 'comparison layout', 'collage', 'reference sheet', 'character sheet', 'model sheet', 'full-body turnaround', 'multiple poses', 'side profile only', 'covered face', 'mask hiding face', 'generic face', 'age ambiguity'],
     'character-overview-sheet': ['written labels', 'text labels', 'different faces between panels', 'different hairstyles between panels', 'random outfit swaps', 'cropped feet', 'cropped hands'],
     'hero-cover': ['face hidden', 'tiny character', 'empty landscape', 'busy unreadable background'],
     'opening-moment': ['empty room', 'environment-only image', 'character hidden'],
