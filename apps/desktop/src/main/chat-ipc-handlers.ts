@@ -30,8 +30,12 @@ import {
 import { ChatHistoryStore, type StoredChatConversation, type StoredChatConversationListItem } from './chat-history-store.js'
 import { CharacterWorkflowStore, type StoredCharacterWorkflowProject } from './character-workflow-store.js'
 
+const LOCAL_CLI_DEFAULT_MODEL_REF = '__default__'
+
 export interface ChatIpcModelConfig {
+  id?: string
   provider?: string
+  transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'
   modelName: string
   apiKey: string
   baseUrl?: string
@@ -41,6 +45,7 @@ export interface ChatIpcConfiguredModel {
   id: string
   modelType: 'llm' | 'image'
   provider?: string
+  transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'
   modelName: string
   enabledModels?: string[]
   apiKey: string
@@ -258,6 +263,8 @@ export function registerChatIpcHandlers(
   ipcMain: IpcMain,
   options: {
     getModelConfig(): ChatIpcModelConfig | null
+    getTaskModelConfig?(): ChatIpcModelConfig | null
+    getTaskModels?(): ChatIpcModelConfig[]
     getChatModels(): ChatIpcConfiguredModel[]
     getProxyUrl?(): string
     getMainWindow?(): BrowserWindow | null
@@ -302,7 +309,7 @@ export function registerChatIpcHandlers(
       if (blockingIssue) {
         throw new Error(blockingIssue.message)
       }
-      const configuredModels = options.getChatModels()
+      const configuredModels = getCharacterWorkflowConfiguredModels(options)
       const modelResolver = createStaticCharacterAgentModelResolver(createCharacterAgentModelConfigs(configuredModels))
       const seedArtifacts = normalizeCharacterAgentSeedArtifacts(request.scopedRun?.seedArtifacts)
       const artifacts = createInMemoryCharacterArtifactStore(seedArtifacts)
@@ -357,17 +364,19 @@ export function registerChatIpcHandlers(
 
   ipcMain.handle('chat:buildCharacterWorkflow', async (event, request: ChatBuildCharacterWorkflowRequest): Promise<ChatBuildCharacterWorkflowResult> => {
     try {
-      const configuredModels = options.getChatModels()
+      const configuredModels = getCharacterWorkflowConfiguredModels(options)
+      const workflowModelConfig = options.getTaskModelConfig?.() ?? options.getModelConfig()
       const firstImageModel = configuredModels.find((model) => model.modelType === 'image')
+      const workflowModelName = getWorkflowModelNameForRef(workflowModelConfig)
       const result = await buildCharacterWorkflowFromPrompt({
         prompt: request.prompt,
         language: request.language,
         mode: request.mode,
         graph: request.graph,
         editorSession: request.editorSession,
-        modelConfig: options.getModelConfig(),
-        llmApiId: options.getModelConfig()?.provider,
-        llmModelName: options.getModelConfig()?.modelName,
+        modelConfig: workflowModelConfig,
+        llmApiId: workflowModelConfig?.id ?? workflowModelConfig?.provider,
+        llmModelName: workflowModelName,
         imageApiId: firstImageModel?.id,
         imageModelName: firstImageModel?.modelName,
         onEvent: request.streamId
@@ -623,6 +632,86 @@ export function registerChatIpcHandlers(
       return { success: false, error: error?.message || String(error) }
     }
   })
+}
+
+function getCharacterWorkflowConfiguredModels(options: {
+  getModelConfig(): ChatIpcModelConfig | null
+  getTaskModelConfig?(): ChatIpcModelConfig | null
+  getTaskModels?(): ChatIpcModelConfig[]
+  getChatModels(): ChatIpcConfiguredModel[]
+}): ChatIpcConfiguredModel[] {
+  const taskModels = options.getTaskModels?.() ?? []
+  const activeTask = options.getTaskModelConfig?.()
+  const taskEntries = [
+    ...taskModels,
+    ...(activeTask ? [activeTask] : []),
+  ]
+  const seenTaskKeys = new Set<string>()
+  const llmModels = taskEntries.flatMap((model, index): ChatIpcConfiguredModel[] => {
+    const key = [
+      model.provider ?? '',
+      getModelTransport(model),
+      model.modelName ?? '',
+      model.baseUrl ?? '',
+    ].join('\u0000')
+    if (seenTaskKeys.has(key)) {
+      return []
+    }
+    seenTaskKeys.add(key)
+    return [{
+      id: `task-workflow-${index}`,
+      ...(model.id ? { id: model.id } : {}),
+      modelType: 'llm',
+      provider: model.provider,
+      transport: getModelTransport(model),
+      modelName: model.modelName,
+      enabledModels: getWorkflowEnabledModels(model),
+      apiKey: model.apiKey,
+      baseUrl: model.baseUrl ?? '',
+    }]
+  })
+  const imageModels = options.getChatModels().filter((model) => model.modelType === 'image')
+  const fallbackChatLLMs = llmModels.length
+    ? []
+    : options.getChatModels().filter((model) => model.modelType === 'llm')
+  return [...llmModels, ...fallbackChatLLMs, ...imageModels]
+}
+
+function getWorkflowEnabledModels(model: ChatIpcModelConfig): string[] {
+  const modelName = isLocalCLIModel(model) ? '' : String(model.modelName || '').trim()
+  if (modelName) {
+    return [modelName]
+  }
+  return isLocalCLIModel(model) ? [LOCAL_CLI_DEFAULT_MODEL_REF] : []
+}
+
+function getWorkflowModelNameForRef(model: ChatIpcModelConfig | null | undefined): string | undefined {
+  const modelName = model && !isLocalCLIModel(model) ? String(model.modelName || '').trim() : ''
+  if (modelName) {
+    return modelName
+  }
+  return model && isLocalCLIModel(model) ? LOCAL_CLI_DEFAULT_MODEL_REF : undefined
+}
+
+function isLocalCLIModel(model: ChatIpcModelConfig): boolean {
+  return isLocalCLITransport(getModelTransport(model))
+}
+
+function getModelTransport(model: ChatIpcModelConfig | null | undefined): NonNullable<ChatIpcModelConfig['transport']> {
+  if (model?.transport === 'codex_local' || model?.transport === 'claude_code_local') {
+    return model.transport
+  }
+  if (model?.provider === 'codex') {
+    return 'codex_local'
+  }
+  if (model?.provider === 'claude-code') {
+    return 'claude_code_local'
+  }
+  return 'openai_compatible'
+}
+
+function isLocalCLITransport(transport: ChatIpcModelConfig['transport'] | undefined): boolean {
+  return transport === 'codex_local' || transport === 'claude_code_local'
 }
 
 async function collectChatRuntimeResult(events: AsyncGenerator<ChatRuntimeEvent>): Promise<{

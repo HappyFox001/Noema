@@ -51,27 +51,35 @@ export async function buildSDKConfig(): Promise<SDKConfig> {
     )
   }
 
+  const llmTransport = activeLLMConfig?.transport ?? 'openai_compatible'
+  const taskLLMTransport = activeTaskLLMConfig?.transport ?? 'openai_compatible'
   const llmApiKey = activeLLMConfig?.apiKey || process.env.LLM_API_KEY || ''
-  const llmModel = activeLLMConfig?.modelName || process.env.LLM_MODEL || 'deepseek-chat'
+  const llmModel = llmTransport === 'openai_compatible'
+    ? activeLLMConfig?.modelName || process.env.LLM_MODEL || 'deepseek-chat'
+    : activeLLMConfig?.modelName || ''
   const llmBaseURL = activeLLMConfig?.baseUrl || process.env.LLM_BASE_URL || 'https://api.deepseek.com'
   const taskLLMApiKey = activeTaskLLMConfig?.apiKey || llmApiKey
-  const taskLLMModel = activeTaskLLMConfig?.modelName || 'gemini-3.1-pro-preview'
+  const taskLLMModel = taskLLMTransport === 'openai_compatible'
+    ? activeTaskLLMConfig?.modelName || 'gemini-3.1-pro-preview'
+    : activeTaskLLMConfig?.modelName || ''
   const taskLLMBaseURL = activeTaskLLMConfig?.baseUrl || llmBaseURL
   const taskRuntime = {
     ...(activeTaskRuntimeConfig ?? {}),
-    llmTransport: activeTaskLLMConfig?.transport ?? 'openai_compatible',
+    llmTransport: taskLLMTransport,
     model: activeTaskLLMConfig?.modelName || activeTaskRuntimeConfig?.model,
   }
 
   return {
     llm: {
       ...(activeLLMConfig?.provider ? { provider: activeLLMConfig.provider } : {}),
+      transport: llmTransport,
       apiKey: llmApiKey,
       model: llmModel,
       baseURL: llmBaseURL
     },
     taskLLM: {
       ...(activeTaskLLMConfig?.provider ? { provider: activeTaskLLMConfig.provider } : {}),
+      transport: taskLLMTransport,
       apiKey: taskLLMApiKey,
       model: taskLLMModel,
       baseURL: taskLLMBaseURL

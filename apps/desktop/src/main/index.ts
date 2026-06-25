@@ -90,6 +90,7 @@ import {
 } from './sdk-config.js'
 import { SettingsStore, type AppSettings, type LLMModelConfig, type TTSModelConfig, type ASRModelConfig } from './settings-store.js'
 import {
+  getLLMProviderCatalogEntry,
   getTTSProviderCatalogEntry,
 } from './model-provider-catalog.js'
 import { InteractiveInputStore, type StoredInteractiveInput, type StoredInteractiveInputGroup } from './interactive-input-store.js'
@@ -1698,6 +1699,8 @@ function getCharacterWorkflowStore(): CharacterWorkflowStore {
 registerChatRoleResourceIpcHandlers(ipcMain)
 registerChatIpcHandlers(ipcMain, {
   getModelConfig: getChatModelConfig,
+  getTaskModelConfig: getActiveTaskConfig,
+  getTaskModels: () => appSettings.system.taskModels,
   getChatModels: () => appSettings.system.chatModels,
   getProxyUrl: () => activeProxyUrl,
   getMainWindow: () => mainWindow,
@@ -1895,10 +1898,14 @@ function getChatModelConfig(): LLMModelConfig | null {
   if (!config) {
     return null
   }
+  const transport = config.transport ?? getLLMProviderCatalogEntry(config.provider as LLMModelConfig['provider']).transport ?? 'openai_compatible'
   return {
     id: config.id,
     provider: config.provider as LLMModelConfig['provider'],
-    modelName: appSettings.system.activeChatModelName,
+    transport,
+    modelName: transport === 'codex_local' || transport === 'claude_code_local'
+      ? ''
+      : appSettings.system.activeChatModelName,
     apiKey: config.apiKey,
     baseUrl: config.baseUrl,
   }

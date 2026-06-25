@@ -60,6 +60,7 @@ import {
   getChatModelType,
   getEnabledModelNames,
   getLLMProviderEntry,
+  getLocalLLMTransport,
   mergeModelNames,
   normalizeModelNameList,
   renderChatModelConfigPage,
@@ -1261,19 +1262,55 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!config) {
       return []
     }
-    return config.chatModels.flatMap((model) => {
+    const chatChoices = config.chatModels.flatMap((model) => {
       const kind = getChatModelType(model)
       const provider = getChatProviderEntry(model)
-      return getEnabledModelNames(model).map((modelName) => ({
-        id: `${model.id}::${modelName}`,
+      return getChatModelChoiceNames(model).map((choice) => ({
+        id: `${model.id}::${choice.modelRef}`,
         kind,
         apiId: model.id,
-        modelName,
+        modelName: choice.label,
         provider: provider.value,
         providerLabel: provider.label,
         logoHtml: renderChatModelLogo(model),
       }))
     })
+    const taskChoices = (config.taskModels ?? []).flatMap((model): CharacterWorkflowModelChoice[] => {
+      const transport = getWorkflowTaskTransport(model)
+      if (transport === 'openai_compatible') {
+        return []
+      }
+      const rawModelName = String(model.modelName || '').trim()
+      const modelName = transport === 'openai_compatible' ? rawModelName : ''
+      const modelRef = modelName || '__default__'
+      if (!modelName && (transport !== 'codex_local' && transport !== 'claude_code_local')) {
+        return []
+      }
+      const providerLabel = workflowTaskTransportLabel(transport)
+      const displayName = modelName || `${providerLabel} default`
+      const providerKey = transport === 'claude_code_local' ? 'claude-code' : 'codex'
+      return [{
+        id: `${model.id}::${modelRef}`,
+        kind: 'llm',
+        apiId: model.id,
+        modelName: displayName,
+        provider: transport,
+        providerLabel,
+        logoHtml: renderProviderLogo(providerKey),
+      }]
+    })
+    return [...taskChoices, ...chatChoices]
+  }
+
+  function getWorkflowTaskTransport(model: { provider?: string; transport?: unknown }): 'openai_compatible' | 'codex_local' | 'claude_code_local' {
+    if (model.transport === 'codex_local' || model.transport === 'claude_code_local') {
+      return model.transport
+    }
+    return getLLMProviderCatalogEntry(model.provider).transport ?? 'openai_compatible'
+  }
+
+  function workflowTaskTransportLabel(value: 'codex_local' | 'claude_code_local'): string {
+    return value === 'claude_code_local' ? 'Claude Code' : 'Codex'
   }
 
   function refreshCharacterWorkflowModelsIfVisible(): void {
@@ -1295,8 +1332,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         }
         const provider = getLLMProviderEntry(model.provider)
         const group = grouped.get(provider.value) ?? { provider, models: [] }
-        getEnabledModelNames(model).forEach((modelName) => {
-          group.models.push({ api: model, modelName })
+        getChatModelChoiceNames(model).forEach((choice) => {
+          group.models.push({ api: model, modelName: choice.label })
         })
         grouped.set(provider.value, group)
       })
@@ -1308,10 +1345,22 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return false
     }
     const provider = getLLMProviderEntry(model.provider)
-    const hasModelName = getEnabledModelNames(model).length > 0
+    const localCli = getLocalLLMTransport(model) !== 'openai_compatible'
+    const hasModelName = localCli || getEnabledModelNames(model).length > 0
     const hasCredential = Boolean(model.apiKey.trim()) || provider.value === 'ollama'
     const hasEndpoint = Boolean(model.baseUrl.trim()) || provider.value === 'openai'
-    return hasModelName && hasCredential && hasEndpoint
+    return localCli || (hasModelName && hasCredential && hasEndpoint)
+  }
+
+  function getChatModelChoiceNames(model: ChatModelConfig): Array<{ modelRef: string; label: string }> {
+    const enabled = getEnabledModelNames(model)
+    if (enabled.length) {
+      return enabled.map((name) => ({ modelRef: name, label: name }))
+    }
+    if (getChatModelType(model) === 'llm' && getLocalLLMTransport(model) !== 'openai_compatible') {
+      return [{ modelRef: '__default__', label: 'CLI default' }]
+    }
+    return []
   }
 
   function openConversationSettings(): void {
@@ -5883,6 +5932,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       : getLLMProviderCatalogEntry(provider)
     const providerChanged = previousProvider !== entry.value
     model.provider = entry.value
+    if (getChatModelType(model) === 'llm') {
+      model.transport = entry.transport ?? 'openai_compatible'
+    }
     if (providerChanged) {
       model.modelName = entry.defaultModel
       model.enabledModels = entry.defaultModel ? [entry.defaultModel] : []
@@ -5895,6 +5947,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         : [model.modelName].filter(Boolean)
     }
     model.baseUrl = entry.defaultBaseUrl
+    if (getLocalLLMTransport(model) !== 'openai_compatible') {
+      model.apiKey = ''
+      model.baseUrl = ''
+      model.enabledModels = model.modelName.trim() ? [model.modelName.trim()] : []
+    }
     openChatProviderDropdownId = ''
     await saveChatModelConfig()
     renderChatModelConfig()
@@ -5913,6 +5970,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     chatModelLoading.add(id)
     renderChatModelConfig()
     try {
+      if (getLocalLLMTransport(model) !== 'openai_compatible') {
+        throw new Error(options.getLanguage() === 'zh-CN' ? '本地 CLI 模型不支持拉取模型列表' : 'Local CLI models do not support fetching model lists')
+      }
       const response = await window.electronAPI.listChatModels({
         provider: model.provider,
         modelType: getChatModelType(model),

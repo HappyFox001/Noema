@@ -2,6 +2,7 @@
  * LLM provider abstraction and OpenAI-compatible implementation.
  */
 import OpenAI from 'openai'
+import { spawn } from 'node:child_process'
 import type { SDKConfig } from '../config/types.js'
 import { createProxyFetch, createProxyHttpAgent, normalizeProxyUrl } from '../utils/proxy.js'
 
@@ -25,6 +26,7 @@ export interface LLMProviderOptions {
   defaultReasoningMode?: 'minimal-or-none'
   geminiThinkingMode?: 'minimal-or-none'
   proxyUrl?: string
+  timeoutMs?: number
 }
 
 export class OpenAIProvider implements LLMProvider {
@@ -416,7 +418,107 @@ export class AnthropicMessagesProvider implements LLMProvider {
   }
 }
 
+type LocalCLITransport = 'codex_local' | 'claude_code_local'
+const LOCAL_CLI_DEFAULT_MODEL_REF = '__default__'
+
+export class LocalCLILLMProvider implements LLMProvider {
+  constructor(
+    private transport: LocalCLITransport,
+    model = '',
+    private providerOptions: LLMProviderOptions = {}
+  ) {
+    this.model = normalizeLocalCLIModel(model)
+  }
+
+  private model: string
+
+  async chat(messages: any[], options?: any): Promise<LLMResponse> {
+    const content = await this.run(messages, options ?? {})
+    return {
+      content,
+      finishReason: null,
+    }
+  }
+
+  async *streamChat(messages: any[], options?: any): AsyncGenerator<string> {
+    const response = await this.chat(messages, options)
+    if (response.content) {
+      yield response.content
+    }
+  }
+
+  private run(messages: any[], options: Record<string, any>): Promise<string> {
+    const command = this.transport === 'claude_code_local' ? 'claude' : 'codex'
+    const args = this.transport === 'claude_code_local'
+      ? this.buildClaudeArgs()
+      : this.buildCodexArgs()
+    const timeoutMs = positiveNumber(this.providerOptions.timeoutMs, 30 * 60 * 1000)
+    return runCLIProcess({
+      command,
+      args,
+      stdin: this.buildPrompt(messages, options),
+      timeoutMs,
+      signal: options.signal,
+      label: this.transport === 'claude_code_local' ? 'Claude Code' : 'Codex',
+      parse: (stdout) => this.parseOutput(stdout),
+    })
+  }
+
+  private buildPrompt(messages: any[], options: Record<string, any>): string {
+    const wantsJson = options.response_format?.type === 'json_object'
+    return [
+      'You are acting only as a chat-completions model transport for Noema.',
+      'Do not execute shell commands, do not read files, do not edit files, and do not use CLI-native tools.',
+      'Return only the assistant message content requested by the supplied messages.',
+      wantsJson ? 'The caller requested JSON content. Return valid JSON only, with no markdown fence or surrounding prose.' : '',
+      '',
+      '# Messages',
+      JSON.stringify(messages, null, 2),
+    ].filter(Boolean).join('\n')
+  }
+
+  private buildCodexArgs(): string[] {
+    const args = [
+      'exec',
+      '--json',
+      '--disable',
+      'plugins',
+      '--sandbox',
+      'read-only',
+      '--skip-git-repo-check',
+    ]
+    if (this.model) args.push('--model', this.model)
+    args.push('-')
+    return args
+  }
+
+  private buildClaudeArgs(): string[] {
+    const args = [
+      '--print',
+      '-',
+      '--output-format',
+      'stream-json',
+      '--verbose',
+      '--no-session-persistence',
+      '--tools',
+      '',
+    ]
+    if (this.model) args.push('--model', this.model)
+    return args
+  }
+
+  private parseOutput(stdout: string): string {
+    const parsed = this.transport === 'claude_code_local'
+      ? parseClaudeCLIOutput(stdout)
+      : parseCodexCLIOutput(stdout)
+    return stripCodeFence((parsed || stdout).trim())
+  }
+}
+
 export function createLLMProvider(config: SDKConfig['llm'], options: LLMProviderOptions = {}): LLMProvider {
+  if (config.transport === 'codex_local' || config.transport === 'claude_code_local') {
+    return new LocalCLILLMProvider(config.transport, config.model, options)
+  }
   if (config.baseURL) {
     console.log(`[LLM] Using custom endpoint: ${config.baseURL}`)
   }
@@ -430,6 +532,109 @@ export function createLLMProvider(config: SDKConfig['llm'], options: LLMProvider
   }
 
   return new OpenAIProvider(config.apiKey, config.model, config.baseURL, options)
+}
+
+function normalizeLocalCLIModel(model: string): string {
+  const trimmed = String(model || '').trim()
+  return trimmed === LOCAL_CLI_DEFAULT_MODEL_REF ? '' : trimmed
+}
+
+function runCLIProcess(input: {
+  command: string
+  args: string[]
+  stdin: string
+  timeoutMs: number
+  signal?: AbortSignal
+  label: string
+  parse(stdout: string): string
+}): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(input.command, input.args, { stdio: ['pipe', 'pipe', 'pipe'] })
+    let stdout = ''
+    let stderr = ''
+    let settled = false
+    const finish = (callback: () => void) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      input.signal?.removeEventListener('abort', abort)
+      callback()
+    }
+    const timer = setTimeout(() => {
+      child.kill('SIGTERM')
+      finish(() => reject(new Error(`${input.label} model call timed out after ${input.timeoutMs}ms`)))
+    }, input.timeoutMs)
+    const abort = () => {
+      child.kill('SIGTERM')
+      finish(() => reject(new Error(`${input.label} model call aborted`)))
+    }
+    input.signal?.addEventListener('abort', abort, { once: true })
+    child.stdout.on('data', (chunk) => {
+      stdout += String(chunk)
+    })
+    child.stderr.on('data', (chunk) => {
+      stderr += String(chunk)
+    })
+    child.on('error', (error) => {
+      finish(() => reject(error))
+    })
+    child.on('close', (exitCode) => {
+      finish(() => {
+        const content = input.parse(stdout)
+        if (exitCode !== 0) {
+          reject(new Error(`${input.label} model call failed: ${stderr.trim() || content}`))
+          return
+        }
+        resolve(content)
+      })
+    })
+    child.stdin.end(input.stdin)
+  })
+}
+
+function parseCodexCLIOutput(stdout: string): string {
+  let text = ''
+  for (const line of stdout.split(/\r?\n/)) {
+    if (!line.trim()) continue
+    try {
+      const event = JSON.parse(line)
+      const item = event.item || event.msg?.item
+      if (item?.type === 'agent_message' && typeof item.text === 'string') {
+        text = item.text
+      }
+    } catch {
+      // Fall back to raw stdout when the CLI emits diagnostics.
+    }
+  }
+  return text
+}
+
+function parseClaudeCLIOutput(stdout: string): string {
+  let text = ''
+  for (const line of stdout.split(/\r?\n/)) {
+    if (!line.trim()) continue
+    try {
+      const event = JSON.parse(line)
+      if (event.type === 'result' && typeof event.result === 'string') {
+        text = event.result
+      } else if (typeof event.result === 'string') {
+        text = event.result
+      }
+    } catch {
+      // Fall back to raw stdout when the CLI emits diagnostics.
+    }
+  }
+  return text
+}
+
+function stripCodeFence(value: string): string {
+  const trimmed = value.trim()
+  const match = trimmed.match(/^```(?:json|JSON)?\s*([\s\S]*?)\s*```$/)
+  return match ? match[1].trim() : trimmed
+}
+
+function positiveNumber(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback
 }
 
 function isOfficialGeminiOpenAIEndpoint(baseURL?: string): boolean {

@@ -25,6 +25,8 @@ import stabilityIconUrl from '@lobehub/icons-static-svg/icons/stability-color.sv
 import tencentCloudIconUrl from '@lobehub/icons-static-svg/icons/tencentcloud-color.svg?url'
 import volcengineIconUrl from '@lobehub/icons-static-svg/icons/volcengine-color.svg?url'
 import wavespeedLogoUrl from '../assets/wavespeed-dark-logo.png'
+import claudeCodeLogoUrl from '../assets/claude_code_logo.png'
+import codexLogoUrl from '../assets/codex_logo.png'
 import {
   IMAGE_PROVIDER_CATALOG,
   LLM_PROVIDER_CATALOG,
@@ -38,6 +40,7 @@ export interface ChatModelConfig {
   id: string
   modelType: 'llm' | 'image'
   provider?: string
+  transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'
   modelName: string
   enabledModels: string[]
   availableModels: string[]
@@ -48,6 +51,14 @@ export interface ChatModelConfig {
 
 export interface ChatSystemConfig {
   chatModels: ChatModelConfig[]
+  taskModels?: Array<{
+    id: string
+    provider?: string
+    transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'
+    modelName: string
+    apiKey: string
+    baseUrl: string
+  }>
   activeChatId: string
   activeChatModelName: string
   [key: string]: unknown
@@ -194,6 +205,7 @@ function renderChatModelCard(
 ): string {
   const canDelete = config.chatModels.length > 1
   const providerEntry = getChatProviderEntry(model)
+  const localCli = getLocalLLMTransport(model) !== 'openai_compatible'
   const keyVisible = options.visibleApiKeyIds.has(model.id)
   const keyToggleLabel = keyVisible
     ? (options.language === 'zh-CN' ? '隐藏密钥' : 'Hide key')
@@ -212,13 +224,13 @@ function renderChatModelCard(
             <div class="chat-model-field">
               <label>${options.escapeHtml(options.language === 'zh-CN' ? '密钥' : 'Key')}</label>
               <div class="chat-model-secret-field">
-                <input class="chat-model-input" type="${keyVisible ? 'text' : 'password'}" data-chat-model-field="apiKey" value="${options.escapeHtml(model.apiKey)}" placeholder="${options.escapeHtml(providerEntry.defaultApiKeyPlaceholder)}" />
+                <input class="chat-model-input" type="${keyVisible ? 'text' : 'password'}" data-chat-model-field="apiKey" value="${options.escapeHtml(model.apiKey)}" placeholder="${options.escapeHtml(providerEntry.defaultApiKeyPlaceholder)}" ${localCli ? 'disabled' : ''} />
                 <button class="chat-model-secret-toggle ${keyVisible ? 'active' : ''}" type="button" data-chat-model-action="toggle-api-key" aria-pressed="${keyVisible ? 'true' : 'false'}" aria-label="${options.escapeHtml(keyToggleLabel)}" title="${options.escapeHtml(keyToggleLabel)}">${options.escapeHtml(keyVisible ? 'ABC' : '***')}</button>
               </div>
             </div>
             <div class="chat-model-field">
               <label>${options.escapeHtml(options.language === 'zh-CN' ? '地址' : 'URL')}</label>
-              <input class="chat-model-input" type="text" data-chat-model-field="baseUrl" value="${options.escapeHtml(model.baseUrl)}" placeholder="${options.escapeHtml(providerEntry.defaultBaseUrl)}" />
+              <input class="chat-model-input" type="text" data-chat-model-field="baseUrl" value="${options.escapeHtml(model.baseUrl)}" placeholder="${options.escapeHtml(providerEntry.defaultBaseUrl)}" ${localCli ? 'disabled' : ''} />
             </div>
           </div>
         </div>
@@ -233,25 +245,33 @@ function renderChatModelCard(
 }
 
 function renderChatApiModelSelector(model: ChatModelConfig, options: ChatModelConfigPageOptions): string {
+  const localCli = getLocalLLMTransport(model) !== 'openai_compatible'
   const availableModels = getAvailableModelNames(model)
   const enabledModels = getEnabledModelNames(model)
-  const fetchedLabel = model.modelsFetchedAt
+  const fetchedLabel = localCli
+    ? enabledModels.length
+      ? (options.language === 'zh-CN' ? '手动 --model' : 'manual --model')
+      : (options.language === 'zh-CN' ? '使用 CLI 默认' : 'Using CLI default')
+    : model.modelsFetchedAt
     ? formatModelCacheTime(model.modelsFetchedAt, options.language)
     : (options.language === 'zh-CN' ? '未缓存' : 'No cache')
   const modelCountLabel = options.language === 'zh-CN'
-    ? `${enabledModels.length} 个已启用`
-    : `${enabledModels.length} enabled`
+    ? (localCli && !enabledModels.length ? '默认模型' : `${enabledModels.length} 个已启用`)
+    : (localCli && !enabledModels.length ? 'Default model' : `${enabledModels.length} enabled`)
+  const manualPlaceholder = localCli
+    ? (options.language === 'zh-CN' ? '可选 --model 覆盖' : 'optional --model override')
+    : getChatProviderEntry(model).defaultModel || 'model-name'
   return `
     <div class="chat-api-models">
       <div class="chat-api-models-head">
         <strong>${options.escapeHtml(options.language === 'zh-CN' ? '模型' : 'Models')}</strong>
         <span>${options.escapeHtml(`${modelCountLabel} · ${fetchedLabel}`)}</span>
-        <button class="chat-model-fetch inline" type="button" data-chat-model-action="open-model-library">
+        ${localCli ? '' : `<button class="chat-model-fetch inline" type="button" data-chat-model-action="open-model-library">
           ${options.escapeHtml(options.language === 'zh-CN' ? '模型库' : 'Library')}
         </button>
         <button class="chat-model-fetch inline" type="button" data-chat-model-action="get-models">
           ${options.escapeHtml(options.loadingModelIds.has(model.id) ? (options.language === 'zh-CN' ? '刷新中...' : 'Refreshing...') : (availableModels.length ? (options.language === 'zh-CN' ? '刷新' : 'Refresh') : 'Get models'))}
-        </button>
+        </button>`}
       </div>
       ${enabledModels.length
         ? `<div class="chat-enabled-models">
@@ -262,13 +282,27 @@ function renderChatApiModelSelector(model: ChatModelConfig, options: ChatModelCo
               </span>
             `).join('')}
           </div>`
+        : localCli
+          ? `<div class="chat-enabled-models">
+              <span class="chat-enabled-model-chip">
+                <strong>${options.escapeHtml(options.language === 'zh-CN' ? 'CLI 默认' : 'CLI default')}</strong>
+              </span>
+            </div>`
         : `<div class="chat-enabled-models empty">${options.escapeHtml(options.language === 'zh-CN' ? '还没有启用模型' : 'No enabled models')}</div>`}
       <div class="chat-api-model-manual">
-        <input class="chat-model-input" type="text" data-chat-manual-model-input value="" placeholder="${options.escapeHtml(getChatProviderEntry(model).defaultModel || 'model-name')}" autocomplete="off" />
+        <input class="chat-model-input" type="text" data-chat-manual-model-input value="" placeholder="${options.escapeHtml(manualPlaceholder)}" autocomplete="off" />
         <button class="chat-api-model-add-manual" type="button" data-chat-model-action="add-manual-model">${options.escapeHtml(options.language === 'zh-CN' ? '添加' : 'Add')}</button>
       </div>
     </div>
   `
+}
+
+export function getLocalLLMTransport(model: ChatModelConfig | undefined): 'openai_compatible' | 'codex_local' | 'claude_code_local' {
+  if (model?.modelType === 'image') {
+    return 'openai_compatible'
+  }
+  const entry = getLLMProviderEntry(model?.provider)
+  return entry.transport ?? model?.transport ?? 'openai_compatible'
 }
 
 function renderChatModelLibraryModal(config: ChatSystemConfig, options: ChatModelConfigPageOptions): string {
@@ -412,6 +446,10 @@ function getProviderLogo(provider: LLMProviderType): { src: string; alt: string 
       return { src: geminiIconUrl, alt: 'Gemini' }
     case 'claude':
       return { src: claudeIconUrl, alt: 'Claude' }
+    case 'claude-code':
+      return { src: claudeCodeLogoUrl, alt: 'Claude Code' }
+    case 'codex':
+      return { src: codexLogoUrl, alt: 'Codex' }
     case 'qwen':
       return { src: qwenIconUrl, alt: 'Qwen' }
     case 'deepseek':

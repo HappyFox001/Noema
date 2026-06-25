@@ -7769,9 +7769,10 @@ function renderCapabilityMetric(label: string, values: string[]): string {
 }
 
 function getTaskModelTransport(model: LLMModelConfig): NonNullable<LLMModelConfig['transport']> {
-  return model.transport === 'codex_local' || model.transport === 'claude_code_local'
-    ? model.transport
-    : 'openai_compatible'
+  if (model.transport === 'codex_local' || model.transport === 'claude_code_local') {
+    return model.transport
+  }
+  return getLLMProviderCatalogEntry(model.provider).transport ?? 'openai_compatible'
 }
 
 function getTaskTransportLogo(transport: NonNullable<LLMModelConfig['transport']>): ModelLogo {
@@ -9614,7 +9615,6 @@ const TASK_MODEL_TRANSPORTS: Array<{ value: NonNullable<LLMModelConfig['transpor
 ]
 const TASK_PROVIDER_OPTIONS = [
   ...LLM_PROVIDERS,
-  ...TASK_MODEL_TRANSPORTS.filter(provider => provider.value !== 'openai_compatible'),
 ]
 
 function getLLMProviderLabel(provider: LLMProviderType | undefined): string {
@@ -10074,9 +10074,17 @@ async function updateTaskTransport(id: string, transport: NonNullable<LLMModelCo
 
   const transportChanged = getTaskModelTransport(model) !== transport
   model.transport = transport
+  if (transportChanged && (transport === 'codex_local' || transport === 'claude_code_local')) {
+    model.provider = transport === 'claude_code_local' ? 'claude-code' : 'codex'
+    model.modelName = ''
+    model.apiKey = ''
+    model.baseUrl = ''
+  }
   if (transportChanged && transport === 'openai_compatible') {
+    if (getLLMProviderCatalogEntry(model.provider).transport) {
+      model.provider = 'gemini'
+    }
     const providerEntry = getLLMProviderCatalogEntry(model.provider || 'gemini')
-    model.provider ||= providerEntry.value
     model.modelName ||= providerEntry.defaultModel || 'gemini-3.1-pro-preview'
     model.baseUrl ||= providerEntry.defaultBaseUrl
   }
@@ -10092,7 +10100,15 @@ async function updateTaskProvider(id: string, provider: LLMProviderType): Promis
   const providerEntry = getLLMProviderCatalogEntry(provider)
   const providerChanged = model.provider !== provider
   model.provider = provider
-  model.transport = 'openai_compatible'
+  model.transport = providerEntry.transport ?? 'openai_compatible'
+  if (model.transport === 'codex_local' || model.transport === 'claude_code_local') {
+    model.modelName = ''
+    model.apiKey = ''
+    model.baseUrl = ''
+    await saveSystemConfigForModel('task')
+    syncModelCard('task', id)
+    return
+  }
   if (providerChanged) {
     model.modelName = providerEntry.defaultModel
     model.baseUrl = providerEntry.defaultBaseUrl

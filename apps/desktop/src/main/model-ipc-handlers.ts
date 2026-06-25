@@ -68,7 +68,7 @@ export function registerModelIpcHandlers(
 async function testApiModel(kind: ApiModelTestKind, model: unknown): Promise<void> {
   switch (kind) {
     case 'llm':
-      await testOpenAICompatibleModel(readLLMTestConfig(model))
+      await testLLMModel(model)
       return
     case 'task':
       await testTaskModel(model)
@@ -82,6 +82,16 @@ async function testApiModel(kind: ApiModelTestKind, model: unknown): Promise<voi
   }
 }
 
+async function testLLMModel(model: unknown): Promise<void> {
+  const transport = readTaskTransport(model)
+  if (transport === 'openai_compatible') {
+    await testOpenAICompatibleModel(readLLMTestConfig(model))
+    return
+  }
+
+  await testLocalCLIModel(transport)
+}
+
 async function testTaskModel(model: unknown): Promise<void> {
   const transport = readTaskTransport(model)
   if (transport === 'openai_compatible') {
@@ -89,15 +99,20 @@ async function testTaskModel(model: unknown): Promise<void> {
     return
   }
 
-  const command = transport === 'claude_code_local' ? 'claude' : 'codex'
-  await execFileAsync(command, ['--version'], { timeout: 5000 })
+  await testLocalCLIModel(transport)
 }
 
 function readTaskTransport(model: unknown): 'openai_compatible' | 'codex_local' | 'claude_code_local' {
   const value = model as Partial<LLMModelConfig>
+  const providerEntry = getLLMProviderCatalogEntry(String(value.provider ?? 'openai-compatible'))
   return value.transport === 'codex_local' || value.transport === 'claude_code_local'
     ? value.transport
-    : 'openai_compatible'
+    : providerEntry.transport ?? 'openai_compatible'
+}
+
+async function testLocalCLIModel(transport: 'codex_local' | 'claude_code_local'): Promise<void> {
+  const command = transport === 'claude_code_local' ? 'claude' : 'codex'
+  await execFileAsync(command, ['--version'], { timeout: 5000 })
 }
 
 function readLLMTestConfig(model: unknown): LLMModelConfig {

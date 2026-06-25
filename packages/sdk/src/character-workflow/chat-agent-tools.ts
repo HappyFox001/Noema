@@ -26,11 +26,13 @@ import {
 
 const AVATAR_IMAGE_ASPECT_RATIO = '3:4'
 const OVERVIEW_SHEET_ASPECT_RATIO = '16:9'
+const LOCAL_CLI_DEFAULT_MODEL_REF = '__default__'
 
 export interface CharacterAgentConfiguredModel {
   id: string
   modelType: 'llm' | 'image'
   provider?: string
+  transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'
   modelName: string
   enabledModels?: string[]
   apiKey: string
@@ -41,16 +43,14 @@ export function createCharacterAgentModelConfigs(
   models: CharacterAgentConfiguredModel[]
 ): CharacterAgentModelConfig[] {
   return models.flatMap((model) => {
-    const names = (model.enabledModels?.length ? model.enabledModels : [model.modelName])
-      .map((name) => String(name || '').trim())
-      .filter(Boolean)
+    const names = getConfiguredModelNames(model)
     return names.map((modelName) => ({
       apiId: model.id,
-      modelName,
+      modelName: displayConfiguredModelName(model, modelName),
       modelRef: `${model.id}::${modelName}`,
       kind: model.modelType,
       provider: model.provider,
-      label: modelName,
+      label: displayConfiguredModelName(model, modelName),
       baseUrl: model.baseUrl,
       metadata: {
         configuredModelId: model.id,
@@ -456,6 +456,7 @@ async function runCharacterAgentLLMTool(
   const { configuredModel, modelName } = findConfiguredLLMModel(models, context)
   const session = createChatSessionFromModel({
     provider: configuredModel.provider,
+    transport: configuredModel.transport,
     apiKey: configuredModel.apiKey,
     model: modelName,
     baseURL: configuredModel.baseUrl?.trim() || undefined,
@@ -492,14 +493,47 @@ function findConfiguredLLMModel(
   if (!configuredModel) {
     throw new Error('No LLM model is configured for character workflow generation')
   }
-  const modelName = requested?.modelName || configuredModel.enabledModels?.[0] || configuredModel.modelName
-  if (!modelName?.trim()) {
+  const requestedModelName = requested?.modelRef?.startsWith(`${configuredModel.id}::`)
+    ? requested.modelRef.slice(`${configuredModel.id}::`.length)
+    : requested?.modelName
+  const modelName = requestedModelName || configuredModel.enabledModels?.[0] || configuredModel.modelName
+  const normalizedModelName = normalizeConfiguredModelNameForCall(configuredModel, modelName)
+  if (!normalizedModelName && !isLocalCLIModel(configuredModel)) {
     throw new Error('Character workflow LLM model name is empty')
   }
-  if (!configuredModel.apiKey?.trim()) {
+  if (!configuredModel.apiKey?.trim() && !isLocalCLIModel(configuredModel)) {
     throw new Error(`Character workflow LLM API key is empty for ${configuredModel.id}`)
   }
-  return { configuredModel, modelName: modelName.trim() }
+  return { configuredModel, modelName: normalizedModelName }
+}
+
+function getConfiguredModelNames(model: CharacterAgentConfiguredModel): string[] {
+  const names = (model.enabledModels?.length ? model.enabledModels : [model.modelName])
+    .map((name) => String(name || '').trim())
+    .filter(Boolean)
+  if (names.length > 0) {
+    return names
+  }
+  return isLocalCLIModel(model) ? [LOCAL_CLI_DEFAULT_MODEL_REF] : []
+}
+
+function isLocalCLIModel(model: CharacterAgentConfiguredModel): boolean {
+  return model.transport === 'codex_local' || model.transport === 'claude_code_local'
+}
+
+function displayConfiguredModelName(model: CharacterAgentConfiguredModel, modelName: string): string {
+  if (modelName !== LOCAL_CLI_DEFAULT_MODEL_REF || !isLocalCLIModel(model)) {
+    return modelName
+  }
+  return model.transport === 'claude_code_local' ? 'Claude Code default' : 'Codex default'
+}
+
+function normalizeConfiguredModelNameForCall(model: CharacterAgentConfiguredModel, modelName: string | undefined): string {
+  const trimmed = String(modelName || '').trim()
+  if (isLocalCLIModel(model) && trimmed === LOCAL_CLI_DEFAULT_MODEL_REF) {
+    return ''
+  }
+  return trimmed
 }
 
 async function maybeGenerateImageArtifacts(

@@ -6,6 +6,7 @@ import type { Personality } from '../personality/index.js'
 export interface SDKConfig {
   llm: {
     provider?: string
+    transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'
     apiKey: string
     model: string
     baseURL?: string
@@ -13,6 +14,7 @@ export interface SDKConfig {
 
   taskLLM?: {
     provider?: string
+    transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'
     apiKey: string
     model: string
     baseURL?: string

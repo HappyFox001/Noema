@@ -178,6 +178,7 @@ export interface ChatModelConfig {
   id: string
   modelType: 'llm' | 'image'
   provider?: LLMProviderType | ImageProviderType
+  transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'
   modelName: string
   enabledModels?: string[]
   availableModels?: string[]
@@ -768,14 +769,21 @@ function normalizeLLMModelConfig(value: unknown, fallback: LLMModelConfig, index
   const source = value && typeof value === 'object' ? value as Partial<LLMModelConfig> : {}
   const provider = normalizeLLMProvider(source.provider, fallback?.provider)
   const providerEntry = getLLMProviderCatalogEntry(provider)
+  const transport = source.transport === 'codex_local' || source.transport === 'claude_code_local'
+    ? source.transport
+    : providerEntry.transport ?? 'openai_compatible'
+  const modelName = transport === 'openai_compatible'
+    ? typeof source.modelName === 'string'
+      ? source.modelName
+      : fallback?.modelName || providerEntry.defaultModel
+    : ''
   return {
     id: typeof source.id === 'string' && source.id ? source.id : fallback?.id || `llm-${index + 1}`,
     provider,
-    modelName: typeof source.modelName === 'string'
-      ? source.modelName
-      : fallback?.modelName || providerEntry.defaultModel,
-    apiKey: typeof source.apiKey === 'string' ? source.apiKey : fallback?.apiKey || '',
-    baseUrl: typeof source.baseUrl === 'string' ? source.baseUrl : fallback?.baseUrl || providerEntry.defaultBaseUrl
+    transport,
+    modelName,
+    apiKey: transport === 'openai_compatible' && typeof source.apiKey === 'string' ? source.apiKey : transport === 'openai_compatible' ? fallback?.apiKey || '' : '',
+    baseUrl: transport === 'openai_compatible' && typeof source.baseUrl === 'string' ? source.baseUrl : transport === 'openai_compatible' ? fallback?.baseUrl || providerEntry.defaultBaseUrl : ''
   }
 }
 
@@ -803,19 +811,25 @@ function normalizeChatModelConfig(value: unknown, fallback: ChatModelConfig, ind
 
   const provider = normalizeLLMProvider(source.provider, fallback?.provider)
   const providerEntry = getLLMProviderCatalogEntry(provider)
-  const modelName = typeof source.modelName === 'string'
-    ? source.modelName
-    : fallback?.modelName || providerEntry.defaultModel
+  const transport = source.transport === 'codex_local' || source.transport === 'claude_code_local'
+    ? source.transport
+    : providerEntry.transport ?? 'openai_compatible'
+  const modelName = transport === 'openai_compatible'
+    ? typeof source.modelName === 'string'
+      ? source.modelName
+      : fallback?.modelName || providerEntry.defaultModel
+    : ''
   return {
     id: typeof source.id === 'string' && source.id ? source.id : fallback?.id || `chat-${index + 1}`,
     modelType,
     provider,
+    transport,
     modelName,
     enabledModels: normalizeChatEnabledModels(source.enabledModels, modelName),
     availableModels: normalizeStringList(source.availableModels),
     modelsFetchedAt: normalizeTimestamp(source.modelsFetchedAt),
-    apiKey: typeof source.apiKey === 'string' ? source.apiKey : fallback?.apiKey || '',
-    baseUrl: typeof source.baseUrl === 'string' ? source.baseUrl : fallback?.baseUrl || providerEntry.defaultBaseUrl,
+    apiKey: transport === 'openai_compatible' && typeof source.apiKey === 'string' ? source.apiKey : transport === 'openai_compatible' ? fallback?.apiKey || '' : '',
+    baseUrl: transport === 'openai_compatible' && typeof source.baseUrl === 'string' ? source.baseUrl : transport === 'openai_compatible' ? fallback?.baseUrl || providerEntry.defaultBaseUrl : '',
   }
 }
 
@@ -859,7 +873,7 @@ function normalizeTaskModelConfig(value: unknown, fallback: LLMModelConfig, inde
   const source = value && typeof value === 'object' ? value as Partial<LLMModelConfig> : {}
   const transport = source.transport === 'codex_local' || source.transport === 'claude_code_local'
     ? source.transport
-    : 'openai_compatible'
+    : model.transport ?? 'openai_compatible'
   return {
     ...model,
     transport,
