@@ -2231,8 +2231,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             'character-card-target': { includeFields: ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'firstMessage', 'dialogueStyle', 'worldContext'], includeSupportFields: ['appearancePrompt'] },
             'opening-field-target': { field: 'firstMessage' },
             'opening-field-control': { lengthPolicy: 'medium' },
-            'avatar-image-target': { imageRole: 'avatar', assetPurpose: 'Final avatar.jpg for the role card: one single-subject bust portrait with one clear face, strong appeal, stable identity cues, and no panels, variants, duplicate faces, or reference-sheet layout.' },
-            'avatar-image-control': { targetImageCount: 1, imageStyleDomain: 'auto', imageStylePreset: 'roleplay-character-avatar', shotType: 'bust', aspectRatio: '1:1', consistencyMode: 'same-character', seedMode: 'lock-character' },
+            'avatar-image-target': { imageRole: 'avatar', assetPurpose: 'Final avatar.jpg for the role card: one polished single-character bust portrait with one clear face, strong appeal, and stable identity cues.' },
+            'avatar-image-control': { targetImageCount: 1, imageStyleDomain: 'auto', imageStylePreset: 'roleplay-character-avatar', shotType: 'bust', aspectRatio: '1:1', consistencyMode: 'same-character', seedMode: 'lock-character', negativePrompt: 'text, watermark, logo, low quality, blurry, bad anatomy, deformed face, multiple people, duplicate face' },
             'overview-sheet-image-target': { imageRole: 'character-overview-sheet', assetPurpose: 'Generate one large character asset overview sheet using linked reference image inputs for identity preservation. Show front view, back view, side or three-quarter view, hairstyle, hands, legs, feet or shoes, outfit details, and expression callouts.' },
             'overview-sheet-image-control': { targetImageCount: 1, imageStyleDomain: 'auto', imageStylePreset: 'character-sheet', shotType: 'full-body', aspectRatio: '16:9', consistencyMode: 'same-character', seedMode: 'lock-character', negativePrompt: 'text, labels, watermark, logo, inconsistent face, deformed hands, extra fingers, missing fingers, bad feet, malformed legs, duplicate limbs' },
             'opening-layout-target': { layoutKind: 'immersive-card-css', includeSections: ['title', 'tags', 'opening', 'coverImage', 'supportImages'], layoutPrompt: 'Create an immersive CSS-style opening card layout that combines the character title, tags, opening text, and generated images into one readable role-card presentation.' },
@@ -2259,8 +2259,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             'scene-card-target': { sceneCount: 4 },
             'continuity-control': { progressionPacing: 'slow-burn', forbidResettingFacts: true },
             'relationship-control': { relationshipMode: 'ambiguous-ally' },
-            'avatar-image-target': { imageRole: 'avatar', assetPurpose: 'Final avatar.jpg for the role card: one single-subject bust portrait with one clear face, stable identity cues, and no panels, variants, duplicate faces, or reference-sheet layout.' },
-            'avatar-image-control': { targetImageCount: 1, imageStyleDomain: 'auto', imageStylePreset: 'roleplay-character-avatar', shotType: 'bust', aspectRatio: '1:1', consistencyMode: 'same-character', seedMode: 'lock-character' },
+            'avatar-image-target': { imageRole: 'avatar', assetPurpose: 'Final avatar.jpg for the role card: one polished single-character bust portrait with one clear face, strong appeal, and stable identity cues.' },
+            'avatar-image-control': { targetImageCount: 1, imageStyleDomain: 'auto', imageStylePreset: 'roleplay-character-avatar', shotType: 'bust', aspectRatio: '1:1', consistencyMode: 'same-character', seedMode: 'lock-character', negativePrompt: 'text, watermark, logo, low quality, blurry, bad anatomy, deformed face, multiple people, duplicate face' },
             'overview-sheet-image-target': { imageRole: 'character-overview-sheet', assetPurpose: 'Generate one large character asset overview sheet using linked reference image inputs, then route that stable identity to world and NPC reference images through graph links.' },
             'overview-sheet-image-control': { targetImageCount: 1, imageStyleDomain: 'auto', imageStylePreset: 'character-sheet', shotType: 'full-body', aspectRatio: '16:9', consistencyMode: 'same-character', seedMode: 'lock-character', negativePrompt: 'text, labels, watermark, logo, inconsistent face, deformed hands, extra fingers, missing fingers, bad feet, malformed legs, duplicate limbs' },
             'world-reference-image-target': { imageRole: 'world-context', assetPurpose: 'A world-context image that still includes the central character or visible character-linked motifs.' },
@@ -5187,7 +5187,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (lower === 'roleplay-character-avatar') {
       return {
         prompt: 'Roleplay character avatar, identity-first portrait language, clear face, stable hair and eye cues, attractive readable silhouette, polished AI companion card finish',
-        negativePrompt: `${commonNegative}, collage, reference sheet, multiple poses, generic template face, hidden face`,
+        negativePrompt: `${commonNegative}, multiple people, duplicate face, generic template face, hidden face`,
       }
     }
     if (/(photoreal|cinematic|editorial|fashion|film|photo|polaroid|camera|bokeh|infrared|plate)/.test(lower)) {

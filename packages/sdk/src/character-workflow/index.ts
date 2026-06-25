@@ -1396,7 +1396,7 @@ export function createStandardCharacterWorkflow(
   if (avatarTarget) {
     Object.assign(avatarTarget.config, {
       imageRole: 'avatar',
-      assetPurpose: 'Final avatar.jpg for the role card and first identity reference for later images. Produce one polished single-subject bust portrait with one clear face, strong appeal, stable appearancePrompt identity, and no panels, variants, duplicate faces, or reference-sheet layout.',
+      assetPurpose: 'Final avatar.jpg for the role card: one polished single-character bust portrait with one clear face, strong appeal, and stable appearancePrompt identity.',
     })
   }
   const avatarControl = nodes.find((nodeItem) => nodeItem.id === 'avatar-image-control')
@@ -1409,7 +1409,7 @@ export function createStandardCharacterWorkflow(
       aspectRatio: '1:1',
       consistencyMode: 'same-character',
       seedMode: 'lock-character',
-      negativePrompt: 'text, labels, watermark, logo, multiple faces, duplicate character, same character twice, split screen, contact sheet, model sheet, reference sheet, collage',
+      negativePrompt: 'text, watermark, logo, low quality, blurry, bad anatomy, deformed face, multiple people, duplicate face',
     })
   }
   const overviewTarget = nodes.find((nodeItem) => nodeItem.id === 'overview-sheet-image-target')

@@ -1020,6 +1020,9 @@ export function createCharacterSuperAgent(
         return result
       }
       const executeImageRequestAction = async (action: Extract<CharacterAgentAction, { type: 'request_image' }>, phase: CharacterAgentPhase) => {
+        if (!await ensureImagePrerequisites(phase)) {
+          return
+        }
         const imageResult = await callTool('generate_character_image', phase, {
           targetPrompts: action.targetPrompts,
           draft: state.draft,
@@ -1057,6 +1060,9 @@ export function createCharacterSuperAgent(
       ): Promise<{ ran: boolean; imageIds: string[]; failedAttemptIds: string[] }> => {
         const uniqueTargetNodeIds = [...new Set(targetNodeIds.map((item) => item.trim()).filter(Boolean))]
         if (!uniqueTargetNodeIds.length) {
+          return { ran: false, imageIds: [], failedAttemptIds: [] }
+        }
+        if (!await ensureImagePrerequisites(phase)) {
           return { ran: false, imageIds: [], failedAttemptIds: [] }
         }
         const imageResult = await callTool('generate_character_image', phase, {
@@ -1109,6 +1115,54 @@ export function createCharacterSuperAgent(
         }
         const result = await executeImageTargets(phase, readyImageRequirements.map((requirement) => requirement.targetNodeId))
         return result.ran
+      }
+      const ensureImagePrerequisites = async (phase: CharacterAgentPhase): Promise<boolean> => {
+        let missingFields = getMissingImagePrerequisiteFields(state.draft, context)
+        if (!missingFields.length) {
+          return true
+        }
+        const maxTurns = missingFields.length + 2
+        for (let turn = 1; turn <= maxTurns && missingFields.length; turn += 1) {
+          const requirements = refreshRequirements()
+          const decisionResult = await callTool('decide_character_card_next_step', phase, {
+            context,
+            draft: state.draft,
+            requirements,
+            turn,
+            maxTurns,
+            artifacts: state.artifacts.map((artifact) => ({
+              id: artifact.id,
+              kind: artifact.kind,
+              title: artifact.title,
+              summary: artifact.summary,
+            })),
+          })
+          const decision = decisionFromToolResult(decisionResult, context, state.draft, turn === maxTurns)
+          const action = selectMissingFieldAction(decision.actions, missingFields[0])
+          if (!action) {
+            break
+          }
+          const beforeFields = { ...(state.draft?.fields ?? {}) }
+          state = {
+            ...state,
+            draft: applyCharacterAgentAction(state.draft!, action, context, now()),
+          }
+          for (const fieldArtifact of createFieldArtifactsForChangedFields(context, state.draft!, beforeFields)) {
+            await writeArtifact(fieldArtifact)
+          }
+          state = {
+            ...state,
+            draft: {
+              ...state.draft!,
+              notes: appendUnique(state.draft!.notes, [decision.summary]),
+              updatedAt: now(),
+            },
+          }
+          await writeArtifact(createDraftArtifact(context, state.draft))
+          missingFields = getMissingImagePrerequisiteFields(state.draft, context)
+        }
+        refreshRequirements()
+        return missingFields.length === 0
       }
       const executeScopedArtifactRepair = async (scopedRun: CharacterAgentScopedRun): Promise<{ artifactIds: string[]; summary: string }> => {
         const selectedArtifacts = resolveScopedArtifacts(state.artifacts, scopedRun)
@@ -1817,23 +1871,7 @@ function selectProgressiveAction(
 ): CharacterAgentAction | null {
   const nextField = getNextMissingField(draft, context)
   if (nextField) {
-    for (const action of actions) {
-      if (action.type === 'set_field' && normalizeDraftFieldName(action.field) === nextField) {
-        return action
-      }
-      if (action.type === 'merge_character_card') {
-        const fields = normalizeDraftFields(action.value)
-        if (fields[nextField] !== undefined && fields[nextField] !== null) {
-          return {
-            type: 'set_field',
-            field: nextField,
-            value: fields[nextField],
-            reason: action.reason,
-          }
-        }
-      }
-    }
-    return null
+    return selectMissingFieldAction(actions, nextField)
   }
   const readyImageTargetIds = new Set(getReadyMissingImageRequirements(requirements).map((requirement) => requirement.targetNodeId))
   if (readyImageTargetIds.size) {
@@ -1845,6 +1883,26 @@ function selectProgressiveAction(
     return targetPrompts.length ? { ...imageAction, targetPrompts } : null
   }
   return areAllRequiredRequirementsDone(requirements) ? actions.find((action) => action.type === 'finish') ?? null : null
+}
+
+function selectMissingFieldAction(actions: CharacterAgentAction[], nextField: string): CharacterAgentAction | null {
+  for (const action of actions) {
+    if (action.type === 'set_field' && normalizeDraftFieldName(action.field) === nextField) {
+      return action
+    }
+    if (action.type === 'merge_character_card') {
+      const fields = normalizeDraftFields(action.value)
+      if (fields[nextField] !== undefined && fields[nextField] !== null) {
+        return {
+          type: 'set_field',
+          field: nextField,
+          value: fields[nextField],
+          reason: action.reason,
+        }
+      }
+    }
+  }
+  return null
 }
 
 function normalizeAgentActions(value: unknown): CharacterAgentAction[] {
@@ -2150,6 +2208,16 @@ export function evaluateCharacterWorkflowRequirements(
         missingReason: `Image target ${requirement.title} cannot run because no image model capability is configured.`,
       }
     }
+    if (requirement.kind === 'image') {
+      const missingPrerequisiteFields = getMissingImagePrerequisiteFields(draft, context)
+      if (missingPrerequisiteFields.length) {
+        return {
+          ...requirement,
+          status: 'blocked',
+          missingReason: `Blocked by missing image prerequisite field(s): ${missingPrerequisiteFields.join(', ')}`,
+        }
+      }
+    }
     const blockedBy = requirement.dependencyNodeIds.filter((nodeId) => !doneNodeIds.has(nodeId))
     if (blockedBy.length) {
       return {
@@ -2172,6 +2240,7 @@ function createWorkflowRequirements(
     .map((target) => ({ field: target.field!, target }))
   const cardTargets = targets.filter((target) => target.kind === 'character-card')
   const requiredFields = new Map<string, AgentTargetContext>()
+  const hasImageTargets = targets.some((target) => target.kind === 'image')
 
   for (const target of cardTargets) {
     for (const field of [
@@ -2188,6 +2257,14 @@ function createWorkflowRequirements(
     const fallbackTarget = cardTargets[0] ?? targets[0]
     for (const field of [...CHARACTER_CARD_FIELD_SCHEMA, ...CHARACTER_SUPPORT_FIELD_SCHEMA]) {
       requiredFields.set(field, fallbackTarget)
+    }
+  }
+  if (hasImageTargets) {
+    const supportTarget = cardTargets[0] ?? targets[0]
+    for (const field of CHARACTER_SUPPORT_FIELD_SCHEMA) {
+      if (!requiredFields.has(field)) {
+        requiredFields.set(field, supportTarget)
+      }
     }
   }
 
@@ -2258,8 +2335,19 @@ function getRequiredCharacterDraftFields(context: CharacterAgentRunContext): str
     ...stringListValue(target.config.includeFields, [...CHARACTER_CARD_FIELD_SCHEMA]),
     ...stringListValue(target.config.includeSupportFields, [...CHARACTER_SUPPORT_FIELD_SCHEMA]),
   ])
-  const required = [...new Set([...cardFields, ...fieldTargets])]
+  const imagePrerequisiteFields = context.requirements.some((requirement) => requirement.kind === 'image' && requirement.required)
+    ? [...CHARACTER_SUPPORT_FIELD_SCHEMA]
+    : []
+  const required = [...new Set([...cardFields, ...fieldTargets, ...imagePrerequisiteFields])]
   return required.length ? required : [...CHARACTER_CARD_FIELD_SCHEMA, ...CHARACTER_SUPPORT_FIELD_SCHEMA]
+}
+
+function getMissingImagePrerequisiteFields(draft: CharacterCardDraft | undefined, context: CharacterAgentRunContext): string[] {
+  if (!context.requirements.some((requirement) => requirement.kind === 'image' && requirement.required)) {
+    return []
+  }
+  const fields = draft?.fields ?? {}
+  return CHARACTER_SUPPORT_FIELD_SCHEMA.filter((field) => !hasDraftField(fields, field, context))
 }
 
 function hasDraftField(fields: Record<string, unknown>, field: string, context: CharacterAgentRunContext): boolean {

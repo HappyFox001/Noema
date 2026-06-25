@@ -602,7 +602,7 @@ export function createUiConfigOverrides(spec: CharacterWorkflowBuilderSpec): Rec
     },
     'avatar-image-target': {
       imageRole: 'avatar',
-      assetPurpose: 'Final avatar.jpg for the role card and first identity reference for later images: one single-subject bust portrait with one clear face, stable appearancePrompt identity, and no panels, variants, duplicate faces, or reference-sheet layout.',
+      assetPurpose: 'Final avatar.jpg for the role card: one polished single-character bust portrait with one clear face, strong appeal, and stable appearancePrompt identity.',
     },
     'avatar-image-control': {
       targetImageCount: 1,
@@ -615,7 +615,7 @@ export function createUiConfigOverrides(spec: CharacterWorkflowBuilderSpec): Rec
       seedMode: 'lock-character',
       negativePrompt: [
         spec.mustNot.join(', '),
-        'text, labels, watermark, logo, multiple faces, duplicate character, same character twice, split screen, contact sheet, model sheet, reference sheet, collage',
+        'text, watermark, logo, low quality, blurry, bad anatomy, deformed face, multiple people, duplicate face',
       ].filter(Boolean).join(', '),
     },
     'overview-sheet-image-target': {
@@ -790,7 +790,7 @@ function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): 
     '- image-target.imageRole: choose the role-card visual purpose from options such as avatar, character-overview-sheet, hero-cover, full-body, opening-moment, story-moment, expression, outfit-detail, relationship-moment, or world-context. Do not use scene as a standalone image type.',
     '- image-target.assetPurpose: what this exact image should communicate and which story/text field it supports.',
     '- image-generation-control: image count, imageStyleDomain, imageStylePreset, concise stylePrompt, shotType, aspectRatio, consistencyMode, seedMode, negativePrompt. Use imageStyleDomain for photoreal/anime/illustration/stylized routing; use auto when appearancePrompt and image control should decide. Never put imageType or composition here.',
-    '- For character resources, prefer graph-declared asset dependencies: avatar is the first identity image target, then link avatar-image-target.imageAsset into overview-sheet-image-target.referenceImage and any later image target that should preserve that identity. Additional pictures should be separate image-target nodes when they serve different card/story purposes, and/or image-generation-control.targetImageCount for variants.',
+    '- For character resources, prefer graph-declared asset dependencies: link avatar-image-target.imageAsset into overview-sheet-image-target.referenceImage when the overview should preserve the avatar identity. Additional pictures should be separate image-target nodes when they serve different card/story purposes, and/or image-generation-control.targetImageCount for variants.',
     '- Do not connect hard-constraint nodes directly into image-target. Put image-specific exclusions in image-generation-control.negativePrompt.',
     '- world-card-target / npc-pack-target / npc-target / plot-arc-target / scene-card-target: add these when the request asks for multi-NPC, world, setting, story arc, or scene planning.',
     '',
@@ -1049,8 +1049,8 @@ function applySpecToWorkflow(workflow: CharacterWorkflow, spec: CharacterWorkflo
   avatarTarget?.config && Object.assign(avatarTarget.config, {
     imageRole: 'avatar',
     assetPurpose: [
-      'Generate one final avatar.jpg for the role card as the first identity image.',
-      'Quality should match a polished production character avatar: one single-subject bust portrait, one clear face, strong appeal, stable appearancePrompt identity, and no panels, variants, duplicate faces, or reference-sheet layout.',
+      'Generate one final avatar.jpg for the role card.',
+      'Quality should match a polished production character avatar: one single-character bust portrait, one clear face, strong appeal, and stable appearancePrompt identity.',
     ].join(' '),
   })
   const avatarControl = workflow.nodes.find((node) => node.id === 'avatar-image-control')
@@ -1065,7 +1065,7 @@ function applySpecToWorkflow(workflow: CharacterWorkflow, spec: CharacterWorkflo
     seedMode: 'lock-character',
     negativePrompt: [
       spec.mustNot.join(', '),
-      'text, labels, watermark, logo, multiple faces, duplicate character, same character twice, split screen, contact sheet, model sheet, reference sheet, collage',
+      'text, watermark, logo, low quality, blurry, bad anatomy, deformed face, multiple people, duplicate face',
     ].filter(Boolean).join(', '),
   })
   const overviewTarget = workflow.nodes.find((node) => node.id === 'overview-sheet-image-target')
