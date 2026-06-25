@@ -233,6 +233,29 @@ export interface AgentAssetTarget {
   incomingRelations: CharacterAgentRelation[]
 }
 
+export type CharacterWorkflowRequirementKind = 'character-field' | 'image'
+export type CharacterWorkflowRequirementStatus = 'missing' | 'blocked' | 'done' | 'failed'
+
+export interface CharacterWorkflowRequirement {
+  id: string
+  kind: CharacterWorkflowRequirementKind
+  targetNodeId: string
+  title: string
+  required: boolean
+  field?: string
+  imageRole?: string
+  requiredCount?: number
+  dependencyNodeIds: string[]
+  referenceSourceNodeIds: string[]
+}
+
+export interface CharacterWorkflowRequirementState extends CharacterWorkflowRequirement {
+  status: CharacterWorkflowRequirementStatus
+  completedCount: number
+  artifactIds: string[]
+  missingReason?: string
+}
+
 export interface AgentQualityGateContext {
   nodeId?: string
   minimumScore: number
@@ -265,6 +288,7 @@ export interface CharacterAgentRunContext {
   strategy: AgentStrategyContext
   critique: AgentCritiquePolicyContext
   requestedAssets: AgentAssetTarget[]
+  requirements: CharacterWorkflowRequirement[]
   qualityGate: AgentQualityGateContext
   exportTarget: AgentExportTargetContext
   graph: CharacterAgentGraphReference
@@ -273,11 +297,14 @@ export interface CharacterAgentRunContext {
 
 export type CharacterAgentProtocolIssueCode =
   | 'invalid_snapshot'
+  | 'unsupported_workflow_version'
   | 'missing_workflow_id'
   | 'duplicate_node_id'
   | 'missing_edge_endpoint'
   | 'missing_model_ref'
   | 'unresolved_model_ref'
+
+export const CURRENT_CHARACTER_WORKFLOW_VERSION = '3.0'
 
 export interface CharacterAgentProtocolIssue {
   code: CharacterAgentProtocolIssueCode
@@ -366,6 +393,7 @@ export interface CharacterCardDraft {
   fields: Record<string, unknown>
   imagePrompts: string[]
   imageArtifactIds: string[]
+  imageTargetArtifactIds: Record<string, string[]>
   notes: string[]
   missing: string[]
   updatedAt: number
@@ -421,6 +449,7 @@ export interface CharacterAgentState {
   critiqueHistory: AgentCritiqueRecord[]
   toolCalls: AgentToolCallRecord[]
   artifacts: CharacterAgentArtifact[]
+  requirements: CharacterWorkflowRequirementState[]
   unresolvedQuestions: AgentQuestion[]
   finalReport?: AgentFinalReport
   events: CharacterAgentEvent[]
@@ -676,6 +705,7 @@ export function compileCharacterAgentRunContext(
       includeAlternates: true,
       incomingRelations: target.incomingRelations,
     })),
+    requirements: createWorkflowRequirements(targets, relations),
     qualityGate: {
       nodeId: qualityNode?.id,
       minimumScore: numberValue(qualityNode?.config.minimumScore, 0.82),
@@ -732,6 +762,14 @@ export function validateCharacterAgentWorkflowProtocol(workflow: CharacterWorkfl
       severity: 'error',
       path: 'id',
       message: 'Workflow id is required for agent run persistence.',
+    })
+  }
+  if (workflow.version !== CURRENT_CHARACTER_WORKFLOW_VERSION) {
+    issues.push({
+      code: 'unsupported_workflow_version',
+      severity: 'error',
+      path: 'version',
+      message: `Workflow version ${workflow.version || '<empty>'} is not supported. Current required version is ${CURRENT_CHARACTER_WORKFLOW_VERSION}.`,
     })
   }
   const seenNodeIds = new Set<string>()
@@ -920,6 +958,19 @@ export function createCharacterSuperAgent(
         await emit({ type: 'artifact.created', runId, artifact: written, timestamp: now() })
         return written
       }
+      const refreshRequirements = () => {
+        const requirements = evaluateCharacterWorkflowRequirements(context, state.draft, state.artifacts)
+        state = {
+          ...state,
+          requirements,
+          draft: state.draft ? {
+            ...state.draft,
+            missing: requirementMissingLabels(requirements),
+            updatedAt: now(),
+          } : state.draft,
+        }
+        return requirements
+      }
       const callTool = async (toolName: string, phase: CharacterAgentPhase, input: unknown) => {
         const callId = `${runId}:${phase}:${toolName}:${state.toolCalls.length + 1}`
         const startedAt = now()
@@ -952,11 +1003,13 @@ export function createCharacterSuperAgent(
         const imageResult = await callTool('generate_character_image', phase, {
           targetPrompts: action.targetPrompts,
           draft: state.draft,
+          referenceImagesByTarget: resolveReferenceImagesByTarget(context, state.artifacts),
         })
         const promptTexts = getRequestImagePromptTexts(action)
         const imageIds = (imageResult.artifacts ?? [])
           .filter((artifact) => artifact.kind === 'image-asset')
           .map((artifact) => artifact.id)
+        const imageTargetArtifactIds = collectImageTargetArtifactIds(state.draft?.imageTargetArtifactIds ?? {}, imageResult.artifacts ?? [])
         if (!imageIds.length) {
           const diagnostic = (imageResult.artifacts ?? [])
             .map((artifact) => [artifact.title, artifact.summary].filter(Boolean).join(': '))
@@ -970,19 +1023,28 @@ export function createCharacterSuperAgent(
             ...state.draft!,
             imagePrompts: appendUnique(state.draft!.imagePrompts, promptTexts),
             imageArtifactIds: appendUnique(state.draft!.imageArtifactIds, imageIds),
+            imageTargetArtifactIds,
             notes: appendUnique(state.draft!.notes, [action.reason ?? imageResult.summary]),
             updatedAt: now(),
           },
         }
+        refreshRequirements()
       }
-      const executeRequiredImageGeneration = async (phase: CharacterAgentPhase) => {
+      const executeReadyImageRequirements = async (phase: CharacterAgentPhase) => {
+        const readyImageRequirements = getReadyMissingImageRequirements(refreshRequirements())
+        if (!readyImageRequirements.length) {
+          return false
+        }
         const imageResult = await callTool('generate_character_image', phase, {
           draft: state.draft,
           autoGenerateTargetPrompts: true,
+          targetNodeIds: readyImageRequirements.map((requirement) => requirement.targetNodeId),
+          referenceImagesByTarget: resolveReferenceImagesByTarget(context, state.artifacts),
         })
         const imageIds = (imageResult.artifacts ?? [])
           .filter((artifact) => artifact.kind === 'image-asset')
           .map((artifact) => artifact.id)
+        const imageTargetArtifactIds = collectImageTargetArtifactIds(state.draft?.imageTargetArtifactIds ?? {}, imageResult.artifacts ?? [])
         if (!imageIds.length) {
           const diagnostic = (imageResult.artifacts ?? [])
             .map((artifact) => [artifact.title, artifact.summary].filter(Boolean).join(': '))
@@ -996,11 +1058,14 @@ export function createCharacterSuperAgent(
             ...state.draft!,
             imagePrompts: appendUnique(state.draft!.imagePrompts, getGeneratedImagePromptTexts(imageResult.artifacts ?? [])),
             imageArtifactIds: appendUnique(state.draft!.imageArtifactIds, imageIds),
+            imageTargetArtifactIds,
             notes: appendUnique(state.draft!.notes, [imageResult.summary]),
             updatedAt: now(),
           },
         }
+        refreshRequirements()
         await writeArtifact(createDraftArtifact(context, state.draft))
+        return true
       }
 
       try {
@@ -1011,13 +1076,19 @@ export function createCharacterSuperAgent(
           draft: createInitialCharacterDraft(context, now()),
           taskUnderstanding: '',
         }
+        refreshRequirements()
         await writeArtifact(createDraftArtifact(context, state.draft))
 
-        const maxTurns = Math.max(getRequiredCharacterDraftFields(context).length + 3, Math.min(18, context.policy.revisionBudget + context.critique.iterations + getRequiredCharacterDraftFields(context).length + 2))
+        const maxTurns = Math.max(context.requirements.length + 4, Math.min(24, context.policy.revisionBudget + context.critique.iterations + context.requirements.length + 4))
         for (let turn = 1; turn <= maxTurns; turn += 1) {
+          const requirements = refreshRequirements()
+          if (areAllRequiredRequirementsDone(requirements)) {
+            break
+          }
           const decisionResult = await callTool('decide_character_card_next_step', 'produce', {
             context,
             draft: state.draft,
+            requirements,
             turn,
             maxTurns,
             artifacts: state.artifacts.map((artifact) => ({
@@ -1028,7 +1099,7 @@ export function createCharacterSuperAgent(
             })),
           })
           const decision = decisionFromToolResult(decisionResult, context, state.draft, turn === maxTurns)
-          const progressiveAction = selectProgressiveAction(decision.actions, state.draft!, context)
+          const progressiveAction = selectProgressiveAction(decision.actions, state.draft!, context, requirements)
           for (const action of progressiveAction ? [progressiveAction] : []) {
             if (action.type === 'request_image') {
               await executeImageRequestAction(action, 'produce')
@@ -1054,23 +1125,33 @@ export function createCharacterSuperAgent(
             }
             await writeArtifact(createDraftArtifact(context, state.draft))
           }
+          refreshRequirements()
           state = {
             ...state,
             draft: {
               ...state.draft!,
-              missing: getMissingCharacterDraftFields(state.draft, context),
               notes: appendUnique(state.draft!.notes, [decision.summary]),
               updatedAt: now(),
             },
           }
           await writeArtifact(createDraftArtifact(context, state.draft))
-          if (isCharacterDraftComplete(state.draft, context)) {
+          if (areAllRequiredRequirementsDone(refreshRequirements())) {
             break
+          }
+          if (!progressiveAction && !getNextMissingField(state.draft, context) && await executeReadyImageRequirements('produce')) {
+            if (areAllRequiredRequirementsDone(refreshRequirements())) {
+              break
+            }
           }
         }
 
-        if (getMissingCharacterDraftFields(state.draft, context).includes('imageAsset')) {
-          await executeRequiredImageGeneration('produce')
+        for (let attempt = 0; attempt < context.requirements.length; attempt += 1) {
+          if (!await executeReadyImageRequirements('produce')) {
+            break
+          }
+          if (areAllRequiredRequirementsDone(refreshRequirements())) {
+            break
+          }
         }
 
         await changePhase('inspect')
@@ -1125,10 +1206,12 @@ export function createCharacterSuperAgent(
             }
             await writeArtifact(createDraftArtifact(context, state.draft))
           }
+          refreshRequirements()
         }
 
-        const finalMissing = getMissingCharacterDraftFields(state.draft, context)
-        if (finalMissing.length || !isCharacterDraftComplete(state.draft, context)) {
+        const finalRequirements = refreshRequirements()
+        const finalMissing = requirementMissingLabels(finalRequirements)
+        if (finalMissing.length || !areAllRequiredRequirementsDone(finalRequirements)) {
           throw new Error(`Character workflow did not produce a complete character card. Missing: ${finalMissing.join(', ') || 'unknown fields'}. Last review: ${qualityResult.summary}`)
         }
 
@@ -1224,7 +1307,7 @@ export function createDefaultCharacterAgentToolRuntime(): CharacterAgentToolRunt
           summary: 'No configured LLM decision tool is available; character fields were not generated.',
           done: false,
           confidence: 0,
-          missing: getMissingCharacterDraftFields(state.draft, context),
+          missing: requirementMissingLabels(state.requirements),
           actions: [],
         },
       }),
@@ -1245,11 +1328,12 @@ export function createDefaultCharacterAgentToolRuntime(): CharacterAgentToolRunt
       description: 'Reviews whether the current character card is complete enough for runtime use.',
       kind: 'quality',
       execute: ({ callId, context, state }) => {
-        const missing = getMissingCharacterDraftFields(state.draft, context)
+        const requirements = evaluateCharacterWorkflowRequirements(context, state.draft, state.artifacts)
+        const missing = requirementMissingLabels(requirements)
         return {
           callId,
           ok: missing.length === 0,
-          summary: missing.length ? `Missing required character fields: ${missing.join(', ')}` : 'Character card is complete enough for runtime use.',
+          summary: missing.length ? `Missing required workflow requirements: ${missing.join(', ')}` : 'Character workflow requirements are complete enough for runtime use.',
           data: {
             score: missing.length ? Math.max(0.35, context.qualityGate.minimumScore - 0.18) : Math.max(context.qualityGate.minimumScore, 0.86),
             passed: missing.length === 0,
@@ -1288,6 +1372,7 @@ function createInitialCharacterAgentState(context: CharacterAgentRunContext, now
     critiqueHistory: [],
     toolCalls: [],
     artifacts: [],
+    requirements: evaluateCharacterWorkflowRequirements(context, undefined, []),
     unresolvedQuestions: [],
     events: [],
   }
@@ -1299,6 +1384,7 @@ function createInitialCharacterDraft(context: CharacterAgentRunContext, now: num
     fields: {},
     imagePrompts: [],
     imageArtifactIds: [],
+    imageTargetArtifactIds: {},
     notes: [],
     missing: getRequiredCharacterDraftFields(context),
     updatedAt: now,
@@ -1445,14 +1531,15 @@ function decisionFromToolResult(
     actions: [],
     done: forceDone,
     confidence: 0,
-    missing: getMissingCharacterDraftFields(fallbackDraft, context),
+    missing: requirementMissingLabels(evaluateCharacterWorkflowRequirements(context, fallbackDraft, [])),
   }
 }
 
 function selectProgressiveAction(
   actions: CharacterAgentAction[],
   draft: CharacterCardDraft,
-  context: CharacterAgentRunContext
+  context: CharacterAgentRunContext,
+  requirements: CharacterWorkflowRequirementState[]
 ): CharacterAgentAction | null {
   const nextField = getNextMissingField(draft, context)
   if (nextField) {
@@ -1474,10 +1561,16 @@ function selectProgressiveAction(
     }
     return null
   }
-  if (!draft.imageArtifactIds.length) {
-    return actions.find((action) => action.type === 'request_image') ?? null
+  const readyImageTargetIds = new Set(getReadyMissingImageRequirements(requirements).map((requirement) => requirement.targetNodeId))
+  if (readyImageTargetIds.size) {
+    const imageAction = actions.find((action) => action.type === 'request_image')
+    if (!imageAction) {
+      return null
+    }
+    const targetPrompts = imageAction.targetPrompts.filter((prompt) => readyImageTargetIds.has(prompt.targetNodeId))
+    return targetPrompts.length ? { ...imageAction, targetPrompts } : null
   }
-  return actions.find((action) => action.type === 'finish') ?? null
+  return areAllRequiredRequirementsDone(requirements) ? actions.find((action) => action.type === 'finish') ?? null : null
 }
 
 function normalizeAgentActions(value: unknown): CharacterAgentAction[] {
@@ -1558,6 +1651,209 @@ function getGeneratedImagePromptTexts(artifacts: CharacterAgentArtifact[]): stri
     .filter(Boolean)
 }
 
+function collectImageTargetArtifactIds(
+  existing: Record<string, string[]>,
+  artifacts: CharacterAgentArtifact[]
+): Record<string, string[]> {
+  const next: Record<string, string[]> = Object.fromEntries(
+    Object.entries(existing).map(([key, value]) => [key, [...value]])
+  )
+  for (const artifact of artifacts) {
+    if (artifact.kind !== 'image-asset' || !artifact.sourceNodeId) {
+      continue
+    }
+    next[artifact.sourceNodeId] = appendUnique(next[artifact.sourceNodeId] ?? [], [artifact.id])
+  }
+  return next
+}
+
+function getReadyMissingImageRequirements(requirements: CharacterWorkflowRequirementState[]): CharacterWorkflowRequirementState[] {
+  return requirements.filter((requirement) => requirement.kind === 'image' && requirement.status === 'missing')
+}
+
+function areAllRequiredRequirementsDone(requirements: CharacterWorkflowRequirementState[]): boolean {
+  return requirements.every((requirement) => !requirement.required || requirement.status === 'done')
+}
+
+function requirementMissingLabels(requirements: CharacterWorkflowRequirementState[]): string[] {
+  return requirements
+    .filter((requirement) => requirement.required && requirement.status !== 'done')
+    .map((requirement) => requirement.missingReason || `${requirement.kind}:${requirement.targetNodeId}`)
+}
+
+function resolveReferenceImagesByTarget(
+  context: CharacterAgentRunContext,
+  artifacts: CharacterAgentArtifact[]
+): Record<string, string[]> {
+  const imageByTarget = new Map<string, string[]>()
+  for (const artifact of artifacts) {
+    if (artifact.kind !== 'image-asset' || !artifact.sourceNodeId) {
+      continue
+    }
+    const reference = imageReferenceFromArtifact(artifact)
+    if (!reference) {
+      continue
+    }
+    imageByTarget.set(artifact.sourceNodeId, [...(imageByTarget.get(artifact.sourceNodeId) ?? []), reference])
+  }
+  return Object.fromEntries(
+    context.requirements
+      .filter((requirement) => requirement.kind === 'image' && requirement.referenceSourceNodeIds.length)
+      .map((requirement) => [
+        requirement.targetNodeId,
+        requirement.referenceSourceNodeIds.flatMap((sourceNodeId) => imageByTarget.get(sourceNodeId) ?? []),
+      ])
+      .filter(([, references]) => references.length)
+  )
+}
+
+function imageReferenceFromArtifact(artifact: CharacterAgentArtifact): string | null {
+  const data = artifact.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
+    ? artifact.data as Record<string, unknown>
+    : {}
+  return stringValue(data.dataUrl) || stringValue(data.url) || null
+}
+
+export function evaluateCharacterWorkflowRequirements(
+  context: CharacterAgentRunContext,
+  draft: CharacterCardDraft | undefined,
+  artifacts: CharacterAgentArtifact[]
+): CharacterWorkflowRequirementState[] {
+  const fields = draft?.fields ?? {}
+  const doneNodeIds = new Set<string>()
+  const imageArtifactsByTarget = new Map<string, CharacterAgentArtifact[]>()
+  for (const artifact of artifacts) {
+    if (artifact.kind !== 'image-asset' || !artifact.sourceNodeId) {
+      continue
+    }
+    imageArtifactsByTarget.set(artifact.sourceNodeId, [...(imageArtifactsByTarget.get(artifact.sourceNodeId) ?? []), artifact])
+  }
+
+  const provisional = context.requirements.map((requirement): CharacterWorkflowRequirementState => {
+    if (requirement.kind === 'character-field') {
+      const complete = requirement.field ? hasDraftField(fields, requirement.field, context) : false
+      if (complete) {
+        doneNodeIds.add(requirement.targetNodeId)
+      }
+      return {
+        ...requirement,
+        status: complete ? 'done' : 'missing',
+        completedCount: complete ? 1 : 0,
+        artifactIds: [],
+        missingReason: complete ? undefined : `Missing required field: ${requirement.field ?? requirement.title}`,
+      }
+    }
+
+    const imageArtifacts = imageArtifactsByTarget.get(requirement.targetNodeId) ?? []
+    const requiredCount = Math.max(1, Math.floor(requirement.requiredCount ?? 1))
+    const complete = imageArtifacts.length >= requiredCount
+    if (complete) {
+      doneNodeIds.add(requirement.targetNodeId)
+    }
+    return {
+      ...requirement,
+      status: complete ? 'done' : 'missing',
+      completedCount: imageArtifacts.length,
+      artifactIds: imageArtifacts.map((artifact) => artifact.id),
+      missingReason: complete ? undefined : `Missing image target ${requirement.title}: ${imageArtifacts.length}/${requiredCount}`,
+    }
+  })
+
+  return provisional.map((requirement) => {
+    if (requirement.status === 'done') {
+      return requirement
+    }
+    if (requirement.kind === 'image' && !context.capabilities.imageModels.length) {
+      return {
+        ...requirement,
+        status: 'failed',
+        missingReason: `Image target ${requirement.title} cannot run because no image model capability is configured.`,
+      }
+    }
+    const blockedBy = requirement.dependencyNodeIds.filter((nodeId) => !doneNodeIds.has(nodeId))
+    if (blockedBy.length) {
+      return {
+        ...requirement,
+        status: 'blocked',
+        missingReason: `Blocked by incomplete requirement source(s): ${blockedBy.join(', ')}`,
+      }
+    }
+    return requirement
+  })
+}
+
+function createWorkflowRequirements(
+  targets: AgentTargetContext[],
+  relations: CharacterAgentRelation[]
+): CharacterWorkflowRequirement[] {
+  const requirements: CharacterWorkflowRequirement[] = []
+  const fieldTargets = targets
+    .filter((target) => target.kind === 'character-field' && target.field)
+    .map((target) => ({ field: target.field!, target }))
+  const cardTargets = targets.filter((target) => target.kind === 'character-card')
+  const requiredFields = new Map<string, AgentTargetContext>()
+
+  for (const target of cardTargets) {
+    for (const field of [
+      ...stringListValue(target.config.includeFields, [...CHARACTER_CARD_FIELD_SCHEMA]),
+      ...stringListValue(target.config.includeSupportFields, [...CHARACTER_SUPPORT_FIELD_SCHEMA]),
+    ]) {
+      requiredFields.set(normalizeDraftFieldName(field), target)
+    }
+  }
+  for (const item of fieldTargets) {
+    requiredFields.set(normalizeDraftFieldName(item.field), item.target)
+  }
+  if (!requiredFields.size) {
+    const fallbackTarget = cardTargets[0] ?? targets[0]
+    for (const field of [...CHARACTER_CARD_FIELD_SCHEMA, ...CHARACTER_SUPPORT_FIELD_SCHEMA]) {
+      requiredFields.set(field, fallbackTarget)
+    }
+  }
+
+  for (const [field, target] of requiredFields) {
+    if (!field) {
+      continue
+    }
+    requirements.push({
+      id: `field:${field}`,
+      kind: 'character-field',
+      targetNodeId: target?.nodeId ?? 'character-card',
+      title: characterRunFieldTitle(field),
+      required: true,
+      field,
+      dependencyNodeIds: [],
+      referenceSourceNodeIds: [],
+    })
+  }
+
+  const imageTargetIds = new Set(targets.filter((target) => target.kind === 'image').map((target) => target.nodeId))
+  for (const target of targets.filter((target) => target.kind === 'image')) {
+    const controls = target.imageControls.length ? target.imageControls : [undefined]
+    const requiredCount = controls.reduce((sum, control) => sum + Math.max(1, Math.floor(control?.targetImageCount ?? 1)), 0)
+    const referenceSourceNodeIds = relations
+      .filter((relation) =>
+        relation.toNodeId === target.nodeId &&
+        relation.fromPort === 'imageAsset' &&
+        imageTargetIds.has(relation.fromNodeId)
+      )
+      .map((relation) => relation.fromNodeId)
+    requirements.push({
+      id: `image:${target.nodeId}`,
+      kind: 'image',
+      targetNodeId: target.nodeId,
+      title: target.title,
+      required: true,
+      imageRole: target.imageRole,
+      requiredCount,
+      dependencyNodeIds: [...new Set(referenceSourceNodeIds)],
+      referenceSourceNodeIds: [...new Set(referenceSourceNodeIds)],
+    })
+  }
+
+  return requirements
+}
+
 function isCharacterDraftComplete(draft: CharacterCardDraft | undefined, context: CharacterAgentRunContext): boolean {
   const fields = draft?.fields ?? {}
   return getRequiredCharacterDraftFields(context).every((field) => hasDraftField(fields, field, context))
@@ -1565,11 +1861,7 @@ function isCharacterDraftComplete(draft: CharacterCardDraft | undefined, context
 
 function getMissingCharacterDraftFields(draft: CharacterCardDraft | undefined, context: CharacterAgentRunContext): string[] {
   const fields = draft?.fields ?? {}
-  const missing = getRequiredCharacterDraftFields(context).filter((field) => !hasDraftField(fields, field, context))
-  if (context.targets.some((target) => target.kind === 'image') && context.capabilities.imageModels.length && !draft?.imageArtifactIds.length) {
-    missing.push('imageAsset')
-  }
-  return missing
+  return getRequiredCharacterDraftFields(context).filter((field) => !hasDraftField(fields, field, context))
 }
 
 function getNextMissingField(draft: CharacterCardDraft | undefined, context: CharacterAgentRunContext): string | null {
@@ -2072,7 +2364,7 @@ function createEmptyWorkflow(): CharacterWorkflow {
   return {
     id: '',
     name: 'Invalid Character Workflow',
-    version: '0.0',
+    version: CURRENT_CHARACTER_WORKFLOW_VERSION,
     nodes: [],
     edges: [],
     defaults: { language: 'zh-CN' },

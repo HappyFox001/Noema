@@ -698,6 +698,7 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     slot('card', 'Card', 'asset-target', 'Character card target.'),
     slot('image', 'Image', 'image-capability', 'Image generation capability.', true),
     slot('imageControl', 'Image Control', 'asset-target', 'Image generation control.'),
+    slot('referenceImage', 'Reference Image', 'asset-target', 'Reference image artifact used to preserve visual identity.'),
   ], [
     slot('imageAsset', 'Image Asset', 'asset-target', 'Image target resource.'),
   ], [
@@ -1142,6 +1143,7 @@ const DEFAULT_LINKS: CharacterResourceLink[] = [
   link('image-capability', 'image', 'avatar-image-target', 'image', 'enables'),
   link('avatar-image-control', 'imageControl', 'avatar-image-target', 'imageControl', 'guides'),
   link('character-card-target', 'target', 'overview-sheet-image-target', 'card', 'guides'),
+  link('avatar-image-target', 'imageAsset', 'overview-sheet-image-target', 'referenceImage', 'provides'),
   link('image-capability', 'image', 'overview-sheet-image-target', 'image', 'enables'),
   link('overview-sheet-image-control', 'imageControl', 'overview-sheet-image-target', 'imageControl', 'guides'),
   link('character-card-target', 'target', 'opening-layout-target', 'card', 'guides'),
@@ -1220,7 +1222,7 @@ export function createCharacterAgentWorkflowSnapshot(options: CharacterWorkflowP
   return {
     id: graph.id,
     name: graph.title,
-    version: '2.0',
+    version: '3.0',
     description: 'Frontend-authored agentic RP resource graph.',
     nodes: graph.nodes.map((node) => {
       const definition = definitions.get(node.type)

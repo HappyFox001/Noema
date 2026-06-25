@@ -5,6 +5,7 @@ export * from './agent-runtime.js'
 export * from './chat-agent-tools.js'
 export * from './run-draft-editor.js'
 export * from './workflow-builder.js'
+import { CURRENT_CHARACTER_WORKFLOW_VERSION } from './agent-runtime.js'
 
 export type CharacterWorkflowLanguage = 'zh-CN' | 'en-US'
 
@@ -839,6 +840,7 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
       card: port('card', 'Card', 'asset-target'),
       image: port('image', 'Image', 'image-capability', true),
       imageControl: port('imageControl', 'Image Control', 'asset-target'),
+      referenceImage: port('referenceImage', 'Reference Image', 'asset-target'),
     },
     outputs: { imageAsset: port('imageAsset', 'Image Asset', 'asset-target') },
     parameters: [
@@ -1396,7 +1398,7 @@ export function createStandardCharacterWorkflow(
   if (avatarTarget) {
     Object.assign(avatarTarget.config, {
       imageRole: 'avatar',
-      assetPurpose: 'Identity-lock avatar.jpg: the first generated canonical portrait for the character. It must be high quality, face-forward, visually appealing, and reusable as the reference image for every later character asset.',
+      assetPurpose: 'Identity-lock avatar.jpg: the canonical portrait for the character. It must be high quality, face-forward, visually appealing, and reusable through graph reference links for later character assets.',
     })
   }
   const avatarControl = nodes.find((nodeItem) => nodeItem.id === 'avatar-image-control')
@@ -1415,7 +1417,7 @@ export function createStandardCharacterWorkflow(
   if (overviewTarget) {
     Object.assign(overviewTarget.config, {
       imageRole: 'character-overview-sheet',
-      assetPurpose: 'Large character asset overview sheet generated after avatar.jpg. It should use the avatar as identity reference and show front view, back view, side/three-quarter view, hairstyle, hands, legs, feet/shoes, outfit/material details, and expression callouts in one clean unlabeled model-sheet style composition.',
+      assetPurpose: 'Large character asset overview sheet using linked reference image inputs for identity preservation. It should show front view, back view, side/three-quarter view, hairstyle, hands, legs, feet/shoes, outfit/material details, and expression callouts in one clean unlabeled model-sheet style composition.',
     })
   }
   const overviewControl = nodes.find((nodeItem) => nodeItem.id === 'overview-sheet-image-control')
@@ -1435,7 +1437,7 @@ export function createStandardCharacterWorkflow(
   return {
     id,
     name: options.name ?? 'Agentic RP Resource Graph',
-    version: '2.0',
+    version: CURRENT_CHARACTER_WORKFLOW_VERSION,
     description: 'Configures target resources, local controls, tools, agent autonomy, evaluation gates, and output adapters for autonomous RP resource generation.',
     nodes,
     edges: connectEdges([
@@ -1452,6 +1454,7 @@ export function createStandardCharacterWorkflow(
       ['image-tool', 'image', 'avatar-image-target', 'image', 'enables'],
       ['avatar-image-control', 'imageControl', 'avatar-image-target', 'imageControl', 'guides'],
       ['character-card-target', 'target', 'overview-sheet-image-target', 'card', 'guides'],
+      ['avatar-image-target', 'imageAsset', 'overview-sheet-image-target', 'referenceImage', 'provides'],
       ['image-tool', 'image', 'overview-sheet-image-target', 'image', 'enables'],
       ['overview-sheet-image-control', 'imageControl', 'overview-sheet-image-target', 'imageControl', 'guides'],
       ['character-card-target', 'target', 'opening-layout-target', 'card', 'guides'],

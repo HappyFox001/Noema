@@ -192,6 +192,7 @@ function createAgentPromptContext(context: CharacterAgentRunContext): Record<str
     strategy: context.strategy,
     critique: context.critique,
     requestedAssets: context.requestedAssets,
+    requirements: context.requirements,
     qualityGate: context.qualityGate,
     exportTarget: context.exportTarget,
     graph: context.graph,
@@ -227,8 +228,9 @@ function createCharacterDecisionPrompt(
     '    <role_chat_format_rule>Inside <chat>, write the opening scene as immersive RP prose with the character present, a concrete situation, sensory details, and a clear hook for the user to respond. Do not include analysis, labels, markdown, or setup notes.</role_chat_format_rule>',
     '    <role_chat_format_rule>dialogueStyle must describe how the character speaks during chat, not the opening scene. scenario must define the persistent RP situation. worldContext must carry stable world facts.</role_chat_format_rule>',
     '    <progressive_rule>Return exactly one action. Generate or reroll one field at a time. Do not fill the whole card in one response.</progressive_rule>',
-    '    <progressive_rule>If a field target is missing, return set_field for the earliest missing field in fixed_schema order and obey that target local XML controls. Only request_image after visualIdentity and imagePrompt exist.</progressive_rule>',
-    '    <image_rule>For character resource images, request avatar first and character-overview-sheet second. The runtime will use the generated avatar as the reference image for the overview sheet when the provider supports image editing/reference generation.</image_rule>',
+    '    <progressive_rule>If a field requirement is missing, return set_field for the earliest missing field in fixed_schema order and obey that target local XML controls. Only request_image after visualIdentity and imagePrompt exist.</progressive_rule>',
+    '    <workflow_rule>The runtime_state includes workflow requirements. Complete only requirements that are missing and unblocked. Never request an image target whose dependency source is still blocked or missing.</workflow_rule>',
+    '    <workflow_rule>Reference-image ordering is defined by graph edges and requirement dependencies, not by a hardcoded role sequence. If a target has reference inputs, write the prompt for that target assuming the runtime supplies those reference images.</workflow_rule>',
     '    <image_rule>The avatar prompt must be production-grade: one character only, clear face, strong appeal, stable hair/eye/body identity cues, polished avatar.jpg quality, subtle mature companion appeal, no collage, no labels, no full reference sheet.</image_rule>',
     '    <image_rule>The character-overview-sheet prompt must be a very large model/reference sheet: front view, back view, side or three-quarter view, hairstyle detail, hands, legs, feet/shoes, outfit/material details, and expression callouts. Do not ask for written labels; use clean visual panels only.</image_rule>',
     '    <image_rule>Every targetPrompts prompt must begin with the same compact visual identity bible: age impression, face shape, eye shape/color, brows, nose/lips, hairstyle/color/length, body type/proportions, skin tone, signature accessory or motif, outfit language, and style domain (photoreal/anime/etc.).</image_rule>',
@@ -241,7 +243,7 @@ function createCharacterDecisionPrompt(
     '      <action name="request_image">{"type":"request_image","targetPrompts":[{"targetNodeId":"avatar-image-target","title":"avatar.jpg","prompt":"target-specific English image prompt"},{"targetNodeId":"overview-sheet-image-target","title":"character overview sheet","prompt":"target-specific English image prompt"}]}</action>',
     '      <action name="finish">{"type":"finish","reason":"..."}</action>',
     '    </allowed_actions>',
-    '    <completion_rule>Set done=true only after all fixed character fields and support fields are filled. Always produce visualIdentity, imagePrompt, and request_image.</completion_rule>',
+    '    <completion_rule>Set done=true only after every required workflow requirement is complete. Always produce visualIdentity, imagePrompt, and every unblocked required image target.</completion_rule>',
     '  </action_contract>',
     '</character_agent_prompt>',
   ].join('\n')
@@ -318,6 +320,11 @@ function createResourceContextXml(context: CharacterAgentRunContext): string {
       '      </target>',
     ].join('\n')),
     '    </targets>',
+    '    <requirements injection="execution_contract">',
+    ...context.requirements.map((requirement) =>
+      `      <requirement id="${xmlEscape(requirement.id)}" kind="${xmlEscape(requirement.kind)}" target="${xmlEscape(requirement.targetNodeId)}" required="${requirement.required}" field="${xmlEscape(requirement.field ?? '')}" image_role="${xmlEscape(requirement.imageRole ?? '')}" count="${requirement.requiredCount ?? 1}" depends_on="${xmlEscape(requirement.dependencyNodeIds.join(', '))}" reference_sources="${xmlEscape(requirement.referenceSourceNodeIds.join(', '))}">${xmlEscape(requirement.title)}</requirement>`
+    ),
+    '    </requirements>',
     '    <style injection="soft_pressure">',
     ...context.stylePressures.map((item) => [
       `      <style_pressure node="${xmlEscape(item.nodeId)}" preset="${xmlEscape(item.preset)}" intensity="${item.intensity}">`,
@@ -482,15 +489,18 @@ async function maybeGenerateImageArtifacts(
     throw new Error(`Character workflow image model name is empty for ${configuredModel.id}`)
   }
   const draft = normalizeDraftInput(source.draft)
-  const imageTargets = context.targets.filter((target) => target.kind === 'image')
+  const requestedTargetIds = new Set(arrayField(source.targetNodeIds))
+  const imageTargets = context.targets
+    .filter((target) => target.kind === 'image')
+    .filter((target) => !requestedTargetIds.size || requestedTargetIds.has(target.nodeId))
   const prompts = createImageGenerationPromptRequests(resolveImageTargetPromptRequests(source, imageTargets, draft), draft)
   if (!prompts.length) {
     throw new Error('request_image.targetPrompts must include at least one image prompt')
   }
   const artifacts: CharacterAgentArtifact[] = []
-  const generatedReferences = new Map<string, string[]>()
+  const referenceImagesByTarget = normalizeReferenceImagesByTarget(source.referenceImagesByTarget)
   for (let index = 0; index < prompts.length; index += 1) {
-    const referenceImages = resolveReferenceImagesForPrompt(prompts[index], generatedReferences)
+    const referenceImages = resolveReferenceImagesForPrompt(prompts[index], referenceImagesByTarget)
     const generated = await generateImageWithConfiguredProvider({
       model: configuredModel,
       modelName,
@@ -512,11 +522,6 @@ async function maybeGenerateImageArtifacts(
         ...artifact,
         id: `${artifact.id}:${prompts[index].target.nodeId}:${prompts[index].targetIndex}`,
       })
-      const imageRef = imageReferenceFromArtifactData(artifact.data)
-      if (imageRef) {
-        const existing = generatedReferences.get(prompts[index].imageRole) ?? []
-        generatedReferences.set(prompts[index].imageRole, [...existing, imageRef])
-      }
     }
   }
   return artifacts
@@ -570,10 +575,30 @@ function normalizeDraftInput(input: unknown): CharacterCardDraft {
     fields,
     imagePrompts: Array.isArray(source.imagePrompts) ? source.imagePrompts.filter((item): item is string => typeof item === 'string') : [],
     imageArtifactIds: Array.isArray(source.imageArtifactIds) ? source.imageArtifactIds.filter((item): item is string => typeof item === 'string') : [],
+    imageTargetArtifactIds: source.imageTargetArtifactIds && typeof source.imageTargetArtifactIds === 'object' && !Array.isArray(source.imageTargetArtifactIds)
+      ? Object.fromEntries(Object.entries(source.imageTargetArtifactIds).map(([key, value]) => [
+        key,
+        Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [],
+      ]))
+      : {},
     notes: Array.isArray(source.notes) ? source.notes.filter((item): item is string => typeof item === 'string') : [],
     missing: Array.isArray(source.missing) ? source.missing.filter((item): item is string => typeof item === 'string') : [],
     updatedAt: typeof source.updatedAt === 'number' ? source.updatedAt : Date.now(),
   }
+}
+
+function normalizeReferenceImagesByTarget(value: unknown): Map<string, string[]> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return new Map()
+  }
+  return new Map(
+    Object.entries(value as Record<string, unknown>).flatMap(([targetNodeId, references]) => {
+      const normalized = Array.isArray(references)
+        ? references.map((item) => typeof item === 'string' ? item.trim() : '').filter(Boolean)
+        : []
+      return normalized.length ? [[targetNodeId, normalized] as const] : []
+    })
+  )
 }
 
 function createImageGenerationPromptRequests(
@@ -607,23 +632,10 @@ function createImageGenerationPromptRequests(
 }
 
 function resolveReferenceImagesForPrompt(
-  prompt: { imageRole: string },
-  generatedReferences: Map<string, string[]>
+  prompt: { target: AgentTargetContext },
+  referenceImagesByTarget: Map<string, string[]>
 ): string[] {
-  if (prompt.imageRole === 'character-overview-sheet') {
-    return generatedReferences.get('avatar')?.slice(0, 1) ?? []
-  }
-  return []
-}
-
-function imageReferenceFromArtifactData(data: unknown): string | null {
-  if (!data || typeof data !== 'object') {
-    return null
-  }
-  const source = data as Record<string, any>
-  const dataUrl = typeof source.dataUrl === 'string' ? source.dataUrl : ''
-  const url = typeof source.url === 'string' ? source.url : ''
-  return dataUrl || url || null
+  return referenceImagesByTarget.get(prompt.target.nodeId) ?? []
 }
 
 function imageSizeForPrompt(prompt: {

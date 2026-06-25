@@ -617,7 +617,7 @@ export function createUiConfigOverrides(spec: CharacterWorkflowBuilderSpec): Rec
     },
     'overview-sheet-image-target': {
       imageRole: 'character-overview-sheet',
-      assetPurpose: 'Large character asset overview sheet generated after avatar.jpg, using the avatar as identity reference and showing front/back/side, hairstyle, hands, legs, feet, outfit details, and expressions.',
+      assetPurpose: 'Large character asset overview sheet using linked reference image inputs for identity preservation and showing front/back/side, hairstyle, hands, legs, feet, outfit details, and expressions.',
     },
     'overview-sheet-image-control': {
       targetImageCount: 1,
@@ -706,9 +706,9 @@ function createWorkflowBuilderSystemPrompt(language: CharacterWorkflowLanguage):
     'You are the backend planner for a character resource graph builder.',
     'Convert the user brief into configuration for an autonomous character-card generation workflow.',
     localeRule,
-    'The final workflow must always generate a complete role card, an opening layout target, and a two-stage character image workflow: first avatar.jpg identity lock, then a large character overview sheet using that avatar as reference.',
+    'The final workflow must always generate a complete role card, an opening layout target, and a graph-declared character image workflow. Express image dependencies with links; for the standard character sheet, connect avatar-image-target.imageAsset to overview-sheet-image-target.referenceImage.',
     'Do not write final character-card fields here. This is workflow configuration only.',
-    'For images, image-target declares a role-card visual purpose and image-generation-control declares count, imageStyleDomain, lightweight style text, shot, aspect ratio, seed, consistency, and negative prompt. The required first image role is avatar; the required second image role is character-overview-sheet. Use imageStyleDomain for photoreal/anime/illustration/stylized routing; leave it auto when the character visual identity should decide.',
+    'For images, image-target declares a role-card visual purpose and image-generation-control declares count, imageStyleDomain, lightweight style text, shot, aspect ratio, seed, consistency, and negative prompt. Use graph links to declare reference-image dependencies instead of relying on prompt-only ordering. Use imageStyleDomain for photoreal/anime/illustration/stylized routing; leave it auto when the character visual identity should decide.',
     'Return only valid JSON. No markdown, comments, or surrounding prose.',
     'Schema:',
     '{',
@@ -787,7 +787,7 @@ function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): 
     '- image-target.imageRole: choose the role-card visual purpose from options such as avatar, character-overview-sheet, hero-cover, full-body, opening-moment, story-moment, expression, outfit-detail, relationship-moment, or world-context. Do not use scene as a standalone image type.',
     '- image-target.assetPurpose: what this exact image should communicate and which story/text field it supports.',
     '- image-generation-control: image count, imageStyleDomain, imageStylePreset, concise stylePrompt, shotType, aspectRatio, consistencyMode, seedMode, negativePrompt. Use imageStyleDomain for photoreal/anime/illustration/stylized routing; use auto when the character visual identity should decide. Never put imageType or composition here.',
-    '- For character resources, prefer the staged asset workflow: avatar first as identity lock, character-overview-sheet second as a large model/reference sheet using the avatar identity. Additional pictures should be separate image-target nodes when they serve different card/story purposes, and/or image-generation-control.targetImageCount for variants.',
+    '- For character resources, prefer graph-declared asset dependencies: avatar as an identity-lock image target, then link avatar-image-target.imageAsset into any later image target referenceImage input that should preserve that identity. Additional pictures should be separate image-target nodes when they serve different card/story purposes, and/or image-generation-control.targetImageCount for variants.',
     '- Do not connect hard-constraint nodes directly into image-target. Put image-specific exclusions in image-generation-control.negativePrompt.',
     '- world-card-target / npc-pack-target / npc-target / plot-arc-target / scene-card-target: add these when the request asks for multi-NPC, world, setting, story arc, or scene planning.',
     '',
@@ -1046,9 +1046,9 @@ function applySpecToWorkflow(workflow: CharacterWorkflow, spec: CharacterWorkflo
   avatarTarget?.config && Object.assign(avatarTarget.config, {
     imageRole: 'avatar',
     assetPurpose: [
-      'Generate avatar.jpg first as the canonical identity-lock portrait.',
+      'Generate the canonical identity-lock portrait for this character.',
       'Quality should match a polished production character avatar: clear face, strong appeal, stable hair/eye/body identity cues, and no collage layout.',
-      'This image becomes the reference for later character assets.',
+      'Later character assets can use this image through explicit workflow reference links.',
     ].join(' '),
   })
   const avatarControl = workflow.nodes.find((node) => node.id === 'avatar-image-control')
@@ -1067,8 +1067,7 @@ function applySpecToWorkflow(workflow: CharacterWorkflow, spec: CharacterWorkflo
   overviewTarget?.config && Object.assign(overviewTarget.config, {
     imageRole: 'character-overview-sheet',
     assetPurpose: [
-      'Generate one very large character asset overview sheet after avatar.jpg.',
-      'Use the avatar as the identity reference.',
+      'Generate one very large character asset overview sheet using linked reference image inputs for identity preservation.',
       'Show a clean model-sheet composition with front view, back view, side or three-quarter view, hairstyle detail, hands, legs, feet or shoes, outfit/material details, and expression callouts.',
       'The sheet is for production reference, not a social cover.',
     ].join(' '),

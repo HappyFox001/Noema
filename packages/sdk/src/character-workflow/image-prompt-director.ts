@@ -127,9 +127,9 @@ function roleAutomaticPrompt(role: string, profile: CharacterImageProfile): stri
       'Use a simple background that does not compete with the face.',
     ].join(' '),
     'character-overview-sheet': [
-      'Large production model sheet for the same character after the avatar identity pass.',
+      'Large production model sheet for the same character using any supplied reference image inputs as the identity lock.',
       'Show full-body front view, back view, side or three-quarter view, hairstyle detail, hands, legs, feet or shoes, outfit material details, and expression closeups as clean visual panels.',
-      'Use the avatar reference as the identity lock when available.',
+      'Preserve the supplied reference identity exactly when reference images are available.',
     ].join(' '),
     'hero-cover': 'Polished role-card cover image with the character dominant in frame, strong mood, clear identity, and a readable hook for the premise.',
     'opening-moment': 'Opening-scene image with the character visibly present in the first RP situation, grounded setting details, expressive body language, and a concrete invitation into the scene.',
@@ -149,7 +149,7 @@ function primaryObjective(role: string, domain: CharacterImageStyleDomain): stri
       : 'Primary objective: create a premium AI companion profile portrait with natural facial detail, flattering light, strong eye contact, and immediate roleplay appeal.'
   }
   if (role === 'character-overview-sheet') {
-    return 'Primary objective: expand the avatar identity into a production reference sheet without changing the face family, age impression, hairstyle, proportions, or outfit language.'
+    return 'Primary objective: expand the supplied character identity into a production reference sheet without changing the face family, age impression, hairstyle, proportions, or outfit language.'
   }
   return 'Primary objective: create a character-first role-card image that supports the story while preserving the stable identity.'
 }
