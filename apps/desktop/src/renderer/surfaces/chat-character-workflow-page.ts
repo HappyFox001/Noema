@@ -773,20 +773,11 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
   ], [
     param('modelRef', 'Model', 'model-select', '', undefined, undefined, undefined, undefined, 'llm'),
   ], 'rule'),
-  createDefinition('image-tool', 'Image Tool', ['生图', 'image api', 'visual'], 'Tools', 'asset', 'Selects text-to-image capability for first-pass image generation such as avatar identity master images.', [], [
+  createDefinition('image-tool', 'Image Tool', ['生图', 'image api', 'visual'], 'Tools', 'asset', 'Selects image generation capability. Optional edit model is used for reference-image targets after avatar.', [], [
     slot('image', 'Image', 'image-capability', 'Image generation capability.'),
   ], [
     param('modelRef', 'Model / Workflow', 'model-select', '', undefined, undefined, undefined, undefined, 'image'),
-  ], 'image'),
-  createDefinition('image-edit-tool', 'Image Edit Tool', ['图生图', 'edit image', 'reference image', 'img2img'], 'Tools', 'asset', 'Selects image edit or reference-image capability for post-avatar images, preserving identity from linked references while changing pose, layout, expression, outfit, or scene.', [], [
-    slot('image', 'Reference Edit Image', 'image-capability', 'Image edit or reference-image capability.'),
-  ], [
-    param('modelRef', 'Edit Model / Workflow', 'model-select', '', undefined, undefined, undefined, undefined, 'image'),
-    param('referenceStrategy', 'Reference Strategy', 'select', 'image-edit', undefined, undefined, undefined, [
-      { label: 'Image Edit', value: 'image-edit' },
-      { label: 'Character Reference', value: 'character-reference' },
-      { label: 'Multi Reference', value: 'multi-reference' },
-    ]),
+    param('editModelRef', 'Edit Model / Workflow', 'model-select', '', undefined, undefined, undefined, undefined, 'image'),
     param('identityStrength', 'Identity Strength', 'number', 0.72, 0, 1, 0.01),
     param('compositionFreedom', 'Composition Freedom', 'number', 0.58, 0, 1, 0.01),
   ], 'image'),
@@ -967,7 +958,6 @@ const DEFAULT_NODE_PLACEMENT: Array<{ id: string; type: string; title: string; x
   { id: 'source-material', type: 'source-material', title: 'Source Material', x: 80, y: 412 },
   { id: 'llm-capability', type: 'llm-tool', title: 'LLM Tool', x: 1060, y: 16 },
   { id: 'image-capability', type: 'image-tool', title: 'Image Tool', x: 1060, y: 224 },
-  { id: 'image-edit-capability', type: 'image-edit-tool', title: 'Image Edit Tool', x: 1398, y: 520 },
   { id: 'agent-policy', type: 'agent-policy', title: 'Agent Policy', x: 1398, y: 70 },
   { id: 'generation-strategy', type: 'generation-strategy', title: 'Generation Strategy', x: 1736, y: 70 },
   { id: 'critique-loop', type: 'critique-loop', title: 'Critique Loop', x: 1736, y: 360 },
@@ -990,7 +980,7 @@ const DEFAULT_LINKS: CharacterResourceLink[] = [
   link('avatar-image-control', 'imageControl', 'avatar-image-target', 'imageControl', 'guides'),
   link('character-card-target', 'target', 'overview-sheet-image-target', 'card', 'guides'),
   link('avatar-image-target', 'imageAsset', 'overview-sheet-image-target', 'referenceImage', 'provides'),
-  link('image-edit-capability', 'image', 'overview-sheet-image-target', 'image', 'enables'),
+  link('image-capability', 'image', 'overview-sheet-image-target', 'image', 'enables'),
   link('overview-sheet-image-control', 'imageControl', 'overview-sheet-image-target', 'imageControl', 'guides'),
   link('character-card-target', 'target', 'opening-layout-target', 'card', 'guides'),
   link('opening-field-target', 'field', 'opening-layout-target', 'field', 'guides'),
@@ -1018,6 +1008,7 @@ const definitionFuse = new Fuse(RESOURCE_NODE_DEFINITIONS, {
 
 const workbenchCleanups = new WeakMap<HTMLElement, Array<() => void>>()
 const workflowMotionSnapshots = new WeakMap<HTMLElement, WorkflowMotionSnapshot>()
+const runDraftMotionSnapshots = new WeakMap<HTMLElement, WorkflowMotionSnapshot>()
 
 interface WorkflowMotionSnapshot {
   nodes: Map<string, { x: number; y: number; status: string; selected: boolean; configHash: string }>
@@ -1657,7 +1648,7 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
     groups: [
       { id: 'intent-targets', title: ui(options, '目标资源', 'Target Resources'), nodeIds: ['generation-goal', 'character-card-target', 'opening-field-target', 'avatar-image-target', 'overview-sheet-image-target', 'opening-layout-target', 'source-material'], color: 'rgba(82, 168, 255, 0.16)' },
       { id: 'local-controls', title: ui(options, '局部控制', 'Local Controls'), nodeIds: ['style-pressure', 'hard-constraints', 'opening-field-control', 'avatar-image-control', 'overview-sheet-image-control'], color: 'rgba(162, 202, 188, 0.16)' },
-      { id: 'tool-policy', title: ui(options, '工具与策略', 'Tools and Strategy'), nodeIds: ['llm-capability', 'image-capability', 'image-edit-capability', 'agent-policy', 'generation-strategy'], color: 'rgba(219, 189, 130, 0.16)' },
+      { id: 'tool-policy', title: ui(options, '工具与策略', 'Tools and Strategy'), nodeIds: ['llm-capability', 'image-capability', 'agent-policy', 'generation-strategy'], color: 'rgba(219, 189, 130, 0.16)' },
       { id: 'evaluation-output', title: ui(options, '评估与输出', 'Evaluation and Output'), nodeIds: ['critique-loop', 'quality-gate', 'output-adapter'], color: 'rgba(206, 154, 118, 0.16)' },
     ],
     tabs: [
@@ -1681,7 +1672,128 @@ function animateRunDraftCanvas(root: HTMLElement, cleanups: Array<() => void>): 
   if (!runViewport) {
     return
   }
+  const snapshot = captureWorkflowMotionSnapshot(runViewport)
+  const previous = runDraftMotionSnapshots.get(root)
+  runDraftMotionSnapshots.set(root, snapshot)
   runViewport.dataset.runDraftInitialized = 'true'
+  if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    let reverted = false
+    import('gsap').then(({ gsap }) => {
+      if (reverted || !runViewport.isConnected) {
+        return
+      }
+      const ctx = gsap.context(() => {
+        const nodes = gsap.utils.toArray<HTMLElement>('.chat-resource-node')
+        const links = gsap.utils.toArray<SVGPathElement>('.chat-resource-link')
+          .flatMap((link) => gsap.utils.toArray<SVGPathElement>('path:not(.hit-area)', link))
+        const newNodes = nodes.filter((node) => !previous?.nodes.has(node.dataset.chatWorkflowNodeId ?? ''))
+        const movedNodes = nodes.flatMap((node) => {
+          const nodeId = node.dataset.chatWorkflowNodeId ?? ''
+          const before = previous?.nodes.get(nodeId)
+          const after = snapshot.nodes.get(nodeId)
+          if (!before || !after) return []
+          const dx = before.x - after.x
+          const dy = before.y - after.y
+          return Math.abs(dx) > 1 || Math.abs(dy) > 1 ? [{ node, dx, dy }] : []
+        })
+        const newLinks = links.filter((link) => !previous?.links.has(link.closest<SVGElement>('.chat-resource-link')?.getAttribute('data-chat-resource-link-id') ?? ''))
+        gsap.killTweensOf([...nodes, ...links])
+        if (!previous) {
+          const timeline = gsap.timeline({ defaults: { ease: 'power3.out' } })
+          timeline.from(nodes, {
+            autoAlpha: 0,
+            y: 14,
+            scale: 0.965,
+            duration: 0.34,
+            stagger: { each: 0.035, from: 'start' },
+            clearProps: 'visibility,opacity,transform',
+          })
+          timeline.from(links, {
+            autoAlpha: 0,
+            strokeDasharray: 18,
+            strokeDashoffset: 44,
+            duration: 0.42,
+            stagger: 0.018,
+            clearProps: 'visibility,opacity,strokeDasharray,strokeDashoffset',
+          }, '<0.08')
+          return
+        }
+        if (movedNodes.length) {
+          gsap.fromTo(movedNodes.map((item) => item.node), {
+            x: (index) => movedNodes[index]?.dx ?? 0,
+            y: (index) => movedNodes[index]?.dy ?? 0,
+            scale: 0.992,
+          }, {
+            x: 0,
+            y: 0,
+            scale: 1,
+            duration: 0.58,
+            ease: 'expo.out',
+            clearProps: 'transform',
+          })
+        }
+        if (newNodes.length) {
+          const sourceNode = runViewport.querySelector<HTMLElement>('[data-chat-workflow-node-id="run-agent-source"]')
+          const sourceRect = sourceNode?.getBoundingClientRect()
+          const timeline = gsap.timeline({ defaults: { ease: 'power3.out' } })
+          timeline.fromTo(newNodes, {
+            autoAlpha: 0,
+            x: (_index, target) => {
+              if (!sourceRect || !(target instanceof HTMLElement)) return -34
+              const rect = target.getBoundingClientRect()
+              return sourceRect.left + sourceRect.width * 0.68 - (rect.left + rect.width * 0.16)
+            },
+            y: (_index, target) => {
+              if (!sourceRect || !(target instanceof HTMLElement)) return -10
+              const rect = target.getBoundingClientRect()
+              return sourceRect.top + sourceRect.height * 0.56 - (rect.top + rect.height * 0.34)
+            },
+            scaleX: 0.12,
+            scaleY: 0.48,
+            filter: 'brightness(1.36) saturate(1.18)',
+            transformOrigin: '12% 42%',
+          }, {
+            autoAlpha: 1,
+            x: 0,
+            y: 0,
+            scaleX: 1,
+            scaleY: 1,
+            filter: 'brightness(1) saturate(1)',
+            duration: 0.68,
+            stagger: { each: 0.095, from: 'start' },
+            ease: 'expo.out',
+            clearProps: 'visibility,opacity,transform,filter,transformOrigin',
+          })
+          const revealText = newNodes.flatMap((node) => Array.from(node.querySelectorAll<HTMLElement>('.chat-resource-node-content strong, .chat-resource-node-content p')))
+          timeline.from(revealText, {
+            autoAlpha: 0,
+            y: 7,
+            duration: 0.32,
+            stagger: 0.024,
+            clearProps: 'visibility,opacity,transform',
+          }, '<0.22')
+        }
+        if (newLinks.length) {
+          gsap.fromTo(newLinks, {
+            autoAlpha: 0,
+            strokeDasharray: 24,
+            strokeDashoffset: 58,
+          }, {
+            autoAlpha: 1,
+            strokeDashoffset: 0,
+            duration: 0.72,
+            stagger: 0.04,
+            ease: 'power2.out',
+            clearProps: 'visibility,opacity,strokeDasharray,strokeDashoffset',
+          })
+        }
+      }, runViewport)
+      cleanups.push(() => ctx.revert())
+    })
+    cleanups.push(() => {
+      reverted = true
+    })
+  }
   cleanups.push(() => {
     delete runViewport.dataset.runDraftInitialized
   })
@@ -2502,27 +2614,32 @@ function getRunArtifactPlacement(artifact: NonNullable<CharacterResourceRunState
     const fieldIndex = Math.max(0, order.indexOf(field))
     const lane = fieldIndex % 3
     const row = Math.floor(fieldIndex / 3)
-    return { x: 334 + lane * 272, y: 54 + row * 166 }
+    const jitter = getStableRunOffset(field || artifact.id || String(index), 22, 18)
+    return { x: 344 + lane * 286 + jitter.x, y: 50 + row * 158 + jitter.y }
   }
   if (artifact.type === 'opening-message' || artifact.type === 'dialogue-style-guide' || artifact.type === 'world-context' || artifact.type === 'scene-context') {
     const order = ['world-context', 'scene-context', 'opening-message', 'dialogue-style-guide']
     const row = Math.max(0, order.indexOf(artifact.type))
-    return { x: 612, y: 608 + row * 148 }
+    const jitter = getStableRunOffset(artifact.type, 24, 16)
+    return { x: 640 + jitter.x, y: 568 + row * 142 + jitter.y }
   }
   if (artifact.type === 'image-asset' || artifact.type === 'image-attempt' || artifact.type === 'stale-marker') {
     const targetKey = getRunArtifactTargetNodeId(artifact) || artifact.sourceNodeId || artifact.id || String(index)
-    const imageIndex = Math.max(0, getStableRunLaneIndex(targetKey, 5))
+    const imageIndex = Math.max(0, getStableRunLaneIndex(targetKey, 4))
     const lane = artifact.type === 'image-asset' ? 0 : artifact.type === 'image-attempt' ? 1 : 2
-    return { x: 910 + lane * 258, y: 54 + imageIndex * 198 }
+    const jitter = getStableRunOffset(`${artifact.type}:${targetKey}`, 28, 24)
+    return { x: 1060 + lane * 256 + jitter.x, y: 72 + imageIndex * 190 + jitter.y }
   }
   if (artifact.type === 'quality-report' || artifact.type === 'generation-report' || artifact.type === 'export-package' || artifact.type === 'candidate-pack') {
-    const reportIndex = Math.max(0, index)
-    return { x: 1448, y: 80 + (reportIndex % 5) * 158 }
+    const reportIndex = getStableRunLaneIndex(artifact.id || artifact.type || String(index), 5)
+    const jitter = getStableRunOffset(artifact.id || artifact.type || String(index), 20, 18)
+    return { x: 1570 + jitter.x, y: 82 + reportIndex * 148 + jitter.y }
   }
-  const baseIndex = Math.max(0, index)
+  const stableIndex = getStableRunLaneIndex(artifact.id || artifact.type || String(index), 6)
+  const jitter = getStableRunOffset(artifact.id || artifact.type || String(index), 30, 20)
   return {
-    x: 640 + (baseIndex % 2) * 272,
-    y: 54 + Math.floor(baseIndex / 2) * 166,
+    x: 700 + (stableIndex % 2) * 288 + jitter.x,
+    y: 78 + Math.floor(stableIndex / 2) * 162 + jitter.y,
   }
 }
 
@@ -2532,6 +2649,12 @@ function getStableRunLaneIndex(value: string, modulo: number): number {
     hash = (hash * 31 + value.charCodeAt(index)) >>> 0
   }
   return hash % Math.max(1, modulo)
+}
+
+function getStableRunOffset(value: string, maxX: number, maxY: number): { x: number; y: number } {
+  const xSeed = getStableRunLaneIndex(`${value}:x`, maxX * 2 + 1) - maxX
+  const ySeed = getStableRunLaneIndex(`${value}:y`, maxY * 2 + 1) - maxY
+  return { x: xSeed, y: ySeed }
 }
 
 function getRunArtifactNodeTitle(artifact: NonNullable<CharacterResourceRunState['artifacts']>[number], options: CharacterWorkflowPageOptions): string {

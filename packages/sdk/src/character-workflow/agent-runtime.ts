@@ -678,10 +678,7 @@ export function compileCharacterAgentRunContext(
     })),
     capabilities: {
       llmModels: (nodesByType.get('llm-tool') ?? []).map((node) => modelCapability(node, 'llm', workflow.defaults.llmApiId, workflow.defaults.llmModelName)),
-      imageModels: [
-        ...(nodesByType.get('image-tool') ?? []).map((node) => modelCapability(node, 'image', workflow.defaults.imageApiId, workflow.defaults.imageModelName)),
-        ...(nodesByType.get('image-edit-tool') ?? []).map((node) => modelCapability(node, 'image', workflow.defaults.imageApiId, imageEditModelName(workflow.defaults.imageModelName))),
-      ],
+      imageModels: (nodesByType.get('image-tool') ?? []).flatMap((node) => imageToolCapabilities(node, workflow.defaults.imageApiId, workflow.defaults.imageModelName)),
       retrieval: (nodesByType.get('retrieval-tool') ?? []).map((node) => ({
         nodeId: node.id,
         enabled: booleanValue(node.config.enabled, false),
@@ -802,7 +799,7 @@ export function validateCharacterAgentWorkflowProtocol(workflow: CharacterWorkfl
       })
     }
     seenNodeIds.add(node.id)
-    if ((node.type === 'llm-tool' || node.type === 'image-tool' || node.type === 'image-edit-tool') && !stringValue(node.config.modelRef)) {
+    if ((node.type === 'llm-tool' || node.type === 'image-tool') && !stringValue(node.config.modelRef)) {
       issues.push({
         code: 'missing_model_ref',
         severity: 'warning',
@@ -2838,10 +2835,37 @@ function modelCapability(
     modelName: parsed.modelName,
     modelRef,
     parameters: {
-      ...(node.type === 'image-edit-tool' ? { usageMode: 'reference-edit' } : {}),
       ...Object.fromEntries(Object.entries(node.config).filter(([key]) => key !== 'modelRef')),
     },
   }
+}
+
+function imageToolCapabilities(
+  node: CharacterWorkflowNode,
+  fallbackApiId: string | undefined,
+  fallbackModelName: string | undefined
+): AgentModelCapability[] {
+  const base = modelCapability(node, 'image', fallbackApiId, fallbackModelName)
+  const editModelRef = stringValue(node.config.editModelRef)
+  if (!editModelRef) {
+    return [base]
+  }
+  const parsed = parseModelRef(editModelRef)
+  return [
+    base,
+    {
+      ...base,
+      apiId: parsed.apiId,
+      modelName: parsed.modelName,
+      modelRef: editModelRef,
+      parameters: {
+        ...base.parameters,
+        usageMode: 'reference-edit',
+        modelRef: base.modelRef,
+        editModelRef,
+      },
+    },
+  ]
 }
 
 function matchesArtifactFilter(
@@ -2860,13 +2884,6 @@ function flattenRequestedAssets(context: CharacterAgentRunContext): string[] {
 
 function createModelRef(apiId: string | undefined, modelName: string | undefined): string {
   return apiId && modelName ? `${apiId}::${modelName}` : ''
-}
-
-function imageEditModelName(modelName: string | undefined): string | undefined {
-  const normalized = modelName?.trim()
-  return normalized?.endsWith('/text-to-image')
-    ? normalized.replace(/\/text-to-image$/, '/edit')
-    : normalized
 }
 
 function parseModelRef(modelRef: string): { apiId: string; modelName: string } {

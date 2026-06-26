@@ -28,7 +28,6 @@ export type CharacterNodeType =
   | 'source-material'
   | 'llm-tool'
   | 'image-tool'
-  | 'image-edit-tool'
   | 'retrieval-tool'
   | 'voice-tool'
   | 'agent-policy'
@@ -283,8 +282,8 @@ export interface ImageCapabilityArtifact extends CharacterArtifactBase {
     modelName: string
     modelRef: string
     referenceStrength: number
-    usageMode?: string
-    referenceStrategy?: string
+    editModelRef?: string
+    editModelName?: string
     compositionFreedom?: number
   }
 }
@@ -1009,28 +1008,12 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     title: 'Image Tool',
     category: 'tools',
     executor: 'image',
-    description: 'Selects text-to-image capability for first-pass image generation such as avatar identity master images.',
+    description: 'Selects image generation capability. An optional edit model is used for reference-image targets after avatar.',
     inputs: {},
     outputs: { image: port('image', 'Image', 'image-capability') },
     parameters: [
       parameter('modelRef', 'Model / Workflow', 'model-select', '', { modelKind: 'image' }),
-    ],
-  },
-  {
-    type: 'image-edit-tool',
-    title: 'Image Edit Tool',
-    category: 'tools',
-    executor: 'image',
-    description: 'Selects image edit or reference-image capability for assets generated after avatar, preserving identity from linked reference images while changing pose, sheet layout, expression, outfit, or scene.',
-    inputs: {},
-    outputs: { image: port('image', 'Reference Edit Image', 'image-capability') },
-    parameters: [
-      parameter('modelRef', 'Edit Model / Workflow', 'model-select', '', { modelKind: 'image' }),
-      parameter('referenceStrategy', 'Reference Strategy', 'select', 'image-edit', undefined, [
-        option('Image Edit', 'image-edit'),
-        option('Character Reference', 'character-reference'),
-        option('Multi Reference', 'multi-reference'),
-      ]),
+      parameter('editModelRef', 'Edit Model / Workflow', 'model-select', '', { modelKind: 'image' }),
       parameter('identityStrength', 'Identity Strength', 'number', 0.72, { min: 0, max: 1, step: 0.01 }),
       parameter('compositionFreedom', 'Composition Freedom', 'number', 0.58, { min: 0, max: 1, step: 0.01 }),
     ],
@@ -1237,7 +1220,6 @@ export function createStandardCharacterWorkflow(
     node('source-material', 40, 410),
     node('llm-tool', 1010, 30),
     node('image-tool', 1010, 230),
-    node('image-edit-tool', 1340, 520, 'image-edit-capability', 'Image Edit Tool'),
     node('agent-policy', 1340, 70),
     node('generation-strategy', 1660, 70),
     node('critique-loop', 1660, 340),
@@ -1246,18 +1228,13 @@ export function createStandardCharacterWorkflow(
   ]
   const llmModelRef = createModelRef(options.llmApiId, options.llmModelName)
   const imageModelRef = createModelRef(options.imageApiId, options.imageModelName)
-  const imageEditModelRef = createModelRef(options.imageApiId, imageEditModelName(options.imageModelName))
   const llmNode = nodes.find((nodeItem) => nodeItem.type === 'llm-tool')
   const imageNode = nodes.find((nodeItem) => nodeItem.type === 'image-tool')
-  const imageEditNode = nodes.find((nodeItem) => nodeItem.type === 'image-edit-tool')
   if (llmNode && llmModelRef) {
     llmNode.config.modelRef = llmModelRef
   }
   if (imageNode && imageModelRef) {
     imageNode.config.modelRef = imageModelRef
-  }
-  if (imageEditNode && imageEditModelRef) {
-    imageEditNode.config.modelRef = imageEditModelRef
   }
   const avatarTarget = nodes.find((nodeItem) => nodeItem.id === 'avatar-image-target')
   if (avatarTarget) {
@@ -1316,7 +1293,7 @@ export function createStandardCharacterWorkflow(
       ['avatar-image-control', 'imageControl', 'avatar-image-target', 'imageControl', 'guides'],
       ['character-card-target', 'target', 'overview-sheet-image-target', 'card', 'guides'],
       ['avatar-image-target', 'imageAsset', 'overview-sheet-image-target', 'referenceImage', 'provides'],
-      ['image-edit-capability', 'image', 'overview-sheet-image-target', 'image', 'enables'],
+      ['image-tool', 'image', 'overview-sheet-image-target', 'image', 'enables'],
       ['overview-sheet-image-control', 'imageControl', 'overview-sheet-image-target', 'imageControl', 'guides'],
       ['character-card-target', 'target', 'opening-layout-target', 'card', 'guides'],
       ['character-field-target', 'field', 'opening-layout-target', 'field', 'guides'],
@@ -1853,19 +1830,9 @@ function createDefaultCharacterWorkflowExecutors(): Partial<Record<CharacterNode
       createdAt: timestamp,
       image: {
         ...parseModelRef(nonEmptyStringConfig(config.modelRef, createModelRef(workflow.defaults.imageApiId, workflow.defaults.imageModelName))),
-        referenceStrength: numberConfig(config.referenceStrength, 0.55),
-      },
-    }],
-    'image-edit-tool': ({ node, config, workflow, timestamp }) => [{
-      id: `${node.id}-image`,
-      type: 'image-capability',
-      sourceNodeId: node.id,
-      createdAt: timestamp,
-      image: {
-        ...parseModelRef(nonEmptyStringConfig(config.modelRef, createModelRef(workflow.defaults.imageApiId, imageEditModelName(workflow.defaults.imageModelName)))),
-        usageMode: 'reference-edit',
-        referenceStrategy: stringConfig(config.referenceStrategy, 'image-edit'),
-        referenceStrength: numberConfig(config.identityStrength, 0.72),
+        editModelRef: stringConfig(config.editModelRef, ''),
+        editModelName: parseModelRef(stringConfig(config.editModelRef, '')).modelName,
+        referenceStrength: numberConfig(config.identityStrength, numberConfig(config.referenceStrength, 0.55)),
         compositionFreedom: numberConfig(config.compositionFreedom, 0.58),
       },
     }],
@@ -2120,13 +2087,6 @@ function nonEmptyStringConfig(value: unknown, fallback: string): string {
 
 function createModelRef(apiId: string | undefined, modelName: string | undefined): string {
   return apiId && modelName ? `${apiId}::${modelName}` : ''
-}
-
-function imageEditModelName(modelName: string | undefined): string | undefined {
-  const normalized = modelName?.trim()
-  return normalized?.endsWith('/text-to-image')
-    ? normalized.replace(/\/text-to-image$/, '/edit')
-    : normalized
 }
 
 function parseModelRef(modelRef: string): { apiId: string; modelName: string; modelRef: string } {

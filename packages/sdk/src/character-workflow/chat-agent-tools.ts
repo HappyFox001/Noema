@@ -671,8 +671,7 @@ function selectImageModelForPrompt(
 
 function imageCapabilityMatchesReferenceMode(capability: AgentModelCapability, hasReferenceImages: boolean): boolean {
   const usageMode = typeof capability.parameters.usageMode === 'string' ? capability.parameters.usageMode : ''
-  const referenceStrategy = typeof capability.parameters.referenceStrategy === 'string' ? capability.parameters.referenceStrategy : ''
-  const isReferenceCapability = usageMode === 'reference-edit' || Boolean(referenceStrategy)
+  const isReferenceCapability = usageMode === 'reference-edit'
   return hasReferenceImages ? isReferenceCapability : !isReferenceCapability
 }
 

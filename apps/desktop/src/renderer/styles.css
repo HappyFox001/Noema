@@ -12182,6 +12182,8 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
 
 .chat-workflow-inspector-field {
   min-width: 0;
+  position: relative;
+  z-index: 0;
   display: grid;
   gap: 5px;
   padding: 8px;
@@ -12191,6 +12193,10 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
     linear-gradient(180deg, rgba(255, 255, 255, 0.038), rgba(255, 255, 255, 0.016));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
   animation: chat-workflow-field-enter 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.chat-workflow-inspector-field:has(.chat-resource-model-select[open]) {
+  z-index: 80;
 }
 
 @keyframes chat-workflow-field-enter {
@@ -12310,7 +12316,12 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
 
 .chat-resource-model-select {
   position: relative;
+  z-index: 0;
   min-width: 0;
+}
+
+.chat-resource-model-select[open] {
+  z-index: 90;
 }
 
 .chat-resource-model-select summary {
@@ -12353,7 +12364,7 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
 
 .chat-resource-model-select-menu {
   position: absolute;
-  z-index: 30;
+  z-index: 100;
   top: calc(100% + 5px);
   right: 0;
   left: 0;
@@ -14359,21 +14370,44 @@ body.chat-workflow-library-resizing * {
 }
 
 .chat-resource-run-plane {
-  min-width: 1220px;
-  min-height: 760px;
+  min-width: 1880px;
+  min-height: 1080px;
   padding-top: 46px;
 }
 
 .chat-resource-run-plane .chat-resource-node {
-  border-radius: 7px;
+  border-color: rgba(162, 202, 188, 0.12);
+  border-radius: 9px;
+  background:
+    radial-gradient(circle at 12% 0, rgba(162, 202, 188, 0.07), transparent 38%),
+    linear-gradient(180deg, rgba(248, 250, 250, 0.038), rgba(248, 250, 250, 0.012)),
+    rgba(7, 8, 9, 0.92);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.045),
+    inset 1px 0 0 rgba(162, 202, 188, 0.08),
+    0 22px 54px rgba(0, 0, 0, 0.34);
+  will-change: transform, opacity, filter;
+}
+
+.chat-resource-run-plane .chat-resource-node::after {
+  content: '';
+  position: absolute;
+  inset: 7px;
+  border: 1px solid rgba(248, 250, 250, 0.035);
+  border-radius: 6px;
+  pointer-events: none;
+  opacity: 0.74;
 }
 
 .chat-resource-run-plane .chat-resource-node-header {
   min-height: 38px;
+  border-bottom-color: rgba(248, 250, 250, 0.045);
+  background: linear-gradient(90deg, rgba(162, 202, 188, 0.055), transparent 58%);
 }
 
 .chat-resource-run-plane .chat-resource-node-header strong {
-  font-size: 13px;
+  color: rgba(232, 238, 238, 0.84);
+  font-size: 12px;
 }
 
 .chat-resource-run-plane .chat-resource-node-widgets,
@@ -14384,10 +14418,15 @@ body.chat-workflow-library-resizing * {
 .chat-resource-run-plane .chat-resource-node-content {
   min-height: 64px;
   padding: 8px 10px;
+  border-color: rgba(248, 250, 250, 0.05);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.026), rgba(255, 255, 255, 0.012)),
+    rgba(0, 0, 0, 0.16);
 }
 
 .chat-resource-run-plane .chat-resource-node-content strong {
-  font-size: 12px;
+  color: rgba(232, 238, 238, 0.82);
+  font-size: 11px;
 }
 
 .chat-resource-run-plane .chat-resource-node-content p {
@@ -14395,6 +14434,7 @@ body.chat-workflow-library-resizing * {
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
+  color: rgba(218, 232, 224, 0.52);
   font-size: 11px;
   line-height: 1.42;
 }
@@ -14407,8 +14447,10 @@ body.chat-workflow-library-resizing * {
 .chat-resource-run-plane .chat-resource-node-content.has-image img {
   width: 76px;
   height: 96px;
-  border-radius: 6px;
+  border: 1px solid rgba(248, 250, 250, 0.08);
+  border-radius: 7px;
   object-fit: cover;
+  box-shadow: 0 14px 26px rgba(0, 0, 0, 0.38);
 }
 
 .chat-resource-run-plane .chat-resource-link text {
@@ -14416,7 +14458,8 @@ body.chat-workflow-library-resizing * {
 }
 
 .chat-resource-run-plane .chat-resource-link path {
-  stroke-width: 1.6;
+  stroke: rgba(96, 133, 150, 0.62);
+  stroke-width: 1.45;
 }
 
 .chat-resource-run-viewport.run-status-running .chat-resource-link path {
@@ -14480,13 +14523,13 @@ body.chat-workflow-library-resizing * {
 }
 
 .chat-resource-run-plane .character-field-resource {
-  border-color: color-mix(in srgb, var(--run-field-accent, rgba(82, 168, 255, 0.56)) 48%, rgba(248, 250, 250, 0.08));
+  border-color: color-mix(in srgb, var(--run-field-accent, rgba(82, 168, 255, 0.42)) 34%, rgba(248, 250, 250, 0.07));
   background:
-    linear-gradient(135deg, color-mix(in srgb, var(--run-field-accent, rgba(82, 168, 255, 0.34)) 15%, rgba(7, 8, 9, 0.92)), rgba(7, 8, 9, 0.88)),
+    linear-gradient(135deg, color-mix(in srgb, var(--run-field-accent, rgba(82, 168, 255, 0.28)) 10%, rgba(7, 8, 9, 0.94)), rgba(7, 8, 9, 0.9)),
     rgba(7, 8, 9, 0.9);
   box-shadow:
-    inset 3px 0 0 var(--run-field-accent, rgba(82, 168, 255, 0.5)),
-    0 16px 34px rgba(0, 0, 0, 0.24);
+    inset 2px 0 0 color-mix(in srgb, var(--run-field-accent, rgba(82, 168, 255, 0.5)) 68%, transparent),
+    0 18px 42px rgba(0, 0, 0, 0.32);
 }
 
 .chat-resource-run-plane .character-field-resource .chat-resource-node-header span {
@@ -14504,32 +14547,32 @@ body.chat-workflow-library-resizing * {
 
 .chat-resource-run-plane .character-field-resource.run-field-name,
 .chat-resource-run-plane .character-field-resource.run-field-description {
-  --run-field-accent: rgba(88, 181, 255, 0.72);
+  --run-field-accent: rgba(88, 161, 202, 0.58);
 }
 
 .chat-resource-run-plane .character-field-resource.run-field-appearance {
-  --run-field-accent: rgba(196, 153, 255, 0.72);
+  --run-field-accent: rgba(150, 128, 194, 0.56);
 }
 
 .chat-resource-run-plane .character-field-resource.run-field-personality,
 .chat-resource-run-plane .character-field-resource.run-field-dialoguestyle {
-  --run-field-accent: rgba(255, 196, 116, 0.72);
+  --run-field-accent: rgba(190, 151, 96, 0.56);
 }
 
 .chat-resource-run-plane .character-field-resource.run-field-background,
 .chat-resource-run-plane .character-field-resource.run-field-scenario,
 .chat-resource-run-plane .character-field-resource.run-field-worldcontext {
-  --run-field-accent: rgba(130, 214, 176, 0.72);
+  --run-field-accent: rgba(110, 165, 140, 0.58);
 }
 
 .chat-resource-run-plane .character-field-resource.run-field-firstmessage {
-  --run-field-accent: rgba(255, 135, 160, 0.72);
+  --run-field-accent: rgba(176, 113, 128, 0.56);
 }
 
 .chat-resource-run-plane .character-field-resource.run-field-support,
 .chat-resource-run-plane .character-field-resource.run-field-memorystrategy,
 .chat-resource-run-plane .character-field-resource.run-field-imageprompt {
-  --run-field-accent: rgba(158, 173, 190, 0.64);
+  --run-field-accent: rgba(126, 142, 150, 0.52);
   opacity: 0.9;
 }
 
