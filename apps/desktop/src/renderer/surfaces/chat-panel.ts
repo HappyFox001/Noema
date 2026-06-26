@@ -2559,12 +2559,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   function mergeCharacterWorkflowRunArtifacts(
     existing: NonNullable<CharacterResourceRunState['artifacts']>,
     incoming: NonNullable<CharacterResourceRunState['artifacts']>,
-    scopedRun?: CharacterWorkflowScopedRunRequest
+    scopedRun?: CharacterWorkflowScopedRunRequest,
+    scopedSucceeded = false
   ): NonNullable<CharacterResourceRunState['artifacts']> {
     const existingIds = new Set(existing.map((artifact) => artifact.id || '').filter(Boolean))
-    const newIncoming = incoming.filter((artifact) => !artifact.id || !existingIds.has(artifact.id))
-    const successfulScopedTargetIds = scopedRun
-      ? new Set(newIncoming
+    const successfulScopedTargetIds = scopedRun && scopedSucceeded
+      ? new Set(incoming
         .filter((artifact) => artifact.type === 'image-asset')
         .map(getRunImageArtifactTargetNodeId)
         .filter(Boolean))
@@ -2574,7 +2574,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         if (!successfulScopedTargetIds.size) {
           return true
         }
-        if (artifact.type !== 'image-asset' && artifact.type !== 'image-attempt') {
+        if (!isFailedRunImageAttempt(artifact)) {
           return true
         }
         return !successfulScopedTargetIds.has(getRunImageArtifactTargetNodeId(artifact))
@@ -2584,7 +2584,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       if (
         successfulScopedTargetIds.size
         && existingIds.has(artifact.id || '')
-        && (artifact.type === 'image-asset' || artifact.type === 'image-attempt')
+        && isFailedRunImageAttempt(artifact)
         && successfulScopedTargetIds.has(getRunImageArtifactTargetNodeId(artifact))
       ) {
         continue
@@ -2597,6 +2597,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       }
     }
     return merged
+  }
+
+  function isFailedRunImageAttempt(artifact: NonNullable<CharacterResourceRunState['artifacts']>[number]): boolean {
+    const data = artifact.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
+      ? artifact.data as Record<string, unknown>
+      : {}
+    return artifact.type === 'image-attempt' && data.status === 'failed'
   }
 
   function getLatestScopedImageArtifactNodeId(
@@ -2717,7 +2724,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
   }
 
-  function saveActiveWorkflowProjectSnapshot(markDirty = true): void {
+  function saveActiveWorkflowProjectSnapshot(markDirty = true, immediate = false): void {
     const project = characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)
     if (!project) {
       return
@@ -2734,7 +2741,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     project.runCount = characterWorkflowRunCount
     project.activeRunId = characterWorkflowRunState?.run?.id
     project.updatedAt = Date.now()
-    persistCharacterWorkflowProject(project)
+    persistCharacterWorkflowProject(project, immediate)
     if (markDirty) {
       markActiveWorkflowDirty()
     }
@@ -2767,7 +2774,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
   }
 
-  function syncExecutingWorkflowRunState(): void {
+  function syncExecutingWorkflowRunState(immediate = false): void {
     if (!characterWorkflowExecutingRunState?.run || !characterWorkflowExecutingProjectId) {
       return
     }
@@ -2781,7 +2788,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     project.runCount = Math.max(project.runCount, characterWorkflowRunCount)
     project.updatedAt = Date.now()
-    persistCharacterWorkflowProject(project)
+    persistCharacterWorkflowProject(project, immediate)
   }
 
   function cancelExecutingWorkflowRun(projectId?: string, runId?: string): boolean {
@@ -2814,7 +2821,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const canceledProjectId = characterWorkflowExecutingProjectId
     const canceledRunState = characterWorkflowExecutingRunState
     const canceledRunId = canceledRunState.run.id
-    syncExecutingWorkflowRunState()
+    syncExecutingWorkflowRunState(true)
     syncVisibleWorkflowRunState(canceledProjectId, canceledRunState)
     characterWorkflowExecutingRunState = null
     characterWorkflowExecutingProjectId = ''
@@ -2928,6 +2935,29 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       runs,
       goalSession: normalizeCharacterWorkflowGoalSession(project.goalSession),
     }
+  }
+
+  function selectRicherWorkflowRunRecord(
+    candidate: CharacterWorkflowProjectRunRecord,
+    fallback: CharacterWorkflowProjectRunRecord | undefined
+  ): CharacterWorkflowProjectRunRecord {
+    if (!fallback) {
+      return candidate
+    }
+    return workflowRunRecordPayloadScore(fallback) > workflowRunRecordPayloadScore(candidate)
+      ? fallback
+      : candidate
+  }
+
+  function workflowRunRecordPayloadScore(run: CharacterWorkflowProjectRunRecord | undefined): number {
+    const runState = run?.runState
+    if (!runState?.run) {
+      return 0
+    }
+    return 1
+      + ((runState.steps ?? []).length * 2)
+      + ((runState.events ?? []).length * 2)
+      + ((runState.artifacts ?? []).length * 4)
   }
 
   function createIndexedCharacterWorkflowProject(item: {
@@ -3050,7 +3080,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   async function createCharacterWorkflowDraft(): Promise<void> {
     await ensureChatResourcesHydrated()
-    saveActiveWorkflowProjectSnapshot()
+    saveActiveWorkflowProjectSnapshot(false, true)
     characterWorkflowTemplateMenuOpen = false
     createCharacterWorkflowDraftFromSpec({})
   }
@@ -4068,7 +4098,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       ? runResponse.run as { payload?: unknown }
       : undefined
     const run = storedRun?.payload && typeof storedRun.payload === 'object'
-      ? storedRun.payload as CharacterWorkflowProjectRunRecord
+      ? selectRicherWorkflowRunRecord(storedRun.payload as CharacterWorkflowProjectRunRecord, cachedRun)
       : project?.runs.find((item) => item.id === runId)
     if (!project || !run || activeCharacterWorkflowProjectId !== projectId || openToken !== characterWorkflowRunOpenToken) {
       renderCharacterWorkflow()
@@ -4672,7 +4702,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       if (characterWorkflowExecutingRunState.run) {
         characterWorkflowExecutingRunState.run.currentStepId = stepId
       }
-      syncExecutingWorkflowRunState()
+      syncExecutingWorkflowRunState(true)
       syncVisibleWorkflowRunState(characterWorkflowExecutingProjectId, characterWorkflowExecutingRunState)
       if (isViewingWorkflowRun(characterWorkflowExecutingProjectId, characterWorkflowExecutingRunState.run?.id ?? '')) {
         scheduleCharacterWorkflowRunRender()
@@ -4754,7 +4784,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         summary: artifact.summary,
         data: artifact.data,
       }))
-      const mergedArtifacts = mergeCharacterWorkflowRunArtifacts(currentRunState.artifacts ?? [], responseArtifacts, scopedRun)
+      const scopedImageSucceeded = Boolean(scopedRun && responseArtifacts.some((artifact) => artifact.type === 'image-asset'))
+      const mergedArtifacts = mergeCharacterWorkflowRunArtifacts(currentRunState.artifacts ?? [], responseArtifacts, scopedRun, scopedImageSucceeded)
       const selectedScopedImageNodeId = getLatestScopedImageArtifactNodeId(mergedArtifacts, scopedRun)
       if (selectedScopedImageNodeId) {
         characterResourceViewState.selectedNodeIds = [selectedScopedImageNodeId]
@@ -4781,7 +4812,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       const completedProjectId = characterWorkflowExecutingProjectId
       const completedRunId = characterWorkflowExecutingRunState.run?.id ?? ''
       const wasViewingCompletedRun = isViewingWorkflowRun(completedProjectId, completedRunId)
-      syncExecutingWorkflowRunState()
+      syncExecutingWorkflowRunState(true)
       syncVisibleWorkflowRunState(characterWorkflowExecutingProjectId, characterWorkflowExecutingRunState)
       characterWorkflowExecutingRunState = null
       characterWorkflowExecutingProjectId = ''
@@ -4815,7 +4846,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         const failedProjectId = characterWorkflowExecutingProjectId
         const failedRunId = characterWorkflowExecutingRunState.run?.id ?? ''
         const wasViewingFailedRun = isViewingWorkflowRun(failedProjectId, failedRunId)
-        syncExecutingWorkflowRunState()
+        syncExecutingWorkflowRunState(true)
         syncVisibleWorkflowRunState(characterWorkflowExecutingProjectId, characterWorkflowExecutingRunState)
         characterWorkflowExecutingRunState = null
         characterWorkflowExecutingProjectId = ''
@@ -4930,7 +4961,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         }
       }),
     }
-    saveActiveWorkflowProjectSnapshot()
+    saveActiveWorkflowProjectSnapshot(true, true)
     renderCharacterWorkflow()
     showToast(options.getLanguage() === 'zh-CN' ? '已选中这张运行草稿图片' : 'Selected this run draft image')
   }
@@ -5613,6 +5644,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       node.style.zIndex = '20'
     }
     characterWorkflowDragging = null
+    saveActiveWorkflowProjectSnapshot()
   }
 
   function beginCharacterResourceNodeResize(event: PointerEvent): void {
@@ -6837,7 +6869,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
   }
 
-  function persistCharacterWorkflowProject(project: CharacterWorkflowProjectRecord): void {
+  function persistCharacterWorkflowProject(project: CharacterWorkflowProjectRecord, immediate = false): void {
     if (project.loadState !== 'ready' && project.loadState !== 'ready-overview') {
       return
     }
@@ -6854,6 +6886,17 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       activeRunId: project.activeRunId,
       runCount: project.runCount,
       payload: JSON.parse(JSON.stringify(project)) as CharacterWorkflowProjectRecord,
+    }
+    if (immediate) {
+      characterWorkflowProjectPersistTimers.delete(project.id)
+      void window.electronAPI.saveCharacterWorkflowProject(snapshot).then((response) => {
+        if (!response.success) {
+          console.warn('[CharacterWorkflowStore] Failed to save workflow project:', response.error)
+        }
+      }).catch((error) => {
+        console.warn('[CharacterWorkflowStore] Failed to save workflow project:', error)
+      })
+      return
     }
     const timer = window.setTimeout(() => {
       characterWorkflowProjectPersistTimers.delete(project.id)

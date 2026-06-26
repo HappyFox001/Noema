@@ -773,10 +773,22 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
   ], [
     param('modelRef', 'Model', 'model-select', '', undefined, undefined, undefined, undefined, 'llm'),
   ], 'rule'),
-  createDefinition('image-tool', 'Image Tool', ['生图', 'image api', 'visual'], 'Tools', 'asset', 'Selects image generation or editing capability. Image targets declare asset roles; image-generation-control nodes tune execution parameters.', [], [
+  createDefinition('image-tool', 'Image Tool', ['生图', 'image api', 'visual'], 'Tools', 'asset', 'Selects text-to-image capability for first-pass image generation such as avatar identity master images.', [], [
     slot('image', 'Image', 'image-capability', 'Image generation capability.'),
   ], [
     param('modelRef', 'Model / Workflow', 'model-select', '', undefined, undefined, undefined, undefined, 'image'),
+  ], 'image'),
+  createDefinition('image-edit-tool', 'Image Edit Tool', ['图生图', 'edit image', 'reference image', 'img2img'], 'Tools', 'asset', 'Selects image edit or reference-image capability for post-avatar images, preserving identity from linked references while changing pose, layout, expression, outfit, or scene.', [], [
+    slot('image', 'Reference Edit Image', 'image-capability', 'Image edit or reference-image capability.'),
+  ], [
+    param('modelRef', 'Edit Model / Workflow', 'model-select', '', undefined, undefined, undefined, undefined, 'image'),
+    param('referenceStrategy', 'Reference Strategy', 'select', 'image-edit', undefined, undefined, undefined, [
+      { label: 'Image Edit', value: 'image-edit' },
+      { label: 'Character Reference', value: 'character-reference' },
+      { label: 'Multi Reference', value: 'multi-reference' },
+    ]),
+    param('identityStrength', 'Identity Strength', 'number', 0.72, 0, 1, 0.01),
+    param('compositionFreedom', 'Composition Freedom', 'number', 0.58, 0, 1, 0.01),
   ], 'image'),
   createDefinition('retrieval-tool', 'Retrieval Tool', ['检索', 'search', 'knowledge'], 'Tools', 'agent', 'Allows the agent to read local context, vector sources, or web summaries when enabled.', [
     slot('source', 'Source', 'source-context', 'Source context that can be indexed.'),
@@ -955,6 +967,7 @@ const DEFAULT_NODE_PLACEMENT: Array<{ id: string; type: string; title: string; x
   { id: 'source-material', type: 'source-material', title: 'Source Material', x: 80, y: 412 },
   { id: 'llm-capability', type: 'llm-tool', title: 'LLM Tool', x: 1060, y: 16 },
   { id: 'image-capability', type: 'image-tool', title: 'Image Tool', x: 1060, y: 224 },
+  { id: 'image-edit-capability', type: 'image-edit-tool', title: 'Image Edit Tool', x: 1398, y: 520 },
   { id: 'agent-policy', type: 'agent-policy', title: 'Agent Policy', x: 1398, y: 70 },
   { id: 'generation-strategy', type: 'generation-strategy', title: 'Generation Strategy', x: 1736, y: 70 },
   { id: 'critique-loop', type: 'critique-loop', title: 'Critique Loop', x: 1736, y: 360 },
@@ -977,7 +990,7 @@ const DEFAULT_LINKS: CharacterResourceLink[] = [
   link('avatar-image-control', 'imageControl', 'avatar-image-target', 'imageControl', 'guides'),
   link('character-card-target', 'target', 'overview-sheet-image-target', 'card', 'guides'),
   link('avatar-image-target', 'imageAsset', 'overview-sheet-image-target', 'referenceImage', 'provides'),
-  link('image-capability', 'image', 'overview-sheet-image-target', 'image', 'enables'),
+  link('image-edit-capability', 'image', 'overview-sheet-image-target', 'image', 'enables'),
   link('overview-sheet-image-control', 'imageControl', 'overview-sheet-image-target', 'imageControl', 'guides'),
   link('character-card-target', 'target', 'opening-layout-target', 'card', 'guides'),
   link('opening-field-target', 'field', 'opening-layout-target', 'field', 'guides'),
@@ -1644,7 +1657,7 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
     groups: [
       { id: 'intent-targets', title: ui(options, '目标资源', 'Target Resources'), nodeIds: ['generation-goal', 'character-card-target', 'opening-field-target', 'avatar-image-target', 'overview-sheet-image-target', 'opening-layout-target', 'source-material'], color: 'rgba(82, 168, 255, 0.16)' },
       { id: 'local-controls', title: ui(options, '局部控制', 'Local Controls'), nodeIds: ['style-pressure', 'hard-constraints', 'opening-field-control', 'avatar-image-control', 'overview-sheet-image-control'], color: 'rgba(162, 202, 188, 0.16)' },
-      { id: 'tool-policy', title: ui(options, '工具与策略', 'Tools and Strategy'), nodeIds: ['llm-capability', 'image-capability', 'agent-policy', 'generation-strategy'], color: 'rgba(219, 189, 130, 0.16)' },
+      { id: 'tool-policy', title: ui(options, '工具与策略', 'Tools and Strategy'), nodeIds: ['llm-capability', 'image-capability', 'image-edit-capability', 'agent-policy', 'generation-strategy'], color: 'rgba(219, 189, 130, 0.16)' },
       { id: 'evaluation-output', title: ui(options, '评估与输出', 'Evaluation and Output'), nodeIds: ['critique-loop', 'quality-gate', 'output-adapter'], color: 'rgba(206, 154, 118, 0.16)' },
     ],
     tabs: [
@@ -2373,11 +2386,12 @@ function normalizeRunCharacterFieldValue(value: string | undefined): string {
 function createRunDraftCanvasGraph(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): CharacterResourceGraph {
   const artifacts = getRunCanvasArtifacts(options.runState?.artifacts ?? [])
   const status = options.runState?.run?.status ?? 'idle'
+  const sourceNodeId = 'run-agent-source'
   const nodes: CharacterResourceNode[] = [{
-    id: 'run-agent-source',
+    id: sourceNodeId,
     type: 'agent-policy',
     title: ui(options, 'Agent 运行', 'Agent Run'),
-    position: { x: 72, y: 112 },
+    position: options.positionOverrides?.[sourceNodeId] ?? { x: 72, y: 112 },
     size: { width: 210, height: 126 },
     status: status === 'failed' || status === 'needs_action' ? 'failed' : status === 'done' ? 'done' : status === 'running' ? 'running' : 'idle',
     zIndex: 1,
@@ -2416,7 +2430,7 @@ function createRunDraftCanvasGraph(graph: CharacterResourceGraph, options: Chara
       id: nodeId,
       type: nodeType,
       title: getRunArtifactNodeTitle(artifact, options),
-      position: {
+      position: options.positionOverrides?.[nodeId] ?? {
         x: placement.x,
         y: placement.y,
       },
