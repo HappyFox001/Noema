@@ -2596,7 +2596,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         merged.push(artifact)
       }
     }
-    return merged
+    return pruneSupersededFailedImageAttempts(merged)
   }
 
   function isFailedRunImageAttempt(artifact: NonNullable<CharacterResourceRunState['artifacts']>[number]): boolean {
@@ -2604,6 +2604,21 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       ? artifact.data as Record<string, unknown>
       : {}
     return artifact.type === 'image-attempt' && data.status === 'failed'
+  }
+
+  function pruneSupersededFailedImageAttempts(
+    artifacts: NonNullable<CharacterResourceRunState['artifacts']>
+  ): NonNullable<CharacterResourceRunState['artifacts']> {
+    const successfulImageTargets = new Set(artifacts
+      .filter((artifact) => artifact.type === 'image-asset')
+      .map(getRunImageArtifactTargetNodeId)
+      .filter(Boolean))
+    if (!successfulImageTargets.size) {
+      return artifacts
+    }
+    return artifacts.filter((artifact) => (
+      !isFailedRunImageAttempt(artifact) || !successfulImageTargets.has(getRunImageArtifactTargetNodeId(artifact))
+    ))
   }
 
   function getLatestScopedImageArtifactNodeId(
@@ -5123,7 +5138,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       const artifactId = typeof artifact.id === 'string' ? artifact.id : ''
       const existing = characterWorkflowExecutingRunState.artifacts ?? []
       if (!artifactId || !existing.some((item) => item.id === artifactId)) {
-        characterWorkflowExecutingRunState.artifacts = [
+        characterWorkflowExecutingRunState.artifacts = pruneSupersededFailedImageAttempts([
           ...existing,
           {
             id: artifactId,
@@ -5133,7 +5148,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             summary: typeof artifact.summary === 'string' ? artifact.summary : undefined,
             data: artifact.data,
           },
-        ]
+        ])
       }
     }
     syncExecutingWorkflowRunState()
