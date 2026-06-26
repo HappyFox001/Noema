@@ -323,6 +323,11 @@ function createRunUpsertSql(projectId: string, run: any): string {
   if (!id) {
     return ''
   }
+  const hasFullPayload = hasPersistableRunPayload(run)
+  const payloadValue = hasFullPayload ? sqlText(JSON.stringify(run)) : 'NULL'
+  const payloadUpdate = hasFullPayload
+    ? 'payload_json = excluded.payload_json'
+    : 'payload_json = COALESCE(character_workflow_runs.payload_json, excluded.payload_json)'
   return `
     INSERT INTO character_workflow_runs (
       project_id, id, title, status, created_at, completed_at, payload_json
@@ -333,15 +338,29 @@ function createRunUpsertSql(projectId: string, run: any): string {
       ${sqlText(String(summary.status ?? 'idle'))},
       ${Math.round(Number(summary.createdAt) || Date.now())},
       ${summary.completedAt ? Math.round(Number(summary.completedAt)) : 'NULL'},
-      ${sqlText(JSON.stringify(run))}
+      ${payloadValue}
     )
     ON CONFLICT(project_id, id) DO UPDATE SET
       title = excluded.title,
       status = excluded.status,
       created_at = excluded.created_at,
       completed_at = excluded.completed_at,
-      payload_json = excluded.payload_json;
+      ${payloadUpdate};
   `
+}
+
+function hasPersistableRunPayload(run: any): boolean {
+  const runState = run?.runState && typeof run.runState === 'object' && !Array.isArray(run.runState)
+    ? run.runState
+    : undefined
+  if (!runState?.run || typeof runState.run !== 'object') {
+    return false
+  }
+  return hasNonEmptyArray(runState.steps) || hasNonEmptyArray(runState.events) || hasNonEmptyArray(runState.artifacts)
+}
+
+function hasNonEmptyArray(value: unknown): boolean {
+  return Array.isArray(value) && value.length > 0
 }
 
 function parseJsonValue(value: string): unknown {

@@ -31,6 +31,8 @@ interface ImageProviderRequestOptions {
   size?: string
 }
 
+const WAVESPEED_POLL_TIMEOUT_MS = 600_000
+
 export async function generateImageWithConfiguredProvider(options: {
   model: ImageGenerationConfiguredModel
   modelName: string
@@ -1237,7 +1239,7 @@ async function pollWaveSpeedPrediction(fetcher: typeof fetch, baseUrl: string, g
   const task = await pollJson(fetcher, getUrl, { Authorization: `Bearer ${apiKey}` }, (body) => {
     const status = (body as any).data?.status ?? (body as any).status
     return status === 'completed' || status === 'failed' || status === 'canceled'
-  }, 180_000)
+  }, WAVESPEED_POLL_TIMEOUT_MS)
   const status = (task as any).data?.status ?? (task as any).status
   if (status !== 'completed') {
     const error = (task as any).data?.error ?? (task as any).error

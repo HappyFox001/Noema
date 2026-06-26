@@ -678,7 +678,7 @@ export function compileCharacterAgentRunContext(
     })),
     capabilities: {
       llmModels: (nodesByType.get('llm-tool') ?? []).map((node) => modelCapability(node, 'llm', workflow.defaults.llmApiId, workflow.defaults.llmModelName)),
-      imageModels: (nodesByType.get('image-tool') ?? []).map((node) => modelCapability(node, 'image', workflow.defaults.imageApiId, workflow.defaults.imageModelName)),
+      imageModels: (nodesByType.get('image-tool') ?? []).flatMap((node) => imageToolCapabilities(node, workflow.defaults.imageApiId, workflow.defaults.imageModelName)),
       retrieval: (nodesByType.get('retrieval-tool') ?? []).map((node) => ({
         nodeId: node.id,
         enabled: booleanValue(node.config.enabled, false),
@@ -1061,7 +1061,12 @@ export function createCharacterSuperAgent(
         if (!uniqueTargetNodeIds.length) {
           return { ran: false, imageIds: [], failedAttemptIds: [] }
         }
-        if (!await ensureImagePrerequisites(phase)) {
+        if (options.scoped) {
+          const missingPrerequisites = getMissingImagePrerequisiteFields(state.draft, context)
+          if (missingPrerequisites.length) {
+            return { ran: false, imageIds: [], failedAttemptIds: [] }
+          }
+        } else if (!await ensureImagePrerequisites(phase)) {
           return { ran: false, imageIds: [], failedAttemptIds: [] }
         }
         const imageResult = await callTool('generate_character_image', phase, {
@@ -1107,13 +1112,12 @@ export function createCharacterSuperAgent(
         await writeArtifact(createDraftArtifact(context, state.draft))
         return { ran: true, imageIds, failedAttemptIds }
       }
-      const executeReadyImageRequirements = async (phase: CharacterAgentPhase) => {
+      const executeReadyImageRequirements = async (phase: CharacterAgentPhase): Promise<{ ran: boolean; imageIds: string[]; failedAttemptIds: string[] }> => {
         const readyImageRequirements = getReadyMissingImageRequirements(refreshRequirements())
         if (!readyImageRequirements.length) {
-          return false
+          return { ran: false, imageIds: [], failedAttemptIds: [] }
         }
-        const result = await executeImageTargets(phase, readyImageRequirements.map((requirement) => requirement.targetNodeId))
-        return result.ran
+        return executeImageTargets(phase, readyImageRequirements.map((requirement) => requirement.targetNodeId))
       }
       const applyFieldActionAndWriteArtifacts = async (action: CharacterAgentAction, summary?: string, writeDraft = true) => {
         const beforeFields = { ...(state.draft?.fields ?? {}) }
@@ -1135,6 +1139,54 @@ export function createCharacterSuperAgent(
         if (writeDraft) {
           await writeArtifact(createDraftArtifact(context, state.draft))
         }
+      }
+      const runSeedPass = async (
+        stage: 'base' | 'derived',
+        requestedFields: string[],
+        reason: string
+      ): Promise<boolean> => {
+        const fields = [...new Set(requestedFields.map((field) => normalizeDraftFieldName(field)).filter(Boolean))]
+          .filter((field) => !hasDraftField(state.draft?.fields ?? {}, field, context))
+        if (!fields.length) {
+          return false
+        }
+        const decisionResult = await callTool('decide_character_card_next_step', 'produce', {
+          context,
+          draft: state.draft,
+          requirements: refreshRequirements(),
+          seedPass: {
+            stage,
+            reason,
+            requestedFields: fields,
+          },
+          turn: `seed-${stage}`,
+          maxTurns: 1,
+          artifacts: state.artifacts.map((artifact) => ({
+            id: artifact.id,
+            kind: artifact.kind,
+            title: artifact.title,
+            summary: artifact.summary,
+          })),
+        })
+        const decision = decisionFromToolResult(decisionResult, context, state.draft, false)
+        const actions = decision.actions.filter((action) => action.type === 'merge_character_card' || action.type === 'set_field')
+        if (!actions.length) {
+          return false
+        }
+        for (const action of actions) {
+          await applyFieldActionAndWriteArtifacts(action, decision.summary, false)
+        }
+        state = {
+          ...state,
+          draft: {
+            ...state.draft!,
+            notes: appendUnique(state.draft!.notes, [decision.summary || decisionResult.summary]),
+            updatedAt: now(),
+          },
+        }
+        await writeArtifact(createDraftArtifact(context, state.draft))
+        refreshRequirements()
+        return true
       }
       const completeMissingRequiredFields = async (phase: CharacterAgentPhase, reason: string): Promise<boolean> => {
         let missingFields = getMissingCharacterDraftFields(state.draft, context)
@@ -1301,17 +1353,36 @@ export function createCharacterSuperAgent(
             parentAttemptId: runOptions.scopedRun.scope.parentAttemptId,
             scoped: true,
           })
-          const summary = scopedResult.failedAttemptIds.length
-            ? `Scoped image run needs action: ${scopedResult.failedAttemptIds.length} failed attempt(s).`
-            : `Scoped image run completed for ${targetNodeIds.join(', ')}.`
-          if (scopedResult.failedAttemptIds.length && !scopedResult.imageIds.length) {
+          let imageRunResult = scopedResult
+          if (scopedResult.ran && scopedResult.imageIds.length && !scopedResult.failedAttemptIds.length) {
+            for (let attempt = 0; attempt < context.requirements.length; attempt += 1) {
+              const downstreamResult = await executeReadyImageRequirements('produce')
+              if (!downstreamResult.ran) {
+                break
+              }
+              imageRunResult = {
+                ran: true,
+                imageIds: appendUnique(imageRunResult.imageIds, downstreamResult.imageIds),
+                failedAttemptIds: appendUnique(imageRunResult.failedAttemptIds, downstreamResult.failedAttemptIds),
+              }
+              if (downstreamResult.failedAttemptIds.length || areAllRequiredRequirementsDone(refreshRequirements())) {
+                break
+              }
+            }
+          }
+          const summary = !imageRunResult.ran
+            ? `Scoped image run could not start for ${targetNodeIds.join(', ')} because image prerequisites are missing.`
+            : imageRunResult.failedAttemptIds.length
+            ? `Scoped image run needs action: ${imageRunResult.failedAttemptIds.length} failed attempt(s).`
+            : `Scoped image run completed for ${targetNodeIds.join(', ')}${imageRunResult.imageIds.length > scopedResult.imageIds.length ? ' and unblocked downstream image target(s).' : ''}`
+          if (!imageRunResult.ran || imageRunResult.failedAttemptIds.length) {
             state = {
               ...state,
               phase: 'needs_action',
               finalReport: {
                 summary,
                 selectedCandidateId: state.draft?.id,
-                risks: scopedResult.failedAttemptIds.map((id) => `Failed image attempt: ${id}`),
+                risks: imageRunResult.failedAttemptIds.map((id) => `Failed image attempt: ${id}`),
                 assumptions: context.compilerWarnings,
               },
             }
@@ -1324,7 +1395,7 @@ export function createCharacterSuperAgent(
             finalReport: {
               summary,
               selectedCandidateId: state.draft?.id,
-              risks: scopedResult.failedAttemptIds.map((id) => `Failed image attempt: ${id}`),
+              risks: imageRunResult.failedAttemptIds.map((id) => `Failed image attempt: ${id}`),
               assumptions: context.compilerWarnings,
             },
           }
@@ -1332,69 +1403,23 @@ export function createCharacterSuperAgent(
           return state
         }
 
-        const maxTurns = Math.max(context.requirements.length + 4, Math.min(24, context.policy.revisionBudget + context.critique.iterations + context.requirements.length + 4))
-        for (let turn = 1; turn <= maxTurns; turn += 1) {
-          const requirements = refreshRequirements()
-          if (areAllRequiredRequirementsDone(requirements)) {
-            break
-          }
-          const decisionResult = await callTool('decide_character_card_next_step', 'produce', {
-            context,
-            draft: state.draft,
-            requirements,
-            turn,
-            maxTurns,
-            artifacts: state.artifacts.map((artifact) => ({
-              id: artifact.id,
-              kind: artifact.kind,
-              title: artifact.title,
-              summary: artifact.summary,
-            })),
-          })
-          const decision = decisionFromToolResult(decisionResult, context, state.draft, turn === maxTurns)
-          const progressiveAction = selectProgressiveAction(decision.actions, state.draft!, context, requirements)
-          for (const action of progressiveAction ? [progressiveAction] : []) {
-            if (action.type === 'request_image') {
-              await executeImageRequestAction(action, 'produce')
-            } else if (action.type === 'create_artifact') {
-              const artifact = await writeArtifact(createActionArtifact(context, state.draft!, action))
-              state = {
-                ...state,
-                draft: {
-                  ...state.draft!,
-                  notes: appendUnique(state.draft!.notes, [action.reason ?? artifact.summary]),
-                  updatedAt: now(),
-                },
-              }
-            } else {
-              await applyFieldActionAndWriteArtifacts(action, undefined, false)
-            }
-            await writeArtifact(createDraftArtifact(context, state.draft))
-          }
-          refreshRequirements()
-          state = {
-            ...state,
-            draft: {
-              ...state.draft!,
-              notes: appendUnique(state.draft!.notes, [decision.summary]),
-              updatedAt: now(),
-            },
-          }
-          await writeArtifact(createDraftArtifact(context, state.draft))
-          if (areAllRequiredRequirementsDone(refreshRequirements())) {
-            break
-          }
-          if (!progressiveAction && !getNextMissingField(state.draft, context) && await executeReadyImageRequirements('produce')) {
-            if (areAllRequiredRequirementsDone(refreshRequirements())) {
-              break
-            }
-          }
-        }
+        const requiredTextFields = getRequiredCharacterDraftFields(context)
+        await runSeedPass(
+          'base',
+          requiredTextFields.filter((field) => !['firstMessage', 'dialogueStyle', 'appearancePrompt'].includes(field)),
+          'generate the stable character seed before derived fields and images'
+        )
+        await runSeedPass(
+          'derived',
+          requiredTextFields,
+          'derive opening, dialogue style, and avatar identity prompt from the stable character seed'
+        )
 
         await completeMissingRequiredFields('produce', 'complete required character-card fields before inspection and image generation')
 
         for (let attempt = 0; attempt < context.requirements.length; attempt += 1) {
-          if (!await executeReadyImageRequirements('produce')) {
+          const imageRequirementResult = await executeReadyImageRequirements('produce')
+          if (!imageRequirementResult.ran) {
             break
           }
           if (areAllRequiredRequirementsDone(refreshRequirements())) {
@@ -1452,7 +1477,8 @@ export function createCharacterSuperAgent(
 
         await completeMissingRequiredFields('repair', 'complete required character-card fields after quality repair')
         for (let attempt = 0; attempt < context.requirements.length; attempt += 1) {
-          if (!await executeReadyImageRequirements('repair')) {
+          const imageRequirementResult = await executeReadyImageRequirements('repair')
+          if (!imageRequirementResult.ran) {
             break
           }
           if (areAllRequiredRequirementsDone(refreshRequirements())) {
@@ -2808,8 +2834,38 @@ function modelCapability(
     apiId: parsed.apiId,
     modelName: parsed.modelName,
     modelRef,
-    parameters: Object.fromEntries(Object.entries(node.config).filter(([key]) => key !== 'modelRef')),
+    parameters: {
+      ...Object.fromEntries(Object.entries(node.config).filter(([key]) => key !== 'modelRef')),
+    },
   }
+}
+
+function imageToolCapabilities(
+  node: CharacterWorkflowNode,
+  fallbackApiId: string | undefined,
+  fallbackModelName: string | undefined
+): AgentModelCapability[] {
+  const base = modelCapability(node, 'image', fallbackApiId, fallbackModelName)
+  const editModelRef = stringValue(node.config.editModelRef)
+  if (!editModelRef) {
+    return [base]
+  }
+  const parsed = parseModelRef(editModelRef)
+  return [
+    base,
+    {
+      ...base,
+      apiId: parsed.apiId,
+      modelName: parsed.modelName,
+      modelRef: editModelRef,
+      parameters: {
+        ...base.parameters,
+        usageMode: 'reference-edit',
+        modelRef: base.modelRef,
+        editModelRef,
+      },
+    },
+  ]
 }
 
 function matchesArtifactFilter(

@@ -773,10 +773,13 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
   ], [
     param('modelRef', 'Model', 'model-select', '', undefined, undefined, undefined, undefined, 'llm'),
   ], 'rule'),
-  createDefinition('image-tool', 'Image Tool', ['生图', 'image api', 'visual'], 'Tools', 'asset', 'Selects image generation or editing capability. Image targets declare asset roles; image-generation-control nodes tune execution parameters.', [], [
+  createDefinition('image-tool', 'Image Tool', ['生图', 'image api', 'visual'], 'Tools', 'asset', 'Selects image generation capability. Optional edit model is used for reference-image targets after avatar.', [], [
     slot('image', 'Image', 'image-capability', 'Image generation capability.'),
   ], [
     param('modelRef', 'Model / Workflow', 'model-select', '', undefined, undefined, undefined, undefined, 'image'),
+    param('editModelRef', 'Edit Model / Workflow', 'model-select', '', undefined, undefined, undefined, undefined, 'image'),
+    param('identityStrength', 'Identity Strength', 'number', 0.72, 0, 1, 0.01),
+    param('compositionFreedom', 'Composition Freedom', 'number', 0.58, 0, 1, 0.01),
   ], 'image'),
   createDefinition('retrieval-tool', 'Retrieval Tool', ['检索', 'search', 'knowledge'], 'Tools', 'agent', 'Allows the agent to read local context, vector sources, or web summaries when enabled.', [
     slot('source', 'Source', 'source-context', 'Source context that can be indexed.'),
@@ -1005,6 +1008,7 @@ const definitionFuse = new Fuse(RESOURCE_NODE_DEFINITIONS, {
 
 const workbenchCleanups = new WeakMap<HTMLElement, Array<() => void>>()
 const workflowMotionSnapshots = new WeakMap<HTMLElement, WorkflowMotionSnapshot>()
+const runDraftMotionSnapshots = new WeakMap<HTMLElement, WorkflowMotionSnapshot>()
 
 interface WorkflowMotionSnapshot {
   nodes: Map<string, { x: number; y: number; status: string; selected: boolean; configHash: string }>
@@ -1655,7 +1659,7 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
     selection: { nodeIds: viewState.selectedNodeIds?.length ? viewState.selectedNodeIds : [options.selectedNodeId || 'generation-goal'], linkIds: viewState.selectedLinkId ? [viewState.selectedLinkId] : [] },
     panels: {
       leftWidth: options.sidebarCollapsed ? 0 : 246,
-      rightWidth: options.inspectorCollapsed ? 0 : activeTab === 'run-draft' ? 360 : 252,
+      rightWidth: options.inspectorCollapsed ? 0 : activeTab === 'run-draft' ? 300 : 252,
       bottomHeight: 62,
       activePanel: options.activePanel,
     },
@@ -1668,7 +1672,128 @@ function animateRunDraftCanvas(root: HTMLElement, cleanups: Array<() => void>): 
   if (!runViewport) {
     return
   }
+  const snapshot = captureWorkflowMotionSnapshot(runViewport)
+  const previous = runDraftMotionSnapshots.get(root)
+  runDraftMotionSnapshots.set(root, snapshot)
   runViewport.dataset.runDraftInitialized = 'true'
+  if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    let reverted = false
+    import('gsap').then(({ gsap }) => {
+      if (reverted || !runViewport.isConnected) {
+        return
+      }
+      const ctx = gsap.context(() => {
+        const nodes = gsap.utils.toArray<HTMLElement>('.chat-resource-node')
+        const links = gsap.utils.toArray<SVGPathElement>('.chat-resource-link')
+          .flatMap((link) => gsap.utils.toArray<SVGPathElement>('path:not(.hit-area)', link))
+        const newNodes = nodes.filter((node) => !previous?.nodes.has(node.dataset.chatWorkflowNodeId ?? ''))
+        const movedNodes = nodes.flatMap((node) => {
+          const nodeId = node.dataset.chatWorkflowNodeId ?? ''
+          const before = previous?.nodes.get(nodeId)
+          const after = snapshot.nodes.get(nodeId)
+          if (!before || !after) return []
+          const dx = before.x - after.x
+          const dy = before.y - after.y
+          return Math.abs(dx) > 1 || Math.abs(dy) > 1 ? [{ node, dx, dy }] : []
+        })
+        const newLinks = links.filter((link) => !previous?.links.has(link.closest<SVGElement>('.chat-resource-link')?.getAttribute('data-chat-resource-link-id') ?? ''))
+        gsap.killTweensOf([...nodes, ...links])
+        if (!previous) {
+          const timeline = gsap.timeline({ defaults: { ease: 'power3.out' } })
+          timeline.from(nodes, {
+            autoAlpha: 0,
+            y: 14,
+            scale: 0.965,
+            duration: 0.34,
+            stagger: { each: 0.035, from: 'start' },
+            clearProps: 'visibility,opacity,transform',
+          })
+          timeline.from(links, {
+            autoAlpha: 0,
+            strokeDasharray: 18,
+            strokeDashoffset: 44,
+            duration: 0.42,
+            stagger: 0.018,
+            clearProps: 'visibility,opacity,strokeDasharray,strokeDashoffset',
+          }, '<0.08')
+          return
+        }
+        if (movedNodes.length) {
+          gsap.fromTo(movedNodes.map((item) => item.node), {
+            x: (index) => movedNodes[index]?.dx ?? 0,
+            y: (index) => movedNodes[index]?.dy ?? 0,
+            scale: 0.992,
+          }, {
+            x: 0,
+            y: 0,
+            scale: 1,
+            duration: 0.58,
+            ease: 'expo.out',
+            clearProps: 'transform',
+          })
+        }
+        if (newNodes.length) {
+          const sourceNode = runViewport.querySelector<HTMLElement>('[data-chat-workflow-node-id="run-agent-source"]')
+          const sourceRect = sourceNode?.getBoundingClientRect()
+          const timeline = gsap.timeline({ defaults: { ease: 'power3.out' } })
+          timeline.fromTo(newNodes, {
+            autoAlpha: 0,
+            x: (_index, target) => {
+              if (!sourceRect || !(target instanceof HTMLElement)) return -34
+              const rect = target.getBoundingClientRect()
+              return sourceRect.left + sourceRect.width * 0.68 - (rect.left + rect.width * 0.16)
+            },
+            y: (_index, target) => {
+              if (!sourceRect || !(target instanceof HTMLElement)) return -10
+              const rect = target.getBoundingClientRect()
+              return sourceRect.top + sourceRect.height * 0.56 - (rect.top + rect.height * 0.34)
+            },
+            scaleX: 0.12,
+            scaleY: 0.48,
+            filter: 'brightness(1.36) saturate(1.18)',
+            transformOrigin: '12% 42%',
+          }, {
+            autoAlpha: 1,
+            x: 0,
+            y: 0,
+            scaleX: 1,
+            scaleY: 1,
+            filter: 'brightness(1) saturate(1)',
+            duration: 0.68,
+            stagger: { each: 0.095, from: 'start' },
+            ease: 'expo.out',
+            clearProps: 'visibility,opacity,transform,filter,transformOrigin',
+          })
+          const revealText = newNodes.flatMap((node) => Array.from(node.querySelectorAll<HTMLElement>('.chat-resource-node-content strong, .chat-resource-node-content p')))
+          timeline.from(revealText, {
+            autoAlpha: 0,
+            y: 7,
+            duration: 0.32,
+            stagger: 0.024,
+            clearProps: 'visibility,opacity,transform',
+          }, '<0.22')
+        }
+        if (newLinks.length) {
+          gsap.fromTo(newLinks, {
+            autoAlpha: 0,
+            strokeDasharray: 24,
+            strokeDashoffset: 58,
+          }, {
+            autoAlpha: 1,
+            strokeDashoffset: 0,
+            duration: 0.72,
+            stagger: 0.04,
+            ease: 'power2.out',
+            clearProps: 'visibility,opacity,strokeDasharray,strokeDashoffset',
+          })
+        }
+      }, runViewport)
+      cleanups.push(() => ctx.revert())
+    })
+    cleanups.push(() => {
+      reverted = true
+    })
+  }
   cleanups.push(() => {
     delete runViewport.dataset.runDraftInitialized
   })
@@ -2190,8 +2315,14 @@ function renderRunCharacterInspector(options: CharacterWorkflowPageOptions): str
       <div class="chat-workflow-inspector-scroll chat-run-character-scroll">
         <header class="chat-run-character-hero">
           ${images[0]?.image ? `<img src="${options.escapeHtml(images[0].image)}" alt="${options.escapeHtml(ui(options, '角色图', 'Character image'))}">` : ''}
-          <span>${options.escapeHtml(ui(options, '角色资源', 'Character Resource'))}</span>
-          <strong>${options.escapeHtml(getRunCharacterTitle(rows, options))}</strong>
+          <div class="chat-run-character-hero-copy">
+            <span>${options.escapeHtml(ui(options, '角色资源', 'Character Resource'))}</span>
+            <strong>${options.escapeHtml(getRunCharacterTitle(rows, options))}</strong>
+          </div>
+          <div class="chat-run-character-actions">
+            <button type="button" data-chat-workflow-action="download-run-draft">${options.escapeHtml(ui(options, '下载', 'Download'))}</button>
+            <button type="button" data-chat-workflow-action="chat-test">${options.escapeHtml(ui(options, '聊天测试', 'Chat Test'))}</button>
+          </div>
         </header>
         <section class="chat-run-character-fields">
           ${rows.map((row) => `
@@ -2249,7 +2380,10 @@ function createRunCharacterRows(
       ? ui(options, '角色资源生成中', 'Character resources are being generated')
       : ui(options, '暂无角色资源', 'No character resources yet'))
   }
-  return rows.slice(0, 24)
+  return rows
+    .filter((row) => ![ui(options, '示例对话', 'Example Dialogue'), ui(options, '场景上下文', 'Scene Context')].includes(row.label))
+    .slice(0, 7)
+    .map((row) => ({ ...row, value: clampRunCharacterPreviewText(row.value, 220) }))
 }
 
 function getRunCharacterTitle(rows: Array<{ label: string; value: string }>, options: CharacterWorkflowPageOptions): string {
@@ -2366,6 +2500,11 @@ function formatRunCharacterFieldValue(value: unknown): string | undefined {
   return undefined
 }
 
+function clampRunCharacterPreviewText(value: string, maxLength: number): string {
+  const normalized = value.replace(/\s+/g, ' ').trim()
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength).trim()}...` : normalized
+}
+
 function normalizeRunCharacterFieldValue(value: string | undefined): string {
   return String(value ?? '').replace(/\r\n/g, '\n').trim()
 }
@@ -2373,11 +2512,12 @@ function normalizeRunCharacterFieldValue(value: string | undefined): string {
 function createRunDraftCanvasGraph(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): CharacterResourceGraph {
   const artifacts = getRunCanvasArtifacts(options.runState?.artifacts ?? [])
   const status = options.runState?.run?.status ?? 'idle'
+  const sourceNodeId = 'run-agent-source'
   const nodes: CharacterResourceNode[] = [{
-    id: 'run-agent-source',
+    id: sourceNodeId,
     type: 'agent-policy',
     title: ui(options, 'Agent 运行', 'Agent Run'),
-    position: { x: 72, y: 112 },
+    position: options.positionOverrides?.[sourceNodeId] ?? { x: 72, y: 112 },
     size: { width: 210, height: 126 },
     status: status === 'failed' || status === 'needs_action' ? 'failed' : status === 'done' ? 'done' : status === 'running' ? 'running' : 'idle',
     zIndex: 1,
@@ -2416,7 +2556,7 @@ function createRunDraftCanvasGraph(graph: CharacterResourceGraph, options: Chara
       id: nodeId,
       type: nodeType,
       title: getRunArtifactNodeTitle(artifact, options),
-      position: {
+      position: options.positionOverrides?.[nodeId] ?? {
         x: placement.x,
         y: placement.y,
       },
@@ -2488,27 +2628,32 @@ function getRunArtifactPlacement(artifact: NonNullable<CharacterResourceRunState
     const fieldIndex = Math.max(0, order.indexOf(field))
     const lane = fieldIndex % 3
     const row = Math.floor(fieldIndex / 3)
-    return { x: 334 + lane * 272, y: 54 + row * 166 }
+    const jitter = getStableRunOffset(field || artifact.id || String(index), 22, 18)
+    return { x: 344 + lane * 286 + jitter.x, y: 50 + row * 158 + jitter.y }
   }
   if (artifact.type === 'opening-message' || artifact.type === 'dialogue-style-guide' || artifact.type === 'world-context' || artifact.type === 'scene-context') {
     const order = ['world-context', 'scene-context', 'opening-message', 'dialogue-style-guide']
     const row = Math.max(0, order.indexOf(artifact.type))
-    return { x: 612, y: 608 + row * 148 }
+    const jitter = getStableRunOffset(artifact.type, 24, 16)
+    return { x: 640 + jitter.x, y: 568 + row * 142 + jitter.y }
   }
   if (artifact.type === 'image-asset' || artifact.type === 'image-attempt' || artifact.type === 'stale-marker') {
     const targetKey = getRunArtifactTargetNodeId(artifact) || artifact.sourceNodeId || artifact.id || String(index)
-    const imageIndex = Math.max(0, getStableRunLaneIndex(targetKey, 5))
+    const imageIndex = Math.max(0, getStableRunLaneIndex(targetKey, 4))
     const lane = artifact.type === 'image-asset' ? 0 : artifact.type === 'image-attempt' ? 1 : 2
-    return { x: 910 + lane * 258, y: 54 + imageIndex * 198 }
+    const jitter = getStableRunOffset(`${artifact.type}:${targetKey}`, 28, 24)
+    return { x: 1060 + lane * 256 + jitter.x, y: 72 + imageIndex * 190 + jitter.y }
   }
   if (artifact.type === 'quality-report' || artifact.type === 'generation-report' || artifact.type === 'export-package' || artifact.type === 'candidate-pack') {
-    const reportIndex = Math.max(0, index)
-    return { x: 1448, y: 80 + (reportIndex % 5) * 158 }
+    const reportIndex = getStableRunLaneIndex(artifact.id || artifact.type || String(index), 5)
+    const jitter = getStableRunOffset(artifact.id || artifact.type || String(index), 20, 18)
+    return { x: 1570 + jitter.x, y: 82 + reportIndex * 148 + jitter.y }
   }
-  const baseIndex = Math.max(0, index)
+  const stableIndex = getStableRunLaneIndex(artifact.id || artifact.type || String(index), 6)
+  const jitter = getStableRunOffset(artifact.id || artifact.type || String(index), 30, 20)
   return {
-    x: 640 + (baseIndex % 2) * 272,
-    y: 54 + Math.floor(baseIndex / 2) * 166,
+    x: 700 + (stableIndex % 2) * 288 + jitter.x,
+    y: 78 + Math.floor(stableIndex / 2) * 162 + jitter.y,
   }
 }
 
@@ -2518,6 +2663,12 @@ function getStableRunLaneIndex(value: string, modulo: number): number {
     hash = (hash * 31 + value.charCodeAt(index)) >>> 0
   }
   return hash % Math.max(1, modulo)
+}
+
+function getStableRunOffset(value: string, maxX: number, maxY: number): { x: number; y: number } {
+  const xSeed = getStableRunLaneIndex(`${value}:x`, maxX * 2 + 1) - maxX
+  const ySeed = getStableRunLaneIndex(`${value}:y`, maxY * 2 + 1) - maxY
+  return { x: xSeed, y: ySeed }
 }
 
 function getRunArtifactNodeTitle(artifact: NonNullable<CharacterResourceRunState['artifacts']>[number], options: CharacterWorkflowPageOptions): string {

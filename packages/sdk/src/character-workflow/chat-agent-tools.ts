@@ -9,6 +9,7 @@ import {
   createCharacterAgentToolRuntime,
   type AgentToolDefinition,
   type CharacterAgentImageTargetPrompt,
+  type AgentModelCapability,
   type AgentImageGenerationControl,
   type AgentTargetContext,
   type CharacterCardDraft,
@@ -244,7 +245,7 @@ function createCharacterDecisionPrompt(
     '  </compact_image_prompt_rules>',
     '  <action_contract>',
     '    <output_format>Return JSON only. No markdown. No XML in the response.</output_format>',
-    '    <shape>{"summary":"what changed in this single step","done":false,"confidence":0.0,"missing":[],"actions":[{"type":"set_field","field":"nextField","value":"..."}]}</shape>',
+    '    <shape>{"summary":"what changed in this step","done":false,"confidence":0.0,"missing":[],"actions":[{"type":"merge_character_card","value":{"name":"...","description":"...","appearance":"..."}}]}</shape>',
     '    <field_content_rule>Every set_field value must be final character-card content, not a prompt, not a plan, and not a resource-control description.</field_content_rule>',
     '    <field_content_rule>Never write labels such as "Style:", "Goal:", "Field purpose:", "target atmosphere", XML tag names, or operation instructions inside character fields.</field_content_rule>',
     '    <field_content_rule>description must describe who the character is and why they are appealing for RP. appearance must describe visible body/outfit/expression cues. Do not describe the generation target itself.</field_content_rule>',
@@ -252,8 +253,9 @@ function createCharacterDecisionPrompt(
     '    <role_chat_format_rule>firstMessage is the runnable opening turn for the role chat. It must be final in-character scene text wrapped exactly once as <chat>...</chat>.</role_chat_format_rule>',
     '    <role_chat_format_rule>Inside <chat>, write the opening scene as immersive RP prose with the character present, a concrete situation, sensory details, and a clear hook for the user to respond. Do not include analysis, labels, markdown, or setup notes.</role_chat_format_rule>',
     '    <role_chat_format_rule>dialogueStyle must describe how the character speaks during chat, not the opening scene. scenario must define the persistent RP situation. worldContext must carry stable world facts.</role_chat_format_rule>',
-    '    <progressive_rule>Return exactly one action. Generate or reroll one field at a time. Do not fill the whole card in one response.</progressive_rule>',
-    '    <progressive_rule>If a field requirement is missing, return set_field for the earliest missing field in fixed_schema order and obey that target local XML controls. Only request_image after appearancePrompt exists.</progressive_rule>',
+    '    <seed_rule>If runtime_state.turn_context_json contains seedPass, return exactly one merge_character_card action. Fill every requested field that can be inferred. Do not request images during seedPass.</seed_rule>',
+    '    <seed_rule>For seedPass.stage="base", generate the stable character seed fields first: name, description, personality, appearance, background, scenario, worldContext. For seedPass.stage="derived", generate fields that depend on the seed: firstMessage, dialogueStyle, appearancePrompt, and any still-missing requested fields.</seed_rule>',
+    '    <seed_rule>Use the Sugar-style seed workflow: first establish the character identity and visible design, then derive roleplay opening, speech style, and image identity prompt from that stable seed. Prefer one coherent merge_character_card over many set_field actions.</seed_rule>',
     '    <progressive_rule>If runtime_state.turn_context_json contains completionPass.requiredField, return exactly one set_field action for that exact field. Do not return request_image, finish, or another field until the requested field is complete.</progressive_rule>',
     '    <workflow_rule>The runtime_state includes workflow requirements. Complete only requirements that are missing and unblocked. Never request an image target whose dependency source is still blocked or missing.</workflow_rule>',
     '    <workflow_rule>Reference-image ordering is defined by graph edges and requirement dependencies, not by a hardcoded role sequence. If a target has reference inputs, write the prompt for that target assuming the runtime supplies those reference images.</workflow_rule>',
@@ -271,6 +273,7 @@ function createCharacterDecisionPrompt(
     '    <image_rule>Do not request pure empty scene images. Every image should contain the character or unmistakable character-linked visual motifs, and should support the role card text, opening, story, relationship, or layout.</image_rule>',
     '    <allowed_actions>',
     '      <action name="set_field">{"type":"set_field","field":"name","value":"...","reason":"..."}</action>',
+    '      <action name="merge_character_card">{"type":"merge_character_card","value":{"name":"...","description":"...","appearance":"...","personality":"...","background":"...","scenario":"...","worldContext":"...","firstMessage":"<chat>...</chat>","dialogueStyle":"...","appearancePrompt":"..."},"reason":"..."}</action>',
     '      <action name="create_artifact">{"type":"create_artifact","kind":"generation-report","title":"...","summary":"...","data":{"text":"..."}}</action>',
     '      <action name="request_image">{"type":"request_image","targetPrompts":[{"targetNodeId":"avatar-image-target","title":"avatar.jpg","prompt":"compact target-specific image prompt"},{"targetNodeId":"overview-sheet-image-target","title":"character overview sheet","prompt":"compact target-specific image prompt"}]}</action>',
     '      <action name="finish">{"type":"finish","reason":"..."}</action>',
@@ -544,19 +547,8 @@ async function maybeGenerateImageArtifacts(
   input: unknown
 ): Promise<CharacterAgentArtifact[]> {
   const source = input && typeof input === 'object' ? input as Record<string, unknown> : {}
-  const capability = context.capabilities.imageModels[0]
-  const configuredModel = capability
-    ? models.find((model) => model.modelType === 'image' && model.id === capability.apiId)
-    : models.find((model) => model.modelType === 'image')
-  if (!configuredModel) {
+  if (!models.some((model) => model.modelType === 'image')) {
     throw new Error('No image model is configured for character workflow image generation')
-  }
-  if (!configuredModel.apiKey?.trim()) {
-    throw new Error(`Character workflow image API key is empty for ${configuredModel.id}`)
-  }
-  const modelName = capability?.modelName?.trim() || configuredModel.modelName?.trim() || configuredModel.enabledModels?.[0]?.trim()
-  if (!modelName) {
-    throw new Error(`Character workflow image model name is empty for ${configuredModel.id}`)
   }
   const draft = normalizeDraftInput(source.draft)
   const requestedTargetIds = new Set(arrayField(source.targetNodeIds))
@@ -571,6 +563,13 @@ async function maybeGenerateImageArtifacts(
   const referenceImagesByTarget = normalizeReferenceImagesByTarget(source.referenceImagesByTarget)
   for (let index = 0; index < prompts.length; index += 1) {
     const referenceImages = resolveReferenceImagesForPrompt(prompts[index], referenceImagesByTarget)
+    const { capability, configuredModel, modelName } = selectImageModelForPrompt(context, models, prompts[index].target, referenceImages.length > 0)
+    if (!configuredModel.apiKey?.trim()) {
+      throw new Error(`Character workflow image API key is empty for ${configuredModel.id}`)
+    }
+    if (!modelName) {
+      throw new Error(`Character workflow image model name is empty for ${configuredModel.id}`)
+    }
     const size = imageSizeForPrompt(prompts[index])
     const prompt = appendRerollInstruction(prompts[index].prompt, source.rerollInstruction)
     const attemptId = `${context.runId}:image-attempt:${prompts[index].target.nodeId}:${prompts[index].targetIndex}:${Date.now()}:${index}`
@@ -586,6 +585,7 @@ async function maybeGenerateImageArtifacts(
         provider: configuredModel.provider,
         modelName,
         apiId: configuredModel.id,
+        capabilityNodeId: capability?.nodeId,
       },
       size,
       action: typeof source.rerollAction === 'string' ? source.rerollAction : undefined,
@@ -633,6 +633,46 @@ async function maybeGenerateImageArtifacts(
     }
   }
   return artifacts
+}
+
+function selectImageModelForPrompt(
+  context: CharacterAgentRunContext,
+  models: CharacterAgentConfiguredModel[],
+  target: AgentTargetContext,
+  hasReferenceImages: boolean
+): {
+  capability: AgentModelCapability | undefined
+  configuredModel: CharacterAgentConfiguredModel
+  modelName: string
+} {
+  const connectedNodeIds = new Set(
+    target.incomingRelations
+      .filter((relation) => relation.toPort === 'image')
+      .map((relation) => relation.fromNodeId)
+  )
+  const connectedCapabilities = context.capabilities.imageModels.filter((capability) => connectedNodeIds.has(capability.nodeId))
+  const scopedCapabilities = connectedCapabilities.length ? connectedCapabilities : context.capabilities.imageModels
+  const preferredCapability = scopedCapabilities.find((capability) => imageCapabilityMatchesReferenceMode(capability, hasReferenceImages))
+    ?? scopedCapabilities[0]
+    ?? context.capabilities.imageModels.find((capability) => imageCapabilityMatchesReferenceMode(capability, hasReferenceImages))
+    ?? context.capabilities.imageModels[0]
+  const configuredModel = preferredCapability
+    ? models.find((model) => model.modelType === 'image' && model.id === preferredCapability.apiId)
+    : models.find((model) => model.modelType === 'image')
+  if (!configuredModel) {
+    throw new Error('No image model is configured for character workflow image generation')
+  }
+  return {
+    capability: preferredCapability,
+    configuredModel,
+    modelName: preferredCapability?.modelName?.trim() || configuredModel.modelName?.trim() || configuredModel.enabledModels?.[0]?.trim() || '',
+  }
+}
+
+function imageCapabilityMatchesReferenceMode(capability: AgentModelCapability, hasReferenceImages: boolean): boolean {
+  const usageMode = typeof capability.parameters.usageMode === 'string' ? capability.parameters.usageMode : ''
+  const isReferenceCapability = usageMode === 'reference-edit'
+  return hasReferenceImages ? isReferenceCapability : !isReferenceCapability
 }
 
 function resolveImageTargetPromptRequests(

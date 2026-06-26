@@ -282,6 +282,9 @@ export interface ImageCapabilityArtifact extends CharacterArtifactBase {
     modelName: string
     modelRef: string
     referenceStrength: number
+    editModelRef?: string
+    editModelName?: string
+    compositionFreedom?: number
   }
 }
 
@@ -1005,11 +1008,14 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     title: 'Image Tool',
     category: 'tools',
     executor: 'image',
-    description: 'Selects image generation or editing capability. Image targets declare asset roles; image-generation-control nodes tune execution parameters.',
+    description: 'Selects image generation capability. An optional edit model is used for reference-image targets after avatar.',
     inputs: {},
     outputs: { image: port('image', 'Image', 'image-capability') },
     parameters: [
       parameter('modelRef', 'Model / Workflow', 'model-select', '', { modelKind: 'image' }),
+      parameter('editModelRef', 'Edit Model / Workflow', 'model-select', '', { modelKind: 'image' }),
+      parameter('identityStrength', 'Identity Strength', 'number', 0.72, { min: 0, max: 1, step: 0.01 }),
+      parameter('compositionFreedom', 'Composition Freedom', 'number', 0.58, { min: 0, max: 1, step: 0.01 }),
     ],
   },
   {
@@ -1824,7 +1830,10 @@ function createDefaultCharacterWorkflowExecutors(): Partial<Record<CharacterNode
       createdAt: timestamp,
       image: {
         ...parseModelRef(nonEmptyStringConfig(config.modelRef, createModelRef(workflow.defaults.imageApiId, workflow.defaults.imageModelName))),
-        referenceStrength: numberConfig(config.referenceStrength, 0.55),
+        editModelRef: stringConfig(config.editModelRef, ''),
+        editModelName: parseModelRef(stringConfig(config.editModelRef, '')).modelName,
+        referenceStrength: numberConfig(config.identityStrength, numberConfig(config.referenceStrength, 0.55)),
+        compositionFreedom: numberConfig(config.compositionFreedom, 0.58),
       },
     }],
     'retrieval-tool': ({ node, config, timestamp }) => [{
