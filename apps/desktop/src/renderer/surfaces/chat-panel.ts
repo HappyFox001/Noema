@@ -1667,6 +1667,55 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
   }
 
+  async function downloadActiveCharacterWorkflowRunDraft(): Promise<void> {
+    if (!characterWorkflowRunState?.run) {
+      showToast(options.getLanguage() === 'zh-CN' ? '当前没有可下载的运行草稿' : 'No run draft is available to download')
+      return
+    }
+    const fields = extractCharacterCardFieldsFromRunDraft(characterWorkflowRunState)
+    const baseName = sanitizeChatResourceId(stringField(fields.name) || characterWorkflowRunState.run.title || characterWorkflowRunState.run.id || 'character')
+    const images = await collectRunDraftImagePackageFiles(characterWorkflowRunState)
+    const payload = {
+      schemaVersion: 1,
+      exportedAt: new Date().toISOString(),
+      source: {
+        app: 'Noema',
+        runId: characterWorkflowRunState.run.id,
+        runTitle: characterWorkflowRunState.run.title,
+      },
+      roleCard: fields,
+      chat: {
+        name: stringField(fields.name),
+        description: stringField(fields.description),
+        appearance: stringField(fields.appearance),
+        personality: stringField(fields.personality),
+        background: stringField(fields.background) || stringField(fields.story),
+        scenario: stringField(fields.scenario),
+        firstMessage: normalizeRoleChatMarkup(stringField(fields.firstMessage)),
+        dialogueStyle: stringField(fields.dialogueStyle),
+        worldContext: stringField(fields.worldContext),
+      },
+      images: images.manifest,
+    }
+    const files: ZipPackageFile[] = [
+      {
+        path: 'character.json',
+        data: new TextEncoder().encode(JSON.stringify(payload, null, 2)),
+      },
+      ...images.files,
+    ]
+    const blob = createStoredZipBlob(files)
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `${baseName}.noema-character.zip`
+    document.body.append(anchor)
+    anchor.click()
+    anchor.remove()
+    URL.revokeObjectURL(url)
+    showToast(options.getLanguage() === 'zh-CN' ? '角色文件包已开始下载' : 'Character package download started')
+  }
+
   function createChatCharacterFromRunDraft(runState: CharacterResourceRunState): ChatCharacterResource {
     const fields = extractCharacterCardFieldsFromRunDraft(runState)
     const name = stringField(fields.name)
@@ -1724,6 +1773,191 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const match = value.match(/<chat>([\s\S]*?)<\/chat>/i)
     return (match ? match[1] : value).trim()
   }
+
+  interface ZipPackageFile {
+    path: string
+    data: Uint8Array
+  }
+
+  interface CharacterPackageImageEntry {
+    id?: string
+    title?: string
+    role?: string
+    sourceNodeId?: string
+    path?: string
+    url?: string
+  }
+
+  async function collectRunDraftImagePackageFiles(runState: CharacterResourceRunState): Promise<{
+    manifest: CharacterPackageImageEntry[]
+    files: ZipPackageFile[]
+  }> {
+    const files: ZipPackageFile[] = []
+    const manifest: CharacterPackageImageEntry[] = []
+    const imageArtifacts = (runState.artifacts ?? []).filter((artifact) => artifact.type === 'image-asset')
+    for (let index = 0; index < imageArtifacts.length; index += 1) {
+      const artifact = imageArtifacts[index]
+      const imageUrl = getRunDraftImageUrl(artifact.data)
+      const imageRole = getRunDraftImageRole(artifact.data)
+      const title = artifact.title || imageRole || `image-${index + 1}`
+      const baseFileName = sanitizeChatResourceId(imageRole || title || `image-${index + 1}`)
+      const entry: CharacterPackageImageEntry = {
+        id: artifact.id,
+        title,
+        role: imageRole,
+        sourceNodeId: artifact.sourceNodeId,
+      }
+      const imageFile = imageUrl ? await resolveCharacterPackageImageFile(imageUrl, `images/${baseFileName || `image-${index + 1}`}`) : null
+      if (imageFile) {
+        files.push(imageFile)
+        entry.path = imageFile.path
+      } else if (imageUrl) {
+        entry.url = imageUrl
+      }
+      manifest.push(entry)
+    }
+    return { manifest, files }
+  }
+
+  function getRunDraftImageRole(data: unknown): string {
+    if (!data || typeof data !== 'object') return ''
+    const record = data as Record<string, unknown>
+    return typeof record.imageRole === 'string'
+      ? record.imageRole
+      : typeof record.targetTitle === 'string'
+        ? record.targetTitle
+        : ''
+  }
+
+  async function resolveCharacterPackageImageFile(url: string, basePath: string): Promise<ZipPackageFile | null> {
+    if (url.startsWith('data:')) {
+      const parsed = dataUrlToBytes(url)
+      return parsed ? { path: `${basePath}.${extensionForMimeType(parsed.mimeType)}`, data: parsed.data } : null
+    }
+    try {
+      const response = await fetch(url)
+      if (!response.ok) return null
+      const blob = await response.blob()
+      return {
+        path: `${basePath}.${extensionForMimeType(blob.type)}`,
+        data: new Uint8Array(await blob.arrayBuffer()),
+      }
+    } catch {
+      return null
+    }
+  }
+
+  function dataUrlToBytes(url: string): { mimeType: string; data: Uint8Array } | null {
+    const match = /^data:([^;,]+)?(;base64)?,(.*)$/s.exec(url)
+    if (!match) return null
+    const mimeType = match[1] || 'application/octet-stream'
+    const encoded = match[3] || ''
+    if (match[2]) {
+      const binary = atob(encoded)
+      const bytes = new Uint8Array(binary.length)
+      for (let index = 0; index < binary.length; index += 1) {
+        bytes[index] = binary.charCodeAt(index)
+      }
+      return { mimeType, data: bytes }
+    }
+    return { mimeType, data: new TextEncoder().encode(decodeURIComponent(encoded)) }
+  }
+
+  function extensionForMimeType(mimeType: string): string {
+    const normalized = mimeType.toLowerCase()
+    if (normalized.includes('png')) return 'png'
+    if (normalized.includes('webp')) return 'webp'
+    if (normalized.includes('gif')) return 'gif'
+    if (normalized.includes('svg')) return 'svg'
+    if (normalized.includes('jpeg') || normalized.includes('jpg')) return 'jpg'
+    return 'bin'
+  }
+
+  function createStoredZipBlob(files: ZipPackageFile[]): Blob {
+    const encoder = new TextEncoder()
+    const localParts: Uint8Array[] = []
+    const centralParts: Uint8Array[] = []
+    let offset = 0
+    for (const file of files) {
+      const name = encoder.encode(file.path)
+      const crc = crc32(file.data)
+      const local = createZipLocalHeader(name, file.data.length, crc)
+      localParts.push(local, name, file.data)
+      centralParts.push(createZipCentralHeader(name, file.data.length, crc, offset), name)
+      offset += local.length + name.length + file.data.length
+    }
+    const centralSize = centralParts.reduce((sum, part) => sum + part.length, 0)
+    const end = createZipEndRecord(files.length, centralSize, offset)
+    return new Blob([...localParts, ...centralParts, end], { type: 'application/zip' })
+  }
+
+  function createZipLocalHeader(name: Uint8Array, size: number, crc: number): Uint8Array {
+    const header = new Uint8Array(30)
+    const view = new DataView(header.buffer)
+    view.setUint32(0, 0x04034b50, true)
+    view.setUint16(4, 20, true)
+    view.setUint16(6, 0x0800, true)
+    view.setUint16(8, 0, true)
+    view.setUint16(10, 0, true)
+    view.setUint16(12, 0, true)
+    view.setUint32(14, crc, true)
+    view.setUint32(18, size, true)
+    view.setUint32(22, size, true)
+    view.setUint16(26, name.length, true)
+    view.setUint16(28, 0, true)
+    return header
+  }
+
+  function createZipCentralHeader(name: Uint8Array, size: number, crc: number, offset: number): Uint8Array {
+    const header = new Uint8Array(46)
+    const view = new DataView(header.buffer)
+    view.setUint32(0, 0x02014b50, true)
+    view.setUint16(4, 20, true)
+    view.setUint16(6, 20, true)
+    view.setUint16(8, 0x0800, true)
+    view.setUint16(10, 0, true)
+    view.setUint16(12, 0, true)
+    view.setUint16(14, 0, true)
+    view.setUint32(16, crc, true)
+    view.setUint32(20, size, true)
+    view.setUint32(24, size, true)
+    view.setUint16(28, name.length, true)
+    view.setUint16(30, 0, true)
+    view.setUint16(32, 0, true)
+    view.setUint16(34, 0, true)
+    view.setUint16(36, 0, true)
+    view.setUint32(38, 0, true)
+    view.setUint32(42, offset, true)
+    return header
+  }
+
+  function createZipEndRecord(fileCount: number, centralSize: number, centralOffset: number): Uint8Array {
+    const end = new Uint8Array(22)
+    const view = new DataView(end.buffer)
+    view.setUint32(0, 0x06054b50, true)
+    view.setUint16(8, fileCount, true)
+    view.setUint16(10, fileCount, true)
+    view.setUint32(12, centralSize, true)
+    view.setUint32(16, centralOffset, true)
+    view.setUint16(20, 0, true)
+    return end
+  }
+
+  function crc32(data: Uint8Array): number {
+    let crc = 0xffffffff
+    for (const byte of data) {
+      crc = (crc >>> 8) ^ CRC32_TABLE[(crc ^ byte) & 0xff]
+    }
+    return (crc ^ 0xffffffff) >>> 0
+  }
+
+  const CRC32_TABLE = new Uint32Array(Array.from({ length: 256 }, (_, index) => {
+    let value = index
+    for (let bit = 0; bit < 8; bit += 1) {
+      value = (value & 1) ? (0xedb88320 ^ (value >>> 1)) : (value >>> 1)
+    }
+    return value >>> 0
+  }))
 
   function extractCharacterCardFieldsFromRunDraft(runState: CharacterResourceRunState): Record<string, unknown> {
     const fields: Record<string, unknown> = {}
@@ -4589,6 +4823,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       },
       'chat-test': () => {
         void openCharacterWorkflowRunDraftInChat()
+      },
+      'download-run-draft': () => {
+        void downloadActiveCharacterWorkflowRunDraft()
       },
       'set-link-kind': () => {
         const kind = target?.dataset.resourceLinkKind || ''

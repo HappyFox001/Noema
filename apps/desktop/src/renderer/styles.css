@@ -11925,9 +11925,9 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   inset: 0;
   pointer-events: none;
   background:
-    linear-gradient(90deg, rgba(162, 202, 188, 0.075), transparent 24%),
+    linear-gradient(90deg, rgba(248, 250, 250, 0.035), transparent 24%),
     radial-gradient(circle at 50% 0, rgba(255, 255, 255, 0.05), transparent 36%);
-  opacity: 0.72;
+  opacity: 0.54;
 }
 
 @keyframes chat-workflow-inspector-enter {
@@ -12037,7 +12037,7 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
 .chat-workflow-sidebar-section strong,
 .chat-workflow-inspector-section h4,
 .chat-workflow-inspector-head span {
-  color: rgba(162, 202, 188, 0.64);
+  color: rgba(190, 194, 198, 0.58);
   font-family: var(--font-ui);
   font-size: 10px;
   font-weight: 760;
@@ -12148,7 +12148,7 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   width: 92px;
   height: 92px;
   border-radius: 999px;
-  background: rgba(162, 202, 188, 0.075);
+  background: rgba(248, 250, 250, 0.052);
   filter: blur(12px);
 }
 
@@ -12236,7 +12236,7 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   border: 1px solid rgba(82, 168, 255, 0.16);
   border-radius: 999px;
   background: rgba(82, 168, 255, 0.06);
-  color: rgba(162, 202, 188, 0.76);
+  color: rgba(190, 194, 198, 0.76);
   font-family: var(--font-ui);
   font-size: 8.5px;
   cursor: pointer;
@@ -12281,9 +12281,9 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
 .chat-workflow-inspector-field input:focus-visible,
 .chat-workflow-inspector-field select:focus-visible,
 .chat-workflow-inspector-field textarea:focus-visible {
-  border-color: rgba(162, 202, 188, 0.42);
-  background: rgba(12, 16, 16, 0.78);
-  box-shadow: 0 0 0 3px rgba(162, 202, 188, 0.08);
+  border-color: rgba(218, 222, 226, 0.28);
+  background: rgba(13, 14, 15, 0.82);
+  box-shadow: 0 0 0 3px rgba(248, 250, 250, 0.055);
 }
 
 .chat-workflow-inspector-field.is-dirty input,
@@ -14402,7 +14402,7 @@ body.chat-workflow-library-resizing * {
 .chat-resource-run-plane .chat-resource-node-header {
   min-height: 38px;
   border-bottom-color: rgba(248, 250, 250, 0.045);
-  background: linear-gradient(90deg, rgba(162, 202, 188, 0.055), transparent 58%);
+  background: linear-gradient(90deg, rgba(248, 250, 250, 0.04), transparent 58%);
 }
 
 .chat-resource-run-plane .chat-resource-node-header strong {
@@ -14434,7 +14434,7 @@ body.chat-workflow-library-resizing * {
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
-  color: rgba(218, 232, 224, 0.52);
+  color: rgba(216, 220, 224, 0.54);
   font-size: 11px;
   line-height: 1.42;
 }
@@ -14653,17 +14653,17 @@ body.chat-workflow-library-resizing * {
   z-index: 8;
   border-left: 1px solid rgba(248, 250, 250, 0.085);
   background:
-    radial-gradient(circle at 0 6%, rgba(162, 202, 188, 0.09), transparent 30%),
-    linear-gradient(90deg, rgba(4, 5, 6, 0.88), rgba(11, 13, 14, 0.985)),
-    rgba(8, 9, 10, 0.98);
+    radial-gradient(circle at 0 6%, rgba(248, 250, 250, 0.045), transparent 30%),
+    linear-gradient(90deg, rgba(3, 4, 5, 0.94), rgba(9, 10, 11, 0.99)),
+    rgba(5, 6, 7, 0.99);
   box-shadow:
     inset 1px 0 0 rgba(255, 255, 255, 0.036),
     -22px 0 48px rgba(0, 0, 0, 0.38);
 }
 
 .chat-run-character-scroll {
-  gap: 10px;
-  padding: 10px 12px 16px;
+  gap: 8px;
+  padding: 9px 10px 14px;
 }
 
 .chat-run-character-hero {
@@ -14672,12 +14672,12 @@ body.chat-workflow-library-resizing * {
   z-index: 2;
   display: grid;
   gap: 6px;
-  padding: 13px 12px 12px;
+  padding: 9px;
   border: 1px solid rgba(248, 250, 250, 0.075);
-  border-radius: 16px;
+  border-radius: 11px;
   background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.018)),
-    rgba(8, 10, 11, 0.82);
+    linear-gradient(145deg, rgba(255, 255, 255, 0.052), rgba(255, 255, 255, 0.014)),
+    rgba(7, 8, 9, 0.88);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.052),
     0 16px 40px rgba(0, 0, 0, 0.24);
@@ -14688,19 +14688,24 @@ body.chat-workflow-library-resizing * {
 .chat-run-character-hero img {
   width: 100%;
   height: auto;
-  max-height: min(280px, 36vh);
-  margin: 0 0 4px;
+  max-height: min(190px, 28vh);
+  margin: 0 0 2px;
   object-fit: cover;
   object-position: center 18%;
   border: 1px solid rgba(248, 250, 250, 0.075);
-  border-radius: 12px;
+  border-radius: 8px;
   background: rgba(255, 255, 255, 0.028);
+}
+
+.chat-run-character-hero-copy {
+  display: grid;
+  gap: 3px;
 }
 
 .chat-run-character-hero span,
 .chat-run-character-fields article span,
 .chat-run-character-carousel figcaption {
-  color: rgba(162, 202, 188, 0.58);
+  color: rgba(184, 188, 192, 0.56);
   font-family: var(--font-ui);
   font-size: 10px;
 }
@@ -14708,25 +14713,52 @@ body.chat-workflow-library-resizing * {
 .chat-run-character-hero strong {
   color: rgba(248, 250, 250, 0.92);
   font-family: var(--font-ui);
-  font-size: clamp(24px, 2.2vw, 32px);
-  font-weight: 760;
-  letter-spacing: -0.055em;
-  line-height: 0.98;
+  font-size: clamp(18px, 1.5vw, 24px);
+  font-weight: 720;
+  letter-spacing: -0.03em;
+  line-height: 1.08;
   text-wrap: balance;
+}
+
+.chat-run-character-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.chat-run-character-actions button {
+  height: 28px;
+  border: 1px solid rgba(248, 250, 250, 0.105);
+  border-radius: 7px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.018)),
+    rgba(7, 8, 9, 0.82);
+  color: rgba(220, 224, 228, 0.76);
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 680;
+  cursor: pointer;
+}
+
+.chat-run-character-actions button:hover,
+.chat-run-character-actions button:focus-visible {
+  border-color: rgba(248, 250, 250, 0.2);
+  color: rgba(248, 250, 250, 0.9);
+  background: rgba(248, 250, 250, 0.075);
 }
 
 .chat-run-character-fields {
   display: grid;
-  gap: 7px;
+  gap: 6px;
 }
 
 .chat-run-character-fields article {
   min-width: 0;
   display: grid;
-  gap: 4px;
-  padding: 9px 10px 10px;
+  gap: 3px;
+  padding: 7px;
   border: 1px solid rgba(255, 255, 255, 0.062);
-  border-radius: 11px;
+  border-radius: 8px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.042), rgba(255, 255, 255, 0.018));
   box-shadow:
@@ -14742,25 +14774,27 @@ body.chat-workflow-library-resizing * {
 .chat-run-character-fields article:nth-child(6) { animation-delay: 125ms; }
 
 .chat-run-character-fields article:hover {
-  border-color: rgba(162, 202, 188, 0.16);
+  border-color: rgba(248, 250, 250, 0.12);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.054), rgba(255, 255, 255, 0.022));
 }
 
 .chat-run-character-fields article p {
   margin: 0;
-  white-space: pre-wrap;
-  color: rgba(248, 250, 250, 0.72);
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  color: rgba(248, 250, 250, 0.64);
   font-family: var(--font-ui);
-  font-size: 11.5px;
-  line-height: 1.48;
-  text-wrap: pretty;
+  font-size: 11px;
+  line-height: 1.42;
 }
 
 .chat-run-character-carousel {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(210px, 78%);
+  grid-auto-columns: minmax(150px, 72%);
   gap: 8px;
   overflow-x: auto;
   padding: 2px 0 8px;
@@ -14778,10 +14812,10 @@ body.chat-workflow-library-resizing * {
 .chat-run-character-carousel img {
   width: 100%;
   height: auto;
-  max-height: min(430px, 54vh);
+  max-height: min(260px, 36vh);
   object-fit: contain;
   border: 1px solid rgba(248, 250, 250, 0.09);
-  border-radius: 12px;
+  border-radius: 9px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.018));
   box-shadow: 0 16px 34px rgba(0, 0, 0, 0.2);

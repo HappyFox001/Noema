@@ -1659,7 +1659,7 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
     selection: { nodeIds: viewState.selectedNodeIds?.length ? viewState.selectedNodeIds : [options.selectedNodeId || 'generation-goal'], linkIds: viewState.selectedLinkId ? [viewState.selectedLinkId] : [] },
     panels: {
       leftWidth: options.sidebarCollapsed ? 0 : 246,
-      rightWidth: options.inspectorCollapsed ? 0 : activeTab === 'run-draft' ? 360 : 252,
+      rightWidth: options.inspectorCollapsed ? 0 : activeTab === 'run-draft' ? 300 : 252,
       bottomHeight: 62,
       activePanel: options.activePanel,
     },
@@ -2315,8 +2315,14 @@ function renderRunCharacterInspector(options: CharacterWorkflowPageOptions): str
       <div class="chat-workflow-inspector-scroll chat-run-character-scroll">
         <header class="chat-run-character-hero">
           ${images[0]?.image ? `<img src="${options.escapeHtml(images[0].image)}" alt="${options.escapeHtml(ui(options, '角色图', 'Character image'))}">` : ''}
-          <span>${options.escapeHtml(ui(options, '角色资源', 'Character Resource'))}</span>
-          <strong>${options.escapeHtml(getRunCharacterTitle(rows, options))}</strong>
+          <div class="chat-run-character-hero-copy">
+            <span>${options.escapeHtml(ui(options, '角色资源', 'Character Resource'))}</span>
+            <strong>${options.escapeHtml(getRunCharacterTitle(rows, options))}</strong>
+          </div>
+          <div class="chat-run-character-actions">
+            <button type="button" data-chat-workflow-action="download-run-draft">${options.escapeHtml(ui(options, '下载', 'Download'))}</button>
+            <button type="button" data-chat-workflow-action="chat-test">${options.escapeHtml(ui(options, '聊天测试', 'Chat Test'))}</button>
+          </div>
         </header>
         <section class="chat-run-character-fields">
           ${rows.map((row) => `
@@ -2374,7 +2380,10 @@ function createRunCharacterRows(
       ? ui(options, '角色资源生成中', 'Character resources are being generated')
       : ui(options, '暂无角色资源', 'No character resources yet'))
   }
-  return rows.slice(0, 24)
+  return rows
+    .filter((row) => ![ui(options, '示例对话', 'Example Dialogue'), ui(options, '场景上下文', 'Scene Context')].includes(row.label))
+    .slice(0, 7)
+    .map((row) => ({ ...row, value: clampRunCharacterPreviewText(row.value, 220) }))
 }
 
 function getRunCharacterTitle(rows: Array<{ label: string; value: string }>, options: CharacterWorkflowPageOptions): string {
@@ -2489,6 +2498,11 @@ function formatRunCharacterFieldValue(value: unknown): string | undefined {
     return JSON.stringify(value, null, 2)
   }
   return undefined
+}
+
+function clampRunCharacterPreviewText(value: string, maxLength: number): string {
+  const normalized = value.replace(/\s+/g, ' ').trim()
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength).trim()}...` : normalized
 }
 
 function normalizeRunCharacterFieldValue(value: string | undefined): string {
