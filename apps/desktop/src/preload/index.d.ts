@@ -871,6 +871,19 @@ declare global {
           summary?: string
           confidence?: number
           status?: 'applied' | 'needs-user' | 'blocked'
+          decision?: {
+            id: string
+            title: string
+            description?: string
+            options: Array<{
+              id: string
+              label: string
+              detail?: string
+              patchHint?: string
+            }>
+            defaultOptionId?: string
+            allowSkip?: boolean
+          }
           goalPrompt: string
           targetAudience: string
           stylePrompt: string
@@ -907,6 +920,19 @@ declare global {
           completedSteps: string[]
           currentStep?: string
           nextStep?: string
+          decision?: {
+            id: string
+            title: string
+            description?: string
+            options: Array<{
+              id: string
+              label: string
+              detail?: string
+              patchHint?: string
+            }>
+            defaultOptionId?: string
+            allowSkip?: boolean
+          }
           createdAt: number
           updatedAt: number
           steps: Array<{
@@ -920,6 +946,19 @@ declare global {
             completedSteps: string[]
             currentStep?: string
             nextStep?: string
+            decision?: {
+              id: string
+              title: string
+              description?: string
+              options: Array<{
+                id: string
+                label: string
+                detail?: string
+                patchHint?: string
+              }>
+              defaultOptionId?: string
+              allowSkip?: boolean
+            }
             operations: Array<Record<string, unknown>>
             uiConfigOverrides: Record<string, Record<string, unknown>>
             createdAt: number
@@ -946,6 +985,19 @@ declare global {
               completedSteps?: string[]
               currentStep?: string
               nextStep?: string
+              decision?: {
+                id: string
+                title: string
+                description?: string
+                options: Array<{
+                  id: string
+                  label: string
+                  detail?: string
+                  patchHint?: string
+                }>
+                defaultOptionId?: string
+                allowSkip?: boolean
+              }
               operations?: Array<Record<string, unknown>>
               uiConfigOverrides?: Record<string, Record<string, unknown>>
               createdAt?: number
@@ -959,6 +1011,19 @@ declare global {
               completedSteps: string[]
               currentStep?: string
               nextStep?: string
+              decision?: {
+                id: string
+                title: string
+                description?: string
+                options: Array<{
+                  id: string
+                  label: string
+                  detail?: string
+                  patchHint?: string
+                }>
+                defaultOptionId?: string
+                allowSkip?: boolean
+              }
               updatedAt: number
             }
           }) => void

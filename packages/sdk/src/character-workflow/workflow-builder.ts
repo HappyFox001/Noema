@@ -79,6 +79,7 @@ export interface CharacterWorkflowBuilderSpec {
   summary: string
   confidence: number
   status: 'applied' | 'needs-user' | 'blocked'
+  decision?: CharacterWorkflowAgentDecision
   goalPrompt: string
   targetAudience: string
   stylePrompt: string
@@ -133,9 +134,26 @@ export interface CharacterWorkflowEditorAgentWork {
   completedSteps: string[]
   currentStep?: string
   nextStep?: string
+  decision?: CharacterWorkflowAgentDecision
   steps: CharacterWorkflowEditorAgentStep[]
   createdAt: number
   updatedAt: number
+}
+
+export interface CharacterWorkflowAgentDecisionOption {
+  id: string
+  label: string
+  detail?: string
+  patchHint?: string
+}
+
+export interface CharacterWorkflowAgentDecision {
+  id: string
+  title: string
+  description?: string
+  options: CharacterWorkflowAgentDecisionOption[]
+  defaultOptionId?: string
+  allowSkip?: boolean
 }
 
 export interface CharacterWorkflowEditorAgentStep {
@@ -149,6 +167,7 @@ export interface CharacterWorkflowEditorAgentStep {
   completedSteps: string[]
   currentStep?: string
   nextStep?: string
+  decision?: CharacterWorkflowAgentDecision
   operations: CharacterWorkflowBuilderOperation[]
   uiConfigOverrides: Record<string, Record<string, unknown>>
   createdAt: number
@@ -163,6 +182,11 @@ export type CharacterWorkflowAgentToolAction =
 
 const DEFAULT_REQUIRED_CHECKS = ['goal match', 'long-term RP', 'visual identity', 'field completeness', 'consistency']
 const DEFAULT_ASSET_TARGETS = ['role-card', 'opening', 'opening-layout', 'image-pack', 'generation-report']
+const WORKFLOW_EDITOR_DEFAULT_MAX_STEPS = 10
+const WORKFLOW_EDITOR_MIN_MAX_STEPS = 6
+const WORKFLOW_EDITOR_MAX_MAX_STEPS = 16
+const WORKFLOW_EDITOR_MAX_OPERATIONS_PER_STEP = 8
+const WORKFLOW_EDITOR_MAX_NODE_CONFIG_UPDATES_PER_STEP = 10
 
 export async function buildCharacterWorkflowFromPrompt(
   request: CharacterWorkflowBuilderRequest
@@ -326,6 +350,7 @@ async function editCharacterWorkflowFromPrompt(
     summary: summarizeEditorAgentWork(agentWork, request.language),
     confidence: agentWork.status === 'blocked' ? 0.3 : agentWork.status === 'needs-user' ? 0.55 : 0.82,
     status: agentWork.status === 'blocked' ? 'blocked' : agentWork.status === 'needs-user' ? 'needs-user' : 'applied',
+    decision: agentWork.decision,
     goalPrompt: '',
     targetAudience: '',
     stylePrompt: '',
@@ -363,7 +388,7 @@ async function runCharacterWorkflowEditorAgent(
   let currentStep = session?.currentStep
   let nextStep: string | undefined
   const steps: CharacterWorkflowEditorAgentStep[] = []
-  const maxSteps = 4
+  const maxSteps = getWorkflowEditorMaxSteps(initialGraph)
 
   for (let index = 0; index < maxSteps; index += 1) {
     const stepSession: CharacterWorkflowEditorSession = {
@@ -403,6 +428,7 @@ async function runCharacterWorkflowEditorAgent(
       completedSteps: spec.completedSteps ?? [],
       currentStep: spec.currentStep,
       nextStep: spec.nextStep,
+      decision: spec.decision,
       operations: spec.operations,
       uiConfigOverrides,
       createdAt: now + index,
@@ -443,6 +469,7 @@ async function runCharacterWorkflowEditorAgent(
     completedSteps,
     currentStep,
     nextStep: status === 'complete' ? undefined : nextStep,
+    decision: lastStep?.status === 'needs-user' ? lastStep.decision : undefined,
     steps,
     createdAt: now,
     updatedAt: Date.now(),
@@ -513,6 +540,7 @@ export function normalizeWorkflowBuilderSpec(
     summary: stringValue(parsed, 'summary'),
     confidence: numberValue(parsed, 'confidence', 0.74, 0, 1),
     status: normalizeBuilderStatus(stringValue(parsed, 'status')),
+    decision: normalizeWorkflowAgentDecision(parsed.decision),
     goalPrompt: stringValue(parsed, 'goalPrompt'),
     targetAudience: stringValue(parsed, 'targetAudience'),
     stylePrompt: stringValue(parsed, 'stylePrompt'),
@@ -545,7 +573,7 @@ export function normalizeWorkflowEditorSpec(
   const operations = operationList(parsed?.operations)
   const directUpdates = recordMapValue(parsed, 'nodeConfigUpdates')
   const normalizedGraph = normalizeBuilderGraph(graph)
-  const mergedUpdates = Object.fromEntries(Object.entries(directUpdates).slice(0, 6))
+  const mergedUpdates = Object.fromEntries(Object.entries(directUpdates).slice(0, WORKFLOW_EDITOR_MAX_NODE_CONFIG_UPDATES_PER_STEP))
   const mergedOperations = sanitizeWorkflowBuilderOperations([
     ...Object.entries(mergedUpdates).map(([nodeId, config]) => ({
       type: 'update-node-config' as const,
@@ -553,7 +581,7 @@ export function normalizeWorkflowEditorSpec(
       config,
     })),
     ...operations,
-  ], normalizedGraph).slice(0, 4)
+  ], normalizedGraph).slice(0, WORKFLOW_EDITOR_MAX_OPERATIONS_PER_STEP)
   return {
     name: stringValue(parsed, 'name') || deriveName(fallbackPrompt, fallbackName),
     plan: stringList(parsed, 'plan', []),
@@ -563,6 +591,7 @@ export function normalizeWorkflowEditorSpec(
     summary: stringValue(parsed, 'summary'),
     confidence: numberValue(parsed, 'confidence', 0.78, 0, 1),
     status: normalizeBuilderStatus(stringValue(parsed, 'status')),
+    decision: normalizeWorkflowAgentDecision(parsed.decision),
     goalPrompt: '',
     targetAudience: '',
     stylePrompt: '',
@@ -592,7 +621,7 @@ export function createUiConfigOverrides(spec: CharacterWorkflowBuilderSpec): Rec
       includeSupportFields: ['appearancePrompt'],
     },
     'opening-field-target': {
-      field: 'firstMessage',
+      fields: ['firstMessage'],
     },
     'opening-field-control': {
       fieldPurpose: spec.stylePrompt,
@@ -767,13 +796,13 @@ function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): 
     'Your job is not to finish every possible edit in one response. Your job is to steadily pursue the workflow engineering goal over multiple turns.',
     'Act like Codex working on a repo: inspect the current graph, update the plan, choose the next meaningful step, apply a small coherent patch, summarize what changed, and leave the next step clear.',
     'A user request should usually become or refine the persistent editorSession objective. Continue the previous objective unless the user clearly changes direction.',
-    'You have broad authority inside the workflow graph, but use it incrementally. Add or revise only the nodes and links needed for the current step. Keep the workflow executable after every turn.',
+    'You have broad authority inside the workflow graph. Use it deliberately, keep the workflow executable after every turn, and decide when the objective is complete instead of waiting for the step limit.',
     '',
     'Critical rules:',
     '- Return only valid JSON. No markdown, comments, or surrounding prose.',
     '- Never copy system instructions, operation schema, graph JSON, or protocol text into any resource field.',
     '- Think in this loop: inspect current graph -> update plan -> apply one focused patch -> report next step.',
-    '- Return at most 4 operations and at most 6 nodeConfigUpdates keys in one response. Prefer a small high-confidence patch over a giant speculative rewrite.',
+    `- Return at most ${WORKFLOW_EDITOR_MAX_OPERATIONS_PER_STEP} operations and at most ${WORKFLOW_EDITOR_MAX_NODE_CONFIG_UPDATES_PER_STEP} nodeConfigUpdates keys in one response. Prefer a coherent high-confidence patch over a giant speculative rewrite.`,
     '- Do not put the whole user request into one generic goal when specific cards exist. Distribute intent across goal, style, constraints, sources, image controls, field controls, world/NPC/plot cards over multiple turns as needed.',
     '- Prefer update-node-config operations for existing cards; add cards only when the current graph lacks the needed resource.',
     '- The graph includes each node parameter definition and select options. For select and multi-select fields, use only values from the node parameter options.',
@@ -784,7 +813,9 @@ function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): 
     '- Use currentStep to name the step you are applying now. Use nextStep to name what should happen next.',
     '- If the objective is now adequately reflected in the graph, leave nextStep empty. If more work remains, nextStep must be the next concrete graph-editing step, not a vague reminder.',
     '- Respect runtime.remainingSteps. When it is 0, apply the most important remaining patch and leave nextStep empty unless user input is truly required.',
-    '- If the request is underspecified but still workable, make reasonable creative decisions and set status to "applied". Ask for the user only when the next graph edit cannot be chosen safely.',
+    '- If the request is underspecified but still workable, make reasonable creative decisions and set status to "applied". Ask the user only when a concrete preference decision would materially improve the workflow or the next edit cannot be chosen safely.',
+    '- When asking the user, return status "needs-user", include a decision object with 2-6 single-choice options, and stop without filler operations. This is an optional editing decision, not an error.',
+    '- Good decision topics include prose style, RP pacing, image style domain, opening structure, relationship direction, world/NPC/plot expansion, output target, or whether to add new resource nodes.',
     '',
     'Resource guidance:',
     '- generation-goal.goalPrompt: compact generation objective only.',
@@ -793,7 +824,9 @@ function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): 
     '- hard-constraints.mustHave/mustNot: hard requirements and boundaries.',
     '- source-material.materials: imported image/document references. Material kinds are inferred from file type; do not ask users to hand-write material type remarks.',
     '- source-material.notes: optional concrete story material, setting facts, character seeds, world facts when no imported document exists.',
-    '- field-generation-control.fieldPurpose: local intent for one text field such as firstMessage/opening/dialogue style.',
+    '- character-field-target.fields: one field-target card can select multiple fields that share a local style/control purpose. Do not add duplicate field-target cards for ordinary field styling.',
+    '- field-generation-control.fieldPurpose: local intent for selected text fields such as opening, dialogue style, scenario, world facts, or appearance flavor. It controls style and shape, not final content.',
+    '- Every generated field must carry unique role-card information. Do not repeat the same relationship premise, visual fact, lore paragraph, or opening beat across multiple fields.',
     '- opening-layout-target: use this for the CSS/HTML-style role-card opening presentation that combines title, tags, opening text, and generated images. Prefer linked character-base-image assets as panel visual material; avatar and overview can remain linked but should not be the only image sources for the panel.',
     '- image-target.imageRole: use avatar for the first canonical avatar.jpg target, character-overview-sheet for the required built-in overview sheet, and character-base-image for any extra free-form non-avatar character sample images. Do not invent fixed categories such as cover, full-body, opening moment, story moment, expression, outfit detail, relationship moment, or world context.',
     '- image-target.assetPurpose: for character-base-image, describe the free-form meaning of the sample images: scene, action, pose, outfit usage, prop interaction, mood, and roleplay situation. For character-overview-sheet, keep the existing overview sheet purpose and do not turn it into a scene.',
@@ -818,6 +851,14 @@ function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): 
     '  "nextStep"?: string,',
     '  "confidence"?: number,',
     '  "status": "applied" | "needs-user" | "blocked",',
+    '  "decision"?: {',
+    '    "id": string,',
+    '    "title": string,',
+    '    "description"?: string,',
+    '    "options": [{ "id": string, "label": string, "detail"?: string, "patchHint"?: string }],',
+    '    "defaultOptionId"?: string,',
+    '    "allowSkip"?: boolean',
+    '  },',
     '  "nodeConfigUpdates"?: { [nodeId: string]: object },',
     '  "operations": [',
     '    { "type": "add-node", "nodeType": string, "nodeId"?: string, "title"?: string, "x"?: number, "y"?: number, "config"?: object },',
@@ -1050,7 +1091,7 @@ function applySpecToWorkflow(workflow: CharacterWorkflow, spec: CharacterWorkflo
     includeSupportFields: ['appearancePrompt'],
   })
   byType.get('character-field-target')?.config && Object.assign(byType.get('character-field-target')!.config, {
-    field: 'firstMessage',
+    fields: ['firstMessage'],
   })
   byType.get('field-generation-control')?.config && Object.assign(byType.get('field-generation-control')!.config, {
     fieldPurpose: spec.stylePrompt,
@@ -1243,6 +1284,53 @@ function hasWorkflowEditorEdits(parsed: Record<string, unknown>): boolean {
     return true
   }
   return Object.keys(recordMapValue(parsed, 'nodeConfigUpdates')).length > 0
+}
+
+function normalizeWorkflowAgentDecision(value: unknown): CharacterWorkflowAgentDecision | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined
+  }
+  const record = value as Record<string, unknown>
+  const title = stringValue(record, 'title')
+  const rawOptions = Array.isArray(record.options) ? record.options : []
+  const options = rawOptions.flatMap((item, index): CharacterWorkflowAgentDecisionOption[] => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      return []
+    }
+    const optionRecord = item as Record<string, unknown>
+    const label = stringValue(optionRecord, 'label')
+    if (!label) {
+      return []
+    }
+    const id = stringValue(optionRecord, 'id') || `option-${index + 1}`
+    return [{
+      id,
+      label,
+      detail: stringValue(optionRecord, 'detail') || undefined,
+      patchHint: stringValue(optionRecord, 'patchHint') || undefined,
+    }]
+  }).slice(0, 6)
+  if (!title || options.length < 2) {
+    return undefined
+  }
+  const defaultOptionId = stringValue(record, 'defaultOptionId')
+  return {
+    id: stringValue(record, 'id') || `decision-${Date.now()}`,
+    title,
+    description: stringValue(record, 'description') || undefined,
+    options,
+    defaultOptionId: options.some((option) => option.id === defaultOptionId) ? defaultOptionId : options[0]?.id,
+    allowSkip: typeof record.allowSkip === 'boolean' ? record.allowSkip : true,
+  }
+}
+
+function getWorkflowEditorMaxSteps(graph: CharacterWorkflowBuilderGraph): number {
+  const policyNode = graph.nodes.find((node) => node.id === 'agent-policy' || node.type === 'agent-policy')
+  const revisionBudget = typeof policyNode?.config?.revisionBudget === 'number'
+    ? policyNode.config.revisionBudget
+    : Number(policyNode?.config?.revisionBudget)
+  const configured = Number.isFinite(revisionBudget) ? Math.round(revisionBudget) : WORKFLOW_EDITOR_DEFAULT_MAX_STEPS
+  return Math.max(WORKFLOW_EDITOR_MIN_MAX_STEPS, Math.min(WORKFLOW_EDITOR_MAX_MAX_STEPS, configured))
 }
 
 function normalizeBuilderGraph(graph: CharacterWorkflowBuilderGraph | undefined): CharacterWorkflowBuilderGraph {

@@ -152,6 +152,7 @@ export interface AgentTargetContext {
   title: string
   config: Record<string, unknown>
   field?: string
+  fields?: string[]
   imageRole?: string
   imageAssetPurpose?: string
   requestedResources: string[]
@@ -2105,6 +2106,7 @@ function createFieldArtifactsForChangedFields(
     .filter(([field, value]) => isCharacterRunField(field) && JSON.stringify(beforeFields[field] ?? null) !== JSON.stringify(value ?? null))
     .map(([field, value]) => {
       const summary = summarizeValue(value)
+      const requirement = context.requirements.find((item) => item.kind === 'character-field' && item.field === field)
       return {
         id: `${draft.id}:field:${field}:${draft.updatedAt}`,
         kind: 'character-card-field',
@@ -2118,7 +2120,7 @@ function createFieldArtifactsForChangedFields(
           value,
           support: CHARACTER_SUPPORT_FIELD_SCHEMA.includes(field as any),
         },
-        sourceNodeId: context.goal.nodeId,
+        sourceNodeId: requirement?.targetNodeId ?? context.goal.nodeId,
       }
     })
 }
@@ -2583,8 +2585,9 @@ function createWorkflowRequirements(
 ): CharacterWorkflowRequirement[] {
   const requirements: CharacterWorkflowRequirement[] = []
   const fieldTargets = targets
-    .filter((target) => target.kind === 'character-field' && target.field)
-    .map((target) => ({ field: target.field!, target }))
+    .filter((target) => target.kind === 'character-field')
+    .flatMap((target) => (target.fields?.length ? target.fields : target.field ? [target.field] : [])
+      .map((field) => ({ field, target })))
   const cardTargets = targets.filter((target) => target.kind === 'character-card')
   const requiredFields = new Map<string, AgentTargetContext>()
   const hasImageTargets = targets.some((target) => target.kind === 'image')
@@ -2678,8 +2681,8 @@ function getNextMissingField(draft: CharacterCardDraft | undefined, context: Cha
 
 function getRequiredCharacterDraftFields(context: CharacterAgentRunContext): string[] {
   const fieldTargets = context.targets
-    .filter((target) => target.kind === 'character-field' && target.field)
-    .map((target) => target.field!)
+    .filter((target) => target.kind === 'character-field')
+    .flatMap((target) => target.fields?.length ? target.fields : target.field ? [target.field] : [])
   const cardTargets = context.targets.filter((target) => target.kind === 'character-card')
   const cardFields = cardTargets.flatMap((target) => [
     ...stringListValue(target.config.includeFields, [...CHARACTER_CARD_FIELD_SCHEMA]),
@@ -2755,7 +2758,65 @@ function validateCharacterOutputFormat(draft: CharacterCardDraft | undefined): s
       issues.push('firstMessage contains non-chat protocol tags')
     }
   }
+  issues.push(...detectOverlappingCharacterFields(draft?.fields ?? {}))
   return issues
+}
+
+function detectOverlappingCharacterFields(fields: Record<string, unknown>): string[] {
+  const checkedFields = [
+    'description',
+    'appearance',
+    'personality',
+    'background',
+    'scenario',
+    'worldContext',
+    'firstMessage',
+    'dialogueStyle',
+  ]
+  const normalized = checkedFields.flatMap((field) => {
+    const value = fields[field]
+    if (typeof value !== 'string') {
+      return []
+    }
+    const text = normalizeFieldOverlapText(value)
+    return text.length >= 80 ? [{ field, text }] : []
+  })
+  const issues: string[] = []
+  for (let leftIndex = 0; leftIndex < normalized.length; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < normalized.length; rightIndex += 1) {
+      const left = normalized[leftIndex]!
+      const right = normalized[rightIndex]!
+      if (left.text === right.text || hasLongSharedFieldPhrase(left.text, right.text)) {
+        issues.push(`Fields ${left.field} and ${right.field} contain overlapping content`)
+      }
+    }
+  }
+  return issues.slice(0, 4)
+}
+
+function normalizeFieldOverlapText(value: string): string {
+  return value
+    .replace(/<\/?chat>/gi, ' ')
+    .replace(/[，。！？、；：,.!?;:"'“”‘’()[\]{}<>]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+}
+
+function hasLongSharedFieldPhrase(left: string, right: string): boolean {
+  const shorter = left.length < right.length ? left : right
+  const longer = left.length < right.length ? right : left
+  if (shorter.length >= 120 && longer.includes(shorter)) {
+    return true
+  }
+  const windowSize = 48
+  for (let index = 0; index + windowSize <= shorter.length; index += 16) {
+    const slice = shorter.slice(index, index + windowSize).trim()
+    if (slice.length >= windowSize && longer.includes(slice)) {
+      return true
+    }
+  }
+  return false
 }
 
 function repairCharacterOutputFormat(draft: CharacterCardDraft, now: number): CharacterCardDraft {
@@ -3003,7 +3064,8 @@ function createAgentTargetContexts(
         kind,
         title: node.title,
         config: { ...node.config },
-        field: kind === 'character-field' ? stringValue(node.config.field) : undefined,
+        field: kind === 'character-field' ? fieldTargetConfigFields(node.config)[0] : undefined,
+        fields: kind === 'character-field' ? fieldTargetConfigFields(node.config) : undefined,
         imageRole: kind === 'image' ? stringValue(node.config.imageRole) : undefined,
         imageAssetPurpose: kind === 'image' ? stringValue(node.config.assetPurpose) : undefined,
         requestedResources: requestedResourcesForTarget(node, kind),
@@ -3039,7 +3101,7 @@ function requestedResourcesForTarget(node: CharacterWorkflowNode, kind: AgentTar
     return ['character-card', ...stringListValue(node.config.includeFields), ...stringListValue(node.config.includeSupportFields)]
   }
   if (kind === 'character-field') {
-    return [`field:${stringValue(node.config.field, 'firstMessage')}`]
+    return fieldTargetConfigFields(node.config).map((field) => `field:${field}`)
   }
   if (kind === 'opening-layout') {
     return ['opening-layout', ...stringListValue(node.config.includeSections)]
@@ -3064,6 +3126,13 @@ function requestedResourcesForTarget(node: CharacterWorkflowNode, kind: AgentTar
     return [`plot-arc:${stringValue(node.config.arcShape, 'slow-burn')}`]
   }
   return ['scene-card', ...stringListValue(node.config.sceneTypes)]
+}
+
+function fieldTargetConfigFields(config: Record<string, unknown>): string[] {
+  const fields = stringListValue(config.fields)
+    .map((field) => normalizeDraftFieldName(field))
+    .filter(Boolean)
+  return [...new Set(fields.length ? fields : ['firstMessage'])]
 }
 
 function isLocallyConnected(relations: CharacterAgentRelation[], targetNodeId: string, controlNodeId: string): boolean {

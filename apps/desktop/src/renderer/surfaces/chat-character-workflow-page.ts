@@ -558,7 +558,7 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'Appearance Prompt', value: 'appearancePrompt' },
     ]),
   ], 'package'),
-  createDefinition('character-field-target', 'Character Field Target', ['字段', 'field target', '局部字段'], 'Targets', 'asset', 'Declares a single card field as an independently controllable target resource.', [
+  createDefinition('character-field-target', 'Character Field Target', ['字段', 'field target', '局部字段'], 'Targets', 'asset', 'Declares one field-control resource that can shape several card fields without duplicating final content.', [
     slot('card', 'Character Card', 'character-card-resource', 'Character card target.'),
     slot('style', 'Style', 'style-signal', 'Local field style pressure.'),
     slot('constraint', 'Constraint', 'hard-constraint', 'Local field constraints.'),
@@ -566,7 +566,7 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
   ], [
     slot('field', 'Field', 'field-resource', 'Field target resource.'),
   ], [
-    param('field', 'Field', 'select', 'firstMessage', undefined, undefined, undefined, [
+    param('fields', 'Fields', 'multi-select', ['firstMessage'], undefined, undefined, undefined, [
       { label: 'Name', value: 'name' },
       { label: 'Description', value: 'description' },
       { label: 'Appearance', value: 'appearance' },
@@ -1874,124 +1874,148 @@ function animateRunDraftCanvas(root: HTMLElement, cleanups: Array<() => void>): 
   const previous = runDraftMotionSnapshots.get(root)
   runDraftMotionSnapshots.set(root, snapshot)
   runViewport.dataset.runDraftInitialized = 'true'
-  if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
-    let reverted = false
-    import('gsap').then(({ gsap }) => {
-      if (reverted || !runViewport.isConnected) {
-        return
-      }
-      const ctx = gsap.context(() => {
-        const nodes = gsap.utils.toArray<HTMLElement>('.chat-resource-node')
-        const links = gsap.utils.toArray<SVGPathElement>('.chat-resource-link')
-          .flatMap((link) => gsap.utils.toArray<SVGPathElement>('path:not(.hit-area)', link))
-        const newNodes = nodes.filter((node) => !previous?.nodes.has(node.dataset.chatWorkflowNodeId ?? ''))
-        const movedNodes = nodes.flatMap((node) => {
-          const nodeId = node.dataset.chatWorkflowNodeId ?? ''
-          const before = previous?.nodes.get(nodeId)
-          const after = snapshot.nodes.get(nodeId)
-          if (!before || !after) return []
-          const dx = before.x - after.x
-          const dy = before.y - after.y
-          return Math.abs(dx) > 1 || Math.abs(dy) > 1 ? [{ node, dx, dy }] : []
+  const shouldAnimateRunGrowth = runViewport.classList.contains('run-status-running') && Boolean(previous)
+  if (!shouldAnimateRunGrowth || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    return
+  }
+  const nodes = Array.from(runViewport.querySelectorAll<HTMLElement>('.chat-resource-node'))
+  const linkGroups = Array.from(runViewport.querySelectorAll<SVGGElement>('.chat-resource-link'))
+  const visibleNodeIds = new Set(previous?.nodes.keys() ?? [])
+  const newNodes = nodes.filter((node) => !visibleNodeIds.has(node.dataset.chatWorkflowNodeId ?? ''))
+  const newNodeIds = new Set(newNodes.map((node) => node.dataset.chatWorkflowNodeId ?? '').filter(Boolean))
+  const newLinkGroups = linkGroups.filter((link) => {
+    const linkId = link.getAttribute('data-chat-resource-link-id') ?? ''
+    return !previous?.links.has(linkId) || [...newNodeIds].some((nodeId) => linkId.endsWith(`->${nodeId}`))
+  })
+  newNodes.forEach((node) => {
+    node.style.opacity = '0'
+    node.style.visibility = 'hidden'
+    node.style.transformOrigin = '50% 0%'
+  })
+  newLinkGroups
+    .flatMap((link) => Array.from(link.querySelectorAll<SVGPathElement>('path:not(.hit-area)')))
+    .forEach((path) => {
+      const length = Math.max(1, Math.ceil(path.getTotalLength?.() ?? 80))
+      path.style.opacity = '0'
+      path.style.strokeDasharray = `${length}`
+      path.style.strokeDashoffset = `${length}`
+    })
+  let reverted = false
+  import('gsap').then(({ gsap }) => {
+    if (reverted || !runViewport.isConnected) {
+      return
+    }
+    const ctx = gsap.context(() => {
+      const movedNodes = nodes.flatMap((node) => {
+        const nodeId = node.dataset.chatWorkflowNodeId ?? ''
+        const before = previous?.nodes.get(nodeId)
+        const after = snapshot.nodes.get(nodeId)
+        if (!before || !after || newNodeIds.has(nodeId)) return []
+        const dx = before.x - after.x
+        const dy = before.y - after.y
+        return Math.abs(dx) > 1 || Math.abs(dy) > 1 ? [{ node, dx, dy }] : []
+      })
+      gsap.killTweensOf([
+        ...nodes,
+        ...linkGroups.flatMap((link) => Array.from(link.querySelectorAll<SVGPathElement>('path:not(.hit-area)'))),
+      ])
+      if (movedNodes.length) {
+        gsap.fromTo(movedNodes.map((item) => item.node), {
+          x: (index) => movedNodes[index]?.dx ?? 0,
+          y: (index) => movedNodes[index]?.dy ?? 0,
+        }, {
+          x: 0,
+          y: 0,
+          duration: 0.48,
+          ease: 'expo.out',
+          clearProps: 'transform',
         })
-        const newLinks = links.filter((link) => !previous?.links.has(link.closest<SVGElement>('.chat-resource-link')?.getAttribute('data-chat-resource-link-id') ?? ''))
-        gsap.killTweensOf([...nodes, ...links])
-        if (!previous) {
-          const timeline = gsap.timeline({ defaults: { ease: 'power3.out' } })
-          timeline.from(nodes, {
+      }
+      const timelineNodes = newNodes
+        .filter((node) => node.dataset.chatWorkflowNodeId !== 'run-input-source')
+        .slice()
+        .sort((a, b) => Number(a.dataset.runOrder || 0) - Number(b.dataset.runOrder || 0))
+      const timeline = gsap.timeline({ defaults: { ease: 'power3.out' } })
+      if (!previous) {
+        const inputNode = runViewport.querySelector<HTMLElement>('[data-chat-workflow-node-id="run-input-source"]')
+        if (inputNode) {
+          timeline.fromTo(inputNode, {
             autoAlpha: 0,
-            y: 14,
-            scale: 0.965,
-            duration: 0.34,
-            stagger: { each: 0.035, from: 'start' },
-            clearProps: 'visibility,opacity,transform',
-          })
-          timeline.from(links, {
-            autoAlpha: 0,
-            strokeDasharray: 18,
-            strokeDashoffset: 44,
-            duration: 0.42,
-            stagger: 0.018,
-            clearProps: 'visibility,opacity,strokeDasharray,strokeDashoffset',
-          }, '<0.08')
-          return
-        }
-        if (movedNodes.length) {
-          gsap.fromTo(movedNodes.map((item) => item.node), {
-            x: (index) => movedNodes[index]?.dx ?? 0,
-            y: (index) => movedNodes[index]?.dy ?? 0,
-            scale: 0.992,
+            y: -8,
+            scale: 0.985,
           }, {
-            x: 0,
+            autoAlpha: 1,
             y: 0,
             scale: 1,
-            duration: 0.58,
-            ease: 'expo.out',
-            clearProps: 'transform',
-          })
-        }
-        if (newNodes.length) {
-          const sourceNode = runViewport.querySelector<HTMLElement>('[data-chat-workflow-node-id="run-agent-source"]')
-          const sourceRect = sourceNode?.getBoundingClientRect()
-          const timeline = gsap.timeline({ defaults: { ease: 'power3.out' } })
-          timeline.fromTo(newNodes, {
-            autoAlpha: 0,
-            x: (_index, target) => {
-              if (!sourceRect || !(target instanceof HTMLElement)) return -34
-              const rect = target.getBoundingClientRect()
-              return sourceRect.left + sourceRect.width * 0.68 - (rect.left + rect.width * 0.16)
-            },
-            y: (_index, target) => {
-              if (!sourceRect || !(target instanceof HTMLElement)) return -10
-              const rect = target.getBoundingClientRect()
-              return sourceRect.top + sourceRect.height * 0.56 - (rect.top + rect.height * 0.34)
-            },
-            scaleX: 0.12,
-            scaleY: 0.48,
-            filter: 'brightness(1.36) saturate(1.18)',
-            transformOrigin: '12% 42%',
-          }, {
-            autoAlpha: 1,
-            x: 0,
-            y: 0,
-            scaleX: 1,
-            scaleY: 1,
-            filter: 'brightness(1) saturate(1)',
-            duration: 0.68,
-            stagger: { each: 0.095, from: 'start' },
-            ease: 'expo.out',
-            clearProps: 'visibility,opacity,transform,filter,transformOrigin',
-          })
-          const revealText = newNodes.flatMap((node) => Array.from(node.querySelectorAll<HTMLElement>('.chat-resource-node-content strong, .chat-resource-node-content p')))
-          timeline.from(revealText, {
-            autoAlpha: 0,
-            y: 7,
-            duration: 0.32,
-            stagger: 0.024,
+            duration: 0.36,
             clearProps: 'visibility,opacity,transform',
-          }, '<0.22')
+          })
         }
-        if (newLinks.length) {
-          gsap.fromTo(newLinks, {
-            autoAlpha: 0,
-            strokeDasharray: 24,
-            strokeDashoffset: 58,
-          }, {
+      }
+      timelineNodes.forEach((node, index) => {
+        const nodeId = node.dataset.chatWorkflowNodeId ?? ''
+        const incoming = newLinkGroups.find((link) => (link.getAttribute('data-chat-resource-link-id') ?? '').endsWith(`->${nodeId}`))
+        const paths = incoming
+          ? Array.from(incoming.querySelectorAll<SVGPathElement>('path:not(.hit-area)'))
+          : []
+        const label = `run-node-${index}`
+        timeline.addLabel(label, index === 0 ? '+=0.08' : '+=0.13')
+        if (paths.length) {
+          timeline.to(paths, {
             autoAlpha: 1,
             strokeDashoffset: 0,
-            duration: 0.72,
-            stagger: 0.04,
+            duration: 0.48,
             ease: 'power2.out',
             clearProps: 'visibility,opacity,strokeDasharray,strokeDashoffset',
-          })
+          }, label)
         }
-      }, runViewport)
-      cleanups.push(() => ctx.revert())
+        timeline.fromTo(node, {
+          autoAlpha: 0,
+          y: -18,
+          scaleY: 0.12,
+          scaleX: 0.96,
+          filter: 'brightness(1.28) saturate(1.16)',
+          transformOrigin: '50% 0%',
+        }, {
+          autoAlpha: 1,
+          y: 0,
+          scaleY: 1,
+          scaleX: 1,
+          filter: 'brightness(1) saturate(1)',
+          duration: 0.52,
+          ease: 'expo.out',
+          clearProps: 'visibility,opacity,transform,filter,transformOrigin',
+        }, `${label}+=0.28`)
+        const content = Array.from(node.querySelectorAll<HTMLElement>('.chat-resource-node-content strong, .chat-resource-node-content p, .chat-resource-node-content img, .chat-resource-image-actions'))
+        if (content.length) {
+          timeline.from(content, {
+            autoAlpha: 0,
+            y: 8,
+            duration: 0.28,
+            stagger: 0.035,
+            clearProps: 'visibility,opacity,transform',
+          }, `${label}+=0.46`)
+        }
+      })
+    }, runViewport)
+    cleanups.push(() => ctx.revert())
+  }).catch(() => {
+    newNodes.forEach((node) => {
+      node.style.opacity = ''
+      node.style.visibility = ''
+      node.style.transformOrigin = ''
     })
-    cleanups.push(() => {
-      reverted = true
-    })
-  }
+    newLinkGroups
+      .flatMap((link) => Array.from(link.querySelectorAll<SVGPathElement>('path:not(.hit-area)')))
+      .forEach((path) => {
+        path.style.opacity = ''
+        path.style.strokeDasharray = ''
+        path.style.strokeDashoffset = ''
+      })
+  })
+  cleanups.push(() => {
+    reverted = true
+  })
   cleanups.push(() => {
     delete runViewport.dataset.runDraftInitialized
   })
@@ -2707,29 +2731,41 @@ function normalizeRunCharacterFieldValue(value: string | undefined): string {
   return String(value ?? '').replace(/\r\n/g, '\n').trim()
 }
 
+function getRunInputSummary(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): string {
+  const goalNode = graph.nodes.find((node) => node.id === 'generation-goal' || node.type === 'goal')
+  const goalPrompt = typeof goalNode?.config.goalPrompt === 'string' ? goalNode.config.goalPrompt.trim() : ''
+  const targetAudience = typeof goalNode?.config.targetAudience === 'string' ? goalNode.config.targetAudience.trim() : ''
+  const eventSummary = normalizeRunEvents(options.runState)
+    .find((event) => event.type === 'user.input.graph')?.summary?.trim() ?? ''
+  return goalPrompt
+    || targetAudience
+    || eventSummary
+    || ui(options, '当前资源图作为本次运行的原始输入。', 'The current resource graph is the original input for this run.')
+}
+
 function createRunDraftCanvasGraph(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): CharacterResourceGraph {
   const artifacts = getRunCanvasArtifacts(options.runState?.artifacts ?? [])
   const status = options.runState?.run?.status ?? 'idle'
-  const sourceNodeId = 'run-agent-source'
+  const sourceNodeId = 'run-input-source'
+  const inputSummary = getRunInputSummary(graph, options)
   const nodes: CharacterResourceNode[] = [{
     id: sourceNodeId,
-    type: 'agent-policy',
-    title: ui(options, 'Agent 运行', 'Agent Run'),
-    position: options.positionOverrides?.[sourceNodeId] ?? { x: 72, y: 112 },
-    size: { width: 210, height: 126 },
+    type: 'goal',
+    title: ui(options, '原始输入', 'Original Input'),
+    position: options.positionOverrides?.[sourceNodeId] ?? { x: 96, y: 238 },
+    size: { width: 330, height: 130 },
     status: status === 'failed' || status === 'needs_action' ? 'failed' : status === 'done' ? 'done' : status === 'running' ? 'running' : 'idle',
     zIndex: 1,
-    config: {},
+    config: { runTimelineRoot: true },
   }]
   const outputs: CharacterResourceOutput[] = [{
     id: 'run-agent-source-output',
-    nodeId: 'run-agent-source',
+    nodeId: sourceNodeId,
     type: 'agent-run',
-    title: ui(options, '自主生成角色卡', 'Autonomous character generation'),
-    summary: status === 'running'
-      ? ui(options, 'Agent 正在把配置转化为角色字段和资源。', 'The agent is turning config into character fields and assets.')
-      : ui(options, '运行后这里会串联新增字段、资源和图片。', 'New fields, resources, and images will be chained here after running.'),
+    title: ui(options, '用户原始输入', 'User original input'),
+    summary: inputSummary,
     status: nodes[0].status,
+    text: inputSummary,
   }]
   const links: CharacterResourceLink[] = []
   const compactArtifacts = artifacts.length
@@ -2744,6 +2780,7 @@ function createRunDraftCanvasGraph(graph: CharacterResourceGraph, options: Chara
           data: undefined,
         }]
       : []
+  let previousNodeId = sourceNodeId
   compactArtifacts.forEach((artifact, index) => {
     const nodeId = `run-artifact-${sanitizeResourceId(artifact.id || artifact.type || String(index))}`
     const nodeType = getRunArtifactNodeType(artifact.type)
@@ -2758,10 +2795,13 @@ function createRunDraftCanvasGraph(graph: CharacterResourceGraph, options: Chara
         x: placement.x,
         y: placement.y,
       },
-      size: image ? { width: 226, height: 178 } : { width: 238, height: 134 },
+      size: image ? { width: 320, height: 196 } : { width: 320, height: 128 },
       status: artifactStatus,
       zIndex: index + 2,
-      config: getRunArtifactNodeConfig(artifact),
+      config: {
+        ...getRunArtifactNodeConfig(artifact),
+        runOrder: index + 1,
+      },
     })
     outputs.push({
       id: `${nodeId}-output`,
@@ -2776,7 +2816,8 @@ function createRunDraftCanvasGraph(graph: CharacterResourceGraph, options: Chara
       text: getArtifactText(artifact.data),
       data: artifact.data,
     })
-    links.push(createRunResourceLink('run-agent-source', nodeId, getRunExecutionLabel(artifact.type, options), index))
+    links.push(createRunResourceLink(previousNodeId, nodeId, getRunExecutionLabel(artifact.type, options), index))
+    previousNodeId = nodeId
   })
   const selectedNodeId = resolveRunDraftSelectedNodeId(nodes, artifacts, options)
   return {
@@ -2789,7 +2830,7 @@ function createRunDraftCanvasGraph(graph: CharacterResourceGraph, options: Chara
     viewport: {
       x: options.viewState?.panX ?? 0,
       y: options.viewState?.panY ?? 0,
-      zoom: options.viewState?.zoom ?? 0.94,
+      zoom: options.viewState?.zoom ?? 0.92,
     },
     selection: { nodeIds: [selectedNodeId], linkIds: [] },
     outputs,
@@ -2813,50 +2854,21 @@ function resolveRunDraftSelectedNodeId(
       return imageNodeId
     }
   }
-  return nodes[nodes.length - 1]?.id ?? 'run-agent-source'
+  return nodes[nodes.length - 1]?.id ?? 'run-input-source'
 }
 
 function getRunArtifactPlacement(artifact: NonNullable<CharacterResourceRunState['artifacts']>[number], index: number): { x: number; y: number } {
-  if (artifact.type === 'source-material') {
-    const lane = getStableRunLaneIndex(artifact.id || artifact.title || String(index), 5)
-    const jitter = getStableRunOffset(artifact.id || artifact.title || String(index), 18, 12)
-    return { x: 344 + (lane % 2) * 286 + jitter.x, y: 48 + Math.floor(lane / 2) * 156 + jitter.y }
-  }
-  if (artifact.type === 'character-card-field') {
-    const data = artifact.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
-      ? artifact.data as Record<string, unknown>
-      : {}
-    const field = typeof data.field === 'string' ? data.field : ''
-    const order = ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'worldContext', 'firstMessage', 'dialogueStyle']
-    const fieldIndex = Math.max(0, order.indexOf(field))
-    const lane = fieldIndex % 3
-    const row = Math.floor(fieldIndex / 3)
-    const jitter = getStableRunOffset(field || artifact.id || String(index), 22, 18)
-    return { x: 344 + lane * 286 + jitter.x, y: 50 + row * 158 + jitter.y }
-  }
-  if (artifact.type === 'opening-message' || artifact.type === 'dialogue-style-guide' || artifact.type === 'world-context' || artifact.type === 'scene-context') {
-    const order = ['world-context', 'scene-context', 'opening-message', 'dialogue-style-guide']
-    const row = Math.max(0, order.indexOf(artifact.type))
-    const jitter = getStableRunOffset(artifact.type, 24, 16)
-    return { x: 640 + jitter.x, y: 568 + row * 142 + jitter.y }
-  }
-  if (artifact.type === 'image-asset' || artifact.type === 'image-attempt' || artifact.type === 'stale-marker') {
-    const targetKey = getRunArtifactTargetNodeId(artifact) || artifact.sourceNodeId || artifact.id || String(index)
-    const imageIndex = Math.max(0, getStableRunLaneIndex(targetKey, 4))
-    const lane = artifact.type === 'image-asset' ? 0 : artifact.type === 'image-attempt' ? 1 : 2
-    const jitter = getStableRunOffset(`${artifact.type}:${targetKey}`, 28, 24)
-    return { x: 1060 + lane * 256 + jitter.x, y: 72 + imageIndex * 190 + jitter.y }
-  }
-  if (artifact.type === 'quality-report' || artifact.type === 'generation-report' || artifact.type === 'export-package' || artifact.type === 'candidate-pack') {
-    const reportIndex = getStableRunLaneIndex(artifact.id || artifact.type || String(index), 5)
-    const jitter = getStableRunOffset(artifact.id || artifact.type || String(index), 20, 18)
-    return { x: 1570 + jitter.x, y: 82 + reportIndex * 148 + jitter.y }
-  }
-  const stableIndex = getStableRunLaneIndex(artifact.id || artifact.type || String(index), 6)
-  const jitter = getStableRunOffset(artifact.id || artifact.type || String(index), 30, 20)
+  const key = `${artifact.id || artifact.type || index}:${artifact.sourceNodeId || ''}`
+  const columns = 3
+  const column = index % columns
+  const row = Math.floor(index / columns)
+  const rowWave = [0, 34, -24, 18][row % 4] ?? 0
+  const columnWave = [0, -18, 22][column] ?? 0
+  const jitter = getStableRunOffset(key, 14, 10)
+  const imageNudge = artifact.type === 'image-asset' || artifact.type === 'image-attempt' ? 14 : 0
   return {
-    x: 700 + (stableIndex % 2) * 288 + jitter.x,
-    y: 78 + Math.floor(stableIndex / 2) * 162 + jitter.y,
+    x: 506 + column * 372 + columnWave + jitter.x + imageNudge,
+    y: 132 + row * 244 + rowWave + jitter.y,
   }
 }
 
@@ -2936,7 +2948,27 @@ function getCharacterFieldArtifactLabel(artifact: NonNullable<CharacterResourceR
 }
 
 function getRunCanvasArtifacts(artifacts: NonNullable<CharacterResourceRunState['artifacts']>): NonNullable<CharacterResourceRunState['artifacts']> {
-  const filtered = getRoleResourceArtifacts(artifacts)
+  const allowed = new Set([
+    'character-card-draft',
+    'source-material',
+    'character-card-field',
+    'character-card-final',
+    'opening-message',
+    'opening-layout',
+    'dialogue-style-guide',
+    'world-context',
+    'scene-context',
+    'image-prompt',
+    'image-attempt',
+    'image-asset',
+    'stale-marker',
+    'candidate-pack',
+    'quality-report',
+    'export-package',
+    'generation-report',
+  ])
+  const filtered = artifacts
+    .filter((artifact) => allowed.has(artifact.type))
     .filter((artifact) => artifact.type !== 'character-card-draft')
     .filter((artifact) => !isHiddenRunCanvasFieldArtifact(artifact))
   return filtered.some((artifact) => artifact.type === 'character-card-field')
@@ -3266,14 +3298,17 @@ function renderLinkPath(linkItem: CharacterResourceLink, graph: CharacterResourc
   if (!source || !target) {
     return ''
   }
+  const isRunLink = linkItem.id.startsWith('run-link-')
   const sourceSlot = getSlotOffset(source, getOutputIndex(source.type, linkItem.sourceSlotId), 'output')
   const targetSlot = getSlotOffset(target, getInputIndex(target.type, linkItem.targetSlotId), 'input')
-  const x1 = source.position.x + source.size.width + sourceSlot.x
-  const y1 = source.position.y + sourceSlot.y
-  const x2 = target.position.x + targetSlot.x
-  const y2 = target.position.y + targetSlot.y
-  const mid = Math.max(80, Math.abs(x2 - x1) * 0.45)
-  const path = `M ${x1} ${y1} C ${x1 + mid} ${y1}, ${x2 - mid} ${y2}, ${x2} ${y2}`
+  const x1 = isRunLink ? source.position.x + source.size.width / 2 : source.position.x + source.size.width + sourceSlot.x
+  const y1 = isRunLink ? source.position.y + source.size.height : source.position.y + sourceSlot.y
+  const x2 = isRunLink ? target.position.x + target.size.width / 2 : target.position.x + targetSlot.x
+  const y2 = isRunLink ? target.position.y : target.position.y + targetSlot.y
+  const mid = isRunLink ? Math.max(48, Math.abs(y2 - y1) * 0.42) : Math.max(80, Math.abs(x2 - x1) * 0.45)
+  const path = isRunLink
+    ? `M ${x1} ${y1} C ${x1} ${y1 + mid}, ${x2} ${y2 - mid}, ${x2} ${y2}`
+    : `M ${x1} ${y1} C ${x1 + mid} ${y1}, ${x2 - mid} ${y2}, ${x2} ${y2}`
   const flowing = source.status === 'running' || source.status === 'queued' || target.status === 'running' || target.status === 'queued'
   const collapsedNodeLinkReroute = Boolean(source.collapsed || target.collapsed)
   const highlighted = options.viewState?.agentHighlights?.linkIds?.includes(linkItem.id) ?? false
@@ -3299,11 +3334,12 @@ function renderResourceNode(node: CharacterResourceNode, graph: CharacterResourc
   const output = graph.outputs.find((item) => item.nodeId === node.id)
   const runField = typeof node.config.runField === 'string' ? node.config.runField : ''
   const runFieldClass = runField ? `run-field-${sanitizeResourceId(runField)} ${node.config.runFieldSupport ? 'run-field-support' : 'run-field-card'}` : ''
+  const runOrder = typeof node.config.runOrder === 'number' ? String(node.config.runOrder) : ''
   const virtualMaterialClass = getVirtualMaterialNodeClass(node)
   const highlighted = options.viewState?.agentHighlights?.nodeIds?.includes(node.id) ?? false
   const actionLabel = options.viewState?.agentHighlights?.nodeActions?.[node.id] ?? ''
   return `
-    <article class="chat-workflow-node chat-resource-node ${node.status} ${node.type} ${definition.category} ${virtualMaterialClass} ${runFieldClass} ${highlighted ? 'agent-highlight-node' : ''} ${selected ? 'selected' : ''} ${node.collapsed ? 'collapsed' : ''}" style="--node-x: ${node.position.x}px; --node-y: ${node.position.y}px; --node-w: ${node.size.width}px; --node-h: ${node.size.height}px; z-index: ${node.zIndex}" data-chat-workflow-node-id="${options.escapeHtml(node.id)}" data-chat-workflow-node-select="${options.escapeHtml(node.id)}" data-resource-node-type="${options.escapeHtml(node.type)}" data-run-artifact-id="${options.escapeHtml(output?.artifactId ?? '')}" data-run-artifact-type="${options.escapeHtml(output?.type ?? '')}" data-run-target-node-id="${options.escapeHtml(output?.sourceNodeId ?? '')}" data-run-field="${options.escapeHtml(runField)}" data-agent-op-label="${options.escapeHtml(actionLabel)}">
+    <article class="chat-workflow-node chat-resource-node ${node.status} ${node.type} ${definition.category} ${virtualMaterialClass} ${runFieldClass} ${highlighted ? 'agent-highlight-node' : ''} ${selected ? 'selected' : ''} ${node.collapsed ? 'collapsed' : ''}" style="--node-x: ${node.position.x}px; --node-y: ${node.position.y}px; --node-w: ${node.size.width}px; --node-h: ${node.size.height}px; z-index: ${node.zIndex}" data-chat-workflow-node-id="${options.escapeHtml(node.id)}" data-chat-workflow-node-select="${options.escapeHtml(node.id)}" data-resource-node-type="${options.escapeHtml(node.type)}" data-run-artifact-id="${options.escapeHtml(output?.artifactId ?? '')}" data-run-artifact-type="${options.escapeHtml(output?.type ?? '')}" data-run-target-node-id="${options.escapeHtml(output?.sourceNodeId ?? '')}" data-run-field="${options.escapeHtml(runField)}" data-run-order="${options.escapeHtml(runOrder)}" data-agent-op-label="${options.escapeHtml(actionLabel)}">
       ${renderNodeHeader(node, definition, options)}
       ${renderNodeSlots(node, definition, options)}
       ${renderNodeWidgets(node, definition, options)}

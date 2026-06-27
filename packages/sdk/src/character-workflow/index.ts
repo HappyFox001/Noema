@@ -628,7 +628,7 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     title: 'Character Field Target',
     category: 'targets',
     executor: 'agent',
-    description: 'Declares a single character-card field as an independently controllable target resource.',
+    description: 'Declares one field-control resource that can shape several character-card fields without duplicating final content.',
     inputs: {
       card: port('card', 'Card', 'asset-target'),
       style: port('style', 'Style', 'style-signal'),
@@ -637,7 +637,7 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     },
     outputs: { field: port('field', 'Field', 'asset-target') },
     parameters: [
-      parameter('field', 'Field', 'select', 'firstMessage', undefined, [
+      parameter('fields', 'Fields', 'multi-select', ['firstMessage'], undefined, [
         option('Name', 'name'),
         option('Description', 'description'),
         option('Appearance', 'appearance'),
@@ -1709,7 +1709,7 @@ function createDefaultCharacterWorkflowExecutors(): Partial<Record<CharacterNode
       sourceNodeId: node.id,
       createdAt: timestamp,
       targets: {
-        requested: [`field:${stringConfig(config.field, 'firstMessage')}`],
+        requested: fieldTargetConfigFields(config).map((field) => `field:${field}`),
         includeAlternates: false,
       },
     }],
@@ -2107,6 +2107,13 @@ function connectEdges(items: Array<[string, string, string, string, CharacterWor
 
 function stringConfig(value: unknown, fallback: string): string {
   return typeof value === 'string' ? value : fallback
+}
+
+function fieldTargetConfigFields(config: Record<string, unknown>): string[] {
+  const values = Array.isArray(config.fields)
+    ? config.fields.map((item) => String(item).trim()).filter(Boolean)
+    : []
+  return values.length ? values : ['firstMessage']
 }
 
 function requireStringConfig(value: unknown, path: string): string {

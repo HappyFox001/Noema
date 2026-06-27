@@ -121,6 +121,7 @@ interface CharacterWorkflowGoalSession {
   currentStep?: string
   nextStep?: string
   status: 'active' | 'paused' | 'needs-user' | 'blocked' | 'complete'
+  pendingDecision?: CharacterWorkflowAgentDecision
   history: Array<{
     id?: string
     stepIndex?: number
@@ -134,6 +135,22 @@ interface CharacterWorkflowGoalSession {
     createdAt: number
   }>
   updatedAt: number
+}
+
+interface CharacterWorkflowAgentDecision {
+  id: string
+  title: string
+  description?: string
+  options: CharacterWorkflowAgentDecisionOption[]
+  defaultOptionId?: string
+  allowSkip?: boolean
+}
+
+interface CharacterWorkflowAgentDecisionOption {
+  id: string
+  label: string
+  detail?: string
+  patchHint?: string
 }
 
 interface CharacterWorkflowProjectRunRecord {
@@ -2538,7 +2555,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           goalPrompt: '',
           configOverrides: {
             'character-card-target': { includeFields: ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'firstMessage', 'dialogueStyle', 'worldContext'], includeSupportFields: ['appearancePrompt'] },
-            'opening-field-target': { field: 'firstMessage' },
+            'opening-field-target': { fields: ['firstMessage'] },
             'opening-field-control': { lengthPolicy: 'medium' },
             'avatar-image-target': { imageRole: 'avatar', assetPurpose: 'Final avatar.jpg for the role card: one polished single-character role-card portrait with one clear face, visible body silhouette, strong appeal, and stable identity cues.' },
             'avatar-image-control': { targetImageCount: 1, imageStyleDomain: 'auto', shotType: 'knee-up', consistencyMode: 'same-character', seedMode: 'lock-character' },
@@ -2629,8 +2646,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const records = getWorkflowAssistantStatusRecords()
     const project = characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)
     const session = normalizeCharacterWorkflowGoalSession(project?.goalSession)
+    const pendingDecision = session?.pendingDecision
     const hasRecords = records.length > 0
-    const canContinue = Boolean(session?.nextStep && session.status !== 'paused' && session.status !== 'blocked' && session.status !== 'complete' && !characterWorkflowBuilderBusy)
+    const canContinue = Boolean(session?.nextStep && !pendingDecision && session.status !== 'paused' && session.status !== 'blocked' && session.status !== 'complete' && !characterWorkflowBuilderBusy)
     const canPause = Boolean(session && session.status === 'active' && !characterWorkflowBuilderBusy)
     const canResume = Boolean(session && session.status === 'paused' && !characterWorkflowBuilderBusy)
     const canStop = Boolean(session && session.status !== 'complete' && !characterWorkflowBuilderBusy)
@@ -2671,6 +2689,29 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
                   <p>${options.escapeHtml(record.body)}</p>
                 </article>
               `).join('')}
+            </div>
+          </section>
+        ` : ''}
+        ${pendingDecision ? `
+          <section class="chat-workflow-canvas-assistant-decision" aria-live="polite">
+            <header>
+              <span>${options.escapeHtml(zh ? '需要选择' : 'Decision needed')}</span>
+              <strong>${options.escapeHtml(pendingDecision.title)}</strong>
+            </header>
+            ${pendingDecision.description ? `<p>${options.escapeHtml(pendingDecision.description)}</p>` : ''}
+            <div class="chat-workflow-canvas-assistant-decision-options">
+              ${pendingDecision.options.map((optionItem) => `
+                <button type="button" data-chat-workflow-decision-option="${options.escapeHtml(optionItem.id)}" ${characterWorkflowBuilderBusy ? 'disabled' : ''}>
+                  <strong>${options.escapeHtml(optionItem.label)}</strong>
+                  ${optionItem.detail ? `<span>${options.escapeHtml(optionItem.detail)}</span>` : ''}
+                </button>
+              `).join('')}
+              ${pendingDecision.allowSkip ? `
+                <button type="button" class="secondary" data-chat-workflow-decision-option="__skip" ${characterWorkflowBuilderBusy ? 'disabled' : ''}>
+                  <strong>${options.escapeHtml(zh ? '交给 Agent 决定' : 'Let agent decide')}</strong>
+                  <span>${options.escapeHtml(zh ? '继续使用合理默认偏好编辑资源图' : 'Continue with a reasonable default editing preference')}</span>
+                </button>
+              ` : ''}
             </div>
           </section>
         ` : ''}
@@ -3271,6 +3312,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       currentStep: typeof session.currentStep === 'string' ? session.currentStep : undefined,
       nextStep: typeof session.nextStep === 'string' ? session.nextStep : undefined,
       status,
+      pendingDecision: normalizeWorkflowAgentDecision((session as CharacterWorkflowGoalSession & { pendingDecision?: unknown }).pendingDecision),
       history: Array.isArray(session.history)
         ? session.history.flatMap((item): CharacterWorkflowGoalSession['history'] => {
           if (!item || typeof item !== 'object') return []
@@ -3290,6 +3332,43 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         }).slice(-12)
         : [],
       updatedAt: Math.max(0, Math.round(Number(session.updatedAt) || Date.now())),
+    }
+  }
+
+  function normalizeWorkflowAgentDecision(value: unknown): CharacterWorkflowAgentDecision | undefined {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return undefined
+    }
+    const record = value as Record<string, unknown>
+    const title = typeof record.title === 'string' ? record.title.trim() : ''
+    const rawOptions = Array.isArray(record.options) ? record.options : []
+    const decisionOptions = rawOptions.flatMap((item, index): CharacterWorkflowAgentDecisionOption[] => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) {
+        return []
+      }
+      const option = item as Record<string, unknown>
+      const label = typeof option.label === 'string' ? option.label.trim() : ''
+      if (!label) {
+        return []
+      }
+      return [{
+        id: typeof option.id === 'string' && option.id.trim() ? option.id.trim() : `option-${index + 1}`,
+        label,
+        detail: typeof option.detail === 'string' && option.detail.trim() ? option.detail.trim() : undefined,
+        patchHint: typeof option.patchHint === 'string' && option.patchHint.trim() ? option.patchHint.trim() : undefined,
+      }]
+    }).slice(0, 6)
+    if (!title || decisionOptions.length < 2) {
+      return undefined
+    }
+    const defaultOptionId = typeof record.defaultOptionId === 'string' ? record.defaultOptionId.trim() : ''
+    return {
+      id: typeof record.id === 'string' && record.id.trim() ? record.id.trim() : `decision-${Date.now()}`,
+      title,
+      description: typeof record.description === 'string' && record.description.trim() ? record.description.trim() : undefined,
+      options: decisionOptions,
+      defaultOptionId: decisionOptions.some((option) => option.id === defaultOptionId) ? defaultOptionId : decisionOptions[0]?.id,
+      allowSkip: typeof record.allowSkip === 'boolean' ? record.allowSkip : true,
     }
   }
 
@@ -3436,6 +3515,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     completedSteps: string[]
     currentStep?: string
     nextStep?: string
+    decision?: CharacterWorkflowAgentDecision
     updatedAt: number
     steps: Array<{
       id: string
@@ -3448,9 +3528,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       uiConfigOverrides: Record<string, Record<string, unknown>>
       currentStep?: string
       nextStep?: string
+      decision?: CharacterWorkflowAgentDecision
       createdAt: number
     }>
   }, fallbackObjective: string): CharacterWorkflowGoalSession {
+    const lastDecision = normalizeWorkflowAgentDecision(agentWork.decision ?? agentWork.steps[agentWork.steps.length - 1]?.decision)
     return {
       objective: agentWork.objective || fallbackObjective,
       plan: Array.isArray(agentWork.plan) ? agentWork.plan.filter((item): item is string => typeof item === 'string') : [],
@@ -3458,6 +3540,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       currentStep: agentWork.currentStep,
       nextStep: agentWork.nextStep,
       status: agentWork.status,
+      pendingDecision: agentWork.status === 'needs-user' ? lastDecision : undefined,
       history: agentWork.steps.map((step) => ({
         id: step.id,
         stepIndex: step.index,
@@ -3560,6 +3643,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         completedSteps?: string[]
         currentStep?: string
         nextStep?: string
+        decision?: CharacterWorkflowAgentDecision
         status?: string
         operations?: Array<Record<string, unknown>>
       }
@@ -3573,6 +3657,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         completedSteps: string[]
         currentStep?: string
         nextStep?: string
+        decision?: CharacterWorkflowAgentDecision
         updatedAt: number
         steps: Array<{
           id: string
@@ -3585,6 +3670,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           uiConfigOverrides: Record<string, Record<string, unknown>>
           currentStep?: string
           nextStep?: string
+          decision?: CharacterWorkflowAgentDecision
           createdAt: number
         }>
       }
@@ -3602,6 +3688,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const agentWork = response.agentWork
     if (agentWork) {
       const status = agentWork.status === 'complete' ? 'complete' : agentWork.status
+      const lastDecision = normalizeWorkflowAgentDecision(agentWork.decision ?? agentWork.steps[agentWork.steps.length - 1]?.decision)
       project.goalSession = {
         ...current,
         objective: agentWork.objective || current.objective,
@@ -3610,6 +3697,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         currentStep: typeof agentWork.currentStep === 'string' && agentWork.currentStep.trim() ? agentWork.currentStep.trim() : current.currentStep,
         nextStep: typeof agentWork.nextStep === 'string' && agentWork.nextStep.trim() ? agentWork.nextStep.trim() : undefined,
         status,
+        pendingDecision: status === 'needs-user' ? lastDecision : undefined,
         history: [
           ...dedupeWorkflowGoalHistory([
             ...current.history,
@@ -3645,6 +3733,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       currentStep: typeof spec.currentStep === 'string' && spec.currentStep.trim() ? spec.currentStep.trim() : current.currentStep,
       nextStep: typeof spec.nextStep === 'string' && spec.nextStep.trim() ? spec.nextStep.trim() : current.nextStep,
       status,
+        pendingDecision: status === 'needs-user' ? normalizeWorkflowAgentDecision(spec.decision) : undefined,
       history: [
         ...current.history,
         {
@@ -3675,6 +3764,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       completedSteps?: string[]
       currentStep?: string
       nextStep?: string
+      decision?: CharacterWorkflowAgentDecision
       operations?: Array<Record<string, unknown>>
       uiConfigOverrides?: Record<string, Record<string, unknown>>
       createdAt?: number
@@ -3695,6 +3785,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       completedSteps: step.completedSteps,
       currentStep: step.currentStep,
       nextStep: step.nextStep,
+      decision: step.decision,
       status: step.status,
       operations: step.operations,
     }
@@ -3714,6 +3805,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       currentStep: typeof step.currentStep === 'string' && step.currentStep.trim() ? step.currentStep.trim() : current.currentStep,
       nextStep: typeof step.nextStep === 'string' && step.nextStep.trim() ? step.nextStep.trim() : current.nextStep,
       status,
+      pendingDecision: status === 'needs-user' ? normalizeWorkflowAgentDecision(step.decision) : undefined,
       history: dedupeWorkflowGoalHistory([
         ...current.history,
         {
@@ -3774,6 +3866,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       ...session,
       status,
       nextStep: status === 'complete' ? undefined : session.nextStep,
+      pendingDecision: status === 'complete' ? undefined : session.pendingDecision,
       history: [
         ...session.history,
         {
@@ -3795,10 +3888,57 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   function continueActiveWorkflowGoalSession(): void {
     const project = characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)
     const session = normalizeCharacterWorkflowGoalSession(project?.goalSession)
-    if (!session?.nextStep || session.status === 'paused' || session.status === 'blocked' || session.status === 'complete') {
+    if (!session?.nextStep || session.pendingDecision || session.status === 'paused' || session.status === 'blocked' || session.status === 'complete') {
       return
     }
     characterWorkflowAssistantPrompt = session.nextStep
+    void applyCharacterWorkflowAssistantPrompt()
+  }
+
+  function chooseWorkflowAgentDecisionOption(optionId: string): void {
+    const project = characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)
+    const session = normalizeCharacterWorkflowGoalSession(project?.goalSession)
+    const decision = session?.pendingDecision
+    if (!project || !session || !decision || characterWorkflowBuilderBusy) {
+      return
+    }
+    const zh = options.getLanguage() === 'zh-CN'
+    const optionItem = optionId === '__skip'
+      ? undefined
+      : decision.options.find((item) => item.id === optionId)
+    if (optionId !== '__skip' && !optionItem) {
+      return
+    }
+    const choiceLabel = optionItem?.label ?? (zh ? '交给 Agent 决定' : 'Let agent decide')
+    const choiceDetail = optionItem?.detail ? `\n${optionItem.detail}` : ''
+    const patchHint = optionItem?.patchHint || session.nextStep || ''
+    characterWorkflowAssistantPrompt = [
+      zh ? `用户选择：${choiceLabel}` : `User selected: ${choiceLabel}`,
+      choiceDetail,
+      patchHint ? `${zh ? '继续编辑方向' : 'Continue editing direction'}: ${patchHint}` : '',
+    ].filter(Boolean).join('\n')
+    project.goalSession = {
+      ...session,
+      pendingDecision: undefined,
+      status: 'active',
+      nextStep: patchHint || session.nextStep,
+      history: [
+        ...session.history,
+        {
+          userRequest: choiceLabel,
+          summary: zh
+            ? `已选择「${choiceLabel}」，Agent 将据此继续编辑资源图。`
+            : `Selected "${choiceLabel}"; the agent will continue editing the workflow from this preference.`,
+          status: 'decision-selected',
+          operations: 0,
+          currentStep: session.currentStep,
+          nextStep: patchHint || session.nextStep,
+          createdAt: Date.now(),
+        },
+      ].slice(-16),
+      updatedAt: Date.now(),
+    }
+    saveActiveWorkflowProjectSnapshot()
     void applyCharacterWorkflowAssistantPrompt()
   }
 
@@ -4006,6 +4146,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       plan?: string[]
       confidence?: number
       status?: string
+      decision?: CharacterWorkflowAgentDecision
       operations?: Array<Record<string, unknown>>
     }
     uiConfigOverrides?: Record<string, Record<string, unknown>>
@@ -6644,6 +6785,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     if (eventTarget === chatHistoryPanel) {
       closeChatHistoryManager()
+      return
+    }
+
+    const workflowDecisionOption = eventTarget.closest<HTMLElement>('[data-chat-workflow-decision-option]')
+    if (workflowDecisionOption && panel.contains(workflowDecisionOption)) {
+      chooseWorkflowAgentDecisionOption(workflowDecisionOption.dataset.chatWorkflowDecisionOption || '')
       return
     }
 
