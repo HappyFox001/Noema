@@ -756,6 +756,28 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'Same World', value: 'same-world' },
       { label: 'Independent Images', value: 'independent' },
     ]),
+    param('poseGoals', 'Pose Goals', 'string-list', []),
+    param('backgroundInteraction', 'Background Interaction', 'textarea', ''),
+    param('appealMode', 'Appeal Mode', 'select', 'sensual-confidence', undefined, undefined, undefined, [
+      { label: 'Natural', value: 'natural' },
+      { label: 'Romantic', value: 'romantic' },
+      { label: 'Sensual Confidence', value: 'sensual-confidence' },
+      { label: 'Erotic Tension', value: 'erotic-tension' },
+      { label: 'Dramatic', value: 'dramatic' },
+      { label: 'Mysterious', value: 'mysterious' },
+    ]),
+    param('sensualityLevel', 'Sensuality Level', 'select', 'sensual', undefined, undefined, undefined, [
+      { label: 'Subtle', value: 'subtle' },
+      { label: 'Sensual', value: 'sensual' },
+      { label: 'Erotic', value: 'erotic' },
+      { label: 'Explicit', value: 'explicit' },
+    ]),
+    param('wardrobeExposure', 'Wardrobe Exposure', 'select', 'stylish-revealing', undefined, undefined, undefined, [
+      { label: 'Covered', value: 'covered' },
+      { label: 'Stylish Revealing', value: 'stylish-revealing' },
+      { label: 'Lingerie / Swimwear', value: 'lingerie-swimwear' },
+      { label: 'Implied Nude', value: 'implied-nude' },
+    ]),
     param('seedMode', 'Seed Mode', 'select', 'lock-character', undefined, undefined, undefined, [
       { label: 'Lock Character', value: 'lock-character' },
       { label: 'Vary Slightly', value: 'vary-slightly' },

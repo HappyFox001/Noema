@@ -115,6 +115,11 @@ export interface AgentImageGenerationControl {
   targetImageCount: number
   imageStyleDomain: string
   stylePrompt: string
+  poseGoals: string[]
+  backgroundInteraction: string
+  appealMode: string
+  sensualityLevel: string
+  wardrobeExposure: string
   shotType: string
   aspectRatio: string
   consistencyMode: string
@@ -629,6 +634,11 @@ export function compileCharacterAgentRunContext(
     targetImageCount: numberValue(node.config.targetImageCount, 1),
     imageStyleDomain: stringValue(node.config.imageStyleDomain, 'auto'),
     stylePrompt: stringValue(node.config.stylePrompt),
+    poseGoals: stringListValue(node.config.poseGoals),
+    backgroundInteraction: stringValue(node.config.backgroundInteraction),
+    appealMode: stringValue(node.config.appealMode, 'sensual-confidence'),
+    sensualityLevel: stringValue(node.config.sensualityLevel, 'sensual'),
+    wardrobeExposure: stringValue(node.config.wardrobeExposure, 'stylish-revealing'),
     shotType: stringValue(node.config.shotType, 'auto'),
     aspectRatio: stringValue(node.config.aspectRatio, '1:1'),
     consistencyMode: stringValue(node.config.consistencyMode, 'same-character'),
