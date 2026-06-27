@@ -6625,6 +6625,17 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     upsertCharacterResourceLink(detail)
   })
 
+  panel.addEventListener('character-resource-node-context', (event) => {
+    const nodeId = (event as CustomEvent<{ nodeId?: string }>).detail?.nodeId ?? ''
+    if (!nodeId) {
+      return
+    }
+    selectedWorkflowNodeId = nodeId
+    characterResourceViewState.selectedNodeIds = [nodeId]
+    characterResourceViewState.selectedLinkId = ''
+    characterWorkflowEditorState.nodeSearchOpen = false
+  })
+
   panel.addEventListener('click', (event) => {
     const eventTarget = event.target as HTMLElement
     if (eventTarget === conversationSettingsPanel) {

@@ -15881,6 +15881,10 @@ body.chat-workflow-library-resizing * {
   cursor: pointer;
 }
 
+.chat-resource-context-menu button[hidden] {
+  display: none;
+}
+
 .chat-resource-context-menu button:hover,
 .chat-resource-context-menu button:focus-visible {
   border-color: rgba(82, 168, 255, 0.36);

@@ -1275,17 +1275,39 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
         return
       }
       event.preventDefault()
+      const targetNode = (event.target as HTMLElement | null)?.closest<HTMLElement>('.chat-resource-node')
+      const context = targetNode ? 'node' : 'canvas'
+      const nodeId = targetNode?.dataset.chatWorkflowNodeId ?? ''
+      if (nodeId) {
+        root.dispatchEvent(new CustomEvent('character-resource-node-context', {
+          bubbles: true,
+          detail: { nodeId },
+        }))
+      }
+      contextMenu.dataset.resourceContext = context
+      contextMenu.dataset.resourceContextNode = nodeId
+      contextMenu.querySelectorAll<HTMLButtonElement>('[data-resource-menu-scope]').forEach((item) => {
+        const scope = item.dataset.resourceMenuScope ?? 'all'
+        item.hidden = scope !== 'all' && scope !== context
+      })
       contextMenu.classList.add('is-open')
-      contextMenu.style.left = `${event.offsetX}px`
-      contextMenu.style.top = `${event.offsetY}px`
-      contextMenu.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus()
+      const canvasRect = canvas.getBoundingClientRect()
+      const menuRect = contextMenu.getBoundingClientRect()
+      const padding = 8
+      const rawX = event.clientX - canvasRect.left
+      const rawY = event.clientY - canvasRect.top
+      const maxX = Math.max(padding, canvasRect.width - menuRect.width - padding)
+      const maxY = Math.max(padding, canvasRect.height - menuRect.height - padding)
+      contextMenu.style.left = `${Math.min(Math.max(rawX, padding), maxX)}px`
+      contextMenu.style.top = `${Math.min(Math.max(rawY, padding), maxY)}px`
+      contextMenu.querySelector<HTMLButtonElement>('[role="menuitem"]:not([hidden])')?.focus()
     }
     const closeContextMenu = () => contextMenu?.classList.remove('is-open')
     const handleContextMenuKey = (event: KeyboardEvent) => {
       if (!contextMenu?.classList.contains('is-open')) {
         return
       }
-      const menuItems = Array.from(contextMenu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'))
+      const menuItems = Array.from(contextMenu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not([hidden])'))
       const activeIndex = Math.max(0, menuItems.findIndex((item) => item === document.activeElement))
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         event.preventDefault()
@@ -3904,16 +3926,16 @@ function renderNodeSearchPopover(graph: CharacterResourceGraph, options: Charact
 function renderCanvasContextMenu(options: CharacterWorkflowPageOptions): string {
   return `
     <div class="chat-resource-context-menu" role="menu" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '画布菜单' : 'Canvas menu')}">
-      <button type="button" role="menuitem" data-chat-workflow-action="open-node-search">${options.escapeHtml(ui(options, '添加节点', 'Add Node'))}</button>
-      <button type="button" role="menuitem" data-chat-workflow-action="fit-view">${options.escapeHtml(ui(options, '适配视图', 'Fit View'))}</button>
-      <button type="button" role="menuitem" data-chat-workflow-action="copy-selection">${options.escapeHtml(ui(options, '复制', 'Copy'))}</button>
-      <button type="button" role="menuitem" data-chat-workflow-action="paste-selection">${options.escapeHtml(ui(options, '粘贴', 'Paste'))}</button>
-      <button type="button" role="menuitem" data-chat-workflow-action="duplicate-selection">${options.escapeHtml(ui(options, '复制副本', 'Duplicate'))}</button>
-      <button type="button" role="menuitem" data-chat-workflow-action="undo-graph">${options.escapeHtml(ui(options, '撤销', 'Undo'))}</button>
-      <button type="button" role="menuitem" data-chat-workflow-action="redo-graph">${options.escapeHtml(ui(options, '重做', 'Redo'))}</button>
-      <button type="button" role="menuitem" data-chat-workflow-action="align-left">${options.escapeHtml(ui(options, '左对齐', 'Align Left'))}</button>
-      <button type="button" role="menuitem" data-chat-workflow-action="align-top">${options.escapeHtml(ui(options, '顶对齐', 'Align Top'))}</button>
-      <button class="danger" type="button" role="menuitem" data-chat-workflow-action="delete-selection">${options.escapeHtml(ui(options, '删除', 'Delete'))}</button>
+      <button type="button" role="menuitem" data-resource-menu-scope="canvas" data-chat-workflow-action="open-node-search">${options.escapeHtml(ui(options, '添加节点', 'Add Node'))}</button>
+      <button type="button" role="menuitem" data-resource-menu-scope="all" data-chat-workflow-action="fit-view">${options.escapeHtml(ui(options, '适配视图', 'Fit View'))}</button>
+      <button type="button" role="menuitem" data-resource-menu-scope="node" data-chat-workflow-action="copy-selection">${options.escapeHtml(ui(options, '复制', 'Copy'))}</button>
+      <button type="button" role="menuitem" data-resource-menu-scope="canvas" data-chat-workflow-action="paste-selection">${options.escapeHtml(ui(options, '粘贴', 'Paste'))}</button>
+      <button type="button" role="menuitem" data-resource-menu-scope="node" data-chat-workflow-action="duplicate-selection">${options.escapeHtml(ui(options, '复制副本', 'Duplicate'))}</button>
+      <button type="button" role="menuitem" data-resource-menu-scope="all" data-chat-workflow-action="undo-graph">${options.escapeHtml(ui(options, '撤销', 'Undo'))}</button>
+      <button type="button" role="menuitem" data-resource-menu-scope="all" data-chat-workflow-action="redo-graph">${options.escapeHtml(ui(options, '重做', 'Redo'))}</button>
+      <button type="button" role="menuitem" data-resource-menu-scope="node" data-chat-workflow-action="align-left">${options.escapeHtml(ui(options, '左对齐', 'Align Left'))}</button>
+      <button type="button" role="menuitem" data-resource-menu-scope="node" data-chat-workflow-action="align-top">${options.escapeHtml(ui(options, '顶对齐', 'Align Top'))}</button>
+      <button class="danger" type="button" role="menuitem" data-resource-menu-scope="node" data-chat-workflow-action="delete-selection">${options.escapeHtml(ui(options, '删除', 'Delete'))}</button>
     </div>
   `
 }
