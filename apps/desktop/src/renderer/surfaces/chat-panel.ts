@@ -3380,8 +3380,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     if (spec.sourceNotes && !configOverrides['source-material']) {
       configOverrides['source-material'] = {
-        sourceKind: 'notes',
         notes: spec.sourceNotes,
+        materials: [],
       }
     }
     const project: CharacterWorkflowProjectRecord = {
@@ -4603,6 +4603,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       case 'toggle-sidebar':
         toggleCharacterWorkflowSidebar()
         break
+      case 'add-materials':
+        void addCharacterWorkflowMaterials(target?.dataset.chatWorkflowNode || selectedWorkflowNodeId)
+        break
+      case 'remove-material':
+        removeCharacterWorkflowMaterial(target?.dataset.chatWorkflowNode || selectedWorkflowNodeId, target?.dataset.materialId || '')
+        break
       default:
         if (!executeCharacterResourceCommand(action, target)) {
           showToast(options.getLanguage() === 'zh-CN' ? '资源图操作待接入' : 'Resource graph action pending')
@@ -5479,6 +5485,74 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     renderCharacterWorkflow()
   }
 
+  async function addCharacterWorkflowMaterials(nodeId: string): Promise<void> {
+    if (!nodeId) {
+      return
+    }
+    try {
+      const response = await window.electronAPI.selectChatMaterials()
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to select materials')
+      }
+      if (response.canceled || !response.materials?.length) {
+        return
+      }
+      pushCharacterResourceUndoSnapshot()
+      characterWorkflowConfigOverrides[nodeId] ??= {}
+      const current = normalizeWorkflowMaterialConfig(characterWorkflowConfigOverrides[nodeId].materials)
+      const incoming = response.materials.map((material, index) => ({
+        id: `${Date.now().toString(36)}-${index}-${sanitizeWorkflowResourceId(material.name || material.kind)}`,
+        ...material,
+      }))
+      characterWorkflowConfigOverrides[nodeId].materials = dedupeWorkflowMaterials([...current, ...incoming])
+      selectedWorkflowNodeId = nodeId
+      characterResourceViewState.selectedNodeIds = [nodeId]
+      characterResourceViewState.selectedLinkId = ''
+      saveActiveWorkflowProjectSnapshot()
+      renderCharacterWorkflow()
+      showToast(options.getLanguage() === 'zh-CN' ? `已添加 ${incoming.length} 个素材` : `Added ${incoming.length} material(s)`)
+    } catch (error: any) {
+      showToast(error?.message || String(error))
+    }
+  }
+
+  function removeCharacterWorkflowMaterial(nodeId: string, materialId: string): void {
+    if (!nodeId || !materialId) {
+      return
+    }
+    const ownerNodeId = nodeId.startsWith('source-material-item-') ? 'source-material' : nodeId
+    const current = normalizeWorkflowMaterialConfig(characterWorkflowConfigOverrides[ownerNodeId]?.materials)
+    const next = current.filter((material) => material.id !== materialId)
+    if (next.length === current.length) {
+      return
+    }
+    pushCharacterResourceUndoSnapshot()
+    characterWorkflowConfigOverrides[ownerNodeId] ??= {}
+    characterWorkflowConfigOverrides[ownerNodeId].materials = next
+    selectedWorkflowNodeId = ownerNodeId
+    characterResourceViewState.selectedNodeIds = [ownerNodeId]
+    saveActiveWorkflowProjectSnapshot()
+    renderCharacterWorkflow()
+  }
+
+  function normalizeWorkflowMaterialConfig(value: unknown): Array<Record<string, any>> {
+    return Array.isArray(value)
+      ? value.filter((item): item is Record<string, any> => Boolean(item) && typeof item === 'object' && !Array.isArray(item))
+      : []
+  }
+
+  function dedupeWorkflowMaterials(materials: Array<Record<string, any>>): Array<Record<string, any>> {
+    const seen = new Set<string>()
+    return materials.filter((material) => {
+      const key = [material.kind, material.name, material.mimeType, material.size].join(':')
+      if (seen.has(key)) {
+        return false
+      }
+      seen.add(key)
+      return true
+    })
+  }
+
   function deriveCharacterWorkflowConfig(config: Record<string, unknown>): Record<string, unknown> {
     const nextConfig = { ...config }
     if (typeof nextConfig.preset === 'string' && !Object.prototype.hasOwnProperty.call(nextConfig, 'stylePrompt')) {
@@ -5650,6 +5724,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       'imageTarget',
       'fieldTarget',
       'imageControl',
+      'referenceImage',
+      'imageAsset',
       'fieldControl',
       'continuity',
       'relationship',
@@ -6799,7 +6875,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
 
     const workflowNodeSelect = eventTarget.closest<HTMLElement>('[data-chat-workflow-node-select]')
-    if (workflowNodeSelect && panel.contains(workflowNodeSelect)) {
+    if (workflowNodeSelect && panel.contains(workflowNodeSelect) && !eventTarget.closest<HTMLElement>('[data-chat-workflow-action]')) {
       characterResourceViewState.selectedLinkId = ''
       characterWorkflowEditorState.nodeSearchOpen = false
       const panelId = workflowNodeSelect.dataset.chatWorkflowPanel

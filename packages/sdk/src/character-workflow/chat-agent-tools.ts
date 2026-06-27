@@ -382,6 +382,13 @@ function createResourceContextXml(context: CharacterAgentRunContext): string {
     ...context.sourceMaterials.map((item) => [
       `      <source node="${xmlEscape(item.nodeId)}" kind="${xmlEscape(item.kind)}" grounding_strength="${item.groundingStrength}">`,
       `        <notes>${xmlEscape(item.notes)}</notes>`,
+      ...item.materials.map((material) => material.kind === 'image'
+        ? `        <material id="${xmlEscape(material.id)}" kind="image" name="${xmlEscape(material.name)}" mime="${xmlEscape(material.mimeType)}" size="${material.size ?? 0}" />`
+        : [
+            `        <material id="${xmlEscape(material.id)}" kind="document" name="${xmlEscape(material.name)}" mime="${xmlEscape(material.mimeType)}" size="${material.size ?? 0}">`,
+            `          <text>${xmlEscape(compactSourceMaterialText(material.text))}</text>`,
+            '        </material>',
+          ].join('\n')),
       '      </source>',
     ].join('\n')),
     '    </sources>',
@@ -451,6 +458,11 @@ function xmlEscape(value: unknown): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
+}
+
+function compactSourceMaterialText(value: unknown): string {
+  const normalized = typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : ''
+  return normalized.length > 1800 ? `${normalized.slice(0, 1800).trim()}...` : normalized
 }
 
 async function runCharacterAgentLLMTool(

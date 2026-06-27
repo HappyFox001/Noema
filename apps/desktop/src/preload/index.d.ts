@@ -1110,6 +1110,19 @@ declare global {
         }>
         error?: string
       }>
+      selectChatMaterials: () => Promise<{
+        success: boolean
+        canceled?: boolean
+        materials?: Array<{
+          kind: 'image' | 'document'
+          name: string
+          mimeType: string
+          dataUrl?: string
+          text?: string
+          size?: number
+        }>
+        error?: string
+      }>
       requestChatCameraPermission: () => Promise<{
         success: boolean
         granted?: boolean

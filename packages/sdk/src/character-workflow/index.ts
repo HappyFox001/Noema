@@ -112,8 +112,9 @@ export type CharacterWorkflowParameterType =
   | 'multi-select'
   | 'string-list'
   | 'model-select'
+  | 'materials'
 
-export type CharacterWorkflowParameterValue = string | number | boolean | string[]
+export type CharacterWorkflowParameterValue = string | number | boolean | string[] | SourceMaterialItem[]
 
 export interface CharacterWorkflowNodeParameter {
   id: string
@@ -260,7 +261,18 @@ export interface SourceContextArtifact extends CharacterArtifactBase {
     kind: string
     notes: string
     groundingStrength: number
+    materials: SourceMaterialItem[]
   }
+}
+
+export interface SourceMaterialItem {
+  id: string
+  kind: 'image' | 'document'
+  name: string
+  mimeType: string
+  size?: number
+  dataUrl?: string
+  text?: string
 }
 
 export interface ModelCapabilityArtifact extends CharacterArtifactBase {
@@ -570,7 +582,7 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     category: 'goal',
     executor: 'manual',
     description: 'Collects the free-form RP generation target without asking the user to fill final card fields.',
-    inputs: {},
+    inputs: { source: port('source', 'Source', 'source-context') },
     outputs: { goal: port('goal', 'Goal', 'generation-goal') },
     parameters: [
       parameter('goalPrompt', 'Goal Prompt', 'textarea', ''),
@@ -971,17 +983,14 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     title: 'Source Material',
     category: 'sources',
     executor: 'manual',
-    description: 'Provides optional source context, references, existing cards, images, or user preference notes.',
+    description: 'Imports image and document materials as grounded references. Material kind is inferred from file type.',
     inputs: {},
-    outputs: { source: port('source', 'Source', 'source-context') },
+    outputs: {
+      source: port('source', 'Source', 'source-context'),
+      imageAsset: port('imageAsset', 'Reference Image', 'asset-target'),
+    },
     parameters: [
-      parameter('sourceKind', 'Source Kind', 'select', 'notes', undefined, [
-        option('Notes', 'notes'),
-        option('Existing Card', 'existing-card'),
-        option('Image Reference', 'image-reference'),
-        option('User Preference', 'user-preference'),
-      ]),
-      parameter('notes', 'Notes', 'textarea', ''),
+      parameter('materials', 'Materials', 'materials', []),
     ],
   },
   {
@@ -1621,10 +1630,17 @@ function cloneNodeDefinition(definition: CharacterWorkflowNodeDefinition): Chara
     outputs: clonePorts(definition.outputs),
     parameters: definition.parameters.map((item) => ({
       ...item,
-      defaultValue: Array.isArray(item.defaultValue) ? [...item.defaultValue] : item.defaultValue,
+      defaultValue: cloneParameterDefaultValue(item.defaultValue),
       options: item.options?.map((optionItem) => ({ ...optionItem })),
     })),
   }
+}
+
+function cloneParameterDefaultValue(value: CharacterWorkflowParameterValue): CharacterWorkflowParameterValue {
+  if (!Array.isArray(value)) {
+    return value
+  }
+  return value.map((item) => typeof item === 'string' ? item : { ...item }) as CharacterWorkflowParameterValue
 }
 
 function clonePorts(ports: Record<string, CharacterNodePort>): Record<string, CharacterNodePort> {
@@ -1824,9 +1840,10 @@ function createDefaultCharacterWorkflowExecutors(): Partial<Record<CharacterNode
       sourceNodeId: node.id,
       createdAt: timestamp,
       source: {
-        kind: stringConfig(config.sourceKind, 'notes'),
+        kind: inferSourceMaterialKind(config.materials),
         notes: stringConfig(config.notes, ''),
         groundingStrength: numberConfig(config.groundingStrength, 0.5),
+        materials: materialListConfig(config.materials),
       },
     }],
     'llm-tool': ({ node, config, workflow, timestamp }) => [{
@@ -2118,6 +2135,63 @@ function parseModelRef(modelRef: string): { apiId: string; modelName: string; mo
 
 function stringListConfig(value: unknown, fallback: string[] = []): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : fallback
+}
+
+function materialListConfig(value: unknown): SourceMaterialItem[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value.flatMap((item, index): SourceMaterialItem[] => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      return []
+    }
+    const record = item as Record<string, unknown>
+    const name = typeof record.name === 'string' && record.name.trim() ? record.name.trim() : `material-${index + 1}`
+    const mimeType = typeof record.mimeType === 'string' ? record.mimeType : ''
+    const kind = inferMaterialItemKind(record.kind, mimeType, name)
+    const material: SourceMaterialItem = {
+      id: typeof record.id === 'string' && record.id.trim() ? record.id.trim() : `material-${index + 1}`,
+      kind,
+      name,
+      mimeType,
+    }
+    if (typeof record.size === 'number' && Number.isFinite(record.size)) {
+      material.size = Math.max(0, Math.round(record.size))
+    }
+    if (typeof record.dataUrl === 'string' && record.dataUrl.trim()) {
+      material.dataUrl = record.dataUrl.trim()
+    }
+    if (typeof record.text === 'string' && record.text.trim()) {
+      material.text = record.text.trim()
+    }
+    return [material]
+  })
+}
+
+function inferSourceMaterialKind(value: unknown): string {
+  const materials = materialListConfig(value)
+  const imageCount = materials.filter((item) => item.kind === 'image').length
+  const documentCount = materials.filter((item) => item.kind === 'document').length
+  if (imageCount && documentCount) {
+    return 'mixed-materials'
+  }
+  if (imageCount) {
+    return 'image-materials'
+  }
+  if (documentCount) {
+    return 'document-materials'
+  }
+  return 'empty-materials'
+}
+
+function inferMaterialItemKind(value: unknown, mimeType: string, name: string): SourceMaterialItem['kind'] {
+  if (value === 'image' || value === 'document') {
+    return value
+  }
+  if (mimeType.startsWith('image/')) {
+    return 'image'
+  }
+  return /\.(png|jpe?g|webp|gif)$/i.test(name) ? 'image' : 'document'
 }
 
 function numberConfig(value: unknown, fallback: number): number {

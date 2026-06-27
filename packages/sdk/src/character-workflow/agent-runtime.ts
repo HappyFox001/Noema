@@ -29,6 +29,7 @@ export type CharacterAgentArtifactKind =
   | 'style-brief'
   | 'constraint-brief'
   | 'source-summary'
+  | 'source-material'
   | 'character-card-draft'
   | 'character-card-field'
   | 'character-card-final'
@@ -168,7 +169,18 @@ export interface AgentSourceMaterial {
   kind: string
   notes: string
   groundingStrength: number
+  materials: AgentSourceMaterialItem[]
   incomingRelations: CharacterAgentRelation[]
+}
+
+export interface AgentSourceMaterialItem {
+  id: string
+  kind: 'image' | 'document'
+  name: string
+  mimeType: string
+  size?: number
+  dataUrl?: string
+  text?: string
 }
 
 export interface AgentModelCapability {
@@ -671,9 +683,10 @@ export function compileCharacterAgentRunContext(
     relationshipControls,
     sourceMaterials: (nodesByType.get('source-material') ?? []).map((node) => ({
       nodeId: node.id,
-      kind: stringValue(node.config.sourceKind, 'notes'),
+      kind: inferSourceMaterialKind(node.config.materials),
       notes: stringValue(node.config.notes),
       groundingStrength: numberValue(node.config.groundingStrength, 0.5),
+      materials: normalizeSourceMaterialItems(node.config.materials),
       incomingRelations: incomingRelations(relations, node.id),
     })),
     capabilities: {
@@ -1320,6 +1333,9 @@ export function createCharacterSuperAgent(
 
       try {
         await emit({ type: 'run.started', runId, timestamp: now() })
+        for (const materialArtifact of createSourceMaterialArtifacts(context, runId)) {
+          await writeArtifact(materialArtifact)
+        }
         await changePhase('produce')
         state = {
           ...state,
@@ -1690,6 +1706,29 @@ function createInitialCharacterDraft(context: CharacterAgentRunContext, now: num
     missing: getRequiredCharacterDraftFields(context),
     updatedAt: now,
   }
+}
+
+function createSourceMaterialArtifacts(
+  context: CharacterAgentRunContext,
+  runId: string
+): Array<Omit<CharacterAgentArtifact, 'version' | 'createdAt' | 'updatedAt'>> {
+  return context.sourceMaterials.flatMap((source) => source.materials.map((material, index) => ({
+    id: `${runId}:source-material:${source.nodeId}:${material.id || index}`,
+    kind: 'source-material' as const,
+    runId,
+    candidateId: `${runId}:candidate:primary`,
+    title: material.name,
+    summary: material.kind === 'image'
+      ? `Image material from ${source.nodeId}.`
+      : compactText(material.text, 180) || `Document material from ${source.nodeId}.`,
+    sourceNodeId: source.nodeId,
+    data: {
+      ...material,
+      sourceNodeId: source.nodeId,
+      sourceKind: source.kind,
+      groundingStrength: source.groundingStrength,
+    },
+  })))
 }
 
 function hydrateCharacterDraftFromArtifacts(
@@ -2422,7 +2461,7 @@ function resolveReferenceImagesByTarget(
 ): Record<string, string[]> {
   const imageByTarget = new Map<string, string[]>()
   for (const artifact of artifacts) {
-    if (artifact.kind !== 'image-asset' || !artifact.sourceNodeId) {
+    if ((artifact.kind !== 'image-asset' && artifact.kind !== 'source-material') || !artifact.sourceNodeId) {
       continue
     }
     const reference = imageReferenceFromArtifact(artifact)
@@ -2446,6 +2485,9 @@ function imageReferenceFromArtifact(artifact: CharacterAgentArtifact): string | 
   const data = artifact.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
     ? artifact.data as Record<string, unknown>
     : {}
+  if (artifact.kind === 'source-material' && data.kind !== 'image') {
+    return null
+  }
   return stringValue(data.dataUrl) || stringValue(data.url) || null
 }
 
@@ -2593,13 +2635,16 @@ function createWorkflowRequirements(
   for (const target of targets.filter((target) => target.kind === 'image')) {
     const controls = target.imageControls.length ? target.imageControls : [undefined]
     const requiredCount = controls.reduce((sum, control) => sum + Math.max(1, Math.floor(control?.targetImageCount ?? 1)), 0)
-    const referenceSourceNodeIds = relations
+    const referenceRelations = relations
       .filter((relation) =>
         relation.toNodeId === target.nodeId &&
-        relation.fromPort === 'imageAsset' &&
-        imageTargetIds.has(relation.fromNodeId)
+        relation.fromPort === 'imageAsset'
       )
+    const referenceSourceNodeIds = referenceRelations
       .map((relation) => relation.fromNodeId)
+    const dependencySourceNodeIds = referenceRelations
+      .map((relation) => relation.fromNodeId)
+      .filter((nodeId) => imageTargetIds.has(nodeId))
     requirements.push({
       id: `image:${target.nodeId}`,
       kind: 'image',
@@ -2608,7 +2653,7 @@ function createWorkflowRequirements(
       required: true,
       imageRole: target.imageRole,
       requiredCount,
-      dependencyNodeIds: [...new Set(referenceSourceNodeIds)],
+      dependencyNodeIds: [...new Set(dependencySourceNodeIds)],
       referenceSourceNodeIds: [...new Set(referenceSourceNodeIds)],
     })
   }
@@ -2850,6 +2895,7 @@ function artifactTitle(kind: CharacterAgentArtifactKind): string {
     'style-brief': 'Style Brief',
     'constraint-brief': 'Constraint Brief',
     'source-summary': 'Source Summary',
+    'source-material': 'Source Material',
     'character-card-draft': 'Character Card Draft',
     'character-card-field': 'Character Card Field',
     'character-card-final': 'Character Card',
@@ -3135,6 +3181,70 @@ function parseModelRef(modelRef: string): { apiId: string; modelName: string } {
 
 function stringValue(value: unknown, fallback = ''): string {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback
+}
+
+function normalizeSourceMaterialItems(value: unknown): AgentSourceMaterialItem[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value.flatMap((item, index): AgentSourceMaterialItem[] => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      return []
+    }
+    const record = item as Record<string, unknown>
+    const name = stringValue(record.name, `material-${index + 1}`)
+    const mimeType = stringValue(record.mimeType)
+    const material: AgentSourceMaterialItem = {
+      id: stringValue(record.id, `material-${index + 1}`),
+      kind: inferSourceMaterialItemKind(record.kind, mimeType, name),
+      name,
+      mimeType,
+    }
+    if (typeof record.size === 'number' && Number.isFinite(record.size)) {
+      material.size = Math.max(0, Math.round(record.size))
+    }
+    if (typeof record.dataUrl === 'string' && record.dataUrl.trim()) {
+      material.dataUrl = record.dataUrl.trim()
+    }
+    if (typeof record.text === 'string' && record.text.trim()) {
+      material.text = record.text.trim()
+    }
+    return [material]
+  })
+}
+
+function inferSourceMaterialKind(value: unknown): string {
+  const materials = normalizeSourceMaterialItems(value)
+  const imageCount = materials.filter((item) => item.kind === 'image').length
+  const documentCount = materials.filter((item) => item.kind === 'document').length
+  if (imageCount && documentCount) {
+    return 'mixed-materials'
+  }
+  if (imageCount) {
+    return 'image-materials'
+  }
+  if (documentCount) {
+    return 'document-materials'
+  }
+  return 'empty-materials'
+}
+
+function inferSourceMaterialItemKind(value: unknown, mimeType: string, name: string): AgentSourceMaterialItem['kind'] {
+  if (value === 'image' || value === 'document') {
+    return value
+  }
+  if (mimeType.startsWith('image/')) {
+    return 'image'
+  }
+  return /\.(png|jpe?g|webp|gif)$/i.test(name) ? 'image' : 'document'
+}
+
+function compactText(value: unknown, maxLength: number): string {
+  const normalized = typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : ''
+  if (!normalized) {
+    return ''
+  }
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength).trim()}...` : normalized
 }
 
 function numberValue(value: unknown, fallback: number): number {

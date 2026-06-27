@@ -15347,6 +15347,108 @@ body.chat-workflow-library-resizing * {
   resize: vertical;
 }
 
+.chat-workflow-materials-field {
+  display: grid;
+  gap: 6px;
+}
+
+.chat-workflow-materials-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.chat-workflow-materials-head span,
+.chat-workflow-materials-list p {
+  color: rgba(248, 250, 250, 0.46);
+  font-family: var(--font-ui);
+  font-size: 10px;
+}
+
+.chat-workflow-materials-head button,
+.chat-workflow-material-chip button {
+  border: 1px solid rgba(248, 250, 250, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.045);
+  color: rgba(248, 250, 250, 0.72);
+  font-family: var(--font-ui);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.chat-workflow-materials-head button {
+  padding: 4px 8px;
+}
+
+.chat-workflow-materials-list {
+  display: grid;
+  gap: 5px;
+}
+
+.chat-workflow-material-chip {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 20px;
+  align-items: center;
+  gap: 7px;
+  padding: 5px;
+  border: 1px solid rgba(248, 250, 250, 0.08);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.chat-workflow-material-chip img,
+.chat-workflow-material-chip i {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  object-fit: cover;
+}
+
+.chat-workflow-material-chip i::before {
+  content: '';
+  display: block;
+  width: 14px;
+  height: 18px;
+  margin: 7px auto;
+  border: 1px solid rgba(248, 250, 250, 0.35);
+  border-radius: 3px;
+}
+
+.chat-workflow-material-chip span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.chat-workflow-material-chip strong,
+.chat-workflow-material-chip small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-workflow-material-chip strong {
+  color: rgba(248, 250, 250, 0.78);
+  font-family: var(--font-ui);
+  font-size: 10.5px;
+}
+
+.chat-workflow-material-chip small {
+  color: rgba(248, 250, 250, 0.42);
+  font-family: var(--font-ui);
+  font-size: 9px;
+}
+
+.chat-workflow-material-chip button {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+}
+
 .chat-resource-node-content {
   display: grid;
   gap: 5px;

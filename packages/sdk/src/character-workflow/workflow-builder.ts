@@ -659,8 +659,8 @@ export function createUiConfigOverrides(spec: CharacterWorkflowBuilderSpec): Rec
       hardBoundary: true,
     },
     'source-material': {
-      sourceKind: 'notes',
       notes: spec.sourceNotes,
+      materials: [],
     },
     'agent-policy': {
       autonomyLevel: spec.agentPolicy.autonomyLevel,
@@ -791,7 +791,8 @@ function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): 
     '- style-pressure.preset: choose a prose/RP style preset such as plain-natural-rp, immersive-second-person, slow-burn-romance, hurt-comfort, gothic-romance-prose, dark-adult-drama, cyberpunk-noir, psychological-thriller, sillytavern-natural-card, ali-chat-dialogue-samples, or longform-novelistic-rp.',
     '- style-pressure.stylePrompt: concrete English prose control text covering tone, genre texture, relationship flavor, sentence rhythm, narration style, and roleplay pacing.',
     '- hard-constraints.mustHave/mustNot: hard requirements and boundaries.',
-    '- source-material.notes: concrete story material, setting facts, character seeds, world facts.',
+    '- source-material.materials: imported image/document references. Material kinds are inferred from file type; do not ask users to hand-write material type remarks.',
+    '- source-material.notes: optional concrete story material, setting facts, character seeds, world facts when no imported document exists.',
     '- field-generation-control.fieldPurpose: local intent for one text field such as firstMessage/opening/dialogue style.',
     '- opening-layout-target: use this for the CSS/HTML-style role-card opening presentation that combines title, tags, opening text, and generated images. Prefer linked character-base-image assets as panel visual material; avatar and overview can remain linked but should not be the only image sources for the panel.',
     '- image-target.imageRole: use avatar for the first canonical avatar.jpg target, character-overview-sheet for the required built-in overview sheet, and character-base-image for any extra free-form non-avatar character sample images. Do not invent fixed categories such as cover, full-body, opening moment, story moment, expression, outfit detail, relationship moment, or world context.',
@@ -1033,8 +1034,8 @@ function applySpecToWorkflow(workflow: CharacterWorkflow, spec: CharacterWorkflo
     hardBoundary: true,
   })
   byType.get('source-material')?.config && Object.assign(byType.get('source-material')!.config, {
-    sourceKind: 'notes',
     notes: spec.sourceNotes,
+    materials: [],
   })
   byType.get('agent-policy')?.config && Object.assign(byType.get('agent-policy')!.config, {
     ...spec.agentPolicy,

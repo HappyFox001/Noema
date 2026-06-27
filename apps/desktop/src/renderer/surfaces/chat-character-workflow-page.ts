@@ -48,7 +48,7 @@ export type CharacterWorkflowSidePanel = 'workflow' | 'assets' | 'nodes'
 
 type CharacterResourceNodeStatus = 'idle' | 'dirty' | 'queued' | 'running' | 'done' | 'failed' | 'stale' | 'disabled'
 type CharacterResourcePreviewType = 'text-card' | 'image' | 'voice' | 'rule' | 'validation' | 'package'
-type CharacterResourceParameterType = 'text' | 'textarea' | 'number' | 'integer' | 'boolean' | 'select' | 'multi-select' | 'string-list' | 'model-select'
+type CharacterResourceParameterType = 'text' | 'textarea' | 'number' | 'integer' | 'boolean' | 'select' | 'multi-select' | 'string-list' | 'model-select' | 'materials'
 type CharacterResourceLinkKind = SerializedCharacterResourceLinkKind
 type CharacterWorkflowLanguage = CharacterWorkflowPageOptions['language']
 
@@ -175,6 +175,16 @@ interface CharacterResourceOutput {
   image?: string
   text?: string
   data?: unknown
+}
+
+interface WorkflowMaterialItem {
+  id: string
+  kind: 'image' | 'document'
+  name: string
+  mimeType: string
+  dataUrl?: string
+  text?: string
+  size?: number
 }
 
 export interface CharacterResourceRunState {
@@ -750,16 +760,13 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'Slow Trust', value: 'slow-trust-rule' },
     ]),
   ], 'rule'),
-  createDefinition('source-material', 'Source Material', ['素材', 'reference', 'context'], 'Sources', 'asset', 'Provides optional source context, references, existing cards, images, or user preference notes.', [], [
-    slot('source', 'Source', 'source-context', 'Reference context available to the agent.'),
+  createDefinition('source-material', 'Source Material', ['素材', 'reference', 'context'], 'Sources', 'asset', 'Imports image and document materials as grounded references. Material kind is inferred from file type.', [
+    slot('source', 'Source', 'source-context', 'Parent source material node.'),
   ], [
-    param('sourceKind', 'Source Kind', 'select', 'notes', undefined, undefined, undefined, [
-      { label: 'Notes', value: 'notes' },
-      { label: 'Existing Card', value: 'existing-card' },
-      { label: 'Image Reference', value: 'image-reference' },
-      { label: 'User Preference', value: 'user-preference' },
-    ]),
-    param('notes', 'Notes', 'textarea', ''),
+    slot('source', 'Source', 'source-context', 'Reference context available to the agent.'),
+    slot('imageAsset', 'Reference Image', 'asset-target', 'Imported image materials available as image references.'),
+  ], [
+    param('materials', 'Materials', 'materials', []),
   ], 'text-card'),
   createDefinition('llm-tool', 'LLM Tool', ['模型', 'llm', 'reasoning'], 'Tools', 'agent', 'Selects the LLM capability available to the backend agent.', [], [
     slot('model', 'Model', 'model-capability', 'LLM model capability.'),
@@ -883,6 +890,11 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
   ], 'package'),
   createDefinition('run-input-resource', 'User Input Graph', ['运行输入', 'input graph', 'resource snapshot'], 'Run Resources', 'core', 'The graph snapshot supplied by the user before the agent starts filling role resources.', [], [
     slot('resource', 'Resource', 'role-resource', 'Starting resource graph snapshot.'),
+  ], [], 'text-card', { width: 268, height: 188 }),
+  createDefinition('source-material-resource', 'Source Material', ['素材', 'material', 'reference'], 'Run Resources', 'asset', 'Imported source image or document material available to the runtime.', [
+    slot('resource', 'Resource', 'role-resource', 'Previous resource.'),
+  ], [
+    slot('resource', 'Resource', 'role-resource', 'Imported material resource.'),
   ], [], 'text-card', { width: 268, height: 188 }),
   createDefinition('candidate-pack-resource', 'Candidate Pack', ['候选包', 'candidate', 'role resource pack'], 'Run Resources', 'asset', 'A generated package that reserves the role card, opening, context, visual prompts, and export resources.', [
     slot('resource', 'Resource', 'role-resource', 'Previous generated role resource.'),
@@ -1095,7 +1107,7 @@ export function createCharacterAgentWorkflowSnapshot(options: CharacterWorkflowP
             value: optionItem.value,
           })),
         })),
-        config: node.config,
+        config: getSerializableNodeConfig(node),
         state: { status: node.status === 'dirty' ? 'idle' : node.status },
       }
     }),
@@ -1119,6 +1131,16 @@ export function createCharacterAgentWorkflowSnapshot(options: CharacterWorkflowP
       updatedAt: now,
     },
   }
+}
+
+function getSerializableNodeConfig(node: CharacterResourceNode): Record<string, unknown> {
+  if (node.id === 'source-material' && Array.isArray(node.config.materials)) {
+    return {
+      ...node.config,
+      materials: [],
+    }
+  }
+  return node.config
 }
 
 export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
@@ -1605,6 +1627,8 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
       },
     })
   }
+  const materialVirtual = createMaterialVirtualNodes(nodes, options)
+  nodes.push(...materialVirtual.nodes)
   const runArtifacts = options.runState?.artifacts ?? []
   const outputs = runArtifacts.flatMap((artifact) => {
     if (!artifact.sourceNodeId) {
@@ -1633,6 +1657,7 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
   }))
   const graphLinks = [
     ...DEFAULT_LINKS.filter((item) => !replacedTargetSlots.has(getTargetSlotKey(item)) && !deletedLinkIds.has(item.id)),
+    ...materialVirtual.links,
     ...customLinks.filter((item) => !deletedLinkIds.has(item.id)),
   ]
   return {
@@ -1670,6 +1695,65 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
     },
     outputs,
   }
+}
+
+function createMaterialVirtualNodes(
+  nodes: CharacterResourceNode[],
+  options: CharacterWorkflowPageOptions
+): { nodes: CharacterResourceNode[]; links: CharacterResourceLink[] } {
+  const sourceNode = nodes.find((node) => node.id === 'source-material')
+  const materials = normalizeWorkflowMaterials(sourceNode?.config.materials)
+  if (!sourceNode || !materials.length) {
+    return { nodes: [], links: [] }
+  }
+  const downstreamSourceLinks = DEFAULT_LINKS.filter((linkItem) => linkItem.sourceNodeId === sourceNode.id && linkItem.sourceSlotId === 'source')
+  const virtualNodes = materials.map((material, index): CharacterResourceNode => {
+    const nodeId = materialVirtualNodeId(material)
+    return {
+      id: nodeId,
+      type: 'source-material',
+      title: material.name,
+      position: options.positionOverrides?.[nodeId] ?? {
+        x: sourceNode.position.x + 300,
+        y: sourceNode.position.y + index * 150 - 24,
+      },
+      size: { width: 238, height: material.kind === 'image' ? 172 : 136 },
+      status: 'done',
+      collapsed: false,
+      zIndex: sourceNode.zIndex + index + 1,
+      config: { materials: [material] },
+    }
+  })
+  const links: CharacterResourceLink[] = []
+  virtualNodes.forEach((node) => {
+    links.push({
+      id: `${sourceNode.id}.source->${node.id}.source`,
+      sourceNodeId: sourceNode.id,
+      sourceSlotId: 'source',
+      targetNodeId: node.id,
+      targetSlotId: 'source',
+      kind: 'grounds',
+      label: LINK_KIND_LABELS.grounds,
+      status: 'valid',
+    })
+    for (const downstream of downstreamSourceLinks) {
+      links.push({
+        id: `${node.id}.source->${downstream.targetNodeId}.${downstream.targetSlotId}`,
+        sourceNodeId: node.id,
+        sourceSlotId: 'source',
+        targetNodeId: downstream.targetNodeId,
+        targetSlotId: downstream.targetSlotId,
+        kind: downstream.kind,
+        label: LINK_KIND_LABELS[downstream.kind],
+        status: 'valid',
+      })
+    }
+  })
+  return { nodes: virtualNodes, links }
+}
+
+function materialVirtualNodeId(material: WorkflowMaterialItem): string {
+  return `source-material-item-${sanitizeResourceId(material.id || material.name)}`
 }
 
 function animateRunDraftCanvas(root: HTMLElement, cleanups: Array<() => void>): void {
@@ -2624,6 +2708,11 @@ function resolveRunDraftSelectedNodeId(
 }
 
 function getRunArtifactPlacement(artifact: NonNullable<CharacterResourceRunState['artifacts']>[number], index: number): { x: number; y: number } {
+  if (artifact.type === 'source-material') {
+    const lane = getStableRunLaneIndex(artifact.id || artifact.title || String(index), 5)
+    const jitter = getStableRunOffset(artifact.id || artifact.title || String(index), 18, 12)
+    return { x: 344 + (lane % 2) * 286 + jitter.x, y: 48 + Math.floor(lane / 2) * 156 + jitter.y }
+  }
   if (artifact.type === 'character-card-field') {
     const data = artifact.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
       ? artifact.data as Record<string, unknown>
@@ -2759,6 +2848,7 @@ function isHiddenRunCanvasFieldArtifact(artifact: NonNullable<CharacterResourceR
 function getRoleResourceArtifacts(artifacts: NonNullable<CharacterResourceRunState['artifacts']>): NonNullable<CharacterResourceRunState['artifacts']> {
   const allowed = new Set([
     'character-card-draft',
+    'source-material',
     'character-card-field',
     'character-card-final',
     'opening-message',
@@ -2784,6 +2874,7 @@ function getRunArtifactOrder(type: string): number {
   const order = [
     'candidate-pack',
     'character-card-draft',
+    'source-material',
     'character-card-field',
     'character-card-final',
     'opening-message',
@@ -2807,6 +2898,7 @@ function getRunArtifactMeta(artifact: NonNullable<CharacterResourceRunState['art
   const labels: Record<string, string> = {
     'candidate-pack': ui(options, '候选包 / resource', 'candidate pack / resource'),
     'character-card-draft': ui(options, '角色卡草稿 / draft', 'character draft / resource'),
+    'source-material': ui(options, '素材 / material', 'source material / resource'),
     'character-card-field': ui(options, '角色字段 / field', 'character field / resource'),
     'character-card-final': ui(options, '角色卡 / role-card', 'role card / resource'),
     'opening-message': ui(options, '开场 / opening', 'opening / resource'),
@@ -2828,6 +2920,7 @@ function getRunArtifactMeta(artifact: NonNullable<CharacterResourceRunState['art
 function getRunArtifactNodeType(type: string): string {
   const nodeTypes: Record<string, string> = {
     'candidate-pack': 'candidate-pack-resource',
+    'source-material': 'source-material-resource',
     'character-card-field': 'character-field-resource',
     'character-card-draft': 'role-card-resource',
     'character-card-final': 'role-card-resource',
@@ -3391,6 +3484,9 @@ function renderParameterField(
   if (parameterItem.type === 'model-select') {
     return renderModelSelectField(parameterItem, node, value, options, baseAttrs)
   }
+  if (parameterItem.type === 'materials') {
+    return renderMaterialsField(parameterItem, node, value, options)
+  }
   if (parameterItem.type === 'select') {
     return `
       <select ${baseAttrs} aria-label="${options.escapeHtml(label)}">
@@ -3405,6 +3501,98 @@ function renderParameterField(
     return `<textarea ${baseAttrs} rows="2" aria-label="${options.escapeHtml(label)}">${options.escapeHtml(formatParameterValue(value))}</textarea>`
   }
   return `<input type="text" ${baseAttrs} value="${options.escapeHtml(formatParameterValue(value))}" aria-label="${options.escapeHtml(label)}">`
+}
+
+function renderMaterialsField(
+  parameterItem: CharacterResourceParameterDefinition,
+  node: CharacterResourceNode,
+  value: unknown,
+  options: CharacterWorkflowPageOptions
+): string {
+  const materials = normalizeWorkflowMaterials(value)
+  const label = localizeParameterLabel(parameterItem, options)
+  return `
+    <div class="chat-workflow-materials-field" data-chat-workflow-param="${options.escapeHtml(parameterItem.id)}" data-chat-workflow-node="${options.escapeHtml(node.id)}" data-chat-workflow-param-type="materials" aria-label="${options.escapeHtml(label)}">
+      <div class="chat-workflow-materials-head">
+        <span>${options.escapeHtml(ui(options, `${materials.length} 个素材`, `${materials.length} materials`))}</span>
+        <button type="button" data-chat-workflow-action="add-materials" data-chat-workflow-node="${options.escapeHtml(node.id)}">${options.escapeHtml(ui(options, '添加素材', 'Add Materials'))}</button>
+      </div>
+      <div class="chat-workflow-materials-list">
+        ${materials.length ? materials.map((material) => renderMaterialChip(material, node.id, options)).join('') : `<p>${options.escapeHtml(ui(options, '加入图片或文档后会自动识别类型。', 'Add images or documents; type is inferred automatically.'))}</p>`}
+      </div>
+    </div>
+  `
+}
+
+function renderMaterialChip(material: WorkflowMaterialItem, nodeId: string, options: CharacterWorkflowPageOptions): string {
+  const meta = [
+    material.kind === 'image' ? ui(options, '图片', 'Image') : ui(options, '文档', 'Document'),
+    material.mimeType,
+    formatMaterialSize(material.size, options),
+  ].filter(Boolean).join(' · ')
+  return `
+    <article class="chat-workflow-material-chip ${options.escapeHtml(material.kind)}">
+      ${material.kind === 'image' && material.dataUrl ? `<img src="${options.escapeHtml(material.dataUrl)}" alt="${options.escapeHtml(material.name)}">` : '<i aria-hidden="true"></i>'}
+      <span>
+        <strong>${options.escapeHtml(material.name)}</strong>
+        <small>${options.escapeHtml(meta)}</small>
+      </span>
+      <button type="button" data-chat-workflow-action="remove-material" data-chat-workflow-node="${options.escapeHtml(nodeId)}" data-material-id="${options.escapeHtml(material.id)}" aria-label="${options.escapeHtml(ui(options, '移除素材', 'Remove material'))}">x</button>
+    </article>
+  `
+}
+
+function normalizeWorkflowMaterials(value: unknown): WorkflowMaterialItem[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value.flatMap((item, index): WorkflowMaterialItem[] => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      return []
+    }
+    const record = item as Record<string, unknown>
+    const name = typeof record.name === 'string' && record.name.trim() ? record.name.trim() : `material-${index + 1}`
+    const mimeType = typeof record.mimeType === 'string' ? record.mimeType : ''
+    const material: WorkflowMaterialItem = {
+      id: typeof record.id === 'string' && record.id.trim() ? record.id.trim() : `material-${index + 1}`,
+      kind: inferWorkflowMaterialKind(record.kind, mimeType, name),
+      name,
+      mimeType,
+    }
+    if (typeof record.dataUrl === 'string' && record.dataUrl.trim()) {
+      material.dataUrl = record.dataUrl.trim()
+    }
+    if (typeof record.text === 'string' && record.text.trim()) {
+      material.text = record.text.trim()
+    }
+    if (typeof record.size === 'number' && Number.isFinite(record.size)) {
+      material.size = Math.max(0, Math.round(record.size))
+    }
+    return [material]
+  })
+}
+
+function inferWorkflowMaterialKind(value: unknown, mimeType: string, name: string): WorkflowMaterialItem['kind'] {
+  if (value === 'image' || value === 'document') {
+    return value
+  }
+  if (mimeType.startsWith('image/')) {
+    return 'image'
+  }
+  return /\.(png|jpe?g|webp|gif)$/i.test(name) ? 'image' : 'document'
+}
+
+function formatMaterialSize(value: number | undefined, options: CharacterWorkflowPageOptions): string {
+  if (!value) {
+    return ''
+  }
+  if (value < 1024) {
+    return ui(options, `${value} 字节`, `${value} B`)
+  }
+  if (value < 1024 * 1024) {
+    return `${Math.round(value / 1024)} KB`
+  }
+  return `${(value / 1024 / 1024).toFixed(1)} MB`
 }
 
 function renderModelSelectField(

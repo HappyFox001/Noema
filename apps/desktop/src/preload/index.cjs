@@ -302,6 +302,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   selectChatMedia: (request) =>
     ipcRenderer.invoke('chat:selectMedia', request),
 
+  selectChatMaterials: () =>
+    ipcRenderer.invoke('chat:selectMaterials'),
+
   requestChatCameraPermission: () =>
     ipcRenderer.invoke('chat:requestCameraPermission'),
 
