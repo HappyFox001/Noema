@@ -616,12 +616,26 @@ declare global {
               dataUrl?: string
               size?: number
             }>
+            openingPanel?: {
+              html: string
+              css: string
+              summary?: string
+              layoutKind?: string
+              sourceArtifactId?: string
+            }
             state?: 'idle' | 'thinking' | 'generating_image' | 'using_tool'
           }>
           workflowState?: unknown
           characterResource?: {
             id: string
             roleCard?: Record<string, unknown>
+            openingPanel?: {
+              html: string
+              css: string
+              summary?: string
+              layoutKind?: string
+              sourceArtifactId?: string
+            }
             name: Record<string, string>
             displayName: Record<string, string>
             description: Record<string, string>
@@ -669,12 +683,26 @@ declare global {
               dataUrl?: string
               size?: number
             }>
+            openingPanel?: {
+              html: string
+              css: string
+              summary?: string
+              layoutKind?: string
+              sourceArtifactId?: string
+            }
             state?: 'idle' | 'thinking' | 'generating_image' | 'using_tool'
           }>
           workflowState?: unknown
           characterResource?: {
             id: string
             roleCard?: Record<string, unknown>
+            openingPanel?: {
+              html: string
+              css: string
+              summary?: string
+              layoutKind?: string
+              sourceArtifactId?: string
+            }
             name: Record<string, string>
             displayName: Record<string, string>
             description: Record<string, string>

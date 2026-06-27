@@ -51,6 +51,7 @@ import {
   type ChatMemorySummary,
   type ChatMessageAttachment,
   type ChatMessage,
+  type ChatOpeningPanel,
 } from './chat-model'
 import {
   createDefaultChatModel,
@@ -1582,6 +1583,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         role: 'assistant',
         text: character.firstMessage,
         createdLabel: { 'zh-CN': now, 'en-US': now },
+        ...(character.openingPanel ? { openingPanel: character.openingPanel } : {}),
       }],
     }
   }
@@ -1645,6 +1647,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           role: 'assistant',
           text: openingText,
           createdLabel: { 'zh-CN': now, 'en-US': now },
+          ...(character.openingPanel ? { openingPanel: character.openingPanel } : {}),
         }],
         characterWorkflow: createPersistedCharacterWorkflowState(),
         characterResource: character,
@@ -1730,13 +1733,16 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const background = stringField(fields.background)
     const avatarImage = findRunDraftImage(runState, ['avatar', 'portrait', 'character'])
     const bodyImage = findRunDraftImage(runState, ['body', 'full-body', 'character']) || avatarImage
+    const openingPanel = extractOpeningPanelFromRunDraft(runState)
     const id = `workflow-run-${sanitizeChatResourceId(runState.run?.id ?? name)}`
     return {
       id,
       roleCard: {
         ...fields,
         firstMessage,
+        ...(openingPanel ? { openingPanel } : {}),
       },
+      ...(openingPanel ? { openingPanel } : {}),
       name: localizedText(name),
       displayName: localizedText(name),
       description: localizedText(description),
@@ -1750,6 +1756,28 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       },
       avatarImage,
       bodyImage,
+    }
+  }
+
+  function extractOpeningPanelFromRunDraft(runState: CharacterResourceRunState): ChatOpeningPanel | undefined {
+    const artifact = [...(runState.artifacts ?? [])].reverse().find((item) => item.type === 'opening-layout')
+    const data = artifact?.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
+      ? artifact.data as Record<string, unknown>
+      : null
+    if (!data) {
+      return undefined
+    }
+    const html = typeof data.html === 'string' ? data.html : ''
+    const css = typeof data.css === 'string' ? data.css : ''
+    if (!html && !css) {
+      return undefined
+    }
+    return {
+      html,
+      css,
+      summary: typeof data.summary === 'string' ? data.summary : artifact?.summary,
+      layoutKind: typeof data.layoutKind === 'string' ? data.layoutKind : undefined,
+      sourceArtifactId: artifact?.id,
     }
   }
 
