@@ -324,10 +324,10 @@ function createRunUpsertSql(projectId: string, run: any): string {
     return ''
   }
   const hasFullPayload = hasPersistableRunPayload(run)
-  const payloadValue = hasFullPayload ? sqlText(JSON.stringify(run)) : 'NULL'
-  const payloadUpdate = hasFullPayload
-    ? 'payload_json = excluded.payload_json'
-    : 'payload_json = COALESCE(character_workflow_runs.payload_json, excluded.payload_json)'
+  if (!hasFullPayload) {
+    return ''
+  }
+  const payloadValue = sqlText(JSON.stringify(run))
   return `
     INSERT INTO character_workflow_runs (
       project_id, id, title, status, created_at, completed_at, payload_json
@@ -345,7 +345,7 @@ function createRunUpsertSql(projectId: string, run: any): string {
       status = excluded.status,
       created_at = excluded.created_at,
       completed_at = excluded.completed_at,
-      ${payloadUpdate};
+      payload_json = excluded.payload_json;
   `
 }
 

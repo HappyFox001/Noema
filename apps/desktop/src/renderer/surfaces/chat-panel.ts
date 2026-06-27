@@ -51,6 +51,7 @@ import {
   type ChatMemorySummary,
   type ChatMessageAttachment,
   type ChatMessage,
+  type ChatOpeningPanel,
 } from './chat-model'
 import {
   createDefaultChatModel,
@@ -75,7 +76,7 @@ type ChatResizeEdge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
 
 type PendingChatAttachment = ChatMessageAttachment
 type CharacterWorkflowPageModule = typeof import('./chat-character-workflow-page')
-type CharacterWorkflowTemplateId = 'character-card' | 'world-card'
+type CharacterWorkflowTemplateId = 'character-card'
 
 const CHARACTER_WORKFLOW_LIBRARY_MIN_WIDTH = 148
 const CHARACTER_WORKFLOW_LIBRARY_DEFAULT_WIDTH = 176
@@ -120,6 +121,7 @@ interface CharacterWorkflowGoalSession {
   currentStep?: string
   nextStep?: string
   status: 'active' | 'paused' | 'needs-user' | 'blocked' | 'complete'
+  pendingDecision?: CharacterWorkflowAgentDecision
   history: Array<{
     id?: string
     stepIndex?: number
@@ -133,6 +135,22 @@ interface CharacterWorkflowGoalSession {
     createdAt: number
   }>
   updatedAt: number
+}
+
+interface CharacterWorkflowAgentDecision {
+  id: string
+  title: string
+  description?: string
+  options: CharacterWorkflowAgentDecisionOption[]
+  defaultOptionId?: string
+  allowSkip?: boolean
+}
+
+interface CharacterWorkflowAgentDecisionOption {
+  id: string
+  label: string
+  detail?: string
+  patchHint?: string
 }
 
 interface CharacterWorkflowProjectRunRecord {
@@ -181,10 +199,12 @@ interface CharacterResourceSlotConnectDetail {
   sourceSlotId: string
   sourceSide: string
   sourceType: string
+  sourceAccepts?: string
   targetNodeId: string
   targetSlotId: string
   targetSide: string
   targetType: string
+  targetAccepts?: string
 }
 
 export interface ChatPanelController {
@@ -1582,6 +1602,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         role: 'assistant',
         text: character.firstMessage,
         createdLabel: { 'zh-CN': now, 'en-US': now },
+        ...(character.openingPanel ? { openingPanel: character.openingPanel } : {}),
       }],
     }
   }
@@ -1645,6 +1666,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           role: 'assistant',
           text: openingText,
           createdLabel: { 'zh-CN': now, 'en-US': now },
+          ...(character.openingPanel ? { openingPanel: character.openingPanel } : {}),
         }],
         characterWorkflow: createPersistedCharacterWorkflowState(),
         characterResource: character,
@@ -1730,13 +1752,16 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const background = stringField(fields.background)
     const avatarImage = findRunDraftImage(runState, ['avatar', 'portrait', 'character'])
     const bodyImage = findRunDraftImage(runState, ['body', 'full-body', 'character']) || avatarImage
+    const openingPanel = extractOpeningPanelFromRunDraft(runState)
     const id = `workflow-run-${sanitizeChatResourceId(runState.run?.id ?? name)}`
     return {
       id,
       roleCard: {
         ...fields,
         firstMessage,
+        ...(openingPanel ? { openingPanel } : {}),
       },
+      ...(openingPanel ? { openingPanel } : {}),
       name: localizedText(name),
       displayName: localizedText(name),
       description: localizedText(description),
@@ -1750,6 +1775,28 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       },
       avatarImage,
       bodyImage,
+    }
+  }
+
+  function extractOpeningPanelFromRunDraft(runState: CharacterResourceRunState): ChatOpeningPanel | undefined {
+    const artifact = [...(runState.artifacts ?? [])].reverse().find((item) => item.type === 'opening-layout')
+    const data = artifact?.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
+      ? artifact.data as Record<string, unknown>
+      : null
+    if (!data) {
+      return undefined
+    }
+    const html = typeof data.html === 'string' ? data.html : ''
+    const css = typeof data.css === 'string' ? data.css : ''
+    if (!html && !css) {
+      return undefined
+    }
+    return {
+      html,
+      css,
+      summary: typeof data.summary === 'string' ? data.summary : artifact?.summary,
+      layoutKind: typeof data.layoutKind === 'string' ? data.layoutKind : undefined,
+      sourceArtifactId: artifact?.id,
     }
   }
 
@@ -2478,10 +2525,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   function renderCharacterWorkflowTemplateMenu(zh: boolean): string {
     return `
       <div class="chat-workflow-template-menu">
-        <button type="button" data-chat-workflow-library-action="create" data-chat-workflow-template-id="blank">
-          <strong>${options.escapeHtml(zh ? '空白草稿' : 'Blank draft')}</strong>
-          <span>${options.escapeHtml(zh ? '只保留基础流图' : 'Base graph only')}</span>
-        </button>
         ${getCharacterWorkflowTemplates(zh).map((template) => `
           <button type="button" data-chat-workflow-library-action="create-template" data-chat-workflow-template-id="${options.escapeHtml(template.id)}">
             <strong>${options.escapeHtml(template.name)}</strong>
@@ -2512,78 +2555,18 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           goalPrompt: '',
           configOverrides: {
             'character-card-target': { includeFields: ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'firstMessage', 'dialogueStyle', 'worldContext'], includeSupportFields: ['appearancePrompt'] },
-            'opening-field-target': { field: 'firstMessage' },
+            'opening-field-target': { fields: ['firstMessage'] },
             'opening-field-control': { lengthPolicy: 'medium' },
             'avatar-image-target': { imageRole: 'avatar', assetPurpose: 'Final avatar.jpg for the role card: one polished single-character role-card portrait with one clear face, visible body silhouette, strong appeal, and stable identity cues.' },
             'avatar-image-control': { targetImageCount: 1, imageStyleDomain: 'auto', shotType: 'knee-up', consistencyMode: 'same-character', seedMode: 'lock-character' },
             'overview-sheet-image-target': { imageRole: 'character-overview-sheet', assetPurpose: 'Generate one large production character overview sheet using linked avatar reference image inputs. Required contents: full-body front view, full-body back view, side or three-quarter view, one main portrait or half-body crop, 3 expression callouts, eye close-up, nose and mouth close-up, hairstyle detail, hand pose detail, leg shape close-up, hip and rear silhouette close-up, feet or shoes detail, outfit fabric, accessory, hemline, and silhouette details. Preserve avatar outfit construction unless explicitly requesting outfit variants. No written labels.' },
             'overview-sheet-image-control': { targetImageCount: 1, imageStyleDomain: 'auto', shotType: 'full-body', aspectRatio: '16:9', consistencyMode: 'same-character', seedMode: 'lock-character' },
+            'opening-panel-image-target': { imageRole: 'character-base-image', assetPurpose: 'Free-form character sample images for the opening CSS panel. Use the avatar reference to preserve identity while showing distinct roleplay scenes, actions, moods, outfit usage, or prop interactions as panel visual material.' },
+            'opening-panel-image-control': { targetImageCount: 2, imageStyleDomain: 'auto', shotType: 'auto', aspectRatio: '3:4', consistencyMode: 'same-character', seedMode: 'vary-slightly' },
             'opening-layout-target': { layoutKind: 'immersive-card-css', includeSections: ['title', 'tags', 'opening', 'coverImage', 'supportImages'], layoutPrompt: 'Create an immersive CSS-style opening card layout that combines the character title, tags, opening text, and generated images into one readable role-card presentation.' },
             'generation-strategy': { mode: 'branch-and-refine', branchCount: 3, priorityAssets: ['role-card', 'opening', 'opening-layout', 'image-pack'] },
             'quality-gate': { minimumScore: 0.84 },
           },
-        },
-      },
-      {
-        id: 'world-card',
-        name: zh ? '世界卡' : 'World card',
-        caption: zh ? '主线、多个 NPC、场景资源' : 'Story arc, NPCs, scenes',
-        category: 'world',
-        label: zh ? '世界' : 'World',
-        spec: {
-          name: 'World Card Draft',
-          goalPrompt: '',
-          configOverrides: {
-            'source-material': { sourceKind: 'notes' },
-            'world-card-target': { worldSections: ['setting', 'rules', 'factions', 'relationship-network', 'plot-hooks'] },
-            'npc-pack-target': { npcCount: 4 },
-            'primary-npc-target': {},
-            'plot-arc-target': { arcShape: 'slow-burn', milestoneCount: 8 },
-            'scene-card-target': { sceneCount: 4 },
-            'continuity-control': { progressionPacing: 'slow-burn', forbidResettingFacts: true },
-            'relationship-control': { relationshipMode: 'ambiguous-ally' },
-            'avatar-image-target': { imageRole: 'avatar', assetPurpose: 'Final avatar.jpg for the role card: one polished single-character role-card portrait with one clear face, visible body silhouette, strong appeal, and stable identity cues.' },
-            'avatar-image-control': { targetImageCount: 1, imageStyleDomain: 'auto', shotType: 'knee-up', consistencyMode: 'same-character', seedMode: 'lock-character' },
-            'overview-sheet-image-target': { imageRole: 'character-overview-sheet', assetPurpose: 'Generate one large production character overview sheet using linked avatar reference image inputs, then route that stable identity to world and NPC reference images through graph links. Required contents: full-body front view, full-body back view, side or three-quarter view, one main portrait or half-body crop, 3 expression callouts, eye close-up, nose and mouth close-up, hairstyle detail, hand pose detail, leg shape close-up, hip and rear silhouette close-up, feet or shoes detail, outfit fabric, accessory, hemline, and silhouette details. Preserve avatar outfit construction unless explicitly requesting outfit variants. No written labels.' },
-            'overview-sheet-image-control': { targetImageCount: 1, imageStyleDomain: 'auto', shotType: 'full-body', aspectRatio: '16:9', consistencyMode: 'same-character', seedMode: 'lock-character' },
-            'world-reference-image-target': { imageRole: 'world-context', assetPurpose: 'A world-context image that still includes the central character or visible character-linked motifs.' },
-            'world-reference-image-control': { targetImageCount: 2, imageStyleDomain: 'auto', shotType: 'auto', aspectRatio: '16:9', consistencyMode: 'same-world', seedMode: 'vary-slightly' },
-            'generation-strategy': { mode: 'explore-then-converge', branchCount: 4, priorityAssets: ['world-context', 'npc-pack', 'scene-context', 'image-pack'] },
-            'quality-gate': { minimumScore: 0.86 },
-          },
-          addedNodes: [
-            { id: 'world-card-target', type: 'world-card-target', title: 'World Card Target', x: 730, y: 640 },
-            { id: 'npc-pack-target', type: 'npc-pack-target', title: 'NPC Pack Target', x: 1060, y: 640 },
-            { id: 'primary-npc-target', type: 'npc-target', title: 'Primary NPC Target', x: 1390, y: 640 },
-            { id: 'plot-arc-target', type: 'plot-arc-target', title: 'Plot Arc Target', x: 1390, y: 860 },
-            { id: 'scene-card-target', type: 'scene-card-target', title: 'Scene Card Target', x: 1720, y: 760 },
-            { id: 'continuity-control', type: 'continuity-control', title: 'Continuity Control', x: 1060, y: 860 },
-            { id: 'relationship-control', type: 'relationship-control', title: 'Relationship Control', x: 730, y: 860 },
-            { id: 'world-reference-image-target', type: 'image-target', title: 'Reference Image Target', x: 730, y: 1080 },
-            { id: 'world-reference-image-control', type: 'image-generation-control', title: 'Reference Image Control', x: 1060, y: 1080 },
-          ],
-          customLinks: [
-            { id: 'world-goal', sourceNodeId: 'generation-goal', sourceSlotId: 'goal', targetNodeId: 'world-card-target', targetSlotId: 'goal', kind: 'guides' },
-            { id: 'world-source', sourceNodeId: 'source-material', sourceSlotId: 'source', targetNodeId: 'world-card-target', targetSlotId: 'source', kind: 'grounds' },
-            { id: 'world-style', sourceNodeId: 'style-pressure', sourceSlotId: 'style', targetNodeId: 'world-card-target', targetSlotId: 'style', kind: 'weights' },
-            { id: 'world-constraint', sourceNodeId: 'hard-constraints', sourceSlotId: 'constraint', targetNodeId: 'world-card-target', targetSlotId: 'constraint', kind: 'constrains' },
-            { id: 'world-npc-pack', sourceNodeId: 'world-card-target', sourceSlotId: 'world', targetNodeId: 'npc-pack-target', targetSlotId: 'world', kind: 'guides' },
-            { id: 'relationship-npc-pack', sourceNodeId: 'relationship-control', sourceSlotId: 'relationship', targetNodeId: 'npc-pack-target', targetSlotId: 'relationship', kind: 'guides' },
-            { id: 'npc-pack-primary', sourceNodeId: 'npc-pack-target', sourceSlotId: 'npcPack', targetNodeId: 'primary-npc-target', targetSlotId: 'npcPack', kind: 'guides' },
-            { id: 'relationship-primary-npc', sourceNodeId: 'relationship-control', sourceSlotId: 'relationship', targetNodeId: 'primary-npc-target', targetSlotId: 'relationship', kind: 'guides' },
-            { id: 'world-plot', sourceNodeId: 'world-card-target', sourceSlotId: 'world', targetNodeId: 'plot-arc-target', targetSlotId: 'world', kind: 'guides' },
-            { id: 'npc-pack-plot', sourceNodeId: 'npc-pack-target', sourceSlotId: 'npcPack', targetNodeId: 'plot-arc-target', targetSlotId: 'npcPack', kind: 'guides' },
-            { id: 'continuity-plot', sourceNodeId: 'continuity-control', sourceSlotId: 'continuity', targetNodeId: 'plot-arc-target', targetSlotId: 'continuity', kind: 'guides' },
-            { id: 'world-scene', sourceNodeId: 'world-card-target', sourceSlotId: 'world', targetNodeId: 'scene-card-target', targetSlotId: 'world', kind: 'guides' },
-            { id: 'plot-scene', sourceNodeId: 'plot-arc-target', sourceSlotId: 'plot', targetNodeId: 'scene-card-target', targetSlotId: 'plot', kind: 'guides' },
-            { id: 'world-reference-card', sourceNodeId: 'character-card-target', sourceSlotId: 'target', targetNodeId: 'world-reference-image-target', targetSlotId: 'card', kind: 'guides' },
-            { id: 'world-reference-identity', sourceNodeId: 'overview-sheet-image-target', sourceSlotId: 'imageAsset', targetNodeId: 'world-reference-image-target', targetSlotId: 'referenceImage', kind: 'provides' },
-            { id: 'world-reference-tool', sourceNodeId: 'image-capability', sourceSlotId: 'image', targetNodeId: 'world-reference-image-target', targetSlotId: 'image', kind: 'enables' },
-            { id: 'world-reference-control-target', sourceNodeId: 'world-reference-image-target', sourceSlotId: 'imageAsset', targetNodeId: 'world-reference-image-control', targetSlotId: 'imageTarget', kind: 'guides' },
-            { id: 'world-reference-control', sourceNodeId: 'world-reference-image-control', sourceSlotId: 'imageControl', targetNodeId: 'world-reference-image-target', targetSlotId: 'imageControl', kind: 'guides' },
-            { id: 'world-reference-style', sourceNodeId: 'style-pressure', sourceSlotId: 'style', targetNodeId: 'world-reference-image-target', targetSlotId: 'style', kind: 'weights' },
-            { id: 'world-reference-constraint', sourceNodeId: 'hard-constraints', sourceSlotId: 'constraint', targetNodeId: 'world-reference-image-target', targetSlotId: 'constraint', kind: 'constrains' },
-          ],
         },
       },
     ]
@@ -2663,8 +2646,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const records = getWorkflowAssistantStatusRecords()
     const project = characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)
     const session = normalizeCharacterWorkflowGoalSession(project?.goalSession)
+    const pendingDecision = session?.pendingDecision
     const hasRecords = records.length > 0
-    const canContinue = Boolean(session?.nextStep && session.status !== 'paused' && session.status !== 'blocked' && session.status !== 'complete' && !characterWorkflowBuilderBusy)
+    const canContinue = Boolean(session?.nextStep && !pendingDecision && session.status !== 'paused' && session.status !== 'blocked' && session.status !== 'complete' && !characterWorkflowBuilderBusy)
     const canPause = Boolean(session && session.status === 'active' && !characterWorkflowBuilderBusy)
     const canResume = Boolean(session && session.status === 'paused' && !characterWorkflowBuilderBusy)
     const canStop = Boolean(session && session.status !== 'complete' && !characterWorkflowBuilderBusy)
@@ -2705,6 +2689,29 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
                   <p>${options.escapeHtml(record.body)}</p>
                 </article>
               `).join('')}
+            </div>
+          </section>
+        ` : ''}
+        ${pendingDecision ? `
+          <section class="chat-workflow-canvas-assistant-decision" aria-live="polite">
+            <header>
+              <span>${options.escapeHtml(zh ? '需要选择' : 'Decision needed')}</span>
+              <strong>${options.escapeHtml(pendingDecision.title)}</strong>
+            </header>
+            ${pendingDecision.description ? `<p>${options.escapeHtml(pendingDecision.description)}</p>` : ''}
+            <div class="chat-workflow-canvas-assistant-decision-options">
+              ${pendingDecision.options.map((optionItem) => `
+                <button type="button" data-chat-workflow-decision-option="${options.escapeHtml(optionItem.id)}" ${characterWorkflowBuilderBusy ? 'disabled' : ''}>
+                  <strong>${options.escapeHtml(optionItem.label)}</strong>
+                  ${optionItem.detail ? `<span>${options.escapeHtml(optionItem.detail)}</span>` : ''}
+                </button>
+              `).join('')}
+              ${pendingDecision.allowSkip ? `
+                <button type="button" class="secondary" data-chat-workflow-decision-option="__skip" ${characterWorkflowBuilderBusy ? 'disabled' : ''}>
+                  <strong>${options.escapeHtml(zh ? '交给 Agent 决定' : 'Let agent decide')}</strong>
+                  <span>${options.escapeHtml(zh ? '继续使用合理默认偏好编辑资源图' : 'Continue with a reasonable default editing preference')}</span>
+                </button>
+              ` : ''}
             </div>
           </section>
         ` : ''}
@@ -3305,6 +3312,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       currentStep: typeof session.currentStep === 'string' ? session.currentStep : undefined,
       nextStep: typeof session.nextStep === 'string' ? session.nextStep : undefined,
       status,
+      pendingDecision: normalizeWorkflowAgentDecision((session as CharacterWorkflowGoalSession & { pendingDecision?: unknown }).pendingDecision),
       history: Array.isArray(session.history)
         ? session.history.flatMap((item): CharacterWorkflowGoalSession['history'] => {
           if (!item || typeof item !== 'object') return []
@@ -3324,6 +3332,43 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         }).slice(-12)
         : [],
       updatedAt: Math.max(0, Math.round(Number(session.updatedAt) || Date.now())),
+    }
+  }
+
+  function normalizeWorkflowAgentDecision(value: unknown): CharacterWorkflowAgentDecision | undefined {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return undefined
+    }
+    const record = value as Record<string, unknown>
+    const title = typeof record.title === 'string' ? record.title.trim() : ''
+    const rawOptions = Array.isArray(record.options) ? record.options : []
+    const decisionOptions = rawOptions.flatMap((item, index): CharacterWorkflowAgentDecisionOption[] => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) {
+        return []
+      }
+      const option = item as Record<string, unknown>
+      const label = typeof option.label === 'string' ? option.label.trim() : ''
+      if (!label) {
+        return []
+      }
+      return [{
+        id: typeof option.id === 'string' && option.id.trim() ? option.id.trim() : `option-${index + 1}`,
+        label,
+        detail: typeof option.detail === 'string' && option.detail.trim() ? option.detail.trim() : undefined,
+        patchHint: typeof option.patchHint === 'string' && option.patchHint.trim() ? option.patchHint.trim() : undefined,
+      }]
+    }).slice(0, 6)
+    if (!title || decisionOptions.length < 2) {
+      return undefined
+    }
+    const defaultOptionId = typeof record.defaultOptionId === 'string' ? record.defaultOptionId.trim() : ''
+    return {
+      id: typeof record.id === 'string' && record.id.trim() ? record.id.trim() : `decision-${Date.now()}`,
+      title,
+      description: typeof record.description === 'string' && record.description.trim() ? record.description.trim() : undefined,
+      options: decisionOptions,
+      defaultOptionId: decisionOptions.some((option) => option.id === defaultOptionId) ? defaultOptionId : decisionOptions[0]?.id,
+      allowSkip: typeof record.allowSkip === 'boolean' ? record.allowSkip : true,
     }
   }
 
@@ -3416,8 +3461,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     if (spec.sourceNotes && !configOverrides['source-material']) {
       configOverrides['source-material'] = {
-        sourceKind: 'notes',
         notes: spec.sourceNotes,
+        materials: [],
       }
     }
     const project: CharacterWorkflowProjectRecord = {
@@ -3470,6 +3515,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     completedSteps: string[]
     currentStep?: string
     nextStep?: string
+    decision?: CharacterWorkflowAgentDecision
     updatedAt: number
     steps: Array<{
       id: string
@@ -3482,9 +3528,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       uiConfigOverrides: Record<string, Record<string, unknown>>
       currentStep?: string
       nextStep?: string
+      decision?: CharacterWorkflowAgentDecision
       createdAt: number
     }>
   }, fallbackObjective: string): CharacterWorkflowGoalSession {
+    const lastDecision = normalizeWorkflowAgentDecision(agentWork.decision ?? agentWork.steps[agentWork.steps.length - 1]?.decision)
     return {
       objective: agentWork.objective || fallbackObjective,
       plan: Array.isArray(agentWork.plan) ? agentWork.plan.filter((item): item is string => typeof item === 'string') : [],
@@ -3492,6 +3540,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       currentStep: agentWork.currentStep,
       nextStep: agentWork.nextStep,
       status: agentWork.status,
+      pendingDecision: agentWork.status === 'needs-user' ? lastDecision : undefined,
       history: agentWork.steps.map((step) => ({
         id: step.id,
         stepIndex: step.index,
@@ -3594,6 +3643,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         completedSteps?: string[]
         currentStep?: string
         nextStep?: string
+        decision?: CharacterWorkflowAgentDecision
         status?: string
         operations?: Array<Record<string, unknown>>
       }
@@ -3607,6 +3657,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         completedSteps: string[]
         currentStep?: string
         nextStep?: string
+        decision?: CharacterWorkflowAgentDecision
         updatedAt: number
         steps: Array<{
           id: string
@@ -3619,6 +3670,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           uiConfigOverrides: Record<string, Record<string, unknown>>
           currentStep?: string
           nextStep?: string
+          decision?: CharacterWorkflowAgentDecision
           createdAt: number
         }>
       }
@@ -3636,6 +3688,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const agentWork = response.agentWork
     if (agentWork) {
       const status = agentWork.status === 'complete' ? 'complete' : agentWork.status
+      const lastDecision = normalizeWorkflowAgentDecision(agentWork.decision ?? agentWork.steps[agentWork.steps.length - 1]?.decision)
       project.goalSession = {
         ...current,
         objective: agentWork.objective || current.objective,
@@ -3644,6 +3697,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         currentStep: typeof agentWork.currentStep === 'string' && agentWork.currentStep.trim() ? agentWork.currentStep.trim() : current.currentStep,
         nextStep: typeof agentWork.nextStep === 'string' && agentWork.nextStep.trim() ? agentWork.nextStep.trim() : undefined,
         status,
+        pendingDecision: status === 'needs-user' ? lastDecision : undefined,
         history: [
           ...dedupeWorkflowGoalHistory([
             ...current.history,
@@ -3679,6 +3733,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       currentStep: typeof spec.currentStep === 'string' && spec.currentStep.trim() ? spec.currentStep.trim() : current.currentStep,
       nextStep: typeof spec.nextStep === 'string' && spec.nextStep.trim() ? spec.nextStep.trim() : current.nextStep,
       status,
+        pendingDecision: status === 'needs-user' ? normalizeWorkflowAgentDecision(spec.decision) : undefined,
       history: [
         ...current.history,
         {
@@ -3709,6 +3764,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       completedSteps?: string[]
       currentStep?: string
       nextStep?: string
+      decision?: CharacterWorkflowAgentDecision
       operations?: Array<Record<string, unknown>>
       uiConfigOverrides?: Record<string, Record<string, unknown>>
       createdAt?: number
@@ -3729,6 +3785,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       completedSteps: step.completedSteps,
       currentStep: step.currentStep,
       nextStep: step.nextStep,
+      decision: step.decision,
       status: step.status,
       operations: step.operations,
     }
@@ -3748,6 +3805,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       currentStep: typeof step.currentStep === 'string' && step.currentStep.trim() ? step.currentStep.trim() : current.currentStep,
       nextStep: typeof step.nextStep === 'string' && step.nextStep.trim() ? step.nextStep.trim() : current.nextStep,
       status,
+      pendingDecision: status === 'needs-user' ? normalizeWorkflowAgentDecision(step.decision) : undefined,
       history: dedupeWorkflowGoalHistory([
         ...current.history,
         {
@@ -3808,6 +3866,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       ...session,
       status,
       nextStep: status === 'complete' ? undefined : session.nextStep,
+      pendingDecision: status === 'complete' ? undefined : session.pendingDecision,
       history: [
         ...session.history,
         {
@@ -3829,10 +3888,57 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   function continueActiveWorkflowGoalSession(): void {
     const project = characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)
     const session = normalizeCharacterWorkflowGoalSession(project?.goalSession)
-    if (!session?.nextStep || session.status === 'paused' || session.status === 'blocked' || session.status === 'complete') {
+    if (!session?.nextStep || session.pendingDecision || session.status === 'paused' || session.status === 'blocked' || session.status === 'complete') {
       return
     }
     characterWorkflowAssistantPrompt = session.nextStep
+    void applyCharacterWorkflowAssistantPrompt()
+  }
+
+  function chooseWorkflowAgentDecisionOption(optionId: string): void {
+    const project = characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)
+    const session = normalizeCharacterWorkflowGoalSession(project?.goalSession)
+    const decision = session?.pendingDecision
+    if (!project || !session || !decision || characterWorkflowBuilderBusy) {
+      return
+    }
+    const zh = options.getLanguage() === 'zh-CN'
+    const optionItem = optionId === '__skip'
+      ? undefined
+      : decision.options.find((item) => item.id === optionId)
+    if (optionId !== '__skip' && !optionItem) {
+      return
+    }
+    const choiceLabel = optionItem?.label ?? (zh ? '交给 Agent 决定' : 'Let agent decide')
+    const choiceDetail = optionItem?.detail ? `\n${optionItem.detail}` : ''
+    const patchHint = optionItem?.patchHint || session.nextStep || ''
+    characterWorkflowAssistantPrompt = [
+      zh ? `用户选择：${choiceLabel}` : `User selected: ${choiceLabel}`,
+      choiceDetail,
+      patchHint ? `${zh ? '继续编辑方向' : 'Continue editing direction'}: ${patchHint}` : '',
+    ].filter(Boolean).join('\n')
+    project.goalSession = {
+      ...session,
+      pendingDecision: undefined,
+      status: 'active',
+      nextStep: patchHint || session.nextStep,
+      history: [
+        ...session.history,
+        {
+          userRequest: choiceLabel,
+          summary: zh
+            ? `已选择「${choiceLabel}」，Agent 将据此继续编辑资源图。`
+            : `Selected "${choiceLabel}"; the agent will continue editing the workflow from this preference.`,
+          status: 'decision-selected',
+          operations: 0,
+          currentStep: session.currentStep,
+          nextStep: patchHint || session.nextStep,
+          createdAt: Date.now(),
+        },
+      ].slice(-16),
+      updatedAt: Date.now(),
+    }
+    saveActiveWorkflowProjectSnapshot()
     void applyCharacterWorkflowAssistantPrompt()
   }
 
@@ -4040,6 +4146,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       plan?: string[]
       confidence?: number
       status?: string
+      decision?: CharacterWorkflowAgentDecision
       operations?: Array<Record<string, unknown>>
     }
     uiConfigOverrides?: Record<string, Record<string, unknown>>
@@ -4638,6 +4745,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         break
       case 'toggle-sidebar':
         toggleCharacterWorkflowSidebar()
+        break
+      case 'add-materials':
+        void addCharacterWorkflowMaterials(target?.dataset.chatWorkflowNode || selectedWorkflowNodeId)
+        break
+      case 'remove-material':
+        removeCharacterWorkflowMaterial(target?.dataset.chatWorkflowNode || selectedWorkflowNodeId, target?.dataset.materialId || '')
         break
       default:
         if (!executeCharacterResourceCommand(action, target)) {
@@ -5515,6 +5628,74 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     renderCharacterWorkflow()
   }
 
+  async function addCharacterWorkflowMaterials(nodeId: string): Promise<void> {
+    if (!nodeId) {
+      return
+    }
+    try {
+      const response = await window.electronAPI.selectChatMaterials()
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to select materials')
+      }
+      if (response.canceled || !response.materials?.length) {
+        return
+      }
+      pushCharacterResourceUndoSnapshot()
+      characterWorkflowConfigOverrides[nodeId] ??= {}
+      const current = normalizeWorkflowMaterialConfig(characterWorkflowConfigOverrides[nodeId].materials)
+      const incoming = response.materials.map((material, index) => ({
+        id: `${Date.now().toString(36)}-${index}-${sanitizeWorkflowResourceId(material.name || material.kind)}`,
+        ...material,
+      }))
+      characterWorkflowConfigOverrides[nodeId].materials = dedupeWorkflowMaterials([...current, ...incoming])
+      selectedWorkflowNodeId = nodeId
+      characterResourceViewState.selectedNodeIds = [nodeId]
+      characterResourceViewState.selectedLinkId = ''
+      saveActiveWorkflowProjectSnapshot()
+      renderCharacterWorkflow()
+      showToast(options.getLanguage() === 'zh-CN' ? `已添加 ${incoming.length} 个素材` : `Added ${incoming.length} material(s)`)
+    } catch (error: any) {
+      showToast(error?.message || String(error))
+    }
+  }
+
+  function removeCharacterWorkflowMaterial(nodeId: string, materialId: string): void {
+    if (!nodeId || !materialId) {
+      return
+    }
+    const ownerNodeId = nodeId.startsWith('source-material-item-') ? 'source-material' : nodeId
+    const current = normalizeWorkflowMaterialConfig(characterWorkflowConfigOverrides[ownerNodeId]?.materials)
+    const next = current.filter((material) => material.id !== materialId)
+    if (next.length === current.length) {
+      return
+    }
+    pushCharacterResourceUndoSnapshot()
+    characterWorkflowConfigOverrides[ownerNodeId] ??= {}
+    characterWorkflowConfigOverrides[ownerNodeId].materials = next
+    selectedWorkflowNodeId = ownerNodeId
+    characterResourceViewState.selectedNodeIds = [ownerNodeId]
+    saveActiveWorkflowProjectSnapshot()
+    renderCharacterWorkflow()
+  }
+
+  function normalizeWorkflowMaterialConfig(value: unknown): Array<Record<string, any>> {
+    return Array.isArray(value)
+      ? value.filter((item): item is Record<string, any> => Boolean(item) && typeof item === 'object' && !Array.isArray(item))
+      : []
+  }
+
+  function dedupeWorkflowMaterials(materials: Array<Record<string, any>>): Array<Record<string, any>> {
+    const seen = new Set<string>()
+    return materials.filter((material) => {
+      const key = [material.kind, material.name, material.mimeType, material.size].join(':')
+      if (seen.has(key)) {
+        return false
+      }
+      seen.add(key)
+      return true
+    })
+  }
+
   function deriveCharacterWorkflowConfig(config: Record<string, unknown>): Record<string, unknown> {
     const nextConfig = { ...config }
     if (typeof nextConfig.preset === 'string' && !Object.prototype.hasOwnProperty.call(nextConfig, 'stylePrompt')) {
@@ -5678,20 +5859,26 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (inputType === 'style-signal' || inputType === 'hard-constraint') {
       return true
     }
-    if (inputType !== 'asset-target') {
-      return false
-    }
     return [
       'target',
       'imageTarget',
       'fieldTarget',
       'imageControl',
+      'referenceImage',
+      'imageAsset',
       'fieldControl',
       'continuity',
       'relationship',
       'style',
       'constraint',
     ].includes(inputSlotId)
+  }
+
+  function parseCharacterResourceSlotAccepts(value: string | undefined, fallbackType: string): string[] {
+    if (typeof value === 'string' && value.trim()) {
+      return value.split(',').map((item) => item.trim()).filter(Boolean)
+    }
+    return fallbackType ? [fallbackType] : []
   }
 
   function inferCharacterResourceLinkKind(sourceType: string, targetType: string): SerializedCharacterResourceLinkKind {
@@ -5730,7 +5917,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const input = sourceIsOutput
       ? { nodeId: detail.targetNodeId, slotId: detail.targetSlotId, type: detail.targetType }
       : { nodeId: detail.sourceNodeId, slotId: detail.sourceSlotId, type: detail.sourceType }
-    if (!output.nodeId || !output.slotId || !input.nodeId || !input.slotId || output.type !== input.type) {
+    const inputAccepts = sourceIsOutput
+      ? parseCharacterResourceSlotAccepts(detail.targetAccepts, input.type)
+      : parseCharacterResourceSlotAccepts(detail.sourceAccepts, input.type)
+    if (!output.nodeId || !output.slotId || !input.nodeId || !input.slotId || !inputAccepts.includes(output.type)) {
       showToast(options.getLanguage() === 'zh-CN' ? 'slot 类型不兼容，未创建连接' : 'Slot types are incompatible; no link was created')
       return
     }
@@ -5778,6 +5968,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function deleteSelectedCharacterResourceLink(): boolean {
     const linkId = characterResourceViewState.selectedLinkId
+    if (!linkId) {
+      return false
+    }
+    return deleteCharacterResourceLink(linkId)
+  }
+
+  function deleteCharacterResourceLink(linkId: string): boolean {
     if (!linkId) {
       return false
     }
@@ -6569,6 +6766,17 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     upsertCharacterResourceLink(detail)
   })
 
+  panel.addEventListener('character-resource-node-context', (event) => {
+    const nodeId = (event as CustomEvent<{ nodeId?: string }>).detail?.nodeId ?? ''
+    if (!nodeId) {
+      return
+    }
+    selectedWorkflowNodeId = nodeId
+    characterResourceViewState.selectedNodeIds = [nodeId]
+    characterResourceViewState.selectedLinkId = ''
+    characterWorkflowEditorState.nodeSearchOpen = false
+  })
+
   panel.addEventListener('click', (event) => {
     const eventTarget = event.target as HTMLElement
     if (eventTarget === conversationSettingsPanel) {
@@ -6577,6 +6785,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     if (eventTarget === chatHistoryPanel) {
       closeChatHistoryManager()
+      return
+    }
+
+    const workflowDecisionOption = eventTarget.closest<HTMLElement>('[data-chat-workflow-decision-option]')
+    if (workflowDecisionOption && panel.contains(workflowDecisionOption)) {
+      chooseWorkflowAgentDecisionOption(workflowDecisionOption.dataset.chatWorkflowDecisionOption || '')
       return
     }
 
@@ -6807,6 +7021,16 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
 
+    const workflowLinkDisconnect = eventTarget.closest<HTMLElement>('[data-chat-workflow-link-disconnect]')
+    if (workflowLinkDisconnect && panel.contains(workflowLinkDisconnect)) {
+      event.preventDefault()
+      const linkId = workflowLinkDisconnect.dataset.chatWorkflowLinkDisconnect || ''
+      characterResourceViewState.selectedLinkId = linkId
+      characterResourceViewState.selectedNodeIds = []
+      deleteCharacterResourceLink(linkId)
+      return
+    }
+
     const workflowLinkSelect = eventTarget.closest<HTMLElement>('[data-chat-workflow-link-select]')
     if (workflowLinkSelect && panel.contains(workflowLinkSelect)) {
       characterResourceViewState.selectedLinkId = workflowLinkSelect.dataset.chatWorkflowLinkSelect || ''
@@ -6835,7 +7059,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
 
     const workflowNodeSelect = eventTarget.closest<HTMLElement>('[data-chat-workflow-node-select]')
-    if (workflowNodeSelect && panel.contains(workflowNodeSelect)) {
+    if (workflowNodeSelect && panel.contains(workflowNodeSelect) && !eventTarget.closest<HTMLElement>('[data-chat-workflow-action]')) {
       characterResourceViewState.selectedLinkId = ''
       characterWorkflowEditorState.nodeSearchOpen = false
       const panelId = workflowNodeSelect.dataset.chatWorkflowPanel
@@ -6993,6 +7217,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (resourceShortcut && (event.metaKey || event.ctrlKey) && event.key === 'v') {
       event.preventDefault()
       executeCharacterResourceCommand('paste-selection')
+      return
+    }
+    if (resourceShortcut && (event.key === 'Delete' || event.key === 'Backspace')) {
+      event.preventDefault()
+      executeCharacterResourceCommand('delete-selection')
       return
     }
     if (event.key === 'Escape' && conversationSettingsPanel?.classList.contains('visible')) {

@@ -222,6 +222,7 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
         ${assistantAvatar}
         <div class="chat-message-body">
           ${renderMessageAttachments(message)}
+          ${renderOpeningPanel(message)}
           ${renderMessageContent(message, language)}
           ${includeSceneState ? renderInlineSceneState(language) : ''}
           <small>${stateLabel}${options.escapeHtml(localizeChatText(message.createdLabel, language))}</small>
@@ -420,6 +421,35 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
       return markup || renderNoemaStreamStatus(language)
     }
     return `<p>${options.escapeHtml(text)}</p>`
+  }
+
+  function renderOpeningPanel(message: ChatMessage): string {
+    const panel = message.openingPanel
+    if (!panel || (!panel.html && !panel.css)) {
+      return ''
+    }
+    const html = sanitizeOpeningPanelHtml(panel.html)
+    const css = sanitizeOpeningPanelCss(panel.css)
+    return `
+      <div class="chat-opening-panel" data-chat-opening-panel="${options.escapeHtml(panel.sourceArtifactId ?? '')}">
+        ${css ? `<style>${css}</style>` : ''}
+        ${html}
+      </div>
+    `
+  }
+
+  function sanitizeOpeningPanelHtml(value: string): string {
+    return value
+      .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
+      .replace(/\son[a-z]+\s*=\s*(['"]).*?\1/gi, '')
+      .replace(/\s(href|src)\s*=\s*(['"])\s*javascript:[\s\S]*?\2/gi, '')
+  }
+
+  function sanitizeOpeningPanelCss(value: string): string {
+    return value
+      .replace(/<\/?style[\s\S]*?>/gi, '')
+      .replace(/@import[^;]+;/gi, '')
+      .replace(/url\(\s*(['"]?)javascript:[^)]+\)/gi, 'none')
   }
 
   function renderNoemaStreamStatus(language: ChatLanguageCode): string {

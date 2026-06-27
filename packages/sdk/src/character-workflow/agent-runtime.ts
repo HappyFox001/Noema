@@ -29,6 +29,7 @@ export type CharacterAgentArtifactKind =
   | 'style-brief'
   | 'constraint-brief'
   | 'source-summary'
+  | 'source-material'
   | 'character-card-draft'
   | 'character-card-field'
   | 'character-card-final'
@@ -114,6 +115,11 @@ export interface AgentImageGenerationControl {
   targetImageCount: number
   imageStyleDomain: string
   stylePrompt: string
+  poseGoals: string[]
+  backgroundInteraction: string
+  appealMode: string
+  sensualityLevel: string
+  wardrobeExposure: string
   shotType: string
   aspectRatio: string
   consistencyMode: string
@@ -151,6 +157,7 @@ export interface AgentTargetContext {
   title: string
   config: Record<string, unknown>
   field?: string
+  fields?: string[]
   imageRole?: string
   imageAssetPurpose?: string
   requestedResources: string[]
@@ -168,7 +175,18 @@ export interface AgentSourceMaterial {
   kind: string
   notes: string
   groundingStrength: number
+  materials: AgentSourceMaterialItem[]
   incomingRelations: CharacterAgentRelation[]
+}
+
+export interface AgentSourceMaterialItem {
+  id: string
+  kind: 'image' | 'document'
+  name: string
+  mimeType: string
+  size?: number
+  dataUrl?: string
+  text?: string
 }
 
 export interface AgentModelCapability {
@@ -616,6 +634,11 @@ export function compileCharacterAgentRunContext(
     targetImageCount: numberValue(node.config.targetImageCount, 1),
     imageStyleDomain: stringValue(node.config.imageStyleDomain, 'auto'),
     stylePrompt: stringValue(node.config.stylePrompt),
+    poseGoals: stringListValue(node.config.poseGoals),
+    backgroundInteraction: stringValue(node.config.backgroundInteraction),
+    appealMode: stringValue(node.config.appealMode, 'sensual-confidence'),
+    sensualityLevel: stringValue(node.config.sensualityLevel, 'sensual'),
+    wardrobeExposure: stringValue(node.config.wardrobeExposure, 'stylish-revealing'),
     shotType: stringValue(node.config.shotType, 'auto'),
     aspectRatio: stringValue(node.config.aspectRatio, '1:1'),
     consistencyMode: stringValue(node.config.consistencyMode, 'same-character'),
@@ -671,9 +694,10 @@ export function compileCharacterAgentRunContext(
     relationshipControls,
     sourceMaterials: (nodesByType.get('source-material') ?? []).map((node) => ({
       nodeId: node.id,
-      kind: stringValue(node.config.sourceKind, 'notes'),
+      kind: inferSourceMaterialKind(node.config.materials),
       notes: stringValue(node.config.notes),
       groundingStrength: numberValue(node.config.groundingStrength, 0.5),
+      materials: normalizeSourceMaterialItems(node.config.materials),
       incomingRelations: incomingRelations(relations, node.id),
     })),
     capabilities: {
@@ -1320,6 +1344,9 @@ export function createCharacterSuperAgent(
 
       try {
         await emit({ type: 'run.started', runId, timestamp: now() })
+        for (const materialArtifact of createSourceMaterialArtifacts(context, runId)) {
+          await writeArtifact(materialArtifact)
+        }
         await changePhase('produce')
         state = {
           ...state,
@@ -1531,6 +1558,10 @@ export function createCharacterSuperAgent(
           })
         }
 
+        for (const openingLayoutArtifact of createOpeningLayoutArtifacts(context, state.draft!, state.artifacts, runId)) {
+          await writeArtifact(openingLayoutArtifact)
+        }
+
         const finalCard = await writeArtifact({
           id: `${runId}:character-card-final`,
           kind: 'character-card-final',
@@ -1688,6 +1719,29 @@ function createInitialCharacterDraft(context: CharacterAgentRunContext, now: num
   }
 }
 
+function createSourceMaterialArtifacts(
+  context: CharacterAgentRunContext,
+  runId: string
+): Array<Omit<CharacterAgentArtifact, 'version' | 'createdAt' | 'updatedAt'>> {
+  return context.sourceMaterials.flatMap((source) => source.materials.map((material, index) => ({
+    id: `${runId}:source-material:${source.nodeId}:${material.id || index}`,
+    kind: 'source-material' as const,
+    runId,
+    candidateId: `${runId}:candidate:primary`,
+    title: material.name,
+    summary: material.kind === 'image'
+      ? `Image material from ${source.nodeId}.`
+      : compactText(material.text, 180) || `Document material from ${source.nodeId}.`,
+    sourceNodeId: source.nodeId,
+    data: {
+      ...material,
+      sourceNodeId: source.nodeId,
+      sourceKind: source.kind,
+      groundingStrength: source.groundingStrength,
+    },
+  })))
+}
+
 function hydrateCharacterDraftFromArtifacts(
   context: CharacterAgentRunContext,
   artifacts: CharacterAgentArtifact[],
@@ -1727,6 +1781,241 @@ function hydrateCharacterDraftFromArtifacts(
     missing: getRequiredCharacterDraftFields(context),
     updatedAt: now,
   }
+}
+
+function createOpeningLayoutArtifacts(
+  context: CharacterAgentRunContext,
+  draft: CharacterCardDraft,
+  artifacts: CharacterAgentArtifact[],
+  runId: string
+): Array<Omit<CharacterAgentArtifact, 'version' | 'createdAt' | 'updatedAt'>> {
+  const targets = context.targets.filter((target) => target.kind === 'opening-layout')
+  if (!targets.length) {
+    return []
+  }
+  const fields = draft.fields ?? {}
+  return targets.map((target) => {
+    const data = createOpeningLayoutData(context, target, fields, artifacts)
+    return {
+      id: `${runId}:opening-layout:${target.nodeId}`,
+      kind: 'opening-layout' as const,
+      runId,
+      candidateId: draft.id,
+      sourceNodeId: target.nodeId,
+      title: `${stringValue(fields.name, 'Character')} Opening Panel`,
+      summary: stringValue(data.summary, `Opening panel for ${stringValue(fields.name, 'Character')}.`),
+      data,
+    }
+  })
+}
+
+function createOpeningLayoutData(
+  context: CharacterAgentRunContext,
+  target: AgentTargetContext,
+  fields: Record<string, unknown>,
+  artifacts: CharacterAgentArtifact[]
+): Record<string, unknown> {
+  const name = stringValue(fields.name, 'Unknown Character')
+  const description = stringValue(fields.description)
+  const opening = stripChatTags(stringValue(fields.firstMessage))
+  const scenario = stringValue(fields.scenario)
+  const worldContext = stringValue(fields.worldContext)
+  const dialogueStyle = stringValue(fields.dialogueStyle)
+  const includeSections = stringListValue(target.config.includeSections, ['title', 'tags', 'opening', 'coverImage', 'supportImages'])
+  const layoutKind = stringValue(target.config.layoutKind, 'immersive-card-css')
+  const style = resolveOpeningLayoutStyle(context, target, fields)
+  const images = collectOpeningLayoutImages(artifacts)
+  const cover = images[0]
+  const supportImages = images.slice(1, 4)
+  const scopeClass = `noema-opening-panel-${sanitizeCssIdentifier(target.nodeId)}`
+  const sections = {
+    title: name,
+    summary: description,
+    opening,
+    scenario,
+    worldContext,
+    dialogueStyle,
+  }
+  const html = buildOpeningLayoutHtml({
+    scopeClass,
+    name,
+    description,
+    opening,
+    scenario,
+    worldContext,
+    dialogueStyle,
+    includeSections,
+    cover,
+    supportImages,
+  })
+  const css = buildOpeningLayoutCss(scopeClass, style)
+  return {
+    schemaVersion: 1,
+    layoutKind,
+    includeSections,
+    summary: `${layoutKind} panel for ${name}, styled from ${style.preset}.`,
+    html,
+    css,
+    text: opening || description || scenario,
+    sections,
+    images,
+    style,
+    source: {
+      targetNodeId: target.nodeId,
+      layoutPrompt: stringValue(target.config.layoutPrompt),
+      imageArtifactIds: images.map((image) => image.id),
+    },
+  }
+}
+
+function resolveOpeningLayoutStyle(
+  context: CharacterAgentRunContext,
+  target: AgentTargetContext,
+  fields: Record<string, unknown>
+): Record<string, string> {
+  const localStyle = target.localStylePressures[0] ?? context.stylePressures[0]
+  const preset = localStyle?.preset || 'sillytavern-natural-card'
+  const prompt = localStyle?.prompt || context.goal.prompt
+  const text = [
+    preset,
+    prompt,
+    stringValue(fields.description),
+    stringValue(fields.scenario),
+    stringValue(fields.personality),
+  ].join(' ').toLowerCase()
+  const gothic = /goth|noir|dark|horror|thriller|shadow|血|夜|暗|悬疑/.test(text)
+  const warm = /warm|romance|comfort|soft|校园|温柔|治愈|浪漫/.test(text)
+  const cyber = /cyber|neon|future|sci-fi|ai|城市|赛博|霓虹/.test(text)
+  const accent = cyber ? '#76d7ff' : warm ? '#e2b278' : gothic ? '#b58cff' : '#d8dce0'
+  const accentSoft = cyber ? 'rgba(118, 215, 255, 0.2)' : warm ? 'rgba(226, 178, 120, 0.2)' : gothic ? 'rgba(181, 140, 255, 0.2)' : 'rgba(216, 220, 224, 0.18)'
+  const surface = gothic ? 'rgba(8, 8, 11, 0.94)' : 'rgba(9, 10, 12, 0.94)'
+  return {
+    preset,
+    prompt,
+    accent,
+    accentSoft,
+    surface,
+    mood: cyber ? 'neon' : warm ? 'warm' : gothic ? 'noir' : 'minimal',
+  }
+}
+
+function collectOpeningLayoutImages(artifacts: CharacterAgentArtifact[]): Array<Record<string, string>> {
+  return artifacts
+    .filter((artifact) => artifact.kind === 'image-asset')
+    .filter((artifact) => {
+      const data = artifact.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
+        ? artifact.data as Record<string, unknown>
+        : {}
+      return data.accepted !== false
+    })
+    .map((artifact) => {
+      const data = artifact.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
+        ? artifact.data as Record<string, unknown>
+        : {}
+      return {
+        id: artifact.id,
+        title: artifact.title,
+        role: stringValue(data.imageRole, artifact.sourceNodeId ?? ''),
+        sourceNodeId: artifact.sourceNodeId ?? '',
+        url: stringValue(data.dataUrl) || stringValue(data.url),
+      }
+    })
+    .filter((image) => image.url)
+    .sort((a, b) => openingImagePriority(a.role) - openingImagePriority(b.role))
+}
+
+function openingImagePriority(role: string): number {
+  if (role === 'character-base-image') return 0
+  if (role === 'avatar') return 1
+  if (role === 'character-overview-sheet') return 2
+  return 3
+}
+
+function buildOpeningLayoutHtml(options: {
+  scopeClass: string
+  name: string
+  description: string
+  opening: string
+  scenario: string
+  worldContext: string
+  dialogueStyle: string
+  includeSections: string[]
+  cover?: Record<string, string>
+  supportImages: Array<Record<string, string>>
+}): string {
+  const show = (section: string) => options.includeSections.includes(section)
+  const tags = deriveOpeningTags(options)
+  return [
+    `<section class="${options.scopeClass}">`,
+    show('coverImage') && options.cover ? `<figure class="noema-opening-cover"><img src="${htmlEscape(options.cover.url)}" alt="${htmlEscape(options.cover.title)}"></figure>` : '',
+    '<div class="noema-opening-body">',
+    show('title') ? `<p class="noema-opening-kicker">Noema Role Opening</p><h1>${htmlEscape(options.name)}</h1>` : '',
+    show('tags') ? `<div class="noema-opening-tags">${tags.map((tag) => `<span>${htmlEscape(tag)}</span>`).join('')}</div>` : '',
+    options.description ? `<p class="noema-opening-summary">${htmlEscape(options.description)}</p>` : '',
+    show('opening') && options.opening ? `<blockquote>${htmlEscape(options.opening)}</blockquote>` : '',
+    options.scenario ? `<article><b>Scenario</b><p>${htmlEscape(options.scenario)}</p></article>` : '',
+    show('characterSummary') && options.worldContext ? `<article><b>World Context</b><p>${htmlEscape(options.worldContext)}</p></article>` : '',
+    options.dialogueStyle ? `<article><b>Voice</b><p>${htmlEscape(options.dialogueStyle)}</p></article>` : '',
+    show('supportImages') && options.supportImages.length ? `<div class="noema-opening-gallery">${options.supportImages.map((image) => `<img src="${htmlEscape(image.url)}" alt="${htmlEscape(image.title)}">`).join('')}</div>` : '',
+    '</div>',
+    '</section>',
+  ].filter(Boolean).join('')
+}
+
+function buildOpeningLayoutCss(scopeClass: string, style: Record<string, string>): string {
+  return [
+    `.${scopeClass}{--noema-accent:${style.accent};--noema-accent-soft:${style.accentSoft};display:grid;grid-template-columns:minmax(96px,0.72fr) minmax(0,1fr);gap:14px;max-width:720px;padding:16px;border:1px solid rgba(255,255,255,.12);border-radius:22px;background:radial-gradient(circle at 18% 0%,var(--noema-accent-soft),transparent 32%),linear-gradient(145deg,rgba(255,255,255,.075),rgba(255,255,255,.018)),${style.surface};color:rgba(248,250,250,.92);box-shadow:0 22px 70px rgba(0,0,0,.42);font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overflow:hidden}`,
+    `.${scopeClass} *{box-sizing:border-box}`,
+    `.${scopeClass} .noema-opening-cover{margin:0;min-width:0}`,
+    `.${scopeClass} .noema-opening-cover img{width:100%;height:100%;min-height:220px;object-fit:cover;object-position:center 18%;border-radius:16px;border:1px solid rgba(255,255,255,.12);filter:saturate(1.04) contrast(1.03)}`,
+    `.${scopeClass} .noema-opening-body{display:grid;align-content:start;gap:10px;min-width:0}`,
+    `.${scopeClass} .noema-opening-kicker{margin:0;color:var(--noema-accent);font-size:10px;font-weight:760;letter-spacing:.16em;text-transform:uppercase}`,
+    `.${scopeClass} h1{margin:0;color:white;font-size:clamp(26px,5vw,42px);line-height:.94;letter-spacing:-.055em}`,
+    `.${scopeClass} .noema-opening-tags{display:flex;flex-wrap:wrap;gap:5px}`,
+    `.${scopeClass} .noema-opening-tags span{padding:4px 7px;border:1px solid rgba(255,255,255,.12);border-radius:999px;background:rgba(255,255,255,.052);color:rgba(248,250,250,.7);font-size:10px}`,
+    `.${scopeClass} .noema-opening-summary{margin:0;color:rgba(248,250,250,.72);font-size:12px;line-height:1.45}`,
+    `.${scopeClass} blockquote{margin:2px 0 0;padding:11px 12px;border-left:2px solid var(--noema-accent);border-radius:12px;background:rgba(255,255,255,.05);color:rgba(248,250,250,.86);font-size:12px;line-height:1.55}`,
+    `.${scopeClass} article{display:grid;gap:4px;padding:9px 10px;border:1px solid rgba(255,255,255,.08);border-radius:13px;background:rgba(0,0,0,.16)}`,
+    `.${scopeClass} article b{color:var(--noema-accent);font-size:10px;text-transform:uppercase;letter-spacing:.08em}`,
+    `.${scopeClass} article p{margin:0;color:rgba(248,250,250,.68);font-size:11px;line-height:1.45}`,
+    `.${scopeClass} .noema-opening-gallery{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}`,
+    `.${scopeClass} .noema-opening-gallery img{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:10px;border:1px solid rgba(255,255,255,.1)}`,
+    `@media(max-width:560px){.${scopeClass}{grid-template-columns:1fr}.${scopeClass} .noema-opening-cover img{max-height:260px}}`,
+  ].join('\n')
+}
+
+function deriveOpeningTags(options: {
+  description: string
+  scenario: string
+  worldContext: string
+  dialogueStyle: string
+}): string[] {
+  const source = [options.description, options.scenario, options.worldContext, options.dialogueStyle].join(' ')
+  const tags = [
+    /romance|恋|暧昧|亲密/i.test(source) ? 'slow tension' : '',
+    /mystery|悬疑|秘密|noir/i.test(source) ? 'mystery' : '',
+    /campus|学校|校园/i.test(source) ? 'campus' : '',
+    /cyber|赛博|未来|neon/i.test(source) ? 'neon city' : '',
+    /fantasy|魔法|精灵|spirit/i.test(source) ? 'fantasy' : '',
+  ].filter(Boolean)
+  return [...new Set(tags.length ? tags : ['character-first', 'roleplay-ready', 'visual card'])].slice(0, 4)
+}
+
+function stripChatTags(value: string): string {
+  return value.replace(/<\/?chat>/gi, '').trim()
+}
+
+function htmlEscape(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function sanitizeCssIdentifier(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'panel'
 }
 
 function createDraftArtifact(context: CharacterAgentRunContext, draft: CharacterCardDraft | undefined): Omit<CharacterAgentArtifact<CharacterCardDraft>, 'version' | 'createdAt' | 'updatedAt'> {
@@ -1827,6 +2116,7 @@ function createFieldArtifactsForChangedFields(
     .filter(([field, value]) => isCharacterRunField(field) && JSON.stringify(beforeFields[field] ?? null) !== JSON.stringify(value ?? null))
     .map(([field, value]) => {
       const summary = summarizeValue(value)
+      const requirement = context.requirements.find((item) => item.kind === 'character-field' && item.field === field)
       return {
         id: `${draft.id}:field:${field}:${draft.updatedAt}`,
         kind: 'character-card-field',
@@ -1840,7 +2130,7 @@ function createFieldArtifactsForChangedFields(
           value,
           support: CHARACTER_SUPPORT_FIELD_SCHEMA.includes(field as any),
         },
-        sourceNodeId: context.goal.nodeId,
+        sourceNodeId: requirement?.targetNodeId ?? context.goal.nodeId,
       }
     })
 }
@@ -2183,7 +2473,7 @@ function resolveReferenceImagesByTarget(
 ): Record<string, string[]> {
   const imageByTarget = new Map<string, string[]>()
   for (const artifact of artifacts) {
-    if (artifact.kind !== 'image-asset' || !artifact.sourceNodeId) {
+    if ((artifact.kind !== 'image-asset' && artifact.kind !== 'source-material') || !artifact.sourceNodeId) {
       continue
     }
     const reference = imageReferenceFromArtifact(artifact)
@@ -2207,6 +2497,9 @@ function imageReferenceFromArtifact(artifact: CharacterAgentArtifact): string | 
   const data = artifact.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
     ? artifact.data as Record<string, unknown>
     : {}
+  if (artifact.kind === 'source-material' && data.kind !== 'image') {
+    return null
+  }
   return stringValue(data.dataUrl) || stringValue(data.url) || null
 }
 
@@ -2302,8 +2595,9 @@ function createWorkflowRequirements(
 ): CharacterWorkflowRequirement[] {
   const requirements: CharacterWorkflowRequirement[] = []
   const fieldTargets = targets
-    .filter((target) => target.kind === 'character-field' && target.field)
-    .map((target) => ({ field: target.field!, target }))
+    .filter((target) => target.kind === 'character-field')
+    .flatMap((target) => (target.fields?.length ? target.fields : target.field ? [target.field] : [])
+      .map((field) => ({ field, target })))
   const cardTargets = targets.filter((target) => target.kind === 'character-card')
   const requiredFields = new Map<string, AgentTargetContext>()
   const hasImageTargets = targets.some((target) => target.kind === 'image')
@@ -2354,13 +2648,16 @@ function createWorkflowRequirements(
   for (const target of targets.filter((target) => target.kind === 'image')) {
     const controls = target.imageControls.length ? target.imageControls : [undefined]
     const requiredCount = controls.reduce((sum, control) => sum + Math.max(1, Math.floor(control?.targetImageCount ?? 1)), 0)
-    const referenceSourceNodeIds = relations
+    const referenceRelations = relations
       .filter((relation) =>
         relation.toNodeId === target.nodeId &&
-        relation.fromPort === 'imageAsset' &&
-        imageTargetIds.has(relation.fromNodeId)
+        (relation.fromPort === 'imageAsset' || relation.fromPort === 'resource')
       )
+    const referenceSourceNodeIds = referenceRelations
       .map((relation) => relation.fromNodeId)
+    const dependencySourceNodeIds = referenceRelations
+      .map((relation) => relation.fromNodeId)
+      .filter((nodeId) => imageTargetIds.has(nodeId))
     requirements.push({
       id: `image:${target.nodeId}`,
       kind: 'image',
@@ -2369,7 +2666,7 @@ function createWorkflowRequirements(
       required: true,
       imageRole: target.imageRole,
       requiredCount,
-      dependencyNodeIds: [...new Set(referenceSourceNodeIds)],
+      dependencyNodeIds: [...new Set(dependencySourceNodeIds)],
       referenceSourceNodeIds: [...new Set(referenceSourceNodeIds)],
     })
   }
@@ -2394,8 +2691,8 @@ function getNextMissingField(draft: CharacterCardDraft | undefined, context: Cha
 
 function getRequiredCharacterDraftFields(context: CharacterAgentRunContext): string[] {
   const fieldTargets = context.targets
-    .filter((target) => target.kind === 'character-field' && target.field)
-    .map((target) => target.field!)
+    .filter((target) => target.kind === 'character-field')
+    .flatMap((target) => target.fields?.length ? target.fields : target.field ? [target.field] : [])
   const cardTargets = context.targets.filter((target) => target.kind === 'character-card')
   const cardFields = cardTargets.flatMap((target) => [
     ...stringListValue(target.config.includeFields, [...CHARACTER_CARD_FIELD_SCHEMA]),
@@ -2471,7 +2768,65 @@ function validateCharacterOutputFormat(draft: CharacterCardDraft | undefined): s
       issues.push('firstMessage contains non-chat protocol tags')
     }
   }
+  issues.push(...detectOverlappingCharacterFields(draft?.fields ?? {}))
   return issues
+}
+
+function detectOverlappingCharacterFields(fields: Record<string, unknown>): string[] {
+  const checkedFields = [
+    'description',
+    'appearance',
+    'personality',
+    'background',
+    'scenario',
+    'worldContext',
+    'firstMessage',
+    'dialogueStyle',
+  ]
+  const normalized = checkedFields.flatMap((field) => {
+    const value = fields[field]
+    if (typeof value !== 'string') {
+      return []
+    }
+    const text = normalizeFieldOverlapText(value)
+    return text.length >= 80 ? [{ field, text }] : []
+  })
+  const issues: string[] = []
+  for (let leftIndex = 0; leftIndex < normalized.length; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < normalized.length; rightIndex += 1) {
+      const left = normalized[leftIndex]!
+      const right = normalized[rightIndex]!
+      if (left.text === right.text || hasLongSharedFieldPhrase(left.text, right.text)) {
+        issues.push(`Fields ${left.field} and ${right.field} contain overlapping content`)
+      }
+    }
+  }
+  return issues.slice(0, 4)
+}
+
+function normalizeFieldOverlapText(value: string): string {
+  return value
+    .replace(/<\/?chat>/gi, ' ')
+    .replace(/[，。！？、；：,.!?;:"'“”‘’()[\]{}<>]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+}
+
+function hasLongSharedFieldPhrase(left: string, right: string): boolean {
+  const shorter = left.length < right.length ? left : right
+  const longer = left.length < right.length ? right : left
+  if (shorter.length >= 120 && longer.includes(shorter)) {
+    return true
+  }
+  const windowSize = 48
+  for (let index = 0; index + windowSize <= shorter.length; index += 16) {
+    const slice = shorter.slice(index, index + windowSize).trim()
+    if (slice.length >= windowSize && longer.includes(slice)) {
+      return true
+    }
+  }
+  return false
 }
 
 function repairCharacterOutputFormat(draft: CharacterCardDraft, now: number): CharacterCardDraft {
@@ -2611,6 +2966,7 @@ function artifactTitle(kind: CharacterAgentArtifactKind): string {
     'style-brief': 'Style Brief',
     'constraint-brief': 'Constraint Brief',
     'source-summary': 'Source Summary',
+    'source-material': 'Source Material',
     'character-card-draft': 'Character Card Draft',
     'character-card-field': 'Character Card Field',
     'character-card-final': 'Character Card',
@@ -2718,7 +3074,8 @@ function createAgentTargetContexts(
         kind,
         title: node.title,
         config: { ...node.config },
-        field: kind === 'character-field' ? stringValue(node.config.field) : undefined,
+        field: kind === 'character-field' ? fieldTargetConfigFields(node.config)[0] : undefined,
+        fields: kind === 'character-field' ? fieldTargetConfigFields(node.config) : undefined,
         imageRole: kind === 'image' ? stringValue(node.config.imageRole) : undefined,
         imageAssetPurpose: kind === 'image' ? stringValue(node.config.assetPurpose) : undefined,
         requestedResources: requestedResourcesForTarget(node, kind),
@@ -2754,7 +3111,7 @@ function requestedResourcesForTarget(node: CharacterWorkflowNode, kind: AgentTar
     return ['character-card', ...stringListValue(node.config.includeFields), ...stringListValue(node.config.includeSupportFields)]
   }
   if (kind === 'character-field') {
-    return [`field:${stringValue(node.config.field, 'firstMessage')}`]
+    return fieldTargetConfigFields(node.config).map((field) => `field:${field}`)
   }
   if (kind === 'opening-layout') {
     return ['opening-layout', ...stringListValue(node.config.includeSections)]
@@ -2779,6 +3136,13 @@ function requestedResourcesForTarget(node: CharacterWorkflowNode, kind: AgentTar
     return [`plot-arc:${stringValue(node.config.arcShape, 'slow-burn')}`]
   }
   return ['scene-card', ...stringListValue(node.config.sceneTypes)]
+}
+
+function fieldTargetConfigFields(config: Record<string, unknown>): string[] {
+  const fields = stringListValue(config.fields)
+    .map((field) => normalizeDraftFieldName(field))
+    .filter(Boolean)
+  return [...new Set(fields.length ? fields : ['firstMessage'])]
 }
 
 function isLocallyConnected(relations: CharacterAgentRelation[], targetNodeId: string, controlNodeId: string): boolean {
@@ -2896,6 +3260,70 @@ function parseModelRef(modelRef: string): { apiId: string; modelName: string } {
 
 function stringValue(value: unknown, fallback = ''): string {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback
+}
+
+function normalizeSourceMaterialItems(value: unknown): AgentSourceMaterialItem[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value.flatMap((item, index): AgentSourceMaterialItem[] => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      return []
+    }
+    const record = item as Record<string, unknown>
+    const name = stringValue(record.name, `material-${index + 1}`)
+    const mimeType = stringValue(record.mimeType)
+    const material: AgentSourceMaterialItem = {
+      id: stringValue(record.id, `material-${index + 1}`),
+      kind: inferSourceMaterialItemKind(record.kind, mimeType, name),
+      name,
+      mimeType,
+    }
+    if (typeof record.size === 'number' && Number.isFinite(record.size)) {
+      material.size = Math.max(0, Math.round(record.size))
+    }
+    if (typeof record.dataUrl === 'string' && record.dataUrl.trim()) {
+      material.dataUrl = record.dataUrl.trim()
+    }
+    if (typeof record.text === 'string' && record.text.trim()) {
+      material.text = record.text.trim()
+    }
+    return [material]
+  })
+}
+
+function inferSourceMaterialKind(value: unknown): string {
+  const materials = normalizeSourceMaterialItems(value)
+  const imageCount = materials.filter((item) => item.kind === 'image').length
+  const documentCount = materials.filter((item) => item.kind === 'document').length
+  if (imageCount && documentCount) {
+    return 'mixed-materials'
+  }
+  if (imageCount) {
+    return 'image-materials'
+  }
+  if (documentCount) {
+    return 'document-materials'
+  }
+  return 'empty-materials'
+}
+
+function inferSourceMaterialItemKind(value: unknown, mimeType: string, name: string): AgentSourceMaterialItem['kind'] {
+  if (value === 'image' || value === 'document') {
+    return value
+  }
+  if (mimeType.startsWith('image/')) {
+    return 'image'
+  }
+  return /\.(png|jpe?g|webp|gif)$/i.test(name) ? 'image' : 'document'
+}
+
+function compactText(value: unknown, maxLength: number): string {
+  const normalized = typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : ''
+  if (!normalized) {
+    return ''
+  }
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength).trim()}...` : normalized
 }
 
 function numberValue(value: unknown, fallback: number): number {

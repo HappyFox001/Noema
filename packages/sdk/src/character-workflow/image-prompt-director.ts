@@ -87,13 +87,7 @@ export function getDirectedImageRolePriority(imageRole: string): number {
   const priorities: Record<string, number> = {
     avatar: 0,
     'character-overview-sheet': 1,
-    'hero-cover': 2,
-    'opening-moment': 3,
-    'story-moment': 4,
-    'relationship-moment': 5,
-    expression: 6,
-    'outfit-detail': 7,
-    'world-context': 8,
+    'character-base-image': 2,
   }
   return priorities[imageRole] ?? 20
 }
@@ -102,13 +96,7 @@ function automaticRolePrompt(role: string, profile: CharacterImageProfile): stri
   const prompts: Record<string, string> = {
     avatar: 'canonical avatar master portrait, single subject, one clear unobstructed face, upper-body or half-body framing, looking at viewer, calm natural expression, simple clean background, identity reference image for later assets',
     'character-overview-sheet': 'same character as avatar reference, complete production character overview sheet, full-body front view, full-body back view, side or three-quarter view, main portrait crop, expression callouts, eye close-up, nose and mouth close-up, hairstyle detail, hands, legs, hips and rear silhouette, feet or shoes, outfit material and accessory close-ups, no text labels',
-    'hero-cover': 'polished role-card cover image, character dominant in frame, beautiful readable face, strong mood, cinematic background',
-    'opening-moment': 'opening scene image, character visibly present, expressive pose, readable setting, roleplay hook',
-    'story-moment': 'character-first story moment, expressive pose, believable setting, clear mood',
-    'relationship-moment': 'intimate relationship moment, readable gaze and posture, emotional tension, character face clear',
-    expression: 'single facial expression reference, one face, clean close portrait',
-    'outfit-detail': 'character outfit and accessory detail image, same face identity, readable fabric and signature motifs',
-    'world-context': 'world-context visual with the character visible or clear character-linked motifs',
+    'character-base-image': 'same character as supplied avatar reference image, free-form base character sample, reusable non-avatar identity reference, different meaningful scene, action, mood, outfit usage, or roleplay situation',
   }
   return prompts[role] ?? `coherent character image for ${profile.name || 'the character'}, same identity`
 }
@@ -130,6 +118,9 @@ function rolePromptForImage(
   if (role === 'character-overview-sheet') {
     return overviewSheetRolePrompt(domain, slot, indexed)
   }
+  if (role === 'character-base-image') {
+    return baseCharacterImageRolePrompt(slot, control, indexed)
+  }
   return compactJoin(['same character as supplied reference image', automaticRolePrompt(role, profile), shot, slot, indexed])
 }
 
@@ -145,6 +136,23 @@ function avatarRolePromptForImage(): string {
     'face, hair, default outfit, and body silhouette readable',
     'simple uncluttered background',
     'no model sheet, no collage, no split screen, no alternate forms',
+  ])
+}
+
+function baseCharacterImageRolePrompt(
+  slot: string,
+  control: AgentImageGenerationControl | undefined,
+  indexed: string
+): string {
+  return compactJoin([
+    'same character as supplied avatar reference image, preserve face, hair, body proportions, signature motifs, and recognizable identity',
+    'free-form base character sample image, not avatar.jpg, not a fixed model sheet, not a collage, not a poster layout',
+    'each generated image may show a different meaningful roleplay sample: scene, action, mood, pose, outfit usage, prop interaction, or story situation',
+    baseImageSensualCompositionPrompt(control),
+    'keep the character clearly visible and reusable as a non-avatar reference sample',
+    'identity must come from the linked avatar reference; use the target prompt only to vary composition and meaning',
+    slot,
+    indexed,
   ])
 }
 
@@ -199,6 +207,18 @@ function stylePromptForImage(
       control?.stylePrompt,
     ])
   }
+  if (role === 'character-base-image') {
+    const baseImageDomainPrompts: Record<CharacterImageStyleDomain, string> = {
+      anime: 'anime style character sample art, consistent face from avatar reference, expressive sensual pose, readable scene context, refined outfit detail, erotic visual appeal, high quality anime art',
+      photoreal: 'realistic character sample photography, consistent face from avatar reference, sensual pose, readable setting, refined wardrobe styling, erotic glamour, high quality photo',
+      illustration: 'polished character sample illustration, consistent identity from avatar reference, expressive sensual pose, readable scene context, refined costume and prop detail, erotic visual appeal',
+      stylized: 'stylized character sample art, consistent identity from avatar reference, clear silhouette, expressive sensual pose, readable scene context, erotic design appeal, polished finish',
+    }
+    return compactJoin([
+      baseImageDomainPrompts[domain],
+      control?.stylePrompt,
+    ])
+  }
   const domainPrompts: Record<CharacterImageStyleDomain, string> = {
     anime: 'anime style illustration, mature visual novel character art, clean linework, expressive detailed eyes, confident alluring expression, elegant body silhouette, pixiv style, soft lighting, high quality anime art',
     photoreal: 'realistic glamour photography, mature confident presence, natural skin texture, detailed eyes, refined makeup, elegant body silhouette, soft natural light, shallow depth of field, high quality photo',
@@ -220,8 +240,8 @@ function qualityPromptForImage(role: string, domain: CharacterImageStyleDomain):
   if (role === 'character-overview-sheet') {
     return 'consistent same-character face across every view, complete uncropped full bodies, readable proportions, clean spacing, readable small detail callouts, consistent costume construction, high-resolution production reference art'
   }
-  if (role === 'hero-cover') {
-    return 'cinematic composition, beautiful readable face, strong silhouette, premium role-card cover quality'
+  if (role === 'character-base-image') {
+    return 'same-character identity from avatar reference, clear readable face, meaningful pose and scene, strong adult physical appeal, reusable non-avatar reference quality, high-resolution clean finish'
   }
   return 'clear face, refined styling, clean composition, high quality, high resolution'
 }
@@ -253,6 +273,54 @@ function sanitizeSlotPrompt(promptText: string, role: string): string {
     .map((part) => part.trim())
     .filter((part) => part && !blocked.test(part))
     .join(', ')
+}
+
+function baseImageSensualCompositionPrompt(control?: AgentImageGenerationControl): string {
+  if (!control) {
+    return 'adult sensual composition, erotic body line, attraction expressed through pose, gaze, fabric, lighting, background interaction, and prop use'
+  }
+  const pose = control.poseGoals.length
+    ? `pose goals: ${control.poseGoals.join(', ')}`
+    : 'pose goals: graceful body line, expressive hands, controlled gaze, readable silhouette'
+  const background = control.backgroundInteraction
+    ? `background and prop interaction: ${control.backgroundInteraction}`
+    : 'background and prop interaction should support the mood through furniture, fabric, light, mirror, window, book, cup, weapon, instrument, or other scene objects'
+  const appeal = appealModePrompt(control.appealMode)
+  const sensuality = sensualityLevelPrompt(control.sensualityLevel)
+  const wardrobe = wardrobeExposurePrompt(control.wardrobeExposure)
+  return compactJoin([pose, background, appeal, sensuality, wardrobe])
+}
+
+function appealModePrompt(value: string): string {
+  const prompts: Record<string, string> = {
+    natural: 'natural everyday charm, relaxed presence, subtle attractiveness',
+    romantic: 'romantic tension, soft gaze, intimate atmosphere, emotional closeness',
+    'sensual-confidence': 'sensual confidence, charged posture, elegant body line, direct gaze, adult attraction',
+    'erotic-tension': 'erotic tension, provocative pose, deliberate gaze, charged body language, intimate atmosphere',
+    dramatic: 'dramatic cinematic appeal, strong silhouette, charged lighting, composed tension',
+    mysterious: 'mysterious seductive aura, restrained gaze, shadow and negative space, quiet tension',
+  }
+  return prompts[value] ?? prompts['sensual-confidence']!
+}
+
+function sensualityLevelPrompt(value: string): string {
+  const prompts: Record<string, string> = {
+    subtle: 'subtle sensuality, implied attraction, elegant restraint',
+    sensual: 'clear sensuality, attractive body line, intimate mood, confident gaze',
+    erotic: 'erotic visual tension, provocative posture, intimate composition, adult desire',
+    explicit: 'explicit adult erotic intent, direct sexual attraction, highly charged pose and framing',
+  }
+  return prompts[value] ?? prompts.sensual!
+}
+
+function wardrobeExposurePrompt(value: string): string {
+  const prompts: Record<string, string> = {
+    covered: 'covered wardrobe, attraction through silhouette, fabric tension, posture, and gaze',
+    'stylish-revealing': 'stylish revealing wardrobe, visible body line, exposed shoulders, legs, waist, or neckline as appropriate',
+    'lingerie-swimwear': 'lingerie or swimwear styling, intimate fabric, skin emphasis, bedroom or water-side glamour if suitable',
+    'implied-nude': 'implied nude framing, sheets, steam, shadow, or props used for composition and erotic suggestion',
+  }
+  return prompts[value] ?? prompts['stylish-revealing']!
 }
 
 function inferStyleDomain(value: string): CharacterImageStyleDomain {

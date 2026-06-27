@@ -12,6 +12,7 @@ export type ChatLocalizedText = Record<ChatLanguageCode, string>
 export interface ChatCharacterResource {
   id: string
   roleCard?: Record<string, unknown>
+  openingPanel?: ChatOpeningPanel
   name: ChatLocalizedText
   displayName: ChatLocalizedText
   description: ChatLocalizedText
@@ -22,6 +23,14 @@ export interface ChatCharacterResource {
   tag: Record<ChatLanguageCode, string[]>
   avatarImage: string
   bodyImage: string
+}
+
+export interface ChatOpeningPanel {
+  html: string
+  css: string
+  summary?: string
+  layoutKind?: string
+  sourceArtifactId?: string
 }
 
 export interface ChatConversationSummary {
@@ -70,6 +79,7 @@ export interface ChatMessage {
   text: ChatLocalizedText
   createdLabel: ChatLocalizedText
   attachments?: ChatMessageAttachment[]
+  openingPanel?: ChatOpeningPanel
   state?: ChatActivityState
 }
 
@@ -279,6 +289,7 @@ function normalizeStoredCharacterResource(value: unknown): ChatCharacterResource
   return {
     id: String(resource.id),
     roleCard: resource.roleCard && typeof resource.roleCard === 'object' && !Array.isArray(resource.roleCard) ? resource.roleCard : undefined,
+    openingPanel: normalizeOpeningPanel(resource.openingPanel),
     name: normalizeLocalizedText(resource.name),
     displayName: normalizeLocalizedText(resource.displayName),
     description: normalizeLocalizedText(resource.description),
@@ -385,6 +396,26 @@ function normalizeStoredMessage(message: ChatMessage): ChatMessage | null {
     text: normalizeLocalizedText(message.text),
     createdLabel: normalizeLocalizedText(message.createdLabel),
     ...(Array.isArray(message.attachments) ? { attachments: message.attachments } : {}),
+    ...(normalizeOpeningPanel(message.openingPanel) ? { openingPanel: normalizeOpeningPanel(message.openingPanel)! } : {}),
+  }
+}
+
+function normalizeOpeningPanel(value: unknown): ChatOpeningPanel | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined
+  }
+  const record = value as Record<string, unknown>
+  const html = typeof record.html === 'string' ? record.html : ''
+  const css = typeof record.css === 'string' ? record.css : ''
+  if (!html && !css) {
+    return undefined
+  }
+  return {
+    html,
+    css,
+    summary: typeof record.summary === 'string' ? record.summary : undefined,
+    layoutKind: typeof record.layoutKind === 'string' ? record.layoutKind : undefined,
+    sourceArtifactId: typeof record.sourceArtifactId === 'string' ? record.sourceArtifactId : undefined,
   }
 }
 

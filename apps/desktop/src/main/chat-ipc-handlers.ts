@@ -217,6 +217,15 @@ export interface ChatIpcAttachment {
   size?: number
 }
 
+export interface ChatIpcMaterial {
+  kind: 'image' | 'document'
+  name: string
+  mimeType: string
+  dataUrl?: string
+  text?: string
+  size?: number
+}
+
 export interface ChatSelectMediaRequest {
   kind?: 'image' | 'video' | 'media'
 }
@@ -225,6 +234,13 @@ export interface ChatSelectMediaResult {
   success: boolean
   canceled?: boolean
   attachments?: ChatIpcAttachment[]
+  error?: string
+}
+
+export interface ChatSelectMaterialsResult {
+  success: boolean
+  canceled?: boolean
+  materials?: ChatIpcMaterial[]
   error?: string
 }
 
@@ -479,6 +495,37 @@ export function registerChatIpcHandlers(
       }
     } catch (error: any) {
       console.error('[Chat] Failed to select media:', error)
+      return {
+        success: false,
+        error: error?.message || String(error),
+      }
+    }
+  })
+
+  ipcMain.handle('chat:selectMaterials', async (): Promise<ChatSelectMaterialsResult> => {
+    try {
+      const dialogOptions: OpenDialogOptions = {
+        title: 'Select materials',
+        properties: ['openFile', 'multiSelections'],
+        filters: [{
+          name: 'Images and documents',
+          extensions: materialFileExtensions(),
+        }],
+      }
+      const owner = options.getMainWindow?.()
+      const result = owner
+        ? await dialog.showOpenDialog(owner, dialogOptions)
+        : await dialog.showOpenDialog(dialogOptions)
+      if (result.canceled || result.filePaths.length === 0) {
+        return { success: true, canceled: true, materials: [] }
+      }
+      const materials = await Promise.all(result.filePaths.map(readMaterialFile))
+      return {
+        success: true,
+        materials: materials.filter(Boolean) as ChatIpcMaterial[],
+      }
+    } catch (error: any) {
+      console.error('[Chat] Failed to select materials:', error)
       return {
         success: false,
         error: error?.message || String(error),
@@ -744,6 +791,14 @@ function mediaExtensionsForKind(kind: ChatSelectMediaRequest['kind']): string[] 
   return ['png', 'jpg', 'jpeg', 'webp', 'gif', 'mp4', 'mov', 'm4v', 'webm']
 }
 
+function materialFileExtensions(): string[] {
+  return [
+    'png', 'jpg', 'jpeg', 'webp', 'gif',
+    'txt', 'md', 'markdown', 'json', 'csv', 'tsv', 'yaml', 'yml',
+    'pdf', 'doc', 'docx', 'rtf',
+  ]
+}
+
 async function readMediaAttachment(filePath: string): Promise<ChatIpcAttachment | null> {
   const mimeType = mimeForPath(filePath)
   if (!mimeType) {
@@ -756,6 +811,31 @@ async function readMediaAttachment(filePath: string): Promise<ChatIpcAttachment 
     mimeType,
     size: bytes.byteLength,
     dataUrl: `data:${mimeType};base64,${bytes.toString('base64')}`,
+  }
+}
+
+async function readMaterialFile(filePath: string): Promise<ChatIpcMaterial | null> {
+  const mimeType = mimeForPath(filePath) ?? documentMimeForPath(filePath)
+  if (!mimeType) {
+    return null
+  }
+  const bytes = await readFile(filePath)
+  const name = basename(filePath)
+  if (mimeType.startsWith('image/')) {
+    return {
+      kind: 'image',
+      name,
+      mimeType,
+      size: bytes.byteLength,
+      dataUrl: `data:${mimeType};base64,${bytes.toString('base64')}`,
+    }
+  }
+  return {
+    kind: 'document',
+    name,
+    mimeType,
+    size: bytes.byteLength,
+    text: isTextDocumentMime(mimeType) ? bytes.toString('utf8').slice(0, 24000) : undefined,
   }
 }
 
@@ -780,4 +860,39 @@ function mimeForPath(filePath: string): string | null {
     default:
       return null
   }
+}
+
+function documentMimeForPath(filePath: string): string | null {
+  switch (extname(filePath).toLowerCase()) {
+    case '.txt':
+      return 'text/plain'
+    case '.md':
+    case '.markdown':
+      return 'text/markdown'
+    case '.json':
+      return 'application/json'
+    case '.csv':
+      return 'text/csv'
+    case '.tsv':
+      return 'text/tab-separated-values'
+    case '.yaml':
+    case '.yml':
+      return 'application/yaml'
+    case '.pdf':
+      return 'application/pdf'
+    case '.doc':
+      return 'application/msword'
+    case '.docx':
+      return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    case '.rtf':
+      return 'application/rtf'
+    default:
+      return null
+  }
+}
+
+function isTextDocumentMime(mimeType: string): boolean {
+  return mimeType.startsWith('text/')
+    || mimeType === 'application/json'
+    || mimeType === 'application/yaml'
 }

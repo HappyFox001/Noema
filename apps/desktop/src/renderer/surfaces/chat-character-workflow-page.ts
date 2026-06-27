@@ -48,7 +48,7 @@ export type CharacterWorkflowSidePanel = 'workflow' | 'assets' | 'nodes'
 
 type CharacterResourceNodeStatus = 'idle' | 'dirty' | 'queued' | 'running' | 'done' | 'failed' | 'stale' | 'disabled'
 type CharacterResourcePreviewType = 'text-card' | 'image' | 'voice' | 'rule' | 'validation' | 'package'
-type CharacterResourceParameterType = 'text' | 'textarea' | 'number' | 'integer' | 'boolean' | 'select' | 'multi-select' | 'string-list' | 'model-select'
+type CharacterResourceParameterType = 'text' | 'textarea' | 'number' | 'integer' | 'boolean' | 'select' | 'multi-select' | 'string-list' | 'model-select' | 'materials'
 type CharacterResourceLinkKind = SerializedCharacterResourceLinkKind
 type CharacterWorkflowLanguage = CharacterWorkflowPageOptions['language']
 
@@ -93,6 +93,7 @@ interface CharacterResourceSlotDefinition {
   id: string
   label: string
   type: string
+  accepts?: string[]
   required?: boolean
   tooltip: string
 }
@@ -175,6 +176,16 @@ interface CharacterResourceOutput {
   image?: string
   text?: string
   data?: unknown
+}
+
+interface WorkflowMaterialItem {
+  id: string
+  kind: 'image' | 'document'
+  name: string
+  mimeType: string
+  dataUrl?: string
+  text?: string
+  size?: number
 }
 
 export interface CharacterResourceRunState {
@@ -331,15 +342,35 @@ function workflowText(options: CharacterWorkflowPageOptions, key: string, fallba
 }
 
 function localizeNodeTitle(node: CharacterResourceNode, definition: CharacterResourceNodeDefinition, options: CharacterWorkflowPageOptions): string {
+  if (isVirtualMaterialNode(node)) {
+    return node.title || definition.displayName
+  }
   return workflowText(options, `chat.workflow.node.${definition.type}`, node.title || definition.displayName)
 }
 
-function localizeParameterLabel(parameterItem: CharacterResourceParameterDefinition, options: CharacterWorkflowPageOptions): string {
+function localizeParameterLabel(parameterItem: CharacterResourceParameterDefinition, options: CharacterWorkflowPageOptions, nodeType = ''): string {
+  if (nodeType) {
+    const translated = options.t?.(`chat.workflow.param.${nodeType}.${parameterItem.id}`)
+    if (translated && translated !== `chat.workflow.param.${nodeType}.${parameterItem.id}`) {
+      return translated
+    }
+  }
   return workflowText(options, `chat.workflow.param.${parameterItem.id}`, parameterItem.label)
 }
 
 function localizeSlotLabel(slotItem: CharacterResourceSlotDefinition, options: CharacterWorkflowPageOptions): string {
   return workflowText(options, `chat.workflow.slot.${slotItem.id}`, slotItem.label)
+}
+
+function formatSlotTypeLabel(type: string): string {
+  return SLOT_TYPE_LABELS[type] ?? type.split('-').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ')
+}
+
+function formatSlotAcceptLabel(types: string[]): string {
+  if (types.length === TARGET_RESOURCE_SLOT_TYPES.length && TARGET_RESOURCE_SLOT_TYPES.every((type) => types.includes(type))) {
+    return formatSlotTypeLabel('target-resource')
+  }
+  return types.map(formatSlotTypeLabel).join(' / ')
 }
 
 function localizeCategory(category: string, options: CharacterWorkflowPageOptions): string {
@@ -451,6 +482,50 @@ const PROSE_STYLE_PRESET_OPTIONS = PROSE_STYLE_PRESET_VALUES.map((value) => ({
   value,
 }))
 
+const TARGET_RESOURCE_SLOT_TYPES = [
+  'character-card-resource',
+  'field-resource',
+  'opening-layout-resource',
+  'image-resource',
+  'world-resource',
+  'npc-pack-resource',
+  'npc-resource',
+  'plot-resource',
+  'scene-resource',
+]
+
+const SLOT_TYPE_LABELS: Record<string, string> = {
+  'agent-policy': 'Agent Policy',
+  'candidate-pack': 'Candidate Pack',
+  'character-card-resource': 'Character Card',
+  'continuity-control-resource': 'Continuity Control',
+  'critique-policy': 'Critique Policy',
+  'document-resource': 'Document',
+  'export-target': 'Export Target',
+  'field-control-resource': 'Field Control',
+  'field-resource': 'Field',
+  'generation-goal': 'Goal',
+  'hard-constraint': 'Constraint',
+  'image-capability': 'Image Capability',
+  'image-control-resource': 'Image Control',
+  'image-resource': 'Image',
+  'model-capability': 'Model Capability',
+  'npc-pack-resource': 'NPC Pack',
+  'npc-resource': 'NPC',
+  'opening-layout-resource': 'Opening Layout',
+  'plot-resource': 'Plot',
+  'relationship-control-resource': 'Relationship Control',
+  'retrieval-capability': 'Retrieval Capability',
+  'scene-resource': 'Scene',
+  'source-context': 'Source',
+  'style-signal': 'Style',
+  'target-resource': 'Target Resource',
+  'validation-report': 'Validation Report',
+  'voice-capability': 'Voice Capability',
+  'voice-profile': 'Voice Profile',
+  'world-resource': 'World',
+}
+
 const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
   createDefinition('goal', 'Generation Goal', ['目标', 'brief', 'intent'], 'Goal', 'core', 'Captures the free-form RP generation target without asking the user to define final card fields.', [], [
     slot('goal', 'Goal', 'generation-goal', 'Natural language generation goal and target audience.'),
@@ -465,7 +540,7 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     slot('constraint', 'Constraint', 'hard-constraint', 'Local or global hard constraints.'),
     slot('source', 'Source', 'source-context', 'Grounding source material.'),
   ], [
-    slot('target', 'Target', 'asset-target', 'Character card target resource.'),
+    slot('target', 'Character Card', 'character-card-resource', 'Character card target resource.'),
     slot('candidate', 'Candidate', 'candidate-pack', 'Candidate package produced for evaluation and export.'),
   ], [
     param('includeFields', 'Include Fields', 'multi-select', ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'firstMessage', 'dialogueStyle', 'worldContext'], undefined, undefined, undefined, [
@@ -483,15 +558,15 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'Appearance Prompt', value: 'appearancePrompt' },
     ]),
   ], 'package'),
-  createDefinition('character-field-target', 'Character Field Target', ['字段', 'field target', '局部字段'], 'Targets', 'asset', 'Declares a single card field as an independently controllable target resource.', [
-    slot('card', 'Card', 'asset-target', 'Character card target.'),
+  createDefinition('character-field-target', 'Character Field Target', ['字段', 'field target', '局部字段'], 'Targets', 'asset', 'Declares one field-control resource that can shape several card fields without duplicating final content.', [
+    slot('card', 'Character Card', 'character-card-resource', 'Character card target.'),
     slot('style', 'Style', 'style-signal', 'Local field style pressure.'),
     slot('constraint', 'Constraint', 'hard-constraint', 'Local field constraints.'),
-    slot('fieldControl', 'Field Control', 'asset-target', 'Field generation control.'),
+    slot('fieldControl', 'Field Control', 'field-control-resource', 'Field generation control.'),
   ], [
-    slot('field', 'Field', 'asset-target', 'Field target resource.'),
+    slot('field', 'Field', 'field-resource', 'Field target resource.'),
   ], [
-    param('field', 'Field', 'select', 'firstMessage', undefined, undefined, undefined, [
+    param('fields', 'Fields', 'multi-select', ['firstMessage'], undefined, undefined, undefined, [
       { label: 'Name', value: 'name' },
       { label: 'Description', value: 'description' },
       { label: 'Appearance', value: 'appearance' },
@@ -505,13 +580,13 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     ]),
   ], 'text-card'),
   createDefinition('opening-layout-target', 'Opening Layout Target', ['开幕版面', 'opening layout', 'css card'], 'Targets', 'asset', 'Declares the CSS/HTML-style opening presentation for the role card, combining opening text, visual assets, title, tags, and card surface layout.', [
-    slot('card', 'Card', 'asset-target', 'Character card target.', true),
-    slot('field', 'Field', 'asset-target', 'Opening or supporting text field.'),
-    slot('imageAsset', 'Image Asset', 'asset-target', 'Images used by the opening presentation.'),
+    slot('card', 'Character Card', 'character-card-resource', 'Character card target.', true),
+    slot('field', 'Field', 'field-resource', 'Opening or supporting text field.'),
+    slot('imageAsset', 'Image', 'image-resource', 'Images used by the opening presentation.'),
     slot('style', 'Style', 'style-signal', 'Layout and prose style pressure.'),
     slot('constraint', 'Constraint', 'hard-constraint', 'Layout constraints.'),
   ], [
-    slot('layout', 'Layout', 'asset-target', 'Opening layout target resource.'),
+    slot('layout', 'Layout', 'opening-layout-resource', 'Opening layout target resource.'),
   ], [
     param('layoutKind', 'Layout Kind', 'select', 'immersive-card-css', undefined, undefined, undefined, [
       { label: 'Immersive Card CSS', value: 'immersive-card-css' },
@@ -530,24 +605,17 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     param('layoutPrompt', 'Layout Prompt', 'textarea', ''),
   ], 'package'),
   createDefinition('image-target', 'Image Target', ['图片目标', 'image target', 'visual target'], 'Targets', 'asset', 'Declares a role-card visual asset. Each image should preserve character identity while supporting a distinct story, field, or presentation purpose.', [
-    slot('card', 'Card', 'asset-target', 'Character card target.'),
+    slot('card', 'Character Card', 'character-card-resource', 'Character card target.'),
     slot('image', 'Image', 'image-capability', 'Image generation capability.', true),
-    slot('imageControl', 'Image Control', 'asset-target', 'Image generation control.'),
-    slot('referenceImage', 'Reference Image', 'asset-target', 'Reference image artifact used to preserve visual identity.'),
+    slot('imageControl', 'Image Control', 'image-control-resource', 'Image generation control.'),
+    slot('referenceImage', 'Image', 'image-resource', 'Reference image artifact used to preserve visual identity.'),
   ], [
-    slot('imageAsset', 'Image Asset', 'asset-target', 'Image target resource.'),
+    slot('imageAsset', 'Image', 'image-resource', 'Image target resource.'),
   ], [
-    param('imageRole', 'Image Role', 'select', 'hero-cover', undefined, undefined, undefined, [
+    param('imageRole', 'Image Role', 'select', 'character-base-image', undefined, undefined, undefined, [
       { label: 'Avatar', value: 'avatar' },
       { label: 'Character Overview Sheet', value: 'character-overview-sheet' },
-      { label: 'Hero Cover', value: 'hero-cover' },
-      { label: 'Full Body', value: 'full-body' },
-      { label: 'Opening Moment', value: 'opening-moment' },
-      { label: 'Story Moment', value: 'story-moment' },
-      { label: 'Expression', value: 'expression' },
-      { label: 'Outfit Detail', value: 'outfit-detail' },
-      { label: 'Relationship Moment', value: 'relationship-moment' },
-      { label: 'World Context', value: 'world-context' },
+      { label: 'Base Character Image', value: 'character-base-image' },
     ]),
     param('assetPurpose', 'Asset Purpose', 'textarea', ''),
   ], 'image'),
@@ -557,7 +625,7 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     slot('constraint', 'Constraint', 'hard-constraint', 'World constraints.'),
     slot('source', 'Source', 'source-context', 'Grounding source material.'),
   ], [
-    slot('world', 'World', 'asset-target', 'World card resource.'),
+    slot('world', 'World', 'world-resource', 'World card resource.'),
   ], [
     param('worldSections', 'World Sections', 'multi-select', ['setting', 'rules', 'factions', 'relationship-network', 'plot-hooks'], undefined, undefined, undefined, [
       { label: 'Setting', value: 'setting' },
@@ -568,12 +636,12 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     ]),
   ], 'package'),
   createDefinition('npc-pack-target', 'NPC Pack Target', ['NPC包', 'npc pack', '多npc'], 'Targets', 'asset', 'Declares a pack of NPC resources connected to the world card and plot arc.', [
-    slot('world', 'World', 'asset-target', 'World card resource.'),
-    slot('relationship', 'Relationship', 'asset-target', 'Relationship control.'),
+    slot('world', 'World', 'world-resource', 'World card resource.'),
+    slot('relationship', 'Relationship', 'relationship-control-resource', 'Relationship control.'),
     slot('style', 'Style', 'style-signal', 'NPC pack style.'),
     slot('constraint', 'Constraint', 'hard-constraint', 'NPC constraints.'),
   ], [
-    slot('npcPack', 'NPC Pack', 'asset-target', 'NPC pack resource.'),
+    slot('npcPack', 'NPC Pack', 'npc-pack-resource', 'NPC pack resource.'),
   ], [
     param('npcCount', 'NPC Count', 'integer', 4, 1, 12, 1),
     param('npcRoles', 'NPC Roles', 'multi-select', [], undefined, undefined, undefined, [
@@ -586,12 +654,12 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     ]),
   ], 'package'),
   createDefinition('npc-target', 'NPC Target', ['NPC', 'single npc', '角色资源'], 'Targets', 'asset', 'Declares a single NPC as an independently controllable target resource.', [
-    slot('npcPack', 'NPC Pack', 'asset-target', 'NPC pack resource.'),
+    slot('npcPack', 'NPC Pack', 'npc-pack-resource', 'NPC pack resource.'),
     slot('style', 'Style', 'style-signal', 'NPC style.'),
     slot('constraint', 'Constraint', 'hard-constraint', 'NPC constraints.'),
-    slot('relationship', 'Relationship', 'asset-target', 'Relationship control.'),
+    slot('relationship', 'Relationship', 'relationship-control-resource', 'Relationship control.'),
   ], [
-    slot('npc', 'NPC', 'asset-target', 'NPC resource.'),
+    slot('npc', 'NPC', 'npc-resource', 'NPC resource.'),
   ], [
     param('npcRole', 'NPC Role', 'select', 'primary-npc', undefined, undefined, undefined, [
       { label: 'Primary NPC', value: 'primary-npc' },
@@ -604,13 +672,13 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     param('storyFunction', 'Story Function', 'textarea', ''),
   ], 'text-card'),
   createDefinition('plot-arc-target', 'Plot Arc Target', ['剧情', 'plot arc', 'story'], 'Targets', 'asset', 'Declares long-running story progression for the world card.', [
-    slot('world', 'World', 'asset-target', 'World card resource.'),
-    slot('npcPack', 'NPC Pack', 'asset-target', 'NPC pack resource.'),
-    slot('continuity', 'Continuity', 'asset-target', 'Continuity control.'),
+    slot('world', 'World', 'world-resource', 'World card resource.'),
+    slot('npcPack', 'NPC Pack', 'npc-pack-resource', 'NPC pack resource.'),
+    slot('continuity', 'Continuity', 'continuity-control-resource', 'Continuity control.'),
     slot('style', 'Style', 'style-signal', 'Plot style.'),
     slot('constraint', 'Constraint', 'hard-constraint', 'Plot constraints.'),
   ], [
-    slot('plot', 'Plot', 'asset-target', 'Plot arc resource.'),
+    slot('plot', 'Plot', 'plot-resource', 'Plot arc resource.'),
   ], [
     param('arcShape', 'Arc Shape', 'select', 'slow-burn', undefined, undefined, undefined, [
       { label: 'Slow Burn', value: 'slow-burn' },
@@ -621,12 +689,12 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     param('milestoneCount', 'Milestone Count', 'integer', 6, 2, 20, 1),
   ], 'text-card'),
   createDefinition('scene-card-target', 'Scene Card Target', ['场景卡', 'scene card', 'scene'], 'Targets', 'asset', 'Declares reusable scene resources for the current world and plot arc.', [
-    slot('world', 'World', 'asset-target', 'World card resource.'),
-    slot('plot', 'Plot', 'asset-target', 'Plot arc resource.'),
+    slot('world', 'World', 'world-resource', 'World card resource.'),
+    slot('plot', 'Plot', 'plot-resource', 'Plot arc resource.'),
     slot('style', 'Style', 'style-signal', 'Scene style.'),
     slot('constraint', 'Constraint', 'hard-constraint', 'Scene constraints.'),
   ], [
-    slot('scene', 'Scene', 'asset-target', 'Scene resource.'),
+    slot('scene', 'Scene', 'scene-resource', 'Scene resource.'),
   ], [
     param('sceneCount', 'Scene Count', 'integer', 3, 1, 12, 1),
     param('sceneTypes', 'Scene Types', 'multi-select', [], undefined, undefined, undefined, [
@@ -638,7 +706,7 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     ]),
   ], 'text-card'),
   createDefinition('style-pressure', 'Style Pressure', ['风格', 'taste', 'tone'], 'Taste', 'core', 'Applies weighted taste, genre, mood, intensity, and pacing pressure to connected targets.', [
-    slot('target', 'Target', 'asset-target', 'Target being shaped by this taste profile.'),
+    slot('target', 'Target Resource', 'target-resource', 'Target being shaped by this taste profile.', false, TARGET_RESOURCE_SLOT_TYPES),
   ], [
     slot('style', 'Style', 'style-signal', 'Weighted style signal.'),
   ], [
@@ -647,7 +715,7 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     param('stylePrompt', 'Style Prompt', 'textarea', ''),
   ], 'rule'),
   createDefinition('constraint', 'Hard Constraint', ['约束', 'boundary', 'must not'], 'Constraints', 'safety', 'Sets hard and soft boundaries that limit connected target generation and repair.', [
-    slot('target', 'Target', 'asset-target', 'Target constrained by these boundaries.'),
+    slot('target', 'Target Resource', 'target-resource', 'Target constrained by these boundaries.', false, TARGET_RESOURCE_SLOT_TYPES),
   ], [
     slot('constraint', 'Constraint', 'hard-constraint', 'Constraint signal.'),
   ], [
@@ -656,7 +724,7 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     param('hardBoundary', 'Hard Boundary', 'boolean', true),
   ], 'rule'),
   createDefinition('image-generation-control', 'Image Generation Control', ['图片控制', 'image control', 'visual control'], 'Controls', 'asset', 'Controls batch count, lightweight visual style, shot, aspect ratio, consistency, and seed behavior for a connected image target.', [], [
-    slot('imageControl', 'Image Control', 'asset-target', 'Image generation control.'),
+    slot('imageControl', 'Image Control', 'image-control-resource', 'Image generation control.'),
   ], [
     param('targetImageCount', 'Image Count', 'integer', 1, 1, 16, 1),
     param('imageStyleDomain', 'Style Domain', 'select', 'auto', undefined, undefined, undefined, [
@@ -688,6 +756,28 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'Same World', value: 'same-world' },
       { label: 'Independent Images', value: 'independent' },
     ]),
+    param('poseGoals', 'Pose Goals', 'string-list', []),
+    param('backgroundInteraction', 'Background Interaction', 'textarea', ''),
+    param('appealMode', 'Appeal Mode', 'select', 'sensual-confidence', undefined, undefined, undefined, [
+      { label: 'Natural', value: 'natural' },
+      { label: 'Romantic', value: 'romantic' },
+      { label: 'Sensual Confidence', value: 'sensual-confidence' },
+      { label: 'Erotic Tension', value: 'erotic-tension' },
+      { label: 'Dramatic', value: 'dramatic' },
+      { label: 'Mysterious', value: 'mysterious' },
+    ]),
+    param('sensualityLevel', 'Sensuality Level', 'select', 'sensual', undefined, undefined, undefined, [
+      { label: 'Subtle', value: 'subtle' },
+      { label: 'Sensual', value: 'sensual' },
+      { label: 'Erotic', value: 'erotic' },
+      { label: 'Explicit', value: 'explicit' },
+    ]),
+    param('wardrobeExposure', 'Wardrobe Exposure', 'select', 'stylish-revealing', undefined, undefined, undefined, [
+      { label: 'Covered', value: 'covered' },
+      { label: 'Stylish Revealing', value: 'stylish-revealing' },
+      { label: 'Lingerie / Swimwear', value: 'lingerie-swimwear' },
+      { label: 'Implied Nude', value: 'implied-nude' },
+    ]),
     param('seedMode', 'Seed Mode', 'select', 'lock-character', undefined, undefined, undefined, [
       { label: 'Lock Character', value: 'lock-character' },
       { label: 'Vary Slightly', value: 'vary-slightly' },
@@ -695,9 +785,9 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     ]),
   ], 'image'),
   createDefinition('field-generation-control', 'Field Generation Control', ['字段控制', 'field control', 'local control'], 'Controls', 'agent', 'Controls how a connected field target is generated without containing final field content.', [
-    slot('fieldTarget', 'Field Target', 'asset-target', 'Field target resource.'),
+    slot('fieldTarget', 'Field', 'field-resource', 'Field target resource.'),
   ], [
-    slot('fieldControl', 'Field Control', 'asset-target', 'Field generation control.'),
+    slot('fieldControl', 'Field Control', 'field-control-resource', 'Field generation control.'),
   ], [
     param('fieldPurpose', 'Field Purpose', 'textarea', ''),
     param('tone', 'Tone', 'select', 'neutral', undefined, undefined, undefined, [
@@ -721,9 +811,9 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     ]),
   ], 'rule'),
   createDefinition('continuity-control', 'Continuity Control', ['连续性', 'memory', 'continuity'], 'Controls', 'agent', 'Controls long-form continuity, memory anchors, unresolved hooks, and progression pacing.', [
-    slot('target', 'Target', 'asset-target', 'Target resource.'),
+    slot('target', 'Target Resource', 'target-resource', 'Target resource.', false, TARGET_RESOURCE_SLOT_TYPES),
   ], [
-    slot('continuity', 'Continuity', 'asset-target', 'Continuity control.'),
+    slot('continuity', 'Continuity', 'continuity-control-resource', 'Continuity control.'),
   ], [
     param('memoryAnchors', 'Memory Anchors', 'multi-select', [], undefined, undefined, undefined, [
       { label: 'Relationship Changes', value: 'relationship-changes' },
@@ -740,9 +830,9 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     param('forbidResettingFacts', 'Forbid Resetting Facts', 'boolean', true),
   ], 'rule'),
   createDefinition('relationship-control', 'Relationship Control', ['关系', 'relationship', 'tension'], 'Controls', 'agent', 'Controls the relational function and tension between NPC, character, and user resources.', [
-    slot('target', 'Target', 'asset-target', 'Target resource.'),
+    slot('target', 'Target Resource', 'target-resource', 'Target resource.', false, TARGET_RESOURCE_SLOT_TYPES),
   ], [
-    slot('relationship', 'Relationship', 'asset-target', 'Relationship control.'),
+    slot('relationship', 'Relationship', 'relationship-control-resource', 'Relationship control.'),
   ], [
     param('relationshipMode', 'Relationship Mode', 'select', 'slow-trust', undefined, undefined, undefined, [
       { label: 'Slow Trust', value: 'slow-trust' },
@@ -757,17 +847,24 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'Slow Trust', value: 'slow-trust-rule' },
     ]),
   ], 'rule'),
-  createDefinition('source-material', 'Source Material', ['素材', 'reference', 'context'], 'Sources', 'asset', 'Provides optional source context, references, existing cards, images, or user preference notes.', [], [
-    slot('source', 'Source', 'source-context', 'Reference context available to the agent.'),
+  createDefinition('source-material', 'Source Material', ['素材', 'reference', 'context'], 'Sources', 'asset', 'Imports image and document materials as grounded references. Material kind is inferred from file type.', [
+    slot('source', 'Source', 'source-context', 'Parent source material node.'),
   ], [
-    param('sourceKind', 'Source Kind', 'select', 'notes', undefined, undefined, undefined, [
-      { label: 'Notes', value: 'notes' },
-      { label: 'Existing Card', value: 'existing-card' },
-      { label: 'Image Reference', value: 'image-reference' },
-      { label: 'User Preference', value: 'user-preference' },
-    ]),
-    param('notes', 'Notes', 'textarea', ''),
+    slot('source', 'Source', 'source-context', 'Reference context available to the agent.'),
+    slot('imageAsset', 'Reference Image', 'image-resource', 'Imported image materials available as image references.'),
+  ], [
+    param('materials', 'Materials', 'materials', []),
   ], 'text-card'),
+  createDefinition('material-image-resource', 'Image Resource', ['图片资源', 'reference image', 'material image'], 'Sources', 'asset', 'Displays one imported image as a standalone reference image resource.', [
+    slot('source', 'Source', 'source-context', 'Parent material source.'),
+  ], [
+    slot('resource', 'Resource', 'image-resource', 'Imported image resource. Connect this to an image target reference slot when needed.'),
+  ], [], 'image', { width: 286, height: 252 }),
+  createDefinition('material-document-resource', 'Text Resource', ['文本资源', 'document', 'material document'], 'Sources', 'asset', 'Displays one imported document as a standalone grounding text resource.', [
+    slot('source', 'Source', 'source-context', 'Parent material source.'),
+  ], [
+    slot('resource', 'Resource', 'document-resource', 'Imported document resource.'),
+  ], [], 'text-card', { width: 238, height: 136 }),
   createDefinition('llm-tool', 'LLM Tool', ['模型', 'llm', 'reasoning'], 'Tools', 'agent', 'Selects the LLM capability available to the backend agent.', [], [
     slot('model', 'Model', 'model-capability', 'LLM model capability.'),
   ], [
@@ -891,6 +988,11 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
   createDefinition('run-input-resource', 'User Input Graph', ['运行输入', 'input graph', 'resource snapshot'], 'Run Resources', 'core', 'The graph snapshot supplied by the user before the agent starts filling role resources.', [], [
     slot('resource', 'Resource', 'role-resource', 'Starting resource graph snapshot.'),
   ], [], 'text-card', { width: 268, height: 188 }),
+  createDefinition('source-material-resource', 'Source Material', ['素材', 'material', 'reference'], 'Run Resources', 'asset', 'Imported source image or document material available to the runtime.', [
+    slot('resource', 'Resource', 'role-resource', 'Previous resource.'),
+  ], [
+    slot('resource', 'Resource', 'role-resource', 'Imported material resource.'),
+  ], [], 'text-card', { width: 268, height: 188 }),
   createDefinition('candidate-pack-resource', 'Candidate Pack', ['候选包', 'candidate', 'role resource pack'], 'Run Resources', 'asset', 'A generated package that reserves the role card, opening, context, visual prompts, and export resources.', [
     slot('resource', 'Resource', 'role-resource', 'Previous generated role resource.'),
   ], [
@@ -911,6 +1013,11 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
   ], [
     slot('resource', 'Resource', 'role-resource', 'Opening message resource.'),
   ], [], 'text-card', { width: 268, height: 188 }),
+  createDefinition('opening-panel-resource', 'Opening Panel', ['开幕面板', 'css panel', 'sillytavern panel'], 'Run Resources', 'asset', 'A CSS/HTML opening panel assembled from generated text and images.', [
+    slot('resource', 'Resource', 'role-resource', 'Previous generated role resource.'),
+  ], [
+    slot('resource', 'Resource', 'role-resource', 'Opening panel resource.'),
+  ], [], 'package', { width: 420, height: 360 }),
   createDefinition('style-guide-resource', 'Dialogue Style', ['语气', 'style guide', 'dialogue'], 'Run Resources', 'asset', 'The generated dialogue style guide for the role.', [
     slot('resource', 'Resource', 'role-resource', 'Previous generated role resource.'),
   ], [
@@ -944,25 +1051,27 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
 ]
 
 const DEFAULT_NODE_PLACEMENT: Array<{ id: string; type: string; title: string; x: number; y: number; status?: CharacterResourceNodeStatus }> = [
-  { id: 'generation-goal', type: 'goal', title: 'Generation Goal', x: 80, y: 150, status: 'dirty' },
-  { id: 'character-card-target', type: 'character-card-target', title: 'Character Card Target', x: 390, y: 134 },
-  { id: 'opening-field-target', type: 'character-field-target', title: 'Opening Field Target', x: 730, y: 20 },
-  { id: 'opening-field-control', type: 'field-generation-control', title: 'Opening Field Control', x: 730, y: 226 },
-  { id: 'avatar-image-target', type: 'image-target', title: 'Avatar Image Target', x: 730, y: 400, status: 'queued' },
-  { id: 'avatar-image-control', type: 'image-generation-control', title: 'Avatar Image Control', x: 1060, y: 360 },
-  { id: 'overview-sheet-image-target', type: 'image-target', title: 'Overview Sheet Image Target', x: 730, y: 600, status: 'queued' },
-  { id: 'overview-sheet-image-control', type: 'image-generation-control', title: 'Overview Sheet Image Control', x: 1060, y: 580 },
-  { id: 'opening-layout-target', type: 'opening-layout-target', title: 'Opening Layout Target', x: 1060, y: 638 },
-  { id: 'style-pressure', type: 'style-pressure', title: 'Style Pressure', x: 390, y: -86 },
-  { id: 'hard-constraints', type: 'constraint', title: 'Hard Constraints', x: 390, y: 370 },
-  { id: 'source-material', type: 'source-material', title: 'Source Material', x: 80, y: 412 },
-  { id: 'llm-capability', type: 'llm-tool', title: 'LLM Tool', x: 1060, y: 16 },
-  { id: 'image-capability', type: 'image-tool', title: 'Image Tool', x: 1060, y: 224 },
-  { id: 'agent-policy', type: 'agent-policy', title: 'Agent Policy', x: 1398, y: 70 },
-  { id: 'generation-strategy', type: 'generation-strategy', title: 'Generation Strategy', x: 1736, y: 70 },
-  { id: 'critique-loop', type: 'critique-loop', title: 'Critique Loop', x: 1736, y: 360 },
-  { id: 'quality-gate', type: 'quality-gate', title: 'Quality Gate', x: 2074, y: 206, status: 'stale' },
-  { id: 'output-adapter', type: 'output-adapter', title: 'Output Adapter', x: 2412, y: 206 },
+  { id: 'generation-goal', type: 'goal', title: 'Generation Goal', x: 40, y: 120, status: 'dirty' },
+  { id: 'source-material', type: 'source-material', title: 'Source Material', x: 40, y: 390 },
+  { id: 'style-pressure', type: 'style-pressure', title: 'Style Pressure', x: 360, y: -100 },
+  { id: 'character-card-target', type: 'character-card-target', title: 'Character Card Target', x: 360, y: 120 },
+  { id: 'hard-constraints', type: 'constraint', title: 'Hard Constraints', x: 360, y: 360 },
+  { id: 'opening-field-target', type: 'character-field-target', title: 'Opening Field Target', x: 700, y: -20 },
+  { id: 'opening-field-control', type: 'field-generation-control', title: 'Opening Field Control', x: 1040, y: -20 },
+  { id: 'avatar-image-target', type: 'image-target', title: 'Avatar Image Target', x: 700, y: 230, status: 'queued' },
+  { id: 'avatar-image-control', type: 'image-generation-control', title: 'Avatar Image Control', x: 1040, y: 230 },
+  { id: 'overview-sheet-image-target', type: 'image-target', title: 'Overview Sheet Image Target', x: 700, y: 480, status: 'queued' },
+  { id: 'overview-sheet-image-control', type: 'image-generation-control', title: 'Overview Sheet Image Control', x: 1040, y: 480 },
+  { id: 'opening-panel-image-target', type: 'image-target', title: 'Opening Panel Images Target', x: 700, y: 730, status: 'queued' },
+  { id: 'opening-panel-image-control', type: 'image-generation-control', title: 'Opening Panel Images Control', x: 1040, y: 730 },
+  { id: 'llm-capability', type: 'llm-tool', title: 'LLM Tool', x: 1040, y: -260 },
+  { id: 'image-capability', type: 'image-tool', title: 'Image Tool', x: 1040, y: 980 },
+  { id: 'agent-policy', type: 'agent-policy', title: 'Agent Policy', x: 1400, y: 40 },
+  { id: 'opening-layout-target', type: 'opening-layout-target', title: 'Opening Layout Target', x: 1400, y: 580 },
+  { id: 'generation-strategy', type: 'generation-strategy', title: 'Generation Strategy', x: 1740, y: 40 },
+  { id: 'critique-loop', type: 'critique-loop', title: 'Critique Loop', x: 1740, y: 330 },
+  { id: 'quality-gate', type: 'quality-gate', title: 'Quality Gate', x: 2080, y: 190, status: 'stale' },
+  { id: 'output-adapter', type: 'output-adapter', title: 'Output Adapter', x: 2420, y: 190 },
 ]
 
 const DEFAULT_LINKS: CharacterResourceLink[] = [
@@ -982,10 +1091,15 @@ const DEFAULT_LINKS: CharacterResourceLink[] = [
   link('avatar-image-target', 'imageAsset', 'overview-sheet-image-target', 'referenceImage', 'provides'),
   link('image-capability', 'image', 'overview-sheet-image-target', 'image', 'enables'),
   link('overview-sheet-image-control', 'imageControl', 'overview-sheet-image-target', 'imageControl', 'guides'),
+  link('character-card-target', 'target', 'opening-panel-image-target', 'card', 'guides'),
+  link('avatar-image-target', 'imageAsset', 'opening-panel-image-target', 'referenceImage', 'provides'),
+  link('image-capability', 'image', 'opening-panel-image-target', 'image', 'enables'),
+  link('opening-panel-image-control', 'imageControl', 'opening-panel-image-target', 'imageControl', 'guides'),
   link('character-card-target', 'target', 'opening-layout-target', 'card', 'guides'),
   link('opening-field-target', 'field', 'opening-layout-target', 'field', 'guides'),
   link('avatar-image-target', 'imageAsset', 'opening-layout-target', 'imageAsset', 'guides'),
   link('overview-sheet-image-target', 'imageAsset', 'opening-layout-target', 'imageAsset', 'guides'),
+  link('opening-panel-image-target', 'imageAsset', 'opening-layout-target', 'imageAsset', 'guides'),
   link('style-pressure', 'style', 'opening-layout-target', 'style', 'weights'),
   link('generation-goal', 'goal', 'agent-policy', 'goal', 'guides'),
   link('hard-constraints', 'constraint', 'agent-policy', 'constraint', 'constrains'),
@@ -1063,9 +1177,10 @@ export function createCharacterAgentWorkflowSnapshot(options: CharacterWorkflowP
     description: 'Frontend-authored agentic RP resource graph.',
     nodes: graph.nodes.map((node) => {
       const definition = definitions.get(node.type)
+      const serializedType = getSerializableNodeType(node)
       return {
         id: node.id,
-        type: node.type,
+        type: serializedType,
         title: node.title,
         position: node.position,
         inputs: Object.fromEntries((definition?.inputs ?? []).map((slotItem) => [slotItem.id, {
@@ -1090,7 +1205,7 @@ export function createCharacterAgentWorkflowSnapshot(options: CharacterWorkflowP
             value: optionItem.value,
           })),
         })),
-        config: node.config,
+        config: getSerializableNodeConfig(node),
         state: { status: node.status === 'dirty' ? 'idle' : node.status },
       }
     }),
@@ -1114,6 +1229,23 @@ export function createCharacterAgentWorkflowSnapshot(options: CharacterWorkflowP
       updatedAt: now,
     },
   }
+}
+
+function getSerializableNodeConfig(node: CharacterResourceNode): Record<string, unknown> {
+  if (node.id === 'source-material' && Array.isArray(node.config.materials)) {
+    return {
+      ...node.config,
+      materials: [],
+    }
+  }
+  return node.config
+}
+
+function getSerializableNodeType(node: CharacterResourceNode): string {
+  if (node.type === 'material-image-resource' || node.type === 'material-document-resource') {
+    return 'source-material'
+  }
+  return node.type
 }
 
 export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
@@ -1165,17 +1297,39 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
         return
       }
       event.preventDefault()
+      const targetNode = (event.target as HTMLElement | null)?.closest<HTMLElement>('.chat-resource-node')
+      const context = targetNode ? 'node' : 'canvas'
+      const nodeId = targetNode?.dataset.chatWorkflowNodeId ?? ''
+      if (nodeId) {
+        root.dispatchEvent(new CustomEvent('character-resource-node-context', {
+          bubbles: true,
+          detail: { nodeId },
+        }))
+      }
+      contextMenu.dataset.resourceContext = context
+      contextMenu.dataset.resourceContextNode = nodeId
+      contextMenu.querySelectorAll<HTMLButtonElement>('[data-resource-menu-scope]').forEach((item) => {
+        const scope = item.dataset.resourceMenuScope ?? 'all'
+        item.hidden = scope !== 'all' && scope !== context
+      })
       contextMenu.classList.add('is-open')
-      contextMenu.style.left = `${event.offsetX}px`
-      contextMenu.style.top = `${event.offsetY}px`
-      contextMenu.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus()
+      const canvasRect = canvas.getBoundingClientRect()
+      const menuRect = contextMenu.getBoundingClientRect()
+      const padding = 8
+      const rawX = event.clientX - canvasRect.left
+      const rawY = event.clientY - canvasRect.top
+      const maxX = Math.max(padding, canvasRect.width - menuRect.width - padding)
+      const maxY = Math.max(padding, canvasRect.height - menuRect.height - padding)
+      contextMenu.style.left = `${Math.min(Math.max(rawX, padding), maxX)}px`
+      contextMenu.style.top = `${Math.min(Math.max(rawY, padding), maxY)}px`
+      contextMenu.querySelector<HTMLButtonElement>('[role="menuitem"]:not([hidden])')?.focus()
     }
     const closeContextMenu = () => contextMenu?.classList.remove('is-open')
     const handleContextMenuKey = (event: KeyboardEvent) => {
       if (!contextMenu?.classList.contains('is-open')) {
         return
       }
-      const menuItems = Array.from(contextMenu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'))
+      const menuItems = Array.from(contextMenu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not([hidden])'))
       const activeIndex = Math.max(0, menuItems.findIndex((item) => item === document.activeElement))
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         event.preventDefault()
@@ -1350,6 +1504,7 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
         slotId: slotElement.dataset.resourceSlotId ?? '',
         side: slotElement.dataset.resourceSlotSide ?? '',
         type: slotElement.dataset.resourceSlotType ?? '',
+        accepts: slotElement.dataset.resourceSlotAccepts ?? '',
         x: Math.round(rect.left - hostRect.left + rect.width / 2),
         y: Math.round(rect.top - hostRect.top + rect.height / 2),
       }
@@ -1426,22 +1581,34 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
         sourceSlotId: sourceSlot.dataset.resourceSlotId ?? '',
         sourceSide: sourceSlot.dataset.resourceSlotSide ?? '',
         sourceType: sourceSlot.dataset.resourceSlotType ?? '',
+        sourceAccepts: sourceSlot.dataset.resourceSlotAccepts ?? '',
         targetNodeId: targetSlot.dataset.resourceSlotNode ?? '',
         targetSlotId: targetSlot.dataset.resourceSlotId ?? '',
         targetSide: targetSlot.dataset.resourceSlotSide ?? '',
         targetType: targetSlot.dataset.resourceSlotType ?? '',
+        targetAccepts: targetSlot.dataset.resourceSlotAccepts ?? '',
       },
     }))
   }
+  const areSlotElementsCompatible = (sourceSlot: HTMLElement, targetSlot: HTMLElement): boolean => {
+    if (sourceSlot === targetSlot || sourceSlot.dataset.resourceSlotSide === targetSlot.dataset.resourceSlotSide) {
+      return false
+    }
+    const outputSlot = sourceSlot.dataset.resourceSlotSide === 'output' ? sourceSlot : targetSlot
+    const inputSlot = sourceSlot.dataset.resourceSlotSide === 'input' ? sourceSlot : targetSlot
+    const outputType = outputSlot.dataset.resourceSlotType ?? ''
+    const inputType = inputSlot.dataset.resourceSlotType ?? ''
+    const acceptedTypes = parseSlotAccepts(inputSlot.dataset.resourceSlotAccepts, inputType)
+    return Boolean(outputType && acceptedTypes.includes(outputType))
+  }
   const inferNodeSurfaceSlot = (slotElement: HTMLElement, event: PointerEvent) => {
-    const sourceType = slotElement.dataset.resourceSlotType ?? ''
     const sourceSide = slotElement.dataset.resourceSlotSide ?? ''
     const targetNode = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('.chat-resource-node')
     if (!targetNode || targetNode.contains(slotElement)) {
       return null
     }
     const candidates = Array.from(targetNode.querySelectorAll<HTMLElement>('.chat-resource-slot'))
-      .filter((candidate) => candidate.dataset.resourceSlotType === sourceType && candidate.dataset.resourceSlotSide !== sourceSide)
+      .filter((candidate) => candidate.dataset.resourceSlotSide !== sourceSide && areSlotElementsCompatible(slotElement, candidate))
       .sort((a, b) => {
         const aRect = a.getBoundingClientRect()
         const bRect = b.getBoundingClientRect()
@@ -1454,7 +1621,7 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
       const sourceType = slotElement.dataset.resourceSlotType ?? ''
       const sourceSide = slotElement.dataset.resourceSlotSide ?? ''
       const compatibleSlots = Array.from(root.querySelectorAll<HTMLElement>('.chat-resource-slot'))
-        .filter((candidate) => candidate !== slotElement && candidate.dataset.resourceSlotType === sourceType && candidate.dataset.resourceSlotSide !== sourceSide)
+        .filter((candidate) => candidate !== slotElement && areSlotElementsCompatible(slotElement, candidate))
       compatibleSlots.forEach((candidate) => candidate.classList.add('is-compatible-candidate'))
       root.dataset.resourceSlotDragState = JSON.stringify({
         source: {
@@ -1488,7 +1655,7 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
       root.querySelectorAll<HTMLElement>('.chat-resource-slot.is-compatible-candidate').forEach((candidate) => candidate.classList.remove('is-compatible-candidate'))
       const dropTarget = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('.chat-resource-slot')
       const inferredTarget = dropTarget ?? inferNodeSurfaceSlot(slotElement, event)
-      if (inferredTarget && inferredTarget !== slotElement && inferredTarget.dataset.resourceSlotType === slotElement.dataset.resourceSlotType && inferredTarget.dataset.resourceSlotSide !== slotElement.dataset.resourceSlotSide) {
+      if (inferredTarget && areSlotElementsCompatible(slotElement, inferredTarget)) {
         root.dataset.resourceSlotDropResult = JSON.stringify({
           sourceNodeId: slotElement.dataset.resourceSlotNode ?? '',
           sourceSlotId: slotElement.dataset.resourceSlotId ?? '',
@@ -1600,6 +1767,8 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
       },
     })
   }
+  const materialVirtual = createMaterialVirtualNodes(nodes, options)
+  nodes.push(...materialVirtual.nodes)
   const runArtifacts = options.runState?.artifacts ?? []
   const outputs = runArtifacts.flatMap((artifact) => {
     if (!artifact.sourceNodeId) {
@@ -1628,6 +1797,7 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
   }))
   const graphLinks = [
     ...DEFAULT_LINKS.filter((item) => !replacedTargetSlots.has(getTargetSlotKey(item)) && !deletedLinkIds.has(item.id)),
+    ...materialVirtual.links,
     ...customLinks.filter((item) => !deletedLinkIds.has(item.id)),
   ]
   return {
@@ -1646,8 +1816,8 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
         }
       }),
     groups: [
-      { id: 'intent-targets', title: ui(options, '目标资源', 'Target Resources'), nodeIds: ['generation-goal', 'character-card-target', 'opening-field-target', 'avatar-image-target', 'overview-sheet-image-target', 'opening-layout-target', 'source-material'], color: 'rgba(82, 168, 255, 0.16)' },
-      { id: 'local-controls', title: ui(options, '局部控制', 'Local Controls'), nodeIds: ['style-pressure', 'hard-constraints', 'opening-field-control', 'avatar-image-control', 'overview-sheet-image-control'], color: 'rgba(162, 202, 188, 0.16)' },
+      { id: 'intent-targets', title: ui(options, '目标资源', 'Target Resources'), nodeIds: ['generation-goal', 'character-card-target', 'opening-field-target', 'avatar-image-target', 'overview-sheet-image-target', 'opening-panel-image-target', 'opening-layout-target', 'source-material'], color: 'rgba(82, 168, 255, 0.16)' },
+      { id: 'local-controls', title: ui(options, '局部控制', 'Local Controls'), nodeIds: ['style-pressure', 'hard-constraints', 'opening-field-control', 'avatar-image-control', 'overview-sheet-image-control', 'opening-panel-image-control'], color: 'rgba(162, 202, 188, 0.16)' },
       { id: 'tool-policy', title: ui(options, '工具与策略', 'Tools and Strategy'), nodeIds: ['llm-capability', 'image-capability', 'agent-policy', 'generation-strategy'], color: 'rgba(219, 189, 130, 0.16)' },
       { id: 'evaluation-output', title: ui(options, '评估与输出', 'Evaluation and Output'), nodeIds: ['critique-loop', 'quality-gate', 'output-adapter'], color: 'rgba(206, 154, 118, 0.16)' },
     ],
@@ -1667,6 +1837,56 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
   }
 }
 
+function createMaterialVirtualNodes(
+  nodes: CharacterResourceNode[],
+  options: CharacterWorkflowPageOptions
+): { nodes: CharacterResourceNode[]; links: CharacterResourceLink[] } {
+  const sourceNode = nodes.find((node) => node.id === 'source-material')
+  const materials = normalizeWorkflowMaterials(sourceNode?.config.materials)
+  if (!sourceNode || !materials.length) {
+    return { nodes: [], links: [] }
+  }
+  const virtualNodes = materials.map((material, index): CharacterResourceNode => {
+    const nodeId = materialVirtualNodeId(material)
+    return {
+      id: nodeId,
+      type: material.kind === 'image' ? 'material-image-resource' : 'material-document-resource',
+      title: material.name,
+      position: options.positionOverrides?.[nodeId] ?? {
+        x: sourceNode.position.x + 300,
+        y: sourceNode.position.y + index * (material.kind === 'image' ? 280 : 150) - 24,
+      },
+      size: { width: material.kind === 'image' ? 286 : 238, height: material.kind === 'image' ? 252 : 136 },
+      status: 'done',
+      collapsed: false,
+      zIndex: sourceNode.zIndex + index + 1,
+      config: { materials: [material] },
+    }
+  })
+  const links: CharacterResourceLink[] = []
+  virtualNodes.forEach((node) => {
+    links.push({
+      id: `${sourceNode.id}.source->${node.id}.source`,
+      sourceNodeId: sourceNode.id,
+      sourceSlotId: 'source',
+      targetNodeId: node.id,
+      targetSlotId: 'source',
+      kind: 'grounds',
+      label: LINK_KIND_LABELS.grounds,
+      status: 'valid',
+    })
+  })
+  return { nodes: virtualNodes, links }
+}
+
+function materialVirtualNodeId(material: WorkflowMaterialItem): string {
+  return `source-material-item-${sanitizeResourceId(material.id || material.name)}`
+}
+
+function isVirtualMaterialNode(node: CharacterResourceNode): boolean {
+  return node.id.startsWith('source-material-item-')
+}
+
 function animateRunDraftCanvas(root: HTMLElement, cleanups: Array<() => void>): void {
   const runViewport = root.querySelector<HTMLElement>('.chat-resource-run-viewport')
   if (!runViewport) {
@@ -1676,124 +1896,148 @@ function animateRunDraftCanvas(root: HTMLElement, cleanups: Array<() => void>): 
   const previous = runDraftMotionSnapshots.get(root)
   runDraftMotionSnapshots.set(root, snapshot)
   runViewport.dataset.runDraftInitialized = 'true'
-  if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
-    let reverted = false
-    import('gsap').then(({ gsap }) => {
-      if (reverted || !runViewport.isConnected) {
-        return
-      }
-      const ctx = gsap.context(() => {
-        const nodes = gsap.utils.toArray<HTMLElement>('.chat-resource-node')
-        const links = gsap.utils.toArray<SVGPathElement>('.chat-resource-link')
-          .flatMap((link) => gsap.utils.toArray<SVGPathElement>('path:not(.hit-area)', link))
-        const newNodes = nodes.filter((node) => !previous?.nodes.has(node.dataset.chatWorkflowNodeId ?? ''))
-        const movedNodes = nodes.flatMap((node) => {
-          const nodeId = node.dataset.chatWorkflowNodeId ?? ''
-          const before = previous?.nodes.get(nodeId)
-          const after = snapshot.nodes.get(nodeId)
-          if (!before || !after) return []
-          const dx = before.x - after.x
-          const dy = before.y - after.y
-          return Math.abs(dx) > 1 || Math.abs(dy) > 1 ? [{ node, dx, dy }] : []
+  const shouldAnimateRunGrowth = runViewport.classList.contains('run-status-running') && Boolean(previous)
+  if (!shouldAnimateRunGrowth || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    return
+  }
+  const nodes = Array.from(runViewport.querySelectorAll<HTMLElement>('.chat-resource-node'))
+  const linkGroups = Array.from(runViewport.querySelectorAll<SVGGElement>('.chat-resource-link'))
+  const visibleNodeIds = new Set(previous?.nodes.keys() ?? [])
+  const newNodes = nodes.filter((node) => !visibleNodeIds.has(node.dataset.chatWorkflowNodeId ?? ''))
+  const newNodeIds = new Set(newNodes.map((node) => node.dataset.chatWorkflowNodeId ?? '').filter(Boolean))
+  const newLinkGroups = linkGroups.filter((link) => {
+    const linkId = link.getAttribute('data-chat-resource-link-id') ?? ''
+    return !previous?.links.has(linkId) || [...newNodeIds].some((nodeId) => linkId.endsWith(`->${nodeId}`))
+  })
+  newNodes.forEach((node) => {
+    node.style.opacity = '0'
+    node.style.visibility = 'hidden'
+    node.style.transformOrigin = '50% 0%'
+  })
+  newLinkGroups
+    .flatMap((link) => Array.from(link.querySelectorAll<SVGPathElement>('path:not(.hit-area)')))
+    .forEach((path) => {
+      const length = Math.max(1, Math.ceil(path.getTotalLength?.() ?? 80))
+      path.style.opacity = '0'
+      path.style.strokeDasharray = `${length}`
+      path.style.strokeDashoffset = `${length}`
+    })
+  let reverted = false
+  import('gsap').then(({ gsap }) => {
+    if (reverted || !runViewport.isConnected) {
+      return
+    }
+    const ctx = gsap.context(() => {
+      const movedNodes = nodes.flatMap((node) => {
+        const nodeId = node.dataset.chatWorkflowNodeId ?? ''
+        const before = previous?.nodes.get(nodeId)
+        const after = snapshot.nodes.get(nodeId)
+        if (!before || !after || newNodeIds.has(nodeId)) return []
+        const dx = before.x - after.x
+        const dy = before.y - after.y
+        return Math.abs(dx) > 1 || Math.abs(dy) > 1 ? [{ node, dx, dy }] : []
+      })
+      gsap.killTweensOf([
+        ...nodes,
+        ...linkGroups.flatMap((link) => Array.from(link.querySelectorAll<SVGPathElement>('path:not(.hit-area)'))),
+      ])
+      if (movedNodes.length) {
+        gsap.fromTo(movedNodes.map((item) => item.node), {
+          x: (index) => movedNodes[index]?.dx ?? 0,
+          y: (index) => movedNodes[index]?.dy ?? 0,
+        }, {
+          x: 0,
+          y: 0,
+          duration: 0.48,
+          ease: 'expo.out',
+          clearProps: 'transform',
         })
-        const newLinks = links.filter((link) => !previous?.links.has(link.closest<SVGElement>('.chat-resource-link')?.getAttribute('data-chat-resource-link-id') ?? ''))
-        gsap.killTweensOf([...nodes, ...links])
-        if (!previous) {
-          const timeline = gsap.timeline({ defaults: { ease: 'power3.out' } })
-          timeline.from(nodes, {
+      }
+      const timelineNodes = newNodes
+        .filter((node) => node.dataset.chatWorkflowNodeId !== 'run-input-source')
+        .slice()
+        .sort((a, b) => Number(a.dataset.runOrder || 0) - Number(b.dataset.runOrder || 0))
+      const timeline = gsap.timeline({ defaults: { ease: 'power3.out' } })
+      if (!previous) {
+        const inputNode = runViewport.querySelector<HTMLElement>('[data-chat-workflow-node-id="run-input-source"]')
+        if (inputNode) {
+          timeline.fromTo(inputNode, {
             autoAlpha: 0,
-            y: 14,
-            scale: 0.965,
-            duration: 0.34,
-            stagger: { each: 0.035, from: 'start' },
-            clearProps: 'visibility,opacity,transform',
-          })
-          timeline.from(links, {
-            autoAlpha: 0,
-            strokeDasharray: 18,
-            strokeDashoffset: 44,
-            duration: 0.42,
-            stagger: 0.018,
-            clearProps: 'visibility,opacity,strokeDasharray,strokeDashoffset',
-          }, '<0.08')
-          return
-        }
-        if (movedNodes.length) {
-          gsap.fromTo(movedNodes.map((item) => item.node), {
-            x: (index) => movedNodes[index]?.dx ?? 0,
-            y: (index) => movedNodes[index]?.dy ?? 0,
-            scale: 0.992,
+            y: -8,
+            scale: 0.985,
           }, {
-            x: 0,
+            autoAlpha: 1,
             y: 0,
             scale: 1,
-            duration: 0.58,
-            ease: 'expo.out',
-            clearProps: 'transform',
-          })
-        }
-        if (newNodes.length) {
-          const sourceNode = runViewport.querySelector<HTMLElement>('[data-chat-workflow-node-id="run-agent-source"]')
-          const sourceRect = sourceNode?.getBoundingClientRect()
-          const timeline = gsap.timeline({ defaults: { ease: 'power3.out' } })
-          timeline.fromTo(newNodes, {
-            autoAlpha: 0,
-            x: (_index, target) => {
-              if (!sourceRect || !(target instanceof HTMLElement)) return -34
-              const rect = target.getBoundingClientRect()
-              return sourceRect.left + sourceRect.width * 0.68 - (rect.left + rect.width * 0.16)
-            },
-            y: (_index, target) => {
-              if (!sourceRect || !(target instanceof HTMLElement)) return -10
-              const rect = target.getBoundingClientRect()
-              return sourceRect.top + sourceRect.height * 0.56 - (rect.top + rect.height * 0.34)
-            },
-            scaleX: 0.12,
-            scaleY: 0.48,
-            filter: 'brightness(1.36) saturate(1.18)',
-            transformOrigin: '12% 42%',
-          }, {
-            autoAlpha: 1,
-            x: 0,
-            y: 0,
-            scaleX: 1,
-            scaleY: 1,
-            filter: 'brightness(1) saturate(1)',
-            duration: 0.68,
-            stagger: { each: 0.095, from: 'start' },
-            ease: 'expo.out',
-            clearProps: 'visibility,opacity,transform,filter,transformOrigin',
-          })
-          const revealText = newNodes.flatMap((node) => Array.from(node.querySelectorAll<HTMLElement>('.chat-resource-node-content strong, .chat-resource-node-content p')))
-          timeline.from(revealText, {
-            autoAlpha: 0,
-            y: 7,
-            duration: 0.32,
-            stagger: 0.024,
+            duration: 0.36,
             clearProps: 'visibility,opacity,transform',
-          }, '<0.22')
+          })
         }
-        if (newLinks.length) {
-          gsap.fromTo(newLinks, {
-            autoAlpha: 0,
-            strokeDasharray: 24,
-            strokeDashoffset: 58,
-          }, {
+      }
+      timelineNodes.forEach((node, index) => {
+        const nodeId = node.dataset.chatWorkflowNodeId ?? ''
+        const incoming = newLinkGroups.find((link) => (link.getAttribute('data-chat-resource-link-id') ?? '').endsWith(`->${nodeId}`))
+        const paths = incoming
+          ? Array.from(incoming.querySelectorAll<SVGPathElement>('path:not(.hit-area)'))
+          : []
+        const label = `run-node-${index}`
+        timeline.addLabel(label, index === 0 ? '+=0.08' : '+=0.13')
+        if (paths.length) {
+          timeline.to(paths, {
             autoAlpha: 1,
             strokeDashoffset: 0,
-            duration: 0.72,
-            stagger: 0.04,
+            duration: 0.48,
             ease: 'power2.out',
             clearProps: 'visibility,opacity,strokeDasharray,strokeDashoffset',
-          })
+          }, label)
         }
-      }, runViewport)
-      cleanups.push(() => ctx.revert())
+        timeline.fromTo(node, {
+          autoAlpha: 0,
+          y: -18,
+          scaleY: 0.12,
+          scaleX: 0.96,
+          filter: 'brightness(1.28) saturate(1.16)',
+          transformOrigin: '50% 0%',
+        }, {
+          autoAlpha: 1,
+          y: 0,
+          scaleY: 1,
+          scaleX: 1,
+          filter: 'brightness(1) saturate(1)',
+          duration: 0.52,
+          ease: 'expo.out',
+          clearProps: 'visibility,opacity,transform,filter,transformOrigin',
+        }, `${label}+=0.28`)
+        const content = Array.from(node.querySelectorAll<HTMLElement>('.chat-resource-node-content strong, .chat-resource-node-content p, .chat-resource-node-content img, .chat-resource-image-actions'))
+        if (content.length) {
+          timeline.from(content, {
+            autoAlpha: 0,
+            y: 8,
+            duration: 0.28,
+            stagger: 0.035,
+            clearProps: 'visibility,opacity,transform',
+          }, `${label}+=0.46`)
+        }
+      })
+    }, runViewport)
+    cleanups.push(() => ctx.revert())
+  }).catch(() => {
+    newNodes.forEach((node) => {
+      node.style.opacity = ''
+      node.style.visibility = ''
+      node.style.transformOrigin = ''
     })
-    cleanups.push(() => {
-      reverted = true
-    })
-  }
+    newLinkGroups
+      .flatMap((link) => Array.from(link.querySelectorAll<SVGPathElement>('path:not(.hit-area)')))
+      .forEach((path) => {
+        path.style.opacity = ''
+        path.style.strokeDasharray = ''
+        path.style.strokeDashoffset = ''
+      })
+  })
+  cleanups.push(() => {
+    reverted = true
+  })
   cleanups.push(() => {
     delete runViewport.dataset.runDraftInitialized
   })
@@ -2509,29 +2753,41 @@ function normalizeRunCharacterFieldValue(value: string | undefined): string {
   return String(value ?? '').replace(/\r\n/g, '\n').trim()
 }
 
+function getRunInputSummary(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): string {
+  const goalNode = graph.nodes.find((node) => node.id === 'generation-goal' || node.type === 'goal')
+  const goalPrompt = typeof goalNode?.config.goalPrompt === 'string' ? goalNode.config.goalPrompt.trim() : ''
+  const targetAudience = typeof goalNode?.config.targetAudience === 'string' ? goalNode.config.targetAudience.trim() : ''
+  const eventSummary = normalizeRunEvents(options.runState)
+    .find((event) => event.type === 'user.input.graph')?.summary?.trim() ?? ''
+  return goalPrompt
+    || targetAudience
+    || eventSummary
+    || ui(options, '当前资源图作为本次运行的原始输入。', 'The current resource graph is the original input for this run.')
+}
+
 function createRunDraftCanvasGraph(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): CharacterResourceGraph {
   const artifacts = getRunCanvasArtifacts(options.runState?.artifacts ?? [])
   const status = options.runState?.run?.status ?? 'idle'
-  const sourceNodeId = 'run-agent-source'
+  const sourceNodeId = 'run-input-source'
+  const inputSummary = getRunInputSummary(graph, options)
   const nodes: CharacterResourceNode[] = [{
     id: sourceNodeId,
-    type: 'agent-policy',
-    title: ui(options, 'Agent 运行', 'Agent Run'),
-    position: options.positionOverrides?.[sourceNodeId] ?? { x: 72, y: 112 },
-    size: { width: 210, height: 126 },
+    type: 'goal',
+    title: ui(options, '原始输入', 'Original Input'),
+    position: options.positionOverrides?.[sourceNodeId] ?? { x: 96, y: 238 },
+    size: { width: 330, height: 130 },
     status: status === 'failed' || status === 'needs_action' ? 'failed' : status === 'done' ? 'done' : status === 'running' ? 'running' : 'idle',
     zIndex: 1,
-    config: {},
+    config: { runTimelineRoot: true },
   }]
   const outputs: CharacterResourceOutput[] = [{
     id: 'run-agent-source-output',
-    nodeId: 'run-agent-source',
+    nodeId: sourceNodeId,
     type: 'agent-run',
-    title: ui(options, '自主生成角色卡', 'Autonomous character generation'),
-    summary: status === 'running'
-      ? ui(options, 'Agent 正在把配置转化为角色字段和资源。', 'The agent is turning config into character fields and assets.')
-      : ui(options, '运行后这里会串联新增字段、资源和图片。', 'New fields, resources, and images will be chained here after running.'),
+    title: ui(options, '用户原始输入', 'User original input'),
+    summary: inputSummary,
     status: nodes[0].status,
+    text: inputSummary,
   }]
   const links: CharacterResourceLink[] = []
   const compactArtifacts = artifacts.length
@@ -2546,6 +2802,7 @@ function createRunDraftCanvasGraph(graph: CharacterResourceGraph, options: Chara
           data: undefined,
         }]
       : []
+  let previousNodeId = sourceNodeId
   compactArtifacts.forEach((artifact, index) => {
     const nodeId = `run-artifact-${sanitizeResourceId(artifact.id || artifact.type || String(index))}`
     const nodeType = getRunArtifactNodeType(artifact.type)
@@ -2560,10 +2817,13 @@ function createRunDraftCanvasGraph(graph: CharacterResourceGraph, options: Chara
         x: placement.x,
         y: placement.y,
       },
-      size: image ? { width: 226, height: 178 } : { width: 238, height: 134 },
+      size: image ? { width: 320, height: 196 } : { width: 320, height: 128 },
       status: artifactStatus,
       zIndex: index + 2,
-      config: getRunArtifactNodeConfig(artifact),
+      config: {
+        ...getRunArtifactNodeConfig(artifact),
+        runOrder: index + 1,
+      },
     })
     outputs.push({
       id: `${nodeId}-output`,
@@ -2578,7 +2838,8 @@ function createRunDraftCanvasGraph(graph: CharacterResourceGraph, options: Chara
       text: getArtifactText(artifact.data),
       data: artifact.data,
     })
-    links.push(createRunResourceLink('run-agent-source', nodeId, getRunExecutionLabel(artifact.type, options), index))
+    links.push(createRunResourceLink(previousNodeId, nodeId, getRunExecutionLabel(artifact.type, options), index))
+    previousNodeId = nodeId
   })
   const selectedNodeId = resolveRunDraftSelectedNodeId(nodes, artifacts, options)
   return {
@@ -2591,7 +2852,7 @@ function createRunDraftCanvasGraph(graph: CharacterResourceGraph, options: Chara
     viewport: {
       x: options.viewState?.panX ?? 0,
       y: options.viewState?.panY ?? 0,
-      zoom: options.viewState?.zoom ?? 0.94,
+      zoom: options.viewState?.zoom ?? 0.92,
     },
     selection: { nodeIds: [selectedNodeId], linkIds: [] },
     outputs,
@@ -2615,45 +2876,21 @@ function resolveRunDraftSelectedNodeId(
       return imageNodeId
     }
   }
-  return nodes[nodes.length - 1]?.id ?? 'run-agent-source'
+  return nodes[nodes.length - 1]?.id ?? 'run-input-source'
 }
 
 function getRunArtifactPlacement(artifact: NonNullable<CharacterResourceRunState['artifacts']>[number], index: number): { x: number; y: number } {
-  if (artifact.type === 'character-card-field') {
-    const data = artifact.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
-      ? artifact.data as Record<string, unknown>
-      : {}
-    const field = typeof data.field === 'string' ? data.field : ''
-    const order = ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'worldContext', 'firstMessage', 'dialogueStyle']
-    const fieldIndex = Math.max(0, order.indexOf(field))
-    const lane = fieldIndex % 3
-    const row = Math.floor(fieldIndex / 3)
-    const jitter = getStableRunOffset(field || artifact.id || String(index), 22, 18)
-    return { x: 344 + lane * 286 + jitter.x, y: 50 + row * 158 + jitter.y }
-  }
-  if (artifact.type === 'opening-message' || artifact.type === 'dialogue-style-guide' || artifact.type === 'world-context' || artifact.type === 'scene-context') {
-    const order = ['world-context', 'scene-context', 'opening-message', 'dialogue-style-guide']
-    const row = Math.max(0, order.indexOf(artifact.type))
-    const jitter = getStableRunOffset(artifact.type, 24, 16)
-    return { x: 640 + jitter.x, y: 568 + row * 142 + jitter.y }
-  }
-  if (artifact.type === 'image-asset' || artifact.type === 'image-attempt' || artifact.type === 'stale-marker') {
-    const targetKey = getRunArtifactTargetNodeId(artifact) || artifact.sourceNodeId || artifact.id || String(index)
-    const imageIndex = Math.max(0, getStableRunLaneIndex(targetKey, 4))
-    const lane = artifact.type === 'image-asset' ? 0 : artifact.type === 'image-attempt' ? 1 : 2
-    const jitter = getStableRunOffset(`${artifact.type}:${targetKey}`, 28, 24)
-    return { x: 1060 + lane * 256 + jitter.x, y: 72 + imageIndex * 190 + jitter.y }
-  }
-  if (artifact.type === 'quality-report' || artifact.type === 'generation-report' || artifact.type === 'export-package' || artifact.type === 'candidate-pack') {
-    const reportIndex = getStableRunLaneIndex(artifact.id || artifact.type || String(index), 5)
-    const jitter = getStableRunOffset(artifact.id || artifact.type || String(index), 20, 18)
-    return { x: 1570 + jitter.x, y: 82 + reportIndex * 148 + jitter.y }
-  }
-  const stableIndex = getStableRunLaneIndex(artifact.id || artifact.type || String(index), 6)
-  const jitter = getStableRunOffset(artifact.id || artifact.type || String(index), 30, 20)
+  const key = `${artifact.id || artifact.type || index}:${artifact.sourceNodeId || ''}`
+  const columns = 3
+  const column = index % columns
+  const row = Math.floor(index / columns)
+  const rowWave = [0, 34, -24, 18][row % 4] ?? 0
+  const columnWave = [0, -18, 22][column] ?? 0
+  const jitter = getStableRunOffset(key, 14, 10)
+  const imageNudge = artifact.type === 'image-asset' || artifact.type === 'image-attempt' ? 14 : 0
   return {
-    x: 700 + (stableIndex % 2) * 288 + jitter.x,
-    y: 78 + Math.floor(stableIndex / 2) * 162 + jitter.y,
+    x: 506 + column * 372 + columnWave + jitter.x + imageNudge,
+    y: 132 + row * 244 + rowWave + jitter.y,
   }
 }
 
@@ -2733,7 +2970,27 @@ function getCharacterFieldArtifactLabel(artifact: NonNullable<CharacterResourceR
 }
 
 function getRunCanvasArtifacts(artifacts: NonNullable<CharacterResourceRunState['artifacts']>): NonNullable<CharacterResourceRunState['artifacts']> {
-  const filtered = getRoleResourceArtifacts(artifacts)
+  const allowed = new Set([
+    'character-card-draft',
+    'source-material',
+    'character-card-field',
+    'character-card-final',
+    'opening-message',
+    'opening-layout',
+    'dialogue-style-guide',
+    'world-context',
+    'scene-context',
+    'image-prompt',
+    'image-attempt',
+    'image-asset',
+    'stale-marker',
+    'candidate-pack',
+    'quality-report',
+    'export-package',
+    'generation-report',
+  ])
+  const filtered = artifacts
+    .filter((artifact) => allowed.has(artifact.type))
     .filter((artifact) => artifact.type !== 'character-card-draft')
     .filter((artifact) => !isHiddenRunCanvasFieldArtifact(artifact))
   return filtered.some((artifact) => artifact.type === 'character-card-field')
@@ -2754,9 +3011,11 @@ function isHiddenRunCanvasFieldArtifact(artifact: NonNullable<CharacterResourceR
 function getRoleResourceArtifacts(artifacts: NonNullable<CharacterResourceRunState['artifacts']>): NonNullable<CharacterResourceRunState['artifacts']> {
   const allowed = new Set([
     'character-card-draft',
+    'source-material',
     'character-card-field',
     'character-card-final',
     'opening-message',
+    'opening-layout',
     'dialogue-style-guide',
     'world-context',
     'scene-context',
@@ -2778,9 +3037,11 @@ function getRunArtifactOrder(type: string): number {
   const order = [
     'candidate-pack',
     'character-card-draft',
+    'source-material',
     'character-card-field',
     'character-card-final',
     'opening-message',
+    'opening-layout',
     'dialogue-style-guide',
     'world-context',
     'scene-context',
@@ -2800,9 +3061,11 @@ function getRunArtifactMeta(artifact: NonNullable<CharacterResourceRunState['art
   const labels: Record<string, string> = {
     'candidate-pack': ui(options, '候选包 / resource', 'candidate pack / resource'),
     'character-card-draft': ui(options, '角色卡草稿 / draft', 'character draft / resource'),
+    'source-material': ui(options, '素材 / material', 'source material / resource'),
     'character-card-field': ui(options, '角色字段 / field', 'character field / resource'),
     'character-card-final': ui(options, '角色卡 / role-card', 'role card / resource'),
     'opening-message': ui(options, '开场 / opening', 'opening / resource'),
+    'opening-layout': ui(options, '开幕面板 / CSS', 'opening panel / CSS'),
     'dialogue-style-guide': ui(options, '语气 / style', 'style / resource'),
     'world-context': ui(options, '世界观 / context', 'world / resource'),
     'scene-context': ui(options, '场景 / context', 'scene / resource'),
@@ -2820,10 +3083,12 @@ function getRunArtifactMeta(artifact: NonNullable<CharacterResourceRunState['art
 function getRunArtifactNodeType(type: string): string {
   const nodeTypes: Record<string, string> = {
     'candidate-pack': 'candidate-pack-resource',
+    'source-material': 'source-material-resource',
     'character-card-field': 'character-field-resource',
     'character-card-draft': 'role-card-resource',
     'character-card-final': 'role-card-resource',
     'opening-message': 'opening-resource',
+    'opening-layout': 'opening-panel-resource',
     'dialogue-style-guide': 'style-guide-resource',
     'world-context': 'context-resource',
     'scene-context': 'context-resource',
@@ -3038,7 +3303,7 @@ function renderLinkOverlay(graph: CharacterResourceGraph, options: CharacterWork
   const width = Math.max(980, ...graph.nodes.map((node) => node.position.x + node.size.width + 120))
   const height = Math.max(620, ...graph.nodes.map((node) => node.position.y + node.size.height + 120))
   return `
-    <svg class="chat-resource-link-overlay" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" aria-hidden="true">
+    <svg class="chat-resource-link-overlay" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
       <defs>
         <marker id="chat-resource-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
           <path d="M0,0 L8,4 L0,8 Z"></path>
@@ -3055,23 +3320,32 @@ function renderLinkPath(linkItem: CharacterResourceLink, graph: CharacterResourc
   if (!source || !target) {
     return ''
   }
+  const isRunLink = linkItem.id.startsWith('run-link-')
   const sourceSlot = getSlotOffset(source, getOutputIndex(source.type, linkItem.sourceSlotId), 'output')
   const targetSlot = getSlotOffset(target, getInputIndex(target.type, linkItem.targetSlotId), 'input')
-  const x1 = source.position.x + source.size.width + sourceSlot.x
-  const y1 = source.position.y + sourceSlot.y
-  const x2 = target.position.x + targetSlot.x
-  const y2 = target.position.y + targetSlot.y
-  const mid = Math.max(80, Math.abs(x2 - x1) * 0.45)
-  const path = `M ${x1} ${y1} C ${x1 + mid} ${y1}, ${x2 - mid} ${y2}, ${x2} ${y2}`
+  const x1 = isRunLink ? source.position.x + source.size.width / 2 : source.position.x + source.size.width + sourceSlot.x
+  const y1 = isRunLink ? source.position.y + source.size.height : source.position.y + sourceSlot.y
+  const x2 = isRunLink ? target.position.x + target.size.width / 2 : target.position.x + targetSlot.x
+  const y2 = isRunLink ? target.position.y : target.position.y + targetSlot.y
+  const mid = isRunLink ? Math.max(48, Math.abs(y2 - y1) * 0.42) : Math.max(80, Math.abs(x2 - x1) * 0.45)
+  const path = isRunLink
+    ? `M ${x1} ${y1} C ${x1} ${y1 + mid}, ${x2} ${y2 - mid}, ${x2} ${y2}`
+    : `M ${x1} ${y1} C ${x1 + mid} ${y1}, ${x2 - mid} ${y2}, ${x2} ${y2}`
   const flowing = source.status === 'running' || source.status === 'queued' || target.status === 'running' || target.status === 'queued'
   const collapsedNodeLinkReroute = Boolean(source.collapsed || target.collapsed)
   const highlighted = options.viewState?.agentHighlights?.linkIds?.includes(linkItem.id) ?? false
   const actionLabel = options.viewState?.agentHighlights?.linkActions?.[linkItem.id] ?? ''
+  const centerX = (x1 + x2) / 2
+  const centerY = (y1 + y2) / 2
+  const disconnectLabel = ui(options, '断开连接', 'Disconnect link')
   return `
     <g class="chat-resource-link ${options.escapeHtml(linkItem.kind)} ${options.escapeHtml(linkItem.status)} ${flowing ? 'flowing' : ''} ${collapsedNodeLinkReroute ? 'collapsed-node-link reroute-link' : ''} ${highlighted ? 'agent-highlight-link' : ''} ${graph.selection.linkIds.includes(linkItem.id) ? 'selected' : ''}" data-chat-resource-link-id="${options.escapeHtml(linkItem.id)}" data-chat-workflow-link-select="${options.escapeHtml(linkItem.id)}" data-agent-op-label="${options.escapeHtml(actionLabel)}">
       <path d="${path}" marker-end="url(#chat-resource-arrow)"></path>
       <path class="hit-area" d="${path}"></path>
-      <text x="${(x1 + x2) / 2}" y="${(y1 + y2) / 2 - 7}">${options.escapeHtml(actionLabel || linkItem.label || LINK_KIND_LABELS[linkItem.kind])}</text>
+      <text x="${centerX}" y="${centerY - 7}">${options.escapeHtml(actionLabel || linkItem.label || LINK_KIND_LABELS[linkItem.kind])}</text>
+      <foreignObject class="chat-resource-link-disconnect-wrap" x="${centerX - 12}" y="${centerY + 2}" width="24" height="24">
+        <button xmlns="http://www.w3.org/1999/xhtml" class="chat-resource-link-disconnect" type="button" data-chat-workflow-link-disconnect="${options.escapeHtml(linkItem.id)}" aria-label="${options.escapeHtml(disconnectLabel)}" title="${options.escapeHtml(disconnectLabel)}">×</button>
+      </foreignObject>
     </g>
   `
 }
@@ -3082,10 +3356,12 @@ function renderResourceNode(node: CharacterResourceNode, graph: CharacterResourc
   const output = graph.outputs.find((item) => item.nodeId === node.id)
   const runField = typeof node.config.runField === 'string' ? node.config.runField : ''
   const runFieldClass = runField ? `run-field-${sanitizeResourceId(runField)} ${node.config.runFieldSupport ? 'run-field-support' : 'run-field-card'}` : ''
+  const runOrder = typeof node.config.runOrder === 'number' ? String(node.config.runOrder) : ''
+  const virtualMaterialClass = getVirtualMaterialNodeClass(node)
   const highlighted = options.viewState?.agentHighlights?.nodeIds?.includes(node.id) ?? false
   const actionLabel = options.viewState?.agentHighlights?.nodeActions?.[node.id] ?? ''
   return `
-    <article class="chat-workflow-node chat-resource-node ${node.status} ${node.type} ${definition.category} ${runFieldClass} ${highlighted ? 'agent-highlight-node' : ''} ${selected ? 'selected' : ''} ${node.collapsed ? 'collapsed' : ''}" style="--node-x: ${node.position.x}px; --node-y: ${node.position.y}px; --node-w: ${node.size.width}px; --node-h: ${node.size.height}px; z-index: ${node.zIndex}" data-chat-workflow-node-id="${options.escapeHtml(node.id)}" data-chat-workflow-node-select="${options.escapeHtml(node.id)}" data-resource-node-type="${options.escapeHtml(node.type)}" data-run-artifact-id="${options.escapeHtml(output?.artifactId ?? '')}" data-run-artifact-type="${options.escapeHtml(output?.type ?? '')}" data-run-target-node-id="${options.escapeHtml(output?.sourceNodeId ?? '')}" data-run-field="${options.escapeHtml(runField)}" data-agent-op-label="${options.escapeHtml(actionLabel)}">
+    <article class="chat-workflow-node chat-resource-node ${node.status} ${node.type} ${definition.category} ${virtualMaterialClass} ${runFieldClass} ${highlighted ? 'agent-highlight-node' : ''} ${selected ? 'selected' : ''} ${node.collapsed ? 'collapsed' : ''}" style="--node-x: ${node.position.x}px; --node-y: ${node.position.y}px; --node-w: ${node.size.width}px; --node-h: ${node.size.height}px; z-index: ${node.zIndex}" data-chat-workflow-node-id="${options.escapeHtml(node.id)}" data-chat-workflow-node-select="${options.escapeHtml(node.id)}" data-resource-node-type="${options.escapeHtml(node.type)}" data-run-artifact-id="${options.escapeHtml(output?.artifactId ?? '')}" data-run-artifact-type="${options.escapeHtml(output?.type ?? '')}" data-run-target-node-id="${options.escapeHtml(output?.sourceNodeId ?? '')}" data-run-field="${options.escapeHtml(runField)}" data-run-order="${options.escapeHtml(runOrder)}" data-agent-op-label="${options.escapeHtml(actionLabel)}">
       ${renderNodeHeader(node, definition, options)}
       ${renderNodeSlots(node, definition, options)}
       ${renderNodeWidgets(node, definition, options)}
@@ -3096,7 +3372,29 @@ function renderResourceNode(node: CharacterResourceNode, graph: CharacterResourc
   `
 }
 
+function getVirtualMaterialNodeClass(node: CharacterResourceNode): string {
+  if (!isVirtualMaterialNode(node)) {
+    return ''
+  }
+  const material = normalizeWorkflowMaterials(node.config.materials)[0]
+  return material?.kind === 'image' ? 'material-image-display' : 'material-document-display'
+}
+
 function renderNodeHeader(node: CharacterResourceNode, definition: CharacterResourceNodeDefinition, options: CharacterWorkflowPageOptions): string {
+  if (isVirtualMaterialNode(node)) {
+    const material = normalizeWorkflowMaterials(node.config.materials)[0]
+    const kindLabel = material?.kind === 'image'
+      ? ui(options, '参考图片', 'Reference Image')
+      : ui(options, '参考文档', 'Reference Document')
+    return `
+      <header class="chat-workflow-node-head chat-resource-node-header" data-chat-workflow-drag-handle>
+        <button type="button" data-chat-workflow-action="toggle-node-collapse" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '折叠节点' : 'Collapse node')}"></button>
+        <span>${options.escapeHtml(kindLabel)}</span>
+        <strong>${options.escapeHtml(localizeNodeTitle(node, definition, options))}</strong>
+        <em>${options.escapeHtml(node.status)}</em>
+      </header>
+    `
+  }
   return `
     <header class="chat-workflow-node-head chat-resource-node-header" data-chat-workflow-drag-handle>
       <button type="button" data-chat-workflow-action="toggle-node-collapse" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '折叠节点' : 'Collapse node')}"></button>
@@ -3122,22 +3420,36 @@ function renderSlotList(node: CharacterResourceNode, slots: CharacterResourceSlo
   }
   return `
     <div class="chat-workflow-node-port-list ${side}">
-      ${slots.map((slotItem) => `
-        <span class="chat-workflow-node-port chat-resource-slot ${slotItem.required ? 'required' : ''}" data-resource-slot-node="${options.escapeHtml(node.id)}" data-resource-slot-id="${options.escapeHtml(slotItem.id)}" data-resource-slot-side="${side}" data-resource-slot-type="${options.escapeHtml(slotItem.type)}" title="${options.escapeHtml(slotItem.tooltip)}">
+      ${slots.map((slotItem) => {
+        const accepts = slotItem.accepts ?? [slotItem.type]
+        const acceptLabel = formatSlotAcceptLabel(accepts)
+        const guideLabel = side === 'input'
+          ? ui(options, `接入：${acceptLabel}`, `Accepts: ${acceptLabel}`)
+          : ui(options, `输出：${formatSlotTypeLabel(slotItem.type)}`, `Outputs: ${formatSlotTypeLabel(slotItem.type)}`)
+        const dragGuideLabel = side === 'input'
+          ? ui(options, `连接 ${acceptLabel}`, `Connect ${acceptLabel}`)
+          : ui(options, `拖向 ${formatSlotTypeLabel(slotItem.type)} 输入口`, `Drag to a ${formatSlotTypeLabel(slotItem.type)} input`)
+        const title = `${slotItem.tooltip || slotItem.type} · ${guideLabel}`
+        return `
+        <span class="chat-workflow-node-port chat-resource-slot ${slotItem.required ? 'required' : ''}" data-resource-slot-node="${options.escapeHtml(node.id)}" data-resource-slot-id="${options.escapeHtml(slotItem.id)}" data-resource-slot-side="${side}" data-resource-slot-type="${options.escapeHtml(slotItem.type)}" data-resource-slot-accepts="${options.escapeHtml(accepts.join(','))}" data-resource-slot-guide="${options.escapeHtml(dragGuideLabel)}" title="${options.escapeHtml(title)}">
           <i class="chat-resource-slot-dot" aria-hidden="true"></i>
           <b>${options.escapeHtml(localizeSlotLabel(slotItem, options))}</b>
+          ${side === 'input' ? `<small class="chat-resource-slot-accepts">${options.escapeHtml(guideLabel)}</small>` : ''}
         </span>
-      `).join('')}
+      `}).join('')}
     </div>
   `
 }
 
 function renderNodeWidgets(node: CharacterResourceNode, definition: CharacterResourceNodeDefinition, options: CharacterWorkflowPageOptions): string {
+  if (isVirtualMaterialNode(node)) {
+    return ''
+  }
   return `
     <div class="chat-resource-node-widgets">
       ${definition.parameters.slice(0, 3).map((parameterItem) => `
         <label>
-          <span>${options.escapeHtml(localizeParameterLabel(parameterItem, options))}</span>
+          <span>${options.escapeHtml(localizeParameterLabel(parameterItem, options, node.type))}</span>
           ${renderParameterField(parameterItem, node, node.config[parameterItem.id], options)}
         </label>
       `).join('')}
@@ -3151,11 +3463,29 @@ function renderNodeContent(
   output: CharacterResourceOutput | undefined,
   options: CharacterWorkflowPageOptions
 ): string {
+  if (isVirtualMaterialNode(node)) {
+    return renderVirtualMaterialNodeContent(node, options)
+  }
   if (!output) {
     return ''
   }
   const previewClass = `preview-${definition.previewType}`
   const runImageActions = renderRunImageActions(output, options)
+  if (output.type === 'opening-layout') {
+    const data = output.data && typeof output.data === 'object' && !Array.isArray(output.data)
+      ? output.data as Record<string, unknown>
+      : {}
+    const html = typeof data.html === 'string' ? sanitizeOpeningPanelHtml(data.html) : ''
+    const css = typeof data.css === 'string' ? sanitizeOpeningPanelCss(data.css) : ''
+    return `
+      <div class="chat-resource-node-content ${previewClass} chat-resource-opening-panel-preview">
+        <strong>${options.escapeHtml(output.title)}</strong>
+        <p>${options.escapeHtml(output.summary)}</p>
+        ${css ? `<style>${css}</style>` : ''}
+        ${html ? `<div class="chat-resource-opening-panel-frame">${html}</div>` : ''}
+      </div>
+    `
+  }
   if (output?.image) {
     return `
       <div class="chat-resource-node-content ${previewClass} has-image">
@@ -3173,6 +3503,50 @@ function renderNodeContent(
       ${runImageActions}
     </div>
   `
+}
+
+function renderVirtualMaterialNodeContent(node: CharacterResourceNode, options: CharacterWorkflowPageOptions): string {
+  const material = normalizeWorkflowMaterials(node.config.materials)[0]
+  if (!material) {
+    return ''
+  }
+  const meta = [
+    material.mimeType,
+    formatMaterialSize(material.size, options),
+  ].filter(Boolean).join(' · ')
+  if (material.kind === 'image') {
+    return `
+      <div class="chat-resource-node-content material-image-preview has-image">
+        ${material.dataUrl ? `<img src="${options.escapeHtml(material.dataUrl)}" alt="${options.escapeHtml(material.name)}">` : ''}
+        <div>
+          <strong>${options.escapeHtml(ui(options, '图片参考', 'Image Reference'))}</strong>
+          <p>${options.escapeHtml(meta || ui(options, '可作为图片生成 reference', 'Available as an image generation reference'))}</p>
+        </div>
+        <button type="button" data-chat-workflow-action="remove-material" data-chat-workflow-node="${options.escapeHtml(node.id)}" data-material-id="${options.escapeHtml(material.id)}">${options.escapeHtml(ui(options, '移除', 'Remove'))}</button>
+      </div>
+    `
+  }
+  return `
+    <div class="chat-resource-node-content material-document-preview">
+      <strong>${options.escapeHtml(ui(options, '文档参考', 'Document Reference'))}</strong>
+      <p>${options.escapeHtml(material.text || meta || material.name)}</p>
+      <button type="button" data-chat-workflow-action="remove-material" data-chat-workflow-node="${options.escapeHtml(node.id)}" data-material-id="${options.escapeHtml(material.id)}">${options.escapeHtml(ui(options, '移除', 'Remove'))}</button>
+    </div>
+  `
+}
+
+function sanitizeOpeningPanelHtml(value: string): string {
+  return value
+    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
+    .replace(/\son[a-z]+\s*=\s*(['"]).*?\1/gi, '')
+    .replace(/\s(href|src)\s*=\s*(['"])\s*javascript:[\s\S]*?\2/gi, '')
+}
+
+function sanitizeOpeningPanelCss(value: string): string {
+  return value
+    .replace(/<\/?style[\s\S]*?>/gi, '')
+    .replace(/@import[^;]+;/gi, '')
+    .replace(/url\(\s*(['"]?)javascript:[^)]+\)/gi, 'none')
 }
 
 function renderRunImageActions(output: CharacterResourceOutput, options: CharacterWorkflowPageOptions): string {
@@ -3250,8 +3624,8 @@ function renderResourceInspector(graph: CharacterResourceGraph, options: Charact
         <section class="chat-workflow-inspector-section">
           <h4>${options.escapeHtml(ui(options, '插槽', 'Slots'))}</h4>
           <div class="chat-workflow-inspector-ports">
-            ${definition.inputs.map((slotItem) => `<span><b>IN</b>${options.escapeHtml(localizeSlotLabel(slotItem, options))}<small>${options.escapeHtml(slotItem.type)}</small></span>`).join('') || '<span><b>IN</b>-</span>'}
-            ${definition.outputs.map((slotItem) => `<span><b>OUT</b>${options.escapeHtml(localizeSlotLabel(slotItem, options))}<small>${options.escapeHtml(slotItem.type)}</small></span>`).join('')}
+            ${definition.inputs.map((slotItem) => `<span><b>IN</b>${options.escapeHtml(localizeSlotLabel(slotItem, options))}<small>${options.escapeHtml(formatSlotAcceptLabel(slotItem.accepts ?? [slotItem.type]))}</small></span>`).join('') || '<span><b>IN</b>-</span>'}
+            ${definition.outputs.map((slotItem) => `<span><b>OUT</b>${options.escapeHtml(localizeSlotLabel(slotItem, options))}<small>${options.escapeHtml(formatSlotTypeLabel(slotItem.type))}</small></span>`).join('')}
           </div>
         </section>
         ${output ? `
@@ -3326,7 +3700,7 @@ function renderInspectorParameter(
   return `
     <div class="chat-workflow-inspector-field ${dirty ? 'is-dirty' : ''} ${validation ? 'is-invalid' : ''}">
       <span>
-        <b>${options.escapeHtml(localizeParameterLabel(parameterItem, options))}</b>
+        <b>${options.escapeHtml(localizeParameterLabel(parameterItem, options, node.type))}</b>
         ${dirty ? `<button class="chat-workflow-param-reset" type="button" data-chat-workflow-action="reset-parameter" data-chat-workflow-param-reset="${options.escapeHtml(parameterItem.id)}" data-chat-workflow-node="${options.escapeHtml(node.id)}">${options.escapeHtml(ui(options, '重置', 'Reset'))}</button>` : ''}
       </span>
       ${renderParameterField(parameterItem, node, value ?? parameterItem.defaultValue, options, Boolean(validation))}
@@ -3343,7 +3717,7 @@ function renderParameterField(
   invalid = false
 ): string {
   const baseAttrs = `data-chat-workflow-param="${options.escapeHtml(parameterItem.id)}" data-chat-workflow-node="${options.escapeHtml(node.id)}" data-chat-workflow-param-type="${options.escapeHtml(parameterItem.type)}" aria-invalid="${invalid ? 'true' : 'false'}"`
-  const label = localizeParameterLabel(parameterItem, options)
+  const label = localizeParameterLabel(parameterItem, options, node.type)
   if (parameterItem.type === 'boolean') {
     return `<input class="chat-workflow-boolean-field" type="checkbox" ${baseAttrs} ${value ? 'checked' : ''} aria-label="${options.escapeHtml(label)}">`
   }
@@ -3352,6 +3726,9 @@ function renderParameterField(
   }
   if (parameterItem.type === 'model-select') {
     return renderModelSelectField(parameterItem, node, value, options, baseAttrs)
+  }
+  if (parameterItem.type === 'materials') {
+    return renderMaterialsField(parameterItem, node, value, options)
   }
   if (parameterItem.type === 'select') {
     return `
@@ -3367,6 +3744,98 @@ function renderParameterField(
     return `<textarea ${baseAttrs} rows="2" aria-label="${options.escapeHtml(label)}">${options.escapeHtml(formatParameterValue(value))}</textarea>`
   }
   return `<input type="text" ${baseAttrs} value="${options.escapeHtml(formatParameterValue(value))}" aria-label="${options.escapeHtml(label)}">`
+}
+
+function renderMaterialsField(
+  parameterItem: CharacterResourceParameterDefinition,
+  node: CharacterResourceNode,
+  value: unknown,
+  options: CharacterWorkflowPageOptions
+): string {
+  const materials = normalizeWorkflowMaterials(value)
+  const label = localizeParameterLabel(parameterItem, options, node.type)
+  return `
+    <div class="chat-workflow-materials-field" data-chat-workflow-param="${options.escapeHtml(parameterItem.id)}" data-chat-workflow-node="${options.escapeHtml(node.id)}" data-chat-workflow-param-type="materials" aria-label="${options.escapeHtml(label)}">
+      <div class="chat-workflow-materials-head">
+        <span>${options.escapeHtml(ui(options, `${materials.length} 个素材`, `${materials.length} materials`))}</span>
+        <button type="button" data-chat-workflow-action="add-materials" data-chat-workflow-node="${options.escapeHtml(node.id)}">${options.escapeHtml(ui(options, '添加素材', 'Add Materials'))}</button>
+      </div>
+      <div class="chat-workflow-materials-list">
+        ${materials.length ? materials.map((material) => renderMaterialChip(material, node.id, options)).join('') : `<p>${options.escapeHtml(ui(options, '加入图片或文档后会自动识别类型。', 'Add images or documents; type is inferred automatically.'))}</p>`}
+      </div>
+    </div>
+  `
+}
+
+function renderMaterialChip(material: WorkflowMaterialItem, nodeId: string, options: CharacterWorkflowPageOptions): string {
+  const meta = [
+    material.kind === 'image' ? ui(options, '图片', 'Image') : ui(options, '文档', 'Document'),
+    material.mimeType,
+    formatMaterialSize(material.size, options),
+  ].filter(Boolean).join(' · ')
+  return `
+    <article class="chat-workflow-material-chip ${options.escapeHtml(material.kind)}">
+      ${material.kind === 'image' && material.dataUrl ? `<img src="${options.escapeHtml(material.dataUrl)}" alt="${options.escapeHtml(material.name)}">` : '<i aria-hidden="true"></i>'}
+      <span>
+        <strong>${options.escapeHtml(material.name)}</strong>
+        <small>${options.escapeHtml(meta)}</small>
+      </span>
+      <button type="button" data-chat-workflow-action="remove-material" data-chat-workflow-node="${options.escapeHtml(nodeId)}" data-material-id="${options.escapeHtml(material.id)}" aria-label="${options.escapeHtml(ui(options, '移除素材', 'Remove material'))}">x</button>
+    </article>
+  `
+}
+
+function normalizeWorkflowMaterials(value: unknown): WorkflowMaterialItem[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value.flatMap((item, index): WorkflowMaterialItem[] => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      return []
+    }
+    const record = item as Record<string, unknown>
+    const name = typeof record.name === 'string' && record.name.trim() ? record.name.trim() : `material-${index + 1}`
+    const mimeType = typeof record.mimeType === 'string' ? record.mimeType : ''
+    const material: WorkflowMaterialItem = {
+      id: typeof record.id === 'string' && record.id.trim() ? record.id.trim() : `material-${index + 1}`,
+      kind: inferWorkflowMaterialKind(record.kind, mimeType, name),
+      name,
+      mimeType,
+    }
+    if (typeof record.dataUrl === 'string' && record.dataUrl.trim()) {
+      material.dataUrl = record.dataUrl.trim()
+    }
+    if (typeof record.text === 'string' && record.text.trim()) {
+      material.text = record.text.trim()
+    }
+    if (typeof record.size === 'number' && Number.isFinite(record.size)) {
+      material.size = Math.max(0, Math.round(record.size))
+    }
+    return [material]
+  })
+}
+
+function inferWorkflowMaterialKind(value: unknown, mimeType: string, name: string): WorkflowMaterialItem['kind'] {
+  if (value === 'image' || value === 'document') {
+    return value
+  }
+  if (mimeType.startsWith('image/')) {
+    return 'image'
+  }
+  return /\.(png|jpe?g|webp|gif)$/i.test(name) ? 'image' : 'document'
+}
+
+function formatMaterialSize(value: number | undefined, options: CharacterWorkflowPageOptions): string {
+  if (!value) {
+    return ''
+  }
+  if (value < 1024) {
+    return ui(options, `${value} 字节`, `${value} B`)
+  }
+  if (value < 1024 * 1024) {
+    return `${Math.round(value / 1024)} KB`
+  }
+  return `${(value / 1024 / 1024).toFixed(1)} MB`
 }
 
 function renderModelSelectField(
@@ -3388,7 +3857,7 @@ function renderModelSelectField(
   }
   return `
     <details class="chat-resource-model-select">
-      <summary aria-label="${options.escapeHtml(localizeParameterLabel(parameterItem, options))}">
+      <summary aria-label="${options.escapeHtml(localizeParameterLabel(parameterItem, options, node.type))}">
         <span class="chat-resource-model-choice-logo">${selected.logoHtml}</span>
         <span class="chat-resource-model-choice-copy">
           <strong>${options.escapeHtml(selected.modelName)}</strong>
@@ -3515,16 +3984,16 @@ function renderNodeSearchPopover(graph: CharacterResourceGraph, options: Charact
 function renderCanvasContextMenu(options: CharacterWorkflowPageOptions): string {
   return `
     <div class="chat-resource-context-menu" role="menu" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '画布菜单' : 'Canvas menu')}">
-      <button type="button" role="menuitem" data-chat-workflow-action="open-node-search">${options.escapeHtml(ui(options, '添加节点', 'Add Node'))}</button>
-      <button type="button" role="menuitem" data-chat-workflow-action="fit-view">${options.escapeHtml(ui(options, '适配视图', 'Fit View'))}</button>
-      <button type="button" role="menuitem" data-chat-workflow-action="copy-selection">${options.escapeHtml(ui(options, '复制', 'Copy'))}</button>
-      <button type="button" role="menuitem" data-chat-workflow-action="paste-selection">${options.escapeHtml(ui(options, '粘贴', 'Paste'))}</button>
-      <button type="button" role="menuitem" data-chat-workflow-action="duplicate-selection">${options.escapeHtml(ui(options, '复制副本', 'Duplicate'))}</button>
-      <button type="button" role="menuitem" data-chat-workflow-action="undo-graph">${options.escapeHtml(ui(options, '撤销', 'Undo'))}</button>
-      <button type="button" role="menuitem" data-chat-workflow-action="redo-graph">${options.escapeHtml(ui(options, '重做', 'Redo'))}</button>
-      <button type="button" role="menuitem" data-chat-workflow-action="align-left">${options.escapeHtml(ui(options, '左对齐', 'Align Left'))}</button>
-      <button type="button" role="menuitem" data-chat-workflow-action="align-top">${options.escapeHtml(ui(options, '顶对齐', 'Align Top'))}</button>
-      <button class="danger" type="button" role="menuitem" data-chat-workflow-action="delete-selection">${options.escapeHtml(ui(options, '删除', 'Delete'))}</button>
+      <button type="button" role="menuitem" data-resource-menu-scope="canvas" data-chat-workflow-action="open-node-search">${options.escapeHtml(ui(options, '添加节点', 'Add Node'))}</button>
+      <button type="button" role="menuitem" data-resource-menu-scope="all" data-chat-workflow-action="fit-view">${options.escapeHtml(ui(options, '适配视图', 'Fit View'))}</button>
+      <button type="button" role="menuitem" data-resource-menu-scope="node" data-chat-workflow-action="copy-selection">${options.escapeHtml(ui(options, '复制', 'Copy'))}</button>
+      <button type="button" role="menuitem" data-resource-menu-scope="canvas" data-chat-workflow-action="paste-selection">${options.escapeHtml(ui(options, '粘贴', 'Paste'))}</button>
+      <button type="button" role="menuitem" data-resource-menu-scope="node" data-chat-workflow-action="duplicate-selection">${options.escapeHtml(ui(options, '复制副本', 'Duplicate'))}</button>
+      <button type="button" role="menuitem" data-resource-menu-scope="all" data-chat-workflow-action="undo-graph">${options.escapeHtml(ui(options, '撤销', 'Undo'))}</button>
+      <button type="button" role="menuitem" data-resource-menu-scope="all" data-chat-workflow-action="redo-graph">${options.escapeHtml(ui(options, '重做', 'Redo'))}</button>
+      <button type="button" role="menuitem" data-resource-menu-scope="node" data-chat-workflow-action="align-left">${options.escapeHtml(ui(options, '左对齐', 'Align Left'))}</button>
+      <button type="button" role="menuitem" data-resource-menu-scope="node" data-chat-workflow-action="align-top">${options.escapeHtml(ui(options, '顶对齐', 'Align Top'))}</button>
+      <button class="danger" type="button" role="menuitem" data-resource-menu-scope="node" data-chat-workflow-action="delete-selection">${options.escapeHtml(ui(options, '删除', 'Delete'))}</button>
     </div>
   `
 }
@@ -3572,8 +4041,8 @@ function createDefinition(
   }
 }
 
-function slot(id: string, label: string, type: string, tooltip = '', required = false): CharacterResourceSlotDefinition {
-  return { id, label, type, required, tooltip: tooltip || type }
+function slot(id: string, label: string, type: string, tooltip = '', required = false, accepts?: string[]): CharacterResourceSlotDefinition {
+  return { id, label, type, accepts, required, tooltip: tooltip || type }
 }
 
 function param(
@@ -3637,7 +4106,27 @@ function validateLink(
   }
   const sourceSlot = definitions.get(source.type)?.outputs.find((slotItem) => slotItem.id === linkItem.sourceSlotId)
   const targetSlot = definitions.get(target.type)?.inputs.find((slotItem) => slotItem.id === linkItem.targetSlotId)
-  return Boolean(sourceSlot && targetSlot && sourceSlot.type === targetSlot.type)
+  return areSlotDefinitionsCompatible(sourceSlot, targetSlot)
+}
+
+function areSlotDefinitionsCompatible(
+  sourceSlot: CharacterResourceSlotDefinition | undefined,
+  targetSlot: CharacterResourceSlotDefinition | undefined
+): boolean {
+  if (!sourceSlot || !targetSlot) {
+    return false
+  }
+  return parseSlotAccepts(targetSlot.accepts, targetSlot.type).includes(sourceSlot.type)
+}
+
+function parseSlotAccepts(value: string | string[] | undefined, fallbackType = ''): string[] {
+  if (Array.isArray(value)) {
+    return value.length ? value : (fallbackType ? [fallbackType] : [])
+  }
+  if (typeof value === 'string' && value.trim()) {
+    return value.split(',').map((item) => item.trim()).filter(Boolean)
+  }
+  return fallbackType ? [fallbackType] : []
 }
 
 function getDefinition(type: string): CharacterResourceNodeDefinition {

@@ -616,12 +616,26 @@ declare global {
               dataUrl?: string
               size?: number
             }>
+            openingPanel?: {
+              html: string
+              css: string
+              summary?: string
+              layoutKind?: string
+              sourceArtifactId?: string
+            }
             state?: 'idle' | 'thinking' | 'generating_image' | 'using_tool'
           }>
           workflowState?: unknown
           characterResource?: {
             id: string
             roleCard?: Record<string, unknown>
+            openingPanel?: {
+              html: string
+              css: string
+              summary?: string
+              layoutKind?: string
+              sourceArtifactId?: string
+            }
             name: Record<string, string>
             displayName: Record<string, string>
             description: Record<string, string>
@@ -669,12 +683,26 @@ declare global {
               dataUrl?: string
               size?: number
             }>
+            openingPanel?: {
+              html: string
+              css: string
+              summary?: string
+              layoutKind?: string
+              sourceArtifactId?: string
+            }
             state?: 'idle' | 'thinking' | 'generating_image' | 'using_tool'
           }>
           workflowState?: unknown
           characterResource?: {
             id: string
             roleCard?: Record<string, unknown>
+            openingPanel?: {
+              html: string
+              css: string
+              summary?: string
+              layoutKind?: string
+              sourceArtifactId?: string
+            }
             name: Record<string, string>
             displayName: Record<string, string>
             description: Record<string, string>
@@ -843,6 +871,19 @@ declare global {
           summary?: string
           confidence?: number
           status?: 'applied' | 'needs-user' | 'blocked'
+          decision?: {
+            id: string
+            title: string
+            description?: string
+            options: Array<{
+              id: string
+              label: string
+              detail?: string
+              patchHint?: string
+            }>
+            defaultOptionId?: string
+            allowSkip?: boolean
+          }
           goalPrompt: string
           targetAudience: string
           stylePrompt: string
@@ -879,6 +920,19 @@ declare global {
           completedSteps: string[]
           currentStep?: string
           nextStep?: string
+          decision?: {
+            id: string
+            title: string
+            description?: string
+            options: Array<{
+              id: string
+              label: string
+              detail?: string
+              patchHint?: string
+            }>
+            defaultOptionId?: string
+            allowSkip?: boolean
+          }
           createdAt: number
           updatedAt: number
           steps: Array<{
@@ -892,6 +946,19 @@ declare global {
             completedSteps: string[]
             currentStep?: string
             nextStep?: string
+            decision?: {
+              id: string
+              title: string
+              description?: string
+              options: Array<{
+                id: string
+                label: string
+                detail?: string
+                patchHint?: string
+              }>
+              defaultOptionId?: string
+              allowSkip?: boolean
+            }
             operations: Array<Record<string, unknown>>
             uiConfigOverrides: Record<string, Record<string, unknown>>
             createdAt: number
@@ -918,6 +985,19 @@ declare global {
               completedSteps?: string[]
               currentStep?: string
               nextStep?: string
+              decision?: {
+                id: string
+                title: string
+                description?: string
+                options: Array<{
+                  id: string
+                  label: string
+                  detail?: string
+                  patchHint?: string
+                }>
+                defaultOptionId?: string
+                allowSkip?: boolean
+              }
               operations?: Array<Record<string, unknown>>
               uiConfigOverrides?: Record<string, Record<string, unknown>>
               createdAt?: number
@@ -931,6 +1011,19 @@ declare global {
               completedSteps: string[]
               currentStep?: string
               nextStep?: string
+              decision?: {
+                id: string
+                title: string
+                description?: string
+                options: Array<{
+                  id: string
+                  label: string
+                  detail?: string
+                  patchHint?: string
+                }>
+                defaultOptionId?: string
+                allowSkip?: boolean
+              }
               updatedAt: number
             }
           }) => void
@@ -1078,6 +1171,19 @@ declare global {
           name: string
           mimeType: string
           dataUrl?: string
+          size?: number
+        }>
+        error?: string
+      }>
+      selectChatMaterials: () => Promise<{
+        success: boolean
+        canceled?: boolean
+        materials?: Array<{
+          kind: 'image' | 'document'
+          name: string
+          mimeType: string
+          dataUrl?: string
+          text?: string
           size?: number
         }>
         error?: string

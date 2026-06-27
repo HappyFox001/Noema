@@ -112,8 +112,9 @@ export type CharacterWorkflowParameterType =
   | 'multi-select'
   | 'string-list'
   | 'model-select'
+  | 'materials'
 
-export type CharacterWorkflowParameterValue = string | number | boolean | string[]
+export type CharacterWorkflowParameterValue = string | number | boolean | string[] | SourceMaterialItem[]
 
 export interface CharacterWorkflowNodeParameter {
   id: string
@@ -260,7 +261,18 @@ export interface SourceContextArtifact extends CharacterArtifactBase {
     kind: string
     notes: string
     groundingStrength: number
+    materials: SourceMaterialItem[]
   }
+}
+
+export interface SourceMaterialItem {
+  id: string
+  kind: 'image' | 'document'
+  name: string
+  mimeType: string
+  size?: number
+  dataUrl?: string
+  text?: string
 }
 
 export interface ModelCapabilityArtifact extends CharacterArtifactBase {
@@ -570,7 +582,7 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     category: 'goal',
     executor: 'manual',
     description: 'Collects the free-form RP generation target without asking the user to fill final card fields.',
-    inputs: {},
+    inputs: { source: port('source', 'Source', 'source-context') },
     outputs: { goal: port('goal', 'Goal', 'generation-goal') },
     parameters: [
       parameter('goalPrompt', 'Goal Prompt', 'textarea', ''),
@@ -616,7 +628,7 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     title: 'Character Field Target',
     category: 'targets',
     executor: 'agent',
-    description: 'Declares a single character-card field as an independently controllable target resource.',
+    description: 'Declares one field-control resource that can shape several character-card fields without duplicating final content.',
     inputs: {
       card: port('card', 'Card', 'asset-target'),
       style: port('style', 'Style', 'style-signal'),
@@ -625,7 +637,7 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     },
     outputs: { field: port('field', 'Field', 'asset-target') },
     parameters: [
-      parameter('field', 'Field', 'select', 'firstMessage', undefined, [
+      parameter('fields', 'Fields', 'multi-select', ['firstMessage'], undefined, [
         option('Name', 'name'),
         option('Description', 'description'),
         option('Appearance', 'appearance'),
@@ -685,17 +697,10 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     },
     outputs: { imageAsset: port('imageAsset', 'Image Asset', 'asset-target') },
     parameters: [
-      parameter('imageRole', 'Image Role', 'select', 'hero-cover', undefined, [
+      parameter('imageRole', 'Image Role', 'select', 'character-base-image', undefined, [
         option('Avatar', 'avatar'),
         option('Character Overview Sheet', 'character-overview-sheet'),
-        option('Hero Cover', 'hero-cover'),
-        option('Full Body', 'full-body'),
-        option('Opening Moment', 'opening-moment'),
-        option('Story Moment', 'story-moment'),
-        option('Expression', 'expression'),
-        option('Outfit Detail', 'outfit-detail'),
-        option('Relationship Moment', 'relationship-moment'),
-        option('World Context', 'world-context'),
+        option('Base Character Image', 'character-base-image'),
       ]),
       parameter('assetPurpose', 'Asset Purpose', 'textarea', ''),
     ],
@@ -867,6 +872,28 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
         option('Stylized', 'stylized'),
       ]),
       parameter('stylePrompt', 'Style Prompt', 'textarea', ''),
+      parameter('poseGoals', 'Pose Goals', 'string-list', []),
+      parameter('backgroundInteraction', 'Background Interaction', 'textarea', ''),
+      parameter('appealMode', 'Appeal Mode', 'select', 'sensual-confidence', undefined, [
+        option('Natural', 'natural'),
+        option('Romantic', 'romantic'),
+        option('Sensual Confidence', 'sensual-confidence'),
+        option('Erotic Tension', 'erotic-tension'),
+        option('Dramatic', 'dramatic'),
+        option('Mysterious', 'mysterious'),
+      ]),
+      parameter('sensualityLevel', 'Sensuality Level', 'select', 'sensual', undefined, [
+        option('Subtle', 'subtle'),
+        option('Sensual', 'sensual'),
+        option('Erotic', 'erotic'),
+        option('Explicit', 'explicit'),
+      ]),
+      parameter('wardrobeExposure', 'Wardrobe Exposure', 'select', 'stylish-revealing', undefined, [
+        option('Covered', 'covered'),
+        option('Stylish Revealing', 'stylish-revealing'),
+        option('Lingerie / Swimwear', 'lingerie-swimwear'),
+        option('Implied Nude', 'implied-nude'),
+      ]),
       parameter('shotType', 'Shot Type', 'select', 'auto', undefined, [
         option('Auto', 'auto'),
         option('Close Up', 'close-up'),
@@ -978,17 +1005,14 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     title: 'Source Material',
     category: 'sources',
     executor: 'manual',
-    description: 'Provides optional source context, references, existing cards, images, or user preference notes.',
+    description: 'Imports image and document materials as grounded references. Material kind is inferred from file type.',
     inputs: {},
-    outputs: { source: port('source', 'Source', 'source-context') },
+    outputs: {
+      source: port('source', 'Source', 'source-context'),
+      imageAsset: port('imageAsset', 'Reference Image', 'asset-target'),
+    },
     parameters: [
-      parameter('sourceKind', 'Source Kind', 'select', 'notes', undefined, [
-        option('Notes', 'notes'),
-        option('Existing Card', 'existing-card'),
-        option('Image Reference', 'image-reference'),
-        option('User Preference', 'user-preference'),
-      ]),
-      parameter('notes', 'Notes', 'textarea', ''),
+      parameter('materials', 'Materials', 'materials', []),
     ],
   },
   {
@@ -1206,25 +1230,27 @@ export function createStandardCharacterWorkflow(
   const id = options.id ?? `agentic-resource-graph-${now}`
   const node = createWorkflowNodeFactory()
   const nodes = [
-    node('goal', 40, 150),
-    node('character-card-target', 360, 140),
-    node('character-field-target', 690, 30),
-    node('field-generation-control', 690, 230),
-    node('image-target', 690, 400, 'avatar-image-target', 'Avatar Image Target'),
-    node('image-generation-control', 1010, 360, 'avatar-image-control', 'Avatar Image Control'),
-    node('image-target', 690, 600, 'overview-sheet-image-target', 'Overview Sheet Image Target'),
-    node('image-generation-control', 1010, 580, 'overview-sheet-image-control', 'Overview Sheet Image Control'),
-    node('opening-layout-target', 1010, 640),
-    node('style-pressure', 360, -70),
+    node('goal', 40, 120),
+    node('source-material', 40, 390),
+    node('style-pressure', 360, -100),
+    node('character-card-target', 360, 120),
     node('constraint', 360, 360),
-    node('source-material', 40, 410),
-    node('llm-tool', 1010, 30),
-    node('image-tool', 1010, 230),
-    node('agent-policy', 1340, 70),
-    node('generation-strategy', 1660, 70),
-    node('critique-loop', 1660, 340),
-    node('quality-gate', 1980, 180),
-    node('output-adapter', 2300, 180),
+    node('character-field-target', 700, -20),
+    node('field-generation-control', 1040, -20),
+    node('image-target', 700, 230, 'avatar-image-target', 'Avatar Image Target'),
+    node('image-generation-control', 1040, 230, 'avatar-image-control', 'Avatar Image Control'),
+    node('image-target', 700, 480, 'overview-sheet-image-target', 'Overview Sheet Image Target'),
+    node('image-generation-control', 1040, 480, 'overview-sheet-image-control', 'Overview Sheet Image Control'),
+    node('image-target', 700, 730, 'opening-panel-image-target', 'Opening Panel Images Target'),
+    node('image-generation-control', 1040, 730, 'opening-panel-image-control', 'Opening Panel Images Control'),
+    node('llm-tool', 1040, -260),
+    node('image-tool', 1040, 980),
+    node('agent-policy', 1400, 40),
+    node('opening-layout-target', 1400, 580),
+    node('generation-strategy', 1740, 40),
+    node('critique-loop', 1740, 330),
+    node('quality-gate', 2080, 190),
+    node('output-adapter', 2420, 190),
   ]
   const llmModelRef = createModelRef(options.llmApiId, options.llmModelName)
   const imageModelRef = createModelRef(options.imageApiId, options.imageModelName)
@@ -1271,6 +1297,29 @@ export function createStandardCharacterWorkflow(
       seedMode: 'lock-character',
     })
   }
+  const openingPanelImageTarget = nodes.find((nodeItem) => nodeItem.id === 'opening-panel-image-target')
+  if (openingPanelImageTarget) {
+    Object.assign(openingPanelImageTarget.config, {
+      imageRole: 'character-base-image',
+      assetPurpose: 'Free-form character sample images for the opening CSS panel. Generate reusable non-avatar images migrated from the avatar reference, showing distinct roleplay scenes, actions, moods, outfit usage, or prop interactions that can be used as visual material inside the opening panel.',
+    })
+  }
+  const openingPanelImageControl = nodes.find((nodeItem) => nodeItem.id === 'opening-panel-image-control')
+  if (openingPanelImageControl) {
+    Object.assign(openingPanelImageControl.config, {
+      targetImageCount: 2,
+      imageStyleDomain: 'auto',
+      poseGoals: ['expressive adult pose', 'readable body line', 'hands interacting with scene object'],
+      backgroundInteraction: 'Use the room, furniture, window light, fabric, mirror, cup, book, weapon, instrument, or other role-appropriate objects to create adult visual tension.',
+      appealMode: 'sensual-confidence',
+      sensualityLevel: 'sensual',
+      wardrobeExposure: 'stylish-revealing',
+      shotType: 'auto',
+      aspectRatio: '3:4',
+      consistencyMode: 'same-character',
+      seedMode: 'vary-slightly',
+    })
+  }
 
   return {
     id,
@@ -1295,10 +1344,15 @@ export function createStandardCharacterWorkflow(
       ['avatar-image-target', 'imageAsset', 'overview-sheet-image-target', 'referenceImage', 'provides'],
       ['image-tool', 'image', 'overview-sheet-image-target', 'image', 'enables'],
       ['overview-sheet-image-control', 'imageControl', 'overview-sheet-image-target', 'imageControl', 'guides'],
+      ['character-card-target', 'target', 'opening-panel-image-target', 'card', 'guides'],
+      ['avatar-image-target', 'imageAsset', 'opening-panel-image-target', 'referenceImage', 'provides'],
+      ['image-tool', 'image', 'opening-panel-image-target', 'image', 'enables'],
+      ['opening-panel-image-control', 'imageControl', 'opening-panel-image-target', 'imageControl', 'guides'],
       ['character-card-target', 'target', 'opening-layout-target', 'card', 'guides'],
       ['character-field-target', 'field', 'opening-layout-target', 'field', 'guides'],
       ['avatar-image-target', 'imageAsset', 'opening-layout-target', 'imageAsset', 'guides'],
       ['overview-sheet-image-target', 'imageAsset', 'opening-layout-target', 'imageAsset', 'guides'],
+      ['opening-panel-image-target', 'imageAsset', 'opening-layout-target', 'imageAsset', 'guides'],
       ['style-pressure', 'style', 'opening-layout-target', 'style', 'weights'],
       ['goal', 'goal', 'agent-policy', 'goal', 'guides'],
       ['constraint', 'constraint', 'agent-policy', 'constraint', 'constrains'],
@@ -1603,10 +1657,17 @@ function cloneNodeDefinition(definition: CharacterWorkflowNodeDefinition): Chara
     outputs: clonePorts(definition.outputs),
     parameters: definition.parameters.map((item) => ({
       ...item,
-      defaultValue: Array.isArray(item.defaultValue) ? [...item.defaultValue] : item.defaultValue,
+      defaultValue: cloneParameterDefaultValue(item.defaultValue),
       options: item.options?.map((optionItem) => ({ ...optionItem })),
     })),
   }
+}
+
+function cloneParameterDefaultValue(value: CharacterWorkflowParameterValue): CharacterWorkflowParameterValue {
+  if (!Array.isArray(value)) {
+    return value
+  }
+  return value.map((item) => typeof item === 'string' ? item : { ...item }) as CharacterWorkflowParameterValue
 }
 
 function clonePorts(ports: Record<string, CharacterNodePort>): Record<string, CharacterNodePort> {
@@ -1675,7 +1736,7 @@ function createDefaultCharacterWorkflowExecutors(): Partial<Record<CharacterNode
       sourceNodeId: node.id,
       createdAt: timestamp,
       targets: {
-        requested: [`field:${stringConfig(config.field, 'firstMessage')}`],
+        requested: fieldTargetConfigFields(config).map((field) => `field:${field}`),
         includeAlternates: false,
       },
     }],
@@ -1806,9 +1867,10 @@ function createDefaultCharacterWorkflowExecutors(): Partial<Record<CharacterNode
       sourceNodeId: node.id,
       createdAt: timestamp,
       source: {
-        kind: stringConfig(config.sourceKind, 'notes'),
+        kind: inferSourceMaterialKind(config.materials),
         notes: stringConfig(config.notes, ''),
         groundingStrength: numberConfig(config.groundingStrength, 0.5),
+        materials: materialListConfig(config.materials),
       },
     }],
     'llm-tool': ({ node, config, workflow, timestamp }) => [{
@@ -2074,6 +2136,13 @@ function stringConfig(value: unknown, fallback: string): string {
   return typeof value === 'string' ? value : fallback
 }
 
+function fieldTargetConfigFields(config: Record<string, unknown>): string[] {
+  const values = Array.isArray(config.fields)
+    ? config.fields.map((item) => String(item).trim()).filter(Boolean)
+    : []
+  return values.length ? values : ['firstMessage']
+}
+
 function requireStringConfig(value: unknown, path: string): string {
   if (typeof value === 'string' && value.trim()) {
     return value.trim()
@@ -2100,6 +2169,63 @@ function parseModelRef(modelRef: string): { apiId: string; modelName: string; mo
 
 function stringListConfig(value: unknown, fallback: string[] = []): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : fallback
+}
+
+function materialListConfig(value: unknown): SourceMaterialItem[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value.flatMap((item, index): SourceMaterialItem[] => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      return []
+    }
+    const record = item as Record<string, unknown>
+    const name = typeof record.name === 'string' && record.name.trim() ? record.name.trim() : `material-${index + 1}`
+    const mimeType = typeof record.mimeType === 'string' ? record.mimeType : ''
+    const kind = inferMaterialItemKind(record.kind, mimeType, name)
+    const material: SourceMaterialItem = {
+      id: typeof record.id === 'string' && record.id.trim() ? record.id.trim() : `material-${index + 1}`,
+      kind,
+      name,
+      mimeType,
+    }
+    if (typeof record.size === 'number' && Number.isFinite(record.size)) {
+      material.size = Math.max(0, Math.round(record.size))
+    }
+    if (typeof record.dataUrl === 'string' && record.dataUrl.trim()) {
+      material.dataUrl = record.dataUrl.trim()
+    }
+    if (typeof record.text === 'string' && record.text.trim()) {
+      material.text = record.text.trim()
+    }
+    return [material]
+  })
+}
+
+function inferSourceMaterialKind(value: unknown): string {
+  const materials = materialListConfig(value)
+  const imageCount = materials.filter((item) => item.kind === 'image').length
+  const documentCount = materials.filter((item) => item.kind === 'document').length
+  if (imageCount && documentCount) {
+    return 'mixed-materials'
+  }
+  if (imageCount) {
+    return 'image-materials'
+  }
+  if (documentCount) {
+    return 'document-materials'
+  }
+  return 'empty-materials'
+}
+
+function inferMaterialItemKind(value: unknown, mimeType: string, name: string): SourceMaterialItem['kind'] {
+  if (value === 'image' || value === 'document') {
+    return value
+  }
+  if (mimeType.startsWith('image/')) {
+    return 'image'
+  }
+  return /\.(png|jpe?g|webp|gif)$/i.test(name) ? 'image' : 'document'
 }
 
 function numberConfig(value: unknown, fallback: number): number {
