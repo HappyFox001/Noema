@@ -2638,7 +2638,7 @@ function createWorkflowRequirements(
     const referenceRelations = relations
       .filter((relation) =>
         relation.toNodeId === target.nodeId &&
-        relation.fromPort === 'imageAsset'
+        (relation.fromPort === 'imageAsset' || relation.fromPort === 'resource')
       )
     const referenceSourceNodeIds = referenceRelations
       .map((relation) => relation.fromNodeId)

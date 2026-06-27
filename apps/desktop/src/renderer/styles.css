@@ -15449,6 +15449,55 @@ body.chat-workflow-library-resizing * {
   padding: 0;
 }
 
+.chat-resource-node.material-image-display {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.022)),
+    rgba(6, 7, 8, 0.92);
+}
+
+.chat-resource-node.material-image-display .chat-resource-node-header span {
+  color: rgba(248, 250, 250, 0.58);
+}
+
+.chat-resource-node.material-image-display .chat-resource-node-content.material-image-preview {
+  padding: 8px;
+  gap: 8px;
+  border-color: rgba(248, 250, 250, 0.085);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.chat-resource-node.material-image-display .chat-resource-node-content.material-image-preview img {
+  width: 100%;
+  aspect-ratio: 16 / 11;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 1px solid rgba(248, 250, 250, 0.08);
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.chat-resource-node.material-image-display .chat-resource-node-content.material-image-preview > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.chat-resource-node.material-image-display .chat-resource-node-content.material-image-preview button,
+.chat-resource-node.material-document-display .chat-resource-node-content button {
+  justify-self: start;
+  padding: 4px 8px;
+  border: 1px solid rgba(248, 250, 250, 0.11);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.045);
+  color: rgba(248, 250, 250, 0.62);
+  font-family: var(--font-ui);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.chat-resource-node.material-document-display .chat-resource-node-content.material-document-preview {
+  border-style: dashed;
+}
+
 .chat-resource-node-content {
   display: grid;
   gap: 5px;

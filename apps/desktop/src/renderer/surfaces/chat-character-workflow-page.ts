@@ -341,6 +341,9 @@ function workflowText(options: CharacterWorkflowPageOptions, key: string, fallba
 }
 
 function localizeNodeTitle(node: CharacterResourceNode, definition: CharacterResourceNodeDefinition, options: CharacterWorkflowPageOptions): string {
+  if (isVirtualMaterialNode(node)) {
+    return node.title || definition.displayName
+  }
   return workflowText(options, `chat.workflow.node.${definition.type}`, node.title || definition.displayName)
 }
 
@@ -768,6 +771,16 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
   ], [
     param('materials', 'Materials', 'materials', []),
   ], 'text-card'),
+  createDefinition('material-image-resource', 'Image Resource', ['图片资源', 'reference image', 'material image'], 'Sources', 'asset', 'Displays one imported image as a standalone reference image resource.', [
+    slot('source', 'Source', 'source-context', 'Parent material source.'),
+  ], [
+    slot('resource', 'Resource', 'asset-target', 'Imported image resource. Connect this to an image target reference slot when needed.'),
+  ], [], 'image', { width: 286, height: 252 }),
+  createDefinition('material-document-resource', 'Text Resource', ['文本资源', 'document', 'material document'], 'Sources', 'asset', 'Displays one imported document as a standalone grounding text resource.', [
+    slot('source', 'Source', 'source-context', 'Parent material source.'),
+  ], [
+    slot('resource', 'Resource', 'asset-target', 'Imported document resource.'),
+  ], [], 'text-card', { width: 238, height: 136 }),
   createDefinition('llm-tool', 'LLM Tool', ['模型', 'llm', 'reasoning'], 'Tools', 'agent', 'Selects the LLM capability available to the backend agent.', [], [
     slot('model', 'Model', 'model-capability', 'LLM model capability.'),
   ], [
@@ -1080,9 +1093,10 @@ export function createCharacterAgentWorkflowSnapshot(options: CharacterWorkflowP
     description: 'Frontend-authored agentic RP resource graph.',
     nodes: graph.nodes.map((node) => {
       const definition = definitions.get(node.type)
+      const serializedType = getSerializableNodeType(node)
       return {
         id: node.id,
-        type: node.type,
+        type: serializedType,
         title: node.title,
         position: node.position,
         inputs: Object.fromEntries((definition?.inputs ?? []).map((slotItem) => [slotItem.id, {
@@ -1141,6 +1155,13 @@ function getSerializableNodeConfig(node: CharacterResourceNode): Record<string, 
     }
   }
   return node.config
+}
+
+function getSerializableNodeType(node: CharacterResourceNode): string {
+  if (node.type === 'material-image-resource' || node.type === 'material-document-resource') {
+    return 'source-material'
+  }
+  return node.type
 }
 
 export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
@@ -1706,18 +1727,17 @@ function createMaterialVirtualNodes(
   if (!sourceNode || !materials.length) {
     return { nodes: [], links: [] }
   }
-  const downstreamSourceLinks = DEFAULT_LINKS.filter((linkItem) => linkItem.sourceNodeId === sourceNode.id && linkItem.sourceSlotId === 'source')
   const virtualNodes = materials.map((material, index): CharacterResourceNode => {
     const nodeId = materialVirtualNodeId(material)
     return {
       id: nodeId,
-      type: 'source-material',
+      type: material.kind === 'image' ? 'material-image-resource' : 'material-document-resource',
       title: material.name,
       position: options.positionOverrides?.[nodeId] ?? {
         x: sourceNode.position.x + 300,
-        y: sourceNode.position.y + index * 150 - 24,
+        y: sourceNode.position.y + index * (material.kind === 'image' ? 280 : 150) - 24,
       },
-      size: { width: 238, height: material.kind === 'image' ? 172 : 136 },
+      size: { width: material.kind === 'image' ? 286 : 238, height: material.kind === 'image' ? 252 : 136 },
       status: 'done',
       collapsed: false,
       zIndex: sourceNode.zIndex + index + 1,
@@ -1736,24 +1756,16 @@ function createMaterialVirtualNodes(
       label: LINK_KIND_LABELS.grounds,
       status: 'valid',
     })
-    for (const downstream of downstreamSourceLinks) {
-      links.push({
-        id: `${node.id}.source->${downstream.targetNodeId}.${downstream.targetSlotId}`,
-        sourceNodeId: node.id,
-        sourceSlotId: 'source',
-        targetNodeId: downstream.targetNodeId,
-        targetSlotId: downstream.targetSlotId,
-        kind: downstream.kind,
-        label: LINK_KIND_LABELS[downstream.kind],
-        status: 'valid',
-      })
-    }
   })
   return { nodes: virtualNodes, links }
 }
 
 function materialVirtualNodeId(material: WorkflowMaterialItem): string {
   return `source-material-item-${sanitizeResourceId(material.id || material.name)}`
+}
+
+function isVirtualMaterialNode(node: CharacterResourceNode): boolean {
+  return node.id.startsWith('source-material-item-')
 }
 
 function animateRunDraftCanvas(root: HTMLElement, cleanups: Array<() => void>): void {
@@ -3184,10 +3196,11 @@ function renderResourceNode(node: CharacterResourceNode, graph: CharacterResourc
   const output = graph.outputs.find((item) => item.nodeId === node.id)
   const runField = typeof node.config.runField === 'string' ? node.config.runField : ''
   const runFieldClass = runField ? `run-field-${sanitizeResourceId(runField)} ${node.config.runFieldSupport ? 'run-field-support' : 'run-field-card'}` : ''
+  const virtualMaterialClass = getVirtualMaterialNodeClass(node)
   const highlighted = options.viewState?.agentHighlights?.nodeIds?.includes(node.id) ?? false
   const actionLabel = options.viewState?.agentHighlights?.nodeActions?.[node.id] ?? ''
   return `
-    <article class="chat-workflow-node chat-resource-node ${node.status} ${node.type} ${definition.category} ${runFieldClass} ${highlighted ? 'agent-highlight-node' : ''} ${selected ? 'selected' : ''} ${node.collapsed ? 'collapsed' : ''}" style="--node-x: ${node.position.x}px; --node-y: ${node.position.y}px; --node-w: ${node.size.width}px; --node-h: ${node.size.height}px; z-index: ${node.zIndex}" data-chat-workflow-node-id="${options.escapeHtml(node.id)}" data-chat-workflow-node-select="${options.escapeHtml(node.id)}" data-resource-node-type="${options.escapeHtml(node.type)}" data-run-artifact-id="${options.escapeHtml(output?.artifactId ?? '')}" data-run-artifact-type="${options.escapeHtml(output?.type ?? '')}" data-run-target-node-id="${options.escapeHtml(output?.sourceNodeId ?? '')}" data-run-field="${options.escapeHtml(runField)}" data-agent-op-label="${options.escapeHtml(actionLabel)}">
+    <article class="chat-workflow-node chat-resource-node ${node.status} ${node.type} ${definition.category} ${virtualMaterialClass} ${runFieldClass} ${highlighted ? 'agent-highlight-node' : ''} ${selected ? 'selected' : ''} ${node.collapsed ? 'collapsed' : ''}" style="--node-x: ${node.position.x}px; --node-y: ${node.position.y}px; --node-w: ${node.size.width}px; --node-h: ${node.size.height}px; z-index: ${node.zIndex}" data-chat-workflow-node-id="${options.escapeHtml(node.id)}" data-chat-workflow-node-select="${options.escapeHtml(node.id)}" data-resource-node-type="${options.escapeHtml(node.type)}" data-run-artifact-id="${options.escapeHtml(output?.artifactId ?? '')}" data-run-artifact-type="${options.escapeHtml(output?.type ?? '')}" data-run-target-node-id="${options.escapeHtml(output?.sourceNodeId ?? '')}" data-run-field="${options.escapeHtml(runField)}" data-agent-op-label="${options.escapeHtml(actionLabel)}">
       ${renderNodeHeader(node, definition, options)}
       ${renderNodeSlots(node, definition, options)}
       ${renderNodeWidgets(node, definition, options)}
@@ -3198,7 +3211,29 @@ function renderResourceNode(node: CharacterResourceNode, graph: CharacterResourc
   `
 }
 
+function getVirtualMaterialNodeClass(node: CharacterResourceNode): string {
+  if (!isVirtualMaterialNode(node)) {
+    return ''
+  }
+  const material = normalizeWorkflowMaterials(node.config.materials)[0]
+  return material?.kind === 'image' ? 'material-image-display' : 'material-document-display'
+}
+
 function renderNodeHeader(node: CharacterResourceNode, definition: CharacterResourceNodeDefinition, options: CharacterWorkflowPageOptions): string {
+  if (isVirtualMaterialNode(node)) {
+    const material = normalizeWorkflowMaterials(node.config.materials)[0]
+    const kindLabel = material?.kind === 'image'
+      ? ui(options, '参考图片', 'Reference Image')
+      : ui(options, '参考文档', 'Reference Document')
+    return `
+      <header class="chat-workflow-node-head chat-resource-node-header" data-chat-workflow-drag-handle>
+        <button type="button" data-chat-workflow-action="toggle-node-collapse" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '折叠节点' : 'Collapse node')}"></button>
+        <span>${options.escapeHtml(kindLabel)}</span>
+        <strong>${options.escapeHtml(localizeNodeTitle(node, definition, options))}</strong>
+        <em>${options.escapeHtml(node.status)}</em>
+      </header>
+    `
+  }
   return `
     <header class="chat-workflow-node-head chat-resource-node-header" data-chat-workflow-drag-handle>
       <button type="button" data-chat-workflow-action="toggle-node-collapse" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '折叠节点' : 'Collapse node')}"></button>
@@ -3235,6 +3270,9 @@ function renderSlotList(node: CharacterResourceNode, slots: CharacterResourceSlo
 }
 
 function renderNodeWidgets(node: CharacterResourceNode, definition: CharacterResourceNodeDefinition, options: CharacterWorkflowPageOptions): string {
+  if (isVirtualMaterialNode(node)) {
+    return ''
+  }
   return `
     <div class="chat-resource-node-widgets">
       ${definition.parameters.slice(0, 3).map((parameterItem) => `
@@ -3253,6 +3291,9 @@ function renderNodeContent(
   output: CharacterResourceOutput | undefined,
   options: CharacterWorkflowPageOptions
 ): string {
+  if (isVirtualMaterialNode(node)) {
+    return renderVirtualMaterialNodeContent(node, options)
+  }
   if (!output) {
     return ''
   }
@@ -3288,6 +3329,36 @@ function renderNodeContent(
       <strong>${options.escapeHtml(output.title)}</strong>
       <p>${options.escapeHtml(output.summary)}</p>
       ${runImageActions}
+    </div>
+  `
+}
+
+function renderVirtualMaterialNodeContent(node: CharacterResourceNode, options: CharacterWorkflowPageOptions): string {
+  const material = normalizeWorkflowMaterials(node.config.materials)[0]
+  if (!material) {
+    return ''
+  }
+  const meta = [
+    material.mimeType,
+    formatMaterialSize(material.size, options),
+  ].filter(Boolean).join(' · ')
+  if (material.kind === 'image') {
+    return `
+      <div class="chat-resource-node-content material-image-preview has-image">
+        ${material.dataUrl ? `<img src="${options.escapeHtml(material.dataUrl)}" alt="${options.escapeHtml(material.name)}">` : ''}
+        <div>
+          <strong>${options.escapeHtml(ui(options, '图片参考', 'Image Reference'))}</strong>
+          <p>${options.escapeHtml(meta || ui(options, '可作为图片生成 reference', 'Available as an image generation reference'))}</p>
+        </div>
+        <button type="button" data-chat-workflow-action="remove-material" data-chat-workflow-node="${options.escapeHtml(node.id)}" data-material-id="${options.escapeHtml(material.id)}">${options.escapeHtml(ui(options, '移除', 'Remove'))}</button>
+      </div>
+    `
+  }
+  return `
+    <div class="chat-resource-node-content material-document-preview">
+      <strong>${options.escapeHtml(ui(options, '文档参考', 'Document Reference'))}</strong>
+      <p>${options.escapeHtml(material.text || meta || material.name)}</p>
+      <button type="button" data-chat-workflow-action="remove-material" data-chat-workflow-node="${options.escapeHtml(node.id)}" data-material-id="${options.escapeHtml(material.id)}">${options.escapeHtml(ui(options, '移除', 'Remove'))}</button>
     </div>
   `
 }
