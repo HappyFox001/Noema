@@ -182,10 +182,12 @@ interface CharacterResourceSlotConnectDetail {
   sourceSlotId: string
   sourceSide: string
   sourceType: string
+  sourceAccepts?: string
   targetNodeId: string
   targetSlotId: string
   targetSide: string
   targetType: string
+  targetAccepts?: string
 }
 
 export interface ChatPanelController {
@@ -5716,9 +5718,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (inputType === 'style-signal' || inputType === 'hard-constraint') {
       return true
     }
-    if (inputType !== 'asset-target') {
-      return false
-    }
     return [
       'target',
       'imageTarget',
@@ -5732,6 +5731,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       'style',
       'constraint',
     ].includes(inputSlotId)
+  }
+
+  function parseCharacterResourceSlotAccepts(value: string | undefined, fallbackType: string): string[] {
+    if (typeof value === 'string' && value.trim()) {
+      return value.split(',').map((item) => item.trim()).filter(Boolean)
+    }
+    return fallbackType ? [fallbackType] : []
   }
 
   function inferCharacterResourceLinkKind(sourceType: string, targetType: string): SerializedCharacterResourceLinkKind {
@@ -5770,7 +5776,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const input = sourceIsOutput
       ? { nodeId: detail.targetNodeId, slotId: detail.targetSlotId, type: detail.targetType }
       : { nodeId: detail.sourceNodeId, slotId: detail.sourceSlotId, type: detail.sourceType }
-    if (!output.nodeId || !output.slotId || !input.nodeId || !input.slotId || output.type !== input.type) {
+    const inputAccepts = sourceIsOutput
+      ? parseCharacterResourceSlotAccepts(detail.targetAccepts, input.type)
+      : parseCharacterResourceSlotAccepts(detail.sourceAccepts, input.type)
+    if (!output.nodeId || !output.slotId || !input.nodeId || !input.slotId || !inputAccepts.includes(output.type)) {
       showToast(options.getLanguage() === 'zh-CN' ? 'slot 类型不兼容，未创建连接' : 'Slot types are incompatible; no link was created')
       return
     }

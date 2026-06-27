@@ -15638,6 +15638,23 @@ body.chat-workflow-library-resizing * {
   border-radius: 8px;
 }
 
+.chat-resource-slot {
+  position: relative;
+}
+
+.chat-resource-slot b {
+  display: block;
+}
+
+.chat-resource-slot-accepts {
+  display: block;
+  margin-top: 1px;
+  color: rgba(248, 250, 250, 0.34);
+  font-family: var(--font-ui);
+  font-size: 8px;
+  line-height: 1.15;
+}
+
 .chat-resource-slot:hover {
   background: rgba(82, 168, 255, 0.065);
 }
@@ -15674,6 +15691,31 @@ body.chat-workflow-library-resizing * {
   border-color: rgba(82, 168, 255, 0.9);
   background: rgba(82, 168, 255, 0.34);
   box-shadow: 0 0 0 6px rgba(82, 168, 255, 0.12);
+}
+
+.chat-resource-slot.is-compatible-candidate::after {
+  content: attr(data-resource-slot-guide);
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 8px);
+  z-index: 14;
+  min-width: max-content;
+  padding: 4px 7px;
+  border: 1px solid rgba(82, 168, 255, 0.22);
+  border-radius: 999px;
+  background: rgba(12, 16, 20, 0.94);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
+  color: rgba(224, 242, 255, 0.86);
+  font-family: var(--font-ui);
+  font-size: 8.5px;
+  line-height: 1;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.chat-workflow-node-port-list.output .chat-resource-slot.is-compatible-candidate::after {
+  right: calc(100% + 8px);
+  left: auto;
 }
 
 .chat-resource-workbench.is-slot-dragging .chat-resource-slot:not(.is-compatible-candidate) {

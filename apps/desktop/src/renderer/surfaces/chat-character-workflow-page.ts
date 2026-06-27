@@ -93,6 +93,7 @@ interface CharacterResourceSlotDefinition {
   id: string
   label: string
   type: string
+  accepts?: string[]
   required?: boolean
   tooltip: string
 }
@@ -347,12 +348,29 @@ function localizeNodeTitle(node: CharacterResourceNode, definition: CharacterRes
   return workflowText(options, `chat.workflow.node.${definition.type}`, node.title || definition.displayName)
 }
 
-function localizeParameterLabel(parameterItem: CharacterResourceParameterDefinition, options: CharacterWorkflowPageOptions): string {
+function localizeParameterLabel(parameterItem: CharacterResourceParameterDefinition, options: CharacterWorkflowPageOptions, nodeType = ''): string {
+  if (nodeType) {
+    const translated = options.t?.(`chat.workflow.param.${nodeType}.${parameterItem.id}`)
+    if (translated && translated !== `chat.workflow.param.${nodeType}.${parameterItem.id}`) {
+      return translated
+    }
+  }
   return workflowText(options, `chat.workflow.param.${parameterItem.id}`, parameterItem.label)
 }
 
 function localizeSlotLabel(slotItem: CharacterResourceSlotDefinition, options: CharacterWorkflowPageOptions): string {
   return workflowText(options, `chat.workflow.slot.${slotItem.id}`, slotItem.label)
+}
+
+function formatSlotTypeLabel(type: string): string {
+  return SLOT_TYPE_LABELS[type] ?? type.split('-').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ')
+}
+
+function formatSlotAcceptLabel(types: string[]): string {
+  if (types.length === TARGET_RESOURCE_SLOT_TYPES.length && TARGET_RESOURCE_SLOT_TYPES.every((type) => types.includes(type))) {
+    return formatSlotTypeLabel('target-resource')
+  }
+  return types.map(formatSlotTypeLabel).join(' / ')
 }
 
 function localizeCategory(category: string, options: CharacterWorkflowPageOptions): string {
@@ -464,6 +482,50 @@ const PROSE_STYLE_PRESET_OPTIONS = PROSE_STYLE_PRESET_VALUES.map((value) => ({
   value,
 }))
 
+const TARGET_RESOURCE_SLOT_TYPES = [
+  'character-card-resource',
+  'field-resource',
+  'opening-layout-resource',
+  'image-resource',
+  'world-resource',
+  'npc-pack-resource',
+  'npc-resource',
+  'plot-resource',
+  'scene-resource',
+]
+
+const SLOT_TYPE_LABELS: Record<string, string> = {
+  'agent-policy': 'Agent Policy',
+  'candidate-pack': 'Candidate Pack',
+  'character-card-resource': 'Character Card',
+  'continuity-control-resource': 'Continuity Control',
+  'critique-policy': 'Critique Policy',
+  'document-resource': 'Document',
+  'export-target': 'Export Target',
+  'field-control-resource': 'Field Control',
+  'field-resource': 'Field',
+  'generation-goal': 'Goal',
+  'hard-constraint': 'Constraint',
+  'image-capability': 'Image Capability',
+  'image-control-resource': 'Image Control',
+  'image-resource': 'Image',
+  'model-capability': 'Model Capability',
+  'npc-pack-resource': 'NPC Pack',
+  'npc-resource': 'NPC',
+  'opening-layout-resource': 'Opening Layout',
+  'plot-resource': 'Plot',
+  'relationship-control-resource': 'Relationship Control',
+  'retrieval-capability': 'Retrieval Capability',
+  'scene-resource': 'Scene',
+  'source-context': 'Source',
+  'style-signal': 'Style',
+  'target-resource': 'Target Resource',
+  'validation-report': 'Validation Report',
+  'voice-capability': 'Voice Capability',
+  'voice-profile': 'Voice Profile',
+  'world-resource': 'World',
+}
+
 const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
   createDefinition('goal', 'Generation Goal', ['目标', 'brief', 'intent'], 'Goal', 'core', 'Captures the free-form RP generation target without asking the user to define final card fields.', [], [
     slot('goal', 'Goal', 'generation-goal', 'Natural language generation goal and target audience.'),
@@ -478,7 +540,7 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     slot('constraint', 'Constraint', 'hard-constraint', 'Local or global hard constraints.'),
     slot('source', 'Source', 'source-context', 'Grounding source material.'),
   ], [
-    slot('target', 'Target', 'asset-target', 'Character card target resource.'),
+    slot('target', 'Character Card', 'character-card-resource', 'Character card target resource.'),
     slot('candidate', 'Candidate', 'candidate-pack', 'Candidate package produced for evaluation and export.'),
   ], [
     param('includeFields', 'Include Fields', 'multi-select', ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'firstMessage', 'dialogueStyle', 'worldContext'], undefined, undefined, undefined, [
@@ -497,12 +559,12 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     ]),
   ], 'package'),
   createDefinition('character-field-target', 'Character Field Target', ['字段', 'field target', '局部字段'], 'Targets', 'asset', 'Declares a single card field as an independently controllable target resource.', [
-    slot('card', 'Card', 'asset-target', 'Character card target.'),
+    slot('card', 'Character Card', 'character-card-resource', 'Character card target.'),
     slot('style', 'Style', 'style-signal', 'Local field style pressure.'),
     slot('constraint', 'Constraint', 'hard-constraint', 'Local field constraints.'),
-    slot('fieldControl', 'Field Control', 'asset-target', 'Field generation control.'),
+    slot('fieldControl', 'Field Control', 'field-control-resource', 'Field generation control.'),
   ], [
-    slot('field', 'Field', 'asset-target', 'Field target resource.'),
+    slot('field', 'Field', 'field-resource', 'Field target resource.'),
   ], [
     param('field', 'Field', 'select', 'firstMessage', undefined, undefined, undefined, [
       { label: 'Name', value: 'name' },
@@ -518,13 +580,13 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     ]),
   ], 'text-card'),
   createDefinition('opening-layout-target', 'Opening Layout Target', ['开幕版面', 'opening layout', 'css card'], 'Targets', 'asset', 'Declares the CSS/HTML-style opening presentation for the role card, combining opening text, visual assets, title, tags, and card surface layout.', [
-    slot('card', 'Card', 'asset-target', 'Character card target.', true),
-    slot('field', 'Field', 'asset-target', 'Opening or supporting text field.'),
-    slot('imageAsset', 'Image Asset', 'asset-target', 'Images used by the opening presentation.'),
+    slot('card', 'Character Card', 'character-card-resource', 'Character card target.', true),
+    slot('field', 'Field', 'field-resource', 'Opening or supporting text field.'),
+    slot('imageAsset', 'Image', 'image-resource', 'Images used by the opening presentation.'),
     slot('style', 'Style', 'style-signal', 'Layout and prose style pressure.'),
     slot('constraint', 'Constraint', 'hard-constraint', 'Layout constraints.'),
   ], [
-    slot('layout', 'Layout', 'asset-target', 'Opening layout target resource.'),
+    slot('layout', 'Layout', 'opening-layout-resource', 'Opening layout target resource.'),
   ], [
     param('layoutKind', 'Layout Kind', 'select', 'immersive-card-css', undefined, undefined, undefined, [
       { label: 'Immersive Card CSS', value: 'immersive-card-css' },
@@ -543,12 +605,12 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     param('layoutPrompt', 'Layout Prompt', 'textarea', ''),
   ], 'package'),
   createDefinition('image-target', 'Image Target', ['图片目标', 'image target', 'visual target'], 'Targets', 'asset', 'Declares a role-card visual asset. Each image should preserve character identity while supporting a distinct story, field, or presentation purpose.', [
-    slot('card', 'Card', 'asset-target', 'Character card target.'),
+    slot('card', 'Character Card', 'character-card-resource', 'Character card target.'),
     slot('image', 'Image', 'image-capability', 'Image generation capability.', true),
-    slot('imageControl', 'Image Control', 'asset-target', 'Image generation control.'),
-    slot('referenceImage', 'Reference Image', 'asset-target', 'Reference image artifact used to preserve visual identity.'),
+    slot('imageControl', 'Image Control', 'image-control-resource', 'Image generation control.'),
+    slot('referenceImage', 'Image', 'image-resource', 'Reference image artifact used to preserve visual identity.'),
   ], [
-    slot('imageAsset', 'Image Asset', 'asset-target', 'Image target resource.'),
+    slot('imageAsset', 'Image', 'image-resource', 'Image target resource.'),
   ], [
     param('imageRole', 'Image Role', 'select', 'character-base-image', undefined, undefined, undefined, [
       { label: 'Avatar', value: 'avatar' },
@@ -563,7 +625,7 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     slot('constraint', 'Constraint', 'hard-constraint', 'World constraints.'),
     slot('source', 'Source', 'source-context', 'Grounding source material.'),
   ], [
-    slot('world', 'World', 'asset-target', 'World card resource.'),
+    slot('world', 'World', 'world-resource', 'World card resource.'),
   ], [
     param('worldSections', 'World Sections', 'multi-select', ['setting', 'rules', 'factions', 'relationship-network', 'plot-hooks'], undefined, undefined, undefined, [
       { label: 'Setting', value: 'setting' },
@@ -574,12 +636,12 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     ]),
   ], 'package'),
   createDefinition('npc-pack-target', 'NPC Pack Target', ['NPC包', 'npc pack', '多npc'], 'Targets', 'asset', 'Declares a pack of NPC resources connected to the world card and plot arc.', [
-    slot('world', 'World', 'asset-target', 'World card resource.'),
-    slot('relationship', 'Relationship', 'asset-target', 'Relationship control.'),
+    slot('world', 'World', 'world-resource', 'World card resource.'),
+    slot('relationship', 'Relationship', 'relationship-control-resource', 'Relationship control.'),
     slot('style', 'Style', 'style-signal', 'NPC pack style.'),
     slot('constraint', 'Constraint', 'hard-constraint', 'NPC constraints.'),
   ], [
-    slot('npcPack', 'NPC Pack', 'asset-target', 'NPC pack resource.'),
+    slot('npcPack', 'NPC Pack', 'npc-pack-resource', 'NPC pack resource.'),
   ], [
     param('npcCount', 'NPC Count', 'integer', 4, 1, 12, 1),
     param('npcRoles', 'NPC Roles', 'multi-select', [], undefined, undefined, undefined, [
@@ -592,12 +654,12 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     ]),
   ], 'package'),
   createDefinition('npc-target', 'NPC Target', ['NPC', 'single npc', '角色资源'], 'Targets', 'asset', 'Declares a single NPC as an independently controllable target resource.', [
-    slot('npcPack', 'NPC Pack', 'asset-target', 'NPC pack resource.'),
+    slot('npcPack', 'NPC Pack', 'npc-pack-resource', 'NPC pack resource.'),
     slot('style', 'Style', 'style-signal', 'NPC style.'),
     slot('constraint', 'Constraint', 'hard-constraint', 'NPC constraints.'),
-    slot('relationship', 'Relationship', 'asset-target', 'Relationship control.'),
+    slot('relationship', 'Relationship', 'relationship-control-resource', 'Relationship control.'),
   ], [
-    slot('npc', 'NPC', 'asset-target', 'NPC resource.'),
+    slot('npc', 'NPC', 'npc-resource', 'NPC resource.'),
   ], [
     param('npcRole', 'NPC Role', 'select', 'primary-npc', undefined, undefined, undefined, [
       { label: 'Primary NPC', value: 'primary-npc' },
@@ -610,13 +672,13 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     param('storyFunction', 'Story Function', 'textarea', ''),
   ], 'text-card'),
   createDefinition('plot-arc-target', 'Plot Arc Target', ['剧情', 'plot arc', 'story'], 'Targets', 'asset', 'Declares long-running story progression for the world card.', [
-    slot('world', 'World', 'asset-target', 'World card resource.'),
-    slot('npcPack', 'NPC Pack', 'asset-target', 'NPC pack resource.'),
-    slot('continuity', 'Continuity', 'asset-target', 'Continuity control.'),
+    slot('world', 'World', 'world-resource', 'World card resource.'),
+    slot('npcPack', 'NPC Pack', 'npc-pack-resource', 'NPC pack resource.'),
+    slot('continuity', 'Continuity', 'continuity-control-resource', 'Continuity control.'),
     slot('style', 'Style', 'style-signal', 'Plot style.'),
     slot('constraint', 'Constraint', 'hard-constraint', 'Plot constraints.'),
   ], [
-    slot('plot', 'Plot', 'asset-target', 'Plot arc resource.'),
+    slot('plot', 'Plot', 'plot-resource', 'Plot arc resource.'),
   ], [
     param('arcShape', 'Arc Shape', 'select', 'slow-burn', undefined, undefined, undefined, [
       { label: 'Slow Burn', value: 'slow-burn' },
@@ -627,12 +689,12 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     param('milestoneCount', 'Milestone Count', 'integer', 6, 2, 20, 1),
   ], 'text-card'),
   createDefinition('scene-card-target', 'Scene Card Target', ['场景卡', 'scene card', 'scene'], 'Targets', 'asset', 'Declares reusable scene resources for the current world and plot arc.', [
-    slot('world', 'World', 'asset-target', 'World card resource.'),
-    slot('plot', 'Plot', 'asset-target', 'Plot arc resource.'),
+    slot('world', 'World', 'world-resource', 'World card resource.'),
+    slot('plot', 'Plot', 'plot-resource', 'Plot arc resource.'),
     slot('style', 'Style', 'style-signal', 'Scene style.'),
     slot('constraint', 'Constraint', 'hard-constraint', 'Scene constraints.'),
   ], [
-    slot('scene', 'Scene', 'asset-target', 'Scene resource.'),
+    slot('scene', 'Scene', 'scene-resource', 'Scene resource.'),
   ], [
     param('sceneCount', 'Scene Count', 'integer', 3, 1, 12, 1),
     param('sceneTypes', 'Scene Types', 'multi-select', [], undefined, undefined, undefined, [
@@ -644,7 +706,7 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     ]),
   ], 'text-card'),
   createDefinition('style-pressure', 'Style Pressure', ['风格', 'taste', 'tone'], 'Taste', 'core', 'Applies weighted taste, genre, mood, intensity, and pacing pressure to connected targets.', [
-    slot('target', 'Target', 'asset-target', 'Target being shaped by this taste profile.'),
+    slot('target', 'Target Resource', 'target-resource', 'Target being shaped by this taste profile.', false, TARGET_RESOURCE_SLOT_TYPES),
   ], [
     slot('style', 'Style', 'style-signal', 'Weighted style signal.'),
   ], [
@@ -653,7 +715,7 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     param('stylePrompt', 'Style Prompt', 'textarea', ''),
   ], 'rule'),
   createDefinition('constraint', 'Hard Constraint', ['约束', 'boundary', 'must not'], 'Constraints', 'safety', 'Sets hard and soft boundaries that limit connected target generation and repair.', [
-    slot('target', 'Target', 'asset-target', 'Target constrained by these boundaries.'),
+    slot('target', 'Target Resource', 'target-resource', 'Target constrained by these boundaries.', false, TARGET_RESOURCE_SLOT_TYPES),
   ], [
     slot('constraint', 'Constraint', 'hard-constraint', 'Constraint signal.'),
   ], [
@@ -662,7 +724,7 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     param('hardBoundary', 'Hard Boundary', 'boolean', true),
   ], 'rule'),
   createDefinition('image-generation-control', 'Image Generation Control', ['图片控制', 'image control', 'visual control'], 'Controls', 'asset', 'Controls batch count, lightweight visual style, shot, aspect ratio, consistency, and seed behavior for a connected image target.', [], [
-    slot('imageControl', 'Image Control', 'asset-target', 'Image generation control.'),
+    slot('imageControl', 'Image Control', 'image-control-resource', 'Image generation control.'),
   ], [
     param('targetImageCount', 'Image Count', 'integer', 1, 1, 16, 1),
     param('imageStyleDomain', 'Style Domain', 'select', 'auto', undefined, undefined, undefined, [
@@ -701,9 +763,9 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     ]),
   ], 'image'),
   createDefinition('field-generation-control', 'Field Generation Control', ['字段控制', 'field control', 'local control'], 'Controls', 'agent', 'Controls how a connected field target is generated without containing final field content.', [
-    slot('fieldTarget', 'Field Target', 'asset-target', 'Field target resource.'),
+    slot('fieldTarget', 'Field', 'field-resource', 'Field target resource.'),
   ], [
-    slot('fieldControl', 'Field Control', 'asset-target', 'Field generation control.'),
+    slot('fieldControl', 'Field Control', 'field-control-resource', 'Field generation control.'),
   ], [
     param('fieldPurpose', 'Field Purpose', 'textarea', ''),
     param('tone', 'Tone', 'select', 'neutral', undefined, undefined, undefined, [
@@ -727,9 +789,9 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     ]),
   ], 'rule'),
   createDefinition('continuity-control', 'Continuity Control', ['连续性', 'memory', 'continuity'], 'Controls', 'agent', 'Controls long-form continuity, memory anchors, unresolved hooks, and progression pacing.', [
-    slot('target', 'Target', 'asset-target', 'Target resource.'),
+    slot('target', 'Target Resource', 'target-resource', 'Target resource.', false, TARGET_RESOURCE_SLOT_TYPES),
   ], [
-    slot('continuity', 'Continuity', 'asset-target', 'Continuity control.'),
+    slot('continuity', 'Continuity', 'continuity-control-resource', 'Continuity control.'),
   ], [
     param('memoryAnchors', 'Memory Anchors', 'multi-select', [], undefined, undefined, undefined, [
       { label: 'Relationship Changes', value: 'relationship-changes' },
@@ -746,9 +808,9 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     param('forbidResettingFacts', 'Forbid Resetting Facts', 'boolean', true),
   ], 'rule'),
   createDefinition('relationship-control', 'Relationship Control', ['关系', 'relationship', 'tension'], 'Controls', 'agent', 'Controls the relational function and tension between NPC, character, and user resources.', [
-    slot('target', 'Target', 'asset-target', 'Target resource.'),
+    slot('target', 'Target Resource', 'target-resource', 'Target resource.', false, TARGET_RESOURCE_SLOT_TYPES),
   ], [
-    slot('relationship', 'Relationship', 'asset-target', 'Relationship control.'),
+    slot('relationship', 'Relationship', 'relationship-control-resource', 'Relationship control.'),
   ], [
     param('relationshipMode', 'Relationship Mode', 'select', 'slow-trust', undefined, undefined, undefined, [
       { label: 'Slow Trust', value: 'slow-trust' },
@@ -767,19 +829,19 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     slot('source', 'Source', 'source-context', 'Parent source material node.'),
   ], [
     slot('source', 'Source', 'source-context', 'Reference context available to the agent.'),
-    slot('imageAsset', 'Reference Image', 'asset-target', 'Imported image materials available as image references.'),
+    slot('imageAsset', 'Reference Image', 'image-resource', 'Imported image materials available as image references.'),
   ], [
     param('materials', 'Materials', 'materials', []),
   ], 'text-card'),
   createDefinition('material-image-resource', 'Image Resource', ['图片资源', 'reference image', 'material image'], 'Sources', 'asset', 'Displays one imported image as a standalone reference image resource.', [
     slot('source', 'Source', 'source-context', 'Parent material source.'),
   ], [
-    slot('resource', 'Resource', 'asset-target', 'Imported image resource. Connect this to an image target reference slot when needed.'),
+    slot('resource', 'Resource', 'image-resource', 'Imported image resource. Connect this to an image target reference slot when needed.'),
   ], [], 'image', { width: 286, height: 252 }),
   createDefinition('material-document-resource', 'Text Resource', ['文本资源', 'document', 'material document'], 'Sources', 'asset', 'Displays one imported document as a standalone grounding text resource.', [
     slot('source', 'Source', 'source-context', 'Parent material source.'),
   ], [
-    slot('resource', 'Resource', 'asset-target', 'Imported document resource.'),
+    slot('resource', 'Resource', 'document-resource', 'Imported document resource.'),
   ], [], 'text-card', { width: 238, height: 136 }),
   createDefinition('llm-tool', 'LLM Tool', ['模型', 'llm', 'reasoning'], 'Tools', 'agent', 'Selects the LLM capability available to the backend agent.', [], [
     slot('model', 'Model', 'model-capability', 'LLM model capability.'),
@@ -1398,6 +1460,7 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
         slotId: slotElement.dataset.resourceSlotId ?? '',
         side: slotElement.dataset.resourceSlotSide ?? '',
         type: slotElement.dataset.resourceSlotType ?? '',
+        accepts: slotElement.dataset.resourceSlotAccepts ?? '',
         x: Math.round(rect.left - hostRect.left + rect.width / 2),
         y: Math.round(rect.top - hostRect.top + rect.height / 2),
       }
@@ -1474,22 +1537,34 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
         sourceSlotId: sourceSlot.dataset.resourceSlotId ?? '',
         sourceSide: sourceSlot.dataset.resourceSlotSide ?? '',
         sourceType: sourceSlot.dataset.resourceSlotType ?? '',
+        sourceAccepts: sourceSlot.dataset.resourceSlotAccepts ?? '',
         targetNodeId: targetSlot.dataset.resourceSlotNode ?? '',
         targetSlotId: targetSlot.dataset.resourceSlotId ?? '',
         targetSide: targetSlot.dataset.resourceSlotSide ?? '',
         targetType: targetSlot.dataset.resourceSlotType ?? '',
+        targetAccepts: targetSlot.dataset.resourceSlotAccepts ?? '',
       },
     }))
   }
+  const areSlotElementsCompatible = (sourceSlot: HTMLElement, targetSlot: HTMLElement): boolean => {
+    if (sourceSlot === targetSlot || sourceSlot.dataset.resourceSlotSide === targetSlot.dataset.resourceSlotSide) {
+      return false
+    }
+    const outputSlot = sourceSlot.dataset.resourceSlotSide === 'output' ? sourceSlot : targetSlot
+    const inputSlot = sourceSlot.dataset.resourceSlotSide === 'input' ? sourceSlot : targetSlot
+    const outputType = outputSlot.dataset.resourceSlotType ?? ''
+    const inputType = inputSlot.dataset.resourceSlotType ?? ''
+    const acceptedTypes = parseSlotAccepts(inputSlot.dataset.resourceSlotAccepts, inputType)
+    return Boolean(outputType && acceptedTypes.includes(outputType))
+  }
   const inferNodeSurfaceSlot = (slotElement: HTMLElement, event: PointerEvent) => {
-    const sourceType = slotElement.dataset.resourceSlotType ?? ''
     const sourceSide = slotElement.dataset.resourceSlotSide ?? ''
     const targetNode = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('.chat-resource-node')
     if (!targetNode || targetNode.contains(slotElement)) {
       return null
     }
     const candidates = Array.from(targetNode.querySelectorAll<HTMLElement>('.chat-resource-slot'))
-      .filter((candidate) => candidate.dataset.resourceSlotType === sourceType && candidate.dataset.resourceSlotSide !== sourceSide)
+      .filter((candidate) => candidate.dataset.resourceSlotSide !== sourceSide && areSlotElementsCompatible(slotElement, candidate))
       .sort((a, b) => {
         const aRect = a.getBoundingClientRect()
         const bRect = b.getBoundingClientRect()
@@ -1502,7 +1577,7 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
       const sourceType = slotElement.dataset.resourceSlotType ?? ''
       const sourceSide = slotElement.dataset.resourceSlotSide ?? ''
       const compatibleSlots = Array.from(root.querySelectorAll<HTMLElement>('.chat-resource-slot'))
-        .filter((candidate) => candidate !== slotElement && candidate.dataset.resourceSlotType === sourceType && candidate.dataset.resourceSlotSide !== sourceSide)
+        .filter((candidate) => candidate !== slotElement && areSlotElementsCompatible(slotElement, candidate))
       compatibleSlots.forEach((candidate) => candidate.classList.add('is-compatible-candidate'))
       root.dataset.resourceSlotDragState = JSON.stringify({
         source: {
@@ -1536,7 +1611,7 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
       root.querySelectorAll<HTMLElement>('.chat-resource-slot.is-compatible-candidate').forEach((candidate) => candidate.classList.remove('is-compatible-candidate'))
       const dropTarget = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('.chat-resource-slot')
       const inferredTarget = dropTarget ?? inferNodeSurfaceSlot(slotElement, event)
-      if (inferredTarget && inferredTarget !== slotElement && inferredTarget.dataset.resourceSlotType === slotElement.dataset.resourceSlotType && inferredTarget.dataset.resourceSlotSide !== slotElement.dataset.resourceSlotSide) {
+      if (inferredTarget && areSlotElementsCompatible(slotElement, inferredTarget)) {
         root.dataset.resourceSlotDropResult = JSON.stringify({
           sourceNodeId: slotElement.dataset.resourceSlotNode ?? '',
           sourceSlotId: slotElement.dataset.resourceSlotId ?? '',
@@ -3265,12 +3340,23 @@ function renderSlotList(node: CharacterResourceNode, slots: CharacterResourceSlo
   }
   return `
     <div class="chat-workflow-node-port-list ${side}">
-      ${slots.map((slotItem) => `
-        <span class="chat-workflow-node-port chat-resource-slot ${slotItem.required ? 'required' : ''}" data-resource-slot-node="${options.escapeHtml(node.id)}" data-resource-slot-id="${options.escapeHtml(slotItem.id)}" data-resource-slot-side="${side}" data-resource-slot-type="${options.escapeHtml(slotItem.type)}" title="${options.escapeHtml(slotItem.tooltip)}">
+      ${slots.map((slotItem) => {
+        const accepts = slotItem.accepts ?? [slotItem.type]
+        const acceptLabel = formatSlotAcceptLabel(accepts)
+        const guideLabel = side === 'input'
+          ? ui(options, `接入：${acceptLabel}`, `Accepts: ${acceptLabel}`)
+          : ui(options, `输出：${formatSlotTypeLabel(slotItem.type)}`, `Outputs: ${formatSlotTypeLabel(slotItem.type)}`)
+        const dragGuideLabel = side === 'input'
+          ? ui(options, `连接 ${acceptLabel}`, `Connect ${acceptLabel}`)
+          : ui(options, `拖向 ${formatSlotTypeLabel(slotItem.type)} 输入口`, `Drag to a ${formatSlotTypeLabel(slotItem.type)} input`)
+        const title = `${slotItem.tooltip || slotItem.type} · ${guideLabel}`
+        return `
+        <span class="chat-workflow-node-port chat-resource-slot ${slotItem.required ? 'required' : ''}" data-resource-slot-node="${options.escapeHtml(node.id)}" data-resource-slot-id="${options.escapeHtml(slotItem.id)}" data-resource-slot-side="${side}" data-resource-slot-type="${options.escapeHtml(slotItem.type)}" data-resource-slot-accepts="${options.escapeHtml(accepts.join(','))}" data-resource-slot-guide="${options.escapeHtml(dragGuideLabel)}" title="${options.escapeHtml(title)}">
           <i class="chat-resource-slot-dot" aria-hidden="true"></i>
           <b>${options.escapeHtml(localizeSlotLabel(slotItem, options))}</b>
+          ${side === 'input' ? `<small class="chat-resource-slot-accepts">${options.escapeHtml(guideLabel)}</small>` : ''}
         </span>
-      `).join('')}
+      `}).join('')}
     </div>
   `
 }
@@ -3283,7 +3369,7 @@ function renderNodeWidgets(node: CharacterResourceNode, definition: CharacterRes
     <div class="chat-resource-node-widgets">
       ${definition.parameters.slice(0, 3).map((parameterItem) => `
         <label>
-          <span>${options.escapeHtml(localizeParameterLabel(parameterItem, options))}</span>
+          <span>${options.escapeHtml(localizeParameterLabel(parameterItem, options, node.type))}</span>
           ${renderParameterField(parameterItem, node, node.config[parameterItem.id], options)}
         </label>
       `).join('')}
@@ -3458,8 +3544,8 @@ function renderResourceInspector(graph: CharacterResourceGraph, options: Charact
         <section class="chat-workflow-inspector-section">
           <h4>${options.escapeHtml(ui(options, '插槽', 'Slots'))}</h4>
           <div class="chat-workflow-inspector-ports">
-            ${definition.inputs.map((slotItem) => `<span><b>IN</b>${options.escapeHtml(localizeSlotLabel(slotItem, options))}<small>${options.escapeHtml(slotItem.type)}</small></span>`).join('') || '<span><b>IN</b>-</span>'}
-            ${definition.outputs.map((slotItem) => `<span><b>OUT</b>${options.escapeHtml(localizeSlotLabel(slotItem, options))}<small>${options.escapeHtml(slotItem.type)}</small></span>`).join('')}
+            ${definition.inputs.map((slotItem) => `<span><b>IN</b>${options.escapeHtml(localizeSlotLabel(slotItem, options))}<small>${options.escapeHtml(formatSlotAcceptLabel(slotItem.accepts ?? [slotItem.type]))}</small></span>`).join('') || '<span><b>IN</b>-</span>'}
+            ${definition.outputs.map((slotItem) => `<span><b>OUT</b>${options.escapeHtml(localizeSlotLabel(slotItem, options))}<small>${options.escapeHtml(formatSlotTypeLabel(slotItem.type))}</small></span>`).join('')}
           </div>
         </section>
         ${output ? `
@@ -3534,7 +3620,7 @@ function renderInspectorParameter(
   return `
     <div class="chat-workflow-inspector-field ${dirty ? 'is-dirty' : ''} ${validation ? 'is-invalid' : ''}">
       <span>
-        <b>${options.escapeHtml(localizeParameterLabel(parameterItem, options))}</b>
+        <b>${options.escapeHtml(localizeParameterLabel(parameterItem, options, node.type))}</b>
         ${dirty ? `<button class="chat-workflow-param-reset" type="button" data-chat-workflow-action="reset-parameter" data-chat-workflow-param-reset="${options.escapeHtml(parameterItem.id)}" data-chat-workflow-node="${options.escapeHtml(node.id)}">${options.escapeHtml(ui(options, '重置', 'Reset'))}</button>` : ''}
       </span>
       ${renderParameterField(parameterItem, node, value ?? parameterItem.defaultValue, options, Boolean(validation))}
@@ -3551,7 +3637,7 @@ function renderParameterField(
   invalid = false
 ): string {
   const baseAttrs = `data-chat-workflow-param="${options.escapeHtml(parameterItem.id)}" data-chat-workflow-node="${options.escapeHtml(node.id)}" data-chat-workflow-param-type="${options.escapeHtml(parameterItem.type)}" aria-invalid="${invalid ? 'true' : 'false'}"`
-  const label = localizeParameterLabel(parameterItem, options)
+  const label = localizeParameterLabel(parameterItem, options, node.type)
   if (parameterItem.type === 'boolean') {
     return `<input class="chat-workflow-boolean-field" type="checkbox" ${baseAttrs} ${value ? 'checked' : ''} aria-label="${options.escapeHtml(label)}">`
   }
@@ -3587,7 +3673,7 @@ function renderMaterialsField(
   options: CharacterWorkflowPageOptions
 ): string {
   const materials = normalizeWorkflowMaterials(value)
-  const label = localizeParameterLabel(parameterItem, options)
+  const label = localizeParameterLabel(parameterItem, options, node.type)
   return `
     <div class="chat-workflow-materials-field" data-chat-workflow-param="${options.escapeHtml(parameterItem.id)}" data-chat-workflow-node="${options.escapeHtml(node.id)}" data-chat-workflow-param-type="materials" aria-label="${options.escapeHtml(label)}">
       <div class="chat-workflow-materials-head">
@@ -3691,7 +3777,7 @@ function renderModelSelectField(
   }
   return `
     <details class="chat-resource-model-select">
-      <summary aria-label="${options.escapeHtml(localizeParameterLabel(parameterItem, options))}">
+      <summary aria-label="${options.escapeHtml(localizeParameterLabel(parameterItem, options, node.type))}">
         <span class="chat-resource-model-choice-logo">${selected.logoHtml}</span>
         <span class="chat-resource-model-choice-copy">
           <strong>${options.escapeHtml(selected.modelName)}</strong>
@@ -3875,8 +3961,8 @@ function createDefinition(
   }
 }
 
-function slot(id: string, label: string, type: string, tooltip = '', required = false): CharacterResourceSlotDefinition {
-  return { id, label, type, required, tooltip: tooltip || type }
+function slot(id: string, label: string, type: string, tooltip = '', required = false, accepts?: string[]): CharacterResourceSlotDefinition {
+  return { id, label, type, accepts, required, tooltip: tooltip || type }
 }
 
 function param(
@@ -3940,7 +4026,27 @@ function validateLink(
   }
   const sourceSlot = definitions.get(source.type)?.outputs.find((slotItem) => slotItem.id === linkItem.sourceSlotId)
   const targetSlot = definitions.get(target.type)?.inputs.find((slotItem) => slotItem.id === linkItem.targetSlotId)
-  return Boolean(sourceSlot && targetSlot && sourceSlot.type === targetSlot.type)
+  return areSlotDefinitionsCompatible(sourceSlot, targetSlot)
+}
+
+function areSlotDefinitionsCompatible(
+  sourceSlot: CharacterResourceSlotDefinition | undefined,
+  targetSlot: CharacterResourceSlotDefinition | undefined
+): boolean {
+  if (!sourceSlot || !targetSlot) {
+    return false
+  }
+  return parseSlotAccepts(targetSlot.accepts, targetSlot.type).includes(sourceSlot.type)
+}
+
+function parseSlotAccepts(value: string | string[] | undefined, fallbackType = ''): string[] {
+  if (Array.isArray(value)) {
+    return value.length ? value : (fallbackType ? [fallbackType] : [])
+  }
+  if (typeof value === 'string' && value.trim()) {
+    return value.split(',').map((item) => item.trim()).filter(Boolean)
+  }
+  return fallbackType ? [fallbackType] : []
 }
 
 function getDefinition(type: string): CharacterResourceNodeDefinition {
