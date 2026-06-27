@@ -625,6 +625,19 @@ export function createUiConfigOverrides(spec: CharacterWorkflowBuilderSpec): Rec
       consistencyMode: 'same-character',
       seedMode: 'lock-character',
     },
+    'opening-panel-image-target': {
+      imageRole: 'character-base-image',
+      assetPurpose: 'Free-form character sample images for the opening CSS panel. Generate reusable non-avatar images migrated from the avatar reference, showing distinct roleplay scenes, actions, moods, outfit usage, or prop interactions that can be used as visual material inside the opening panel.',
+    },
+    'opening-panel-image-control': {
+      targetImageCount: 2,
+      imageStyleDomain: 'auto',
+      stylePrompt: spec.stylePrompt,
+      shotType: 'auto',
+      aspectRatio: '3:4',
+      consistencyMode: 'same-character',
+      seedMode: 'vary-slightly',
+    },
     'image-capability': {
       editModelRef: '',
       identityStrength: 0.72,
@@ -780,7 +793,7 @@ function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): 
     '- hard-constraints.mustHave/mustNot: hard requirements and boundaries.',
     '- source-material.notes: concrete story material, setting facts, character seeds, world facts.',
     '- field-generation-control.fieldPurpose: local intent for one text field such as firstMessage/opening/dialogue style.',
-    '- opening-layout-target: use this for the CSS/HTML-style role-card opening presentation that combines title, tags, opening text, and generated images.',
+    '- opening-layout-target: use this for the CSS/HTML-style role-card opening presentation that combines title, tags, opening text, and generated images. Prefer linked character-base-image assets as panel visual material; avatar and overview can remain linked but should not be the only image sources for the panel.',
     '- image-target.imageRole: use avatar for the first canonical avatar.jpg target, character-overview-sheet for the required built-in overview sheet, and character-base-image for any extra free-form non-avatar character sample images. Do not invent fixed categories such as cover, full-body, opening moment, story moment, expression, outfit detail, relationship moment, or world context.',
     '- image-target.assetPurpose: for character-base-image, describe the free-form meaning of the sample images: scene, action, pose, outfit usage, prop interaction, mood, and roleplay situation. For character-overview-sheet, keep the existing overview sheet purpose and do not turn it into a scene.',
     '- image-generation-control: image count, imageStyleDomain, concise stylePrompt, shotType, aspectRatio, consistencyMode, seedMode. Use imageStyleDomain only for photoreal/anime/illustration/stylized routing; use auto when appearancePrompt and image control should decide. Adult or sensual visual tone is part of the runtime domain defaults. Never create a new sensual style domain, never infer additional sensual styling from unrelated role text, and never put imageType or composition here.',
@@ -879,6 +892,8 @@ function validateCreatedCharacterWorkflow(
     'avatar-image-control',
     'overview-sheet-image-target',
     'overview-sheet-image-control',
+    'opening-panel-image-target',
+    'opening-panel-image-control',
     'opening-layout-target',
     'quality-gate',
     'output-adapter',
@@ -886,16 +901,18 @@ function validateCreatedCharacterWorkflow(
   const missing = requiredNodeIds.filter((id) => !workflow.nodes.some((node) => node.id === id))
   const hasAvatarLink = workflow.edges.some((edge) => edge.from.nodeId === 'avatar-image-target' || edge.to.nodeId === 'avatar-image-target')
   const hasOverviewLink = workflow.edges.some((edge) => edge.from.nodeId === 'overview-sheet-image-target' || edge.to.nodeId === 'overview-sheet-image-target')
+  const hasOpeningPanelImageLink = workflow.edges.some((edge) => edge.from.nodeId === 'opening-panel-image-target' && edge.to.nodeId === 'opening-layout-target')
   const issues = [
     ...missing.map((id) => `missing node ${id}`),
     ...(hasAvatarLink ? [] : ['avatar image target is not linked']),
     ...(hasOverviewLink ? [] : ['overview sheet image target is not linked']),
+    ...(hasOpeningPanelImageLink ? [] : ['opening panel image target is not linked into opening layout']),
     ...(spec.outputFormat === 'noema-role-chat' ? [] : ['output format is not noema-role-chat']),
   ]
   if (!issues.length) {
     return language === 'zh-CN'
-      ? '资源图结构校验通过：角色卡、开场白、avatar.jpg、overview sheet、质量门和导出链路均已配置。'
-      : 'Workflow structure validated: role card, opening, avatar.jpg, overview sheet, quality gate, and export path are configured.'
+      ? '资源图结构校验通过：角色卡、开场白、avatar.jpg、overview sheet、开幕面板图片素材、质量门和导出链路均已配置。'
+      : 'Workflow structure validated: role card, opening, avatar.jpg, overview sheet, opening panel image material, quality gate, and export path are configured.'
   }
   return language === 'zh-CN'
     ? `资源图结构存在问题：${issues.join('；')}`
@@ -1075,6 +1092,25 @@ function applySpecToWorkflow(workflow: CharacterWorkflow, spec: CharacterWorkflo
     aspectRatio: '16:9',
     consistencyMode: 'same-character',
     seedMode: 'lock-character',
+  })
+  const openingPanelImageTarget = workflow.nodes.find((node) => node.id === 'opening-panel-image-target')
+  openingPanelImageTarget?.config && Object.assign(openingPanelImageTarget.config, {
+    imageRole: 'character-base-image',
+    assetPurpose: [
+      'Generate free-form character sample images for the opening CSS panel.',
+      'Use linked avatar reference image inputs for identity preservation.',
+      'Each image should show a distinct roleplay scene, action, mood, outfit usage, or prop interaction that can be used as visual material inside the panel.',
+    ].join(' '),
+  })
+  const openingPanelImageControl = workflow.nodes.find((node) => node.id === 'opening-panel-image-control')
+  openingPanelImageControl?.config && Object.assign(openingPanelImageControl.config, {
+    targetImageCount: 2,
+    imageStyleDomain: 'auto',
+    stylePrompt: spec.stylePrompt,
+    shotType: 'auto',
+    aspectRatio: '3:4',
+    consistencyMode: 'same-character',
+    seedMode: 'vary-slightly',
   })
   byType.get('opening-layout-target')?.config && Object.assign(byType.get('opening-layout-target')!.config, {
     layoutKind: 'immersive-card-css',

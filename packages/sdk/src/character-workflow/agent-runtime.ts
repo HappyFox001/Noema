@@ -1531,6 +1531,10 @@ export function createCharacterSuperAgent(
           })
         }
 
+        for (const openingLayoutArtifact of createOpeningLayoutArtifacts(context, state.draft!, state.artifacts, runId)) {
+          await writeArtifact(openingLayoutArtifact)
+        }
+
         const finalCard = await writeArtifact({
           id: `${runId}:character-card-final`,
           kind: 'character-card-final',
@@ -1727,6 +1731,241 @@ function hydrateCharacterDraftFromArtifacts(
     missing: getRequiredCharacterDraftFields(context),
     updatedAt: now,
   }
+}
+
+function createOpeningLayoutArtifacts(
+  context: CharacterAgentRunContext,
+  draft: CharacterCardDraft,
+  artifacts: CharacterAgentArtifact[],
+  runId: string
+): Array<Omit<CharacterAgentArtifact, 'version' | 'createdAt' | 'updatedAt'>> {
+  const targets = context.targets.filter((target) => target.kind === 'opening-layout')
+  if (!targets.length) {
+    return []
+  }
+  const fields = draft.fields ?? {}
+  return targets.map((target) => {
+    const data = createOpeningLayoutData(context, target, fields, artifacts)
+    return {
+      id: `${runId}:opening-layout:${target.nodeId}`,
+      kind: 'opening-layout' as const,
+      runId,
+      candidateId: draft.id,
+      sourceNodeId: target.nodeId,
+      title: `${stringValue(fields.name, 'Character')} Opening Panel`,
+      summary: stringValue(data.summary, `Opening panel for ${stringValue(fields.name, 'Character')}.`),
+      data,
+    }
+  })
+}
+
+function createOpeningLayoutData(
+  context: CharacterAgentRunContext,
+  target: AgentTargetContext,
+  fields: Record<string, unknown>,
+  artifacts: CharacterAgentArtifact[]
+): Record<string, unknown> {
+  const name = stringValue(fields.name, 'Unknown Character')
+  const description = stringValue(fields.description)
+  const opening = stripChatTags(stringValue(fields.firstMessage))
+  const scenario = stringValue(fields.scenario)
+  const worldContext = stringValue(fields.worldContext)
+  const dialogueStyle = stringValue(fields.dialogueStyle)
+  const includeSections = stringListValue(target.config.includeSections, ['title', 'tags', 'opening', 'coverImage', 'supportImages'])
+  const layoutKind = stringValue(target.config.layoutKind, 'immersive-card-css')
+  const style = resolveOpeningLayoutStyle(context, target, fields)
+  const images = collectOpeningLayoutImages(artifacts)
+  const cover = images[0]
+  const supportImages = images.slice(1, 4)
+  const scopeClass = `noema-opening-panel-${sanitizeCssIdentifier(target.nodeId)}`
+  const sections = {
+    title: name,
+    summary: description,
+    opening,
+    scenario,
+    worldContext,
+    dialogueStyle,
+  }
+  const html = buildOpeningLayoutHtml({
+    scopeClass,
+    name,
+    description,
+    opening,
+    scenario,
+    worldContext,
+    dialogueStyle,
+    includeSections,
+    cover,
+    supportImages,
+  })
+  const css = buildOpeningLayoutCss(scopeClass, style)
+  return {
+    schemaVersion: 1,
+    layoutKind,
+    includeSections,
+    summary: `${layoutKind} panel for ${name}, styled from ${style.preset}.`,
+    html,
+    css,
+    text: opening || description || scenario,
+    sections,
+    images,
+    style,
+    source: {
+      targetNodeId: target.nodeId,
+      layoutPrompt: stringValue(target.config.layoutPrompt),
+      imageArtifactIds: images.map((image) => image.id),
+    },
+  }
+}
+
+function resolveOpeningLayoutStyle(
+  context: CharacterAgentRunContext,
+  target: AgentTargetContext,
+  fields: Record<string, unknown>
+): Record<string, string> {
+  const localStyle = target.localStylePressures[0] ?? context.stylePressures[0]
+  const preset = localStyle?.preset || 'sillytavern-natural-card'
+  const prompt = localStyle?.prompt || context.goal.prompt
+  const text = [
+    preset,
+    prompt,
+    stringValue(fields.description),
+    stringValue(fields.scenario),
+    stringValue(fields.personality),
+  ].join(' ').toLowerCase()
+  const gothic = /goth|noir|dark|horror|thriller|shadow|血|夜|暗|悬疑/.test(text)
+  const warm = /warm|romance|comfort|soft|校园|温柔|治愈|浪漫/.test(text)
+  const cyber = /cyber|neon|future|sci-fi|ai|城市|赛博|霓虹/.test(text)
+  const accent = cyber ? '#76d7ff' : warm ? '#e2b278' : gothic ? '#b58cff' : '#d8dce0'
+  const accentSoft = cyber ? 'rgba(118, 215, 255, 0.2)' : warm ? 'rgba(226, 178, 120, 0.2)' : gothic ? 'rgba(181, 140, 255, 0.2)' : 'rgba(216, 220, 224, 0.18)'
+  const surface = gothic ? 'rgba(8, 8, 11, 0.94)' : 'rgba(9, 10, 12, 0.94)'
+  return {
+    preset,
+    prompt,
+    accent,
+    accentSoft,
+    surface,
+    mood: cyber ? 'neon' : warm ? 'warm' : gothic ? 'noir' : 'minimal',
+  }
+}
+
+function collectOpeningLayoutImages(artifacts: CharacterAgentArtifact[]): Array<Record<string, string>> {
+  return artifacts
+    .filter((artifact) => artifact.kind === 'image-asset')
+    .filter((artifact) => {
+      const data = artifact.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
+        ? artifact.data as Record<string, unknown>
+        : {}
+      return data.accepted !== false
+    })
+    .map((artifact) => {
+      const data = artifact.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
+        ? artifact.data as Record<string, unknown>
+        : {}
+      return {
+        id: artifact.id,
+        title: artifact.title,
+        role: stringValue(data.imageRole, artifact.sourceNodeId ?? ''),
+        sourceNodeId: artifact.sourceNodeId ?? '',
+        url: stringValue(data.dataUrl) || stringValue(data.url),
+      }
+    })
+    .filter((image) => image.url)
+    .sort((a, b) => openingImagePriority(a.role) - openingImagePriority(b.role))
+}
+
+function openingImagePriority(role: string): number {
+  if (role === 'character-base-image') return 0
+  if (role === 'avatar') return 1
+  if (role === 'character-overview-sheet') return 2
+  return 3
+}
+
+function buildOpeningLayoutHtml(options: {
+  scopeClass: string
+  name: string
+  description: string
+  opening: string
+  scenario: string
+  worldContext: string
+  dialogueStyle: string
+  includeSections: string[]
+  cover?: Record<string, string>
+  supportImages: Array<Record<string, string>>
+}): string {
+  const show = (section: string) => options.includeSections.includes(section)
+  const tags = deriveOpeningTags(options)
+  return [
+    `<section class="${options.scopeClass}">`,
+    show('coverImage') && options.cover ? `<figure class="noema-opening-cover"><img src="${htmlEscape(options.cover.url)}" alt="${htmlEscape(options.cover.title)}"></figure>` : '',
+    '<div class="noema-opening-body">',
+    show('title') ? `<p class="noema-opening-kicker">Noema Role Opening</p><h1>${htmlEscape(options.name)}</h1>` : '',
+    show('tags') ? `<div class="noema-opening-tags">${tags.map((tag) => `<span>${htmlEscape(tag)}</span>`).join('')}</div>` : '',
+    options.description ? `<p class="noema-opening-summary">${htmlEscape(options.description)}</p>` : '',
+    show('opening') && options.opening ? `<blockquote>${htmlEscape(options.opening)}</blockquote>` : '',
+    options.scenario ? `<article><b>Scenario</b><p>${htmlEscape(options.scenario)}</p></article>` : '',
+    show('characterSummary') && options.worldContext ? `<article><b>World Context</b><p>${htmlEscape(options.worldContext)}</p></article>` : '',
+    options.dialogueStyle ? `<article><b>Voice</b><p>${htmlEscape(options.dialogueStyle)}</p></article>` : '',
+    show('supportImages') && options.supportImages.length ? `<div class="noema-opening-gallery">${options.supportImages.map((image) => `<img src="${htmlEscape(image.url)}" alt="${htmlEscape(image.title)}">`).join('')}</div>` : '',
+    '</div>',
+    '</section>',
+  ].filter(Boolean).join('')
+}
+
+function buildOpeningLayoutCss(scopeClass: string, style: Record<string, string>): string {
+  return [
+    `.${scopeClass}{--noema-accent:${style.accent};--noema-accent-soft:${style.accentSoft};display:grid;grid-template-columns:minmax(96px,0.72fr) minmax(0,1fr);gap:14px;max-width:720px;padding:16px;border:1px solid rgba(255,255,255,.12);border-radius:22px;background:radial-gradient(circle at 18% 0%,var(--noema-accent-soft),transparent 32%),linear-gradient(145deg,rgba(255,255,255,.075),rgba(255,255,255,.018)),${style.surface};color:rgba(248,250,250,.92);box-shadow:0 22px 70px rgba(0,0,0,.42);font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overflow:hidden}`,
+    `.${scopeClass} *{box-sizing:border-box}`,
+    `.${scopeClass} .noema-opening-cover{margin:0;min-width:0}`,
+    `.${scopeClass} .noema-opening-cover img{width:100%;height:100%;min-height:220px;object-fit:cover;object-position:center 18%;border-radius:16px;border:1px solid rgba(255,255,255,.12);filter:saturate(1.04) contrast(1.03)}`,
+    `.${scopeClass} .noema-opening-body{display:grid;align-content:start;gap:10px;min-width:0}`,
+    `.${scopeClass} .noema-opening-kicker{margin:0;color:var(--noema-accent);font-size:10px;font-weight:760;letter-spacing:.16em;text-transform:uppercase}`,
+    `.${scopeClass} h1{margin:0;color:white;font-size:clamp(26px,5vw,42px);line-height:.94;letter-spacing:-.055em}`,
+    `.${scopeClass} .noema-opening-tags{display:flex;flex-wrap:wrap;gap:5px}`,
+    `.${scopeClass} .noema-opening-tags span{padding:4px 7px;border:1px solid rgba(255,255,255,.12);border-radius:999px;background:rgba(255,255,255,.052);color:rgba(248,250,250,.7);font-size:10px}`,
+    `.${scopeClass} .noema-opening-summary{margin:0;color:rgba(248,250,250,.72);font-size:12px;line-height:1.45}`,
+    `.${scopeClass} blockquote{margin:2px 0 0;padding:11px 12px;border-left:2px solid var(--noema-accent);border-radius:12px;background:rgba(255,255,255,.05);color:rgba(248,250,250,.86);font-size:12px;line-height:1.55}`,
+    `.${scopeClass} article{display:grid;gap:4px;padding:9px 10px;border:1px solid rgba(255,255,255,.08);border-radius:13px;background:rgba(0,0,0,.16)}`,
+    `.${scopeClass} article b{color:var(--noema-accent);font-size:10px;text-transform:uppercase;letter-spacing:.08em}`,
+    `.${scopeClass} article p{margin:0;color:rgba(248,250,250,.68);font-size:11px;line-height:1.45}`,
+    `.${scopeClass} .noema-opening-gallery{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}`,
+    `.${scopeClass} .noema-opening-gallery img{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:10px;border:1px solid rgba(255,255,255,.1)}`,
+    `@media(max-width:560px){.${scopeClass}{grid-template-columns:1fr}.${scopeClass} .noema-opening-cover img{max-height:260px}}`,
+  ].join('\n')
+}
+
+function deriveOpeningTags(options: {
+  description: string
+  scenario: string
+  worldContext: string
+  dialogueStyle: string
+}): string[] {
+  const source = [options.description, options.scenario, options.worldContext, options.dialogueStyle].join(' ')
+  const tags = [
+    /romance|恋|暧昧|亲密/i.test(source) ? 'slow tension' : '',
+    /mystery|悬疑|秘密|noir/i.test(source) ? 'mystery' : '',
+    /campus|学校|校园/i.test(source) ? 'campus' : '',
+    /cyber|赛博|未来|neon/i.test(source) ? 'neon city' : '',
+    /fantasy|魔法|精灵|spirit/i.test(source) ? 'fantasy' : '',
+  ].filter(Boolean)
+  return [...new Set(tags.length ? tags : ['character-first', 'roleplay-ready', 'visual card'])].slice(0, 4)
+}
+
+function stripChatTags(value: string): string {
+  return value.replace(/<\/?chat>/gi, '').trim()
+}
+
+function htmlEscape(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function sanitizeCssIdentifier(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'panel'
 }
 
 function createDraftArtifact(context: CharacterAgentRunContext, draft: CharacterCardDraft | undefined): Omit<CharacterAgentArtifact<CharacterCardDraft>, 'version' | 'createdAt' | 'updatedAt'> {

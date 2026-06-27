@@ -14439,6 +14439,33 @@ body.chat-workflow-library-resizing * {
   line-height: 1.42;
 }
 
+.chat-resource-run-plane .opening-panel-resource {
+  min-width: 420px;
+  min-height: 360px;
+}
+
+.chat-resource-run-plane .chat-resource-opening-panel-preview {
+  gap: 8px;
+  min-height: 270px;
+}
+
+.chat-resource-run-plane .chat-resource-opening-panel-preview > p {
+  -webkit-line-clamp: 2;
+}
+
+.chat-resource-opening-panel-frame {
+  max-height: 520px;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid rgba(248, 250, 250, 0.07);
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.chat-resource-opening-panel-frame > section {
+  transform-origin: top left;
+}
+
 .chat-resource-run-plane .chat-resource-node-content.has-image {
   grid-template-columns: 76px minmax(0, 1fr);
   align-items: start;

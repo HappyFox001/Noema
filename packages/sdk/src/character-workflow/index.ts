@@ -1207,7 +1207,9 @@ export function createStandardCharacterWorkflow(
     node('image-generation-control', 1010, 360, 'avatar-image-control', 'Avatar Image Control'),
     node('image-target', 690, 600, 'overview-sheet-image-target', 'Overview Sheet Image Target'),
     node('image-generation-control', 1010, 580, 'overview-sheet-image-control', 'Overview Sheet Image Control'),
-    node('opening-layout-target', 1010, 640),
+    node('image-target', 690, 800, 'opening-panel-image-target', 'Opening Panel Images Target'),
+    node('image-generation-control', 1010, 800, 'opening-panel-image-control', 'Opening Panel Images Control'),
+    node('opening-layout-target', 1340, 640),
     node('style-pressure', 360, -70),
     node('constraint', 360, 360),
     node('source-material', 40, 410),
@@ -1264,6 +1266,24 @@ export function createStandardCharacterWorkflow(
       seedMode: 'lock-character',
     })
   }
+  const openingPanelImageTarget = nodes.find((nodeItem) => nodeItem.id === 'opening-panel-image-target')
+  if (openingPanelImageTarget) {
+    Object.assign(openingPanelImageTarget.config, {
+      imageRole: 'character-base-image',
+      assetPurpose: 'Free-form character sample images for the opening CSS panel. Generate reusable non-avatar images migrated from the avatar reference, showing distinct roleplay scenes, actions, moods, outfit usage, or prop interactions that can be used as visual material inside the opening panel.',
+    })
+  }
+  const openingPanelImageControl = nodes.find((nodeItem) => nodeItem.id === 'opening-panel-image-control')
+  if (openingPanelImageControl) {
+    Object.assign(openingPanelImageControl.config, {
+      targetImageCount: 2,
+      imageStyleDomain: 'auto',
+      shotType: 'auto',
+      aspectRatio: '3:4',
+      consistencyMode: 'same-character',
+      seedMode: 'vary-slightly',
+    })
+  }
 
   return {
     id,
@@ -1288,10 +1308,15 @@ export function createStandardCharacterWorkflow(
       ['avatar-image-target', 'imageAsset', 'overview-sheet-image-target', 'referenceImage', 'provides'],
       ['image-tool', 'image', 'overview-sheet-image-target', 'image', 'enables'],
       ['overview-sheet-image-control', 'imageControl', 'overview-sheet-image-target', 'imageControl', 'guides'],
+      ['character-card-target', 'target', 'opening-panel-image-target', 'card', 'guides'],
+      ['avatar-image-target', 'imageAsset', 'opening-panel-image-target', 'referenceImage', 'provides'],
+      ['image-tool', 'image', 'opening-panel-image-target', 'image', 'enables'],
+      ['opening-panel-image-control', 'imageControl', 'opening-panel-image-target', 'imageControl', 'guides'],
       ['character-card-target', 'target', 'opening-layout-target', 'card', 'guides'],
       ['character-field-target', 'field', 'opening-layout-target', 'field', 'guides'],
       ['avatar-image-target', 'imageAsset', 'opening-layout-target', 'imageAsset', 'guides'],
       ['overview-sheet-image-target', 'imageAsset', 'opening-layout-target', 'imageAsset', 'guides'],
+      ['opening-panel-image-target', 'imageAsset', 'opening-layout-target', 'imageAsset', 'guides'],
       ['style-pressure', 'style', 'opening-layout-target', 'style', 'weights'],
       ['goal', 'goal', 'agent-policy', 'goal', 'guides'],
       ['constraint', 'constraint', 'agent-policy', 'constraint', 'constrains'],

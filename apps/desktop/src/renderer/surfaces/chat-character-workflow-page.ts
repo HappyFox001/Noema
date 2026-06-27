@@ -904,6 +904,11 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
   ], [
     slot('resource', 'Resource', 'role-resource', 'Opening message resource.'),
   ], [], 'text-card', { width: 268, height: 188 }),
+  createDefinition('opening-panel-resource', 'Opening Panel', ['开幕面板', 'css panel', 'sillytavern panel'], 'Run Resources', 'asset', 'A CSS/HTML opening panel assembled from generated text and images.', [
+    slot('resource', 'Resource', 'role-resource', 'Previous generated role resource.'),
+  ], [
+    slot('resource', 'Resource', 'role-resource', 'Opening panel resource.'),
+  ], [], 'package', { width: 420, height: 360 }),
   createDefinition('style-guide-resource', 'Dialogue Style', ['语气', 'style guide', 'dialogue'], 'Run Resources', 'asset', 'The generated dialogue style guide for the role.', [
     slot('resource', 'Resource', 'role-resource', 'Previous generated role resource.'),
   ], [
@@ -945,7 +950,9 @@ const DEFAULT_NODE_PLACEMENT: Array<{ id: string; type: string; title: string; x
   { id: 'avatar-image-control', type: 'image-generation-control', title: 'Avatar Image Control', x: 1060, y: 360 },
   { id: 'overview-sheet-image-target', type: 'image-target', title: 'Overview Sheet Image Target', x: 730, y: 600, status: 'queued' },
   { id: 'overview-sheet-image-control', type: 'image-generation-control', title: 'Overview Sheet Image Control', x: 1060, y: 580 },
-  { id: 'opening-layout-target', type: 'opening-layout-target', title: 'Opening Layout Target', x: 1060, y: 638 },
+  { id: 'opening-panel-image-target', type: 'image-target', title: 'Opening Panel Images Target', x: 730, y: 800, status: 'queued' },
+  { id: 'opening-panel-image-control', type: 'image-generation-control', title: 'Opening Panel Images Control', x: 1060, y: 800 },
+  { id: 'opening-layout-target', type: 'opening-layout-target', title: 'Opening Layout Target', x: 1390, y: 638 },
   { id: 'style-pressure', type: 'style-pressure', title: 'Style Pressure', x: 390, y: -86 },
   { id: 'hard-constraints', type: 'constraint', title: 'Hard Constraints', x: 390, y: 370 },
   { id: 'source-material', type: 'source-material', title: 'Source Material', x: 80, y: 412 },
@@ -975,10 +982,15 @@ const DEFAULT_LINKS: CharacterResourceLink[] = [
   link('avatar-image-target', 'imageAsset', 'overview-sheet-image-target', 'referenceImage', 'provides'),
   link('image-capability', 'image', 'overview-sheet-image-target', 'image', 'enables'),
   link('overview-sheet-image-control', 'imageControl', 'overview-sheet-image-target', 'imageControl', 'guides'),
+  link('character-card-target', 'target', 'opening-panel-image-target', 'card', 'guides'),
+  link('avatar-image-target', 'imageAsset', 'opening-panel-image-target', 'referenceImage', 'provides'),
+  link('image-capability', 'image', 'opening-panel-image-target', 'image', 'enables'),
+  link('opening-panel-image-control', 'imageControl', 'opening-panel-image-target', 'imageControl', 'guides'),
   link('character-card-target', 'target', 'opening-layout-target', 'card', 'guides'),
   link('opening-field-target', 'field', 'opening-layout-target', 'field', 'guides'),
   link('avatar-image-target', 'imageAsset', 'opening-layout-target', 'imageAsset', 'guides'),
   link('overview-sheet-image-target', 'imageAsset', 'opening-layout-target', 'imageAsset', 'guides'),
+  link('opening-panel-image-target', 'imageAsset', 'opening-layout-target', 'imageAsset', 'guides'),
   link('style-pressure', 'style', 'opening-layout-target', 'style', 'weights'),
   link('generation-goal', 'goal', 'agent-policy', 'goal', 'guides'),
   link('hard-constraints', 'constraint', 'agent-policy', 'constraint', 'constrains'),
@@ -1639,8 +1651,8 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
         }
       }),
     groups: [
-      { id: 'intent-targets', title: ui(options, '目标资源', 'Target Resources'), nodeIds: ['generation-goal', 'character-card-target', 'opening-field-target', 'avatar-image-target', 'overview-sheet-image-target', 'opening-layout-target', 'source-material'], color: 'rgba(82, 168, 255, 0.16)' },
-      { id: 'local-controls', title: ui(options, '局部控制', 'Local Controls'), nodeIds: ['style-pressure', 'hard-constraints', 'opening-field-control', 'avatar-image-control', 'overview-sheet-image-control'], color: 'rgba(162, 202, 188, 0.16)' },
+      { id: 'intent-targets', title: ui(options, '目标资源', 'Target Resources'), nodeIds: ['generation-goal', 'character-card-target', 'opening-field-target', 'avatar-image-target', 'overview-sheet-image-target', 'opening-panel-image-target', 'opening-layout-target', 'source-material'], color: 'rgba(82, 168, 255, 0.16)' },
+      { id: 'local-controls', title: ui(options, '局部控制', 'Local Controls'), nodeIds: ['style-pressure', 'hard-constraints', 'opening-field-control', 'avatar-image-control', 'overview-sheet-image-control', 'opening-panel-image-control'], color: 'rgba(162, 202, 188, 0.16)' },
       { id: 'tool-policy', title: ui(options, '工具与策略', 'Tools and Strategy'), nodeIds: ['llm-capability', 'image-capability', 'agent-policy', 'generation-strategy'], color: 'rgba(219, 189, 130, 0.16)' },
       { id: 'evaluation-output', title: ui(options, '评估与输出', 'Evaluation and Output'), nodeIds: ['critique-loop', 'quality-gate', 'output-adapter'], color: 'rgba(206, 154, 118, 0.16)' },
     ],
@@ -2750,6 +2762,7 @@ function getRoleResourceArtifacts(artifacts: NonNullable<CharacterResourceRunSta
     'character-card-field',
     'character-card-final',
     'opening-message',
+    'opening-layout',
     'dialogue-style-guide',
     'world-context',
     'scene-context',
@@ -2774,6 +2787,7 @@ function getRunArtifactOrder(type: string): number {
     'character-card-field',
     'character-card-final',
     'opening-message',
+    'opening-layout',
     'dialogue-style-guide',
     'world-context',
     'scene-context',
@@ -2796,6 +2810,7 @@ function getRunArtifactMeta(artifact: NonNullable<CharacterResourceRunState['art
     'character-card-field': ui(options, '角色字段 / field', 'character field / resource'),
     'character-card-final': ui(options, '角色卡 / role-card', 'role card / resource'),
     'opening-message': ui(options, '开场 / opening', 'opening / resource'),
+    'opening-layout': ui(options, '开幕面板 / CSS', 'opening panel / CSS'),
     'dialogue-style-guide': ui(options, '语气 / style', 'style / resource'),
     'world-context': ui(options, '世界观 / context', 'world / resource'),
     'scene-context': ui(options, '场景 / context', 'scene / resource'),
@@ -2817,6 +2832,7 @@ function getRunArtifactNodeType(type: string): string {
     'character-card-draft': 'role-card-resource',
     'character-card-final': 'role-card-resource',
     'opening-message': 'opening-resource',
+    'opening-layout': 'opening-panel-resource',
     'dialogue-style-guide': 'style-guide-resource',
     'world-context': 'context-resource',
     'scene-context': 'context-resource',
@@ -3149,6 +3165,21 @@ function renderNodeContent(
   }
   const previewClass = `preview-${definition.previewType}`
   const runImageActions = renderRunImageActions(output, options)
+  if (output.type === 'opening-layout') {
+    const data = output.data && typeof output.data === 'object' && !Array.isArray(output.data)
+      ? output.data as Record<string, unknown>
+      : {}
+    const html = typeof data.html === 'string' ? sanitizeOpeningPanelHtml(data.html) : ''
+    const css = typeof data.css === 'string' ? sanitizeOpeningPanelCss(data.css) : ''
+    return `
+      <div class="chat-resource-node-content ${previewClass} chat-resource-opening-panel-preview">
+        <strong>${options.escapeHtml(output.title)}</strong>
+        <p>${options.escapeHtml(output.summary)}</p>
+        ${css ? `<style>${css}</style>` : ''}
+        ${html ? `<div class="chat-resource-opening-panel-frame">${html}</div>` : ''}
+      </div>
+    `
+  }
   if (output?.image) {
     return `
       <div class="chat-resource-node-content ${previewClass} has-image">
@@ -3166,6 +3197,20 @@ function renderNodeContent(
       ${runImageActions}
     </div>
   `
+}
+
+function sanitizeOpeningPanelHtml(value: string): string {
+  return value
+    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
+    .replace(/\son[a-z]+\s*=\s*(['"]).*?\1/gi, '')
+    .replace(/\s(href|src)\s*=\s*(['"])\s*javascript:[\s\S]*?\2/gi, '')
+}
+
+function sanitizeOpeningPanelCss(value: string): string {
+  return value
+    .replace(/<\/?style[\s\S]*?>/gi, '')
+    .replace(/@import[^;]+;/gi, '')
+    .replace(/url\(\s*(['"]?)javascript:[^)]+\)/gi, 'none')
 }
 
 function renderRunImageActions(output: CharacterResourceOutput, options: CharacterWorkflowPageOptions): string {
