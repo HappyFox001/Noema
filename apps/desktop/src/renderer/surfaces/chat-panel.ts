@@ -5821,6 +5821,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!linkId) {
       return false
     }
+    return deleteCharacterResourceLink(linkId)
+  }
+
+  function deleteCharacterResourceLink(linkId: string): boolean {
+    if (!linkId) {
+      return false
+    }
     pushCharacterResourceUndoSnapshot()
     const customIndex = characterResourceViewState.customLinks.findIndex((linkItem) => linkItem.id === linkId)
     if (customIndex >= 0) {
@@ -6847,6 +6854,16 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
 
+    const workflowLinkDisconnect = eventTarget.closest<HTMLElement>('[data-chat-workflow-link-disconnect]')
+    if (workflowLinkDisconnect && panel.contains(workflowLinkDisconnect)) {
+      event.preventDefault()
+      const linkId = workflowLinkDisconnect.dataset.chatWorkflowLinkDisconnect || ''
+      characterResourceViewState.selectedLinkId = linkId
+      characterResourceViewState.selectedNodeIds = []
+      deleteCharacterResourceLink(linkId)
+      return
+    }
+
     const workflowLinkSelect = eventTarget.closest<HTMLElement>('[data-chat-workflow-link-select]')
     if (workflowLinkSelect && panel.contains(workflowLinkSelect)) {
       characterResourceViewState.selectedLinkId = workflowLinkSelect.dataset.chatWorkflowLinkSelect || ''
@@ -7033,6 +7050,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (resourceShortcut && (event.metaKey || event.ctrlKey) && event.key === 'v') {
       event.preventDefault()
       executeCharacterResourceCommand('paste-selection')
+      return
+    }
+    if (resourceShortcut && (event.key === 'Delete' || event.key === 'Backspace')) {
+      event.preventDefault()
+      executeCharacterResourceCommand('delete-selection')
       return
     }
     if (event.key === 'Escape' && conversationSettingsPanel?.classList.contains('visible')) {

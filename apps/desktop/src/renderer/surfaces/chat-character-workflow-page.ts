@@ -3152,7 +3152,7 @@ function renderLinkOverlay(graph: CharacterResourceGraph, options: CharacterWork
   const width = Math.max(980, ...graph.nodes.map((node) => node.position.x + node.size.width + 120))
   const height = Math.max(620, ...graph.nodes.map((node) => node.position.y + node.size.height + 120))
   return `
-    <svg class="chat-resource-link-overlay" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" aria-hidden="true">
+    <svg class="chat-resource-link-overlay" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
       <defs>
         <marker id="chat-resource-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
           <path d="M0,0 L8,4 L0,8 Z"></path>
@@ -3181,11 +3181,17 @@ function renderLinkPath(linkItem: CharacterResourceLink, graph: CharacterResourc
   const collapsedNodeLinkReroute = Boolean(source.collapsed || target.collapsed)
   const highlighted = options.viewState?.agentHighlights?.linkIds?.includes(linkItem.id) ?? false
   const actionLabel = options.viewState?.agentHighlights?.linkActions?.[linkItem.id] ?? ''
+  const centerX = (x1 + x2) / 2
+  const centerY = (y1 + y2) / 2
+  const disconnectLabel = ui(options, '断开连接', 'Disconnect link')
   return `
     <g class="chat-resource-link ${options.escapeHtml(linkItem.kind)} ${options.escapeHtml(linkItem.status)} ${flowing ? 'flowing' : ''} ${collapsedNodeLinkReroute ? 'collapsed-node-link reroute-link' : ''} ${highlighted ? 'agent-highlight-link' : ''} ${graph.selection.linkIds.includes(linkItem.id) ? 'selected' : ''}" data-chat-resource-link-id="${options.escapeHtml(linkItem.id)}" data-chat-workflow-link-select="${options.escapeHtml(linkItem.id)}" data-agent-op-label="${options.escapeHtml(actionLabel)}">
       <path d="${path}" marker-end="url(#chat-resource-arrow)"></path>
       <path class="hit-area" d="${path}"></path>
-      <text x="${(x1 + x2) / 2}" y="${(y1 + y2) / 2 - 7}">${options.escapeHtml(actionLabel || linkItem.label || LINK_KIND_LABELS[linkItem.kind])}</text>
+      <text x="${centerX}" y="${centerY - 7}">${options.escapeHtml(actionLabel || linkItem.label || LINK_KIND_LABELS[linkItem.kind])}</text>
+      <foreignObject class="chat-resource-link-disconnect-wrap" x="${centerX - 12}" y="${centerY + 2}" width="24" height="24">
+        <button xmlns="http://www.w3.org/1999/xhtml" class="chat-resource-link-disconnect" type="button" data-chat-workflow-link-disconnect="${options.escapeHtml(linkItem.id)}" aria-label="${options.escapeHtml(disconnectLabel)}" title="${options.escapeHtml(disconnectLabel)}">×</button>
+      </foreignObject>
     </g>
   `
 }
