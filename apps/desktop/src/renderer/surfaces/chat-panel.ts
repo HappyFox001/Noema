@@ -76,7 +76,7 @@ type ChatResizeEdge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
 
 type PendingChatAttachment = ChatMessageAttachment
 type CharacterWorkflowPageModule = typeof import('./chat-character-workflow-page')
-type CharacterWorkflowTemplateId = 'character-card' | 'world-card'
+type CharacterWorkflowTemplateId = 'character-card'
 
 const CHARACTER_WORKFLOW_LIBRARY_MIN_WIDTH = 148
 const CHARACTER_WORKFLOW_LIBRARY_DEFAULT_WIDTH = 176
@@ -2506,10 +2506,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   function renderCharacterWorkflowTemplateMenu(zh: boolean): string {
     return `
       <div class="chat-workflow-template-menu">
-        <button type="button" data-chat-workflow-library-action="create" data-chat-workflow-template-id="blank">
-          <strong>${options.escapeHtml(zh ? '空白草稿' : 'Blank draft')}</strong>
-          <span>${options.escapeHtml(zh ? '只保留基础流图' : 'Base graph only')}</span>
-        </button>
         ${getCharacterWorkflowTemplates(zh).map((template) => `
           <button type="button" data-chat-workflow-library-action="create-template" data-chat-workflow-template-id="${options.escapeHtml(template.id)}">
             <strong>${options.escapeHtml(template.name)}</strong>
@@ -2552,68 +2548,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             'generation-strategy': { mode: 'branch-and-refine', branchCount: 3, priorityAssets: ['role-card', 'opening', 'opening-layout', 'image-pack'] },
             'quality-gate': { minimumScore: 0.84 },
           },
-        },
-      },
-      {
-        id: 'world-card',
-        name: zh ? '世界卡' : 'World card',
-        caption: zh ? '主线、多个 NPC、场景资源' : 'Story arc, NPCs, scenes',
-        category: 'world',
-        label: zh ? '世界' : 'World',
-        spec: {
-          name: 'World Card Draft',
-          goalPrompt: '',
-          configOverrides: {
-            'source-material': { sourceKind: 'notes' },
-            'world-card-target': { worldSections: ['setting', 'rules', 'factions', 'relationship-network', 'plot-hooks'] },
-            'npc-pack-target': { npcCount: 4 },
-            'primary-npc-target': {},
-            'plot-arc-target': { arcShape: 'slow-burn', milestoneCount: 8 },
-            'scene-card-target': { sceneCount: 4 },
-            'continuity-control': { progressionPacing: 'slow-burn', forbidResettingFacts: true },
-            'relationship-control': { relationshipMode: 'ambiguous-ally' },
-            'avatar-image-target': { imageRole: 'avatar', assetPurpose: 'Final avatar.jpg for the role card: one polished single-character role-card portrait with one clear face, visible body silhouette, strong appeal, and stable identity cues.' },
-            'avatar-image-control': { targetImageCount: 1, imageStyleDomain: 'auto', shotType: 'knee-up', consistencyMode: 'same-character', seedMode: 'lock-character' },
-            'overview-sheet-image-target': { imageRole: 'character-overview-sheet', assetPurpose: 'Generate one large production character overview sheet using linked avatar reference image inputs, then route that stable identity to world and NPC reference images through graph links. Required contents: full-body front view, full-body back view, side or three-quarter view, one main portrait or half-body crop, 3 expression callouts, eye close-up, nose and mouth close-up, hairstyle detail, hand pose detail, leg shape close-up, hip and rear silhouette close-up, feet or shoes detail, outfit fabric, accessory, hemline, and silhouette details. Preserve avatar outfit construction unless explicitly requesting outfit variants. No written labels.' },
-            'overview-sheet-image-control': { targetImageCount: 1, imageStyleDomain: 'auto', shotType: 'full-body', aspectRatio: '16:9', consistencyMode: 'same-character', seedMode: 'lock-character' },
-            'world-reference-image-target': { imageRole: 'character-base-image', assetPurpose: 'Additional free-form base character samples that place the character in world-facing situations while preserving avatar identity.' },
-            'world-reference-image-control': { targetImageCount: 2, imageStyleDomain: 'auto', shotType: 'auto', aspectRatio: '3:4', consistencyMode: 'same-character', seedMode: 'vary-slightly' },
-            'generation-strategy': { mode: 'explore-then-converge', branchCount: 4, priorityAssets: ['world-context', 'npc-pack', 'scene-context', 'image-pack'] },
-            'quality-gate': { minimumScore: 0.86 },
-          },
-          addedNodes: [
-            { id: 'world-card-target', type: 'world-card-target', title: 'World Card Target', x: 730, y: 640 },
-            { id: 'npc-pack-target', type: 'npc-pack-target', title: 'NPC Pack Target', x: 1060, y: 640 },
-            { id: 'primary-npc-target', type: 'npc-target', title: 'Primary NPC Target', x: 1390, y: 640 },
-            { id: 'plot-arc-target', type: 'plot-arc-target', title: 'Plot Arc Target', x: 1390, y: 860 },
-            { id: 'scene-card-target', type: 'scene-card-target', title: 'Scene Card Target', x: 1720, y: 760 },
-            { id: 'continuity-control', type: 'continuity-control', title: 'Continuity Control', x: 1060, y: 860 },
-            { id: 'relationship-control', type: 'relationship-control', title: 'Relationship Control', x: 730, y: 860 },
-            { id: 'world-reference-image-target', type: 'image-target', title: 'Reference Image Target', x: 730, y: 1080 },
-            { id: 'world-reference-image-control', type: 'image-generation-control', title: 'Reference Image Control', x: 1060, y: 1080 },
-          ],
-          customLinks: [
-            { id: 'world-goal', sourceNodeId: 'generation-goal', sourceSlotId: 'goal', targetNodeId: 'world-card-target', targetSlotId: 'goal', kind: 'guides' },
-            { id: 'world-source', sourceNodeId: 'source-material', sourceSlotId: 'source', targetNodeId: 'world-card-target', targetSlotId: 'source', kind: 'grounds' },
-            { id: 'world-style', sourceNodeId: 'style-pressure', sourceSlotId: 'style', targetNodeId: 'world-card-target', targetSlotId: 'style', kind: 'weights' },
-            { id: 'world-constraint', sourceNodeId: 'hard-constraints', sourceSlotId: 'constraint', targetNodeId: 'world-card-target', targetSlotId: 'constraint', kind: 'constrains' },
-            { id: 'world-npc-pack', sourceNodeId: 'world-card-target', sourceSlotId: 'world', targetNodeId: 'npc-pack-target', targetSlotId: 'world', kind: 'guides' },
-            { id: 'relationship-npc-pack', sourceNodeId: 'relationship-control', sourceSlotId: 'relationship', targetNodeId: 'npc-pack-target', targetSlotId: 'relationship', kind: 'guides' },
-            { id: 'npc-pack-primary', sourceNodeId: 'npc-pack-target', sourceSlotId: 'npcPack', targetNodeId: 'primary-npc-target', targetSlotId: 'npcPack', kind: 'guides' },
-            { id: 'relationship-primary-npc', sourceNodeId: 'relationship-control', sourceSlotId: 'relationship', targetNodeId: 'primary-npc-target', targetSlotId: 'relationship', kind: 'guides' },
-            { id: 'world-plot', sourceNodeId: 'world-card-target', sourceSlotId: 'world', targetNodeId: 'plot-arc-target', targetSlotId: 'world', kind: 'guides' },
-            { id: 'npc-pack-plot', sourceNodeId: 'npc-pack-target', sourceSlotId: 'npcPack', targetNodeId: 'plot-arc-target', targetSlotId: 'npcPack', kind: 'guides' },
-            { id: 'continuity-plot', sourceNodeId: 'continuity-control', sourceSlotId: 'continuity', targetNodeId: 'plot-arc-target', targetSlotId: 'continuity', kind: 'guides' },
-            { id: 'world-scene', sourceNodeId: 'world-card-target', sourceSlotId: 'world', targetNodeId: 'scene-card-target', targetSlotId: 'world', kind: 'guides' },
-            { id: 'plot-scene', sourceNodeId: 'plot-arc-target', sourceSlotId: 'plot', targetNodeId: 'scene-card-target', targetSlotId: 'plot', kind: 'guides' },
-            { id: 'world-reference-card', sourceNodeId: 'character-card-target', sourceSlotId: 'target', targetNodeId: 'world-reference-image-target', targetSlotId: 'card', kind: 'guides' },
-            { id: 'world-reference-identity', sourceNodeId: 'overview-sheet-image-target', sourceSlotId: 'imageAsset', targetNodeId: 'world-reference-image-target', targetSlotId: 'referenceImage', kind: 'provides' },
-            { id: 'world-reference-tool', sourceNodeId: 'image-capability', sourceSlotId: 'image', targetNodeId: 'world-reference-image-target', targetSlotId: 'image', kind: 'enables' },
-            { id: 'world-reference-control-target', sourceNodeId: 'world-reference-image-target', sourceSlotId: 'imageAsset', targetNodeId: 'world-reference-image-control', targetSlotId: 'imageTarget', kind: 'guides' },
-            { id: 'world-reference-control', sourceNodeId: 'world-reference-image-control', sourceSlotId: 'imageControl', targetNodeId: 'world-reference-image-target', targetSlotId: 'imageControl', kind: 'guides' },
-            { id: 'world-reference-style', sourceNodeId: 'style-pressure', sourceSlotId: 'style', targetNodeId: 'world-reference-image-target', targetSlotId: 'style', kind: 'weights' },
-            { id: 'world-reference-constraint', sourceNodeId: 'hard-constraints', sourceSlotId: 'constraint', targetNodeId: 'world-reference-image-target', targetSlotId: 'constraint', kind: 'constrains' },
-          ],
         },
       },
     ]
