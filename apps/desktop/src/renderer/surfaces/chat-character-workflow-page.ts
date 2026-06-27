@@ -537,17 +537,10 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
   ], [
     slot('imageAsset', 'Image Asset', 'asset-target', 'Image target resource.'),
   ], [
-    param('imageRole', 'Image Role', 'select', 'hero-cover', undefined, undefined, undefined, [
+    param('imageRole', 'Image Role', 'select', 'character-base-image', undefined, undefined, undefined, [
       { label: 'Avatar', value: 'avatar' },
       { label: 'Character Overview Sheet', value: 'character-overview-sheet' },
-      { label: 'Hero Cover', value: 'hero-cover' },
-      { label: 'Full Body', value: 'full-body' },
-      { label: 'Opening Moment', value: 'opening-moment' },
-      { label: 'Story Moment', value: 'story-moment' },
-      { label: 'Expression', value: 'expression' },
-      { label: 'Outfit Detail', value: 'outfit-detail' },
-      { label: 'Relationship Moment', value: 'relationship-moment' },
-      { label: 'World Context', value: 'world-context' },
+      { label: 'Base Character Image', value: 'character-base-image' },
     ]),
     param('assetPurpose', 'Asset Purpose', 'textarea', ''),
   ], 'image'),

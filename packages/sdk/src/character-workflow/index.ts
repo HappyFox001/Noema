@@ -685,17 +685,10 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     },
     outputs: { imageAsset: port('imageAsset', 'Image Asset', 'asset-target') },
     parameters: [
-      parameter('imageRole', 'Image Role', 'select', 'hero-cover', undefined, [
+      parameter('imageRole', 'Image Role', 'select', 'character-base-image', undefined, [
         option('Avatar', 'avatar'),
         option('Character Overview Sheet', 'character-overview-sheet'),
-        option('Hero Cover', 'hero-cover'),
-        option('Full Body', 'full-body'),
-        option('Opening Moment', 'opening-moment'),
-        option('Story Moment', 'story-moment'),
-        option('Expression', 'expression'),
-        option('Outfit Detail', 'outfit-detail'),
-        option('Relationship Moment', 'relationship-moment'),
-        option('World Context', 'world-context'),
+        option('Base Character Image', 'character-base-image'),
       ]),
       parameter('assetPurpose', 'Asset Purpose', 'textarea', ''),
     ],

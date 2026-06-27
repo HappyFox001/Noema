@@ -87,13 +87,7 @@ export function getDirectedImageRolePriority(imageRole: string): number {
   const priorities: Record<string, number> = {
     avatar: 0,
     'character-overview-sheet': 1,
-    'hero-cover': 2,
-    'opening-moment': 3,
-    'story-moment': 4,
-    'relationship-moment': 5,
-    expression: 6,
-    'outfit-detail': 7,
-    'world-context': 8,
+    'character-base-image': 2,
   }
   return priorities[imageRole] ?? 20
 }
@@ -102,13 +96,7 @@ function automaticRolePrompt(role: string, profile: CharacterImageProfile): stri
   const prompts: Record<string, string> = {
     avatar: 'canonical avatar master portrait, single subject, one clear unobstructed face, upper-body or half-body framing, looking at viewer, calm natural expression, simple clean background, identity reference image for later assets',
     'character-overview-sheet': 'same character as avatar reference, complete production character overview sheet, full-body front view, full-body back view, side or three-quarter view, main portrait crop, expression callouts, eye close-up, nose and mouth close-up, hairstyle detail, hands, legs, hips and rear silhouette, feet or shoes, outfit material and accessory close-ups, no text labels',
-    'hero-cover': 'polished role-card cover image, character dominant in frame, beautiful readable face, strong mood, cinematic background',
-    'opening-moment': 'opening scene image, character visibly present, expressive pose, readable setting, roleplay hook',
-    'story-moment': 'character-first story moment, expressive pose, believable setting, clear mood',
-    'relationship-moment': 'intimate relationship moment, readable gaze and posture, emotional tension, character face clear',
-    expression: 'single facial expression reference, one face, clean close portrait',
-    'outfit-detail': 'character outfit and accessory detail image, same face identity, readable fabric and signature motifs',
-    'world-context': 'world-context visual with the character visible or clear character-linked motifs',
+    'character-base-image': 'same character as supplied avatar reference image, free-form base character sample, reusable non-avatar identity reference, different meaningful scene, action, mood, outfit usage, or roleplay situation',
   }
   return prompts[role] ?? `coherent character image for ${profile.name || 'the character'}, same identity`
 }
@@ -130,6 +118,9 @@ function rolePromptForImage(
   if (role === 'character-overview-sheet') {
     return overviewSheetRolePrompt(domain, slot, indexed)
   }
+  if (role === 'character-base-image') {
+    return baseCharacterImageRolePrompt(slot, indexed)
+  }
   return compactJoin(['same character as supplied reference image', automaticRolePrompt(role, profile), shot, slot, indexed])
 }
 
@@ -145,6 +136,21 @@ function avatarRolePromptForImage(): string {
     'face, hair, default outfit, and body silhouette readable',
     'simple uncluttered background',
     'no model sheet, no collage, no split screen, no alternate forms',
+  ])
+}
+
+function baseCharacterImageRolePrompt(
+  slot: string,
+  indexed: string
+): string {
+  return compactJoin([
+    'same character as supplied avatar reference image, preserve face, hair, body proportions, signature motifs, and recognizable identity',
+    'free-form base character sample image, not avatar.jpg, not a fixed model sheet, not a collage, not a poster layout',
+    'each generated image may show a different meaningful roleplay sample: scene, action, mood, pose, outfit usage, prop interaction, or story situation',
+    'keep the character clearly visible and reusable as a non-avatar reference sample',
+    'identity must come from the linked avatar reference; use the target prompt only to vary composition and meaning',
+    slot,
+    indexed,
   ])
 }
 
@@ -199,6 +205,18 @@ function stylePromptForImage(
       control?.stylePrompt,
     ])
   }
+  if (role === 'character-base-image') {
+    const baseImageDomainPrompts: Record<CharacterImageStyleDomain, string> = {
+      anime: 'anime style character sample art, consistent face from avatar reference, expressive pose, readable scene context, refined outfit detail, high quality anime art',
+      photoreal: 'realistic character sample photography, consistent face from avatar reference, natural pose, readable setting, refined wardrobe styling, high quality photo',
+      illustration: 'polished character sample illustration, consistent identity from avatar reference, expressive pose, readable scene context, refined costume and prop detail',
+      stylized: 'stylized character sample art, consistent identity from avatar reference, clear silhouette, expressive pose, readable scene context, polished finish',
+    }
+    return compactJoin([
+      baseImageDomainPrompts[domain],
+      control?.stylePrompt,
+    ])
+  }
   const domainPrompts: Record<CharacterImageStyleDomain, string> = {
     anime: 'anime style illustration, mature visual novel character art, clean linework, expressive detailed eyes, confident alluring expression, elegant body silhouette, pixiv style, soft lighting, high quality anime art',
     photoreal: 'realistic glamour photography, mature confident presence, natural skin texture, detailed eyes, refined makeup, elegant body silhouette, soft natural light, shallow depth of field, high quality photo',
@@ -220,8 +238,8 @@ function qualityPromptForImage(role: string, domain: CharacterImageStyleDomain):
   if (role === 'character-overview-sheet') {
     return 'consistent same-character face across every view, complete uncropped full bodies, readable proportions, clean spacing, readable small detail callouts, consistent costume construction, high-resolution production reference art'
   }
-  if (role === 'hero-cover') {
-    return 'cinematic composition, beautiful readable face, strong silhouette, premium role-card cover quality'
+  if (role === 'character-base-image') {
+    return 'same-character identity from avatar reference, clear readable face, meaningful pose and scene, reusable non-avatar reference quality, high-resolution clean finish'
   }
   return 'clear face, refined styling, clean composition, high quality, high resolution'
 }
