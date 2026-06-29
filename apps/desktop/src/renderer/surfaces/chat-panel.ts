@@ -306,8 +306,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let characterWorkflowBuilderPrompt = ''
   let characterWorkflowAssistantPrompt = ''
   let characterWorkflowBuilderStatus = ''
-  let characterWorkflowAssistantStatusExpanded = true
+  let characterWorkflowAssistantStatusExpanded = false
   let characterWorkflowBuilderBusy = false
+  let characterWorkflowAssistantRunToken = 0
+  let characterWorkflowAssistantActiveRunToken = 0
+  const characterWorkflowAssistantInterruptedRuns = new Set<number>()
   let characterWorkflowTemplateMenuOpen = false
   let characterWorkflowRunState: CharacterResourceRunState | null = null
   let characterWorkflowExecutingProjectId = ''
@@ -2499,7 +2502,27 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     characterWorkflowRoot.innerHTML = renderCharacterWorkflowLibraryShell(workflowMarkup, activeProject)
     if (perfId) markCharacterWorkflowPerf(perfId, 'dom commit complete')
     workflowPage.initializeCharacterResourceWorkbench(characterWorkflowRoot)
+    syncWorkflowAssistantStatusScroll()
     if (perfId) finishCharacterWorkflowPerf(perfId, 'workbench init complete')
+  }
+
+  function syncWorkflowAssistantStatusScroll(): void {
+    if (!characterWorkflowAssistantStatusExpanded || !characterWorkflowRoot) {
+      return
+    }
+    const statusBody = characterWorkflowRoot.querySelector<HTMLElement>('[data-chat-workflow-agent-records]')
+    const latestRecord = statusBody?.querySelector<HTMLElement>('.chat-workflow-canvas-assistant-record.latest')
+    if (!statusBody || !latestRecord) {
+      return
+    }
+    window.requestAnimationFrame(() => {
+      if (!statusBody.isConnected || !latestRecord.isConnected) {
+        return
+      }
+      const latestHeight = Math.ceil(latestRecord.getBoundingClientRect().height)
+      statusBody.style.setProperty('--workflow-agent-latest-height', `${latestHeight}px`)
+      statusBody.scrollTop = statusBody.scrollHeight
+    })
   }
 
   function renderCharacterWorkflowProjectLoadingState(project: CharacterWorkflowProjectRecord): string {
@@ -2804,14 +2827,16 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       ? (zh ? '收起记录' : 'Collapse records')
       : (zh ? '展开记录' : 'Expand records')
     const records = getWorkflowAssistantStatusRecords()
+    const latestRecord = records[0]
+    const previousRecords = characterWorkflowAssistantStatusExpanded ? records.slice(1, 8).reverse() : []
     const project = characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)
     const session = normalizeCharacterWorkflowGoalSession(project?.goalSession)
     const pendingDecision = session?.pendingDecision
     const hasRecords = records.length > 0
     const canContinue = Boolean(session?.nextStep && !pendingDecision && session.status !== 'paused' && session.status !== 'blocked' && session.status !== 'complete' && !characterWorkflowBuilderBusy)
-    const canPause = Boolean(session && session.status === 'active' && !characterWorkflowBuilderBusy)
+    const canPause = Boolean(session && session.status === 'active')
     const canResume = Boolean(session && session.status === 'paused' && !characterWorkflowBuilderBusy)
-    const canStop = Boolean(session && session.status !== 'complete' && !characterWorkflowBuilderBusy)
+    const canStop = Boolean(session && session.status !== 'complete')
     return `
       <form class="chat-workflow-canvas-assistant ${characterWorkflowBuilderBusy ? 'is-busy' : ''}" data-chat-workflow-assistant-form>
         ${renderChatRuntimeModelPickerMarkup('workflow-assistant')}
@@ -2839,16 +2864,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
                 </button>
               </div>
             </div>
-            <div class="chat-workflow-canvas-assistant-status-body">
-              ${records.map((record, index) => `
-                <article class="chat-workflow-canvas-assistant-record ${index === 0 ? 'latest' : ''}">
-                  <header>
-                    <strong>${options.escapeHtml(record.title)}</strong>
-                    <span>${options.escapeHtml(record.meta)}</span>
-                  </header>
-                  <p>${options.escapeHtml(record.body)}</p>
-                </article>
-              `).join('')}
+            <div class="chat-workflow-canvas-assistant-status-body" data-chat-workflow-agent-records>
+              ${latestRecord ? `
+                ${previousRecords.map((record, index) => renderWorkflowAssistantStatusRecord(record, 'previous', index + 1)).join('')}
+                ${renderWorkflowAssistantStatusRecord(latestRecord, 'latest', 0)}
+              ` : ''}
             </div>
           </section>
         ` : ''}
@@ -2885,6 +2905,22 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           </button>
         </div>
       </form>
+    `
+  }
+
+  function renderWorkflowAssistantStatusRecord(
+    record: { title: string; meta: string; body: string },
+    role: 'latest' | 'previous',
+    index: number
+  ): string {
+    return `
+      <article class="chat-workflow-canvas-assistant-record ${role}" style="--workflow-agent-record-index: ${index}">
+        <header>
+          <strong>${options.escapeHtml(record.title)}</strong>
+          <span>${options.escapeHtml(record.meta)}</span>
+        </header>
+        <p>${options.escapeHtml(record.body)}</p>
+      </article>
     `
   }
 
@@ -4029,11 +4065,27 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     return parts.join('\n\n')
   }
 
+  function interruptActiveWorkflowAssistantRun(): void {
+    if (!characterWorkflowBuilderBusy || !characterWorkflowAssistantActiveRunToken) {
+      return
+    }
+    characterWorkflowAssistantInterruptedRuns.add(characterWorkflowAssistantActiveRunToken)
+    characterWorkflowAssistantActiveRunToken = 0
+    characterWorkflowBuilderBusy = false
+  }
+
+  function isWorkflowAssistantRunInterrupted(runToken: number): boolean {
+    return characterWorkflowAssistantInterruptedRuns.has(runToken)
+  }
+
   function setActiveWorkflowGoalSessionStatus(status: CharacterWorkflowGoalSession['status']): void {
     const project = characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)
     const session = normalizeCharacterWorkflowGoalSession(project?.goalSession)
     if (!project || !session) {
       return
+    }
+    if (status === 'paused' || status === 'complete') {
+      interruptActiveWorkflowAssistantRun()
     }
     project.goalSession = {
       ...session,
@@ -4165,6 +4217,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
     characterWorkflowBuilderBusy = true
+    const runToken = ++characterWorkflowAssistantRunToken
+    characterWorkflowAssistantActiveRunToken = runToken
+    characterWorkflowAssistantInterruptedRuns.delete(runToken)
     characterWorkflowBuilderStatus = options.getLanguage() === 'zh-CN' ? 'Agent 正在调整当前资源图...' : 'Agent editing current resource graph...'
     renderCharacterWorkflow()
     try {
@@ -4194,6 +4249,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       const response = typeof window.electronAPI.streamBuildCharacterWorkflow === 'function'
         ? await window.electronAPI.streamBuildCharacterWorkflow(buildRequest, {
             onEvent: (event) => {
+              if (isWorkflowAssistantRunInterrupted(runToken)) {
+                return
+              }
               if (applyWorkflowAgentStepEvent(userPrompt, event)) {
                 streamedChanged = true
               }
@@ -4203,6 +4261,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             },
           })
         : await window.electronAPI.buildCharacterWorkflow(buildRequest)
+      if (isWorkflowAssistantRunInterrupted(runToken)) {
+        return
+      }
       if (!response.success) {
         throw new Error(response.error || 'Workflow agent failed')
       }
@@ -4221,11 +4282,20 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         showToast(options.getLanguage() === 'zh-CN' ? '已应用资源图修改' : 'Applied graph edits')
       }
     } catch (error: any) {
+      if (isWorkflowAssistantRunInterrupted(runToken)) {
+        return
+      }
       const message = error?.message || String(error)
       characterWorkflowBuilderStatus = message
       showToast(message)
     } finally {
-      characterWorkflowBuilderBusy = false
+      if (characterWorkflowAssistantActiveRunToken === runToken) {
+        characterWorkflowAssistantActiveRunToken = 0
+        characterWorkflowBuilderBusy = false
+      }
+      if (isWorkflowAssistantRunInterrupted(runToken)) {
+        characterWorkflowAssistantInterruptedRuns.delete(runToken)
+      }
       renderCharacterWorkflow()
     }
   }
@@ -6490,6 +6560,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   function updateCharacterResourceViewportZoom(event: WheelEvent): void {
+    if (scrollWorkflowAssistantStatusRecords(event)) {
+      return
+    }
     const viewport = (event.target as HTMLElement | null)?.closest<HTMLElement>('.chat-workflow-canvas-viewport.active')
     if (!viewport || !panel.contains(viewport)) {
       return
@@ -6499,6 +6572,22 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     characterResourceViewState.zoom = Math.round(nextZoom * 100) / 100
     updateCharacterWorkflowViewportDom()
     saveCharacterResourceViewStateSnapshot()
+  }
+
+  function scrollWorkflowAssistantStatusRecords(event: WheelEvent): boolean {
+    const statusBody = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-chat-workflow-agent-records]')
+    if (!statusBody || !panel.contains(statusBody) || !characterWorkflowAssistantStatusExpanded) {
+      return false
+    }
+    event.preventDefault()
+    event.stopPropagation()
+    const deltaMultiplier = event.deltaMode === 1
+      ? 16
+      : event.deltaMode === 2
+        ? statusBody.clientHeight
+        : 1
+    statusBody.scrollTop += event.deltaY * deltaMultiplier
+    return true
   }
 
   function beginCharacterResourceMinimapPointer(event: PointerEvent): void {
