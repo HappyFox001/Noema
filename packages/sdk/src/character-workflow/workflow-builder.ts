@@ -221,7 +221,7 @@ async function createCharacterWorkflowFromPrompt(
   const response = await sendChatTurnWithConfiguredModel(request.modelConfig, {
     input: request.prompt,
     language: request.language,
-    options: { temperature: 0.32 },
+    options: { temperature: 0.32, max_tokens: 5000 },
     messages: [{
       role: 'system',
       content: createWorkflowBuilderSystemPrompt(request.language),
@@ -499,7 +499,7 @@ async function executeCharacterWorkflowEditorStep(
       graph,
     }),
     language: request.language,
-    options: { temperature: 0.24 },
+    options: { temperature: 0.24, max_tokens: 5000 },
     messages: [{
       role: 'system',
       content: createWorkflowEditorSystemPrompt(request.language),
@@ -1243,8 +1243,13 @@ async function ensureUsefulWorkflowBuilderResponse(options: {
   let content = options.text
   let parsed = parseJsonObject(content)
   if (!Object.keys(parsed).length) {
-    content = await repairWorkflowBuilderJson(options)
-    parsed = parseJsonObject(content)
+    for (const reason of ['invalid-json', 'regenerate-minimal'] as const) {
+      content = await repairWorkflowBuilderJson({ ...options, reason })
+      parsed = parseJsonObject(content)
+      if (Object.keys(parsed).length) {
+        break
+      }
+    }
   }
   if (!Object.keys(parsed).length) {
     throw new Error(`${options.label} did not return valid editable JSON. Model response: ${options.text.trim().slice(0, 500)}`)
@@ -1253,7 +1258,17 @@ async function ensureUsefulWorkflowBuilderResponse(options: {
     throw new Error(stringValue(parsed, 'summary') || `${options.label} reported that the request is blocked.`)
   }
   if (options.requireEditableOperations && stringValue(parsed, 'status') !== 'needs-user' && !hasWorkflowEditorEdits(parsed)) {
-    throw new Error(`${options.label} returned valid JSON but no editable graph operations.`)
+    content = await repairWorkflowBuilderJson({ ...options, text: content, reason: 'missing-edits' })
+    parsed = parseJsonObject(content)
+    if (!Object.keys(parsed).length) {
+      throw new Error(`${options.label} did not return valid editable JSON after repair. Model response: ${options.text.trim().slice(0, 500)}`)
+    }
+    if (stringValue(parsed, 'status') === 'blocked') {
+      throw new Error(stringValue(parsed, 'summary') || `${options.label} reported that the request is blocked.`)
+    }
+    if (stringValue(parsed, 'status') !== 'needs-user' && !hasWorkflowEditorEdits(parsed)) {
+      throw new Error(`${options.label} returned valid JSON but no editable graph operations.`)
+    }
   }
   return content
 }
@@ -1265,29 +1280,87 @@ async function repairWorkflowBuilderJson(options: {
   language: CharacterWorkflowLanguage
   systemPrompt: string
   sourceInput: string
+  requireEditableOperations?: boolean
+  reason?: 'invalid-json' | 'regenerate-minimal' | 'missing-edits'
 }): Promise<string> {
+  const reason = options.reason ?? 'invalid-json'
   const response = await sendChatTurnWithConfiguredModel(options.request.modelConfig, {
     input: [
-      'The previous response was not valid JSON and could not be parsed.',
-      'Rewrite it as one complete valid JSON object matching the required schema.',
-      'Preserve the intended edits. Do not add markdown, comments, explanations, or code fences.',
+      reason === 'missing-edits'
+        ? 'The previous response was valid JSON but did not contain editable graph changes.'
+        : reason === 'regenerate-minimal'
+          ? 'The previous response was truncated or unrecoverable. Generate a fresh minimal workflow-editor JSON patch from the original input.'
+          : 'The previous response was not complete valid JSON and could not be parsed.',
+      'Return exactly one complete JSON object. No markdown, comments, explanations, or code fences.',
+      options.requireEditableOperations
+        ? 'If status is "applied", include nodeConfigUpdates or operations. Use status "needs-user" only when a concrete decision is required.'
+        : 'Match the required schema.',
+      'Keep the response compact: short summary, short plan, at most 3 completedSteps, concise currentStep/nextStep.',
       '',
       '<original_input>',
-      options.sourceInput,
+      truncateWorkflowRepairText(options.sourceInput, 12000),
       '</original_input>',
       '',
       '<invalid_response>',
-      options.text,
+      truncateWorkflowRepairText(options.text, 6000),
       '</invalid_response>',
     ].join('\n'),
     language: options.language,
-    options: { temperature: 0 },
+    options: { temperature: 0, max_tokens: 5000 },
     messages: [{
       role: 'system',
-      content: options.systemPrompt,
+      content: options.requireEditableOperations
+        ? createWorkflowJsonRepairSystemPrompt(options.language)
+        : options.systemPrompt,
     }],
   })
   return response.content
+}
+
+function createWorkflowJsonRepairSystemPrompt(language: CharacterWorkflowLanguage): string {
+  const localeRule = language === 'zh-CN'
+    ? 'Write Chinese user-facing summary, plan, currentStep, nextStep, and decision text. Keep enum values and node ids in English.'
+    : 'Write English user-facing text. Keep enum values and node ids in English.'
+  return [
+    'You repair JSON for a workflow graph editor.',
+    localeRule,
+    'Return only valid JSON. No markdown.',
+    'Schema:',
+    '{',
+    '  "summary": string,',
+    '  "plan": string[],',
+    '  "completedSteps"?: string[],',
+    '  "currentStep"?: string,',
+    '  "nextStep"?: string,',
+    '  "status": "applied" | "needs-user" | "blocked",',
+    '  "decision"?: { "id": string, "title": string, "description"?: string, "options": [{ "id": string, "label": string, "detail"?: string, "patchHint"?: string }], "defaultOptionId"?: string, "allowSkip"?: boolean },',
+    '  "nodeConfigUpdates"?: { [nodeId: string]: object },',
+    '  "operations": [',
+    '    { "type": "add-node", "nodeType": string, "nodeId"?: string, "title"?: string, "x"?: number, "y"?: number, "config"?: object },',
+    '    { "type": "update-node-config", "nodeId": string, "config": object },',
+    '    { "type": "move-node", "nodeId": string, "x": number, "y": number },',
+    '    { "type": "resize-node", "nodeId": string, "width": number, "height": number },',
+    '    { "type": "select-node", "nodeId": string },',
+    '    { "type": "set-node-collapsed", "nodeId": string, "collapsed": boolean },',
+    '    { "type": "delete-node", "nodeId": string },',
+    '    { "type": "add-link", "sourceNodeId": string, "sourceSlotId": string, "targetNodeId": string, "targetSlotId": string, "kind"?: string },',
+    '    { "type": "delete-link", "linkId"?: string, "sourceNodeId"?: string, "sourceSlotId"?: string, "targetNodeId"?: string, "targetSlotId"?: string }',
+    '  ]',
+    '}',
+  ].join('\n')
+}
+
+function truncateWorkflowRepairText(value: string, maxLength: number): string {
+  if (value.length <= maxLength) {
+    return value
+  }
+  const headLength = Math.floor(maxLength * 0.72)
+  const tailLength = Math.max(0, maxLength - headLength - 80)
+  return [
+    value.slice(0, headLength),
+    `\n...<truncated ${value.length - headLength - tailLength} chars>...\n`,
+    tailLength ? value.slice(-tailLength) : '',
+  ].join('')
 }
 
 function hasWorkflowEditorEdits(parsed: Record<string, unknown>): boolean {

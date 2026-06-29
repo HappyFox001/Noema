@@ -3372,10 +3372,21 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
   }
 
+  function clearCharacterWorkflowTransientStatus(options: { clearBuilderPrompt?: boolean; clearAssistantPrompt?: boolean } = {}): void {
+    characterWorkflowBuilderStatus = ''
+    if (options.clearBuilderPrompt) {
+      characterWorkflowBuilderPrompt = ''
+    }
+    if (options.clearAssistantPrompt ?? true) {
+      characterWorkflowAssistantPrompt = ''
+    }
+  }
+
   async function createCharacterWorkflowDraft(): Promise<void> {
     await ensureChatResourcesHydrated()
     saveActiveWorkflowProjectSnapshot(false, true)
     characterWorkflowTemplateMenuOpen = false
+    clearCharacterWorkflowTransientStatus({ clearAssistantPrompt: true })
     createCharacterWorkflowDraftFromSpec({})
   }
 
@@ -3388,6 +3399,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     saveActiveWorkflowProjectSnapshot()
     characterWorkflowTemplateMenuOpen = false
+    clearCharacterWorkflowTransientStatus({ clearAssistantPrompt: true })
     createCharacterWorkflowDraftFromSpec(template.spec)
   }
 
@@ -3499,6 +3511,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     characterWorkflowProjects = [project, ...characterWorkflowProjects]
     activeCharacterWorkflowProjectId = project.id
     characterWorkflowActiveTabId = 'workflow'
+    clearCharacterWorkflowTransientStatus({ clearBuilderPrompt: false, clearAssistantPrompt: true })
     applyCharacterWorkflowProjectState(project)
     persistCharacterWorkflowProject(project)
     renderCharacterWorkflow()
@@ -4372,6 +4385,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       finishCharacterWorkflowPerf(perfId, 'project missing')
       return
     }
+    clearCharacterWorkflowTransientStatus({ clearAssistantPrompt: true })
     activeCharacterWorkflowProjectId = projectId
     characterWorkflowContentLoaded = true
     characterWorkflowActiveTabId = 'workflow'
@@ -4412,6 +4426,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const perfId = startCharacterWorkflowPerf(`open run ${projectId}:${runId}`)
     const liveRunState = getExecutingWorkflowRunState(projectId, runId)
     if (liveRunState) {
+      clearCharacterWorkflowTransientStatus({ clearAssistantPrompt: true })
       activeCharacterWorkflowProjectId = projectId
       characterWorkflowContentLoaded = true
       characterWorkflowActiveTabId = 'run-draft'
@@ -4424,6 +4439,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     saveActiveWorkflowProjectSnapshot()
     markCharacterWorkflowPerf(perfId, 'save current snapshot scheduled')
     activeCharacterWorkflowProjectId = projectId
+    clearCharacterWorkflowTransientStatus({ clearAssistantPrompt: true })
     characterWorkflowContentLoaded = true
     characterWorkflowActiveTabId = 'run-draft'
     const cachedProject = characterWorkflowProjects.find((item) => item.id === projectId)
@@ -4587,6 +4603,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     })
     if (activeCharacterWorkflowProjectId === projectId) {
       activeCharacterWorkflowProjectId = ''
+      clearCharacterWorkflowTransientStatus({ clearAssistantPrompt: true })
       replaceRecord(characterWorkflowConfigOverrides, {})
       replaceRecord(characterWorkflowPositionOverrides, {})
       applyWorkflowProjectViewState(undefined)
@@ -4677,6 +4694,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const persisted = conversation?.characterWorkflow
     if (!persisted || typeof persisted !== 'object' || Array.isArray(persisted)) {
       activeCharacterWorkflowProjectId = ''
+      clearCharacterWorkflowTransientStatus({ clearAssistantPrompt: true })
       characterWorkflowRunState = null
       characterWorkflowRunCount = 0
       characterWorkflowActiveTabId = 'workflow'
@@ -4699,6 +4717,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (activeProject) {
       applyCharacterWorkflowProjectState(activeProject, { includeRunState: true })
     } else {
+      clearCharacterWorkflowTransientStatus({ clearAssistantPrompt: true })
       replaceRecord(characterWorkflowConfigOverrides, {})
       replaceRecord(characterWorkflowPositionOverrides, {})
       applyWorkflowProjectViewState(undefined)
@@ -6022,6 +6041,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       characterWorkflowRunOpenToken += 1
       saveActiveWorkflowProjectSnapshot()
       activeCharacterWorkflowProjectId = ''
+      clearCharacterWorkflowTransientStatus({ clearAssistantPrompt: true })
       characterWorkflowRunState = null
       characterWorkflowRunCount = 0
       characterWorkflowActiveTabId = 'workflow'
