@@ -306,8 +306,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let characterWorkflowBuilderPrompt = ''
   let characterWorkflowAssistantPrompt = ''
   let characterWorkflowBuilderStatus = ''
-  let characterWorkflowAssistantStatusExpanded = true
+  let characterWorkflowAssistantStatusExpanded = false
   let characterWorkflowBuilderBusy = false
+  let characterWorkflowAssistantRunToken = 0
+  let characterWorkflowAssistantActiveRunToken = 0
+  const characterWorkflowAssistantInterruptedRuns = new Set<number>()
   let characterWorkflowTemplateMenuOpen = false
   let characterWorkflowRunState: CharacterResourceRunState | null = null
   let characterWorkflowExecutingProjectId = ''
@@ -2261,7 +2264,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     const pageOptions = createCharacterWorkflowPageOptions(activeProject)
     const nextViewportHtml = workflowPage.renderCharacterWorkflowRunDraftViewport(pageOptions)
-    runViewport.outerHTML = nextViewportHtml
+    replaceCharacterWorkflowRunViewport(runViewport, nextViewportHtml)
 
     const controls = characterWorkflowRoot.querySelector<HTMLElement>('.chat-resource-run-controls')
     if (controls) {
@@ -2270,10 +2273,170 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
     const inspector = characterWorkflowRoot.querySelector<HTMLElement>('.chat-run-character-inspector')
     if (inspector && !characterWorkflowEditorState.inspectorCollapsed) {
-      inspector.outerHTML = workflowPage.renderCharacterWorkflowRunDraftInspector(pageOptions)
+      patchCharacterWorkflowRunInspector(inspector, workflowPage.renderCharacterWorkflowRunDraftInspector(pageOptions))
     }
 
     workflowPage.initializeCharacterResourceWorkbench(characterWorkflowRoot)
+  }
+
+  function replaceCharacterWorkflowRunViewport(currentViewport: HTMLElement, nextViewportHtml: string): void {
+    const nextViewport = parseCharacterWorkflowElement<HTMLElement>(nextViewportHtml, '.chat-resource-run-viewport')
+    const shouldPrimeRunMotion = currentViewport.dataset.runDraftInitialized === 'true'
+      && nextViewport.classList.contains('run-status-running')
+      && !(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false)
+    if (!shouldPrimeRunMotion) {
+      currentViewport.replaceWith(nextViewport)
+      return
+    }
+    const existingNodeIds = new Set(
+      Array.from(currentViewport.querySelectorAll<HTMLElement>('.chat-resource-node'))
+        .map((node) => node.dataset.chatWorkflowNodeId ?? '')
+        .filter(Boolean)
+    )
+    const existingLinkIds = new Set(
+      Array.from(currentViewport.querySelectorAll<SVGGElement>('.chat-resource-link'))
+        .map((link) => link.getAttribute('data-chat-resource-link-id') ?? '')
+        .filter(Boolean)
+    )
+    const newNodeIds = new Set<string>()
+    nextViewport.querySelectorAll<HTMLElement>('.chat-resource-node').forEach((node) => {
+      const nodeId = node.dataset.chatWorkflowNodeId ?? ''
+      if (nodeId && !existingNodeIds.has(nodeId)) {
+        newNodeIds.add(nodeId)
+        node.style.opacity = '0'
+        node.style.visibility = 'hidden'
+        node.style.transformOrigin = '50% 0%'
+      }
+    })
+    nextViewport.querySelectorAll<SVGGElement>('.chat-resource-link').forEach((link) => {
+      const linkId = link.getAttribute('data-chat-resource-link-id') ?? ''
+      const targetNodeId = link.getAttribute('data-run-link-target-node-id') ?? ''
+      if (!existingLinkIds.has(linkId) || (targetNodeId && newNodeIds.has(targetNodeId))) {
+        link.style.opacity = '0'
+        link.style.visibility = 'hidden'
+        link.querySelectorAll<SVGPathElement>('path:not(.hit-area)').forEach((path) => {
+          const length = Math.max(1, Math.ceil(path.getTotalLength()))
+          path.style.opacity = '0'
+          path.style.strokeDasharray = `${length}`
+          path.style.strokeDashoffset = `${length}`
+        })
+      }
+    })
+    currentViewport.replaceWith(nextViewport)
+  }
+
+  function patchCharacterWorkflowRunInspector(currentInspector: HTMLElement, nextInspectorHtml: string): void {
+    const nextInspector = parseCharacterWorkflowElement<HTMLElement>(nextInspectorHtml, '.chat-run-character-inspector')
+    copyElementAttributes(currentInspector, nextInspector)
+    patchCharacterWorkflowRunHero(
+      requireCharacterWorkflowElement(currentInspector, '.chat-run-character-hero'),
+      requireCharacterWorkflowElement(nextInspector, '.chat-run-character-hero')
+    )
+    patchKeyedChildren(
+      requireCharacterWorkflowElement(currentInspector, '[data-run-character-fields]'),
+      requireCharacterWorkflowElement(nextInspector, '[data-run-character-fields]'),
+      'runCharacterFieldKey'
+    )
+    const currentImages = currentInspector.querySelector<HTMLElement>('[data-run-character-images]')
+    const nextImages = nextInspector.querySelector<HTMLElement>('[data-run-character-images]')
+    if (currentImages && nextImages) {
+      patchKeyedChildren(currentImages, nextImages, 'runCharacterImageKey')
+    } else if (!nextImages && currentImages) {
+      currentImages.remove()
+    } else if (nextImages && !currentImages) {
+      requireCharacterWorkflowElement<HTMLElement>(currentInspector, '.chat-run-character-scroll').append(nextImages)
+    }
+  }
+
+  function patchCharacterWorkflowRunHero(currentHero: HTMLElement, nextHero: HTMLElement): void {
+    let changed = false
+    const currentImage = requireCharacterWorkflowElement<HTMLImageElement>(currentHero, ':scope > img')
+    const nextImage = requireCharacterWorkflowElement<HTMLImageElement>(nextHero, ':scope > img')
+    if (currentImage.src !== nextImage.src || currentImage.alt !== nextImage.alt) {
+      currentImage.src = nextImage.src
+      currentImage.alt = nextImage.alt
+      changed = true
+    }
+    for (const selector of ['.chat-run-character-hero-copy', '.chat-run-character-actions']) {
+      const current = requireCharacterWorkflowElement<HTMLElement>(currentHero, selector)
+      const next = requireCharacterWorkflowElement<HTMLElement>(nextHero, selector)
+      if (current.innerHTML !== next.innerHTML) {
+        current.innerHTML = next.innerHTML
+        changed = true
+      }
+    }
+    if (changed) {
+      flashRunPreviewElement(currentHero)
+    }
+  }
+
+  function patchKeyedChildren(currentContainer: HTMLElement, nextContainer: HTMLElement, datasetKey: string): void {
+    copyElementAttributes(currentContainer, nextContainer)
+    const currentByKey = new Map<string, HTMLElement>()
+    Array.from(currentContainer.children).forEach((child) => {
+      if (!(child instanceof HTMLElement)) return
+      const key = child.dataset[datasetKey] ?? ''
+      if (key) currentByKey.set(key, child)
+    })
+    Array.from(nextContainer.children).forEach((nextChild) => {
+      if (!(nextChild instanceof HTMLElement)) return
+      const key = nextChild.dataset[datasetKey] ?? ''
+      const currentChild = key ? currentByKey.get(key) : null
+      if (!currentChild) {
+        const clone = nextChild.cloneNode(true) as HTMLElement
+        clone.classList.add('is-entering')
+        currentContainer.append(clone)
+        window.setTimeout(() => clone.classList.remove('is-entering'), 320)
+        return
+      }
+      currentByKey.delete(key)
+      const changed = currentChild.innerHTML !== nextChild.innerHTML || currentChild.className !== nextChild.className
+      copyElementAttributes(currentChild, nextChild)
+      if (currentChild.innerHTML !== nextChild.innerHTML) {
+        currentChild.innerHTML = nextChild.innerHTML
+      }
+      currentContainer.append(currentChild)
+      if (changed) {
+        flashRunPreviewElement(currentChild)
+      }
+    })
+    currentByKey.forEach((child) => child.remove())
+  }
+
+  function flashRunPreviewElement(element: HTMLElement): void {
+    element.classList.remove('is-updated')
+    void element.offsetWidth
+    element.classList.add('is-updated')
+    window.setTimeout(() => element.classList.remove('is-updated'), 560)
+  }
+
+  function copyElementAttributes(target: HTMLElement, source: HTMLElement): void {
+    Array.from(target.attributes).forEach((attribute) => {
+      if (!source.hasAttribute(attribute.name)) {
+        target.removeAttribute(attribute.name)
+      }
+    })
+    Array.from(source.attributes).forEach((attribute) => {
+      target.setAttribute(attribute.name, attribute.value)
+    })
+  }
+
+  function parseCharacterWorkflowElement<T extends Element>(html: string, selector: string): T {
+    const template = document.createElement('template')
+    template.innerHTML = html.trim()
+    const element = template.content.querySelector<T>(selector)
+    if (!element) {
+      throw new Error(`Expected generated character workflow markup to contain ${selector}`)
+    }
+    return element
+  }
+
+  function requireCharacterWorkflowElement<T extends Element>(root: ParentNode, selector: string): T {
+    const element = root.querySelector<T>(selector)
+    if (!element) {
+      throw new Error(`Expected character workflow DOM to contain ${selector}`)
+    }
+    return element
   }
 
   function updateCharacterWorkflowViewportDom(): void {
@@ -2339,7 +2502,27 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     characterWorkflowRoot.innerHTML = renderCharacterWorkflowLibraryShell(workflowMarkup, activeProject)
     if (perfId) markCharacterWorkflowPerf(perfId, 'dom commit complete')
     workflowPage.initializeCharacterResourceWorkbench(characterWorkflowRoot)
+    syncWorkflowAssistantStatusScroll()
     if (perfId) finishCharacterWorkflowPerf(perfId, 'workbench init complete')
+  }
+
+  function syncWorkflowAssistantStatusScroll(): void {
+    if (!characterWorkflowAssistantStatusExpanded || !characterWorkflowRoot) {
+      return
+    }
+    const statusBody = characterWorkflowRoot.querySelector<HTMLElement>('[data-chat-workflow-agent-records]')
+    const latestRecord = statusBody?.querySelector<HTMLElement>('.chat-workflow-canvas-assistant-record.latest')
+    if (!statusBody || !latestRecord) {
+      return
+    }
+    window.requestAnimationFrame(() => {
+      if (!statusBody.isConnected || !latestRecord.isConnected) {
+        return
+      }
+      const latestHeight = Math.ceil(latestRecord.getBoundingClientRect().height)
+      statusBody.style.setProperty('--workflow-agent-latest-height', `${latestHeight}px`)
+      statusBody.scrollTop = statusBody.scrollHeight
+    })
   }
 
   function renderCharacterWorkflowProjectLoadingState(project: CharacterWorkflowProjectRecord): string {
@@ -2644,14 +2827,16 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       ? (zh ? '收起记录' : 'Collapse records')
       : (zh ? '展开记录' : 'Expand records')
     const records = getWorkflowAssistantStatusRecords()
+    const latestRecord = records[0]
+    const previousRecords = characterWorkflowAssistantStatusExpanded ? records.slice(1, 8).reverse() : []
     const project = characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)
     const session = normalizeCharacterWorkflowGoalSession(project?.goalSession)
     const pendingDecision = session?.pendingDecision
     const hasRecords = records.length > 0
     const canContinue = Boolean(session?.nextStep && !pendingDecision && session.status !== 'paused' && session.status !== 'blocked' && session.status !== 'complete' && !characterWorkflowBuilderBusy)
-    const canPause = Boolean(session && session.status === 'active' && !characterWorkflowBuilderBusy)
+    const canPause = Boolean(session && session.status === 'active')
     const canResume = Boolean(session && session.status === 'paused' && !characterWorkflowBuilderBusy)
-    const canStop = Boolean(session && session.status !== 'complete' && !characterWorkflowBuilderBusy)
+    const canStop = Boolean(session && session.status !== 'complete')
     return `
       <form class="chat-workflow-canvas-assistant ${characterWorkflowBuilderBusy ? 'is-busy' : ''}" data-chat-workflow-assistant-form>
         ${renderChatRuntimeModelPickerMarkup('workflow-assistant')}
@@ -2679,16 +2864,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
                 </button>
               </div>
             </div>
-            <div class="chat-workflow-canvas-assistant-status-body">
-              ${records.map((record, index) => `
-                <article class="chat-workflow-canvas-assistant-record ${index === 0 ? 'latest' : ''}">
-                  <header>
-                    <strong>${options.escapeHtml(record.title)}</strong>
-                    <span>${options.escapeHtml(record.meta)}</span>
-                  </header>
-                  <p>${options.escapeHtml(record.body)}</p>
-                </article>
-              `).join('')}
+            <div class="chat-workflow-canvas-assistant-status-body" data-chat-workflow-agent-records>
+              ${latestRecord ? `
+                ${previousRecords.map((record, index) => renderWorkflowAssistantStatusRecord(record, 'previous', index + 1)).join('')}
+                ${renderWorkflowAssistantStatusRecord(latestRecord, 'latest', 0)}
+              ` : ''}
             </div>
           </section>
         ` : ''}
@@ -2725,6 +2905,22 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           </button>
         </div>
       </form>
+    `
+  }
+
+  function renderWorkflowAssistantStatusRecord(
+    record: { title: string; meta: string; body: string },
+    role: 'latest' | 'previous',
+    index: number
+  ): string {
+    return `
+      <article class="chat-workflow-canvas-assistant-record ${role}" style="--workflow-agent-record-index: ${index}">
+        <header>
+          <strong>${options.escapeHtml(record.title)}</strong>
+          <span>${options.escapeHtml(record.meta)}</span>
+        </header>
+        <p>${options.escapeHtml(record.body)}</p>
+      </article>
     `
   }
 
@@ -3372,10 +3568,21 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
   }
 
+  function clearCharacterWorkflowTransientStatus(options: { clearBuilderPrompt?: boolean; clearAssistantPrompt?: boolean } = {}): void {
+    characterWorkflowBuilderStatus = ''
+    if (options.clearBuilderPrompt) {
+      characterWorkflowBuilderPrompt = ''
+    }
+    if (options.clearAssistantPrompt ?? true) {
+      characterWorkflowAssistantPrompt = ''
+    }
+  }
+
   async function createCharacterWorkflowDraft(): Promise<void> {
     await ensureChatResourcesHydrated()
     saveActiveWorkflowProjectSnapshot(false, true)
     characterWorkflowTemplateMenuOpen = false
+    clearCharacterWorkflowTransientStatus({ clearAssistantPrompt: true })
     createCharacterWorkflowDraftFromSpec({})
   }
 
@@ -3388,6 +3595,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     saveActiveWorkflowProjectSnapshot()
     characterWorkflowTemplateMenuOpen = false
+    clearCharacterWorkflowTransientStatus({ clearAssistantPrompt: true })
     createCharacterWorkflowDraftFromSpec(template.spec)
   }
 
@@ -3499,6 +3707,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     characterWorkflowProjects = [project, ...characterWorkflowProjects]
     activeCharacterWorkflowProjectId = project.id
     characterWorkflowActiveTabId = 'workflow'
+    clearCharacterWorkflowTransientStatus({ clearBuilderPrompt: false, clearAssistantPrompt: true })
     applyCharacterWorkflowProjectState(project)
     persistCharacterWorkflowProject(project)
     renderCharacterWorkflow()
@@ -3856,11 +4065,27 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     return parts.join('\n\n')
   }
 
+  function interruptActiveWorkflowAssistantRun(): void {
+    if (!characterWorkflowBuilderBusy || !characterWorkflowAssistantActiveRunToken) {
+      return
+    }
+    characterWorkflowAssistantInterruptedRuns.add(characterWorkflowAssistantActiveRunToken)
+    characterWorkflowAssistantActiveRunToken = 0
+    characterWorkflowBuilderBusy = false
+  }
+
+  function isWorkflowAssistantRunInterrupted(runToken: number): boolean {
+    return characterWorkflowAssistantInterruptedRuns.has(runToken)
+  }
+
   function setActiveWorkflowGoalSessionStatus(status: CharacterWorkflowGoalSession['status']): void {
     const project = characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)
     const session = normalizeCharacterWorkflowGoalSession(project?.goalSession)
     if (!project || !session) {
       return
+    }
+    if (status === 'paused' || status === 'complete') {
+      interruptActiveWorkflowAssistantRun()
     }
     project.goalSession = {
       ...session,
@@ -3992,6 +4217,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
     characterWorkflowBuilderBusy = true
+    const runToken = ++characterWorkflowAssistantRunToken
+    characterWorkflowAssistantActiveRunToken = runToken
+    characterWorkflowAssistantInterruptedRuns.delete(runToken)
     characterWorkflowBuilderStatus = options.getLanguage() === 'zh-CN' ? 'Agent 正在调整当前资源图...' : 'Agent editing current resource graph...'
     renderCharacterWorkflow()
     try {
@@ -4021,6 +4249,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       const response = typeof window.electronAPI.streamBuildCharacterWorkflow === 'function'
         ? await window.electronAPI.streamBuildCharacterWorkflow(buildRequest, {
             onEvent: (event) => {
+              if (isWorkflowAssistantRunInterrupted(runToken)) {
+                return
+              }
               if (applyWorkflowAgentStepEvent(userPrompt, event)) {
                 streamedChanged = true
               }
@@ -4030,6 +4261,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             },
           })
         : await window.electronAPI.buildCharacterWorkflow(buildRequest)
+      if (isWorkflowAssistantRunInterrupted(runToken)) {
+        return
+      }
       if (!response.success) {
         throw new Error(response.error || 'Workflow agent failed')
       }
@@ -4048,11 +4282,20 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         showToast(options.getLanguage() === 'zh-CN' ? '已应用资源图修改' : 'Applied graph edits')
       }
     } catch (error: any) {
+      if (isWorkflowAssistantRunInterrupted(runToken)) {
+        return
+      }
       const message = error?.message || String(error)
       characterWorkflowBuilderStatus = message
       showToast(message)
     } finally {
-      characterWorkflowBuilderBusy = false
+      if (characterWorkflowAssistantActiveRunToken === runToken) {
+        characterWorkflowAssistantActiveRunToken = 0
+        characterWorkflowBuilderBusy = false
+      }
+      if (isWorkflowAssistantRunInterrupted(runToken)) {
+        characterWorkflowAssistantInterruptedRuns.delete(runToken)
+      }
       renderCharacterWorkflow()
     }
   }
@@ -4372,6 +4615,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       finishCharacterWorkflowPerf(perfId, 'project missing')
       return
     }
+    clearCharacterWorkflowTransientStatus({ clearAssistantPrompt: true })
     activeCharacterWorkflowProjectId = projectId
     characterWorkflowContentLoaded = true
     characterWorkflowActiveTabId = 'workflow'
@@ -4412,6 +4656,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const perfId = startCharacterWorkflowPerf(`open run ${projectId}:${runId}`)
     const liveRunState = getExecutingWorkflowRunState(projectId, runId)
     if (liveRunState) {
+      clearCharacterWorkflowTransientStatus({ clearAssistantPrompt: true })
       activeCharacterWorkflowProjectId = projectId
       characterWorkflowContentLoaded = true
       characterWorkflowActiveTabId = 'run-draft'
@@ -4424,6 +4669,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     saveActiveWorkflowProjectSnapshot()
     markCharacterWorkflowPerf(perfId, 'save current snapshot scheduled')
     activeCharacterWorkflowProjectId = projectId
+    clearCharacterWorkflowTransientStatus({ clearAssistantPrompt: true })
     characterWorkflowContentLoaded = true
     characterWorkflowActiveTabId = 'run-draft'
     const cachedProject = characterWorkflowProjects.find((item) => item.id === projectId)
@@ -4587,6 +4833,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     })
     if (activeCharacterWorkflowProjectId === projectId) {
       activeCharacterWorkflowProjectId = ''
+      clearCharacterWorkflowTransientStatus({ clearAssistantPrompt: true })
       replaceRecord(characterWorkflowConfigOverrides, {})
       replaceRecord(characterWorkflowPositionOverrides, {})
       applyWorkflowProjectViewState(undefined)
@@ -4677,6 +4924,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const persisted = conversation?.characterWorkflow
     if (!persisted || typeof persisted !== 'object' || Array.isArray(persisted)) {
       activeCharacterWorkflowProjectId = ''
+      clearCharacterWorkflowTransientStatus({ clearAssistantPrompt: true })
       characterWorkflowRunState = null
       characterWorkflowRunCount = 0
       characterWorkflowActiveTabId = 'workflow'
@@ -4699,6 +4947,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (activeProject) {
       applyCharacterWorkflowProjectState(activeProject, { includeRunState: true })
     } else {
+      clearCharacterWorkflowTransientStatus({ clearAssistantPrompt: true })
       replaceRecord(characterWorkflowConfigOverrides, {})
       replaceRecord(characterWorkflowPositionOverrides, {})
       applyWorkflowProjectViewState(undefined)
@@ -6022,6 +6271,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       characterWorkflowRunOpenToken += 1
       saveActiveWorkflowProjectSnapshot()
       activeCharacterWorkflowProjectId = ''
+      clearCharacterWorkflowTransientStatus({ clearAssistantPrompt: true })
       characterWorkflowRunState = null
       characterWorkflowRunCount = 0
       characterWorkflowActiveTabId = 'workflow'
@@ -6073,14 +6323,15 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!characterWorkflowDragging || characterWorkflowDragging.pointerId !== event.pointerId) {
       return
     }
-    const nextX = Math.max(0, Math.round(characterWorkflowDragging.originX + event.clientX - characterWorkflowDragging.startX))
-    const nextY = Math.max(0, Math.round(characterWorkflowDragging.originY + event.clientY - characterWorkflowDragging.startY))
+    const nextX = Math.round(characterWorkflowDragging.originX + event.clientX - characterWorkflowDragging.startX)
+    const nextY = Math.round(characterWorkflowDragging.originY + event.clientY - characterWorkflowDragging.startY)
     characterWorkflowPositionOverrides[characterWorkflowDragging.nodeId] = { x: nextX, y: nextY }
     const node = panel.querySelector<HTMLElement>(`[data-chat-workflow-node-id="${CSS.escape(characterWorkflowDragging.nodeId)}"]`)
     if (node) {
       node.style.setProperty('--node-x', `${nextX}px`)
       node.style.setProperty('--node-y', `${nextY}px`)
     }
+    refreshCharacterResourceGroupBounds()
   }
 
   function endCharacterWorkflowNodeDrag(event: PointerEvent): void {
@@ -6094,6 +6345,35 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     characterWorkflowDragging = null
     saveActiveWorkflowProjectSnapshot()
+    renderCharacterWorkflow()
+  }
+
+  function refreshCharacterResourceGroupBounds(): void {
+    panel.querySelectorAll<HTMLElement>('.chat-resource-group[data-resource-group-node-ids]').forEach((group) => {
+      const nodeIds = (group.dataset.resourceGroupNodeIds ?? '').split(',').map((item) => item.trim()).filter(Boolean)
+      const nodes = nodeIds
+        .map((nodeId) => panel.querySelector<HTMLElement>(`[data-chat-workflow-node-id="${CSS.escape(nodeId)}"]`))
+        .filter((node): node is HTMLElement => Boolean(node))
+      if (!nodes.length) {
+        return
+      }
+      const left = Math.min(...nodes.map((node) => Number.parseFloat(node.style.getPropertyValue('--node-x')) || 0)) - 24
+      const top = Math.min(...nodes.map((node) => Number.parseFloat(node.style.getPropertyValue('--node-y')) || 0)) - 34
+      const right = Math.max(...nodes.map((node) => {
+        const x = Number.parseFloat(node.style.getPropertyValue('--node-x')) || 0
+        const width = Number.parseFloat(node.style.getPropertyValue('--node-w')) || node.offsetWidth
+        return x + width
+      })) + 24
+      const bottom = Math.max(...nodes.map((node) => {
+        const y = Number.parseFloat(node.style.getPropertyValue('--node-y')) || 0
+        const height = Number.parseFloat(node.style.getPropertyValue('--node-h')) || node.offsetHeight
+        return y + height
+      })) + 24
+      group.style.left = `${left}px`
+      group.style.top = `${top}px`
+      group.style.width = `${right - left}px`
+      group.style.height = `${bottom - top}px`
+    })
   }
 
   function beginCharacterResourceNodeResize(event: PointerEvent): void {
@@ -6280,6 +6560,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   function updateCharacterResourceViewportZoom(event: WheelEvent): void {
+    if (scrollWorkflowAssistantStatusRecords(event)) {
+      return
+    }
     const viewport = (event.target as HTMLElement | null)?.closest<HTMLElement>('.chat-workflow-canvas-viewport.active')
     if (!viewport || !panel.contains(viewport)) {
       return
@@ -6289,6 +6572,22 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     characterResourceViewState.zoom = Math.round(nextZoom * 100) / 100
     updateCharacterWorkflowViewportDom()
     saveCharacterResourceViewStateSnapshot()
+  }
+
+  function scrollWorkflowAssistantStatusRecords(event: WheelEvent): boolean {
+    const statusBody = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-chat-workflow-agent-records]')
+    if (!statusBody || !panel.contains(statusBody) || !characterWorkflowAssistantStatusExpanded) {
+      return false
+    }
+    event.preventDefault()
+    event.stopPropagation()
+    const deltaMultiplier = event.deltaMode === 1
+      ? 16
+      : event.deltaMode === 2
+        ? statusBody.clientHeight
+        : 1
+    statusBody.scrollTop += event.deltaY * deltaMultiplier
+    return true
   }
 
   function beginCharacterResourceMinimapPointer(event: PointerEvent): void {

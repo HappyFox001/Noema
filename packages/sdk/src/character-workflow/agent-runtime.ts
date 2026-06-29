@@ -719,7 +719,7 @@ export function compileCharacterAgentRunContext(
     policy: {
       nodeId: policyNode?.id,
       autonomyLevel: stringValue(policyNode?.config.autonomyLevel, 'high'),
-      revisionBudget: numberValue(policyNode?.config.revisionBudget, 4),
+      revisionBudget: numberValue(policyNode?.config.revisionBudget, 12),
       askUserThreshold: stringValue(policyNode?.config.askUserThreshold, 'blocked-only'),
       canExpandMissingDetails: booleanValue(policyNode?.config.canExpandMissingDetails, true),
       incomingRelations: policyNode ? incomingRelations(relations, policyNode.id) : [],
