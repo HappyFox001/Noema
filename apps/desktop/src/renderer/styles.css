@@ -12503,21 +12503,24 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   background:
     linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
-    radial-gradient(circle at 30% 20%, rgba(82, 168, 255, 0.08), transparent 28%),
     rgba(4, 5, 6, 0.98);
-  background-size: 26px 26px, 26px 26px, auto, auto;
+  background-size: 26px 26px, 26px 26px, auto;
+  contain: layout style;
 }
 
 .chat-workflow-canvas-viewport {
   width: 100%;
   height: 100%;
   overflow: auto;
+  overscroll-behavior: contain;
+  contain: layout style;
 }
 
 .chat-workflow-canvas-plane {
   position: relative;
   min-width: 2240px;
   min-height: 720px;
+  overflow: visible;
 }
 
 .chat-workflow-node {
@@ -12533,9 +12536,8 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   border: 1px solid rgba(248, 250, 250, 0.11);
   border-radius: 7px;
   background: rgba(13, 15, 17, 0.96);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.045),
-    0 16px 32px rgba(0, 0, 0, 0.24);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  contain: layout style;
 }
 
 .chat-workflow-node.llm {
@@ -12558,16 +12560,14 @@ body.theme-day .chat-language-mark[data-language='en-US'] .chat-language-card.la
   border-color: rgba(219, 189, 130, 0.7);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 0 0 1px rgba(219, 189, 130, 0.12),
-    0 20px 40px rgba(0, 0, 0, 0.28);
+    0 0 0 1px rgba(219, 189, 130, 0.12);
 }
 
 .chat-workflow-node.selected {
   border-color: rgba(82, 168, 255, 0.78);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 0 0 1px rgba(82, 168, 255, 0.18),
-    0 20px 40px rgba(0, 0, 0, 0.3);
+    0 0 0 1px rgba(82, 168, 255, 0.18);
 }
 
 .chat-workflow-node.is-dragging {
@@ -14450,26 +14450,26 @@ body.chat-workflow-library-resizing * {
   min-height: 1120px;
   transform-origin: 0 0;
   transform: translate(var(--resource-pan-x, 0), var(--resource-pan-y, 0)) scale(var(--resource-zoom, 1));
+  overflow: visible;
 }
 
 .chat-resource-run-plane {
-  min-width: 1780px;
-  min-height: 880px;
+  min-width: 1640px;
+  min-height: 760px;
   padding-top: 46px;
+  overflow: visible;
 }
 
 .chat-resource-run-plane .chat-resource-node {
   border-color: rgba(162, 202, 188, 0.12);
   border-radius: 9px;
   background:
-    radial-gradient(circle at 12% 0, rgba(162, 202, 188, 0.07), transparent 38%),
     linear-gradient(180deg, rgba(248, 250, 250, 0.038), rgba(248, 250, 250, 0.012)),
     rgba(7, 8, 9, 0.92);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.045),
-    inset 1px 0 0 rgba(162, 202, 188, 0.08),
-    0 22px 54px rgba(0, 0, 0, 0.34);
-  will-change: transform, opacity, filter;
+    inset 1px 0 0 rgba(162, 202, 188, 0.08);
+  will-change: auto;
 }
 
 .chat-resource-run-plane .chat-resource-node::after {
@@ -14502,7 +14502,6 @@ body.chat-workflow-library-resizing * {
 .chat-resource-run-plane .goal {
   border-color: rgba(82, 168, 255, 0.22);
   background:
-    radial-gradient(circle at 18% 0, rgba(82, 168, 255, 0.12), transparent 42%),
     linear-gradient(180deg, rgba(82, 168, 255, 0.07), rgba(248, 250, 250, 0.018)),
     rgba(7, 8, 9, 0.94);
 }
@@ -14536,44 +14535,32 @@ body.chat-workflow-library-resizing * {
 }
 
 .chat-resource-run-plane .opening-panel-resource {
-  min-width: 420px;
-  min-height: 360px;
+  min-width: 286px;
+  min-height: 140px;
 }
 
 .chat-resource-run-plane .chat-resource-opening-panel-preview {
   gap: 8px;
-  min-height: 270px;
+  min-height: 64px;
 }
 
 .chat-resource-run-plane .chat-resource-opening-panel-preview > p {
   -webkit-line-clamp: 2;
 }
 
-.chat-resource-opening-panel-frame {
-  max-height: 520px;
-  overflow: auto;
-  padding: 8px;
-  border: 1px solid rgba(248, 250, 250, 0.07);
-  border-radius: 9px;
-  background: rgba(0, 0, 0, 0.22);
-}
-
-.chat-resource-opening-panel-frame > section {
-  transform-origin: top left;
-}
-
 .chat-resource-run-plane .chat-resource-node-content.has-image {
-  grid-template-columns: 70px minmax(0, 1fr);
+  grid-template-columns: 58px minmax(0, 1fr);
   align-items: start;
 }
 
 .chat-resource-run-plane .chat-resource-node-content.has-image img {
-  width: 70px;
-  height: 88px;
+  width: 58px;
+  height: 72px;
   border: 1px solid rgba(248, 250, 250, 0.08);
   border-radius: 7px;
   object-fit: cover;
-  box-shadow: 0 14px 26px rgba(0, 0, 0, 0.38);
+  box-shadow: none;
+  contain: paint;
 }
 
 .chat-resource-run-plane .chat-resource-link text {
@@ -14588,7 +14575,7 @@ body.chat-workflow-library-resizing * {
 
 .chat-resource-run-viewport.run-status-running .chat-resource-link path {
   stroke-dasharray: 8 7;
-  animation: chat-resource-run-link-flow 760ms linear infinite;
+  animation: none;
 }
 
 .chat-resource-run-viewport.run-status-done .chat-resource-run-plane {
@@ -15138,7 +15125,7 @@ body.chat-workflow-library-resizing * {
 .chat-resource-link .hit-area {
   fill: none;
   stroke: transparent;
-  stroke-width: 24;
+  stroke-width: 16;
   pointer-events: stroke;
 }
 
@@ -15150,9 +15137,8 @@ body.chat-workflow-library-resizing * {
   fill: rgba(248, 250, 250, 0.46);
   font-family: var(--font-ui);
   font-size: 9px;
-  paint-order: stroke;
-  stroke: rgba(5, 6, 7, 0.8);
-  stroke-width: 3px;
+  paint-order: normal;
+  stroke: none;
 }
 
 .chat-resource-link.constrains path:not(.hit-area) {
@@ -15189,15 +15175,15 @@ body.chat-workflow-library-resizing * {
 }
 
 .chat-resource-link.flowing path:not(.hit-area) {
-  stroke-width: 2.5;
+  stroke-width: 2;
   stroke-dasharray: 10 7;
-  animation: chat-resource-link-flow 1.15s linear infinite;
+  animation: none;
 }
 
 .chat-resource-link:hover path:not(.hit-area),
 .chat-resource-link.selected path:not(.hit-area) {
   stroke-width: 3;
-  filter: drop-shadow(0 0 6px rgba(82, 168, 255, 0.34));
+  filter: none;
 }
 
 .chat-resource-link-disconnect-wrap {
@@ -15220,7 +15206,7 @@ body.chat-workflow-library-resizing * {
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 999px;
   background: rgba(16, 18, 20, 0.92);
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.34);
+  box-shadow: none;
   color: rgba(248, 250, 250, 0.82);
   cursor: pointer;
   font-family: var(--font-ui);

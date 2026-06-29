@@ -6093,14 +6093,15 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!characterWorkflowDragging || characterWorkflowDragging.pointerId !== event.pointerId) {
       return
     }
-    const nextX = Math.max(0, Math.round(characterWorkflowDragging.originX + event.clientX - characterWorkflowDragging.startX))
-    const nextY = Math.max(0, Math.round(characterWorkflowDragging.originY + event.clientY - characterWorkflowDragging.startY))
+    const nextX = Math.round(characterWorkflowDragging.originX + event.clientX - characterWorkflowDragging.startX)
+    const nextY = Math.round(characterWorkflowDragging.originY + event.clientY - characterWorkflowDragging.startY)
     characterWorkflowPositionOverrides[characterWorkflowDragging.nodeId] = { x: nextX, y: nextY }
     const node = panel.querySelector<HTMLElement>(`[data-chat-workflow-node-id="${CSS.escape(characterWorkflowDragging.nodeId)}"]`)
     if (node) {
       node.style.setProperty('--node-x', `${nextX}px`)
       node.style.setProperty('--node-y', `${nextY}px`)
     }
+    refreshCharacterResourceGroupBounds()
   }
 
   function endCharacterWorkflowNodeDrag(event: PointerEvent): void {
@@ -6114,6 +6115,35 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     characterWorkflowDragging = null
     saveActiveWorkflowProjectSnapshot()
+    renderCharacterWorkflow()
+  }
+
+  function refreshCharacterResourceGroupBounds(): void {
+    panel.querySelectorAll<HTMLElement>('.chat-resource-group[data-resource-group-node-ids]').forEach((group) => {
+      const nodeIds = (group.dataset.resourceGroupNodeIds ?? '').split(',').map((item) => item.trim()).filter(Boolean)
+      const nodes = nodeIds
+        .map((nodeId) => panel.querySelector<HTMLElement>(`[data-chat-workflow-node-id="${CSS.escape(nodeId)}"]`))
+        .filter((node): node is HTMLElement => Boolean(node))
+      if (!nodes.length) {
+        return
+      }
+      const left = Math.min(...nodes.map((node) => Number.parseFloat(node.style.getPropertyValue('--node-x')) || 0)) - 24
+      const top = Math.min(...nodes.map((node) => Number.parseFloat(node.style.getPropertyValue('--node-y')) || 0)) - 34
+      const right = Math.max(...nodes.map((node) => {
+        const x = Number.parseFloat(node.style.getPropertyValue('--node-x')) || 0
+        const width = Number.parseFloat(node.style.getPropertyValue('--node-w')) || node.offsetWidth
+        return x + width
+      })) + 24
+      const bottom = Math.max(...nodes.map((node) => {
+        const y = Number.parseFloat(node.style.getPropertyValue('--node-y')) || 0
+        const height = Number.parseFloat(node.style.getPropertyValue('--node-h')) || node.offsetHeight
+        return y + height
+      })) + 24
+      group.style.left = `${left}px`
+      group.style.top = `${top}px`
+      group.style.width = `${right - left}px`
+      group.style.height = `${bottom - top}px`
+    })
   }
 
   function beginCharacterResourceNodeResize(event: PointerEvent): void {

@@ -2554,6 +2554,7 @@ function renderRunCharacterInspector(options: CharacterWorkflowPageOptions): str
   const images = artifacts
     .map((artifact) => ({ artifact, image: getArtifactImage(artifact.data) }))
     .filter((item) => item.image)
+    .slice(-8)
   return `
     <aside class="chat-workflow-inspector chat-resource-inspector chat-run-character-inspector" aria-label="${options.escapeHtml(ui(options, '角色资源详情', 'Character resource details'))}">
       <div class="chat-workflow-inspector-scroll chat-run-character-scroll">
@@ -2817,7 +2818,7 @@ function createRunDraftCanvasGraph(graph: CharacterResourceGraph, options: Chara
         x: placement.x,
         y: placement.y,
       },
-      size: image ? { width: 320, height: 196 } : { width: 320, height: 128 },
+      size: image ? { width: 286, height: 158 } : { width: 286, height: 118 },
       status: artifactStatus,
       zIndex: index + 2,
       config: {
@@ -2993,9 +2994,24 @@ function getRunCanvasArtifacts(artifacts: NonNullable<CharacterResourceRunState[
     .filter((artifact) => allowed.has(artifact.type))
     .filter((artifact) => artifact.type !== 'character-card-draft')
     .filter((artifact) => !isHiddenRunCanvasFieldArtifact(artifact))
-  return filtered.some((artifact) => artifact.type === 'character-card-field')
+  const visible = filtered.some((artifact) => artifact.type === 'character-card-field')
     ? filtered.filter((artifact) => artifact.type !== 'character-card-final')
     : filtered
+  return pruneRunCanvasArtifacts(visible)
+}
+
+function pruneRunCanvasArtifacts(
+  artifacts: NonNullable<CharacterResourceRunState['artifacts']>
+): NonNullable<CharacterResourceRunState['artifacts']> {
+  const importantTypes = new Set(['quality-report', 'generation-report', 'export-package', 'stale-marker'])
+  const images = artifacts.filter((artifact) => artifact.type === 'image-asset' || artifact.type === 'image-attempt').slice(-6)
+  const fields = artifacts.filter((artifact) => artifact.type === 'character-card-field').slice(-9)
+  const important = artifacts.filter((artifact) => importantTypes.has(artifact.type)).slice(-5)
+  const other = artifacts
+    .filter((artifact) => artifact.type !== 'image-asset' && artifact.type !== 'image-attempt' && artifact.type !== 'character-card-field' && !importantTypes.has(artifact.type))
+    .slice(-4)
+  const keepIds = new Set([...fields, ...other, ...images, ...important].map((artifact) => artifact.id || `${artifact.type}:${artifact.title ?? ''}`))
+  return artifacts.filter((artifact) => keepIds.has(artifact.id || `${artifact.type}:${artifact.title ?? ''}`)).slice(-24)
 }
 
 function isHiddenRunCanvasFieldArtifact(artifact: NonNullable<CharacterResourceRunState['artifacts']>[number]): boolean {
@@ -3296,14 +3312,18 @@ function renderGroup(group: CharacterResourceGroup, graph: CharacterResourceGrap
   const top = Math.min(...nodes.map((node) => node.position.y)) - 34
   const right = Math.max(...nodes.map((node) => node.position.x + node.size.width)) + 24
   const bottom = Math.max(...nodes.map((node) => node.position.y + node.size.height)) + 24
-  return `<div class="chat-resource-group" style="left:${left}px;top:${top}px;width:${right - left}px;height:${bottom - top}px;--group-color:${group.color}"><span>${options.escapeHtml(group.title)}</span></div>`
+  return `<div class="chat-resource-group" data-resource-group-node-ids="${options.escapeHtml(group.nodeIds.join(','))}" style="left:${left}px;top:${top}px;width:${right - left}px;height:${bottom - top}px;--group-color:${group.color}"><span>${options.escapeHtml(group.title)}</span></div>`
 }
 
 function renderLinkOverlay(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): string {
-  const width = Math.max(980, ...graph.nodes.map((node) => node.position.x + node.size.width + 120))
-  const height = Math.max(620, ...graph.nodes.map((node) => node.position.y + node.size.height + 120))
+  const left = Math.min(0, ...graph.nodes.map((node) => node.position.x - 160))
+  const top = Math.min(0, ...graph.nodes.map((node) => node.position.y - 160))
+  const right = Math.max(980, ...graph.nodes.map((node) => node.position.x + node.size.width + 160))
+  const bottom = Math.max(620, ...graph.nodes.map((node) => node.position.y + node.size.height + 160))
+  const width = right - left
+  const height = bottom - top
   return `
-    <svg class="chat-resource-link-overlay" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+    <svg class="chat-resource-link-overlay" width="${width}" height="${height}" viewBox="${left} ${top} ${width} ${height}" style="left:${left}px;top:${top}px">
       <defs>
         <marker id="chat-resource-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
           <path d="M0,0 L8,4 L0,8 Z"></path>
@@ -3472,17 +3492,11 @@ function renderNodeContent(
   const previewClass = `preview-${definition.previewType}`
   const runImageActions = renderRunImageActions(output, options)
   if (output.type === 'opening-layout') {
-    const data = output.data && typeof output.data === 'object' && !Array.isArray(output.data)
-      ? output.data as Record<string, unknown>
-      : {}
-    const html = typeof data.html === 'string' ? sanitizeOpeningPanelHtml(data.html) : ''
-    const css = typeof data.css === 'string' ? sanitizeOpeningPanelCss(data.css) : ''
     return `
       <div class="chat-resource-node-content ${previewClass} chat-resource-opening-panel-preview">
         <strong>${options.escapeHtml(output.title)}</strong>
         <p>${options.escapeHtml(output.summary)}</p>
-        ${css ? `<style>${css}</style>` : ''}
-        ${html ? `<div class="chat-resource-opening-panel-frame">${html}</div>` : ''}
+        <span>${options.escapeHtml(ui(options, '开幕面板已生成，详情在右侧资源中查看。', 'Opening panel generated. Review the resource details on the right.'))}</span>
       </div>
     `
   }
@@ -3533,20 +3547,6 @@ function renderVirtualMaterialNodeContent(node: CharacterResourceNode, options: 
       <button type="button" data-chat-workflow-action="remove-material" data-chat-workflow-node="${options.escapeHtml(node.id)}" data-material-id="${options.escapeHtml(material.id)}">${options.escapeHtml(ui(options, '移除', 'Remove'))}</button>
     </div>
   `
-}
-
-function sanitizeOpeningPanelHtml(value: string): string {
-  return value
-    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
-    .replace(/\son[a-z]+\s*=\s*(['"]).*?\1/gi, '')
-    .replace(/\s(href|src)\s*=\s*(['"])\s*javascript:[\s\S]*?\2/gi, '')
-}
-
-function sanitizeOpeningPanelCss(value: string): string {
-  return value
-    .replace(/<\/?style[\s\S]*?>/gi, '')
-    .replace(/@import[^;]+;/gi, '')
-    .replace(/url\(\s*(['"]?)javascript:[^)]+\)/gi, 'none')
 }
 
 function renderRunImageActions(output: CharacterResourceOutput, options: CharacterWorkflowPageOptions): string {
