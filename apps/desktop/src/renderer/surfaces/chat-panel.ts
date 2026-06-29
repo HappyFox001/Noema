@@ -2279,6 +2279,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   function replaceCharacterWorkflowRunViewport(currentViewport: HTMLElement, nextViewportHtml: string): void {
     const nextViewport = parseCharacterWorkflowElement<HTMLElement>(nextViewportHtml, '.chat-resource-run-viewport')
     const shouldPrimeRunMotion = currentViewport.dataset.runDraftInitialized === 'true'
+      && nextViewport.classList.contains('run-status-running')
       && !(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false)
     if (!shouldPrimeRunMotion) {
       currentViewport.replaceWith(nextViewport)

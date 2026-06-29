@@ -213,6 +213,9 @@ export interface CharacterResourceRunState {
   }>
 }
 
+type CharacterRunArtifact = NonNullable<CharacterResourceRunState['artifacts']>[number]
+type CharacterRunArtifacts = NonNullable<CharacterResourceRunState['artifacts']>
+
 export interface CharacterResourceRunStep {
   id: string
   label: string
@@ -1902,7 +1905,7 @@ function animateRunDraftCanvas(root: HTMLElement, cleanups: Array<() => void>): 
   const previous = runDraftMotionSnapshots.get(root)
   runDraftMotionSnapshots.set(root, snapshot)
   runViewport.dataset.runDraftInitialized = 'true'
-  if (!previous || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+  if (!runViewport.classList.contains('run-status-running') || !previous || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
     return
   }
   const nodes = Array.from(runViewport.querySelectorAll<HTMLElement>('.chat-resource-node'))
@@ -2828,20 +2831,22 @@ function createRunDraftCanvasGraph(graph: CharacterResourceGraph, options: Chara
       : []
   let previousNodeId = sourceNodeId
   compactArtifacts.forEach((artifact, index) => {
-    const nodeId = `run-artifact-${sanitizeResourceId(artifact.id || artifact.type || String(index))}`
+    const nodeId = getRunArtifactNodeId(artifact, index)
     const nodeType = getRunArtifactNodeType(artifact.type)
     const placement = getRunArtifactPlacement(artifact, index)
     const image = getArtifactImage(artifact.data)
     const artifactStatus = getRunArtifactNodeStatus(artifact)
+    const title = getRunArtifactNodeTitle(artifact, options)
+    const size = getRunArtifactNodeSize(artifact, Boolean(image))
     nodes.push({
       id: nodeId,
       type: nodeType,
-      title: getRunArtifactNodeTitle(artifact, options),
+      title,
       position: options.positionOverrides?.[nodeId] ?? {
         x: placement.x,
         y: placement.y,
       },
-      size: image ? { width: 286, height: 158 } : { width: 286, height: 118 },
+      size,
       status: artifactStatus,
       zIndex: index + 2,
       config: {
@@ -2855,8 +2860,8 @@ function createRunDraftCanvasGraph(graph: CharacterResourceGraph, options: Chara
       artifactId: artifact.id,
       sourceNodeId: artifact.sourceNodeId,
       type: artifact.type,
-      title: artifact.title ?? artifact.type,
-      summary: artifact.summary || getArtifactText(artifact.data) || getRunArtifactMeta(artifact, options),
+      title,
+      summary: getRunArtifactSummary(artifact, options),
       status: artifactStatus,
       image,
       text: getArtifactText(artifact.data),
@@ -2885,7 +2890,7 @@ function createRunDraftCanvasGraph(graph: CharacterResourceGraph, options: Chara
 
 function resolveRunDraftSelectedNodeId(
   nodes: CharacterResourceNode[],
-  artifacts: NonNullable<CharacterResourceRunState['artifacts']>,
+  artifacts: CharacterRunArtifacts,
   options: CharacterWorkflowPageOptions
 ): string {
   const nodeIds = new Set(nodes.map((node) => node.id))
@@ -2893,9 +2898,9 @@ function resolveRunDraftSelectedNodeId(
   if (selected) {
     return selected
   }
-  const latestImageArtifact = [...artifacts].reverse().find((artifact) => artifact.type === 'image-asset')
+  const latestImageArtifact = [...artifacts].reverse().find((artifact) => artifact.type === 'image-asset' || isFailedRunImageAttemptArtifact(artifact))
   if (latestImageArtifact?.id) {
-    const imageNodeId = `run-artifact-${sanitizeResourceId(latestImageArtifact.id)}`
+    const imageNodeId = getRunArtifactNodeId(latestImageArtifact, artifacts.indexOf(latestImageArtifact))
     if (nodeIds.has(imageNodeId)) {
       return imageNodeId
     }
@@ -2903,14 +2908,77 @@ function resolveRunDraftSelectedNodeId(
   return nodes[nodes.length - 1]?.id ?? 'run-input-source'
 }
 
-function getRunArtifactPlacement(artifact: NonNullable<CharacterResourceRunState['artifacts']>[number], index: number): { x: number; y: number } {
+function getRunArtifactNodeId(artifact: CharacterRunArtifact, index: number): string {
+  const imageKey = getRunImageDisplayKey(artifact)
+  if (imageKey && (artifact.type === 'image-asset' || artifact.type === 'image-attempt')) {
+    return `run-image-${sanitizeResourceId(imageKey)}`
+  }
+  return `run-artifact-${sanitizeResourceId(artifact.id || artifact.type || String(index))}`
+}
+
+function getRunArtifactNodeSize(artifact: CharacterRunArtifact, hasImage: boolean): { width: number; height: number } {
+  if (artifact.type === 'image-asset' && hasImage) {
+    const ratio = getRunImageAspectRatio(artifact)
+    const width = ratio >= 1.24
+      ? clampNumber(Math.round(314 + (Math.min(ratio, 2.1) - 1) * 76), 318, 396)
+      : ratio <= 0.86
+        ? clampNumber(Math.round(238 + ratio * 80), 244, 308)
+        : 304
+    const imageHeight = clampNumber(Math.round((width - 24) / ratio), 132, 284)
+    return { width, height: imageHeight + 88 }
+  }
+  if (artifact.type === 'image-attempt') {
+    return { width: 304, height: 168 }
+  }
+  return hasImage ? { width: 286, height: 158 } : { width: 286, height: 118 }
+}
+
+function getRunImageAspectRatio(artifact: CharacterRunArtifact): number {
+  const data = getRunArtifactDataRecord(artifact)
+  const width = readPositiveNumber(data.width) ?? readPositiveNumber(data.WIDTH)
+  const height = readPositiveNumber(data.height) ?? readPositiveNumber(data.HEIGHT)
+  if (width && height) {
+    return clampNumber(width / height, 0.48, 2.35)
+  }
+  const size = typeof data.size === 'string'
+    ? data.size
+    : typeof data.image_size === 'string'
+      ? data.image_size
+      : ''
+  const match = size.trim().match(/^(\d{2,5})\s*[x*:]\s*(\d{2,5})$/i)
+  if (!match) {
+    return 1
+  }
+  const parsedWidth = Number(match[1])
+  const parsedHeight = Number(match[2])
+  return parsedWidth > 0 && parsedHeight > 0
+    ? clampNumber(parsedWidth / parsedHeight, 0.48, 2.35)
+    : 1
+}
+
+function readPositiveNumber(value: unknown): number | null {
+  const numberValue = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
+  return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : null
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value))
+}
+
+function getRunArtifactPlacement(artifact: CharacterRunArtifact, index: number): { x: number; y: number } {
   const key = `${artifact.id || artifact.type || index}:${artifact.sourceNodeId || ''}`
-  const xWave = [0, 42, -32, 64, -48, 18][index % 6] ?? 0
+  const columns = 3
+  const row = Math.floor(index / columns)
+  const columnInRow = index % columns
+  const column = row % 2 === 0 ? columnInRow : columns - columnInRow - 1
+  const xAnchors = [500, 882, 1264]
+  const rowWave = [0, 26, -18, 18][row % 4] ?? 0
+  const columnWave = [-10, 18, -4][column] ?? 0
   const jitter = getStableRunOffset(key, 10, 8)
   const imageNudge = artifact.type === 'image-asset' || artifact.type === 'image-attempt' ? 14 : 0
   return {
-    x: 518 + xWave + jitter.x + imageNudge,
-    y: 128 + index * 180 + jitter.y,
+    x: xAnchors[column] + columnWave + jitter.x + imageNudge,
+    y: 128 + row * 360 + rowWave + jitter.y,
   }
 }
 
@@ -2928,17 +2996,39 @@ function getStableRunOffset(value: string, maxX: number, maxY: number): { x: num
   return { x: xSeed, y: ySeed }
 }
 
-function getRunArtifactNodeTitle(artifact: NonNullable<CharacterResourceRunState['artifacts']>[number], options: CharacterWorkflowPageOptions): string {
+function getRunArtifactNodeTitle(artifact: CharacterRunArtifact, options: CharacterWorkflowPageOptions): string {
   if (artifact.type === 'character-card-field') {
     return getCharacterFieldArtifactLabel(artifact, options)
   }
   if (artifact.type === 'character-card-draft') {
     return ui(options, '字段草稿', 'Field Draft')
   }
+  if (artifact.type === 'image-attempt') {
+    return getRunImageNodeTitle(artifact, options)
+  }
   return artifact.title ?? getRunArtifactMeta(artifact, options)
 }
 
-function getRunArtifactNodeConfig(artifact: NonNullable<CharacterResourceRunState['artifacts']>[number]): Record<string, unknown> {
+function getRunArtifactSummary(artifact: CharacterRunArtifact, options: CharacterWorkflowPageOptions): string {
+  const data = getRunArtifactDataRecord(artifact)
+  if (artifact.type === 'image-attempt') {
+    const error = typeof data.error === 'string' ? data.error : ''
+    if (error) {
+      return error
+    }
+  }
+  return artifact.summary || getArtifactText(artifact.data) || getRunArtifactMeta(artifact, options)
+}
+
+function getRunImageNodeTitle(artifact: CharacterRunArtifact, options: CharacterWorkflowPageOptions): string {
+  const data = getRunArtifactDataRecord(artifact)
+  const targetTitle = typeof data.targetTitle === 'string' ? data.targetTitle.trim() : ''
+  const imageRole = typeof data.imageRole === 'string' ? data.imageRole.trim() : ''
+  const title = [targetTitle, imageRole].filter(Boolean).join(' · ')
+  return title || artifact.title?.replace(/^Image Attempt(?: Failed)?$/i, '').trim() || ui(options, '图片', 'Image')
+}
+
+function getRunArtifactNodeConfig(artifact: CharacterRunArtifact): Record<string, unknown> {
   if (artifact.type !== 'character-card-field') {
     return {}
   }
@@ -2951,7 +3041,7 @@ function getRunArtifactNodeConfig(artifact: NonNullable<CharacterResourceRunStat
   }
 }
 
-function getRunArtifactNodeStatus(artifact: NonNullable<CharacterResourceRunState['artifacts']>[number]): CharacterResourceNodeStatus {
+function getRunArtifactNodeStatus(artifact: CharacterRunArtifact): CharacterResourceNodeStatus {
   const data = getRunArtifactDataRecord(artifact)
   const status = typeof data.status === 'string' ? data.status : ''
   if (artifact.type === 'image-attempt' && status === 'failed') {
@@ -2966,13 +3056,13 @@ function getRunArtifactNodeStatus(artifact: NonNullable<CharacterResourceRunStat
   return 'done'
 }
 
-function getRunArtifactDataRecord(artifact: NonNullable<CharacterResourceRunState['artifacts']>[number]): Record<string, unknown> {
+function getRunArtifactDataRecord(artifact: CharacterRunArtifact): Record<string, unknown> {
   return artifact.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
     ? artifact.data as Record<string, unknown>
     : {}
 }
 
-function getRunArtifactTargetNodeId(artifact: NonNullable<CharacterResourceRunState['artifacts']>[number]): string {
+function getRunArtifactTargetNodeId(artifact: CharacterRunArtifact): string {
   const data = getRunArtifactDataRecord(artifact)
   return typeof data.targetNodeId === 'string'
     ? data.targetNodeId
@@ -2981,7 +3071,24 @@ function getRunArtifactTargetNodeId(artifact: NonNullable<CharacterResourceRunSt
       : artifact.sourceNodeId
 }
 
-function getCharacterFieldArtifactLabel(artifact: NonNullable<CharacterResourceRunState['artifacts']>[number], options: CharacterWorkflowPageOptions): string {
+function getRunImageDisplayKey(artifact: CharacterRunArtifact): string {
+  const data = getRunArtifactDataRecord(artifact)
+  const targetNodeId = getRunArtifactTargetNodeId(artifact)
+  if (!targetNodeId) {
+    return ''
+  }
+  const targetIndex = typeof data.targetIndex === 'number' || typeof data.targetIndex === 'string'
+    ? String(data.targetIndex)
+    : ''
+  return [targetNodeId, targetIndex].filter(Boolean).join(':')
+}
+
+function isFailedRunImageAttemptArtifact(artifact: CharacterRunArtifact): boolean {
+  const data = getRunArtifactDataRecord(artifact)
+  return artifact.type === 'image-attempt' && data.status === 'failed'
+}
+
+function getCharacterFieldArtifactLabel(artifact: CharacterRunArtifact, options: CharacterWorkflowPageOptions): string {
   const data = artifact.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
     ? artifact.data as Record<string, unknown>
     : {}
@@ -2989,7 +3096,7 @@ function getCharacterFieldArtifactLabel(artifact: NonNullable<CharacterResourceR
   return field ? formatRunCharacterFieldLabel(field, options) : artifact.title ?? getRunArtifactMeta(artifact, options)
 }
 
-function getRunCanvasArtifacts(artifacts: NonNullable<CharacterResourceRunState['artifacts']>): NonNullable<CharacterResourceRunState['artifacts']> {
+function getRunCanvasArtifacts(artifacts: CharacterRunArtifacts): CharacterRunArtifacts {
   const allowed = new Set([
     'character-card-draft',
     'source-material',
@@ -3013,15 +3120,16 @@ function getRunCanvasArtifacts(artifacts: NonNullable<CharacterResourceRunState[
     .filter((artifact) => allowed.has(artifact.type))
     .filter((artifact) => artifact.type !== 'character-card-draft')
     .filter((artifact) => !isHiddenRunCanvasFieldArtifact(artifact))
-  const visible = filtered.some((artifact) => artifact.type === 'character-card-field')
-    ? filtered.filter((artifact) => artifact.type !== 'character-card-final')
-    : filtered
+  const canvasArtifacts = coalesceRunCanvasImageArtifacts(filtered)
+  const visible = canvasArtifacts.some((artifact) => artifact.type === 'character-card-field')
+    ? canvasArtifacts.filter((artifact) => artifact.type !== 'character-card-final')
+    : canvasArtifacts
   return pruneRunCanvasArtifacts(visible)
 }
 
 function pruneRunCanvasArtifacts(
-  artifacts: NonNullable<CharacterResourceRunState['artifacts']>
-): NonNullable<CharacterResourceRunState['artifacts']> {
+  artifacts: CharacterRunArtifacts
+): CharacterRunArtifacts {
   const importantTypes = new Set(['quality-report', 'generation-report', 'export-package', 'stale-marker'])
   const images = artifacts.filter((artifact) => artifact.type === 'image-asset' || artifact.type === 'image-attempt').slice(-6)
   const fields = artifacts.filter((artifact) => artifact.type === 'character-card-field').slice(-9)
@@ -3033,7 +3141,26 @@ function pruneRunCanvasArtifacts(
   return artifacts.filter((artifact) => keepIds.has(artifact.id || `${artifact.type}:${artifact.title ?? ''}`)).slice(-24)
 }
 
-function isHiddenRunCanvasFieldArtifact(artifact: NonNullable<CharacterResourceRunState['artifacts']>[number]): boolean {
+function coalesceRunCanvasImageArtifacts(artifacts: CharacterRunArtifacts): CharacterRunArtifacts {
+  const successfulImageKeys = new Set(artifacts
+    .filter((artifact) => artifact.type === 'image-asset')
+    .map(getRunImageDisplayKey)
+    .filter(Boolean))
+  const latestFailedAttemptByKey = new Map<string, CharacterRunArtifact>()
+  for (const artifact of artifacts) {
+    if (!isFailedRunImageAttemptArtifact(artifact)) {
+      continue
+    }
+    const key = getRunImageDisplayKey(artifact)
+    if (key && !successfulImageKeys.has(key)) {
+      latestFailedAttemptByKey.set(key, artifact)
+    }
+  }
+  const visibleFailedAttempts = new Set(latestFailedAttemptByKey.values())
+  return artifacts.filter((artifact) => artifact.type !== 'image-attempt' || visibleFailedAttempts.has(artifact))
+}
+
+function isHiddenRunCanvasFieldArtifact(artifact: CharacterRunArtifact): boolean {
   if (artifact.type !== 'character-card-field') {
     return false
   }
@@ -3370,19 +3497,21 @@ function renderLinkPath(linkItem: CharacterResourceLink, graph: CharacterResourc
   if (isRunLink) {
     const horizontal = Math.abs(target.position.x - source.position.x) > Math.abs(target.position.y - source.position.y) * 1.15
     if (horizontal) {
-      x1 = source.position.x + source.size.width
+      const direction = target.position.x >= source.position.x ? 1 : -1
+      x1 = direction > 0 ? source.position.x + source.size.width : source.position.x
       y1 = source.position.y + source.size.height * 0.5
-      x2 = target.position.x
+      x2 = direction > 0 ? target.position.x : target.position.x + target.size.width
       y2 = target.position.y + target.size.height * 0.5
       const mid = Math.max(92, Math.abs(x2 - x1) * 0.44)
-      path = `M ${x1} ${y1} C ${x1 + mid} ${y1}, ${x2 - mid} ${y2}, ${x2} ${y2}`
+      path = `M ${x1} ${y1} C ${x1 + direction * mid} ${y1}, ${x2 - direction * mid} ${y2}, ${x2} ${y2}`
     } else {
       x1 = source.position.x + source.size.width * 0.5
-      y1 = source.position.y + source.size.height
+      const direction = target.position.y >= source.position.y ? 1 : -1
+      y1 = direction > 0 ? source.position.y + source.size.height : source.position.y
       x2 = target.position.x + target.size.width * 0.5
-      y2 = target.position.y
+      y2 = direction > 0 ? target.position.y : target.position.y + target.size.height
       const mid = Math.max(58, Math.abs(y2 - y1) * 0.44)
-      path = `M ${x1} ${y1} C ${x1} ${y1 + mid}, ${x2} ${y2 - mid}, ${x2} ${y2}`
+      path = `M ${x1} ${y1} C ${x1} ${y1 + direction * mid}, ${x2} ${y2 - direction * mid}, ${x2} ${y2}`
     }
   } else {
     const mid = Math.max(80, Math.abs(x2 - x1) * 0.45)
@@ -3541,10 +3670,11 @@ function renderNodeContent(
   }
   if (output?.image) {
     return `
-      <div class="chat-resource-node-content ${previewClass} has-image">
+      <div class="chat-resource-node-content ${previewClass} has-image run-image-preview">
         <img src="${options.escapeHtml(output.image)}" alt="${options.escapeHtml(output.title)}">
-        <strong>${options.escapeHtml(output.title)}</strong>
-        <p>${options.escapeHtml(output.summary || output.text || definition.description)}</p>
+        <div class="chat-resource-image-caption">
+          <strong>${options.escapeHtml(output.title)}</strong>
+        </div>
         ${runImageActions}
       </div>
     `
@@ -3608,16 +3738,10 @@ function renderRunImageActions(output: CharacterResourceOutput, options: Charact
         ? data.parentAttemptId
         : ''
   const artifactId = output.artifactId ?? ''
-  const accepted = data.accepted !== false && output.type === 'image-asset'
-  const canAccept = output.type === 'image-asset'
-  const retryLabel = ui(options, '按同一目标重试', 'Retry same target')
   const rerollLabel = ui(options, '追加指令重炼', 'Reroll with instruction')
-  const acceptLabel = accepted ? ui(options, '已选中', 'Accepted') : ui(options, '选中这张图', 'Accept this image')
   return `
     <div class="chat-resource-image-actions" data-run-image-actions>
-      ${canAccept ? `<button class="${accepted ? 'active' : ''}" type="button" data-chat-workflow-run-image-action="accept" data-run-artifact-id="${options.escapeHtml(artifactId)}" data-run-target-node-id="${options.escapeHtml(targetNodeId)}" data-run-attempt-id="${options.escapeHtml(attemptId)}" aria-label="${options.escapeHtml(acceptLabel)}" title="${options.escapeHtml(acceptLabel)}"><i icon-name="check" aria-hidden="true"></i></button>` : ''}
-      <button type="button" data-chat-workflow-run-image-action="retry" data-run-artifact-id="${options.escapeHtml(artifactId)}" data-run-target-node-id="${options.escapeHtml(targetNodeId)}" data-run-attempt-id="${options.escapeHtml(attemptId)}" aria-label="${options.escapeHtml(retryLabel)}" title="${options.escapeHtml(retryLabel)}"><i icon-name="rotate-ccw" aria-hidden="true"></i></button>
-      <button type="button" data-chat-workflow-run-image-action="reroll" data-run-artifact-id="${options.escapeHtml(artifactId)}" data-run-target-node-id="${options.escapeHtml(targetNodeId)}" data-run-attempt-id="${options.escapeHtml(attemptId)}" aria-label="${options.escapeHtml(rerollLabel)}" title="${options.escapeHtml(rerollLabel)}"><i icon-name="shuffle" aria-hidden="true"></i></button>
+      <button type="button" data-chat-workflow-run-image-action="reroll" data-run-artifact-id="${options.escapeHtml(artifactId)}" data-run-target-node-id="${options.escapeHtml(targetNodeId)}" data-run-attempt-id="${options.escapeHtml(attemptId)}" aria-label="${options.escapeHtml(rerollLabel)}" title="${options.escapeHtml(rerollLabel)}"><i icon-name="rotate-ccw" aria-hidden="true"></i></button>
     </div>
   `
 }
