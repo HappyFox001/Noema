@@ -1093,7 +1093,7 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
         option('Medium', 'medium'),
         option('High', 'high'),
       ]),
-      parameter('revisionBudget', 'Revision Budget', 'integer', 4, { min: 1, max: 12, step: 1 }),
+      parameter('revisionBudget', 'Revision Budget', 'integer', 12, { min: 1, max: 24, step: 1 }),
       parameter('askUserThreshold', 'Ask User Threshold', 'select', 'blocked-only', undefined, [
         option('Never During Run', 'never'),
         option('Blocked Only', 'blocked-only'),
@@ -1927,7 +1927,7 @@ function createDefaultCharacterWorkflowExecutors(): Partial<Record<CharacterNode
       createdAt: timestamp,
       policy: {
         autonomyLevel: stringConfig(config.autonomyLevel, 'high'),
-        revisionBudget: numberConfig(config.revisionBudget, 4),
+        revisionBudget: numberConfig(config.revisionBudget, 12),
         askUserThreshold: stringConfig(config.askUserThreshold, 'blocked-only'),
         canExpandMissingDetails: booleanConfig(config.canExpandMissingDetails, true),
       },

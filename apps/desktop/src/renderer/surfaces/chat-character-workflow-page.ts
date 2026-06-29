@@ -922,7 +922,7 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'Medium', value: 'medium' },
       { label: 'High', value: 'high' },
     ]),
-    param('revisionBudget', 'Revision Budget', 'integer', 4, 1, 12, 1),
+    param('revisionBudget', 'Revision Budget', 'integer', 12, 1, 24, 1),
     param('askUserThreshold', 'Ask User Threshold', 'select', 'blocked-only', undefined, undefined, undefined, [
       { label: 'Never During Run', value: 'never' },
       { label: 'Blocked Only', value: 'blocked-only' },
