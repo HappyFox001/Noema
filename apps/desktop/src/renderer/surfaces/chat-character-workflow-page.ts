@@ -178,6 +178,12 @@ interface CharacterResourceOutput {
   data?: unknown
 }
 
+interface RunCharacterPreviewRow {
+  key: string
+  label: string
+  value: string
+}
+
 interface WorkflowMaterialItem {
   id: string
   kind: 'image' | 'document'
@@ -1896,8 +1902,7 @@ function animateRunDraftCanvas(root: HTMLElement, cleanups: Array<() => void>): 
   const previous = runDraftMotionSnapshots.get(root)
   runDraftMotionSnapshots.set(root, snapshot)
   runViewport.dataset.runDraftInitialized = 'true'
-  const shouldAnimateRunGrowth = runViewport.classList.contains('run-status-running') && Boolean(previous)
-  if (!shouldAnimateRunGrowth || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+  if (!previous || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
     return
   }
   const nodes = Array.from(runViewport.querySelectorAll<HTMLElement>('.chat-resource-node'))
@@ -1909,15 +1914,22 @@ function animateRunDraftCanvas(root: HTMLElement, cleanups: Array<() => void>): 
     const linkId = link.getAttribute('data-chat-resource-link-id') ?? ''
     return !previous?.links.has(linkId) || [...newNodeIds].some((nodeId) => linkId.endsWith(`->${nodeId}`))
   })
+  if (!newNodes.length && !newLinkGroups.length) {
+    return
+  }
   newNodes.forEach((node) => {
     node.style.opacity = '0'
     node.style.visibility = 'hidden'
     node.style.transformOrigin = '50% 0%'
   })
+  newLinkGroups.forEach((link) => {
+    link.style.opacity = '0'
+    link.style.visibility = 'hidden'
+  })
   newLinkGroups
     .flatMap((link) => Array.from(link.querySelectorAll<SVGPathElement>('path:not(.hit-area)')))
     .forEach((path) => {
-      const length = Math.max(1, Math.ceil(path.getTotalLength?.() ?? 80))
+      const length = Math.max(1, Math.ceil(path.getTotalLength()))
       path.style.opacity = '0'
       path.style.strokeDasharray = `${length}`
       path.style.strokeDashoffset = `${length}`
@@ -1982,6 +1994,11 @@ function animateRunDraftCanvas(root: HTMLElement, cleanups: Array<() => void>): 
           : []
         const label = `run-node-${index}`
         timeline.addLabel(label, index === 0 ? '+=0.08' : '+=0.13')
+        if (incoming) {
+          timeline.set(incoming, {
+            autoAlpha: 1,
+          }, label)
+        }
         if (paths.length) {
           timeline.to(paths, {
             autoAlpha: 1,
@@ -2034,6 +2051,10 @@ function animateRunDraftCanvas(root: HTMLElement, cleanups: Array<() => void>): 
         path.style.strokeDasharray = ''
         path.style.strokeDashoffset = ''
       })
+    newLinkGroups.forEach((link) => {
+      link.style.opacity = ''
+      link.style.visibility = ''
+    })
   })
   cleanups.push(() => {
     reverted = true
@@ -2503,10 +2524,12 @@ function renderRunDraft(graph: CharacterResourceGraph, options: CharacterWorkflo
   const runGraph = createRunDraftCanvasGraph(graph, options)
   const runGraphSnapshot = createGraphSerializerSnapshot(runGraph)
   const status = options.runState?.run?.status ?? 'idle'
+  const runPlaneWidth = Math.max(1640, ...runGraph.nodes.map((node) => node.position.x + node.size.width + 220))
+  const runPlaneHeight = Math.max(760, ...runGraph.nodes.map((node) => node.position.y + node.size.height + 180))
   return `
     <div class="chat-workflow-canvas-viewport active chat-resource-run-viewport run-status-${options.escapeHtml(status)}" data-resource-viewport="${options.escapeHtml(JSON.stringify(runGraph.viewport))}" aria-label="${options.escapeHtml(ui(options, '角色卡运行草稿', 'Character card run draft'))}">
       ${renderRunProgressOverlay(options)}
-      <div class="chat-workflow-canvas-plane chat-resource-graph-plane chat-resource-run-plane" style="--resource-zoom: ${runGraph.viewport.zoom}; --resource-pan-x: ${runGraph.viewport.x}px; --resource-pan-y: ${runGraph.viewport.y}px">
+      <div class="chat-workflow-canvas-plane chat-resource-graph-plane chat-resource-run-plane" style="--resource-zoom: ${runGraph.viewport.zoom}; --resource-pan-x: ${runGraph.viewport.x}px; --resource-pan-y: ${runGraph.viewport.y}px; --run-plane-width: ${runPlaneWidth}px; --run-plane-height: ${runPlaneHeight}px">
         <div class="chat-workflow-canvas-grid" aria-hidden="true"></div>
         ${renderLinkOverlay(runGraph, options)}
         ${runGraph.nodes.map((node) => renderResourceNode(node, runGraph, options)).join('')}
@@ -2569,18 +2592,18 @@ function renderRunCharacterInspector(options: CharacterWorkflowPageOptions): str
             <button type="button" data-chat-workflow-action="chat-test">${options.escapeHtml(ui(options, '聊天测试', 'Chat Test'))}</button>
           </div>
         </header>
-        <section class="chat-run-character-fields">
+        <section class="chat-run-character-fields" data-run-character-fields>
           ${rows.map((row) => `
-            <article>
+            <article data-run-character-field-key="${options.escapeHtml(row.key)}">
               <span>${options.escapeHtml(row.label)}</span>
               <p>${options.escapeHtml(row.value)}</p>
             </article>
           `).join('')}
         </section>
         ${images.length ? `
-          <section class="chat-run-character-carousel" aria-label="${options.escapeHtml(ui(options, '角色图片', 'Character images'))}">
+          <section class="chat-run-character-carousel" data-run-character-images aria-label="${options.escapeHtml(ui(options, '角色图片', 'Character images'))}">
             ${images.map((item, index) => `
-              <figure>
+              <figure data-run-character-image-key="${options.escapeHtml(item.artifact.id ?? `${item.artifact.type}-${index}`)}">
                 <img src="${options.escapeHtml(item.image)}" alt="${options.escapeHtml(item.artifact.title ?? `${ui(options, '角色图片', 'Character image')} ${index + 1}`)}">
                 <figcaption>${options.escapeHtml(item.artifact.title ?? `${index + 1} / ${images.length}`)}</figcaption>
               </figure>
@@ -2595,12 +2618,12 @@ function renderRunCharacterInspector(options: CharacterWorkflowPageOptions): str
 function createRunCharacterRows(
   artifacts: NonNullable<CharacterResourceRunState['artifacts']>,
   options: CharacterWorkflowPageOptions
-): Array<{ label: string; value: string }> {
-  const rows: Array<{ label: string; value: string }> = []
-  const push = (label: string, value: string | undefined) => {
+): RunCharacterPreviewRow[] {
+  const rows: RunCharacterPreviewRow[] = []
+  const push = (key: string, label: string, value: string | undefined) => {
     const normalized = normalizeRunCharacterFieldValue(value)
-    if (normalized && !rows.some((row) => row.label === label && row.value === normalized)) {
-      rows.push({ label, value: normalized })
+    if (normalized && !rows.some((row) => row.key === key && row.value === normalized)) {
+      rows.push({ key, label, value: normalized })
     }
   }
   const roleCard = artifacts.find((artifact) => artifact.type === 'character-card-final')
@@ -2608,7 +2631,7 @@ function createRunCharacterRows(
   if (roleCard) {
     const record = getRoleCardVisibleFields(roleCard.data)
     for (const [key, value] of Object.entries(record)) {
-      push(formatRunCharacterFieldLabel(key, options), formatRunCharacterFieldValue(value))
+      push(key, formatRunCharacterFieldLabel(key, options), formatRunCharacterFieldValue(value))
     }
   }
   for (const artifact of artifacts) {
@@ -2617,11 +2640,11 @@ function createRunCharacterRows(
     }
     const mapped = getCharacterFacingArtifactField(artifact)
     if (mapped) {
-      push(formatRunCharacterFieldLabel(mapped.key, options), mapped.value)
+      push(mapped.key, formatRunCharacterFieldLabel(mapped.key, options), mapped.value)
     }
   }
   if (!rows.length) {
-    push(ui(options, '状态', 'Status'), options.runState?.run?.status === 'running'
+    push('status', ui(options, '状态', 'Status'), options.runState?.run?.status === 'running'
       ? ui(options, '角色资源生成中', 'Character resources are being generated')
       : ui(options, '暂无角色资源', 'No character resources yet'))
   }
@@ -2631,9 +2654,9 @@ function createRunCharacterRows(
     .map((row) => ({ ...row, value: clampRunCharacterPreviewText(row.value, 220) }))
 }
 
-function getRunCharacterTitle(rows: Array<{ label: string; value: string }>, options: CharacterWorkflowPageOptions): string {
+function getRunCharacterTitle(rows: RunCharacterPreviewRow[], options: CharacterWorkflowPageOptions): string {
   const nameLabel = ui(options, '名称', 'Name')
-  return rows.find((row) => row.label === nameLabel)?.value
+  return rows.find((row) => row.key === 'name' || row.label === nameLabel)?.value
     ?? ui(options, '生成角色', 'Generated Character')
 }
 
@@ -2775,7 +2798,7 @@ function createRunDraftCanvasGraph(graph: CharacterResourceGraph, options: Chara
     id: sourceNodeId,
     type: 'goal',
     title: ui(options, '原始输入', 'Original Input'),
-    position: options.positionOverrides?.[sourceNodeId] ?? { x: 96, y: 238 },
+    position: options.positionOverrides?.[sourceNodeId] ?? { x: 96, y: 136 },
     size: { width: 330, height: 130 },
     status: status === 'failed' || status === 'needs_action' ? 'failed' : status === 'done' ? 'done' : status === 'running' ? 'running' : 'idle',
     zIndex: 1,
@@ -2882,16 +2905,12 @@ function resolveRunDraftSelectedNodeId(
 
 function getRunArtifactPlacement(artifact: NonNullable<CharacterResourceRunState['artifacts']>[number], index: number): { x: number; y: number } {
   const key = `${artifact.id || artifact.type || index}:${artifact.sourceNodeId || ''}`
-  const columns = 3
-  const column = index % columns
-  const row = Math.floor(index / columns)
-  const rowWave = [0, 34, -24, 18][row % 4] ?? 0
-  const columnWave = [0, -18, 22][column] ?? 0
-  const jitter = getStableRunOffset(key, 14, 10)
+  const xWave = [0, 42, -32, 64, -48, 18][index % 6] ?? 0
+  const jitter = getStableRunOffset(key, 10, 8)
   const imageNudge = artifact.type === 'image-asset' || artifact.type === 'image-attempt' ? 14 : 0
   return {
-    x: 506 + column * 372 + columnWave + jitter.x + imageNudge,
-    y: 132 + row * 244 + rowWave + jitter.y,
+    x: 518 + xWave + jitter.x + imageNudge,
+    y: 128 + index * 180 + jitter.y,
   }
 }
 
@@ -3343,14 +3362,32 @@ function renderLinkPath(linkItem: CharacterResourceLink, graph: CharacterResourc
   const isRunLink = linkItem.id.startsWith('run-link-')
   const sourceSlot = getSlotOffset(source, getOutputIndex(source.type, linkItem.sourceSlotId), 'output')
   const targetSlot = getSlotOffset(target, getInputIndex(target.type, linkItem.targetSlotId), 'input')
-  const x1 = isRunLink ? source.position.x + source.size.width / 2 : source.position.x + source.size.width + sourceSlot.x
-  const y1 = isRunLink ? source.position.y + source.size.height : source.position.y + sourceSlot.y
-  const x2 = isRunLink ? target.position.x + target.size.width / 2 : target.position.x + targetSlot.x
-  const y2 = isRunLink ? target.position.y : target.position.y + targetSlot.y
-  const mid = isRunLink ? Math.max(48, Math.abs(y2 - y1) * 0.42) : Math.max(80, Math.abs(x2 - x1) * 0.45)
-  const path = isRunLink
-    ? `M ${x1} ${y1} C ${x1} ${y1 + mid}, ${x2} ${y2 - mid}, ${x2} ${y2}`
-    : `M ${x1} ${y1} C ${x1 + mid} ${y1}, ${x2 - mid} ${y2}, ${x2} ${y2}`
+  let x1 = source.position.x + source.size.width + sourceSlot.x
+  let y1 = source.position.y + sourceSlot.y
+  let x2 = target.position.x + targetSlot.x
+  let y2 = target.position.y + targetSlot.y
+  let path = ''
+  if (isRunLink) {
+    const horizontal = Math.abs(target.position.x - source.position.x) > Math.abs(target.position.y - source.position.y) * 1.15
+    if (horizontal) {
+      x1 = source.position.x + source.size.width
+      y1 = source.position.y + source.size.height * 0.5
+      x2 = target.position.x
+      y2 = target.position.y + target.size.height * 0.5
+      const mid = Math.max(92, Math.abs(x2 - x1) * 0.44)
+      path = `M ${x1} ${y1} C ${x1 + mid} ${y1}, ${x2 - mid} ${y2}, ${x2} ${y2}`
+    } else {
+      x1 = source.position.x + source.size.width * 0.5
+      y1 = source.position.y + source.size.height
+      x2 = target.position.x + target.size.width * 0.5
+      y2 = target.position.y
+      const mid = Math.max(58, Math.abs(y2 - y1) * 0.44)
+      path = `M ${x1} ${y1} C ${x1} ${y1 + mid}, ${x2} ${y2 - mid}, ${x2} ${y2}`
+    }
+  } else {
+    const mid = Math.max(80, Math.abs(x2 - x1) * 0.45)
+    path = `M ${x1} ${y1} C ${x1 + mid} ${y1}, ${x2 - mid} ${y2}, ${x2} ${y2}`
+  }
   const flowing = source.status === 'running' || source.status === 'queued' || target.status === 'running' || target.status === 'queued'
   const collapsedNodeLinkReroute = Boolean(source.collapsed || target.collapsed)
   const highlighted = options.viewState?.agentHighlights?.linkIds?.includes(linkItem.id) ?? false
@@ -3358,9 +3395,11 @@ function renderLinkPath(linkItem: CharacterResourceLink, graph: CharacterResourc
   const centerX = (x1 + x2) / 2
   const centerY = (y1 + y2) / 2
   const disconnectLabel = ui(options, '断开连接', 'Disconnect link')
+  const runLinkOrder = isRunLink ? linkItem.id.match(/^run-link-(\d+)/)?.[1] ?? '' : ''
   return `
-    <g class="chat-resource-link ${options.escapeHtml(linkItem.kind)} ${options.escapeHtml(linkItem.status)} ${flowing ? 'flowing' : ''} ${collapsedNodeLinkReroute ? 'collapsed-node-link reroute-link' : ''} ${highlighted ? 'agent-highlight-link' : ''} ${graph.selection.linkIds.includes(linkItem.id) ? 'selected' : ''}" data-chat-resource-link-id="${options.escapeHtml(linkItem.id)}" data-chat-workflow-link-select="${options.escapeHtml(linkItem.id)}" data-agent-op-label="${options.escapeHtml(actionLabel)}">
-      <path d="${path}" marker-end="url(#chat-resource-arrow)"></path>
+    <g class="chat-resource-link ${isRunLink ? 'run-sequence-link' : ''} ${options.escapeHtml(linkItem.kind)} ${options.escapeHtml(linkItem.status)} ${flowing ? 'flowing' : ''} ${collapsedNodeLinkReroute ? 'collapsed-node-link reroute-link' : ''} ${highlighted ? 'agent-highlight-link' : ''} ${graph.selection.linkIds.includes(linkItem.id) ? 'selected' : ''}" data-chat-resource-link-id="${options.escapeHtml(linkItem.id)}" data-chat-workflow-link-select="${options.escapeHtml(linkItem.id)}" data-agent-op-label="${options.escapeHtml(actionLabel)}" data-run-link-order="${options.escapeHtml(runLinkOrder)}" data-run-link-target-node-id="${options.escapeHtml(isRunLink ? linkItem.targetNodeId : '')}">
+      ${isRunLink ? `<circle class="chat-resource-link-port source" cx="${x1}" cy="${y1}" r="3.2"></circle><circle class="chat-resource-link-port target" cx="${x2}" cy="${y2}" r="3.6"></circle>` : ''}
+      <path class="chat-resource-link-main" d="${path}" marker-end="url(#chat-resource-arrow)"></path>
       <path class="hit-area" d="${path}"></path>
       <text x="${centerX}" y="${centerY - 7}">${options.escapeHtml(actionLabel || linkItem.label || LINK_KIND_LABELS[linkItem.kind])}</text>
       <foreignObject class="chat-resource-link-disconnect-wrap" x="${centerX - 12}" y="${centerY + 2}" width="24" height="24">
