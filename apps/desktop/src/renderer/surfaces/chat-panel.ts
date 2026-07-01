@@ -2006,19 +2006,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const summaryCovered = retainedSummaries.reduce((count, summary) => count + summary.messageCount, 0)
     chatHistorySessionList.innerHTML = `
       <section class="chat-settings-section">
-        <div class="chat-settings-control-card chat-settings-parameter-card">
-          <div class="chat-settings-control-head">
-            <div>
-              <strong>${options.escapeHtml(localizeChatText(activeConversation.title, language))}</strong>
-              <small>${options.escapeHtml(localizeChatText(activeConversation.preview, language))}</small>
-            </div>
-            <button type="button" class="chat-settings-pill-btn danger" data-chat-history-action="delete-conversation" data-chat-history-id="${options.escapeHtml(activeConversation.id)}">
-              ${options.escapeHtml(zh ? '删除整段' : 'Delete thread')}
-            </button>
-          </div>
-        </div>
-      </section>
-      <section class="chat-settings-section">
         <div class="chat-settings-section-head">
           <div class="chat-settings-section-copy">
             <h3>${options.escapeHtml(zh ? '上下文策略' : 'Context policy')}</h3>
