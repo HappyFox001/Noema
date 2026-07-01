@@ -42,18 +42,9 @@ export interface ChatConversationSettings {
   mediaPersistence: ChatMediaPersistenceMode
 }
 
-export interface ConversationSettingsModelOption {
-  value: string
-  label: string
-  detail?: string
-  disabled?: boolean
-}
-
 export interface ConversationSettingsPageOptions {
   language: 'zh-CN' | 'en-US'
   escapeHtml(value: string): string
-  imageModels?: ConversationSettingsModelOption[]
-  ttsModels?: ConversationSettingsModelOption[]
 }
 
 export function getDefaultConversationSettings(): ChatConversationSettings {
@@ -208,7 +199,6 @@ export function renderConversationSettingsPage(
             { value: 'balanced', label: zh ? '平衡概率' : 'Balanced' },
             { value: 'always', label: zh ? '每轮生成' : 'Every reply' },
           ])}
-          ${renderConversationModelSelect(settings, options, 'mediaImageModelRef', zh ? '生图模型' : 'Image model', options.imageModels ?? [], zh ? '暂无可用生图模型' : 'No image model')}
           ${renderConversationSelect(settings, options, 'mediaImageSize', zh ? '图片尺寸' : 'Image size', [
             { value: '1024x1024', label: '1024 x 1024' },
             { value: '1024x1536', label: '1024 x 1536' },
@@ -223,7 +213,6 @@ export function renderConversationSettingsPage(
             { value: 'requested', label: zh ? '请求时生成' : 'Requested' },
             { value: 'assistant', label: zh ? '每条回复生成' : 'Every assistant reply' },
           ])}
-          ${renderConversationModelSelect(settings, options, 'mediaTtsModelId', zh ? 'TTS 模型' : 'TTS model', options.ttsModels ?? [], zh ? '暂无可用 TTS 模型' : 'No TTS model')}
           ${renderConversationSelect(settings, options, 'mediaPersistence', zh ? '媒体记忆' : 'Media memory', [
             { value: 'permanent', label: zh ? '长期锚点' : 'Permanent anchor' },
             { value: 'turn', label: zh ? '仅本次展示' : 'Display only' },
@@ -338,33 +327,6 @@ function renderConversationSelect(
       <span>${options.escapeHtml(title)}</span>
       <select data-chat-setting="${options.escapeHtml(key)}">
         ${items.map((item) => `<option value="${options.escapeHtml(item.value)}" ${item.value === selected ? 'selected' : ''}>${options.escapeHtml(item.label)}</option>`).join('')}
-      </select>
-    </label>
-  `
-}
-
-function renderConversationModelSelect(
-  settings: ChatConversationSettings,
-  options: ConversationSettingsPageOptions,
-  key: keyof Pick<ChatConversationSettings, 'mediaImageModelRef' | 'mediaTtsModelId'>,
-  title: string,
-  items: ConversationSettingsModelOption[],
-  emptyLabel: string
-): string {
-  const selected = String(settings[key] || '')
-  const effectiveSelected = selected || items.find((item) => !item.disabled)?.value || ''
-  const selectedExists = selected && items.some((item) => item.value === selected)
-  return `
-    <label class="chat-settings-field">
-      <span>${options.escapeHtml(title)}</span>
-      <select data-chat-setting="${options.escapeHtml(key)}">
-        <option value="" ${effectiveSelected ? '' : 'selected'}>${options.escapeHtml(emptyLabel)}</option>
-        ${selected && !selectedExists ? `<option value="${options.escapeHtml(selected)}" selected>${options.escapeHtml(selected)}</option>` : ''}
-        ${items.map((item) => `
-          <option value="${options.escapeHtml(item.value)}" ${item.value === effectiveSelected ? 'selected' : ''} ${item.disabled ? 'disabled' : ''}>
-            ${options.escapeHtml(item.detail ? `${item.label} · ${item.detail}` : item.label)}
-          </option>
-        `).join('')}
       </select>
     </label>
   `

@@ -33,7 +33,6 @@ import {
   loadConversationSettings,
   renderConversationSettingsPage,
   saveConversationSettings,
-  type ConversationSettingsModelOption,
   type ChatConversationSettings,
 } from './chat-conversation-settings'
 import type {
@@ -1525,6 +1524,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   function renderChatRuntimeModelPickerMarkup(extraClass = ''): string {
+    if (!extraClass) {
+      return renderChatRuntimeUnifiedModelPickerMarkup()
+    }
+    return renderChatRuntimeLLMModelPickerMarkup(extraClass)
+  }
+
+  function renderChatRuntimeLLMModelPickerMarkup(extraClass = ''): string {
     const config = chatSystemConfig
     if (!config) {
       return ''
@@ -1541,7 +1547,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     const activeProvider = activeChatRuntimeProvider && groups.some((group) => group.provider.value === activeChatRuntimeProvider)
       ? activeChatRuntimeProvider
-      : getLLMProviderEntry(activeModel?.provider).value
+      : getLLMProviderEntry(activeModel?.api.provider).value
     activeChatRuntimeProvider = activeProvider
     const activeProviderGroup = groups.find((group) => group.provider.value === activeProvider) ?? groups[0]
     return `
@@ -1556,6 +1562,57 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         </button>
         ${openChatRuntimeModelPicker ? renderChatRuntimeModelMenu(groups, activeProviderGroup, activeModel) : ''}
       </div>
+    `
+  }
+
+  function renderChatRuntimeUnifiedModelPickerMarkup(): string {
+    const config = chatSystemConfig
+    if (!config) {
+      return ''
+    }
+    const groups = getUsableChatModelGroups(config)
+    const activeModel = groups.flatMap((group) => group.models).find((model) => model.api.id === config.activeChatId && model.modelName === getActiveChatModelName(config))
+      ?? groups[0]?.models[0]
+      ?? null
+    if (activeModel && (config.activeChatId !== activeModel.api.id || getActiveChatModelName(config) !== activeModel.modelName)) {
+      config.activeChatId = activeModel.api.id
+      config.activeChatModelName = activeModel.modelName
+      activeModel.api.modelName = activeModel.modelName
+      void saveChatModelConfig()
+    }
+    const activeProvider = activeChatRuntimeProvider && groups.some((group) => group.provider.value === activeChatRuntimeProvider)
+      ? activeChatRuntimeProvider
+      : getLLMProviderEntry(activeModel?.api.provider).value
+    activeChatRuntimeProvider = activeProvider
+    const activeProviderGroup = groups.find((group) => group.provider.value === activeProvider) ?? groups[0]
+    const activeImage = getSelectedImageModelChoice()
+    const activeTTS = getSelectedTTSModel()
+    const hasAnyModel = Boolean(activeModel || activeImage || activeTTS)
+    return `
+      <div class="chat-runtime-model-shell is-unified ${openChatRuntimeModelPicker ? 'open' : ''}">
+        <button class="chat-runtime-model-current" type="button" data-chat-runtime-action="toggle-model-picker" ${hasAnyModel ? '' : 'disabled'}>
+          <span class="chat-runtime-model-icon">${activeModel ? renderChatModelLogo(activeModel.api) : renderProviderLogo('openai-compatible')}</span>
+          <span class="chat-runtime-model-copy">
+            <strong>${options.escapeHtml(activeModel?.modelName || (options.getLanguage() === 'zh-CN' ? '无 LLM' : 'No LLM'))}</strong>
+            <small>${options.escapeHtml(activeModel ? getLLMProviderEntry(activeModel.api.provider).label : (options.getLanguage() === 'zh-CN' ? '模型页添加' : 'Add in models'))}</small>
+          </span>
+          <span class="chat-runtime-media-pills" aria-hidden="true">
+            ${renderRuntimeMediaPill('IMG', activeImage ? activeImage.modelName : (options.getLanguage() === 'zh-CN' ? '未配置' : 'None'), Boolean(activeImage))}
+            ${renderRuntimeMediaPill('TTS', activeTTS ? getRuntimeTTSModelLabel(activeTTS) : (options.getLanguage() === 'zh-CN' ? '未配置' : 'None'), Boolean(activeTTS))}
+          </span>
+          <span class="chat-runtime-model-chevron"></span>
+        </button>
+        ${openChatRuntimeModelPicker ? renderChatRuntimeUnifiedModelMenu(groups, activeProviderGroup, activeModel, activeImage, activeTTS) : ''}
+      </div>
+    `
+  }
+
+  function renderRuntimeMediaPill(kind: string, label: string, ready: boolean): string {
+    return `
+      <span class="chat-runtime-media-pill ${ready ? 'ready' : 'missing'}">
+        <b>${options.escapeHtml(kind)}</b>
+        <em>${options.escapeHtml(shortRuntimeModelLabel(label))}</em>
+      </span>
     `
   }
 
@@ -1575,37 +1632,126 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     })
   }
 
+  function renderChatRuntimeUnifiedModelMenu(
+    groups: ChatRuntimeModelGroup[],
+    activeProviderGroup: ChatRuntimeModelGroup | undefined,
+    activeModel: ChatRuntimeModelOption | null,
+    activeImage: ChatImageModelChoice | null,
+    activeTTS: ChatTTSModelConfig | null
+  ): string {
+    const language = options.getLanguage()
+    const zh = language === 'zh-CN'
+    return `
+      <div class="chat-runtime-model-menu unified">
+        <section class="chat-runtime-menu-section llm">
+          <div class="chat-runtime-menu-section-head">
+            <span>LLM</span>
+            <strong>${options.escapeHtml(zh ? '对话模型' : 'Conversation')}</strong>
+          </div>
+          ${renderChatRuntimeModelMenuContent(groups, activeProviderGroup, activeModel)}
+        </section>
+        <section class="chat-runtime-menu-section media">
+          <div class="chat-runtime-menu-section-head">
+            <span>IMG</span>
+            <strong>${options.escapeHtml(zh ? '生图模型' : 'Image model')}</strong>
+          </div>
+          ${renderRuntimeImageModelOptions(activeImage)}
+        </section>
+        <section class="chat-runtime-menu-section media">
+          <div class="chat-runtime-menu-section-head">
+            <span>TTS</span>
+            <strong>${options.escapeHtml(zh ? '语音模型' : 'Voice model')}</strong>
+          </div>
+          ${renderRuntimeTTSModelOptions(activeTTS)}
+        </section>
+        <button class="chat-runtime-settings-link" type="button" data-chat-runtime-action="open-media-settings">
+          ${options.escapeHtml(zh ? '生成策略与参数' : 'Generation strategy and parameters')}
+        </button>
+      </div>
+    `
+  }
+
   function renderChatRuntimeModelMenu(
+    groups: ChatRuntimeModelGroup[],
+    activeProviderGroup: ChatRuntimeModelGroup | undefined,
+    activeModel: ChatRuntimeModelOption | null
+  ): string {
+    return `<div class="chat-runtime-model-menu">${renderChatRuntimeModelMenuContent(groups, activeProviderGroup, activeModel)}</div>`
+  }
+
+  function renderChatRuntimeModelMenuContent(
     groups: ChatRuntimeModelGroup[],
     activeProviderGroup: ChatRuntimeModelGroup | undefined,
     activeModel: ChatRuntimeModelOption | null
   ): string {
     if (!groups.length || !activeProviderGroup) {
       return `
-        <div class="chat-runtime-model-menu empty">
+        <div class="chat-runtime-model-menu-empty">
           <span>${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '暂无可用模型' : 'No available models')}</span>
         </div>
       `
     }
     return `
-      <div class="chat-runtime-model-menu">
-        <div class="chat-runtime-provider-tabs">
-          ${groups.map((group) => `
-            <button class="${group.provider.value === activeProviderGroup.provider.value ? 'active' : ''}" type="button" data-chat-runtime-provider="${options.escapeHtml(group.provider.value)}">
-              <span>${renderProviderLogo(group.provider.value)}</span>
-              <strong>${options.escapeHtml(group.provider.label)}</strong>
-              <small>${options.escapeHtml(String(group.models.length))}</small>
+      <div class="chat-runtime-provider-tabs">
+        ${groups.map((group) => `
+          <button class="${group.provider.value === activeProviderGroup.provider.value ? 'active' : ''}" type="button" data-chat-runtime-provider="${options.escapeHtml(group.provider.value)}">
+            <span>${renderProviderLogo(group.provider.value)}</span>
+            <strong>${options.escapeHtml(group.provider.label)}</strong>
+            <small>${options.escapeHtml(String(group.models.length))}</small>
+          </button>
+        `).join('')}
+      </div>
+      <div class="chat-runtime-model-options">
+        ${activeProviderGroup.models.map((model) => `
+          <button class="${activeModel && model.api.id === activeModel.api.id && model.modelName === activeModel.modelName ? 'selected' : ''}" type="button" data-chat-runtime-model-id="${options.escapeHtml(model.api.id)}" data-chat-runtime-model-name="${options.escapeHtml(model.modelName)}">
+            <strong>${options.escapeHtml(model.modelName)}</strong>
+            <small>${options.escapeHtml(getLLMProviderEntry(model.api.provider).label)}</small>
+          </button>
+        `).join('')}
+      </div>
+    `
+  }
+
+  function renderRuntimeImageModelOptions(activeImage: ChatImageModelChoice | null): string {
+    const choices = getImageModelChoices(true)
+    if (!choices.length) {
+      return `<div class="chat-runtime-media-empty">${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '在模型页添加 OpenAI Images 或 WaveSpeed' : 'Add OpenAI Images or WaveSpeed in Models')}</div>`
+    }
+    return `
+      <div class="chat-runtime-media-options">
+        ${choices.map((choice) => {
+          const missing = getImageModelMissingParts(choice.api, choice.modelName)
+          const selected = activeImage?.ref === choice.ref
+          return `
+            <button class="${selected ? 'selected' : ''}" type="button" data-chat-runtime-image-ref="${options.escapeHtml(choice.ref)}" ${missing.length ? 'disabled' : ''}>
+              <span>${renderChatModelLogo(choice.api)}</span>
+              <strong>${options.escapeHtml(choice.modelName)}</strong>
+              <small>${options.escapeHtml(missing.length ? missing.join(', ') : choice.providerLabel)}</small>
             </button>
-          `).join('')}
-        </div>
-        <div class="chat-runtime-model-options">
-          ${activeProviderGroup.models.map((model) => `
-            <button class="${activeModel && model.api.id === activeModel.api.id && model.modelName === activeModel.modelName ? 'selected' : ''}" type="button" data-chat-runtime-model-id="${options.escapeHtml(model.api.id)}" data-chat-runtime-model-name="${options.escapeHtml(model.modelName)}">
-              <strong>${options.escapeHtml(model.modelName)}</strong>
-              <small>${options.escapeHtml(getLLMProviderEntry(model.api.provider).label)}</small>
+          `
+        }).join('')}
+      </div>
+    `
+  }
+
+  function renderRuntimeTTSModelOptions(activeTTS: ChatTTSModelConfig | null): string {
+    if (!chatTTSModels.length) {
+      return `<div class="chat-runtime-media-empty">${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '在设置页添加 Fish 或 ElevenLabs TTS' : 'Add Fish or ElevenLabs TTS in Settings')}</div>`
+    }
+    return `
+      <div class="chat-runtime-media-options">
+        ${chatTTSModels.map((model) => {
+          const missing = getTTSModelMissingParts(model)
+          const provider = getTTSProviderCatalogEntry(model.provider)
+          const selected = activeTTS?.id === model.id
+          return `
+            <button class="${selected ? 'selected' : ''}" type="button" data-chat-runtime-tts-id="${options.escapeHtml(model.id)}" ${missing.length ? 'disabled' : ''}>
+              <span class="chat-runtime-tts-icon">T</span>
+              <strong>${options.escapeHtml(getRuntimeTTSModelLabel(model))}</strong>
+              <small>${options.escapeHtml(missing.length ? missing.join(', ') : provider.label)}</small>
             </button>
-          `).join('')}
-        </div>
+          `
+        }).join('')}
       </div>
     `
   }
@@ -2417,33 +2563,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     conversationSettingsBody.innerHTML = renderConversationSettingsPage(conversationSettings, {
       language: options.getLanguage(),
       escapeHtml: options.escapeHtml,
-      imageModels: getConversationImageModelOptions(),
-      ttsModels: getConversationTTSModelOptions(),
-    })
-  }
-
-  function getConversationImageModelOptions(): ConversationSettingsModelOption[] {
-    return getImageModelChoices(true).map((choice) => {
-      const missing = getImageModelMissingParts(choice.api, choice.modelName)
-      return {
-        value: choice.ref,
-        label: `${choice.providerLabel} / ${choice.modelName}`,
-        detail: missing.length ? missing.join(', ') : choice.api.id,
-        disabled: missing.length > 0,
-      }
-    })
-  }
-
-  function getConversationTTSModelOptions(): ConversationSettingsModelOption[] {
-    return chatTTSModels.map((model) => {
-      const provider = getTTSProviderCatalogEntry(model.provider)
-      const missing = getTTSModelMissingParts(model)
-      return {
-        value: model.id,
-        label: `${provider.label} / ${model.modelName || provider.defaultModel}`,
-        detail: missing.length ? missing.join(', ') : (model.voiceId || model.id),
-        disabled: missing.length > 0,
-      }
     })
   }
 
@@ -2501,6 +2620,42 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     return usable.find((model) => model.id === conversationSettings.mediaTtsModelId)
       ?? usable[0]
       ?? null
+  }
+
+  function getRuntimeTTSModelLabel(model: ChatTTSModelConfig): string {
+    const provider = getTTSProviderCatalogEntry(model.provider)
+    return model.modelName || provider.defaultModel || model.id
+  }
+
+  function shortRuntimeModelLabel(value: string): string {
+    const clean = String(value || '').trim()
+    if (!clean) {
+      return '-'
+    }
+    const leaf = clean.split(/[/:]/).filter(Boolean).pop() || clean
+    return leaf.length > 18 ? `${leaf.slice(0, 17)}...` : leaf
+  }
+
+  function selectRuntimeImageModel(ref: string): void {
+    const choice = getImageModelChoices(false).find((item) => item.ref === ref)
+    if (!choice) {
+      return
+    }
+    conversationSettings = { ...conversationSettings, mediaImageModelRef: choice.ref }
+    saveConversationSettings(conversationSettings)
+    renderChatRuntimeModelPicker()
+    renderConversationSettings()
+  }
+
+  function selectRuntimeTTSModel(id: string): void {
+    const model = chatTTSModels.find((item) => item.id === id && getTTSModelMissingParts(item).length === 0)
+    if (!model) {
+      return
+    }
+    conversationSettings = { ...conversationSettings, mediaTtsModelId: model.id }
+    saveConversationSettings(conversationSettings)
+    renderChatRuntimeModelPicker()
+    renderConversationSettings()
   }
 
   function updateConversationSetting(control: HTMLInputElement | HTMLSelectElement): void {
@@ -7629,6 +7784,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       if (runtimeAction.dataset.chatRuntimeAction === 'toggle-model-picker') {
         openChatRuntimeModelPicker = !openChatRuntimeModelPicker
         renderChatRuntimeModelPicker()
+      } else if (runtimeAction.dataset.chatRuntimeAction === 'open-media-settings') {
+        openChatRuntimeModelPicker = false
+        renderChatRuntimeModelPicker()
+        openConversationSettings()
       }
       return
     }
@@ -7669,6 +7828,18 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const runtimeModel = eventTarget.closest<HTMLElement>('[data-chat-runtime-model-id]')
     if (runtimeModel && panel.contains(runtimeModel)) {
       void selectRuntimeChatModel(runtimeModel.dataset.chatRuntimeModelId || '', runtimeModel.dataset.chatRuntimeModelName || '')
+      return
+    }
+
+    const runtimeImageModel = eventTarget.closest<HTMLElement>('[data-chat-runtime-image-ref]')
+    if (runtimeImageModel && panel.contains(runtimeImageModel)) {
+      selectRuntimeImageModel(runtimeImageModel.dataset.chatRuntimeImageRef || '')
+      return
+    }
+
+    const runtimeTTSModel = eventTarget.closest<HTMLElement>('[data-chat-runtime-tts-id]')
+    if (runtimeTTSModel && panel.contains(runtimeTTSModel)) {
+      selectRuntimeTTSModel(runtimeTTSModel.dataset.chatRuntimeTtsId || '')
       return
     }
 
