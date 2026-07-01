@@ -21,12 +21,14 @@ export interface ChatRenderer {
   renderConversationList(conversations: ChatConversationSummary[], characters: ChatCharacterResource[], activeId: string): void
   renderActiveConversation(conversation: ChatConversationSummary, character: ChatCharacterResource): void
   renderEmptyState(): void
-  renderMessages(messages: ChatMessage[]): void
+  renderMessages(messages: ChatMessage[], scrollMode?: ChatRenderScrollMode): void
   appendMessage(message: ChatMessage): void
   replaceMessage(message: ChatMessage): void
   setAssistantMessageState(messageId: string, state: ChatMessage['state']): void
   filterConversations(query: string): void
 }
+
+type ChatRenderScrollMode = 'auto' | 'force' | 'preserve'
 
 export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
   const threadList = options.panel.querySelector<HTMLElement>('.chat-thread-list')
@@ -115,7 +117,7 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     if (suggestionList) {
       suggestionList.innerHTML = ''
     }
-    renderMessages(conversation.messages)
+    renderMessages(conversation.messages, 'force')
   }
 
   function renderEmptyState(): void {
@@ -161,19 +163,20 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     options.messageList.innerHTML = ''
   }
 
-  function renderMessages(messages: ChatMessage[]): void {
+  function renderMessages(messages: ChatMessage[], scrollMode: ChatRenderScrollMode = 'auto'): void {
+    const shouldFollow = scrollMode === 'force' || (scrollMode === 'auto' && shouldAutoFollowScroll())
+    const previousScrollTop = options.messageList.scrollTop
     const lastAssistantId = findLastAssistantMessageId(messages)
     options.messageList.innerHTML = messages.map((message) => renderMessage(message, message.id === lastAssistantId)).join('')
-    scrollToLatest()
+    applyScrollAfterRender(shouldFollow, previousScrollTop)
   }
 
   function appendMessage(message: ChatMessage): void {
-    if (message.role === 'assistant' && activeConversation) {
-      renderMessages(activeConversation.messages)
-      return
-    }
+    const shouldFollow = shouldAutoFollowScroll()
     options.messageList.insertAdjacentHTML('beforeend', renderMessage(message, false))
-    scrollToLatest()
+    if (shouldFollow) {
+      scrollToLatest()
+    }
   }
 
   function replaceMessage(message: ChatMessage): void {
@@ -182,12 +185,14 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
       appendMessage(message)
       return
     }
-    if (message.role === 'assistant' && activeConversation) {
-      renderMessages(activeConversation.messages)
-      return
-    }
+    const shouldFollow = shouldAutoFollowScroll()
+    const previousScrollTop = options.messageList.scrollTop
     existing.outerHTML = renderMessage(message, false)
-    scrollToLatest()
+    if (shouldFollow) {
+      scrollToLatest()
+    } else {
+      options.messageList.scrollTop = previousScrollTop
+    }
   }
 
   function setAssistantMessageState(messageId: string, state: ChatMessage['state']): void {
@@ -534,6 +539,22 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
 
   function renderAvatar(character: ChatCharacterResource, large: boolean): string {
     return `<span class="chat-avatar ${large ? 'large' : ''}">${renderAvatarImage(character, options.getLanguage())}</span>`
+  }
+
+  function shouldAutoFollowScroll(): boolean {
+    const list = options.messageList
+    if (list.childElementCount === 0) {
+      return true
+    }
+    return list.scrollHeight - list.scrollTop - list.clientHeight < 96
+  }
+
+  function applyScrollAfterRender(shouldFollow: boolean, previousScrollTop: number): void {
+    if (shouldFollow) {
+      scrollToLatest()
+      return
+    }
+    options.messageList.scrollTop = previousScrollTop
   }
 
   function scrollToLatest(): void {
