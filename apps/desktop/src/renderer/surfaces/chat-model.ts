@@ -5,7 +5,7 @@ export type ChatLanguageCode = 'zh-CN' | 'en-US'
 
 export type ChatMessageRole = 'user' | 'assistant' | 'system'
 
-export type ChatActivityState = 'idle' | 'thinking' | 'generating_image' | 'using_tool'
+export type ChatActivityState = 'idle' | 'thinking' | 'generating_image' | 'generating_audio' | 'using_tool'
 
 export type ChatLocalizedText = Record<ChatLanguageCode, string>
 

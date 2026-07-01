@@ -9,6 +9,8 @@ import {
 } from './index.js'
 import type { ChatRuntimeTurnRequest } from './request-runtime.js'
 
+export * from './media-orchestrator.js'
+
 export type ChatRuntimeRole = 'system' | 'user' | 'assistant'
 export type ChatRuntimeLanguage = 'zh-CN' | 'en-US'
 export type ChatRuntimeLocalizedText = Record<ChatRuntimeLanguage, string>

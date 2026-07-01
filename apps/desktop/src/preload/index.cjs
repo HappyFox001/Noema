@@ -302,6 +302,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   selectChatMedia: (request) =>
     ipcRenderer.invoke('chat:selectMedia', request),
 
+  generateChatImageMedia: (request) =>
+    ipcRenderer.invoke('chat:generateImageMedia', request),
+
+  synthesizeChatAudioMedia: (request) =>
+    ipcRenderer.invoke('chat:synthesizeAudioMedia', request),
+
   selectChatMaterials: () =>
     ipcRenderer.invoke('chat:selectMaterials'),
 

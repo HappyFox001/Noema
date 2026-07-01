@@ -1,16 +1,23 @@
 /**
  * Owns the standalone chat surface interactions and window mode transitions.
  */
-import { getImageProviderCatalogEntry, getLLMProviderCatalogEntry } from '../../main/model-provider-catalog'
+import { getImageProviderCatalogEntry, getLLMProviderCatalogEntry, getTTSProviderCatalogEntry } from '../../main/model-provider-catalog'
 import {
   applyChatRuntimeTurnResult,
   buildChatRuntimeTurnRequest,
+  decideRoleplayMediaDispatch,
+  extractRoleplayMediaIntent,
   getChatMessageOrdinal,
   summarizeChatConversationOverflow,
   stripChatSceneUpdateMarkup,
   trimChatSummaries,
+  type RoleplayMediaIntent,
 } from '@noema/sdk/chat/conversation-runtime'
 import {
+  CHAT_MEDIA_IMAGE_COOLDOWN_MAX,
+  CHAT_MEDIA_IMAGE_COOLDOWN_MIN,
+  CHAT_MEDIA_IMAGE_PROBABILITY_MAX,
+  CHAT_MEDIA_IMAGE_PROBABILITY_MIN,
   CHAT_CONTEXT_TURNS_MAX,
   CHAT_CONTEXT_TURNS_MIN,
   CHAT_OUTPUT_TOKEN_MAX,
@@ -19,12 +26,14 @@ import {
   CHAT_SUMMARY_LIMIT_MAX,
   CHAT_SUMMARY_LIMIT_MIN,
   buildConversationPreferencePrompt,
+  buildConversationMediaPolicy,
   buildConversationRequestOptions,
   clampNumber,
   getDefaultConversationSettings,
   loadConversationSettings,
   renderConversationSettingsPage,
   saveConversationSettings,
+  type ConversationSettingsModelOption,
   type ChatConversationSettings,
 } from './chat-conversation-settings'
 import type {
@@ -77,6 +86,26 @@ type ChatResizeEdge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
 type PendingChatMedia = ChatMessageMedia
 type CharacterWorkflowPageModule = typeof import('./chat-character-workflow-page')
 type CharacterWorkflowTemplateId = 'character-card'
+
+interface ChatTTSModelConfig {
+  id: string
+  provider: string
+  modelName: string
+  apiKey: string
+  voiceId?: string
+  baseUrl?: string
+  language?: string
+  format?: 'pcm' | 'mp3' | 'opus'
+  sampleRate?: number
+  extra?: Record<string, unknown>
+}
+
+interface ChatImageModelChoice {
+  ref: string
+  api: ChatModelConfig
+  modelName: string
+  providerLabel: string
+}
 
 const CHARACTER_WORKFLOW_LIBRARY_MIN_WIDTH = 148
 const CHARACTER_WORKFLOW_LIBRARY_DEFAULT_WIDTH = 176
@@ -278,6 +307,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   const runtimeModelPicker = document.createElement('div')
   const attachmentTray = document.createElement('div')
   let chatSystemConfig: ChatSystemConfig | null = null
+  let chatTTSModels: ChatTTSModelConfig[] = []
   let openChatModelLibraryId = ''
   let chatModelLibrarySearch = ''
   let openChatProviderDropdownId = ''
@@ -1068,9 +1098,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       const reply = response.success
         ? (response.response || completeReply || visibleReply || '')
         : (response.error || 'Chat model failed')
+      const mediaIntentResult = response.success ? extractRoleplayMediaIntent(reply) : { text: reply, intent: null as RoleplayMediaIntent | null }
+      const visibleFinalReply = mediaIntentResult.intent ? mediaIntentResult.text : reply
       const snapshot = applyChatRuntimeTurnResult(conversation, {
         assistantMessageId: message.id,
-        content: reply,
+        content: visibleFinalReply,
         language,
         sceneUpdate: response.success ? response.sceneUpdate : undefined,
       })
@@ -1081,6 +1113,15 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       refreshConversationList()
       void persistConversation(conversation)
       void summarizeConversationOverflow(conversation, language)
+      if (response.success) {
+        void generateTurnMedia(conversation, {
+          assistantMessageId: message.id,
+          userText,
+          assistantText: visibleFinalReply,
+          intent: mediaIntentResult.intent,
+          userMedia: media,
+        })
+      }
       if (!response.success) {
         showToast(response.error || 'Chat model failed')
       }
@@ -1094,6 +1135,277 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       void persistConversation(conversation)
       showToast(errorText)
     }
+  }
+
+  async function generateTurnMedia(
+    conversation: ChatConversationSummary,
+    input: {
+      assistantMessageId: string
+      userText: string
+      assistantText: string
+      intent?: RoleplayMediaIntent | null
+      userMedia?: ChatMessageMedia[]
+    }
+  ): Promise<void> {
+    const character = getCharacterForConversation(state, conversation)
+    const language = getEffectiveConversationLanguage()
+    const decision = decideRoleplayMediaDispatch({
+      userText: input.userText,
+      assistantText: input.assistantText,
+      language,
+      policy: buildConversationMediaPolicy(conversationSettings),
+      intent: input.intent,
+      character,
+      sceneState: conversation.sceneState,
+      recentMessages: conversation.messages,
+      externalProbabilityBias: getExternalMediaProbabilityBias(input.userMedia ?? []),
+      random: Math.random,
+    })
+    if (decision.audio) {
+      await generateAssistantAudio(conversation, input.assistantMessageId, decision.audio, false)
+    }
+    if (decision.image) {
+      await generateAssistantImage(conversation, decision.image, false)
+    }
+  }
+
+  async function handleManualMessageMediaAction(action: 'image' | 'audio', messageId: string): Promise<void> {
+    const conversation = getActiveMutableConversation()
+    if (!conversation) {
+      return
+    }
+    const message = conversation.messages.find((item) => item.id === messageId && item.role === 'assistant')
+    if (!message || message.state) {
+      return
+    }
+    const language = getEffectiveConversationLanguage()
+    const assistantText = localizeChatText(message.text, language).trim()
+    const userText = getPreviousUserMessageText(conversation, messageId, language)
+    const character = getCharacterForConversation(state, conversation)
+    const basePolicy = buildConversationMediaPolicy(conversationSettings)
+    const decision = decideRoleplayMediaDispatch({
+      userText,
+      assistantText,
+      language,
+      policy: {
+        ...basePolicy,
+        imageMode: action === 'image' ? 'always' : 'off',
+        voiceMode: action === 'audio' ? 'assistant' : 'off',
+        imageCooldownTurns: 0,
+      },
+      character,
+      sceneState: conversation.sceneState,
+      recentMessages: conversation.messages,
+      random: () => 0,
+    })
+    if (action === 'image' && decision.image) {
+      await generateAssistantImage(conversation, { ...decision.image, trigger: 'manual', reason: 'manual_message_action' }, true)
+    } else if (action === 'audio' && decision.audio) {
+      await generateAssistantAudio(conversation, messageId, { ...decision.audio, trigger: 'manual', reason: 'manual_message_action' }, true)
+    }
+  }
+
+  async function generateAssistantAudio(
+    conversation: ChatConversationSummary,
+    assistantMessageId: string,
+    dispatch: {
+      text: string
+      trigger: 'manual' | 'model'
+      permanent: boolean
+      reason: string
+    },
+    notifyOnMissing: boolean
+  ): Promise<void> {
+    const model = getSelectedTTSModel()
+    if (!model) {
+      if (notifyOnMissing) {
+        showToast(options.getLanguage() === 'zh-CN' ? '请先配置可用 TTS 模型' : 'Configure a usable TTS model first')
+      }
+      return
+    }
+    const message = conversation.messages.find((item) => item.id === assistantMessageId)
+    if (!message) {
+      return
+    }
+    const previousState = message.state
+    message.state = 'generating_audio'
+    renderer.replaceMessage(message)
+    await persistConversation(conversation)
+    try {
+      const response = await window.electronAPI.synthesizeChatAudioMedia({
+        model,
+        text: dispatch.text,
+        name: `${conversation.characterId || 'character'}-voice-${Date.now()}`,
+      })
+      if (!response.success || !response.media) {
+        throw new Error(response.error || 'TTS generation failed')
+      }
+      message.media = [
+        ...(message.media ?? []),
+        decorateGeneratedMedia(response.media, {
+          trigger: dispatch.trigger,
+          mode: dispatch.permanent ? 'permanent' : 'turn',
+          reason: dispatch.reason,
+          summary: dispatch.text,
+        }),
+      ]
+      message.state = previousState === 'generating_audio' ? undefined : previousState
+      renderer.replaceMessage(message)
+      await persistConversation(conversation)
+      if (conversationSettings.mediaVoiceAutoplay) {
+        playGeneratedAudio(assistantMessageId)
+      }
+    } catch (error: any) {
+      message.state = previousState === 'generating_audio' ? undefined : previousState
+      renderer.replaceMessage(message)
+      await persistConversation(conversation)
+      if (notifyOnMissing || dispatch.trigger === 'model') {
+        showToast(error?.message || String(error))
+      }
+    }
+  }
+
+  async function generateAssistantImage(
+    conversation: ChatConversationSummary,
+    dispatch: {
+      prompt: string
+      trigger: 'manual' | 'model' | 'probability'
+      probability: number
+      permanent: boolean
+      reason: string
+      referenceImages: string[]
+    },
+    notifyOnMissing: boolean
+  ): Promise<void> {
+    const choice = getSelectedImageModelChoice()
+    if (!choice) {
+      if (notifyOnMissing) {
+        showToast(options.getLanguage() === 'zh-CN' ? '请先配置可用生图模型' : 'Configure a usable image model first')
+      }
+      return
+    }
+    const imageMessage = createGeneratedMediaMessage(
+      options.getLanguage() === 'zh-CN' ? '生成画面中...' : 'Generating image...',
+      'generating_image'
+    )
+    conversation.messages.push(imageMessage)
+    renderer.appendMessage(imageMessage)
+    await persistConversation(conversation)
+    try {
+      const response = await window.electronAPI.generateChatImageMedia({
+        model: {
+          ...choice.api,
+          modelType: 'image',
+          modelName: choice.modelName,
+        },
+        modelName: choice.modelName,
+        prompt: dispatch.prompt,
+        referenceImages: dispatch.referenceImages,
+        size: conversationSettings.mediaImageSize,
+        name: `${conversation.characterId || 'character'}-image-${Date.now()}.png`,
+      })
+      if (!response.success || !response.media) {
+        throw new Error(response.error || 'Image generation failed')
+      }
+      imageMessage.media = [decorateGeneratedMedia(response.media, {
+        trigger: dispatch.trigger,
+        mode: dispatch.permanent ? 'permanent' : 'turn',
+        probability: dispatch.probability,
+        reason: dispatch.reason,
+        summary: dispatch.prompt,
+      })]
+      imageMessage.text = { 'zh-CN': '', 'en-US': '' }
+      imageMessage.state = undefined
+      renderer.replaceMessage(imageMessage)
+      await persistConversation(conversation)
+    } catch (error: any) {
+      const errorText = options.getLanguage() === 'zh-CN'
+        ? `图片生成失败：${error?.message || String(error)}`
+        : `Image generation failed: ${error?.message || String(error)}`
+      imageMessage.text = { 'zh-CN': errorText, 'en-US': errorText }
+      imageMessage.state = undefined
+      renderer.replaceMessage(imageMessage)
+      await persistConversation(conversation)
+      if (notifyOnMissing || dispatch.trigger === 'model') {
+        showToast(error?.message || String(error))
+      }
+    }
+  }
+
+  function createGeneratedMediaMessage(text: string, stateValue: ChatMessage['state']): ChatMessage {
+    const label = getTimeLabel()
+    return {
+      id: `assistant-media-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      role: 'assistant',
+      text: { 'zh-CN': text, 'en-US': text },
+      createdLabel: { 'zh-CN': label, 'en-US': label },
+      state: stateValue,
+    }
+  }
+
+  function decorateGeneratedMedia(
+    item: ChatMessageMedia,
+    optionsValue: {
+      trigger: 'manual' | 'model' | 'probability'
+      mode: 'turn' | 'permanent'
+      probability?: number
+      reason: string
+      summary: string
+    }
+  ): ChatMessageMedia {
+    return {
+      ...item,
+      id: item.id || `generated-media-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      origin: 'generated',
+      dispatch: {
+        ...(item.dispatch ?? {}),
+        trigger: optionsValue.trigger,
+        mode: optionsValue.mode,
+        ...(typeof optionsValue.probability === 'number' ? { probability: optionsValue.probability } : {}),
+        reason: optionsValue.reason,
+      },
+      context: optionsValue.mode === 'permanent'
+        ? { mode: 'text', summary: optionsValue.summary.slice(0, 420) }
+        : { mode: 'none' },
+      metadata: {
+        ...(item.metadata ?? {}),
+        generatedAt: Date.now(),
+      },
+    }
+  }
+
+  function getExternalMediaProbabilityBias(media: ChatMessageMedia[]): number {
+    return media.reduce((total, item) => total + (Number(item.dispatch?.externalProbabilityBias) || 0), 0)
+  }
+
+  function getPreviousUserMessageText(
+    conversation: ChatConversationSummary,
+    assistantMessageId: string,
+    language: 'zh-CN' | 'en-US'
+  ): string {
+    const assistantIndex = conversation.messages.findIndex((item) => item.id === assistantMessageId)
+    for (let index = assistantIndex - 1; index >= 0; index -= 1) {
+      const message = conversation.messages[index]
+      if (message.role === 'user') {
+        return localizeChatText(message.text, language)
+      }
+    }
+    return ''
+  }
+
+  function playGeneratedAudio(messageId: string): void {
+    window.requestAnimationFrame(() => {
+      const selector = `[data-message-id="${cssEscapeForSelector(messageId)}"] audio`
+      const audio = options.messageList.querySelector<HTMLAudioElement>(selector)
+      void audio?.play().catch(() => undefined)
+    })
+  }
+
+  function cssEscapeForSelector(value: string): string {
+    if (typeof CSS !== 'undefined' && CSS.escape) {
+      return CSS.escape(value)
+    }
+    return value.replace(/["\\]/g, '\\$&')
   }
 
   async function summarizeConversationOverflow(
@@ -1184,6 +1496,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         activeChatId: settings.system.activeChatId || settings.system.chatModels[0]?.id || 'default-chat',
         activeChatModelName: settings.system.activeChatModelName,
       }
+      chatTTSModels = (settings.system.ttsModels || []).map((model) => ({
+        ...model,
+        extra: model.extra ? { ...model.extra } : undefined,
+      }))
       if (!chatSystemConfig.chatModels.some((model) => model.id === chatSystemConfig!.activeChatId)) {
         chatSystemConfig.activeChatId = chatSystemConfig.chatModels[0]?.id || ''
       }
@@ -1196,6 +1512,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       })
       renderChatModelConfig()
       renderChatRuntimeModelPicker()
+      renderConversationSettings()
       refreshCharacterWorkflowModelsIfVisible()
     } catch (error: any) {
       showToast(error?.message || String(error))
@@ -2100,7 +2417,90 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     conversationSettingsBody.innerHTML = renderConversationSettingsPage(conversationSettings, {
       language: options.getLanguage(),
       escapeHtml: options.escapeHtml,
+      imageModels: getConversationImageModelOptions(),
+      ttsModels: getConversationTTSModelOptions(),
     })
+  }
+
+  function getConversationImageModelOptions(): ConversationSettingsModelOption[] {
+    return getImageModelChoices(true).map((choice) => {
+      const missing = getImageModelMissingParts(choice.api, choice.modelName)
+      return {
+        value: choice.ref,
+        label: `${choice.providerLabel} / ${choice.modelName}`,
+        detail: missing.length ? missing.join(', ') : choice.api.id,
+        disabled: missing.length > 0,
+      }
+    })
+  }
+
+  function getConversationTTSModelOptions(): ConversationSettingsModelOption[] {
+    return chatTTSModels.map((model) => {
+      const provider = getTTSProviderCatalogEntry(model.provider)
+      const missing = getTTSModelMissingParts(model)
+      return {
+        value: model.id,
+        label: `${provider.label} / ${model.modelName || provider.defaultModel}`,
+        detail: missing.length ? missing.join(', ') : (model.voiceId || model.id),
+        disabled: missing.length > 0,
+      }
+    })
+  }
+
+  function getImageModelChoices(includeIncomplete = false): ChatImageModelChoice[] {
+    const config = chatSystemConfig
+    if (!config) {
+      return []
+    }
+    return config.chatModels.flatMap((api) => {
+      if (getChatModelType(api) !== 'image') {
+        return []
+      }
+      const provider = getImageProviderCatalogEntry(api.provider)
+      const modelNames = getEnabledModelNames(api).length ? getEnabledModelNames(api) : [api.modelName].filter(Boolean)
+      return modelNames.flatMap((modelName): ChatImageModelChoice[] => {
+        if (!includeIncomplete && getImageModelMissingParts(api, modelName).length) {
+          return []
+        }
+        return [{
+          ref: `${api.id}::${modelName}`,
+          api,
+          modelName,
+          providerLabel: provider.label,
+        }]
+      })
+    })
+  }
+
+  function getImageModelMissingParts(api: ChatModelConfig, modelName: string): string[] {
+    const missing: string[] = []
+    if (!modelName.trim()) missing.push(options.getLanguage() === 'zh-CN' ? '模型名' : 'model')
+    if (!api.apiKey.trim()) missing.push(options.getLanguage() === 'zh-CN' ? '密钥' : 'key')
+    if (!api.baseUrl.trim()) missing.push(options.getLanguage() === 'zh-CN' ? '地址' : 'url')
+    return missing
+  }
+
+  function getTTSModelMissingParts(model: ChatTTSModelConfig): string[] {
+    const missing: string[] = []
+    const provider = getTTSProviderCatalogEntry(model.provider)
+    if (!(model.modelName || provider.defaultModel).trim()) missing.push(options.getLanguage() === 'zh-CN' ? '模型名' : 'model')
+    if (!model.apiKey.trim()) missing.push(options.getLanguage() === 'zh-CN' ? '密钥' : 'key')
+    if (provider.requiresVoiceId && !String(model.voiceId || '').trim()) missing.push(options.getLanguage() === 'zh-CN' ? '音色' : 'voice')
+    return missing
+  }
+
+  function getSelectedImageModelChoice(): ChatImageModelChoice | null {
+    const choices = getImageModelChoices(false)
+    return choices.find((choice) => choice.ref === conversationSettings.mediaImageModelRef)
+      ?? choices[0]
+      ?? null
+  }
+
+  function getSelectedTTSModel(): ChatTTSModelConfig | null {
+    const usable = chatTTSModels.filter((model) => getTTSModelMissingParts(model).length === 0)
+    return usable.find((model) => model.id === conversationSettings.mediaTtsModelId)
+      ?? usable[0]
+      ?? null
   }
 
   function updateConversationSetting(control: HTMLInputElement | HTMLSelectElement): void {
@@ -2108,11 +2508,32 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!key) {
       return
     }
-    if (key === 'textStreaming' || key === 'sceneImmersion') {
+    if (key === 'textStreaming' || key === 'sceneImmersion' || key === 'mediaVoiceAutoplay') {
       conversationSettings = { ...conversationSettings, [key]: (control as HTMLInputElement).checked }
     } else if (key === 'language') {
       const value = control.value === 'zh-CN' || control.value === 'en-US' ? control.value : 'auto'
       conversationSettings = { ...conversationSettings, language: value }
+    } else if (key === 'mediaImageMode') {
+      const value = control.value === 'off' || control.value === 'requested' || control.value === 'balanced' || control.value === 'always'
+        ? control.value
+        : 'off'
+      conversationSettings = { ...conversationSettings, mediaImageMode: value }
+    } else if (key === 'mediaVoiceMode') {
+      const value = control.value === 'off' || control.value === 'requested' || control.value === 'assistant'
+        ? control.value
+        : 'off'
+      conversationSettings = { ...conversationSettings, mediaVoiceMode: value }
+    } else if (key === 'mediaImageModelRef' || key === 'mediaTtsModelId') {
+      conversationSettings = { ...conversationSettings, [key]: control.value.trim() }
+    } else if (key === 'mediaImageSize') {
+      const value = control.value === '1024x1024' || control.value === '1024x1536' || control.value === '1536x1024'
+        ? control.value
+        : '1024x1024'
+      conversationSettings = { ...conversationSettings, mediaImageSize: value }
+    } else if (key === 'mediaImageReferenceMode') {
+      conversationSettings = { ...conversationSettings, mediaImageReferenceMode: control.value === 'none' ? 'none' : 'character' }
+    } else if (key === 'mediaPersistence') {
+      conversationSettings = { ...conversationSettings, mediaPersistence: control.value === 'turn' ? 'turn' : 'permanent' }
     } else if (key === 'outputTokenBudget') {
       conversationSettings = {
         ...conversationSettings,
@@ -2120,6 +2541,16 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       }
     } else if (key === 'temperature' || key === 'diversity') {
       conversationSettings = { ...conversationSettings, [key]: clampNumber(Number(control.value), 0, 1) }
+    } else if (key === 'mediaImageProbability') {
+      conversationSettings = {
+        ...conversationSettings,
+        mediaImageProbability: clampNumber(Number(control.value), CHAT_MEDIA_IMAGE_PROBABILITY_MIN, CHAT_MEDIA_IMAGE_PROBABILITY_MAX),
+      }
+    } else if (key === 'mediaImageCooldownTurns') {
+      conversationSettings = {
+        ...conversationSettings,
+        mediaImageCooldownTurns: Math.round(clampNumber(Number(control.value), CHAT_MEDIA_IMAGE_COOLDOWN_MIN, CHAT_MEDIA_IMAGE_COOLDOWN_MAX)),
+      }
     } else if (key === 'shortTermTurns') {
       conversationSettings = {
         ...conversationSettings,
@@ -6646,7 +7077,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       activeChatId: settings.system.activeChatId,
       activeChatModelName: settings.system.activeChatModelName,
     }
+    chatTTSModels = (settings.system.ttsModels || []).map((model) => ({
+      ...model,
+      extra: model.extra ? { ...model.extra } : undefined,
+    }))
     renderChatRuntimeModelPicker()
+    renderConversationSettings()
     refreshCharacterWorkflowModelsIfVisible()
   }
 
@@ -7176,6 +7612,15 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       const id = mediaRemove.dataset.chatMediaRemove || ''
       pendingMedia = pendingMedia.filter((item) => item.id !== id)
       renderPendingMedia()
+      return
+    }
+
+    const messageMediaAction = eventTarget.closest<HTMLElement>('[data-chat-message-media-action]')
+    if (messageMediaAction && panel.contains(messageMediaAction)) {
+      const action = messageMediaAction.dataset.chatMessageMediaAction
+      if (action === 'image' || action === 'audio') {
+        void handleManualMessageMediaAction(action, messageMediaAction.dataset.chatMessageId || '')
+      }
       return
     }
 

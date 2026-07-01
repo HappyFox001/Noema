@@ -31,6 +31,30 @@ type ChatPreloadMedia = {
   metadata?: Record<string, unknown>
 }
 
+type ChatPreloadImageModel = {
+  id: string
+  modelType: 'image'
+  provider?: string
+  transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'
+  modelName: string
+  enabledModels?: string[]
+  apiKey: string
+  baseUrl: string
+}
+
+type ChatPreloadTTSModel = {
+  id: string
+  provider: string
+  modelName: string
+  apiKey: string
+  voiceId?: string
+  baseUrl?: string
+  language?: string
+  format?: 'pcm' | 'mp3' | 'opus'
+  sampleRate?: number
+  extra?: Record<string, unknown>
+}
+
 declare global {
   interface Window {
     electronAPI: {
@@ -1172,6 +1196,31 @@ declare global {
         success: boolean
         canceled?: boolean
         media?: ChatPreloadMedia[]
+        error?: string
+      }>
+      generateChatImageMedia: (request: {
+        model: ChatPreloadImageModel
+        modelName?: string
+        prompt: string
+        referenceImages?: string[]
+        size?: string
+        name?: string
+      }) => Promise<{
+        success: boolean
+        media?: ChatPreloadMedia
+        provider?: string
+        model?: string
+        error?: string
+      }>
+      synthesizeChatAudioMedia: (request: {
+        model: ChatPreloadTTSModel
+        text: string
+        name?: string
+      }) => Promise<{
+        success: boolean
+        media?: ChatPreloadMedia
+        provider?: string
+        model?: string
         error?: string
       }>
       selectChatMaterials: () => Promise<{

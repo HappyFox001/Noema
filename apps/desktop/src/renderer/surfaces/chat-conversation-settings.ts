@@ -1,6 +1,8 @@
 /**
  * Owns conversation preference settings, storage, and settings dialog markup.
  */
+import { buildRoleplayMediaPolicyPrompt } from '@noema/sdk/chat/conversation-runtime'
+
 export const CHAT_OUTPUT_TOKEN_MIN = 225
 export const CHAT_OUTPUT_TOKEN_MAX = 5000
 export const CHAT_OUTPUT_TOKEN_STEP = 50
@@ -9,6 +11,15 @@ export const CHAT_CONTEXT_TURNS_MAX = 30
 export const CHAT_SUMMARY_LIMIT_MIN = 0
 export const CHAT_SUMMARY_LIMIT_MAX = 24
 export const CHAT_SUMMARY_BATCH_MESSAGE_COUNT = 10
+export const CHAT_MEDIA_IMAGE_PROBABILITY_MIN = 0
+export const CHAT_MEDIA_IMAGE_PROBABILITY_MAX = 1
+export const CHAT_MEDIA_IMAGE_COOLDOWN_MIN = 0
+export const CHAT_MEDIA_IMAGE_COOLDOWN_MAX = 12
+
+export type ChatMediaImageMode = 'off' | 'requested' | 'balanced' | 'always'
+export type ChatMediaVoiceMode = 'off' | 'assistant' | 'requested'
+export type ChatMediaImageReferenceMode = 'none' | 'character'
+export type ChatMediaPersistenceMode = 'turn' | 'permanent'
 
 export interface ChatConversationSettings {
   textStreaming: boolean
@@ -19,11 +30,30 @@ export interface ChatConversationSettings {
   diversity: number
   shortTermTurns: number
   summaryLimit: number
+  mediaImageMode: ChatMediaImageMode
+  mediaImageModelRef: string
+  mediaImageSize: string
+  mediaImageProbability: number
+  mediaImageCooldownTurns: number
+  mediaImageReferenceMode: ChatMediaImageReferenceMode
+  mediaVoiceMode: ChatMediaVoiceMode
+  mediaTtsModelId: string
+  mediaVoiceAutoplay: boolean
+  mediaPersistence: ChatMediaPersistenceMode
+}
+
+export interface ConversationSettingsModelOption {
+  value: string
+  label: string
+  detail?: string
+  disabled?: boolean
 }
 
 export interface ConversationSettingsPageOptions {
   language: 'zh-CN' | 'en-US'
   escapeHtml(value: string): string
+  imageModels?: ConversationSettingsModelOption[]
+  ttsModels?: ConversationSettingsModelOption[]
 }
 
 export function getDefaultConversationSettings(): ChatConversationSettings {
@@ -36,6 +66,16 @@ export function getDefaultConversationSettings(): ChatConversationSettings {
     diversity: 0.7,
     shortTermTurns: 15,
     summaryLimit: 8,
+    mediaImageMode: 'requested',
+    mediaImageModelRef: '',
+    mediaImageSize: '1024x1024',
+    mediaImageProbability: 0.28,
+    mediaImageCooldownTurns: 3,
+    mediaImageReferenceMode: 'character',
+    mediaVoiceMode: 'off',
+    mediaTtsModelId: '',
+    mediaVoiceAutoplay: false,
+    mediaPersistence: 'permanent',
   }
 }
 
@@ -62,6 +102,20 @@ export function loadConversationSettings(): ChatConversationSettings {
       summaryLimit: Number.isFinite(Number(parsed.summaryLimit))
         ? Math.round(clampNumber(Number(parsed.summaryLimit), CHAT_SUMMARY_LIMIT_MIN, CHAT_SUMMARY_LIMIT_MAX))
         : defaults.summaryLimit,
+      mediaImageMode: isMediaImageMode(parsed.mediaImageMode) ? parsed.mediaImageMode : defaults.mediaImageMode,
+      mediaImageModelRef: typeof parsed.mediaImageModelRef === 'string' ? parsed.mediaImageModelRef : defaults.mediaImageModelRef,
+      mediaImageSize: normalizeImageSize(parsed.mediaImageSize, defaults.mediaImageSize),
+      mediaImageProbability: Number.isFinite(Number(parsed.mediaImageProbability))
+        ? clampNumber(Number(parsed.mediaImageProbability), CHAT_MEDIA_IMAGE_PROBABILITY_MIN, CHAT_MEDIA_IMAGE_PROBABILITY_MAX)
+        : defaults.mediaImageProbability,
+      mediaImageCooldownTurns: Number.isFinite(Number(parsed.mediaImageCooldownTurns))
+        ? Math.round(clampNumber(Number(parsed.mediaImageCooldownTurns), CHAT_MEDIA_IMAGE_COOLDOWN_MIN, CHAT_MEDIA_IMAGE_COOLDOWN_MAX))
+        : defaults.mediaImageCooldownTurns,
+      mediaImageReferenceMode: parsed.mediaImageReferenceMode === 'none' ? 'none' : defaults.mediaImageReferenceMode,
+      mediaVoiceMode: isMediaVoiceMode(parsed.mediaVoiceMode) ? parsed.mediaVoiceMode : defaults.mediaVoiceMode,
+      mediaTtsModelId: typeof parsed.mediaTtsModelId === 'string' ? parsed.mediaTtsModelId : defaults.mediaTtsModelId,
+      mediaVoiceAutoplay: typeof parsed.mediaVoiceAutoplay === 'boolean' ? parsed.mediaVoiceAutoplay : defaults.mediaVoiceAutoplay,
+      mediaPersistence: parsed.mediaPersistence === 'turn' || parsed.mediaPersistence === 'permanent' ? parsed.mediaPersistence : defaults.mediaPersistence,
     }
   } catch {
     return defaults
@@ -139,6 +193,52 @@ export function renderConversationSettingsPage(
           ${renderConversationParameter(settings, options, 'diversity', zh ? '内容多样性' : 'Diversity', zh ? '稳定' : 'Stable', zh ? '丰富' : 'Varied')}
         </div>
       </section>
+
+      <section class="chat-settings-media-panel">
+        <div class="chat-settings-panel-head compact">
+          <div>
+            <span class="chat-settings-section-label">${options.escapeHtml(zh ? '媒体生成' : 'Media generation')}</span>
+            <p>${options.escapeHtml(zh ? '控制角色扮演中的图片与语音生成时机、模型和上下文记忆方式。' : 'Control image and voice generation timing, models, and context memory.')}</p>
+          </div>
+        </div>
+        <div class="chat-settings-media-grid">
+          ${renderConversationSelect(settings, options, 'mediaImageMode', zh ? '生图时机' : 'Image timing', [
+            { value: 'off', label: zh ? '关闭' : 'Off' },
+            { value: 'requested', label: zh ? '用户/模型请求' : 'Requested' },
+            { value: 'balanced', label: zh ? '平衡概率' : 'Balanced' },
+            { value: 'always', label: zh ? '每轮生成' : 'Every reply' },
+          ])}
+          ${renderConversationModelSelect(settings, options, 'mediaImageModelRef', zh ? '生图模型' : 'Image model', options.imageModels ?? [], zh ? '暂无可用生图模型' : 'No image model')}
+          ${renderConversationSelect(settings, options, 'mediaImageSize', zh ? '图片尺寸' : 'Image size', [
+            { value: '1024x1024', label: '1024 x 1024' },
+            { value: '1024x1536', label: '1024 x 1536' },
+            { value: '1536x1024', label: '1536 x 1024' },
+          ])}
+          ${renderConversationSelect(settings, options, 'mediaImageReferenceMode', zh ? '参考图' : 'References', [
+            { value: 'character', label: zh ? '角色 avatar / body' : 'Character avatar / body' },
+            { value: 'none', label: zh ? '不使用参考图' : 'No references' },
+          ])}
+          ${renderConversationSelect(settings, options, 'mediaVoiceMode', zh ? '语音时机' : 'Voice timing', [
+            { value: 'off', label: zh ? '关闭' : 'Off' },
+            { value: 'requested', label: zh ? '请求时生成' : 'Requested' },
+            { value: 'assistant', label: zh ? '每条回复生成' : 'Every assistant reply' },
+          ])}
+          ${renderConversationModelSelect(settings, options, 'mediaTtsModelId', zh ? 'TTS 模型' : 'TTS model', options.ttsModels ?? [], zh ? '暂无可用 TTS 模型' : 'No TTS model')}
+          ${renderConversationSelect(settings, options, 'mediaPersistence', zh ? '媒体记忆' : 'Media memory', [
+            { value: 'permanent', label: zh ? '长期锚点' : 'Permanent anchor' },
+            { value: 'turn', label: zh ? '仅本次展示' : 'Display only' },
+          ])}
+          <label class="chat-settings-field inline-toggle">
+            <span>${options.escapeHtml(zh ? '生成后自动播放语音' : 'Autoplay generated voice')}</span>
+            <input type="checkbox" data-chat-setting="mediaVoiceAutoplay" ${settings.mediaVoiceAutoplay ? 'checked' : ''} />
+            <i aria-hidden="true"></i>
+          </label>
+        </div>
+        <div class="chat-settings-media-sliders">
+          ${renderConversationMediaRange(settings, options, 'mediaImageProbability', 0, 1, 0.05, settings.mediaImageProbability, zh ? '平衡模式概率' : 'Balanced probability')}
+          ${renderConversationMediaRange(settings, options, 'mediaImageCooldownTurns', CHAT_MEDIA_IMAGE_COOLDOWN_MIN, CHAT_MEDIA_IMAGE_COOLDOWN_MAX, 1, settings.mediaImageCooldownTurns, zh ? '图片冷却轮数' : 'Image cooldown turns')}
+        </div>
+      </section>
     </div>
   `
 }
@@ -176,7 +276,26 @@ export function buildConversationPreferencePrompt(settings: ChatConversationSett
       'If this turn changes the current location, character/environment status, or equipment, append <scene_update>{"location":"...","status":"🙂 pleasure 45  ⚡ arousal 22","equipment":[{"name":"item name","ability":"ability","quantity":1}]}</scene_update> at the end. Include only changed fields and do not include scene_update in normal prose.',
       '</conversation_preferences>',
     ]
-  return outputLength.join('\n')
+  const mediaPolicy = buildRoleplayMediaPolicyPrompt(buildConversationMediaPolicy(settings), language)
+  return [...outputLength, mediaPolicy].filter(Boolean).join('\n')
+}
+
+export function buildConversationMediaPolicy(settings: ChatConversationSettings): {
+  imageMode: ChatMediaImageMode
+  voiceMode: ChatMediaVoiceMode
+  imageProbability: number
+  imageCooldownTurns: number
+  imageReferenceMode: ChatMediaImageReferenceMode
+  persistence: ChatMediaPersistenceMode
+} {
+  return {
+    imageMode: settings.mediaImageMode,
+    voiceMode: settings.mediaVoiceMode,
+    imageProbability: settings.mediaImageProbability,
+    imageCooldownTurns: settings.mediaImageCooldownTurns,
+    imageReferenceMode: settings.mediaImageReferenceMode,
+    persistence: settings.mediaPersistence,
+  }
 }
 
 export function clampNumber(value: number, min: number, max: number): number {
@@ -206,6 +325,51 @@ function renderConversationToggle(
   `
 }
 
+function renderConversationSelect(
+  settings: ChatConversationSettings,
+  options: ConversationSettingsPageOptions,
+  key: keyof Pick<ChatConversationSettings, 'mediaImageMode' | 'mediaImageSize' | 'mediaImageReferenceMode' | 'mediaVoiceMode' | 'mediaPersistence'>,
+  title: string,
+  items: Array<{ value: string; label: string }>
+): string {
+  const selected = String(settings[key] || '')
+  return `
+    <label class="chat-settings-field">
+      <span>${options.escapeHtml(title)}</span>
+      <select data-chat-setting="${options.escapeHtml(key)}">
+        ${items.map((item) => `<option value="${options.escapeHtml(item.value)}" ${item.value === selected ? 'selected' : ''}>${options.escapeHtml(item.label)}</option>`).join('')}
+      </select>
+    </label>
+  `
+}
+
+function renderConversationModelSelect(
+  settings: ChatConversationSettings,
+  options: ConversationSettingsPageOptions,
+  key: keyof Pick<ChatConversationSettings, 'mediaImageModelRef' | 'mediaTtsModelId'>,
+  title: string,
+  items: ConversationSettingsModelOption[],
+  emptyLabel: string
+): string {
+  const selected = String(settings[key] || '')
+  const effectiveSelected = selected || items.find((item) => !item.disabled)?.value || ''
+  const selectedExists = selected && items.some((item) => item.value === selected)
+  return `
+    <label class="chat-settings-field">
+      <span>${options.escapeHtml(title)}</span>
+      <select data-chat-setting="${options.escapeHtml(key)}">
+        <option value="" ${effectiveSelected ? '' : 'selected'}>${options.escapeHtml(emptyLabel)}</option>
+        ${selected && !selectedExists ? `<option value="${options.escapeHtml(selected)}" selected>${options.escapeHtml(selected)}</option>` : ''}
+        ${items.map((item) => `
+          <option value="${options.escapeHtml(item.value)}" ${item.value === effectiveSelected ? 'selected' : ''} ${item.disabled ? 'disabled' : ''}>
+            ${options.escapeHtml(item.detail ? `${item.label} · ${item.detail}` : item.label)}
+          </option>
+        `).join('')}
+      </select>
+    </label>
+  `
+}
+
 function renderConversationLanguageOption(
   settings: ChatConversationSettings,
   options: ConversationSettingsPageOptions,
@@ -217,7 +381,7 @@ function renderConversationLanguageOption(
 
 function renderConversationRange(
   options: ConversationSettingsPageOptions,
-  key: keyof Pick<ChatConversationSettings, 'outputTokenBudget' | 'temperature' | 'diversity'>,
+  key: keyof Pick<ChatConversationSettings, 'outputTokenBudget' | 'temperature' | 'diversity' | 'mediaImageProbability' | 'mediaImageCooldownTurns'>,
   min: number,
   max: number,
   step: number,
@@ -261,4 +425,41 @@ function renderConversationParameter(
       ])}
     </article>
   `
+}
+
+function renderConversationMediaRange(
+  settings: ChatConversationSettings,
+  options: ConversationSettingsPageOptions,
+  key: keyof Pick<ChatConversationSettings, 'mediaImageProbability' | 'mediaImageCooldownTurns'>,
+  min: number,
+  max: number,
+  step: number,
+  value: number,
+  title: string
+): string {
+  const displayValue = key === 'mediaImageProbability' ? value.toFixed(2) : String(Math.round(value))
+  return `
+    <article class="chat-settings-media-range">
+      <div>
+        <strong>${options.escapeHtml(title)}</strong>
+        <output>${options.escapeHtml(displayValue)}</output>
+      </div>
+      ${renderConversationRange(options, key, min, max, step, value, [
+        { value: min, label: String(min) },
+        { value: max, label: String(max) },
+      ])}
+    </article>
+  `
+}
+
+function normalizeImageSize(value: unknown, fallback: string): string {
+  return value === '1024x1024' || value === '1024x1536' || value === '1536x1024' ? value : fallback
+}
+
+function isMediaImageMode(value: unknown): value is ChatMediaImageMode {
+  return value === 'off' || value === 'requested' || value === 'balanced' || value === 'always'
+}
+
+function isMediaVoiceMode(value: unknown): value is ChatMediaVoiceMode {
+  return value === 'off' || value === 'assistant' || value === 'requested'
 }

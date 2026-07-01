@@ -225,6 +225,7 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
           ${renderOpeningPanel(message)}
           ${renderMessageContent(message, language)}
           ${includeSceneState ? renderInlineSceneState(language) : ''}
+          ${renderMessageActions(message, language)}
           <small>${stateLabel}${options.escapeHtml(localizeChatText(message.createdLabel, language))}</small>
         </div>
       </article>
@@ -416,6 +417,9 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
 
   function renderMessageContent(message: ChatMessage, language: ChatLanguageCode): string {
     const text = localizeChatText(message.text, language)
+    if (!text.trim() && message.media?.length) {
+      return ''
+    }
     if (message.role === 'assistant' && hasRoleplayChatMarkup(text)) {
       const markup = renderRoleplayChatMarkup(text, { escapeHtml: options.escapeHtml })
       return markup || renderNoemaStreamStatus(language)
@@ -504,11 +508,26 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
           }
           if (source) {
             return `
-              <img class="chat-message-attachment image" src="${options.escapeHtml(source)}" alt="${options.escapeHtml(item.name)}" />
+              <img class="chat-message-attachment image ${item.origin === 'generated' ? 'generated' : ''}" src="${options.escapeHtml(source)}" alt="${options.escapeHtml(item.name)}" />
             `
           }
           return `<span class="chat-message-attachment file">${options.escapeHtml(item.name)}</span>`
         }).join('')}
+      </div>
+    `
+  }
+
+  function renderMessageActions(message: ChatMessage, language: ChatLanguageCode): string {
+    const text = localizeChatText(message.text, language).trim()
+    if (message.role !== 'assistant' || message.state || !text) {
+      return ''
+    }
+    const imageLabel = language === 'zh-CN' ? '生成图片' : 'Generate image'
+    const audioLabel = language === 'zh-CN' ? '生成语音' : 'Generate voice'
+    return `
+      <div class="chat-message-actions" aria-label="${options.escapeHtml(language === 'zh-CN' ? '消息媒体操作' : 'Message media actions')}">
+        <button type="button" data-chat-message-media-action="image" data-chat-message-id="${options.escapeHtml(message.id)}" title="${options.escapeHtml(imageLabel)}" aria-label="${options.escapeHtml(imageLabel)}">IMG</button>
+        <button type="button" data-chat-message-media-action="audio" data-chat-message-id="${options.escapeHtml(message.id)}" title="${options.escapeHtml(audioLabel)}" aria-label="${options.escapeHtml(audioLabel)}">TTS</button>
       </div>
     `
   }
@@ -550,6 +569,8 @@ function formatState(state: NonNullable<ChatMessage['state']>, language: ChatLan
   switch (state) {
     case 'generating_image':
       return language === 'zh-CN' ? '生成图片中 · ' : 'Generating image · '
+    case 'generating_audio':
+      return language === 'zh-CN' ? '生成语音中 · ' : 'Generating voice · '
     case 'using_tool':
       return language === 'zh-CN' ? '调用工具中 · ' : 'Using tool · '
     case 'thinking':
