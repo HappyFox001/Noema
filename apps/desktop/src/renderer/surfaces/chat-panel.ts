@@ -289,6 +289,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   const chatHistoryMessageList = panel.querySelector<HTMLElement>('.chat-history-message-list')
   const chatHistoryTitle = panel.querySelector<HTMLElement>('[data-chat-history-title]')
   const chatHistoryKicker = panel.querySelector<HTMLElement>('[data-chat-history-kicker]')
+  const chatHistoryClear = panel.querySelector<HTMLElement>('[data-chat-history-action="clear"]')
+  const chatHistoryClose = panel.querySelector<HTMLElement>('[data-chat-history-close]')
   const languageButton = panel.querySelector<HTMLButtonElement>('[data-chat-action="language"]')
   const languageMark = panel.querySelector<HTMLElement>('.chat-language-mark')
   const windowCloseButton = panel.querySelector<HTMLButtonElement>('[data-chat-action="window-close"]')
@@ -7630,6 +7632,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
     void closeCameraCapture()
+    closeConversationSettings()
+    closeChatHistoryManager()
     setFullscreenState(false)
     options.panel.classList.remove('visible')
     options.panel.setAttribute('aria-hidden', 'true')
@@ -8308,7 +8312,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       conversationSettingsKicker.textContent = language === 'zh-CN' ? 'Conversation design' : 'Conversation design'
     }
     if (conversationSettingsClose) {
-      conversationSettingsClose.textContent = language === 'zh-CN' ? '完成' : 'Done'
+      conversationSettingsClose.textContent = '×'
+      conversationSettingsClose.setAttribute('aria-label', language === 'zh-CN' ? '关闭' : 'Close')
     }
     if (characterWorkflowTitle) {
       characterWorkflowTitle.textContent = language === 'zh-CN' ? '角色资源图' : 'Character Resource Graph'
@@ -8318,6 +8323,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     if (chatHistoryKicker) {
       chatHistoryKicker.textContent = language === 'zh-CN' ? 'Context memory' : 'Context memory'
+    }
+    if (chatHistoryClear) {
+      chatHistoryClear.textContent = language === 'zh-CN' ? '清空' : 'Clear'
+    }
+    if (chatHistoryClose) {
+      chatHistoryClose.textContent = '×'
+      chatHistoryClose.setAttribute('aria-label', language === 'zh-CN' ? '关闭' : 'Close')
     }
     if (conversationSettingsPanel?.classList.contains('visible')) {
       renderConversationSettings()

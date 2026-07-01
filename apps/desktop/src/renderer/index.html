@@ -269,40 +269,41 @@
             </div>
           </section>
 
-          <section class="chat-conversation-settings-page" aria-label="Conversation settings" aria-hidden="true">
-            <div class="chat-conversation-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="chat-conversation-settings-title">
-              <header class="chat-conversation-settings-header">
-                <div>
-                  <span class="chat-panel-kicker" data-chat-settings-kicker>Conversation design</span>
-                  <h2 id="chat-conversation-settings-title" data-chat-settings-title>对话设置</h2>
-                </div>
-                <div class="chat-settings-actions">
-                  <button class="chat-model-btn subtle" type="button" data-chat-action="close-conversation-settings" data-chat-settings-close>完成</button>
-                </div>
-              </header>
-              <div class="chat-conversation-settings-body"></div>
-            </div>
-          </section>
-
-          <section class="chat-history-manager" aria-label="Conversation management" aria-hidden="true">
-            <div class="chat-history-dialog" role="dialog" aria-modal="true" aria-labelledby="chat-history-title">
-              <header class="chat-history-header">
-                <div>
-                  <span class="chat-panel-kicker" data-chat-history-kicker>Context memory</span>
-                  <h2 id="chat-history-title" data-chat-history-title>对话管理</h2>
-                </div>
-                <div class="chat-history-actions">
-                  <button class="chat-model-btn subtle" type="button" data-chat-history-action="clear">清空</button>
-                  <button class="chat-model-btn subtle" type="button" data-chat-action="close-chat-history">完成</button>
-                </div>
-              </header>
-              <div class="chat-history-body">
-                <div class="chat-history-session-list"></div>
-                <div class="chat-history-message-list"></div>
-              </div>
-            </div>
-          </section>
         </div>
+
+        <section class="chat-conversation-settings-page" aria-label="Conversation settings" aria-hidden="true">
+          <div class="chat-conversation-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="chat-conversation-settings-title">
+            <header class="chat-conversation-settings-header">
+              <div>
+                <span class="chat-panel-kicker" data-chat-settings-kicker>Conversation design</span>
+                <h2 id="chat-conversation-settings-title" data-chat-settings-title>对话设置</h2>
+              </div>
+              <div class="chat-settings-actions">
+                <button class="chat-model-btn subtle" type="button" data-chat-action="close-conversation-settings" data-chat-settings-close aria-label="关闭">×</button>
+              </div>
+            </header>
+            <div class="chat-conversation-settings-body"></div>
+          </div>
+        </section>
+
+        <section class="chat-history-manager" aria-label="Conversation management" aria-hidden="true">
+          <div class="chat-history-dialog" role="dialog" aria-modal="true" aria-labelledby="chat-history-title">
+            <header class="chat-history-header">
+              <div>
+                <span class="chat-panel-kicker" data-chat-history-kicker>Context memory</span>
+                <h2 id="chat-history-title" data-chat-history-title>对话管理</h2>
+              </div>
+              <div class="chat-history-actions">
+                <button class="chat-model-btn subtle" type="button" data-chat-history-action="clear">清空</button>
+                <button class="chat-model-btn subtle" type="button" data-chat-action="close-chat-history" data-chat-history-close aria-label="关闭">×</button>
+              </div>
+            </header>
+            <div class="chat-history-body">
+              <div class="chat-history-session-list"></div>
+              <div class="chat-history-message-list"></div>
+            </div>
+          </div>
+        </section>
       </section>
 
       
