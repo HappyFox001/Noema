@@ -64,35 +64,9 @@ export async function generateImageWithConfiguredProvider(options: {
   }
   switch (entry.apiStyle) {
     case 'openai-images':
-    case 'volcengine-ark-images':
-    case 'baidu-qianfan-images':
       return { ...base, ...(await callOpenAIImages(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt, requestOptions)) }
-    case 'recraft':
-      return { ...base, ...(await callRecraft(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt, requestOptions)) }
-    case 'google-imagen':
-      return { ...base, ...(await callGoogleImagen(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt, requestOptions)) }
-    case 'stability-v2':
-      return { ...base, ...(await callStabilityCore(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt, requestOptions)) }
-    case 'replicate-predictions':
-      return { ...base, ...(await callReplicate(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt, requestOptions)) }
-    case 'fal-run':
-      return { ...base, ...(await callFal(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt, requestOptions)) }
-    case 'comfyui-workflow':
-      return { ...base, ...(await callComfyUI(fetcher, entry, baseUrl, modelName, prompt, requestOptions)) }
-    case 'automatic1111-sdapi':
-      return { ...base, ...(await callAutomatic1111(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt, requestOptions)) }
-    case 'dashscope-wanx':
-      return { ...base, ...(await callDashScopeWanx(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt, requestOptions)) }
-    case 'adobe-firefly':
-      return { ...base, ...(await callAdobeFirefly(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt, requestOptions)) }
-    case 'ideogram':
-      return { ...base, ...(await callIdeogram(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt, requestOptions)) }
     case 'wavespeed':
       return { ...base, ...(await callWaveSpeed(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt, requestOptions)) }
-    case 'tencent-cloud-action':
-      return { ...base, ...(await callTencentHunyuan(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt, requestOptions)) }
-    case 'huggingface-inference':
-      return { ...base, ...(await callHuggingFaceInference(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt, requestOptions)) }
     default:
       throw new Error(`Unsupported image provider API style: ${entry.apiStyle}`)
   }
@@ -134,14 +108,6 @@ async function callOpenAIImages(
       ...options,
       referenceImages,
     })
-  }
-  if (referenceImages.length && entry.value === 'volcengine-ark') {
-    assertReferenceModel(
-      entry,
-      modelName,
-      isVolcengineReferenceModel(modelName),
-      'Reference images require a Volcengine image model/endpoint that explicitly supports image-to-image or visual reference input.'
-    )
   }
   const jsonReferenceImages = entry.capabilities?.referenceImages?.mode === 'json-images'
     ? referenceImages
@@ -819,12 +785,6 @@ function assertReferenceModel(entry: ImageProviderCatalogEntry, modelName: strin
 }
 
 function openAICompatibleReferencePayload(entry: ImageProviderCatalogEntry, referenceImages: string[]): Record<string, unknown> {
-  if (entry.value === 'volcengine-ark') {
-    return {
-      image: referenceImages.length === 1 ? referenceImages[0] : referenceImages,
-      images: referenceImages,
-    }
-  }
   return {
     image: referenceImages.length === 1 ? referenceImages[0] : referenceImages,
   }

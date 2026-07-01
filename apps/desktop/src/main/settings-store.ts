@@ -966,9 +966,6 @@ function normalizeTTSBaseUrl(provider: TTSProviderType, value: unknown): string 
   if (!baseUrl) {
     return providerEntry.defaultBaseUrl
   }
-  if ((provider === 'openai' || provider === 'openai-compatible') && baseUrl.includes('api.elevenlabs.io')) {
-    return providerEntry.defaultBaseUrl
-  }
   if (provider === 'elevenlabs' && baseUrl.includes('api.openai.com')) {
     return providerEntry.defaultBaseUrl
   }

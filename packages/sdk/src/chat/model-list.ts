@@ -56,7 +56,7 @@ export function buildChatModelListCandidates(request: ChatModelListRequest): Cha
   const candidates: ChatModelListCandidate[] = []
   const imageModels = request.modelType === 'image'
 
-  if (provider === 'gemini' || provider === 'google-imagen') {
+  if (!imageModels && provider === 'gemini') {
     const nativeGeminiBase = getGeminiNativeBaseUrl(baseUrl)
     if (apiKey && nativeGeminiBase) {
       candidates.push({
@@ -115,56 +115,7 @@ function buildImageModelListCandidates(
   const candidates: ChatModelListCandidate[] = []
   const headers = buildModelsRequestHeaders(request)
 
-  if (provider === 'fal') {
-    candidates.push({
-      url: 'https://api.fal.ai/v1/models?category=text-to-image&status=active&limit=100',
-      headers: buildFalModelRequestHeaders(request),
-    })
-  }
-
-  if (provider === 'huggingface') {
-    candidates.push({
-      url: 'https://huggingface.co/api/models?pipeline_tag=text-to-image&sort=downloads&direction=-1&limit=100',
-      headers,
-    })
-  }
-
-  if (provider === 'automatic1111' && baseUrl) {
-    candidates.push({
-      url: `${baseUrl}/sdapi/v1/sd-models`,
-      headers: {},
-    })
-  }
-
-  if (provider === 'comfyui' && baseUrl) {
-    candidates.push({
-      url: `${baseUrl}/object_info`,
-      headers: {},
-    })
-  }
-
-  if (provider === 'stability' && baseUrl) {
-    candidates.push({
-      url: `${getStabilityV1BaseUrl(baseUrl)}/engines/list`,
-      headers,
-    })
-  }
-
-  if (provider === 'siliconflow' && baseUrl) {
-    candidates.push({
-      url: `${baseUrl}/models?type=image`,
-      headers,
-    })
-  }
-
   if (provider === 'wavespeed' && baseUrl) {
-    candidates.push({
-      url: `${baseUrl}/models`,
-      headers,
-    })
-  }
-
-  if (provider === 'replicate' && baseUrl) {
     candidates.push({
       url: `${baseUrl}/models`,
       headers,
@@ -407,16 +358,13 @@ function matchesImageModelName(name: string, provider: string | undefined): bool
   if (!normalized) {
     return false
   }
-  if (['automatic1111', 'comfyui', 'fal', 'huggingface', 'siliconflow', 'stability', 'wavespeed'].includes(normalizedProvider)) {
+  if (normalizedProvider === 'wavespeed') {
     return true
   }
   if (normalizedProvider === 'openai-image') {
     return /^(gpt-image|dall-e)/i.test(name)
   }
-  if (normalizedProvider === 'google-imagen') {
-    return /(imagen|image)/i.test(name)
-  }
-  return true
+  return false
 }
 
 function parseJson(text: string): unknown {

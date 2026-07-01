@@ -20,11 +20,16 @@ import fishAudioIconUrl from '@lobehub/icons-static-svg/icons/fishaudio.svg?url'
 import geminiIconUrl from '@lobehub/icons-static-svg/icons/gemini-color.svg?url'
 import googleCloudIconUrl from '@lobehub/icons-static-svg/icons/googlecloud-color.svg?url'
 import groqIconUrl from '@lobehub/icons-static-svg/icons/groq.svg?url'
-import minimaxIconUrl from '@lobehub/icons-static-svg/icons/minimax-color.svg?url'
 import newAPIIconUrl from '@lobehub/icons-static-svg/icons/newapi-color.svg?url'
 import ollamaIconUrl from '@lobehub/icons-static-svg/icons/ollama.svg?url'
 import openAIIconUrl from '@lobehub/icons-static-svg/icons/openai.svg?url'
 import qwenIconUrl from '@lobehub/icons-static-svg/icons/qwen-color.svg?url'
+/*
+ * Hidden TTS-provider icon import note for future re-enablement.
+ * Current TTS provider support is intentionally limited to Fish Audio and ElevenLabs.
+ *
+ * import minimaxIconUrl from '@lobehub/icons-static-svg/icons/minimax-color.svg?url'
+ */
 import {
   ASR_PROVIDER_CATALOG,
   LLM_PROVIDER_CATALOG,
@@ -9612,24 +9617,23 @@ function getTTSProviderLogo(provider: TTSProviderType): ModelLogo {
       return { src: fishAudioIconUrl, alt: 'Fish Audio', tone: 'light' }
     case 'elevenlabs':
       return { src: elevenLabsIconUrl, alt: 'ElevenLabs', tone: 'light' }
-    case 'gemini':
-      return { src: geminiIconUrl, alt: getTTSProviderCatalogEntry(provider).label }
-    case 'google-cloud':
-      return { src: googleCloudIconUrl, alt: 'Google Cloud' }
-    case 'groq':
-      return { src: groqIconUrl, alt: 'Groq', tone: 'light' }
-    case 'azure-openai':
-    case 'azure-speech':
-      return { src: azureAIIconUrl, alt: getTTSProviderCatalogEntry(provider).label }
-    case 'minimax':
-      return { src: minimaxIconUrl, alt: 'MiniMax' }
-    case 'openai-compatible':
-      return { src: newAPIIconUrl, alt: getTTSProviderCatalogEntry(provider).label }
-    case 'openai':
     default:
-      return { src: openAIIconUrl, alt: getTTSProviderCatalogEntry(provider).label, tone: 'light' }
+      return { src: fishAudioIconUrl, alt: getTTSProviderCatalogEntry(provider).label, tone: 'light' }
   }
 }
+
+/*
+ * Hidden TTS-provider logo mappings kept for future re-enablement.
+ * They are not reachable while TTS_PROVIDER_CATALOG is limited to Fish Audio and ElevenLabs.
+ *
+ * openai -> openAIIconUrl, OpenAI
+ * openai-compatible -> newAPIIconUrl, OpenAI-compatible TTS
+ * groq -> groqIconUrl, Groq
+ * gemini -> geminiIconUrl, Gemini
+ * google-cloud -> googleCloudIconUrl, Google Cloud
+ * azure-openai / azure-speech -> azureAIIconUrl, Azure
+ * minimax -> minimaxIconUrl, MiniMax
+ */
 
 function getASRProviderLogo(provider: ASRProviderType): ModelLogo {
   switch (provider) {
@@ -9712,12 +9716,10 @@ function shouldShowTTSField(provider: TTSProviderType, field: keyof TTSModelConf
   switch (provider) {
     case 'fish':
       return field === 'apiKey' || field === 'voiceId'
-    case 'openai':
-      return field === 'apiKey' || field === 'baseUrl' || field === 'voiceId'
     case 'elevenlabs':
       return field === 'apiKey' || field === 'baseUrl' || field === 'voiceId' || field === 'language'
     default:
-      return true
+      return false
   }
 }
 

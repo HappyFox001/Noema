@@ -130,19 +130,6 @@ export function createTTSProviderForConfig(config: TTSModelConfig | null): TTSPr
     throw new Error(`${providerEntry.label} TTS is listed in the catalog but is not implemented in the runtime yet`)
   }
 
-  if (providerEntry.protocol === 'openai-speech') {
-    return createTTSProvider({
-      kind: 'openai-speech',
-      config: {
-        apiKey: config.apiKey,
-        baseUrl: config.baseUrl || providerEntry.defaultBaseUrl,
-        model: normalizeTTSModelName(config),
-        voiceId: config.voiceId || providerEntry.defaultVoiceId,
-        sampleRate: config.sampleRate || providerEntry.sampleRate,
-      },
-    })
-  }
-
   if (providerEntry.protocol === 'elevenlabs-http') {
     return createTTSProvider({
       kind: 'elevenlabs-http',
