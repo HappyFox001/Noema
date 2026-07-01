@@ -28,12 +28,40 @@ export type ChatMessageContentPart =
   | { type: 'text'; text: string }
   | { type: 'image_url'; image_url: { url: string } }
 
-export interface ChatAttachment {
-  kind: 'image' | 'video'
+export type ChatMediaKind = 'image' | 'video' | 'audio'
+export type ChatMediaOrigin = 'user' | 'assistant' | 'tool' | 'generated' | 'external'
+export type ChatMediaDispatchTrigger = 'manual' | 'model' | 'tool' | 'external' | 'probability'
+export type ChatMediaDispatchMode = 'turn' | 'permanent'
+export type ChatMediaContextMode = 'auto' | 'visual' | 'text' | 'none'
+
+export interface ChatMediaDispatchPolicy {
+  trigger?: ChatMediaDispatchTrigger
+  mode?: ChatMediaDispatchMode
+  probability?: number
+  externalProbabilityBias?: number
+  reason?: string
+}
+
+export interface ChatMediaContextPolicy {
+  mode?: ChatMediaContextMode
+  summary?: string
+}
+
+export interface ChatMediaItem {
+  id?: string
+  kind: ChatMediaKind
   name: string
   mimeType: string
   dataUrl?: string
+  url?: string
   size?: number
+  durationMs?: number
+  transcript?: string
+  prompt?: string
+  origin?: ChatMediaOrigin
+  dispatch?: ChatMediaDispatchPolicy
+  context?: ChatMediaContextPolicy
+  metadata?: Record<string, unknown>
 }
 
 export interface ChatCharacterContext {
@@ -58,7 +86,7 @@ export interface ChatCharacterContext {
 export interface ChatTurnRequest {
   input: string
   messages?: ChatMessage[]
-  attachments?: ChatAttachment[]
+  media?: ChatMediaItem[]
   character?: ChatCharacterContext
   language?: string
   preferencePrompt?: string
@@ -136,7 +164,7 @@ export class ChatSession {
 
     messages.push({
       role: 'user',
-      content: buildUserContent(request.input, request.attachments),
+      content: buildChatMessageContent(request.input, request.media, { includeImageInputs: true }),
     })
 
     return mergeAdjacentMessages(messages)
@@ -277,32 +305,93 @@ function normalizeMessageContent(content: ChatMessageContent): ChatMessageConten
   return parts.length ? parts : ''
 }
 
-function buildUserContent(input: string, attachments: ChatAttachment[] | undefined): ChatMessageContent {
+export function buildChatMessageContent(
+  input: string,
+  media: ChatMediaItem[] | undefined,
+  options: { includeImageInputs?: boolean } = {}
+): ChatMessageContent {
   const text = input.trim()
-  const normalizedAttachments = Array.isArray(attachments) ? attachments : []
-  const imageParts = normalizedAttachments
-    .filter((attachment) => attachment.kind === 'image' && attachment.dataUrl)
-    .map((attachment): ChatMessageContentPart => ({
+  const normalizedMedia = Array.isArray(media) ? media : []
+  const imageInputUrls = new Set(normalizedMedia
+    .filter((item) => shouldIncludeImageInput(item, options.includeImageInputs === true))
+    .map((item) => item.dataUrl || item.url!)
+  )
+  const imageParts = [...imageInputUrls]
+    .map((url): ChatMessageContentPart => ({
       type: 'image_url',
-      image_url: { url: attachment.dataUrl! },
+      image_url: { url },
     }))
-  const videoNotes = normalizedAttachments
-    .filter((attachment) => attachment.kind === 'video')
-    .map((attachment) => `- ${attachment.name} (${attachment.mimeType}${attachment.size ? `, ${Math.round(attachment.size / 1024)} KB` : ''})`)
+  const mediaNotes = normalizedMedia.map((item) => formatChatMediaContextItem(item, {
+    visualInput: imageInputUrls.has(item.dataUrl || item.url || ''),
+  })).filter(Boolean)
 
-  if (!imageParts.length && !videoNotes.length) {
+  if (!imageParts.length && !mediaNotes.length) {
     return text
   }
 
   const parts: ChatMessageContentPart[] = [{
     type: 'text',
     text: [
-      text || 'Please respond to the attached media.',
-      videoNotes.length ? `<video_attachments>\n${videoNotes.join('\n')}\n</video_attachments>` : '',
+      text || 'Please respond to the media sent in this turn.',
+      mediaNotes.length ? `<message_media>\n${mediaNotes.join('\n')}\n</message_media>` : '',
     ].filter(Boolean).join('\n\n'),
   }]
   parts.push(...imageParts)
   return parts
+}
+
+function shouldIncludeImageInput(item: ChatMediaItem, includeImageInputs: boolean): boolean {
+  if (item.kind !== 'image' || !(item.dataUrl || item.url)) {
+    return false
+  }
+  if (item.context?.mode === 'none' || item.context?.mode === 'text') {
+    return false
+  }
+  return includeImageInputs || item.context?.mode === 'visual'
+}
+
+function formatChatMediaContextItem(item: ChatMediaItem, options: { visualInput: boolean }): string {
+  if (item.context?.mode === 'none') {
+    return ''
+  }
+  const fields: Record<string, unknown> = {
+    kind: item.kind,
+    name: item.name,
+    mimeType: item.mimeType,
+  }
+  if (item.id) fields.id = item.id
+  if (item.size) fields.size = item.size
+  if (item.durationMs) fields.durationMs = item.durationMs
+  if (item.origin) fields.origin = item.origin
+  if (item.prompt?.trim()) fields.prompt = item.prompt.trim()
+  if (item.transcript?.trim()) fields.transcript = item.transcript.trim()
+  if (item.context?.summary?.trim()) fields.summary = item.context.summary.trim()
+  if (item.dispatch) {
+    const dispatch = normalizeChatMediaDispatchForContext(item.dispatch)
+    if (Object.keys(dispatch).length) {
+      fields.dispatch = dispatch
+    }
+  }
+  if (options.visualInput) {
+    fields.modelInput = 'image_url'
+  } else if (item.dataUrl || item.url) {
+    fields.context = item.kind === 'image' ? 'text_anchor' : 'transcript_or_metadata'
+  }
+  return JSON.stringify(fields)
+}
+
+function normalizeChatMediaDispatchForContext(dispatch: ChatMediaDispatchPolicy): Record<string, unknown> {
+  const normalized: Record<string, unknown> = {}
+  if (dispatch.trigger) normalized.trigger = dispatch.trigger
+  if (dispatch.mode) normalized.mode = dispatch.mode
+  if (typeof dispatch.probability === 'number' && Number.isFinite(dispatch.probability)) {
+    normalized.probability = Math.min(1, Math.max(0, dispatch.probability))
+  }
+  if (typeof dispatch.externalProbabilityBias === 'number' && Number.isFinite(dispatch.externalProbabilityBias)) {
+    normalized.externalProbabilityBias = Math.min(1, Math.max(-1, dispatch.externalProbabilityBias))
+  }
+  if (dispatch.reason?.trim()) normalized.reason = dispatch.reason.trim()
+  return normalized
 }
 
 function mergeAdjacentMessages(messages: ChatMessage[]): ChatMessage[] {

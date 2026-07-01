@@ -485,23 +485,29 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
   }
 
   function renderMessageAttachments(message: ChatMessage): string {
-    if (!message.attachments?.length) {
+    if (!message.media?.length) {
       return ''
     }
     return `
       <div class="chat-message-attachments">
-        ${message.attachments.map((attachment) => {
-          if (attachment.kind === 'video' && attachment.dataUrl) {
+        ${message.media.map((item) => {
+          const source = item.dataUrl || item.url || ''
+          if (item.kind === 'video' && source) {
             return `
-              <video class="chat-message-attachment video" src="${options.escapeHtml(attachment.dataUrl)}" controls preload="metadata" title="${options.escapeHtml(attachment.name)}"></video>
+              <video class="chat-message-attachment video" src="${options.escapeHtml(source)}" controls preload="metadata" title="${options.escapeHtml(item.name)}"></video>
             `
           }
-          if (attachment.dataUrl) {
+          if (item.kind === 'audio' && source) {
             return `
-              <img class="chat-message-attachment image" src="${options.escapeHtml(attachment.dataUrl)}" alt="${options.escapeHtml(attachment.name)}" />
+              <audio class="chat-message-attachment audio" src="${options.escapeHtml(source)}" controls preload="metadata" title="${options.escapeHtml(item.name)}"></audio>
             `
           }
-          return `<span class="chat-message-attachment file">${options.escapeHtml(attachment.name)}</span>`
+          if (source) {
+            return `
+              <img class="chat-message-attachment image" src="${options.escapeHtml(source)}" alt="${options.escapeHtml(item.name)}" />
+            `
+          }
+          return `<span class="chat-message-attachment file">${options.escapeHtml(item.name)}</span>`
         }).join('')}
       </div>
     `

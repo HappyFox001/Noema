@@ -3,8 +3,15 @@
  */
 import {
   createChatSessionFromModel,
-  type ChatAttachment,
   type ChatCharacterContext,
+  type ChatMediaContextMode,
+  type ChatMediaContextPolicy,
+  type ChatMediaDispatchMode,
+  type ChatMediaDispatchPolicy,
+  type ChatMediaDispatchTrigger,
+  type ChatMediaItem,
+  type ChatMediaKind,
+  type ChatMediaOrigin,
   type ChatMessage,
   type ChatModelConfig,
   type ChatSession,
@@ -31,7 +38,7 @@ export interface ChatRuntimeTurnRequest {
   runtimeOptions?: Record<string, unknown>
   options?: Record<string, unknown>
   messages?: ChatMessage[]
-  attachments?: ChatAttachment[]
+  media?: ChatMediaItem[]
   character?: ChatCharacterContext
 }
 
@@ -217,14 +224,15 @@ export function toChatModelConfig(config: ConfiguredChatModel | null): ChatModel
 
 export function normalizeConfiguredChatTurnRequest(request: ConfiguredChatTurnRequest): ChatTurnRequest {
   const input = typeof request?.input === 'string' ? request.input.trim() : ''
-  if (!input) {
+  const media = normalizeChatMedia(request.media)
+  if (!input && media.length === 0) {
     throw new Error('Message is empty')
   }
   return {
     input,
     language: request.language,
     messages: normalizeChatMessages(request.messages),
-    attachments: normalizeChatAttachments(request.attachments),
+    media,
     character: request.character,
     preferencePrompt: normalizePreferencePrompt(request.preferencePrompt),
     options: normalizeChatRequestOptions(request.options),
@@ -258,19 +266,33 @@ export function normalizeChatMessages(messages: ChatMessage[] | undefined): Chat
     .filter((message) => typeof message.content !== 'string' || Boolean(message.content))
 }
 
-export function normalizeChatAttachments(attachments: ChatAttachment[] | undefined): ChatAttachment[] {
-  if (!Array.isArray(attachments)) {
+export function normalizeChatMedia(media: ChatMediaItem[] | undefined): ChatMediaItem[] {
+  if (!Array.isArray(media)) {
     return []
   }
-  return attachments
-    .map((attachment): ChatAttachment => ({
-      kind: attachment.kind === 'video' ? 'video' : 'image',
-      name: String(attachment.name || 'attachment'),
-      mimeType: String(attachment.mimeType || (attachment.kind === 'video' ? 'video/mp4' : 'image/png')),
-      dataUrl: typeof attachment.dataUrl === 'string' ? attachment.dataUrl : undefined,
-      size: typeof attachment.size === 'number' ? attachment.size : undefined,
-    }))
-    .filter((attachment) => Boolean(attachment.dataUrl))
+  return media
+    .map((item): ChatMediaItem => {
+      const kind = normalizeChatMediaKind(item.kind)
+      return {
+        id: optionalString(item.id),
+        kind,
+        name: String(item.name || 'media'),
+        mimeType: String(item.mimeType || defaultMimeTypeForMediaKind(kind)),
+        dataUrl: optionalString(item.dataUrl),
+        url: optionalString(item.url),
+        size: finitePositiveNumber(item.size),
+        durationMs: finitePositiveNumber(item.durationMs),
+        transcript: optionalString(item.transcript),
+        prompt: optionalString(item.prompt),
+        origin: normalizeChatMediaOrigin(item.origin),
+        dispatch: normalizeChatMediaDispatch(item.dispatch),
+        context: normalizeChatMediaContext(item.context),
+        metadata: item.metadata && typeof item.metadata === 'object' && !Array.isArray(item.metadata)
+          ? item.metadata
+          : undefined,
+      }
+    })
+    .filter((item) => Boolean(item.dataUrl || item.url || item.transcript || item.prompt))
 }
 
 export function normalizeChatRequestOptions(options: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
@@ -322,4 +344,83 @@ function normalizeIntegerOption(value: unknown, min: number, max: number): numbe
 
 function normalizeRole(role: ChatMessage['role']): ChatMessage['role'] {
   return role === 'assistant' || role === 'system' ? role : 'user'
+}
+
+function normalizeChatMediaKind(kind: unknown): ChatMediaKind {
+  return kind === 'video' || kind === 'audio' ? kind : 'image'
+}
+
+function defaultMimeTypeForMediaKind(kind: ChatMediaKind): string {
+  if (kind === 'video') {
+    return 'video/mp4'
+  }
+  if (kind === 'audio') {
+    return 'audio/mpeg'
+  }
+  return 'image/png'
+}
+
+function normalizeChatMediaOrigin(origin: unknown): ChatMediaOrigin | undefined {
+  return origin === 'assistant' || origin === 'tool' || origin === 'generated' || origin === 'external' || origin === 'user'
+    ? origin
+    : undefined
+}
+
+function normalizeChatMediaDispatch(dispatch: ChatMediaDispatchPolicy | undefined): ChatMediaDispatchPolicy | undefined {
+  if (!dispatch || typeof dispatch !== 'object' || Array.isArray(dispatch)) {
+    return undefined
+  }
+  const normalized: ChatMediaDispatchPolicy = {}
+  const trigger = normalizeChatMediaDispatchTrigger(dispatch.trigger)
+  const mode = normalizeChatMediaDispatchMode(dispatch.mode)
+  if (trigger) normalized.trigger = trigger
+  if (mode) normalized.mode = mode
+  if (typeof dispatch.probability === 'number' && Number.isFinite(dispatch.probability)) {
+    normalized.probability = Math.min(1, Math.max(0, dispatch.probability))
+  }
+  if (typeof dispatch.externalProbabilityBias === 'number' && Number.isFinite(dispatch.externalProbabilityBias)) {
+    normalized.externalProbabilityBias = Math.min(1, Math.max(-1, dispatch.externalProbabilityBias))
+  }
+  if (dispatch.reason?.trim()) {
+    normalized.reason = dispatch.reason.trim()
+  }
+  return Object.keys(normalized).length ? normalized : undefined
+}
+
+function normalizeChatMediaDispatchTrigger(trigger: unknown): ChatMediaDispatchTrigger | undefined {
+  return trigger === 'model' || trigger === 'tool' || trigger === 'external' || trigger === 'probability' || trigger === 'manual'
+    ? trigger
+    : undefined
+}
+
+function normalizeChatMediaDispatchMode(mode: unknown): ChatMediaDispatchMode | undefined {
+  return mode === 'permanent' || mode === 'turn' ? mode : undefined
+}
+
+function normalizeChatMediaContext(context: ChatMediaContextPolicy | undefined): ChatMediaContextPolicy | undefined {
+  if (!context || typeof context !== 'object' || Array.isArray(context)) {
+    return undefined
+  }
+  const normalized: ChatMediaContextPolicy = {}
+  const mode = normalizeChatMediaContextMode(context.mode)
+  if (mode) normalized.mode = mode
+  if (context.summary?.trim()) {
+    normalized.summary = context.summary.trim()
+  }
+  return Object.keys(normalized).length ? normalized : undefined
+}
+
+function normalizeChatMediaContextMode(mode: unknown): ChatMediaContextMode | undefined {
+  return mode === 'visual' || mode === 'text' || mode === 'none' || mode === 'auto'
+    ? mode
+    : undefined
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
+
+function finitePositiveNumber(value: unknown): number | undefined {
+  const number = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(number) && number > 0 ? number : undefined
 }

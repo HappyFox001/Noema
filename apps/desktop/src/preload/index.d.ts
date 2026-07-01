@@ -1,5 +1,36 @@
 export {}
 
+type ChatPreloadMessageContent = string | Array<
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
+>
+
+type ChatPreloadMedia = {
+  id?: string
+  kind: 'image' | 'video' | 'audio'
+  name: string
+  mimeType: string
+  dataUrl?: string
+  url?: string
+  size?: number
+  durationMs?: number
+  transcript?: string
+  prompt?: string
+  origin?: 'user' | 'assistant' | 'tool' | 'generated' | 'external'
+  dispatch?: {
+    trigger?: 'manual' | 'model' | 'tool' | 'external' | 'probability'
+    mode?: 'turn' | 'permanent'
+    probability?: number
+    externalProbabilityBias?: number
+    reason?: string
+  }
+  context?: {
+    mode?: 'auto' | 'visual' | 'text' | 'none'
+    summary?: string
+  }
+  metadata?: Record<string, unknown>
+}
+
 declare global {
   interface Window {
     electronAPI: {
@@ -608,14 +639,7 @@ declare global {
             role: 'system' | 'user' | 'assistant'
             text: Record<string, string>
             createdLabel: Record<string, string>
-            attachments?: Array<{
-              id: string
-              kind: 'image' | 'video'
-              name: string
-              mimeType: string
-              dataUrl?: string
-              size?: number
-            }>
+            media?: ChatPreloadMedia[]
             openingPanel?: {
               html: string
               css: string
@@ -675,14 +699,7 @@ declare global {
             role: 'system' | 'user' | 'assistant'
             text: Record<string, string>
             createdLabel: Record<string, string>
-            attachments?: Array<{
-              id: string
-              kind: 'image' | 'video'
-              name: string
-              mimeType: string
-              dataUrl?: string
-              size?: number
-            }>
+            media?: ChatPreloadMedia[]
             openingPanel?: {
               html: string
               css: string
@@ -797,15 +814,9 @@ declare global {
         options?: Record<string, unknown>
         messages?: Array<{
           role: 'system' | 'user' | 'assistant'
-          content: string
+          content: ChatPreloadMessageContent
         }>
-        attachments?: Array<{
-          kind: 'image' | 'video'
-          name: string
-          mimeType: string
-          dataUrl?: string
-          size?: number
-        }>
+        media?: ChatPreloadMedia[]
         character?: {
           id?: string
           displayName?: string
@@ -1110,15 +1121,9 @@ declare global {
         options?: Record<string, unknown>
         messages?: Array<{
           role: 'system' | 'user' | 'assistant'
-          content: string
+          content: ChatPreloadMessageContent
         }>
-        attachments?: Array<{
-          kind: 'image' | 'video'
-          name: string
-          mimeType: string
-          dataUrl?: string
-          size?: number
-        }>
+        media?: ChatPreloadMedia[]
         character?: {
           id?: string
           displayName?: string
@@ -1162,17 +1167,11 @@ declare global {
         error?: string
       }>
       selectChatMedia: (request?: {
-        kind?: 'image' | 'video' | 'media'
+        kind?: 'image' | 'video' | 'audio' | 'media'
       }) => Promise<{
         success: boolean
         canceled?: boolean
-        attachments?: Array<{
-          kind: 'image' | 'video'
-          name: string
-          mimeType: string
-          dataUrl?: string
-          size?: number
-        }>
+        media?: ChatPreloadMedia[]
         error?: string
       }>
       selectChatMaterials: () => Promise<{

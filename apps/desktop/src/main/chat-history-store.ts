@@ -5,7 +5,7 @@ import { spawn } from 'node:child_process'
 import { mkdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
-const CHAT_HISTORY_SCHEMA_VERSION = 3
+const CHAT_HISTORY_SCHEMA_VERSION = 4
 
 export interface StoredChatConversation {
   id: string
@@ -61,7 +61,7 @@ interface ChatMessageRow {
   role: string
   text_json: string
   created_label_json: string
-  attachments_json: string
+  media_json: string
   state: string | null
 }
 
@@ -130,7 +130,7 @@ export class ChatHistoryStore {
 
     const [messages, summaries, workflowRows] = await Promise.all([
       runSqliteJson<ChatMessageRow>(this.dbPath, `
-        SELECT id, role, text_json, created_label_json, attachments_json, state
+        SELECT id, role, text_json, created_label_json, media_json, state
         FROM chat_messages
         WHERE conversation_id = ${sqlText(id)}
         ORDER BY ordinal ASC;
@@ -245,7 +245,7 @@ async function createCurrentSchema(dbPath: string): Promise<void> {
       role TEXT NOT NULL,
       text_json TEXT NOT NULL,
       created_label_json TEXT NOT NULL,
-      attachments_json TEXT NOT NULL,
+      media_json TEXT NOT NULL,
       state TEXT,
       created_at INTEGER NOT NULL,
       PRIMARY KEY (conversation_id, id),
@@ -329,7 +329,7 @@ function buildUpsertConversationSql(conversation: StoredChatConversation): strin
       updated_at = excluded.updated_at;
     DELETE FROM chat_messages WHERE conversation_id = ${sqlText(conversation.id)};
     ${messageValues.length
-      ? `INSERT INTO chat_messages (id, conversation_id, ordinal, role, text_json, created_label_json, attachments_json, state, created_at) VALUES ${messageValues.join(',\n')};`
+      ? `INSERT INTO chat_messages (id, conversation_id, ordinal, role, text_json, created_label_json, media_json, state, created_at) VALUES ${messageValues.join(',\n')};`
       : ''}
     DELETE FROM chat_summaries WHERE conversation_id = ${sqlText(conversation.id)};
     ${summaryValues.length
@@ -363,7 +363,7 @@ function rowToMessage(row: ChatMessageRow): Record<string, unknown> {
     role: row.role,
     text: parseJsonRecord(row.text_json),
     createdLabel: parseJsonRecord(row.created_label_json),
-    attachments: parseJsonArray(row.attachments_json),
+    media: parseJsonArray(row.media_json),
     ...(row.state ? { state: row.state } : {}),
   }
 }
@@ -390,7 +390,7 @@ function messageToInsertValue(conversationId: string, value: unknown, index: num
     ${sqlText(stringValue(message.role) || 'assistant')},
     ${sqlText(JSON.stringify(message.text ?? {}))},
     ${sqlText(JSON.stringify(message.createdLabel ?? {}))},
-    ${sqlText(JSON.stringify(Array.isArray(message.attachments) ? message.attachments : []))},
+    ${sqlText(JSON.stringify(Array.isArray(message.media) ? message.media : []))},
     ${message.state ? sqlText(String(message.state)) : 'NULL'},
     ${now + index}
   )`

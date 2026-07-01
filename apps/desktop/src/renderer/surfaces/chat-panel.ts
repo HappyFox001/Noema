@@ -49,7 +49,7 @@ import {
   type ChatCharacterResource,
   type ChatLocalizedText,
   type ChatMemorySummary,
-  type ChatMessageAttachment,
+  type ChatMessageMedia,
   type ChatMessage,
   type ChatOpeningPanel,
 } from './chat-model'
@@ -74,7 +74,7 @@ import { createChatRenderer } from './chat-renderer'
 
 type ChatResizeEdge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
 
-type PendingChatAttachment = ChatMessageAttachment
+type PendingChatMedia = ChatMessageMedia
 type CharacterWorkflowPageModule = typeof import('./chat-character-workflow-page')
 type CharacterWorkflowTemplateId = 'character-card'
 
@@ -284,7 +284,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let openChatRuntimeModelPicker = false
   let openChatModelTypePicker = false
   let activeChatRuntimeProvider = ''
-  let pendingAttachments: PendingChatAttachment[] = []
+  let pendingMedia: PendingChatMedia[] = []
   let cameraStream: MediaStream | null = null
   let cameraOverlay: HTMLElement | null = null
   const chatModelOptions = new Map<string, string[]>()
@@ -415,7 +415,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   runtimeModelPicker.setAttribute('aria-label', 'Chat model selector')
   options.composeForm.parentElement?.insertBefore(runtimeModelPicker, options.composeForm)
   attachmentTray.className = 'chat-attachment-tray'
-  attachmentTray.setAttribute('aria-label', 'Selected attachments')
+  attachmentTray.setAttribute('aria-label', 'Selected media')
   options.composeForm.insertBefore(attachmentTray, options.composeForm.firstElementChild)
 
   function showToast(message: string): void {
@@ -765,10 +765,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       if (!response.success) {
         throw new Error(response.error || 'Failed to select media')
       }
-      if (response.canceled || !response.attachments?.length) {
+      if (response.canceled || !response.media?.length) {
         return
       }
-      addPendingAttachments(response.attachments.map(toPendingAttachment))
+      addPendingMedia(response.media.map(toPendingMedia))
     } catch (error: any) {
       showToast(error?.message || String(error))
     }
@@ -903,7 +903,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     context.drawImage(video, 0, 0, canvas.width, canvas.height)
     const dataUrl = canvas.toDataURL('image/jpeg', 0.9)
-    addPendingAttachments([{
+    addPendingMedia([{
       id: `camera-${Date.now()}`,
       kind: 'image',
       name: `camera-${new Date().toISOString().replace(/[:.]/g, '-')}.jpg`,
@@ -921,37 +921,54 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     cameraOverlay = null
   }
 
-  function addPendingAttachments(attachments: PendingChatAttachment[]): void {
-    pendingAttachments = [...pendingAttachments, ...attachments].slice(0, 8)
-    renderPendingAttachments()
+  function addPendingMedia(media: PendingChatMedia[]): void {
+    pendingMedia = [...pendingMedia, ...media].slice(0, 8)
+    renderPendingMedia()
     options.composeInput.focus()
   }
 
-  function renderPendingAttachments(): void {
-    attachmentTray.classList.toggle('visible', pendingAttachments.length > 0)
-    attachmentTray.innerHTML = pendingAttachments.map((attachment) => `
-      <div class="chat-attachment-chip" data-chat-attachment-id="${options.escapeHtml(attachment.id)}">
-        ${attachment.kind === 'video'
-          ? `<video src="${options.escapeHtml(attachment.dataUrl || '')}" muted preload="metadata"></video>`
-          : `<img src="${options.escapeHtml(attachment.dataUrl || '')}" alt="${options.escapeHtml(attachment.name)}" />`}
-        <span>${options.escapeHtml(attachment.name)}</span>
-        <button type="button" aria-label="Remove attachment" data-chat-attachment-remove="${options.escapeHtml(attachment.id)}">×</button>
+  function renderPendingMedia(): void {
+    attachmentTray.classList.toggle('visible', pendingMedia.length > 0)
+    attachmentTray.innerHTML = pendingMedia.map((item) => `
+      <div class="chat-attachment-chip" data-chat-media-id="${options.escapeHtml(item.id)}">
+        ${renderPendingMediaPreview(item)}
+        <span>${options.escapeHtml(item.name)}</span>
+        <button type="button" aria-label="Remove media" data-chat-media-remove="${options.escapeHtml(item.id)}">×</button>
       </div>
     `).join('')
   }
 
-  function toPendingAttachment(attachment: Omit<PendingChatAttachment, 'id'> & { id?: string }): PendingChatAttachment {
+  function renderPendingMediaPreview(item: PendingChatMedia): string {
+    const source = options.escapeHtml(item.dataUrl || item.url || '')
+    if (item.kind === 'video') {
+      return `<video src="${source}" muted preload="metadata"></video>`
+    }
+    if (item.kind === 'audio') {
+      return `<span class="chat-attachment-audio-thumb">AUDIO</span>`
+    }
+    return `<img src="${source}" alt="${options.escapeHtml(item.name)}" />`
+  }
+
+  function toPendingMedia(item: Omit<PendingChatMedia, 'id'> & { id?: string }): PendingChatMedia {
     return {
-      id: attachment.id || `attachment-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      kind: attachment.kind,
-      name: attachment.name,
-      mimeType: attachment.mimeType,
-      dataUrl: attachment.dataUrl,
-      size: attachment.size,
+      id: item.id || `media-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      kind: item.kind,
+      name: item.name,
+      mimeType: item.mimeType,
+      dataUrl: item.dataUrl,
+      url: item.url,
+      size: item.size,
+      durationMs: item.durationMs,
+      transcript: item.transcript,
+      prompt: item.prompt,
+      origin: item.origin ?? 'user',
+      dispatch: item.dispatch ?? { trigger: 'manual', mode: 'turn', probability: 1 },
+      context: item.context ?? { mode: item.kind === 'audio' ? 'text' : 'auto' },
+      metadata: item.metadata,
     }
   }
 
-  async function queueAssistantReply(userText: string, attachments: ChatMessageAttachment[] = []): Promise<void> {
+  async function queueAssistantReply(userText: string, media: ChatMessageMedia[] = []): Promise<void> {
     const conversation = getActiveMutableConversation()
     if (!conversation) {
       showToast(options.getLanguage() === 'zh-CN' ? '角色资源尚未加载' : 'Character resources are not loaded')
@@ -971,7 +988,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     refreshConversationList()
     const request = buildChatRuntimeTurnRequest({
       input: userText,
-      mediaFallbackInput: uiLanguage === 'zh-CN' ? '请根据附件进行回复。' : 'Please respond to the attached media.',
+      mediaFallbackInput: uiLanguage === 'zh-CN' ? '请根据这次发送的媒体内容进行回复。' : 'Please respond to the media sent in this turn.',
       language,
       preferencePrompt: buildConversationPreferencePrompt(conversationSettings, language),
       options: buildConversationRequestOptions(conversationSettings),
@@ -979,7 +996,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         shortTermMessageLimit: getShortTermMessageLimit(),
         summaryLimit: conversationSettings.summaryLimit,
       },
-      attachments,
+      media,
       conversation,
       draftMessageId: message.id,
       character,
@@ -6992,8 +7009,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   options.composeForm.addEventListener('submit', (event) => {
     event.preventDefault()
     const text = options.composeInput.value.trim()
-    const attachments = pendingAttachments.map((attachment) => ({ ...attachment }))
-    if (!text && attachments.length === 0) {
+    const media = pendingMedia.map((item) => ({ ...item }))
+    if (!text && media.length === 0) {
       return
     }
     const conversation = getActiveMutableConversation()
@@ -7001,8 +7018,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       showToast(options.getLanguage() === 'zh-CN' ? '角色资源尚未加载' : 'Character resources are not loaded')
       return
     }
-    const displayText = text || (options.getLanguage() === 'zh-CN' ? '已发送附件' : 'Sent attachment')
-    const userMessage = createLocalUserMessage(displayText, getTimeLabel(), attachments)
+    const displayText = text || (options.getLanguage() === 'zh-CN' ? '已发送媒体' : 'Sent media')
+    const userMessage = createLocalUserMessage(displayText, getTimeLabel(), media)
     conversation.messages.push(userMessage)
     conversation.preview = { 'zh-CN': displayText, 'en-US': displayText }
     conversation.updatedLabel = { 'zh-CN': '现在', 'en-US': 'Now' }
@@ -7010,10 +7027,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     refreshConversationList()
     options.composeInput.value = ''
     options.composeInput.style.height = 'auto'
-    pendingAttachments = []
-    renderPendingAttachments()
+    pendingMedia = []
+    renderPendingMedia()
     void persistConversation(conversation)
-    void queueAssistantReply(text, attachments)
+    void queueAssistantReply(text, media)
   })
 
   panel.addEventListener('submit', (event) => {
@@ -7154,11 +7171,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
 
-    const attachmentRemove = eventTarget.closest<HTMLElement>('[data-chat-attachment-remove]')
-    if (attachmentRemove && panel.contains(attachmentRemove)) {
-      const id = attachmentRemove.dataset.chatAttachmentRemove || ''
-      pendingAttachments = pendingAttachments.filter((attachment) => attachment.id !== id)
-      renderPendingAttachments()
+    const mediaRemove = eventTarget.closest<HTMLElement>('[data-chat-media-remove]')
+    if (mediaRemove && panel.contains(mediaRemove)) {
+      const id = mediaRemove.dataset.chatMediaRemove || ''
+      pendingMedia = pendingMedia.filter((item) => item.id !== id)
+      renderPendingMedia()
       return
     }
 

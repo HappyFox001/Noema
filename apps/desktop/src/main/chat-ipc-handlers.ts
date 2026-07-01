@@ -209,12 +209,29 @@ function normalizeCharacterAgentSeedArtifacts(
     }))
 }
 
-export interface ChatIpcAttachment {
-  kind: 'image' | 'video'
+export interface ChatIpcMedia {
+  kind: 'image' | 'video' | 'audio'
   name: string
   mimeType: string
   dataUrl?: string
+  url?: string
   size?: number
+  durationMs?: number
+  transcript?: string
+  prompt?: string
+  origin?: 'user' | 'assistant' | 'tool' | 'generated' | 'external'
+  dispatch?: {
+    trigger?: 'manual' | 'model' | 'tool' | 'external' | 'probability'
+    mode?: 'turn' | 'permanent'
+    probability?: number
+    externalProbabilityBias?: number
+    reason?: string
+  }
+  context?: {
+    mode?: 'auto' | 'visual' | 'text' | 'none'
+    summary?: string
+  }
+  metadata?: Record<string, unknown>
 }
 
 export interface ChatIpcMaterial {
@@ -227,13 +244,13 @@ export interface ChatIpcMaterial {
 }
 
 export interface ChatSelectMediaRequest {
-  kind?: 'image' | 'video' | 'media'
+  kind?: 'image' | 'video' | 'audio' | 'media'
 }
 
 export interface ChatSelectMediaResult {
   success: boolean
   canceled?: boolean
-  attachments?: ChatIpcAttachment[]
+  media?: ChatIpcMedia[]
   error?: string
 }
 
@@ -477,7 +494,7 @@ export function registerChatIpcHandlers(
         title: 'Select media',
         properties: ['openFile', 'multiSelections'],
         filters: [{
-          name: 'Images and videos',
+          name: 'Media',
           extensions: mediaExtensionsForKind(request?.kind),
         }],
       }
@@ -486,12 +503,12 @@ export function registerChatIpcHandlers(
         ? await dialog.showOpenDialog(owner, dialogOptions)
         : await dialog.showOpenDialog(dialogOptions)
       if (result.canceled || result.filePaths.length === 0) {
-        return { success: true, canceled: true, attachments: [] }
+        return { success: true, canceled: true, media: [] }
       }
-      const attachments = await Promise.all(result.filePaths.map(readMediaAttachment))
+      const media = await Promise.all(result.filePaths.map(readMediaFile))
       return {
         success: true,
-        attachments: attachments.filter(Boolean) as ChatIpcAttachment[],
+        media: media.filter(Boolean) as ChatIpcMedia[],
       }
     } catch (error: any) {
       console.error('[Chat] Failed to select media:', error)
@@ -788,7 +805,10 @@ function mediaExtensionsForKind(kind: ChatSelectMediaRequest['kind']): string[] 
   if (kind === 'video') {
     return ['mp4', 'mov', 'm4v', 'webm']
   }
-  return ['png', 'jpg', 'jpeg', 'webp', 'gif', 'mp4', 'mov', 'm4v', 'webm']
+  if (kind === 'audio') {
+    return ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'opus', 'flac']
+  }
+  return ['png', 'jpg', 'jpeg', 'webp', 'gif', 'mp4', 'mov', 'm4v', 'webm', 'mp3', 'wav', 'm4a', 'aac', 'ogg', 'opus', 'flac']
 }
 
 function materialFileExtensions(): string[] {
@@ -799,19 +819,32 @@ function materialFileExtensions(): string[] {
   ]
 }
 
-async function readMediaAttachment(filePath: string): Promise<ChatIpcAttachment | null> {
+async function readMediaFile(filePath: string): Promise<ChatIpcMedia | null> {
   const mimeType = mimeForPath(filePath)
   if (!mimeType) {
     return null
   }
   const bytes = await readFile(filePath)
   return {
-    kind: mimeType.startsWith('video/') ? 'video' : 'image',
+    kind: mediaKindForMimeType(mimeType),
     name: basename(filePath),
     mimeType,
     size: bytes.byteLength,
     dataUrl: `data:${mimeType};base64,${bytes.toString('base64')}`,
+    origin: 'user',
+    dispatch: { trigger: 'manual', mode: 'turn', probability: 1 },
+    context: { mode: mimeType.startsWith('audio/') ? 'text' : 'auto' },
   }
+}
+
+function mediaKindForMimeType(mimeType: string): ChatIpcMedia['kind'] {
+  if (mimeType.startsWith('video/')) {
+    return 'video'
+  }
+  if (mimeType.startsWith('audio/')) {
+    return 'audio'
+  }
+  return 'image'
 }
 
 async function readMaterialFile(filePath: string): Promise<ChatIpcMaterial | null> {
@@ -857,6 +890,20 @@ function mimeForPath(filePath: string): string | null {
       return 'video/quicktime'
     case '.webm':
       return 'video/webm'
+    case '.mp3':
+      return 'audio/mpeg'
+    case '.wav':
+      return 'audio/wav'
+    case '.m4a':
+      return 'audio/mp4'
+    case '.aac':
+      return 'audio/aac'
+    case '.ogg':
+      return 'audio/ogg'
+    case '.opus':
+      return 'audio/opus'
+    case '.flac':
+      return 'audio/flac'
     default:
       return null
   }

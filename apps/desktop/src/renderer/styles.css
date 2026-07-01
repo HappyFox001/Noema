@@ -18684,13 +18684,23 @@ body.theme-day .chat-message-avatar {
 }
 
 .chat-attachment-chip img,
-.chat-attachment-chip video {
+.chat-attachment-chip video,
+.chat-attachment-chip .chat-attachment-audio-thumb {
   width: 42px;
   height: 42px;
   display: block;
   object-fit: cover;
   border-radius: 10px;
   background: rgba(0, 0, 0, 0.22);
+}
+
+.chat-attachment-chip .chat-attachment-audio-thumb {
+  display: grid;
+  place-items: center;
+  color: rgba(218, 232, 224, 0.82);
+  font-family: var(--font-ui);
+  font-size: 9px;
+  letter-spacing: 0;
 }
 
 .chat-attachment-chip span {
@@ -18789,6 +18799,13 @@ body.theme-day .chat-message-avatar {
   color: rgba(248, 250, 250, 0.62);
   font-family: var(--font-ui);
   font-size: 11px;
+}
+
+.chat-message-attachment.audio {
+  min-width: 220px;
+  max-height: none;
+  padding: 6px;
+  object-fit: initial;
 }
 
 .chat-camera-overlay {
