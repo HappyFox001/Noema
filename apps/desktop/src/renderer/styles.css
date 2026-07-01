@@ -22434,238 +22434,146 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-history-manager {
   background: transparent;
 }
 
-.chat-context-brief,
-.chat-context-controls,
-.chat-context-metrics,
-.chat-context-section {
-  position: relative;
-  overflow: visible;
-  display: grid;
-  gap: 10px;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.chat-context-brief::before,
-.chat-context-controls::before,
-.chat-context-metrics::before,
-.chat-context-section::before {
-  display: none;
-}
-
-.chat-context-brief {
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 14px;
-  padding: 14px 16px;
-  border-radius: 14px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.018)),
-    rgba(43, 44, 49, 0.72);
-}
-
-.chat-context-brief div,
-.chat-context-panel-head,
-.chat-context-section-head div {
-  gap: 4px;
-  padding: 0;
-  border: 0;
-}
-
-.chat-context-brief span,
-.chat-context-section-head span,
-.chat-context-panel-head span {
-  color: rgba(248, 249, 249, 0.38);
-  font-family: var(--font-ui);
-  font-size: 12px;
-  font-weight: 720;
-  letter-spacing: 0;
-  text-transform: none;
-}
-
-.chat-context-brief strong,
-.chat-context-section-head strong,
-.chat-context-panel-head strong {
-  color: rgba(248, 249, 249, 0.92);
-  font-family: var(--font-ui);
-  font-size: 20px;
-  font-weight: 780;
-  line-height: 1.15;
-}
-
-.chat-context-brief p,
-.chat-context-control small,
-.chat-history-summary p,
-.chat-history-message p {
-  color: rgba(248, 249, 249, 0.48);
-  font-size: 13px;
-  line-height: 1.45;
-}
-
-.chat-context-brief button {
-  min-width: 72px;
+/* Conversation management panel reuses the conversation settings design system:
+   section-head h3/p headers, shared control-card backgrounds, and pill buttons. */
+.chat-settings-pill-btn {
+  justify-self: start;
+  min-width: 54px;
   height: 28px;
   padding: 0 10px;
-  border-radius: 8px;
-  font-size: 10px;
-}
-
-.chat-context-control-list {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 2px;
-  padding: 14px;
-  border-radius: 14px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.018)),
-    rgba(43, 44, 49, 0.72);
-}
-
-.chat-context-control {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 7px 10px;
-  padding: 10px;
   border: 0;
-  border-bottom: 1px solid rgba(245, 248, 246, 0.075);
-  border-radius: 0;
-  background: transparent;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(248, 249, 249, 0.56);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 740;
+  letter-spacing: 0;
+  cursor: pointer;
+  transition: transform 160ms ease, background 160ms ease, color 160ms ease;
 }
 
-.chat-context-control strong {
-  color: rgba(248, 250, 250, 0.82);
-  font-size: 14px;
-  font-weight: 720;
+.chat-settings-pill-btn:hover {
+  background: rgba(224, 236, 230, 0.12);
+  color: rgba(248, 249, 249, 0.78);
 }
 
-.chat-context-control output {
-  font-size: 15px;
+.chat-settings-pill-btn:active {
+  transform: translateY(1px) scale(0.99);
 }
 
-.chat-context-control input {
-  height: 18px;
+.chat-settings-pill-btn.danger {
+  background: rgba(255, 128, 148, 0.09);
+  color: rgba(255, 199, 207, 0.82);
 }
 
-.chat-context-control input::-webkit-slider-thumb {
-  width: 14px;
-  height: 14px;
-  box-shadow:
-    0 5px 14px rgba(0, 0, 0, 0.32),
-    0 0 0 4px rgba(224, 236, 230, 0.07);
+.chat-settings-pill-btn.danger:hover {
+  background: rgba(255, 128, 148, 0.16);
+  color: rgba(255, 218, 224, 0.94);
 }
 
-.chat-context-metric-grid {
+.chat-settings-badge {
+  justify-self: end;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(248, 249, 249, 0.6);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.chat-settings-stat-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
-  padding: 14px;
-  border-radius: 14px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.018)),
-    rgba(43, 44, 49, 0.72);
 }
 
-.chat-context-metric-grid span {
-  min-height: 50px;
-  padding: 9px;
-  border: 0;
+.chat-settings-stat-grid span {
+  min-height: 54px;
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  padding: 10px;
   border-radius: 10px;
-  background: rgba(0, 0, 0, 0.12);
-  color: rgba(248, 250, 250, 0.46);
-  font-size: 10px;
+  background: rgba(255, 255, 255, 0.06);
 }
 
-.chat-context-metric-grid b {
-  font-size: 16px;
+.chat-settings-stat-grid b {
+  color: rgba(248, 249, 249, 0.92);
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 780;
+  line-height: 1;
 }
 
-.chat-context-section-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 0;
-  border-bottom: 0;
-}
-
-.chat-context-section-head button {
-  min-width: 70px;
-  height: 28px;
-  padding: 0 10px;
-  border-radius: 8px;
-  font-size: 10px;
-}
-
-.chat-context-section-head small {
-  font-size: 10px;
+.chat-settings-stat-grid i {
+  color: rgba(248, 249, 249, 0.46);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 540;
+  font-style: normal;
+  line-height: 1.35;
 }
 
 .chat-history-summaries,
 .chat-history-messages {
   display: grid;
-  gap: 0;
-  overflow: hidden;
-  border-radius: 14px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.018)),
-    rgba(43, 44, 49, 0.72);
+  gap: 10px;
 }
 
 .chat-history-summary,
 .chat-history-message {
   min-width: 0;
+  display: grid;
+  gap: 8px;
   padding: 13px 14px;
-  border: 0;
-  border-bottom: 1px solid rgba(245, 248, 246, 0.075);
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
+  border: 1px solid rgba(244, 248, 245, 0.075);
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.034), rgba(255, 255, 255, 0.014)),
+    rgba(0, 0, 0, 0.13);
 }
 
-.chat-history-summary:last-child,
-.chat-history-message:last-child {
-  border-bottom: 0;
-}
-
-.chat-history-summary > div {
-  padding-bottom: 7px;
-  border-bottom: 0;
+.chat-history-summary > div,
+.chat-history-message > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 .chat-history-summary strong,
 .chat-history-message strong {
-  color: rgba(248, 250, 250, 0.82);
-  font-size: 13px;
-  font-weight: 720;
+  color: rgba(248, 249, 249, 0.92);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 760;
+  line-height: 1.2;
 }
 
 .chat-history-summary span,
 .chat-history-message time {
-  color: rgba(248, 250, 250, 0.42);
-  font-size: 10px;
+  color: rgba(248, 249, 249, 0.42);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 540;
+  line-height: 1.35;
 }
 
-.chat-history-summary button,
-.chat-history-message button {
-  min-width: 48px;
-  height: 24px;
-  padding: 0 9px;
-  border-radius: 8px;
-  font-size: 9px;
-}
-
-.chat-context-section-head button::before,
-.chat-history-summary button::before,
-.chat-history-message button::before,
-.chat-context-brief button::before {
-  width: 4px;
-  height: 4px;
-  margin-right: 6px;
+.chat-history-summary p,
+.chat-history-message p {
+  margin: 0;
+  color: rgba(248, 249, 249, 0.6);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
 }
 
 .chat-history-empty.compact {
@@ -22693,16 +22601,14 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-history-manager {
   }
 
   .chat-settings-language-section,
-  .chat-settings-field,
-  .chat-context-brief {
+  .chat-settings-field {
     grid-template-columns: minmax(0, 1fr);
   }
 
   .chat-settings-parameter-grid,
   .chat-settings-media-grid,
   .chat-settings-media-sliders,
-  .chat-context-control-list,
-  .chat-context-metric-grid {
+  .chat-settings-stat-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }

@@ -347,9 +347,9 @@ function renderConversationLanguageOption(
   return `<option value="${options.escapeHtml(value)}" ${settings.language === value ? 'selected' : ''}>${options.escapeHtml(label)}</option>`
 }
 
-function renderConversationRange(
+export function renderConversationRange(
   options: ConversationSettingsPageOptions,
-  key: keyof Pick<ChatConversationSettings, 'outputTokenBudget' | 'temperature' | 'diversity' | 'mediaImageProbability' | 'mediaImageCooldownTurns'>,
+  key: keyof Pick<ChatConversationSettings, 'outputTokenBudget' | 'temperature' | 'diversity' | 'mediaImageProbability' | 'mediaImageCooldownTurns' | 'shortTermTurns' | 'summaryLimit'>,
   min: number,
   max: number,
   step: number,

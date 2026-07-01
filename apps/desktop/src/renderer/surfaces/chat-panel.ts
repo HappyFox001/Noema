@@ -31,9 +31,11 @@ import {
   clampNumber,
   getDefaultConversationSettings,
   loadConversationSettings,
+  renderConversationRange,
   renderConversationSettingsPage,
   saveConversationSettings,
   type ChatConversationSettings,
+  type ConversationSettingsPageOptions,
 } from './chat-conversation-settings'
 import type {
   CharacterWorkflowModelChoice,
@@ -2003,66 +2005,77 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const archivedCount = Math.max(0, stableMessages.length - recentMessages.length)
     const summaryCovered = retainedSummaries.reduce((count, summary) => count + summary.messageCount, 0)
     chatHistorySessionList.innerHTML = `
-      <section class="chat-context-brief">
-        <div>
-          <span>${options.escapeHtml(zh ? '当前对话' : 'Current thread')}</span>
-          <strong>${options.escapeHtml(localizeChatText(activeConversation.title, language))}</strong>
-          <p>${options.escapeHtml(localizeChatText(activeConversation.preview, language))}</p>
-        </div>
-        <button type="button" data-chat-history-action="delete-conversation" data-chat-history-id="${options.escapeHtml(activeConversation.id)}">
-          ${options.escapeHtml(zh ? '删除整段' : 'Delete thread')}
-        </button>
-      </section>
-      <section class="chat-context-controls">
-        <div class="chat-context-panel-head">
-          <span>${options.escapeHtml(zh ? '上下文策略' : 'Context policy')}</span>
-          <strong>${options.escapeHtml(zh ? '发送给模型的范围' : 'Model input window')}</strong>
-        </div>
-        <div class="chat-context-control-list">
-          ${renderContextControl(
-            'shortTermTurns',
-            zh ? '短期完整轮数' : 'Short-term turns',
-            zh ? '最近这些轮次会原样进入模型上下文。' : 'The latest turns are sent as full messages.',
-            CHAT_CONTEXT_TURNS_MIN,
-            CHAT_CONTEXT_TURNS_MAX,
-            1,
-            conversationSettings.shortTermTurns,
-            zh ? '轮' : 'turns'
-          )}
-          ${renderContextControl(
-            'summaryLimit',
-            zh ? '摘要保留条数' : 'Summary limit',
-            zh ? '旧上下文会压缩为摘要，并按此上限保留。' : 'Older context is compressed and kept up to this limit.',
-            CHAT_SUMMARY_LIMIT_MIN,
-            CHAT_SUMMARY_LIMIT_MAX,
-            1,
-            conversationSettings.summaryLimit,
-            zh ? '条' : 'items'
-          )}
+      <section class="chat-settings-section">
+        <div class="chat-settings-control-card chat-settings-parameter-card">
+          <div class="chat-settings-control-head">
+            <div>
+              <strong>${options.escapeHtml(localizeChatText(activeConversation.title, language))}</strong>
+              <small>${options.escapeHtml(localizeChatText(activeConversation.preview, language))}</small>
+            </div>
+            <button type="button" class="chat-settings-pill-btn danger" data-chat-history-action="delete-conversation" data-chat-history-id="${options.escapeHtml(activeConversation.id)}">
+              ${options.escapeHtml(zh ? '删除整段' : 'Delete thread')}
+            </button>
+          </div>
         </div>
       </section>
-      <section class="chat-context-metrics">
-        <div class="chat-context-panel-head">
-          <span>${options.escapeHtml(zh ? '上下文统计' : 'Context stats')}</span>
-          <strong>${options.escapeHtml(zh ? '当前记忆结构' : 'Current memory shape')}</strong>
+      <section class="chat-settings-section">
+        <div class="chat-settings-section-head">
+          <div class="chat-settings-section-copy">
+            <h3>${options.escapeHtml(zh ? '上下文策略' : 'Context policy')}</h3>
+            <p>${options.escapeHtml(zh ? '发送给模型的范围' : 'Model input window')}</p>
+          </div>
         </div>
-        <div class="chat-context-metric-grid">
-          <span><b>${options.escapeHtml(String(recentMessages.length))}</b>${options.escapeHtml(zh ? '完整消息' : 'full messages')}</span>
-          <span><b>${options.escapeHtml(String(retainedSummaries.length))}</b>${options.escapeHtml(zh ? '摘要' : 'summaries')}</span>
-          <span><b>${options.escapeHtml(String(summaryCovered))}</b>${options.escapeHtml(zh ? '已压缩消息' : 'compressed')}</span>
-          <span><b>${options.escapeHtml(String(archivedCount))}</b>${options.escapeHtml(zh ? '候选旧消息' : 'older')}</span>
+        <div class="chat-settings-control-card chat-settings-parameter-card">
+          <div class="chat-settings-parameter-grid">
+            ${renderContextControl(
+              'shortTermTurns',
+              zh ? '短期完整轮数' : 'Short-term turns',
+              zh ? '最近这些轮次会原样进入模型上下文。' : 'The latest turns are sent as full messages.',
+              CHAT_CONTEXT_TURNS_MIN,
+              CHAT_CONTEXT_TURNS_MAX,
+              1,
+              conversationSettings.shortTermTurns,
+              zh ? '轮' : 'turns'
+            )}
+            ${renderContextControl(
+              'summaryLimit',
+              zh ? '摘要保留条数' : 'Summary limit',
+              zh ? '旧上下文会压缩为摘要，并按此上限保留。' : 'Older context is compressed and kept up to this limit.',
+              CHAT_SUMMARY_LIMIT_MIN,
+              CHAT_SUMMARY_LIMIT_MAX,
+              1,
+              conversationSettings.summaryLimit,
+              zh ? '条' : 'items'
+            )}
+          </div>
+        </div>
+      </section>
+      <section class="chat-settings-section">
+        <div class="chat-settings-section-head">
+          <div class="chat-settings-section-copy">
+            <h3>${options.escapeHtml(zh ? '上下文统计' : 'Context stats')}</h3>
+            <p>${options.escapeHtml(zh ? '当前记忆结构' : 'Current memory shape')}</p>
+          </div>
+        </div>
+        <div class="chat-settings-control-card chat-settings-parameter-card">
+          <div class="chat-settings-stat-grid">
+            <span><b>${options.escapeHtml(String(recentMessages.length))}</b><i>${options.escapeHtml(zh ? '完整消息' : 'full messages')}</i></span>
+            <span><b>${options.escapeHtml(String(retainedSummaries.length))}</b><i>${options.escapeHtml(zh ? '摘要' : 'summaries')}</i></span>
+            <span><b>${options.escapeHtml(String(summaryCovered))}</b><i>${options.escapeHtml(zh ? '已压缩消息' : 'compressed')}</i></span>
+            <span><b>${options.escapeHtml(String(archivedCount))}</b><i>${options.escapeHtml(zh ? '候选旧消息' : 'older')}</i></span>
+          </div>
         </div>
       </section>
     `
 
     chatHistoryMessageList.innerHTML = `
-      <section class="chat-context-section">
-        <div class="chat-context-section-head">
-          <div>
-            <span>${options.escapeHtml(zh ? '长期摘要' : 'Long-term summaries')}</span>
-            <strong>${options.escapeHtml(zh ? '摘要管理' : 'Summary management')}</strong>
+      <section class="chat-settings-section">
+        <div class="chat-settings-section-head">
+          <div class="chat-settings-section-copy">
+            <h3>${options.escapeHtml(zh ? '长期摘要' : 'Long-term summaries')}</h3>
+            <p>${options.escapeHtml(zh ? '摘要管理' : 'Summary management')}</p>
           </div>
-          <button type="button" data-chat-history-action="summarize-now">${options.escapeHtml(zh ? '立即整理' : 'Summarize')}</button>
+          <button type="button" class="chat-settings-pill-btn" data-chat-history-action="summarize-now">${options.escapeHtml(zh ? '立即整理' : 'Summarize')}</button>
         </div>
         <div class="chat-history-summaries">
           ${retainedSummaries.length
@@ -2073,7 +2086,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
                   <span>${options.escapeHtml(formatSummaryRange(summary, language))}</span>
                 </div>
                 <p>${options.escapeHtml(localizeChatText(summary.text, language))}</p>
-                <button type="button" data-chat-history-action="delete-summary" data-chat-history-summary="${options.escapeHtml(summary.id)}">
+                <button type="button" class="chat-settings-pill-btn danger" data-chat-history-action="delete-summary" data-chat-history-summary="${options.escapeHtml(summary.id)}">
                   ${options.escapeHtml(zh ? '删除摘要' : 'Remove summary')}
                 </button>
               </article>
@@ -2081,13 +2094,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             : `<div class="chat-history-empty compact">${options.escapeHtml(zh ? '旧消息超过短期范围后，会在回复完成时自动生成摘要。' : 'Summaries appear automatically after older messages exceed the short-term range.')}</div>`}
         </div>
       </section>
-      <section class="chat-context-section">
-        <div class="chat-context-section-head">
-          <div>
-            <span>${options.escapeHtml(zh ? '短期上下文' : 'Short-term context')}</span>
-            <strong>${options.escapeHtml(zh ? '保留的完整消息' : 'Full messages kept')}</strong>
+      <section class="chat-settings-section">
+        <div class="chat-settings-section-head">
+          <div class="chat-settings-section-copy">
+            <h3>${options.escapeHtml(zh ? '短期上下文' : 'Short-term context')}</h3>
+            <p>${options.escapeHtml(zh ? '保留的完整消息' : 'Full messages kept')}</p>
           </div>
-          <small>${options.escapeHtml(String(recentMessages.length))} / ${options.escapeHtml(String(stableMessages.length))}</small>
+          <span class="chat-settings-badge">${options.escapeHtml(String(recentMessages.length))} / ${options.escapeHtml(String(stableMessages.length))}</span>
         </div>
         <div class="chat-history-messages">
           ${recentMessages.length ? recentMessages.map((messageItem) => `
@@ -2097,7 +2110,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
               <time>${options.escapeHtml(localizeChatText(messageItem.createdLabel, language))}</time>
             </div>
             <p>${options.escapeHtml(localizeChatText(messageItem.text, language))}</p>
-            <button type="button" data-chat-history-action="delete-message" data-chat-history-message="${options.escapeHtml(messageItem.id)}">
+            <button type="button" class="chat-settings-pill-btn danger" data-chat-history-action="delete-message" data-chat-history-message="${options.escapeHtml(messageItem.id)}">
               ${options.escapeHtml(zh ? '删除' : 'Remove')}
             </button>
           </article>
@@ -2117,16 +2130,21 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     value: number,
     unit: string
   ): string {
-    const progress = Math.max(0, Math.min(100, ((value - min) / (max - min)) * 100))
+    const rangeOptions: ConversationSettingsPageOptions = { language: options.getLanguage(), escapeHtml: options.escapeHtml }
     return `
-      <label class="chat-context-control" style="--chat-context-progress: ${progress}%">
-        <span>
-          <strong>${options.escapeHtml(title)}</strong>
-          <small>${options.escapeHtml(copy)}</small>
-        </span>
-        <output>${options.escapeHtml(String(value))}<em>${options.escapeHtml(unit)}</em></output>
-        <input type="range" data-chat-setting="${options.escapeHtml(key)}" min="${min}" max="${max}" step="${step}" value="${options.escapeHtml(String(value))}" />
-      </label>
+      <article class="chat-settings-parameter">
+        <div class="chat-settings-control-head">
+          <div>
+            <strong>${options.escapeHtml(title)}</strong>
+            <small>${options.escapeHtml(copy)}</small>
+          </div>
+          <output>${options.escapeHtml(String(value))} ${options.escapeHtml(unit)}</output>
+        </div>
+        ${renderConversationRange(rangeOptions, key, min, max, step, value, [
+          { value: min, label: String(min) },
+          { value: max, label: String(max) },
+        ])}
+      </article>
     `
   }
 
