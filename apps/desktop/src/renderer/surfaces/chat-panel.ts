@@ -324,6 +324,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let chatResourcesHydrated = false
   let chatResourcesHydratePromise: Promise<void> | null = null
   let chatModelConfigLoadPromise: Promise<void> | null = null
+  let chatHistoryRenderFrame: number | undefined
+  let conversationSettingsRenderFrame: number | undefined
   let characterWorkflowRenderToken = 0
   let characterWorkflowLazyRenderToken = 0
   let characterWorkflowPageModulePromise: Promise<CharacterWorkflowPageModule> | null = null
@@ -1867,29 +1869,116 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   function openConversationSettings(): void {
+    cancelChatHistoryRender()
+    chatHistoryPanel?.classList.remove('visible')
+    chatHistoryPanel?.setAttribute('aria-hidden', 'true')
     conversationSettingsPanel?.classList.add('visible')
     conversationSettingsPanel?.setAttribute('aria-hidden', 'false')
     syncSideActionState('conversation-settings')
-    renderConversationSettings()
+    renderConversationSettingsLoadingIfEmpty()
+    scheduleConversationSettingsRender()
   }
 
   function closeConversationSettings(): void {
+    cancelConversationSettingsRender()
     conversationSettingsPanel?.classList.remove('visible')
     conversationSettingsPanel?.setAttribute('aria-hidden', 'true')
     syncSideActionState('')
   }
 
   function openChatHistoryManager(): void {
+    cancelConversationSettingsRender()
+    conversationSettingsPanel?.classList.remove('visible')
+    conversationSettingsPanel?.setAttribute('aria-hidden', 'true')
     chatHistoryPanel?.classList.add('visible')
     chatHistoryPanel?.setAttribute('aria-hidden', 'false')
     syncSideActionState('conversation-management')
-    renderChatHistoryManager()
+    renderChatHistoryLoadingIfEmpty()
+    scheduleChatHistoryRender()
   }
 
   function closeChatHistoryManager(): void {
+    cancelChatHistoryRender()
     chatHistoryPanel?.classList.remove('visible')
     chatHistoryPanel?.setAttribute('aria-hidden', 'true')
     syncSideActionState('')
+  }
+
+  function scheduleConversationSettingsRender(): void {
+    if (conversationSettingsRenderFrame !== undefined) {
+      return
+    }
+    conversationSettingsRenderFrame = window.requestAnimationFrame(() => {
+      conversationSettingsRenderFrame = window.requestAnimationFrame(() => {
+        conversationSettingsRenderFrame = undefined
+        if (conversationSettingsPanel?.classList.contains('visible')) {
+          renderConversationSettings()
+        }
+      })
+    })
+  }
+
+  function scheduleChatHistoryRender(): void {
+    if (chatHistoryRenderFrame !== undefined) {
+      return
+    }
+    chatHistoryRenderFrame = window.requestAnimationFrame(() => {
+      chatHistoryRenderFrame = window.requestAnimationFrame(() => {
+        chatHistoryRenderFrame = undefined
+        if (chatHistoryPanel?.classList.contains('visible')) {
+          renderChatHistoryManager()
+        }
+      })
+    })
+  }
+
+  function cancelConversationSettingsRender(): void {
+    if (conversationSettingsRenderFrame === undefined) {
+      return
+    }
+    window.cancelAnimationFrame(conversationSettingsRenderFrame)
+    conversationSettingsRenderFrame = undefined
+  }
+
+  function cancelChatHistoryRender(): void {
+    if (chatHistoryRenderFrame === undefined) {
+      return
+    }
+    window.cancelAnimationFrame(chatHistoryRenderFrame)
+    chatHistoryRenderFrame = undefined
+  }
+
+  function renderConversationSettingsLoadingIfEmpty(): void {
+    if (!conversationSettingsBody || conversationSettingsBody.childElementCount > 0) {
+      return
+    }
+    const zh = options.getLanguage() === 'zh-CN'
+    conversationSettingsBody.innerHTML = renderPanelLoadingState(zh ? '正在整理设置' : 'Preparing settings')
+  }
+
+  function renderChatHistoryLoadingIfEmpty(): void {
+    const sessionHasContent = Boolean(chatHistorySessionList?.childElementCount)
+    const messageHasContent = Boolean(chatHistoryMessageList?.childElementCount)
+    if (sessionHasContent && messageHasContent) {
+      return
+    }
+    const zh = options.getLanguage() === 'zh-CN'
+    const loading = renderPanelLoadingState(zh ? '正在整理对话上下文' : 'Preparing conversation context')
+    if (chatHistorySessionList && !sessionHasContent) {
+      chatHistorySessionList.innerHTML = loading
+    }
+    if (chatHistoryMessageList && !messageHasContent) {
+      chatHistoryMessageList.innerHTML = loading
+    }
+  }
+
+  function renderPanelLoadingState(label: string): string {
+    return `
+      <div class="chat-panel-loading" aria-live="polite">
+        <span aria-hidden="true"></span>
+        <strong>${options.escapeHtml(label)}</strong>
+      </div>
+    `
   }
 
   function renderChatHistoryManager(): void {
@@ -1923,32 +2012,44 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         </button>
       </section>
       <section class="chat-context-controls">
-        ${renderContextControl(
-          'shortTermTurns',
-          zh ? '短期完整轮数' : 'Short-term turns',
-          zh ? '最近这些轮次会原样进入模型上下文。' : 'The latest turns are sent as full messages.',
-          CHAT_CONTEXT_TURNS_MIN,
-          CHAT_CONTEXT_TURNS_MAX,
-          1,
-          conversationSettings.shortTermTurns,
-          zh ? '轮' : 'turns'
-        )}
-        ${renderContextControl(
-          'summaryLimit',
-          zh ? '摘要保留条数' : 'Summary limit',
-          zh ? '旧上下文会压缩为摘要，并按此上限保留。' : 'Older context is compressed and kept up to this limit.',
-          CHAT_SUMMARY_LIMIT_MIN,
-          CHAT_SUMMARY_LIMIT_MAX,
-          1,
-          conversationSettings.summaryLimit,
-          zh ? '条' : 'items'
-        )}
+        <div class="chat-context-panel-head">
+          <span>${options.escapeHtml(zh ? '上下文策略' : 'Context policy')}</span>
+          <strong>${options.escapeHtml(zh ? '发送给模型的范围' : 'Model input window')}</strong>
+        </div>
+        <div class="chat-context-control-list">
+          ${renderContextControl(
+            'shortTermTurns',
+            zh ? '短期完整轮数' : 'Short-term turns',
+            zh ? '最近这些轮次会原样进入模型上下文。' : 'The latest turns are sent as full messages.',
+            CHAT_CONTEXT_TURNS_MIN,
+            CHAT_CONTEXT_TURNS_MAX,
+            1,
+            conversationSettings.shortTermTurns,
+            zh ? '轮' : 'turns'
+          )}
+          ${renderContextControl(
+            'summaryLimit',
+            zh ? '摘要保留条数' : 'Summary limit',
+            zh ? '旧上下文会压缩为摘要，并按此上限保留。' : 'Older context is compressed and kept up to this limit.',
+            CHAT_SUMMARY_LIMIT_MIN,
+            CHAT_SUMMARY_LIMIT_MAX,
+            1,
+            conversationSettings.summaryLimit,
+            zh ? '条' : 'items'
+          )}
+        </div>
       </section>
       <section class="chat-context-metrics">
-        <span><b>${options.escapeHtml(String(recentMessages.length))}</b>${options.escapeHtml(zh ? '完整消息' : 'full messages')}</span>
-        <span><b>${options.escapeHtml(String(retainedSummaries.length))}</b>${options.escapeHtml(zh ? '摘要' : 'summaries')}</span>
-        <span><b>${options.escapeHtml(String(summaryCovered))}</b>${options.escapeHtml(zh ? '已压缩消息' : 'compressed')}</span>
-        <span><b>${options.escapeHtml(String(archivedCount))}</b>${options.escapeHtml(zh ? '候选旧消息' : 'older')}</span>
+        <div class="chat-context-panel-head">
+          <span>${options.escapeHtml(zh ? '上下文统计' : 'Context stats')}</span>
+          <strong>${options.escapeHtml(zh ? '当前记忆结构' : 'Current memory shape')}</strong>
+        </div>
+        <div class="chat-context-metric-grid">
+          <span><b>${options.escapeHtml(String(recentMessages.length))}</b>${options.escapeHtml(zh ? '完整消息' : 'full messages')}</span>
+          <span><b>${options.escapeHtml(String(retainedSummaries.length))}</b>${options.escapeHtml(zh ? '摘要' : 'summaries')}</span>
+          <span><b>${options.escapeHtml(String(summaryCovered))}</b>${options.escapeHtml(zh ? '已压缩消息' : 'compressed')}</span>
+          <span><b>${options.escapeHtml(String(archivedCount))}</b>${options.escapeHtml(zh ? '候选旧消息' : 'older')}</span>
+        </div>
       </section>
     `
 
@@ -8207,7 +8308,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       conversationSettingsKicker.textContent = language === 'zh-CN' ? 'Conversation design' : 'Conversation design'
     }
     if (conversationSettingsClose) {
-      conversationSettingsClose.textContent = language === 'zh-CN' ? '返回' : 'Back'
+      conversationSettingsClose.textContent = language === 'zh-CN' ? '完成' : 'Done'
     }
     if (characterWorkflowTitle) {
       characterWorkflowTitle.textContent = language === 'zh-CN' ? '角色资源图' : 'Character Resource Graph'

@@ -135,24 +135,32 @@ export function renderConversationSettingsPage(
           : 'Device-local chat preferences. The current conversation stays in place.')}</p>
       </section>
 
-      <div class="chat-settings-toggles">
-        ${renderConversationToggle(settings, options, 'textStreaming', zh ? '文字流' : 'Text stream', zh ? '逐字呈现回复' : 'Progressive reveal')}
-        ${renderConversationToggle(settings, options, 'sceneImmersion', zh ? '场景化体验' : 'Scene mode', zh ? '引入角色场景与示例' : 'Use character scenes')}
-      </div>
-
-      <section class="chat-settings-language-panel">
-        <div>
-          <span class="chat-settings-section-label">${options.escapeHtml(zh ? '语言' : 'Language')}</span>
-          <p>${options.escapeHtml(zh ? '用于角色资料与回复格式。' : 'For profile and response formatting.')}</p>
+      <section class="chat-settings-basics-panel">
+        <div class="chat-settings-panel-head compact">
+          <div>
+            <span class="chat-settings-section-label">${options.escapeHtml(zh ? '基础偏好' : 'Basics')}</span>
+            <p>${options.escapeHtml(zh ? '控制回复呈现方式与语言。' : 'Presentation and language controls.')}</p>
+          </div>
         </div>
-        <label class="chat-settings-select-wrap">
-          <select data-chat-setting="language" aria-label="${options.escapeHtml(zh ? '语言' : 'Language')}">
-            ${renderConversationLanguageOption(settings, options, 'auto', zh ? '跟随界面' : 'Follow UI')}
-            ${renderConversationLanguageOption(settings, options, 'zh-CN', zh ? '简体中文' : 'Simplified Chinese')}
-            ${renderConversationLanguageOption(settings, options, 'en-US', zh ? 'English' : 'English')}
-          </select>
-          <span aria-hidden="true"></span>
-        </label>
+        <div class="chat-settings-toggles">
+          ${renderConversationToggle(settings, options, 'textStreaming', zh ? '文字流' : 'Text stream', zh ? '逐字呈现回复' : 'Progressive reveal')}
+          ${renderConversationToggle(settings, options, 'sceneImmersion', zh ? '场景化体验' : 'Scene mode', zh ? '引入角色场景与示例' : 'Use character scenes')}
+        </div>
+
+        <section class="chat-settings-language-panel">
+          <div>
+            <span class="chat-settings-section-label">${options.escapeHtml(zh ? '语言' : 'Language')}</span>
+            <p>${options.escapeHtml(zh ? '用于角色资料与回复格式。' : 'For profile and response formatting.')}</p>
+          </div>
+          <label class="chat-settings-select-wrap">
+            <select data-chat-setting="language" aria-label="${options.escapeHtml(zh ? '语言' : 'Language')}">
+              ${renderConversationLanguageOption(settings, options, 'auto', zh ? '跟随界面' : 'Follow UI')}
+              ${renderConversationLanguageOption(settings, options, 'zh-CN', zh ? '简体中文' : 'Simplified Chinese')}
+              ${renderConversationLanguageOption(settings, options, 'en-US', zh ? 'English' : 'English')}
+            </select>
+            <span aria-hidden="true"></span>
+          </label>
+        </section>
       </section>
 
       <section class="chat-settings-budget-panel">
