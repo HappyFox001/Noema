@@ -758,6 +758,67 @@
   resize: vertical;
 }
 
+.chat-workflow-field-control-list {
+  display: grid;
+  gap: 8px;
+  max-height: 460px;
+  padding-right: 2px;
+  overflow: auto;
+}
+
+.chat-workflow-field-control-row {
+  display: grid;
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid rgba(248, 250, 250, 0.07);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.chat-workflow-field-control-row header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.chat-workflow-field-control-row header strong {
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(248, 250, 250, 0.84);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-workflow-field-control-row header span {
+  flex: 0 0 auto;
+  color: rgba(248, 250, 250, 0.38);
+  font-family: var(--font-mono, monospace);
+  font-size: 9px;
+}
+
+.chat-workflow-field-control-inline {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 7px;
+}
+
+.chat-workflow-field-control-inline label,
+.chat-workflow-field-control-avoid {
+  display: grid;
+  gap: 4px;
+}
+
+.chat-workflow-field-control-inline label > span,
+.chat-workflow-field-control-avoid > span {
+  color: rgba(248, 250, 250, 0.44);
+  font-family: var(--font-ui);
+  font-size: 9px;
+}
+
 .chat-resource-model-select {
   position: relative;
   z-index: 0;

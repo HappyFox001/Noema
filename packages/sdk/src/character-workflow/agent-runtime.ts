@@ -129,6 +129,7 @@ export interface AgentImageGenerationControl {
 
 export interface AgentFieldGenerationControl {
   nodeId: string
+  field: string
   fieldPurpose: string
   tone: string
   lengthPolicy: string
@@ -298,7 +299,6 @@ export interface CharacterAgentRunContext {
   stylePressures: AgentStylePressure[]
   hardConstraints: AgentConstraint[]
   imageGenerationControls: AgentImageGenerationControl[]
-  fieldGenerationControls: AgentFieldGenerationControl[]
   continuityControls: AgentContinuityControl[]
   relationshipControls: AgentRelationshipControl[]
   sourceMaterials: AgentSourceMaterial[]
@@ -645,14 +645,6 @@ export function compileCharacterAgentRunContext(
     seedMode: stringValue(node.config.seedMode, 'lock-character'),
     incomingRelations: incomingRelations(relations, node.id),
   }))
-  const fieldGenerationControls = (nodesByType.get('field-generation-control') ?? []).map((node) => ({
-    nodeId: node.id,
-    fieldPurpose: stringValue(node.config.fieldPurpose),
-    tone: stringValue(node.config.tone),
-    lengthPolicy: stringValue(node.config.lengthPolicy, 'medium'),
-    avoidPatterns: stringListValue(node.config.avoidPatterns),
-    incomingRelations: incomingRelations(relations, node.id),
-  }))
   const continuityControls = (nodesByType.get('continuity-control') ?? []).map((node) => ({
     nodeId: node.id,
     memoryAnchors: stringListValue(node.config.memoryAnchors),
@@ -670,7 +662,6 @@ export function compileCharacterAgentRunContext(
     stylePressures,
     hardConstraints,
     imageGenerationControls,
-    fieldGenerationControls,
     continuityControls,
     relationshipControls,
   })
@@ -689,7 +680,6 @@ export function compileCharacterAgentRunContext(
     stylePressures,
     hardConstraints,
     imageGenerationControls,
-    fieldGenerationControls,
     continuityControls,
     relationshipControls,
     sourceMaterials: (nodesByType.get('source-material') ?? []).map((node) => ({
@@ -3058,7 +3048,6 @@ function createAgentTargetContexts(
     stylePressures: AgentStylePressure[]
     hardConstraints: AgentConstraint[]
     imageGenerationControls: AgentImageGenerationControl[]
-    fieldGenerationControls: AgentFieldGenerationControl[]
     continuityControls: AgentContinuityControl[]
     relationshipControls: AgentRelationshipControl[]
   }
@@ -3083,7 +3072,7 @@ function createAgentTargetContexts(
         localStylePressures: controls.stylePressures.filter((control) => isLocallyConnected(relations, node.id, control.nodeId)),
         localConstraints: controls.hardConstraints.filter((control) => isLocallyConnected(relations, node.id, control.nodeId)),
         imageControls: controls.imageGenerationControls.filter((control) => isLocallyConnected(relations, node.id, control.nodeId)),
-        fieldControls: controls.fieldGenerationControls.filter((control) => isLocallyConnected(relations, node.id, control.nodeId)),
+        fieldControls: kind === 'character-field' ? inlineFieldControlsForTarget(node, relations) : [],
         continuityControls: controls.continuityControls.filter((control) => isLocallyConnected(relations, node.id, control.nodeId)),
         relationshipControls: controls.relationshipControls.filter((control) => isLocallyConnected(relations, node.id, control.nodeId)),
       }
@@ -3142,7 +3131,87 @@ function fieldTargetConfigFields(config: Record<string, unknown>): string[] {
   const fields = stringListValue(config.fields)
     .map((field) => normalizeDraftFieldName(field))
     .filter(Boolean)
-  return [...new Set(fields.length ? fields : ['firstMessage'])]
+  return [...new Set(fields.length ? fields : [...CHARACTER_CARD_FIELD_SCHEMA, ...CHARACTER_SUPPORT_FIELD_SCHEMA])]
+}
+
+function inlineFieldControlsForTarget(node: CharacterWorkflowNode, relations: CharacterAgentRelation[]): AgentFieldGenerationControl[] {
+  const fields = fieldTargetConfigFields(node.config)
+  const configured = normalizeInlineFieldControls(node.config.fieldControls, node.id)
+  const byField = new Map(configured.map((control) => [control.field, control]))
+  const relationContext = incomingRelations(relations, node.id)
+  return fields.map((field) => {
+    const existing = byField.get(field)
+    if (existing) {
+      return {
+        ...existing,
+        incomingRelations: relationContext,
+      }
+    }
+    return createDefaultInlineFieldControl(node.id, field, relationContext)
+  })
+}
+
+function normalizeInlineFieldControls(value: unknown, nodeId: string): AgentFieldGenerationControl[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value.flatMap((item): AgentFieldGenerationControl[] => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      return []
+    }
+    const record = item as Record<string, unknown>
+    const field = normalizeDraftFieldName(stringValue(record.field))
+    if (!field) {
+      return []
+    }
+    return [{
+      nodeId: `${nodeId}:${field}`,
+      field,
+      fieldPurpose: stringValue(record.fieldPurpose, defaultFieldPurpose(field)),
+      tone: stringValue(record.tone, 'neutral'),
+      lengthPolicy: stringValue(record.lengthPolicy, defaultFieldLengthPolicy(field)),
+      avoidPatterns: stringListValue(record.avoidPatterns),
+      incomingRelations: [],
+    }]
+  })
+}
+
+function createDefaultInlineFieldControl(
+  nodeId: string,
+  field: string,
+  relationContext: CharacterAgentRelation[]
+): AgentFieldGenerationControl {
+  return {
+    nodeId: `${nodeId}:${field}`,
+    field,
+    fieldPurpose: defaultFieldPurpose(field),
+    tone: 'neutral',
+    lengthPolicy: defaultFieldLengthPolicy(field),
+    avoidPatterns: [],
+    incomingRelations: relationContext,
+  }
+}
+
+function defaultFieldLengthPolicy(field: string): string {
+  if (field === 'name') return 'short'
+  if (field === 'firstMessage') return 'long'
+  return 'medium'
+}
+
+function defaultFieldPurpose(field: string): string {
+  const purposes: Record<string, string> = {
+    name: 'Short display name only.',
+    description: 'Concise identity hook and roleplay appeal.',
+    appearance: 'Visible body, face, outfit, posture, expression, and motifs.',
+    personality: 'Inner drives, contradictions, habits, emotional logic, and relationship behavior.',
+    background: 'Formative history, secrets, losses, obligations, and causes.',
+    scenario: 'Persistent present setup, current tension, roles, stakes, and continuation hooks.',
+    firstMessage: 'Playable opening scene wrapped in chat tags with a concrete hook.',
+    dialogueStyle: 'Speech rhythm, diction, address style, emotional tells, and taboo phrases.',
+    worldContext: 'Stable world, institution, social, supernatural, or relationship facts outside one scene.',
+    appearancePrompt: 'Compact avatar identity seed prompt derived from completed character fields and image controls.',
+  }
+  return purposes[field] ?? `Generation control for ${field}.`
 }
 
 function isLocallyConnected(relations: CharacterAgentRelation[], targetNodeId: string, controlNodeId: string): boolean {

@@ -3426,8 +3426,21 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           goalPrompt: '',
           configOverrides: {
             'character-card-target': { includeFields: ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'firstMessage', 'dialogueStyle', 'worldContext'], includeSupportFields: ['appearancePrompt'] },
-            'opening-field-target': { fields: ['firstMessage'] },
-            'opening-field-control': { lengthPolicy: 'medium' },
+            'character-fields': {
+              fields: ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'firstMessage', 'dialogueStyle', 'worldContext', 'appearancePrompt'],
+              fieldControls: [
+                { field: 'name', fieldPurpose: 'Short display name only.', tone: 'neutral', lengthPolicy: 'short', avoidPatterns: [] },
+                { field: 'description', fieldPurpose: 'Concise identity hook and roleplay appeal.', tone: 'warm', lengthPolicy: 'medium', avoidPatterns: ['lore-dump'] },
+                { field: 'appearance', fieldPurpose: 'Visible body, face, outfit, posture, expression, and motifs.', tone: 'neutral', lengthPolicy: 'medium', avoidPatterns: ['lore-dump'] },
+                { field: 'personality', fieldPurpose: 'Inner drives, contradictions, habits, emotional logic, and relationship behavior.', tone: 'sharp', lengthPolicy: 'medium', avoidPatterns: ['self-introduction'] },
+                { field: 'background', fieldPurpose: 'Formative history, secrets, losses, obligations, and causes.', tone: 'dramatic', lengthPolicy: 'medium', avoidPatterns: ['lore-dump'] },
+                { field: 'scenario', fieldPurpose: 'Persistent present setup, current tension, roles, stakes, and continuation hooks.', tone: 'restrained', lengthPolicy: 'medium', avoidPatterns: ['asking-user-intent'] },
+                { field: 'firstMessage', fieldPurpose: 'Playable opening scene wrapped in chat tags with a concrete hook.', tone: 'warm', lengthPolicy: 'long', avoidPatterns: ['ooc-explanation', 'asking-user-intent'] },
+                { field: 'dialogueStyle', fieldPurpose: 'Speech rhythm, diction, address style, emotional tells, and taboo phrases.', tone: 'neutral', lengthPolicy: 'medium', avoidPatterns: ['lore-dump'] },
+                { field: 'worldContext', fieldPurpose: 'Stable world, institution, social, supernatural, or relationship facts outside one scene.', tone: 'restrained', lengthPolicy: 'medium', avoidPatterns: ['lore-dump'] },
+                { field: 'appearancePrompt', fieldPurpose: 'Compact avatar identity seed prompt derived from completed character fields and image controls.', tone: 'neutral', lengthPolicy: 'medium', avoidPatterns: ['ooc-explanation'] },
+              ],
+            },
             'avatar-image-target': { imageRole: 'avatar', assetPurpose: 'Final avatar.jpg for the role card: one polished single-character role-card portrait with one clear face, visible body silhouette, strong appeal, and stable identity cues.' },
             'avatar-image-control': { targetImageCount: 1, imageStyleDomain: 'auto', shotType: 'knee-up', consistencyMode: 'same-character', seedMode: 'lock-character' },
             'overview-sheet-image-target': { imageRole: 'character-overview-sheet', assetPurpose: 'Generate one large production character overview sheet using linked avatar reference image inputs. Required contents: full-body front view, full-body back view, side or three-quarter view, one main portrait or half-body crop, 3 expression callouts, eye close-up, nose and mouth close-up, hairstyle detail, hand pose detail, leg shape close-up, hip and rear silhouette close-up, feet or shoes detail, outfit fabric, accessory, hemline, and silhouette details. Preserve avatar outfit construction unless explicitly requesting outfit variants. No written labels.' },
@@ -6551,6 +6564,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       characterWorkflowConfigOverrides[nodeId][paramId] = control.checked
     } else if (paramType === 'number' || paramType === 'integer') {
       characterWorkflowConfigOverrides[nodeId][paramId] = Number(control.value)
+    } else if (paramType === 'field-control-list') {
+      characterWorkflowConfigOverrides[nodeId][paramId] = readCharacterWorkflowFieldControls(control)
     } else if (paramType === 'string-list' || paramType === 'multi-select') {
       characterWorkflowConfigOverrides[nodeId][paramId] = control.value
         .split(',')
@@ -6563,6 +6578,30 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       characterWorkflowConfigOverrides[nodeId].stylePrompt = createProseStylePresetPrompt(control.value)
     }
     renderCharacterWorkflow()
+  }
+
+  function readCharacterWorkflowFieldControls(control: HTMLElement): Array<Record<string, unknown>> {
+    const container = control.closest<HTMLElement>('.chat-workflow-field-control-list')
+    if (!container) {
+      return []
+    }
+    return Array.from(container.querySelectorAll<HTMLElement>('[data-chat-workflow-field-control-row]')).map((row) => {
+      const field = row.dataset.chatWorkflowFieldControlRow || ''
+      const readValue = (key: string): string => {
+        const element = row.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(`[data-chat-workflow-field-control-key="${CSS.escape(key)}"]`)
+        return element?.value ?? ''
+      }
+      return {
+        field,
+        fieldPurpose: readValue('fieldPurpose').trim(),
+        tone: readValue('tone') || 'neutral',
+        lengthPolicy: readValue('lengthPolicy') || 'medium',
+        avoidPatterns: readValue('avoidPatterns')
+          .split(',')
+          .map((item) => item.trim())
+          .filter(Boolean),
+      }
+    }).filter((item) => typeof item.field === 'string' && item.field)
   }
 
   async function addCharacterWorkflowMaterials(nodeId: string): Promise<void> {
@@ -6799,11 +6838,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     return [
       'target',
       'imageTarget',
-      'fieldTarget',
       'imageControl',
       'referenceImage',
       'imageAsset',
-      'fieldControl',
       'continuity',
       'relationship',
       'style',

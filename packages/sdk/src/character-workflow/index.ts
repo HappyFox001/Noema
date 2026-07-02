@@ -22,7 +22,6 @@ export type CharacterNodeType =
   | 'style-pressure'
   | 'constraint'
   | 'image-generation-control'
-  | 'field-generation-control'
   | 'continuity-control'
   | 'relationship-control'
   | 'source-material'
@@ -113,8 +112,17 @@ export type CharacterWorkflowParameterType =
   | 'string-list'
   | 'model-select'
   | 'materials'
+  | 'field-control-list'
 
-export type CharacterWorkflowParameterValue = string | number | boolean | string[] | SourceMaterialItem[]
+export interface CharacterFieldControlConfig {
+  field: string
+  fieldPurpose: string
+  tone: string
+  lengthPolicy: string
+  avoidPatterns: string[]
+}
+
+export type CharacterWorkflowParameterValue = string | number | boolean | string[] | SourceMaterialItem[] | CharacterFieldControlConfig[]
 
 export interface CharacterWorkflowNodeParameter {
   id: string
@@ -575,6 +583,39 @@ const PROSE_STYLE_PRESET_OPTIONS: CharacterWorkflowParameterOption[] = PROSE_STY
   option(value.split('-').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' '), value)
 ))
 
+const CHARACTER_CARD_FIELD_OPTIONS = [
+  option('Name', 'name'),
+  option('Description', 'description'),
+  option('Appearance', 'appearance'),
+  option('Personality', 'personality'),
+  option('Background', 'background'),
+  option('Scenario', 'scenario'),
+  option('First Message', 'firstMessage'),
+  option('Dialogue Style', 'dialogueStyle'),
+  option('World Context', 'worldContext'),
+]
+
+const CHARACTER_SUPPORT_FIELD_OPTIONS = [
+  option('Appearance Prompt', 'appearancePrompt'),
+]
+
+const DEFAULT_CHARACTER_CARD_FIELDS = CHARACTER_CARD_FIELD_OPTIONS.map((item) => item.value)
+const DEFAULT_CHARACTER_SUPPORT_FIELDS = CHARACTER_SUPPORT_FIELD_OPTIONS.map((item) => item.value)
+const DEFAULT_CHARACTER_FIELD_TARGET_FIELDS = [...DEFAULT_CHARACTER_CARD_FIELDS, ...DEFAULT_CHARACTER_SUPPORT_FIELDS]
+
+const DEFAULT_CHARACTER_FIELD_CONTROLS: CharacterFieldControlConfig[] = [
+  { field: 'name', fieldPurpose: 'Short display name only.', tone: 'neutral', lengthPolicy: 'short', avoidPatterns: [] },
+  { field: 'description', fieldPurpose: 'Concise identity hook and roleplay appeal.', tone: 'warm', lengthPolicy: 'medium', avoidPatterns: ['lore-dump'] },
+  { field: 'appearance', fieldPurpose: 'Visible body, face, outfit, posture, expression, and motifs.', tone: 'neutral', lengthPolicy: 'medium', avoidPatterns: ['lore-dump'] },
+  { field: 'personality', fieldPurpose: 'Inner drives, contradictions, habits, emotional logic, and relationship behavior.', tone: 'sharp', lengthPolicy: 'medium', avoidPatterns: ['self-introduction'] },
+  { field: 'background', fieldPurpose: 'Formative history, secrets, losses, obligations, and causes.', tone: 'dramatic', lengthPolicy: 'medium', avoidPatterns: ['lore-dump'] },
+  { field: 'scenario', fieldPurpose: 'Persistent present setup, current tension, roles, stakes, and continuation hooks.', tone: 'restrained', lengthPolicy: 'medium', avoidPatterns: ['asking-user-intent'] },
+  { field: 'firstMessage', fieldPurpose: 'Playable opening scene wrapped in chat tags with a concrete hook.', tone: 'warm', lengthPolicy: 'long', avoidPatterns: ['ooc-explanation', 'asking-user-intent'] },
+  { field: 'dialogueStyle', fieldPurpose: 'Speech rhythm, diction, address style, emotional tells, and taboo phrases.', tone: 'neutral', lengthPolicy: 'medium', avoidPatterns: ['lore-dump'] },
+  { field: 'worldContext', fieldPurpose: 'Stable world, institution, social, supernatural, or relationship facts outside one scene.', tone: 'restrained', lengthPolicy: 'medium', avoidPatterns: ['lore-dump'] },
+  { field: 'appearancePrompt', fieldPurpose: 'Compact avatar identity seed prompt derived from completed character fields and image controls.', tone: 'neutral', lengthPolicy: 'medium', avoidPatterns: ['ooc-explanation'] },
+]
+
 export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNodeDefinition[] = [
   {
     type: 'goal',
@@ -607,47 +648,30 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
       candidate: port('candidate', 'Candidate', 'candidate-pack'),
     },
     parameters: [
-      parameter('includeFields', 'Include Fields', 'multi-select', ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'firstMessage', 'dialogueStyle', 'worldContext'], undefined, [
-        option('Name', 'name'),
-        option('Description', 'description'),
-        option('Appearance', 'appearance'),
-        option('Personality', 'personality'),
-        option('Background', 'background'),
-        option('Scenario', 'scenario'),
-        option('First Message', 'firstMessage'),
-        option('Dialogue Style', 'dialogueStyle'),
-        option('World Context', 'worldContext'),
-      ]),
-      parameter('includeSupportFields', 'Include Support Fields', 'multi-select', ['appearancePrompt'], undefined, [
-        option('Appearance Prompt', 'appearancePrompt'),
-      ]),
+      parameter('includeFields', 'Include Fields', 'multi-select', DEFAULT_CHARACTER_CARD_FIELDS, undefined, CHARACTER_CARD_FIELD_OPTIONS),
+      parameter('includeSupportFields', 'Include Support Fields', 'multi-select', DEFAULT_CHARACTER_SUPPORT_FIELDS, undefined, CHARACTER_SUPPORT_FIELD_OPTIONS),
     ],
   },
   {
     type: 'character-field-target',
-    title: 'Character Field Target',
+    title: 'Character Fields',
     category: 'targets',
     executor: 'agent',
-    description: 'Declares one field-control resource that can shape several character-card fields without duplicating final content.',
+    description: 'Declares the field resource and per-field generation controls for the role card in one node.',
     inputs: {
       card: port('card', 'Card', 'asset-target'),
       style: port('style', 'Style', 'style-signal'),
       constraint: port('constraint', 'Constraint', 'hard-constraint'),
-      fieldControl: port('fieldControl', 'Field Control', 'asset-target'),
     },
     outputs: { field: port('field', 'Field', 'asset-target') },
     parameters: [
-      parameter('fields', 'Fields', 'multi-select', ['firstMessage'], undefined, [
-        option('Name', 'name'),
-        option('Description', 'description'),
-        option('Appearance', 'appearance'),
-        option('Personality', 'personality'),
-        option('Background', 'background'),
-        option('Scenario', 'scenario'),
-        option('First Message', 'firstMessage'),
-        option('Dialogue Style', 'dialogueStyle'),
-        option('World Context', 'worldContext'),
-        option('Appearance Prompt', 'appearancePrompt'),
+      parameter('fields', 'Fields', 'multi-select', DEFAULT_CHARACTER_FIELD_TARGET_FIELDS, undefined, [
+        ...CHARACTER_CARD_FIELD_OPTIONS,
+        ...CHARACTER_SUPPORT_FIELD_OPTIONS,
+      ]),
+      parameter('fieldControls', 'Field Controls', 'field-control-list', DEFAULT_CHARACTER_FIELD_CONTROLS, [
+        ...CHARACTER_CARD_FIELD_OPTIONS,
+        ...CHARACTER_SUPPORT_FIELD_OPTIONS,
       ]),
     ],
   },
@@ -919,37 +943,6 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
         option('Lock Character', 'lock-character'),
         option('Vary Slightly', 'vary-slightly'),
         option('Explore', 'explore'),
-      ]),
-    ],
-  },
-  {
-    type: 'field-generation-control',
-    title: 'Field Generation Control',
-    category: 'controls',
-    executor: 'manual',
-    description: 'Controls how a connected field target should be generated without containing final field content.',
-    inputs: { fieldTarget: port('fieldTarget', 'Field Target', 'asset-target') },
-    outputs: { fieldControl: port('fieldControl', 'Field Control', 'asset-target') },
-    parameters: [
-      parameter('fieldPurpose', 'Field Purpose', 'textarea', ''),
-      parameter('tone', 'Tone', 'select', 'neutral', undefined, [
-        option('Neutral', 'neutral'),
-        option('Warm', 'warm'),
-        option('Restrained', 'restrained'),
-        option('Sharp', 'sharp'),
-        option('Dramatic', 'dramatic'),
-      ]),
-      parameter('lengthPolicy', 'Length Policy', 'select', 'medium', undefined, [
-        option('Short', 'short'),
-        option('Medium', 'medium'),
-        option('Long', 'long'),
-      ]),
-      parameter('avoidPatterns', 'Avoid Patterns', 'multi-select', [], undefined, [
-        option('Self Introduction', 'self-introduction'),
-        option('Lore Dump', 'lore-dump'),
-        option('Asking User Intent', 'asking-user-intent'),
-        option('OOC Explanation', 'ooc-explanation'),
-        option('Instant Compliance', 'instant-compliance'),
       ]),
     ],
   },
@@ -1235,8 +1228,7 @@ export function createStandardCharacterWorkflow(
     node('style-pressure', 360, -100),
     node('character-card-target', 360, 120),
     node('constraint', 360, 360),
-    node('character-field-target', 700, -20),
-    node('field-generation-control', 1040, -20),
+    node('character-field-target', 700, -20, 'character-fields', 'Character Fields'),
     node('image-target', 700, 230, 'avatar-image-target', 'Avatar Image Target'),
     node('image-generation-control', 1040, 230, 'avatar-image-control', 'Avatar Image Control'),
     node('image-target', 700, 480, 'overview-sheet-image-target', 'Overview Sheet Image Target'),
@@ -1332,11 +1324,9 @@ export function createStandardCharacterWorkflow(
       ['character-card-target', 'target', 'style-pressure', 'target', 'weights'],
       ['character-card-target', 'target', 'constraint', 'target', 'constrains'],
       ['source-material', 'source', 'character-card-target', 'source', 'grounds'],
-      ['character-card-target', 'target', 'character-field-target', 'card', 'guides'],
-      ['character-field-target', 'field', 'field-generation-control', 'fieldTarget', 'guides'],
-      ['field-generation-control', 'fieldControl', 'character-field-target', 'fieldControl', 'guides'],
-      ['style-pressure', 'style', 'character-field-target', 'style', 'weights'],
-      ['constraint', 'constraint', 'character-field-target', 'constraint', 'constrains'],
+      ['character-card-target', 'target', 'character-fields', 'card', 'guides'],
+      ['style-pressure', 'style', 'character-fields', 'style', 'weights'],
+      ['constraint', 'constraint', 'character-fields', 'constraint', 'constrains'],
       ['character-card-target', 'target', 'avatar-image-target', 'card', 'guides'],
       ['image-tool', 'image', 'avatar-image-target', 'image', 'enables'],
       ['avatar-image-control', 'imageControl', 'avatar-image-target', 'imageControl', 'guides'],
@@ -1349,7 +1339,7 @@ export function createStandardCharacterWorkflow(
       ['image-tool', 'image', 'opening-panel-image-target', 'image', 'enables'],
       ['opening-panel-image-control', 'imageControl', 'opening-panel-image-target', 'imageControl', 'guides'],
       ['character-card-target', 'target', 'opening-layout-target', 'card', 'guides'],
-      ['character-field-target', 'field', 'opening-layout-target', 'field', 'guides'],
+      ['character-fields', 'field', 'opening-layout-target', 'field', 'guides'],
       ['avatar-image-target', 'imageAsset', 'opening-layout-target', 'imageAsset', 'guides'],
       ['overview-sheet-image-target', 'imageAsset', 'opening-layout-target', 'imageAsset', 'guides'],
       ['opening-panel-image-target', 'imageAsset', 'opening-layout-target', 'imageAsset', 'guides'],
@@ -1667,7 +1657,18 @@ function cloneParameterDefaultValue(value: CharacterWorkflowParameterValue): Cha
   if (!Array.isArray(value)) {
     return value
   }
-  return value.map((item) => typeof item === 'string' ? item : { ...item }) as CharacterWorkflowParameterValue
+  return value.map((item) => {
+    if (typeof item === 'string') {
+      return item
+    }
+    if ('avoidPatterns' in item) {
+      return {
+        ...item,
+        avoidPatterns: Array.isArray(item.avoidPatterns) ? [...item.avoidPatterns] : [],
+      }
+    }
+    return { ...item }
+  }) as CharacterWorkflowParameterValue
 }
 
 function clonePorts(ports: Record<string, CharacterNodePort>): Record<string, CharacterNodePort> {
@@ -1678,7 +1679,7 @@ function createDefaultNodeConfig(definition: CharacterWorkflowNodeDefinition): R
   return Object.fromEntries(
     definition.parameters.map((item) => [
       item.id,
-      Array.isArray(item.defaultValue) ? [...item.defaultValue] : item.defaultValue,
+      cloneParameterDefaultValue(item.defaultValue),
     ])
   )
 }
@@ -1818,16 +1819,6 @@ function createDefaultCharacterWorkflowExecutors(): Partial<Record<CharacterNode
       targets: {
         requested: ['image-control'],
         includeAlternates: true,
-      },
-    }],
-    'field-generation-control': ({ node, timestamp }) => [{
-      id: `${node.id}-field-control`,
-      type: 'asset-target',
-      sourceNodeId: node.id,
-      createdAt: timestamp,
-      targets: {
-        requested: ['field-control'],
-        includeAlternates: false,
       },
     }],
     'continuity-control': ({ node, timestamp }) => [{
@@ -2140,7 +2131,7 @@ function fieldTargetConfigFields(config: Record<string, unknown>): string[] {
   const values = Array.isArray(config.fields)
     ? config.fields.map((item) => String(item).trim()).filter(Boolean)
     : []
-  return values.length ? values : ['firstMessage']
+  return values.length ? values : DEFAULT_CHARACTER_FIELD_TARGET_FIELDS
 }
 
 function requireStringConfig(value: unknown, path: string): string {

@@ -48,7 +48,7 @@ export type CharacterWorkflowSidePanel = 'workflow' | 'assets' | 'nodes'
 
 type CharacterResourceNodeStatus = 'idle' | 'dirty' | 'queued' | 'running' | 'done' | 'failed' | 'stale' | 'disabled'
 type CharacterResourcePreviewType = 'text-card' | 'image' | 'voice' | 'rule' | 'validation' | 'package'
-type CharacterResourceParameterType = 'text' | 'textarea' | 'number' | 'integer' | 'boolean' | 'select' | 'multi-select' | 'string-list' | 'model-select' | 'materials'
+type CharacterResourceParameterType = 'text' | 'textarea' | 'number' | 'integer' | 'boolean' | 'select' | 'multi-select' | 'string-list' | 'model-select' | 'materials' | 'field-control-list'
 type CharacterResourceLinkKind = SerializedCharacterResourceLinkKind
 type CharacterWorkflowLanguage = CharacterWorkflowPageOptions['language']
 
@@ -108,6 +108,14 @@ interface CharacterResourceParameterDefinition {
   step?: number
   options?: Array<{ label: string; value: string }>
   modelKind?: CharacterWorkflowModelChoice['kind']
+}
+
+interface WorkflowFieldControlItem {
+  field: string
+  fieldPurpose: string
+  tone: string
+  lengthPolicy: string
+  avoidPatterns: string[]
 }
 
 interface CharacterResourceNode {
@@ -491,6 +499,58 @@ const PROSE_STYLE_PRESET_OPTIONS = PROSE_STYLE_PRESET_VALUES.map((value) => ({
   value,
 }))
 
+const CHARACTER_CARD_FIELD_OPTIONS = [
+  { label: 'Name', value: 'name' },
+  { label: 'Description', value: 'description' },
+  { label: 'Appearance', value: 'appearance' },
+  { label: 'Personality', value: 'personality' },
+  { label: 'Background', value: 'background' },
+  { label: 'Scenario', value: 'scenario' },
+  { label: 'First Message', value: 'firstMessage' },
+  { label: 'Dialogue Style', value: 'dialogueStyle' },
+  { label: 'World Context', value: 'worldContext' },
+]
+
+const CHARACTER_SUPPORT_FIELD_OPTIONS = [
+  { label: 'Appearance Prompt', value: 'appearancePrompt' },
+]
+
+const CHARACTER_FIELD_OPTIONS = [
+  ...CHARACTER_CARD_FIELD_OPTIONS,
+  ...CHARACTER_SUPPORT_FIELD_OPTIONS,
+]
+
+const DEFAULT_CHARACTER_CARD_FIELDS = CHARACTER_CARD_FIELD_OPTIONS.map((item) => item.value)
+const DEFAULT_CHARACTER_SUPPORT_FIELDS = CHARACTER_SUPPORT_FIELD_OPTIONS.map((item) => item.value)
+const DEFAULT_CHARACTER_FIELD_TARGET_FIELDS = CHARACTER_FIELD_OPTIONS.map((item) => item.value)
+
+const FIELD_TONE_OPTIONS = [
+  { label: 'Neutral', value: 'neutral' },
+  { label: 'Warm', value: 'warm' },
+  { label: 'Restrained', value: 'restrained' },
+  { label: 'Sharp', value: 'sharp' },
+  { label: 'Dramatic', value: 'dramatic' },
+]
+
+const FIELD_LENGTH_POLICY_OPTIONS = [
+  { label: 'Short', value: 'short' },
+  { label: 'Medium', value: 'medium' },
+  { label: 'Long', value: 'long' },
+]
+
+const DEFAULT_CHARACTER_FIELD_CONTROLS: WorkflowFieldControlItem[] = [
+  { field: 'name', fieldPurpose: 'Short display name only.', tone: 'neutral', lengthPolicy: 'short', avoidPatterns: [] },
+  { field: 'description', fieldPurpose: 'Concise identity hook and roleplay appeal.', tone: 'warm', lengthPolicy: 'medium', avoidPatterns: ['lore-dump'] },
+  { field: 'appearance', fieldPurpose: 'Visible body, face, outfit, posture, expression, and motifs.', tone: 'neutral', lengthPolicy: 'medium', avoidPatterns: ['lore-dump'] },
+  { field: 'personality', fieldPurpose: 'Inner drives, contradictions, habits, emotional logic, and relationship behavior.', tone: 'sharp', lengthPolicy: 'medium', avoidPatterns: ['self-introduction'] },
+  { field: 'background', fieldPurpose: 'Formative history, secrets, losses, obligations, and causes.', tone: 'dramatic', lengthPolicy: 'medium', avoidPatterns: ['lore-dump'] },
+  { field: 'scenario', fieldPurpose: 'Persistent present setup, current tension, roles, stakes, and continuation hooks.', tone: 'restrained', lengthPolicy: 'medium', avoidPatterns: ['asking-user-intent'] },
+  { field: 'firstMessage', fieldPurpose: 'Playable opening scene wrapped in chat tags with a concrete hook.', tone: 'warm', lengthPolicy: 'long', avoidPatterns: ['ooc-explanation', 'asking-user-intent'] },
+  { field: 'dialogueStyle', fieldPurpose: 'Speech rhythm, diction, address style, emotional tells, and taboo phrases.', tone: 'neutral', lengthPolicy: 'medium', avoidPatterns: ['lore-dump'] },
+  { field: 'worldContext', fieldPurpose: 'Stable world, institution, social, supernatural, or relationship facts outside one scene.', tone: 'restrained', lengthPolicy: 'medium', avoidPatterns: ['lore-dump'] },
+  { field: 'appearancePrompt', fieldPurpose: 'Compact avatar identity seed prompt derived from completed character fields and image controls.', tone: 'neutral', lengthPolicy: 'medium', avoidPatterns: ['ooc-explanation'] },
+]
+
 const TARGET_RESOURCE_SLOT_TYPES = [
   'character-card-resource',
   'field-resource',
@@ -511,7 +571,6 @@ const SLOT_TYPE_LABELS: Record<string, string> = {
   'critique-policy': 'Critique Policy',
   'document-resource': 'Document',
   'export-target': 'Export Target',
-  'field-control-resource': 'Field Control',
   'field-resource': 'Field',
   'generation-goal': 'Goal',
   'hard-constraint': 'Constraint',
@@ -552,41 +611,18 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     slot('target', 'Character Card', 'character-card-resource', 'Character card target resource.'),
     slot('candidate', 'Candidate', 'candidate-pack', 'Candidate package produced for evaluation and export.'),
   ], [
-    param('includeFields', 'Include Fields', 'multi-select', ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'firstMessage', 'dialogueStyle', 'worldContext'], undefined, undefined, undefined, [
-      { label: 'Name', value: 'name' },
-      { label: 'Description', value: 'description' },
-      { label: 'Appearance', value: 'appearance' },
-      { label: 'Personality', value: 'personality' },
-      { label: 'Background', value: 'background' },
-      { label: 'Scenario', value: 'scenario' },
-      { label: 'First Message', value: 'firstMessage' },
-      { label: 'Dialogue Style', value: 'dialogueStyle' },
-      { label: 'World Context', value: 'worldContext' },
-    ]),
-    param('includeSupportFields', 'Support Fields', 'multi-select', ['appearancePrompt'], undefined, undefined, undefined, [
-      { label: 'Appearance Prompt', value: 'appearancePrompt' },
-    ]),
+    param('includeFields', 'Include Fields', 'multi-select', DEFAULT_CHARACTER_CARD_FIELDS, undefined, undefined, undefined, CHARACTER_CARD_FIELD_OPTIONS),
+    param('includeSupportFields', 'Support Fields', 'multi-select', DEFAULT_CHARACTER_SUPPORT_FIELDS, undefined, undefined, undefined, CHARACTER_SUPPORT_FIELD_OPTIONS),
   ], 'package'),
-  createDefinition('character-field-target', 'Character Field Target', ['字段', 'field target', '局部字段'], 'Targets', 'asset', 'Declares one field-control resource that can shape several card fields without duplicating final content.', [
+  createDefinition('character-field-target', 'Character Fields', ['字段', 'field target', '字段控制'], 'Targets', 'asset', 'Declares the field resource and per-field generation controls for the role card in one node.', [
     slot('card', 'Character Card', 'character-card-resource', 'Character card target.'),
     slot('style', 'Style', 'style-signal', 'Local field style pressure.'),
     slot('constraint', 'Constraint', 'hard-constraint', 'Local field constraints.'),
-    slot('fieldControl', 'Field Control', 'field-control-resource', 'Field generation control.'),
   ], [
     slot('field', 'Field', 'field-resource', 'Field target resource.'),
   ], [
-    param('fields', 'Fields', 'multi-select', ['firstMessage'], undefined, undefined, undefined, [
-      { label: 'Name', value: 'name' },
-      { label: 'Description', value: 'description' },
-      { label: 'Appearance', value: 'appearance' },
-      { label: 'Personality', value: 'personality' },
-      { label: 'Background', value: 'background' },
-      { label: 'Scenario', value: 'scenario' },
-      { label: 'First Message', value: 'firstMessage' },
-      { label: 'Dialogue Style', value: 'dialogueStyle' },
-      { label: 'World Context', value: 'worldContext' },
-      { label: 'Appearance Prompt', value: 'appearancePrompt' },
-    ]),
+    param('fields', 'Fields', 'multi-select', DEFAULT_CHARACTER_FIELD_TARGET_FIELDS, undefined, undefined, undefined, CHARACTER_FIELD_OPTIONS),
+    param('fieldControls', 'Field Controls', 'field-control-list', DEFAULT_CHARACTER_FIELD_CONTROLS, undefined, undefined, undefined, CHARACTER_FIELD_OPTIONS),
   ], 'text-card'),
   createDefinition('opening-layout-target', 'Opening Layout Target', ['开幕版面', 'opening layout', 'css card'], 'Targets', 'asset', 'Declares the CSS/HTML-style opening presentation for the role card, combining opening text, visual assets, title, tags, and card surface layout.', [
     slot('card', 'Character Card', 'character-card-resource', 'Character card target.', true),
@@ -793,32 +829,6 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'Explore', value: 'explore' },
     ]),
   ], 'image'),
-  createDefinition('field-generation-control', 'Field Generation Control', ['字段控制', 'field control', 'local control'], 'Controls', 'agent', 'Controls how a connected field target is generated without containing final field content.', [
-    slot('fieldTarget', 'Field', 'field-resource', 'Field target resource.'),
-  ], [
-    slot('fieldControl', 'Field Control', 'field-control-resource', 'Field generation control.'),
-  ], [
-    param('fieldPurpose', 'Field Purpose', 'textarea', ''),
-    param('tone', 'Tone', 'select', 'neutral', undefined, undefined, undefined, [
-      { label: 'Neutral', value: 'neutral' },
-      { label: 'Warm', value: 'warm' },
-      { label: 'Restrained', value: 'restrained' },
-      { label: 'Sharp', value: 'sharp' },
-      { label: 'Dramatic', value: 'dramatic' },
-    ]),
-    param('lengthPolicy', 'Length Policy', 'select', 'medium', undefined, undefined, undefined, [
-      { label: 'Short', value: 'short' },
-      { label: 'Medium', value: 'medium' },
-      { label: 'Long', value: 'long' },
-    ]),
-    param('avoidPatterns', 'Avoid Patterns', 'multi-select', [], undefined, undefined, undefined, [
-      { label: 'Self Introduction', value: 'self-introduction' },
-      { label: 'Lore Dump', value: 'lore-dump' },
-      { label: 'Asking User Intent', value: 'asking-user-intent' },
-      { label: 'OOC Explanation', value: 'ooc-explanation' },
-      { label: 'Instant Compliance', value: 'instant-compliance' },
-    ]),
-  ], 'rule'),
   createDefinition('continuity-control', 'Continuity Control', ['连续性', 'memory', 'continuity'], 'Controls', 'agent', 'Controls long-form continuity, memory anchors, unresolved hooks, and progression pacing.', [
     slot('target', 'Target Resource', 'target-resource', 'Target resource.', false, TARGET_RESOURCE_SLOT_TYPES),
   ], [
@@ -1065,8 +1075,7 @@ const DEFAULT_NODE_PLACEMENT: Array<{ id: string; type: string; title: string; x
   { id: 'style-pressure', type: 'style-pressure', title: 'Style Pressure', x: 360, y: -100 },
   { id: 'character-card-target', type: 'character-card-target', title: 'Character Card Target', x: 360, y: 120 },
   { id: 'hard-constraints', type: 'constraint', title: 'Hard Constraints', x: 360, y: 360 },
-  { id: 'opening-field-target', type: 'character-field-target', title: 'Opening Field Target', x: 700, y: -20 },
-  { id: 'opening-field-control', type: 'field-generation-control', title: 'Opening Field Control', x: 1040, y: -20 },
+  { id: 'character-fields', type: 'character-field-target', title: 'Character Fields', x: 700, y: -20 },
   { id: 'avatar-image-target', type: 'image-target', title: 'Avatar Image Target', x: 700, y: 230, status: 'queued' },
   { id: 'avatar-image-control', type: 'image-generation-control', title: 'Avatar Image Control', x: 1040, y: 230 },
   { id: 'overview-sheet-image-target', type: 'image-target', title: 'Overview Sheet Image Target', x: 700, y: 480, status: 'queued' },
@@ -1088,11 +1097,9 @@ const DEFAULT_LINKS: CharacterResourceLink[] = [
   link('character-card-target', 'target', 'style-pressure', 'target', 'weights'),
   link('character-card-target', 'target', 'hard-constraints', 'target', 'constrains'),
   link('source-material', 'source', 'character-card-target', 'source', 'grounds'),
-  link('character-card-target', 'target', 'opening-field-target', 'card', 'guides'),
-  link('opening-field-target', 'field', 'opening-field-control', 'fieldTarget', 'guides'),
-  link('opening-field-control', 'fieldControl', 'opening-field-target', 'fieldControl', 'guides'),
-  link('style-pressure', 'style', 'opening-field-target', 'style', 'weights'),
-  link('hard-constraints', 'constraint', 'opening-field-target', 'constraint', 'constrains'),
+  link('character-card-target', 'target', 'character-fields', 'card', 'guides'),
+  link('style-pressure', 'style', 'character-fields', 'style', 'weights'),
+  link('hard-constraints', 'constraint', 'character-fields', 'constraint', 'constrains'),
   link('character-card-target', 'target', 'avatar-image-target', 'card', 'guides'),
   link('image-capability', 'image', 'avatar-image-target', 'image', 'enables'),
   link('avatar-image-control', 'imageControl', 'avatar-image-target', 'imageControl', 'guides'),
@@ -1105,7 +1112,7 @@ const DEFAULT_LINKS: CharacterResourceLink[] = [
   link('image-capability', 'image', 'opening-panel-image-target', 'image', 'enables'),
   link('opening-panel-image-control', 'imageControl', 'opening-panel-image-target', 'imageControl', 'guides'),
   link('character-card-target', 'target', 'opening-layout-target', 'card', 'guides'),
-  link('opening-field-target', 'field', 'opening-layout-target', 'field', 'guides'),
+  link('character-fields', 'field', 'opening-layout-target', 'field', 'guides'),
   link('avatar-image-target', 'imageAsset', 'opening-layout-target', 'imageAsset', 'guides'),
   link('overview-sheet-image-target', 'imageAsset', 'opening-layout-target', 'imageAsset', 'guides'),
   link('opening-panel-image-target', 'imageAsset', 'opening-layout-target', 'imageAsset', 'guides'),
@@ -1825,8 +1832,8 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
         }
       }),
     groups: [
-      { id: 'intent-targets', title: ui(options, '目标资源', 'Target Resources'), nodeIds: ['generation-goal', 'character-card-target', 'opening-field-target', 'avatar-image-target', 'overview-sheet-image-target', 'opening-panel-image-target', 'opening-layout-target', 'source-material'], color: 'rgba(82, 168, 255, 0.16)' },
-      { id: 'local-controls', title: ui(options, '局部控制', 'Local Controls'), nodeIds: ['style-pressure', 'hard-constraints', 'opening-field-control', 'avatar-image-control', 'overview-sheet-image-control', 'opening-panel-image-control'], color: 'rgba(162, 202, 188, 0.16)' },
+      { id: 'intent-targets', title: ui(options, '目标资源', 'Target Resources'), nodeIds: ['generation-goal', 'character-card-target', 'character-fields', 'avatar-image-target', 'overview-sheet-image-target', 'opening-panel-image-target', 'opening-layout-target', 'source-material'], color: 'rgba(82, 168, 255, 0.16)' },
+      { id: 'local-controls', title: ui(options, '局部控制', 'Local Controls'), nodeIds: ['style-pressure', 'hard-constraints', 'avatar-image-control', 'overview-sheet-image-control', 'opening-panel-image-control'], color: 'rgba(162, 202, 188, 0.16)' },
       { id: 'tool-policy', title: ui(options, '工具与策略', 'Tools and Strategy'), nodeIds: ['llm-capability', 'image-capability', 'agent-policy', 'generation-strategy'], color: 'rgba(219, 189, 130, 0.16)' },
       { id: 'evaluation-output', title: ui(options, '评估与输出', 'Evaluation and Output'), nodeIds: ['critique-loop', 'quality-gate', 'output-adapter'], color: 'rgba(206, 154, 118, 0.16)' },
     ],
@@ -3911,6 +3918,9 @@ function renderParameterField(
   if (parameterItem.type === 'materials') {
     return renderMaterialsField(parameterItem, node, value, options)
   }
+  if (parameterItem.type === 'field-control-list') {
+    return renderFieldControlListField(parameterItem, node, value, options)
+  }
   if (parameterItem.type === 'select') {
     return `
       <select ${baseAttrs} aria-label="${options.escapeHtml(label)}">
@@ -3925,6 +3935,114 @@ function renderParameterField(
     return `<textarea ${baseAttrs} rows="2" aria-label="${options.escapeHtml(label)}">${options.escapeHtml(formatParameterValue(value))}</textarea>`
   }
   return `<input type="text" ${baseAttrs} value="${options.escapeHtml(formatParameterValue(value))}" aria-label="${options.escapeHtml(label)}">`
+}
+
+function renderFieldControlListField(
+  parameterItem: CharacterResourceParameterDefinition,
+  node: CharacterResourceNode,
+  value: unknown,
+  options: CharacterWorkflowPageOptions
+): string {
+  const fields = normalizeWorkflowStringList(node.config.fields, DEFAULT_CHARACTER_FIELD_TARGET_FIELDS)
+  const controls = normalizeWorkflowFieldControls(value, fields)
+  const baseAttrs = `data-chat-workflow-param="${options.escapeHtml(parameterItem.id)}" data-chat-workflow-node="${options.escapeHtml(node.id)}" data-chat-workflow-param-type="${options.escapeHtml(parameterItem.type)}"`
+  return `
+    <div class="chat-workflow-field-control-list" ${baseAttrs}>
+      ${controls.map((control) => renderFieldControlRow(parameterItem, node.id, control, options)).join('')}
+    </div>
+  `
+}
+
+function renderFieldControlRow(
+  parameterItem: CharacterResourceParameterDefinition,
+  nodeId: string,
+  control: WorkflowFieldControlItem,
+  options: CharacterWorkflowPageOptions
+): string {
+  const fieldLabel = localizeWorkflowFieldLabel(control.field, options)
+  const fieldAttrs = `data-chat-workflow-param="${options.escapeHtml(parameterItem.id)}" data-chat-workflow-node="${options.escapeHtml(nodeId)}" data-chat-workflow-param-type="${options.escapeHtml(parameterItem.type)}" data-chat-workflow-field-control-field="${options.escapeHtml(control.field)}"`
+  return `
+    <article class="chat-workflow-field-control-row" data-chat-workflow-field-control-row="${options.escapeHtml(control.field)}">
+      <header>
+        <strong>${options.escapeHtml(fieldLabel)}</strong>
+        <span>${options.escapeHtml(control.field)}</span>
+      </header>
+      <textarea ${fieldAttrs} data-chat-workflow-field-control-key="fieldPurpose" rows="2" aria-label="${options.escapeHtml(`${fieldLabel} purpose`)}">${options.escapeHtml(control.fieldPurpose)}</textarea>
+      <div class="chat-workflow-field-control-inline">
+        <label>
+          <span>${options.escapeHtml(ui(options, '语气', 'Tone'))}</span>
+          <select ${fieldAttrs} data-chat-workflow-field-control-key="tone" aria-label="${options.escapeHtml(`${fieldLabel} tone`)}">
+            ${FIELD_TONE_OPTIONS.map((optionItem) => `<option value="${options.escapeHtml(optionItem.value)}" ${optionItem.value === control.tone ? 'selected' : ''}>${options.escapeHtml(localizeFieldControlOption(optionItem, options))}</option>`).join('')}
+          </select>
+        </label>
+        <label>
+          <span>${options.escapeHtml(ui(options, '长度', 'Length'))}</span>
+          <select ${fieldAttrs} data-chat-workflow-field-control-key="lengthPolicy" aria-label="${options.escapeHtml(`${fieldLabel} length`)}">
+            ${FIELD_LENGTH_POLICY_OPTIONS.map((optionItem) => `<option value="${options.escapeHtml(optionItem.value)}" ${optionItem.value === control.lengthPolicy ? 'selected' : ''}>${options.escapeHtml(localizeFieldControlOption(optionItem, options))}</option>`).join('')}
+          </select>
+        </label>
+      </div>
+      <label class="chat-workflow-field-control-avoid">
+        <span>${options.escapeHtml(ui(options, '规避', 'Avoid'))}</span>
+        <input type="text" ${fieldAttrs} data-chat-workflow-field-control-key="avoidPatterns" value="${options.escapeHtml(control.avoidPatterns.join(', '))}" aria-label="${options.escapeHtml(`${fieldLabel} avoid patterns`)}">
+      </label>
+    </article>
+  `
+}
+
+function localizeFieldControlOption(optionItem: { label: string; value: string }, options: CharacterWorkflowPageOptions): string {
+  return workflowText(options, `chat.workflow.option.${optionItem.value}`, optionItem.label)
+}
+
+function localizeWorkflowFieldLabel(field: string, options: CharacterWorkflowPageOptions): string {
+  const optionItem = CHARACTER_FIELD_OPTIONS.find((item) => item.value === field)
+  return optionItem ? workflowText(options, `chat.workflow.option.${field}`, optionItem.label) : field
+}
+
+function normalizeWorkflowStringList(value: unknown, fallback: string[] = []): string[] {
+  if (!Array.isArray(value)) {
+    return [...fallback]
+  }
+  const values = value.map((item) => String(item).trim()).filter(Boolean)
+  return values.length ? [...new Set(values)] : [...fallback]
+}
+
+function normalizeWorkflowFieldControls(value: unknown, fields: string[]): WorkflowFieldControlItem[] {
+  const configured = new Map<string, WorkflowFieldControlItem>()
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) continue
+      const record = item as Record<string, unknown>
+      const field = typeof record.field === 'string' ? record.field.trim() : ''
+      if (!field) continue
+      configured.set(field, {
+        ...defaultWorkflowFieldControl(field),
+        field,
+        fieldPurpose: typeof record.fieldPurpose === 'string' ? record.fieldPurpose : defaultWorkflowFieldControl(field).fieldPurpose,
+        tone: typeof record.tone === 'string' ? record.tone : defaultWorkflowFieldControl(field).tone,
+        lengthPolicy: typeof record.lengthPolicy === 'string' ? record.lengthPolicy : defaultWorkflowFieldControl(field).lengthPolicy,
+        avoidPatterns: normalizeWorkflowStringList(record.avoidPatterns, []),
+      })
+    }
+  }
+  return fields.map((field) => configured.get(field) ?? defaultWorkflowFieldControl(field))
+}
+
+function defaultWorkflowFieldControl(field: string): WorkflowFieldControlItem {
+  const existing = DEFAULT_CHARACTER_FIELD_CONTROLS.find((control) => control.field === field)
+  if (existing) {
+    return {
+      ...existing,
+      avoidPatterns: [...existing.avoidPatterns],
+    }
+  }
+  return {
+    field,
+    fieldPurpose: `Generation control for ${field}.`,
+    tone: 'neutral',
+    lengthPolicy: field === 'name' ? 'short' : field === 'firstMessage' ? 'long' : 'medium',
+    avoidPatterns: [],
+  }
 }
 
 function renderMaterialsField(
@@ -4244,7 +4362,23 @@ function getParameterDefaultValue(parameterItem: CharacterResourceParameterDefin
   if (parameterItem.type === 'model-select') {
     return getModelChoices(parameterItem, options)[0]?.id ?? parameterItem.defaultValue
   }
-  return Array.isArray(parameterItem.defaultValue) ? [...parameterItem.defaultValue] : parameterItem.defaultValue
+  return cloneWorkflowParameterValue(parameterItem.defaultValue)
+}
+
+function cloneWorkflowParameterValue(value: unknown): unknown {
+  if (!Array.isArray(value)) {
+    return value
+  }
+  return value.map((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      return item
+    }
+    const record = item as Record<string, unknown>
+    return {
+      ...record,
+      avoidPatterns: Array.isArray(record.avoidPatterns) ? [...record.avoidPatterns] : record.avoidPatterns,
+    }
+  })
 }
 
 function getModelChoices(parameterItem: CharacterResourceParameterDefinition, options: CharacterWorkflowPageOptions): CharacterWorkflowModelChoice[] {
