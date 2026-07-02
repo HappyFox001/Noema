@@ -222,10 +222,6 @@
               <p data-i18n="chat.profileDesc">熟悉、轻松、反应快的陪伴角色。默认短句回应，保留分寸。</p>
             </div>
             <div class="chat-config-section">
-              <h3 data-i18n="chat.profileTags">标签</h3>
-              <div class="chat-config-meta"></div>
-            </div>
-            <div class="chat-config-section">
               <h3 data-i18n="chat.background">背景</h3>
               <ul class="chat-asset-list"></ul>
             </div>
@@ -301,6 +297,19 @@
               <div class="chat-history-session-list"></div>
               <div class="chat-history-message-list"></div>
             </div>
+          </div>
+        </section>
+
+        <section class="chat-character-profile-panel" aria-label="Character profile" aria-hidden="true">
+          <div class="chat-character-profile-dialog" role="dialog" aria-modal="true" aria-labelledby="chat-character-profile-title">
+            <header class="chat-character-profile-header">
+              <div>
+                <span class="chat-panel-kicker" data-chat-character-profile-kicker>Character profile</span>
+                <h2 id="chat-character-profile-title" data-chat-character-profile-title>角色资料</h2>
+              </div>
+              <button class="chat-model-btn subtle" type="button" data-chat-action="close-character-profile" data-chat-character-profile-close aria-label="关闭">×</button>
+            </header>
+            <div class="chat-character-profile-body"></div>
           </div>
         </section>
       </section>

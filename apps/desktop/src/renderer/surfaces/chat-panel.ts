@@ -289,6 +289,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   const chatHistoryKicker = panel.querySelector<HTMLElement>('[data-chat-history-kicker]')
   const chatHistoryClear = panel.querySelector<HTMLElement>('[data-chat-history-action="clear"]')
   const chatHistoryClose = panel.querySelector<HTMLElement>('[data-chat-history-close]')
+  const characterProfilePanel = panel.querySelector<HTMLElement>('.chat-character-profile-panel')
+  const characterProfileBody = panel.querySelector<HTMLElement>('.chat-character-profile-body')
+  const characterProfileTitle = panel.querySelector<HTMLElement>('[data-chat-character-profile-title]')
+  const characterProfileKicker = panel.querySelector<HTMLElement>('[data-chat-character-profile-kicker]')
+  const characterProfileClose = panel.querySelector<HTMLElement>('[data-chat-character-profile-close]')
   const languageButton = panel.querySelector<HTMLButtonElement>('[data-chat-action="language"]')
   const languageMark = panel.querySelector<HTMLElement>('.chat-language-mark')
   const windowCloseButton = panel.querySelector<HTMLButtonElement>('[data-chat-action="window-close"]')
@@ -738,6 +743,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       case 'close-chat-history':
         closeChatHistoryManager()
         break
+      case 'close-character-profile':
+        closeCharacterProfilePanel()
+        break
       case 'voice-call':
         target.classList.toggle('is-active')
         showToast(target.classList.contains('is-active') ? 'Voice call ready' : 'Voice call closed')
@@ -771,7 +779,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         void openCameraCapture()
         break
       case 'character-profile': {
-        showToast(options.getLanguage() === 'zh-CN' ? '正在显示角色资料' : 'Showing character profile')
+        openCharacterProfilePanel()
         break
       }
       default:
@@ -1861,6 +1869,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     cancelChatHistoryRender()
     chatHistoryPanel?.classList.remove('visible')
     chatHistoryPanel?.setAttribute('aria-hidden', 'true')
+    characterProfilePanel?.classList.remove('visible')
+    characterProfilePanel?.setAttribute('aria-hidden', 'true')
     conversationSettingsPanel?.classList.add('visible')
     conversationSettingsPanel?.setAttribute('aria-hidden', 'false')
     syncSideActionState('conversation-settings')
@@ -1879,6 +1889,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     cancelConversationSettingsRender()
     conversationSettingsPanel?.classList.remove('visible')
     conversationSettingsPanel?.setAttribute('aria-hidden', 'true')
+    characterProfilePanel?.classList.remove('visible')
+    characterProfilePanel?.setAttribute('aria-hidden', 'true')
     chatHistoryPanel?.classList.add('visible')
     chatHistoryPanel?.setAttribute('aria-hidden', 'false')
     syncSideActionState('conversation-management')
@@ -1891,6 +1903,184 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     chatHistoryPanel?.classList.remove('visible')
     chatHistoryPanel?.setAttribute('aria-hidden', 'true')
     syncSideActionState('')
+  }
+
+  function openCharacterProfilePanel(): void {
+    const character = getActiveProfileCharacter()
+    if (!character) {
+      showToast(options.getLanguage() === 'zh-CN' ? '角色资源尚未加载' : 'Character resources are not loaded')
+      return
+    }
+    cancelConversationSettingsRender()
+    cancelChatHistoryRender()
+    conversationSettingsPanel?.classList.remove('visible')
+    conversationSettingsPanel?.setAttribute('aria-hidden', 'true')
+    chatHistoryPanel?.classList.remove('visible')
+    chatHistoryPanel?.setAttribute('aria-hidden', 'true')
+    if (characterProfileBody) {
+      characterProfileBody.innerHTML = renderCharacterProfilePanel(character)
+    }
+    characterProfilePanel?.classList.add('visible')
+    characterProfilePanel?.setAttribute('aria-hidden', 'false')
+    syncSideActionState('')
+  }
+
+  function closeCharacterProfilePanel(): void {
+    characterProfilePanel?.classList.remove('visible')
+    characterProfilePanel?.setAttribute('aria-hidden', 'true')
+  }
+
+  function getActiveProfileCharacter(): ChatCharacterResource | undefined {
+    const conversation = getActiveConversation(state)
+    if (!conversation) {
+      return state.characterResources[0]
+    }
+    return conversation.characterResource ?? getCharacterForConversation(state, conversation)
+  }
+
+  function renderCharacterProfilePanel(character: ChatCharacterResource): string {
+    const language = options.getLanguage()
+    const zh = language === 'zh-CN'
+    const name = localizeChatText(character.displayName, language) || localizeChatText(character.name, language) || character.id
+    const description = localizeChatText(character.description, language)
+    const story = localizeChatText(character.story, language)
+    const background = localizeChatText(character.background, language)
+    const fields = getCharacterProfileFields(character, language)
+    const images = collectCharacterProfileImages(character, language)
+    const heroImage = images.find((image) => image.kind === 'avatar') ?? images.find((image) => image.kind !== 'overview') ?? images[0]
+    const overviewImage = images.find((image) => image.kind === 'overview')
+    const supportImages = images.filter((image) => image.uri !== heroImage?.uri && image.uri !== overviewImage?.uri).slice(0, 4)
+    const sourceLabel = character.source?.kind === 'workflow-run'
+      ? (zh ? 'Workflow 生成角色' : 'Workflow character')
+      : character.source?.kind === 'external'
+        ? (zh ? '外部角色' : 'External character')
+        : (zh ? '角色资源' : 'Character resource')
+
+    return `
+      <div class="chat-profile-sheet">
+        <section class="chat-profile-hero">
+          <div class="chat-profile-portrait-card">
+            ${heroImage ? `<img src="${options.escapeHtml(heroImage.uri)}" alt="${options.escapeHtml(heroImage.label)}">` : `<span>${options.escapeHtml(name)}</span>`}
+          </div>
+          <div class="chat-profile-hero-copy">
+            <span class="chat-profile-source">${options.escapeHtml(sourceLabel)}</span>
+            <h3>${options.escapeHtml(name)}</h3>
+            ${description ? `<p>${options.escapeHtml(description)}</p>` : ''}
+            <dl class="chat-profile-basics">
+              ${renderProfileFact(zh ? '来源' : 'Source', sourceLabel)}
+              ${renderProfileFact(zh ? '资源 ID' : 'Resource ID', character.id)}
+              ${character.source?.runId ? renderProfileFact(zh ? '运行' : 'Run', character.source.runId) : ''}
+            </dl>
+          </div>
+        </section>
+
+        ${overviewImage || supportImages.length ? `<section class="chat-profile-visual-grid">
+          ${overviewImage ? `
+            <figure class="chat-profile-overview-card">
+              <img src="${options.escapeHtml(overviewImage.uri)}" alt="${options.escapeHtml(overviewImage.label)}">
+              <figcaption>${options.escapeHtml(zh ? '设定总览' : 'Overview sheet')}</figcaption>
+            </figure>
+          ` : ''}
+          ${supportImages.length ? `
+            <div class="chat-profile-image-strip">
+              ${supportImages.map((image) => `
+                <figure>
+                  <img src="${options.escapeHtml(image.uri)}" alt="${options.escapeHtml(image.label)}">
+                  <figcaption>${options.escapeHtml(image.label)}</figcaption>
+                </figure>
+              `).join('')}
+            </div>
+          ` : ''}
+        </section>` : ''}
+
+        <section class="chat-profile-info-grid">
+          ${fields.map((field) => `
+            <article class="chat-profile-info-card">
+              <span>${options.escapeHtml(field.label)}</span>
+              <p>${options.escapeHtml(field.value)}</p>
+            </article>
+          `).join('')}
+          ${story ? `
+            <article class="chat-profile-info-card wide">
+              <span>${options.escapeHtml(zh ? '故事' : 'Story')}</span>
+              <p>${options.escapeHtml(story)}</p>
+            </article>
+          ` : ''}
+          ${background ? `
+            <article class="chat-profile-info-card wide">
+              <span>${options.escapeHtml(zh ? '背景' : 'Background')}</span>
+              <p>${options.escapeHtml(background)}</p>
+            </article>
+          ` : ''}
+        </section>
+      </div>
+    `
+  }
+
+  function renderProfileFact(label: string, value: string): string {
+    return value ? `<div><dt>${options.escapeHtml(label)}</dt><dd>${options.escapeHtml(value)}</dd></div>` : ''
+  }
+
+  function getCharacterProfileFields(character: ChatCharacterResource, language: 'zh-CN' | 'en-US'): Array<{ label: string; value: string }> {
+    const zh = language === 'zh-CN'
+    const roleCard = character.roleCard ?? {}
+    const fieldSpecs = [
+      [zh ? '外观' : 'Appearance', stringField(roleCard.appearance)],
+      [zh ? '性格' : 'Personality', stringField(roleCard.personality)],
+      [zh ? '场景' : 'Scenario', stringField(roleCard.scenario)],
+      [zh ? '世界' : 'World', stringField(roleCard.worldContext)],
+      [zh ? '说话方式' : 'Voice', stringField(roleCard.dialogueStyle)],
+    ]
+    return fieldSpecs
+      .map(([label, value]) => ({ label, value: compactProfileText(value, 420) }))
+      .filter((item) => item.value)
+      .slice(0, 6)
+  }
+
+  function compactProfileText(value: string, maxLength: number): string {
+    const text = stripRoleChatTags(value).replace(/\s+/g, ' ').trim()
+    if (text.length <= maxLength) {
+      return text
+    }
+    return `${text.slice(0, Math.max(1, maxLength - 1)).trimEnd()}…`
+  }
+
+  function stripRoleChatTags(value: string): string {
+    return value.replace(/<\/?(?:chat|role_chat)\b[^>]*>/gi, '')
+  }
+
+  function collectCharacterProfileImages(character: ChatCharacterResource, language: 'zh-CN' | 'en-US'): Array<{ id: string; kind: string; label: string; uri: string }> {
+    const zh = language === 'zh-CN'
+    const images: Array<{ id: string; kind: string; label: string; uri: string }> = []
+    const seen = new Set<string>()
+    const push = (id: string, kind: string, label: string, uri: string): void => {
+      if (!uri || seen.has(uri)) {
+        return
+      }
+      seen.add(uri)
+      images.push({ id, kind, label, uri })
+    }
+    push(`${character.id}-avatar`, 'avatar', zh ? '头像' : 'Avatar', character.avatarImage)
+    push(`${character.id}-body`, 'body', zh ? '形象' : 'Character image', character.bodyImage)
+    for (const asset of character.assets ?? []) {
+      const label = asset.kind === 'overview'
+        ? (zh ? '设定总览' : 'Overview sheet')
+        : asset.kind === 'avatar'
+          ? (zh ? '头像' : 'Avatar')
+          : asset.kind === 'body'
+            ? (zh ? '形象' : 'Character image')
+            : (asset.role || (zh ? '角色图像' : 'Character image'))
+      push(asset.id, asset.kind, label, asset.uri)
+    }
+    return images.sort((left, right) => characterProfileImagePriority(left.kind) - characterProfileImagePriority(right.kind))
+  }
+
+  function characterProfileImagePriority(kind: string): number {
+    if (kind === 'avatar') return 0
+    if (kind === 'body') return 1
+    if (kind === 'generated-image') return 2
+    if (kind === 'overview') return 3
+    return 4
   }
 
   function scheduleConversationSettingsRender(): void {
@@ -2326,8 +2516,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const description = stringField(fields.description)
     const story = stringField(fields.story)
     const background = stringField(fields.background)
-    const avatarImage = findRunDraftImage(runState, ['avatar', 'portrait', 'character'])
-    const bodyImage = findRunDraftImage(runState, ['body', 'full-body', 'character']) || avatarImage
+    const avatarImage = findRunDraftImage(runState, ['avatar', 'portrait'], ['overview', 'overview-sheet', 'character-overview-sheet'])
+    const bodyImage = findRunDraftImage(
+      runState,
+      ['character-base-image', 'base image', 'opening panel', 'body', 'full-body'],
+      ['overview', 'overview-sheet', 'character-overview-sheet']
+    ) || avatarImage
+    const overviewImage = findRunDraftImage(runState, ['character-overview-sheet', 'overview-sheet', 'overview'])
     const openingPanel = extractOpeningPanelFromRunDraft(runState)
     const id = `workflow-run-${sanitizeChatResourceId(runState.run?.id ?? name)}`
     return {
@@ -2359,6 +2554,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       assets: [
         ...(avatarImage ? [{ id: `${id}-avatar`, kind: 'avatar' as const, uri: avatarImage }] : []),
         ...(bodyImage ? [{ id: `${id}-body`, kind: 'body' as const, uri: bodyImage }] : []),
+        ...(overviewImage ? [{ id: `${id}-overview`, kind: 'overview' as const, uri: overviewImage }] : []),
       ],
     }
   }
@@ -2608,18 +2804,38 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     return fields
   }
 
-  function findRunDraftImage(runState: CharacterResourceRunState, preferredTerms: string[]): string {
+  function findRunDraftImage(runState: CharacterResourceRunState, preferredTerms: string[], excludedTerms: string[] = []): string {
     const imageArtifacts = (runState.artifacts ?? []).filter((artifact) => artifact.type.includes('image'))
+    const candidates = imageArtifacts.filter((artifact) => {
+      const searchText = getRunDraftImageSearchText(artifact)
+      return !excludedTerms.some((term) => searchText.includes(term.toLowerCase()))
+    })
     for (const term of preferredTerms) {
-      const matched = imageArtifacts.find((artifact) => `${artifact.title ?? ''} ${artifact.summary ?? ''}`.toLowerCase().includes(term))
+      const normalizedTerm = term.toLowerCase()
+      const matched = candidates.find((artifact) => getRunDraftImageSearchText(artifact).includes(normalizedTerm))
       const image = matched ? getRunDraftImageUrl(matched.data) : ''
       if (image) return image
     }
-    for (const artifact of imageArtifacts) {
+    for (const artifact of candidates) {
       const image = getRunDraftImageUrl(artifact.data)
       if (image) return image
     }
     return ''
+  }
+
+  function getRunDraftImageSearchText(artifact: CharacterResourceRunState['artifacts'][number]): string {
+    const data = artifact.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
+      ? artifact.data as Record<string, unknown>
+      : {}
+    return [
+      artifact.type,
+      artifact.title,
+      artifact.summary,
+      artifact.sourceNodeId,
+      data.imageRole,
+      data.assetPurpose,
+      data.targetNodeId,
+    ].filter((item): item is string => typeof item === 'string').join(' ').toLowerCase()
   }
 
   function getRunDraftImageUrl(data: unknown): string {
@@ -7827,6 +8043,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       closeChatHistoryManager()
       return
     }
+    if (eventTarget === characterProfilePanel) {
+      closeCharacterProfilePanel()
+      return
+    }
 
     const workflowDecisionOption = eventTarget.closest<HTMLElement>('[data-chat-workflow-decision-option]')
     if (workflowDecisionOption && panel.contains(workflowDecisionOption)) {
@@ -8297,6 +8517,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (event.key === 'Escape' && chatHistoryPanel?.classList.contains('visible')) {
       closeChatHistoryManager()
     }
+    if (event.key === 'Escape' && characterProfilePanel?.classList.contains('visible')) {
+      closeCharacterProfilePanel()
+    }
     if (event.key === 'Escape' && openChatModelLibraryId) {
       closeChatModelLibrary()
     }
@@ -8361,11 +8584,25 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       chatHistoryClose.textContent = '×'
       chatHistoryClose.setAttribute('aria-label', language === 'zh-CN' ? '关闭' : 'Close')
     }
+    if (characterProfileTitle) {
+      characterProfileTitle.textContent = language === 'zh-CN' ? '角色资料' : 'Character profile'
+    }
+    if (characterProfileKicker) {
+      characterProfileKicker.textContent = language === 'zh-CN' ? 'Character profile' : 'Character profile'
+    }
+    if (characterProfileClose) {
+      characterProfileClose.textContent = '×'
+      characterProfileClose.setAttribute('aria-label', language === 'zh-CN' ? '关闭' : 'Close')
+    }
     if (conversationSettingsPanel?.classList.contains('visible')) {
       renderConversationSettings()
     }
     if (chatHistoryPanel?.classList.contains('visible')) {
       renderChatHistoryManager()
+    }
+    if (characterProfilePanel?.classList.contains('visible') && characterProfileBody) {
+      const character = getActiveProfileCharacter()
+      characterProfileBody.innerHTML = character ? renderCharacterProfilePanel(character) : ''
     }
     if (panel.dataset.chatView === 'character-workflow') {
       renderCharacterWorkflow()

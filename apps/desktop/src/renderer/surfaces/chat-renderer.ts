@@ -39,7 +39,6 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
   const profileTitle = options.panel.querySelector<HTMLElement>('.chat-config-copy h2')
   const profileCopy = options.panel.querySelector<HTMLElement>('.chat-config-copy p')
   const portrait = options.panel.querySelector<HTMLElement>('.chat-config-portrait')
-  const configMeta = options.panel.querySelector<HTMLElement>('.chat-config-meta')
   const assetList = options.panel.querySelector<HTMLElement>('.chat-asset-list')
   const assetTitle = assetList?.closest<HTMLElement>('.chat-config-section')?.querySelector<HTMLElement>('h3')
   const suggestionList = options.panel.querySelector<HTMLElement>('.chat-suggestion-list')
@@ -102,14 +101,10 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     }
     if (portrait) {
       const characterName = localizeChatText(character.displayName, language)
-      portrait.innerHTML = character.bodyImage
-        ? `<img class="chat-character-image" src="${options.escapeHtml(character.bodyImage)}" alt="${options.escapeHtml(characterName)}" onerror="this.replaceWith(document.createTextNode(this.alt || 'No image'))" />`
+      const profileImage = character.avatarImage || character.bodyImage
+      portrait.innerHTML = profileImage
+        ? `<img class="chat-character-image" src="${options.escapeHtml(profileImage)}" alt="${options.escapeHtml(characterName)}" onerror="this.replaceWith(document.createTextNode(this.alt || 'No image'))" />`
         : options.escapeHtml(characterName)
-    }
-    if (configMeta) {
-      configMeta.innerHTML = getCharacterTags(character, language)
-        .map((item) => `<span>${options.escapeHtml(item)}</span>`)
-        .join('')
     }
     if (assetList) {
       assetList.innerHTML = renderCharacterActionEntrances(language)
@@ -148,9 +143,6 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     }
     if (portrait) {
       portrait.innerHTML = ''
-    }
-    if (configMeta) {
-      configMeta.innerHTML = ''
     }
     if (assetList) {
       assetList.innerHTML = ''
