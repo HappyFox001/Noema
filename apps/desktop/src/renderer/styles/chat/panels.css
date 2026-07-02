@@ -579,17 +579,140 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-character-profile-panel
   gap: 12px;
 }
 
-.chat-profile-hero {
+.chat-profile-title-row {
+  min-width: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 2px 2px 0;
+}
+
+.chat-profile-title-row h3 {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.96);
+  font-size: clamp(30px, 5vw, 52px);
+  line-height: 0.98;
+}
+
+.chat-profile-delete-btn {
+  height: 34px;
+  min-width: 104px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 13px;
+  border: 1px solid rgba(255, 132, 152, 0.16);
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, rgba(255, 132, 152, 0.06), rgba(255, 132, 152, 0.022)),
+    rgba(255, 255, 255, 0.018);
+  color: rgba(255, 215, 222, 0.72);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 680;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
+}
+
+.chat-profile-delete-btn:hover {
+  border-color: rgba(255, 132, 152, 0.32);
+  background:
+    linear-gradient(180deg, rgba(255, 132, 152, 0.105), rgba(255, 132, 152, 0.038)),
+    rgba(255, 255, 255, 0.026);
+  color: rgba(255, 234, 237, 0.94);
+  transform: translateY(-1px);
+}
+
+.chat-profile-delete-btn:active {
+  transform: translateY(0) scale(0.985);
+}
+
+.chat-profile-delete-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 132, 152, 0.16);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 8% 0%, rgba(255, 132, 152, 0.08), transparent 36%),
+    rgba(255, 132, 152, 0.035);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+}
+
+.chat-profile-delete-confirm div:first-child {
+  min-width: 0;
   display: grid;
-  grid-template-columns: minmax(170px, 0.42fr) minmax(0, 1fr);
+  gap: 4px;
+}
+
+.chat-profile-delete-confirm strong {
+  color: rgba(255, 239, 242, 0.92);
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.chat-profile-delete-confirm span {
+  color: rgba(255, 220, 226, 0.62);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.chat-profile-delete-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-profile-delete-actions button {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.085);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.024);
+  color: rgba(248, 250, 250, 0.68);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.chat-profile-delete-actions button:hover {
+  border-color: rgba(218, 232, 224, 0.2);
+  color: rgba(248, 250, 250, 0.9);
+  background: rgba(218, 232, 224, 0.08);
+}
+
+.chat-profile-delete-actions button.danger {
+  border-color: rgba(255, 132, 152, 0.28);
+  color: rgba(255, 231, 235, 0.9);
+  background: rgba(255, 132, 152, 0.12);
+}
+
+.chat-profile-delete-actions button.danger:hover {
+  border-color: rgba(255, 132, 152, 0.42);
+  background: rgba(255, 132, 152, 0.18);
+}
+
+.chat-profile-visual-stage {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.44fr) minmax(0, 1fr);
   gap: 12px;
   align-items: stretch;
 }
 
-.chat-profile-portrait-card,
-.chat-profile-hero-copy,
-.chat-profile-overview-card,
-.chat-profile-image-strip figure,
+.chat-profile-carousel-card,
+.chat-profile-overview-panel,
 .chat-profile-info-card {
   border: 1px solid rgba(255, 255, 255, 0.085);
   border-radius: 16px;
@@ -597,104 +720,129 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-character-profile-panel
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
 }
 
-.chat-profile-portrait-card {
-  min-height: 260px;
-  display: grid;
-  place-items: center;
+.chat-profile-carousel-card {
+  position: relative;
+  min-height: 430px;
   overflow: hidden;
   background:
     radial-gradient(circle at 50% 20%, rgba(248, 250, 250, 0.13), transparent 34%),
     rgba(255, 255, 255, 0.03);
 }
 
-.chat-profile-portrait-card img {
+.chat-profile-carousel-track {
+  height: 100%;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+}
+
+.chat-profile-carousel-track::-webkit-scrollbar {
+  display: none;
+}
+
+.chat-profile-carousel-slide {
+  position: relative;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  scroll-snap-align: start;
+}
+
+.chat-profile-carousel-slide img {
   width: 100%;
   height: 100%;
   display: block;
-  object-fit: contain;
+  object-fit: cover;
 }
 
-.chat-profile-portrait-card span {
-  padding: 16px;
-  color: rgba(248, 250, 250, 0.7);
+.chat-profile-carousel-empty {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  color: rgba(248, 250, 250, 0.66);
   font-size: 26px;
 }
 
-.chat-profile-hero-copy {
-  min-width: 0;
+.chat-profile-carousel-btn {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  width: 36px;
+  height: 48px;
   display: grid;
-  align-content: center;
-  gap: 12px;
-  padding: 18px;
-}
-
-.chat-profile-source {
-  width: fit-content;
-  padding: 5px 8px;
-  border: 1px solid rgba(218, 232, 224, 0.16);
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 999px;
-  color: rgba(218, 232, 224, 0.72);
-  background: rgba(218, 232, 224, 0.055);
-  font-size: 11px;
-  line-height: 1;
+  color: rgba(248, 250, 250, 0.82);
+  background: rgba(5, 6, 7, 0.56);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.24);
+  transform: translateY(-50%);
+  cursor: pointer;
 }
 
-.chat-profile-hero-copy h3 {
-  margin: 0;
+.chat-profile-carousel-btn:hover {
   color: rgba(255, 255, 255, 0.96);
-  font-size: clamp(30px, 5vw, 52px);
-  line-height: 0.98;
+  background: rgba(218, 232, 224, 0.12);
 }
 
-.chat-profile-hero-copy p {
-  max-width: 50em;
-  margin: 0;
-  color: rgba(248, 250, 250, 0.68);
-  font-size: 14px;
-  line-height: 1.65;
+.chat-profile-carousel-btn.prev {
+  left: 12px;
 }
 
-.chat-profile-basics {
+.chat-profile-carousel-btn.next {
+  right: 12px;
+}
+
+.chat-profile-overview-panel {
+  min-height: 430px;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  margin: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px;
 }
 
-.chat-profile-basics div {
+.chat-profile-intro-card {
   min-width: 0;
-  padding: 9px 10px;
-  border-radius: 12px;
-  background: rgba(0, 0, 0, 0.18);
+  padding: 14px;
 }
 
-.chat-profile-basics dt {
-  margin: 0 0 4px;
-  color: rgba(248, 250, 250, 0.44);
-  font-size: 10px;
+.chat-profile-intro-card span {
+  display: block;
+  margin-bottom: 8px;
+  color: rgba(248, 250, 250, 0.46);
+  font-size: 11px;
 }
 
-.chat-profile-basics dd {
+.chat-profile-intro-card h4 {
+  margin: 0 0 8px;
+  color: rgba(255, 255, 255, 0.95);
+  font-size: clamp(24px, 3.2vw, 38px);
+  line-height: 1.02;
+}
+
+.chat-profile-intro-card p {
+  max-width: 58em;
   margin: 0;
-  color: rgba(248, 250, 250, 0.78);
-  font-size: 12px;
-  line-height: 1.35;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.chat-profile-visual-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.42fr);
-  gap: 12px;
+  color: rgba(248, 250, 250, 0.72);
+  font-size: 13px;
+  line-height: 1.65;
 }
 
 .chat-profile-overview-card {
   position: relative;
-  min-height: 280px;
+  min-height: 0;
   margin: 0;
   overflow: hidden;
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 20% 0%, rgba(218, 232, 224, 0.08), transparent 30%),
+    rgba(255, 255, 255, 0.03);
 }
 
 .chat-profile-overview-card img {
@@ -705,8 +853,15 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-character-profile-panel
   background: rgba(255, 255, 255, 0.025);
 }
 
+.chat-profile-overview-card.empty {
+  display: grid;
+  place-items: center;
+  color: rgba(248, 250, 250, 0.44);
+  font-size: 13px;
+}
+
 .chat-profile-overview-card figcaption,
-.chat-profile-image-strip figcaption {
+.chat-profile-carousel-slide figcaption {
   position: absolute;
   left: 10px;
   bottom: 10px;
@@ -722,40 +877,15 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-character-profile-panel
   white-space: nowrap;
 }
 
-.chat-profile-image-strip {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.chat-profile-image-strip figure {
-  position: relative;
-  min-height: 132px;
-  margin: 0;
-  overflow: hidden;
-}
-
-.chat-profile-image-strip img {
-  width: 100%;
-  height: 100%;
-  display: block;
-  object-fit: cover;
-}
-
 .chat-profile-info-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
 }
 
 .chat-profile-info-card {
   min-width: 0;
-  padding: 13px;
-}
-
-.chat-profile-info-card.wide {
-  grid-column: 1 / -1;
+  padding: 14px 15px;
 }
 
 .chat-profile-info-card span {
@@ -787,22 +917,35 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-character-profile-panel
     max-height: calc(100dvh - 40px);
   }
 
-  .chat-profile-hero,
-  .chat-profile-visual-grid,
+  .chat-profile-visual-stage,
   .chat-profile-info-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .chat-profile-portrait-card {
-    min-height: 220px;
+  .chat-profile-title-row,
+  .chat-profile-delete-confirm {
+    align-items: stretch;
+    flex-direction: column;
   }
 
+  .chat-profile-delete-btn,
+  .chat-profile-delete-actions {
+    width: 100%;
+  }
+
+  .chat-profile-delete-actions button {
+    flex: 1 1 0;
+  }
+
+  .chat-profile-carousel-card,
+  .chat-profile-overview-panel,
   .chat-profile-overview-card {
-    min-height: 220px;
+    min-height: 260px;
   }
 
-  .chat-profile-basics {
-    grid-template-columns: minmax(0, 1fr);
+  .chat-profile-carousel-btn {
+    width: 34px;
+    height: 44px;
   }
 }
 

@@ -7,6 +7,7 @@ import { readFile } from 'fs/promises'
 import { resolve } from 'path'
 import {
   CHAT_ROLE_RESOURCE_PROTOCOL,
+  deleteChatRoleResourceById,
   getChatRoleResourceDir,
   isPathInside,
   listChatRoleResources,
@@ -32,6 +33,21 @@ export function registerChatRoleResourceIpcHandlers(ipc: IpcMain = ipcMain): voi
       }
     } catch (error: any) {
       console.error('[ChatRoleResources] Failed to list resources:', error)
+      return {
+        success: false,
+        error: error?.message || String(error),
+      }
+    }
+  })
+
+  ipc.handle('chat-role-resources:delete', async (_, id: string) => {
+    try {
+      return {
+        success: true,
+        deleted: await deleteChatRoleResourceById(String(id || '')),
+      }
+    } catch (error: any) {
+      console.error('[ChatRoleResources] Failed to delete resource:', error)
       return {
         success: false,
         error: error?.message || String(error),

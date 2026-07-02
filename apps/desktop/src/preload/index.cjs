@@ -185,6 +185,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   listChatRoleResources: () =>
     ipcRenderer.invoke('chat-role-resources:list'),
 
+  deleteChatRoleResource: (id) =>
+    ipcRenderer.invoke('chat-role-resources:delete', id),
+
   listChatConversations: () =>
     ipcRenderer.invoke('chat-history:list'),
 

@@ -1471,6 +1471,32 @@ body.theme-day .chat-send-btn {
   background: rgba(218, 232, 224, 0.58);
 }
 
+.chat-side-entry button.danger {
+  border-color: rgba(255, 133, 153, 0.1);
+  color: rgba(255, 211, 218, 0.7);
+  background:
+    linear-gradient(180deg, rgba(255, 145, 164, 0.04), rgba(255, 145, 164, 0.016)),
+    rgba(255, 255, 255, 0.014);
+}
+
+.chat-side-entry button.danger:hover {
+  border-color: rgba(255, 133, 153, 0.24);
+  background:
+    linear-gradient(180deg, rgba(255, 145, 164, 0.075), rgba(255, 145, 164, 0.028)),
+    rgba(255, 255, 255, 0.02);
+  color: rgba(255, 229, 233, 0.92);
+}
+
+.chat-side-entry button.danger .chat-side-entry-copy::before {
+  background: rgba(255, 133, 153, 0.42);
+  box-shadow: 0 0 14px rgba(255, 133, 153, 0.08);
+}
+
+.chat-side-entry button.danger svg {
+  flex: 0 0 auto;
+  color: rgba(255, 211, 218, 0.68);
+}
+
 .chat-side-entry-copy strong {
   display: block;
   overflow: hidden;

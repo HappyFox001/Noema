@@ -3,7 +3,7 @@
  */
 import { app } from 'electron'
 import { existsSync } from 'fs'
-import { readdir, readFile } from 'fs/promises'
+import { readdir, readFile, rm } from 'fs/promises'
 import { basename, dirname, join, relative, resolve, sep } from 'path'
 import { fileURLToPath, pathToFileURL } from 'url'
 import {
@@ -45,6 +45,33 @@ export async function listChatRoleResources(): Promise<CharacterProfile[]> {
     .map(entry => loadChatRoleResourceFromDir(join(chatRoleResourceDir, entry.name))))
 
   return manifests.filter(Boolean) as CharacterProfile[]
+}
+
+export async function deleteChatRoleResourceById(id: string): Promise<boolean> {
+  const normalizedId = id.trim()
+  if (!normalizedId) {
+    return false
+  }
+  const chatRoleResourceDir = getChatRoleResourceDir()
+  if (!existsSync(chatRoleResourceDir)) {
+    return false
+  }
+
+  const entries = await readdir(chatRoleResourceDir, { withFileTypes: true })
+  for (const entry of entries) {
+    if (!entry.isDirectory()) {
+      continue
+    }
+    const resourceDir = join(chatRoleResourceDir, entry.name)
+    const profile = await loadChatRoleResourceFromDir(resourceDir)
+    if (profile?.id !== normalizedId) {
+      continue
+    }
+    await rm(resourceDir, { recursive: true, force: true })
+    return true
+  }
+
+  return false
 }
 
 export async function listChatRoleResourceItems(externalPaths: string[] = []): Promise<CharacterProfileListItem[]> {

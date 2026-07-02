@@ -87,7 +87,8 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
       headerName.textContent = localizeChatText(character.displayName, language)
     }
     if (headerMeta) {
-      headerMeta.textContent = getCharacterTags(character, language).slice(0, 3).join(' · ')
+      headerMeta.textContent = ''
+      headerMeta.hidden = true
     }
     if (profileTitle) {
       profileTitle.textContent = localizeChatText(character.displayName, language)
@@ -108,6 +109,7 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     }
     if (assetList) {
       assetList.innerHTML = renderCharacterActionEntrances(language)
+      renderActionIcons(assetList)
     }
     if (assetTitle) {
       assetTitle.textContent = language === 'zh-CN' ? '管理' : 'Manage'
@@ -134,6 +136,7 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     }
     if (headerMeta) {
       headerMeta.textContent = emptyCopy
+      headerMeta.hidden = false
     }
     if (profileTitle) {
       profileTitle.textContent = emptyTitle
@@ -450,21 +453,24 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
   }
 
   function renderCharacterActionEntrances(language: ChatLanguageCode): string {
-    const items = language === 'zh-CN'
+    const items: Array<{ action: string; title: string; danger?: boolean }> = language === 'zh-CN'
       ? [
         { action: 'conversation-management', title: '对话管理' },
         { action: 'conversation-settings', title: '对话设置' },
         { action: 'memory-management', title: '记忆管理' },
+        { action: 'delete-character', title: '删除角色', danger: true },
       ]
       : [
         { action: 'conversation-management', title: 'Chats' },
         { action: 'conversation-settings', title: 'Settings' },
         { action: 'memory-management', title: 'Memory' },
+        { action: 'delete-character', title: 'Delete character', danger: true },
       ]
     return items.map((item) => `
       <li class="chat-side-entry">
-        <button type="button" data-chat-side-action="${options.escapeHtml(item.action)}" aria-label="${options.escapeHtml(item.title)}">
+        <button class="${item.danger ? 'danger' : ''}" type="button" data-chat-side-action="${options.escapeHtml(item.action)}" aria-label="${options.escapeHtml(item.title)}">
           <span class="chat-side-entry-copy">
+            ${item.danger ? '<i data-lucide="trash-2" aria-hidden="true"></i>' : ''}
             <strong>${options.escapeHtml(item.title)}</strong>
           </span>
           <span class="chat-side-entry-arrow" aria-hidden="true">›</span>
@@ -601,24 +607,19 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     options.messageList.querySelectorAll('.chat-inline-scene, .chat-message-actions').forEach((element) => element.remove())
   }
 
-  function renderActionIcons(root: ParentNode): void {
-    const actionRoots = root instanceof HTMLElement && root.classList.contains('chat-message-actions')
-      ? [root]
-      : Array.from(root.querySelectorAll<HTMLElement>('.chat-message-actions'))
-    actionRoots.forEach((actionRoot) => {
-      createIcons({
-        icons: {
-          Image: ImageIcon,
-          Trash2,
-          Volume2,
-        },
-        root: actionRoot,
-        attrs: {
-          width: 15,
-          height: 15,
-          'stroke-width': 2.2,
-        },
-      })
+  function renderActionIcons(root: HTMLElement): void {
+    createIcons({
+      icons: {
+        Image: ImageIcon,
+        Trash2,
+        Volume2,
+      },
+      root,
+      attrs: {
+        width: 15,
+        height: 15,
+        'stroke-width': 2.2,
+      },
     })
   }
 

@@ -640,6 +640,11 @@ declare global {
         }>
         error?: string
       }>
+      deleteChatRoleResource: (id: string) => Promise<{
+        success: boolean
+        deleted?: boolean
+        error?: string
+      }>
       listChatConversations: () => Promise<{
         success: boolean
         conversations?: Array<{

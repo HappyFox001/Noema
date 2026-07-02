@@ -77,6 +77,7 @@ import {
   type ChatSystemConfig,
 } from './chat-model-config-page'
 import { createChatRenderer } from './chat-renderer'
+import { Trash2, createIcons } from 'lucide'
 
 type ChatResizeEdge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
 
@@ -331,6 +332,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let chatModelConfigLoadPromise: Promise<void> | null = null
   let chatHistoryRenderFrame: number | undefined
   let conversationSettingsRenderFrame: number | undefined
+  let pendingCharacterDeleteId = ''
   let characterWorkflowRenderToken = 0
   let characterWorkflowLazyRenderToken = 0
   let characterWorkflowPageModulePromise: Promise<CharacterWorkflowPageModule> | null = null
@@ -1917,17 +1919,109 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     conversationSettingsPanel?.setAttribute('aria-hidden', 'true')
     chatHistoryPanel?.classList.remove('visible')
     chatHistoryPanel?.setAttribute('aria-hidden', 'true')
-    if (characterProfileBody) {
-      characterProfileBody.innerHTML = renderCharacterProfilePanel(character)
-    }
+    renderCharacterProfilePanelBody(character)
     characterProfilePanel?.classList.add('visible')
     characterProfilePanel?.setAttribute('aria-hidden', 'false')
     syncSideActionState('')
   }
 
   function closeCharacterProfilePanel(): void {
+    pendingCharacterDeleteId = ''
     characterProfilePanel?.classList.remove('visible')
     characterProfilePanel?.setAttribute('aria-hidden', 'true')
+  }
+
+  function renderCharacterProfilePanelBody(character = getActiveProfileCharacter()): void {
+    if (!characterProfileBody || !character) {
+      return
+    }
+    characterProfileBody.innerHTML = renderCharacterProfilePanel(character)
+    createIcons({
+      icons: { Trash2 },
+      root: characterProfileBody,
+      attrs: {
+        width: 15,
+        height: 15,
+        'stroke-width': 2.15,
+      },
+    })
+  }
+
+  function requestDeleteActiveCharacter(): void {
+    const character = getActiveProfileCharacter()
+    if (!character) {
+      showToast(options.getLanguage() === 'zh-CN' ? '角色资源尚未加载' : 'Character resources are not loaded')
+      return
+    }
+    pendingCharacterDeleteId = character.id
+    openCharacterProfilePanel()
+  }
+
+  function requestDeleteCharacter(characterId: string): void {
+    const character = state.characterResources.find((item) => item.id === characterId) ?? getActiveProfileCharacter()
+    if (!character) {
+      showToast(options.getLanguage() === 'zh-CN' ? '角色资源尚未加载' : 'Character resources are not loaded')
+      return
+    }
+    pendingCharacterDeleteId = character.id
+    renderCharacterProfilePanelBody(character)
+  }
+
+  async function confirmDeleteCharacter(characterId: string): Promise<void> {
+    const character = state.characterResources.find((item) => item.id === characterId)
+      ?? (getActiveProfileCharacter()?.id === characterId ? getActiveProfileCharacter() : undefined)
+    if (!character) {
+      showToast(options.getLanguage() === 'zh-CN' ? '角色资源尚未加载' : 'Character resources are not loaded')
+      return
+    }
+    try {
+      if (character.source?.kind === 'chat-role') {
+        const roleResponse = await window.electronAPI.deleteChatRoleResource(character.id)
+        if (!roleResponse.success || !roleResponse.deleted) {
+          throw new Error(roleResponse.error || (options.getLanguage() === 'zh-CN' ? '角色资源删除失败' : 'Failed to delete character resource'))
+        }
+      }
+      const removedConversationIds = state.conversations
+        .filter((conversation) => conversation.characterId === character.id || conversation.characterResource?.id === character.id)
+        .map((conversation) => conversation.id)
+      const deleteResponses = await Promise.all(
+        removedConversationIds.map((id) => window.electronAPI.deleteChatConversation(id))
+      )
+      const failedConversation = deleteResponses.find((response) => !response.success)
+      if (failedConversation) {
+        throw new Error(failedConversation.error || (options.getLanguage() === 'zh-CN' ? '关联对话删除失败' : 'Failed to delete linked conversations'))
+      }
+      state.conversations = state.conversations.filter((conversation) => !removedConversationIds.includes(conversation.id))
+      state.characterResources = state.characterResources.filter((item) => item.id !== character.id)
+      if (!state.conversations.some((conversation) => conversation.id === state.activeConversationId)) {
+        state.activeConversationId = state.conversations[0]?.id ?? ''
+      }
+      pendingCharacterDeleteId = ''
+      closeCharacterProfilePanel()
+      renderChat()
+      renderChatHistoryManager()
+      showToast(options.getLanguage() === 'zh-CN' ? '角色已删除' : 'Character deleted')
+    } catch (error: any) {
+      showToast(error?.message || String(error))
+    }
+  }
+
+  function moveCharacterProfileCarousel(control: HTMLElement): void {
+    const track = control
+      .closest<HTMLElement>('.chat-profile-carousel-card')
+      ?.querySelector<HTMLElement>('[data-chat-profile-carousel]')
+    if (!track) {
+      return
+    }
+    const direction = control.dataset.chatProfileCarouselAction === 'prev' ? -1 : 1
+    const page = Math.max(1, track.clientWidth)
+    const maxScroll = Math.max(0, track.scrollWidth - track.clientWidth)
+    const nearStart = track.scrollLeft <= 2
+    const nearEnd = track.scrollLeft >= maxScroll - 2
+    const nextLeft = direction > 0
+      ? (nearEnd ? 0 : Math.min(maxScroll, track.scrollLeft + page))
+      : (nearStart ? maxScroll : Math.max(0, track.scrollLeft - page))
+    track.scrollTo({ left: nextLeft, behavior: 'smooth' })
   }
 
   function getActiveProfileCharacter(): ChatCharacterResource | undefined {
@@ -1947,78 +2041,84 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const background = localizeChatText(character.background, language)
     const fields = getCharacterProfileFields(character, language)
     const images = collectCharacterProfileImages(character, language)
-    const heroImage = images.find((image) => image.kind === 'avatar') ?? images.find((image) => image.kind !== 'overview') ?? images[0]
     const overviewImage = images.find((image) => image.kind === 'overview')
-    const supportImages = images.filter((image) => image.uri !== heroImage?.uri && image.uri !== overviewImage?.uri).slice(0, 4)
-    const sourceLabel = character.source?.kind === 'workflow-run'
-      ? (zh ? 'Workflow 生成角色' : 'Workflow character')
-      : character.source?.kind === 'external'
-        ? (zh ? '外部角色' : 'External character')
-        : (zh ? '角色资源' : 'Character resource')
+    const characterImages = images.filter((image) => image.kind !== 'overview' && image.kind !== 'avatar')
+    const confirmingDelete = pendingCharacterDeleteId === character.id
+    const deleteLabel = zh ? '删除角色' : 'Delete'
+    const cancelDeleteLabel = zh ? '取消' : 'Cancel'
+    const confirmDeleteLabel = zh ? '确认删除' : 'Confirm delete'
+    const textSections = [
+      ...(description ? [{ label: zh ? '简介' : 'Description', value: compactProfileText(description, 520) }] : []),
+      ...fields,
+      ...(story ? [{ label: zh ? '故事' : 'Story', value: compactProfileText(story, 680) }] : []),
+      ...(background ? [{ label: zh ? '背景' : 'Background', value: compactProfileText(background, 680) }] : []),
+    ]
 
     return `
       <div class="chat-profile-sheet">
-        <section class="chat-profile-hero">
-          <div class="chat-profile-portrait-card">
-            ${heroImage ? `<img src="${options.escapeHtml(heroImage.uri)}" alt="${options.escapeHtml(heroImage.label)}">` : `<span>${options.escapeHtml(name)}</span>`}
-          </div>
-          <div class="chat-profile-hero-copy">
-            <span class="chat-profile-source">${options.escapeHtml(sourceLabel)}</span>
+        <section class="chat-profile-title-row">
+          <div>
             <h3>${options.escapeHtml(name)}</h3>
-            ${description ? `<p>${options.escapeHtml(description)}</p>` : ''}
-            <dl class="chat-profile-basics">
-              ${renderProfileFact(zh ? '来源' : 'Source', sourceLabel)}
-              ${renderProfileFact(zh ? '资源 ID' : 'Resource ID', character.id)}
-              ${character.source?.runId ? renderProfileFact(zh ? '运行' : 'Run', character.source.runId) : ''}
-            </dl>
           </div>
+          <button class="chat-profile-delete-btn" type="button" data-chat-profile-action="delete-character" data-chat-character-id="${options.escapeHtml(character.id)}" aria-label="${options.escapeHtml(deleteLabel)}" title="${options.escapeHtml(deleteLabel)}">
+            <i data-lucide="trash-2" aria-hidden="true"></i>
+            <span>${options.escapeHtml(deleteLabel)}</span>
+          </button>
         </section>
 
-        ${overviewImage || supportImages.length ? `<section class="chat-profile-visual-grid">
-          ${overviewImage ? `
-            <figure class="chat-profile-overview-card">
-              <img src="${options.escapeHtml(overviewImage.uri)}" alt="${options.escapeHtml(overviewImage.label)}">
-              <figcaption>${options.escapeHtml(zh ? '设定总览' : 'Overview sheet')}</figcaption>
-            </figure>
-          ` : ''}
-          ${supportImages.length ? `
-            <div class="chat-profile-image-strip">
-              ${supportImages.map((image) => `
-                <figure>
+        ${confirmingDelete ? `
+          <section class="chat-profile-delete-confirm">
+            <div>
+              <strong>${options.escapeHtml(zh ? '删除这个角色？' : 'Delete this character?')}</strong>
+              <span>${options.escapeHtml(zh ? '会同时移除这个角色关联的所有对话记录。' : 'All conversations linked to this character will be removed.')}</span>
+            </div>
+            <div class="chat-profile-delete-actions">
+              <button type="button" data-chat-profile-action="cancel-delete-character">${options.escapeHtml(cancelDeleteLabel)}</button>
+              <button class="danger" type="button" data-chat-profile-action="confirm-delete-character" data-chat-character-id="${options.escapeHtml(character.id)}">${options.escapeHtml(confirmDeleteLabel)}</button>
+            </div>
+          </section>
+        ` : ''}
+
+        <section class="chat-profile-visual-stage">
+          <div class="chat-profile-carousel-card">
+            <div class="chat-profile-carousel-track" data-chat-profile-carousel>
+              ${characterImages.length ? characterImages.map((image) => `
+                <figure class="chat-profile-carousel-slide">
                   <img src="${options.escapeHtml(image.uri)}" alt="${options.escapeHtml(image.label)}">
                   <figcaption>${options.escapeHtml(image.label)}</figcaption>
                 </figure>
-              `).join('')}
+              `).join('') : `<div class="chat-profile-carousel-empty">${options.escapeHtml(name)}</div>`}
             </div>
-          ` : ''}
-        </section>` : ''}
+            ${characterImages.length > 1 ? `
+              <button class="chat-profile-carousel-btn prev" type="button" data-chat-profile-carousel-action="prev" aria-label="${options.escapeHtml(zh ? '上一张角色图' : 'Previous character image')}">‹</button>
+              <button class="chat-profile-carousel-btn next" type="button" data-chat-profile-carousel-action="next" aria-label="${options.escapeHtml(zh ? '下一张角色图' : 'Next character image')}">›</button>
+            ` : ''}
+          </div>
+          <div class="chat-profile-overview-panel">
+            <article class="chat-profile-intro-card">
+              <span>${options.escapeHtml(zh ? '角色介绍' : 'Character intro')}</span>
+              <h4>${options.escapeHtml(name)}</h4>
+              ${description ? `<p>${options.escapeHtml(compactProfileText(description, 260))}</p>` : ''}
+            </article>
+            ${overviewImage ? `
+              <figure class="chat-profile-overview-card">
+                <img src="${options.escapeHtml(overviewImage.uri)}" alt="${options.escapeHtml(overviewImage.label)}">
+                <figcaption>${options.escapeHtml(zh ? '设定总览' : 'Overview sheet')}</figcaption>
+              </figure>
+            ` : `<div class="chat-profile-overview-card empty">${options.escapeHtml(zh ? '暂无设定总览' : 'No overview sheet')}</div>`}
+          </div>
+        </section>
 
         <section class="chat-profile-info-grid">
-          ${fields.map((field) => `
+          ${textSections.map((field) => `
             <article class="chat-profile-info-card">
               <span>${options.escapeHtml(field.label)}</span>
               <p>${options.escapeHtml(field.value)}</p>
             </article>
           `).join('')}
-          ${story ? `
-            <article class="chat-profile-info-card wide">
-              <span>${options.escapeHtml(zh ? '故事' : 'Story')}</span>
-              <p>${options.escapeHtml(story)}</p>
-            </article>
-          ` : ''}
-          ${background ? `
-            <article class="chat-profile-info-card wide">
-              <span>${options.escapeHtml(zh ? '背景' : 'Background')}</span>
-              <p>${options.escapeHtml(background)}</p>
-            </article>
-          ` : ''}
         </section>
       </div>
     `
-  }
-
-  function renderProfileFact(label: string, value: string): string {
-    return value ? `<div><dt>${options.escapeHtml(label)}</dt><dd>${options.escapeHtml(value)}</dd></div>` : ''
   }
 
   function getCharacterProfileFields(character: ChatCharacterResource, language: 'zh-CN' | 'en-US'): Array<{ label: string; value: string }> {
@@ -2069,7 +2169,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           ? (zh ? '头像' : 'Avatar')
           : asset.kind === 'body'
             ? (zh ? '形象' : 'Character image')
-            : (asset.role || (zh ? '角色图像' : 'Character image'))
+            : (zh ? '角色图像' : 'Character image')
       push(asset.id, asset.kind, label, asset.uri)
     }
     return images.sort((left, right) => characterProfileImagePriority(left.kind) - characterProfileImagePriority(right.kind))
@@ -2525,6 +2625,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const overviewImage = findRunDraftImage(runState, ['character-overview-sheet', 'overview-sheet', 'overview'])
     const openingPanel = extractOpeningPanelFromRunDraft(runState)
     const id = `workflow-run-${sanitizeChatResourceId(runState.run?.id ?? name)}`
+    const generatedImageAssets = collectRunDraftGeneratedImageAssets(runState, id, [avatarImage, overviewImage])
     return {
       schemaVersion: 1,
       id,
@@ -2554,6 +2655,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       assets: [
         ...(avatarImage ? [{ id: `${id}-avatar`, kind: 'avatar' as const, uri: avatarImage }] : []),
         ...(bodyImage ? [{ id: `${id}-body`, kind: 'body' as const, uri: bodyImage }] : []),
+        ...generatedImageAssets,
         ...(overviewImage ? [{ id: `${id}-overview`, kind: 'overview' as const, uri: overviewImage }] : []),
       ],
     }
@@ -2823,6 +2925,58 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     return ''
   }
 
+  function collectRunDraftGeneratedImageAssets(
+    runState: CharacterResourceRunState,
+    characterId: string,
+    excludedUrls: string[]
+  ): NonNullable<ChatCharacterResource['assets']> {
+    const excluded = new Set(excludedUrls.filter(Boolean))
+    const seen = new Set<string>(excluded)
+    const assets: NonNullable<ChatCharacterResource['assets']> = []
+    const imageArtifacts = (runState.artifacts ?? []).filter((artifact) => artifact.type.includes('image'))
+    for (const artifact of imageArtifacts) {
+      const imageRole = getRunDraftImageRole(artifact.data)
+      const nodeId = artifact.sourceNodeId ?? ''
+      const identityText = [
+        artifact.type,
+        artifact.title,
+        artifact.summary,
+        nodeId,
+        imageRole,
+      ].filter((item): item is string => typeof item === 'string').join(' ').toLowerCase()
+      if (
+        imageRole === 'avatar'
+        || nodeId === 'avatar-image-target'
+        || identityText.includes('overview')
+        || identityText.includes('overview-sheet')
+        || identityText.includes('character-overview-sheet')
+      ) {
+        continue
+      }
+      const urls = getRunDraftImageUrls(artifact.data)
+      urls.forEach((uri, imageIndex) => {
+        if (!uri || seen.has(uri)) {
+          return
+        }
+        seen.add(uri)
+        const role = imageRole || artifact.sourceNodeId || 'generated-image'
+        assets.push({
+          id: `${characterId}-generated-${assets.length + 1}`,
+          kind: 'generated-image',
+          uri,
+          role,
+          metadata: {
+            sourceArtifactId: artifact.id,
+            sourceNodeId: artifact.sourceNodeId,
+            title: artifact.title,
+            imageIndex,
+          },
+        })
+      })
+    }
+    return assets
+  }
+
   function getRunDraftImageSearchText(artifact: CharacterResourceRunState['artifacts'][number]): string {
     const data = artifact.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
       ? artifact.data as Record<string, unknown>
@@ -2839,19 +2993,27 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   function getRunDraftImageUrl(data: unknown): string {
-    if (!data || typeof data !== 'object') return ''
+    return getRunDraftImageUrls(data)[0] ?? ''
+  }
+
+  function getRunDraftImageUrls(data: unknown): string[] {
+    if (!data || typeof data !== 'object') return []
     const record = data as Record<string, any>
     const direct = record.url ?? record.imageUrl ?? record.dataUrl
-    if (typeof direct === 'string') return direct
+    const urls: string[] = []
+    if (typeof direct === 'string') urls.push(direct)
     const images = Array.isArray(record.images) ? record.images : []
     for (const image of images) {
-      if (typeof image === 'string') return image
+      if (typeof image === 'string') {
+        urls.push(image)
+        continue
+      }
       if (image && typeof image === 'object') {
         const nested = (image as Record<string, any>).url ?? (image as Record<string, any>).imageUrl ?? (image as Record<string, any>).dataUrl
-        if (typeof nested === 'string') return nested
+        if (typeof nested === 'string') urls.push(nested)
       }
     }
-    return ''
+    return [...new Set(urls)]
   }
 
   function localizedText(value: string): ChatLocalizedText {
@@ -8048,6 +8210,26 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
 
+    const profileCarouselAction = eventTarget.closest<HTMLElement>('[data-chat-profile-carousel-action]')
+    if (profileCarouselAction && panel.contains(profileCarouselAction)) {
+      moveCharacterProfileCarousel(profileCarouselAction)
+      return
+    }
+
+    const profileAction = eventTarget.closest<HTMLElement>('[data-chat-profile-action]')
+    if (profileAction && panel.contains(profileAction)) {
+      const action = profileAction.dataset.chatProfileAction || ''
+      if (action === 'delete-character') {
+        requestDeleteCharacter(profileAction.dataset.chatCharacterId || '')
+      } else if (action === 'cancel-delete-character') {
+        pendingCharacterDeleteId = ''
+        renderCharacterProfilePanelBody()
+      } else if (action === 'confirm-delete-character') {
+        void confirmDeleteCharacter(profileAction.dataset.chatCharacterId || '')
+      }
+      return
+    }
+
     const workflowDecisionOption = eventTarget.closest<HTMLElement>('[data-chat-workflow-decision-option]')
     if (workflowDecisionOption && panel.contains(workflowDecisionOption)) {
       chooseWorkflowAgentDecisionOption(workflowDecisionOption.dataset.chatWorkflowDecisionOption || '')
@@ -8164,6 +8346,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       }
       if (sideAction.dataset.chatSideAction === 'conversation-settings') {
         openConversationSettings()
+        return
+      }
+      if (sideAction.dataset.chatSideAction === 'delete-character') {
+        requestDeleteActiveCharacter()
         return
       }
       const labels = getChatSideActionLabels(options.getLanguage())
