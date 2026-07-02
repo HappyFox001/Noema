@@ -14,10 +14,6 @@ import {
   type RoleplayMediaIntent,
 } from '@noema/sdk/chat/conversation-runtime'
 import {
-  CHAT_MEDIA_IMAGE_COOLDOWN_MAX,
-  CHAT_MEDIA_IMAGE_COOLDOWN_MIN,
-  CHAT_MEDIA_IMAGE_PROBABILITY_MAX,
-  CHAT_MEDIA_IMAGE_PROBABILITY_MIN,
   CHAT_CONTEXT_TURNS_MAX,
   CHAT_CONTEXT_TURNS_MIN,
   CHAT_OUTPUT_TOKEN_MAX,
@@ -1124,7 +1120,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           userText,
           assistantText: visibleFinalReply,
           intent: mediaIntentResult.intent,
-          userMedia: media,
         })
       }
       if (!response.success) {
@@ -1149,7 +1144,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       userText: string
       assistantText: string
       intent?: RoleplayMediaIntent | null
-      userMedia?: ChatMessageMedia[]
     }
   ): Promise<void> {
     const character = getCharacterForConversation(state, conversation)
@@ -1163,14 +1157,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       character,
       sceneState: conversation.sceneState,
       recentMessages: conversation.messages,
-      externalProbabilityBias: getExternalMediaProbabilityBias(input.userMedia ?? []),
-      random: Math.random,
     })
     if (decision.audio) {
-      await generateAssistantAudio(conversation, input.assistantMessageId, decision.audio, false)
+      await generateAssistantAudio(conversation, input.assistantMessageId, decision.audio, decision.audio.trigger === 'request')
     }
     if (decision.image) {
-      await generateAssistantImage(conversation, decision.image, false)
+      await generateAssistantImage(conversation, decision.image, decision.image.trigger === 'request')
     }
   }
 
@@ -1194,14 +1186,15 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       language,
       policy: {
         ...basePolicy,
-        imageMode: action === 'image' ? 'always' : 'off',
-        voiceMode: action === 'audio' ? 'assistant' : 'off',
-        imageCooldownTurns: 0,
+        imageMode: action === 'image' ? 'requested' : 'off',
+        voiceMode: action === 'audio' ? 'requested' : 'off',
       },
+      intent: action === 'image'
+        ? { image: true }
+        : { audio: { text: assistantText } },
       character,
       sceneState: conversation.sceneState,
       recentMessages: conversation.messages,
-      random: () => 0,
     })
     if (action === 'image' && decision.image) {
       await generateAssistantImage(conversation, { ...decision.image, trigger: 'manual', reason: 'manual_message_action' }, true)
@@ -1215,7 +1208,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     assistantMessageId: string,
     dispatch: {
       text: string
-      trigger: 'manual' | 'model'
+      trigger: 'manual' | 'model' | 'request' | 'auto'
       permanent: boolean
       reason: string
     },
@@ -1264,7 +1257,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       message.state = previousState === 'generating_audio' ? undefined : previousState
       renderer.replaceMessage(message)
       await persistConversation(conversation)
-      if (notifyOnMissing || dispatch.trigger === 'model') {
+      if (notifyOnMissing || dispatch.trigger === 'model' || dispatch.trigger === 'request') {
         showToast(error?.message || String(error))
       }
     }
@@ -1274,8 +1267,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     conversation: ChatConversationSummary,
     dispatch: {
       prompt: string
-      trigger: 'manual' | 'model' | 'probability'
-      probability: number
+      trigger: 'manual' | 'model' | 'request'
       permanent: boolean
       reason: string
       referenceImages: string[]
@@ -1315,7 +1307,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       imageMessage.media = [decorateGeneratedMedia(response.media, {
         trigger: dispatch.trigger,
         mode: dispatch.permanent ? 'permanent' : 'turn',
-        probability: dispatch.probability,
         reason: dispatch.reason,
         summary: dispatch.prompt,
       })]
@@ -1331,7 +1322,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       imageMessage.state = undefined
       renderer.replaceMessage(imageMessage)
       await persistConversation(conversation)
-      if (notifyOnMissing || dispatch.trigger === 'model') {
+      if (notifyOnMissing || dispatch.trigger === 'model' || dispatch.trigger === 'request') {
         showToast(error?.message || String(error))
       }
     }
@@ -1351,9 +1342,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   function decorateGeneratedMedia(
     item: ChatMessageMedia,
     optionsValue: {
-      trigger: 'manual' | 'model' | 'probability'
+      trigger: 'manual' | 'model' | 'request' | 'auto'
       mode: 'turn' | 'permanent'
-      probability?: number
       reason: string
       summary: string
     }
@@ -1366,7 +1356,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         ...(item.dispatch ?? {}),
         trigger: optionsValue.trigger,
         mode: optionsValue.mode,
-        ...(typeof optionsValue.probability === 'number' ? { probability: optionsValue.probability } : {}),
         reason: optionsValue.reason,
       },
       context: optionsValue.mode === 'permanent'
@@ -1377,10 +1366,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         generatedAt: Date.now(),
       },
     }
-  }
-
-  function getExternalMediaProbabilityBias(media: ChatMessageMedia[]): number {
-    return media.reduce((total, item) => total + (Number(item.dispatch?.externalProbabilityBias) || 0), 0)
   }
 
   function getPreviousUserMessageText(
@@ -2122,19 +2107,42 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     renderChatHistoryManager()
   }
 
-  async function deleteChatHistoryMessage(messageId: string): Promise<void> {
+  async function deleteChatMessage(messageId: string, optionsValue: { includeGeneratedFollowups?: boolean } = {}): Promise<void> {
     const conversation = getActiveConversation(state)
     if (!conversation) {
       return
     }
-    conversation.messages = conversation.messages.filter((message) => message.id !== messageId)
-    conversation.summaries = conversation.summaries.filter((summary) => !summary.sourceMessageIds.includes(messageId))
+    const deletedMessageIds = collectDeletedMessageIds(conversation.messages, messageId, optionsValue.includeGeneratedFollowups)
+    if (deletedMessageIds.size === 0) {
+      return
+    }
+    conversation.messages = conversation.messages.filter((message) => !deletedMessageIds.has(message.id))
+    conversation.summaries = conversation.summaries.filter((summary) => !summary.sourceMessageIds.some((id) => deletedMessageIds.has(id)))
     const lastMessage = conversation.messages[conversation.messages.length - 1]
     conversation.preview = lastMessage?.text ?? { 'zh-CN': '', 'en-US': '' }
     conversation.updatedLabel = { 'zh-CN': '现在', 'en-US': 'Now' }
     await persistConversation(conversation)
     renderChat()
     renderChatHistoryManager()
+  }
+
+  function collectDeletedMessageIds(messages: ChatMessage[], messageId: string, includeGeneratedFollowups = false): Set<string> {
+    const startIndex = messages.findIndex((message) => message.id === messageId)
+    if (startIndex < 0) {
+      return new Set()
+    }
+    const ids = new Set<string>([messageId])
+    if (!includeGeneratedFollowups) {
+      return ids
+    }
+    for (let index = startIndex + 1; index < messages.length; index += 1) {
+      const message = messages[index]
+      if (!message.id.startsWith('assistant-media-')) {
+        break
+      }
+      ids.add(message.id)
+    }
+    return ids
   }
 
   async function deleteChatHistorySummary(summaryId: string): Promise<void> {
@@ -2754,12 +2762,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       const value = control.value === 'zh-CN' || control.value === 'en-US' ? control.value : 'auto'
       conversationSettings = { ...conversationSettings, language: value }
     } else if (key === 'mediaImageMode') {
-      const value = control.value === 'off' || control.value === 'requested' || control.value === 'balanced' || control.value === 'always'
+      const value = control.value === 'off' || control.value === 'manual' || control.value === 'requested' || control.value === 'proactive'
         ? control.value
         : 'off'
       conversationSettings = { ...conversationSettings, mediaImageMode: value }
     } else if (key === 'mediaVoiceMode') {
-      const value = control.value === 'off' || control.value === 'requested' || control.value === 'assistant'
+      const value = control.value === 'off' || control.value === 'manual' || control.value === 'requested' || control.value === 'auto'
         ? control.value
         : 'off'
       conversationSettings = { ...conversationSettings, mediaVoiceMode: value }
@@ -2772,8 +2780,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       conversationSettings = { ...conversationSettings, mediaImageSize: value }
     } else if (key === 'mediaImageReferenceMode') {
       conversationSettings = { ...conversationSettings, mediaImageReferenceMode: control.value === 'none' ? 'none' : 'character' }
-    } else if (key === 'mediaPersistence') {
-      conversationSettings = { ...conversationSettings, mediaPersistence: control.value === 'turn' ? 'turn' : 'permanent' }
+    } else if (key === 'mediaImagePersistence') {
+      conversationSettings = { ...conversationSettings, mediaImagePersistence: control.value === 'turn' ? 'turn' : 'permanent' }
+    } else if (key === 'mediaVoicePersistence') {
+      conversationSettings = { ...conversationSettings, mediaVoicePersistence: control.value === 'permanent' ? 'permanent' : 'turn' }
     } else if (key === 'outputTokenBudget') {
       conversationSettings = {
         ...conversationSettings,
@@ -2781,16 +2791,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       }
     } else if (key === 'temperature' || key === 'diversity') {
       conversationSettings = { ...conversationSettings, [key]: clampNumber(Number(control.value), 0, 1) }
-    } else if (key === 'mediaImageProbability') {
-      conversationSettings = {
-        ...conversationSettings,
-        mediaImageProbability: clampNumber(Number(control.value), CHAT_MEDIA_IMAGE_PROBABILITY_MIN, CHAT_MEDIA_IMAGE_PROBABILITY_MAX),
-      }
-    } else if (key === 'mediaImageCooldownTurns') {
-      conversationSettings = {
-        ...conversationSettings,
-        mediaImageCooldownTurns: Math.round(clampNumber(Number(control.value), CHAT_MEDIA_IMAGE_COOLDOWN_MIN, CHAT_MEDIA_IMAGE_COOLDOWN_MAX)),
-      }
     } else if (key === 'shortTermTurns') {
       conversationSettings = {
         ...conversationSettings,
@@ -7825,7 +7825,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       } else if (action === 'delete-conversation') {
         void deleteActiveChatHistoryConversation(historyAction.dataset.chatHistoryId || '')
       } else if (action === 'delete-message') {
-        void deleteChatHistoryMessage(historyAction.dataset.chatHistoryMessage || '')
+        void deleteChatMessage(historyAction.dataset.chatHistoryMessage || '')
       } else if (action === 'delete-summary') {
         void deleteChatHistorySummary(historyAction.dataset.chatHistorySummary || '')
       } else if (action === 'summarize-now') {
@@ -7857,11 +7857,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
 
-    const messageMediaAction = eventTarget.closest<HTMLElement>('[data-chat-message-media-action]')
-    if (messageMediaAction && panel.contains(messageMediaAction)) {
-      const action = messageMediaAction.dataset.chatMessageMediaAction
+    const messageAction = eventTarget.closest<HTMLElement>('[data-chat-message-action]')
+    if (messageAction && panel.contains(messageAction)) {
+      const action = messageAction.dataset.chatMessageAction
       if (action === 'image' || action === 'audio') {
-        void handleManualMessageMediaAction(action, messageMediaAction.dataset.chatMessageId || '')
+        void handleManualMessageMediaAction(action, messageAction.dataset.chatMessageId || '')
+      } else if (action === 'delete') {
+        void deleteChatMessage(messageAction.dataset.chatMessageId || '', { includeGeneratedFollowups: true })
       }
       return
     }

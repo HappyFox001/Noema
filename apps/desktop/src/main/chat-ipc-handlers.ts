@@ -248,7 +248,7 @@ export interface ChatIpcMedia {
   prompt?: string
   origin?: 'user' | 'assistant' | 'tool' | 'generated' | 'external'
   dispatch?: {
-    trigger?: 'manual' | 'model' | 'tool' | 'external' | 'probability'
+    trigger?: 'manual' | 'model' | 'request' | 'auto' | 'tool' | 'external' | 'probability'
     mode?: 'turn' | 'permanent'
     probability?: number
     externalProbabilityBias?: number

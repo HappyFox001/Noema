@@ -79,7 +79,7 @@ export interface ChatMessageMedia {
   prompt?: string
   origin?: 'user' | 'assistant' | 'tool' | 'generated' | 'external'
   dispatch?: {
-    trigger?: 'manual' | 'model' | 'tool' | 'external' | 'probability'
+    trigger?: 'manual' | 'model' | 'request' | 'auto' | 'tool' | 'external' | 'probability'
     mode?: 'turn' | 'permanent'
     probability?: number
     externalProbabilityBias?: number
@@ -449,7 +449,7 @@ function normalizeStoredMediaDispatch(dispatch: ChatMessageMedia['dispatch']): C
     return undefined
   }
   const normalized: NonNullable<ChatMessageMedia['dispatch']> = {}
-  if (dispatch.trigger === 'manual' || dispatch.trigger === 'model' || dispatch.trigger === 'tool' || dispatch.trigger === 'external' || dispatch.trigger === 'probability') {
+  if (dispatch.trigger === 'manual' || dispatch.trigger === 'model' || dispatch.trigger === 'request' || dispatch.trigger === 'auto' || dispatch.trigger === 'tool' || dispatch.trigger === 'external' || dispatch.trigger === 'probability') {
     normalized.trigger = dispatch.trigger
   }
   if (dispatch.mode === 'turn' || dispatch.mode === 'permanent') {

@@ -11,13 +11,9 @@ export const CHAT_CONTEXT_TURNS_MAX = 30
 export const CHAT_SUMMARY_LIMIT_MIN = 0
 export const CHAT_SUMMARY_LIMIT_MAX = 24
 export const CHAT_SUMMARY_BATCH_MESSAGE_COUNT = 10
-export const CHAT_MEDIA_IMAGE_PROBABILITY_MIN = 0
-export const CHAT_MEDIA_IMAGE_PROBABILITY_MAX = 1
-export const CHAT_MEDIA_IMAGE_COOLDOWN_MIN = 0
-export const CHAT_MEDIA_IMAGE_COOLDOWN_MAX = 12
 
-export type ChatMediaImageMode = 'off' | 'requested' | 'balanced' | 'always'
-export type ChatMediaVoiceMode = 'off' | 'assistant' | 'requested'
+export type ChatMediaImageMode = 'off' | 'manual' | 'requested' | 'proactive'
+export type ChatMediaVoiceMode = 'off' | 'manual' | 'requested' | 'auto'
 export type ChatMediaImageReferenceMode = 'none' | 'character'
 export type ChatMediaPersistenceMode = 'turn' | 'permanent'
 
@@ -33,13 +29,12 @@ export interface ChatConversationSettings {
   mediaImageMode: ChatMediaImageMode
   mediaImageModelRef: string
   mediaImageSize: string
-  mediaImageProbability: number
-  mediaImageCooldownTurns: number
   mediaImageReferenceMode: ChatMediaImageReferenceMode
+  mediaImagePersistence: ChatMediaPersistenceMode
   mediaVoiceMode: ChatMediaVoiceMode
   mediaTtsModelId: string
   mediaVoiceAutoplay: boolean
-  mediaPersistence: ChatMediaPersistenceMode
+  mediaVoicePersistence: ChatMediaPersistenceMode
 }
 
 export interface ConversationSettingsPageOptions {
@@ -60,13 +55,12 @@ export function getDefaultConversationSettings(): ChatConversationSettings {
     mediaImageMode: 'requested',
     mediaImageModelRef: '',
     mediaImageSize: '1024x1024',
-    mediaImageProbability: 0.28,
-    mediaImageCooldownTurns: 3,
     mediaImageReferenceMode: 'character',
-    mediaVoiceMode: 'off',
+    mediaImagePersistence: 'permanent',
+    mediaVoiceMode: 'manual',
     mediaTtsModelId: '',
     mediaVoiceAutoplay: false,
-    mediaPersistence: 'permanent',
+    mediaVoicePersistence: 'turn',
   }
 }
 
@@ -96,17 +90,16 @@ export function loadConversationSettings(): ChatConversationSettings {
       mediaImageMode: isMediaImageMode(parsed.mediaImageMode) ? parsed.mediaImageMode : defaults.mediaImageMode,
       mediaImageModelRef: typeof parsed.mediaImageModelRef === 'string' ? parsed.mediaImageModelRef : defaults.mediaImageModelRef,
       mediaImageSize: normalizeImageSize(parsed.mediaImageSize, defaults.mediaImageSize),
-      mediaImageProbability: Number.isFinite(Number(parsed.mediaImageProbability))
-        ? clampNumber(Number(parsed.mediaImageProbability), CHAT_MEDIA_IMAGE_PROBABILITY_MIN, CHAT_MEDIA_IMAGE_PROBABILITY_MAX)
-        : defaults.mediaImageProbability,
-      mediaImageCooldownTurns: Number.isFinite(Number(parsed.mediaImageCooldownTurns))
-        ? Math.round(clampNumber(Number(parsed.mediaImageCooldownTurns), CHAT_MEDIA_IMAGE_COOLDOWN_MIN, CHAT_MEDIA_IMAGE_COOLDOWN_MAX))
-        : defaults.mediaImageCooldownTurns,
       mediaImageReferenceMode: parsed.mediaImageReferenceMode === 'none' ? 'none' : defaults.mediaImageReferenceMode,
+      mediaImagePersistence: parsed.mediaImagePersistence === 'turn' || parsed.mediaImagePersistence === 'permanent'
+        ? parsed.mediaImagePersistence
+        : defaults.mediaImagePersistence,
       mediaVoiceMode: isMediaVoiceMode(parsed.mediaVoiceMode) ? parsed.mediaVoiceMode : defaults.mediaVoiceMode,
       mediaTtsModelId: typeof parsed.mediaTtsModelId === 'string' ? parsed.mediaTtsModelId : defaults.mediaTtsModelId,
       mediaVoiceAutoplay: typeof parsed.mediaVoiceAutoplay === 'boolean' ? parsed.mediaVoiceAutoplay : defaults.mediaVoiceAutoplay,
-      mediaPersistence: parsed.mediaPersistence === 'turn' || parsed.mediaPersistence === 'permanent' ? parsed.mediaPersistence : defaults.mediaPersistence,
+      mediaVoicePersistence: parsed.mediaVoicePersistence === 'turn' || parsed.mediaVoicePersistence === 'permanent'
+        ? parsed.mediaVoicePersistence
+        : defaults.mediaVoicePersistence,
     }
   } catch {
     return defaults
@@ -198,39 +191,52 @@ export function renderConversationSettingsPage(
         </div>
         <div class="chat-settings-control-card chat-settings-media-card">
           <div class="chat-settings-media-grid">
-            ${renderConversationSelect(settings, options, 'mediaImageMode', zh ? '生图时机' : 'Image timing', [
-              { value: 'off', label: zh ? '关闭' : 'Off' },
-              { value: 'requested', label: zh ? '用户/模型请求' : 'Requested' },
-              { value: 'balanced', label: zh ? '平衡概率' : 'Balanced' },
-              { value: 'always', label: zh ? '每轮生成' : 'Every reply' },
-            ])}
-            ${renderConversationSelect(settings, options, 'mediaImageSize', zh ? '图片尺寸' : 'Image size', [
-              { value: '1024x1024', label: '1024 x 1024' },
-              { value: '1024x1536', label: '1024 x 1536' },
-              { value: '1536x1024', label: '1536 x 1024' },
-            ])}
-            ${renderConversationSelect(settings, options, 'mediaImageReferenceMode', zh ? '参考图' : 'References', [
-              { value: 'character', label: zh ? '角色 avatar / body' : 'Character avatar / body' },
-              { value: 'none', label: zh ? '不使用参考图' : 'No references' },
-            ])}
-            ${renderConversationSelect(settings, options, 'mediaVoiceMode', zh ? '语音时机' : 'Voice timing', [
-              { value: 'off', label: zh ? '关闭' : 'Off' },
-              { value: 'requested', label: zh ? '请求时生成' : 'Requested' },
-              { value: 'assistant', label: zh ? '每条回复生成' : 'Every assistant reply' },
-            ])}
-            ${renderConversationSelect(settings, options, 'mediaPersistence', zh ? '媒体记忆' : 'Media memory', [
-              { value: 'permanent', label: zh ? '长期锚点' : 'Permanent anchor' },
-              { value: 'turn', label: zh ? '仅本次展示' : 'Display only' },
-            ])}
-            <label class="chat-settings-field inline-toggle">
-              <span>${options.escapeHtml(zh ? '生成后自动播放语音' : 'Autoplay generated voice')}</span>
-              <input type="checkbox" data-chat-setting="mediaVoiceAutoplay" ${settings.mediaVoiceAutoplay ? 'checked' : ''} />
-              <i aria-hidden="true"></i>
-            </label>
-          </div>
-          <div class="chat-settings-media-sliders">
-            ${renderConversationMediaRange(settings, options, 'mediaImageProbability', 0, 1, 0.05, settings.mediaImageProbability, zh ? '平衡模式概率' : 'Balanced probability')}
-            ${renderConversationMediaRange(settings, options, 'mediaImageCooldownTurns', CHAT_MEDIA_IMAGE_COOLDOWN_MIN, CHAT_MEDIA_IMAGE_COOLDOWN_MAX, 1, settings.mediaImageCooldownTurns, zh ? '图片冷却轮数' : 'Image cooldown turns')}
+            <article class="chat-settings-media-group">
+              <div class="chat-settings-media-group-copy">
+                <strong>${options.escapeHtml(zh ? '生图' : 'Images')}</strong>
+                <small>${options.escapeHtml(zh ? '控制图片何时生成，以及是否把生成结果作为后续视觉参考。' : 'Controls when images are generated and whether generated results become future visual context.')}</small>
+              </div>
+              ${renderConversationSelect(settings, options, 'mediaImageMode', zh ? '时机' : 'Timing', [
+                { value: 'off', label: zh ? '关闭' : 'Off' },
+                { value: 'manual', label: zh ? '仅手动按钮' : 'Manual button' },
+                { value: 'requested', label: zh ? '请求时生成' : 'Requested' },
+                { value: 'proactive', label: zh ? '自然主动' : 'Natural proactive' },
+              ])}
+              ${renderConversationSelect(settings, options, 'mediaImageSize', zh ? '尺寸' : 'Size', [
+                { value: '1024x1024', label: '1024 x 1024' },
+                { value: '1024x1536', label: '1024 x 1536' },
+                { value: '1536x1024', label: '1536 x 1024' },
+              ])}
+              ${renderConversationSelect(settings, options, 'mediaImageReferenceMode', zh ? '参考图' : 'References', [
+                { value: 'character', label: zh ? '角色 avatar / body' : 'Character avatar / body' },
+                { value: 'none', label: zh ? '不使用参考图' : 'No references' },
+              ])}
+              ${renderConversationSelect(settings, options, 'mediaImagePersistence', zh ? '上下文' : 'Context', [
+                { value: 'permanent', label: zh ? '作为角色记忆参考' : 'As context reference' },
+                { value: 'turn', label: zh ? '仅展示' : 'Display only' },
+              ])}
+            </article>
+            <article class="chat-settings-media-group">
+              <div class="chat-settings-media-group-copy">
+                <strong>${options.escapeHtml(zh ? '语音' : 'Voice')}</strong>
+                <small>${options.escapeHtml(zh ? '控制 TTS 何时生成。每轮自动适合沉浸式语音角色扮演。' : 'Controls when TTS is generated. Every reply is intended for immersive spoken roleplay.')}</small>
+              </div>
+              ${renderConversationSelect(settings, options, 'mediaVoiceMode', zh ? '时机' : 'Timing', [
+                { value: 'off', label: zh ? '关闭' : 'Off' },
+                { value: 'manual', label: zh ? '仅手动按钮' : 'Manual button' },
+                { value: 'requested', label: zh ? '请求时生成' : 'Requested' },
+                { value: 'auto', label: zh ? '每轮自动' : 'Every reply' },
+              ])}
+              ${renderConversationSelect(settings, options, 'mediaVoicePersistence', zh ? '上下文' : 'Context', [
+                { value: 'turn', label: zh ? '仅展示' : 'Display only' },
+                { value: 'permanent', label: zh ? '作为角色记忆参考' : 'As context reference' },
+              ])}
+              <label class="chat-settings-field inline-toggle">
+                <span>${options.escapeHtml(zh ? '生成后自动播放' : 'Autoplay generated voice')}</span>
+                <input type="checkbox" data-chat-setting="mediaVoiceAutoplay" ${settings.mediaVoiceAutoplay ? 'checked' : ''} />
+                <i aria-hidden="true"></i>
+              </label>
+            </article>
           </div>
         </div>
       </section>
@@ -278,18 +284,16 @@ export function buildConversationPreferencePrompt(settings: ChatConversationSett
 export function buildConversationMediaPolicy(settings: ChatConversationSettings): {
   imageMode: ChatMediaImageMode
   voiceMode: ChatMediaVoiceMode
-  imageProbability: number
-  imageCooldownTurns: number
   imageReferenceMode: ChatMediaImageReferenceMode
-  persistence: ChatMediaPersistenceMode
+  imagePersistence: ChatMediaPersistenceMode
+  voicePersistence: ChatMediaPersistenceMode
 } {
   return {
     imageMode: settings.mediaImageMode,
     voiceMode: settings.mediaVoiceMode,
-    imageProbability: settings.mediaImageProbability,
-    imageCooldownTurns: settings.mediaImageCooldownTurns,
     imageReferenceMode: settings.mediaImageReferenceMode,
-    persistence: settings.mediaPersistence,
+    imagePersistence: settings.mediaImagePersistence,
+    voicePersistence: settings.mediaVoicePersistence,
   }
 }
 
@@ -323,7 +327,7 @@ function renderConversationToggle(
 function renderConversationSelect(
   settings: ChatConversationSettings,
   options: ConversationSettingsPageOptions,
-  key: keyof Pick<ChatConversationSettings, 'mediaImageMode' | 'mediaImageSize' | 'mediaImageReferenceMode' | 'mediaVoiceMode' | 'mediaPersistence'>,
+  key: keyof Pick<ChatConversationSettings, 'mediaImageMode' | 'mediaImageSize' | 'mediaImageReferenceMode' | 'mediaImagePersistence' | 'mediaVoiceMode' | 'mediaVoicePersistence'>,
   title: string,
   items: Array<{ value: string; label: string }>
 ): string {
@@ -349,7 +353,7 @@ function renderConversationLanguageOption(
 
 export function renderConversationRange(
   options: ConversationSettingsPageOptions,
-  key: keyof Pick<ChatConversationSettings, 'outputTokenBudget' | 'temperature' | 'diversity' | 'mediaImageProbability' | 'mediaImageCooldownTurns' | 'shortTermTurns' | 'summaryLimit'>,
+  key: keyof Pick<ChatConversationSettings, 'outputTokenBudget' | 'temperature' | 'diversity' | 'shortTermTurns' | 'summaryLimit'>,
   min: number,
   max: number,
   step: number,
@@ -395,39 +399,14 @@ function renderConversationParameter(
   `
 }
 
-function renderConversationMediaRange(
-  settings: ChatConversationSettings,
-  options: ConversationSettingsPageOptions,
-  key: keyof Pick<ChatConversationSettings, 'mediaImageProbability' | 'mediaImageCooldownTurns'>,
-  min: number,
-  max: number,
-  step: number,
-  value: number,
-  title: string
-): string {
-  const displayValue = key === 'mediaImageProbability' ? value.toFixed(2) : String(Math.round(value))
-  return `
-    <article class="chat-settings-media-range">
-      <div>
-        <strong>${options.escapeHtml(title)}</strong>
-        <output>${options.escapeHtml(displayValue)}</output>
-      </div>
-      ${renderConversationRange(options, key, min, max, step, value, [
-        { value: min, label: String(min) },
-        { value: max, label: String(max) },
-      ])}
-    </article>
-  `
-}
-
 function normalizeImageSize(value: unknown, fallback: string): string {
   return value === '1024x1024' || value === '1024x1536' || value === '1536x1024' ? value : fallback
 }
 
 function isMediaImageMode(value: unknown): value is ChatMediaImageMode {
-  return value === 'off' || value === 'requested' || value === 'balanced' || value === 'always'
+  return value === 'off' || value === 'manual' || value === 'requested' || value === 'proactive'
 }
 
 function isMediaVoiceMode(value: unknown): value is ChatMediaVoiceMode {
-  return value === 'off' || value === 'assistant' || value === 'requested'
+  return value === 'off' || value === 'manual' || value === 'requested' || value === 'auto'
 }

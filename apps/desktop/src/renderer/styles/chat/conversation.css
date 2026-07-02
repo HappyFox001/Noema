@@ -1106,31 +1106,49 @@ body.theme-day .chat-message-avatar {
 .chat-message-actions {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  margin-top: 4px;
+  gap: 3px;
+  width: fit-content;
+  margin-top: 10px;
+  padding: 3px;
+  border: 1px solid rgba(218, 232, 224, 0.075);
+  border-radius: 999px;
+  background: rgba(16, 18, 18, 0.72);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
 }
 
-.chat-message-actions button {
-  height: 24px;
-  min-width: 32px;
-  padding: 0 8px;
-  border: 1px solid rgba(255, 255, 255, 0.075);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.035);
-  color: rgba(218, 232, 224, 0.54);
-  font-family: var(--font-mono, monospace);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0;
+.chat-message-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(218, 232, 224, 0.58);
   cursor: pointer;
-  transition: background 160ms ease, color 160ms ease, border-color 160ms ease, transform 160ms ease;
+  transition: background 160ms ease, color 160ms ease, border-color 160ms ease, transform 160ms ease, opacity 160ms ease;
 }
 
-.chat-message-actions button:hover {
+.chat-message-action svg {
+  width: 15px;
+  height: 15px;
+  pointer-events: none;
+}
+
+.chat-message-action:hover {
   transform: translateY(-1px);
-  border-color: rgba(218, 232, 224, 0.18);
-  background: rgba(218, 232, 224, 0.075);
+  border-color: rgba(218, 232, 224, 0.14);
+  background: rgba(218, 232, 224, 0.08);
   color: rgba(248, 250, 250, 0.88);
+}
+
+.chat-message-action.danger:hover {
+  border-color: rgba(255, 130, 150, 0.24);
+  background: rgba(255, 130, 150, 0.095);
+  color: rgba(255, 196, 206, 0.92);
 }
 
 .chat-camera-overlay {

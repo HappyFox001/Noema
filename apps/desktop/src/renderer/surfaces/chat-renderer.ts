@@ -6,6 +6,7 @@ import type {
   ChatConversationSummary,
   ChatMessage,
 } from './chat-model'
+import { Image as ImageIcon, Trash2, Volume2, createIcons } from 'lucide'
 import { localizeChatText, type ChatLanguageCode } from './chat-model'
 import { hasRoleplayChatMarkup, renderRoleplayChatMarkup } from './roleplay-chat-markup'
 
@@ -44,6 +45,8 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
   const suggestionList = options.panel.querySelector<HTMLElement>('.chat-suggestion-list')
   let activeMessageCharacter: ChatCharacterResource | undefined
   let activeConversation: ChatConversationSummary | undefined
+  let actionSourceMessageId = ''
+  let actionDisplayMessageId = ''
 
   function renderConversationList(
     conversations: ChatConversationSummary[],
@@ -160,20 +163,42 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     }
     activeMessageCharacter = undefined
     activeConversation = undefined
+    actionSourceMessageId = ''
+    actionDisplayMessageId = ''
     options.messageList.innerHTML = ''
   }
 
   function renderMessages(messages: ChatMessage[], scrollMode: ChatRenderScrollMode = 'auto'): void {
     const shouldFollow = scrollMode === 'force' || (scrollMode === 'auto' && shouldAutoFollowScroll())
     const previousScrollTop = options.messageList.scrollTop
-    const lastAssistantId = findLastAssistantMessageId(messages)
-    options.messageList.innerHTML = messages.map((message) => renderMessage(message, message.id === lastAssistantId)).join('')
+    const language = options.getLanguage()
+    actionSourceMessageId = findLastActionableAssistantMessageId(messages, language)
+    actionDisplayMessageId = findLatestTurnDisplayMessageId(messages, actionSourceMessageId)
+    options.messageList.innerHTML = messages.map((message) => {
+      const isActionDisplayTarget = message.id === actionDisplayMessageId
+      return renderMessage(message, isActionDisplayTarget, isActionDisplayTarget, actionSourceMessageId)
+    }).join('')
+    renderActionIcons(options.messageList)
     applyScrollAfterRender(shouldFollow, previousScrollTop)
   }
 
   function appendMessage(message: ChatMessage): void {
     const shouldFollow = shouldAutoFollowScroll()
-    options.messageList.insertAdjacentHTML('beforeend', renderMessage(message, false))
+    if (message.role === 'user' || message.state === 'thinking') {
+      clearRenderedLatestTurnAddons()
+      actionSourceMessageId = ''
+      actionDisplayMessageId = ''
+    }
+    const isGeneratedFollowup = isGeneratedAssistantFollowup(message) && Boolean(actionSourceMessageId)
+    if (isGeneratedFollowup) {
+      clearRenderedLatestTurnAddons()
+      actionDisplayMessageId = message.id
+    }
+    options.messageList.insertAdjacentHTML('beforeend', renderMessage(message, isGeneratedFollowup, isGeneratedFollowup, actionSourceMessageId))
+    const rendered = options.messageList.lastElementChild
+    if (rendered) {
+      renderActionIcons(rendered)
+    }
     if (shouldFollow) {
       scrollToLatest()
     }
@@ -187,7 +212,12 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     }
     const shouldFollow = shouldAutoFollowScroll()
     const previousScrollTop = options.messageList.scrollTop
-    existing.outerHTML = renderMessage(message, false)
+    const isActionDisplayTarget = message.id === actionDisplayMessageId
+    existing.outerHTML = renderMessage(message, isActionDisplayTarget, isActionDisplayTarget, actionSourceMessageId)
+    const rendered = options.messageList.querySelector<HTMLElement>(`[data-message-id="${cssEscape(message.id)}"]`)
+    if (rendered) {
+      renderActionIcons(rendered)
+    }
     if (shouldFollow) {
       scrollToLatest()
     } else {
@@ -213,7 +243,7 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     })
   }
 
-  function renderMessage(message: ChatMessage, includeSceneState: boolean): string {
+  function renderMessage(message: ChatMessage, includeSceneState: boolean, includeActions: boolean, actionMessageId: string): string {
     const language = options.getLanguage()
     if (message.state === 'thinking') {
       return renderThinkingMessage(message, language)
@@ -230,20 +260,51 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
           ${renderOpeningPanel(message)}
           ${renderMessageContent(message, language)}
           ${includeSceneState ? renderInlineSceneState(language) : ''}
-          ${renderMessageActions(message, language)}
+          ${renderMessageActions(message, language, includeActions, actionMessageId)}
           <small>${stateLabel}${options.escapeHtml(localizeChatText(message.createdLabel, language))}</small>
         </div>
       </article>
     `
   }
 
-  function findLastAssistantMessageId(messages: ChatMessage[]): string {
+  function findLastActionableAssistantMessageId(messages: ChatMessage[], language: ChatLanguageCode): string {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
-      if (messages[index].role === 'assistant' && messages[index].state === undefined) {
-        return messages[index].id
+      const message = messages[index]
+      if (isActionableAssistantMessage(message, language)) {
+        return message.id
       }
     }
     return ''
+  }
+
+  function findLatestTurnDisplayMessageId(messages: ChatMessage[], sourceMessageId: string): string {
+    if (!sourceMessageId) {
+      return ''
+    }
+    const sourceIndex = messages.findIndex((message) => message.id === sourceMessageId)
+    if (sourceIndex < 0) {
+      return sourceMessageId
+    }
+    let displayMessageId = sourceMessageId
+    for (let index = sourceIndex + 1; index < messages.length; index += 1) {
+      const message = messages[index]
+      if (!isGeneratedAssistantFollowup(message)) {
+        break
+      }
+      displayMessageId = message.id
+    }
+    return displayMessageId
+  }
+
+  function isActionableAssistantMessage(message: ChatMessage, language: ChatLanguageCode): boolean {
+    return message.role === 'assistant'
+      && message.state === undefined
+      && !message.id.startsWith('assistant-media-')
+      && Boolean(localizeChatText(message.text, language).trim())
+  }
+
+  function isGeneratedAssistantFollowup(message: ChatMessage): boolean {
+    return message.role === 'assistant' && message.id.startsWith('assistant-media-')
   }
 
   function renderInlineSceneState(language: ChatLanguageCode): string {
@@ -522,19 +583,51 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     `
   }
 
-  function renderMessageActions(message: ChatMessage, language: ChatLanguageCode): string {
-    const text = localizeChatText(message.text, language).trim()
-    if (message.role !== 'assistant' || message.state || !text) {
+  function renderMessageActions(message: ChatMessage, language: ChatLanguageCode, includeActions: boolean, actionMessageId: string): string {
+    if (!includeActions || !actionMessageId) {
       return ''
     }
     const imageLabel = language === 'zh-CN' ? '生成图片' : 'Generate image'
     const audioLabel = language === 'zh-CN' ? '生成语音' : 'Generate voice'
+    const deleteLabel = language === 'zh-CN' ? '删除回复' : 'Delete reply'
     return `
-      <div class="chat-message-actions" aria-label="${options.escapeHtml(language === 'zh-CN' ? '消息媒体操作' : 'Message media actions')}">
-        <button type="button" data-chat-message-media-action="image" data-chat-message-id="${options.escapeHtml(message.id)}" title="${options.escapeHtml(imageLabel)}" aria-label="${options.escapeHtml(imageLabel)}">IMG</button>
-        <button type="button" data-chat-message-media-action="audio" data-chat-message-id="${options.escapeHtml(message.id)}" title="${options.escapeHtml(audioLabel)}" aria-label="${options.escapeHtml(audioLabel)}">TTS</button>
+      <div class="chat-message-actions" role="toolbar" aria-label="${options.escapeHtml(language === 'zh-CN' ? '回复操作' : 'Reply actions')}">
+        <button class="chat-message-action" type="button" data-chat-message-action="image" data-chat-message-id="${options.escapeHtml(actionMessageId)}" title="${options.escapeHtml(imageLabel)}" aria-label="${options.escapeHtml(imageLabel)}">
+          <i data-lucide="image" aria-hidden="true"></i>
+        </button>
+        <button class="chat-message-action" type="button" data-chat-message-action="audio" data-chat-message-id="${options.escapeHtml(actionMessageId)}" title="${options.escapeHtml(audioLabel)}" aria-label="${options.escapeHtml(audioLabel)}">
+          <i data-lucide="volume-2" aria-hidden="true"></i>
+        </button>
+        <button class="chat-message-action danger" type="button" data-chat-message-action="delete" data-chat-message-id="${options.escapeHtml(actionMessageId)}" title="${options.escapeHtml(deleteLabel)}" aria-label="${options.escapeHtml(deleteLabel)}">
+          <i data-lucide="trash-2" aria-hidden="true"></i>
+        </button>
       </div>
     `
+  }
+
+  function clearRenderedLatestTurnAddons(): void {
+    options.messageList.querySelectorAll('.chat-inline-scene, .chat-message-actions').forEach((element) => element.remove())
+  }
+
+  function renderActionIcons(root: ParentNode): void {
+    const actionRoots = root instanceof HTMLElement && root.classList.contains('chat-message-actions')
+      ? [root]
+      : Array.from(root.querySelectorAll<HTMLElement>('.chat-message-actions'))
+    actionRoots.forEach((actionRoot) => {
+      createIcons({
+        icons: {
+          Image: ImageIcon,
+          Trash2,
+          Volume2,
+        },
+        root: actionRoot,
+        attrs: {
+          width: 15,
+          height: 15,
+          'stroke-width': 2.2,
+        },
+      })
+    })
   }
 
   function renderAvatar(character: ChatCharacterResource, large: boolean): string {

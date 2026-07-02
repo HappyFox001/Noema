@@ -30,7 +30,7 @@ export type ChatMessageContentPart =
 
 export type ChatMediaKind = 'image' | 'video' | 'audio'
 export type ChatMediaOrigin = 'user' | 'assistant' | 'tool' | 'generated' | 'external'
-export type ChatMediaDispatchTrigger = 'manual' | 'model' | 'tool' | 'external' | 'probability'
+export type ChatMediaDispatchTrigger = 'manual' | 'model' | 'request' | 'auto' | 'tool' | 'external' | 'probability'
 export type ChatMediaDispatchMode = 'turn' | 'permanent'
 export type ChatMediaContextMode = 'auto' | 'visual' | 'text' | 'none'
 

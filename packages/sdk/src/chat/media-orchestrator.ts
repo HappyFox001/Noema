@@ -15,18 +15,17 @@ export interface RoleplayMediaRuntimeMessage {
   state?: unknown
 }
 
-export type RoleplayImageGenerationMode = 'off' | 'requested' | 'balanced' | 'always'
-export type RoleplayVoiceGenerationMode = 'off' | 'assistant' | 'requested'
+export type RoleplayImageGenerationMode = 'off' | 'manual' | 'requested' | 'proactive'
+export type RoleplayVoiceGenerationMode = 'off' | 'manual' | 'requested' | 'auto'
 export type RoleplayImageReferenceMode = 'none' | 'character'
 export type RoleplayMediaPersistenceMode = 'turn' | 'permanent'
 
 export interface RoleplayMediaPolicy {
   imageMode: RoleplayImageGenerationMode
   voiceMode: RoleplayVoiceGenerationMode
-  imageProbability: number
-  imageCooldownTurns: number
   imageReferenceMode: RoleplayImageReferenceMode
-  persistence: RoleplayMediaPersistenceMode
+  imagePersistence: RoleplayMediaPersistenceMode
+  voicePersistence: RoleplayMediaPersistenceMode
 }
 
 export interface RoleplayMediaCharacter {
@@ -63,14 +62,12 @@ export interface RoleplayMediaDecisionInput {
   character?: RoleplayMediaCharacter
   sceneState?: Record<string, unknown>
   recentMessages?: RoleplayMediaRuntimeMessage[]
-  externalProbabilityBias?: number
   random?: () => number
 }
 
 export interface RoleplayImageDispatch {
   prompt: string
-  trigger: 'manual' | 'model' | 'probability'
-  probability: number
+  trigger: 'manual' | 'model' | 'request'
   permanent: boolean
   reason: string
   referenceImages: string[]
@@ -78,7 +75,7 @@ export interface RoleplayImageDispatch {
 
 export interface RoleplayAudioDispatch {
   text: string
-  trigger: 'manual' | 'model'
+  trigger: 'manual' | 'model' | 'request' | 'auto'
   permanent: boolean
   reason: string
 }
@@ -95,7 +92,6 @@ export interface RoleplayMediaIntentExtraction {
 
 const IMAGE_REQUEST_PATTERN = /(画|图|图片|照片|插画|生图|配图|截图|视觉|看看|看一下|appearance|image|picture|photo|draw|illustrat|visual|snapshot|render)/i
 const VOICE_REQUEST_PATTERN = /(语音|音频|声音|说出来|念出来|voice|audio|speak|say it|read it)/i
-const VISUAL_MOMENT_PATTERN = /(场景|房间|街|夜|光|衣|眼神|表情|姿势|靠近|门|窗|雨|雪|海|森林|城市|咖啡|酒吧|bedroom|room|street|night|light|outfit|expression|pose|rain|snow|city|bar|cafe)/i
 
 export function extractRoleplayMediaIntent(value: string): RoleplayMediaIntentExtraction {
   const source = String(value || '')
@@ -113,32 +109,53 @@ export function extractRoleplayMediaIntent(value: string): RoleplayMediaIntentEx
 }
 
 export function buildRoleplayMediaPolicyPrompt(policy: RoleplayMediaPolicy, language: RoleplayMediaLanguage): string {
-  const imageEnabled = policy.imageMode !== 'off'
-  const voiceEnabled = policy.voiceMode !== 'off'
-  if (!imageEnabled && !voiceEnabled) {
+  const normalized = normalizeRoleplayMediaPolicy(policy)
+  const imageIntentEnabled = normalized.imageMode === 'requested' || normalized.imageMode === 'proactive'
+  const voiceIntentEnabled = normalized.voiceMode === 'requested' || normalized.voiceMode === 'auto'
+  const imageManual = normalized.imageMode === 'manual'
+  const voiceManual = normalized.voiceMode === 'manual'
+  const imageOff = normalized.imageMode === 'off'
+  const voiceOff = normalized.voiceMode === 'off'
+  if (imageOff && voiceOff) {
     return ''
   }
   if (language === 'zh-CN') {
     return [
       '<media_policy>',
-      imageEnabled
-        ? '当本轮回复自然需要一张角色扮演画面，或用户明确要求图片时，可以在回复末尾追加 <media_intent>{"image":{"prompt":"简洁英文生图提示词","permanent":true}}</media_intent>。prompt 只描述画面，不要写 UI、标题、字幕或解释。'
-        : '不要主动请求图片生成。',
-      voiceEnabled
-        ? '当用户明确要求语音，或这条回复非常适合直接用角色声音播放时，可以在同一个 media_intent 中加入 "audio":true，或 {"audio":{"text":"要朗读的干净文本"}}。'
-        : '不要主动请求语音生成。',
+      imageIntentEnabled
+        ? normalized.imageMode === 'requested'
+          ? '只有当用户明确要求图片、照片、自拍、外观或视觉画面时，才可以在回复末尾追加 <media_intent>{"image":{"prompt":"简洁英文生图提示词"}}</media_intent>。prompt 只描述画面，不要写 UI、标题、字幕或解释。'
+          : '当用户明确要求图片，或本轮出现强画面感的角色扮演节点并且一张图会自然推进体验时，可以在回复末尾追加 <media_intent>{"image":{"prompt":"简洁英文生图提示词"}}</media_intent>。不要频繁发送，prompt 只描述画面。'
+        : imageManual
+          ? '图片由用户通过界面按钮手动生成；不要主动追加 image media_intent。'
+          : '不要主动请求图片生成。',
+      voiceIntentEnabled
+        ? normalized.voiceMode === 'requested'
+          ? '只有当用户明确要求语音、声音、朗读或音频时，才可以在同一个 media_intent 中加入 "audio":true，或 {"audio":{"text":"要朗读的干净文本"}}。'
+          : '系统会为每条角色回复自动生成语音；一般不要追加 audio media_intent。只有当你希望语音朗读文本不同于可见回复时，才加入 {"audio":{"text":"要朗读的干净文本"}}。'
+        : voiceManual
+          ? '语音由用户通过界面按钮手动生成；不要主动追加 audio media_intent。'
+          : '不要主动请求语音生成。',
       'media_intent 只能放在回复末尾，并且不要在正常可见文本中解释这个标签。',
       '</media_policy>',
     ].join('\n')
   }
   return [
     '<media_policy>',
-    imageEnabled
-      ? 'When this turn naturally needs a roleplay visual, or the user explicitly asks for an image, you may append <media_intent>{"image":{"prompt":"concise English image prompt","permanent":true}}</media_intent> at the end. The prompt describes only the image, not UI, titles, captions, or explanations.'
-      : 'Do not request image generation.',
-    voiceEnabled
-      ? 'When the user explicitly asks for voice, or this reply is especially suitable to play as the character voice, include "audio":true in the same media_intent, or {"audio":{"text":"clean text to speak"}}.'
-      : 'Do not request voice generation.',
+    imageIntentEnabled
+      ? normalized.imageMode === 'requested'
+        ? 'Only when the user explicitly asks for an image, photo, selfie, appearance, or visual scene, append <media_intent>{"image":{"prompt":"concise English image prompt"}}</media_intent> at the end. The prompt describes only the image, not UI, titles, captions, or explanations.'
+        : 'When the user explicitly asks for an image, or this turn has a strong visual roleplay beat where a visual would naturally improve the experience, append <media_intent>{"image":{"prompt":"concise English image prompt"}}</media_intent> at the end. Do not send images frequently; the prompt describes only the image.'
+      : imageManual
+        ? 'Images are generated manually by the user through the UI button; do not append image media_intent.'
+        : 'Do not request image generation.',
+    voiceIntentEnabled
+      ? normalized.voiceMode === 'requested'
+        ? 'Only when the user explicitly asks for voice, sound, spoken playback, or audio, include "audio":true in the same media_intent, or {"audio":{"text":"clean text to speak"}}.'
+        : 'The system will synthesize voice for every character reply automatically. Usually do not append audio media_intent; only include {"audio":{"text":"clean text to speak"}} when the spoken text should differ from the visible reply.'
+      : voiceManual
+        ? 'Voice is generated manually by the user through the UI button; do not append audio media_intent.'
+        : 'Do not request voice generation.',
     'media_intent must appear only at the end, and must not be explained in visible text.',
     '</media_policy>',
   ].join('\n')
@@ -148,34 +165,24 @@ export function decideRoleplayMediaDispatch(input: RoleplayMediaDecisionInput): 
   const policy = normalizeRoleplayMediaPolicy(input.policy)
   const imageIntent = normalizeImageIntent(input.intent?.image)
   const audioIntent = normalizeAudioIntent(input.intent?.audio)
-  const permanent = imageIntent?.permanent ?? audioIntent?.permanent ?? policy.persistence === 'permanent'
   const decision: RoleplayMediaDecision = {}
 
-  if (policy.voiceMode !== 'off') {
-    const requestedVoice = audioIntent || VOICE_REQUEST_PATTERN.test(input.userText)
-    if (policy.voiceMode === 'assistant' || requestedVoice) {
+  if (policy.voiceMode !== 'off' && policy.voiceMode !== 'manual') {
+    const requestedVoice = Boolean(audioIntent) || VOICE_REQUEST_PATTERN.test(input.userText)
+    if (policy.voiceMode === 'auto' || (policy.voiceMode === 'requested' && requestedVoice)) {
       decision.audio = {
         text: normalizeSpeechText(audioIntent?.text || input.assistantText),
-        trigger: audioIntent ? 'model' : 'manual',
-        permanent,
-        reason: audioIntent ? 'model_media_intent' : policy.voiceMode === 'assistant' ? 'voice_mode_assistant' : 'voice_requested',
+        trigger: audioIntent ? 'model' : policy.voiceMode === 'auto' ? 'auto' : 'request',
+        permanent: audioIntent?.permanent ?? policy.voicePersistence === 'permanent',
+        reason: audioIntent ? 'model_media_intent' : policy.voiceMode === 'auto' ? 'voice_every_reply' : 'user_requested_voice',
       }
     }
   }
 
-  if (policy.imageMode !== 'off') {
+  if (policy.imageMode !== 'off' && policy.imageMode !== 'manual') {
     const modelPrompt = typeof imageIntent?.prompt === 'string' ? imageIntent.prompt.trim() : ''
-    const explicitlyRequested = Boolean(imageIntent) || IMAGE_REQUEST_PATTERN.test(input.userText)
-    const visualMoment = VISUAL_MOMENT_PATTERN.test(`${input.userText}\n${input.assistantText}`)
-    const cooldownBlocks = policy.imageCooldownTurns > 0 && countAssistantTurnsSinceLastGeneratedImage(input.recentMessages ?? []) < policy.imageCooldownTurns
-    const probability = clampProbability(policy.imageProbability + (input.externalProbabilityBias ?? 0))
-    const random = input.random ?? Math.random
-    const probabilityHit = policy.imageMode === 'balanced' && visualMoment && random() <= probability
-    const shouldGenerate = !cooldownBlocks && (
-      policy.imageMode === 'always'
-      || (policy.imageMode === 'requested' && explicitlyRequested)
-      || (policy.imageMode === 'balanced' && (explicitlyRequested || probabilityHit))
-    )
+    const userRequestedImage = IMAGE_REQUEST_PATTERN.test(input.userText)
+    const shouldGenerate = Boolean(imageIntent) || userRequestedImage
     if (shouldGenerate) {
       decision.image = {
         prompt: modelPrompt || buildRoleplayImagePrompt({
@@ -185,10 +192,9 @@ export function decideRoleplayMediaDispatch(input: RoleplayMediaDecisionInput): 
           character: input.character,
           sceneState: input.sceneState,
         }),
-        trigger: imageIntent ? 'model' : probabilityHit ? 'probability' : 'manual',
-        probability,
-        permanent,
-        reason: imageIntent ? 'model_media_intent' : probabilityHit ? 'probability_visual_moment' : 'image_mode_or_request',
+        trigger: imageIntent ? 'model' : 'request',
+        permanent: imageIntent?.permanent ?? policy.imagePersistence === 'permanent',
+        reason: imageIntent ? 'model_media_intent' : 'user_requested_image',
         referenceImages: policy.imageReferenceMode === 'character'
           ? selectRoleplayReferenceImages(input.character)
           : [],
@@ -246,10 +252,9 @@ function normalizeRoleplayMediaPolicy(policy: RoleplayMediaPolicy): RoleplayMedi
   return {
     imageMode: isImageMode(policy.imageMode) ? policy.imageMode : 'off',
     voiceMode: isVoiceMode(policy.voiceMode) ? policy.voiceMode : 'off',
-    imageProbability: clampProbability(policy.imageProbability),
-    imageCooldownTurns: Math.max(0, Math.round(Number(policy.imageCooldownTurns) || 0)),
     imageReferenceMode: policy.imageReferenceMode === 'none' ? 'none' : 'character',
-    persistence: policy.persistence === 'permanent' ? 'permanent' : 'turn',
+    imagePersistence: policy.imagePersistence === 'permanent' ? 'permanent' : 'turn',
+    voicePersistence: policy.voicePersistence === 'permanent' ? 'permanent' : 'turn',
   }
 }
 
@@ -299,20 +304,6 @@ function normalizeSpeechText(value: string): string {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 1600)
-}
-
-function countAssistantTurnsSinceLastGeneratedImage(messages: RoleplayMediaRuntimeMessage[]): number {
-  let count = 0
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index]
-    if (message.media?.some((item) => item.kind === 'image' && (item.origin === 'generated' || item.origin === 'assistant'))) {
-      return count
-    }
-    if (message.role === 'assistant' && message.state === undefined) {
-      count += 1
-    }
-  }
-  return Number.POSITIVE_INFINITY
 }
 
 function localizeRoleplayText(value: RoleplayMediaLocalizedText | undefined, language: RoleplayMediaLanguage): string {
@@ -367,17 +358,10 @@ function compactLine(value: string): string {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, 520)
 }
 
-function clampProbability(value: number): number {
-  if (!Number.isFinite(value)) {
-    return 0
-  }
-  return Math.min(1, Math.max(0, value))
-}
-
 function isImageMode(value: unknown): value is RoleplayImageGenerationMode {
-  return value === 'off' || value === 'requested' || value === 'balanced' || value === 'always'
+  return value === 'off' || value === 'manual' || value === 'requested' || value === 'proactive'
 }
 
 function isVoiceMode(value: unknown): value is RoleplayVoiceGenerationMode {
-  return value === 'off' || value === 'assistant' || value === 'requested'
+  return value === 'off' || value === 'manual' || value === 'requested' || value === 'auto'
 }

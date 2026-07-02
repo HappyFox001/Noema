@@ -512,7 +512,7 @@ function normalizeRuntimeMediaDispatch(dispatch: ChatRuntimeMediaInput['dispatch
     return undefined
   }
   const normalized: NonNullable<ChatRuntimeMediaInput['dispatch']> = {}
-  if (dispatch.trigger === 'manual' || dispatch.trigger === 'model' || dispatch.trigger === 'tool' || dispatch.trigger === 'external' || dispatch.trigger === 'probability') {
+  if (dispatch.trigger === 'manual' || dispatch.trigger === 'model' || dispatch.trigger === 'request' || dispatch.trigger === 'auto' || dispatch.trigger === 'tool' || dispatch.trigger === 'external' || dispatch.trigger === 'probability') {
     normalized.trigger = dispatch.trigger
   }
   if (dispatch.mode === 'turn' || dispatch.mode === 'permanent') {

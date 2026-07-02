@@ -2621,6 +2621,49 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-history-manager {
   font-size: 11px;
 }
 
+.chat-settings-media-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 22px;
+}
+
+.chat-settings-media-group {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 0;
+}
+
+.chat-settings-media-group + .chat-settings-media-group {
+  padding-left: 22px;
+  border-left: 1px solid rgba(245, 248, 246, 0.08);
+}
+
+.chat-settings-media-group-copy {
+  min-height: 58px;
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(245, 248, 246, 0.08);
+}
+
+.chat-settings-media-group-copy strong {
+  color: rgba(248, 249, 249, 0.9);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 780;
+  line-height: 1.15;
+}
+
+.chat-settings-media-group-copy small {
+  color: rgba(248, 249, 249, 0.48);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 540;
+  line-height: 1.45;
+}
+
 @media (max-width: 760px) {
   .chat-conversation-settings-page,
   body.chat-fullscreen .chat-conversation-settings-page,
@@ -2649,5 +2692,12 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-history-manager {
   .chat-settings-media-sliders,
   .chat-settings-stat-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .chat-settings-media-group + .chat-settings-media-group {
+    padding-left: 0;
+    padding-top: 14px;
+    border-left: 0;
+    border-top: 1px solid rgba(245, 248, 246, 0.08);
   }
 }

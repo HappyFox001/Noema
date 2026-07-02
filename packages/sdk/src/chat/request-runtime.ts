@@ -388,7 +388,7 @@ function normalizeChatMediaDispatch(dispatch: ChatMediaDispatchPolicy | undefine
 }
 
 function normalizeChatMediaDispatchTrigger(trigger: unknown): ChatMediaDispatchTrigger | undefined {
-  return trigger === 'model' || trigger === 'tool' || trigger === 'external' || trigger === 'probability' || trigger === 'manual'
+  return trigger === 'model' || trigger === 'request' || trigger === 'auto' || trigger === 'tool' || trigger === 'external' || trigger === 'probability' || trigger === 'manual'
     ? trigger
     : undefined
 }
