@@ -91,6 +91,6 @@ export async function buildSDKConfig(): Promise<SDKConfig> {
     memory: {
       storageDir: getStorageDir()
     },
-    characterProfile: personalityManager.getCurrentCharacterProfile()
+    characterProfile: personalityManager.getCurrentCharacterProfileOrNull()
   }
 }

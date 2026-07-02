@@ -44,7 +44,7 @@ export interface SDKConfig {
     storageDir: string
   }
 
-  characterProfile: CharacterProfile
+  characterProfile?: CharacterProfile | null
 
   audio?: {
     asr?: {

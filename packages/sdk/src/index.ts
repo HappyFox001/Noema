@@ -73,7 +73,7 @@ export class NoemaSDK {
     )
 
     this.memory = new MemoryEngine(config.memory, this.llm)
-    this.personality = new PersonalityEngine(config.characterProfile)
+    this.personality = new PersonalityEngine(config.characterProfile ?? null)
     this.agent = new AgentCore()
     this.runtimeEvents = new RuntimeEventBus()
     this.runtimeJobs = new RuntimeJobManager(this.runtimeEvents)

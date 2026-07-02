@@ -4924,6 +4924,11 @@ async function loadPersonalities(): Promise<void> {
   }
 
   personalitySelect.innerHTML = ''
+  const emptyOption = document.createElement('option')
+  emptyOption.value = ''
+  emptyOption.textContent = currentLanguage === 'zh-CN' ? '未选择角色' : 'No character selected'
+  emptyOption.selected = !result.current
+  personalitySelect.appendChild(emptyOption)
   result.items.forEach((item) => {
     const option = document.createElement('option')
     option.value = item.id
@@ -4934,6 +4939,7 @@ async function loadPersonalities(): Promise<void> {
     option.selected = item.id === result.current
     personalitySelect.appendChild(option)
   })
+  personalitySelect.disabled = result.items.length === 0
 }
 
 function renderOrbStyleControls(): void {

@@ -127,12 +127,10 @@ export async function loadChatResourceState(): Promise<ChatState> {
       conversations[0] = detail
     }
   }
-  const seededConversations = conversations.length ? conversations : createSeedHistory(characterResources)
-
   return {
-    activeConversationId: seededConversations[0]?.id ?? '',
+    activeConversationId: conversations[0]?.id ?? '',
     characterResources,
-    conversations: seededConversations,
+    conversations,
   }
 }
 
@@ -204,35 +202,6 @@ export function createLocalAssistantDraft(text: string, createdLabel: string): C
 
 export function localizeChatText(value: ChatLocalizedText, language: ChatLanguageCode): string {
   return value[language] ?? value['zh-CN']
-}
-
-function createSeedHistory(characterResources: ChatCharacterResource[]): ChatConversationSummary[] {
-  return characterResources
-    .filter((character) => character.id === 'chen-qianyu')
-    .map((character) => ({
-      id: `${character.id}-history`,
-      characterId: character.id,
-      title: character.displayName,
-      preview: character.firstMessage,
-      updatedLabel: {
-        'zh-CN': '刚刚',
-        'en-US': 'Now',
-      },
-      sceneState: normalizeSceneState(character.scene),
-      summaries: [],
-      messages: [
-        {
-          id: `${character.id}-welcome`,
-          role: 'assistant',
-          text: character.firstMessage,
-          createdLabel: {
-            'zh-CN': '刚刚',
-            'en-US': 'Now',
-          },
-        },
-      ],
-      characterWorkflow: null,
-    }))
 }
 
 function extractStoredCharacterResources(conversations: StoredChatConversationInput[]): ChatCharacterResource[] {

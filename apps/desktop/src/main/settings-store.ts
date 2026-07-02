@@ -255,7 +255,7 @@ const DEFAULT_TASK_RUNTIME_SETTINGS: TaskRuntimeSettings = {
   extraArgs: []
 }
 
-const DEFAULT_SELECTED_CHARACTER_PROFILE = 'chat:chen-qianyu'
+const DEFAULT_SELECTED_CHARACTER_PROFILE = ''
 
 export interface AppSettings {
   language: 'zh-CN' | 'en-US'
@@ -1000,6 +1000,9 @@ function normalizeASRBaseUrl(provider: ASRProviderType, value: unknown): string 
 
 function normalizeSelectedCharacterProfile(value: unknown): string {
   const ref = typeof value === 'string' ? value.trim() : ''
+  if (!ref) {
+    return ''
+  }
   if (ref.startsWith('chat:') || (ref.startsWith('file:') && ref.toLowerCase().endsWith('.json'))) {
     return ref
   }

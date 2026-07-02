@@ -33,13 +33,24 @@ export interface Personality {
 }
 
 export class PersonalityEngine {
-  constructor(private characterProfile: CharacterProfile) {}
+  constructor(private characterProfile: CharacterProfile | null) {}
 
   getPersonality(): Personality {
-    return characterProfileToPersonality(this.characterProfile)
+    return characterProfileToPersonality(this.requireCharacterProfile())
   }
 
   getCharacterProfile(): CharacterProfile {
+    return this.requireCharacterProfile()
+  }
+
+  hasCharacterProfile(): boolean {
+    return Boolean(this.characterProfile)
+  }
+
+  private requireCharacterProfile(): CharacterProfile {
+    if (!this.characterProfile) {
+      throw new Error('Character profile is not selected')
+    }
     return this.characterProfile
   }
 }

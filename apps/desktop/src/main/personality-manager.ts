@@ -14,9 +14,6 @@ import {
   type CharacterProfileListItem,
 } from './chat-role-resource-store.js'
 
-export const DEFAULT_CHARACTER_PROFILE_ID = 'chen-qianyu'
-export const DEFAULT_CHARACTER_PROFILE_REF = `${CHAT_ROLE_REF_PREFIX}${DEFAULT_CHARACTER_PROFILE_ID}`
-
 export type RoleListItem = CharacterProfileListItem
 
 export class PersonalityManager {
@@ -24,7 +21,6 @@ export class PersonalityManager {
   private watcher: any = null
 
   async initialize(): Promise<void> {
-    this.currentProfile = await loadChatRoleResourceById(DEFAULT_CHARACTER_PROFILE_ID)
     this.startWatching()
   }
 
@@ -60,13 +56,22 @@ export class PersonalityManager {
   }
 
   getCurrentCharacterProfile(): CharacterProfile {
-    if (!this.currentProfile) {
+    const profile = this.getCurrentCharacterProfileOrNull()
+    if (!profile) {
       throw new Error('Character profile not loaded')
     }
+    return profile
+  }
+
+  getCurrentCharacterProfileOrNull(): CharacterProfile | null {
     return this.currentProfile
   }
 
-  async setCurrentPersonality(ref: string): Promise<Personality> {
+  async setCurrentPersonality(ref: string): Promise<Personality | null> {
+    if (!ref.trim()) {
+      this.currentProfile = null
+      return null
+    }
     this.currentProfile = await this.loadPersonalityProfileRef(ref)
     return characterProfileToPersonality(this.currentProfile)
   }
@@ -111,5 +116,5 @@ function normalizeCharacterProfileRef(ref: string): string {
   if (ref.startsWith(CHAT_ROLE_REF_PREFIX) || ref.startsWith(FILE_REF_PREFIX)) {
     return ref
   }
-  return DEFAULT_CHARACTER_PROFILE_REF
+  throw new Error('Character profile is not selected')
 }

@@ -1679,14 +1679,6 @@ body.chat-fullscreen .chat-shell {
     linear-gradient(145deg, rgba(255, 198, 126, 0.36), rgba(48, 34, 22, 0.92));
 }
 
-.chat-avatar.chen-qianyu-avatar,
-.chat-character-stage.chen-qianyu-avatar {
-  background:
-    radial-gradient(circle at 31% 21%, rgba(255, 255, 255, 0.42), transparent 29%),
-    radial-gradient(circle at 68% 72%, rgba(129, 174, 164, 0.2), transparent 36%),
-    linear-gradient(145deg, rgba(96, 112, 109, 0.48), rgba(31, 42, 41, 0.94));
-}
-
 .chat-suggestion-list {
   display: flex;
   gap: 10px;
