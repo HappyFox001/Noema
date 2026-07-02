@@ -2761,9 +2761,14 @@ app.whenReady().then(async () => {
 
   if (appSettings.selectedPersonality) {
     try {
-      await getPersonalityManager().setCurrentPersonality(appSettings.selectedPersonality)
-    } catch (error) {
-      console.warn('[App] Failed to restore selected character profile:', error)
+      const selectedPersonality = appSettings.selectedPersonality
+      const roleItems = await getPersonalityManager().listRoleItems(appSettings.externalRolePaths)
+      if (roleItems.some((item: { id?: string }) => item.id === selectedPersonality)) {
+        await getPersonalityManager().setCurrentPersonality(selectedPersonality)
+      } else {
+        appSettings = await getSettingsStore().update({ selectedPersonality: '' })
+      }
+    } catch {
       appSettings = await getSettingsStore().update({ selectedPersonality: '' })
     }
   }
