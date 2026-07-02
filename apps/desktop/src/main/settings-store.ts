@@ -255,6 +255,8 @@ const DEFAULT_TASK_RUNTIME_SETTINGS: TaskRuntimeSettings = {
   extraArgs: []
 }
 
+const DEFAULT_SELECTED_CHARACTER_PROFILE = 'chat:chen-qianyu'
+
 export interface AppSettings {
   language: 'zh-CN' | 'en-US'
   voiceInputEnabled: boolean
@@ -354,7 +356,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   volume: 70,
   appearance: DEFAULT_APPEARANCE_SETTINGS,
   experimental: DEFAULT_EXPERIMENTAL_SETTINGS,
-  selectedPersonality: 'role:eva',
+  selectedPersonality: DEFAULT_SELECTED_CHARACTER_PROFILE,
   externalRolePaths: [],
   plugins: {},
   pluginConfigs: {},
@@ -420,7 +422,8 @@ export class SettingsStore {
         language: normalizeLanguage(parsed.language),
         appearance: normalizeAppearanceSettings(parsed.appearance),
         experimental: normalizeExperimentalSettings(parsed.experimental),
-        externalRolePaths: Array.isArray(parsed.externalRolePaths) ? parsed.externalRolePaths : [],
+        selectedPersonality: normalizeSelectedCharacterProfile(parsed.selectedPersonality),
+        externalRolePaths: normalizeExternalRolePaths(parsed.externalRolePaths),
         plugins: parsed.plugins && typeof parsed.plugins === 'object' ? parsed.plugins : {},
         pluginConfigs: parsed.pluginConfigs && typeof parsed.pluginConfigs === 'object' ? parsed.pluginConfigs : {},
         pluginPathHistory: parsed.pluginPathHistory && typeof parsed.pluginPathHistory === 'object' ? parsed.pluginPathHistory : {},
@@ -703,8 +706,11 @@ function normalizeSettingsPatch(current: AppSettings, partial: Partial<AppSettin
     volume: clampVolume(partial.volume ?? current.volume),
     appearance: normalizeAppearanceSettings(partial.appearance, current.appearance),
     experimental: normalizeExperimentalSettings(partial.experimental, current.experimental),
-    externalRolePaths: Array.isArray(partial.externalRolePaths)
-      ? partial.externalRolePaths
+    selectedPersonality: partial.selectedPersonality !== undefined
+      ? normalizeSelectedCharacterProfile(partial.selectedPersonality)
+      : current.selectedPersonality,
+    externalRolePaths: partial.externalRolePaths !== undefined
+      ? normalizeExternalRolePaths(partial.externalRolePaths)
       : current.externalRolePaths,
     plugins: partial.plugins && typeof partial.plugins === 'object'
       ? partial.plugins
@@ -990,6 +996,24 @@ function normalizeASRBaseUrl(provider: ASRProviderType, value: unknown): string 
     return providerEntry.defaultBaseUrl
   }
   return baseUrl
+}
+
+function normalizeSelectedCharacterProfile(value: unknown): string {
+  const ref = typeof value === 'string' ? value.trim() : ''
+  if (ref.startsWith('chat:') || (ref.startsWith('file:') && ref.toLowerCase().endsWith('.json'))) {
+    return ref
+  }
+  return DEFAULT_SELECTED_CHARACTER_PROFILE
+}
+
+function normalizeExternalRolePaths(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return [...new Set(value
+    .filter((item): item is string => typeof item === 'string')
+    .map(item => item.trim())
+    .filter(item => item.toLowerCase().endsWith('.json')))]
 }
 
 function normalizeLanguage(value: unknown): AppSettings['language'] {

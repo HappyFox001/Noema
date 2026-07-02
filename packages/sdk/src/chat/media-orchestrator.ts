@@ -1,6 +1,8 @@
 /**
  * Shared media orchestration helpers for roleplay chat turns.
  */
+import type { CharacterProfile } from '../character-profile/index.js'
+
 export type RoleplayMediaLanguage = 'zh-CN' | 'en-US'
 export type RoleplayMediaLocalizedText = Record<RoleplayMediaLanguage, string>
 
@@ -28,18 +30,7 @@ export interface RoleplayMediaPolicy {
   voicePersistence: RoleplayMediaPersistenceMode
 }
 
-export interface RoleplayMediaCharacter {
-  id?: string
-  roleCard?: Record<string, unknown>
-  displayName?: RoleplayMediaLocalizedText
-  description?: RoleplayMediaLocalizedText
-  story?: RoleplayMediaLocalizedText
-  background?: RoleplayMediaLocalizedText
-  firstMessage?: RoleplayMediaLocalizedText
-  avatarImage?: string
-  bodyImage?: string
-  tag?: Partial<Record<RoleplayMediaLanguage, string[]>>
-}
+export type RoleplayMediaCharacter = CharacterProfile
 
 export interface RoleplayMediaIntent {
   image?: boolean | {

@@ -1850,7 +1850,7 @@ let appSettings: AppSettings = {
   volume: 70,
   appearance: { orbStyle: 'default', theme: 'night', liquidGlassEnabled: true, dragonCursorEnabled: true },
   experimental: { selfLearningEnabled: true },
-  selectedPersonality: 'role:eva',
+  selectedPersonality: 'chat:chen-qianyu',
   externalRolePaths: [],
   plugins: {},
   pluginConfigs: {},
@@ -2759,13 +2759,12 @@ app.whenReady().then(async () => {
   await interactiveInputStore.initialize()
   console.log('[InteractiveInput] Store initialized')
 
-  if (appSettings.selectedPersonality && appSettings.selectedPersonality !== 'role:eva') {
-    try {
-      await getPersonalityManager().setCurrentPersonality(appSettings.selectedPersonality)
-    } catch (error) {
-      console.warn('[App] Failed to restore selected personality:', error)
-      appSettings = await getSettingsStore().update({ selectedPersonality: 'role:eva' })
-    }
+  try {
+    await getPersonalityManager().setCurrentPersonality(appSettings.selectedPersonality)
+  } catch (error) {
+    console.warn('[App] Failed to restore selected character profile:', error)
+    appSettings = await getSettingsStore().update({ selectedPersonality: 'chat:chen-qianyu' })
+    await getPersonalityManager().setCurrentPersonality(appSettings.selectedPersonality)
   }
 
   try {

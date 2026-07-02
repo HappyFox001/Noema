@@ -1,3 +1,6 @@
+import type { CharacterProfile } from '../character-profile/index.js'
+import { characterProfileToPersonality } from '../character-profile/index.js'
+
 export interface Personality {
   character: {
     name: string
@@ -30,9 +33,13 @@ export interface Personality {
 }
 
 export class PersonalityEngine {
-  constructor(private personality: Personality) {}
+  constructor(private characterProfile: CharacterProfile) {}
 
   getPersonality(): Personality {
-    return { ...this.personality }
+    return characterProfileToPersonality(this.characterProfile)
+  }
+
+  getCharacterProfile(): CharacterProfile {
+    return this.characterProfile
   }
 }

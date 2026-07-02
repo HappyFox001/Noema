@@ -1,6 +1,7 @@
 import type { LLMProvider } from '../llm/index.js'
 import type { MemoryEngine } from '../memory/index.js'
 import type { PersonalityEngine } from '../personality/index.js'
+import type { CharacterProfile } from '../character-profile/index.js'
 import type { AgentCore } from '../agent/index.js'
 import type { ContextManager, ResponseItem, TruncationPolicy } from '../context/index.js'
 import { PromptBuilder } from '../prompt/index.js'
@@ -28,6 +29,7 @@ export interface TaskIntent {
 
 export interface DialogueTurnContext {
   memoryContext: Awaited<ReturnType<MemoryEngine['retrieve']>>
+  characterProfile: CharacterProfile
   personality: ReturnType<PersonalityEngine['getPersonality']>
   tools: ReturnType<AgentCore['getTools']>
   hasTools: boolean
@@ -54,11 +56,13 @@ export class LLMContextAggregator {
     }
     this.context.recordItems([userMessage], this.truncationPolicy)
 
+    const characterProfile = this.personality.getCharacterProfile()
     const personality = this.personality.getPersonality()
     const tools = this.agent.getTools()
 
     return {
       memoryContext,
+      characterProfile,
       personality,
       tools,
       hasTools: tools.length > 0,
@@ -105,7 +109,7 @@ export class LLMProcessor {
       currentContext,
       {
         tools: detectTask ? turnContext.tools : [],
-        personality: turnContext.personality,
+        characterProfile: turnContext.characterProfile,
         baseInstructions: {
           system: baseInstructions,
         },

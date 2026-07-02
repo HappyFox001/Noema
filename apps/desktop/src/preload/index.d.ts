@@ -604,7 +604,7 @@ declare global {
           id: string
           name: string
           path: string
-          source: 'role' | 'file'
+          source: 'chat' | 'file'
         }>
         error?: string
       }>

@@ -1,37 +1,22 @@
 /**
  * Defines chat resource manifests and runtime chat state loading.
  */
+import {
+  normalizeCharacterProfile,
+  type CharacterProfile,
+  type CharacterProfileLocalizedText,
+  type CharacterProfileOpeningPanel,
+} from '@noema/sdk/character-profile'
+
 export type ChatLanguageCode = 'zh-CN' | 'en-US'
 
 export type ChatMessageRole = 'user' | 'assistant' | 'system'
 
 export type ChatActivityState = 'idle' | 'thinking' | 'generating_image' | 'generating_audio' | 'using_tool'
 
-export type ChatLocalizedText = Record<ChatLanguageCode, string>
-
-export interface ChatCharacterResource {
-  id: string
-  roleCard?: Record<string, unknown>
-  openingPanel?: ChatOpeningPanel
-  name: ChatLocalizedText
-  displayName: ChatLocalizedText
-  description: ChatLocalizedText
-  story: ChatLocalizedText
-  background: ChatLocalizedText
-  scene: ChatSceneState
-  firstMessage: ChatLocalizedText
-  tag: Record<ChatLanguageCode, string[]>
-  avatarImage: string
-  bodyImage: string
-}
-
-export interface ChatOpeningPanel {
-  html: string
-  css: string
-  summary?: string
-  layoutKind?: string
-  sourceArtifactId?: string
-}
+export type ChatLocalizedText = CharacterProfileLocalizedText
+export type ChatCharacterResource = CharacterProfile
+export type ChatOpeningPanel = CharacterProfileOpeningPanel
 
 export interface ChatConversationSummary {
   id: string
@@ -298,28 +283,7 @@ function normalizeStoredConversations(
 }
 
 function normalizeStoredCharacterResource(value: unknown): ChatCharacterResource | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return null
-  }
-  const resource = value as Partial<ChatCharacterResource>
-  if (!resource.id) {
-    return null
-  }
-  return {
-    id: String(resource.id),
-    roleCard: resource.roleCard && typeof resource.roleCard === 'object' && !Array.isArray(resource.roleCard) ? resource.roleCard : undefined,
-    openingPanel: normalizeOpeningPanel(resource.openingPanel),
-    name: normalizeLocalizedText(resource.name),
-    displayName: normalizeLocalizedText(resource.displayName),
-    description: normalizeLocalizedText(resource.description),
-    story: normalizeLocalizedText(resource.story),
-    background: normalizeLocalizedText(resource.background),
-    scene: normalizeSceneState(resource.scene),
-    firstMessage: normalizeLocalizedText(resource.firstMessage),
-    tag: normalizeTagMap(resource.tag),
-    avatarImage: typeof resource.avatarImage === 'string' ? resource.avatarImage : '',
-    bodyImage: typeof resource.bodyImage === 'string' ? resource.bodyImage : '',
-  }
+  return normalizeCharacterProfile(value)
 }
 
 async function loadStoredConversationDetail(

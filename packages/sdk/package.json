@@ -16,6 +16,11 @@
       "import": "./dist/character-workflow/index.js",
       "default": "./dist/character-workflow/index.js"
     },
+    "./character-profile": {
+      "types": "./dist/character-profile/index.d.ts",
+      "import": "./dist/character-profile/index.js",
+      "default": "./dist/character-profile/index.js"
+    },
     "./character-workflow/workflow-builder": {
       "types": "./dist/character-workflow/workflow-builder.d.ts",
       "import": "./dist/character-workflow/workflow-builder.js",
@@ -60,11 +65,6 @@
       "types": "./dist/audio/tts-catalog.d.ts",
       "import": "./dist/audio/tts-catalog.js",
       "default": "./dist/audio/tts-catalog.js"
-    },
-    "./config/personality-loader": {
-      "types": "./dist/config/personality-loader.d.ts",
-      "import": "./dist/config/personality-loader.js",
-      "default": "./dist/config/personality-loader.js"
     }
   },
   "scripts": {
@@ -78,8 +78,7 @@
     "fish-audio": "^0.1.0",
     "openai": "^4.28.0",
     "proxy-agent": "^6.5.0",
-    "undici": "^6.22.0",
-    "yaml": "^2.3.4"
+    "undici": "^6.22.0"
   },
   "devDependencies": {
     "@types/jest": "^29.5.0",

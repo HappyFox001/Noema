@@ -8,6 +8,7 @@ import {
   type ChatMessageContentPart,
 } from './index.js'
 import type { ChatRuntimeTurnRequest } from './request-runtime.js'
+import type { CharacterProfile } from '../character-profile/index.js'
 
 export * from './media-orchestrator.js'
 
@@ -49,16 +50,7 @@ export interface ChatRuntimeNarrativeSummary {
   text: string
 }
 
-export interface ChatRuntimeCharacterResource {
-  id?: string
-  roleCard?: Record<string, unknown>
-  displayName: ChatRuntimeLocalizedText
-  description: ChatRuntimeLocalizedText
-  story: ChatRuntimeLocalizedText
-  background: ChatRuntimeLocalizedText
-  firstMessage: ChatRuntimeLocalizedText
-  tag?: Partial<Record<ChatRuntimeLanguage, string[]>>
-}
+export type ChatRuntimeCharacterResource = CharacterProfile
 
 export type ChatRuntimeMediaInput = ChatMediaItem
 

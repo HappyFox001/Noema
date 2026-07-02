@@ -174,7 +174,7 @@ export class ChatSession {
     const parts = [this.systemPrompt.trim(), this.outputConstraintPrompt.trim()]
     const character = request.character
     if (character) {
-      parts.push(formatCharacterContext(character))
+      parts.push(formatChatCharacterContext(character))
     }
     if (request.language) {
       parts.push(`Reply in ${request.language} unless the user clearly asks for another language.`)
@@ -205,7 +205,7 @@ export function createChatSessionFromModel(
   })
 }
 
-function formatCharacterContext(character: ChatCharacterContext): string {
+export function formatChatCharacterContext(character: ChatCharacterContext): string {
   const lines = ['<character>']
   appendTag(lines, 'id', character.id)
   appendTag(lines, 'display_name', character.displayName)

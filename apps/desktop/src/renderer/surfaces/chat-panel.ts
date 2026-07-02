@@ -2331,7 +2331,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const openingPanel = extractOpeningPanelFromRunDraft(runState)
     const id = `workflow-run-${sanitizeChatResourceId(runState.run?.id ?? name)}`
     return {
+      schemaVersion: 1,
       id,
+      source: {
+        kind: 'workflow-run',
+        runId: runState.run?.id,
+      },
       roleCard: {
         ...fields,
         firstMessage,
@@ -2351,6 +2356,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       },
       avatarImage,
       bodyImage,
+      assets: [
+        ...(avatarImage ? [{ id: `${id}-avatar`, kind: 'avatar' as const, uri: avatarImage }] : []),
+        ...(bodyImage ? [{ id: `${id}-body`, kind: 'body' as const, uri: bodyImage }] : []),
+      ],
     }
   }
 

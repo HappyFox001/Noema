@@ -872,7 +872,7 @@ function mediaExtensionsForKind(kind: ChatSelectMediaRequest['kind']): string[] 
 function materialFileExtensions(): string[] {
   return [
     'png', 'jpg', 'jpeg', 'webp', 'gif',
-    'txt', 'md', 'markdown', 'json', 'csv', 'tsv', 'yaml', 'yml',
+    'txt', 'md', 'markdown', 'json', 'csv', 'tsv',
     'pdf', 'doc', 'docx', 'rtf',
   ]
 }
@@ -980,9 +980,6 @@ function documentMimeForPath(filePath: string): string | null {
       return 'text/csv'
     case '.tsv':
       return 'text/tab-separated-values'
-    case '.yaml':
-    case '.yml':
-      return 'application/yaml'
     case '.pdf':
       return 'application/pdf'
     case '.doc':
@@ -999,5 +996,4 @@ function documentMimeForPath(filePath: string): string | null {
 function isTextDocumentMime(mimeType: string): boolean {
   return mimeType.startsWith('text/')
     || mimeType === 'application/json'
-    || mimeType === 'application/yaml'
 }

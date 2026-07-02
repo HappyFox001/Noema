@@ -63,10 +63,10 @@ export function registerPersonalityIpcHandlers(
   ipcMain.handle('personality:addFile', async () => {
     try {
       const dialogOptions: OpenDialogOptions = {
-        title: '选择角色 YAML 文件',
+        title: '选择角色 JSON 文件',
         properties: ['openFile'],
         filters: [
-          { name: 'YAML Role', extensions: ['yaml', 'yml'] },
+          { name: 'Character Profile', extensions: ['json'] },
         ],
       }
       const mainWindow = options.getMainWindow()
@@ -93,7 +93,7 @@ export function registerPersonalityIpcHandlers(
         success: true,
         item: {
           id: ref,
-          name: filePath.split(/[\\/]/).pop()?.replace(/\.ya?ml$/i, '') ?? filePath,
+          name: filePath.split(/[\\/]/).pop()?.replace(/\.json$/i, '') ?? filePath,
           path: filePath,
           source: 'file',
         },
