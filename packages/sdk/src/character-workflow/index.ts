@@ -599,6 +599,22 @@ const CHARACTER_SUPPORT_FIELD_OPTIONS = [
   option('Appearance Prompt', 'appearancePrompt'),
 ]
 
+const OPENING_LAYOUT_KIND_OPTIONS = [
+  option('Auto Mixed Opening', 'auto-opening-layout'),
+  option('Cinematic Poster', 'cinematic-poster'),
+  option('Visual Novel Scene', 'visual-novel-scene'),
+  option('Chat Teaser', 'chat-teaser'),
+  option('Scrapbook Collage', 'scrapbook-collage'),
+  option('Profile Dossier', 'profile-dossier'),
+  option('Editorial Cover', 'editorial-cover'),
+]
+
+const OPENING_TEXT_DENSITY_OPTIONS = [
+  option('Minimal', 'minimal'),
+  option('Balanced', 'balanced'),
+  option('Story', 'story'),
+]
+
 const DEFAULT_CHARACTER_CARD_FIELDS = CHARACTER_CARD_FIELD_OPTIONS.map((item) => item.value)
 const DEFAULT_CHARACTER_SUPPORT_FIELDS = CHARACTER_SUPPORT_FIELD_OPTIONS.map((item) => item.value)
 const DEFAULT_CHARACTER_FIELD_TARGET_FIELDS = [...DEFAULT_CHARACTER_CARD_FIELDS, ...DEFAULT_CHARACTER_SUPPORT_FIELDS]
@@ -610,7 +626,7 @@ const DEFAULT_CHARACTER_FIELD_CONTROLS: CharacterFieldControlConfig[] = [
   { field: 'personality', fieldPurpose: 'Inner drives, contradictions, habits, emotional logic, and relationship behavior.', tone: 'sharp', lengthPolicy: 'medium', avoidPatterns: ['self-introduction'] },
   { field: 'background', fieldPurpose: 'Formative history, secrets, losses, obligations, and causes.', tone: 'dramatic', lengthPolicy: 'medium', avoidPatterns: ['lore-dump'] },
   { field: 'scenario', fieldPurpose: 'Persistent present setup, current tension, roles, stakes, and continuation hooks.', tone: 'restrained', lengthPolicy: 'medium', avoidPatterns: ['asking-user-intent'] },
-  { field: 'firstMessage', fieldPurpose: 'Playable opening scene wrapped in chat tags with a concrete hook.', tone: 'warm', lengthPolicy: 'long', avoidPatterns: ['ooc-explanation', 'asking-user-intent'] },
+  { field: 'firstMessage', fieldPurpose: 'Playable opening scene wrapped in chat tags with a concrete hook. Keep it rich but concise.', tone: 'warm', lengthPolicy: 'medium', avoidPatterns: ['ooc-explanation', 'asking-user-intent'] },
   { field: 'dialogueStyle', fieldPurpose: 'Speech rhythm, diction, address style, emotional tells, and taboo phrases.', tone: 'neutral', lengthPolicy: 'medium', avoidPatterns: ['lore-dump'] },
   { field: 'worldContext', fieldPurpose: 'Stable world, institution, social, supernatural, or relationship facts outside one scene.', tone: 'restrained', lengthPolicy: 'medium', avoidPatterns: ['lore-dump'] },
   { field: 'appearancePrompt', fieldPurpose: 'Compact avatar identity seed prompt derived from completed character fields and image controls.', tone: 'neutral', lengthPolicy: 'medium', avoidPatterns: ['ooc-explanation'] },
@@ -690,12 +706,8 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     },
     outputs: { layout: port('layout', 'Layout', 'asset-target') },
     parameters: [
-      parameter('layoutKind', 'Layout Kind', 'select', 'immersive-card-css', undefined, [
-        option('Immersive Card CSS', 'immersive-card-css'),
-        option('Forum Post Card', 'forum-post-card'),
-        option('Mobile Chat Intro', 'mobile-chat-intro'),
-        option('SillyTavern Description Block', 'sillytavern-description-block'),
-      ]),
+      parameter('layoutKind', 'Layout Kind', 'select', 'auto-opening-layout', undefined, OPENING_LAYOUT_KIND_OPTIONS),
+      parameter('textDensity', 'Text Density', 'select', 'minimal', undefined, OPENING_TEXT_DENSITY_OPTIONS),
       parameter('includeSections', 'Include Sections', 'multi-select', ['title', 'tags', 'opening', 'coverImage', 'supportImages'], undefined, [
         option('Title', 'title'),
         option('Tags', 'tags'),

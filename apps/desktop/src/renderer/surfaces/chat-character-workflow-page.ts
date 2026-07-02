@@ -545,10 +545,26 @@ const DEFAULT_CHARACTER_FIELD_CONTROLS: WorkflowFieldControlItem[] = [
   { field: 'personality', fieldPurpose: 'Inner drives, contradictions, habits, emotional logic, and relationship behavior.', tone: 'sharp', lengthPolicy: 'medium', avoidPatterns: ['self-introduction'] },
   { field: 'background', fieldPurpose: 'Formative history, secrets, losses, obligations, and causes.', tone: 'dramatic', lengthPolicy: 'medium', avoidPatterns: ['lore-dump'] },
   { field: 'scenario', fieldPurpose: 'Persistent present setup, current tension, roles, stakes, and continuation hooks.', tone: 'restrained', lengthPolicy: 'medium', avoidPatterns: ['asking-user-intent'] },
-  { field: 'firstMessage', fieldPurpose: 'Playable opening scene wrapped in chat tags with a concrete hook.', tone: 'warm', lengthPolicy: 'long', avoidPatterns: ['ooc-explanation', 'asking-user-intent'] },
+  { field: 'firstMessage', fieldPurpose: 'Playable opening scene wrapped in chat tags with a concrete hook. Keep it rich but concise.', tone: 'warm', lengthPolicy: 'medium', avoidPatterns: ['ooc-explanation', 'asking-user-intent'] },
   { field: 'dialogueStyle', fieldPurpose: 'Speech rhythm, diction, address style, emotional tells, and taboo phrases.', tone: 'neutral', lengthPolicy: 'medium', avoidPatterns: ['lore-dump'] },
   { field: 'worldContext', fieldPurpose: 'Stable world, institution, social, supernatural, or relationship facts outside one scene.', tone: 'restrained', lengthPolicy: 'medium', avoidPatterns: ['lore-dump'] },
   { field: 'appearancePrompt', fieldPurpose: 'Compact avatar identity seed prompt derived from completed character fields and image controls.', tone: 'neutral', lengthPolicy: 'medium', avoidPatterns: ['ooc-explanation'] },
+]
+
+const OPENING_LAYOUT_KIND_OPTIONS = [
+  { label: 'Auto Mixed Opening', value: 'auto-opening-layout' },
+  { label: 'Cinematic Poster', value: 'cinematic-poster' },
+  { label: 'Visual Novel Scene', value: 'visual-novel-scene' },
+  { label: 'Chat Teaser', value: 'chat-teaser' },
+  { label: 'Scrapbook Collage', value: 'scrapbook-collage' },
+  { label: 'Profile Dossier', value: 'profile-dossier' },
+  { label: 'Editorial Cover', value: 'editorial-cover' },
+]
+
+const OPENING_TEXT_DENSITY_OPTIONS = [
+  { label: 'Minimal', value: 'minimal' },
+  { label: 'Balanced', value: 'balanced' },
+  { label: 'Story', value: 'story' },
 ]
 
 const TARGET_RESOURCE_SLOT_TYPES = [
@@ -633,12 +649,8 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
   ], [
     slot('layout', 'Layout', 'opening-layout-resource', 'Opening layout target resource.'),
   ], [
-    param('layoutKind', 'Layout Kind', 'select', 'immersive-card-css', undefined, undefined, undefined, [
-      { label: 'Immersive Card CSS', value: 'immersive-card-css' },
-      { label: 'Forum Post Card', value: 'forum-post-card' },
-      { label: 'Mobile Chat Intro', value: 'mobile-chat-intro' },
-      { label: 'SillyTavern Description Block', value: 'sillytavern-description-block' },
-    ]),
+    param('layoutKind', 'Layout Kind', 'select', 'auto-opening-layout', undefined, undefined, undefined, OPENING_LAYOUT_KIND_OPTIONS),
+    param('textDensity', 'Text Density', 'select', 'minimal', undefined, undefined, undefined, OPENING_TEXT_DENSITY_OPTIONS),
     param('includeSections', 'Include Sections', 'multi-select', ['title', 'tags', 'opening', 'coverImage', 'supportImages'], undefined, undefined, undefined, [
       { label: 'Title', value: 'title' },
       { label: 'Tags', value: 'tags' },
