@@ -6,8 +6,7 @@ import { dialog, systemPreferences, shell, type BrowserWindow, type OpenDialogOp
 import { readFile } from 'fs/promises'
 import { basename, extname } from 'path'
 import { listChatModelsWithProvider } from '@noema/sdk/chat/model-list'
-import { generateImageWithConfiguredProvider } from '@noema/sdk/image'
-import type { TTSProviderEvent } from '@noema/sdk'
+import { ChatMediaService } from '@noema/sdk/chat/media-service'
 import {
   ChatRuntime,
   normalizeChatRuntimeError,
@@ -32,7 +31,6 @@ import {
 import { ChatHistoryStore, type StoredChatConversation, type StoredChatConversationListItem } from './chat-history-store.js'
 import { CharacterWorkflowStore, type StoredCharacterWorkflowProject } from './character-workflow-store.js'
 import type { TTSModelConfig } from './settings-store.js'
-import { createTTSProviderForConfig } from './voice-runtime-controller.js'
 
 const LOCAL_CLI_DEFAULT_MODEL_REF = '__default__'
 
@@ -343,6 +341,9 @@ export function registerChatIpcHandlers(
       },
     },
   })
+  const chatMediaService = new ChatMediaService({
+    getProxyUrl: () => options.getProxyUrl?.(),
+  })
 
   ipcMain.handle('chat:sendMessage', async (_, request: ChatSendMessageRequest): Promise<ChatSendMessageResult> => {
     try {
@@ -364,52 +365,12 @@ export function registerChatIpcHandlers(
 
   ipcMain.handle('chat:generateImageMedia', async (_, request: ChatGenerateImageMediaRequest): Promise<ChatGenerateMediaResult> => {
     try {
-      const modelName = String(request?.modelName || request?.model?.modelName || '').trim()
-      const prompt = String(request?.prompt || '').trim()
-      if (!request?.model || request.model.modelType !== 'image') {
-        throw new Error('Image model is not configured')
-      }
-      if (!prompt) {
-        throw new Error('Image prompt is empty')
-      }
-      const result = await generateImageWithConfiguredProvider({
-        model: {
-          id: request.model.id,
-          provider: request.model.provider,
-          modelName,
-          apiKey: request.model.apiKey,
-          baseUrl: request.model.baseUrl,
-        },
-        modelName,
-        prompt,
-        proxyUrl: options.getProxyUrl?.(),
-        referenceImages: request.referenceImages,
-        size: request.size,
-      })
-      const mimeType = result.mimeType || inferDataUrlMimeType(result.dataUrl) || 'image/png'
+      const result = await chatMediaService.generateImage(request)
       return {
         success: true,
         provider: result.provider,
         model: result.model,
-        media: {
-          kind: 'image',
-          name: request.name || `${result.model || modelName || 'image'}.png`,
-          mimeType,
-          dataUrl: result.dataUrl,
-          url: result.url,
-          prompt: result.prompt,
-          origin: 'generated',
-          context: {
-            mode: 'text',
-            summary: prompt.slice(0, 420),
-          },
-          metadata: {
-            provider: result.provider,
-            model: result.model,
-            referenceImages: result.referenceImages ?? request.referenceImages ?? [],
-            size: request.size,
-          },
-        },
+        media: result.media as ChatIpcMedia,
       }
     } catch (error: any) {
       console.error('[ChatMedia] Failed to generate image:', error)
@@ -419,35 +380,12 @@ export function registerChatIpcHandlers(
 
   ipcMain.handle('chat:synthesizeAudioMedia', async (_, request: ChatSynthesizeAudioMediaRequest): Promise<ChatGenerateMediaResult> => {
     try {
-      const text = String(request?.text || '').trim()
-      if (!text) {
-        throw new Error('TTS text is empty')
-      }
-      const result = await synthesizeChatAudioMedia(request.model, text)
+      const result = await chatMediaService.synthesizeAudio(request)
       return {
         success: true,
-        provider: request.model.provider,
-        model: request.model.modelName,
-        media: {
-          kind: 'audio',
-          name: request.name || `${request.model.modelName || request.model.provider || 'voice'}.${audioExtensionForMime(result.mimeType)}`,
-          mimeType: result.mimeType,
-          dataUrl: result.dataUrl,
-          size: result.size,
-          transcript: text,
-          origin: 'generated',
-          context: {
-            mode: 'text',
-            summary: text.slice(0, 420),
-          },
-          metadata: {
-            provider: request.model.provider,
-            model: request.model.modelName,
-            voiceId: request.model.voiceId,
-            sampleRate: result.sampleRate,
-            audioFormat: result.audioFormat,
-          },
-        },
+        provider: result.provider,
+        model: result.model,
+        media: result.media as ChatIpcMedia,
       }
     } catch (error: any) {
       console.error('[ChatMedia] Failed to synthesize audio:', error)
@@ -896,120 +834,6 @@ function getModelTransport(model: ChatIpcModelConfig | null | undefined): NonNul
 
 function isLocalCLITransport(transport: ChatIpcModelConfig['transport'] | undefined): boolean {
   return transport === 'codex_local' || transport === 'claude_code_local'
-}
-
-interface SynthesizedChatAudioMedia {
-  dataUrl: string
-  mimeType: string
-  size: number
-  sampleRate: number
-  audioFormat: 'pcm' | 'mp3' | 'opus'
-}
-
-async function synthesizeChatAudioMedia(model: TTSModelConfig, text: string): Promise<SynthesizedChatAudioMedia> {
-  const provider = createTTSProviderForConfig(model)
-  const chunks: Uint8Array[] = []
-  let eventError: Error | null = null
-  provider.setEventHandler((event: TTSProviderEvent) => {
-    if (event.type === 'audio' && event.audio.length > 0) {
-      chunks.push(event.audio)
-    } else if (event.type === 'error') {
-      eventError = event.error
-    }
-  })
-  try {
-    await runWithTimeout(
-      (async () => {
-        await provider.startStreaming()
-        await provider.pushText(text)
-        await provider.finishStreaming()
-      })(),
-      90_000,
-      'TTS synthesis timed out'
-    )
-    if (eventError) {
-      throw eventError
-    }
-    if (!chunks.length) {
-      throw new Error('TTS provider returned no audio')
-    }
-    const capabilities = provider.getCapabilities()
-    const raw = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength)))
-    const audioFormat = capabilities.audioFormat
-    const sampleRate = capabilities.sampleRate || model.sampleRate || 16000
-    const playable = audioFormat === 'pcm' ? wrapPcm16LeAsWav(raw, sampleRate) : raw
-    const mimeType = audioFormat === 'pcm'
-      ? 'audio/wav'
-      : audioFormat === 'mp3'
-      ? 'audio/mpeg'
-      : 'audio/ogg; codecs=opus'
-    return {
-      dataUrl: `data:${mimeType};base64,${playable.toString('base64')}`,
-      mimeType,
-      size: playable.length,
-      sampleRate,
-      audioFormat,
-    }
-  } finally {
-    await provider.close().catch(() => undefined)
-  }
-}
-
-function wrapPcm16LeAsWav(pcm: Buffer, sampleRate: number): Buffer {
-  const header = Buffer.alloc(44)
-  const channels = 1
-  const bitsPerSample = 16
-  const byteRate = sampleRate * channels * bitsPerSample / 8
-  const blockAlign = channels * bitsPerSample / 8
-  header.write('RIFF', 0, 'ascii')
-  header.writeUInt32LE(36 + pcm.length, 4)
-  header.write('WAVE', 8, 'ascii')
-  header.write('fmt ', 12, 'ascii')
-  header.writeUInt32LE(16, 16)
-  header.writeUInt16LE(1, 20)
-  header.writeUInt16LE(channels, 22)
-  header.writeUInt32LE(sampleRate, 24)
-  header.writeUInt32LE(byteRate, 28)
-  header.writeUInt16LE(blockAlign, 32)
-  header.writeUInt16LE(bitsPerSample, 34)
-  header.write('data', 36, 'ascii')
-  header.writeUInt32LE(pcm.length, 40)
-  return Buffer.concat([header, pcm])
-}
-
-function inferDataUrlMimeType(dataUrl: string | undefined): string {
-  const match = String(dataUrl || '').match(/^data:([^;,]+)[;,]/)
-  return match?.[1] || ''
-}
-
-function audioExtensionForMime(mimeType: string): string {
-  if (mimeType.includes('mpeg') || mimeType.includes('mp3')) {
-    return 'mp3'
-  }
-  if (mimeType.includes('ogg') || mimeType.includes('opus')) {
-    return 'ogg'
-  }
-  return 'wav'
-}
-
-async function runWithTimeout<T>(
-  promise: Promise<T>,
-  timeoutMs: number,
-  message: string
-): Promise<T> {
-  let timeout: ReturnType<typeof setTimeout> | null = null
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<T>((_, reject) => {
-        timeout = setTimeout(() => reject(new Error(message)), timeoutMs)
-      }),
-    ])
-  } finally {
-    if (timeout) {
-      clearTimeout(timeout)
-    }
-  }
 }
 
 async function collectChatRuntimeResult(events: AsyncGenerator<ChatRuntimeEvent>): Promise<{

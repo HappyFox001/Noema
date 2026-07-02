@@ -26,6 +26,11 @@
       "import": "./dist/chat/conversation-runtime.js",
       "default": "./dist/chat/conversation-runtime.js"
     },
+    "./chat/media-service": {
+      "types": "./dist/chat/media-service.d.ts",
+      "import": "./dist/chat/media-service.js",
+      "default": "./dist/chat/media-service.js"
+    },
     "./chat/model-list": {
       "types": "./dist/chat/model-list.d.ts",
       "import": "./dist/chat/model-list.js",
@@ -45,6 +50,16 @@
       "types": "./dist/image/catalog.d.ts",
       "import": "./dist/image/catalog.js",
       "default": "./dist/image/catalog.js"
+    },
+    "./audio/tts-runtime": {
+      "types": "./dist/audio/tts-runtime.d.ts",
+      "import": "./dist/audio/tts-runtime.js",
+      "default": "./dist/audio/tts-runtime.js"
+    },
+    "./audio/tts-catalog": {
+      "types": "./dist/audio/tts-catalog.d.ts",
+      "import": "./dist/audio/tts-catalog.js",
+      "default": "./dist/audio/tts-catalog.js"
     },
     "./config/personality-loader": {
       "types": "./dist/config/personality-loader.d.ts",

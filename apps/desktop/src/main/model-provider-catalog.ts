@@ -10,6 +10,10 @@ import {
   type ImageProviderApiStyle,
   type ImageProviderType,
 } from '@noema/sdk/image/catalog'
+import {
+  TTS_RUNTIME_PROVIDER_CATALOG,
+  type ConfiguredTTSProvider,
+} from '@noema/sdk/audio/tts-catalog'
 
 export type { ImageProviderType } from '@noema/sdk/image/catalog'
 
@@ -26,9 +30,7 @@ export type LLMProviderType =
   | 'azure-openai'
   | 'openai-compatible'
 
-export type TTSProviderType =
-  | 'fish'
-  | 'elevenlabs'
+export type TTSProviderType = ConfiguredTTSProvider
 
 export type ASRProviderType =
   | 'fish'
@@ -208,30 +210,10 @@ export const IMAGE_PROVIDER_CATALOG: ImageProviderCatalogEntry[] = SDK_IMAGE_PRO
 export type TTSProviderCatalogEntry = VoiceProviderCatalogEntry & { value: TTSProviderType }
 export type ASRProviderCatalogEntry = VoiceProviderCatalogEntry & { value: ASRProviderType }
 
-export const TTS_PROVIDER_CATALOG: TTSProviderCatalogEntry[] = [
-  {
-    value: 'fish',
-    label: 'Fish Audio',
-    protocol: 'fish-realtime',
-    implemented: true,
-    defaultModel: 's2-pro',
-    defaultBaseUrl: '',
-    defaultLanguage: '',
-    requiresVoiceId: true,
-    sampleRate: 16000,
-  },
-  {
-    value: 'elevenlabs',
-    label: 'ElevenLabs HTTP',
-    protocol: 'elevenlabs-http',
-    implemented: true,
-    defaultModel: 'eleven_turbo_v2_5',
-    defaultBaseUrl: 'https://api.elevenlabs.io',
-    defaultLanguage: 'zh',
-    requiresVoiceId: true,
-    sampleRate: 16000,
-  },
-]
+export const TTS_PROVIDER_CATALOG: TTSProviderCatalogEntry[] = TTS_RUNTIME_PROVIDER_CATALOG.map((entry) => ({
+  ...entry,
+  implemented: true,
+}))
 
 export const ASR_PROVIDER_CATALOG: ASRProviderCatalogEntry[] = [
   {

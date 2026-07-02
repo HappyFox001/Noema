@@ -141,9 +141,9 @@ import {
   FALLBACK_ENDPOINTING_CONFIG,
   LOW_LATENCY_VOICE_CONFIG,
   VoiceRuntimeController,
-  createTTSProviderForConfig,
-  normalizeTTSModelName,
 } from './voice-runtime-controller.js'
+import { normalizeConfiguredTTSModelName } from '@noema/sdk/audio/tts-catalog'
+import { createTTSProviderForConfiguredModel } from '@noema/sdk/audio/tts-runtime'
 const DEV_SERVER_URL = 'http://127.0.0.1:5173'
 
 type InterruptionReason = 'vad_start' | 'transcript_start' | 'manual' | 'provider_switch'
@@ -1487,7 +1487,7 @@ function getPluginRuntimeContext(enabled: boolean): PluginRuntimeContext {
     voiceOutputEnabled: true,
     tts: {
       provider: ttsConfig.provider === 'fish' ? 'fish-audio' : ttsConfig.provider,
-      model: normalizeTTSModelName(ttsConfig),
+      model: normalizeConfiguredTTSModelName(ttsConfig),
     },
   }
 }
@@ -2074,7 +2074,7 @@ async function initializeTTSProvider(): Promise<void> {
     return
   }
 
-  const provider = createTTSProviderForConfig(ttsConfig)
+  const provider = createTTSProviderForConfiguredModel(ttsConfig)
 
   const providerGeneration = ++ttsProviderGeneration
   attachTTSProviderEvents(provider, providerGeneration)
