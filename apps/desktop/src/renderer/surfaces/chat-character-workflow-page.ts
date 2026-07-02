@@ -5,7 +5,7 @@ import Fuse from 'fuse.js'
 import Split from 'split-grid'
 import { draggable, dropTargetForElements, monitorForElements } from '@atlaskit/pragmatic-drag-and-drop/dist/esm/adapter/element-adapter.js'
 import { computePosition, flip, offset, shift } from '@floating-ui/dom'
-import { Link2Off, Maximize, MessageCircle, Play, RotateCcw, Save, Search, Square, Trash2, createIcons } from 'lucide'
+import { Link2Off, Maximize, MessageCircle, Play, RotateCcw, Save, Search, Square, Trash2, createIcons, type IconNode } from 'lucide'
 import type { CharacterResourceViewState, SerializedCharacterResourceLinkKind } from './chat-character-resource-graph-state'
 
 export interface CharacterWorkflowPageOptions {
@@ -2497,12 +2497,30 @@ function renderRunCanvasControls(options: CharacterWorkflowPageOptions): string 
   const resetLabel = ui(options, '重置视图', 'Reset view')
   return `
     <div class="chat-workflow-canvas-controls chat-resource-canvas-controls chat-resource-run-controls" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '画布控制' : 'Canvas controls')}">
-      <button class="chat-workflow-run-toggle ${running ? 'is-running' : ''}" type="button" data-chat-workflow-action="${running ? 'stop' : 'run'}" aria-label="${options.escapeHtml(runLabel)}" title="${options.escapeHtml(runLabel)}"><i icon-name="${running ? 'square' : 'play'}" aria-hidden="true"></i></button>
-      <button type="button" data-chat-workflow-action="fit-view" title="${options.escapeHtml(fitLabel)}" aria-label="${options.escapeHtml(fitLabel)}"><i icon-name="maximize" aria-hidden="true"></i></button>
-      <button type="button" data-chat-workflow-action="reset-view" title="${options.escapeHtml(resetLabel)}" aria-label="${options.escapeHtml(resetLabel)}"><i icon-name="rotate-ccw" aria-hidden="true"></i></button>
+      <button class="chat-workflow-run-toggle ${running ? 'is-running' : ''}" type="button" data-chat-workflow-action="${running ? 'stop' : 'run'}" aria-label="${options.escapeHtml(runLabel)}" title="${options.escapeHtml(runLabel)}">${renderLucideSvg(running ? Square : Play)}</button>
+      <button type="button" data-chat-workflow-action="fit-view" title="${options.escapeHtml(fitLabel)}" aria-label="${options.escapeHtml(fitLabel)}">${renderLucideSvg(Maximize)}</button>
+      <button type="button" data-chat-workflow-action="reset-view" title="${options.escapeHtml(resetLabel)}" aria-label="${options.escapeHtml(resetLabel)}">${renderLucideSvg(RotateCcw)}</button>
       ${renderInspectorToggle(options)}
     </div>
   `
+}
+
+function renderLucideSvg(icon: IconNode): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${icon.map(([tag, attrs]) => `<${tag}${renderSvgAttributes(attrs)}></${tag}>`).join('')}</svg>`
+}
+
+function renderSvgAttributes(attrs: Record<string, string | number>): string {
+  return Object.entries(attrs)
+    .map(([key, value]) => ` ${key}="${escapeSvgAttribute(String(value))}"`)
+    .join('')
+}
+
+function escapeSvgAttribute(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
 }
 
 function renderResourceTabControl(tab: CharacterResourceGraph['tabs'][number], activeTab: 'workflow' | 'run-draft', options: CharacterWorkflowPageOptions): string {
@@ -3423,10 +3441,10 @@ function renderCanvasControls(graph: CharacterResourceGraph, options: CharacterW
   const linksLabel = ui(options, '显示/隐藏连线', 'Toggle links')
   return `
     <div class="chat-workflow-canvas-controls chat-resource-canvas-controls" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '画布控制' : 'Canvas controls')}">
-      <button class="chat-workflow-run-toggle ${running ? 'is-running' : ''}" type="button" data-chat-workflow-action="${running ? 'stop' : 'run'}" aria-label="${options.escapeHtml(runLabel)}" title="${options.escapeHtml(runLabel)}"><i icon-name="${running ? 'square' : 'play'}" aria-hidden="true"></i></button>
-      <button type="button" data-chat-workflow-action="fit-view" title="${options.escapeHtml(fitLabel)}" aria-label="${options.escapeHtml(fitLabel)}"><i icon-name="maximize" aria-hidden="true"></i></button>
-      <button type="button" data-chat-workflow-action="reset-view" title="${options.escapeHtml(resetLabel)}" aria-label="${options.escapeHtml(resetLabel)}"><i icon-name="rotate-ccw" aria-hidden="true"></i></button>
-      <button type="button" data-chat-workflow-action="toggle-links" title="${options.escapeHtml(linksLabel)}" aria-label="${options.escapeHtml(linksLabel)}"><i icon-name="link-2-off" aria-hidden="true"></i></button>
+      <button class="chat-workflow-run-toggle ${running ? 'is-running' : ''}" type="button" data-chat-workflow-action="${running ? 'stop' : 'run'}" aria-label="${options.escapeHtml(runLabel)}" title="${options.escapeHtml(runLabel)}">${renderLucideSvg(running ? Square : Play)}</button>
+      <button type="button" data-chat-workflow-action="fit-view" title="${options.escapeHtml(fitLabel)}" aria-label="${options.escapeHtml(fitLabel)}">${renderLucideSvg(Maximize)}</button>
+      <button type="button" data-chat-workflow-action="reset-view" title="${options.escapeHtml(resetLabel)}" aria-label="${options.escapeHtml(resetLabel)}">${renderLucideSvg(RotateCcw)}</button>
+      <button type="button" data-chat-workflow-action="toggle-links" title="${options.escapeHtml(linksLabel)}" aria-label="${options.escapeHtml(linksLabel)}">${renderLucideSvg(Link2Off)}</button>
       ${renderInspectorToggle(options)}
       <span class="chat-resource-zoom-label">${Math.round(graph.viewport.zoom * 100)}%</span>
     </div>
