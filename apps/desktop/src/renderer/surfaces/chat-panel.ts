@@ -2081,29 +2081,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             : `<div class="chat-history-empty compact">${options.escapeHtml(zh ? '旧消息超过短期范围后，会在回复完成时自动生成摘要。' : 'Summaries appear automatically after older messages exceed the short-term range.')}</div>`}
         </div>
       </section>
-      <section class="chat-settings-section">
-        <div class="chat-settings-section-head">
-          <div class="chat-settings-section-copy">
-            <h3>${options.escapeHtml(zh ? '短期上下文' : 'Short-term context')}</h3>
-            <p>${options.escapeHtml(zh ? '保留的完整消息' : 'Full messages kept')}</p>
-          </div>
-          <span class="chat-settings-badge">${options.escapeHtml(String(recentMessages.length))} / ${options.escapeHtml(String(stableMessages.length))}</span>
-        </div>
-        <div class="chat-history-messages">
-          ${recentMessages.length ? recentMessages.map((messageItem) => `
-          <article class="chat-history-message ${options.escapeHtml(messageItem.role)}">
-            <div>
-              <strong>${options.escapeHtml(formatChatHistoryRole(messageItem.role, language))}</strong>
-              <time>${options.escapeHtml(localizeChatText(messageItem.createdLabel, language))}</time>
-            </div>
-            <p>${options.escapeHtml(localizeChatText(messageItem.text, language))}</p>
-            <button type="button" class="chat-settings-pill-btn danger" data-chat-history-action="delete-message" data-chat-history-message="${options.escapeHtml(messageItem.id)}">
-              ${options.escapeHtml(zh ? '删除' : 'Remove')}
-            </button>
-          </article>
-        `).join('') : `<div class="chat-history-empty compact">${options.escapeHtml(zh ? '暂无短期消息' : 'No short-term messages')}</div>`}
-        </div>
-      </section>
     `
   }
 
@@ -8465,16 +8442,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       console.warn('[ChatHistory] Failed to persist conversation:', response.error)
     }
   }
-}
-
-function formatChatHistoryRole(role: ChatMessage['role'], language: 'zh-CN' | 'en-US'): string {
-  if (role === 'user') {
-    return language === 'zh-CN' ? '你' : 'You'
-  }
-  if (role === 'system') {
-    return 'System'
-  }
-  return language === 'zh-CN' ? '角色' : 'Character'
 }
 
 function formatSummaryRange(summary: ChatMemorySummary, language: 'zh-CN' | 'en-US'): string {

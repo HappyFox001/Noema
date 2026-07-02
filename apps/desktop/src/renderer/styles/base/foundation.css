@@ -1,0 +1,592 @@
+/* Base tokens, document defaults, orb surfaces, and plugin host layers. */
+
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --font-ui: 'JetBrains Mono', 'SF Mono', 'PingFang SC', sans-serif;
+  --font-soft: 'LXGW WenKai TC', 'Hiragino Sans GB', 'PingFang SC', serif;
+  --font-mixed: 'JetBrains Mono', 'LXGW WenKai TC', 'PingFang SC', sans-serif;
+  --font-nav: 'Zen Maru Gothic', 'M PLUS Rounded 1c', 'LXGW WenKai TC', 'PingFang SC', sans-serif;
+  --liquid-bg: #030405;
+  --liquid-panel: rgba(8, 9, 10, 0.88);
+  --liquid-panel-soft: rgba(255, 255, 255, 0.035);
+  --liquid-glass: rgba(255, 255, 255, 0.055);
+  --liquid-glass-strong: rgba(255, 255, 255, 0.095);
+  --liquid-line: rgba(255, 255, 255, 0.105);
+  --liquid-line-strong: rgba(255, 255, 255, 0.18);
+  --liquid-ink: rgba(248, 250, 250, 0.94);
+  --liquid-muted: rgba(248, 250, 250, 0.56);
+  --liquid-faint: rgba(248, 250, 250, 0.34);
+  --liquid-signal: rgba(238, 242, 242, 0.88);
+  --liquid-warn: rgba(230, 218, 194, 0.88);
+  --liquid-danger: rgba(232, 204, 204, 0.88);
+  --liquid-ok: rgba(218, 232, 224, 0.88);
+  --liquid-shadow: 0 28px 80px rgba(0, 0, 0, 0.38);
+  --liquid-inner: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --liquid-radius: 8px;
+  --liquid-cut: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px));
+  --control-font: var(--font-ui);
+  --select-chevron-dark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='rgba(190,255,244,0.78)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  --select-chevron-day: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='rgba(20,62,60,0.72)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  font-family: var(--font-mixed);
+  font-size: 14px;
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: light;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: transparent !important;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  background: transparent !important;
+  background-color: rgba(0, 0, 0, 0) !important;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+  user-select: none;
+  -webkit-user-select: none;
+  isolation: isolate;
+}
+
+#app {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent !important;
+  background-color: rgba(0, 0, 0, 0) !important;
+  contain: layout paint;
+  isolation: isolate;
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+#app::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.001);
+  transform: translateZ(0);
+  contain: strict;
+}
+
+.app-surface {
+  isolation: isolate;
+}
+
+.orb-slot {
+  position: relative;
+  grid-row: 1;
+  align-self: end;
+  justify-self: center;
+  width: min(100%, 320px);
+  height: min(320px, 100%);
+  min-height: 0;
+  display: grid;
+  place-items: end center;
+  overflow: visible;
+  contain: layout paint;
+  isolation: isolate;
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.liquid-glass-surface {
+  position: fixed;
+  inset: 0;
+  z-index: 9990;
+  width: 100vw;
+  height: 100vh;
+  display: block;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  mix-blend-mode: screen;
+  transition: opacity 140ms ease, visibility 0s linear 140ms;
+  transform: translateZ(0);
+  will-change: contents;
+  contain: strict;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+body.settings-open:not(.settings-closing) .liquid-glass-surface {
+  opacity: 0.95;
+  visibility: visible;
+  transition: opacity 180ms ease, visibility 0s linear 0s;
+}
+
+body.liquid-glass-disabled .liquid-glass-surface,
+body.liquid-glass-disabled.settings-open:not(.settings-closing) .liquid-glass-surface {
+  opacity: 0;
+  visibility: hidden;
+  display: none;
+}
+
+body.theme-day .liquid-glass-surface {
+  mix-blend-mode: normal;
+}
+
+body.theme-day.settings-open:not(.settings-closing) .liquid-glass-surface {
+  opacity: 0.88;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.settings-open:not(.settings-closing) .liquid-glass-surface {
+    opacity: 0.48;
+  }
+}
+
+.container {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 360px;
+  height: 100vh;
+  max-height: 100vh;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) 0 auto auto auto;
+  align-items: center;
+  align-content: stretch;
+  justify-items: center;
+  padding: 12px 16px;
+  gap: 6px;
+  background: transparent !important;
+  background-color: rgba(0, 0, 0, 0) !important;
+  -webkit-app-region: drag;
+  app-region: drag;
+  overflow: hidden;
+  contain: layout paint;
+  isolation: isolate;
+  transition: opacity 180ms ease, transform 220ms ease;
+}
+
+.dragon-cursor-stage {
+  position: fixed;
+  inset: 0;
+  z-index: 9990;
+  width: 100%;
+  height: 100%;
+  display: block;
+  visibility: hidden;
+  overflow: hidden;
+  pointer-events: none;
+  contain: layout paint;
+  isolation: isolate;
+  opacity: 0;
+  transform: translateZ(0);
+  will-change: opacity, transform;
+  mix-blend-mode: screen;
+  filter:
+    drop-shadow(0 0 8px rgba(255, 255, 255, 0.16))
+    drop-shadow(0 0 18px rgba(255, 255, 255, 0.08));
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  transition: opacity 180ms ease;
+}
+
+body.settings-open:not(.settings-closing):not(.dragon-cursor-disabled) .dragon-cursor-stage {
+  visibility: visible;
+  opacity: 0.42;
+}
+
+.dragon-cursor-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  display: block;
+  filter: brightness(0) invert(1);
+}
+
+body.theme-day .dragon-cursor-stage {
+  mix-blend-mode: multiply;
+  filter:
+    drop-shadow(0 0 8px rgba(0, 0, 0, 0.12))
+    drop-shadow(0 0 18px rgba(0, 0, 0, 0.06));
+}
+
+body.theme-day .dragon-cursor-svg {
+  filter: brightness(0);
+}
+
+.orb-entry-control {
+  position: absolute;
+  top: 22px;
+  right: 26px;
+  z-index: 20;
+  width: 40px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.115);
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.082), rgba(255, 255, 255, 0.035)),
+    rgba(8, 10, 11, 0.7);
+  color: rgba(248, 250, 250, 0.78);
+  box-shadow:
+    0 8px 20px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  opacity: 0.82;
+  overflow: hidden;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  transition: opacity 160ms ease, transform 160ms ease, color 160ms ease, background 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.orb-entry-control.is-open,
+.orb-entry-control:hover {
+  opacity: 1;
+  border-color: rgba(255, 255, 255, 0.18);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.105), rgba(255, 255, 255, 0.045)),
+    rgba(10, 12, 14, 0.78);
+  color: rgba(255, 255, 255, 0.94);
+}
+
+.orb-settings-btn {
+  width: 100%;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 13px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  transition: color 160ms ease, background 160ms ease;
+}
+
+.orb-settings-btn svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.orb-settings-btn:hover {
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.orb-settings-btn:active {
+  transform: scale(0.96);
+}
+
+.orb-settings-btn[aria-expanded="true"] {
+  color: rgba(255, 255, 255, 0.94);
+}
+
+.orb-settings-btn[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+
+body.settings-open .orb-entry-control {
+  opacity: 0;
+  pointer-events: none;
+}
+
+body.chat-open .orb-entry-control {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.orb-entry-menu {
+  width: 100%;
+  max-height: 0;
+  padding: 0 4px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  transition: none;
+  pointer-events: none;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.orb-entry-control.is-open .orb-entry-menu,
+.orb-entry-menu.visible {
+  max-height: 56px !important;
+  padding: 0 4px 4px !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  transform: translateY(0) !important;
+  pointer-events: auto;
+}
+
+.orb-entry-menu-item {
+  width: 100%;
+  height: 25px;
+  min-height: 25px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: rgba(248, 250, 250, 0.78);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease, transform 150ms ease;
+}
+
+.orb-entry-menu-item + .orb-entry-menu-item {
+  margin-top: 2px;
+}
+
+.orb-entry-menu-item svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.orb-entry-menu-item span {
+  display: none;
+}
+
+.orb-entry-menu-item:hover {
+  background: rgba(255, 255, 255, 0.085);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.orb-entry-menu-item:active {
+  transform: scale(0.98);
+}
+
+#orb-canvas {
+  user-select: none;
+  -webkit-user-select: none;
+  grid-area: 1 / 1;
+  width: 180px;
+  height: 180px;
+  display: block;
+  background: transparent !important;
+  contain: strict;
+  isolation: isolate;
+  transform: translateZ(0);
+  will-change: contents;
+  cursor: default;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+#advanced-orb-canvas,
+#planet-orb-canvas {
+  user-select: none;
+  -webkit-user-select: none;
+  grid-area: 1 / 1;
+  width: 180px;
+  height: 180px;
+  display: none;
+  background: transparent !important;
+  contain: strict;
+  isolation: isolate;
+  transform: translateZ(0);
+  will-change: transform;
+  cursor: default;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+#planet-orb-canvas {
+  width: 300px;
+  height: 300px;
+}
+
+body.advanced-orb-active #orb-canvas {
+  display: none;
+}
+
+body.advanced-orb-active #advanced-orb-canvas {
+  display: block;
+}
+
+body.planet-orb-active #orb-canvas {
+  display: none;
+}
+
+body.planet-orb-active #planet-orb-canvas {
+  display: block;
+}
+
+.plugin-ui-surface {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: block;
+  overflow: hidden;
+  pointer-events: none;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.plugin-ui-surface-frame {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border: 0;
+  background: transparent;
+  pointer-events: auto;
+}
+
+.plugin-ui-main-surface.overlay {
+  z-index: 5;
+}
+
+.plugin-ui-main-surface {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.plugin-ui-main-surface.replace {
+  z-index: 2;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  cursor: move;
+}
+
+body.plugin-main-surface-replace .plugin-ui-main-surface.replace,
+body.plugin-main-surface-replace .plugin-ui-main-surface.replace .plugin-ui-surface-frame {
+  pointer-events: none;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  cursor: move;
+}
+
+body:not(.plugin-main-surface-replace) .plugin-ui-main-surface.overlay .plugin-ui-surface-frame,
+.plugin-ui-task-surface .plugin-ui-surface-frame {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+body.plugin-main-surface-replace #orb-canvas,
+body.plugin-main-surface-replace #advanced-orb-canvas,
+body.plugin-main-surface-replace #planet-orb-canvas {
+  opacity: 0;
+  pointer-events: none;
+}
+
+body.plugin-main-surface-replace .controls {
+  position: relative;
+  z-index: 7;
+}
+
+body.plugin-main-surface-replace .orb-slot {
+  margin-bottom: 4px;
+  cursor: move;
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+body.plugin-main-surface-replace .status {
+  margin-top: 0;
+  margin-bottom: 8px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(8px);
+}
+
+body.plugin-main-surface-replace:not(.settings-open) #main-view.controls-peek .controls {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.expression-layer {
+  position: absolute;
+  top: clamp(4px, calc(50% - 166px), calc(100% - 70px));
+  right: clamp(8px, calc(50% - 136px), 24px);
+  width: clamp(58px, 23%, 74px);
+  height: clamp(50px, 19%, 62px);
+  padding: 7px;
+  background: rgba(18, 22, 28, 0.52);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 18px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(18px) saturate(1.2);
+  transform: translate(-5px, 8px) scale(0.95);
+  opacity: 0;
+  pointer-events: none;
+  overflow: visible;
+  transition: opacity 220ms ease, transform 220ms ease;
+  z-index: 6;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.expression-layer::after {
+  content: '';
+  position: absolute;
+  left: -13px;
+  bottom: 2px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.48);
+  box-shadow:
+    -13px 13px 0 -2px rgba(255, 255, 255, 0.34),
+    0 0 10px rgba(255, 255, 255, 0.18),
+    -13px 13px 10px -5px rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(8px);
+  opacity: 0;
+  transform: scale(0.4);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.expression-layer.bubbles-visible::after {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.expression-layer.visible {
+  opacity: 1;
+  transform: translate(0, 0) scale(1);
+}
+
+.expression-image {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 5px 10px rgba(0, 0, 0, 0.18));
+  position: relative;
+  z-index: 1;
+}

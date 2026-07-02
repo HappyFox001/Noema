@@ -1,0 +1,2194 @@
+/* Final settings theme passes, compact layout refinements, and shared control polish. */
+
+/* Day theme final pass: keep this after component styles so nested panels remain readable. */
+body.theme-day .settings-panel,
+body.theme-day .settings-content,
+body.theme-day .settings-section,
+body.theme-day .model-page,
+body.theme-day .memory-page,
+body.theme-day .learning-app,
+body.theme-day .log-page {
+  color: rgba(18, 30, 32, 0.9);
+}
+
+body.theme-day .section-title,
+body.theme-day .section-subtitle,
+body.theme-day .row-label,
+body.theme-day .row-desc,
+body.theme-day .settings-value,
+body.theme-day .memory-card-title,
+body.theme-day .memory-count,
+body.theme-day .memory-account-title,
+body.theme-day .memory-account-desc,
+body.theme-day .model-overview-title,
+body.theme-day .model-overview-subtitle,
+body.theme-day .model-manager-title,
+body.theme-day .model-manager-subtitle,
+body.theme-day .config-section-title,
+body.theme-day .config-model-title,
+body.theme-day .config-model-provider,
+body.theme-day .config-model-meta,
+body.theme-day .config-field-label,
+body.theme-day .config-help-text,
+body.theme-day .task-runtime-title,
+body.theme-day .task-runtime-desc,
+body.theme-day .plugin-title,
+body.theme-day .plugin-description,
+body.theme-day .plugin-meta,
+body.theme-day .about-name,
+body.theme-day .about-version,
+body.theme-day .about-desc,
+body.theme-day .about-quote,
+body.theme-day .learning-panel-header,
+body.theme-day .learning-object-title,
+body.theme-day .learning-detail-header strong,
+body.theme-day .learning-detail-row strong,
+body.theme-day .profile-loading,
+body.theme-day .config-empty,
+body.theme-day .config-reset-hint,
+body.theme-day .log-message,
+body.theme-day .log-time,
+body.theme-day .log-level,
+body.theme-day .log-type {
+  color: rgba(18, 30, 32, 0.88);
+}
+
+body.theme-day .section-subtitle,
+body.theme-day .row-desc,
+body.theme-day .model-overview-subtitle,
+body.theme-day .model-manager-subtitle,
+body.theme-day .config-model-provider,
+body.theme-day .config-model-meta,
+body.theme-day .config-help-text,
+body.theme-day .task-runtime-desc,
+body.theme-day .plugin-description,
+body.theme-day .plugin-meta,
+body.theme-day .about-version,
+body.theme-day .about-desc,
+body.theme-day .config-reset-hint,
+body.theme-day .learning-nav-item,
+body.theme-day .learning-panel-link,
+body.theme-day .learning-metric span,
+body.theme-day .learning-object-meta,
+body.theme-day .learning-detail-header span,
+body.theme-day .learning-detail-row,
+body.theme-day .learning-json,
+body.theme-day .learning-no-selection,
+body.theme-day .learning-no-selection p {
+  color: rgba(42, 61, 63, 0.62);
+}
+
+body.theme-day .settings-card,
+body.theme-day .memory-card,
+body.theme-day .about-card,
+body.theme-day .plugin-card,
+body.theme-day .task-runtime-card,
+body.theme-day .model-overview-card,
+body.theme-day .config-model-card,
+body.theme-day .config-empty,
+body.theme-day .account-entry,
+body.theme-day .profile-item,
+body.theme-day .memory-item,
+body.theme-day .memory-add-form,
+body.theme-day .summary-item,
+body.theme-day .conversation-item,
+body.theme-day .interactive-input-card,
+body.theme-day .learning-nav,
+body.theme-day .learning-metric,
+body.theme-day .learning-panel,
+body.theme-day .log-toolbar,
+body.theme-day .log-entry,
+body.theme-day .task-panel {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.70), rgba(255, 255, 255, 0.44)),
+    rgba(236, 244, 242, 0.52);
+  border-color: rgba(34, 80, 76, 0.13);
+  color: rgba(18, 30, 32, 0.88);
+  box-shadow:
+    0 16px 34px rgba(50, 72, 70, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+body.theme-day .settings-row,
+body.theme-day .memory-card-header,
+body.theme-day .log-toolbar,
+body.theme-day .log-entry,
+body.theme-day .config-model-header,
+body.theme-day .config-field,
+body.theme-day .task-runtime-field,
+body.theme-day .plugin-header,
+body.theme-day .account-entry,
+body.theme-day .model-overview-card,
+body.theme-day .learning-panel-header,
+body.theme-day .learning-object,
+body.theme-day .learning-activity-item,
+body.theme-day .learning-detail-header,
+body.theme-day .learning-json {
+  border-color: rgba(34, 80, 76, 0.10);
+}
+
+body.theme-day .settings-row:hover,
+body.theme-day .model-overview-card:hover,
+body.theme-day .config-model-card:hover,
+body.theme-day .plugin-card:hover,
+body.theme-day .learning-object:hover,
+body.theme-day .learning-object.selected,
+body.theme-day .learning-activity-item:hover,
+body.theme-day .learning-activity-item.selected,
+body.theme-day .learning-nav-item:hover,
+body.theme-day .learning-nav-item.active {
+  background-color: rgba(255, 255, 255, 0.38);
+  border-color: rgba(34, 80, 76, 0.18);
+}
+
+body.theme-day .settings-input,
+body.theme-day .config-field-input,
+body.theme-day .task-runtime-input,
+body.theme-day .plugin-config-input,
+body.theme-day .memory-add-form input,
+body.theme-day .text-input,
+body.theme-day input,
+body.theme-day textarea,
+body.theme-day select {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(246, 250, 249, 0.64)),
+    rgba(255, 255, 255, 0.42);
+  border-color: rgba(34, 80, 76, 0.16);
+  color: rgba(15, 28, 30, 0.92);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+body.theme-day .settings-select,
+body.theme-day select.plugin-config-input {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='rgba(20,62,60,0.72)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") right 9px center / 14px 14px no-repeat,
+    linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(246, 250, 249, 0.64)),
+    rgba(255, 255, 255, 0.42);
+}
+
+body.theme-day .settings-input::placeholder,
+body.theme-day .config-field-input::placeholder,
+body.theme-day .task-runtime-input::placeholder,
+body.theme-day .plugin-config-input::placeholder,
+body.theme-day input::placeholder,
+body.theme-day textarea::placeholder {
+  color: rgba(45, 62, 64, 0.42);
+}
+
+body.theme-day .settings-btn,
+body.theme-day .log-filter,
+body.theme-day .config-add-btn,
+body.theme-day .config-action-btn,
+body.theme-day .model-back-btn,
+body.theme-day .memory-back-btn,
+body.theme-day .clear-section-btn,
+body.theme-day .reset-all-btn,
+body.theme-day .config-reset-btn,
+body.theme-day .plugin-action-btn,
+body.theme-day .task-runtime-reset-btn {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.70), rgba(232, 242, 240, 0.52)),
+    rgba(255, 255, 255, 0.34);
+  border-color: rgba(34, 80, 76, 0.16);
+  color: rgba(18, 48, 48, 0.86);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 8px 18px rgba(50, 72, 70, 0.10);
+}
+
+body.theme-day .settings-btn:hover,
+body.theme-day .log-filter:hover,
+body.theme-day .log-filter.active,
+body.theme-day .config-add-btn:hover,
+body.theme-day .config-action-btn:hover,
+body.theme-day .model-back-btn:hover,
+body.theme-day .memory-back-btn:hover,
+body.theme-day .clear-section-btn:hover,
+body.theme-day .config-reset-btn:hover,
+body.theme-day .plugin-action-btn:hover,
+body.theme-day .task-runtime-reset-btn:hover {
+  background-color: rgba(92, 104, 104, 0.08);
+  border-color: rgba(88, 100, 100, 0.26);
+  color: rgba(10, 48, 47, 0.94);
+}
+
+body.theme-day .log-entry.level-error {
+  border-color: rgba(180, 56, 56, 0.30);
+  background:
+    linear-gradient(135deg, rgba(255, 228, 228, 0.82), rgba(255, 255, 255, 0.48)),
+    rgba(255, 245, 245, 0.56);
+}
+
+body.theme-day .log-entry.level-warn {
+  border-color: rgba(170, 112, 34, 0.30);
+  background:
+    linear-gradient(135deg, rgba(255, 241, 210, 0.82), rgba(255, 255, 255, 0.48)),
+    rgba(255, 250, 236, 0.56);
+}
+
+body.theme-day .log-time,
+body.theme-day .log-level,
+body.theme-day .log-type {
+  background: rgba(255, 255, 255, 0.64);
+  border-color: rgba(34, 80, 76, 0.14);
+  color: rgba(24, 44, 46, 0.82);
+}
+
+body.theme-day .log-message {
+  color: rgba(12, 24, 26, 0.88);
+}
+
+body.theme-day .log-type {
+  color: rgba(20, 88, 92, 0.88);
+}
+
+body.theme-day .level-error .log-level {
+  color: rgba(150, 38, 38, 0.96);
+}
+
+body.theme-day .level-warn .log-level {
+  color: rgba(130, 82, 22, 0.96);
+}
+
+body.theme-day .settings-btn.active,
+body.theme-day .config-action-btn.active,
+body.theme-day .model-overview-card.active {
+  background:
+    linear-gradient(135deg, rgba(190, 226, 222, 0.88), rgba(154, 202, 200, 0.78)),
+    rgba(92, 104, 104, 0.12);
+  border-color: rgba(88, 100, 100, 0.24);
+  color: rgba(10, 42, 43, 0.94);
+}
+
+body.theme-day .config-provider-trigger,
+body.theme-day .config-provider-floating-menu,
+body.theme-day .config-provider-option {
+  color: rgba(18, 34, 36, 0.88);
+}
+
+body.theme-day .config-provider-trigger {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(232, 242, 240, 0.54)),
+    rgba(255, 255, 255, 0.42);
+  border-color: rgba(88, 100, 100, 0.18);
+}
+
+body.theme-day .config-provider-floating-menu {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(245, 249, 248, 0.72)),
+    rgba(238, 244, 242, 0.98);
+  border-color: rgba(34, 80, 76, 0.14);
+}
+
+body.theme-day .config-provider-option:hover,
+body.theme-day .config-provider-option:focus-visible,
+body.theme-day .config-provider-option.selected {
+  color: rgba(8, 38, 38, 0.96);
+}
+
+body.theme-day .config-provider-option-check,
+body.theme-day .model-overview-status,
+body.theme-day .config-status-badge,
+body.theme-day .plugin-status,
+body.theme-day .local-model-status {
+  color: rgba(54, 64, 64, 0.96);
+}
+
+body.theme-day .config-status-badge,
+body.theme-day .model-overview-status,
+body.theme-day .local-model-status,
+body.theme-day .plugin-status,
+body.theme-day .memory-count,
+body.theme-day .task-runtime-badge {
+  background: rgba(92, 104, 104, 0.08);
+  border-color: rgba(88, 100, 100, 0.16);
+}
+
+body.theme-day .danger,
+body.theme-day .error,
+body.theme-day .config-action-btn.danger,
+body.theme-day .settings-btn.danger,
+body.theme-day .clear-section-btn,
+body.theme-day .reset-all-btn {
+  color: rgba(166, 42, 42, 0.92);
+  border-color: rgba(190, 64, 64, 0.22);
+}
+
+body.theme-day .main-notice,
+body.theme-day .panel-notice,
+body.theme-day .confirm-dialog,
+body.theme-day .interactive-input-modal {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(245, 249, 248, 0.70)),
+    rgba(238, 244, 242, 0.98);
+  border-color: rgba(34, 80, 76, 0.14);
+  color: rgba(18, 30, 32, 0.90);
+}
+
+body.theme-day .memory-card-title,
+body.theme-day .profile-value,
+body.theme-day .memory-item-value,
+body.theme-day .memory-value,
+body.theme-day .summary-text,
+body.theme-day .conversation-text,
+body.theme-day .conversation-content,
+body.theme-day .account-input-title,
+body.theme-day .account-input-value,
+body.theme-day .model-overview-title,
+body.theme-day .model-overview-model,
+body.theme-day .model-manager-title,
+body.theme-day .config-model-name input,
+body.theme-day .local-model-name span:first-child,
+body.theme-day .config-model-active-badge,
+body.theme-day .plugin-section-title,
+body.theme-day .plugin-page-tab.active,
+body.theme-day .plugin-name,
+body.theme-day .plugin-config-label,
+body.theme-day .plugin-admin-title,
+body.theme-day .plugin-admin-section-title,
+body.theme-day .plugin-admin-item-title,
+body.theme-day .task-runtime-card .row-label,
+body.theme-day .about-name {
+  color: rgba(16, 28, 31, 0.94) !important;
+  text-shadow: none !important;
+}
+
+body.theme-day .memory-count,
+body.theme-day .profile-label,
+body.theme-day .profile-value.empty,
+body.theme-day .profile-loading,
+body.theme-day .profile-empty,
+body.theme-day .memory-item-key,
+body.theme-day .memory-key,
+body.theme-day .summary-meta,
+body.theme-day .summary-date,
+body.theme-day .summary-tone,
+body.theme-day .summary-topic,
+body.theme-day .conversation-role,
+body.theme-day .account-input-group-title,
+body.theme-day .account-input-key,
+body.theme-day .account-input-meta,
+body.theme-day .account-entry-desc,
+body.theme-day .model-overview-count,
+body.theme-day .model-overview-meta,
+body.theme-day .model-overview-meta span,
+body.theme-day .model-manager-subtitle,
+body.theme-day .config-model-provider,
+body.theme-day .config-model-meta,
+body.theme-day .plugin-marketplace-source,
+body.theme-day .plugin-section-heading,
+body.theme-day .plugin-marketplace-empty,
+body.theme-day .plugin-version,
+body.theme-day .plugin-id,
+body.theme-day .plugin-description,
+body.theme-day .plugin-detail-description,
+body.theme-day .plugin-card-footer,
+body.theme-day .plugin-enter,
+body.theme-day .plugin-config-desc,
+body.theme-day .plugin-config-meta,
+body.theme-day .plugin-admin-subtitle,
+body.theme-day .plugin-admin-loading,
+body.theme-day .plugin-admin-empty,
+body.theme-day .plugin-admin-desc,
+body.theme-day .plugin-admin-item-meta,
+body.theme-day .plugin-admin-source-text,
+body.theme-day .task-runtime-card .row-desc,
+body.theme-day .about-version,
+body.theme-day .about-desc,
+body.theme-day .about-quote {
+  color: rgba(47, 66, 68, 0.66) !important;
+  text-shadow: none !important;
+}
+
+body.theme-day .summary-item,
+body.theme-day .conversation-item.assistant,
+body.theme-day .memory-item,
+body.theme-day .account-input-item,
+body.theme-day .profile-field,
+body.theme-day .plugin-page-tabs,
+body.theme-day .plugin-page-tab.active,
+body.theme-day .plugin-marketplace-panel,
+body.theme-day .plugin-marketplace-card,
+body.theme-day .plugin-admin-item,
+body.theme-day .plugin-admin-skill,
+body.theme-day .plugin-marketplace-tags span,
+body.theme-day .plugin-permissions span {
+  background: rgba(255, 255, 255, 0.42) !important;
+  border-color: rgba(34, 80, 76, 0.12) !important;
+}
+
+body.theme-day .conversation-item.user {
+  background: rgba(210, 220, 222, 0.12) !important;
+  border-color: rgba(160, 170, 174, 0.18) !important;
+}
+
+body.theme-day .summary-topic,
+body.theme-day .profile-tag,
+body.theme-day .account-input-sensitivity,
+body.theme-day .plugin-permissions span {
+  background: rgba(92, 104, 104, 0.08) !important;
+  border-color: rgba(88, 100, 100, 0.14) !important;
+  color: rgba(54, 64, 64, 0.82) !important;
+}
+
+body.theme-day .model-overview-action,
+body.theme-day .config-model-btn,
+body.theme-day .plugin-back-btn,
+body.theme-day .memory-edit-btn,
+body.theme-day .memory-add-btn,
+body.theme-day .plugin-admin-button,
+body.theme-day .plugin-admin-expand {
+  background: rgba(255, 255, 255, 0.54) !important;
+  border-color: rgba(34, 80, 76, 0.16) !important;
+  color: rgba(42, 50, 50, 0.86) !important;
+  text-shadow: none !important;
+}
+
+body.theme-day .model-overview-status,
+body.theme-day .config-model-active-badge,
+body.theme-day .local-model-status {
+  background: rgba(92, 104, 104, 0.10) !important;
+  border-color: rgba(88, 100, 100, 0.18) !important;
+  color: rgba(54, 64, 64, 0.94) !important;
+  text-shadow: none !important;
+}
+
+body.theme-day .plugin-marketplace-search {
+  background: rgba(255, 255, 255, 0.58) !important;
+  border-color: rgba(34, 80, 76, 0.14) !important;
+  color: rgba(22, 34, 36, 0.88) !important;
+}
+
+body.theme-day .plugin-marketplace-status {
+  color: rgba(54, 64, 64, 0.78);
+  border-color: rgba(34, 80, 76, 0.14);
+  background: rgba(92, 104, 104, 0.07);
+}
+
+body.theme-day .plugin-marketplace-status.installed {
+  color: rgba(22, 92, 122, 0.90);
+  border-color: rgba(42, 116, 152, 0.20);
+  background: rgba(64, 142, 182, 0.10);
+}
+
+body.theme-day .plugin-marketplace-status.enabled {
+  color: rgba(32, 112, 64, 0.90);
+  border-color: rgba(54, 132, 80, 0.20);
+  background: rgba(78, 160, 100, 0.10);
+}
+
+body.theme-day .plugin-page-tab {
+  color: rgba(47, 66, 68, 0.62);
+}
+
+body.theme-day .plugin-page-tab strong {
+  color: rgba(47, 66, 68, 0.48);
+}
+
+body.theme-day .plugin-page-tab.active strong {
+  color: rgba(16, 28, 31, 0.70);
+}
+
+body.theme-day .loading-spinner {
+  border-color: rgba(34, 80, 76, 0.18) !important;
+  border-top-color: rgba(88, 100, 100, 0.72) !important;
+}
+
+/* ========== Liquid Monochrome Refinement ========== */
+
+body {
+  --liquid-bg: #030405;
+  --liquid-panel: rgba(8, 10, 12, 0.88);
+  --liquid-panel-strong: rgba(12, 14, 16, 0.94);
+  --liquid-panel-soft: rgba(255, 255, 255, 0.028);
+  --liquid-glass: rgba(255, 255, 255, 0.05);
+  --liquid-glass-strong: rgba(255, 255, 255, 0.095);
+  --liquid-line: rgba(255, 255, 255, 0.10);
+  --liquid-line-strong: rgba(255, 255, 255, 0.18);
+  --liquid-text: rgba(248, 249, 249, 0.94);
+  --liquid-muted: rgba(248, 249, 249, 0.6);
+  --liquid-faint: rgba(248, 249, 249, 0.38);
+  --liquid-accent: rgba(236, 240, 240, 0.9);
+  --liquid-accent-soft: rgba(236, 240, 240, 0.18);
+  --liquid-warn: rgba(228, 220, 202, 0.9);
+  --liquid-danger: rgba(224, 202, 202, 0.92);
+  --liquid-ok: rgba(214, 226, 220, 0.92);
+  --liquid-shadow-lg: 0 30px 90px rgba(0, 0, 0, 0.42);
+  --liquid-shadow-md: 0 18px 46px rgba(0, 0, 0, 0.28);
+  --liquid-inner: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --liquid-cut: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+}
+
+.settings-panel {
+  background:
+    radial-gradient(circle at 16% 14%, rgba(255, 255, 255, 0.05), transparent 28%),
+    radial-gradient(circle at 84% 18%, rgba(255, 255, 255, 0.035), transparent 26%),
+    radial-gradient(circle at 52% 110%, rgba(255, 255, 255, 0.028), transparent 32%),
+    linear-gradient(180deg, rgba(7, 9, 10, 0.985), rgba(5, 6, 8, 0.975) 48%, rgba(8, 10, 12, 0.99));
+}
+
+.settings-panel::before {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px),
+    linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.035) 52%, transparent);
+  background-size: 30px 30px, 30px 30px, 100% 100%;
+  opacity: 0.42;
+}
+
+.settings-panel::after {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 1px),
+    radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.05), transparent 56%);
+  background-size: 100% 8px, 100% 100%;
+  opacity: 0.2;
+  mix-blend-mode: screen;
+}
+
+.settings-layout {
+  backdrop-filter: blur(18px) saturate(1.02);
+}
+
+.settings-nav {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.014)),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.32), rgba(0, 0, 0, 0.2));
+  border-right: 1px solid var(--liquid-line);
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.035);
+}
+
+.settings-nav::after {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.22), transparent);
+}
+
+.settings-brand-logo {
+  filter: drop-shadow(0 0 22px rgba(255, 255, 255, 0.08));
+}
+
+body.theme-day .settings-brand-logo {
+  filter: invert(1) drop-shadow(0 0 15px rgba(20, 120, 140, 0.18));
+}
+
+.nav-item {
+  border: 1px solid transparent;
+  color: var(--liquid-muted);
+  background: transparent;
+  transition:
+    transform 180ms ease,
+    color 180ms ease,
+    border-color 180ms ease,
+    background-color 180ms ease,
+    box-shadow 220ms ease;
+}
+
+.nav-item::before {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)),
+    radial-gradient(circle at 18% 18%, rgba(255, 255, 255, 0.11), transparent 48%);
+}
+
+.nav-item::after {
+  width: 1px;
+  background: rgba(255, 255, 255, 0.8);
+  box-shadow: 0 0 14px rgba(255, 255, 255, 0.24);
+}
+
+.nav-item:hover {
+  transform: translateX(3px);
+  color: var(--liquid-text);
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.022);
+}
+
+.nav-item.active {
+  color: var(--liquid-text);
+  border-color: var(--liquid-line-strong);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.035)),
+    rgba(255, 255, 255, 0.03);
+  box-shadow: var(--liquid-shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.nav-item.has-setup-issues,
+.nav-item.has-setup-issues.active {
+  color: var(--liquid-text);
+  border-color: rgba(228, 220, 202, 0.18);
+  background:
+    linear-gradient(180deg, rgba(228, 220, 202, 0.12), rgba(255, 255, 255, 0.025)),
+    rgba(255, 255, 255, 0.02);
+}
+
+.nav-issue-badge {
+  background: rgba(228, 220, 202, 0.12);
+  border-color: rgba(228, 220, 202, 0.22);
+  color: rgba(245, 236, 220, 0.9);
+  box-shadow: none;
+}
+
+.nav-icon {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.nav-item:hover .nav-icon,
+.nav-item.active .nav-icon {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.settings-content {
+  padding-top: 70px;
+}
+
+.settings-content::-webkit-scrollbar-thumb,
+.memory-card-content.scrollable::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.settings-content:hover::-webkit-scrollbar-thumb:hover,
+.memory-card-content.scrollable:hover::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.section-title,
+.row-label,
+.memory-card-title,
+.config-section-title,
+.model-manager-title,
+.model-overview-title,
+.plugin-name,
+.about-name {
+  color: var(--liquid-text);
+}
+
+.section-title {
+  font-family: var(--font-ui);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: clamp(16px, 3vw, 20px);
+}
+
+.section-title::before,
+.config-section-title::before,
+.model-overview-mark,
+.setup-guidance-dot {
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.14);
+}
+
+.section-title::before,
+.model-overview-mark,
+.config-model-card.active::before,
+.nav-item::after {
+  background-color: rgba(255, 255, 255, 0.78);
+  border-color: rgba(255, 255, 255, 0.78);
+}
+
+.config-section-title::before {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.68);
+}
+
+.section-subtitle,
+.row-desc,
+.memory-count,
+.model-manager-subtitle,
+.model-overview-subtitle,
+.model-overview-meta,
+.model-overview-meta span,
+.plugin-version,
+.plugin-id,
+.plugin-description,
+.plugin-detail-description,
+.plugin-card-footer,
+.plugin-enter,
+.plugin-config-desc,
+.plugin-config-meta,
+.plugin-admin-subtitle,
+.plugin-admin-loading,
+.plugin-admin-empty,
+.plugin-admin-desc,
+.plugin-admin-item-meta,
+.plugin-admin-source-text,
+.config-reset-hint,
+.about-version,
+.about-desc,
+.about-quote {
+  color: var(--liquid-faint);
+}
+
+.settings-card,
+.about-card,
+.memory-card,
+.plugin-card,
+.config-model-card,
+.model-overview-card,
+.task-runtime-card,
+.setup-guidance-card,
+.config-empty,
+.plugin-admin-form,
+.plugin-admin-item,
+.plugin-admin-skill,
+.plugin-admin-state,
+.config-provider-floating-menu,
+.context-menu,
+.memory-dialog,
+.confirm-dialog,
+.interactive-input-dialog,
+.task-panel,
+.main-notice,
+.panel-notice {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.065), rgba(255, 255, 255, 0.022)),
+    var(--liquid-panel);
+  border: 1px solid var(--liquid-line);
+  box-shadow: var(--liquid-shadow-md), var(--liquid-inner);
+  backdrop-filter: blur(22px) saturate(1.02);
+}
+
+.settings-card,
+.about-card,
+.plugin-card,
+.config-model-card,
+.model-overview-card,
+.config-empty {
+  clip-path: var(--liquid-cut);
+}
+
+.settings-card:hover,
+.plugin-card:hover,
+.config-model-card:hover,
+.model-overview-card:hover,
+.memory-card:hover,
+.about-card:hover {
+  border-color: var(--liquid-line-strong);
+  box-shadow: var(--liquid-shadow-lg), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  transform: translateY(-2px);
+}
+
+.settings-row,
+.memory-card-header,
+.config-model-header,
+.config-field,
+.plugin-config-fields,
+.plugin-admin-item,
+.task-runtime-card .settings-row {
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+.settings-row:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.task-panel {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.025)),
+    rgba(5, 7, 8, 0.86);
+  border-color: rgba(255, 255, 255, 0.13);
+  backdrop-filter: blur(24px);
+  box-shadow: 0 22px 64px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.task-panel-title,
+.config-model-active-badge,
+.model-overview-status,
+.local-model-status,
+.summary-tone,
+.topic-tag,
+.profile-tag,
+.account-input-sensitivity,
+.plugin-permissions span {
+  color: var(--liquid-accent);
+}
+
+.task-step.running .task-step-mark,
+.task-step.completed .task-step-mark,
+.task-step.failed .task-step-mark {
+  color: var(--liquid-accent);
+}
+
+.task-step.running .task-step-mark {
+  border-color: rgba(255, 255, 255, 0.42);
+}
+
+.task-step.failed .task-step-mark,
+.main-notice.error,
+.panel-notice.error,
+.memory-card.danger-zone,
+.memory-card.danger-zone .memory-card-header,
+.confirm-dialog.danger .confirm-dialog-icon,
+.confirm-dialog.danger .confirm-dialog-btn.primary,
+.config-delete-btn,
+.clear-section-btn,
+.reset-all-btn,
+.settings-btn.danger {
+  border-color: rgba(224, 202, 202, 0.24);
+}
+
+.main-notice.error,
+.panel-notice.error {
+  background:
+    linear-gradient(180deg, rgba(90, 38, 44, 0.42), rgba(44, 18, 23, 0.36)),
+    rgba(36, 18, 22, 0.88);
+  color: rgba(255, 236, 238, 0.92);
+}
+
+.text-input,
+.settings-input,
+.settings-number-input,
+.settings-text-input,
+.config-field-input,
+.plugin-config-input:not(select),
+.plugin-config-textarea,
+.dialog-field input,
+.interactive-input-control,
+.config-provider-trigger {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)),
+    rgba(0, 0, 0, 0.18);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--liquid-text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.text-input::placeholder,
+.settings-input::placeholder,
+.config-field-input::placeholder,
+.plugin-config-input::placeholder,
+.plugin-config-textarea::placeholder,
+.interactive-input-control::placeholder {
+  color: rgba(255, 255, 255, 0.26);
+}
+
+.text-input:focus,
+.settings-input:focus,
+.settings-select:focus,
+.settings-number-input:focus,
+.settings-text-input:focus,
+.config-field-input:focus,
+.plugin-config-input:focus,
+.plugin-config-textarea:focus,
+.dialog-field input:focus,
+.interactive-input-control:focus,
+.config-provider-trigger:focus-visible,
+.config-provider-trigger[aria-expanded="true"] {
+  border-color: rgba(255, 255, 255, 0.3);
+  box-shadow:
+    0 0 0 3px rgba(255, 255, 255, 0.055),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.028)),
+    rgba(0, 0, 0, 0.16);
+}
+
+.settings-btn,
+.config-add-btn,
+.model-back-btn,
+.plugin-page-tab,
+.plugin-back-btn,
+.config-model-btn,
+.config-reset-btn,
+.plugin-admin-button,
+.dialog-save-btn,
+.dialog-cancel-btn,
+.confirm-dialog-btn,
+.memory-add-btn,
+.memory-edit-btn {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.085), rgba(255, 255, 255, 0.03)),
+    rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 255, 255, 0.13);
+  color: var(--liquid-text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.settings-btn:hover,
+.config-add-btn:hover,
+.model-back-btn:hover,
+.plugin-back-btn:hover,
+.config-model-btn:hover,
+.config-reset-btn:hover,
+.plugin-admin-button:hover,
+.dialog-save-btn:hover,
+.dialog-cancel-btn:hover,
+.confirm-dialog-btn:hover,
+.memory-add-btn:hover,
+.memory-edit-btn:hover,
+.config-provider-option:hover,
+.config-provider-option:focus-visible,
+.context-menu-item:hover {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.04)),
+    rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: var(--liquid-text);
+}
+
+.settings-btn.active,
+.config-model-card.active,
+.config-provider-option.selected {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.045)),
+    rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: var(--liquid-text);
+}
+
+.settings-slider {
+  height: 3px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.settings-slider::-webkit-slider-thumb {
+  width: 15px;
+  height: 15px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.26);
+}
+
+.config-model-active-badge,
+.model-overview-status,
+.config-provider-label,
+.summary-tone,
+.topic-tag,
+.profile-tag,
+.account-input-sensitivity,
+.plugin-permissions span {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.11);
+}
+
+.config-test-btn.success,
+.plugin-admin-button.success,
+.dialog-save-btn,
+.profile-save-btn,
+.edit-save-btn {
+  background: rgba(214, 226, 220, 0.11);
+  border-color: rgba(214, 226, 220, 0.22);
+  color: rgba(232, 240, 236, 0.94);
+}
+
+.config-test-btn.testing,
+.plugin-admin-button.testing,
+.config-reset-btn,
+.setup-guidance-card {
+  background:
+    linear-gradient(180deg, rgba(228, 220, 202, 0.08), rgba(255, 255, 255, 0.024)),
+    rgba(255, 255, 255, 0.02);
+  border-color: rgba(228, 220, 202, 0.18);
+  color: rgba(239, 232, 220, 0.92);
+}
+
+.config-test-btn.danger,
+.plugin-admin-button.danger,
+.confirm-dialog.danger .confirm-dialog-btn.primary,
+.config-delete-btn,
+.clear-section-btn,
+.reset-all-btn {
+  background: rgba(224, 202, 202, 0.08);
+  color: rgba(236, 218, 218, 0.94);
+}
+
+.start-button,
+.tts-button {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.05)),
+    rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: rgba(12, 14, 16, 0.92);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.24);
+}
+
+.start-button:hover:not(:disabled),
+.tts-button:hover:not(:disabled) {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.075)),
+    rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.26);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+.about-card::after {
+  color: rgba(255, 255, 255, 0.26);
+}
+
+.about-orb {
+  background:
+    radial-gradient(circle at 30% 28%, rgba(255, 255, 255, 0.62) 0%, rgba(202, 212, 214, 0.42) 18%, transparent 34%),
+    radial-gradient(circle at 58% 44%, rgba(255, 255, 255, 0.12) 0%, transparent 48%),
+    radial-gradient(circle at 42% 36%, rgba(188, 198, 202, 0.9) 0%, rgba(52, 58, 62, 0.92) 34%, rgba(12, 15, 18, 0.98) 66%, rgba(4, 5, 7, 1) 100%);
+  box-shadow:
+    0 0 32px rgba(255, 255, 255, 0.18),
+    0 0 68px rgba(255, 255, 255, 0.06),
+    inset 0 0 18px rgba(255, 255, 255, 0.1);
+}
+
+.about-orb::before,
+.about-orb::after {
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+body.theme-day {
+  --liquid-panel: rgba(235, 239, 237, 0.84);
+  --liquid-panel-strong: rgba(226, 232, 230, 0.92);
+  --liquid-line: rgba(32, 38, 40, 0.11);
+  --liquid-line-strong: rgba(32, 38, 40, 0.18);
+  --liquid-text: rgba(18, 24, 26, 0.94);
+  --liquid-muted: rgba(18, 24, 26, 0.64);
+  --liquid-faint: rgba(18, 24, 26, 0.42);
+  --liquid-accent: rgba(34, 40, 42, 0.88);
+}
+
+body.theme-day .settings-panel {
+  background:
+    radial-gradient(circle at 16% 14%, rgba(15, 45, 50, 0.055), transparent 28%),
+    radial-gradient(circle at 84% 18%, rgba(20, 42, 46, 0.04), transparent 26%),
+    linear-gradient(180deg, rgba(229, 234, 232, 0.985), rgba(219, 227, 225, 0.982) 46%, rgba(226, 232, 229, 0.99));
+}
+
+body.theme-day .settings-panel::before {
+  background-image:
+    linear-gradient(rgba(18, 24, 26, 0.038) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(18, 24, 26, 0.038) 1px, transparent 1px),
+    linear-gradient(180deg, transparent, rgba(18, 24, 26, 0.032) 52%, transparent);
+}
+
+body.theme-day .settings-panel::after {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.28), transparent 1px),
+    radial-gradient(circle at 50% 0%, rgba(0, 34, 42, 0.055), transparent 56%);
+  mix-blend-mode: multiply;
+}
+
+body.theme-day .settings-card,
+body.theme-day .about-card,
+body.theme-day .memory-card,
+body.theme-day .plugin-card,
+body.theme-day .config-model-card,
+body.theme-day .model-overview-card,
+body.theme-day .task-runtime-card,
+body.theme-day .setup-guidance-card,
+body.theme-day .config-empty,
+body.theme-day .plugin-admin-form,
+body.theme-day .plugin-admin-item,
+body.theme-day .plugin-admin-skill,
+body.theme-day .plugin-admin-state,
+body.theme-day .config-provider-floating-menu,
+body.theme-day .context-menu,
+body.theme-day .memory-dialog,
+body.theme-day .confirm-dialog,
+body.theme-day .interactive-input-dialog,
+body.theme-day .main-notice,
+body.theme-day .panel-notice {
+  background:
+    linear-gradient(180deg, rgba(246, 249, 248, 0.62), rgba(230, 236, 234, 0.48)),
+    rgba(226, 233, 231, 0.74);
+  border-color: rgba(16, 45, 52, 0.14);
+  box-shadow: 0 20px 54px rgba(38, 56, 60, 0.13), inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+body.theme-day .main-notice.error,
+body.theme-day .panel-notice.error {
+  background:
+    linear-gradient(180deg, rgba(255, 244, 244, 0.82), rgba(250, 229, 230, 0.76)),
+    rgba(250, 235, 235, 0.92);
+  border-color: rgba(180, 68, 68, 0.18);
+  color: rgba(124, 36, 36, 0.94);
+}
+
+body.theme-day .nav-item.active,
+body.theme-day .settings-btn.active,
+body.theme-day .config-provider-option.selected {
+  background:
+    linear-gradient(180deg, rgba(24, 30, 32, 0.12), rgba(24, 30, 32, 0.04)),
+    rgba(255, 255, 255, 0.62);
+  border-color: rgba(24, 30, 32, 0.18);
+  color: rgba(18, 24, 26, 0.94);
+}
+
+body.theme-day .start-button,
+body.theme-day .tts-button {
+  background:
+    linear-gradient(180deg, rgba(34, 40, 42, 0.92), rgba(52, 58, 60, 0.86)),
+    rgba(28, 32, 34, 0.88);
+  border-color: rgba(34, 40, 42, 0.18);
+  color: rgba(248, 248, 245, 0.96);
+  box-shadow: 0 14px 34px rgba(60, 66, 70, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.learning-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--liquid-line);
+}
+
+.learning-row:first-child {
+  border-top: 0;
+}
+
+.learning-row-main {
+  min-width: 0;
+}
+
+.learning-row-title {
+  color: var(--liquid-text);
+  font-size: 13px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.learning-row-desc {
+  margin-top: 3px;
+  color: var(--liquid-muted);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.learning-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.learning-app {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.learning-app-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 16px;
+}
+
+.learning-shell {
+  display: grid;
+  grid-template-columns: 144px minmax(0, 1fr);
+  gap: 12px;
+  min-height: 0;
+  flex: 1;
+}
+
+.learning-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--liquid-line);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.018)),
+    rgba(6, 8, 9, 0.34);
+  box-shadow: var(--liquid-inner);
+  align-self: start;
+}
+
+.learning-nav-item {
+  border: 0;
+  border-radius: 7px;
+  padding: 10px 12px;
+  color: rgba(248, 250, 250, 0.52);
+  background: transparent;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.learning-nav-item:hover,
+.learning-nav-item.active {
+  color: rgba(248, 250, 250, 0.9);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.095), rgba(255, 255, 255, 0.035)),
+    rgba(255, 255, 255, 0.018);
+}
+
+.learning-workspace {
+  min-width: 0;
+  min-height: 0;
+}
+
+.learning-dashboard,
+.learning-split-page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.learning-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.learning-metric {
+  min-height: 78px;
+  padding: 14px;
+  border: 1px solid var(--liquid-line);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.062), rgba(255, 255, 255, 0.024)),
+    rgba(6, 8, 9, 0.28);
+  box-shadow: var(--liquid-inner);
+}
+
+.learning-metric span {
+  display: block;
+  color: rgba(248, 250, 250, 0.46);
+  font-size: 12px;
+}
+
+.learning-metric strong {
+  display: block;
+  margin-top: 10px;
+  color: rgba(248, 250, 250, 0.9);
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.learning-metric.ready strong {
+  color: rgba(220, 232, 228, 0.92);
+}
+
+.learning-metric.warn strong {
+  color: rgba(230, 218, 194, 0.92);
+}
+
+.learning-two-column,
+.learning-split-page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+}
+
+.learning-panel {
+  min-width: 0;
+  border: 1px solid var(--liquid-line);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.046), rgba(255, 255, 255, 0.018)),
+    rgba(5, 7, 8, 0.34);
+  box-shadow: var(--liquid-inner);
+  overflow: hidden;
+}
+
+.learning-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--liquid-line);
+  color: rgba(248, 250, 250, 0.86);
+  font-size: 13px;
+}
+
+.learning-panel-link {
+  border: 0;
+  background: transparent;
+  color: rgba(248, 250, 250, 0.46);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.learning-panel-link:hover {
+  color: rgba(248, 250, 250, 0.82);
+}
+
+.learning-list,
+.learning-timeline {
+  display: flex;
+  flex-direction: column;
+  max-height: min(520px, 58vh);
+  overflow: auto;
+}
+
+.learning-list.compact,
+.learning-timeline.compact {
+  max-height: 280px;
+}
+
+.learning-object,
+.learning-activity-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--liquid-line);
+  cursor: pointer;
+}
+
+.learning-object:hover,
+.learning-object.selected,
+.learning-activity-item:hover,
+.learning-activity-item.selected {
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.076), rgba(255, 255, 255, 0.026)),
+    rgba(255, 255, 255, 0.012);
+}
+
+.learning-object-main {
+  min-width: 0;
+}
+
+.learning-object-title {
+  color: rgba(248, 250, 250, 0.88);
+  font-size: 13px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.learning-object-meta {
+  margin-top: 4px;
+  color: rgba(248, 250, 250, 0.48);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.learning-object-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.compact-btn {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.learning-detail {
+  min-height: 420px;
+}
+
+.learning-detail-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px;
+  border-bottom: 1px solid var(--liquid-line);
+}
+
+.learning-detail-header span,
+.learning-no-selection span {
+  color: rgba(248, 250, 250, 0.46);
+  font-size: 12px;
+}
+
+.learning-detail-header strong {
+  color: rgba(248, 250, 250, 0.88);
+  font-size: 15px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.learning-detail-grid {
+  display: grid;
+  gap: 1px;
+  padding: 12px 14px;
+}
+
+.learning-detail-row {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 12px;
+  padding: 7px 0;
+  color: rgba(248, 250, 250, 0.46);
+  font-size: 12px;
+}
+
+.learning-detail-row strong {
+  color: rgba(248, 250, 250, 0.82);
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+
+.learning-json {
+  max-height: 260px;
+  margin: 0 14px 14px;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid var(--liquid-line);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.18), rgba(255, 255, 255, 0.012)),
+    rgba(0, 0, 0, 0.12);
+  color: rgba(248, 250, 250, 0.46);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.learning-no-selection {
+  display: grid;
+  place-content: center;
+  min-height: 360px;
+  padding: 24px;
+  text-align: center;
+  color: rgba(248, 250, 250, 0.48);
+}
+
+.learning-no-selection p {
+  max-width: 260px;
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.learning-activity-item {
+  grid-template-columns: 12px minmax(0, 1fr);
+  align-items: start;
+}
+
+.learning-activity-dot {
+  width: 7px;
+  height: 7px;
+  margin-top: 5px;
+  border-radius: 999px;
+  background: rgba(238, 242, 242, 0.74);
+  box-shadow: 0 0 12px rgba(238, 242, 242, 0.16);
+}
+
+@media (max-width: 760px) {
+  .learning-shell,
+  .learning-two-column,
+  .learning-split-page,
+  .learning-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .learning-nav {
+    flex-direction: row;
+    overflow-x: auto;
+  }
+
+  .learning-nav-item {
+    white-space: nowrap;
+  }
+}
+
+/* Control panel polish: small interaction details shared across settings surfaces. */
+.settings-panel *:focus-visible {
+  outline: none;
+}
+
+.settings-btn,
+.config-add-btn,
+.model-back-btn,
+.plugin-back-btn,
+.config-model-btn,
+.config-reset-btn,
+.plugin-admin-button,
+.memory-add-btn,
+.memory-edit-btn,
+.clear-section-btn,
+.delete-icon-btn,
+.settings-close,
+.learning-nav-item,
+.learning-panel-link,
+.learning-object,
+.learning-activity-item,
+.model-overview-card,
+.plugin-card-list {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.settings-btn:focus-visible,
+.config-add-btn:focus-visible,
+.model-back-btn:focus-visible,
+.plugin-page-tab:focus-visible,
+.plugin-back-btn:focus-visible,
+.config-model-btn:focus-visible,
+.config-reset-btn:focus-visible,
+.plugin-admin-button:focus-visible,
+.memory-add-btn:focus-visible,
+.memory-edit-btn:focus-visible,
+.clear-section-btn:focus-visible,
+.settings-close:focus-visible,
+.learning-nav-item:focus-visible,
+.learning-panel-link:focus-visible {
+  border-color: rgba(255, 255, 255, 0.32);
+  box-shadow:
+    0 0 0 3px rgba(255, 255, 255, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.10);
+}
+
+.settings-btn:active,
+.config-add-btn:active,
+.model-back-btn:active,
+.plugin-page-tab:active,
+.plugin-back-btn:active,
+.config-model-btn:active,
+.config-reset-btn:active,
+.plugin-admin-button:active,
+.memory-add-btn:active,
+.memory-edit-btn:active,
+.clear-section-btn:active,
+.settings-close:active,
+.learning-nav-item:active,
+.learning-panel-link:active {
+  transform: translateY(0) scale(0.985);
+}
+
+.settings-btn:disabled,
+.config-add-btn:disabled,
+.config-model-btn:disabled,
+.plugin-admin-button:disabled,
+.memory-add-btn:disabled,
+.clear-section-btn:disabled {
+  cursor: default;
+  opacity: 0.48;
+  transform: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.settings-row {
+  position: relative;
+}
+
+.settings-row::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 14px;
+  bottom: 14px;
+  width: 1px;
+  opacity: 0;
+  background: rgba(255, 255, 255, 0.22);
+  transition: opacity 160ms ease;
+}
+
+.settings-row:hover::before,
+.settings-row:focus-within::before {
+  opacity: 1;
+}
+
+.settings-card,
+.memory-card,
+.plugin-card,
+.config-model-card,
+.model-overview-card,
+.learning-panel,
+.learning-metric {
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    background 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.settings-card:focus-within,
+.memory-card:focus-within,
+.plugin-card:focus-within,
+.config-model-card:focus-within,
+.model-overview-card:focus-visible,
+.learning-panel:focus-within {
+  border-color: rgba(255, 255, 255, 0.18);
+  box-shadow:
+    0 22px 54px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.settings-input:hover,
+.settings-number-input:hover,
+.settings-text-input:hover,
+.config-field-input:hover,
+.plugin-config-input:not(select):hover,
+.plugin-config-textarea:hover,
+.dialog-field input:hover,
+.interactive-input-control:hover,
+.config-provider-trigger:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.065), rgba(255, 255, 255, 0.026)),
+    rgba(0, 0, 0, 0.16);
+}
+
+.settings-select:hover,
+select.plugin-config-input:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.settings-input,
+.settings-select,
+.settings-number-input,
+.settings-text-input,
+.config-field-input,
+.plugin-config-input,
+.plugin-config-textarea,
+.dialog-field input,
+.interactive-input-control {
+  caret-color: rgba(248, 250, 250, 0.86);
+}
+
+.settings-select,
+.config-field-input,
+.plugin-config-input,
+.settings-input {
+  min-height: 30px;
+}
+
+.settings-select {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='rgba(190,255,244,0.78)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") right 16px center / 14px 14px no-repeat,
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)),
+    rgba(0, 0, 0, 0.18);
+}
+
+.settings-close {
+  display: grid;
+  place-items: center;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease;
+}
+
+.settings-close:hover {
+  transform: rotate(90deg) scale(1.03);
+}
+
+.config-empty,
+.profile-empty,
+.plugin-admin-empty,
+.learning-no-selection {
+  border-style: dashed;
+  letter-spacing: 0;
+}
+
+.config-empty::before,
+.profile-empty::before,
+.plugin-admin-empty::before {
+  content: '';
+  display: block;
+  width: 18px;
+  height: 1px;
+  margin: 0 auto 9px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.memory-count,
+.plugin-version,
+.model-overview-status,
+.config-model-active-badge,
+.account-input-sensitivity,
+.task-runtime-badge {
+  backdrop-filter: blur(10px);
+}
+
+.plugin-enter,
+.model-overview-action,
+.learning-panel-link {
+  position: relative;
+}
+
+.plugin-enter::after,
+.model-overview-action::after,
+.learning-panel-link::after {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-left: 7px;
+  border-top: 1px solid currentColor;
+  border-right: 1px solid currentColor;
+  transform: rotate(45deg) translateY(-1px);
+  opacity: 0.58;
+}
+
+.delete-icon-btn {
+  transition:
+    opacity 150ms ease,
+    transform 150ms ease,
+    background 150ms ease,
+    border-color 150ms ease;
+}
+
+.delete-icon-btn:hover {
+  transform: scale(1.04);
+}
+
+.settings-content,
+.memory-card-content.scrollable,
+.learning-list,
+.learning-timeline,
+.learning-json,
+.plugin-config-fields,
+.plugin-admin-section {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+.learning-list::-webkit-scrollbar,
+.learning-timeline::-webkit-scrollbar,
+.learning-json::-webkit-scrollbar,
+.plugin-config-fields::-webkit-scrollbar,
+.plugin-admin-section::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.learning-list::-webkit-scrollbar-track,
+.learning-timeline::-webkit-scrollbar-track,
+.learning-json::-webkit-scrollbar-track,
+.plugin-config-fields::-webkit-scrollbar-track,
+.plugin-admin-section::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.learning-list::-webkit-scrollbar-thumb,
+.learning-timeline::-webkit-scrollbar-thumb,
+.learning-json::-webkit-scrollbar-thumb,
+.plugin-config-fields::-webkit-scrollbar-thumb,
+.plugin-admin-section::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  background-clip: padding-box;
+}
+
+.learning-list:hover::-webkit-scrollbar-thumb,
+.learning-timeline:hover::-webkit-scrollbar-thumb,
+.learning-json:hover::-webkit-scrollbar-thumb,
+.plugin-config-fields:hover::-webkit-scrollbar-thumb,
+.plugin-admin-section:hover::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  background-clip: padding-box;
+}
+
+body.theme-day .settings-btn:focus-visible,
+body.theme-day .config-add-btn:focus-visible,
+body.theme-day .model-back-btn:focus-visible,
+body.theme-day .plugin-back-btn:focus-visible,
+body.theme-day .config-model-btn:focus-visible,
+body.theme-day .config-reset-btn:focus-visible,
+body.theme-day .plugin-admin-button:focus-visible,
+body.theme-day .memory-add-btn:focus-visible,
+body.theme-day .memory-edit-btn:focus-visible,
+body.theme-day .clear-section-btn:focus-visible,
+body.theme-day .settings-close:focus-visible,
+body.theme-day .learning-nav-item:focus-visible,
+body.theme-day .learning-panel-link:focus-visible {
+  border-color: rgba(24, 30, 32, 0.26);
+  box-shadow:
+    0 0 0 3px rgba(24, 30, 32, 0.055),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+body.theme-day .settings-row::before {
+  background: rgba(24, 30, 32, 0.18);
+}
+
+body.theme-day .settings-card:focus-within,
+body.theme-day .memory-card:focus-within,
+body.theme-day .plugin-card:focus-within,
+body.theme-day .config-model-card:focus-within,
+body.theme-day .model-overview-card:focus-visible,
+body.theme-day .learning-panel:focus-within {
+  border-color: rgba(16, 45, 52, 0.2);
+  box-shadow:
+    0 22px 54px rgba(38, 56, 60, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.66);
+}
+
+body.theme-day .settings-input:hover,
+body.theme-day .settings-number-input:hover,
+body.theme-day .settings-text-input:hover,
+body.theme-day .config-field-input:hover,
+body.theme-day .plugin-config-input:not(select):hover,
+body.theme-day .plugin-config-textarea:hover,
+body.theme-day .dialog-field input:hover,
+body.theme-day .interactive-input-control:hover,
+body.theme-day .config-provider-trigger:hover {
+  border-color: rgba(16, 45, 52, 0.2);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(232, 238, 236, 0.50)),
+    rgba(255, 255, 255, 0.42);
+}
+
+body.theme-day .settings-select:hover,
+body.theme-day select.plugin-config-input:hover {
+  border-color: rgba(16, 45, 52, 0.2);
+}
+
+body.theme-day .settings-select {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='rgba(20,62,60,0.72)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") right 16px center / 14px 14px no-repeat,
+    linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(246, 250, 249, 0.64)),
+    rgba(255, 255, 255, 0.42);
+}
+
+body.theme-day .settings-content,
+body.theme-day .memory-card-content.scrollable,
+body.theme-day .learning-list,
+body.theme-day .learning-timeline,
+body.theme-day .learning-json,
+body.theme-day .plugin-config-fields,
+body.theme-day .plugin-admin-section {
+  scrollbar-color: rgba(24, 30, 32, 0.18) transparent;
+}
+
+/* Control consistency pass: keep interactive typography and native selects aligned. */
+.settings-panel button,
+.settings-panel input,
+.settings-panel select,
+.settings-panel textarea,
+.task-panel button,
+.task-panel input,
+.task-panel select,
+.task-panel textarea,
+.memory-dialog button,
+.memory-dialog input,
+.memory-dialog select,
+.memory-dialog textarea,
+.confirm-dialog button,
+.interactive-input-dialog button,
+.interactive-input-dialog input,
+.interactive-input-dialog textarea {
+  font-family: var(--control-font);
+  letter-spacing: 0;
+}
+
+.settings-select,
+select.plugin-config-input,
+.edit-field select {
+  appearance: none;
+  -webkit-appearance: none;
+  min-height: 32px;
+  border-radius: 8px;
+  padding-right: 36px;
+  background:
+    var(--select-chevron-dark) right 12px center / 14px 14px no-repeat,
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.022)),
+    rgba(0, 0, 0, 0.18);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--liquid-text);
+  font-family: var(--control-font);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    box-shadow 160ms ease,
+    color 160ms ease;
+}
+
+.settings-select:hover,
+select.plugin-config-input:hover,
+.edit-field select:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+  background:
+    var(--select-chevron-dark) right 12px center / 14px 14px no-repeat,
+    linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.026)),
+    rgba(0, 0, 0, 0.16);
+}
+
+.settings-select:focus,
+.settings-select:focus-visible,
+select.plugin-config-input:focus,
+select.plugin-config-input:focus-visible,
+.edit-field select:focus,
+.edit-field select:focus-visible {
+  border-color: rgba(255, 255, 255, 0.3);
+  box-shadow:
+    0 0 0 3px rgba(255, 255, 255, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.settings-select option,
+select.plugin-config-input option,
+.edit-field select option {
+  background: #1c1c1e;
+  color: rgba(248, 250, 250, 0.92);
+  font-family: var(--control-font);
+}
+
+body.theme-day .settings-select,
+body.theme-day select.plugin-config-input,
+body.theme-day .edit-field select {
+  background:
+    var(--select-chevron-day) right 12px center / 14px 14px no-repeat,
+    linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(246, 250, 249, 0.64)),
+    rgba(255, 255, 255, 0.42);
+  border-color: rgba(34, 80, 76, 0.16);
+  color: rgba(15, 28, 30, 0.92);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+body.theme-day .settings-select:hover,
+body.theme-day select.plugin-config-input:hover,
+body.theme-day .edit-field select:hover {
+  border-color: rgba(16, 45, 52, 0.2);
+  background:
+    var(--select-chevron-day) right 12px center / 14px 14px no-repeat,
+    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(232, 238, 236, 0.52)),
+    rgba(255, 255, 255, 0.42);
+}
+
+#voice-input-btn.active {
+  background:
+    linear-gradient(180deg, rgba(190, 255, 244, 0.20), rgba(190, 255, 244, 0.075)),
+    rgba(190, 255, 244, 0.045);
+  border-color: rgba(190, 255, 244, 0.34);
+  color: rgba(226, 255, 250, 0.98);
+  box-shadow:
+    0 0 0 1px rgba(190, 255, 244, 0.08),
+    0 10px 26px rgba(20, 80, 72, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+#voice-input-btn.active:hover {
+  background:
+    linear-gradient(180deg, rgba(190, 255, 244, 0.26), rgba(190, 255, 244, 0.10)),
+    rgba(190, 255, 244, 0.06);
+  border-color: rgba(190, 255, 244, 0.46);
+}
+
+#voice-input-btn.active::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 7px;
+  border-radius: 999px;
+  background: rgba(190, 255, 244, 0.98);
+  box-shadow: 0 0 10px rgba(190, 255, 244, 0.58);
+  vertical-align: 1px;
+}
+
+body.theme-day #voice-input-btn.active {
+  background:
+    linear-gradient(180deg, rgba(26, 126, 112, 0.18), rgba(26, 126, 112, 0.07)),
+    rgba(255, 255, 255, 0.70);
+  border-color: rgba(26, 126, 112, 0.34);
+  color: rgba(8, 70, 62, 0.96);
+  box-shadow:
+    0 0 0 1px rgba(26, 126, 112, 0.08),
+    0 10px 24px rgba(38, 96, 88, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.74);
+}
+
+body.theme-day #voice-input-btn.active:hover {
+  background:
+    linear-gradient(180deg, rgba(26, 126, 112, 0.22), rgba(26, 126, 112, 0.09)),
+    rgba(255, 255, 255, 0.78);
+  border-color: rgba(26, 126, 112, 0.42);
+}
+
+body.theme-day #voice-input-btn.active::before {
+  background: rgba(20, 112, 98, 0.96);
+  box-shadow: 0 0 10px rgba(20, 112, 98, 0.30);
+}
+
+body.theme-day .learning-list::-webkit-scrollbar-thumb,
+body.theme-day .learning-timeline::-webkit-scrollbar-thumb,
+body.theme-day .learning-json::-webkit-scrollbar-thumb,
+body.theme-day .plugin-config-fields::-webkit-scrollbar-thumb,
+body.theme-day .plugin-admin-section::-webkit-scrollbar-thumb {
+  background: rgba(24, 30, 32, 0.14);
+  background-clip: padding-box;
+}
+
+body.theme-day .config-empty::before,
+body.theme-day .profile-empty::before,
+body.theme-day .plugin-admin-empty::before {
+  background: rgba(24, 30, 32, 0.16);
+}
+
+/* About page compact layout and author strip. Kept at the end to override earlier theme passes. */
+#section-about .about-card {
+  width: min(100%, 400px);
+  padding: 18px 24px 24px;
+  min-height: 0;
+}
+
+#section-about .about-card::after {
+  bottom: 8px;
+}
+
+#section-about .about-orb {
+  width: 56px;
+  height: 56px;
+  margin-bottom: 14px;
+}
+
+#section-about .about-orb::before {
+  inset: -5px;
+}
+
+#section-about .about-orb::after {
+  inset: -11px;
+}
+
+#section-about .about-name {
+  font-size: 21px;
+  margin-bottom: 2px;
+}
+
+#section-about .about-version {
+  margin-bottom: 10px;
+}
+
+#section-about .about-desc {
+  margin-bottom: 12px;
+}
+
+#section-about .about-quote {
+  max-width: 320px;
+  margin-bottom: 16px;
+  line-height: 1.62;
+}
+
+.author-strip {
+  width: 100%;
+  min-height: 112px;
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  padding: 18px 22px 18px 18px;
+  margin-top: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.052), rgba(255, 255, 255, 0.024)),
+    rgba(255, 255, 255, 0.018);
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.author-avatar {
+  width: 72px;
+  height: 72px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  object-fit: cover;
+  border: 1px solid rgba(232, 238, 238, 0.28);
+  box-shadow:
+    0 0 0 5px rgba(255, 255, 255, 0.04),
+    0 16px 34px rgba(0, 0, 0, 0.28);
+}
+
+.author-info {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 22px;
+}
+
+.author-name {
+  font-family: var(--font-ui);
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: 0.035em;
+  color: rgba(248, 250, 250, 0.9);
+  min-width: 0;
+  flex: 1;
+  white-space: nowrap;
+}
+
+.author-links {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+.author-link {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  color: rgba(232, 238, 238, 0.54);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.author-link svg {
+  width: 18px;
+  height: 18px;
+}
+
+.author-link-github svg {
+  fill: currentColor;
+  stroke: currentColor;
+  stroke-width: 0;
+}
+
+.author-link-email svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+body.theme-day .author-strip {
+  border-color: rgba(20, 32, 36, 0.12);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.66), rgba(246, 250, 249, 0.44)),
+    rgba(255, 255, 255, 0.42);
+  box-shadow:
+    0 18px 38px rgba(38, 56, 60, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+body.theme-day .author-avatar {
+  border-color: rgba(20, 32, 36, 0.18);
+  box-shadow:
+    0 0 0 4px rgba(255, 255, 255, 0.5),
+    0 12px 24px rgba(38, 56, 60, 0.16);
+}
+
+body.theme-day .author-name {
+  color: rgba(18, 28, 31, 0.9);
+}
+
+body.theme-day .author-link {
+  color: rgba(26, 46, 50, 0.58);
+  border-color: rgba(20, 32, 36, 0.12);
+  background: rgba(255, 255, 255, 0.5);
+}
+
+@media (max-width: 560px) {
+  .author-strip {
+    gap: 16px;
+    padding: 16px 18px;
+  }
+
+  .author-avatar {
+    width: 64px;
+    height: 64px;
+  }
+
+  .author-info {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .author-name {
+    font-size: 17px;
+  }
+
+  .author-link {
+    width: 34px;
+    height: 34px;
+  }
+}
