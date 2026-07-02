@@ -335,9 +335,12 @@ function renderConversationSelect(
   return `
     <label class="chat-settings-field">
       <span>${options.escapeHtml(title)}</span>
-      <select data-chat-setting="${options.escapeHtml(key)}">
-        ${items.map((item) => `<option value="${options.escapeHtml(item.value)}" ${item.value === selected ? 'selected' : ''}>${options.escapeHtml(item.label)}</option>`).join('')}
-      </select>
+      <span class="chat-settings-select-shell">
+        <select data-chat-setting="${options.escapeHtml(key)}">
+          ${items.map((item) => `<option value="${options.escapeHtml(item.value)}" ${item.value === selected ? 'selected' : ''}>${options.escapeHtml(item.label)}</option>`).join('')}
+        </select>
+        <i aria-hidden="true"></i>
+      </span>
     </label>
   `
 }

@@ -2632,6 +2632,7 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-history-manager {
   display: grid;
   align-content: start;
   gap: 0;
+  padding-top: 12px;
 }
 
 .chat-settings-media-group + .chat-settings-media-group {
@@ -2662,6 +2663,80 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-history-manager {
   font-size: 11px;
   font-weight: 540;
   line-height: 1.45;
+}
+
+.chat-settings-media-group .chat-settings-field {
+  min-height: 70px;
+  grid-template-columns: minmax(84px, 0.34fr) minmax(0, 1fr);
+  gap: 16px;
+}
+
+.chat-settings-media-group .chat-settings-field > span:first-child {
+  color: rgba(248, 249, 249, 0.82);
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.chat-settings-select-shell {
+  position: relative;
+  min-width: 0;
+  display: block;
+}
+
+.chat-settings-select-wrap select,
+.chat-settings-field .chat-settings-select-shell select {
+  height: 42px;
+  padding: 0 40px 0 14px;
+  border: 1px solid rgba(245, 248, 246, 0.1);
+  border-radius: 11px;
+  appearance: none;
+  -webkit-appearance: none;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.052), rgba(255, 255, 255, 0.032)),
+    rgba(21, 22, 24, 0.72);
+  color: rgba(248, 249, 249, 0.88);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 8px 20px rgba(0, 0, 0, 0.08);
+  transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease;
+}
+
+.chat-settings-field .chat-settings-select-shell select:hover {
+  border-color: rgba(218, 232, 224, 0.2);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.068), rgba(255, 255, 255, 0.04)),
+    rgba(25, 27, 29, 0.82);
+}
+
+.chat-settings-field .chat-settings-select-shell select:focus-visible {
+  outline: 0;
+  border-color: rgba(218, 232, 224, 0.34);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 0 0 3px rgba(177, 205, 193, 0.09);
+}
+
+.chat-settings-field .chat-settings-select-shell select option {
+  background: rgb(31, 32, 35);
+  color: rgba(248, 249, 249, 0.92);
+}
+
+.chat-settings-select-shell i {
+  position: absolute;
+  right: 15px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid rgba(218, 232, 224, 0.58);
+  border-bottom: 2px solid rgba(218, 232, 224, 0.58);
+  transform: translateY(-62%) rotate(45deg);
+  pointer-events: none;
+  transition: border-color 150ms ease, transform 150ms ease;
+}
+
+.chat-settings-select-shell:focus-within i,
+.chat-settings-select-shell:hover i {
+  border-color: rgba(248, 249, 249, 0.84);
 }
 
 @media (max-width: 760px) {
@@ -2699,5 +2774,10 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-history-manager {
     padding-top: 14px;
     border-left: 0;
     border-top: 1px solid rgba(245, 248, 246, 0.08);
+  }
+
+  .chat-settings-media-group .chat-settings-field {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
   }
 }
