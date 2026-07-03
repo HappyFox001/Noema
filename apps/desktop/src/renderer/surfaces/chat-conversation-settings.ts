@@ -1,6 +1,8 @@
 /**
  * Owns conversation preference settings, storage, and settings dialog markup.
  */
+import { buildRoleplayMediaPolicyPrompt } from '@noema/sdk/chat/conversation-runtime'
+
 export const CHAT_OUTPUT_TOKEN_MIN = 225
 export const CHAT_OUTPUT_TOKEN_MAX = 5000
 export const CHAT_OUTPUT_TOKEN_STEP = 50
@@ -9,6 +11,11 @@ export const CHAT_CONTEXT_TURNS_MAX = 30
 export const CHAT_SUMMARY_LIMIT_MIN = 0
 export const CHAT_SUMMARY_LIMIT_MAX = 24
 export const CHAT_SUMMARY_BATCH_MESSAGE_COUNT = 10
+
+export type ChatMediaImageMode = 'off' | 'manual' | 'requested' | 'proactive'
+export type ChatMediaVoiceMode = 'off' | 'manual' | 'requested' | 'auto'
+export type ChatMediaImageReferenceMode = 'none' | 'character'
+export type ChatMediaPersistenceMode = 'turn' | 'permanent'
 
 export interface ChatConversationSettings {
   textStreaming: boolean
@@ -19,6 +26,15 @@ export interface ChatConversationSettings {
   diversity: number
   shortTermTurns: number
   summaryLimit: number
+  mediaImageMode: ChatMediaImageMode
+  mediaImageModelRef: string
+  mediaImageSize: string
+  mediaImageReferenceMode: ChatMediaImageReferenceMode
+  mediaImagePersistence: ChatMediaPersistenceMode
+  mediaVoiceMode: ChatMediaVoiceMode
+  mediaTtsModelId: string
+  mediaVoiceAutoplay: boolean
+  mediaVoicePersistence: ChatMediaPersistenceMode
 }
 
 export interface ConversationSettingsPageOptions {
@@ -36,6 +52,15 @@ export function getDefaultConversationSettings(): ChatConversationSettings {
     diversity: 0.7,
     shortTermTurns: 15,
     summaryLimit: 8,
+    mediaImageMode: 'requested',
+    mediaImageModelRef: '',
+    mediaImageSize: '1024x1024',
+    mediaImageReferenceMode: 'character',
+    mediaImagePersistence: 'permanent',
+    mediaVoiceMode: 'manual',
+    mediaTtsModelId: '',
+    mediaVoiceAutoplay: false,
+    mediaVoicePersistence: 'turn',
   }
 }
 
@@ -62,6 +87,19 @@ export function loadConversationSettings(): ChatConversationSettings {
       summaryLimit: Number.isFinite(Number(parsed.summaryLimit))
         ? Math.round(clampNumber(Number(parsed.summaryLimit), CHAT_SUMMARY_LIMIT_MIN, CHAT_SUMMARY_LIMIT_MAX))
         : defaults.summaryLimit,
+      mediaImageMode: isMediaImageMode(parsed.mediaImageMode) ? parsed.mediaImageMode : defaults.mediaImageMode,
+      mediaImageModelRef: typeof parsed.mediaImageModelRef === 'string' ? parsed.mediaImageModelRef : defaults.mediaImageModelRef,
+      mediaImageSize: normalizeImageSize(parsed.mediaImageSize, defaults.mediaImageSize),
+      mediaImageReferenceMode: parsed.mediaImageReferenceMode === 'none' ? 'none' : defaults.mediaImageReferenceMode,
+      mediaImagePersistence: parsed.mediaImagePersistence === 'turn' || parsed.mediaImagePersistence === 'permanent'
+        ? parsed.mediaImagePersistence
+        : defaults.mediaImagePersistence,
+      mediaVoiceMode: isMediaVoiceMode(parsed.mediaVoiceMode) ? parsed.mediaVoiceMode : defaults.mediaVoiceMode,
+      mediaTtsModelId: typeof parsed.mediaTtsModelId === 'string' ? parsed.mediaTtsModelId : defaults.mediaTtsModelId,
+      mediaVoiceAutoplay: typeof parsed.mediaVoiceAutoplay === 'boolean' ? parsed.mediaVoiceAutoplay : defaults.mediaVoiceAutoplay,
+      mediaVoicePersistence: parsed.mediaVoicePersistence === 'turn' || parsed.mediaVoicePersistence === 'permanent'
+        ? parsed.mediaVoicePersistence
+        : defaults.mediaVoicePersistence,
     }
   } catch {
     return defaults
@@ -82,25 +120,13 @@ export function renderConversationSettingsPage(
 ): string {
   const zh = options.language === 'zh-CN'
   return `
-    <div class="chat-settings-stage">
-      <section class="chat-settings-intro" aria-label="${options.escapeHtml(zh ? '常规设置' : 'General settings')}">
-        <span>${options.escapeHtml(zh ? '偏好' : 'Preferences')}</span>
-        <p>${options.escapeHtml(zh
-          ? '只影响当前设备上的 chat 对话偏好；不会打断正在进行的对话。'
-          : 'Device-local chat preferences. The current conversation stays in place.')}</p>
-      </section>
-
-      <div class="chat-settings-toggles">
-        ${renderConversationToggle(settings, options, 'textStreaming', zh ? '文字流' : 'Text stream', zh ? '逐字呈现回复' : 'Progressive reveal')}
-        ${renderConversationToggle(settings, options, 'sceneImmersion', zh ? '场景化体验' : 'Scene mode', zh ? '引入角色场景与示例' : 'Use character scenes')}
-      </div>
-
-      <section class="chat-settings-language-panel">
-        <div>
-          <span class="chat-settings-section-label">${options.escapeHtml(zh ? '语言' : 'Language')}</span>
-          <p>${options.escapeHtml(zh ? '用于角色资料与回复格式。' : 'For profile and response formatting.')}</p>
+    <div class="chat-settings-stage chat-settings-page-layout">
+      <section class="chat-settings-section chat-settings-language-section" aria-label="${options.escapeHtml(zh ? '语言' : 'Language')}">
+        <div class="chat-settings-section-copy">
+          <h3>${options.escapeHtml(zh ? '语言' : 'Language')}</h3>
+          <p>${options.escapeHtml(zh ? '它会影响字元回复所使用的语言。语言可用性因型号而异。' : 'Controls the language used by character replies. Availability depends on the model.')}</p>
         </div>
-        <label class="chat-settings-select-wrap">
+        <label class="chat-settings-select-wrap chat-settings-language-select">
           <select data-chat-setting="language" aria-label="${options.escapeHtml(zh ? '语言' : 'Language')}">
             ${renderConversationLanguageOption(settings, options, 'auto', zh ? '跟随界面' : 'Follow UI')}
             ${renderConversationLanguageOption(settings, options, 'zh-CN', zh ? '简体中文' : 'Simplified Chinese')}
@@ -110,33 +136,108 @@ export function renderConversationSettingsPage(
         </label>
       </section>
 
-      <section class="chat-settings-budget-panel">
-        <div class="chat-settings-panel-head">
-          <div>
-            <span class="chat-settings-section-label">${options.escapeHtml(zh ? '输出长度' : 'Output length')}</span>
-            <p>${options.escapeHtml(zh ? '动态强调本次回复的目标输出 token。' : 'Dynamically emphasizes the target output tokens.')}</p>
-          </div>
-          <output>${options.escapeHtml(String(settings.outputTokenBudget))}</output>
-        </div>
-        ${renderConversationRange(options, 'outputTokenBudget', CHAT_OUTPUT_TOKEN_MIN, CHAT_OUTPUT_TOKEN_MAX, CHAT_OUTPUT_TOKEN_STEP, settings.outputTokenBudget, [
-          { value: 225, label: zh ? '轻量' : 'Lean' },
-          { value: 1000, label: zh ? '日常' : 'Daily' },
-          { value: 2500, label: zh ? '长文' : 'Long' },
-          { value: 5000, label: zh ? '深记忆' : 'Deep' },
-        ])}
-      </section>
-
-      <section class="chat-settings-parameter-panel">
-        <div class="chat-settings-panel-head compact">
-          <div>
-            <span class="chat-settings-section-label">${options.escapeHtml(zh ? '参数' : 'Parameters')}</span>
-            <p>${options.escapeHtml(zh ? '创作空间与稳定性。' : 'Room and stability.')}</p>
+      <section class="chat-settings-section chat-settings-parameter-panel">
+        <div class="chat-settings-section-head">
+          <div class="chat-settings-section-copy">
+            <h3>${options.escapeHtml(zh ? '参数' : 'Parameters')}</h3>
+            <p>${options.escapeHtml(zh ? '控制回复长度、创造空间与稳定性。' : 'Controls reply length, creative range, and stability.')}</p>
           </div>
           <button type="button" data-chat-setting-reset>${options.escapeHtml(zh ? '重置' : 'Reset')}</button>
         </div>
-        <div class="chat-settings-parameter-grid">
-          ${renderConversationParameter(settings, options, 'temperature', zh ? '温度' : 'Temperature', zh ? '克制' : 'Precise', zh ? '灵动' : 'Expressive')}
-          ${renderConversationParameter(settings, options, 'diversity', zh ? '内容多样性' : 'Diversity', zh ? '稳定' : 'Stable', zh ? '丰富' : 'Varied')}
+        <div class="chat-settings-control-card chat-settings-parameter-card">
+          <article class="chat-settings-output-control">
+            <div class="chat-settings-control-head">
+              <div>
+                <strong>${options.escapeHtml(zh ? '输出长度' : 'Output length')}</strong>
+                <small>${options.escapeHtml(zh ? '动态强调本次回复的目标输出 token。' : 'Target output tokens for this reply.')}</small>
+              </div>
+              <output>${options.escapeHtml(String(settings.outputTokenBudget))}</output>
+            </div>
+            ${renderConversationRange(options, 'outputTokenBudget', CHAT_OUTPUT_TOKEN_MIN, CHAT_OUTPUT_TOKEN_MAX, CHAT_OUTPUT_TOKEN_STEP, settings.outputTokenBudget, [
+              { value: 225, label: zh ? '轻量' : 'Lean' },
+              { value: 1000, label: zh ? '日常' : 'Daily' },
+              { value: 2500, label: zh ? '长文' : 'Long' },
+              { value: 5000, label: zh ? '深记忆' : 'Deep' },
+            ])}
+          </article>
+          <div class="chat-settings-parameter-grid">
+            ${renderConversationParameter(settings, options, 'temperature', zh ? '温度' : 'Temperature', zh ? '克制' : 'Precise', zh ? '灵动' : 'Expressive')}
+            ${renderConversationParameter(settings, options, 'diversity', zh ? '内容多样性' : 'Diversity', zh ? '稳定' : 'Stable', zh ? '丰富' : 'Varied')}
+          </div>
+        </div>
+      </section>
+
+      <section class="chat-settings-section chat-settings-basics-panel">
+        <div class="chat-settings-section-head">
+          <div class="chat-settings-section-copy">
+            <h3>${options.escapeHtml(zh ? '常规设置' : 'General settings')}</h3>
+            <p>${options.escapeHtml(zh ? '决定回复是一次出现还是逐位出现，以及是否把角色场景融入上下文。' : 'Controls progressive text and whether character scene context is used.')}</p>
+          </div>
+        </div>
+        <div class="chat-settings-control-card chat-settings-list-card">
+          <div class="chat-settings-toggles">
+            ${renderConversationToggle(settings, options, 'textStreaming', zh ? '文字流' : 'Text stream', zh ? '确定文本是一次出现还是逐位出现。' : 'Choose instant text or progressive reveal.')}
+            ${renderConversationToggle(settings, options, 'sceneImmersion', zh ? '场景化体验' : 'Scene mode', zh ? '将角色的场景和范例对话融入上下文中。' : 'Include character scenes and examples in context.')}
+          </div>
+        </div>
+      </section>
+
+      <section class="chat-settings-section chat-settings-media-panel">
+        <div class="chat-settings-section-head">
+          <div class="chat-settings-section-copy">
+            <h3>${options.escapeHtml(zh ? '媒体生成' : 'Media generation')}</h3>
+            <p>${options.escapeHtml(zh ? '控制角色扮演中的图片与语音生成时机、参考图和记忆方式。' : 'Controls image and voice timing, references, and memory behavior.')}</p>
+          </div>
+        </div>
+        <div class="chat-settings-control-card chat-settings-media-card">
+          <div class="chat-settings-media-grid">
+            <article class="chat-settings-media-group">
+              <div class="chat-settings-media-group-copy">
+                <strong>${options.escapeHtml(zh ? '生图' : 'Images')}</strong>
+                <small>${options.escapeHtml(zh ? '控制图片何时生成，以及是否把生成结果作为后续视觉参考。' : 'Controls when images are generated and whether generated results become future visual context.')}</small>
+              </div>
+              ${renderConversationSelect(settings, options, 'mediaImageMode', zh ? '时机' : 'Timing', [
+                { value: 'off', label: zh ? '关闭' : 'Off' },
+                { value: 'manual', label: zh ? '仅手动按钮' : 'Manual button' },
+                { value: 'requested', label: zh ? '请求时生成' : 'Requested' },
+                { value: 'proactive', label: zh ? '自然主动' : 'Natural proactive' },
+              ])}
+              ${renderConversationSelect(settings, options, 'mediaImageSize', zh ? '尺寸' : 'Size', [
+                { value: '1024x1024', label: '1024 x 1024' },
+                { value: '1024x1536', label: '1024 x 1536' },
+                { value: '1536x1024', label: '1536 x 1024' },
+              ])}
+              ${renderConversationSelect(settings, options, 'mediaImageReferenceMode', zh ? '参考图' : 'References', [
+                { value: 'character', label: zh ? '角色 avatar / body' : 'Character avatar / body' },
+                { value: 'none', label: zh ? '不使用参考图' : 'No references' },
+              ])}
+              ${renderConversationSelect(settings, options, 'mediaImagePersistence', zh ? '上下文' : 'Context', [
+                { value: 'permanent', label: zh ? '作为角色记忆参考' : 'As context reference' },
+                { value: 'turn', label: zh ? '仅展示' : 'Display only' },
+              ])}
+            </article>
+            <article class="chat-settings-media-group">
+              <div class="chat-settings-media-group-copy">
+                <strong>${options.escapeHtml(zh ? '语音' : 'Voice')}</strong>
+                <small>${options.escapeHtml(zh ? '控制 TTS 何时生成。每轮自动适合沉浸式语音角色扮演。' : 'Controls when TTS is generated. Every reply is intended for immersive spoken roleplay.')}</small>
+              </div>
+              ${renderConversationSelect(settings, options, 'mediaVoiceMode', zh ? '时机' : 'Timing', [
+                { value: 'off', label: zh ? '关闭' : 'Off' },
+                { value: 'manual', label: zh ? '仅手动按钮' : 'Manual button' },
+                { value: 'requested', label: zh ? '请求时生成' : 'Requested' },
+                { value: 'auto', label: zh ? '每轮自动' : 'Every reply' },
+              ])}
+              ${renderConversationSelect(settings, options, 'mediaVoicePersistence', zh ? '上下文' : 'Context', [
+                { value: 'turn', label: zh ? '仅展示' : 'Display only' },
+                { value: 'permanent', label: zh ? '作为角色记忆参考' : 'As context reference' },
+              ])}
+              <label class="chat-settings-field inline-toggle">
+                <span>${options.escapeHtml(zh ? '生成后自动播放' : 'Autoplay generated voice')}</span>
+                <input type="checkbox" data-chat-setting="mediaVoiceAutoplay" ${settings.mediaVoiceAutoplay ? 'checked' : ''} />
+                <i aria-hidden="true"></i>
+              </label>
+            </article>
+          </div>
         </div>
       </section>
     </div>
@@ -176,7 +277,24 @@ export function buildConversationPreferencePrompt(settings: ChatConversationSett
       'If this turn changes the current location, character/environment status, or equipment, append <scene_update>{"location":"...","status":"🙂 pleasure 45  ⚡ arousal 22","equipment":[{"name":"item name","ability":"ability","quantity":1}]}</scene_update> at the end. Include only changed fields and do not include scene_update in normal prose.',
       '</conversation_preferences>',
     ]
-  return outputLength.join('\n')
+  const mediaPolicy = buildRoleplayMediaPolicyPrompt(buildConversationMediaPolicy(settings), language)
+  return [...outputLength, mediaPolicy].filter(Boolean).join('\n')
+}
+
+export function buildConversationMediaPolicy(settings: ChatConversationSettings): {
+  imageMode: ChatMediaImageMode
+  voiceMode: ChatMediaVoiceMode
+  imageReferenceMode: ChatMediaImageReferenceMode
+  imagePersistence: ChatMediaPersistenceMode
+  voicePersistence: ChatMediaPersistenceMode
+} {
+  return {
+    imageMode: settings.mediaImageMode,
+    voiceMode: settings.mediaVoiceMode,
+    imageReferenceMode: settings.mediaImageReferenceMode,
+    imagePersistence: settings.mediaImagePersistence,
+    voicePersistence: settings.mediaVoicePersistence,
+  }
 }
 
 export function clampNumber(value: number, min: number, max: number): number {
@@ -206,6 +324,27 @@ function renderConversationToggle(
   `
 }
 
+function renderConversationSelect(
+  settings: ChatConversationSettings,
+  options: ConversationSettingsPageOptions,
+  key: keyof Pick<ChatConversationSettings, 'mediaImageMode' | 'mediaImageSize' | 'mediaImageReferenceMode' | 'mediaImagePersistence' | 'mediaVoiceMode' | 'mediaVoicePersistence'>,
+  title: string,
+  items: Array<{ value: string; label: string }>
+): string {
+  const selected = String(settings[key] || '')
+  return `
+    <label class="chat-settings-field">
+      <span>${options.escapeHtml(title)}</span>
+      <span class="chat-settings-select-shell">
+        <select data-chat-setting="${options.escapeHtml(key)}">
+          ${items.map((item) => `<option value="${options.escapeHtml(item.value)}" ${item.value === selected ? 'selected' : ''}>${options.escapeHtml(item.label)}</option>`).join('')}
+        </select>
+        <i aria-hidden="true"></i>
+      </span>
+    </label>
+  `
+}
+
 function renderConversationLanguageOption(
   settings: ChatConversationSettings,
   options: ConversationSettingsPageOptions,
@@ -215,9 +354,9 @@ function renderConversationLanguageOption(
   return `<option value="${options.escapeHtml(value)}" ${settings.language === value ? 'selected' : ''}>${options.escapeHtml(label)}</option>`
 }
 
-function renderConversationRange(
+export function renderConversationRange(
   options: ConversationSettingsPageOptions,
-  key: keyof Pick<ChatConversationSettings, 'outputTokenBudget' | 'temperature' | 'diversity'>,
+  key: keyof Pick<ChatConversationSettings, 'outputTokenBudget' | 'temperature' | 'diversity' | 'shortTermTurns' | 'summaryLimit'>,
   min: number,
   max: number,
   step: number,
@@ -261,4 +400,16 @@ function renderConversationParameter(
       ])}
     </article>
   `
+}
+
+function normalizeImageSize(value: unknown, fallback: string): string {
+  return value === '1024x1024' || value === '1024x1536' || value === '1536x1024' ? value : fallback
+}
+
+function isMediaImageMode(value: unknown): value is ChatMediaImageMode {
+  return value === 'off' || value === 'manual' || value === 'requested' || value === 'proactive'
+}
+
+function isMediaVoiceMode(value: unknown): value is ChatMediaVoiceMode {
+  return value === 'off' || value === 'manual' || value === 'requested' || value === 'auto'
 }

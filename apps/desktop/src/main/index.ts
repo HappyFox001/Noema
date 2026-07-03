@@ -141,9 +141,9 @@ import {
   FALLBACK_ENDPOINTING_CONFIG,
   LOW_LATENCY_VOICE_CONFIG,
   VoiceRuntimeController,
-  createTTSProviderForConfig,
-  normalizeTTSModelName,
 } from './voice-runtime-controller.js'
+import { normalizeConfiguredTTSModelName } from '@noema/sdk/audio/tts-catalog'
+import { createTTSProviderForConfiguredModel } from '@noema/sdk/audio/tts-runtime'
 const DEV_SERVER_URL = 'http://127.0.0.1:5173'
 
 type InterruptionReason = 'vad_start' | 'transcript_start' | 'manual' | 'provider_switch'
@@ -1487,7 +1487,7 @@ function getPluginRuntimeContext(enabled: boolean): PluginRuntimeContext {
     voiceOutputEnabled: true,
     tts: {
       provider: ttsConfig.provider === 'fish' ? 'fish-audio' : ttsConfig.provider,
-      model: normalizeTTSModelName(ttsConfig),
+      model: normalizeConfiguredTTSModelName(ttsConfig),
     },
   }
 }
@@ -1850,7 +1850,7 @@ let appSettings: AppSettings = {
   volume: 70,
   appearance: { orbStyle: 'default', theme: 'night', liquidGlassEnabled: true, dragonCursorEnabled: true },
   experimental: { selfLearningEnabled: true },
-  selectedPersonality: 'role:eva',
+  selectedPersonality: '',
   externalRolePaths: [],
   plugins: {},
   pluginConfigs: {},
@@ -2074,7 +2074,7 @@ async function initializeTTSProvider(): Promise<void> {
     return
   }
 
-  const provider = createTTSProviderForConfig(ttsConfig)
+  const provider = createTTSProviderForConfiguredModel(ttsConfig)
 
   const providerGeneration = ++ttsProviderGeneration
   attachTTSProviderEvents(provider, providerGeneration)
@@ -2759,12 +2759,17 @@ app.whenReady().then(async () => {
   await interactiveInputStore.initialize()
   console.log('[InteractiveInput] Store initialized')
 
-  if (appSettings.selectedPersonality && appSettings.selectedPersonality !== 'role:eva') {
+  if (appSettings.selectedPersonality) {
     try {
-      await getPersonalityManager().setCurrentPersonality(appSettings.selectedPersonality)
-    } catch (error) {
-      console.warn('[App] Failed to restore selected personality:', error)
-      appSettings = await getSettingsStore().update({ selectedPersonality: 'role:eva' })
+      const selectedPersonality = appSettings.selectedPersonality
+      const roleItems = await getPersonalityManager().listRoleItems(appSettings.externalRolePaths)
+      if (roleItems.some((item: { id?: string }) => item.id === selectedPersonality)) {
+        await getPersonalityManager().setCurrentPersonality(selectedPersonality)
+      } else {
+        appSettings = await getSettingsStore().update({ selectedPersonality: '' })
+      }
+    } catch {
+      appSettings = await getSettingsStore().update({ selectedPersonality: '' })
     }
   }
 

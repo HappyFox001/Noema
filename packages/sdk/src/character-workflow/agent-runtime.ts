@@ -129,6 +129,7 @@ export interface AgentImageGenerationControl {
 
 export interface AgentFieldGenerationControl {
   nodeId: string
+  field: string
   fieldPurpose: string
   tone: string
   lengthPolicy: string
@@ -298,7 +299,6 @@ export interface CharacterAgentRunContext {
   stylePressures: AgentStylePressure[]
   hardConstraints: AgentConstraint[]
   imageGenerationControls: AgentImageGenerationControl[]
-  fieldGenerationControls: AgentFieldGenerationControl[]
   continuityControls: AgentContinuityControl[]
   relationshipControls: AgentRelationshipControl[]
   sourceMaterials: AgentSourceMaterial[]
@@ -645,14 +645,6 @@ export function compileCharacterAgentRunContext(
     seedMode: stringValue(node.config.seedMode, 'lock-character'),
     incomingRelations: incomingRelations(relations, node.id),
   }))
-  const fieldGenerationControls = (nodesByType.get('field-generation-control') ?? []).map((node) => ({
-    nodeId: node.id,
-    fieldPurpose: stringValue(node.config.fieldPurpose),
-    tone: stringValue(node.config.tone),
-    lengthPolicy: stringValue(node.config.lengthPolicy, 'medium'),
-    avoidPatterns: stringListValue(node.config.avoidPatterns),
-    incomingRelations: incomingRelations(relations, node.id),
-  }))
   const continuityControls = (nodesByType.get('continuity-control') ?? []).map((node) => ({
     nodeId: node.id,
     memoryAnchors: stringListValue(node.config.memoryAnchors),
@@ -670,7 +662,6 @@ export function compileCharacterAgentRunContext(
     stylePressures,
     hardConstraints,
     imageGenerationControls,
-    fieldGenerationControls,
     continuityControls,
     relationshipControls,
   })
@@ -689,7 +680,6 @@ export function compileCharacterAgentRunContext(
     stylePressures,
     hardConstraints,
     imageGenerationControls,
-    fieldGenerationControls,
     continuityControls,
     relationshipControls,
     sourceMaterials: (nodesByType.get('source-material') ?? []).map((node) => ({
@@ -1822,11 +1812,22 @@ function createOpeningLayoutData(
   const worldContext = stringValue(fields.worldContext)
   const dialogueStyle = stringValue(fields.dialogueStyle)
   const includeSections = stringListValue(target.config.includeSections, ['title', 'tags', 'opening', 'coverImage', 'supportImages'])
-  const layoutKind = stringValue(target.config.layoutKind, 'immersive-card-css')
+  const requestedLayoutKind = stringValue(target.config.layoutKind, 'auto-opening-layout')
+  const textDensity = normalizeOpeningTextDensity(stringValue(target.config.textDensity, 'minimal'))
   const style = resolveOpeningLayoutStyle(context, target, fields)
   const images = collectOpeningLayoutImages(artifacts)
   const cover = images[0]
   const supportImages = images.slice(1, 4)
+  const layoutKind = chooseOpeningLayoutKind(requestedLayoutKind, {
+    name,
+    description,
+    scenario,
+    worldContext,
+    dialogueStyle,
+    style,
+    cover,
+    supportImages,
+  })
   const scopeClass = `noema-opening-panel-${sanitizeCssIdentifier(target.nodeId)}`
   const sections = {
     title: name,
@@ -1838,6 +1839,8 @@ function createOpeningLayoutData(
   }
   const html = buildOpeningLayoutHtml({
     scopeClass,
+    layoutKind,
+    textDensity,
     name,
     description,
     opening,
@@ -1850,8 +1853,10 @@ function createOpeningLayoutData(
   })
   const css = buildOpeningLayoutCss(scopeClass, style)
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     layoutKind,
+    requestedLayoutKind,
+    textDensity,
     includeSections,
     summary: `${layoutKind} panel for ${name}, styled from ${style.preset}.`,
     html,
@@ -1931,8 +1936,87 @@ function openingImagePriority(role: string): number {
   return 3
 }
 
+const OPENING_LAYOUT_KIND_VALUES = [
+  'auto-opening-layout',
+  'cinematic-poster',
+  'visual-novel-scene',
+  'chat-teaser',
+  'scrapbook-collage',
+  'profile-dossier',
+  'editorial-cover',
+] as const
+
+type OpeningLayoutKind = Exclude<typeof OPENING_LAYOUT_KIND_VALUES[number], 'auto-opening-layout'>
+
+const OPENING_TEXT_DENSITY_VALUES = ['minimal', 'balanced', 'story'] as const
+type OpeningTextDensity = typeof OPENING_TEXT_DENSITY_VALUES[number]
+
+function normalizeOpeningTextDensity(value: string): OpeningTextDensity {
+  return (OPENING_TEXT_DENSITY_VALUES as readonly string[]).includes(value)
+    ? value as OpeningTextDensity
+    : 'minimal'
+}
+
+function chooseOpeningLayoutKind(
+  requested: string,
+  options: {
+    name: string
+    description: string
+    scenario: string
+    worldContext: string
+    dialogueStyle: string
+    style: Record<string, string>
+    cover?: Record<string, string>
+    supportImages: Array<Record<string, string>>
+  }
+): OpeningLayoutKind {
+  if ((OPENING_LAYOUT_KIND_VALUES as readonly string[]).includes(requested) && requested !== 'auto-opening-layout') {
+    return requested as OpeningLayoutKind
+  }
+  const source = [
+    options.name,
+    options.description,
+    options.scenario,
+    options.worldContext,
+    options.dialogueStyle,
+    options.style.preset,
+    options.style.prompt,
+  ].join(' ').toLowerCase()
+  const choices: OpeningLayoutKind[] = []
+  if (options.cover) {
+    choices.push('cinematic-poster', 'visual-novel-scene', 'editorial-cover', 'profile-dossier')
+  }
+  if (options.supportImages.length >= 2) {
+    choices.push('scrapbook-collage')
+  }
+  choices.push('chat-teaser')
+  if (/campus|school|classroom|雨|教室|校园|窗|下午|自习/.test(source)) {
+    choices.unshift('visual-novel-scene')
+  }
+  if (/noir|goth|horror|thriller|mystery|夜|暗|悬疑|秘密/.test(source)) {
+    choices.unshift('cinematic-poster')
+  }
+  if (/idol|agent|vtuber|android|档案|身份|组织|委托/.test(source)) {
+    choices.unshift('profile-dossier')
+  }
+  return choices[stableOpeningLayoutIndex(source || options.name, choices.length)] ?? 'chat-teaser'
+}
+
+function stableOpeningLayoutIndex(value: string, modulo: number): number {
+  if (modulo <= 1) {
+    return 0
+  }
+  let hash = 0
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0
+  }
+  return (hash >>> 0) % modulo
+}
+
 function buildOpeningLayoutHtml(options: {
   scopeClass: string
+  layoutKind: OpeningLayoutKind
+  textDensity: OpeningTextDensity
   name: string
   description: string
   opening: string
@@ -1944,19 +2028,31 @@ function buildOpeningLayoutHtml(options: {
   supportImages: Array<Record<string, string>>
 }): string {
   const show = (section: string) => options.includeSections.includes(section)
-  const tags = deriveOpeningTags(options)
+  const limits = openingTextLimits(options.textDensity)
+  const title = compactOpeningText(options.name, 28)
+  const summary = compactOpeningText(options.description || options.scenario, limits.summary)
+  const opening = compactOpeningText(options.opening || options.scenario || options.description, limits.opening)
+  const tags = show('tags') ? deriveOpeningTags(options).slice(0, options.textDensity === 'story' ? 3 : 2) : []
+  const facts = options.layoutKind === 'profile-dossier'
+    ? buildOpeningFactItems(options, limits.fact)
+    : []
+  const hasCover = Boolean(show('coverImage') && options.cover)
+  const galleryImages = show('supportImages') ? options.supportImages.slice(0, options.layoutKind === 'scrapbook-collage' ? 3 : 2) : []
+  const hasVisual = hasCover || galleryImages.length > 0
   return [
-    `<section class="${options.scopeClass}">`,
-    show('coverImage') && options.cover ? `<figure class="noema-opening-cover"><img src="${htmlEscape(options.cover.url)}" alt="${htmlEscape(options.cover.title)}"></figure>` : '',
-    '<div class="noema-opening-body">',
-    show('title') ? `<p class="noema-opening-kicker">Noema Role Opening</p><h1>${htmlEscape(options.name)}</h1>` : '',
-    show('tags') ? `<div class="noema-opening-tags">${tags.map((tag) => `<span>${htmlEscape(tag)}</span>`).join('')}</div>` : '',
-    options.description ? `<p class="noema-opening-summary">${htmlEscape(options.description)}</p>` : '',
-    show('opening') && options.opening ? `<blockquote>${htmlEscape(options.opening)}</blockquote>` : '',
-    options.scenario ? `<article><b>Scenario</b><p>${htmlEscape(options.scenario)}</p></article>` : '',
-    show('characterSummary') && options.worldContext ? `<article><b>World Context</b><p>${htmlEscape(options.worldContext)}</p></article>` : '',
-    options.dialogueStyle ? `<article><b>Voice</b><p>${htmlEscape(options.dialogueStyle)}</p></article>` : '',
-    show('supportImages') && options.supportImages.length ? `<div class="noema-opening-gallery">${options.supportImages.map((image) => `<img src="${htmlEscape(image.url)}" alt="${htmlEscape(image.title)}">`).join('')}</div>` : '',
+    `<section class="${options.scopeClass} noema-opening-panel is-${options.layoutKind}${hasVisual ? '' : ' no-visual'}" data-layout="${htmlEscape(options.layoutKind)}">`,
+    hasVisual ? [
+      '<div class="noema-opening-visual-stack">',
+      hasCover && options.cover ? `<figure class="noema-opening-visual"><img src="${htmlEscape(options.cover.url)}" alt="${htmlEscape(options.cover.title)}"></figure>` : '',
+      galleryImages.length ? `<div class="noema-opening-gallery">${galleryImages.map((image) => `<img src="${htmlEscape(image.url)}" alt="${htmlEscape(image.title)}">`).join('')}</div>` : '',
+      '</div>',
+    ].join('') : '',
+    '<div class="noema-opening-copy">',
+    show('title') ? `<header><h1>${htmlEscape(title)}</h1>${summary ? `<p class="noema-opening-hook">${htmlEscape(summary)}</p>` : ''}</header>` : '',
+    tags.length ? `<div class="noema-opening-tags">${tags.map((tag) => `<span>${htmlEscape(tag)}</span>`).join('')}</div>` : '',
+    show('opening') && opening ? `<div class="noema-opening-dialogue"><p>${htmlEscape(opening)}</p></div>` : '',
+    facts.length ? `<dl class="noema-opening-facts">${facts.map((fact) => `<div><dt>${htmlEscape(fact.label)}</dt><dd>${htmlEscape(fact.value)}</dd></div>`).join('')}</dl>` : '',
+    show('characterSummary') && options.worldContext && options.textDensity === 'story' ? `<p class="noema-opening-note">${htmlEscape(compactOpeningText(options.worldContext, limits.summary))}</p>` : '',
     '</div>',
     '</section>',
   ].filter(Boolean).join('')
@@ -1964,24 +2060,94 @@ function buildOpeningLayoutHtml(options: {
 
 function buildOpeningLayoutCss(scopeClass: string, style: Record<string, string>): string {
   return [
-    `.${scopeClass}{--noema-accent:${style.accent};--noema-accent-soft:${style.accentSoft};display:grid;grid-template-columns:minmax(96px,0.72fr) minmax(0,1fr);gap:14px;max-width:720px;padding:16px;border:1px solid rgba(255,255,255,.12);border-radius:22px;background:radial-gradient(circle at 18% 0%,var(--noema-accent-soft),transparent 32%),linear-gradient(145deg,rgba(255,255,255,.075),rgba(255,255,255,.018)),${style.surface};color:rgba(248,250,250,.92);box-shadow:0 22px 70px rgba(0,0,0,.42);font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overflow:hidden}`,
-    `.${scopeClass} *{box-sizing:border-box}`,
-    `.${scopeClass} .noema-opening-cover{margin:0;min-width:0}`,
-    `.${scopeClass} .noema-opening-cover img{width:100%;height:100%;min-height:220px;object-fit:cover;object-position:center 18%;border-radius:16px;border:1px solid rgba(255,255,255,.12);filter:saturate(1.04) contrast(1.03)}`,
-    `.${scopeClass} .noema-opening-body{display:grid;align-content:start;gap:10px;min-width:0}`,
-    `.${scopeClass} .noema-opening-kicker{margin:0;color:var(--noema-accent);font-size:10px;font-weight:760;letter-spacing:.16em;text-transform:uppercase}`,
-    `.${scopeClass} h1{margin:0;color:white;font-size:clamp(26px,5vw,42px);line-height:.94;letter-spacing:-.055em}`,
-    `.${scopeClass} .noema-opening-tags{display:flex;flex-wrap:wrap;gap:5px}`,
-    `.${scopeClass} .noema-opening-tags span{padding:4px 7px;border:1px solid rgba(255,255,255,.12);border-radius:999px;background:rgba(255,255,255,.052);color:rgba(248,250,250,.7);font-size:10px}`,
-    `.${scopeClass} .noema-opening-summary{margin:0;color:rgba(248,250,250,.72);font-size:12px;line-height:1.45}`,
-    `.${scopeClass} blockquote{margin:2px 0 0;padding:11px 12px;border-left:2px solid var(--noema-accent);border-radius:12px;background:rgba(255,255,255,.05);color:rgba(248,250,250,.86);font-size:12px;line-height:1.55}`,
-    `.${scopeClass} article{display:grid;gap:4px;padding:9px 10px;border:1px solid rgba(255,255,255,.08);border-radius:13px;background:rgba(0,0,0,.16)}`,
-    `.${scopeClass} article b{color:var(--noema-accent);font-size:10px;text-transform:uppercase;letter-spacing:.08em}`,
-    `.${scopeClass} article p{margin:0;color:rgba(248,250,250,.68);font-size:11px;line-height:1.45}`,
-    `.${scopeClass} .noema-opening-gallery{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}`,
-    `.${scopeClass} .noema-opening-gallery img{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:10px;border:1px solid rgba(255,255,255,.1)}`,
-    `@media(max-width:560px){.${scopeClass}{grid-template-columns:1fr}.${scopeClass} .noema-opening-cover img{max-height:260px}}`,
+    `.${scopeClass}.noema-opening-panel{--noema-accent:${style.accent};--noema-accent-soft:${style.accentSoft};position:relative;display:grid;gap:12px;width:100%;max-width:640px;min-height:260px;padding:14px;border:1px solid rgba(255,255,255,.12);border-radius:22px;background:radial-gradient(circle at 16% 0%,var(--noema-accent-soft),transparent 34%),linear-gradient(145deg,rgba(255,255,255,.07),rgba(255,255,255,.018)),${style.surface};color:rgba(248,250,250,.92);box-shadow:0 22px 70px rgba(0,0,0,.42);font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overflow:hidden}`,
+    `.${scopeClass} *{box-sizing:border-box;letter-spacing:0}`,
+    `.${scopeClass} .noema-opening-visual-stack{display:grid;gap:8px;min-width:0}`,
+    `.${scopeClass} .noema-opening-visual{margin:0;min-width:0;overflow:hidden;border:1px solid rgba(255,255,255,.12);border-radius:18px;background:rgba(255,255,255,.04)}`,
+    `.${scopeClass} .noema-opening-visual img{display:block;width:100%;height:100%;object-fit:contain;object-position:center;background:linear-gradient(145deg,rgba(255,255,255,.06),rgba(0,0,0,.26));filter:saturate(1.04) contrast(1.03)}`,
+    `.${scopeClass} .noema-opening-gallery{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}`,
+    `.${scopeClass} .noema-opening-gallery img{display:block;width:100%;aspect-ratio:1/1;object-fit:cover;object-position:center;border:1px solid rgba(255,255,255,.11);border-radius:14px;background:rgba(255,255,255,.04)}`,
+    `.${scopeClass} .noema-opening-copy{position:relative;z-index:1;display:grid;align-content:center;gap:10px;min-width:0}`,
+    `.${scopeClass} header{display:grid;gap:6px}`,
+    `.${scopeClass} h1{margin:0;color:white;font-size:34px;font-weight:780;line-height:1.02}`,
+    `.${scopeClass} .noema-opening-hook{margin:0;max-width:34em;color:rgba(248,250,250,.74);font-size:13px;line-height:1.52}`,
+    `.${scopeClass} .noema-opening-tags{display:flex;flex-wrap:wrap;gap:6px}`,
+    `.${scopeClass} .noema-opening-tags span{max-width:16em;padding:4px 8px;border:1px solid rgba(255,255,255,.13);border-radius:999px;background:rgba(255,255,255,.056);color:rgba(248,250,250,.76);font-size:11px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}`,
+    `.${scopeClass} .noema-opening-dialogue{padding:12px 13px;border:1px solid rgba(255,255,255,.1);border-left:3px solid var(--noema-accent);border-radius:16px;background:rgba(0,0,0,.24);box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}`,
+    `.${scopeClass} .noema-opening-dialogue p{margin:0;color:rgba(248,250,250,.88);font-size:13px;line-height:1.62}`,
+    `.${scopeClass} .noema-opening-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0}`,
+    `.${scopeClass} .noema-opening-facts div{padding:8px 9px;border:1px solid rgba(255,255,255,.08);border-radius:13px;background:rgba(255,255,255,.035)}`,
+    `.${scopeClass} .noema-opening-facts dt{margin:0 0 3px;color:var(--noema-accent);font-size:10px;font-weight:740}`,
+    `.${scopeClass} .noema-opening-facts dd{margin:0;color:rgba(248,250,250,.72);font-size:11px;line-height:1.35}`,
+    `.${scopeClass} .noema-opening-note{margin:0;color:rgba(248,250,250,.66);font-size:12px;line-height:1.5}`,
+    `.${scopeClass}.is-cinematic-poster{min-height:430px;grid-template-columns:1fr;align-items:end;padding:18px}`,
+    `.${scopeClass}.is-cinematic-poster .noema-opening-visual-stack{position:absolute;inset:0;display:block;opacity:.82}`,
+    `.${scopeClass}.is-cinematic-poster .noema-opening-visual{height:100%;border:0;border-radius:0}`,
+    `.${scopeClass}.is-cinematic-poster .noema-opening-visual img{object-fit:cover;object-position:center 34%;filter:saturate(1.05) contrast(1.05) brightness(.72)}`,
+    `.${scopeClass}.is-cinematic-poster .noema-opening-gallery{display:none}`,
+    `.${scopeClass}.is-cinematic-poster .noema-opening-copy{max-width:430px;padding:16px;border:1px solid rgba(255,255,255,.1);border-radius:18px;background:linear-gradient(145deg,rgba(8,10,12,.76),rgba(8,10,12,.42));backdrop-filter:blur(12px)}`,
+    `.${scopeClass}.is-visual-novel-scene{grid-template-rows:minmax(220px,300px) auto;padding:12px}`,
+    `.${scopeClass}.is-visual-novel-scene .noema-opening-visual{min-height:220px}`,
+    `.${scopeClass}.is-visual-novel-scene .noema-opening-copy{align-content:start;padding:12px;border-radius:18px;background:rgba(0,0,0,.28)}`,
+    `.${scopeClass}.is-chat-teaser{grid-template-columns:96px minmax(0,1fr);min-height:170px;align-items:center}`,
+    `.${scopeClass}.is-chat-teaser .noema-opening-visual{width:96px;height:96px;border-radius:28px}`,
+    `.${scopeClass}.is-chat-teaser .noema-opening-gallery{display:none}`,
+    `.${scopeClass}.is-scrapbook-collage{grid-template-columns:minmax(180px,.92fr) minmax(0,1fr);align-items:center}`,
+    `.${scopeClass}.is-scrapbook-collage .noema-opening-visual{height:260px;transform:rotate(-1.4deg)}`,
+    `.${scopeClass}.is-scrapbook-collage .noema-opening-gallery img:nth-child(2){transform:translateY(-7px) rotate(1.2deg)}`,
+    `.${scopeClass}.is-profile-dossier{grid-template-columns:170px minmax(0,1fr);align-items:center}`,
+    `.${scopeClass}.is-profile-dossier .noema-opening-visual{height:235px}`,
+    `.${scopeClass}.is-editorial-cover{grid-template-columns:minmax(180px,.78fr) minmax(0,1fr);align-items:stretch}`,
+    `.${scopeClass}.is-editorial-cover .noema-opening-visual{height:330px}`,
+    `.${scopeClass}.is-editorial-cover h1{font-size:44px;line-height:.96}`,
+    `.${scopeClass}.no-visual{grid-template-columns:1fr;min-height:0}`,
+    `.${scopeClass}.no-visual .noema-opening-copy{align-content:start}`,
+    `@media(max-width:560px){.${scopeClass}.noema-opening-panel{grid-template-columns:1fr;min-height:0;padding:12px}.${scopeClass}.is-cinematic-poster{min-height:360px}.${scopeClass}.is-cinematic-poster .noema-opening-visual-stack{position:absolute;inset:0}.${scopeClass}.is-cinematic-poster .noema-opening-copy{margin-top:170px}.${scopeClass}:not(.is-cinematic-poster) .noema-opening-visual-stack{position:relative;inset:auto}.${scopeClass}:not(.is-cinematic-poster) .noema-opening-visual{height:230px;width:auto}.${scopeClass} h1{font-size:28px}.${scopeClass}.is-editorial-cover h1{font-size:32px}.${scopeClass} .noema-opening-facts{grid-template-columns:1fr}}`,
   ].join('\n')
+}
+
+function openingTextLimits(density: OpeningTextDensity): { summary: number; opening: number; fact: number } {
+  if (density === 'story') {
+    return { summary: 150, opening: 320, fact: 64 }
+  }
+  if (density === 'balanced') {
+    return { summary: 105, opening: 220, fact: 52 }
+  }
+  return { summary: 72, opening: 150, fact: 44 }
+}
+
+function compactOpeningText(value: string, maxLength: number): string {
+  const text = stripVisibleControlTags(value)
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!text || text.length <= maxLength) {
+    return text
+  }
+  return `${text.slice(0, Math.max(1, maxLength - 1)).trimEnd()}…`
+}
+
+function stripVisibleControlTags(value: string): string {
+  return value
+    .replace(/<\/?(?:chat|role_chat)\b[^>]*>/gi, '')
+    .replace(/<\/?[a-z_][\w:-]*(?:\s[^>]*)?>/gi, '')
+}
+
+function buildOpeningFactItems(
+  options: {
+    scenario: string
+    worldContext: string
+    dialogueStyle: string
+  },
+  maxLength: number
+): Array<{ label: string; value: string }> {
+  return [
+    ['scene', options.scenario],
+    ['world', options.worldContext],
+    ['voice', options.dialogueStyle],
+  ].map(([label, value]) => ({
+    label,
+    value: compactOpeningText(value, maxLength),
+  })).filter((item) => item.value).slice(0, 2)
 }
 
 function deriveOpeningTags(options: {
@@ -1998,11 +2164,11 @@ function deriveOpeningTags(options: {
     /cyber|赛博|未来|neon/i.test(source) ? 'neon city' : '',
     /fantasy|魔法|精灵|spirit/i.test(source) ? 'fantasy' : '',
   ].filter(Boolean)
-  return [...new Set(tags.length ? tags : ['character-first', 'roleplay-ready', 'visual card'])].slice(0, 4)
+  return [...new Set(tags.length ? tags : ['first encounter', 'private scene'])].slice(0, 3)
 }
 
 function stripChatTags(value: string): string {
-  return value.replace(/<\/?chat>/gi, '').trim()
+  return stripVisibleControlTags(value).trim()
 }
 
 function htmlEscape(value: string): string {
@@ -3058,7 +3224,6 @@ function createAgentTargetContexts(
     stylePressures: AgentStylePressure[]
     hardConstraints: AgentConstraint[]
     imageGenerationControls: AgentImageGenerationControl[]
-    fieldGenerationControls: AgentFieldGenerationControl[]
     continuityControls: AgentContinuityControl[]
     relationshipControls: AgentRelationshipControl[]
   }
@@ -3083,7 +3248,7 @@ function createAgentTargetContexts(
         localStylePressures: controls.stylePressures.filter((control) => isLocallyConnected(relations, node.id, control.nodeId)),
         localConstraints: controls.hardConstraints.filter((control) => isLocallyConnected(relations, node.id, control.nodeId)),
         imageControls: controls.imageGenerationControls.filter((control) => isLocallyConnected(relations, node.id, control.nodeId)),
-        fieldControls: controls.fieldGenerationControls.filter((control) => isLocallyConnected(relations, node.id, control.nodeId)),
+        fieldControls: kind === 'character-field' ? inlineFieldControlsForTarget(node, relations) : [],
         continuityControls: controls.continuityControls.filter((control) => isLocallyConnected(relations, node.id, control.nodeId)),
         relationshipControls: controls.relationshipControls.filter((control) => isLocallyConnected(relations, node.id, control.nodeId)),
       }
@@ -3142,7 +3307,87 @@ function fieldTargetConfigFields(config: Record<string, unknown>): string[] {
   const fields = stringListValue(config.fields)
     .map((field) => normalizeDraftFieldName(field))
     .filter(Boolean)
-  return [...new Set(fields.length ? fields : ['firstMessage'])]
+  return [...new Set(fields.length ? fields : [...CHARACTER_CARD_FIELD_SCHEMA, ...CHARACTER_SUPPORT_FIELD_SCHEMA])]
+}
+
+function inlineFieldControlsForTarget(node: CharacterWorkflowNode, relations: CharacterAgentRelation[]): AgentFieldGenerationControl[] {
+  const fields = fieldTargetConfigFields(node.config)
+  const configured = normalizeInlineFieldControls(node.config.fieldControls, node.id)
+  const byField = new Map(configured.map((control) => [control.field, control]))
+  const relationContext = incomingRelations(relations, node.id)
+  return fields.map((field) => {
+    const existing = byField.get(field)
+    if (existing) {
+      return {
+        ...existing,
+        incomingRelations: relationContext,
+      }
+    }
+    return createDefaultInlineFieldControl(node.id, field, relationContext)
+  })
+}
+
+function normalizeInlineFieldControls(value: unknown, nodeId: string): AgentFieldGenerationControl[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value.flatMap((item): AgentFieldGenerationControl[] => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      return []
+    }
+    const record = item as Record<string, unknown>
+    const field = normalizeDraftFieldName(stringValue(record.field))
+    if (!field) {
+      return []
+    }
+    return [{
+      nodeId: `${nodeId}:${field}`,
+      field,
+      fieldPurpose: stringValue(record.fieldPurpose, defaultFieldPurpose(field)),
+      tone: stringValue(record.tone, 'neutral'),
+      lengthPolicy: stringValue(record.lengthPolicy, defaultFieldLengthPolicy(field)),
+      avoidPatterns: stringListValue(record.avoidPatterns),
+      incomingRelations: [],
+    }]
+  })
+}
+
+function createDefaultInlineFieldControl(
+  nodeId: string,
+  field: string,
+  relationContext: CharacterAgentRelation[]
+): AgentFieldGenerationControl {
+  return {
+    nodeId: `${nodeId}:${field}`,
+    field,
+    fieldPurpose: defaultFieldPurpose(field),
+    tone: 'neutral',
+    lengthPolicy: defaultFieldLengthPolicy(field),
+    avoidPatterns: [],
+    incomingRelations: relationContext,
+  }
+}
+
+function defaultFieldLengthPolicy(field: string): string {
+  if (field === 'name') return 'short'
+  if (field === 'firstMessage') return 'medium'
+  return 'medium'
+}
+
+function defaultFieldPurpose(field: string): string {
+  const purposes: Record<string, string> = {
+    name: 'Short display name only.',
+    description: 'Concise identity hook and roleplay appeal.',
+    appearance: 'Visible body, face, outfit, posture, expression, and motifs.',
+    personality: 'Inner drives, contradictions, habits, emotional logic, and relationship behavior.',
+    background: 'Formative history, secrets, losses, obligations, and causes.',
+    scenario: 'Persistent present setup, current tension, roles, stakes, and continuation hooks.',
+    firstMessage: 'Playable opening scene wrapped in chat tags with a concrete hook. Keep it rich but concise.',
+    dialogueStyle: 'Speech rhythm, diction, address style, emotional tells, and taboo phrases.',
+    worldContext: 'Stable world, institution, social, supernatural, or relationship facts outside one scene.',
+    appearancePrompt: 'Compact avatar identity seed prompt derived from completed character fields and image controls.',
+  }
+  return purposes[field] ?? `Generation control for ${field}.`
 }
 
 function isLocallyConnected(relations: CharacterAgentRelation[], targetNodeId: string, controlNodeId: string): boolean {

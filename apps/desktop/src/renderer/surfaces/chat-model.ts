@@ -1,37 +1,22 @@
 /**
  * Defines chat resource manifests and runtime chat state loading.
  */
+import {
+  normalizeCharacterProfile,
+  type CharacterProfile,
+  type CharacterProfileLocalizedText,
+  type CharacterProfileOpeningPanel,
+} from '@noema/sdk/character-profile'
+
 export type ChatLanguageCode = 'zh-CN' | 'en-US'
 
 export type ChatMessageRole = 'user' | 'assistant' | 'system'
 
-export type ChatActivityState = 'idle' | 'thinking' | 'generating_image' | 'using_tool'
+export type ChatActivityState = 'idle' | 'thinking' | 'generating_image' | 'generating_audio' | 'using_tool'
 
-export type ChatLocalizedText = Record<ChatLanguageCode, string>
-
-export interface ChatCharacterResource {
-  id: string
-  roleCard?: Record<string, unknown>
-  openingPanel?: ChatOpeningPanel
-  name: ChatLocalizedText
-  displayName: ChatLocalizedText
-  description: ChatLocalizedText
-  story: ChatLocalizedText
-  background: ChatLocalizedText
-  scene: ChatSceneState
-  firstMessage: ChatLocalizedText
-  tag: Record<ChatLanguageCode, string[]>
-  avatarImage: string
-  bodyImage: string
-}
-
-export interface ChatOpeningPanel {
-  html: string
-  css: string
-  summary?: string
-  layoutKind?: string
-  sourceArtifactId?: string
-}
+export type ChatLocalizedText = CharacterProfileLocalizedText
+export type ChatCharacterResource = CharacterProfile
+export type ChatOpeningPanel = CharacterProfileOpeningPanel
 
 export interface ChatConversationSummary {
   id: string
@@ -64,13 +49,32 @@ export interface ChatMemorySummary {
   sourceMessageIds: string[]
 }
 
-export interface ChatMessageAttachment {
+export type ChatMediaKind = 'image' | 'video' | 'audio'
+
+export interface ChatMessageMedia {
   id: string
-  kind: 'image' | 'video'
+  kind: ChatMediaKind
   name: string
   mimeType: string
   dataUrl?: string
+  url?: string
   size?: number
+  durationMs?: number
+  transcript?: string
+  prompt?: string
+  origin?: 'user' | 'assistant' | 'tool' | 'generated' | 'external'
+  dispatch?: {
+    trigger?: 'manual' | 'model' | 'request' | 'auto' | 'tool' | 'external' | 'probability'
+    mode?: 'turn' | 'permanent'
+    probability?: number
+    externalProbabilityBias?: number
+    reason?: string
+  }
+  context?: {
+    mode?: 'auto' | 'visual' | 'text' | 'none'
+    summary?: string
+  }
+  metadata?: Record<string, unknown>
 }
 
 export interface ChatMessage {
@@ -78,7 +82,7 @@ export interface ChatMessage {
   role: ChatMessageRole
   text: ChatLocalizedText
   createdLabel: ChatLocalizedText
-  attachments?: ChatMessageAttachment[]
+  media?: ChatMessageMedia[]
   openingPanel?: ChatOpeningPanel
   state?: ChatActivityState
 }
@@ -123,12 +127,10 @@ export async function loadChatResourceState(): Promise<ChatState> {
       conversations[0] = detail
     }
   }
-  const seededConversations = conversations.length ? conversations : createSeedHistory(characterResources)
-
   return {
-    activeConversationId: seededConversations[0]?.id ?? '',
+    activeConversationId: conversations[0]?.id ?? '',
     characterResources,
-    conversations: seededConversations,
+    conversations,
   }
 }
 
@@ -178,13 +180,13 @@ export function getCharacterForConversation(
     ?? state.characterResources[0]
 }
 
-export function createLocalUserMessage(text: string, createdLabel: string, attachments: ChatMessageAttachment[] = []): ChatMessage {
+export function createLocalUserMessage(text: string, createdLabel: string, media: ChatMessageMedia[] = []): ChatMessage {
   return {
     id: `user-${Date.now()}`,
     role: 'user',
     text: { 'zh-CN': text, 'en-US': text },
     createdLabel: { 'zh-CN': createdLabel, 'en-US': createdLabel },
-    ...(attachments.length ? { attachments: attachments.map((attachment) => ({ ...attachment })) } : {}),
+    ...(media.length ? { media: media.map((item) => ({ ...item })) } : {}),
   }
 }
 
@@ -200,35 +202,6 @@ export function createLocalAssistantDraft(text: string, createdLabel: string): C
 
 export function localizeChatText(value: ChatLocalizedText, language: ChatLanguageCode): string {
   return value[language] ?? value['zh-CN']
-}
-
-function createSeedHistory(characterResources: ChatCharacterResource[]): ChatConversationSummary[] {
-  return characterResources
-    .filter((character) => character.id === 'chen-qianyu')
-    .map((character) => ({
-      id: `${character.id}-history`,
-      characterId: character.id,
-      title: character.displayName,
-      preview: character.firstMessage,
-      updatedLabel: {
-        'zh-CN': '刚刚',
-        'en-US': 'Now',
-      },
-      sceneState: normalizeSceneState(character.scene),
-      summaries: [],
-      messages: [
-        {
-          id: `${character.id}-welcome`,
-          role: 'assistant',
-          text: character.firstMessage,
-          createdLabel: {
-            'zh-CN': '刚刚',
-            'en-US': 'Now',
-          },
-        },
-      ],
-      characterWorkflow: null,
-    }))
 }
 
 function extractStoredCharacterResources(conversations: StoredChatConversationInput[]): ChatCharacterResource[] {
@@ -279,28 +252,7 @@ function normalizeStoredConversations(
 }
 
 function normalizeStoredCharacterResource(value: unknown): ChatCharacterResource | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return null
-  }
-  const resource = value as Partial<ChatCharacterResource>
-  if (!resource.id) {
-    return null
-  }
-  return {
-    id: String(resource.id),
-    roleCard: resource.roleCard && typeof resource.roleCard === 'object' && !Array.isArray(resource.roleCard) ? resource.roleCard : undefined,
-    openingPanel: normalizeOpeningPanel(resource.openingPanel),
-    name: normalizeLocalizedText(resource.name),
-    displayName: normalizeLocalizedText(resource.displayName),
-    description: normalizeLocalizedText(resource.description),
-    story: normalizeLocalizedText(resource.story),
-    background: normalizeLocalizedText(resource.background),
-    scene: normalizeSceneState(resource.scene),
-    firstMessage: normalizeLocalizedText(resource.firstMessage),
-    tag: normalizeTagMap(resource.tag),
-    avatarImage: typeof resource.avatarImage === 'string' ? resource.avatarImage : '',
-    bodyImage: typeof resource.bodyImage === 'string' ? resource.bodyImage : '',
-  }
+  return normalizeCharacterProfile(value)
 }
 
 async function loadStoredConversationDetail(
@@ -395,9 +347,81 @@ function normalizeStoredMessage(message: ChatMessage): ChatMessage | null {
     role: message.role,
     text: normalizeLocalizedText(message.text),
     createdLabel: normalizeLocalizedText(message.createdLabel),
-    ...(Array.isArray(message.attachments) ? { attachments: message.attachments } : {}),
+    ...(Array.isArray(message.media) ? { media: normalizeStoredMedia(message.media) } : {}),
     ...(normalizeOpeningPanel(message.openingPanel) ? { openingPanel: normalizeOpeningPanel(message.openingPanel)! } : {}),
   }
+}
+
+function normalizeStoredMedia(media: ChatMessageMedia[]): ChatMessageMedia[] {
+  return media
+    .map((item) => ({
+      id: typeof item.id === 'string' && item.id.trim() ? item.id : `media-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      kind: item.kind === 'audio' || item.kind === 'video' ? item.kind : 'image',
+      name: typeof item.name === 'string' && item.name.trim() ? item.name : 'media',
+      mimeType: typeof item.mimeType === 'string' && item.mimeType.trim() ? item.mimeType : defaultMediaMimeType(item.kind),
+      dataUrl: typeof item.dataUrl === 'string' && item.dataUrl.trim() ? item.dataUrl : undefined,
+      url: typeof item.url === 'string' && item.url.trim() ? item.url : undefined,
+      size: typeof item.size === 'number' && Number.isFinite(item.size) && item.size > 0 ? item.size : undefined,
+      durationMs: typeof item.durationMs === 'number' && Number.isFinite(item.durationMs) && item.durationMs > 0 ? item.durationMs : undefined,
+      transcript: typeof item.transcript === 'string' && item.transcript.trim() ? item.transcript.trim() : undefined,
+      prompt: typeof item.prompt === 'string' && item.prompt.trim() ? item.prompt.trim() : undefined,
+      origin: item.origin === 'assistant' || item.origin === 'tool' || item.origin === 'generated' || item.origin === 'external' || item.origin === 'user'
+        ? item.origin
+        : undefined,
+      dispatch: normalizeStoredMediaDispatch(item.dispatch),
+      context: normalizeStoredMediaContext(item.context),
+      metadata: item.metadata && typeof item.metadata === 'object' && !Array.isArray(item.metadata)
+        ? item.metadata
+        : undefined,
+    }))
+    .filter((item) => Boolean(item.dataUrl || item.url || item.transcript || item.prompt))
+}
+
+function normalizeStoredMediaDispatch(dispatch: ChatMessageMedia['dispatch']): ChatMessageMedia['dispatch'] {
+  if (!dispatch || typeof dispatch !== 'object' || Array.isArray(dispatch)) {
+    return undefined
+  }
+  const normalized: NonNullable<ChatMessageMedia['dispatch']> = {}
+  if (dispatch.trigger === 'manual' || dispatch.trigger === 'model' || dispatch.trigger === 'request' || dispatch.trigger === 'auto' || dispatch.trigger === 'tool' || dispatch.trigger === 'external' || dispatch.trigger === 'probability') {
+    normalized.trigger = dispatch.trigger
+  }
+  if (dispatch.mode === 'turn' || dispatch.mode === 'permanent') {
+    normalized.mode = dispatch.mode
+  }
+  if (typeof dispatch.probability === 'number' && Number.isFinite(dispatch.probability)) {
+    normalized.probability = Math.min(1, Math.max(0, dispatch.probability))
+  }
+  if (typeof dispatch.externalProbabilityBias === 'number' && Number.isFinite(dispatch.externalProbabilityBias)) {
+    normalized.externalProbabilityBias = Math.min(1, Math.max(-1, dispatch.externalProbabilityBias))
+  }
+  if (typeof dispatch.reason === 'string' && dispatch.reason.trim()) {
+    normalized.reason = dispatch.reason.trim()
+  }
+  return Object.keys(normalized).length ? normalized : undefined
+}
+
+function normalizeStoredMediaContext(context: ChatMessageMedia['context']): ChatMessageMedia['context'] {
+  if (!context || typeof context !== 'object' || Array.isArray(context)) {
+    return undefined
+  }
+  const normalized: NonNullable<ChatMessageMedia['context']> = {}
+  if (context.mode === 'auto' || context.mode === 'visual' || context.mode === 'text' || context.mode === 'none') {
+    normalized.mode = context.mode
+  }
+  if (typeof context.summary === 'string' && context.summary.trim()) {
+    normalized.summary = context.summary.trim()
+  }
+  return Object.keys(normalized).length ? normalized : undefined
+}
+
+function defaultMediaMimeType(kind: ChatMediaKind): string {
+  if (kind === 'video') {
+    return 'video/mp4'
+  }
+  if (kind === 'audio') {
+    return 'audio/mpeg'
+  }
+  return 'image/png'
 }
 
 function normalizeOpeningPanel(value: unknown): ChatOpeningPanel | undefined {

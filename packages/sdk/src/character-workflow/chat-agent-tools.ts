@@ -3,6 +3,7 @@
  */
 import { createChatSessionFromModel } from '../chat/index.js'
 import { createImageGenerationArtifact, generateImageWithConfiguredProvider } from '../image/index.js'
+import { filterEditCapableImageModelNames } from '../image/catalog.js'
 import {
   CHARACTER_CARD_FIELD_SCHEMA,
   CHARACTER_SUPPORT_FIELD_SCHEMA,
@@ -44,7 +45,10 @@ export function createCharacterAgentModelConfigs(
   models: CharacterAgentConfiguredModel[]
 ): CharacterAgentModelConfig[] {
   return models.flatMap((model) => {
-    const names = getConfiguredModelNames(model)
+    const configuredNames = getConfiguredModelNames(model)
+    const names = model.modelType === 'image'
+      ? filterEditCapableImageModelNames(model.provider, configuredNames)
+      : configuredNames
     return names.map((modelName) => ({
       apiId: model.id,
       modelName: displayConfiguredModelName(model, modelName),
@@ -193,7 +197,6 @@ function createAgentPromptContext(context: CharacterAgentRunContext): Record<str
     stylePressures: context.stylePressures,
     hardConstraints: context.hardConstraints,
     imageGenerationControls: context.imageGenerationControls,
-    fieldGenerationControls: context.fieldGenerationControls,
     continuityControls: context.continuityControls,
     relationshipControls: context.relationshipControls,
     sourceMaterials: context.sourceMaterials,
@@ -234,6 +237,7 @@ function createCharacterDecisionPrompt(
     '    <rule>Anime appearancePrompt pattern: anime style illustration, age impression and archetype, hair color/style/length, eye design and highlights, face shape, brows, nose and mouth style, outfit/material, body silhouette, signature motif, pixiv style, high quality anime art, detailed expressive eyes.</rule>',
     '    <rule>Photoreal appearancePrompt pattern: age + ethnicity/gender, temperament, hair style/color/length, face shape, eyes, brows, nose, lips, makeup, skin tone and texture, body shape, default clothing/material, accessory, realistic portrait photography, natural skin texture, high quality photo. Chinese prompt phrases are acceptable for photoreal characters.</rule>',
     '    <rule>Adult attraction and sensual visual design are valid character-image goals. When relevant, express them concretely through adult body language, gaze, pose, fabric, wardrobe exposure, light, scene objects, and background interaction while preserving the character identity.</rule>',
+    '    <rule>Do not add unsolicited modesty or anti-exposure qualifiers such as non-revealing, safe, tasteful, implied, censored, or not explicit. Preserve adult, sensual, erotic, explicit, revealing, or sexualized direction when it matches the workflow goal or user request.</rule>',
     '    <rule>Avatar targetPrompts are bound to imageRole=avatar and should only add the canonical avatar.jpg composition: single visible character, fixed 3:4 portrait asset framing, upper-body or half-body portrait, one clear unobstructed face, looking at camera, calm natural expression, simple uncluttered background, soft light. Do not restate the full appearancePrompt or request another aspect ratio.</rule>',
     '    <rule>Non-avatar free sample image targets use imageRole=character-base-image. They are free-form base character sample images migrated from the avatar reference, not fixed categories like cover, full-body, expression, outfit detail, relationship moment, or world context.</rule>',
     '    <rule>character-base-image targetPrompts should describe image purpose and composition only: pose, camera angle, scene, action, outfit usage, mood, props, background, and roleplay meaning. Identity should come from supplied avatar reference images.</rule>',
@@ -259,6 +263,7 @@ function createCharacterDecisionPrompt(
     '    <field_content_rule>appearancePrompt is the avatar identity seed prompt: after the visible character-card fields exist, derive one compact image-model phrase from name, description, appearance, personality, background, scenario, worldContext, and connected image style controls. Follow the fixed visual checklist: age or age impression, nationality/ethnicity/species, gender presentation, temperament/archetype, hair style/color/length/texture, face shape, eyes, eyebrows, nose, lips, makeup or natural face treatment, skin tone and texture, body type and silhouette, default outfit and material, signature accessory or motif, base rendering style, quality cue. Preserve adult/sensual identity details when they define the character, but keep pose, scene, wardrobe exposure, and erotic composition mostly in image-control and targetPrompts. Do not include avatar-only wrapping such as half-body portrait, looking at camera, simple background, or soft light unless it belongs to the style domain itself; do not include story scene actions, workflow terms, reference links, multi-image layouts, panels, negative prompts, or target-specific asset instructions.</field_content_rule>',
     '    <role_chat_format_rule>firstMessage is the runnable opening turn for the role chat. It must be final in-character scene text wrapped exactly once as <chat>...</chat>.</role_chat_format_rule>',
     '    <role_chat_format_rule>Inside <chat>, write the opening scene as immersive RP prose with the character present, a concrete situation, sensory details, and a clear hook for the user to respond. Do not include analysis, labels, markdown, or setup notes.</role_chat_format_rule>',
+    '    <role_chat_format_rule>Keep firstMessage attractive and playable rather than bloated: usually 2-4 tight paragraphs. Do not include project names, field names, XML tag names, or visible protocol fragments inside the chat body.</role_chat_format_rule>',
     '    <role_chat_format_rule>dialogueStyle must describe how the character speaks during chat, not the opening scene. scenario must define the persistent RP situation. worldContext must carry stable world facts.</role_chat_format_rule>',
     '    <seed_rule>If runtime_state.turn_context_json contains seedPass, return exactly one merge_character_card action. Fill every requested field that can be inferred. Do not request images during seedPass.</seed_rule>',
     '    <seed_rule>For seedPass.stage="base", generate the stable character seed fields first: name, description, personality, appearance, background, scenario, worldContext. Keep these fields complementary and non-overlapping. For seedPass.stage="derived", generate fields that depend on the seed: firstMessage, dialogueStyle, appearancePrompt, and any still-missing requested fields.</seed_rule>',
@@ -278,7 +283,7 @@ function createCharacterDecisionPrompt(
     '    <image_rule>The runtime wraps avatar targetPrompts.prompt with appearancePrompt, role-specific positive visual direction, style suffix, quality suffix, and a short avoid list. For non-avatar images, the runtime omits appearancePrompt and relies on graph-linked reference images plus role/style/quality wrapping. Do not repeat the full appearancePrompt inside targetPrompts.prompt.</image_rule>',
     '    <image_rule>When requesting images, create one targetPrompts item per final image, not just per image target. If an image target requests multiple images through image_control count, return multiple distinct prompts for the same targetNodeId.</image_rule>',
     '    <image_rule>All non-avatar images for the same role card must use reference-image continuity for face structure, hair, eyes, age impression, body type, signature accessories, and outfit language. Vary pose, shot, background, mood, lighting, outfit, and story function through targetPrompts.</image_rule>',
-    '    <image_rule>Each targetPrompts.prompt should be a compact slot-specific visual direction: pose, expression, framing, camera angle, background simplicity, prop/motif, mood, and image function. For attractive free images, specify how the body line, hands, gaze, fabric, furniture, window light, mirror, cup, book, weapon, instrument, or other objects create tasteful appeal. Include only composition or slot-specific changes, not a rewritten identity bible.</image_rule>',
+    '    <image_rule>Each targetPrompts.prompt should be a compact slot-specific visual direction: pose, expression, framing, camera angle, background simplicity, prop/motif, mood, and image function. For attractive free images, specify how the body line, hands, gaze, fabric, furniture, window light, mirror, cup, book, weapon, instrument, or other objects create adult visual appeal. Include only composition or slot-specific changes, not a rewritten identity bible.</image_rule>',
     '    <image_rule>Do not request pure empty scene images. Every image should contain the character or unmistakable character-linked visual motifs, and should support the role card text, opening, story, relationship, or layout.</image_rule>',
     '    <allowed_actions>',
     '      <action name="set_field">{"type":"set_field","field":"name","value":"...","reason":"..."}</action>',
@@ -307,7 +312,9 @@ function createCharacterReviewPrompt(context: CharacterAgentRunContext, input: u
     '    <must_check>Fields are complementary and non-repetitive: no duplicated relationship premise, visual inventory, lore paragraph, opening beat, or generic summary across description, personality, background, scenario, worldContext, firstMessage, and dialogueStyle.</must_check>',
     '    <must_check>Each field contributes a unique character or story function: character fields deepen identity, story fields deepen situation/world, and dialogueStyle controls speech rather than restating scenes.</must_check>',
     '    <must_check>Supporting resources include appearancePrompt; if an image model is configured, image readiness must be judged.</must_check>',
-    '    <must_check>Hard constraints are respected. Style pressures are visible but not copied mechanically.</must_check>',
+    '    <must_check>Only evaluate constraints that are explicitly present in the workflow graph or user request. Do not invent extra content-moderation checks in the quality gate.</must_check>',
+    '    <must_check>Adult, sensual, erotic, seductive, NSFW, or explicit visual direction is not a blocking issue by itself when it matches the workflow goal. Do not repair it away unless it contradicts an explicit user or graph constraint.</must_check>',
+    '    <must_check>Style pressures are visible but not copied mechanically.</must_check>',
     '    <output_format>Return JSON only with keys: score, passed, summary, checks, blockingIssues, repairSuggestions.</output_format>',
     '  </review_contract>',
     `  <candidate_json>${xmlEscape(JSON.stringify(input ?? {}, null, 2))}</candidate_json>`,
@@ -351,7 +358,7 @@ function createResourceContextXml(context: CharacterAgentRunContext): string {
       ...target.localConstraints.map((item) => `          <constraint node="${xmlEscape(item.nodeId)}" hard="${item.hardBoundary}" must_have="${xmlEscape(item.mustHave.join('; '))}" must_not="${xmlEscape(item.mustNot.join('; '))}" />`),
       '        </local_hard_constraints>',
       '        <field_controls>',
-      ...target.fieldControls.map((item) => `          <field_control node="${xmlEscape(item.nodeId)}" tone="${xmlEscape(item.tone)}" length="${xmlEscape(item.lengthPolicy)}" avoid="${xmlEscape(item.avoidPatterns.join('; '))}">${xmlEscape(item.fieldPurpose)}</field_control>`),
+      ...target.fieldControls.map((item) => `          <field_control node="${xmlEscape(item.nodeId)}" field="${xmlEscape(item.field)}" tone="${xmlEscape(item.tone)}" length="${xmlEscape(item.lengthPolicy)}" avoid="${xmlEscape(item.avoidPatterns.join('; '))}">${xmlEscape(item.fieldPurpose)}</field_control>`),
       '        </field_controls>',
       '        <image_controls>',
       ...target.imageControls.flatMap(renderImageControlContextXml),
@@ -445,7 +452,7 @@ function characterFieldDescription(field: string): string {
     personality: 'Inner drives, contradictions, habits, emotional logic, relational behavior, and boundaries. Do not retell backstory or describe clothing unless it reveals behavior.',
     background: 'Formative past, secrets, losses, obligations, and history that explain the character. Do not repeat the current scenario or world encyclopedia.',
     scenario: 'Persistent present RP setup: where the user meets the character, current tension, roles, stakes, and what can keep happening. Do not write the opening message prose.',
-    firstMessage: 'Playable opening scene only, wrapped in <chat>...</chat>, with the character present and a concrete hook. Do not summarize the card.',
+    firstMessage: 'Playable opening scene only, wrapped in <chat>...</chat>, with the character present, a concrete hook, and no visible protocol labels. Keep it rich but concise.',
     dialogueStyle: 'How the character speaks across chat: diction, rhythm, address style, emotional tells, taboo phrases, and sample tendencies. Do not write a scene.',
     worldContext: 'Stable world, relationship, institution, social, supernatural, or setting facts outside one scene. Do not duplicate scenario beats or character biography.',
   }

@@ -4,7 +4,6 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Noema</title>
-    <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <div id="app">
@@ -158,10 +157,10 @@
             <div class="chat-main-viewport">
               <header class="chat-header">
                 <div class="chat-identity">
-                  <span class="chat-avatar large eva-avatar">EVA</span>
+                  <span class="chat-avatar large eva-avatar">陈</span>
                   <div>
-                    <h1>EVA</h1>
-                    <span class="chat-identity-meta">zh-CN · local-yaml</span>
+                    <h1>陈千语</h1>
+                    <span class="chat-identity-meta" hidden></span>
                   </div>
                 </div>
                 <div class="chat-header-actions">
@@ -223,10 +222,6 @@
               <p data-i18n="chat.profileDesc">熟悉、轻松、反应快的陪伴角色。默认短句回应，保留分寸。</p>
             </div>
             <div class="chat-config-section">
-              <h3 data-i18n="chat.profileTags">标签</h3>
-              <div class="chat-config-meta"></div>
-            </div>
-            <div class="chat-config-section">
               <h3 data-i18n="chat.background">背景</h3>
               <ul class="chat-asset-list"></ul>
             </div>
@@ -269,37 +264,54 @@
             </div>
           </section>
 
-          <section class="chat-conversation-settings-page" aria-label="Conversation settings" aria-hidden="true">
-            <div class="chat-conversation-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="chat-conversation-settings-title">
-              <header class="chat-conversation-settings-header">
-                <div>
-                  <span class="chat-panel-kicker" data-chat-settings-kicker>Conversation design</span>
-                  <h2 id="chat-conversation-settings-title" data-chat-settings-title>对话设置</h2>
-                </div>
-              </header>
-              <div class="chat-conversation-settings-body"></div>
-            </div>
-          </section>
-
-          <section class="chat-history-manager" aria-label="Conversation management" aria-hidden="true">
-            <div class="chat-history-dialog" role="dialog" aria-modal="true" aria-labelledby="chat-history-title">
-              <header class="chat-history-header">
-                <div>
-                  <span class="chat-panel-kicker" data-chat-history-kicker>Context memory</span>
-                  <h2 id="chat-history-title" data-chat-history-title>对话管理</h2>
-                </div>
-                <div class="chat-history-actions">
-                  <button class="chat-model-btn subtle" type="button" data-chat-history-action="clear">清空</button>
-                  <button class="chat-model-btn subtle" type="button" data-chat-action="close-chat-history">完成</button>
-                </div>
-              </header>
-              <div class="chat-history-body">
-                <div class="chat-history-session-list"></div>
-                <div class="chat-history-message-list"></div>
-              </div>
-            </div>
-          </section>
         </div>
+
+        <section class="chat-conversation-settings-page" aria-label="Conversation settings" aria-hidden="true">
+          <div class="chat-conversation-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="chat-conversation-settings-title">
+            <header class="chat-conversation-settings-header">
+              <div>
+                <span class="chat-panel-kicker" data-chat-settings-kicker>Conversation design</span>
+                <h2 id="chat-conversation-settings-title" data-chat-settings-title>对话设置</h2>
+              </div>
+              <div class="chat-settings-actions">
+                <button class="chat-model-btn subtle" type="button" data-chat-action="close-conversation-settings" data-chat-settings-close aria-label="关闭">×</button>
+              </div>
+            </header>
+            <div class="chat-conversation-settings-body"></div>
+          </div>
+        </section>
+
+        <section class="chat-history-manager" aria-label="Conversation management" aria-hidden="true">
+          <div class="chat-history-dialog" role="dialog" aria-modal="true" aria-labelledby="chat-history-title">
+            <header class="chat-history-header">
+              <div>
+                <span class="chat-panel-kicker" data-chat-history-kicker>Context memory</span>
+                <h2 id="chat-history-title" data-chat-history-title>对话管理</h2>
+              </div>
+              <div class="chat-history-actions">
+                <button class="chat-model-btn subtle" type="button" data-chat-history-action="clear">清空</button>
+                <button class="chat-model-btn subtle" type="button" data-chat-action="close-chat-history" data-chat-history-close aria-label="关闭">×</button>
+              </div>
+            </header>
+            <div class="chat-history-body">
+              <div class="chat-history-session-list"></div>
+              <div class="chat-history-message-list"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="chat-character-profile-panel" aria-label="Character profile" aria-hidden="true">
+          <div class="chat-character-profile-dialog" role="dialog" aria-modal="true" aria-labelledby="chat-character-profile-title">
+            <header class="chat-character-profile-header">
+              <div>
+                <span class="chat-panel-kicker" data-chat-character-profile-kicker>Character profile</span>
+                <h2 id="chat-character-profile-title" data-chat-character-profile-title>角色资料</h2>
+              </div>
+              <button class="chat-model-btn subtle" type="button" data-chat-action="close-character-profile" data-chat-character-profile-close aria-label="关闭">×</button>
+            </header>
+            <div class="chat-character-profile-body"></div>
+          </div>
+        </section>
       </section>
 
       
@@ -749,13 +761,13 @@
                     <span class="row-desc" data-i18n="personality.currentDesc">选择 AI 伴侣的人格配置</span>
                   </div>
                   <select id="personality-select" class="settings-select">
-                    <option value="eva" selected>EVA - 陈知遥</option>
+                    <option value="" selected>未选择角色</option>
                   </select>
                 </div>
                 <div class="settings-row">
                   <div class="row-info">
                     <span class="row-label" data-i18n="personality.addFile">添加角色文件</span>
-                    <span class="row-desc" data-i18n="personality.addFileDesc">选择外部 .yml/.yaml 文件，校验通过后加入人格列表</span>
+                    <span class="row-desc" data-i18n="personality.addFileDesc">选择外部角色 JSON 文件，校验通过后加入人格列表</span>
                   </div>
                   <button id="add-personality-file-btn" class="settings-btn" type="button" data-i18n="common.chooseFile">选择文件</button>
                 </div>

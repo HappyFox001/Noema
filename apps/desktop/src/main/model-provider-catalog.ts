@@ -10,8 +10,13 @@ import {
   type ImageProviderApiStyle,
   type ImageProviderType,
 } from '@noema/sdk/image/catalog'
+import {
+  TTS_RUNTIME_PROVIDER_CATALOG,
+  type ConfiguredTTSProvider,
+} from '@noema/sdk/audio/tts-catalog'
 
 export type { ImageProviderType } from '@noema/sdk/image/catalog'
+export { filterEditCapableImageModelNames, isImageModelEditCapable } from '@noema/sdk/image/catalog'
 
 export type LLMProviderType =
   | 'openai'
@@ -26,17 +31,7 @@ export type LLMProviderType =
   | 'azure-openai'
   | 'openai-compatible'
 
-export type TTSProviderType =
-  | 'fish'
-  | 'openai'
-  | 'elevenlabs'
-  | 'minimax'
-  | 'groq'
-  | 'gemini'
-  | 'google-cloud'
-  | 'azure-openai'
-  | 'azure-speech'
-  | 'openai-compatible'
+export type TTSProviderType = ConfiguredTTSProvider
 
 export type ASRProviderType =
   | 'fish'
@@ -53,7 +48,6 @@ export type ASRProviderType =
 export type ProviderProtocol =
   | 'fish-realtime'
   | 'qwen-realtime'
-  | 'openai-speech'
   | 'elevenlabs-http'
   | 'openai-transcription'
   | 'openai-chat-completions'
@@ -61,13 +55,10 @@ export type ProviderProtocol =
   | 'anthropic-messages'
   | 'ollama-chat'
   | 'azure-openai-audio'
-  | 'gemini-tts'
-  | 'minimax-tts'
   | 'elevenlabs-transcription'
   | 'fish-transcription'
   | 'assemblyai-streaming'
   | 'google-cloud-speech'
-  | 'google-cloud-tts'
   | 'azure-speech'
 
 export interface VoiceProviderCatalogEntry {
@@ -220,126 +211,10 @@ export const IMAGE_PROVIDER_CATALOG: ImageProviderCatalogEntry[] = SDK_IMAGE_PRO
 export type TTSProviderCatalogEntry = VoiceProviderCatalogEntry & { value: TTSProviderType }
 export type ASRProviderCatalogEntry = VoiceProviderCatalogEntry & { value: ASRProviderType }
 
-export const TTS_PROVIDER_CATALOG: TTSProviderCatalogEntry[] = [
-  {
-    value: 'fish',
-    label: 'Fish Audio',
-    protocol: 'fish-realtime',
-    implemented: true,
-    defaultModel: 's2-pro',
-    defaultBaseUrl: '',
-    defaultLanguage: '',
-    requiresVoiceId: true,
-    sampleRate: 16000,
-  },
-  {
-    value: 'openai',
-    label: 'OpenAI',
-    protocol: 'openai-speech',
-    implemented: true,
-    defaultModel: 'gpt-4o-mini-tts',
-    defaultBaseUrl: 'https://api.openai.com/v1',
-    defaultLanguage: '',
-    defaultVoiceId: 'alloy',
-    requiresVoiceId: false,
-    sampleRate: 16000,
-  },
-  {
-    value: 'azure-openai',
-    label: 'Azure OpenAI',
-    protocol: 'azure-openai-audio',
-    implemented: false,
-    defaultModel: 'gpt-4o-mini-tts',
-    defaultBaseUrl: 'https://{resource}.openai.azure.com/openai/v1',
-    defaultLanguage: '',
-    defaultVoiceId: 'alloy',
-    requiresVoiceId: false,
-    sampleRate: 16000,
-  },
-  {
-    value: 'groq',
-    label: 'Groq TTS',
-    protocol: 'openai-speech',
-    implemented: true,
-    defaultModel: 'playai-tts',
-    defaultBaseUrl: 'https://api.groq.com/openai/v1',
-    defaultLanguage: '',
-    defaultVoiceId: 'Fritz-PlayAI',
-    requiresVoiceId: false,
-    sampleRate: 16000,
-  },
-  {
-    value: 'gemini',
-    label: 'Gemini TTS',
-    protocol: 'gemini-tts',
-    implemented: false,
-    defaultModel: 'gemini-2.5-flash-tts',
-    defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
-    defaultLanguage: '',
-    defaultVoiceId: 'Kore',
-    requiresVoiceId: false,
-    sampleRate: 16000,
-  },
-  {
-    value: 'openai-compatible',
-    label: 'OpenAI-compatible TTS',
-    protocol: 'openai-speech',
-    implemented: true,
-    defaultModel: 'tts-1',
-    defaultBaseUrl: '',
-    defaultLanguage: '',
-    defaultVoiceId: 'alloy',
-    requiresVoiceId: false,
-    sampleRate: 16000,
-  },
-  {
-    value: 'elevenlabs',
-    label: 'ElevenLabs HTTP',
-    protocol: 'elevenlabs-http',
-    implemented: true,
-    defaultModel: 'eleven_turbo_v2_5',
-    defaultBaseUrl: 'https://api.elevenlabs.io',
-    defaultLanguage: 'zh',
-    requiresVoiceId: true,
-    sampleRate: 16000,
-  },
-  {
-    value: 'minimax',
-    label: 'MiniMax',
-    protocol: 'minimax-tts',
-    implemented: false,
-    defaultModel: 'speech-02-hd',
-    defaultBaseUrl: 'https://api.minimax.io/v1',
-    defaultLanguage: 'zh',
-    defaultVoiceId: '',
-    requiresVoiceId: true,
-    sampleRate: 16000,
-  },
-  {
-    value: 'google-cloud',
-    label: 'Google Cloud TTS',
-    protocol: 'google-cloud-tts',
-    implemented: false,
-    defaultModel: 'chirp3-hd',
-    defaultBaseUrl: 'https://texttospeech.googleapis.com/v1',
-    defaultLanguage: 'zh-CN',
-    defaultVoiceId: 'zh-CN-Chirp3-HD-Kore',
-    requiresVoiceId: true,
-    sampleRate: 16000,
-  },
-  {
-    value: 'azure-speech',
-    label: 'Azure Speech',
-    protocol: 'azure-speech',
-    implemented: false,
-    defaultModel: 'neural',
-    defaultBaseUrl: 'https://{region}.tts.speech.microsoft.com/cognitiveservices/v1',
-    defaultLanguage: 'zh-CN',
-    defaultVoiceId: 'zh-CN-XiaoxiaoNeural',
-    requiresVoiceId: true,
-    sampleRate: 16000,
-  },
-]
+export const TTS_PROVIDER_CATALOG: TTSProviderCatalogEntry[] = TTS_RUNTIME_PROVIDER_CATALOG.map((entry) => ({
+  ...entry,
+  implemented: true,
+}))
 
 export const ASR_PROVIDER_CATALOG: ASRProviderCatalogEntry[] = [
   {

@@ -1,5 +1,7 @@
 import type { Tool } from '../tools/types.js'
-import type { Personality } from '../personality/index.js'
+import type { CharacterProfile } from '../character-profile/index.js'
+import { formatChatCharacterContext } from '../chat/index.js'
+import { buildChatCharacterContext } from '../chat/conversation-runtime.js'
 import {
   createRuntimeAwareness,
   formatAwarenessBlock,
@@ -16,7 +18,7 @@ export interface BaseInstructions {
 
 export interface PromptBuildOptions {
   tools?: Tool[]
-  personality?: Personality
+  characterProfile?: CharacterProfile
   baseInstructions?: BaseInstructions
   userProfile?: UserProfile
   summaries?: ConversationSummary[]
@@ -43,7 +45,7 @@ export class PromptBuilder {
   } {
     const {
       tools = [],
-      personality,
+      characterProfile,
       baseInstructions,
       userProfile,
       summaries = [],
@@ -55,7 +57,7 @@ export class PromptBuilder {
 
     const systemPrompt = this.buildXMLSystemPrompt({
       baseInstructions,
-      personality,
+      characterProfile,
       userProfile,
       summaries,
       hasTools: tools.length > 0,
@@ -88,7 +90,7 @@ export class PromptBuilder {
   
   private static buildXMLSystemPrompt(options: {
     baseInstructions?: BaseInstructions
-    personality?: Personality
+    characterProfile?: CharacterProfile
     userProfile?: UserProfile
     summaries?: ConversationSummary[]
     hasTools?: boolean
@@ -100,8 +102,12 @@ export class PromptBuilder {
     // ========== Part 1: System Prompt ==========
     sections.push('<system_prompt>')
 
-    if (options.personality) {
-      sections.push(this.formatPersonalityXML(options.personality))
+    if (options.characterProfile) {
+      sections.push(formatChatCharacterContext(buildChatCharacterContext(options.characterProfile, {
+        language: 'zh-CN',
+        sceneImmersion: true,
+        sceneState: options.characterProfile.scene,
+      })))
     } else if (options.baseInstructions?.system) {
       sections.push(`<role>\n${options.baseInstructions.system}\n</role>`)
     }
@@ -129,119 +135,6 @@ export class PromptBuilder {
     sections.push('\n<output_format>')
     sections.push(this.buildOutputFormatXML(options.hasTools || false, options.pluginPromptAdditions || []))
     sections.push('</output_format>')
-
-    return sections.join('\n')
-  }
-
-  
-  private static formatPersonalityXML(personality: Personality): string {
-    const { character, relationship } = personality
-    const sections: string[] = []
-
-    sections.push('<identity>')
-    const displayName = character.chineseName || character.name
-    sections.push(`  <name>${displayName}</name>`)
-    if (character.englishAlias) {
-      sections.push(`  <alias>${character.englishAlias}</alias>`)
-    }
-    if (character.gender) {
-      sections.push(`  <gender>${character.gender}</gender>`)
-    }
-    if (character.ageAtPreservation) {
-      sections.push(`  <age>${character.ageAtPreservation}</age>`)
-    }
-    if (character.birthday) {
-      sections.push(`  <birthday>${character.birthday}</birthday>`)
-    }
-    if (character.hometown) {
-      sections.push(`  <hometown>${character.hometown}</hometown>`)
-    }
-    if (character.formerOccupation) {
-      sections.push(`  <former_occupation>${character.formerOccupation}</former_occupation>`)
-    }
-    if (character.currentState) {
-      sections.push(`  <current_state>${character.currentState}</current_state>`)
-    }
-    sections.push('</identity>\n')
-
-    if (character.appearanceImpression) {
-      sections.push('<appearance>')
-      sections.push(this.escapeXML(character.appearanceImpression.trim()))
-      sections.push('</appearance>\n')
-    }
-
-    sections.push('<background>')
-    sections.push(this.escapeXML(character.background.trim()))
-    sections.push('</background>\n')
-
-    if (character.coreMemories && character.coreMemories.length > 0) {
-      sections.push('<core_memories>')
-      character.coreMemories.forEach(memory => {
-        sections.push(`  <memory>${this.escapeXML(memory)}</memory>`)
-      })
-      sections.push('</core_memories>\n')
-    }
-
-    if (character.personalityTraits && character.personalityTraits.length > 0) {
-      sections.push('<personality_traits>')
-      character.personalityTraits.forEach(trait => {
-        sections.push(`  <trait>${this.escapeXML(trait)}</trait>`)
-      })
-      sections.push('</personality_traits>\n')
-    }
-
-    if (character.values && character.values.length > 0) {
-      sections.push('<values>')
-      character.values.forEach(v => {
-        sections.push(`  <value>${this.escapeXML(v)}</value>`)
-      })
-      sections.push('</values>\n')
-    }
-
-    if (character.worldview) {
-      sections.push('<worldview>')
-      sections.push(this.escapeXML(character.worldview.trim()))
-      sections.push('</worldview>\n')
-    }
-
-    if (character.speakingStyle) {
-      sections.push('<speaking_style>')
-      sections.push(this.escapeXML(character.speakingStyle.trim()))
-      sections.push('</speaking_style>\n')
-    }
-
-    if (character.behaviorRules && character.behaviorRules.length > 0) {
-      sections.push('<behavior_rules>')
-      character.behaviorRules.forEach(rule => {
-        sections.push(`  <rule>${this.escapeXML(rule)}</rule>`)
-      })
-      sections.push('</behavior_rules>\n')
-    }
-
-    if (character.likes && character.likes.length > 0) {
-      sections.push('<likes>')
-      character.likes.forEach(like => {
-        sections.push(`  <item>${this.escapeXML(like)}</item>`)
-      })
-      sections.push('</likes>\n')
-    }
-
-    if (character.dislikes && character.dislikes.length > 0) {
-      sections.push('<dislikes>')
-      character.dislikes.forEach(dislike => {
-        sections.push(`  <item>${this.escapeXML(dislike)}</item>`)
-      })
-      sections.push('</dislikes>\n')
-    }
-
-    sections.push('<relationship>')
-    sections.push(`  <type>${relationship.type}</type>`)
-    sections.push(`  <intimacy>${relationship.intimacy.toFixed(2)}</intimacy>`)
-    sections.push(`  <trust>${relationship.trust.toFixed(2)}</trust>`)
-    if (relationship.dynamic) {
-      sections.push(`  <dynamic>${this.escapeXML(relationship.dynamic.trim())}</dynamic>`)
-    }
-    sections.push('</relationship>')
 
     return sections.join('\n')
   }

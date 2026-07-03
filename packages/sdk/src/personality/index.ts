@@ -1,3 +1,6 @@
+import type { CharacterProfile } from '../character-profile/index.js'
+import { characterProfileToPersonality } from '../character-profile/index.js'
+
 export interface Personality {
   character: {
     name: string
@@ -30,9 +33,24 @@ export interface Personality {
 }
 
 export class PersonalityEngine {
-  constructor(private personality: Personality) {}
+  constructor(private characterProfile: CharacterProfile | null) {}
 
   getPersonality(): Personality {
-    return { ...this.personality }
+    return characterProfileToPersonality(this.requireCharacterProfile())
+  }
+
+  getCharacterProfile(): CharacterProfile {
+    return this.requireCharacterProfile()
+  }
+
+  hasCharacterProfile(): boolean {
+    return Boolean(this.characterProfile)
+  }
+
+  private requireCharacterProfile(): CharacterProfile {
+    if (!this.characterProfile) {
+      throw new Error('Character profile is not selected')
+    }
+    return this.characterProfile
   }
 }

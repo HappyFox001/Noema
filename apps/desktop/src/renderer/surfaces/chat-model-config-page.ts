@@ -2,36 +2,43 @@
  * Renders the chat API and model configuration page.
  */
 import claudeIconUrl from '@lobehub/icons-static-svg/icons/claude-color.svg?url'
-import adobeFireflyIconUrl from '@lobehub/icons-static-svg/icons/adobefirefly-color.svg?url'
-import alibabaCloudIconUrl from '@lobehub/icons-static-svg/icons/alibabacloud-color.svg?url'
-import automaticIconUrl from '@lobehub/icons-static-svg/icons/automatic-color.svg?url'
 import azureAIIconUrl from '@lobehub/icons-static-svg/icons/azureai-color.svg?url'
-import baiduCloudIconUrl from '@lobehub/icons-static-svg/icons/baiducloud-color.svg?url'
-import comfyUIIconUrl from '@lobehub/icons-static-svg/icons/comfyui-color.svg?url'
 import deepseekIconUrl from '@lobehub/icons-static-svg/icons/deepseek-color.svg?url'
-import falIconUrl from '@lobehub/icons-static-svg/icons/fal-color.svg?url'
 import geminiIconUrl from '@lobehub/icons-static-svg/icons/gemini-color.svg?url'
 import groqIconUrl from '@lobehub/icons-static-svg/icons/groq.svg?url'
-import huggingFaceIconUrl from '@lobehub/icons-static-svg/icons/huggingface-color.svg?url'
-import ideogramIconUrl from '@lobehub/icons-static-svg/icons/ideogram.svg?url'
 import newAPIIconUrl from '@lobehub/icons-static-svg/icons/newapi-color.svg?url'
 import ollamaIconUrl from '@lobehub/icons-static-svg/icons/ollama.svg?url'
 import openAIIconUrl from '@lobehub/icons-static-svg/icons/openai.svg?url'
 import qwenIconUrl from '@lobehub/icons-static-svg/icons/qwen-color.svg?url'
-import recraftIconUrl from '@lobehub/icons-static-svg/icons/recraft.svg?url'
-import replicateIconUrl from '@lobehub/icons-static-svg/icons/replicate.svg?url'
-import siliconCloudIconUrl from '@lobehub/icons-static-svg/icons/siliconcloud-color.svg?url'
-import stabilityIconUrl from '@lobehub/icons-static-svg/icons/stability-color.svg?url'
-import tencentCloudIconUrl from '@lobehub/icons-static-svg/icons/tencentcloud-color.svg?url'
-import volcengineIconUrl from '@lobehub/icons-static-svg/icons/volcengine-color.svg?url'
 import wavespeedLogoUrl from '../assets/wavespeed-dark-logo.png'
 import claudeCodeLogoUrl from '../assets/claude_code_logo.png'
 import codexLogoUrl from '../assets/codex_logo.png'
+/*
+ * Hidden image-provider icon imports kept as notes for future re-enablement.
+ * Current image provider support is intentionally limited to OpenAI, WaveSpeedAI, and Gemini.
+ *
+ * import adobeFireflyIconUrl from '@lobehub/icons-static-svg/icons/adobefirefly-color.svg?url'
+ * import alibabaCloudIconUrl from '@lobehub/icons-static-svg/icons/alibabacloud-color.svg?url'
+ * import automaticIconUrl from '@lobehub/icons-static-svg/icons/automatic-color.svg?url'
+ * import baiduCloudIconUrl from '@lobehub/icons-static-svg/icons/baiducloud-color.svg?url'
+ * import comfyUIIconUrl from '@lobehub/icons-static-svg/icons/comfyui-color.svg?url'
+ * import falIconUrl from '@lobehub/icons-static-svg/icons/fal-color.svg?url'
+ * import huggingFaceIconUrl from '@lobehub/icons-static-svg/icons/huggingface-color.svg?url'
+ * import ideogramIconUrl from '@lobehub/icons-static-svg/icons/ideogram.svg?url'
+ * import recraftIconUrl from '@lobehub/icons-static-svg/icons/recraft.svg?url'
+ * import replicateIconUrl from '@lobehub/icons-static-svg/icons/replicate.svg?url'
+ * import siliconCloudIconUrl from '@lobehub/icons-static-svg/icons/siliconcloud-color.svg?url'
+ * import stabilityIconUrl from '@lobehub/icons-static-svg/icons/stability-color.svg?url'
+ * import tencentCloudIconUrl from '@lobehub/icons-static-svg/icons/tencentcloud-color.svg?url'
+ * import volcengineIconUrl from '@lobehub/icons-static-svg/icons/volcengine-color.svg?url'
+ */
 import {
+  filterEditCapableImageModelNames,
   IMAGE_PROVIDER_CATALOG,
   LLM_PROVIDER_CATALOG,
   getImageProviderCatalogEntry,
   getLLMProviderCatalogEntry,
+  isImageModelEditCapable,
   type ImageProviderType,
   type LLMProviderType,
 } from '../../main/model-provider-catalog'
@@ -78,7 +85,7 @@ export interface ChatModelConfigPageOptions {
 
 export function createDefaultChatModel(id = 'default-chat', modelType: 'llm' | 'image' = 'llm'): ChatModelConfig {
   const provider = modelType === 'image'
-    ? getImageProviderCatalogEntry('openai-image')
+    ? getImageProviderCatalogEntry('openai')
     : getLLMProviderCatalogEntry('openai-compatible')
   return {
     id,
@@ -126,13 +133,22 @@ export function getEnabledModelNames(model: ChatModelConfig | undefined): string
   const enabled = normalizeModelNameList(model.enabledModels)
   const current = model.modelName?.trim()
   if (model.modelType === 'image' && current) {
-    return [current, ...enabled.filter((name) => name !== current)]
+    const filtered = filterEditCapableImageModelNames(model.provider, enabled)
+    return isImageModelEditCapable(model.provider, current)
+      ? [current, ...filtered.filter((name) => name !== current)]
+      : filtered
+  }
+  if (model.modelType === 'image') {
+    return filterEditCapableImageModelNames(model.provider, enabled)
   }
   return enabled
 }
 
 export function getAvailableModelNames(model: ChatModelConfig): string[] {
-  return normalizeModelNameList(model.availableModels)
+  const available = normalizeModelNameList(model.availableModels)
+  return model.modelType === 'image'
+    ? filterEditCapableImageModelNames(model.provider, available)
+    : available
 }
 
 export function normalizeModelNameList(value: unknown): string[] {
@@ -470,40 +486,32 @@ function getProviderLogo(provider: LLMProviderType): { src: string; alt: string 
 
 function getImageProviderLogo(provider: ImageProviderType): { src: string; alt: string } {
   switch (provider) {
-    case 'google-imagen':
-      return { src: geminiIconUrl, alt: 'Google Imagen' }
-    case 'stability':
-      return { src: stabilityIconUrl, alt: 'Stability AI' }
-    case 'replicate':
-      return { src: replicateIconUrl, alt: 'Replicate' }
-    case 'fal':
-      return { src: falIconUrl, alt: 'fal.ai' }
-    case 'comfyui':
-      return { src: comfyUIIconUrl, alt: 'ComfyUI' }
-    case 'automatic1111':
-      return { src: automaticIconUrl, alt: 'AUTOMATIC1111' }
-    case 'aliyun-bailian':
-      return { src: alibabaCloudIconUrl, alt: '阿里云百炼' }
-    case 'volcengine-ark':
-      return { src: volcengineIconUrl, alt: '火山方舟' }
-    case 'tencent-hunyuan':
-      return { src: tencentCloudIconUrl, alt: '腾讯混元' }
-    case 'baidu-qianfan':
-      return { src: baiduCloudIconUrl, alt: '百度千帆' }
-    case 'siliconflow':
-      return { src: siliconCloudIconUrl, alt: 'SiliconFlow' }
-    case 'huggingface':
-      return { src: huggingFaceIconUrl, alt: 'Hugging Face' }
-    case 'adobe-firefly':
-      return { src: adobeFireflyIconUrl, alt: 'Adobe Firefly' }
-    case 'ideogram':
-      return { src: ideogramIconUrl, alt: 'Ideogram' }
-    case 'recraft':
-      return { src: recraftIconUrl, alt: 'Recraft' }
     case 'wavespeed':
       return { src: wavespeedLogoUrl, alt: 'WaveSpeedAI' }
-    case 'openai-image':
+    case 'gemini':
+      return { src: geminiIconUrl, alt: 'Gemini' }
+    case 'openai':
     default:
       return { src: openAIIconUrl, alt: 'OpenAI Images' }
   }
 }
+
+/*
+ * Hidden image-provider logo mappings kept for future re-enablement.
+ * They are not reachable while IMAGE_PROVIDER_CATALOG is limited to OpenAI, WaveSpeedAI, and Gemini.
+ *
+ * stability -> stabilityIconUrl, Stability AI
+ * replicate -> replicateIconUrl, Replicate
+ * fal -> falIconUrl, fal.ai
+ * comfyui -> comfyUIIconUrl, ComfyUI
+ * automatic1111 -> automaticIconUrl, AUTOMATIC1111
+ * aliyun-bailian -> alibabaCloudIconUrl, Alibaba Bailian
+ * volcengine-ark -> volcengineIconUrl, Volcengine Ark
+ * tencent-hunyuan -> tencentCloudIconUrl, Tencent Hunyuan
+ * baidu-qianfan -> baiduCloudIconUrl, Baidu Qianfan
+ * siliconflow -> siliconCloudIconUrl, SiliconFlow
+ * huggingface -> huggingFaceIconUrl, Hugging Face
+ * adobe-firefly -> adobeFireflyIconUrl, Adobe Firefly
+ * ideogram -> ideogramIconUrl, Ideogram
+ * recraft -> recraftIconUrl, Recraft
+ */

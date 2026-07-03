@@ -2,6 +2,7 @@
  * Provider-specific model listing for chat model configuration.
  */
 import { createProxyFetch } from '../utils/proxy.js'
+import { isImageModelEditCapable } from '../image/catalog.js'
 
 export interface ChatModelListRequest {
   provider?: string
@@ -56,7 +57,7 @@ export function buildChatModelListCandidates(request: ChatModelListRequest): Cha
   const candidates: ChatModelListCandidate[] = []
   const imageModels = request.modelType === 'image'
 
-  if (provider === 'gemini' || provider === 'google-imagen') {
+  if (provider === 'gemini') {
     const nativeGeminiBase = getGeminiNativeBaseUrl(baseUrl)
     if (apiKey && nativeGeminiBase) {
       candidates.push({
@@ -115,56 +116,7 @@ function buildImageModelListCandidates(
   const candidates: ChatModelListCandidate[] = []
   const headers = buildModelsRequestHeaders(request)
 
-  if (provider === 'fal') {
-    candidates.push({
-      url: 'https://api.fal.ai/v1/models?category=text-to-image&status=active&limit=100',
-      headers: buildFalModelRequestHeaders(request),
-    })
-  }
-
-  if (provider === 'huggingface') {
-    candidates.push({
-      url: 'https://huggingface.co/api/models?pipeline_tag=text-to-image&sort=downloads&direction=-1&limit=100',
-      headers,
-    })
-  }
-
-  if (provider === 'automatic1111' && baseUrl) {
-    candidates.push({
-      url: `${baseUrl}/sdapi/v1/sd-models`,
-      headers: {},
-    })
-  }
-
-  if (provider === 'comfyui' && baseUrl) {
-    candidates.push({
-      url: `${baseUrl}/object_info`,
-      headers: {},
-    })
-  }
-
-  if (provider === 'stability' && baseUrl) {
-    candidates.push({
-      url: `${getStabilityV1BaseUrl(baseUrl)}/engines/list`,
-      headers,
-    })
-  }
-
-  if (provider === 'siliconflow' && baseUrl) {
-    candidates.push({
-      url: `${baseUrl}/models?type=image`,
-      headers,
-    })
-  }
-
   if (provider === 'wavespeed' && baseUrl) {
-    candidates.push({
-      url: `${baseUrl}/models`,
-      headers,
-    })
-  }
-
-  if (provider === 'replicate' && baseUrl) {
     candidates.push({
       url: `${baseUrl}/models`,
       headers,
@@ -192,6 +144,10 @@ function matchesRequestedModelType(item: unknown, request: ChatModelListRequest)
     return matchesImageModelName(item, request.provider)
   }
   const source = item && typeof item === 'object' ? item as Record<string, unknown> : {}
+  const modelName = readModelListItemName(item)
+  if (matchesImageModelName(modelName, request.provider)) {
+    return true
+  }
   const descriptors = [
     source.type,
     source.model_type,
@@ -208,13 +164,18 @@ function matchesRequestedModelType(item: unknown, request: ChatModelListRequest)
     .map((value) => typeof value === 'string' ? value.toLowerCase() : '')
     .filter(Boolean)
 
-  if (descriptors.some((value) => value.includes('image'))) {
-    return true
-  }
-  if (descriptors.length > 0) {
+  if (!descriptors.length) {
     return false
   }
-  return matchesImageModelName(readModelListItemName(item), request.provider)
+  const imageLike = descriptors.some((value) => value.includes('image') || value.includes('photo') || value.includes('visual'))
+  const editLike = descriptors.some((value) =>
+    value.includes('edit') ||
+    value.includes('image-to-image') ||
+    value.includes('img2img') ||
+    value.includes('reference') ||
+    value.includes('modify')
+  )
+  return imageLike && editLike
 }
 
 function buildModelsRequestHeaders(request: ChatModelListRequest): Record<string, string> {
@@ -402,21 +363,7 @@ function readModelListItemName(item: unknown): string {
 }
 
 function matchesImageModelName(name: string, provider: string | undefined): boolean {
-  const normalizedProvider = String(provider || '').toLowerCase()
-  const normalized = name.toLowerCase()
-  if (!normalized) {
-    return false
-  }
-  if (['automatic1111', 'comfyui', 'fal', 'huggingface', 'siliconflow', 'stability', 'wavespeed'].includes(normalizedProvider)) {
-    return true
-  }
-  if (normalizedProvider === 'openai-image') {
-    return /^(gpt-image|dall-e)/i.test(name)
-  }
-  if (normalizedProvider === 'google-imagen') {
-    return /(imagen|image)/i.test(name)
-  }
-  return true
+  return isImageModelEditCapable(provider, name)
 }
 
 function parseJson(text: string): unknown {

@@ -46,6 +46,7 @@ other/**
 
 *.md
 !AGENTS.md
+!docs/
 lanuch/
 tmp/
 scripts/

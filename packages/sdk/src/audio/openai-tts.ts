@@ -1,8 +1,8 @@
 /**
- * OpenAI-compatible HTTP text-to-speech provider.
+ * Dormant OpenAI-compatible HTTP text-to-speech provider.
  *
- * Streams PCM speech from /audio/speech and normalizes it to the desktop
- * playback sample rate used by the renderer.
+ * This implementation is retained for future re-enablement, but it is not
+ * exported from the audio barrel or registered in the current TTS factory.
  */
 import type { TTSProvider, TTSProviderCapabilities, TTSProviderEvent } from './providers.js'
 

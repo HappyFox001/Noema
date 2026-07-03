@@ -20,11 +20,16 @@ import fishAudioIconUrl from '@lobehub/icons-static-svg/icons/fishaudio.svg?url'
 import geminiIconUrl from '@lobehub/icons-static-svg/icons/gemini-color.svg?url'
 import googleCloudIconUrl from '@lobehub/icons-static-svg/icons/googlecloud-color.svg?url'
 import groqIconUrl from '@lobehub/icons-static-svg/icons/groq.svg?url'
-import minimaxIconUrl from '@lobehub/icons-static-svg/icons/minimax-color.svg?url'
 import newAPIIconUrl from '@lobehub/icons-static-svg/icons/newapi-color.svg?url'
 import ollamaIconUrl from '@lobehub/icons-static-svg/icons/ollama.svg?url'
 import openAIIconUrl from '@lobehub/icons-static-svg/icons/openai.svg?url'
 import qwenIconUrl from '@lobehub/icons-static-svg/icons/qwen-color.svg?url'
+/*
+ * Hidden TTS-provider icon import note for future re-enablement.
+ * Current TTS provider support is intentionally limited to Fish Audio and ElevenLabs.
+ *
+ * import minimaxIconUrl from '@lobehub/icons-static-svg/icons/minimax-color.svg?url'
+ */
 import {
   ASR_PROVIDER_CATALOG,
   LLM_PROVIDER_CATALOG,
@@ -672,11 +677,10 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'chat.workflow.category.Taste': '风格',
     'chat.workflow.node.agent-policy': 'Agent 策略',
     'chat.workflow.node.character-card-target': '角色卡目标',
-    'chat.workflow.node.character-field-target': '字段目标',
+    'chat.workflow.node.character-field-target': '字段控制',
     'chat.workflow.node.continuity-control': '连续性控制',
     'chat.workflow.node.constraint': '硬约束',
     'chat.workflow.node.critique-loop': '自评修复',
-    'chat.workflow.node.field-generation-control': '字段生成控制',
     'chat.workflow.node.generation-strategy': '生成策略',
     'chat.workflow.node.goal': '生成目标',
     'chat.workflow.node.image-generation-control': '图片生成控制',
@@ -717,6 +721,7 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'chat.workflow.param.editModelRef': '编辑模型 / 工作流',
     'chat.workflow.param.enabled': '启用',
     'chat.workflow.param.fields': '字段',
+    'chat.workflow.param.fieldControls': '字段控制',
     'chat.workflow.param.fieldPurpose': '字段目的',
     'chat.workflow.param.format': '格式',
     'chat.workflow.param.forbidResettingFacts': '禁止重置事实',
@@ -738,6 +743,7 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'chat.workflow.param.lengthPolicy': '长度策略',
     'chat.workflow.param.layoutKind': '版面类型',
     'chat.workflow.param.layoutPrompt': '版面提示词',
+    'chat.workflow.param.textDensity': '文字密度',
     'chat.workflow.param.memoryAnchors': '记忆锚点',
     'chat.workflow.param.milestoneCount': '里程碑数',
     'chat.workflow.param.minimumScore': '最低分',
@@ -1183,8 +1189,6 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'chat.workflow.slot.critique': '自评',
     'chat.workflow.slot.export': '导出',
     'chat.workflow.slot.field': '字段',
-    'chat.workflow.slot.fieldControl': '字段控制',
-    'chat.workflow.slot.fieldTarget': '字段',
     'chat.workflow.slot.goal': '目标',
     'chat.workflow.slot.image': '图片',
     'chat.workflow.slot.imageAsset': '图片',
@@ -1397,7 +1401,7 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'learning.updatedAt': '更新时间',
     'learning.emptyHint': '这里暂时没有可管理对象。',
     'personality.addFile': '添加角色文件',
-    'personality.addFileDesc': '选择外部 .yml/.yaml 文件，校验通过后加入人格列表',
+    'personality.addFileDesc': '选择外部角色 JSON 文件，校验通过后加入人格列表',
     'personality.current': '当前人格',
     'personality.currentDesc': '选择 AI 伴侣的人格配置',
     'personality.title': '人格',
@@ -1652,11 +1656,10 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'chat.workflow.category.Taste': 'Taste',
     'chat.workflow.node.agent-policy': 'Agent Policy',
     'chat.workflow.node.character-card-target': 'Character Card Target',
-    'chat.workflow.node.character-field-target': 'Character Field Target',
+    'chat.workflow.node.character-field-target': 'Character Fields',
     'chat.workflow.node.continuity-control': 'Continuity Control',
     'chat.workflow.node.constraint': 'Hard Constraint',
     'chat.workflow.node.critique-loop': 'Critique Loop',
-    'chat.workflow.node.field-generation-control': 'Field Generation Control',
     'chat.workflow.node.generation-strategy': 'Generation Strategy',
     'chat.workflow.node.goal': 'Generation Goal',
     'chat.workflow.node.image-generation-control': 'Image Generation Control',
@@ -1697,6 +1700,7 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'chat.workflow.param.editModelRef': 'Edit Model / Workflow',
     'chat.workflow.param.enabled': 'Enabled',
     'chat.workflow.param.fields': 'Fields',
+    'chat.workflow.param.fieldControls': 'Field Controls',
     'chat.workflow.param.fieldPurpose': 'Field Purpose',
     'chat.workflow.param.format': 'Format',
     'chat.workflow.param.forbidResettingFacts': 'Forbid Resetting Facts',
@@ -1718,6 +1722,7 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'chat.workflow.param.lengthPolicy': 'Length Policy',
     'chat.workflow.param.layoutKind': 'Layout Kind',
     'chat.workflow.param.layoutPrompt': 'Layout Prompt',
+    'chat.workflow.param.textDensity': 'Text Density',
     'chat.workflow.param.memoryAnchors': 'Memory Anchors',
     'chat.workflow.param.milestoneCount': 'Milestone Count',
     'chat.workflow.param.minimumScore': 'Minimum Score',
@@ -2163,8 +2168,6 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'chat.workflow.slot.critique': 'Critique',
     'chat.workflow.slot.export': 'Export',
     'chat.workflow.slot.field': 'Field',
-    'chat.workflow.slot.fieldControl': 'Field Control',
-    'chat.workflow.slot.fieldTarget': 'Field',
     'chat.workflow.slot.goal': 'Goal',
     'chat.workflow.slot.image': 'Image',
     'chat.workflow.slot.imageAsset': 'Image',
@@ -2377,7 +2380,7 @@ const I18N: Record<LanguageCode, Record<string, string>> = {
     'learning.updatedAt': 'Updated',
     'learning.emptyHint': 'No manageable objects yet.',
     'personality.addFile': 'Add Role File',
-    'personality.addFileDesc': 'Choose an external .yml/.yaml file and add it after validation',
+    'personality.addFileDesc': 'Choose an external character JSON file and add it after validation',
     'personality.current': 'Current Personality',
     'personality.currentDesc': 'Choose the AI companion personality profile',
     'personality.title': 'Personality',
@@ -4921,6 +4924,11 @@ async function loadPersonalities(): Promise<void> {
   }
 
   personalitySelect.innerHTML = ''
+  const emptyOption = document.createElement('option')
+  emptyOption.value = ''
+  emptyOption.textContent = currentLanguage === 'zh-CN' ? '未选择角色' : 'No character selected'
+  emptyOption.selected = !result.current
+  personalitySelect.appendChild(emptyOption)
   result.items.forEach((item) => {
     const option = document.createElement('option')
     option.value = item.id
@@ -4931,6 +4939,7 @@ async function loadPersonalities(): Promise<void> {
     option.selected = item.id === result.current
     personalitySelect.appendChild(option)
   })
+  personalitySelect.disabled = result.items.length === 0
 }
 
 function renderOrbStyleControls(): void {
@@ -9612,24 +9621,23 @@ function getTTSProviderLogo(provider: TTSProviderType): ModelLogo {
       return { src: fishAudioIconUrl, alt: 'Fish Audio', tone: 'light' }
     case 'elevenlabs':
       return { src: elevenLabsIconUrl, alt: 'ElevenLabs', tone: 'light' }
-    case 'gemini':
-      return { src: geminiIconUrl, alt: getTTSProviderCatalogEntry(provider).label }
-    case 'google-cloud':
-      return { src: googleCloudIconUrl, alt: 'Google Cloud' }
-    case 'groq':
-      return { src: groqIconUrl, alt: 'Groq', tone: 'light' }
-    case 'azure-openai':
-    case 'azure-speech':
-      return { src: azureAIIconUrl, alt: getTTSProviderCatalogEntry(provider).label }
-    case 'minimax':
-      return { src: minimaxIconUrl, alt: 'MiniMax' }
-    case 'openai-compatible':
-      return { src: newAPIIconUrl, alt: getTTSProviderCatalogEntry(provider).label }
-    case 'openai':
     default:
-      return { src: openAIIconUrl, alt: getTTSProviderCatalogEntry(provider).label, tone: 'light' }
+      return { src: fishAudioIconUrl, alt: getTTSProviderCatalogEntry(provider).label, tone: 'light' }
   }
 }
+
+/*
+ * Hidden TTS-provider logo mappings kept for future re-enablement.
+ * They are not reachable while TTS_PROVIDER_CATALOG is limited to Fish Audio and ElevenLabs.
+ *
+ * openai -> openAIIconUrl, OpenAI
+ * openai-compatible -> newAPIIconUrl, OpenAI-compatible TTS
+ * groq -> groqIconUrl, Groq
+ * gemini -> geminiIconUrl, Gemini
+ * google-cloud -> googleCloudIconUrl, Google Cloud
+ * azure-openai / azure-speech -> azureAIIconUrl, Azure
+ * minimax -> minimaxIconUrl, MiniMax
+ */
 
 function getASRProviderLogo(provider: ASRProviderType): ModelLogo {
   switch (provider) {
@@ -9712,12 +9720,10 @@ function shouldShowTTSField(provider: TTSProviderType, field: keyof TTSModelConf
   switch (provider) {
     case 'fish':
       return field === 'apiKey' || field === 'voiceId'
-    case 'openai':
-      return field === 'apiKey' || field === 'baseUrl' || field === 'voiceId'
     case 'elevenlabs':
       return field === 'apiKey' || field === 'baseUrl' || field === 'voiceId' || field === 'language'
     default:
-      return true
+      return false
   }
 }
 

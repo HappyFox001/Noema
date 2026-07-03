@@ -1,14 +1,18 @@
 /**
  * IPC handlers for chat character resources stored under the role directory.
  */
-import { app, ipcMain, protocol, type IpcMain } from 'electron'
+import { ipcMain, protocol, type IpcMain } from 'electron'
 import { existsSync } from 'fs'
-import { readdir, readFile } from 'fs/promises'
-import { dirname, extname, join, relative, resolve, sep } from 'path'
-import { fileURLToPath } from 'url'
-
-const SOURCE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '../../..')
-const CHAT_ROLE_RESOURCE_PROTOCOL = 'noema-role-resource'
+import { readFile } from 'fs/promises'
+import { resolve } from 'path'
+import {
+  CHAT_ROLE_RESOURCE_PROTOCOL,
+  deleteChatRoleResourceById,
+  getChatRoleResourceDir,
+  isPathInside,
+  listChatRoleResources,
+  mimeForPath,
+} from './chat-role-resource-store.js'
 
 protocol.registerSchemesAsPrivileged([{
   scheme: CHAT_ROLE_RESOURCE_PROTOCOL,
@@ -20,20 +24,6 @@ protocol.registerSchemesAsPrivileged([{
   },
 }])
 
-interface ChatRoleResourceManifest {
-  id: string
-  name: Record<string, string>
-  displayName: Record<string, string>
-  description: Record<string, string>
-  story: Record<string, string>
-  background: Record<string, string>
-  scene: Record<string, any>
-  firstMessage: Record<string, string>
-  tag: Record<string, string[]>
-  avatarImage: string
-  bodyImage: string
-}
-
 export function registerChatRoleResourceIpcHandlers(ipc: IpcMain = ipcMain): void {
   ipc.handle('chat-role-resources:list', async () => {
     try {
@@ -43,6 +33,21 @@ export function registerChatRoleResourceIpcHandlers(ipc: IpcMain = ipcMain): voi
       }
     } catch (error: any) {
       console.error('[ChatRoleResources] Failed to list resources:', error)
+      return {
+        success: false,
+        error: error?.message || String(error),
+      }
+    }
+  })
+
+  ipc.handle('chat-role-resources:delete', async (_, id: string) => {
+    try {
+      return {
+        success: true,
+        deleted: await deleteChatRoleResourceById(String(id || '')),
+      }
+    } catch (error: any) {
+      console.error('[ChatRoleResources] Failed to delete resource:', error)
       return {
         success: false,
         error: error?.message || String(error),
@@ -73,75 +78,4 @@ export function registerChatRoleResourceProtocol(): void {
       },
     })
   })
-}
-
-async function listChatRoleResources(): Promise<ChatRoleResourceManifest[]> {
-  const chatRoleResourceDir = getChatRoleResourceDir()
-  if (!existsSync(chatRoleResourceDir)) {
-    return []
-  }
-
-  const entries = await readdir(chatRoleResourceDir, { withFileTypes: true })
-  const manifests = await Promise.all(entries
-    .filter(entry => entry.isDirectory())
-    .map(entry => loadManifest(join(chatRoleResourceDir, entry.name))))
-
-  return manifests.filter(Boolean) as ChatRoleResourceManifest[]
-}
-
-function getChatRoleResourceDir(): string {
-  return app.isPackaged
-    ? join(process.resourcesPath, 'role', 'chat')
-    : join(SOURCE_ROOT, 'role', 'chat')
-}
-
-async function loadManifest(resourceDir: string): Promise<ChatRoleResourceManifest | null> {
-  const manifestPath = join(resourceDir, 'manifest.json')
-  if (!existsSync(manifestPath)) {
-    return null
-  }
-
-  const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as ChatRoleResourceManifest
-  return {
-    ...manifest,
-    avatarImage: resolveImageUrl(resourceDir, manifest.avatarImage),
-    bodyImage: resolveImageUrl(resourceDir, manifest.bodyImage),
-  }
-}
-
-function resolveImageUrl(resourceDir: string, imagePath: string): string {
-  const absolutePath = resolve(resourceDir, imagePath.replace(/^\/+/, ''))
-  if (!isPathInside(resourceDir, absolutePath)) {
-    throw new Error(`Chat role image escapes resource directory: ${imagePath}`)
-  }
-
-  if (!existsSync(absolutePath)) {
-    return ''
-  }
-  const relativePath = relative(getChatRoleResourceDir(), absolutePath)
-    .split(sep)
-    .map((part) => encodeURIComponent(part))
-    .join('/')
-  return `${CHAT_ROLE_RESOURCE_PROTOCOL}://chat/${relativePath}`
-}
-
-function isPathInside(parent: string, child: string): boolean {
-  const normalizedParent = resolve(parent)
-  const normalizedChild = resolve(child)
-  return normalizedChild === normalizedParent || normalizedChild.startsWith(`${normalizedParent}/`)
-}
-
-function mimeForPath(filePath: string): string {
-  switch (extname(filePath).toLowerCase()) {
-    case '.jpg':
-    case '.jpeg':
-      return 'image/jpeg'
-    case '.webp':
-      return 'image/webp'
-    case '.svg':
-      return 'image/svg+xml'
-    case '.png':
-    default:
-      return 'image/png'
-  }
 }

@@ -1,14 +1,25 @@
 /**
  * Owns the standalone chat surface interactions and window mode transitions.
  */
-import { getImageProviderCatalogEntry, getLLMProviderCatalogEntry } from '../../main/model-provider-catalog'
+import elevenLabsIconUrl from '@lobehub/icons-static-svg/icons/elevenlabs.svg?url'
+import fishAudioIconUrl from '@lobehub/icons-static-svg/icons/fishaudio.svg?url'
+import {
+  filterEditCapableImageModelNames,
+  getImageProviderCatalogEntry,
+  getLLMProviderCatalogEntry,
+  getTTSProviderCatalogEntry,
+  isImageModelEditCapable,
+} from '../../main/model-provider-catalog'
 import {
   applyChatRuntimeTurnResult,
   buildChatRuntimeTurnRequest,
+  decideRoleplayMediaDispatch,
+  extractRoleplayMediaIntent,
   getChatMessageOrdinal,
   summarizeChatConversationOverflow,
   stripChatSceneUpdateMarkup,
   trimChatSummaries,
+  type RoleplayMediaIntent,
 } from '@noema/sdk/chat/conversation-runtime'
 import {
   CHAT_CONTEXT_TURNS_MAX,
@@ -19,13 +30,16 @@ import {
   CHAT_SUMMARY_LIMIT_MAX,
   CHAT_SUMMARY_LIMIT_MIN,
   buildConversationPreferencePrompt,
+  buildConversationMediaPolicy,
   buildConversationRequestOptions,
   clampNumber,
   getDefaultConversationSettings,
   loadConversationSettings,
+  renderConversationRange,
   renderConversationSettingsPage,
   saveConversationSettings,
   type ChatConversationSettings,
+  type ConversationSettingsPageOptions,
 } from './chat-conversation-settings'
 import type {
   CharacterWorkflowModelChoice,
@@ -49,7 +63,7 @@ import {
   type ChatCharacterResource,
   type ChatLocalizedText,
   type ChatMemorySummary,
-  type ChatMessageAttachment,
+  type ChatMessageMedia,
   type ChatMessage,
   type ChatOpeningPanel,
 } from './chat-model'
@@ -71,12 +85,34 @@ import {
   type ChatSystemConfig,
 } from './chat-model-config-page'
 import { createChatRenderer } from './chat-renderer'
+import { extractRoleplaySpeechTexts } from './roleplay-chat-markup'
+import { Trash2, createIcons } from 'lucide'
 
 type ChatResizeEdge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
 
-type PendingChatAttachment = ChatMessageAttachment
+type PendingChatMedia = ChatMessageMedia
 type CharacterWorkflowPageModule = typeof import('./chat-character-workflow-page')
 type CharacterWorkflowTemplateId = 'character-card'
+
+interface ChatTTSModelConfig {
+  id: string
+  provider: string
+  modelName: string
+  apiKey: string
+  voiceId?: string
+  baseUrl?: string
+  language?: string
+  format?: 'pcm' | 'mp3' | 'opus'
+  sampleRate?: number
+  extra?: Record<string, unknown>
+}
+
+interface ChatImageModelChoice {
+  ref: string
+  api: ChatModelConfig
+  modelName: string
+  providerLabel: string
+}
 
 const CHARACTER_WORKFLOW_LIBRARY_MIN_WIDTH = 148
 const CHARACTER_WORKFLOW_LIBRARY_DEFAULT_WIDTH = 176
@@ -261,6 +297,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   const chatHistoryMessageList = panel.querySelector<HTMLElement>('.chat-history-message-list')
   const chatHistoryTitle = panel.querySelector<HTMLElement>('[data-chat-history-title]')
   const chatHistoryKicker = panel.querySelector<HTMLElement>('[data-chat-history-kicker]')
+  const chatHistoryClear = panel.querySelector<HTMLElement>('[data-chat-history-action="clear"]')
+  const chatHistoryClose = panel.querySelector<HTMLElement>('[data-chat-history-close]')
+  const characterProfilePanel = panel.querySelector<HTMLElement>('.chat-character-profile-panel')
+  const characterProfileBody = panel.querySelector<HTMLElement>('.chat-character-profile-body')
+  const characterProfileTitle = panel.querySelector<HTMLElement>('[data-chat-character-profile-title]')
+  const characterProfileKicker = panel.querySelector<HTMLElement>('[data-chat-character-profile-kicker]')
+  const characterProfileClose = panel.querySelector<HTMLElement>('[data-chat-character-profile-close]')
   const languageButton = panel.querySelector<HTMLButtonElement>('[data-chat-action="language"]')
   const languageMark = panel.querySelector<HTMLElement>('.chat-language-mark')
   const windowCloseButton = panel.querySelector<HTMLButtonElement>('[data-chat-action="window-close"]')
@@ -278,13 +321,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   const runtimeModelPicker = document.createElement('div')
   const attachmentTray = document.createElement('div')
   let chatSystemConfig: ChatSystemConfig | null = null
+  let chatTTSModels: ChatTTSModelConfig[] = []
   let openChatModelLibraryId = ''
   let chatModelLibrarySearch = ''
   let openChatProviderDropdownId = ''
   let openChatRuntimeModelPicker = false
   let openChatModelTypePicker = false
   let activeChatRuntimeProvider = ''
-  let pendingAttachments: PendingChatAttachment[] = []
+  let pendingMedia: PendingChatMedia[] = []
   let cameraStream: MediaStream | null = null
   let cameraOverlay: HTMLElement | null = null
   const chatModelOptions = new Map<string, string[]>()
@@ -295,6 +339,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let chatResourcesHydrated = false
   let chatResourcesHydratePromise: Promise<void> | null = null
   let chatModelConfigLoadPromise: Promise<void> | null = null
+  let chatHistoryRenderFrame: number | undefined
+  let conversationSettingsRenderFrame: number | undefined
+  let pendingCharacterDeleteId = ''
   let characterWorkflowRenderToken = 0
   let characterWorkflowLazyRenderToken = 0
   let characterWorkflowPageModulePromise: Promise<CharacterWorkflowPageModule> | null = null
@@ -415,7 +462,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   runtimeModelPicker.setAttribute('aria-label', 'Chat model selector')
   options.composeForm.parentElement?.insertBefore(runtimeModelPicker, options.composeForm)
   attachmentTray.className = 'chat-attachment-tray'
-  attachmentTray.setAttribute('aria-label', 'Selected attachments')
+  attachmentTray.setAttribute('aria-label', 'Selected media')
   options.composeForm.insertBefore(attachmentTray, options.composeForm.firstElementChild)
 
   function showToast(message: string): void {
@@ -707,6 +754,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       case 'close-chat-history':
         closeChatHistoryManager()
         break
+      case 'close-character-profile':
+        closeCharacterProfilePanel()
+        break
       case 'voice-call':
         target.classList.toggle('is-active')
         showToast(target.classList.contains('is-active') ? 'Voice call ready' : 'Voice call closed')
@@ -740,7 +790,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         void openCameraCapture()
         break
       case 'character-profile': {
-        showToast(options.getLanguage() === 'zh-CN' ? '正在显示角色资料' : 'Showing character profile')
+        openCharacterProfilePanel()
         break
       }
       default:
@@ -765,10 +815,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       if (!response.success) {
         throw new Error(response.error || 'Failed to select media')
       }
-      if (response.canceled || !response.attachments?.length) {
+      if (response.canceled || !response.media?.length) {
         return
       }
-      addPendingAttachments(response.attachments.map(toPendingAttachment))
+      addPendingMedia(response.media.map(toPendingMedia))
     } catch (error: any) {
       showToast(error?.message || String(error))
     }
@@ -903,7 +953,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     context.drawImage(video, 0, 0, canvas.width, canvas.height)
     const dataUrl = canvas.toDataURL('image/jpeg', 0.9)
-    addPendingAttachments([{
+    addPendingMedia([{
       id: `camera-${Date.now()}`,
       kind: 'image',
       name: `camera-${new Date().toISOString().replace(/[:.]/g, '-')}.jpg`,
@@ -921,37 +971,54 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     cameraOverlay = null
   }
 
-  function addPendingAttachments(attachments: PendingChatAttachment[]): void {
-    pendingAttachments = [...pendingAttachments, ...attachments].slice(0, 8)
-    renderPendingAttachments()
+  function addPendingMedia(media: PendingChatMedia[]): void {
+    pendingMedia = [...pendingMedia, ...media].slice(0, 8)
+    renderPendingMedia()
     options.composeInput.focus()
   }
 
-  function renderPendingAttachments(): void {
-    attachmentTray.classList.toggle('visible', pendingAttachments.length > 0)
-    attachmentTray.innerHTML = pendingAttachments.map((attachment) => `
-      <div class="chat-attachment-chip" data-chat-attachment-id="${options.escapeHtml(attachment.id)}">
-        ${attachment.kind === 'video'
-          ? `<video src="${options.escapeHtml(attachment.dataUrl || '')}" muted preload="metadata"></video>`
-          : `<img src="${options.escapeHtml(attachment.dataUrl || '')}" alt="${options.escapeHtml(attachment.name)}" />`}
-        <span>${options.escapeHtml(attachment.name)}</span>
-        <button type="button" aria-label="Remove attachment" data-chat-attachment-remove="${options.escapeHtml(attachment.id)}">×</button>
+  function renderPendingMedia(): void {
+    attachmentTray.classList.toggle('visible', pendingMedia.length > 0)
+    attachmentTray.innerHTML = pendingMedia.map((item) => `
+      <div class="chat-attachment-chip" data-chat-media-id="${options.escapeHtml(item.id)}">
+        ${renderPendingMediaPreview(item)}
+        <span>${options.escapeHtml(item.name)}</span>
+        <button type="button" aria-label="Remove media" data-chat-media-remove="${options.escapeHtml(item.id)}">×</button>
       </div>
     `).join('')
   }
 
-  function toPendingAttachment(attachment: Omit<PendingChatAttachment, 'id'> & { id?: string }): PendingChatAttachment {
+  function renderPendingMediaPreview(item: PendingChatMedia): string {
+    const source = options.escapeHtml(item.dataUrl || item.url || '')
+    if (item.kind === 'video') {
+      return `<video src="${source}" muted preload="metadata"></video>`
+    }
+    if (item.kind === 'audio') {
+      return `<span class="chat-attachment-audio-thumb">AUDIO</span>`
+    }
+    return `<img src="${source}" alt="${options.escapeHtml(item.name)}" />`
+  }
+
+  function toPendingMedia(item: Omit<PendingChatMedia, 'id'> & { id?: string }): PendingChatMedia {
     return {
-      id: attachment.id || `attachment-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      kind: attachment.kind,
-      name: attachment.name,
-      mimeType: attachment.mimeType,
-      dataUrl: attachment.dataUrl,
-      size: attachment.size,
+      id: item.id || `media-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      kind: item.kind,
+      name: item.name,
+      mimeType: item.mimeType,
+      dataUrl: item.dataUrl,
+      url: item.url,
+      size: item.size,
+      durationMs: item.durationMs,
+      transcript: item.transcript,
+      prompt: item.prompt,
+      origin: item.origin ?? 'user',
+      dispatch: item.dispatch ?? { trigger: 'manual', mode: 'turn', probability: 1 },
+      context: item.context ?? { mode: item.kind === 'audio' ? 'text' : 'auto' },
+      metadata: item.metadata,
     }
   }
 
-  async function queueAssistantReply(userText: string, attachments: ChatMessageAttachment[] = []): Promise<void> {
+  async function queueAssistantReply(userText: string, media: ChatMessageMedia[] = []): Promise<void> {
     const conversation = getActiveMutableConversation()
     if (!conversation) {
       showToast(options.getLanguage() === 'zh-CN' ? '角色资源尚未加载' : 'Character resources are not loaded')
@@ -971,7 +1038,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     refreshConversationList()
     const request = buildChatRuntimeTurnRequest({
       input: userText,
-      mediaFallbackInput: uiLanguage === 'zh-CN' ? '请根据附件进行回复。' : 'Please respond to the attached media.',
+      mediaFallbackInput: uiLanguage === 'zh-CN' ? '请根据这次发送的媒体内容进行回复。' : 'Please respond to the media sent in this turn.',
       language,
       preferencePrompt: buildConversationPreferencePrompt(conversationSettings, language),
       options: buildConversationRequestOptions(conversationSettings),
@@ -979,7 +1046,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         shortTermMessageLimit: getShortTermMessageLimit(),
         summaryLimit: conversationSettings.summaryLimit,
       },
-      attachments,
+      media,
       conversation,
       draftMessageId: message.id,
       character,
@@ -1051,9 +1118,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       const reply = response.success
         ? (response.response || completeReply || visibleReply || '')
         : (response.error || 'Chat model failed')
+      const mediaIntentResult = response.success ? extractRoleplayMediaIntent(reply) : { text: reply, intent: null as RoleplayMediaIntent | null }
+      const visibleFinalReply = mediaIntentResult.intent ? mediaIntentResult.text : reply
       const snapshot = applyChatRuntimeTurnResult(conversation, {
         assistantMessageId: message.id,
-        content: reply,
+        content: visibleFinalReply,
         language,
         sceneUpdate: response.success ? response.sceneUpdate : undefined,
       })
@@ -1064,6 +1133,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       refreshConversationList()
       void persistConversation(conversation)
       void summarizeConversationOverflow(conversation, language)
+      if (response.success) {
+        void generateTurnMedia(conversation, {
+          assistantMessageId: message.id,
+          userText,
+          assistantText: visibleFinalReply,
+          intent: mediaIntentResult.intent,
+        })
+      }
       if (!response.success) {
         showToast(response.error || 'Chat model failed')
       }
@@ -1077,6 +1154,453 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       void persistConversation(conversation)
       showToast(errorText)
     }
+  }
+
+  async function generateTurnMedia(
+    conversation: ChatConversationSummary,
+    input: {
+      assistantMessageId: string
+      userText: string
+      assistantText: string
+      intent?: RoleplayMediaIntent | null
+    }
+  ): Promise<void> {
+    const character = getCharacterForConversation(state, conversation)
+    const language = getEffectiveConversationLanguage()
+    const decision = decideRoleplayMediaDispatch({
+      userText: input.userText,
+      assistantText: input.assistantText,
+      language,
+      policy: buildConversationMediaPolicy(conversationSettings),
+      intent: input.intent,
+      character,
+      sceneState: conversation.sceneState,
+      recentMessages: conversation.messages,
+    })
+    if (decision.audio) {
+      const speechTexts = extractRoleplaySpeechTexts(input.assistantText)
+      for (const speechText of speechTexts) {
+        await generateAssistantAudio(conversation, input.assistantMessageId, {
+          ...decision.audio,
+          text: speechText,
+        }, decision.audio.trigger === 'request', speechText)
+      }
+    }
+    if (decision.image) {
+      await generateAssistantImage(conversation, decision.image, {
+        assistantMessageId: input.assistantMessageId,
+        userText: input.userText,
+        assistantText: input.assistantText,
+      }, decision.image.trigger === 'request')
+    }
+  }
+
+  async function handleManualMessageMediaAction(
+    action: 'image' | 'audio',
+    messageId: string,
+    manualImagePrompt = '',
+    inlineSpeechText = ''
+  ): Promise<void> {
+    const conversation = getActiveMutableConversation()
+    if (!conversation) {
+      return
+    }
+    const message = conversation.messages.find((item) => item.id === messageId && item.role === 'assistant')
+    if (!message || message.state) {
+      return
+    }
+    const language = getEffectiveConversationLanguage()
+    const assistantText = localizeChatText(message.text, language).trim()
+    const speechText = normalizeInlineAudioText(inlineSpeechText)
+    if (action === 'audio' && !speechText) {
+      return
+    }
+    const userText = getPreviousUserMessageText(conversation, messageId, language)
+    const character = getCharacterForConversation(state, conversation)
+    const basePolicy = buildConversationMediaPolicy(conversationSettings)
+    const decision = decideRoleplayMediaDispatch({
+      userText,
+      assistantText,
+      language,
+      policy: {
+        ...basePolicy,
+        imageMode: action === 'image' ? 'requested' : 'off',
+        voiceMode: action === 'audio' ? 'requested' : 'off',
+      },
+      intent: action === 'image'
+        ? { image: true }
+        : { audio: { text: speechText } },
+      character,
+      sceneState: conversation.sceneState,
+      recentMessages: conversation.messages,
+    })
+    if (action === 'image' && decision.image) {
+      await generateAssistantImage(conversation, {
+        ...decision.image,
+        trigger: 'manual',
+        reason: manualImagePrompt.trim()
+          ? 'manual_message_action_with_prompt'
+          : 'manual_message_action',
+      }, {
+        assistantMessageId: messageId,
+        userText,
+        assistantText,
+        manualDirection: manualImagePrompt,
+      }, true)
+    } else if (action === 'audio' && decision.audio) {
+      await generateAssistantAudio(conversation, messageId, { ...decision.audio, trigger: 'manual', reason: 'manual_inline_speech_action' }, true, speechText)
+    }
+  }
+
+  function openManualImagePrompt(control: HTMLElement): void {
+    const messageId = control.dataset.chatMessageId || ''
+    const actions = control.closest<HTMLElement>('.chat-message-actions')
+    if (!messageId || !actions) {
+      return
+    }
+    closeManualImagePrompt()
+    const zh = options.getLanguage() === 'zh-CN'
+    const form = document.createElement('form')
+    form.className = 'chat-image-prompt-popover'
+    form.dataset.chatImagePromptForm = 'true'
+    form.dataset.chatMessageId = messageId
+    form.innerHTML = `
+      <label class="chat-image-prompt-field">
+        <span>${options.escapeHtml(zh ? '图片描述' : 'Image direction')}</span>
+        <input type="text" data-chat-image-prompt-input autocomplete="off" placeholder="${options.escapeHtml(zh ? '这张图想表现什么、像什么样...' : 'What this image should show or feel like...')}" />
+      </label>
+      <div class="chat-image-prompt-row">
+        <span>
+          <button type="button" data-chat-image-prompt-action="cancel">${options.escapeHtml(zh ? '取消' : 'Cancel')}</button>
+          <button class="primary" type="submit">${options.escapeHtml(zh ? '生成' : 'Generate')}</button>
+        </span>
+      </div>
+    `
+    actions.insertAdjacentElement('afterend', form)
+    form.querySelector<HTMLInputElement>('[data-chat-image-prompt-input]')?.focus()
+  }
+
+  function closeManualImagePrompt(): void {
+    panel.querySelectorAll('.chat-image-prompt-popover').forEach((element) => element.remove())
+  }
+
+  async function submitManualImagePrompt(form: HTMLFormElement): Promise<void> {
+    const messageId = form.dataset.chatMessageId || ''
+    const prompt = form.querySelector<HTMLInputElement>('[data-chat-image-prompt-input]')?.value.trim() ?? ''
+    closeManualImagePrompt()
+    await handleManualMessageMediaAction('image', messageId, prompt)
+  }
+
+  async function generateAssistantAudio(
+    conversation: ChatConversationSummary,
+    assistantMessageId: string,
+    dispatch: {
+      text: string
+      trigger: 'manual' | 'model' | 'request' | 'auto'
+      permanent: boolean
+      reason: string
+    },
+    notifyOnMissing: boolean,
+    inlineSpeechText = dispatch.text
+  ): Promise<void> {
+    const model = getSelectedTTSModel()
+    if (!model) {
+      if (notifyOnMissing) {
+        showToast(options.getLanguage() === 'zh-CN' ? '请先配置可用 TTS 模型' : 'Configure a usable TTS model first')
+      }
+      return
+    }
+    const message = conversation.messages.find((item) => item.id === assistantMessageId)
+    if (!message) {
+      return
+    }
+    const normalizedSpeechText = normalizeInlineAudioText(inlineSpeechText || dispatch.text)
+    if (!normalizedSpeechText) {
+      return
+    }
+    const pendingAudioId = `pending-audio-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    const previousState = message.state
+    message.media = [
+      ...(message.media ?? []).filter((item) => item.metadata?.inlineAudioPending !== true),
+      {
+        id: pendingAudioId,
+        kind: 'audio',
+        name: 'voice-pending',
+        mimeType: 'audio/pending',
+        metadata: {
+          inlineAudioPending: true,
+          inlineSpeechText: normalizedSpeechText,
+        },
+      },
+    ]
+    message.state = 'generating_audio'
+    renderer.replaceMessage(message)
+    await persistConversation(conversation)
+    try {
+      const response = await window.electronAPI.synthesizeChatAudioMedia({
+        model,
+        text: normalizedSpeechText,
+        name: `${conversation.characterId || 'character'}-voice-${Date.now()}`,
+      })
+      if (!response.success || !response.media) {
+        throw new Error(response.error || 'TTS generation failed')
+      }
+      message.media = (message.media ?? []).filter((item) => item.id !== pendingAudioId)
+      message.media = [
+        ...(message.media ?? []),
+        decorateGeneratedMedia(response.media, {
+          trigger: dispatch.trigger,
+          mode: dispatch.permanent ? 'permanent' : 'turn',
+          reason: dispatch.reason,
+          summary: normalizedSpeechText,
+          inlineSpeechText: normalizedSpeechText,
+        }),
+      ]
+      message.state = previousState === 'generating_audio' ? undefined : previousState
+      renderer.replaceMessage(message)
+      await persistConversation(conversation)
+      if (conversationSettings.mediaVoiceAutoplay) {
+        playGeneratedAudio(assistantMessageId, normalizedSpeechText)
+      }
+    } catch (error: any) {
+      message.media = (message.media ?? []).filter((item) => item.id !== pendingAudioId)
+      message.state = previousState === 'generating_audio' ? undefined : previousState
+      renderer.replaceMessage(message)
+      await persistConversation(conversation)
+      if (notifyOnMissing || dispatch.trigger === 'model' || dispatch.trigger === 'request') {
+        showToast(error?.message || String(error))
+      }
+    }
+  }
+
+  async function generateAssistantImage(
+    conversation: ChatConversationSummary,
+    dispatch: {
+      prompt: string
+      trigger: 'manual' | 'model' | 'request'
+      permanent: boolean
+      reason: string
+      referenceImages: string[]
+    },
+    promptContextInput: {
+      assistantMessageId?: string
+      userText?: string
+      assistantText?: string
+      manualDirection?: string
+    },
+    notifyOnMissing: boolean
+  ): Promise<void> {
+    const choice = getSelectedImageModelChoice()
+    if (!choice) {
+      if (notifyOnMissing) {
+        showToast(options.getLanguage() === 'zh-CN' ? '请先配置可用生图模型' : 'Configure a usable image model first')
+      }
+      return
+    }
+    const imageMessage = createGeneratedMediaMessage(
+      options.getLanguage() === 'zh-CN' ? '生成画面中...' : 'Generating image...',
+      'generating_image'
+    )
+    conversation.messages.push(imageMessage)
+    renderer.appendMessage(imageMessage)
+    await persistConversation(conversation)
+    try {
+      const response = await window.electronAPI.generateChatImageMedia({
+        model: {
+          ...choice.api,
+          modelType: 'image',
+          modelName: choice.modelName,
+        },
+        modelName: choice.modelName,
+        prompt: dispatch.prompt,
+        promptContext: buildChatImagePromptContext(conversation, dispatch, promptContextInput),
+        referenceImages: dispatch.referenceImages,
+        size: conversationSettings.mediaImageSize,
+        name: `${conversation.characterId || 'character'}-image-${Date.now()}.png`,
+      })
+      if (!response.success || !response.media) {
+        throw new Error(response.error || 'Image generation failed')
+      }
+      imageMessage.media = [decorateGeneratedMedia(response.media, {
+        trigger: dispatch.trigger,
+        mode: dispatch.permanent ? 'permanent' : 'turn',
+        reason: dispatch.reason,
+        summary: response.media.prompt || dispatch.prompt,
+      })]
+      imageMessage.text = { 'zh-CN': '', 'en-US': '' }
+      imageMessage.state = undefined
+      renderer.replaceMessage(imageMessage)
+      await persistConversation(conversation)
+    } catch (error: any) {
+      const errorText = options.getLanguage() === 'zh-CN'
+        ? `图片生成失败：${error?.message || String(error)}`
+        : `Image generation failed: ${error?.message || String(error)}`
+      imageMessage.text = { 'zh-CN': errorText, 'en-US': errorText }
+      imageMessage.state = undefined
+      renderer.replaceMessage(imageMessage)
+      await persistConversation(conversation)
+      if (notifyOnMissing || dispatch.trigger === 'model' || dispatch.trigger === 'request') {
+        showToast(error?.message || String(error))
+      }
+    }
+  }
+
+  function createGeneratedMediaMessage(text: string, stateValue: ChatMessage['state']): ChatMessage {
+    const label = getTimeLabel()
+    return {
+      id: `assistant-media-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      role: 'assistant',
+      text: { 'zh-CN': text, 'en-US': text },
+      createdLabel: { 'zh-CN': label, 'en-US': label },
+      state: stateValue,
+    }
+  }
+
+  function decorateGeneratedMedia(
+    item: ChatMessageMedia,
+    optionsValue: {
+      trigger: 'manual' | 'model' | 'request' | 'auto'
+      mode: 'turn' | 'permanent'
+      reason: string
+      summary: string
+      inlineSpeechText?: string
+    }
+  ): ChatMessageMedia {
+    return {
+      ...item,
+      id: item.id || `generated-media-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      origin: 'generated',
+      dispatch: {
+        ...(item.dispatch ?? {}),
+        trigger: optionsValue.trigger,
+        mode: optionsValue.mode,
+        reason: optionsValue.reason,
+      },
+      context: optionsValue.mode === 'permanent'
+        ? { mode: 'text', summary: optionsValue.summary.slice(0, 420) }
+        : { mode: 'none' },
+      metadata: {
+        ...(item.metadata ?? {}),
+        generatedAt: Date.now(),
+        ...(optionsValue.inlineSpeechText ? { inlineSpeechText: normalizeInlineAudioText(optionsValue.inlineSpeechText) } : {}),
+      },
+    }
+  }
+
+  function buildChatImagePromptContext(
+    conversation: ChatConversationSummary,
+    dispatch: {
+      prompt: string
+      trigger: 'manual' | 'model' | 'request'
+      referenceImages: string[]
+    },
+    input: {
+      assistantMessageId?: string
+      userText?: string
+      assistantText?: string
+      manualDirection?: string
+    }
+  ): NonNullable<Parameters<typeof window.electronAPI.generateChatImageMedia>[0]['promptContext']> {
+    const language = getEffectiveConversationLanguage()
+    const assistantMessageId = input.assistantMessageId || ''
+    const userText = input.userText?.trim() || (assistantMessageId ? getPreviousUserMessageText(conversation, assistantMessageId, language) : '')
+    const assistantText = input.assistantText?.trim() || (assistantMessageId ? getAssistantMessageText(conversation, assistantMessageId, language) : '')
+    if (dispatch.trigger === 'manual') {
+      return {
+        strategy: 'manual-edit',
+        language,
+        manualDirection: input.manualDirection?.trim() || '',
+        userText,
+        assistantText,
+      }
+    }
+    return {
+      strategy: dispatch.trigger === 'request' ? 'requested-edit' : 'proactive-edit',
+      language,
+      visualIntent: dispatch.prompt,
+      manualDirection: input.manualDirection?.trim() || '',
+      userText,
+      assistantText,
+    }
+  }
+
+  function getAssistantMessageText(
+    conversation: ChatConversationSummary,
+    assistantMessageId: string,
+    language: 'zh-CN' | 'en-US'
+  ): string {
+    const message = conversation.messages.find((item) => item.id === assistantMessageId && item.role === 'assistant')
+    return message ? localizeChatText(message.text, language) : ''
+  }
+
+  function getPreviousUserMessageText(
+    conversation: ChatConversationSummary,
+    assistantMessageId: string,
+    language: 'zh-CN' | 'en-US'
+  ): string {
+    const assistantIndex = conversation.messages.findIndex((item) => item.id === assistantMessageId)
+    for (let index = assistantIndex - 1; index >= 0; index -= 1) {
+      const message = conversation.messages[index]
+      if (message.role === 'user') {
+        return localizeChatText(message.text, language)
+      }
+    }
+    return ''
+  }
+
+  function playGeneratedAudio(messageId: string, inlineSpeechText = ''): void {
+    window.requestAnimationFrame(() => {
+      const normalizedSpeechText = normalizeInlineAudioText(inlineSpeechText)
+      const selector = normalizedSpeechText
+        ? `[data-message-id="${cssEscapeForSelector(messageId)}"] .chat-inline-audio[data-chat-audio-text="${cssEscapeForSelector(normalizedSpeechText)}"] audio`
+        : `[data-message-id="${cssEscapeForSelector(messageId)}"] .chat-inline-audio audio, [data-message-id="${cssEscapeForSelector(messageId)}"] audio`
+      const audio = options.messageList.querySelector<HTMLAudioElement>(selector)
+      void audio?.play().catch(() => undefined)
+    })
+  }
+
+  function playInlineAudioForMessage(messageId: string, inlineSpeechText: string, control?: HTMLElement): boolean {
+    const normalizedSpeechText = normalizeInlineAudioText(inlineSpeechText)
+    const audio = control?.closest('p')?.querySelector<HTMLAudioElement>('.chat-inline-audio audio')
+      ?? options.messageList.querySelector<HTMLAudioElement>(
+        `[data-message-id="${cssEscapeForSelector(messageId)}"] .chat-inline-audio[data-chat-audio-text="${cssEscapeForSelector(normalizedSpeechText)}"] audio`
+      )
+    if (!audio) {
+      return false
+    }
+    void audio.play().catch(() => undefined)
+    return true
+  }
+
+  function handleInlineAudioTarget(control: HTMLElement): void {
+    const messageId = control.dataset.chatMessageId || control.closest<HTMLElement>('[data-message-id]')?.dataset.messageId || ''
+    const inlineSpeechText = normalizeInlineAudioText(control.dataset.chatAudioText || control.textContent || '')
+    if (!messageId) {
+      return
+    }
+    const messageElement = options.messageList.querySelector<HTMLElement>(`[data-message-id="${cssEscapeForSelector(messageId)}"]`)
+    if (messageElement?.dataset.audioState === 'generating') {
+      return
+    }
+    if (playInlineAudioForMessage(messageId, inlineSpeechText, control)) {
+      return
+    }
+    void handleManualMessageMediaAction('audio', messageId, '', inlineSpeechText)
+  }
+
+  function normalizeInlineAudioText(value: unknown): string {
+    return String(value || '')
+      .replace(/^["“”]+/, '')
+      .replace(/["“”]+$/, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+  }
+
+  function cssEscapeForSelector(value: string): string {
+    if (typeof CSS !== 'undefined' && CSS.escape) {
+      return CSS.escape(value)
+    }
+    return value.replace(/["\\]/g, '\\$&')
   }
 
   async function summarizeConversationOverflow(
@@ -1167,6 +1691,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         activeChatId: settings.system.activeChatId || settings.system.chatModels[0]?.id || 'default-chat',
         activeChatModelName: settings.system.activeChatModelName,
       }
+      chatTTSModels = (settings.system.ttsModels || []).map((model) => ({
+        ...model,
+        extra: model.extra ? { ...model.extra } : undefined,
+      }))
       if (!chatSystemConfig.chatModels.some((model) => model.id === chatSystemConfig!.activeChatId)) {
         chatSystemConfig.activeChatId = chatSystemConfig.chatModels[0]?.id || ''
       }
@@ -1179,6 +1707,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       })
       renderChatModelConfig()
       renderChatRuntimeModelPicker()
+      renderConversationSettings()
       refreshCharacterWorkflowModelsIfVisible()
     } catch (error: any) {
       showToast(error?.message || String(error))
@@ -1191,23 +1720,30 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   function renderChatRuntimeModelPickerMarkup(extraClass = ''): string {
+    if (!extraClass) {
+      return renderChatRuntimeUnifiedModelPickerMarkup()
+    }
+    return renderChatRuntimeLLMModelPickerMarkup(extraClass)
+  }
+
+  function renderChatRuntimeLLMModelPickerMarkup(extraClass = ''): string {
     const config = chatSystemConfig
     if (!config) {
       return ''
     }
     const groups = getUsableChatModelGroups(config)
-    const activeModel = groups.flatMap((group) => group.models).find((model) => model.api.id === config.activeChatId && model.modelName === getActiveChatModelName(config))
+    const activeModel = groups.flatMap((group) => group.models).find((model) => model.api.id === config.activeChatId && model.modelRef === getActiveChatModelName(config))
       ?? groups[0]?.models[0]
       ?? null
-    if (activeModel && (config.activeChatId !== activeModel.api.id || getActiveChatModelName(config) !== activeModel.modelName)) {
+    if (activeModel && (config.activeChatId !== activeModel.api.id || getActiveChatModelName(config) !== activeModel.modelRef)) {
       config.activeChatId = activeModel.api.id
-      config.activeChatModelName = activeModel.modelName
-      activeModel.api.modelName = activeModel.modelName
+      config.activeChatModelName = activeModel.modelRef
+      activeModel.api.modelName = getLocalLLMTransport(activeModel.api) === 'openai_compatible' ? activeModel.modelRef : ''
       void saveChatModelConfig()
     }
     const activeProvider = activeChatRuntimeProvider && groups.some((group) => group.provider.value === activeChatRuntimeProvider)
       ? activeChatRuntimeProvider
-      : getLLMProviderEntry(activeModel?.provider).value
+      : getLLMProviderEntry(activeModel?.api.provider).value
     activeChatRuntimeProvider = activeProvider
     const activeProviderGroup = groups.find((group) => group.provider.value === activeProvider) ?? groups[0]
     return `
@@ -1215,13 +1751,80 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         <button class="chat-runtime-model-current" type="button" data-chat-runtime-action="toggle-model-picker" ${groups.length ? '' : 'disabled'}>
           <span class="chat-runtime-model-icon">${activeModel ? renderChatModelLogo(activeModel.api) : renderProviderLogo('openai-compatible')}</span>
           <span class="chat-runtime-model-copy">
-            <strong>${options.escapeHtml(activeModel?.modelName || (options.getLanguage() === 'zh-CN' ? '无模型' : 'No model'))}</strong>
+            <strong>${options.escapeHtml(activeModel?.label || (options.getLanguage() === 'zh-CN' ? '无模型' : 'No model'))}</strong>
             <small>${options.escapeHtml(activeModel ? getLLMProviderEntry(activeModel.api.provider).label : (options.getLanguage() === 'zh-CN' ? '模型页添加' : 'Add in models'))}</small>
           </span>
           <span class="chat-runtime-model-chevron"></span>
         </button>
         ${openChatRuntimeModelPicker ? renderChatRuntimeModelMenu(groups, activeProviderGroup, activeModel) : ''}
       </div>
+    `
+  }
+
+  function renderChatRuntimeUnifiedModelPickerMarkup(): string {
+    const config = chatSystemConfig
+    if (!config) {
+      return ''
+    }
+    const groups = getUsableChatModelGroups(config)
+    const activeModel = groups.flatMap((group) => group.models).find((model) => model.api.id === config.activeChatId && model.modelRef === getActiveChatModelName(config))
+      ?? groups[0]?.models[0]
+      ?? null
+    if (activeModel && (config.activeChatId !== activeModel.api.id || getActiveChatModelName(config) !== activeModel.modelRef)) {
+      config.activeChatId = activeModel.api.id
+      config.activeChatModelName = activeModel.modelRef
+      activeModel.api.modelName = getLocalLLMTransport(activeModel.api) === 'openai_compatible' ? activeModel.modelRef : ''
+      void saveChatModelConfig()
+    }
+    const activeProvider = activeChatRuntimeProvider && groups.some((group) => group.provider.value === activeChatRuntimeProvider)
+      ? activeChatRuntimeProvider
+      : getLLMProviderEntry(activeModel?.api.provider).value
+    activeChatRuntimeProvider = activeProvider
+    const activeProviderGroup = groups.find((group) => group.provider.value === activeProvider) ?? groups[0]
+    const activeImage = getSelectedImageModelChoice()
+    const activeTTS = getSelectedTTSModel()
+    const hasAnyModel = Boolean(activeModel || activeImage || activeTTS)
+    const activeModelMarkup = [
+      renderRuntimeCurrentModelSegment(
+        activeModel?.label || (options.getLanguage() === 'zh-CN' ? '无 LLM' : 'No LLM'),
+        activeModel ? getLLMProviderEntry(activeModel.api.provider).label : (options.getLanguage() === 'zh-CN' ? '模型页添加' : 'Add in models'),
+        activeModel ? renderChatModelLogo(activeModel.api) : renderProviderLogo('openai-compatible')
+      ),
+      activeImage
+        ? renderRuntimeCurrentModelSegment(
+            activeImage.modelName,
+            activeImage.providerLabel,
+            renderChatModelLogo(activeImage.api)
+          )
+        : '',
+      activeTTS
+        ? renderRuntimeCurrentModelSegment(
+            getRuntimeTTSModelLabel(activeTTS),
+            getTTSProviderCatalogEntry(activeTTS.provider).label,
+            renderTTSProviderLogo(activeTTS.provider)
+          )
+        : '',
+    ].filter(Boolean).join('')
+    return `
+      <div class="chat-runtime-model-shell is-unified ${openChatRuntimeModelPicker ? 'open' : ''}">
+        <button class="chat-runtime-model-current" type="button" data-chat-runtime-action="toggle-model-picker" ${hasAnyModel ? '' : 'disabled'}>
+          <span class="chat-runtime-model-segments">${activeModelMarkup}</span>
+          <span class="chat-runtime-model-chevron"></span>
+        </button>
+        ${openChatRuntimeModelPicker ? renderChatRuntimeUnifiedModelMenu(groups, activeProviderGroup, activeModel, activeImage, activeTTS) : ''}
+      </div>
+    `
+  }
+
+  function renderRuntimeCurrentModelSegment(label: string, providerLabel: string, logoMarkup: string): string {
+    return `
+      <span class="chat-runtime-model-segment">
+        <span class="chat-runtime-model-icon">${logoMarkup}</span>
+        <span class="chat-runtime-model-copy">
+          <strong>${options.escapeHtml(shortRuntimeModelLabel(label))}</strong>
+          <small>${options.escapeHtml(providerLabel)}</small>
+        </span>
+      </span>
     `
   }
 
@@ -1241,42 +1844,131 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     })
   }
 
+  function renderChatRuntimeUnifiedModelMenu(
+    groups: ChatRuntimeModelGroup[],
+    activeProviderGroup: ChatRuntimeModelGroup | undefined,
+    activeModel: ChatRuntimeModelOption | null,
+    activeImage: ChatImageModelChoice | null,
+    activeTTS: ChatTTSModelConfig | null
+  ): string {
+    const language = options.getLanguage()
+    const zh = language === 'zh-CN'
+    return `
+      <div class="chat-runtime-model-menu unified">
+        <section class="chat-runtime-menu-section llm">
+          <div class="chat-runtime-menu-section-head">
+            <span>LLM</span>
+            <strong>${options.escapeHtml(zh ? '对话模型' : 'Conversation')}</strong>
+          </div>
+          ${renderChatRuntimeModelMenuContent(groups, activeProviderGroup, activeModel)}
+        </section>
+        <section class="chat-runtime-menu-section media">
+          <div class="chat-runtime-menu-section-head">
+            <span>IMG</span>
+            <strong>${options.escapeHtml(zh ? '生图模型' : 'Image model')}</strong>
+          </div>
+          ${renderRuntimeImageModelOptions(activeImage)}
+        </section>
+        <section class="chat-runtime-menu-section media">
+          <div class="chat-runtime-menu-section-head">
+            <span>TTS</span>
+            <strong>${options.escapeHtml(zh ? '语音模型' : 'Voice model')}</strong>
+          </div>
+          ${renderRuntimeTTSModelOptions(activeTTS)}
+        </section>
+        <button class="chat-runtime-settings-link" type="button" data-chat-runtime-action="open-media-settings">
+          ${options.escapeHtml(zh ? '生成策略与参数' : 'Generation strategy and parameters')}
+        </button>
+      </div>
+    `
+  }
+
   function renderChatRuntimeModelMenu(
+    groups: ChatRuntimeModelGroup[],
+    activeProviderGroup: ChatRuntimeModelGroup | undefined,
+    activeModel: ChatRuntimeModelOption | null
+  ): string {
+    return `<div class="chat-runtime-model-menu">${renderChatRuntimeModelMenuContent(groups, activeProviderGroup, activeModel)}</div>`
+  }
+
+  function renderChatRuntimeModelMenuContent(
     groups: ChatRuntimeModelGroup[],
     activeProviderGroup: ChatRuntimeModelGroup | undefined,
     activeModel: ChatRuntimeModelOption | null
   ): string {
     if (!groups.length || !activeProviderGroup) {
       return `
-        <div class="chat-runtime-model-menu empty">
+        <div class="chat-runtime-model-menu-empty">
           <span>${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '暂无可用模型' : 'No available models')}</span>
         </div>
       `
     }
     return `
-      <div class="chat-runtime-model-menu">
-        <div class="chat-runtime-provider-tabs">
-          ${groups.map((group) => `
-            <button class="${group.provider.value === activeProviderGroup.provider.value ? 'active' : ''}" type="button" data-chat-runtime-provider="${options.escapeHtml(group.provider.value)}">
-              <span>${renderProviderLogo(group.provider.value)}</span>
-              <strong>${options.escapeHtml(group.provider.label)}</strong>
-              <small>${options.escapeHtml(String(group.models.length))}</small>
-            </button>
-          `).join('')}
-        </div>
-        <div class="chat-runtime-model-options">
-          ${activeProviderGroup.models.map((model) => `
-            <button class="${activeModel && model.api.id === activeModel.api.id && model.modelName === activeModel.modelName ? 'selected' : ''}" type="button" data-chat-runtime-model-id="${options.escapeHtml(model.api.id)}" data-chat-runtime-model-name="${options.escapeHtml(model.modelName)}">
-              <strong>${options.escapeHtml(model.modelName)}</strong>
-              <small>${options.escapeHtml(getLLMProviderEntry(model.api.provider).label)}</small>
-            </button>
-          `).join('')}
-        </div>
+      <div class="chat-runtime-provider-tabs">
+        ${groups.map((group) => `
+          <button class="${group.provider.value === activeProviderGroup.provider.value ? 'active' : ''}" type="button" data-chat-runtime-provider="${options.escapeHtml(group.provider.value)}">
+            <span>${renderProviderLogo(group.provider.value)}</span>
+            <strong>${options.escapeHtml(group.provider.label)}</strong>
+            <small>${options.escapeHtml(String(group.models.length))}</small>
+          </button>
+        `).join('')}
+      </div>
+      <div class="chat-runtime-model-options">
+        ${activeProviderGroup.models.map((model) => `
+          <button class="${activeModel && model.api.id === activeModel.api.id && model.modelRef === activeModel.modelRef ? 'selected' : ''}" type="button" data-chat-runtime-model-id="${options.escapeHtml(model.api.id)}" data-chat-runtime-model-name="${options.escapeHtml(model.modelRef)}">
+            <strong>${options.escapeHtml(model.label)}</strong>
+            <small>${options.escapeHtml(getLLMProviderEntry(model.api.provider).label)}</small>
+          </button>
+        `).join('')}
       </div>
     `
   }
 
-  type ChatRuntimeModelOption = { api: ChatModelConfig; modelName: string }
+  function renderRuntimeImageModelOptions(activeImage: ChatImageModelChoice | null): string {
+    const choices = getImageModelChoices(true)
+    if (!choices.length) {
+      return `<div class="chat-runtime-media-empty">${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '在模型页添加 OpenAI、WaveSpeed 或 Gemini' : 'Add OpenAI, WaveSpeed, or Gemini in Models')}</div>`
+    }
+    return `
+      <div class="chat-runtime-media-options">
+        ${choices.map((choice) => {
+          const missing = getImageModelMissingParts(choice.api, choice.modelName)
+          const selected = activeImage?.ref === choice.ref
+          return `
+            <button class="${selected ? 'selected' : ''}" type="button" data-chat-runtime-image-ref="${options.escapeHtml(choice.ref)}" ${missing.length ? 'disabled' : ''}>
+              <span>${renderChatModelLogo(choice.api)}</span>
+              <strong>${options.escapeHtml(choice.modelName)}</strong>
+              <small>${options.escapeHtml(missing.length ? missing.join(', ') : choice.providerLabel)}</small>
+            </button>
+          `
+        }).join('')}
+      </div>
+    `
+  }
+
+  function renderRuntimeTTSModelOptions(activeTTS: ChatTTSModelConfig | null): string {
+    if (!chatTTSModels.length) {
+      return `<div class="chat-runtime-media-empty">${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '在设置页添加 Fish 或 ElevenLabs TTS' : 'Add Fish or ElevenLabs TTS in Settings')}</div>`
+    }
+    return `
+      <div class="chat-runtime-media-options">
+        ${chatTTSModels.map((model) => {
+          const missing = getTTSModelMissingParts(model)
+          const provider = getTTSProviderCatalogEntry(model.provider)
+          const selected = activeTTS?.id === model.id
+          return `
+            <button class="${selected ? 'selected' : ''}" type="button" data-chat-runtime-tts-id="${options.escapeHtml(model.id)}" ${missing.length ? 'disabled' : ''}>
+              <span>${renderTTSProviderLogo(model.provider)}</span>
+              <strong>${options.escapeHtml(getRuntimeTTSModelLabel(model))}</strong>
+              <small>${options.escapeHtml(missing.length ? missing.join(', ') : provider.label)}</small>
+            </button>
+          `
+        }).join('')}
+      </div>
+    `
+  }
+
+  type ChatRuntimeModelOption = { api: ChatModelConfig; modelRef: string; label: string }
 
   type ChatRuntimeModelGroup = { provider: ReturnType<typeof getLLMProviderEntry>; models: ChatRuntimeModelOption[] }
 
@@ -1356,7 +2048,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         const provider = getLLMProviderEntry(model.provider)
         const group = grouped.get(provider.value) ?? { provider, models: [] }
         getChatModelChoiceNames(model).forEach((choice) => {
-          group.models.push({ api: model, modelName: choice.label })
+          group.models.push({ api: model, modelRef: choice.modelRef, label: choice.label })
         })
         grouped.set(provider.value, group)
       })
@@ -1376,40 +2068,407 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   function getChatModelChoiceNames(model: ChatModelConfig): Array<{ modelRef: string; label: string }> {
+    if (getChatModelType(model) === 'llm' && getLocalLLMTransport(model) !== 'openai_compatible') {
+      return [{ modelRef: '__default__', label: 'CLI default' }]
+    }
     const enabled = getEnabledModelNames(model)
     if (enabled.length) {
       return enabled.map((name) => ({ modelRef: name, label: name }))
-    }
-    if (getChatModelType(model) === 'llm' && getLocalLLMTransport(model) !== 'openai_compatible') {
-      return [{ modelRef: '__default__', label: 'CLI default' }]
     }
     return []
   }
 
   function openConversationSettings(): void {
+    cancelChatHistoryRender()
+    chatHistoryPanel?.classList.remove('visible')
+    chatHistoryPanel?.setAttribute('aria-hidden', 'true')
+    characterProfilePanel?.classList.remove('visible')
+    characterProfilePanel?.setAttribute('aria-hidden', 'true')
     conversationSettingsPanel?.classList.add('visible')
     conversationSettingsPanel?.setAttribute('aria-hidden', 'false')
     syncSideActionState('conversation-settings')
-    renderConversationSettings()
+    renderConversationSettingsLoadingIfEmpty()
+    scheduleConversationSettingsRender()
   }
 
   function closeConversationSettings(): void {
+    cancelConversationSettingsRender()
     conversationSettingsPanel?.classList.remove('visible')
     conversationSettingsPanel?.setAttribute('aria-hidden', 'true')
     syncSideActionState('')
   }
 
   function openChatHistoryManager(): void {
+    cancelConversationSettingsRender()
+    conversationSettingsPanel?.classList.remove('visible')
+    conversationSettingsPanel?.setAttribute('aria-hidden', 'true')
+    characterProfilePanel?.classList.remove('visible')
+    characterProfilePanel?.setAttribute('aria-hidden', 'true')
     chatHistoryPanel?.classList.add('visible')
     chatHistoryPanel?.setAttribute('aria-hidden', 'false')
     syncSideActionState('conversation-management')
-    renderChatHistoryManager()
+    renderChatHistoryLoadingIfEmpty()
+    scheduleChatHistoryRender()
   }
 
   function closeChatHistoryManager(): void {
+    cancelChatHistoryRender()
     chatHistoryPanel?.classList.remove('visible')
     chatHistoryPanel?.setAttribute('aria-hidden', 'true')
     syncSideActionState('')
+  }
+
+  function openCharacterProfilePanel(): void {
+    const character = getActiveProfileCharacter()
+    if (!character) {
+      showToast(options.getLanguage() === 'zh-CN' ? '角色资源尚未加载' : 'Character resources are not loaded')
+      return
+    }
+    cancelConversationSettingsRender()
+    cancelChatHistoryRender()
+    conversationSettingsPanel?.classList.remove('visible')
+    conversationSettingsPanel?.setAttribute('aria-hidden', 'true')
+    chatHistoryPanel?.classList.remove('visible')
+    chatHistoryPanel?.setAttribute('aria-hidden', 'true')
+    renderCharacterProfilePanelBody(character)
+    characterProfilePanel?.classList.add('visible')
+    characterProfilePanel?.setAttribute('aria-hidden', 'false')
+    syncSideActionState('')
+  }
+
+  function closeCharacterProfilePanel(): void {
+    pendingCharacterDeleteId = ''
+    characterProfilePanel?.classList.remove('visible')
+    characterProfilePanel?.setAttribute('aria-hidden', 'true')
+  }
+
+  function renderCharacterProfilePanelBody(character = getActiveProfileCharacter()): void {
+    if (!characterProfileBody || !character) {
+      return
+    }
+    characterProfileBody.innerHTML = renderCharacterProfilePanel(character)
+    createIcons({
+      icons: { Trash2 },
+      root: characterProfileBody,
+      attrs: {
+        width: 15,
+        height: 15,
+        'stroke-width': 2.15,
+      },
+    })
+  }
+
+  function requestDeleteActiveCharacter(): void {
+    const character = getActiveProfileCharacter()
+    if (!character) {
+      showToast(options.getLanguage() === 'zh-CN' ? '角色资源尚未加载' : 'Character resources are not loaded')
+      return
+    }
+    pendingCharacterDeleteId = character.id
+    openCharacterProfilePanel()
+  }
+
+  function requestDeleteCharacter(characterId: string): void {
+    const character = state.characterResources.find((item) => item.id === characterId) ?? getActiveProfileCharacter()
+    if (!character) {
+      showToast(options.getLanguage() === 'zh-CN' ? '角色资源尚未加载' : 'Character resources are not loaded')
+      return
+    }
+    pendingCharacterDeleteId = character.id
+    renderCharacterProfilePanelBody(character)
+  }
+
+  async function confirmDeleteCharacter(characterId: string): Promise<void> {
+    const character = state.characterResources.find((item) => item.id === characterId)
+      ?? (getActiveProfileCharacter()?.id === characterId ? getActiveProfileCharacter() : undefined)
+    if (!character) {
+      showToast(options.getLanguage() === 'zh-CN' ? '角色资源尚未加载' : 'Character resources are not loaded')
+      return
+    }
+    try {
+      if (character.source?.kind === 'chat-role') {
+        const roleResponse = await window.electronAPI.deleteChatRoleResource(character.id)
+        if (!roleResponse.success || !roleResponse.deleted) {
+          throw new Error(roleResponse.error || (options.getLanguage() === 'zh-CN' ? '角色资源删除失败' : 'Failed to delete character resource'))
+        }
+      }
+      const removedConversationIds = state.conversations
+        .filter((conversation) => conversation.characterId === character.id || conversation.characterResource?.id === character.id)
+        .map((conversation) => conversation.id)
+      const deleteResponses = await Promise.all(
+        removedConversationIds.map((id) => window.electronAPI.deleteChatConversation(id))
+      )
+      const failedConversation = deleteResponses.find((response) => !response.success)
+      if (failedConversation) {
+        throw new Error(failedConversation.error || (options.getLanguage() === 'zh-CN' ? '关联对话删除失败' : 'Failed to delete linked conversations'))
+      }
+      state.conversations = state.conversations.filter((conversation) => !removedConversationIds.includes(conversation.id))
+      state.characterResources = state.characterResources.filter((item) => item.id !== character.id)
+      if (!state.conversations.some((conversation) => conversation.id === state.activeConversationId)) {
+        state.activeConversationId = state.conversations[0]?.id ?? ''
+      }
+      pendingCharacterDeleteId = ''
+      closeCharacterProfilePanel()
+      renderChat()
+      renderChatHistoryManager()
+      showToast(options.getLanguage() === 'zh-CN' ? '角色已删除' : 'Character deleted')
+    } catch (error: any) {
+      showToast(error?.message || String(error))
+    }
+  }
+
+  function moveCharacterProfileCarousel(control: HTMLElement): void {
+    const track = control
+      .closest<HTMLElement>('.chat-profile-carousel-card')
+      ?.querySelector<HTMLElement>('[data-chat-profile-carousel]')
+    if (!track) {
+      return
+    }
+    const direction = control.dataset.chatProfileCarouselAction === 'prev' ? -1 : 1
+    const page = Math.max(1, track.clientWidth)
+    const maxScroll = Math.max(0, track.scrollWidth - track.clientWidth)
+    const nearStart = track.scrollLeft <= 2
+    const nearEnd = track.scrollLeft >= maxScroll - 2
+    const nextLeft = direction > 0
+      ? (nearEnd ? 0 : Math.min(maxScroll, track.scrollLeft + page))
+      : (nearStart ? maxScroll : Math.max(0, track.scrollLeft - page))
+    track.scrollTo({ left: nextLeft, behavior: 'smooth' })
+  }
+
+  function getActiveProfileCharacter(): ChatCharacterResource | undefined {
+    const conversation = getActiveConversation(state)
+    if (!conversation) {
+      return state.characterResources[0]
+    }
+    return conversation.characterResource ?? getCharacterForConversation(state, conversation)
+  }
+
+  function renderCharacterProfilePanel(character: ChatCharacterResource): string {
+    const language = options.getLanguage()
+    const zh = language === 'zh-CN'
+    const name = localizeChatText(character.displayName, language) || localizeChatText(character.name, language) || character.id
+    const description = localizeChatText(character.description, language)
+    const story = localizeChatText(character.story, language)
+    const background = localizeChatText(character.background, language)
+    const fields = getCharacterProfileFields(character, language)
+    const images = collectCharacterProfileImages(character, language)
+    const overviewImage = images.find((image) => image.kind === 'overview')
+    const characterImages = images.filter((image) => image.kind !== 'overview' && image.kind !== 'avatar')
+    const confirmingDelete = pendingCharacterDeleteId === character.id
+    const deleteLabel = zh ? '删除角色' : 'Delete'
+    const cancelDeleteLabel = zh ? '取消' : 'Cancel'
+    const confirmDeleteLabel = zh ? '确认删除' : 'Confirm delete'
+    const textSections = [
+      ...(description ? [{ label: zh ? '简介' : 'Description', value: compactProfileText(description, 520) }] : []),
+      ...fields,
+      ...(story ? [{ label: zh ? '故事' : 'Story', value: compactProfileText(story, 680) }] : []),
+      ...(background ? [{ label: zh ? '背景' : 'Background', value: compactProfileText(background, 680) }] : []),
+    ]
+
+    return `
+      <div class="chat-profile-sheet">
+        <section class="chat-profile-title-row">
+          <div>
+            <h3>${options.escapeHtml(name)}</h3>
+          </div>
+          <button class="chat-profile-delete-btn" type="button" data-chat-profile-action="delete-character" data-chat-character-id="${options.escapeHtml(character.id)}" aria-label="${options.escapeHtml(deleteLabel)}" title="${options.escapeHtml(deleteLabel)}">
+            <i data-lucide="trash-2" aria-hidden="true"></i>
+            <span>${options.escapeHtml(deleteLabel)}</span>
+          </button>
+        </section>
+
+        ${confirmingDelete ? `
+          <section class="chat-profile-delete-confirm">
+            <div>
+              <strong>${options.escapeHtml(zh ? '删除这个角色？' : 'Delete this character?')}</strong>
+              <span>${options.escapeHtml(zh ? '会同时移除这个角色关联的所有对话记录。' : 'All conversations linked to this character will be removed.')}</span>
+            </div>
+            <div class="chat-profile-delete-actions">
+              <button type="button" data-chat-profile-action="cancel-delete-character">${options.escapeHtml(cancelDeleteLabel)}</button>
+              <button class="danger" type="button" data-chat-profile-action="confirm-delete-character" data-chat-character-id="${options.escapeHtml(character.id)}">${options.escapeHtml(confirmDeleteLabel)}</button>
+            </div>
+          </section>
+        ` : ''}
+
+        <section class="chat-profile-visual-stage">
+          <div class="chat-profile-carousel-card">
+            <div class="chat-profile-carousel-track" data-chat-profile-carousel>
+              ${characterImages.length ? characterImages.map((image) => `
+                <figure class="chat-profile-carousel-slide">
+                  <img src="${options.escapeHtml(image.uri)}" alt="${options.escapeHtml(image.label)}">
+                  <figcaption>${options.escapeHtml(image.label)}</figcaption>
+                </figure>
+              `).join('') : `<div class="chat-profile-carousel-empty">${options.escapeHtml(name)}</div>`}
+            </div>
+            ${characterImages.length > 1 ? `
+              <button class="chat-profile-carousel-btn prev" type="button" data-chat-profile-carousel-action="prev" aria-label="${options.escapeHtml(zh ? '上一张角色图' : 'Previous character image')}">‹</button>
+              <button class="chat-profile-carousel-btn next" type="button" data-chat-profile-carousel-action="next" aria-label="${options.escapeHtml(zh ? '下一张角色图' : 'Next character image')}">›</button>
+            ` : ''}
+          </div>
+          <div class="chat-profile-overview-panel">
+            <article class="chat-profile-intro-card">
+              <span>${options.escapeHtml(zh ? '角色介绍' : 'Character intro')}</span>
+              <h4>${options.escapeHtml(name)}</h4>
+              ${description ? `<p>${options.escapeHtml(compactProfileText(description, 260))}</p>` : ''}
+            </article>
+            ${overviewImage ? `
+              <figure class="chat-profile-overview-card">
+                <img src="${options.escapeHtml(overviewImage.uri)}" alt="${options.escapeHtml(overviewImage.label)}">
+                <figcaption>${options.escapeHtml(zh ? '设定总览' : 'Overview sheet')}</figcaption>
+              </figure>
+            ` : `<div class="chat-profile-overview-card empty">${options.escapeHtml(zh ? '暂无设定总览' : 'No overview sheet')}</div>`}
+          </div>
+        </section>
+
+        <section class="chat-profile-info-grid">
+          ${textSections.map((field) => `
+            <article class="chat-profile-info-card">
+              <span>${options.escapeHtml(field.label)}</span>
+              <p>${options.escapeHtml(field.value)}</p>
+            </article>
+          `).join('')}
+        </section>
+      </div>
+    `
+  }
+
+  function getCharacterProfileFields(character: ChatCharacterResource, language: 'zh-CN' | 'en-US'): Array<{ label: string; value: string }> {
+    const zh = language === 'zh-CN'
+    const roleCard = character.roleCard ?? {}
+    const fieldSpecs = [
+      [zh ? '外观' : 'Appearance', stringField(roleCard.appearance)],
+      [zh ? '性格' : 'Personality', stringField(roleCard.personality)],
+      [zh ? '场景' : 'Scenario', stringField(roleCard.scenario)],
+      [zh ? '世界' : 'World', stringField(roleCard.worldContext)],
+      [zh ? '说话方式' : 'Voice', stringField(roleCard.dialogueStyle)],
+    ]
+    return fieldSpecs
+      .map(([label, value]) => ({ label, value: compactProfileText(value, 420) }))
+      .filter((item) => item.value)
+      .slice(0, 6)
+  }
+
+  function compactProfileText(value: string, maxLength: number): string {
+    const text = stripRoleChatTags(value).replace(/\s+/g, ' ').trim()
+    if (text.length <= maxLength) {
+      return text
+    }
+    return `${text.slice(0, Math.max(1, maxLength - 1)).trimEnd()}…`
+  }
+
+  function stripRoleChatTags(value: string): string {
+    return value.replace(/<\/?(?:chat|role_chat)\b[^>]*>/gi, '')
+  }
+
+  function collectCharacterProfileImages(character: ChatCharacterResource, language: 'zh-CN' | 'en-US'): Array<{ id: string; kind: string; label: string; uri: string }> {
+    const zh = language === 'zh-CN'
+    const images: Array<{ id: string; kind: string; label: string; uri: string }> = []
+    const seen = new Set<string>()
+    const push = (id: string, kind: string, label: string, uri: string): void => {
+      if (!uri || seen.has(uri)) {
+        return
+      }
+      seen.add(uri)
+      images.push({ id, kind, label, uri })
+    }
+    push(`${character.id}-avatar`, 'avatar', zh ? '头像' : 'Avatar', character.avatarImage)
+    push(`${character.id}-body`, 'body', zh ? '形象' : 'Character image', character.bodyImage)
+    for (const asset of character.assets ?? []) {
+      const label = asset.kind === 'overview'
+        ? (zh ? '设定总览' : 'Overview sheet')
+        : asset.kind === 'avatar'
+          ? (zh ? '头像' : 'Avatar')
+          : asset.kind === 'body'
+            ? (zh ? '形象' : 'Character image')
+            : (zh ? '角色图像' : 'Character image')
+      push(asset.id, asset.kind, label, asset.uri)
+    }
+    return images.sort((left, right) => characterProfileImagePriority(left.kind) - characterProfileImagePriority(right.kind))
+  }
+
+  function characterProfileImagePriority(kind: string): number {
+    if (kind === 'avatar') return 0
+    if (kind === 'body') return 1
+    if (kind === 'generated-image') return 2
+    if (kind === 'overview') return 3
+    return 4
+  }
+
+  function scheduleConversationSettingsRender(): void {
+    if (conversationSettingsRenderFrame !== undefined) {
+      return
+    }
+    conversationSettingsRenderFrame = window.requestAnimationFrame(() => {
+      conversationSettingsRenderFrame = window.requestAnimationFrame(() => {
+        conversationSettingsRenderFrame = undefined
+        if (conversationSettingsPanel?.classList.contains('visible')) {
+          renderConversationSettings()
+        }
+      })
+    })
+  }
+
+  function scheduleChatHistoryRender(): void {
+    if (chatHistoryRenderFrame !== undefined) {
+      return
+    }
+    chatHistoryRenderFrame = window.requestAnimationFrame(() => {
+      chatHistoryRenderFrame = window.requestAnimationFrame(() => {
+        chatHistoryRenderFrame = undefined
+        if (chatHistoryPanel?.classList.contains('visible')) {
+          renderChatHistoryManager()
+        }
+      })
+    })
+  }
+
+  function cancelConversationSettingsRender(): void {
+    if (conversationSettingsRenderFrame === undefined) {
+      return
+    }
+    window.cancelAnimationFrame(conversationSettingsRenderFrame)
+    conversationSettingsRenderFrame = undefined
+  }
+
+  function cancelChatHistoryRender(): void {
+    if (chatHistoryRenderFrame === undefined) {
+      return
+    }
+    window.cancelAnimationFrame(chatHistoryRenderFrame)
+    chatHistoryRenderFrame = undefined
+  }
+
+  function renderConversationSettingsLoadingIfEmpty(): void {
+    if (!conversationSettingsBody || conversationSettingsBody.childElementCount > 0) {
+      return
+    }
+    const zh = options.getLanguage() === 'zh-CN'
+    conversationSettingsBody.innerHTML = renderPanelLoadingState(zh ? '正在整理设置' : 'Preparing settings')
+  }
+
+  function renderChatHistoryLoadingIfEmpty(): void {
+    const sessionHasContent = Boolean(chatHistorySessionList?.childElementCount)
+    const messageHasContent = Boolean(chatHistoryMessageList?.childElementCount)
+    if (sessionHasContent && messageHasContent) {
+      return
+    }
+    const zh = options.getLanguage() === 'zh-CN'
+    const loading = renderPanelLoadingState(zh ? '正在整理对话上下文' : 'Preparing conversation context')
+    if (chatHistorySessionList && !sessionHasContent) {
+      chatHistorySessionList.innerHTML = loading
+    }
+    if (chatHistoryMessageList && !messageHasContent) {
+      chatHistoryMessageList.innerHTML = loading
+    }
+  }
+
+  function renderPanelLoadingState(label: string): string {
+    return `
+      <div class="chat-panel-loading" aria-live="polite">
+        <span aria-hidden="true"></span>
+        <strong>${options.escapeHtml(label)}</strong>
+      </div>
+    `
   }
 
   function renderChatHistoryManager(): void {
@@ -1432,54 +2491,64 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const archivedCount = Math.max(0, stableMessages.length - recentMessages.length)
     const summaryCovered = retainedSummaries.reduce((count, summary) => count + summary.messageCount, 0)
     chatHistorySessionList.innerHTML = `
-      <section class="chat-context-brief">
-        <div>
-          <span>${options.escapeHtml(zh ? '当前对话' : 'Current thread')}</span>
-          <strong>${options.escapeHtml(localizeChatText(activeConversation.title, language))}</strong>
-          <p>${options.escapeHtml(localizeChatText(activeConversation.preview, language))}</p>
+      <section class="chat-settings-section">
+        <div class="chat-settings-section-head">
+          <div class="chat-settings-section-copy">
+            <h3>${options.escapeHtml(zh ? '上下文策略' : 'Context policy')}</h3>
+            <p>${options.escapeHtml(zh ? '发送给模型的范围' : 'Model input window')}</p>
+          </div>
         </div>
-        <button type="button" data-chat-history-action="delete-conversation" data-chat-history-id="${options.escapeHtml(activeConversation.id)}">
-          ${options.escapeHtml(zh ? '删除整段' : 'Delete thread')}
-        </button>
+        <div class="chat-settings-control-card chat-settings-parameter-card">
+          <div class="chat-settings-parameter-grid">
+            ${renderContextControl(
+              'shortTermTurns',
+              zh ? '短期完整轮数' : 'Short-term turns',
+              zh ? '最近这些轮次会原样进入模型上下文。' : 'The latest turns are sent as full messages.',
+              CHAT_CONTEXT_TURNS_MIN,
+              CHAT_CONTEXT_TURNS_MAX,
+              1,
+              conversationSettings.shortTermTurns,
+              zh ? '轮' : 'turns'
+            )}
+            ${renderContextControl(
+              'summaryLimit',
+              zh ? '摘要保留条数' : 'Summary limit',
+              zh ? '旧上下文会压缩为摘要，并按此上限保留。' : 'Older context is compressed and kept up to this limit.',
+              CHAT_SUMMARY_LIMIT_MIN,
+              CHAT_SUMMARY_LIMIT_MAX,
+              1,
+              conversationSettings.summaryLimit,
+              zh ? '条' : 'items'
+            )}
+          </div>
+        </div>
       </section>
-      <section class="chat-context-controls">
-        ${renderContextControl(
-          'shortTermTurns',
-          zh ? '短期完整轮数' : 'Short-term turns',
-          zh ? '最近这些轮次会原样进入模型上下文。' : 'The latest turns are sent as full messages.',
-          CHAT_CONTEXT_TURNS_MIN,
-          CHAT_CONTEXT_TURNS_MAX,
-          1,
-          conversationSettings.shortTermTurns,
-          zh ? '轮' : 'turns'
-        )}
-        ${renderContextControl(
-          'summaryLimit',
-          zh ? '摘要保留条数' : 'Summary limit',
-          zh ? '旧上下文会压缩为摘要，并按此上限保留。' : 'Older context is compressed and kept up to this limit.',
-          CHAT_SUMMARY_LIMIT_MIN,
-          CHAT_SUMMARY_LIMIT_MAX,
-          1,
-          conversationSettings.summaryLimit,
-          zh ? '条' : 'items'
-        )}
-      </section>
-      <section class="chat-context-metrics">
-        <span><b>${options.escapeHtml(String(recentMessages.length))}</b>${options.escapeHtml(zh ? '完整消息' : 'full messages')}</span>
-        <span><b>${options.escapeHtml(String(retainedSummaries.length))}</b>${options.escapeHtml(zh ? '摘要' : 'summaries')}</span>
-        <span><b>${options.escapeHtml(String(summaryCovered))}</b>${options.escapeHtml(zh ? '已压缩消息' : 'compressed')}</span>
-        <span><b>${options.escapeHtml(String(archivedCount))}</b>${options.escapeHtml(zh ? '候选旧消息' : 'older')}</span>
+      <section class="chat-settings-section">
+        <div class="chat-settings-section-head">
+          <div class="chat-settings-section-copy">
+            <h3>${options.escapeHtml(zh ? '上下文统计' : 'Context stats')}</h3>
+            <p>${options.escapeHtml(zh ? '当前记忆结构' : 'Current memory shape')}</p>
+          </div>
+        </div>
+        <div class="chat-settings-control-card chat-settings-parameter-card">
+          <div class="chat-settings-stat-grid">
+            <span><b>${options.escapeHtml(String(recentMessages.length))}</b><i>${options.escapeHtml(zh ? '完整消息' : 'full messages')}</i></span>
+            <span><b>${options.escapeHtml(String(retainedSummaries.length))}</b><i>${options.escapeHtml(zh ? '摘要' : 'summaries')}</i></span>
+            <span><b>${options.escapeHtml(String(summaryCovered))}</b><i>${options.escapeHtml(zh ? '已压缩消息' : 'compressed')}</i></span>
+            <span><b>${options.escapeHtml(String(archivedCount))}</b><i>${options.escapeHtml(zh ? '候选旧消息' : 'older')}</i></span>
+          </div>
+        </div>
       </section>
     `
 
     chatHistoryMessageList.innerHTML = `
-      <section class="chat-context-section">
-        <div class="chat-context-section-head">
-          <div>
-            <span>${options.escapeHtml(zh ? '长期摘要' : 'Long-term summaries')}</span>
-            <strong>${options.escapeHtml(zh ? '摘要管理' : 'Summary management')}</strong>
+      <section class="chat-settings-section">
+        <div class="chat-settings-section-head">
+          <div class="chat-settings-section-copy">
+            <h3>${options.escapeHtml(zh ? '长期摘要' : 'Long-term summaries')}</h3>
+            <p>${options.escapeHtml(zh ? '摘要管理' : 'Summary management')}</p>
           </div>
-          <button type="button" data-chat-history-action="summarize-now">${options.escapeHtml(zh ? '立即整理' : 'Summarize')}</button>
+          <button type="button" class="chat-settings-pill-btn" data-chat-history-action="summarize-now">${options.escapeHtml(zh ? '立即整理' : 'Summarize')}</button>
         </div>
         <div class="chat-history-summaries">
           ${retainedSummaries.length
@@ -1490,35 +2559,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
                   <span>${options.escapeHtml(formatSummaryRange(summary, language))}</span>
                 </div>
                 <p>${options.escapeHtml(localizeChatText(summary.text, language))}</p>
-                <button type="button" data-chat-history-action="delete-summary" data-chat-history-summary="${options.escapeHtml(summary.id)}">
+                <button type="button" class="chat-settings-pill-btn danger" data-chat-history-action="delete-summary" data-chat-history-summary="${options.escapeHtml(summary.id)}">
                   ${options.escapeHtml(zh ? '删除摘要' : 'Remove summary')}
                 </button>
               </article>
             `).join('')
             : `<div class="chat-history-empty compact">${options.escapeHtml(zh ? '旧消息超过短期范围后，会在回复完成时自动生成摘要。' : 'Summaries appear automatically after older messages exceed the short-term range.')}</div>`}
-        </div>
-      </section>
-      <section class="chat-context-section">
-        <div class="chat-context-section-head">
-          <div>
-            <span>${options.escapeHtml(zh ? '短期上下文' : 'Short-term context')}</span>
-            <strong>${options.escapeHtml(zh ? '保留的完整消息' : 'Full messages kept')}</strong>
-          </div>
-          <small>${options.escapeHtml(String(recentMessages.length))} / ${options.escapeHtml(String(stableMessages.length))}</small>
-        </div>
-        <div class="chat-history-messages">
-          ${recentMessages.length ? recentMessages.map((messageItem) => `
-          <article class="chat-history-message ${options.escapeHtml(messageItem.role)}">
-            <div>
-              <strong>${options.escapeHtml(formatChatHistoryRole(messageItem.role, language))}</strong>
-              <time>${options.escapeHtml(localizeChatText(messageItem.createdLabel, language))}</time>
-            </div>
-            <p>${options.escapeHtml(localizeChatText(messageItem.text, language))}</p>
-            <button type="button" data-chat-history-action="delete-message" data-chat-history-message="${options.escapeHtml(messageItem.id)}">
-              ${options.escapeHtml(zh ? '删除' : 'Remove')}
-            </button>
-          </article>
-        `).join('') : `<div class="chat-history-empty compact">${options.escapeHtml(zh ? '暂无短期消息' : 'No short-term messages')}</div>`}
         </div>
       </section>
     `
@@ -1534,16 +2580,21 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     value: number,
     unit: string
   ): string {
-    const progress = Math.max(0, Math.min(100, ((value - min) / (max - min)) * 100))
+    const rangeOptions: ConversationSettingsPageOptions = { language: options.getLanguage(), escapeHtml: options.escapeHtml }
     return `
-      <label class="chat-context-control" style="--chat-context-progress: ${progress}%">
-        <span>
-          <strong>${options.escapeHtml(title)}</strong>
-          <small>${options.escapeHtml(copy)}</small>
-        </span>
-        <output>${options.escapeHtml(String(value))}<em>${options.escapeHtml(unit)}</em></output>
-        <input type="range" data-chat-setting="${options.escapeHtml(key)}" min="${min}" max="${max}" step="${step}" value="${options.escapeHtml(String(value))}" />
-      </label>
+      <article class="chat-settings-parameter">
+        <div class="chat-settings-control-head">
+          <div>
+            <strong>${options.escapeHtml(title)}</strong>
+            <small>${options.escapeHtml(copy)}</small>
+          </div>
+          <output>${options.escapeHtml(String(value))} ${options.escapeHtml(unit)}</output>
+        </div>
+        ${renderConversationRange(rangeOptions, key, min, max, step, value, [
+          { value: min, label: String(min) },
+          { value: max, label: String(max) },
+        ])}
+      </article>
     `
   }
 
@@ -1557,19 +2608,46 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     renderChatHistoryManager()
   }
 
-  async function deleteChatHistoryMessage(messageId: string): Promise<void> {
+  async function deleteChatMessage(messageId: string, optionsValue: { includeGeneratedFollowups?: boolean } = {}): Promise<void> {
+    const normalizedMessageId = messageId.trim()
+    if (!normalizedMessageId) {
+      return
+    }
     const conversation = getActiveConversation(state)
     if (!conversation) {
       return
     }
-    conversation.messages = conversation.messages.filter((message) => message.id !== messageId)
-    conversation.summaries = conversation.summaries.filter((summary) => !summary.sourceMessageIds.includes(messageId))
+    const deletedMessageIds = collectDeletedMessageIds(conversation.messages, normalizedMessageId, optionsValue.includeGeneratedFollowups)
+    if (deletedMessageIds.size === 0) {
+      return
+    }
+    conversation.messages = conversation.messages.filter((message) => !deletedMessageIds.has(message.id))
+    conversation.summaries = conversation.summaries.filter((summary) => !summary.sourceMessageIds.some((id) => deletedMessageIds.has(id)))
     const lastMessage = conversation.messages[conversation.messages.length - 1]
     conversation.preview = lastMessage?.text ?? { 'zh-CN': '', 'en-US': '' }
     conversation.updatedLabel = { 'zh-CN': '现在', 'en-US': 'Now' }
     await persistConversation(conversation)
     renderChat()
     renderChatHistoryManager()
+  }
+
+  function collectDeletedMessageIds(messages: ChatMessage[], messageId: string, includeGeneratedFollowups = false): Set<string> {
+    const startIndex = messages.findIndex((message) => message.id === messageId)
+    if (startIndex < 0) {
+      return new Set()
+    }
+    const ids = new Set<string>([messageId])
+    if (!includeGeneratedFollowups) {
+      return ids
+    }
+    for (let index = startIndex + 1; index < messages.length; index += 1) {
+      const message = messages[index]
+      if (!message.id.startsWith('assistant-media-')) {
+        break
+      }
+      ids.add(message.id)
+    }
+    return ids
   }
 
   async function deleteChatHistorySummary(summaryId: string): Promise<void> {
@@ -1753,12 +2831,23 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const description = stringField(fields.description)
     const story = stringField(fields.story)
     const background = stringField(fields.background)
-    const avatarImage = findRunDraftImage(runState, ['avatar', 'portrait', 'character'])
-    const bodyImage = findRunDraftImage(runState, ['body', 'full-body', 'character']) || avatarImage
+    const avatarImage = findRunDraftImage(runState, ['avatar', 'portrait'], ['overview', 'overview-sheet', 'character-overview-sheet'])
+    const bodyImage = findRunDraftImage(
+      runState,
+      ['character-base-image', 'base image', 'opening panel', 'body', 'full-body'],
+      ['overview', 'overview-sheet', 'character-overview-sheet']
+    ) || avatarImage
+    const overviewImage = findRunDraftImage(runState, ['character-overview-sheet', 'overview-sheet', 'overview'])
     const openingPanel = extractOpeningPanelFromRunDraft(runState)
     const id = `workflow-run-${sanitizeChatResourceId(runState.run?.id ?? name)}`
+    const generatedImageAssets = collectRunDraftGeneratedImageAssets(runState, id, [avatarImage, overviewImage])
     return {
+      schemaVersion: 1,
       id,
+      source: {
+        kind: 'workflow-run',
+        runId: runState.run?.id,
+      },
       roleCard: {
         ...fields,
         firstMessage,
@@ -1778,6 +2867,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       },
       avatarImage,
       bodyImage,
+      assets: [
+        ...(avatarImage ? [{ id: `${id}-avatar`, kind: 'avatar' as const, uri: avatarImage }] : []),
+        ...(bodyImage ? [{ id: `${id}-body`, kind: 'body' as const, uri: bodyImage }] : []),
+        ...generatedImageAssets,
+        ...(overviewImage ? [{ id: `${id}-overview`, kind: 'overview' as const, uri: overviewImage }] : []),
+      ],
     }
   }
 
@@ -2026,34 +3121,114 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     return fields
   }
 
-  function findRunDraftImage(runState: CharacterResourceRunState, preferredTerms: string[]): string {
+  function findRunDraftImage(runState: CharacterResourceRunState, preferredTerms: string[], excludedTerms: string[] = []): string {
     const imageArtifacts = (runState.artifacts ?? []).filter((artifact) => artifact.type.includes('image'))
+    const candidates = imageArtifacts.filter((artifact) => {
+      const searchText = getRunDraftImageSearchText(artifact)
+      return !excludedTerms.some((term) => searchText.includes(term.toLowerCase()))
+    })
     for (const term of preferredTerms) {
-      const matched = imageArtifacts.find((artifact) => `${artifact.title ?? ''} ${artifact.summary ?? ''}`.toLowerCase().includes(term))
+      const normalizedTerm = term.toLowerCase()
+      const matched = candidates.find((artifact) => getRunDraftImageSearchText(artifact).includes(normalizedTerm))
       const image = matched ? getRunDraftImageUrl(matched.data) : ''
       if (image) return image
     }
-    for (const artifact of imageArtifacts) {
+    for (const artifact of candidates) {
       const image = getRunDraftImageUrl(artifact.data)
       if (image) return image
     }
     return ''
   }
 
+  function collectRunDraftGeneratedImageAssets(
+    runState: CharacterResourceRunState,
+    characterId: string,
+    excludedUrls: string[]
+  ): NonNullable<ChatCharacterResource['assets']> {
+    const excluded = new Set(excludedUrls.filter(Boolean))
+    const seen = new Set<string>(excluded)
+    const assets: NonNullable<ChatCharacterResource['assets']> = []
+    const imageArtifacts = (runState.artifacts ?? []).filter((artifact) => artifact.type.includes('image'))
+    for (const artifact of imageArtifacts) {
+      const imageRole = getRunDraftImageRole(artifact.data)
+      const nodeId = artifact.sourceNodeId ?? ''
+      const identityText = [
+        artifact.type,
+        artifact.title,
+        artifact.summary,
+        nodeId,
+        imageRole,
+      ].filter((item): item is string => typeof item === 'string').join(' ').toLowerCase()
+      if (
+        imageRole === 'avatar'
+        || nodeId === 'avatar-image-target'
+        || identityText.includes('overview')
+        || identityText.includes('overview-sheet')
+        || identityText.includes('character-overview-sheet')
+      ) {
+        continue
+      }
+      const urls = getRunDraftImageUrls(artifact.data)
+      urls.forEach((uri, imageIndex) => {
+        if (!uri || seen.has(uri)) {
+          return
+        }
+        seen.add(uri)
+        const role = imageRole || artifact.sourceNodeId || 'generated-image'
+        assets.push({
+          id: `${characterId}-generated-${assets.length + 1}`,
+          kind: 'generated-image',
+          uri,
+          role,
+          metadata: {
+            sourceArtifactId: artifact.id,
+            sourceNodeId: artifact.sourceNodeId,
+            title: artifact.title,
+            imageIndex,
+          },
+        })
+      })
+    }
+    return assets
+  }
+
+  function getRunDraftImageSearchText(artifact: CharacterResourceRunState['artifacts'][number]): string {
+    const data = artifact.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
+      ? artifact.data as Record<string, unknown>
+      : {}
+    return [
+      artifact.type,
+      artifact.title,
+      artifact.summary,
+      artifact.sourceNodeId,
+      data.imageRole,
+      data.assetPurpose,
+      data.targetNodeId,
+    ].filter((item): item is string => typeof item === 'string').join(' ').toLowerCase()
+  }
+
   function getRunDraftImageUrl(data: unknown): string {
-    if (!data || typeof data !== 'object') return ''
+    return getRunDraftImageUrls(data)[0] ?? ''
+  }
+
+  function getRunDraftImageUrls(data: unknown): string[] {
+    if (!data || typeof data !== 'object') return []
     const record = data as Record<string, any>
     const direct = record.url ?? record.imageUrl ?? record.dataUrl
-    if (typeof direct === 'string') return direct
+    const urls: string[] = []
+    if (typeof direct === 'string') urls.push(direct)
     const images = Array.isArray(record.images) ? record.images : []
     for (const image of images) {
-      if (typeof image === 'string') return image
+      if (typeof image === 'string') {
+        urls.push(image)
+        continue
+      }
       if (image && typeof image === 'object') {
         const nested = (image as Record<string, any>).url ?? (image as Record<string, any>).imageUrl ?? (image as Record<string, any>).dataUrl
-        if (typeof nested === 'string') return nested
+        if (typeof nested === 'string') urls.push(nested)
       }
     }
-    return ''
+    return [...new Set(urls)]
   }
 
   function localizedText(value: string): ChatLocalizedText {
@@ -2086,16 +3261,152 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     })
   }
 
+  function getImageModelChoices(includeIncomplete = false): ChatImageModelChoice[] {
+    const config = chatSystemConfig
+    if (!config) {
+      return []
+    }
+    return config.chatModels.flatMap((api) => {
+      if (getChatModelType(api) !== 'image') {
+        return []
+      }
+      const provider = getImageProviderCatalogEntry(api.provider)
+      const enabled = getEnabledModelNames(api)
+      const fallback = filterEditCapableImageModelNames(api.provider, [api.modelName])
+      const modelNames = enabled.length ? enabled : fallback
+      return modelNames.flatMap((modelName): ChatImageModelChoice[] => {
+        if (!includeIncomplete && getImageModelMissingParts(api, modelName).length) {
+          return []
+        }
+        return [{
+          ref: `${api.id}::${modelName}`,
+          api,
+          modelName,
+          providerLabel: provider.label,
+        }]
+      })
+    })
+  }
+
+  function getImageModelMissingParts(api: ChatModelConfig, modelName: string): string[] {
+    const missing: string[] = []
+    if (!modelName.trim()) missing.push(options.getLanguage() === 'zh-CN' ? '模型名' : 'model')
+    if (!api.apiKey.trim()) missing.push(options.getLanguage() === 'zh-CN' ? '密钥' : 'key')
+    if (!api.baseUrl.trim()) missing.push(options.getLanguage() === 'zh-CN' ? '地址' : 'url')
+    return missing
+  }
+
+  function getTTSModelMissingParts(model: ChatTTSModelConfig): string[] {
+    const missing: string[] = []
+    const provider = getTTSProviderCatalogEntry(model.provider)
+    if (!(model.modelName || provider.defaultModel).trim()) missing.push(options.getLanguage() === 'zh-CN' ? '模型名' : 'model')
+    if (!model.apiKey.trim()) missing.push(options.getLanguage() === 'zh-CN' ? '密钥' : 'key')
+    if (provider.requiresVoiceId && !String(model.voiceId || '').trim()) missing.push(options.getLanguage() === 'zh-CN' ? '音色' : 'voice')
+    return missing
+  }
+
+  function getSelectedImageModelChoice(): ChatImageModelChoice | null {
+    const choices = getImageModelChoices(false)
+    return choices.find((choice) => choice.ref === conversationSettings.mediaImageModelRef)
+      ?? choices[0]
+      ?? null
+  }
+
+  function getSelectedTTSModel(): ChatTTSModelConfig | null {
+    const usable = chatTTSModels.filter((model) => getTTSModelMissingParts(model).length === 0)
+    return usable.find((model) => model.id === conversationSettings.mediaTtsModelId)
+      ?? usable[0]
+      ?? null
+  }
+
+  function getRuntimeTTSModelLabel(model: ChatTTSModelConfig): string {
+    const provider = getTTSProviderCatalogEntry(model.provider)
+    return model.modelName || provider.defaultModel || model.id
+  }
+
+  function shortRuntimeModelLabel(value: string): string {
+    const clean = String(value || '').trim()
+    if (!clean) {
+      return '-'
+    }
+    const parts = clean.split(/[/:]/).filter(Boolean)
+    const compact = parts.length >= 2
+      ? parts.slice(-2).join('/')
+      : parts[0] || clean
+    return compact.length > 24 ? `${compact.slice(0, 23)}...` : compact
+  }
+
+  function renderTTSProviderLogo(provider: string): string {
+    const logo = getTTSProviderLogo(provider)
+    return `<img src="${logo.src}" alt="${options.escapeHtml(logo.alt)}" />`
+  }
+
+  function getTTSProviderLogo(provider: string): { src: string; alt: string } {
+    const entry = getTTSProviderCatalogEntry(provider)
+    switch (entry.value) {
+      case 'elevenlabs':
+        return { src: elevenLabsIconUrl, alt: 'ElevenLabs' }
+      case 'fish':
+      default:
+        return { src: fishAudioIconUrl, alt: 'Fish Audio' }
+    }
+  }
+
+  function selectRuntimeImageModel(ref: string): void {
+    const choice = getImageModelChoices(false).find((item) => item.ref === ref)
+    if (!choice) {
+      return
+    }
+    conversationSettings = { ...conversationSettings, mediaImageModelRef: choice.ref }
+    saveConversationSettings(conversationSettings)
+    renderChatRuntimeModelPicker()
+    renderConversationSettings()
+  }
+
+  function selectRuntimeTTSModel(id: string): void {
+    const model = chatTTSModels.find((item) => item.id === id && getTTSModelMissingParts(item).length === 0)
+    if (!model) {
+      return
+    }
+    conversationSettings = { ...conversationSettings, mediaTtsModelId: model.id }
+    saveConversationSettings(conversationSettings)
+    renderChatRuntimeModelPicker()
+    renderConversationSettings()
+  }
+
   function updateConversationSetting(control: HTMLInputElement | HTMLSelectElement): void {
     const key = control.dataset.chatSetting as keyof ChatConversationSettings | undefined
     if (!key) {
       return
     }
-    if (key === 'textStreaming' || key === 'sceneImmersion') {
+    if (key === 'textStreaming' || key === 'sceneImmersion' || key === 'mediaVoiceAutoplay') {
       conversationSettings = { ...conversationSettings, [key]: (control as HTMLInputElement).checked }
     } else if (key === 'language') {
       const value = control.value === 'zh-CN' || control.value === 'en-US' ? control.value : 'auto'
       conversationSettings = { ...conversationSettings, language: value }
+    } else if (key === 'mediaImageMode') {
+      const value = control.value === 'off' || control.value === 'manual' || control.value === 'requested' || control.value === 'proactive'
+        ? control.value
+        : 'off'
+      conversationSettings = { ...conversationSettings, mediaImageMode: value }
+    } else if (key === 'mediaVoiceMode') {
+      const value = control.value === 'off' || control.value === 'manual' || control.value === 'requested' || control.value === 'auto'
+        ? control.value
+        : 'off'
+      conversationSettings = { ...conversationSettings, mediaVoiceMode: value }
+    } else if (key === 'mediaImageModelRef' || key === 'mediaTtsModelId') {
+      conversationSettings = { ...conversationSettings, [key]: control.value.trim() }
+    } else if (key === 'mediaImageSize') {
+      const value = control.value === '1024x1024' || control.value === '1024x1536' || control.value === '1536x1024'
+        ? control.value
+        : '1024x1024'
+      conversationSettings = { ...conversationSettings, mediaImageSize: value }
+    } else if (key === 'mediaImageReferenceMode') {
+      conversationSettings = { ...conversationSettings, mediaImageReferenceMode: control.value === 'none' ? 'none' : 'character' }
+    } else if (key === 'mediaImagePersistence') {
+      conversationSettings = { ...conversationSettings, mediaImagePersistence: control.value === 'turn' ? 'turn' : 'permanent' }
+    } else if (key === 'mediaVoicePersistence') {
+      conversationSettings = { ...conversationSettings, mediaVoicePersistence: control.value === 'permanent' ? 'permanent' : 'turn' }
     } else if (key === 'outputTokenBudget') {
       conversationSettings = {
         ...conversationSettings,
@@ -2521,7 +3832,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       }
       const latestHeight = Math.ceil(latestRecord.getBoundingClientRect().height)
       statusBody.style.setProperty('--workflow-agent-latest-height', `${latestHeight}px`)
-      statusBody.scrollTop = statusBody.scrollHeight
+      statusBody.scrollTop = 0
     })
   }
 
@@ -2738,15 +4049,28 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           goalPrompt: '',
           configOverrides: {
             'character-card-target': { includeFields: ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'firstMessage', 'dialogueStyle', 'worldContext'], includeSupportFields: ['appearancePrompt'] },
-            'opening-field-target': { fields: ['firstMessage'] },
-            'opening-field-control': { lengthPolicy: 'medium' },
+            'character-fields': {
+              fields: ['name', 'description', 'appearance', 'personality', 'background', 'scenario', 'firstMessage', 'dialogueStyle', 'worldContext', 'appearancePrompt'],
+              fieldControls: [
+                { field: 'name', fieldPurpose: 'Short display name only.', tone: 'neutral', lengthPolicy: 'short', avoidPatterns: [] },
+                { field: 'description', fieldPurpose: 'Concise identity hook and roleplay appeal.', tone: 'warm', lengthPolicy: 'medium', avoidPatterns: ['lore-dump'] },
+                { field: 'appearance', fieldPurpose: 'Visible body, face, outfit, posture, expression, and motifs.', tone: 'neutral', lengthPolicy: 'medium', avoidPatterns: ['lore-dump'] },
+                { field: 'personality', fieldPurpose: 'Inner drives, contradictions, habits, emotional logic, and relationship behavior.', tone: 'sharp', lengthPolicy: 'medium', avoidPatterns: ['self-introduction'] },
+                { field: 'background', fieldPurpose: 'Formative history, secrets, losses, obligations, and causes.', tone: 'dramatic', lengthPolicy: 'medium', avoidPatterns: ['lore-dump'] },
+                { field: 'scenario', fieldPurpose: 'Persistent present setup, current tension, roles, stakes, and continuation hooks.', tone: 'restrained', lengthPolicy: 'medium', avoidPatterns: ['asking-user-intent'] },
+                { field: 'firstMessage', fieldPurpose: 'Playable opening scene wrapped in chat tags with a concrete hook. Keep it rich but concise.', tone: 'warm', lengthPolicy: 'medium', avoidPatterns: ['ooc-explanation', 'asking-user-intent'] },
+                { field: 'dialogueStyle', fieldPurpose: 'Speech rhythm, diction, address style, emotional tells, and taboo phrases.', tone: 'neutral', lengthPolicy: 'medium', avoidPatterns: ['lore-dump'] },
+                { field: 'worldContext', fieldPurpose: 'Stable world, institution, social, supernatural, or relationship facts outside one scene.', tone: 'restrained', lengthPolicy: 'medium', avoidPatterns: ['lore-dump'] },
+                { field: 'appearancePrompt', fieldPurpose: 'Compact avatar identity seed prompt derived from completed character fields and image controls.', tone: 'neutral', lengthPolicy: 'medium', avoidPatterns: ['ooc-explanation'] },
+              ],
+            },
             'avatar-image-target': { imageRole: 'avatar', assetPurpose: 'Final avatar.jpg for the role card: one polished single-character role-card portrait with one clear face, visible body silhouette, strong appeal, and stable identity cues.' },
             'avatar-image-control': { targetImageCount: 1, imageStyleDomain: 'auto', shotType: 'knee-up', consistencyMode: 'same-character', seedMode: 'lock-character' },
             'overview-sheet-image-target': { imageRole: 'character-overview-sheet', assetPurpose: 'Generate one large production character overview sheet using linked avatar reference image inputs. Required contents: full-body front view, full-body back view, side or three-quarter view, one main portrait or half-body crop, 3 expression callouts, eye close-up, nose and mouth close-up, hairstyle detail, hand pose detail, leg shape close-up, hip and rear silhouette close-up, feet or shoes detail, outfit fabric, accessory, hemline, and silhouette details. Preserve avatar outfit construction unless explicitly requesting outfit variants. No written labels.' },
             'overview-sheet-image-control': { targetImageCount: 1, imageStyleDomain: 'auto', shotType: 'full-body', aspectRatio: '16:9', consistencyMode: 'same-character', seedMode: 'lock-character' },
             'opening-panel-image-target': { imageRole: 'character-base-image', assetPurpose: 'Free-form character sample images for the opening CSS panel. Use the avatar reference to preserve identity while showing distinct roleplay scenes, actions, moods, outfit usage, or prop interactions as panel visual material.' },
             'opening-panel-image-control': { targetImageCount: 2, imageStyleDomain: 'auto', shotType: 'auto', aspectRatio: '3:4', consistencyMode: 'same-character', seedMode: 'vary-slightly' },
-            'opening-layout-target': { layoutKind: 'immersive-card-css', includeSections: ['title', 'tags', 'opening', 'coverImage', 'supportImages'], layoutPrompt: 'Create an immersive CSS-style opening card layout that combines the character title, tags, opening text, and generated images into one readable role-card presentation.' },
+            'opening-layout-target': { layoutKind: 'auto-opening-layout', textDensity: 'minimal', includeSections: ['title', 'tags', 'opening', 'coverImage', 'supportImages'], layoutPrompt: 'Create a compact, attractive roleplay opening panel. Choose a varied layout, avoid project labels, keep visible prose short, and use generated character images as strong visual material.' },
             'generation-strategy': { mode: 'branch-and-refine', branchCount: 3, priorityAssets: ['role-card', 'opening', 'opening-layout', 'image-pack'] },
             'quality-gate': { minimumScore: 0.84 },
           },
@@ -2828,7 +4152,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       : (zh ? '展开记录' : 'Expand records')
     const records = getWorkflowAssistantStatusRecords()
     const latestRecord = records[0]
-    const previousRecords = characterWorkflowAssistantStatusExpanded ? records.slice(1, 8).reverse() : []
+    const previousRecords = characterWorkflowAssistantStatusExpanded ? records.slice(1, 8) : []
     const project = characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)
     const session = normalizeCharacterWorkflowGoalSession(project?.goalSession)
     const pendingDecision = session?.pendingDecision
@@ -2866,8 +4190,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             </div>
             <div class="chat-workflow-canvas-assistant-status-body" data-chat-workflow-agent-records>
               ${latestRecord ? `
-                ${previousRecords.map((record, index) => renderWorkflowAssistantStatusRecord(record, 'previous', index + 1)).join('')}
                 ${renderWorkflowAssistantStatusRecord(latestRecord, 'latest', 0)}
+                ${previousRecords.map((record, index) => renderWorkflowAssistantStatusRecord(record, 'previous', index + 1)).join('')}
               ` : ''}
             </div>
           </section>
@@ -5863,6 +7187,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       characterWorkflowConfigOverrides[nodeId][paramId] = control.checked
     } else if (paramType === 'number' || paramType === 'integer') {
       characterWorkflowConfigOverrides[nodeId][paramId] = Number(control.value)
+    } else if (paramType === 'field-control-list') {
+      characterWorkflowConfigOverrides[nodeId][paramId] = readCharacterWorkflowFieldControls(control)
     } else if (paramType === 'string-list' || paramType === 'multi-select') {
       characterWorkflowConfigOverrides[nodeId][paramId] = control.value
         .split(',')
@@ -5875,6 +7201,30 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       characterWorkflowConfigOverrides[nodeId].stylePrompt = createProseStylePresetPrompt(control.value)
     }
     renderCharacterWorkflow()
+  }
+
+  function readCharacterWorkflowFieldControls(control: HTMLElement): Array<Record<string, unknown>> {
+    const container = control.closest<HTMLElement>('.chat-workflow-field-control-list')
+    if (!container) {
+      return []
+    }
+    return Array.from(container.querySelectorAll<HTMLElement>('[data-chat-workflow-field-control-row]')).map((row) => {
+      const field = row.dataset.chatWorkflowFieldControlRow || ''
+      const readValue = (key: string): string => {
+        const element = row.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(`[data-chat-workflow-field-control-key="${CSS.escape(key)}"]`)
+        return element?.value ?? ''
+      }
+      return {
+        field,
+        fieldPurpose: readValue('fieldPurpose').trim(),
+        tone: readValue('tone') || 'neutral',
+        lengthPolicy: readValue('lengthPolicy') || 'medium',
+        avoidPatterns: readValue('avoidPatterns')
+          .split(',')
+          .map((item) => item.trim())
+          .filter(Boolean),
+      }
+    }).filter((item) => typeof item.field === 'string' && item.field)
   }
 
   async function addCharacterWorkflowMaterials(nodeId: string): Promise<void> {
@@ -5974,7 +7324,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return `${label}: control narration perspective and format tightly, keep voice consistent, make dialogue and action beats easy to continue in chat.`
     }
     if (/(romance|lovers|devotion|jealousy|marriage|companion|hurt|comfort|family|mentor|monster|paranormal|yandere|toxic|taboo|adult|power-imbalance)/.test(lower)) {
-      return `${label}: emphasize relationship tension, emotional stakes, boundaries, attraction, trust shifts, vulnerability, and long-form roleplay hooks without becoming explicit or instruction-like.`
+      return `${label}: emphasize relationship tension, emotional stakes, boundaries, attraction, trust shifts, vulnerability, and long-form roleplay hooks; preserve adult or explicit tension when the preset calls for it.`
     }
     if (/(fantasy|wuxia|xianxia|isekai|sorcery|mythic|fairytale|occult|gothic|grimdark|horror|liminal|cosmic)/.test(lower)) {
       return `${label}: use genre-rich atmosphere, mythic or supernatural texture, sensory scene detail, and conflict-ready world pressure while keeping character-card fields concrete.`
@@ -6111,11 +7461,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     return [
       'target',
       'imageTarget',
-      'fieldTarget',
       'imageControl',
       'referenceImage',
       'imageAsset',
-      'fieldControl',
       'continuity',
       'relationship',
       'style',
@@ -6629,18 +7977,25 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       activeChatId: settings.system.activeChatId,
       activeChatModelName: settings.system.activeChatModelName,
     }
+    chatTTSModels = (settings.system.ttsModels || []).map((model) => ({
+      ...model,
+      extra: model.extra ? { ...model.extra } : undefined,
+    }))
     renderChatRuntimeModelPicker()
+    renderConversationSettings()
     refreshCharacterWorkflowModelsIfVisible()
   }
 
   async function selectRuntimeChatModel(id: string, modelName: string): Promise<void> {
     const api = chatSystemConfig?.chatModels.find((model) => model.id === id)
-    if (!chatSystemConfig || !api || !isUsableChatApi(api) || !getEnabledModelNames(api).includes(modelName)) {
+    const modelRef = modelName.trim()
+    const availableRefs = api ? getChatModelChoiceNames(api).map((choice) => choice.modelRef) : []
+    if (!chatSystemConfig || !api || !modelRef || !isUsableChatApi(api) || !availableRefs.includes(modelRef)) {
       return
     }
     chatSystemConfig.activeChatId = id
-    chatSystemConfig.activeChatModelName = modelName
-    api.modelName = modelName
+    chatSystemConfig.activeChatModelName = modelRef
+    api.modelName = getLocalLLMTransport(api) === 'openai_compatible' ? modelRef : ''
     openChatRuntimeModelPicker = false
     renderChatRuntimeModelPicker()
     refreshCharacterWorkflowModelsIfVisible()
@@ -6676,6 +8031,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     if (field === 'id') {
       return
+    }
+    if (field === 'modelName' && value.trim()) {
+      if (getChatModelType(model) === 'image' && !isImageModelEditCapable(model.provider, value.trim())) {
+        showToast(options.getLanguage() === 'zh-CN' ? '只支持可编辑的生图模型' : 'Only edit-capable image models are supported')
+        return
+      }
     }
     ;(model[field] as string) = value
     if (field === 'modelName' && value.trim()) {
@@ -6762,12 +8123,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       if (!response.success) {
         throw new Error(response.error || 'Failed to get models')
       }
-      const models = normalizeModelNameList(response.models || [])
+      const models = getChatModelType(model) === 'image'
+        ? filterEditCapableImageModelNames(model.provider, normalizeModelNameList(response.models || []))
+        : normalizeModelNameList(response.models || [])
       chatModelOptions.set(id, models)
       model.availableModels = models
       model.modelsFetchedAt = Date.now()
       if (!models.length) {
-        showToast(options.getLanguage() === 'zh-CN' ? '没有返回可用模型' : 'No models returned')
+        showToast(options.getLanguage() === 'zh-CN' ? '没有返回可用的 edit 生图模型' : 'No edit-capable image models returned')
       }
       await saveChatModelConfig()
     } catch (error: any) {
@@ -6816,6 +8179,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const model = chatSystemConfig.chatModels.find((item) => item.id === id)
     const name = modelName.trim()
     if (!model || !name) {
+      return
+    }
+    if (getChatModelType(model) === 'image' && !isImageModelEditCapable(model.provider, name)) {
+      showToast(options.getLanguage() === 'zh-CN' ? '只支持可编辑的生图模型' : 'Only edit-capable image models are supported')
       return
     }
     const current = getEnabledModelNames(model)
@@ -6921,6 +8288,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
     void closeCameraCapture()
+    closeConversationSettings()
+    closeChatHistoryManager()
     setFullscreenState(false)
     options.panel.classList.remove('visible')
     options.panel.setAttribute('aria-hidden', 'true')
@@ -6992,8 +8361,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   options.composeForm.addEventListener('submit', (event) => {
     event.preventDefault()
     const text = options.composeInput.value.trim()
-    const attachments = pendingAttachments.map((attachment) => ({ ...attachment }))
-    if (!text && attachments.length === 0) {
+    const media = pendingMedia.map((item) => ({ ...item }))
+    if (!text && media.length === 0) {
       return
     }
     const conversation = getActiveMutableConversation()
@@ -7001,8 +8370,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       showToast(options.getLanguage() === 'zh-CN' ? '角色资源尚未加载' : 'Character resources are not loaded')
       return
     }
-    const displayText = text || (options.getLanguage() === 'zh-CN' ? '已发送附件' : 'Sent attachment')
-    const userMessage = createLocalUserMessage(displayText, getTimeLabel(), attachments)
+    const displayText = text || (options.getLanguage() === 'zh-CN' ? '已发送媒体' : 'Sent media')
+    const userMessage = createLocalUserMessage(displayText, getTimeLabel(), media)
     conversation.messages.push(userMessage)
     conversation.preview = { 'zh-CN': displayText, 'en-US': displayText }
     conversation.updatedLabel = { 'zh-CN': '现在', 'en-US': 'Now' }
@@ -7010,13 +8379,19 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     refreshConversationList()
     options.composeInput.value = ''
     options.composeInput.style.height = 'auto'
-    pendingAttachments = []
-    renderPendingAttachments()
+    pendingMedia = []
+    renderPendingMedia()
     void persistConversation(conversation)
-    void queueAssistantReply(text, attachments)
+    void queueAssistantReply(text, media)
   })
 
   panel.addEventListener('submit', (event) => {
+    const imagePromptForm = (event.target as HTMLElement | null)?.closest<HTMLFormElement>('[data-chat-image-prompt-form]')
+    if (imagePromptForm && panel.contains(imagePromptForm)) {
+      event.preventDefault()
+      void submitManualImagePrompt(imagePromptForm)
+      return
+    }
     const assistantForm = (event.target as HTMLElement | null)?.closest<HTMLFormElement>('[data-chat-workflow-assistant-form]')
     if (assistantForm && panel.contains(assistantForm)) {
       event.preventDefault()
@@ -7086,6 +8461,30 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       closeChatHistoryManager()
       return
     }
+    if (eventTarget === characterProfilePanel) {
+      closeCharacterProfilePanel()
+      return
+    }
+
+    const profileCarouselAction = eventTarget.closest<HTMLElement>('[data-chat-profile-carousel-action]')
+    if (profileCarouselAction && panel.contains(profileCarouselAction)) {
+      moveCharacterProfileCarousel(profileCarouselAction)
+      return
+    }
+
+    const profileAction = eventTarget.closest<HTMLElement>('[data-chat-profile-action]')
+    if (profileAction && panel.contains(profileAction)) {
+      const action = profileAction.dataset.chatProfileAction || ''
+      if (action === 'delete-character') {
+        requestDeleteCharacter(profileAction.dataset.chatCharacterId || '')
+      } else if (action === 'cancel-delete-character') {
+        pendingCharacterDeleteId = ''
+        renderCharacterProfilePanelBody()
+      } else if (action === 'confirm-delete-character') {
+        void confirmDeleteCharacter(profileAction.dataset.chatCharacterId || '')
+      }
+      return
+    }
 
     const workflowDecisionOption = eventTarget.closest<HTMLElement>('[data-chat-workflow-decision-option]')
     if (workflowDecisionOption && panel.contains(workflowDecisionOption)) {
@@ -7130,7 +8529,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       } else if (action === 'delete-conversation') {
         void deleteActiveChatHistoryConversation(historyAction.dataset.chatHistoryId || '')
       } else if (action === 'delete-message') {
-        void deleteChatHistoryMessage(historyAction.dataset.chatHistoryMessage || '')
+        void deleteChatMessage(historyAction.dataset.chatHistoryMessage || '')
       } else if (action === 'delete-summary') {
         void deleteChatHistorySummary(historyAction.dataset.chatHistorySummary || '')
       } else if (action === 'summarize-now') {
@@ -7154,11 +8553,36 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
 
-    const attachmentRemove = eventTarget.closest<HTMLElement>('[data-chat-attachment-remove]')
-    if (attachmentRemove && panel.contains(attachmentRemove)) {
-      const id = attachmentRemove.dataset.chatAttachmentRemove || ''
-      pendingAttachments = pendingAttachments.filter((attachment) => attachment.id !== id)
-      renderPendingAttachments()
+    const mediaRemove = eventTarget.closest<HTMLElement>('[data-chat-media-remove]')
+    if (mediaRemove && panel.contains(mediaRemove)) {
+      const id = mediaRemove.dataset.chatMediaRemove || ''
+      pendingMedia = pendingMedia.filter((item) => item.id !== id)
+      renderPendingMedia()
+      return
+    }
+
+    const imagePromptAction = eventTarget.closest<HTMLElement>('[data-chat-image-prompt-action]')
+    if (imagePromptAction && panel.contains(imagePromptAction)) {
+      if (imagePromptAction.dataset.chatImagePromptAction === 'cancel') {
+        closeManualImagePrompt()
+      }
+      return
+    }
+
+    const inlineAudioTarget = eventTarget.closest<HTMLElement>('[data-chat-inline-audio]')
+    if (inlineAudioTarget && panel.contains(inlineAudioTarget)) {
+      handleInlineAudioTarget(inlineAudioTarget)
+      return
+    }
+
+    const messageAction = eventTarget.closest<HTMLElement>('[data-chat-message-action]')
+    if (messageAction && panel.contains(messageAction)) {
+      const action = messageAction.dataset.chatMessageAction
+      if (action === 'image') {
+        openManualImagePrompt(messageAction)
+      } else if (action === 'delete') {
+        void deleteChatMessage(messageAction.dataset.chatMessageId || '')
+      }
       return
     }
 
@@ -7167,6 +8591,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       if (runtimeAction.dataset.chatRuntimeAction === 'toggle-model-picker') {
         openChatRuntimeModelPicker = !openChatRuntimeModelPicker
         renderChatRuntimeModelPicker()
+      } else if (runtimeAction.dataset.chatRuntimeAction === 'open-media-settings') {
+        openChatRuntimeModelPicker = false
+        renderChatRuntimeModelPicker()
+        openConversationSettings()
       }
       return
     }
@@ -7190,6 +8618,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         openConversationSettings()
         return
       }
+      if (sideAction.dataset.chatSideAction === 'delete-character') {
+        requestDeleteActiveCharacter()
+        return
+      }
       const labels = getChatSideActionLabels(options.getLanguage())
       const label = labels[sideAction.dataset.chatSideAction || ''] || ''
       showToast(label)
@@ -7207,6 +8639,18 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const runtimeModel = eventTarget.closest<HTMLElement>('[data-chat-runtime-model-id]')
     if (runtimeModel && panel.contains(runtimeModel)) {
       void selectRuntimeChatModel(runtimeModel.dataset.chatRuntimeModelId || '', runtimeModel.dataset.chatRuntimeModelName || '')
+      return
+    }
+
+    const runtimeImageModel = eventTarget.closest<HTMLElement>('[data-chat-runtime-image-ref]')
+    if (runtimeImageModel && panel.contains(runtimeImageModel)) {
+      selectRuntimeImageModel(runtimeImageModel.dataset.chatRuntimeImageRef || '')
+      return
+    }
+
+    const runtimeTTSModel = eventTarget.closest<HTMLElement>('[data-chat-runtime-tts-id]')
+    if (runtimeTTSModel && panel.contains(runtimeTTSModel)) {
+      selectRuntimeTTSModel(runtimeTTSModel.dataset.chatRuntimeTtsId || '')
       return
     }
 
@@ -7529,6 +8973,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (event.key === 'Escape' && chatHistoryPanel?.classList.contains('visible')) {
       closeChatHistoryManager()
     }
+    if (event.key === 'Escape' && characterProfilePanel?.classList.contains('visible')) {
+      closeCharacterProfilePanel()
+    }
     if (event.key === 'Escape' && openChatModelLibraryId) {
       closeChatModelLibrary()
     }
@@ -7574,7 +9021,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       conversationSettingsKicker.textContent = language === 'zh-CN' ? 'Conversation design' : 'Conversation design'
     }
     if (conversationSettingsClose) {
-      conversationSettingsClose.textContent = language === 'zh-CN' ? '返回' : 'Back'
+      conversationSettingsClose.textContent = '×'
+      conversationSettingsClose.setAttribute('aria-label', language === 'zh-CN' ? '关闭' : 'Close')
     }
     if (characterWorkflowTitle) {
       characterWorkflowTitle.textContent = language === 'zh-CN' ? '角色资源图' : 'Character Resource Graph'
@@ -7585,11 +9033,32 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (chatHistoryKicker) {
       chatHistoryKicker.textContent = language === 'zh-CN' ? 'Context memory' : 'Context memory'
     }
+    if (chatHistoryClear) {
+      chatHistoryClear.textContent = language === 'zh-CN' ? '清空' : 'Clear'
+    }
+    if (chatHistoryClose) {
+      chatHistoryClose.textContent = '×'
+      chatHistoryClose.setAttribute('aria-label', language === 'zh-CN' ? '关闭' : 'Close')
+    }
+    if (characterProfileTitle) {
+      characterProfileTitle.textContent = language === 'zh-CN' ? '角色资料' : 'Character profile'
+    }
+    if (characterProfileKicker) {
+      characterProfileKicker.textContent = language === 'zh-CN' ? 'Character profile' : 'Character profile'
+    }
+    if (characterProfileClose) {
+      characterProfileClose.textContent = '×'
+      characterProfileClose.setAttribute('aria-label', language === 'zh-CN' ? '关闭' : 'Close')
+    }
     if (conversationSettingsPanel?.classList.contains('visible')) {
       renderConversationSettings()
     }
     if (chatHistoryPanel?.classList.contains('visible')) {
       renderChatHistoryManager()
+    }
+    if (characterProfilePanel?.classList.contains('visible') && characterProfileBody) {
+      const character = getActiveProfileCharacter()
+      characterProfileBody.innerHTML = character ? renderCharacterProfilePanel(character) : ''
     }
     if (panel.dataset.chatView === 'character-workflow') {
       renderCharacterWorkflow()
@@ -7714,16 +9183,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       console.warn('[ChatHistory] Failed to persist conversation:', response.error)
     }
   }
-}
-
-function formatChatHistoryRole(role: ChatMessage['role'], language: 'zh-CN' | 'en-US'): string {
-  if (role === 'user') {
-    return language === 'zh-CN' ? '你' : 'You'
-  }
-  if (role === 'system') {
-    return 'System'
-  }
-  return language === 'zh-CN' ? '角色' : 'Character'
 }
 
 function formatSummaryRange(summary: ChatMemorySummary, language: 'zh-CN' | 'en-US'): string {

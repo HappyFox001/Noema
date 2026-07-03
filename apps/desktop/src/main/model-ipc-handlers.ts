@@ -12,9 +12,9 @@ import {
   getTTSProviderCatalogEntry,
 } from './model-provider-catalog.js'
 import {
-  createTTSProviderForConfig,
   LOW_LATENCY_VOICE_CONFIG,
 } from './voice-runtime-controller.js'
+import { createTTSProviderForConfiguredModel } from '@noema/sdk/audio/tts-runtime'
 import {
   normalizeASRModelName,
   normalizeQwenRealtimeUrl,
@@ -331,7 +331,7 @@ async function testAnthropicMessagesModel(model: LLMModelConfig): Promise<void> 
 }
 
 async function testFishTTSModel(model: TTSModelConfig): Promise<void> {
-  const provider = createTTSProviderForConfig(model)
+  const provider = createTTSProviderForConfiguredModel(model)
 
   try {
     await runWithTimeout(

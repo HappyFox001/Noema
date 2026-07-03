@@ -37,7 +37,7 @@ export function isAllowedExpressionRoutine(policy: RoutinePolicy): boolean {
     /voice id/,
     /volume/,
     /speakingstyle/,
-    /personality yaml/,
+    /character profile/,
     /intimacy/,
     /trust/,
     /tool permission/,

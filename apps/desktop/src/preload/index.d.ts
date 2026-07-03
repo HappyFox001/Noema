@@ -1,5 +1,69 @@
 export {}
 
+type ChatPreloadMessageContent = string | Array<
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
+>
+
+type ChatPreloadMedia = {
+  id?: string
+  kind: 'image' | 'video' | 'audio'
+  name: string
+  mimeType: string
+  dataUrl?: string
+  url?: string
+  size?: number
+  durationMs?: number
+  transcript?: string
+  prompt?: string
+  origin?: 'user' | 'assistant' | 'tool' | 'generated' | 'external'
+  dispatch?: {
+    trigger?: 'manual' | 'model' | 'request' | 'auto' | 'tool' | 'external' | 'probability'
+    mode?: 'turn' | 'permanent'
+    probability?: number
+    externalProbabilityBias?: number
+    reason?: string
+  }
+  context?: {
+    mode?: 'auto' | 'visual' | 'text' | 'none'
+    summary?: string
+  }
+  metadata?: Record<string, unknown>
+}
+
+type ChatPreloadImageModel = {
+  id: string
+  modelType: 'image'
+  provider?: string
+  transport?: 'openai_compatible' | 'codex_local' | 'claude_code_local'
+  modelName: string
+  enabledModels?: string[]
+  apiKey: string
+  baseUrl: string
+}
+
+type ChatPreloadTTSModel = {
+  id: string
+  provider: string
+  modelName: string
+  apiKey: string
+  voiceId?: string
+  baseUrl?: string
+  language?: string
+  format?: 'pcm' | 'mp3' | 'opus'
+  sampleRate?: number
+  extra?: Record<string, unknown>
+}
+
+type ChatPreloadImagePromptContext = {
+  strategy: 'manual-edit' | 'requested-edit' | 'proactive-edit'
+  language: 'zh-CN' | 'en-US'
+  visualIntent?: string
+  manualDirection?: string
+  userText?: string
+  assistantText?: string
+}
+
 declare global {
   interface Window {
     electronAPI: {
@@ -549,7 +613,7 @@ declare global {
           id: string
           name: string
           path: string
-          source: 'role' | 'file'
+          source: 'chat' | 'file'
         }>
         error?: string
       }>
@@ -585,6 +649,11 @@ declare global {
         }>
         error?: string
       }>
+      deleteChatRoleResource: (id: string) => Promise<{
+        success: boolean
+        deleted?: boolean
+        error?: string
+      }>
       listChatConversations: () => Promise<{
         success: boolean
         conversations?: Array<{
@@ -608,14 +677,7 @@ declare global {
             role: 'system' | 'user' | 'assistant'
             text: Record<string, string>
             createdLabel: Record<string, string>
-            attachments?: Array<{
-              id: string
-              kind: 'image' | 'video'
-              name: string
-              mimeType: string
-              dataUrl?: string
-              size?: number
-            }>
+            media?: ChatPreloadMedia[]
             openingPanel?: {
               html: string
               css: string
@@ -675,14 +737,7 @@ declare global {
             role: 'system' | 'user' | 'assistant'
             text: Record<string, string>
             createdLabel: Record<string, string>
-            attachments?: Array<{
-              id: string
-              kind: 'image' | 'video'
-              name: string
-              mimeType: string
-              dataUrl?: string
-              size?: number
-            }>
+            media?: ChatPreloadMedia[]
             openingPanel?: {
               html: string
               css: string
@@ -797,15 +852,9 @@ declare global {
         options?: Record<string, unknown>
         messages?: Array<{
           role: 'system' | 'user' | 'assistant'
-          content: string
+          content: ChatPreloadMessageContent
         }>
-        attachments?: Array<{
-          kind: 'image' | 'video'
-          name: string
-          mimeType: string
-          dataUrl?: string
-          size?: number
-        }>
+        media?: ChatPreloadMedia[]
         character?: {
           id?: string
           displayName?: string
@@ -1110,15 +1159,9 @@ declare global {
         options?: Record<string, unknown>
         messages?: Array<{
           role: 'system' | 'user' | 'assistant'
-          content: string
+          content: ChatPreloadMessageContent
         }>
-        attachments?: Array<{
-          kind: 'image' | 'video'
-          name: string
-          mimeType: string
-          dataUrl?: string
-          size?: number
-        }>
+        media?: ChatPreloadMedia[]
         character?: {
           id?: string
           displayName?: string
@@ -1162,17 +1205,37 @@ declare global {
         error?: string
       }>
       selectChatMedia: (request?: {
-        kind?: 'image' | 'video' | 'media'
+        kind?: 'image' | 'video' | 'audio' | 'media'
       }) => Promise<{
         success: boolean
         canceled?: boolean
-        attachments?: Array<{
-          kind: 'image' | 'video'
-          name: string
-          mimeType: string
-          dataUrl?: string
-          size?: number
-        }>
+        media?: ChatPreloadMedia[]
+        error?: string
+      }>
+      generateChatImageMedia: (request: {
+        model: ChatPreloadImageModel
+        modelName?: string
+        prompt: string
+        promptContext: ChatPreloadImagePromptContext
+        referenceImages?: string[]
+        size?: string
+        name?: string
+      }) => Promise<{
+        success: boolean
+        media?: ChatPreloadMedia
+        provider?: string
+        model?: string
+        error?: string
+      }>
+      synthesizeChatAudioMedia: (request: {
+        model: ChatPreloadTTSModel
+        text: string
+        name?: string
+      }) => Promise<{
+        success: boolean
+        media?: ChatPreloadMedia
+        provider?: string
+        model?: string
         error?: string
       }>
       selectChatMaterials: () => Promise<{

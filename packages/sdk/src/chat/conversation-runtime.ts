@@ -1,8 +1,17 @@
 /**
  * Shared pure helpers for chat conversation runtime state.
  */
-import type { ChatCharacterContext } from './index.js'
+import {
+  type ChatCharacterContext,
+  type ChatMediaItem,
+  type ChatMessageContent,
+  type ChatMessageContentPart,
+} from './index.js'
 import type { ChatRuntimeTurnRequest } from './request-runtime.js'
+import type { CharacterProfile } from '../character-profile/index.js'
+
+export * from './media-orchestrator.js'
+export * from './image-prompt-director.js'
 
 export type ChatRuntimeRole = 'system' | 'user' | 'assistant'
 export type ChatRuntimeLanguage = 'zh-CN' | 'en-US'
@@ -12,6 +21,7 @@ export interface ChatRuntimeMessage {
   id: string
   role: ChatRuntimeRole
   text: ChatRuntimeLocalizedText
+  media?: ChatRuntimeMediaInput[]
   state?: unknown
 }
 
@@ -32,7 +42,7 @@ export interface ChatRuntimeConversation {
 
 export interface ChatRuntimeContextMessage {
   role: ChatRuntimeRole
-  content: string
+  content: ChatMessageContent
 }
 
 export interface ChatRuntimeNarrativeSummary {
@@ -41,24 +51,9 @@ export interface ChatRuntimeNarrativeSummary {
   text: string
 }
 
-export interface ChatRuntimeCharacterResource {
-  id?: string
-  roleCard?: Record<string, unknown>
-  displayName: ChatRuntimeLocalizedText
-  description: ChatRuntimeLocalizedText
-  story: ChatRuntimeLocalizedText
-  background: ChatRuntimeLocalizedText
-  firstMessage: ChatRuntimeLocalizedText
-  tag?: Partial<Record<ChatRuntimeLanguage, string[]>>
-}
+export type ChatRuntimeCharacterResource = CharacterProfile
 
-export interface ChatRuntimeAttachmentInput {
-  kind: 'image' | 'video'
-  name: string
-  mimeType: string
-  dataUrl?: string
-  size?: number
-}
+export type ChatRuntimeMediaInput = ChatMediaItem
 
 export interface BuildChatRuntimeTurnRequestOptions {
   input: string
@@ -67,7 +62,7 @@ export interface BuildChatRuntimeTurnRequestOptions {
   preferencePrompt?: string
   options?: Record<string, unknown>
   runtimeOptions: ChatRuntimeConversationOptions
-  attachments?: ChatRuntimeAttachmentInput[]
+  media?: ChatRuntimeMediaInput[]
   conversation: ChatRuntimeConversation & { sceneState?: Record<string, unknown> }
   draftMessageId: string
   character?: ChatRuntimeCharacterResource
@@ -139,8 +134,12 @@ export function buildChatConversationContextMessages(
     .slice(-normalizeMessageLimit(options.shortTermMessageLimit))
     .map((item) => ({
       role: normalizeRuntimeRole(item.role),
-      content: localizeRuntimeText(item.text, options.language),
+      content: buildChatRuntimeContextContent(
+        localizeRuntimeText(item.text, options.language),
+        normalizeChatRuntimeMedia(item.media)
+      ),
     }))
+    .filter((item) => hasChatRuntimeContextContent(item.content))
 }
 
 export function selectChatSummaryBatch(
@@ -173,7 +172,7 @@ export function selectChatSummaryBatch(
   const transcript = messages
     .map((messageItem) => {
       const ordinal = getChatMessageOrdinal(conversation, messageItem.id)
-      return `#${ordinal} ${formatChatRuntimeHistoryRole(messageItem.role, options.language)}: ${localizeRuntimeText(messageItem.text, options.language)}`
+      return `#${ordinal} ${formatChatRuntimeHistoryRole(messageItem.role, options.language)}: ${formatChatRuntimeTranscriptMessage(messageItem, options.language)}`
     })
     .join('\n\n')
 
@@ -251,13 +250,7 @@ export function buildChatRuntimeTurnRequest(options: BuildChatRuntimeTurnRequest
     preferencePrompt: options.preferencePrompt,
     options: options.options,
     runtimeOptions,
-    attachments: (options.attachments ?? []).map((attachment) => ({
-      kind: attachment.kind,
-      name: attachment.name,
-      mimeType: attachment.mimeType,
-      dataUrl: attachment.dataUrl,
-      size: attachment.size,
-    })),
+    media: normalizeChatRuntimeMedia(options.media),
     messages: buildChatConversationContextMessages(options.conversation, {
       draftMessageId: options.draftMessageId,
       language: options.language,
@@ -413,6 +406,185 @@ export function formatChatRuntimeHistoryRole(role: ChatRuntimeRole, language: Ch
 
 function normalizeRuntimeRole(role: ChatRuntimeRole): ChatRuntimeRole {
   return role === 'system' || role === 'assistant' ? role : 'user'
+}
+
+function hasChatRuntimeContextContent(content: ChatMessageContent): boolean {
+  if (typeof content === 'string') {
+    return Boolean(content.trim())
+  }
+  return content.length > 0
+}
+
+function buildChatRuntimeContextContent(input: string, media: ChatRuntimeMediaInput[]): ChatMessageContent {
+  const text = input.trim()
+  const mediaNotes = media.map(formatChatRuntimeContextMediaItem).filter(Boolean)
+  if (!mediaNotes.length) {
+    return text
+  }
+  const parts: ChatMessageContentPart[] = [{
+    type: 'text',
+    text: [
+      text,
+      `<message_media>\n${mediaNotes.join('\n')}\n</message_media>`,
+    ].filter(Boolean).join('\n\n'),
+  }]
+  return parts
+}
+
+function formatChatRuntimeContextMediaItem(item: ChatRuntimeMediaInput): string {
+  if (item.context?.mode === 'none') {
+    return ''
+  }
+  const fields: Record<string, unknown> = {
+    kind: item.kind,
+    name: item.name,
+    mimeType: item.mimeType,
+  }
+  if (item.id) fields.id = item.id
+  if (item.size) fields.size = item.size
+  if (item.durationMs) fields.durationMs = item.durationMs
+  if (item.origin) fields.origin = item.origin
+  if (item.prompt?.trim()) fields.prompt = item.prompt.trim()
+  if (item.transcript?.trim()) fields.transcript = item.transcript.trim()
+  if (item.context?.summary?.trim()) fields.summary = item.context.summary.trim()
+  if (item.dispatch) {
+    const dispatch = normalizeRuntimeMediaDispatchForContext(item.dispatch)
+    if (Object.keys(dispatch).length) {
+      fields.dispatch = dispatch
+    }
+  }
+  if (item.dataUrl || item.url) {
+    fields.context = item.kind === 'image' ? 'text_anchor' : 'transcript_or_metadata'
+  }
+  return JSON.stringify(fields)
+}
+
+function normalizeChatRuntimeMedia(media: ChatRuntimeMediaInput[] | undefined): ChatRuntimeMediaInput[] {
+  if (!Array.isArray(media)) {
+    return []
+  }
+  return media
+    .map((item): ChatRuntimeMediaInput => {
+      const kind: ChatRuntimeMediaInput['kind'] = item.kind === 'video' || item.kind === 'audio' ? item.kind : 'image'
+      return {
+        id: optionalString(item.id),
+        kind,
+        name: optionalString(item.name) ?? 'media',
+        mimeType: optionalString(item.mimeType) ?? defaultRuntimeMediaMimeType(kind),
+        dataUrl: optionalString(item.dataUrl),
+        url: optionalString(item.url),
+        size: positiveNumber(item.size),
+        durationMs: positiveNumber(item.durationMs),
+        transcript: optionalString(item.transcript),
+        prompt: optionalString(item.prompt),
+        origin: item.origin === 'assistant' || item.origin === 'tool' || item.origin === 'generated' || item.origin === 'external' || item.origin === 'user'
+          ? item.origin
+          : undefined,
+        dispatch: normalizeRuntimeMediaDispatch(item.dispatch),
+        context: normalizeRuntimeMediaContext(item.context),
+        metadata: item.metadata && typeof item.metadata === 'object' && !Array.isArray(item.metadata)
+          ? item.metadata
+          : undefined,
+      }
+    })
+    .filter((item) => Boolean(item.dataUrl || item.url || item.transcript || item.prompt))
+}
+
+function defaultRuntimeMediaMimeType(kind: ChatRuntimeMediaInput['kind']): string {
+  if (kind === 'video') {
+    return 'video/mp4'
+  }
+  if (kind === 'audio') {
+    return 'audio/mpeg'
+  }
+  return 'image/png'
+}
+
+function normalizeRuntimeMediaDispatch(dispatch: ChatRuntimeMediaInput['dispatch']): ChatRuntimeMediaInput['dispatch'] {
+  if (!dispatch || typeof dispatch !== 'object' || Array.isArray(dispatch)) {
+    return undefined
+  }
+  const normalized: NonNullable<ChatRuntimeMediaInput['dispatch']> = {}
+  if (dispatch.trigger === 'manual' || dispatch.trigger === 'model' || dispatch.trigger === 'request' || dispatch.trigger === 'auto' || dispatch.trigger === 'tool' || dispatch.trigger === 'external' || dispatch.trigger === 'probability') {
+    normalized.trigger = dispatch.trigger
+  }
+  if (dispatch.mode === 'turn' || dispatch.mode === 'permanent') {
+    normalized.mode = dispatch.mode
+  }
+  if (typeof dispatch.probability === 'number' && Number.isFinite(dispatch.probability)) {
+    normalized.probability = Math.min(1, Math.max(0, dispatch.probability))
+  }
+  if (typeof dispatch.externalProbabilityBias === 'number' && Number.isFinite(dispatch.externalProbabilityBias)) {
+    normalized.externalProbabilityBias = Math.min(1, Math.max(-1, dispatch.externalProbabilityBias))
+  }
+  if (dispatch.reason?.trim()) {
+    normalized.reason = dispatch.reason.trim()
+  }
+  return Object.keys(normalized).length ? normalized : undefined
+}
+
+function normalizeRuntimeMediaDispatchForContext(dispatch: NonNullable<ChatRuntimeMediaInput['dispatch']>): Record<string, unknown> {
+  const normalized: Record<string, unknown> = {}
+  if (dispatch.trigger) normalized.trigger = dispatch.trigger
+  if (dispatch.mode) normalized.mode = dispatch.mode
+  if (typeof dispatch.probability === 'number' && Number.isFinite(dispatch.probability)) {
+    normalized.probability = Math.min(1, Math.max(0, dispatch.probability))
+  }
+  if (typeof dispatch.externalProbabilityBias === 'number' && Number.isFinite(dispatch.externalProbabilityBias)) {
+    normalized.externalProbabilityBias = Math.min(1, Math.max(-1, dispatch.externalProbabilityBias))
+  }
+  if (dispatch.reason?.trim()) normalized.reason = dispatch.reason.trim()
+  return normalized
+}
+
+function normalizeRuntimeMediaContext(context: ChatRuntimeMediaInput['context']): ChatRuntimeMediaInput['context'] {
+  if (!context || typeof context !== 'object' || Array.isArray(context)) {
+    return undefined
+  }
+  const normalized: NonNullable<ChatRuntimeMediaInput['context']> = {}
+  if (context.mode === 'auto' || context.mode === 'visual' || context.mode === 'text' || context.mode === 'none') {
+    normalized.mode = context.mode
+  }
+  if (context.summary?.trim()) {
+    normalized.summary = context.summary.trim()
+  }
+  return Object.keys(normalized).length ? normalized : undefined
+}
+
+function formatChatRuntimeTranscriptMessage(message: ChatRuntimeMessage, language: ChatRuntimeLanguage): string {
+  const text = localizeRuntimeText(message.text, language)
+  const media = formatChatRuntimeTranscriptMedia(message.media)
+  return [text, media].filter(Boolean).join('\n')
+}
+
+function formatChatRuntimeTranscriptMedia(media: ChatRuntimeMediaInput[] | undefined): string {
+  const normalized = normalizeChatRuntimeMedia(media)
+  if (!normalized.length) {
+    return ''
+  }
+  return normalized
+    .map((item) => {
+      const details = [
+        item.mimeType,
+        item.size ? `${Math.round(item.size / 1024)} KB` : '',
+        item.durationMs ? `${Math.round(item.durationMs / 1000)}s` : '',
+        item.dispatch?.mode === 'permanent' ? 'permanent' : '',
+      ].filter(Boolean).join(', ')
+      const prompt = item.prompt ? ` prompt="${item.prompt}"` : ''
+      const transcript = item.transcript ? ` transcript="${item.transcript}"` : ''
+      const summary = item.context?.summary ? ` summary="${item.context.summary}"` : ''
+      return `- ${item.kind}: ${item.name}${details ? ` (${details})` : ''}${prompt}${transcript}${summary}`
+    })
+    .join('\n')
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
+
+function positiveNumber(value: unknown): number | undefined {
+  const number = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(number) && number > 0 ? number : undefined
 }
 
 function normalizeMessageLimit(value: number): number {

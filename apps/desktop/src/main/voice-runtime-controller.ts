@@ -4,15 +4,11 @@
 import type {
   EndpointingConfig,
   SmartTurnAnalyzer,
-  TTSProvider,
   VADParams,
   VoiceConfidenceProvider,
 } from '@noema/sdk'
-import { createTTSProvider } from '@noema/sdk'
-import { getTTSProviderCatalogEntry } from './model-provider-catalog.js'
 import { initializeSileroVAD, isSileroVADAvailable } from './silero-vad-helper.js'
 import { initializeSmartTurn, isSmartTurnAvailable } from './smart-turn-helper.js'
-import type { TTSModelConfig } from './settings-store.js'
 
 export const DEFAULT_VAD_CONFIG: Partial<VADParams> = {
   confidence: 0.7,
@@ -110,72 +106,4 @@ export class VoiceRuntimeController {
 
     return this.smartTurnInitPromise
   }
-}
-
-export function normalizeTTSModelName(config: TTSModelConfig | null): string {
-  const modelName = config?.modelName?.trim()
-  if (modelName) {
-    return modelName
-  }
-  return getTTSProviderCatalogEntry(config?.provider).defaultModel
-}
-
-export function createTTSProviderForConfig(config: TTSModelConfig | null): TTSProvider {
-  if (!config?.apiKey?.trim()) {
-    throw new Error('TTS API key is not configured')
-  }
-
-  const providerEntry = getTTSProviderCatalogEntry(config.provider)
-  if (!providerEntry.implemented) {
-    throw new Error(`${providerEntry.label} TTS is listed in the catalog but is not implemented in the runtime yet`)
-  }
-
-  if (providerEntry.protocol === 'openai-speech') {
-    return createTTSProvider({
-      kind: 'openai-speech',
-      config: {
-        apiKey: config.apiKey,
-        baseUrl: config.baseUrl || providerEntry.defaultBaseUrl,
-        model: normalizeTTSModelName(config),
-        voiceId: config.voiceId || providerEntry.defaultVoiceId,
-        sampleRate: config.sampleRate || providerEntry.sampleRate,
-      },
-    })
-  }
-
-  if (providerEntry.protocol === 'elevenlabs-http') {
-    return createTTSProvider({
-      kind: 'elevenlabs-http',
-      config: {
-        apiKey: config.apiKey,
-        baseUrl: config.baseUrl || providerEntry.defaultBaseUrl,
-        model: normalizeTTSModelName(config),
-        voiceId: config.voiceId,
-        sampleRate: config.sampleRate || providerEntry.sampleRate,
-        language: config.language || providerEntry.defaultLanguage,
-        extra: config.extra as any,
-      },
-    })
-  }
-
-  if (providerEntry.protocol !== 'fish-realtime') {
-    throw new Error(`Unsupported TTS provider protocol: ${providerEntry.protocol}`)
-  }
-
-  return createTTSProvider({
-    kind: 'fish-realtime',
-    config: {
-      apiKey: config.apiKey,
-      voiceId: config.voiceId,
-      model: normalizeTTSModelName(config),
-      format: config.format || 'pcm',
-      sampleRate: config.sampleRate || providerEntry.sampleRate,
-      latency: 'balanced',
-      normalize: true,
-      prosody: {
-        speed: 1.0,
-        volume: 0,
-      },
-    },
-  })
 }

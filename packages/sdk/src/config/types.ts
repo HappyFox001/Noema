@@ -1,7 +1,7 @@
 /**
  * SDK configuration contract.
  */
-import type { Personality } from '../personality/index.js'
+import type { CharacterProfile } from '../character-profile/index.js'
 
 export interface SDKConfig {
   llm: {
@@ -44,7 +44,7 @@ export interface SDKConfig {
     storageDir: string
   }
 
-  personality: Personality
+  characterProfile?: CharacterProfile | null
 
   audio?: {
     asr?: {

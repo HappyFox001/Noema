@@ -6,9 +6,16 @@ import { dialog, systemPreferences, shell, type BrowserWindow, type OpenDialogOp
 import { readFile } from 'fs/promises'
 import { basename, extname } from 'path'
 import { listChatModelsWithProvider } from '@noema/sdk/chat/model-list'
+import { ChatMediaService } from '@noema/sdk/chat/media-service'
+import { filterEditCapableImageModelNames, isImageModelEditCapable } from '@noema/sdk/image/catalog'
+import {
+  directChatImagePrompt,
+  type ChatImagePromptDirectorInput,
+} from '@noema/sdk/chat/conversation-runtime'
 import {
   ChatRuntime,
   normalizeChatRuntimeError,
+  sendChatTurnWithConfiguredModel,
   type ChatRuntimeEvent,
   type ChatRuntimeTurnRequest,
 } from '@noema/sdk/chat/request-runtime'
@@ -29,6 +36,7 @@ import {
 } from '@noema/sdk/character-workflow'
 import { ChatHistoryStore, type StoredChatConversation, type StoredChatConversationListItem } from './chat-history-store.js'
 import { CharacterWorkflowStore, type StoredCharacterWorkflowProject } from './character-workflow-store.js'
+import type { TTSModelConfig } from './settings-store.js'
 
 const LOCAL_CLI_DEFAULT_MODEL_REF = '__default__'
 
@@ -50,6 +58,43 @@ export interface ChatIpcConfiguredModel {
   enabledModels?: string[]
   apiKey: string
   baseUrl: string
+}
+
+export interface ChatGenerateImageMediaRequest {
+  model: ChatIpcConfiguredModel
+  modelName?: string
+  prompt: string
+  promptContext: ChatImagePromptDirectorInput
+  referenceImages?: string[]
+  size?: string
+  name?: string
+}
+
+export interface ChatGenerateMediaResult {
+  success: boolean
+  media?: ChatIpcMedia
+  provider?: string
+  model?: string
+  error?: string
+}
+
+export interface ChatSynthesizeAudioMediaRequest {
+  model: TTSModelConfig
+  text: string
+  name?: string
+}
+
+function normalizeImagePromptDirectorChatOptions(options: Record<string, unknown> | undefined): Record<string, unknown> {
+  const normalized: Record<string, unknown> = {}
+  const temperature = typeof options?.temperature === 'number' && Number.isFinite(options.temperature)
+    ? Math.max(0, Math.min(2, options.temperature))
+    : 0.62
+  const maxTokens = typeof options?.max_tokens === 'number' && Number.isFinite(options.max_tokens)
+    ? Math.max(1, Math.min(1200, Math.floor(options.max_tokens)))
+    : 520
+  normalized.temperature = temperature
+  normalized.max_tokens = maxTokens
+  return normalized
 }
 
 function logCharacterWorkflowImageAttemptFailure(event: CharacterAgentEvent): void {
@@ -209,12 +254,29 @@ function normalizeCharacterAgentSeedArtifacts(
     }))
 }
 
-export interface ChatIpcAttachment {
-  kind: 'image' | 'video'
+export interface ChatIpcMedia {
+  kind: 'image' | 'video' | 'audio'
   name: string
   mimeType: string
   dataUrl?: string
+  url?: string
   size?: number
+  durationMs?: number
+  transcript?: string
+  prompt?: string
+  origin?: 'user' | 'assistant' | 'tool' | 'generated' | 'external'
+  dispatch?: {
+    trigger?: 'manual' | 'model' | 'request' | 'auto' | 'tool' | 'external' | 'probability'
+    mode?: 'turn' | 'permanent'
+    probability?: number
+    externalProbabilityBias?: number
+    reason?: string
+  }
+  context?: {
+    mode?: 'auto' | 'visual' | 'text' | 'none'
+    summary?: string
+  }
+  metadata?: Record<string, unknown>
 }
 
 export interface ChatIpcMaterial {
@@ -227,13 +289,13 @@ export interface ChatIpcMaterial {
 }
 
 export interface ChatSelectMediaRequest {
-  kind?: 'image' | 'video' | 'media'
+  kind?: 'image' | 'video' | 'audio' | 'media'
 }
 
 export interface ChatSelectMediaResult {
   success: boolean
   canceled?: boolean
-  attachments?: ChatIpcAttachment[]
+  media?: ChatIpcMedia[]
   error?: string
 }
 
@@ -299,6 +361,9 @@ export function registerChatIpcHandlers(
       },
     },
   })
+  const chatMediaService = new ChatMediaService({
+    getProxyUrl: () => options.getProxyUrl?.(),
+  })
 
   ipcMain.handle('chat:sendMessage', async (_, request: ChatSendMessageRequest): Promise<ChatSendMessageResult> => {
     try {
@@ -315,6 +380,85 @@ export function registerChatIpcHandlers(
         success: false,
         error: normalizeChatRuntimeError(error),
       }
+    }
+  })
+
+  ipcMain.handle('chat:generateImageMedia', async (_, request: ChatGenerateImageMediaRequest): Promise<ChatGenerateMediaResult> => {
+    try {
+      if (!request.promptContext) {
+        throw new Error('Chat image prompt context is required')
+      }
+      const directedPrompt = await directChatImagePrompt(
+        request.promptContext,
+        async (directorRequest) => {
+          try {
+            const modelConfig = options.getModelConfig()
+            console.info('[ChatMedia] Directing image prompt with chat LLM:', {
+              provider: modelConfig?.provider,
+              modelName: modelConfig?.modelName,
+            })
+            const response = await sendChatTurnWithConfiguredModel(modelConfig, {
+              input: directorRequest.userPrompt,
+              options: normalizeImagePromptDirectorChatOptions(directorRequest.options),
+            }, {
+              systemPrompt: directorRequest.systemPrompt,
+              outputConstraintPrompt: '',
+              defaultOptions: {
+                max_tokens: 520,
+              },
+              llmOptions: {
+                proxyUrl: options.getProxyUrl?.(),
+              },
+            })
+            return response.content
+          } catch (error: any) {
+            console.error('[ChatMedia] Image prompt director failed:', error)
+            throw new Error(`Image prompt director failed before image generation: ${error?.message || String(error)}`)
+          }
+        }
+      )
+      console.info('[ChatMedia] Directed image prompt:', {
+        provider: request.model.provider,
+        modelName: request.modelName || request.model.modelName,
+        prompt: directedPrompt.prompt.slice(0, 500),
+      })
+      const result = await chatMediaService.generateImage({
+        ...request,
+        prompt: directedPrompt.prompt,
+      })
+      const media = result.media as ChatIpcMedia
+      media.metadata = {
+        ...(media.metadata ?? {}),
+        promptDirector: {
+          sourcePrompt: directedPrompt.sourcePrompt,
+          rawResponse: directedPrompt.rawResponse,
+          visualIntent: request.prompt,
+        },
+      }
+      return {
+        success: true,
+        provider: result.provider,
+        model: result.model,
+        media,
+      }
+    } catch (error: any) {
+      console.error('[ChatMedia] Failed to generate image:', error)
+      return { success: false, error: error?.message || String(error) }
+    }
+  })
+
+  ipcMain.handle('chat:synthesizeAudioMedia', async (_, request: ChatSynthesizeAudioMediaRequest): Promise<ChatGenerateMediaResult> => {
+    try {
+      const result = await chatMediaService.synthesizeAudio(request)
+      return {
+        success: true,
+        provider: result.provider,
+        model: result.model,
+        media: result.media as ChatIpcMedia,
+      }
+    } catch (error: any) {
+      console.error('[ChatMedia] Failed to synthesize audio:', error)
+      return { success: false, error: error?.message || String(error) }
     }
   })
 
@@ -477,7 +621,7 @@ export function registerChatIpcHandlers(
         title: 'Select media',
         properties: ['openFile', 'multiSelections'],
         filters: [{
-          name: 'Images and videos',
+          name: 'Media',
           extensions: mediaExtensionsForKind(request?.kind),
         }],
       }
@@ -486,12 +630,12 @@ export function registerChatIpcHandlers(
         ? await dialog.showOpenDialog(owner, dialogOptions)
         : await dialog.showOpenDialog(dialogOptions)
       if (result.canceled || result.filePaths.length === 0) {
-        return { success: true, canceled: true, attachments: [] }
+        return { success: true, canceled: true, media: [] }
       }
-      const attachments = await Promise.all(result.filePaths.map(readMediaAttachment))
+      const media = await Promise.all(result.filePaths.map(readMediaFile))
       return {
         success: true,
-        attachments: attachments.filter(Boolean) as ChatIpcAttachment[],
+        media: media.filter(Boolean) as ChatIpcMedia[],
       }
     } catch (error: any) {
       console.error('[Chat] Failed to select media:', error)
@@ -717,7 +861,25 @@ function getCharacterWorkflowConfiguredModels(options: {
       baseUrl: model.baseUrl ?? '',
     }]
   })
-  const imageModels = options.getChatModels().filter((model) => model.modelType === 'image')
+  const imageModels = options.getChatModels().flatMap((model): ChatIpcConfiguredModel[] => {
+    if (model.modelType !== 'image') {
+      return []
+    }
+    const enabledModels = filterEditCapableImageModelNames(
+      model.provider,
+      model.enabledModels?.length ? model.enabledModels : [model.modelName]
+    )
+    const modelName = isImageModelEditCapable(model.provider, model.modelName)
+      ? model.modelName
+      : enabledModels[0] ?? ''
+    return enabledModels.length
+      ? [{
+          ...model,
+          modelName,
+          enabledModels,
+        }]
+      : []
+  })
   const fallbackChatLLMs = llmModels.length
     ? []
     : options.getChatModels().filter((model) => model.modelType === 'llm')
@@ -788,30 +950,46 @@ function mediaExtensionsForKind(kind: ChatSelectMediaRequest['kind']): string[] 
   if (kind === 'video') {
     return ['mp4', 'mov', 'm4v', 'webm']
   }
-  return ['png', 'jpg', 'jpeg', 'webp', 'gif', 'mp4', 'mov', 'm4v', 'webm']
+  if (kind === 'audio') {
+    return ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'opus', 'flac']
+  }
+  return ['png', 'jpg', 'jpeg', 'webp', 'gif', 'mp4', 'mov', 'm4v', 'webm', 'mp3', 'wav', 'm4a', 'aac', 'ogg', 'opus', 'flac']
 }
 
 function materialFileExtensions(): string[] {
   return [
     'png', 'jpg', 'jpeg', 'webp', 'gif',
-    'txt', 'md', 'markdown', 'json', 'csv', 'tsv', 'yaml', 'yml',
+    'txt', 'md', 'markdown', 'json', 'csv', 'tsv',
     'pdf', 'doc', 'docx', 'rtf',
   ]
 }
 
-async function readMediaAttachment(filePath: string): Promise<ChatIpcAttachment | null> {
+async function readMediaFile(filePath: string): Promise<ChatIpcMedia | null> {
   const mimeType = mimeForPath(filePath)
   if (!mimeType) {
     return null
   }
   const bytes = await readFile(filePath)
   return {
-    kind: mimeType.startsWith('video/') ? 'video' : 'image',
+    kind: mediaKindForMimeType(mimeType),
     name: basename(filePath),
     mimeType,
     size: bytes.byteLength,
     dataUrl: `data:${mimeType};base64,${bytes.toString('base64')}`,
+    origin: 'user',
+    dispatch: { trigger: 'manual', mode: 'turn', probability: 1 },
+    context: { mode: mimeType.startsWith('audio/') ? 'text' : 'auto' },
   }
+}
+
+function mediaKindForMimeType(mimeType: string): ChatIpcMedia['kind'] {
+  if (mimeType.startsWith('video/')) {
+    return 'video'
+  }
+  if (mimeType.startsWith('audio/')) {
+    return 'audio'
+  }
+  return 'image'
 }
 
 async function readMaterialFile(filePath: string): Promise<ChatIpcMaterial | null> {
@@ -857,6 +1035,20 @@ function mimeForPath(filePath: string): string | null {
       return 'video/quicktime'
     case '.webm':
       return 'video/webm'
+    case '.mp3':
+      return 'audio/mpeg'
+    case '.wav':
+      return 'audio/wav'
+    case '.m4a':
+      return 'audio/mp4'
+    case '.aac':
+      return 'audio/aac'
+    case '.ogg':
+      return 'audio/ogg'
+    case '.opus':
+      return 'audio/opus'
+    case '.flac':
+      return 'audio/flac'
     default:
       return null
   }
@@ -875,9 +1067,6 @@ function documentMimeForPath(filePath: string): string | null {
       return 'text/csv'
     case '.tsv':
       return 'text/tab-separated-values'
-    case '.yaml':
-    case '.yml':
-      return 'application/yaml'
     case '.pdf':
       return 'application/pdf'
     case '.doc':
@@ -894,5 +1083,4 @@ function documentMimeForPath(filePath: string): string | null {
 function isTextDocumentMime(mimeType: string): boolean {
   return mimeType.startsWith('text/')
     || mimeType === 'application/json'
-    || mimeType === 'application/yaml'
 }
