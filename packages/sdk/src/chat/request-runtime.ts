@@ -1,7 +1,6 @@
 /**
  * Runtime adapters for configured chat model turns.
  */
-import { createLLMProvider } from '../llm/index.js'
 import {
   createChatSessionFromModel,
   type ChatCharacterContext,
@@ -44,13 +43,6 @@ export interface ChatRuntimeTurnRequest {
 }
 
 export interface ConfiguredChatTurnRequest extends ChatRuntimeTurnRequest {
-  signal?: AbortSignal
-}
-
-export interface ConfiguredTextGenerationRequest {
-  input: string
-  systemPrompt?: string
-  options?: Record<string, unknown>
   signal?: AbortSignal
 }
 
@@ -105,26 +97,6 @@ export async function sendChatTurnWithConfiguredModel(
 ): Promise<ChatTurnResponse> {
   const session = createChatSessionFromModel(toChatModelConfig(modelConfig), options)
   return session.send(normalizeConfiguredChatTurnRequest(request))
-}
-
-export async function generateTextWithConfiguredModel(
-  modelConfig: ConfiguredChatModel | null,
-  request: ConfiguredTextGenerationRequest,
-  options: ConfiguredChatRuntimeOptions = {}
-): Promise<ChatTurnResponse> {
-  const llm = createLLMProvider(toChatModelConfig(modelConfig), options.llmOptions)
-  const response = await llm.chat(
-    createConfiguredTextGenerationMessages(request),
-    {
-      ...(options.defaultOptions ?? {}),
-      ...(request.options ?? {}),
-      ...(request.signal ? { signal: request.signal } : {}),
-    }
-  )
-  return {
-    content: response.content,
-    raw: response,
-  }
 }
 
 export async function *streamChatTurnWithConfiguredModel(
@@ -278,18 +250,6 @@ export function normalizeChatRuntimeTurnRequest(request: ChatRuntimeTurnRequest)
     stream: request?.stream === true,
     ...(runtimeOptions ? { runtimeOptions } : {}),
   }
-}
-
-function createConfiguredTextGenerationMessages(request: ConfiguredTextGenerationRequest): ChatMessage[] {
-  const input = typeof request?.input === 'string' ? request.input.trim() : ''
-  if (!input) {
-    throw new Error('Text generation input is empty')
-  }
-  const systemPrompt = typeof request.systemPrompt === 'string' ? request.systemPrompt.trim() : ''
-  return [{
-    role: 'user',
-    content: systemPrompt ? `${systemPrompt}\n\n${input}` : input,
-  }]
 }
 
 export function normalizeChatMessages(messages: ChatMessage[] | undefined): ChatMessage[] {

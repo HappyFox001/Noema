@@ -56,33 +56,13 @@ type ChatPreloadTTSModel = {
 }
 
 type ChatPreloadImagePromptContext = {
+  strategy?: 'manual-edit' | 'contextual'
   language: 'zh-CN' | 'en-US'
-  baseScene: string
+  baseScene?: string
   manualDirection?: string
-  control?: {
-    purpose?: string
-    clothing?: string
-    lighting?: string
-    camera?: string
-    mood?: string
-    style?: string
-  }
   userText?: string
   assistantText?: string
   character?: any
-  sceneState?: Record<string, unknown>
-  recentMessages?: Array<{
-    id: string
-    role: 'system' | 'user' | 'assistant'
-    text: Record<'zh-CN' | 'en-US', string>
-    media?: Array<{
-      kind: 'image' | 'video' | 'audio'
-      origin?: 'user' | 'assistant' | 'tool' | 'generated' | 'external'
-    }>
-    state?: unknown
-  }>
-  lastImagePrompt?: string
-  referenceImages?: string[]
 }
 
 declare global {

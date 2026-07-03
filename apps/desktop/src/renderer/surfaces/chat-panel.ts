@@ -1447,6 +1447,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     conversation: ChatConversationSummary,
     dispatch: {
       prompt: string
+      trigger: 'manual' | 'model' | 'request'
       referenceImages: string[]
     },
     input: {
@@ -1458,17 +1459,25 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   ): NonNullable<Parameters<typeof window.electronAPI.generateChatImageMedia>[0]['promptContext']> {
     const language = getEffectiveConversationLanguage()
     const assistantMessageId = input.assistantMessageId || ''
+    const userText = input.userText?.trim() || (assistantMessageId ? getPreviousUserMessageText(conversation, assistantMessageId, language) : '')
+    const assistantText = input.assistantText?.trim() || (assistantMessageId ? getAssistantMessageText(conversation, assistantMessageId, language) : '')
+    if (dispatch.trigger === 'manual') {
+      return {
+        strategy: 'manual-edit',
+        language,
+        manualDirection: input.manualDirection?.trim() || '',
+        userText,
+        assistantText,
+      }
+    }
     return {
+      strategy: 'contextual',
       language,
       baseScene: dispatch.prompt,
       manualDirection: input.manualDirection?.trim() || '',
-      userText: input.userText?.trim() || (assistantMessageId ? getPreviousUserMessageText(conversation, assistantMessageId, language) : ''),
-      assistantText: input.assistantText?.trim() || (assistantMessageId ? getAssistantMessageText(conversation, assistantMessageId, language) : ''),
+      userText,
+      assistantText,
       character: getCharacterForConversation(state, conversation),
-      sceneState: conversation.sceneState,
-      recentMessages: conversation.messages,
-      lastImagePrompt: getLastGeneratedImagePrompt(conversation),
-      referenceImages: dispatch.referenceImages,
     }
   }
 
@@ -1479,19 +1488,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   ): string {
     const message = conversation.messages.find((item) => item.id === assistantMessageId && item.role === 'assistant')
     return message ? localizeChatText(message.text, language) : ''
-  }
-
-  function getLastGeneratedImagePrompt(conversation: ChatConversationSummary): string {
-    for (let messageIndex = conversation.messages.length - 1; messageIndex >= 0; messageIndex -= 1) {
-      const media = conversation.messages[messageIndex].media ?? []
-      for (let mediaIndex = media.length - 1; mediaIndex >= 0; mediaIndex -= 1) {
-        const item = media[mediaIndex]
-        if (item.kind === 'image' && item.origin === 'generated' && item.prompt?.trim()) {
-          return item.prompt.trim()
-        }
-      }
-    }
-    return ''
   }
 
   function getPreviousUserMessageText(
@@ -1653,13 +1649,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return ''
     }
     const groups = getUsableChatModelGroups(config)
-    const activeModel = groups.flatMap((group) => group.models).find((model) => model.api.id === config.activeChatId && model.modelName === getActiveChatModelName(config))
+    const activeModel = groups.flatMap((group) => group.models).find((model) => model.api.id === config.activeChatId && model.modelRef === getActiveChatModelName(config))
       ?? groups[0]?.models[0]
       ?? null
-    if (activeModel && (config.activeChatId !== activeModel.api.id || getActiveChatModelName(config) !== activeModel.modelName)) {
+    if (activeModel && (config.activeChatId !== activeModel.api.id || getActiveChatModelName(config) !== activeModel.modelRef)) {
       config.activeChatId = activeModel.api.id
-      config.activeChatModelName = activeModel.modelName
-      activeModel.api.modelName = activeModel.modelName
+      config.activeChatModelName = activeModel.modelRef
+      activeModel.api.modelName = getLocalLLMTransport(activeModel.api) === 'openai_compatible' ? activeModel.modelRef : ''
       void saveChatModelConfig()
     }
     const activeProvider = activeChatRuntimeProvider && groups.some((group) => group.provider.value === activeChatRuntimeProvider)
@@ -1672,7 +1668,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         <button class="chat-runtime-model-current" type="button" data-chat-runtime-action="toggle-model-picker" ${groups.length ? '' : 'disabled'}>
           <span class="chat-runtime-model-icon">${activeModel ? renderChatModelLogo(activeModel.api) : renderProviderLogo('openai-compatible')}</span>
           <span class="chat-runtime-model-copy">
-            <strong>${options.escapeHtml(activeModel?.modelName || (options.getLanguage() === 'zh-CN' ? '无模型' : 'No model'))}</strong>
+            <strong>${options.escapeHtml(activeModel?.label || (options.getLanguage() === 'zh-CN' ? '无模型' : 'No model'))}</strong>
             <small>${options.escapeHtml(activeModel ? getLLMProviderEntry(activeModel.api.provider).label : (options.getLanguage() === 'zh-CN' ? '模型页添加' : 'Add in models'))}</small>
           </span>
           <span class="chat-runtime-model-chevron"></span>
@@ -1688,13 +1684,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return ''
     }
     const groups = getUsableChatModelGroups(config)
-    const activeModel = groups.flatMap((group) => group.models).find((model) => model.api.id === config.activeChatId && model.modelName === getActiveChatModelName(config))
+    const activeModel = groups.flatMap((group) => group.models).find((model) => model.api.id === config.activeChatId && model.modelRef === getActiveChatModelName(config))
       ?? groups[0]?.models[0]
       ?? null
-    if (activeModel && (config.activeChatId !== activeModel.api.id || getActiveChatModelName(config) !== activeModel.modelName)) {
+    if (activeModel && (config.activeChatId !== activeModel.api.id || getActiveChatModelName(config) !== activeModel.modelRef)) {
       config.activeChatId = activeModel.api.id
-      config.activeChatModelName = activeModel.modelName
-      activeModel.api.modelName = activeModel.modelName
+      config.activeChatModelName = activeModel.modelRef
+      activeModel.api.modelName = getLocalLLMTransport(activeModel.api) === 'openai_compatible' ? activeModel.modelRef : ''
       void saveChatModelConfig()
     }
     const activeProvider = activeChatRuntimeProvider && groups.some((group) => group.provider.value === activeChatRuntimeProvider)
@@ -1710,7 +1706,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         <button class="chat-runtime-model-current" type="button" data-chat-runtime-action="toggle-model-picker" ${hasAnyModel ? '' : 'disabled'}>
           <span class="chat-runtime-model-icon">${activeModel ? renderChatModelLogo(activeModel.api) : renderProviderLogo('openai-compatible')}</span>
           <span class="chat-runtime-model-copy">
-            <strong>${options.escapeHtml(activeModel?.modelName || (options.getLanguage() === 'zh-CN' ? '无 LLM' : 'No LLM'))}</strong>
+            <strong>${options.escapeHtml(activeModel?.label || (options.getLanguage() === 'zh-CN' ? '无 LLM' : 'No LLM'))}</strong>
             <small>${options.escapeHtml(activeModel ? getLLMProviderEntry(activeModel.api.provider).label : (options.getLanguage() === 'zh-CN' ? '模型页添加' : 'Add in models'))}</small>
           </span>
           <span class="chat-runtime-media-pills" aria-hidden="true">
@@ -1820,8 +1816,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       </div>
       <div class="chat-runtime-model-options">
         ${activeProviderGroup.models.map((model) => `
-          <button class="${activeModel && model.api.id === activeModel.api.id && model.modelName === activeModel.modelName ? 'selected' : ''}" type="button" data-chat-runtime-model-id="${options.escapeHtml(model.api.id)}" data-chat-runtime-model-name="${options.escapeHtml(model.modelName)}">
-            <strong>${options.escapeHtml(model.modelName)}</strong>
+          <button class="${activeModel && model.api.id === activeModel.api.id && model.modelRef === activeModel.modelRef ? 'selected' : ''}" type="button" data-chat-runtime-model-id="${options.escapeHtml(model.api.id)}" data-chat-runtime-model-name="${options.escapeHtml(model.modelRef)}">
+            <strong>${options.escapeHtml(model.label)}</strong>
             <small>${options.escapeHtml(getLLMProviderEntry(model.api.provider).label)}</small>
           </button>
         `).join('')}
@@ -1873,7 +1869,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     `
   }
 
-  type ChatRuntimeModelOption = { api: ChatModelConfig; modelName: string }
+  type ChatRuntimeModelOption = { api: ChatModelConfig; modelRef: string; label: string }
 
   type ChatRuntimeModelGroup = { provider: ReturnType<typeof getLLMProviderEntry>; models: ChatRuntimeModelOption[] }
 
@@ -1953,7 +1949,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         const provider = getLLMProviderEntry(model.provider)
         const group = grouped.get(provider.value) ?? { provider, models: [] }
         getChatModelChoiceNames(model).forEach((choice) => {
-          group.models.push({ api: model, modelName: choice.label })
+          group.models.push({ api: model, modelRef: choice.modelRef, label: choice.label })
         })
         grouped.set(provider.value, group)
       })
@@ -1973,12 +1969,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   function getChatModelChoiceNames(model: ChatModelConfig): Array<{ modelRef: string; label: string }> {
+    if (getChatModelType(model) === 'llm' && getLocalLLMTransport(model) !== 'openai_compatible') {
+      return [{ modelRef: '__default__', label: 'CLI default' }]
+    }
     const enabled = getEnabledModelNames(model)
     if (enabled.length) {
       return enabled.map((name) => ({ modelRef: name, label: name }))
-    }
-    if (getChatModelType(model) === 'llm' && getLocalLLMTransport(model) !== 'openai_compatible') {
-      return [{ modelRef: '__default__', label: 'CLI default' }]
     }
     return []
   }
@@ -2514,11 +2510,15 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   async function deleteChatMessage(messageId: string, optionsValue: { includeGeneratedFollowups?: boolean } = {}): Promise<void> {
+    const normalizedMessageId = messageId.trim()
+    if (!normalizedMessageId) {
+      return
+    }
     const conversation = getActiveConversation(state)
     if (!conversation) {
       return
     }
-    const deletedMessageIds = collectDeletedMessageIds(conversation.messages, messageId, optionsValue.includeGeneratedFollowups)
+    const deletedMessageIds = collectDeletedMessageIds(conversation.messages, normalizedMessageId, optionsValue.includeGeneratedFollowups)
     if (deletedMessageIds.size === 0) {
       return
     }
@@ -7868,12 +7868,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   async function selectRuntimeChatModel(id: string, modelName: string): Promise<void> {
     const api = chatSystemConfig?.chatModels.find((model) => model.id === id)
-    if (!chatSystemConfig || !api || !isUsableChatApi(api) || !getEnabledModelNames(api).includes(modelName)) {
+    const modelRef = modelName.trim()
+    const availableRefs = api ? getChatModelChoiceNames(api).map((choice) => choice.modelRef) : []
+    if (!chatSystemConfig || !api || !modelRef || !isUsableChatApi(api) || !availableRefs.includes(modelRef)) {
       return
     }
     chatSystemConfig.activeChatId = id
-    chatSystemConfig.activeChatModelName = modelName
-    api.modelName = modelName
+    chatSystemConfig.activeChatModelName = modelRef
+    api.modelName = getLocalLLMTransport(api) === 'openai_compatible' ? modelRef : ''
     openChatRuntimeModelPicker = false
     renderChatRuntimeModelPicker()
     refreshCharacterWorkflowModelsIfVisible()
@@ -8443,7 +8445,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       } else if (action === 'audio') {
         void handleManualMessageMediaAction(action, messageAction.dataset.chatMessageId || '')
       } else if (action === 'delete') {
-        void deleteChatMessage(messageAction.dataset.chatMessageId || '', { includeGeneratedFollowups: true })
+        void deleteChatMessage(messageAction.dataset.chatMessageId || '')
       }
       return
     }

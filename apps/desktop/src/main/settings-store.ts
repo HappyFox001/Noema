@@ -19,6 +19,7 @@ import {
   type TTSProviderType,
 } from './model-provider-catalog.js'
 
+const LOCAL_CLI_DEFAULT_MODEL_REF = '__default__'
 
 function loadSystemConfigFromEnv(): SystemConfig | null {
   const env = process.env
@@ -864,6 +865,9 @@ function normalizeChatEnabledModels(value: unknown, modelName: string): string[]
 function normalizeActiveChatModelName(value: unknown, models: ChatModelConfig[], activeChatId: unknown): string {
   const activeApiId = typeof activeChatId === 'string' ? activeChatId : ''
   const activeApi = models.find(model => model.id === activeApiId) ?? models[0]
+  if (activeApi?.transport === 'codex_local' || activeApi?.transport === 'claude_code_local') {
+    return LOCAL_CLI_DEFAULT_MODEL_REF
+  }
   const enabledModels = normalizeStringList(activeApi?.enabledModels)
   const preferred = typeof value === 'string' ? value.trim() : ''
   return preferred && enabledModels.includes(preferred) ? preferred : enabledModels[0] ?? ''

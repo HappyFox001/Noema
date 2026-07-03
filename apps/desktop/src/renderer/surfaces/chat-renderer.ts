@@ -585,6 +585,7 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     if (!includeActions || !actionMessageId) {
       return ''
     }
+    const deleteMessageId = message.id || actionMessageId
     const imageLabel = language === 'zh-CN' ? '生成图片' : 'Generate image'
     const audioLabel = language === 'zh-CN' ? '生成语音' : 'Generate voice'
     const deleteLabel = language === 'zh-CN' ? '删除回复' : 'Delete reply'
@@ -596,7 +597,7 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
         <button class="chat-message-action" type="button" data-chat-message-action="audio" data-chat-message-id="${options.escapeHtml(actionMessageId)}" title="${options.escapeHtml(audioLabel)}" aria-label="${options.escapeHtml(audioLabel)}">
           <i data-lucide="volume-2" aria-hidden="true"></i>
         </button>
-        <button class="chat-message-action danger" type="button" data-chat-message-action="delete" data-chat-message-id="${options.escapeHtml(actionMessageId)}" title="${options.escapeHtml(deleteLabel)}" aria-label="${options.escapeHtml(deleteLabel)}">
+        <button class="chat-message-action danger" type="button" data-chat-message-action="delete" data-chat-message-id="${options.escapeHtml(deleteMessageId)}" title="${options.escapeHtml(deleteLabel)}" aria-label="${options.escapeHtml(deleteLabel)}">
           <i data-lucide="trash-2" aria-hidden="true"></i>
         </button>
       </div>

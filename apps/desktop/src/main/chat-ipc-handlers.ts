@@ -13,8 +13,8 @@ import {
 } from '@noema/sdk/chat/conversation-runtime'
 import {
   ChatRuntime,
-  generateTextWithConfiguredModel,
   normalizeChatRuntimeError,
+  sendChatTurnWithConfiguredModel,
   type ChatRuntimeEvent,
   type ChatRuntimeTurnRequest,
 } from '@noema/sdk/chat/request-runtime'
@@ -81,6 +81,19 @@ export interface ChatSynthesizeAudioMediaRequest {
   model: TTSModelConfig
   text: string
   name?: string
+}
+
+function normalizeImagePromptDirectorChatOptions(options: Record<string, unknown> | undefined): Record<string, unknown> {
+  const normalized: Record<string, unknown> = {}
+  const temperature = typeof options?.temperature === 'number' && Number.isFinite(options.temperature)
+    ? Math.max(0, Math.min(2, options.temperature))
+    : 0.62
+  const maxTokens = typeof options?.max_tokens === 'number' && Number.isFinite(options.max_tokens)
+    ? Math.max(1, Math.min(1200, Math.floor(options.max_tokens)))
+    : 520
+  normalized.temperature = temperature
+  normalized.max_tokens = maxTokens
+  return normalized
 }
 
 function logCharacterWorkflowImageAttemptFailure(event: CharacterAgentEvent): void {
@@ -377,8 +390,7 @@ export function registerChatIpcHandlers(
       const directedPrompt = await directChatImagePrompt(
         {
           ...request.promptContext,
-          baseScene: request.promptContext.baseScene || request.prompt,
-          referenceImages: request.promptContext.referenceImages ?? request.referenceImages,
+          baseScene: request.promptContext.baseScene || (request.promptContext.strategy === 'contextual' ? request.prompt : ''),
         },
         async (directorRequest) => {
           try {
@@ -387,12 +399,15 @@ export function registerChatIpcHandlers(
               provider: modelConfig?.provider,
               modelName: modelConfig?.modelName,
             })
-            const response = await generateTextWithConfiguredModel(modelConfig, {
+            const response = await sendChatTurnWithConfiguredModel(modelConfig, {
               input: directorRequest.userPrompt,
-              systemPrompt: directorRequest.systemPrompt,
-              options: directorRequest.options,
+              options: normalizeImagePromptDirectorChatOptions(directorRequest.options),
             }, {
-              defaultOptions: directorRequest.options,
+              systemPrompt: directorRequest.systemPrompt,
+              outputConstraintPrompt: '',
+              defaultOptions: {
+                max_tokens: 520,
+              },
               llmOptions: {
                 proxyUrl: options.getProxyUrl?.(),
               },
@@ -420,7 +435,6 @@ export function registerChatIpcHandlers(
           sourcePrompt: directedPrompt.sourcePrompt,
           rawResponse: directedPrompt.rawResponse,
           baseScene: request.prompt,
-          controls: request.promptContext.control ?? {},
         },
       }
       return {
