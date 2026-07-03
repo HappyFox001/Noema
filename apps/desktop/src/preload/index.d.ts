@@ -56,13 +56,12 @@ type ChatPreloadTTSModel = {
 }
 
 type ChatPreloadImagePromptContext = {
-  strategy?: 'manual-edit' | 'contextual'
+  strategy: 'manual-edit' | 'requested-edit' | 'proactive-edit'
   language: 'zh-CN' | 'en-US'
-  baseScene?: string
+  visualIntent?: string
   manualDirection?: string
   userText?: string
   assistantText?: string
-  character?: any
 }
 
 declare global {

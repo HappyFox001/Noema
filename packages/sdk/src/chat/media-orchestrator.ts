@@ -115,8 +115,8 @@ export function buildRoleplayMediaPolicyPrompt(policy: RoleplayMediaPolicy, lang
       '<media_policy>',
       imageIntentEnabled
         ? normalized.imageMode === 'requested'
-          ? '只有当用户明确要求图片、照片、自拍、外观或视觉画面时，才可以在回复末尾追加 <media_intent>{"image":{"prompt":"简短画面意图或场景描述"}}</media_intent>。prompt 只写想画什么，不要写完整生图提示词、UI、标题、字幕或解释；系统会再由图像导演生成最终提示词。'
-          : '当用户明确要求图片，或本轮出现强画面感的角色扮演节点并且一张图会自然推进体验时，可以在回复末尾追加 <media_intent>{"image":{"prompt":"简短画面意图或场景描述"}}</media_intent>。不要频繁发送；prompt 只写想画什么，最终生图提示词由系统图像导演生成。'
+          ? '只有当用户明确要求图片、照片、自拍、外观或视觉画面时，才可以在回复末尾追加 <media_intent>{"image":{"prompt":"简短画面意图"}}</media_intent>。prompt 写用户想看的角色变化核心：场景、动作、姿态、表情、服饰或外观状态、光线和氛围；成人、性感、情色、直接成人、暴露或性化风格如果属于用户请求，就直接保留，不要自动改成不暴露、安全、含蓄或弱化版本；不要写完整生图提示词、UI、标题、字幕或解释。系统会再由图像导演生成最终 edit 提示词。'
+          : '当用户明确要求图片，或本轮出现强画面感的角色扮演节点并且一张图会自然推进体验时，可以在回复末尾追加 <media_intent>{"image":{"prompt":"简短画面意图"}}</media_intent>。不要频繁发送；prompt 写这一轮角色变化的视觉核心：动作、姿态、表情、服饰或外观状态、位置、光线和氛围。成人、性感、情色、直接成人、暴露或性化风格如果属于当前氛围，就直接保留，不要自动改成不暴露、安全、含蓄或弱化版本。最终 edit 提示词由系统图像导演生成。'
         : imageManual
           ? '图片由用户通过界面按钮手动生成；不要主动追加 image media_intent。'
           : '不要主动请求图片生成。',
@@ -135,8 +135,8 @@ export function buildRoleplayMediaPolicyPrompt(policy: RoleplayMediaPolicy, lang
     '<media_policy>',
     imageIntentEnabled
       ? normalized.imageMode === 'requested'
-        ? 'Only when the user explicitly asks for an image, photo, selfie, appearance, or visual scene, append <media_intent>{"image":{"prompt":"short visual intent or scene description"}}</media_intent> at the end. The prompt should say what to depict, not the final image-generation prompt, UI, titles, captions, or explanations; the system image director will create the final prompt.'
-        : 'When the user explicitly asks for an image, or this turn has a strong visual roleplay beat where a visual would naturally improve the experience, append <media_intent>{"image":{"prompt":"short visual intent or scene description"}}</media_intent> at the end. Do not send images frequently; the system image director will create the final generation prompt.'
+        ? 'Only when the user explicitly asks for an image, photo, selfie, appearance, or visual scene, append <media_intent>{"image":{"prompt":"short visual intent"}}</media_intent> at the end. The prompt should capture the requested character change: scene, action, pose, expression, outfit or appearance state, lighting, and mood. If adult, sensual, erotic, explicit, revealing, or sexualized styling belongs to the user request, preserve it directly and do not rewrite it into a non-revealing, safe, implied, or softened version. Do not write the final image prompt, UI, titles, captions, or explanations; the system image director will create the final edit prompt.'
+        : 'When the user explicitly asks for an image, or this turn has a strong visual roleplay beat where a visual would naturally improve the experience, append <media_intent>{"image":{"prompt":"short visual intent"}}</media_intent> at the end. Do not send images frequently; the prompt should capture the character change in this turn: action, posture, expression, outfit or appearance state, location, lighting, and mood. If adult, sensual, erotic, explicit, revealing, or sexualized styling belongs to the moment, preserve it directly and do not rewrite it into a non-revealing, safe, implied, or softened version. The system image director will create the final edit prompt.'
       : imageManual
         ? 'Images are generated manually by the user through the UI button; do not append image media_intent.'
         : 'Do not request image generation.',
@@ -180,7 +180,6 @@ export function decideRoleplayMediaDispatch(input: RoleplayMediaDecisionInput): 
           userText: input.userText,
           assistantText: input.assistantText,
           language: input.language,
-          character: input.character,
           sceneState: input.sceneState,
         }),
         trigger: imageIntent ? 'model' : 'request',
@@ -203,18 +202,15 @@ export function buildRoleplayImageSceneSeed(options: {
   userText: string
   assistantText: string
   language: RoleplayMediaLanguage
-  character?: RoleplayMediaCharacter
   sceneState?: Record<string, unknown>
 }): string {
-  const characterName = localizeRoleplayText(options.character?.displayName, options.language)
   const scene = summarizeSceneState(options.sceneState, options.language)
   const userMoment = compactLine(options.userText)
   const assistantMoment = compactLine(options.assistantText)
   return [
-    assistantMoment ? `Assistant visual beat: ${assistantMoment}` : '',
+    assistantMoment ? `Character turn change: ${assistantMoment}` : '',
     userMoment ? `User request or preceding beat: ${userMoment}` : '',
     scene ? `Current scene state: ${scene}` : '',
-    characterName ? `Main character: ${characterName}` : '',
   ].filter(Boolean).join('\n')
 }
 
@@ -285,13 +281,6 @@ function normalizeSpeechText(value: string): string {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 1600)
-}
-
-function localizeRoleplayText(value: RoleplayMediaLocalizedText | undefined, language: RoleplayMediaLanguage): string {
-  if (!value) {
-    return ''
-  }
-  return value[language] || value['zh-CN'] || value['en-US'] || ''
 }
 
 function summarizeSceneState(sceneState: Record<string, unknown> | undefined, language: RoleplayMediaLanguage): string {

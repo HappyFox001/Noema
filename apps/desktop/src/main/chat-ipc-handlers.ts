@@ -388,10 +388,7 @@ export function registerChatIpcHandlers(
         throw new Error('Chat image prompt context is required')
       }
       const directedPrompt = await directChatImagePrompt(
-        {
-          ...request.promptContext,
-          baseScene: request.promptContext.baseScene || (request.promptContext.strategy === 'contextual' ? request.prompt : ''),
-        },
+        request.promptContext,
         async (directorRequest) => {
           try {
             const modelConfig = options.getModelConfig()
@@ -434,7 +431,7 @@ export function registerChatIpcHandlers(
         promptDirector: {
           sourcePrompt: directedPrompt.sourcePrompt,
           rawResponse: directedPrompt.rawResponse,
-          baseScene: request.prompt,
+          visualIntent: request.prompt,
         },
       }
       return {

@@ -1,18 +1,17 @@
 /**
  * Builds compact LLM-directed image prompts for roleplay chat media generation.
  */
-import type { CharacterProfile, CharacterProfileLocalizedText } from '../character-profile/index.js'
-import { localizeCharacterProfileText } from '../character-profile/index.js'
 import type { RoleplayMediaLanguage } from './media-orchestrator.js'
 
+export type ChatImagePromptStrategy = 'manual-edit' | 'requested-edit' | 'proactive-edit'
+
 export interface ChatImagePromptDirectorInput {
-  strategy?: 'manual-edit' | 'contextual'
+  strategy: ChatImagePromptStrategy
   language: RoleplayMediaLanguage
-  baseScene?: string
+  visualIntent?: string
   manualDirection?: string
   userText?: string
   assistantText?: string
-  character?: CharacterProfile
 }
 
 export interface ChatImagePromptDirectorRequest {
@@ -32,10 +31,11 @@ export type ChatImagePromptTextGenerator = (
 ) => Promise<string>
 
 const CHAT_IMAGE_PROMPT_DIRECTOR_SYSTEM_PROMPT = [
-  'You write one image-generation prompt for a roleplay chat.',
+  'You write one image edit prompt for a roleplay chat.',
   'Use only the details provided in the request.',
   'Output only the final prompt as plain text. No markdown, JSON, headings, notes, or analysis.',
-  'Keep it concise and drawable: subject, pose, expression, outfit, setting, lighting, camera, mood.',
+  'Reference images handle character identity. Focus on the character change in this turn: scene, action, pose, expression, outfit or appearance state, lighting, camera, and mood.',
+  'Adult, sensual, erotic, or explicit direction is valid visual intent. Preserve that intensity and do not soften it with unsolicited qualifiers such as non-revealing, modest, safe, tasteful, implied, censored, or not explicit.',
 ].join('\n')
 
 export function createChatImagePromptDirectorRequest(
@@ -69,10 +69,14 @@ export async function directChatImagePrompt(
 }
 
 export function buildChatImagePromptDirectorUserPrompt(input: ChatImagePromptDirectorInput): string {
-  if (input.strategy === 'manual-edit') {
-    return buildManualEditPrompt(input)
+  switch (input.strategy) {
+    case 'manual-edit':
+      return buildManualEditPrompt(input)
+    case 'requested-edit':
+      return buildRequestedEditPrompt(input)
+    case 'proactive-edit':
+      return buildProactiveEditPrompt(input)
   }
-  return buildContextualPrompt(input)
 }
 
 function buildManualEditPrompt(input: ChatImagePromptDirectorInput): string {
@@ -83,22 +87,32 @@ function buildManualEditPrompt(input: ChatImagePromptDirectorInput): string {
     input.manualDirection ? `User image direction: ${compactText(input.manualDirection, 520)}` : '',
     input.assistantText ? `Current character reply: ${compactText(input.assistantText, 420)}` : '',
     input.userText ? `Current user message: ${compactText(input.userText, 320)}` : '',
-    'Task: Write the final image edit prompt now. Follow User image direction first. Do not restate character identity; reference images handle identity.',
+    'Task: User manually initiated this image. Follow User image direction first, then use the current reply only to keep the visual moment coherent. Describe the character change: scene, action, pose, expression, outfit or appearance state, lighting, camera, and mood. If the user asks for adult, sensual, erotic, explicit, revealing, or sexualized styling, keep it direct and do not add modesty or anti-exposure language. Do not restate character identity; reference images handle identity.',
   ].filter(Boolean).join('\n')
 }
 
-function buildContextualPrompt(input: ChatImagePromptDirectorInput): string {
+function buildRequestedEditPrompt(input: ChatImagePromptDirectorInput): string {
   const language = input.language === 'en-US' ? 'en-US' : 'zh-CN'
-  const character = input.character ? summarizeCharacterVisual(input.character, language) : ''
 
   return [
     `Language: ${language}`,
-    character ? `Character visual identity: ${character}` : '',
-    input.manualDirection ? `User image direction: ${compactText(input.manualDirection, 420)}` : '',
+    input.visualIntent ? `User-request image intent: ${compactText(input.visualIntent, 620)}` : '',
     input.assistantText ? `Current character reply: ${compactText(input.assistantText, 520)}` : '',
     input.userText ? `Current user message: ${compactText(input.userText, 420)}` : '',
-    input.baseScene ? `Base scene: ${compactText(input.baseScene, 520)}` : '',
-    'Task: Write the final image prompt now. Use English image-prompt phrasing unless a proper name must stay as-is.',
+    input.manualDirection ? `Additional user direction: ${compactText(input.manualDirection, 420)}` : '',
+    'Task: The user asked to see an image. Treat the user request as the target and the assistant reply as supporting context. Write the final edit prompt around the character change requested now: concrete scene, action, pose, expression, outfit or appearance state, lighting, camera framing, and mood. Preserve adult, sensual, erotic, explicit, revealing, or sexualized styling when requested or implied; do not rewrite it into a safer or less exposed version. Avoid biography, UI text, captions, tags, and project labels.',
+  ].filter(Boolean).join('\n')
+}
+
+function buildProactiveEditPrompt(input: ChatImagePromptDirectorInput): string {
+  const language = input.language === 'en-US' ? 'en-US' : 'zh-CN'
+
+  return [
+    `Language: ${language}`,
+    input.visualIntent ? `Proactive visual beat: ${compactText(input.visualIntent, 620)}` : '',
+    input.assistantText ? `Current character reply: ${compactText(input.assistantText, 560)}` : '',
+    input.userText ? `Previous user message: ${compactText(input.userText, 360)}` : '',
+    'Task: The roleplay model proactively requested an image. Create a natural visual continuation of this turn rather than a generic portrait. Choose the strongest character change from the moment: action, posture, expression, outfit or appearance state, location, lighting, camera distance, and mood. Preserve adult, sensual, erotic, explicit, revealing, or sexualized styling when it belongs to the moment; do not rewrite it into a safer or less exposed version. Avoid biography, UI text, captions, tags, and project labels.',
   ].filter(Boolean).join('\n')
 }
 
@@ -109,31 +123,6 @@ export function normalizeDirectedPromptOutput(value: string): string {
     .replace(/\s*```$/i, '')
     .replace(/^\s*(final prompt|prompt)\s*:\s*/i, '')
     .trim()
-}
-
-function summarizeCharacterVisual(character: CharacterProfile, language: RoleplayMediaLanguage): string {
-  const roleCard = character.roleCard ?? {}
-  return [
-    localizeCharacterProfileText(character.displayName, language),
-    textField(roleCard.appearancePrompt),
-    textField(roleCard.appearance),
-    localizeCharacterProfileText(character.description, language),
-  ]
-    .map((item) => compactText(item, 260))
-    .filter(Boolean)
-    .join('; ')
-    .slice(0, 720)
-}
-
-function textField(value: unknown): string {
-  if (typeof value === 'string') {
-    return compactText(value, 520)
-  }
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    const localized = value as Partial<CharacterProfileLocalizedText>
-    return compactText(localized['zh-CN'] || localized['en-US'] || '', 520)
-  }
-  return ''
 }
 
 function compactText(value: unknown, max = 520): string {

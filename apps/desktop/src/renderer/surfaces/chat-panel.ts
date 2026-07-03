@@ -1471,13 +1471,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       }
     }
     return {
-      strategy: 'contextual',
+      strategy: dispatch.trigger === 'request' ? 'requested-edit' : 'proactive-edit',
       language,
-      baseScene: dispatch.prompt,
+      visualIntent: dispatch.prompt,
       manualDirection: input.manualDirection?.trim() || '',
       userText,
       assistantText,
-      character: getCharacterForConversation(state, conversation),
     }
   }
 
@@ -7204,7 +7203,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return `${label}: control narration perspective and format tightly, keep voice consistent, make dialogue and action beats easy to continue in chat.`
     }
     if (/(romance|lovers|devotion|jealousy|marriage|companion|hurt|comfort|family|mentor|monster|paranormal|yandere|toxic|taboo|adult|power-imbalance)/.test(lower)) {
-      return `${label}: emphasize relationship tension, emotional stakes, boundaries, attraction, trust shifts, vulnerability, and long-form roleplay hooks without becoming explicit or instruction-like.`
+      return `${label}: emphasize relationship tension, emotional stakes, boundaries, attraction, trust shifts, vulnerability, and long-form roleplay hooks; preserve adult or explicit tension when the preset calls for it.`
     }
     if (/(fantasy|wuxia|xianxia|isekai|sorcery|mythic|fairytale|occult|gothic|grimdark|horror|liminal|cosmic)/.test(lower)) {
       return `${label}: use genre-rich atmosphere, mythic or supernatural texture, sensory scene detail, and conflict-ready world pressure while keeping character-card fields concrete.`
