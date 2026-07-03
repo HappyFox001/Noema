@@ -1152,100 +1152,66 @@ body.theme-day .chat-message-avatar {
 }
 
 .chat-image-prompt-popover {
-  width: min(520px, calc(100% - 18px));
+  width: min(386px, calc(100% - 18px));
   display: grid;
-  gap: 9px;
+  gap: 8px;
   margin-top: 8px;
-  padding: 9px;
-  border: 1px solid rgba(218, 232, 224, 0.105);
-  border-radius: 15px;
+  padding: 10px;
+  border: 1px solid rgba(218, 232, 224, 0.11);
+  border-radius: 16px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.065), rgba(255, 255, 255, 0.024)),
-    rgba(12, 13, 14, 0.88);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.025)),
+    rgba(13, 14, 15, 0.9);
   box-shadow:
-    0 18px 42px rgba(0, 0, 0, 0.28),
-    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+    0 16px 36px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.075);
   -webkit-backdrop-filter: blur(18px);
   backdrop-filter: blur(18px);
 }
 
-.chat-image-prompt-field,
-.chat-image-prompt-control {
+.chat-image-prompt-field {
   display: grid;
-  gap: 6px;
-}
-
-.chat-image-prompt-field span,
-.chat-image-prompt-control span {
-  color: rgba(248, 250, 250, 0.62);
-  font-size: 11px;
-  font-weight: 680;
-  line-height: 1;
-}
-
-.chat-image-prompt-field input,
-.chat-image-prompt-control input {
-  width: 100%;
-  height: 34px;
-  padding: 0 11px;
-  border: 1px solid rgba(248, 250, 250, 0.08);
-  border-radius: 11px;
-  outline: none;
-  background: rgba(0, 0, 0, 0.18);
-  color: rgba(248, 250, 250, 0.88);
-  font: 12px/1.2 var(--font-ui);
-}
-
-.chat-image-prompt-field input::placeholder,
-.chat-image-prompt-control input::placeholder {
-  color: rgba(248, 250, 250, 0.34);
-}
-
-.chat-image-prompt-field input:focus,
-.chat-image-prompt-control input:focus {
-  border-color: rgba(218, 232, 224, 0.24);
-  box-shadow: 0 0 0 3px rgba(218, 232, 224, 0.06);
-}
-
-.chat-image-prompt-control-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 7px;
 }
 
-.chat-image-prompt-control {
-  min-width: 0;
-  padding: 7px;
-  border: 1px solid rgba(248, 250, 250, 0.065);
+.chat-image-prompt-field span {
+  color: rgba(248, 250, 250, 0.68);
+  font-size: 11px;
+  font-weight: 720;
+  line-height: 1;
+}
+
+.chat-image-prompt-field input {
+  width: 100%;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid rgba(248, 250, 250, 0.095);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.025);
+  outline: none;
+  background: rgba(0, 0, 0, 0.2);
+  color: rgba(248, 250, 250, 0.88);
+  font: 12px/1.2 var(--font-ui);
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    background 180ms ease;
 }
 
-.chat-image-prompt-control input {
-  height: 30px;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
+.chat-image-prompt-field input::placeholder {
+  color: rgba(248, 250, 250, 0.32);
 }
 
-.chat-image-prompt-control input:focus {
-  box-shadow: none;
+.chat-image-prompt-field input:focus {
+  border-color: rgba(218, 232, 224, 0.28);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: 0 0 0 3px rgba(218, 232, 224, 0.065);
 }
 
 .chat-image-prompt-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.chat-image-prompt-row small {
-  min-width: 0;
-  color: rgba(248, 250, 250, 0.38);
-  font-size: 11px;
-  line-height: 1.35;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .chat-image-prompt-row span {
@@ -1256,18 +1222,24 @@ body.theme-day .chat-message-avatar {
 }
 
 .chat-image-prompt-row button {
-  height: 28px;
+  min-width: 60px;
+  height: 30px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0 10px;
-  border: 1px solid rgba(248, 250, 250, 0.085);
+  padding: 0 12px;
+  border: 1px solid rgba(248, 250, 250, 0.09);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.025);
-  color: rgba(248, 250, 250, 0.62);
+  color: rgba(248, 250, 250, 0.66);
   font: 11px/1 var(--font-ui);
   font-weight: 680;
   cursor: pointer;
+  transition:
+    transform 150ms ease,
+    border-color 180ms ease,
+    background 180ms ease,
+    color 180ms ease;
 }
 
 .chat-image-prompt-row button:hover {
@@ -1276,17 +1248,17 @@ body.theme-day .chat-message-avatar {
   color: rgba(248, 250, 250, 0.86);
 }
 
+.chat-image-prompt-row button:active {
+  transform: translateY(1px);
+}
+
 .chat-image-prompt-row button.primary {
   border-color: rgba(218, 232, 224, 0.2);
-  background: rgba(218, 232, 224, 0.12);
+  background: rgba(218, 232, 224, 0.13);
   color: rgba(248, 250, 250, 0.9);
 }
 
 @media (max-width: 620px) {
-  .chat-image-prompt-control-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .chat-image-prompt-row {
     align-items: stretch;
     flex-direction: column;

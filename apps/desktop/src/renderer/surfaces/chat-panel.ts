@@ -11,7 +11,6 @@ import {
   summarizeChatConversationOverflow,
   stripChatSceneUpdateMarkup,
   trimChatSummaries,
-  type ChatImagePromptControl,
   type RoleplayMediaIntent,
 } from '@noema/sdk/chat/conversation-runtime'
 import {
@@ -1184,8 +1183,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   async function handleManualMessageMediaAction(
     action: 'image' | 'audio',
     messageId: string,
-    manualImagePrompt = '',
-    manualImageControl: ChatImagePromptControl = {}
+    manualImagePrompt = ''
   ): Promise<void> {
     const conversation = getActiveMutableConversation()
     if (!conversation) {
@@ -1220,15 +1218,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       await generateAssistantImage(conversation, {
         ...decision.image,
         trigger: 'manual',
-        reason: manualImagePrompt.trim() || hasImagePromptControl(manualImageControl)
-          ? 'manual_message_action_with_director_controls'
+        reason: manualImagePrompt.trim()
+          ? 'manual_message_action_with_prompt'
           : 'manual_message_action',
       }, {
         assistantMessageId: messageId,
         userText,
         assistantText,
         manualDirection: manualImagePrompt,
-        control: manualImageControl,
       }, true)
     } else if (action === 'audio' && decision.audio) {
       await generateAssistantAudio(conversation, messageId, { ...decision.audio, trigger: 'manual', reason: 'manual_message_action' }, true)
@@ -1252,16 +1249,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         <span>${options.escapeHtml(zh ? '图片描述' : 'Image direction')}</span>
         <input type="text" data-chat-image-prompt-input autocomplete="off" placeholder="${options.escapeHtml(zh ? '这张图想表现什么、像什么样...' : 'What this image should show or feel like...')}" />
       </label>
-      <div class="chat-image-prompt-control-grid">
-        ${renderManualImageControlField('purpose', zh ? '画面' : 'Purpose', zh ? '自拍 / 场景 / 互动' : 'Selfie / scene / interaction')}
-        ${renderManualImageControlField('clothing', zh ? '服装' : 'Clothing', zh ? '延续 / 换装 / 细节' : 'Continue / change / details')}
-        ${renderManualImageControlField('lighting', zh ? '光线' : 'Lighting', zh ? '窗光 / 夜色 / 暖光' : 'Window / night / warm')}
-        ${renderManualImageControlField('camera', zh ? '镜头' : 'Camera', zh ? 'POV / 半身 / 特写' : 'POV / half body / close-up')}
-        ${renderManualImageControlField('mood', zh ? '氛围' : 'Mood', zh ? '安静 / 张力 / 亲近' : 'Quiet / tension / close')}
-        ${renderManualImageControlField('style', zh ? '风格' : 'Style', zh ? '动漫 / 写实 / 胶片' : 'Anime / photo / film')}
-      </div>
       <div class="chat-image-prompt-row">
-        <small>${options.escapeHtml(zh ? '由 LLM 根据本轮对话、角色图和这些控制生成最终提示词。' : 'An LLM turns this turn, character refs, and controls into the final prompt.')}</small>
         <span>
           <button type="button" data-chat-image-prompt-action="cancel">${options.escapeHtml(zh ? '取消' : 'Cancel')}</button>
           <button class="primary" type="submit">${options.escapeHtml(zh ? '生成' : 'Generate')}</button>
@@ -1272,15 +1260,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     form.querySelector<HTMLInputElement>('[data-chat-image-prompt-input]')?.focus()
   }
 
-  function renderManualImageControlField(key: keyof ChatImagePromptControl, label: string, placeholder: string): string {
-    return `
-      <label class="chat-image-prompt-control">
-        <span>${options.escapeHtml(label)}</span>
-        <input type="text" data-chat-image-control="${options.escapeHtml(key)}" autocomplete="off" placeholder="${options.escapeHtml(placeholder)}" />
-      </label>
-    `
-  }
-
   function closeManualImagePrompt(): void {
     panel.querySelectorAll('.chat-image-prompt-popover').forEach((element) => element.remove())
   }
@@ -1288,25 +1267,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   async function submitManualImagePrompt(form: HTMLFormElement): Promise<void> {
     const messageId = form.dataset.chatMessageId || ''
     const prompt = form.querySelector<HTMLInputElement>('[data-chat-image-prompt-input]')?.value.trim() ?? ''
-    const control = readManualImagePromptControl(form)
     closeManualImagePrompt()
-    await handleManualMessageMediaAction('image', messageId, prompt, control)
-  }
-
-  function readManualImagePromptControl(form: HTMLFormElement): ChatImagePromptControl {
-    const control: ChatImagePromptControl = {}
-    form.querySelectorAll<HTMLInputElement>('[data-chat-image-control]').forEach((input) => {
-      const key = input.dataset.chatImageControl as keyof ChatImagePromptControl | undefined
-      const value = input.value.trim()
-      if (key && value) {
-        control[key] = value
-      }
-    })
-    return control
-  }
-
-  function hasImagePromptControl(control: ChatImagePromptControl): boolean {
-    return Object.values(control).some((value) => String(value || '').trim())
+    await handleManualMessageMediaAction('image', messageId, prompt)
   }
 
   async function generateAssistantAudio(
@@ -1383,7 +1345,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       userText?: string
       assistantText?: string
       manualDirection?: string
-      control?: ChatImagePromptControl
     },
     notifyOnMissing: boolean
   ): Promise<void> {
@@ -1493,7 +1454,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       userText?: string
       assistantText?: string
       manualDirection?: string
-      control?: ChatImagePromptControl
     }
   ): NonNullable<Parameters<typeof window.electronAPI.generateChatImageMedia>[0]['promptContext']> {
     const language = getEffectiveConversationLanguage()
@@ -1502,7 +1462,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       language,
       baseScene: dispatch.prompt,
       manualDirection: input.manualDirection?.trim() || '',
-      control: input.control ?? {},
       userText: input.userText?.trim() || (assistantMessageId ? getPreviousUserMessageText(conversation, assistantMessageId, language) : ''),
       assistantText: input.assistantText?.trim() || (assistantMessageId ? getAssistantMessageText(conversation, assistantMessageId, language) : ''),
       character: getCharacterForConversation(state, conversation),

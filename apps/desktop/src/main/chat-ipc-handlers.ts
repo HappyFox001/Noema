@@ -13,8 +13,8 @@ import {
 } from '@noema/sdk/chat/conversation-runtime'
 import {
   ChatRuntime,
+  generateTextWithConfiguredModel,
   normalizeChatRuntimeError,
-  sendChatTurnWithConfiguredModel,
   type ChatRuntimeEvent,
   type ChatRuntimeTurnRequest,
 } from '@noema/sdk/chat/request-runtime'
@@ -381,20 +381,34 @@ export function registerChatIpcHandlers(
           referenceImages: request.promptContext.referenceImages ?? request.referenceImages,
         },
         async (directorRequest) => {
-          const response = await sendChatTurnWithConfiguredModel(options.getModelConfig(), {
-            input: directorRequest.userPrompt,
-            options: directorRequest.options,
-          }, {
-            systemPrompt: directorRequest.systemPrompt,
-            outputConstraintPrompt: '',
-            defaultOptions: directorRequest.options,
-            llmOptions: {
-              proxyUrl: options.getProxyUrl?.(),
-            },
-          })
-          return response.content
+          try {
+            const modelConfig = options.getModelConfig()
+            console.info('[ChatMedia] Directing image prompt with chat LLM:', {
+              provider: modelConfig?.provider,
+              modelName: modelConfig?.modelName,
+            })
+            const response = await generateTextWithConfiguredModel(modelConfig, {
+              input: directorRequest.userPrompt,
+              systemPrompt: directorRequest.systemPrompt,
+              options: directorRequest.options,
+            }, {
+              defaultOptions: directorRequest.options,
+              llmOptions: {
+                proxyUrl: options.getProxyUrl?.(),
+              },
+            })
+            return response.content
+          } catch (error: any) {
+            console.error('[ChatMedia] Image prompt director failed:', error)
+            throw new Error(`Image prompt director failed before image generation: ${error?.message || String(error)}`)
+          }
         }
       )
+      console.info('[ChatMedia] Directed image prompt:', {
+        provider: request.model.provider,
+        modelName: request.modelName || request.model.modelName,
+        prompt: directedPrompt.prompt.slice(0, 500),
+      })
       const result = await chatMediaService.generateImage({
         ...request,
         prompt: directedPrompt.prompt,
