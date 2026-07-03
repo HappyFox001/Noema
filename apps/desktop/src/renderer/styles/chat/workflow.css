@@ -2221,7 +2221,7 @@ body.chat-workflow-library-resizing * {
   --workflow-agent-record-opacity: 0.58;
   overflow: hidden;
   opacity: var(--workflow-agent-record-opacity);
-  transform: translateY(calc(var(--workflow-agent-record-index) * -2px)) scale(0.992);
+  transform: translateY(calc(var(--workflow-agent-record-index) * 2px)) scale(0.992);
   animation: chat-workflow-agent-record-enter 260ms cubic-bezier(0.2, 0.74, 0.22, 1) both;
 }
 
@@ -2275,7 +2275,7 @@ body.chat-workflow-library-resizing * {
   }
   to {
     opacity: var(--workflow-agent-record-opacity);
-    transform: translateY(calc(var(--workflow-agent-record-index) * -2px)) scale(0.992);
+    transform: translateY(calc(var(--workflow-agent-record-index) * 2px)) scale(0.992);
   }
 }
 

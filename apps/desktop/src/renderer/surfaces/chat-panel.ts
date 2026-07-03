@@ -1,6 +1,8 @@
 /**
  * Owns the standalone chat surface interactions and window mode transitions.
  */
+import elevenLabsIconUrl from '@lobehub/icons-static-svg/icons/elevenlabs.svg?url'
+import fishAudioIconUrl from '@lobehub/icons-static-svg/icons/fishaudio.svg?url'
 import {
   filterEditCapableImageModelNames,
   getImageProviderCatalogEntry,
@@ -1782,18 +1784,31 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const activeImage = getSelectedImageModelChoice()
     const activeTTS = getSelectedTTSModel()
     const hasAnyModel = Boolean(activeModel || activeImage || activeTTS)
+    const activeModelMarkup = [
+      renderRuntimeCurrentModelSegment(
+        activeModel?.label || (options.getLanguage() === 'zh-CN' ? '无 LLM' : 'No LLM'),
+        activeModel ? getLLMProviderEntry(activeModel.api.provider).label : (options.getLanguage() === 'zh-CN' ? '模型页添加' : 'Add in models'),
+        activeModel ? renderChatModelLogo(activeModel.api) : renderProviderLogo('openai-compatible')
+      ),
+      activeImage
+        ? renderRuntimeCurrentModelSegment(
+            activeImage.modelName,
+            activeImage.providerLabel,
+            renderChatModelLogo(activeImage.api)
+          )
+        : '',
+      activeTTS
+        ? renderRuntimeCurrentModelSegment(
+            getRuntimeTTSModelLabel(activeTTS),
+            getTTSProviderCatalogEntry(activeTTS.provider).label,
+            renderTTSProviderLogo(activeTTS.provider)
+          )
+        : '',
+    ].filter(Boolean).join('')
     return `
       <div class="chat-runtime-model-shell is-unified ${openChatRuntimeModelPicker ? 'open' : ''}">
         <button class="chat-runtime-model-current" type="button" data-chat-runtime-action="toggle-model-picker" ${hasAnyModel ? '' : 'disabled'}>
-          <span class="chat-runtime-model-icon">${activeModel ? renderChatModelLogo(activeModel.api) : renderProviderLogo('openai-compatible')}</span>
-          <span class="chat-runtime-model-copy">
-            <strong>${options.escapeHtml(activeModel?.label || (options.getLanguage() === 'zh-CN' ? '无 LLM' : 'No LLM'))}</strong>
-            <small>${options.escapeHtml(activeModel ? getLLMProviderEntry(activeModel.api.provider).label : (options.getLanguage() === 'zh-CN' ? '模型页添加' : 'Add in models'))}</small>
-          </span>
-          <span class="chat-runtime-media-pills" aria-hidden="true">
-            ${renderRuntimeMediaPill('IMG', activeImage ? activeImage.modelName : (options.getLanguage() === 'zh-CN' ? '未配置' : 'None'), Boolean(activeImage))}
-            ${renderRuntimeMediaPill('TTS', activeTTS ? getRuntimeTTSModelLabel(activeTTS) : (options.getLanguage() === 'zh-CN' ? '未配置' : 'None'), Boolean(activeTTS))}
-          </span>
+          <span class="chat-runtime-model-segments">${activeModelMarkup}</span>
           <span class="chat-runtime-model-chevron"></span>
         </button>
         ${openChatRuntimeModelPicker ? renderChatRuntimeUnifiedModelMenu(groups, activeProviderGroup, activeModel, activeImage, activeTTS) : ''}
@@ -1801,11 +1816,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     `
   }
 
-  function renderRuntimeMediaPill(kind: string, label: string, ready: boolean): string {
+  function renderRuntimeCurrentModelSegment(label: string, providerLabel: string, logoMarkup: string): string {
     return `
-      <span class="chat-runtime-media-pill ${ready ? 'ready' : 'missing'}">
-        <b>${options.escapeHtml(kind)}</b>
-        <em>${options.escapeHtml(shortRuntimeModelLabel(label))}</em>
+      <span class="chat-runtime-model-segment">
+        <span class="chat-runtime-model-icon">${logoMarkup}</span>
+        <span class="chat-runtime-model-copy">
+          <strong>${options.escapeHtml(shortRuntimeModelLabel(label))}</strong>
+          <small>${options.escapeHtml(providerLabel)}</small>
+        </span>
       </span>
     `
   }
@@ -1909,7 +1927,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   function renderRuntimeImageModelOptions(activeImage: ChatImageModelChoice | null): string {
     const choices = getImageModelChoices(true)
     if (!choices.length) {
-      return `<div class="chat-runtime-media-empty">${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '在模型页添加 OpenAI Images 或 WaveSpeed' : 'Add OpenAI Images or WaveSpeed in Models')}</div>`
+      return `<div class="chat-runtime-media-empty">${options.escapeHtml(options.getLanguage() === 'zh-CN' ? '在模型页添加 OpenAI、WaveSpeed 或 Gemini' : 'Add OpenAI, WaveSpeed, or Gemini in Models')}</div>`
     }
     return `
       <div class="chat-runtime-media-options">
@@ -1940,7 +1958,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           const selected = activeTTS?.id === model.id
           return `
             <button class="${selected ? 'selected' : ''}" type="button" data-chat-runtime-tts-id="${options.escapeHtml(model.id)}" ${missing.length ? 'disabled' : ''}>
-              <span class="chat-runtime-tts-icon">T</span>
+              <span>${renderTTSProviderLogo(model.provider)}</span>
               <strong>${options.escapeHtml(getRuntimeTTSModelLabel(model))}</strong>
               <small>${options.escapeHtml(missing.length ? missing.join(', ') : provider.label)}</small>
             </button>
@@ -3311,8 +3329,27 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!clean) {
       return '-'
     }
-    const leaf = clean.split(/[/:]/).filter(Boolean).pop() || clean
-    return leaf.length > 18 ? `${leaf.slice(0, 17)}...` : leaf
+    const parts = clean.split(/[/:]/).filter(Boolean)
+    const compact = parts.length >= 2
+      ? parts.slice(-2).join('/')
+      : parts[0] || clean
+    return compact.length > 24 ? `${compact.slice(0, 23)}...` : compact
+  }
+
+  function renderTTSProviderLogo(provider: string): string {
+    const logo = getTTSProviderLogo(provider)
+    return `<img src="${logo.src}" alt="${options.escapeHtml(logo.alt)}" />`
+  }
+
+  function getTTSProviderLogo(provider: string): { src: string; alt: string } {
+    const entry = getTTSProviderCatalogEntry(provider)
+    switch (entry.value) {
+      case 'elevenlabs':
+        return { src: elevenLabsIconUrl, alt: 'ElevenLabs' }
+      case 'fish':
+      default:
+        return { src: fishAudioIconUrl, alt: 'Fish Audio' }
+    }
   }
 
   function selectRuntimeImageModel(ref: string): void {
@@ -3795,7 +3832,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       }
       const latestHeight = Math.ceil(latestRecord.getBoundingClientRect().height)
       statusBody.style.setProperty('--workflow-agent-latest-height', `${latestHeight}px`)
-      statusBody.scrollTop = statusBody.scrollHeight
+      statusBody.scrollTop = 0
     })
   }
 
@@ -4115,7 +4152,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       : (zh ? '展开记录' : 'Expand records')
     const records = getWorkflowAssistantStatusRecords()
     const latestRecord = records[0]
-    const previousRecords = characterWorkflowAssistantStatusExpanded ? records.slice(1, 8).reverse() : []
+    const previousRecords = characterWorkflowAssistantStatusExpanded ? records.slice(1, 8) : []
     const project = characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)
     const session = normalizeCharacterWorkflowGoalSession(project?.goalSession)
     const pendingDecision = session?.pendingDecision
@@ -4153,8 +4190,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             </div>
             <div class="chat-workflow-canvas-assistant-status-body" data-chat-workflow-agent-records>
               ${latestRecord ? `
-                ${previousRecords.map((record, index) => renderWorkflowAssistantStatusRecord(record, 'previous', index + 1)).join('')}
                 ${renderWorkflowAssistantStatusRecord(latestRecord, 'latest', 0)}
+                ${previousRecords.map((record, index) => renderWorkflowAssistantStatusRecord(record, 'previous', index + 1)).join('')}
               ` : ''}
             </div>
           </section>

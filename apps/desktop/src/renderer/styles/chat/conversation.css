@@ -516,7 +516,7 @@ body.theme-day .chat-message-avatar {
 }
 
 .chat-runtime-model-shell.is-unified {
-  max-width: min(520px, 100%);
+  max-width: min(560px, 100%);
 }
 
 .chat-runtime-model-current {
@@ -540,10 +540,10 @@ body.theme-day .chat-message-avatar {
 }
 
 .chat-runtime-model-shell.is-unified .chat-runtime-model-current {
-  max-width: min(520px, calc(100vw - 156px));
-  grid-template-columns: 22px minmax(132px, max-content) auto 14px;
-  gap: 9px;
-  padding-right: 8px;
+  max-width: min(560px, calc(100vw - 156px));
+  grid-template-columns: minmax(0, max-content) 14px;
+  gap: 7px;
+  padding: 4px 8px 4px 6px;
 }
 
 .chat-runtime-model-current:hover,
@@ -581,6 +581,31 @@ body.theme-day .chat-message-avatar {
   display: block;
   object-fit: contain;
   filter: brightness(1.16) saturate(1.08);
+}
+
+.chat-runtime-model-segments {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-runtime-model-segment {
+  min-width: 0;
+  max-width: 138px;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+}
+
+.chat-runtime-model-segment + .chat-runtime-model-segment {
+  padding-left: 8px;
+  border-left: 1px solid rgba(248, 250, 250, 0.075);
+}
+
+.chat-runtime-model-segment:first-child {
+  max-width: 148px;
 }
 
 .chat-runtime-model-copy {
@@ -629,51 +654,6 @@ body.theme-day .chat-message-avatar {
   background: center / 11px 11px no-repeat var(--select-chevron-dark);
   opacity: 0.56;
   transition: transform 150ms ease, opacity 150ms ease;
-}
-
-.chat-runtime-media-pills {
-  min-width: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.chat-runtime-media-pill {
-  max-width: 112px;
-  min-height: 22px;
-  display: inline-grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 5px;
-  padding: 2px 7px 2px 5px;
-  border: 1px solid rgba(255, 255, 255, 0.075);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.035);
-}
-
-.chat-runtime-media-pill.ready {
-  border-color: rgba(129, 174, 164, 0.14);
-  background: rgba(129, 174, 164, 0.07);
-}
-
-.chat-runtime-media-pill b {
-  color: rgba(218, 232, 224, 0.76);
-  font-family: var(--font-mono, monospace);
-  font-size: 8px;
-  font-weight: 800;
-  line-height: 1;
-}
-
-.chat-runtime-media-pill em {
-  overflow: hidden;
-  color: rgba(248, 250, 250, 0.46);
-  font-family: var(--font-ui);
-  font-size: 8.5px;
-  font-style: normal;
-  font-weight: 650;
-  line-height: 1;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .chat-runtime-model-shell.open .chat-runtime-model-chevron {
@@ -834,13 +814,6 @@ body.theme-day .chat-message-avatar {
   width: 14px;
   height: 14px;
   object-fit: contain;
-}
-
-.chat-runtime-tts-icon {
-  color: rgba(218, 232, 224, 0.76);
-  font-family: var(--font-mono, monospace);
-  font-size: 11px;
-  font-weight: 900;
 }
 
 .chat-runtime-media-options strong {
@@ -2091,10 +2064,10 @@ body.chat-fullscreen .chat-shell.threads-collapsed.profile-collapsed {
 
   .chat-runtime-model-shell.is-unified .chat-runtime-model-current {
     max-width: calc(100vw - 104px);
-    grid-template-columns: 22px minmax(0, 1fr) 14px;
+    grid-template-columns: minmax(0, 1fr) 14px;
   }
 
-  .chat-runtime-media-pills {
+  .chat-runtime-model-segment:not(:first-child) {
     display: none;
   }
 
