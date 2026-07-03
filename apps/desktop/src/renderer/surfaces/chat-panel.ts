@@ -77,6 +77,7 @@ import {
   type ChatSystemConfig,
 } from './chat-model-config-page'
 import { createChatRenderer } from './chat-renderer'
+import { extractRoleplaySpeechTexts } from './roleplay-chat-markup'
 import { Trash2, createIcons } from 'lucide'
 
 type ChatResizeEdge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
@@ -1169,7 +1170,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       recentMessages: conversation.messages,
     })
     if (decision.audio) {
-      await generateAssistantAudio(conversation, input.assistantMessageId, decision.audio, decision.audio.trigger === 'request')
+      const speechTexts = extractRoleplaySpeechTexts(input.assistantText)
+      for (const speechText of speechTexts) {
+        await generateAssistantAudio(conversation, input.assistantMessageId, {
+          ...decision.audio,
+          text: speechText,
+        }, decision.audio.trigger === 'request', speechText)
+      }
     }
     if (decision.image) {
       await generateAssistantImage(conversation, decision.image, {
@@ -1183,7 +1190,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   async function handleManualMessageMediaAction(
     action: 'image' | 'audio',
     messageId: string,
-    manualImagePrompt = ''
+    manualImagePrompt = '',
+    inlineSpeechText = ''
   ): Promise<void> {
     const conversation = getActiveMutableConversation()
     if (!conversation) {
@@ -1195,6 +1203,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     const language = getEffectiveConversationLanguage()
     const assistantText = localizeChatText(message.text, language).trim()
+    const speechText = normalizeInlineAudioText(inlineSpeechText)
+    if (action === 'audio' && !speechText) {
+      return
+    }
     const userText = getPreviousUserMessageText(conversation, messageId, language)
     const character = getCharacterForConversation(state, conversation)
     const basePolicy = buildConversationMediaPolicy(conversationSettings)
@@ -1209,7 +1221,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       },
       intent: action === 'image'
         ? { image: true }
-        : { audio: { text: assistantText } },
+        : { audio: { text: speechText } },
       character,
       sceneState: conversation.sceneState,
       recentMessages: conversation.messages,
@@ -1228,7 +1240,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         manualDirection: manualImagePrompt,
       }, true)
     } else if (action === 'audio' && decision.audio) {
-      await generateAssistantAudio(conversation, messageId, { ...decision.audio, trigger: 'manual', reason: 'manual_message_action' }, true)
+      await generateAssistantAudio(conversation, messageId, { ...decision.audio, trigger: 'manual', reason: 'manual_inline_speech_action' }, true, speechText)
     }
   }
 
@@ -1280,7 +1292,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       permanent: boolean
       reason: string
     },
-    notifyOnMissing: boolean
+    notifyOnMissing: boolean,
+    inlineSpeechText = dispatch.text
   ): Promise<void> {
     const model = getSelectedTTSModel()
     if (!model) {
@@ -1293,35 +1306,56 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!message) {
       return
     }
+    const normalizedSpeechText = normalizeInlineAudioText(inlineSpeechText || dispatch.text)
+    if (!normalizedSpeechText) {
+      return
+    }
+    const pendingAudioId = `pending-audio-${Date.now()}-${Math.random().toString(16).slice(2)}`
     const previousState = message.state
+    message.media = [
+      ...(message.media ?? []).filter((item) => item.metadata?.inlineAudioPending !== true),
+      {
+        id: pendingAudioId,
+        kind: 'audio',
+        name: 'voice-pending',
+        mimeType: 'audio/pending',
+        metadata: {
+          inlineAudioPending: true,
+          inlineSpeechText: normalizedSpeechText,
+        },
+      },
+    ]
     message.state = 'generating_audio'
     renderer.replaceMessage(message)
     await persistConversation(conversation)
     try {
       const response = await window.electronAPI.synthesizeChatAudioMedia({
         model,
-        text: dispatch.text,
+        text: normalizedSpeechText,
         name: `${conversation.characterId || 'character'}-voice-${Date.now()}`,
       })
       if (!response.success || !response.media) {
         throw new Error(response.error || 'TTS generation failed')
       }
+      message.media = (message.media ?? []).filter((item) => item.id !== pendingAudioId)
       message.media = [
         ...(message.media ?? []),
         decorateGeneratedMedia(response.media, {
           trigger: dispatch.trigger,
           mode: dispatch.permanent ? 'permanent' : 'turn',
           reason: dispatch.reason,
-          summary: dispatch.text,
+          summary: normalizedSpeechText,
+          inlineSpeechText: normalizedSpeechText,
         }),
       ]
       message.state = previousState === 'generating_audio' ? undefined : previousState
       renderer.replaceMessage(message)
       await persistConversation(conversation)
       if (conversationSettings.mediaVoiceAutoplay) {
-        playGeneratedAudio(assistantMessageId)
+        playGeneratedAudio(assistantMessageId, normalizedSpeechText)
       }
     } catch (error: any) {
+      message.media = (message.media ?? []).filter((item) => item.id !== pendingAudioId)
       message.state = previousState === 'generating_audio' ? undefined : previousState
       renderer.replaceMessage(message)
       await persistConversation(conversation)
@@ -1421,6 +1455,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       mode: 'turn' | 'permanent'
       reason: string
       summary: string
+      inlineSpeechText?: string
     }
   ): ChatMessageMedia {
     return {
@@ -1439,6 +1474,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       metadata: {
         ...(item.metadata ?? {}),
         generatedAt: Date.now(),
+        ...(optionsValue.inlineSpeechText ? { inlineSpeechText: normalizeInlineAudioText(optionsValue.inlineSpeechText) } : {}),
       },
     }
   }
@@ -1504,17 +1540,23 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     return ''
   }
 
-  function playGeneratedAudio(messageId: string): void {
+  function playGeneratedAudio(messageId: string, inlineSpeechText = ''): void {
     window.requestAnimationFrame(() => {
-      const selector = `[data-message-id="${cssEscapeForSelector(messageId)}"] .chat-inline-audio audio, [data-message-id="${cssEscapeForSelector(messageId)}"] audio`
+      const normalizedSpeechText = normalizeInlineAudioText(inlineSpeechText)
+      const selector = normalizedSpeechText
+        ? `[data-message-id="${cssEscapeForSelector(messageId)}"] .chat-inline-audio[data-chat-audio-text="${cssEscapeForSelector(normalizedSpeechText)}"] audio`
+        : `[data-message-id="${cssEscapeForSelector(messageId)}"] .chat-inline-audio audio, [data-message-id="${cssEscapeForSelector(messageId)}"] audio`
       const audio = options.messageList.querySelector<HTMLAudioElement>(selector)
       void audio?.play().catch(() => undefined)
     })
   }
 
-  function playInlineAudioForMessage(messageId: string): boolean {
-    const selector = `[data-message-id="${cssEscapeForSelector(messageId)}"] .chat-inline-audio audio`
-    const audio = options.messageList.querySelector<HTMLAudioElement>(selector)
+  function playInlineAudioForMessage(messageId: string, inlineSpeechText: string, control?: HTMLElement): boolean {
+    const normalizedSpeechText = normalizeInlineAudioText(inlineSpeechText)
+    const audio = control?.closest('p')?.querySelector<HTMLAudioElement>('.chat-inline-audio audio')
+      ?? options.messageList.querySelector<HTMLAudioElement>(
+        `[data-message-id="${cssEscapeForSelector(messageId)}"] .chat-inline-audio[data-chat-audio-text="${cssEscapeForSelector(normalizedSpeechText)}"] audio`
+      )
     if (!audio) {
       return false
     }
@@ -1524,6 +1566,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function handleInlineAudioTarget(control: HTMLElement): void {
     const messageId = control.dataset.chatMessageId || control.closest<HTMLElement>('[data-message-id]')?.dataset.messageId || ''
+    const inlineSpeechText = normalizeInlineAudioText(control.dataset.chatAudioText || control.textContent || '')
     if (!messageId) {
       return
     }
@@ -1531,10 +1574,18 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (messageElement?.dataset.audioState === 'generating') {
       return
     }
-    if (playInlineAudioForMessage(messageId)) {
+    if (playInlineAudioForMessage(messageId, inlineSpeechText, control)) {
       return
     }
-    void handleManualMessageMediaAction('audio', messageId)
+    void handleManualMessageMediaAction('audio', messageId, '', inlineSpeechText)
+  }
+
+  function normalizeInlineAudioText(value: unknown): string {
+    return String(value || '')
+      .replace(/^["“”]+/, '')
+      .replace(/["“”]+$/, '')
+      .replace(/\s+/g, ' ')
+      .trim()
   }
 
   function cssEscapeForSelector(value: string): string {
@@ -8739,18 +8790,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
     handleAction(target.dataset.chatAction || '', target)
-  })
-
-  panel.addEventListener('keydown', (event) => {
-    if (event.key !== 'Enter' && event.key !== ' ') {
-      return
-    }
-    const inlineAudioTarget = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-chat-inline-audio]')
-    if (!inlineAudioTarget || !panel.contains(inlineAudioTarget)) {
-      return
-    }
-    event.preventDefault()
-    handleInlineAudioTarget(inlineAudioTarget)
   })
 
   panel.addEventListener('change', (event) => {

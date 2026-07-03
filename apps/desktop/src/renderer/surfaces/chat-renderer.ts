@@ -8,7 +8,7 @@ import type {
 } from './chat-model'
 import { Image as ImageIcon, Trash2, Volume2, createIcons } from 'lucide'
 import { localizeChatText, type ChatLanguageCode } from './chat-model'
-import { hasRoleplayChatMarkup, renderRoleplayChatMarkup } from './roleplay-chat-markup'
+import { extractRoleplaySpeechTexts, hasRoleplayChatMarkup, renderRoleplayChatMarkup } from './roleplay-chat-markup'
 
 export interface ChatRendererOptions {
   panel: HTMLElement
@@ -247,7 +247,6 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
           ${renderMessageAttachments(message)}
           ${renderOpeningPanel(message)}
           ${renderMessageContent(message, language)}
-          ${renderInlineVoice(message, language)}
           ${includeSceneState ? renderInlineSceneState(language) : ''}
           ${renderMessageActions(message, language, includeActions, actionMessageId)}
           <small>${stateLabel}${options.escapeHtml(localizeChatText(message.createdLabel, language))}</small>
@@ -455,17 +454,15 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     if (!text.trim() && message.media?.length) {
       return ''
     }
-    const voiceAttributes = getInlineVoiceTargetAttributes(message, language)
     if (message.role === 'assistant' && hasRoleplayChatMarkup(text)) {
       const markup = renderRoleplayChatMarkup(text, {
         escapeHtml: options.escapeHtml,
-        speechAudioAttributes: voiceAttributes,
+        getSpeechAudioAttributes: (speechText, index) => getInlineVoiceTargetAttributes(message, language, speechText, index),
+        renderSpeechAudio: (speechText) => renderInlineVoice(message, language, speechText),
       })
       return markup || renderNoemaStreamStatus(language)
     }
-    const voiceClass = voiceAttributes ? ' class="chat-inline-audio-target"' : ''
-    const voiceAttrs = voiceAttributes ? ` ${voiceAttributes}` : ''
-    return `<p${voiceClass}${voiceAttrs}>${options.escapeHtml(text)}</p>`
+    return `<p>${options.escapeHtml(text)}</p>`
   }
 
   function renderOpeningPanel(message: ChatMessage): string {
@@ -554,53 +551,51 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     `
   }
 
-  function renderInlineVoice(message: ChatMessage, language: ChatLanguageCode): string {
-    if (!canUseInlineVoice(message, language)) {
+  function renderInlineVoice(message: ChatMessage, language: ChatLanguageCode, speechText: string): string {
+    if (!canUseInlineVoice(message, language) || !normalizeInlineAudioText(speechText)) {
       return ''
     }
-    const audioItems = getMessageAudioItems(message)
+    const audioItems = getMessageAudioItems(message, speechText)
     if (audioItems.length) {
       return `
-        <div class="chat-inline-audio" data-chat-inline-audio-bar>
+        <span class="chat-inline-audio" data-chat-inline-audio-bar data-chat-audio-text="${options.escapeHtml(normalizeInlineAudioText(speechText))}">
           ${audioItems.map((item) => {
             const source = item.dataUrl || item.url || ''
             return `
-              <div class="chat-inline-audio-item">
-                <i data-lucide="volume-2" aria-hidden="true"></i>
-                <audio src="${options.escapeHtml(source)}" controls preload="metadata" title="${options.escapeHtml(item.name)}"></audio>
-              </div>
+              <audio class="chat-inline-audio-player" src="${options.escapeHtml(source)}" controls preload="metadata" title="${options.escapeHtml(item.name)}"></audio>
             `
           }).join('')}
-        </div>
+        </span>
       `
     }
-    if (message.state !== 'generating_audio') {
+    if (!hasPendingInlineAudio(message, speechText)) {
       return ''
     }
     const label = language === 'zh-CN' ? '生成语音中' : 'Generating voice'
     return `
-      <div class="chat-inline-audio pending" aria-live="polite">
+      <span class="chat-inline-audio pending" data-chat-inline-audio-bar data-chat-audio-text="${options.escapeHtml(normalizeInlineAudioText(speechText))}" aria-live="polite">
         <span>
           <i data-lucide="volume-2" aria-hidden="true"></i>
           ${options.escapeHtml(label)}
         </span>
-      </div>
+      </span>
     `
   }
 
-  function getInlineVoiceTargetAttributes(message: ChatMessage, language: ChatLanguageCode): string {
-    if (!canUseInlineVoice(message, language)) {
+  function getInlineVoiceTargetAttributes(message: ChatMessage, language: ChatLanguageCode, speechText: string, index: number): string {
+    const normalizedSpeech = normalizeInlineAudioText(speechText)
+    if (!canUseInlineVoice(message, language) || !normalizedSpeech) {
       return ''
     }
-    const hasAudio = getMessageAudioItems(message).length > 0
+    const hasAudio = getMessageAudioItems(message, speechText).length > 0
     const label = hasAudio
       ? language === 'zh-CN' ? '播放语音' : 'Play voice'
       : language === 'zh-CN' ? '生成语音' : 'Generate voice'
     return [
       'data-chat-inline-audio="true"',
       `data-chat-message-id="${options.escapeHtml(message.id)}"`,
-      'role="button"',
-      'tabindex="0"',
+      `data-chat-audio-text="${options.escapeHtml(normalizedSpeech)}"`,
+      `data-chat-audio-index="${options.escapeHtml(String(index))}"`,
       `title="${options.escapeHtml(label)}"`,
       `aria-label="${options.escapeHtml(label)}"`,
     ].join(' ')
@@ -613,11 +608,35 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
       && (message.state === undefined || message.state === 'generating_audio')
   }
 
-  function getMessageAudioItems(message: ChatMessage): ChatMessage['media'] {
-    return (message.media ?? []).filter((item) => {
+  function getMessageAudioItems(message: ChatMessage, speechText: string): ChatMessage['media'] {
+    const normalizedSpeech = normalizeInlineAudioText(speechText)
+    const audioItems = (message.media ?? []).filter((item) => {
       const source = item.dataUrl || item.url || ''
       return item.kind === 'audio' && Boolean(source)
     })
+    const matched = audioItems.filter((item) => normalizeInlineAudioText(item.metadata?.inlineSpeechText) === normalizedSpeech)
+    if (matched.length) {
+      return matched
+    }
+    const speechTexts = extractRoleplaySpeechTexts(localizeChatText(message.text, options.getLanguage()))
+    return speechTexts.length === 1
+      ? audioItems.filter((item) => !normalizeInlineAudioText(item.metadata?.inlineSpeechText))
+      : []
+  }
+
+  function hasPendingInlineAudio(message: ChatMessage, speechText: string): boolean {
+    const normalizedSpeech = normalizeInlineAudioText(speechText)
+    return (message.media ?? []).some((item) => item.kind === 'audio'
+      && item.metadata?.inlineAudioPending === true
+      && normalizeInlineAudioText(item.metadata?.inlineSpeechText) === normalizedSpeech)
+  }
+
+  function normalizeInlineAudioText(value: unknown): string {
+    return String(value || '')
+      .replace(/^["“”]+/, '')
+      .replace(/["“”]+$/, '')
+      .replace(/\s+/g, ' ')
+      .trim()
   }
 
   function renderMessageActions(message: ChatMessage, language: ChatLanguageCode, includeActions: boolean, actionMessageId: string): string {
