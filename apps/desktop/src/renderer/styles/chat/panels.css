@@ -257,7 +257,7 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-conversation-settings-p
   padding: 12px;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 520px) {
   .chat-conversation-settings-page,
   body.chat-fullscreen .chat-conversation-settings-page,
   .chat-shell.threads-collapsed .chat-conversation-settings-page,
@@ -736,7 +736,10 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-history-manager {
   width: 100%;
   height: 100%;
   display: block;
-  object-fit: cover;
+  object-fit: contain;
+  background:
+    radial-gradient(circle at 50% 18%, rgba(248, 250, 250, 0.08), transparent 34%),
+    rgba(255, 255, 255, 0.022);
 }
 
 .chat-profile-carousel-empty {
@@ -781,13 +784,14 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-history-manager {
 .chat-profile-overview-panel {
   min-height: 430px;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 0.78fr) minmax(170px, 1.22fr);
   gap: 10px;
   padding: 12px;
 }
 
 .chat-profile-intro-card {
   min-width: 0;
+  overflow: hidden;
   padding: 14px;
 }
 
@@ -882,7 +886,7 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-history-manager {
   white-space: pre-wrap;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 520px) {
   .chat-character-profile-panel,
   body.chat-fullscreen .chat-character-profile-panel,
   .chat-shell.threads-collapsed .chat-character-profile-panel,
@@ -919,7 +923,8 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-history-manager {
   .chat-profile-carousel-card,
   .chat-profile-overview-panel,
   .chat-profile-overview-card {
-    min-height: 260px;
+    min-height: 240px;
+    max-height: none;
   }
 
   .chat-profile-carousel-btn {
@@ -2717,8 +2722,8 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-character-profile-panel
 }
 
 .chat-profile-visual-stage {
-  --chat-profile-visual-height: clamp(300px, 44dvh, 410px);
-  grid-template-columns: minmax(240px, 0.96fr) minmax(0, 1.04fr);
+  --chat-profile-visual-height: clamp(300px, 46vw, 430px);
+  grid-template-columns: minmax(190px, 0.96fr) minmax(0, 1.04fr);
   gap: 13px;
   align-items: stretch;
 }
@@ -2771,6 +2776,77 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-character-profile-panel
 .chat-profile-info-card p {
   font-size: 12px;
   line-height: 1.58;
+}
+
+.chat-character-profile-dialog {
+  container-type: inline-size;
+}
+
+.chat-character-profile-body {
+  padding: 0 clamp(10px, 2cqw, 18px) clamp(10px, 2cqw, 18px);
+}
+
+.chat-profile-sheet {
+  gap: clamp(8px, 1.45cqw, 13px);
+}
+
+.chat-profile-title-row {
+  gap: clamp(8px, 1.55cqw, 14px);
+}
+
+.chat-profile-title-row h3 {
+  font-size: clamp(24px, 4.4cqw, 40px);
+}
+
+.chat-profile-delete-btn {
+  height: clamp(28px, 3.6cqw, 32px);
+  min-width: clamp(78px, 10.2cqw, 92px);
+  padding: 0 clamp(9px, 1.35cqw, 12px);
+  border-radius: clamp(8px, 1.2cqw, 10px);
+}
+
+.chat-profile-delete-confirm {
+  gap: clamp(8px, 1.35cqw, 12px);
+  padding: clamp(9px, 1.35cqw, 12px);
+  border-radius: clamp(10px, 1.4cqw, 12px);
+}
+
+.chat-profile-visual-stage {
+  --chat-profile-visual-height: clamp(300px, 48cqw, 430px);
+  grid-template-columns: minmax(180px, 0.96fr) minmax(0, 1.04fr);
+  gap: clamp(8px, 1.45cqw, 13px);
+}
+
+.chat-profile-carousel-card,
+.chat-profile-overview-panel {
+  border-radius: clamp(10px, 1.55cqw, 14px);
+}
+
+.chat-profile-overview-panel {
+  gap: clamp(7px, 1cqw, 9px);
+  padding: clamp(8px, 1.12cqw, 10px);
+}
+
+.chat-profile-intro-card {
+  padding: clamp(9px, 1.35cqw, 12px);
+}
+
+.chat-profile-intro-card h4 {
+  font-size: clamp(20px, 3.8cqw, 34px);
+}
+
+.chat-profile-intro-card p,
+.chat-profile-info-card p {
+  font-size: clamp(11px, 1.35cqw, 12px);
+}
+
+.chat-profile-info-grid {
+  gap: clamp(7px, 1cqw, 9px);
+}
+
+.chat-profile-info-card {
+  padding: clamp(9px, 1.35cqw, 12px) clamp(10px, 1.45cqw, 13px);
+  border-radius: clamp(10px, 1.35cqw, 12px);
 }
 
 .chat-settings-page-layout,
@@ -3273,40 +3349,14 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-character-profile-panel
   .chat-history-manager,
   body.chat-fullscreen .chat-history-manager,
   .chat-shell.threads-collapsed .chat-history-manager,
-  body.chat-fullscreen .chat-shell.threads-collapsed .chat-history-manager,
-  .chat-character-profile-panel,
-  body.chat-fullscreen .chat-character-profile-panel,
-  .chat-shell.threads-collapsed .chat-character-profile-panel,
-  body.chat-fullscreen .chat-shell.threads-collapsed .chat-character-profile-panel {
+  body.chat-fullscreen .chat-shell.threads-collapsed .chat-history-manager {
     padding: 10px;
   }
 
   .chat-conversation-settings-dialog,
-  .chat-history-dialog,
-  .chat-character-profile-dialog {
+  .chat-history-dialog {
     width: calc(100vw - 20px);
     max-height: calc(100dvh - 20px);
-  }
-
-  .chat-profile-visual-stage,
-  .chat-profile-info-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .chat-profile-visual-stage {
-    --chat-profile-visual-height: clamp(240px, 38dvh, 320px);
-  }
-
-  .chat-profile-delete-confirm {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .chat-profile-delete-actions {
-    width: 100%;
-  }
-
-  .chat-profile-delete-actions button {
-    flex: 1 1 0;
   }
 
   .chat-settings-language-section,
