@@ -15,7 +15,7 @@ import claudeCodeLogoUrl from '../assets/claude_code_logo.png'
 import codexLogoUrl from '../assets/codex_logo.png'
 /*
  * Hidden image-provider icon imports kept as notes for future re-enablement.
- * Current image provider support is intentionally limited to OpenAI Images and WaveSpeedAI.
+ * Current image provider support is intentionally limited to OpenAI, WaveSpeedAI, and Gemini.
  *
  * import adobeFireflyIconUrl from '@lobehub/icons-static-svg/icons/adobefirefly-color.svg?url'
  * import alibabaCloudIconUrl from '@lobehub/icons-static-svg/icons/alibabacloud-color.svg?url'
@@ -33,10 +33,12 @@ import codexLogoUrl from '../assets/codex_logo.png'
  * import volcengineIconUrl from '@lobehub/icons-static-svg/icons/volcengine-color.svg?url'
  */
 import {
+  filterEditCapableImageModelNames,
   IMAGE_PROVIDER_CATALOG,
   LLM_PROVIDER_CATALOG,
   getImageProviderCatalogEntry,
   getLLMProviderCatalogEntry,
+  isImageModelEditCapable,
   type ImageProviderType,
   type LLMProviderType,
 } from '../../main/model-provider-catalog'
@@ -83,7 +85,7 @@ export interface ChatModelConfigPageOptions {
 
 export function createDefaultChatModel(id = 'default-chat', modelType: 'llm' | 'image' = 'llm'): ChatModelConfig {
   const provider = modelType === 'image'
-    ? getImageProviderCatalogEntry('openai-image')
+    ? getImageProviderCatalogEntry('openai')
     : getLLMProviderCatalogEntry('openai-compatible')
   return {
     id,
@@ -131,13 +133,22 @@ export function getEnabledModelNames(model: ChatModelConfig | undefined): string
   const enabled = normalizeModelNameList(model.enabledModels)
   const current = model.modelName?.trim()
   if (model.modelType === 'image' && current) {
-    return [current, ...enabled.filter((name) => name !== current)]
+    const filtered = filterEditCapableImageModelNames(model.provider, enabled)
+    return isImageModelEditCapable(model.provider, current)
+      ? [current, ...filtered.filter((name) => name !== current)]
+      : filtered
+  }
+  if (model.modelType === 'image') {
+    return filterEditCapableImageModelNames(model.provider, enabled)
   }
   return enabled
 }
 
 export function getAvailableModelNames(model: ChatModelConfig): string[] {
-  return normalizeModelNameList(model.availableModels)
+  const available = normalizeModelNameList(model.availableModels)
+  return model.modelType === 'image'
+    ? filterEditCapableImageModelNames(model.provider, available)
+    : available
 }
 
 export function normalizeModelNameList(value: unknown): string[] {
@@ -477,7 +488,9 @@ function getImageProviderLogo(provider: ImageProviderType): { src: string; alt: 
   switch (provider) {
     case 'wavespeed':
       return { src: wavespeedLogoUrl, alt: 'WaveSpeedAI' }
-    case 'openai-image':
+    case 'gemini':
+      return { src: geminiIconUrl, alt: 'Gemini' }
+    case 'openai':
     default:
       return { src: openAIIconUrl, alt: 'OpenAI Images' }
   }
@@ -485,9 +498,8 @@ function getImageProviderLogo(provider: ImageProviderType): { src: string; alt: 
 
 /*
  * Hidden image-provider logo mappings kept for future re-enablement.
- * They are not reachable while IMAGE_PROVIDER_CATALOG is limited to OpenAI Images and WaveSpeedAI.
+ * They are not reachable while IMAGE_PROVIDER_CATALOG is limited to OpenAI, WaveSpeedAI, and Gemini.
  *
- * google-imagen -> geminiIconUrl, Google Imagen
  * stability -> stabilityIconUrl, Stability AI
  * replicate -> replicateIconUrl, Replicate
  * fal -> falIconUrl, fal.ai

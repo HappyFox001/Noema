@@ -7,6 +7,7 @@ import { readFile } from 'fs/promises'
 import { basename, extname } from 'path'
 import { listChatModelsWithProvider } from '@noema/sdk/chat/model-list'
 import { ChatMediaService } from '@noema/sdk/chat/media-service'
+import { filterEditCapableImageModelNames, isImageModelEditCapable } from '@noema/sdk/image/catalog'
 import {
   directChatImagePrompt,
   type ChatImagePromptDirectorInput,
@@ -860,7 +861,25 @@ function getCharacterWorkflowConfiguredModels(options: {
       baseUrl: model.baseUrl ?? '',
     }]
   })
-  const imageModels = options.getChatModels().filter((model) => model.modelType === 'image')
+  const imageModels = options.getChatModels().flatMap((model): ChatIpcConfiguredModel[] => {
+    if (model.modelType !== 'image') {
+      return []
+    }
+    const enabledModels = filterEditCapableImageModelNames(
+      model.provider,
+      model.enabledModels?.length ? model.enabledModels : [model.modelName]
+    )
+    const modelName = isImageModelEditCapable(model.provider, model.modelName)
+      ? model.modelName
+      : enabledModels[0] ?? ''
+    return enabledModels.length
+      ? [{
+          ...model,
+          modelName,
+          enabledModels,
+        }]
+      : []
+  })
   const fallbackChatLLMs = llmModels.length
     ? []
     : options.getChatModels().filter((model) => model.modelType === 'llm')

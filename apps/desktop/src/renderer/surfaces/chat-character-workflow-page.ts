@@ -192,6 +192,13 @@ interface RunCharacterPreviewRow {
   value: string
 }
 
+interface RunCharacterPreviewImage {
+  key: string
+  kind: 'overview' | 'avatar' | 'character'
+  label: string
+  uri: string
+}
+
 interface WorkflowMaterialItem {
   id: string
   kind: 'image' | 'document'
@@ -2614,15 +2621,15 @@ function renderRunProgressOverlay(options: CharacterWorkflowPageOptions): string
 function renderRunCharacterInspector(options: CharacterWorkflowPageOptions): string {
   const artifacts = getRoleResourceArtifacts(options.runState?.artifacts ?? [])
   const rows = createRunCharacterRows(artifacts, options)
-  const images = artifacts
-    .map((artifact) => ({ artifact, image: getArtifactImage(artifact.data) }))
-    .filter((item) => item.image)
-    .slice(-8)
+  const images = createRunCharacterPreviewImages(artifacts, options)
+  const overviewImage = images.find((image) => image.kind === 'overview')
+  const avatarImage = images.find((image) => image.kind === 'avatar')
+  const sampleImages = images.filter((image) => image.kind === 'character').slice(-5)
+  const characterImages = avatarImage ? [avatarImage, ...sampleImages] : sampleImages.slice(-6)
   return `
     <aside class="chat-workflow-inspector chat-resource-inspector chat-run-character-inspector" aria-label="${options.escapeHtml(ui(options, '角色资源详情', 'Character resource details'))}">
       <div class="chat-workflow-inspector-scroll chat-run-character-scroll">
         <header class="chat-run-character-hero">
-          ${images[0]?.image ? `<img src="${options.escapeHtml(images[0].image)}" alt="${options.escapeHtml(ui(options, '角色图', 'Character image'))}">` : ''}
           <div class="chat-run-character-hero-copy">
             <span>${options.escapeHtml(ui(options, '角色资源', 'Character Resource'))}</span>
             <strong>${options.escapeHtml(getRunCharacterTitle(rows, options))}</strong>
@@ -2632,6 +2639,12 @@ function renderRunCharacterInspector(options: CharacterWorkflowPageOptions): str
             <button type="button" data-chat-workflow-action="chat-test">${options.escapeHtml(ui(options, '聊天测试', 'Chat Test'))}</button>
           </div>
         </header>
+        ${overviewImage ? `
+          <figure class="chat-run-character-overview" data-run-character-image-key="${options.escapeHtml(overviewImage.key)}">
+            <img src="${options.escapeHtml(overviewImage.uri)}" alt="${options.escapeHtml(overviewImage.label)}">
+            <figcaption>${options.escapeHtml(overviewImage.label)}</figcaption>
+          </figure>
+        ` : ''}
         <section class="chat-run-character-fields" data-run-character-fields>
           ${rows.map((row) => `
             <article data-run-character-field-key="${options.escapeHtml(row.key)}">
@@ -2640,12 +2653,12 @@ function renderRunCharacterInspector(options: CharacterWorkflowPageOptions): str
             </article>
           `).join('')}
         </section>
-        ${images.length ? `
-          <section class="chat-run-character-carousel" data-run-character-images aria-label="${options.escapeHtml(ui(options, '角色图片', 'Character images'))}">
-            ${images.map((item, index) => `
-              <figure data-run-character-image-key="${options.escapeHtml(item.artifact.id ?? `${item.artifact.type}-${index}`)}">
-                <img src="${options.escapeHtml(item.image)}" alt="${options.escapeHtml(item.artifact.title ?? `${ui(options, '角色图片', 'Character image')} ${index + 1}`)}">
-                <figcaption>${options.escapeHtml(item.artifact.title ?? `${index + 1} / ${images.length}`)}</figcaption>
+        ${characterImages.length ? `
+          <section class="chat-run-character-gallery" data-run-character-images aria-label="${options.escapeHtml(ui(options, '角色图片', 'Character images'))}">
+            ${characterImages.map((image) => `
+              <figure data-run-character-image-key="${options.escapeHtml(image.key)}" class="is-${options.escapeHtml(image.kind)}">
+                <img src="${options.escapeHtml(image.uri)}" alt="${options.escapeHtml(image.label)}">
+                <figcaption>${options.escapeHtml(image.label)}</figcaption>
               </figure>
             `).join('')}
           </section>
@@ -2653,6 +2666,81 @@ function renderRunCharacterInspector(options: CharacterWorkflowPageOptions): str
       </div>
     </aside>
   `
+}
+
+function createRunCharacterPreviewImages(
+  artifacts: NonNullable<CharacterResourceRunState['artifacts']>,
+  options: CharacterWorkflowPageOptions
+): RunCharacterPreviewImage[] {
+  const byTarget = new Map<string, RunCharacterPreviewImage>()
+  artifacts.forEach((artifact, index) => {
+    if (artifact.type !== 'image-asset') {
+      return
+    }
+    const uri = getArtifactImage(artifact.data).trim()
+    if (!uri) {
+      return
+    }
+    const data = getRunArtifactDataRecord(artifact)
+    if (data.accepted === false) {
+      return
+    }
+    const kind = getRunCharacterPreviewImageKind(artifact)
+    const key = getRunImageDisplayKey(artifact) || artifact.id || `${artifact.type}:${index}`
+    byTarget.set(key, {
+      key: `${kind}:${sanitizeResourceId(key)}`,
+      kind,
+      label: getRunCharacterPreviewImageLabel(artifact, kind, options),
+      uri,
+    })
+  })
+
+  const seenUris = new Set<string>()
+  return [...byTarget.values()]
+    .filter((image) => {
+      const uriKey = image.uri.trim()
+      if (seenUris.has(uriKey)) {
+        return false
+      }
+      seenUris.add(uriKey)
+      return true
+    })
+    .sort((left, right) => getRunCharacterPreviewImagePriority(left.kind) - getRunCharacterPreviewImagePriority(right.kind))
+}
+
+function getRunCharacterPreviewImageKind(artifact: CharacterRunArtifact): RunCharacterPreviewImage['kind'] {
+  const data = getRunArtifactDataRecord(artifact)
+  const role = typeof data.imageRole === 'string' ? data.imageRole : ''
+  const targetNodeId = getRunArtifactTargetNodeId(artifact)
+  if (role === 'character-overview-sheet' || targetNodeId === 'overview-sheet-image-target') {
+    return 'overview'
+  }
+  if (role === 'avatar' || targetNodeId === 'avatar-image-target') {
+    return 'avatar'
+  }
+  return 'character'
+}
+
+function getRunCharacterPreviewImageLabel(
+  artifact: CharacterRunArtifact,
+  kind: RunCharacterPreviewImage['kind'],
+  options: CharacterWorkflowPageOptions
+): string {
+  if (kind === 'overview') {
+    return ui(options, '设定总览', 'Overview sheet')
+  }
+  if (kind === 'avatar') {
+    return ui(options, '头像', 'Avatar')
+  }
+  const data = getRunArtifactDataRecord(artifact)
+  const targetTitle = typeof data.targetTitle === 'string' ? data.targetTitle.trim() : ''
+  return targetTitle || artifact.title || ui(options, '角色图', 'Character image')
+}
+
+function getRunCharacterPreviewImagePriority(kind: RunCharacterPreviewImage['kind']): number {
+  if (kind === 'overview') return 0
+  if (kind === 'avatar') return 1
+  return 2
 }
 
 function createRunCharacterRows(

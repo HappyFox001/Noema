@@ -2,6 +2,7 @@
  * Provider-specific model listing for chat model configuration.
  */
 import { createProxyFetch } from '../utils/proxy.js'
+import { isImageModelEditCapable } from '../image/catalog.js'
 
 export interface ChatModelListRequest {
   provider?: string
@@ -56,7 +57,7 @@ export function buildChatModelListCandidates(request: ChatModelListRequest): Cha
   const candidates: ChatModelListCandidate[] = []
   const imageModels = request.modelType === 'image'
 
-  if (!imageModels && provider === 'gemini') {
+  if (provider === 'gemini') {
     const nativeGeminiBase = getGeminiNativeBaseUrl(baseUrl)
     if (apiKey && nativeGeminiBase) {
       candidates.push({
@@ -143,6 +144,10 @@ function matchesRequestedModelType(item: unknown, request: ChatModelListRequest)
     return matchesImageModelName(item, request.provider)
   }
   const source = item && typeof item === 'object' ? item as Record<string, unknown> : {}
+  const modelName = readModelListItemName(item)
+  if (matchesImageModelName(modelName, request.provider)) {
+    return true
+  }
   const descriptors = [
     source.type,
     source.model_type,
@@ -159,13 +164,18 @@ function matchesRequestedModelType(item: unknown, request: ChatModelListRequest)
     .map((value) => typeof value === 'string' ? value.toLowerCase() : '')
     .filter(Boolean)
 
-  if (descriptors.some((value) => value.includes('image'))) {
-    return true
-  }
-  if (descriptors.length > 0) {
+  if (!descriptors.length) {
     return false
   }
-  return matchesImageModelName(readModelListItemName(item), request.provider)
+  const imageLike = descriptors.some((value) => value.includes('image') || value.includes('photo') || value.includes('visual'))
+  const editLike = descriptors.some((value) =>
+    value.includes('edit') ||
+    value.includes('image-to-image') ||
+    value.includes('img2img') ||
+    value.includes('reference') ||
+    value.includes('modify')
+  )
+  return imageLike && editLike
 }
 
 function buildModelsRequestHeaders(request: ChatModelListRequest): Record<string, string> {
@@ -353,18 +363,7 @@ function readModelListItemName(item: unknown): string {
 }
 
 function matchesImageModelName(name: string, provider: string | undefined): boolean {
-  const normalizedProvider = String(provider || '').toLowerCase()
-  const normalized = name.toLowerCase()
-  if (!normalized) {
-    return false
-  }
-  if (normalizedProvider === 'wavespeed') {
-    return true
-  }
-  if (normalizedProvider === 'openai-image') {
-    return /^(gpt-image|dall-e)/i.test(name)
-  }
-  return false
+  return isImageModelEditCapable(provider, name)
 }
 
 function parseJson(text: string): unknown {

@@ -9,10 +9,12 @@ import { join } from 'path'
 import { existsSync } from 'fs'
 import { mkdir, readFile, writeFile } from 'fs/promises'
 import {
+  filterEditCapableImageModelNames,
   getASRProviderCatalogEntry,
   getImageProviderCatalogEntry,
   getLLMProviderCatalogEntry,
   getTTSProviderCatalogEntry,
+  isImageModelEditCapable,
   type ASRProviderType,
   type ImageProviderType,
   type LLMProviderType,
@@ -87,12 +89,17 @@ function loadSystemConfigFromEnv(): SystemConfig | null {
       const providerEntry = modelType === 'image'
         ? getImageProviderCatalogEntry(provider)
         : getLLMProviderCatalogEntry(provider)
+      const imageModelName = modelType === 'image'
+        ? normalizeImageModelName(providerEntry.value, modelName || providerEntry.defaultModel, providerEntry.defaultModel)
+        : ''
       chatModels.push({
         id: `env-chat-${i}`,
         modelType,
         provider: providerEntry.value,
-        modelName: modelName || providerEntry.defaultModel,
-        enabledModels: [modelName || providerEntry.defaultModel].filter(Boolean),
+        modelName: modelType === 'image' ? imageModelName : modelName || providerEntry.defaultModel,
+        enabledModels: modelType === 'image'
+          ? [imageModelName].filter(Boolean)
+          : [modelName || providerEntry.defaultModel].filter(Boolean),
         availableModels: [],
         apiKey: apiKey || '',
         baseUrl: baseUrl || providerEntry.defaultBaseUrl
@@ -800,16 +807,18 @@ function normalizeChatModelConfig(value: unknown, fallback: ChatModelConfig, ind
   if (modelType === 'image') {
     const provider = normalizeImageProvider(source.provider, fallback?.provider)
     const providerEntry = getImageProviderCatalogEntry(provider)
-    const modelName = typeof source.modelName === 'string'
-      ? source.modelName
-      : fallback?.modelName || providerEntry.defaultModel
+    const modelName = normalizeImageModelName(
+      provider,
+      typeof source.modelName === 'string' ? source.modelName : fallback?.modelName || providerEntry.defaultModel,
+      providerEntry.defaultModel
+    )
     return {
       id: typeof source.id === 'string' && source.id ? source.id : fallback?.id || `chat-${index + 1}`,
       modelType,
       provider,
       modelName,
-      enabledModels: normalizeChatEnabledModels(source.enabledModels, modelName),
-      availableModels: normalizeStringList(source.availableModels),
+      enabledModels: normalizeImageChatEnabledModels(provider, source.enabledModels, modelName),
+      availableModels: filterEditCapableImageModelNames(provider, normalizeStringList(source.availableModels)),
       modelsFetchedAt: normalizeTimestamp(source.modelsFetchedAt),
       apiKey: typeof source.apiKey === 'string' ? source.apiKey : fallback?.apiKey || '',
       baseUrl: typeof source.baseUrl === 'string' ? source.baseUrl : fallback?.baseUrl || providerEntry.defaultBaseUrl,
@@ -862,13 +871,31 @@ function normalizeChatEnabledModels(value: unknown, modelName: string): string[]
   return current ? [current] : []
 }
 
+function normalizeImageModelName(provider: string | undefined, value: unknown, fallback: string): string {
+  const current = typeof value === 'string' ? value.trim() : ''
+  if (current && isImageModelEditCapable(provider, current)) {
+    return current
+  }
+  return isImageModelEditCapable(provider, fallback) ? fallback : ''
+}
+
+function normalizeImageChatEnabledModels(provider: string | undefined, value: unknown, modelName: string): string[] {
+  const enabledModels = filterEditCapableImageModelNames(provider, normalizeStringList(value))
+  if (modelName && !enabledModels.includes(modelName)) {
+    return [modelName, ...enabledModels]
+  }
+  return enabledModels.length ? enabledModels : modelName ? [modelName] : []
+}
+
 function normalizeActiveChatModelName(value: unknown, models: ChatModelConfig[], activeChatId: unknown): string {
   const activeApiId = typeof activeChatId === 'string' ? activeChatId : ''
   const activeApi = models.find(model => model.id === activeApiId) ?? models[0]
   if (activeApi?.transport === 'codex_local' || activeApi?.transport === 'claude_code_local') {
     return LOCAL_CLI_DEFAULT_MODEL_REF
   }
-  const enabledModels = normalizeStringList(activeApi?.enabledModels)
+  const enabledModels = activeApi?.modelType === 'image'
+    ? filterEditCapableImageModelNames(activeApi.provider, normalizeStringList(activeApi?.enabledModels))
+    : normalizeStringList(activeApi?.enabledModels)
   const preferred = typeof value === 'string' ? value.trim() : ''
   return preferred && enabledModels.includes(preferred) ? preferred : enabledModels[0] ?? ''
 }

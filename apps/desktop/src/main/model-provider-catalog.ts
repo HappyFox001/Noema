@@ -16,6 +16,7 @@ import {
 } from '@noema/sdk/audio/tts-catalog'
 
 export type { ImageProviderType } from '@noema/sdk/image/catalog'
+export { filterEditCapableImageModelNames, isImageModelEditCapable } from '@noema/sdk/image/catalog'
 
 export type LLMProviderType =
   | 'openai'

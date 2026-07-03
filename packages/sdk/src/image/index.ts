@@ -15,6 +15,7 @@ export {
 } from './catalog.js'
 import {
   getImageProviderCatalogEntry,
+  isImageModelEditCapable,
   type ImageGenerationConfiguredModel,
   type ImageGenerationResult,
   type ImageProviderCatalogEntry,
@@ -59,7 +60,7 @@ export async function generateImageWithConfiguredProvider(options: {
   const provider = String(options.model.provider || '').trim()
   const entry = getImageProviderCatalogEntry(provider)
   const baseUrl = normalizeBaseUrl(options.model.baseUrl || entry.defaultBaseUrl)
-  const modelName = String(options.modelName || options.model.modelName || entry.defaultModel).trim()
+  const modelName = normalizeProviderModelName(entry.value, String(options.modelName || options.model.modelName || entry.defaultModel).trim())
   const prompt = options.prompt.trim()
   const referenceImages = (options.referenceImages ?? []).map((item) => item.trim()).filter(Boolean)
 
@@ -68,6 +69,9 @@ export async function generateImageWithConfiguredProvider(options: {
   }
   if (!modelName) {
     throw new Error(`Image provider ${provider || options.model.id} has no model name`)
+  }
+  if (!isImageModelEditCapable(entry.value, modelName)) {
+    throw new Error(`${entry.label} model "${modelName}" is not enabled for this project. Choose an edit-capable image model.`)
   }
   if (!prompt) {
     throw new Error('Image generation prompt is empty')
@@ -82,6 +86,8 @@ export async function generateImageWithConfiguredProvider(options: {
       return { ...base, ...(await callOpenAIImages(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt, requestOptions)) }
     case 'wavespeed':
       return { ...base, ...(await callWaveSpeed(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt, requestOptions)) }
+    case 'gemini-interactions':
+      return { ...base, ...(await callGeminiInteractions(fetcher, entry, baseUrl, options.model.apiKey, modelName, prompt, requestOptions)) }
     default:
       throw new Error(`Unsupported image provider API style: ${entry.apiStyle}`)
   }
@@ -115,7 +121,7 @@ async function callOpenAIImages(
       entry,
       modelName,
       isOpenAIImageEditModel(modelName),
-      'Reference images require an OpenAI edit-capable image model such as gpt-image-* or dall-e-2.'
+      'Reference images require an OpenAI edit-capable image model such as gpt-image-* or chatgpt-image*.'
     )
     return callOpenAIImageEdit(fetcher, entry, baseUrl, apiKey, modelName, prompt, {
       ...options,
@@ -249,7 +255,7 @@ function assertReferenceModel(entry: ImageProviderCatalogEntry, modelName: strin
 }
 
 function isOpenAIImageEditModel(modelName: string): boolean {
-  return /^(gpt-image|chatgpt-image|dall-e-2)/i.test(modelName.trim())
+  return isImageModelEditCapable('openai', modelName)
 }
 
 function resolveWaveSpeedRequest(
@@ -280,15 +286,9 @@ function resolveWaveSpeedRequest(
     }
   }
   if (lower === 'openai/gpt-image-2/edit') {
-    assertReferenceModel(
-      entry,
-      modelName,
-      hasReferenceImages,
-      'Use openai/gpt-image-2/text-to-image for prompt-only requests; the edit endpoint requires reference images.'
-    )
     return {
-      modelName: normalized,
-      referenceField: 'images',
+      modelName: hasReferenceImages ? normalized : 'openai/gpt-image-2/text-to-image',
+      referenceField: hasReferenceImages ? 'images' : null,
       referenceImages,
     }
   }
@@ -307,6 +307,42 @@ function resolveWaveSpeedRequest(
   }
 }
 
+async function callGeminiInteractions(
+  fetcher: typeof fetch,
+  entry: ImageProviderCatalogEntry,
+  baseUrl: string,
+  apiKey: string,
+  modelName: string,
+  prompt: string,
+  options: ImageProviderRequestOptions
+): Promise<Partial<ImageGenerationResult>> {
+  const referenceImages = limitReferenceImages(entry, options.referenceImages)
+  const input: Array<Record<string, string>> = [{ type: 'text', text: prompt }]
+  for (let index = 0; index < referenceImages.length; index += 1) {
+    const image = await loadReferenceImageContent(fetcher, referenceImages[index], index)
+    input.push({
+      type: 'image',
+      data: image.base64,
+      mime_type: image.mimeType,
+    })
+  }
+
+  const response = await fetcher(`${baseUrl}${entry.generatePath}`, {
+    method: 'POST',
+    headers: geminiJsonHeaders(apiKey),
+    body: JSON.stringify({
+      model: modelName,
+      input,
+    }),
+  })
+  const payload = await readResponsePayload(response)
+  assertOk(response, payload, 'Gemini image generation failed')
+  return {
+    ...imageFromGeminiInteraction(payload),
+    ...(referenceImages.length ? { referenceImages } : {}),
+  }
+}
+
 function resolveWaveSpeedReferenceField(modelName: string, referenceImageCount: number): 'image' | 'images' {
   if (referenceImageCount <= 1 && !/\/multi$|ideogram-character|character-reference|reference-images/i.test(modelName)) {
     return 'image'
@@ -321,13 +357,14 @@ function normalizeOpenAIImageSize(modelName: string, size: string | undefined): 
   }
   const landscape = parsed.width > parsed.height
   const portrait = parsed.height > parsed.width
-  if (/^dall-e-3/i.test(modelName)) {
-    return landscape ? '1792x1024' : portrait ? '1024x1792' : '1024x1024'
-  }
   if (/^gpt-image/i.test(modelName)) {
     return landscape ? '1536x1024' : portrait ? '1024x1536' : '1024x1024'
   }
   return '1024x1024'
+}
+
+function normalizeProviderModelName(provider: string, modelName: string): string {
+  return provider === 'gemini' ? modelName.replace(/^models\//i, '') : modelName
 }
 
 function aspectRatioForImageSize(size: string | undefined): string | null {
@@ -447,6 +484,19 @@ async function loadReferenceImageBlob(
   }
 }
 
+async function loadReferenceImageContent(
+  fetcher: typeof fetch,
+  referenceImage: string,
+  index: number
+): Promise<{ mimeType: string; base64: string }> {
+  const loaded = await loadReferenceImageBlob(fetcher, referenceImage, index)
+  const buffer = Buffer.from(await loaded.blob.arrayBuffer())
+  return {
+    mimeType: loaded.blob.type || 'image/png',
+    base64: buffer.toString('base64'),
+  }
+}
+
 function parseDataUrl(value: string): { mimeType: string; bytes: Buffer } | null {
   const match = value.match(/^data:([^;,]+)?(;base64)?,([\s\S]*)$/)
   if (!match) {
@@ -519,6 +569,49 @@ function imageFromProviderOutput(output: unknown, providerResponse: unknown): Pa
   throw new Error('Image provider response did not include an image result')
 }
 
+function imageFromGeminiInteraction(payload: unknown): Partial<ImageGenerationResult> {
+  const source = payload && typeof payload === 'object' ? payload as Record<string, any> : {}
+  const image = findGeminiImageBlock(source)
+  const data = image?.data || image?.base64 || image?.b64_json
+  const url = image?.url || image?.image_url || image?.imageUrl
+  if (typeof data === 'string' && data.trim()) {
+    const mimeType = image?.mime_type || image?.mimeType || 'image/png'
+    return {
+      mimeType,
+      dataUrl: `data:${mimeType};base64,${data.replace(/^data:image\/\w+;base64,/, '')}`,
+      providerResponse: payload,
+    }
+  }
+  if (typeof url === 'string' && url.trim()) {
+    return { url: url.trim(), providerResponse: payload }
+  }
+  throw new Error('Gemini image response did not include an output image')
+}
+
+function findGeminiImageBlock(value: unknown): Record<string, any> | null {
+  if (!value || typeof value !== 'object') {
+    return null
+  }
+  const source = value as Record<string, any>
+  const direct = source.output_image || source.outputImage || source.image
+  if (direct && typeof direct === 'object') {
+    return direct as Record<string, any>
+  }
+  if (typeof source.data === 'string' && (source.type === 'image' || source.mime_type || source.mimeType)) {
+    return source
+  }
+  for (const key of ['output', 'outputs', 'steps', 'candidates', 'content', 'parts', 'items']) {
+    const nested = source[key]
+    const found = Array.isArray(nested)
+      ? nested.map(findGeminiImageBlock).find(Boolean)
+      : findGeminiImageBlock(nested)
+    if (found) {
+      return found
+    }
+  }
+  return null
+}
+
 function tryImageFromProviderOutput(output: unknown, providerResponse: unknown): Partial<ImageGenerationResult> | null {
   try {
     return imageFromProviderOutput(output, providerResponse)
@@ -583,6 +676,13 @@ function jsonAuthHeaders(apiKey: string): Record<string, string> {
   return {
     'Content-Type': 'application/json',
     ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+  }
+}
+
+function geminiJsonHeaders(apiKey: string): Record<string, string> {
+  return {
+    'Content-Type': 'application/json',
+    ...(apiKey ? { 'x-goog-api-key': apiKey } : {}),
   }
 }
 

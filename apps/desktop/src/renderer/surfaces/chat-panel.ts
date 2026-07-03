@@ -1,7 +1,13 @@
 /**
  * Owns the standalone chat surface interactions and window mode transitions.
  */
-import { getImageProviderCatalogEntry, getLLMProviderCatalogEntry, getTTSProviderCatalogEntry } from '../../main/model-provider-catalog'
+import {
+  filterEditCapableImageModelNames,
+  getImageProviderCatalogEntry,
+  getLLMProviderCatalogEntry,
+  getTTSProviderCatalogEntry,
+  isImageModelEditCapable,
+} from '../../main/model-provider-catalog'
 import {
   applyChatRuntimeTurnResult,
   buildChatRuntimeTurnRequest,
@@ -3247,7 +3253,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         return []
       }
       const provider = getImageProviderCatalogEntry(api.provider)
-      const modelNames = getEnabledModelNames(api).length ? getEnabledModelNames(api) : [api.modelName].filter(Boolean)
+      const enabled = getEnabledModelNames(api)
+      const fallback = filterEditCapableImageModelNames(api.provider, [api.modelName])
+      const modelNames = enabled.length ? enabled : fallback
       return modelNames.flatMap((modelName): ChatImageModelChoice[] => {
         if (!includeIncomplete && getImageModelMissingParts(api, modelName).length) {
           return []
@@ -7987,6 +7995,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (field === 'id') {
       return
     }
+    if (field === 'modelName' && value.trim()) {
+      if (getChatModelType(model) === 'image' && !isImageModelEditCapable(model.provider, value.trim())) {
+        showToast(options.getLanguage() === 'zh-CN' ? '只支持可编辑的生图模型' : 'Only edit-capable image models are supported')
+        return
+      }
+    }
     ;(model[field] as string) = value
     if (field === 'modelName' && value.trim()) {
       model.enabledModels = mergeModelNames(model.enabledModels, [value.trim()])
@@ -8072,12 +8086,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       if (!response.success) {
         throw new Error(response.error || 'Failed to get models')
       }
-      const models = normalizeModelNameList(response.models || [])
+      const models = getChatModelType(model) === 'image'
+        ? filterEditCapableImageModelNames(model.provider, normalizeModelNameList(response.models || []))
+        : normalizeModelNameList(response.models || [])
       chatModelOptions.set(id, models)
       model.availableModels = models
       model.modelsFetchedAt = Date.now()
       if (!models.length) {
-        showToast(options.getLanguage() === 'zh-CN' ? '没有返回可用模型' : 'No models returned')
+        showToast(options.getLanguage() === 'zh-CN' ? '没有返回可用的 edit 生图模型' : 'No edit-capable image models returned')
       }
       await saveChatModelConfig()
     } catch (error: any) {
@@ -8126,6 +8142,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const model = chatSystemConfig.chatModels.find((item) => item.id === id)
     const name = modelName.trim()
     if (!model || !name) {
+      return
+    }
+    if (getChatModelType(model) === 'image' && !isImageModelEditCapable(model.provider, name)) {
+      showToast(options.getLanguage() === 'zh-CN' ? '只支持可编辑的生图模型' : 'Only edit-capable image models are supported')
       return
     }
     const current = getEnabledModelNames(model)

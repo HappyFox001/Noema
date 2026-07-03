@@ -3,6 +3,7 @@
  */
 import { createChatSessionFromModel } from '../chat/index.js'
 import { createImageGenerationArtifact, generateImageWithConfiguredProvider } from '../image/index.js'
+import { filterEditCapableImageModelNames } from '../image/catalog.js'
 import {
   CHARACTER_CARD_FIELD_SCHEMA,
   CHARACTER_SUPPORT_FIELD_SCHEMA,
@@ -44,7 +45,10 @@ export function createCharacterAgentModelConfigs(
   models: CharacterAgentConfiguredModel[]
 ): CharacterAgentModelConfig[] {
   return models.flatMap((model) => {
-    const names = getConfiguredModelNames(model)
+    const configuredNames = getConfiguredModelNames(model)
+    const names = model.modelType === 'image'
+      ? filterEditCapableImageModelNames(model.provider, configuredNames)
+      : configuredNames
     return names.map((modelName) => ({
       apiId: model.id,
       modelName: displayConfiguredModelName(model, modelName),
