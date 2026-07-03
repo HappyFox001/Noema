@@ -8,8 +8,13 @@ import { basename, extname } from 'path'
 import { listChatModelsWithProvider } from '@noema/sdk/chat/model-list'
 import { ChatMediaService } from '@noema/sdk/chat/media-service'
 import {
+  directChatImagePrompt,
+  type ChatImagePromptDirectorInput,
+} from '@noema/sdk/chat/conversation-runtime'
+import {
   ChatRuntime,
   normalizeChatRuntimeError,
+  sendChatTurnWithConfiguredModel,
   type ChatRuntimeEvent,
   type ChatRuntimeTurnRequest,
 } from '@noema/sdk/chat/request-runtime'
@@ -58,6 +63,7 @@ export interface ChatGenerateImageMediaRequest {
   model: ChatIpcConfiguredModel
   modelName?: string
   prompt: string
+  promptContext: ChatImagePromptDirectorInput
   referenceImages?: string[]
   size?: string
   name?: string
@@ -365,12 +371,49 @@ export function registerChatIpcHandlers(
 
   ipcMain.handle('chat:generateImageMedia', async (_, request: ChatGenerateImageMediaRequest): Promise<ChatGenerateMediaResult> => {
     try {
-      const result = await chatMediaService.generateImage(request)
+      if (!request.promptContext) {
+        throw new Error('Chat image prompt context is required')
+      }
+      const directedPrompt = await directChatImagePrompt(
+        {
+          ...request.promptContext,
+          baseScene: request.promptContext.baseScene || request.prompt,
+          referenceImages: request.promptContext.referenceImages ?? request.referenceImages,
+        },
+        async (directorRequest) => {
+          const response = await sendChatTurnWithConfiguredModel(options.getModelConfig(), {
+            input: directorRequest.userPrompt,
+            options: directorRequest.options,
+          }, {
+            systemPrompt: directorRequest.systemPrompt,
+            outputConstraintPrompt: '',
+            defaultOptions: directorRequest.options,
+            llmOptions: {
+              proxyUrl: options.getProxyUrl?.(),
+            },
+          })
+          return response.content
+        }
+      )
+      const result = await chatMediaService.generateImage({
+        ...request,
+        prompt: directedPrompt.prompt,
+      })
+      const media = result.media as ChatIpcMedia
+      media.metadata = {
+        ...(media.metadata ?? {}),
+        promptDirector: {
+          sourcePrompt: directedPrompt.sourcePrompt,
+          rawResponse: directedPrompt.rawResponse,
+          baseScene: request.prompt,
+          controls: request.promptContext.control ?? {},
+        },
+      }
       return {
         success: true,
         provider: result.provider,
         model: result.model,
-        media: result.media as ChatIpcMedia,
+        media,
       }
     } catch (error: any) {
       console.error('[ChatMedia] Failed to generate image:', error)

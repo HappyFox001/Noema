@@ -115,8 +115,8 @@ export function buildRoleplayMediaPolicyPrompt(policy: RoleplayMediaPolicy, lang
       '<media_policy>',
       imageIntentEnabled
         ? normalized.imageMode === 'requested'
-          ? '只有当用户明确要求图片、照片、自拍、外观或视觉画面时，才可以在回复末尾追加 <media_intent>{"image":{"prompt":"简洁英文生图提示词"}}</media_intent>。prompt 只描述画面，不要写 UI、标题、字幕或解释。'
-          : '当用户明确要求图片，或本轮出现强画面感的角色扮演节点并且一张图会自然推进体验时，可以在回复末尾追加 <media_intent>{"image":{"prompt":"简洁英文生图提示词"}}</media_intent>。不要频繁发送，prompt 只描述画面。'
+          ? '只有当用户明确要求图片、照片、自拍、外观或视觉画面时，才可以在回复末尾追加 <media_intent>{"image":{"prompt":"简短画面意图或场景描述"}}</media_intent>。prompt 只写想画什么，不要写完整生图提示词、UI、标题、字幕或解释；系统会再由图像导演生成最终提示词。'
+          : '当用户明确要求图片，或本轮出现强画面感的角色扮演节点并且一张图会自然推进体验时，可以在回复末尾追加 <media_intent>{"image":{"prompt":"简短画面意图或场景描述"}}</media_intent>。不要频繁发送；prompt 只写想画什么，最终生图提示词由系统图像导演生成。'
         : imageManual
           ? '图片由用户通过界面按钮手动生成；不要主动追加 image media_intent。'
           : '不要主动请求图片生成。',
@@ -135,8 +135,8 @@ export function buildRoleplayMediaPolicyPrompt(policy: RoleplayMediaPolicy, lang
     '<media_policy>',
     imageIntentEnabled
       ? normalized.imageMode === 'requested'
-        ? 'Only when the user explicitly asks for an image, photo, selfie, appearance, or visual scene, append <media_intent>{"image":{"prompt":"concise English image prompt"}}</media_intent> at the end. The prompt describes only the image, not UI, titles, captions, or explanations.'
-        : 'When the user explicitly asks for an image, or this turn has a strong visual roleplay beat where a visual would naturally improve the experience, append <media_intent>{"image":{"prompt":"concise English image prompt"}}</media_intent> at the end. Do not send images frequently; the prompt describes only the image.'
+        ? 'Only when the user explicitly asks for an image, photo, selfie, appearance, or visual scene, append <media_intent>{"image":{"prompt":"short visual intent or scene description"}}</media_intent> at the end. The prompt should say what to depict, not the final image-generation prompt, UI, titles, captions, or explanations; the system image director will create the final prompt.'
+        : 'When the user explicitly asks for an image, or this turn has a strong visual roleplay beat where a visual would naturally improve the experience, append <media_intent>{"image":{"prompt":"short visual intent or scene description"}}</media_intent> at the end. Do not send images frequently; the system image director will create the final generation prompt.'
       : imageManual
         ? 'Images are generated manually by the user through the UI button; do not append image media_intent.'
         : 'Do not request image generation.',
@@ -176,7 +176,7 @@ export function decideRoleplayMediaDispatch(input: RoleplayMediaDecisionInput): 
     const shouldGenerate = Boolean(imageIntent) || userRequestedImage
     if (shouldGenerate) {
       decision.image = {
-        prompt: modelPrompt || buildRoleplayImagePrompt({
+        prompt: modelPrompt || buildRoleplayImageSceneSeed({
           userText: input.userText,
           assistantText: input.assistantText,
           language: input.language,
@@ -199,7 +199,7 @@ export function decideRoleplayMediaDispatch(input: RoleplayMediaDecisionInput): 
   return decision
 }
 
-export function buildRoleplayImagePrompt(options: {
+export function buildRoleplayImageSceneSeed(options: {
   userText: string
   assistantText: string
   language: RoleplayMediaLanguage
@@ -207,24 +207,14 @@ export function buildRoleplayImagePrompt(options: {
   sceneState?: Record<string, unknown>
 }): string {
   const characterName = localizeRoleplayText(options.character?.displayName, options.language)
-  const description = compactLine(localizeRoleplayText(options.character?.description, options.language))
-  const background = compactLine(localizeRoleplayText(options.character?.background, options.language))
-  const story = compactLine(localizeRoleplayText(options.character?.story, options.language))
-  const tags = options.character?.tag?.[options.language] ?? options.character?.tag?.['zh-CN'] ?? []
   const scene = summarizeSceneState(options.sceneState, options.language)
   const userMoment = compactLine(options.userText)
   const assistantMoment = compactLine(options.assistantText)
   return [
-    'Create one immersive roleplay still image.',
-    characterName ? `Main character: ${characterName}.` : '',
-    description ? `Character identity: ${description}.` : '',
-    background ? `Background: ${background}.` : '',
-    story ? `Narrative tone: ${story}.` : '',
-    tags.length ? `Style and traits: ${tags.slice(0, 8).join(', ')}.` : '',
-    scene ? `Current scene state: ${scene}.` : '',
-    userMoment ? `User beat: ${userMoment}.` : '',
-    assistantMoment ? `Assistant beat to visualize: ${assistantMoment}.` : '',
-    'Preserve character identity from any reference images. Show the current emotional beat, body language, environment, lighting, and composition. No UI, text, captions, watermarks, speech bubbles, panels, borders, or logos.',
+    assistantMoment ? `Assistant visual beat: ${assistantMoment}` : '',
+    userMoment ? `User request or preceding beat: ${userMoment}` : '',
+    scene ? `Current scene state: ${scene}` : '',
+    characterName ? `Main character: ${characterName}` : '',
   ].filter(Boolean).join('\n')
 }
 

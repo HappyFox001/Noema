@@ -76,7 +76,7 @@ export class ChatMediaService {
         mimeType,
         dataUrl: result.dataUrl,
         url: result.url,
-        prompt: result.prompt,
+        prompt: result.prompt || prompt,
         origin: 'generated',
         context: {
           mode: 'text',

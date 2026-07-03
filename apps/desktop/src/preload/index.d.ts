@@ -55,6 +55,36 @@ type ChatPreloadTTSModel = {
   extra?: Record<string, unknown>
 }
 
+type ChatPreloadImagePromptContext = {
+  language: 'zh-CN' | 'en-US'
+  baseScene: string
+  manualDirection?: string
+  control?: {
+    purpose?: string
+    clothing?: string
+    lighting?: string
+    camera?: string
+    mood?: string
+    style?: string
+  }
+  userText?: string
+  assistantText?: string
+  character?: any
+  sceneState?: Record<string, unknown>
+  recentMessages?: Array<{
+    id: string
+    role: 'system' | 'user' | 'assistant'
+    text: Record<'zh-CN' | 'en-US', string>
+    media?: Array<{
+      kind: 'image' | 'video' | 'audio'
+      origin?: 'user' | 'assistant' | 'tool' | 'generated' | 'external'
+    }>
+    state?: unknown
+  }>
+  lastImagePrompt?: string
+  referenceImages?: string[]
+}
+
 declare global {
   interface Window {
     electronAPI: {
@@ -1207,6 +1237,7 @@ declare global {
         model: ChatPreloadImageModel
         modelName?: string
         prompt: string
+        promptContext: ChatPreloadImagePromptContext
         referenceImages?: string[]
         size?: string
         name?: string

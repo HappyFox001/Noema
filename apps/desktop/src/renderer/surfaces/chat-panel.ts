@@ -11,6 +11,7 @@ import {
   summarizeChatConversationOverflow,
   stripChatSceneUpdateMarkup,
   trimChatSummaries,
+  type ChatImagePromptControl,
   type RoleplayMediaIntent,
 } from '@noema/sdk/chat/conversation-runtime'
 import {
@@ -1172,11 +1173,20 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       await generateAssistantAudio(conversation, input.assistantMessageId, decision.audio, decision.audio.trigger === 'request')
     }
     if (decision.image) {
-      await generateAssistantImage(conversation, decision.image, decision.image.trigger === 'request')
+      await generateAssistantImage(conversation, decision.image, {
+        assistantMessageId: input.assistantMessageId,
+        userText: input.userText,
+        assistantText: input.assistantText,
+      }, decision.image.trigger === 'request')
     }
   }
 
-  async function handleManualMessageMediaAction(action: 'image' | 'audio', messageId: string): Promise<void> {
+  async function handleManualMessageMediaAction(
+    action: 'image' | 'audio',
+    messageId: string,
+    manualImagePrompt = '',
+    manualImageControl: ChatImagePromptControl = {}
+  ): Promise<void> {
     const conversation = getActiveMutableConversation()
     if (!conversation) {
       return
@@ -1207,10 +1217,96 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       recentMessages: conversation.messages,
     })
     if (action === 'image' && decision.image) {
-      await generateAssistantImage(conversation, { ...decision.image, trigger: 'manual', reason: 'manual_message_action' }, true)
+      await generateAssistantImage(conversation, {
+        ...decision.image,
+        trigger: 'manual',
+        reason: manualImagePrompt.trim() || hasImagePromptControl(manualImageControl)
+          ? 'manual_message_action_with_director_controls'
+          : 'manual_message_action',
+      }, {
+        assistantMessageId: messageId,
+        userText,
+        assistantText,
+        manualDirection: manualImagePrompt,
+        control: manualImageControl,
+      }, true)
     } else if (action === 'audio' && decision.audio) {
       await generateAssistantAudio(conversation, messageId, { ...decision.audio, trigger: 'manual', reason: 'manual_message_action' }, true)
     }
+  }
+
+  function openManualImagePrompt(control: HTMLElement): void {
+    const messageId = control.dataset.chatMessageId || ''
+    const actions = control.closest<HTMLElement>('.chat-message-actions')
+    if (!messageId || !actions) {
+      return
+    }
+    closeManualImagePrompt()
+    const zh = options.getLanguage() === 'zh-CN'
+    const form = document.createElement('form')
+    form.className = 'chat-image-prompt-popover'
+    form.dataset.chatImagePromptForm = 'true'
+    form.dataset.chatMessageId = messageId
+    form.innerHTML = `
+      <label class="chat-image-prompt-field">
+        <span>${options.escapeHtml(zh ? '图片描述' : 'Image direction')}</span>
+        <input type="text" data-chat-image-prompt-input autocomplete="off" placeholder="${options.escapeHtml(zh ? '这张图想表现什么、像什么样...' : 'What this image should show or feel like...')}" />
+      </label>
+      <div class="chat-image-prompt-control-grid">
+        ${renderManualImageControlField('purpose', zh ? '画面' : 'Purpose', zh ? '自拍 / 场景 / 互动' : 'Selfie / scene / interaction')}
+        ${renderManualImageControlField('clothing', zh ? '服装' : 'Clothing', zh ? '延续 / 换装 / 细节' : 'Continue / change / details')}
+        ${renderManualImageControlField('lighting', zh ? '光线' : 'Lighting', zh ? '窗光 / 夜色 / 暖光' : 'Window / night / warm')}
+        ${renderManualImageControlField('camera', zh ? '镜头' : 'Camera', zh ? 'POV / 半身 / 特写' : 'POV / half body / close-up')}
+        ${renderManualImageControlField('mood', zh ? '氛围' : 'Mood', zh ? '安静 / 张力 / 亲近' : 'Quiet / tension / close')}
+        ${renderManualImageControlField('style', zh ? '风格' : 'Style', zh ? '动漫 / 写实 / 胶片' : 'Anime / photo / film')}
+      </div>
+      <div class="chat-image-prompt-row">
+        <small>${options.escapeHtml(zh ? '由 LLM 根据本轮对话、角色图和这些控制生成最终提示词。' : 'An LLM turns this turn, character refs, and controls into the final prompt.')}</small>
+        <span>
+          <button type="button" data-chat-image-prompt-action="cancel">${options.escapeHtml(zh ? '取消' : 'Cancel')}</button>
+          <button class="primary" type="submit">${options.escapeHtml(zh ? '生成' : 'Generate')}</button>
+        </span>
+      </div>
+    `
+    actions.insertAdjacentElement('afterend', form)
+    form.querySelector<HTMLInputElement>('[data-chat-image-prompt-input]')?.focus()
+  }
+
+  function renderManualImageControlField(key: keyof ChatImagePromptControl, label: string, placeholder: string): string {
+    return `
+      <label class="chat-image-prompt-control">
+        <span>${options.escapeHtml(label)}</span>
+        <input type="text" data-chat-image-control="${options.escapeHtml(key)}" autocomplete="off" placeholder="${options.escapeHtml(placeholder)}" />
+      </label>
+    `
+  }
+
+  function closeManualImagePrompt(): void {
+    panel.querySelectorAll('.chat-image-prompt-popover').forEach((element) => element.remove())
+  }
+
+  async function submitManualImagePrompt(form: HTMLFormElement): Promise<void> {
+    const messageId = form.dataset.chatMessageId || ''
+    const prompt = form.querySelector<HTMLInputElement>('[data-chat-image-prompt-input]')?.value.trim() ?? ''
+    const control = readManualImagePromptControl(form)
+    closeManualImagePrompt()
+    await handleManualMessageMediaAction('image', messageId, prompt, control)
+  }
+
+  function readManualImagePromptControl(form: HTMLFormElement): ChatImagePromptControl {
+    const control: ChatImagePromptControl = {}
+    form.querySelectorAll<HTMLInputElement>('[data-chat-image-control]').forEach((input) => {
+      const key = input.dataset.chatImageControl as keyof ChatImagePromptControl | undefined
+      const value = input.value.trim()
+      if (key && value) {
+        control[key] = value
+      }
+    })
+    return control
+  }
+
+  function hasImagePromptControl(control: ChatImagePromptControl): boolean {
+    return Object.values(control).some((value) => String(value || '').trim())
   }
 
   async function generateAssistantAudio(
@@ -1282,6 +1378,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       reason: string
       referenceImages: string[]
     },
+    promptContextInput: {
+      assistantMessageId?: string
+      userText?: string
+      assistantText?: string
+      manualDirection?: string
+      control?: ChatImagePromptControl
+    },
     notifyOnMissing: boolean
   ): Promise<void> {
     const choice = getSelectedImageModelChoice()
@@ -1307,6 +1410,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         },
         modelName: choice.modelName,
         prompt: dispatch.prompt,
+        promptContext: buildChatImagePromptContext(conversation, dispatch, promptContextInput),
         referenceImages: dispatch.referenceImages,
         size: conversationSettings.mediaImageSize,
         name: `${conversation.characterId || 'character'}-image-${Date.now()}.png`,
@@ -1318,7 +1422,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         trigger: dispatch.trigger,
         mode: dispatch.permanent ? 'permanent' : 'turn',
         reason: dispatch.reason,
-        summary: dispatch.prompt,
+        summary: response.media.prompt || dispatch.prompt,
       })]
       imageMessage.text = { 'zh-CN': '', 'en-US': '' }
       imageMessage.state = undefined
@@ -1376,6 +1480,59 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         generatedAt: Date.now(),
       },
     }
+  }
+
+  function buildChatImagePromptContext(
+    conversation: ChatConversationSummary,
+    dispatch: {
+      prompt: string
+      referenceImages: string[]
+    },
+    input: {
+      assistantMessageId?: string
+      userText?: string
+      assistantText?: string
+      manualDirection?: string
+      control?: ChatImagePromptControl
+    }
+  ): NonNullable<Parameters<typeof window.electronAPI.generateChatImageMedia>[0]['promptContext']> {
+    const language = getEffectiveConversationLanguage()
+    const assistantMessageId = input.assistantMessageId || ''
+    return {
+      language,
+      baseScene: dispatch.prompt,
+      manualDirection: input.manualDirection?.trim() || '',
+      control: input.control ?? {},
+      userText: input.userText?.trim() || (assistantMessageId ? getPreviousUserMessageText(conversation, assistantMessageId, language) : ''),
+      assistantText: input.assistantText?.trim() || (assistantMessageId ? getAssistantMessageText(conversation, assistantMessageId, language) : ''),
+      character: getCharacterForConversation(state, conversation),
+      sceneState: conversation.sceneState,
+      recentMessages: conversation.messages,
+      lastImagePrompt: getLastGeneratedImagePrompt(conversation),
+      referenceImages: dispatch.referenceImages,
+    }
+  }
+
+  function getAssistantMessageText(
+    conversation: ChatConversationSummary,
+    assistantMessageId: string,
+    language: 'zh-CN' | 'en-US'
+  ): string {
+    const message = conversation.messages.find((item) => item.id === assistantMessageId && item.role === 'assistant')
+    return message ? localizeChatText(message.text, language) : ''
+  }
+
+  function getLastGeneratedImagePrompt(conversation: ChatConversationSummary): string {
+    for (let messageIndex = conversation.messages.length - 1; messageIndex >= 0; messageIndex -= 1) {
+      const media = conversation.messages[messageIndex].media ?? []
+      for (let mediaIndex = media.length - 1; mediaIndex >= 0; mediaIndex -= 1) {
+        const item = media[mediaIndex]
+        if (item.kind === 'image' && item.origin === 'generated' && item.prompt?.trim()) {
+          return item.prompt.trim()
+        }
+      }
+    }
+    return ''
   }
 
   function getPreviousUserMessageText(
@@ -8136,6 +8293,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   })
 
   panel.addEventListener('submit', (event) => {
+    const imagePromptForm = (event.target as HTMLElement | null)?.closest<HTMLFormElement>('[data-chat-image-prompt-form]')
+    if (imagePromptForm && panel.contains(imagePromptForm)) {
+      event.preventDefault()
+      void submitManualImagePrompt(imagePromptForm)
+      return
+    }
     const assistantForm = (event.target as HTMLElement | null)?.closest<HTMLFormElement>('[data-chat-workflow-assistant-form]')
     if (assistantForm && panel.contains(assistantForm)) {
       event.preventDefault()
@@ -8305,10 +8468,20 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
 
+    const imagePromptAction = eventTarget.closest<HTMLElement>('[data-chat-image-prompt-action]')
+    if (imagePromptAction && panel.contains(imagePromptAction)) {
+      if (imagePromptAction.dataset.chatImagePromptAction === 'cancel') {
+        closeManualImagePrompt()
+      }
+      return
+    }
+
     const messageAction = eventTarget.closest<HTMLElement>('[data-chat-message-action]')
     if (messageAction && panel.contains(messageAction)) {
       const action = messageAction.dataset.chatMessageAction
-      if (action === 'image' || action === 'audio') {
+      if (action === 'image') {
+        openManualImagePrompt(messageAction)
+      } else if (action === 'audio') {
         void handleManualMessageMediaAction(action, messageAction.dataset.chatMessageId || '')
       } else if (action === 'delete') {
         void deleteChatMessage(messageAction.dataset.chatMessageId || '', { includeGeneratedFollowups: true })

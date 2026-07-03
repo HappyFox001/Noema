@@ -11,6 +11,7 @@ import type { ChatRuntimeTurnRequest } from './request-runtime.js'
 import type { CharacterProfile } from '../character-profile/index.js'
 
 export * from './media-orchestrator.js'
+export * from './image-prompt-director.js'
 
 export type ChatRuntimeRole = 'system' | 'user' | 'assistant'
 export type ChatRuntimeLanguage = 'zh-CN' | 'en-US'
