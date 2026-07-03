@@ -45,7 +45,6 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
   let activeMessageCharacter: ChatCharacterResource | undefined
   let activeConversation: ChatConversationSummary | undefined
   let actionSourceMessageId = ''
-  let actionDisplayMessageId = ''
 
   function renderConversationList(
     conversations: ChatConversationSummary[],
@@ -159,7 +158,6 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     activeMessageCharacter = undefined
     activeConversation = undefined
     actionSourceMessageId = ''
-    actionDisplayMessageId = ''
     options.messageList.innerHTML = ''
   }
 
@@ -168,10 +166,9 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     const previousScrollTop = options.messageList.scrollTop
     const language = options.getLanguage()
     actionSourceMessageId = findLastActionableAssistantMessageId(messages, language)
-    actionDisplayMessageId = findLatestTurnDisplayMessageId(messages, actionSourceMessageId)
     options.messageList.innerHTML = messages.map((message) => {
-      const isActionDisplayTarget = message.id === actionDisplayMessageId
-      return renderMessage(message, isActionDisplayTarget, isActionDisplayTarget, actionSourceMessageId)
+      const isLatestAssistantReply = message.id === actionSourceMessageId
+      return renderMessage(message, isLatestAssistantReply, isLatestAssistantReply, actionSourceMessageId)
     }).join('')
     renderActionIcons(options.messageList)
     applyScrollAfterRender(shouldFollow, previousScrollTop)
@@ -182,14 +179,9 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     if (message.role === 'user' || message.state === 'thinking') {
       clearRenderedLatestTurnAddons()
       actionSourceMessageId = ''
-      actionDisplayMessageId = ''
     }
-    const isGeneratedFollowup = isGeneratedAssistantFollowup(message) && Boolean(actionSourceMessageId)
-    if (isGeneratedFollowup) {
-      clearRenderedLatestTurnAddons()
-      actionDisplayMessageId = message.id
-    }
-    options.messageList.insertAdjacentHTML('beforeend', renderMessage(message, isGeneratedFollowup, isGeneratedFollowup, actionSourceMessageId))
+    const isLatestAssistantReply = message.id === actionSourceMessageId
+    options.messageList.insertAdjacentHTML('beforeend', renderMessage(message, isLatestAssistantReply, isLatestAssistantReply, actionSourceMessageId))
     const rendered = options.messageList.lastElementChild
     if (rendered) {
       renderActionIcons(rendered)
@@ -207,8 +199,8 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     }
     const shouldFollow = shouldAutoFollowScroll()
     const previousScrollTop = options.messageList.scrollTop
-    const isActionDisplayTarget = message.id === actionDisplayMessageId
-    existing.outerHTML = renderMessage(message, isActionDisplayTarget, isActionDisplayTarget, actionSourceMessageId)
+    const isLatestAssistantReply = message.id === actionSourceMessageId
+    existing.outerHTML = renderMessage(message, isLatestAssistantReply, isLatestAssistantReply, actionSourceMessageId)
     const rendered = options.messageList.querySelector<HTMLElement>(`[data-message-id="${cssEscape(message.id)}"]`)
     if (rendered) {
       renderActionIcons(rendered)
@@ -243,17 +235,19 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     if (message.state === 'thinking') {
       return renderThinkingMessage(message, language)
     }
-    const stateLabel = message.state ? `<em>${options.escapeHtml(formatState(message.state, language))}</em>` : ''
+    const contentState = message.state && message.state !== 'generating_audio' ? message.state : undefined
+    const stateLabel = contentState ? `<em>${options.escapeHtml(formatState(contentState, language))}</em>` : ''
     const assistantAvatar = message.role === 'assistant' && activeMessageCharacter
       ? `<div class="chat-message-avatar">${renderAvatarImage(activeMessageCharacter, language)}</div>`
       : ''
     return `
-      <article class="chat-message ${options.escapeHtml(message.role)}" data-message-id="${options.escapeHtml(message.id)}" ${message.state ? `data-state="${options.escapeHtml(message.state)}"` : ''}>
+      <article class="chat-message ${options.escapeHtml(message.role)}" data-message-id="${options.escapeHtml(message.id)}" ${contentState ? `data-state="${options.escapeHtml(contentState)}"` : ''} ${message.state === 'generating_audio' ? 'data-audio-state="generating"' : ''}>
         ${assistantAvatar}
         <div class="chat-message-body">
           ${renderMessageAttachments(message)}
           ${renderOpeningPanel(message)}
           ${renderMessageContent(message, language)}
+          ${renderInlineVoice(message, language)}
           ${includeSceneState ? renderInlineSceneState(language) : ''}
           ${renderMessageActions(message, language, includeActions, actionMessageId)}
           <small>${stateLabel}${options.escapeHtml(localizeChatText(message.createdLabel, language))}</small>
@@ -272,34 +266,11 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     return ''
   }
 
-  function findLatestTurnDisplayMessageId(messages: ChatMessage[], sourceMessageId: string): string {
-    if (!sourceMessageId) {
-      return ''
-    }
-    const sourceIndex = messages.findIndex((message) => message.id === sourceMessageId)
-    if (sourceIndex < 0) {
-      return sourceMessageId
-    }
-    let displayMessageId = sourceMessageId
-    for (let index = sourceIndex + 1; index < messages.length; index += 1) {
-      const message = messages[index]
-      if (!isGeneratedAssistantFollowup(message)) {
-        break
-      }
-      displayMessageId = message.id
-    }
-    return displayMessageId
-  }
-
   function isActionableAssistantMessage(message: ChatMessage, language: ChatLanguageCode): boolean {
     return message.role === 'assistant'
-      && message.state === undefined
+      && (message.state === undefined || message.state === 'generating_audio')
       && !message.id.startsWith('assistant-media-')
       && Boolean(localizeChatText(message.text, language).trim())
-  }
-
-  function isGeneratedAssistantFollowup(message: ChatMessage): boolean {
-    return message.role === 'assistant' && message.id.startsWith('assistant-media-')
   }
 
   function renderInlineSceneState(language: ChatLanguageCode): string {
@@ -484,11 +455,17 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     if (!text.trim() && message.media?.length) {
       return ''
     }
+    const voiceAttributes = getInlineVoiceTargetAttributes(message, language)
     if (message.role === 'assistant' && hasRoleplayChatMarkup(text)) {
-      const markup = renderRoleplayChatMarkup(text, { escapeHtml: options.escapeHtml })
+      const markup = renderRoleplayChatMarkup(text, {
+        escapeHtml: options.escapeHtml,
+        speechAudioAttributes: voiceAttributes,
+      })
       return markup || renderNoemaStreamStatus(language)
     }
-    return `<p>${options.escapeHtml(text)}</p>`
+    const voiceClass = voiceAttributes ? ' class="chat-inline-audio-target"' : ''
+    const voiceAttrs = voiceAttributes ? ` ${voiceAttributes}` : ''
+    return `<p${voiceClass}${voiceAttrs}>${options.escapeHtml(text)}</p>`
   }
 
   function renderOpeningPanel(message: ChatMessage): string {
@@ -553,21 +530,17 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
   }
 
   function renderMessageAttachments(message: ChatMessage): string {
-    if (!message.media?.length) {
+    const attachments = (message.media ?? []).filter((item) => item.kind !== 'audio')
+    if (!attachments.length) {
       return ''
     }
     return `
       <div class="chat-message-attachments">
-        ${message.media.map((item) => {
+        ${attachments.map((item) => {
           const source = item.dataUrl || item.url || ''
           if (item.kind === 'video' && source) {
             return `
               <video class="chat-message-attachment video" src="${options.escapeHtml(source)}" controls preload="metadata" title="${options.escapeHtml(item.name)}"></video>
-            `
-          }
-          if (item.kind === 'audio' && source) {
-            return `
-              <audio class="chat-message-attachment audio" src="${options.escapeHtml(source)}" controls preload="metadata" title="${options.escapeHtml(item.name)}"></audio>
             `
           }
           if (source) {
@@ -581,22 +554,88 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     `
   }
 
-  function renderMessageActions(message: ChatMessage, language: ChatLanguageCode, includeActions: boolean, actionMessageId: string): string {
-    if (!includeActions || !actionMessageId) {
+  function renderInlineVoice(message: ChatMessage, language: ChatLanguageCode): string {
+    if (!canUseInlineVoice(message, language)) {
       return ''
     }
+    const audioItems = getMessageAudioItems(message)
+    if (audioItems.length) {
+      return `
+        <div class="chat-inline-audio" data-chat-inline-audio-bar>
+          ${audioItems.map((item) => {
+            const source = item.dataUrl || item.url || ''
+            return `
+              <div class="chat-inline-audio-item">
+                <i data-lucide="volume-2" aria-hidden="true"></i>
+                <audio src="${options.escapeHtml(source)}" controls preload="metadata" title="${options.escapeHtml(item.name)}"></audio>
+              </div>
+            `
+          }).join('')}
+        </div>
+      `
+    }
+    if (message.state !== 'generating_audio') {
+      return ''
+    }
+    const label = language === 'zh-CN' ? '生成语音中' : 'Generating voice'
+    return `
+      <div class="chat-inline-audio pending" aria-live="polite">
+        <span>
+          <i data-lucide="volume-2" aria-hidden="true"></i>
+          ${options.escapeHtml(label)}
+        </span>
+      </div>
+    `
+  }
+
+  function getInlineVoiceTargetAttributes(message: ChatMessage, language: ChatLanguageCode): string {
+    if (!canUseInlineVoice(message, language)) {
+      return ''
+    }
+    const hasAudio = getMessageAudioItems(message).length > 0
+    const label = hasAudio
+      ? language === 'zh-CN' ? '播放语音' : 'Play voice'
+      : language === 'zh-CN' ? '生成语音' : 'Generate voice'
+    return [
+      'data-chat-inline-audio="true"',
+      `data-chat-message-id="${options.escapeHtml(message.id)}"`,
+      'role="button"',
+      'tabindex="0"',
+      `title="${options.escapeHtml(label)}"`,
+      `aria-label="${options.escapeHtml(label)}"`,
+    ].join(' ')
+  }
+
+  function canUseInlineVoice(message: ChatMessage, language: ChatLanguageCode): boolean {
+    return message.role === 'assistant'
+      && !message.id.startsWith('assistant-media-')
+      && Boolean(localizeChatText(message.text, language).trim())
+      && (message.state === undefined || message.state === 'generating_audio')
+  }
+
+  function getMessageAudioItems(message: ChatMessage): ChatMessage['media'] {
+    return (message.media ?? []).filter((item) => {
+      const source = item.dataUrl || item.url || ''
+      return item.kind === 'audio' && Boolean(source)
+    })
+  }
+
+  function renderMessageActions(message: ChatMessage, language: ChatLanguageCode, includeActions: boolean, actionMessageId: string): string {
+    if (message.state === 'thinking' || message.role === 'system') {
+      return ''
+    }
+    const canGenerateImage = includeActions
+      && actionMessageId
+      && message.id === actionMessageId
+      && isActionableAssistantMessage(message, language)
     const deleteMessageId = message.id || actionMessageId
     const imageLabel = language === 'zh-CN' ? '生成图片' : 'Generate image'
-    const audioLabel = language === 'zh-CN' ? '生成语音' : 'Generate voice'
     const deleteLabel = language === 'zh-CN' ? '删除回复' : 'Delete reply'
     return `
       <div class="chat-message-actions" role="toolbar" aria-label="${options.escapeHtml(language === 'zh-CN' ? '回复操作' : 'Reply actions')}">
-        <button class="chat-message-action" type="button" data-chat-message-action="image" data-chat-message-id="${options.escapeHtml(actionMessageId)}" title="${options.escapeHtml(imageLabel)}" aria-label="${options.escapeHtml(imageLabel)}">
+        ${canGenerateImage ? `<button class="chat-message-action" type="button" data-chat-message-action="image" data-chat-message-id="${options.escapeHtml(actionMessageId)}" title="${options.escapeHtml(imageLabel)}" aria-label="${options.escapeHtml(imageLabel)}">
           <i data-lucide="image" aria-hidden="true"></i>
-        </button>
-        <button class="chat-message-action" type="button" data-chat-message-action="audio" data-chat-message-id="${options.escapeHtml(actionMessageId)}" title="${options.escapeHtml(audioLabel)}" aria-label="${options.escapeHtml(audioLabel)}">
-          <i data-lucide="volume-2" aria-hidden="true"></i>
-        </button>
+        </button>` : ''}
         <button class="chat-message-action danger" type="button" data-chat-message-action="delete" data-chat-message-id="${options.escapeHtml(deleteMessageId)}" title="${options.escapeHtml(deleteLabel)}" aria-label="${options.escapeHtml(deleteLabel)}">
           <i data-lucide="trash-2" aria-hidden="true"></i>
         </button>
@@ -605,7 +644,13 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
   }
 
   function clearRenderedLatestTurnAddons(): void {
-    options.messageList.querySelectorAll('.chat-inline-scene, .chat-message-actions').forEach((element) => element.remove())
+    options.messageList.querySelectorAll('.chat-inline-scene').forEach((element) => element.remove())
+    options.messageList.querySelectorAll('[data-chat-message-action="image"]').forEach((element) => element.remove())
+    options.messageList.querySelectorAll('.chat-message-actions').forEach((element) => {
+      if (!element.querySelector('.chat-message-action')) {
+        element.remove()
+      }
+    })
   }
 
   function renderActionIcons(root: HTMLElement): void {

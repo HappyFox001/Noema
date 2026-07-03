@@ -1506,10 +1506,35 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function playGeneratedAudio(messageId: string): void {
     window.requestAnimationFrame(() => {
-      const selector = `[data-message-id="${cssEscapeForSelector(messageId)}"] audio`
+      const selector = `[data-message-id="${cssEscapeForSelector(messageId)}"] .chat-inline-audio audio, [data-message-id="${cssEscapeForSelector(messageId)}"] audio`
       const audio = options.messageList.querySelector<HTMLAudioElement>(selector)
       void audio?.play().catch(() => undefined)
     })
+  }
+
+  function playInlineAudioForMessage(messageId: string): boolean {
+    const selector = `[data-message-id="${cssEscapeForSelector(messageId)}"] .chat-inline-audio audio`
+    const audio = options.messageList.querySelector<HTMLAudioElement>(selector)
+    if (!audio) {
+      return false
+    }
+    void audio.play().catch(() => undefined)
+    return true
+  }
+
+  function handleInlineAudioTarget(control: HTMLElement): void {
+    const messageId = control.dataset.chatMessageId || control.closest<HTMLElement>('[data-message-id]')?.dataset.messageId || ''
+    if (!messageId) {
+      return
+    }
+    const messageElement = options.messageList.querySelector<HTMLElement>(`[data-message-id="${cssEscapeForSelector(messageId)}"]`)
+    if (messageElement?.dataset.audioState === 'generating') {
+      return
+    }
+    if (playInlineAudioForMessage(messageId)) {
+      return
+    }
+    void handleManualMessageMediaAction('audio', messageId)
   }
 
   function cssEscapeForSelector(value: string): string {
@@ -8436,13 +8461,17 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
 
+    const inlineAudioTarget = eventTarget.closest<HTMLElement>('[data-chat-inline-audio]')
+    if (inlineAudioTarget && panel.contains(inlineAudioTarget)) {
+      handleInlineAudioTarget(inlineAudioTarget)
+      return
+    }
+
     const messageAction = eventTarget.closest<HTMLElement>('[data-chat-message-action]')
     if (messageAction && panel.contains(messageAction)) {
       const action = messageAction.dataset.chatMessageAction
       if (action === 'image') {
         openManualImagePrompt(messageAction)
-      } else if (action === 'audio') {
-        void handleManualMessageMediaAction(action, messageAction.dataset.chatMessageId || '')
       } else if (action === 'delete') {
         void deleteChatMessage(messageAction.dataset.chatMessageId || '')
       }
@@ -8710,6 +8739,18 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
     handleAction(target.dataset.chatAction || '', target)
+  })
+
+  panel.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') {
+      return
+    }
+    const inlineAudioTarget = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-chat-inline-audio]')
+    if (!inlineAudioTarget || !panel.contains(inlineAudioTarget)) {
+      return
+    }
+    event.preventDefault()
+    handleInlineAudioTarget(inlineAudioTarget)
   })
 
   panel.addEventListener('change', (event) => {

@@ -310,6 +310,10 @@
   font-weight: 600;
 }
 
+.chat-inline-audio-target {
+  cursor: pointer;
+}
+
 .roleplay-chat-speech.is-streaming {
   position: relative;
 }
@@ -1096,13 +1100,6 @@ body.theme-day .chat-message-avatar {
   font-size: 11px;
 }
 
-.chat-message-attachment.audio {
-  min-width: 220px;
-  max-height: none;
-  padding: 6px;
-  object-fit: initial;
-}
-
 .chat-message-actions {
   display: inline-flex;
   align-items: center;
@@ -1149,6 +1146,49 @@ body.theme-day .chat-message-avatar {
   border-color: rgba(255, 130, 150, 0.24);
   background: rgba(255, 130, 150, 0.095);
   color: rgba(255, 196, 206, 0.92);
+}
+
+.chat-inline-audio {
+  width: min(430px, 100%);
+  display: grid;
+  gap: 7px;
+  margin-top: 1px;
+}
+
+.chat-inline-audio-item,
+.chat-inline-audio.pending span {
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  padding: 4px 8px;
+  border: 1px solid rgba(218, 232, 224, 0.09);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.038);
+  color: rgba(248, 250, 250, 0.66);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.chat-inline-audio svg {
+  width: 15px;
+  height: 15px;
+  color: rgba(218, 232, 224, 0.62);
+}
+
+.chat-inline-audio audio {
+  width: 100%;
+  min-width: 180px;
+  height: 28px;
+}
+
+.chat-inline-audio.pending span {
+  width: fit-content;
+  grid-template-columns: 15px auto;
+  padding: 8px 11px;
+  font: 11px/1 var(--font-ui);
+  font-weight: 680;
+  letter-spacing: 0;
 }
 
 .chat-image-prompt-popover {

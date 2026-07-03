@@ -3,6 +3,7 @@
  */
 export interface RoleplayMarkupRenderOptions {
   escapeHtml(value: string): string
+  speechAudioAttributes?: string
 }
 
 interface RoleplayTagMatch {
@@ -117,13 +118,15 @@ function renderRoleplaySpeechParagraphs(source: string, options: RoleplayMarkupR
   if (!text) {
     return ''
   }
+  const audioClass = options.speechAudioAttributes ? ' chat-inline-audio-target' : ''
+  const audioAttributes = options.speechAudioAttributes ? ` ${options.speechAudioAttributes}` : ''
   return text
     .split(/\n{2,}/)
     .map((paragraph) => paragraph.trim())
     .filter(Boolean)
     .map((paragraph) => {
       const line = stripWrappingQuotes(paragraph)
-      return `<p><span class="roleplay-chat-quote">“${options.escapeHtml(line).replace(/\n/g, '<br>')}”</span></p>`
+      return `<p><span class="roleplay-chat-quote${audioClass}"${audioAttributes}>“${options.escapeHtml(line).replace(/\n/g, '<br>')}”</span></p>`
     })
     .join('')
 }
