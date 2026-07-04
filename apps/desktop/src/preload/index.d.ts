@@ -960,7 +960,7 @@ declare global {
           plan?: string[]
           summary?: string
           confidence?: number
-          status?: 'applied' | 'needs-user' | 'blocked'
+          status?: 'applied' | 'needs-user' | 'blocked' | 'complete'
           decision?: {
             id: string
             title: string
@@ -1031,7 +1031,7 @@ declare global {
             tool: 'inspect_graph' | 'edit_graph' | 'validate_graph' | 'ask_user' | 'finish'
             userRequest: string
             summary: string
-            status: 'applied' | 'needs-user' | 'blocked'
+            status: 'applied' | 'needs-user' | 'blocked' | 'complete'
             plan: string[]
             completedSteps: string[]
             currentStep?: string

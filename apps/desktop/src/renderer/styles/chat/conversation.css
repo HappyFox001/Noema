@@ -1515,10 +1515,10 @@ body.theme-day .chat-message-avatar {
   margin-top: 2px;
 }
 
-.chat-inline-audio-player,
+.chat-inline-audio .chat-inline-audio-player,
 .chat-inline-audio.pending span {
   min-height: 34px;
-  display: block;
+  display: grid;
   padding: 5px 8px;
   border: 1px solid rgba(218, 232, 224, 0.09);
   border-radius: 999px;
@@ -1533,10 +1533,104 @@ body.theme-day .chat-message-avatar {
   color: rgba(218, 232, 224, 0.62);
 }
 
-.chat-inline-audio-player {
+.chat-inline-audio .chat-inline-audio-player {
+  position: relative;
   width: 100%;
   min-width: 0;
   height: 40px;
+  grid-template-columns: 28px minmax(60px, 1fr) minmax(68px, auto) 18px;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  --chat-audio-progress: 0%;
+}
+
+.chat-inline-audio .chat-inline-audio-native {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.chat-inline-audio .chat-inline-audio-player .chat-inline-audio-play {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  gap: 0;
+  color: inherit;
+}
+
+.chat-inline-audio .chat-inline-audio-player .chat-inline-audio-play::before {
+  content: '';
+  width: 0;
+  height: 0;
+  margin-left: 2px;
+  border-top: 7px solid transparent;
+  border-bottom: 7px solid transparent;
+  border-left: 10px solid rgba(248, 250, 250, 0.86);
+}
+
+.chat-inline-audio .chat-inline-audio-player.is-playing .chat-inline-audio-play::before {
+  width: 11px;
+  height: 13px;
+  margin-left: 0;
+  border: 0;
+  background:
+    linear-gradient(90deg, rgba(248, 250, 250, 0.86) 0 34%, transparent 34% 66%, rgba(248, 250, 250, 0.86) 66% 100%);
+}
+
+.chat-inline-audio .chat-inline-audio-player .chat-inline-audio-track {
+  position: relative;
+  min-width: 0;
+  height: 5px;
+  display: block;
+  gap: 0;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(248, 250, 250, 0.2);
+  color: inherit;
+}
+
+.chat-inline-audio .chat-inline-audio-player .chat-inline-audio-track span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--chat-audio-progress);
+  display: block;
+  height: 100%;
+  gap: 0;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--chat-atmosphere-accent, #d8dce0) 58%, rgba(248, 250, 250, 0.82));
+}
+
+.chat-inline-audio .chat-inline-audio-player .chat-inline-audio-time {
+  min-width: 68px;
+  display: block;
+  gap: 0;
+  text-align: right;
+  font: 12px/1 var(--font-ui);
+  font-weight: 650;
+  color: rgba(248, 250, 250, 0.7);
+  font-variant-numeric: tabular-nums;
+}
+
+.chat-inline-audio .chat-inline-audio-player .chat-inline-audio-menu {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  color: inherit;
+}
+
+.chat-inline-audio .chat-inline-audio-player .chat-inline-audio-menu-dot {
+  width: 3px;
+  height: 3px;
+  display: block;
+  min-width: 0;
+  border-radius: 999px;
+  background: rgba(248, 250, 250, 0.5);
 }
 
 .chat-inline-audio.pending span {

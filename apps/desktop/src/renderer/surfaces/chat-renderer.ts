@@ -575,14 +575,22 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     if (!canUseInlineVoice(message, language) || !normalizeInlineAudioText(speechText)) {
       return ''
     }
+    const normalizedSpeech = normalizeInlineAudioText(speechText)
     const audioItems = getMessageAudioItems(message, speechText)
     if (audioItems.length) {
       return `
-        <span class="chat-inline-audio" data-chat-inline-audio-bar data-chat-audio-text="${options.escapeHtml(normalizeInlineAudioText(speechText))}">
+        <span class="chat-inline-audio" data-chat-inline-audio-bar data-chat-audio-text="${options.escapeHtml(normalizedSpeech)}">
           ${audioItems.map((item) => {
             const source = item.dataUrl || item.url || ''
+            const playLabel = language === 'zh-CN' ? '播放语音' : 'Play voice'
             return `
-              <audio class="chat-inline-audio-player" src="${options.escapeHtml(source)}" controls preload="metadata" title="${options.escapeHtml(item.name)}"></audio>
+              <span class="chat-inline-audio-player" data-chat-inline-audio="true" data-chat-message-id="${options.escapeHtml(message.id)}" data-chat-audio-text="${options.escapeHtml(normalizedSpeech)}" title="${options.escapeHtml(item.name)}">
+                <audio class="chat-inline-audio-native" src="${options.escapeHtml(source)}" preload="metadata" title="${options.escapeHtml(item.name)}"></audio>
+                <span class="chat-inline-audio-play" aria-label="${options.escapeHtml(playLabel)}"></span>
+                <span class="chat-inline-audio-track" aria-hidden="true"><span></span></span>
+                <span class="chat-inline-audio-time" data-chat-inline-audio-time>0:00 / 0:00</span>
+                <span class="chat-inline-audio-menu" aria-hidden="true"><span class="chat-inline-audio-menu-dot"></span><span class="chat-inline-audio-menu-dot"></span><span class="chat-inline-audio-menu-dot"></span></span>
+              </span>
             `
           }).join('')}
         </span>

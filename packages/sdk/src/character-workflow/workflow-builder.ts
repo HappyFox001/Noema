@@ -91,7 +91,7 @@ export interface CharacterWorkflowBuilderSpec {
   nextStep?: string
   summary: string
   confidence: number
-  status: 'applied' | 'needs-user' | 'blocked'
+  status: 'applied' | 'needs-user' | 'blocked' | 'complete'
   decision?: CharacterWorkflowAgentDecision
   goalPrompt: string
   targetAudience: string
@@ -175,7 +175,7 @@ export interface CharacterWorkflowEditorAgentStep {
   tool: CharacterWorkflowAgentToolAction
   userRequest: string
   summary: string
-  status: 'applied' | 'needs-user' | 'blocked'
+  status: CharacterWorkflowBuilderSpec['status']
   plan: string[]
   completedSteps: string[]
   currentStep?: string
@@ -299,29 +299,18 @@ async function runCharacterWorkflowEditorAgent(
   }
 
   const inspection = inspectWorkflowEditorGraph(graph, objective, request.language, mode)
-  await emitStep(createWorkflowAgentStep({
-    now,
-    index: stepOffset + 1,
-    tool: 'inspect_graph',
-    userRequest: request.prompt,
-    summary: inspection.summary,
-    status: 'applied',
-    plan: plan.length ? plan : inspection.plan,
-    completedSteps,
-    currentStep: inspection.currentStep,
-    nextStep: inspection.nextStep,
-  }))
+  plan = plan.length ? plan : inspection.plan
+  currentStep = currentStep || inspection.currentStep
+  nextStep = nextStep?.trim() ? nextStep : inspection.nextStep
 
   while (steps.length < maxSteps) {
     const stepSession: CharacterWorkflowEditorSession = {
       objective,
       plan,
       completedSteps,
-      currentStep,
-      nextStep,
       history: [
-        ...(session?.history ?? []),
-        ...steps.map(createWorkflowEditorHistoryEntry),
+        ...(session?.history ?? []).map(sanitizeWorkflowEditorHistoryForModel),
+        ...steps.map(createWorkflowEditorHistoryEntryForModel),
       ],
     }
     const editStepIndex = steps.filter((item) => item.tool === 'edit_graph').length
@@ -342,7 +331,7 @@ async function runCharacterWorkflowEditorAgent(
     const step = createWorkflowAgentStep({
       now,
       index: stepOffset + steps.length + 1,
-      tool: spec.status === 'needs-user' ? 'ask_user' : spec.status === 'blocked' ? 'validate_graph' : 'edit_graph',
+      tool: spec.status === 'needs-user' ? 'ask_user' : spec.status === 'complete' ? 'finish' : 'edit_graph',
       userRequest,
       summary: spec.summary,
       status: spec.status,
@@ -361,37 +350,23 @@ async function runCharacterWorkflowEditorAgent(
       break
     }
 
-    if (steps.length >= maxSteps) {
-      break
+    if (step.status === 'complete') {
+      const validation = validateWorkflowEditorGraph(graph, objective, request.language, mode)
+      if (validation.complete) {
+        completedSteps = validation.completedSteps.length
+          ? mergeUniqueStrings(completedSteps, validation.completedSteps)
+          : completedSteps
+        currentStep = validation.currentStep
+        nextStep = undefined
+        break
+      }
+      currentStep = validation.currentStep
+      nextStep = validation.nextStep || createWorkflowEditorContinuationStep(objective, request.language, mode)
+      continue
     }
 
-    const validation = validateWorkflowEditorGraph(graph, objective, request.language, mode)
-    const validationNextStep = validation.nextStep || step.nextStep
-    const validationStep = createWorkflowAgentStep({
-      now,
-      index: stepOffset + steps.length + 1,
-      tool: 'validate_graph',
-      userRequest: request.prompt,
-      summary: validation.summary,
-      status: validation.status,
-      plan: step.plan.length ? step.plan : plan,
-      completedSteps: validation.completedSteps.length
-        ? mergeUniqueStrings(completedSteps, validation.completedSteps)
-        : completedSteps,
-      currentStep: validation.currentStep,
-      nextStep: validationNextStep,
-    })
-    await emitStep(validationStep)
-
-    if (validationStep.status === 'blocked' || validationStep.status === 'needs-user') {
-      break
-    }
-    if (validation.complete && !step.nextStep?.trim()) {
-      nextStep = undefined
-      break
-    }
-    if (!validationNextStep?.trim()) {
-      break
+    if (!step.nextStep?.trim()) {
+      nextStep = createWorkflowEditorContinuationStep(objective, request.language, mode)
     }
   }
 
@@ -401,11 +376,13 @@ async function runCharacterWorkflowEditorAgent(
     ? 'blocked'
     : lastStep?.status === 'needs-user'
       ? 'needs-user'
-      : exhausted
-        ? 'active'
-        : nextStep?.trim()
+      : lastStep?.status === 'complete' && !nextStep?.trim()
+        ? 'complete'
+        : exhausted
           ? 'active'
-          : 'complete'
+          : nextStep?.trim()
+            ? 'active'
+            : 'complete'
   const work: CharacterWorkflowEditorAgentWork = {
     id: workId,
     mode,
@@ -574,7 +551,13 @@ function createCharacterWorkflowSpecFromAgentWork(
     nextStep: agentWork.nextStep,
     summary: summarizeEditorAgentWork(agentWork, request.language),
     confidence: agentWork.status === 'blocked' ? 0.3 : agentWork.status === 'needs-user' ? 0.55 : agentWork.status === 'active' ? 0.72 : 0.86,
-    status: agentWork.status === 'blocked' ? 'blocked' : agentWork.status === 'needs-user' ? 'needs-user' : 'applied',
+    status: agentWork.status === 'blocked'
+      ? 'blocked'
+      : agentWork.status === 'needs-user'
+        ? 'needs-user'
+        : agentWork.status === 'complete'
+          ? 'complete'
+          : 'applied',
     decision: agentWork.decision,
     goalPrompt: createMode ? stringValue(goalConfig, 'goalPrompt') || request.prompt : '',
     targetAudience: createMode ? stringValue(goalConfig, 'targetAudience') : '',
@@ -725,6 +708,22 @@ function validateWorkflowEditorGraph(
   }
 }
 
+function createWorkflowEditorContinuationStep(
+  objective: string,
+  language: CharacterWorkflowLanguage,
+  mode: 'create' | 'edit'
+): string {
+  const zh = language === 'zh-CN'
+  if (mode === 'create') {
+    return zh
+      ? `继续完善资源面板，使目标、字段控制、图片控制、开场展示、氛围样式、质量门和导出链路都充分服务用户目标：${objective}`
+      : `Continue refining the resource panel so goals, field controls, image controls, opening display, atmosphere style, quality gate, and export path fully serve the objective: ${objective}`
+  }
+  return zh
+    ? `继续根据用户目标检查并补齐资源面板中仍然薄弱的目标、字段、图片、展示、氛围、质量或导出配置：${objective}`
+    : `Continue checking and filling weak goal, field, image, display, atmosphere, quality, or export settings against the objective: ${objective}`
+}
+
 function createDefaultWorkflowAgentPlan(language: CharacterWorkflowLanguage, mode: 'create' | 'edit'): string[] {
   const zh = language === 'zh-CN'
   if (mode === 'create') {
@@ -819,6 +818,24 @@ function createWorkflowEditorHistoryEntry(step: CharacterWorkflowEditorAgentStep
   }
 }
 
+function createWorkflowEditorHistoryEntryForModel(step: CharacterWorkflowEditorAgentStep): NonNullable<CharacterWorkflowEditorSession['history']>[number] {
+  return sanitizeWorkflowEditorHistoryForModel(createWorkflowEditorHistoryEntry(step))
+}
+
+function sanitizeWorkflowEditorHistoryForModel(
+  item: NonNullable<CharacterWorkflowEditorSession['history']>[number]
+): NonNullable<CharacterWorkflowEditorSession['history']>[number] {
+  return {
+    stepIndex: item.stepIndex,
+    tool: item.tool,
+    userRequest: item.userRequest,
+    summary: item.summary,
+    status: item.status,
+    operations: item.operations,
+    currentStep: item.currentStep,
+  }
+}
+
 function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): string {
   const localeRule = language === 'zh-CN'
     ? 'Write all user-facing resource content in Chinese. Keep enum values and node ids in English.'
@@ -829,8 +846,9 @@ function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): 
     localeRule,
     '',
     'The graph is already the structured observation of the current workflow: node ids, node types, config, ports, parameters, select options, and links. Do not ask the frontend to inspect anything.',
-    'runtime.tool is edit_graph. Deterministic inspect_graph and validate_graph tools run outside the model before and after your edits.',
-    'editorSession.history contains the previous global agent steps for this workflow project. A new userRequest in edit mode is an external continuation input unless it clearly changes the objective.',
+    'runtime.tool is edit_graph. Host inspection runs before the first model step only to seed context; it is not part of your execution steps. Host validation runs only after you return status "complete"; if validation finds missing graph requirements, the host will feed those gaps back as the next userRequest.',
+    'editorSession contains only durable progress context: plan, completedSteps, and history of prior executed model steps. It does not carry the next action; the current action request is userRequest.',
+    'editorSession.history contains previous executed model steps for this workflow project. A new userRequest in edit mode is an external continuation input unless it clearly changes the objective.',
     'runtime.stepIndex is the local edit step within this run; runtime.globalStepIndex continues the project history.',
     'Your goal is to finish the user objective and make the full resource panel run-ready, not to simulate a fixed number of steps. Continue the previous objective unless the user clearly changes direction.',
     'Act like Codex working on a repo: use the observed graph, keep a concrete plan, apply meaningful graph patches, validate mentally against the objective, and decide whether to continue or finish.',
@@ -850,8 +868,9 @@ function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): 
     '- Use concise resource content. A field should contain the content that resource controls, not instructions about how you are editing.',
     '- Always return plan. Keep it short, concrete, and update it to reflect progress. Mark completed work in completedSteps.',
     '- Use currentStep to name the step you are applying now. Use nextStep to name what should happen next.',
-    '- Completion means the user objective is reflected across the relevant panel resources: goal, style, constraints, field controls, image targets and controls, opening layout, atmosphere style, quality gate, and export path.',
-    '- If the objective and panel requirements are now adequately reflected in the graph, leave nextStep empty. If more work remains, nextStep must be the next concrete graph-editing step, not a vague reminder.',
+    '- Completion means the user objective is materially represented across every relevant panel resource, not merely that the graph is structurally valid: generation goal, prose/RP style, hard constraints, source notes, character fields and field controls, image targets, image generation controls, opening layout, atmosphere style, quality gate, and output adapter.',
+    '- Use status "complete" only when there is no meaningful graph edit left that would improve user-objective coverage or panel run-readiness. When status is "complete", leave nextStep empty and include no filler edits.',
+    '- If more work remains, use status "applied" and nextStep must be the next concrete graph-editing step, not a vague reminder. Do not use an empty nextStep to imply completion without status "complete".',
     '- Do not optimize around a visible step budget. The host runtime may stop the loop externally; your decision should be based on objective completion and panel readiness.',
     '- If the request is underspecified but still workable, make strong creative decisions and set status to "applied".',
     '- Ask the user only when the next edit requires information the agent cannot responsibly infer: vague design direction, style preference, adult/sensual presentation direction, relationship direction, imported material choice, output target, or privacy-sensitive handling.',
@@ -895,7 +914,7 @@ function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): 
     '  "currentStep"?: string,',
     '  "nextStep"?: string,',
     '  "confidence"?: number,',
-    '  "status": "applied" | "needs-user" | "blocked",',
+    '  "status": "applied" | "needs-user" | "blocked" | "complete",',
     '  "decision"?: {',
     '    "id": string,',
     '    "title": string,',
@@ -1180,7 +1199,7 @@ async function repairWorkflowBuilderJson(options: {
           : 'The previous response was not complete valid JSON and could not be parsed.',
       'Return exactly one complete JSON object. No markdown, comments, explanations, or code fences.',
       options.requireEditableOperations
-        ? 'If status is "applied", include nodeConfigUpdates or operations. Use status "needs-user" only when a concrete decision is required. Use status "blocked" only when the request cannot be safely or coherently represented as a workflow graph.'
+        ? 'If status is "applied", include nodeConfigUpdates or operations. Use status "complete" only when the workflow graph already fully satisfies the objective and panel readiness requirements. Use status "needs-user" only when a concrete decision is required. Use status "blocked" only when the request cannot be safely or coherently represented as a workflow graph.'
         : 'Match the required schema.',
       'Keep the response compact: short summary, short plan, at most 3 completedSteps, concise currentStep/nextStep.',
       '',
@@ -1219,7 +1238,7 @@ function createWorkflowJsonRepairSystemPrompt(language: CharacterWorkflowLanguag
     '  "completedSteps"?: string[],',
     '  "currentStep"?: string,',
     '  "nextStep"?: string,',
-    '  "status": "applied" | "needs-user" | "blocked",',
+    '  "status": "applied" | "needs-user" | "blocked" | "complete",',
     '  "decision"?: { "id": string, "title": string, "description"?: string, "options": [{ "id": string, "label": string, "detail"?: string, "patchHint"?: string }], "defaultOptionId"?: string, "allowSkip"?: boolean },',
     '  "nodeConfigUpdates"?: { [nodeId: string]: object },',
     '  "operations": [',
@@ -1490,7 +1509,7 @@ function operationList(value: unknown): CharacterWorkflowBuilderOperation[] {
 }
 
 function normalizeBuilderStatus(value: string): CharacterWorkflowBuilderSpec['status'] {
-  return new Set(['applied', 'needs-user', 'blocked']).has(value) ? value as CharacterWorkflowBuilderSpec['status'] : 'applied'
+  return new Set(['applied', 'needs-user', 'blocked', 'complete']).has(value) ? value as CharacterWorkflowBuilderSpec['status'] : 'applied'
 }
 
 function sanitizeResourceConfigForNode(type: string | undefined, config: Record<string, unknown>): Record<string, unknown> {

@@ -1559,20 +1559,26 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         ? `[data-message-id="${cssEscapeForSelector(messageId)}"] .chat-inline-audio[data-chat-audio-text="${cssEscapeForSelector(normalizedSpeechText)}"] audio`
         : `[data-message-id="${cssEscapeForSelector(messageId)}"] .chat-inline-audio audio, [data-message-id="${cssEscapeForSelector(messageId)}"] audio`
       const audio = options.messageList.querySelector<HTMLAudioElement>(selector)
-      void audio?.play().catch(() => undefined)
+      void audio?.play().then(() => updateInlineAudioPlayerState(audio)).catch(() => undefined)
     })
   }
 
   function playInlineAudioForMessage(messageId: string, inlineSpeechText: string, control?: HTMLElement): boolean {
     const normalizedSpeechText = normalizeInlineAudioText(inlineSpeechText)
-    const audio = control?.closest('p')?.querySelector<HTMLAudioElement>('.chat-inline-audio audio')
+    const audio = control?.closest<HTMLElement>('.chat-inline-audio-player')?.querySelector<HTMLAudioElement>('audio')
+      ?? control?.closest('p')?.querySelector<HTMLAudioElement>('.chat-inline-audio audio')
       ?? options.messageList.querySelector<HTMLAudioElement>(
         `[data-message-id="${cssEscapeForSelector(messageId)}"] .chat-inline-audio[data-chat-audio-text="${cssEscapeForSelector(normalizedSpeechText)}"] audio`
       )
     if (!audio) {
       return false
     }
-    void audio.play().catch(() => undefined)
+    if (!audio.paused && !audio.ended) {
+      audio.pause()
+      updateInlineAudioPlayerState(audio)
+      return true
+    }
+    void audio.play().then(() => updateInlineAudioPlayerState(audio)).catch(() => undefined)
     return true
   }
 
@@ -1598,6 +1604,32 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       .replace(/["“”]+$/, '')
       .replace(/\s+/g, ' ')
       .trim()
+  }
+
+  function updateInlineAudioPlayerState(audio: HTMLAudioElement): void {
+    const player = audio.closest<HTMLElement>('.chat-inline-audio-player')
+    if (!player) {
+      return
+    }
+    const duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 0
+    const currentTime = Number.isFinite(audio.currentTime) ? audio.currentTime : 0
+    const progress = duration > 0 ? Math.max(0, Math.min(1, currentTime / duration)) : 0
+    player.style.setProperty('--chat-audio-progress', `${Math.round(progress * 1000) / 10}%`)
+    player.classList.toggle('is-playing', !audio.paused && !audio.ended)
+    const time = player.querySelector<HTMLElement>('[data-chat-inline-audio-time]')
+    if (time) {
+      time.textContent = `${formatInlineAudioTime(currentTime)} / ${formatInlineAudioTime(duration)}`
+    }
+  }
+
+  function formatInlineAudioTime(seconds: number): string {
+    if (!Number.isFinite(seconds) || seconds <= 0) {
+      return '0:00'
+    }
+    const total = Math.max(0, Math.round(seconds))
+    const minutes = Math.floor(total / 60)
+    const remainder = total % 60
+    return `${minutes}:${remainder.toString().padStart(2, '0')}`
   }
 
   function cssEscapeForSelector(value: string): string {
@@ -2351,6 +2383,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const location = preview.location || (zh ? '当前场景' : 'Current scene')
     const status = preview.status?.length ? preview.status : (zh ? ['氛围 72', '距离 18', '警戒 63'] : ['Mood 72', 'Distance 18', 'Guard 63'])
     const equipment = preview.equipment?.length ? preview.equipment : [{ name: zh ? '随身物件' : 'Keepsake', ability: zh ? '维持角色气氛' : 'Holds the character mood', quantity: '1' }]
+    const silentAudioSource = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA='
     return `
       <section class="${renderAtmosphereClassNames(style, 'chat-profile-atmosphere')}" style="${renderAtmosphereInlineStyle(style)}">
         <div class="chat-profile-atmosphere-head">
@@ -2367,7 +2400,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
                 <span class="roleplay-chat-quote">“${options.escapeHtml(compactProfileText(speech, 72))}”</span>
                 <span class="chat-inline-audio">
                   <span class="chat-inline-audio-player chat-profile-audio-demo" aria-hidden="true">
-                    <i></i><i></i><i></i>
+                    <audio class="chat-inline-audio-native" src="${silentAudioSource}" preload="metadata"></audio>
+                    <span class="chat-inline-audio-play"></span>
+                    <span class="chat-inline-audio-track"><span></span></span>
+                    <span class="chat-inline-audio-time">0:00 / 0:04</span>
+                    <span class="chat-inline-audio-menu"><span class="chat-inline-audio-menu-dot"></span><span class="chat-inline-audio-menu-dot"></span><span class="chat-inline-audio-menu-dot"></span></span>
                   </span>
                 </span>
               </p>
@@ -5491,7 +5528,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       ? 'needs-user'
       : spec.status === 'blocked'
         ? 'blocked'
-        : 'active'
+        : spec.status === 'complete'
+          ? 'complete'
+          : 'active'
     const operationCount = (Array.isArray(spec.operations) ? spec.operations.length : 0)
       + Object.keys(response.uiConfigOverrides ?? {}).length
     project.goalSession = {
@@ -5499,7 +5538,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       plan: Array.isArray(spec.plan) && spec.plan.length ? spec.plan.filter((item): item is string => typeof item === 'string') : current.plan,
       completedSteps: Array.isArray(spec.completedSteps) ? spec.completedSteps.filter((item): item is string => typeof item === 'string') : current.completedSteps,
       currentStep: typeof spec.currentStep === 'string' && spec.currentStep.trim() ? spec.currentStep.trim() : current.currentStep,
-      nextStep: typeof spec.nextStep === 'string' && spec.nextStep.trim() ? spec.nextStep.trim() : current.nextStep,
+      nextStep: status === 'complete' ? undefined : typeof spec.nextStep === 'string' && spec.nextStep.trim() ? spec.nextStep.trim() : current.nextStep,
       status,
       pendingDecision: status === 'needs-user' ? normalizeWorkflowAgentDecision(spec.decision) : undefined,
       history: [
@@ -5574,13 +5613,15 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       ? 'needs-user'
       : step.status === 'blocked'
         ? 'blocked'
-        : 'active'
+        : step.status === 'complete'
+          ? 'complete'
+          : 'active'
     project.goalSession = {
       ...current,
       plan: Array.isArray(step.plan) && step.plan.length ? step.plan.filter((item): item is string => typeof item === 'string') : current.plan,
       completedSteps: Array.isArray(step.completedSteps) ? step.completedSteps.filter((item): item is string => typeof item === 'string') : current.completedSteps,
       currentStep: typeof step.currentStep === 'string' && step.currentStep.trim() ? step.currentStep.trim() : current.currentStep,
-      nextStep: typeof step.nextStep === 'string' && step.nextStep.trim() ? step.nextStep.trim() : current.nextStep,
+      nextStep: status === 'complete' ? undefined : typeof step.nextStep === 'string' && step.nextStep.trim() ? step.nextStep.trim() : current.nextStep,
       status,
       pendingDecision: status === 'needs-user' ? normalizeWorkflowAgentDecision(step.decision) : undefined,
       history: dedupeWorkflowGoalHistory([
@@ -5861,8 +5902,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           objective: goalSession.objective,
           plan: goalSession.plan,
           completedSteps: goalSession.completedSteps,
-          currentStep: goalSession.currentStep,
-          nextStep: goalSession.nextStep,
           history: goalSession.history.map((item) => ({
             stepIndex: item.stepIndex,
             tool: item.tool,
@@ -5871,7 +5910,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             status: item.status,
             operations: item.operations,
             currentStep: item.currentStep,
-            nextStep: item.nextStep,
           })),
         } : undefined,
         graph: createCharacterWorkflowAssistantGraph(workflowPage),
@@ -9165,6 +9203,15 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     handleAction(target.dataset.chatAction || '', target)
   })
+
+  for (const eventName of ['loadedmetadata', 'timeupdate', 'play', 'pause', 'ended']) {
+    panel.addEventListener(eventName, (event) => {
+      const audio = event.target instanceof HTMLAudioElement ? event.target : null
+      if (audio?.classList.contains('chat-inline-audio-native')) {
+        updateInlineAudioPlayerState(audio)
+      }
+    }, true)
+  }
 
   panel.addEventListener('change', (event) => {
     const workflowRunSelect = (event.target as HTMLElement | null)?.closest<HTMLSelectElement>('[data-chat-workflow-run-select]')
