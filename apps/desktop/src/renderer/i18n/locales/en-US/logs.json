@@ -1,0 +1,6 @@
+{
+  "logs.desc": "Inspect the current session by time, level, and subsystem.",
+  "logs.empty": "No logs",
+  "logs.loadFailed": "Failed to load logs",
+  "logs.title": "Logs"
+}

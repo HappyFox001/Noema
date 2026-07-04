@@ -1,0 +1,5 @@
+{
+  "experimental.selfLearning": "自动学习",
+  "experimental.selfLearningDesc": "允许自动记录 runtime 事件、生成学习候选和创建 specialized agents。关闭后相关后台流程全部停用。",
+  "experimental.title": "实验功能"
+}

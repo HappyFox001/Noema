@@ -1,0 +1,13 @@
+{
+  "personality.addedAndSwitched": "已添加并切换为 {name}",
+  "personality.addFailed": "添加角色失败: {error}",
+  "personality.addFile": "添加角色文件",
+  "personality.addFileDesc": "选择外部角色 JSON 文件，校验通过后加入人格列表",
+  "personality.current": "当前人格",
+  "personality.currentDesc": "选择 AI 伴侣的人格配置",
+  "personality.externalFile": "外部文件",
+  "personality.listLoadFailed": "人格列表加载失败: {error}",
+  "personality.switched": "人格已切换为 {name}",
+  "personality.switchFailed": "人格切换失败: {error}",
+  "personality.title": "人格"
+}

@@ -1,0 +1,23 @@
+{
+  "chat.background": "Background",
+  "chat.characterProfile": "Character profile",
+  "chat.identity": "Chen Qianyu",
+  "chat.kicker": "Noema chat",
+  "chat.navArchive": "Archive",
+  "chat.navAssets": "Assets",
+  "chat.navCharacters": "Characters",
+  "chat.navConversations": "Conversations",
+  "chat.navRuntime": "Runtime",
+  "chat.navSession": "Session",
+  "chat.navVoice": "Voice",
+  "chat.new": "New",
+  "chat.placeholder": "Write a message...",
+  "chat.profileDesc": "Independent character resources describe the character itself, without UI state or test-flow fields.",
+  "chat.profileTags": "Tags",
+  "chat.resourceKicker": "Character resource",
+  "chat.search": "Search history characters or chats",
+  "chat.subtitle": "History character chat",
+  "chat.threadEva": "Chen Qianyu basic profile is connected.",
+  "chat.threadRuntime": "Streaming text, tool calls, and local task status",
+  "chat.title": "Chat"
+}

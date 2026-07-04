@@ -189,7 +189,7 @@ export type CharacterWorkflowAgentToolAction =
   | 'finish'
 
 const DEFAULT_REQUIRED_CHECKS = ['goal match', 'long-term RP', 'visual identity', 'field completeness', 'consistency']
-const DEFAULT_ASSET_TARGETS = ['role-card', 'opening', 'opening-layout', 'image-pack', 'generation-report']
+const DEFAULT_ASSET_TARGETS = ['role-card', 'opening', 'opening-layout', 'atmosphere-style', 'image-pack', 'generation-report']
 const WORKFLOW_AGENT_DEFAULT_REVISION_BUDGET = 12
 const WORKFLOW_EDITOR_DEFAULT_EDIT_TURNS = WORKFLOW_AGENT_DEFAULT_REVISION_BUDGET
 const WORKFLOW_EDITOR_MIN_EDIT_TURNS = 3
@@ -750,6 +750,7 @@ function getMissingWorkflowCoreNodeIds(graph: CharacterWorkflowBuilderGraph): st
     'agent-policy',
     'generation-strategy',
     'opening-layout-target',
+    'atmosphere-style-target',
     'quality-gate',
     'output-adapter',
   ].filter((id) => !nodeIds.has(id))
@@ -766,6 +767,7 @@ function getMissingWorkflowCoreLinkIssues(
     ['avatar-image-target', 'imageAsset', 'overview-sheet-image-target', 'referenceImage', 'avatar 没有作为 overview sheet 的引用图', 'avatar is not linked as the overview sheet reference image'],
     ['avatar-image-target', 'imageAsset', 'opening-panel-image-target', 'referenceImage', 'avatar 没有作为 opening panel 图片引用', 'avatar is not linked as the opening-panel image reference'],
     ['opening-panel-image-target', 'imageAsset', 'opening-layout-target', 'imageAsset', 'opening panel 图片没有连接到 opening layout', 'opening-panel images are not linked to the opening layout'],
+    ['character-card-target', 'target', 'atmosphere-style-target', 'card', '角色卡没有连接到氛围样式目标', 'character card is not linked to the atmosphere style target'],
     ['quality-gate', 'report', 'output-adapter', 'report', '质量门没有连接到导出节点', 'quality gate is not linked to the output adapter'],
   ]
   return checks
@@ -841,6 +843,7 @@ function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): 
     '- Every generated field must carry unique role-card information. Do not repeat the same relationship premise, visual fact, lore paragraph, or opening beat across multiple fields.',
     '- opening-layout-target: use this for the CSS/HTML-style role-card opening presentation that combines title, short tags, opening preview, and generated images. Set layoutKind to auto-opening-layout unless the user asks for a specific shape. Available layoutKind values are cinematic-poster, visual-novel-scene, chat-teaser, scrapbook-collage, profile-dossier, and editorial-cover. Set textDensity to minimal by default; use balanced or story only when the user wants a text-heavy intro.',
     '- Opening panels must feel like attractive roleplay entry surfaces, not project reports. Do not surface project labels such as Noema, workflow, role opening, generated card, node names, XML tags, or field names in layoutPrompt or visible text guidance. Prefer varied visual layouts inspired by character-card/profile/opening-message products: poster, visual novel, chat teaser, collage, dossier, or editorial cover.',
+    '- atmosphere-style-target: use this for the structured role-card atmosphere style that controls chat bubble feeling, role_chat speech styling, inline audio player style, scene/status cards, and the profile preview. Do not generate free CSS. Configure moodPreset, surface, messageFrame, audioPlayer, density, and stylePrompt as style tokens. Add or update this node whenever the request mentions immersive chat presentation, character UI atmosphere, audio-bar feeling, dialogue display, or role-card style consistency.',
     '- image-target.imageRole: use avatar for the first canonical avatar.jpg target, character-overview-sheet for the required built-in overview sheet, and character-base-image for any extra free-form non-avatar character sample images. Do not invent fixed categories such as cover, full-body, opening moment, story moment, expression, outfit detail, relationship moment, or world context.',
     '- image-target.assetPurpose: for character-base-image, describe the free-form meaning of the sample images: scene, action, pose, outfit usage, prop interaction, mood, and roleplay situation. For character-overview-sheet, keep the existing overview sheet purpose and do not turn it into a scene.',
     '- image-generation-control: image count, imageStyleDomain, concise stylePrompt, poseGoals, backgroundInteraction, appealMode, sensualityLevel, wardrobeExposure, shotType, aspectRatio, consistencyMode, seedMode. Use imageStyleDomain only for photoreal/anime/illustration/stylized routing; use pose/background/appeal/sensuality/wardrobe fields for free character-base-image composition and adult visual attraction.',
@@ -850,7 +853,7 @@ function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): 
     '- world-card-target / npc-pack-target / npc-target / plot-arc-target / scene-card-target: add these when the request asks for multi-NPC, world, setting, story arc, or scene planning.',
     '',
     'Valid node types:',
-    'goal, character-card-target, character-field-target, opening-layout-target, image-target, world-card-target, npc-pack-target, npc-target, plot-arc-target, scene-card-target, style-pressure, constraint, image-generation-control, continuity-control, relationship-control, source-material, llm-tool, image-tool, retrieval-tool, voice-tool, agent-policy, generation-strategy, critique-loop, quality-gate, output-adapter.',
+    'goal, character-card-target, character-field-target, opening-layout-target, atmosphere-style-target, image-target, world-card-target, npc-pack-target, npc-target, plot-arc-target, scene-card-target, style-pressure, constraint, image-generation-control, continuity-control, relationship-control, source-material, llm-tool, image-tool, retrieval-tool, voice-tool, agent-policy, generation-strategy, critique-loop, quality-gate, output-adapter.',
     '',
     'Valid link kinds:',
     'guides, constrains, provides, enables, grounds, weights, routes, evaluates, refines, exports.',
@@ -1523,6 +1526,7 @@ function isCharacterNodeType(value: string): value is CharacterNodeType {
     'character-card-target',
     'character-field-target',
     'opening-layout-target',
+    'atmosphere-style-target',
     'image-target',
     'world-card-target',
     'npc-pack-target',
@@ -1586,7 +1590,7 @@ function normalizeGenerationStrategy(record: Record<string, unknown>): Character
   return {
     mode: allowedMode.has(mode) ? mode : 'branch-and-refine',
     branchCount: Math.round(numberValue(record, 'branchCount', 3, 1, 8)),
-    priorityAssets: ['opening-layout', 'image-pack'].reduce(
+    priorityAssets: ['opening-layout', 'atmosphere-style', 'image-pack'].reduce(
       (assets, asset) => assets.includes(asset) ? assets : [...assets, asset],
       priorityAssets
     ),

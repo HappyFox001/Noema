@@ -1,0 +1,12 @@
+{
+  "voice.input": "语音输入",
+  "voice.inputDesc": "使用麦克风进行语音对话",
+  "voice.micPermissionDenied": "麦克风权限未授予",
+  "voice.micPermissionSettings": "请在系统设置中开启麦克风权限",
+  "voice.output": "语音输出",
+  "voice.outputDesc": "EVA 以语音方式回复",
+  "voice.outputDisabled": "语音输出已关闭",
+  "voice.outputEnabled": "语音输出已开启",
+  "voice.title": "语音设置",
+  "voice.volume": "音量"
+}

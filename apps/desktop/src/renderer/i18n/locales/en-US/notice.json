@@ -1,0 +1,6 @@
+{
+  "notice.orbCaptureCopied": "Orb screenshot copied to clipboard",
+  "notice.orbCaptureFailed": "Capture failed: {error}",
+  "notice.voiceInputDisabled": "Voice input disabled",
+  "notice.voiceInputEnabled": "Voice input enabled"
+}

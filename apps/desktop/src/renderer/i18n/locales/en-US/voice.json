@@ -1,0 +1,12 @@
+{
+  "voice.input": "Voice Input",
+  "voice.inputDesc": "Use the microphone for voice conversation",
+  "voice.micPermissionDenied": "Microphone permission was not granted",
+  "voice.micPermissionSettings": "Enable microphone permission in System Settings",
+  "voice.output": "Voice Output",
+  "voice.outputDesc": "Let EVA reply with speech",
+  "voice.outputDisabled": "Voice output disabled",
+  "voice.outputEnabled": "Voice output enabled",
+  "voice.title": "Voice Settings",
+  "voice.volume": "Volume"
+}

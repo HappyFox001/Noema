@@ -64,6 +64,38 @@ type ChatPreloadImagePromptContext = {
   assistantText?: string
 }
 
+type ChatPreloadAtmosphereStyle = {
+  schemaVersion: 1
+  name: string
+  summary?: string
+  mood: string[]
+  palette: {
+    accent: string
+    accentSoft: string
+    surface: 'glass' | 'paper' | 'noir' | 'mist' | 'velvet' | 'terminal'
+    warmth: 'cool' | 'neutral' | 'warm'
+    contrast: 'low' | 'medium' | 'high'
+  }
+  message: {
+    frame: 'plain' | 'literary-panel' | 'visual-novel' | 'dossier' | 'letter'
+    narration: 'soft-prose' | 'cinematic' | 'noir' | 'diary' | 'clinical'
+    speech: 'quote-emphasis' | 'quiet-line' | 'stage-dialogue'
+    density: 'compact' | 'balanced' | 'airy'
+    radius: 'sharp' | 'soft' | 'round'
+  }
+  audio: {
+    player: 'thin-glass-bar' | 'soft-wave-strip' | 'quiet-capsule' | 'dossier-line'
+    motion: 'still' | 'subtle-wave' | 'breath'
+    tone: 'near' | 'distant' | 'intimate' | 'formal'
+  }
+  sceneCard: {
+    frame: 'quiet-panel' | 'glass-dossier' | 'paper-note' | 'terminal-readout'
+    divider: 'fine-line' | 'soft-band' | 'none'
+  }
+  preview?: Record<string, unknown>
+  sourceArtifactId?: string
+}
+
 declare global {
   interface Window {
     electronAPI: {
@@ -637,6 +669,8 @@ declare global {
         success: boolean
         resources?: Array<{
           id: string
+          roleCard?: Record<string, unknown>
+          atmosphereStyle?: ChatPreloadAtmosphereStyle
           name: Record<string, string>
           displayName: Record<string, string>
           description: Record<string, string>
@@ -698,6 +732,7 @@ declare global {
               layoutKind?: string
               sourceArtifactId?: string
             }
+            atmosphereStyle?: ChatPreloadAtmosphereStyle
             name: Record<string, string>
             displayName: Record<string, string>
             description: Record<string, string>
@@ -758,6 +793,7 @@ declare global {
               layoutKind?: string
               sourceArtifactId?: string
             }
+            atmosphereStyle?: ChatPreloadAtmosphereStyle
             name: Record<string, string>
             displayName: Record<string, string>
             description: Record<string, string>

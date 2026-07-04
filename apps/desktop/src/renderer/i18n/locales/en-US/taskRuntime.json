@@ -1,0 +1,12 @@
+{
+  "taskRuntime.compactLimit": "Auto Compact Limit",
+  "taskRuntime.compactLimitDesc": "Compact task history when context tokens reach this value, capped at 90% of the window.",
+  "taskRuntime.contextWindow": "Model Context Window",
+  "taskRuntime.contextWindowDesc": "Used to estimate the task history compact threshold.",
+  "taskRuntime.desc": "Runtime loop and memory limits.",
+  "taskRuntime.keepRecent": "Keep Recent Turns",
+  "taskRuntime.keepRecentDesc": "How many raw recent turns to keep during compaction.",
+  "taskRuntime.maxTurns": "Max Turns",
+  "taskRuntime.maxTurnsDesc": "Stop a task after this many runtime turns.",
+  "taskRuntime.title": "Task Runtime Params"
+}

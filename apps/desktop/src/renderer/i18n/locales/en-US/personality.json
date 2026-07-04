@@ -1,0 +1,13 @@
+{
+  "personality.addedAndSwitched": "Added and switched to {name}",
+  "personality.addFailed": "Failed to add role: {error}",
+  "personality.addFile": "Add Role File",
+  "personality.addFileDesc": "Choose an external character JSON file and add it after validation",
+  "personality.current": "Current Personality",
+  "personality.currentDesc": "Choose the AI companion personality profile",
+  "personality.externalFile": "External file",
+  "personality.listLoadFailed": "Failed to load personality list: {error}",
+  "personality.switched": "Switched personality to {name}",
+  "personality.switchFailed": "Failed to switch personality: {error}",
+  "personality.title": "Personality"
+}

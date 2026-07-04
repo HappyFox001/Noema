@@ -66,6 +66,7 @@ import {
   type ChatMessageMedia,
   type ChatMessage,
   type ChatOpeningPanel,
+  type ChatAtmosphereStyle,
 } from './chat-model'
 import {
   createDefaultChatModel,
@@ -2320,6 +2321,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           </div>
         </section>
 
+        ${renderCharacterAtmospherePreview(character, language)}
+
         <section class="chat-profile-info-grid">
           ${textSections.map((field) => `
             <article class="chat-profile-info-card">
@@ -2330,6 +2333,106 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         </section>
       </div>
     `
+  }
+
+  function renderCharacterAtmospherePreview(character: ChatCharacterResource, language: 'zh-CN' | 'en-US'): string {
+    const style = character.atmosphereStyle
+    if (!style) {
+      return ''
+    }
+    const zh = language === 'zh-CN'
+    const preview = style.preview ?? {}
+    const narration = preview.narration || localizeChatText(character.description, language) || (zh ? '她安静地停在你身侧，像是在等一句迟来的回答。' : 'She settles beside you quietly, waiting for the answer that arrives late.')
+    const speech = preview.speech || extractFirstRoleSpeech(localizeChatText(character.firstMessage, language)) || (zh ? '这里代错了。' : 'This step is wrong.')
+    const userLine = preview.userLine || (zh ? '我应该从哪里重新开始？' : 'Where should I start again?')
+    const location = preview.location || (zh ? '当前场景' : 'Current scene')
+    const status = preview.status?.length ? preview.status : (zh ? ['氛围 72', '距离 18', '警戒 63'] : ['Mood 72', 'Distance 18', 'Guard 63'])
+    const equipment = preview.equipment?.length ? preview.equipment : [{ name: zh ? '随身物件' : 'Keepsake', ability: zh ? '维持角色气氛' : 'Holds the character mood', quantity: '1' }]
+    return `
+      <section class="${renderAtmosphereClassNames(style, 'chat-profile-atmosphere')}" style="${renderAtmosphereInlineStyle(style)}">
+        <div class="chat-profile-atmosphere-head">
+          <span>${options.escapeHtml(zh ? '角色卡氛围样式' : 'Character atmosphere')}</span>
+          <strong>${options.escapeHtml(style.name)}</strong>
+          ${style.summary ? `<p>${options.escapeHtml(style.summary)}</p>` : ''}
+        </div>
+        <div class="chat-profile-atmosphere-preview">
+          <p class="chat-profile-atmosphere-user">${options.escapeHtml(userLine)}</p>
+          <div class="roleplay-chat-frame">
+            <p>${options.escapeHtml(compactProfileText(narration, 150))}</p>
+            <div class="roleplay-chat-speech">
+              <p class="roleplay-chat-speech-row">
+                <span class="roleplay-chat-quote">“${options.escapeHtml(compactProfileText(speech, 72))}”</span>
+                <span class="chat-inline-audio">
+                  <span class="chat-inline-audio-player chat-profile-audio-demo" aria-hidden="true">
+                    <i></i><i></i><i></i>
+                  </span>
+                </span>
+              </p>
+            </div>
+          </div>
+          <section class="chat-inline-scene">
+            <div class="chat-inline-scene-lines">
+              <div class="chat-inline-scene-line">
+                <span>${options.escapeHtml(zh ? '地点' : 'Place')}</span>
+                <strong>${options.escapeHtml(compactProfileText(location, 36))}</strong>
+              </div>
+              <div class="chat-inline-scene-line">
+                <span>${options.escapeHtml(zh ? '状态' : 'Status')}</span>
+                <div class="chat-inline-scene-status">
+                  ${status.slice(0, 3).map((item) => `<em>${options.escapeHtml(item)}</em>`).join('')}
+                </div>
+              </div>
+            </div>
+            <div class="chat-inline-equipment">
+              <table>
+                <tbody>
+                  ${equipment.slice(0, 2).map((item) => `
+                    <tr>
+                      <td>${options.escapeHtml(item.name)}</td>
+                      <td>${options.escapeHtml(item.ability)}</td>
+                      <td>${options.escapeHtml(item.quantity || '1')}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </section>
+    `
+  }
+
+  function renderAtmosphereClassNames(style: ChatAtmosphereStyle, baseClass: string): string {
+    return [
+      baseClass,
+      'has-chat-atmosphere',
+      `chat-atmosphere-surface-${style.palette.surface}`,
+      `chat-atmosphere-message-${style.message.frame}`,
+      `chat-atmosphere-audio-${style.audio.player}`,
+      `chat-atmosphere-scene-${style.sceneCard.frame}`,
+      `chat-atmosphere-density-${style.message.density}`,
+      `chat-atmosphere-radius-${style.message.radius}`,
+    ].join(' ')
+  }
+
+  function renderAtmosphereInlineStyle(style: ChatAtmosphereStyle): string {
+    const radius = style.message.radius === 'sharp' ? '10px' : style.message.radius === 'round' ? '22px' : '16px'
+    const densityGap = style.message.density === 'compact' ? '8px' : style.message.density === 'airy' ? '16px' : '12px'
+    return [
+      `--chat-atmosphere-accent:${style.palette.accent}`,
+      `--chat-atmosphere-accent-soft:${style.palette.accentSoft}`,
+      `--chat-atmosphere-radius:${radius}`,
+      `--chat-atmosphere-density-gap:${densityGap}`,
+    ].join(';')
+  }
+
+  function extractFirstRoleSpeech(value: string): string {
+    const match = value.match(/<role_chat\b[^>]*>([\s\S]*?)<\/role_chat>/i)
+    const source = match ? match[1] : value
+    return stripRoleChatTags(source)
+      .replace(/^["“”]+|["“”]+$/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
   }
 
   function getCharacterProfileFields(character: ChatCharacterResource, language: 'zh-CN' | 'en-US'): Array<{ label: string; value: string }> {
@@ -2787,6 +2890,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         runTitle: characterWorkflowRunState.run.title,
       },
       roleCard: fields,
+      atmosphereStyle: extractAtmosphereStyleFromRunDraft(characterWorkflowRunState),
       chat: {
         name: stringField(fields.name),
         description: stringField(fields.description),
@@ -2839,6 +2943,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     ) || avatarImage
     const overviewImage = findRunDraftImage(runState, ['character-overview-sheet', 'overview-sheet', 'overview'])
     const openingPanel = extractOpeningPanelFromRunDraft(runState)
+    const atmosphereStyle = extractAtmosphereStyleFromRunDraft(runState)
     const id = `workflow-run-${sanitizeChatResourceId(runState.run?.id ?? name)}`
     const generatedImageAssets = collectRunDraftGeneratedImageAssets(runState, id, [avatarImage, overviewImage])
     return {
@@ -2852,8 +2957,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         ...fields,
         firstMessage,
         ...(openingPanel ? { openingPanel } : {}),
+        ...(atmosphereStyle ? { atmosphereStyle } : {}),
       },
       ...(openingPanel ? { openingPanel } : {}),
+      ...(atmosphereStyle ? { atmosphereStyle } : {}),
       name: localizedText(name),
       displayName: localizedText(name),
       description: localizedText(description),
@@ -2876,6 +2983,54 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
   }
 
+  function extractAtmosphereStyleFromRunDraft(runState: CharacterResourceRunState): ChatAtmosphereStyle | undefined {
+    const artifact = [...(runState.artifacts ?? [])].reverse().find((item) => item.type === 'atmosphere-style')
+    const data = artifact?.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
+      ? artifact.data as Record<string, unknown>
+      : null
+    if (!data) {
+      return undefined
+    }
+    const palette = objectField(data.palette)
+    const message = objectField(data.message)
+    const audio = objectField(data.audio)
+    const sceneCard = objectField(data.sceneCard)
+    if (!palette || !message || !audio || !sceneCard) {
+      return undefined
+    }
+    return {
+      schemaVersion: 1,
+      name: stringField(data.name) || stringField(artifact?.title) || 'Character atmosphere',
+      summary: stringField(data.summary) || artifact?.summary,
+      mood: stringArrayField(data.mood).slice(0, 8),
+      palette: {
+        accent: stringField(palette.accent) || '#c7d8d0',
+        accentSoft: stringField(palette.accentSoft) || 'rgba(199, 216, 208, 0.16)',
+        surface: enumField(palette.surface, ['glass', 'paper', 'noir', 'mist', 'velvet', 'terminal'], 'glass'),
+        warmth: enumField(palette.warmth, ['cool', 'neutral', 'warm'], 'neutral'),
+        contrast: enumField(palette.contrast, ['low', 'medium', 'high'], 'medium'),
+      },
+      message: {
+        frame: enumField(message.frame, ['plain', 'literary-panel', 'visual-novel', 'dossier', 'letter'], 'literary-panel'),
+        narration: enumField(message.narration, ['soft-prose', 'cinematic', 'noir', 'diary', 'clinical'], 'soft-prose'),
+        speech: enumField(message.speech, ['quote-emphasis', 'quiet-line', 'stage-dialogue'], 'quote-emphasis'),
+        density: enumField(message.density, ['compact', 'balanced', 'airy'], 'balanced'),
+        radius: enumField(message.radius, ['sharp', 'soft', 'round'], 'soft'),
+      },
+      audio: {
+        player: enumField(audio.player, ['thin-glass-bar', 'soft-wave-strip', 'quiet-capsule', 'dossier-line'], 'thin-glass-bar'),
+        motion: enumField(audio.motion, ['still', 'subtle-wave', 'breath'], 'subtle-wave'),
+        tone: enumField(audio.tone, ['near', 'distant', 'intimate', 'formal'], 'near'),
+      },
+      sceneCard: {
+        frame: enumField(sceneCard.frame, ['quiet-panel', 'glass-dossier', 'paper-note', 'terminal-readout'], 'quiet-panel'),
+        divider: enumField(sceneCard.divider, ['fine-line', 'soft-band', 'none'], 'fine-line'),
+      },
+      preview: normalizeAtmospherePreviewField(data.preview),
+      sourceArtifactId: artifact?.id,
+    }
+  }
+
   function extractOpeningPanelFromRunDraft(runState: CharacterResourceRunState): ChatOpeningPanel | undefined {
     const artifact = [...(runState.artifacts ?? [])].reverse().find((item) => item.type === 'opening-layout')
     const data = artifact?.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
@@ -2895,6 +3050,31 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       summary: typeof data.summary === 'string' ? data.summary : artifact?.summary,
       layoutKind: typeof data.layoutKind === 'string' ? data.layoutKind : undefined,
       sourceArtifactId: artifact?.id,
+    }
+  }
+
+  function normalizeAtmospherePreviewField(value: unknown): ChatAtmosphereStyle['preview'] | undefined {
+    const record = objectField(value)
+    if (!record) {
+      return undefined
+    }
+    const equipment = Array.isArray(record.equipment)
+      ? record.equipment.map((item) => {
+          const entry = objectField(item)
+          if (!entry) return null
+          const name = stringField(entry.name)
+          const ability = stringField(entry.ability)
+          if (!name || !ability) return null
+          return { name, ability, quantity: stringField(entry.quantity) || undefined }
+        }).filter(Boolean) as Array<{ name: string; ability: string; quantity?: string }>
+      : undefined
+    return {
+      userLine: stringField(record.userLine) || undefined,
+      narration: stringField(record.narration) || undefined,
+      speech: stringField(record.speech) || undefined,
+      location: stringField(record.location) || undefined,
+      status: stringArrayField(record.status).slice(0, 4),
+      equipment,
     }
   }
 
@@ -3237,6 +3417,24 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function stringField(value: unknown): string {
     return typeof value === 'string' ? value.trim() : ''
+  }
+
+  function stringArrayField(value: unknown): string[] {
+    return Array.isArray(value)
+      ? value.map((item) => typeof item === 'string' ? item.trim() : '').filter(Boolean)
+      : []
+  }
+
+  function objectField(value: unknown): Record<string, unknown> | null {
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : null
+  }
+
+  function enumField<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
+    return typeof value === 'string' && (allowed as readonly string[]).includes(value)
+      ? value as T
+      : fallback
   }
 
   function sanitizeChatResourceId(value: string): string {
@@ -4071,7 +4269,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             'opening-panel-image-target': { imageRole: 'character-base-image', assetPurpose: 'Free-form character sample images for the opening CSS panel. Use the avatar reference to preserve identity while showing distinct roleplay scenes, actions, moods, outfit usage, or prop interactions as panel visual material.' },
             'opening-panel-image-control': { targetImageCount: 2, imageStyleDomain: 'auto', shotType: 'auto', aspectRatio: '3:4', consistencyMode: 'same-character', seedMode: 'vary-slightly' },
             'opening-layout-target': { layoutKind: 'auto-opening-layout', textDensity: 'minimal', includeSections: ['title', 'tags', 'opening', 'coverImage', 'supportImages'], layoutPrompt: 'Create a compact, attractive roleplay opening panel. Choose a varied layout, avoid project labels, keep visible prose short, and use generated character images as strong visual material.' },
-            'generation-strategy': { mode: 'branch-and-refine', branchCount: 3, priorityAssets: ['role-card', 'opening', 'opening-layout', 'image-pack'] },
+            'atmosphere-style-target': { moodPreset: 'auto-atmosphere', surface: 'glass', messageFrame: 'literary-panel', audioPlayer: 'thin-glass-bar', density: 'balanced', stylePrompt: 'Create a role-specific chat atmosphere style for dialogue bubbles, role speech emphasis, inline audio bars, scene cards, and profile preview. Keep it structured, controlled, and consistent with the character instead of generating arbitrary CSS.' },
+            'generation-strategy': { mode: 'branch-and-refine', branchCount: 3, priorityAssets: ['role-card', 'opening', 'opening-layout', 'atmosphere-style', 'image-pack'] },
             'quality-gate': { minimumScore: 0.84 },
           },
         },
