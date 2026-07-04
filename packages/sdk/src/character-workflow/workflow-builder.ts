@@ -40,11 +40,16 @@ export interface CharacterWorkflowEditorSession {
   plan?: string[]
   completedSteps?: string[]
   currentStep?: string
+  nextStep?: string
   history?: Array<{
+    stepIndex?: number
+    tool?: string
     userRequest?: string
     summary?: string
     status?: string
     operations?: number
+    currentStep?: string
+    nextStep?: string
   }>
 }
 
@@ -275,6 +280,7 @@ async function runCharacterWorkflowEditorAgent(
   const workId = `workflow-${mode}-work-${now}`
   const session = request.editorSession
   const objective = session?.objective?.trim() || request.prompt
+  const stepOffset = getWorkflowEditorSessionStepOffset(session)
   await request.onEvent?.({ type: 'workflow-agent.started', mode, workId, objective, timestamp: now })
   let graph = normalizeBuilderGraph(initialGraph)
   let plan = [...(session?.plan ?? [])]
@@ -283,7 +289,6 @@ async function runCharacterWorkflowEditorAgent(
   let nextStep: string | undefined = request.prompt
   const steps: CharacterWorkflowEditorAgentStep[] = []
   const maxSteps = getWorkflowEditorMaxSteps(graph)
-  const maxEditTurns = Math.floor((maxSteps - 1) / 2)
   const emitStep = async (step: CharacterWorkflowEditorAgentStep) => {
     steps.push(step)
     await request.onEvent?.({ type: 'workflow-agent.step', mode, workId, step, timestamp: step.createdAt })
@@ -296,7 +301,7 @@ async function runCharacterWorkflowEditorAgent(
   const inspection = inspectWorkflowEditorGraph(graph, objective, request.language, mode)
   await emitStep(createWorkflowAgentStep({
     now,
-    index: 1,
+    index: stepOffset + 1,
     tool: 'inspect_graph',
     userRequest: request.prompt,
     summary: inspection.summary,
@@ -313,14 +318,10 @@ async function runCharacterWorkflowEditorAgent(
       plan,
       completedSteps,
       currentStep,
+      nextStep,
       history: [
         ...(session?.history ?? []),
-        ...steps.map((step) => ({
-          userRequest: step.userRequest,
-          summary: step.summary,
-          status: step.status,
-          operations: step.operations.length,
-        })),
+        ...steps.map(createWorkflowEditorHistoryEntry),
       ],
     }
     const editStepIndex = steps.filter((item) => item.tool === 'edit_graph').length
@@ -332,14 +333,15 @@ async function runCharacterWorkflowEditorAgent(
       graph,
     }, {
       stepIndex: editStepIndex,
-      maxSteps: maxEditTurns,
+      globalStepIndex: stepOffset + steps.length + 1,
+      previousStepCount: stepOffset,
       objective,
       mode,
     })
     const uiConfigOverrides = createEditorUiConfigOverrides(spec, graph)
     const step = createWorkflowAgentStep({
       now,
-      index: steps.length + 1,
+      index: stepOffset + steps.length + 1,
       tool: spec.status === 'needs-user' ? 'ask_user' : spec.status === 'blocked' ? 'validate_graph' : 'edit_graph',
       userRequest,
       summary: spec.summary,
@@ -367,7 +369,7 @@ async function runCharacterWorkflowEditorAgent(
     const validationNextStep = validation.nextStep || step.nextStep
     const validationStep = createWorkflowAgentStep({
       now,
-      index: steps.length + 1,
+      index: stepOffset + steps.length + 1,
       tool: 'validate_graph',
       userRequest: request.prompt,
       summary: validation.summary,
@@ -424,7 +426,7 @@ async function runCharacterWorkflowEditorAgent(
 
 async function executeCharacterWorkflowEditorStep(
   request: CharacterWorkflowBuilderRequest & { prompt: string; language: CharacterWorkflowLanguage },
-  runtime: { stepIndex: number; maxSteps: number; objective: string; mode: 'create' | 'edit' }
+  runtime: { stepIndex: number; globalStepIndex: number; previousStepCount: number; objective: string; mode: 'create' | 'edit' }
 ): Promise<CharacterWorkflowBuilderSpec> {
   const graph = normalizeBuilderGraph(request.graph)
   if (!graph.nodes.length) {
@@ -439,8 +441,8 @@ async function executeCharacterWorkflowEditorStep(
         mode: runtime.mode,
         tool: 'edit_graph',
         stepIndex: runtime.stepIndex + 1,
-        maxSteps: runtime.maxSteps,
-        remainingSteps: Math.max(0, runtime.maxSteps - runtime.stepIndex - 1),
+        globalStepIndex: runtime.globalStepIndex,
+        previousStepCount: runtime.previousStepCount,
       },
       graph,
     }),
@@ -465,7 +467,8 @@ async function executeCharacterWorkflowEditorStep(
         mode: runtime.mode,
         tool: 'edit_graph',
         stepIndex: runtime.stepIndex + 1,
-        maxSteps: runtime.maxSteps,
+        globalStepIndex: runtime.globalStepIndex,
+        previousStepCount: runtime.previousStepCount,
       },
       graph,
     }),
@@ -794,6 +797,28 @@ function mergeUniqueStrings(left: string[], right: string[]): string[] {
   return [...new Set([...left, ...right].map((item) => item.trim()).filter(Boolean))]
 }
 
+function getWorkflowEditorSessionStepOffset(session: CharacterWorkflowEditorSession | undefined): number {
+  const history = Array.isArray(session?.history) ? session.history : []
+  const maxExplicitStep = history.reduce((maxStep, item) => {
+    const stepIndex = Math.max(0, Math.round(Number(item?.stepIndex) || 0))
+    return stepIndex > maxStep ? stepIndex : maxStep
+  }, 0)
+  return maxExplicitStep || history.length
+}
+
+function createWorkflowEditorHistoryEntry(step: CharacterWorkflowEditorAgentStep): NonNullable<CharacterWorkflowEditorSession['history']>[number] {
+  return {
+    stepIndex: step.index,
+    tool: step.tool,
+    userRequest: step.userRequest,
+    summary: step.summary,
+    status: step.status,
+    operations: step.operations.length + Object.keys(step.uiConfigOverrides ?? {}).length,
+    currentStep: step.currentStep,
+    nextStep: step.nextStep,
+  }
+}
+
 function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): string {
   const localeRule = language === 'zh-CN'
     ? 'Write all user-facing resource content in Chinese. Keep enum values and node ids in English.'
@@ -805,7 +830,9 @@ function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): 
     '',
     'The graph is already the structured observation of the current workflow: node ids, node types, config, ports, parameters, select options, and links. Do not ask the frontend to inspect anything.',
     'runtime.tool is edit_graph. Deterministic inspect_graph and validate_graph tools run outside the model before and after your edits.',
-    'Your goal is to finish the user objective through the tool loop, not to simulate a fixed number of steps. Continue the previous objective unless the user clearly changes direction.',
+    'editorSession.history contains the previous global agent steps for this workflow project. A new userRequest in edit mode is an external continuation input unless it clearly changes the objective.',
+    'runtime.stepIndex is the local edit step within this run; runtime.globalStepIndex continues the project history.',
+    'Your goal is to finish the user objective and make the full resource panel run-ready, not to simulate a fixed number of steps. Continue the previous objective unless the user clearly changes direction.',
     'Act like Codex working on a repo: use the observed graph, keep a concrete plan, apply meaningful graph patches, validate mentally against the objective, and decide whether to continue or finish.',
     'You have broad authority inside the workflow graph. Use it deliberately, keep the workflow executable after every edit, and do not stop after a token patch if substantial work remains.',
     '',
@@ -823,8 +850,9 @@ function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): 
     '- Use concise resource content. A field should contain the content that resource controls, not instructions about how you are editing.',
     '- Always return plan. Keep it short, concrete, and update it to reflect progress. Mark completed work in completedSteps.',
     '- Use currentStep to name the step you are applying now. Use nextStep to name what should happen next.',
-    '- If the objective is now adequately reflected in the graph, leave nextStep empty. If more work remains, nextStep must be the next concrete graph-editing step, not a vague reminder.',
-    '- Respect runtime.remainingSteps. When it is low, apply the highest-value remaining patch and leave a concrete nextStep if work still remains. Do not convert budget exhaustion into needs-user.',
+    '- Completion means the user objective is reflected across the relevant panel resources: goal, style, constraints, field controls, image targets and controls, opening layout, atmosphere style, quality gate, and export path.',
+    '- If the objective and panel requirements are now adequately reflected in the graph, leave nextStep empty. If more work remains, nextStep must be the next concrete graph-editing step, not a vague reminder.',
+    '- Do not optimize around a visible step budget. The host runtime may stop the loop externally; your decision should be based on objective completion and panel readiness.',
     '- If the request is underspecified but still workable, make strong creative decisions and set status to "applied".',
     '- Ask the user only when the next edit requires information the agent cannot responsibly infer: vague design direction, style preference, adult/sensual presentation direction, relationship direction, imported material choice, output target, or privacy-sensitive handling.',
     '- Do not ask for routine graph choices, obvious defaults, ordinary missing details, or permission to continue. Continue autonomously.',

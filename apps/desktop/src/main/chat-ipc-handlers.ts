@@ -185,11 +185,16 @@ export interface ChatBuildCharacterWorkflowRequest {
     plan?: string[]
     completedSteps?: string[]
     currentStep?: string
+    nextStep?: string
     history?: Array<{
+      stepIndex?: number
+      tool?: string
       userRequest?: string
       summary?: string
       status?: string
       operations?: number
+      currentStep?: string
+      nextStep?: string
     }>
   }
   graph?: {

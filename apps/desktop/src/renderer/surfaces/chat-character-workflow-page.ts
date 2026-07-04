@@ -3951,7 +3951,7 @@ function renderRunImageActions(output: CharacterResourceOutput, options: Charact
   const rerollLabel = ui(options, '追加指令重炼', 'Reroll with instruction')
   return `
     <div class="chat-resource-image-actions" data-run-image-actions>
-      <button type="button" data-chat-workflow-run-image-action="reroll" data-run-artifact-id="${options.escapeHtml(artifactId)}" data-run-target-node-id="${options.escapeHtml(targetNodeId)}" data-run-attempt-id="${options.escapeHtml(attemptId)}" aria-label="${options.escapeHtml(rerollLabel)}" title="${options.escapeHtml(rerollLabel)}"><i icon-name="rotate-ccw" aria-hidden="true"></i></button>
+      <button type="button" data-chat-workflow-run-image-action="reroll" data-run-artifact-id="${options.escapeHtml(artifactId)}" data-run-target-node-id="${options.escapeHtml(targetNodeId)}" data-run-attempt-id="${options.escapeHtml(attemptId)}" aria-label="${options.escapeHtml(rerollLabel)}" title="${options.escapeHtml(rerollLabel)}"><i data-lucide="rotate-ccw" aria-hidden="true"></i></button>
     </div>
   `
 }
@@ -4415,8 +4415,8 @@ function renderBottomToolbar(graph: CharacterResourceGraph, options: CharacterWo
           ${drafts.map((draft) => `<option value="${options.escapeHtml(draft.id)}" ${draft.id === activeRunId ? 'selected' : ''}>${options.escapeHtml(`${draft.title} · ${draft.status}`)}</option>`).join('')}
         </select>
       </label>
-      <button type="button" data-chat-workflow-action="delete-run-draft" ${activeRunId ? '' : 'disabled'}><i icon-name="trash-2" aria-hidden="true"></i><span>${options.escapeHtml(ui(options, '删除草稿', 'Delete Draft'))}</span></button>
-      <button type="button" data-chat-workflow-action="chat-test" ${activeRunId ? '' : 'disabled'}><i icon-name="message-circle" aria-hidden="true"></i><span>${options.escapeHtml(ui(options, '聊天测试', 'Chat Test'))}</span></button>
+      <button type="button" data-chat-workflow-action="delete-run-draft" ${activeRunId ? '' : 'disabled'}><i data-lucide="trash-2" aria-hidden="true"></i><span>${options.escapeHtml(ui(options, '删除草稿', 'Delete Draft'))}</span></button>
+      <button type="button" data-chat-workflow-action="chat-test" ${activeRunId ? '' : 'disabled'}><i data-lucide="message-circle" aria-hidden="true"></i><span>${options.escapeHtml(ui(options, '聊天测试', 'Chat Test'))}</span></button>
     </footer>
   `
   }
@@ -4426,9 +4426,9 @@ function renderBottomToolbar(graph: CharacterResourceGraph, options: CharacterWo
         <strong>${options.escapeHtml(graph.title)}</strong>
         <span>${options.escapeHtml(ui(options, `${graph.nodes.length} 个节点 / ${graph.links.length} 条连线 / ${validationIssues} 个问题`, `${graph.nodes.length} nodes / ${graph.links.length} links / ${validationIssues} issues`))}</span>
       </div>
-      <button type="button" data-chat-workflow-action="save-graph"><i icon-name="save" aria-hidden="true"></i><span>${options.escapeHtml(ui(options, '保存', 'Save'))}</span></button>
+      <button type="button" data-chat-workflow-action="save-graph"><i data-lucide="save" aria-hidden="true"></i><span>${options.escapeHtml(ui(options, '保存', 'Save'))}</span></button>
       <button type="button" data-chat-workflow-node-select="quality-gate">${options.escapeHtml(ui(options, '校验', 'Validate'))}</button>
-      <button type="button" data-chat-workflow-action="chat-test"><i icon-name="message-circle" aria-hidden="true"></i><span>${options.escapeHtml(ui(options, '聊天测试', 'Chat Test'))}</span></button>
+      <button type="button" data-chat-workflow-action="chat-test"><i data-lucide="message-circle" aria-hidden="true"></i><span>${options.escapeHtml(ui(options, '聊天测试', 'Chat Test'))}</span></button>
     </footer>
   `
 }
