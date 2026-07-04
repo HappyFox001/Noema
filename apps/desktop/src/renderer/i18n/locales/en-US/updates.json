@@ -1,0 +1,14 @@
+{
+  "updates.availableDesc": "Current version v{current}. This update is optional; you can handle it later.",
+  "updates.availableTitle": "New version v{latest} available",
+  "updates.check": "Check Updates",
+  "updates.checking": "Checking...",
+  "updates.failedDesc": "{error}",
+  "updates.failedTitle": "Unable to check for updates",
+  "updates.idleDesc": "Update prompts only appear here and never interrupt the current conversation.",
+  "updates.idleTitle": "Check whether a new Noema version is available",
+  "updates.kicker": "Version Update",
+  "updates.latestDesc": "Current version v{current}. Last checked {time}.",
+  "updates.latestTitle": "You are on the latest version",
+  "updates.openRelease": "View Release"
+}

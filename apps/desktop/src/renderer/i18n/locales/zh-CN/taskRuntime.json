@@ -1,0 +1,12 @@
+{
+  "taskRuntime.compactLimit": "自动压缩阈值",
+  "taskRuntime.compactLimitDesc": "上下文 token 达到该值时自动压缩，最高为窗口的 90%。",
+  "taskRuntime.contextWindow": "模型上下文窗口",
+  "taskRuntime.contextWindowDesc": "用于估算任务历史压缩阈值。",
+  "taskRuntime.desc": "调整任务模型的执行循环、历史压缩和卡住判定。",
+  "taskRuntime.keepRecent": "保留最近轮次",
+  "taskRuntime.keepRecentDesc": "压缩时保留最近多少轮原始上下文。",
+  "taskRuntime.maxTurns": "最大执行轮次",
+  "taskRuntime.maxTurnsDesc": "任务运行超过该轮数后停止。",
+  "taskRuntime.title": "任务执行参数"
+}

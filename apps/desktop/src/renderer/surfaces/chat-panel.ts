@@ -66,6 +66,7 @@ import {
   type ChatMessageMedia,
   type ChatMessage,
   type ChatOpeningPanel,
+  type ChatAtmosphereStyle,
 } from './chat-model'
 import {
   createDefaultChatModel,
@@ -164,8 +165,11 @@ interface CharacterWorkflowGoalSession {
     tool?: string
     userRequest: string
     summary: string
+    displayBody?: string
     status: string
     operations: number
+    plan?: string[]
+    completedSteps?: string[]
     currentStep?: string
     nextStep?: string
     createdAt: number
@@ -1555,20 +1559,26 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         ? `[data-message-id="${cssEscapeForSelector(messageId)}"] .chat-inline-audio[data-chat-audio-text="${cssEscapeForSelector(normalizedSpeechText)}"] audio`
         : `[data-message-id="${cssEscapeForSelector(messageId)}"] .chat-inline-audio audio, [data-message-id="${cssEscapeForSelector(messageId)}"] audio`
       const audio = options.messageList.querySelector<HTMLAudioElement>(selector)
-      void audio?.play().catch(() => undefined)
+      void audio?.play().then(() => updateInlineAudioPlayerState(audio)).catch(() => undefined)
     })
   }
 
   function playInlineAudioForMessage(messageId: string, inlineSpeechText: string, control?: HTMLElement): boolean {
     const normalizedSpeechText = normalizeInlineAudioText(inlineSpeechText)
-    const audio = control?.closest('p')?.querySelector<HTMLAudioElement>('.chat-inline-audio audio')
+    const audio = control?.closest<HTMLElement>('.chat-inline-audio-player')?.querySelector<HTMLAudioElement>('audio')
+      ?? control?.closest('p')?.querySelector<HTMLAudioElement>('.chat-inline-audio audio')
       ?? options.messageList.querySelector<HTMLAudioElement>(
         `[data-message-id="${cssEscapeForSelector(messageId)}"] .chat-inline-audio[data-chat-audio-text="${cssEscapeForSelector(normalizedSpeechText)}"] audio`
       )
     if (!audio) {
       return false
     }
-    void audio.play().catch(() => undefined)
+    if (!audio.paused && !audio.ended) {
+      audio.pause()
+      updateInlineAudioPlayerState(audio)
+      return true
+    }
+    void audio.play().then(() => updateInlineAudioPlayerState(audio)).catch(() => undefined)
     return true
   }
 
@@ -1594,6 +1604,32 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       .replace(/["“”]+$/, '')
       .replace(/\s+/g, ' ')
       .trim()
+  }
+
+  function updateInlineAudioPlayerState(audio: HTMLAudioElement): void {
+    const player = audio.closest<HTMLElement>('.chat-inline-audio-player')
+    if (!player) {
+      return
+    }
+    const duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 0
+    const currentTime = Number.isFinite(audio.currentTime) ? audio.currentTime : 0
+    const progress = duration > 0 ? Math.max(0, Math.min(1, currentTime / duration)) : 0
+    player.style.setProperty('--chat-audio-progress', `${Math.round(progress * 1000) / 10}%`)
+    player.classList.toggle('is-playing', !audio.paused && !audio.ended)
+    const time = player.querySelector<HTMLElement>('[data-chat-inline-audio-time]')
+    if (time) {
+      time.textContent = `${formatInlineAudioTime(currentTime)} / ${formatInlineAudioTime(duration)}`
+    }
+  }
+
+  function formatInlineAudioTime(seconds: number): string {
+    if (!Number.isFinite(seconds) || seconds <= 0) {
+      return '0:00'
+    }
+    const total = Math.max(0, Math.round(seconds))
+    const minutes = Math.floor(total / 60)
+    const remainder = total % 60
+    return `${minutes}:${remainder.toString().padStart(2, '0')}`
   }
 
   function cssEscapeForSelector(value: string): string {
@@ -2320,6 +2356,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           </div>
         </section>
 
+        ${renderCharacterAtmospherePreview(character, language)}
+
         <section class="chat-profile-info-grid">
           ${textSections.map((field) => `
             <article class="chat-profile-info-card">
@@ -2330,6 +2368,111 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         </section>
       </div>
     `
+  }
+
+  function renderCharacterAtmospherePreview(character: ChatCharacterResource, language: 'zh-CN' | 'en-US'): string {
+    const style = character.atmosphereStyle
+    if (!style) {
+      return ''
+    }
+    const zh = language === 'zh-CN'
+    const preview = style.preview ?? {}
+    const narration = preview.narration || localizeChatText(character.description, language) || (zh ? '她安静地停在你身侧，像是在等一句迟来的回答。' : 'She settles beside you quietly, waiting for the answer that arrives late.')
+    const speech = preview.speech || extractFirstRoleSpeech(localizeChatText(character.firstMessage, language)) || (zh ? '这里代错了。' : 'This step is wrong.')
+    const userLine = preview.userLine || (zh ? '我应该从哪里重新开始？' : 'Where should I start again?')
+    const location = preview.location || (zh ? '当前场景' : 'Current scene')
+    const status = preview.status?.length ? preview.status : (zh ? ['氛围 72', '距离 18', '警戒 63'] : ['Mood 72', 'Distance 18', 'Guard 63'])
+    const equipment = preview.equipment?.length ? preview.equipment : [{ name: zh ? '随身物件' : 'Keepsake', ability: zh ? '维持角色气氛' : 'Holds the character mood', quantity: '1' }]
+    const silentAudioSource = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA='
+    return `
+      <section class="${renderAtmosphereClassNames(style, 'chat-profile-atmosphere')}" style="${renderAtmosphereInlineStyle(style)}">
+        <div class="chat-profile-atmosphere-head">
+          <span>${options.escapeHtml(zh ? '角色卡氛围样式' : 'Character atmosphere')}</span>
+          <strong>${options.escapeHtml(style.name)}</strong>
+          ${style.summary ? `<p>${options.escapeHtml(style.summary)}</p>` : ''}
+        </div>
+        <div class="chat-profile-atmosphere-preview">
+          <p class="chat-profile-atmosphere-user">${options.escapeHtml(userLine)}</p>
+          <div class="roleplay-chat-frame">
+            <p>${options.escapeHtml(compactProfileText(narration, 150))}</p>
+            <div class="roleplay-chat-speech">
+              <p class="roleplay-chat-speech-row">
+                <span class="roleplay-chat-quote">“${options.escapeHtml(compactProfileText(speech, 72))}”</span>
+                <span class="chat-inline-audio">
+                  <span class="chat-inline-audio-player chat-profile-audio-demo" aria-hidden="true">
+                    <audio class="chat-inline-audio-native" src="${silentAudioSource}" preload="metadata"></audio>
+                    <span class="chat-inline-audio-play"></span>
+                    <span class="chat-inline-audio-track"><span></span></span>
+                    <span class="chat-inline-audio-time">0:00 / 0:04</span>
+                    <span class="chat-inline-audio-menu"><span class="chat-inline-audio-menu-dot"></span><span class="chat-inline-audio-menu-dot"></span><span class="chat-inline-audio-menu-dot"></span></span>
+                  </span>
+                </span>
+              </p>
+            </div>
+          </div>
+          <section class="chat-inline-scene">
+            <div class="chat-inline-scene-lines">
+              <div class="chat-inline-scene-line">
+                <span>${options.escapeHtml(zh ? '地点' : 'Place')}</span>
+                <strong>${options.escapeHtml(compactProfileText(location, 36))}</strong>
+              </div>
+              <div class="chat-inline-scene-line">
+                <span>${options.escapeHtml(zh ? '状态' : 'Status')}</span>
+                <div class="chat-inline-scene-status">
+                  ${status.slice(0, 3).map((item) => `<em>${options.escapeHtml(item)}</em>`).join('')}
+                </div>
+              </div>
+            </div>
+            <div class="chat-inline-equipment">
+              <table>
+                <tbody>
+                  ${equipment.slice(0, 2).map((item) => `
+                    <tr>
+                      <td>${options.escapeHtml(item.name)}</td>
+                      <td>${options.escapeHtml(item.ability)}</td>
+                      <td>${options.escapeHtml(item.quantity || '1')}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </section>
+    `
+  }
+
+  function renderAtmosphereClassNames(style: ChatAtmosphereStyle, baseClass: string): string {
+    return [
+      baseClass,
+      'has-chat-atmosphere',
+      `chat-atmosphere-surface-${style.palette.surface}`,
+      `chat-atmosphere-message-${style.message.frame}`,
+      `chat-atmosphere-audio-${style.audio.player}`,
+      `chat-atmosphere-scene-${style.sceneCard.frame}`,
+      `chat-atmosphere-density-${style.message.density}`,
+      `chat-atmosphere-radius-${style.message.radius}`,
+    ].join(' ')
+  }
+
+  function renderAtmosphereInlineStyle(style: ChatAtmosphereStyle): string {
+    const radius = style.message.radius === 'sharp' ? '10px' : style.message.radius === 'round' ? '22px' : '16px'
+    const densityGap = style.message.density === 'compact' ? '8px' : style.message.density === 'airy' ? '16px' : '12px'
+    return [
+      `--chat-atmosphere-accent:${style.palette.accent}`,
+      `--chat-atmosphere-accent-soft:${style.palette.accentSoft}`,
+      `--chat-atmosphere-radius:${radius}`,
+      `--chat-atmosphere-density-gap:${densityGap}`,
+    ].join(';')
+  }
+
+  function extractFirstRoleSpeech(value: string): string {
+    const match = value.match(/<role_chat\b[^>]*>([\s\S]*?)<\/role_chat>/i)
+    const source = match ? match[1] : value
+    return stripRoleChatTags(source)
+      .replace(/^["“”]+|["“”]+$/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
   }
 
   function getCharacterProfileFields(character: ChatCharacterResource, language: 'zh-CN' | 'en-US'): Array<{ label: string; value: string }> {
@@ -2787,6 +2930,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         runTitle: characterWorkflowRunState.run.title,
       },
       roleCard: fields,
+      atmosphereStyle: extractAtmosphereStyleFromRunDraft(characterWorkflowRunState),
       chat: {
         name: stringField(fields.name),
         description: stringField(fields.description),
@@ -2839,6 +2983,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     ) || avatarImage
     const overviewImage = findRunDraftImage(runState, ['character-overview-sheet', 'overview-sheet', 'overview'])
     const openingPanel = extractOpeningPanelFromRunDraft(runState)
+    const atmosphereStyle = extractAtmosphereStyleFromRunDraft(runState)
     const id = `workflow-run-${sanitizeChatResourceId(runState.run?.id ?? name)}`
     const generatedImageAssets = collectRunDraftGeneratedImageAssets(runState, id, [avatarImage, overviewImage])
     return {
@@ -2852,8 +2997,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         ...fields,
         firstMessage,
         ...(openingPanel ? { openingPanel } : {}),
+        ...(atmosphereStyle ? { atmosphereStyle } : {}),
       },
       ...(openingPanel ? { openingPanel } : {}),
+      ...(atmosphereStyle ? { atmosphereStyle } : {}),
       name: localizedText(name),
       displayName: localizedText(name),
       description: localizedText(description),
@@ -2876,6 +3023,54 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
   }
 
+  function extractAtmosphereStyleFromRunDraft(runState: CharacterResourceRunState): ChatAtmosphereStyle | undefined {
+    const artifact = [...(runState.artifacts ?? [])].reverse().find((item) => item.type === 'atmosphere-style')
+    const data = artifact?.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
+      ? artifact.data as Record<string, unknown>
+      : null
+    if (!data) {
+      return undefined
+    }
+    const palette = objectField(data.palette)
+    const message = objectField(data.message)
+    const audio = objectField(data.audio)
+    const sceneCard = objectField(data.sceneCard)
+    if (!palette || !message || !audio || !sceneCard) {
+      return undefined
+    }
+    return {
+      schemaVersion: 1,
+      name: stringField(data.name) || stringField(artifact?.title) || 'Character atmosphere',
+      summary: stringField(data.summary) || artifact?.summary,
+      mood: stringArrayField(data.mood).slice(0, 8),
+      palette: {
+        accent: stringField(palette.accent) || '#c7d8d0',
+        accentSoft: stringField(palette.accentSoft) || 'rgba(199, 216, 208, 0.16)',
+        surface: enumField(palette.surface, ['glass', 'paper', 'noir', 'mist', 'velvet', 'terminal'], 'glass'),
+        warmth: enumField(palette.warmth, ['cool', 'neutral', 'warm'], 'neutral'),
+        contrast: enumField(palette.contrast, ['low', 'medium', 'high'], 'medium'),
+      },
+      message: {
+        frame: enumField(message.frame, ['plain', 'literary-panel', 'visual-novel', 'dossier', 'letter'], 'literary-panel'),
+        narration: enumField(message.narration, ['soft-prose', 'cinematic', 'noir', 'diary', 'clinical'], 'soft-prose'),
+        speech: enumField(message.speech, ['quote-emphasis', 'quiet-line', 'stage-dialogue'], 'quote-emphasis'),
+        density: enumField(message.density, ['compact', 'balanced', 'airy'], 'balanced'),
+        radius: enumField(message.radius, ['sharp', 'soft', 'round'], 'soft'),
+      },
+      audio: {
+        player: enumField(audio.player, ['thin-glass-bar', 'soft-wave-strip', 'quiet-capsule', 'dossier-line'], 'thin-glass-bar'),
+        motion: enumField(audio.motion, ['still', 'subtle-wave', 'breath'], 'subtle-wave'),
+        tone: enumField(audio.tone, ['near', 'distant', 'intimate', 'formal'], 'near'),
+      },
+      sceneCard: {
+        frame: enumField(sceneCard.frame, ['quiet-panel', 'glass-dossier', 'paper-note', 'terminal-readout'], 'quiet-panel'),
+        divider: enumField(sceneCard.divider, ['fine-line', 'soft-band', 'none'], 'fine-line'),
+      },
+      preview: normalizeAtmospherePreviewField(data.preview),
+      sourceArtifactId: artifact?.id,
+    }
+  }
+
   function extractOpeningPanelFromRunDraft(runState: CharacterResourceRunState): ChatOpeningPanel | undefined {
     const artifact = [...(runState.artifacts ?? [])].reverse().find((item) => item.type === 'opening-layout')
     const data = artifact?.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
@@ -2895,6 +3090,31 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       summary: typeof data.summary === 'string' ? data.summary : artifact?.summary,
       layoutKind: typeof data.layoutKind === 'string' ? data.layoutKind : undefined,
       sourceArtifactId: artifact?.id,
+    }
+  }
+
+  function normalizeAtmospherePreviewField(value: unknown): ChatAtmosphereStyle['preview'] | undefined {
+    const record = objectField(value)
+    if (!record) {
+      return undefined
+    }
+    const equipment = Array.isArray(record.equipment)
+      ? record.equipment.map((item) => {
+          const entry = objectField(item)
+          if (!entry) return null
+          const name = stringField(entry.name)
+          const ability = stringField(entry.ability)
+          if (!name || !ability) return null
+          return { name, ability, quantity: stringField(entry.quantity) || undefined }
+        }).filter(Boolean) as Array<{ name: string; ability: string; quantity?: string }>
+      : undefined
+    return {
+      userLine: stringField(record.userLine) || undefined,
+      narration: stringField(record.narration) || undefined,
+      speech: stringField(record.speech) || undefined,
+      location: stringField(record.location) || undefined,
+      status: stringArrayField(record.status).slice(0, 4),
+      equipment,
     }
   }
 
@@ -3239,6 +3459,24 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     return typeof value === 'string' ? value.trim() : ''
   }
 
+  function stringArrayField(value: unknown): string[] {
+    return Array.isArray(value)
+      ? value.map((item) => typeof item === 'string' ? item.trim() : '').filter(Boolean)
+      : []
+  }
+
+  function objectField(value: unknown): Record<string, unknown> | null {
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : null
+  }
+
+  function enumField<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
+    return typeof value === 'string' && (allowed as readonly string[]).includes(value)
+      ? value as T
+      : fallback
+  }
+
   function sanitizeChatResourceId(value: string): string {
     return value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || `run-${Date.now()}`
   }
@@ -3360,7 +3598,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     conversationSettings = { ...conversationSettings, mediaImageModelRef: choice.ref }
     saveConversationSettings(conversationSettings)
     renderChatRuntimeModelPicker()
-    renderConversationSettings()
+    scheduleConversationSettingsRender()
   }
 
   function selectRuntimeTTSModel(id: string): void {
@@ -3371,7 +3609,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     conversationSettings = { ...conversationSettings, mediaTtsModelId: model.id }
     saveConversationSettings(conversationSettings)
     renderChatRuntimeModelPicker()
-    renderConversationSettings()
+    scheduleConversationSettingsRender()
   }
 
   function updateConversationSetting(control: HTMLInputElement | HTMLSelectElement): void {
@@ -4071,7 +4309,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             'opening-panel-image-target': { imageRole: 'character-base-image', assetPurpose: 'Free-form character sample images for the opening CSS panel. Use the avatar reference to preserve identity while showing distinct roleplay scenes, actions, moods, outfit usage, or prop interactions as panel visual material.' },
             'opening-panel-image-control': { targetImageCount: 2, imageStyleDomain: 'auto', shotType: 'auto', aspectRatio: '3:4', consistencyMode: 'same-character', seedMode: 'vary-slightly' },
             'opening-layout-target': { layoutKind: 'auto-opening-layout', textDensity: 'minimal', includeSections: ['title', 'tags', 'opening', 'coverImage', 'supportImages'], layoutPrompt: 'Create a compact, attractive roleplay opening panel. Choose a varied layout, avoid project labels, keep visible prose short, and use generated character images as strong visual material.' },
-            'generation-strategy': { mode: 'branch-and-refine', branchCount: 3, priorityAssets: ['role-card', 'opening', 'opening-layout', 'image-pack'] },
+            'atmosphere-style-target': { moodPreset: 'auto-atmosphere', surface: 'glass', messageFrame: 'literary-panel', audioPlayer: 'thin-glass-bar', density: 'balanced', stylePrompt: 'Create a role-specific chat atmosphere style for dialogue bubbles, role speech emphasis, inline audio bars, scene cards, and profile preview. Keep it structured, controlled, and consistent with the character instead of generating arbitrary CSS.' },
+            'generation-strategy': { mode: 'branch-and-refine', branchCount: 3, priorityAssets: ['role-card', 'opening', 'opening-layout', 'atmosphere-style', 'image-pack'] },
             'quality-gate': { minimumScore: 0.84 },
           },
         },
@@ -4252,22 +4491,30 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const zh = options.getLanguage() === 'zh-CN'
     const project = characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)
     const session = normalizeCharacterWorkflowGoalSession(project?.goalSession)
-    const records = (session?.history ?? []).map((item, index) => ({
-      title: item.stepIndex
-        ? `${zh ? '步骤' : 'Step'} ${item.stepIndex}`
-        : `${zh ? '交互' : 'Turn'} ${index + 1}`,
-      meta: [
-        item.status || 'applied',
-        item.tool || '',
-        item.operations ? `${item.operations} ${zh ? '项修改' : 'edits'}` : '',
-        formatWorkflowProjectTime(item.createdAt, zh),
-      ].filter(Boolean).join(' · '),
-      body: [
-        item.currentStep ? `${zh ? '当前' : 'Current'}: ${item.currentStep}` : '',
-        item.summary || item.userRequest,
-        item.nextStep ? `${zh ? '下一步' : 'Next'}: ${item.nextStep}` : '',
-      ].filter(Boolean).join('\n'),
-    })).filter((item) => item.body.trim())
+    const records = (session?.history ?? []).map((item, index) => {
+      const recordPlan = item.plan?.length ? item.plan : session?.plan ?? []
+      return {
+        title: item.stepIndex
+          ? `${zh ? '步骤' : 'Step'} ${item.stepIndex}`
+          : `${zh ? '交互' : 'Turn'} ${index + 1}`,
+        meta: [
+          item.status || 'applied',
+          item.tool || '',
+          item.operations ? `${item.operations} ${zh ? '项修改' : 'edits'}` : '',
+          formatWorkflowProjectTime(item.createdAt, zh),
+        ].filter(Boolean).join(' · '),
+        body: [
+          item.displayBody || [
+            item.summary || item.userRequest,
+            item.currentStep ? `${zh ? '当前步骤' : 'Current step'}: ${item.currentStep}` : '',
+            item.nextStep ? `${zh ? '下一步' : 'Next step'}: ${item.nextStep}` : '',
+            recordPlan.length
+              ? `${zh ? '计划' : 'Plan'}:\n${recordPlan.map((planItem, planIndex) => `${planIndex + 1}. ${planItem}`).join('\n')}`
+              : '',
+          ].filter(Boolean).join('\n\n'),
+        ].filter(Boolean).join('\n'),
+      }
+    }).filter((item) => item.body.trim())
     const current = characterWorkflowBuilderStatus.trim()
     if (current && !records.some((item) => item.body === current)) {
       records.push({
@@ -4843,13 +5090,16 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             tool: typeof record.tool === 'string' ? record.tool : undefined,
             userRequest: typeof record.userRequest === 'string' ? record.userRequest : '',
             summary: typeof record.summary === 'string' ? record.summary : '',
+            displayBody: typeof record.displayBody === 'string' ? record.displayBody : undefined,
             status: typeof record.status === 'string' ? record.status : 'applied',
             operations: Math.max(0, Math.round(Number(record.operations) || 0)),
+            plan: Array.isArray(record.plan) ? record.plan.filter((item): item is string => typeof item === 'string') : undefined,
+            completedSteps: Array.isArray(record.completedSteps) ? record.completedSteps.filter((item): item is string => typeof item === 'string') : undefined,
             currentStep: typeof record.currentStep === 'string' ? record.currentStep : undefined,
             nextStep: typeof record.nextStep === 'string' ? record.nextStep : undefined,
             createdAt: Math.max(0, Math.round(Number(record.createdAt) || Date.now())),
           }]
-        }).slice(-12)
+        }).slice(-16)
         : [],
       updatedAt: Math.max(0, Math.round(Number(session.updatedAt) || Date.now())),
     }
@@ -4952,6 +5202,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         userRequest: string
         summary: string
         status: string
+        plan?: string[]
+        completedSteps?: string[]
         operations: Array<Record<string, unknown>>
         uiConfigOverrides: Record<string, Record<string, unknown>>
         currentStep?: string
@@ -5057,6 +5309,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       userRequest: string
       summary: string
       status: string
+      plan?: string[]
+      completedSteps?: string[]
       operations: Array<Record<string, unknown>>
       uiConfigOverrides: Record<string, Record<string, unknown>>
       currentStep?: string
@@ -5080,8 +5334,17 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         tool: step.tool,
         userRequest: step.userRequest,
         summary: step.summary,
+        displayBody: formatWorkflowGoalHistoryDisplayBody({
+          summary: step.summary,
+          userRequest: step.userRequest,
+          currentStep: step.currentStep,
+          nextStep: step.nextStep,
+          plan: step.plan,
+        }),
         status: step.status,
         operations: step.operations.length + Object.keys(step.uiConfigOverrides ?? {}).length,
+        plan: Array.isArray(step.plan) ? step.plan.filter((item): item is string => typeof item === 'string') : undefined,
+        completedSteps: Array.isArray(step.completedSteps) ? step.completedSteps.filter((item): item is string => typeof item === 'string') : undefined,
         currentStep: step.currentStep,
         nextStep: step.nextStep,
         createdAt: step.createdAt || Date.now(),
@@ -5235,17 +5498,26 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           ...dedupeWorkflowGoalHistory([
             ...current.history,
             ...agentWork.steps.map((step) => ({
-            id: step.id,
-            stepIndex: step.index,
-            tool: step.tool,
-            userRequest: step.userRequest || userPrompt,
-            summary: step.summary,
-            status: step.status,
-            operations: step.operations.length + Object.keys(step.uiConfigOverrides ?? {}).length,
-            currentStep: step.currentStep,
-            nextStep: step.nextStep,
-            createdAt: step.createdAt || Date.now(),
-          })),
+              id: step.id,
+              stepIndex: step.index,
+              tool: step.tool,
+              userRequest: step.userRequest || userPrompt,
+              summary: step.summary,
+              displayBody: formatWorkflowGoalHistoryDisplayBody({
+                summary: step.summary,
+                userRequest: step.userRequest || userPrompt,
+                currentStep: step.currentStep,
+                nextStep: step.nextStep,
+                plan: step.plan,
+              }),
+              status: step.status,
+              operations: step.operations.length + Object.keys(step.uiConfigOverrides ?? {}).length,
+              plan: Array.isArray(step.plan) ? step.plan.filter((item): item is string => typeof item === 'string') : undefined,
+              completedSteps: Array.isArray(step.completedSteps) ? step.completedSteps.filter((item): item is string => typeof item === 'string') : undefined,
+              currentStep: step.currentStep,
+              nextStep: step.nextStep,
+              createdAt: step.createdAt || Date.now(),
+            })),
           ]),
         ].slice(-16),
         updatedAt: Math.max(0, Math.round(Number(agentWork.updatedAt) || Date.now())),
@@ -5256,7 +5528,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       ? 'needs-user'
       : spec.status === 'blocked'
         ? 'blocked'
-        : 'active'
+        : spec.status === 'complete'
+          ? 'complete'
+          : 'active'
     const operationCount = (Array.isArray(spec.operations) ? spec.operations.length : 0)
       + Object.keys(response.uiConfigOverrides ?? {}).length
     project.goalSession = {
@@ -5264,16 +5538,25 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       plan: Array.isArray(spec.plan) && spec.plan.length ? spec.plan.filter((item): item is string => typeof item === 'string') : current.plan,
       completedSteps: Array.isArray(spec.completedSteps) ? spec.completedSteps.filter((item): item is string => typeof item === 'string') : current.completedSteps,
       currentStep: typeof spec.currentStep === 'string' && spec.currentStep.trim() ? spec.currentStep.trim() : current.currentStep,
-      nextStep: typeof spec.nextStep === 'string' && spec.nextStep.trim() ? spec.nextStep.trim() : current.nextStep,
+      nextStep: status === 'complete' ? undefined : typeof spec.nextStep === 'string' && spec.nextStep.trim() ? spec.nextStep.trim() : current.nextStep,
       status,
-        pendingDecision: status === 'needs-user' ? normalizeWorkflowAgentDecision(spec.decision) : undefined,
+      pendingDecision: status === 'needs-user' ? normalizeWorkflowAgentDecision(spec.decision) : undefined,
       history: [
         ...current.history,
         {
           userRequest: userPrompt,
           summary: typeof spec.summary === 'string' ? spec.summary : '',
+          displayBody: formatWorkflowGoalHistoryDisplayBody({
+            summary: typeof spec.summary === 'string' ? spec.summary : '',
+            userRequest: userPrompt,
+            currentStep: typeof spec.currentStep === 'string' ? spec.currentStep : undefined,
+            nextStep: typeof spec.nextStep === 'string' ? spec.nextStep : undefined,
+            plan: Array.isArray(spec.plan) ? spec.plan.filter((item): item is string => typeof item === 'string') : undefined,
+          }),
           status: typeof spec.status === 'string' ? spec.status : 'applied',
           operations: operationCount,
+          plan: Array.isArray(spec.plan) ? spec.plan.filter((item): item is string => typeof item === 'string') : undefined,
+          completedSteps: Array.isArray(spec.completedSteps) ? spec.completedSteps.filter((item): item is string => typeof item === 'string') : undefined,
           currentStep: typeof spec.currentStep === 'string' ? spec.currentStep : undefined,
           nextStep: typeof spec.nextStep === 'string' ? spec.nextStep : undefined,
           createdAt: Date.now(),
@@ -5330,13 +5613,15 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       ? 'needs-user'
       : step.status === 'blocked'
         ? 'blocked'
-        : 'active'
+        : step.status === 'complete'
+          ? 'complete'
+          : 'active'
     project.goalSession = {
       ...current,
       plan: Array.isArray(step.plan) && step.plan.length ? step.plan.filter((item): item is string => typeof item === 'string') : current.plan,
       completedSteps: Array.isArray(step.completedSteps) ? step.completedSteps.filter((item): item is string => typeof item === 'string') : current.completedSteps,
       currentStep: typeof step.currentStep === 'string' && step.currentStep.trim() ? step.currentStep.trim() : current.currentStep,
-      nextStep: typeof step.nextStep === 'string' && step.nextStep.trim() ? step.nextStep.trim() : current.nextStep,
+      nextStep: status === 'complete' ? undefined : typeof step.nextStep === 'string' && step.nextStep.trim() ? step.nextStep.trim() : current.nextStep,
       status,
       pendingDecision: status === 'needs-user' ? normalizeWorkflowAgentDecision(step.decision) : undefined,
       history: dedupeWorkflowGoalHistory([
@@ -5347,8 +5632,17 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           tool: step.tool,
           userRequest: step.userRequest || userPrompt,
           summary: step.summary || '',
+          displayBody: formatWorkflowGoalHistoryDisplayBody({
+            summary: step.summary || '',
+            userRequest: step.userRequest || userPrompt,
+            currentStep: step.currentStep,
+            nextStep: step.nextStep,
+            plan: Array.isArray(step.plan) ? step.plan.filter((item): item is string => typeof item === 'string') : undefined,
+          }),
           status: step.status || 'applied',
           operations: (step.operations ?? []).length + Object.keys(step.uiConfigOverrides ?? {}).length,
+          plan: Array.isArray(step.plan) ? step.plan.filter((item): item is string => typeof item === 'string') : undefined,
+          completedSteps: Array.isArray(step.completedSteps) ? step.completedSteps.filter((item): item is string => typeof item === 'string') : undefined,
           currentStep: step.currentStep,
           nextStep: step.nextStep,
           createdAt: step.createdAt || Date.now(),
@@ -5377,14 +5671,34 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   function formatWorkflowGoalSessionStatus(session: CharacterWorkflowGoalSession | undefined, fallbackSummary?: string): string {
+    return formatWorkflowGoalHistoryDisplayBody({
+      summary: fallbackSummary,
+      currentStep: session?.currentStep,
+      nextStep: session?.nextStep,
+      plan: session?.plan,
+    })
+  }
+
+  function formatWorkflowGoalHistoryDisplayBody(record: {
+    summary?: string
+    userRequest?: string
+    currentStep?: string
+    nextStep?: string
+    plan?: string[]
+  }): string {
+    const zh = options.getLanguage() === 'zh-CN'
     const parts = [
-      typeof fallbackSummary === 'string' && fallbackSummary.trim() ? fallbackSummary.trim() : '',
-      session?.currentStep ? `${options.getLanguage() === 'zh-CN' ? '当前步骤' : 'Current step'}: ${session.currentStep}` : '',
-      session?.nextStep ? `${options.getLanguage() === 'zh-CN' ? '下一步' : 'Next step'}: ${session.nextStep}` : '',
+      typeof record.summary === 'string' && record.summary.trim()
+        ? record.summary.trim()
+        : typeof record.userRequest === 'string' && record.userRequest.trim()
+          ? record.userRequest.trim()
+          : '',
+      record.currentStep ? `${zh ? '当前步骤' : 'Current step'}: ${record.currentStep}` : '',
+      record.nextStep ? `${zh ? '下一步' : 'Next step'}: ${record.nextStep}` : '',
     ].filter(Boolean)
-    if (session?.plan?.length) {
-      const title = options.getLanguage() === 'zh-CN' ? '计划' : 'Plan'
-      parts.push(`${title}:\n${session.plan.map((item, index) => `${index + 1}. ${item}`).join('\n')}`)
+    if (record.plan?.length) {
+      const title = zh ? '计划' : 'Plan'
+      parts.push(`${title}:\n${record.plan.map((item, index) => `${index + 1}. ${item}`).join('\n')}`)
     }
     return parts.join('\n\n')
   }
@@ -5423,8 +5737,20 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           summary: options.getLanguage() === 'zh-CN'
             ? `Workflow Agent 目标已${status === 'paused' ? '暂停' : status === 'active' ? '恢复' : '停止'}。`
             : `Workflow Agent goal ${status === 'paused' ? 'paused' : status === 'active' ? 'resumed' : 'stopped'}.`,
+          displayBody: formatWorkflowGoalHistoryDisplayBody({
+            summary: options.getLanguage() === 'zh-CN'
+              ? `Workflow Agent 目标已${status === 'paused' ? '暂停' : status === 'active' ? '恢复' : '停止'}。`
+              : `Workflow Agent goal ${status === 'paused' ? 'paused' : status === 'active' ? 'resumed' : 'stopped'}.`,
+            currentStep: session.currentStep,
+            nextStep: status === 'complete' ? undefined : session.nextStep,
+            plan: session.plan,
+          }),
           status,
           operations: 0,
+          plan: session.plan,
+          completedSteps: session.completedSteps,
+          currentStep: session.currentStep,
+          nextStep: status === 'complete' ? undefined : session.nextStep,
           createdAt: Date.now(),
         },
       ].slice(-16),
@@ -5478,8 +5804,18 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           summary: zh
             ? `已选择「${choiceLabel}」，Agent 将据此继续编辑资源图。`
             : `Selected "${choiceLabel}"; the agent will continue editing the workflow from this preference.`,
+          displayBody: formatWorkflowGoalHistoryDisplayBody({
+            summary: zh
+              ? `已选择「${choiceLabel}」，Agent 将据此继续编辑资源图。`
+              : `Selected "${choiceLabel}"; the agent will continue editing the workflow from this preference.`,
+            currentStep: session.currentStep,
+            nextStep: patchHint || session.nextStep,
+            plan: session.plan,
+          }),
           status: 'decision-selected',
           operations: 0,
+          plan: session.plan,
+          completedSteps: session.completedSteps,
           currentStep: session.currentStep,
           nextStep: patchHint || session.nextStep,
           createdAt: Date.now(),
@@ -5540,6 +5876,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!userPrompt || characterWorkflowBuilderBusy || !activeCharacterWorkflowProjectId) {
       return
     }
+    const projectId = activeCharacterWorkflowProjectId
     characterWorkflowBuilderBusy = true
     const runToken = ++characterWorkflowAssistantRunToken
     characterWorkflowAssistantActiveRunToken = runToken
@@ -5547,6 +5884,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     characterWorkflowBuilderStatus = options.getLanguage() === 'zh-CN' ? 'Agent 正在调整当前资源图...' : 'Agent editing current resource graph...'
     renderCharacterWorkflow()
     try {
+      const existingProject = characterWorkflowProjects.find((item) => item.id === projectId)
+      if (existingProject?.loadState !== 'ready' && existingProject?.loadState !== 'ready-overview') {
+        const loadedProject = await ensureCharacterWorkflowProjectDetailLoaded(projectId)
+        if (!loadedProject || activeCharacterWorkflowProjectId !== projectId || isWorkflowAssistantRunInterrupted(runToken)) {
+          return
+        }
+        applyCharacterWorkflowProjectState(loadedProject, { includeRunState: true })
+      }
       const workflowPage = await loadCharacterWorkflowPageModule()
       const goalSession = getActiveWorkflowGoalSession(userPrompt)
       const buildRequest = {
@@ -5557,12 +5902,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           objective: goalSession.objective,
           plan: goalSession.plan,
           completedSteps: goalSession.completedSteps,
-          currentStep: goalSession.currentStep,
           history: goalSession.history.map((item) => ({
+            stepIndex: item.stepIndex,
+            tool: item.tool,
             userRequest: item.userRequest,
             summary: item.summary,
             status: item.status,
             operations: item.operations,
+            currentStep: item.currentStep,
           })),
         } : undefined,
         graph: createCharacterWorkflowAssistantGraph(workflowPage),
@@ -7401,6 +7748,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     } else {
       characterResourceViewState.selectedNodeIds = [nodeId]
     }
+    saveActiveWorkflowProjectSnapshot(false)
     renderCharacterWorkflow()
   }
 
@@ -7644,10 +7992,17 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!handle || !node || !panel.contains(node) || event.button !== 0) {
       return
     }
+    if ((event.target as HTMLElement | null)?.closest('button, input, textarea, select')) {
+      return
+    }
     const nodeId = node.dataset.chatWorkflowNodeId || ''
     if (!nodeId) {
       return
     }
+    selectedWorkflowNodeId = nodeId
+    characterResourceViewState.selectedNodeIds = [nodeId]
+    characterResourceViewState.selectedLinkId = ''
+    characterWorkflowEditorState.inspectorCollapsed = false
     const origin = characterWorkflowPositionOverrides[nodeId] ?? {
       x: Number.parseFloat(node.style.getPropertyValue('--node-x')) || 0,
       y: Number.parseFloat(node.style.getPropertyValue('--node-y')) || 0,
@@ -7661,7 +8016,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       originY: origin.y,
     }
     node.setPointerCapture?.(event.pointerId)
-    node.classList.add('is-dragging')
+    node.classList.add('is-dragging', 'selected')
     node.style.zIndex = '50'
     event.preventDefault()
     event.stopPropagation()
@@ -8197,13 +8552,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (chatSystemConfig.activeChatId === id && !model.enabledModels.includes(getActiveChatModelName(chatSystemConfig))) {
       chatSystemConfig.activeChatModelName = model.modelName
     }
-    await saveChatModelConfig()
     renderChatModelConfig()
-    const modelOptions = getChatApiModelOptions(id)
-    if (modelOptions) {
-      modelOptions.scrollTop = modelOptionsScrollTop
+    const nextModelOptions = getChatApiModelOptions(id)
+    if (nextModelOptions) {
+      nextModelOptions.scrollTop = modelOptionsScrollTop
     }
     renderChatRuntimeModelPicker()
+    await saveChatModelConfig()
   }
 
   function openChatModelLibrary(id: string): void {
@@ -8848,6 +9203,15 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     handleAction(target.dataset.chatAction || '', target)
   })
+
+  for (const eventName of ['loadedmetadata', 'timeupdate', 'play', 'pause', 'ended']) {
+    panel.addEventListener(eventName, (event) => {
+      const audio = event.target instanceof HTMLAudioElement ? event.target : null
+      if (audio?.classList.contains('chat-inline-audio-native')) {
+        updateInlineAudioPlayerState(audio)
+      }
+    }, true)
+  }
 
   panel.addEventListener('change', (event) => {
     const workflowRunSelect = (event.target as HTMLElement | null)?.closest<HTMLSelectElement>('[data-chat-workflow-run-select]')

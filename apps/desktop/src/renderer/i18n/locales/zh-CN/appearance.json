@@ -1,0 +1,16 @@
+{
+  "appearance.advancedOrb": "琥珀",
+  "appearance.defaultOrb": "流光",
+  "appearance.dragonCursor": "游龙效果",
+  "appearance.dragonCursorDesc": "在设置面板中显示跟随鼠标游动的龙形光标。",
+  "appearance.liquidGlass": "液态水效果",
+  "appearance.liquidGlassDesc": "关闭设置面板的液态覆盖层以降低 GPU 占用。",
+  "appearance.orbStyle": "小球样式",
+  "appearance.orbStyleDesc": "选择主界面小球的视觉表现。",
+  "appearance.planetOrb": "光晕",
+  "appearance.theme": "界面模式",
+  "appearance.themeDay": "白天",
+  "appearance.themeDesc": "切换控制区域的明暗显示。",
+  "appearance.themeNight": "夜间",
+  "appearance.title": "页面设置"
+}

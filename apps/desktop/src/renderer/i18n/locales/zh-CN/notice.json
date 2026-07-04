@@ -1,0 +1,6 @@
+{
+  "notice.orbCaptureCopied": "小球截图已复制到剪贴板",
+  "notice.orbCaptureFailed": "截图失败：{error}",
+  "notice.voiceInputDisabled": "语音输入已关闭",
+  "notice.voiceInputEnabled": "语音输入已开启"
+}

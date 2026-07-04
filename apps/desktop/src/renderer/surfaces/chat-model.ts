@@ -4,6 +4,7 @@
 import {
   normalizeCharacterProfile,
   type CharacterProfile,
+  type CharacterProfileAtmosphereStyle,
   type CharacterProfileLocalizedText,
   type CharacterProfileOpeningPanel,
 } from '@noema/sdk/character-profile'
@@ -17,6 +18,7 @@ export type ChatActivityState = 'idle' | 'thinking' | 'generating_image' | 'gene
 export type ChatLocalizedText = CharacterProfileLocalizedText
 export type ChatCharacterResource = CharacterProfile
 export type ChatOpeningPanel = CharacterProfileOpeningPanel
+export type ChatAtmosphereStyle = CharacterProfileAtmosphereStyle
 
 export interface ChatConversationSummary {
   id: string

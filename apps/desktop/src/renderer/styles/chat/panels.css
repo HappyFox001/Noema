@@ -866,6 +866,101 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-history-manager {
   gap: 10px;
 }
 
+.chat-profile-atmosphere {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(180px, 0.34fr) minmax(0, 1fr);
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.085);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 10% 0%, var(--chat-atmosphere-accent-soft, rgba(218, 232, 224, 0.09)), transparent 34%),
+    rgba(255, 255, 255, 0.032);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+}
+
+.chat-profile-atmosphere-head {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 3px 2px;
+}
+
+.chat-profile-atmosphere-head span {
+  color: rgba(248, 250, 250, 0.46);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.chat-profile-atmosphere-head strong {
+  color: rgba(255, 255, 255, 0.94);
+  font-size: clamp(20px, 2.2vw, 28px);
+  line-height: 1.05;
+}
+
+.chat-profile-atmosphere-head p {
+  margin: 0;
+  color: rgba(248, 250, 250, 0.66);
+  font-size: 12px;
+  line-height: 1.58;
+}
+
+.chat-profile-atmosphere-preview {
+  min-width: 0;
+  display: grid;
+  gap: 9px;
+}
+
+.chat-profile-atmosphere-user {
+  width: fit-content;
+  max-width: min(420px, 100%);
+  justify-self: end;
+  margin: 0;
+  padding: 9px 12px;
+  border: 1px solid rgba(218, 232, 224, 0.14);
+  border-radius: 15px;
+  background: rgba(218, 232, 224, 0.09);
+  color: rgba(248, 250, 250, 0.76);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.chat-profile-atmosphere .roleplay-chat-frame {
+  width: 100%;
+  min-width: 0;
+  padding: 15px 16px 17px;
+}
+
+.chat-profile-atmosphere .roleplay-chat-frame > p,
+.chat-profile-atmosphere .chat-message .roleplay-chat-quote,
+.chat-profile-atmosphere .roleplay-chat-quote {
+  font-size: 13px;
+}
+
+.chat-profile-atmosphere .roleplay-chat-speech-row {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.chat-profile-atmosphere .roleplay-chat-speech-row .roleplay-chat-quote {
+  grid-column: 1;
+}
+
+.chat-profile-atmosphere .chat-inline-audio {
+  grid-column: 1;
+}
+
+.chat-profile-audio-demo {
+  cursor: default;
+  --chat-audio-progress: 38%;
+}
+
+.chat-profile-atmosphere .chat-inline-scene {
+  width: 100%;
+  margin: 0;
+}
+
 .chat-profile-info-card {
   min-width: 0;
   padding: 14px 15px;
@@ -901,6 +996,7 @@ body.chat-fullscreen .chat-shell.threads-collapsed .chat-history-manager {
   }
 
   .chat-profile-visual-stage,
+  .chat-profile-atmosphere,
   .chat-profile-info-grid {
     grid-template-columns: minmax(0, 1fr);
   }

@@ -1,0 +1,5 @@
+{
+  "inputMeta.currentOnly": "仅用于当前任务",
+  "inputMeta.persistent": "可选择保存，后续任务自动复用",
+  "inputMeta.verification": "一次性验证码，不会保存"
+}

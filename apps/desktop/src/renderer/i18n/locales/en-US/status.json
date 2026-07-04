@@ -1,0 +1,15 @@
+{
+  "status.connectionFailed": "Connection failed",
+  "status.initializing": "Initializing...",
+  "status.latency": "Latency: {ms}ms",
+  "status.listening": "Listening...",
+  "status.processing": "Processing...",
+  "status.ready": "Ready",
+  "status.reconnecting": "Reconnecting...",
+  "status.replying": "Replying...",
+  "status.sharingResult": "Sharing result...",
+  "status.thinking": "Thinking...",
+  "status.voiceDisabled": "Voice Disabled",
+  "status.voiceInputDisabled": "Voice input is disabled",
+  "status.working": "Working..."
+}

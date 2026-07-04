@@ -1,0 +1,16 @@
+{
+  "appearance.advancedOrb": "Amber",
+  "appearance.defaultOrb": "Lumen",
+  "appearance.dragonCursor": "Dragon Effect",
+  "appearance.dragonCursorDesc": "Show the mouse-following dragon cursor in the settings panel.",
+  "appearance.liquidGlass": "Liquid Effect",
+  "appearance.liquidGlassDesc": "Disable the liquid overlay on the settings panel to reduce GPU usage.",
+  "appearance.orbStyle": "Orb Style",
+  "appearance.orbStyleDesc": "Choose the main screen orb visual.",
+  "appearance.planetOrb": "Halo",
+  "appearance.theme": "Interface Mode",
+  "appearance.themeDay": "Day",
+  "appearance.themeDesc": "Switch the control surface brightness.",
+  "appearance.themeNight": "Night",
+  "appearance.title": "Page Settings"
+}

@@ -35,6 +35,7 @@ export type CharacterAgentArtifactKind =
   | 'character-card-final'
   | 'opening-message'
   | 'opening-layout'
+  | 'atmosphere-style'
   | 'dialogue-style-guide'
   | 'world-context'
   | 'scene-context'
@@ -103,6 +104,7 @@ export type AgentTargetKind =
   | 'character-card'
   | 'character-field'
   | 'opening-layout'
+  | 'atmosphere-style'
   | 'image'
   | 'world-card'
   | 'npc-pack'
@@ -718,7 +720,7 @@ export function compileCharacterAgentRunContext(
       nodeId: strategyNode?.id,
       mode: stringValue(strategyNode?.config.mode, 'branch-and-refine'),
       branchCount: numberValue(strategyNode?.config.branchCount, 3),
-      priorityAssets: stringListValue(strategyNode?.config.priorityAssets, ['role-card', 'opening', 'opening-layout', 'image-pack']),
+      priorityAssets: stringListValue(strategyNode?.config.priorityAssets, ['role-card', 'opening', 'opening-layout', 'atmosphere-style', 'image-pack']),
       stopCondition: stringValue(strategyNode?.config.stopCondition, 'quality gate passed'),
       incomingRelations: strategyNode ? incomingRelations(relations, strategyNode.id) : [],
     },
@@ -1551,6 +1553,9 @@ export function createCharacterSuperAgent(
         for (const openingLayoutArtifact of createOpeningLayoutArtifacts(context, state.draft!, state.artifacts, runId)) {
           await writeArtifact(openingLayoutArtifact)
         }
+        for (const atmosphereStyleArtifact of createAtmosphereStyleArtifacts(context, state.draft!, state.artifacts, runId)) {
+          await writeArtifact(atmosphereStyleArtifact)
+        }
 
         const finalCard = await writeArtifact({
           id: `${runId}:character-card-final`,
@@ -1799,6 +1804,102 @@ function createOpeningLayoutArtifacts(
   })
 }
 
+function createAtmosphereStyleArtifacts(
+  context: CharacterAgentRunContext,
+  draft: CharacterCardDraft,
+  artifacts: CharacterAgentArtifact[],
+  runId: string
+): Array<Omit<CharacterAgentArtifact, 'version' | 'createdAt' | 'updatedAt'>> {
+  const targets = context.targets.filter((target) => target.kind === 'atmosphere-style')
+  if (!targets.length) {
+    return []
+  }
+  const fields = draft.fields ?? {}
+  return targets.map((target) => {
+    const data = createAtmosphereStyleData(context, target, fields, artifacts)
+    return {
+      id: `${runId}:atmosphere-style:${target.nodeId}`,
+      kind: 'atmosphere-style' as const,
+      runId,
+      candidateId: draft.id,
+      sourceNodeId: target.nodeId,
+      title: `${stringValue(fields.name, 'Character')} Atmosphere Style`,
+      summary: stringValue(data.summary, `Atmosphere style for ${stringValue(fields.name, 'Character')}.`),
+      data,
+    }
+  })
+}
+
+function createAtmosphereStyleData(
+  context: CharacterAgentRunContext,
+  target: AgentTargetContext,
+  fields: Record<string, unknown>,
+  artifacts: CharacterAgentArtifact[]
+): Record<string, unknown> {
+  const name = stringValue(fields.name, 'Character')
+  const description = stringValue(fields.description)
+  const personality = stringValue(fields.personality)
+  const scenario = stringValue(fields.scenario)
+  const dialogueStyle = stringValue(fields.dialogueStyle)
+  const worldContext = stringValue(fields.worldContext)
+  const appearance = stringValue(fields.appearance)
+  const appearancePrompt = stringValue(fields.appearancePrompt)
+  const goalText = context.goal.prompt
+  const localStyle = target.localStylePressures[0] ?? context.stylePressures[0]
+  const stylePrompt = [
+    stringValue(target.config.stylePrompt),
+    localStyle?.preset,
+    localStyle?.prompt,
+    goalText,
+    description,
+    personality,
+    scenario,
+    dialogueStyle,
+    worldContext,
+    appearance,
+    appearancePrompt,
+  ].filter(Boolean).join(' ')
+  const profile = deriveAtmosphereProfile({
+    requestedMood: stringValue(target.config.moodPreset, 'auto-atmosphere'),
+    requestedSurface: stringValue(target.config.surface, 'glass'),
+    requestedFrame: stringValue(target.config.messageFrame, 'literary-panel'),
+    requestedAudio: stringValue(target.config.audioPlayer, 'thin-glass-bar'),
+    requestedDensity: stringValue(target.config.density, 'balanced'),
+    text: stylePrompt,
+  })
+  const firstSpeech = extractFirstRoleChatLine(stringValue(fields.firstMessage)) || dialogueStyle || `我会在这里等你。`
+  const narration = stripVisibleControlTags(stringValue(fields.firstMessage)) || scenario || description
+  const imageHints = collectOpeningLayoutImages(artifacts).slice(0, 3).map((image) => ({
+    id: image.id,
+    role: image.role,
+    title: image.title,
+  }))
+  return {
+    schemaVersion: 1,
+    name: profile.name,
+    summary: `${profile.name} style for ${name}: ${profile.summary}`,
+    mood: profile.mood,
+    palette: profile.palette,
+    message: profile.message,
+    audio: profile.audio,
+    sceneCard: profile.sceneCard,
+    preview: {
+      userLine: context.goal.language === 'zh-CN' ? '这里的气氛有点不一样。' : 'The air feels different here.',
+      narration: compactOpeningText(narration, 96),
+      speech: compactOpeningText(firstSpeech, 64),
+      location: compactOpeningText(scenario || worldContext || (context.goal.language === 'zh-CN' ? '当前场景' : 'Current scene'), 34),
+      status: profile.previewStatus,
+      equipment: profile.previewEquipment,
+    },
+    source: {
+      targetNodeId: target.nodeId,
+      stylePrompt: stringValue(target.config.stylePrompt),
+      derivedFrom: ['role-card', 'dialogueStyle', 'firstMessage', 'style-pressure'],
+      imageHints,
+    },
+  }
+}
+
 function createOpeningLayoutData(
   context: CharacterAgentRunContext,
   target: AgentTargetContext,
@@ -1901,6 +2002,209 @@ function resolveOpeningLayoutStyle(
     accentSoft,
     surface,
     mood: cyber ? 'neon' : warm ? 'warm' : gothic ? 'noir' : 'minimal',
+  }
+}
+
+function deriveAtmosphereProfile(options: {
+  requestedMood: string
+  requestedSurface: string
+  requestedFrame: string
+  requestedAudio: string
+  requestedDensity: string
+  text: string
+}): {
+  name: string
+  summary: string
+  mood: string[]
+  palette: Record<string, string>
+  message: Record<string, string>
+  audio: Record<string, string>
+  sceneCard: Record<string, string>
+  previewStatus: string[]
+  previewEquipment: Array<Record<string, string>>
+} {
+  const source = `${options.requestedMood} ${options.text}`.toLowerCase()
+  const warm = /warm|comfort|romance|soft|healing|sun|温柔|治愈|暖|夕阳|浪漫/.test(source)
+  const rainy = /rain|mist|quiet|school|classroom|window|雨|雾|教室|校园|窗|自习|安静/.test(source)
+  const noir = /noir|night|goth|thriller|secret|danger|shadow|夜|暗|悬疑|危险|秘密|黑/.test(source)
+  const clinical = /dossier|agent|office|lab|clinical|military|档案|组织|实验|调查|秩序|报告/.test(source)
+  const terminal = /cyber|terminal|signal|android|ai|network|赛博|终端|信号|机械|仿生/.test(source)
+  const dreamy = /dream|velvet|idol|stage|fantasy|myth|梦|绒|舞台|偶像|幻想|神秘/.test(source)
+  const explicitMood = options.requestedMood !== 'auto-atmosphere' ? options.requestedMood : ''
+  const theme = explicitMood || (terminal ? 'terminal-signal' : clinical ? 'clinical-dossier' : noir ? 'noir-tension' : dreamy ? 'dreamy-velvet' : warm ? 'warm-intimate' : rainy ? 'rainy-quiet' : 'rainy-quiet')
+  const profiles: Record<string, {
+    name: string
+    summary: string
+    mood: string[]
+    accent: string
+    accentSoft: string
+    surface: string
+    warmth: string
+    contrast: string
+    narration: string
+    speech: string
+    sceneFrame: string
+    divider: string
+    status: string[]
+    equipment: Array<Record<string, string>>
+  }> = {
+    'rainy-quiet': {
+      name: '雨幕低声',
+      summary: '冷灰蓝、低对比、安静叙事，适合细腻留白的角色对话。',
+      mood: ['quiet', 'rainy', 'restrained', 'intimate-distance'],
+      accent: '#a9c4d8',
+      accentSoft: 'rgba(169, 196, 216, 0.17)',
+      surface: 'mist',
+      warmth: 'cool',
+      contrast: 'low',
+      narration: 'soft-prose',
+      speech: 'quote-emphasis',
+      sceneFrame: 'quiet-panel',
+      divider: 'fine-line',
+      status: ['雨声 42', '距离 18', '警戒 63'],
+      equipment: [
+        { name: '备用笔', ability: '留下修正痕迹', quantity: '1' },
+        { name: '折叠伞', ability: '维持近距离同行', quantity: '1' },
+      ],
+    },
+    'warm-intimate': {
+      name: '近光余温',
+      summary: '暖色、柔软边界和近距离语气，强调陪伴感与低声交流。',
+      mood: ['warm', 'close', 'soft', 'slow-burn'],
+      accent: '#e0b179',
+      accentSoft: 'rgba(224, 177, 121, 0.18)',
+      surface: 'paper',
+      warmth: 'warm',
+      contrast: 'medium',
+      narration: 'diary',
+      speech: 'quiet-line',
+      sceneFrame: 'paper-note',
+      divider: 'soft-band',
+      status: ['亲近 54', '安心 71', '犹豫 22'],
+      equipment: [
+        { name: '便签', ability: '记录未说出口的话', quantity: '2' },
+        { name: '温热杯子', ability: '稳定气氛', quantity: '1' },
+      ],
+    },
+    'noir-tension': {
+      name: '暗室张力',
+      summary: '深色、高压、锐利分割，适合悬疑、危险和强关系拉扯。',
+      mood: ['noir', 'danger', 'tense', 'secretive'],
+      accent: '#b993ff',
+      accentSoft: 'rgba(185, 147, 255, 0.17)',
+      surface: 'noir',
+      warmth: 'cool',
+      contrast: 'high',
+      narration: 'noir',
+      speech: 'stage-dialogue',
+      sceneFrame: 'glass-dossier',
+      divider: 'fine-line',
+      status: ['警戒 86', '秘密 67', '压迫 58'],
+      equipment: [
+        { name: '旧钥匙', ability: '开启隐藏房间', quantity: '1' },
+        { name: '黑色手套', ability: '隐藏痕迹', quantity: '1' },
+      ],
+    },
+    'clinical-dossier': {
+      name: '冷白档案',
+      summary: '清晰、克制、资料化，适合组织、实验、调查和高秩序角色。',
+      mood: ['clinical', 'precise', 'controlled', 'observational'],
+      accent: '#dce7e2',
+      accentSoft: 'rgba(220, 231, 226, 0.14)',
+      surface: 'glass',
+      warmth: 'neutral',
+      contrast: 'medium',
+      narration: 'clinical',
+      speech: 'quiet-line',
+      sceneFrame: 'glass-dossier',
+      divider: 'fine-line',
+      status: ['记录 91', '稳定 66', '偏差 12'],
+      equipment: [
+        { name: '观察表', ability: '记录行为变化', quantity: '1' },
+        { name: '编号卡', ability: '确认身份', quantity: '1' },
+      ],
+    },
+    'dreamy-velvet': {
+      name: '绒光梦境',
+      summary: '柔暗、朦胧、舞台感，适合幻想、偶像、梦境或诱惑气质。',
+      mood: ['dreamy', 'velvet', 'sensory', 'cinematic'],
+      accent: '#d7a4c6',
+      accentSoft: 'rgba(215, 164, 198, 0.17)',
+      surface: 'velvet',
+      warmth: 'warm',
+      contrast: 'medium',
+      narration: 'cinematic',
+      speech: 'quote-emphasis',
+      sceneFrame: 'quiet-panel',
+      divider: 'soft-band',
+      status: ['舞台 39', '心跳 64', '迷离 52'],
+      equipment: [
+        { name: '丝绒缎带', ability: '牵引视线', quantity: '1' },
+        { name: '旧唱片', ability: '制造慢拍节奏', quantity: '1' },
+      ],
+    },
+    'terminal-signal': {
+      name: '终端信号',
+      summary: '冷光、信息分层和信号感，适合赛博、仿生、AI 或监控叙事。',
+      mood: ['signal', 'cyber', 'distant', 'precise'],
+      accent: '#7fd7ff',
+      accentSoft: 'rgba(127, 215, 255, 0.16)',
+      surface: 'terminal',
+      warmth: 'cool',
+      contrast: 'high',
+      narration: 'clinical',
+      speech: 'stage-dialogue',
+      sceneFrame: 'terminal-readout',
+      divider: 'fine-line',
+      status: ['信号 78', '同步 44', '噪声 19'],
+      equipment: [
+        { name: '通讯端子', ability: '维持低频连接', quantity: '1' },
+        { name: '访问钥', ability: '打开权限层', quantity: '1' },
+      ],
+    },
+  }
+  const profile = profiles[theme] ?? profiles['rainy-quiet']
+  const surface = ['glass', 'paper', 'noir', 'mist', 'velvet', 'terminal'].includes(options.requestedSurface)
+    ? options.requestedSurface
+    : profile.surface
+  const frame = ['plain', 'literary-panel', 'visual-novel', 'dossier', 'letter'].includes(options.requestedFrame)
+    ? options.requestedFrame
+    : (clinical || terminal ? 'dossier' : rainy ? 'visual-novel' : 'literary-panel')
+  const audioPlayer = ['thin-glass-bar', 'soft-wave-strip', 'quiet-capsule', 'dossier-line'].includes(options.requestedAudio)
+    ? options.requestedAudio
+    : (clinical || terminal ? 'dossier-line' : warm || dreamy ? 'soft-wave-strip' : 'thin-glass-bar')
+  const density = ['compact', 'balanced', 'airy'].includes(options.requestedDensity)
+    ? options.requestedDensity
+    : (frame === 'dossier' ? 'compact' : rainy || dreamy ? 'airy' : 'balanced')
+  return {
+    name: profile.name,
+    summary: profile.summary,
+    mood: profile.mood,
+    palette: {
+      accent: profile.accent,
+      accentSoft: profile.accentSoft,
+      surface,
+      warmth: profile.warmth,
+      contrast: profile.contrast,
+    },
+    message: {
+      frame,
+      narration: profile.narration,
+      speech: profile.speech,
+      density,
+      radius: frame === 'dossier' || surface === 'terminal' ? 'sharp' : surface === 'paper' ? 'round' : 'soft',
+    },
+    audio: {
+      player: audioPlayer,
+      motion: audioPlayer === 'dossier-line' ? 'still' : 'subtle-wave',
+      tone: warm || dreamy ? 'intimate' : clinical || terminal ? 'formal' : 'distant',
+    },
+    sceneCard: {
+      frame: profile.sceneFrame,
+      divider: profile.divider,
+    },
+    previewStatus: profile.status,
+    previewEquipment: profile.equipment,
   }
 }
 
@@ -2130,6 +2434,15 @@ function stripVisibleControlTags(value: string): string {
   return value
     .replace(/<\/?(?:chat|role_chat)\b[^>]*>/gi, '')
     .replace(/<\/?[a-z_][\w:-]*(?:\s[^>]*)?>/gi, '')
+}
+
+function extractFirstRoleChatLine(value: string): string {
+  const match = value.match(/<role_chat\b[^>]*>([\s\S]*?)<\/role_chat>/i)
+  const text = match ? match[1] : value
+  return stripVisibleControlTags(text)
+    .replace(/^["“”]+|["“”]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 function buildOpeningFactItems(
@@ -3138,6 +3451,7 @@ function artifactTitle(kind: CharacterAgentArtifactKind): string {
     'character-card-final': 'Character Card',
     'opening-message': 'Opening Message',
     'opening-layout': 'Opening Layout',
+    'atmosphere-style': 'Atmosphere Style',
     'dialogue-style-guide': 'Dialogue Style Guide',
     'world-context': 'World Context',
     'scene-context': 'Scene Context',
@@ -3173,6 +3487,7 @@ function isArtifactKind(value: unknown): value is CharacterAgentArtifactKind {
     'character-card-final',
     'opening-message',
     'opening-layout',
+    'atmosphere-style',
     'dialogue-style-guide',
     'world-context',
     'scene-context',
@@ -3261,6 +3576,7 @@ function targetKindForNodeType(type: string): AgentTargetKind | null {
     'character-card-target': 'character-card',
     'character-field-target': 'character-field',
     'opening-layout-target': 'opening-layout',
+    'atmosphere-style-target': 'atmosphere-style',
     'image-target': 'image',
     'world-card-target': 'world-card',
     'npc-pack-target': 'npc-pack',
@@ -3280,6 +3596,15 @@ function requestedResourcesForTarget(node: CharacterWorkflowNode, kind: AgentTar
   }
   if (kind === 'opening-layout') {
     return ['opening-layout', ...stringListValue(node.config.includeSections)]
+  }
+  if (kind === 'atmosphere-style') {
+    return [
+      'atmosphere-style',
+      `mood:${stringValue(node.config.moodPreset, 'auto-atmosphere')}`,
+      `surface:${stringValue(node.config.surface, 'glass')}`,
+      `message:${stringValue(node.config.messageFrame, 'literary-panel')}`,
+      `audio:${stringValue(node.config.audioPlayer, 'thin-glass-bar')}`,
+    ]
   }
   if (kind === 'image') {
     const imageRole = stringValue(node.config.imageRole)

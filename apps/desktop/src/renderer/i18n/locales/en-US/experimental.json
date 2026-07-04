@@ -1,0 +1,5 @@
+{
+  "experimental.selfLearning": "Self-Learning",
+  "experimental.selfLearningDesc": "Allow runtime event learning, candidate generation, and specialized agents. Disabling it stops the related background flows.",
+  "experimental.title": "Experimental"
+}

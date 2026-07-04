@@ -14,6 +14,50 @@ export interface CharacterProfileOpeningPanel {
   sourceArtifactId?: string
 }
 
+export type CharacterAtmosphereSurface = 'glass' | 'paper' | 'noir' | 'mist' | 'velvet' | 'terminal'
+export type CharacterAtmosphereDensity = 'compact' | 'balanced' | 'airy'
+export type CharacterAtmosphereRadius = 'sharp' | 'soft' | 'round'
+export type CharacterAtmosphereAudioPlayer = 'thin-glass-bar' | 'soft-wave-strip' | 'quiet-capsule' | 'dossier-line'
+
+export interface CharacterProfileAtmosphereStyle {
+  schemaVersion: 1
+  name: string
+  summary?: string
+  mood: string[]
+  palette: {
+    accent: string
+    accentSoft: string
+    surface: CharacterAtmosphereSurface
+    warmth: 'cool' | 'neutral' | 'warm'
+    contrast: 'low' | 'medium' | 'high'
+  }
+  message: {
+    frame: 'plain' | 'literary-panel' | 'visual-novel' | 'dossier' | 'letter'
+    narration: 'soft-prose' | 'cinematic' | 'noir' | 'diary' | 'clinical'
+    speech: 'quote-emphasis' | 'quiet-line' | 'stage-dialogue'
+    density: CharacterAtmosphereDensity
+    radius: CharacterAtmosphereRadius
+  }
+  audio: {
+    player: CharacterAtmosphereAudioPlayer
+    motion: 'still' | 'subtle-wave' | 'breath'
+    tone: 'near' | 'distant' | 'intimate' | 'formal'
+  }
+  sceneCard: {
+    frame: 'quiet-panel' | 'glass-dossier' | 'paper-note' | 'terminal-readout'
+    divider: 'fine-line' | 'soft-band' | 'none'
+  }
+  preview?: {
+    userLine?: string
+    narration?: string
+    speech?: string
+    location?: string
+    status?: string[]
+    equipment?: Array<{ name: string; ability: string; quantity?: string }>
+  }
+  sourceArtifactId?: string
+}
+
 export interface CharacterProfileAsset {
   id: string
   kind: 'avatar' | 'body' | 'overview' | 'voice-sample' | 'live2d' | 'vrm' | 'generated-image'
@@ -33,6 +77,7 @@ export interface CharacterProfile {
   }
   roleCard?: Record<string, unknown>
   openingPanel?: CharacterProfileOpeningPanel
+  atmosphereStyle?: CharacterProfileAtmosphereStyle
   name: CharacterProfileLocalizedText
   displayName: CharacterProfileLocalizedText
   description: CharacterProfileLocalizedText
@@ -70,6 +115,7 @@ export interface CharacterProfileManifestInput {
   tag?: unknown
   roleCard?: unknown
   openingPanel?: unknown
+  atmosphereStyle?: unknown
   avatarImage?: unknown
   bodyImage?: unknown
 }
@@ -97,6 +143,7 @@ export function createCharacterProfileFromManifest(
     },
     roleCard: recordValue(manifest.roleCard),
     openingPanel: normalizeOpeningPanel(manifest.openingPanel),
+    atmosphereStyle: normalizeAtmosphereStyle(manifest.atmosphereStyle),
     name: nonEmptyLocalizedText(name, id),
     displayName: nonEmptyLocalizedText(displayName, id),
     description: localizedTextValue(manifest.description),
@@ -128,6 +175,7 @@ export function normalizeCharacterProfile(value: unknown): CharacterProfile | nu
     source: profile.source && typeof profile.source === 'object' ? profile.source : undefined,
     roleCard: recordValue(profile.roleCard),
     openingPanel: normalizeOpeningPanel(profile.openingPanel),
+    atmosphereStyle: normalizeAtmosphereStyle(profile.atmosphereStyle),
     name: nonEmptyLocalizedText(localizedTextValue(profile.name), profile.id),
     displayName: nonEmptyLocalizedText(localizedTextValue(profile.displayName), profile.id),
     description: localizedTextValue(profile.description),
@@ -241,6 +289,82 @@ function normalizeOpeningPanel(value: unknown): CharacterProfileOpeningPanel | u
   }
 }
 
+function normalizeAtmosphereStyle(value: unknown): CharacterProfileAtmosphereStyle | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined
+  }
+  const record = value as Record<string, unknown>
+  const palette = recordValue(record.palette) ?? {}
+  const message = recordValue(record.message) ?? {}
+  const audio = recordValue(record.audio) ?? {}
+  const sceneCard = recordValue(record.sceneCard) ?? {}
+  return {
+    schemaVersion: 1,
+    name: optionalString(record.name) ?? 'Character atmosphere',
+    summary: optionalString(record.summary),
+    mood: stringArrayValue(record.mood).slice(0, 8),
+    palette: {
+      accent: colorString(palette.accent, '#c7d8d0'),
+      accentSoft: colorString(palette.accentSoft, 'rgba(199, 216, 208, 0.16)'),
+      surface: enumString(palette.surface, ['glass', 'paper', 'noir', 'mist', 'velvet', 'terminal'], 'glass'),
+      warmth: enumString(palette.warmth, ['cool', 'neutral', 'warm'], 'neutral'),
+      contrast: enumString(palette.contrast, ['low', 'medium', 'high'], 'medium'),
+    },
+    message: {
+      frame: enumString(message.frame, ['plain', 'literary-panel', 'visual-novel', 'dossier', 'letter'], 'literary-panel'),
+      narration: enumString(message.narration, ['soft-prose', 'cinematic', 'noir', 'diary', 'clinical'], 'soft-prose'),
+      speech: enumString(message.speech, ['quote-emphasis', 'quiet-line', 'stage-dialogue'], 'quote-emphasis'),
+      density: enumString(message.density, ['compact', 'balanced', 'airy'], 'balanced'),
+      radius: enumString(message.radius, ['sharp', 'soft', 'round'], 'soft'),
+    },
+    audio: {
+      player: enumString(audio.player, ['thin-glass-bar', 'soft-wave-strip', 'quiet-capsule', 'dossier-line'], 'thin-glass-bar'),
+      motion: enumString(audio.motion, ['still', 'subtle-wave', 'breath'], 'subtle-wave'),
+      tone: enumString(audio.tone, ['near', 'distant', 'intimate', 'formal'], 'near'),
+    },
+    sceneCard: {
+      frame: enumString(sceneCard.frame, ['quiet-panel', 'glass-dossier', 'paper-note', 'terminal-readout'], 'quiet-panel'),
+      divider: enumString(sceneCard.divider, ['fine-line', 'soft-band', 'none'], 'fine-line'),
+    },
+    preview: normalizeAtmospherePreview(record.preview),
+    sourceArtifactId: optionalString(record.sourceArtifactId),
+  }
+}
+
+function normalizeAtmospherePreview(value: unknown): CharacterProfileAtmosphereStyle['preview'] | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined
+  }
+  const record = value as Record<string, unknown>
+  const equipment = Array.isArray(record.equipment)
+    ? record.equipment
+        .map((item) => {
+          if (!item || typeof item !== 'object' || Array.isArray(item)) return null
+          const entry = item as Record<string, unknown>
+          const name = optionalString(entry.name)
+          const ability = optionalString(entry.ability)
+          if (!name || !ability) return null
+          return {
+            name,
+            ability,
+            quantity: optionalString(entry.quantity),
+          }
+        })
+        .filter(Boolean) as Array<{ name: string; ability: string; quantity?: string }>
+    : undefined
+  const preview = {
+    userLine: optionalString(record.userLine),
+    narration: optionalString(record.narration),
+    speech: optionalString(record.speech),
+    location: optionalString(record.location),
+    status: stringArrayValue(record.status).slice(0, 4),
+    equipment,
+  }
+  return Object.values(preview).some((item) => Array.isArray(item) ? item.length > 0 : Boolean(item))
+    ? preview
+    : undefined
+}
+
 function normalizeAsset(value: unknown): CharacterProfileAsset | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return null
@@ -292,6 +416,26 @@ function stringValue(value: unknown): string {
 function optionalString(value: unknown): string | undefined {
   const text = stringValue(value)
   return text || undefined
+}
+
+function stringArrayValue(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.map((item) => typeof item === 'string' ? item.trim() : '').filter(Boolean)
+    : []
+}
+
+function enumString<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
+  return typeof value === 'string' && (allowed as readonly string[]).includes(value)
+    ? value as T
+    : fallback
+}
+
+function colorString(value: unknown, fallback: string): string {
+  const text = stringValue(value)
+  if (/^#[0-9a-f]{3}(?:[0-9a-f]{3})?$/i.test(text) || /^rgba?\([^)]+\)$/i.test(text)) {
+    return text
+  }
+  return fallback
 }
 
 function normalizeIdentifier(value: unknown, fallback: string): string {

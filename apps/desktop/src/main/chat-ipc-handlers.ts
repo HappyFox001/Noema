@@ -124,6 +124,47 @@ function logCharacterWorkflowImageAttemptFailure(event: CharacterAgentEvent): vo
   })
 }
 
+function logCharacterWorkflowBuilderEvent(event: CharacterWorkflowBuilderEvent): void {
+  switch (event.type) {
+    case 'workflow-agent.started':
+      console.log(`[WorkflowEditorAgent] Started ${event.mode}: ${truncateWorkflowLogText(event.objective, 140)}`)
+      break
+    case 'workflow-agent.step': {
+      const step = event.step
+      const editCount = step.operations.length + Object.keys(step.uiConfigOverrides).length
+      console.log(
+        `[WorkflowEditorAgent] Step ${step.index}: ${step.status} | ${step.tool} | edits=${editCount} | ` +
+        `${truncateWorkflowLogText(step.summary, 180)}`
+      )
+      if (step.currentStep) {
+        console.log(`[WorkflowEditorAgent] Current: ${truncateWorkflowLogText(step.currentStep, 160)}`)
+      }
+      if (step.nextStep) {
+        console.log(`[WorkflowEditorAgent] Next: ${truncateWorkflowLogText(step.nextStep, 160)}`)
+      }
+      break
+    }
+    case 'workflow-agent.completed': {
+      const currentStep = event.work.currentStep
+        ? ` | current=${truncateWorkflowLogText(event.work.currentStep, 120)}`
+        : ''
+      console.log(
+        `[WorkflowEditorAgent] Completed ${event.mode}: status=${event.work.status} ` +
+        `steps=${event.work.steps.length}${currentStep}`
+      )
+      break
+    }
+  }
+}
+
+function truncateWorkflowLogText(text: string, maxLength: number): string {
+  const normalized = text.replace(/\s+/g, ' ').trim()
+  if (normalized.length <= maxLength) {
+    return normalized
+  }
+  return `${normalized.slice(0, Math.max(0, maxLength - 3))}...`
+}
+
 export interface ChatSendMessageRequest extends ChatRuntimeTurnRequest {
   streamId?: string
 }
@@ -185,11 +226,16 @@ export interface ChatBuildCharacterWorkflowRequest {
     plan?: string[]
     completedSteps?: string[]
     currentStep?: string
+    nextStep?: string
     history?: Array<{
+      stepIndex?: number
+      tool?: string
       userRequest?: string
       summary?: string
       status?: string
       operations?: number
+      currentStep?: string
+      nextStep?: string
     }>
   }
   graph?: {
@@ -539,14 +585,15 @@ export function registerChatIpcHandlers(
         llmModelName: workflowModelName,
         imageApiId: firstImageModel?.id,
         imageModelName: firstImageModel?.modelName,
-        onEvent: request.streamId
-          ? (builderEvent: CharacterWorkflowBuilderEvent) => {
-              event.sender.send('chat:characterWorkflowBuildEvent', {
-                streamId: request.streamId,
-                event: builderEvent,
-              })
-            }
-          : undefined,
+        onEvent: (builderEvent: CharacterWorkflowBuilderEvent) => {
+          logCharacterWorkflowBuilderEvent(builderEvent)
+          if (request.streamId) {
+            event.sender.send('chat:characterWorkflowBuildEvent', {
+              streamId: request.streamId,
+              event: builderEvent,
+            })
+          }
+        },
       })
       return {
         success: true,

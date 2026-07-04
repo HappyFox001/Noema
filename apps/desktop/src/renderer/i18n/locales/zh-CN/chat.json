@@ -1,0 +1,23 @@
+{
+  "chat.background": "背景",
+  "chat.characterProfile": "角色资料",
+  "chat.identity": "陈千语",
+  "chat.kicker": "Noema chat",
+  "chat.navArchive": "归档",
+  "chat.navAssets": "资源",
+  "chat.navCharacters": "角色",
+  "chat.navConversations": "会话",
+  "chat.navRuntime": "运行时",
+  "chat.navSession": "当前会话",
+  "chat.navVoice": "语音",
+  "chat.new": "新建",
+  "chat.placeholder": "输入消息...",
+  "chat.profileDesc": "独立角色资源只描述角色本身，不包含 UI 状态或测试流程。",
+  "chat.profileTags": "标签",
+  "chat.resourceKicker": "角色资源",
+  "chat.search": "搜索历史角色或对话",
+  "chat.subtitle": "历史角色对话",
+  "chat.threadEva": "陈千语基础资料已接入。",
+  "chat.threadRuntime": "流式文本、工具调用和本地任务状态",
+  "chat.title": "会话"
+}

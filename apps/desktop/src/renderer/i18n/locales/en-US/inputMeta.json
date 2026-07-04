@@ -1,0 +1,5 @@
+{
+  "inputMeta.currentOnly": "Only used for the current task",
+  "inputMeta.persistent": "Can be saved and reused in later tasks",
+  "inputMeta.verification": "One-time verification code, not saved"
+}

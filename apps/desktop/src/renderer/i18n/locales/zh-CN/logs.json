@@ -1,0 +1,6 @@
+{
+  "logs.desc": "按时间、等级和类型查看当前会话的运行状态。",
+  "logs.empty": "暂无日志",
+  "logs.loadFailed": "日志加载失败",
+  "logs.title": "运行日志"
+}

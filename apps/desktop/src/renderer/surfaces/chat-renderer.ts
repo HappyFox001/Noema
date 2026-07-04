@@ -2,6 +2,7 @@
  * Renders chat state into the standalone chat surface DOM.
  */
 import type {
+  ChatAtmosphereStyle,
   ChatCharacterResource,
   ChatConversationSummary,
   ChatMessage,
@@ -78,6 +79,7 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     const language = options.getLanguage()
     activeConversation = conversation
     activeMessageCharacter = character
+    applyCharacterAtmosphereStyle(character.atmosphereStyle)
     if (headerAvatar) {
       headerAvatar.className = 'chat-avatar large'
       headerAvatar.innerHTML = renderAvatarImage(character, language)
@@ -125,6 +127,7 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     const emptyCopy = language === 'zh-CN'
       ? 'chat 会在角色产生历史对话后读取资源并显示在这里。'
       : 'Chat resources appear here after a character has conversation history.'
+    applyCharacterAtmosphereStyle(undefined)
 
     if (headerAvatar) {
       headerAvatar.className = 'chat-avatar large'
@@ -159,6 +162,47 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     activeConversation = undefined
     actionSourceMessageId = ''
     options.messageList.innerHTML = ''
+  }
+
+  function applyCharacterAtmosphereStyle(style: ChatAtmosphereStyle | undefined): void {
+    const root = options.panel
+    clearAtmosphereClassNames(root)
+    root.style.removeProperty('--chat-atmosphere-accent')
+    root.style.removeProperty('--chat-atmosphere-accent-soft')
+    root.style.removeProperty('--chat-atmosphere-radius')
+    root.style.removeProperty('--chat-atmosphere-density-gap')
+    if (!style) {
+      return
+    }
+    root.classList.add(
+      'has-chat-atmosphere',
+      `chat-atmosphere-surface-${style.palette.surface}`,
+      `chat-atmosphere-message-${style.message.frame}`,
+      `chat-atmosphere-audio-${style.audio.player}`,
+      `chat-atmosphere-scene-${style.sceneCard.frame}`,
+      `chat-atmosphere-density-${style.message.density}`,
+      `chat-atmosphere-radius-${style.message.radius}`,
+    )
+    root.style.setProperty('--chat-atmosphere-accent', style.palette.accent)
+    root.style.setProperty('--chat-atmosphere-accent-soft', style.palette.accentSoft)
+    root.style.setProperty('--chat-atmosphere-radius', style.message.radius === 'sharp' ? '10px' : style.message.radius === 'round' ? '22px' : '16px')
+    root.style.setProperty('--chat-atmosphere-density-gap', style.message.density === 'compact' ? '8px' : style.message.density === 'airy' ? '16px' : '12px')
+  }
+
+  function clearAtmosphereClassNames(root: HTMLElement): void {
+    root.classList.remove('has-chat-atmosphere')
+    for (const className of [...root.classList]) {
+      if (
+        className.startsWith('chat-atmosphere-surface-') ||
+        className.startsWith('chat-atmosphere-message-') ||
+        className.startsWith('chat-atmosphere-audio-') ||
+        className.startsWith('chat-atmosphere-scene-') ||
+        className.startsWith('chat-atmosphere-density-') ||
+        className.startsWith('chat-atmosphere-radius-')
+      ) {
+        root.classList.remove(className)
+      }
+    }
   }
 
   function renderMessages(messages: ChatMessage[], scrollMode: ChatRenderScrollMode = 'auto'): void {
@@ -466,32 +510,8 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
   }
 
   function renderOpeningPanel(message: ChatMessage): string {
-    const panel = message.openingPanel
-    if (!panel || (!panel.html && !panel.css)) {
-      return ''
-    }
-    const html = sanitizeOpeningPanelHtml(panel.html)
-    const css = sanitizeOpeningPanelCss(panel.css)
-    return `
-      <div class="chat-opening-panel" data-chat-opening-panel="${options.escapeHtml(panel.sourceArtifactId ?? '')}">
-        ${css ? `<style>${css}</style>` : ''}
-        ${html}
-      </div>
-    `
-  }
-
-  function sanitizeOpeningPanelHtml(value: string): string {
-    return value
-      .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
-      .replace(/\son[a-z]+\s*=\s*(['"]).*?\1/gi, '')
-      .replace(/\s(href|src)\s*=\s*(['"])\s*javascript:[\s\S]*?\2/gi, '')
-  }
-
-  function sanitizeOpeningPanelCss(value: string): string {
-    return value
-      .replace(/<\/?style[\s\S]*?>/gi, '')
-      .replace(/@import[^;]+;/gi, '')
-      .replace(/url\(\s*(['"]?)javascript:[^)]+\)/gi, 'none')
+    void message
+    return ''
   }
 
   function renderNoemaStreamStatus(language: ChatLanguageCode): string {
@@ -555,14 +575,22 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     if (!canUseInlineVoice(message, language) || !normalizeInlineAudioText(speechText)) {
       return ''
     }
+    const normalizedSpeech = normalizeInlineAudioText(speechText)
     const audioItems = getMessageAudioItems(message, speechText)
     if (audioItems.length) {
       return `
-        <span class="chat-inline-audio" data-chat-inline-audio-bar data-chat-audio-text="${options.escapeHtml(normalizeInlineAudioText(speechText))}">
+        <span class="chat-inline-audio" data-chat-inline-audio-bar data-chat-audio-text="${options.escapeHtml(normalizedSpeech)}">
           ${audioItems.map((item) => {
             const source = item.dataUrl || item.url || ''
+            const playLabel = language === 'zh-CN' ? '播放语音' : 'Play voice'
             return `
-              <audio class="chat-inline-audio-player" src="${options.escapeHtml(source)}" controls preload="metadata" title="${options.escapeHtml(item.name)}"></audio>
+              <span class="chat-inline-audio-player" data-chat-inline-audio="true" data-chat-message-id="${options.escapeHtml(message.id)}" data-chat-audio-text="${options.escapeHtml(normalizedSpeech)}" title="${options.escapeHtml(item.name)}">
+                <audio class="chat-inline-audio-native" src="${options.escapeHtml(source)}" preload="metadata" title="${options.escapeHtml(item.name)}"></audio>
+                <span class="chat-inline-audio-play" aria-label="${options.escapeHtml(playLabel)}"></span>
+                <span class="chat-inline-audio-track" aria-hidden="true"><span></span></span>
+                <span class="chat-inline-audio-time" data-chat-inline-audio-time>0:00 / 0:00</span>
+                <span class="chat-inline-audio-menu" aria-hidden="true"><span class="chat-inline-audio-menu-dot"></span><span class="chat-inline-audio-menu-dot"></span><span class="chat-inline-audio-menu-dot"></span></span>
+              </span>
             `
           }).join('')}
         </span>

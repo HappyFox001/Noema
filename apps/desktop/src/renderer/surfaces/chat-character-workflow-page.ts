@@ -372,6 +372,10 @@ function localizeNodeTitle(node: CharacterResourceNode, definition: CharacterRes
   return workflowText(options, `chat.workflow.node.${definition.type}`, node.title || definition.displayName)
 }
 
+function localizeNodeDescription(definition: CharacterResourceNodeDefinition, options: CharacterWorkflowPageOptions): string {
+  return workflowText(options, `chat.workflow.description.${definition.type}`, definition.description)
+}
+
 function localizeParameterLabel(parameterItem: CharacterResourceParameterDefinition, options: CharacterWorkflowPageOptions, nodeType = ''): string {
   if (nodeType) {
     const translated = options.t?.(`chat.workflow.param.${nodeType}.${parameterItem.id}`)
@@ -386,15 +390,20 @@ function localizeSlotLabel(slotItem: CharacterResourceSlotDefinition, options: C
   return workflowText(options, `chat.workflow.slot.${slotItem.id}`, slotItem.label)
 }
 
-function formatSlotTypeLabel(type: string): string {
-  return SLOT_TYPE_LABELS[type] ?? type.split('-').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ')
+function localizeSlotTooltip(slotItem: CharacterResourceSlotDefinition, options: CharacterWorkflowPageOptions): string {
+  return workflowText(options, `chat.workflow.slotTooltip.${slotItem.id}`, slotItem.tooltip || slotItem.type)
 }
 
-function formatSlotAcceptLabel(types: string[]): string {
+function formatSlotTypeLabel(type: string, options?: CharacterWorkflowPageOptions): string {
+  const fallback = SLOT_TYPE_LABELS[type] ?? type.split('-').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ')
+  return options ? workflowText(options, `chat.workflow.slotType.${type}`, fallback) : fallback
+}
+
+function formatSlotAcceptLabel(types: string[], options?: CharacterWorkflowPageOptions): string {
   if (types.length === TARGET_RESOURCE_SLOT_TYPES.length && TARGET_RESOURCE_SLOT_TYPES.every((type) => types.includes(type))) {
-    return formatSlotTypeLabel('target-resource')
+    return formatSlotTypeLabel('target-resource', options)
   }
-  return types.map(formatSlotTypeLabel).join(' / ')
+  return types.map((type) => formatSlotTypeLabel(type, options)).join(' / ')
 }
 
 function localizeCategory(category: string, options: CharacterWorkflowPageOptions): string {
@@ -574,10 +583,51 @@ const OPENING_TEXT_DENSITY_OPTIONS = [
   { label: 'Story', value: 'story' },
 ]
 
+const ATMOSPHERE_MOOD_OPTIONS = [
+  { label: 'Auto Atmosphere', value: 'auto-atmosphere' },
+  { label: 'Rainy Quiet', value: 'rainy-quiet' },
+  { label: 'Warm Intimate', value: 'warm-intimate' },
+  { label: 'Noir Tension', value: 'noir-tension' },
+  { label: 'Clinical Dossier', value: 'clinical-dossier' },
+  { label: 'Dreamy Velvet', value: 'dreamy-velvet' },
+  { label: 'Terminal Signal', value: 'terminal-signal' },
+]
+
+const ATMOSPHERE_SURFACE_OPTIONS = [
+  { label: 'Glass', value: 'glass' },
+  { label: 'Paper', value: 'paper' },
+  { label: 'Noir', value: 'noir' },
+  { label: 'Mist', value: 'mist' },
+  { label: 'Velvet', value: 'velvet' },
+  { label: 'Terminal', value: 'terminal' },
+]
+
+const ATMOSPHERE_MESSAGE_FRAME_OPTIONS = [
+  { label: 'Plain', value: 'plain' },
+  { label: 'Literary Panel', value: 'literary-panel' },
+  { label: 'Visual Novel', value: 'visual-novel' },
+  { label: 'Dossier', value: 'dossier' },
+  { label: 'Letter', value: 'letter' },
+]
+
+const ATMOSPHERE_AUDIO_PLAYER_OPTIONS = [
+  { label: 'Thin Glass Bar', value: 'thin-glass-bar' },
+  { label: 'Soft Wave Strip', value: 'soft-wave-strip' },
+  { label: 'Quiet Capsule', value: 'quiet-capsule' },
+  { label: 'Dossier Line', value: 'dossier-line' },
+]
+
+const ATMOSPHERE_DENSITY_OPTIONS = [
+  { label: 'Compact', value: 'compact' },
+  { label: 'Balanced', value: 'balanced' },
+  { label: 'Airy', value: 'airy' },
+]
+
 const TARGET_RESOURCE_SLOT_TYPES = [
   'character-card-resource',
   'field-resource',
   'opening-layout-resource',
+  'atmosphere-style-resource',
   'image-resource',
   'world-resource',
   'npc-pack-resource',
@@ -588,6 +638,7 @@ const TARGET_RESOURCE_SLOT_TYPES = [
 
 const SLOT_TYPE_LABELS: Record<string, string> = {
   'agent-policy': 'Agent Policy',
+  'atmosphere-style-resource': 'Atmosphere Style',
   'candidate-pack': 'Candidate Pack',
   'character-card-resource': 'Character Card',
   'continuity-control-resource': 'Continuity Control',
@@ -668,6 +719,22 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     ]),
     param('layoutPrompt', 'Layout Prompt', 'textarea', ''),
   ], 'package'),
+  createDefinition('atmosphere-style-target', 'Atmosphere Style Target', ['氛围样式', 'atmosphere', 'chat style', 'audio style'], 'Targets', 'asset', 'Declares the structured character atmosphere style used by chat bubbles, role speech, inline audio, scene cards, and profile previews.', [
+    slot('card', 'Character Card', 'character-card-resource', 'Character card target.', true),
+    slot('field', 'Field', 'field-resource', 'Dialogue, opening, and scenario fields.'),
+    slot('imageAsset', 'Image', 'image-resource', 'Character visuals that influence palette and material.'),
+    slot('style', 'Style', 'style-signal', 'Global or local style pressure.'),
+    slot('voice', 'Voice', 'voice-capability', 'Voice capability used to align audio presentation.'),
+  ], [
+    slot('atmosphere', 'Atmosphere', 'atmosphere-style-resource', 'Structured atmosphere style target resource.'),
+  ], [
+    param('moodPreset', 'Mood Preset', 'select', 'auto-atmosphere', undefined, undefined, undefined, ATMOSPHERE_MOOD_OPTIONS),
+    param('surface', 'Surface', 'select', 'glass', undefined, undefined, undefined, ATMOSPHERE_SURFACE_OPTIONS),
+    param('messageFrame', 'Message Frame', 'select', 'literary-panel', undefined, undefined, undefined, ATMOSPHERE_MESSAGE_FRAME_OPTIONS),
+    param('audioPlayer', 'Audio Player', 'select', 'thin-glass-bar', undefined, undefined, undefined, ATMOSPHERE_AUDIO_PLAYER_OPTIONS),
+    param('density', 'Density', 'select', 'balanced', undefined, undefined, undefined, ATMOSPHERE_DENSITY_OPTIONS),
+    param('stylePrompt', 'Style Prompt', 'textarea', ''),
+  ], 'rule'),
   createDefinition('image-target', 'Image Target', ['图片目标', 'image target', 'visual target'], 'Targets', 'asset', 'Declares a role-card visual asset. Each image should preserve character identity while supporting a distinct story, field, or presentation purpose.', [
     slot('card', 'Character Card', 'character-card-resource', 'Character card target.'),
     slot('image', 'Image', 'image-capability', 'Image generation capability.', true),
@@ -970,10 +1037,11 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'Explore then Converge', value: 'explore-then-converge' },
     ]),
     param('branchCount', 'Branch Count', 'integer', 3, 1, 8, 1),
-    param('priorityAssets', 'Priority Assets', 'multi-select', ['role-card', 'opening', 'opening-layout', 'image-pack'], undefined, undefined, undefined, [
+    param('priorityAssets', 'Priority Assets', 'multi-select', ['role-card', 'opening', 'opening-layout', 'atmosphere-style', 'image-pack'], undefined, undefined, undefined, [
       { label: 'Role Card', value: 'role-card' },
       { label: 'Opening', value: 'opening' },
       { label: 'Opening Layout', value: 'opening-layout' },
+      { label: 'Atmosphere Style', value: 'atmosphere-style' },
       { label: 'Image Pack', value: 'image-pack' },
     ]),
   ], 'rule'),
@@ -1056,6 +1124,11 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
   ], [
     slot('resource', 'Resource', 'role-resource', 'Opening panel resource.'),
   ], [], 'package', { width: 420, height: 360 }),
+  createDefinition('atmosphere-style-resource', 'Atmosphere Style', ['氛围样式', 'chat style', 'audio style'], 'Run Resources', 'asset', 'The generated structured atmosphere style for chat messages, role speech, audio bars, scene cards, and profile preview.', [
+    slot('resource', 'Resource', 'role-resource', 'Previous generated role resource.'),
+  ], [
+    slot('resource', 'Resource', 'role-resource', 'Atmosphere style resource.'),
+  ], [], 'rule', { width: 300, height: 210 }),
   createDefinition('style-guide-resource', 'Dialogue Style', ['语气', 'style guide', 'dialogue'], 'Run Resources', 'asset', 'The generated dialogue style guide for the role.', [
     slot('resource', 'Resource', 'role-resource', 'Previous generated role resource.'),
   ], [
@@ -1105,6 +1178,7 @@ const DEFAULT_NODE_PLACEMENT: Array<{ id: string; type: string; title: string; x
   { id: 'image-capability', type: 'image-tool', title: 'Image Tool', x: 1040, y: 980 },
   { id: 'agent-policy', type: 'agent-policy', title: 'Agent Policy', x: 1400, y: 40 },
   { id: 'opening-layout-target', type: 'opening-layout-target', title: 'Opening Layout Target', x: 1400, y: 580 },
+  { id: 'atmosphere-style-target', type: 'atmosphere-style-target', title: 'Atmosphere Style Target', x: 1400, y: 830 },
   { id: 'generation-strategy', type: 'generation-strategy', title: 'Generation Strategy', x: 1740, y: 40 },
   { id: 'critique-loop', type: 'critique-loop', title: 'Critique Loop', x: 1740, y: 330 },
   { id: 'quality-gate', type: 'quality-gate', title: 'Quality Gate', x: 2080, y: 190, status: 'stale' },
@@ -1136,6 +1210,11 @@ const DEFAULT_LINKS: CharacterResourceLink[] = [
   link('overview-sheet-image-target', 'imageAsset', 'opening-layout-target', 'imageAsset', 'guides'),
   link('opening-panel-image-target', 'imageAsset', 'opening-layout-target', 'imageAsset', 'guides'),
   link('style-pressure', 'style', 'opening-layout-target', 'style', 'weights'),
+  link('character-card-target', 'target', 'atmosphere-style-target', 'card', 'guides'),
+  link('character-fields', 'field', 'atmosphere-style-target', 'field', 'guides'),
+  link('avatar-image-target', 'imageAsset', 'atmosphere-style-target', 'imageAsset', 'guides'),
+  link('overview-sheet-image-target', 'imageAsset', 'atmosphere-style-target', 'imageAsset', 'guides'),
+  link('style-pressure', 'style', 'atmosphere-style-target', 'style', 'weights'),
   link('generation-goal', 'goal', 'agent-policy', 'goal', 'guides'),
   link('hard-constraints', 'constraint', 'agent-policy', 'constraint', 'constrains'),
   link('source-material', 'source', 'agent-policy', 'source', 'grounds'),
@@ -1851,7 +1930,7 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
         }
       }),
     groups: [
-      { id: 'intent-targets', title: ui(options, '目标资源', 'Target Resources'), nodeIds: ['generation-goal', 'character-card-target', 'character-fields', 'avatar-image-target', 'overview-sheet-image-target', 'opening-panel-image-target', 'opening-layout-target', 'source-material'], color: 'rgba(82, 168, 255, 0.16)' },
+      { id: 'intent-targets', title: ui(options, '目标资源', 'Target Resources'), nodeIds: ['generation-goal', 'character-card-target', 'character-fields', 'avatar-image-target', 'overview-sheet-image-target', 'opening-panel-image-target', 'opening-layout-target', 'atmosphere-style-target', 'source-material'], color: 'rgba(82, 168, 255, 0.16)' },
       { id: 'local-controls', title: ui(options, '局部控制', 'Local Controls'), nodeIds: ['style-pressure', 'hard-constraints', 'avatar-image-control', 'overview-sheet-image-control', 'opening-panel-image-control'], color: 'rgba(162, 202, 188, 0.16)' },
       { id: 'tool-policy', title: ui(options, '工具与策略', 'Tools and Strategy'), nodeIds: ['llm-capability', 'image-capability', 'agent-policy', 'generation-strategy'], color: 'rgba(219, 189, 130, 0.16)' },
       { id: 'evaluation-output', title: ui(options, '评估与输出', 'Evaluation and Output'), nodeIds: ['critique-loop', 'quality-gate', 'output-adapter'], color: 'rgba(206, 154, 118, 0.16)' },
@@ -2419,6 +2498,7 @@ function renderResourceLibrary(graph: CharacterResourceGraph, options: Character
 
 function renderNodeLibraryCard(definition: CharacterResourceNodeDefinition, graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions, elementId = ''): string {
   const displayName = workflowText(options, `chat.workflow.node.${definition.type}`, definition.displayName)
+  const description = localizeNodeDescription(definition, options)
   const categoryLabel = localizeCategory(definition.category, options)
   const sourceLabel = localizeSource(definition.source, options)
   const searchText = [
@@ -2436,12 +2516,12 @@ function renderNodeLibraryCard(definition: CharacterResourceNodeDefinition, grap
   const inputTypes = definition.inputs.map((slotItem) => slotItem.type).join(' ')
   const outputTypes = definition.outputs.map((slotItem) => slotItem.type).join(' ')
   return `
-    <button class="chat-resource-library-card" ${elementId ? `id="${options.escapeHtml(elementId)}"` : ''} type="button" role="option" data-resource-library-card data-resource-node-add-type="${options.escapeHtml(definition.type)}" data-resource-category="${options.escapeHtml(definition.category)}" data-resource-input-types="${options.escapeHtml(inputTypes)}" data-resource-output-types="${options.escapeHtml(outputTypes)}" data-resource-search-text="${options.escapeHtml(searchText)}" data-resource-preview-title="${options.escapeHtml(displayName)}" data-resource-preview-body="${options.escapeHtml(definition.description)}" data-chat-workflow-panel="nodes">
+    <button class="chat-resource-library-card" ${elementId ? `id="${options.escapeHtml(elementId)}"` : ''} type="button" role="option" data-resource-library-card data-resource-node-add-type="${options.escapeHtml(definition.type)}" data-resource-category="${options.escapeHtml(definition.category)}" data-resource-input-types="${options.escapeHtml(inputTypes)}" data-resource-output-types="${options.escapeHtml(outputTypes)}" data-resource-search-text="${options.escapeHtml(searchText)}" data-resource-preview-title="${options.escapeHtml(displayName)}" data-resource-preview-body="${options.escapeHtml(description)}" data-chat-workflow-panel="nodes">
       <span>
         <b>${options.escapeHtml(displayName)}</b>
         <small>${options.escapeHtml(categoryLabel)} / ${options.escapeHtml(sourceLabel)}</small>
       </span>
-      <em>${options.escapeHtml(definition.outputs[0]?.type ?? '-')}</em>
+      <em>${options.escapeHtml(definition.outputs[0]?.type ? formatSlotTypeLabel(definition.outputs[0].type, options) : '-')}</em>
     </button>
   `
 }
@@ -3229,6 +3309,7 @@ function getRunCanvasArtifacts(artifacts: CharacterRunArtifacts): CharacterRunAr
     'character-card-final',
     'opening-message',
     'opening-layout',
+    'atmosphere-style',
     'dialogue-style-guide',
     'world-context',
     'scene-context',
@@ -3303,6 +3384,7 @@ function getRoleResourceArtifacts(artifacts: NonNullable<CharacterResourceRunSta
     'character-card-final',
     'opening-message',
     'opening-layout',
+    'atmosphere-style',
     'dialogue-style-guide',
     'world-context',
     'scene-context',
@@ -3353,6 +3435,7 @@ function getRunArtifactMeta(artifact: NonNullable<CharacterResourceRunState['art
     'character-card-final': ui(options, '角色卡 / role-card', 'role card / resource'),
     'opening-message': ui(options, '开场 / opening', 'opening / resource'),
     'opening-layout': ui(options, '开幕面板 / CSS', 'opening panel / CSS'),
+    'atmosphere-style': ui(options, '氛围样式 / style', 'atmosphere / style'),
     'dialogue-style-guide': ui(options, '语气 / style', 'style / resource'),
     'world-context': ui(options, '世界观 / context', 'world / resource'),
     'scene-context': ui(options, '场景 / context', 'scene / resource'),
@@ -3376,6 +3459,7 @@ function getRunArtifactNodeType(type: string): string {
     'character-card-final': 'role-card-resource',
     'opening-message': 'opening-resource',
     'opening-layout': 'opening-panel-resource',
+    'atmosphere-style': 'atmosphere-style-resource',
     'dialogue-style-guide': 'style-guide-resource',
     'world-context': 'context-resource',
     'scene-context': 'context-resource',
@@ -3735,14 +3819,15 @@ function renderSlotList(node: CharacterResourceNode, slots: CharacterResourceSlo
     <div class="chat-workflow-node-port-list ${side}">
       ${slots.map((slotItem) => {
         const accepts = slotItem.accepts ?? [slotItem.type]
-        const acceptLabel = formatSlotAcceptLabel(accepts)
+        const acceptLabel = formatSlotAcceptLabel(accepts, options)
+        const outputLabel = formatSlotTypeLabel(slotItem.type, options)
         const guideLabel = side === 'input'
           ? ui(options, `接入：${acceptLabel}`, `Accepts: ${acceptLabel}`)
-          : ui(options, `输出：${formatSlotTypeLabel(slotItem.type)}`, `Outputs: ${formatSlotTypeLabel(slotItem.type)}`)
+          : ui(options, `输出：${outputLabel}`, `Outputs: ${outputLabel}`)
         const dragGuideLabel = side === 'input'
           ? ui(options, `连接 ${acceptLabel}`, `Connect ${acceptLabel}`)
-          : ui(options, `拖向 ${formatSlotTypeLabel(slotItem.type)} 输入口`, `Drag to a ${formatSlotTypeLabel(slotItem.type)} input`)
-        const title = `${slotItem.tooltip || slotItem.type} · ${guideLabel}`
+          : ui(options, `拖向 ${outputLabel} 输入口`, `Drag to a ${outputLabel} input`)
+        const title = `${localizeSlotTooltip(slotItem, options)} · ${guideLabel}`
         return `
         <span class="chat-workflow-node-port chat-resource-slot ${slotItem.required ? 'required' : ''}" data-resource-slot-node="${options.escapeHtml(node.id)}" data-resource-slot-id="${options.escapeHtml(slotItem.id)}" data-resource-slot-side="${side}" data-resource-slot-type="${options.escapeHtml(slotItem.type)}" data-resource-slot-accepts="${options.escapeHtml(accepts.join(','))}" data-resource-slot-guide="${options.escapeHtml(dragGuideLabel)}" title="${options.escapeHtml(title)}">
           <i class="chat-resource-slot-dot" aria-hidden="true"></i>
@@ -3866,7 +3951,7 @@ function renderRunImageActions(output: CharacterResourceOutput, options: Charact
   const rerollLabel = ui(options, '追加指令重炼', 'Reroll with instruction')
   return `
     <div class="chat-resource-image-actions" data-run-image-actions>
-      <button type="button" data-chat-workflow-run-image-action="reroll" data-run-artifact-id="${options.escapeHtml(artifactId)}" data-run-target-node-id="${options.escapeHtml(targetNodeId)}" data-run-attempt-id="${options.escapeHtml(attemptId)}" aria-label="${options.escapeHtml(rerollLabel)}" title="${options.escapeHtml(rerollLabel)}"><i icon-name="rotate-ccw" aria-hidden="true"></i></button>
+      <button type="button" data-chat-workflow-run-image-action="reroll" data-run-artifact-id="${options.escapeHtml(artifactId)}" data-run-target-node-id="${options.escapeHtml(targetNodeId)}" data-run-attempt-id="${options.escapeHtml(attemptId)}" aria-label="${options.escapeHtml(rerollLabel)}" title="${options.escapeHtml(rerollLabel)}"><i data-lucide="rotate-ccw" aria-hidden="true"></i></button>
     </div>
   `
 }
@@ -3901,7 +3986,7 @@ function renderResourceInspector(graph: CharacterResourceGraph, options: Charact
         <header class="chat-workflow-inspector-head">
           <span>${options.escapeHtml(`${localizeCategory(definition.category, options)} / ${localizeSource(definition.source, options)} / ${definition.previewType}`)}</span>
           <strong>${options.escapeHtml(localizeNodeTitle(selectedNode, definition, options))}</strong>
-          <small>${options.escapeHtml(definition.description)}</small>
+          <small>${options.escapeHtml(localizeNodeDescription(definition, options))}</small>
         </header>
         <section class="chat-workflow-inspector-section">
           <h4>${options.escapeHtml(options.language === 'zh-CN' ? '参数' : 'Parameters')}</h4>
@@ -3912,8 +3997,8 @@ function renderResourceInspector(graph: CharacterResourceGraph, options: Charact
         <section class="chat-workflow-inspector-section">
           <h4>${options.escapeHtml(ui(options, '插槽', 'Slots'))}</h4>
           <div class="chat-workflow-inspector-ports">
-            ${definition.inputs.map((slotItem) => `<span><b>IN</b>${options.escapeHtml(localizeSlotLabel(slotItem, options))}<small>${options.escapeHtml(formatSlotAcceptLabel(slotItem.accepts ?? [slotItem.type]))}</small></span>`).join('') || '<span><b>IN</b>-</span>'}
-            ${definition.outputs.map((slotItem) => `<span><b>OUT</b>${options.escapeHtml(localizeSlotLabel(slotItem, options))}<small>${options.escapeHtml(formatSlotTypeLabel(slotItem.type))}</small></span>`).join('')}
+            ${definition.inputs.map((slotItem) => `<span><b>IN</b>${options.escapeHtml(localizeSlotLabel(slotItem, options))}<small>${options.escapeHtml(formatSlotAcceptLabel(slotItem.accepts ?? [slotItem.type], options))}</small></span>`).join('') || '<span><b>IN</b>-</span>'}
+            ${definition.outputs.map((slotItem) => `<span><b>OUT</b>${options.escapeHtml(localizeSlotLabel(slotItem, options))}<small>${options.escapeHtml(formatSlotTypeLabel(slotItem.type, options))}</small></span>`).join('')}
           </div>
         </section>
         ${output ? `
@@ -4330,8 +4415,8 @@ function renderBottomToolbar(graph: CharacterResourceGraph, options: CharacterWo
           ${drafts.map((draft) => `<option value="${options.escapeHtml(draft.id)}" ${draft.id === activeRunId ? 'selected' : ''}>${options.escapeHtml(`${draft.title} · ${draft.status}`)}</option>`).join('')}
         </select>
       </label>
-      <button type="button" data-chat-workflow-action="delete-run-draft" ${activeRunId ? '' : 'disabled'}><i icon-name="trash-2" aria-hidden="true"></i><span>${options.escapeHtml(ui(options, '删除草稿', 'Delete Draft'))}</span></button>
-      <button type="button" data-chat-workflow-action="chat-test" ${activeRunId ? '' : 'disabled'}><i icon-name="message-circle" aria-hidden="true"></i><span>${options.escapeHtml(ui(options, '聊天测试', 'Chat Test'))}</span></button>
+      <button type="button" data-chat-workflow-action="delete-run-draft" ${activeRunId ? '' : 'disabled'}><i data-lucide="trash-2" aria-hidden="true"></i><span>${options.escapeHtml(ui(options, '删除草稿', 'Delete Draft'))}</span></button>
+      <button type="button" data-chat-workflow-action="chat-test" ${activeRunId ? '' : 'disabled'}><i data-lucide="message-circle" aria-hidden="true"></i><span>${options.escapeHtml(ui(options, '聊天测试', 'Chat Test'))}</span></button>
     </footer>
   `
   }
@@ -4341,9 +4426,9 @@ function renderBottomToolbar(graph: CharacterResourceGraph, options: CharacterWo
         <strong>${options.escapeHtml(graph.title)}</strong>
         <span>${options.escapeHtml(ui(options, `${graph.nodes.length} 个节点 / ${graph.links.length} 条连线 / ${validationIssues} 个问题`, `${graph.nodes.length} nodes / ${graph.links.length} links / ${validationIssues} issues`))}</span>
       </div>
-      <button type="button" data-chat-workflow-action="save-graph"><i icon-name="save" aria-hidden="true"></i><span>${options.escapeHtml(ui(options, '保存', 'Save'))}</span></button>
+      <button type="button" data-chat-workflow-action="save-graph"><i data-lucide="save" aria-hidden="true"></i><span>${options.escapeHtml(ui(options, '保存', 'Save'))}</span></button>
       <button type="button" data-chat-workflow-node-select="quality-gate">${options.escapeHtml(ui(options, '校验', 'Validate'))}</button>
-      <button type="button" data-chat-workflow-action="chat-test"><i icon-name="message-circle" aria-hidden="true"></i><span>${options.escapeHtml(ui(options, '聊天测试', 'Chat Test'))}</span></button>
+      <button type="button" data-chat-workflow-action="chat-test"><i data-lucide="message-circle" aria-hidden="true"></i><span>${options.escapeHtml(ui(options, '聊天测试', 'Chat Test'))}</span></button>
     </footer>
   `
 }
