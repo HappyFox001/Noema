@@ -4112,7 +4112,15 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (renderToken !== characterWorkflowLazyRenderToken || !characterWorkflowRoot?.isConnected) {
       return
     }
-    const pageOptions = createCharacterWorkflowPageOptions(activeProject)
+    const runViewportRect = runViewport.getBoundingClientRect()
+    const pageOptions = createCharacterWorkflowPageOptions(
+      activeProject,
+      {
+        width: Math.round(runViewportRect.width),
+        height: Math.round(runViewportRect.height),
+      },
+      true
+    )
     const nextViewportHtml = workflowPage.renderCharacterWorkflowRunDraftViewport(pageOptions)
     replaceCharacterWorkflowRunViewport(runViewport, nextViewportHtml)
 
@@ -4132,8 +4140,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   function replaceCharacterWorkflowRunViewport(currentViewport: HTMLElement, nextViewportHtml: string): void {
     const nextViewport = parseCharacterWorkflowElement<HTMLElement>(nextViewportHtml, '.chat-resource-run-viewport')
     const shouldPrimeRunMotion = currentViewport.dataset.runDraftInitialized === 'true'
-      && nextViewport.classList.contains('run-status-running')
+      && nextViewport.classList.contains('is-run-animating')
+      && nextViewport.dataset.runMotion === 'live'
+      && currentViewport.dataset.runId === nextViewport.dataset.runId
       && !(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false)
+    syncCharacterResourceViewportFromElement(nextViewport)
     if (!shouldPrimeRunMotion) {
       currentViewport.replaceWith(nextViewport)
       return
@@ -4221,6 +4232,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   function patchKeyedChildren(currentContainer: HTMLElement, nextContainer: HTMLElement, datasetKey: string): void {
+    const shouldAnimate = isVisibleWorkflowRunAnimating()
     copyElementAttributes(currentContainer, nextContainer)
     const currentByKey = new Map<string, HTMLElement>()
     Array.from(currentContainer.children).forEach((child) => {
@@ -4234,9 +4246,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       const currentChild = key ? currentByKey.get(key) : null
       if (!currentChild) {
         const clone = nextChild.cloneNode(true) as HTMLElement
-        clone.classList.add('is-entering')
+        if (shouldAnimate) {
+          clone.classList.add('is-entering')
+        }
         currentContainer.append(clone)
-        window.setTimeout(() => clone.classList.remove('is-entering'), 320)
+        if (shouldAnimate) {
+          window.setTimeout(() => clone.classList.remove('is-entering'), 320)
+        }
         return
       }
       currentByKey.delete(key)
@@ -4254,6 +4270,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   function flashRunPreviewElement(element: HTMLElement): void {
+    if (!isVisibleWorkflowRunAnimating()) {
+      return
+    }
     element.classList.remove('is-updated')
     void element.offsetWidth
     element.classList.add('is-updated')
@@ -4269,6 +4288,15 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     Array.from(source.attributes).forEach((attribute) => {
       target.setAttribute(attribute.name, attribute.value)
     })
+  }
+
+  function isVisibleWorkflowRunAnimating(): boolean {
+    return Boolean(
+      characterWorkflowActiveTabId === 'run-draft'
+      && characterWorkflowExecutingRunState?.run?.status === 'running'
+      && characterWorkflowRunState?.run?.id
+      && characterWorkflowExecutingRunState.run.id === characterWorkflowRunState.run.id
+    )
   }
 
   function parseCharacterWorkflowElement<T extends Element>(html: string, selector: string): T {
@@ -4306,6 +4334,25 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     panel.querySelectorAll<HTMLElement>('.chat-resource-zoom-label').forEach((label) => {
       label.textContent = `${Math.round(characterResourceViewState.zoom * 100)}%`
     })
+  }
+
+  function syncCharacterResourceViewportFromElement(viewport: HTMLElement): void {
+    const raw = viewport.dataset.resourceViewport
+    if (!raw) {
+      return
+    }
+    try {
+      const parsed = JSON.parse(raw) as { x?: unknown; y?: unknown; zoom?: unknown }
+      const zoom = typeof parsed.zoom === 'number' && Number.isFinite(parsed.zoom) ? parsed.zoom : characterResourceViewState.zoom
+      const panX = typeof parsed.x === 'number' && Number.isFinite(parsed.x) ? parsed.x : characterResourceViewState.panX
+      const panY = typeof parsed.y === 'number' && Number.isFinite(parsed.y) ? parsed.y : characterResourceViewState.panY
+      characterResourceViewState.zoom = zoom
+      characterResourceViewState.panX = panX
+      characterResourceViewState.panY = panY
+      saveCharacterResourceViewStateSnapshot()
+    } catch {
+      // Runtime focus is visual state only; malformed DOM data should not interrupt a run.
+    }
   }
 
   async function renderCharacterWorkflowAsync(): Promise<void> {
@@ -4396,7 +4443,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     `
   }
 
-  function createCharacterWorkflowPageOptions(activeProject: CharacterWorkflowProjectRecord): Parameters<CharacterWorkflowPageModule['renderCharacterWorkflowPage']>[0] {
+  function createCharacterWorkflowPageOptions(
+    activeProject: CharacterWorkflowProjectRecord,
+    runViewportSize?: { width: number; height: number },
+    runMotionEnabled = false
+  ): Parameters<CharacterWorkflowPageModule['renderCharacterWorkflowPage']>[0] {
     return {
       language: options.getLanguage(),
       escapeHtml: options.escapeHtml,
@@ -4405,6 +4456,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       configOverrides: characterWorkflowConfigOverrides,
       positionOverrides: characterWorkflowPositionOverrides,
       runState: characterWorkflowRunState,
+      runAnimating: Boolean(
+        characterWorkflowExecutingRunState?.run?.status === 'running'
+        && characterWorkflowRunState?.run?.id
+        && characterWorkflowExecutingRunState.run.id === characterWorkflowRunState.run.id
+      ),
+      runMotionEnabled,
+      runViewportSize,
       runDrafts: activeProject.runs.map((run) => ({
         id: run.id,
         title: run.title,
@@ -5130,7 +5188,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       ...characterWorkflowExecutingRunState,
       run: {
         ...characterWorkflowExecutingRunState.run,
-        status: 'canceled',
+        status: 'failed',
       },
       steps: (characterWorkflowExecutingRunState.steps ?? []).map((step) => (
         step.id === currentStepId
@@ -5142,15 +5200,15 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           : step
       )),
     }
-    const canceledProjectId = characterWorkflowExecutingProjectId
-    const canceledRunState = characterWorkflowExecutingRunState
-    const canceledRunId = canceledRunState.run.id
+    const stoppedProjectId = characterWorkflowExecutingProjectId
+    const stoppedRunState = characterWorkflowExecutingRunState
+    const stoppedRunId = stoppedRunState.run.id
     syncExecutingWorkflowRunState(true)
-    syncVisibleWorkflowRunState(canceledProjectId, canceledRunState)
+    syncVisibleWorkflowRunState(stoppedProjectId, stoppedRunState)
     characterWorkflowExecutingRunState = null
     characterWorkflowExecutingProjectId = ''
     characterWorkflowRenderToken += 1
-    return isViewingWorkflowRun(canceledProjectId, canceledRunId)
+    return isViewingWorkflowRun(stoppedProjectId, stoppedRunId)
   }
 
   function isViewingWorkflowRun(projectId: string, runId: string): boolean {
@@ -7795,11 +7853,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const labels: Record<string, [string, string]> = {
       idle: ['待运行', 'Idle'],
       running: ['运行中', 'Running'],
-      paused: ['已暂停', 'Paused'],
       done: ['已完成', 'Done'],
       needs_action: ['需要处理', 'Needs action'],
       failed: ['失败', 'Failed'],
-      canceled: ['已取消', 'Canceled'],
     }
     const label = labels[status] ?? [status, status]
     return zh ? label[0] : label[1]

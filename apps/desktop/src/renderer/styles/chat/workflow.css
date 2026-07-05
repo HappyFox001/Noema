@@ -3062,36 +3062,89 @@ body.chat-workflow-library-resizing * {
 }
 
 .chat-resource-run-plane .chat-resource-node {
-  border-color: rgba(162, 202, 188, 0.12);
-  border-radius: 9px;
+  overflow: hidden;
+  border-color: rgba(248, 250, 250, 0.075);
+  border-radius: 22px;
   background:
-    linear-gradient(180deg, rgba(248, 250, 250, 0.038), rgba(248, 250, 250, 0.012)),
-    rgba(7, 8, 9, 0.92);
+    radial-gradient(circle at 16% 0, rgba(120, 126, 136, 0.12), transparent 42%),
+    linear-gradient(180deg, rgba(41, 44, 48, 0.96), rgba(29, 32, 35, 0.98)),
+    rgba(29, 32, 35, 0.98);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.045),
-    inset 1px 0 0 rgba(162, 202, 188, 0.08);
+    inset 0 1px 0 rgba(255, 255, 255, 0.075),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.28),
+    0 22px 52px rgba(0, 0, 0, 0.34);
   will-change: auto;
+}
+
+.chat-resource-run-plane .chat-resource-node.is-run-focus {
+  border-color: rgba(104, 135, 255, 0.54);
+  box-shadow:
+    0 0 0 1px rgba(104, 135, 255, 0.3),
+    0 0 0 9px rgba(104, 135, 255, 0.08),
+    0 30px 72px rgba(0, 0, 0, 0.5);
 }
 
 .chat-resource-run-plane .chat-resource-node::after {
   content: '';
   position: absolute;
-  inset: 7px;
-  border: 1px solid rgba(248, 250, 250, 0.035);
-  border-radius: 6px;
+  inset: 0;
+  border: 1px solid rgba(255, 255, 255, 0.035);
+  border-radius: inherit;
   pointer-events: none;
-  opacity: 0.74;
+  opacity: 0.9;
+}
+
+.chat-resource-run-plane .chat-resource-node.is-run-focus::after {
+  inset: 0;
+  border-color: rgba(104, 135, 255, 0.22);
+  border-radius: inherit;
+  background:
+    radial-gradient(circle at 18% 0, rgba(104, 135, 255, 0.16), transparent 42%),
+    transparent;
+  opacity: 1;
+}
+
+.chat-resource-run-order {
+  position: absolute;
+  top: -10px;
+  left: 12px;
+  z-index: 4;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  padding: 0 7px;
+  border: 1px solid rgba(248, 250, 250, 0.09);
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, rgba(20, 23, 24, 0.96), rgba(7, 8, 9, 0.9));
+  color: rgba(232, 238, 238, 0.68);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+}
+
+.chat-resource-run-plane .chat-resource-node.is-run-focus .chat-resource-run-order,
+.chat-resource-run-plane .chat-resource-node.running .chat-resource-run-order {
+  border-color: rgba(104, 135, 255, 0.32);
+  color: rgba(205, 214, 255, 0.94);
+  background:
+    linear-gradient(180deg, rgba(36, 44, 88, 0.96), rgba(17, 19, 26, 0.92));
 }
 
 .chat-resource-run-plane .chat-resource-node-header {
-  min-height: 38px;
-  border-bottom-color: rgba(248, 250, 250, 0.045);
-  background: linear-gradient(90deg, rgba(248, 250, 250, 0.04), transparent 58%);
+  min-height: 42px;
+  padding: 11px 14px 7px;
+  border-bottom-color: rgba(248, 250, 250, 0.032);
+  background: transparent;
 }
 
 .chat-resource-run-plane .chat-resource-node-header strong {
-  color: rgba(232, 238, 238, 0.84);
+  color: rgba(245, 247, 247, 0.88);
   font-size: 12px;
+  line-height: 1.25;
 }
 
 .chat-resource-run-plane .chat-resource-node-slots,
@@ -3101,10 +3154,10 @@ body.chat-workflow-library-resizing * {
 }
 
 .chat-resource-run-plane .goal {
-  border-color: rgba(82, 168, 255, 0.22);
+  border-color: rgba(104, 135, 255, 0.22);
   background:
-    linear-gradient(180deg, rgba(82, 168, 255, 0.07), rgba(248, 250, 250, 0.018)),
-    rgba(7, 8, 9, 0.94);
+    radial-gradient(circle at 16% 0, rgba(104, 135, 255, 0.16), transparent 44%),
+    linear-gradient(180deg, rgba(39, 43, 49, 0.98), rgba(26, 29, 33, 0.98));
 }
 
 .chat-resource-run-plane .goal .chat-resource-node-header span {
@@ -3113,11 +3166,10 @@ body.chat-workflow-library-resizing * {
 
 .chat-resource-run-plane .chat-resource-node-content {
   min-height: 54px;
-  padding: 8px 10px;
-  border-color: rgba(248, 250, 250, 0.05);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.026), rgba(255, 255, 255, 0.012)),
-    rgba(0, 0, 0, 0.16);
+  margin: 0 12px 12px;
+  padding: 7px 0 0;
+  border: 0;
+  background: transparent;
 }
 
 .chat-resource-run-plane .chat-resource-node-content strong {
@@ -3130,9 +3182,9 @@ body.chat-workflow-library-resizing * {
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
-  color: rgba(216, 220, 224, 0.54);
+  color: rgba(226, 230, 232, 0.64);
   font-size: 11px;
-  line-height: 1.42;
+  line-height: 1.52;
 }
 
 .chat-resource-run-plane .opening-panel-resource {
@@ -3161,10 +3213,10 @@ body.chat-workflow-library-resizing * {
   max-height: calc(var(--node-h, 252px) - 104px);
   aspect-ratio: auto;
   justify-self: center;
-  border: 1px solid rgba(248, 250, 250, 0.08);
-  border-radius: 8px;
+  border: 1px solid rgba(248, 250, 250, 0.075);
+  border-radius: 18px;
   object-fit: contain;
-  box-shadow: none;
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.28);
   contain: paint;
 }
 
@@ -3174,7 +3226,8 @@ body.chat-workflow-library-resizing * {
   justify-items: center;
   gap: 7px;
   min-height: calc(var(--node-h, 252px) - 62px);
-  padding: 9px 10px 10px;
+  margin: 0 10px 10px;
+  padding: 4px 0 0;
 }
 
 .chat-resource-run-plane .run-image-preview .chat-resource-image-caption {
@@ -3193,22 +3246,23 @@ body.chat-workflow-library-resizing * {
 }
 
 .chat-resource-run-plane .chat-resource-link text {
-  font-size: 8px;
-  opacity: 0.7;
+  display: none;
 }
 
 .chat-resource-run-plane .chat-resource-link path.chat-resource-link-main {
-  stroke: rgba(118, 153, 162, 0.64);
-  stroke-width: 1.45;
+  stroke: rgba(86, 96, 116, 0.72);
+  stroke-width: 1.15;
+  stroke-dasharray: 3 7;
   stroke-linecap: round;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
 }
 
 .chat-resource-run-plane .chat-resource-link.run-sequence-link path.chat-resource-link-main {
-  stroke: rgba(132, 173, 159, 0.66);
-  stroke-width: 1.55;
-  filter: drop-shadow(0 1px 5px rgba(132, 173, 159, 0.14));
+  stroke: rgba(93, 104, 128, 0.78);
+  stroke-width: 1.05;
+  stroke-dasharray: 2 8;
+  filter: none;
 }
 
 .chat-resource-run-plane .chat-resource-link.run-sequence-link text {
@@ -3218,27 +3272,20 @@ body.chat-workflow-library-resizing * {
 }
 
 .chat-resource-run-plane .chat-resource-link-port {
-  fill: rgba(132, 173, 159, 0.72);
-  stroke: rgba(7, 8, 9, 0.86);
-  stroke-width: 1.4;
+  fill: rgba(104, 135, 255, 0.58);
+  stroke: rgba(10, 11, 13, 0.94);
+  stroke-width: 1.2;
   vector-effect: non-scaling-stroke;
 }
 
 .chat-resource-run-plane .chat-resource-link-port.target {
-  fill: rgba(224, 214, 174, 0.78);
+  fill: rgba(158, 172, 255, 0.72);
 }
 
-.chat-resource-run-viewport.run-status-running .chat-resource-link.run-sequence-link.flowing path.chat-resource-link-main {
-  stroke: rgba(180, 205, 196, 0.82);
-}
-
-.chat-resource-run-viewport.run-status-done .chat-resource-run-plane {
-  animation: chat-resource-run-complete 420ms ease-out both;
-}
-
-.chat-resource-run-viewport.run-status-failed .chat-resource-run-plane,
-.chat-resource-run-viewport.run-status-needs_action .chat-resource-run-plane {
-  animation: chat-resource-run-failed 360ms ease-out both;
+.chat-resource-run-viewport.is-run-animating .chat-resource-link.run-sequence-link.flowing path.chat-resource-link-main {
+  stroke: rgba(122, 144, 255, 0.9);
+  stroke-dasharray: 4 8;
+  animation: chat-resource-run-link-flow 820ms linear infinite;
 }
 
 .chat-resource-run-plane .chat-resource-image-actions {
@@ -3252,7 +3299,7 @@ body.chat-workflow-library-resizing * {
   min-height: 0;
   padding: 2px;
   border: 1px solid rgba(248, 250, 250, 0.09);
-  border-radius: 9px;
+  border-radius: 14px;
   background: rgba(8, 10, 11, 0.68);
   backdrop-filter: blur(12px);
 }
@@ -3260,19 +3307,8 @@ body.chat-workflow-library-resizing * {
 .chat-resource-run-plane .run-image-preview .chat-resource-image-actions button {
   width: 28px;
   height: 28px;
-  border-radius: 7px;
+  border-radius: 11px;
   background: rgba(255, 255, 255, 0.055);
-}
-
-@keyframes chat-resource-run-node-enter {
-  from {
-    opacity: 0;
-    transform: translateY(8px) scale(0.985);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
 }
 
 @keyframes chat-resource-run-link-flow {
@@ -3281,39 +3317,15 @@ body.chat-workflow-library-resizing * {
   }
 }
 
-@keyframes chat-resource-run-complete {
-  0% {
-    filter: saturate(1);
-  }
-  42% {
-    filter: saturate(1.18) brightness(1.08);
-  }
-  100% {
-    filter: saturate(1) brightness(1);
-  }
-}
-
-@keyframes chat-resource-run-failed {
-  0%,
-  100% {
-    transform: translate(var(--resource-pan-x, 0), var(--resource-pan-y, 0)) scale(var(--resource-zoom, 1));
-  }
-  34% {
-    transform: translate(calc(var(--resource-pan-x, 0) - 4px), var(--resource-pan-y, 0)) scale(var(--resource-zoom, 1));
-  }
-  68% {
-    transform: translate(calc(var(--resource-pan-x, 0) + 4px), var(--resource-pan-y, 0)) scale(var(--resource-zoom, 1));
-  }
-}
-
 .chat-resource-run-plane .character-field-resource {
-  border-color: color-mix(in srgb, var(--run-field-accent, rgba(82, 168, 255, 0.42)) 34%, rgba(248, 250, 250, 0.07));
+  border-color: color-mix(in srgb, var(--run-field-accent, rgba(104, 135, 255, 0.42)) 20%, rgba(248, 250, 250, 0.08));
   background:
-    linear-gradient(135deg, color-mix(in srgb, var(--run-field-accent, rgba(82, 168, 255, 0.28)) 10%, rgba(7, 8, 9, 0.94)), rgba(7, 8, 9, 0.9)),
-    rgba(7, 8, 9, 0.9);
+    radial-gradient(circle at 14% 0, color-mix(in srgb, var(--run-field-accent, rgba(104, 135, 255, 0.24)) 18%, transparent), transparent 42%),
+    linear-gradient(180deg, rgba(42, 45, 49, 0.98), rgba(29, 32, 35, 0.985));
   box-shadow:
-    inset 2px 0 0 color-mix(in srgb, var(--run-field-accent, rgba(82, 168, 255, 0.5)) 68%, transparent),
-    0 18px 42px rgba(0, 0, 0, 0.32);
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    inset 3px 0 0 color-mix(in srgb, var(--run-field-accent, rgba(104, 135, 255, 0.5)) 45%, transparent),
+    0 22px 52px rgba(0, 0, 0, 0.34);
 }
 
 .chat-resource-run-plane .character-field-resource .chat-resource-node-header span {
@@ -3325,8 +3337,8 @@ body.chat-workflow-library-resizing * {
 }
 
 .chat-resource-run-plane .character-field-resource .chat-resource-node-content {
-  border-color: color-mix(in srgb, var(--run-field-accent, rgba(82, 168, 255, 0.3)) 24%, rgba(248, 250, 250, 0.055));
-  background: rgba(255, 255, 255, 0.035);
+  border-color: transparent;
+  background: transparent;
 }
 
 .chat-resource-run-plane .character-field-resource.run-field-name,
@@ -3537,27 +3549,20 @@ body.chat-workflow-library-resizing * {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.034),
     0 10px 24px rgba(0, 0, 0, 0.12);
-  animation: chat-workflow-field-enter 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
-.chat-run-character-fields article.is-entering,
-.chat-run-character-overview.is-entering,
-.chat-run-character-gallery figure.is-entering {
+.chat-run-character-inspector.is-run-animating .chat-run-character-fields article.is-entering,
+.chat-run-character-inspector.is-run-animating .chat-run-character-overview.is-entering,
+.chat-run-character-inspector.is-run-animating .chat-run-character-gallery figure.is-entering {
   animation: chat-run-character-local-enter 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
-.chat-run-character-fields article.is-updated,
-.chat-run-character-overview.is-updated,
-.chat-run-character-gallery figure.is-updated,
-.chat-run-character-hero.is-updated {
+.chat-run-character-inspector.is-run-animating .chat-run-character-fields article.is-updated,
+.chat-run-character-inspector.is-run-animating .chat-run-character-overview.is-updated,
+.chat-run-character-inspector.is-run-animating .chat-run-character-gallery figure.is-updated,
+.chat-run-character-inspector.is-run-animating .chat-run-character-hero.is-updated {
   animation: chat-run-character-local-update 520ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
-
-.chat-run-character-fields article:nth-child(2) { animation-delay: 25ms; }
-.chat-run-character-fields article:nth-child(3) { animation-delay: 50ms; }
-.chat-run-character-fields article:nth-child(4) { animation-delay: 75ms; }
-.chat-run-character-fields article:nth-child(5) { animation-delay: 100ms; }
-.chat-run-character-fields article:nth-child(6) { animation-delay: 125ms; }
 
 .chat-run-character-fields article:hover {
   border-color: rgba(248, 250, 250, 0.12);

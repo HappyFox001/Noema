@@ -281,7 +281,7 @@ function createCharacterDecisionPrompt(
     '    <image_rule>The character-base-image prompt must stay free-form and sample-based: same avatar reference identity, one clear character-focused image per prompt, meaningful scene/action/mood/outfit usage/prop interaction, adult sensual or erotic appeal according to image_control, no model sheet, no collage, no split screen, no written labels, and no second avatar.</image_rule>',
     '    <image_rule>If an image attempt failed, is stale because its reference changed, or selected artifact feedback says the image is ugly, duplicated, off-style, multi-face, not matching appearancePrompt, or otherwise unacceptable, request_image for the same targetNodeId with a sharper corrected targetPrompts.prompt. Do not edit the workflow graph for a local image reroll.</image_rule>',
     '    <image_rule>The runtime wraps avatar targetPrompts.prompt with appearancePrompt, role-specific positive visual direction, style suffix, quality suffix, and a short avoid list. For non-avatar images, the runtime omits appearancePrompt and relies on graph-linked reference images plus role/style/quality wrapping. Do not repeat the full appearancePrompt inside targetPrompts.prompt.</image_rule>',
-    '    <image_rule>When requesting images, create one targetPrompts item per final image, not just per image target. If an image target requests multiple images through image_control count, return multiple distinct prompts for the same targetNodeId.</image_rule>',
+    '    <image_rule>Request one image prompt at a time. If a target ultimately needs multiple images, the runtime will request the next image after the previous image artifact is created.</image_rule>',
     '    <image_rule>All non-avatar images for the same role card must use reference-image continuity for face structure, hair, eyes, age impression, body type, signature accessories, and outfit language. Vary pose, shot, background, mood, lighting, outfit, and story function through targetPrompts.</image_rule>',
     '    <image_rule>Each targetPrompts.prompt should be a compact slot-specific visual direction: pose, expression, framing, camera angle, background simplicity, prop/motif, mood, and image function. For attractive free images, specify how the body line, hands, gaze, fabric, furniture, window light, mirror, cup, book, weapon, instrument, or other objects create adult visual appeal. Include only composition or slot-specific changes, not a rewritten identity bible.</image_rule>',
     '    <image_rule>Do not request pure empty scene images. Every image should contain the character or unmistakable character-linked visual motifs, and should support the role card text, opening, story, relationship, or layout.</image_rule>',
@@ -289,7 +289,7 @@ function createCharacterDecisionPrompt(
     '      <action name="set_field">{"type":"set_field","field":"name","value":"...","reason":"..."}</action>',
     '      <action name="merge_character_card">{"type":"merge_character_card","value":{"name":"...","description":"...","appearance":"...","personality":"...","background":"...","scenario":"...","worldContext":"...","firstMessage":"<chat>...</chat>","dialogueStyle":"...","appearancePrompt":"..."},"reason":"..."}</action>',
     '      <action name="create_artifact">{"type":"create_artifact","kind":"generation-report","title":"...","summary":"...","data":{"text":"..."}}</action>',
-    '      <action name="request_image">{"type":"request_image","targetPrompts":[{"targetNodeId":"avatar-image-target","title":"avatar.jpg","prompt":"compact target-specific image prompt"},{"targetNodeId":"overview-sheet-image-target","title":"character overview sheet","prompt":"compact target-specific image prompt"}]}</action>',
+    '      <action name="request_image">{"type":"request_image","targetPrompts":[{"targetNodeId":"avatar-image-target","title":"avatar.jpg","prompt":"compact target-specific image prompt"}]}</action>',
     '      <action name="finish">{"type":"finish","reason":"..."}</action>',
     '    </allowed_actions>',
     '    <completion_rule>Set done=true only after every required workflow requirement is complete. Always produce appearancePrompt and every unblocked required image target.</completion_rule>',
@@ -709,10 +709,13 @@ function resolveImageTargetPromptRequests(
   source: Record<string, unknown>,
   imageTargets: AgentTargetContext[],
   draft: CharacterCardDraft
-): Array<{ target: AgentTargetContext; prompt: string }> {
+): Array<{ target: AgentTargetContext; prompt: string; targetIndex?: number }> {
   const explicitTargetPrompts = Array.isArray(source.targetPrompts) && source.targetPrompts.length > 0
   if (!explicitTargetPrompts || source.autoGenerateTargetPrompts === true) {
-    return createAutomaticImageTargetPromptRequests(draft, imageTargets)
+    return createAutomaticImageTargetPromptRequests(draft, imageTargets, {
+      singleImagePerTarget: source.singleImagePerTarget === true,
+      targetPromptStartIndexByTarget: normalizeTargetPromptStartIndexByTarget(source.targetPromptStartIndexByTarget),
+    })
   }
   const targetById = new Map(imageTargets.map((target) => [target.nodeId, target]))
   return normalizeImageTargetPromptInputs(source.targetPrompts).map((item) => {
@@ -720,22 +723,35 @@ function resolveImageTargetPromptRequests(
     if (!target) {
       throw new Error(`Image request references unknown image target: ${item.targetNodeId}`)
     }
-    return { target, prompt: item.prompt.trim() }
+    return { target, prompt: item.prompt.trim(), targetIndex: item.targetIndex }
   })
 }
 
 function createAutomaticImageTargetPromptRequests(
   draft: CharacterCardDraft,
-  imageTargets: AgentTargetContext[]
-): Array<{ target: AgentTargetContext; prompt: string }> {
+  imageTargets: AgentTargetContext[],
+  options: {
+    singleImagePerTarget?: boolean
+    targetPromptStartIndexByTarget?: Map<string, number>
+  } = {}
+): Array<{ target: AgentTargetContext; prompt: string; targetIndex: number }> {
   const profile = createCharacterImageProfile(draft)
   return imageTargets.flatMap((target) => {
+    const startIndex = options.targetPromptStartIndexByTarget?.get(target.nodeId) ?? 1
+    if (options.singleImagePerTarget) {
+      return [{
+        target,
+        targetIndex: startIndex,
+        prompt: createDirectedAutomaticImagePrompt(target, profile, startIndex, 1),
+      }]
+    }
     const controls = target.imageControls.length ? target.imageControls : [undefined]
     return controls.flatMap((control) => {
       const count = Math.max(1, Math.floor(control?.targetImageCount ?? 1))
       return Array.from({ length: count }, (_, index) => ({
         target,
-        prompt: createDirectedAutomaticImagePrompt(target, profile, index + 1, count),
+        targetIndex: startIndex + index,
+        prompt: createDirectedAutomaticImagePrompt(target, profile, startIndex + index, count),
       }))
     })
   })
@@ -780,7 +796,7 @@ function normalizeReferenceImagesByTarget(value: unknown): Map<string, string[]>
 }
 
 function createImageGenerationPromptRequests(
-  requests: Array<{ target: AgentTargetContext; prompt: string }>,
+  requests: Array<{ target: AgentTargetContext; prompt: string; targetIndex?: number }>,
   draft: CharacterCardDraft
 ): Array<{ target: AgentTargetContext; targetIndex: number; imageRole: string; prompt: string }> {
   const targetPromptCounts = new Map<string, number>()
@@ -790,7 +806,9 @@ function createImageGenerationPromptRequests(
     if (!targetRole) {
       throw new Error(`Image target ${request.target.nodeId} is missing imageRole`)
     }
-    const targetIndex = (targetPromptCounts.get(request.target.nodeId) ?? 0) + 1
+    const targetIndex = request.targetIndex && Number.isFinite(request.targetIndex) && request.targetIndex > 0
+      ? Math.floor(request.targetIndex)
+      : (targetPromptCounts.get(request.target.nodeId) ?? 0) + 1
     targetPromptCounts.set(request.target.nodeId, targetIndex)
     const control = getImageControlForPromptIndex(request.target.imageControls, targetIndex)
     return {
@@ -893,8 +911,26 @@ function normalizeImageTargetPromptInputs(value: unknown): CharacterAgentImageTa
       targetNodeId,
       prompt,
       title: stringField(record.title, ''),
+      targetIndex: positiveIntegerField(record.targetIndex),
     }
   })
+}
+
+function normalizeTargetPromptStartIndexByTarget(value: unknown): Map<string, number> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return new Map()
+  }
+  return new Map(
+    Object.entries(value as Record<string, unknown>).flatMap(([targetNodeId, index]) => {
+      const normalized = positiveIntegerField(index)
+      return normalized ? [[targetNodeId, normalized] as const] : []
+    })
+  )
+}
+
+function positiveIntegerField(value: unknown): number | undefined {
+  const numberValue = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
+  return Number.isFinite(numberValue) && numberValue > 0 ? Math.floor(numberValue) : undefined
 }
 
 function createImageAttemptArtifact(

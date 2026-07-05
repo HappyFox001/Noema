@@ -426,6 +426,7 @@ export interface CharacterAgentImageTargetPrompt {
   targetNodeId: string
   prompt: string
   title?: string
+  targetIndex?: number
 }
 
 export type CharacterAgentAction =
@@ -1033,16 +1034,11 @@ export function createCharacterSuperAgent(
         await emit({ type: 'tool.call.completed', runId, record, result, timestamp: finishedAt })
         return result
       }
-      const executeImageRequestAction = async (action: Extract<CharacterAgentAction, { type: 'request_image' }>, phase: CharacterAgentPhase) => {
-        if (!await ensureImagePrerequisites(phase)) {
-          return
-        }
-        const imageResult = await callTool('generate_character_image', phase, {
-          targetPrompts: action.targetPrompts,
-          draft: state.draft,
-          referenceImagesByTarget: resolveReferenceImagesByTarget(context, state.artifacts),
-        })
-        const promptTexts = getRequestImagePromptTexts(action)
+      const applyImageToolResult = (
+        imageResult: AgentToolResult,
+        promptTexts: string[],
+        note: string | undefined
+      ): { imageIds: string[]; failedAttemptIds: string[] } => {
         const imageIds = (imageResult.artifacts ?? [])
           .filter((artifact) => artifact.kind === 'image-asset')
           .map((artifact) => artifact.id)
@@ -1064,11 +1060,34 @@ export function createCharacterSuperAgent(
             imagePrompts: appendUnique(state.draft!.imagePrompts, promptTexts),
             imageArtifactIds: appendUnique(state.draft!.imageArtifactIds, imageIds),
             imageTargetArtifactIds,
-            notes: appendUnique(state.draft!.notes, [action.reason ?? imageResult.summary]),
+            notes: appendUnique(state.draft!.notes, [note ?? imageResult.summary]),
             updatedAt: now(),
           },
         }
         refreshRequirements()
+        return { imageIds, failedAttemptIds }
+      }
+      const getNextImageTargetIndex = (targetNodeId: string): number => (
+        state.artifacts.filter((artifact) => artifact.kind === 'image-asset' && artifact.sourceNodeId === targetNodeId).length + 1
+      )
+      const executeImageRequestAction = async (action: Extract<CharacterAgentAction, { type: 'request_image' }>, phase: CharacterAgentPhase) => {
+        if (!await ensureImagePrerequisites(phase)) {
+          return
+        }
+        for (const prompt of action.targetPrompts) {
+          const imageResult = await callTool('generate_character_image', phase, {
+            targetPrompts: [{
+              ...prompt,
+              targetIndex: prompt.targetIndex ?? getNextImageTargetIndex(prompt.targetNodeId),
+            }],
+            draft: state.draft,
+            referenceImagesByTarget: resolveReferenceImagesByTarget(context, state.artifacts),
+          })
+          const resultIds = applyImageToolResult(imageResult, [prompt.prompt.trim()].filter(Boolean), action.reason ?? imageResult.summary)
+          if (resultIds.failedAttemptIds.length) {
+            break
+          }
+        }
       }
       const executeImageTargets = async (
         phase: CharacterAgentPhase,
@@ -1087,47 +1106,35 @@ export function createCharacterSuperAgent(
         } else if (!await ensureImagePrerequisites(phase)) {
           return { ran: false, imageIds: [], failedAttemptIds: [] }
         }
-        const imageResult = await callTool('generate_character_image', phase, {
-          draft: state.draft,
-          autoGenerateTargetPrompts: true,
-          targetNodeIds: uniqueTargetNodeIds,
-          rerollInstruction: options.instruction,
-          rerollAction: options.action,
-          parentAttemptId: options.parentAttemptId,
-          referenceImagesByTarget: resolveReferenceImagesByTarget(context, state.artifacts),
-        })
-        const imageIds = (imageResult.artifacts ?? [])
-          .filter((artifact) => artifact.kind === 'image-asset')
-          .map((artifact) => artifact.id)
-        const failedAttemptIds = (imageResult.artifacts ?? [])
-          .filter((artifact) => artifact.kind === 'image-attempt' && imageAttemptStatus(artifact) === 'failed')
-          .map((artifact) => artifact.id)
-        const imageTargetArtifactIds = collectImageTargetArtifactIds(state.draft?.imageTargetArtifactIds ?? {}, imageResult.artifacts ?? [])
-        if (!imageIds.length && !failedAttemptIds.length) {
-          const diagnostic = (imageResult.artifacts ?? [])
-            .map((artifact) => [artifact.title, artifact.summary].filter(Boolean).join(': '))
-            .filter(Boolean)
-            .join(' | ')
-          throw new Error(diagnostic || imageResult.summary || 'Image generation request completed without producing image assets')
-        }
-        state = {
-          ...state,
-          draft: {
-            ...state.draft!,
-            imagePrompts: appendUnique(state.draft!.imagePrompts, getGeneratedImagePromptTexts(imageResult.artifacts ?? [])),
-            imageArtifactIds: appendUnique(state.draft!.imageArtifactIds, imageIds),
-            imageTargetArtifactIds,
-            notes: appendUnique(state.draft!.notes, [imageResult.summary]),
-            updatedAt: now(),
-          },
-        }
-        refreshRequirements()
-        if (options.scoped && imageIds.length) {
-          for (const staleMarker of createStaleMarkersForScopedImageTargets(context, state.artifacts, uniqueTargetNodeIds, imageIds, runId)) {
-            await writeArtifact(staleMarker)
+        const imageIds: string[] = []
+        const failedAttemptIds: string[] = []
+        for (const targetNodeId of uniqueTargetNodeIds) {
+          const imageResult = await callTool('generate_character_image', phase, {
+            draft: state.draft,
+            autoGenerateTargetPrompts: true,
+            singleImagePerTarget: true,
+            targetNodeIds: [targetNodeId],
+            targetPromptStartIndexByTarget: {
+              [targetNodeId]: getNextImageTargetIndex(targetNodeId),
+            },
+            rerollInstruction: options.instruction,
+            rerollAction: options.action,
+            parentAttemptId: options.parentAttemptId,
+            referenceImagesByTarget: resolveReferenceImagesByTarget(context, state.artifacts),
+          })
+          const resultIds = applyImageToolResult(imageResult, getGeneratedImagePromptTexts(imageResult.artifacts ?? []), imageResult.summary)
+          imageIds.push(...resultIds.imageIds)
+          failedAttemptIds.push(...resultIds.failedAttemptIds)
+          if (options.scoped && resultIds.imageIds.length) {
+            for (const staleMarker of createStaleMarkersForScopedImageTargets(context, state.artifacts, [targetNodeId], resultIds.imageIds, runId)) {
+              await writeArtifact(staleMarker)
+            }
+          }
+          await writeArtifact(createDraftArtifact(context, state.draft))
+          if (resultIds.failedAttemptIds.length) {
+            break
           }
         }
-        await writeArtifact(createDraftArtifact(context, state.draft))
         return { ran: true, imageIds, failedAttemptIds }
       }
       const executeReadyImageRequirements = async (phase: CharacterAgentPhase): Promise<{ ran: boolean; imageIds: string[]; failedAttemptIds: string[] }> => {
@@ -1376,7 +1383,7 @@ export function createCharacterSuperAgent(
           })
           let imageRunResult = scopedResult
           if (scopedResult.ran && scopedResult.imageIds.length && !scopedResult.failedAttemptIds.length) {
-            for (let attempt = 0; attempt < context.requirements.length; attempt += 1) {
+            for (let attempt = 0; attempt < getImageGenerationAttemptBudget(context); attempt += 1) {
               const downstreamResult = await executeReadyImageRequirements('produce')
               if (!downstreamResult.ran) {
                 break
@@ -1438,7 +1445,7 @@ export function createCharacterSuperAgent(
 
         await completeMissingRequiredFields('produce', 'complete required character-card fields before inspection and image generation')
 
-        for (let attempt = 0; attempt < context.requirements.length; attempt += 1) {
+        for (let attempt = 0; attempt < getImageGenerationAttemptBudget(context); attempt += 1) {
           const imageRequirementResult = await executeReadyImageRequirements('produce')
           if (!imageRequirementResult.ran) {
             break
@@ -1497,7 +1504,7 @@ export function createCharacterSuperAgent(
         }
 
         await completeMissingRequiredFields('repair', 'complete required character-card fields after quality repair')
-        for (let attempt = 0; attempt < context.requirements.length; attempt += 1) {
+        for (let attempt = 0; attempt < getImageGenerationAttemptBudget(context); attempt += 1) {
           const imageRequirementResult = await executeReadyImageRequirements('repair')
           if (!imageRequirementResult.ran) {
             break
@@ -3001,6 +3008,16 @@ function collectImageTargetArtifactIds(
 
 function getReadyMissingImageRequirements(requirements: CharacterWorkflowRequirementState[]): CharacterWorkflowRequirementState[] {
   return requirements.filter((requirement) => requirement.kind === 'image' && requirement.status === 'missing')
+}
+
+function getImageGenerationAttemptBudget(context: CharacterAgentRunContext): number {
+  const requiredImageCount = context.requirements.reduce((sum, requirement) => {
+    if (requirement.kind !== 'image' || !requirement.required) {
+      return sum
+    }
+    return sum + Math.max(1, Math.floor(requirement.requiredCount ?? 1))
+  }, 0)
+  return Math.max(context.requirements.length, requiredImageCount)
 }
 
 function imageAttemptStatus(artifact: CharacterAgentArtifact): string {
