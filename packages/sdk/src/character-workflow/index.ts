@@ -14,6 +14,7 @@ export type CharacterNodeType =
   | 'character-field-target'
   | 'opening-layout-target'
   | 'atmosphere-style-target'
+  | 'game-system-target'
   | 'image-target'
   | 'world-card-target'
   | 'npc-pack-target'
@@ -725,7 +726,7 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     title: 'Atmosphere Style Target',
     category: 'targets',
     executor: 'agent',
-    description: 'Declares the structured role-card atmosphere style used by chat bubbles, role speech, inline audio, scene cards, and profile previews.',
+    description: 'Declares a character-specific scoped atmosphere design system for chat bubbles, role speech, inline audio, scene cards, and profile previews.',
     inputs: {
       card: port('card', 'Card', 'asset-target', true),
       field: port('field', 'Field', 'asset-target'),
@@ -735,42 +736,33 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     },
     outputs: { atmosphere: port('atmosphere', 'Atmosphere', 'asset-target') },
     parameters: [
-      parameter('moodPreset', 'Mood Preset', 'select', 'auto-atmosphere', undefined, [
-        option('Auto Atmosphere', 'auto-atmosphere'),
-        option('Rainy Quiet', 'rainy-quiet'),
-        option('Warm Intimate', 'warm-intimate'),
-        option('Noir Tension', 'noir-tension'),
-        option('Clinical Dossier', 'clinical-dossier'),
-        option('Dreamy Velvet', 'dreamy-velvet'),
-        option('Terminal Signal', 'terminal-signal'),
-      ]),
-      parameter('surface', 'Surface', 'select', 'glass', undefined, [
-        option('Glass', 'glass'),
-        option('Paper', 'paper'),
-        option('Noir', 'noir'),
-        option('Mist', 'mist'),
-        option('Velvet', 'velvet'),
-        option('Terminal', 'terminal'),
-      ]),
-      parameter('messageFrame', 'Message Frame', 'select', 'literary-panel', undefined, [
-        option('Plain', 'plain'),
-        option('Literary Panel', 'literary-panel'),
-        option('Visual Novel', 'visual-novel'),
-        option('Dossier', 'dossier'),
-        option('Letter', 'letter'),
-      ]),
-      parameter('audioPlayer', 'Audio Player', 'select', 'thin-glass-bar', undefined, [
-        option('Thin Glass Bar', 'thin-glass-bar'),
-        option('Soft Wave Strip', 'soft-wave-strip'),
-        option('Quiet Capsule', 'quiet-capsule'),
-        option('Dossier Line', 'dossier-line'),
-      ]),
-      parameter('density', 'Density', 'select', 'balanced', undefined, [
-        option('Compact', 'compact'),
-        option('Balanced', 'balanced'),
-        option('Airy', 'airy'),
-      ]),
-      parameter('stylePrompt', 'Style Prompt', 'textarea', ''),
+      parameter('moodPreset', 'Atmosphere Direction', 'textarea', ''),
+      parameter('surface', 'Surface Material', 'textarea', ''),
+      parameter('messageFrame', 'Message Composition', 'textarea', ''),
+      parameter('audioPlayer', 'Audio Bar Design', 'textarea', ''),
+      parameter('density', 'Spacing Rhythm', 'textarea', ''),
+      parameter('stylePrompt', 'Design Brief', 'textarea', ''),
+    ],
+  },
+  {
+    type: 'game-system-target',
+    title: 'Game System Target',
+    category: 'targets',
+    executor: 'agent',
+    description: 'Declares a character-specific game layer for stats, independent equipment slots, equipment rules, status effects, and chat quick panels. Editing defines the rules; runtime generates concrete values.',
+    inputs: {
+      card: port('card', 'Card', 'asset-target', true),
+      field: port('field', 'Field', 'asset-target'),
+      world: port('world', 'World', 'asset-target'),
+      style: port('style', 'Style', 'style-signal'),
+      constraint: port('constraint', 'Constraint', 'hard-constraint'),
+    },
+    outputs: { gameSystem: port('gameSystem', 'Game System', 'asset-target') },
+    parameters: [
+      parameter('statDesign', 'Stat System Design', 'textarea', 'Design 4-6 role-specific stats with clear min/max ranges, visibility rules, and how they should shift during chat.'),
+      parameter('equipmentRules', 'Equipment Rules', 'textarea', 'Define slot logic, capacity, rarity, compatibility, prohibited items, acquisition/removal rules, and how equipment may alter stats or status.'),
+      parameter('statusRules', 'Status Rules', 'textarea', 'Define temporary and persistent statuses, triggers, decay, conflicts, and narrative consequences.'),
+      parameter('panelDesign', 'Chat Panel Design', 'textarea', 'Expose equipment, status, and rules as quick chat panels. Keep generated values compact and readable.'),
     ],
   },
   {
@@ -1179,11 +1171,12 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
         option('Explore then Converge', 'explore-then-converge'),
       ]),
       parameter('branchCount', 'Branch Count', 'integer', 3, { min: 1, max: 8, step: 1 }),
-      parameter('priorityAssets', 'Priority Assets', 'multi-select', ['role-card', 'opening', 'opening-layout', 'atmosphere-style', 'image-pack'], undefined, [
+      parameter('priorityAssets', 'Priority Assets', 'multi-select', ['role-card', 'opening', 'opening-layout', 'atmosphere-style', 'game-system', 'image-pack'], undefined, [
         option('Role Card', 'role-card'),
         option('Opening', 'opening'),
         option('Opening Layout', 'opening-layout'),
         option('Atmosphere Style', 'atmosphere-style'),
+        option('Game System', 'game-system'),
         option('Image Pack', 'image-pack'),
       ]),
       parameter('stopCondition', 'Stop Condition', 'text', 'quality gate passed'),
@@ -1307,6 +1300,7 @@ export function createStandardCharacterWorkflow(
     node('agent-policy', 1400, 40),
     node('opening-layout-target', 1400, 580),
     node('atmosphere-style-target', 1400, 830),
+    node('game-system-target', 1400, 1080),
     node('generation-strategy', 1740, 40),
     node('critique-loop', 1740, 330),
     node('quality-gate', 2080, 190),
@@ -1417,6 +1411,10 @@ export function createStandardCharacterWorkflow(
       ['avatar-image-target', 'imageAsset', 'atmosphere-style-target', 'imageAsset', 'guides'],
       ['overview-sheet-image-target', 'imageAsset', 'atmosphere-style-target', 'imageAsset', 'guides'],
       ['style-pressure', 'style', 'atmosphere-style-target', 'style', 'weights'],
+      ['character-card-target', 'target', 'game-system-target', 'card', 'guides'],
+      ['character-fields', 'field', 'game-system-target', 'field', 'guides'],
+      ['style-pressure', 'style', 'game-system-target', 'style', 'weights'],
+      ['constraint', 'constraint', 'game-system-target', 'constraint', 'constrains'],
       ['goal', 'goal', 'agent-policy', 'goal', 'guides'],
       ['constraint', 'constraint', 'agent-policy', 'constraint', 'constrains'],
       ['source-material', 'source', 'agent-policy', 'source', 'grounds'],
@@ -1832,11 +1830,29 @@ function createDefaultCharacterWorkflowExecutors(): Partial<Record<CharacterNode
       targets: {
         requested: [
           'atmosphere-style',
-          `mood:${stringConfig(config.moodPreset, 'auto-atmosphere')}`,
-          `surface:${stringConfig(config.surface, 'glass')}`,
-          `message:${stringConfig(config.messageFrame, 'literary-panel')}`,
-          `audio:${stringConfig(config.audioPlayer, 'thin-glass-bar')}`,
-        ],
+          `design:${stringConfig(config.stylePrompt, '')}`,
+          `atmosphere:${stringConfig(config.moodPreset, '')}`,
+          `surface:${stringConfig(config.surface, '')}`,
+          `message:${stringConfig(config.messageFrame, '')}`,
+          `audio:${stringConfig(config.audioPlayer, '')}`,
+          `spacing:${stringConfig(config.density, '')}`,
+        ].filter((item) => !item.endsWith(':')),
+        includeAlternates: false,
+      },
+    }],
+    'game-system-target': ({ node, config, timestamp }) => [{
+      id: `${node.id}-game-system-target`,
+      type: 'asset-target',
+      sourceNodeId: node.id,
+      createdAt: timestamp,
+      targets: {
+        requested: [
+          'game-system',
+          `stats:${stringConfig(config.statDesign, '')}`,
+          `equipment:${stringConfig(config.equipmentRules, '')}`,
+          `status:${stringConfig(config.statusRules, '')}`,
+          `panels:${stringConfig(config.panelDesign, '')}`,
+        ].filter((item) => !item.endsWith(':')),
         includeAlternates: false,
       },
     }],

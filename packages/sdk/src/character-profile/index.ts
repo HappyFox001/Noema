@@ -24,6 +24,16 @@ export interface CharacterProfileAtmosphereStyle {
   name: string
   summary?: string
   mood: string[]
+  scopeClass?: string
+  css?: string
+  designBrief?: {
+    concept?: string
+    colorSystem?: string
+    surfaceTreatment?: string
+    typography?: string
+    audioTreatment?: string
+    sceneTreatment?: string
+  }
   palette: {
     accent: string
     accentSoft: string
@@ -58,6 +68,65 @@ export interface CharacterProfileAtmosphereStyle {
   sourceArtifactId?: string
 }
 
+export interface CharacterProfileGameStat {
+  id: string
+  label: string
+  value: number
+  min?: number
+  max?: number
+  unit?: string
+  tone?: string
+  description?: string
+  visibility?: 'shown' | 'hidden' | 'conditional'
+}
+
+export interface CharacterProfileEquipmentItem {
+  id: string
+  name: string
+  description?: string
+  tags?: string[]
+  quantity?: number
+  durability?: number
+  effects?: string[]
+}
+
+export interface CharacterProfileEquipmentSlot {
+  id: string
+  label: string
+  limit: number
+  rule: string
+  current?: CharacterProfileEquipmentItem[]
+}
+
+export interface CharacterProfileStatusEffect {
+  id: string
+  label: string
+  value?: string
+  tone?: string
+  description?: string
+  duration?: string
+  rule?: string
+}
+
+export interface CharacterProfileGameSystem {
+  schemaVersion: 1
+  name: string
+  summary?: string
+  stats: CharacterProfileGameStat[]
+  equipment: {
+    slots: CharacterProfileEquipmentSlot[]
+    rules: string[]
+    acquisitionRules: string[]
+    forbiddenRules: string[]
+  }
+  statuses: CharacterProfileStatusEffect[]
+  rules: string[]
+  ui?: {
+    quickPanels?: Array<'equipment' | 'status' | 'rules'>
+  }
+  sourceArtifactId?: string
+}
+
 export interface CharacterProfileAsset {
   id: string
   kind: 'avatar' | 'body' | 'overview' | 'voice-sample' | 'live2d' | 'vrm' | 'generated-image'
@@ -78,6 +147,7 @@ export interface CharacterProfile {
   roleCard?: Record<string, unknown>
   openingPanel?: CharacterProfileOpeningPanel
   atmosphereStyle?: CharacterProfileAtmosphereStyle
+  gameSystem?: CharacterProfileGameSystem
   name: CharacterProfileLocalizedText
   displayName: CharacterProfileLocalizedText
   description: CharacterProfileLocalizedText
@@ -116,6 +186,7 @@ export interface CharacterProfileManifestInput {
   roleCard?: unknown
   openingPanel?: unknown
   atmosphereStyle?: unknown
+  gameSystem?: unknown
   avatarImage?: unknown
   bodyImage?: unknown
 }
@@ -144,6 +215,7 @@ export function createCharacterProfileFromManifest(
     roleCard: recordValue(manifest.roleCard),
     openingPanel: normalizeOpeningPanel(manifest.openingPanel),
     atmosphereStyle: normalizeAtmosphereStyle(manifest.atmosphereStyle),
+    gameSystem: normalizeGameSystem(manifest.gameSystem),
     name: nonEmptyLocalizedText(name, id),
     displayName: nonEmptyLocalizedText(displayName, id),
     description: localizedTextValue(manifest.description),
@@ -176,6 +248,7 @@ export function normalizeCharacterProfile(value: unknown): CharacterProfile | nu
     roleCard: recordValue(profile.roleCard),
     openingPanel: normalizeOpeningPanel(profile.openingPanel),
     atmosphereStyle: normalizeAtmosphereStyle(profile.atmosphereStyle),
+    gameSystem: normalizeGameSystem(profile.gameSystem),
     name: nonEmptyLocalizedText(localizedTextValue(profile.name), profile.id),
     displayName: nonEmptyLocalizedText(localizedTextValue(profile.displayName), profile.id),
     description: localizedTextValue(profile.description),
@@ -327,8 +400,27 @@ function normalizeAtmosphereStyle(value: unknown): CharacterProfileAtmosphereSty
       divider: enumString(sceneCard.divider, ['fine-line', 'soft-band', 'none'], 'fine-line'),
     },
     preview: normalizeAtmospherePreview(record.preview),
+    scopeClass: optionalString(record.scopeClass),
+    css: optionalString(record.css),
+    designBrief: normalizeAtmosphereDesignBrief(record.designBrief),
     sourceArtifactId: optionalString(record.sourceArtifactId),
   }
+}
+
+function normalizeAtmosphereDesignBrief(value: unknown): CharacterProfileAtmosphereStyle['designBrief'] | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined
+  }
+  const record = value as Record<string, unknown>
+  const brief = {
+    concept: optionalString(record.concept),
+    colorSystem: optionalString(record.colorSystem),
+    surfaceTreatment: optionalString(record.surfaceTreatment),
+    typography: optionalString(record.typography),
+    audioTreatment: optionalString(record.audioTreatment),
+    sceneTreatment: optionalString(record.sceneTreatment),
+  }
+  return Object.values(brief).some(Boolean) ? brief : undefined
 }
 
 function normalizeAtmospherePreview(value: unknown): CharacterProfileAtmosphereStyle['preview'] | undefined {
@@ -363,6 +455,105 @@ function normalizeAtmospherePreview(value: unknown): CharacterProfileAtmosphereS
   return Object.values(preview).some((item) => Array.isArray(item) ? item.length > 0 : Boolean(item))
     ? preview
     : undefined
+}
+
+function normalizeGameSystem(value: unknown): CharacterProfileGameSystem | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined
+  }
+  const record = value as Record<string, unknown>
+  const equipment = recordValue(record.equipment) ?? {}
+  const gameSystem: CharacterProfileGameSystem = {
+    schemaVersion: 1,
+    name: optionalString(record.name) ?? 'Character game system',
+    summary: optionalString(record.summary),
+    stats: arrayValue(record.stats).map(normalizeGameStat).filter(Boolean) as CharacterProfileGameStat[],
+    equipment: {
+      slots: arrayValue(equipment.slots).map(normalizeEquipmentSlot).filter(Boolean) as CharacterProfileEquipmentSlot[],
+      rules: stringArrayValue(equipment.rules).slice(0, 12),
+      acquisitionRules: stringArrayValue(equipment.acquisitionRules).slice(0, 12),
+      forbiddenRules: stringArrayValue(equipment.forbiddenRules).slice(0, 12),
+    },
+    statuses: arrayValue(record.statuses).map(normalizeStatusEffect).filter(Boolean) as CharacterProfileStatusEffect[],
+    rules: stringArrayValue(record.rules).slice(0, 16),
+    ui: normalizeGameSystemUi(record.ui),
+    sourceArtifactId: optionalString(record.sourceArtifactId),
+  }
+  return gameSystem.stats.length || gameSystem.equipment.slots.length || gameSystem.statuses.length || gameSystem.rules.length
+    ? gameSystem
+    : undefined
+}
+
+function normalizeGameStat(value: unknown): CharacterProfileGameStat | null {
+  const record = recordValue(value)
+  if (!record) return null
+  const id = normalizeIdentifier(record.id, normalizeIdentifier(record.label, 'stat'))
+  const label = optionalString(record.label) ?? id
+  return {
+    id,
+    label,
+    value: numberValue(record.value, 0),
+    min: optionalNumber(record.min),
+    max: optionalNumber(record.max),
+    unit: optionalString(record.unit),
+    tone: optionalString(record.tone),
+    description: optionalString(record.description),
+    visibility: enumString(record.visibility, ['shown', 'hidden', 'conditional'] as const, 'shown'),
+  }
+}
+
+function normalizeEquipmentSlot(value: unknown): CharacterProfileEquipmentSlot | null {
+  const record = recordValue(value)
+  if (!record) return null
+  const id = normalizeIdentifier(record.id, normalizeIdentifier(record.label, 'slot'))
+  const label = optionalString(record.label) ?? id
+  return {
+    id,
+    label,
+    limit: Math.max(1, Math.round(numberValue(record.limit, 1))),
+    rule: optionalString(record.rule) ?? '',
+    current: arrayValue(record.current).map(normalizeEquipmentItem).filter(Boolean) as CharacterProfileEquipmentItem[],
+  }
+}
+
+function normalizeEquipmentItem(value: unknown): CharacterProfileEquipmentItem | null {
+  const record = recordValue(value)
+  if (!record) return null
+  const name = optionalString(record.name)
+  if (!name) return null
+  return {
+    id: normalizeIdentifier(record.id, name),
+    name,
+    description: optionalString(record.description),
+    tags: stringArrayValue(record.tags).slice(0, 8),
+    quantity: optionalNumber(record.quantity),
+    durability: optionalNumber(record.durability),
+    effects: stringArrayValue(record.effects).slice(0, 8),
+  }
+}
+
+function normalizeStatusEffect(value: unknown): CharacterProfileStatusEffect | null {
+  const record = recordValue(value)
+  if (!record) return null
+  const label = optionalString(record.label)
+  if (!label) return null
+  return {
+    id: normalizeIdentifier(record.id, label),
+    label,
+    value: optionalString(record.value),
+    tone: optionalString(record.tone),
+    description: optionalString(record.description),
+    duration: optionalString(record.duration),
+    rule: optionalString(record.rule),
+  }
+}
+
+function normalizeGameSystemUi(value: unknown): CharacterProfileGameSystem['ui'] | undefined {
+  const record = recordValue(value)
+  if (!record) return undefined
+  const quickPanels = stringArrayValue(record.quickPanels)
+    .filter((item): item is 'equipment' | 'status' | 'rules' => item === 'equipment' || item === 'status' || item === 'rules')
+  return quickPanels.length ? { quickPanels } : undefined
 }
 
 function normalizeAsset(value: unknown): CharacterProfileAsset | null {
@@ -422,6 +613,20 @@ function stringArrayValue(value: unknown): string[] {
   return Array.isArray(value)
     ? value.map((item) => typeof item === 'string' ? item.trim() : '').filter(Boolean)
     : []
+}
+
+function arrayValue(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : []
+}
+
+function numberValue(value: unknown, fallback: number): number {
+  const number = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
+  return Number.isFinite(number) ? number : fallback
+}
+
+function optionalNumber(value: unknown): number | undefined {
+  const number = numberValue(value, NaN)
+  return Number.isFinite(number) ? number : undefined
 }
 
 function enumString<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {

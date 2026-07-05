@@ -583,51 +583,12 @@ const OPENING_TEXT_DENSITY_OPTIONS = [
   { label: 'Story', value: 'story' },
 ]
 
-const ATMOSPHERE_MOOD_OPTIONS = [
-  { label: 'Auto Atmosphere', value: 'auto-atmosphere' },
-  { label: 'Rainy Quiet', value: 'rainy-quiet' },
-  { label: 'Warm Intimate', value: 'warm-intimate' },
-  { label: 'Noir Tension', value: 'noir-tension' },
-  { label: 'Clinical Dossier', value: 'clinical-dossier' },
-  { label: 'Dreamy Velvet', value: 'dreamy-velvet' },
-  { label: 'Terminal Signal', value: 'terminal-signal' },
-]
-
-const ATMOSPHERE_SURFACE_OPTIONS = [
-  { label: 'Glass', value: 'glass' },
-  { label: 'Paper', value: 'paper' },
-  { label: 'Noir', value: 'noir' },
-  { label: 'Mist', value: 'mist' },
-  { label: 'Velvet', value: 'velvet' },
-  { label: 'Terminal', value: 'terminal' },
-]
-
-const ATMOSPHERE_MESSAGE_FRAME_OPTIONS = [
-  { label: 'Plain', value: 'plain' },
-  { label: 'Literary Panel', value: 'literary-panel' },
-  { label: 'Visual Novel', value: 'visual-novel' },
-  { label: 'Dossier', value: 'dossier' },
-  { label: 'Letter', value: 'letter' },
-]
-
-const ATMOSPHERE_AUDIO_PLAYER_OPTIONS = [
-  { label: 'Thin Glass Bar', value: 'thin-glass-bar' },
-  { label: 'Soft Wave Strip', value: 'soft-wave-strip' },
-  { label: 'Quiet Capsule', value: 'quiet-capsule' },
-  { label: 'Dossier Line', value: 'dossier-line' },
-]
-
-const ATMOSPHERE_DENSITY_OPTIONS = [
-  { label: 'Compact', value: 'compact' },
-  { label: 'Balanced', value: 'balanced' },
-  { label: 'Airy', value: 'airy' },
-]
-
 const TARGET_RESOURCE_SLOT_TYPES = [
   'character-card-resource',
   'field-resource',
   'opening-layout-resource',
   'atmosphere-style-resource',
+  'game-system-resource',
   'image-resource',
   'world-resource',
   'npc-pack-resource',
@@ -646,6 +607,7 @@ const SLOT_TYPE_LABELS: Record<string, string> = {
   'document-resource': 'Document',
   'export-target': 'Export Target',
   'field-resource': 'Field',
+  'game-system-resource': 'Game System',
   'generation-goal': 'Goal',
   'hard-constraint': 'Constraint',
   'image-capability': 'Image Capability',
@@ -719,21 +681,35 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     ]),
     param('layoutPrompt', 'Layout Prompt', 'textarea', ''),
   ], 'package'),
-  createDefinition('atmosphere-style-target', 'Atmosphere Style Target', ['氛围样式', 'atmosphere', 'chat style', 'audio style'], 'Targets', 'asset', 'Declares the structured character atmosphere style used by chat bubbles, role speech, inline audio, scene cards, and profile previews.', [
+  createDefinition('atmosphere-style-target', 'Atmosphere Style Target', ['氛围样式', 'atmosphere', 'chat style', 'audio style'], 'Targets', 'asset', 'Declares a character-specific scoped atmosphere design system for chat bubbles, role speech, inline audio, scene cards, and profile previews.', [
     slot('card', 'Character Card', 'character-card-resource', 'Character card target.', true),
     slot('field', 'Field', 'field-resource', 'Dialogue, opening, and scenario fields.'),
     slot('imageAsset', 'Image', 'image-resource', 'Character visuals that influence palette and material.'),
     slot('style', 'Style', 'style-signal', 'Global or local style pressure.'),
     slot('voice', 'Voice', 'voice-capability', 'Voice capability used to align audio presentation.'),
   ], [
-    slot('atmosphere', 'Atmosphere', 'atmosphere-style-resource', 'Structured atmosphere style target resource.'),
+    slot('atmosphere', 'Atmosphere', 'atmosphere-style-resource', 'Generated scoped atmosphere CSS and design specification.'),
   ], [
-    param('moodPreset', 'Mood Preset', 'select', 'auto-atmosphere', undefined, undefined, undefined, ATMOSPHERE_MOOD_OPTIONS),
-    param('surface', 'Surface', 'select', 'glass', undefined, undefined, undefined, ATMOSPHERE_SURFACE_OPTIONS),
-    param('messageFrame', 'Message Frame', 'select', 'literary-panel', undefined, undefined, undefined, ATMOSPHERE_MESSAGE_FRAME_OPTIONS),
-    param('audioPlayer', 'Audio Player', 'select', 'thin-glass-bar', undefined, undefined, undefined, ATMOSPHERE_AUDIO_PLAYER_OPTIONS),
-    param('density', 'Density', 'select', 'balanced', undefined, undefined, undefined, ATMOSPHERE_DENSITY_OPTIONS),
-    param('stylePrompt', 'Style Prompt', 'textarea', ''),
+    param('moodPreset', 'Atmosphere Direction', 'textarea', ''),
+    param('surface', 'Surface Material', 'textarea', ''),
+    param('messageFrame', 'Message Composition', 'textarea', ''),
+    param('audioPlayer', 'Audio Bar Design', 'textarea', ''),
+    param('density', 'Spacing Rhythm', 'textarea', ''),
+    param('stylePrompt', 'Design Brief', 'textarea', ''),
+  ], 'rule'),
+  createDefinition('game-system-target', 'Game System Target', ['游戏系统', '装备栏', '状态栏', 'stats', 'equipment'], 'Targets', 'asset', 'Declares a character-specific game layer for stats, independent equipment slots, equipment rules, status effects, and chat quick panels. Editing defines rules; runtime generates concrete values.', [
+    slot('card', 'Character Card', 'character-card-resource', 'Character card target.', true),
+    slot('field', 'Field', 'field-resource', 'Character fields that shape stat and inventory semantics.'),
+    slot('world', 'World', 'world-resource', 'World or scene rules.'),
+    slot('style', 'Style', 'style-signal', 'Style pressure for panel tone.'),
+    slot('constraint', 'Constraint', 'hard-constraint', 'Hard gameplay boundaries.'),
+  ], [
+    slot('gameSystem', 'Game System', 'game-system-resource', 'Generated stats, equipment rules, status effects, and panel spec.'),
+  ], [
+    param('statDesign', 'Stat System Design', 'textarea', 'Design 4-6 role-specific stats with clear min/max ranges, visibility rules, and how they should shift during chat.'),
+    param('equipmentRules', 'Equipment Rules', 'textarea', 'Define slot logic, capacity, rarity, compatibility, prohibited items, acquisition/removal rules, and how equipment may alter stats or status.'),
+    param('statusRules', 'Status Rules', 'textarea', 'Define temporary and persistent statuses, triggers, decay, conflicts, and narrative consequences.'),
+    param('panelDesign', 'Chat Panel Design', 'textarea', 'Expose equipment, status, and rules as quick chat panels. Keep generated values compact and readable.'),
   ], 'rule'),
   createDefinition('image-target', 'Image Target', ['图片目标', 'image target', 'visual target'], 'Targets', 'asset', 'Declares a role-card visual asset. Each image should preserve character identity while supporting a distinct story, field, or presentation purpose.', [
     slot('card', 'Character Card', 'character-card-resource', 'Character card target.'),
@@ -1037,11 +1013,12 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'Explore then Converge', value: 'explore-then-converge' },
     ]),
     param('branchCount', 'Branch Count', 'integer', 3, 1, 8, 1),
-    param('priorityAssets', 'Priority Assets', 'multi-select', ['role-card', 'opening', 'opening-layout', 'atmosphere-style', 'image-pack'], undefined, undefined, undefined, [
+    param('priorityAssets', 'Priority Assets', 'multi-select', ['role-card', 'opening', 'opening-layout', 'atmosphere-style', 'game-system', 'image-pack'], undefined, undefined, undefined, [
       { label: 'Role Card', value: 'role-card' },
       { label: 'Opening', value: 'opening' },
       { label: 'Opening Layout', value: 'opening-layout' },
       { label: 'Atmosphere Style', value: 'atmosphere-style' },
+      { label: 'Game System', value: 'game-system' },
       { label: 'Image Pack', value: 'image-pack' },
     ]),
   ], 'rule'),
@@ -1129,6 +1106,11 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
   ], [
     slot('resource', 'Resource', 'role-resource', 'Atmosphere style resource.'),
   ], [], 'rule', { width: 300, height: 210 }),
+  createDefinition('game-system-resource', 'Game System', ['游戏系统', '装备栏', '状态栏', 'stats'], 'Run Resources', 'asset', 'Generated stats, equipment slots, equipment rules, status effects, and chat quick panel spec.', [
+    slot('resource', 'Resource', 'role-resource', 'Previous generated role resource.'),
+  ], [
+    slot('resource', 'Resource', 'role-resource', 'Game system resource.'),
+  ], [], 'rule', { width: 320, height: 220 }),
   createDefinition('style-guide-resource', 'Dialogue Style', ['语气', 'style guide', 'dialogue'], 'Run Resources', 'asset', 'The generated dialogue style guide for the role.', [
     slot('resource', 'Resource', 'role-resource', 'Previous generated role resource.'),
   ], [
@@ -1179,6 +1161,7 @@ const DEFAULT_NODE_PLACEMENT: Array<{ id: string; type: string; title: string; x
   { id: 'agent-policy', type: 'agent-policy', title: 'Agent Policy', x: 1400, y: 40 },
   { id: 'opening-layout-target', type: 'opening-layout-target', title: 'Opening Layout Target', x: 1400, y: 580 },
   { id: 'atmosphere-style-target', type: 'atmosphere-style-target', title: 'Atmosphere Style Target', x: 1400, y: 830 },
+  { id: 'game-system-target', type: 'game-system-target', title: 'Game System Target', x: 1400, y: 1080 },
   { id: 'generation-strategy', type: 'generation-strategy', title: 'Generation Strategy', x: 1740, y: 40 },
   { id: 'critique-loop', type: 'critique-loop', title: 'Critique Loop', x: 1740, y: 330 },
   { id: 'quality-gate', type: 'quality-gate', title: 'Quality Gate', x: 2080, y: 190, status: 'stale' },
@@ -1215,6 +1198,10 @@ const DEFAULT_LINKS: CharacterResourceLink[] = [
   link('avatar-image-target', 'imageAsset', 'atmosphere-style-target', 'imageAsset', 'guides'),
   link('overview-sheet-image-target', 'imageAsset', 'atmosphere-style-target', 'imageAsset', 'guides'),
   link('style-pressure', 'style', 'atmosphere-style-target', 'style', 'weights'),
+  link('character-card-target', 'target', 'game-system-target', 'card', 'guides'),
+  link('character-fields', 'field', 'game-system-target', 'field', 'guides'),
+  link('style-pressure', 'style', 'game-system-target', 'style', 'weights'),
+  link('hard-constraints', 'constraint', 'game-system-target', 'constraint', 'constrains'),
   link('generation-goal', 'goal', 'agent-policy', 'goal', 'guides'),
   link('hard-constraints', 'constraint', 'agent-policy', 'constraint', 'constrains'),
   link('source-material', 'source', 'agent-policy', 'source', 'grounds'),
@@ -1930,7 +1917,7 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
         }
       }),
     groups: [
-      { id: 'intent-targets', title: ui(options, '目标资源', 'Target Resources'), nodeIds: ['generation-goal', 'character-card-target', 'character-fields', 'avatar-image-target', 'overview-sheet-image-target', 'opening-panel-image-target', 'opening-layout-target', 'atmosphere-style-target', 'source-material'], color: 'rgba(82, 168, 255, 0.16)' },
+      { id: 'intent-targets', title: ui(options, '目标资源', 'Target Resources'), nodeIds: ['generation-goal', 'character-card-target', 'character-fields', 'avatar-image-target', 'overview-sheet-image-target', 'opening-panel-image-target', 'opening-layout-target', 'atmosphere-style-target', 'game-system-target', 'source-material'], color: 'rgba(82, 168, 255, 0.16)' },
       { id: 'local-controls', title: ui(options, '局部控制', 'Local Controls'), nodeIds: ['style-pressure', 'hard-constraints', 'avatar-image-control', 'overview-sheet-image-control', 'opening-panel-image-control'], color: 'rgba(162, 202, 188, 0.16)' },
       { id: 'tool-policy', title: ui(options, '工具与策略', 'Tools and Strategy'), nodeIds: ['llm-capability', 'image-capability', 'agent-policy', 'generation-strategy'], color: 'rgba(219, 189, 130, 0.16)' },
       { id: 'evaluation-output', title: ui(options, '评估与输出', 'Evaluation and Output'), nodeIds: ['critique-loop', 'quality-gate', 'output-adapter'], color: 'rgba(206, 154, 118, 0.16)' },
@@ -3436,6 +3423,7 @@ function getRunArtifactMeta(artifact: NonNullable<CharacterResourceRunState['art
     'opening-message': ui(options, '开场 / opening', 'opening / resource'),
     'opening-layout': ui(options, '开幕面板 / CSS', 'opening panel / CSS'),
     'atmosphere-style': ui(options, '氛围样式 / style', 'atmosphere / style'),
+    'game-system': ui(options, '游戏系统 / rules', 'game system / rules'),
     'dialogue-style-guide': ui(options, '语气 / style', 'style / resource'),
     'world-context': ui(options, '世界观 / context', 'world / resource'),
     'scene-context': ui(options, '场景 / context', 'scene / resource'),
@@ -3460,6 +3448,7 @@ function getRunArtifactNodeType(type: string): string {
     'opening-message': 'opening-resource',
     'opening-layout': 'opening-panel-resource',
     'atmosphere-style': 'atmosphere-style-resource',
+    'game-system': 'game-system-resource',
     'dialogue-style-guide': 'style-guide-resource',
     'world-context': 'context-resource',
     'scene-context': 'context-resource',

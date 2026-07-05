@@ -5,6 +5,7 @@ import {
   normalizeCharacterProfile,
   type CharacterProfile,
   type CharacterProfileAtmosphereStyle,
+  type CharacterProfileGameSystem,
   type CharacterProfileLocalizedText,
   type CharacterProfileOpeningPanel,
 } from '@noema/sdk/character-profile'
@@ -19,6 +20,7 @@ export type ChatLocalizedText = CharacterProfileLocalizedText
 export type ChatCharacterResource = CharacterProfile
 export type ChatOpeningPanel = CharacterProfileOpeningPanel
 export type ChatAtmosphereStyle = CharacterProfileAtmosphereStyle
+export type ChatGameSystem = CharacterProfileGameSystem
 
 export interface ChatConversationSummary {
   id: string

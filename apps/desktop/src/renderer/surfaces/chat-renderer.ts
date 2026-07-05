@@ -46,6 +46,7 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
   let activeMessageCharacter: ChatCharacterResource | undefined
   let activeConversation: ChatConversationSummary | undefined
   let actionSourceMessageId = ''
+  let atmosphereStyleElement: HTMLStyleElement | null = null
 
   function renderConversationList(
     conversations: ChatConversationSummary[],
@@ -171,9 +172,11 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     root.style.removeProperty('--chat-atmosphere-accent-soft')
     root.style.removeProperty('--chat-atmosphere-radius')
     root.style.removeProperty('--chat-atmosphere-density-gap')
+    removeAtmosphereCss()
     if (!style) {
       return
     }
+    const scopeClass = sanitizeAtmosphereScopeClass(style.scopeClass)
     root.classList.add(
       'has-chat-atmosphere',
       `chat-atmosphere-surface-${style.palette.surface}`,
@@ -182,11 +185,13 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
       `chat-atmosphere-scene-${style.sceneCard.frame}`,
       `chat-atmosphere-density-${style.message.density}`,
       `chat-atmosphere-radius-${style.message.radius}`,
+      ...(scopeClass ? [scopeClass] : []),
     )
     root.style.setProperty('--chat-atmosphere-accent', style.palette.accent)
     root.style.setProperty('--chat-atmosphere-accent-soft', style.palette.accentSoft)
     root.style.setProperty('--chat-atmosphere-radius', style.message.radius === 'sharp' ? '10px' : style.message.radius === 'round' ? '22px' : '16px')
     root.style.setProperty('--chat-atmosphere-density-gap', style.message.density === 'compact' ? '8px' : style.message.density === 'airy' ? '16px' : '12px')
+    applyAtmosphereCss(style.css, scopeClass)
   }
 
   function clearAtmosphereClassNames(root: HTMLElement): void {
@@ -198,11 +203,44 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
         className.startsWith('chat-atmosphere-audio-') ||
         className.startsWith('chat-atmosphere-scene-') ||
         className.startsWith('chat-atmosphere-density-') ||
-        className.startsWith('chat-atmosphere-radius-')
+        className.startsWith('chat-atmosphere-radius-') ||
+        className.startsWith('noema-atmosphere-')
       ) {
         root.classList.remove(className)
       }
     }
+  }
+
+  function applyAtmosphereCss(css: string | undefined, scopeClass: string): void {
+    const safeCss = sanitizeAtmosphereCss(css, scopeClass)
+    if (!safeCss) {
+      return
+    }
+    atmosphereStyleElement = document.createElement('style')
+    atmosphereStyleElement.dataset.chatAtmosphereStyle = scopeClass
+    atmosphereStyleElement.textContent = safeCss
+    options.panel.appendChild(atmosphereStyleElement)
+  }
+
+  function removeAtmosphereCss(): void {
+    atmosphereStyleElement?.remove()
+    atmosphereStyleElement = null
+  }
+
+  function sanitizeAtmosphereScopeClass(value: string | undefined): string {
+    const normalized = String(value || '').trim()
+    return /^noema-atmosphere-[a-z0-9_-]+$/.test(normalized) ? normalized : ''
+  }
+
+  function sanitizeAtmosphereCss(css: string | undefined, scopeClass: string): string {
+    if (!css || !scopeClass || !css.includes(`.${scopeClass}`)) {
+      return ''
+    }
+    const blocked = /@import|@font-face|url\s*\(|position\s*:\s*fixed|<\/style/i
+    if (blocked.test(css)) {
+      return ''
+    }
+    return css
   }
 
   function renderMessages(messages: ChatMessage[], scrollMode: ChatRenderScrollMode = 'auto'): void {
@@ -292,6 +330,7 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
           ${renderOpeningPanel(message)}
           ${renderMessageContent(message, language)}
           ${includeSceneState ? renderInlineSceneState(language) : ''}
+          ${includeSceneState ? renderInlineGameStatus(language) : ''}
           ${renderMessageActions(message, language, includeActions, actionMessageId)}
           <small>${stateLabel}${options.escapeHtml(localizeChatText(message.createdLabel, language))}</small>
         </div>
@@ -378,6 +417,42 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
         <span>${options.escapeHtml(label)}</span>
         <strong>${options.escapeHtml(value)}</strong>
       </div>
+    `
+  }
+
+  function renderInlineGameStatus(language: ChatLanguageCode): string {
+    const gameSystem = activeMessageCharacter?.gameSystem
+    if (!gameSystem || (!gameSystem.stats.length && !gameSystem.statuses.length)) {
+      return ''
+    }
+    const stats = gameSystem.stats.filter((stat) => stat.visibility !== 'hidden').slice(0, 6)
+    const statuses = gameSystem.statuses.slice(0, 4)
+    if (!stats.length && !statuses.length) {
+      return ''
+    }
+    return `
+      <section class="chat-inline-game-status" aria-label="${options.escapeHtml(language === 'zh-CN' ? '角色状态栏' : 'Character status')}">
+        ${stats.length ? `
+          <div class="chat-inline-game-stat-row">
+            ${stats.map((stat) => {
+              const min = typeof stat.min === 'number' ? stat.min : 0
+              const max = typeof stat.max === 'number' && stat.max > min ? stat.max : 100
+              const percent = Math.max(0, Math.min(100, Math.round(((stat.value - min) / (max - min)) * 100)))
+              return `
+                <article class="chat-inline-game-stat">
+                  <div><span>${options.escapeHtml(stat.label)}</span><strong>${options.escapeHtml(`${stat.value}${stat.unit ?? ''}`)}</strong></div>
+                  <i style="--stat-value:${percent}%"></i>
+                </article>
+              `
+            }).join('')}
+          </div>
+        ` : ''}
+        ${statuses.length ? `
+          <div class="chat-inline-game-effects">
+            ${statuses.map((status) => `<em>${options.escapeHtml(status.label)}${status.value ? ` · ${options.escapeHtml(status.value)}` : ''}</em>`).join('')}
+          </div>
+        ` : ''}
+      </section>
     `
   }
 

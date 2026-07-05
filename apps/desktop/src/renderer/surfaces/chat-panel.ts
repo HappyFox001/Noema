@@ -67,6 +67,7 @@ import {
   type ChatMessage,
   type ChatOpeningPanel,
   type ChatAtmosphereStyle,
+  type ChatGameSystem,
 } from './chat-model'
 import {
   createDefaultChatModel,
@@ -308,6 +309,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   const characterProfileTitle = panel.querySelector<HTMLElement>('[data-chat-character-profile-title]')
   const characterProfileKicker = panel.querySelector<HTMLElement>('[data-chat-character-profile-kicker]')
   const characterProfileClose = panel.querySelector<HTMLElement>('[data-chat-character-profile-close]')
+  const gameQuickbar = panel.querySelector<HTMLElement>('[data-chat-game-quickbar]')
+  const gamePanelView = panel.querySelector<HTMLElement>('[data-chat-game-panel-view]')
   const languageButton = panel.querySelector<HTMLButtonElement>('[data-chat-action="language"]')
   const languageMark = panel.querySelector<HTMLElement>('.chat-language-mark')
   const windowCloseButton = panel.querySelector<HTMLButtonElement>('[data-chat-action="window-close"]')
@@ -340,6 +343,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   const visibleChatApiKeys = new Set<string>()
   let conversationSettings = loadConversationSettings()
   let sceneStateCollapsed = false
+  let openGamePanel: '' | 'equipment' = ''
   let chatResourcesHydrated = false
   let chatResourcesHydratePromise: Promise<void> | null = null
   let chatModelConfigLoadPromise: Promise<void> | null = null
@@ -488,17 +492,20 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!conversation) {
       renderer.renderConversationList([], [], '')
       renderer.renderEmptyState()
+      renderGameQuickbar()
       return
     }
     const character = getCharacterForConversation(state, conversation)
     if (!character) {
       renderer.renderConversationList([], [], '')
       renderer.renderEmptyState()
+      renderGameQuickbar()
       return
     }
     const sceneChanged = ensureConversationSceneDefaults(conversation, character)
     renderer.renderConversationList(state.conversations, state.characterResources, conversation.id)
     renderer.renderActiveConversation(conversation, character)
+    renderGameQuickbar(character)
     if (sceneChanged) {
       void persistConversation(conversation)
     }
@@ -509,6 +516,121 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (searchInput?.value) {
       renderer.filterConversations(searchInput.value)
     }
+  }
+
+  function renderGameQuickbar(character?: ChatCharacterResource): void {
+    if (!gameQuickbar || !gamePanelView) {
+      return
+    }
+    if (!character) {
+      openGamePanel = ''
+      gameQuickbar.hidden = true
+      gamePanelView.classList.remove('visible')
+      gamePanelView.setAttribute('aria-hidden', 'true')
+      gamePanelView.innerHTML = ''
+      return
+    }
+    gameQuickbar.hidden = false
+    const zh = options.getLanguage() === 'zh-CN'
+    gameQuickbar.querySelectorAll<HTMLElement>('[data-chat-game-panel]').forEach((button) => {
+      const panelName = button.dataset.chatGamePanel || ''
+      if (panelName === 'equipment') {
+        button.textContent = zh ? '装备栏' : 'Equipment'
+      }
+      const active = panelName === openGamePanel
+      button.classList.toggle('is-active', active)
+      button.setAttribute('aria-pressed', active ? 'true' : 'false')
+    })
+    if (!openGamePanel) {
+      gamePanelView.classList.remove('visible')
+      gamePanelView.setAttribute('aria-hidden', 'true')
+      gamePanelView.innerHTML = ''
+      return
+    }
+    gamePanelView.classList.add('visible')
+    gamePanelView.setAttribute('aria-hidden', 'false')
+    gamePanelView.innerHTML = renderGamePanel(character, getActiveConversation(state), openGamePanel, options.getLanguage())
+  }
+
+  function renderGamePanel(character: ChatCharacterResource, conversation: ChatConversationSummary | undefined, panelName: 'equipment', language: 'zh-CN' | 'en-US'): string {
+    const zh = language === 'zh-CN'
+    const title = zh ? '装备栏' : 'Equipment'
+    const body = renderGameEquipmentPanel(character.gameSystem, conversation, zh)
+    return `
+      <div class="chat-game-panel-sheet">
+        <header class="chat-game-panel-head">
+          <span>${options.escapeHtml(character.gameSystem?.name || localizeChatText(character.displayName, language) || (zh ? '角色装备' : 'Character equipment'))}</span>
+          <strong>${options.escapeHtml(title)}</strong>
+          <button type="button" data-chat-game-panel-close aria-label="${options.escapeHtml(zh ? '关闭' : 'Close')}">×</button>
+        </header>
+        ${body}
+      </div>
+    `
+  }
+
+  function renderGameEquipmentPanel(gameSystem: ChatGameSystem | undefined, conversation: ChatConversationSummary | undefined, zh: boolean): string {
+    const slots = gameSystem?.equipment.slots.length ? gameSystem.equipment.slots : []
+    const slotHtml = slots.map((slot) => `
+      <article class="chat-game-slot">
+        <div>
+          <strong>${options.escapeHtml(slot.label)}</strong>
+          <span>${options.escapeHtml(zh ? `上限 ${slot.limit}` : `Limit ${slot.limit}`)}</span>
+        </div>
+        ${(slot.current ?? []).length
+          ? `<ul>${(slot.current ?? []).map((item) => `<li><b>${options.escapeHtml(item.name)}</b><small>${options.escapeHtml(item.description ?? '')}</small></li>`).join('')}</ul>`
+          : `<em>${options.escapeHtml(zh ? '运行时根据规则生成或更新装备。' : 'Runtime fills and updates equipment from rules.')}</em>`}
+      </article>
+    `).join('')
+    const sceneEquipment = normalizePanelSceneEquipment(conversation?.sceneState?.equipment)
+    if (!slotHtml && sceneEquipment.length) {
+      return `
+        <div class="chat-game-panel-body">
+          <div class="chat-game-slot-grid">
+            <article class="chat-game-slot">
+              <div>
+                <strong>${options.escapeHtml(zh ? '当前装备' : 'Current Equipment')}</strong>
+                <span>${options.escapeHtml(String(sceneEquipment.length))}</span>
+              </div>
+              <ul>${sceneEquipment.map((item) => `<li><b>${options.escapeHtml(item.name)}</b><small>${options.escapeHtml([item.ability, item.quantity].filter(Boolean).join(' · '))}</small></li>`).join('')}</ul>
+            </article>
+          </div>
+        </div>
+      `
+    }
+    if (!slotHtml) {
+      return `
+        <div class="chat-game-panel-body">
+          <div class="chat-game-empty">
+            <strong>${options.escapeHtml(zh ? '当前角色未生成装备系统' : 'No equipment system generated')}</strong>
+            <p>${options.escapeHtml(zh ? '这通常说明该角色卡是在游戏系统目标加入前生成的，或不是通过带有 game-system-target 的 workflow 生成。重新运行资源图后会生成独立装备槽和规则。' : 'This usually means the card was generated before the game-system target existed, or was not created from a workflow with game-system-target. Re-run the resource graph to generate independent equipment slots and rules.')}</p>
+          </div>
+        </div>
+      `
+    }
+    return `
+      <div class="chat-game-panel-body">
+        <div class="chat-game-slot-grid">${slotHtml}</div>
+      </div>
+    `
+  }
+
+  function normalizePanelSceneEquipment(value: unknown): Array<{ name: string; ability: string; quantity: string }> {
+    if (!Array.isArray(value)) {
+      return []
+    }
+    return value
+      .map((item) => {
+        if (item && typeof item === 'object') {
+          const record = item as Record<string, unknown>
+          return {
+            name: stringField(record.name ?? record.label ?? record.item),
+            ability: stringField(record.ability ?? record.effect ?? record.description),
+            quantity: stringField(record.quantity ?? record.count ?? ''),
+          }
+        }
+        return { name: stringField(item), ability: '', quantity: '' }
+      })
+      .filter((item) => item.name)
   }
 
   function setActiveNav(button: HTMLButtonElement): void {
@@ -2385,6 +2507,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const equipment = preview.equipment?.length ? preview.equipment : [{ name: zh ? '随身物件' : 'Keepsake', ability: zh ? '维持角色气氛' : 'Holds the character mood', quantity: '1' }]
     const silentAudioSource = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA='
     return `
+      ${renderAtmosphereScopedStyle(style)}
       <section class="${renderAtmosphereClassNames(style, 'chat-profile-atmosphere')}" style="${renderAtmosphereInlineStyle(style)}">
         <div class="chat-profile-atmosphere-head">
           <span>${options.escapeHtml(zh ? '角色卡氛围样式' : 'Character atmosphere')}</span>
@@ -2443,6 +2566,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   function renderAtmosphereClassNames(style: ChatAtmosphereStyle, baseClass: string): string {
+    const scopeClass = sanitizeAtmosphereScopeClass(style.scopeClass)
     return [
       baseClass,
       'has-chat-atmosphere',
@@ -2452,7 +2576,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       `chat-atmosphere-scene-${style.sceneCard.frame}`,
       `chat-atmosphere-density-${style.message.density}`,
       `chat-atmosphere-radius-${style.message.radius}`,
-    ].join(' ')
+      scopeClass,
+    ].filter(Boolean).join(' ')
   }
 
   function renderAtmosphereInlineStyle(style: ChatAtmosphereStyle): string {
@@ -2464,6 +2589,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       `--chat-atmosphere-radius:${radius}`,
       `--chat-atmosphere-density-gap:${densityGap}`,
     ].join(';')
+  }
+
+  function renderAtmosphereScopedStyle(style: ChatAtmosphereStyle): string {
+    const scopeClass = sanitizeAtmosphereScopeClass(style.scopeClass)
+    const css = sanitizeAtmosphereCss(style.css, scopeClass)
+    return css ? `<style data-chat-atmosphere-preview-style="${options.escapeHtml(scopeClass)}">${css}</style>` : ''
   }
 
   function extractFirstRoleSpeech(value: string): string {
@@ -2931,6 +3062,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       },
       roleCard: fields,
       atmosphereStyle: extractAtmosphereStyleFromRunDraft(characterWorkflowRunState),
+      gameSystem: extractGameSystemFromRunDraft(characterWorkflowRunState),
       chat: {
         name: stringField(fields.name),
         description: stringField(fields.description),
@@ -2984,6 +3116,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const overviewImage = findRunDraftImage(runState, ['character-overview-sheet', 'overview-sheet', 'overview'])
     const openingPanel = extractOpeningPanelFromRunDraft(runState)
     const atmosphereStyle = extractAtmosphereStyleFromRunDraft(runState)
+    const gameSystem = extractGameSystemFromRunDraft(runState)
     const id = `workflow-run-${sanitizeChatResourceId(runState.run?.id ?? name)}`
     const generatedImageAssets = collectRunDraftGeneratedImageAssets(runState, id, [avatarImage, overviewImage])
     return {
@@ -2998,9 +3131,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         firstMessage,
         ...(openingPanel ? { openingPanel } : {}),
         ...(atmosphereStyle ? { atmosphereStyle } : {}),
+        ...(gameSystem ? { gameSystem } : {}),
       },
       ...(openingPanel ? { openingPanel } : {}),
       ...(atmosphereStyle ? { atmosphereStyle } : {}),
+      ...(gameSystem ? { gameSystem } : {}),
       name: localizedText(name),
       displayName: localizedText(name),
       description: localizedText(description),
@@ -3020,6 +3155,101 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         ...generatedImageAssets,
         ...(overviewImage ? [{ id: `${id}-overview`, kind: 'overview' as const, uri: overviewImage }] : []),
       ],
+    }
+  }
+
+  function extractGameSystemFromRunDraft(runState: CharacterResourceRunState): ChatGameSystem | undefined {
+    const artifact = [...(runState.artifacts ?? [])].reverse().find((item) => item.type === 'game-system')
+    const data = artifact?.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
+      ? artifact.data as Record<string, unknown>
+      : null
+    if (!data) {
+      return undefined
+    }
+    const equipment = objectField(data.equipment) ?? {}
+    const stats = arrayField(data.stats)
+      .map((item) => {
+        const stat = objectField(item)
+        if (!stat) return null
+        const label = stringField(stat.label)
+        const id = sanitizeChatResourceId(stringField(stat.id) || label)
+        if (!label || !id) return null
+        return {
+          id,
+          label,
+          value: numberField(stat.value, 0),
+          min: optionalNumberField(stat.min),
+          max: optionalNumberField(stat.max),
+          unit: stringField(stat.unit) || undefined,
+          tone: stringField(stat.tone) || undefined,
+          description: stringField(stat.description) || undefined,
+          visibility: enumField(stat.visibility, ['shown', 'hidden', 'conditional'], 'shown'),
+        }
+      })
+      .filter(Boolean) as ChatGameSystem['stats']
+    const slots = arrayField(equipment.slots)
+      .map((item) => {
+        const slot = objectField(item)
+        if (!slot) return null
+        const label = stringField(slot.label)
+        const id = sanitizeChatResourceId(stringField(slot.id) || label)
+        if (!label || !id) return null
+        return {
+          id,
+          label,
+          limit: Math.max(1, Math.round(numberField(slot.limit, 1))),
+          rule: stringField(slot.rule),
+          current: arrayField(slot.current).map((entry) => {
+            const itemRecord = objectField(entry)
+            const name = stringField(itemRecord?.name)
+            if (!itemRecord || !name) return null
+            return {
+              id: sanitizeChatResourceId(stringField(itemRecord.id) || name),
+              name,
+              description: stringField(itemRecord.description) || undefined,
+              tags: stringArrayField(itemRecord.tags).slice(0, 8),
+              quantity: optionalNumberField(itemRecord.quantity),
+              durability: optionalNumberField(itemRecord.durability),
+              effects: stringArrayField(itemRecord.effects).slice(0, 8),
+            }
+          }).filter(Boolean) as ChatGameSystem['equipment']['slots'][number]['current'],
+        }
+      })
+      .filter(Boolean) as ChatGameSystem['equipment']['slots']
+    const statuses = arrayField(data.statuses)
+      .map((item) => {
+        const status = objectField(item)
+        const label = stringField(status?.label)
+        if (!status || !label) return null
+        return {
+          id: sanitizeChatResourceId(stringField(status.id) || label),
+          label,
+          value: stringField(status.value) || undefined,
+          tone: stringField(status.tone) || undefined,
+          description: stringField(status.description) || undefined,
+          duration: stringField(status.duration) || undefined,
+          rule: stringField(status.rule) || undefined,
+        }
+      })
+      .filter(Boolean) as ChatGameSystem['statuses']
+    if (!stats.length && !slots.length && !statuses.length) {
+      return undefined
+    }
+    return {
+      schemaVersion: 1,
+      name: stringField(data.name) || stringField(artifact?.title) || 'Character game system',
+      summary: stringField(data.summary) || artifact?.summary,
+      stats,
+      equipment: {
+        slots,
+        rules: stringArrayField(equipment.rules).slice(0, 12),
+        acquisitionRules: stringArrayField(equipment.acquisitionRules).slice(0, 12),
+        forbiddenRules: stringArrayField(equipment.forbiddenRules).slice(0, 12),
+      },
+      statuses,
+      rules: stringArrayField(data.rules).slice(0, 16),
+      ui: { quickPanels: ['equipment', 'status', 'rules'] },
+      sourceArtifactId: artifact?.id,
     }
   }
 
@@ -3043,6 +3273,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       name: stringField(data.name) || stringField(artifact?.title) || 'Character atmosphere',
       summary: stringField(data.summary) || artifact?.summary,
       mood: stringArrayField(data.mood).slice(0, 8),
+      scopeClass: sanitizeAtmosphereScopeClass(stringField(data.scopeClass)),
+      css: sanitizeAtmosphereCss(stringField(data.css), sanitizeAtmosphereScopeClass(stringField(data.scopeClass))),
+      designBrief: normalizeAtmosphereDesignBrief(data.designBrief),
       palette: {
         accent: stringField(palette.accent) || '#c7d8d0',
         accentSoft: stringField(palette.accentSoft) || 'rgba(199, 216, 208, 0.16)',
@@ -3116,6 +3349,35 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       status: stringArrayField(record.status).slice(0, 4),
       equipment,
     }
+  }
+
+  function normalizeAtmosphereDesignBrief(value: unknown): ChatAtmosphereStyle['designBrief'] | undefined {
+    const record = objectField(value)
+    if (!record) {
+      return undefined
+    }
+    const brief = {
+      concept: stringField(record.concept) || undefined,
+      colorSystem: stringField(record.colorSystem) || undefined,
+      surfaceTreatment: stringField(record.surfaceTreatment) || undefined,
+      typography: stringField(record.typography) || undefined,
+      audioTreatment: stringField(record.audioTreatment) || undefined,
+      sceneTreatment: stringField(record.sceneTreatment) || undefined,
+    }
+    return Object.values(brief).some(Boolean) ? brief : undefined
+  }
+
+  function sanitizeAtmosphereScopeClass(value: string | undefined): string {
+    const normalized = String(value || '').trim()
+    return /^noema-atmosphere-[a-z0-9_-]+$/.test(normalized) ? normalized : ''
+  }
+
+  function sanitizeAtmosphereCss(css: string | undefined, scopeClass: string): string {
+    if (!css || !scopeClass || !css.includes(`.${scopeClass}`)) {
+      return ''
+    }
+    const blocked = /@import|@font-face|url\s*\(|position\s*:\s*fixed|<\/style/i
+    return blocked.test(css) ? '' : css
   }
 
   function normalizeRoleChatMarkup(value: string): string {
@@ -3463,6 +3725,20 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     return Array.isArray(value)
       ? value.map((item) => typeof item === 'string' ? item.trim() : '').filter(Boolean)
       : []
+  }
+
+  function arrayField(value: unknown): unknown[] {
+    return Array.isArray(value) ? value : []
+  }
+
+  function numberField(value: unknown, fallback: number): number {
+    const number = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
+    return Number.isFinite(number) ? number : fallback
+  }
+
+  function optionalNumberField(value: unknown): number | undefined {
+    const number = numberField(value, NaN)
+    return Number.isFinite(number) ? number : undefined
   }
 
   function objectField(value: unknown): Record<string, unknown> | null {
@@ -4309,7 +4585,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             'opening-panel-image-target': { imageRole: 'character-base-image', assetPurpose: 'Free-form character sample images for the opening CSS panel. Use the avatar reference to preserve identity while showing distinct roleplay scenes, actions, moods, outfit usage, or prop interactions as panel visual material.' },
             'opening-panel-image-control': { targetImageCount: 2, imageStyleDomain: 'auto', shotType: 'auto', aspectRatio: '3:4', consistencyMode: 'same-character', seedMode: 'vary-slightly' },
             'opening-layout-target': { layoutKind: 'auto-opening-layout', textDensity: 'minimal', includeSections: ['title', 'tags', 'opening', 'coverImage', 'supportImages'], layoutPrompt: 'Create a compact, attractive roleplay opening panel. Choose a varied layout, avoid project labels, keep visible prose short, and use generated character images as strong visual material.' },
-            'atmosphere-style-target': { moodPreset: 'auto-atmosphere', surface: 'glass', messageFrame: 'literary-panel', audioPlayer: 'thin-glass-bar', density: 'balanced', stylePrompt: 'Create a role-specific chat atmosphere style for dialogue bubbles, role speech emphasis, inline audio bars, scene cards, and profile preview. Keep it structured, controlled, and consistent with the character instead of generating arbitrary CSS.' },
+            'atmosphere-style-target': { stylePrompt: 'Design a character-specific atmosphere system, not a preset skin. Describe the visual language for dialogue bubbles, role speech emphasis, inline audio bars, scene cards, and profile preview: palette logic, surface material, border and radius language, typography rhythm, audio progress treatment, and how every choice fits the character card, opening scene, images, and relationship mood.' },
             'generation-strategy': { mode: 'branch-and-refine', branchCount: 3, priorityAssets: ['role-card', 'opening', 'opening-layout', 'atmosphere-style', 'image-pack'] },
             'quality-gate': { minimumScore: 0.84 },
           },
@@ -8959,6 +9235,23 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       const conversation = getActiveConversation(state)
       if (conversation) {
         renderer.renderMessages(conversation.messages)
+      }
+      return
+    }
+
+    const gamePanelClose = eventTarget.closest<HTMLElement>('[data-chat-game-panel-close]')
+    if (gamePanelClose && panel.contains(gamePanelClose)) {
+      openGamePanel = ''
+      renderGameQuickbar(getActiveProfileCharacter())
+      return
+    }
+
+    const gamePanelAction = eventTarget.closest<HTMLElement>('[data-chat-game-panel]')
+    if (gamePanelAction && panel.contains(gamePanelAction)) {
+      const nextPanel = gamePanelAction.dataset.chatGamePanel
+      if (nextPanel === 'equipment') {
+        openGamePanel = openGamePanel === nextPanel ? '' : nextPanel
+        renderGameQuickbar(getActiveProfileCharacter())
       }
       return
     }

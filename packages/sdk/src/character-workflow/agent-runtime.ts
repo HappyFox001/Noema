@@ -36,6 +36,7 @@ export type CharacterAgentArtifactKind =
   | 'opening-message'
   | 'opening-layout'
   | 'atmosphere-style'
+  | 'game-system'
   | 'dialogue-style-guide'
   | 'world-context'
   | 'scene-context'
@@ -105,6 +106,7 @@ export type AgentTargetKind =
   | 'character-field'
   | 'opening-layout'
   | 'atmosphere-style'
+  | 'game-system'
   | 'image'
   | 'world-card'
   | 'npc-pack'
@@ -1556,6 +1558,9 @@ export function createCharacterSuperAgent(
         for (const atmosphereStyleArtifact of createAtmosphereStyleArtifacts(context, state.draft!, state.artifacts, runId)) {
           await writeArtifact(atmosphereStyleArtifact)
         }
+        for (const gameSystemArtifact of createGameSystemArtifacts(context, state.draft!, runId)) {
+          await writeArtifact(gameSystemArtifact)
+        }
 
         const finalCard = await writeArtifact({
           id: `${runId}:character-card-final`,
@@ -1830,6 +1835,130 @@ function createAtmosphereStyleArtifacts(
   })
 }
 
+function createGameSystemArtifacts(
+  context: CharacterAgentRunContext,
+  draft: CharacterCardDraft,
+  runId: string
+): Array<Omit<CharacterAgentArtifact, 'version' | 'createdAt' | 'updatedAt'>> {
+  const targets = context.targets.filter((target) => target.kind === 'game-system')
+  if (!targets.length) {
+    return []
+  }
+  const fields = draft.fields ?? {}
+  return targets.map((target) => {
+    const data = createGameSystemData(context, target, fields)
+    return {
+      id: `${runId}:game-system:${target.nodeId}`,
+      kind: 'game-system' as const,
+      runId,
+      candidateId: draft.id,
+      sourceNodeId: target.nodeId,
+      title: `${stringValue(fields.name, 'Character')} Game System`,
+      summary: stringValue(data.summary, `Game system for ${stringValue(fields.name, 'Character')}.`),
+      data,
+    }
+  })
+}
+
+function createGameSystemData(
+  context: CharacterAgentRunContext,
+  target: AgentTargetContext,
+  fields: Record<string, unknown>
+): Record<string, unknown> {
+  const name = stringValue(fields.name, 'Character')
+  const sourceText = [
+    context.goal.prompt,
+    stringValue(fields.description),
+    stringValue(fields.personality),
+    stringValue(fields.scenario),
+    stringValue(fields.worldContext),
+    stringValue(fields.dialogueStyle),
+    stringValue(target.config.statDesign),
+    stringValue(target.config.equipmentRules),
+    stringValue(target.config.statusRules),
+    stringValue(target.config.panelDesign),
+    ...target.localStylePressures.map((item) => item.prompt),
+    ...target.localConstraints.flatMap((item) => [...item.mustHave, ...item.mustNot.map((rule) => `Avoid: ${rule}`)]),
+  ].filter(Boolean).join('\n')
+  const seed = hashText(`${name}\n${sourceText}`)
+  const statBase = 34 + (seed % 22)
+  const stats = [
+    gameStat('resolve', 'Resolve', statBase + 10, 0, 100, 'mental pressure, fear, and willingness to act'),
+    gameStat('composure', 'Composure', statBase + 4, 0, 100, 'visible control, social poise, and emotional leakage'),
+    gameStat('affinity', 'Affinity', Math.max(8, Math.round(statBase * 0.72)), 0, 100, 'trust, attachment, and willingness to reveal private information'),
+    gameStat('strain', 'Strain', Math.max(0, 62 - statBase), 0, 100, 'fatigue, injury, magical load, or narrative instability'),
+    gameStat('leverage', 'Leverage', 18 + (seed % 37), 0, 100, 'resources, secrets, permissions, or tactical advantage'),
+  ]
+  const equipmentTone = /magic|curse|witch|spell|魔|咒|巫|玄/i.test(sourceText)
+    ? 'ritual-compatible, rule-bound, and costly to misuse'
+    : /school|campus|student|校园|学生/i.test(sourceText)
+      ? 'daily-carry, socially plausible, and privacy-sensitive'
+      : /cyber|terminal|hacker|赛博|黑客/i.test(sourceText)
+        ? 'modular, traceable, and access-controlled'
+        : 'setting-specific, consequential, and narratively earned'
+  return {
+    schemaVersion: 1,
+    name: `${name} Game Layer`,
+    summary: `Character-specific stats, equipment rules, and status rules generated from the workflow design for ${name}.`,
+    stats,
+    equipment: {
+      slots: [
+        equipmentSlot('worn', 'Worn / Carried', 3, `Items must fit the character silhouette and current scene. Equipment is ${equipmentTone}.`, [
+          equipmentItem('signature-item', 'Signature item', 'A character-defining carried object generated from the role card at runtime.', ['signature', 'visible'], ['May unlock unique dialogue or alter leverage.']),
+        ]),
+        equipmentSlot('hidden', 'Hidden / Private', 2, 'Hidden items require a plausible concealment method, can be discovered by scene pressure, and must not contradict established clothing or access.', []),
+        equipmentSlot('bound', 'Bound / Persistent', 2, 'Persistent gear, marks, contracts, implants, or magical bindings cannot be removed casually and must declare cost, trigger, and counterplay.', []),
+      ],
+      rules: [
+        'Every equipment item must declare slot, visibility, source, narrative permission, and at least one stat/status interaction.',
+        'Equipment cannot appear from nowhere: acquisition needs scene access, prior preparation, trade, crafting, gift, discovery, or explicit user action.',
+        'Conflicting items cannot occupy the same physical or narrative function unless the rule text explains coexistence.',
+        'Powerful equipment must add a cost, cooldown, social risk, durability loss, or status side effect.',
+        stringValue(target.config.equipmentRules),
+      ].filter(Boolean),
+      acquisitionRules: [
+        'Runtime may introduce minor common items when they are scene-plausible.',
+        'Runtime must ask or foreshadow before granting rare, intimate, illegal, magical, or high-impact items.',
+        'Lost, broken, traded, or confiscated equipment remains part of history and should affect future scenes.',
+      ],
+      forbiddenRules: [
+        'Do not generate equipment that breaks the role card, violates hard constraints, or solves the central conflict for free.',
+        'Do not use equipment as a shortcut around consent, relationship pacing, or established scene limitations.',
+      ],
+    },
+    statuses: [
+      statusEffect('focused', 'Focused', 'stable', 'Actions are cleaner; social tells are reduced.', 'Ends when interrupted or emotionally shaken.'),
+      statusEffect('exposed', 'Exposed', 'risk', 'Secrets, wounds, or intentions are easier to read.', 'Clears after cover, recovery, or a successful diversion.'),
+      statusEffect('marked', 'Marked', 'persistent', 'A visible or invisible narrative mark creates future consequences.', 'Requires an explicit cleansing, repair, or negotiation rule.'),
+    ],
+    rules: [
+      'Stats are character-local and should change only when the conversation creates a concrete cause.',
+      'Status effects must state trigger, duration, conflict behavior, and narrative consequence.',
+      'The chat UI should expose equipment, status, and rules as quick panels without forcing the user to leave the conversation.',
+      stringValue(target.config.statDesign),
+      stringValue(target.config.statusRules),
+      stringValue(target.config.panelDesign),
+    ].filter(Boolean),
+    ui: { quickPanels: ['equipment', 'status', 'rules'] },
+  }
+}
+
+function gameStat(id: string, label: string, value: number, min: number, max: number, description: string): Record<string, unknown> {
+  return { id, label, value: Math.max(min, Math.min(max, value)), min, max, description, visibility: 'shown' }
+}
+
+function equipmentSlot(id: string, label: string, limit: number, rule: string, current: Array<Record<string, unknown>>): Record<string, unknown> {
+  return { id, label, limit, rule, current }
+}
+
+function equipmentItem(id: string, name: string, description: string, tags: string[], effects: string[]): Record<string, unknown> {
+  return { id, name, description, tags, quantity: 1, effects }
+}
+
+function statusEffect(id: string, label: string, value: string, description: string, rule: string): Record<string, unknown> {
+  return { id, label, value, description, rule }
+}
+
 function createAtmosphereStyleData(
   context: CharacterAgentRunContext,
   target: AgentTargetContext,
@@ -1848,6 +1977,11 @@ function createAtmosphereStyleData(
   const localStyle = target.localStylePressures[0] ?? context.stylePressures[0]
   const stylePrompt = [
     stringValue(target.config.stylePrompt),
+    stringValue(target.config.moodPreset),
+    stringValue(target.config.surface),
+    stringValue(target.config.messageFrame),
+    stringValue(target.config.audioPlayer),
+    stringValue(target.config.density),
     localStyle?.preset,
     localStyle?.prompt,
     goalText,
@@ -1859,13 +1993,17 @@ function createAtmosphereStyleData(
     appearance,
     appearancePrompt,
   ].filter(Boolean).join(' ')
-  const profile = deriveAtmosphereProfile({
-    requestedMood: stringValue(target.config.moodPreset, 'auto-atmosphere'),
-    requestedSurface: stringValue(target.config.surface, 'glass'),
-    requestedFrame: stringValue(target.config.messageFrame, 'literary-panel'),
-    requestedAudio: stringValue(target.config.audioPlayer, 'thin-glass-bar'),
-    requestedDensity: stringValue(target.config.density, 'balanced'),
-    text: stylePrompt,
+  const fallbackProfile = createDefaultAtmosphereFallback()
+  const scopeClass = `noema-atmosphere-${sanitizeCssIdentifier(target.nodeId)}`
+  const freeStyle = createFreeAtmosphereStyle({
+    fallback: fallbackProfile,
+    scopeClass,
+    characterName: name,
+    description,
+    personality,
+    scenario,
+    dialogueStyle,
+    stylePrompt,
   })
   const firstSpeech = extractFirstRoleChatLine(stringValue(fields.firstMessage)) || dialogueStyle || `我会在这里等你。`
   const narration = stripVisibleControlTags(stringValue(fields.firstMessage)) || scenario || description
@@ -1876,20 +2014,23 @@ function createAtmosphereStyleData(
   }))
   return {
     schemaVersion: 1,
-    name: profile.name,
-    summary: `${profile.name} style for ${name}: ${profile.summary}`,
-    mood: profile.mood,
-    palette: profile.palette,
-    message: profile.message,
-    audio: profile.audio,
-    sceneCard: profile.sceneCard,
+    name: freeStyle.name,
+    summary: freeStyle.summary,
+    mood: freeStyle.mood,
+    scopeClass,
+    css: freeStyle.css,
+    designBrief: freeStyle.designBrief,
+    palette: freeStyle.palette,
+    message: freeStyle.message,
+    audio: freeStyle.audio,
+    sceneCard: freeStyle.sceneCard,
     preview: {
       userLine: context.goal.language === 'zh-CN' ? '这里的气氛有点不一样。' : 'The air feels different here.',
       narration: compactOpeningText(narration, 96),
       speech: compactOpeningText(firstSpeech, 64),
       location: compactOpeningText(scenario || worldContext || (context.goal.language === 'zh-CN' ? '当前场景' : 'Current scene'), 34),
-      status: profile.previewStatus,
-      equipment: profile.previewEquipment,
+      status: freeStyle.previewStatus,
+      equipment: freeStyle.previewEquipment,
     },
     source: {
       targetNodeId: target.nodeId,
@@ -2005,14 +2146,7 @@ function resolveOpeningLayoutStyle(
   }
 }
 
-function deriveAtmosphereProfile(options: {
-  requestedMood: string
-  requestedSurface: string
-  requestedFrame: string
-  requestedAudio: string
-  requestedDensity: string
-  text: string
-}): {
+function createDefaultAtmosphereFallback(): {
   name: string
   summary: string
   mood: string[]
@@ -2023,189 +2157,220 @@ function deriveAtmosphereProfile(options: {
   previewStatus: string[]
   previewEquipment: Array<Record<string, string>>
 } {
-  const source = `${options.requestedMood} ${options.text}`.toLowerCase()
-  const warm = /warm|comfort|romance|soft|healing|sun|温柔|治愈|暖|夕阳|浪漫/.test(source)
-  const rainy = /rain|mist|quiet|school|classroom|window|雨|雾|教室|校园|窗|自习|安静/.test(source)
-  const noir = /noir|night|goth|thriller|secret|danger|shadow|夜|暗|悬疑|危险|秘密|黑/.test(source)
-  const clinical = /dossier|agent|office|lab|clinical|military|档案|组织|实验|调查|秩序|报告/.test(source)
-  const terminal = /cyber|terminal|signal|android|ai|network|赛博|终端|信号|机械|仿生/.test(source)
-  const dreamy = /dream|velvet|idol|stage|fantasy|myth|梦|绒|舞台|偶像|幻想|神秘/.test(source)
-  const explicitMood = options.requestedMood !== 'auto-atmosphere' ? options.requestedMood : ''
-  const theme = explicitMood || (terminal ? 'terminal-signal' : clinical ? 'clinical-dossier' : noir ? 'noir-tension' : dreamy ? 'dreamy-velvet' : warm ? 'warm-intimate' : rainy ? 'rainy-quiet' : 'rainy-quiet')
-  const profiles: Record<string, {
-    name: string
-    summary: string
-    mood: string[]
-    accent: string
-    accentSoft: string
-    surface: string
-    warmth: string
-    contrast: string
-    narration: string
-    speech: string
-    sceneFrame: string
-    divider: string
-    status: string[]
-    equipment: Array<Record<string, string>>
-  }> = {
-    'rainy-quiet': {
-      name: '雨幕低声',
-      summary: '冷灰蓝、低对比、安静叙事，适合细腻留白的角色对话。',
-      mood: ['quiet', 'rainy', 'restrained', 'intimate-distance'],
-      accent: '#a9c4d8',
-      accentSoft: 'rgba(169, 196, 216, 0.17)',
-      surface: 'mist',
-      warmth: 'cool',
-      contrast: 'low',
-      narration: 'soft-prose',
-      speech: 'quote-emphasis',
-      sceneFrame: 'quiet-panel',
-      divider: 'fine-line',
-      status: ['雨声 42', '距离 18', '警戒 63'],
-      equipment: [
-        { name: '备用笔', ability: '留下修正痕迹', quantity: '1' },
-        { name: '折叠伞', ability: '维持近距离同行', quantity: '1' },
-      ],
-    },
-    'warm-intimate': {
-      name: '近光余温',
-      summary: '暖色、柔软边界和近距离语气，强调陪伴感与低声交流。',
-      mood: ['warm', 'close', 'soft', 'slow-burn'],
-      accent: '#e0b179',
-      accentSoft: 'rgba(224, 177, 121, 0.18)',
-      surface: 'paper',
-      warmth: 'warm',
-      contrast: 'medium',
-      narration: 'diary',
-      speech: 'quiet-line',
-      sceneFrame: 'paper-note',
-      divider: 'soft-band',
-      status: ['亲近 54', '安心 71', '犹豫 22'],
-      equipment: [
-        { name: '便签', ability: '记录未说出口的话', quantity: '2' },
-        { name: '温热杯子', ability: '稳定气氛', quantity: '1' },
-      ],
-    },
-    'noir-tension': {
-      name: '暗室张力',
-      summary: '深色、高压、锐利分割，适合悬疑、危险和强关系拉扯。',
-      mood: ['noir', 'danger', 'tense', 'secretive'],
-      accent: '#b993ff',
-      accentSoft: 'rgba(185, 147, 255, 0.17)',
-      surface: 'noir',
-      warmth: 'cool',
-      contrast: 'high',
-      narration: 'noir',
-      speech: 'stage-dialogue',
-      sceneFrame: 'glass-dossier',
-      divider: 'fine-line',
-      status: ['警戒 86', '秘密 67', '压迫 58'],
-      equipment: [
-        { name: '旧钥匙', ability: '开启隐藏房间', quantity: '1' },
-        { name: '黑色手套', ability: '隐藏痕迹', quantity: '1' },
-      ],
-    },
-    'clinical-dossier': {
-      name: '冷白档案',
-      summary: '清晰、克制、资料化，适合组织、实验、调查和高秩序角色。',
-      mood: ['clinical', 'precise', 'controlled', 'observational'],
-      accent: '#dce7e2',
-      accentSoft: 'rgba(220, 231, 226, 0.14)',
+  return {
+    name: 'Neutral Atmosphere',
+    summary: 'Neutral internal fallback used only when no generated atmosphere data exists.',
+    mood: ['custom'],
+    palette: {
+      accent: '#c7d8d0',
+      accentSoft: 'rgba(199, 216, 208, 0.16)',
       surface: 'glass',
       warmth: 'neutral',
       contrast: 'medium',
-      narration: 'clinical',
-      speech: 'quiet-line',
-      sceneFrame: 'glass-dossier',
-      divider: 'fine-line',
-      status: ['记录 91', '稳定 66', '偏差 12'],
-      equipment: [
-        { name: '观察表', ability: '记录行为变化', quantity: '1' },
-        { name: '编号卡', ability: '确认身份', quantity: '1' },
-      ],
-    },
-    'dreamy-velvet': {
-      name: '绒光梦境',
-      summary: '柔暗、朦胧、舞台感，适合幻想、偶像、梦境或诱惑气质。',
-      mood: ['dreamy', 'velvet', 'sensory', 'cinematic'],
-      accent: '#d7a4c6',
-      accentSoft: 'rgba(215, 164, 198, 0.17)',
-      surface: 'velvet',
-      warmth: 'warm',
-      contrast: 'medium',
-      narration: 'cinematic',
-      speech: 'quote-emphasis',
-      sceneFrame: 'quiet-panel',
-      divider: 'soft-band',
-      status: ['舞台 39', '心跳 64', '迷离 52'],
-      equipment: [
-        { name: '丝绒缎带', ability: '牵引视线', quantity: '1' },
-        { name: '旧唱片', ability: '制造慢拍节奏', quantity: '1' },
-      ],
-    },
-    'terminal-signal': {
-      name: '终端信号',
-      summary: '冷光、信息分层和信号感，适合赛博、仿生、AI 或监控叙事。',
-      mood: ['signal', 'cyber', 'distant', 'precise'],
-      accent: '#7fd7ff',
-      accentSoft: 'rgba(127, 215, 255, 0.16)',
-      surface: 'terminal',
-      warmth: 'cool',
-      contrast: 'high',
-      narration: 'clinical',
-      speech: 'stage-dialogue',
-      sceneFrame: 'terminal-readout',
-      divider: 'fine-line',
-      status: ['信号 78', '同步 44', '噪声 19'],
-      equipment: [
-        { name: '通讯端子', ability: '维持低频连接', quantity: '1' },
-        { name: '访问钥', ability: '打开权限层', quantity: '1' },
-      ],
-    },
-  }
-  const profile = profiles[theme] ?? profiles['rainy-quiet']
-  const surface = ['glass', 'paper', 'noir', 'mist', 'velvet', 'terminal'].includes(options.requestedSurface)
-    ? options.requestedSurface
-    : profile.surface
-  const frame = ['plain', 'literary-panel', 'visual-novel', 'dossier', 'letter'].includes(options.requestedFrame)
-    ? options.requestedFrame
-    : (clinical || terminal ? 'dossier' : rainy ? 'visual-novel' : 'literary-panel')
-  const audioPlayer = ['thin-glass-bar', 'soft-wave-strip', 'quiet-capsule', 'dossier-line'].includes(options.requestedAudio)
-    ? options.requestedAudio
-    : (clinical || terminal ? 'dossier-line' : warm || dreamy ? 'soft-wave-strip' : 'thin-glass-bar')
-  const density = ['compact', 'balanced', 'airy'].includes(options.requestedDensity)
-    ? options.requestedDensity
-    : (frame === 'dossier' ? 'compact' : rainy || dreamy ? 'airy' : 'balanced')
-  return {
-    name: profile.name,
-    summary: profile.summary,
-    mood: profile.mood,
-    palette: {
-      accent: profile.accent,
-      accentSoft: profile.accentSoft,
-      surface,
-      warmth: profile.warmth,
-      contrast: profile.contrast,
     },
     message: {
-      frame,
-      narration: profile.narration,
-      speech: profile.speech,
-      density,
-      radius: frame === 'dossier' || surface === 'terminal' ? 'sharp' : surface === 'paper' ? 'round' : 'soft',
+      frame: 'plain',
+      narration: 'soft-prose',
+      speech: 'quote-emphasis',
+      density: 'balanced',
+      radius: 'soft',
     },
     audio: {
-      player: audioPlayer,
-      motion: audioPlayer === 'dossier-line' ? 'still' : 'subtle-wave',
-      tone: warm || dreamy ? 'intimate' : clinical || terminal ? 'formal' : 'distant',
+      player: 'thin-glass-bar',
+      motion: 'subtle-wave',
+      tone: 'near',
     },
     sceneCard: {
-      frame: profile.sceneFrame,
-      divider: profile.divider,
+      frame: 'quiet-panel',
+      divider: 'fine-line',
     },
-    previewStatus: profile.status,
-    previewEquipment: profile.equipment,
+    previewStatus: ['氛围 50', '距离 50', '状态 50'],
+    previewEquipment: [
+      { name: '随身物件', ability: '维持角色气氛', quantity: '1' },
+    ],
   }
+}
+
+function createFreeAtmosphereStyle(input: {
+  fallback: ReturnType<typeof createDefaultAtmosphereFallback>
+  scopeClass: string
+  characterName: string
+  description: string
+  personality: string
+  scenario: string
+  dialogueStyle: string
+  stylePrompt: string
+}): ReturnType<typeof createDefaultAtmosphereFallback> & {
+  css: string
+  designBrief: Record<string, string>
+} {
+  const source = [
+    input.characterName,
+    input.description,
+    input.personality,
+    input.scenario,
+    input.dialogueStyle,
+    input.stylePrompt,
+  ].filter(Boolean).join(' ')
+  const lower = source.toLowerCase()
+  const seed = hashText(source)
+  const emotionalHeat = scoreText(lower, ['desire', 'romance', 'warm', 'intimate', '暧昧', '亲密', '欲', '恋', '温柔'])
+  const threat = scoreText(lower, ['danger', 'secret', 'blood', 'knife', 'noir', '危险', '秘密', '血', '刀', '禁忌', '暗'])
+  const precision = scoreText(lower, ['dossier', 'clinical', 'terminal', 'signal', 'lab', '档案', '实验', '终端', '信号', '机械'])
+  const softness = scoreText(lower, ['rain', 'mist', 'dream', 'quiet', 'soft', '雨', '雾', '梦', '安静', '柔'])
+  const hue = normalizeHue(seed % 360 + emotionalHeat * 22 - threat * 18 + precision * 34 + softness * 11)
+  const saturation = clampNumber(34 + emotionalHeat * 10 + threat * 8 + precision * 6, 32, 72)
+  const lightness = clampNumber(62 + softness * 5 - threat * 8 - precision * 4, 42, 72)
+  const accent = `hsl(${hue} ${saturation}% ${lightness}%)`
+  const accentSoft = `hsla(${hue} ${saturation}% ${lightness}% / ${clampNumber(0.12 + softness * 0.025 + emotionalHeat * 0.018, 0.12, 0.24).toFixed(2)})`
+  const surfaceHue = normalizeHue(hue + 210 + precision * 16 - emotionalHeat * 10)
+  const surface = `hsl(${surfaceHue} ${clampNumber(10 + precision * 4 + threat * 3, 10, 28)}% ${clampNumber(7 + softness * 2 - threat, 5, 14)}%)`
+  const radiusPx = Math.round(clampNumber(11 + softness * 4 + emotionalHeat * 3 - precision * 3 - threat * 2 + (seed % 5), 8, 30))
+  const paddingY = Math.round(clampNumber(16 + softness * 3 - precision * 2 + (seed % 4), 14, 27))
+  const paddingX = Math.round(clampNumber(18 + emotionalHeat * 2 + softness * 2 + (seed % 6), 17, 30))
+  const lineWeight = Math.round(clampNumber(1 + precision * 0.45 + threat * 0.35, 1, 3))
+  const audioRadius = Math.round(clampNumber(radiusPx + 4 + emotionalHeat * 6 - precision * 4, 9, 999))
+  const mood = [
+    emotionalHeat > 1 ? 'intimate' : '',
+    threat > 1 ? 'tense' : '',
+    precision > 1 ? 'precise' : '',
+    softness > 1 ? 'soft-atmospheric' : '',
+    `seed-${seed % 997}`,
+  ].filter(Boolean)
+  const designBrief = {
+    concept: `${input.characterName} specific atmosphere generated from role-card semantics, not from a fixed CSS template.`,
+    colorSystem: `Seeded hue ${hue}, saturation ${saturation}, lightness ${lightness}; accent ${accent}, soft field ${accentSoft}.`,
+    surfaceTreatment: `Custom surface uses ${surface}, radius ${radiusPx}px, ${lineWeight}px boundary weight, and semantic glow density from the card text.`,
+    typography: precision > threat ? 'Compact metadata rhythm with readable literary speech.' : threat > emotionalHeat ? 'Tense prose frame with sharp quoted speech.' : 'Literary conversational rhythm with soft speech emphasis.',
+    audioTreatment: `Audio bar radius ${audioRadius}px, progress color from character accent, spacing derived from the same semantic seed.`,
+    sceneTreatment: 'Scene/status card shares the generated surface, border, and accent system instead of using a separate preset.',
+  }
+  return {
+    ...input.fallback,
+    name: `${input.characterName} Atmosphere`,
+    summary: `Custom scoped atmosphere generated from ${input.characterName}'s role card, dialogue, scene, and style controls.`,
+    mood: mood.length ? mood : ['custom', `seed-${seed % 997}`],
+    palette: {
+      accent,
+      accentSoft,
+      surface: input.fallback.palette.surface,
+      warmth: emotionalHeat > precision ? 'warm' : precision > emotionalHeat ? 'cool' : 'neutral',
+      contrast: threat > 1 || precision > 1 ? 'high' : softness > 1 ? 'low' : 'medium',
+    },
+    message: {
+      ...input.fallback.message,
+      density: precision > 1 ? 'compact' : softness > 1 ? 'airy' : 'balanced',
+      radius: radiusPx <= 12 ? 'sharp' : radiusPx >= 22 ? 'round' : 'soft',
+    },
+    audio: {
+      ...input.fallback.audio,
+      motion: precision > 1 ? 'still' : 'subtle-wave',
+      tone: emotionalHeat > 1 ? 'intimate' : precision > 1 ? 'formal' : 'near',
+    },
+    sceneCard: {
+      ...input.fallback.sceneCard,
+      divider: precision > 1 || threat > 1 ? 'fine-line' : softness > 1 ? 'soft-band' : 'none',
+    },
+    previewStatus: input.fallback.previewStatus,
+    previewEquipment: input.fallback.previewEquipment,
+    designBrief,
+    css: buildFreeAtmosphereCss(input.scopeClass, {
+      accent,
+      accentSoft,
+      surface,
+      hue,
+      surfaceHue,
+      radiusPx,
+      paddingY,
+      paddingX,
+      lineWeight,
+      audioRadius,
+      glowAlpha: clampNumber(0.18 + softness * 0.04 + emotionalHeat * 0.035, 0.16, 0.34),
+      precision,
+      threat,
+      softness,
+    }, designBrief),
+  }
+}
+
+function buildFreeAtmosphereCss(
+  scopeClass: string,
+  spec: {
+    accent: string
+    accentSoft: string
+    surface: string
+    hue: number
+    surfaceHue: number
+    radiusPx: number
+    paddingY: number
+    paddingX: number
+    lineWeight: number
+    audioRadius: number
+    glowAlpha: number
+    precision: number
+    threat: number
+    softness: number
+  },
+  design: Record<string, string>
+): string {
+  const frameShadow = spec.threat > 1
+    ? '0 24px 80px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.04)'
+    : `0 18px 64px hsla(${spec.hue} 35% 8% / 0.28), inset 0 1px 0 rgba(255,255,255,0.045)`
+  const grain = spec.precision > 1
+    ? `linear-gradient(90deg, hsla(${spec.hue} 70% 70% / 0.05) 1px, transparent 1px)`
+    : `radial-gradient(circle at 78% 10%, hsla(${spec.hue} 70% 72% / ${spec.glowAlpha}), transparent 34%)`
+  return [
+    `.${scopeClass}.has-chat-atmosphere .roleplay-chat-frame {`,
+    `  padding: ${spec.paddingY}px ${spec.paddingX}px ${spec.paddingY + 2}px;`,
+    `  border-width: ${spec.lineWeight}px;`,
+    `  border-radius: ${spec.radiusPx + 4}px;`,
+    `  border-color: color-mix(in srgb, ${spec.accent} 28%, transparent);`,
+    `  background: radial-gradient(circle at 10% 0%, ${spec.accentSoft}, transparent 31%), ${grain}, linear-gradient(139deg, color-mix(in srgb, ${spec.accent} 10%, ${spec.surface}), ${spec.surface});`,
+    `  box-shadow: ${frameShadow};`,
+    `}`,
+    `.${scopeClass}.has-chat-atmosphere .roleplay-chat-frame::before {`,
+    `  background: linear-gradient(90deg, hsla(${spec.hue} 70% 72% / 0.08), transparent 46%), radial-gradient(circle at 72% 20%, ${spec.accentSoft}, transparent 38%);`,
+    `}`,
+    `.${scopeClass}.has-chat-atmosphere .roleplay-chat-frame > p { color: hsla(${spec.surfaceHue} 18% 86% / 0.78); }`,
+    `.${scopeClass}.has-chat-atmosphere .chat-message .roleplay-chat-quote, .${scopeClass}.has-chat-atmosphere .roleplay-chat-quote { color: hsla(${spec.hue} 34% 96% / 0.97); }`,
+    `.${scopeClass}.has-chat-atmosphere .chat-inline-audio-player, .${scopeClass}.has-chat-atmosphere .chat-inline-audio.pending span {`,
+    `  min-height: ${spec.precision > 1 ? 36 : 40}px;`,
+    `  border-radius: ${spec.audioRadius >= 120 ? 999 : spec.audioRadius}px;`,
+    `  border-color: color-mix(in srgb, ${spec.accent} 32%, transparent);`,
+    `  background: linear-gradient(90deg, ${spec.accentSoft}, rgba(255,255,255,0.026)), color-mix(in srgb, ${spec.surface} 82%, transparent);`,
+    `}`,
+    `.${scopeClass}.has-chat-atmosphere .chat-inline-audio-track { background: hsla(${spec.hue} 24% 84% / 0.18); }`,
+    `.${scopeClass}.has-chat-atmosphere .chat-inline-audio-track span { background: color-mix(in srgb, ${spec.accent} 76%, rgba(255,255,255,0.86)); }`,
+    `.${scopeClass}.has-chat-atmosphere .chat-inline-scene {`,
+    `  border-radius: ${Math.max(10, spec.radiusPx)}px;`,
+    `  border-color: color-mix(in srgb, ${spec.accent} 24%, transparent);`,
+    `  background: linear-gradient(180deg, ${spec.accentSoft}, rgba(255,255,255,0.024)), color-mix(in srgb, ${spec.surface} 74%, transparent);`,
+    `}`,
+    `.${scopeClass}.has-chat-atmosphere .chat-inline-scene-line span { color: color-mix(in srgb, ${spec.accent} 58%, rgba(238,241,240,0.58)); }`,
+    `.${scopeClass}.has-chat-atmosphere .chat-inline-scene-status em { border-color: color-mix(in srgb, ${spec.accent} 26%, transparent); background: color-mix(in srgb, ${spec.accent} 10%, transparent); }`,
+    `/* ${design.concept} */`,
+  ].join('\n')
+}
+
+function hashText(value: string): number {
+  let hash = 2166136261
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return hash >>> 0
+}
+
+function scoreText(value: string, terms: string[]): number {
+  return terms.reduce((score, term) => score + (value.includes(term) ? 1 : 0), 0)
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value))
+}
+
+function normalizeHue(value: number): number {
+  return Math.round(((value % 360) + 360) % 360)
 }
 
 function collectOpeningLayoutImages(artifacts: CharacterAgentArtifact[]): Array<Record<string, string>> {
@@ -3452,6 +3617,7 @@ function artifactTitle(kind: CharacterAgentArtifactKind): string {
     'opening-message': 'Opening Message',
     'opening-layout': 'Opening Layout',
     'atmosphere-style': 'Atmosphere Style',
+    'game-system': 'Game System',
     'dialogue-style-guide': 'Dialogue Style Guide',
     'world-context': 'World Context',
     'scene-context': 'Scene Context',
@@ -3488,6 +3654,7 @@ function isArtifactKind(value: unknown): value is CharacterAgentArtifactKind {
     'opening-message',
     'opening-layout',
     'atmosphere-style',
+    'game-system',
     'dialogue-style-guide',
     'world-context',
     'scene-context',
@@ -3577,6 +3744,7 @@ function targetKindForNodeType(type: string): AgentTargetKind | null {
     'character-field-target': 'character-field',
     'opening-layout-target': 'opening-layout',
     'atmosphere-style-target': 'atmosphere-style',
+    'game-system-target': 'game-system',
     'image-target': 'image',
     'world-card-target': 'world-card',
     'npc-pack-target': 'npc-pack',
@@ -3600,11 +3768,22 @@ function requestedResourcesForTarget(node: CharacterWorkflowNode, kind: AgentTar
   if (kind === 'atmosphere-style') {
     return [
       'atmosphere-style',
-      `mood:${stringValue(node.config.moodPreset, 'auto-atmosphere')}`,
-      `surface:${stringValue(node.config.surface, 'glass')}`,
-      `message:${stringValue(node.config.messageFrame, 'literary-panel')}`,
-      `audio:${stringValue(node.config.audioPlayer, 'thin-glass-bar')}`,
-    ]
+      stringValue(node.config.stylePrompt) ? `design:${stringValue(node.config.stylePrompt)}` : '',
+      stringValue(node.config.moodPreset) ? `atmosphere:${stringValue(node.config.moodPreset)}` : '',
+      stringValue(node.config.surface) ? `surface:${stringValue(node.config.surface)}` : '',
+      stringValue(node.config.messageFrame) ? `message:${stringValue(node.config.messageFrame)}` : '',
+      stringValue(node.config.audioPlayer) ? `audio:${stringValue(node.config.audioPlayer)}` : '',
+      stringValue(node.config.density) ? `spacing:${stringValue(node.config.density)}` : '',
+    ].filter(Boolean)
+  }
+  if (kind === 'game-system') {
+    return [
+      'game-system',
+      stringValue(node.config.statDesign) ? `stats:${stringValue(node.config.statDesign)}` : '',
+      stringValue(node.config.equipmentRules) ? `equipment:${stringValue(node.config.equipmentRules)}` : '',
+      stringValue(node.config.statusRules) ? `status:${stringValue(node.config.statusRules)}` : '',
+      stringValue(node.config.panelDesign) ? `panels:${stringValue(node.config.panelDesign)}` : '',
+    ].filter(Boolean)
   }
   if (kind === 'image') {
     const imageRole = stringValue(node.config.imageRole)
