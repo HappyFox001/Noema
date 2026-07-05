@@ -88,7 +88,7 @@ import {
 } from './chat-model-config-page'
 import { createChatRenderer } from './chat-renderer'
 import { extractRoleplaySpeechTexts } from './roleplay-chat-markup'
-import { Trash2, createIcons } from 'lucide'
+import { Backpack, Trash2, createIcons } from 'lucide'
 
 type ChatResizeEdge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
 
@@ -532,14 +532,31 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     gameQuickbar.hidden = false
     const zh = options.getLanguage() === 'zh-CN'
+    const equipmentCount = getCharacterEquipmentCount(character, getActiveConversation(state))
     gameQuickbar.querySelectorAll<HTMLElement>('[data-chat-game-panel]').forEach((button) => {
       const panelName = button.dataset.chatGamePanel || ''
       if (panelName === 'equipment') {
-        button.textContent = zh ? '装备栏' : 'Equipment'
+        const label = zh ? '装备栏' : 'Equipment'
+        button.setAttribute('aria-label', label)
+        button.setAttribute('title', label)
+        button.innerHTML = `
+          <span class="chat-game-quickbar-icon"><i data-lucide="backpack" aria-hidden="true"></i></span>
+          <span class="chat-game-quickbar-copy">${options.escapeHtml(label)}</span>
+          <em>${options.escapeHtml(String(equipmentCount))}</em>
+        `
       }
       const active = panelName === openGamePanel
       button.classList.toggle('is-active', active)
       button.setAttribute('aria-pressed', active ? 'true' : 'false')
+    })
+    createIcons({
+      icons: { Backpack },
+      root: gameQuickbar,
+      attrs: {
+        width: 15,
+        height: 15,
+        'stroke-width': 2.05,
+      },
     })
     if (!openGamePanel) {
       gamePanelView.classList.remove('visible')
@@ -631,6 +648,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         return { name: stringField(item), ability: '', quantity: '' }
       })
       .filter((item) => item.name)
+  }
+
+  function getCharacterEquipmentCount(character: ChatCharacterResource, conversation: ChatConversationSummary | undefined): number {
+    const generatedCount = character.gameSystem?.equipment.slots.reduce((total, slot) => total + (slot.current?.length ?? 0), 0) ?? 0
+    if (generatedCount > 0) {
+      return generatedCount
+    }
+    return normalizePanelSceneEquipment(conversation?.sceneState?.equipment).length
   }
 
   function setActiveNav(button: HTMLButtonElement): void {
@@ -9240,7 +9265,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
 
     const gamePanelClose = eventTarget.closest<HTMLElement>('[data-chat-game-panel-close]')
-    if (gamePanelClose && panel.contains(gamePanelClose)) {
+    if ((gamePanelClose && panel.contains(gamePanelClose)) || eventTarget === gamePanelView) {
       openGamePanel = ''
       renderGameQuickbar(getActiveProfileCharacter())
       return
@@ -9632,6 +9657,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     if (event.key === 'Escape' && characterProfilePanel?.classList.contains('visible')) {
       closeCharacterProfilePanel()
+    }
+    if (event.key === 'Escape' && gamePanelView?.classList.contains('visible')) {
+      openGamePanel = ''
+      renderGameQuickbar(getActiveProfileCharacter())
     }
     if (event.key === 'Escape' && openChatModelLibraryId) {
       closeChatModelLibrary()

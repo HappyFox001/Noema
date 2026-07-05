@@ -1414,7 +1414,7 @@ body.theme-day .chat-message-avatar {
 .chat-game-quickbar {
   margin: 0 18px 14px;
   display: flex;
-  gap: 7px;
+  gap: 8px;
   align-items: center;
   flex-wrap: wrap;
 }
@@ -1424,93 +1424,191 @@ body.theme-day .chat-message-avatar {
 }
 
 .chat-game-quickbar button {
-  height: 30px;
-  padding: 0 12px;
-  border: 1px solid rgba(255, 255, 255, 0.105);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.045);
-  color: rgba(230, 238, 236, 0.72);
+  position: relative;
+  min-width: 0;
+  height: 34px;
+  display: inline-grid;
+  grid-template-columns: 24px auto minmax(18px, auto);
+  align-items: center;
+  gap: 8px;
+  padding: 4px 9px 4px 5px;
+  border: 1px solid rgba(191, 218, 209, 0.15);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.074), rgba(255, 255, 255, 0.028)),
+    rgba(9, 12, 12, 0.58);
+  color: rgba(230, 238, 236, 0.76);
   font-family: var(--font-ui);
   font-size: 12px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 10px 24px rgba(0, 0, 0, 0.16);
+  transition: transform 140ms ease, border-color 140ms ease, background 140ms ease, color 140ms ease;
+}
+
+.chat-game-quickbar-icon {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(191, 218, 209, 0.14);
+  border-radius: 9px;
+  background:
+    linear-gradient(180deg, rgba(185, 211, 202, 0.18), rgba(185, 211, 202, 0.06)),
+    rgba(255, 255, 255, 0.035);
+  color: rgba(224, 239, 234, 0.86);
+}
+
+.chat-game-quickbar-icon svg {
+  display: block;
+}
+
+.chat-game-quickbar-copy {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-game-quickbar button em {
+  min-width: 18px;
+  height: 18px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0 5px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.16);
+  color: rgba(220, 229, 226, 0.62);
+  font-size: 10px;
+  font-style: normal;
+  line-height: 1;
 }
 
 .chat-game-quickbar button:hover,
 .chat-game-quickbar button.is-active {
-  border-color: rgba(159, 199, 185, 0.34);
-  background: rgba(159, 199, 185, 0.12);
+  transform: translateY(-1px);
+  border-color: rgba(159, 199, 185, 0.32);
+  background:
+    linear-gradient(180deg, rgba(159, 199, 185, 0.16), rgba(159, 199, 185, 0.055)),
+    rgba(9, 12, 12, 0.62);
   color: rgba(248, 250, 250, 0.94);
 }
 
+.chat-game-quickbar button.is-active .chat-game-quickbar-icon {
+  border-color: rgba(159, 199, 185, 0.28);
+  background:
+    linear-gradient(180deg, rgba(159, 199, 185, 0.25), rgba(159, 199, 185, 0.09)),
+    rgba(255, 255, 255, 0.04);
+  color: rgba(248, 250, 250, 0.96);
+}
+
 .chat-game-panel {
-  position: absolute;
-  left: 18px;
-  right: 18px;
-  bottom: 116px;
-  z-index: 28;
+  position: fixed;
+  inset: 0;
+  z-index: 220;
   display: none;
-  pointer-events: none;
+  place-items: center;
+  place-content: center;
+  padding: clamp(18px, 3vw, 34px);
+  background: rgba(3, 4, 5, 0.34);
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .chat-game-panel.visible {
-  display: block;
+  display: grid;
 }
 
 .chat-game-panel-sheet {
-  max-height: min(48vh, 420px);
+  width: min(760px, calc(100vw - 72px));
+  max-height: min(82dvh, 680px);
   overflow: hidden;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  border: 1px solid rgba(255, 255, 255, 0.13);
-  border-radius: 16px;
+  border: 1px solid rgba(244, 248, 245, 0.13);
+  border-radius: 24px;
   background:
-    linear-gradient(180deg, rgba(30, 39, 40, 0.95), rgba(10, 12, 13, 0.96)),
-    rgba(8, 10, 10, 0.95);
-  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.42);
+    radial-gradient(circle at 18% 0%, rgba(214, 232, 222, 0.105), transparent 34%),
+    radial-gradient(circle at 92% 10%, rgba(255, 255, 255, 0.048), transparent 28%),
+    linear-gradient(180deg, rgba(27, 28, 29, 0.992), rgba(11, 12, 13, 0.994));
+  box-shadow:
+    0 34px 92px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
   pointer-events: auto;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .chat-game-panel-head {
+  position: relative;
+  min-height: 72px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto 28px;
+  place-items: center;
+  grid-template-columns: 1fr;
   align-items: center;
-  gap: 10px;
-  padding: 12px 14px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  gap: 3px;
+  padding: 17px 72px 15px;
+  border-bottom: 1px solid rgba(244, 248, 245, 0.1);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.014)),
+    rgba(255, 255, 255, 0.018);
+  text-align: center;
 }
 
 .chat-game-panel-head span {
+  max-width: 100%;
   overflow: hidden;
-  color: rgba(230, 238, 236, 0.54);
+  color: rgba(230, 238, 236, 0.48);
   font-family: var(--font-ui);
-  font-size: 11px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .chat-game-panel-head strong {
-  color: rgba(248, 250, 250, 0.92);
-  font-size: 13px;
+  color: rgba(248, 249, 249, 0.94);
+  font-size: 20px;
+  font-weight: 760;
+  letter-spacing: 0;
+  line-height: 1.1;
 }
 
 .chat-game-panel-head button {
-  width: 28px;
-  height: 28px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 9px;
-  background: rgba(255, 255, 255, 0.045);
-  color: rgba(248, 250, 250, 0.72);
+  position: absolute;
+  top: 15px;
+  right: 18px;
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: rgba(248, 249, 249, 0.46);
+  font-family: var(--font-ui);
+  font-size: 32px;
+  font-weight: 520;
+  line-height: 1;
+  box-shadow: none;
+}
+
+.chat-game-panel-head button:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(248, 249, 249, 0.78);
 }
 
 .chat-game-panel-body {
   overflow: auto;
-  padding: 12px;
+  padding: 18px 20px 22px;
+  background: transparent;
 }
 
 .chat-game-slot-grid,
 .chat-game-stat-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(178px, 1fr));
-  gap: 9px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
 }
 
 .chat-game-slot,
@@ -1518,10 +1616,13 @@ body.theme-day .chat-message-avatar {
 .chat-game-status-list article,
 .chat-game-rules section,
 .chat-game-empty {
-  padding: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.085);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.04);
+  padding: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 15px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.042), rgba(255, 255, 255, 0.024)),
+    rgba(255, 255, 255, 0.026);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .chat-game-slot div,
