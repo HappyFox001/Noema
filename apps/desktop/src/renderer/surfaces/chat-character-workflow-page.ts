@@ -593,6 +593,7 @@ const TARGET_RESOURCE_SLOT_TYPES = [
   'opening-layout-resource',
   'atmosphere-style-resource',
   'game-system-resource',
+  'resource-package',
   'image-resource',
   'world-resource',
   'npc-pack-resource',
@@ -623,6 +624,7 @@ const SLOT_TYPE_LABELS: Record<string, string> = {
   'opening-layout-resource': 'Opening Layout',
   'plot-resource': 'Plot',
   'relationship-control-resource': 'Relationship Control',
+  'resource-package': 'Resource Package',
   'retrieval-capability': 'Retrieval Capability',
   'scene-resource': 'Scene',
   'source-context': 'Source',
@@ -715,6 +717,37 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     param('statusRules', 'Status Rules', 'textarea', 'Define temporary and persistent statuses from the character premise, relationship dynamic, body/mental state, powers, risks, and scene rules. Each status needs trigger, decay, conflict behavior, and narrative consequence.'),
     param('panelDesign', 'Chat Panel Design', 'textarea', 'Expose equipment, status, rules, and world facts as quick chat panels. Keep generated values compact and readable, but preserve enough world knowledge for future turns.'),
   ], 'rule'),
+  createDefinition('resource-package-target', 'Resource Package Target', ['资源包', 'asset bundle', 'package'], 'Targets', 'asset', 'Assembles the role card candidate and all generated target assets into one package for quality evaluation and export.', [
+    slot('candidate', 'Candidate', 'candidate-pack', 'Role-card candidate pack.', true),
+    slot('field', 'Field', 'field-resource', 'Generated field targets.'),
+    slot('imageAsset', 'Image', 'image-resource', 'Generated image assets.'),
+    slot('layout', 'Layout', 'opening-layout-resource', 'Opening layout asset.'),
+    slot('atmosphere', 'Atmosphere', 'atmosphere-style-resource', 'Atmosphere style asset.'),
+    slot('gameSystem', 'Game System', 'game-system-resource', 'Game system asset.'),
+    slot('world', 'World', 'world-resource', 'World card asset.'),
+    slot('continuity', 'Continuity', 'continuity-control-resource', 'Continuity control asset.'),
+    slot('relationship', 'Relationship', 'relationship-control-resource', 'Relationship control asset.'),
+    slot('plot', 'Plot', 'plot-resource', 'Plot asset.'),
+    slot('scene', 'Scene', 'scene-resource', 'Scene asset.'),
+  ], [
+    slot('package', 'Package', 'resource-package', 'Assembled resource package.'),
+  ], [
+    param('packageScope', 'Package Scope', 'multi-select', ['role-card', 'fields', 'image-pack', 'opening-layout', 'atmosphere-style', 'game-system', 'world-context'], undefined, undefined, undefined, [
+      { label: 'Role Card', value: 'role-card' },
+      { label: 'Fields', value: 'fields' },
+      { label: 'Image Pack', value: 'image-pack' },
+      { label: 'Opening Layout', value: 'opening-layout' },
+      { label: 'Atmosphere Style', value: 'atmosphere-style' },
+      { label: 'Game System', value: 'game-system' },
+      { label: 'World Context', value: 'world-context' },
+      { label: 'Continuity', value: 'continuity' },
+      { label: 'Relationship', value: 'relationship' },
+      { label: 'Plot', value: 'plot' },
+      { label: 'Scenes', value: 'scenes' },
+    ]),
+    param('includeOptionalAssets', 'Include Optional Assets', 'boolean', true),
+    param('assemblyPrompt', 'Assembly Prompt', 'textarea', 'Package every generated target into one exportable resource bundle. Preserve each asset as an independently inspectable resource instead of flattening everything into the role-card text.'),
+  ], 'package'),
   createDefinition('image-target', 'Image Target', ['图片目标', 'image target', 'visual target'], 'Targets', 'asset', 'Declares a role-card visual asset. Each image should preserve character identity while supporting a distinct story, field, or presentation purpose. Multi-image character-base targets should produce different visual missions, camera angles, poses, environments, and roleplay meanings.', [
     slot('card', 'Character Card', 'character-card-resource', 'Character card target.'),
     slot('image', 'Image', 'image-capability', 'Image generation capability.', true),
@@ -1041,9 +1074,9 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     ]),
     param('autoRepair', 'Auto Repair', 'boolean', true),
   ], 'validation'),
-  createDefinition('quality-gate', 'Quality Gate', ['质量', 'validation', 'acceptance'], 'Evaluation', 'safety', 'Defines acceptance criteria that can block export or route candidates back for repair.', [
+  createDefinition('quality-gate', 'Quality Gate', ['质量', 'validation', 'acceptance'], 'Evaluation', 'safety', 'Defines acceptance criteria that can block export or route the assembled resource package back for repair.', [
     slot('goal', 'Goal', 'generation-goal', 'Original target.', true),
-    slot('candidate', 'Candidate', 'candidate-pack', 'Candidate pack to evaluate.', true),
+    slot('package', 'Package', 'resource-package', 'Resource package to evaluate.', true),
     slot('critique', 'Critique', 'critique-policy', 'Critique policy.'),
   ], [
     slot('report', 'Report', 'validation-report', 'Quality gate report.'),
@@ -1058,8 +1091,8 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
       { label: 'Consistency', value: 'consistency' },
     ]),
   ], 'validation'),
-  createDefinition('output-adapter', 'Output Adapter', ['导出', 'adapter', 'format'], 'Outputs', 'core', 'Maps an accepted candidate pack to a target format without changing generation goals.', [
-    slot('candidate', 'Candidate', 'candidate-pack', 'Accepted candidate pack.', true),
+  createDefinition('output-adapter', 'Output Adapter', ['导出', 'adapter', 'format'], 'Outputs', 'core', 'Maps an accepted resource package to a target format without changing generation goals.', [
+    slot('package', 'Package', 'resource-package', 'Accepted resource package.', true),
     slot('report', 'Report', 'validation-report', 'Quality gate report.', true),
   ], [
     slot('export', 'Export', 'export-target', 'Export target.'),
@@ -1115,6 +1148,11 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
   ], [
     slot('resource', 'Resource', 'role-resource', 'Game system resource.'),
   ], [], 'rule', { width: 320, height: 220 }),
+  createDefinition('resource-package-resource', 'Resource Package', ['资源包', 'asset bundle', 'package'], 'Run Resources', 'core', 'The assembled package of generated role-card, field, image, layout, atmosphere, gameplay, and context resources.', [
+    slot('resource', 'Resource', 'role-resource', 'Previous generated role resource.'),
+  ], [
+    slot('resource', 'Resource', 'resource-package', 'Assembled resource package.'),
+  ], [], 'package', { width: 284, height: 188 }),
   createDefinition('style-guide-resource', 'Dialogue Style', ['语气', 'style guide', 'dialogue'], 'Run Resources', 'asset', 'The generated dialogue style guide for the role.', [
     slot('resource', 'Resource', 'role-resource', 'Previous generated role resource.'),
   ], [
@@ -1168,8 +1206,9 @@ const DEFAULT_NODE_PLACEMENT: Array<{ id: string; type: string; title: string; x
   { id: 'game-system-target', type: 'game-system-target', title: 'Game System Target', x: 1400, y: 1080 },
   { id: 'generation-strategy', type: 'generation-strategy', title: 'Generation Strategy', x: 1740, y: 40 },
   { id: 'critique-loop', type: 'critique-loop', title: 'Critique Loop', x: 1740, y: 330 },
-  { id: 'quality-gate', type: 'quality-gate', title: 'Quality Gate', x: 2080, y: 190, status: 'stale' },
-  { id: 'output-adapter', type: 'output-adapter', title: 'Output Adapter', x: 2420, y: 190 },
+  { id: 'resource-package-target', type: 'resource-package-target', title: 'Resource Package Target', x: 1740, y: 650 },
+  { id: 'quality-gate', type: 'quality-gate', title: 'Quality Gate', x: 2080, y: 360, status: 'stale' },
+  { id: 'output-adapter', type: 'output-adapter', title: 'Output Adapter', x: 2420, y: 360 },
 ]
 
 const DEFAULT_LINKS: CharacterResourceLink[] = [
@@ -1206,6 +1245,14 @@ const DEFAULT_LINKS: CharacterResourceLink[] = [
   link('character-fields', 'field', 'game-system-target', 'field', 'guides'),
   link('style-pressure', 'style', 'game-system-target', 'style', 'weights'),
   link('hard-constraints', 'constraint', 'game-system-target', 'constraint', 'constrains'),
+  link('character-card-target', 'candidate', 'resource-package-target', 'candidate', 'provides'),
+  link('character-fields', 'field', 'resource-package-target', 'field', 'provides'),
+  link('avatar-image-target', 'imageAsset', 'resource-package-target', 'imageAsset', 'provides'),
+  link('overview-sheet-image-target', 'imageAsset', 'resource-package-target', 'imageAsset', 'provides'),
+  link('opening-panel-image-target', 'imageAsset', 'resource-package-target', 'imageAsset', 'provides'),
+  link('opening-layout-target', 'layout', 'resource-package-target', 'layout', 'provides'),
+  link('atmosphere-style-target', 'atmosphere', 'resource-package-target', 'atmosphere', 'provides'),
+  link('game-system-target', 'gameSystem', 'resource-package-target', 'gameSystem', 'provides'),
   link('generation-goal', 'goal', 'agent-policy', 'goal', 'guides'),
   link('hard-constraints', 'constraint', 'agent-policy', 'constraint', 'constrains'),
   link('source-material', 'source', 'agent-policy', 'source', 'grounds'),
@@ -1214,8 +1261,8 @@ const DEFAULT_LINKS: CharacterResourceLink[] = [
   link('generation-goal', 'goal', 'generation-strategy', 'goal', 'guides'),
   link('generation-strategy', 'strategy', 'critique-loop', 'strategy', 'routes'),
   link('critique-loop', 'critique', 'quality-gate', 'critique', 'evaluates'),
-  link('character-card-target', 'candidate', 'quality-gate', 'candidate', 'evaluates'),
-  link('character-card-target', 'candidate', 'output-adapter', 'candidate', 'exports'),
+  link('resource-package-target', 'package', 'quality-gate', 'package', 'evaluates'),
+  link('resource-package-target', 'package', 'output-adapter', 'package', 'exports'),
   link('quality-gate', 'report', 'output-adapter', 'report', 'constrains'),
 ]
 
@@ -1275,6 +1322,7 @@ export function renderCharacterWorkflowRunDraftInspector(options: CharacterWorkf
 export function createCharacterAgentWorkflowSnapshot(options: CharacterWorkflowPageOptions): Record<string, unknown> {
   const graph = createCharacterResourceGraph(options)
   const definitions = new Map(RESOURCE_NODE_DEFINITIONS.map((definition) => [definition.type, definition]))
+  const graphNodeIds = new Set(graph.nodes.map((node) => node.id))
   const now = Date.now()
   return {
     id: graph.id,
@@ -1315,18 +1363,20 @@ export function createCharacterAgentWorkflowSnapshot(options: CharacterWorkflowP
         state: { status: node.status === 'dirty' ? 'idle' : node.status },
       }
     }),
-    edges: graph.links.map((linkItem) => ({
-      id: linkItem.id,
-      from: {
-        nodeId: linkItem.sourceNodeId,
-        port: linkItem.sourceSlotId,
-      },
-      to: {
-        nodeId: linkItem.targetNodeId,
-        port: linkItem.targetSlotId,
-      },
-      kind: linkItem.kind,
-    })),
+    edges: graph.links
+      .filter((linkItem) => hasResourceLinkEndpoints(linkItem, graphNodeIds))
+      .map((linkItem) => ({
+        id: linkItem.id,
+        from: {
+          nodeId: linkItem.sourceNodeId,
+          port: linkItem.sourceSlotId,
+        },
+        to: {
+          nodeId: linkItem.targetNodeId,
+          port: linkItem.targetSlotId,
+        },
+        kind: linkItem.kind,
+      })),
     defaults: {
       language: options.language,
     },
@@ -1917,33 +1967,41 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
     ...materialVirtual.links,
     ...customLinks.filter((item) => !deletedLinkIds.has(item.id)),
   ]
+  const graphNodeIds = new Set(nodes.map((node) => node.id))
+  const links = graphLinks
+    .filter((item) => !deletedNodeIds.has(item.sourceNodeId) && !deletedNodeIds.has(item.targetNodeId))
+    .filter((item) => hasResourceLinkEndpoints(item, graphNodeIds))
+    .map((item) => {
+      const kind = viewState.linkKinds?.[item.id] ?? item.kind
+      return {
+        ...item,
+        kind,
+        label: LINK_KIND_LABELS[kind],
+        status: validateLink(item, nodes, definitions) ? 'valid' : 'invalid',
+      }
+    })
   return {
     id: 'draft-character-resource-graph',
     title: ui(options, '角色资源图草稿', 'Draft Character Resource Graph'),
     nodes,
-    links: graphLinks
-      .filter((item) => !deletedNodeIds.has(item.sourceNodeId) && !deletedNodeIds.has(item.targetNodeId))
-      .map((item) => {
-        const kind = viewState.linkKinds?.[item.id] ?? item.kind
-        return {
-          ...item,
-          kind,
-          label: LINK_KIND_LABELS[kind],
-          status: validateLink(item, nodes, definitions) ? 'valid' : 'invalid',
-        }
-      }),
+    links,
     groups: [
       { id: 'intent-targets', title: ui(options, '目标资源', 'Target Resources'), nodeIds: ['generation-goal', 'character-card-target', 'character-fields', 'avatar-image-target', 'overview-sheet-image-target', 'opening-panel-image-target', 'opening-layout-target', 'atmosphere-style-target', 'game-system-target', 'source-material'], color: 'rgba(82, 168, 255, 0.16)' },
       { id: 'local-controls', title: ui(options, '局部控制', 'Local Controls'), nodeIds: ['style-pressure', 'hard-constraints', 'avatar-image-control', 'overview-sheet-image-control', 'opening-panel-image-control'], color: 'rgba(162, 202, 188, 0.16)' },
       { id: 'tool-policy', title: ui(options, '工具与策略', 'Tools and Strategy'), nodeIds: ['llm-capability', 'image-capability', 'agent-policy', 'generation-strategy'], color: 'rgba(219, 189, 130, 0.16)' },
-      { id: 'evaluation-output', title: ui(options, '评估与输出', 'Evaluation and Output'), nodeIds: ['critique-loop', 'quality-gate', 'output-adapter'], color: 'rgba(206, 154, 118, 0.16)' },
+      { id: 'evaluation-output', title: ui(options, '评估与输出', 'Evaluation and Output'), nodeIds: ['critique-loop', 'resource-package-target', 'quality-gate', 'output-adapter'], color: 'rgba(206, 154, 118, 0.16)' },
     ],
     tabs: [
       { id: 'workflow', title: 'Draft 01.resourcegraph', kind: 'resource-graph' },
       { id: 'run-draft', title: 'Run Draft', kind: 'run-draft' },
     ],
     viewport: { x: viewState.panX ?? 0, y: viewState.panY ?? 0, zoom: viewState.zoom ?? 0.84 },
-    selection: { nodeIds: viewState.selectedNodeIds?.length ? viewState.selectedNodeIds : [options.selectedNodeId || 'generation-goal'], linkIds: viewState.selectedLinkId ? [viewState.selectedLinkId] : [] },
+    selection: {
+      nodeIds: viewState.selectedNodeIds?.length ? viewState.selectedNodeIds : [options.selectedNodeId || 'generation-goal'],
+      linkIds: viewState.selectedLinkId && links.some((linkItem) => linkItem.id === viewState.selectedLinkId)
+        ? [viewState.selectedLinkId]
+        : [],
+    },
     panels: {
       leftWidth: options.sidebarCollapsed ? 0 : 246,
       rightWidth: options.inspectorCollapsed ? 0 : activeTab === 'run-draft' ? 300 : 252,
@@ -3988,6 +4046,7 @@ function getRoleResourceArtifacts(artifacts: NonNullable<CharacterResourceRunSta
     'image-asset',
     'stale-marker',
     'candidate-pack',
+    'resource-package',
     'quality-report',
     'export-package',
     'generation-report',
@@ -4016,6 +4075,7 @@ function getRunArtifactOrder(type: string): number {
     'image-attempt',
     'image-asset',
     'stale-marker',
+    'resource-package',
     'quality-report',
     'generation-report',
     'export-package',
@@ -4027,6 +4087,7 @@ function getRunArtifactOrder(type: string): number {
 function getRunArtifactMeta(artifact: NonNullable<CharacterResourceRunState['artifacts']>[number], options: CharacterWorkflowPageOptions): string {
   const labels: Record<string, string> = {
     'candidate-pack': ui(options, '候选包 / resource', 'candidate pack / resource'),
+    'resource-package': ui(options, '资源包 / package', 'resource package / package'),
     'character-card-draft': ui(options, '角色卡草稿 / draft', 'character draft / resource'),
     'source-material': ui(options, '素材 / material', 'source material / resource'),
     'character-card-field': ui(options, '角色字段 / field', 'character field / resource'),
@@ -4055,6 +4116,7 @@ function getRunArtifactMeta(artifact: NonNullable<CharacterResourceRunState['art
 function getRunArtifactNodeType(type: string): string {
   const nodeTypes: Record<string, string> = {
     'candidate-pack': 'candidate-pack-resource',
+    'resource-package': 'resource-package-resource',
     'source-material': 'source-material-resource',
     'run-text-result': 'role-card-resource',
     'run-css-result': 'atmosphere-style-resource',
@@ -5597,6 +5659,13 @@ function link(
 
 function getTargetSlotKey(linkItem: Pick<CharacterResourceLink, 'targetNodeId' | 'targetSlotId'>): string {
   return `${linkItem.targetNodeId}:${linkItem.targetSlotId}`
+}
+
+function hasResourceLinkEndpoints(
+  linkItem: Pick<CharacterResourceLink, 'sourceNodeId' | 'targetNodeId'>,
+  nodeIds: ReadonlySet<string>
+): boolean {
+  return nodeIds.has(linkItem.sourceNodeId) && nodeIds.has(linkItem.targetNodeId)
 }
 
 function validateLink(

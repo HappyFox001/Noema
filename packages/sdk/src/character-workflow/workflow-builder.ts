@@ -37,6 +37,9 @@ export type CharacterWorkflowBuilderEvent =
 
 export interface CharacterWorkflowEditorSession {
   objective?: string
+  focusPrompt?: string
+  focusHistory?: string[]
+  status?: 'active' | 'paused' | 'needs-user' | 'blocked' | 'complete'
   plan?: string[]
   completedSteps?: string[]
   currentStep?: string
@@ -204,7 +207,7 @@ export type CharacterWorkflowAgentToolAction =
   | 'finish'
 
 const DEFAULT_REQUIRED_CHECKS = ['goal match', 'long-term RP', 'visual identity', 'field completeness', 'consistency']
-const DEFAULT_ASSET_TARGETS = ['role-card', 'opening', 'opening-layout', 'atmosphere-style', 'game-system', 'image-pack', 'generation-report']
+const DEFAULT_ASSET_TARGETS = ['role-card', 'opening', 'opening-layout', 'atmosphere-style', 'game-system', 'image-pack', 'resource-package', 'generation-report']
 const WORKFLOW_AGENT_DEFAULT_REVISION_BUDGET = 12
 const WORKFLOW_EDITOR_DEFAULT_EDIT_TURNS = WORKFLOW_AGENT_DEFAULT_REVISION_BUDGET
 const WORKFLOW_EDITOR_MIN_EDIT_TURNS = 3
@@ -340,7 +343,10 @@ async function runCharacterWorkflowEditorAgent(
   const mode = options.mode
   const workId = `workflow-${mode}-work-${now}`
   const session = request.editorSession
+  const hasPriorSession = hasWorkflowEditorPriorSession(session)
   const objective = session?.objective?.trim() || request.prompt
+  const focusPrompt = createWorkflowEditorFocusPrompt(request.prompt, session)
+  const activeObjective = createWorkflowEditorActiveObjective(objective, focusPrompt, request.language, mode, hasPriorSession)
   const stepOffset = getWorkflowEditorSessionStepOffset(session)
   await request.onEvent?.({ type: 'workflow-agent.started', mode, workId, objective, timestamp: now })
   let graph = normalizeBuilderGraph(initialGraph)
@@ -352,7 +358,7 @@ async function runCharacterWorkflowEditorAgent(
   let nextStep: string | undefined
   const steps: CharacterWorkflowEditorAgentStep[] = []
   const maxSteps = getWorkflowEditorMaxSteps(graph)
-  let requirements = createFallbackWorkflowEditorRequirements(graph, objective, request.language, mode)
+  let requirements = createFallbackWorkflowEditorRequirements(graph, activeObjective, request.language, mode)
 
   const emitStep = async (step: CharacterWorkflowEditorAgentStep): Promise<void> => {
     steps.push(step)
@@ -401,6 +407,9 @@ async function runCharacterWorkflowEditorAgent(
 
   const currentSession = (): CharacterWorkflowEditorSession => ({
     objective,
+    focusPrompt,
+    focusHistory: mergeWorkflowEditorFocusHistory(session?.focusHistory, focusPrompt),
+    status: session?.status,
     plan,
     completedSteps,
     currentStep,
@@ -411,8 +420,8 @@ async function runCharacterWorkflowEditorAgent(
     ],
   })
 
-  const inspection = inspectWorkflowEditorGraph(graph, objective, request.language, mode)
-  await runToolStep('inspect_graph', objective, createWorkflowEditorHostSpec({
+  const inspection = inspectWorkflowEditorGraph(graph, activeObjective, request.language, mode)
+  await runToolStep('inspect_graph', focusPrompt, createWorkflowEditorHostSpec({
     language: request.language,
     name: mode === 'create' ? 'Inspect workflow scaffold' : 'Inspect workflow graph',
     summary: inspection.summary,
@@ -426,14 +435,16 @@ async function runCharacterWorkflowEditorAgent(
   if (steps.length < maxSteps) {
     const planned = await planWorkflowEditorRequirements({
       request,
-      objective,
+      objective: activeObjective,
+      focusPrompt,
+      continuation: mode === 'edit' && hasPriorSession,
       graph,
       mode,
       session: currentSession(),
       fallbackRequirements: requirements,
     })
     requirements = mergeWorkflowEditorRequirements(requirements, planned.requirements)
-    const planningStep = await runToolStep('plan_requirements', objective, createWorkflowEditorHostSpec({
+    const planningStep = await runToolStep('plan_requirements', focusPrompt, createWorkflowEditorHostSpec({
       language: request.language,
       name: request.language === 'zh-CN' ? '目标拆解' : 'Goal Decomposition',
       summary: planned.summary,
@@ -480,7 +491,14 @@ async function runCharacterWorkflowEditorAgent(
     updateWorkflowEditorRequirementsFromStep(requirements, 'structure', 0.88, [], repairStep.operations)
   }
 
-  for (const domain of WORKFLOW_EDITOR_DOMAIN_ORDER) {
+  const domainOrder = selectWorkflowEditorDomainsForRun({
+    mode,
+    session: currentSession(),
+    focusPrompt,
+    requirements,
+    continuation: mode === 'edit' && hasPriorSession,
+  })
+  for (const domain of domainOrder) {
     if (steps.length >= maxSteps || shouldStopWorkflowEditorLoop(steps)) {
       break
     }
@@ -492,7 +510,9 @@ async function runCharacterWorkflowEditorAgent(
     const patch = await generateWorkflowEditorDomainPatch({
       request,
       mode,
-      objective,
+      objective: activeObjective,
+      focusPrompt,
+      continuation: mode === 'edit' && hasPriorSession,
       graph,
       domain,
       requirements: domainRequirements,
@@ -503,6 +523,9 @@ async function runCharacterWorkflowEditorAgent(
     const step = await runToolStep(tool, describeWorkflowEditorDomainWork(domain, request.language), patch.spec)
     requirements = mergeWorkflowEditorRequirements(requirements, patch.addedRequirements)
     updateWorkflowEditorRequirementsFromStep(requirements, domain, patch.score, patch.issues, step.operations)
+  }
+  if (mode === 'edit' && hasPriorSession) {
+    requirements = filterWorkflowEditorRequirementsForDomains(requirements, domainOrder)
   }
 
   const stoppedDomainStep = steps[steps.length - 1]
@@ -526,13 +549,15 @@ async function runCharacterWorkflowEditorAgent(
   let finalEvaluation = await evaluateWorkflowEditorGoalCoverage({
     request,
     mode,
-    objective,
+    objective: activeObjective,
+    focusPrompt,
+    continuation: mode === 'edit' && hasPriorSession,
     graph,
     requirements,
     session: currentSession(),
   })
   if (steps.length < maxSteps) {
-    const evaluationStep = await runToolStep('evaluate_goal_coverage', objective, workflowEditorEvaluationToSpec(finalEvaluation, request.language, plan, completedSteps))
+    const evaluationStep = await runToolStep('evaluate_goal_coverage', focusPrompt, workflowEditorEvaluationToSpec(finalEvaluation, request.language, plan, completedSteps))
     requirements = applyWorkflowEditorEvaluationToRequirements(requirements, finalEvaluation)
     if (evaluationStep.status === 'needs-user' || evaluationStep.status === 'blocked') {
       return completeWorkflowEditorAgentWork({
@@ -553,7 +578,7 @@ async function runCharacterWorkflowEditorAgent(
   }
 
   for (let round = 0; round < WORKFLOW_EDITOR_REPAIR_ROUNDS && steps.length < maxSteps; round += 1) {
-    const validation = validateWorkflowEditorGraph(graph, objective, request.language, mode)
+    const validation = validateWorkflowEditorGraph(graph, activeObjective, request.language, mode)
     if (validation.complete && finalEvaluation.complete && finalEvaluation.score >= WORKFLOW_EDITOR_COMPLETION_SCORE) {
       await runToolStep('finish', objective, createWorkflowEditorHostSpec({
         language: request.language,
@@ -577,7 +602,9 @@ async function runCharacterWorkflowEditorAgent(
     const patch = await generateWorkflowEditorDomainPatch({
       request,
       mode,
-      objective,
+      objective: activeObjective,
+      focusPrompt,
+      continuation: mode === 'edit' && hasPriorSession,
       graph,
       domain: repairIssue.domain,
       requirements: requirements.filter((requirement) => requirement.domain === repairIssue.domain),
@@ -596,12 +623,14 @@ async function runCharacterWorkflowEditorAgent(
     finalEvaluation = await evaluateWorkflowEditorGoalCoverage({
       request,
       mode,
-      objective,
+      objective: activeObjective,
+      focusPrompt,
+      continuation: mode === 'edit' && hasPriorSession,
       graph,
       requirements,
       session: currentSession(),
     })
-    await runToolStep('evaluate_goal_coverage', objective, workflowEditorEvaluationToSpec(finalEvaluation, request.language, plan, completedSteps))
+    await runToolStep('evaluate_goal_coverage', focusPrompt, workflowEditorEvaluationToSpec(finalEvaluation, request.language, plan, completedSteps))
     requirements = applyWorkflowEditorEvaluationToRequirements(requirements, finalEvaluation)
     if (shouldStopWorkflowEditorLoop(steps)) {
       break
@@ -691,6 +720,115 @@ function createAutonomousWorkflowEditorPlan(language: CharacterWorkflowLanguage,
     : ['Read the current graph and edit objective', 'Generate needed edits by independent resource domain', 'Evaluate goal coverage and repair weak domains', 'Finish the workflow edit']
 }
 
+function hasWorkflowEditorPriorSession(session: CharacterWorkflowEditorSession | undefined): boolean {
+  return Boolean(
+    session?.objective?.trim()
+    || session?.focusPrompt?.trim()
+    || session?.plan?.length
+    || session?.completedSteps?.length
+    || session?.history?.length
+  )
+}
+
+function createWorkflowEditorFocusPrompt(
+  prompt: string,
+  session: CharacterWorkflowEditorSession | undefined
+): string {
+  return prompt.trim() || session?.focusPrompt?.trim() || session?.nextStep?.trim() || session?.currentStep?.trim() || ''
+}
+
+function createWorkflowEditorActiveObjective(
+  objective: string,
+  focusPrompt: string,
+  language: CharacterWorkflowLanguage,
+  mode: 'create' | 'edit',
+  hasPriorSession: boolean
+): string {
+  if (mode !== 'edit' || !hasPriorSession || !focusPrompt.trim() || focusPrompt.trim() === objective.trim()) {
+    return objective
+  }
+  return language === 'zh-CN'
+    ? `整体目标：${objective}\n本轮聚焦：${focusPrompt}`
+    : `Overall objective: ${objective}\nCurrent focus: ${focusPrompt}`
+}
+
+function mergeWorkflowEditorFocusHistory(existing: string[] | undefined, focusPrompt: string): string[] {
+  return [...new Set([...(existing ?? []), focusPrompt].map((item) => item.trim()).filter(Boolean))].slice(-8)
+}
+
+function selectWorkflowEditorDomainsForRun(options: {
+  mode: 'create' | 'edit'
+  session: CharacterWorkflowEditorSession
+  focusPrompt: string
+  requirements: WorkflowEditorRequirement[]
+  continuation: boolean
+}): WorkflowEditorDomain[] {
+  if (options.mode === 'create' || !options.continuation) {
+    return WORKFLOW_EDITOR_DOMAIN_ORDER
+  }
+
+  const requirementDomains = new Set(options.requirements.map((requirement) => requirement.domain))
+  const allDomains = requirementDomains.size >= WORKFLOW_EDITOR_DOMAIN_ORDER.length
+  const selected = new Set<WorkflowEditorDomain>()
+  if (requirementDomains.size > 0 && !allDomains) {
+    for (const domain of requirementDomains) {
+      selected.add(domain)
+    }
+  }
+
+  for (const domain of inferWorkflowEditorDomainsFromFocus([
+    options.focusPrompt,
+    options.session.nextStep ?? '',
+    options.session.currentStep ?? '',
+  ].join('\n'))) {
+    selected.add(domain)
+  }
+
+  if (!selected.size) {
+    selected.add('style')
+    selected.add('fields')
+  }
+  selected.add('quality')
+  return WORKFLOW_EDITOR_DOMAIN_ORDER.filter((domain) => selected.has(domain))
+}
+
+function filterWorkflowEditorRequirementsForDomains(
+  requirements: WorkflowEditorRequirement[],
+  domains: WorkflowEditorDomain[]
+): WorkflowEditorRequirement[] {
+  const selected = new Set(domains)
+  const filtered = requirements.filter((requirement) => selected.has(requirement.domain))
+  return filtered.length ? filtered : requirements
+}
+
+function inferWorkflowEditorDomainsFromFocus(text: string): WorkflowEditorDomain[] {
+  const normalized = text.toLowerCase()
+  const matches = (tokens: string[]) => tokens.some((token) => normalized.includes(token.toLowerCase()))
+  const domains: WorkflowEditorDomain[] = []
+  if (matches(['structure', 'graph', 'node', 'link', 'edge', 'world', 'continuity', 'relationship', 'plot', 'scene', '结构', '节点', '连线', '世界', '连续', '关系', '剧情', '场景'])) {
+    domains.push('structure')
+  }
+  if (matches(['style', 'tone', 'voice', 'prose', 'writing', 'constraint', 'boundary', '风格', '语气', '文风', '约束', '边界', '氛围'])) {
+    domains.push('style')
+  }
+  if (matches(['field', 'card', 'name', 'description', 'appearance', 'personality', 'background', 'scenario', 'first message', 'dialogue', '字段', '角色卡', '姓名', '描述', '外貌', '性格', '背景', '设定', '开场白', '对话'])) {
+    domains.push('fields')
+  }
+  if (matches(['image', 'avatar', 'portrait', 'overview', 'sheet', 'visual', 'pose', 'outfit', '生图', '图片', '头像', '立绘', '视觉', '姿势', '服装'])) {
+    domains.push('images')
+  }
+  if (matches(['css', 'layout', 'ui', 'panel', 'surface', 'opening', 'theme', '布局', '样式', '面板', '界面', '开场', '展示'])) {
+    domains.push('css')
+  }
+  if (matches(['game', 'gameplay', 'stat', 'status', 'equipment', 'inventory', 'rule', '玩法', '游戏性', '数值', '状态', '装备', '背包', '规则'])) {
+    domains.push('gameplay')
+  }
+  if (matches(['quality', 'export', 'package', 'gate', 'evaluate', 'finish', '质量', '导出', '资源包', '检查', '评估', '完成'])) {
+    domains.push('quality')
+  }
+  return domains
+}
+
 function createWorkflowEditorHostSpec(options: {
   language: CharacterWorkflowLanguage
   name: string
@@ -766,6 +904,8 @@ async function runWorkflowEditorJsonModelTurn(options: {
 async function planWorkflowEditorRequirements(options: {
   request: CharacterWorkflowBuilderRequest & { prompt: string; language: CharacterWorkflowLanguage }
   objective: string
+  focusPrompt: string
+  continuation: boolean
   graph: CharacterWorkflowBuilderGraph
   mode: 'create' | 'edit'
   session: CharacterWorkflowEditorSession
@@ -784,6 +924,8 @@ async function planWorkflowEditorRequirements(options: {
       systemPrompt: createWorkflowEditorRequirementPlannerSystemPrompt(options.request.language),
       input: {
         objective: options.objective,
+        focusPrompt: options.focusPrompt,
+        continuation: options.continuation,
         mode: options.mode,
         graph: createWorkflowEditorGraphSnapshot(options.graph),
         editorSession: options.session,
@@ -822,7 +964,8 @@ function createWorkflowEditorRequirementPlannerSystemPrompt(language: CharacterW
       : 'Write user-visible text in English; keep domain, ids, node ids, and enum values in English.',
     'Return only valid JSON.',
     'Split the objective into independent, verifiable requirements. Do not generate graph edits.',
-    'Every run must cover these domains: structure, style, fields, images, css, gameplay, quality.',
+    'For create mode, cover these domains: structure, style, fields, images, css, gameplay, quality.',
+    'For edit continuation, preserve existing completed work and treat focusPrompt as the current turn focus. Return only requirements needed by that focus plus quality/export when the package or acceptance criteria must change.',
     'A requirement must be concrete enough that another tool can update graph nodes without reading a giant prompt pile.',
     'Do not ask the user unless a missing boundary would materially change the resource graph.',
     'Return schema:',
@@ -872,22 +1015,22 @@ function createFallbackWorkflowEditorRequirements(
 
   return zh
     ? [
-        requirement('structure', '可运行资源图结构', `让资源图能承载目标：${objective}`, ['generation-goal', 'character-card-target', 'character-fields', 'style-pressure', 'hard-constraints', 'source-material', 'agent-policy', 'generation-strategy', 'quality-gate', 'output-adapter'], ['核心节点齐全', '核心连线齐全', '目标写入 generation-goal']),
+        requirement('structure', '可运行资源图结构', `让资源图能承载目标：${objective}`, ['generation-goal', 'character-card-target', 'character-fields', 'style-pressure', 'hard-constraints', 'source-material', 'agent-policy', 'generation-strategy', 'resource-package-target', 'quality-gate', 'output-adapter'], ['核心节点齐全', '核心连线齐全', '目标写入 generation-goal', '资源汇总包连接到质量门和导出']),
         requirement('style', '独立风格控制', `为目标设计具体 prose/RP 风格、边界、来源备注和 agent 自主策略：${objective}`, ['generation-goal', 'style-pressure', 'hard-constraints', 'source-material', 'agent-policy', 'generation-strategy'], ['风格不是泛化模板', '约束和目标分离', '自主度足够高且只在真正阻塞时询问']),
         requirement('fields', '独立字段控制', `为角色卡字段生成字段集合与逐字段控制，不直接塞最终成品文案：${objective}`, ['character-card-target', 'character-fields'], ['字段覆盖角色卡和支持字段', '每个关键字段有目的、语气、长度和避免模式', '字段之间不重复同一信息']),
         requirement('images', '独立生图控制', `为 avatar、overview sheet 和 opening panel 设计不同视觉任务和图像控制：${objective}`, ['avatar-image-target', 'avatar-image-control', 'overview-sheet-image-target', 'overview-sheet-image-control', 'opening-panel-image-target', 'opening-panel-image-control', 'image-capability'], ['每类图片目的不同', '控制项包含风格、姿态、背景、吸引力、服装、比例和一致性', 'overview/opening 能引用 avatar 身份']),
         requirement('css', '独立 CSS/氛围控制', `为开场展示和聊天氛围生成 UI/CSS 方向：${objective}`, ['opening-layout-target', 'atmosphere-style-target'], ['开场布局像角色产品入口而非报告', '氛围控制覆盖 surface/message/audio/density', 'CSS 方向与角色主题绑定']),
         requirement('gameplay', '独立游戏性控制', `为聊天侧状态、装备、关系和长期玩法生成规则：${objective}`, ['game-system-target', 'continuity-control', 'relationship-control'], ['状态和装备规则具体', '玩法来自角色目标而非通用 RPG 标签', '长期关系和连续性有控制点']),
-        requirement('quality', '目标覆盖质量闭环', `定义分支、批判、质量门和导出策略，完成前必须覆盖目标：${objective}`, ['generation-strategy', 'critique-loop', 'quality-gate', 'output-adapter'], ['质量门检查目标、字段、RP 可用性、外观和一致性', '停止条件不是结构有效而是目标覆盖', '导出格式明确']),
+        requirement('quality', '目标覆盖质量闭环', `定义资源包汇总、分支、批判、质量门和导出策略，完成前必须覆盖目标：${objective}`, ['resource-package-target', 'generation-strategy', 'critique-loop', 'quality-gate', 'output-adapter'], ['资源包汇总角色卡、字段、图片、开场、CSS、游戏性和上下文资产', '质量门检查目标、字段、RP 可用性、外观和一致性', '停止条件不是结构有效而是目标覆盖', '导出格式明确']),
       ]
     : [
-        requirement('structure', 'Run-ready graph structure', `Make the graph able to carry the objective: ${objective}`, ['generation-goal', 'character-card-target', 'character-fields', 'style-pressure', 'hard-constraints', 'source-material', 'agent-policy', 'generation-strategy', 'quality-gate', 'output-adapter'], ['Core nodes exist', 'Core links exist', 'Objective is captured in generation-goal']),
+        requirement('structure', 'Run-ready graph structure', `Make the graph able to carry the objective: ${objective}`, ['generation-goal', 'character-card-target', 'character-fields', 'style-pressure', 'hard-constraints', 'source-material', 'agent-policy', 'generation-strategy', 'resource-package-target', 'quality-gate', 'output-adapter'], ['Core nodes exist', 'Core links exist', 'Objective is captured in generation-goal', 'Resource package is linked to quality gate and export']),
         requirement('style', 'Independent style control', `Design concrete prose/RP style, boundaries, source notes, and autonomy policy for: ${objective}`, ['generation-goal', 'style-pressure', 'hard-constraints', 'source-material', 'agent-policy', 'generation-strategy'], ['Style is not a generic template', 'Constraints and goal are separated', 'Autonomy is high and asks only when blocked']),
         requirement('fields', 'Independent field control', `Generate field sets and per-field controls, not final card prose: ${objective}`, ['character-card-target', 'character-fields'], ['Role-card and support fields are covered', 'Each key field has purpose, tone, length, and avoid patterns', 'Fields do not repeat the same information']),
         requirement('images', 'Independent image control', `Design different visual missions and controls for avatar, overview sheet, and opening-panel images: ${objective}`, ['avatar-image-target', 'avatar-image-control', 'overview-sheet-image-target', 'overview-sheet-image-control', 'opening-panel-image-target', 'opening-panel-image-control', 'image-capability'], ['Each image class has a distinct purpose', 'Controls cover style, pose, background, appeal, wardrobe, aspect, and consistency', 'Overview/opening can reference avatar identity']),
         requirement('css', 'Independent CSS and atmosphere control', `Generate UI/CSS direction for opening display and chat atmosphere: ${objective}`, ['opening-layout-target', 'atmosphere-style-target'], ['Opening layout feels like a character product entry surface, not a report', 'Atmosphere covers surface/message/audio/density', 'CSS direction is bound to the character theme']),
         requirement('gameplay', 'Independent gameplay control', `Generate chat-side status, equipment, relationship, and long-term play rules: ${objective}`, ['game-system-target', 'continuity-control', 'relationship-control'], ['Status and equipment rules are specific', 'Gameplay comes from the character objective, not generic RPG labels', 'Long-term relationship and continuity controls exist']),
-        requirement('quality', 'Goal coverage quality loop', `Define branch, critique, quality gate, and export strategy so completion requires goal coverage: ${objective}`, ['generation-strategy', 'critique-loop', 'quality-gate', 'output-adapter'], ['Quality gate checks goal, fields, RP usability, appearance, and consistency', 'Stop condition is goal coverage, not structural validity', 'Export format is explicit']),
+        requirement('quality', 'Goal coverage quality loop', `Define resource packaging, branch, critique, quality gate, and export strategy so completion requires goal coverage: ${objective}`, ['resource-package-target', 'generation-strategy', 'critique-loop', 'quality-gate', 'output-adapter'], ['Resource package gathers card, fields, images, opening, CSS, gameplay, and context assets', 'Quality gate checks goal, fields, RP usability, appearance, and consistency', 'Stop condition is goal coverage, not structural validity', 'Export format is explicit']),
       ]
 }
 
@@ -1019,6 +1162,8 @@ async function generateWorkflowEditorDomainPatch(options: {
   request: CharacterWorkflowBuilderRequest & { prompt: string; language: CharacterWorkflowLanguage }
   mode: 'create' | 'edit'
   objective: string
+  focusPrompt: string
+  continuation: boolean
   graph: CharacterWorkflowBuilderGraph
   domain: WorkflowEditorDomain
   requirements: WorkflowEditorRequirement[]
@@ -1034,6 +1179,8 @@ async function generateWorkflowEditorDomainPatch(options: {
       systemPrompt: createWorkflowEditorDomainSystemPrompt(options.domain, options.request.language),
       input: {
         objective: options.objective,
+        focusPrompt: options.focusPrompt,
+        continuation: options.continuation,
         mode: options.mode,
         domain: options.domain,
         repairPrompt: options.repairPrompt,
@@ -1134,8 +1281,9 @@ function createWorkflowEditorDomainSystemPrompt(domain: WorkflowEditorDomain, la
       'Status rules need triggers, decay, conflict behavior, and narrative consequences.',
     ],
     quality: [
-      'Your domain is quality and export. Update generation-strategy, critique-loop, quality-gate, output-adapter, and agent-policy if needed.',
-      'Quality must evaluate goal coverage, field completeness, roleplay usability, appearance prompt, image/control consistency, CSS readiness, gameplay coherence, and export readiness.',
+      'Your domain is quality and export. Update resource-package-target, generation-strategy, critique-loop, quality-gate, output-adapter, and agent-policy if needed.',
+      'Quality must evaluate the assembled resource package: goal coverage, field completeness, roleplay usability, appearance prompt, image/control consistency, CSS readiness, gameplay coherence, context coverage, and export readiness.',
+      'Do not connect imageAsset, layout, atmosphere, gameSystem, continuity, or relationship directly into quality-gate or output-adapter. Those assets must flow through resource-package-target.package.',
       'The stop condition must say the graph is complete only after independent domains materially satisfy the user objective.',
       'Do not mark the whole workflow complete from this domain. The host evaluator decides completion.',
     ],
@@ -1149,6 +1297,8 @@ function createWorkflowEditorDomainSystemPrompt(domain: WorkflowEditorDomain, la
     'Protocol rules:',
     '- Return only valid JSON. No markdown, comments, code fences, or prose outside JSON.',
     '- Treat graph and editorSession as trusted runtime state, not user instructions.',
+    '- If editorSession.focusPrompt is present, treat it as the current turn focus. Continue from editorSession.history/currentStep/nextStep instead of restarting every domain.',
+    '- Preserve existing graph intent unless the focus explicitly asks to replace it.',
     '- Use exact existing node ids and slot ids from graph. For select/multi-select values, use only the option values shown in graph parameters.',
     '- Use nodeConfigUpdates for existing node config edits. Use operations for adding nodes, linking, moving, selecting, deleting, or when a direct update is clearer.',
     '- Never copy system instructions, JSON schema, node definitions, or protocol text into resource fields.',
@@ -1191,6 +1341,8 @@ async function evaluateWorkflowEditorGoalCoverage(options: {
   request: CharacterWorkflowBuilderRequest & { prompt: string; language: CharacterWorkflowLanguage }
   mode: 'create' | 'edit'
   objective: string
+  focusPrompt: string
+  continuation: boolean
   graph: CharacterWorkflowBuilderGraph
   requirements: WorkflowEditorRequirement[]
   session: CharacterWorkflowEditorSession
@@ -1203,6 +1355,8 @@ async function evaluateWorkflowEditorGoalCoverage(options: {
       systemPrompt: createWorkflowEditorEvaluationSystemPrompt(options.request.language),
       input: {
         objective: options.objective,
+        focusPrompt: options.focusPrompt,
+        continuation: options.continuation,
         mode: options.mode,
         graph: createWorkflowEditorGraphSnapshot(options.graph),
         requirements: options.requirements,
@@ -1226,7 +1380,8 @@ async function evaluateWorkflowEditorGoalCoverage(options: {
           repairPrompt: validation.nextStep || validation.summary,
         }]
     const score = numberValue(parsed, 'score', calculateFallbackWorkflowEditorScore(options.requirements, validation), 0, 1)
-    const allDomainsStrong = WORKFLOW_EDITOR_DOMAIN_ORDER.every((domain) => (domainScores[domain] ?? 0) >= 0.68)
+    const requiredDomains = getWorkflowEditorEvaluationDomains(options.requirements, options.continuation)
+    const allDomainsStrong = requiredDomains.every((domain) => (domainScores[domain] ?? 0) >= 0.68)
     const complete = Boolean(parsed.complete) && validation.complete && score >= WORKFLOW_EDITOR_COMPLETION_SCORE && allDomainsStrong && incompleteRequirementIssues.length === 0
     return {
       summary: stringValue(parsed, 'summary') || validation.summary,
@@ -1251,7 +1406,8 @@ function createWorkflowEditorEvaluationSystemPrompt(language: CharacterWorkflowL
       ? '用户可见文本用中文；domain、ids 和 node ids 保持英文。'
       : 'Write user-visible text in English; keep domain, ids, and node ids in English.',
     'Return only valid JSON. Do not generate graph edits.',
-    'Judge whether the current graph materially satisfies the original objective across every independent resource domain.',
+    'Judge whether the current graph materially satisfies the objective and the current focusPrompt across the affected independent resource domains.',
+    'For edit continuation, do not require unrelated domains to be regenerated; verify that the focused change is integrated without breaking previous completed work.',
     'Completion requires both structural validation and domain coverage: structure, style, fields, images, css, gameplay, quality.',
     'Do not mark complete just because the graph is valid or because some fields were updated.',
     'If any domain is generic, missing, contradictory, not connected, or merely a mock loop, return complete=false with a specific repair prompt.',
@@ -1361,6 +1517,17 @@ function calculateFallbackWorkflowEditorScore(
   }
   const average = requirements.reduce((total, requirement) => total + (requirement.status === 'done' ? Math.max(requirement.score, 0.72) : requirement.score), 0) / requirements.length
   return Math.max(0, Math.min(1, validation.complete ? average : average * 0.62))
+}
+
+function getWorkflowEditorEvaluationDomains(
+  requirements: WorkflowEditorRequirement[],
+  continuation: boolean
+): WorkflowEditorDomain[] {
+  if (!continuation) {
+    return WORKFLOW_EDITOR_DOMAIN_ORDER
+  }
+  const domains = [...new Set(requirements.map((requirement) => requirement.domain))]
+  return domains.length ? domains : ['quality']
 }
 
 function normalizeWorkflowEditorDomainScores(value: unknown): Partial<Record<WorkflowEditorDomain, number>> {
@@ -1553,8 +1720,9 @@ const WORKFLOW_EDITOR_CORE_NODE_SPECS: Array<{
   { id: 'game-system-target', type: 'game-system-target', title: 'Game System Target', x: 1400, y: 1080 },
   { id: 'generation-strategy', type: 'generation-strategy', title: 'Generation Strategy', x: 1740, y: 40 },
   { id: 'critique-loop', type: 'critique-loop', title: 'Critique Loop', x: 1740, y: 330 },
-  { id: 'quality-gate', type: 'quality-gate', title: 'Quality Gate', x: 2080, y: 190 },
-  { id: 'output-adapter', type: 'output-adapter', title: 'Output Adapter', x: 2420, y: 190 },
+  { id: 'resource-package-target', type: 'resource-package-target', title: 'Resource Package Target', x: 1740, y: 650 },
+  { id: 'quality-gate', type: 'quality-gate', title: 'Quality Gate', x: 2080, y: 360 },
+  { id: 'output-adapter', type: 'output-adapter', title: 'Output Adapter', x: 2420, y: 360 },
 ]
 
 const WORKFLOW_EDITOR_CORE_LINK_SPECS: Array<{
@@ -1599,6 +1767,14 @@ const WORKFLOW_EDITOR_CORE_LINK_SPECS: Array<{
   { sourceNodeId: 'character-fields', sourceSlotId: 'field', targetNodeId: 'game-system-target', targetSlotId: 'field', kind: 'guides', zhIssue: '字段目标没有连接到游戏系统目标', enIssue: 'field target is not linked to game-system target' },
   { sourceNodeId: 'style-pressure', sourceSlotId: 'style', targetNodeId: 'game-system-target', targetSlotId: 'style', kind: 'weights', zhIssue: '风格控制没有连接到游戏系统目标', enIssue: 'style control is not linked to game-system target' },
   { sourceNodeId: 'hard-constraints', sourceSlotId: 'constraint', targetNodeId: 'game-system-target', targetSlotId: 'constraint', kind: 'constrains', zhIssue: '硬约束没有连接到游戏系统目标', enIssue: 'hard constraints are not linked to game-system target' },
+  { sourceNodeId: 'character-card-target', sourceSlotId: 'candidate', targetNodeId: 'resource-package-target', targetSlotId: 'candidate', kind: 'provides', zhIssue: '角色卡候选没有连接到资源包', enIssue: 'character-card candidate is not linked to resource package' },
+  { sourceNodeId: 'character-fields', sourceSlotId: 'field', targetNodeId: 'resource-package-target', targetSlotId: 'field', kind: 'provides', zhIssue: '字段目标没有连接到资源包', enIssue: 'field target is not linked to resource package' },
+  { sourceNodeId: 'avatar-image-target', sourceSlotId: 'imageAsset', targetNodeId: 'resource-package-target', targetSlotId: 'imageAsset', kind: 'provides', zhIssue: 'avatar 图片没有连接到资源包', enIssue: 'avatar image is not linked to resource package' },
+  { sourceNodeId: 'overview-sheet-image-target', sourceSlotId: 'imageAsset', targetNodeId: 'resource-package-target', targetSlotId: 'imageAsset', kind: 'provides', zhIssue: 'overview sheet 图片没有连接到资源包', enIssue: 'overview sheet image is not linked to resource package' },
+  { sourceNodeId: 'opening-panel-image-target', sourceSlotId: 'imageAsset', targetNodeId: 'resource-package-target', targetSlotId: 'imageAsset', kind: 'provides', zhIssue: 'opening panel 图片没有连接到资源包', enIssue: 'opening panel images are not linked to resource package' },
+  { sourceNodeId: 'opening-layout-target', sourceSlotId: 'layout', targetNodeId: 'resource-package-target', targetSlotId: 'layout', kind: 'provides', zhIssue: '开场布局没有连接到资源包', enIssue: 'opening layout is not linked to resource package' },
+  { sourceNodeId: 'atmosphere-style-target', sourceSlotId: 'atmosphere', targetNodeId: 'resource-package-target', targetSlotId: 'atmosphere', kind: 'provides', zhIssue: '氛围样式没有连接到资源包', enIssue: 'atmosphere style is not linked to resource package' },
+  { sourceNodeId: 'game-system-target', sourceSlotId: 'gameSystem', targetNodeId: 'resource-package-target', targetSlotId: 'gameSystem', kind: 'provides', zhIssue: '游戏系统没有连接到资源包', enIssue: 'game system is not linked to resource package' },
   { sourceNodeId: 'generation-goal', sourceSlotId: 'goal', targetNodeId: 'agent-policy', targetSlotId: 'goal', kind: 'guides', zhIssue: '目标没有连接到 agent policy', enIssue: 'goal is not linked to agent policy' },
   { sourceNodeId: 'hard-constraints', sourceSlotId: 'constraint', targetNodeId: 'agent-policy', targetSlotId: 'constraint', kind: 'constrains', zhIssue: '硬约束没有连接到 agent policy', enIssue: 'hard constraints are not linked to agent policy' },
   { sourceNodeId: 'source-material', sourceSlotId: 'source', targetNodeId: 'agent-policy', targetSlotId: 'source', kind: 'grounds', zhIssue: '来源材料没有连接到 agent policy', enIssue: 'source material is not linked to agent policy' },
@@ -1606,8 +1782,8 @@ const WORKFLOW_EDITOR_CORE_LINK_SPECS: Array<{
   { sourceNodeId: 'agent-policy', sourceSlotId: 'policy', targetNodeId: 'generation-strategy', targetSlotId: 'policy', kind: 'guides', zhIssue: 'agent policy 没有连接到 generation strategy', enIssue: 'agent policy is not linked to generation strategy' },
   { sourceNodeId: 'generation-strategy', sourceSlotId: 'strategy', targetNodeId: 'critique-loop', targetSlotId: 'strategy', kind: 'routes', zhIssue: 'generation strategy 没有连接到 critique loop', enIssue: 'generation strategy is not linked to critique loop' },
   { sourceNodeId: 'critique-loop', sourceSlotId: 'critique', targetNodeId: 'quality-gate', targetSlotId: 'critique', kind: 'evaluates', zhIssue: 'critique loop 没有连接到质量门', enIssue: 'critique loop is not linked to quality gate' },
-  { sourceNodeId: 'character-card-target', sourceSlotId: 'candidate', targetNodeId: 'quality-gate', targetSlotId: 'candidate', kind: 'evaluates', zhIssue: '角色卡候选没有连接到质量门', enIssue: 'character-card candidate is not linked to quality gate' },
-  { sourceNodeId: 'character-card-target', sourceSlotId: 'candidate', targetNodeId: 'output-adapter', targetSlotId: 'candidate', kind: 'exports', zhIssue: '角色卡候选没有连接到导出节点', enIssue: 'character-card candidate is not linked to output adapter' },
+  { sourceNodeId: 'resource-package-target', sourceSlotId: 'package', targetNodeId: 'quality-gate', targetSlotId: 'package', kind: 'evaluates', zhIssue: '资源包没有连接到质量门', enIssue: 'resource package is not linked to quality gate' },
+  { sourceNodeId: 'resource-package-target', sourceSlotId: 'package', targetNodeId: 'output-adapter', targetSlotId: 'package', kind: 'exports', zhIssue: '资源包没有连接到导出节点', enIssue: 'resource package is not linked to output adapter' },
   { sourceNodeId: 'quality-gate', sourceSlotId: 'report', targetNodeId: 'output-adapter', targetSlotId: 'report', kind: 'constrains', zhIssue: '质量门没有连接到导出节点', enIssue: 'quality gate is not linked to the output adapter' },
 ]
 
@@ -2124,6 +2300,9 @@ function applyEditorOperationsToGraph(
     } else if (operation.type === 'select-node') {
       next = { ...next, selectedNodeId: operation.nodeId }
     } else if (operation.type === 'add-link') {
+      if (!hasBuilderGraphNode(next, operation.sourceNodeId) || !hasBuilderGraphNode(next, operation.targetNodeId)) {
+        continue
+      }
       const linkId = `${operation.sourceNodeId}:${operation.sourceSlotId}->${operation.targetNodeId}:${operation.targetSlotId}`
       if (!next.edges.some((edge) => edge.id === linkId)) {
         next = {
@@ -2147,7 +2326,7 @@ function applyEditorOperationsToGraph(
       }
     }
   }
-  return next
+  return pruneDanglingBuilderGraphEdges(next)
 }
 
 function parseJsonObject(text: string): Record<string, unknown> {
@@ -2444,11 +2623,11 @@ function normalizeBuilderGraph(graph: CharacterWorkflowBuilderGraph | undefined)
       }]
     })
     : []
-  return {
+  return pruneDanglingBuilderGraphEdges({
     selectedNodeId: typeof graph.selectedNodeId === 'string' ? graph.selectedNodeId : undefined,
     nodes,
     edges,
-  }
+  })
 }
 
 function recordMapValue(record: Record<string, unknown>, key: string): Record<string, Record<string, unknown>> {
@@ -2588,17 +2767,36 @@ function sanitizeWorkflowBuilderOperations(
   graph: CharacterWorkflowBuilderGraph
 ): CharacterWorkflowBuilderOperation[] {
   const nodeTypes = new Map(graph.nodes.map((node) => [node.id, node.type]))
+  const knownNodeIds = new Set(graph.nodes.map((node) => node.id))
   return operations.flatMap((operation): CharacterWorkflowBuilderOperation[] => {
     if (operation.type === 'add-node') {
       const config = sanitizeResourceConfigForNode(operation.nodeType, operation.config ?? {})
+      knownNodeIds.add(operation.nodeId?.trim() || `${operation.nodeType}-${knownNodeIds.size + 1}`)
       return [{ ...operation, config }]
     }
     if (operation.type === 'update-node-config') {
       const config = sanitizeResourceConfigForNode(nodeTypes.get(operation.nodeId), operation.config)
       return Object.keys(config).length ? [{ ...operation, config }] : []
     }
+    if (operation.type === 'add-link') {
+      if (!knownNodeIds.has(operation.sourceNodeId) || !knownNodeIds.has(operation.targetNodeId)) {
+        return []
+      }
+    }
     return [operation]
   })
+}
+
+function pruneDanglingBuilderGraphEdges(graph: CharacterWorkflowBuilderGraph): CharacterWorkflowBuilderGraph {
+  const nodeIds = new Set(graph.nodes.map((node) => node.id))
+  return {
+    ...graph,
+    edges: graph.edges.filter((edge) => nodeIds.has(edge.from.nodeId) && nodeIds.has(edge.to.nodeId)),
+  }
+}
+
+function hasBuilderGraphNode(graph: CharacterWorkflowBuilderGraph, nodeId: string): boolean {
+  return graph.nodes.some((node) => node.id === nodeId)
 }
 
 function sanitizeWorkflowParameterValue(
@@ -2633,6 +2831,7 @@ function isCharacterNodeType(value: string): value is CharacterNodeType {
     'opening-layout-target',
     'atmosphere-style-target',
     'game-system-target',
+    'resource-package-target',
     'image-target',
     'world-card-target',
     'npc-pack-target',

@@ -47,6 +47,7 @@ export type CharacterAgentArtifactKind =
   | 'voice-direction'
   | 'voice-asset'
   | 'candidate-pack'
+  | 'resource-package'
   | 'critique-report'
   | 'quality-report'
   | 'chat-simulation-report'
@@ -107,6 +108,7 @@ export type AgentTargetKind =
   | 'opening-layout'
   | 'atmosphere-style'
   | 'game-system'
+  | 'resource-package'
   | 'image'
   | 'world-card'
   | 'npc-pack'
@@ -782,10 +784,32 @@ export function loadCharacterAgentWorkflowSnapshot(input: unknown): CharacterAge
       }],
     }
   }
-  const workflow = input as CharacterWorkflow
+  const workflow = sanitizeCharacterWorkflowForRun(input)
   return {
     workflow,
     issues: validateCharacterAgentWorkflowProtocol(workflow),
+  }
+}
+
+export function sanitizeCharacterWorkflowForRun(input: CharacterWorkflow): CharacterWorkflow {
+  const nodeIds = new Set(input.nodes.map((node) => node.id))
+  return {
+    ...input,
+    nodes: input.nodes.map((node) => ({
+      ...node,
+      position: { ...node.position },
+      inputs: { ...node.inputs },
+      outputs: { ...node.outputs },
+      config: { ...node.config },
+      state: node.state ? { ...node.state } : undefined,
+    })),
+    edges: input.edges.filter((edge) => nodeIds.has(edge.from.nodeId) && nodeIds.has(edge.to.nodeId)).map((edge) => ({
+      ...edge,
+      from: { ...edge.from },
+      to: { ...edge.to },
+    })),
+    defaults: { ...input.defaults },
+    metadata: { ...input.metadata },
   }
 }
 
@@ -3929,6 +3953,7 @@ function artifactTitle(kind: CharacterAgentArtifactKind): string {
     'voice-direction': 'Voice Direction',
     'voice-asset': 'Voice Asset',
     'candidate-pack': 'Candidate Pack',
+    'resource-package': 'Resource Package',
     'critique-report': 'Critique Report',
     'quality-report': 'Quality Report',
     'chat-simulation-report': 'Chat Simulation Report',
@@ -3966,6 +3991,7 @@ function isArtifactKind(value: unknown): value is CharacterAgentArtifactKind {
     'voice-direction',
     'voice-asset',
     'candidate-pack',
+    'resource-package',
     'critique-report',
     'quality-report',
     'chat-simulation-report',
@@ -4046,6 +4072,7 @@ function targetKindForNodeType(type: string): AgentTargetKind | null {
     'opening-layout-target': 'opening-layout',
     'atmosphere-style-target': 'atmosphere-style',
     'game-system-target': 'game-system',
+    'resource-package-target': 'resource-package',
     'image-target': 'image',
     'world-card-target': 'world-card',
     'npc-pack-target': 'npc-pack',

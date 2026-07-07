@@ -920,6 +920,9 @@ declare global {
         mode?: 'create' | 'edit'
         editorSession?: {
           objective?: string
+          focusPrompt?: string
+          focusHistory?: string[]
+          status?: 'active' | 'paused' | 'needs-user' | 'blocked' | 'complete'
           plan?: string[]
           completedSteps?: string[]
           currentStep?: string

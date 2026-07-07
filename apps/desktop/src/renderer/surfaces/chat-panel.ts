@@ -154,6 +154,8 @@ interface CharacterWorkflowProjectRecord {
 
 interface CharacterWorkflowGoalSession {
   objective: string
+  focusPrompt?: string
+  focusHistory?: string[]
   plan: string[]
   completedSteps: string[]
   currentStep?: string
@@ -5699,6 +5701,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       : 'active'
     return {
       objective: typeof session.objective === 'string' ? session.objective : '',
+      focusPrompt: typeof session.focusPrompt === 'string' ? session.focusPrompt : undefined,
+      focusHistory: Array.isArray(session.focusHistory) ? session.focusHistory.filter((item): item is string => typeof item === 'string').slice(-8) : [],
       plan: Array.isArray(session.plan) ? session.plan.filter((item): item is string => typeof item === 'string') : [],
       completedSteps: Array.isArray(session.completedSteps) ? session.completedSteps.filter((item): item is string => typeof item === 'string') : [],
       currentStep: typeof session.currentStep === 'string' ? session.currentStep : undefined,
@@ -5947,6 +5951,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const lastDecision = normalizeWorkflowAgentDecision(agentWork.decision ?? agentWork.steps[agentWork.steps.length - 1]?.decision)
     return {
       objective: agentWork.objective || fallbackObjective,
+      focusPrompt: agentWork.objective || fallbackObjective,
+      focusHistory: [agentWork.objective || fallbackObjective].filter(Boolean),
       plan: Array.isArray(agentWork.plan) ? agentWork.plan.filter((item): item is string => typeof item === 'string') : [],
       completedSteps: Array.isArray(agentWork.completedSteps) ? agentWork.completedSteps.filter((item): item is string => typeof item === 'string') : [],
       currentStep: agentWork.currentStep,
@@ -6045,6 +6051,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const now = Date.now()
     const created: CharacterWorkflowGoalSession = {
       objective: userPrompt,
+      focusPrompt: userPrompt,
+      focusHistory: [userPrompt],
       plan: [],
       completedSteps: [],
       status: 'active',
@@ -6053,6 +6061,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     project.goalSession = created
     return created
+  }
+
+  function appendWorkflowFocusHistory(existing: string[] | undefined, focusPrompt: string): string[] {
+    const values = [...(existing ?? []), focusPrompt]
+      .map((item) => item.trim())
+      .filter(Boolean)
+    return [...new Set(values)].slice(-8)
   }
 
   function updateActiveWorkflowGoalSession(
@@ -6113,6 +6128,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       project.goalSession = {
         ...current,
         objective: agentWork.objective || current.objective,
+        focusPrompt: userPrompt,
+        focusHistory: appendWorkflowFocusHistory(current.focusHistory, userPrompt),
         plan: Array.isArray(agentWork.plan) ? agentWork.plan.filter((item): item is string => typeof item === 'string') : current.plan,
         completedSteps: Array.isArray(agentWork.completedSteps) ? agentWork.completedSteps.filter((item): item is string => typeof item === 'string') : current.completedSteps,
         currentStep: typeof agentWork.currentStep === 'string' && agentWork.currentStep.trim() ? agentWork.currentStep.trim() : current.currentStep,
@@ -6160,6 +6177,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       + Object.keys(response.uiConfigOverrides ?? {}).length
     project.goalSession = {
       ...current,
+      focusPrompt: userPrompt,
+      focusHistory: appendWorkflowFocusHistory(current.focusHistory, userPrompt),
       plan: Array.isArray(spec.plan) && spec.plan.length ? spec.plan.filter((item): item is string => typeof item === 'string') : current.plan,
       completedSteps: Array.isArray(spec.completedSteps) ? spec.completedSteps.filter((item): item is string => typeof item === 'string') : current.completedSteps,
       currentStep: typeof spec.currentStep === 'string' && spec.currentStep.trim() ? spec.currentStep.trim() : current.currentStep,
@@ -6243,6 +6262,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           : 'active'
     project.goalSession = {
       ...current,
+      focusPrompt: userPrompt,
+      focusHistory: appendWorkflowFocusHistory(current.focusHistory, userPrompt),
       plan: Array.isArray(step.plan) && step.plan.length ? step.plan.filter((item): item is string => typeof item === 'string') : current.plan,
       completedSteps: Array.isArray(step.completedSteps) ? step.completedSteps.filter((item): item is string => typeof item === 'string') : current.completedSteps,
       currentStep: typeof step.currentStep === 'string' && step.currentStep.trim() ? step.currentStep.trim() : current.currentStep,
@@ -6519,15 +6540,31 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       }
       const workflowPage = await loadCharacterWorkflowPageModule()
       const goalSession = getActiveWorkflowGoalSession(userPrompt)
+      if (goalSession && existingProject) {
+        existingProject.goalSession = {
+          ...goalSession,
+          focusPrompt: userPrompt,
+          focusHistory: appendWorkflowFocusHistory(goalSession.focusHistory, userPrompt),
+          status: 'active',
+          pendingDecision: undefined,
+          updatedAt: Date.now(),
+        }
+      }
+      const editorSession = existingProject?.goalSession ?? goalSession
       const buildRequest = {
         prompt: userPrompt,
         language: options.getLanguage(),
         mode: 'edit',
-        editorSession: goalSession ? {
-          objective: goalSession.objective,
-          plan: goalSession.plan,
-          completedSteps: goalSession.completedSteps,
-          history: goalSession.history.map((item) => ({
+        editorSession: editorSession ? {
+          objective: editorSession.objective,
+          focusPrompt: userPrompt,
+          focusHistory: appendWorkflowFocusHistory(editorSession.focusHistory, userPrompt),
+          status: 'active',
+          plan: editorSession.plan,
+          completedSteps: editorSession.completedSteps,
+          currentStep: editorSession.currentStep,
+          nextStep: editorSession.nextStep,
+          history: editorSession.history.map((item) => ({
             stepIndex: item.stepIndex,
             tool: item.tool,
             userRequest: item.userRequest,
@@ -6535,6 +6572,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             status: item.status,
             operations: item.operations,
             currentStep: item.currentStep,
+            nextStep: item.nextStep,
           })),
         } : undefined,
         graph: createCharacterWorkflowAssistantGraph(workflowPage),
