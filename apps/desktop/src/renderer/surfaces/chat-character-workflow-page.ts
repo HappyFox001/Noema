@@ -2183,6 +2183,113 @@ function animateRunDraftCanvas(root: HTMLElement, cleanups: Array<() => void>): 
   })
 }
 
+export function animateRunLinkFlow(root: HTMLElement, linkIds: string[]): void {
+  if (!linkIds.length || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    return
+  }
+  const linkIdSet = new Set(linkIds)
+  const links = Array.from(root.querySelectorAll<SVGGElement>('.chat-resource-link'))
+    .filter((link) => linkIdSet.has(link.getAttribute('data-chat-resource-link-id') ?? ''))
+  const paths = links.flatMap((link) => Array.from(link.querySelectorAll<SVGPathElement>('path:not(.hit-area)')))
+  if (!paths.length) {
+    return
+  }
+  paths.forEach((path) => {
+    const length = Math.max(1, Math.ceil(path.getTotalLength()))
+    path.style.strokeDasharray = `${length}`
+    path.style.strokeDashoffset = `${length}`
+  })
+  import('gsap').then(({ gsap }) => {
+    if (!root.isConnected) return
+    gsap.fromTo(links, { autoAlpha: 0.28 }, { autoAlpha: 1, duration: 0.2, ease: 'power2.out' })
+    gsap.to(paths, {
+      strokeDashoffset: 0,
+      duration: 0.58,
+      stagger: 0.035,
+      ease: 'power2.out',
+      clearProps: 'strokeDasharray,strokeDashoffset,opacity,visibility',
+    })
+  }).catch(() => {
+    paths.forEach((path) => {
+      path.style.strokeDasharray = ''
+      path.style.strokeDashoffset = ''
+    })
+  })
+}
+
+export function animateRunCardInserted(root: HTMLElement, nodeIds: string[]): void {
+  if (!nodeIds.length || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    return
+  }
+  const nodeIdSet = new Set(nodeIds)
+  const nodes = Array.from(root.querySelectorAll<HTMLElement>('.chat-resource-node'))
+    .filter((node) => nodeIdSet.has(node.dataset.chatWorkflowNodeId ?? '') && node.dataset.chatWorkflowNodeId !== 'run-input-source')
+    .sort((a, b) => Number(a.dataset.runOrder || 0) - Number(b.dataset.runOrder || 0))
+  if (!nodes.length) {
+    return
+  }
+  import('gsap').then(({ gsap }) => {
+    if (!root.isConnected) return
+    gsap.killTweensOf(nodes)
+    gsap.fromTo(nodes, {
+      autoAlpha: 0,
+      y: -16,
+      scaleY: 0.22,
+      scaleX: 0.96,
+      filter: 'brightness(1.25) saturate(1.14)',
+      transformOrigin: '50% 0%',
+    }, {
+      autoAlpha: 1,
+      y: 0,
+      scaleY: 1,
+      scaleX: 1,
+      filter: 'brightness(1) saturate(1)',
+      duration: 0.54,
+      stagger: 0.08,
+      ease: 'expo.out',
+      clearProps: 'visibility,opacity,transform,filter,transformOrigin',
+    })
+  }).catch(() => {
+    nodes.forEach((node) => {
+      node.style.opacity = ''
+      node.style.visibility = ''
+      node.style.transform = ''
+      node.style.filter = ''
+    })
+  })
+}
+
+export function animateRunCardUpdated(root: HTMLElement, nodeIds: string[]): void {
+  if (!nodeIds.length || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    return
+  }
+  const nodeIdSet = new Set(nodeIds)
+  const nodes = Array.from(root.querySelectorAll<HTMLElement>('.chat-resource-node'))
+    .filter((node) => nodeIdSet.has(node.dataset.chatWorkflowNodeId ?? ''))
+  if (!nodes.length) {
+    return
+  }
+  import('gsap').then(({ gsap }) => {
+    if (!root.isConnected) return
+    gsap.killTweensOf(nodes)
+    gsap.fromTo(nodes, {
+      filter: 'brightness(1.2) saturate(1.12)',
+      boxShadow: '0 0 0 1px rgba(139, 180, 166, 0.44), 0 0 0 0 rgba(139, 180, 166, 0.24)',
+    }, {
+      filter: 'brightness(1) saturate(1)',
+      boxShadow: '0 0 0 1px rgba(139, 180, 166, 0), 0 0 0 12px rgba(139, 180, 166, 0)',
+      duration: 0.46,
+      ease: 'power3.out',
+      clearProps: 'filter,boxShadow',
+    })
+  }).catch(() => {
+    nodes.forEach((node) => {
+      node.style.filter = ''
+      node.style.boxShadow = ''
+    })
+  })
+}
+
 function animateWorkflowCanvasChanges(root: HTMLElement, cleanups: Array<() => void>): void {
   const viewport = root.querySelector<HTMLElement>('.chat-workflow-canvas-viewport.active')
   if (!viewport || viewport.classList.contains('chat-resource-run-viewport')) {
@@ -3053,11 +3160,13 @@ function createRunDraftCanvasGraph(graph: CharacterResourceGraph, options: Chara
       : []
   let previousNodeId = sourceNodeId
   let focusNodeId = ''
+  const reservedRunSlots = new Set<string>()
   compactArtifacts.forEach((artifact, index) => {
     const nodeId = getRunArtifactNodeId(artifact, index)
     const nodeType = getRunArtifactNodeType(artifact.type)
-    const placement = getRunArtifactPlacement(artifact, index)
     const image = getArtifactImage(artifact.data)
+    const size = getRunArtifactNodeSize(artifact, Boolean(image))
+    const placement = getRunArtifactPlacement(artifact, index, size, reservedRunSlots)
     const baseArtifactStatus = getRunArtifactNodeStatus(artifact)
     const artifactStatus = baseArtifactStatus
     const runFocus = isRunDraftFocusArtifact(artifact, options.runFocusArtifactId)
@@ -3065,7 +3174,6 @@ function createRunDraftCanvasGraph(graph: CharacterResourceGraph, options: Chara
       focusNodeId = nodeId
     }
     const title = getRunArtifactNodeTitle(artifact, options)
-    const size = getRunArtifactNodeSize(artifact, Boolean(image))
     nodes.push({
       id: nodeId,
       type: nodeType,
@@ -3262,21 +3370,50 @@ function clampNumber(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value))
 }
 
-function getRunArtifactPlacement(artifact: CharacterRunArtifact, index: number): { x: number; y: number } {
+function getRunArtifactPlacement(
+  artifact: CharacterRunArtifact,
+  index: number,
+  size: { width: number; height: number },
+  reservedSlots: Set<string>
+): { x: number; y: number } {
   const key = `${artifact.id || artifact.type || index}:${artifact.sourceNodeId || ''}`
-  const columns = 3
-  const row = Math.floor(index / columns)
-  const columnInRow = index % columns
-  const column = row % 2 === 0 ? columnInRow : columns - columnInRow - 1
-  const xAnchors = [500, 882, 1264]
-  const rowWave = [0, 26, -18, 18][row % 4] ?? 0
-  const columnWave = [-10, 18, -4][column] ?? 0
-  const jitter = getStableRunOffset(key, 10, 8)
-  const imageNudge = artifact.type === 'image-asset' || artifact.type === 'image-attempt' ? 14 : 0
-  return {
-    x: xAnchors[column] + columnWave + jitter.x + imageNudge,
-    y: 128 + row * 250 + rowWave + jitter.y,
+  const lanes = 3
+  let group = Math.floor(index / lanes)
+  const preferredLane = getPreferredRunArtifactLane(artifact, key, lanes)
+  let lane = preferredLane
+  for (let attempt = 0; attempt < lanes * 8; attempt += 1) {
+    const candidateGroup = group + Math.floor((preferredLane + attempt) / lanes)
+    const candidateLane = (preferredLane + attempt) % lanes
+    const slotKey = `${candidateGroup}:${candidateLane}`
+    if (!reservedSlots.has(slotKey)) {
+      group = candidateGroup
+      lane = candidateLane
+      reservedSlots.add(slotKey)
+      break
+    }
   }
+  const jitter = getStableRunOffset(key, 18, 14)
+  const laneAnchors = [118, 350, 580]
+  const flowWave = [0, 34, -20, 18][group % 4] ?? 0
+  const imageNudge = artifact.type === 'image-asset' || artifact.type === 'image-attempt' ? 22 : 0
+  const tallCardNudge = size.height > 230 ? -18 : 0
+  return {
+    x: 504 + group * 386 + flowWave + jitter.x + imageNudge,
+    y: laneAnchors[lane] + jitter.y + tallCardNudge,
+  }
+}
+
+function getPreferredRunArtifactLane(artifact: CharacterRunArtifact, key: string, lanes: number): number {
+  if (artifact.type === 'image-asset' || artifact.type === 'image-attempt') {
+    return 2
+  }
+  if (artifact.type === 'character-card-final' || artifact.type === 'generation-report' || artifact.type === 'export-package') {
+    return 1
+  }
+  if (artifact.type === 'character-card-field') {
+    return getStableRunLaneIndex(key, 2)
+  }
+  return getStableRunLaneIndex(key, lanes)
 }
 
 function getStableRunLaneIndex(value: string, modulo: number): number {

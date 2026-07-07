@@ -408,6 +408,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     deletedLinkIds: new Set<string>(),
     replacedTargetSlots: new Set<string>(),
   }
+  const characterWorkflowRunDraftViewState = {
+    zoom: 0.74,
+    panX: 0,
+    panY: 0,
+    selectedNodeIds: [] as string[],
+    selectedLinkId: '',
+    lastManualViewportAt: 0,
+  }
   const characterWorkflowEditorState: CharacterWorkflowEditorState = {
     activePanel: 'workflow',
     sidebarCollapsed: false,
@@ -453,6 +461,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     startY: number
     originPanX: number
     originPanY: number
+    runDraft: boolean
   } | null = null
   let characterResourceNodeResize: {
     nodeId: string
@@ -4132,7 +4141,19 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       true
     )
     const nextViewportHtml = workflowPage.renderCharacterWorkflowRunDraftViewport(pageOptions)
-    replaceCharacterWorkflowRunViewport(runViewport, nextViewportHtml)
+    patchCharacterWorkflowRunViewport(runViewport, nextViewportHtml)
+    const patchedViewport = characterWorkflowRoot.querySelector<HTMLElement>('.chat-resource-run-viewport')
+    if (patchedViewport) {
+      const insertedLinkIds = readRunDraftPatchIds(patchedViewport.dataset.runInsertedLinkIds)
+      const insertedNodeIds = readRunDraftPatchIds(patchedViewport.dataset.runInsertedNodeIds)
+      const updatedNodeIds = readRunDraftPatchIds(patchedViewport.dataset.runUpdatedNodeIds)
+      workflowPage.animateRunLinkFlow?.(patchedViewport, insertedLinkIds)
+      workflowPage.animateRunCardInserted?.(patchedViewport, insertedNodeIds)
+      workflowPage.animateRunCardUpdated?.(patchedViewport, updatedNodeIds)
+      delete patchedViewport.dataset.runInsertedLinkIds
+      delete patchedViewport.dataset.runInsertedNodeIds
+      delete patchedViewport.dataset.runUpdatedNodeIds
+    }
 
     const controls = characterWorkflowRoot.querySelector<HTMLElement>('.chat-resource-run-controls')
     if (controls) {
@@ -4144,59 +4165,120 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       patchCharacterWorkflowRunInspector(inspector, workflowPage.renderCharacterWorkflowRunDraftInspector(pageOptions))
     }
 
-    workflowPage.initializeCharacterResourceWorkbench(characterWorkflowRoot)
     if (focusArtifactId && characterWorkflowRunDraftFocusArtifactId === focusArtifactId) {
       characterWorkflowRunDraftFocusArtifactId = ''
     }
   }
 
-  function replaceCharacterWorkflowRunViewport(currentViewport: HTMLElement, nextViewportHtml: string): void {
+  function readRunDraftPatchIds(value: string | undefined): string[] {
+    return (value ?? '').split(',').map((item) => item.trim()).filter(Boolean)
+  }
+
+  function patchCharacterWorkflowRunViewport(currentViewport: HTMLElement, nextViewportHtml: string): void {
     const nextViewport = parseCharacterWorkflowElement<HTMLElement>(nextViewportHtml, '.chat-resource-run-viewport')
-    const shouldPrimeRunMotion = currentViewport.dataset.runDraftInitialized === 'true'
-      && nextViewport.classList.contains('is-run-animating')
-      && nextViewport.dataset.runMotion === 'live'
-      && currentViewport.dataset.runId === nextViewport.dataset.runId
-      && !(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false)
     syncCharacterResourceViewportFromElement(nextViewport)
-    if (!shouldPrimeRunMotion) {
+    if (
+      currentViewport.dataset.runDraftInitialized !== 'true'
+      || currentViewport.dataset.runId !== nextViewport.dataset.runId
+      || currentViewport.dataset.runMotion !== 'live'
+    ) {
       currentViewport.replaceWith(nextViewport)
       return
     }
-    const existingNodeIds = new Set(
-      Array.from(currentViewport.querySelectorAll<HTMLElement>('.chat-resource-node'))
-        .map((node) => node.dataset.chatWorkflowNodeId ?? '')
-        .filter(Boolean)
+    const updatedNodeIds = patchRunDraftChangedElementIds(
+      currentViewport,
+      nextViewport,
+      '.chat-resource-node',
+      (element) => (element as HTMLElement).dataset.chatWorkflowNodeId ?? ''
     )
-    const existingLinkIds = new Set(
-      Array.from(currentViewport.querySelectorAll<SVGGElement>('.chat-resource-link'))
-        .map((link) => link.getAttribute('data-chat-resource-link-id') ?? '')
-        .filter(Boolean)
+    const insertedNodeIds = patchRunDraftKeyedElements(
+      currentViewport,
+      nextViewport,
+      '.chat-resource-node',
+      (element) => (element as HTMLElement).dataset.chatWorkflowNodeId ?? '',
+      '.chat-resource-run-plane'
     )
-    const newNodeIds = new Set<string>()
-    nextViewport.querySelectorAll<HTMLElement>('.chat-resource-node').forEach((node) => {
-      const nodeId = node.dataset.chatWorkflowNodeId ?? ''
-      if (nodeId && !existingNodeIds.has(nodeId)) {
-        newNodeIds.add(nodeId)
-        node.style.opacity = '0'
-        node.style.visibility = 'hidden'
-        node.style.transformOrigin = '50% 0%'
+    const insertedLinkIds = patchRunDraftKeyedElements(
+      currentViewport,
+      nextViewport,
+      '.chat-resource-link',
+      (element) => element.getAttribute('data-chat-resource-link-id') ?? '',
+      '.chat-resource-link-overlay'
+    )
+    copyElementAttributes(currentViewport, nextViewport)
+    currentViewport.dataset.runDraftInitialized = 'true'
+    const currentProgress = currentViewport.querySelector<HTMLElement>('.chat-resource-run-progress')
+    const nextProgress = nextViewport.querySelector<HTMLElement>('.chat-resource-run-progress')
+    if (currentProgress && nextProgress && currentProgress.outerHTML !== nextProgress.outerHTML) {
+      currentProgress.outerHTML = nextProgress.outerHTML
+    }
+    const currentPlane = currentViewport.querySelector<HTMLElement>('.chat-resource-run-plane')
+    const nextPlane = nextViewport.querySelector<HTMLElement>('.chat-resource-run-plane')
+    if (currentPlane && nextPlane) {
+      copyElementAttributes(currentPlane, nextPlane)
+    }
+    currentViewport.dataset.runInsertedNodeIds = [...insertedNodeIds].join(',')
+    currentViewport.dataset.runUpdatedNodeIds = [...updatedNodeIds].filter((id) => !insertedNodeIds.has(id)).join(',')
+    currentViewport.dataset.runInsertedLinkIds = [...insertedLinkIds].join(',')
+  }
+
+  function patchRunDraftChangedElementIds<TElement extends Element>(
+    currentRoot: HTMLElement,
+    nextRoot: HTMLElement,
+    selector: string,
+    getKey: (element: TElement) => string
+  ): Set<string> {
+    const changed = new Set<string>()
+    nextRoot.querySelectorAll<TElement>(selector).forEach((nextElement) => {
+      const key = getKey(nextElement)
+      if (!key) return
+      const currentElement = Array.from(currentRoot.querySelectorAll<TElement>(selector)).find((element) => getKey(element) === key)
+      if (currentElement && currentElement.outerHTML !== nextElement.outerHTML) {
+        changed.add(key)
       }
     })
-    nextViewport.querySelectorAll<SVGGElement>('.chat-resource-link').forEach((link) => {
-      const linkId = link.getAttribute('data-chat-resource-link-id') ?? ''
-      const targetNodeId = link.getAttribute('data-run-link-target-node-id') ?? ''
-      if (!existingLinkIds.has(linkId) || (targetNodeId && newNodeIds.has(targetNodeId))) {
-        link.style.opacity = '0'
-        link.style.visibility = 'hidden'
-        link.querySelectorAll<SVGPathElement>('path:not(.hit-area)').forEach((path) => {
-          const length = Math.max(1, Math.ceil(path.getTotalLength()))
-          path.style.opacity = '0'
-          path.style.strokeDasharray = `${length}`
-          path.style.strokeDashoffset = `${length}`
-        })
+    return changed
+  }
+
+  function patchRunDraftKeyedElements<TElement extends Element>(
+    currentRoot: HTMLElement,
+    nextRoot: HTMLElement,
+    selector: string,
+    getKey: (element: TElement) => string,
+    parentSelector: string
+  ): Set<string> {
+    const inserted = new Set<string>()
+    const currentParent = currentRoot.querySelector<Element>(parentSelector)
+    const nextParent = nextRoot.querySelector<Element>(parentSelector)
+    if (!currentParent || !nextParent) {
+      return inserted
+    }
+    const currentByKey = new Map<string, TElement>()
+    currentRoot.querySelectorAll<TElement>(selector).forEach((element) => {
+      const key = getKey(element)
+      if (key) currentByKey.set(key, element)
+    })
+    const nextKeys = new Set<string>()
+    nextRoot.querySelectorAll<TElement>(selector).forEach((nextElement) => {
+      const key = getKey(nextElement)
+      if (!key) return
+      nextKeys.add(key)
+      const currentElement = currentByKey.get(key)
+      if (!currentElement) {
+        inserted.add(key)
+        currentParent.append(nextElement.cloneNode(true))
+        return
+      }
+      if (currentElement.outerHTML !== nextElement.outerHTML) {
+        currentElement.replaceWith(nextElement.cloneNode(true))
       }
     })
-    currentViewport.replaceWith(nextViewport)
+    currentByKey.forEach((element, key) => {
+      if (!nextKeys.has(key)) {
+        element.remove()
+      }
+    })
+    return inserted
   }
 
   function patchCharacterWorkflowRunInspector(currentInspector: HTMLElement, nextInspectorHtml: string): void {
@@ -4349,17 +4431,20 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!viewport) {
       return
     }
+    const viewState = viewport.classList.contains('chat-resource-run-viewport') || Boolean(viewport.dataset.runId)
+      ? characterWorkflowRunDraftViewState
+      : characterResourceViewState
     const plane = viewport.querySelector<HTMLElement>('.chat-resource-graph-plane')
-    plane?.style.setProperty('--resource-zoom', String(characterResourceViewState.zoom))
-    plane?.style.setProperty('--resource-pan-x', `${characterResourceViewState.panX}px`)
-    plane?.style.setProperty('--resource-pan-y', `${characterResourceViewState.panY}px`)
+    plane?.style.setProperty('--resource-zoom', String(viewState.zoom))
+    plane?.style.setProperty('--resource-pan-x', `${viewState.panX}px`)
+    plane?.style.setProperty('--resource-pan-y', `${viewState.panY}px`)
     viewport.dataset.resourceViewport = JSON.stringify({
-      x: characterResourceViewState.panX,
-      y: characterResourceViewState.panY,
-      zoom: characterResourceViewState.zoom,
+      x: viewState.panX,
+      y: viewState.panY,
+      zoom: viewState.zoom,
     })
     panel.querySelectorAll<HTMLElement>('.chat-resource-zoom-label').forEach((label) => {
-      label.textContent = `${Math.round(characterResourceViewState.zoom * 100)}%`
+      label.textContent = `${Math.round(viewState.zoom * 100)}%`
     })
   }
 
@@ -4370,9 +4455,17 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     try {
       const parsed = JSON.parse(raw) as { x?: unknown; y?: unknown; zoom?: unknown }
-      const zoom = typeof parsed.zoom === 'number' && Number.isFinite(parsed.zoom) ? parsed.zoom : characterResourceViewState.zoom
-      const panX = typeof parsed.x === 'number' && Number.isFinite(parsed.x) ? parsed.x : characterResourceViewState.panX
-      const panY = typeof parsed.y === 'number' && Number.isFinite(parsed.y) ? parsed.y : characterResourceViewState.panY
+      const isRunDraftViewport = viewport.classList.contains('chat-resource-run-viewport') || Boolean(viewport.dataset.runId)
+      const currentViewState = isRunDraftViewport ? characterWorkflowRunDraftViewState : characterResourceViewState
+      const zoom = typeof parsed.zoom === 'number' && Number.isFinite(parsed.zoom) ? parsed.zoom : currentViewState.zoom
+      const panX = typeof parsed.x === 'number' && Number.isFinite(parsed.x) ? parsed.x : currentViewState.panX
+      const panY = typeof parsed.y === 'number' && Number.isFinite(parsed.y) ? parsed.y : currentViewState.panY
+      if (isRunDraftViewport) {
+        characterWorkflowRunDraftViewState.zoom = zoom
+        characterWorkflowRunDraftViewState.panX = panX
+        characterWorkflowRunDraftViewState.panY = panY
+        return
+      }
       characterResourceViewState.zoom = zoom
       characterResourceViewState.panX = panX
       characterResourceViewState.panY = panY
@@ -4488,7 +4581,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         && characterWorkflowRunState?.run?.id
         && characterWorkflowExecutingRunState.run.id === characterWorkflowRunState.run.id
       ),
-      runFocusArtifactId: characterWorkflowRunDraftFocusArtifactId,
+      runFocusArtifactId: Date.now() - characterWorkflowRunDraftViewState.lastManualViewportAt > 1800
+        ? characterWorkflowRunDraftFocusArtifactId
+        : '',
       runMotionEnabled,
       runViewportSize,
       runDrafts: activeProject.runs.map((run) => ({
@@ -4512,7 +4607,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         panX: characterResourceViewState.panX,
         panY: characterResourceViewState.panY,
         hideLinks: characterResourceViewState.hideLinks,
-        selectedNodeIds: characterResourceViewState.selectedNodeIds,
+        selectedNodeIds: characterWorkflowActiveTabId === 'run-draft'
+          ? characterWorkflowRunDraftViewState.selectedNodeIds
+          : characterResourceViewState.selectedNodeIds,
         selectionBox: characterResourceViewState.selectionBox,
         collapsedNodeIds: [...characterResourceViewState.collapsedNodeIds],
         deletedNodeIds: [...characterResourceViewState.deletedNodeIds],
@@ -4524,6 +4621,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         customLinks: characterResourceViewState.customLinks,
         deletedLinkIds: [...characterResourceViewState.deletedLinkIds],
         replacedTargetSlots: [...characterResourceViewState.replacedTargetSlots],
+        ...(characterWorkflowActiveTabId === 'run-draft'
+          ? {
+              zoom: characterWorkflowRunDraftViewState.zoom,
+              panX: characterWorkflowRunDraftViewState.panX,
+              panY: characterWorkflowRunDraftViewState.panY,
+              selectedLinkId: characterWorkflowRunDraftViewState.selectedLinkId,
+            }
+          : {}),
       },
     }
   }
@@ -5201,6 +5306,16 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     persistCharacterWorkflowProject(project, immediate)
   }
 
+  function cancelBackendCharacterWorkflowRun(runId?: string, reason = 'cancelled'): void {
+    const targetRunId = runId || characterWorkflowExecutingRunState?.run?.id || ''
+    if (!targetRunId || typeof window.electronAPI.cancelCharacterWorkflowRun !== 'function') {
+      return
+    }
+    void window.electronAPI.cancelCharacterWorkflowRun({ runId: targetRunId, reason }).catch((error) => {
+      console.warn('[CharacterWorkflow] Failed to cancel backend run:', error)
+    })
+  }
+
   function cancelExecutingWorkflowRun(projectId?: string, runId?: string): boolean {
     if (!characterWorkflowExecutingRunState?.run || !characterWorkflowExecutingProjectId) {
       return false
@@ -5230,7 +5345,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     const stoppedProjectId = characterWorkflowExecutingProjectId
     const stoppedRunState = characterWorkflowExecutingRunState
-    const stoppedRunId = stoppedRunState.run.id
+    const stoppedRunId = stoppedRunState.run?.id ?? ''
+    if (!stoppedRunId) {
+      return false
+    }
+    cancelBackendCharacterWorkflowRun(stoppedRunId, 'manual stop')
     syncExecutingWorkflowRunState(true)
     syncVisibleWorkflowRunState(stoppedProjectId, stoppedRunState)
     characterWorkflowExecutingRunState = null
@@ -6803,6 +6922,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const wasActiveRun = project.activeRunId === runId || (wasActiveProject && characterWorkflowRunState?.run?.id === runId)
     const wasExecutingRun = characterWorkflowExecutingProjectId === project.id && characterWorkflowExecutingRunState?.run?.id === runId
     if (wasExecutingRun) {
+      cancelBackendCharacterWorkflowRun(runId, 'run draft deleted')
       characterWorkflowRenderToken += 1
       characterWorkflowExecutingProjectId = ''
       characterWorkflowExecutingRunState = null
@@ -6875,6 +6995,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
     if (characterWorkflowExecutingProjectId === projectId) {
+      cancelBackendCharacterWorkflowRun(undefined, 'workflow project deleted')
       characterWorkflowRenderToken += 1
       characterWorkflowExecutingProjectId = ''
       characterWorkflowExecutingRunState = null
@@ -7347,6 +7468,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     characterWorkflowExecutingProjectId = activeCharacterWorkflowProjectId
     characterWorkflowExecutingRunState = cloneCharacterWorkflowRunState(draftRunState)
     characterWorkflowRunState = cloneCharacterWorkflowRunState(draftRunState)
+    const executionProjectId = characterWorkflowExecutingProjectId
+    const executionRunId = draftRunState.run?.id ?? ''
     saveActiveWorkflowProjectSnapshot()
     characterWorkflowActiveTabId = 'run-draft'
     characterWorkflowEditorState.inspectorCollapsed = false
@@ -7427,6 +7550,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       const workflowRunRequest = {
         workflow,
         language: options.getLanguage(),
+        runId: draftRunState.run?.id,
         ...(scopedRun ? {
           scopedRun: {
             ...scopedRun,
@@ -7439,6 +7563,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             onEvent: (event) => applyCharacterWorkflowAgentEvent(event),
           })
         : await window.electronAPI.runCharacterWorkflow(workflowRunRequest)
+      if (
+        renderToken !== characterWorkflowRenderToken ||
+        characterWorkflowExecutingProjectId !== executionProjectId ||
+        characterWorkflowExecutingRunState?.run?.id !== executionRunId
+      ) {
+        return
+      }
       if (!response.success) {
         throw new Error(response.error || 'Character workflow failed')
       }
@@ -7767,9 +7898,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         raw: event,
       },
     ]
+    let runStepChanged = false
     if (phase) {
       const stepId = phaseToRunStepId(phase)
       if (stepId && characterWorkflowExecutingRunState.run) {
+        runStepChanged = characterWorkflowExecutingRunState.run.currentStepId !== stepId
         characterWorkflowExecutingRunState.run.currentStepId = stepId
         characterWorkflowExecutingRunState.steps = (characterWorkflowExecutingRunState.steps ?? []).map((step) => {
           if (step.id === stepId) {
@@ -7811,7 +7944,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         }
       }
     }
-    syncExecutingWorkflowRunState()
+    const shouldPersistRunImmediately = Boolean(artifact)
+      || type === 'run.completed'
+      || type === 'run.failed'
+      || type === 'run.needs_action'
+      || runStepChanged
+    syncExecutingWorkflowRunState(shouldPersistRunImmediately)
     syncVisibleWorkflowRunState(characterWorkflowExecutingProjectId, characterWorkflowExecutingRunState)
     if (isViewingWorkflowRun(characterWorkflowExecutingProjectId, characterWorkflowExecutingRunState.run?.id ?? '')) {
       if (!patchCharacterWorkflowRunProgress(type, phase, toolName, artifact, result, characterWorkflowExecutingRunState)) {
@@ -8188,6 +8326,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         .map((node) => node.dataset.chatWorkflowNodeId || '')
         .filter(Boolean)
     )
+    characterWorkflowRunDraftViewState.selectedNodeIds = [...selectedIds]
+    characterWorkflowRunDraftViewState.selectedLinkId = ''
     viewport.querySelectorAll<HTMLElement>('[data-resource-minimap-node]').forEach((item) => {
       item.classList.toggle('selected', selectedIds.has(item.dataset.resourceMinimapNode || ''))
     })
@@ -8401,6 +8541,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   function closeCharacterWorkflowTab(tabId: string): void {
     if (tabId === 'workflow') {
       if (characterWorkflowExecutingProjectId === activeCharacterWorkflowProjectId) {
+        cancelBackendCharacterWorkflowRun(undefined, 'workflow tab closed')
         characterWorkflowRenderToken += 1
         characterWorkflowExecutingProjectId = ''
         characterWorkflowExecutingRunState = null
@@ -8752,13 +8893,16 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!viewport || target?.closest('[data-chat-workflow-node-id], button, input, textarea, select, .chat-resource-tab-panel')) {
       return
     }
+    const runDraft = viewport.classList.contains('chat-resource-run-viewport') || Boolean(viewport.dataset.runId)
+    const viewState = runDraft ? characterWorkflowRunDraftViewState : characterResourceViewState
     characterResourceViewportDrag = {
-      mode: event.shiftKey ? 'select' : 'pan',
+      mode: !runDraft && event.shiftKey ? 'select' : 'pan',
       pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
-      originPanX: characterResourceViewState.panX,
-      originPanY: characterResourceViewState.panY,
+      originPanX: viewState.panX,
+      originPanY: viewState.panY,
+      runDraft,
     }
     if (characterResourceViewportDrag.mode === 'select') {
       characterResourceViewState.selectionBox = { x: event.offsetX, y: event.offsetY, width: 0, height: 0 }
@@ -8775,11 +8919,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
     if (characterResourceViewportDrag.mode === 'pan') {
-      characterResourceViewState.panX = Math.round(characterResourceViewportDrag.originPanX + event.clientX - characterResourceViewportDrag.startX)
-      characterResourceViewState.panY = Math.round(characterResourceViewportDrag.originPanY + event.clientY - characterResourceViewportDrag.startY)
-      const plane = panel.querySelector<HTMLElement>('.chat-resource-graph-plane')
-      plane?.style.setProperty('--resource-pan-x', `${characterResourceViewState.panX}px`)
-      plane?.style.setProperty('--resource-pan-y', `${characterResourceViewState.panY}px`)
+      const viewState = characterResourceViewportDrag.runDraft ? characterWorkflowRunDraftViewState : characterResourceViewState
+      viewState.panX = Math.round(characterResourceViewportDrag.originPanX + event.clientX - characterResourceViewportDrag.startX)
+      viewState.panY = Math.round(characterResourceViewportDrag.originPanY + event.clientY - characterResourceViewportDrag.startY)
+      if (characterResourceViewportDrag.runDraft) {
+        characterWorkflowRunDraftViewState.lastManualViewportAt = Date.now()
+      }
+      updateCharacterWorkflowViewportDom()
       return
     }
     const startX = characterResourceViewportDrag.startX
@@ -8826,7 +8972,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       characterResourceViewState.selectionBox = null
       renderCharacterWorkflow()
     }
-    saveCharacterResourceViewStateSnapshot()
+    if (characterResourceViewportDrag.runDraft) {
+      characterWorkflowRunDraftViewState.lastManualViewportAt = Date.now()
+    } else {
+      saveCharacterResourceViewStateSnapshot()
+    }
     characterResourceViewportDrag = null
     if (characterWorkflowActiveTabId === 'run-draft' && characterWorkflowRunDraftPatchDeferred) {
       characterWorkflowRunDraftPatchDeferred = false
@@ -8843,10 +8993,17 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
     event.preventDefault()
-    const nextZoom = Math.min(1.4, Math.max(0.46, characterResourceViewState.zoom + (event.deltaY > 0 ? -0.05 : 0.05)))
-    characterResourceViewState.zoom = Math.round(nextZoom * 100) / 100
+    const runDraft = viewport.classList.contains('chat-resource-run-viewport') || Boolean(viewport.dataset.runId)
+    const viewState = runDraft ? characterWorkflowRunDraftViewState : characterResourceViewState
+    const nextZoom = Math.min(1.4, Math.max(0.46, viewState.zoom + (event.deltaY > 0 ? -0.05 : 0.05)))
+    viewState.zoom = Math.round(nextZoom * 100) / 100
+    if (runDraft) {
+      characterWorkflowRunDraftViewState.lastManualViewportAt = Date.now()
+    }
     updateCharacterWorkflowViewportDom()
-    saveCharacterResourceViewStateSnapshot()
+    if (!runDraft) {
+      saveCharacterResourceViewStateSnapshot()
+    }
   }
 
   function scrollWorkflowAssistantStatusRecords(event: WheelEvent): boolean {

@@ -255,6 +255,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   runCharacterWorkflow: (request) =>
     ipcRenderer.invoke('chat:runCharacterWorkflow', request),
 
+  cancelCharacterWorkflowRun: (request = {}) =>
+    ipcRenderer.invoke('chat:cancelCharacterWorkflowRun', request),
+
   streamCharacterWorkflow: (request, handlers = {}) => {
     const streamId = `character-workflow-${Date.now()}-${Math.random().toString(16).slice(2)}`
     const onEvent = (_, payload) => {

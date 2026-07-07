@@ -1124,6 +1124,7 @@ declare global {
       runCharacterWorkflow: (request: {
         workflow: Record<string, unknown>
         language?: 'zh-CN' | 'en-US'
+        runId?: string
         scopedRun?: {
           instruction?: string
           action?: 'retry' | 'reroll' | 'resume' | 'repair'
@@ -1146,7 +1147,7 @@ declare global {
         success: boolean
         runId?: string
         title?: string
-        status?: 'done' | 'needs_action'
+        status?: 'done' | 'needs_action' | 'failed' | 'cancelled'
         artifacts?: Array<{
           id: string
           kind: string
@@ -1157,9 +1158,15 @@ declare global {
         }>
         error?: string
       }>
+      cancelCharacterWorkflowRun: (request?: {
+        streamId?: string
+        runId?: string
+        reason?: string
+      }) => Promise<{ success: boolean; error?: string }>
       streamCharacterWorkflow?: (request: {
         workflow: Record<string, unknown>
         language?: 'zh-CN' | 'en-US'
+        runId?: string
         scopedRun?: Parameters<Window['electronAPI']['runCharacterWorkflow']>[0]['scopedRun']
       }, handlers?: {
         onEvent?: (event: Record<string, unknown>) => void
@@ -1167,7 +1174,7 @@ declare global {
           success: boolean
           runId?: string
           title?: string
-          status?: 'done' | 'needs_action'
+          status?: 'done' | 'needs_action' | 'failed' | 'cancelled'
           artifacts?: Array<{
             id: string
             kind: string
@@ -1183,6 +1190,7 @@ declare global {
         success: boolean
         runId?: string
         title?: string
+        status?: 'done' | 'needs_action' | 'failed' | 'cancelled'
         artifacts?: Array<{
           id: string
           kind: string

@@ -39,6 +39,14 @@ import { CharacterWorkflowStore, type StoredCharacterWorkflowProject } from './c
 import type { TTSModelConfig } from './settings-store.js'
 
 const LOCAL_CLI_DEFAULT_MODEL_REF = '__default__'
+const activeCharacterWorkflowRuns = new Map<string, AbortController>()
+
+export function cancelActiveCharacterWorkflowRuns(reason = 'cancelled'): void {
+  for (const controller of activeCharacterWorkflowRuns.values()) {
+    controller.abort(reason)
+  }
+  activeCharacterWorkflowRuns.clear()
+}
 
 export interface ChatIpcModelConfig {
   id?: string
@@ -180,6 +188,7 @@ export interface ChatRunCharacterWorkflowRequest {
   workflow: unknown
   language?: 'zh-CN' | 'en-US'
   streamId?: string
+  runId?: string
   scopedRun?: {
     instruction?: string
     action?: 'retry' | 'reroll' | 'resume' | 'repair'
@@ -200,11 +209,17 @@ export interface ChatRunCharacterWorkflowRequest {
   }
 }
 
+export interface ChatCancelCharacterWorkflowRequest {
+  streamId?: string
+  runId?: string
+  reason?: string
+}
+
 export interface ChatRunCharacterWorkflowResult {
   success: boolean
   runId?: string
   title?: string
-  status?: 'done' | 'needs_action'
+  status?: 'done' | 'needs_action' | 'failed' | 'cancelled'
   artifacts?: Array<{
     id: string
     kind: string
@@ -508,7 +523,26 @@ export function registerChatIpcHandlers(
     }
   })
 
+  ipcMain.handle('chat:cancelCharacterWorkflowRun', async (_event, request: ChatCancelCharacterWorkflowRequest = {}) => {
+    const keys = [request.streamId, request.runId].filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    if (!keys.length) {
+      cancelActiveCharacterWorkflowRuns(request.reason || 'cancelled')
+      return { success: true }
+    }
+    for (const key of keys) {
+      const controller = activeCharacterWorkflowRuns.get(key)
+      controller?.abort(request.reason || 'cancelled')
+      activeCharacterWorkflowRuns.delete(key)
+    }
+    return { success: true }
+  })
+
   ipcMain.handle('chat:runCharacterWorkflow', async (event, request: ChatRunCharacterWorkflowRequest): Promise<ChatRunCharacterWorkflowResult> => {
+    const streamId = typeof request.streamId === 'string' ? request.streamId : ''
+    const runId = typeof request.runId === 'string' ? request.runId : ''
+    const abortController = new AbortController()
+    if (streamId) activeCharacterWorkflowRuns.set(streamId, abortController)
+    if (runId) activeCharacterWorkflowRuns.set(runId, abortController)
     try {
       const snapshot = loadCharacterAgentWorkflowSnapshot(request.workflow)
       const blockingIssue = snapshot.issues.find((issue) => issue.severity === 'error')
@@ -524,7 +558,11 @@ export function registerChatIpcHandlers(
         tools,
         artifacts,
         modelResolver,
+        signal: abortController.signal,
         onEvent: (agentEvent: CharacterAgentEvent) => {
+          if (abortController.signal.aborted) {
+            return
+          }
           logCharacterWorkflowImageAttemptFailure(agentEvent)
           if (request.streamId) {
             event.sender.send('chat:characterWorkflowEvent', { streamId: request.streamId, event: agentEvent })
@@ -541,6 +579,13 @@ export function registerChatIpcHandlers(
           }
         : undefined
       const state = await agent.run(snapshot.workflow, scopedRun ? { scopedRun } : undefined)
+      if (abortController.signal.aborted) {
+        return {
+          success: false,
+          status: 'failed',
+          error: 'Character workflow run cancelled',
+        }
+      }
       if (state.phase === 'failed') {
         const failed = state.events.find((event) => event.type === 'run.failed')
         throw new Error(failed && 'error' in failed ? failed.error : 'Character agent failed')
@@ -560,10 +605,24 @@ export function registerChatIpcHandlers(
         })),
       }
     } catch (error: any) {
+      if (abortController.signal.aborted) {
+        return {
+          success: false,
+          status: 'failed',
+          error: 'Character workflow run cancelled',
+        }
+      }
       console.error('[Chat] Failed to run character workflow:', error)
       return {
         success: false,
         error: normalizeChatRuntimeError(error),
+      }
+    } finally {
+      if (streamId && activeCharacterWorkflowRuns.get(streamId) === abortController) {
+        activeCharacterWorkflowRuns.delete(streamId)
+      }
+      if (runId && activeCharacterWorkflowRuns.get(runId) === abortController) {
+        activeCharacterWorkflowRuns.delete(runId)
       }
     }
   })
