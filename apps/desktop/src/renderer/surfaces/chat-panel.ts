@@ -471,6 +471,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     originWidth: number
     originHeight: number
   } | null = null
+
+  interface CharacterWorkflowRunInspectorPatchScope {
+    fieldKeys: Set<string>
+    patchAllFields: boolean
+    patchImages: boolean
+    patchHero: boolean
+  }
   let characterWorkflowLibraryResize: {
     pointerId: number
     startX: number
@@ -4142,11 +4149,16 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     )
     const nextViewportHtml = workflowPage.renderCharacterWorkflowRunDraftViewport(pageOptions)
     patchCharacterWorkflowRunViewport(runViewport, nextViewportHtml)
+    let inspectorPatchScope: CharacterWorkflowRunInspectorPatchScope | undefined
     const patchedViewport = characterWorkflowRoot.querySelector<HTMLElement>('.chat-resource-run-viewport')
     if (patchedViewport) {
       const insertedLinkIds = readRunDraftPatchIds(patchedViewport.dataset.runInsertedLinkIds)
       const insertedNodeIds = readRunDraftPatchIds(patchedViewport.dataset.runInsertedNodeIds)
       const updatedNodeIds = readRunDraftPatchIds(patchedViewport.dataset.runUpdatedNodeIds)
+      const changedNodeIds = [...insertedNodeIds, ...updatedNodeIds]
+      inspectorPatchScope = changedNodeIds.length
+        ? createRunInspectorPatchScope(patchedViewport, changedNodeIds)
+        : undefined
       workflowPage.animateRunLinkFlow?.(patchedViewport, insertedLinkIds)
       workflowPage.animateRunCardInserted?.(patchedViewport, insertedNodeIds)
       workflowPage.animateRunCardUpdated?.(patchedViewport, updatedNodeIds)
@@ -4162,7 +4174,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
     const inspector = characterWorkflowRoot.querySelector<HTMLElement>('.chat-run-character-inspector')
     if (inspector && !characterWorkflowEditorState.inspectorCollapsed) {
-      patchCharacterWorkflowRunInspector(inspector, workflowPage.renderCharacterWorkflowRunDraftInspector(pageOptions))
+      patchCharacterWorkflowRunInspector(inspector, workflowPage.renderCharacterWorkflowRunDraftInspector(pageOptions), inspectorPatchScope)
     }
 
     if (focusArtifactId && characterWorkflowRunDraftFocusArtifactId === focusArtifactId) {
@@ -4172,6 +4184,54 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function readRunDraftPatchIds(value: string | undefined): string[] {
     return (value ?? '').split(',').map((item) => item.trim()).filter(Boolean)
+  }
+
+  function createRunInspectorPatchScope(viewport: HTMLElement, nodeIds: string[]): CharacterWorkflowRunInspectorPatchScope {
+    const fieldKeys = new Set<string>()
+    let patchAllFields = false
+    let patchImages = false
+    let patchHero = false
+    const uniqueNodeIds = [...new Set(nodeIds)].filter(Boolean)
+    uniqueNodeIds.forEach((nodeId) => {
+      const node = viewport.querySelector<HTMLElement>(`[data-chat-workflow-node-id="${escapeCssSelector(nodeId)}"]`)
+      if (!node) {
+        return
+      }
+      const artifactType = node.dataset.runArtifactType || ''
+      const runField = node.dataset.runField || ''
+      if (runField) {
+        fieldKeys.add(runField)
+      }
+      const mappedField = getRunInspectorFieldKeyForArtifactType(artifactType)
+      if (mappedField) {
+        fieldKeys.add(mappedField)
+      }
+      if (artifactType === 'character-card-draft' || artifactType === 'character-card-final') {
+        patchAllFields = true
+        patchHero = true
+      }
+      if (artifactType === 'image-asset' || artifactType === 'image-attempt') {
+        patchImages = true
+        patchHero = true
+      }
+    })
+    return { fieldKeys, patchAllFields, patchImages, patchHero }
+  }
+
+  function getRunInspectorFieldKeyForArtifactType(artifactType: string): string {
+    const fieldByArtifactType: Record<string, string> = {
+      'opening-message': 'firstMessage',
+      'dialogue-style-guide': 'dialogueStyle',
+      'world-context': 'worldContext',
+      'scene-context': 'sceneContext',
+    }
+    return fieldByArtifactType[artifactType] ?? ''
+  }
+
+  function escapeCssSelector(value: string): string {
+    return typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+      ? CSS.escape(value)
+      : value.replace(/["\\]/g, '\\$&')
   }
 
   function patchCharacterWorkflowRunViewport(currentViewport: HTMLElement, nextViewportHtml: string): void {
@@ -4281,35 +4341,89 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     return inserted
   }
 
-  function patchCharacterWorkflowRunInspector(currentInspector: HTMLElement, nextInspectorHtml: string): void {
-    if (characterWorkflowRunInspectorSnapshots.get(currentInspector) === nextInspectorHtml) {
+  function patchCharacterWorkflowRunInspector(
+    currentInspector: HTMLElement,
+    nextInspectorHtml: string,
+    scope?: CharacterWorkflowRunInspectorPatchScope
+  ): void {
+    const scopedPatch = Boolean(scope)
+    if (!scopedPatch && characterWorkflowRunInspectorSnapshots.get(currentInspector) === nextInspectorHtml) {
       return
     }
     const nextInspector = parseCharacterWorkflowElement<HTMLElement>(nextInspectorHtml, '.chat-run-character-inspector')
-    if (normalizeWorkflowRunInspectorHtml(currentInspector.outerHTML) === normalizeWorkflowRunInspectorHtml(nextInspector.outerHTML)) {
+    if (!scopedPatch && normalizeWorkflowRunInspectorHtml(currentInspector.outerHTML) === normalizeWorkflowRunInspectorHtml(nextInspector.outerHTML)) {
       characterWorkflowRunInspectorSnapshots.set(currentInspector, nextInspectorHtml)
       return
     }
     copyElementAttributes(currentInspector, nextInspector)
-    patchCharacterWorkflowRunHero(
-      requireCharacterWorkflowElement(currentInspector, '.chat-run-character-hero'),
-      requireCharacterWorkflowElement(nextInspector, '.chat-run-character-hero')
-    )
+    const shouldPatchHero = !scope || scope.patchHero || scope.patchAllFields || scope.fieldKeys.has('name') || scope.fieldKeys.has('displayName')
+    if (shouldPatchHero) {
+      patchCharacterWorkflowRunHero(
+        requireCharacterWorkflowElement(currentInspector, '.chat-run-character-hero'),
+        requireCharacterWorkflowElement(nextInspector, '.chat-run-character-hero')
+      )
+    }
     patchKeyedChildren(
       requireCharacterWorkflowElement(currentInspector, '[data-run-character-fields]'),
       requireCharacterWorkflowElement(nextInspector, '[data-run-character-fields]'),
-      'runCharacterFieldKey'
+      'runCharacterFieldKey',
+      scope?.patchAllFields ? undefined : scope?.fieldKeys
     )
+    if (!scope || scope.patchImages) {
+      patchOptionalRunPreviewElement(
+        currentInspector,
+        nextInspector,
+        '.chat-run-character-overview',
+        '.chat-run-character-scroll'
+      )
+    }
     const currentImages = currentInspector.querySelector<HTMLElement>('[data-run-character-images]')
     const nextImages = nextInspector.querySelector<HTMLElement>('[data-run-character-images]')
-    if (currentImages && nextImages) {
+    if (currentImages && nextImages && (!scope || scope.patchImages)) {
       patchKeyedChildren(currentImages, nextImages, 'runCharacterImageKey')
-    } else if (!nextImages && currentImages) {
+    } else if (!nextImages && currentImages && (!scope || scope.patchImages)) {
       currentImages.remove()
-    } else if (nextImages && !currentImages) {
+    } else if (nextImages && !currentImages && (!scope || scope.patchImages)) {
       requireCharacterWorkflowElement<HTMLElement>(currentInspector, '.chat-run-character-scroll').append(nextImages)
     }
-    characterWorkflowRunInspectorSnapshots.set(currentInspector, nextInspectorHtml)
+    if (!scopedPatch) {
+      characterWorkflowRunInspectorSnapshots.set(currentInspector, nextInspectorHtml)
+    }
+  }
+
+  function patchOptionalRunPreviewElement(
+    currentRoot: HTMLElement,
+    nextRoot: HTMLElement,
+    selector: string,
+    parentSelector: string
+  ): void {
+    const current = currentRoot.querySelector<HTMLElement>(selector)
+    const next = nextRoot.querySelector<HTMLElement>(selector)
+    if (current && next) {
+      const changed = current.innerHTML !== next.innerHTML || current.className !== next.className
+      copyElementAttributes(current, next)
+      if (current.innerHTML !== next.innerHTML) {
+        current.innerHTML = next.innerHTML
+      }
+      if (changed) {
+        flashRunPreviewElement(current)
+      }
+      return
+    }
+    if (current && !next) {
+      current.remove()
+      return
+    }
+    if (!current && next) {
+      const parent = currentRoot.querySelector<HTMLElement>(parentSelector)
+      const fields = currentRoot.querySelector<HTMLElement>('[data-run-character-fields]')
+      if (fields) {
+        fields.before(next)
+      } else {
+        parent?.append(next)
+      }
+      flashRunPreviewElement(next)
+    }
   }
 
   function normalizeWorkflowRunInspectorHtml(html: string): string {
@@ -4340,7 +4454,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
   }
 
-  function patchKeyedChildren(currentContainer: HTMLElement, nextContainer: HTMLElement, datasetKey: string): void {
+  function patchKeyedChildren(currentContainer: HTMLElement, nextContainer: HTMLElement, datasetKey: string, allowedKeys?: Set<string>): void {
     const shouldAnimate = isVisibleWorkflowRunAnimating()
     copyElementAttributes(currentContainer, nextContainer)
     const currentByKey = new Map<string, HTMLElement>()
@@ -4352,6 +4466,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     Array.from(nextContainer.children).forEach((nextChild) => {
       if (!(nextChild instanceof HTMLElement)) return
       const key = nextChild.dataset[datasetKey] ?? ''
+      if (allowedKeys && !allowedKeys.has(key)) {
+        return
+      }
       const currentChild = key ? currentByKey.get(key) : null
       if (!currentChild) {
         const clone = nextChild.cloneNode(true) as HTMLElement
@@ -4375,7 +4492,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         flashRunPreviewElement(currentChild)
       }
     })
-    currentByKey.forEach((child) => child.remove())
+    currentByKey.forEach((child, key) => {
+      if (!allowedKeys || allowedKeys.has(key)) {
+        child.remove()
+      }
+    })
   }
 
   function flashRunPreviewElement(element: HTMLElement): void {
