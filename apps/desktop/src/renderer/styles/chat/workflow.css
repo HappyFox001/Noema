@@ -3677,14 +3677,27 @@ body.chat-workflow-library-resizing * {
 
 .chat-resource-run-plane .run-chat-status-preview .chat-inline-game-status {
   padding: 11px;
-  border-color: rgba(159, 199, 185, 0.18);
+  border-color: var(--game-panel-border, rgba(159, 199, 185, 0.18));
+  border-radius: var(--game-panel-radius, 12px);
   background:
-    linear-gradient(135deg, rgba(39, 71, 46, 0.38), rgba(29, 23, 32, 0.58)),
+    radial-gradient(circle at 12% 0%, var(--game-panel-accent-soft, rgba(159, 199, 185, 0.14)), transparent 34%),
+    linear-gradient(135deg, var(--game-panel-surface-alt, rgba(39, 71, 46, 0.38)), var(--game-panel-surface, rgba(29, 23, 32, 0.72))),
     rgba(12, 15, 14, 0.76);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.052),
+    0 16px 34px rgba(0, 0, 0, 0.2);
 }
 
 .chat-resource-run-plane .run-chat-status-preview .chat-inline-game-stat-row {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.chat-resource-run-plane .run-chat-panel-preview.has-game-panel-style.game-panel-density-compact .chat-inline-game-stat-row {
+  gap: 5px;
+}
+
+.chat-resource-run-plane .run-chat-panel-preview.has-game-panel-style.game-panel-density-airy .chat-inline-game-stat-row {
+  gap: 9px;
 }
 
 .chat-resource-run-plane .run-chat-status-preview .chat-inline-game-stat span,
@@ -3697,15 +3710,123 @@ body.chat-workflow-library-resizing * {
   white-space: nowrap;
 }
 
-.chat-resource-run-plane .run-chat-equipment-preview .chat-inline-scene {
-  border-color: rgba(159, 199, 185, 0.16);
+.chat-resource-run-plane .run-chat-panel-preview.has-game-panel-style .chat-inline-game-stat span,
+.chat-resource-run-plane .run-chat-panel-preview.has-game-panel-style .chat-inline-game-effects em,
+.chat-resource-run-plane .run-chat-panel-preview.has-game-panel-style .chat-inline-equipment th {
+  color: var(--game-panel-muted, rgba(220, 229, 226, 0.62));
+}
+
+.chat-resource-run-plane .run-chat-panel-preview.has-game-panel-style .chat-inline-game-stat strong,
+.chat-resource-run-plane .run-chat-panel-preview.has-game-panel-style .chat-inline-equipment td,
+.chat-resource-run-plane .run-chat-panel-preview.has-game-panel-style .chat-inline-equipment-toggle span {
+  color: var(--game-panel-text, rgba(248, 250, 250, 0.84));
+}
+
+.chat-resource-run-plane .run-chat-panel-preview.has-game-panel-style .chat-inline-game-stat i {
+  height: 5px;
+  border-radius: 999px;
   background:
-    linear-gradient(135deg, rgba(39, 71, 46, 0.28), rgba(29, 23, 32, 0.52)),
+    linear-gradient(90deg, var(--game-panel-accent, rgba(159, 199, 185, 0.86)) var(--stat-value), var(--game-panel-track, rgba(255, 255, 255, 0.11)) var(--stat-value));
+  box-shadow: 0 0 18px color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 18%, transparent);
+}
+
+.chat-resource-run-plane .run-chat-panel-preview.has-game-panel-style.game-panel-meter-line .chat-inline-game-stat i {
+  height: 2px;
+  border-radius: 0;
+}
+
+.chat-resource-run-plane .run-chat-panel-preview.has-game-panel-style.game-panel-meter-etched .chat-inline-game-stat i {
+  height: 6px;
+  background:
+    repeating-linear-gradient(90deg, color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 72%, transparent) 0 7px, transparent 7px 10px),
+    linear-gradient(90deg, var(--game-panel-accent, rgba(159, 199, 185, 0.86)) var(--stat-value), var(--game-panel-track, rgba(255, 255, 255, 0.11)) var(--stat-value));
+}
+
+.chat-resource-run-plane .run-chat-panel-preview.has-game-panel-style.game-panel-meter-warm-bar .chat-inline-game-stat i {
+  height: 7px;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 86%, white 8%) var(--stat-value), var(--game-panel-track, rgba(255, 255, 255, 0.11)) var(--stat-value));
+}
+
+.chat-resource-run-plane .run-chat-panel-preview.has-game-panel-style .chat-inline-game-effects em {
+  border-color: color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 22%, transparent);
+  background: color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 10%, transparent);
+}
+
+.chat-resource-run-plane .run-chat-equipment-preview .chat-inline-scene {
+  border-color: var(--game-panel-border, rgba(159, 199, 185, 0.16));
+  border-radius: var(--game-panel-radius, 12px);
+  background:
+    radial-gradient(circle at 90% 6%, var(--game-panel-accent-soft, rgba(159, 199, 185, 0.12)), transparent 34%),
+    linear-gradient(135deg, var(--game-panel-surface-alt, rgba(39, 71, 46, 0.28)), var(--game-panel-surface, rgba(29, 23, 32, 0.66))),
     rgba(12, 15, 14, 0.74);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.052),
+    0 16px 34px rgba(0, 0, 0, 0.18);
 }
 
 .chat-resource-run-plane .run-chat-equipment-preview .chat-inline-equipment-toggle {
   pointer-events: none;
+  border-top-color: color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 18%, transparent);
+  background:
+    linear-gradient(90deg, var(--game-panel-accent-soft, rgba(159, 199, 185, 0.12)), transparent 76%),
+    rgba(255, 255, 255, 0.018);
+}
+
+.chat-resource-run-plane .run-chat-panel-preview.has-game-panel-style .chat-inline-equipment-toggle em {
+  background: color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 14%, transparent);
+  color: var(--game-panel-text, rgba(248, 250, 250, 0.76));
+}
+
+.chat-resource-run-plane .run-chat-panel-preview.has-game-panel-style .chat-inline-equipment-toggle strong {
+  color: var(--game-panel-muted, rgba(248, 250, 250, 0.44));
+}
+
+.chat-resource-run-plane .run-chat-panel-preview.has-game-panel-style .chat-inline-equipment table {
+  border-color: color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 16%, rgba(255, 255, 255, 0.08));
+  border-radius: var(--game-panel-cell-radius, 9px);
+  background: color-mix(in srgb, var(--game-panel-surface, rgba(12, 15, 14, 0.74)) 76%, transparent);
+}
+
+.chat-resource-run-plane .run-chat-panel-preview.has-game-panel-style .chat-inline-equipment th,
+.chat-resource-run-plane .run-chat-panel-preview.has-game-panel-style .chat-inline-equipment td {
+  border-bottom-color: color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 12%, transparent);
+  border-right-color: color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 10%, transparent);
+}
+
+.chat-resource-run-plane .run-chat-panel-preview.has-game-panel-style .chat-inline-equipment-use {
+  border-color: color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 24%, transparent);
+  background: color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 12%, transparent);
+  color: var(--game-panel-text, rgba(248, 250, 250, 0.68));
+}
+
+.chat-resource-run-plane .run-chat-panel-preview.has-game-panel-style.game-panel-frame-dossier .chat-inline-game-status,
+.chat-resource-run-plane .run-chat-panel-preview.has-game-panel-style.game-panel-frame-dossier .chat-inline-scene {
+  border-radius: 10px;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 10%, transparent) 1px, transparent 1px),
+    linear-gradient(135deg, var(--game-panel-surface-alt, rgba(39, 71, 46, 0.28)), var(--game-panel-surface, rgba(29, 23, 32, 0.66)));
+  background-size: 12px 100%, auto;
+}
+
+.chat-resource-run-plane .run-chat-panel-preview.has-game-panel-style.game-panel-frame-ritual .chat-inline-game-status,
+.chat-resource-run-plane .run-chat-panel-preview.has-game-panel-style.game-panel-frame-ritual .chat-inline-scene {
+  border-radius: calc(var(--game-panel-radius, 12px) + 4px);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 12%, transparent),
+    0 18px 38px rgba(0, 0, 0, 0.22);
+}
+
+.chat-resource-run-plane .run-chat-panel-preview.has-game-panel-style.game-panel-frame-noir .chat-inline-game-status,
+.chat-resource-run-plane .run-chat-panel-preview.has-game-panel-style.game-panel-frame-noir .chat-inline-scene {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 8%, rgba(0, 0, 0, 0.72)), rgba(0, 0, 0, 0.7)),
+    var(--game-panel-surface, rgba(12, 15, 14, 0.74));
+}
+
+.chat-resource-run-plane .run-chat-panel-preview.has-game-panel-style.game-panel-frame-mist .chat-inline-game-status,
+.chat-resource-run-plane .run-chat-panel-preview.has-game-panel-style.game-panel-frame-mist .chat-inline-scene {
+  backdrop-filter: blur(16px);
 }
 
 .chat-resource-run-plane .run-css-result-preview.has-chat-atmosphere .chat-inline-scene {

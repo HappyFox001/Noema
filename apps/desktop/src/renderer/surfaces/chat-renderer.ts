@@ -10,6 +10,8 @@ import type {
 import { Image as ImageIcon, Trash2, Volume2, createIcons } from 'lucide'
 import { localizeChatText, type ChatLanguageCode } from './chat-model'
 import { extractRoleplaySpeechTexts, hasRoleplayChatMarkup, renderRoleplayChatMarkup } from './roleplay-chat-markup'
+import { sanitizeAtmosphereCss, sanitizeAtmosphereScopeClass } from './chat-atmosphere-css'
+import { normalizeGamePanelStyle, renderGamePanelClassNames, renderGamePanelInlineStyle } from './chat-game-panel-style'
 
 export interface ChatRendererOptions {
   panel: HTMLElement
@@ -227,22 +229,6 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     atmosphereStyleElement = null
   }
 
-  function sanitizeAtmosphereScopeClass(value: string | undefined): string {
-    const normalized = String(value || '').trim()
-    return /^noema-atmosphere-[a-z0-9_-]+$/.test(normalized) ? normalized : ''
-  }
-
-  function sanitizeAtmosphereCss(css: string | undefined, scopeClass: string): string {
-    if (!css || !scopeClass || !css.includes(`.${scopeClass}`)) {
-      return ''
-    }
-    const blocked = /@import|@font-face|url\s*\(|position\s*:\s*fixed|<\/style/i
-    if (blocked.test(css)) {
-      return ''
-    }
-    return css
-  }
-
   function renderMessages(messages: ChatMessage[], scrollMode: ChatRenderScrollMode = 'auto'): void {
     const shouldFollow = scrollMode === 'force' || (scrollMode === 'auto' && shouldAutoFollowScroll())
     const previousScrollTop = options.messageList.scrollTop
@@ -430,8 +416,20 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     if (!stats.length && !statuses.length) {
       return ''
     }
+    const panelStyle = normalizeGamePanelStyle(
+      { ui: gameSystem.ui ?? {} },
+      [
+        gameSystem.sourceArtifactId,
+        gameSystem.name,
+        gameSystem.summary,
+        JSON.stringify(gameSystem.stats ?? []),
+        JSON.stringify(gameSystem.statuses ?? []),
+      ].filter(Boolean).join('\n')
+    )
+    const classNames = renderGamePanelClassNames(panelStyle, 'chat-inline-game-status')
+    const inlineStyle = renderGamePanelInlineStyle(panelStyle)
     return `
-      <section class="chat-inline-game-status" aria-label="${options.escapeHtml(language === 'zh-CN' ? '角色状态栏' : 'Character status')}">
+      <section class="${options.escapeHtml(classNames)}" style="${options.escapeHtml(inlineStyle)}" aria-label="${options.escapeHtml(language === 'zh-CN' ? '角色状态栏' : 'Character status')}">
         ${stats.length ? `
           <div class="chat-inline-game-stat-row">
             ${stats.map((stat) => {

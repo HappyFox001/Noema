@@ -1919,6 +1919,7 @@ function createGameSystemData(
   const worldKnowledge = createGameSystemWorldKnowledge(context, fields, sourceText, zh)
   const baseGameplay = createBaseGameplaySystem(sourceText, target, worldKnowledge, zh)
   const derivedStatusFields = createDerivedStatusFieldSpec(stats, statuses, baseGameplay, sourceText, zh)
+  const panelStyle = createGameSystemPanelStyle(sourceText, seed, zh)
   const equipmentTone = /magic|curse|witch|spell|魔|咒|巫|玄/i.test(sourceText)
     ? (zh ? '符合仪式、受规则约束，误用会付出代价' : 'ritual-compatible, rule-bound, and costly to misuse')
     : /school|campus|student|校园|学生/i.test(sourceText)
@@ -1941,6 +1942,7 @@ function createGameSystemData(
           ? 'CSS 设计应读取角色图片、世界氛围、边框材质、状态栏语义和剧情张力，不使用固定渐变模板。'
           : 'CSS design should read character imagery, world mood, border material, status semantics, and story tension instead of using a fixed gradient template.',
         inputs: ['character images', 'base role fields', 'world knowledge', 'gameplay/status semantics', 'atmosphere style target'],
+        panelStyle,
       },
     },
     baseRoleFields,
@@ -1985,6 +1987,7 @@ function createGameSystemData(
       ],
     },
     statuses,
+    panelStyle,
     rules: (zh ? [
       '属性属于角色自身，只有对话产生具体原因时才应变化。',
       '状态效果必须说明触发、持续时间、冲突行为与叙事后果。',
@@ -1998,7 +2001,54 @@ function createGameSystemData(
       stringValue(target.config.statusRules),
       stringValue(target.config.panelDesign),
     ]).filter(Boolean),
-    ui: { quickPanels: ['equipment', 'status', 'rules'] },
+    ui: { quickPanels: ['equipment', 'status', 'rules'], panelStyle },
+  }
+}
+
+function createGameSystemPanelStyle(sourceText: string, seed: number, zh: boolean): Record<string, unknown> {
+  const lower = sourceText.toLowerCase()
+  const intimacy = scoreText(lower, ['intimate', 'romance', 'desire', 'body', 'warm', '暧昧', '亲密', '欲', '恋', '身体', '温柔'])
+  const precision = scoreText(lower, ['cyber', 'terminal', 'signal', 'hacker', 'dossier', 'clinical', '权限', '终端', '信号', '黑客', '档案'])
+  const threat = scoreText(lower, ['danger', 'curse', 'blood', 'noir', 'forbidden', 'risk', '危险', '诅咒', '血', '禁忌', '风险'])
+  const ritual = scoreText(lower, ['magic', 'ritual', 'spell', 'witch', 'contract', '魔', '仪式', '咒', '巫', '契约'])
+  const softness = scoreText(lower, ['rain', 'mist', 'quiet', 'garden', 'silk', '雨', '雾', '安静', '庭院', '丝'])
+  const hue = normalizeHue(seed % 360 + intimacy * 24 + precision * 42 + ritual * 18 - threat * 16 + softness * 10)
+  const surfaceHue = normalizeHue(hue + 204 + precision * 11 - intimacy * 7)
+  const saturation = clampNumber(36 + intimacy * 8 + precision * 7 + ritual * 6 + threat * 5, 34, 78)
+  const accentLightness = clampNumber(58 + softness * 4 - threat * 5 + intimacy * 2, 42, 72)
+  const surfaceLightness = clampNumber(8 + softness * 2 - threat, 5, 15)
+  const frame = precision > 1
+    ? 'dossier'
+    : ritual > 1
+      ? 'ritual'
+      : threat > 1
+        ? 'noir'
+        : intimacy > 1
+          ? 'intimate'
+          : softness > 1
+            ? 'mist'
+            : 'glass'
+  const density = precision > 1 || threat > 1 ? 'compact' : softness > 1 ? 'airy' : 'balanced'
+  const meter = precision > 1 ? 'line' : ritual > 1 ? 'etched' : intimacy > 1 ? 'warm-bar' : 'capsule'
+  const radiusPx = Math.round(clampNumber(12 + softness * 4 + intimacy * 3 - precision * 3 - threat * 2 + (seed % 5), 8, 26))
+  return {
+    schemaVersion: 1,
+    frame,
+    density,
+    meter,
+    accent: `hsl(${hue} ${saturation}% ${accentLightness}%)`,
+    accentSoft: `hsla(${hue} ${saturation}% ${accentLightness}% / ${clampNumber(0.12 + intimacy * 0.02 + softness * 0.018, 0.12, 0.24).toFixed(2)})`,
+    surface: `hsla(${surfaceHue} ${clampNumber(12 + precision * 5 + threat * 4, 12, 32)}% ${surfaceLightness}% / 0.88)`,
+    surfaceAlt: `hsla(${normalizeHue(surfaceHue + 24)} ${clampNumber(16 + ritual * 5 + intimacy * 4, 16, 38)}% ${clampNumber(surfaceLightness + 6, 10, 24)}% / 0.54)`,
+    track: `hsla(${surfaceHue} 16% 82% / 0.14)`,
+    border: `hsla(${hue} ${saturation}% ${accentLightness}% / ${clampNumber(0.2 + precision * 0.035 + ritual * 0.03, 0.2, 0.36).toFixed(2)})`,
+    text: `hsla(${surfaceHue} 18% 92% / 0.88)`,
+    muted: `hsla(${surfaceHue} 14% 78% / 0.58)`,
+    radiusPx,
+    cellRadiusPx: Math.max(7, radiusPx - 4),
+    concept: zh
+      ? `从角色语义生成的 ${frame} 状态/装备面板，不复用固定状态栏模板。`
+      : `${frame} status/equipment panel generated from role semantics, not from a fixed status template.`,
   }
 }
 
@@ -2296,9 +2346,6 @@ function createAtmosphereStyleData(
       userLine: '',
       narration: compactOpeningText(narration, 96),
       speech: compactOpeningText(firstSpeech, 64),
-      location: compactOpeningText(scenario || worldContext, 34),
-      status: freeStyle.previewStatus,
-      equipment: freeStyle.previewEquipment,
     },
     source: {
       targetNodeId: target.nodeId,
@@ -2422,8 +2469,6 @@ function createDefaultAtmosphereFallback(): {
   message: Record<string, string>
   audio: Record<string, string>
   sceneCard: Record<string, string>
-  previewStatus: string[]
-  previewEquipment: Array<Record<string, string>>
 } {
   return {
     name: 'Neutral Atmosphere',
@@ -2452,10 +2497,6 @@ function createDefaultAtmosphereFallback(): {
       frame: 'quiet-panel',
       divider: 'fine-line',
     },
-    previewStatus: ['氛围 50', '距离 50', '状态 50'],
-    previewEquipment: [
-      { name: '随身物件', ability: '维持角色气氛', quantity: '1' },
-    ],
   }
 }
 
@@ -2558,8 +2599,6 @@ function createFreeAtmosphereStyle(input: {
       ...input.fallback.sceneCard,
       divider: precision > 1 || threat > 1 ? 'fine-line' : softness > 1 ? 'soft-band' : 'none',
     },
-    previewStatus: input.fallback.previewStatus,
-    previewEquipment: input.fallback.previewEquipment,
     designBrief,
     css: buildFreeAtmosphereCss(input.scopeClass, {
       accent,
@@ -2661,8 +2700,16 @@ function buildFreeAtmosphereCss(
     `}`,
     `.${scopeClass}.has-chat-atmosphere .chat-inline-equipment table, .${scopeClass}.has-chat-atmosphere .chat-inline-game-status {`,
     `  border-color: color-mix(in srgb, ${spec.accent} 24%, rgba(255,255,255,0.08));`,
-    `  box-shadow: inset 0 1px 0 rgba(255,255,255,0.045);`,
+    `  background: linear-gradient(135deg, ${spec.accentSoft}, color-mix(in srgb, ${spec.surface} 78%, transparent));`,
+    `  box-shadow: inset 0 1px 0 rgba(255,255,255,0.045), 0 16px 40px color-mix(in srgb, ${spec.accent} 10%, transparent);`,
     `}`,
+    `.${scopeClass}.has-chat-atmosphere .chat-inline-game-stat span, .${scopeClass}.has-chat-atmosphere .chat-inline-game-effects em, .${scopeClass}.has-chat-atmosphere .chat-inline-equipment th { color: color-mix(in srgb, ${spec.accent} 45%, rgba(238,241,240,0.58)); }`,
+    `.${scopeClass}.has-chat-atmosphere .chat-inline-game-stat strong, .${scopeClass}.has-chat-atmosphere .chat-inline-equipment td, .${scopeClass}.has-chat-atmosphere .chat-inline-equipment-toggle span { color: hsla(${spec.surfaceHue} 18% 92% / 0.88); }`,
+    `.${scopeClass}.has-chat-atmosphere .chat-inline-game-stat i { background: linear-gradient(90deg, ${spec.accent} var(--stat-value), hsla(${spec.surfaceHue} 16% 82% / 0.14) var(--stat-value)); box-shadow: 0 0 18px color-mix(in srgb, ${spec.accent} 18%, transparent); }`,
+    `.${scopeClass}.has-chat-atmosphere .chat-inline-game-effects em { border-color: color-mix(in srgb, ${spec.accent} 24%, transparent); background: color-mix(in srgb, ${spec.accent} 10%, transparent); }`,
+    `.${scopeClass}.has-chat-atmosphere .chat-inline-equipment-toggle { border-top-color: color-mix(in srgb, ${spec.accent} 18%, transparent); background: linear-gradient(90deg, ${spec.accentSoft}, transparent 76%), rgba(255,255,255,0.018); }`,
+    `.${scopeClass}.has-chat-atmosphere .chat-inline-equipment-toggle em, .${scopeClass}.has-chat-atmosphere .chat-inline-equipment-use { border-color: color-mix(in srgb, ${spec.accent} 24%, transparent); background: color-mix(in srgb, ${spec.accent} 12%, transparent); color: hsla(${spec.surfaceHue} 18% 92% / 0.82); }`,
+    `.${scopeClass}.has-chat-atmosphere .chat-inline-equipment th, .${scopeClass}.has-chat-atmosphere .chat-inline-equipment td { border-bottom-color: color-mix(in srgb, ${spec.accent} 12%, transparent); border-right-color: color-mix(in srgb, ${spec.accent} 10%, transparent); }`,
     `/* ${design.concept} */`,
   ].join('\n')
 }

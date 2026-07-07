@@ -7,6 +7,8 @@ import { draggable, dropTargetForElements, monitorForElements } from '@atlaskit/
 import { computePosition, flip, offset, shift } from '@floating-ui/dom'
 import { Link2Off, Maximize, MessageCircle, Play, RotateCcw, Save, Search, Square, Trash2, createIcons, type IconNode } from 'lucide'
 import type { CharacterResourceViewState, SerializedCharacterResourceLinkKind } from './chat-character-resource-graph-state'
+import { sanitizeAtmosphereCss, sanitizeAtmosphereScopeClass } from './chat-atmosphere-css'
+import { getGamePanelStyleRecord, normalizeGamePanelStyle, renderGamePanelClassNames, renderGamePanelInlineStyle } from './chat-game-panel-style'
 
 export interface CharacterWorkflowPageOptions {
   language: 'zh-CN' | 'en-US'
@@ -3816,6 +3818,7 @@ function createGameSystemResultArtifacts(artifact: CharacterRunArtifact): Charac
   const stats = normalizeRunGameStats(data.stats)
   const statuses = normalizeRunGameStatuses(data.statuses)
   const equipment = normalizeRunGameEquipment(objectRecordValue(data.equipment).slots)
+  const panelStyle = getGamePanelStyleRecord(data)
   const results: CharacterRunArtifacts = []
   if (stats.length || statuses.length) {
     results.push({
@@ -3824,7 +3827,7 @@ function createGameSystemResultArtifacts(artifact: CharacterRunArtifact): Charac
       sourceNodeId: artifact.sourceNodeId,
       title: 'Status Panel',
       summary: [stats.map((item) => `${item.label} ${item.value}${item.unit}`).join(' · '), statuses.map((item) => `${item.label}${item.value ? ` · ${item.value}` : ''}`).join(' · ')].filter(Boolean).join('\n'),
-      data: { stats, statuses, sourceArtifactId: artifact.id },
+      data: { stats, statuses, panelStyle, sourceArtifactId: artifact.id },
     })
   }
   if (equipment.length) {
@@ -3834,7 +3837,7 @@ function createGameSystemResultArtifacts(artifact: CharacterRunArtifact): Charac
       sourceNodeId: artifact.sourceNodeId,
       title: 'Equipment Panel',
       summary: equipment.map((item) => `${item.name}: ${item.ability}`).join('\n'),
-      data: { equipment, sourceArtifactId: artifact.id },
+      data: { equipment, panelStyle, sourceArtifactId: artifact.id },
     })
   }
   return results
@@ -3982,19 +3985,6 @@ function enumValue<T extends string>(value: unknown, allowed: readonly T[], fall
     : fallback
 }
 
-function sanitizeAtmosphereScopeClass(value: string): string {
-  const normalized = value.trim()
-  return /^noema-atmosphere-[a-z0-9_-]+$/.test(normalized) ? normalized : ''
-}
-
-function sanitizeAtmosphereCss(css: string, scopeClass: string): string {
-  if (!css || !scopeClass || !css.includes(`.${scopeClass}`)) {
-    return ''
-  }
-  const blocked = /@import|@font-face|url\s*\(|position\s*:\s*fixed|<\/style/i
-  return blocked.test(css) ? '' : css
-}
-
 function sanitizeCssColor(value: string): string {
   const trimmed = value.trim()
   if (/^#[0-9a-f]{3,8}$/i.test(trimmed)) {
@@ -4007,6 +3997,16 @@ function sanitizeCssColor(value: string): string {
     return trimmed
   }
   return ''
+}
+
+function getRunGamePanelFallbackSource(data: Record<string, unknown>, output: CharacterResourceOutput): string {
+  return [
+    output.artifactId,
+    output.sourceNodeId,
+    output.title,
+    output.summary,
+    JSON.stringify(data.stats ?? data.statuses ?? data.equipment ?? ''),
+  ].filter(Boolean).join('\n')
 }
 
 function coalesceRunCanvasImageArtifacts(artifacts: CharacterRunArtifacts): CharacterRunArtifacts {
@@ -4744,8 +4744,11 @@ function renderRunChatStatusContent(
     .map((stat) => localizeRunGameStat(stat, options.language))
   const statuses = normalizeRunGameStatuses(data.statuses)
     .map((status) => localizeRunGameStatus(status, options.language))
+  const panelStyle = normalizeGamePanelStyle(data, getRunGamePanelFallbackSource(data, output))
+  const classNames = renderGamePanelClassNames(panelStyle, `chat-resource-node-content ${previewClass} run-chat-panel-preview run-chat-status-preview`)
+  const inlineStyle = renderGamePanelInlineStyle(panelStyle)
   return `
-    <div class="chat-resource-node-content ${previewClass} run-chat-panel-preview run-chat-status-preview">
+    <div class="${options.escapeHtml(classNames)}" style="${options.escapeHtml(inlineStyle)}">
       <section class="chat-inline-game-status" aria-label="${options.escapeHtml(ui(options, '角色状态栏', 'Character status'))}">
         ${stats.length ? `
           <div class="chat-inline-game-stat-row">
@@ -4779,8 +4782,11 @@ function renderRunChatEquipmentContent(
     ? output.data as Record<string, unknown>
     : {}
   const equipment = normalizeRunGameEquipment(data.equipment)
+  const panelStyle = normalizeGamePanelStyle(data, getRunGamePanelFallbackSource(data, output))
+  const classNames = renderGamePanelClassNames(panelStyle, `chat-resource-node-content ${previewClass} run-chat-panel-preview run-chat-equipment-preview`)
+  const inlineStyle = renderGamePanelInlineStyle(panelStyle)
   return `
-    <div class="chat-resource-node-content ${previewClass} run-chat-panel-preview run-chat-equipment-preview">
+    <div class="${options.escapeHtml(classNames)}" style="${options.escapeHtml(inlineStyle)}">
       <section class="chat-inline-scene">
         <button class="chat-inline-equipment-toggle" type="button" aria-expanded="true">
           <span>${options.escapeHtml(ui(options, '装备栏', 'Equipment'))}</span>
@@ -4872,9 +4878,6 @@ function normalizeRunAtmosphereStyle(
   preview: {
     narration: string
     speech: string
-    location: string
-    status: string[]
-    equipment: Array<{ name: string; ability: string; quantity?: string }>
   }
 } {
   const palette = objectRecordValue(data.palette)
@@ -4886,19 +4889,6 @@ function normalizeRunAtmosphereStyle(
   const accent = sanitizeCssColor(stringValue(palette.accent)) || '#c7d8d0'
   const accentSoft = sanitizeCssColor(stringValue(palette.accentSoft)) || 'rgba(199, 216, 208, 0.16)'
   const scopeClass = sanitizeAtmosphereScopeClass(stringValue(data.scopeClass))
-  const status = stringListRecordValue(preview, 'status')
-  const equipment = Array.isArray(preview.equipment)
-    ? preview.equipment.flatMap((item) => {
-        const record = objectRecordValue(item)
-        const name = stringValue(record.name)
-        const ability = stringValue(record.ability)
-        if (!name || !ability) {
-          return []
-        }
-        const quantity = stringValue(record.quantity)
-        return [{ name, ability, ...(quantity ? { quantity } : {}) }]
-      })
-    : []
   return {
     name: stringValue(data.name) || output.title || 'Character atmosphere',
     summary: stringValue(data.summary) || output.summary,
@@ -4923,9 +4913,6 @@ function normalizeRunAtmosphereStyle(
     preview: {
       narration: stringValue(preview.narration),
       speech: stringValue(preview.speech),
-      location: stringValue(preview.location),
-      status,
-      equipment,
     },
   }
 }

@@ -61,9 +61,6 @@ export interface CharacterProfileAtmosphereStyle {
     userLine?: string
     narration?: string
     speech?: string
-    location?: string
-    status?: string[]
-    equipment?: Array<{ name: string; ability: string; quantity?: string }>
   }
   sourceArtifactId?: string
 }
@@ -108,6 +105,22 @@ export interface CharacterProfileStatusEffect {
   rule?: string
 }
 
+export interface CharacterProfileGamePanelStyle {
+  frame?: 'glass' | 'dossier' | 'ritual' | 'noir' | 'intimate' | 'mist'
+  density?: 'compact' | 'balanced' | 'airy'
+  meter?: 'capsule' | 'line' | 'etched' | 'warm-bar'
+  accent?: string
+  accentSoft?: string
+  surface?: string
+  surfaceAlt?: string
+  track?: string
+  border?: string
+  text?: string
+  muted?: string
+  radiusPx?: number
+  cellRadiusPx?: number
+}
+
 export interface CharacterProfileGameSystem {
   schemaVersion: 1
   name: string
@@ -123,6 +136,7 @@ export interface CharacterProfileGameSystem {
   rules: string[]
   ui?: {
     quickPanels?: Array<'equipment' | 'status' | 'rules'>
+    panelStyle?: CharacterProfileGamePanelStyle
   }
   sourceArtifactId?: string
 }
@@ -428,31 +442,12 @@ function normalizeAtmospherePreview(value: unknown): CharacterProfileAtmosphereS
     return undefined
   }
   const record = value as Record<string, unknown>
-  const equipment = Array.isArray(record.equipment)
-    ? record.equipment
-        .map((item) => {
-          if (!item || typeof item !== 'object' || Array.isArray(item)) return null
-          const entry = item as Record<string, unknown>
-          const name = optionalString(entry.name)
-          const ability = optionalString(entry.ability)
-          if (!name || !ability) return null
-          return {
-            name,
-            ability,
-            quantity: optionalString(entry.quantity),
-          }
-        })
-        .filter(Boolean) as Array<{ name: string; ability: string; quantity?: string }>
-    : undefined
   const preview = {
     userLine: optionalString(record.userLine),
     narration: optionalString(record.narration),
     speech: optionalString(record.speech),
-    location: optionalString(record.location),
-    status: stringArrayValue(record.status).slice(0, 4),
-    equipment,
   }
-  return Object.values(preview).some((item) => Array.isArray(item) ? item.length > 0 : Boolean(item))
+  return Object.values(preview).some(Boolean)
     ? preview
     : undefined
 }
@@ -476,7 +471,7 @@ function normalizeGameSystem(value: unknown): CharacterProfileGameSystem | undef
     },
     statuses: arrayValue(record.statuses).map(normalizeStatusEffect).filter(Boolean) as CharacterProfileStatusEffect[],
     rules: stringArrayValue(record.rules).slice(0, 16),
-    ui: normalizeGameSystemUi(record.ui),
+    ui: normalizeGameSystemUi(record.ui, record.panelStyle),
     sourceArtifactId: optionalString(record.sourceArtifactId),
   }
   return gameSystem.stats.length || gameSystem.equipment.slots.length || gameSystem.statuses.length || gameSystem.rules.length
@@ -548,12 +543,36 @@ function normalizeStatusEffect(value: unknown): CharacterProfileStatusEffect | n
   }
 }
 
-function normalizeGameSystemUi(value: unknown): CharacterProfileGameSystem['ui'] | undefined {
+function normalizeGameSystemUi(value: unknown, rootPanelStyle?: unknown): CharacterProfileGameSystem['ui'] | undefined {
   const record = recordValue(value)
-  if (!record) return undefined
+  const panelStyle = normalizeGamePanelStyle(record?.panelStyle ?? rootPanelStyle)
+  if (!record) return panelStyle ? { panelStyle } : undefined
   const quickPanels = stringArrayValue(record.quickPanels)
     .filter((item): item is 'equipment' | 'status' | 'rules' => item === 'equipment' || item === 'status' || item === 'rules')
-  return quickPanels.length ? { quickPanels } : undefined
+  return quickPanels.length || panelStyle
+    ? { ...(quickPanels.length ? { quickPanels } : {}), ...(panelStyle ? { panelStyle } : {}) }
+    : undefined
+}
+
+function normalizeGamePanelStyle(value: unknown): CharacterProfileGamePanelStyle | undefined {
+  const record = recordValue(value)
+  if (!record) return undefined
+  const style: CharacterProfileGamePanelStyle = {
+    frame: optionalEnumString(record.frame, ['glass', 'dossier', 'ritual', 'noir', 'intimate', 'mist']),
+    density: optionalEnumString(record.density, ['compact', 'balanced', 'airy']),
+    meter: optionalEnumString(record.meter, ['capsule', 'line', 'etched', 'warm-bar']),
+    accent: optionalColorString(record.accent),
+    accentSoft: optionalColorString(record.accentSoft),
+    surface: optionalColorString(record.surface),
+    surfaceAlt: optionalColorString(record.surfaceAlt),
+    track: optionalColorString(record.track),
+    border: optionalColorString(record.border),
+    text: optionalColorString(record.text),
+    muted: optionalColorString(record.muted),
+    radiusPx: optionalNumber(record.radiusPx),
+    cellRadiusPx: optionalNumber(record.cellRadiusPx),
+  }
+  return Object.values(style).some((item) => item !== undefined) ? style : undefined
 }
 
 function normalizeAsset(value: unknown): CharacterProfileAsset | null {
@@ -635,12 +654,26 @@ function enumString<T extends string>(value: unknown, allowed: readonly T[], fal
     : fallback
 }
 
+function optionalEnumString<T extends string>(value: unknown, allowed: readonly T[]): T | undefined {
+  return typeof value === 'string' && (allowed as readonly string[]).includes(value)
+    ? value as T
+    : undefined
+}
+
 function colorString(value: unknown, fallback: string): string {
+  return optionalColorString(value) ?? fallback
+}
+
+function optionalColorString(value: unknown): string | undefined {
   const text = stringValue(value)
-  if (/^#[0-9a-f]{3}(?:[0-9a-f]{3})?$/i.test(text) || /^rgba?\([^)]+\)$/i.test(text)) {
+  if (
+    /^#[0-9a-f]{3,8}$/i.test(text) ||
+    /^hsla?\(\s*[\d.]+(?:deg|rad|turn)?\s+[\d.]+%\s+[\d.]+%(?:\s*\/\s*(?:[\d.]+|[\d.]+%))?\s*\)$/i.test(text) ||
+    /^rgba?\([^)]+\)$/i.test(text)
+  ) {
     return text
   }
-  return fallback
+  return undefined
 }
 
 function normalizeIdentifier(value: unknown, fallback: string): string {
