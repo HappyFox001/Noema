@@ -441,6 +441,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     originX: number
     originY: number
     runDraft: boolean
+    zoom: number
   } | null = null
   const characterWorkflowRunInspectorSnapshots = new WeakMap<HTMLElement, string>()
   let characterResourceViewportDrag: {
@@ -8414,6 +8415,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       x: Number.parseFloat(node.style.getPropertyValue('--node-x')) || 0,
       y: Number.parseFloat(node.style.getPropertyValue('--node-y')) || 0,
     }
+    const plane = node.closest<HTMLElement>('.chat-resource-graph-plane')
+    const zoom = readCharacterWorkflowPlaneZoom(plane)
     characterWorkflowDragging = {
       nodeId,
       pointerId: event.pointerId,
@@ -8422,6 +8425,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       originX: origin.x,
       originY: origin.y,
       runDraft,
+      zoom,
     }
     node.setPointerCapture?.(event.pointerId)
     node.classList.add('is-dragging', 'selected')
@@ -8434,14 +8438,17 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!characterWorkflowDragging || characterWorkflowDragging.pointerId !== event.pointerId) {
       return
     }
-    const nextX = Math.round(characterWorkflowDragging.originX + event.clientX - characterWorkflowDragging.startX)
-    const nextY = Math.round(characterWorkflowDragging.originY + event.clientY - characterWorkflowDragging.startY)
+    const deltaX = (event.clientX - characterWorkflowDragging.startX) / characterWorkflowDragging.zoom
+    const deltaY = (event.clientY - characterWorkflowDragging.startY) / characterWorkflowDragging.zoom
+    const nextX = Math.round(characterWorkflowDragging.originX + deltaX)
+    const nextY = Math.round(characterWorkflowDragging.originY + deltaY)
     characterWorkflowPositionOverrides[characterWorkflowDragging.nodeId] = { x: nextX, y: nextY }
     const node = panel.querySelector<HTMLElement>(`[data-chat-workflow-node-id="${CSS.escape(characterWorkflowDragging.nodeId)}"]`)
     if (node) {
       node.style.setProperty('--node-x', `${nextX}px`)
       node.style.setProperty('--node-y', `${nextY}px`)
     }
+    refreshCharacterResourceLinksForNode(characterWorkflowDragging.nodeId)
     refreshCharacterResourceGroupBounds()
   }
 
@@ -8460,6 +8467,115 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!runDraft) {
       renderCharacterWorkflow()
     }
+  }
+
+  function readCharacterWorkflowPlaneZoom(plane: HTMLElement | null): number {
+    if (!plane) {
+      return 1
+    }
+    const raw = plane.style.getPropertyValue('--resource-zoom') || getComputedStyle(plane).getPropertyValue('--resource-zoom')
+    const zoom = Number.parseFloat(raw)
+    return Number.isFinite(zoom) && zoom > 0 ? zoom : 1
+  }
+
+  function refreshCharacterResourceLinksForNode(nodeId: string): void {
+    const viewport = panel.querySelector<HTMLElement>('.chat-workflow-canvas-viewport.active')
+    if (!viewport) {
+      return
+    }
+    viewport.querySelectorAll<SVGGElement>('.chat-resource-link[data-chat-resource-link-id]').forEach((link) => {
+      const linkId = link.getAttribute('data-chat-resource-link-id') || ''
+      const endpoints = parseRenderedResourceLinkEndpoints(linkId)
+      if (!endpoints || (endpoints.sourceNodeId !== nodeId && endpoints.targetNodeId !== nodeId)) {
+        return
+      }
+      const source = getRenderedResourceNodeBox(endpoints.sourceNodeId)
+      const target = getRenderedResourceNodeBox(endpoints.targetNodeId)
+      if (!source || !target) {
+        return
+      }
+      const geometry = calculateRenderedResourceLinkGeometry(source, target, link.classList.contains('run-sequence-link'))
+      link.querySelectorAll<SVGPathElement>('path.chat-resource-link-main, path.hit-area').forEach((path) => {
+        path.setAttribute('d', geometry.path)
+      })
+      const sourcePort = link.querySelector<SVGCircleElement>('.chat-resource-link-port.source')
+      const targetPort = link.querySelector<SVGCircleElement>('.chat-resource-link-port.target')
+      if (sourcePort) {
+        sourcePort.setAttribute('cx', String(geometry.x1))
+        sourcePort.setAttribute('cy', String(geometry.y1))
+      }
+      if (targetPort) {
+        targetPort.setAttribute('cx', String(geometry.x2))
+        targetPort.setAttribute('cy', String(geometry.y2))
+      }
+      const label = link.querySelector<SVGTextElement>('text')
+      if (label) {
+        label.setAttribute('x', String((geometry.x1 + geometry.x2) / 2))
+        label.setAttribute('y', String((geometry.y1 + geometry.y2) / 2 - 7))
+      }
+      const disconnect = link.querySelector<SVGForeignObjectElement>('.chat-resource-link-disconnect-wrap')
+      if (disconnect) {
+        disconnect.setAttribute('x', String((geometry.x1 + geometry.x2) / 2 - 12))
+        disconnect.setAttribute('y', String((geometry.y1 + geometry.y2) / 2 + 2))
+      }
+    })
+  }
+
+  function parseRenderedResourceLinkEndpoints(linkId: string): { sourceNodeId: string; targetNodeId: string } | null {
+    const runMatch = linkId.match(/^run-link-\d+-(.+)->(.+)$/)
+    if (runMatch) {
+      return { sourceNodeId: runMatch[1], targetNodeId: runMatch[2] }
+    }
+    const workflowMatch = linkId.match(/^(.+?):.*?->(.+?):/)
+    if (workflowMatch) {
+      return { sourceNodeId: workflowMatch[1], targetNodeId: workflowMatch[2] }
+    }
+    return null
+  }
+
+  function getRenderedResourceNodeBox(nodeId: string): { x: number; y: number; width: number; height: number } | null {
+    const node = panel.querySelector<HTMLElement>(`[data-chat-workflow-node-id="${CSS.escape(nodeId)}"]`)
+    if (!node) {
+      return null
+    }
+    return {
+      x: Number.parseFloat(node.style.getPropertyValue('--node-x')) || 0,
+      y: Number.parseFloat(node.style.getPropertyValue('--node-y')) || 0,
+      width: Number.parseFloat(node.style.getPropertyValue('--node-w')) || node.offsetWidth || 268,
+      height: Number.parseFloat(node.style.getPropertyValue('--node-h')) || node.offsetHeight || 226,
+    }
+  }
+
+  function calculateRenderedResourceLinkGeometry(
+    source: { x: number; y: number; width: number; height: number },
+    target: { x: number; y: number; width: number; height: number },
+    runLink: boolean
+  ): { x1: number; y1: number; x2: number; y2: number; path: string } {
+    if (runLink) {
+      const horizontal = Math.abs(target.x - source.x) > Math.abs(target.y - source.y) * 1.15
+      if (horizontal) {
+        const direction = target.x >= source.x ? 1 : -1
+        const x1 = direction > 0 ? source.x + source.width : source.x
+        const y1 = source.y + source.height * 0.5
+        const x2 = direction > 0 ? target.x : target.x + target.width
+        const y2 = target.y + target.height * 0.5
+        const mid = Math.max(92, Math.abs(x2 - x1) * 0.44)
+        return { x1, y1, x2, y2, path: `M ${x1} ${y1} C ${x1 + direction * mid} ${y1}, ${x2 - direction * mid} ${y2}, ${x2} ${y2}` }
+      }
+      const direction = target.y >= source.y ? 1 : -1
+      const x1 = source.x + source.width * 0.5
+      const y1 = direction > 0 ? source.y + source.height : source.y
+      const x2 = target.x + target.width * 0.5
+      const y2 = direction > 0 ? target.y : target.y + target.height
+      const mid = Math.max(58, Math.abs(y2 - y1) * 0.44)
+      return { x1, y1, x2, y2, path: `M ${x1} ${y1} C ${x1} ${y1 + direction * mid}, ${x2} ${y2 - direction * mid}, ${x2} ${y2}` }
+    }
+    const x1 = source.x + source.width
+    const y1 = source.y + source.height * 0.5
+    const x2 = target.x
+    const y2 = target.y + target.height * 0.5
+    const mid = Math.max(80, Math.abs(x2 - x1) * 0.45)
+    return { x1, y1, x2, y2, path: `M ${x1} ${y1} C ${x1 + mid} ${y1}, ${x2 - mid} ${y2}, ${x2} ${y2}` }
   }
 
   function refreshCharacterResourceGroupBounds(): void {

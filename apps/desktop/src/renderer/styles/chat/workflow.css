@@ -3413,18 +3413,18 @@ body.chat-workflow-library-resizing * {
 }
 
 .chat-resource-run-plane .chat-resource-link path.chat-resource-link-main {
-  stroke: rgba(107, 115, 111, 0.62);
-  stroke-width: 1.15;
-  stroke-dasharray: 2 8;
+  stroke: rgba(82, 168, 255, 0.46);
+  stroke-width: 2;
+  stroke-dasharray: none;
   stroke-linecap: round;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
 }
 
 .chat-resource-run-plane .chat-resource-link.run-sequence-link path.chat-resource-link-main {
-  stroke: rgba(132, 137, 129, 0.72);
-  stroke-width: 1.05;
-  stroke-dasharray: 1 7;
+  stroke: rgba(162, 202, 188, 0.52);
+  stroke-width: 2;
+  stroke-dasharray: 7 6;
   filter: none;
 }
 
@@ -3435,19 +3435,19 @@ body.chat-workflow-library-resizing * {
 }
 
 .chat-resource-run-plane .chat-resource-link-port {
-  fill: rgba(202, 190, 150, 0.62);
+  fill: rgba(162, 202, 188, 0.82);
   stroke: rgba(10, 11, 13, 0.94);
-  stroke-width: 1.2;
+  stroke-width: 1.4;
   vector-effect: non-scaling-stroke;
 }
 
 .chat-resource-run-plane .chat-resource-link-port.target {
-  fill: rgba(213, 205, 174, 0.78);
+  fill: rgba(82, 168, 255, 0.86);
 }
 
 .chat-resource-run-viewport.is-run-animating .chat-resource-link.run-sequence-link.flowing path.chat-resource-link-main {
-  stroke: rgba(202, 190, 150, 0.82);
-  stroke-dasharray: 3 9;
+  stroke: rgba(162, 202, 188, 0.72);
+  stroke-dasharray: 10 7;
   animation: chat-resource-run-link-flow 820ms linear infinite;
 }
 

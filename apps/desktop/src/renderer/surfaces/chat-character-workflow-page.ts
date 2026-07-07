@@ -3432,7 +3432,10 @@ function createRunCanvasDisplayArtifacts(artifacts: CharacterRunArtifacts): Char
       continue
     }
     if (artifact.type === 'atmosphere-style') {
-      displayArtifacts.push(createAtmosphereStyleResultArtifact(artifact))
+      const result = createAtmosphereStyleResultArtifact(artifact)
+      if (result) {
+        displayArtifacts.push(result)
+      }
       continue
     }
     displayArtifacts.push(artifact)
@@ -3501,8 +3504,11 @@ function createRunTextResultArtifact(artifacts: CharacterRunArtifacts): Characte
   }
 }
 
-function createAtmosphereStyleResultArtifact(artifact: CharacterRunArtifact): CharacterRunArtifact {
+function createAtmosphereStyleResultArtifact(artifact: CharacterRunArtifact): CharacterRunArtifact | null {
   const data = getRunArtifactDataRecord(artifact)
+  if (!hasDisplayableAtmospherePreview(data)) {
+    return null
+  }
   const designBrief = data.designBrief
   const summary = safeRunDisplayText(artifact.summary ?? '')
     || safeRunDisplayText(stringRecordValue(data, 'summary'))
@@ -3519,6 +3525,23 @@ function createAtmosphereStyleResultArtifact(artifact: CharacterRunArtifact): Ch
       sourceArtifactId: artifact.id,
     },
   }
+}
+
+function hasDisplayableAtmospherePreview(data: Record<string, unknown>): boolean {
+  const preview = objectRecordValue(data.preview)
+  if (stringValue(preview.narration) || stringValue(preview.speech) || stringValue(preview.location)) {
+    return true
+  }
+  if (stringListRecordValue(preview, 'status').length) {
+    return true
+  }
+  if (Array.isArray(preview.equipment)) {
+    return preview.equipment.some((item) => {
+      const record = objectRecordValue(item)
+      return Boolean(stringValue(record.name) || stringValue(record.ability))
+    })
+  }
+  return false
 }
 
 function stringRecordValue(value: unknown, key: string): string {
