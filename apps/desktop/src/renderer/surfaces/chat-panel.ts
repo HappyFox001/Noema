@@ -373,6 +373,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let characterWorkflowTemplateMenuOpen = false
   let characterWorkflowRunState: CharacterResourceRunState | null = null
   let characterWorkflowExecutingProjectId = ''
+  let characterWorkflowExecutingRunCount = 0
   let characterWorkflowExecutingRunState: CharacterResourceRunState | null = null
   let characterWorkflowRunOpenToken = 0
   let characterWorkflowRunCount = 0
@@ -456,7 +457,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     zoom: number
   } | null = null
   const characterWorkflowRunInspectorSnapshots = new WeakMap<HTMLElement, string>()
-  let characterWorkflowRunDraftPatchDeferred = false
+  let characterWorkflowRunDraftPatchDeferred: { projectId: string; runId: string } | null = null
   let characterWorkflowRunDraftFocusArtifactId = ''
   let characterResourceViewportDrag: {
     mode: 'pan' | 'select'
@@ -4111,23 +4112,32 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
   }
 
-  function scheduleCharacterWorkflowRunRender(): void {
+  function scheduleCharacterWorkflowRunRender(projectId = activeCharacterWorkflowProjectId, runId = characterWorkflowRunState?.run?.id ?? ''): void {
+    if (projectId && runId && !isViewingWorkflowRun(projectId, runId)) {
+      return
+    }
     if (characterWorkflowRunRenderFrame !== undefined) {
       return
     }
     characterWorkflowRunRenderFrame = window.requestAnimationFrame(() => {
       characterWorkflowRunRenderFrame = undefined
-      void patchCharacterWorkflowRunDraft()
+      void patchCharacterWorkflowRunDraft(projectId, runId)
     })
   }
 
-  async function patchCharacterWorkflowRunDraft(): Promise<void> {
+  async function patchCharacterWorkflowRunDraft(projectId = '', runId = ''): Promise<void> {
+    if (projectId && runId && !isViewingWorkflowRun(projectId, runId)) {
+      return
+    }
     if (!characterWorkflowRoot || characterWorkflowActiveTabId !== 'run-draft') {
-      renderCharacterWorkflow()
       return
     }
     if (characterWorkflowDragging?.runDraft || (characterWorkflowActiveTabId === 'run-draft' && characterResourceViewportDrag)) {
-      characterWorkflowRunDraftPatchDeferred = true
+      const deferredProjectId = projectId || activeCharacterWorkflowProjectId
+      const deferredRunId = runId || characterWorkflowRunState?.run?.id || ''
+      characterWorkflowRunDraftPatchDeferred = deferredProjectId && deferredRunId
+        ? { projectId: deferredProjectId, runId: deferredRunId }
+        : null
       return
     }
     const activeProject = characterWorkflowProjects.find((project) => project.id === activeCharacterWorkflowProjectId)
@@ -4184,6 +4194,15 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (focusArtifactId && characterWorkflowRunDraftFocusArtifactId === focusArtifactId) {
       characterWorkflowRunDraftFocusArtifactId = ''
     }
+  }
+
+  function flushDeferredCharacterWorkflowRunDraftPatch(): void {
+    const deferred = characterWorkflowRunDraftPatchDeferred
+    if (!deferred) {
+      return
+    }
+    characterWorkflowRunDraftPatchDeferred = null
+    void patchCharacterWorkflowRunDraft(deferred.projectId, deferred.runId)
   }
 
   function readRunDraftPatchIds(value: string | undefined): string[] {
@@ -5424,7 +5443,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (isViewingWorkflowRun(project.id, characterWorkflowExecutingRunState.run.id)) {
       project.activeRunId = characterWorkflowExecutingRunState.run.id
     }
-    project.runCount = Math.max(project.runCount, characterWorkflowRunCount)
+    project.runCount = Math.max(project.runCount, characterWorkflowExecutingRunCount || characterWorkflowRunCount)
     project.updatedAt = Date.now()
     persistCharacterWorkflowProject(project, immediate)
   }
@@ -5437,6 +5456,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     void window.electronAPI.cancelCharacterWorkflowRun({ runId: targetRunId, reason }).catch((error) => {
       console.warn('[CharacterWorkflow] Failed to cancel backend run:', error)
     })
+  }
+
+  function clearExecutingWorkflowRunContext(): void {
+    characterWorkflowExecutingProjectId = ''
+    characterWorkflowExecutingRunCount = 0
+    characterWorkflowExecutingRunState = null
   }
 
   function cancelExecutingWorkflowRun(projectId?: string, runId?: string): boolean {
@@ -5475,8 +5500,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     cancelBackendCharacterWorkflowRun(stoppedRunId, 'manual stop')
     syncExecutingWorkflowRunState(true)
     syncVisibleWorkflowRunState(stoppedProjectId, stoppedRunState)
-    characterWorkflowExecutingRunState = null
-    characterWorkflowExecutingProjectId = ''
+    clearExecutingWorkflowRunContext()
     characterWorkflowRenderToken += 1
     return isViewingWorkflowRun(stoppedProjectId, stoppedRunId)
   }
@@ -7083,8 +7107,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (wasExecutingRun) {
       cancelBackendCharacterWorkflowRun(runId, 'run draft deleted')
       characterWorkflowRenderToken += 1
-      characterWorkflowExecutingProjectId = ''
-      characterWorkflowExecutingRunState = null
+      clearExecutingWorkflowRunContext()
     }
     project.runs.splice(deletedIndex, 1)
     void window.electronAPI.deleteCharacterWorkflowRun(project.id, runId).catch((error) => {
@@ -7156,8 +7179,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (characterWorkflowExecutingProjectId === projectId) {
       cancelBackendCharacterWorkflowRun(undefined, 'workflow project deleted')
       characterWorkflowRenderToken += 1
-      characterWorkflowExecutingProjectId = ''
-      characterWorkflowExecutingRunState = null
+      clearExecutingWorkflowRunContext()
     }
     characterWorkflowRunOpenToken += 1
     const pendingPersist = characterWorkflowProjectPersistTimers.get(projectId)
@@ -7596,6 +7618,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       showToast(options.getLanguage() === 'zh-CN' ? '已有运行草稿正在执行' : 'A run draft is already running')
       return
     }
+    const runProjectId = activeCharacterWorkflowProjectId
+    if (!runProjectId) {
+      return
+    }
     const scoped = Boolean(scopedRun)
     const scopedBaseRunState = scoped ? characterWorkflowRunState : null
     if (scoped && !scopedBaseRunState?.run) {
@@ -7605,7 +7631,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     characterWorkflowRunOpenToken += 1
     const renderToken = ++characterWorkflowRenderToken
     const workflowPage = await loadCharacterWorkflowPageModule()
-    if (renderToken !== characterWorkflowRenderToken) {
+    if (renderToken !== characterWorkflowRenderToken || activeCharacterWorkflowProjectId !== runProjectId) {
       return
     }
     if (!scoped) {
@@ -7624,7 +7650,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             : workflowPage.createCharacterResourceRunSteps(options.getLanguage()),
         }
       : workflowPage.createDraftCharacterResourceRunState(characterWorkflowRunCount, 'running', options.getLanguage())
-    characterWorkflowExecutingProjectId = activeCharacterWorkflowProjectId
+    characterWorkflowExecutingProjectId = runProjectId
+    characterWorkflowExecutingRunCount = characterWorkflowRunCount
     characterWorkflowExecutingRunState = cloneCharacterWorkflowRunState(draftRunState)
     characterWorkflowRunState = cloneCharacterWorkflowRunState(draftRunState)
     const executionProjectId = characterWorkflowExecutingProjectId
@@ -7659,7 +7686,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       syncExecutingWorkflowRunState(true)
       syncVisibleWorkflowRunState(characterWorkflowExecutingProjectId, characterWorkflowExecutingRunState)
       if (isViewingWorkflowRun(characterWorkflowExecutingProjectId, characterWorkflowExecutingRunState.run?.id ?? '')) {
-        scheduleCharacterWorkflowRunRender()
+        scheduleCharacterWorkflowRunRender(characterWorkflowExecutingProjectId, characterWorkflowExecutingRunState.run?.id ?? '')
       }
     }
     updateRunStep('snapshot', 'running')
@@ -7749,7 +7776,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       const scopedImageSucceeded = Boolean(scopedRun && responseArtifacts.some((artifact) => artifact.type === 'image-asset'))
       const mergedArtifacts = mergeCharacterWorkflowRunArtifacts(currentRunState.artifacts ?? [], responseArtifacts, scopedRun, scopedImageSucceeded)
       const selectedScopedImageNodeId = getLatestScopedImageArtifactNodeId(mergedArtifacts, scopedRun)
-      if (selectedScopedImageNodeId) {
+      const selectedScopedImageRunId = currentRun?.id || draftRunState.run?.id || ''
+      if (selectedScopedImageNodeId && isViewingWorkflowRun(characterWorkflowExecutingProjectId, selectedScopedImageRunId)) {
         characterResourceViewState.selectedNodeIds = [selectedScopedImageNodeId]
         selectedWorkflowNodeId = selectedScopedImageNodeId
       }
@@ -7776,10 +7804,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       const wasViewingCompletedRun = isViewingWorkflowRun(completedProjectId, completedRunId)
       syncExecutingWorkflowRunState(true)
       syncVisibleWorkflowRunState(characterWorkflowExecutingProjectId, characterWorkflowExecutingRunState)
-      characterWorkflowExecutingRunState = null
-      characterWorkflowExecutingProjectId = ''
+      clearExecutingWorkflowRunContext()
       if (wasViewingCompletedRun) {
-        scheduleCharacterWorkflowRunRender()
+        scheduleCharacterWorkflowRunRender(completedProjectId, completedRunId)
       }
       showToast(finalStatus === 'needs_action'
         ? (options.getLanguage() === 'zh-CN' ? '运行草稿需要处理：图片生成失败' : 'Run draft needs action: image generation failed')
@@ -7810,10 +7837,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         const wasViewingFailedRun = isViewingWorkflowRun(failedProjectId, failedRunId)
         syncExecutingWorkflowRunState(true)
         syncVisibleWorkflowRunState(characterWorkflowExecutingProjectId, characterWorkflowExecutingRunState)
-        characterWorkflowExecutingRunState = null
-        characterWorkflowExecutingProjectId = ''
+        clearExecutingWorkflowRunContext()
         if (wasViewingFailedRun) {
-          scheduleCharacterWorkflowRunRender()
+          scheduleCharacterWorkflowRunRender(failedProjectId, failedRunId)
         }
         showToast(error instanceof Error ? error.message : (options.getLanguage() === 'zh-CN' ? '角色资源生成失败' : 'Character resource generation failed'))
       }
@@ -8098,7 +8124,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             data: artifact.data,
           },
         ])
-        if (shouldFocusRunDraftArtifact(artifact)) {
+        if (
+          shouldFocusRunDraftArtifact(artifact)
+          && isViewingWorkflowRun(characterWorkflowExecutingProjectId, characterWorkflowExecutingRunState.run?.id ?? '')
+        ) {
           characterWorkflowRunDraftFocusArtifactId = artifactId
         }
       }
@@ -8112,7 +8141,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     syncVisibleWorkflowRunState(characterWorkflowExecutingProjectId, characterWorkflowExecutingRunState)
     if (isViewingWorkflowRun(characterWorkflowExecutingProjectId, characterWorkflowExecutingRunState.run?.id ?? '')) {
       if (!patchCharacterWorkflowRunProgress(type, phase, toolName, artifact, result, characterWorkflowExecutingRunState)) {
-        scheduleCharacterWorkflowRunRender()
+        scheduleCharacterWorkflowRunRender(characterWorkflowExecutingProjectId, characterWorkflowExecutingRunState.run?.id ?? '')
       }
     }
   }
@@ -8702,8 +8731,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       if (characterWorkflowExecutingProjectId === activeCharacterWorkflowProjectId) {
         cancelBackendCharacterWorkflowRun(undefined, 'workflow tab closed')
         characterWorkflowRenderToken += 1
-        characterWorkflowExecutingProjectId = ''
-        characterWorkflowExecutingRunState = null
+        clearExecutingWorkflowRunContext()
       }
       characterWorkflowRunOpenToken += 1
       saveActiveWorkflowProjectSnapshot()
@@ -8805,8 +8833,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!runDraft) {
       renderCharacterWorkflow()
     } else if (characterWorkflowRunDraftPatchDeferred) {
-      characterWorkflowRunDraftPatchDeferred = false
-      void patchCharacterWorkflowRunDraft()
+      flushDeferredCharacterWorkflowRunDraftPatch()
     }
   }
 
@@ -9137,9 +9164,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       saveCharacterResourceViewStateSnapshot()
     }
     characterResourceViewportDrag = null
-    if (characterWorkflowActiveTabId === 'run-draft' && characterWorkflowRunDraftPatchDeferred) {
-      characterWorkflowRunDraftPatchDeferred = false
-      void patchCharacterWorkflowRunDraft()
+    if (characterWorkflowRunDraftPatchDeferred) {
+      flushDeferredCharacterWorkflowRunDraftPatch()
     }
   }
 
