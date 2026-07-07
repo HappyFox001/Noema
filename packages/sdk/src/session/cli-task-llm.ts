@@ -65,7 +65,10 @@ function buildApiPrompt(messages: unknown, options: Record<string, any>): string
     'Return exactly one JSON object and no markdown.',
     'Schema:',
     '{"content":"assistant text","tool_calls":[{"id":"call_unique_id","type":"function","function":{"name":"tool_name","arguments":"{\\"key\\":\\"value\\"}"}}]}',
-    'Use an empty string for content when only calling tools. Use an empty array when no tool call is needed.',
+    'Use an empty string for content when only calling tools.',
+    tools.length
+      ? 'When tools are available, step completion, failure, skipping, or replanning must be expressed by calling the appropriate tool. Do not replace a required tool call with plain assistant text.'
+      : 'Use an empty tool_calls array when no tool call is available.',
     wantsJson ? 'The caller requested JSON content. Put the requested JSON object as a string in the content field.' : '',
     tools.length ? 'Only call tools listed in Available tools.' : 'No tools are available; return final assistant content only.',
     '',
@@ -230,11 +233,18 @@ function parseClaudeOutput(stdout: string): string {
 function parseModelEnvelope(rawText: string, options: Record<string, any>) {
   const text = stripCodeFence(rawText.trim())
   const parsed = parseJsonObject(text)
+  const expectsToolEnvelope = Array.isArray(options.tools) && options.tools.length > 0
   if (!parsed) {
+    if (expectsToolEnvelope) {
+      throw new Error(`Local CLI model returned invalid task tool envelope: ${previewText(rawText)}`)
+    }
     return { content: rawText, toolCalls: [], finishReason: null }
   }
 
   if (!('content' in parsed) && !('tool_calls' in parsed) && !('toolCalls' in parsed)) {
+    if (expectsToolEnvelope) {
+      throw new Error(`Local CLI model returned JSON without content/tool_calls envelope: ${previewText(rawText)}`)
+    }
     return {
       content: options.response_format?.type === 'json_object' ? JSON.stringify(parsed) : rawText,
       toolCalls: [],
@@ -287,6 +297,11 @@ function parseJsonObject(value: string): Record<string, any> | null {
       return null
     }
   }
+}
+
+function previewText(value: string): string {
+  const compact = value.replace(/\s+/g, ' ').trim()
+  return compact.length > 500 ? `${compact.slice(0, 500)}...` : compact || '(empty)'
 }
 
 function normalizeTransport(value: unknown): 'codex_local' | 'claude_code_local' | null {

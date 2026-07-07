@@ -62,14 +62,14 @@ export class TurnRuntime {
     verboseLog(`  🔧 Tool Calls: ${toolCalls.length > 0 ? toolCalls.map(t => t.function.name).join(', ') : '(无)'}`)
 
     if (toolCalls.length === 0) {
-      verboseLog(`[Turn ${turnIndex}] ✅ 无工具调用，任务完成`)
+      verboseLog(`[Turn ${turnIndex}] 无工具调用，结束本次采样但不完成任务步骤`)
       verboseLog(`==========================================\n`)
       return {
         turnIndex,
         assistantMessage,
         toolCalls: [],
         toolResults: [],
-        completed: true,
+        completed: false,
         tokenUsage: response.usage,
       }
     }
