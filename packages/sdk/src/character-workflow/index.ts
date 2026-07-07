@@ -759,9 +759,9 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     },
     outputs: { gameSystem: port('gameSystem', 'Game System', 'asset-target') },
     parameters: [
-      parameter('statDesign', 'Stat System Design', 'textarea', 'Design 4-6 role-specific stats with clear min/max ranges, visibility rules, and how they should shift during chat.'),
+      parameter('statDesign', 'Stat System Design', 'textarea', 'Design 3-6 character-specific stats that matter for this role and scenario. Avoid fixed generic labels; use adult/intimate body or desire stats only when the workflow explicitly allows adult content and the character context makes them meaningful.'),
       parameter('equipmentRules', 'Equipment Rules', 'textarea', 'Define slot logic, capacity, rarity, compatibility, prohibited items, acquisition/removal rules, and how equipment may alter stats or status.'),
-      parameter('statusRules', 'Status Rules', 'textarea', 'Define temporary and persistent statuses, triggers, decay, conflicts, and narrative consequences.'),
+      parameter('statusRules', 'Status Rules', 'textarea', 'Define temporary and persistent statuses from the character premise, relationship dynamic, body/mental state, powers, risks, and scene rules. Each status needs trigger, decay, conflict behavior, and narrative consequence.'),
       parameter('panelDesign', 'Chat Panel Design', 'textarea', 'Expose equipment, status, and rules as quick chat panels. Keep generated values compact and readable.'),
     ],
   },

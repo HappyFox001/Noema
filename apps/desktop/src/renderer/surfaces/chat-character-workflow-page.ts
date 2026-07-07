@@ -710,9 +710,9 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
   ], [
     slot('gameSystem', 'Game System', 'game-system-resource', 'Generated stats, equipment rules, status effects, and panel spec.'),
   ], [
-    param('statDesign', 'Stat System Design', 'textarea', 'Design 4-6 role-specific stats with clear min/max ranges, visibility rules, and how they should shift during chat.'),
+    param('statDesign', 'Stat System Design', 'textarea', 'Design 3-6 character-specific stats that matter for this role and scenario. Avoid fixed generic labels; use adult/intimate body or desire stats only when the workflow explicitly allows adult content and the character context makes them meaningful.'),
     param('equipmentRules', 'Equipment Rules', 'textarea', 'Define slot logic, capacity, rarity, compatibility, prohibited items, acquisition/removal rules, and how equipment may alter stats or status.'),
-    param('statusRules', 'Status Rules', 'textarea', 'Define temporary and persistent statuses, triggers, decay, conflicts, and narrative consequences.'),
+    param('statusRules', 'Status Rules', 'textarea', 'Define temporary and persistent statuses from the character premise, relationship dynamic, body/mental state, powers, risks, and scene rules. Each status needs trigger, decay, conflict behavior, and narrative consequence.'),
     param('panelDesign', 'Chat Panel Design', 'textarea', 'Expose equipment, status, and rules as quick chat panels. Keep generated values compact and readable.'),
   ], 'rule'),
   createDefinition('image-target', 'Image Target', ['图片目标', 'image target', 'visual target'], 'Targets', 'asset', 'Declares a role-card visual asset. Each image should preserve character identity while supporting a distinct story, field, or presentation purpose.', [

@@ -1888,15 +1888,8 @@ function createGameSystemData(
     ...target.localConstraints.flatMap((item) => [...item.mustHave, ...item.mustNot.map((rule) => `Avoid: ${rule}`)]),
   ].filter(Boolean).join('\n')
   const seed = hashText(`${name}\n${sourceText}`)
-  const statBase = 34 + (seed % 22)
   const zh = context.goal.language === 'zh-CN'
-  const stats = [
-    gameStat('resolve', zh ? '决心' : 'Resolve', statBase + 10, 0, 100, zh ? '承压、恐惧与行动意愿' : 'mental pressure, fear, and willingness to act'),
-    gameStat('composure', zh ? '镇定' : 'Composure', statBase + 4, 0, 100, zh ? '外显控制、社交姿态与情绪泄露' : 'visible control, social poise, and emotional leakage'),
-    gameStat('affinity', zh ? '亲近' : 'Affinity', Math.max(8, Math.round(statBase * 0.72)), 0, 100, zh ? '信任、依恋与透露私密信息的意愿' : 'trust, attachment, and willingness to reveal private information'),
-    gameStat('strain', zh ? '压力' : 'Strain', Math.max(0, 62 - statBase), 0, 100, zh ? '疲劳、伤势、魔法负载或叙事不稳定' : 'fatigue, injury, magical load, or narrative instability'),
-    gameStat('leverage', zh ? '筹码' : 'Leverage', 18 + (seed % 37), 0, 100, zh ? '资源、秘密、许可或战术优势' : 'resources, secrets, permissions, or tactical advantage'),
-  ]
+  const stats = createContextualGameStats(sourceText, seed, zh)
   const equipmentTone = /magic|curse|witch|spell|魔|咒|巫|玄/i.test(sourceText)
     ? (zh ? '符合仪式、受规则约束，误用会付出代价' : 'ritual-compatible, rule-bound, and costly to misuse')
     : /school|campus|student|校园|学生/i.test(sourceText)
@@ -1947,11 +1940,7 @@ function createGameSystemData(
         'Do not use equipment as a shortcut around consent, relationship pacing, or established scene limitations.',
       ],
     },
-    statuses: [
-      statusEffect('focused', zh ? '专注' : 'Focused', zh ? '稳定' : 'stable', zh ? '行动更干净，社交破绽减少。' : 'Actions are cleaner; social tells are reduced.', zh ? '被打断或情绪动摇时结束。' : 'Ends when interrupted or emotionally shaken.'),
-      statusEffect('exposed', zh ? '暴露' : 'Exposed', zh ? '风险' : 'risk', zh ? '秘密、伤口或意图更容易被读出。' : 'Secrets, wounds, or intentions are easier to read.', zh ? '通过掩护、恢复或成功转移注意力清除。' : 'Clears after cover, recovery, or a successful diversion.'),
-      statusEffect('marked', zh ? '标记' : 'Marked', zh ? '持续' : 'persistent', zh ? '可见或不可见的叙事印记会制造后续影响。' : 'A visible or invisible narrative mark creates future consequences.', zh ? '需要明确的净化、修复或谈判规则。' : 'Requires an explicit cleansing, repair, or negotiation rule.'),
-    ],
+    statuses: createContextualGameStatuses(sourceText, seed, zh),
     rules: (zh ? [
       '属性属于角色自身，只有对话产生具体原因时才应变化。',
       '状态效果必须说明触发、持续时间、冲突行为与叙事后果。',
@@ -1971,6 +1960,88 @@ function createGameSystemData(
 
 function gameStat(id: string, label: string, value: number, min: number, max: number, description: string): Record<string, unknown> {
   return { id, label, value: Math.max(min, Math.min(max, value)), min, max, description, visibility: 'shown' }
+}
+
+function createContextualGameStats(sourceText: string, seed: number, zh: boolean): Record<string, unknown>[] {
+  const base = 28 + (seed % 48)
+  const value = (offset: number) => Math.max(0, Math.min(100, base + offset))
+  const lower = sourceText.toLowerCase()
+  const adult = hasAny(lower, ['adult', 'explicit', 'erotic', 'sensual', 'sexual', 'lust', 'desire', 'nsfw', '成人', '色情', '情色', '性爱', '性欲', '欲望', '媚', '调教', '私密', '后庭', '小穴', '湿润'])
+  const magical = hasAny(lower, ['magic', 'curse', 'witch', 'spell', 'ritual', 'demon', '魔', '咒', '巫', '仪式', '恶魔', '妖'])
+  const cyber = hasAny(lower, ['cyber', 'terminal', 'hacker', 'android', 'implant', 'signal', '赛博', '黑客', '终端', '义体', '植入', '信号'])
+  const combat = hasAny(lower, ['battle', 'assassin', 'hunter', 'war', 'wound', 'weapon', '战', '杀手', '猎人', '伤', '武器', '危险'])
+  const school = hasAny(lower, ['school', 'campus', 'student', 'classroom', '校园', '学生', '教室', '社团'])
+  const pool = adult
+    ? [
+        gameStat('desire', zh ? '性欲' : 'Desire', value(12), 0, 100, zh ? '成人向亲密推进意愿与身体反应强度。' : 'Adult intimacy drive and intensity of embodied response.'),
+        gameStat('arousal-control', zh ? '忍耐阈值' : 'Restraint', value(-4), 0, 100, zh ? '维持理智、拒绝失控或延迟亲密升级的能力。' : 'Ability to stay composed, avoid losing control, or delay intimacy escalation.'),
+        gameStat('intimate-trust', zh ? '亲密信任' : 'Intimate Trust', value(2), 0, 100, zh ? '接受触碰、袒露弱点与进入更私密关系的许可程度。' : 'Permission level for touch, vulnerability, and more private dynamics.'),
+        gameStat('wetness', zh ? '小穴湿润度' : 'Wetness', value(-8), 0, 100, zh ? '仅在明确成人向场景中显示的身体唤起指标。' : 'Body-arousal indicator shown only for explicitly adult scenes.'),
+        gameStat('anal-openness', zh ? '后庭开合度' : 'Anal Readiness', value(-18), 0, 100, zh ? '仅在明确成人向且角色设定相关时使用的亲密身体状态。' : 'Adult-only intimate body state used only when character-relevant.'),
+      ]
+    : magical
+      ? [
+          gameStat('mana-resonance', zh ? '魔力共振' : 'Mana Resonance', value(10), 0, 100, zh ? '咒术、血脉或仪式与角色状态的同步程度。' : 'Synchronization between magic, bloodline, ritual, and character state.'),
+          gameStat('curse-load', zh ? '咒负荷' : 'Curse Load', value(-6), 0, 100, zh ? '诅咒、契约或禁术积累的风险。' : 'Accumulated risk from curses, contracts, or forbidden techniques.'),
+          gameStat('ritual-focus', zh ? '仪式专注' : 'Ritual Focus', value(4), 0, 100, zh ? '施法稳定性、专注与失误概率。' : 'Casting stability, focus, and misfire risk.'),
+        ]
+      : cyber
+        ? [
+            gameStat('signal-integrity', zh ? '信号完整度' : 'Signal Integrity', value(6), 0, 100, zh ? '义体、终端或通讯链路的稳定程度。' : 'Stability of implants, terminals, or communication links.'),
+            gameStat('access-privilege', zh ? '权限等级' : 'Access Privilege', value(-4), 0, 100, zh ? '系统授权、后门与可调用资源。' : 'System authorization, backdoors, and callable resources.'),
+            gameStat('trace-heat', zh ? '追踪热度' : 'Trace Heat', value(10), 0, 100, zh ? '被监控、定位或反制的风险。' : 'Risk of being monitored, located, or countered.'),
+          ]
+        : combat
+          ? [
+              gameStat('guard', zh ? '戒备' : 'Guard', value(8), 0, 100, zh ? '战斗警觉、防备姿态与反应速度。' : 'Combat alertness, defensive posture, and reaction speed.'),
+              gameStat('injury-load', zh ? '伤势负荷' : 'Injury Load', value(-10), 0, 100, zh ? '伤口、疲劳与行动受限程度。' : 'Wounds, fatigue, and movement limitation.'),
+              gameStat('threat-control', zh ? '威胁掌控' : 'Threat Control', value(0), 0, 100, zh ? '控制局势、压制敌意或逼迫让步的能力。' : 'Ability to control the situation, suppress hostility, or force concessions.'),
+            ]
+          : school
+            ? [
+                gameStat('social-cover', zh ? '社交掩护' : 'Social Cover', value(6), 0, 100, zh ? '在校园/日常关系中维持表面合理性的程度。' : 'Ability to stay socially plausible in campus or daily-life scenes.'),
+                gameStat('curiosity', zh ? '好奇心' : 'Curiosity', value(3), 0, 100, zh ? '主动探索秘密、关系和异常事件的倾向。' : 'Drive to explore secrets, relationships, and unusual events.'),
+                gameStat('boundary-pressure', zh ? '边界压力' : 'Boundary Pressure', value(-6), 0, 100, zh ? '规则、隐私、舆论或身份暴露带来的压力。' : 'Pressure from rules, privacy, reputation, or identity exposure.'),
+              ]
+            : [
+                gameStat('attachment', zh ? '依恋度' : 'Attachment', value(2), 0, 100, zh ? '角色对用户的情感牵引与关系投入。' : 'Emotional pull toward the user and relationship investment.'),
+                gameStat('openness', zh ? '坦露度' : 'Openness', value(-4), 0, 100, zh ? '透露秘密、表达真实愿望与接受帮助的程度。' : 'Willingness to reveal secrets, true wants, and accept help.'),
+                gameStat('tension', zh ? '张力' : 'Tension', value(8), 0, 100, zh ? '关系、场景冲突和未说出口情绪的强度。' : 'Intensity of relationship conflict, scene pressure, and unspoken emotion.'),
+              ]
+  return pool.slice(0, adult ? 5 : 4)
+}
+
+function createContextualGameStatuses(sourceText: string, seed: number, zh: boolean): Record<string, unknown>[] {
+  const lower = sourceText.toLowerCase()
+  if (hasAny(lower, ['adult', 'explicit', 'erotic', 'sensual', 'sexual', 'lust', 'desire', 'nsfw', '成人', '色情', '情色', '性爱', '性欲', '欲望', '媚', '调教', '私密', '后庭', '小穴', '湿润'])) {
+    return [
+      statusEffect('flushed', zh ? '潮红' : 'Flushed', zh ? '升温' : 'heated', zh ? '成人亲密氛围上升，反应更难隐藏。' : 'Adult intimacy rises and reactions become harder to hide.', zh ? '降温、转移注意或明确暂停后缓解。' : 'Eases after cooling down, distraction, or an explicit pause.'),
+      statusEffect('teasing-loop', zh ? '挑逗循环' : 'Teasing Loop', zh ? '持续' : 'persistent', zh ? '互动会持续推高亲密状态，除非被打断或拒绝。' : 'Interaction keeps raising intimacy unless interrupted or refused.', zh ? '需要关系许可或场景中断来解除。' : 'Requires relationship permission or scene interruption to clear.'),
+      statusEffect('overstimulated', zh ? '过度敏感' : 'Overstimulated', zh ? '风险' : 'risk', zh ? '身体/情绪反应过强，继续推进会带来失控风险。' : 'Physical or emotional response is too intense; further escalation risks loss of control.', zh ? '休息、安抚或降低强度后恢复。' : 'Recovers with rest, reassurance, or lower intensity.'),
+    ]
+  }
+  if (hasAny(lower, ['magic', 'curse', 'witch', 'spell', 'ritual', '魔', '咒', '巫', '仪式'])) {
+    return [
+      statusEffect('enchanted', zh ? '受术' : 'Enchanted', zh ? '持续' : 'persistent', zh ? '魔法效果正在影响感知、行动或关系判断。' : 'Magic is affecting perception, action, or relationship judgment.', zh ? '需要解除、净化或仪式条件。' : 'Requires dispel, cleansing, or ritual conditions.'),
+      statusEffect('unstable-ritual', zh ? '仪式不稳' : 'Unstable Ritual', zh ? '风险' : 'risk', zh ? '继续推进可能触发反噬或额外代价。' : 'Continuing may trigger backlash or extra cost.', zh ? '稳定材料、补全条件或暂停仪式。' : 'Stabilize materials, complete conditions, or pause the ritual.'),
+    ]
+  }
+  if (hasAny(lower, ['cyber', 'terminal', 'hacker', 'android', 'implant', '赛博', '黑客', '终端', '义体'])) {
+    return [
+      statusEffect('traced', zh ? '被追踪' : 'Traced', zh ? '风险' : 'risk', zh ? '系统或敌对方正在留下追踪线索。' : 'Systems or opponents are leaving trace paths.', zh ? '断链、伪装或切换身份后缓解。' : 'Clears after disconnect, spoofing, or identity switch.'),
+      statusEffect('privileged-session', zh ? '高权限会话' : 'Privileged Session', zh ? '限时' : 'timed', zh ? '短时间内可调用更高权限工具。' : 'Higher-level tools are available for a short window.', zh ? '超时、登出或被审计后结束。' : 'Ends on timeout, logout, or audit.'),
+    ]
+  }
+  const generic = [
+    statusEffect('guarded', zh ? '设防' : 'Guarded', zh ? '稳定' : 'stable', zh ? '角色保持防备，信息和情绪不易外泄。' : 'The character is guarded; information and emotion leak less easily.', zh ? '信任提升或压力解除后缓解。' : 'Eases after trust rises or pressure drops.'),
+    statusEffect('exposed', zh ? '暴露' : 'Exposed', zh ? '风险' : 'risk', zh ? '秘密、弱点或意图更容易被看出。' : 'Secrets, vulnerabilities, or intentions are easier to read.', zh ? '通过掩护、恢复或成功转移注意力清除。' : 'Clears after cover, recovery, or a successful diversion.'),
+    statusEffect('marked', zh ? '标记' : 'Marked', zh ? '持续' : 'persistent', zh ? '可见或不可见的叙事印记会制造后续影响。' : 'A visible or invisible narrative mark creates future consequences.', zh ? '需要明确的净化、修复或谈判规则。' : 'Requires an explicit cleansing, repair, or negotiation rule.'),
+  ]
+  return seed % 2 === 0 ? generic : [generic[1], generic[0], generic[2]]
+}
+
+function hasAny(value: string, needles: string[]): boolean {
+  return needles.some((needle) => value.includes(needle.toLowerCase()))
 }
 
 function equipmentSlot(id: string, label: string, limit: number, rule: string, current: Array<Record<string, unknown>>): Record<string, unknown> {
