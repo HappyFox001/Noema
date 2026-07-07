@@ -444,8 +444,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     zoom: number
   } | null = null
   const characterWorkflowRunInspectorSnapshots = new WeakMap<HTMLElement, string>()
-  let characterWorkflowRunDraftInteractionUntil = 0
   let characterWorkflowRunDraftPatchDeferred = false
+  let characterWorkflowRunDraftFocusArtifactId = ''
   let characterResourceViewportDrag: {
     mode: 'pan' | 'select'
     pointerId: number
@@ -4122,6 +4122,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
     const runViewportRect = runViewport.getBoundingClientRect()
+    const focusArtifactId = characterWorkflowRunDraftFocusArtifactId
     const pageOptions = createCharacterWorkflowPageOptions(
       activeProject,
       {
@@ -4144,14 +4145,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
 
     workflowPage.initializeCharacterResourceWorkbench(characterWorkflowRoot)
-  }
-
-  function markCharacterWorkflowRunDraftInteraction(durationMs = 900): void {
-    characterWorkflowRunDraftInteractionUntil = Math.max(characterWorkflowRunDraftInteractionUntil, Date.now() + durationMs)
-  }
-
-  function isCharacterWorkflowRunDraftInteracting(): boolean {
-    return Date.now() < characterWorkflowRunDraftInteractionUntil || Boolean(characterWorkflowDragging?.runDraft)
+    if (focusArtifactId && characterWorkflowRunDraftFocusArtifactId === focusArtifactId) {
+      characterWorkflowRunDraftFocusArtifactId = ''
+    }
   }
 
   function replaceCharacterWorkflowRunViewport(currentViewport: HTMLElement, nextViewportHtml: string): void {
@@ -4491,8 +4487,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         characterWorkflowExecutingRunState?.run?.status === 'running'
         && characterWorkflowRunState?.run?.id
         && characterWorkflowExecutingRunState.run.id === characterWorkflowRunState.run.id
-        && !isCharacterWorkflowRunDraftInteracting()
       ),
+      runFocusArtifactId: characterWorkflowRunDraftFocusArtifactId,
       runMotionEnabled,
       runViewportSize,
       runDrafts: activeProject.runs.map((run) => ({
@@ -7810,6 +7806,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             data: artifact.data,
           },
         ])
+        if (shouldFocusRunDraftArtifact(artifact)) {
+          characterWorkflowRunDraftFocusArtifactId = artifactId
+        }
       }
     }
     syncExecutingWorkflowRunState()
@@ -7843,6 +7842,30 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       parentAttemptId: data.parentAttemptId,
       error: data.error || artifact.summary,
     })
+  }
+
+  function shouldFocusRunDraftArtifact(artifact: Record<string, any>): boolean {
+    const kind = typeof artifact.kind === 'string' ? artifact.kind : ''
+    if (!kind) {
+      return false
+    }
+    if (kind === 'image-attempt') {
+      const data = artifact.data && typeof artifact.data === 'object' ? artifact.data as Record<string, unknown> : {}
+      return data.status === 'failed'
+    }
+    return [
+      'character-card-draft',
+      'character-card-field',
+      'character-card-final',
+      'opening-message',
+      'dialogue-style-guide',
+      'world-context',
+      'scene-context',
+      'opening-layout',
+      'atmosphere-style',
+      'game-system',
+      'image-asset',
+    ].includes(kind)
   }
 
   function patchCharacterWorkflowRunProgress(
@@ -8147,7 +8170,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!viewport || !nodeId) {
       return
     }
-    markCharacterWorkflowRunDraftInteraction(additive ? 1200 : 900)
     const nodes = Array.from(viewport.querySelectorAll<HTMLElement>('[data-chat-workflow-node-id]'))
     const currentNode = nodes.find((node) => node.dataset.chatWorkflowNodeId === nodeId)
     if (!currentNode) {
@@ -8420,7 +8442,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     const runDraft = Boolean(node.closest<HTMLElement>('.chat-resource-run-viewport'))
     if (runDraft) {
-      markCharacterWorkflowRunDraftInteraction(1500)
       selectRunDraftNodeInViewport(node)
     } else {
       selectedWorkflowNodeId = nodeId
@@ -8731,9 +8752,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!viewport || target?.closest('[data-chat-workflow-node-id], button, input, textarea, select, .chat-resource-tab-panel')) {
       return
     }
-    if (characterWorkflowActiveTabId === 'run-draft') {
-      markCharacterWorkflowRunDraftInteraction(1500)
-    }
     characterResourceViewportDrag = {
       mode: event.shiftKey ? 'select' : 'pan',
       pointerId: event.pointerId,
@@ -8826,9 +8844,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     event.preventDefault()
     const nextZoom = Math.min(1.4, Math.max(0.46, characterResourceViewState.zoom + (event.deltaY > 0 ? -0.05 : 0.05)))
-    if (characterWorkflowActiveTabId === 'run-draft') {
-      markCharacterWorkflowRunDraftInteraction(1200)
-    }
     characterResourceViewState.zoom = Math.round(nextZoom * 100) / 100
     updateCharacterWorkflowViewportDom()
     saveCharacterResourceViewStateSnapshot()

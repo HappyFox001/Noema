@@ -18,6 +18,7 @@ export interface CharacterWorkflowPageOptions {
   runState?: CharacterResourceRunState | null
   runAnimating?: boolean
   runMotionEnabled?: boolean
+  runFocusArtifactId?: string
   runViewportSize?: { width: number; height: number }
   runDrafts?: CharacterWorkflowRunDraftOption[]
   tabs: CharacterWorkflowFileTab[]
@@ -3051,16 +3052,18 @@ function createRunDraftCanvasGraph(graph: CharacterResourceGraph, options: Chara
         }]
       : []
   let previousNodeId = sourceNodeId
-  const latestArtifactIndex = Math.max(0, compactArtifacts.length - 1)
+  let focusNodeId = ''
   compactArtifacts.forEach((artifact, index) => {
     const nodeId = getRunArtifactNodeId(artifact, index)
     const nodeType = getRunArtifactNodeType(artifact.type)
     const placement = getRunArtifactPlacement(artifact, index)
     const image = getArtifactImage(artifact.data)
     const baseArtifactStatus = getRunArtifactNodeStatus(artifact)
-    const artifactStatus = activelyRunning && index === latestArtifactIndex && baseArtifactStatus !== 'failed'
-      ? 'running'
-      : baseArtifactStatus
+    const artifactStatus = baseArtifactStatus
+    const runFocus = isRunDraftFocusArtifact(artifact, options.runFocusArtifactId)
+    if (runFocus) {
+      focusNodeId = nodeId
+    }
     const title = getRunArtifactNodeTitle(artifact, options)
     const size = getRunArtifactNodeSize(artifact, Boolean(image))
     nodes.push({
@@ -3077,7 +3080,7 @@ function createRunDraftCanvasGraph(graph: CharacterResourceGraph, options: Chara
       config: {
         ...getRunArtifactNodeConfig(artifact),
         runOrder: index + 1,
-        runFocus: activelyRunning && index === latestArtifactIndex,
+        runFocus,
       },
     })
     outputs.push({
@@ -3097,20 +3100,13 @@ function createRunDraftCanvasGraph(graph: CharacterResourceGraph, options: Chara
     previousNodeId = nodeId
   })
   let selectedNodeId = resolveRunDraftSelectedNodeId(nodes, artifacts, options)
-  if (activelyRunning) {
-    selectedNodeId = nodes.find((node) => node.config.runFocus === true)?.id
-      ?? nodes[nodes.length - 1]?.id
-      ?? selectedNodeId
-  }
-  if (activelyRunning) {
+  if (focusNodeId) {
+    selectedNodeId = focusNodeId
     nodes.forEach((node) => {
       node.config = { ...node.config, runFocus: node.id === selectedNodeId }
-      if (node.id === selectedNodeId && node.status !== 'failed') {
-        node.status = 'running'
-      }
     })
   }
-  const viewport = resolveRunDraftViewport(nodes, selectedNodeId, activelyRunning, options)
+  const viewport = resolveRunDraftViewport(nodes, selectedNodeId, Boolean(focusNodeId), options)
   return {
     ...graph,
     id: `${graph.id}-run`,
@@ -3124,10 +3120,24 @@ function createRunDraftCanvasGraph(graph: CharacterResourceGraph, options: Chara
   }
 }
 
+function isRunDraftFocusArtifact(artifact: CharacterRunArtifact, focusArtifactId: string | undefined): boolean {
+  if (!focusArtifactId) {
+    return false
+  }
+  if (artifact.id === focusArtifactId) {
+    return true
+  }
+  const data = getRunArtifactDataRecord(artifact)
+  if (Array.isArray(data.sourceArtifactIds) && data.sourceArtifactIds.includes(focusArtifactId)) {
+    return true
+  }
+  return data.sourceArtifactId === focusArtifactId
+}
+
 function resolveRunDraftViewport(
   nodes: CharacterResourceNode[],
   selectedNodeId: string,
-  activelyRunning: boolean,
+  shouldFocus: boolean,
   options: CharacterWorkflowPageOptions
 ): CharacterResourceViewport {
   const fallback = {
@@ -3135,7 +3145,7 @@ function resolveRunDraftViewport(
     y: options.viewState?.panY ?? 0,
     zoom: options.viewState?.zoom ?? 0.92,
   }
-  if (!activelyRunning) {
+  if (!shouldFocus) {
     return fallback
   }
   const node = nodes.find((item) => item.id === selectedNodeId)
@@ -3526,6 +3536,7 @@ function createRunTextResultArtifact(artifacts: CharacterRunArtifacts): Characte
     title: 'Text Result',
     summary,
     data: {
+      sourceArtifactIds: textArtifacts.map((artifact) => artifact.id).filter(Boolean),
       fields: Object.entries(rows).map(([key, value]) => ({
         key,
         value: formatRunCharacterFieldValue(value) ?? '',
