@@ -710,10 +710,10 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
   ], [
     slot('gameSystem', 'Game System', 'game-system-resource', 'Generated stats, equipment rules, status effects, and panel spec.'),
   ], [
-    param('statDesign', 'Stat System Design', 'textarea', 'Design 3-6 character-specific stats that matter for this role and scenario. Avoid fixed generic labels; use adult/intimate body or desire stats only when the workflow explicitly allows adult content and the character context makes them meaningful.'),
+    param('statDesign', 'Stat System Design', 'textarea', 'Split the game layer into: 1) base role fields, 2) base gameplay with complete world knowledge, 3) status fields derived from gameplay and character premise, 4) CSS/visual hooks. Design 3-6 character-specific stats that matter for this role and scenario. Avoid fixed generic labels; use adult/intimate body or desire stats only when the workflow explicitly allows adult content and the character context makes them meaningful.'),
     param('equipmentRules', 'Equipment Rules', 'textarea', 'Define slot logic, capacity, rarity, compatibility, prohibited items, acquisition/removal rules, and how equipment may alter stats or status.'),
     param('statusRules', 'Status Rules', 'textarea', 'Define temporary and persistent statuses from the character premise, relationship dynamic, body/mental state, powers, risks, and scene rules. Each status needs trigger, decay, conflict behavior, and narrative consequence.'),
-    param('panelDesign', 'Chat Panel Design', 'textarea', 'Expose equipment, status, and rules as quick chat panels. Keep generated values compact and readable.'),
+    param('panelDesign', 'Chat Panel Design', 'textarea', 'Expose equipment, status, rules, and world facts as quick chat panels. Keep generated values compact and readable, but preserve enough world knowledge for future turns.'),
   ], 'rule'),
   createDefinition('image-target', 'Image Target', ['图片目标', 'image target', 'visual target'], 'Targets', 'asset', 'Declares a role-card visual asset. Each image should preserve character identity while supporting a distinct story, field, or presentation purpose.', [
     slot('card', 'Character Card', 'character-card-resource', 'Character card target.'),
@@ -3377,43 +3377,91 @@ function getRunArtifactPlacement(
   reservedSlots: Set<string>
 ): { x: number; y: number } {
   const key = `${artifact.id || artifact.type || index}:${artifact.sourceNodeId || ''}`
-  const lanes = 3
-  let group = Math.floor(index / lanes)
-  const preferredLane = getPreferredRunArtifactLane(artifact, key, lanes)
-  let lane = preferredLane
-  for (let attempt = 0; attempt < lanes * 8; attempt += 1) {
-    const candidateGroup = group + Math.floor((preferredLane + attempt) / lanes)
-    const candidateLane = (preferredLane + attempt) % lanes
-    const slotKey = `${candidateGroup}:${candidateLane}`
-    if (!reservedSlots.has(slotKey)) {
-      group = candidateGroup
-      lane = candidateLane
-      reservedSlots.add(slotKey)
-      break
+  const center = { x: 900, y: 410 }
+  const directions = [
+    { x: 1, y: -0.06 },
+    { x: 0.74, y: 0.64 },
+    { x: 0.12, y: 1 },
+    { x: -0.72, y: 0.66 },
+    { x: -1, y: 0.02 },
+    { x: -0.72, y: -0.68 },
+    { x: -0.06, y: -1 },
+    { x: 0.72, y: -0.7 },
+  ]
+  const preferredDirection = getPreferredRunArtifactDirection(artifact, key, directions.length)
+  const ring = Math.floor(index / 5)
+  const radialBase = 310 + ring * 255 + getStableRunLaneIndex(`${key}:radius`, 92)
+  const jitter = getStableRunOffset(key, 58, 46)
+  const directionOffsets = [0, 3, -2, 4, -3, 2, -4, 1, 5, -5, 6, -6]
+  for (let attempt = 0; attempt < 64; attempt += 1) {
+    const direction = directions[(preferredDirection + directionOffsets[attempt % directionOffsets.length] + directions.length) % directions.length]
+    const extraRing = Math.floor(attempt / directionOffsets.length)
+    const radius = radialBase + extraRing * 180
+    const candidate = {
+      x: Math.round(center.x + direction.x * radius + jitter.x - size.width * 0.5),
+      y: Math.round(center.y + direction.y * radius + jitter.y - size.height * 0.5),
+    }
+    const normalized = {
+      x: Math.max(90, candidate.x),
+      y: Math.max(72, candidate.y),
+    }
+    if (isRunPlacementFree(reservedSlots, normalized, size)) {
+      reserveRunPlacementSlots(reservedSlots, normalized, size)
+      return normalized
     }
   }
-  const jitter = getStableRunOffset(key, 18, 14)
-  const laneAnchors = [118, 350, 580]
-  const flowWave = [0, 34, -20, 18][group % 4] ?? 0
-  const imageNudge = artifact.type === 'image-asset' || artifact.type === 'image-attempt' ? 22 : 0
-  const tallCardNudge = size.height > 230 ? -18 : 0
-  return {
-    x: 504 + group * 386 + flowWave + jitter.x + imageNudge,
-    y: laneAnchors[lane] + jitter.y + tallCardNudge,
+  const fallbackColumn = index % 4
+  const fallbackRow = Math.floor(index / 4)
+  const fallback = {
+    x: 410 + fallbackColumn * 430 + jitter.x,
+    y: 110 + fallbackRow * 260 + jitter.y,
   }
+  reserveRunPlacementSlots(reservedSlots, fallback, size)
+  return fallback
 }
 
-function getPreferredRunArtifactLane(artifact: CharacterRunArtifact, key: string, lanes: number): number {
+function getPreferredRunArtifactDirection(artifact: CharacterRunArtifact, key: string, directions: number): number {
   if (artifact.type === 'image-asset' || artifact.type === 'image-attempt') {
-    return 2
+    return [1, 3, 5, 7][getStableRunLaneIndex(key, 4)] ?? 1
   }
   if (artifact.type === 'character-card-final' || artifact.type === 'generation-report' || artifact.type === 'export-package') {
-    return 1
+    return 0
   }
-  if (artifact.type === 'character-card-field') {
-    return getStableRunLaneIndex(key, 2)
+  if (artifact.type === 'run-chat-status-result' || artifact.type === 'run-chat-equipment-result') {
+    return [2, 6][getStableRunLaneIndex(key, 2)] ?? 2
   }
-  return getStableRunLaneIndex(key, lanes)
+  return getStableRunLaneIndex(key, directions)
+}
+
+function isRunPlacementFree(reservedSlots: Set<string>, position: { x: number; y: number }, size: { width: number; height: number }): boolean {
+  const cellWidth = 210
+  const cellHeight = 150
+  const left = Math.floor(position.x / cellWidth)
+  const top = Math.floor(position.y / cellHeight)
+  const right = Math.floor((position.x + size.width + 64) / cellWidth)
+  const bottom = Math.floor((position.y + size.height + 64) / cellHeight)
+  for (let x = left; x <= right; x += 1) {
+    for (let y = top; y <= bottom; y += 1) {
+      if (reservedSlots.has(`${x}:${y}`)) {
+        return false
+      }
+    }
+  }
+  return true
+}
+
+function reserveRunPlacementSlots(reservedSlots: Set<string>, position: { x: number; y: number }, size: { width: number; height: number }): void {
+  const cellWidth = 210
+  const cellHeight = 150
+  const left = Math.floor(position.x / cellWidth)
+  const top = Math.floor(position.y / cellHeight)
+  const right = Math.floor((position.x + size.width + 64) / cellWidth)
+  const bottom = Math.floor((position.y + size.height + 64) / cellHeight)
+  for (let x = left; x <= right; x += 1) {
+    for (let y = top; y <= bottom; y += 1) {
+      reservedSlots.add(`${x}:${y}`)
+    }
+  }
 }
 
 function getStableRunLaneIndex(value: string, modulo: number): number {

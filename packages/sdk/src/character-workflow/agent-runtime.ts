@@ -1890,6 +1890,11 @@ function createGameSystemData(
   const seed = hashText(`${name}\n${sourceText}`)
   const zh = context.goal.language === 'zh-CN'
   const stats = createContextualGameStats(sourceText, seed, zh)
+  const statuses = createContextualGameStatuses(sourceText, seed, zh)
+  const baseRoleFields = createGameSystemBaseRoleFields(fields, zh)
+  const worldKnowledge = createGameSystemWorldKnowledge(context, fields, sourceText, zh)
+  const baseGameplay = createBaseGameplaySystem(sourceText, target, worldKnowledge, zh)
+  const derivedStatusFields = createDerivedStatusFieldSpec(stats, statuses, baseGameplay, sourceText, zh)
   const equipmentTone = /magic|curse|witch|spell|魔|咒|巫|玄/i.test(sourceText)
     ? (zh ? '符合仪式、受规则约束，误用会付出代价' : 'ritual-compatible, rule-bound, and costly to misuse')
     : /school|campus|student|校园|学生/i.test(sourceText)
@@ -1903,6 +1908,21 @@ function createGameSystemData(
     summary: zh
       ? `为 ${name} 从工作流设计生成的角色状态、装备规则与状态规则。`
       : `Character-specific stats, equipment rules, and status rules generated from the workflow design for ${name}.`,
+    sections: {
+      baseRoleFields,
+      baseGameplay,
+      derivedStatusFields,
+      cssDesign: {
+        purpose: zh
+          ? 'CSS 设计应读取角色图片、世界氛围、边框材质、状态栏语义和剧情张力，不使用固定渐变模板。'
+          : 'CSS design should read character imagery, world mood, border material, status semantics, and story tension instead of using a fixed gradient template.',
+        inputs: ['character images', 'base role fields', 'world knowledge', 'gameplay/status semantics', 'atmosphere style target'],
+      },
+    },
+    baseRoleFields,
+    worldKnowledge,
+    baseGameplay,
+    derivedStatusFields,
     stats,
     equipment: {
       slots: [
@@ -1940,7 +1960,7 @@ function createGameSystemData(
         'Do not use equipment as a shortcut around consent, relationship pacing, or established scene limitations.',
       ],
     },
-    statuses: createContextualGameStatuses(sourceText, seed, zh),
+    statuses,
     rules: (zh ? [
       '属性属于角色自身，只有对话产生具体原因时才应变化。',
       '状态效果必须说明触发、持续时间、冲突行为与叙事后果。',
@@ -1960,6 +1980,132 @@ function createGameSystemData(
 
 function gameStat(id: string, label: string, value: number, min: number, max: number, description: string): Record<string, unknown> {
   return { id, label, value: Math.max(min, Math.min(max, value)), min, max, description, visibility: 'shown' }
+}
+
+function createGameSystemBaseRoleFields(fields: Record<string, unknown>, zh: boolean): Record<string, unknown> {
+  return {
+    name: stringValue(fields.name, zh ? '未命名角色' : 'Unnamed character'),
+    appearance: stringValue(fields.appearance),
+    personality: stringValue(fields.personality),
+    background: stringValue(fields.background),
+    scenario: stringValue(fields.scenario),
+    firstMessage: stripVisibleControlTags(stringValue(fields.firstMessage)),
+    dialogueStyle: stringValue(fields.dialogueStyle),
+    requiredUse: zh
+      ? '这些基础字段只描述角色本体，不直接塞入游戏数值；游戏性必须从这些字段推导。'
+      : 'These base fields describe the character itself; gameplay numbers must be derived from them rather than replacing them.',
+  }
+}
+
+function createGameSystemWorldKnowledge(
+  context: CharacterAgentRunContext,
+  fields: Record<string, unknown>,
+  sourceText: string,
+  zh: boolean
+): Record<string, unknown> {
+  const worldContext = stringValue(fields.worldContext)
+  const scenario = stringValue(fields.scenario)
+  const background = stringValue(fields.background)
+  const lower = sourceText.toLowerCase()
+  const adult = hasAny(lower, ['adult', 'explicit', 'erotic', 'sexual', 'nsfw', '成人', '色情', '性爱', '性欲', '后庭', '小穴'])
+  const magical = hasAny(lower, ['magic', 'curse', 'witch', 'ritual', '魔', '咒', '巫', '仪式'])
+  const cyber = hasAny(lower, ['cyber', 'terminal', 'hacker', 'android', '赛博', '黑客', '终端', '义体'])
+  const school = hasAny(lower, ['school', 'campus', 'student', '校园', '学生', '教室'])
+  const genre = adult
+    ? (zh ? '成人亲密关系 / 身体状态驱动' : 'adult intimacy / body-state driven')
+    : magical
+      ? (zh ? '魔法仪式 / 契约规则' : 'magic ritual / contract rules')
+      : cyber
+        ? (zh ? '赛博权限 / 信号追踪' : 'cyber access / signal tracing')
+        : school
+          ? (zh ? '校园日常 / 隐秘关系' : 'campus daily life / hidden relationship')
+          : (zh ? '关系叙事 / 场景推进' : 'relationship narrative / scene progression')
+  return {
+    genre,
+    premise: worldContext || background || context.goal.prompt,
+    currentScene: scenario || context.goal.prompt,
+    necessaryWorldFacts: [
+      worldContext || (zh ? '补全角色所在世界、地点、社会规则和日常限制。' : 'Fill in the character world, place, social rules, and daily constraints.'),
+      scenario || (zh ? '补全当前场景入口、角色为什么在这里、用户如何进入互动。' : 'Fill in the current scene entry, why the character is here, and how the user enters interaction.'),
+      adult
+        ? (zh ? '成人向世界知识必须声明同意边界、亲密升级条件、身体状态出现条件。' : 'Adult world knowledge must declare consent boundaries, intimacy escalation conditions, and body-state visibility conditions.')
+        : (zh ? '非成人世界知识不应生成色情身体状态。' : 'Non-adult world knowledge should not generate erotic body-state fields.'),
+    ],
+    factionsOrForces: cyber
+      ? [zh ? '权限系统' : 'access system', zh ? '追踪方' : 'tracing party', zh ? '身份伪装层' : 'identity spoofing layer']
+      : magical
+        ? [zh ? '契约方' : 'contract holder', zh ? '仪式条件' : 'ritual conditions', zh ? '反噬规则' : 'backlash rules']
+        : school
+          ? [zh ? '同学/社团/教师视线' : 'classmates/clubs/teacher attention', zh ? '校园舆论' : 'campus reputation']
+          : [zh ? '角色本人' : 'the character', zh ? '用户关系' : 'user relationship', zh ? '场景压力' : 'scene pressure'],
+    taboosAndBoundaries: context.hardConstraints.flatMap((constraint) => [...constraint.mustNot, ...constraint.mustHave.map((rule) => `${zh ? '必须' : 'Must'}: ${rule}`)]).slice(0, 8),
+    progressionHooks: [
+      zh ? '状态变化必须来自对话事件、装备使用、场景风险或关系选择。' : 'State changes must come from dialogue events, equipment use, scene risk, or relationship choices.',
+      zh ? '每个世界事实都应该能影响至少一个状态、装备或 CSS 氛围表现。' : 'Each world fact should influence at least one status, equipment item, or CSS atmosphere treatment.',
+    ],
+  }
+}
+
+function createBaseGameplaySystem(
+  sourceText: string,
+  target: AgentTargetContext,
+  worldKnowledge: Record<string, unknown>,
+  zh: boolean
+): Record<string, unknown> {
+  return {
+    loop: zh
+      ? '对话事件 -> 世界/关系判断 -> 装备或状态触发 -> 状态字段更新 -> 影响下一轮回复和 UI。'
+      : 'dialogue event -> world/relationship check -> equipment or status trigger -> status field update -> affects next reply and UI.',
+    worldKnowledge,
+    ruleSources: {
+      statDesign: stringValue(target.config.statDesign),
+      equipmentRules: stringValue(target.config.equipmentRules),
+      statusRules: stringValue(target.config.statusRules),
+      panelDesign: stringValue(target.config.panelDesign),
+    },
+    updatePrinciples: zh ? [
+      '基础角色字段是事实来源，不能被状态栏覆盖。',
+      '世界知识提供状态变化的原因和边界。',
+      '装备、状态和 CSS 都必须能回指到角色或世界设定。',
+      sourceText ? '避免通用模板词，优先使用角色专属概念。' : '缺少上下文时保持保守。'
+    ] : [
+      'Base role fields are the source of truth and must not be overwritten by status panels.',
+      'World knowledge provides causes and boundaries for state changes.',
+      'Equipment, status, and CSS must trace back to character or world semantics.',
+      sourceText ? 'Avoid generic template labels; prefer character-specific concepts.' : 'Stay conservative when context is missing.',
+    ],
+  }
+}
+
+function createDerivedStatusFieldSpec(
+  stats: Record<string, unknown>[],
+  statuses: Record<string, unknown>[],
+  baseGameplay: Record<string, unknown>,
+  sourceText: string,
+  zh: boolean
+): Record<string, unknown> {
+  return {
+    derivationRule: zh
+      ? '状态字段必须从基础游戏性和世界知识推导，不能固定套用“决心/镇定”等模板。'
+      : 'Status fields must be derived from base gameplay and world knowledge, never from a fixed Resolve/Composure template.',
+    fields: stats.map((stat) => ({
+      id: stat.id,
+      label: stat.label,
+      range: [stat.min, stat.max],
+      current: stat.value,
+      reason: stat.description,
+    })),
+    activeStatuses: statuses.map((status) => ({
+      id: status.id,
+      label: status.label,
+      value: status.value,
+      rule: status.rule,
+    })),
+    gameplaySource: baseGameplay.loop,
+    adultBoundary: hasAny(sourceText.toLowerCase(), ['adult', 'explicit', 'erotic', 'sexual', 'nsfw', '成人', '色情', '性爱', '性欲'])
+      ? (zh ? '允许成人状态，但必须由角色和场景明确支持。' : 'Adult statuses are allowed, but only when supported by character and scene.')
+      : (zh ? '未检测到成人授权，不生成色情身体状态。' : 'No adult permission detected; erotic body statuses are not generated.'),
+  }
 }
 
 function createContextualGameStats(sourceText: string, seed: number, zh: boolean): Record<string, unknown>[] {
@@ -2092,6 +2238,11 @@ function createAtmosphereStyleData(
   ].filter(Boolean).join(' ')
   const fallbackProfile = createDefaultAtmosphereFallback()
   const scopeClass = `noema-atmosphere-${sanitizeCssIdentifier(target.nodeId)}`
+  const imageHints = collectOpeningLayoutImages(artifacts).slice(0, 3).map((image) => ({
+    id: image.id,
+    role: image.role,
+    title: image.title,
+  }))
   const freeStyle = createFreeAtmosphereStyle({
     fallback: fallbackProfile,
     scopeClass,
@@ -2101,14 +2252,10 @@ function createAtmosphereStyleData(
     scenario,
     dialogueStyle,
     stylePrompt,
+    imageHints,
   })
   const firstSpeech = extractFirstRoleChatLine(stringValue(fields.firstMessage)) || dialogueStyle
   const narration = stripVisibleControlTags(stringValue(fields.firstMessage)) || scenario || description
-  const imageHints = collectOpeningLayoutImages(artifacts).slice(0, 3).map((image) => ({
-    id: image.id,
-    role: image.role,
-    title: image.title,
-  }))
   return {
     schemaVersion: 1,
     name: freeStyle.name,
@@ -2297,6 +2444,7 @@ function createFreeAtmosphereStyle(input: {
   scenario: string
   dialogueStyle: string
   stylePrompt: string
+  imageHints: Array<{ id?: string; role?: string; title?: string }>
 }): ReturnType<typeof createDefaultAtmosphereFallback> & {
   css: string
   designBrief: Record<string, string>
@@ -2315,6 +2463,8 @@ function createFreeAtmosphereStyle(input: {
   const threat = scoreText(lower, ['danger', 'secret', 'blood', 'knife', 'noir', '危险', '秘密', '血', '刀', '禁忌', '暗'])
   const precision = scoreText(lower, ['dossier', 'clinical', 'terminal', 'signal', 'lab', '档案', '实验', '终端', '信号', '机械'])
   const softness = scoreText(lower, ['rain', 'mist', 'dream', 'quiet', 'soft', '雨', '雾', '梦', '安静', '柔'])
+  const imagePresence = input.imageHints.length
+  const imageRoles = input.imageHints.map((image) => image.role || image.title || '').join(' ').toLowerCase()
   const hue = normalizeHue(seed % 360 + emotionalHeat * 22 - threat * 18 + precision * 34 + softness * 11)
   const saturation = clampNumber(34 + emotionalHeat * 10 + threat * 8 + precision * 6, 32, 72)
   const lightness = clampNumber(62 + softness * 5 - threat * 8 - precision * 4, 42, 72)
@@ -2327,6 +2477,20 @@ function createFreeAtmosphereStyle(input: {
   const paddingX = Math.round(clampNumber(18 + emotionalHeat * 2 + softness * 2 + (seed % 6), 17, 30))
   const lineWeight = Math.round(clampNumber(1 + precision * 0.45 + threat * 0.35, 1, 3))
   const audioRadius = Math.round(clampNumber(radiusPx + 4 + emotionalHeat * 6 - precision * 4, 9, 999))
+  const borderStyle = precision > 1
+    ? 'technical hairline frame'
+    : threat > 1
+      ? 'dark lacquer frame'
+      : emotionalHeat > 1
+        ? 'warm intimate bevel'
+        : softness > 1
+          ? 'mist-soft rounded frame'
+          : 'quiet neutral frame'
+  const imageTreatment = imagePresence
+    ? imageRoles.includes('avatar')
+      ? 'portrait-linked border, matching image crop glow, and caption tone'
+      : 'image-aware border and shared accent halo'
+    : 'text-derived border because no image asset is available yet'
   const mood = [
     emotionalHeat > 1 ? 'intimate' : '',
     threat > 1 ? 'tense' : '',
@@ -2338,6 +2502,8 @@ function createFreeAtmosphereStyle(input: {
     concept: `${input.characterName} specific atmosphere generated from role-card semantics, not from a fixed CSS template.`,
     colorSystem: `Seeded hue ${hue}, saturation ${saturation}, lightness ${lightness}; accent ${accent}, soft field ${accentSoft}.`,
     surfaceTreatment: `Custom surface uses ${surface}, radius ${radiusPx}px, ${lineWeight}px boundary weight, and semantic glow density from the card text.`,
+    borderTreatment: `${borderStyle}; border weight and corner radius are derived from role semantics.`,
+    imageTreatment,
     typography: precision > threat ? 'Compact metadata rhythm with readable literary speech.' : threat > emotionalHeat ? 'Tense prose frame with sharp quoted speech.' : 'Literary conversational rhythm with soft speech emphasis.',
     audioTreatment: `Audio bar radius ${audioRadius}px, progress color from character accent, spacing derived from the same semantic seed.`,
     sceneTreatment: 'Scene/status card shares the generated surface, border, and accent system instead of using a separate preset.',
@@ -2386,6 +2552,8 @@ function createFreeAtmosphereStyle(input: {
       precision,
       threat,
       softness,
+      emotionalHeat,
+      imagePresence,
     }, designBrief),
   }
 }
@@ -2407,6 +2575,8 @@ function buildFreeAtmosphereCss(
     precision: number
     threat: number
     softness: number
+    emotionalHeat: number
+    imagePresence: number
   },
   design: Record<string, string>
 ): string {
@@ -2416,12 +2586,26 @@ function buildFreeAtmosphereCss(
   const grain = spec.precision > 1
     ? `linear-gradient(90deg, hsla(${spec.hue} 70% 70% / 0.05) 1px, transparent 1px)`
     : `radial-gradient(circle at 78% 10%, hsla(${spec.hue} 70% 72% / ${spec.glowAlpha}), transparent 34%)`
+  const borderImage = spec.precision > 1
+    ? `linear-gradient(180deg, color-mix(in srgb, ${spec.accent} 42%, transparent), rgba(255,255,255,0.05), color-mix(in srgb, ${spec.accent} 22%, transparent)) 1`
+    : spec.threat > 1
+      ? `linear-gradient(135deg, rgba(255,255,255,0.08), color-mix(in srgb, ${spec.accent} 48%, transparent), rgba(0,0,0,0.22)) 1`
+      : `linear-gradient(135deg, color-mix(in srgb, ${spec.accent} 36%, transparent), rgba(255,255,255,0.1), color-mix(in srgb, ${spec.accent} 18%, transparent)) 1`
+  const imageFilter = spec.threat > 1
+    ? 'contrast(1.08) saturate(0.9) brightness(0.88)'
+    : spec.emotionalHeat > 1
+      ? 'contrast(1.04) saturate(1.12) brightness(1.02)'
+      : spec.precision > 1
+        ? 'contrast(1.12) saturate(0.86)'
+        : 'contrast(1.02) saturate(1.02)'
   return [
     `.${scopeClass}.has-chat-atmosphere .roleplay-chat-frame {`,
     `  padding: ${spec.paddingY}px ${spec.paddingX}px ${spec.paddingY + 2}px;`,
     `  border-width: ${spec.lineWeight}px;`,
+    `  border-style: solid;`,
     `  border-radius: ${spec.radiusPx + 4}px;`,
     `  border-color: color-mix(in srgb, ${spec.accent} 28%, transparent);`,
+    `  border-image: ${borderImage};`,
     `  background: radial-gradient(circle at 10% 0%, ${spec.accentSoft}, transparent 31%), ${grain}, linear-gradient(139deg, color-mix(in srgb, ${spec.accent} 10%, ${spec.surface}), ${spec.surface});`,
     `  box-shadow: ${frameShadow};`,
     `}`,
@@ -2445,6 +2629,16 @@ function buildFreeAtmosphereCss(
     `}`,
     `.${scopeClass}.has-chat-atmosphere .chat-inline-scene-line span { color: color-mix(in srgb, ${spec.accent} 58%, rgba(238,241,240,0.58)); }`,
     `.${scopeClass}.has-chat-atmosphere .chat-inline-scene-status em { border-color: color-mix(in srgb, ${spec.accent} 26%, transparent); background: color-mix(in srgb, ${spec.accent} 10%, transparent); }`,
+    `.${scopeClass}.has-chat-atmosphere img, .${scopeClass}.has-chat-atmosphere .chat-message img {`,
+    `  border: ${Math.max(1, spec.lineWeight)}px solid color-mix(in srgb, ${spec.accent} ${spec.imagePresence ? 34 : 18}%, rgba(255,255,255,0.08));`,
+    `  border-radius: ${Math.max(8, spec.radiusPx - 2)}px;`,
+    `  filter: ${imageFilter};`,
+    `  box-shadow: 0 0 0 1px rgba(255,255,255,0.035), 0 18px 42px color-mix(in srgb, ${spec.accent} ${spec.imagePresence ? 18 : 8}%, transparent);`,
+    `}`,
+    `.${scopeClass}.has-chat-atmosphere .chat-inline-equipment table, .${scopeClass}.has-chat-atmosphere .chat-inline-game-status {`,
+    `  border-color: color-mix(in srgb, ${spec.accent} 24%, rgba(255,255,255,0.08));`,
+    `  box-shadow: inset 0 1px 0 rgba(255,255,255,0.045);`,
+    `}`,
     `/* ${design.concept} */`,
   ].join('\n')
 }
