@@ -5059,13 +5059,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
               ${pendingDecision.options.map((optionItem) => `
                 <button type="button" data-chat-workflow-decision-option="${options.escapeHtml(optionItem.id)}" ${characterWorkflowBuilderBusy ? 'disabled' : ''}>
                   <strong>${options.escapeHtml(optionItem.label)}</strong>
-                  ${optionItem.detail ? `<span>${options.escapeHtml(optionItem.detail)}</span>` : ''}
                 </button>
               `).join('')}
               ${pendingDecision.allowSkip ? `
                 <button type="button" class="secondary" data-chat-workflow-decision-option="__skip" ${characterWorkflowBuilderBusy ? 'disabled' : ''}>
                   <strong>${options.escapeHtml(zh ? '交给 Agent 决定' : 'Let agent decide')}</strong>
-                  <span>${options.escapeHtml(zh ? '继续使用合理默认偏好编辑资源图' : 'Continue with a reasonable default editing preference')}</span>
                 </button>
               ` : ''}
             </div>

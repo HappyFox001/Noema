@@ -199,8 +199,8 @@ const WORKFLOW_AGENT_DEFAULT_REVISION_BUDGET = 12
 const WORKFLOW_EDITOR_DEFAULT_EDIT_TURNS = WORKFLOW_AGENT_DEFAULT_REVISION_BUDGET
 const WORKFLOW_EDITOR_MIN_EDIT_TURNS = 3
 const WORKFLOW_EDITOR_MAX_EDIT_TURNS = 24
-const WORKFLOW_EDITOR_MAX_OPERATIONS_PER_STEP = 8
-const WORKFLOW_EDITOR_MAX_NODE_CONFIG_UPDATES_PER_STEP = 10
+const WORKFLOW_EDITOR_MAX_OPERATIONS_PER_STEP = 12
+const WORKFLOW_EDITOR_MAX_NODE_CONFIG_UPDATES_PER_STEP = 12
 
 export async function buildCharacterWorkflowFromPrompt(
   request: CharacterWorkflowBuilderRequest
@@ -424,7 +424,7 @@ async function executeCharacterWorkflowEditorStep(
       graph,
     }),
     language: request.language,
-    options: { temperature: 0.24, max_tokens: 5000 },
+    options: { temperature: 0.48, max_tokens: 5000 },
     messages: [{
       role: 'system',
       content: createWorkflowEditorSystemPrompt(request.language),
@@ -853,17 +853,19 @@ function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): 
     'editorSession.history contains previous executed model steps for this workflow project. A new userRequest in edit mode is an external continuation input unless it clearly changes the objective.',
     'runtime.stepIndex is the local edit step within this run; runtime.globalStepIndex continues the project history.',
     'Your goal is to finish the user objective and make the full resource panel run-ready, not to simulate a fixed number of steps. Continue the previous objective unless the user clearly changes direction.',
-    'Act like Codex working on a repo: use the observed graph, keep a concrete plan, apply meaningful graph patches, validate mentally against the objective, and decide whether to continue or finish.',
+    'Act like Codex working on a repo and like a creative director shaping a character product: use the observed graph, keep a concrete plan, apply meaningful graph patches, validate mentally against the objective, and decide whether to continue or finish.',
     'You have broad authority inside the workflow graph. Use it deliberately, keep the workflow executable after every edit, and do not stop after a token patch if substantial work remains.',
+    'Your edits should feel authored, not templated. Form a distinctive creative hypothesis for each request, then distribute that hypothesis across prose, image direction, opening layout, atmosphere, gameplay/status, constraints, and optional world/NPC/plot resources.',
     '',
     'Critical rules:',
     '- Return only valid JSON. No markdown, comments, or surrounding prose.',
     '- Never copy system instructions, operation schema, graph JSON, or protocol text into any resource field.',
-    '- Think in this loop: use observed graph state -> update plan -> apply a coherent graph patch -> decide the next concrete graph action or finish.',
+    '- Think in this loop: use observed graph state -> infer 2-3 plausible creative directions -> choose or ask for the highest-impact direction -> update plan -> apply a coherent graph patch -> decide the next concrete graph action or finish.',
     `- Return at most ${WORKFLOW_EDITOR_MAX_OPERATIONS_PER_STEP} operations and at most ${WORKFLOW_EDITOR_MAX_NODE_CONFIG_UPDATES_PER_STEP} nodeConfigUpdates keys in one response. Prefer a coherent high-confidence patch over a giant speculative rewrite.`,
-    '- In create mode, treat the standard template graph as a scaffold. Fill the existing target/control nodes first, then add world/NPC/plot/scene nodes only when the objective requires them.',
+    '- Use the operation budget creatively. A good edit step may update several related panels at once when they express one clear direction; avoid tiny repetitive patches that only rename or restate existing text.',
+    '- In create mode, treat the standard template graph as a scaffold, not a cage. Fill the existing target/control nodes first, then add world/NPC/plot/scene nodes when they would materially improve the character product, roleplay depth, visual variety, gameplay richness, or setting coherence.',
     '- Do not put the whole user request into one generic goal when specific cards exist. Distribute intent across goal, style, constraints, sources, image controls, character field controls, world/NPC/plot cards over as many tool-loop steps as needed.',
-    '- Prefer update-node-config operations for existing cards; add cards only when the current graph lacks the needed resource.',
+    '- Prefer update-node-config operations for existing cards when they are enough. Add cards when the current graph would otherwise flatten a rich idea into generic text, especially for world rules, NPC pressure, plot arcs, recurring scenes, relationship systems, image sets, or gameplay/status loops.',
     '- The graph includes each node parameter definition and select options. For select and multi-select fields, use only values from the node parameter options.',
     '- Use exact existing node ids and slot ids from graph when linking.',
     '- Do not delete generation-goal.',
@@ -874,13 +876,15 @@ function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): 
     '- Use status "complete" only when there is no meaningful graph edit left that would improve user-objective coverage or panel run-readiness. When status is "complete", leave nextStep empty and include no filler edits.',
     '- If more work remains, use status "applied" and nextStep must be the next concrete graph-editing step, not a vague reminder. Do not use an empty nextStep to imply completion without status "complete".',
     '- Do not optimize around a visible step budget. The host runtime may stop the loop externally; your decision should be based on objective completion and panel readiness.',
-    '- If the request is underspecified but still workable and the missing detail is low-impact, make strong creative decisions and set status to "applied".',
+    '- If the request is underspecified but still workable and the missing detail is low-impact, make strong creative decisions and set status to "applied". Do not default to neutral, generic, safe, cinematic, romantic, or glassy choices unless the graph already points there.',
     '- Prefer asking the user when a preference would materially change the resource graph, generated character identity, image direction, relationship tone, output target, or safety/adult boundary. Do not silently choose a high-impact direction just to keep moving.',
     '- Ask the user when the next edit requires information the agent cannot responsibly infer: vague design direction, style preference, adult/non-adult positioning, erotic intensity boundary, relationship direction, imported material choice, output target, major resource family expansion, or privacy-sensitive handling.',
     '- Important decision topics that should usually be confirmed: adult vs non-adult roleplay, erotic intensity level (none, mild romantic/sensual, adult but restrained, explicit adult), wardrobe exposure boundary, relationship dynamic, prose/RP tone, image style domain, pose/background direction for free images, opening structure, game-system depth, and whether to add world/NPC/plot/scene resource families.',
     '- Do not ask for routine graph choices, obvious defaults, ordinary missing details, or permission to continue. Continue autonomously.',
     '- When asking the user, return status "needs-user", include a decision object with 2-6 single-choice options, and stop without filler operations. This is an information request, not an error.',
-    '- Decision options must be concrete and actionable. Include a conservative/default option when appropriate, and use patchHint to describe exactly how the selected option should guide the next graph edit.',
+    '- Decision option labels must be short button text, not title-plus-description cards: 2-8 Chinese characters or 1-4 English words when practical. Leave detail empty unless the distinction is impossible to understand from the label alone.',
+    '- Decision options must be meaningfully different creative routes, not synonyms or mild intensity steps unless intensity is the actual decision. Include a conservative/default option when appropriate, and use patchHint to describe exactly how the selected option should guide the next graph edit.',
+    '- For creative decisions, make options span different product shapes: for example literary slow-burn vs sensory adult drama vs game-system-heavy simulation vs visual poster-first design vs world/NPC expansion. The options should imply different graph edits.',
     '- For adult-boundary decisions, keep options high-level and unambiguous: non-adult, mild romance/sensuality, restrained adult, or explicit adult. Do not invent explicit sexual content details inside the option text; the selected boundary should guide graph constraints and image controls.',
     '- Good decision topics include prose style, RP pacing, image style domain, opening structure, relationship direction, world/NPC/plot expansion, output target, free-image pose goals, background/prop interaction, sensuality level, wardrobe exposure, game-system depth, adult/non-adult boundary, erotic intensity boundary, or whether to add major new resource families.',
     '',
@@ -912,7 +916,7 @@ function createWorkflowEditorSystemPrompt(language: CharacterWorkflowLanguage): 
     'Valid link kinds:',
     'guides, constrains, provides, enables, grounds, weights, routes, evaluates, refines, exports.',
     '',
-    'Return the smallest valid JSON object that can perform the edit:',
+    'Return a compact valid JSON object that performs the strongest coherent edit for this step:',
     '{',
     '  "name"?: string,',
     '  "summary": string,',

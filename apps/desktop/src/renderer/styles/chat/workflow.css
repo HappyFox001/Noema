@@ -2280,90 +2280,92 @@ body.chat-workflow-library-resizing * {
 }
 
 .chat-workflow-canvas-assistant-decision {
-  width: min(100%, 560px);
-  margin: 0 auto 8px;
-  padding: 10px;
-  border: 1px solid rgba(174, 187, 208, 0.16);
-  border-radius: 16px;
-  background:
-    radial-gradient(circle at 18% 0%, rgba(196, 211, 235, 0.08), transparent 34%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.052), rgba(255, 255, 255, 0.018)),
-    rgba(7, 8, 9, 0.84);
-  box-shadow:
-    0 16px 42px rgba(0, 0, 0, 0.32),
-    inset 0 1px 0 rgba(255, 255, 255, 0.055);
-  -webkit-backdrop-filter: blur(20px) saturate(1.08);
-  backdrop-filter: blur(20px) saturate(1.08);
+  width: min(100%, 720px);
+  margin: 0 auto 6px;
+  padding: 7px 8px;
+  border: 1px solid rgba(174, 187, 208, 0.13);
+  border-radius: 10px;
+  background: rgba(10, 11, 13, 0.96);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.22);
 }
 
 .chat-workflow-canvas-assistant-decision header {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 6px;
+  gap: 8px;
+  margin-bottom: 5px;
 }
 
 .chat-workflow-canvas-assistant-decision header span {
   order: 2;
-  color: rgba(174, 187, 208, 0.58);
-  font-size: 9px;
+  color: rgba(174, 187, 208, 0.46);
+  font-size: 8.5px;
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   white-space: nowrap;
 }
 
 .chat-workflow-canvas-assistant-decision header strong {
-  color: rgba(248, 250, 250, 0.92);
-  font-size: 12px;
+  overflow: hidden;
+  color: rgba(248, 250, 250, 0.86);
+  font-size: 11px;
   font-weight: 760;
   line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chat-workflow-canvas-assistant-decision p {
   max-width: 44em;
-  margin: 0 0 8px;
-  color: rgba(224, 229, 237, 0.64);
-  font-size: 10.5px;
-  line-height: 1.42;
+  overflow: hidden;
+  margin: -2px 0 6px;
+  color: rgba(224, 229, 237, 0.46);
+  font-size: 9.5px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chat-workflow-canvas-assistant-decision-options {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
-  gap: 6px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.chat-workflow-canvas-assistant-decision-options::-webkit-scrollbar {
+  display: none;
 }
 
 .chat-workflow-canvas-assistant-decision-options > button {
-  display: grid;
-  align-content: start;
-  gap: 2px;
-  width: 100%;
-  min-height: 54px;
-  border: 1px solid rgba(174, 187, 208, 0.14);
-  border-radius: 12px;
-  padding: 7px 9px;
-  text-align: left;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
+  border: 1px solid rgba(174, 187, 208, 0.18);
+  border-radius: 999px;
+  padding: 4px 10px;
+  text-align: center;
   color: rgba(248, 250, 250, 0.86);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.042), rgba(255, 255, 255, 0.015)),
-    rgba(150, 162, 184, 0.06);
+  background: rgba(21, 23, 26, 0.98);
   cursor: pointer;
-  transition: transform 140ms ease, border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease, color 120ms ease;
 }
 
 .chat-workflow-canvas-assistant-decision-options > button.secondary {
-  color: rgba(224, 229, 237, 0.68);
-  background: rgba(255, 255, 255, 0.026);
+  color: rgba(224, 229, 237, 0.58);
+  background: rgba(14, 15, 17, 0.98);
 }
 
 .chat-workflow-canvas-assistant-decision-options > button:hover {
-  border-color: rgba(202, 213, 230, 0.32);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.064), rgba(255, 255, 255, 0.024)),
-    rgba(150, 162, 184, 0.1);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  border-color: rgba(202, 213, 230, 0.34);
+  color: rgba(255, 255, 255, 0.94);
+  background: rgba(31, 34, 38, 0.98);
 }
 
 .chat-workflow-canvas-assistant-decision-options > button:active {
@@ -2371,9 +2373,10 @@ body.chat-workflow-library-resizing * {
 }
 
 .chat-workflow-canvas-assistant-decision-options strong {
-  font-size: 11.2px;
+  font-size: 10.5px;
   font-weight: 740;
-  line-height: 1.28;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .chat-workflow-canvas-assistant-decision-options span {
