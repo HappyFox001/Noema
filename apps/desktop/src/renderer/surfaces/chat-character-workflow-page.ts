@@ -2651,10 +2651,15 @@ function renderResourceTabControl(tab: CharacterResourceGraph['tabs'][number], a
     <label class="chat-resource-run-tab-select ${activeTab === 'run-draft' ? 'active' : ''} ${drafts.length ? '' : 'disabled'}" title="${options.escapeHtml(selectTitle)}">
       <select data-chat-workflow-run-select aria-label="${options.escapeHtml(ui(options, '选择运行草稿', 'Select run draft'))}" ${drafts.length ? '' : 'disabled'}>
         <option value="" ${activeRunId ? '' : 'selected'}>${options.escapeHtml(ui(options, '运行草稿', 'Run Draft'))}</option>
-        ${drafts.map((draft) => `<option value="${options.escapeHtml(draft.id)}" ${draft.id === activeRunId ? 'selected' : ''}>${options.escapeHtml(`${draft.title} · ${draft.status}`)}</option>`).join('')}
+        ${drafts.map((draft) => `<option value="${options.escapeHtml(draft.id)}" ${draft.id === activeRunId ? 'selected' : ''}>${options.escapeHtml(formatRunDraftSelectLabel(draft))}</option>`).join('')}
       </select>
     </label>
   `
+}
+
+function formatRunDraftSelectLabel(draft: CharacterWorkflowRunDraftOption): string {
+  const title = clampRunCharacterPreviewText(draft.title.replace(/\s+/g, ' ').trim(), 34)
+  return `${title} · ${draft.status}`
 }
 
 function renderRunDraft(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): string {
@@ -3188,7 +3193,13 @@ function getRunArtifactNodeSize(artifact: CharacterRunArtifact, hasImage: boolea
     return { width: 390, height: clampNumber(130 + fields * 34, 230, 390) }
   }
   if (artifact.type === 'run-css-result') {
-    return { width: 390, height: 350 }
+    return { width: 390, height: 220 }
+  }
+  if (artifact.type === 'run-chat-status-result') {
+    return { width: 390, height: 168 }
+  }
+  if (artifact.type === 'run-chat-equipment-result') {
+    return { width: 390, height: 148 }
   }
   if (artifact.type === 'opening-layout') {
     return { width: 420, height: 240 }
@@ -3279,6 +3290,12 @@ function getRunArtifactNodeTitle(artifact: CharacterRunArtifact, options: Charac
   if (artifact.type === 'run-css-result') {
     return artifact.title ?? ui(options, '氛围样式', 'Atmosphere Style')
   }
+  if (artifact.type === 'run-chat-status-result') {
+    return ui(options, '状态栏', 'Status Panel')
+  }
+  if (artifact.type === 'run-chat-equipment-result') {
+    return ui(options, '装备栏', 'Equipment Panel')
+  }
   if (artifact.type === 'character-card-field') {
     return getCharacterFieldArtifactLabel(artifact, options)
   }
@@ -3316,6 +3333,12 @@ function getRunArtifactNodeConfig(artifact: CharacterRunArtifact): Record<string
   }
   if (artifact.type === 'run-css-result') {
     return { runCssResult: true }
+  }
+  if (artifact.type === 'run-chat-status-result') {
+    return { runChatStatusResult: true }
+  }
+  if (artifact.type === 'run-chat-equipment-result') {
+    return { runChatEquipmentResult: true }
   }
   if (artifact.type !== 'character-card-field') {
     return {}
@@ -3395,6 +3418,7 @@ function getRunCanvasArtifacts(artifacts: CharacterRunArtifacts): CharacterRunAr
     'scene-context',
     'opening-layout',
     'atmosphere-style',
+    'game-system',
     'image-attempt',
     'image-asset',
   ])
@@ -3410,11 +3434,13 @@ function pruneRunCanvasArtifacts(
   const images = artifacts.filter((artifact) => artifact.type === 'image-asset' || artifact.type === 'image-attempt').slice(-6)
   const textResults = artifacts.filter((artifact) => artifact.type === 'run-text-result').slice(-1)
   const cssResults = artifacts.filter((artifact) => artifact.type === 'run-css-result').slice(-3)
+  const statusResults = artifacts.filter((artifact) => artifact.type === 'run-chat-status-result').slice(-1)
+  const equipmentResults = artifacts.filter((artifact) => artifact.type === 'run-chat-equipment-result').slice(-1)
   const openingLayouts = artifacts.filter((artifact) => artifact.type === 'opening-layout').slice(-1)
   const other = artifacts
-    .filter((artifact) => artifact.type !== 'image-asset' && artifact.type !== 'image-attempt' && artifact.type !== 'run-text-result' && artifact.type !== 'run-css-result' && artifact.type !== 'opening-layout')
+    .filter((artifact) => artifact.type !== 'image-asset' && artifact.type !== 'image-attempt' && artifact.type !== 'run-text-result' && artifact.type !== 'run-css-result' && artifact.type !== 'run-chat-status-result' && artifact.type !== 'run-chat-equipment-result' && artifact.type !== 'opening-layout')
     .slice(-2)
-  const keepIds = new Set([...textResults, ...openingLayouts, ...cssResults, ...images, ...other].map((artifact) => artifact.id || `${artifact.type}:${artifact.title ?? ''}`))
+  const keepIds = new Set([...textResults, ...openingLayouts, ...cssResults, ...statusResults, ...equipmentResults, ...images, ...other].map((artifact) => artifact.id || `${artifact.type}:${artifact.title ?? ''}`))
   return artifacts.filter((artifact) => keepIds.has(artifact.id || `${artifact.type}:${artifact.title ?? ''}`)).slice(-14)
 }
 
@@ -3436,6 +3462,10 @@ function createRunCanvasDisplayArtifacts(artifacts: CharacterRunArtifacts): Char
       if (result) {
         displayArtifacts.push(result)
       }
+      continue
+    }
+    if (artifact.type === 'game-system') {
+      displayArtifacts.push(...createGameSystemResultArtifacts(artifact))
       continue
     }
     displayArtifacts.push(artifact)
@@ -3527,19 +3557,119 @@ function createAtmosphereStyleResultArtifact(artifact: CharacterRunArtifact): Ch
   }
 }
 
+function createGameSystemResultArtifacts(artifact: CharacterRunArtifact): CharacterRunArtifacts {
+  const data = getRunArtifactDataRecord(artifact)
+  const stats = normalizeRunGameStats(data.stats)
+  const statuses = normalizeRunGameStatuses(data.statuses)
+  const equipment = normalizeRunGameEquipment(objectRecordValue(data.equipment).slots)
+  const results: CharacterRunArtifacts = []
+  if (stats.length || statuses.length) {
+    results.push({
+      id: `${artifact.id || 'game-system'}:status`,
+      type: 'run-chat-status-result',
+      sourceNodeId: artifact.sourceNodeId,
+      title: 'Status Panel',
+      summary: [stats.map((item) => `${item.label} ${item.value}${item.unit}`).join(' · '), statuses.map((item) => `${item.label}${item.value ? ` · ${item.value}` : ''}`).join(' · ')].filter(Boolean).join('\n'),
+      data: { stats, statuses, sourceArtifactId: artifact.id },
+    })
+  }
+  if (equipment.length) {
+    results.push({
+      id: `${artifact.id || 'game-system'}:equipment`,
+      type: 'run-chat-equipment-result',
+      sourceNodeId: artifact.sourceNodeId,
+      title: 'Equipment Panel',
+      summary: equipment.map((item) => `${item.name}: ${item.ability}`).join('\n'),
+      data: { equipment, sourceArtifactId: artifact.id },
+    })
+  }
+  return results
+}
+
+function normalizeRunGameStats(value: unknown): Array<{ id: string; label: string; value: number; min: number; max: number; unit: string; visibility: string }> {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value.flatMap((item) => {
+    const record = objectRecordValue(item)
+    const label = stringValue(record.label)
+    const id = stringValue(record.id)
+    const rawValue = readFiniteNumber(record.value)
+    if (!label || rawValue === null) {
+      return []
+    }
+    const min = readFiniteNumber(record.min) ?? 0
+    const max = readFiniteNumber(record.max) ?? 100
+    return [{
+      id,
+      label,
+      value: rawValue,
+      min,
+      max: max > min ? max : min + 100,
+      unit: stringValue(record.unit),
+      visibility: stringValue(record.visibility),
+    }]
+  }).slice(0, 6)
+}
+
+function normalizeRunGameStatuses(value: unknown): Array<{ id: string; label: string; value: string }> {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value.flatMap((item) => {
+    const record = objectRecordValue(item)
+    const label = stringValue(record.label)
+    if (!label) {
+      return []
+    }
+    return [{ id: stringValue(record.id), label, value: stringValue(record.value) }]
+  }).slice(0, 4)
+}
+
+function normalizeRunGameEquipment(value: unknown): Array<{ name: string; ability: string; quantity: string }> {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value.flatMap((slot) => {
+    const slotRecord = objectRecordValue(slot)
+    const directName = stringValue(slotRecord.name)
+    if (directName) {
+      return [{
+        name: directName,
+        ability: stringValue(slotRecord.ability) || stringValue(slotRecord.description),
+        quantity: stringValue(slotRecord.quantity) || '1',
+      }]
+    }
+    const slotLabel = stringValue(slotRecord.label)
+    const current = Array.isArray(slotRecord.current) ? slotRecord.current : []
+    return current.flatMap((item) => {
+      const record = objectRecordValue(item)
+      const name = stringValue(record.name)
+      if (!name) {
+        return []
+      }
+      const effects = Array.isArray(record.effects)
+        ? record.effects.filter((effect): effect is string => typeof effect === 'string' && effect.trim().length > 0)
+        : []
+      const description = stringValue(record.description)
+      return [{
+        name,
+        ability: effects[0] || description || slotLabel,
+        quantity: stringValue(record.quantity) || '1',
+      }]
+    })
+  }).slice(0, 4)
+}
+
+function readFiniteNumber(value: unknown): number | null {
+  const numberValue = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
+  return Number.isFinite(numberValue) ? numberValue : null
+}
+
 function hasDisplayableAtmospherePreview(data: Record<string, unknown>): boolean {
   const preview = objectRecordValue(data.preview)
-  if (stringValue(preview.narration) || stringValue(preview.speech) || stringValue(preview.location)) {
+  if (stringValue(preview.narration) || stringValue(preview.speech)) {
     return true
-  }
-  if (stringListRecordValue(preview, 'status').length) {
-    return true
-  }
-  if (Array.isArray(preview.equipment)) {
-    return preview.equipment.some((item) => {
-      const record = objectRecordValue(item)
-      return Boolean(stringValue(record.name) || stringValue(record.ability))
-    })
   }
   return false
 }
@@ -3681,6 +3811,8 @@ function getRunArtifactOrder(type: string): number {
     'opening-message',
     'opening-layout',
     'run-css-result',
+    'run-chat-status-result',
+    'run-chat-equipment-result',
     'dialogue-style-guide',
     'world-context',
     'scene-context',
@@ -3706,6 +3838,8 @@ function getRunArtifactMeta(artifact: NonNullable<CharacterResourceRunState['art
     'opening-message': ui(options, '开场 / opening', 'opening / resource'),
     'opening-layout': ui(options, '开幕面板 / CSS', 'opening panel / CSS'),
     'run-css-result': ui(options, '氛围样式 / CSS', 'atmosphere style / CSS'),
+    'run-chat-status-result': ui(options, '状态栏 / chat', 'status panel / chat'),
+    'run-chat-equipment-result': ui(options, '装备栏 / chat', 'equipment panel / chat'),
     'atmosphere-style': ui(options, '氛围样式 / style', 'atmosphere / style'),
     'game-system': ui(options, '游戏系统 / rules', 'game system / rules'),
     'dialogue-style-guide': ui(options, '语气 / style', 'style / resource'),
@@ -3728,6 +3862,8 @@ function getRunArtifactNodeType(type: string): string {
     'source-material': 'source-material-resource',
     'run-text-result': 'role-card-resource',
     'run-css-result': 'atmosphere-style-resource',
+    'run-chat-status-result': 'game-system-resource',
+    'run-chat-equipment-result': 'game-system-resource',
     'character-card-field': 'character-field-resource',
     'character-card-draft': 'role-card-resource',
     'character-card-final': 'role-card-resource',
@@ -3758,6 +3894,12 @@ function getRunExecutionLabel(type: string, options: CharacterWorkflowPageOption
   }
   if (type === 'run-css-result') {
     return ui(options, '样式', 'style')
+  }
+  if (type === 'run-chat-status-result') {
+    return ui(options, '状态', 'status')
+  }
+  if (type === 'run-chat-equipment-result') {
+    return ui(options, '装备', 'equipment')
   }
   if (type === 'run-text-result') {
     return ui(options, '文字', 'text')
@@ -4038,6 +4180,8 @@ function renderResourceNode(node: CharacterResourceNode, graph: CharacterResourc
     node.config.runInputCard === true ? 'run-input-result-node' : '',
     node.config.runTextResult === true ? 'run-text-result-node' : '',
     node.config.runCssResult === true ? 'run-css-result-node' : '',
+    node.config.runChatStatusResult === true ? 'run-chat-status-result-node' : '',
+    node.config.runChatEquipmentResult === true ? 'run-chat-equipment-result-node' : '',
   ].filter(Boolean).join(' ')
   const runOrder = typeof node.config.runOrder === 'number' ? String(node.config.runOrder) : ''
   const runFocusClass = node.config.runFocus === true ? 'is-run-focus' : ''
@@ -4066,6 +4210,8 @@ function isRunDraftMaterialOutput(output: CharacterResourceOutput | undefined): 
     || output?.type === 'run-text-result'
     || output?.type === 'opening-layout'
     || output?.type === 'run-css-result'
+    || output?.type === 'run-chat-status-result'
+    || output?.type === 'run-chat-equipment-result'
     || output?.type === 'image-asset'
     || output?.type === 'image-attempt'
 }
@@ -4178,6 +4324,12 @@ function renderNodeContent(
   }
   if (output.type === 'run-css-result') {
     return renderCssResultContent(output, previewClass, options)
+  }
+  if (output.type === 'run-chat-status-result') {
+    return renderRunChatStatusContent(output, previewClass, options)
+  }
+  if (output.type === 'run-chat-equipment-result') {
+    return renderRunChatEquipmentContent(output, previewClass, options)
   }
   if (output.type === 'opening-layout') {
     return renderOpeningLayoutPreviewContent(output, previewClass, options)
@@ -4293,11 +4445,8 @@ function renderCssResultContent(
   const scopedStyle = renderRunAtmosphereScopedStyle(style, options)
   const classNames = renderRunAtmosphereClassNames(style, 'chat-resource-node-content run-atmosphere-preview run-css-result-preview')
   const inlineStyle = renderRunAtmosphereInlineStyle(style)
-  const placeLabel = ui(options, '地点', 'Place')
-  const statusLabel = ui(options, '状态', 'Status')
   const silentAudioSource = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA='
   const hasMessagePreview = Boolean(preview.narration || preview.speech)
-  const hasScenePreview = Boolean(preview.location || preview.status.length || preview.equipment.length)
   return `
     ${scopedStyle}
     <div class="${options.escapeHtml(`${classNames} ${previewClass}`)}" style="${options.escapeHtml(inlineStyle)}">
@@ -4320,37 +4469,131 @@ function renderCssResultContent(
           </div>` : ''}
         </div>
       </div>` : ''}
-      ${hasScenePreview ? `
-        <section class="chat-inline-scene">
-          <div class="chat-inline-scene-lines">
-            ${preview.location ? `<div class="chat-inline-scene-line">
-              <span>${options.escapeHtml(placeLabel)}</span>
-              <strong>${options.escapeHtml(clampRunCharacterPreviewText(preview.location, 36))}</strong>
-            </div>` : ''}
-            ${preview.status.length ? `<div class="chat-inline-scene-line">
-              <span>${options.escapeHtml(statusLabel)}</span>
-              <div class="chat-inline-scene-status">
-                ${preview.status.slice(0, 3).map((item) => `<em>${options.escapeHtml(item)}</em>`).join('')}
-              </div>
-            </div>` : ''}
-          </div>
-          ${preview.equipment.length ? `<div class="chat-inline-equipment">
-            <table>
-              <tbody>
-                ${preview.equipment.slice(0, 2).map((item) => `
-                  <tr>
-                    <td>${options.escapeHtml(item.name)}</td>
-                    <td>${options.escapeHtml(item.ability)}</td>
-                    <td>${options.escapeHtml(item.quantity || '1')}</td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          </div>` : ''}
-        </section>
-      ` : ''}
     </div>
   `
+}
+
+function renderRunChatStatusContent(
+  output: CharacterResourceOutput,
+  previewClass: string,
+  options: CharacterWorkflowPageOptions
+): string {
+  const data = output.data && typeof output.data === 'object' && !Array.isArray(output.data)
+    ? output.data as Record<string, unknown>
+    : {}
+  const stats = normalizeRunGameStats(data.stats)
+    .filter((stat) => stat.visibility !== 'hidden')
+    .map((stat) => localizeRunGameStat(stat, options.language))
+  const statuses = normalizeRunGameStatuses(data.statuses)
+    .map((status) => localizeRunGameStatus(status, options.language))
+  return `
+    <div class="chat-resource-node-content ${previewClass} run-chat-panel-preview run-chat-status-preview">
+      <section class="chat-inline-game-status" aria-label="${options.escapeHtml(ui(options, '角色状态栏', 'Character status'))}">
+        ${stats.length ? `
+          <div class="chat-inline-game-stat-row">
+            ${stats.map((stat) => {
+              const percent = Math.max(0, Math.min(100, Math.round(((stat.value - stat.min) / (stat.max - stat.min)) * 100)))
+              return `
+                <article class="chat-inline-game-stat">
+                  <div><span>${options.escapeHtml(stat.label)}</span><strong>${options.escapeHtml(`${stat.value}${stat.unit}`)}</strong></div>
+                  <i style="--stat-value:${percent}%"></i>
+                </article>
+              `
+            }).join('')}
+          </div>
+        ` : ''}
+        ${statuses.length ? `
+          <div class="chat-inline-game-effects">
+            ${statuses.map((status) => `<em>${options.escapeHtml(status.label)}${status.value ? ` · ${options.escapeHtml(status.value)}` : ''}</em>`).join('')}
+          </div>
+        ` : ''}
+      </section>
+    </div>
+  `
+}
+
+function renderRunChatEquipmentContent(
+  output: CharacterResourceOutput,
+  previewClass: string,
+  options: CharacterWorkflowPageOptions
+): string {
+  const data = output.data && typeof output.data === 'object' && !Array.isArray(output.data)
+    ? output.data as Record<string, unknown>
+    : {}
+  const equipment = normalizeRunGameEquipment(data.equipment)
+  return `
+    <div class="chat-resource-node-content ${previewClass} run-chat-panel-preview run-chat-equipment-preview">
+      <section class="chat-inline-scene">
+        <button class="chat-inline-equipment-toggle" type="button" aria-expanded="true">
+          <span>${options.escapeHtml(ui(options, '装备栏', 'Equipment'))}</span>
+          <em>${options.escapeHtml(String(equipment.length))}</em>
+          <strong aria-hidden="true">${options.escapeHtml(ui(options, '收起', 'Close'))}</strong>
+        </button>
+        <div class="chat-inline-equipment">
+          <table>
+            <thead>
+              <tr>
+                <th>${options.escapeHtml(ui(options, '装备名称', 'Name'))}</th>
+                <th>${options.escapeHtml(ui(options, '能力', 'Ability'))}</th>
+                <th>${options.escapeHtml(ui(options, '数量', 'Qty'))}</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${equipment.length ? equipment.map((item) => `
+                <tr>
+                  <td>${options.escapeHtml(clampRunCharacterPreviewText(item.name, 20))}</td>
+                  <td>${options.escapeHtml(clampRunCharacterPreviewText(item.ability, 34))}</td>
+                  <td>${options.escapeHtml(item.quantity)}</td>
+                </tr>
+              `).join('') : `
+                <tr>
+                  <td colspan="3">${options.escapeHtml(ui(options, '暂无装备记录', 'No equipment recorded'))}</td>
+                </tr>
+              `}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  `
+}
+
+function localizeRunGameStat<T extends { id: string; label: string }>(stat: T, language: CharacterWorkflowLanguage): T {
+  if (language !== 'zh-CN') {
+    return stat
+  }
+  const labels: Record<string, string> = {
+    resolve: '决心',
+    composure: '镇定',
+    affinity: '亲近',
+    strain: '压力',
+    leverage: '筹码',
+  }
+  const key = stat.id || stat.label.toLowerCase()
+  return { ...stat, label: labels[key] ?? labels[stat.label.toLowerCase()] ?? stat.label }
+}
+
+function localizeRunGameStatus<T extends { id: string; label: string; value: string }>(status: T, language: CharacterWorkflowLanguage): T {
+  if (language !== 'zh-CN') {
+    return status
+  }
+  const labels: Record<string, string> = {
+    focused: '专注',
+    exposed: '暴露',
+    marked: '标记',
+  }
+  const values: Record<string, string> = {
+    stable: '稳定',
+    risk: '风险',
+    persistent: '持续',
+  }
+  const labelKey = status.id || status.label.toLowerCase()
+  const valueKey = status.value.toLowerCase()
+  return {
+    ...status,
+    label: labels[labelKey] ?? labels[status.label.toLowerCase()] ?? status.label,
+    value: values[valueKey] ?? status.value,
+  }
 }
 
 function normalizeRunAtmosphereStyle(
@@ -4976,7 +5219,7 @@ function renderBottomToolbar(graph: CharacterResourceGraph, options: CharacterWo
       </div>
       <label class="chat-resource-run-draft-select">
         <select data-chat-workflow-run-select aria-label="${options.escapeHtml(ui(options, '选择运行草稿', 'Select run draft'))}">
-          ${drafts.map((draft) => `<option value="${options.escapeHtml(draft.id)}" ${draft.id === activeRunId ? 'selected' : ''}>${options.escapeHtml(`${draft.title} · ${draft.status}`)}</option>`).join('')}
+          ${drafts.map((draft) => `<option value="${options.escapeHtml(draft.id)}" ${draft.id === activeRunId ? 'selected' : ''}>${options.escapeHtml(formatRunDraftSelectLabel(draft))}</option>`).join('')}
         </select>
       </label>
       <button type="button" data-chat-workflow-action="delete-run-draft" ${activeRunId ? '' : 'disabled'}><i data-lucide="trash-2" aria-hidden="true"></i><span>${options.escapeHtml(ui(options, '删除草稿', 'Delete Draft'))}</span></button>

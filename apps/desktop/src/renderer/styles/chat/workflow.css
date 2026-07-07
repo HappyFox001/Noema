@@ -3535,7 +3535,9 @@ body.chat-workflow-library-resizing * {
   opacity: 0.9;
 }
 
-.chat-resource-run-plane .run-css-result-node {
+.chat-resource-run-plane .run-css-result-node,
+.chat-resource-run-plane .run-chat-status-result-node,
+.chat-resource-run-plane .run-chat-equipment-result-node {
   overflow: visible;
   min-height: 0;
   padding-bottom: 0;
@@ -3548,12 +3550,26 @@ body.chat-workflow-library-resizing * {
 .chat-resource-run-plane .run-css-result-node::after,
 .chat-resource-run-plane .run-css-result-node .chat-resource-node-header,
 .chat-resource-run-plane .run-css-result-node .chat-resource-run-order,
-.chat-resource-run-plane .run-css-result-node .chat-resource-node-resize {
+.chat-resource-run-plane .run-css-result-node .chat-resource-node-resize,
+.chat-resource-run-plane .run-chat-status-result-node::before,
+.chat-resource-run-plane .run-chat-status-result-node::after,
+.chat-resource-run-plane .run-chat-status-result-node .chat-resource-node-header,
+.chat-resource-run-plane .run-chat-status-result-node .chat-resource-run-order,
+.chat-resource-run-plane .run-chat-status-result-node .chat-resource-node-resize,
+.chat-resource-run-plane .run-chat-equipment-result-node::before,
+.chat-resource-run-plane .run-chat-equipment-result-node::after,
+.chat-resource-run-plane .run-chat-equipment-result-node .chat-resource-node-header,
+.chat-resource-run-plane .run-chat-equipment-result-node .chat-resource-run-order,
+.chat-resource-run-plane .run-chat-equipment-result-node .chat-resource-node-resize {
   display: none;
 }
 
 .chat-resource-run-plane .run-css-result-node.is-run-focus,
-.chat-resource-run-plane .run-css-result-node.selected {
+.chat-resource-run-plane .run-css-result-node.selected,
+.chat-resource-run-plane .run-chat-status-result-node.is-run-focus,
+.chat-resource-run-plane .run-chat-status-result-node.selected,
+.chat-resource-run-plane .run-chat-equipment-result-node.is-run-focus,
+.chat-resource-run-plane .run-chat-equipment-result-node.selected {
   border-color: transparent;
   box-shadow: none;
 }
@@ -3619,6 +3635,54 @@ body.chat-workflow-library-resizing * {
 .chat-resource-run-plane .run-css-result-preview.has-chat-atmosphere .chat-inline-audio-player .chat-inline-audio-time {
   min-width: 54px;
   font-size: 10px;
+}
+
+.chat-resource-run-plane .run-chat-panel-preview {
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.chat-resource-run-plane .run-chat-panel-preview .chat-inline-game-status,
+.chat-resource-run-plane .run-chat-panel-preview .chat-inline-scene {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  box-sizing: border-box;
+}
+
+.chat-resource-run-plane .run-chat-status-preview .chat-inline-game-status {
+  padding: 11px;
+  border-color: rgba(159, 199, 185, 0.18);
+  background:
+    linear-gradient(135deg, rgba(39, 71, 46, 0.38), rgba(29, 23, 32, 0.58)),
+    rgba(12, 15, 14, 0.76);
+}
+
+.chat-resource-run-plane .run-chat-status-preview .chat-inline-game-stat-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.chat-resource-run-plane .run-chat-status-preview .chat-inline-game-stat span,
+.chat-resource-run-plane .run-chat-status-preview .chat-inline-game-stat strong,
+.chat-resource-run-plane .run-chat-status-preview .chat-inline-game-effects em,
+.chat-resource-run-plane .run-chat-equipment-preview .chat-inline-equipment th,
+.chat-resource-run-plane .run-chat-equipment-preview .chat-inline-equipment td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-resource-run-plane .run-chat-equipment-preview .chat-inline-scene {
+  border-color: rgba(159, 199, 185, 0.16);
+  background:
+    linear-gradient(135deg, rgba(39, 71, 46, 0.28), rgba(29, 23, 32, 0.52)),
+    rgba(12, 15, 14, 0.74);
+}
+
+.chat-resource-run-plane .run-chat-equipment-preview .chat-inline-equipment-toggle {
+  pointer-events: none;
 }
 
 .chat-resource-run-plane .run-css-result-preview.has-chat-atmosphere .chat-inline-scene {

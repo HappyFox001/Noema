@@ -1889,63 +1889,82 @@ function createGameSystemData(
   ].filter(Boolean).join('\n')
   const seed = hashText(`${name}\n${sourceText}`)
   const statBase = 34 + (seed % 22)
+  const zh = context.goal.language === 'zh-CN'
   const stats = [
-    gameStat('resolve', 'Resolve', statBase + 10, 0, 100, 'mental pressure, fear, and willingness to act'),
-    gameStat('composure', 'Composure', statBase + 4, 0, 100, 'visible control, social poise, and emotional leakage'),
-    gameStat('affinity', 'Affinity', Math.max(8, Math.round(statBase * 0.72)), 0, 100, 'trust, attachment, and willingness to reveal private information'),
-    gameStat('strain', 'Strain', Math.max(0, 62 - statBase), 0, 100, 'fatigue, injury, magical load, or narrative instability'),
-    gameStat('leverage', 'Leverage', 18 + (seed % 37), 0, 100, 'resources, secrets, permissions, or tactical advantage'),
+    gameStat('resolve', zh ? '决心' : 'Resolve', statBase + 10, 0, 100, zh ? '承压、恐惧与行动意愿' : 'mental pressure, fear, and willingness to act'),
+    gameStat('composure', zh ? '镇定' : 'Composure', statBase + 4, 0, 100, zh ? '外显控制、社交姿态与情绪泄露' : 'visible control, social poise, and emotional leakage'),
+    gameStat('affinity', zh ? '亲近' : 'Affinity', Math.max(8, Math.round(statBase * 0.72)), 0, 100, zh ? '信任、依恋与透露私密信息的意愿' : 'trust, attachment, and willingness to reveal private information'),
+    gameStat('strain', zh ? '压力' : 'Strain', Math.max(0, 62 - statBase), 0, 100, zh ? '疲劳、伤势、魔法负载或叙事不稳定' : 'fatigue, injury, magical load, or narrative instability'),
+    gameStat('leverage', zh ? '筹码' : 'Leverage', 18 + (seed % 37), 0, 100, zh ? '资源、秘密、许可或战术优势' : 'resources, secrets, permissions, or tactical advantage'),
   ]
   const equipmentTone = /magic|curse|witch|spell|魔|咒|巫|玄/i.test(sourceText)
-    ? 'ritual-compatible, rule-bound, and costly to misuse'
+    ? (zh ? '符合仪式、受规则约束，误用会付出代价' : 'ritual-compatible, rule-bound, and costly to misuse')
     : /school|campus|student|校园|学生/i.test(sourceText)
-      ? 'daily-carry, socially plausible, and privacy-sensitive'
+      ? (zh ? '日常可携带、社交上合理，并且涉及隐私边界' : 'daily-carry, socially plausible, and privacy-sensitive')
       : /cyber|terminal|hacker|赛博|黑客/i.test(sourceText)
-        ? 'modular, traceable, and access-controlled'
-        : 'setting-specific, consequential, and narratively earned'
+        ? (zh ? '模块化、可追踪，并受权限控制' : 'modular, traceable, and access-controlled')
+        : (zh ? '贴合设定、有后果，并需要叙事获得' : 'setting-specific, consequential, and narratively earned')
   return {
     schemaVersion: 1,
-    name: `${name} Game Layer`,
-    summary: `Character-specific stats, equipment rules, and status rules generated from the workflow design for ${name}.`,
+    name: zh ? `${name} 角色状态层` : `${name} Game Layer`,
+    summary: zh
+      ? `为 ${name} 从工作流设计生成的角色状态、装备规则与状态规则。`
+      : `Character-specific stats, equipment rules, and status rules generated from the workflow design for ${name}.`,
     stats,
     equipment: {
       slots: [
-        equipmentSlot('worn', 'Worn / Carried', 3, `Items must fit the character silhouette and current scene. Equipment is ${equipmentTone}.`, [
-          equipmentItem('signature-item', 'Signature item', 'A character-defining carried object generated from the role card at runtime.', ['signature', 'visible'], ['May unlock unique dialogue or alter leverage.']),
+        equipmentSlot('worn', zh ? '穿戴 / 随身' : 'Worn / Carried', 3, zh ? `物品必须符合角色轮廓和当前场景。装备需要${equipmentTone}。` : `Items must fit the character silhouette and current scene. Equipment is ${equipmentTone}.`, [
+          equipmentItem('signature-item', zh ? '标志物' : 'Signature item', zh ? '运行时从角色卡生成的、能定义角色气质的随身物件。' : 'A character-defining carried object generated from the role card at runtime.', ['signature', 'visible'], [zh ? '可能解锁独特对白或改变筹码。' : 'May unlock unique dialogue or alter leverage.']),
         ]),
-        equipmentSlot('hidden', 'Hidden / Private', 2, 'Hidden items require a plausible concealment method, can be discovered by scene pressure, and must not contradict established clothing or access.', []),
-        equipmentSlot('bound', 'Bound / Persistent', 2, 'Persistent gear, marks, contracts, implants, or magical bindings cannot be removed casually and must declare cost, trigger, and counterplay.', []),
+        equipmentSlot('hidden', zh ? '隐藏 / 私密' : 'Hidden / Private', 2, zh ? '隐藏物品需要合理的藏匿方式，可能被场景压力发现，并且不能与既定衣着或权限冲突。' : 'Hidden items require a plausible concealment method, can be discovered by scene pressure, and must not contradict established clothing or access.', []),
+        equipmentSlot('bound', zh ? '绑定 / 持续' : 'Bound / Persistent', 2, zh ? '持续装备、印记、契约、植入物或魔法绑定不能随意移除，必须声明代价、触发与反制方式。' : 'Persistent gear, marks, contracts, implants, or magical bindings cannot be removed casually and must declare cost, trigger, and counterplay.', []),
       ],
-      rules: [
+      rules: (zh ? [
+        '每件装备必须声明栏位、可见性、来源、叙事许可，并至少关联一个属性或状态变化。',
+        '装备不能凭空出现：获得需要场景权限、事先准备、交易、制作、赠与、发现或明确的用户行动。',
+        '冲突物品不能占用同一物理或叙事功能，除非规则文本解释它们如何共存。',
+        '强力装备必须附带代价、冷却、社交风险、耐久损耗或状态副作用。',
+      ] : [
         'Every equipment item must declare slot, visibility, source, narrative permission, and at least one stat/status interaction.',
         'Equipment cannot appear from nowhere: acquisition needs scene access, prior preparation, trade, crafting, gift, discovery, or explicit user action.',
         'Conflicting items cannot occupy the same physical or narrative function unless the rule text explains coexistence.',
         'Powerful equipment must add a cost, cooldown, social risk, durability loss, or status side effect.',
-        stringValue(target.config.equipmentRules),
-      ].filter(Boolean),
-      acquisitionRules: [
+      ]).concat(stringValue(target.config.equipmentRules)).filter(Boolean),
+      acquisitionRules: zh ? [
+        '运行时可以在场景合理时引入轻量常见物品。',
+        '授予稀有、亲密、非法、魔法或高影响物品前，运行时必须询问或预先铺垫。',
+        '遗失、损坏、交易或被没收的装备仍属于历史，并应影响后续场景。',
+      ] : [
         'Runtime may introduce minor common items when they are scene-plausible.',
         'Runtime must ask or foreshadow before granting rare, intimate, illegal, magical, or high-impact items.',
         'Lost, broken, traded, or confiscated equipment remains part of history and should affect future scenes.',
       ],
-      forbiddenRules: [
+      forbiddenRules: zh ? [
+        '不要生成破坏角色卡、违反硬约束或免费解决核心冲突的装备。',
+        '不要用装备绕过同意、关系推进节奏或既定场景限制。',
+      ] : [
         'Do not generate equipment that breaks the role card, violates hard constraints, or solves the central conflict for free.',
         'Do not use equipment as a shortcut around consent, relationship pacing, or established scene limitations.',
       ],
     },
     statuses: [
-      statusEffect('focused', 'Focused', 'stable', 'Actions are cleaner; social tells are reduced.', 'Ends when interrupted or emotionally shaken.'),
-      statusEffect('exposed', 'Exposed', 'risk', 'Secrets, wounds, or intentions are easier to read.', 'Clears after cover, recovery, or a successful diversion.'),
-      statusEffect('marked', 'Marked', 'persistent', 'A visible or invisible narrative mark creates future consequences.', 'Requires an explicit cleansing, repair, or negotiation rule.'),
+      statusEffect('focused', zh ? '专注' : 'Focused', zh ? '稳定' : 'stable', zh ? '行动更干净，社交破绽减少。' : 'Actions are cleaner; social tells are reduced.', zh ? '被打断或情绪动摇时结束。' : 'Ends when interrupted or emotionally shaken.'),
+      statusEffect('exposed', zh ? '暴露' : 'Exposed', zh ? '风险' : 'risk', zh ? '秘密、伤口或意图更容易被读出。' : 'Secrets, wounds, or intentions are easier to read.', zh ? '通过掩护、恢复或成功转移注意力清除。' : 'Clears after cover, recovery, or a successful diversion.'),
+      statusEffect('marked', zh ? '标记' : 'Marked', zh ? '持续' : 'persistent', zh ? '可见或不可见的叙事印记会制造后续影响。' : 'A visible or invisible narrative mark creates future consequences.', zh ? '需要明确的净化、修复或谈判规则。' : 'Requires an explicit cleansing, repair, or negotiation rule.'),
     ],
-    rules: [
+    rules: (zh ? [
+      '属性属于角色自身，只有对话产生具体原因时才应变化。',
+      '状态效果必须说明触发、持续时间、冲突行为与叙事后果。',
+      '聊天 UI 应把装备、状态和规则作为快捷面板暴露出来，不强迫用户离开对话。',
+    ] : [
       'Stats are character-local and should change only when the conversation creates a concrete cause.',
       'Status effects must state trigger, duration, conflict behavior, and narrative consequence.',
       'The chat UI should expose equipment, status, and rules as quick panels without forcing the user to leave the conversation.',
+    ]).concat([
       stringValue(target.config.statDesign),
       stringValue(target.config.statusRules),
       stringValue(target.config.panelDesign),
-    ].filter(Boolean),
+    ]).filter(Boolean),
     ui: { quickPanels: ['equipment', 'status', 'rules'] },
   }
 }

@@ -425,8 +425,8 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     if (!gameSystem || (!gameSystem.stats.length && !gameSystem.statuses.length)) {
       return ''
     }
-    const stats = gameSystem.stats.filter((stat) => stat.visibility !== 'hidden').slice(0, 6)
-    const statuses = gameSystem.statuses.slice(0, 4)
+    const stats = gameSystem.stats.filter((stat) => stat.visibility !== 'hidden').slice(0, 6).map((stat) => localizeGameStatLabel(stat, language))
+    const statuses = gameSystem.statuses.slice(0, 4).map((status) => localizeGameStatusLabel(status, language))
     if (!stats.length && !statuses.length) {
       return ''
     }
@@ -454,6 +454,44 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
         ` : ''}
       </section>
     `
+  }
+
+  function localizeGameStatLabel<T extends { id?: string; label: string }>(stat: T, language: ChatLanguageCode): T {
+    if (language !== 'zh-CN') {
+      return stat
+    }
+    const labels: Record<string, string> = {
+      resolve: '决心',
+      composure: '镇定',
+      affinity: '亲近',
+      strain: '压力',
+      leverage: '筹码',
+    }
+    const key = stat.id || stat.label.toLowerCase()
+    return { ...stat, label: labels[key] ?? labels[stat.label.toLowerCase()] ?? stat.label }
+  }
+
+  function localizeGameStatusLabel<T extends { id?: string; label: string; value?: string }>(status: T, language: ChatLanguageCode): T {
+    if (language !== 'zh-CN') {
+      return status
+    }
+    const labels: Record<string, string> = {
+      focused: '专注',
+      exposed: '暴露',
+      marked: '标记',
+    }
+    const values: Record<string, string> = {
+      stable: '稳定',
+      risk: '风险',
+      persistent: '持续',
+    }
+    const labelKey = status.id || status.label.toLowerCase()
+    const valueKey = status.value?.toLowerCase() ?? ''
+    return {
+      ...status,
+      label: labels[labelKey] ?? labels[status.label.toLowerCase()] ?? status.label,
+      value: values[valueKey] ?? status.value,
+    }
   }
 
   function normalizeSceneStatus(value: unknown): string[] {
