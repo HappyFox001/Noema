@@ -416,18 +416,11 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     if (!stats.length && !statuses.length) {
       return ''
     }
-    const panelStyle = normalizeGamePanelStyle(
-      { ui: gameSystem.ui ?? {} },
-      [
-        gameSystem.sourceArtifactId,
-        gameSystem.name,
-        gameSystem.summary,
-        JSON.stringify(gameSystem.stats ?? []),
-        JSON.stringify(gameSystem.statuses ?? []),
-      ].filter(Boolean).join('\n')
-    )
-    const classNames = renderGamePanelClassNames(panelStyle, 'chat-inline-game-status')
-    const inlineStyle = renderGamePanelInlineStyle(panelStyle)
+    const panelStyle = normalizeGamePanelStyle({ ui: gameSystem.ui ?? {} })
+    const classNames = panelStyle
+      ? renderGamePanelClassNames(panelStyle, 'chat-inline-game-status')
+      : 'chat-inline-game-status'
+    const inlineStyle = panelStyle ? renderGamePanelInlineStyle(panelStyle) : ''
     return `
       <section class="${options.escapeHtml(classNames)}" style="${options.escapeHtml(inlineStyle)}" aria-label="${options.escapeHtml(language === 'zh-CN' ? '角色状态栏' : 'Character status')}">
         ${stats.length ? `

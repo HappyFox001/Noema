@@ -3819,6 +3819,7 @@ function createGameSystemResultArtifacts(artifact: CharacterRunArtifact): Charac
   const statuses = normalizeRunGameStatuses(data.statuses)
   const equipment = normalizeRunGameEquipment(objectRecordValue(data.equipment).slots)
   const panelStyle = getGamePanelStyleRecord(data)
+  const panelStyleData = Object.keys(panelStyle).length ? { panelStyle } : {}
   const results: CharacterRunArtifacts = []
   if (stats.length || statuses.length) {
     results.push({
@@ -3827,7 +3828,7 @@ function createGameSystemResultArtifacts(artifact: CharacterRunArtifact): Charac
       sourceNodeId: artifact.sourceNodeId,
       title: 'Status Panel',
       summary: [stats.map((item) => `${item.label} ${item.value}${item.unit}`).join(' · '), statuses.map((item) => `${item.label}${item.value ? ` · ${item.value}` : ''}`).join(' · ')].filter(Boolean).join('\n'),
-      data: { stats, statuses, panelStyle, sourceArtifactId: artifact.id },
+      data: { stats, statuses, ...panelStyleData, sourceArtifactId: artifact.id },
     })
   }
   if (equipment.length) {
@@ -3837,7 +3838,7 @@ function createGameSystemResultArtifacts(artifact: CharacterRunArtifact): Charac
       sourceNodeId: artifact.sourceNodeId,
       title: 'Equipment Panel',
       summary: equipment.map((item) => `${item.name}: ${item.ability}`).join('\n'),
-      data: { equipment, panelStyle, sourceArtifactId: artifact.id },
+      data: { equipment, ...panelStyleData, sourceArtifactId: artifact.id },
     })
   }
   return results
@@ -3939,20 +3940,6 @@ function stringRecordValue(value: unknown, key: string): string {
   return typeof item === 'string' ? item.trim() : ''
 }
 
-function stringListRecordValue(value: unknown, key: string): string[] {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return []
-  }
-  const item = (value as Record<string, unknown>)[key]
-  if (typeof item === 'string') {
-    return item.trim() ? [item.trim()] : []
-  }
-  if (Array.isArray(item)) {
-    return item.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
-  }
-  return []
-}
-
 function safeRunDisplayText(value: string): string {
   const trimmed = value.trim()
   if (!trimmed) {
@@ -3997,16 +3984,6 @@ function sanitizeCssColor(value: string): string {
     return trimmed
   }
   return ''
-}
-
-function getRunGamePanelFallbackSource(data: Record<string, unknown>, output: CharacterResourceOutput): string {
-  return [
-    output.artifactId,
-    output.sourceNodeId,
-    output.title,
-    output.summary,
-    JSON.stringify(data.stats ?? data.statuses ?? data.equipment ?? ''),
-  ].filter(Boolean).join('\n')
 }
 
 function coalesceRunCanvasImageArtifacts(artifacts: CharacterRunArtifacts): CharacterRunArtifacts {
@@ -4744,9 +4721,11 @@ function renderRunChatStatusContent(
     .map((stat) => localizeRunGameStat(stat, options.language))
   const statuses = normalizeRunGameStatuses(data.statuses)
     .map((status) => localizeRunGameStatus(status, options.language))
-  const panelStyle = normalizeGamePanelStyle(data, getRunGamePanelFallbackSource(data, output))
-  const classNames = renderGamePanelClassNames(panelStyle, `chat-resource-node-content ${previewClass} run-chat-panel-preview run-chat-status-preview`)
-  const inlineStyle = renderGamePanelInlineStyle(panelStyle)
+  const panelStyle = normalizeGamePanelStyle(data)
+  const classNames = panelStyle
+    ? renderGamePanelClassNames(panelStyle, `chat-resource-node-content ${previewClass} run-chat-panel-preview run-chat-status-preview`)
+    : `chat-resource-node-content ${previewClass} run-chat-panel-preview run-chat-status-preview`
+  const inlineStyle = panelStyle ? renderGamePanelInlineStyle(panelStyle) : ''
   return `
     <div class="${options.escapeHtml(classNames)}" style="${options.escapeHtml(inlineStyle)}">
       <section class="chat-inline-game-status" aria-label="${options.escapeHtml(ui(options, '角色状态栏', 'Character status'))}">
@@ -4782,9 +4761,11 @@ function renderRunChatEquipmentContent(
     ? output.data as Record<string, unknown>
     : {}
   const equipment = normalizeRunGameEquipment(data.equipment)
-  const panelStyle = normalizeGamePanelStyle(data, getRunGamePanelFallbackSource(data, output))
-  const classNames = renderGamePanelClassNames(panelStyle, `chat-resource-node-content ${previewClass} run-chat-panel-preview run-chat-equipment-preview`)
-  const inlineStyle = renderGamePanelInlineStyle(panelStyle)
+  const panelStyle = normalizeGamePanelStyle(data)
+  const classNames = panelStyle
+    ? renderGamePanelClassNames(panelStyle, `chat-resource-node-content ${previewClass} run-chat-panel-preview run-chat-equipment-preview`)
+    : `chat-resource-node-content ${previewClass} run-chat-panel-preview run-chat-equipment-preview`
+  const inlineStyle = panelStyle ? renderGamePanelInlineStyle(panelStyle) : ''
   return `
     <div class="${options.escapeHtml(classNames)}" style="${options.escapeHtml(inlineStyle)}">
       <section class="chat-inline-scene">

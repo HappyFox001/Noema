@@ -3263,13 +3263,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     const panelStyleRecord = getGamePanelStyleRecord(data)
     const panelStyle = Object.keys(panelStyleRecord).length
-      ? normalizeGamePanelStyle(data, [
-          artifact?.id,
-          artifact?.sourceNodeId,
-          artifact?.title,
-          artifact?.summary,
-          JSON.stringify(data.stats ?? data.statuses ?? data.equipment ?? ''),
-        ].filter(Boolean).join('\n'))
+      ? normalizeGamePanelStyle(data)
       : undefined
     return {
       schemaVersion: 1,

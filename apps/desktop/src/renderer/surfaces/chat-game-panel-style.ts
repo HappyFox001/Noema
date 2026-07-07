@@ -30,25 +30,27 @@ export function getGamePanelStyleRecord(data: Record<string, unknown>): Record<s
   return objectRecordValue(objectRecordValue(objectRecordValue(data.sections).cssDesign).panelStyle)
 }
 
-export function normalizeGamePanelStyle(data: Record<string, unknown>, fallbackSource: string): ChatGamePanelStyle {
+export function normalizeGamePanelStyle(data: Record<string, unknown>): ChatGamePanelStyle | null {
   const style = getGamePanelStyleRecord(data)
-  const fallback = createFallbackGamePanelStyle(fallbackSource)
+  if (!Object.keys(style).length) {
+    return null
+  }
   const radiusPx = readFiniteNumber(style.radiusPx)
   const cellRadiusPx = readFiniteNumber(style.cellRadiusPx)
   return {
-    frame: enumValue(style.frame, ['glass', 'dossier', 'ritual', 'noir', 'intimate', 'mist'], fallback.frame),
-    density: enumValue(style.density, ['compact', 'balanced', 'airy'], fallback.density),
-    meter: enumValue(style.meter, ['capsule', 'line', 'etched', 'warm-bar'], fallback.meter),
-    accent: sanitizeCssColor(stringValue(style.accent)) || fallback.accent,
-    accentSoft: sanitizeCssColor(stringValue(style.accentSoft)) || fallback.accentSoft,
-    surface: sanitizeCssColor(stringValue(style.surface)) || fallback.surface,
-    surfaceAlt: sanitizeCssColor(stringValue(style.surfaceAlt)) || fallback.surfaceAlt,
-    track: sanitizeCssColor(stringValue(style.track)) || fallback.track,
-    border: sanitizeCssColor(stringValue(style.border)) || fallback.border,
-    text: sanitizeCssColor(stringValue(style.text)) || fallback.text,
-    muted: sanitizeCssColor(stringValue(style.muted)) || fallback.muted,
-    radiusPx: clampNumber(radiusPx ?? fallback.radiusPx, 8, 28),
-    cellRadiusPx: clampNumber(cellRadiusPx ?? fallback.cellRadiusPx, 6, 24),
+    frame: enumValue(style.frame, ['glass', 'dossier', 'ritual', 'noir', 'intimate', 'mist'], 'glass'),
+    density: enumValue(style.density, ['compact', 'balanced', 'airy'], 'balanced'),
+    meter: enumValue(style.meter, ['capsule', 'line', 'etched', 'warm-bar'], 'capsule'),
+    accent: sanitizeCssColor(stringValue(style.accent)) || '#c7d8d0',
+    accentSoft: sanitizeCssColor(stringValue(style.accentSoft)) || 'rgba(199, 216, 208, 0.16)',
+    surface: sanitizeCssColor(stringValue(style.surface)) || 'rgba(12, 15, 14, 0.76)',
+    surfaceAlt: sanitizeCssColor(stringValue(style.surfaceAlt)) || 'rgba(39, 71, 46, 0.28)',
+    track: sanitizeCssColor(stringValue(style.track)) || 'rgba(255, 255, 255, 0.11)',
+    border: sanitizeCssColor(stringValue(style.border)) || 'rgba(159, 199, 185, 0.18)',
+    text: sanitizeCssColor(stringValue(style.text)) || 'rgba(248, 250, 250, 0.84)',
+    muted: sanitizeCssColor(stringValue(style.muted)) || 'rgba(220, 229, 226, 0.62)',
+    radiusPx: clampNumber(radiusPx ?? 12, 8, 28),
+    cellRadiusPx: clampNumber(cellRadiusPx ?? 9, 6, 24),
   }
 }
 
@@ -75,47 +77,6 @@ export function renderGamePanelInlineStyle(style: ChatGamePanelStyle): string {
     `--game-panel-radius:${Math.round(style.radiusPx)}px`,
     `--game-panel-cell-radius:${Math.round(style.cellRadiusPx)}px`,
   ].join(';')
-}
-
-function createFallbackGamePanelStyle(source: string): ChatGamePanelStyle {
-  const seed = hashText(source)
-  const hue = normalizeHue(seed % 360)
-  const surfaceHue = normalizeHue(hue + 212)
-  const saturation = 38 + (seed % 28)
-  const accentLightness = 54 + (seed % 14)
-  const frameOptions: ChatGamePanelStyle['frame'][] = ['glass', 'dossier', 'ritual', 'noir', 'intimate', 'mist']
-  const densityOptions: ChatGamePanelStyle['density'][] = ['compact', 'balanced', 'airy']
-  const meterOptions: ChatGamePanelStyle['meter'][] = ['capsule', 'line', 'etched', 'warm-bar']
-  const frame = frameOptions[seed % frameOptions.length] ?? 'glass'
-  const radiusPx = frame === 'dossier' || frame === 'noir' ? 10 : frame === 'mist' || frame === 'intimate' ? 20 : 14
-  return {
-    frame,
-    density: densityOptions[Math.floor(seed / 7) % densityOptions.length] ?? 'balanced',
-    meter: meterOptions[Math.floor(seed / 13) % meterOptions.length] ?? 'capsule',
-    accent: `hsl(${hue} ${saturation}% ${accentLightness}%)`,
-    accentSoft: `hsla(${hue} ${saturation}% ${accentLightness}% / 0.17)`,
-    surface: `hsla(${surfaceHue} 18% 8% / 0.88)`,
-    surfaceAlt: `hsla(${normalizeHue(surfaceHue + 22)} 22% 14% / 0.54)`,
-    track: `hsla(${surfaceHue} 14% 82% / 0.14)`,
-    border: `hsla(${hue} ${saturation}% ${accentLightness}% / 0.26)`,
-    text: `hsla(${surfaceHue} 18% 92% / 0.88)`,
-    muted: `hsla(${surfaceHue} 14% 78% / 0.58)`,
-    radiusPx,
-    cellRadiusPx: Math.max(7, radiusPx - 4),
-  }
-}
-
-function hashText(value: string): number {
-  let hash = 2166136261
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index)
-    hash = Math.imul(hash, 16777619)
-  }
-  return hash >>> 0
-}
-
-function normalizeHue(value: number): number {
-  return Math.round(((value % 360) + 360) % 360)
 }
 
 function stringValue(value: unknown): string {
