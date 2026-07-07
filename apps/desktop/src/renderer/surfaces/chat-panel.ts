@@ -440,7 +440,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     startY: number
     originX: number
     originY: number
+    runDraft: boolean
   } | null = null
+  const characterWorkflowRunInspectorSnapshots = new WeakMap<HTMLElement, string>()
   let characterResourceViewportDrag: {
     mode: 'pan' | 'select'
     pointerId: number
@@ -4187,7 +4189,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   function patchCharacterWorkflowRunInspector(currentInspector: HTMLElement, nextInspectorHtml: string): void {
+    if (characterWorkflowRunInspectorSnapshots.get(currentInspector) === nextInspectorHtml) {
+      return
+    }
     const nextInspector = parseCharacterWorkflowElement<HTMLElement>(nextInspectorHtml, '.chat-run-character-inspector')
+    if (normalizeWorkflowRunInspectorHtml(currentInspector.outerHTML) === normalizeWorkflowRunInspectorHtml(nextInspector.outerHTML)) {
+      characterWorkflowRunInspectorSnapshots.set(currentInspector, nextInspectorHtml)
+      return
+    }
     copyElementAttributes(currentInspector, nextInspector)
     patchCharacterWorkflowRunHero(
       requireCharacterWorkflowElement(currentInspector, '.chat-run-character-hero'),
@@ -4207,6 +4216,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     } else if (nextImages && !currentImages) {
       requireCharacterWorkflowElement<HTMLElement>(currentInspector, '.chat-run-character-scroll').append(nextImages)
     }
+    characterWorkflowRunInspectorSnapshots.set(currentInspector, nextInspectorHtml)
+  }
+
+  function normalizeWorkflowRunInspectorHtml(html: string): string {
+    return html
+      .replace(/\s*is-updated\b/g, '')
+      .replace(/\s*is-entering\b/g, '')
   }
 
   function patchCharacterWorkflowRunHero(currentHero: HTMLElement, nextHero: HTMLElement): void {
@@ -8109,6 +8125,35 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     renderCharacterWorkflow()
   }
 
+  function selectRunDraftNodeInViewport(target: HTMLElement, additive = false): void {
+    const viewport = target.closest<HTMLElement>('.chat-resource-run-viewport')
+    const nodeId = target.dataset.chatWorkflowNodeSelect || target.dataset.chatWorkflowNodeId || ''
+    if (!viewport || !nodeId) {
+      return
+    }
+    const nodes = Array.from(viewport.querySelectorAll<HTMLElement>('[data-chat-workflow-node-id]'))
+    const currentNode = nodes.find((node) => node.dataset.chatWorkflowNodeId === nodeId)
+    if (!currentNode) {
+      return
+    }
+    if (additive) {
+      currentNode.classList.toggle('selected')
+    } else {
+      nodes.forEach((node) => {
+        node.classList.toggle('selected', node === currentNode)
+      })
+    }
+    const selectedIds = new Set(
+      nodes
+        .filter((node) => node.classList.contains('selected'))
+        .map((node) => node.dataset.chatWorkflowNodeId || '')
+        .filter(Boolean)
+    )
+    viewport.querySelectorAll<HTMLElement>('[data-resource-minimap-node]').forEach((item) => {
+      item.classList.toggle('selected', selectedIds.has(item.dataset.resourceMinimapNode || ''))
+    })
+  }
+
   function addCharacterResourceNodeFromLibrary(card: HTMLElement): void {
     const type = card.dataset.resourceNodeAddType || ''
     const title = card.dataset.resourcePreviewTitle || type
@@ -8356,10 +8401,15 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!nodeId) {
       return
     }
-    selectedWorkflowNodeId = nodeId
-    characterResourceViewState.selectedNodeIds = [nodeId]
-    characterResourceViewState.selectedLinkId = ''
-    characterWorkflowEditorState.inspectorCollapsed = false
+    const runDraft = Boolean(node.closest<HTMLElement>('.chat-resource-run-viewport'))
+    if (runDraft) {
+      selectRunDraftNodeInViewport(node)
+    } else {
+      selectedWorkflowNodeId = nodeId
+      characterResourceViewState.selectedNodeIds = [nodeId]
+      characterResourceViewState.selectedLinkId = ''
+      characterWorkflowEditorState.inspectorCollapsed = false
+    }
     const origin = characterWorkflowPositionOverrides[nodeId] ?? {
       x: Number.parseFloat(node.style.getPropertyValue('--node-x')) || 0,
       y: Number.parseFloat(node.style.getPropertyValue('--node-y')) || 0,
@@ -8371,6 +8421,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       startY: event.clientY,
       originX: origin.x,
       originY: origin.y,
+      runDraft,
     }
     node.setPointerCapture?.(event.pointerId)
     node.classList.add('is-dragging', 'selected')
@@ -8403,9 +8454,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (node) {
       node.style.zIndex = '20'
     }
+    const runDraft = characterWorkflowDragging.runDraft
     characterWorkflowDragging = null
-    saveActiveWorkflowProjectSnapshot()
-    renderCharacterWorkflow()
+    saveActiveWorkflowProjectSnapshot(!runDraft)
+    if (!runDraft) {
+      renderCharacterWorkflow()
+    }
   }
 
   function refreshCharacterResourceGroupBounds(): void {
@@ -9532,6 +9586,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
     const workflowNodeSelect = eventTarget.closest<HTMLElement>('[data-chat-workflow-node-select]')
     if (workflowNodeSelect && panel.contains(workflowNodeSelect) && !eventTarget.closest<HTMLElement>('[data-chat-workflow-action]')) {
+      if (workflowNodeSelect.closest<HTMLElement>('.chat-resource-run-viewport')) {
+        selectRunDraftNodeInViewport(workflowNodeSelect, event.metaKey || event.ctrlKey || event.shiftKey)
+        return
+      }
       characterResourceViewState.selectedLinkId = ''
       characterWorkflowEditorState.nodeSearchOpen = false
       const panelId = workflowNodeSelect.dataset.chatWorkflowPanel

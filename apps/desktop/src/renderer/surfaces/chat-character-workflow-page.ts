@@ -1373,7 +1373,8 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
   }
 
   root.querySelectorAll<HTMLElement>('.chat-resource-node').forEach((node) => {
-    const handle = node.querySelector<HTMLElement>('[data-chat-workflow-drag-handle]') ?? node
+    const handle = Array.from(node.querySelectorAll<HTMLElement>('[data-chat-workflow-drag-handle]'))
+      .find(isVisibleDragHandle) ?? node
     cleanups.push(draggable({
       element: node,
       dragHandle: handle,
@@ -1804,6 +1805,16 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
   animateWorkflowCanvasChanges(root, cleanups)
   animateAgentOperationFeedback(root, cleanups)
   workbenchCleanups.set(root, cleanups)
+}
+
+function isVisibleDragHandle(element: HTMLElement): boolean {
+  if (!element.isConnected) {
+    return false
+  }
+  const style = window.getComputedStyle(element)
+  return style.display !== 'none'
+    && style.visibility !== 'hidden'
+    && element.getClientRects().length > 0
 }
 
 function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): CharacterResourceGraph {
@@ -3010,7 +3021,7 @@ function createRunDraftCanvasGraph(graph: CharacterResourceGraph, options: Chara
     size: { width: 330, height: 130 },
     status: status === 'failed' || status === 'needs_action' ? 'failed' : status === 'done' ? 'done' : activelyRunning ? 'running' : 'idle',
     zIndex: 1,
-    config: { runTimelineRoot: true },
+    config: { runTimelineRoot: true, runInputCard: true },
   }]
   const outputs: CharacterResourceOutput[] = [{
     id: 'run-agent-source-output',
@@ -3171,6 +3182,17 @@ function getRunArtifactNodeId(artifact: CharacterRunArtifact, index: number): st
 }
 
 function getRunArtifactNodeSize(artifact: CharacterRunArtifact, hasImage: boolean): { width: number; height: number } {
+  if (artifact.type === 'run-text-result') {
+    const data = getRunArtifactDataRecord(artifact)
+    const fields = Array.isArray(data.fields) ? data.fields.length : 4
+    return { width: 390, height: clampNumber(130 + fields * 34, 230, 390) }
+  }
+  if (artifact.type === 'run-css-result') {
+    return { width: 390, height: 350 }
+  }
+  if (artifact.type === 'opening-layout') {
+    return { width: 420, height: 240 }
+  }
   if (artifact.type === 'image-asset' && hasImage) {
     const ratio = getRunImageAspectRatio(artifact)
     const width = ratio >= 1.24
@@ -3179,7 +3201,7 @@ function getRunArtifactNodeSize(artifact: CharacterRunArtifact, hasImage: boolea
         ? clampNumber(Math.round(238 + ratio * 80), 244, 308)
         : 304
     const imageHeight = clampNumber(Math.round((width - 24) / ratio), 132, 284)
-    return { width, height: imageHeight + 88 }
+    return { width, height: imageHeight + 34 }
   }
   if (artifact.type === 'image-attempt') {
     return { width: 304, height: 168 }
@@ -3232,7 +3254,7 @@ function getRunArtifactPlacement(artifact: CharacterRunArtifact, index: number):
   const imageNudge = artifact.type === 'image-asset' || artifact.type === 'image-attempt' ? 14 : 0
   return {
     x: xAnchors[column] + columnWave + jitter.x + imageNudge,
-    y: 128 + row * 360 + rowWave + jitter.y,
+    y: 128 + row * 250 + rowWave + jitter.y,
   }
 }
 
@@ -3251,6 +3273,12 @@ function getStableRunOffset(value: string, maxX: number, maxY: number): { x: num
 }
 
 function getRunArtifactNodeTitle(artifact: CharacterRunArtifact, options: CharacterWorkflowPageOptions): string {
+  if (artifact.type === 'run-text-result') {
+    return ui(options, '文字结果', 'Text Result')
+  }
+  if (artifact.type === 'run-css-result') {
+    return artifact.title ?? ui(options, '氛围样式', 'Atmosphere Style')
+  }
   if (artifact.type === 'character-card-field') {
     return getCharacterFieldArtifactLabel(artifact, options)
   }
@@ -3283,6 +3311,12 @@ function getRunImageNodeTitle(artifact: CharacterRunArtifact, options: Character
 }
 
 function getRunArtifactNodeConfig(artifact: CharacterRunArtifact): Record<string, unknown> {
+  if (artifact.type === 'run-text-result') {
+    return { runTextResult: true }
+  }
+  if (artifact.type === 'run-css-result') {
+    return { runCssResult: true }
+  }
   if (artifact.type !== 'character-card-field') {
     return {}
   }
@@ -3353,48 +3387,219 @@ function getCharacterFieldArtifactLabel(artifact: CharacterRunArtifact, options:
 function getRunCanvasArtifacts(artifacts: CharacterRunArtifacts): CharacterRunArtifacts {
   const allowed = new Set([
     'character-card-draft',
-    'source-material',
     'character-card-field',
     'character-card-final',
     'opening-message',
-    'opening-layout',
-    'atmosphere-style',
-    'game-system',
     'dialogue-style-guide',
     'world-context',
     'scene-context',
-    'image-prompt',
+    'opening-layout',
+    'atmosphere-style',
     'image-attempt',
     'image-asset',
-    'stale-marker',
-    'candidate-pack',
-    'quality-report',
-    'export-package',
-    'generation-report',
   ])
   const filtered = artifacts
     .filter((artifact) => allowed.has(artifact.type))
-    .filter((artifact) => artifact.type !== 'character-card-draft')
-    .filter((artifact) => !isHiddenRunCanvasFieldArtifact(artifact))
-  const canvasArtifacts = coalesceRunCanvasImageArtifacts(filtered)
-  const visible = canvasArtifacts.some((artifact) => artifact.type === 'character-card-field')
-    ? canvasArtifacts.filter((artifact) => artifact.type !== 'character-card-final')
-    : canvasArtifacts
-  return pruneRunCanvasArtifacts(visible)
+  const displayArtifacts = createRunCanvasDisplayArtifacts(filtered)
+  return pruneRunCanvasArtifacts(coalesceRunCanvasImageArtifacts(displayArtifacts))
 }
 
 function pruneRunCanvasArtifacts(
   artifacts: CharacterRunArtifacts
 ): CharacterRunArtifacts {
-  const importantTypes = new Set(['quality-report', 'generation-report', 'export-package', 'stale-marker'])
   const images = artifacts.filter((artifact) => artifact.type === 'image-asset' || artifact.type === 'image-attempt').slice(-6)
-  const fields = artifacts.filter((artifact) => artifact.type === 'character-card-field').slice(-9)
-  const important = artifacts.filter((artifact) => importantTypes.has(artifact.type)).slice(-5)
+  const textResults = artifacts.filter((artifact) => artifact.type === 'run-text-result').slice(-1)
+  const cssResults = artifacts.filter((artifact) => artifact.type === 'run-css-result').slice(-3)
+  const openingLayouts = artifacts.filter((artifact) => artifact.type === 'opening-layout').slice(-1)
   const other = artifacts
-    .filter((artifact) => artifact.type !== 'image-asset' && artifact.type !== 'image-attempt' && artifact.type !== 'character-card-field' && !importantTypes.has(artifact.type))
-    .slice(-4)
-  const keepIds = new Set([...fields, ...other, ...images, ...important].map((artifact) => artifact.id || `${artifact.type}:${artifact.title ?? ''}`))
-  return artifacts.filter((artifact) => keepIds.has(artifact.id || `${artifact.type}:${artifact.title ?? ''}`)).slice(-24)
+    .filter((artifact) => artifact.type !== 'image-asset' && artifact.type !== 'image-attempt' && artifact.type !== 'run-text-result' && artifact.type !== 'run-css-result' && artifact.type !== 'opening-layout')
+    .slice(-2)
+  const keepIds = new Set([...textResults, ...openingLayouts, ...cssResults, ...images, ...other].map((artifact) => artifact.id || `${artifact.type}:${artifact.title ?? ''}`))
+  return artifacts.filter((artifact) => keepIds.has(artifact.id || `${artifact.type}:${artifact.title ?? ''}`)).slice(-14)
+}
+
+function createRunCanvasDisplayArtifacts(artifacts: CharacterRunArtifacts): CharacterRunArtifacts {
+  const displayArtifacts: CharacterRunArtifacts = []
+  const textResultArtifact = createRunTextResultArtifact(artifacts)
+  const latestTextArtifact = getLatestRunTextArtifact(artifacts)
+  let textInserted = false
+  for (const artifact of artifacts) {
+    if (isRunTextSourceArtifact(artifact)) {
+      if (!textInserted && textResultArtifact && artifact === latestTextArtifact) {
+        displayArtifacts.push(textResultArtifact)
+        textInserted = true
+      }
+      continue
+    }
+    if (artifact.type === 'atmosphere-style') {
+      displayArtifacts.push(createAtmosphereStyleResultArtifact(artifact))
+      continue
+    }
+    displayArtifacts.push(artifact)
+  }
+  if (textResultArtifact && !textInserted) {
+    displayArtifacts.push(textResultArtifact)
+  }
+  return displayArtifacts
+}
+
+function isRunTextSourceArtifact(artifact: CharacterRunArtifact): boolean {
+  return artifact.type === 'character-card-draft'
+    || artifact.type === 'character-card-field'
+    || artifact.type === 'character-card-final'
+    || artifact.type === 'opening-message'
+    || artifact.type === 'dialogue-style-guide'
+    || artifact.type === 'world-context'
+    || artifact.type === 'scene-context'
+}
+
+function getLatestRunTextArtifact(artifacts: CharacterRunArtifacts): CharacterRunArtifact | undefined {
+  return [...artifacts].reverse().find(isRunTextSourceArtifact)
+}
+
+function createRunTextResultArtifact(artifacts: CharacterRunArtifacts): CharacterRunArtifact | null {
+  const textArtifacts = artifacts.filter(isRunTextSourceArtifact)
+  if (!textArtifacts.length) {
+    return null
+  }
+  const fields: Record<string, unknown> = {}
+  for (const artifact of textArtifacts) {
+    if (artifact.type === 'character-card-draft' || artifact.type === 'character-card-final') {
+      Object.assign(fields, getRoleCardVisibleFields(artifact.data))
+      continue
+    }
+    if (artifact.type === 'character-card-field') {
+      const data = getRunArtifactDataRecord(artifact)
+      const field = typeof data.field === 'string' ? data.field : ''
+      if (field && data.value !== undefined) {
+        fields[field] = data.value
+      }
+      continue
+    }
+    const mapped = getCharacterFacingArtifactField(artifact)
+    if (mapped?.key && mapped.value) {
+      fields[mapped.key] = mapped.value
+    }
+  }
+  const rows = getRoleCardVisibleFields({ fields })
+  const latest = getLatestRunTextArtifact(textArtifacts)!
+  const summary = Object.entries(rows)
+    .map(([key, value]) => `${key}: ${clampRunCharacterPreviewText(formatRunCharacterFieldValue(value) ?? '', 72)}`)
+    .join('\n')
+  return {
+    id: 'run-text-result',
+    type: 'run-text-result',
+    sourceNodeId: latest.sourceNodeId || 'character-card-target',
+    title: 'Text Result',
+    summary,
+    data: {
+      fields: Object.entries(rows).map(([key, value]) => ({
+        key,
+        value: formatRunCharacterFieldValue(value) ?? '',
+      })),
+    },
+  }
+}
+
+function createAtmosphereStyleResultArtifact(artifact: CharacterRunArtifact): CharacterRunArtifact {
+  const data = getRunArtifactDataRecord(artifact)
+  const designBrief = data.designBrief
+  const summary = safeRunDisplayText(artifact.summary ?? '')
+    || safeRunDisplayText(stringRecordValue(data, 'summary'))
+    || stringRecordValue(designBrief, 'surfaceTreatment')
+    || stringRecordValue(designBrief, 'concept')
+  return {
+    id: `${artifact.id || 'atmosphere-style'}:preview`,
+    type: 'run-css-result',
+    sourceNodeId: artifact.sourceNodeId,
+    title: artifact.title ?? 'Atmosphere Style',
+    summary,
+    data: {
+      ...data,
+      sourceArtifactId: artifact.id,
+    },
+  }
+}
+
+function stringRecordValue(value: unknown, key: string): string {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return ''
+  }
+  const item = (value as Record<string, unknown>)[key]
+  return typeof item === 'string' ? item.trim() : ''
+}
+
+function stringListRecordValue(value: unknown, key: string): string[] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return []
+  }
+  const item = (value as Record<string, unknown>)[key]
+  if (typeof item === 'string') {
+    return item.trim() ? [item.trim()] : []
+  }
+  if (Array.isArray(item)) {
+    return item.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+  }
+  return []
+}
+
+function safeRunDisplayText(value: string): string {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return ''
+  }
+  if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+    try {
+      JSON.parse(trimmed)
+      return ''
+    } catch {
+      return trimmed
+    }
+  }
+  return trimmed
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function objectRecordValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+}
+
+function enumValue<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
+  return typeof value === 'string' && (allowed as readonly string[]).includes(value)
+    ? value as T
+    : fallback
+}
+
+function sanitizeAtmosphereScopeClass(value: string): string {
+  const normalized = value.trim()
+  return /^noema-atmosphere-[a-z0-9_-]+$/.test(normalized) ? normalized : ''
+}
+
+function sanitizeAtmosphereCss(css: string, scopeClass: string): string {
+  if (!css || !scopeClass || !css.includes(`.${scopeClass}`)) {
+    return ''
+  }
+  const blocked = /@import|@font-face|url\s*\(|position\s*:\s*fixed|<\/style/i
+  return blocked.test(css) ? '' : css
+}
+
+function sanitizeCssColor(value: string): string {
+  const trimmed = value.trim()
+  if (/^#[0-9a-f]{3,8}$/i.test(trimmed)) {
+    return trimmed
+  }
+  if (/^hsla?\(\s*[\d.]+(?:deg|rad|turn)?\s+[\d.]+%\s+[\d.]+%(?:\s*\/\s*(?:[\d.]+|[\d.]+%))?\s*\)$/i.test(trimmed)) {
+    return trimmed
+  }
+  if (/^rgba?\(\s*[\d.]+%?\s*,\s*[\d.]+%?\s*,\s*[\d.]+%?(?:\s*,\s*[\d.]+)?\s*\)$/i.test(trimmed)) {
+    return trimmed
+  }
+  return ''
 }
 
 function coalesceRunCanvasImageArtifacts(artifacts: CharacterRunArtifacts): CharacterRunArtifacts {
@@ -3414,16 +3619,6 @@ function coalesceRunCanvasImageArtifacts(artifacts: CharacterRunArtifacts): Char
   }
   const visibleFailedAttempts = new Set(latestFailedAttemptByKey.values())
   return artifacts.filter((artifact) => artifact.type !== 'image-attempt' || visibleFailedAttempts.has(artifact))
-}
-
-function isHiddenRunCanvasFieldArtifact(artifact: CharacterRunArtifact): boolean {
-  if (artifact.type !== 'character-card-field') {
-    return false
-  }
-  const data = artifact.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
-    ? artifact.data as Record<string, unknown>
-    : {}
-  return data.field === 'appearancePrompt'
 }
 
 function getRoleResourceArtifacts(artifacts: NonNullable<CharacterResourceRunState['artifacts']>): NonNullable<CharacterResourceRunState['artifacts']> {
@@ -3462,6 +3657,7 @@ function getRunArtifactOrder(type: string): number {
     'character-card-final',
     'opening-message',
     'opening-layout',
+    'run-css-result',
     'dialogue-style-guide',
     'world-context',
     'scene-context',
@@ -3486,6 +3682,7 @@ function getRunArtifactMeta(artifact: NonNullable<CharacterResourceRunState['art
     'character-card-final': ui(options, '角色卡 / role-card', 'role card / resource'),
     'opening-message': ui(options, '开场 / opening', 'opening / resource'),
     'opening-layout': ui(options, '开幕面板 / CSS', 'opening panel / CSS'),
+    'run-css-result': ui(options, '氛围样式 / CSS', 'atmosphere style / CSS'),
     'atmosphere-style': ui(options, '氛围样式 / style', 'atmosphere / style'),
     'game-system': ui(options, '游戏系统 / rules', 'game system / rules'),
     'dialogue-style-guide': ui(options, '语气 / style', 'style / resource'),
@@ -3506,6 +3703,8 @@ function getRunArtifactNodeType(type: string): string {
   const nodeTypes: Record<string, string> = {
     'candidate-pack': 'candidate-pack-resource',
     'source-material': 'source-material-resource',
+    'run-text-result': 'role-card-resource',
+    'run-css-result': 'atmosphere-style-resource',
     'character-card-field': 'character-field-resource',
     'character-card-draft': 'role-card-resource',
     'character-card-final': 'role-card-resource',
@@ -3533,6 +3732,12 @@ function getRunExecutionLabel(type: string, options: CharacterWorkflowPageOption
   }
   if (type === 'character-card-field') {
     return ui(options, '字段', 'field')
+  }
+  if (type === 'run-css-result') {
+    return ui(options, '样式', 'style')
+  }
+  if (type === 'run-text-result') {
+    return ui(options, '文字', 'text')
   }
   if (type === 'image-asset' || type === 'image-attempt') {
     return ui(options, '生图', 'image')
@@ -3806,14 +4011,23 @@ function renderResourceNode(node: CharacterResourceNode, graph: CharacterResourc
   const output = graph.outputs.find((item) => item.nodeId === node.id)
   const runField = typeof node.config.runField === 'string' ? node.config.runField : ''
   const runFieldClass = runField ? `run-field-${sanitizeResourceId(runField)} ${node.config.runFieldSupport ? 'run-field-support' : 'run-field-card'}` : ''
+  const runDisplayClass = [
+    node.config.runInputCard === true ? 'run-input-result-node' : '',
+    node.config.runTextResult === true ? 'run-text-result-node' : '',
+    node.config.runCssResult === true ? 'run-css-result-node' : '',
+  ].filter(Boolean).join(' ')
   const runOrder = typeof node.config.runOrder === 'number' ? String(node.config.runOrder) : ''
   const runFocusClass = node.config.runFocus === true ? 'is-run-focus' : ''
   const virtualMaterialClass = getVirtualMaterialNodeClass(node)
   const highlighted = options.viewState?.agentHighlights?.nodeIds?.includes(node.id) ?? false
   const actionLabel = options.viewState?.agentHighlights?.nodeActions?.[node.id] ?? ''
+  const runDragSurface = isRunDraftMaterialOutput(output)
+    ? '<span class="chat-resource-run-drag-surface" data-chat-workflow-drag-handle aria-hidden="true"></span>'
+    : ''
   return `
-    <article class="chat-workflow-node chat-resource-node ${node.status} ${node.type} ${definition.category} ${virtualMaterialClass} ${runFieldClass} ${runFocusClass} ${highlighted ? 'agent-highlight-node' : ''} ${selected ? 'selected' : ''} ${node.collapsed ? 'collapsed' : ''}" style="--node-x: ${node.position.x}px; --node-y: ${node.position.y}px; --node-w: ${node.size.width}px; --node-h: ${node.size.height}px; z-index: ${node.zIndex}" data-chat-workflow-node-id="${options.escapeHtml(node.id)}" data-chat-workflow-node-select="${options.escapeHtml(node.id)}" data-resource-node-type="${options.escapeHtml(node.type)}" data-run-artifact-id="${options.escapeHtml(output?.artifactId ?? '')}" data-run-artifact-type="${options.escapeHtml(output?.type ?? '')}" data-run-target-node-id="${options.escapeHtml(output?.sourceNodeId ?? '')}" data-run-field="${options.escapeHtml(runField)}" data-run-order="${options.escapeHtml(runOrder)}" data-agent-op-label="${options.escapeHtml(actionLabel)}">
+    <article class="chat-workflow-node chat-resource-node ${node.status} ${node.type} ${definition.category} ${virtualMaterialClass} ${runFieldClass} ${runDisplayClass} ${runFocusClass} ${highlighted ? 'agent-highlight-node' : ''} ${selected ? 'selected' : ''} ${node.collapsed ? 'collapsed' : ''}" style="--node-x: ${node.position.x}px; --node-y: ${node.position.y}px; --node-w: ${node.size.width}px; --node-h: ${node.size.height}px; z-index: ${node.zIndex}" data-chat-workflow-node-id="${options.escapeHtml(node.id)}" data-chat-workflow-node-select="${options.escapeHtml(node.id)}" data-resource-node-type="${options.escapeHtml(node.type)}" data-run-artifact-id="${options.escapeHtml(output?.artifactId ?? '')}" data-run-artifact-type="${options.escapeHtml(output?.type ?? '')}" data-run-target-node-id="${options.escapeHtml(output?.sourceNodeId ?? '')}" data-run-field="${options.escapeHtml(runField)}" data-run-order="${options.escapeHtml(runOrder)}" data-agent-op-label="${options.escapeHtml(actionLabel)}">
       ${runOrder ? `<span class="chat-resource-run-order">${options.escapeHtml(runOrder.padStart(2, '0'))}</span>` : ''}
+      ${runDragSurface}
       ${renderNodeHeader(node, definition, options)}
       ${renderNodeSlots(node, definition, options)}
       ${renderNodeWidgets(node, definition, options)}
@@ -3822,6 +4036,15 @@ function renderResourceNode(node: CharacterResourceNode, graph: CharacterResourc
       <button class="chat-resource-node-resize" type="button" data-resource-node-resize aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '调整节点尺寸' : 'Resize node')}"></button>
     </article>
   `
+}
+
+function isRunDraftMaterialOutput(output: CharacterResourceOutput | undefined): boolean {
+  return output?.type === 'agent-run'
+    || output?.type === 'run-text-result'
+    || output?.type === 'opening-layout'
+    || output?.type === 'run-css-result'
+    || output?.type === 'image-asset'
+    || output?.type === 'image-attempt'
 }
 
 function getVirtualMaterialNodeClass(node: CharacterResourceNode): string {
@@ -3924,19 +4147,22 @@ function renderNodeContent(
   }
   const previewClass = `preview-${definition.previewType}`
   const runImageActions = renderRunImageActions(output, options)
+  if (output.type === 'agent-run') {
+    return renderRunInputContent(output, previewClass, options)
+  }
+  if (output.type === 'run-text-result') {
+    return renderRunTextResultContent(output, previewClass, options)
+  }
+  if (output.type === 'run-css-result') {
+    return renderCssResultContent(output, previewClass, options)
+  }
   if (output.type === 'opening-layout') {
-    return `
-      <div class="chat-resource-node-content ${previewClass} chat-resource-opening-panel-preview">
-        <strong>${options.escapeHtml(output.title)}</strong>
-        <p>${options.escapeHtml(output.summary)}</p>
-        <span>${options.escapeHtml(ui(options, '开幕面板已生成，详情在右侧资源中查看。', 'Opening panel generated. Review the resource details on the right.'))}</span>
-      </div>
-    `
+    return renderOpeningLayoutPreviewContent(output, previewClass, options)
   }
   if (output?.image) {
     return `
       <div class="chat-resource-node-content ${previewClass} has-image run-image-preview">
-        <img src="${options.escapeHtml(output.image)}" alt="${options.escapeHtml(output.title)}">
+        <img src="${options.escapeHtml(output.image)}" alt="${options.escapeHtml(output.title)}" draggable="false">
         <div class="chat-resource-image-caption">
           <strong>${options.escapeHtml(output.title)}</strong>
         </div>
@@ -3951,6 +4177,266 @@ function renderNodeContent(
       ${runImageActions}
     </div>
   `
+}
+
+function renderRunInputContent(
+  output: CharacterResourceOutput,
+  previewClass: string,
+  options: CharacterWorkflowPageOptions
+): string {
+  return `
+    <div class="chat-resource-node-content ${previewClass} run-result-card run-input-result-preview">
+      <span>${options.escapeHtml(ui(options, '用户输入', 'User Input'))}</span>
+      <p>${options.escapeHtml(clampRunCharacterPreviewText(output.text || output.summary, 220))}</p>
+    </div>
+  `
+}
+
+function renderRunTextResultContent(
+  output: CharacterResourceOutput,
+  previewClass: string,
+  options: CharacterWorkflowPageOptions
+): string {
+  const data = output.data && typeof output.data === 'object' && !Array.isArray(output.data)
+    ? output.data as Record<string, unknown>
+    : {}
+  const fields = Array.isArray(data.fields)
+    ? data.fields.flatMap((item) => {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) {
+          return []
+        }
+        const record = item as Record<string, unknown>
+        const key = typeof record.key === 'string' ? record.key : ''
+        const value = typeof record.value === 'string' ? record.value : ''
+        return key && value ? [{ key, value }] : []
+      })
+    : []
+  return `
+    <div class="chat-resource-node-content ${previewClass} run-result-card run-text-result-preview">
+      <span>${options.escapeHtml(ui(options, '文字结果', 'Text Result'))}</span>
+      <div>
+        ${fields.slice(0, 8).map((field) => `
+          <section>
+            <b>${options.escapeHtml(formatRunCharacterFieldLabel(field.key, options))}</b>
+            <p>${options.escapeHtml(clampRunCharacterPreviewText(field.value, field.key === 'firstMessage' ? 180 : 120))}</p>
+          </section>
+        `).join('')}
+      </div>
+    </div>
+  `
+}
+
+function renderOpeningLayoutPreviewContent(
+  output: CharacterResourceOutput,
+  previewClass: string,
+  options: CharacterWorkflowPageOptions
+): string {
+  const data = output.data && typeof output.data === 'object' && !Array.isArray(output.data)
+    ? output.data as Record<string, unknown>
+    : {}
+  const html = typeof data.html === 'string' ? data.html : ''
+  const css = typeof data.css === 'string' ? data.css : ''
+  if (html) {
+    return `
+      <div class="chat-resource-node-content ${previewClass} chat-resource-opening-panel-preview has-rendered-panel">
+        ${css ? `<style>${css}</style>` : ''}
+        ${html}
+      </div>
+    `
+  }
+  const sections = data.sections && typeof data.sections === 'object' && !Array.isArray(data.sections)
+    ? data.sections as Record<string, unknown>
+    : {}
+  const title = stringRecordValue(sections, 'title') || output.title
+  const opening = stringRecordValue(sections, 'opening') || stringRecordValue(sections, 'summary') || output.summary
+  return `
+    <div class="chat-resource-node-content ${previewClass} chat-resource-opening-panel-preview">
+      <strong>${options.escapeHtml(title)}</strong>
+      <p>${options.escapeHtml(clampRunCharacterPreviewText(opening, 120))}</p>
+    </div>
+  `
+}
+
+function renderCssResultContent(
+  output: CharacterResourceOutput,
+  previewClass: string,
+  options: CharacterWorkflowPageOptions
+): string {
+  const data = output.data && typeof output.data === 'object' && !Array.isArray(output.data)
+    ? output.data as Record<string, unknown>
+    : {}
+  const style = normalizeRunAtmosphereStyle(data, output, options)
+  const preview = style.preview
+  const scopedStyle = renderRunAtmosphereScopedStyle(style, options)
+  const classNames = renderRunAtmosphereClassNames(style, 'chat-resource-node-content run-atmosphere-preview run-css-result-preview')
+  const inlineStyle = renderRunAtmosphereInlineStyle(style)
+  const placeLabel = ui(options, '地点', 'Place')
+  const statusLabel = ui(options, '状态', 'Status')
+  const silentAudioSource = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA='
+  const hasMessagePreview = Boolean(preview.narration || preview.speech)
+  const hasScenePreview = Boolean(preview.location || preview.status.length || preview.equipment.length)
+  return `
+    ${scopedStyle}
+    <div class="${options.escapeHtml(`${classNames} ${previewClass}`)}" style="${options.escapeHtml(inlineStyle)}">
+      ${hasMessagePreview ? `<div class="run-chat-message assistant">
+        <div class="roleplay-chat-frame">
+          ${preview.narration ? `<p>${options.escapeHtml(clampRunCharacterPreviewText(preview.narration, 150))}</p>` : ''}
+          ${preview.speech ? `<div class="roleplay-chat-speech">
+            <p class="roleplay-chat-speech-row">
+              <span class="roleplay-chat-quote">“${options.escapeHtml(clampRunCharacterPreviewText(preview.speech, 72))}”</span>
+              <span class="chat-inline-audio">
+                <span class="chat-inline-audio-player chat-profile-audio-demo" aria-hidden="true">
+                  <audio class="chat-inline-audio-native" src="${silentAudioSource}" preload="metadata"></audio>
+                  <span class="chat-inline-audio-play"></span>
+                  <span class="chat-inline-audio-track"><span></span></span>
+                  <span class="chat-inline-audio-time">0:00 / 0:04</span>
+                  <span class="chat-inline-audio-menu"><span class="chat-inline-audio-menu-dot"></span><span class="chat-inline-audio-menu-dot"></span><span class="chat-inline-audio-menu-dot"></span></span>
+                </span>
+              </span>
+            </p>
+          </div>` : ''}
+        </div>
+      </div>` : ''}
+      ${hasScenePreview ? `
+        <section class="chat-inline-scene">
+          <div class="chat-inline-scene-lines">
+            ${preview.location ? `<div class="chat-inline-scene-line">
+              <span>${options.escapeHtml(placeLabel)}</span>
+              <strong>${options.escapeHtml(clampRunCharacterPreviewText(preview.location, 36))}</strong>
+            </div>` : ''}
+            ${preview.status.length ? `<div class="chat-inline-scene-line">
+              <span>${options.escapeHtml(statusLabel)}</span>
+              <div class="chat-inline-scene-status">
+                ${preview.status.slice(0, 3).map((item) => `<em>${options.escapeHtml(item)}</em>`).join('')}
+              </div>
+            </div>` : ''}
+          </div>
+          ${preview.equipment.length ? `<div class="chat-inline-equipment">
+            <table>
+              <tbody>
+                ${preview.equipment.slice(0, 2).map((item) => `
+                  <tr>
+                    <td>${options.escapeHtml(item.name)}</td>
+                    <td>${options.escapeHtml(item.ability)}</td>
+                    <td>${options.escapeHtml(item.quantity || '1')}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>` : ''}
+        </section>
+      ` : ''}
+    </div>
+  `
+}
+
+function normalizeRunAtmosphereStyle(
+  data: Record<string, unknown>,
+  output: CharacterResourceOutput,
+  options: CharacterWorkflowPageOptions
+): {
+  name: string
+  summary: string
+  scopeClass: string
+  css: string
+  palette: { accent: string; accentSoft: string; surface: string }
+  message: { frame: string; density: string; radius: string }
+  audio: { player: string }
+  sceneCard: { frame: string }
+  preview: {
+    narration: string
+    speech: string
+    location: string
+    status: string[]
+    equipment: Array<{ name: string; ability: string; quantity?: string }>
+  }
+} {
+  const palette = objectRecordValue(data.palette)
+  const message = objectRecordValue(data.message)
+  const audio = objectRecordValue(data.audio)
+  const sceneCard = objectRecordValue(data.sceneCard)
+  const preview = objectRecordValue(data.preview)
+  const designBrief = objectRecordValue(data.designBrief)
+  const accent = sanitizeCssColor(stringValue(palette.accent)) || '#c7d8d0'
+  const accentSoft = sanitizeCssColor(stringValue(palette.accentSoft)) || 'rgba(199, 216, 208, 0.16)'
+  const scopeClass = sanitizeAtmosphereScopeClass(stringValue(data.scopeClass))
+  const status = stringListRecordValue(preview, 'status')
+  const equipment = Array.isArray(preview.equipment)
+    ? preview.equipment.flatMap((item) => {
+        const record = objectRecordValue(item)
+        const name = stringValue(record.name)
+        const ability = stringValue(record.ability)
+        if (!name || !ability) {
+          return []
+        }
+        const quantity = stringValue(record.quantity)
+        return [{ name, ability, ...(quantity ? { quantity } : {}) }]
+      })
+    : []
+  return {
+    name: stringValue(data.name) || output.title || 'Character atmosphere',
+    summary: stringValue(data.summary) || output.summary,
+    scopeClass,
+    css: sanitizeAtmosphereCss(stringValue(data.css), scopeClass),
+    palette: {
+      accent,
+      accentSoft,
+      surface: enumValue(palette.surface, ['glass', 'paper', 'noir', 'mist', 'velvet', 'terminal'], 'glass'),
+    },
+    message: {
+      frame: enumValue(message.frame, ['plain', 'literary-panel', 'visual-novel', 'dossier', 'letter'], 'literary-panel'),
+      density: enumValue(message.density, ['compact', 'balanced', 'airy'], 'balanced'),
+      radius: enumValue(message.radius, ['sharp', 'soft', 'round'], 'soft'),
+    },
+    audio: {
+      player: enumValue(audio.player, ['thin-glass-bar', 'soft-wave-strip', 'quiet-capsule', 'dossier-line'], 'thin-glass-bar'),
+    },
+    sceneCard: {
+      frame: enumValue(sceneCard.frame, ['quiet-panel', 'glass-dossier', 'paper-note', 'terminal-readout'], 'quiet-panel'),
+    },
+    preview: {
+      narration: stringValue(preview.narration),
+      speech: stringValue(preview.speech),
+      location: stringValue(preview.location),
+      status,
+      equipment,
+    },
+  }
+}
+
+function renderRunAtmosphereClassNames(
+  style: ReturnType<typeof normalizeRunAtmosphereStyle>,
+  baseClass: string
+): string {
+  return [
+    baseClass,
+    'has-chat-atmosphere',
+    `chat-atmosphere-surface-${style.palette.surface}`,
+    `chat-atmosphere-message-${style.message.frame}`,
+    `chat-atmosphere-audio-${style.audio.player}`,
+    `chat-atmosphere-scene-${style.sceneCard.frame}`,
+    `chat-atmosphere-density-${style.message.density}`,
+    `chat-atmosphere-radius-${style.message.radius}`,
+    style.scopeClass,
+  ].filter(Boolean).join(' ')
+}
+
+function renderRunAtmosphereInlineStyle(style: ReturnType<typeof normalizeRunAtmosphereStyle>): string {
+  const radius = style.message.radius === 'sharp' ? '10px' : style.message.radius === 'round' ? '22px' : '16px'
+  const densityGap = style.message.density === 'compact' ? '8px' : style.message.density === 'airy' ? '16px' : '12px'
+  return [
+    `--chat-atmosphere-accent:${style.palette.accent}`,
+    `--chat-atmosphere-accent-soft:${style.palette.accentSoft}`,
+    `--chat-atmosphere-radius:${radius}`,
+    `--chat-atmosphere-density-gap:${densityGap}`,
+  ].join(';')
+}
+
+function renderRunAtmosphereScopedStyle(
+  style: ReturnType<typeof normalizeRunAtmosphereStyle>,
+  options: CharacterWorkflowPageOptions
+): string {
+  return style.css ? `<style data-chat-atmosphere-preview-style="${options.escapeHtml(style.scopeClass)}">${style.css}</style>` : ''
 }
 
 function renderVirtualMaterialNodeContent(node: CharacterResourceNode, options: CharacterWorkflowPageOptions): string {
@@ -3984,7 +4470,7 @@ function renderVirtualMaterialNodeContent(node: CharacterResourceNode, options: 
 }
 
 function renderRunImageActions(output: CharacterResourceOutput, options: CharacterWorkflowPageOptions): string {
-  if (output.type !== 'image-asset' && output.type !== 'image-attempt' && output.type !== 'stale-marker') {
+  if (output.type !== 'image-asset' && output.type !== 'image-attempt') {
     return ''
   }
   const data = output.data && typeof output.data === 'object' && !Array.isArray(output.data)

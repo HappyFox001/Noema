@@ -2012,7 +2012,7 @@ function createAtmosphereStyleData(
     dialogueStyle,
     stylePrompt,
   })
-  const firstSpeech = extractFirstRoleChatLine(stringValue(fields.firstMessage)) || dialogueStyle || `我会在这里等你。`
+  const firstSpeech = extractFirstRoleChatLine(stringValue(fields.firstMessage)) || dialogueStyle
   const narration = stripVisibleControlTags(stringValue(fields.firstMessage)) || scenario || description
   const imageHints = collectOpeningLayoutImages(artifacts).slice(0, 3).map((image) => ({
     id: image.id,
@@ -2032,10 +2032,10 @@ function createAtmosphereStyleData(
     audio: freeStyle.audio,
     sceneCard: freeStyle.sceneCard,
     preview: {
-      userLine: context.goal.language === 'zh-CN' ? '这里的气氛有点不一样。' : 'The air feels different here.',
+      userLine: '',
       narration: compactOpeningText(narration, 96),
       speech: compactOpeningText(firstSpeech, 64),
-      location: compactOpeningText(scenario || worldContext || (context.goal.language === 'zh-CN' ? '当前场景' : 'Current scene'), 34),
+      location: compactOpeningText(scenario || worldContext, 34),
       status: freeStyle.previewStatus,
       equipment: freeStyle.previewEquipment,
     },
