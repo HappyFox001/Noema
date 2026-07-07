@@ -770,7 +770,7 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     title: 'Image Target',
     category: 'targets',
     executor: 'image',
-    description: 'Declares a role-card visual asset. Each image should preserve character identity while supporting a distinct story, field, or presentation purpose.',
+    description: 'Declares a role-card visual asset. Each image should preserve character identity while supporting a distinct story, field, or presentation purpose. Multi-image character-base targets should produce different visual missions, camera angles, poses, environments, and roleplay meanings.',
     inputs: {
       card: port('card', 'Card', 'asset-target'),
       image: port('image', 'Image', 'image-capability', true),
@@ -941,7 +941,7 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     title: 'Image Generation Control',
     category: 'controls',
     executor: 'manual',
-    description: 'Controls image batch count, lightweight visual style, shot, aspect ratio, consistency, and seed behavior. It does not declare the target asset.',
+    description: 'Controls image batch count, visual style, shot, aspect ratio, consistency, seed behavior, and per-image variation. It does not declare the target asset.',
     inputs: {},
     outputs: { imageControl: port('imageControl', 'Image Control', 'asset-target') },
     parameters: [
@@ -1355,7 +1355,7 @@ export function createStandardCharacterWorkflow(
   if (openingPanelImageTarget) {
     Object.assign(openingPanelImageTarget.config, {
       imageRole: 'character-base-image',
-      assetPurpose: 'Free-form character sample images for the opening CSS panel. Generate reusable non-avatar images migrated from the avatar reference, showing distinct roleplay scenes, actions, moods, outfit usage, or prop interactions that can be used as visual material inside the opening panel.',
+      assetPurpose: 'Free-form character sample images for the opening CSS panel. Generate reusable non-avatar images migrated from the avatar reference. Each image should have a different visual mission: distinct camera angle, pose family, action, environment use, outfit usage, prop interaction, mood, and roleplay meaning. Avoid repeating the same pose/background/framing with only minor expression changes.',
     })
   }
   const openingPanelImageControl = nodes.find((nodeItem) => nodeItem.id === 'opening-panel-image-control')
@@ -1363,8 +1363,8 @@ export function createStandardCharacterWorkflow(
     Object.assign(openingPanelImageControl.config, {
       targetImageCount: 2,
       imageStyleDomain: 'auto',
-      poseGoals: ['expressive adult pose', 'readable body line', 'hands interacting with scene object'],
-      backgroundInteraction: 'Use the room, furniture, window light, fabric, mirror, cup, book, weapon, instrument, or other role-appropriate objects to create adult visual tension.',
+      poseGoals: ['variant 1: three-quarter standing or leaning view with readable outfit usage', 'variant 2: seated or reclining scene interaction with different camera angle', 'variant 3+: dynamic action, over-shoulder, side/back silhouette, close intimate crop, or environmental storytelling shot'],
+      backgroundInteraction: 'Use different role-appropriate environments and objects across images: room, furniture, window light, fabric, mirror, cup, book, weapon, instrument, desk, street, bed, or other scene objects. Each image should use a different object/setting relationship to create visual and roleplay meaning.',
       appealMode: 'sensual-confidence',
       sensualityLevel: 'sensual',
       wardrobeExposure: 'stylish-revealing',

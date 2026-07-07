@@ -715,7 +715,7 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     param('statusRules', 'Status Rules', 'textarea', 'Define temporary and persistent statuses from the character premise, relationship dynamic, body/mental state, powers, risks, and scene rules. Each status needs trigger, decay, conflict behavior, and narrative consequence.'),
     param('panelDesign', 'Chat Panel Design', 'textarea', 'Expose equipment, status, rules, and world facts as quick chat panels. Keep generated values compact and readable, but preserve enough world knowledge for future turns.'),
   ], 'rule'),
-  createDefinition('image-target', 'Image Target', ['图片目标', 'image target', 'visual target'], 'Targets', 'asset', 'Declares a role-card visual asset. Each image should preserve character identity while supporting a distinct story, field, or presentation purpose.', [
+  createDefinition('image-target', 'Image Target', ['图片目标', 'image target', 'visual target'], 'Targets', 'asset', 'Declares a role-card visual asset. Each image should preserve character identity while supporting a distinct story, field, or presentation purpose. Multi-image character-base targets should produce different visual missions, camera angles, poses, environments, and roleplay meanings.', [
     slot('card', 'Character Card', 'character-card-resource', 'Character card target.'),
     slot('image', 'Image', 'image-capability', 'Image generation capability.', true),
     slot('imageControl', 'Image Control', 'image-control-resource', 'Image generation control.'),
@@ -834,7 +834,7 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     param('mustNot', 'Must Not', 'string-list', []),
     param('hardBoundary', 'Hard Boundary', 'boolean', true),
   ], 'rule'),
-  createDefinition('image-generation-control', 'Image Generation Control', ['图片控制', 'image control', 'visual control'], 'Controls', 'asset', 'Controls batch count, lightweight visual style, shot, aspect ratio, consistency, and seed behavior for a connected image target.', [], [
+  createDefinition('image-generation-control', 'Image Generation Control', ['图片控制', 'image control', 'visual control'], 'Controls', 'asset', 'Controls batch count, visual style, shot, aspect ratio, consistency, seed behavior, and per-image variation for a connected image target.', [], [
     slot('imageControl', 'Image Control', 'image-control-resource', 'Image generation control.'),
   ], [
     param('targetImageCount', 'Image Count', 'integer', 1, 1, 16, 1),
