@@ -10023,6 +10023,15 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
 
+    const equipmentUse = eventTarget.closest<HTMLElement>('[data-chat-equipment-use]')
+    if (equipmentUse && panel.contains(equipmentUse)) {
+      const name = equipmentUse.dataset.chatEquipmentName || ''
+      showToast(options.getLanguage() === 'zh-CN'
+        ? `已选择使用${name ? `：${name}` : '装备'}`
+        : `Selected equipment${name ? `: ${name}` : ''}`)
+      return
+    }
+
     const workflowNodeSelect = eventTarget.closest<HTMLElement>('[data-chat-workflow-node-select]')
     if (workflowNodeSelect && panel.contains(workflowNodeSelect) && !eventTarget.closest<HTMLElement>('[data-chat-workflow-action]')) {
       if (workflowNodeSelect.closest<HTMLElement>('.chat-resource-run-viewport')) {

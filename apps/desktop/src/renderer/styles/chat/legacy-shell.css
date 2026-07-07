@@ -496,6 +496,7 @@
 .chat-inline-equipment table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
   overflow: hidden;
   border: 1px solid rgba(218, 232, 224, 0.075);
   border-radius: 9px;
@@ -505,12 +506,18 @@
 .chat-inline-equipment td {
   padding: 7px 8px;
   border-bottom: 1px solid rgba(218, 232, 224, 0.055);
+  border-right: 1px solid rgba(218, 232, 224, 0.045);
   color: rgba(248, 250, 250, 0.62);
   font-family: var(--font-ui);
   font-size: 9px;
   font-weight: 680;
   line-height: 1.35;
   text-align: left;
+}
+
+.chat-inline-equipment th:last-child,
+.chat-inline-equipment td:last-child {
+  border-right: 0;
 }
 
 .chat-inline-equipment th {
@@ -526,10 +533,42 @@
   border-bottom: 0;
 }
 
-.chat-inline-equipment td:last-child,
-.chat-inline-equipment th:last-child {
-  width: 48px;
-  text-align: right;
+.chat-inline-equipment th:nth-child(1),
+.chat-inline-equipment td:nth-child(1) {
+  width: 25%;
+}
+
+.chat-inline-equipment th:nth-child(3),
+.chat-inline-equipment td:nth-child(3) {
+  width: 42px;
+  text-align: center;
+}
+
+.chat-inline-equipment th:nth-child(4),
+.chat-inline-equipment td:nth-child(4) {
+  width: 50px;
+  text-align: center;
+}
+
+.chat-inline-equipment-use {
+  min-width: 34px;
+  height: 20px;
+  padding: 0 8px;
+  border: 1px solid rgba(218, 232, 224, 0.12);
+  border-radius: 6px;
+  background: rgba(218, 232, 224, 0.055);
+  color: rgba(248, 250, 250, 0.68);
+  font-family: var(--font-ui);
+  font-size: 9px;
+  font-weight: 740;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.chat-inline-equipment-use:hover {
+  border-color: rgba(218, 232, 224, 0.24);
+  background: rgba(218, 232, 224, 0.11);
+  color: rgba(248, 250, 250, 0.88);
 }
 
 .chat-message {

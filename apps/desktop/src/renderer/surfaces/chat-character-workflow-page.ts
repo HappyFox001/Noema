@@ -4681,21 +4681,23 @@ function renderRunChatEquipmentContent(
           <table>
             <thead>
               <tr>
-                <th>${options.escapeHtml(ui(options, '装备名称', 'Name'))}</th>
-                <th>${options.escapeHtml(ui(options, '能力', 'Ability'))}</th>
+                <th>${options.escapeHtml(ui(options, '名称', 'Name'))}</th>
+                <th>${options.escapeHtml(ui(options, '作用', 'Effect'))}</th>
                 <th>${options.escapeHtml(ui(options, '数量', 'Qty'))}</th>
+                <th>${options.escapeHtml(ui(options, '使用', 'Use'))}</th>
               </tr>
             </thead>
             <tbody>
-              ${equipment.length ? equipment.map((item) => `
+              ${equipment.length ? equipment.map((item, index) => `
                 <tr>
                   <td>${options.escapeHtml(clampRunCharacterPreviewText(item.name, 20))}</td>
-                  <td>${options.escapeHtml(clampRunCharacterPreviewText(item.ability, 34))}</td>
+                  <td>${options.escapeHtml(clampRunCharacterPreviewText(item.ability, 44))}</td>
                   <td>${options.escapeHtml(item.quantity)}</td>
+                  <td><button class="chat-inline-equipment-use" type="button" data-chat-equipment-use="${options.escapeHtml(String(index))}" data-chat-equipment-name="${options.escapeHtml(item.name)}">${options.escapeHtml(ui(options, '使用', 'Use'))}</button></td>
                 </tr>
               `).join('') : `
                 <tr>
-                  <td colspan="3">${options.escapeHtml(ui(options, '暂无装备记录', 'No equipment recorded'))}</td>
+                  <td colspan="4">${options.escapeHtml(ui(options, '暂无装备记录', 'No equipment recorded'))}</td>
                 </tr>
               `}
             </tbody>
