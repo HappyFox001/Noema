@@ -89,7 +89,7 @@ import {
 import { createChatRenderer } from './chat-renderer'
 import { extractRoleplaySpeechTexts } from './roleplay-chat-markup'
 import { sanitizeAtmosphereCss, sanitizeAtmosphereScopeClass } from './chat-atmosphere-css'
-import { getGamePanelStyleRecord, normalizeGamePanelStyle } from './chat-game-panel-style'
+import { getGamePanelStyleRecord, normalizeGamePanelStyle, renderGamePanelClassNames, renderGamePanelInlineStyle } from './chat-game-panel-style'
 import { Backpack, Trash2, createIcons } from 'lucide'
 
 type ChatResizeEdge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
@@ -557,6 +557,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       openGamePanel = ''
       gameQuickbar.hidden = true
       gamePanelView.classList.remove('visible')
+      gamePanelView.classList.remove('is-equipment-panel')
       gamePanelView.setAttribute('aria-hidden', 'true')
       gamePanelView.innerHTML = ''
       return
@@ -591,75 +592,89 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     })
     if (!openGamePanel) {
       gamePanelView.classList.remove('visible')
+      gamePanelView.classList.remove('is-equipment-panel')
       gamePanelView.setAttribute('aria-hidden', 'true')
       gamePanelView.innerHTML = ''
       return
     }
     gamePanelView.classList.add('visible')
+    gamePanelView.classList.toggle('is-equipment-panel', openGamePanel === 'equipment')
     gamePanelView.setAttribute('aria-hidden', 'false')
-    gamePanelView.innerHTML = renderGamePanel(character, getActiveConversation(state), openGamePanel, options.getLanguage())
+    gamePanelView.innerHTML = renderGamePanel(character, getActiveConversation(state), options.getLanguage())
   }
 
-  function renderGamePanel(character: ChatCharacterResource, conversation: ChatConversationSummary | undefined, panelName: 'equipment', language: 'zh-CN' | 'en-US'): string {
+  function renderGamePanel(character: ChatCharacterResource, conversation: ChatConversationSummary | undefined, language: 'zh-CN' | 'en-US'): string {
     const zh = language === 'zh-CN'
     const title = zh ? '装备栏' : 'Equipment'
-    const body = renderGameEquipmentPanel(character.gameSystem, conversation, zh)
+    const panelStyle = normalizeGamePanelStyle({ ui: character.gameSystem?.ui ?? {} })
+    const panelClassNames = panelStyle
+      ? renderGamePanelClassNames(panelStyle, 'chat-inline-scene')
+      : 'chat-inline-scene'
+    const panelInlineStyle = panelStyle ? renderGamePanelInlineStyle(panelStyle) : ''
+    const body = renderGameEquipmentTable(character.gameSystem, conversation, zh)
     return `
-      <div class="chat-game-panel-sheet">
-        <header class="chat-game-panel-head">
-          <span>${options.escapeHtml(character.gameSystem?.name || localizeChatText(character.displayName, language) || (zh ? '角色装备' : 'Character equipment'))}</span>
-          <strong>${options.escapeHtml(title)}</strong>
-          <button type="button" data-chat-game-panel-close aria-label="${options.escapeHtml(zh ? '关闭' : 'Close')}">×</button>
-        </header>
-        ${body}
+      <div class="chat-game-panel-sheet--equipment">
+        <section class="${options.escapeHtml(panelClassNames)}" style="${options.escapeHtml(panelInlineStyle)}">
+          <button class="chat-inline-equipment-toggle" type="button" data-chat-game-panel-close aria-expanded="true" aria-label="${options.escapeHtml(zh ? '收起装备栏' : 'Close equipment')}">
+            <span>${options.escapeHtml(title)}</span>
+            <em>${options.escapeHtml(String(getCharacterEquipmentCount(character, conversation)))}</em>
+            <strong aria-hidden="true">${options.escapeHtml(zh ? '收起' : 'Close')}</strong>
+          </button>
+          ${body}
+        </section>
       </div>
     `
   }
 
-  function renderGameEquipmentPanel(gameSystem: ChatGameSystem | undefined, conversation: ChatConversationSummary | undefined, zh: boolean): string {
-    const slots = gameSystem?.equipment.slots.length ? gameSystem.equipment.slots : []
-    const slotHtml = slots.map((slot) => `
-      <article class="chat-game-slot">
-        <div>
-          <strong>${options.escapeHtml(slot.label)}</strong>
-          <span>${options.escapeHtml(zh ? `上限 ${slot.limit}` : `Limit ${slot.limit}`)}</span>
-        </div>
-        ${(slot.current ?? []).length
-          ? `<ul>${(slot.current ?? []).map((item) => `<li><b>${options.escapeHtml(item.name)}</b><small>${options.escapeHtml(item.description ?? '')}</small></li>`).join('')}</ul>`
-          : `<em>${options.escapeHtml(zh ? '运行时根据规则生成或更新装备。' : 'Runtime fills and updates equipment from rules.')}</em>`}
-      </article>
-    `).join('')
-    const sceneEquipment = normalizePanelSceneEquipment(conversation?.sceneState?.equipment)
-    if (!slotHtml && sceneEquipment.length) {
-      return `
-        <div class="chat-game-panel-body">
-          <div class="chat-game-slot-grid">
-            <article class="chat-game-slot">
-              <div>
-                <strong>${options.escapeHtml(zh ? '当前装备' : 'Current Equipment')}</strong>
-                <span>${options.escapeHtml(String(sceneEquipment.length))}</span>
-              </div>
-              <ul>${sceneEquipment.map((item) => `<li><b>${options.escapeHtml(item.name)}</b><small>${options.escapeHtml([item.ability, item.quantity].filter(Boolean).join(' · '))}</small></li>`).join('')}</ul>
-            </article>
-          </div>
-        </div>
-      `
-    }
-    if (!slotHtml) {
-      return `
-        <div class="chat-game-panel-body">
-          <div class="chat-game-empty">
-            <strong>${options.escapeHtml(zh ? '当前角色未生成装备系统' : 'No equipment system generated')}</strong>
-            <p>${options.escapeHtml(zh ? '这通常说明该角色卡是在游戏系统目标加入前生成的，或不是通过带有 game-system-target 的 workflow 生成。重新运行资源图后会生成独立装备槽和规则。' : 'This usually means the card was generated before the game-system target existed, or was not created from a workflow with game-system-target. Re-run the resource graph to generate independent equipment slots and rules.')}</p>
-          </div>
-        </div>
-      `
-    }
+  function renderGameEquipmentTable(gameSystem: ChatGameSystem | undefined, conversation: ChatConversationSummary | undefined, zh: boolean): string {
+    const equipment = normalizeGameEquipmentRows(gameSystem, conversation)
     return `
-      <div class="chat-game-panel-body">
-        <div class="chat-game-slot-grid">${slotHtml}</div>
+      <div class="chat-inline-equipment">
+        <table>
+          <thead>
+            <tr>
+              <th>${options.escapeHtml(zh ? '名称' : 'Name')}</th>
+              <th>${options.escapeHtml(zh ? '作用' : 'Effect')}</th>
+              <th>${options.escapeHtml(zh ? '数量' : 'Qty')}</th>
+              <th>${options.escapeHtml(zh ? '使用' : 'Use')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${equipment.length ? equipment.map((item, index) => `
+              <tr>
+                <td>${options.escapeHtml(item.name)}</td>
+                <td>${options.escapeHtml(item.ability)}</td>
+                <td>${options.escapeHtml(item.quantity)}</td>
+                <td><button class="chat-inline-equipment-use" type="button" data-chat-equipment-use="${options.escapeHtml(String(index))}" data-chat-equipment-name="${options.escapeHtml(item.name)}">${options.escapeHtml(zh ? '使用' : 'Use')}</button></td>
+              </tr>
+            `).join('') : `
+              <tr>
+                <td colspan="4">${options.escapeHtml(zh ? '暂无装备记录' : 'No equipment recorded')}</td>
+              </tr>
+            `}
+          </tbody>
+        </table>
       </div>
     `
+  }
+
+  function normalizeGameEquipmentRows(gameSystem: ChatGameSystem | undefined, conversation: ChatConversationSummary | undefined): Array<{ name: string; ability: string; quantity: string }> {
+    const generatedEquipment = (gameSystem?.equipment.slots ?? [])
+      .flatMap((slot) => (slot.current ?? []).map((item) => ({
+        name: item.name,
+        ability: item.effects?.length ? item.effects.join(' · ') : item.description ?? slot.rule,
+        quantity: item.quantity ? String(item.quantity) : '1',
+      })))
+      .filter((item) => item.name)
+    if (generatedEquipment.length) {
+      return generatedEquipment
+    }
+    const sceneEquipment = normalizePanelSceneEquipment(conversation?.sceneState?.equipment)
+    return sceneEquipment.map((item) => ({
+      name: item.name,
+      ability: item.ability,
+      quantity: item.quantity || '1',
+    }))
   }
 
   function normalizePanelSceneEquipment(value: unknown): Array<{ name: string; ability: string; quantity: string }> {
