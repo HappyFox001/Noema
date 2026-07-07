@@ -10,6 +10,8 @@ import type {
 import { Image as ImageIcon, Trash2, Volume2, createIcons } from 'lucide'
 import { localizeChatText, type ChatLanguageCode } from './chat-model'
 import { extractRoleplaySpeechTexts, hasRoleplayChatMarkup, renderRoleplayChatMarkup } from './roleplay-chat-markup'
+import { sanitizeAtmosphereCss, sanitizeAtmosphereScopeClass } from './chat-atmosphere-css'
+import { normalizeGamePanelStyle, renderGamePanelClassNames, renderGamePanelInlineStyle } from './chat-game-panel-style'
 
 export interface ChatRendererOptions {
   panel: HTMLElement
@@ -46,6 +48,7 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
   let activeMessageCharacter: ChatCharacterResource | undefined
   let activeConversation: ChatConversationSummary | undefined
   let actionSourceMessageId = ''
+  let atmosphereStyleElement: HTMLStyleElement | null = null
 
   function renderConversationList(
     conversations: ChatConversationSummary[],
@@ -167,42 +170,105 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
   function applyCharacterAtmosphereStyle(style: ChatAtmosphereStyle | undefined): void {
     const root = options.panel
     clearAtmosphereClassNames(root)
-    root.style.removeProperty('--chat-atmosphere-accent')
-    root.style.removeProperty('--chat-atmosphere-accent-soft')
-    root.style.removeProperty('--chat-atmosphere-radius')
-    root.style.removeProperty('--chat-atmosphere-density-gap')
+    root.style.removeProperty('--chat-message-accent')
+    root.style.removeProperty('--chat-message-accent-soft')
+    root.style.removeProperty('--chat-message-surface')
+    root.style.removeProperty('--chat-message-border')
+    root.style.removeProperty('--chat-message-text')
+    root.style.removeProperty('--chat-message-muted')
+    root.style.removeProperty('--chat-message-radius')
+    root.style.removeProperty('--chat-message-density-gap')
+    root.style.removeProperty('--chat-audio-accent')
+    root.style.removeProperty('--chat-audio-accent-soft')
+    root.style.removeProperty('--chat-audio-surface')
+    root.style.removeProperty('--chat-audio-track')
+    root.style.removeProperty('--chat-audio-border')
+    root.style.removeProperty('--chat-audio-text')
+    root.style.removeProperty('--chat-audio-radius')
+    root.style.removeProperty('--chat-audio-height')
+    root.style.removeProperty('--chat-scene-accent')
+    root.style.removeProperty('--chat-scene-accent-soft')
+    root.style.removeProperty('--chat-scene-surface')
+    root.style.removeProperty('--chat-scene-border')
+    root.style.removeProperty('--chat-scene-text')
+    root.style.removeProperty('--chat-scene-muted')
+    root.style.removeProperty('--chat-scene-radius')
+    root.style.removeProperty('--chat-image-border')
+    root.style.removeProperty('--chat-image-radius')
+    root.style.removeProperty('--chat-image-filter')
+    root.style.removeProperty('--chat-image-shadow')
+    removeAtmosphereCss()
     if (!style) {
       return
     }
+    const scopeClass = sanitizeAtmosphereScopeClass(style.scopeClass)
     root.classList.add(
       'has-chat-atmosphere',
-      `chat-atmosphere-surface-${style.palette.surface}`,
-      `chat-atmosphere-message-${style.message.frame}`,
-      `chat-atmosphere-audio-${style.audio.player}`,
-      `chat-atmosphere-scene-${style.sceneCard.frame}`,
-      `chat-atmosphere-density-${style.message.density}`,
-      `chat-atmosphere-radius-${style.message.radius}`,
+      `chat-atmosphere-message-${style.messageStyle.frame}`,
+      `chat-atmosphere-audio-${style.audioStyle.player}`,
+      `chat-atmosphere-scene-${style.sceneStyle.frame}`,
+      `chat-atmosphere-density-${style.messageStyle.density}`,
+      ...(scopeClass ? [scopeClass] : []),
     )
-    root.style.setProperty('--chat-atmosphere-accent', style.palette.accent)
-    root.style.setProperty('--chat-atmosphere-accent-soft', style.palette.accentSoft)
-    root.style.setProperty('--chat-atmosphere-radius', style.message.radius === 'sharp' ? '10px' : style.message.radius === 'round' ? '22px' : '16px')
-    root.style.setProperty('--chat-atmosphere-density-gap', style.message.density === 'compact' ? '8px' : style.message.density === 'airy' ? '16px' : '12px')
+    root.style.setProperty('--chat-message-accent', style.messageStyle.accent)
+    root.style.setProperty('--chat-message-accent-soft', style.messageStyle.accentSoft)
+    root.style.setProperty('--chat-message-surface', style.messageStyle.surface)
+    root.style.setProperty('--chat-message-border', style.messageStyle.border)
+    root.style.setProperty('--chat-message-text', style.messageStyle.text)
+    root.style.setProperty('--chat-message-muted', style.messageStyle.muted)
+    root.style.setProperty('--chat-message-radius', `${style.messageStyle.radiusPx}px`)
+    root.style.setProperty('--chat-message-density-gap', style.messageStyle.density === 'compact' ? '8px' : style.messageStyle.density === 'cinematic' ? '16px' : '12px')
+    root.style.setProperty('--chat-audio-accent', style.audioStyle.accent)
+    root.style.setProperty('--chat-audio-accent-soft', style.audioStyle.accentSoft)
+    root.style.setProperty('--chat-audio-surface', style.audioStyle.surface)
+    root.style.setProperty('--chat-audio-track', style.audioStyle.track)
+    root.style.setProperty('--chat-audio-border', style.audioStyle.border)
+    root.style.setProperty('--chat-audio-text', style.audioStyle.text)
+    root.style.setProperty('--chat-audio-radius', `${style.audioStyle.radiusPx}px`)
+    root.style.setProperty('--chat-audio-height', `${style.audioStyle.heightPx}px`)
+    root.style.setProperty('--chat-scene-accent', style.sceneStyle.accent)
+    root.style.setProperty('--chat-scene-accent-soft', style.sceneStyle.accentSoft)
+    root.style.setProperty('--chat-scene-surface', style.sceneStyle.surface)
+    root.style.setProperty('--chat-scene-border', style.sceneStyle.border)
+    root.style.setProperty('--chat-scene-text', style.sceneStyle.text)
+    root.style.setProperty('--chat-scene-muted', style.sceneStyle.muted)
+    root.style.setProperty('--chat-scene-radius', `${style.sceneStyle.radiusPx}px`)
+    root.style.setProperty('--chat-image-border', style.imageStyle.border)
+    root.style.setProperty('--chat-image-radius', `${style.imageStyle.radiusPx}px`)
+    root.style.setProperty('--chat-image-filter', style.imageStyle.filter)
+    root.style.setProperty('--chat-image-shadow', style.imageStyle.shadow)
+    applyAtmosphereCss(style.css, scopeClass)
   }
 
   function clearAtmosphereClassNames(root: HTMLElement): void {
     root.classList.remove('has-chat-atmosphere')
     for (const className of [...root.classList]) {
       if (
-        className.startsWith('chat-atmosphere-surface-') ||
         className.startsWith('chat-atmosphere-message-') ||
         className.startsWith('chat-atmosphere-audio-') ||
         className.startsWith('chat-atmosphere-scene-') ||
         className.startsWith('chat-atmosphere-density-') ||
-        className.startsWith('chat-atmosphere-radius-')
+        className.startsWith('noema-atmosphere-')
       ) {
         root.classList.remove(className)
       }
     }
+  }
+
+  function applyAtmosphereCss(css: string | undefined, scopeClass: string): void {
+    const safeCss = sanitizeAtmosphereCss(css, scopeClass)
+    if (!safeCss) {
+      return
+    }
+    atmosphereStyleElement = document.createElement('style')
+    atmosphereStyleElement.dataset.chatAtmosphereStyle = scopeClass
+    atmosphereStyleElement.textContent = safeCss
+    options.panel.appendChild(atmosphereStyleElement)
+  }
+
+  function removeAtmosphereCss(): void {
+    atmosphereStyleElement?.remove()
+    atmosphereStyleElement = null
   }
 
   function renderMessages(messages: ChatMessage[], scrollMode: ChatRenderScrollMode = 'auto'): void {
@@ -292,6 +358,7 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
           ${renderOpeningPanel(message)}
           ${renderMessageContent(message, language)}
           ${includeSceneState ? renderInlineSceneState(language) : ''}
+          ${includeSceneState ? renderInlineGameStatus(language) : ''}
           ${renderMessageActions(message, language, includeActions, actionMessageId)}
           <small>${stateLabel}${options.escapeHtml(localizeChatText(message.createdLabel, language))}</small>
         </div>
@@ -328,8 +395,13 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     if (!location && !statusItems.length && !equipment.length) {
       return ''
     }
+    const panelStyle = normalizeGamePanelStyle({ ui: activeMessageCharacter?.gameSystem?.ui ?? {} })
+    const classNames = panelStyle
+      ? renderGamePanelClassNames(panelStyle, 'chat-inline-scene')
+      : 'chat-inline-scene'
+    const inlineStyle = panelStyle ? renderGamePanelInlineStyle(panelStyle) : ''
     return `
-      <section class="chat-inline-scene">
+      <section class="${options.escapeHtml(classNames)}" style="${options.escapeHtml(inlineStyle)}">
         <div class="chat-inline-scene-lines">
           ${renderInlineSceneLine(language === 'zh-CN' ? '地点' : 'Place', location || (language === 'zh-CN' ? '未设定' : 'Unset'))}
           <div class="chat-inline-scene-line">
@@ -379,6 +451,85 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
         <strong>${options.escapeHtml(value)}</strong>
       </div>
     `
+  }
+
+  function renderInlineGameStatus(language: ChatLanguageCode): string {
+    const gameSystem = activeMessageCharacter?.gameSystem
+    if (!gameSystem || (!gameSystem.stats.length && !gameSystem.statuses.length)) {
+      return ''
+    }
+    const stats = gameSystem.stats.filter((stat) => stat.visibility !== 'hidden').slice(0, 6).map((stat) => localizeGameStatLabel(stat, language))
+    const statuses = gameSystem.statuses.slice(0, 4).map((status) => localizeGameStatusLabel(status, language))
+    if (!stats.length && !statuses.length) {
+      return ''
+    }
+    const panelStyle = normalizeGamePanelStyle({ ui: gameSystem.ui ?? {} })
+    const classNames = panelStyle
+      ? renderGamePanelClassNames(panelStyle, 'chat-inline-game-status')
+      : 'chat-inline-game-status'
+    const inlineStyle = panelStyle ? renderGamePanelInlineStyle(panelStyle) : ''
+    return `
+      <section class="${options.escapeHtml(classNames)}" style="${options.escapeHtml(inlineStyle)}" aria-label="${options.escapeHtml(language === 'zh-CN' ? '角色状态栏' : 'Character status')}">
+        ${stats.length ? `
+          <div class="chat-inline-game-stat-row">
+            ${stats.map((stat) => {
+              const min = typeof stat.min === 'number' ? stat.min : 0
+              const max = typeof stat.max === 'number' && stat.max > min ? stat.max : 100
+              const percent = Math.max(0, Math.min(100, Math.round(((stat.value - min) / (max - min)) * 100)))
+              return `
+                <article class="chat-inline-game-stat">
+                  <div><span>${options.escapeHtml(stat.label)}</span><strong>${options.escapeHtml(`${stat.value}${stat.unit ?? ''}`)}</strong></div>
+                  <i style="--stat-value:${percent}%"></i>
+                </article>
+              `
+            }).join('')}
+          </div>
+        ` : ''}
+        ${statuses.length ? `
+          <div class="chat-inline-game-effects">
+            ${statuses.map((status) => `<em>${options.escapeHtml(status.label)}${status.value ? ` · ${options.escapeHtml(status.value)}` : ''}</em>`).join('')}
+          </div>
+        ` : ''}
+      </section>
+    `
+  }
+
+  function localizeGameStatLabel<T extends { id?: string; label: string }>(stat: T, language: ChatLanguageCode): T {
+    if (language !== 'zh-CN') {
+      return stat
+    }
+    const labels: Record<string, string> = {
+      resolve: '决心',
+      composure: '镇定',
+      affinity: '亲近',
+      strain: '压力',
+      leverage: '筹码',
+    }
+    const key = stat.id || stat.label.toLowerCase()
+    return { ...stat, label: labels[key] ?? labels[stat.label.toLowerCase()] ?? stat.label }
+  }
+
+  function localizeGameStatusLabel<T extends { id?: string; label: string; value?: string }>(status: T, language: ChatLanguageCode): T {
+    if (language !== 'zh-CN') {
+      return status
+    }
+    const labels: Record<string, string> = {
+      focused: '专注',
+      exposed: '暴露',
+      marked: '标记',
+    }
+    const values: Record<string, string> = {
+      stable: '稳定',
+      risk: '风险',
+      persistent: '持续',
+    }
+    const labelKey = status.id || status.label.toLowerCase()
+    const valueKey = status.value?.toLowerCase() ?? ''
+    return {
+      ...status,
+      label: labels[labelKey] ?? labels[status.label.toLowerCase()] ?? status.label,
+      value: values[valueKey] ?? status.value,
+    }
   }
 
   function normalizeSceneStatus(value: unknown): string[] {

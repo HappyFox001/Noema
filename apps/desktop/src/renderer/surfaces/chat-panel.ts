@@ -67,6 +67,7 @@ import {
   type ChatMessage,
   type ChatOpeningPanel,
   type ChatAtmosphereStyle,
+  type ChatGameSystem,
 } from './chat-model'
 import {
   createDefaultChatModel,
@@ -87,7 +88,9 @@ import {
 } from './chat-model-config-page'
 import { createChatRenderer } from './chat-renderer'
 import { extractRoleplaySpeechTexts } from './roleplay-chat-markup'
-import { Trash2, createIcons } from 'lucide'
+import { sanitizeAtmosphereCss, sanitizeAtmosphereScopeClass } from './chat-atmosphere-css'
+import { getGamePanelStyleRecord, normalizeGamePanelStyle, renderGamePanelClassNames, renderGamePanelInlineStyle } from './chat-game-panel-style'
+import { Backpack, Trash2, createIcons } from 'lucide'
 
 type ChatResizeEdge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
 
@@ -118,6 +121,8 @@ interface ChatImageModelChoice {
 const CHARACTER_WORKFLOW_LIBRARY_MIN_WIDTH = 148
 const CHARACTER_WORKFLOW_LIBRARY_DEFAULT_WIDTH = 176
 const CHARACTER_WORKFLOW_LIBRARY_MAX_WIDTH = 260
+const CHARACTER_WORKFLOW_GOAL_HISTORY_LIMIT = 64
+const CHARACTER_WORKFLOW_FOCUS_HISTORY_LIMIT = 16
 
 interface CharacterWorkflowEditorState {
   activePanel: CharacterWorkflowSidePanel
@@ -153,6 +158,8 @@ interface CharacterWorkflowProjectRecord {
 
 interface CharacterWorkflowGoalSession {
   objective: string
+  focusPrompt?: string
+  focusHistory?: string[]
   plan: string[]
   completedSteps: string[]
   currentStep?: string
@@ -199,6 +206,12 @@ interface CharacterWorkflowProjectRunRecord {
   status: NonNullable<CharacterResourceRunState['run']>['status']
   createdAt: number
   completedAt?: number
+  runState: CharacterResourceRunState
+}
+
+interface CharacterWorkflowExecutingRunContext {
+  projectId: string
+  runCount: number
   runState: CharacterResourceRunState
 }
 
@@ -308,6 +321,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   const characterProfileTitle = panel.querySelector<HTMLElement>('[data-chat-character-profile-title]')
   const characterProfileKicker = panel.querySelector<HTMLElement>('[data-chat-character-profile-kicker]')
   const characterProfileClose = panel.querySelector<HTMLElement>('[data-chat-character-profile-close]')
+  const gameQuickbar = panel.querySelector<HTMLElement>('[data-chat-game-quickbar]')
+  const gamePanelView = panel.querySelector<HTMLElement>('[data-chat-game-panel-view]')
   const languageButton = panel.querySelector<HTMLButtonElement>('[data-chat-action="language"]')
   const languageMark = panel.querySelector<HTMLElement>('.chat-language-mark')
   const windowCloseButton = panel.querySelector<HTMLButtonElement>('[data-chat-action="window-close"]')
@@ -340,13 +355,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   const visibleChatApiKeys = new Set<string>()
   let conversationSettings = loadConversationSettings()
   let sceneStateCollapsed = false
+  let openGamePanel: '' | 'equipment' = ''
   let chatResourcesHydrated = false
   let chatResourcesHydratePromise: Promise<void> | null = null
   let chatModelConfigLoadPromise: Promise<void> | null = null
   let chatHistoryRenderFrame: number | undefined
   let conversationSettingsRenderFrame: number | undefined
   let pendingCharacterDeleteId = ''
-  let characterWorkflowRenderToken = 0
   let characterWorkflowLazyRenderToken = 0
   let characterWorkflowPageModulePromise: Promise<CharacterWorkflowPageModule> | null = null
   const characterWorkflowConfigOverrides: Record<string, Record<string, unknown>> = {}
@@ -364,8 +379,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   const characterWorkflowAssistantInterruptedRuns = new Set<number>()
   let characterWorkflowTemplateMenuOpen = false
   let characterWorkflowRunState: CharacterResourceRunState | null = null
-  let characterWorkflowExecutingProjectId = ''
-  let characterWorkflowExecutingRunState: CharacterResourceRunState | null = null
+  const characterWorkflowExecutingRuns = new Map<string, CharacterWorkflowExecutingRunContext>()
   let characterWorkflowRunOpenToken = 0
   let characterWorkflowRunCount = 0
   let characterWorkflowActiveTabId = 'workflow'
@@ -404,6 +418,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     deletedLinkIds: new Set<string>(),
     replacedTargetSlots: new Set<string>(),
   }
+  const characterWorkflowRunDraftViewState = {
+    zoom: 0.74,
+    panX: 0,
+    panY: 0,
+    selectedNodeIds: [] as string[],
+    selectedLinkId: '',
+    lastManualViewportAt: 0,
+  }
   const characterWorkflowEditorState: CharacterWorkflowEditorState = {
     activePanel: 'workflow',
     sidebarCollapsed: false,
@@ -436,7 +458,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     startY: number
     originX: number
     originY: number
+    runDraft: boolean
+    zoom: number
   } | null = null
+  const characterWorkflowRunInspectorSnapshots = new WeakMap<HTMLElement, string>()
+  let characterWorkflowRunDraftPatchDeferred: { projectId: string; runId: string } | null = null
+  let characterWorkflowRunDraftFocusArtifactId = ''
   let characterResourceViewportDrag: {
     mode: 'pan' | 'select'
     pointerId: number
@@ -444,6 +471,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     startY: number
     originPanX: number
     originPanY: number
+    runDraft: boolean
   } | null = null
   let characterResourceNodeResize: {
     nodeId: string
@@ -453,6 +481,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     originWidth: number
     originHeight: number
   } | null = null
+
+  interface CharacterWorkflowRunInspectorPatchScope {
+    fieldKeys: Set<string>
+    patchAllFields: boolean
+    patchImages: boolean
+    patchHero: boolean
+  }
   let characterWorkflowLibraryResize: {
     pointerId: number
     startX: number
@@ -488,17 +523,20 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!conversation) {
       renderer.renderConversationList([], [], '')
       renderer.renderEmptyState()
+      renderGameQuickbar()
       return
     }
     const character = getCharacterForConversation(state, conversation)
     if (!character) {
       renderer.renderConversationList([], [], '')
       renderer.renderEmptyState()
+      renderGameQuickbar()
       return
     }
     const sceneChanged = ensureConversationSceneDefaults(conversation, character)
     renderer.renderConversationList(state.conversations, state.characterResources, conversation.id)
     renderer.renderActiveConversation(conversation, character)
+    renderGameQuickbar(character)
     if (sceneChanged) {
       void persistConversation(conversation)
     }
@@ -509,6 +547,161 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (searchInput?.value) {
       renderer.filterConversations(searchInput.value)
     }
+  }
+
+  function renderGameQuickbar(character?: ChatCharacterResource): void {
+    if (!gameQuickbar || !gamePanelView) {
+      return
+    }
+    if (!character) {
+      openGamePanel = ''
+      gameQuickbar.hidden = true
+      gamePanelView.classList.remove('visible')
+      gamePanelView.classList.remove('is-equipment-panel')
+      gamePanelView.setAttribute('aria-hidden', 'true')
+      gamePanelView.innerHTML = ''
+      return
+    }
+    gameQuickbar.hidden = false
+    const zh = options.getLanguage() === 'zh-CN'
+    const equipmentCount = getCharacterEquipmentCount(character, getActiveConversation(state))
+    gameQuickbar.querySelectorAll<HTMLElement>('[data-chat-game-panel]').forEach((button) => {
+      const panelName = button.dataset.chatGamePanel || ''
+      if (panelName === 'equipment') {
+        const label = zh ? '装备栏' : 'Equipment'
+        button.setAttribute('aria-label', label)
+        button.setAttribute('title', label)
+        button.innerHTML = `
+          <span class="chat-game-quickbar-icon"><i data-lucide="backpack" aria-hidden="true"></i></span>
+          <span class="chat-game-quickbar-copy">${options.escapeHtml(label)}</span>
+          <em>${options.escapeHtml(String(equipmentCount))}</em>
+        `
+      }
+      const active = panelName === openGamePanel
+      button.classList.toggle('is-active', active)
+      button.setAttribute('aria-pressed', active ? 'true' : 'false')
+    })
+    createIcons({
+      icons: { Backpack },
+      root: gameQuickbar,
+      attrs: {
+        width: 15,
+        height: 15,
+        'stroke-width': 2.05,
+      },
+    })
+    if (!openGamePanel) {
+      gamePanelView.classList.remove('visible')
+      gamePanelView.classList.remove('is-equipment-panel')
+      gamePanelView.setAttribute('aria-hidden', 'true')
+      gamePanelView.innerHTML = ''
+      return
+    }
+    gamePanelView.classList.add('visible')
+    gamePanelView.classList.toggle('is-equipment-panel', openGamePanel === 'equipment')
+    gamePanelView.setAttribute('aria-hidden', 'false')
+    gamePanelView.innerHTML = renderGamePanel(character, getActiveConversation(state), options.getLanguage())
+  }
+
+  function renderGamePanel(character: ChatCharacterResource, conversation: ChatConversationSummary | undefined, language: 'zh-CN' | 'en-US'): string {
+    const zh = language === 'zh-CN'
+    const title = zh ? '装备栏' : 'Equipment'
+    const panelStyle = normalizeGamePanelStyle({ ui: character.gameSystem?.ui ?? {} })
+    const panelClassNames = panelStyle
+      ? renderGamePanelClassNames(panelStyle, 'chat-inline-scene')
+      : 'chat-inline-scene'
+    const panelInlineStyle = panelStyle ? renderGamePanelInlineStyle(panelStyle) : ''
+    const body = renderGameEquipmentTable(character.gameSystem, conversation, zh)
+    return `
+      <div class="chat-game-panel-sheet--equipment">
+        <section class="${options.escapeHtml(panelClassNames)}" style="${options.escapeHtml(panelInlineStyle)}">
+          <button class="chat-inline-equipment-toggle" type="button" data-chat-game-panel-close aria-expanded="true" aria-label="${options.escapeHtml(zh ? '收起装备栏' : 'Close equipment')}">
+            <span>${options.escapeHtml(title)}</span>
+            <em>${options.escapeHtml(String(getCharacterEquipmentCount(character, conversation)))}</em>
+            <strong aria-hidden="true">${options.escapeHtml(zh ? '收起' : 'Close')}</strong>
+          </button>
+          ${body}
+        </section>
+      </div>
+    `
+  }
+
+  function renderGameEquipmentTable(gameSystem: ChatGameSystem | undefined, conversation: ChatConversationSummary | undefined, zh: boolean): string {
+    const equipment = normalizeGameEquipmentRows(gameSystem, conversation)
+    return `
+      <div class="chat-inline-equipment">
+        <table>
+          <thead>
+            <tr>
+              <th>${options.escapeHtml(zh ? '名称' : 'Name')}</th>
+              <th>${options.escapeHtml(zh ? '作用' : 'Effect')}</th>
+              <th>${options.escapeHtml(zh ? '数量' : 'Qty')}</th>
+              <th>${options.escapeHtml(zh ? '使用' : 'Use')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${equipment.length ? equipment.map((item, index) => `
+              <tr>
+                <td>${options.escapeHtml(item.name)}</td>
+                <td>${options.escapeHtml(item.ability)}</td>
+                <td>${options.escapeHtml(item.quantity)}</td>
+                <td><button class="chat-inline-equipment-use" type="button" data-chat-equipment-use="${options.escapeHtml(String(index))}" data-chat-equipment-name="${options.escapeHtml(item.name)}">${options.escapeHtml(zh ? '使用' : 'Use')}</button></td>
+              </tr>
+            `).join('') : `
+              <tr>
+                <td colspan="4">${options.escapeHtml(zh ? '暂无装备记录' : 'No equipment recorded')}</td>
+              </tr>
+            `}
+          </tbody>
+        </table>
+      </div>
+    `
+  }
+
+  function normalizeGameEquipmentRows(gameSystem: ChatGameSystem | undefined, conversation: ChatConversationSummary | undefined): Array<{ name: string; ability: string; quantity: string }> {
+    const generatedEquipment = (gameSystem?.equipment.slots ?? [])
+      .flatMap((slot) => (slot.current ?? []).map((item) => ({
+        name: item.name,
+        ability: item.effects?.length ? item.effects.join(' · ') : item.description ?? slot.rule,
+        quantity: item.quantity ? String(item.quantity) : '1',
+      })))
+      .filter((item) => item.name)
+    if (generatedEquipment.length) {
+      return generatedEquipment
+    }
+    const sceneEquipment = normalizePanelSceneEquipment(conversation?.sceneState?.equipment)
+    return sceneEquipment.map((item) => ({
+      name: item.name,
+      ability: item.ability,
+      quantity: item.quantity || '1',
+    }))
+  }
+
+  function normalizePanelSceneEquipment(value: unknown): Array<{ name: string; ability: string; quantity: string }> {
+    if (!Array.isArray(value)) {
+      return []
+    }
+    return value
+      .map((item) => {
+        if (item && typeof item === 'object') {
+          const record = item as Record<string, unknown>
+          return {
+            name: stringField(record.name ?? record.label ?? record.item),
+            ability: stringField(record.ability ?? record.effect ?? record.description),
+            quantity: stringField(record.quantity ?? record.count ?? ''),
+          }
+        }
+        return { name: stringField(item), ability: '', quantity: '' }
+      })
+      .filter((item) => item.name)
+  }
+
+  function getCharacterEquipmentCount(character: ChatCharacterResource, conversation: ChatConversationSummary | undefined): number {
+    const generatedCount = character.gameSystem?.equipment.slots.reduce((total, slot) => total + (slot.current?.length ?? 0), 0) ?? 0
+    if (generatedCount > 0) {
+      return generatedCount
+    }
+    return normalizePanelSceneEquipment(conversation?.sceneState?.equipment).length
   }
 
   function setActiveNav(button: HTMLButtonElement): void {
@@ -2380,11 +2573,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const narration = preview.narration || localizeChatText(character.description, language) || (zh ? '她安静地停在你身侧，像是在等一句迟来的回答。' : 'She settles beside you quietly, waiting for the answer that arrives late.')
     const speech = preview.speech || extractFirstRoleSpeech(localizeChatText(character.firstMessage, language)) || (zh ? '这里代错了。' : 'This step is wrong.')
     const userLine = preview.userLine || (zh ? '我应该从哪里重新开始？' : 'Where should I start again?')
-    const location = preview.location || (zh ? '当前场景' : 'Current scene')
-    const status = preview.status?.length ? preview.status : (zh ? ['氛围 72', '距离 18', '警戒 63'] : ['Mood 72', 'Distance 18', 'Guard 63'])
-    const equipment = preview.equipment?.length ? preview.equipment : [{ name: zh ? '随身物件' : 'Keepsake', ability: zh ? '维持角色气氛' : 'Holds the character mood', quantity: '1' }]
     const silentAudioSource = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA='
     return `
+      ${renderAtmosphereScopedStyle(style)}
       <section class="${renderAtmosphereClassNames(style, 'chat-profile-atmosphere')}" style="${renderAtmosphereInlineStyle(style)}">
         <div class="chat-profile-atmosphere-head">
           <span>${options.escapeHtml(zh ? '角色卡氛围样式' : 'Character atmosphere')}</span>
@@ -2410,60 +2601,61 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
               </p>
             </div>
           </div>
-          <section class="chat-inline-scene">
-            <div class="chat-inline-scene-lines">
-              <div class="chat-inline-scene-line">
-                <span>${options.escapeHtml(zh ? '地点' : 'Place')}</span>
-                <strong>${options.escapeHtml(compactProfileText(location, 36))}</strong>
-              </div>
-              <div class="chat-inline-scene-line">
-                <span>${options.escapeHtml(zh ? '状态' : 'Status')}</span>
-                <div class="chat-inline-scene-status">
-                  ${status.slice(0, 3).map((item) => `<em>${options.escapeHtml(item)}</em>`).join('')}
-                </div>
-              </div>
-            </div>
-            <div class="chat-inline-equipment">
-              <table>
-                <tbody>
-                  ${equipment.slice(0, 2).map((item) => `
-                    <tr>
-                      <td>${options.escapeHtml(item.name)}</td>
-                      <td>${options.escapeHtml(item.ability)}</td>
-                      <td>${options.escapeHtml(item.quantity || '1')}</td>
-                    </tr>
-                  `).join('')}
-                </tbody>
-              </table>
-            </div>
-          </section>
         </div>
       </section>
     `
   }
 
   function renderAtmosphereClassNames(style: ChatAtmosphereStyle, baseClass: string): string {
+    const scopeClass = sanitizeAtmosphereScopeClass(style.scopeClass)
     return [
       baseClass,
       'has-chat-atmosphere',
-      `chat-atmosphere-surface-${style.palette.surface}`,
-      `chat-atmosphere-message-${style.message.frame}`,
-      `chat-atmosphere-audio-${style.audio.player}`,
-      `chat-atmosphere-scene-${style.sceneCard.frame}`,
-      `chat-atmosphere-density-${style.message.density}`,
-      `chat-atmosphere-radius-${style.message.radius}`,
-    ].join(' ')
+      `chat-atmosphere-message-${style.messageStyle.frame}`,
+      `chat-atmosphere-audio-${style.audioStyle.player}`,
+      `chat-atmosphere-scene-${style.sceneStyle.frame}`,
+      `chat-atmosphere-density-${style.messageStyle.density}`,
+      scopeClass,
+    ].filter(Boolean).join(' ')
   }
 
   function renderAtmosphereInlineStyle(style: ChatAtmosphereStyle): string {
-    const radius = style.message.radius === 'sharp' ? '10px' : style.message.radius === 'round' ? '22px' : '16px'
-    const densityGap = style.message.density === 'compact' ? '8px' : style.message.density === 'airy' ? '16px' : '12px'
+    const densityGap = style.messageStyle.density === 'compact' ? '8px' : style.messageStyle.density === 'cinematic' ? '16px' : '12px'
     return [
-      `--chat-atmosphere-accent:${style.palette.accent}`,
-      `--chat-atmosphere-accent-soft:${style.palette.accentSoft}`,
-      `--chat-atmosphere-radius:${radius}`,
-      `--chat-atmosphere-density-gap:${densityGap}`,
+      `--chat-message-accent:${style.messageStyle.accent}`,
+      `--chat-message-accent-soft:${style.messageStyle.accentSoft}`,
+      `--chat-message-surface:${style.messageStyle.surface}`,
+      `--chat-message-border:${style.messageStyle.border}`,
+      `--chat-message-text:${style.messageStyle.text}`,
+      `--chat-message-muted:${style.messageStyle.muted}`,
+      `--chat-message-radius:${style.messageStyle.radiusPx}px`,
+      `--chat-message-density-gap:${densityGap}`,
+      `--chat-audio-accent:${style.audioStyle.accent}`,
+      `--chat-audio-accent-soft:${style.audioStyle.accentSoft}`,
+      `--chat-audio-surface:${style.audioStyle.surface}`,
+      `--chat-audio-track:${style.audioStyle.track}`,
+      `--chat-audio-border:${style.audioStyle.border}`,
+      `--chat-audio-text:${style.audioStyle.text}`,
+      `--chat-audio-radius:${style.audioStyle.radiusPx}px`,
+      `--chat-audio-height:${style.audioStyle.heightPx}px`,
+      `--chat-scene-accent:${style.sceneStyle.accent}`,
+      `--chat-scene-accent-soft:${style.sceneStyle.accentSoft}`,
+      `--chat-scene-surface:${style.sceneStyle.surface}`,
+      `--chat-scene-border:${style.sceneStyle.border}`,
+      `--chat-scene-text:${style.sceneStyle.text}`,
+      `--chat-scene-muted:${style.sceneStyle.muted}`,
+      `--chat-scene-radius:${style.sceneStyle.radiusPx}px`,
+      `--chat-image-border:${style.imageStyle.border}`,
+      `--chat-image-radius:${style.imageStyle.radiusPx}px`,
+      `--chat-image-filter:${style.imageStyle.filter}`,
+      `--chat-image-shadow:${style.imageStyle.shadow}`,
     ].join(';')
+  }
+
+  function renderAtmosphereScopedStyle(style: ChatAtmosphereStyle): string {
+    const scopeClass = sanitizeAtmosphereScopeClass(style.scopeClass)
+    const css = sanitizeAtmosphereCss(style.css, scopeClass)
+    return css ? `<style data-chat-atmosphere-preview-style="${options.escapeHtml(scopeClass)}">${css}</style>` : ''
   }
 
   function extractFirstRoleSpeech(value: string): string {
@@ -2931,6 +3123,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       },
       roleCard: fields,
       atmosphereStyle: extractAtmosphereStyleFromRunDraft(characterWorkflowRunState),
+      gameSystem: extractGameSystemFromRunDraft(characterWorkflowRunState),
       chat: {
         name: stringField(fields.name),
         description: stringField(fields.description),
@@ -2984,6 +3177,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const overviewImage = findRunDraftImage(runState, ['character-overview-sheet', 'overview-sheet', 'overview'])
     const openingPanel = extractOpeningPanelFromRunDraft(runState)
     const atmosphereStyle = extractAtmosphereStyleFromRunDraft(runState)
+    const gameSystem = extractGameSystemFromRunDraft(runState)
     const id = `workflow-run-${sanitizeChatResourceId(runState.run?.id ?? name)}`
     const generatedImageAssets = collectRunDraftGeneratedImageAssets(runState, id, [avatarImage, overviewImage])
     return {
@@ -2998,9 +3192,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         firstMessage,
         ...(openingPanel ? { openingPanel } : {}),
         ...(atmosphereStyle ? { atmosphereStyle } : {}),
+        ...(gameSystem ? { gameSystem } : {}),
       },
       ...(openingPanel ? { openingPanel } : {}),
       ...(atmosphereStyle ? { atmosphereStyle } : {}),
+      ...(gameSystem ? { gameSystem } : {}),
       name: localizedText(name),
       displayName: localizedText(name),
       description: localizedText(description),
@@ -3023,6 +3219,105 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
   }
 
+  function extractGameSystemFromRunDraft(runState: CharacterResourceRunState): ChatGameSystem | undefined {
+    const artifact = [...(runState.artifacts ?? [])].reverse().find((item) => item.type === 'game-system')
+    const data = artifact?.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
+      ? artifact.data as Record<string, unknown>
+      : null
+    if (!data) {
+      return undefined
+    }
+    const equipment = objectField(data.equipment) ?? {}
+    const stats = arrayField(data.stats)
+      .map((item) => {
+        const stat = objectField(item)
+        if (!stat) return null
+        const label = stringField(stat.label)
+        const id = sanitizeChatResourceId(stringField(stat.id) || label)
+        if (!label || !id) return null
+        return {
+          id,
+          label,
+          value: numberField(stat.value, 0),
+          min: optionalNumberField(stat.min),
+          max: optionalNumberField(stat.max),
+          unit: stringField(stat.unit) || undefined,
+          tone: stringField(stat.tone) || undefined,
+          description: stringField(stat.description) || undefined,
+          visibility: enumField(stat.visibility, ['shown', 'hidden', 'conditional'], 'shown'),
+        }
+      })
+      .filter(Boolean) as ChatGameSystem['stats']
+    const slots = arrayField(equipment.slots)
+      .map((item) => {
+        const slot = objectField(item)
+        if (!slot) return null
+        const label = stringField(slot.label)
+        const id = sanitizeChatResourceId(stringField(slot.id) || label)
+        if (!label || !id) return null
+        return {
+          id,
+          label,
+          limit: Math.max(1, Math.round(numberField(slot.limit, 1))),
+          rule: stringField(slot.rule),
+          current: arrayField(slot.current).map((entry) => {
+            const itemRecord = objectField(entry)
+            const name = stringField(itemRecord?.name)
+            if (!itemRecord || !name) return null
+            return {
+              id: sanitizeChatResourceId(stringField(itemRecord.id) || name),
+              name,
+              description: stringField(itemRecord.description) || undefined,
+              tags: stringArrayField(itemRecord.tags).slice(0, 8),
+              quantity: optionalNumberField(itemRecord.quantity),
+              durability: optionalNumberField(itemRecord.durability),
+              effects: stringArrayField(itemRecord.effects).slice(0, 8),
+            }
+          }).filter(Boolean) as ChatGameSystem['equipment']['slots'][number]['current'],
+        }
+      })
+      .filter(Boolean) as ChatGameSystem['equipment']['slots']
+    const statuses = arrayField(data.statuses)
+      .map((item) => {
+        const status = objectField(item)
+        const label = stringField(status?.label)
+        if (!status || !label) return null
+        return {
+          id: sanitizeChatResourceId(stringField(status.id) || label),
+          label,
+          value: stringField(status.value) || undefined,
+          tone: stringField(status.tone) || undefined,
+          description: stringField(status.description) || undefined,
+          duration: stringField(status.duration) || undefined,
+          rule: stringField(status.rule) || undefined,
+        }
+      })
+      .filter(Boolean) as ChatGameSystem['statuses']
+    if (!stats.length && !slots.length && !statuses.length) {
+      return undefined
+    }
+    const panelStyleRecord = getGamePanelStyleRecord(data)
+    const panelStyle = Object.keys(panelStyleRecord).length
+      ? normalizeGamePanelStyle(data)
+      : undefined
+    return {
+      schemaVersion: 1,
+      name: stringField(data.name) || stringField(artifact?.title) || 'Character game system',
+      summary: stringField(data.summary) || artifact?.summary,
+      stats,
+      equipment: {
+        slots,
+        rules: stringArrayField(equipment.rules).slice(0, 12),
+        acquisitionRules: stringArrayField(equipment.acquisitionRules).slice(0, 12),
+        forbiddenRules: stringArrayField(equipment.forbiddenRules).slice(0, 12),
+      },
+      statuses,
+      rules: stringArrayField(data.rules).slice(0, 16),
+      ui: { quickPanels: ['equipment', 'status', 'rules'], ...(panelStyle ? { panelStyle } : {}) },
+      sourceArtifactId: artifact?.id,
+    }
+  }
+
   function extractAtmosphereStyleFromRunDraft(runState: CharacterResourceRunState): ChatAtmosphereStyle | undefined {
     const artifact = [...(runState.artifacts ?? [])].reverse().find((item) => item.type === 'atmosphere-style')
     const data = artifact?.data && typeof artifact.data === 'object' && !Array.isArray(artifact.data)
@@ -3031,40 +3326,75 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!data) {
       return undefined
     }
-    const palette = objectField(data.palette)
-    const message = objectField(data.message)
-    const audio = objectField(data.audio)
-    const sceneCard = objectField(data.sceneCard)
-    if (!palette || !message || !audio || !sceneCard) {
+    if (numberField(data.schemaVersion, 0) !== 2) {
       return undefined
     }
+    const messageStyle = objectField(data.messageStyle)
+    const audioStyle = objectField(data.audioStyle)
+    const sceneStyle = objectField(data.sceneStyle)
+    const imageStyle = objectField(data.imageStyle)
+    if (!messageStyle || !audioStyle || !sceneStyle || !imageStyle) {
+      return undefined
+    }
+    const messageDensity = enumField(messageStyle.density, ['compact', 'balanced', 'cinematic'], 'balanced')
+    const messageRadius = enumField(messageStyle.radius, ['sharp', 'soft', 'round'], 'soft')
+    const audioPlayer = enumField(audioStyle.player, ['bar', 'capsule', 'console'], 'capsule')
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       name: stringField(data.name) || stringField(artifact?.title) || 'Character atmosphere',
       summary: stringField(data.summary) || artifact?.summary,
       mood: stringArrayField(data.mood).slice(0, 8),
-      palette: {
-        accent: stringField(palette.accent) || '#c7d8d0',
-        accentSoft: stringField(palette.accentSoft) || 'rgba(199, 216, 208, 0.16)',
-        surface: enumField(palette.surface, ['glass', 'paper', 'noir', 'mist', 'velvet', 'terminal'], 'glass'),
-        warmth: enumField(palette.warmth, ['cool', 'neutral', 'warm'], 'neutral'),
-        contrast: enumField(palette.contrast, ['low', 'medium', 'high'], 'medium'),
+      scopeClass: sanitizeAtmosphereScopeClass(stringField(data.scopeClass)),
+      css: sanitizeAtmosphereCss(stringField(data.css), sanitizeAtmosphereScopeClass(stringField(data.scopeClass))),
+      designBrief: normalizeAtmosphereDesignBrief(data.designBrief),
+      messageStyle: {
+        frame: enumField(messageStyle.frame, ['minimal', 'panel', 'glass', 'ornate'], 'panel'),
+        narration: enumField(messageStyle.narration, ['soft-prose', 'cinematic', 'noir', 'diary', 'clinical'], 'soft-prose'),
+        speech: enumField(messageStyle.speech, ['quote-emphasis', 'quiet-line', 'stage-dialogue'], 'quote-emphasis'),
+        density: messageDensity,
+        radius: messageRadius,
+        accent: stringField(messageStyle.accent) || '#c7d8d0',
+        accentSoft: stringField(messageStyle.accentSoft) || 'rgba(199, 216, 208, 0.16)',
+        surface: stringField(messageStyle.surface) || 'rgba(9, 9, 11, 0.86)',
+        border: stringField(messageStyle.border) || 'rgba(218, 232, 224, 0.18)',
+        text: stringField(messageStyle.text) || 'rgba(250, 250, 246, 0.95)',
+        muted: stringField(messageStyle.muted) || 'rgba(225, 228, 224, 0.76)',
+        radiusPx: numberField(messageStyle.radiusPx, messageRadius === 'sharp' ? 10 : messageRadius === 'round' ? 22 : 16),
+        paddingY: numberField(messageStyle.paddingY, messageDensity === 'compact' ? 15 : messageDensity === 'cinematic' ? 24 : 18),
+        paddingX: numberField(messageStyle.paddingX, messageDensity === 'compact' ? 17 : messageDensity === 'cinematic' ? 25 : 20),
+        lineWeight: numberField(messageStyle.lineWeight, 1),
       },
-      message: {
-        frame: enumField(message.frame, ['plain', 'literary-panel', 'visual-novel', 'dossier', 'letter'], 'literary-panel'),
-        narration: enumField(message.narration, ['soft-prose', 'cinematic', 'noir', 'diary', 'clinical'], 'soft-prose'),
-        speech: enumField(message.speech, ['quote-emphasis', 'quiet-line', 'stage-dialogue'], 'quote-emphasis'),
-        density: enumField(message.density, ['compact', 'balanced', 'airy'], 'balanced'),
-        radius: enumField(message.radius, ['sharp', 'soft', 'round'], 'soft'),
+      audioStyle: {
+        player: audioPlayer,
+        motion: enumField(audioStyle.motion, ['still', 'pulse', 'scan'], 'pulse'),
+        tone: enumField(audioStyle.tone, ['intimate', 'ambient', 'dramatic'], 'ambient'),
+        accent: stringField(audioStyle.accent) || '#c7d8d0',
+        accentSoft: stringField(audioStyle.accentSoft) || 'rgba(199, 216, 208, 0.16)',
+        surface: stringField(audioStyle.surface) || 'rgba(255, 255, 255, 0.032)',
+        track: stringField(audioStyle.track) || 'rgba(255, 255, 255, 0.14)',
+        border: stringField(audioStyle.border) || 'rgba(218, 232, 224, 0.18)',
+        text: stringField(audioStyle.text) || 'rgba(248, 250, 250, 0.78)',
+        radiusPx: numberField(audioStyle.radiusPx, audioPlayer === 'console' ? 10 : audioPlayer === 'bar' ? 18 : 999),
+        heightPx: numberField(audioStyle.heightPx, audioPlayer === 'bar' ? 36 : 40),
       },
-      audio: {
-        player: enumField(audio.player, ['thin-glass-bar', 'soft-wave-strip', 'quiet-capsule', 'dossier-line'], 'thin-glass-bar'),
-        motion: enumField(audio.motion, ['still', 'subtle-wave', 'breath'], 'subtle-wave'),
-        tone: enumField(audio.tone, ['near', 'distant', 'intimate', 'formal'], 'near'),
+      sceneStyle: {
+        frame: enumField(sceneStyle.frame, ['plain', 'panel', 'ledger', 'instrument'], 'panel'),
+        divider: enumField(sceneStyle.divider, ['line', 'glow', 'none'], 'line'),
+        accent: stringField(sceneStyle.accent) || '#c7d8d0',
+        accentSoft: stringField(sceneStyle.accentSoft) || 'rgba(199, 216, 208, 0.16)',
+        surface: stringField(sceneStyle.surface) || 'rgba(7, 8, 9, 0.52)',
+        border: stringField(sceneStyle.border) || 'rgba(218, 232, 224, 0.16)',
+        text: stringField(sceneStyle.text) || 'rgba(248, 250, 250, 0.76)',
+        muted: stringField(sceneStyle.muted) || 'rgba(248, 250, 250, 0.42)',
+        radiusPx: numberField(sceneStyle.radiusPx, 14),
       },
-      sceneCard: {
-        frame: enumField(sceneCard.frame, ['quiet-panel', 'glass-dossier', 'paper-note', 'terminal-readout'], 'quiet-panel'),
-        divider: enumField(sceneCard.divider, ['fine-line', 'soft-band', 'none'], 'fine-line'),
+      imageStyle: {
+        treatment: enumField(imageStyle.treatment, ['portrait', 'artifact', 'cinematic'], 'portrait'),
+        accent: stringField(imageStyle.accent) || accent,
+        border: stringField(imageStyle.border) || 'rgba(255, 255, 255, 0.10)',
+        shadow: stringField(imageStyle.shadow) || 'rgba(0, 0, 0, 0.32)',
+        radiusPx: numberField(imageStyle.radiusPx, 12),
+        filter: stringField(imageStyle.filter) || 'contrast(1.02) saturate(1.02)',
       },
       preview: normalizeAtmospherePreviewField(data.preview),
       sourceArtifactId: artifact?.id,
@@ -3098,24 +3428,27 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!record) {
       return undefined
     }
-    const equipment = Array.isArray(record.equipment)
-      ? record.equipment.map((item) => {
-          const entry = objectField(item)
-          if (!entry) return null
-          const name = stringField(entry.name)
-          const ability = stringField(entry.ability)
-          if (!name || !ability) return null
-          return { name, ability, quantity: stringField(entry.quantity) || undefined }
-        }).filter(Boolean) as Array<{ name: string; ability: string; quantity?: string }>
-      : undefined
     return {
       userLine: stringField(record.userLine) || undefined,
       narration: stringField(record.narration) || undefined,
       speech: stringField(record.speech) || undefined,
-      location: stringField(record.location) || undefined,
-      status: stringArrayField(record.status).slice(0, 4),
-      equipment,
     }
+  }
+
+  function normalizeAtmosphereDesignBrief(value: unknown): ChatAtmosphereStyle['designBrief'] | undefined {
+    const record = objectField(value)
+    if (!record) {
+      return undefined
+    }
+    const brief = {
+      concept: stringField(record.concept) || undefined,
+      colorSystem: stringField(record.colorSystem) || undefined,
+      surfaceTreatment: stringField(record.surfaceTreatment) || undefined,
+      typography: stringField(record.typography) || undefined,
+      audioTreatment: stringField(record.audioTreatment) || undefined,
+      sceneTreatment: stringField(record.sceneTreatment) || undefined,
+    }
+    return Object.values(brief).some(Boolean) ? brief : undefined
   }
 
   function normalizeRoleChatMarkup(value: string): string {
@@ -3465,6 +3798,20 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       : []
   }
 
+  function arrayField(value: unknown): unknown[] {
+    return Array.isArray(value) ? value : []
+  }
+
+  function numberField(value: unknown, fallback: number): number {
+    const number = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
+    return Number.isFinite(number) ? number : fallback
+  }
+
+  function optionalNumberField(value: unknown): number | undefined {
+    const number = numberField(value, NaN)
+    return Number.isFinite(number) ? number : undefined
+  }
+
   function objectField(value: unknown): Record<string, unknown> | null {
     return value && typeof value === 'object' && !Array.isArray(value)
       ? value as Record<string, unknown>
@@ -3785,19 +4132,32 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
   }
 
-  function scheduleCharacterWorkflowRunRender(): void {
+  function scheduleCharacterWorkflowRunRender(projectId = activeCharacterWorkflowProjectId, runId = characterWorkflowRunState?.run?.id ?? ''): void {
+    if (projectId && runId && !isViewingWorkflowRun(projectId, runId)) {
+      return
+    }
     if (characterWorkflowRunRenderFrame !== undefined) {
       return
     }
     characterWorkflowRunRenderFrame = window.requestAnimationFrame(() => {
       characterWorkflowRunRenderFrame = undefined
-      void patchCharacterWorkflowRunDraft()
+      void patchCharacterWorkflowRunDraft(projectId, runId)
     })
   }
 
-  async function patchCharacterWorkflowRunDraft(): Promise<void> {
+  async function patchCharacterWorkflowRunDraft(projectId = '', runId = ''): Promise<void> {
+    if (projectId && runId && !isViewingWorkflowRun(projectId, runId)) {
+      return
+    }
     if (!characterWorkflowRoot || characterWorkflowActiveTabId !== 'run-draft') {
-      renderCharacterWorkflow()
+      return
+    }
+    if (characterWorkflowDragging?.runDraft || (characterWorkflowActiveTabId === 'run-draft' && characterResourceViewportDrag)) {
+      const deferredProjectId = projectId || activeCharacterWorkflowProjectId
+      const deferredRunId = runId || characterWorkflowRunState?.run?.id || ''
+      characterWorkflowRunDraftPatchDeferred = deferredProjectId && deferredRunId
+        ? { projectId: deferredProjectId, runId: deferredRunId }
+        : null
       return
     }
     const activeProject = characterWorkflowProjects.find((project) => project.id === activeCharacterWorkflowProjectId)
@@ -3811,9 +4171,38 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (renderToken !== characterWorkflowLazyRenderToken || !characterWorkflowRoot?.isConnected) {
       return
     }
-    const pageOptions = createCharacterWorkflowPageOptions(activeProject)
+    const runViewportRect = runViewport.getBoundingClientRect()
+    const focusArtifactId = characterWorkflowRunDraftFocusArtifactId
+    const pageOptions = createCharacterWorkflowPageOptions(
+      activeProject,
+      {
+        width: Math.round(runViewportRect.width),
+        height: Math.round(runViewportRect.height),
+      },
+      true
+    )
     const nextViewportHtml = workflowPage.renderCharacterWorkflowRunDraftViewport(pageOptions)
-    replaceCharacterWorkflowRunViewport(runViewport, nextViewportHtml)
+    patchCharacterWorkflowRunViewport(runViewport, nextViewportHtml)
+    let inspectorPatchScope: CharacterWorkflowRunInspectorPatchScope | undefined
+    const patchedViewport = characterWorkflowRoot.querySelector<HTMLElement>('.chat-resource-run-viewport')
+    if (patchedViewport) {
+      const insertedLinkIds = readRunDraftPatchIds(patchedViewport.dataset.runInsertedLinkIds)
+      const insertedNodeIds = readRunDraftPatchIds(patchedViewport.dataset.runInsertedNodeIds)
+      const updatedNodeIds = readRunDraftPatchIds(patchedViewport.dataset.runUpdatedNodeIds)
+      const changedNodeIds = [...insertedNodeIds, ...updatedNodeIds]
+      inspectorPatchScope = changedNodeIds.length
+        ? createRunInspectorPatchScope(patchedViewport, changedNodeIds)
+        : undefined
+      if (inspectorPatchScope && !hasRunInspectorPatchScopeUpdates(inspectorPatchScope)) {
+        inspectorPatchScope = undefined
+      }
+      workflowPage.animateRunLinkFlow?.(patchedViewport, insertedLinkIds)
+      workflowPage.animateRunCardInserted?.(patchedViewport, insertedNodeIds)
+      workflowPage.animateRunCardUpdated?.(patchedViewport, updatedNodeIds)
+      delete patchedViewport.dataset.runInsertedLinkIds
+      delete patchedViewport.dataset.runInsertedNodeIds
+      delete patchedViewport.dataset.runUpdatedNodeIds
+    }
 
     const controls = characterWorkflowRoot.querySelector<HTMLElement>('.chat-resource-run-controls')
     if (controls) {
@@ -3822,79 +4211,275 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
     const inspector = characterWorkflowRoot.querySelector<HTMLElement>('.chat-run-character-inspector')
     if (inspector && !characterWorkflowEditorState.inspectorCollapsed) {
-      patchCharacterWorkflowRunInspector(inspector, workflowPage.renderCharacterWorkflowRunDraftInspector(pageOptions))
+      patchCharacterWorkflowRunInspector(inspector, workflowPage.renderCharacterWorkflowRunDraftInspector(pageOptions), inspectorPatchScope)
     }
 
-    workflowPage.initializeCharacterResourceWorkbench(characterWorkflowRoot)
+    if (focusArtifactId && characterWorkflowRunDraftFocusArtifactId === focusArtifactId) {
+      characterWorkflowRunDraftFocusArtifactId = ''
+    }
   }
 
-  function replaceCharacterWorkflowRunViewport(currentViewport: HTMLElement, nextViewportHtml: string): void {
+  function flushDeferredCharacterWorkflowRunDraftPatch(): void {
+    const deferred = characterWorkflowRunDraftPatchDeferred
+    if (!deferred) {
+      return
+    }
+    characterWorkflowRunDraftPatchDeferred = null
+    void patchCharacterWorkflowRunDraft(deferred.projectId, deferred.runId)
+  }
+
+  function readRunDraftPatchIds(value: string | undefined): string[] {
+    return (value ?? '').split(',').map((item) => item.trim()).filter(Boolean)
+  }
+
+  function createRunInspectorPatchScope(viewport: HTMLElement, nodeIds: string[]): CharacterWorkflowRunInspectorPatchScope {
+    const fieldKeys = new Set<string>()
+    let patchAllFields = false
+    let patchImages = false
+    let patchHero = false
+    const uniqueNodeIds = [...new Set(nodeIds)].filter(Boolean)
+    uniqueNodeIds.forEach((nodeId) => {
+      const node = viewport.querySelector<HTMLElement>(`[data-chat-workflow-node-id="${escapeCssSelector(nodeId)}"]`)
+      if (!node) {
+        return
+      }
+      const artifactType = node.dataset.runArtifactType || ''
+      const runField = node.dataset.runField || ''
+      if (runField) {
+        fieldKeys.add(runField)
+      }
+      const mappedField = getRunInspectorFieldKeyForArtifactType(artifactType)
+      if (mappedField) {
+        fieldKeys.add(mappedField)
+      }
+      if (artifactType === 'character-card-draft' || artifactType === 'character-card-final' || artifactType === 'run-text-result') {
+        patchAllFields = true
+        patchHero = true
+      }
+      if (artifactType === 'image-asset' || artifactType === 'image-attempt') {
+        patchImages = true
+        patchHero = true
+      }
+    })
+    return { fieldKeys, patchAllFields, patchImages, patchHero }
+  }
+
+  function hasRunInspectorPatchScopeUpdates(scope: CharacterWorkflowRunInspectorPatchScope | undefined): boolean {
+    return Boolean(scope && (scope.patchAllFields || scope.patchImages || scope.patchHero || scope.fieldKeys.size > 0))
+  }
+
+  function getRunInspectorFieldKeyForArtifactType(artifactType: string): string {
+    const fieldByArtifactType: Record<string, string> = {
+      'opening-message': 'firstMessage',
+      'dialogue-style-guide': 'dialogueStyle',
+      'world-context': 'worldContext',
+      'scene-context': 'sceneContext',
+    }
+    return fieldByArtifactType[artifactType] ?? ''
+  }
+
+  function escapeCssSelector(value: string): string {
+    return typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+      ? CSS.escape(value)
+      : value.replace(/["\\]/g, '\\$&')
+  }
+
+  function patchCharacterWorkflowRunViewport(currentViewport: HTMLElement, nextViewportHtml: string): void {
     const nextViewport = parseCharacterWorkflowElement<HTMLElement>(nextViewportHtml, '.chat-resource-run-viewport')
-    const shouldPrimeRunMotion = currentViewport.dataset.runDraftInitialized === 'true'
-      && nextViewport.classList.contains('run-status-running')
-      && !(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false)
-    if (!shouldPrimeRunMotion) {
+    syncCharacterResourceViewportFromElement(nextViewport)
+    if (
+      currentViewport.dataset.runDraftInitialized !== 'true'
+      || currentViewport.dataset.runId !== nextViewport.dataset.runId
+      || currentViewport.dataset.runMotion !== 'live'
+    ) {
       currentViewport.replaceWith(nextViewport)
       return
     }
-    const existingNodeIds = new Set(
-      Array.from(currentViewport.querySelectorAll<HTMLElement>('.chat-resource-node'))
-        .map((node) => node.dataset.chatWorkflowNodeId ?? '')
-        .filter(Boolean)
+    const updatedNodeIds = patchRunDraftChangedElementIds(
+      currentViewport,
+      nextViewport,
+      '.chat-resource-node',
+      (element) => (element as HTMLElement).dataset.chatWorkflowNodeId ?? ''
     )
-    const existingLinkIds = new Set(
-      Array.from(currentViewport.querySelectorAll<SVGGElement>('.chat-resource-link'))
-        .map((link) => link.getAttribute('data-chat-resource-link-id') ?? '')
-        .filter(Boolean)
+    const insertedNodeIds = patchRunDraftKeyedElements(
+      currentViewport,
+      nextViewport,
+      '.chat-resource-node',
+      (element) => (element as HTMLElement).dataset.chatWorkflowNodeId ?? '',
+      '.chat-resource-run-plane'
     )
-    const newNodeIds = new Set<string>()
-    nextViewport.querySelectorAll<HTMLElement>('.chat-resource-node').forEach((node) => {
-      const nodeId = node.dataset.chatWorkflowNodeId ?? ''
-      if (nodeId && !existingNodeIds.has(nodeId)) {
-        newNodeIds.add(nodeId)
-        node.style.opacity = '0'
-        node.style.visibility = 'hidden'
-        node.style.transformOrigin = '50% 0%'
-      }
-    })
-    nextViewport.querySelectorAll<SVGGElement>('.chat-resource-link').forEach((link) => {
-      const linkId = link.getAttribute('data-chat-resource-link-id') ?? ''
-      const targetNodeId = link.getAttribute('data-run-link-target-node-id') ?? ''
-      if (!existingLinkIds.has(linkId) || (targetNodeId && newNodeIds.has(targetNodeId))) {
-        link.style.opacity = '0'
-        link.style.visibility = 'hidden'
-        link.querySelectorAll<SVGPathElement>('path:not(.hit-area)').forEach((path) => {
-          const length = Math.max(1, Math.ceil(path.getTotalLength()))
-          path.style.opacity = '0'
-          path.style.strokeDasharray = `${length}`
-          path.style.strokeDashoffset = `${length}`
-        })
-      }
-    })
-    currentViewport.replaceWith(nextViewport)
+    const insertedLinkIds = patchRunDraftKeyedElements(
+      currentViewport,
+      nextViewport,
+      '.chat-resource-link',
+      (element) => element.getAttribute('data-chat-resource-link-id') ?? '',
+      '.chat-resource-link-overlay'
+    )
+    copyElementAttributes(currentViewport, nextViewport)
+    currentViewport.dataset.runDraftInitialized = 'true'
+    const currentProgress = currentViewport.querySelector<HTMLElement>('.chat-resource-run-progress')
+    const nextProgress = nextViewport.querySelector<HTMLElement>('.chat-resource-run-progress')
+    if (currentProgress && nextProgress && currentProgress.outerHTML !== nextProgress.outerHTML) {
+      currentProgress.outerHTML = nextProgress.outerHTML
+    }
+    const currentPlane = currentViewport.querySelector<HTMLElement>('.chat-resource-run-plane')
+    const nextPlane = nextViewport.querySelector<HTMLElement>('.chat-resource-run-plane')
+    if (currentPlane && nextPlane) {
+      copyElementAttributes(currentPlane, nextPlane)
+    }
+    currentViewport.dataset.runInsertedNodeIds = [...insertedNodeIds].join(',')
+    currentViewport.dataset.runUpdatedNodeIds = [...updatedNodeIds].filter((id) => !insertedNodeIds.has(id)).join(',')
+    currentViewport.dataset.runInsertedLinkIds = [...insertedLinkIds].join(',')
   }
 
-  function patchCharacterWorkflowRunInspector(currentInspector: HTMLElement, nextInspectorHtml: string): void {
+  function patchRunDraftChangedElementIds<TElement extends Element>(
+    currentRoot: HTMLElement,
+    nextRoot: HTMLElement,
+    selector: string,
+    getKey: (element: TElement) => string
+  ): Set<string> {
+    const changed = new Set<string>()
+    nextRoot.querySelectorAll<TElement>(selector).forEach((nextElement) => {
+      const key = getKey(nextElement)
+      if (!key) return
+      const currentElement = Array.from(currentRoot.querySelectorAll<TElement>(selector)).find((element) => getKey(element) === key)
+      if (currentElement && currentElement.outerHTML !== nextElement.outerHTML) {
+        changed.add(key)
+      }
+    })
+    return changed
+  }
+
+  function patchRunDraftKeyedElements<TElement extends Element>(
+    currentRoot: HTMLElement,
+    nextRoot: HTMLElement,
+    selector: string,
+    getKey: (element: TElement) => string,
+    parentSelector: string
+  ): Set<string> {
+    const inserted = new Set<string>()
+    const currentParent = currentRoot.querySelector<Element>(parentSelector)
+    const nextParent = nextRoot.querySelector<Element>(parentSelector)
+    if (!currentParent || !nextParent) {
+      return inserted
+    }
+    const currentByKey = new Map<string, TElement>()
+    currentRoot.querySelectorAll<TElement>(selector).forEach((element) => {
+      const key = getKey(element)
+      if (key) currentByKey.set(key, element)
+    })
+    const nextKeys = new Set<string>()
+    nextRoot.querySelectorAll<TElement>(selector).forEach((nextElement) => {
+      const key = getKey(nextElement)
+      if (!key) return
+      nextKeys.add(key)
+      const currentElement = currentByKey.get(key)
+      if (!currentElement) {
+        inserted.add(key)
+        currentParent.append(nextElement.cloneNode(true))
+        return
+      }
+      if (currentElement.outerHTML !== nextElement.outerHTML) {
+        currentElement.replaceWith(nextElement.cloneNode(true))
+      }
+    })
+    currentByKey.forEach((element, key) => {
+      if (!nextKeys.has(key)) {
+        element.remove()
+      }
+    })
+    return inserted
+  }
+
+  function patchCharacterWorkflowRunInspector(
+    currentInspector: HTMLElement,
+    nextInspectorHtml: string,
+    scope?: CharacterWorkflowRunInspectorPatchScope
+  ): void {
+    const scopedPatch = Boolean(scope)
+    if (!scopedPatch && characterWorkflowRunInspectorSnapshots.get(currentInspector) === nextInspectorHtml) {
+      return
+    }
     const nextInspector = parseCharacterWorkflowElement<HTMLElement>(nextInspectorHtml, '.chat-run-character-inspector')
+    if (!scopedPatch && normalizeWorkflowRunInspectorHtml(currentInspector.outerHTML) === normalizeWorkflowRunInspectorHtml(nextInspector.outerHTML)) {
+      characterWorkflowRunInspectorSnapshots.set(currentInspector, nextInspectorHtml)
+      return
+    }
     copyElementAttributes(currentInspector, nextInspector)
-    patchCharacterWorkflowRunHero(
-      requireCharacterWorkflowElement(currentInspector, '.chat-run-character-hero'),
-      requireCharacterWorkflowElement(nextInspector, '.chat-run-character-hero')
-    )
+    const shouldPatchHero = !scope || scope.patchHero || scope.patchAllFields || scope.fieldKeys.has('name') || scope.fieldKeys.has('displayName')
+    if (shouldPatchHero) {
+      patchCharacterWorkflowRunHero(
+        requireCharacterWorkflowElement(currentInspector, '.chat-run-character-hero'),
+        requireCharacterWorkflowElement(nextInspector, '.chat-run-character-hero')
+      )
+    }
     patchKeyedChildren(
       requireCharacterWorkflowElement(currentInspector, '[data-run-character-fields]'),
       requireCharacterWorkflowElement(nextInspector, '[data-run-character-fields]'),
-      'runCharacterFieldKey'
+      'runCharacterFieldKey',
+      scope?.patchAllFields ? undefined : scope?.fieldKeys
     )
+    if (!scope || scope.patchImages) {
+      patchOptionalRunPreviewElement(
+        currentInspector,
+        nextInspector,
+        '.chat-run-character-overview',
+        '.chat-run-character-scroll'
+      )
+    }
     const currentImages = currentInspector.querySelector<HTMLElement>('[data-run-character-images]')
     const nextImages = nextInspector.querySelector<HTMLElement>('[data-run-character-images]')
-    if (currentImages && nextImages) {
+    if (currentImages && nextImages && (!scope || scope.patchImages)) {
       patchKeyedChildren(currentImages, nextImages, 'runCharacterImageKey')
-    } else if (!nextImages && currentImages) {
+    } else if (!nextImages && currentImages && (!scope || scope.patchImages)) {
       currentImages.remove()
-    } else if (nextImages && !currentImages) {
+    } else if (nextImages && !currentImages && (!scope || scope.patchImages)) {
       requireCharacterWorkflowElement<HTMLElement>(currentInspector, '.chat-run-character-scroll').append(nextImages)
     }
+    if (!scopedPatch) {
+      characterWorkflowRunInspectorSnapshots.set(currentInspector, nextInspectorHtml)
+    }
+  }
+
+  function patchOptionalRunPreviewElement(
+    currentRoot: HTMLElement,
+    nextRoot: HTMLElement,
+    selector: string,
+    parentSelector: string
+  ): void {
+    const current = currentRoot.querySelector<HTMLElement>(selector)
+    const next = nextRoot.querySelector<HTMLElement>(selector)
+    if (current && next) {
+      const changed = current.innerHTML !== next.innerHTML || current.className !== next.className
+      copyElementAttributes(current, next)
+      if (current.innerHTML !== next.innerHTML) {
+        current.innerHTML = next.innerHTML
+      }
+      if (changed) {
+        flashRunPreviewElement(current)
+      }
+      return
+    }
+    if (current && !next) {
+      current.remove()
+      return
+    }
+    if (!current && next) {
+      const parent = currentRoot.querySelector<HTMLElement>(parentSelector)
+      const fields = currentRoot.querySelector<HTMLElement>('[data-run-character-fields]')
+      if (fields) {
+        fields.before(next)
+      } else {
+        parent?.append(next)
+      }
+      flashRunPreviewElement(next)
+    }
+  }
+
+  function normalizeWorkflowRunInspectorHtml(html: string): string {
+    return html
+      .replace(/\s*is-updated\b/g, '')
+      .replace(/\s*is-entering\b/g, '')
   }
 
   function patchCharacterWorkflowRunHero(currentHero: HTMLElement, nextHero: HTMLElement): void {
@@ -3919,7 +4504,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
   }
 
-  function patchKeyedChildren(currentContainer: HTMLElement, nextContainer: HTMLElement, datasetKey: string): void {
+  function patchKeyedChildren(currentContainer: HTMLElement, nextContainer: HTMLElement, datasetKey: string, allowedKeys?: Set<string>): void {
+    const shouldAnimate = isVisibleWorkflowRunAnimating()
     copyElementAttributes(currentContainer, nextContainer)
     const currentByKey = new Map<string, HTMLElement>()
     Array.from(currentContainer.children).forEach((child) => {
@@ -3930,12 +4516,19 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     Array.from(nextContainer.children).forEach((nextChild) => {
       if (!(nextChild instanceof HTMLElement)) return
       const key = nextChild.dataset[datasetKey] ?? ''
+      if (allowedKeys && !allowedKeys.has(key)) {
+        return
+      }
       const currentChild = key ? currentByKey.get(key) : null
       if (!currentChild) {
         const clone = nextChild.cloneNode(true) as HTMLElement
-        clone.classList.add('is-entering')
+        if (shouldAnimate) {
+          clone.classList.add('is-entering')
+        }
         currentContainer.append(clone)
-        window.setTimeout(() => clone.classList.remove('is-entering'), 320)
+        if (shouldAnimate) {
+          window.setTimeout(() => clone.classList.remove('is-entering'), 320)
+        }
         return
       }
       currentByKey.delete(key)
@@ -3949,10 +4542,17 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         flashRunPreviewElement(currentChild)
       }
     })
-    currentByKey.forEach((child) => child.remove())
+    currentByKey.forEach((child, key) => {
+      if (!allowedKeys || allowedKeys.has(key)) {
+        child.remove()
+      }
+    })
   }
 
   function flashRunPreviewElement(element: HTMLElement): void {
+    if (!isVisibleWorkflowRunAnimating()) {
+      return
+    }
     element.classList.remove('is-updated')
     void element.offsetWidth
     element.classList.add('is-updated')
@@ -3968,6 +4568,15 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     Array.from(source.attributes).forEach((attribute) => {
       target.setAttribute(attribute.name, attribute.value)
     })
+  }
+
+  function isVisibleWorkflowRunAnimating(): boolean {
+    return Boolean(
+      characterWorkflowActiveTabId === 'run-draft'
+      && activeCharacterWorkflowProjectId
+      && characterWorkflowRunState?.run?.id
+      && isExecutingWorkflowRun(activeCharacterWorkflowProjectId, characterWorkflowRunState.run.id)
+    )
   }
 
   function parseCharacterWorkflowElement<T extends Element>(html: string, selector: string): T {
@@ -3993,18 +4602,48 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!viewport) {
       return
     }
+    const viewState = viewport.classList.contains('chat-resource-run-viewport') || Boolean(viewport.dataset.runId)
+      ? characterWorkflowRunDraftViewState
+      : characterResourceViewState
     const plane = viewport.querySelector<HTMLElement>('.chat-resource-graph-plane')
-    plane?.style.setProperty('--resource-zoom', String(characterResourceViewState.zoom))
-    plane?.style.setProperty('--resource-pan-x', `${characterResourceViewState.panX}px`)
-    plane?.style.setProperty('--resource-pan-y', `${characterResourceViewState.panY}px`)
+    plane?.style.setProperty('--resource-zoom', String(viewState.zoom))
+    plane?.style.setProperty('--resource-pan-x', `${viewState.panX}px`)
+    plane?.style.setProperty('--resource-pan-y', `${viewState.panY}px`)
     viewport.dataset.resourceViewport = JSON.stringify({
-      x: characterResourceViewState.panX,
-      y: characterResourceViewState.panY,
-      zoom: characterResourceViewState.zoom,
+      x: viewState.panX,
+      y: viewState.panY,
+      zoom: viewState.zoom,
     })
     panel.querySelectorAll<HTMLElement>('.chat-resource-zoom-label').forEach((label) => {
-      label.textContent = `${Math.round(characterResourceViewState.zoom * 100)}%`
+      label.textContent = `${Math.round(viewState.zoom * 100)}%`
     })
+  }
+
+  function syncCharacterResourceViewportFromElement(viewport: HTMLElement): void {
+    const raw = viewport.dataset.resourceViewport
+    if (!raw) {
+      return
+    }
+    try {
+      const parsed = JSON.parse(raw) as { x?: unknown; y?: unknown; zoom?: unknown }
+      const isRunDraftViewport = viewport.classList.contains('chat-resource-run-viewport') || Boolean(viewport.dataset.runId)
+      const currentViewState = isRunDraftViewport ? characterWorkflowRunDraftViewState : characterResourceViewState
+      const zoom = typeof parsed.zoom === 'number' && Number.isFinite(parsed.zoom) ? parsed.zoom : currentViewState.zoom
+      const panX = typeof parsed.x === 'number' && Number.isFinite(parsed.x) ? parsed.x : currentViewState.panX
+      const panY = typeof parsed.y === 'number' && Number.isFinite(parsed.y) ? parsed.y : currentViewState.panY
+      if (isRunDraftViewport) {
+        characterWorkflowRunDraftViewState.zoom = zoom
+        characterWorkflowRunDraftViewState.panX = panX
+        characterWorkflowRunDraftViewState.panY = panY
+        return
+      }
+      characterResourceViewState.zoom = zoom
+      characterResourceViewState.panX = panX
+      characterResourceViewState.panY = panY
+      saveCharacterResourceViewStateSnapshot()
+    } catch {
+      // Runtime focus is visual state only; malformed DOM data should not interrupt a run.
+    }
   }
 
   async function renderCharacterWorkflowAsync(): Promise<void> {
@@ -4095,7 +4734,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     `
   }
 
-  function createCharacterWorkflowPageOptions(activeProject: CharacterWorkflowProjectRecord): Parameters<CharacterWorkflowPageModule['renderCharacterWorkflowPage']>[0] {
+  function createCharacterWorkflowPageOptions(
+    activeProject: CharacterWorkflowProjectRecord,
+    runViewportSize?: { width: number; height: number },
+    runMotionEnabled = false
+  ): Parameters<CharacterWorkflowPageModule['renderCharacterWorkflowPage']>[0] {
     return {
       language: options.getLanguage(),
       escapeHtml: options.escapeHtml,
@@ -4104,6 +4747,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       configOverrides: characterWorkflowConfigOverrides,
       positionOverrides: characterWorkflowPositionOverrides,
       runState: characterWorkflowRunState,
+      runAnimating: Boolean(isExecutingWorkflowRun(activeProject.id, characterWorkflowRunState?.run?.id ?? '')),
+      runFocusArtifactId: Date.now() - characterWorkflowRunDraftViewState.lastManualViewportAt > 1800
+        ? characterWorkflowRunDraftFocusArtifactId
+        : '',
+      runMotionEnabled,
+      runViewportSize,
       runDrafts: activeProject.runs.map((run) => ({
         id: run.id,
         title: run.title,
@@ -4125,7 +4774,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         panX: characterResourceViewState.panX,
         panY: characterResourceViewState.panY,
         hideLinks: characterResourceViewState.hideLinks,
-        selectedNodeIds: characterResourceViewState.selectedNodeIds,
+        selectedNodeIds: characterWorkflowActiveTabId === 'run-draft'
+          ? characterWorkflowRunDraftViewState.selectedNodeIds
+          : characterResourceViewState.selectedNodeIds,
         selectionBox: characterResourceViewState.selectionBox,
         collapsedNodeIds: [...characterResourceViewState.collapsedNodeIds],
         deletedNodeIds: [...characterResourceViewState.deletedNodeIds],
@@ -4137,6 +4788,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         customLinks: characterResourceViewState.customLinks,
         deletedLinkIds: [...characterResourceViewState.deletedLinkIds],
         replacedTargetSlots: [...characterResourceViewState.replacedTargetSlots],
+        ...(characterWorkflowActiveTabId === 'run-draft'
+          ? {
+              zoom: characterWorkflowRunDraftViewState.zoom,
+              panX: characterWorkflowRunDraftViewState.panX,
+              panY: characterWorkflowRunDraftViewState.panY,
+              selectedLinkId: characterWorkflowRunDraftViewState.selectedLinkId,
+            }
+          : {}),
       },
     }
   }
@@ -4309,7 +4968,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             'opening-panel-image-target': { imageRole: 'character-base-image', assetPurpose: 'Free-form character sample images for the opening CSS panel. Use the avatar reference to preserve identity while showing distinct roleplay scenes, actions, moods, outfit usage, or prop interactions as panel visual material.' },
             'opening-panel-image-control': { targetImageCount: 2, imageStyleDomain: 'auto', shotType: 'auto', aspectRatio: '3:4', consistencyMode: 'same-character', seedMode: 'vary-slightly' },
             'opening-layout-target': { layoutKind: 'auto-opening-layout', textDensity: 'minimal', includeSections: ['title', 'tags', 'opening', 'coverImage', 'supportImages'], layoutPrompt: 'Create a compact, attractive roleplay opening panel. Choose a varied layout, avoid project labels, keep visible prose short, and use generated character images as strong visual material.' },
-            'atmosphere-style-target': { moodPreset: 'auto-atmosphere', surface: 'glass', messageFrame: 'literary-panel', audioPlayer: 'thin-glass-bar', density: 'balanced', stylePrompt: 'Create a role-specific chat atmosphere style for dialogue bubbles, role speech emphasis, inline audio bars, scene cards, and profile preview. Keep it structured, controlled, and consistent with the character instead of generating arbitrary CSS.' },
+            'atmosphere-style-target': { stylePrompt: 'Design a character-specific atmosphere system, not a preset skin. Describe the visual language for dialogue bubbles, role speech emphasis, inline audio bars, scene cards, and profile preview: palette logic, surface material, border and radius language, typography rhythm, audio progress treatment, and how every choice fits the character card, opening scene, images, and relationship mood.' },
             'generation-strategy': { mode: 'branch-and-refine', branchCount: 3, priorityAssets: ['role-card', 'opening', 'opening-layout', 'atmosphere-style', 'image-pack'] },
             'quality-gate': { minimumScore: 0.84 },
           },
@@ -4391,7 +5050,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       : (zh ? '展开记录' : 'Expand records')
     const records = getWorkflowAssistantStatusRecords()
     const latestRecord = records[0]
-    const previousRecords = characterWorkflowAssistantStatusExpanded ? records.slice(1, 8) : []
+    const previousRecords = characterWorkflowAssistantStatusExpanded ? records.slice(1) : []
     const project = characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)
     const session = normalizeCharacterWorkflowGoalSession(project?.goalSession)
     const pendingDecision = session?.pendingDecision
@@ -4446,13 +5105,11 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
               ${pendingDecision.options.map((optionItem) => `
                 <button type="button" data-chat-workflow-decision-option="${options.escapeHtml(optionItem.id)}" ${characterWorkflowBuilderBusy ? 'disabled' : ''}>
                   <strong>${options.escapeHtml(optionItem.label)}</strong>
-                  ${optionItem.detail ? `<span>${options.escapeHtml(optionItem.detail)}</span>` : ''}
                 </button>
               `).join('')}
               ${pendingDecision.allowSkip ? `
                 <button type="button" class="secondary" data-chat-workflow-decision-option="__skip" ${characterWorkflowBuilderBusy ? 'disabled' : ''}>
                   <strong>${options.escapeHtml(zh ? '交给 Agent 决定' : 'Let agent decide')}</strong>
-                  <span>${options.escapeHtml(zh ? '继续使用合理默认偏好编辑资源图' : 'Continue with a reasonable default editing preference')}</span>
                 </button>
               ` : ''}
             </div>
@@ -4523,7 +5180,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         body: current,
       })
     }
-    return records.slice(-8).reverse()
+    return records.reverse()
   }
 
   function getWorkflowAssistantStatusText(): string {
@@ -4797,41 +5454,109 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
   }
 
-  function syncExecutingWorkflowRunState(immediate = false): void {
-    if (!characterWorkflowExecutingRunState?.run || !characterWorkflowExecutingProjectId) {
+  function getWorkflowRunContextKey(projectId: string, runId: string): string {
+    return projectId && runId ? `${projectId}::${runId}` : ''
+  }
+
+  function getExecutingWorkflowRunContext(projectId: string, runId: string): CharacterWorkflowExecutingRunContext | null {
+    const key = getWorkflowRunContextKey(projectId, runId)
+    return key ? characterWorkflowExecutingRuns.get(key) ?? null : null
+  }
+
+  function getExecutingWorkflowRunContextsForProject(projectId: string): CharacterWorkflowExecutingRunContext[] {
+    if (!projectId) {
+      return []
+    }
+    return [...characterWorkflowExecutingRuns.values()].filter((context) => context.projectId === projectId)
+  }
+
+  function setExecutingWorkflowRunContext(context: CharacterWorkflowExecutingRunContext): void {
+    const key = getWorkflowRunContextKey(context.projectId, context.runState.run?.id ?? '')
+    if (!key) {
       return
     }
-    const project = characterWorkflowProjects.find((item) => item.id === characterWorkflowExecutingProjectId)
+    characterWorkflowExecutingRuns.set(key, context)
+  }
+
+  function syncExecutingWorkflowRunState(context: CharacterWorkflowExecutingRunContext, immediate = false): void {
+    if (!context.runState.run || !context.projectId) {
+      return
+    }
+    const project = characterWorkflowProjects.find((item) => item.id === context.projectId)
     if (!project) {
       return
     }
-    upsertWorkflowProjectRunState(project, characterWorkflowExecutingRunState)
-    if (isViewingWorkflowRun(project.id, characterWorkflowExecutingRunState.run.id)) {
-      project.activeRunId = characterWorkflowExecutingRunState.run.id
+    upsertWorkflowProjectRunState(project, context.runState)
+    if (isViewingWorkflowRun(project.id, context.runState.run.id)) {
+      project.activeRunId = context.runState.run.id
     }
-    project.runCount = Math.max(project.runCount, characterWorkflowRunCount)
+    project.runCount = Math.max(project.runCount, context.runCount)
     project.updatedAt = Date.now()
     persistCharacterWorkflowProject(project, immediate)
   }
 
+  function cancelBackendCharacterWorkflowRun(runId?: string, reason = 'cancelled'): void {
+    const targetRunId = runId || ''
+    if (!targetRunId || typeof window.electronAPI.cancelCharacterWorkflowRun !== 'function') {
+      return
+    }
+    void window.electronAPI.cancelCharacterWorkflowRun({ runId: targetRunId, reason }).catch((error) => {
+      console.warn('[CharacterWorkflow] Failed to cancel backend run:', error)
+    })
+  }
+
+  function clearExecutingWorkflowRunContext(projectId?: string, runId?: string): void {
+    if (projectId && runId) {
+      characterWorkflowExecutingRuns.delete(getWorkflowRunContextKey(projectId, runId))
+      return
+    }
+    if (projectId) {
+      for (const context of getExecutingWorkflowRunContextsForProject(projectId)) {
+        characterWorkflowExecutingRuns.delete(getWorkflowRunContextKey(context.projectId, context.runState.run?.id ?? ''))
+      }
+      return
+    }
+    characterWorkflowExecutingRuns.clear()
+  }
+
+  function resolveExecutingWorkflowRunContext(projectId = '', runId = ''): CharacterWorkflowExecutingRunContext | null {
+    if (projectId && runId) {
+      return getExecutingWorkflowRunContext(projectId, runId)
+    }
+    if (projectId) {
+      const visibleRunId = isViewingWorkflowRun(projectId, characterWorkflowRunState?.run?.id ?? '')
+        ? characterWorkflowRunState?.run?.id ?? ''
+        : ''
+      if (visibleRunId) {
+        const visibleContext = getExecutingWorkflowRunContext(projectId, visibleRunId)
+        if (visibleContext) {
+          return visibleContext
+        }
+      }
+      return getExecutingWorkflowRunContextsForProject(projectId)[0] ?? null
+    }
+    if (runId) {
+      return [...characterWorkflowExecutingRuns.values()].find((context) => context.runState.run?.id === runId) ?? null
+    }
+    const visibleRunId = characterWorkflowRunState?.run?.id ?? ''
+    return visibleRunId
+      ? getExecutingWorkflowRunContext(activeCharacterWorkflowProjectId, visibleRunId)
+      : null
+  }
+
   function cancelExecutingWorkflowRun(projectId?: string, runId?: string): boolean {
-    if (!characterWorkflowExecutingRunState?.run || !characterWorkflowExecutingProjectId) {
+    const context = resolveExecutingWorkflowRunContext(projectId, runId)
+    if (!context?.runState.run) {
       return false
     }
-    if (projectId && characterWorkflowExecutingProjectId !== projectId) {
-      return false
-    }
-    if (runId && characterWorkflowExecutingRunState.run.id !== runId) {
-      return false
-    }
-    const currentStepId = characterWorkflowExecutingRunState.run.currentStepId
-    characterWorkflowExecutingRunState = {
-      ...characterWorkflowExecutingRunState,
+    const currentStepId = context.runState.run.currentStepId
+    context.runState = {
+      ...context.runState,
       run: {
-        ...characterWorkflowExecutingRunState.run,
-        status: 'canceled',
+        ...context.runState.run,
+        status: 'failed',
       },
-      steps: (characterWorkflowExecutingRunState.steps ?? []).map((step) => (
+      steps: (context.runState.steps ?? []).map((step) => (
         step.id === currentStepId
           ? {
               ...step,
@@ -4841,15 +5566,17 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           : step
       )),
     }
-    const canceledProjectId = characterWorkflowExecutingProjectId
-    const canceledRunState = characterWorkflowExecutingRunState
-    const canceledRunId = canceledRunState.run.id
-    syncExecutingWorkflowRunState(true)
-    syncVisibleWorkflowRunState(canceledProjectId, canceledRunState)
-    characterWorkflowExecutingRunState = null
-    characterWorkflowExecutingProjectId = ''
-    characterWorkflowRenderToken += 1
-    return isViewingWorkflowRun(canceledProjectId, canceledRunId)
+    const stoppedProjectId = context.projectId
+    const stoppedRunState = context.runState
+    const stoppedRunId = stoppedRunState.run?.id ?? ''
+    if (!stoppedRunId) {
+      return false
+    }
+    cancelBackendCharacterWorkflowRun(stoppedRunId, 'manual stop')
+    syncExecutingWorkflowRunState(context, true)
+    syncVisibleWorkflowRunState(stoppedProjectId, stoppedRunState)
+    clearExecutingWorkflowRunContext(stoppedProjectId, stoppedRunId)
+    return isViewingWorkflowRun(stoppedProjectId, stoppedRunId)
   }
 
   function isViewingWorkflowRun(projectId: string, runId: string): boolean {
@@ -4867,17 +5594,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   function isExecutingWorkflowRun(projectId: string, runId: string): boolean {
-    if (!runId || !characterWorkflowExecutingRunState?.run) {
+    if (!projectId || !runId) {
       return false
     }
-    return characterWorkflowExecutingRunState.run.id === runId
-      && (!projectId || !characterWorkflowExecutingProjectId || characterWorkflowExecutingProjectId === projectId)
+    return Boolean(getExecutingWorkflowRunContext(projectId, runId)?.runState.run)
   }
 
   function getExecutingWorkflowRunState(projectId: string, runId: string): CharacterResourceRunState | null {
-    return isExecutingWorkflowRun(projectId, runId) && characterWorkflowExecutingRunState
-      ? characterWorkflowExecutingRunState
-      : null
+    return getExecutingWorkflowRunContext(projectId, runId)?.runState ?? null
   }
 
   function normalizePersistedCharacterWorkflowRunState(
@@ -5074,6 +5798,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       : 'active'
     return {
       objective: typeof session.objective === 'string' ? session.objective : '',
+      focusPrompt: typeof session.focusPrompt === 'string' ? session.focusPrompt : undefined,
+      focusHistory: Array.isArray(session.focusHistory) ? session.focusHistory.filter((item): item is string => typeof item === 'string').slice(-CHARACTER_WORKFLOW_FOCUS_HISTORY_LIMIT) : [],
       plan: Array.isArray(session.plan) ? session.plan.filter((item): item is string => typeof item === 'string') : [],
       completedSteps: Array.isArray(session.completedSteps) ? session.completedSteps.filter((item): item is string => typeof item === 'string') : [],
       currentStep: typeof session.currentStep === 'string' ? session.currentStep : undefined,
@@ -5099,7 +5825,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             nextStep: typeof record.nextStep === 'string' ? record.nextStep : undefined,
             createdAt: Math.max(0, Math.round(Number(record.createdAt) || Date.now())),
           }]
-        }).slice(-16)
+        }).slice(-CHARACTER_WORKFLOW_GOAL_HISTORY_LIMIT)
         : [],
       updatedAt: Math.max(0, Math.round(Number(session.updatedAt) || Date.now())),
     }
@@ -5322,6 +6048,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const lastDecision = normalizeWorkflowAgentDecision(agentWork.decision ?? agentWork.steps[agentWork.steps.length - 1]?.decision)
     return {
       objective: agentWork.objective || fallbackObjective,
+      focusPrompt: agentWork.objective || fallbackObjective,
+      focusHistory: [agentWork.objective || fallbackObjective].filter(Boolean),
       plan: Array.isArray(agentWork.plan) ? agentWork.plan.filter((item): item is string => typeof item === 'string') : [],
       completedSteps: Array.isArray(agentWork.completedSteps) ? agentWork.completedSteps.filter((item): item is string => typeof item === 'string') : [],
       currentStep: agentWork.currentStep,
@@ -5348,7 +6076,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         currentStep: step.currentStep,
         nextStep: step.nextStep,
         createdAt: step.createdAt || Date.now(),
-      })).slice(-16),
+      })).slice(-CHARACTER_WORKFLOW_GOAL_HISTORY_LIMIT),
       updatedAt: Math.max(0, Math.round(Number(agentWork.updatedAt) || Date.now())),
     }
   }
@@ -5420,6 +6148,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const now = Date.now()
     const created: CharacterWorkflowGoalSession = {
       objective: userPrompt,
+      focusPrompt: userPrompt,
+      focusHistory: [userPrompt],
       plan: [],
       completedSteps: [],
       status: 'active',
@@ -5428,6 +6158,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     project.goalSession = created
     return created
+  }
+
+  function appendWorkflowFocusHistory(existing: string[] | undefined, focusPrompt: string): string[] {
+    const values = [...(existing ?? []), focusPrompt]
+      .map((item) => item.trim())
+      .filter(Boolean)
+    return [...new Set(values)].slice(-CHARACTER_WORKFLOW_FOCUS_HISTORY_LIMIT)
   }
 
   function updateActiveWorkflowGoalSession(
@@ -5488,6 +6225,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       project.goalSession = {
         ...current,
         objective: agentWork.objective || current.objective,
+        focusPrompt: userPrompt,
+        focusHistory: appendWorkflowFocusHistory(current.focusHistory, userPrompt),
         plan: Array.isArray(agentWork.plan) ? agentWork.plan.filter((item): item is string => typeof item === 'string') : current.plan,
         completedSteps: Array.isArray(agentWork.completedSteps) ? agentWork.completedSteps.filter((item): item is string => typeof item === 'string') : current.completedSteps,
         currentStep: typeof agentWork.currentStep === 'string' && agentWork.currentStep.trim() ? agentWork.currentStep.trim() : current.currentStep,
@@ -5519,7 +6258,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
               createdAt: step.createdAt || Date.now(),
             })),
           ]),
-        ].slice(-16),
+        ].slice(-CHARACTER_WORKFLOW_GOAL_HISTORY_LIMIT),
         updatedAt: Math.max(0, Math.round(Number(agentWork.updatedAt) || Date.now())),
       }
       return
@@ -5535,6 +6274,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       + Object.keys(response.uiConfigOverrides ?? {}).length
     project.goalSession = {
       ...current,
+      focusPrompt: userPrompt,
+      focusHistory: appendWorkflowFocusHistory(current.focusHistory, userPrompt),
       plan: Array.isArray(spec.plan) && spec.plan.length ? spec.plan.filter((item): item is string => typeof item === 'string') : current.plan,
       completedSteps: Array.isArray(spec.completedSteps) ? spec.completedSteps.filter((item): item is string => typeof item === 'string') : current.completedSteps,
       currentStep: typeof spec.currentStep === 'string' && spec.currentStep.trim() ? spec.currentStep.trim() : current.currentStep,
@@ -5561,7 +6302,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           nextStep: typeof spec.nextStep === 'string' ? spec.nextStep : undefined,
           createdAt: Date.now(),
         },
-      ].slice(-12),
+      ].slice(-CHARACTER_WORKFLOW_GOAL_HISTORY_LIMIT),
       updatedAt: Date.now(),
     }
   }
@@ -5618,6 +6359,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           : 'active'
     project.goalSession = {
       ...current,
+      focusPrompt: userPrompt,
+      focusHistory: appendWorkflowFocusHistory(current.focusHistory, userPrompt),
       plan: Array.isArray(step.plan) && step.plan.length ? step.plan.filter((item): item is string => typeof item === 'string') : current.plan,
       completedSteps: Array.isArray(step.completedSteps) ? step.completedSteps.filter((item): item is string => typeof item === 'string') : current.completedSteps,
       currentStep: typeof step.currentStep === 'string' && step.currentStep.trim() ? step.currentStep.trim() : current.currentStep,
@@ -5647,7 +6390,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           nextStep: step.nextStep,
           createdAt: step.createdAt || Date.now(),
         },
-      ]).slice(-16),
+      ]).slice(-CHARACTER_WORKFLOW_GOAL_HISTORY_LIMIT),
       updatedAt: Date.now(),
     }
     characterWorkflowBuilderStatus = formatWorkflowGoalSessionStatus(project.goalSession, step.summary)
@@ -5753,7 +6496,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           nextStep: status === 'complete' ? undefined : session.nextStep,
           createdAt: Date.now(),
         },
-      ].slice(-16),
+      ].slice(-CHARACTER_WORKFLOW_GOAL_HISTORY_LIMIT),
       updatedAt: Date.now(),
     }
     saveActiveWorkflowProjectSnapshot()
@@ -5820,7 +6563,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           nextStep: patchHint || session.nextStep,
           createdAt: Date.now(),
         },
-      ].slice(-16),
+      ].slice(-CHARACTER_WORKFLOW_GOAL_HISTORY_LIMIT),
       updatedAt: Date.now(),
     }
     saveActiveWorkflowProjectSnapshot()
@@ -5894,15 +6637,31 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       }
       const workflowPage = await loadCharacterWorkflowPageModule()
       const goalSession = getActiveWorkflowGoalSession(userPrompt)
+      if (goalSession && existingProject) {
+        existingProject.goalSession = {
+          ...goalSession,
+          focusPrompt: userPrompt,
+          focusHistory: appendWorkflowFocusHistory(goalSession.focusHistory, userPrompt),
+          status: 'active',
+          pendingDecision: undefined,
+          updatedAt: Date.now(),
+        }
+      }
+      const editorSession = existingProject?.goalSession ?? goalSession
       const buildRequest = {
         prompt: userPrompt,
         language: options.getLanguage(),
         mode: 'edit',
-        editorSession: goalSession ? {
-          objective: goalSession.objective,
-          plan: goalSession.plan,
-          completedSteps: goalSession.completedSteps,
-          history: goalSession.history.map((item) => ({
+        editorSession: editorSession ? {
+          objective: editorSession.objective,
+          focusPrompt: userPrompt,
+          focusHistory: appendWorkflowFocusHistory(editorSession.focusHistory, userPrompt),
+          status: 'active',
+          plan: editorSession.plan,
+          completedSteps: editorSession.completedSteps,
+          currentStep: editorSession.currentStep,
+          nextStep: editorSession.nextStep,
+          history: editorSession.history.map((item) => ({
             stepIndex: item.stepIndex,
             tool: item.tool,
             userRequest: item.userRequest,
@@ -5910,6 +6669,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             status: item.status,
             operations: item.operations,
             currentStep: item.currentStep,
+            nextStep: item.nextStep,
           })),
         } : undefined,
         graph: createCharacterWorkflowAssistantGraph(workflowPage),
@@ -6414,11 +7174,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     characterWorkflowRunOpenToken += 1
     const wasActiveProject = activeCharacterWorkflowProjectId === project.id
     const wasActiveRun = project.activeRunId === runId || (wasActiveProject && characterWorkflowRunState?.run?.id === runId)
-    const wasExecutingRun = characterWorkflowExecutingProjectId === project.id && characterWorkflowExecutingRunState?.run?.id === runId
+    const wasExecutingRun = isExecutingWorkflowRun(project.id, runId)
     if (wasExecutingRun) {
-      characterWorkflowRenderToken += 1
-      characterWorkflowExecutingProjectId = ''
-      characterWorkflowExecutingRunState = null
+      cancelBackendCharacterWorkflowRun(runId, 'run draft deleted')
+      clearExecutingWorkflowRunContext(project.id, runId)
     }
     project.runs.splice(deletedIndex, 1)
     void window.electronAPI.deleteCharacterWorkflowRun(project.id, runId).catch((error) => {
@@ -6487,11 +7246,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!ok) {
       return
     }
-    if (characterWorkflowExecutingProjectId === projectId) {
-      characterWorkflowRenderToken += 1
-      characterWorkflowExecutingProjectId = ''
-      characterWorkflowExecutingRunState = null
+    for (const context of getExecutingWorkflowRunContextsForProject(projectId)) {
+      cancelBackendCharacterWorkflowRun(context.runState.run?.id, 'workflow project deleted')
     }
+    clearExecutingWorkflowRunContext(projectId)
     characterWorkflowRunOpenToken += 1
     const pendingPersist = characterWorkflowProjectPersistTimers.get(projectId)
     if (pendingPersist !== undefined) {
@@ -6655,10 +7413,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         deleteActiveCharacterWorkflowRunDraft()
         break
       case 'stop':
-        if (cancelExecutingWorkflowRun()) {
+        if (cancelExecutingWorkflowRun(activeCharacterWorkflowProjectId, characterWorkflowRunState?.run?.id ?? '')) {
           renderCharacterWorkflow()
+          showToast(options.getLanguage() === 'zh-CN' ? '已停止 Agent 运行' : 'Stopped agent run')
+        } else {
+          showToast(options.getLanguage() === 'zh-CN' ? '当前没有正在运行的草稿' : 'No running draft is active')
         }
-        showToast(options.getLanguage() === 'zh-CN' ? '已停止 Agent 运行' : 'Stopped agent run')
         break
       case 'toggle-inspector':
         toggleCharacterWorkflowInspector()
@@ -6925,8 +7685,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   async function runCharacterWorkflow(scopedRun?: CharacterWorkflowScopedRunRequest): Promise<void> {
-    if (characterWorkflowExecutingRunState?.run?.status === 'running') {
-      showToast(options.getLanguage() === 'zh-CN' ? '已有运行草稿正在执行' : 'A run draft is already running')
+    const runProjectId = activeCharacterWorkflowProjectId
+    if (!runProjectId) {
+      return
+    }
+    saveActiveWorkflowProjectSnapshot()
+    if (!characterWorkflowProjects.some((project) => project.id === runProjectId)) {
       return
     }
     const scoped = Boolean(scopedRun)
@@ -6935,14 +7699,48 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       showToast(options.getLanguage() === 'zh-CN' ? '当前没有可局部重跑的运行草稿' : 'No run draft is available for scoped rerun')
       return
     }
-    characterWorkflowRunOpenToken += 1
-    const renderToken = ++characterWorkflowRenderToken
-    const workflowPage = await loadCharacterWorkflowPageModule()
-    if (renderToken !== characterWorkflowRenderToken) {
+    const scopedRunId = scopedBaseRunState?.run?.id ?? ''
+    if (scoped && isExecutingWorkflowRun(runProjectId, scopedRunId)) {
+      showToast(options.getLanguage() === 'zh-CN' ? '当前运行草稿正在执行' : 'The current run draft is already running')
       return
     }
+    const runConfigOverrides = cloneRecord(characterWorkflowConfigOverrides)
+    const runPositionOverrides = cloneRecord(characterWorkflowPositionOverrides)
+    const runTabs = getCharacterWorkflowTabs()
+    const runSelectedWorkflowNodeId = selectedWorkflowNodeId
+    const runEditorSnapshot = { ...characterWorkflowEditorState }
+    const runViewState = {
+      zoom: characterResourceViewState.zoom,
+      panX: characterResourceViewState.panX,
+      panY: characterResourceViewState.panY,
+      hideLinks: characterResourceViewState.hideLinks,
+      selectedNodeIds: [...characterResourceViewState.selectedNodeIds],
+      selectionBox: characterResourceViewState.selectionBox
+        ? { ...characterResourceViewState.selectionBox }
+        : null,
+      collapsedNodeIds: [...characterResourceViewState.collapsedNodeIds],
+      deletedNodeIds: [...characterResourceViewState.deletedNodeIds],
+      duplicatedNodes: JSON.parse(JSON.stringify(characterResourceViewState.duplicatedNodes)) as CharacterWorkflowProjectViewState['duplicatedNodes'],
+      addedNodes: JSON.parse(JSON.stringify(characterResourceViewState.addedNodes)) as CharacterWorkflowProjectViewState['addedNodes'],
+      nodeSizes: cloneRecord(characterResourceViewState.nodeSizes),
+      selectedLinkId: characterResourceViewState.selectedLinkId,
+      linkKinds: { ...characterResourceViewState.linkKinds },
+      customLinks: JSON.parse(JSON.stringify(characterResourceViewState.customLinks)) as SerializedCharacterResourceLink[],
+      deletedLinkIds: [...characterResourceViewState.deletedLinkIds],
+      replacedTargetSlots: [...characterResourceViewState.replacedTargetSlots],
+    }
+    characterWorkflowRunOpenToken += 1
+    const workflowPage = await loadCharacterWorkflowPageModule()
+    const latestRunProject = characterWorkflowProjects.find((project) => project.id === runProjectId)
+    if (!latestRunProject) {
+      return
+    }
+    const runCount = scoped ? latestRunProject.runCount : latestRunProject.runCount + 1
     if (!scoped) {
-      characterWorkflowRunCount += 1
+      latestRunProject.runCount = runCount
+      if (activeCharacterWorkflowProjectId === runProjectId) {
+        characterWorkflowRunCount = runCount
+      }
     }
     const draftRunState = scoped && scopedBaseRunState?.run
       ? {
@@ -6956,26 +7754,36 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             ? scopedBaseRunState.steps.map((step) => step.id === 'agent' ? { ...step, status: 'running' as const, detail: scopedRun?.instruction || step.detail } : step)
             : workflowPage.createCharacterResourceRunSteps(options.getLanguage()),
         }
-      : workflowPage.createDraftCharacterResourceRunState(characterWorkflowRunCount, 'running', options.getLanguage())
-    characterWorkflowExecutingProjectId = activeCharacterWorkflowProjectId
-    characterWorkflowExecutingRunState = cloneCharacterWorkflowRunState(draftRunState)
-    characterWorkflowRunState = cloneCharacterWorkflowRunState(draftRunState)
-    saveActiveWorkflowProjectSnapshot()
-    characterWorkflowActiveTabId = 'run-draft'
-    characterWorkflowEditorState.inspectorCollapsed = false
+      : workflowPage.createDraftCharacterResourceRunState(runCount, 'running', options.getLanguage())
+    const context: CharacterWorkflowExecutingRunContext = {
+      projectId: runProjectId,
+      runCount,
+      runState: cloneCharacterWorkflowRunState(draftRunState),
+    }
+    if (draftRunState.run?.id) {
+      latestRunProject.activeRunId = draftRunState.run.id
+    }
+    setExecutingWorkflowRunContext(context)
+    const executionProjectId = context.projectId
+    const executionRunId = draftRunState.run?.id ?? ''
+    if (activeCharacterWorkflowProjectId === runProjectId) {
+      characterWorkflowRunState = cloneCharacterWorkflowRunState(draftRunState)
+      characterWorkflowActiveTabId = 'run-draft'
+      characterWorkflowEditorState.inspectorCollapsed = false
+    }
     const updateRunStep = (
       stepId: string,
       status: NonNullable<CharacterResourceRunState['steps']>[number]['status'],
       detail?: string
     ) => {
-      if (!characterWorkflowExecutingRunState) {
+      if (!context.runState.run || getExecutingWorkflowRunContext(executionProjectId, executionRunId) !== context) {
         return
       }
-      const steps = characterWorkflowExecutingRunState.steps?.length
-        ? characterWorkflowExecutingRunState.steps
+      const steps = context.runState.steps?.length
+        ? context.runState.steps
         : workflowPage.createCharacterResourceRunSteps(options.getLanguage())
       const targetIndex = steps.findIndex((step) => step.id === stepId)
-      characterWorkflowExecutingRunState.steps = steps.map((step, index) => {
+      context.runState.steps = steps.map((step, index) => {
         if (index < targetIndex && step.status !== 'failed') {
           return { ...step, status: 'done' }
         }
@@ -6984,62 +7792,45 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         }
         return step
       })
-      if (characterWorkflowExecutingRunState.run) {
-        characterWorkflowExecutingRunState.run.currentStepId = stepId
+      if (context.runState.run) {
+        context.runState.run.currentStepId = stepId
       }
-      syncExecutingWorkflowRunState(true)
-      syncVisibleWorkflowRunState(characterWorkflowExecutingProjectId, characterWorkflowExecutingRunState)
-      if (isViewingWorkflowRun(characterWorkflowExecutingProjectId, characterWorkflowExecutingRunState.run?.id ?? '')) {
-        scheduleCharacterWorkflowRunRender()
+      syncExecutingWorkflowRunState(context, true)
+      syncVisibleWorkflowRunState(context.projectId, context.runState)
+      if (isViewingWorkflowRun(context.projectId, context.runState.run?.id ?? '')) {
+        scheduleCharacterWorkflowRunRender(context.projectId, context.runState.run?.id ?? '')
       }
     }
     updateRunStep('snapshot', 'running')
-    renderCharacterWorkflow()
+    if (activeCharacterWorkflowProjectId === runProjectId) {
+      renderCharacterWorkflow()
+    }
     showToast(scoped
       ? (options.getLanguage() === 'zh-CN' ? 'Agent 正在局部重跑运行草稿' : 'Agent rerunning scoped draft target')
       : (options.getLanguage() === 'zh-CN' ? 'Agent 正在生成角色资源' : 'Agent generating character resources'))
     try {
-      if (renderToken !== characterWorkflowRenderToken) {
-        return
-      }
       const workflow = workflowPage.createCharacterAgentWorkflowSnapshot({
         language: options.getLanguage(),
         escapeHtml: options.escapeHtml,
         modelChoices: getCharacterWorkflowModelChoices(),
-        configOverrides: characterWorkflowConfigOverrides,
-        positionOverrides: characterWorkflowPositionOverrides,
-        runState: characterWorkflowExecutingRunState,
-        tabs: getCharacterWorkflowTabs(),
-        activeTabId: characterWorkflowActiveTabId,
-        selectedNodeId: selectedWorkflowNodeId,
-        activePanel: characterWorkflowEditorState.activePanel,
-        sidebarCollapsed: characterWorkflowEditorState.sidebarCollapsed,
-        inspectorCollapsed: characterWorkflowEditorState.inspectorCollapsed,
-        nodeSearchOpen: characterWorkflowEditorState.nodeSearchOpen,
-        viewState: {
-          zoom: characterResourceViewState.zoom,
-          panX: characterResourceViewState.panX,
-          panY: characterResourceViewState.panY,
-          hideLinks: characterResourceViewState.hideLinks,
-          selectedNodeIds: characterResourceViewState.selectedNodeIds,
-          selectionBox: characterResourceViewState.selectionBox,
-          collapsedNodeIds: [...characterResourceViewState.collapsedNodeIds],
-          deletedNodeIds: [...characterResourceViewState.deletedNodeIds],
-          duplicatedNodes: characterResourceViewState.duplicatedNodes,
-          addedNodes: characterResourceViewState.addedNodes,
-          nodeSizes: characterResourceViewState.nodeSizes,
-          selectedLinkId: characterResourceViewState.selectedLinkId,
-          linkKinds: characterResourceViewState.linkKinds,
-          customLinks: characterResourceViewState.customLinks,
-          deletedLinkIds: [...characterResourceViewState.deletedLinkIds],
-          replacedTargetSlots: [...characterResourceViewState.replacedTargetSlots],
-        },
+        configOverrides: runConfigOverrides,
+        positionOverrides: runPositionOverrides,
+        runState: context.runState,
+        tabs: runTabs,
+        activeTabId: 'workflow',
+        selectedNodeId: runSelectedWorkflowNodeId,
+        activePanel: runEditorSnapshot.activePanel,
+        sidebarCollapsed: runEditorSnapshot.sidebarCollapsed,
+        inspectorCollapsed: runEditorSnapshot.inspectorCollapsed,
+        nodeSearchOpen: runEditorSnapshot.nodeSearchOpen,
+        viewState: runViewState,
       })
       updateRunStep('dispatch', 'running')
       updateRunStep('agent', 'running')
       const workflowRunRequest = {
         workflow,
         language: options.getLanguage(),
+        runId: draftRunState.run?.id,
         ...(scopedRun ? {
           scopedRun: {
             ...scopedRun,
@@ -7049,17 +7840,18 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       }
       const response = typeof window.electronAPI.streamCharacterWorkflow === 'function'
         ? await window.electronAPI.streamCharacterWorkflow(workflowRunRequest, {
-            onEvent: (event) => applyCharacterWorkflowAgentEvent(event),
+            onEvent: (event) => applyCharacterWorkflowAgentEvent(context, event),
           })
         : await window.electronAPI.runCharacterWorkflow(workflowRunRequest)
+      if (getExecutingWorkflowRunContext(executionProjectId, executionRunId) !== context) {
+        return
+      }
       if (!response.success) {
         throw new Error(response.error || 'Character workflow failed')
       }
       updateRunStep('collect', 'running')
       const finalStatus = response.status === 'needs_action' ? 'needs_action' : 'done'
-      const currentRunState = characterWorkflowExecutingRunState
-        ? cloneCharacterWorkflowRunState(characterWorkflowExecutingRunState)
-        : cloneCharacterWorkflowRunState(draftRunState)
+      const currentRunState = cloneCharacterWorkflowRunState(context.runState)
       const currentRun = currentRunState.run ?? draftRunState.run
       const responseArtifacts: NonNullable<CharacterResourceRunState['artifacts']> = (response.artifacts ?? []).map((artifact) => ({
         id: artifact.id,
@@ -7072,7 +7864,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       const scopedImageSucceeded = Boolean(scopedRun && responseArtifacts.some((artifact) => artifact.type === 'image-asset'))
       const mergedArtifacts = mergeCharacterWorkflowRunArtifacts(currentRunState.artifacts ?? [], responseArtifacts, scopedRun, scopedImageSucceeded)
       const selectedScopedImageNodeId = getLatestScopedImageArtifactNodeId(mergedArtifacts, scopedRun)
-      if (selectedScopedImageNodeId) {
+      const selectedScopedImageRunId = currentRun?.id || draftRunState.run?.id || ''
+      if (selectedScopedImageNodeId && isViewingWorkflowRun(context.projectId, selectedScopedImageRunId)) {
         characterResourceViewState.selectedNodeIds = [selectedScopedImageNodeId]
         selectedWorkflowNodeId = selectedScopedImageNodeId
       }
@@ -7083,7 +7876,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           ? { detail: response.title || (options.getLanguage() === 'zh-CN' ? '图片生成需要处理' : 'Image generation needs action') }
           : {}),
       }))
-      characterWorkflowExecutingRunState = {
+      context.runState = {
         run: {
           id: scoped ? currentRun?.id || draftRunState.run?.id || response.runId || `resource-run-${Date.now()}` : draftRunState.run?.id || currentRun?.id || response.runId || `resource-run-${Date.now()}`,
           title: scoped ? currentRun?.title || draftRunState.run?.title || response.title || 'Resource Draft.run' : response.title || currentRun?.title || draftRunState.run?.title || 'Resource Draft.run',
@@ -7094,15 +7887,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         events: currentRunState.events ?? [],
         artifacts: mergedArtifacts,
       }
-      const completedProjectId = characterWorkflowExecutingProjectId
-      const completedRunId = characterWorkflowExecutingRunState.run?.id ?? ''
+      const completedProjectId = context.projectId
+      const completedRunId = context.runState.run?.id ?? ''
       const wasViewingCompletedRun = isViewingWorkflowRun(completedProjectId, completedRunId)
-      syncExecutingWorkflowRunState(true)
-      syncVisibleWorkflowRunState(characterWorkflowExecutingProjectId, characterWorkflowExecutingRunState)
-      characterWorkflowExecutingRunState = null
-      characterWorkflowExecutingProjectId = ''
+      syncExecutingWorkflowRunState(context, true)
+      syncVisibleWorkflowRunState(context.projectId, context.runState)
+      clearExecutingWorkflowRunContext(completedProjectId, executionRunId)
       if (wasViewingCompletedRun) {
-        scheduleCharacterWorkflowRunRender()
+        scheduleCharacterWorkflowRunRender(completedProjectId, completedRunId)
       }
       showToast(finalStatus === 'needs_action'
         ? (options.getLanguage() === 'zh-CN' ? '运行草稿需要处理：图片生成失败' : 'Run draft needs action: image generation failed')
@@ -7111,35 +7903,33 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           : (options.getLanguage() === 'zh-CN' ? '角色资源生成完成' : 'Character resources generated'))
     } catch (error) {
       console.warn('[CharacterResourceGraph] Failed to run agent lifecycle:', error)
-      if (renderToken === characterWorkflowRenderToken) {
-        const failedRunState = characterWorkflowExecutingRunState
-          ? cloneCharacterWorkflowRunState(characterWorkflowExecutingRunState)
-          : cloneCharacterWorkflowRunState(draftRunState)
-        const failedRun = failedRunState.run ?? draftRunState.run
-        const failedStepId = failedRun?.currentStepId ?? draftRunState.run?.currentStepId
-        characterWorkflowExecutingRunState = failedRun
-          ? {
-              ...failedRunState,
-              run: { ...failedRun, status: 'failed' },
-              steps: (failedRunState.steps ?? draftRunState.steps ?? workflowPage.createCharacterResourceRunSteps(options.getLanguage())).map((step) => (
-                step.id === failedStepId
-                  ? { ...step, status: 'failed' }
-                  : step
-              )),
-            }
-          : draftRunState
-        const failedProjectId = characterWorkflowExecutingProjectId
-        const failedRunId = characterWorkflowExecutingRunState.run?.id ?? ''
-        const wasViewingFailedRun = isViewingWorkflowRun(failedProjectId, failedRunId)
-        syncExecutingWorkflowRunState(true)
-        syncVisibleWorkflowRunState(characterWorkflowExecutingProjectId, characterWorkflowExecutingRunState)
-        characterWorkflowExecutingRunState = null
-        characterWorkflowExecutingProjectId = ''
-        if (wasViewingFailedRun) {
-          scheduleCharacterWorkflowRunRender()
-        }
-        showToast(error instanceof Error ? error.message : (options.getLanguage() === 'zh-CN' ? '角色资源生成失败' : 'Character resource generation failed'))
+      if (getExecutingWorkflowRunContext(executionProjectId, executionRunId) !== context) {
+        return
       }
+      const failedRunState = cloneCharacterWorkflowRunState(context.runState)
+      const failedRun = failedRunState.run ?? draftRunState.run
+      const failedStepId = failedRun?.currentStepId ?? draftRunState.run?.currentStepId
+      context.runState = failedRun
+        ? {
+            ...failedRunState,
+            run: { ...failedRun, status: 'failed' },
+            steps: (failedRunState.steps ?? draftRunState.steps ?? workflowPage.createCharacterResourceRunSteps(options.getLanguage())).map((step) => (
+              step.id === failedStepId
+                ? { ...step, status: 'failed' }
+                : step
+            )),
+          }
+        : draftRunState
+      const failedProjectId = context.projectId
+      const failedRunId = context.runState.run?.id ?? ''
+      const wasViewingFailedRun = isViewingWorkflowRun(failedProjectId, failedRunId)
+      syncExecutingWorkflowRunState(context, true)
+      syncVisibleWorkflowRunState(context.projectId, context.runState)
+      clearExecutingWorkflowRunContext(failedProjectId, executionRunId)
+      if (wasViewingFailedRun) {
+        scheduleCharacterWorkflowRunRender(failedProjectId, failedRunId)
+      }
+      showToast(error instanceof Error ? error.message : (options.getLanguage() === 'zh-CN' ? '角色资源生成失败' : 'Character resource generation failed'))
     }
   }
 
@@ -7327,8 +8117,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     return data.accepted !== false
   }
 
-  function applyCharacterWorkflowAgentEvent(event: Record<string, unknown>): void {
-    if (!characterWorkflowExecutingRunState) {
+  function applyCharacterWorkflowAgentEvent(context: CharacterWorkflowExecutingRunContext, event: Record<string, unknown>): void {
+    const runId = context.runState.run?.id ?? ''
+    if (!runId || getExecutingWorkflowRunContext(context.projectId, runId) !== context) {
       return
     }
     const type = typeof event.type === 'string' ? event.type : 'agent.event'
@@ -7351,8 +8142,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         ? record.toolName
         : undefined
     logCharacterWorkflowImageAttemptFailure(type, artifact)
-    characterWorkflowExecutingRunState.events = [
-      ...(characterWorkflowExecutingRunState.events ?? []),
+    context.runState.events = [
+      ...(context.runState.events ?? []),
       {
         type,
         timestamp,
@@ -7380,11 +8171,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         raw: event,
       },
     ]
+    let runStepChanged = false
     if (phase) {
       const stepId = phaseToRunStepId(phase)
-      if (stepId && characterWorkflowExecutingRunState.run) {
-        characterWorkflowExecutingRunState.run.currentStepId = stepId
-        characterWorkflowExecutingRunState.steps = (characterWorkflowExecutingRunState.steps ?? []).map((step) => {
+      if (stepId && context.runState.run) {
+        runStepChanged = context.runState.run.currentStepId !== stepId
+        context.runState.run.currentStepId = stepId
+        context.runState.steps = (context.runState.steps ?? []).map((step) => {
           if (step.id === stepId) {
             const failed = type === 'run.failed' || type === 'run.needs_action'
             return { ...step, status: failed ? 'failed' : 'running', ...(failed && (errorMessage || eventSummary) ? { detail: errorMessage || eventSummary } : {}) }
@@ -7393,22 +8186,22 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         })
       }
     }
-    if (characterWorkflowExecutingRunState.run) {
+    if (context.runState.run) {
       if (type === 'run.failed') {
-        characterWorkflowExecutingRunState.run.status = 'failed'
+        context.runState.run.status = 'failed'
       } else if (type === 'run.needs_action') {
-        characterWorkflowExecutingRunState.run.status = 'needs_action'
-        characterWorkflowExecutingRunState.run.currentStepId = 'agent'
+        context.runState.run.status = 'needs_action'
+        context.runState.run.currentStepId = 'agent'
       } else if (type === 'run.completed') {
-        characterWorkflowExecutingRunState.run.status = 'done'
-        characterWorkflowExecutingRunState.run.currentStepId = 'finish'
+        context.runState.run.status = 'done'
+        context.runState.run.currentStepId = 'finish'
       }
     }
     if (artifact) {
       const artifactId = typeof artifact.id === 'string' ? artifact.id : ''
-      const existing = characterWorkflowExecutingRunState.artifacts ?? []
+      const existing = context.runState.artifacts ?? []
       if (!artifactId || !existing.some((item) => item.id === artifactId)) {
-        characterWorkflowExecutingRunState.artifacts = pruneSupersededFailedImageAttempts([
+        context.runState.artifacts = pruneSupersededFailedImageAttempts([
           ...existing,
           {
             id: artifactId,
@@ -7419,13 +8212,24 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             data: artifact.data,
           },
         ])
+        if (
+          shouldFocusRunDraftArtifact(artifact)
+          && isViewingWorkflowRun(context.projectId, context.runState.run?.id ?? '')
+        ) {
+          characterWorkflowRunDraftFocusArtifactId = artifactId
+        }
       }
     }
-    syncExecutingWorkflowRunState()
-    syncVisibleWorkflowRunState(characterWorkflowExecutingProjectId, characterWorkflowExecutingRunState)
-    if (isViewingWorkflowRun(characterWorkflowExecutingProjectId, characterWorkflowExecutingRunState.run?.id ?? '')) {
-      if (!patchCharacterWorkflowRunProgress(type, phase, toolName, artifact, result, characterWorkflowExecutingRunState)) {
-        scheduleCharacterWorkflowRunRender()
+    const shouldPersistRunImmediately = Boolean(artifact)
+      || type === 'run.completed'
+      || type === 'run.failed'
+      || type === 'run.needs_action'
+      || runStepChanged
+    syncExecutingWorkflowRunState(context, shouldPersistRunImmediately)
+    syncVisibleWorkflowRunState(context.projectId, context.runState)
+    if (isViewingWorkflowRun(context.projectId, context.runState.run?.id ?? '')) {
+      if (!patchCharacterWorkflowRunProgress(type, phase, toolName, artifact, result, context.runState)) {
+        scheduleCharacterWorkflowRunRender(context.projectId, context.runState.run?.id ?? '')
       }
     }
   }
@@ -7452,6 +8256,30 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       parentAttemptId: data.parentAttemptId,
       error: data.error || artifact.summary,
     })
+  }
+
+  function shouldFocusRunDraftArtifact(artifact: Record<string, any>): boolean {
+    const kind = typeof artifact.kind === 'string' ? artifact.kind : ''
+    if (!kind) {
+      return false
+    }
+    if (kind === 'image-attempt') {
+      const data = artifact.data && typeof artifact.data === 'object' ? artifact.data as Record<string, unknown> : {}
+      return data.status === 'failed'
+    }
+    return [
+      'character-card-draft',
+      'character-card-field',
+      'character-card-final',
+      'opening-message',
+      'dialogue-style-guide',
+      'world-context',
+      'scene-context',
+      'opening-layout',
+      'atmosphere-style',
+      'game-system',
+      'image-asset',
+    ].includes(kind)
   }
 
   function patchCharacterWorkflowRunProgress(
@@ -7494,11 +8322,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const labels: Record<string, [string, string]> = {
       idle: ['待运行', 'Idle'],
       running: ['运行中', 'Running'],
-      paused: ['已暂停', 'Paused'],
       done: ['已完成', 'Done'],
       needs_action: ['需要处理', 'Needs action'],
       failed: ['失败', 'Failed'],
-      canceled: ['已取消', 'Canceled'],
     }
     const label = labels[status] ?? [status, status]
     return zh ? label[0] : label[1]
@@ -7713,7 +8539,6 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     if (tabId === 'run-draft') {
       const liveRunState = getExecutingWorkflowRunState(activeCharacterWorkflowProjectId, characterWorkflowRunState?.run?.id ?? '')
-        ?? (characterWorkflowExecutingProjectId === activeCharacterWorkflowProjectId ? characterWorkflowExecutingRunState : null)
       if (liveRunState?.run) {
         characterWorkflowRunState = cloneCharacterWorkflowRunState(liveRunState)
       }
@@ -7750,6 +8575,37 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     saveActiveWorkflowProjectSnapshot(false)
     renderCharacterWorkflow()
+  }
+
+  function selectRunDraftNodeInViewport(target: HTMLElement, additive = false): void {
+    const viewport = target.closest<HTMLElement>('.chat-resource-run-viewport')
+    const nodeId = target.dataset.chatWorkflowNodeSelect || target.dataset.chatWorkflowNodeId || ''
+    if (!viewport || !nodeId) {
+      return
+    }
+    const nodes = Array.from(viewport.querySelectorAll<HTMLElement>('[data-chat-workflow-node-id]'))
+    const currentNode = nodes.find((node) => node.dataset.chatWorkflowNodeId === nodeId)
+    if (!currentNode) {
+      return
+    }
+    if (additive) {
+      currentNode.classList.toggle('selected')
+    } else {
+      nodes.forEach((node) => {
+        node.classList.toggle('selected', node === currentNode)
+      })
+    }
+    const selectedIds = new Set(
+      nodes
+        .filter((node) => node.classList.contains('selected'))
+        .map((node) => node.dataset.chatWorkflowNodeId || '')
+        .filter(Boolean)
+    )
+    characterWorkflowRunDraftViewState.selectedNodeIds = [...selectedIds]
+    characterWorkflowRunDraftViewState.selectedLinkId = ''
+    viewport.querySelectorAll<HTMLElement>('[data-resource-minimap-node]').forEach((item) => {
+      item.classList.toggle('selected', selectedIds.has(item.dataset.resourceMinimapNode || ''))
+    })
   }
 
   function addCharacterResourceNodeFromLibrary(card: HTMLElement): void {
@@ -7959,11 +8815,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function closeCharacterWorkflowTab(tabId: string): void {
     if (tabId === 'workflow') {
-      if (characterWorkflowExecutingProjectId === activeCharacterWorkflowProjectId) {
-        characterWorkflowRenderToken += 1
-        characterWorkflowExecutingProjectId = ''
-        characterWorkflowExecutingRunState = null
+      for (const context of getExecutingWorkflowRunContextsForProject(activeCharacterWorkflowProjectId)) {
+        cancelBackendCharacterWorkflowRun(context.runState.run?.id, 'workflow tab closed')
       }
+      clearExecutingWorkflowRunContext(activeCharacterWorkflowProjectId)
       characterWorkflowRunOpenToken += 1
       saveActiveWorkflowProjectSnapshot()
       activeCharacterWorkflowProjectId = ''
@@ -7999,14 +8854,21 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!nodeId) {
       return
     }
-    selectedWorkflowNodeId = nodeId
-    characterResourceViewState.selectedNodeIds = [nodeId]
-    characterResourceViewState.selectedLinkId = ''
-    characterWorkflowEditorState.inspectorCollapsed = false
+    const runDraft = Boolean(node.closest<HTMLElement>('.chat-resource-run-viewport'))
+    if (runDraft) {
+      selectRunDraftNodeInViewport(node)
+    } else {
+      selectedWorkflowNodeId = nodeId
+      characterResourceViewState.selectedNodeIds = [nodeId]
+      characterResourceViewState.selectedLinkId = ''
+      characterWorkflowEditorState.inspectorCollapsed = false
+    }
     const origin = characterWorkflowPositionOverrides[nodeId] ?? {
       x: Number.parseFloat(node.style.getPropertyValue('--node-x')) || 0,
       y: Number.parseFloat(node.style.getPropertyValue('--node-y')) || 0,
     }
+    const plane = node.closest<HTMLElement>('.chat-resource-graph-plane')
+    const zoom = readCharacterWorkflowPlaneZoom(plane)
     characterWorkflowDragging = {
       nodeId,
       pointerId: event.pointerId,
@@ -8014,6 +8876,8 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       startY: event.clientY,
       originX: origin.x,
       originY: origin.y,
+      runDraft,
+      zoom,
     }
     node.setPointerCapture?.(event.pointerId)
     node.classList.add('is-dragging', 'selected')
@@ -8026,14 +8890,17 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!characterWorkflowDragging || characterWorkflowDragging.pointerId !== event.pointerId) {
       return
     }
-    const nextX = Math.round(characterWorkflowDragging.originX + event.clientX - characterWorkflowDragging.startX)
-    const nextY = Math.round(characterWorkflowDragging.originY + event.clientY - characterWorkflowDragging.startY)
+    const deltaX = (event.clientX - characterWorkflowDragging.startX) / characterWorkflowDragging.zoom
+    const deltaY = (event.clientY - characterWorkflowDragging.startY) / characterWorkflowDragging.zoom
+    const nextX = Math.round(characterWorkflowDragging.originX + deltaX)
+    const nextY = Math.round(characterWorkflowDragging.originY + deltaY)
     characterWorkflowPositionOverrides[characterWorkflowDragging.nodeId] = { x: nextX, y: nextY }
     const node = panel.querySelector<HTMLElement>(`[data-chat-workflow-node-id="${CSS.escape(characterWorkflowDragging.nodeId)}"]`)
     if (node) {
       node.style.setProperty('--node-x', `${nextX}px`)
       node.style.setProperty('--node-y', `${nextY}px`)
     }
+    refreshCharacterResourceLinksForNode(characterWorkflowDragging.nodeId)
     refreshCharacterResourceGroupBounds()
   }
 
@@ -8046,9 +8913,123 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (node) {
       node.style.zIndex = '20'
     }
+    const runDraft = characterWorkflowDragging.runDraft
     characterWorkflowDragging = null
-    saveActiveWorkflowProjectSnapshot()
-    renderCharacterWorkflow()
+    saveActiveWorkflowProjectSnapshot(!runDraft)
+    if (!runDraft) {
+      renderCharacterWorkflow()
+    } else if (characterWorkflowRunDraftPatchDeferred) {
+      flushDeferredCharacterWorkflowRunDraftPatch()
+    }
+  }
+
+  function readCharacterWorkflowPlaneZoom(plane: HTMLElement | null): number {
+    if (!plane) {
+      return 1
+    }
+    const raw = plane.style.getPropertyValue('--resource-zoom') || getComputedStyle(plane).getPropertyValue('--resource-zoom')
+    const zoom = Number.parseFloat(raw)
+    return Number.isFinite(zoom) && zoom > 0 ? zoom : 1
+  }
+
+  function refreshCharacterResourceLinksForNode(nodeId: string): void {
+    const viewport = panel.querySelector<HTMLElement>('.chat-workflow-canvas-viewport.active')
+    if (!viewport) {
+      return
+    }
+    viewport.querySelectorAll<SVGGElement>('.chat-resource-link[data-chat-resource-link-id]').forEach((link) => {
+      const linkId = link.getAttribute('data-chat-resource-link-id') || ''
+      const endpoints = parseRenderedResourceLinkEndpoints(linkId)
+      if (!endpoints || (endpoints.sourceNodeId !== nodeId && endpoints.targetNodeId !== nodeId)) {
+        return
+      }
+      const source = getRenderedResourceNodeBox(endpoints.sourceNodeId)
+      const target = getRenderedResourceNodeBox(endpoints.targetNodeId)
+      if (!source || !target) {
+        return
+      }
+      const geometry = calculateRenderedResourceLinkGeometry(source, target, link.classList.contains('run-sequence-link'))
+      link.querySelectorAll<SVGPathElement>('path.chat-resource-link-main, path.hit-area').forEach((path) => {
+        path.setAttribute('d', geometry.path)
+      })
+      const sourcePort = link.querySelector<SVGCircleElement>('.chat-resource-link-port.source')
+      const targetPort = link.querySelector<SVGCircleElement>('.chat-resource-link-port.target')
+      if (sourcePort) {
+        sourcePort.setAttribute('cx', String(geometry.x1))
+        sourcePort.setAttribute('cy', String(geometry.y1))
+      }
+      if (targetPort) {
+        targetPort.setAttribute('cx', String(geometry.x2))
+        targetPort.setAttribute('cy', String(geometry.y2))
+      }
+      const label = link.querySelector<SVGTextElement>('text')
+      if (label) {
+        label.setAttribute('x', String((geometry.x1 + geometry.x2) / 2))
+        label.setAttribute('y', String((geometry.y1 + geometry.y2) / 2 - 7))
+      }
+      const disconnect = link.querySelector<SVGForeignObjectElement>('.chat-resource-link-disconnect-wrap')
+      if (disconnect) {
+        disconnect.setAttribute('x', String((geometry.x1 + geometry.x2) / 2 - 12))
+        disconnect.setAttribute('y', String((geometry.y1 + geometry.y2) / 2 + 2))
+      }
+    })
+  }
+
+  function parseRenderedResourceLinkEndpoints(linkId: string): { sourceNodeId: string; targetNodeId: string } | null {
+    const runMatch = linkId.match(/^run-link-\d+-(.+)->(.+)$/)
+    if (runMatch) {
+      return { sourceNodeId: runMatch[1], targetNodeId: runMatch[2] }
+    }
+    const workflowMatch = linkId.match(/^(.+?):.*?->(.+?):/)
+    if (workflowMatch) {
+      return { sourceNodeId: workflowMatch[1], targetNodeId: workflowMatch[2] }
+    }
+    return null
+  }
+
+  function getRenderedResourceNodeBox(nodeId: string): { x: number; y: number; width: number; height: number } | null {
+    const node = panel.querySelector<HTMLElement>(`[data-chat-workflow-node-id="${CSS.escape(nodeId)}"]`)
+    if (!node) {
+      return null
+    }
+    return {
+      x: Number.parseFloat(node.style.getPropertyValue('--node-x')) || 0,
+      y: Number.parseFloat(node.style.getPropertyValue('--node-y')) || 0,
+      width: Number.parseFloat(node.style.getPropertyValue('--node-w')) || node.offsetWidth || 268,
+      height: Number.parseFloat(node.style.getPropertyValue('--node-h')) || node.offsetHeight || 226,
+    }
+  }
+
+  function calculateRenderedResourceLinkGeometry(
+    source: { x: number; y: number; width: number; height: number },
+    target: { x: number; y: number; width: number; height: number },
+    runLink: boolean
+  ): { x1: number; y1: number; x2: number; y2: number; path: string } {
+    if (runLink) {
+      const horizontal = Math.abs(target.x - source.x) > Math.abs(target.y - source.y) * 1.15
+      if (horizontal) {
+        const direction = target.x >= source.x ? 1 : -1
+        const x1 = direction > 0 ? source.x + source.width : source.x
+        const y1 = source.y + source.height * 0.5
+        const x2 = direction > 0 ? target.x : target.x + target.width
+        const y2 = target.y + target.height * 0.5
+        const mid = Math.max(92, Math.abs(x2 - x1) * 0.44)
+        return { x1, y1, x2, y2, path: `M ${x1} ${y1} C ${x1 + direction * mid} ${y1}, ${x2 - direction * mid} ${y2}, ${x2} ${y2}` }
+      }
+      const direction = target.y >= source.y ? 1 : -1
+      const x1 = source.x + source.width * 0.5
+      const y1 = direction > 0 ? source.y + source.height : source.y
+      const x2 = target.x + target.width * 0.5
+      const y2 = direction > 0 ? target.y : target.y + target.height
+      const mid = Math.max(58, Math.abs(y2 - y1) * 0.44)
+      return { x1, y1, x2, y2, path: `M ${x1} ${y1} C ${x1} ${y1 + direction * mid}, ${x2} ${y2 - direction * mid}, ${x2} ${y2}` }
+    }
+    const x1 = source.x + source.width
+    const y1 = source.y + source.height * 0.5
+    const x2 = target.x
+    const y2 = target.y + target.height * 0.5
+    const mid = Math.max(80, Math.abs(x2 - x1) * 0.45)
+    return { x1, y1, x2, y2, path: `M ${x1} ${y1} C ${x1 + mid} ${y1}, ${x2 - mid} ${y2}, ${x2} ${y2}` }
   }
 
   function refreshCharacterResourceGroupBounds(): void {
@@ -8184,13 +9165,16 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!viewport || target?.closest('[data-chat-workflow-node-id], button, input, textarea, select, .chat-resource-tab-panel')) {
       return
     }
+    const runDraft = viewport.classList.contains('chat-resource-run-viewport') || Boolean(viewport.dataset.runId)
+    const viewState = runDraft ? characterWorkflowRunDraftViewState : characterResourceViewState
     characterResourceViewportDrag = {
-      mode: event.shiftKey ? 'select' : 'pan',
+      mode: !runDraft && event.shiftKey ? 'select' : 'pan',
       pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
-      originPanX: characterResourceViewState.panX,
-      originPanY: characterResourceViewState.panY,
+      originPanX: viewState.panX,
+      originPanY: viewState.panY,
+      runDraft,
     }
     if (characterResourceViewportDrag.mode === 'select') {
       characterResourceViewState.selectionBox = { x: event.offsetX, y: event.offsetY, width: 0, height: 0 }
@@ -8207,11 +9191,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
     if (characterResourceViewportDrag.mode === 'pan') {
-      characterResourceViewState.panX = Math.round(characterResourceViewportDrag.originPanX + event.clientX - characterResourceViewportDrag.startX)
-      characterResourceViewState.panY = Math.round(characterResourceViewportDrag.originPanY + event.clientY - characterResourceViewportDrag.startY)
-      const plane = panel.querySelector<HTMLElement>('.chat-resource-graph-plane')
-      plane?.style.setProperty('--resource-pan-x', `${characterResourceViewState.panX}px`)
-      plane?.style.setProperty('--resource-pan-y', `${characterResourceViewState.panY}px`)
+      const viewState = characterResourceViewportDrag.runDraft ? characterWorkflowRunDraftViewState : characterResourceViewState
+      viewState.panX = Math.round(characterResourceViewportDrag.originPanX + event.clientX - characterResourceViewportDrag.startX)
+      viewState.panY = Math.round(characterResourceViewportDrag.originPanY + event.clientY - characterResourceViewportDrag.startY)
+      if (characterResourceViewportDrag.runDraft) {
+        characterWorkflowRunDraftViewState.lastManualViewportAt = Date.now()
+      }
+      updateCharacterWorkflowViewportDom()
       return
     }
     const startX = characterResourceViewportDrag.startX
@@ -8258,8 +9244,15 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       characterResourceViewState.selectionBox = null
       renderCharacterWorkflow()
     }
-    saveCharacterResourceViewStateSnapshot()
+    if (characterResourceViewportDrag.runDraft) {
+      characterWorkflowRunDraftViewState.lastManualViewportAt = Date.now()
+    } else {
+      saveCharacterResourceViewStateSnapshot()
+    }
     characterResourceViewportDrag = null
+    if (characterWorkflowRunDraftPatchDeferred) {
+      flushDeferredCharacterWorkflowRunDraftPatch()
+    }
   }
 
   function updateCharacterResourceViewportZoom(event: WheelEvent): void {
@@ -8271,10 +9264,17 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
     event.preventDefault()
-    const nextZoom = Math.min(1.4, Math.max(0.46, characterResourceViewState.zoom + (event.deltaY > 0 ? -0.05 : 0.05)))
-    characterResourceViewState.zoom = Math.round(nextZoom * 100) / 100
+    const runDraft = viewport.classList.contains('chat-resource-run-viewport') || Boolean(viewport.dataset.runId)
+    const viewState = runDraft ? characterWorkflowRunDraftViewState : characterResourceViewState
+    const nextZoom = Math.min(1.4, Math.max(0.46, viewState.zoom + (event.deltaY > 0 ? -0.05 : 0.05)))
+    viewState.zoom = Math.round(nextZoom * 100) / 100
+    if (runDraft) {
+      characterWorkflowRunDraftViewState.lastManualViewportAt = Date.now()
+    }
     updateCharacterWorkflowViewportDom()
-    saveCharacterResourceViewStateSnapshot()
+    if (!runDraft) {
+      saveCharacterResourceViewStateSnapshot()
+    }
   }
 
   function scrollWorkflowAssistantStatusRecords(event: WheelEvent): boolean {
@@ -8963,6 +9963,23 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
 
+    const gamePanelClose = eventTarget.closest<HTMLElement>('[data-chat-game-panel-close]')
+    if ((gamePanelClose && panel.contains(gamePanelClose)) || eventTarget === gamePanelView) {
+      openGamePanel = ''
+      renderGameQuickbar(getActiveProfileCharacter())
+      return
+    }
+
+    const gamePanelAction = eventTarget.closest<HTMLElement>('[data-chat-game-panel]')
+    if (gamePanelAction && panel.contains(gamePanelAction)) {
+      const nextPanel = gamePanelAction.dataset.chatGamePanel
+      if (nextPanel === 'equipment') {
+        openGamePanel = openGamePanel === nextPanel ? '' : nextPanel
+        renderGameQuickbar(getActiveProfileCharacter())
+      }
+      return
+    }
+
     const sideAction = eventTarget.closest<HTMLElement>('[data-chat-side-action]')
     if (sideAction && panel.contains(sideAction)) {
       if (sideAction.dataset.chatSideAction === 'conversation-management') {
@@ -9156,8 +10173,21 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
 
+    const equipmentUse = eventTarget.closest<HTMLElement>('[data-chat-equipment-use]')
+    if (equipmentUse && panel.contains(equipmentUse)) {
+      const name = equipmentUse.dataset.chatEquipmentName || ''
+      showToast(options.getLanguage() === 'zh-CN'
+        ? `已选择使用${name ? `：${name}` : '装备'}`
+        : `Selected equipment${name ? `: ${name}` : ''}`)
+      return
+    }
+
     const workflowNodeSelect = eventTarget.closest<HTMLElement>('[data-chat-workflow-node-select]')
     if (workflowNodeSelect && panel.contains(workflowNodeSelect) && !eventTarget.closest<HTMLElement>('[data-chat-workflow-action]')) {
+      if (workflowNodeSelect.closest<HTMLElement>('.chat-resource-run-viewport')) {
+        selectRunDraftNodeInViewport(workflowNodeSelect, event.metaKey || event.ctrlKey || event.shiftKey)
+        return
+      }
       characterResourceViewState.selectedLinkId = ''
       characterWorkflowEditorState.nodeSearchOpen = false
       const panelId = workflowNodeSelect.dataset.chatWorkflowPanel
@@ -9339,6 +10369,10 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     if (event.key === 'Escape' && characterProfilePanel?.classList.contains('visible')) {
       closeCharacterProfilePanel()
+    }
+    if (event.key === 'Escape' && gamePanelView?.classList.contains('visible')) {
+      openGamePanel = ''
+      renderGameQuickbar(getActiveProfileCharacter())
     }
     if (event.key === 'Escape' && openChatModelLibraryId) {
       closeChatModelLibrary()

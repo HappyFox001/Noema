@@ -375,84 +375,54 @@
 }
 
 .has-chat-atmosphere .roleplay-chat-frame {
-  gap: var(--chat-atmosphere-density-gap, 12px);
-  border-color: color-mix(in srgb, var(--chat-atmosphere-accent, #d8dce0) 18%, transparent);
-  border-radius: calc(var(--chat-atmosphere-radius, 16px) + 4px);
+  gap: var(--chat-message-density-gap, 12px);
+  border-color: var(--chat-message-border, color-mix(in srgb, var(--chat-message-accent, #d8dce0) 18%, transparent));
+  border-radius: calc(var(--chat-message-radius, 16px) + 4px);
   background:
-    radial-gradient(circle at 15% 0%, var(--chat-atmosphere-accent-soft, rgba(218, 232, 224, 0.09)), transparent 34%),
-    linear-gradient(140deg, rgba(24, 25, 27, 0.9), rgba(10, 11, 12, 0.84)),
+    radial-gradient(circle at 15% 0%, var(--chat-message-accent-soft, rgba(218, 232, 224, 0.09)), transparent 34%),
+    var(--chat-message-surface, linear-gradient(140deg, rgba(24, 25, 27, 0.9), rgba(10, 11, 12, 0.84))),
     rgba(9, 9, 11, 0.86);
 }
 
 .has-chat-atmosphere .roleplay-chat-frame::before {
   background:
     linear-gradient(90deg, rgba(255, 255, 255, 0.03), transparent 42%),
-    radial-gradient(circle at 72% 18%, var(--chat-atmosphere-accent-soft, rgba(218, 232, 224, 0.08)), transparent 38%);
+    radial-gradient(circle at 72% 18%, var(--chat-message-accent-soft, rgba(218, 232, 224, 0.08)), transparent 38%);
 }
 
 .has-chat-atmosphere .roleplay-chat-frame > p {
-  color: rgba(225, 228, 224, 0.76);
+  color: var(--chat-message-muted, rgba(225, 228, 224, 0.76));
 }
 
 .has-chat-atmosphere .chat-message .roleplay-chat-quote {
-  color: rgba(250, 250, 246, 0.95);
+  color: var(--chat-message-text, rgba(250, 250, 246, 0.95));
 }
 
-.chat-atmosphere-surface-paper .roleplay-chat-frame {
-  background:
-    radial-gradient(circle at 12% 0%, var(--chat-atmosphere-accent-soft), transparent 34%),
-    linear-gradient(145deg, rgba(42, 38, 32, 0.84), rgba(19, 17, 15, 0.88));
-}
-
-.chat-atmosphere-surface-noir .roleplay-chat-frame {
-  background:
-    radial-gradient(circle at 8% 0%, var(--chat-atmosphere-accent-soft), transparent 30%),
-    linear-gradient(145deg, rgba(18, 16, 22, 0.95), rgba(5, 5, 7, 0.9));
-}
-
-.chat-atmosphere-surface-mist .roleplay-chat-frame {
-  background:
-    radial-gradient(circle at 18% 0%, var(--chat-atmosphere-accent-soft), transparent 36%),
-    linear-gradient(145deg, rgba(24, 29, 32, 0.88), rgba(9, 12, 14, 0.86));
-}
-
-.chat-atmosphere-surface-velvet .roleplay-chat-frame {
-  background:
-    radial-gradient(circle at 20% 0%, var(--chat-atmosphere-accent-soft), transparent 34%),
-    linear-gradient(145deg, rgba(34, 22, 31, 0.9), rgba(10, 8, 12, 0.86));
-}
-
-.chat-atmosphere-surface-terminal .roleplay-chat-frame {
-  background:
-    linear-gradient(180deg, rgba(127, 215, 255, 0.035), transparent 32%),
-    linear-gradient(145deg, rgba(11, 18, 22, 0.92), rgba(4, 8, 10, 0.9));
-}
-
-.chat-atmosphere-message-dossier .roleplay-chat-frame,
-.chat-atmosphere-message-dossier .roleplay-chat-speech p {
+.chat-atmosphere-message-minimal .roleplay-chat-frame,
+.chat-atmosphere-message-minimal .roleplay-chat-speech p {
   border-radius: 10px;
 }
 
-.chat-atmosphere-message-dossier .roleplay-chat-frame > p,
-.chat-atmosphere-message-dossier .chat-message .roleplay-chat-quote {
+.chat-atmosphere-message-minimal .roleplay-chat-frame > p,
+.chat-atmosphere-message-minimal .chat-message .roleplay-chat-quote {
   font-family: var(--font-ui);
   letter-spacing: 0;
 }
 
-.chat-atmosphere-message-visual-novel .roleplay-chat-frame {
+.chat-atmosphere-message-glass .roleplay-chat-frame {
   padding: 18px 22px 20px;
-  border-left: 3px solid var(--chat-atmosphere-accent, rgba(218, 232, 224, 0.5));
+  border-left: 3px solid var(--chat-message-accent, rgba(218, 232, 224, 0.5));
 }
 
-.chat-atmosphere-message-letter .roleplay-chat-frame {
+.chat-atmosphere-message-ornate .roleplay-chat-frame {
   border-radius: 22px;
 }
 
-.chat-atmosphere-message-letter .roleplay-chat-frame > p {
+.chat-atmosphere-message-ornate .roleplay-chat-frame > p {
   font-style: normal;
 }
 
-.chat-atmosphere-density-airy .roleplay-chat-frame {
+.chat-atmosphere-density-cinematic .roleplay-chat-frame {
   padding: 24px 25px 26px;
 }
 
@@ -461,46 +431,55 @@
 }
 
 .has-chat-atmosphere .chat-inline-scene {
-  border-color: color-mix(in srgb, var(--chat-atmosphere-accent, #d8dce0) 16%, transparent);
-  border-radius: calc(var(--chat-atmosphere-radius, 16px) + 2px);
+  border-color: var(--chat-scene-border, color-mix(in srgb, var(--chat-scene-accent, #d8dce0) 16%, transparent));
+  border-radius: calc(var(--chat-scene-radius, 16px) + 2px);
   background:
-    linear-gradient(180deg, var(--chat-atmosphere-accent-soft, rgba(218, 232, 224, 0.06)), rgba(255, 255, 255, 0.024)),
-    rgba(7, 8, 9, 0.52);
+    linear-gradient(180deg, var(--chat-scene-accent-soft, rgba(218, 232, 224, 0.06)), rgba(255, 255, 255, 0.024)),
+    var(--chat-scene-surface, rgba(7, 8, 9, 0.52));
 }
 
-.chat-atmosphere-scene-paper-note .chat-inline-scene {
+.chat-atmosphere-scene-plain .chat-inline-scene {
   background:
     linear-gradient(135deg, rgba(224, 177, 121, 0.08), rgba(255, 255, 255, 0.026)),
     rgba(22, 19, 15, 0.54);
 }
 
-.chat-atmosphere-scene-terminal-readout .chat-inline-scene {
+.chat-atmosphere-scene-ledger .chat-inline-scene {
   border-radius: 10px;
   background:
     linear-gradient(90deg, rgba(127, 215, 255, 0.08), transparent),
     rgba(4, 8, 10, 0.62);
 }
 
-.has-chat-atmosphere .chat-inline-audio-player,
-.has-chat-atmosphere .chat-inline-audio.pending span {
-  border-color: color-mix(in srgb, var(--chat-atmosphere-accent, #d8dce0) 18%, transparent);
+.chat-atmosphere-scene-instrument .chat-inline-scene {
   background:
-    linear-gradient(90deg, var(--chat-atmosphere-accent-soft, rgba(218, 232, 224, 0.07)), rgba(255, 255, 255, 0.026)),
-    rgba(255, 255, 255, 0.032);
+    linear-gradient(135deg, var(--chat-scene-accent-soft, rgba(218, 232, 224, 0.08)), rgba(255, 255, 255, 0.026)),
+    var(--chat-scene-surface, rgba(7, 8, 9, 0.58));
 }
 
-.chat-atmosphere-audio-dossier-line .chat-inline-audio-player,
-.chat-atmosphere-audio-dossier-line .chat-inline-audio.pending span {
+.has-chat-atmosphere .chat-inline-audio-player,
+.has-chat-atmosphere .chat-inline-audio.pending span {
+  min-height: var(--chat-audio-height, 40px);
+  border-color: var(--chat-audio-border, color-mix(in srgb, var(--chat-audio-accent, #d8dce0) 18%, transparent));
+  border-radius: var(--chat-audio-radius, 999px);
+  color: var(--chat-audio-text, rgba(248, 250, 250, 0.78));
+  background:
+    linear-gradient(90deg, var(--chat-audio-accent-soft, rgba(218, 232, 224, 0.07)), rgba(255, 255, 255, 0.026)),
+    var(--chat-audio-surface, rgba(255, 255, 255, 0.032));
+}
+
+.chat-atmosphere-audio-console .chat-inline-audio-player,
+.chat-atmosphere-audio-console .chat-inline-audio.pending span {
   border-radius: 10px;
 }
 
-.chat-atmosphere-audio-soft-wave-strip .chat-inline-audio-player,
-.chat-atmosphere-audio-soft-wave-strip .chat-inline-audio.pending span {
+.chat-atmosphere-audio-bar .chat-inline-audio-player,
+.chat-atmosphere-audio-bar .chat-inline-audio.pending span {
   border-radius: 18px;
 }
 
-.chat-atmosphere-audio-quiet-capsule .chat-inline-audio-player,
-.chat-atmosphere-audio-quiet-capsule .chat-inline-audio.pending span {
+.chat-atmosphere-audio-capsule .chat-inline-audio-player,
+.chat-atmosphere-audio-capsule .chat-inline-audio.pending span {
   min-height: 38px;
   border-radius: 999px;
 }
@@ -1280,13 +1259,13 @@ body.theme-day .chat-message-avatar {
 }
 
 .chat-composer {
-  min-height: 66px;
-  margin: 0 18px 18px;
+  min-height: 52px;
+  margin: 0 18px 8px;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
-  padding: 9px 10px;
+  padding: 7px 8px;
   border-radius: 22px;
   border-color: rgba(255, 255, 255, 0.105);
   background:
@@ -1385,8 +1364,8 @@ body.theme-day .chat-message-avatar {
 
 .chat-composer textarea {
   min-height: 24px;
-  max-height: 118px;
-  padding: 8px 4px;
+  max-height: 82px;
+  padding: 5px 4px;
   color: rgba(248, 250, 250, 0.9);
   font-size: 13px;
   line-height: 1.55;
@@ -1402,13 +1381,407 @@ body.theme-day .chat-message-avatar {
 
 .chat-compose-tool,
 .chat-send-btn {
-  width: 42px;
-  height: 42px;
-  min-width: 42px;
-  min-height: 42px;
-  border-radius: 15px;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  border-radius: 13px;
   background: rgba(255, 255, 255, 0.055);
   border-color: rgba(255, 255, 255, 0.105);
+}
+
+.chat-game-quickbar {
+  margin: 0 18px 14px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.chat-game-quickbar[hidden] {
+  display: none;
+}
+
+.chat-game-quickbar button {
+  position: relative;
+  min-width: 0;
+  height: 34px;
+  display: inline-grid;
+  grid-template-columns: 24px auto minmax(18px, auto);
+  align-items: center;
+  gap: 8px;
+  padding: 4px 9px 4px 5px;
+  border: 1px solid rgba(191, 218, 209, 0.15);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.074), rgba(255, 255, 255, 0.028)),
+    rgba(9, 12, 12, 0.58);
+  color: rgba(230, 238, 236, 0.76);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 10px 24px rgba(0, 0, 0, 0.16);
+  transition: transform 140ms ease, border-color 140ms ease, background 140ms ease, color 140ms ease;
+}
+
+.chat-game-quickbar-icon {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(191, 218, 209, 0.14);
+  border-radius: 9px;
+  background:
+    linear-gradient(180deg, rgba(185, 211, 202, 0.18), rgba(185, 211, 202, 0.06)),
+    rgba(255, 255, 255, 0.035);
+  color: rgba(224, 239, 234, 0.86);
+}
+
+.chat-game-quickbar-icon svg {
+  display: block;
+}
+
+.chat-game-quickbar-copy {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-game-quickbar button em {
+  min-width: 18px;
+  height: 18px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0 5px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.16);
+  color: rgba(220, 229, 226, 0.62);
+  font-size: 10px;
+  font-style: normal;
+  line-height: 1;
+}
+
+.chat-game-quickbar button:hover,
+.chat-game-quickbar button.is-active {
+  transform: translateY(-1px);
+  border-color: rgba(159, 199, 185, 0.32);
+  background:
+    linear-gradient(180deg, rgba(159, 199, 185, 0.16), rgba(159, 199, 185, 0.055)),
+    rgba(9, 12, 12, 0.62);
+  color: rgba(248, 250, 250, 0.94);
+}
+
+.chat-game-quickbar button.is-active .chat-game-quickbar-icon {
+  border-color: rgba(159, 199, 185, 0.28);
+  background:
+    linear-gradient(180deg, rgba(159, 199, 185, 0.25), rgba(159, 199, 185, 0.09)),
+    rgba(255, 255, 255, 0.04);
+  color: rgba(248, 250, 250, 0.96);
+}
+
+.chat-game-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 220;
+  display: none;
+  place-items: center;
+  place-content: center;
+  padding: clamp(18px, 3vw, 34px);
+  background: rgba(3, 4, 5, 0.34);
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.chat-game-panel.visible {
+  display: grid;
+}
+
+.chat-game-panel.is-equipment-panel {
+  place-items: end center;
+  padding: 18px clamp(18px, 4vw, 48px) 92px;
+  background: rgba(3, 4, 5, 0.28);
+}
+
+.chat-game-panel-sheet--equipment {
+  width: min(980px, max(760px, 72vw), calc(100vw - 48px));
+  max-height: min(58dvh, 520px);
+  display: block;
+  overflow: hidden;
+  border: 1px solid rgba(244, 248, 245, 0.13);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(214, 232, 222, 0.105), transparent 34%),
+    linear-gradient(180deg, rgba(22, 24, 25, 0.96), rgba(8, 10, 11, 0.97));
+  box-shadow:
+    0 26px 72px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.075);
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.chat-game-panel-sheet--equipment .chat-inline-scene {
+  width: 100%;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.chat-game-panel-sheet--equipment .chat-inline-equipment {
+  max-height: min(44dvh, 410px);
+  overflow-x: auto;
+  overflow-y: auto;
+}
+
+.chat-game-panel-sheet--equipment .chat-inline-equipment table {
+  min-width: 760px;
+  width: 100%;
+}
+
+.chat-game-panel-sheet--equipment .chat-inline-equipment th,
+.chat-game-panel-sheet--equipment .chat-inline-equipment td {
+  white-space: nowrap;
+}
+
+.chat-game-panel-sheet--equipment .chat-inline-equipment td:nth-child(1),
+.chat-game-panel-sheet--equipment .chat-inline-equipment td:nth-child(2) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-game-panel-sheet--equipment .chat-inline-equipment th:nth-child(1),
+.chat-game-panel-sheet--equipment .chat-inline-equipment td:nth-child(1) {
+  width: 24%;
+}
+
+.chat-game-panel-sheet--equipment .chat-inline-equipment th:nth-child(2),
+.chat-game-panel-sheet--equipment .chat-inline-equipment td:nth-child(2) {
+  width: auto;
+}
+
+.chat-game-panel-sheet--equipment .chat-inline-equipment th:nth-child(4),
+.chat-game-panel-sheet--equipment .chat-inline-equipment td:nth-child(4) {
+  width: 70px;
+}
+
+.chat-game-panel-sheet--equipment .chat-inline-equipment-use {
+  white-space: nowrap;
+}
+
+@media (max-width: 840px) {
+  .chat-game-panel.is-equipment-panel {
+    padding-inline: 12px;
+    padding-bottom: 82px;
+  }
+
+  .chat-game-panel-sheet--equipment {
+    width: calc(100vw - 24px);
+  }
+}
+
+.chat-inline-game-status {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 7px;
+  padding: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.085);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.chat-inline-game-stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  gap: 7px;
+}
+
+.chat-inline-game-stat {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.chat-inline-game-stat div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.chat-inline-game-stat span,
+.chat-inline-game-effects em {
+  color: rgba(220, 229, 226, 0.62);
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-style: normal;
+}
+
+.chat-inline-game-stat strong {
+  color: rgba(248, 250, 250, 0.84);
+  font-family: var(--font-ui);
+  font-size: 10px;
+}
+
+.chat-inline-game-stat i {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(159, 199, 185, 0.86) var(--stat-value), rgba(255, 255, 255, 0.11) var(--stat-value));
+}
+
+.chat-inline-game-effects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chat-inline-game-effects em {
+  padding: 3px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.chat-inline-game-status.has-game-panel-style {
+  padding: 11px;
+}
+
+.chat-inline-game-status.has-game-panel-style,
+.chat-inline-scene.has-game-panel-style {
+  border-color: var(--game-panel-border, rgba(159, 199, 185, 0.18));
+  border-radius: var(--game-panel-radius, 12px);
+  background:
+    radial-gradient(circle at 12% 0%, var(--game-panel-accent-soft, rgba(159, 199, 185, 0.14)), transparent 34%),
+    linear-gradient(135deg, var(--game-panel-surface-alt, rgba(39, 71, 46, 0.38)), var(--game-panel-surface, rgba(29, 23, 32, 0.72))),
+    rgba(12, 15, 14, 0.76);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.052),
+    0 16px 34px rgba(0, 0, 0, 0.2);
+}
+
+.chat-inline-game-status.has-game-panel-style.game-panel-density-compact .chat-inline-game-stat-row {
+  gap: 5px;
+}
+
+.chat-inline-game-status.has-game-panel-style.game-panel-density-airy .chat-inline-game-stat-row {
+  gap: 9px;
+}
+
+.chat-inline-game-status.has-game-panel-style .chat-inline-game-stat span,
+.chat-inline-game-status.has-game-panel-style .chat-inline-game-effects em,
+.chat-inline-scene.has-game-panel-style .chat-inline-scene-line > span,
+.chat-inline-scene.has-game-panel-style .chat-inline-scene-status em,
+.chat-inline-scene.has-game-panel-style .chat-inline-equipment th {
+  color: var(--game-panel-muted, rgba(220, 229, 226, 0.62));
+}
+
+.chat-inline-game-status.has-game-panel-style .chat-inline-game-stat strong,
+.chat-inline-scene.has-game-panel-style .chat-inline-scene-line strong,
+.chat-inline-scene.has-game-panel-style .chat-inline-equipment td,
+.chat-inline-scene.has-game-panel-style .chat-inline-equipment-toggle span {
+  color: var(--game-panel-text, rgba(248, 250, 250, 0.84));
+}
+
+.chat-inline-game-status.has-game-panel-style .chat-inline-game-stat i {
+  height: 5px;
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg, var(--game-panel-accent, rgba(159, 199, 185, 0.86)) var(--stat-value), var(--game-panel-track, rgba(255, 255, 255, 0.11)) var(--stat-value));
+  box-shadow: 0 0 18px color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 18%, transparent);
+}
+
+.chat-inline-game-status.has-game-panel-style.game-panel-meter-line .chat-inline-game-stat i {
+  height: 2px;
+  border-radius: 0;
+}
+
+.chat-inline-game-status.has-game-panel-style.game-panel-meter-etched .chat-inline-game-stat i {
+  height: 6px;
+  background:
+    repeating-linear-gradient(90deg, color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 72%, transparent) 0 7px, transparent 7px 10px),
+    linear-gradient(90deg, var(--game-panel-accent, rgba(159, 199, 185, 0.86)) var(--stat-value), var(--game-panel-track, rgba(255, 255, 255, 0.11)) var(--stat-value));
+}
+
+.chat-inline-game-status.has-game-panel-style.game-panel-meter-warm-bar .chat-inline-game-stat i {
+  height: 7px;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 86%, white 8%) var(--stat-value), var(--game-panel-track, rgba(255, 255, 255, 0.11)) var(--stat-value));
+}
+
+.chat-inline-game-status.has-game-panel-style .chat-inline-game-effects em {
+  border-color: color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 22%, transparent);
+  background: color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 10%, transparent);
+}
+
+.chat-inline-scene.has-game-panel-style .chat-inline-scene-status em {
+  border-color: color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 20%, transparent);
+  background: color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 8%, transparent);
+}
+
+.chat-inline-scene.has-game-panel-style .chat-inline-equipment-toggle {
+  border-top-color: color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 18%, transparent);
+  background:
+    linear-gradient(90deg, var(--game-panel-accent-soft, rgba(159, 199, 185, 0.12)), transparent 76%),
+    rgba(255, 255, 255, 0.018);
+}
+
+.chat-inline-scene.has-game-panel-style .chat-inline-equipment-toggle em {
+  background: color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 14%, transparent);
+  color: var(--game-panel-text, rgba(248, 250, 250, 0.76));
+}
+
+.chat-inline-scene.has-game-panel-style .chat-inline-equipment-toggle strong {
+  color: var(--game-panel-muted, rgba(248, 250, 250, 0.44));
+}
+
+.chat-inline-scene.has-game-panel-style .chat-inline-equipment table {
+  border-color: color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 16%, rgba(255, 255, 255, 0.08));
+  border-radius: var(--game-panel-cell-radius, 9px);
+  background: color-mix(in srgb, var(--game-panel-surface, rgba(12, 15, 14, 0.74)) 76%, transparent);
+}
+
+.chat-inline-scene.has-game-panel-style .chat-inline-equipment th,
+.chat-inline-scene.has-game-panel-style .chat-inline-equipment td {
+  border-bottom-color: color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 12%, transparent);
+  border-right-color: color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 10%, transparent);
+}
+
+.chat-inline-scene.has-game-panel-style .chat-inline-equipment-use {
+  border-color: color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 24%, transparent);
+  background: color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 12%, transparent);
+  color: var(--game-panel-text, rgba(248, 250, 250, 0.68));
+}
+
+.chat-inline-game-status.has-game-panel-style.game-panel-frame-dossier,
+.chat-inline-scene.has-game-panel-style.game-panel-frame-dossier {
+  border-radius: 10px;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 10%, transparent) 1px, transparent 1px),
+    linear-gradient(135deg, var(--game-panel-surface-alt, rgba(39, 71, 46, 0.28)), var(--game-panel-surface, rgba(29, 23, 32, 0.66)));
+  background-size: 12px 100%, auto;
+}
+
+.chat-inline-game-status.has-game-panel-style.game-panel-frame-ritual,
+.chat-inline-scene.has-game-panel-style.game-panel-frame-ritual {
+  border-radius: calc(var(--game-panel-radius, 12px) + 4px);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 12%, transparent),
+    0 18px 38px rgba(0, 0, 0, 0.22);
+}
+
+.chat-inline-game-status.has-game-panel-style.game-panel-frame-noir,
+.chat-inline-scene.has-game-panel-style.game-panel-frame-noir {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 8%, rgba(0, 0, 0, 0.72)), rgba(0, 0, 0, 0.7)),
+    var(--game-panel-surface, rgba(12, 15, 14, 0.74));
+}
+
+.chat-inline-game-status.has-game-panel-style.game-panel-frame-mist,
+.chat-inline-scene.has-game-panel-style.game-panel-frame-mist {
+  backdrop-filter: blur(16px);
 }
 
 .chat-compose-tool:hover,
@@ -1591,7 +1964,7 @@ body.theme-day .chat-message-avatar {
   gap: 0;
   overflow: hidden;
   border-radius: 999px;
-  background: rgba(248, 250, 250, 0.2);
+  background: var(--chat-audio-track, rgba(248, 250, 250, 0.2));
   color: inherit;
 }
 
@@ -1603,7 +1976,7 @@ body.theme-day .chat-message-avatar {
   height: 100%;
   gap: 0;
   border-radius: inherit;
-  background: color-mix(in srgb, var(--chat-atmosphere-accent, #d8dce0) 58%, rgba(248, 250, 250, 0.82));
+  background: color-mix(in srgb, var(--chat-audio-accent, #d8dce0) 58%, rgba(248, 250, 250, 0.82));
 }
 
 .chat-inline-audio .chat-inline-audio-player .chat-inline-audio-time {
@@ -1951,6 +2324,10 @@ body.theme-day .chat-send-btn {
   height: 100%;
   display: block;
   object-fit: cover;
+  border: 1px solid var(--chat-image-border, transparent);
+  border-radius: var(--chat-image-radius, 0);
+  filter: var(--chat-image-filter, none);
+  box-shadow: 0 18px 42px var(--chat-image-shadow, transparent);
 }
 
 .chat-character-stage {

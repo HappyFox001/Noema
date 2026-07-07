@@ -127,7 +127,7 @@ import {
   registerWindowIpcHandlers,
 } from './ipc-handlers.js'
 import { registerChatRoleResourceIpcHandlers, registerChatRoleResourceProtocol } from './chat-role-resource-ipc-handlers.js'
-import { registerChatIpcHandlers } from './chat-ipc-handlers.js'
+import { cancelActiveCharacterWorkflowRuns, registerChatIpcHandlers } from './chat-ipc-handlers.js'
 import { ChatHistoryStore } from './chat-history-store.js'
 import { CharacterWorkflowStore } from './character-workflow-store.js'
 import { registerConversationIpcHandlers } from './conversation-ipc-handlers.js'
@@ -2799,6 +2799,8 @@ app.on('window-all-closed', () => {
 app.on('before-quit', async (event) => {
   event.preventDefault()
   console.log('[App] Shutting down...')
+
+  cancelActiveCharacterWorkflowRuns('app shutdown')
 
   if (sdkInstance) {
     console.log('[App] Shutting down SDK...')

@@ -65,32 +65,58 @@ type ChatPreloadImagePromptContext = {
 }
 
 type ChatPreloadAtmosphereStyle = {
-  schemaVersion: 1
+  schemaVersion: 2
   name: string
   summary?: string
   mood: string[]
-  palette: {
-    accent: string
-    accentSoft: string
-    surface: 'glass' | 'paper' | 'noir' | 'mist' | 'velvet' | 'terminal'
-    warmth: 'cool' | 'neutral' | 'warm'
-    contrast: 'low' | 'medium' | 'high'
-  }
-  message: {
-    frame: 'plain' | 'literary-panel' | 'visual-novel' | 'dossier' | 'letter'
+  messageStyle: {
+    frame: 'minimal' | 'panel' | 'glass' | 'ornate'
     narration: 'soft-prose' | 'cinematic' | 'noir' | 'diary' | 'clinical'
     speech: 'quote-emphasis' | 'quiet-line' | 'stage-dialogue'
-    density: 'compact' | 'balanced' | 'airy'
+    density: 'compact' | 'balanced' | 'cinematic'
     radius: 'sharp' | 'soft' | 'round'
+    accent: string
+    accentSoft: string
+    surface: string
+    border: string
+    text: string
+    muted: string
+    radiusPx: number
+    paddingY: number
+    paddingX: number
+    lineWeight: number
   }
-  audio: {
-    player: 'thin-glass-bar' | 'soft-wave-strip' | 'quiet-capsule' | 'dossier-line'
-    motion: 'still' | 'subtle-wave' | 'breath'
-    tone: 'near' | 'distant' | 'intimate' | 'formal'
+  audioStyle: {
+    player: 'bar' | 'capsule' | 'console'
+    motion: 'still' | 'pulse' | 'scan'
+    tone: 'intimate' | 'ambient' | 'dramatic'
+    accent: string
+    accentSoft: string
+    surface: string
+    track: string
+    border: string
+    text: string
+    radiusPx: number
+    heightPx: number
   }
-  sceneCard: {
-    frame: 'quiet-panel' | 'glass-dossier' | 'paper-note' | 'terminal-readout'
-    divider: 'fine-line' | 'soft-band' | 'none'
+  sceneStyle: {
+    frame: 'plain' | 'panel' | 'ledger' | 'instrument'
+    divider: 'line' | 'glow' | 'none'
+    accent: string
+    accentSoft: string
+    surface: string
+    border: string
+    text: string
+    muted: string
+    radiusPx: number
+  }
+  imageStyle: {
+    treatment: 'portrait' | 'artifact' | 'cinematic'
+    accent: string
+    border: string
+    shadow: string
+    radiusPx: number
+    filter: string
   }
   preview?: Record<string, unknown>
   sourceArtifactId?: string
@@ -920,6 +946,9 @@ declare global {
         mode?: 'create' | 'edit'
         editorSession?: {
           objective?: string
+          focusPrompt?: string
+          focusHistory?: string[]
+          status?: 'active' | 'paused' | 'needs-user' | 'blocked' | 'complete'
           plan?: string[]
           completedSteps?: string[]
           currentStep?: string
@@ -1028,7 +1057,7 @@ declare global {
           steps: Array<{
             id: string
             index: number
-            tool: 'inspect_graph' | 'edit_graph' | 'validate_graph' | 'ask_user' | 'finish'
+            tool: 'inspect_graph' | 'plan_requirements' | 'repair_structure' | 'generate_style' | 'generate_fields' | 'generate_images' | 'generate_css' | 'generate_gameplay' | 'generate_quality' | 'evaluate_goal_coverage' | 'repair_domain' | 'edit_graph' | 'validate_graph' | 'ask_user' | 'finish'
             userRequest: string
             summary: string
             status: 'applied' | 'needs-user' | 'blocked' | 'complete'
@@ -1124,6 +1153,7 @@ declare global {
       runCharacterWorkflow: (request: {
         workflow: Record<string, unknown>
         language?: 'zh-CN' | 'en-US'
+        runId?: string
         scopedRun?: {
           instruction?: string
           action?: 'retry' | 'reroll' | 'resume' | 'repair'
@@ -1146,7 +1176,7 @@ declare global {
         success: boolean
         runId?: string
         title?: string
-        status?: 'done' | 'needs_action'
+        status?: 'done' | 'needs_action' | 'failed' | 'cancelled'
         artifacts?: Array<{
           id: string
           kind: string
@@ -1157,9 +1187,15 @@ declare global {
         }>
         error?: string
       }>
+      cancelCharacterWorkflowRun: (request?: {
+        streamId?: string
+        runId?: string
+        reason?: string
+      }) => Promise<{ success: boolean; error?: string }>
       streamCharacterWorkflow?: (request: {
         workflow: Record<string, unknown>
         language?: 'zh-CN' | 'en-US'
+        runId?: string
         scopedRun?: Parameters<Window['electronAPI']['runCharacterWorkflow']>[0]['scopedRun']
       }, handlers?: {
         onEvent?: (event: Record<string, unknown>) => void
@@ -1167,7 +1203,7 @@ declare global {
           success: boolean
           runId?: string
           title?: string
-          status?: 'done' | 'needs_action'
+          status?: 'done' | 'needs_action' | 'failed' | 'cancelled'
           artifacts?: Array<{
             id: string
             kind: string
@@ -1183,6 +1219,7 @@ declare global {
         success: boolean
         runId?: string
         title?: string
+        status?: 'done' | 'needs_action' | 'failed' | 'cancelled'
         artifacts?: Array<{
           id: string
           kind: string

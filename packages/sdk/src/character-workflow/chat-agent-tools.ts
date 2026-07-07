@@ -241,9 +241,9 @@ function createCharacterDecisionPrompt(
     '    <rule>Avatar targetPrompts are bound to imageRole=avatar and should only add the canonical avatar.jpg composition: single visible character, fixed 3:4 portrait asset framing, upper-body or half-body portrait, one clear unobstructed face, looking at camera, calm natural expression, simple uncluttered background, soft light. Do not restate the full appearancePrompt or request another aspect ratio.</rule>',
     '    <rule>Non-avatar free sample image targets use imageRole=character-base-image. They are free-form base character sample images migrated from the avatar reference, not fixed categories like cover, full-body, expression, outfit detail, relationship moment, or world context.</rule>',
     '    <rule>character-base-image targetPrompts should describe image purpose and composition only: pose, camera angle, scene, action, outfit usage, mood, props, background, and roleplay meaning. Identity should come from supplied avatar reference images.</rule>',
-    '    <rule>character-base-image may produce multiple images. For multi-image targets, make each sample meaningfully different while preserving the same character: different scenes, activities, emotional beats, or situational uses. Do not request a model sheet, collage, split-screen, written labels, or another avatar.</rule>',
+    '    <rule>character-base-image may produce multiple images. For multi-image targets, each sample must have a different visual mission while preserving the same character: different camera angle, pose family, body action, environment use, outfit usage, prop interaction, mood, and roleplay meaning. Do not repeat the same pose/background/framing with only tiny expression changes. Do not request a model sheet, collage, split-screen, written labels, or another avatar.</rule>',
     '    <rule>For character-base-image visual appeal, express adult sensuality through pose, gaze, body line, fabric behavior, lighting, background objects, wardrobe exposure, and prop interaction. These are first-class visual controls, not forbidden content.</rule>',
-    '    <rule>If image_control includes pose_goals, background_interaction, appeal, sensuality, or wardrobe_exposure, treat them as strong local guidance for every character-base-image prompt from that target. The prompt should name concrete poses, body language, scene objects, and interactions instead of generic sexy adjectives.</rule>',
+    '    <rule>If image_control includes pose_goals, background_interaction, appeal, sensuality, or wardrobe_exposure, treat them as strong local guidance for every character-base-image prompt from that target. The prompt should name concrete poses, body language, scene objects, interactions, camera angle, and visual purpose instead of generic sexy adjectives.</rule>',
     '    <rule>Overview is a special built-in image role, like avatar. Its imageRole already requires a complete fixed 16:9 production overview sheet: left third large front full-body reference plus smaller half-body portrait crop, center third back view and side or three-quarter neutral model references, right third and bottom strip compact visual detail tiles, same character as avatar reference, no written labels.</rule>',
     '    <rule>Overview targetPrompts should only add slot-specific sheet emphasis such as pose neutrality, costume continuity, specific outfit variation, or which details to emphasize. Do not turn overview into a scene, cover, poster, single portrait, or non-16:9 canvas.</rule>',
     '    <example field="appearancePrompt" style="anime">anime style illustration, young adult fox-spirit woman, playful elegant temperament, long flowing crimson hair with soft waves, amber eyes with bright highlights, delicate oval face, slim brows, small nose, soft lips, pale luminous skin, graceful hourglass silhouette, layered red silk kimono with gold trim, small fox-ear hair ornament, pixiv style, high quality anime art, detailed expressive eyes</example>',
@@ -278,10 +278,10 @@ function createCharacterDecisionPrompt(
     '    <image_rule>character-base-image targets must also use linked avatar references to preserve the same face, hair, proportions, and outfit language while varying scene, action, mood, and roleplay function.</image_rule>',
     '    <image_rule>The avatar prompt must be a compact positive direction for one final avatar.jpg identity master image: fixed 3:4 portrait asset, one visible character only, one clear unobstructed face, upper-body or half-body portrait, looking at camera, calm natural expression, readable face/hair/default outfit/body silhouette, simple uncluttered background, polished finish. Do not request a poster, cover, scene moment, model sheet, collage, split-screen, multiple poses, or any non-3:4 aspect ratio for avatar.</image_rule>',
     '    <image_rule>The character-overview-sheet prompt must stay bound to the overview image role: same avatar reference identity, fixed 16:9 production overview sheet, left third large front full-body reference plus half-body portrait crop, center third back view and side or three-quarter neutral model references, right third and bottom strip detail tiles for expressions, eyes, nose and mouth, hairstyle, hands, feet/shoes, outfit fabric/accessory/hemline/silhouette details, no written labels.</image_rule>',
-    '    <image_rule>The character-base-image prompt must stay free-form and sample-based: same avatar reference identity, one clear character-focused image per prompt, meaningful scene/action/mood/outfit usage/prop interaction, adult sensual or erotic appeal according to image_control, no model sheet, no collage, no split screen, no written labels, and no second avatar.</image_rule>',
+    '    <image_rule>The character-base-image prompt must stay free-form and sample-based: same avatar reference identity, one clear character-focused image per prompt, meaningful scene/action/mood/outfit usage/prop interaction/camera angle/roleplay purpose, adult sensual or erotic appeal according to image_control, no model sheet, no collage, no split screen, no written labels, and no second avatar.</image_rule>',
     '    <image_rule>If an image attempt failed, is stale because its reference changed, or selected artifact feedback says the image is ugly, duplicated, off-style, multi-face, not matching appearancePrompt, or otherwise unacceptable, request_image for the same targetNodeId with a sharper corrected targetPrompts.prompt. Do not edit the workflow graph for a local image reroll.</image_rule>',
     '    <image_rule>The runtime wraps avatar targetPrompts.prompt with appearancePrompt, role-specific positive visual direction, style suffix, quality suffix, and a short avoid list. For non-avatar images, the runtime omits appearancePrompt and relies on graph-linked reference images plus role/style/quality wrapping. Do not repeat the full appearancePrompt inside targetPrompts.prompt.</image_rule>',
-    '    <image_rule>When requesting images, create one targetPrompts item per final image, not just per image target. If an image target requests multiple images through image_control count, return multiple distinct prompts for the same targetNodeId.</image_rule>',
+    '    <image_rule>Request one image prompt at a time. If a target ultimately needs multiple images, the runtime will request the next image after the previous image artifact is created.</image_rule>',
     '    <image_rule>All non-avatar images for the same role card must use reference-image continuity for face structure, hair, eyes, age impression, body type, signature accessories, and outfit language. Vary pose, shot, background, mood, lighting, outfit, and story function through targetPrompts.</image_rule>',
     '    <image_rule>Each targetPrompts.prompt should be a compact slot-specific visual direction: pose, expression, framing, camera angle, background simplicity, prop/motif, mood, and image function. For attractive free images, specify how the body line, hands, gaze, fabric, furniture, window light, mirror, cup, book, weapon, instrument, or other objects create adult visual appeal. Include only composition or slot-specific changes, not a rewritten identity bible.</image_rule>',
     '    <image_rule>Do not request pure empty scene images. Every image should contain the character or unmistakable character-linked visual motifs, and should support the role card text, opening, story, relationship, or layout.</image_rule>',
@@ -289,7 +289,7 @@ function createCharacterDecisionPrompt(
     '      <action name="set_field">{"type":"set_field","field":"name","value":"...","reason":"..."}</action>',
     '      <action name="merge_character_card">{"type":"merge_character_card","value":{"name":"...","description":"...","appearance":"...","personality":"...","background":"...","scenario":"...","worldContext":"...","firstMessage":"<chat>...</chat>","dialogueStyle":"...","appearancePrompt":"..."},"reason":"..."}</action>',
     '      <action name="create_artifact">{"type":"create_artifact","kind":"generation-report","title":"...","summary":"...","data":{"text":"..."}}</action>',
-    '      <action name="request_image">{"type":"request_image","targetPrompts":[{"targetNodeId":"avatar-image-target","title":"avatar.jpg","prompt":"compact target-specific image prompt"},{"targetNodeId":"overview-sheet-image-target","title":"character overview sheet","prompt":"compact target-specific image prompt"}]}</action>',
+    '      <action name="request_image">{"type":"request_image","targetPrompts":[{"targetNodeId":"avatar-image-target","title":"avatar.jpg","prompt":"compact target-specific image prompt"}]}</action>',
     '      <action name="finish">{"type":"finish","reason":"..."}</action>',
     '    </allowed_actions>',
     '    <completion_rule>Set done=true only after every required workflow requirement is complete. Always produce appearancePrompt and every unblocked required image target.</completion_rule>',
@@ -709,10 +709,13 @@ function resolveImageTargetPromptRequests(
   source: Record<string, unknown>,
   imageTargets: AgentTargetContext[],
   draft: CharacterCardDraft
-): Array<{ target: AgentTargetContext; prompt: string }> {
+): Array<{ target: AgentTargetContext; prompt: string; targetIndex?: number }> {
   const explicitTargetPrompts = Array.isArray(source.targetPrompts) && source.targetPrompts.length > 0
   if (!explicitTargetPrompts || source.autoGenerateTargetPrompts === true) {
-    return createAutomaticImageTargetPromptRequests(draft, imageTargets)
+    return createAutomaticImageTargetPromptRequests(draft, imageTargets, {
+      singleImagePerTarget: source.singleImagePerTarget === true,
+      targetPromptStartIndexByTarget: normalizeTargetPromptStartIndexByTarget(source.targetPromptStartIndexByTarget),
+    })
   }
   const targetById = new Map(imageTargets.map((target) => [target.nodeId, target]))
   return normalizeImageTargetPromptInputs(source.targetPrompts).map((item) => {
@@ -720,22 +723,35 @@ function resolveImageTargetPromptRequests(
     if (!target) {
       throw new Error(`Image request references unknown image target: ${item.targetNodeId}`)
     }
-    return { target, prompt: item.prompt.trim() }
+    return { target, prompt: item.prompt.trim(), targetIndex: item.targetIndex }
   })
 }
 
 function createAutomaticImageTargetPromptRequests(
   draft: CharacterCardDraft,
-  imageTargets: AgentTargetContext[]
-): Array<{ target: AgentTargetContext; prompt: string }> {
+  imageTargets: AgentTargetContext[],
+  options: {
+    singleImagePerTarget?: boolean
+    targetPromptStartIndexByTarget?: Map<string, number>
+  } = {}
+): Array<{ target: AgentTargetContext; prompt: string; targetIndex: number }> {
   const profile = createCharacterImageProfile(draft)
   return imageTargets.flatMap((target) => {
+    const startIndex = options.targetPromptStartIndexByTarget?.get(target.nodeId) ?? 1
+    if (options.singleImagePerTarget) {
+      return [{
+        target,
+        targetIndex: startIndex,
+        prompt: createDirectedAutomaticImagePrompt(target, profile, startIndex, 1),
+      }]
+    }
     const controls = target.imageControls.length ? target.imageControls : [undefined]
     return controls.flatMap((control) => {
       const count = Math.max(1, Math.floor(control?.targetImageCount ?? 1))
       return Array.from({ length: count }, (_, index) => ({
         target,
-        prompt: createDirectedAutomaticImagePrompt(target, profile, index + 1, count),
+        targetIndex: startIndex + index,
+        prompt: createDirectedAutomaticImagePrompt(target, profile, startIndex + index, count),
       }))
     })
   })
@@ -780,7 +796,7 @@ function normalizeReferenceImagesByTarget(value: unknown): Map<string, string[]>
 }
 
 function createImageGenerationPromptRequests(
-  requests: Array<{ target: AgentTargetContext; prompt: string }>,
+  requests: Array<{ target: AgentTargetContext; prompt: string; targetIndex?: number }>,
   draft: CharacterCardDraft
 ): Array<{ target: AgentTargetContext; targetIndex: number; imageRole: string; prompt: string }> {
   const targetPromptCounts = new Map<string, number>()
@@ -790,7 +806,9 @@ function createImageGenerationPromptRequests(
     if (!targetRole) {
       throw new Error(`Image target ${request.target.nodeId} is missing imageRole`)
     }
-    const targetIndex = (targetPromptCounts.get(request.target.nodeId) ?? 0) + 1
+    const targetIndex = request.targetIndex && Number.isFinite(request.targetIndex) && request.targetIndex > 0
+      ? Math.floor(request.targetIndex)
+      : (targetPromptCounts.get(request.target.nodeId) ?? 0) + 1
     targetPromptCounts.set(request.target.nodeId, targetIndex)
     const control = getImageControlForPromptIndex(request.target.imageControls, targetIndex)
     return {
@@ -893,8 +911,26 @@ function normalizeImageTargetPromptInputs(value: unknown): CharacterAgentImageTa
       targetNodeId,
       prompt,
       title: stringField(record.title, ''),
+      targetIndex: positiveIntegerField(record.targetIndex),
     }
   })
+}
+
+function normalizeTargetPromptStartIndexByTarget(value: unknown): Map<string, number> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return new Map()
+  }
+  return new Map(
+    Object.entries(value as Record<string, unknown>).flatMap(([targetNodeId, index]) => {
+      const normalized = positiveIntegerField(index)
+      return normalized ? [[targetNodeId, normalized] as const] : []
+    })
+  )
+}
+
+function positiveIntegerField(value: unknown): number | undefined {
+  const numberValue = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
+  return Number.isFinite(numberValue) && numberValue > 0 ? Math.floor(numberValue) : undefined
 }
 
 function createImageAttemptArtifact(

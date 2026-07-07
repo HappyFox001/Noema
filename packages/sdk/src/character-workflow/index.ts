@@ -14,6 +14,8 @@ export type CharacterNodeType =
   | 'character-field-target'
   | 'opening-layout-target'
   | 'atmosphere-style-target'
+  | 'game-system-target'
+  | 'resource-package-target'
   | 'image-target'
   | 'world-card-target'
   | 'npc-pack-target'
@@ -207,6 +209,7 @@ export type CharacterArtifactType =
   | 'quality-criteria'
   | 'asset-target'
   | 'candidate-pack'
+  | 'resource-package'
   | 'validation-report'
   | 'export-target'
 
@@ -225,6 +228,7 @@ export type CharacterArtifact =
   | QualityCriteriaArtifact
   | AssetTargetArtifact
   | CandidatePackArtifact
+  | ResourcePackageArtifact
   | ValidationReportArtifact
   | ExportTargetArtifact
 
@@ -380,6 +384,17 @@ export interface CandidatePackArtifact extends CharacterArtifactBase {
     summary: string
     resources: string[]
     risks: string[]
+  }
+}
+
+export interface ResourcePackageArtifact extends CharacterArtifactBase {
+  type: 'resource-package'
+  package: {
+    title: string
+    summary: string
+    resources: string[]
+    coverage: string[]
+    missing: string[]
   }
 }
 
@@ -725,7 +740,7 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     title: 'Atmosphere Style Target',
     category: 'targets',
     executor: 'agent',
-    description: 'Declares the structured role-card atmosphere style used by chat bubbles, role speech, inline audio, scene cards, and profile previews.',
+    description: 'Declares a character-specific scoped atmosphere design system for chat bubbles, role speech, inline audio, scene cards, and profile previews.',
     inputs: {
       card: port('card', 'Card', 'asset-target', true),
       field: port('field', 'Field', 'asset-target'),
@@ -735,42 +750,71 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     },
     outputs: { atmosphere: port('atmosphere', 'Atmosphere', 'asset-target') },
     parameters: [
-      parameter('moodPreset', 'Mood Preset', 'select', 'auto-atmosphere', undefined, [
-        option('Auto Atmosphere', 'auto-atmosphere'),
-        option('Rainy Quiet', 'rainy-quiet'),
-        option('Warm Intimate', 'warm-intimate'),
-        option('Noir Tension', 'noir-tension'),
-        option('Clinical Dossier', 'clinical-dossier'),
-        option('Dreamy Velvet', 'dreamy-velvet'),
-        option('Terminal Signal', 'terminal-signal'),
+      parameter('moodPreset', 'Atmosphere Direction', 'textarea', ''),
+      parameter('surface', 'Surface Material', 'textarea', ''),
+      parameter('messageFrame', 'Message Composition', 'textarea', ''),
+      parameter('audioPlayer', 'Audio Bar Design', 'textarea', ''),
+      parameter('density', 'Spacing Rhythm', 'textarea', ''),
+      parameter('stylePrompt', 'Design Brief', 'textarea', ''),
+    ],
+  },
+  {
+    type: 'game-system-target',
+    title: 'Game System Target',
+    category: 'targets',
+    executor: 'agent',
+    description: 'Declares a character-specific game layer for stats, independent equipment slots, equipment rules, status effects, and chat quick panels. Editing defines the rules; runtime generates concrete values.',
+    inputs: {
+      card: port('card', 'Card', 'asset-target', true),
+      field: port('field', 'Field', 'asset-target'),
+      world: port('world', 'World', 'asset-target'),
+      style: port('style', 'Style', 'style-signal'),
+      constraint: port('constraint', 'Constraint', 'hard-constraint'),
+    },
+    outputs: { gameSystem: port('gameSystem', 'Game System', 'asset-target') },
+    parameters: [
+      parameter('statDesign', 'Stat System Design', 'textarea', 'Split the game layer into: 1) base role fields, 2) base gameplay with complete world knowledge, 3) status fields derived from gameplay and character premise, 4) CSS/visual hooks. Design 3-6 character-specific stats that matter for this role and scenario. Avoid fixed generic labels; use adult/intimate body or desire stats only when the workflow explicitly allows adult content and the character context makes them meaningful.'),
+      parameter('equipmentRules', 'Equipment Rules', 'textarea', 'Define slot logic, capacity, rarity, compatibility, prohibited items, acquisition/removal rules, and how equipment may alter stats or status.'),
+      parameter('statusRules', 'Status Rules', 'textarea', 'Define temporary and persistent statuses from the character premise, relationship dynamic, body/mental state, powers, risks, and scene rules. Each status needs trigger, decay, conflict behavior, and narrative consequence.'),
+      parameter('panelDesign', 'Chat Panel Design', 'textarea', 'Expose equipment, status, rules, and world facts as quick chat panels. Keep generated values compact and readable, but preserve enough world knowledge for future turns.'),
+    ],
+  },
+  {
+    type: 'resource-package-target',
+    title: 'Resource Package Target',
+    category: 'targets',
+    executor: 'agent',
+    description: 'Assembles the role card candidate and all generated target assets into one package for quality evaluation and export.',
+    inputs: {
+      candidate: port('candidate', 'Candidate', 'candidate-pack', true),
+      field: port('field', 'Field', 'asset-target'),
+      imageAsset: port('imageAsset', 'Image Asset', 'asset-target'),
+      layout: port('layout', 'Layout', 'asset-target'),
+      atmosphere: port('atmosphere', 'Atmosphere', 'asset-target'),
+      gameSystem: port('gameSystem', 'Game System', 'asset-target'),
+      world: port('world', 'World', 'asset-target'),
+      continuity: port('continuity', 'Continuity', 'asset-target'),
+      relationship: port('relationship', 'Relationship', 'asset-target'),
+      plot: port('plot', 'Plot', 'asset-target'),
+      scene: port('scene', 'Scene', 'asset-target'),
+    },
+    outputs: { package: port('package', 'Package', 'resource-package') },
+    parameters: [
+      parameter('packageScope', 'Package Scope', 'multi-select', ['role-card', 'fields', 'image-pack', 'opening-layout', 'atmosphere-style', 'game-system', 'world-context'], undefined, [
+        option('Role Card', 'role-card'),
+        option('Fields', 'fields'),
+        option('Image Pack', 'image-pack'),
+        option('Opening Layout', 'opening-layout'),
+        option('Atmosphere Style', 'atmosphere-style'),
+        option('Game System', 'game-system'),
+        option('World Context', 'world-context'),
+        option('Continuity', 'continuity'),
+        option('Relationship', 'relationship'),
+        option('Plot', 'plot'),
+        option('Scenes', 'scenes'),
       ]),
-      parameter('surface', 'Surface', 'select', 'glass', undefined, [
-        option('Glass', 'glass'),
-        option('Paper', 'paper'),
-        option('Noir', 'noir'),
-        option('Mist', 'mist'),
-        option('Velvet', 'velvet'),
-        option('Terminal', 'terminal'),
-      ]),
-      parameter('messageFrame', 'Message Frame', 'select', 'literary-panel', undefined, [
-        option('Plain', 'plain'),
-        option('Literary Panel', 'literary-panel'),
-        option('Visual Novel', 'visual-novel'),
-        option('Dossier', 'dossier'),
-        option('Letter', 'letter'),
-      ]),
-      parameter('audioPlayer', 'Audio Player', 'select', 'thin-glass-bar', undefined, [
-        option('Thin Glass Bar', 'thin-glass-bar'),
-        option('Soft Wave Strip', 'soft-wave-strip'),
-        option('Quiet Capsule', 'quiet-capsule'),
-        option('Dossier Line', 'dossier-line'),
-      ]),
-      parameter('density', 'Density', 'select', 'balanced', undefined, [
-        option('Compact', 'compact'),
-        option('Balanced', 'balanced'),
-        option('Airy', 'airy'),
-      ]),
-      parameter('stylePrompt', 'Style Prompt', 'textarea', ''),
+      parameter('includeOptionalAssets', 'Include Optional Assets', 'boolean', true),
+      parameter('assemblyPrompt', 'Assembly Prompt', 'textarea', 'Package every generated target into one exportable resource bundle. Preserve each asset as an independently inspectable resource instead of flattening everything into the role-card text.'),
     ],
   },
   {
@@ -778,7 +822,7 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     title: 'Image Target',
     category: 'targets',
     executor: 'image',
-    description: 'Declares a role-card visual asset. Each image should preserve character identity while supporting a distinct story, field, or presentation purpose.',
+    description: 'Declares a role-card visual asset. Each image should preserve character identity while supporting a distinct story, field, or presentation purpose. Multi-image character-base targets should produce different visual missions, camera angles, poses, environments, and roleplay meanings.',
     inputs: {
       card: port('card', 'Card', 'asset-target'),
       image: port('image', 'Image', 'image-capability', true),
@@ -949,7 +993,7 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     title: 'Image Generation Control',
     category: 'controls',
     executor: 'manual',
-    description: 'Controls image batch count, lightweight visual style, shot, aspect ratio, consistency, and seed behavior. It does not declare the target asset.',
+    description: 'Controls image batch count, visual style, shot, aspect ratio, consistency, seed behavior, and per-image variation. It does not declare the target asset.',
     inputs: {},
     outputs: { imageControl: port('imageControl', 'Image Control', 'asset-target') },
     parameters: [
@@ -1179,11 +1223,12 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
         option('Explore then Converge', 'explore-then-converge'),
       ]),
       parameter('branchCount', 'Branch Count', 'integer', 3, { min: 1, max: 8, step: 1 }),
-      parameter('priorityAssets', 'Priority Assets', 'multi-select', ['role-card', 'opening', 'opening-layout', 'atmosphere-style', 'image-pack'], undefined, [
+      parameter('priorityAssets', 'Priority Assets', 'multi-select', ['role-card', 'opening', 'opening-layout', 'atmosphere-style', 'game-system', 'image-pack'], undefined, [
         option('Role Card', 'role-card'),
         option('Opening', 'opening'),
         option('Opening Layout', 'opening-layout'),
         option('Atmosphere Style', 'atmosphere-style'),
+        option('Game System', 'game-system'),
         option('Image Pack', 'image-pack'),
       ]),
       parameter('stopCondition', 'Stop Condition', 'text', 'quality gate passed'),
@@ -1214,10 +1259,10 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     title: 'Quality Gate',
     category: 'evaluation',
     executor: 'agent',
-    description: 'Defines acceptance criteria that can block export or route candidates back for repair.',
+    description: 'Defines acceptance criteria that can block export or route the assembled resource package back for repair.',
     inputs: {
       goal: port('goal', 'Goal', 'generation-goal', true),
-      candidate: port('candidate', 'Candidate', 'candidate-pack', true),
+      package: port('package', 'Package', 'resource-package', true),
       critique: port('critique', 'Critique', 'critique-policy'),
     },
     outputs: {
@@ -1241,9 +1286,9 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     title: 'Output Adapter',
     category: 'outputs',
     executor: 'deterministic',
-    description: 'Maps an accepted candidate pack to a target format without changing generation goals.',
+    description: 'Maps an accepted resource package to a target format without changing generation goals.',
     inputs: {
-      candidate: port('candidate', 'Candidate', 'candidate-pack', true),
+      package: port('package', 'Package', 'resource-package', true),
       report: port('report', 'Report', 'validation-report', true),
     },
     outputs: { export: port('export', 'Export', 'export-target') },
@@ -1307,10 +1352,12 @@ export function createStandardCharacterWorkflow(
     node('agent-policy', 1400, 40),
     node('opening-layout-target', 1400, 580),
     node('atmosphere-style-target', 1400, 830),
+    node('game-system-target', 1400, 1080),
     node('generation-strategy', 1740, 40),
     node('critique-loop', 1740, 330),
-    node('quality-gate', 2080, 190),
-    node('output-adapter', 2420, 190),
+    node('resource-package-target', 1740, 650),
+    node('quality-gate', 2080, 360),
+    node('output-adapter', 2420, 360),
   ]
   const llmModelRef = createModelRef(options.llmApiId, options.llmModelName)
   const imageModelRef = createModelRef(options.imageApiId, options.imageModelName)
@@ -1361,7 +1408,7 @@ export function createStandardCharacterWorkflow(
   if (openingPanelImageTarget) {
     Object.assign(openingPanelImageTarget.config, {
       imageRole: 'character-base-image',
-      assetPurpose: 'Free-form character sample images for the opening CSS panel. Generate reusable non-avatar images migrated from the avatar reference, showing distinct roleplay scenes, actions, moods, outfit usage, or prop interactions that can be used as visual material inside the opening panel.',
+      assetPurpose: 'Free-form character sample images for the opening CSS panel. Generate reusable non-avatar images migrated from the avatar reference. Each image should have a different visual mission: distinct camera angle, pose family, action, environment use, outfit usage, prop interaction, mood, and roleplay meaning. Avoid repeating the same pose/background/framing with only minor expression changes.',
     })
   }
   const openingPanelImageControl = nodes.find((nodeItem) => nodeItem.id === 'opening-panel-image-control')
@@ -1369,8 +1416,8 @@ export function createStandardCharacterWorkflow(
     Object.assign(openingPanelImageControl.config, {
       targetImageCount: 2,
       imageStyleDomain: 'auto',
-      poseGoals: ['expressive adult pose', 'readable body line', 'hands interacting with scene object'],
-      backgroundInteraction: 'Use the room, furniture, window light, fabric, mirror, cup, book, weapon, instrument, or other role-appropriate objects to create adult visual tension.',
+      poseGoals: ['variant 1: three-quarter standing or leaning view with readable outfit usage', 'variant 2: seated or reclining scene interaction with different camera angle', 'variant 3+: dynamic action, over-shoulder, side/back silhouette, close intimate crop, or environmental storytelling shot'],
+      backgroundInteraction: 'Use different role-appropriate environments and objects across images: room, furniture, window light, fabric, mirror, cup, book, weapon, instrument, desk, street, bed, or other scene objects. Each image should use a different object/setting relationship to create visual and roleplay meaning.',
       appealMode: 'sensual-confidence',
       sensualityLevel: 'sensual',
       wardrobeExposure: 'stylish-revealing',
@@ -1417,6 +1464,18 @@ export function createStandardCharacterWorkflow(
       ['avatar-image-target', 'imageAsset', 'atmosphere-style-target', 'imageAsset', 'guides'],
       ['overview-sheet-image-target', 'imageAsset', 'atmosphere-style-target', 'imageAsset', 'guides'],
       ['style-pressure', 'style', 'atmosphere-style-target', 'style', 'weights'],
+      ['character-card-target', 'target', 'game-system-target', 'card', 'guides'],
+      ['character-fields', 'field', 'game-system-target', 'field', 'guides'],
+      ['style-pressure', 'style', 'game-system-target', 'style', 'weights'],
+      ['constraint', 'constraint', 'game-system-target', 'constraint', 'constrains'],
+      ['character-card-target', 'candidate', 'resource-package-target', 'candidate', 'provides'],
+      ['character-fields', 'field', 'resource-package-target', 'field', 'provides'],
+      ['avatar-image-target', 'imageAsset', 'resource-package-target', 'imageAsset', 'provides'],
+      ['overview-sheet-image-target', 'imageAsset', 'resource-package-target', 'imageAsset', 'provides'],
+      ['opening-panel-image-target', 'imageAsset', 'resource-package-target', 'imageAsset', 'provides'],
+      ['opening-layout-target', 'layout', 'resource-package-target', 'layout', 'provides'],
+      ['atmosphere-style-target', 'atmosphere', 'resource-package-target', 'atmosphere', 'provides'],
+      ['game-system-target', 'gameSystem', 'resource-package-target', 'gameSystem', 'provides'],
       ['goal', 'goal', 'agent-policy', 'goal', 'guides'],
       ['constraint', 'constraint', 'agent-policy', 'constraint', 'constrains'],
       ['source-material', 'source', 'agent-policy', 'source', 'grounds'],
@@ -1424,8 +1483,8 @@ export function createStandardCharacterWorkflow(
       ['agent-policy', 'policy', 'generation-strategy', 'policy', 'guides'],
       ['generation-strategy', 'strategy', 'critique-loop', 'strategy', 'routes'],
       ['critique-loop', 'critique', 'quality-gate', 'critique', 'evaluates'],
-      ['character-card-target', 'candidate', 'quality-gate', 'candidate', 'evaluates'],
-      ['character-card-target', 'candidate', 'output-adapter', 'candidate', 'exports'],
+      ['resource-package-target', 'package', 'quality-gate', 'package', 'evaluates'],
+      ['resource-package-target', 'package', 'output-adapter', 'package', 'exports'],
       ['quality-gate', 'report', 'output-adapter', 'report', 'constrains'],
     ]),
     defaults: {
@@ -1832,14 +1891,56 @@ function createDefaultCharacterWorkflowExecutors(): Partial<Record<CharacterNode
       targets: {
         requested: [
           'atmosphere-style',
-          `mood:${stringConfig(config.moodPreset, 'auto-atmosphere')}`,
-          `surface:${stringConfig(config.surface, 'glass')}`,
-          `message:${stringConfig(config.messageFrame, 'literary-panel')}`,
-          `audio:${stringConfig(config.audioPlayer, 'thin-glass-bar')}`,
-        ],
+          `design:${stringConfig(config.stylePrompt, '')}`,
+          `atmosphere:${stringConfig(config.moodPreset, '')}`,
+          `surface:${stringConfig(config.surface, '')}`,
+          `message:${stringConfig(config.messageFrame, '')}`,
+          `audio:${stringConfig(config.audioPlayer, '')}`,
+          `spacing:${stringConfig(config.density, '')}`,
+        ].filter((item) => !item.endsWith(':')),
         includeAlternates: false,
       },
     }],
+    'game-system-target': ({ node, config, timestamp }) => [{
+      id: `${node.id}-game-system-target`,
+      type: 'asset-target',
+      sourceNodeId: node.id,
+      createdAt: timestamp,
+      targets: {
+        requested: [
+          'game-system',
+          `stats:${stringConfig(config.statDesign, '')}`,
+          `equipment:${stringConfig(config.equipmentRules, '')}`,
+          `status:${stringConfig(config.statusRules, '')}`,
+          `panels:${stringConfig(config.panelDesign, '')}`,
+        ].filter((item) => !item.endsWith(':')),
+        includeAlternates: false,
+      },
+    }],
+    'resource-package-target': ({ node, config, inputArtifacts, timestamp }) => {
+      const candidate = inputArtifacts.find((artifact): artifact is CandidatePackArtifact => artifact.type === 'candidate-pack')
+      const assetTargets = inputArtifacts.filter((artifact): artifact is AssetTargetArtifact => artifact.type === 'asset-target')
+      const scope = stringListConfig(config.packageScope, ['role-card', 'fields', 'image-pack', 'opening-layout', 'atmosphere-style', 'game-system'])
+      const requestedResources = [
+        ...(candidate?.pack.resources ?? []),
+        ...assetTargets.flatMap((artifact) => artifact.targets.requested),
+      ].map((item) => item.trim()).filter(Boolean)
+      const resources = mergeStringValues([...scope, ...requestedResources])
+      const missing = scope.filter((item) => !packageScopeCovered(item, resources))
+      return [{
+        id: `${node.id}-package`,
+        type: 'resource-package',
+        sourceNodeId: node.id,
+        createdAt: timestamp,
+        package: {
+          title: 'Character Resource Package',
+          summary: stringConfig(config.assemblyPrompt, 'Assembled character resource package.'),
+          resources,
+          coverage: scope.filter((item) => !missing.includes(item)),
+          missing,
+        },
+      }]
+    },
     'image-target': ({ node, config, timestamp }) => [{
       id: `${node.id}-image-target`,
       type: 'asset-target',
@@ -2036,8 +2137,9 @@ function createDefaultCharacterWorkflowExecutors(): Partial<Record<CharacterNode
       },
     }],
     'quality-gate': ({ node, config, inputArtifacts, timestamp }) => {
-      const hasCandidate = inputArtifacts.some((artifact) => artifact.type === 'candidate-pack')
-      const score = hasCandidate ? 0.86 : 0.2
+      const resourcePackage = inputArtifacts.find((artifact): artifact is ResourcePackageArtifact => artifact.type === 'resource-package')
+      const missing = resourcePackage?.package.missing ?? []
+      const score = resourcePackage ? (missing.length ? 0.74 : 0.9) : 0.2
       return [{
         id: `${node.id}-criteria`,
         type: 'quality-criteria',
@@ -2056,8 +2158,10 @@ function createDefaultCharacterWorkflowExecutors(): Partial<Record<CharacterNode
         report: {
           passed: score >= numberConfig(config.minimumScore, 0.82),
           score,
-          issues: hasCandidate ? [] : [{ severity: 'error', path: 'candidate', message: 'Candidate pack is missing.' }],
-          repairTargets: hasCandidate ? [] : ['character-card-target'],
+          issues: resourcePackage
+            ? missing.map((item) => ({ severity: 'warning' as const, path: `package.${item}`, message: `Resource package is missing ${item}.` }))
+            : [{ severity: 'error', path: 'package', message: 'Resource package is missing.' }],
+          repairTargets: resourcePackage ? missing : ['resource-package-target'],
         },
       }]
     },
@@ -2249,6 +2353,38 @@ function parseModelRef(modelRef: string): { apiId: string; modelName: string; mo
 
 function stringListConfig(value: unknown, fallback: string[] = []): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : fallback
+}
+
+function mergeStringValues(values: string[]): string[] {
+  return [...new Set(values.map((item) => item.trim()).filter(Boolean))]
+}
+
+function packageScopeCovered(scope: string, resources: string[]): boolean {
+  if (resources.includes(scope)) {
+    return true
+  }
+  if (scope === 'fields') {
+    return resources.some((item) => item.startsWith('field:'))
+  }
+  if (scope === 'image-pack') {
+    return resources.some((item) => item.startsWith('image:') || item === 'image-control')
+  }
+  if (scope === 'world-context') {
+    return resources.some((item) => item === 'world-card' || item === 'scene-card' || item.startsWith('plot-arc:'))
+  }
+  if (scope === 'continuity') {
+    return resources.includes('continuity-control')
+  }
+  if (scope === 'relationship') {
+    return resources.includes('relationship-control')
+  }
+  if (scope === 'plot') {
+    return resources.some((item) => item.startsWith('plot-arc:'))
+  }
+  if (scope === 'scenes') {
+    return resources.includes('scene-card')
+  }
+  return false
 }
 
 function materialListConfig(value: unknown): SourceMaterialItem[] {

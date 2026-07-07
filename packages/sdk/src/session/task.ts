@@ -361,41 +361,13 @@ export class TaskRuntime {
           }
         }
 
-        if (turn.completed) {
-          this.completeStep(step, turn.assistantMessage.trim() || '步骤已完成。')
-          finalMessage = turn.assistantMessage.trim() || finalMessage
-
-          if (this.hasRunnableSteps()) {
-            verboseLog(`[TaskRuntime] 当前步骤完成，继续下一步...`)
-            messages.push({
-              role: 'assistant',
-              content: turn.assistantMessage || `步骤完成：${step.title}`
-            })
-            await this.maybeRunMidTurnCompact(messages, turn, true)
-            this.throwIfAborted()
-            continue
-          }
-
-          finalMessage = this.buildPlanCompletionMessage(finalMessage)
-          this.setRunState('completed')
-          this.hooks.onStatusChanged?.('completed')
-
-          verboseLog('\n╔══════════════════════════════════════════════════════════════╗')
-          verboseLog('║               ✅ TaskRuntime 执行完成                          ║')
-          verboseLog('╠══════════════════════════════════════════════════════════════╣')
-          verboseLog(`║ 总迭代次数: ${iterations}`)
-          verboseLog(`║ 总工具调用: ${toolCallsCount}`)
-          verboseLog(`║ 最终消息: ${finalMessage.substring(0, 50)}...`)
-          verboseLog('╚══════════════════════════════════════════════════════════════╝\n')
-
-          return {
-            success: true,
-            iterations,
-            toolCalls: toolCallsCount,
-            finalMessage,
-            plan: this.taskPlan,
-            executionState: this.snapshotExecutionState()
-          }
+        if (turn.toolCalls.length === 0) {
+          verboseLog(`[TaskRuntime] 模型未调用工具，当前步骤保持运行并继续纠偏...`)
+          this.appendTurnMessages(messages, turn)
+          this.appendMissingToolCallCorrection(messages, step)
+          await this.maybeRunMidTurnCompact(messages, turn, true)
+          this.throwIfAborted()
+          continue
         }
 
         verboseLog(`[TaskRuntime] 迭代 ${iterations} 未完成，继续执行...`)
@@ -574,6 +546,19 @@ export class TaskRuntime {
     })
 
     messages.push(...imageMessages)
+  }
+
+  private appendMissingToolCallCorrection(messages: any[], step: TaskStep): void {
+    messages.push({
+      role: 'user',
+      content: [
+        '上一轮只返回了文本，没有调用任何工具，因此当前步骤尚未完成。',
+        `当前步骤：${step.id} · ${step.title}`,
+        '如果需要外部动作或证据，请直接调用相应工具。',
+        `如果当前步骤确实已经完成，必须调用 update_task_plan，将 ${step.id} 标记为 completed，并在 result 中写入具体完成证据。`,
+        '如果无法继续，调用 update_task_plan 将步骤标记为 failed 或 skipped，并写明原因。不要用普通文本代替计划状态更新。'
+      ].join('\n')
+    })
   }
 
   private async maybeRunPreTurnCompact(messages: any[]): Promise<void> {
@@ -1463,16 +1448,6 @@ export class TaskRuntime {
       this.touchPlan()
       this.emitStepUpdated(step)
     }
-  }
-
-  private completeStep(step: TaskStep, result: string): void {
-    step.status = 'completed'
-    step.result = result
-    step.completedAt = Date.now()
-    this.updateExecutionCurrentStep(step)
-    completeStepExecution(this.executionState, step, result)
-    this.touchPlan()
-    this.emitStepUpdated(step)
   }
 
   private failCurrentStep(error: string): void {

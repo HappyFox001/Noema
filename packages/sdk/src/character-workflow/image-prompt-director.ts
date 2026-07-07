@@ -63,6 +63,13 @@ export function createDirectedAutomaticImagePrompt(
   count: number
 ): string {
   const role = target.imageRole || 'character-image'
+  if (role === 'character-base-image') {
+    return compactJoin([
+      automaticRolePrompt(role, profile),
+      count > 1 ? `planned sample ${index} of ${count}` : '',
+      baseImageVariationBrief(index),
+    ])
+  }
   const variant = count > 1
     ? `variant ${index} of ${count}, same character identity, vary only expression, pose, framing, lighting, or scene detail`
     : ''
@@ -119,7 +126,7 @@ function rolePromptForImage(
     return overviewSheetRolePrompt(domain, slot, indexed)
   }
   if (role === 'character-base-image') {
-    return baseCharacterImageRolePrompt(slot, control, indexed)
+    return baseCharacterImageRolePrompt(slot, control, targetIndex)
   }
   return compactJoin(['same character as supplied reference image', automaticRolePrompt(role, profile), shot, slot, indexed])
 }
@@ -142,19 +149,35 @@ function avatarRolePromptForImage(): string {
 function baseCharacterImageRolePrompt(
   slot: string,
   control: AgentImageGenerationControl | undefined,
-  indexed: string
+  targetIndex: number
 ): string {
   return compactJoin([
     'same character as supplied avatar reference image, preserve face, hair, body proportions, signature motifs, and recognizable identity',
     'free-form base character sample image, not avatar.jpg, not a fixed model sheet, not a collage, not a poster layout',
-    'each generated image may show a different meaningful roleplay sample: scene, action, mood, pose, outfit usage, prop interaction, or story situation',
+    'each generated image must have a distinct visual mission: different camera angle, pose family, body action, scene relationship, environment use, outfit usage, prop interaction, or roleplay meaning from previous samples',
+    baseImageVariationBrief(targetIndex),
     baseImageSensualCompositionPrompt(control),
     'preserve adult, sensual, erotic, explicit, revealing, or sexualized direction when present; do not add unsolicited modesty, anti-exposure, safe, censored, or softened qualifiers',
     'keep the character clearly visible and reusable as a non-avatar reference sample',
     'identity must come from the linked avatar reference; use the target prompt only to vary composition and meaning',
     slot,
-    indexed,
+    targetIndex > 1 ? `image variant ${targetIndex}, same identity, do not repeat the same pose, background, framing, or scene object as earlier variants` : '',
   ])
+}
+
+function baseImageVariationBrief(targetIndex: number): string {
+  const briefs = [
+    'variation brief: three-quarter standing or leaning view, readable full outfit usage, direct character presence, environment establishes the roleplay setting',
+    'variation brief: seated or reclining scene interaction, lower or side camera angle, hands touching a meaningful object or surface, different mood from the first sample',
+    'variation brief: dynamic action pose, diagonal body line, mid-motion gesture, prop or clothing movement, background actively supports the action',
+    'variation brief: intimate close or waist-up crop, expressive face and hands, strong eye direction or averted gaze, scene object creates narrative tension',
+    'variation brief: back, side, or over-shoulder perspective, silhouette emphasis, outfit back/side construction visible, different lighting direction',
+    'variation brief: environmental storytelling shot, character integrated into room/window/street/bed/desk/mirror/furniture context, posture reveals relationship state',
+    'variation brief: alternate outfit usage or loosened/adjusted wardrobe state while preserving identity and default design language, different prop interaction',
+    'variation brief: dramatic high or low camera angle, strong foreground/background depth, body language communicates a new emotional beat',
+  ]
+  const index = Math.max(0, Math.round(targetIndex || 1) - 1)
+  return briefs[index % briefs.length]!
 }
 
 function overviewSheetRolePrompt(
