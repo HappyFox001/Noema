@@ -119,6 +119,8 @@ interface ChatImageModelChoice {
 const CHARACTER_WORKFLOW_LIBRARY_MIN_WIDTH = 148
 const CHARACTER_WORKFLOW_LIBRARY_DEFAULT_WIDTH = 176
 const CHARACTER_WORKFLOW_LIBRARY_MAX_WIDTH = 260
+const CHARACTER_WORKFLOW_GOAL_HISTORY_LIMIT = 64
+const CHARACTER_WORKFLOW_FOCUS_HISTORY_LIMIT = 16
 
 interface CharacterWorkflowEditorState {
   activePanel: CharacterWorkflowSidePanel
@@ -5006,7 +5008,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       : (zh ? '展开记录' : 'Expand records')
     const records = getWorkflowAssistantStatusRecords()
     const latestRecord = records[0]
-    const previousRecords = characterWorkflowAssistantStatusExpanded ? records.slice(1, 8) : []
+    const previousRecords = characterWorkflowAssistantStatusExpanded ? records.slice(1) : []
     const project = characterWorkflowProjects.find((item) => item.id === activeCharacterWorkflowProjectId)
     const session = normalizeCharacterWorkflowGoalSession(project?.goalSession)
     const pendingDecision = session?.pendingDecision
@@ -5136,7 +5138,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         body: current,
       })
     }
-    return records.slice(-8).reverse()
+    return records.reverse()
   }
 
   function getWorkflowAssistantStatusText(): string {
@@ -5702,7 +5704,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     return {
       objective: typeof session.objective === 'string' ? session.objective : '',
       focusPrompt: typeof session.focusPrompt === 'string' ? session.focusPrompt : undefined,
-      focusHistory: Array.isArray(session.focusHistory) ? session.focusHistory.filter((item): item is string => typeof item === 'string').slice(-8) : [],
+      focusHistory: Array.isArray(session.focusHistory) ? session.focusHistory.filter((item): item is string => typeof item === 'string').slice(-CHARACTER_WORKFLOW_FOCUS_HISTORY_LIMIT) : [],
       plan: Array.isArray(session.plan) ? session.plan.filter((item): item is string => typeof item === 'string') : [],
       completedSteps: Array.isArray(session.completedSteps) ? session.completedSteps.filter((item): item is string => typeof item === 'string') : [],
       currentStep: typeof session.currentStep === 'string' ? session.currentStep : undefined,
@@ -5728,7 +5730,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             nextStep: typeof record.nextStep === 'string' ? record.nextStep : undefined,
             createdAt: Math.max(0, Math.round(Number(record.createdAt) || Date.now())),
           }]
-        }).slice(-16)
+        }).slice(-CHARACTER_WORKFLOW_GOAL_HISTORY_LIMIT)
         : [],
       updatedAt: Math.max(0, Math.round(Number(session.updatedAt) || Date.now())),
     }
@@ -5979,7 +5981,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         currentStep: step.currentStep,
         nextStep: step.nextStep,
         createdAt: step.createdAt || Date.now(),
-      })).slice(-16),
+      })).slice(-CHARACTER_WORKFLOW_GOAL_HISTORY_LIMIT),
       updatedAt: Math.max(0, Math.round(Number(agentWork.updatedAt) || Date.now())),
     }
   }
@@ -6067,7 +6069,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const values = [...(existing ?? []), focusPrompt]
       .map((item) => item.trim())
       .filter(Boolean)
-    return [...new Set(values)].slice(-8)
+    return [...new Set(values)].slice(-CHARACTER_WORKFLOW_FOCUS_HISTORY_LIMIT)
   }
 
   function updateActiveWorkflowGoalSession(
@@ -6161,7 +6163,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
               createdAt: step.createdAt || Date.now(),
             })),
           ]),
-        ].slice(-16),
+        ].slice(-CHARACTER_WORKFLOW_GOAL_HISTORY_LIMIT),
         updatedAt: Math.max(0, Math.round(Number(agentWork.updatedAt) || Date.now())),
       }
       return
@@ -6205,7 +6207,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           nextStep: typeof spec.nextStep === 'string' ? spec.nextStep : undefined,
           createdAt: Date.now(),
         },
-      ].slice(-12),
+      ].slice(-CHARACTER_WORKFLOW_GOAL_HISTORY_LIMIT),
       updatedAt: Date.now(),
     }
   }
@@ -6293,7 +6295,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           nextStep: step.nextStep,
           createdAt: step.createdAt || Date.now(),
         },
-      ]).slice(-16),
+      ]).slice(-CHARACTER_WORKFLOW_GOAL_HISTORY_LIMIT),
       updatedAt: Date.now(),
     }
     characterWorkflowBuilderStatus = formatWorkflowGoalSessionStatus(project.goalSession, step.summary)
@@ -6399,7 +6401,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           nextStep: status === 'complete' ? undefined : session.nextStep,
           createdAt: Date.now(),
         },
-      ].slice(-16),
+      ].slice(-CHARACTER_WORKFLOW_GOAL_HISTORY_LIMIT),
       updatedAt: Date.now(),
     }
     saveActiveWorkflowProjectSnapshot()
@@ -6466,7 +6468,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
           nextStep: patchHint || session.nextStep,
           createdAt: Date.now(),
         },
-      ].slice(-16),
+      ].slice(-CHARACTER_WORKFLOW_GOAL_HISTORY_LIMIT),
       updatedAt: Date.now(),
     }
     saveActiveWorkflowProjectSnapshot()
