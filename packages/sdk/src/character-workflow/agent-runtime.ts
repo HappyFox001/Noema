@@ -2698,18 +2698,6 @@ function buildFreeAtmosphereCss(
     `  filter: ${imageFilter};`,
     `  box-shadow: 0 0 0 1px rgba(255,255,255,0.035), 0 18px 42px color-mix(in srgb, ${spec.accent} ${spec.imagePresence ? 18 : 8}%, transparent);`,
     `}`,
-    `.${scopeClass}.has-chat-atmosphere .chat-inline-equipment table, .${scopeClass}.has-chat-atmosphere .chat-inline-game-status {`,
-    `  border-color: color-mix(in srgb, ${spec.accent} 24%, rgba(255,255,255,0.08));`,
-    `  background: linear-gradient(135deg, ${spec.accentSoft}, color-mix(in srgb, ${spec.surface} 78%, transparent));`,
-    `  box-shadow: inset 0 1px 0 rgba(255,255,255,0.045), 0 16px 40px color-mix(in srgb, ${spec.accent} 10%, transparent);`,
-    `}`,
-    `.${scopeClass}.has-chat-atmosphere .chat-inline-game-stat span, .${scopeClass}.has-chat-atmosphere .chat-inline-game-effects em, .${scopeClass}.has-chat-atmosphere .chat-inline-equipment th { color: color-mix(in srgb, ${spec.accent} 45%, rgba(238,241,240,0.58)); }`,
-    `.${scopeClass}.has-chat-atmosphere .chat-inline-game-stat strong, .${scopeClass}.has-chat-atmosphere .chat-inline-equipment td, .${scopeClass}.has-chat-atmosphere .chat-inline-equipment-toggle span { color: hsla(${spec.surfaceHue} 18% 92% / 0.88); }`,
-    `.${scopeClass}.has-chat-atmosphere .chat-inline-game-stat i { background: linear-gradient(90deg, ${spec.accent} var(--stat-value), hsla(${spec.surfaceHue} 16% 82% / 0.14) var(--stat-value)); box-shadow: 0 0 18px color-mix(in srgb, ${spec.accent} 18%, transparent); }`,
-    `.${scopeClass}.has-chat-atmosphere .chat-inline-game-effects em { border-color: color-mix(in srgb, ${spec.accent} 24%, transparent); background: color-mix(in srgb, ${spec.accent} 10%, transparent); }`,
-    `.${scopeClass}.has-chat-atmosphere .chat-inline-equipment-toggle { border-top-color: color-mix(in srgb, ${spec.accent} 18%, transparent); background: linear-gradient(90deg, ${spec.accentSoft}, transparent 76%), rgba(255,255,255,0.018); }`,
-    `.${scopeClass}.has-chat-atmosphere .chat-inline-equipment-toggle em, .${scopeClass}.has-chat-atmosphere .chat-inline-equipment-use { border-color: color-mix(in srgb, ${spec.accent} 24%, transparent); background: color-mix(in srgb, ${spec.accent} 12%, transparent); color: hsla(${spec.surfaceHue} 18% 92% / 0.82); }`,
-    `.${scopeClass}.has-chat-atmosphere .chat-inline-equipment th, .${scopeClass}.has-chat-atmosphere .chat-inline-equipment td { border-bottom-color: color-mix(in srgb, ${spec.accent} 12%, transparent); border-right-color: color-mix(in srgb, ${spec.accent} 10%, transparent); }`,
     `/* ${design.concept} */`,
   ].join('\n')
 }

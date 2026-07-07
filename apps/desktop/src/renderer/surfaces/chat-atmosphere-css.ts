@@ -107,6 +107,9 @@ function isScopedAtmosphereSelector(selector: string, scopeClass: string): boole
   if (!normalized.startsWith(scopePrefix)) {
     return false
   }
+  if (normalized.includes('.chat-inline-game') || normalized.includes('.chat-inline-equipment')) {
+    return false
+  }
   const remainder = normalized.slice(scopePrefix.length)
   if (!/[\s>+~]/.test(remainder)) {
     return remainder.startsWith('.') || remainder.startsWith(':')

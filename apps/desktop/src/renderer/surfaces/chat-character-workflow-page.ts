@@ -4722,13 +4722,13 @@ function renderRunChatStatusContent(
   const statuses = normalizeRunGameStatuses(data.statuses)
     .map((status) => localizeRunGameStatus(status, options.language))
   const panelStyle = normalizeGamePanelStyle(data)
-  const classNames = panelStyle
-    ? renderGamePanelClassNames(panelStyle, `chat-resource-node-content ${previewClass} run-chat-panel-preview run-chat-status-preview`)
-    : `chat-resource-node-content ${previewClass} run-chat-panel-preview run-chat-status-preview`
-  const inlineStyle = panelStyle ? renderGamePanelInlineStyle(panelStyle) : ''
+  const panelClassNames = panelStyle
+    ? renderGamePanelClassNames(panelStyle, 'chat-inline-game-status')
+    : 'chat-inline-game-status'
+  const panelInlineStyle = panelStyle ? renderGamePanelInlineStyle(panelStyle) : ''
   return `
-    <div class="${options.escapeHtml(classNames)}" style="${options.escapeHtml(inlineStyle)}">
-      <section class="chat-inline-game-status" aria-label="${options.escapeHtml(ui(options, '角色状态栏', 'Character status'))}">
+    <div class="${options.escapeHtml(`chat-resource-node-content ${previewClass} run-chat-panel-preview run-chat-status-preview`)}">
+      <section class="${options.escapeHtml(panelClassNames)}" style="${options.escapeHtml(panelInlineStyle)}" aria-label="${options.escapeHtml(ui(options, '角色状态栏', 'Character status'))}">
         ${stats.length ? `
           <div class="chat-inline-game-stat-row">
             ${stats.map((stat) => {
@@ -4762,13 +4762,13 @@ function renderRunChatEquipmentContent(
     : {}
   const equipment = normalizeRunGameEquipment(data.equipment)
   const panelStyle = normalizeGamePanelStyle(data)
-  const classNames = panelStyle
-    ? renderGamePanelClassNames(panelStyle, `chat-resource-node-content ${previewClass} run-chat-panel-preview run-chat-equipment-preview`)
-    : `chat-resource-node-content ${previewClass} run-chat-panel-preview run-chat-equipment-preview`
-  const inlineStyle = panelStyle ? renderGamePanelInlineStyle(panelStyle) : ''
+  const panelClassNames = panelStyle
+    ? renderGamePanelClassNames(panelStyle, 'chat-inline-scene')
+    : 'chat-inline-scene'
+  const panelInlineStyle = panelStyle ? renderGamePanelInlineStyle(panelStyle) : ''
   return `
-    <div class="${options.escapeHtml(classNames)}" style="${options.escapeHtml(inlineStyle)}">
-      <section class="chat-inline-scene">
+    <div class="${options.escapeHtml(`chat-resource-node-content ${previewClass} run-chat-panel-preview run-chat-equipment-preview`)}">
+      <section class="${options.escapeHtml(panelClassNames)}" style="${options.escapeHtml(panelInlineStyle)}">
         <button class="chat-inline-equipment-toggle" type="button" aria-expanded="true">
           <span>${options.escapeHtml(ui(options, '装备栏', 'Equipment'))}</span>
           <em>${options.escapeHtml(String(equipment.length))}</em>

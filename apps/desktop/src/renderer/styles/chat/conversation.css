@@ -1755,6 +1755,10 @@ body.theme-day .chat-message-avatar {
 
 .chat-inline-game-status.has-game-panel-style {
   padding: 11px;
+}
+
+.chat-inline-game-status.has-game-panel-style,
+.chat-inline-scene.has-game-panel-style {
   border-color: var(--game-panel-border, rgba(159, 199, 185, 0.18));
   border-radius: var(--game-panel-radius, 12px);
   background:
@@ -1775,11 +1779,17 @@ body.theme-day .chat-message-avatar {
 }
 
 .chat-inline-game-status.has-game-panel-style .chat-inline-game-stat span,
-.chat-inline-game-status.has-game-panel-style .chat-inline-game-effects em {
+.chat-inline-game-status.has-game-panel-style .chat-inline-game-effects em,
+.chat-inline-scene.has-game-panel-style .chat-inline-scene-line > span,
+.chat-inline-scene.has-game-panel-style .chat-inline-scene-status em,
+.chat-inline-scene.has-game-panel-style .chat-inline-equipment th {
   color: var(--game-panel-muted, rgba(220, 229, 226, 0.62));
 }
 
-.chat-inline-game-status.has-game-panel-style .chat-inline-game-stat strong {
+.chat-inline-game-status.has-game-panel-style .chat-inline-game-stat strong,
+.chat-inline-scene.has-game-panel-style .chat-inline-scene-line strong,
+.chat-inline-scene.has-game-panel-style .chat-inline-equipment td,
+.chat-inline-scene.has-game-panel-style .chat-inline-equipment-toggle span {
   color: var(--game-panel-text, rgba(248, 250, 250, 0.84));
 }
 
@@ -1814,7 +1824,47 @@ body.theme-day .chat-message-avatar {
   background: color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 10%, transparent);
 }
 
-.chat-inline-game-status.has-game-panel-style.game-panel-frame-dossier {
+.chat-inline-scene.has-game-panel-style .chat-inline-scene-status em {
+  border-color: color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 20%, transparent);
+  background: color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 8%, transparent);
+}
+
+.chat-inline-scene.has-game-panel-style .chat-inline-equipment-toggle {
+  border-top-color: color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 18%, transparent);
+  background:
+    linear-gradient(90deg, var(--game-panel-accent-soft, rgba(159, 199, 185, 0.12)), transparent 76%),
+    rgba(255, 255, 255, 0.018);
+}
+
+.chat-inline-scene.has-game-panel-style .chat-inline-equipment-toggle em {
+  background: color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 14%, transparent);
+  color: var(--game-panel-text, rgba(248, 250, 250, 0.76));
+}
+
+.chat-inline-scene.has-game-panel-style .chat-inline-equipment-toggle strong {
+  color: var(--game-panel-muted, rgba(248, 250, 250, 0.44));
+}
+
+.chat-inline-scene.has-game-panel-style .chat-inline-equipment table {
+  border-color: color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 16%, rgba(255, 255, 255, 0.08));
+  border-radius: var(--game-panel-cell-radius, 9px);
+  background: color-mix(in srgb, var(--game-panel-surface, rgba(12, 15, 14, 0.74)) 76%, transparent);
+}
+
+.chat-inline-scene.has-game-panel-style .chat-inline-equipment th,
+.chat-inline-scene.has-game-panel-style .chat-inline-equipment td {
+  border-bottom-color: color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 12%, transparent);
+  border-right-color: color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 10%, transparent);
+}
+
+.chat-inline-scene.has-game-panel-style .chat-inline-equipment-use {
+  border-color: color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 24%, transparent);
+  background: color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 12%, transparent);
+  color: var(--game-panel-text, rgba(248, 250, 250, 0.68));
+}
+
+.chat-inline-game-status.has-game-panel-style.game-panel-frame-dossier,
+.chat-inline-scene.has-game-panel-style.game-panel-frame-dossier {
   border-radius: 10px;
   background:
     linear-gradient(90deg, color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 10%, transparent) 1px, transparent 1px),
@@ -1822,20 +1872,23 @@ body.theme-day .chat-message-avatar {
   background-size: 12px 100%, auto;
 }
 
-.chat-inline-game-status.has-game-panel-style.game-panel-frame-ritual {
+.chat-inline-game-status.has-game-panel-style.game-panel-frame-ritual,
+.chat-inline-scene.has-game-panel-style.game-panel-frame-ritual {
   border-radius: calc(var(--game-panel-radius, 12px) + 4px);
   box-shadow:
     inset 0 0 0 1px color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 12%, transparent),
     0 18px 38px rgba(0, 0, 0, 0.22);
 }
 
-.chat-inline-game-status.has-game-panel-style.game-panel-frame-noir {
+.chat-inline-game-status.has-game-panel-style.game-panel-frame-noir,
+.chat-inline-scene.has-game-panel-style.game-panel-frame-noir {
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 8%, rgba(0, 0, 0, 0.72)), rgba(0, 0, 0, 0.7)),
     var(--game-panel-surface, rgba(12, 15, 14, 0.74));
 }
 
-.chat-inline-game-status.has-game-panel-style.game-panel-frame-mist {
+.chat-inline-game-status.has-game-panel-style.game-panel-frame-mist,
+.chat-inline-scene.has-game-panel-style.game-panel-frame-mist {
   backdrop-filter: blur(16px);
 }
 

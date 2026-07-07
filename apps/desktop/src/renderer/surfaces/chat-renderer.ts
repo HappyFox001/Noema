@@ -353,8 +353,13 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     if (!location && !statusItems.length && !equipment.length) {
       return ''
     }
+    const panelStyle = normalizeGamePanelStyle({ ui: activeMessageCharacter?.gameSystem?.ui ?? {} })
+    const classNames = panelStyle
+      ? renderGamePanelClassNames(panelStyle, 'chat-inline-scene')
+      : 'chat-inline-scene'
+    const inlineStyle = panelStyle ? renderGamePanelInlineStyle(panelStyle) : ''
     return `
-      <section class="chat-inline-scene">
+      <section class="${options.escapeHtml(classNames)}" style="${options.escapeHtml(inlineStyle)}">
         <div class="chat-inline-scene-lines">
           ${renderInlineSceneLine(language === 'zh-CN' ? '地点' : 'Place', location || (language === 'zh-CN' ? '未设定' : 'Unset'))}
           <div class="chat-inline-scene-line">
