@@ -2596,24 +2596,44 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     return [
       baseClass,
       'has-chat-atmosphere',
-      `chat-atmosphere-surface-${style.palette.surface}`,
-      `chat-atmosphere-message-${style.message.frame}`,
-      `chat-atmosphere-audio-${style.audio.player}`,
-      `chat-atmosphere-scene-${style.sceneCard.frame}`,
-      `chat-atmosphere-density-${style.message.density}`,
-      `chat-atmosphere-radius-${style.message.radius}`,
+      `chat-atmosphere-message-${style.messageStyle.frame}`,
+      `chat-atmosphere-audio-${style.audioStyle.player}`,
+      `chat-atmosphere-scene-${style.sceneStyle.frame}`,
+      `chat-atmosphere-density-${style.messageStyle.density}`,
       scopeClass,
     ].filter(Boolean).join(' ')
   }
 
   function renderAtmosphereInlineStyle(style: ChatAtmosphereStyle): string {
-    const radius = style.message.radius === 'sharp' ? '10px' : style.message.radius === 'round' ? '22px' : '16px'
-    const densityGap = style.message.density === 'compact' ? '8px' : style.message.density === 'airy' ? '16px' : '12px'
+    const densityGap = style.messageStyle.density === 'compact' ? '8px' : style.messageStyle.density === 'cinematic' ? '16px' : '12px'
     return [
-      `--chat-atmosphere-accent:${style.palette.accent}`,
-      `--chat-atmosphere-accent-soft:${style.palette.accentSoft}`,
-      `--chat-atmosphere-radius:${radius}`,
-      `--chat-atmosphere-density-gap:${densityGap}`,
+      `--chat-message-accent:${style.messageStyle.accent}`,
+      `--chat-message-accent-soft:${style.messageStyle.accentSoft}`,
+      `--chat-message-surface:${style.messageStyle.surface}`,
+      `--chat-message-border:${style.messageStyle.border}`,
+      `--chat-message-text:${style.messageStyle.text}`,
+      `--chat-message-muted:${style.messageStyle.muted}`,
+      `--chat-message-radius:${style.messageStyle.radiusPx}px`,
+      `--chat-message-density-gap:${densityGap}`,
+      `--chat-audio-accent:${style.audioStyle.accent}`,
+      `--chat-audio-accent-soft:${style.audioStyle.accentSoft}`,
+      `--chat-audio-surface:${style.audioStyle.surface}`,
+      `--chat-audio-track:${style.audioStyle.track}`,
+      `--chat-audio-border:${style.audioStyle.border}`,
+      `--chat-audio-text:${style.audioStyle.text}`,
+      `--chat-audio-radius:${style.audioStyle.radiusPx}px`,
+      `--chat-audio-height:${style.audioStyle.heightPx}px`,
+      `--chat-scene-accent:${style.sceneStyle.accent}`,
+      `--chat-scene-accent-soft:${style.sceneStyle.accentSoft}`,
+      `--chat-scene-surface:${style.sceneStyle.surface}`,
+      `--chat-scene-border:${style.sceneStyle.border}`,
+      `--chat-scene-text:${style.sceneStyle.text}`,
+      `--chat-scene-muted:${style.sceneStyle.muted}`,
+      `--chat-scene-radius:${style.sceneStyle.radiusPx}px`,
+      `--chat-image-border:${style.imageStyle.border}`,
+      `--chat-image-radius:${style.imageStyle.radiusPx}px`,
+      `--chat-image-filter:${style.imageStyle.filter}`,
+      `--chat-image-shadow:${style.imageStyle.shadow}`,
     ].join(';')
   }
 
@@ -3291,43 +3311,75 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (!data) {
       return undefined
     }
-    const palette = objectField(data.palette)
-    const message = objectField(data.message)
-    const audio = objectField(data.audio)
-    const sceneCard = objectField(data.sceneCard)
-    if (!palette || !message || !audio || !sceneCard) {
+    if (numberField(data.schemaVersion, 0) !== 2) {
       return undefined
     }
+    const messageStyle = objectField(data.messageStyle)
+    const audioStyle = objectField(data.audioStyle)
+    const sceneStyle = objectField(data.sceneStyle)
+    const imageStyle = objectField(data.imageStyle)
+    if (!messageStyle || !audioStyle || !sceneStyle || !imageStyle) {
+      return undefined
+    }
+    const messageDensity = enumField(messageStyle.density, ['compact', 'balanced', 'cinematic'], 'balanced')
+    const messageRadius = enumField(messageStyle.radius, ['sharp', 'soft', 'round'], 'soft')
+    const audioPlayer = enumField(audioStyle.player, ['bar', 'capsule', 'console'], 'capsule')
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       name: stringField(data.name) || stringField(artifact?.title) || 'Character atmosphere',
       summary: stringField(data.summary) || artifact?.summary,
       mood: stringArrayField(data.mood).slice(0, 8),
       scopeClass: sanitizeAtmosphereScopeClass(stringField(data.scopeClass)),
       css: sanitizeAtmosphereCss(stringField(data.css), sanitizeAtmosphereScopeClass(stringField(data.scopeClass))),
       designBrief: normalizeAtmosphereDesignBrief(data.designBrief),
-      palette: {
-        accent: stringField(palette.accent) || '#c7d8d0',
-        accentSoft: stringField(palette.accentSoft) || 'rgba(199, 216, 208, 0.16)',
-        surface: enumField(palette.surface, ['glass', 'paper', 'noir', 'mist', 'velvet', 'terminal'], 'glass'),
-        warmth: enumField(palette.warmth, ['cool', 'neutral', 'warm'], 'neutral'),
-        contrast: enumField(palette.contrast, ['low', 'medium', 'high'], 'medium'),
+      messageStyle: {
+        frame: enumField(messageStyle.frame, ['minimal', 'panel', 'glass', 'ornate'], 'panel'),
+        narration: enumField(messageStyle.narration, ['soft-prose', 'cinematic', 'noir', 'diary', 'clinical'], 'soft-prose'),
+        speech: enumField(messageStyle.speech, ['quote-emphasis', 'quiet-line', 'stage-dialogue'], 'quote-emphasis'),
+        density: messageDensity,
+        radius: messageRadius,
+        accent: stringField(messageStyle.accent) || '#c7d8d0',
+        accentSoft: stringField(messageStyle.accentSoft) || 'rgba(199, 216, 208, 0.16)',
+        surface: stringField(messageStyle.surface) || 'rgba(9, 9, 11, 0.86)',
+        border: stringField(messageStyle.border) || 'rgba(218, 232, 224, 0.18)',
+        text: stringField(messageStyle.text) || 'rgba(250, 250, 246, 0.95)',
+        muted: stringField(messageStyle.muted) || 'rgba(225, 228, 224, 0.76)',
+        radiusPx: numberField(messageStyle.radiusPx, messageRadius === 'sharp' ? 10 : messageRadius === 'round' ? 22 : 16),
+        paddingY: numberField(messageStyle.paddingY, messageDensity === 'compact' ? 15 : messageDensity === 'cinematic' ? 24 : 18),
+        paddingX: numberField(messageStyle.paddingX, messageDensity === 'compact' ? 17 : messageDensity === 'cinematic' ? 25 : 20),
+        lineWeight: numberField(messageStyle.lineWeight, 1),
       },
-      message: {
-        frame: enumField(message.frame, ['plain', 'literary-panel', 'visual-novel', 'dossier', 'letter'], 'literary-panel'),
-        narration: enumField(message.narration, ['soft-prose', 'cinematic', 'noir', 'diary', 'clinical'], 'soft-prose'),
-        speech: enumField(message.speech, ['quote-emphasis', 'quiet-line', 'stage-dialogue'], 'quote-emphasis'),
-        density: enumField(message.density, ['compact', 'balanced', 'airy'], 'balanced'),
-        radius: enumField(message.radius, ['sharp', 'soft', 'round'], 'soft'),
+      audioStyle: {
+        player: audioPlayer,
+        motion: enumField(audioStyle.motion, ['still', 'pulse', 'scan'], 'pulse'),
+        tone: enumField(audioStyle.tone, ['intimate', 'ambient', 'dramatic'], 'ambient'),
+        accent: stringField(audioStyle.accent) || '#c7d8d0',
+        accentSoft: stringField(audioStyle.accentSoft) || 'rgba(199, 216, 208, 0.16)',
+        surface: stringField(audioStyle.surface) || 'rgba(255, 255, 255, 0.032)',
+        track: stringField(audioStyle.track) || 'rgba(255, 255, 255, 0.14)',
+        border: stringField(audioStyle.border) || 'rgba(218, 232, 224, 0.18)',
+        text: stringField(audioStyle.text) || 'rgba(248, 250, 250, 0.78)',
+        radiusPx: numberField(audioStyle.radiusPx, audioPlayer === 'console' ? 10 : audioPlayer === 'bar' ? 18 : 999),
+        heightPx: numberField(audioStyle.heightPx, audioPlayer === 'bar' ? 36 : 40),
       },
-      audio: {
-        player: enumField(audio.player, ['thin-glass-bar', 'soft-wave-strip', 'quiet-capsule', 'dossier-line'], 'thin-glass-bar'),
-        motion: enumField(audio.motion, ['still', 'subtle-wave', 'breath'], 'subtle-wave'),
-        tone: enumField(audio.tone, ['near', 'distant', 'intimate', 'formal'], 'near'),
+      sceneStyle: {
+        frame: enumField(sceneStyle.frame, ['plain', 'panel', 'ledger', 'instrument'], 'panel'),
+        divider: enumField(sceneStyle.divider, ['line', 'glow', 'none'], 'line'),
+        accent: stringField(sceneStyle.accent) || '#c7d8d0',
+        accentSoft: stringField(sceneStyle.accentSoft) || 'rgba(199, 216, 208, 0.16)',
+        surface: stringField(sceneStyle.surface) || 'rgba(7, 8, 9, 0.52)',
+        border: stringField(sceneStyle.border) || 'rgba(218, 232, 224, 0.16)',
+        text: stringField(sceneStyle.text) || 'rgba(248, 250, 250, 0.76)',
+        muted: stringField(sceneStyle.muted) || 'rgba(248, 250, 250, 0.42)',
+        radiusPx: numberField(sceneStyle.radiusPx, 14),
       },
-      sceneCard: {
-        frame: enumField(sceneCard.frame, ['quiet-panel', 'glass-dossier', 'paper-note', 'terminal-readout'], 'quiet-panel'),
-        divider: enumField(sceneCard.divider, ['fine-line', 'soft-band', 'none'], 'fine-line'),
+      imageStyle: {
+        treatment: enumField(imageStyle.treatment, ['portrait', 'artifact', 'cinematic'], 'portrait'),
+        accent: stringField(imageStyle.accent) || accent,
+        border: stringField(imageStyle.border) || 'rgba(255, 255, 255, 0.10)',
+        shadow: stringField(imageStyle.shadow) || 'rgba(0, 0, 0, 0.32)',
+        radiusPx: numberField(imageStyle.radiusPx, 12),
+        filter: stringField(imageStyle.filter) || 'contrast(1.02) saturate(1.02)',
       },
       preview: normalizeAtmospherePreviewField(data.preview),
       sourceArtifactId: artifact?.id,

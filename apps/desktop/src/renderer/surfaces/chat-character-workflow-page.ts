@@ -4676,6 +4676,14 @@ function renderCssResultContent(
     ? output.data as Record<string, unknown>
     : {}
   const style = normalizeRunAtmosphereStyle(data, output, options)
+  if (!style) {
+    return `
+      <div class="chat-resource-node-content ${previewClass} run-css-result-preview">
+        <strong>${options.escapeHtml(output.title || ui(options, '样式数据不可用', 'Style data unavailable'))}</strong>
+        <p>${options.escapeHtml(ui(options, '此样式不是 schema 2 独立区域 contract。', 'This style is not a schema 2 independent-region contract.'))}</p>
+      </div>
+    `
+  }
   const preview = style.preview
   const scopedStyle = renderRunAtmosphereScopedStyle(style, options)
   const classNames = renderRunAtmosphereClassNames(style, 'chat-resource-node-content run-atmosphere-preview run-css-result-preview')
@@ -4852,44 +4860,108 @@ function normalizeRunAtmosphereStyle(
   summary: string
   scopeClass: string
   css: string
-  palette: { accent: string; accentSoft: string; surface: string }
-  message: { frame: string; density: string; radius: string }
-  audio: { player: string }
-  sceneCard: { frame: string }
+  messageStyle: {
+    frame: string
+    density: string
+    radius: string
+    accent: string
+    accentSoft: string
+    surface: string
+    border: string
+    text: string
+    muted: string
+    radiusPx: number
+  }
+  audioStyle: {
+    player: string
+    accent: string
+    accentSoft: string
+    surface: string
+    track: string
+    border: string
+    text: string
+    radiusPx: number
+    heightPx: number
+  }
+  sceneStyle: {
+    frame: string
+    accent: string
+    accentSoft: string
+    surface: string
+    border: string
+    text: string
+    muted: string
+    radiusPx: number
+  }
+  imageStyle: {
+    border: string
+    radiusPx: number
+    filter: string
+    shadow: string
+  }
   preview: {
     narration: string
     speech: string
   }
-} {
-  const palette = objectRecordValue(data.palette)
-  const message = objectRecordValue(data.message)
-  const audio = objectRecordValue(data.audio)
-  const sceneCard = objectRecordValue(data.sceneCard)
+} | null {
+  if (data.schemaVersion !== 2) {
+    return null
+  }
+  const messageStyle = objectRecordValue(data.messageStyle)
+  const audioStyle = objectRecordValue(data.audioStyle)
+  const sceneStyle = objectRecordValue(data.sceneStyle)
+  const imageStyle = objectRecordValue(data.imageStyle)
+  if (!Object.keys(messageStyle).length || !Object.keys(audioStyle).length || !Object.keys(sceneStyle).length || !Object.keys(imageStyle).length) {
+    return null
+  }
   const preview = objectRecordValue(data.preview)
-  const designBrief = objectRecordValue(data.designBrief)
-  const accent = sanitizeCssColor(stringValue(palette.accent)) || '#c7d8d0'
-  const accentSoft = sanitizeCssColor(stringValue(palette.accentSoft)) || 'rgba(199, 216, 208, 0.16)'
   const scopeClass = sanitizeAtmosphereScopeClass(stringValue(data.scopeClass))
+  const messageDensity = enumValue(messageStyle.density, ['compact', 'balanced', 'cinematic'], 'balanced')
+  const messageRadius = enumValue(messageStyle.radius, ['sharp', 'soft', 'round'], 'soft')
+  const audioPlayer = enumValue(audioStyle.player, ['bar', 'capsule', 'console'], 'capsule')
   return {
     name: stringValue(data.name) || output.title || 'Character atmosphere',
     summary: stringValue(data.summary) || output.summary,
     scopeClass,
     css: sanitizeAtmosphereCss(stringValue(data.css), scopeClass),
-    palette: {
-      accent,
-      accentSoft,
-      surface: enumValue(palette.surface, ['glass', 'paper', 'noir', 'mist', 'velvet', 'terminal'], 'glass'),
+    messageStyle: {
+      frame: enumValue(messageStyle.frame, ['minimal', 'panel', 'glass', 'ornate'], 'panel'),
+      density: messageDensity,
+      radius: messageRadius,
+      accent: sanitizeCssColor(stringValue(messageStyle.accent)) || '#c7d8d0',
+      accentSoft: sanitizeCssColor(stringValue(messageStyle.accentSoft)) || 'rgba(199, 216, 208, 0.16)',
+      surface: sanitizeCssColor(stringValue(messageStyle.surface)) || 'rgba(9, 9, 11, 0.86)',
+      border: sanitizeCssColor(stringValue(messageStyle.border)) || 'rgba(218, 232, 224, 0.18)',
+      text: sanitizeCssColor(stringValue(messageStyle.text)) || 'rgba(250, 250, 246, 0.95)',
+      muted: sanitizeCssColor(stringValue(messageStyle.muted)) || 'rgba(225, 228, 224, 0.76)',
+      radiusPx: readFiniteNumber(messageStyle.radiusPx) ?? (messageRadius === 'sharp' ? 10 : messageRadius === 'round' ? 22 : 16),
     },
-    message: {
-      frame: enumValue(message.frame, ['plain', 'literary-panel', 'visual-novel', 'dossier', 'letter'], 'literary-panel'),
-      density: enumValue(message.density, ['compact', 'balanced', 'airy'], 'balanced'),
-      radius: enumValue(message.radius, ['sharp', 'soft', 'round'], 'soft'),
+    audioStyle: {
+      player: audioPlayer,
+      accent: sanitizeCssColor(stringValue(audioStyle.accent)) || '#c7d8d0',
+      accentSoft: sanitizeCssColor(stringValue(audioStyle.accentSoft)) || 'rgba(199, 216, 208, 0.16)',
+      surface: sanitizeCssColor(stringValue(audioStyle.surface)) || 'rgba(255, 255, 255, 0.032)',
+      track: sanitizeCssColor(stringValue(audioStyle.track)) || 'rgba(255, 255, 255, 0.14)',
+      border: sanitizeCssColor(stringValue(audioStyle.border)) || 'rgba(218, 232, 224, 0.18)',
+      text: sanitizeCssColor(stringValue(audioStyle.text)) || 'rgba(248, 250, 250, 0.78)',
+      radiusPx: readFiniteNumber(audioStyle.radiusPx) ?? (audioPlayer === 'console' ? 10 : audioPlayer === 'bar' ? 18 : 999),
+      heightPx: readFiniteNumber(audioStyle.heightPx) ?? (audioPlayer === 'bar' ? 36 : 40),
     },
-    audio: {
-      player: enumValue(audio.player, ['thin-glass-bar', 'soft-wave-strip', 'quiet-capsule', 'dossier-line'], 'thin-glass-bar'),
+    sceneStyle: {
+      frame: enumValue(sceneStyle.frame, ['plain', 'panel', 'ledger', 'instrument'], 'panel'),
+      accent: sanitizeCssColor(stringValue(sceneStyle.accent)) || '#c7d8d0',
+      accentSoft: sanitizeCssColor(stringValue(sceneStyle.accentSoft)) || 'rgba(199, 216, 208, 0.16)',
+      surface: sanitizeCssColor(stringValue(sceneStyle.surface)) || 'rgba(7, 8, 9, 0.52)',
+      border: sanitizeCssColor(stringValue(sceneStyle.border)) || 'rgba(218, 232, 224, 0.16)',
+      text: sanitizeCssColor(stringValue(sceneStyle.text)) || 'rgba(248, 250, 250, 0.76)',
+      muted: sanitizeCssColor(stringValue(sceneStyle.muted)) || 'rgba(248, 250, 250, 0.42)',
+      radiusPx: readFiniteNumber(sceneStyle.radiusPx) ?? 14,
     },
-    sceneCard: {
-      frame: enumValue(sceneCard.frame, ['quiet-panel', 'glass-dossier', 'paper-note', 'terminal-readout'], 'quiet-panel'),
+    imageStyle: {
+      border: sanitizeCssColor(stringValue(imageStyle.border)) || 'rgba(255, 255, 255, 0.10)',
+      radiusPx: readFiniteNumber(imageStyle.radiusPx) ?? 12,
+      filter: stringValue(imageStyle.filter) || 'contrast(1.02) saturate(1.02)',
+      shadow: sanitizeCssColor(stringValue(imageStyle.shadow)) || 'rgba(0, 0, 0, 0.32)',
     },
     preview: {
       narration: stringValue(preview.narration),
@@ -4899,35 +4971,55 @@ function normalizeRunAtmosphereStyle(
 }
 
 function renderRunAtmosphereClassNames(
-  style: ReturnType<typeof normalizeRunAtmosphereStyle>,
+  style: NonNullable<ReturnType<typeof normalizeRunAtmosphereStyle>>,
   baseClass: string
 ): string {
   return [
     baseClass,
     'has-chat-atmosphere',
-    `chat-atmosphere-surface-${style.palette.surface}`,
-    `chat-atmosphere-message-${style.message.frame}`,
-    `chat-atmosphere-audio-${style.audio.player}`,
-    `chat-atmosphere-scene-${style.sceneCard.frame}`,
-    `chat-atmosphere-density-${style.message.density}`,
-    `chat-atmosphere-radius-${style.message.radius}`,
+    `chat-atmosphere-message-${style.messageStyle.frame}`,
+    `chat-atmosphere-audio-${style.audioStyle.player}`,
+    `chat-atmosphere-scene-${style.sceneStyle.frame}`,
+    `chat-atmosphere-density-${style.messageStyle.density}`,
     style.scopeClass,
   ].filter(Boolean).join(' ')
 }
 
-function renderRunAtmosphereInlineStyle(style: ReturnType<typeof normalizeRunAtmosphereStyle>): string {
-  const radius = style.message.radius === 'sharp' ? '10px' : style.message.radius === 'round' ? '22px' : '16px'
-  const densityGap = style.message.density === 'compact' ? '8px' : style.message.density === 'airy' ? '16px' : '12px'
+function renderRunAtmosphereInlineStyle(style: NonNullable<ReturnType<typeof normalizeRunAtmosphereStyle>>): string {
+  const densityGap = style.messageStyle.density === 'compact' ? '8px' : style.messageStyle.density === 'cinematic' ? '16px' : '12px'
   return [
-    `--chat-atmosphere-accent:${style.palette.accent}`,
-    `--chat-atmosphere-accent-soft:${style.palette.accentSoft}`,
-    `--chat-atmosphere-radius:${radius}`,
-    `--chat-atmosphere-density-gap:${densityGap}`,
+    `--chat-message-accent:${style.messageStyle.accent}`,
+    `--chat-message-accent-soft:${style.messageStyle.accentSoft}`,
+    `--chat-message-surface:${style.messageStyle.surface}`,
+    `--chat-message-border:${style.messageStyle.border}`,
+    `--chat-message-text:${style.messageStyle.text}`,
+    `--chat-message-muted:${style.messageStyle.muted}`,
+    `--chat-message-radius:${style.messageStyle.radiusPx}px`,
+    `--chat-message-density-gap:${densityGap}`,
+    `--chat-audio-accent:${style.audioStyle.accent}`,
+    `--chat-audio-accent-soft:${style.audioStyle.accentSoft}`,
+    `--chat-audio-surface:${style.audioStyle.surface}`,
+    `--chat-audio-track:${style.audioStyle.track}`,
+    `--chat-audio-border:${style.audioStyle.border}`,
+    `--chat-audio-text:${style.audioStyle.text}`,
+    `--chat-audio-radius:${style.audioStyle.radiusPx}px`,
+    `--chat-audio-height:${style.audioStyle.heightPx}px`,
+    `--chat-scene-accent:${style.sceneStyle.accent}`,
+    `--chat-scene-accent-soft:${style.sceneStyle.accentSoft}`,
+    `--chat-scene-surface:${style.sceneStyle.surface}`,
+    `--chat-scene-border:${style.sceneStyle.border}`,
+    `--chat-scene-text:${style.sceneStyle.text}`,
+    `--chat-scene-muted:${style.sceneStyle.muted}`,
+    `--chat-scene-radius:${style.sceneStyle.radiusPx}px`,
+    `--chat-image-border:${style.imageStyle.border}`,
+    `--chat-image-radius:${style.imageStyle.radiusPx}px`,
+    `--chat-image-filter:${style.imageStyle.filter}`,
+    `--chat-image-shadow:${style.imageStyle.shadow}`,
   ].join(';')
 }
 
 function renderRunAtmosphereScopedStyle(
-  style: ReturnType<typeof normalizeRunAtmosphereStyle>,
+  style: NonNullable<ReturnType<typeof normalizeRunAtmosphereStyle>>,
   options: CharacterWorkflowPageOptions
 ): string {
   return style.css ? `<style data-chat-atmosphere-preview-style="${options.escapeHtml(style.scopeClass)}">${style.css}</style>` : ''

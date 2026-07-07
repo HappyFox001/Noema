@@ -170,10 +170,33 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
   function applyCharacterAtmosphereStyle(style: ChatAtmosphereStyle | undefined): void {
     const root = options.panel
     clearAtmosphereClassNames(root)
-    root.style.removeProperty('--chat-atmosphere-accent')
-    root.style.removeProperty('--chat-atmosphere-accent-soft')
-    root.style.removeProperty('--chat-atmosphere-radius')
-    root.style.removeProperty('--chat-atmosphere-density-gap')
+    root.style.removeProperty('--chat-message-accent')
+    root.style.removeProperty('--chat-message-accent-soft')
+    root.style.removeProperty('--chat-message-surface')
+    root.style.removeProperty('--chat-message-border')
+    root.style.removeProperty('--chat-message-text')
+    root.style.removeProperty('--chat-message-muted')
+    root.style.removeProperty('--chat-message-radius')
+    root.style.removeProperty('--chat-message-density-gap')
+    root.style.removeProperty('--chat-audio-accent')
+    root.style.removeProperty('--chat-audio-accent-soft')
+    root.style.removeProperty('--chat-audio-surface')
+    root.style.removeProperty('--chat-audio-track')
+    root.style.removeProperty('--chat-audio-border')
+    root.style.removeProperty('--chat-audio-text')
+    root.style.removeProperty('--chat-audio-radius')
+    root.style.removeProperty('--chat-audio-height')
+    root.style.removeProperty('--chat-scene-accent')
+    root.style.removeProperty('--chat-scene-accent-soft')
+    root.style.removeProperty('--chat-scene-surface')
+    root.style.removeProperty('--chat-scene-border')
+    root.style.removeProperty('--chat-scene-text')
+    root.style.removeProperty('--chat-scene-muted')
+    root.style.removeProperty('--chat-scene-radius')
+    root.style.removeProperty('--chat-image-border')
+    root.style.removeProperty('--chat-image-radius')
+    root.style.removeProperty('--chat-image-filter')
+    root.style.removeProperty('--chat-image-shadow')
     removeAtmosphereCss()
     if (!style) {
       return
@@ -181,18 +204,39 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     const scopeClass = sanitizeAtmosphereScopeClass(style.scopeClass)
     root.classList.add(
       'has-chat-atmosphere',
-      `chat-atmosphere-surface-${style.palette.surface}`,
-      `chat-atmosphere-message-${style.message.frame}`,
-      `chat-atmosphere-audio-${style.audio.player}`,
-      `chat-atmosphere-scene-${style.sceneCard.frame}`,
-      `chat-atmosphere-density-${style.message.density}`,
-      `chat-atmosphere-radius-${style.message.radius}`,
+      `chat-atmosphere-message-${style.messageStyle.frame}`,
+      `chat-atmosphere-audio-${style.audioStyle.player}`,
+      `chat-atmosphere-scene-${style.sceneStyle.frame}`,
+      `chat-atmosphere-density-${style.messageStyle.density}`,
       ...(scopeClass ? [scopeClass] : []),
     )
-    root.style.setProperty('--chat-atmosphere-accent', style.palette.accent)
-    root.style.setProperty('--chat-atmosphere-accent-soft', style.palette.accentSoft)
-    root.style.setProperty('--chat-atmosphere-radius', style.message.radius === 'sharp' ? '10px' : style.message.radius === 'round' ? '22px' : '16px')
-    root.style.setProperty('--chat-atmosphere-density-gap', style.message.density === 'compact' ? '8px' : style.message.density === 'airy' ? '16px' : '12px')
+    root.style.setProperty('--chat-message-accent', style.messageStyle.accent)
+    root.style.setProperty('--chat-message-accent-soft', style.messageStyle.accentSoft)
+    root.style.setProperty('--chat-message-surface', style.messageStyle.surface)
+    root.style.setProperty('--chat-message-border', style.messageStyle.border)
+    root.style.setProperty('--chat-message-text', style.messageStyle.text)
+    root.style.setProperty('--chat-message-muted', style.messageStyle.muted)
+    root.style.setProperty('--chat-message-radius', `${style.messageStyle.radiusPx}px`)
+    root.style.setProperty('--chat-message-density-gap', style.messageStyle.density === 'compact' ? '8px' : style.messageStyle.density === 'cinematic' ? '16px' : '12px')
+    root.style.setProperty('--chat-audio-accent', style.audioStyle.accent)
+    root.style.setProperty('--chat-audio-accent-soft', style.audioStyle.accentSoft)
+    root.style.setProperty('--chat-audio-surface', style.audioStyle.surface)
+    root.style.setProperty('--chat-audio-track', style.audioStyle.track)
+    root.style.setProperty('--chat-audio-border', style.audioStyle.border)
+    root.style.setProperty('--chat-audio-text', style.audioStyle.text)
+    root.style.setProperty('--chat-audio-radius', `${style.audioStyle.radiusPx}px`)
+    root.style.setProperty('--chat-audio-height', `${style.audioStyle.heightPx}px`)
+    root.style.setProperty('--chat-scene-accent', style.sceneStyle.accent)
+    root.style.setProperty('--chat-scene-accent-soft', style.sceneStyle.accentSoft)
+    root.style.setProperty('--chat-scene-surface', style.sceneStyle.surface)
+    root.style.setProperty('--chat-scene-border', style.sceneStyle.border)
+    root.style.setProperty('--chat-scene-text', style.sceneStyle.text)
+    root.style.setProperty('--chat-scene-muted', style.sceneStyle.muted)
+    root.style.setProperty('--chat-scene-radius', `${style.sceneStyle.radiusPx}px`)
+    root.style.setProperty('--chat-image-border', style.imageStyle.border)
+    root.style.setProperty('--chat-image-radius', `${style.imageStyle.radiusPx}px`)
+    root.style.setProperty('--chat-image-filter', style.imageStyle.filter)
+    root.style.setProperty('--chat-image-shadow', style.imageStyle.shadow)
     applyAtmosphereCss(style.css, scopeClass)
   }
 
@@ -200,12 +244,10 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     root.classList.remove('has-chat-atmosphere')
     for (const className of [...root.classList]) {
       if (
-        className.startsWith('chat-atmosphere-surface-') ||
         className.startsWith('chat-atmosphere-message-') ||
         className.startsWith('chat-atmosphere-audio-') ||
         className.startsWith('chat-atmosphere-scene-') ||
         className.startsWith('chat-atmosphere-density-') ||
-        className.startsWith('chat-atmosphere-radius-') ||
         className.startsWith('noema-atmosphere-')
       ) {
         root.classList.remove(className)

@@ -2310,7 +2310,6 @@ function createAtmosphereStyleData(
     appearance,
     appearancePrompt,
   ].filter(Boolean).join(' ')
-  const fallbackProfile = createDefaultAtmosphereFallback()
   const scopeClass = `noema-atmosphere-${sanitizeCssIdentifier(target.nodeId)}`
   const imageHints = collectOpeningLayoutImages(artifacts).slice(0, 3).map((image) => ({
     id: image.id,
@@ -2318,7 +2317,6 @@ function createAtmosphereStyleData(
     title: image.title,
   }))
   const freeStyle = createFreeAtmosphereStyle({
-    fallback: fallbackProfile,
     scopeClass,
     characterName: name,
     description,
@@ -2331,17 +2329,17 @@ function createAtmosphereStyleData(
   const firstSpeech = extractFirstRoleChatLine(stringValue(fields.firstMessage)) || dialogueStyle
   const narration = stripVisibleControlTags(stringValue(fields.firstMessage)) || scenario || description
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     name: freeStyle.name,
     summary: freeStyle.summary,
     mood: freeStyle.mood,
     scopeClass,
     css: freeStyle.css,
     designBrief: freeStyle.designBrief,
-    palette: freeStyle.palette,
-    message: freeStyle.message,
-    audio: freeStyle.audio,
-    sceneCard: freeStyle.sceneCard,
+    messageStyle: freeStyle.messageStyle,
+    audioStyle: freeStyle.audioStyle,
+    sceneStyle: freeStyle.sceneStyle,
+    imageStyle: freeStyle.imageStyle,
     preview: {
       userLine: '',
       narration: compactOpeningText(narration, 96),
@@ -2461,47 +2459,18 @@ function resolveOpeningLayoutStyle(
   }
 }
 
-function createDefaultAtmosphereFallback(): {
+type GeneratedAtmosphereStyle = {
+  schemaVersion: 2
   name: string
   summary: string
   mood: string[]
-  palette: Record<string, string>
-  message: Record<string, string>
-  audio: Record<string, string>
-  sceneCard: Record<string, string>
-} {
-  return {
-    name: 'Neutral Atmosphere',
-    summary: 'Neutral internal fallback used only when no generated atmosphere data exists.',
-    mood: ['custom'],
-    palette: {
-      accent: '#c7d8d0',
-      accentSoft: 'rgba(199, 216, 208, 0.16)',
-      surface: 'glass',
-      warmth: 'neutral',
-      contrast: 'medium',
-    },
-    message: {
-      frame: 'plain',
-      narration: 'soft-prose',
-      speech: 'quote-emphasis',
-      density: 'balanced',
-      radius: 'soft',
-    },
-    audio: {
-      player: 'thin-glass-bar',
-      motion: 'subtle-wave',
-      tone: 'near',
-    },
-    sceneCard: {
-      frame: 'quiet-panel',
-      divider: 'fine-line',
-    },
-  }
+  messageStyle: Record<string, unknown>
+  audioStyle: Record<string, unknown>
+  sceneStyle: Record<string, unknown>
+  imageStyle: Record<string, unknown>
 }
 
 function createFreeAtmosphereStyle(input: {
-  fallback: ReturnType<typeof createDefaultAtmosphereFallback>
   scopeClass: string
   characterName: string
   description: string
@@ -2510,7 +2479,7 @@ function createFreeAtmosphereStyle(input: {
   dialogueStyle: string
   stylePrompt: string
   imageHints: Array<{ id?: string; role?: string; title?: string }>
-}): ReturnType<typeof createDefaultAtmosphereFallback> & {
+}): GeneratedAtmosphereStyle & {
   css: string
   designBrief: Record<string, string>
 } {
@@ -2542,6 +2511,68 @@ function createFreeAtmosphereStyle(input: {
   const paddingX = Math.round(clampNumber(18 + emotionalHeat * 2 + softness * 2 + (seed % 6), 17, 30))
   const lineWeight = Math.round(clampNumber(1 + precision * 0.45 + threat * 0.35, 1, 3))
   const audioRadius = Math.round(clampNumber(radiusPx + 4 + emotionalHeat * 6 - precision * 4, 9, 999))
+  const messageHue = normalizeHue(hue + emotionalHeat * 6 - threat * 4)
+  const audioHue = normalizeHue(hue + 18 + softness * 8 - precision * 6)
+  const sceneHue = normalizeHue(hue + 206 + precision * 18 - threat * 5)
+  const imageHue = normalizeHue(hue - 14 + threat * 10 + imagePresence * 4)
+  const messageAccent = `hsl(${messageHue} ${clampNumber(saturation + emotionalHeat * 5, 34, 78)}% ${clampNumber(lightness + 4, 44, 76)}%)`
+  const audioAccent = `hsl(${audioHue} ${clampNumber(saturation - 6 + softness * 5, 30, 70)}% ${clampNumber(lightness + 8, 48, 78)}%)`
+  const sceneAccent = `hsl(${sceneHue} ${clampNumber(saturation - 10 + precision * 7, 28, 68)}% ${clampNumber(lightness - 8, 36, 68)}%)`
+  const imageAccent = `hsl(${imageHue} ${clampNumber(saturation + threat * 6, 34, 76)}% ${clampNumber(lightness - 2, 40, 72)}%)`
+  const messageDensity = precision > 1 ? 'compact' : softness > 1 ? 'cinematic' : 'balanced'
+  const messageRadius = radiusPx <= 12 ? 'sharp' : radiusPx >= 22 ? 'round' : 'soft'
+  const messageFrame = precision > 1 ? 'minimal' : threat > 1 ? 'glass' : emotionalHeat > 1 ? 'ornate' : 'panel'
+  const audioPlayer = precision > 1 ? 'console' : softness > 1 ? 'bar' : 'capsule'
+  const sceneFrame = precision > 1 ? 'ledger' : threat > 1 ? 'instrument' : softness > 1 ? 'plain' : 'panel'
+  const messageStyle = {
+    frame: messageFrame,
+    narration: precision > 1 ? 'clinical' : threat > 1 ? 'noir' : softness > 1 ? 'diary' : 'soft-prose',
+    speech: precision > 1 ? 'stage-dialogue' : emotionalHeat > 1 ? 'quiet-line' : 'quote-emphasis',
+    density: messageDensity,
+    radius: messageRadius,
+    accent: messageAccent,
+    accentSoft: `hsla(${messageHue} ${saturation}% ${lightness}% / ${clampNumber(0.13 + emotionalHeat * 0.025, 0.12, 0.28).toFixed(2)})`,
+    surface: `hsl(${surfaceHue} ${clampNumber(12 + threat * 4, 10, 30)}% ${clampNumber(7 + softness * 2 - threat, 5, 15)}%)`,
+    border: `hsla(${messageHue} ${saturation}% ${lightness}% / ${precision > 1 ? '0.38' : '0.26'})`,
+    text: `hsla(${messageHue} 34% 96% / 0.96)`,
+    muted: `hsla(${surfaceHue} 18% 86% / 0.76)`,
+    radiusPx,
+    paddingY,
+    paddingX,
+    lineWeight,
+  }
+  const audioStyle = {
+    player: audioPlayer,
+    motion: precision > 1 ? 'scan' : softness > 1 ? 'pulse' : 'still',
+    tone: emotionalHeat > 1 ? 'intimate' : threat > 1 ? 'dramatic' : 'ambient',
+    accent: audioAccent,
+    accentSoft: `hsla(${audioHue} ${saturation}% ${lightness}% / ${clampNumber(0.10 + softness * 0.035, 0.10, 0.26).toFixed(2)})`,
+    surface: `hsla(${surfaceHue} 18% 8% / 0.82)`,
+    track: `hsla(${audioHue} 24% 84% / 0.18)`,
+    border: `hsla(${audioHue} ${saturation}% ${lightness}% / 0.32)`,
+    text: `hsla(${audioHue} 22% 94% / 0.78)`,
+    radiusPx: audioRadius,
+    heightPx: precision > 1 ? 36 : 40,
+  }
+  const sceneStyle = {
+    frame: sceneFrame,
+    divider: precision > 1 || threat > 1 ? 'line' : softness > 1 ? 'glow' : 'none',
+    accent: sceneAccent,
+    accentSoft: `hsla(${sceneHue} ${clampNumber(saturation - 6, 28, 68)}% ${clampNumber(lightness - 2, 36, 72)}% / ${clampNumber(0.10 + softness * 0.025, 0.10, 0.22).toFixed(2)})`,
+    surface: `hsla(${surfaceHue} 20% 8% / 0.74)`,
+    border: `hsla(${sceneHue} ${clampNumber(saturation - 10, 28, 68)}% ${clampNumber(lightness - 8, 36, 68)}% / 0.24)`,
+    text: `hsla(${sceneHue} 24% 92% / 0.82)`,
+    muted: `color-mix(in srgb, ${sceneAccent} 58%, rgba(238,241,240,0.58))`,
+    radiusPx: Math.max(10, radiusPx),
+  }
+  const imageStyle = {
+    treatment: imagePresence ? (precision > 1 ? 'artifact' : threat > 1 ? 'cinematic' : 'portrait') : 'portrait',
+    accent: imageAccent,
+    border: `hsla(${imageHue} ${saturation}% ${lightness}% / ${imagePresence ? '0.34' : '0.18'})`,
+    shadow: `hsla(${imageHue} ${saturation}% ${Math.max(8, lightness - 34)}% / ${imagePresence ? '0.18' : '0.08'})`,
+    radiusPx: Math.max(8, radiusPx - 2),
+    filter: specImageFilter(threat, emotionalHeat, precision),
+  }
   const borderStyle = precision > 1
     ? 'technical hairline frame'
     : threat > 1
@@ -2570,79 +2601,78 @@ function createFreeAtmosphereStyle(input: {
     borderTreatment: `${borderStyle}; border weight and corner radius are derived from role semantics.`,
     imageTreatment,
     typography: precision > threat ? 'Compact metadata rhythm with readable literary speech.' : threat > emotionalHeat ? 'Tense prose frame with sharp quoted speech.' : 'Literary conversational rhythm with soft speech emphasis.',
-    audioTreatment: `Audio bar radius ${audioRadius}px, progress color from character accent, spacing derived from the same semantic seed.`,
-    sceneTreatment: 'Scene/status card shares the generated surface, border, and accent system instead of using a separate preset.',
+    audioTreatment: `Audio has its own hue ${audioHue}, radius ${audioStyle.radiusPx}px, surface, border, and motion tokens.`,
+    sceneTreatment: `Scene cards have independent hue ${sceneHue}, surface, divider, and radius tokens. Game panels remain owned by gameSystem.panelStyle.`,
   }
   return {
-    ...input.fallback,
+    schemaVersion: 2,
     name: `${input.characterName} Atmosphere`,
     summary: `Custom scoped atmosphere generated from ${input.characterName}'s role card, dialogue, scene, and style controls.`,
     mood: mood.length ? mood : ['custom', `seed-${seed % 997}`],
-    palette: {
-      accent,
-      accentSoft,
-      surface: input.fallback.palette.surface,
-      warmth: emotionalHeat > precision ? 'warm' : precision > emotionalHeat ? 'cool' : 'neutral',
-      contrast: threat > 1 || precision > 1 ? 'high' : softness > 1 ? 'low' : 'medium',
-    },
-    message: {
-      ...input.fallback.message,
-      density: precision > 1 ? 'compact' : softness > 1 ? 'airy' : 'balanced',
-      radius: radiusPx <= 12 ? 'sharp' : radiusPx >= 22 ? 'round' : 'soft',
-    },
-    audio: {
-      ...input.fallback.audio,
-      motion: precision > 1 ? 'still' : 'subtle-wave',
-      tone: emotionalHeat > 1 ? 'intimate' : precision > 1 ? 'formal' : 'near',
-    },
-    sceneCard: {
-      ...input.fallback.sceneCard,
-      divider: precision > 1 || threat > 1 ? 'fine-line' : softness > 1 ? 'soft-band' : 'none',
-    },
+    messageStyle,
+    audioStyle,
+    sceneStyle,
+    imageStyle,
     designBrief,
     css: buildFreeAtmosphereCss(input.scopeClass, {
-      accent,
-      accentSoft,
-      surface,
       hue,
       surfaceHue,
-      radiusPx,
-      paddingY,
-      paddingX,
-      lineWeight,
-      audioRadius,
       glowAlpha: clampNumber(0.18 + softness * 0.04 + emotionalHeat * 0.035, 0.16, 0.34),
       precision,
       threat,
       softness,
       emotionalHeat,
       imagePresence,
+      messageStyle,
+      audioStyle,
+      sceneStyle,
+      imageStyle,
     }, designBrief),
   }
+}
+
+function specImageFilter(threat: number, emotionalHeat: number, precision: number): string {
+  return threat > 1
+    ? 'contrast(1.08) saturate(0.9) brightness(0.88)'
+    : emotionalHeat > 1
+      ? 'contrast(1.04) saturate(1.12) brightness(1.02)'
+      : precision > 1
+        ? 'contrast(1.12) saturate(0.86)'
+        : 'contrast(1.02) saturate(1.02)'
 }
 
 function buildFreeAtmosphereCss(
   scopeClass: string,
   spec: {
-    accent: string
-    accentSoft: string
-    surface: string
     hue: number
     surfaceHue: number
-    radiusPx: number
-    paddingY: number
-    paddingX: number
-    lineWeight: number
-    audioRadius: number
     glowAlpha: number
     precision: number
     threat: number
     softness: number
     emotionalHeat: number
     imagePresence: number
+    messageStyle: Record<string, unknown>
+    audioStyle: Record<string, unknown>
+    sceneStyle: Record<string, unknown>
+    imageStyle: Record<string, unknown>
   },
   design: Record<string, string>
 ): string {
+  const message = spec.messageStyle
+  const audio = spec.audioStyle
+  const scene = spec.sceneStyle
+  const image = spec.imageStyle
+  const messageAccent = String(message.accent)
+  const messageAccentSoft = String(message.accentSoft)
+  const messageSurface = String(message.surface)
+  const audioAccent = String(audio.accent)
+  const audioAccentSoft = String(audio.accentSoft)
+  const audioSurface = String(audio.surface)
+  const sceneAccent = String(scene.accent)
+  const sceneAccentSoft = String(scene.accentSoft)
+  const sceneSurface = String(scene.surface)
+  const imageAccent = String(image.accent)
   const frameShadow = spec.threat > 1
     ? '0 24px 80px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.04)'
     : `0 18px 64px hsla(${spec.hue} 35% 8% / 0.28), inset 0 1px 0 rgba(255,255,255,0.045)`
@@ -2650,53 +2680,46 @@ function buildFreeAtmosphereCss(
     ? `linear-gradient(90deg, hsla(${spec.hue} 70% 70% / 0.05) 1px, transparent 1px)`
     : `radial-gradient(circle at 78% 10%, hsla(${spec.hue} 70% 72% / ${spec.glowAlpha}), transparent 34%)`
   const borderImage = spec.precision > 1
-    ? `linear-gradient(180deg, color-mix(in srgb, ${spec.accent} 42%, transparent), rgba(255,255,255,0.05), color-mix(in srgb, ${spec.accent} 22%, transparent)) 1`
+    ? `linear-gradient(180deg, color-mix(in srgb, ${messageAccent} 42%, transparent), rgba(255,255,255,0.05), color-mix(in srgb, ${messageAccent} 22%, transparent)) 1`
     : spec.threat > 1
-      ? `linear-gradient(135deg, rgba(255,255,255,0.08), color-mix(in srgb, ${spec.accent} 48%, transparent), rgba(0,0,0,0.22)) 1`
-      : `linear-gradient(135deg, color-mix(in srgb, ${spec.accent} 36%, transparent), rgba(255,255,255,0.1), color-mix(in srgb, ${spec.accent} 18%, transparent)) 1`
-  const imageFilter = spec.threat > 1
-    ? 'contrast(1.08) saturate(0.9) brightness(0.88)'
-    : spec.emotionalHeat > 1
-      ? 'contrast(1.04) saturate(1.12) brightness(1.02)'
-      : spec.precision > 1
-        ? 'contrast(1.12) saturate(0.86)'
-        : 'contrast(1.02) saturate(1.02)'
+      ? `linear-gradient(135deg, rgba(255,255,255,0.08), color-mix(in srgb, ${messageAccent} 48%, transparent), rgba(0,0,0,0.22)) 1`
+      : `linear-gradient(135deg, color-mix(in srgb, ${messageAccent} 36%, transparent), rgba(255,255,255,0.1), color-mix(in srgb, ${messageAccent} 18%, transparent)) 1`
   return [
     `.${scopeClass}.has-chat-atmosphere .roleplay-chat-frame {`,
-    `  padding: ${spec.paddingY}px ${spec.paddingX}px ${spec.paddingY + 2}px;`,
-    `  border-width: ${spec.lineWeight}px;`,
+    `  padding: ${message.paddingY}px ${message.paddingX}px ${Number(message.paddingY) + 2}px;`,
+    `  border-width: ${message.lineWeight}px;`,
     `  border-style: solid;`,
-    `  border-radius: ${spec.radiusPx + 4}px;`,
-    `  border-color: color-mix(in srgb, ${spec.accent} 28%, transparent);`,
+    `  border-radius: ${Number(message.radiusPx) + 4}px;`,
+    `  border-color: ${message.border};`,
     `  border-image: ${borderImage};`,
-    `  background: radial-gradient(circle at 10% 0%, ${spec.accentSoft}, transparent 31%), ${grain}, linear-gradient(139deg, color-mix(in srgb, ${spec.accent} 10%, ${spec.surface}), ${spec.surface});`,
+    `  background: radial-gradient(circle at 10% 0%, ${messageAccentSoft}, transparent 31%), ${grain}, linear-gradient(139deg, color-mix(in srgb, ${messageAccent} 10%, ${messageSurface}), ${messageSurface});`,
     `  box-shadow: ${frameShadow};`,
     `}`,
     `.${scopeClass}.has-chat-atmosphere .roleplay-chat-frame::before {`,
-    `  background: linear-gradient(90deg, hsla(${spec.hue} 70% 72% / 0.08), transparent 46%), radial-gradient(circle at 72% 20%, ${spec.accentSoft}, transparent 38%);`,
+    `  background: linear-gradient(90deg, hsla(${spec.hue} 70% 72% / 0.08), transparent 46%), radial-gradient(circle at 72% 20%, ${messageAccentSoft}, transparent 38%);`,
     `}`,
-    `.${scopeClass}.has-chat-atmosphere .roleplay-chat-frame > p { color: hsla(${spec.surfaceHue} 18% 86% / 0.78); }`,
-    `.${scopeClass}.has-chat-atmosphere .chat-message .roleplay-chat-quote, .${scopeClass}.has-chat-atmosphere .roleplay-chat-quote { color: hsla(${spec.hue} 34% 96% / 0.97); }`,
+    `.${scopeClass}.has-chat-atmosphere .roleplay-chat-frame > p { color: ${message.muted}; }`,
+    `.${scopeClass}.has-chat-atmosphere .chat-message .roleplay-chat-quote, .${scopeClass}.has-chat-atmosphere .roleplay-chat-quote { color: ${message.text}; }`,
     `.${scopeClass}.has-chat-atmosphere .chat-inline-audio-player, .${scopeClass}.has-chat-atmosphere .chat-inline-audio.pending span {`,
-    `  min-height: ${spec.precision > 1 ? 36 : 40}px;`,
-    `  border-radius: ${spec.audioRadius >= 120 ? 999 : spec.audioRadius}px;`,
-    `  border-color: color-mix(in srgb, ${spec.accent} 32%, transparent);`,
-    `  background: linear-gradient(90deg, ${spec.accentSoft}, rgba(255,255,255,0.026)), color-mix(in srgb, ${spec.surface} 82%, transparent);`,
+    `  min-height: ${audio.heightPx}px;`,
+    `  border-radius: ${audio.radiusPx}px;`,
+    `  border-color: ${audio.border};`,
+    `  background: linear-gradient(90deg, ${audioAccentSoft}, rgba(255,255,255,0.026)), ${audioSurface};`,
     `}`,
-    `.${scopeClass}.has-chat-atmosphere .chat-inline-audio-track { background: hsla(${spec.hue} 24% 84% / 0.18); }`,
-    `.${scopeClass}.has-chat-atmosphere .chat-inline-audio-track span { background: color-mix(in srgb, ${spec.accent} 76%, rgba(255,255,255,0.86)); }`,
+    `.${scopeClass}.has-chat-atmosphere .chat-inline-audio-track { background: ${audio.track}; }`,
+    `.${scopeClass}.has-chat-atmosphere .chat-inline-audio-track span { background: color-mix(in srgb, ${audioAccent} 76%, rgba(255,255,255,0.86)); }`,
     `.${scopeClass}.has-chat-atmosphere .chat-inline-scene {`,
-    `  border-radius: ${Math.max(10, spec.radiusPx)}px;`,
-    `  border-color: color-mix(in srgb, ${spec.accent} 24%, transparent);`,
-    `  background: linear-gradient(180deg, ${spec.accentSoft}, rgba(255,255,255,0.024)), color-mix(in srgb, ${spec.surface} 74%, transparent);`,
+    `  border-radius: ${scene.radiusPx}px;`,
+    `  border-color: ${scene.border};`,
+    `  background: linear-gradient(180deg, ${sceneAccentSoft}, rgba(255,255,255,0.024)), ${sceneSurface};`,
     `}`,
-    `.${scopeClass}.has-chat-atmosphere .chat-inline-scene-line span { color: color-mix(in srgb, ${spec.accent} 58%, rgba(238,241,240,0.58)); }`,
-    `.${scopeClass}.has-chat-atmosphere .chat-inline-scene-status em { border-color: color-mix(in srgb, ${spec.accent} 26%, transparent); background: color-mix(in srgb, ${spec.accent} 10%, transparent); }`,
+    `.${scopeClass}.has-chat-atmosphere .chat-inline-scene-line span { color: ${scene.muted}; }`,
+    `.${scopeClass}.has-chat-atmosphere .chat-inline-scene-status em { border-color: color-mix(in srgb, ${sceneAccent} 26%, transparent); background: color-mix(in srgb, ${sceneAccent} 10%, transparent); color: ${scene.text}; }`,
     `.${scopeClass}.has-chat-atmosphere img, .${scopeClass}.has-chat-atmosphere .chat-message img {`,
-    `  border: ${Math.max(1, spec.lineWeight)}px solid color-mix(in srgb, ${spec.accent} ${spec.imagePresence ? 34 : 18}%, rgba(255,255,255,0.08));`,
-    `  border-radius: ${Math.max(8, spec.radiusPx - 2)}px;`,
-    `  filter: ${imageFilter};`,
-    `  box-shadow: 0 0 0 1px rgba(255,255,255,0.035), 0 18px 42px color-mix(in srgb, ${spec.accent} ${spec.imagePresence ? 18 : 8}%, transparent);`,
+    `  border: ${Math.max(1, Number(message.lineWeight))}px solid ${image.border};`,
+    `  border-radius: ${image.radiusPx}px;`,
+    `  filter: ${image.filter};`,
+    `  box-shadow: 0 0 0 1px rgba(255,255,255,0.035), 0 18px 42px ${image.shadow};`,
     `}`,
     `/* ${design.concept} */`,
   ].join('\n')
