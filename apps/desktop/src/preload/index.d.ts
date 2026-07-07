@@ -1028,7 +1028,7 @@ declare global {
           steps: Array<{
             id: string
             index: number
-            tool: 'inspect_graph' | 'edit_graph' | 'validate_graph' | 'ask_user' | 'finish'
+            tool: 'inspect_graph' | 'plan_requirements' | 'repair_structure' | 'generate_style' | 'generate_fields' | 'generate_images' | 'generate_css' | 'generate_gameplay' | 'generate_quality' | 'evaluate_goal_coverage' | 'repair_domain' | 'edit_graph' | 'validate_graph' | 'ask_user' | 'finish'
             userRequest: string
             summary: string
             status: 'applied' | 'needs-user' | 'blocked' | 'complete'
