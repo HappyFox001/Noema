@@ -4630,25 +4630,36 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
   }
 
+  function ensureWorkflowLibraryVisibleWhenNoProject(): void {
+    if (activeCharacterWorkflowProjectId) {
+      return
+    }
+    characterWorkflowEditorState.workflowLibraryCollapsed = false
+  }
+
   async function renderCharacterWorkflowAsync(): Promise<void> {
     if (!characterWorkflowRoot) {
       return
     }
     const renderToken = ++characterWorkflowLazyRenderToken
     if (!characterWorkflowRoot.childElementCount) {
+      ensureWorkflowLibraryVisibleWhenNoProject()
       characterWorkflowRoot.innerHTML = renderCharacterWorkflowLibraryShell(renderCharacterWorkflowLibraryEmptyState())
     }
     if (!characterWorkflowProjectsHydrated) {
+      ensureWorkflowLibraryVisibleWhenNoProject()
       characterWorkflowRoot.innerHTML = renderCharacterWorkflowLibraryShell(renderCharacterWorkflowLibraryEmptyState())
       return
     }
     if (!activeCharacterWorkflowProjectId) {
+      ensureWorkflowLibraryVisibleWhenNoProject()
       characterWorkflowRoot.innerHTML = renderCharacterWorkflowLibraryShell(renderCharacterWorkflowLibraryEmptyState())
       return
     }
     const activeProject = characterWorkflowProjects.find((project) => project.id === activeCharacterWorkflowProjectId)
     if (!activeProject) {
       activeCharacterWorkflowProjectId = ''
+      ensureWorkflowLibraryVisibleWhenNoProject()
       characterWorkflowRoot.innerHTML = renderCharacterWorkflowLibraryShell(renderCharacterWorkflowLibraryEmptyState())
       return
     }
@@ -7281,6 +7292,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function createPersistedCharacterWorkflowState(): PersistedCharacterWorkflowState {
     saveActiveWorkflowProjectSnapshot(false)
+    ensureWorkflowLibraryVisibleWhenNoProject()
     return {
       activeWorkflowId: activeCharacterWorkflowProjectId,
       workflows: [],
@@ -7378,6 +7390,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       characterWorkflowEditorState.workflowLibraryWidth = clampCharacterWorkflowLibraryWidth(record.editorState.workflowLibraryWidth)
       characterWorkflowEditorState.workflowLibraryCollapsed = Boolean(record.editorState.workflowLibraryCollapsed)
     }
+    ensureWorkflowLibraryVisibleWhenNoProject()
   }
 
   function pushCharacterResourceUndoSnapshot(): void {
@@ -8813,6 +8826,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       replaceRecord(characterWorkflowConfigOverrides, {})
       replaceRecord(characterWorkflowPositionOverrides, {})
       applyWorkflowProjectViewState(undefined)
+      ensureWorkflowLibraryVisibleWhenNoProject()
       renderCharacterWorkflow()
       return
     }

@@ -2751,7 +2751,8 @@ function renderResourceCanvas(graph: CharacterResourceGraph, graphSnapshot: stri
       ${isWorkflowTab ? renderCanvasControls(graph, options) : ''}
       ${isRunTab ? renderRunCanvasControls(options) : ''}
       <div class="chat-resource-tabs">
-        ${isWorkflowTab ? `${renderWorkflowLibraryToggle(options)}${renderSidebarToggle(options)}` : ''}
+        ${isWorkflowTab || isRunTab ? renderWorkflowLibraryToggle(options) : ''}
+        ${isWorkflowTab ? renderSidebarToggle(options) : ''}
         ${graph.tabs.map((tab) => renderResourceTabControl(tab, activeTab, options)).join('')}
       </div>
       ${activeTab === 'run-draft' ? renderRunDraft(graph, options) : ''}

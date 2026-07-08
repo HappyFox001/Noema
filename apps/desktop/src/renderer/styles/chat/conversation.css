@@ -1535,6 +1535,7 @@ body.theme-day .chat-message-avatar {
   max-height: min(44dvh, 410px);
   overflow-x: auto;
   overflow-y: auto;
+  padding: 0 11px 11px;
 }
 
 .chat-game-panel-sheet--equipment .chat-inline-equipment table {
@@ -1544,18 +1545,30 @@ body.theme-day .chat-message-avatar {
 
 .chat-game-panel-sheet--equipment .chat-inline-equipment th,
 .chat-game-panel-sheet--equipment .chat-inline-equipment td {
-  white-space: nowrap;
+  padding: 13px 14px;
+  color: rgba(248, 250, 250, 0.82);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.48;
+  white-space: normal;
+  vertical-align: middle;
 }
 
-.chat-game-panel-sheet--equipment .chat-inline-equipment td:nth-child(1),
-.chat-game-panel-sheet--equipment .chat-inline-equipment td:nth-child(2) {
+.chat-game-panel-sheet--equipment .chat-inline-equipment th {
+  color: rgba(220, 229, 226, 0.64);
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.chat-game-panel-sheet--equipment .chat-inline-equipment td:nth-child(1) {
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chat-game-panel-sheet--equipment .chat-inline-equipment th:nth-child(1),
 .chat-game-panel-sheet--equipment .chat-inline-equipment td:nth-child(1) {
-  width: 24%;
+  width: 23%;
 }
 
 .chat-game-panel-sheet--equipment .chat-inline-equipment th:nth-child(2),
@@ -1563,13 +1576,37 @@ body.theme-day .chat-message-avatar {
   width: auto;
 }
 
+.chat-game-panel-sheet--equipment .chat-inline-equipment th:nth-child(3),
+.chat-game-panel-sheet--equipment .chat-inline-equipment td:nth-child(3) {
+  width: 72px;
+}
+
 .chat-game-panel-sheet--equipment .chat-inline-equipment th:nth-child(4),
 .chat-game-panel-sheet--equipment .chat-inline-equipment td:nth-child(4) {
-  width: 70px;
+  width: 82px;
 }
 
 .chat-game-panel-sheet--equipment .chat-inline-equipment-use {
+  min-width: 48px;
+  min-height: 30px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 28px;
   white-space: nowrap;
+}
+
+.chat-game-panel-sheet--equipment .chat-inline-equipment-toggle {
+  padding: 13px 14px;
+}
+
+.chat-game-panel-sheet--equipment .chat-inline-equipment-toggle span {
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.chat-game-panel-sheet--equipment .chat-inline-equipment-toggle em,
+.chat-game-panel-sheet--equipment .chat-inline-equipment-toggle strong {
+  font-size: 12px;
 }
 
 @media (max-width: 840px) {
