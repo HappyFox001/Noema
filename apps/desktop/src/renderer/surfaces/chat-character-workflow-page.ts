@@ -2815,7 +2815,6 @@ function renderResourceCanvas(graph: CharacterResourceGraph, graphSnapshot: stri
       ${activeTab === 'run-draft' ? renderRunDraft(graph, options) : ''}
       ${isWorkflowTab ? `<div class="chat-workflow-canvas-viewport active" data-resource-viewport="${options.escapeHtml(JSON.stringify(graph.viewport))}">
         <div class="chat-workflow-canvas-plane chat-resource-graph-plane" style="--resource-zoom: ${graph.viewport.zoom}; --resource-pan-x: ${graph.viewport.x}px; --resource-pan-y: ${graph.viewport.y}px">
-          <div class="chat-workflow-canvas-grid" aria-hidden="true"></div>
           ${graph.groups.map((group) => renderGroup(group, graph, options)).join('')}
           ${options.viewState?.hideLinks ? '' : renderLinkOverlay(graph, options)}
           ${graph.nodes.map((node) => renderResourceNode(node, graph, options)).join('')}
@@ -2897,7 +2896,6 @@ function renderRunDraft(graph: CharacterResourceGraph, options: CharacterWorkflo
     <div class="chat-workflow-canvas-viewport active chat-resource-run-viewport ${options.runAnimating ? 'is-run-animating' : ''}" data-run-id="${options.escapeHtml(options.runState?.run?.id ?? '')}" data-run-motion="${options.runMotionEnabled ? 'live' : 'none'}" data-resource-viewport="${options.escapeHtml(JSON.stringify(runGraph.viewport))}" aria-label="${options.escapeHtml(ui(options, '角色卡运行草稿', 'Character card run draft'))}">
       ${renderRunProgressOverlay(options)}
       <div class="chat-workflow-canvas-plane chat-resource-graph-plane chat-resource-run-plane" style="--resource-zoom: ${runGraph.viewport.zoom}; --resource-pan-x: ${runGraph.viewport.x}px; --resource-pan-y: ${runGraph.viewport.y}px; --run-plane-width: ${runPlaneWidth}px; --run-plane-height: ${runPlaneHeight}px">
-        <div class="chat-workflow-canvas-grid" aria-hidden="true"></div>
         ${renderLinkOverlay(runGraph, options)}
         ${runGraph.nodes.map((node) => renderResourceNode(node, runGraph, options)).join('')}
       </div>

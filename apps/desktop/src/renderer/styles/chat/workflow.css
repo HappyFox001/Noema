@@ -1010,7 +1010,7 @@
     linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
     rgba(4, 5, 6, 0.98);
   background-size: 26px 26px, 26px 26px, auto;
-  contain: layout style;
+  contain: layout paint style;
 }
 
 .chat-workflow-canvas-viewport {
@@ -1018,7 +1018,7 @@
   height: 100%;
   overflow: auto;
   overscroll-behavior: contain;
-  contain: layout style;
+  contain: layout paint style;
 }
 
 .chat-workflow-canvas-plane {
@@ -1042,7 +1042,9 @@
   border-radius: 7px;
   background: rgba(13, 15, 17, 0.96);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
-  contain: layout style;
+  contain: layout paint style;
+  content-visibility: auto;
+  contain-intrinsic-size: 244px 148px;
 }
 
 .chat-workflow-node.llm {
@@ -1936,10 +1938,10 @@ body.chat-workflow-library-resizing * {
     linear-gradient(180deg, rgba(255, 255, 255, 0.048), rgba(255, 255, 255, 0.018)),
     rgba(7, 8, 9, 0.72);
   box-shadow:
-    0 18px 46px rgba(0, 0, 0, 0.38),
+    0 12px 28px rgba(0, 0, 0, 0.34),
     inset 0 1px 0 rgba(255, 255, 255, 0.07);
-  -webkit-backdrop-filter: blur(18px);
-  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
 }
 
 .chat-workflow-canvas-assistant textarea {
@@ -2060,10 +2062,10 @@ body.chat-workflow-library-resizing * {
     linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.024)),
     rgba(5, 6, 8, 0.88);
   box-shadow:
-    0 16px 38px rgba(0, 0, 0, 0.34),
+    0 10px 24px rgba(0, 0, 0, 0.3),
     inset 0 1px 0 rgba(255, 255, 255, 0.07);
-  -webkit-backdrop-filter: blur(18px);
-  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
   font-family: var(--font-ui);
   font-size: 11px;
   font-weight: 760;
@@ -2205,9 +2207,9 @@ body.chat-workflow-library-resizing * {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.038), rgba(255, 255, 255, 0.016)),
     rgba(6, 8, 10, 0.86);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.055), 0 10px 28px rgba(0, 0, 0, 0.22);
-  -webkit-backdrop-filter: blur(16px);
-  backdrop-filter: blur(16px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.055), 0 8px 18px rgba(0, 0, 0, 0.2);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
   transform-origin: center top;
 }
 
@@ -2215,7 +2217,7 @@ body.chat-workflow-library-resizing * {
   background:
     linear-gradient(180deg, rgba(185, 196, 214, 0.1), rgba(185, 196, 214, 0.035)),
     rgba(8, 10, 11, 0.72);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 16px 40px rgba(0, 0, 0, 0.22);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 10px 24px rgba(0, 0, 0, 0.22);
   animation: chat-workflow-agent-latest-enter 260ms cubic-bezier(0.2, 0.74, 0.22, 1) both;
 }
 
@@ -3206,7 +3208,10 @@ body.chat-workflow-library-resizing * {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.048),
     inset 0 -1px 0 rgba(0, 0, 0, 0.34),
-    0 14px 34px rgba(0, 0, 0, 0.32);
+    0 8px 18px rgba(0, 0, 0, 0.28);
+  contain: layout paint style;
+  content-visibility: auto;
+  contain-intrinsic-size: 286px 180px;
   will-change: auto;
 }
 
@@ -3215,7 +3220,7 @@ body.chat-workflow-library-resizing * {
   box-shadow:
     inset 4px 0 0 rgba(202, 190, 150, 0.72),
     inset 0 1px 0 rgba(255, 255, 255, 0.055),
-    0 18px 44px rgba(0, 0, 0, 0.42);
+    0 12px 28px rgba(0, 0, 0, 0.36);
 }
 
 .chat-resource-run-plane .chat-resource-node::after {
@@ -4429,6 +4434,9 @@ body.chat-workflow-library-resizing * {
   width: var(--node-w, 268px);
   min-height: var(--node-h, 226px);
   padding-bottom: 8px;
+  contain: layout paint style;
+  content-visibility: auto;
+  contain-intrinsic-size: var(--node-w, 268px) var(--node-h, 226px);
   transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease, transform 140ms ease;
 }
 
@@ -4444,17 +4452,17 @@ body.chat-workflow-library-resizing * {
 .chat-resource-node:hover {
   border-color: rgba(248, 250, 250, 0.2);
   background: rgba(255, 255, 255, 0.046);
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.26);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.24);
 }
 
 .chat-resource-node.selected {
   border-color: rgba(82, 168, 255, 0.72);
-  box-shadow: 0 0 0 1px rgba(82, 168, 255, 0.32), 0 16px 42px rgba(0, 0, 0, 0.32);
+  box-shadow: 0 0 0 1px rgba(82, 168, 255, 0.32), 0 10px 24px rgba(0, 0, 0, 0.3);
 }
 
 .chat-resource-node:active {
   background: rgba(82, 168, 255, 0.052);
-  box-shadow: 0 0 0 1px rgba(82, 168, 255, 0.2), 0 12px 30px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 0 0 1px rgba(82, 168, 255, 0.2), 0 8px 20px rgba(0, 0, 0, 0.28);
 }
 
 .chat-resource-node.is-pragmatic-dragging {
@@ -4520,6 +4528,11 @@ body.chat-workflow-library-resizing * {
     0 0 0 1px rgba(132, 173, 159, 0.34),
     0 0 0 7px rgba(132, 173, 159, 0.09),
     0 18px 44px rgba(0, 0, 0, 0.34);
+}
+
+.chat-resource-node.agent-highlight-node[data-agent-op-label] {
+  contain: layout style;
+  content-visibility: visible;
 }
 
 .chat-resource-node.agent-highlight-node::before {
