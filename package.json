@@ -27,7 +27,7 @@
     "check:character-resource-frontend": "node ./scripts/check-character-resource-frontend.mjs"
   },
   "devDependencies": {
-    "turbo": "^2.9.16",
+    "turbo": "^2.10.4",
     "typescript": "^5.4.0"
   },
   "engines": {
