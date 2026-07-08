@@ -1893,7 +1893,7 @@ body.chat-workflow-library-resizing * {
 }
 
 .chat-runtime-model-shell.workflow-builder {
-  z-index: 20;
+  z-index: 48;
 }
 
 .chat-runtime-model-shell.workflow-builder .chat-runtime-model-current {
@@ -1906,6 +1906,7 @@ body.chat-workflow-library-resizing * {
 
 .chat-runtime-model-shell.workflow-builder .chat-runtime-model-menu {
   bottom: calc(100% + 8px);
+  z-index: 50;
 }
 
 .chat-workflow-canvas-assistant {
@@ -1968,7 +1969,7 @@ body.chat-workflow-library-resizing * {
   position: absolute;
   left: 0;
   top: 0;
-  z-index: 24;
+  z-index: 48;
 }
 
 .chat-runtime-model-shell.workflow-assistant .chat-runtime-model-current {
@@ -1982,6 +1983,7 @@ body.chat-workflow-library-resizing * {
 
 .chat-runtime-model-shell.workflow-assistant .chat-runtime-model-menu {
   bottom: calc(100% + 10px);
+  z-index: 50;
 }
 
 .chat-workflow-canvas-assistant-row > button {
