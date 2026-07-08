@@ -126,6 +126,7 @@ const CHARACTER_WORKFLOW_FOCUS_HISTORY_LIMIT = 16
 
 interface CharacterWorkflowEditorState {
   activePanel: CharacterWorkflowSidePanel
+  activeGraphTemplateId: string
   sidebarCollapsed: boolean
   inspectorCollapsed: boolean
   nodeSearchOpen: boolean
@@ -429,6 +430,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
   const characterWorkflowEditorState: CharacterWorkflowEditorState = {
     activePanel: 'workflow',
+    activeGraphTemplateId: 'character-card',
     sidebarCollapsed: false,
     inspectorCollapsed: false,
     nodeSearchOpen: false,
@@ -4766,6 +4768,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       activeTabId: characterWorkflowActiveTabId,
       selectedNodeId: selectedWorkflowNodeId,
       activePanel: characterWorkflowEditorState.activePanel,
+      activeGraphTemplateId: characterWorkflowEditorState.activeGraphTemplateId,
       sidebarCollapsed: characterWorkflowEditorState.sidebarCollapsed,
       workflowLibraryCollapsed: characterWorkflowEditorState.workflowLibraryCollapsed,
       inspectorCollapsed: characterWorkflowEditorState.inspectorCollapsed,
@@ -6767,6 +6770,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       activeTabId: characterWorkflowActiveTabId,
       selectedNodeId: selectedWorkflowNodeId,
       activePanel: characterWorkflowEditorState.activePanel,
+      activeGraphTemplateId: characterWorkflowEditorState.activeGraphTemplateId,
       sidebarCollapsed: characterWorkflowEditorState.sidebarCollapsed,
       inspectorCollapsed: characterWorkflowEditorState.inspectorCollapsed,
       nodeSearchOpen: characterWorkflowEditorState.nodeSearchOpen,
@@ -7306,6 +7310,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       activeTabId: characterWorkflowActiveTabId,
       editorState: {
         activePanel: characterWorkflowEditorState.activePanel,
+        activeGraphTemplateId: characterWorkflowEditorState.activeGraphTemplateId,
         sidebarCollapsed: characterWorkflowEditorState.sidebarCollapsed,
         inspectorCollapsed: characterWorkflowEditorState.inspectorCollapsed,
         nodeSearchOpen: false,
@@ -7361,6 +7366,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       characterWorkflowRunCount = 0
       characterWorkflowActiveTabId = 'workflow'
       characterWorkflowEditorState.activePanel = 'workflow'
+      characterWorkflowEditorState.activeGraphTemplateId = 'character-card'
       characterWorkflowEditorState.sidebarCollapsed = false
       characterWorkflowEditorState.inspectorCollapsed = false
       characterWorkflowEditorState.nodeSearchOpen = false
@@ -7388,9 +7394,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     characterWorkflowActiveTabId = record.activeTabId === 'run-draft' ? 'run-draft' : 'workflow'
     if (record.editorState && typeof record.editorState === 'object') {
-      characterWorkflowEditorState.activePanel = record.editorState.activePanel === 'assets' || record.editorState.activePanel === 'nodes'
+      characterWorkflowEditorState.activePanel = record.editorState.activePanel === 'nodes'
         ? record.editorState.activePanel
         : 'workflow'
+      characterWorkflowEditorState.activeGraphTemplateId = typeof record.editorState.activeGraphTemplateId === 'string'
+        ? record.editorState.activeGraphTemplateId
+        : 'character-card'
       characterWorkflowEditorState.sidebarCollapsed = Boolean(record.editorState.sidebarCollapsed)
       characterWorkflowEditorState.inspectorCollapsed = Boolean(record.editorState.inspectorCollapsed)
       characterWorkflowEditorState.nodeSearchOpen = false
@@ -7824,6 +7833,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         activeTabId: 'workflow',
         selectedNodeId: runSelectedWorkflowNodeId,
         activePanel: runEditorSnapshot.activePanel,
+        activeGraphTemplateId: runEditorSnapshot.activeGraphTemplateId,
         sidebarCollapsed: runEditorSnapshot.sidebarCollapsed,
         inspectorCollapsed: runEditorSnapshot.inspectorCollapsed,
         nodeSearchOpen: runEditorSnapshot.nodeSearchOpen,
@@ -8797,13 +8807,24 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   function setCharacterWorkflowPanel(panelId: string): void {
-    if (panelId !== 'workflow' && panelId !== 'assets' && panelId !== 'nodes') {
+    if (panelId !== 'workflow' && panelId !== 'nodes') {
       return
     }
     characterWorkflowEditorState.activePanel = panelId
     if (panelId !== 'nodes') {
       characterWorkflowEditorState.nodeSearchOpen = false
     }
+    renderCharacterWorkflow()
+  }
+
+  function setCharacterWorkflowGraphTemplate(templateId: string): void {
+    if (!templateId) {
+      return
+    }
+    characterWorkflowEditorState.activeGraphTemplateId = templateId
+    characterWorkflowEditorState.activePanel = 'nodes'
+    characterWorkflowEditorState.nodeSearchOpen = false
+    markActiveWorkflowDirty()
     renderCharacterWorkflow()
   }
 
@@ -10206,6 +10227,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       if (!editingSelectedNode) {
         selectWorkflowNode(nodeId, event.metaKey || event.ctrlKey || event.shiftKey)
       }
+      return
+    }
+
+    const workflowGraphTemplate = eventTarget.closest<HTMLElement>('[data-chat-workflow-graph-template]')
+    if (workflowGraphTemplate && panel.contains(workflowGraphTemplate)) {
+      setCharacterWorkflowGraphTemplate(workflowGraphTemplate.dataset.chatWorkflowGraphTemplate || '')
       return
     }
 

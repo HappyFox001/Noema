@@ -2758,18 +2758,80 @@ body.chat-workflow-library-resizing * {
   box-shadow: 0 0 0 1px rgba(82, 168, 255, 0.08);
 }
 
+.chat-resource-template-list,
 .chat-resource-category-list,
 .chat-workflow-sidebar-section.compact {
   display: grid;
   gap: 6px;
 }
 
+.chat-resource-template-list > strong,
 .chat-resource-category-list > strong {
   color: rgba(162, 202, 188, 0.68);
   font-family: var(--font-ui);
   font-size: 10px;
   font-weight: 760;
   text-transform: uppercase;
+}
+
+.chat-resource-template-list > button {
+  width: 100%;
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px;
+  border: 1px solid rgba(248, 250, 250, 0.075);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(248, 250, 250, 0.045), rgba(248, 250, 250, 0.018)),
+    rgba(12, 14, 15, 0.82);
+  color: rgba(248, 250, 250, 0.72);
+  font-family: var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+}
+
+.chat-resource-template-list > button:hover,
+.chat-resource-template-list > button:focus-visible,
+.chat-resource-template-list > button.active {
+  border-color: rgba(82, 168, 255, 0.34);
+  background:
+    linear-gradient(180deg, rgba(82, 168, 255, 0.12), rgba(82, 168, 255, 0.05)),
+    rgba(13, 18, 22, 0.9);
+  color: rgba(248, 250, 250, 0.9);
+}
+
+.chat-resource-template-list > button span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.chat-resource-template-list > button b {
+  overflow: hidden;
+  color: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-resource-template-list > button small {
+  color: rgba(248, 250, 250, 0.46);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.chat-resource-template-list > button em {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.055);
+  color: rgba(248, 250, 250, 0.54);
+  font-style: normal;
+  font-size: 10px;
 }
 
 .chat-resource-category-group {

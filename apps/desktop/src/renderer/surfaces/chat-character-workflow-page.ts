@@ -26,6 +26,7 @@ export interface CharacterWorkflowPageOptions {
   activeTabId: string
   selectedNodeId: string
   activePanel: CharacterWorkflowSidePanel
+  activeGraphTemplateId?: string
   sidebarCollapsed: boolean
   workflowLibraryCollapsed?: boolean
   inspectorCollapsed: boolean
@@ -49,7 +50,7 @@ export interface CharacterWorkflowRunDraftOption {
   completedAt?: number
 }
 
-export type CharacterWorkflowSidePanel = 'workflow' | 'assets' | 'nodes'
+export type CharacterWorkflowSidePanel = 'workflow' | 'nodes'
 
 type CharacterResourceNodeStatus = 'idle' | 'dirty' | 'queued' | 'running' | 'done' | 'failed' | 'stale' | 'disabled'
 type CharacterResourcePreviewType = 'text-card' | 'image' | 'voice' | 'rule' | 'validation' | 'package'
@@ -175,6 +176,7 @@ interface CharacterResourcePanels {
   rightWidth: number
   bottomHeight: number
   activePanel: CharacterWorkflowSidePanel
+  activeGraphTemplateId: string
 }
 
 interface CharacterResourceOutput {
@@ -1211,6 +1213,102 @@ const DEFAULT_NODE_PLACEMENT: Array<{ id: string; type: string; title: string; x
   { id: 'output-adapter', type: 'output-adapter', title: 'Output Adapter', x: 2420, y: 360 },
 ]
 
+const GRAPH_TEMPLATE_DEFINITIONS = [
+  {
+    id: 'character-card',
+    zhLabel: '角色卡',
+    enLabel: 'Character Card',
+    zhCaption: '角色字段、头像、开场、氛围、游戏状态和导出闭环。',
+    enCaption: 'Fields, avatar, opening, atmosphere, game state, and export loop.',
+    nodeTypes: [
+      'goal',
+      'character-card-target',
+      'character-field-target',
+      'opening-layout-target',
+      'atmosphere-style-target',
+      'game-system-target',
+      'image-target',
+      'image-generation-control',
+      'style-pressure',
+      'constraint',
+      'source-material',
+      'llm-tool',
+      'image-tool',
+      'voice-tool',
+      'agent-policy',
+      'generation-strategy',
+      'critique-loop',
+      'quality-gate',
+      'resource-package-target',
+      'output-adapter',
+    ],
+  },
+  {
+    id: 'plot-card',
+    zhLabel: '剧情卡',
+    enLabel: 'Plot Card',
+    zhCaption: '世界、剧情线、场景、连续性和关系推进。',
+    enCaption: 'World, plot arcs, scenes, continuity, and relationship progression.',
+    nodeTypes: [
+      'goal',
+      'world-card-target',
+      'plot-arc-target',
+      'scene-card-target',
+      'npc-pack-target',
+      'npc-target',
+      'style-pressure',
+      'constraint',
+      'continuity-control',
+      'relationship-control',
+      'source-material',
+      'llm-tool',
+      'retrieval-tool',
+      'agent-policy',
+      'generation-strategy',
+      'critique-loop',
+      'quality-gate',
+      'resource-package-target',
+      'output-adapter',
+    ],
+  },
+  {
+    id: 'campaign',
+    zhLabel: '跑团 / 游戏',
+    enLabel: 'Campaign / Game',
+    zhCaption: '世界卡、NPC、剧情、场景和游戏系统资源。',
+    enCaption: 'World cards, NPCs, plot, scenes, and game-system resources.',
+    nodeTypes: [
+      'goal',
+      'world-card-target',
+      'npc-pack-target',
+      'npc-target',
+      'plot-arc-target',
+      'scene-card-target',
+      'game-system-target',
+      'continuity-control',
+      'relationship-control',
+      'constraint',
+      'source-material',
+      'llm-tool',
+      'retrieval-tool',
+      'agent-policy',
+      'generation-strategy',
+      'critique-loop',
+      'quality-gate',
+      'resource-package-target',
+      'output-adapter',
+    ],
+  },
+] as const
+
+type GraphTemplateId = typeof GRAPH_TEMPLATE_DEFINITIONS[number]['id']
+
+function normalizeGraphTemplateId(value: string | undefined): GraphTemplateId {
+  return GRAPH_TEMPLATE_DEFINITIONS.some((template) => template.id === value)
+    ? value as GraphTemplateId
+    : 'character-card'
+}
+
 const DEFAULT_LINKS: CharacterResourceLink[] = [
   link('generation-goal', 'goal', 'character-card-target', 'goal', 'guides'),
   link('character-card-target', 'target', 'style-pressure', 'target', 'weights'),
@@ -1977,6 +2075,7 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
       rightWidth: options.inspectorCollapsed ? 0 : activeTab === 'run-draft' ? 300 : 252,
       bottomHeight: 62,
       activePanel: options.activePanel,
+      activeGraphTemplateId: normalizeGraphTemplateId(options.activeGraphTemplateId),
     },
     outputs,
   }
@@ -2590,20 +2689,42 @@ function renderFileTab(tab: CharacterWorkflowFileTab, active: boolean, options: 
 }
 
 function renderResourceLibrary(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): string {
-  const categories = getResourceCategories()
+  const activeTemplateId = normalizeGraphTemplateId(graph.panels.activeGraphTemplateId)
+  const activeTemplate = GRAPH_TEMPLATE_DEFINITIONS.find((template) => template.id === activeTemplateId) ?? GRAPH_TEMPLATE_DEFINITIONS[0]
+  const allowedNodeTypes = new Set<string>(activeTemplate.nodeTypes)
+  const filteredDefinitions = RESOURCE_NODE_DEFINITIONS.filter((definition) => allowedNodeTypes.has(definition.type))
+  const categories = getResourceCategories().filter((category) => filteredDefinitions.some((definition) => definition.category === category))
   return `
     <aside class="chat-workflow-sidebar chat-resource-library" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '资源节点库' : 'Resource node library')}">
       <div class="chat-workflow-sidebar-scroll">
         <section class="chat-workflow-sidebar-section">
           <strong>${options.escapeHtml(ui(options, '资源库', 'Resource Library'))}</strong>
-          <button class="${graph.panels.activePanel === 'workflow' ? 'active' : ''}" type="button" data-chat-workflow-panel="workflow"><span>${options.escapeHtml(ui(options, '图', 'Graph'))}</span><em>${graph.nodes.length}</em></button>
-          <button class="${graph.panels.activePanel === 'assets' ? 'active' : ''}" type="button" data-chat-workflow-panel="assets"><span>${options.escapeHtml(ui(options, '资源包', 'Package'))}</span><em>${graph.outputs.length}</em></button>
-          <button class="${graph.panels.activePanel === 'nodes' ? 'active' : ''}" type="button" data-chat-workflow-panel="nodes"><span>${options.escapeHtml(ui(options, '节点', 'Nodes'))}</span><em>${RESOURCE_NODE_DEFINITIONS.length}</em></button>
+          <button class="${graph.panels.activePanel === 'workflow' ? 'active' : ''}" type="button" data-chat-workflow-panel="workflow"><span>${options.escapeHtml(ui(options, '图', 'Graph'))}</span><em>${GRAPH_TEMPLATE_DEFINITIONS.length}</em></button>
+          <button class="${graph.panels.activePanel === 'nodes' ? 'active' : ''}" type="button" data-chat-workflow-panel="nodes"><span>${options.escapeHtml(ui(options, '节点', 'Nodes'))}</span><em>${filteredDefinitions.length}</em></button>
         </section>
+        ${graph.panels.activePanel === 'workflow' ? `
+        <section class="chat-resource-template-list">
+          <strong>${options.escapeHtml(ui(options, '图类型', 'Graph Types'))}</strong>
+          ${GRAPH_TEMPLATE_DEFINITIONS.map((template) => {
+            const active = template.id === activeTemplateId
+            const label = options.language === 'zh-CN' ? template.zhLabel : template.enLabel
+            const caption = options.language === 'zh-CN' ? template.zhCaption : template.enCaption
+            return `
+              <button class="${active ? 'active' : ''}" type="button" data-chat-workflow-graph-template="${options.escapeHtml(template.id)}">
+                <span>
+                  <b>${options.escapeHtml(label)}</b>
+                  <small>${options.escapeHtml(caption)}</small>
+                </span>
+                <em>${template.nodeTypes.length}</em>
+              </button>
+            `
+          }).join('')}
+        </section>
+        ` : `
         <section class="chat-resource-category-list">
           <strong>${options.escapeHtml(ui(options, '分类', 'Categories'))}</strong>
           ${categories.map((category) => {
-            const definitions = RESOURCE_NODE_DEFINITIONS
+            const definitions = filteredDefinitions
               .filter((definition) => definition.category === category)
               .sort((a, b) => a.displayName.localeCompare(b.displayName))
             return `
@@ -2619,6 +2740,7 @@ function renderResourceLibrary(graph: CharacterResourceGraph, options: Character
             `
           }).join('')}
         </section>
+        `}
       </div>
     </aside>
   `
