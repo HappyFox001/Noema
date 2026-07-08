@@ -4,7 +4,6 @@
 import Fuse from 'fuse.js'
 import Split from 'split-grid'
 import { draggable, dropTargetForElements, monitorForElements } from '@atlaskit/pragmatic-drag-and-drop/dist/esm/adapter/element-adapter.js'
-import { computePosition, flip, offset, shift } from '@floating-ui/dom'
 import { Link2Off, Maximize, MessageCircle, Play, RotateCcw, Save, Search, Square, Trash2, createIcons, type IconNode } from 'lucide'
 import type { CharacterResourceViewState, SerializedCharacterResourceLinkKind } from './chat-character-resource-graph-state'
 import { sanitizeAtmosphereCss, sanitizeAtmosphereScopeClass } from './chat-atmosphere-css'
@@ -1523,12 +1522,11 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
     onDrop: () => root.classList.remove('is-resource-dragging'),
   }))
 
-  const searchInput = root.querySelector<HTMLElement>('.chat-resource-search-panel [data-chat-resource-node-search]')
   const searchPopover = root.querySelector<HTMLElement>('.chat-resource-node-search-popover')
   const searchFilters = new Map<HTMLElement, () => void>()
-  root.querySelectorAll<HTMLInputElement>('[data-chat-resource-node-search]').forEach((inputElement) => {
+  searchPopover?.querySelectorAll<HTMLInputElement>('[data-chat-resource-node-search]').forEach((inputElement) => {
     const searchScope = inputElement.closest<HTMLElement>('[data-resource-node-search-scope]') ?? root
-    const filterTargets = () => Array.from(searchScope.querySelectorAll<HTMLButtonElement>('[data-resource-library-card]'))
+    const filterTargets = () => Array.from(searchScope.querySelectorAll<HTMLElement>('[data-resource-library-card]'))
     const emptyState = searchScope.querySelector<HTMLElement>('[data-resource-node-search-empty]')
     const setNodeSearchActive = (card: HTMLElement | null) => {
       filterTargets().forEach((item) => item.classList.toggle('is-node-search-active', item === card))
@@ -1565,7 +1563,6 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
       next?.focus()
       if (next) {
         setNodeSearchActive(next)
-        updatePreview(next)
       }
     }
     const handleSearchKey = (event: KeyboardEvent) => {
@@ -1580,7 +1577,7 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
       if (event.key === 'Enter') {
         event.preventDefault()
         const firstCard = filterTargets().find((card) => !card.hidden)
-        firstCard?.click()
+        firstCard?.querySelector<HTMLElement>('[data-resource-node-add-button]')?.click()
       }
       if (event.key === 'Escape') {
         event.preventDefault()
@@ -1594,7 +1591,6 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
       const card = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-resource-library-card]')
       if (card && searchScope.contains(card)) {
         setNodeSearchActive(card)
-        updatePreview(card)
       }
     }
     const handleCategoryFilter = (event: Event) => {
@@ -1609,7 +1605,6 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
       const firstCard = filterTargets().find((card) => !card.hidden)
       if (firstCard) {
         setNodeSearchActive(firstCard)
-        updatePreview(firstCard)
       }
     }
     inputElement.addEventListener('input', filterCards)
@@ -1631,16 +1626,6 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
   if (root.classList.contains('is-node-search-open')) {
     root.querySelector<HTMLInputElement>('.chat-resource-node-search-popover [data-chat-resource-node-search]')?.focus()
   }
-  if (searchInput && searchPopover) {
-    void computePosition(searchInput, searchPopover, {
-      placement: 'right-start',
-      middleware: [offset(10), flip(), shift({ padding: 12 })],
-    }).then(({ x, y }) => {
-      searchPopover.style.left = `${Math.round(x)}px`
-      searchPopover.style.top = `${Math.round(y)}px`
-    })
-  }
-
   const measureSlots = () => {
     const hostRect = root.getBoundingClientRect()
     const slotLayout = Array.from(root.querySelectorAll<HTMLElement>('.chat-resource-slot')).map((slotElement) => {
@@ -1712,7 +1697,7 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
     searchPopover.dataset.resourceSearchContextSide = slotElement.dataset.resourceSlotSide ?? ''
     root.classList.add('is-node-search-open')
     searchFilters.get(searchPopover)?.()
-    const firstCard = Array.from(searchPopover.querySelectorAll<HTMLButtonElement>('[data-resource-library-card]')).find((card) => !card.hidden)
+    const firstCard = Array.from(searchPopover.querySelectorAll<HTMLElement>('[data-resource-library-card]')).find((card) => !card.hidden)
     firstCard?.focus()
   }
   const dispatchSlotConnect = (sourceSlot: HTMLElement, targetSlot: HTMLElement) => {
@@ -2606,10 +2591,6 @@ function renderFileTab(tab: CharacterWorkflowFileTab, active: boolean, options: 
 
 function renderResourceLibrary(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): string {
   const categories = getResourceCategories()
-  const searchResults = RESOURCE_NODE_DEFINITIONS
-    .slice()
-    .sort((a, b) => a.category.localeCompare(b.category) || a.displayName.localeCompare(b.displayName))
-  const recentNodes = getRecentNodeDefinitions(graph)
   return `
     <aside class="chat-workflow-sidebar chat-resource-library" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '资源节点库' : 'Resource node library')}">
       <div class="chat-workflow-sidebar-scroll">
@@ -2619,34 +2600,24 @@ function renderResourceLibrary(graph: CharacterResourceGraph, options: Character
           <button class="${graph.panels.activePanel === 'assets' ? 'active' : ''}" type="button" data-chat-workflow-panel="assets"><span>${options.escapeHtml(ui(options, '资源包', 'Package'))}</span><em>${graph.outputs.length}</em></button>
           <button class="${graph.panels.activePanel === 'nodes' ? 'active' : ''}" type="button" data-chat-workflow-panel="nodes"><span>${options.escapeHtml(ui(options, '节点', 'Nodes'))}</span><em>${RESOURCE_NODE_DEFINITIONS.length}</em></button>
         </section>
-        <section class="chat-resource-search-panel" data-resource-node-search-scope data-resource-node-search-category="all">
-          <label>
-            <span>${options.escapeHtml(options.language === 'zh-CN' ? '搜索节点' : 'Search nodes')}</span>
-            <input type="search" value="" role="combobox" aria-autocomplete="list" aria-expanded="true" placeholder="${options.escapeHtml(options.language === 'zh-CN' ? '名称 / 类型 / slot' : 'name / type / slot')}" data-chat-resource-node-search>
-          </label>
-          <div class="chat-resource-search-results">
-            ${searchResults.slice(0, 5).map((definition, index) => renderNodeLibraryCard(definition, graph, options, `resource-library-search-${index}`)).join('')}
-            <div class="chat-resource-search-empty" data-resource-node-search-empty>
-              <strong>${options.escapeHtml(ui(options, '无匹配节点', 'No matching nodes'))}</strong>
-              <span>${options.escapeHtml(ui(options, '调整关键词或切换分类', 'Adjust the query or category'))}</span>
-            </div>
-          </div>
-        </section>
-        <section class="chat-workflow-sidebar-section compact">
-          <strong>${options.escapeHtml(ui(options, '最近', 'Recent'))}</strong>
-          ${recentNodes.map((definition, index) => renderNodeLibraryCard(definition, graph, options, `resource-library-recent-${index}`)).join('')}
-        </section>
-        <section class="chat-workflow-sidebar-section">
+        <section class="chat-resource-category-list">
           <strong>${options.escapeHtml(ui(options, '分类', 'Categories'))}</strong>
           ${categories.map((category) => {
-            const count = RESOURCE_NODE_DEFINITIONS.filter((definition) => definition.category === category).length
-            const firstNode = graph.nodes.find((node) => node.type === category)
-            return `<button type="button" data-chat-workflow-panel="nodes" ${firstNode ? `data-chat-workflow-node-select="${options.escapeHtml(firstNode.id)}"` : ''}><span>${options.escapeHtml(localizeCategory(category, options))}</span><em>${count}</em></button>`
+            const definitions = RESOURCE_NODE_DEFINITIONS
+              .filter((definition) => definition.category === category)
+              .sort((a, b) => a.displayName.localeCompare(b.displayName))
+            return `
+              <details class="chat-resource-category-group" ${category === categories[0] ? 'open' : ''}>
+                <summary>
+                  <span>${options.escapeHtml(localizeCategory(category, options))}</span>
+                  <em>${definitions.length}</em>
+                </summary>
+                <div class="chat-resource-category-nodes">
+                  ${definitions.map((definition, index) => renderNodeLibraryCard(definition, graph, options, `resource-library-${category}-${index}`)).join('')}
+                </div>
+              </details>
+            `
           }).join('')}
-        </section>
-        <section class="chat-workflow-sidebar-section compact">
-          <strong>${options.escapeHtml(ui(options, '常用', 'Favorites'))}</strong>
-          ${RESOURCE_NODE_DEFINITIONS.filter((definition) => definition.source === 'core' || definition.source === 'agent').slice(0, 4).map((definition, index) => renderNodeLibraryCard(definition, graph, options, `resource-library-favorite-${index}`)).join('')}
         </section>
       </div>
     </aside>
@@ -2655,7 +2626,6 @@ function renderResourceLibrary(graph: CharacterResourceGraph, options: Character
 
 function renderNodeLibraryCard(definition: CharacterResourceNodeDefinition, graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions, elementId = ''): string {
   const displayName = workflowText(options, `chat.workflow.node.${definition.type}`, definition.displayName)
-  const description = localizeNodeDescription(definition, options)
   const categoryLabel = localizeCategory(definition.category, options)
   const sourceLabel = localizeSource(definition.source, options)
   const searchText = [
@@ -2673,30 +2643,15 @@ function renderNodeLibraryCard(definition: CharacterResourceNodeDefinition, grap
   const inputTypes = definition.inputs.map((slotItem) => slotItem.type).join(' ')
   const outputTypes = definition.outputs.map((slotItem) => slotItem.type).join(' ')
   return `
-    <button class="chat-resource-library-card" ${elementId ? `id="${options.escapeHtml(elementId)}"` : ''} type="button" role="option" data-resource-library-card data-resource-node-add-type="${options.escapeHtml(definition.type)}" data-resource-category="${options.escapeHtml(definition.category)}" data-resource-input-types="${options.escapeHtml(inputTypes)}" data-resource-output-types="${options.escapeHtml(outputTypes)}" data-resource-search-text="${options.escapeHtml(searchText)}" data-chat-workflow-panel="nodes">
+    <article class="chat-resource-library-card" ${elementId ? `id="${options.escapeHtml(elementId)}"` : ''} role="option" tabindex="0" data-resource-library-card data-resource-node-add-type="${options.escapeHtml(definition.type)}" data-resource-node-title="${options.escapeHtml(displayName)}" data-resource-category="${options.escapeHtml(definition.category)}" data-resource-input-types="${options.escapeHtml(inputTypes)}" data-resource-output-types="${options.escapeHtml(outputTypes)}" data-resource-search-text="${options.escapeHtml(searchText)}">
       <span>
         <b>${options.escapeHtml(displayName)}</b>
         <small>${options.escapeHtml(categoryLabel)} / ${options.escapeHtml(sourceLabel)}</small>
       </span>
       <em>${options.escapeHtml(definition.outputs[0]?.type ? formatSlotTypeLabel(definition.outputs[0].type, options) : '-')}</em>
-    </button>
+      <button type="button" data-resource-node-add-button aria-label="${options.escapeHtml(ui(options, '添加节点', 'Add node'))}">${options.escapeHtml(ui(options, '添加', 'Add'))}</button>
+    </article>
   `
-}
-
-function getRecentNodeDefinitions(graph: CharacterResourceGraph): CharacterResourceNodeDefinition[] {
-  const seen = new Set<string>()
-  return graph.nodes
-    .slice()
-    .sort((a, b) => b.zIndex - a.zIndex)
-    .map((node) => getDefinition(node.type))
-    .filter((definition) => {
-      if (seen.has(definition.type)) {
-        return false
-      }
-      seen.add(definition.type)
-      return true
-    })
-    .slice(0, 4)
 }
 
 function renderSidebarToggle(options: CharacterWorkflowPageOptions): string {

@@ -8614,7 +8614,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function addCharacterResourceNodeFromLibrary(card: HTMLElement): void {
     const type = card.dataset.resourceNodeAddType || ''
-    const title = card.dataset.resourcePreviewTitle || type
+    const title = card.dataset.resourceNodeTitle || type
     if (!type) {
       return
     }
@@ -10160,8 +10160,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
 
-    const resourceLibraryCard = eventTarget.closest<HTMLElement>('[data-resource-library-card][data-resource-node-add-type]')
-    if (resourceLibraryCard && panel.contains(resourceLibraryCard)) {
+    const resourceNodeAddButton = eventTarget.closest<HTMLElement>('[data-resource-node-add-button]')
+    const resourceLibraryCard = resourceNodeAddButton?.closest<HTMLElement>('[data-resource-library-card][data-resource-node-add-type]')
+    if (resourceNodeAddButton && resourceLibraryCard && panel.contains(resourceLibraryCard)) {
       addCharacterResourceNodeFromLibrary(resourceLibraryCard)
       return
     }
