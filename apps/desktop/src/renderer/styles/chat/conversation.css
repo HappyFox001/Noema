@@ -1612,8 +1612,7 @@ body.theme-day .chat-message-avatar {
   gap: 8px;
 }
 
-.chat-inline-game-stat span,
-.chat-inline-game-effects em {
+.chat-inline-game-stat span {
   color: rgba(220, 229, 226, 0.62);
   font-family: var(--font-ui);
   font-size: 10px;
@@ -1630,19 +1629,6 @@ body.theme-day .chat-message-avatar {
   height: 4px;
   border-radius: 999px;
   background: linear-gradient(90deg, rgba(159, 199, 185, 0.86) var(--stat-value), rgba(255, 255, 255, 0.11) var(--stat-value));
-}
-
-.chat-inline-game-effects {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.chat-inline-game-effects em {
-  padding: 3px 7px;
-  border: 1px solid rgba(255, 255, 255, 0.075);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.04);
 }
 
 .chat-inline-game-status.has-game-panel-style {
@@ -1671,7 +1657,6 @@ body.theme-day .chat-message-avatar {
 }
 
 .chat-inline-game-status.has-game-panel-style .chat-inline-game-stat span,
-.chat-inline-game-status.has-game-panel-style .chat-inline-game-effects em,
 .chat-inline-scene.has-game-panel-style .chat-inline-scene-line > span,
 .chat-inline-scene.has-game-panel-style .chat-inline-scene-status em,
 .chat-inline-scene.has-game-panel-style .chat-inline-equipment th {
@@ -1709,11 +1694,6 @@ body.theme-day .chat-message-avatar {
   height: 7px;
   background:
     linear-gradient(90deg, color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 86%, white 8%) var(--stat-value), var(--game-panel-track, rgba(255, 255, 255, 0.11)) var(--stat-value));
-}
-
-.chat-inline-game-status.has-game-panel-style .chat-inline-game-effects em {
-  border-color: color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 22%, transparent);
-  background: color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 10%, transparent);
 }
 
 .chat-inline-scene.has-game-panel-style .chat-inline-scene-status em {

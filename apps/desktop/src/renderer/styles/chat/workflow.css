@@ -3681,7 +3681,6 @@ body.chat-workflow-library-resizing * {
 
 .chat-resource-run-plane .run-chat-status-preview .chat-inline-game-stat span,
 .chat-resource-run-plane .run-chat-status-preview .chat-inline-game-stat strong,
-.chat-resource-run-plane .run-chat-status-preview .chat-inline-game-effects em,
 .chat-resource-run-plane .run-chat-equipment-preview .chat-inline-equipment th,
 .chat-resource-run-plane .run-chat-equipment-preview .chat-inline-equipment td {
   overflow: hidden;

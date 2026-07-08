@@ -1906,7 +1906,6 @@ function createGameSystemData(
     stringValue(fields.dialogueStyle),
     stringValue(target.config.statDesign),
     stringValue(target.config.equipmentRules),
-    stringValue(target.config.statusRules),
     stringValue(target.config.panelDesign),
     ...target.localStylePressures.map((item) => item.prompt),
     ...target.localConstraints.flatMap((item) => [...item.mustHave, ...item.mustNot.map((rule) => `Avoid: ${rule}`)]),
@@ -1914,11 +1913,10 @@ function createGameSystemData(
   const seed = hashText(`${name}\n${sourceText}`)
   const zh = context.goal.language === 'zh-CN'
   const stats = createContextualGameStats(sourceText, seed, zh)
-  const statuses = createContextualGameStatuses(sourceText, seed, zh)
   const baseRoleFields = createGameSystemBaseRoleFields(fields, zh)
   const worldKnowledge = createGameSystemWorldKnowledge(context, fields, sourceText, zh)
   const baseGameplay = createBaseGameplaySystem(sourceText, target, worldKnowledge, zh)
-  const derivedStatusFields = createDerivedStatusFieldSpec(stats, statuses, baseGameplay, sourceText, zh)
+  const derivedStatusFields = createDerivedStatusFieldSpec(stats, baseGameplay, sourceText, zh)
   const panelStyle = createGameSystemPanelStyle(sourceText, seed, zh)
   const equipmentTone = /magic|curse|witch|spell|魔|咒|巫|玄/i.test(sourceText)
     ? (zh ? '符合仪式、受规则约束，误用会付出代价' : 'ritual-compatible, rule-bound, and costly to misuse')
@@ -1931,8 +1929,8 @@ function createGameSystemData(
     schemaVersion: 1,
     name: zh ? `${name} 角色状态层` : `${name} Game Layer`,
     summary: zh
-      ? `为 ${name} 从工作流设计生成的角色状态、装备规则与状态规则。`
-      : `Character-specific stats, equipment rules, and status rules generated from the workflow design for ${name}.`,
+      ? `为 ${name} 从工作流设计生成的角色属性、装备规则与面板规则。`
+      : `Character-specific stats, equipment rules, and panel rules generated from the workflow design for ${name}.`,
     sections: {
       baseRoleFields,
       baseGameplay,
@@ -1986,19 +1984,16 @@ function createGameSystemData(
         'Do not use equipment as a shortcut around consent, relationship pacing, or established scene limitations.',
       ],
     },
-    statuses,
+    statuses: [],
     panelStyle,
     rules: (zh ? [
       '属性属于角色自身，只有对话产生具体原因时才应变化。',
-      '状态效果必须说明触发、持续时间、冲突行为与叙事后果。',
       '聊天 UI 应把装备、状态和规则作为快捷面板暴露出来，不强迫用户离开对话。',
     ] : [
       'Stats are character-local and should change only when the conversation creates a concrete cause.',
-      'Status effects must state trigger, duration, conflict behavior, and narrative consequence.',
       'The chat UI should expose equipment, status, and rules as quick panels without forcing the user to leave the conversation.',
     ]).concat([
       stringValue(target.config.statDesign),
-      stringValue(target.config.statusRules),
       stringValue(target.config.panelDesign),
     ]).filter(Boolean),
     ui: { quickPanels: ['equipment', 'status', 'rules'], panelStyle },
@@ -2134,7 +2129,6 @@ function createBaseGameplaySystem(
     ruleSources: {
       statDesign: stringValue(target.config.statDesign),
       equipmentRules: stringValue(target.config.equipmentRules),
-      statusRules: stringValue(target.config.statusRules),
       panelDesign: stringValue(target.config.panelDesign),
     },
     updatePrinciples: zh ? [
@@ -2153,7 +2147,6 @@ function createBaseGameplaySystem(
 
 function createDerivedStatusFieldSpec(
   stats: Record<string, unknown>[],
-  statuses: Record<string, unknown>[],
   baseGameplay: Record<string, unknown>,
   sourceText: string,
   zh: boolean
@@ -2169,16 +2162,7 @@ function createDerivedStatusFieldSpec(
       current: stat.value,
       reason: stat.description,
     })),
-    activeStatuses: statuses.map((status) => ({
-      id: status.id,
-      label: status.label,
-      value: status.value,
-      rule: status.rule,
-    })),
     gameplaySource: baseGameplay.loop,
-    adultBoundary: hasAny(sourceText.toLowerCase(), ['adult', 'explicit', 'erotic', 'sexual', 'nsfw', '成人', '色情', '性爱', '性欲'])
-      ? (zh ? '允许成人状态，但必须由角色和场景明确支持。' : 'Adult statuses are allowed, but only when supported by character and scene.')
-      : (zh ? '未检测到成人授权，不生成色情身体状态。' : 'No adult permission detected; erotic body statuses are not generated.'),
   }
 }
 
@@ -2231,35 +2215,6 @@ function createContextualGameStats(sourceText: string, seed: number, zh: boolean
   return pool.slice(0, adult ? 5 : 4)
 }
 
-function createContextualGameStatuses(sourceText: string, seed: number, zh: boolean): Record<string, unknown>[] {
-  const lower = sourceText.toLowerCase()
-  if (hasAny(lower, ['adult', 'explicit', 'erotic', 'sensual', 'sexual', 'lust', 'desire', 'nsfw', '成人', '色情', '情色', '性爱', '性欲', '欲望', '媚', '调教', '私密', '后庭', '小穴', '湿润'])) {
-    return [
-      statusEffect('flushed', zh ? '潮红' : 'Flushed', zh ? '升温' : 'heated', zh ? '成人亲密氛围上升，反应更难隐藏。' : 'Adult intimacy rises and reactions become harder to hide.', zh ? '降温、转移注意或明确暂停后缓解。' : 'Eases after cooling down, distraction, or an explicit pause.'),
-      statusEffect('teasing-loop', zh ? '挑逗循环' : 'Teasing Loop', zh ? '持续' : 'persistent', zh ? '互动会持续推高亲密状态，除非被打断或拒绝。' : 'Interaction keeps raising intimacy unless interrupted or refused.', zh ? '需要关系许可或场景中断来解除。' : 'Requires relationship permission or scene interruption to clear.'),
-      statusEffect('overstimulated', zh ? '过度敏感' : 'Overstimulated', zh ? '风险' : 'risk', zh ? '身体/情绪反应过强，继续推进会带来失控风险。' : 'Physical or emotional response is too intense; further escalation risks loss of control.', zh ? '休息、安抚或降低强度后恢复。' : 'Recovers with rest, reassurance, or lower intensity.'),
-    ]
-  }
-  if (hasAny(lower, ['magic', 'curse', 'witch', 'spell', 'ritual', '魔', '咒', '巫', '仪式'])) {
-    return [
-      statusEffect('enchanted', zh ? '受术' : 'Enchanted', zh ? '持续' : 'persistent', zh ? '魔法效果正在影响感知、行动或关系判断。' : 'Magic is affecting perception, action, or relationship judgment.', zh ? '需要解除、净化或仪式条件。' : 'Requires dispel, cleansing, or ritual conditions.'),
-      statusEffect('unstable-ritual', zh ? '仪式不稳' : 'Unstable Ritual', zh ? '风险' : 'risk', zh ? '继续推进可能触发反噬或额外代价。' : 'Continuing may trigger backlash or extra cost.', zh ? '稳定材料、补全条件或暂停仪式。' : 'Stabilize materials, complete conditions, or pause the ritual.'),
-    ]
-  }
-  if (hasAny(lower, ['cyber', 'terminal', 'hacker', 'android', 'implant', '赛博', '黑客', '终端', '义体'])) {
-    return [
-      statusEffect('traced', zh ? '被追踪' : 'Traced', zh ? '风险' : 'risk', zh ? '系统或敌对方正在留下追踪线索。' : 'Systems or opponents are leaving trace paths.', zh ? '断链、伪装或切换身份后缓解。' : 'Clears after disconnect, spoofing, or identity switch.'),
-      statusEffect('privileged-session', zh ? '高权限会话' : 'Privileged Session', zh ? '限时' : 'timed', zh ? '短时间内可调用更高权限工具。' : 'Higher-level tools are available for a short window.', zh ? '超时、登出或被审计后结束。' : 'Ends on timeout, logout, or audit.'),
-    ]
-  }
-  const generic = [
-    statusEffect('guarded', zh ? '设防' : 'Guarded', zh ? '稳定' : 'stable', zh ? '角色保持防备，信息和情绪不易外泄。' : 'The character is guarded; information and emotion leak less easily.', zh ? '信任提升或压力解除后缓解。' : 'Eases after trust rises or pressure drops.'),
-    statusEffect('exposed', zh ? '暴露' : 'Exposed', zh ? '风险' : 'risk', zh ? '秘密、弱点或意图更容易被看出。' : 'Secrets, vulnerabilities, or intentions are easier to read.', zh ? '通过掩护、恢复或成功转移注意力清除。' : 'Clears after cover, recovery, or a successful diversion.'),
-    statusEffect('marked', zh ? '标记' : 'Marked', zh ? '持续' : 'persistent', zh ? '可见或不可见的叙事印记会制造后续影响。' : 'A visible or invisible narrative mark creates future consequences.', zh ? '需要明确的净化、修复或谈判规则。' : 'Requires an explicit cleansing, repair, or negotiation rule.'),
-  ]
-  return seed % 2 === 0 ? generic : [generic[1], generic[0], generic[2]]
-}
-
 function hasAny(value: string, needles: string[]): boolean {
   return needles.some((needle) => value.includes(needle.toLowerCase()))
 }
@@ -2270,10 +2225,6 @@ function equipmentSlot(id: string, label: string, limit: number, rule: string, c
 
 function equipmentItem(id: string, name: string, description: string, tags: string[], effects: string[]): Record<string, unknown> {
   return { id, name, description, tags, quantity: 1, effects }
-}
-
-function statusEffect(id: string, label: string, value: string, description: string, rule: string): Record<string, unknown> {
-  return { id, label, value, description, rule }
 }
 
 function createAtmosphereStyleData(
@@ -4167,7 +4118,6 @@ function requestedResourcesForTarget(node: CharacterWorkflowNode, kind: AgentTar
       'game-system',
       stringValue(node.config.statDesign) ? `stats:${stringValue(node.config.statDesign)}` : '',
       stringValue(node.config.equipmentRules) ? `equipment:${stringValue(node.config.equipmentRules)}` : '',
-      stringValue(node.config.statusRules) ? `status:${stringValue(node.config.statusRules)}` : '',
       stringValue(node.config.panelDesign) ? `panels:${stringValue(node.config.panelDesign)}` : '',
     ].filter(Boolean)
   }

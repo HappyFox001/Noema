@@ -705,18 +705,17 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     param('density', 'Spacing Rhythm', 'textarea', ''),
     param('stylePrompt', 'Design Brief', 'textarea', ''),
   ], 'rule'),
-  createDefinition('game-system-target', 'Game System Target', ['游戏系统', '装备栏', '状态栏', 'stats', 'equipment'], 'Targets', 'asset', 'Declares a character-specific game layer for stats, independent equipment slots, equipment rules, status effects, and chat quick panels. Editing defines rules; runtime generates concrete values.', [
+  createDefinition('game-system-target', 'Game System Target', ['游戏系统', '装备栏', '状态栏', 'stats', 'equipment'], 'Targets', 'asset', 'Declares a character-specific game layer for stats, independent equipment slots, equipment rules, and chat quick panels. Editing defines rules; runtime generates concrete values.', [
     slot('card', 'Character Card', 'character-card-resource', 'Character card target.', true),
     slot('field', 'Field', 'field-resource', 'Character fields that shape stat and inventory semantics.'),
     slot('world', 'World', 'world-resource', 'World or scene rules.'),
     slot('style', 'Style', 'style-signal', 'Style pressure for panel tone.'),
     slot('constraint', 'Constraint', 'hard-constraint', 'Hard gameplay boundaries.'),
   ], [
-    slot('gameSystem', 'Game System', 'game-system-resource', 'Generated stats, equipment rules, status effects, and panel spec.'),
+    slot('gameSystem', 'Game System', 'game-system-resource', 'Generated stats, equipment rules, and panel spec.'),
   ], [
     param('statDesign', 'Stat System Design', 'textarea', 'Split the game layer into: 1) base role fields, 2) base gameplay with complete world knowledge, 3) status fields derived from gameplay and character premise, 4) CSS/visual hooks. Design 3-6 character-specific stats that matter for this role and scenario. Avoid fixed generic labels; use adult/intimate body or desire stats only when the workflow explicitly allows adult content and the character context makes them meaningful.'),
     param('equipmentRules', 'Equipment Rules', 'textarea', 'Define slot logic, capacity, rarity, compatibility, prohibited items, acquisition/removal rules, and how equipment may alter stats or status.'),
-    param('statusRules', 'Status Rules', 'textarea', 'Define temporary and persistent statuses from the character premise, relationship dynamic, body/mental state, powers, risks, and scene rules. Each status needs trigger, decay, conflict behavior, and narrative consequence.'),
     param('panelDesign', 'Chat Panel Design', 'textarea', 'Expose equipment, status, rules, and world facts as quick chat panels. Keep generated values compact and readable, but preserve enough world knowledge for future turns.'),
   ], 'rule'),
   createDefinition('resource-package-target', 'Resource Package Target', ['资源包', 'asset bundle', 'package'], 'Targets', 'asset', 'Assembles the role card candidate and all generated target assets into one package for quality evaluation and export.', [
@@ -1145,7 +1144,7 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
   ], [
     slot('resource', 'Resource', 'role-resource', 'Atmosphere style resource.'),
   ], [], 'rule', { width: 300, height: 210 }),
-  createDefinition('game-system-resource', 'Game System', ['游戏系统', '装备栏', '状态栏', 'stats'], 'Run Resources', 'asset', 'Generated stats, equipment slots, equipment rules, status effects, and chat quick panel spec.', [
+  createDefinition('game-system-resource', 'Game System', ['游戏系统', '装备栏', '状态栏', 'stats'], 'Run Resources', 'asset', 'Generated stats, equipment slots, equipment rules, and chat quick panel spec.', [
     slot('resource', 'Resource', 'role-resource', 'Previous generated role resource.'),
   ], [
     slot('resource', 'Resource', 'role-resource', 'Game system resource.'),
@@ -3816,19 +3815,18 @@ function createAtmosphereStyleResultArtifact(artifact: CharacterRunArtifact): Ch
 function createGameSystemResultArtifacts(artifact: CharacterRunArtifact): CharacterRunArtifacts {
   const data = getRunArtifactDataRecord(artifact)
   const stats = normalizeRunGameStats(data.stats)
-  const statuses = normalizeRunGameStatuses(data.statuses)
   const equipment = normalizeRunGameEquipment(objectRecordValue(data.equipment).slots)
   const panelStyle = getGamePanelStyleRecord(data)
   const panelStyleData = Object.keys(panelStyle).length ? { panelStyle } : {}
   const results: CharacterRunArtifacts = []
-  if (stats.length || statuses.length) {
+  if (stats.length) {
     results.push({
       id: `${artifact.id || 'game-system'}:status`,
       type: 'run-chat-status-result',
       sourceNodeId: artifact.sourceNodeId,
       title: 'Status Panel',
-      summary: [stats.map((item) => `${item.label} ${item.value}${item.unit}`).join(' · '), statuses.map((item) => `${item.label}${item.value ? ` · ${item.value}` : ''}`).join(' · ')].filter(Boolean).join('\n'),
-      data: { stats, statuses, ...panelStyleData, sourceArtifactId: artifact.id },
+      summary: stats.map((item) => `${item.label} ${item.value}${item.unit}`).join(' · '),
+      data: { stats, ...panelStyleData, sourceArtifactId: artifact.id },
     })
   }
   if (equipment.length) {
@@ -3868,20 +3866,6 @@ function normalizeRunGameStats(value: unknown): Array<{ id: string; label: strin
       visibility: stringValue(record.visibility),
     }]
   }).slice(0, 6)
-}
-
-function normalizeRunGameStatuses(value: unknown): Array<{ id: string; label: string; value: string }> {
-  if (!Array.isArray(value)) {
-    return []
-  }
-  return value.flatMap((item) => {
-    const record = objectRecordValue(item)
-    const label = stringValue(record.label)
-    if (!label) {
-      return []
-    }
-    return [{ id: stringValue(record.id), label, value: stringValue(record.value) }]
-  }).slice(0, 4)
 }
 
 function normalizeRunGameEquipment(value: unknown): Array<{ name: string; ability: string; quantity: string }> {
@@ -4727,8 +4711,6 @@ function renderRunChatStatusContent(
   const stats = normalizeRunGameStats(data.stats)
     .filter((stat) => stat.visibility !== 'hidden')
     .map((stat) => localizeRunGameStat(stat, options.language))
-  const statuses = normalizeRunGameStatuses(data.statuses)
-    .map((status) => localizeRunGameStatus(status, options.language))
   const panelStyle = normalizeGamePanelStyle(data)
   const panelClassNames = panelStyle
     ? renderGamePanelClassNames(panelStyle, 'chat-inline-game-status')
@@ -4748,11 +4730,6 @@ function renderRunChatStatusContent(
                 </article>
               `
             }).join('')}
-          </div>
-        ` : ''}
-        ${statuses.length ? `
-          <div class="chat-inline-game-effects">
-            ${statuses.map((status) => `<em>${options.escapeHtml(status.label)}${status.value ? ` · ${options.escapeHtml(status.value)}` : ''}</em>`).join('')}
           </div>
         ` : ''}
       </section>
@@ -4826,29 +4803,6 @@ function localizeRunGameStat<T extends { id: string; label: string }>(stat: T, l
   }
   const key = stat.id || stat.label.toLowerCase()
   return { ...stat, label: labels[key] ?? labels[stat.label.toLowerCase()] ?? stat.label }
-}
-
-function localizeRunGameStatus<T extends { id: string; label: string; value: string }>(status: T, language: CharacterWorkflowLanguage): T {
-  if (language !== 'zh-CN') {
-    return status
-  }
-  const labels: Record<string, string> = {
-    focused: '专注',
-    exposed: '暴露',
-    marked: '标记',
-  }
-  const values: Record<string, string> = {
-    stable: '稳定',
-    risk: '风险',
-    persistent: '持续',
-  }
-  const labelKey = status.id || status.label.toLowerCase()
-  const valueKey = status.value.toLowerCase()
-  return {
-    ...status,
-    label: labels[labelKey] ?? labels[status.label.toLowerCase()] ?? status.label,
-    value: values[valueKey] ?? status.value,
-  }
 }
 
 function normalizeRunAtmosphereStyle(

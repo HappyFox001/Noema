@@ -3277,23 +3277,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         }
       })
       .filter(Boolean) as ChatGameSystem['equipment']['slots']
-    const statuses = arrayField(data.statuses)
-      .map((item) => {
-        const status = objectField(item)
-        const label = stringField(status?.label)
-        if (!status || !label) return null
-        return {
-          id: sanitizeChatResourceId(stringField(status.id) || label),
-          label,
-          value: stringField(status.value) || undefined,
-          tone: stringField(status.tone) || undefined,
-          description: stringField(status.description) || undefined,
-          duration: stringField(status.duration) || undefined,
-          rule: stringField(status.rule) || undefined,
-        }
-      })
-      .filter(Boolean) as ChatGameSystem['statuses']
-    if (!stats.length && !slots.length && !statuses.length) {
+    if (!stats.length && !slots.length) {
       return undefined
     }
     const panelStyleRecord = getGamePanelStyleRecord(data)
@@ -3311,7 +3295,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         acquisitionRules: stringArrayField(equipment.acquisitionRules).slice(0, 12),
         forbiddenRules: stringArrayField(equipment.forbiddenRules).slice(0, 12),
       },
-      statuses,
+      statuses: [],
       rules: stringArrayField(data.rules).slice(0, 16),
       ui: { quickPanels: ['equipment', 'status', 'rules'], ...(panelStyle ? { panelStyle } : {}) },
       sourceArtifactId: artifact?.id,
