@@ -2482,7 +2482,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const fields = getCharacterProfileFields(character, language)
     const images = collectCharacterProfileImages(character, language)
     const overviewImage = images.find((image) => image.kind === 'overview')
-    const characterImages = images.filter((image) => image.kind !== 'overview' && image.kind !== 'avatar')
+    const characterImages = images.filter((image) => image.kind !== 'overview')
     const confirmingDelete = pendingCharacterDeleteId === character.id
     const deleteLabel = zh ? '删除角色' : 'Delete'
     const cancelDeleteLabel = zh ? '取消' : 'Cancel'
