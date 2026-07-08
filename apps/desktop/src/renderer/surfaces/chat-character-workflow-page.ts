@@ -1528,7 +1528,6 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
   const searchFilters = new Map<HTMLElement, () => void>()
   root.querySelectorAll<HTMLInputElement>('[data-chat-resource-node-search]').forEach((inputElement) => {
     const searchScope = inputElement.closest<HTMLElement>('[data-resource-node-search-scope]') ?? root
-    const preview = searchScope.querySelector<HTMLElement>('[data-resource-node-preview]')
     const filterTargets = () => Array.from(searchScope.querySelectorAll<HTMLButtonElement>('[data-resource-library-card]'))
     const emptyState = searchScope.querySelector<HTMLElement>('[data-resource-node-search-empty]')
     const setNodeSearchActive = (card: HTMLElement | null) => {
@@ -1538,14 +1537,6 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
       } else {
         inputElement.removeAttribute('aria-activedescendant')
       }
-    }
-    const updatePreview = (card: HTMLElement) => {
-      if (!preview) {
-        return
-      }
-      const title = card.dataset.resourcePreviewTitle ?? ''
-      const body = card.dataset.resourcePreviewBody ?? ''
-      preview.innerHTML = `<strong>${title}</strong><p>${body}</p>`
     }
     const filterCards = () => {
       const query = inputElement.value.trim().toLowerCase()
@@ -1562,9 +1553,6 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
       const firstVisible = filterTargets().find((card) => !card.hidden) ?? null
       emptyState?.classList.toggle('is-visible', !firstVisible)
       setNodeSearchActive(firstVisible)
-      if (firstVisible) {
-        updatePreview(firstVisible)
-      }
     }
     const focusNextCard = (direction: 1 | -1) => {
       const cards = filterTargets().filter((card) => !card.hidden)
@@ -1726,10 +1714,6 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
     searchFilters.get(searchPopover)?.()
     const firstCard = Array.from(searchPopover.querySelectorAll<HTMLButtonElement>('[data-resource-library-card]')).find((card) => !card.hidden)
     firstCard?.focus()
-    const preview = searchPopover.querySelector<HTMLElement>('[data-resource-node-preview]')
-    if (preview && firstCard) {
-      preview.innerHTML = `<strong>${firstCard.dataset.resourcePreviewTitle ?? ''}</strong><p>${firstCard.dataset.resourcePreviewBody ?? ''}</p>`
-    }
   }
   const dispatchSlotConnect = (sourceSlot: HTMLElement, targetSlot: HTMLElement) => {
     root.dispatchEvent(new CustomEvent('character-resource-slot-connect', {
@@ -2647,10 +2631,6 @@ function renderResourceLibrary(graph: CharacterResourceGraph, options: Character
               <span>${options.escapeHtml(ui(options, '调整关键词或切换分类', 'Adjust the query or category'))}</span>
             </div>
           </div>
-          <div class="chat-resource-node-preview" data-resource-node-preview>
-            <strong>${options.escapeHtml(searchResults[0]?.displayName ?? ui(options, '节点预览', 'Node Preview'))}</strong>
-            <p>${options.escapeHtml(searchResults[0]?.description ?? '')}</p>
-          </div>
         </section>
         <section class="chat-workflow-sidebar-section compact">
           <strong>${options.escapeHtml(ui(options, '最近', 'Recent'))}</strong>
@@ -2693,7 +2673,7 @@ function renderNodeLibraryCard(definition: CharacterResourceNodeDefinition, grap
   const inputTypes = definition.inputs.map((slotItem) => slotItem.type).join(' ')
   const outputTypes = definition.outputs.map((slotItem) => slotItem.type).join(' ')
   return `
-    <button class="chat-resource-library-card" ${elementId ? `id="${options.escapeHtml(elementId)}"` : ''} type="button" role="option" data-resource-library-card data-resource-node-add-type="${options.escapeHtml(definition.type)}" data-resource-category="${options.escapeHtml(definition.category)}" data-resource-input-types="${options.escapeHtml(inputTypes)}" data-resource-output-types="${options.escapeHtml(outputTypes)}" data-resource-search-text="${options.escapeHtml(searchText)}" data-resource-preview-title="${options.escapeHtml(displayName)}" data-resource-preview-body="${options.escapeHtml(description)}" data-chat-workflow-panel="nodes">
+    <button class="chat-resource-library-card" ${elementId ? `id="${options.escapeHtml(elementId)}"` : ''} type="button" role="option" data-resource-library-card data-resource-node-add-type="${options.escapeHtml(definition.type)}" data-resource-category="${options.escapeHtml(definition.category)}" data-resource-input-types="${options.escapeHtml(inputTypes)}" data-resource-output-types="${options.escapeHtml(outputTypes)}" data-resource-search-text="${options.escapeHtml(searchText)}" data-chat-workflow-panel="nodes">
       <span>
         <b>${options.escapeHtml(displayName)}</b>
         <small>${options.escapeHtml(categoryLabel)} / ${options.escapeHtml(sourceLabel)}</small>
@@ -2904,7 +2884,7 @@ function renderRunCharacterInspector(options: CharacterWorkflowPageOptions): str
         </header>
         ${overviewImage ? `
           <figure class="chat-run-character-overview" data-run-character-image-key="${options.escapeHtml(overviewImage.key)}">
-            <img src="${options.escapeHtml(overviewImage.uri)}" alt="${options.escapeHtml(overviewImage.label)}">
+            <img src="${options.escapeHtml(overviewImage.uri)}" alt="${options.escapeHtml(overviewImage.label)}" loading="lazy" decoding="async">
             <figcaption>${options.escapeHtml(overviewImage.label)}</figcaption>
           </figure>
         ` : ''}
@@ -2920,7 +2900,7 @@ function renderRunCharacterInspector(options: CharacterWorkflowPageOptions): str
           <section class="chat-run-character-gallery" data-run-character-images aria-label="${options.escapeHtml(ui(options, '角色图片', 'Character images'))}">
             ${characterImages.map((image) => `
               <figure data-run-character-image-key="${options.escapeHtml(image.key)}" class="is-${options.escapeHtml(image.kind)}">
-                <img src="${options.escapeHtml(image.uri)}" alt="${options.escapeHtml(image.label)}">
+                <img src="${options.escapeHtml(image.uri)}" alt="${options.escapeHtml(image.label)}" loading="lazy" decoding="async">
                 <figcaption>${options.escapeHtml(image.label)}</figcaption>
               </figure>
             `).join('')}
@@ -4557,7 +4537,7 @@ function renderNodeContent(
   if (output?.image) {
     return `
       <div class="chat-resource-node-content ${previewClass} has-image run-image-preview">
-        <img src="${options.escapeHtml(output.image)}" alt="${options.escapeHtml(output.title)}" draggable="false">
+        <img src="${options.escapeHtml(output.image)}" alt="${options.escapeHtml(output.title)}" draggable="false" loading="lazy" decoding="async">
         <div class="chat-resource-image-caption">
           <strong>${options.escapeHtml(output.title)}</strong>
         </div>
@@ -4992,7 +4972,7 @@ function renderVirtualMaterialNodeContent(node: CharacterResourceNode, options: 
   if (material.kind === 'image') {
     return `
       <div class="chat-resource-node-content material-image-preview has-image">
-        ${material.dataUrl ? `<img src="${options.escapeHtml(material.dataUrl)}" alt="${options.escapeHtml(material.name)}">` : ''}
+        ${material.dataUrl ? `<img src="${options.escapeHtml(material.dataUrl)}" alt="${options.escapeHtml(material.name)}" loading="lazy" decoding="async">` : ''}
         <div>
           <strong>${options.escapeHtml(ui(options, '图片参考', 'Image Reference'))}</strong>
           <p>${options.escapeHtml(meta || ui(options, '可作为图片生成 reference', 'Available as an image generation reference'))}</p>
@@ -5087,7 +5067,7 @@ function renderResourceInspector(graph: CharacterResourceGraph, options: Charact
           <section class="chat-workflow-inspector-section">
             <h4>${options.escapeHtml(ui(options, '运行输出', 'Run Output'))}</h4>
             <div class="chat-resource-output-card ${output.image ? 'has-image' : ''}">
-              ${output.image ? `<img src="${options.escapeHtml(output.image)}" alt="${options.escapeHtml(output.title)}">` : ''}
+              ${output.image ? `<img src="${options.escapeHtml(output.image)}" alt="${options.escapeHtml(output.title)}" loading="lazy" decoding="async">` : ''}
               <strong>${options.escapeHtml(output.title)}</strong>
               <p>${options.escapeHtml(output.summary)}</p>
               <span>${options.escapeHtml(output.status)}</span>
@@ -5341,7 +5321,7 @@ function renderMaterialChip(material: WorkflowMaterialItem, nodeId: string, opti
   ].filter(Boolean).join(' · ')
   return `
     <article class="chat-workflow-material-chip ${options.escapeHtml(material.kind)}">
-      ${material.kind === 'image' && material.dataUrl ? `<img src="${options.escapeHtml(material.dataUrl)}" alt="${options.escapeHtml(material.name)}">` : '<i aria-hidden="true"></i>'}
+      ${material.kind === 'image' && material.dataUrl ? `<img src="${options.escapeHtml(material.dataUrl)}" alt="${options.escapeHtml(material.name)}" loading="lazy" decoding="async">` : '<i aria-hidden="true"></i>'}
       <span>
         <strong>${options.escapeHtml(material.name)}</strong>
         <small>${options.escapeHtml(meta)}</small>
@@ -5538,10 +5518,6 @@ function renderNodeSearchPopover(graph: CharacterResourceGraph, options: Charact
           <strong>${options.escapeHtml(ui(options, '无可连接节点', 'No connectable nodes'))}</strong>
           <span>${options.escapeHtml(ui(options, '尝试拖拽到兼容 slot 或清空搜索', 'Try a compatible slot or clear the query'))}</span>
         </div>
-      </div>
-      <div class="chat-resource-node-preview" data-resource-node-preview>
-        <strong>${options.escapeHtml(candidates[0]?.displayName ?? ui(options, '节点预览', 'Node Preview'))}</strong>
-        <p>${options.escapeHtml(candidates[0]?.description ?? '')}</p>
       </div>
     </div>
   `

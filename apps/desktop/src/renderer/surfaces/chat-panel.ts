@@ -392,6 +392,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let activeCharacterWorkflowPerfId = ''
   let characterWorkflowDirty = false
   let characterWorkflowPersistTimer: number | undefined
+  let characterWorkflowRenderFrame: number | undefined
   let characterWorkflowRunRenderFrame: number | undefined
   let selectedWorkflowNodeId = 'generation-goal'
   let lastCharacterResourceGraphSnapshot = ''
@@ -1193,7 +1194,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (item.kind === 'audio') {
       return `<span class="chat-attachment-audio-thumb">AUDIO</span>`
     }
-    return `<img src="${source}" alt="${options.escapeHtml(item.name)}" />`
+    return `<img src="${source}" alt="${options.escapeHtml(item.name)}" loading="lazy" decoding="async" />`
   }
 
   function toPendingMedia(item: Omit<PendingChatMedia, 'id'> & { id?: string }): PendingChatMedia {
@@ -2524,7 +2525,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             <div class="chat-profile-carousel-track" data-chat-profile-carousel>
               ${characterImages.length ? characterImages.map((image) => `
                 <figure class="chat-profile-carousel-slide">
-                  <img src="${options.escapeHtml(image.uri)}" alt="${options.escapeHtml(image.label)}">
+                  <img src="${options.escapeHtml(image.uri)}" alt="${options.escapeHtml(image.label)}" loading="lazy" decoding="async">
                   <figcaption>${options.escapeHtml(image.label)}</figcaption>
                 </figure>
               `).join('') : `<div class="chat-profile-carousel-empty">${options.escapeHtml(name)}</div>`}
@@ -2542,7 +2543,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             </article>
             ${overviewImage ? `
               <figure class="chat-profile-overview-card">
-                <img src="${options.escapeHtml(overviewImage.uri)}" alt="${options.escapeHtml(overviewImage.label)}">
+                <img src="${options.escapeHtml(overviewImage.uri)}" alt="${options.escapeHtml(overviewImage.label)}" loading="lazy" decoding="async">
                 <figcaption>${options.escapeHtml(zh ? '设定总览' : 'Overview sheet')}</figcaption>
               </figure>
             ` : `<div class="chat-profile-overview-card empty">${options.escapeHtml(zh ? '暂无设定总览' : 'No overview sheet')}</div>`}
@@ -3907,7 +3908,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function renderTTSProviderLogo(provider: string): string {
     const logo = getTTSProviderLogo(provider)
-    return `<img src="${logo.src}" alt="${options.escapeHtml(logo.alt)}" />`
+    return `<img src="${logo.src}" alt="${options.escapeHtml(logo.alt)}" decoding="async" />`
   }
 
   function getTTSProviderLogo(provider: string): { src: string; alt: string } {
@@ -4086,7 +4087,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   function renderCharacterWorkflow(): void {
-    void renderCharacterWorkflowAsync()
+    if (characterWorkflowRenderFrame !== undefined) {
+      return
+    }
+    characterWorkflowRenderFrame = window.requestAnimationFrame(() => {
+      characterWorkflowRenderFrame = undefined
+      void renderCharacterWorkflowAsync()
+    })
   }
 
   function startCharacterWorkflowPerf(label: string): string {
