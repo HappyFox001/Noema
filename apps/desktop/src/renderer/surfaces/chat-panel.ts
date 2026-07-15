@@ -1978,17 +1978,18 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       : getLLMProviderEntry(activeModel?.api.provider).value
     activeChatRuntimeProvider = activeProvider
     const activeProviderGroup = groups.find((group) => group.provider.value === activeProvider) ?? groups[0]
+    const activeModelMarkup = renderRuntimeCurrentModelSegment(
+      activeModel?.label || (options.getLanguage() === 'zh-CN' ? '无 LLM' : 'No LLM'),
+      activeModel ? getLLMProviderEntry(activeModel.api.provider).label : (options.getLanguage() === 'zh-CN' ? '模型页添加' : 'Add in models'),
+      activeModel ? renderChatModelLogo(activeModel.api) : renderProviderLogo('openai-compatible')
+    )
     return `
-      <div class="chat-runtime-model-shell ${extraClass} ${openChatRuntimeModelPicker ? 'open' : ''}">
+      <div class="chat-runtime-model-shell is-unified is-llm-only ${extraClass} ${openChatRuntimeModelPicker ? 'open' : ''}">
         <button class="chat-runtime-model-current" type="button" data-chat-runtime-action="toggle-model-picker" ${groups.length ? '' : 'disabled'}>
-          <span class="chat-runtime-model-icon">${activeModel ? renderChatModelLogo(activeModel.api) : renderProviderLogo('openai-compatible')}</span>
-          <span class="chat-runtime-model-copy">
-            <strong>${options.escapeHtml(activeModel?.label || (options.getLanguage() === 'zh-CN' ? '无模型' : 'No model'))}</strong>
-            <small>${options.escapeHtml(activeModel ? getLLMProviderEntry(activeModel.api.provider).label : (options.getLanguage() === 'zh-CN' ? '模型页添加' : 'Add in models'))}</small>
-          </span>
+          <span class="chat-runtime-model-segments">${activeModelMarkup}</span>
           <span class="chat-runtime-model-chevron"></span>
         </button>
-        ${openChatRuntimeModelPicker ? renderChatRuntimeModelMenu(groups, activeProviderGroup, activeModel) : ''}
+        ${openChatRuntimeModelPicker ? renderChatRuntimeLLMOnlyModelMenu(groups, activeProviderGroup, activeModel) : ''}
       </div>
     `
   }
@@ -2121,6 +2122,25 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     activeModel: ChatRuntimeModelOption | null
   ): string {
     return `<div class="chat-runtime-model-menu">${renderChatRuntimeModelMenuContent(groups, activeProviderGroup, activeModel)}</div>`
+  }
+
+  function renderChatRuntimeLLMOnlyModelMenu(
+    groups: ChatRuntimeModelGroup[],
+    activeProviderGroup: ChatRuntimeModelGroup | undefined,
+    activeModel: ChatRuntimeModelOption | null
+  ): string {
+    const zh = options.getLanguage() === 'zh-CN'
+    return `
+      <div class="chat-runtime-model-menu unified llm-only">
+        <section class="chat-runtime-menu-section llm">
+          <div class="chat-runtime-menu-section-head">
+            <span>LLM</span>
+            <strong>${options.escapeHtml(zh ? '对话模型' : 'Conversation')}</strong>
+          </div>
+          ${renderChatRuntimeModelMenuContent(groups, activeProviderGroup, activeModel)}
+        </section>
+      </div>
+    `
   }
 
   function renderChatRuntimeModelMenuContent(

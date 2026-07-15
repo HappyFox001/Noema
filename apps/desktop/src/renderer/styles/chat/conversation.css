@@ -629,6 +629,10 @@ body.theme-day .chat-message-avatar {
   max-width: min(560px, 100%);
 }
 
+.chat-runtime-model-shell.is-unified.is-llm-only {
+  max-width: min(260px, 100%);
+}
+
 .chat-runtime-model-current {
   width: max-content;
   max-width: min(240px, calc(100vw - 156px));
@@ -654,6 +658,10 @@ body.theme-day .chat-message-avatar {
   grid-template-columns: minmax(0, max-content) 14px;
   gap: 7px;
   padding: 4px 8px 4px 6px;
+}
+
+.chat-runtime-model-shell.is-unified.is-llm-only .chat-runtime-model-current {
+  max-width: min(260px, calc(100vw - 156px));
 }
 
 .chat-runtime-model-current:hover,
@@ -716,6 +724,10 @@ body.theme-day .chat-message-avatar {
 
 .chat-runtime-model-segment:first-child {
   max-width: 148px;
+}
+
+.chat-runtime-model-shell.is-llm-only .chat-runtime-model-segment:first-child {
+  max-width: 190px;
 }
 
 .chat-runtime-model-copy {
@@ -833,6 +845,12 @@ body.theme-day .chat-message-avatar {
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
     inset 0 -1px 0 rgba(255, 255, 255, 0.035);
   overflow-y: auto;
+}
+
+.chat-runtime-model-menu.unified.llm-only {
+  width: min(430px, calc(100vw - 138px));
+  max-width: min(430px, calc(100vw - 138px));
+  max-height: min(318px, calc(100vh - 178px));
 }
 
 .chat-runtime-menu-section {
