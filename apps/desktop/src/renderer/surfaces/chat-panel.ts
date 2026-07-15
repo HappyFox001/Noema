@@ -90,7 +90,7 @@ import { createChatRenderer } from './chat-renderer'
 import { extractRoleplaySpeechTexts } from './roleplay-chat-markup'
 import { sanitizeAtmosphereCss, sanitizeAtmosphereScopeClass } from './chat-atmosphere-css'
 import { getGamePanelStyleRecord, normalizeGamePanelStyle, renderGamePanelClassNames, renderGamePanelInlineStyle } from './chat-game-panel-style'
-import { Backpack, Trash2, createIcons } from 'lucide'
+import { Archive, Trash2, createIcons } from 'lucide'
 
 type ChatResizeEdge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
 
@@ -575,7 +575,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         button.setAttribute('aria-label', label)
         button.setAttribute('title', label)
         button.innerHTML = `
-          <span class="chat-game-quickbar-icon"><i data-lucide="backpack" aria-hidden="true"></i></span>
+          <span class="chat-game-quickbar-icon"><i data-lucide="archive" aria-hidden="true"></i></span>
           <span class="chat-game-quickbar-copy">${options.escapeHtml(label)}</span>
           <em>${options.escapeHtml(String(equipmentCount))}</em>
         `
@@ -585,7 +585,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       button.setAttribute('aria-pressed', active ? 'true' : 'false')
     })
     createIcons({
-      icons: { Backpack },
+      icons: { Archive },
       root: gameQuickbar,
       attrs: {
         width: 15,

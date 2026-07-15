@@ -1423,41 +1423,37 @@ body.theme-day .chat-message-avatar {
 .chat-game-quickbar button {
   position: relative;
   min-width: 0;
-  height: 34px;
+  height: 32px;
   display: inline-grid;
-  grid-template-columns: 24px auto minmax(18px, auto);
+  grid-template-columns: 18px auto minmax(18px, auto);
   align-items: center;
-  gap: 8px;
-  padding: 4px 9px 4px 5px;
+  gap: 7px;
+  padding: 4px 9px 4px 8px;
   border: 1px solid rgba(191, 218, 209, 0.15);
-  border-radius: 12px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.074), rgba(255, 255, 255, 0.028)),
-    rgba(9, 12, 12, 0.58);
+  border-radius: 9px;
+  background: rgba(9, 12, 12, 0.58);
   color: rgba(230, 238, 236, 0.76);
   font-family: var(--font-ui);
   font-size: 12px;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.07),
-    0 10px 24px rgba(0, 0, 0, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
   transition: transform 140ms ease, border-color 140ms ease, background 140ms ease, color 140ms ease;
 }
 
 .chat-game-quickbar-icon {
-  width: 24px;
-  height: 24px;
+  width: 18px;
+  height: 18px;
   display: grid;
   place-items: center;
-  border: 1px solid rgba(191, 218, 209, 0.14);
-  border-radius: 9px;
-  background:
-    linear-gradient(180deg, rgba(185, 211, 202, 0.18), rgba(185, 211, 202, 0.06)),
-    rgba(255, 255, 255, 0.035);
-  color: rgba(224, 239, 234, 0.86);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: rgba(224, 239, 234, 0.78);
 }
 
 .chat-game-quickbar-icon svg {
   display: block;
+  width: 16px;
+  height: 16px;
 }
 
 .chat-game-quickbar-copy {
@@ -1492,11 +1488,12 @@ body.theme-day .chat-message-avatar {
 }
 
 .chat-game-quickbar button.is-active .chat-game-quickbar-icon {
-  border-color: rgba(159, 199, 185, 0.28);
-  background:
-    linear-gradient(180deg, rgba(159, 199, 185, 0.25), rgba(159, 199, 185, 0.09)),
-    rgba(255, 255, 255, 0.04);
-  color: rgba(248, 250, 250, 0.96);
+  color: rgba(248, 250, 250, 0.94);
+}
+
+.chat-main-viewport > .chat-game-quickbar {
+  margin-right: 0;
+  margin-left: 0;
 }
 
 .chat-game-panel {
