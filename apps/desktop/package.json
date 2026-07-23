@@ -69,10 +69,6 @@
     ],
     "extraResources": [
       {
-        "from": "../../role",
-        "to": "role"
-      },
-      {
         "from": "../../plugins/local/fish-s2-emotion",
         "to": "plugins/local/fish-s2-emotion"
       }

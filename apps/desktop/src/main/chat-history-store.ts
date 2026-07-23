@@ -1,9 +1,9 @@
 /**
  * Persists standalone chat conversations in normalized local SQLite tables.
  */
-import { spawn } from 'node:child_process'
 import { mkdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import Database from 'better-sqlite3'
 
 const CHAT_HISTORY_SCHEMA_VERSION = 4
 
@@ -484,28 +484,15 @@ function parseSqliteJsonRows<T>(output: string): T[] {
 }
 
 async function runSqlite(dbPath: string, sql: string, json = false): Promise<string> {
-  const args = json
-    ? ['-json', '-cmd', '.timeout 5000', dbPath]
-    : ['-cmd', '.timeout 5000', dbPath]
-  return new Promise((resolve, reject) => {
-    const child = spawn('sqlite3', args, { stdio: ['pipe', 'pipe', 'pipe'] })
-    let stdout = ''
-    let stderr = ''
-    child.stdout.on('data', chunk => {
-      stdout += chunk.toString()
-    })
-    child.stderr.on('data', chunk => {
-      stderr += chunk.toString()
-    })
-    child.on('error', reject)
-    child.on('close', code => {
-      if (code === 0) {
-        resolve(stdout.trim())
-        return
-      }
-      reject(new Error(stderr.trim() || `sqlite3 exited with code ${code}`))
-    })
-    child.stdin.write(sql)
-    child.stdin.end()
-  })
+  const db = new Database(dbPath)
+  db.pragma('busy_timeout = 5000')
+  try {
+    if (!json) {
+      db.exec(sql)
+      return ''
+    }
+    return JSON.stringify(db.prepare(sql.trim()).all())
+  } finally {
+    db.close()
+  }
 }
