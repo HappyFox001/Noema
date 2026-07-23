@@ -2,5 +2,7 @@ packages:
   - 'packages/*'
   - 'apps/*'
 allowBuilds:
+  better-sqlite3: true
   electron: true
   esbuild: true
+  onnxruntime-node: true
