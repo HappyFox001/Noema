@@ -763,7 +763,7 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     title: 'Game System Target',
     category: 'targets',
     executor: 'agent',
-    description: 'Declares a character-specific game layer for stats, independent equipment slots, equipment rules, status effects, and chat quick panels. Editing defines the rules; runtime generates concrete values.',
+    description: 'Declares a character-specific game layer for stats, independent equipment slots, equipment rules, and chat quick panels. Editing defines the rules; runtime generates concrete values.',
     inputs: {
       card: port('card', 'Card', 'asset-target', true),
       field: port('field', 'Field', 'asset-target'),
@@ -775,7 +775,6 @@ export const STANDARD_CHARACTER_WORKFLOW_NODE_DEFINITIONS: CharacterWorkflowNode
     parameters: [
       parameter('statDesign', 'Stat System Design', 'textarea', 'Split the game layer into: 1) base role fields, 2) base gameplay with complete world knowledge, 3) status fields derived from gameplay and character premise, 4) CSS/visual hooks. Design 3-6 character-specific stats that matter for this role and scenario. Avoid fixed generic labels; use adult/intimate body or desire stats only when the workflow explicitly allows adult content and the character context makes them meaningful.'),
       parameter('equipmentRules', 'Equipment Rules', 'textarea', 'Define slot logic, capacity, rarity, compatibility, prohibited items, acquisition/removal rules, and how equipment may alter stats or status.'),
-      parameter('statusRules', 'Status Rules', 'textarea', 'Define temporary and persistent statuses from the character premise, relationship dynamic, body/mental state, powers, risks, and scene rules. Each status needs trigger, decay, conflict behavior, and narrative consequence.'),
       parameter('panelDesign', 'Chat Panel Design', 'textarea', 'Expose equipment, status, rules, and world facts as quick chat panels. Keep generated values compact and readable, but preserve enough world knowledge for future turns.'),
     ],
   },
@@ -1911,7 +1910,6 @@ function createDefaultCharacterWorkflowExecutors(): Partial<Record<CharacterNode
           'game-system',
           `stats:${stringConfig(config.statDesign, '')}`,
           `equipment:${stringConfig(config.equipmentRules, '')}`,
-          `status:${stringConfig(config.statusRules, '')}`,
           `panels:${stringConfig(config.panelDesign, '')}`,
         ].filter((item) => !item.endsWith(':')),
         includeAlternates: false,

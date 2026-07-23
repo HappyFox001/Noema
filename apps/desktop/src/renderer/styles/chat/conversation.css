@@ -629,6 +629,10 @@ body.theme-day .chat-message-avatar {
   max-width: min(560px, 100%);
 }
 
+.chat-runtime-model-shell.is-unified.is-llm-only {
+  max-width: min(260px, 100%);
+}
+
 .chat-runtime-model-current {
   width: max-content;
   max-width: min(240px, calc(100vw - 156px));
@@ -654,6 +658,10 @@ body.theme-day .chat-message-avatar {
   grid-template-columns: minmax(0, max-content) 14px;
   gap: 7px;
   padding: 4px 8px 4px 6px;
+}
+
+.chat-runtime-model-shell.is-unified.is-llm-only .chat-runtime-model-current {
+  max-width: min(260px, calc(100vw - 156px));
 }
 
 .chat-runtime-model-current:hover,
@@ -716,6 +724,10 @@ body.theme-day .chat-message-avatar {
 
 .chat-runtime-model-segment:first-child {
   max-width: 148px;
+}
+
+.chat-runtime-model-shell.is-llm-only .chat-runtime-model-segment:first-child {
+  max-width: 190px;
 }
 
 .chat-runtime-model-copy {
@@ -833,6 +845,12 @@ body.theme-day .chat-message-avatar {
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
     inset 0 -1px 0 rgba(255, 255, 255, 0.035);
   overflow-y: auto;
+}
+
+.chat-runtime-model-menu.unified.llm-only {
+  width: min(430px, calc(100vw - 138px));
+  max-width: min(430px, calc(100vw - 138px));
+  max-height: min(318px, calc(100vh - 178px));
 }
 
 .chat-runtime-menu-section {
@@ -1405,41 +1423,37 @@ body.theme-day .chat-message-avatar {
 .chat-game-quickbar button {
   position: relative;
   min-width: 0;
-  height: 34px;
+  height: 32px;
   display: inline-grid;
-  grid-template-columns: 24px auto minmax(18px, auto);
+  grid-template-columns: 18px auto minmax(18px, auto);
   align-items: center;
-  gap: 8px;
-  padding: 4px 9px 4px 5px;
+  gap: 7px;
+  padding: 4px 9px 4px 8px;
   border: 1px solid rgba(191, 218, 209, 0.15);
-  border-radius: 12px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.074), rgba(255, 255, 255, 0.028)),
-    rgba(9, 12, 12, 0.58);
+  border-radius: 9px;
+  background: rgba(9, 12, 12, 0.58);
   color: rgba(230, 238, 236, 0.76);
   font-family: var(--font-ui);
   font-size: 12px;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.07),
-    0 10px 24px rgba(0, 0, 0, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
   transition: transform 140ms ease, border-color 140ms ease, background 140ms ease, color 140ms ease;
 }
 
 .chat-game-quickbar-icon {
-  width: 24px;
-  height: 24px;
+  width: 18px;
+  height: 18px;
   display: grid;
   place-items: center;
-  border: 1px solid rgba(191, 218, 209, 0.14);
-  border-radius: 9px;
-  background:
-    linear-gradient(180deg, rgba(185, 211, 202, 0.18), rgba(185, 211, 202, 0.06)),
-    rgba(255, 255, 255, 0.035);
-  color: rgba(224, 239, 234, 0.86);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: rgba(224, 239, 234, 0.78);
 }
 
 .chat-game-quickbar-icon svg {
   display: block;
+  width: 16px;
+  height: 16px;
 }
 
 .chat-game-quickbar-copy {
@@ -1474,11 +1488,12 @@ body.theme-day .chat-message-avatar {
 }
 
 .chat-game-quickbar button.is-active .chat-game-quickbar-icon {
-  border-color: rgba(159, 199, 185, 0.28);
-  background:
-    linear-gradient(180deg, rgba(159, 199, 185, 0.25), rgba(159, 199, 185, 0.09)),
-    rgba(255, 255, 255, 0.04);
-  color: rgba(248, 250, 250, 0.96);
+  color: rgba(248, 250, 250, 0.94);
+}
+
+.chat-main-viewport > .chat-game-quickbar {
+  margin-right: 0;
+  margin-left: 0;
 }
 
 .chat-game-panel {
@@ -1535,6 +1550,7 @@ body.theme-day .chat-message-avatar {
   max-height: min(44dvh, 410px);
   overflow-x: auto;
   overflow-y: auto;
+  padding: 0 11px 11px;
 }
 
 .chat-game-panel-sheet--equipment .chat-inline-equipment table {
@@ -1544,18 +1560,30 @@ body.theme-day .chat-message-avatar {
 
 .chat-game-panel-sheet--equipment .chat-inline-equipment th,
 .chat-game-panel-sheet--equipment .chat-inline-equipment td {
-  white-space: nowrap;
+  padding: 13px 14px;
+  color: rgba(248, 250, 250, 0.82);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.48;
+  white-space: normal;
+  vertical-align: middle;
 }
 
-.chat-game-panel-sheet--equipment .chat-inline-equipment td:nth-child(1),
-.chat-game-panel-sheet--equipment .chat-inline-equipment td:nth-child(2) {
+.chat-game-panel-sheet--equipment .chat-inline-equipment th {
+  color: rgba(220, 229, 226, 0.64);
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.chat-game-panel-sheet--equipment .chat-inline-equipment td:nth-child(1) {
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chat-game-panel-sheet--equipment .chat-inline-equipment th:nth-child(1),
 .chat-game-panel-sheet--equipment .chat-inline-equipment td:nth-child(1) {
-  width: 24%;
+  width: 23%;
 }
 
 .chat-game-panel-sheet--equipment .chat-inline-equipment th:nth-child(2),
@@ -1563,13 +1591,37 @@ body.theme-day .chat-message-avatar {
   width: auto;
 }
 
+.chat-game-panel-sheet--equipment .chat-inline-equipment th:nth-child(3),
+.chat-game-panel-sheet--equipment .chat-inline-equipment td:nth-child(3) {
+  width: 72px;
+}
+
 .chat-game-panel-sheet--equipment .chat-inline-equipment th:nth-child(4),
 .chat-game-panel-sheet--equipment .chat-inline-equipment td:nth-child(4) {
-  width: 70px;
+  width: 82px;
 }
 
 .chat-game-panel-sheet--equipment .chat-inline-equipment-use {
+  min-width: 48px;
+  min-height: 30px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 28px;
   white-space: nowrap;
+}
+
+.chat-game-panel-sheet--equipment .chat-inline-equipment-toggle {
+  padding: 13px 14px;
+}
+
+.chat-game-panel-sheet--equipment .chat-inline-equipment-toggle span {
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.chat-game-panel-sheet--equipment .chat-inline-equipment-toggle em,
+.chat-game-panel-sheet--equipment .chat-inline-equipment-toggle strong {
+  font-size: 12px;
 }
 
 @media (max-width: 840px) {
@@ -1612,8 +1664,7 @@ body.theme-day .chat-message-avatar {
   gap: 8px;
 }
 
-.chat-inline-game-stat span,
-.chat-inline-game-effects em {
+.chat-inline-game-stat span {
   color: rgba(220, 229, 226, 0.62);
   font-family: var(--font-ui);
   font-size: 10px;
@@ -1630,19 +1681,6 @@ body.theme-day .chat-message-avatar {
   height: 4px;
   border-radius: 999px;
   background: linear-gradient(90deg, rgba(159, 199, 185, 0.86) var(--stat-value), rgba(255, 255, 255, 0.11) var(--stat-value));
-}
-
-.chat-inline-game-effects {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.chat-inline-game-effects em {
-  padding: 3px 7px;
-  border: 1px solid rgba(255, 255, 255, 0.075);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.04);
 }
 
 .chat-inline-game-status.has-game-panel-style {
@@ -1671,7 +1709,6 @@ body.theme-day .chat-message-avatar {
 }
 
 .chat-inline-game-status.has-game-panel-style .chat-inline-game-stat span,
-.chat-inline-game-status.has-game-panel-style .chat-inline-game-effects em,
 .chat-inline-scene.has-game-panel-style .chat-inline-scene-line > span,
 .chat-inline-scene.has-game-panel-style .chat-inline-scene-status em,
 .chat-inline-scene.has-game-panel-style .chat-inline-equipment th {
@@ -1709,11 +1746,6 @@ body.theme-day .chat-message-avatar {
   height: 7px;
   background:
     linear-gradient(90deg, color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 86%, white 8%) var(--stat-value), var(--game-panel-track, rgba(255, 255, 255, 0.11)) var(--stat-value));
-}
-
-.chat-inline-game-status.has-game-panel-style .chat-inline-game-effects em {
-  border-color: color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 22%, transparent);
-  background: color-mix(in srgb, var(--game-panel-accent, #9fc7b9) 10%, transparent);
 }
 
 .chat-inline-scene.has-game-panel-style .chat-inline-scene-status em {

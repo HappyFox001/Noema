@@ -462,8 +462,9 @@
 .chat-inline-equipment-toggle span {
   min-width: 0;
   font-family: var(--font-ui);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 760;
+  line-height: 1.35;
   text-align: left;
 }
 
@@ -473,15 +474,16 @@
   background: rgba(188, 210, 198, 0.1);
   color: rgba(218, 232, 224, 0.7);
   font-family: var(--font-ui);
-  font-size: 10px;
+  font-size: 11px;
   font-style: normal;
   font-weight: 780;
+  line-height: 1.2;
 }
 
 .chat-inline-equipment-toggle strong {
   color: rgba(248, 250, 250, 0.44);
   font-family: var(--font-ui);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
 }
 
@@ -507,11 +509,11 @@
   padding: 7px 8px;
   border-bottom: 1px solid rgba(218, 232, 224, 0.055);
   border-right: 1px solid rgba(218, 232, 224, 0.045);
-  color: rgba(248, 250, 250, 0.62);
+  color: rgba(248, 250, 250, 0.78);
   font-family: var(--font-ui);
-  font-size: 9px;
-  font-weight: 680;
-  line-height: 1.35;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.45;
   text-align: left;
 }
 
@@ -521,12 +523,12 @@
 }
 
 .chat-inline-equipment th {
-  color: rgba(248, 250, 250, 0.36);
-  font-family: var(--font-mono);
-  font-size: 8px;
-  font-weight: 820;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  color: rgba(248, 250, 250, 0.48);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .chat-inline-equipment tr:last-child td {
@@ -551,17 +553,17 @@
 }
 
 .chat-inline-equipment-use {
-  min-width: 34px;
-  height: 20px;
+  min-width: 42px;
+  min-height: 26px;
   padding: 0 8px;
   border: 1px solid rgba(218, 232, 224, 0.12);
   border-radius: 6px;
   background: rgba(218, 232, 224, 0.055);
   color: rgba(248, 250, 250, 0.68);
   font-family: var(--font-ui);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 740;
-  line-height: 18px;
+  line-height: 24px;
   cursor: pointer;
 }
 

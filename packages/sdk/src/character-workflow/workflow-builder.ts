@@ -1276,9 +1276,8 @@ function createWorkflowEditorDomainSystemPrompt(domain: WorkflowEditorDomain, la
     ],
     gameplay: [
       'Your domain is gameplay control. Update game-system-target and add/update continuity-control and relationship-control when useful.',
-      'Stats, equipment, status, quick panels, continuity, and relationship pressure must come from the objective and character premise, not generic RPG labels.',
-      'Equipment rules must include slot logic, capacity, compatibility, acquisition/removal, prohibited items, and stat/status effects.',
-      'Status rules need triggers, decay, conflict behavior, and narrative consequences.',
+      'Stats, equipment, quick panels, continuity, and relationship pressure must come from the objective and character premise, not generic RPG labels.',
+      'Equipment rules must include slot logic, capacity, compatibility, acquisition/removal, prohibited items, and stat interactions.',
     ],
     quality: [
       'Your domain is quality and export. Update resource-package-target, generation-strategy, critique-loop, quality-gate, output-adapter, and agent-policy if needed.',

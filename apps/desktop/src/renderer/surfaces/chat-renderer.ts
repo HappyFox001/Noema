@@ -49,6 +49,7 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
   let activeConversation: ChatConversationSummary | undefined
   let actionSourceMessageId = ''
   let atmosphereStyleElement: HTMLStyleElement | null = null
+  let conversationListSignature = ''
 
   function renderConversationList(
     conversations: ChatConversationSummary[],
@@ -58,6 +59,26 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     if (!threadList) return
 
     const language = options.getLanguage()
+    const signature = JSON.stringify({
+      language,
+      activeId,
+      conversations: conversations.map((conversation) => ({
+        id: conversation.id,
+        characterId: conversation.characterId,
+        title: localizeChatText(conversation.title, language),
+        preview: localizeChatText(conversation.preview, language),
+        updatedLabel: localizeChatText(conversation.updatedLabel, language),
+      })),
+      characters: characters.map((character) => ({
+        id: character.id,
+        name: localizeChatText(character.displayName, language),
+        avatarImage: character.avatarImage,
+      })),
+    })
+    if (signature === conversationListSignature) {
+      return
+    }
+    conversationListSignature = signature
     threadList.innerHTML = conversations.map((conversation) => {
       const character = characters.find((item) => item.id === conversation.characterId) ?? characters[0]
       const active = conversation.id === activeId
@@ -108,7 +129,7 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
       const characterName = localizeChatText(character.displayName, language)
       const profileImage = character.avatarImage || character.bodyImage
       portrait.innerHTML = profileImage
-        ? `<img class="chat-character-image" src="${options.escapeHtml(profileImage)}" alt="${options.escapeHtml(characterName)}" onerror="this.replaceWith(document.createTextNode(this.alt || 'No image'))" />`
+        ? `<img class="chat-character-image" src="${options.escapeHtml(profileImage)}" alt="${options.escapeHtml(characterName)}" decoding="async" onerror="this.replaceWith(document.createTextNode(this.alt || 'No image'))" />`
         : options.escapeHtml(characterName)
     }
     if (assetList) {
@@ -455,12 +476,11 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
 
   function renderInlineGameStatus(language: ChatLanguageCode): string {
     const gameSystem = activeMessageCharacter?.gameSystem
-    if (!gameSystem || (!gameSystem.stats.length && !gameSystem.statuses.length)) {
+    if (!gameSystem || !gameSystem.stats.length) {
       return ''
     }
     const stats = gameSystem.stats.filter((stat) => stat.visibility !== 'hidden').slice(0, 6).map((stat) => localizeGameStatLabel(stat, language))
-    const statuses = gameSystem.statuses.slice(0, 4).map((status) => localizeGameStatusLabel(status, language))
-    if (!stats.length && !statuses.length) {
+    if (!stats.length) {
       return ''
     }
     const panelStyle = normalizeGamePanelStyle({ ui: gameSystem.ui ?? {} })
@@ -485,11 +505,6 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
             }).join('')}
           </div>
         ` : ''}
-        ${statuses.length ? `
-          <div class="chat-inline-game-effects">
-            ${statuses.map((status) => `<em>${options.escapeHtml(status.label)}${status.value ? ` · ${options.escapeHtml(status.value)}` : ''}</em>`).join('')}
-          </div>
-        ` : ''}
       </section>
     `
   }
@@ -507,29 +522,6 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     }
     const key = stat.id || stat.label.toLowerCase()
     return { ...stat, label: labels[key] ?? labels[stat.label.toLowerCase()] ?? stat.label }
-  }
-
-  function localizeGameStatusLabel<T extends { id?: string; label: string; value?: string }>(status: T, language: ChatLanguageCode): T {
-    if (language !== 'zh-CN') {
-      return status
-    }
-    const labels: Record<string, string> = {
-      focused: '专注',
-      exposed: '暴露',
-      marked: '标记',
-    }
-    const values: Record<string, string> = {
-      stable: '稳定',
-      risk: '风险',
-      persistent: '持续',
-    }
-    const labelKey = status.id || status.label.toLowerCase()
-    const valueKey = status.value?.toLowerCase() ?? ''
-    return {
-      ...status,
-      label: labels[labelKey] ?? labels[status.label.toLowerCase()] ?? status.label,
-      value: values[valueKey] ?? status.value,
-    }
   }
 
   function normalizeSceneStatus(value: unknown): string[] {
@@ -713,7 +705,7 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
           }
           if (source) {
             return `
-              <img class="chat-message-attachment image ${item.origin === 'generated' ? 'generated' : ''}" src="${options.escapeHtml(source)}" alt="${options.escapeHtml(item.name)}" />
+              <img class="chat-message-attachment image ${item.origin === 'generated' ? 'generated' : ''}" src="${options.escapeHtml(source)}" alt="${options.escapeHtml(item.name)}" loading="lazy" decoding="async" />
             `
           }
           return `<span class="chat-message-attachment file">${options.escapeHtml(item.name)}</span>`
@@ -897,7 +889,7 @@ export function createChatRenderer(options: ChatRendererOptions): ChatRenderer {
     if (!character.avatarImage) {
       return fallback
     }
-    return `<img src="${options.escapeHtml(character.avatarImage)}" alt="${options.escapeHtml(name)}" onerror="this.replaceWith(document.createTextNode('${fallback}'))" />`
+    return `<img src="${options.escapeHtml(character.avatarImage)}" alt="${options.escapeHtml(name)}" decoding="async" onerror="this.replaceWith(document.createTextNode('${fallback}'))" />`
   }
 
   function getCharacterTags(character: ChatCharacterResource, language: ChatLanguageCode): string[] {

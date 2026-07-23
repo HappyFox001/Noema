@@ -4,7 +4,6 @@
 import Fuse from 'fuse.js'
 import Split from 'split-grid'
 import { draggable, dropTargetForElements, monitorForElements } from '@atlaskit/pragmatic-drag-and-drop/dist/esm/adapter/element-adapter.js'
-import { computePosition, flip, offset, shift } from '@floating-ui/dom'
 import { Link2Off, Maximize, MessageCircle, Play, RotateCcw, Save, Search, Square, Trash2, createIcons, type IconNode } from 'lucide'
 import type { CharacterResourceViewState, SerializedCharacterResourceLinkKind } from './chat-character-resource-graph-state'
 import { sanitizeAtmosphereCss, sanitizeAtmosphereScopeClass } from './chat-atmosphere-css'
@@ -27,6 +26,7 @@ export interface CharacterWorkflowPageOptions {
   activeTabId: string
   selectedNodeId: string
   activePanel: CharacterWorkflowSidePanel
+  activeGraphTemplateId?: string
   sidebarCollapsed: boolean
   workflowLibraryCollapsed?: boolean
   inspectorCollapsed: boolean
@@ -50,7 +50,7 @@ export interface CharacterWorkflowRunDraftOption {
   completedAt?: number
 }
 
-export type CharacterWorkflowSidePanel = 'workflow' | 'assets' | 'nodes'
+export type CharacterWorkflowSidePanel = 'workflow' | 'nodes'
 
 type CharacterResourceNodeStatus = 'idle' | 'dirty' | 'queued' | 'running' | 'done' | 'failed' | 'stale' | 'disabled'
 type CharacterResourcePreviewType = 'text-card' | 'image' | 'voice' | 'rule' | 'validation' | 'package'
@@ -176,6 +176,7 @@ interface CharacterResourcePanels {
   rightWidth: number
   bottomHeight: number
   activePanel: CharacterWorkflowSidePanel
+  activeGraphTemplateId: string
 }
 
 interface CharacterResourceOutput {
@@ -705,18 +706,17 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
     param('density', 'Spacing Rhythm', 'textarea', ''),
     param('stylePrompt', 'Design Brief', 'textarea', ''),
   ], 'rule'),
-  createDefinition('game-system-target', 'Game System Target', ['游戏系统', '装备栏', '状态栏', 'stats', 'equipment'], 'Targets', 'asset', 'Declares a character-specific game layer for stats, independent equipment slots, equipment rules, status effects, and chat quick panels. Editing defines rules; runtime generates concrete values.', [
+  createDefinition('game-system-target', 'Game System Target', ['游戏系统', '装备栏', '状态栏', 'stats', 'equipment'], 'Targets', 'asset', 'Declares a character-specific game layer for stats, independent equipment slots, equipment rules, and chat quick panels. Editing defines rules; runtime generates concrete values.', [
     slot('card', 'Character Card', 'character-card-resource', 'Character card target.', true),
     slot('field', 'Field', 'field-resource', 'Character fields that shape stat and inventory semantics.'),
     slot('world', 'World', 'world-resource', 'World or scene rules.'),
     slot('style', 'Style', 'style-signal', 'Style pressure for panel tone.'),
     slot('constraint', 'Constraint', 'hard-constraint', 'Hard gameplay boundaries.'),
   ], [
-    slot('gameSystem', 'Game System', 'game-system-resource', 'Generated stats, equipment rules, status effects, and panel spec.'),
+    slot('gameSystem', 'Game System', 'game-system-resource', 'Generated stats, equipment rules, and panel spec.'),
   ], [
     param('statDesign', 'Stat System Design', 'textarea', 'Split the game layer into: 1) base role fields, 2) base gameplay with complete world knowledge, 3) status fields derived from gameplay and character premise, 4) CSS/visual hooks. Design 3-6 character-specific stats that matter for this role and scenario. Avoid fixed generic labels; use adult/intimate body or desire stats only when the workflow explicitly allows adult content and the character context makes them meaningful.'),
     param('equipmentRules', 'Equipment Rules', 'textarea', 'Define slot logic, capacity, rarity, compatibility, prohibited items, acquisition/removal rules, and how equipment may alter stats or status.'),
-    param('statusRules', 'Status Rules', 'textarea', 'Define temporary and persistent statuses from the character premise, relationship dynamic, body/mental state, powers, risks, and scene rules. Each status needs trigger, decay, conflict behavior, and narrative consequence.'),
     param('panelDesign', 'Chat Panel Design', 'textarea', 'Expose equipment, status, rules, and world facts as quick chat panels. Keep generated values compact and readable, but preserve enough world knowledge for future turns.'),
   ], 'rule'),
   createDefinition('resource-package-target', 'Resource Package Target', ['资源包', 'asset bundle', 'package'], 'Targets', 'asset', 'Assembles the role card candidate and all generated target assets into one package for quality evaluation and export.', [
@@ -1145,7 +1145,7 @@ const RESOURCE_NODE_DEFINITIONS: CharacterResourceNodeDefinition[] = [
   ], [
     slot('resource', 'Resource', 'role-resource', 'Atmosphere style resource.'),
   ], [], 'rule', { width: 300, height: 210 }),
-  createDefinition('game-system-resource', 'Game System', ['游戏系统', '装备栏', '状态栏', 'stats'], 'Run Resources', 'asset', 'Generated stats, equipment slots, equipment rules, status effects, and chat quick panel spec.', [
+  createDefinition('game-system-resource', 'Game System', ['游戏系统', '装备栏', '状态栏', 'stats'], 'Run Resources', 'asset', 'Generated stats, equipment slots, equipment rules, and chat quick panel spec.', [
     slot('resource', 'Resource', 'role-resource', 'Previous generated role resource.'),
   ], [
     slot('resource', 'Resource', 'role-resource', 'Game system resource.'),
@@ -1212,6 +1212,102 @@ const DEFAULT_NODE_PLACEMENT: Array<{ id: string; type: string; title: string; x
   { id: 'quality-gate', type: 'quality-gate', title: 'Quality Gate', x: 2080, y: 360, status: 'stale' },
   { id: 'output-adapter', type: 'output-adapter', title: 'Output Adapter', x: 2420, y: 360 },
 ]
+
+const GRAPH_TEMPLATE_DEFINITIONS = [
+  {
+    id: 'character-card',
+    zhLabel: '角色卡',
+    enLabel: 'Character Card',
+    zhCaption: '角色字段、头像、开场、氛围、游戏状态和导出闭环。',
+    enCaption: 'Fields, avatar, opening, atmosphere, game state, and export loop.',
+    nodeTypes: [
+      'goal',
+      'character-card-target',
+      'character-field-target',
+      'opening-layout-target',
+      'atmosphere-style-target',
+      'game-system-target',
+      'image-target',
+      'image-generation-control',
+      'style-pressure',
+      'constraint',
+      'source-material',
+      'llm-tool',
+      'image-tool',
+      'voice-tool',
+      'agent-policy',
+      'generation-strategy',
+      'critique-loop',
+      'quality-gate',
+      'resource-package-target',
+      'output-adapter',
+    ],
+  },
+  {
+    id: 'plot-card',
+    zhLabel: '剧情卡',
+    enLabel: 'Plot Card',
+    zhCaption: '世界、剧情线、场景、连续性和关系推进。',
+    enCaption: 'World, plot arcs, scenes, continuity, and relationship progression.',
+    nodeTypes: [
+      'goal',
+      'world-card-target',
+      'plot-arc-target',
+      'scene-card-target',
+      'npc-pack-target',
+      'npc-target',
+      'style-pressure',
+      'constraint',
+      'continuity-control',
+      'relationship-control',
+      'source-material',
+      'llm-tool',
+      'retrieval-tool',
+      'agent-policy',
+      'generation-strategy',
+      'critique-loop',
+      'quality-gate',
+      'resource-package-target',
+      'output-adapter',
+    ],
+  },
+  {
+    id: 'campaign',
+    zhLabel: '跑团 / 游戏',
+    enLabel: 'Campaign / Game',
+    zhCaption: '世界卡、NPC、剧情、场景和游戏系统资源。',
+    enCaption: 'World cards, NPCs, plot, scenes, and game-system resources.',
+    nodeTypes: [
+      'goal',
+      'world-card-target',
+      'npc-pack-target',
+      'npc-target',
+      'plot-arc-target',
+      'scene-card-target',
+      'game-system-target',
+      'continuity-control',
+      'relationship-control',
+      'constraint',
+      'source-material',
+      'llm-tool',
+      'retrieval-tool',
+      'agent-policy',
+      'generation-strategy',
+      'critique-loop',
+      'quality-gate',
+      'resource-package-target',
+      'output-adapter',
+    ],
+  },
+] as const
+
+type GraphTemplateId = typeof GRAPH_TEMPLATE_DEFINITIONS[number]['id']
+
+function normalizeGraphTemplateId(value: string | undefined): GraphTemplateId {
+  return GRAPH_TEMPLATE_DEFINITIONS.some((template) => template.id === value)
+    ? value as GraphTemplateId
+    : 'character-card'
+}
 
 const DEFAULT_LINKS: CharacterResourceLink[] = [
   link('generation-goal', 'goal', 'character-card-target', 'goal', 'guides'),
@@ -1524,13 +1620,11 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
     onDrop: () => root.classList.remove('is-resource-dragging'),
   }))
 
-  const searchInput = root.querySelector<HTMLElement>('.chat-resource-search-panel [data-chat-resource-node-search]')
   const searchPopover = root.querySelector<HTMLElement>('.chat-resource-node-search-popover')
   const searchFilters = new Map<HTMLElement, () => void>()
-  root.querySelectorAll<HTMLInputElement>('[data-chat-resource-node-search]').forEach((inputElement) => {
+  searchPopover?.querySelectorAll<HTMLInputElement>('[data-chat-resource-node-search]').forEach((inputElement) => {
     const searchScope = inputElement.closest<HTMLElement>('[data-resource-node-search-scope]') ?? root
-    const preview = searchScope.querySelector<HTMLElement>('[data-resource-node-preview]')
-    const filterTargets = () => Array.from(searchScope.querySelectorAll<HTMLButtonElement>('[data-resource-library-card]'))
+    const filterTargets = () => Array.from(searchScope.querySelectorAll<HTMLElement>('[data-resource-library-card]'))
     const emptyState = searchScope.querySelector<HTMLElement>('[data-resource-node-search-empty]')
     const setNodeSearchActive = (card: HTMLElement | null) => {
       filterTargets().forEach((item) => item.classList.toggle('is-node-search-active', item === card))
@@ -1539,14 +1633,6 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
       } else {
         inputElement.removeAttribute('aria-activedescendant')
       }
-    }
-    const updatePreview = (card: HTMLElement) => {
-      if (!preview) {
-        return
-      }
-      const title = card.dataset.resourcePreviewTitle ?? ''
-      const body = card.dataset.resourcePreviewBody ?? ''
-      preview.innerHTML = `<strong>${title}</strong><p>${body}</p>`
     }
     const filterCards = () => {
       const query = inputElement.value.trim().toLowerCase()
@@ -1563,9 +1649,6 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
       const firstVisible = filterTargets().find((card) => !card.hidden) ?? null
       emptyState?.classList.toggle('is-visible', !firstVisible)
       setNodeSearchActive(firstVisible)
-      if (firstVisible) {
-        updatePreview(firstVisible)
-      }
     }
     const focusNextCard = (direction: 1 | -1) => {
       const cards = filterTargets().filter((card) => !card.hidden)
@@ -1578,7 +1661,6 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
       next?.focus()
       if (next) {
         setNodeSearchActive(next)
-        updatePreview(next)
       }
     }
     const handleSearchKey = (event: KeyboardEvent) => {
@@ -1593,7 +1675,7 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
       if (event.key === 'Enter') {
         event.preventDefault()
         const firstCard = filterTargets().find((card) => !card.hidden)
-        firstCard?.click()
+        firstCard?.querySelector<HTMLElement>('[data-resource-node-add-button]')?.click()
       }
       if (event.key === 'Escape') {
         event.preventDefault()
@@ -1607,7 +1689,6 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
       const card = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-resource-library-card]')
       if (card && searchScope.contains(card)) {
         setNodeSearchActive(card)
-        updatePreview(card)
       }
     }
     const handleCategoryFilter = (event: Event) => {
@@ -1622,7 +1703,6 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
       const firstCard = filterTargets().find((card) => !card.hidden)
       if (firstCard) {
         setNodeSearchActive(firstCard)
-        updatePreview(firstCard)
       }
     }
     inputElement.addEventListener('input', filterCards)
@@ -1644,16 +1724,6 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
   if (root.classList.contains('is-node-search-open')) {
     root.querySelector<HTMLInputElement>('.chat-resource-node-search-popover [data-chat-resource-node-search]')?.focus()
   }
-  if (searchInput && searchPopover) {
-    void computePosition(searchInput, searchPopover, {
-      placement: 'right-start',
-      middleware: [offset(10), flip(), shift({ padding: 12 })],
-    }).then(({ x, y }) => {
-      searchPopover.style.left = `${Math.round(x)}px`
-      searchPopover.style.top = `${Math.round(y)}px`
-    })
-  }
-
   const measureSlots = () => {
     const hostRect = root.getBoundingClientRect()
     const slotLayout = Array.from(root.querySelectorAll<HTMLElement>('.chat-resource-slot')).map((slotElement) => {
@@ -1725,12 +1795,8 @@ export function initializeCharacterResourceWorkbench(root: HTMLElement): void {
     searchPopover.dataset.resourceSearchContextSide = slotElement.dataset.resourceSlotSide ?? ''
     root.classList.add('is-node-search-open')
     searchFilters.get(searchPopover)?.()
-    const firstCard = Array.from(searchPopover.querySelectorAll<HTMLButtonElement>('[data-resource-library-card]')).find((card) => !card.hidden)
+    const firstCard = Array.from(searchPopover.querySelectorAll<HTMLElement>('[data-resource-library-card]')).find((card) => !card.hidden)
     firstCard?.focus()
-    const preview = searchPopover.querySelector<HTMLElement>('[data-resource-node-preview]')
-    if (preview && firstCard) {
-      preview.innerHTML = `<strong>${firstCard.dataset.resourcePreviewTitle ?? ''}</strong><p>${firstCard.dataset.resourcePreviewBody ?? ''}</p>`
-    }
   }
   const dispatchSlotConnect = (sourceSlot: HTMLElement, targetSlot: HTMLElement) => {
     root.dispatchEvent(new CustomEvent('character-resource-slot-connect', {
@@ -2009,6 +2075,7 @@ function createCharacterResourceGraph(options: CharacterWorkflowPageOptions): Ch
       rightWidth: options.inspectorCollapsed ? 0 : activeTab === 'run-draft' ? 300 : 252,
       bottomHeight: 62,
       activePanel: options.activePanel,
+      activeGraphTemplateId: normalizeGraphTemplateId(options.activeGraphTemplateId),
     },
     outputs,
   }
@@ -2622,53 +2689,58 @@ function renderFileTab(tab: CharacterWorkflowFileTab, active: boolean, options: 
 }
 
 function renderResourceLibrary(graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions): string {
-  const categories = getResourceCategories()
-  const searchResults = RESOURCE_NODE_DEFINITIONS
-    .slice()
-    .sort((a, b) => a.category.localeCompare(b.category) || a.displayName.localeCompare(b.displayName))
-  const recentNodes = getRecentNodeDefinitions(graph)
+  const activeTemplateId = normalizeGraphTemplateId(graph.panels.activeGraphTemplateId)
+  const activeTemplate = GRAPH_TEMPLATE_DEFINITIONS.find((template) => template.id === activeTemplateId) ?? GRAPH_TEMPLATE_DEFINITIONS[0]
+  const allowedNodeTypes = new Set<string>(activeTemplate.nodeTypes)
+  const filteredDefinitions = RESOURCE_NODE_DEFINITIONS.filter((definition) => allowedNodeTypes.has(definition.type))
+  const categories = getResourceCategories().filter((category) => filteredDefinitions.some((definition) => definition.category === category))
   return `
     <aside class="chat-workflow-sidebar chat-resource-library" aria-label="${options.escapeHtml(options.language === 'zh-CN' ? '资源节点库' : 'Resource node library')}">
       <div class="chat-workflow-sidebar-scroll">
         <section class="chat-workflow-sidebar-section">
           <strong>${options.escapeHtml(ui(options, '资源库', 'Resource Library'))}</strong>
-          <button class="${graph.panels.activePanel === 'workflow' ? 'active' : ''}" type="button" data-chat-workflow-panel="workflow"><span>${options.escapeHtml(ui(options, '图', 'Graph'))}</span><em>${graph.nodes.length}</em></button>
-          <button class="${graph.panels.activePanel === 'assets' ? 'active' : ''}" type="button" data-chat-workflow-panel="assets"><span>${options.escapeHtml(ui(options, '资源包', 'Package'))}</span><em>${graph.outputs.length}</em></button>
-          <button class="${graph.panels.activePanel === 'nodes' ? 'active' : ''}" type="button" data-chat-workflow-panel="nodes"><span>${options.escapeHtml(ui(options, '节点', 'Nodes'))}</span><em>${RESOURCE_NODE_DEFINITIONS.length}</em></button>
+          <button class="${graph.panels.activePanel === 'workflow' ? 'active' : ''}" type="button" data-chat-workflow-panel="workflow"><span>${options.escapeHtml(ui(options, '图', 'Graph'))}</span><em>${GRAPH_TEMPLATE_DEFINITIONS.length}</em></button>
+          <button class="${graph.panels.activePanel === 'nodes' ? 'active' : ''}" type="button" data-chat-workflow-panel="nodes"><span>${options.escapeHtml(ui(options, '节点', 'Nodes'))}</span><em>${filteredDefinitions.length}</em></button>
         </section>
-        <section class="chat-resource-search-panel" data-resource-node-search-scope data-resource-node-search-category="all">
-          <label>
-            <span>${options.escapeHtml(options.language === 'zh-CN' ? '搜索节点' : 'Search nodes')}</span>
-            <input type="search" value="" role="combobox" aria-autocomplete="list" aria-expanded="true" placeholder="${options.escapeHtml(options.language === 'zh-CN' ? '名称 / 类型 / slot' : 'name / type / slot')}" data-chat-resource-node-search>
-          </label>
-          <div class="chat-resource-search-results">
-            ${searchResults.slice(0, 5).map((definition, index) => renderNodeLibraryCard(definition, graph, options, `resource-library-search-${index}`)).join('')}
-            <div class="chat-resource-search-empty" data-resource-node-search-empty>
-              <strong>${options.escapeHtml(ui(options, '无匹配节点', 'No matching nodes'))}</strong>
-              <span>${options.escapeHtml(ui(options, '调整关键词或切换分类', 'Adjust the query or category'))}</span>
-            </div>
-          </div>
-          <div class="chat-resource-node-preview" data-resource-node-preview>
-            <strong>${options.escapeHtml(searchResults[0]?.displayName ?? ui(options, '节点预览', 'Node Preview'))}</strong>
-            <p>${options.escapeHtml(searchResults[0]?.description ?? '')}</p>
-          </div>
-        </section>
-        <section class="chat-workflow-sidebar-section compact">
-          <strong>${options.escapeHtml(ui(options, '最近', 'Recent'))}</strong>
-          ${recentNodes.map((definition, index) => renderNodeLibraryCard(definition, graph, options, `resource-library-recent-${index}`)).join('')}
-        </section>
-        <section class="chat-workflow-sidebar-section">
-          <strong>${options.escapeHtml(ui(options, '分类', 'Categories'))}</strong>
-          ${categories.map((category) => {
-            const count = RESOURCE_NODE_DEFINITIONS.filter((definition) => definition.category === category).length
-            const firstNode = graph.nodes.find((node) => node.type === category)
-            return `<button type="button" data-chat-workflow-panel="nodes" ${firstNode ? `data-chat-workflow-node-select="${options.escapeHtml(firstNode.id)}"` : ''}><span>${options.escapeHtml(localizeCategory(category, options))}</span><em>${count}</em></button>`
+        ${graph.panels.activePanel === 'workflow' ? `
+        <section class="chat-resource-template-list">
+          <strong>${options.escapeHtml(ui(options, '图类型', 'Graph Types'))}</strong>
+          ${GRAPH_TEMPLATE_DEFINITIONS.map((template) => {
+            const active = template.id === activeTemplateId
+            const label = options.language === 'zh-CN' ? template.zhLabel : template.enLabel
+            const caption = options.language === 'zh-CN' ? template.zhCaption : template.enCaption
+            return `
+              <button class="${active ? 'active' : ''}" type="button" data-chat-workflow-graph-template="${options.escapeHtml(template.id)}">
+                <span>
+                  <b>${options.escapeHtml(label)}</b>
+                  <small>${options.escapeHtml(caption)}</small>
+                </span>
+                <em>${template.nodeTypes.length}</em>
+              </button>
+            `
           }).join('')}
         </section>
-        <section class="chat-workflow-sidebar-section compact">
-          <strong>${options.escapeHtml(ui(options, '常用', 'Favorites'))}</strong>
-          ${RESOURCE_NODE_DEFINITIONS.filter((definition) => definition.source === 'core' || definition.source === 'agent').slice(0, 4).map((definition, index) => renderNodeLibraryCard(definition, graph, options, `resource-library-favorite-${index}`)).join('')}
+        ` : `
+        <section class="chat-resource-category-list">
+          <strong>${options.escapeHtml(ui(options, '分类', 'Categories'))}</strong>
+          ${categories.map((category) => {
+            const definitions = filteredDefinitions
+              .filter((definition) => definition.category === category)
+              .sort((a, b) => a.displayName.localeCompare(b.displayName))
+            return `
+              <details class="chat-resource-category-group" ${category === categories[0] ? 'open' : ''}>
+                <summary>
+                  <span>${options.escapeHtml(localizeCategory(category, options))}</span>
+                  <em>${definitions.length}</em>
+                </summary>
+                <div class="chat-resource-category-nodes">
+                  ${definitions.map((definition, index) => renderNodeLibraryCard(definition, graph, options, `resource-library-${category}-${index}`)).join('')}
+                </div>
+              </details>
+            `
+          }).join('')}
         </section>
+        `}
       </div>
     </aside>
   `
@@ -2676,7 +2748,6 @@ function renderResourceLibrary(graph: CharacterResourceGraph, options: Character
 
 function renderNodeLibraryCard(definition: CharacterResourceNodeDefinition, graph: CharacterResourceGraph, options: CharacterWorkflowPageOptions, elementId = ''): string {
   const displayName = workflowText(options, `chat.workflow.node.${definition.type}`, definition.displayName)
-  const description = localizeNodeDescription(definition, options)
   const categoryLabel = localizeCategory(definition.category, options)
   const sourceLabel = localizeSource(definition.source, options)
   const searchText = [
@@ -2694,30 +2765,15 @@ function renderNodeLibraryCard(definition: CharacterResourceNodeDefinition, grap
   const inputTypes = definition.inputs.map((slotItem) => slotItem.type).join(' ')
   const outputTypes = definition.outputs.map((slotItem) => slotItem.type).join(' ')
   return `
-    <button class="chat-resource-library-card" ${elementId ? `id="${options.escapeHtml(elementId)}"` : ''} type="button" role="option" data-resource-library-card data-resource-node-add-type="${options.escapeHtml(definition.type)}" data-resource-category="${options.escapeHtml(definition.category)}" data-resource-input-types="${options.escapeHtml(inputTypes)}" data-resource-output-types="${options.escapeHtml(outputTypes)}" data-resource-search-text="${options.escapeHtml(searchText)}" data-resource-preview-title="${options.escapeHtml(displayName)}" data-resource-preview-body="${options.escapeHtml(description)}" data-chat-workflow-panel="nodes">
+    <article class="chat-resource-library-card" ${elementId ? `id="${options.escapeHtml(elementId)}"` : ''} role="option" tabindex="0" data-resource-library-card data-resource-node-add-type="${options.escapeHtml(definition.type)}" data-resource-node-title="${options.escapeHtml(displayName)}" data-resource-category="${options.escapeHtml(definition.category)}" data-resource-input-types="${options.escapeHtml(inputTypes)}" data-resource-output-types="${options.escapeHtml(outputTypes)}" data-resource-search-text="${options.escapeHtml(searchText)}">
       <span>
         <b>${options.escapeHtml(displayName)}</b>
         <small>${options.escapeHtml(categoryLabel)} / ${options.escapeHtml(sourceLabel)}</small>
       </span>
       <em>${options.escapeHtml(definition.outputs[0]?.type ? formatSlotTypeLabel(definition.outputs[0].type, options) : '-')}</em>
-    </button>
+      <button type="button" data-resource-node-add-button aria-label="${options.escapeHtml(ui(options, '添加节点', 'Add node'))}">${options.escapeHtml(ui(options, '添加', 'Add'))}</button>
+    </article>
   `
-}
-
-function getRecentNodeDefinitions(graph: CharacterResourceGraph): CharacterResourceNodeDefinition[] {
-  const seen = new Set<string>()
-  return graph.nodes
-    .slice()
-    .sort((a, b) => b.zIndex - a.zIndex)
-    .map((node) => getDefinition(node.type))
-    .filter((definition) => {
-      if (seen.has(definition.type)) {
-        return false
-      }
-      seen.add(definition.type)
-      return true
-    })
-    .slice(0, 4)
 }
 
 function renderSidebarToggle(options: CharacterWorkflowPageOptions): string {
@@ -2752,13 +2808,13 @@ function renderResourceCanvas(graph: CharacterResourceGraph, graphSnapshot: stri
       ${isWorkflowTab ? renderCanvasControls(graph, options) : ''}
       ${isRunTab ? renderRunCanvasControls(options) : ''}
       <div class="chat-resource-tabs">
-        ${isWorkflowTab ? `${renderWorkflowLibraryToggle(options)}${renderSidebarToggle(options)}` : ''}
+        ${isWorkflowTab || isRunTab ? renderWorkflowLibraryToggle(options) : ''}
+        ${isWorkflowTab ? renderSidebarToggle(options) : ''}
         ${graph.tabs.map((tab) => renderResourceTabControl(tab, activeTab, options)).join('')}
       </div>
       ${activeTab === 'run-draft' ? renderRunDraft(graph, options) : ''}
       ${isWorkflowTab ? `<div class="chat-workflow-canvas-viewport active" data-resource-viewport="${options.escapeHtml(JSON.stringify(graph.viewport))}">
         <div class="chat-workflow-canvas-plane chat-resource-graph-plane" style="--resource-zoom: ${graph.viewport.zoom}; --resource-pan-x: ${graph.viewport.x}px; --resource-pan-y: ${graph.viewport.y}px">
-          <div class="chat-workflow-canvas-grid" aria-hidden="true"></div>
           ${graph.groups.map((group) => renderGroup(group, graph, options)).join('')}
           ${options.viewState?.hideLinks ? '' : renderLinkOverlay(graph, options)}
           ${graph.nodes.map((node) => renderResourceNode(node, graph, options)).join('')}
@@ -2840,7 +2896,6 @@ function renderRunDraft(graph: CharacterResourceGraph, options: CharacterWorkflo
     <div class="chat-workflow-canvas-viewport active chat-resource-run-viewport ${options.runAnimating ? 'is-run-animating' : ''}" data-run-id="${options.escapeHtml(options.runState?.run?.id ?? '')}" data-run-motion="${options.runMotionEnabled ? 'live' : 'none'}" data-resource-viewport="${options.escapeHtml(JSON.stringify(runGraph.viewport))}" aria-label="${options.escapeHtml(ui(options, '角色卡运行草稿', 'Character card run draft'))}">
       ${renderRunProgressOverlay(options)}
       <div class="chat-workflow-canvas-plane chat-resource-graph-plane chat-resource-run-plane" style="--resource-zoom: ${runGraph.viewport.zoom}; --resource-pan-x: ${runGraph.viewport.x}px; --resource-pan-y: ${runGraph.viewport.y}px; --run-plane-width: ${runPlaneWidth}px; --run-plane-height: ${runPlaneHeight}px">
-        <div class="chat-workflow-canvas-grid" aria-hidden="true"></div>
         ${renderLinkOverlay(runGraph, options)}
         ${runGraph.nodes.map((node) => renderResourceNode(node, runGraph, options)).join('')}
       </div>
@@ -2904,7 +2959,7 @@ function renderRunCharacterInspector(options: CharacterWorkflowPageOptions): str
         </header>
         ${overviewImage ? `
           <figure class="chat-run-character-overview" data-run-character-image-key="${options.escapeHtml(overviewImage.key)}">
-            <img src="${options.escapeHtml(overviewImage.uri)}" alt="${options.escapeHtml(overviewImage.label)}">
+            <img src="${options.escapeHtml(overviewImage.uri)}" alt="${options.escapeHtml(overviewImage.label)}" loading="lazy" decoding="async">
             <figcaption>${options.escapeHtml(overviewImage.label)}</figcaption>
           </figure>
         ` : ''}
@@ -2920,7 +2975,7 @@ function renderRunCharacterInspector(options: CharacterWorkflowPageOptions): str
           <section class="chat-run-character-gallery" data-run-character-images aria-label="${options.escapeHtml(ui(options, '角色图片', 'Character images'))}">
             ${characterImages.map((image) => `
               <figure data-run-character-image-key="${options.escapeHtml(image.key)}" class="is-${options.escapeHtml(image.kind)}">
-                <img src="${options.escapeHtml(image.uri)}" alt="${options.escapeHtml(image.label)}">
+                <img src="${options.escapeHtml(image.uri)}" alt="${options.escapeHtml(image.label)}" loading="lazy" decoding="async">
                 <figcaption>${options.escapeHtml(image.label)}</figcaption>
               </figure>
             `).join('')}
@@ -3816,19 +3871,18 @@ function createAtmosphereStyleResultArtifact(artifact: CharacterRunArtifact): Ch
 function createGameSystemResultArtifacts(artifact: CharacterRunArtifact): CharacterRunArtifacts {
   const data = getRunArtifactDataRecord(artifact)
   const stats = normalizeRunGameStats(data.stats)
-  const statuses = normalizeRunGameStatuses(data.statuses)
   const equipment = normalizeRunGameEquipment(objectRecordValue(data.equipment).slots)
   const panelStyle = getGamePanelStyleRecord(data)
   const panelStyleData = Object.keys(panelStyle).length ? { panelStyle } : {}
   const results: CharacterRunArtifacts = []
-  if (stats.length || statuses.length) {
+  if (stats.length) {
     results.push({
       id: `${artifact.id || 'game-system'}:status`,
       type: 'run-chat-status-result',
       sourceNodeId: artifact.sourceNodeId,
       title: 'Status Panel',
-      summary: [stats.map((item) => `${item.label} ${item.value}${item.unit}`).join(' · '), statuses.map((item) => `${item.label}${item.value ? ` · ${item.value}` : ''}`).join(' · ')].filter(Boolean).join('\n'),
-      data: { stats, statuses, ...panelStyleData, sourceArtifactId: artifact.id },
+      summary: stats.map((item) => `${item.label} ${item.value}${item.unit}`).join(' · '),
+      data: { stats, ...panelStyleData, sourceArtifactId: artifact.id },
     })
   }
   if (equipment.length) {
@@ -3868,20 +3922,6 @@ function normalizeRunGameStats(value: unknown): Array<{ id: string; label: strin
       visibility: stringValue(record.visibility),
     }]
   }).slice(0, 6)
-}
-
-function normalizeRunGameStatuses(value: unknown): Array<{ id: string; label: string; value: string }> {
-  if (!Array.isArray(value)) {
-    return []
-  }
-  return value.flatMap((item) => {
-    const record = objectRecordValue(item)
-    const label = stringValue(record.label)
-    if (!label) {
-      return []
-    }
-    return [{ id: stringValue(record.id), label, value: stringValue(record.value) }]
-  }).slice(0, 4)
 }
 
 function normalizeRunGameEquipment(value: unknown): Array<{ name: string; ability: string; quantity: string }> {
@@ -4572,7 +4612,7 @@ function renderNodeContent(
   if (output?.image) {
     return `
       <div class="chat-resource-node-content ${previewClass} has-image run-image-preview">
-        <img src="${options.escapeHtml(output.image)}" alt="${options.escapeHtml(output.title)}" draggable="false">
+        <img src="${options.escapeHtml(output.image)}" alt="${options.escapeHtml(output.title)}" draggable="false" loading="lazy" decoding="async">
         <div class="chat-resource-image-caption">
           <strong>${options.escapeHtml(output.title)}</strong>
         </div>
@@ -4727,8 +4767,6 @@ function renderRunChatStatusContent(
   const stats = normalizeRunGameStats(data.stats)
     .filter((stat) => stat.visibility !== 'hidden')
     .map((stat) => localizeRunGameStat(stat, options.language))
-  const statuses = normalizeRunGameStatuses(data.statuses)
-    .map((status) => localizeRunGameStatus(status, options.language))
   const panelStyle = normalizeGamePanelStyle(data)
   const panelClassNames = panelStyle
     ? renderGamePanelClassNames(panelStyle, 'chat-inline-game-status')
@@ -4748,11 +4786,6 @@ function renderRunChatStatusContent(
                 </article>
               `
             }).join('')}
-          </div>
-        ` : ''}
-        ${statuses.length ? `
-          <div class="chat-inline-game-effects">
-            ${statuses.map((status) => `<em>${options.escapeHtml(status.label)}${status.value ? ` · ${options.escapeHtml(status.value)}` : ''}</em>`).join('')}
           </div>
         ` : ''}
       </section>
@@ -4826,29 +4859,6 @@ function localizeRunGameStat<T extends { id: string; label: string }>(stat: T, l
   }
   const key = stat.id || stat.label.toLowerCase()
   return { ...stat, label: labels[key] ?? labels[stat.label.toLowerCase()] ?? stat.label }
-}
-
-function localizeRunGameStatus<T extends { id: string; label: string; value: string }>(status: T, language: CharacterWorkflowLanguage): T {
-  if (language !== 'zh-CN') {
-    return status
-  }
-  const labels: Record<string, string> = {
-    focused: '专注',
-    exposed: '暴露',
-    marked: '标记',
-  }
-  const values: Record<string, string> = {
-    stable: '稳定',
-    risk: '风险',
-    persistent: '持续',
-  }
-  const labelKey = status.id || status.label.toLowerCase()
-  const valueKey = status.value.toLowerCase()
-  return {
-    ...status,
-    label: labels[labelKey] ?? labels[status.label.toLowerCase()] ?? status.label,
-    value: values[valueKey] ?? status.value,
-  }
 }
 
 function normalizeRunAtmosphereStyle(
@@ -5037,7 +5047,7 @@ function renderVirtualMaterialNodeContent(node: CharacterResourceNode, options: 
   if (material.kind === 'image') {
     return `
       <div class="chat-resource-node-content material-image-preview has-image">
-        ${material.dataUrl ? `<img src="${options.escapeHtml(material.dataUrl)}" alt="${options.escapeHtml(material.name)}">` : ''}
+        ${material.dataUrl ? `<img src="${options.escapeHtml(material.dataUrl)}" alt="${options.escapeHtml(material.name)}" loading="lazy" decoding="async">` : ''}
         <div>
           <strong>${options.escapeHtml(ui(options, '图片参考', 'Image Reference'))}</strong>
           <p>${options.escapeHtml(meta || ui(options, '可作为图片生成 reference', 'Available as an image generation reference'))}</p>
@@ -5132,7 +5142,7 @@ function renderResourceInspector(graph: CharacterResourceGraph, options: Charact
           <section class="chat-workflow-inspector-section">
             <h4>${options.escapeHtml(ui(options, '运行输出', 'Run Output'))}</h4>
             <div class="chat-resource-output-card ${output.image ? 'has-image' : ''}">
-              ${output.image ? `<img src="${options.escapeHtml(output.image)}" alt="${options.escapeHtml(output.title)}">` : ''}
+              ${output.image ? `<img src="${options.escapeHtml(output.image)}" alt="${options.escapeHtml(output.title)}" loading="lazy" decoding="async">` : ''}
               <strong>${options.escapeHtml(output.title)}</strong>
               <p>${options.escapeHtml(output.summary)}</p>
               <span>${options.escapeHtml(output.status)}</span>
@@ -5386,7 +5396,7 @@ function renderMaterialChip(material: WorkflowMaterialItem, nodeId: string, opti
   ].filter(Boolean).join(' · ')
   return `
     <article class="chat-workflow-material-chip ${options.escapeHtml(material.kind)}">
-      ${material.kind === 'image' && material.dataUrl ? `<img src="${options.escapeHtml(material.dataUrl)}" alt="${options.escapeHtml(material.name)}">` : '<i aria-hidden="true"></i>'}
+      ${material.kind === 'image' && material.dataUrl ? `<img src="${options.escapeHtml(material.dataUrl)}" alt="${options.escapeHtml(material.name)}" loading="lazy" decoding="async">` : '<i aria-hidden="true"></i>'}
       <span>
         <strong>${options.escapeHtml(material.name)}</strong>
         <small>${options.escapeHtml(meta)}</small>
@@ -5583,10 +5593,6 @@ function renderNodeSearchPopover(graph: CharacterResourceGraph, options: Charact
           <strong>${options.escapeHtml(ui(options, '无可连接节点', 'No connectable nodes'))}</strong>
           <span>${options.escapeHtml(ui(options, '尝试拖拽到兼容 slot 或清空搜索', 'Try a compatible slot or clear the query'))}</span>
         </div>
-      </div>
-      <div class="chat-resource-node-preview" data-resource-node-preview>
-        <strong>${options.escapeHtml(candidates[0]?.displayName ?? ui(options, '节点预览', 'Node Preview'))}</strong>
-        <p>${options.escapeHtml(candidates[0]?.description ?? '')}</p>
       </div>
     </div>
   `

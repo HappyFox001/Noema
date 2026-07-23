@@ -573,12 +573,12 @@ function normalizeGameSystem(value: unknown): CharacterProfileGameSystem | undef
       acquisitionRules: stringArrayValue(equipment.acquisitionRules).slice(0, 12),
       forbiddenRules: stringArrayValue(equipment.forbiddenRules).slice(0, 12),
     },
-    statuses: arrayValue(record.statuses).map(normalizeStatusEffect).filter(Boolean) as CharacterProfileStatusEffect[],
+    statuses: [],
     rules: stringArrayValue(record.rules).slice(0, 16),
     ui: normalizeGameSystemUi(record.ui, record.panelStyle),
     sourceArtifactId: optionalString(record.sourceArtifactId),
   }
-  return gameSystem.stats.length || gameSystem.equipment.slots.length || gameSystem.statuses.length || gameSystem.rules.length
+  return gameSystem.stats.length || gameSystem.equipment.slots.length || gameSystem.rules.length
     ? gameSystem
     : undefined
 }

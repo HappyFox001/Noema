@@ -90,7 +90,7 @@ import { createChatRenderer } from './chat-renderer'
 import { extractRoleplaySpeechTexts } from './roleplay-chat-markup'
 import { sanitizeAtmosphereCss, sanitizeAtmosphereScopeClass } from './chat-atmosphere-css'
 import { getGamePanelStyleRecord, normalizeGamePanelStyle, renderGamePanelClassNames, renderGamePanelInlineStyle } from './chat-game-panel-style'
-import { Backpack, Trash2, createIcons } from 'lucide'
+import { Archive, Trash2, createIcons } from 'lucide'
 
 type ChatResizeEdge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
 
@@ -126,6 +126,7 @@ const CHARACTER_WORKFLOW_FOCUS_HISTORY_LIMIT = 16
 
 interface CharacterWorkflowEditorState {
   activePanel: CharacterWorkflowSidePanel
+  activeGraphTemplateId: string
   sidebarCollapsed: boolean
   inspectorCollapsed: boolean
   nodeSearchOpen: boolean
@@ -392,6 +393,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   let activeCharacterWorkflowPerfId = ''
   let characterWorkflowDirty = false
   let characterWorkflowPersistTimer: number | undefined
+  let characterWorkflowRenderFrame: number | undefined
   let characterWorkflowRunRenderFrame: number | undefined
   let selectedWorkflowNodeId = 'generation-goal'
   let lastCharacterResourceGraphSnapshot = ''
@@ -428,6 +430,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
   const characterWorkflowEditorState: CharacterWorkflowEditorState = {
     activePanel: 'workflow',
+    activeGraphTemplateId: 'character-card',
     sidebarCollapsed: false,
     inspectorCollapsed: false,
     nodeSearchOpen: false,
@@ -572,7 +575,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         button.setAttribute('aria-label', label)
         button.setAttribute('title', label)
         button.innerHTML = `
-          <span class="chat-game-quickbar-icon"><i data-lucide="backpack" aria-hidden="true"></i></span>
+          <span class="chat-game-quickbar-icon"><i data-lucide="archive" aria-hidden="true"></i></span>
           <span class="chat-game-quickbar-copy">${options.escapeHtml(label)}</span>
           <em>${options.escapeHtml(String(equipmentCount))}</em>
         `
@@ -582,7 +585,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       button.setAttribute('aria-pressed', active ? 'true' : 'false')
     })
     createIcons({
-      icons: { Backpack },
+      icons: { Archive },
       root: gameQuickbar,
       attrs: {
         width: 15,
@@ -1193,7 +1196,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     if (item.kind === 'audio') {
       return `<span class="chat-attachment-audio-thumb">AUDIO</span>`
     }
-    return `<img src="${source}" alt="${options.escapeHtml(item.name)}" />`
+    return `<img src="${source}" alt="${options.escapeHtml(item.name)}" loading="lazy" decoding="async" />`
   }
 
   function toPendingMedia(item: Omit<PendingChatMedia, 'id'> & { id?: string }): PendingChatMedia {
@@ -1975,17 +1978,18 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       : getLLMProviderEntry(activeModel?.api.provider).value
     activeChatRuntimeProvider = activeProvider
     const activeProviderGroup = groups.find((group) => group.provider.value === activeProvider) ?? groups[0]
+    const activeModelMarkup = renderRuntimeCurrentModelSegment(
+      activeModel?.label || (options.getLanguage() === 'zh-CN' ? '无 LLM' : 'No LLM'),
+      activeModel ? getLLMProviderEntry(activeModel.api.provider).label : (options.getLanguage() === 'zh-CN' ? '模型页添加' : 'Add in models'),
+      activeModel ? renderChatModelLogo(activeModel.api) : renderProviderLogo('openai-compatible')
+    )
     return `
-      <div class="chat-runtime-model-shell ${extraClass} ${openChatRuntimeModelPicker ? 'open' : ''}">
+      <div class="chat-runtime-model-shell is-unified is-llm-only ${extraClass} ${openChatRuntimeModelPicker ? 'open' : ''}">
         <button class="chat-runtime-model-current" type="button" data-chat-runtime-action="toggle-model-picker" ${groups.length ? '' : 'disabled'}>
-          <span class="chat-runtime-model-icon">${activeModel ? renderChatModelLogo(activeModel.api) : renderProviderLogo('openai-compatible')}</span>
-          <span class="chat-runtime-model-copy">
-            <strong>${options.escapeHtml(activeModel?.label || (options.getLanguage() === 'zh-CN' ? '无模型' : 'No model'))}</strong>
-            <small>${options.escapeHtml(activeModel ? getLLMProviderEntry(activeModel.api.provider).label : (options.getLanguage() === 'zh-CN' ? '模型页添加' : 'Add in models'))}</small>
-          </span>
+          <span class="chat-runtime-model-segments">${activeModelMarkup}</span>
           <span class="chat-runtime-model-chevron"></span>
         </button>
-        ${openChatRuntimeModelPicker ? renderChatRuntimeModelMenu(groups, activeProviderGroup, activeModel) : ''}
+        ${openChatRuntimeModelPicker ? renderChatRuntimeLLMOnlyModelMenu(groups, activeProviderGroup, activeModel) : ''}
       </div>
     `
   }
@@ -2118,6 +2122,25 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     activeModel: ChatRuntimeModelOption | null
   ): string {
     return `<div class="chat-runtime-model-menu">${renderChatRuntimeModelMenuContent(groups, activeProviderGroup, activeModel)}</div>`
+  }
+
+  function renderChatRuntimeLLMOnlyModelMenu(
+    groups: ChatRuntimeModelGroup[],
+    activeProviderGroup: ChatRuntimeModelGroup | undefined,
+    activeModel: ChatRuntimeModelOption | null
+  ): string {
+    const zh = options.getLanguage() === 'zh-CN'
+    return `
+      <div class="chat-runtime-model-menu unified llm-only">
+        <section class="chat-runtime-menu-section llm">
+          <div class="chat-runtime-menu-section-head">
+            <span>LLM</span>
+            <strong>${options.escapeHtml(zh ? '对话模型' : 'Conversation')}</strong>
+          </div>
+          ${renderChatRuntimeModelMenuContent(groups, activeProviderGroup, activeModel)}
+        </section>
+      </div>
+    `
   }
 
   function renderChatRuntimeModelMenuContent(
@@ -2482,7 +2505,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     const fields = getCharacterProfileFields(character, language)
     const images = collectCharacterProfileImages(character, language)
     const overviewImage = images.find((image) => image.kind === 'overview')
-    const characterImages = images.filter((image) => image.kind !== 'overview' && image.kind !== 'avatar')
+    const characterImages = images.filter((image) => image.kind !== 'overview')
     const confirmingDelete = pendingCharacterDeleteId === character.id
     const deleteLabel = zh ? '删除角色' : 'Delete'
     const cancelDeleteLabel = zh ? '取消' : 'Cancel'
@@ -2524,7 +2547,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             <div class="chat-profile-carousel-track" data-chat-profile-carousel>
               ${characterImages.length ? characterImages.map((image) => `
                 <figure class="chat-profile-carousel-slide">
-                  <img src="${options.escapeHtml(image.uri)}" alt="${options.escapeHtml(image.label)}">
+                  <img src="${options.escapeHtml(image.uri)}" alt="${options.escapeHtml(image.label)}" loading="lazy" decoding="async">
                   <figcaption>${options.escapeHtml(image.label)}</figcaption>
                 </figure>
               `).join('') : `<div class="chat-profile-carousel-empty">${options.escapeHtml(name)}</div>`}
@@ -2542,7 +2565,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
             </article>
             ${overviewImage ? `
               <figure class="chat-profile-overview-card">
-                <img src="${options.escapeHtml(overviewImage.uri)}" alt="${options.escapeHtml(overviewImage.label)}">
+                <img src="${options.escapeHtml(overviewImage.uri)}" alt="${options.escapeHtml(overviewImage.label)}" loading="lazy" decoding="async">
                 <figcaption>${options.escapeHtml(zh ? '设定总览' : 'Overview sheet')}</figcaption>
               </figure>
             ` : `<div class="chat-profile-overview-card empty">${options.escapeHtml(zh ? '暂无设定总览' : 'No overview sheet')}</div>`}
@@ -3277,23 +3300,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         }
       })
       .filter(Boolean) as ChatGameSystem['equipment']['slots']
-    const statuses = arrayField(data.statuses)
-      .map((item) => {
-        const status = objectField(item)
-        const label = stringField(status?.label)
-        if (!status || !label) return null
-        return {
-          id: sanitizeChatResourceId(stringField(status.id) || label),
-          label,
-          value: stringField(status.value) || undefined,
-          tone: stringField(status.tone) || undefined,
-          description: stringField(status.description) || undefined,
-          duration: stringField(status.duration) || undefined,
-          rule: stringField(status.rule) || undefined,
-        }
-      })
-      .filter(Boolean) as ChatGameSystem['statuses']
-    if (!stats.length && !slots.length && !statuses.length) {
+    if (!stats.length && !slots.length) {
       return undefined
     }
     const panelStyleRecord = getGamePanelStyleRecord(data)
@@ -3311,7 +3318,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         acquisitionRules: stringArrayField(equipment.acquisitionRules).slice(0, 12),
         forbiddenRules: stringArrayField(equipment.forbiddenRules).slice(0, 12),
       },
-      statuses,
+      statuses: [],
       rules: stringArrayField(data.rules).slice(0, 16),
       ui: { quickPanels: ['equipment', 'status', 'rules'], ...(panelStyle ? { panelStyle } : {}) },
       sourceArtifactId: artifact?.id,
@@ -3923,7 +3930,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function renderTTSProviderLogo(provider: string): string {
     const logo = getTTSProviderLogo(provider)
-    return `<img src="${logo.src}" alt="${options.escapeHtml(logo.alt)}" />`
+    return `<img src="${logo.src}" alt="${options.escapeHtml(logo.alt)}" decoding="async" />`
   }
 
   function getTTSProviderLogo(provider: string): { src: string; alt: string } {
@@ -4102,7 +4109,13 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   function renderCharacterWorkflow(): void {
-    void renderCharacterWorkflowAsync()
+    if (characterWorkflowRenderFrame !== undefined) {
+      return
+    }
+    characterWorkflowRenderFrame = window.requestAnimationFrame(() => {
+      characterWorkflowRenderFrame = undefined
+      void renderCharacterWorkflowAsync()
+    })
   }
 
   function startCharacterWorkflowPerf(label: string): string {
@@ -4646,25 +4659,36 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
   }
 
+  function ensureWorkflowLibraryVisibleWhenNoProject(): void {
+    if (activeCharacterWorkflowProjectId) {
+      return
+    }
+    characterWorkflowEditorState.workflowLibraryCollapsed = false
+  }
+
   async function renderCharacterWorkflowAsync(): Promise<void> {
     if (!characterWorkflowRoot) {
       return
     }
     const renderToken = ++characterWorkflowLazyRenderToken
     if (!characterWorkflowRoot.childElementCount) {
+      ensureWorkflowLibraryVisibleWhenNoProject()
       characterWorkflowRoot.innerHTML = renderCharacterWorkflowLibraryShell(renderCharacterWorkflowLibraryEmptyState())
     }
     if (!characterWorkflowProjectsHydrated) {
+      ensureWorkflowLibraryVisibleWhenNoProject()
       characterWorkflowRoot.innerHTML = renderCharacterWorkflowLibraryShell(renderCharacterWorkflowLibraryEmptyState())
       return
     }
     if (!activeCharacterWorkflowProjectId) {
+      ensureWorkflowLibraryVisibleWhenNoProject()
       characterWorkflowRoot.innerHTML = renderCharacterWorkflowLibraryShell(renderCharacterWorkflowLibraryEmptyState())
       return
     }
     const activeProject = characterWorkflowProjects.find((project) => project.id === activeCharacterWorkflowProjectId)
     if (!activeProject) {
       activeCharacterWorkflowProjectId = ''
+      ensureWorkflowLibraryVisibleWhenNoProject()
       characterWorkflowRoot.innerHTML = renderCharacterWorkflowLibraryShell(renderCharacterWorkflowLibraryEmptyState())
       return
     }
@@ -4764,6 +4788,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       activeTabId: characterWorkflowActiveTabId,
       selectedNodeId: selectedWorkflowNodeId,
       activePanel: characterWorkflowEditorState.activePanel,
+      activeGraphTemplateId: characterWorkflowEditorState.activeGraphTemplateId,
       sidebarCollapsed: characterWorkflowEditorState.sidebarCollapsed,
       workflowLibraryCollapsed: characterWorkflowEditorState.workflowLibraryCollapsed,
       inspectorCollapsed: characterWorkflowEditorState.inspectorCollapsed,
@@ -6765,6 +6790,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       activeTabId: characterWorkflowActiveTabId,
       selectedNodeId: selectedWorkflowNodeId,
       activePanel: characterWorkflowEditorState.activePanel,
+      activeGraphTemplateId: characterWorkflowEditorState.activeGraphTemplateId,
       sidebarCollapsed: characterWorkflowEditorState.sidebarCollapsed,
       inspectorCollapsed: characterWorkflowEditorState.inspectorCollapsed,
       nodeSearchOpen: characterWorkflowEditorState.nodeSearchOpen,
@@ -7297,12 +7323,14 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function createPersistedCharacterWorkflowState(): PersistedCharacterWorkflowState {
     saveActiveWorkflowProjectSnapshot(false)
+    ensureWorkflowLibraryVisibleWhenNoProject()
     return {
       activeWorkflowId: activeCharacterWorkflowProjectId,
       workflows: [],
       activeTabId: characterWorkflowActiveTabId,
       editorState: {
         activePanel: characterWorkflowEditorState.activePanel,
+        activeGraphTemplateId: characterWorkflowEditorState.activeGraphTemplateId,
         sidebarCollapsed: characterWorkflowEditorState.sidebarCollapsed,
         inspectorCollapsed: characterWorkflowEditorState.inspectorCollapsed,
         nodeSearchOpen: false,
@@ -7358,6 +7386,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       characterWorkflowRunCount = 0
       characterWorkflowActiveTabId = 'workflow'
       characterWorkflowEditorState.activePanel = 'workflow'
+      characterWorkflowEditorState.activeGraphTemplateId = 'character-card'
       characterWorkflowEditorState.sidebarCollapsed = false
       characterWorkflowEditorState.inspectorCollapsed = false
       characterWorkflowEditorState.nodeSearchOpen = false
@@ -7385,15 +7414,19 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
     }
     characterWorkflowActiveTabId = record.activeTabId === 'run-draft' ? 'run-draft' : 'workflow'
     if (record.editorState && typeof record.editorState === 'object') {
-      characterWorkflowEditorState.activePanel = record.editorState.activePanel === 'assets' || record.editorState.activePanel === 'nodes'
+      characterWorkflowEditorState.activePanel = record.editorState.activePanel === 'nodes'
         ? record.editorState.activePanel
         : 'workflow'
+      characterWorkflowEditorState.activeGraphTemplateId = typeof record.editorState.activeGraphTemplateId === 'string'
+        ? record.editorState.activeGraphTemplateId
+        : 'character-card'
       characterWorkflowEditorState.sidebarCollapsed = Boolean(record.editorState.sidebarCollapsed)
       characterWorkflowEditorState.inspectorCollapsed = Boolean(record.editorState.inspectorCollapsed)
       characterWorkflowEditorState.nodeSearchOpen = false
       characterWorkflowEditorState.workflowLibraryWidth = clampCharacterWorkflowLibraryWidth(record.editorState.workflowLibraryWidth)
       characterWorkflowEditorState.workflowLibraryCollapsed = Boolean(record.editorState.workflowLibraryCollapsed)
     }
+    ensureWorkflowLibraryVisibleWhenNoProject()
   }
 
   function pushCharacterResourceUndoSnapshot(): void {
@@ -7820,6 +7853,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
         activeTabId: 'workflow',
         selectedNodeId: runSelectedWorkflowNodeId,
         activePanel: runEditorSnapshot.activePanel,
+        activeGraphTemplateId: runEditorSnapshot.activeGraphTemplateId,
         sidebarCollapsed: runEditorSnapshot.sidebarCollapsed,
         inspectorCollapsed: runEditorSnapshot.inspectorCollapsed,
         nodeSearchOpen: runEditorSnapshot.nodeSearchOpen,
@@ -8610,7 +8644,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
 
   function addCharacterResourceNodeFromLibrary(card: HTMLElement): void {
     const type = card.dataset.resourceNodeAddType || ''
-    const title = card.dataset.resourcePreviewTitle || type
+    const title = card.dataset.resourceNodeTitle || type
     if (!type) {
       return
     }
@@ -8793,13 +8827,24 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
   }
 
   function setCharacterWorkflowPanel(panelId: string): void {
-    if (panelId !== 'workflow' && panelId !== 'assets' && panelId !== 'nodes') {
+    if (panelId !== 'workflow' && panelId !== 'nodes') {
       return
     }
     characterWorkflowEditorState.activePanel = panelId
     if (panelId !== 'nodes') {
       characterWorkflowEditorState.nodeSearchOpen = false
     }
+    renderCharacterWorkflow()
+  }
+
+  function setCharacterWorkflowGraphTemplate(templateId: string): void {
+    if (!templateId) {
+      return
+    }
+    characterWorkflowEditorState.activeGraphTemplateId = templateId
+    characterWorkflowEditorState.activePanel = 'nodes'
+    characterWorkflowEditorState.nodeSearchOpen = false
+    markActiveWorkflowDirty()
     renderCharacterWorkflow()
   }
 
@@ -8829,6 +8874,7 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       replaceRecord(characterWorkflowConfigOverrides, {})
       replaceRecord(characterWorkflowPositionOverrides, {})
       applyWorkflowProjectViewState(undefined)
+      ensureWorkflowLibraryVisibleWhenNoProject()
       renderCharacterWorkflow()
       return
     }
@@ -10155,8 +10201,9 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       return
     }
 
-    const resourceLibraryCard = eventTarget.closest<HTMLElement>('[data-resource-library-card][data-resource-node-add-type]')
-    if (resourceLibraryCard && panel.contains(resourceLibraryCard)) {
+    const resourceNodeAddButton = eventTarget.closest<HTMLElement>('[data-resource-node-add-button]')
+    const resourceLibraryCard = resourceNodeAddButton?.closest<HTMLElement>('[data-resource-library-card][data-resource-node-add-type]')
+    if (resourceNodeAddButton && resourceLibraryCard && panel.contains(resourceLibraryCard)) {
       addCharacterResourceNodeFromLibrary(resourceLibraryCard)
       return
     }
@@ -10200,6 +10247,12 @@ export function initializeChatPanel(options: ChatPanelOptions): ChatPanelControl
       if (!editingSelectedNode) {
         selectWorkflowNode(nodeId, event.metaKey || event.ctrlKey || event.shiftKey)
       }
+      return
+    }
+
+    const workflowGraphTemplate = eventTarget.closest<HTMLElement>('[data-chat-workflow-graph-template]')
+    if (workflowGraphTemplate && panel.contains(workflowGraphTemplate)) {
+      setCharacterWorkflowGraphTemplate(workflowGraphTemplate.dataset.chatWorkflowGraphTemplate || '')
       return
     }
 

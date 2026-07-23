@@ -376,11 +376,10 @@ function renderChatModelLibraryModal(config: ChatSystemConfig, options: ChatMode
 function renderChatModelTypeBadge(model: ChatModelConfig, options: ChatModelConfigPageOptions): string {
   const type = getChatModelType(model)
   const label = type === 'image'
-    ? (options.language === 'zh-CN' ? '生图模型' : 'Image')
+    ? 'IMG'
     : 'LLM'
   return `
     <div class="chat-model-type-badge" aria-label="Model type">
-      <span class="chat-model-type-dot ${type}"></span>
       <strong>${options.escapeHtml(label)}</strong>
     </div>
   `

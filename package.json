@@ -7,12 +7,6 @@
     "packages/*",
     "apps/*"
   ],
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "better-sqlite3",
-      "onnxruntime-node"
-    ]
-  },
   "scripts": {
     "dev": "turbo run dev",
     "desktop:dev": "cd apps/desktop && pnpm run dev",
@@ -27,7 +21,7 @@
     "check:character-resource-frontend": "node ./scripts/check-character-resource-frontend.mjs"
   },
   "devDependencies": {
-    "turbo": "^2.9.16",
+    "turbo": "^2.10.4",
     "typescript": "^5.4.0"
   },
   "engines": {
