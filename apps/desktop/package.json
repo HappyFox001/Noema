@@ -22,7 +22,7 @@
     "@floating-ui/dom": "^1.7.6",
     "@lobehub/icons-static-svg": "^1.90.0",
     "@noema/sdk": "workspace:*",
-    "better-sqlite3": "^12.11.1",
+    "better-sqlite3": "^11.10.0",
     "chokidar": "^3.5.3",
     "dotenv": "^17.4.2",
     "fuse.js": "^7.4.2",

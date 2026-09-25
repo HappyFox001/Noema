@@ -74,7 +74,7 @@
     "test": "NODE_OPTIONS=--experimental-vm-modules jest"
   },
   "dependencies": {
-    "better-sqlite3": "^12.11.1",
+    "better-sqlite3": "^11.10.0",
     "fft.js": "^4.0.4",
     "fish-audio": "^0.1.0",
     "openai": "^4.28.0",

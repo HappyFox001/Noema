@@ -30,8 +30,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/sdk
       better-sqlite3:
-        specifier: ^12.11.1
-        version: 12.11.1
+        specifier: ^11.10.0
+        version: 11.10.0
       chokidar:
         specifier: ^3.5.3
         version: 3.6.0
@@ -100,8 +100,8 @@ importers:
   packages/sdk:
     dependencies:
       better-sqlite3:
-        specifier: ^12.11.1
-        version: 12.11.1
+        specifier: ^11.10.0
+        version: 11.10.0
       fft.js:
         specifier: ^4.0.4
         version: 4.0.4
@@ -1079,9 +1079,8 @@ packages:
     resolution: {integrity: sha512-bopVNp6ugyA150DDuZfPFdt1KZ5a94ZDiwX4hMgZDzF+GttD80lEy8kj98kbyhLXnPvhtIo93mdnLIjpCAeeOw==}
     engines: {node: '>=10.0.0'}
 
-  better-sqlite3@12.11.1:
-    resolution: {integrity: sha512-dq9AtApgg5PGFtBzPFSBl3HZQjHok5gaQCM6zh2Yk0aSmDCs1CbnVI8/HgASQkNKsWFpseIO9beg5xxpYhbIfA==}
-    engines: {node: 20.x || 22.x || 23.x || 24.x || 25.x || 26.x}
+  better-sqlite3@11.10.0:
+    resolution: {integrity: sha512-EwhOpyXiOEL/lKzHz9AW1msWFNzGc/z+LzeB3/jnFJpxu+th2yqvzsSWas1v9jgs9+xiXJcD5A8CJxAG2TaghQ==}
 
   binary-extensions@2.3.0:
     resolution: {integrity: sha512-Ceh+7ox5qe7LJuLHoY0feh3pHuUDHAcRUeyL2VYghZwfpkNIy/+8Ocg0a3UuSoYzavmylwuLWQOf3hl0jjMMIw==}
@@ -4105,7 +4104,7 @@ snapshots:
 
   basic-ftp@5.3.1: {}
 
-  better-sqlite3@12.11.1:
+  better-sqlite3@11.10.0:
     dependencies:
       bindings: 1.5.0
       prebuild-install: 7.1.3
