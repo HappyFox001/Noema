@@ -1,127 +1,81 @@
 name: Package Desktop Release
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "Release version, for example 0.1.1"
-        required: true
-        type: string
-      platform:
-        description: "Desktop platform to package"
-        required: true
-        default: "all"
-        type: choice
-        options:
-          - all
-          - mac
-          - windows
-      draft:
-        description: "Create the GitHub Release as a draft"
-        required: true
-        default: true
-        type: boolean
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-*"
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
-  prepare:
-    name: Version and tag
+  validate:
+    name: Validate release tag
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.version.outputs.version }}
-      tag: ${{ steps.version.outputs.tag }}
-      tag_exists: ${{ steps.version.outputs.tag_exists }}
-      package_matrix: ${{ steps.version.outputs.package_matrix }}
+      prerelease: ${{ steps.release.outputs.prerelease }}
     steps:
-      - name: Checkout
+      - name: Checkout tagged commit
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Configure Git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
 
-      - name: Validate release version
-        id: version
+      - name: Validate tag and package versions
+        id: release
         shell: bash
         run: |
-          VERSION="${{ github.event.inputs.version }}"
-          VERSION="${VERSION#v}"
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
           if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "Invalid version: $VERSION"
+            echo "Invalid release tag: $TAG"
             exit 1
           fi
-          TAG="v$VERSION"
-          TAG_EXISTS=false
-          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-            echo "Tag already exists, reusing it: $TAG"
-            TAG_EXISTS=true
+          if [[ "$(git cat-file -t "refs/tags/$TAG")" != "tag" ]]; then
+            echo "Release tags must be annotated: $TAG"
+            exit 1
           fi
-          case "${{ github.event.inputs.platform }}" in
-            all)
-              PACKAGE_MATRIX='{"include":[{"platform":"mac","os":"macos-latest","builder_args":"--mac","artifact_name":"noema-macos"},{"platform":"windows","os":"windows-latest","builder_args":"--win","artifact_name":"noema-windows"}]}'
-              ;;
-            mac)
-              PACKAGE_MATRIX='{"include":[{"platform":"mac","os":"macos-latest","builder_args":"--mac","artifact_name":"noema-macos"}]}'
-              ;;
-            windows)
-              PACKAGE_MATRIX='{"include":[{"platform":"windows","os":"windows-latest","builder_args":"--win","artifact_name":"noema-windows"}]}'
-              ;;
-            *)
-              echo "Invalid platform: ${{ github.event.inputs.platform }}"
-              exit 1
-              ;;
-          esac
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "tag_exists=$TAG_EXISTS" >> "$GITHUB_OUTPUT"
-          echo "package_matrix=$PACKAGE_MATRIX" >> "$GITHUB_OUTPUT"
-
-      - name: Update package versions
-        if: ${{ steps.version.outputs.tag_exists != 'true' }}
-        run: |
-          node <<'NODE'
-          const fs = require('fs')
-          const version = process.env.RELEASE_VERSION
-          for (const file of ['package.json', 'packages/sdk/package.json', 'apps/desktop/package.json']) {
-            const json = JSON.parse(fs.readFileSync(file, 'utf8'))
-            json.version = version
-            fs.writeFileSync(file, `${JSON.stringify(json, null, 2)}\n`)
-          }
-          NODE
-        env:
-          RELEASE_VERSION: ${{ steps.version.outputs.version }}
-
-      - name: Commit and tag release
-        if: ${{ steps.version.outputs.tag_exists != 'true' }}
-        run: |
-          git add package.json packages/sdk/package.json apps/desktop/package.json
-          if git diff --cached --quiet; then
-            git commit --allow-empty -m "chore: release ${{ steps.version.outputs.tag }}"
+          git fetch origin main
+          RELEASE_COMMIT="$(git rev-list -n 1 "$TAG")"
+          if ! git merge-base --is-ancestor "$RELEASE_COMMIT" origin/main; then
+            echo "Release tag must point to a commit on main: $TAG"
+            exit 1
+          fi
+          pnpm check:release-version "$VERSION"
+          if [[ "$VERSION" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
           else
-            git commit -m "chore: release ${{ steps.version.outputs.tag }}"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
           fi
-          git tag ${{ steps.version.outputs.tag }}
-          git push origin HEAD:${{ github.ref_name }}
-          git push origin ${{ steps.version.outputs.tag }}
 
   package:
     name: Package ${{ matrix.platform }}
-    needs: prepare
-    runs-on: ${{ matrix.os }}
+    needs: validate
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.prepare.outputs.package_matrix) }}
-
+      matrix:
+        include:
+          - platform: mac
+            os: macos-latest
+            builder_args: --mac
+            artifact_name: noema-macos
+          - platform: windows
+            os: windows-latest
+            builder_args: --win
+            artifact_name: noema-windows
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout release tag
         uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.prepare.outputs.tag }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -131,11 +85,14 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22.20.0
           cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Validate desktop packaging contract
+        run: pnpm check:desktop-packaging
 
       - name: Build SDK and desktop app
         run: |
@@ -160,7 +117,7 @@ jobs:
   release:
     name: Create GitHub Release
     needs:
-      - prepare
+      - validate
       - package
     runs-on: ubuntu-latest
     steps:
@@ -173,10 +130,10 @@ jobs:
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.prepare.outputs.tag }}
-          name: Noema ${{ needs.prepare.outputs.tag }}
-          draft: ${{ github.event.inputs.draft }}
-          prerelease: ${{ contains(needs.prepare.outputs.version, '-') }}
+          tag_name: ${{ github.ref_name }}
+          name: Noema ${{ github.ref_name }}
+          draft: false
+          prerelease: ${{ needs.validate.outputs.prerelease }}
           generate_release_notes: true
           body: |
             ## macOS first launch

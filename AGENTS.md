@@ -36,11 +36,11 @@ Only keep logic in `apps/` when it is inherently host-specific, UI-specific, or 
 
 ## Git Workflow
 
-Use `dev` as the long-running development branch. Do not make routine development changes directly on `main`.
+Use `main` as the only long-running branch. Never commit routine development work directly to `main`.
 
-For regular updates, work from `dev` and use pull requests for merging. For larger or riskier changes, create a short-lived feature branch from `dev`, then open a pull request back into `dev`.
+Create a short-lived branch from the latest `main` for every change and merge it through a pull request. Use a descriptive branch prefix such as `feature/`, `fix/`, `refactor/`, `docs/`, `test/`, `build/`, or `release/`. Do not include agent, model, or tool names in branch names, commit messages, or pull request titles.
 
-Merge `dev` into `main` only through a pull request when the development branch is stable and ready for release.
+Use Conventional Commits for commit messages and pull request titles. Prefer squash merging and delete the source branch after merge. Follow `CONTRIBUTING.md` for release tags and the complete repository workflow.
 
 ## Verification
 

@@ -17,6 +17,8 @@
     "clean": "turbo run clean && rm -rf node_modules",
     "start": "cd apps/desktop && pnpm run start",
     "history:clear": "bash ./scripts/clear-history.sh",
+    "check:desktop-packaging": "node ./scripts/check-desktop-packaging.mjs",
+    "check:release-version": "node ./scripts/check-release-version.mjs",
     "check:runtime-naming": "node ./scripts/check-runtime-naming.mjs",
     "check:character-resource-frontend": "node ./scripts/check-character-resource-frontend.mjs"
   },
