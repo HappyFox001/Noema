@@ -1,0 +1,75 @@
+name: Validate Pull Request
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build SDK and desktop
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate desktop packaging contract
+        run: pnpm check:desktop-packaging
+
+      - name: Build SDK and desktop app
+        run: |
+          pnpm --filter @noema/sdk build
+          pnpm --filter @noema/desktop build
+
+  windows-runtime:
+    name: Validate Windows runtime dependencies
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate desktop packaging contract
+        run: pnpm check:desktop-packaging
+
+      - name: Build SDK and desktop app
+        run: |
+          pnpm --filter @noema/sdk build
+          pnpm --filter @noema/desktop build
+
+      - name: Package unpacked Windows app
+        run: pnpm --filter @noema/desktop exec electron-builder --win --dir --publish never

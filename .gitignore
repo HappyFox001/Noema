@@ -46,6 +46,8 @@ other/**
 
 *.md
 !AGENTS.md
+!CONTRIBUTING.md
+!.github/pull_request_template.md
 !docs/
 lanuch/
 tmp/
@@ -53,6 +55,8 @@ scripts/
 !scripts/
 scripts/*
 !scripts/clear-noema-data.sh
+!scripts/check-desktop-packaging.mjs
+!scripts/check-release-version.mjs
 !apps/desktop/scripts/
 !apps/desktop/scripts/prune-package.cjs
 test/
